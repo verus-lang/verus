@@ -3354,7 +3354,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] relation_codegen_special IMPORTS.to_string() + verus_code_str! {
+    #[test] relation_codegen_special_finite IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
                 #[sharding(option)]
@@ -3362,6 +3362,258 @@ test_verify_one_file! {
 
                 #[sharding(map)]
                 pub map: Map<int, int>,
+
+                #[sharding(multiset)]
+                pub mset: Multiset<int>,
+
+                #[sharding(storage_option)]
+                pub storage_opt: Option<int>,
+
+                #[sharding(storage_map)]
+                pub storage_map: Map<int, int>,
+            }
+
+            transition!{
+                tr1() {
+                    remove opt -= Some(5);
+                    add opt += Some(8);
+
+                    remove map -= [0 => 1];
+                    have map >= [2 => 3];
+                    add map += [4 => 5] by { assume(false); };
+
+                    remove mset -= {10};
+                    have mset >= {11};
+                    add mset += {12};
+
+                    withdraw storage_opt -= Some(13) by { assume(false); };
+                    deposit storage_opt += Some(14);
+
+                    withdraw storage_map -= [15 => 16] by { assume(false); };
+                    deposit storage_map += [17 => 18] by { assume(false); };
+                }
+            }
+
+            transition!{
+                tr2() {
+                    have opt >= Some(7);
+                    add map += [4 => 5] by { assume(false); };
+                }
+            }
+
+            transition!{
+                tr3() {
+                    remove opt -= Some(7);
+                    withdraw storage_opt -= Some(12) by { assume(false); };
+                }
+            }
+
+            transition!{
+                tr4() {
+                    add opt += Some(7) by { assume(false); };
+                    deposit storage_opt += Some(12) by { assume(false); };
+                }
+            }
+        }}
+
+        verus! {
+
+        spec fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
+            &&& pre.opt == Option::Some(5)
+            &&& pre.map.contains_pair(0, 1)
+            &&& pre.map.remove(0).contains_pair(2, 3)
+            &&& !pre.map.remove(0).dom().contains(4)
+              ==> pre.mset.count(10) >= 1
+              && pre.mset.remove(10).count(11) >= 1
+              && (pre.storage_opt == Option::Some(13)
+                ==> (pre.storage_map.contains_pair(15, 16)
+                  ==> (!pre.storage_map.remove(15).dom().contains(17)
+                    ==> post.storage_map == pre.storage_map.remove(15).insert(17, 18)
+                     && post.opt == Option::Some(8)
+                     && post.map == pre.map.remove(0).insert(4, 5)
+                     && post.mset == pre.mset.remove(10).insert(12)
+                     && post.storage_opt == Option::Some(14)
+                  )))
+        }
+
+        spec fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
+            &&& pre.opt == Option::Some(5)
+            &&& post.opt == Option::Some(8)
+
+            &&& pre.map.contains_pair(0, 1)
+            &&& pre.map.remove(0).contains_pair(2, 3)
+            &&& !pre.map.remove(0).dom().contains(4)
+            &&& post.map == pre.map.remove(0).insert(4, 5)
+
+            &&& pre.mset.count(10) >= 1
+            &&& pre.mset.remove(10).count(11) >= 1
+            &&& post.mset == pre.mset.remove(10).insert(12)
+
+            &&& pre.storage_opt == Option::Some(13)
+            &&& post.storage_opt == Option::Some(14)
+
+            &&& pre.storage_map.contains_pair(15, 16)
+            &&& !pre.storage_map.remove(15).dom().contains(17)
+            &&& post.storage_map == pre.storage_map.remove(15).insert(17, 18)
+        }
+
+        spec fn rel_tr2(pre: Y::State, post: Y::State) -> bool {
+            &&& pre.opt == Option::Some(7)
+            &&& !pre.map.dom().contains(4) ==> {
+                &&& post.map == pre.map.insert(4, 5)
+                &&& post.opt == pre.opt
+                &&& post.storage_opt == pre.storage_opt
+                &&& post.storage_map == pre.storage_map
+                &&& post.mset == pre.mset
+            }
+        }
+
+        spec fn rel_tr2_strong(pre: Y::State, post: Y::State) -> bool {
+            &&& pre.opt == Option::Some(7)
+            &&& !pre.map.dom().contains(4)
+            &&& post.map == pre.map.insert(4, 5)
+            &&& post.opt == pre.opt
+            &&& post.storage_opt == pre.storage_opt
+            &&& post.storage_map == pre.storage_map
+            &&& post.mset == pre.mset
+        }
+
+        spec fn rel_tr3(pre: Y::State, post: Y::State) -> bool {
+            &&& pre.opt == Option::Some(7)
+            &&& pre.storage_opt == Option::Some(12)
+              ==> post.storage_opt == Option::None
+                && post.map == pre.map
+                && post.storage_map == pre.storage_map
+                && post.mset == pre.mset
+                && post.opt == Option::None
+        }
+
+        spec fn rel_tr3_strong(pre: Y::State, post: Y::State) -> bool {
+            &&& pre.opt == Option::Some(7)
+            &&& post.opt == Option::None
+            &&& pre.storage_opt == Option::Some(12)
+            &&& post.storage_opt == Option::None
+            &&& post.map == pre.map
+            &&& post.storage_map == pre.storage_map
+            &&& post.mset == pre.mset
+        }
+
+        spec fn rel_tr4(pre: Y::State, post: Y::State) -> bool {
+            pre.opt == Option::None ==> (
+              (pre.storage_opt == Option::None ==> {
+                &&& post.storage_opt == Option::Some(12)
+                &&& post.map == pre.map
+                &&& post.storage_map == pre.storage_map
+                &&& post.mset == pre.mset
+                &&& post.opt == Option::Some(7)
+              })
+            )
+        }
+
+        spec fn rel_tr4_strong(pre: Y::State, post: Y::State) -> bool {
+            &&& pre.opt == Option::None
+            &&& post.opt == Option::Some(7)
+            &&& pre.storage_opt == Option::None
+            &&& post.storage_opt == Option::Some(12)
+            &&& post.map == pre.map
+            &&& post.storage_map == pre.storage_map
+            &&& post.mset == pre.mset
+        }
+
+        proof fn correct_tr1(pre: Y::State, post: Y::State) {
+            requires(Y::State::tr1(pre, post));
+            ensures(rel_tr1(pre, post));
+        }
+
+        proof fn rev_tr1(pre: Y::State, post: Y::State) {
+            requires(rel_tr1(pre, post));
+            ensures(Y::State::tr1(pre, post));
+        }
+
+        proof fn correct_tr1_strong(pre: Y::State, post: Y::State) {
+            requires(Y::State::tr1_strong(pre, post));
+            ensures(rel_tr1_strong(pre, post));
+        }
+
+        proof fn rev_tr1_strong(pre: Y::State, post: Y::State) {
+            requires(rel_tr1_strong(pre, post));
+            ensures(Y::State::tr1_strong(pre, post));
+        }
+
+        proof fn correct_tr2(pre: Y::State, post: Y::State) {
+            requires(Y::State::tr2(pre, post));
+            ensures(rel_tr2(pre, post));
+        }
+
+        proof fn rev_tr2(pre: Y::State, post: Y::State) {
+            requires(rel_tr2(pre, post));
+            ensures(Y::State::tr2(pre, post));
+        }
+
+        proof fn correct_tr2_strong(pre: Y::State, post: Y::State) {
+            requires(Y::State::tr2_strong(pre, post));
+            ensures(rel_tr2_strong(pre, post));
+        }
+
+        proof fn rev_tr2_strong(pre: Y::State, post: Y::State) {
+            requires(rel_tr2_strong(pre, post));
+            ensures(Y::State::tr2_strong(pre, post));
+        }
+
+        proof fn correct_tr3(pre: Y::State, post: Y::State) {
+            requires(Y::State::tr3(pre, post));
+            ensures(rel_tr3(pre, post));
+        }
+
+        proof fn rev_tr3(pre: Y::State, post: Y::State) {
+            requires(rel_tr3(pre, post));
+            ensures(Y::State::tr3(pre, post));
+        }
+
+        proof fn correct_tr3_strong(pre: Y::State, post: Y::State) {
+            requires(Y::State::tr3_strong(pre, post));
+            ensures(rel_tr3_strong(pre, post));
+        }
+
+        proof fn rev_tr3_strong(pre: Y::State, post: Y::State) {
+            requires(rel_tr3_strong(pre, post));
+            ensures(Y::State::tr3_strong(pre, post));
+        }
+
+        proof fn correct_tr4(pre: Y::State, post: Y::State) {
+            requires(Y::State::tr4(pre, post));
+            ensures(rel_tr4(pre, post));
+        }
+
+        proof fn rev_tr4(pre: Y::State, post: Y::State) {
+            requires(rel_tr4(pre, post));
+            ensures(Y::State::tr4(pre, post));
+        }
+
+        proof fn correct_tr4_strong(pre: Y::State, post: Y::State) {
+            requires(Y::State::tr4_strong(pre, post));
+            ensures(rel_tr4_strong(pre, post));
+        }
+
+        proof fn rev_tr4_strong(pre: Y::State, post: Y::State) {
+            requires(rel_tr4_strong(pre, post));
+            ensures(Y::State::tr4_strong(pre, post));
+        }
+
+        } // verus!
+
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] relation_codegen_special_infinite IMPORTS.to_string() + verus_code_str! {
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(option)]
+                pub opt: Option<int>,
+
+                #[sharding(imap)]
+                pub map: IMap<int, int>,
 
                 #[sharding(multiset)]
                 pub mset: Multiset<int>,
@@ -3606,7 +3858,277 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] relation_codegen_special_general IMPORTS.to_string() + verus_code_str! {
+    #[test] relation_codegen_special_general_finite IMPORTS.to_string() + verus_code_str! {
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(option)]
+                pub opt: Option<int>,
+
+                #[sharding(map)]
+                pub map: Map<int, int>,
+
+                #[sharding(multiset)]
+                pub mset: Multiset<int>,
+
+                #[sharding(storage_option)]
+                pub storage_opt: Option<int>,
+
+                #[sharding(storage_map)]
+                pub storage_map: Map<int, int>,
+            }
+
+            transition!{
+                tr1() {
+                    remove opt -= ( Option::Some(5) );
+                    add opt += ( Option::Some(8) );
+
+                    remove map -= ( Map::<int, int>::empty().insert(0, 1) );
+                    have map >= ( Map::<int, int>::empty().insert(2, 3) );
+                    add map += ( Map::<int, int>::empty().insert(4, 5) ) by { assume(false); };
+
+                    remove mset -= ( Multiset::<int>::singleton(10) );
+                    have mset >= ( Multiset::<int>::singleton(11) );
+                    add mset += ( Multiset::<int>::singleton(12) );
+
+                    withdraw storage_opt -= ( Option::Some(13) ) by { assume(false); };
+                    deposit storage_opt += ( Option::Some(14) );
+
+                    withdraw storage_map -= ( Map::<int, int>::empty().insert(15, 16) ) by { assume(false); };
+                    deposit storage_map += ( Map::<int, int>::empty().insert(17, 18) ) by { assume(false); };
+                }
+            }
+
+            transition!{
+                tr2() {
+                    have opt >= (Option::Some(7));
+                    add map += (Map::<int, int>::empty().insert(4, 5)) by { assume(false); };
+                }
+            }
+
+            transition!{
+                tr3() {
+                    remove opt -= (Option::Some(7));
+                    withdraw storage_opt -= (Option::Some(12)) by { assume(false); };
+                }
+            }
+
+            transition!{
+                tr4() {
+                    add opt += (Option::Some(7)) by { assume(false); };
+                    deposit storage_opt += (Option::Some(12)) by { assume(false); };
+                }
+            }
+        }}
+
+        verus! {
+
+        spec fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
+            &&& pre.opt == Option::Some(5)
+
+            &&& map![0 => 1].submap_of(pre.map)
+            &&& map![2 => 3].submap_of(pre.map.remove_keys(map![0 => 1int].dom()))
+            &&& pre.map.remove_keys(map![0 => 1int].dom()).dom().disjoint(map![4 => 5int].dom())
+
+            ==> {
+
+            &&& Multiset::singleton(10).subset_of(pre.mset)
+            &&& Multiset::singleton(11).subset_of(pre.mset.sub(Multiset::singleton(10)))
+
+            &&& (pre.storage_opt == Option::Some(13)
+
+            ==>
+
+            (map![15 => 16].submap_of(pre.storage_map)
+
+            ==>
+
+            (pre.storage_map.remove_keys(map![15 => 16int].dom()).dom().disjoint(map![17 => 18int].dom())
+
+            ==> {
+
+            &&& post.opt == Option::Some(8)
+            &&& post.map == pre.map.remove_keys(map![0 => 1int].dom()).union_prefer_right(map![4 => 5])
+            &&& post.mset ==
+                pre.mset.sub(Multiset::singleton(10)).add(Multiset::singleton(12))
+            &&& post.storage_opt == Option::Some(14)
+            &&& post.storage_map ==
+                pre.storage_map.remove_keys(map![15 => 16int].dom()).union_prefer_right(map![17 => 18])
+            })))}
+        }
+
+        spec fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
+            &&& pre.opt == Option::Some(5)
+            &&& post.opt == Option::Some(8)
+
+            &&& map![0 => 1].submap_of(pre.map)
+            &&& map![2 => 3].submap_of(pre.map.remove_keys(map![0 => 1int].dom()))
+            &&& pre.map.remove_keys(map![0 => 1int].dom()).dom().disjoint(map![4 => 5int].dom())
+            &&& post.map == pre.map.remove_keys(map![0 => 1int].dom()).union_prefer_right(map![4 => 5])
+
+            &&& Multiset::singleton(10).subset_of(pre.mset)
+            &&& Multiset::singleton(11).subset_of(pre.mset.sub(Multiset::singleton(10)))
+            &&& post.mset ==
+                pre.mset.sub(Multiset::singleton(10)).add(Multiset::singleton(12))
+
+            &&& pre.storage_opt == Option::Some(13)
+            &&& post.storage_opt == Option::Some(14)
+
+            &&& map![15 => 16].submap_of(pre.storage_map)
+            &&& pre.storage_map.remove_keys(map![15 => 16int].dom()).dom().disjoint(map![17 => 18int].dom())
+            &&& post.storage_map ==
+                pre.storage_map.remove_keys(map![15 => 16int].dom()).union_prefer_right(map![17 => 18])
+        }
+
+        spec fn rel_tr2(pre: Y::State, post: Y::State) -> bool {
+            &&& pre.opt == Option::Some(7)
+            &&& !pre.map.dom().contains(4) ==> {
+                &&& post.map == pre.map.union_prefer_right(map![4 => 5])
+                &&& post.opt == pre.opt
+                &&& post.storage_opt == pre.storage_opt
+                &&& post.storage_map == pre.storage_map
+                &&& post.mset == pre.mset
+            }
+        }
+
+        spec fn rel_tr2_strong(pre: Y::State, post: Y::State) -> bool {
+            &&& pre.opt == Option::Some(7)
+            &&& !pre.map.dom().contains(4)
+            &&& post.map == pre.map.union_prefer_right(map![4 => 5])
+            &&& post.opt == pre.opt
+            &&& post.storage_opt == pre.storage_opt
+            &&& post.storage_map == pre.storage_map
+            &&& post.mset == pre.mset
+        }
+
+        spec fn rel_tr3(pre: Y::State, post: Y::State) -> bool {
+            &&& pre.opt == Option::Some(7)
+            &&& pre.storage_opt == Option::Some(12) ==> {
+                &&& post.storage_opt == Option::None
+                &&& post.map == pre.map
+                &&& post.storage_map == pre.storage_map
+                &&& post.mset == pre.mset
+                &&& post.opt == Option::None
+            }
+        }
+
+        spec fn rel_tr3_strong(pre: Y::State, post: Y::State) -> bool {
+            &&& pre.opt == Option::Some(7)
+            &&& post.opt == Option::None
+            &&& pre.storage_opt == Option::Some(12)
+            &&& post.storage_opt == Option::None
+            &&& post.map == pre.map
+            &&& post.storage_map == pre.storage_map
+            &&& post.mset == pre.mset
+        }
+
+        spec fn rel_tr4(pre: Y::State, post: Y::State) -> bool {
+            pre.opt == Option::None ==> (
+              (pre.storage_opt == Option::None ==> {
+                &&& post.storage_opt == Option::Some(12)
+                &&& post.map == pre.map
+                &&& post.storage_map == pre.storage_map
+                &&& post.mset == pre.mset
+                &&& post.opt == Option::Some(7)
+              })
+            )
+        }
+
+        spec fn rel_tr4_strong(pre: Y::State, post: Y::State) -> bool {
+            &&& pre.opt == Option::None
+            &&& post.opt == Option::Some(7)
+            &&& pre.storage_opt == Option::None
+            &&& post.storage_opt == Option::Some(12)
+            &&& post.map == pre.map
+            &&& post.storage_map == pre.storage_map
+            &&& post.mset == pre.mset
+        }
+
+        proof fn correct_tr1(pre: Y::State, post: Y::State) {
+            requires(Y::State::tr1(pre, post));
+            ensures(rel_tr1(pre, post));
+        }
+
+        proof fn rev_tr1(pre: Y::State, post: Y::State) {
+            requires(rel_tr1(pre, post));
+            ensures(Y::State::tr1(pre, post));
+        }
+
+        proof fn correct_tr1_strong(pre: Y::State, post: Y::State) {
+            requires(Y::State::tr1_strong(pre, post));
+            ensures(rel_tr1_strong(pre, post));
+        }
+
+        proof fn rev_tr1_strong(pre: Y::State, post: Y::State) {
+            requires(rel_tr1_strong(pre, post));
+            ensures(Y::State::tr1_strong(pre, post));
+        }
+
+        proof fn correct_tr2(pre: Y::State, post: Y::State) {
+            requires(Y::State::tr2(pre, post));
+            ensures(rel_tr2(pre, post));
+        }
+
+        proof fn rev_tr2(pre: Y::State, post: Y::State) {
+            requires(rel_tr2(pre, post));
+            ensures(Y::State::tr2(pre, post));
+        }
+
+        proof fn correct_tr2_strong(pre: Y::State, post: Y::State) {
+            requires(Y::State::tr2_strong(pre, post));
+            ensures(rel_tr2_strong(pre, post));
+        }
+
+        proof fn rev_tr2_strong(pre: Y::State, post: Y::State) {
+            requires(rel_tr2_strong(pre, post));
+            ensures(Y::State::tr2_strong(pre, post));
+        }
+
+        proof fn correct_tr3(pre: Y::State, post: Y::State) {
+            requires(Y::State::tr3(pre, post));
+            ensures(rel_tr3(pre, post));
+        }
+
+        proof fn rev_tr3(pre: Y::State, post: Y::State) {
+            requires(rel_tr3(pre, post));
+            ensures(Y::State::tr3(pre, post));
+        }
+
+        proof fn correct_tr3_strong(pre: Y::State, post: Y::State) {
+            requires(Y::State::tr3_strong(pre, post));
+            ensures(rel_tr3_strong(pre, post));
+        }
+
+        proof fn rev_tr3_strong(pre: Y::State, post: Y::State) {
+            requires(rel_tr3_strong(pre, post));
+            ensures(Y::State::tr3_strong(pre, post));
+        }
+
+        proof fn correct_tr4(pre: Y::State, post: Y::State) {
+            requires(Y::State::tr4(pre, post));
+            ensures(rel_tr4(pre, post));
+        }
+
+        proof fn rev_tr4(pre: Y::State, post: Y::State) {
+            requires(rel_tr4(pre, post));
+            ensures(Y::State::tr4(pre, post));
+        }
+
+        proof fn correct_tr4_strong(pre: Y::State, post: Y::State) {
+            requires(Y::State::tr4_strong(pre, post));
+            ensures(rel_tr4_strong(pre, post));
+        }
+
+        proof fn rev_tr4_strong(pre: Y::State, post: Y::State) {
+            requires(rel_tr4_strong(pre, post));
+            ensures(Y::State::tr4_strong(pre, post));
+        }
+
+        } // verus!
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] relation_codegen_special_general_infinite IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
                 #[sharding(option)]
@@ -4300,7 +4822,243 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] bind_codegen IMPORTS.to_string() + verus_code_str! {
+    #[test] bind_codegen_finite IMPORTS.to_string() + verus_code_str! {
+
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(option)]
+                pub opt: Option<int>,
+
+                #[sharding(map)]
+                pub map: Map<int, u64>,
+
+                #[sharding(storage_map)]
+                pub storage_map: Map<int, u64>,
+            }
+
+            init!{
+                initialize() {
+                    init opt = Option::Some(2);
+                    init map = Map::<int,u64>::empty().insert(1, 5);
+                    init storage_map = Map::<int,u64>::empty().insert(1, 6);
+                }
+            }
+
+            #[invariant]
+            pub fn maps_eq(&self) -> bool {
+                equal(self.map.dom(), self.storage_map.dom())
+            }
+
+            #[invariant]
+            pub fn maps_6(&self) -> bool {
+                forall |k| imply(self.storage_map.dom().contains(k),
+                    self.storage_map.index(k) == 6)
+            }
+
+            transition!{
+                tr1() {
+                    remove opt -= Some(let x);
+                    require(x == 2);
+                }
+            }
+
+            transition!{
+                tr2(key: int) {
+                    remove map -= [key => let x];
+                    require(x == 5);
+
+                    withdraw storage_map -= [key => let y];
+                    assert(y == 6);
+                }
+            }
+
+            readonly!{
+                tr3(key: int) {
+                    have map >= [key => let x];
+                    require(x == 5);
+
+                    guard storage_map >= [key => 6];
+                }
+            }
+
+            property!{
+                tr4(key: int) {
+                    have map >= [key => let x];
+                    require(x == 5);
+
+                    guard storage_map >= [key => 6];
+                }
+            }
+
+            #[inductive(initialize)]
+            fn initialize_inductive(post: Self) { }
+
+            #[inductive(tr1)]
+            fn tr1_inductive(pre: Self, post: Self) { }
+
+            #[inductive(tr2)]
+            fn tr2_inductive(pre: Self, post: Self, key: int) { }
+        }}
+
+        verus! {
+        spec fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
+            &&& pre.opt == Option::Some(2)
+            &&& post.opt == Option::None
+            &&& post.map == pre.map
+            &&& post.storage_map == pre.storage_map
+        }
+
+        spec fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
+            &&& pre.opt == Option::Some(2)
+            &&& post.opt == Option::None
+            &&& post.map == pre.map
+            &&& post.storage_map == pre.storage_map
+        }
+
+        spec fn rel_tr2(pre: Y::State, post: Y::State, key: int) -> bool {
+            &&& pre.map.dom().contains(key)
+            &&& pre.map.index(key) == 5
+
+            &&& (
+              (pre.storage_map.dom().contains(key) && pre.storage_map.index(key) == 6)
+              ==> {
+                &&& post.map == pre.map.remove(key)
+                &&& post.storage_map == pre.storage_map.remove(key)
+                &&& post.opt == pre.opt
+              }
+           )
+        }
+
+        spec fn rel_tr2_strong(pre: Y::State, post: Y::State, key: int) -> bool {
+            &&& pre.map.dom().contains(key)
+            &&& pre.map.index(key) == 5
+            &&& (
+              (pre.storage_map.dom().contains(key) && pre.storage_map.index(key) == 6)
+              && {
+                &&& post.map == pre.map.remove(key)
+                &&& post.storage_map == pre.storage_map.remove(key)
+                &&& post.opt == pre.opt
+              }
+           )
+        }
+
+        spec fn rel_tr3(pre: Y::State, post: Y::State, key: int) -> bool {
+            &&& pre.map.dom().contains(key)
+            &&& pre.map.index(key) == 5
+
+            &&& (
+              (pre.storage_map.dom().contains(key) && pre.storage_map.index(key) == 6)
+              ==> {
+                &&& post.map == pre.map
+                &&& post.storage_map == pre.storage_map
+                &&& post.opt == pre.opt
+              }
+           )
+        }
+
+        spec fn rel_tr3_strong(pre: Y::State, post: Y::State, key: int) -> bool {
+            &&& pre.map.dom().contains(key)
+            &&& pre.map.index(key) == 5
+
+            &&& (
+              (pre.storage_map.dom().contains(key) && pre.storage_map.index(key) == 6)
+              && {
+                &&& post.map == pre.map
+                &&& post.storage_map == pre.storage_map
+                &&& post.opt == pre.opt
+              }
+           )
+        }
+
+        proof fn correct_tr1(pre: Y::State, post: Y::State) {
+            requires(Y::State::tr1(pre, post));
+            ensures(rel_tr1(pre, post));
+        }
+
+        proof fn rev_tr1(pre: Y::State, post: Y::State) {
+            requires(rel_tr1(pre, post));
+            ensures(Y::State::tr1(pre, post));
+        }
+
+        proof fn correct_tr1_strong(pre: Y::State, post: Y::State) {
+            requires(Y::State::tr1_strong(pre, post));
+            ensures(rel_tr1_strong(pre, post));
+        }
+
+        proof fn rev_tr1_strong(pre: Y::State, post: Y::State) {
+            requires(rel_tr1_strong(pre, post));
+            ensures(Y::State::tr1_strong(pre, post));
+        }
+
+        proof fn correct_tr2(pre: Y::State, post: Y::State, key: int) {
+            requires(Y::State::tr2(pre, post, key));
+            ensures(rel_tr2(pre, post, key));
+        }
+
+        proof fn rev_tr2(pre: Y::State, post: Y::State, key: int) {
+            requires(rel_tr2(pre, post, key));
+            ensures(Y::State::tr2(pre, post, key));
+        }
+
+        proof fn correct_tr2_strong(pre: Y::State, post: Y::State, key: int) {
+            requires(Y::State::tr2_strong(pre, post, key));
+            ensures(rel_tr2_strong(pre, post, key));
+        }
+
+        proof fn rev_tr2_strong(pre: Y::State, post: Y::State, key: int) {
+            requires(rel_tr2_strong(pre, post, key));
+            ensures(Y::State::tr2_strong(pre, post, key));
+        }
+
+        proof fn correct_tr3(pre: Y::State, post: Y::State, key: int) {
+            requires(Y::State::tr3(pre, post, key));
+            ensures(rel_tr3(pre, post, key));
+        }
+
+        proof fn rev_tr3(pre: Y::State, post: Y::State, key: int) {
+            requires(rel_tr3(pre, post, key));
+            ensures(Y::State::tr3(pre, post, key));
+        }
+
+        proof fn correct_tr3_strong(pre: Y::State, post: Y::State, key: int) {
+            requires(Y::State::tr3_strong(pre, post, key));
+            ensures(rel_tr3_strong(pre, post, key));
+        }
+
+        proof fn rev_tr3_strong(pre: Y::State, post: Y::State, key: int) {
+            requires(rel_tr3_strong(pre, post, key));
+            ensures(Y::State::tr3_strong(pre, post, key));
+        }
+
+        proof fn do_tokens() {
+            let tracked mut m: Map<int, u64> = Map::tracked_empty();
+            m.tracked_insert(1, 6u64);
+            let tracked (Tracked(inst), Tracked(opt_token), Tracked(mut map_tokens)) = Y::Instance::initialize(m);
+
+            match opt_token {
+                Option::None => { assert(false); }
+                Option::Some(opt_token) => {
+                    inst.tr1(opt_token);
+
+                    assert(map_tokens.dom().contains(1));
+                    let tracked map_token = map_tokens.remove(1);
+
+                    let tracked the_guard = inst.tr4(1, &map_token);
+                    assert(*the_guard == 6);
+
+                    let tracked t = inst.tr2(1, map_token);
+                    assert(t == 6);
+                }
+            };
+        }
+
+        } // verus!
+
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] bind_codegen_infinite IMPORTS.to_string() + verus_code_str! {
 
         tokenized_state_machine!{ Y {
             fields {
@@ -5179,7 +5937,175 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] persistent_map_codegen IMPORTS.to_string() + verus_code_str! {
+    #[test] persistent_map_codegen_finite IMPORTS.to_string() + verus_code_str! {
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(persistent_map)]
+                pub c: Map<int, int>,
+            }
+
+            init!{
+                initialize() {
+                    init c = Map::empty().insert(1, 2);
+                }
+            }
+
+            transition!{
+                tr1() {
+                    have c >= [1 => 2];
+                    add c (union)= [3 => 4];
+                }
+            }
+
+            transition!{
+                tr2() {
+                    add c (union)= (
+                        Map::empty().insert(5, 9).insert(12, 15)
+                    );
+                }
+            }
+
+            transition!{
+                tr3() {
+                    have c >= (
+                        Map::empty().insert(5, 9).insert(12, 15)
+                    );
+                }
+            }
+
+            #[invariant]
+            pub fn the_inv(&self) -> bool {
+                imply(self.c.dom().contains(5), self.c.index(5) == 9)
+                &&
+                imply(self.c.dom().contains(12), self.c.index(12) == 15)
+                &&
+                imply(self.c.dom().contains(3), self.c.index(3) == 4)
+            }
+
+            #[inductive(initialize)]
+            fn initialize_inductive(post: Self) { }
+
+            #[inductive(tr1)]
+            fn tr1_inductive(pre: Self, post: Self) { }
+
+            #[inductive(tr2)]
+            fn tr2_inductive(pre: Self, post: Self) { }
+
+            #[inductive(tr3)]
+            fn tr3_inductive(pre: Self, post: Self) { }
+        }}
+
+        verus!{
+        spec fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
+            &&& pre.c.dom().contains(1)
+            &&& pre.c.index(1) == 2
+            &&& (
+              (pre.c.dom().contains(3) ==> pre.c.index(3) == 4)
+              ==> (
+                post.c == pre.c.insert(3, 4)
+              )
+            )
+        }
+
+        spec fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
+            &&& pre.c.dom().contains(1)
+            &&& pre.c.index(1) == 2
+            &&& (
+              (pre.c.dom().contains(3) ==> pre.c.index(3) == 4)
+              && (
+                post.c == pre.c.insert(3, 4)
+              )
+            )
+        }
+
+        spec fn rel_tr2(pre: Y::State, post: Y::State) -> bool {
+            ((pre.c.dom().contains(5) ==> pre.c.index(5) == 9)
+            && (pre.c.dom().contains(12) ==> pre.c.index(12) == 15))
+            ==> post.c ==
+                  pre.c.insert(5, 9).insert(12, 15)
+        }
+
+        spec fn rel_tr2_strong(pre: Y::State, post: Y::State) -> bool {
+            ((pre.c.dom().contains(5) ==> pre.c.index(5) == 9)
+            && (pre.c.dom().contains(12) ==> pre.c.index(12) == 15))
+            && post.c ==
+                  pre.c.insert(5, 9).insert(12, 15)
+        }
+
+        spec fn rel_tr3(pre: Y::State, post: Y::State) -> bool {
+            &&& (pre.c.dom().contains(5) && pre.c.index(5) == 9)
+            &&& (pre.c.dom().contains(12) && pre.c.index(12) == 15)
+            &&& pre.c == post.c
+        }
+
+        spec fn rel_tr3_strong(pre: Y::State, post: Y::State) -> bool {
+            &&& (pre.c.dom().contains(5) && pre.c.index(5) == 9)
+            &&& (pre.c.dom().contains(12) && pre.c.index(12) == 15)
+            &&& pre.c == post.c
+        }
+
+        proof fn correct_tr(pre: Y::State, post: Y::State)
+            ensures
+                rel_tr1(pre, post) == Y::State::tr1(pre, post),
+                rel_tr1_strong(pre, post) == Y::State::tr1_strong(pre, post),
+                rel_tr2(pre, post) == Y::State::tr2(pre, post),
+                rel_tr2_strong(pre, post) == Y::State::tr2_strong(pre, post),
+                rel_tr3(pre, post) == Y::State::tr3(pre, post),
+                rel_tr3_strong(pre, post) == Y::State::tr3_strong(pre, post),
+        {
+            assert_maps_equal!(
+                pre.c.insert(5, 9).insert(12, 15),
+                pre.c.union_prefer_right(
+                    Map::empty().insert(5, 9).insert(12, 15)
+                )
+            );
+
+            if rel_tr3(pre, post) {
+                assert(
+                  Map::empty().insert(5, 9).insert(12, 15).submap_of(pre.c)
+                );
+                assert(Y::State::tr3(pre, post));
+            }
+            if Y::State::tr3(pre, post) {
+                assert(
+                  Map::<int, int>::empty().insert(5, 9).insert(12, 15).dom().contains(5)
+                );
+                assert(
+                  Map::<int, int>::empty().insert(5, 9).insert(12, 15).dom().contains(12)
+                );
+                assert(pre.c.dom().contains(5));
+                assert(pre.c.dom().contains(12));
+                assert(rel_tr3(pre, post));
+            }
+        }
+
+        proof fn test_inst() {
+            let tracked (Tracked(inst), Tracked(mut init_m)) = Y::Instance::initialize();
+            assert(init_m.dom().contains(1));
+            let tracked m_1 = init_m.remove(1);
+            assert(m_1.value() == 2);
+
+            let tracked cloned = m_1.clone();
+            assert(equal(cloned.instance_id(), inst.id()));
+            assert(cloned.key() == 1);
+            assert(cloned.value() == 2);
+
+            let tracked m_3 = inst.tr1(&m_1);
+            assert(m_3.value() == 4);
+
+            let tracked m_5_12 = inst.tr2();
+            assert(m_5_12.map() =~= map![5 => 9, 12 => 15]);
+            assert(m_5_12.instance_id() == inst.id());
+
+            inst.tr3(&m_5_12);
+        }
+
+        } // verus!
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] persistent_map_codegen_infinite IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
                 #[sharding(persistent_imap)]
@@ -5415,7 +6341,602 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] special_refutable_pattern_binding_codegen IMPORTS.to_string() + verus_code_str! {
+    #[test] special_refutable_pattern_binding_codegen_finite IMPORTS.to_string() + verus_code_str! {
+        pub enum Goo {
+            Bar,
+            Qux(u64),
+            Tal(u64, u64),
+        }
+
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(map)]
+                pub m: Map<int, Goo>,
+
+                #[sharding(storage_map)]
+                pub storage_m: Map<int, Goo>,
+
+                #[sharding(option)]
+                pub opt: Option<Goo>,
+
+                #[sharding(storage_option)]
+                pub storage_opt: Option<Goo>,
+            }
+
+            init!{
+                initialize(m: Map<int, Goo>, opt: Option<Goo>) {
+                    init m = m;
+                    init storage_m = m;
+                    init opt = opt;
+                    init storage_opt = opt;
+                }
+            }
+
+            #[inductive(initialize)]
+            fn initialize_inductive(post: Self, m: Map<int, Goo>, opt: Option<Goo>) { }
+
+            transition!{
+                tr1() {
+                    remove opt -= Some(let Goo::Bar);
+                    withdraw storage_opt -= Some(let Goo::Bar);
+                }
+            }
+
+            transition!{
+                tr2() {
+                    remove opt -= Some(let Goo::Qux(i1));
+                    withdraw storage_opt -= Some(let Goo::Qux(j1));
+                    assert(i1 == j1);
+                }
+            }
+
+            transition!{
+                tr3() {
+                    remove opt -= Some(let Goo::Tal(i1, i2));
+                    withdraw storage_opt -= Some(let Goo::Tal(j1, j2));
+                    assert(i1 == j1);
+                    assert(i2 == j2);
+                }
+            }
+
+            transition!{
+                tr4(key: int) {
+                    remove m -= [key => let Goo::Bar];
+                    withdraw storage_m -= [key => let Goo::Bar];
+                }
+            }
+
+            transition!{
+                tr5(key: int) {
+                    remove m -= [key => let Goo::Qux(i1)];
+                    withdraw storage_m -= [key => let Goo::Qux(j1)];
+                    assert(i1 == j1);
+                }
+            }
+
+            transition!{
+                tr6(key: int) {
+                    remove m -= [key => let Goo::Tal(i1, i2)];
+                    withdraw storage_m -= [key => let Goo::Tal(j1, j2)];
+                    assert(i1 == j1);
+                    assert(i2 == j2);
+                }
+            }
+
+            transition!{
+                tr7(key: int) {
+                    have opt >= Some(let Goo::Bar);
+                    have m >= [key => let Goo::Bar];
+                }
+            }
+
+            transition!{
+                tr8(key: int) {
+                    have opt >= Some(let Goo::Qux(i1));
+                    have m >= [key => let Goo::Qux(j1)];
+                    require(i1 == j1);
+                }
+            }
+
+            transition!{
+                tr9(key: int) {
+                    have opt >= Some(let Goo::Tal(i1, i2));
+                    have m >= [key => let Goo::Tal(j1, j2)];
+                    require(i1 == j1);
+                    require(i2 == j2);
+                }
+            }
+
+            #[invariant]
+            pub fn the_inv(&self) -> bool {
+                equal(self.m, self.storage_m)
+                && equal(self.opt, self.storage_opt)
+            }
+
+                #[inductive(tr1)]
+                fn tr1_inductive(pre: Self, post: Self) { }
+
+                #[inductive(tr2)]
+                fn tr2_inductive(pre: Self, post: Self) { }
+
+                #[inductive(tr3)]
+                fn tr3_inductive(pre: Self, post: Self) { }
+
+                #[inductive(tr4)]
+                fn tr4_inductive(pre: Self, post: Self, key: int) { }
+
+                #[inductive(tr5)]
+                fn tr5_inductive(pre: Self, post: Self, key: int) { }
+
+                #[inductive(tr6)]
+                fn tr6_inductive(pre: Self, post: Self, key: int) { }
+
+                #[inductive(tr7)]
+                fn tr7_inductive(pre: Self, post: Self, key: int) { }
+
+                #[inductive(tr8)]
+                fn tr8_inductive(pre: Self, post: Self, key: int) { }
+
+                #[inductive(tr9)]
+                fn tr9_inductive(pre: Self, post: Self, key: int) { }
+        }}
+
+        verus! {
+        spec fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
+            match pre.opt {
+                Option::Some(Goo::Bar) => {
+                    match pre.storage_opt {
+                        Option::Some(Goo::Bar) => {
+                            equal(post.opt, Option::None)
+                            && equal(post.storage_opt, Option::None)
+                            && equal(post.m, pre.m)
+                            && equal(post.storage_m, pre.storage_m)
+                        }
+                        _ => true,
+                    }
+                }
+                _ => false,
+            }
+        }
+
+        spec fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
+            match pre.opt {
+                Option::Some(Goo::Bar) => {
+                    match pre.storage_opt {
+                        Option::Some(Goo::Bar) => {
+                            equal(post.opt, Option::None)
+                            && equal(post.storage_opt, Option::None)
+                            && equal(post.m, pre.m)
+                            && equal(post.storage_m, pre.storage_m)
+                        }
+                        _ => false,
+                    }
+                }
+                _ => false,
+            }
+        }
+
+        spec fn rel_tr2(pre: Y::State, post: Y::State) -> bool {
+            match pre.opt {
+                Option::Some(Goo::Qux(i1)) => {
+                    match pre.storage_opt {
+                        Option::Some(Goo::Qux(j1)) => {
+                            (i1 == j1) ==> {
+                            &&& post.opt == Option::None
+                            &&& post.storage_opt == Option::None
+                            &&& post.m == pre.m
+                            &&& post.storage_m == pre.storage_m
+                            }
+                        }
+                        _ => true,
+                    }
+                }
+                _ => false,
+            }
+        }
+
+        spec fn rel_tr2_strong(pre: Y::State, post: Y::State) -> bool {
+            match pre.opt {
+                Option::Some(Goo::Qux(i1)) => {
+                    match pre.storage_opt {
+                        Option::Some(Goo::Qux(j1)) => {
+                            &&& i1 == j1
+                            &&& post.opt == Option::None
+                            &&& post.storage_opt == Option::None
+                            &&& post.m == pre.m
+                            &&& post.storage_m == pre.storage_m
+                        }
+                        _ => false,
+                    }
+                }
+                _ => false,
+            }
+        }
+
+        spec fn rel_tr3(pre: Y::State, post: Y::State) -> bool {
+            match pre.opt {
+                Option::Some(Goo::Tal(i1, i2)) => {
+                    match pre.storage_opt {
+                        Option::Some(Goo::Tal(j1, j2)) => {
+                            (i1 == j1 && i2 == j2) ==> {
+                            &&& post.opt == Option::None
+                            &&& post.storage_opt == Option::None
+                            &&& post.m == pre.m
+                            &&& post.storage_m == pre.storage_m
+                            }
+                        }
+                        _ => true,
+                    }
+                }
+                _ => false,
+            }
+        }
+
+        spec fn rel_tr3_strong(pre: Y::State, post: Y::State) -> bool {
+            match pre.opt {
+                Option::Some(Goo::Tal(i1, i2)) => {
+                    match pre.storage_opt {
+                        Option::Some(Goo::Tal(j1, j2)) => {
+                            &&& i1 == j1 && i2 == j2
+                            &&& post.opt == Option::None
+                            &&& post.storage_opt == Option::None
+                            &&& post.m == pre.m
+                            &&& post.storage_m == pre.storage_m
+                        }
+                        _ => false,
+                    }
+                }
+                _ => false,
+            }
+        }
+
+        spec fn rel_tr4(pre: Y::State, post: Y::State, key: int) -> bool {
+            pre.m.dom().contains(key)
+            && match pre.m.index(key) {
+                Goo::Bar => {
+                    pre.storage_m.dom().contains(key)
+                    ==> match pre.storage_m.index(key) {
+                        Goo::Bar => {
+                            &&& post.opt == pre.opt
+                            &&& post.storage_opt == pre.storage_opt
+                            &&& post.m == pre.m.remove(key)
+                            &&& post.storage_m == pre.storage_m.remove(key)
+                        }
+                        _ => true,
+                    }
+                }
+                _ => false,
+            }
+        }
+
+        spec fn rel_tr4_strong(pre: Y::State, post: Y::State, key: int) -> bool {
+            pre.m.dom().contains(key)
+            && match pre.m.index(key) {
+                Goo::Bar => {
+                    pre.storage_m.dom().contains(key)
+                    && match pre.storage_m.index(key) {
+                        Goo::Bar => {
+                            &&& post.opt == pre.opt
+                            &&& post.storage_opt == pre.storage_opt
+                            &&& post.m == pre.m.remove(key)
+                            &&& post.storage_m == pre.storage_m.remove(key)
+                        }
+                        _ => false,
+                    }
+                }
+                _ => false,
+            }
+        }
+
+        spec fn rel_tr5(pre: Y::State, post: Y::State, key: int) -> bool {
+            pre.m.dom().contains(key)
+            && match pre.m.index(key) {
+                Goo::Qux(i1) => {
+                    pre.storage_m.dom().contains(key)
+                    ==> match pre.storage_m.index(key) {
+                        Goo::Qux(j1) => {
+                            (i1 == j1) ==> {
+                            &&& post.opt == pre.opt
+                            &&& post.storage_opt == pre.storage_opt
+                            &&& post.m == pre.m.remove(key)
+                            &&& post.storage_m == pre.storage_m.remove(key)
+                            }
+                        }
+                        _ => true,
+                    }
+                }
+                _ => false,
+            }
+        }
+
+        spec fn rel_tr5_strong(pre: Y::State, post: Y::State, key: int) -> bool {
+            pre.m.dom().contains(key)
+            && match pre.m.index(key) {
+                Goo::Qux(i1) => {
+                    pre.storage_m.dom().contains(key)
+                    && match pre.storage_m.index(key) {
+                        Goo::Qux(j1) => {
+                            &&& i1 == j1
+                            &&& post.opt == pre.opt
+                            &&& post.storage_opt == pre.storage_opt
+                            &&& post.m == pre.m.remove(key)
+                            &&& post.storage_m == pre.storage_m.remove(key)
+                        }
+                        _ => false,
+                    }
+                }
+                _ => false,
+            }
+        }
+
+        spec fn rel_tr6(pre: Y::State, post: Y::State, key: int) -> bool {
+            pre.m.dom().contains(key)
+            && match pre.m.index(key) {
+                Goo::Tal(i1, i2) => {
+                    pre.storage_m.dom().contains(key)
+                    ==> match pre.storage_m.index(key) {
+                        Goo::Tal(j1, j2) => {
+                            (i1 == j1 && i2 == j2) ==> {
+                            &&& post.opt == pre.opt
+                            &&& post.storage_opt == pre.storage_opt
+                            &&& post.m == pre.m.remove(key)
+                            &&& post.storage_m == pre.storage_m.remove(key)
+                            }
+                        }
+                        _ => true,
+                    }
+                }
+                _ => false,
+            }
+        }
+
+        spec fn rel_tr6_strong(pre: Y::State, post: Y::State, key: int) -> bool {
+            pre.m.dom().contains(key)
+            && match pre.m.index(key) {
+                Goo::Tal(i1, i2) => {
+                    pre.storage_m.dom().contains(key)
+                    && match pre.storage_m.index(key) {
+                        Goo::Tal(j1, j2) => {
+                            i1 == j1 && i2 == j2
+                            && equal(post.opt, pre.opt)
+                            && equal(post.storage_opt, pre.storage_opt)
+                            && equal(post.m, pre.m.remove(key))
+                            && equal(post.storage_m, pre.storage_m.remove(key))
+                        }
+                        _ => false,
+                    }
+                }
+                _ => false,
+            }
+        }
+
+        spec fn rel_tr7(pre: Y::State, post: Y::State, key: int) -> bool {
+            match pre.opt {
+                Option::Some(Goo::Bar) => {
+                    pre.m.dom().contains(key)
+                    && match pre.m.index(key) {
+                        Goo::Bar => equal(post, pre),
+                        _ => false,
+                    }
+                }
+                _ => false,
+            }
+        }
+
+        spec fn rel_tr7_strong(pre: Y::State, post: Y::State, key: int) -> bool {
+            rel_tr7(pre, post, key)
+        }
+
+        spec fn rel_tr8(pre: Y::State, post: Y::State, key: int) -> bool {
+            match pre.opt {
+                Option::Some(Goo::Qux(i1)) => {
+                    pre.m.dom().contains(key)
+                    && match pre.m.index(key) {
+                        Goo::Qux(j1) => i1 == j1 && equal(post, pre),
+                        _ => false,
+                    }
+                }
+                _ => false,
+            }
+        }
+
+        spec fn rel_tr8_strong(pre: Y::State, post: Y::State, key: int) -> bool {
+            rel_tr8(pre, post, key)
+        }
+
+        spec fn rel_tr9(pre: Y::State, post: Y::State, key: int) -> bool {
+            match pre.opt {
+                Option::Some(Goo::Tal(i1, i2)) => {
+                    pre.m.dom().contains(key)
+                    && match pre.m.index(key) {
+                        Goo::Tal(j1, j2) => i1 == j1 && i2 == j2 && equal(post, pre),
+                        _ => false,
+                    }
+                }
+                _ => false,
+            }
+        }
+
+        spec fn rel_tr9_strong(pre: Y::State, post: Y::State, key: int) -> bool {
+            rel_tr9(pre, post, key)
+        }
+
+        proof fn correct_tr(pre: Y::State, post: Y::State, key: int) {
+          ensures([
+              rel_tr1(pre, post) == Y::State::tr1(pre, post),
+              rel_tr1_strong(pre, post) == Y::State::tr1_strong(pre, post),
+              rel_tr2(pre, post) == Y::State::tr2(pre, post),
+              rel_tr2_strong(pre, post) == Y::State::tr2_strong(pre, post),
+              rel_tr3(pre, post) == Y::State::tr3(pre, post),
+              rel_tr3_strong(pre, post) == Y::State::tr3_strong(pre, post),
+              rel_tr4(pre, post, key) == Y::State::tr4(pre, post, key),
+              rel_tr4_strong(pre, post, key) == Y::State::tr4_strong(pre, post, key),
+              rel_tr5(pre, post, key) == Y::State::tr5(pre, post, key),
+              rel_tr5_strong(pre, post, key) == Y::State::tr5_strong(pre, post, key),
+              rel_tr6(pre, post, key) == Y::State::tr6(pre, post, key),
+              rel_tr6_strong(pre, post, key) == Y::State::tr6_strong(pre, post, key),
+              rel_tr7(pre, post, key) == Y::State::tr7(pre, post, key),
+              rel_tr7_strong(pre, post, key) == Y::State::tr7_strong(pre, post, key),
+              rel_tr8(pre, post, key) == Y::State::tr8(pre, post, key),
+              rel_tr8_strong(pre, post, key) == Y::State::tr8_strong(pre, post, key),
+              rel_tr9(pre, post, key) == Y::State::tr9(pre, post, key),
+              rel_tr9_strong(pre, post, key) == Y::State::tr9_strong(pre, post, key),
+          ]);
+        }
+
+        proof fn test_inst1() {
+            let tracked mut p_m = Map::tracked_empty();
+            p_m.tracked_insert(1, Goo::Bar);
+
+            let tracked (Tracked(inst), Tracked(mut m_token), Tracked(opt_token)) = Y::Instance::initialize(
+                map![1 => Goo::Bar],
+                Option::Some(Goo::Bar),
+                p_m,
+                Option::Some(Goo::Bar),
+            );
+
+            assert(m_token.dom().contains(1));
+            let tracked kv = m_token.remove(1);
+            let tracked o = match opt_token {
+                Option::None => proof_from_false(),
+                Option::Some(t) => t,
+            };
+
+            inst.tr7(1, &kv, &o);
+
+            let tracked wi = inst.tr1(o);
+            assert(equal(wi, Goo::Bar));
+
+            let tracked wi2 = inst.tr4(1, kv);
+            assert(equal(wi2, Goo::Bar));
+        }
+
+        proof fn test_inst2() {
+            let tracked mut p_m = Map::tracked_empty();
+            p_m.tracked_insert(1, Goo::Qux(8u64));
+
+            let tracked (Tracked(inst), Tracked(mut m_token), Tracked(opt_token)) = Y::Instance::initialize(
+                map![1 => Goo::Qux(8u64)],
+                Option::Some(Goo::Qux(8u64)),
+                p_m,
+                Option::Some(Goo::Qux(8u64)),
+            );
+
+            assert(m_token.dom().contains(1));
+            let tracked kv = m_token.remove(1);
+            let tracked o = match opt_token {
+                Option::None => proof_from_false(),
+                Option::Some(t) => t,
+            };
+
+            inst.tr8(1, &kv, &o);
+
+            let tracked wi = inst.tr2(o);
+            assert(equal(wi, Goo::Qux(8u64)));
+
+            let tracked wi2 = inst.tr5(1, kv);
+            assert(equal(wi2, Goo::Qux(8u64)));
+        }
+
+        proof fn test_inst3() {
+            let tracked mut p_m = Map::tracked_empty();
+            p_m.tracked_insert(1, Goo::Tal(8u64, 9u64));
+
+            let tracked (Tracked(inst), Tracked(mut m_token), Tracked(opt_token)) = Y::Instance::initialize(
+                map![1 => Goo::Tal(8u64, 9u64)],
+                Option::Some(Goo::Tal(8u64, 9u64)),
+                p_m,
+                Option::Some(Goo::Tal(8u64, 9u64)),
+            );
+
+            assert(m_token.dom().contains(1));
+            let tracked kv = m_token.remove(1);
+            let tracked o = match opt_token {
+                Option::None => proof_from_false(),
+                Option::Some(t) => t,
+            };
+
+            inst.tr9(1, &kv, &o);
+
+            let tracked wi = inst.tr3(o);
+            assert(equal(wi, Goo::Tal(8u64, 9u64)));
+
+            let tracked wi2 = inst.tr6(1, kv);
+            assert(equal(wi2, Goo::Tal(8u64, 9u64)));
+        }
+
+        proof fn test_precondition_remove1(tracked inst: Y::Instance, tracked t: Y::opt)
+        {
+          requires(equal(t.instance_id(), inst.id()));
+          let tracked k = inst.tr1(t); // FAILS
+        }
+
+        proof fn test_precondition_remove2(tracked inst: Y::Instance, tracked t: Y::opt)
+        {
+          requires(equal(t.instance_id(), inst.id()));
+          let tracked k = inst.tr2(t); // FAILS
+        }
+
+        proof fn test_precondition_remove3(tracked inst: Y::Instance, tracked t: Y::opt)
+        {
+          requires(equal(t.instance_id(), inst.id()));
+          let tracked k = inst.tr3(t); // FAILS
+        }
+
+        proof fn test_precondition_map_remove1(tracked inst: Y::Instance, tracked t: Y::m)
+        {
+          requires(equal(t.instance_id(), inst.id()) && t.key() == 1);
+          let tracked k = inst.tr4(1, t); // FAILS
+        }
+
+        proof fn test_precondition_map_remove2(tracked inst: Y::Instance, tracked t: Y::m)
+        {
+          requires(equal(t.instance_id(), inst.id()) && t.key() == 1);
+          let tracked k = inst.tr5(1, t); // FAILS
+        }
+
+        proof fn test_precondition_map_remove3(tracked inst: Y::Instance, tracked t: Y::m)
+        {
+          requires(equal(t.instance_id(), inst.id()) && t.key() == 1);
+          let tracked k = inst.tr6(1, t); // FAILS
+        }
+
+        proof fn test_precondition_have1(tracked inst: Y::Instance, tracked t: Y::opt, tracked u: Y::m)
+        {
+          requires(equal(t.instance_id(), inst.id()) && equal(u.instance_id(), inst.id()) && u.key() == 1
+              && equal(t.value(), Goo::Bar)
+          );
+          let tracked k = inst.tr7(1, &u, &t); // FAILS
+        }
+
+        proof fn test_precondition_have2(tracked inst: Y::Instance, tracked t: Y::opt, tracked u: Y::m)
+        {
+          requires(equal(t.instance_id(), inst.id()) && equal(u.instance_id(), inst.id()) && u.key() == 1
+              && equal(u.value(), Goo::Bar)
+          );
+          let tracked k = inst.tr7(1, &u, &t); // FAILS
+        }
+
+        proof fn test_precondition_have3(tracked inst: Y::Instance, tracked t: Y::opt, tracked u: Y::m)
+        {
+          requires(equal(t.instance_id(), inst.id()) && equal(u.instance_id(), inst.id()) && u.key() == 1
+              && equal(u.value(), t.value()));
+          let tracked k = inst.tr8(1, &u, &t); // FAILS
+        }
+
+        proof fn test_precondition_have4(tracked inst: Y::Instance, tracked t: Y::opt, tracked u: Y::m)
+        {
+          requires(equal(t.instance_id(), inst.id()) && equal(u.instance_id(), inst.id()) && u.key() == 1
+              && equal(u.value(), t.value()));
+          let k = inst.tr9(1, &u, &t); // FAILS
+        }
+
+        }
+    } => Err(e) => assert_fails(e, 10)
+}
+
+test_verify_one_file! {
+    #[test] special_refutable_pattern_binding_codegen_infinite IMPORTS.to_string() + verus_code_str! {
         pub enum Goo {
             Bar,
             Qux(u64),
@@ -6627,7 +8148,276 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] iset_codegen IMPORTS.to_string() + verus_code_str! {
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(iset)]
+                pub b: ISet<int>,
+            }
+
+            init!{
+                initialize() {
+                    init b = ISet::<int>::empty().insert(19);
+                }
+            }
+
+            transition!{
+                tr_add() {
+                    add b += set { 5 }; // FAILS
+                }
+            }
+
+            transition!{
+                tr_have() {
+                    have b >= set { 5 };
+                }
+            }
+
+            transition!{
+                tr_remove() {
+                    remove b -= set { 5 };
+                }
+            }
+
+            transition!{
+                tr_add_gen() {
+                    add b += (ISet::<int>::empty().insert(6)); // FAILS
+                }
+            }
+
+            transition!{
+                tr_have_gen() {
+                    have b >= (ISet::<int>::empty().insert(6));
+                }
+            }
+
+            transition!{
+                tr_remove_gen() {
+                    remove b -= (ISet::<int>::empty().insert(6));
+                }
+            }
+        }}
+
+        verus!{
+
+        spec fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
+            !pre.b.contains(5)
+            ==> post.b == pre.b.insert(5)
+        }
+
+        spec fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
+            !pre.b.contains(5)
+            && post.b == pre.b.insert(5)
+        }
+
+        spec fn rel_tr2(pre: Y::State, post: Y::State) -> bool {
+            pre.b.contains(5)
+            && pre.b == post.b
+        }
+
+        spec fn rel_tr2_strong(pre: Y::State, post: Y::State) -> bool {
+            pre.b.contains(5)
+            && pre.b == post.b
+        }
+
+        spec fn rel_tr3(pre: Y::State, post: Y::State) -> bool {
+            pre.b.contains(5)
+            && post.b == pre.b.remove(5)
+        }
+
+        spec fn rel_tr3_strong(pre: Y::State, post: Y::State) -> bool {
+            pre.b.contains(5)
+            && post.b == pre.b.remove(5)
+        }
+
+        spec fn rel_tr4(pre: Y::State, post: Y::State) -> bool {
+            !pre.b.contains(6)
+            ==> post.b == pre.b.union(ISet::<int>::empty().insert(6))
+        }
+
+        spec fn rel_tr4_strong(pre: Y::State, post: Y::State) -> bool {
+            !pre.b.contains(6)
+            && post.b == pre.b.union(ISet::<int>::empty().insert(6))
+        }
+
+        spec fn rel_tr5(pre: Y::State, post: Y::State) -> bool {
+            pre.b.contains(6)
+            && pre.b == post.b
+        }
+
+        spec fn rel_tr5_strong(pre: Y::State, post: Y::State) -> bool {
+            pre.b.contains(6)
+            && pre.b == post.b
+        }
+
+        spec fn rel_tr6(pre: Y::State, post: Y::State) -> bool {
+            pre.b.contains(6)
+            && post.b == pre.b.difference(ISet::<int>::empty().insert(6))
+        }
+
+        spec fn rel_tr6_strong(pre: Y::State, post: Y::State) -> bool {
+            pre.b.contains(6)
+            && post.b == pre.b.difference(ISet::<int>::empty().insert(6))
+        }
+
+        proof fn correct_tr(pre: Y::State, post: Y::State) {
+            ensures([
+                rel_tr1(pre, post) == Y::State::tr_add(pre, post),
+                rel_tr1_strong(pre, post) == Y::State::tr_add_strong(pre, post),
+                rel_tr2(pre, post) == Y::State::tr_have(pre, post),
+                rel_tr2_strong(pre, post) == Y::State::tr_have_strong(pre, post),
+                rel_tr3(pre, post) == Y::State::tr_remove(pre, post),
+                rel_tr3_strong(pre, post) == Y::State::tr_remove_strong(pre, post),
+
+                rel_tr4(pre, post) == Y::State::tr_add_gen(pre, post),
+                rel_tr4_strong(pre, post) == Y::State::tr_add_gen_strong(pre, post),
+                rel_tr5(pre, post) == Y::State::tr_have_gen(pre, post),
+                rel_tr5_strong(pre, post) == Y::State::tr_have_gen_strong(pre, post),
+                rel_tr6(pre, post) == Y::State::tr_remove_gen(pre, post),
+                rel_tr6_strong(pre, post) == Y::State::tr_remove_gen_strong(pre, post),
+            ]);
+        }
+
+        proof fn test_inst1() {
+            let tracked (Tracked(inst), Tracked(token_f)) = Y::Instance::initialize();
+            assert(token_f.set() =~= iset![19]);
+            assert(token_f.instance_id() == inst.id());
+
+            let tracked token1 = inst.tr_add();
+            assert(equal(token1.instance_id(), inst.id()));
+            assert(token1.element() == 5);
+            inst.tr_have(&token1);
+            inst.tr_remove(token1);
+
+            let tracked token_set = inst.tr_add_gen();
+            assert(token_set.set() =~= iset![6]);
+            assert(token_set.instance_id() == inst.id());
+            inst.tr_have_gen(&token_set);
+            inst.tr_remove_gen(token_set);
+        }
+
+        }
+    } => Err(e) => assert_fails(e, 2)
+}
+
+test_verify_one_file! {
     #[test] persistent_set_codegen IMPORTS.to_string() + verus_code_str! {
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(persistent_set)]
+                pub b: Set<int>,
+            }
+
+            init!{
+                initialize() {
+                    init b = Set::<int>::empty().insert(19);
+                }
+            }
+
+            transition!{
+                tr_add() {
+                    add b (union)= set { 5 };
+                }
+            }
+
+            transition!{
+                tr_have() {
+                    have b >= set { 5 };
+                }
+            }
+
+            transition!{
+                tr_add_gen() {
+                    add b (union)= (Set::<int>::empty().insert(6));
+                }
+            }
+
+            transition!{
+                tr_have_gen() {
+                    have b >= (Set::<int>::empty().insert(6));
+                }
+            }
+        }}
+
+        verus!{
+
+        spec fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
+            post.b == pre.b.insert(5)
+        }
+
+        spec fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
+            post.b == pre.b.insert(5)
+        }
+
+        spec fn rel_tr2(pre: Y::State, post: Y::State) -> bool {
+            pre.b.contains(5)
+            && pre.b == post.b
+        }
+
+        spec fn rel_tr2_strong(pre: Y::State, post: Y::State) -> bool {
+            pre.b.contains(5)
+            && pre.b == post.b
+        }
+
+        spec fn rel_tr4(pre: Y::State, post: Y::State) -> bool {
+            post.b == pre.b.union(Set::<int>::empty().insert(6))
+        }
+
+        spec fn rel_tr4_strong(pre: Y::State, post: Y::State) -> bool {
+            post.b == pre.b.union(Set::<int>::empty().insert(6))
+        }
+
+        spec fn rel_tr5(pre: Y::State, post: Y::State) -> bool {
+            pre.b.contains(6)
+            && pre.b == post.b
+        }
+
+        spec fn rel_tr5_strong(pre: Y::State, post: Y::State) -> bool {
+            pre.b.contains(6)
+            && pre.b == post.b
+        }
+
+        proof fn correct_tr(pre: Y::State, post: Y::State) {
+            ensures([
+                rel_tr1(pre, post) == Y::State::tr_add(pre, post),
+                rel_tr1_strong(pre, post) == Y::State::tr_add_strong(pre, post),
+                rel_tr2(pre, post) == Y::State::tr_have(pre, post),
+                rel_tr2_strong(pre, post) == Y::State::tr_have_strong(pre, post),
+
+                rel_tr4(pre, post) == Y::State::tr_add_gen(pre, post),
+                rel_tr4_strong(pre, post) == Y::State::tr_add_gen_strong(pre, post),
+                rel_tr5(pre, post) == Y::State::tr_have_gen(pre, post),
+                rel_tr5_strong(pre, post) == Y::State::tr_have_gen_strong(pre, post),
+            ]);
+        }
+
+        proof fn test_inst1() {
+            let tracked (Tracked(inst), Tracked(token_f)) = Y::Instance::initialize();
+            assert(Set::<int>::empty().insert(19).contains(19));
+            assert(token_f.set() =~= set![19]);
+            assert(token_f.instance_id() == inst.id());
+
+            let tracked token1 = inst.tr_add();
+            assert(equal(token1.instance_id(), inst.id()));
+            assert(token1.element() == 5);
+            inst.tr_have(&token1);
+
+            let token1_clone = token1.clone();
+            assert(equal(token1_clone, token1));
+
+            let tracked token_set = inst.tr_add_gen();
+            assert(Set::<int>::empty().insert(6).contains(6));
+            assert(token_set.set() =~= set![6]);
+            assert(token_set.instance_id() == inst.id());
+            inst.tr_have_gen(&token_set);
+        }
+
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] persistent_iset_codegen IMPORTS.to_string() + verus_code_str! {
         tokenized_state_machine!{ Y {
             fields {
                 #[sharding(persistent_iset)]
