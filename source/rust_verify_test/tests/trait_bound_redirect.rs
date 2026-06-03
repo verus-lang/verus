@@ -225,3 +225,29 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "the functions `test_crate::foo` and `test_crate::true_fn` must have the same return types")
 }
+
+test_verify_one_file! {
+    #[test] cycle_checking verus_code! {
+        trait Tr { spec fn stuff(self) -> bool; }
+
+        struct X { }
+
+        impl Tr for X { spec fn stuff(self) -> bool { foo::<X>(self) } }
+
+        spec fn helper<T: Tr>(t: T) -> bool {
+            !t.stuff()
+        }
+
+        #[verifier::if_trait_bound_then_redirect_to(helper)]
+        spec fn foo<T>(t: T) -> bool {
+            false
+        }
+
+        proof fn test1() {
+            // We don't have any negative trait bounds, so this fails
+            let x = X { };
+            assert(foo::<X>(x) != x.stuff());
+            assert(false);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cycle")
+}
