@@ -12,8 +12,8 @@ For example, while the `len()` method of
 [`std::collections::HashSet`](https://doc.rust-lang.org/std/collections/hash_set/struct.HashSet.html)
 returns a length of type `usize`,
 which is bounded,
-the `len()` methods of `Seq` and `Set` return
-lengths of type `nat`, which is unbounded.
+the `len()` methods of `Seq`, `Set`, and `ISet` each return
+a length of type `nat`, which is unbounded.
 
 `Seq`, `Set`, and `Map` objects are always finite.
 `ISet` and `IMap` represent possibly-infinite sets and maps.
