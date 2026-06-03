@@ -658,7 +658,7 @@ fn expr_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
                     ((#cur) || (#e))
                 }),
                 _ => {
-                    panic!("expr_can_add invalid case jonh1 {:?}", stype);
+                    panic!("expr_can_add invalid case {:?}", stype);
                 }
             },
         }
