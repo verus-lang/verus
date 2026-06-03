@@ -4340,11 +4340,11 @@ pub(crate) fn deref_overloaded<'tcx>(
                 }
                 _ => crate::fn_call_to_vir::deref_to_vir(
                     bctx,
+                    span,
+                    ref_of_target_typ.clone(),
                     fn_def_id,
                     expr.clone(),
-                    ref_of_target_typ.clone(),
                     ty,
-                    span,
                 )?,
             };
             let temp_place = bctx.spanned_typed_new(
@@ -4365,11 +4365,11 @@ pub(crate) fn deref_overloaded<'tcx>(
 
             let call_expr = crate::fn_call_to_vir::deref_to_vir(
                 bctx,
+                span,
+                ref_of_target_typ.clone(),
                 fn_def_id,
                 expr.clone(),
-                ref_of_target_typ.clone(),
                 ty,
-                span,
             )?;
 
             let temp_place = bctx.spanned_typed_new(
