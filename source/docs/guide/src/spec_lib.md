@@ -53,7 +53,13 @@ ways to do this, including the following:
   `Set::<T>::full().unwrap()` produces a set of all values of type `T`. (See
   the `FiniteFull` trait.)
 * You can use one of the above techniques, then modify the `Set` as desired
-  using `Set::map` and/or `Set::filter`.
+  using `Set::filter` and/or `Set::map`. But be warned: `Set::filter` is fine,
+  but `Set::map` can be problematic. This is because the meaning of `Set::map`
+  is defined via the formula
+  `self.map(f).contains(b) <==> exists|a: A| self.contains(a) && b == f(a)`.
+  This use of `exists` generally makes proofs about the resulting set more
+  difficult and less automated. Consider alternatives to `Set::map`, such as
+  `Set::map_by` and `set_build!`, when possible.
 * You can construct a `Set` using the `set_build!` macro defined
 in the contributed library [set_build.rs](https://github.com/verus-lang/verus/tree/main/source/builtin_macros/src/contrib/set_build.rs).
 
