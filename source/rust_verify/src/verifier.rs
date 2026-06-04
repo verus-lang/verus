@@ -1373,7 +1373,7 @@ impl Verifier {
             ),
         ];
 
-        // Declare the function symbols (records obligation proof notes as a side effect).
+        // Function declarations and their proof notes.
         let func_to_requires_proof_notes =
             HashMap::from_iter(krate.functions.iter().map(|function| {
                 (
