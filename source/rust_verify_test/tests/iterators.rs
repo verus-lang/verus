@@ -3,7 +3,6 @@
 mod common;
 use common::*;
 
-
 test_verify_one_file! {
     #[test] mut_ref_forwarding verus_code! {
         use vstd::prelude::*;
@@ -23,7 +22,6 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
-
 
 test_verify_one_file! {
     #[test] collect_works verus_code! {

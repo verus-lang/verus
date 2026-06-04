@@ -265,30 +265,30 @@ impl <I> DoubleEndedIteratorSpecImpl for Rev<I>
 impl <I> IteratorSpecImpl for &mut I
     where I: Iterator {
     open spec fn obeys_prophetic_iter_laws(&self) -> bool {
-        (**self).obeys_prophetic_iter_laws()
+        <I as IteratorSpec>::obeys_prophetic_iter_laws(*self)
     }
 
     #[verifier::prophetic]
     open spec fn remaining(&self) -> Seq<Self::Item> {
-        (**self).remaining()
+        <I as IteratorSpec>::remaining(*self)
     }
 
     #[verifier::prophetic]
     open spec fn will_return_none(&self) -> bool {
-        (**self).will_return_none()
+        <I as IteratorSpec>::will_return_none(*self)
     }
 
     #[verifier::prophetic]
     open spec fn initial_value_relation(&self, init: &Self) -> bool {
-        (**self).initial_value_relation(&**init)
+        <I as IteratorSpec>::initial_value_relation(*self, &**init)
     }
 
     open spec fn decrease(&self) -> Option<nat> {
-        (**self).decrease()
+        <I as IteratorSpec>::decrease(*self)
     }
 
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
-        (**self).peek(index)
+        <I as IteratorSpec>::peek(*self, index)
     }
 }
 
