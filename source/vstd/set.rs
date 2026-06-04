@@ -568,19 +568,23 @@ pub broadcast proof fn lemma_set_choose_len<A>(s: Set<A>)
     assert(s.to_iset().contains(s.to_iset().choose()));
 }
 
-/// Converting a `Set` to an `ISet` produces a finite result with the same contents
-/// and length. That is, `contains` and `len` produce the same results.
-pub broadcast proof fn lemma_to_iset<A>(s: Set<A>)
+/// Converting a `Set` to an `ISet` produces a finite result.
+pub broadcast proof fn lemma_to_iset_finite<A>(s: Set<A>)
     ensures
-        #![trigger s.to_iset()]
-        s.to_iset().finite(),
-        s.to_iset().len() == s.len(),
-        forall|a: A| #[trigger] s.to_iset().contains(a) <==> s.contains(a),
-    decreases s.len(),
+        #[trigger] s.to_iset().finite(),
 {
     broadcast use Set::axiom_make_set;
     broadcast use Set::axiom_is_finite;
+}
 
+/// Converting a `Set` to an `ISet` produces a result with the same
+/// length.
+pub broadcast proof fn lemma_to_iset_len<A>(s: Set<A>)
+    ensures
+        #[trigger] s.to_iset().len() == s.len(),
+{
+    broadcast use Set::axiom_make_set;
+    broadcast use Set::axiom_is_finite;
 }
 
 pub broadcast group group_set_lemmas {
@@ -607,7 +611,8 @@ pub broadcast group group_set_lemmas {
     lemma_set_contains_len,
     lemma_set_choose_len,
     lemma_set_new,
-    lemma_to_iset,
+    lemma_to_iset_finite,
+    lemma_to_iset_len,
 }
 
 // Macros

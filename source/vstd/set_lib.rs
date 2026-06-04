@@ -108,7 +108,7 @@ impl<A> Set<A> {
             self.remove(a).lemma_map_flatten_by_finite(fwd, rev);
             let map_remove_f = |b: B| self.remove(a).contains(rev(b)) && fwd(rev(b)).contains(b);
             assert(ISet::<B>::new(map_f) =~= ISet::<B>::new(map_remove_f).union(fwd(a).to_iset()));
-            lemma_to_iset(fwd(a));
+            lemma_to_iset_finite(fwd(a));
         }
     }
 
