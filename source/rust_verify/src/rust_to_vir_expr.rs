@@ -1515,7 +1515,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
         Adjust::Pointer(_cast) => {
             unsupported_err!(expr.span, "casting a pointer (here the cast is implicit)")
         }
-        Adjust::ReborrowPin(_mut) => {
+        Adjust::Deref(DerefAdjustKind::Pin) | Adjust::Borrow(AutoBorrow::Pin(_)) => {
             unsupported_err!(expr.span, "reborrowing a pinned reference")
         }
     }
