@@ -176,7 +176,7 @@ pub broadcast proof fn view_contains_trans(v1: ThreadView, v2: ThreadView, v3: T
         #[trigger] v1.contains(v2),
         #[trigger] v2.contains(v3)
     ensures
-        #[trigger] v1.contains(v3)
+        v1.contains(v3)
 {
     reveal(ThreadView::contains);
 }
@@ -733,7 +733,19 @@ impl<T> AtomicPointsTo<T> {
 
     #[verifier::type_invariant]
     pub closed spec fn inv(&self) -> bool {
-        self.hist().0.len() > 0 && self.hist().0.dom().finite()
+        &&& self.hist().0.len() > 0 
+        &&& self.hist().0.dom().finite()
+        &&& forall |t| #[trigger] self.hist().contains_timestamp(t) ==> self.hist().get(t).unwrap().1.contains_loc(self.loc()) && self.hist().get(t).unwrap().1.get_timestamp(self.loc()) == t
+    }
+
+    pub proof fn apply_inv(tracked &self, t: nat)
+        requires
+            self.hist().contains_timestamp(t)
+        ensures
+            self.hist().get(t).unwrap().1.contains_loc(self.loc()),
+            self.hist().get(t).unwrap().1.get_timestamp(self.loc()) == t
+    {
+        use_type_invariant(self);
     }
 
     // AT-EXCL
