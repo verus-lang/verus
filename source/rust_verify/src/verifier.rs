@@ -1,5 +1,5 @@
 use crate::boundary_suggestions::build_boundary_suggestion;
-use crate::commands::{Op, OpGenerator, OpKind, QueryOp, Style};
+use crate::commands::{OpGenerator, OpKind, QueryOp, Style};
 use crate::config::{Args, CargoVerusArgs, ShowTriggers};
 use crate::context::{ContextX, ErasureInfo};
 use crate::debugger::Debugger;
@@ -467,6 +467,18 @@ pub(crate) enum VerifyErr {
 impl From<VirErr> for VerifyErr {
     fn from(err: VirErr) -> Self {
         VerifyErr::Vir(err)
+    }
+}
+
+/// A titled group of AIR commands.
+struct CommandBatch {
+    title: String,
+    commands: Commands,
+}
+
+impl CommandBatch {
+    fn new(title: impl Into<String>, commands: Commands) -> Self {
+        CommandBatch { title: title.into(), commands }
     }
 }
 
@@ -994,19 +1006,18 @@ impl Verifier {
         }
     }
 
-    fn run_commands(
+    fn run_command_batch(
         &mut self,
         bucket_id: &BucketId,
         diagnostics: &impl air::messages::Diagnostics,
         air_context: &mut air::context::Context,
-        commands: &Vec<Command>,
-        comment: &str,
+        batch: &CommandBatch,
     ) {
-        if commands.len() > 0 {
+        if batch.commands.len() > 0 {
             air_context.blank_line();
-            air_context.comment(comment);
+            air_context.comment(&batch.title);
         }
-        for command in commands.iter() {
+        for command in batch.commands.iter() {
             let time0 = Instant::now();
             Self::check_internal_result(air_context.command(
                 &vir::messages::VirMessageInterface {},
@@ -1018,6 +1029,18 @@ impl Verifier {
 
             let bucket_time = self.bucket_stats.get_mut(bucket_id).expect("bucket time not found");
             bucket_time.time_air += time1 - time0;
+        }
+    }
+
+    fn run_command_batches(
+        &mut self,
+        bucket_id: &BucketId,
+        diagnostics: &impl air::messages::Diagnostics,
+        air_context: &mut air::context::Context,
+        batches: &[CommandBatch],
+    ) {
+        for batch in batches {
+            self.run_command_batch(bucket_id, diagnostics, air_context, batch);
         }
     }
 
@@ -1234,13 +1257,7 @@ impl Verifier {
         diagnostics: &impl air::messages::Diagnostics,
         bucket_id: &BucketId,
         function_path: &vir::ast::Path,
-        trait_decl_commands: Commands,
-        datatype_commands: Commands,
-        assoc_type_decl_commands: Commands,
-        trait_type_bounds_commands: Commands,
-        assoc_type_impl_commands: Commands,
-        function_decl_commands: Arc<Vec<(Commands, String)>>,
-        ops: &Vec<Op>,
+        bucket_context: &[CommandBatch],
         is_rerun: bool,
         context_counter: usize,
         span: &vir::messages::Span,
@@ -1262,72 +1279,8 @@ impl Verifier {
         air_context.comment(&span.as_string);
         air_context.blank_line();
         air_context.comment(&format!("query spun off because: {}", spinoff_reason));
-        air_context.blank_line();
-        air_context.comment("Fuel");
-        for command in ctx.fuel().iter() {
-            Self::check_internal_result(air_context.command(
-                &*message_interface,
-                diagnostics,
-                &command,
-                Default::default(),
-            ));
-        }
 
-        // set up bucket context
-        self.run_commands(
-            bucket_id,
-            diagnostics,
-            &mut air_context,
-            &trait_decl_commands,
-            "Trait-Decls",
-        );
-        self.run_commands(
-            bucket_id,
-            diagnostics,
-            &mut air_context,
-            &assoc_type_decl_commands,
-            "Associated-Type-Decls",
-        );
-        self.run_commands(
-            bucket_id,
-            diagnostics,
-            &mut air_context,
-            &datatype_commands,
-            "Datatypes",
-        );
-        self.run_commands(
-            bucket_id,
-            diagnostics,
-            &mut air_context,
-            &trait_type_bounds_commands,
-            "Trait-Bounds",
-        );
-        self.run_commands(
-            bucket_id,
-            diagnostics,
-            &mut air_context,
-            &assoc_type_impl_commands,
-            "Associated-Type-Impls",
-        );
-        for commands in &*function_decl_commands {
-            self.run_commands(bucket_id, diagnostics, &mut air_context, &commands.0, &commands.1);
-        }
-        for op in ops.iter() {
-            match &op.kind {
-                OpKind::Context(_context_op, commands) => {
-                    self.run_commands(
-                        bucket_id,
-                        diagnostics,
-                        &mut air_context,
-                        commands,
-                        &op.to_air_comment(),
-                    );
-                }
-                OpKind::Query { .. } => {
-                    panic!("should have only got Context ops");
-                }
-            }
-        }
+        self.run_command_batches(bucket_id, diagnostics, &mut air_context, bucket_context);
 
         Ok(air_context)
     }
@@ -1389,79 +1342,43 @@ impl Verifier {
         };
 
         let module = &ctx.module_path();
-        air_context.blank_line();
-        air_context.comment("Fuel");
-        for command in ctx.fuel().iter() {
-            Self::check_internal_result(air_context.command(
-                &*message_interface,
-                reporter,
-                &command,
-                Default::default(),
-            ));
-        }
 
-        let trait_decl_commands = vir::traits::trait_decls_to_air(ctx, &krate);
-        self.run_commands(
-            bucket_id,
-            reporter,
-            &mut air_context,
-            &trait_decl_commands,
-            "Trait-Decls",
-        );
+        // Bucket context.
+        //
+        // Inserted into the main context, but also stored so the identical
+        // context can be used for spinoff queries.  Extended as context ops are
+        // encountered below.
+        let mut bucket_context = vec![
+            CommandBatch::new("Fuel", ctx.fuel()),
+            CommandBatch::new("Trait-Decls", vir::traits::trait_decls_to_air(ctx, &krate)),
+            CommandBatch::new(
+                "Associated-Type-Decls",
+                vir::assoc_types_to_air::assoc_type_decls_to_air(ctx, &krate.traits),
+            ),
+            CommandBatch::new(
+                "Datatypes",
+                vir::datatype_to_air::datatypes_and_primitives_to_air(
+                    ctx,
+                    &krate
+                        .datatypes
+                        .iter()
+                        .filter(|d| is_visible_to(&d.x.visibility, module))
+                        .cloned()
+                        .collect(),
+                ),
+            ),
+            CommandBatch::new("Trait-Bounds", vir::traits::trait_bound_axioms(ctx, &krate.traits)),
+            CommandBatch::new(
+                "Associated-Type-Impls",
+                vir::assoc_types_to_air::assoc_type_impls_to_air(ctx, &krate.assoc_type_impls),
+            ),
+            CommandBatch::new(
+                "Opaque-Type-Constructors",
+                vir::opaque_type_to_air::opaque_types_to_air(ctx, &krate.opaque_types),
+            ),
+        ];
 
-        let assoc_type_decl_commands =
-            vir::assoc_types_to_air::assoc_type_decls_to_air(ctx, &krate.traits);
-        self.run_commands(
-            bucket_id,
-            reporter,
-            &mut air_context,
-            &assoc_type_decl_commands,
-            "Associated-Type-Decls",
-        );
-
-        let datatype_commands = vir::datatype_to_air::datatypes_and_primitives_to_air(
-            ctx,
-            &krate
-                .datatypes
-                .iter()
-                .filter(|d| is_visible_to(&d.x.visibility, module))
-                .cloned()
-                .collect(),
-        );
-        self.run_commands(bucket_id, reporter, &mut air_context, &datatype_commands, "Datatypes");
-
-        let trait_type_bounds_commands = vir::traits::trait_bound_axioms(ctx, &krate.traits);
-        self.run_commands(
-            bucket_id,
-            reporter,
-            &mut air_context,
-            &trait_type_bounds_commands,
-            "Trait-Bounds",
-        );
-
-        let assoc_type_impl_commands =
-            vir::assoc_types_to_air::assoc_type_impls_to_air(ctx, &krate.assoc_type_impls);
-        self.run_commands(
-            bucket_id,
-            reporter,
-            &mut air_context,
-            &assoc_type_impl_commands,
-            "Associated-Type-Impls",
-        );
-
-        // Declare opaque type defs
-        let opaque_type_impl_commands =
-            vir::opaque_type_to_air::opaque_types_to_air(ctx, &krate.opaque_types);
-        self.run_commands(
-            bucket_id,
-            reporter,
-            &mut air_context,
-            &opaque_type_impl_commands,
-            "Opaque-Type-Constructors",
-        );
-
-        let mut function_decl_commands = vec![];
-
+        // Declare the function symbols (records obligation proof notes as a side effect).
         let func_to_requires_proof_notes =
             HashMap::from_iter(krate.functions.iter().map(|function| {
                 (
@@ -1469,8 +1386,6 @@ impl Verifier {
                     vir::sst_util::func_collect_requires_proof_notes(function),
                 )
             }));
-
-        // Declare the function symbols
         for function in &krate.functions {
             let obligation_proof_notes = vir::sst_util::func_collect_obligation_proof_notes(
                 function,
@@ -1483,18 +1398,16 @@ impl Verifier {
 
             ctx.fun = vir::ast_to_sst_func::mk_fun_ctx(function, false);
             let commands = vir::sst_to_air_func::func_name_to_air(ctx, reporter, function)?;
-            let comment =
-                "Function-Decl ".to_string() + &fun_as_friendly_rust_name(&function.x.name);
-            self.run_commands(bucket_id, reporter, &mut air_context, &commands, &comment);
-            function_decl_commands.push((commands.clone(), comment.clone()));
+            let title = "Function-Decl ".to_string() + &fun_as_friendly_rust_name(&function.x.name);
+            bucket_context.push(CommandBatch::new(title, commands));
         }
         ctx.fun = None;
 
-        let function_decl_commands = Arc::new(function_decl_commands);
+        // Insert initial bucket context.
+        self.run_command_batches(bucket_id, reporter, &mut air_context, &bucket_context);
 
         let bucket = self.get_bucket(bucket_id);
         let mut opgen = OpGenerator::new(ctx, krate, bucket.clone());
-        let mut all_context_ops = vec![];
         while let Some(mut function_opgen) = opgen.next()? {
             let diagnostics_to_report: std::cell::RefCell<
                 Option<PanicOnDropVec<(Message, MessageLevel)>>,
@@ -1539,14 +1452,9 @@ impl Verifier {
                 };
                 match &op.kind {
                     OpKind::Context(_context_op, commands) => {
-                        self.run_commands(
-                            bucket_id,
-                            reporter,
-                            &mut air_context,
-                            commands,
-                            &op.to_air_comment(),
-                        );
-                        all_context_ops.push(op);
+                        let batch = CommandBatch::new(op.to_air_comment(), commands.clone());
+                        self.run_command_batch(bucket_id, reporter, &mut air_context, &batch);
+                        bucket_context.push(batch);
                     }
                     OpKind::Query {
                         query_op,
@@ -1636,13 +1544,7 @@ impl Verifier {
                                     reporter,
                                     bucket_id,
                                     &(function.x.name).path,
-                                    trait_decl_commands.clone(),
-                                    datatype_commands.clone(),
-                                    assoc_type_decl_commands.clone(),
-                                    trait_type_bounds_commands.clone(),
-                                    assoc_type_impl_commands.clone(),
-                                    function_decl_commands.clone(),
-                                    &all_context_ops,
+                                    &bucket_context,
                                     is_recommend,
                                     spinoff_context_counter,
                                     &cmds.context.span,
