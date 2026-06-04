@@ -1275,6 +1275,7 @@ impl Verifier {
         air_context.blank_line();
         air_context.comment(&format!("query spun off because: {}", spinoff_reason));
 
+        // set up bucket context
         self.run_command_batches(bucket_id, diagnostics, &mut air_context, bucket_context);
 
         Ok(air_context)
