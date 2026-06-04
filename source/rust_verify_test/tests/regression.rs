@@ -610,37 +610,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_multiset_finite_false_1 verus_code! {
-        use vstd::{map::*, multiset::*};
-        // This test was originally intended to ensure we couldn't use an
-        // infinite Map to construct a multiset, which is axiomatically finite.
-        // Now, Multiset::from_map requires a Finite Map as its argument,
-        // so finiteness is preserved by type construction.
-        // TODO(discuss): so shall we delete the test?
-        proof fn test(mymap: Map<nat, nat>) {
-            assert(mymap.dom().finite());
-
-            let m = Multiset::from_map(mymap);
-            assert(m.dom().finite());
-        }
-    } => Ok(())
-}
-
-test_verify_one_file! {
-    #[test] test_multiset_finite_false_2 verus_code! {
-        use vstd::{map::*, multiset::*};
-        // Obsoleted by same situation as _1 above.
-        proof fn test(mymap: Map<nat, nat>)
-            requires forall |k| mymap.contains_key(k) ==> mymap[k]>0,
-        {
-            assert(mymap.dom().finite());
-            let m = Multiset::from_map(mymap);
-            assert(m.dom() =~= mymap.dom());
-        }
-    } => Ok(())
-}
-
-test_verify_one_file! {
     #[test] str_len_contradiction_from_suspect_unsoundness_report verus_code! {
         use vstd::string::*;
         use vstd::seq::*;
