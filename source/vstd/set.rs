@@ -575,6 +575,7 @@ pub broadcast proof fn lemma_to_iset_finite<A>(s: Set<A>)
 {
     broadcast use Set::axiom_make_set;
     broadcast use Set::axiom_is_finite;
+
 }
 
 /// Converting a `Set` to an `ISet` produces a result with the same
@@ -585,6 +586,7 @@ pub broadcast proof fn lemma_to_iset_len<A>(s: Set<A>)
 {
     broadcast use Set::axiom_make_set;
     broadcast use Set::axiom_is_finite;
+
 }
 
 pub broadcast group group_set_lemmas {
