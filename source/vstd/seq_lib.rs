@@ -1186,11 +1186,52 @@ impl<A> Seq<A> {
         };
     }
 
-    /// Appending an element to a sequence and converting to set, is equal
-    /// to converting to set and inserting it.
+    /// Mapping a function over a sequence and converting to an ISet is the same
+    /// as mapping it over the sequence converted to an ISet.
+    pub broadcast proof fn lemma_to_iset_map_commutes<B>(self, f: spec_fn(A) -> B)
+        ensures
+            #[trigger] self.to_iset().map(f) =~= self.map_values(f).to_iset(),
+    {
+        broadcast use crate::vstd::group_vstd_default;
+
+        assert forall|elem: B|
+            self.to_iset().map(f).contains(elem) <==> self.map_values(f).to_iset().contains(
+                elem,
+            ) by {
+            if self.to_iset().map(f).contains(elem) {
+                let x = choose|x: A| self.to_iset().contains(x) && f(x) == elem;
+                let i = choose|i: int| 0 <= i < self.len() && self[i] == x;
+                assert(self.map_values(f)[i] == elem);
+            }
+            if self.map_values(f).to_iset().contains(elem) {
+                let i = choose|i: int|
+                    0 <= i < self.map_values(f).len() && self.map_values(f)[i] == elem;
+                let x = self[i];
+                assert(self.to_iset().contains(x));
+            }
+        };
+    }
+
+    /// Appending an element to a sequence and converting to a Set is equal
+    /// to converting to a Set and inserting the element.
     pub broadcast proof fn lemma_to_set_insert_commutes(sq: Seq<A>, elt: A)
         ensures
             #[trigger] (sq + seq![elt]).to_set() =~= sq.to_set().insert(elt),
+    {
+        broadcast use crate::vstd::group_vstd_default;
+        broadcast use lemma_seq_concat_contains_all_elements;
+        broadcast use lemma_seq_empty_contains_nothing;
+        broadcast use lemma_seq_contains_after_push;
+        broadcast use super::seq::group_seq_axioms;
+        broadcast use super::set_lib::group_set_properties;
+
+    }
+
+    /// Appending an element to a sequence and converting to an ISet is equal
+    /// to converting to an ISet and inserting the element.
+    pub broadcast proof fn lemma_to_iset_insert_commutes(sq: Seq<A>, elt: A)
+        ensures
+            #[trigger] (sq + seq![elt]).to_iset() =~= sq.to_iset().insert(elt),
     {
         broadcast use crate::vstd::group_vstd_default;
         broadcast use lemma_seq_concat_contains_all_elements;
