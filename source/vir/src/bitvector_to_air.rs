@@ -462,7 +462,10 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
             UnaryOp::CastToInteger => {
                 panic!("internal error: unexpected CastToInteger")
             }
-            UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_) | UnaryOp::MutRefFinal(_) => {
+            UnaryOp::MutRefCurrent
+            | UnaryOp::MutRefFuture(_)
+            | UnaryOp::MutRefFinal(_)
+            | UnaryOp::MutRefPtr => {
                 return Err(error(
                     &exp.span,
                     "unsupported for bitvector: this mutable reference operator",

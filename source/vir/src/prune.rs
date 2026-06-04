@@ -516,6 +516,12 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                     | ExprX::Binary(BinaryOp::IeeeFloat(_), _, _) => {
                         state.uses_ieee_float = true;
                     }
+                    ExprX::BorrowMut(_)
+                    | ExprX::BorrowMutTracked(_)
+                    | ExprX::TwoPhaseBorrowMut(_) => {
+                        let f = crate::fun!(CrateId::Vstd => "raw_ptr", "spec_ptr_addr");
+                        reach_function(ctxt, state, &f);
+                    }
                     _ => {}
                 }
                 Ok(e.clone())
