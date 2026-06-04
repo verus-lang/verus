@@ -31,14 +31,13 @@ to a `Set` increases its `len()` by 1, but this doesn't always hold for an
 
 ## Constructing and using Seq, Set, ISet, Map, and IMap
 
-The `seq!`, `set!`, and `map!` macros construct values of type `Seq`, `Set`, and `Map`
-with particular contents:
+The `seq!`, `set!`, and `map!` macros construct values of type `Seq`, `Set`,
+and `Map` with particular contents. The `iset!` and `imap!` macros construct
+finite values of the possibly-infinite types `ISet` and `IMap`:
 
 ```rust
 {{#include ../../../../examples/guide/lib_examples.rs:macro}}
 ```
-The `iset!` and `imap!` macros construct finite values of the possibly-infinite
-types `ISet` and `IMap`.
 
 The macros above can only construct finite (literal) sequences, sets, and maps.
 Sequences can be constructed with `Seq::new`.
@@ -101,7 +100,12 @@ see:
 - [seq_lib.rs](https://github.com/verus-lang/verus/tree/main/source/vstd/seq_lib.rs)
 - [set.rs](https://github.com/verus-lang/verus/tree/main/source/vstd/set.rs)
 - [set_lib.rs](https://github.com/verus-lang/verus/tree/main/source/vstd/set_lib.rs)
+- [iset.rs](https://github.com/verus-lang/verus/tree/main/source/vstd/iset.rs)
+- [iset_lib.rs](https://github.com/verus-lang/verus/tree/main/source/vstd/iset_lib.rs)
 - [map.rs](https://github.com/verus-lang/verus/tree/main/source/vstd/map.rs)
+- [map_lib.rs](https://github.com/verus-lang/verus/tree/main/source/vstd/map_lib.rs)
+- [imap.rs](https://github.com/verus-lang/verus/tree/main/source/vstd/imap.rs)
+- [imap_lib.rs](https://github.com/verus-lang/verus/tree/main/source/vstd/imap_lib.rs)
 
 See also the [API documentation](https://verus-lang.github.io/verus/verusdoc/vstd/index.html).
 
