@@ -4,6 +4,46 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
+    #[test] range_works verus_code! {
+        use vstd::prelude::*;
+
+        fn test()
+        {
+            let mut v = vec![];
+            for i in iter: 0..4
+            invariant
+                v.len() == iter.index(),
+                iter.index() <= 4,
+            {
+                assert(i < 4);
+                v.push(i);
+            }
+            assert(v.len() == 4);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] range_inclusive_works verus_code! {
+        use vstd::prelude::*;
+
+        fn test()
+        {
+            let mut v = vec![];
+            for i in iter: 0..=4
+            invariant
+                v.len() == iter.index(),
+                i <= 5,
+            {
+                assert(i <= 4);
+                v.push(i);
+            }
+            assert(v.len() == 5);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] collect_works verus_code! {
         use vstd::prelude::*;
 

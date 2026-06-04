@@ -616,7 +616,10 @@ pub assume_specification<K: Clone, V: Clone, S: Clone, A: Allocator + Clone>[ <H
     A,
 > as Clone>::clone ](this: &HashMap<K, V, S, A>) -> (other: HashMap<K, V, S, A>)
     ensures
-        other@ == this@,
+        other@.dom() == this@.dom(),
+        forall|key|
+            #![trigger other@.dom().contains(key)]
+            other@.dom().contains(key) ==> cloned(this@[key], #[trigger] other@[key]),
 ;
 
 pub assume_specification<Key, Value>[ HashMap::<Key, Value>::new ]() -> (m: HashMap<
