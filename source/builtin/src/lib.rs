@@ -2466,6 +2466,13 @@ pub fn mut_ref_current<T>(_mut_ref: &mut T) -> T {
 }
 
 #[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::mut_ref_ptr"]
+#[verifier::spec]
+pub fn mut_ref_ptr<T>(_mut_ref: &mut T) -> *mut T {
+    unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::mut_ref_future"]
 #[verifier::spec]
 pub fn mut_ref_future<T>(_mut_ref: &mut T) -> T {

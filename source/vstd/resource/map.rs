@@ -1540,6 +1540,8 @@ impl<K, V> GhostPersistentPointsTo<K, V> {
         self.submap.agree(auth);
         assert(self.submap@ <= auth@);
         assert(self.submap@.contains_key(self.key()));
+        assert(auth@.dom().contains(self.key()));
+        assert(auth@[self.key()] == self.value());
     }
 
     /// We can combine two [`GhostPersistentPointsTo`]s into a [`GhostPersistentSubmap`]

@@ -111,6 +111,7 @@ const DUMMY_PARAM: &str = "no%param";
 pub const MUT_REF_UPDATE_CURRENT: &str = "mut_ref_update_current%";
 pub const MUT_REF_CURRENT: &str = "mut_ref_current%";
 pub const MUT_REF_FUTURE: &str = "mut_ref_future%";
+pub const MUT_REF_PTR: &str = "mut_ref_ptr%";
 
 pub const PREFIX_IMPL_TYPE_PARAM: &str = "impl%";
 pub const SUFFIX_SNAP_MUT: &str = "_mutation";

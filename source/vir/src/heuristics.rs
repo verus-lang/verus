@@ -65,6 +65,7 @@ fn insert_auto_ext_equal(ctx: &Ctx, exp: &Exp) -> Exp {
             | UnaryOp::MustBeElaborated
             | UnaryOp::HeightTrigger
             | UnaryOp::MutRefCurrent
+            | UnaryOp::MutRefPtr
             | UnaryOp::MutRefFuture(_)
             | UnaryOp::MutRefFinal(_)
             | UnaryOp::CastToInteger => exp.new_x(ExpX::Unary(*op, insert_auto_ext_equal(ctx, e))),
