@@ -547,3 +547,17 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    // Regression: nonlinear_arith spins off a query that must still see the opaque-type constructors.
+    #[test] nonlinear_spinoff_with_opaque_type verus_code! {
+        trait DummyTrait {}
+        impl DummyTrait for bool {}
+        fn return_opaque() -> impl DummyTrait {
+            true
+        }
+        proof fn test(x: int) {
+            assert(x * x >= 0) by(nonlinear_arith);
+        }
+    } => Ok(())
+}
