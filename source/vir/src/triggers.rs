@@ -267,7 +267,6 @@ fn check_trigger_expr(
             UnaryOp::StrLen
             | UnaryOp::BitNot(_)
             | UnaryOp::MutRefCurrent
-                | UnaryOp::MutRefPtr
             | UnaryOp::MutRefPtr
             | UnaryOp::MutRefFuture(_)
             | UnaryOp::MutRefFinal(_) => {
