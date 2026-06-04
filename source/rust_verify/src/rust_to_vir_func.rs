@@ -503,18 +503,20 @@ fn compare_external_ty_or_true<'tcx>(
         (TyKind::RawPtr(t1, m1), TyKind::RawPtr(t2, m2)) => m1 == m2 && check_t(t1, t2),
         (TyKind::Array(t1, len1), TyKind::Array(t2, len2)) => len1 == len2 && check_t(t1, t2),
         (TyKind::Adt(a1, args1), TyKind::Adt(a2, args2)) => a1 == a2 && check_args(args1, args2),
-        (TyKind::Alias(k1, t1), TyKind::Alias(k2, t2)) => {
+        (TyKind::Alias(t1), TyKind::Alias(t2)) => {
+            let k1 = t1.kind;
+            let k2 = t2.kind;
             if k1 != k2 {
                 return false;
             }
-            if tcx.associated_item(t1.def_id).name() != tcx.associated_item(t2.def_id).name() {
+            if tcx.associated_item(k1.def_id()).name() != tcx.associated_item(k2.def_id()).name() {
                 return false;
             }
             if !check_args(&t1.args, &t2.args) {
                 return false;
             }
-            let trait_def1 = tcx.generics_of(t1.def_id).parent;
-            let trait_def2 = tcx.generics_of(t2.def_id).parent;
+            let trait_def1 = tcx.generics_of(k1.def_id()).parent;
+            let trait_def2 = tcx.generics_of(k2.def_id()).parent;
             match (trait_def1, trait_def2) {
                 (None, None) => true,
                 (Some(trait_def1), Some(trait_def2)) => {

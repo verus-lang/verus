@@ -10,7 +10,7 @@ use rustc_hir::definitions::DefPath;
 use rustc_hir::{GenericParam, GenericParamKind, Generics, HirId, LifetimeParamKind, QPath, Ty};
 use rustc_infer::infer::TyCtxtInferExt;
 use rustc_middle::ty::{
-    AdtDef, BoundVarIndexKind, BoundVarReplacerDelegate, Clause, ClauseKind, ConstKind, GenericArg,
+    AdtDef, AliasTyKind, BoundVarIndexKind, BoundVarReplacerDelegate, Clause, ClauseKind, ConstKind, GenericArg,
     GenericArgKind, GenericParamDefKind, TermKind, TyCtxt, TyKind, TypeFoldable, TypeFolder,
     TypeSuperFoldable, TypeVisitableExt, TypingMode, ValTreeKind, Value, Visibility,
 };
@@ -876,9 +876,18 @@ pub(crate) fn mid_ty_filter_for_external_impls<'tcx>(
         // The "impl<T> From<!> for T" causes a real conflict with "impl<T> From<T> for T",
         // so don't auto-import ! for now.
         TyKind::Never => false,
-
-        TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque { def_id: _ }, _) => false,
-        TyKind::Alias(rustc_middle::ty::AliasTyKind::Free { def_id: _ }, _) => false,
+        TyKind::Alias(t) => {
+            match t.kind {
+                AliasTyKind::Opaque { .. } | AliasTyKind::Free { .. } => false,
+                AliasTyKind::Projection { .. } | AliasTyKind::Inherent { .. } => {
+                    let trait_def = ctxt.tcx.generics_of(t.kind.def_id()).parent;
+                    let t_args: Vec<_> = t.args.iter().filter(|x| x.as_region().is_none()).collect();
+                    t_args.iter().find(|x| x.as_type().is_none()).is_none()
+                        && trait_def.is_some()
+                        && t_args.len() >= 1
+                }
+            }
+        }
         TyKind::Foreign(..) => false,
         TyKind::Dynamic(..) => false,
         TyKind::FnPtr(..) => false,
@@ -898,16 +907,6 @@ pub(crate) fn mid_ty_filter_for_external_impls<'tcx>(
             };
             let is_declared_to_verus = external_info.has_type_id(ctxt, adt_def_data.did).is_some();
             is_verus_type || is_rust_type || is_declared_to_verus
-        }
-        TyKind::Alias(
-            rustc_middle::ty::AliasTyKind::Projection { def_id: _ } | rustc_middle::ty::AliasTyKind::Inherent { def_id: _ },
-            t,
-        ) => {
-            let trait_def = ctxt.tcx.generics_of(t.def_id).parent;
-            let t_args: Vec<_> = t.args.iter().filter(|x| x.as_region().is_none()).collect();
-            t_args.iter().find(|x| x.as_type().is_none()).is_none()
-                && trait_def.is_some()
-                && t_args.len() >= 1
         }
 
         TyKind::CoroutineClosure(_, _) => false,
