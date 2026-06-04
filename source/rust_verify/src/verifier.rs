@@ -1233,16 +1233,12 @@ impl Verifier {
             air_context.enable_usage_info();
         }
 
-        air_context.blank_line();
-        air_context.comment("Prelude");
-        for command in ctx.prelude(prelude_config).iter() {
-            Self::check_internal_result(air_context.command(
-                &*message_interface,
-                diagnostics,
-                &command,
-                Default::default(),
-            ));
-        }
+        self.run_command_batch(
+            bucket_id,
+            diagnostics,
+            &mut air_context,
+            &CommandBatch::new("Prelude", ctx.prelude(prelude_config)),
+        );
 
         air_context.blank_line();
         air_context.comment(&("MODULE '".to_string() + &bucket_id.friendly_name() + "'"));
@@ -1256,10 +1252,9 @@ impl Verifier {
         ctx: &vir::context::Ctx,
         diagnostics: &impl air::messages::Diagnostics,
         bucket_id: &BucketId,
-        function_path: &vir::ast::Path,
+        query_function_path_counter: Option<(&vir::ast::Path, usize)>,
         bucket_context: &[CommandBatch],
         is_rerun: bool,
-        context_counter: usize,
         span: &vir::messages::Span,
         profile_file_name: Option<&std::path::PathBuf>,
         spinoff_reason: &str,
@@ -1269,7 +1264,7 @@ impl Verifier {
             message_interface.clone(),
             diagnostics,
             bucket_id,
-            Some((function_path, context_counter)),
+            query_function_path_counter,
             is_rerun,
             PreludeConfig { arch_word_bits: ctx.arch_word_bits, solver: self.args.solver },
             profile_file_name,
@@ -1543,10 +1538,9 @@ impl Verifier {
                                     function_opgen.ctx(),
                                     reporter,
                                     bucket_id,
-                                    &(function.x.name).path,
+                                    Some((&(function.x.name).path, spinoff_context_counter)),
                                     &bucket_context,
                                     is_recommend,
-                                    spinoff_context_counter,
                                     &cmds.context.span,
                                     profile_file_name.as_ref(),
                                     spinoff_reason,
