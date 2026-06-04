@@ -1217,120 +1217,119 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
 
             (Arc::new(TypX::AnonymousClosure(args, ret, kind, id)), false)
         }
-        TyKind::Alias(
-            rustc_middle::ty::AliasTyKind::Projection { def_id: _ } | rustc_middle::ty::AliasTyKind::Inherent { def_id: _},
-            t,
-        ) => {
-            // First, try to normalize to a non-projection type.
-            // This can enable concrete operations on the type (e.g.
-            // arithmetic if the normalized type is int) that
-            // wouldn't be allowed if the type were left in an unnormalized form.
-            use crate::rustc_trait_selection::traits::NormalizeExt;
-            let param_env = tcx.param_env(param_env_src);
-            let infcx =
-                tcx.infer_ctxt().ignoring_regions().build(rustc_type_ir::TypingMode::Analysis {
-                    defining_opaque_types_and_generators: Default::default(),
-                });
-            let cause = rustc_infer::traits::ObligationCause::dummy();
-            let at = infcx.at(&cause, param_env);
-            let ty = &clean_all_escaping_bound_vars(tcx, *ty, param_env_src);
-            let norm = at.normalize(*ty);
-            if norm.value != *ty {
-                for arg in norm.value.walk().into_iter() {
-                    if let Some(t) = arg.as_type() {
-                        assert!(!matches!(t.kind(), TyKind::Infer(..)));
+        TyKind::Alias(al_ty) => {
+            match al_ty.kind {
+                rustc_middle::ty::AliasTyKind::Projection { def_id: _ } | rustc_middle::ty::AliasTyKind::Inherent { def_id: _} => {
+                    // First, try to normalize to a non-projection type.
+                    // This can enable concrete operations on the type (e.g.
+                    // arithmetic if the normalized type is int) that
+                    // wouldn't be allowed if the type were left in an unnormalized form.
+                    use crate::rustc_trait_selection::traits::NormalizeExt;
+                    let param_env = tcx.param_env(param_env_src);
+                    let infcx =
+                        tcx.infer_ctxt().ignoring_regions().build(rustc_type_ir::TypingMode::Analysis {
+                            defining_opaque_types_and_generators: Default::default(),
+                        });
+                    let cause = rustc_infer::traits::ObligationCause::dummy();
+                    let at = infcx.at(&cause, param_env);
+                    let ty = &clean_all_escaping_bound_vars(tcx, *ty, param_env_src);
+                    let norm = at.normalize(*ty);
+                    if norm.value != *ty {
+                        for arg in norm.value.walk().into_iter() {
+                            if let Some(t) = arg.as_type() {
+                                assert!(!matches!(t.kind(), TyKind::Infer(..)));
+                            }
+                        }
+                        return t_rec(&norm.value);
+                    }
+                    // If normalization isn't possible, return a projection type:
+                    let assoc_item = tcx.associated_item(al_ty.kind.def_id());
+                    let name = Arc::new(assoc_item.name().to_string());
+                    // Note: this looks like it would work, but trait_item_def_id is sometimes None:
+                    //   use crate::rustc_middle::ty::DefIdTree;
+                    //   let trait_def = tcx.parent(assoc_item.trait_item_def_id.expect("..."));
+                    let trait_def = tcx.generics_of(al_ty.kind.def_id()).parent;
+                    let t_args: Vec<_> = al_ty.args.iter().filter(|x| x.as_region().is_none()).collect();
+                    match trait_def {
+                        Some(trait_def) if t_args.len() >= 1 => {
+                            let trait_path =
+                                def_id_to_vir_path(tcx, verus_items, trait_def, None::<&mut HashMap<_, _>>);
+                            // In rustc, see create_substs_for_ast_path and create_substs_for_generic_args
+                            let mut trait_typ_args = Vec::new();
+
+                            for arg in t_args.iter() {
+                                match arg.kind() {
+                                    rustc_middle::ty::GenericArgKind::Type(t) => {
+                                        trait_typ_args.push(t_rec_flags(&t)?.0);
+                                    }
+                                    rustc_middle::ty::GenericArgKind::Lifetime(_) => {
+                                        panic!("already filtered out lifetimes");
+                                    }
+                                    rustc_middle::ty::GenericArgKind::Const(cnst) => {
+                                        trait_typ_args.push(mid_ty_const_to_vir(tcx, Some(span), &cnst)?);
+                                    }
+                                }
+                            }
+
+                            if Some(trait_def) == tcx.lang_items().pointee_trait()
+                                && name.as_str() == "Metadata"
+                            {
+                                assert!(trait_typ_args.len() == 1);
+                                let proj = TypX::PointeeMetadata(trait_typ_args[0].clone());
+                                return Ok((Arc::new(proj), false));
+                            } else {
+                                let trait_typ_args = Arc::new(trait_typ_args);
+                                let proj = TypX::Projection { trait_typ_args, trait_path, name };
+                                return Ok((Arc::new(proj), false));
+                            }
+                        }
+                        _ => {
+                            unsupported_err!(span, "projection type")
+                        }
                     }
                 }
-                return t_rec(&norm.value);
-            }
-            // If normalization isn't possible, return a projection type:
-            let assoc_item = tcx.associated_item(t.def_id);
-            let name = Arc::new(assoc_item.name().to_string());
-            // Note: this looks like it would work, but trait_item_def_id is sometimes None:
-            //   use crate::rustc_middle::ty::DefIdTree;
-            //   let trait_def = tcx.parent(assoc_item.trait_item_def_id.expect("..."));
-            let trait_def = tcx.generics_of(t.def_id).parent;
-            let t_args: Vec<_> = t.args.iter().filter(|x| x.as_region().is_none()).collect();
-            match trait_def {
-                Some(trait_def) if t_args.len() >= 1 => {
-                    let trait_path =
-                        def_id_to_vir_path(tcx, verus_items, trait_def, None::<&mut HashMap<_, _>>);
-                    // In rustc, see create_substs_for_ast_path and create_substs_for_generic_args
-                    let mut trait_typ_args = Vec::new();
-
-                    for arg in t_args.iter() {
+                rustc_middle::ty::AliasTyKind::Opaque { .. } => {
+                    let mut args = Vec::new();
+                    for arg in al_ty.args {
                         match arg.kind() {
-                            rustc_middle::ty::GenericArgKind::Type(t) => {
-                                trait_typ_args.push(t_rec_flags(&t)?.0);
+                            rustc_type_ir::GenericArgKind::Lifetime(_) => {}
+                            rustc_type_ir::GenericArgKind::Type(ty) => {
+                                args.push(mid_ty_to_vir(
+                                    tcx,
+                                    verus_items,
+                                    None::<&mut HashMap<_, _>>,
+                                    param_env_src,
+                                    span,
+                                    &ty,
+                                    assume_specification_opaque_type_map,
+                                )?);
                             }
-                            rustc_middle::ty::GenericArgKind::Lifetime(_) => {
-                                panic!("already filtered out lifetimes");
-                            }
-                            rustc_middle::ty::GenericArgKind::Const(cnst) => {
-                                trait_typ_args.push(mid_ty_const_to_vir(tcx, Some(span), &cnst)?);
+                            rustc_type_ir::GenericArgKind::Const(cnst) => {
+                                args.push(crate::rust_to_vir_base::mid_ty_const_to_vir(
+                                    tcx,
+                                    Some(span),
+                                    &cnst,
+                                )?);
                             }
                         }
                     }
-
-                    if Some(trait_def) == tcx.lang_items().pointee_trait()
-                        && name.as_str() == "Metadata"
+                    let def_path = if let Some(assume_specification_opaque_type_map) =
+                        assume_specification_opaque_type_map
                     {
-                        assert!(trait_typ_args.len() == 1);
-                        let proj = TypX::PointeeMetadata(trait_typ_args[0].clone());
-                        return Ok((Arc::new(proj), false));
+                        let def_path =
+                            def_id_to_vir_path(tcx, verus_items, al_ty.kind.def_id(), None::<&mut HashMap<_, _>>);
+                        if assume_specification_opaque_type_map.contains_key(&def_path) {
+                            assume_specification_opaque_type_map[&def_path].clone()
+                        } else {
+                            def_path
+                        }
                     } else {
-                        let trait_typ_args = Arc::new(trait_typ_args);
-                        let proj = TypX::Projection { trait_typ_args, trait_path, name };
-                        return Ok((Arc::new(proj), false));
-                    }
+                        def_id_to_vir_path(tcx, verus_items, al_ty.kind.def_id(), None::<&mut HashMap<_, _>>)
+                    };
+                    (Arc::new(TypX::Opaque { def_path: def_path, args: Arc::new(args) }), false)
                 }
-                _ => {
-                    unsupported_err!(span, "projection type")
-                }
+                rustc_middle::ty::AliasTyKind::Free { def_id: _ } => unsupported_err!(span, "opaque type"),
             }
-        }
-        TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque, al_ty) => {
-            let mut args = Vec::new();
-            for arg in al_ty.args {
-                match arg.kind() {
-                    rustc_type_ir::GenericArgKind::Lifetime(_) => {}
-                    rustc_type_ir::GenericArgKind::Type(ty) => {
-                        args.push(mid_ty_to_vir(
-                            tcx,
-                            verus_items,
-                            None::<&mut HashMap<_, _>>,
-                            param_env_src,
-                            span,
-                            &ty,
-                            assume_specification_opaque_type_map,
-                        )?);
-                    }
-                    rustc_type_ir::GenericArgKind::Const(cnst) => {
-                        args.push(crate::rust_to_vir_base::mid_ty_const_to_vir(
-                            tcx,
-                            Some(span),
-                            &cnst,
-                        )?);
-                    }
-                }
-            }
-            let def_path = if let Some(assume_specification_opaque_type_map) =
-                assume_specification_opaque_type_map
-            {
-                let def_path =
-                    def_id_to_vir_path(tcx, verus_items, al_ty.def_id, None::<&mut HashMap<_, _>>);
-                if assume_specification_opaque_type_map.contains_key(&def_path) {
-                    assume_specification_opaque_type_map[&def_path].clone()
-                } else {
-                    def_path
-                }
-            } else {
-                def_id_to_vir_path(tcx, verus_items, al_ty.def_id, None::<&mut HashMap<_, _>>)
-            };
-            (Arc::new(TypX::Opaque { def_path: def_path, args: Arc::new(args) }), false)
-        }
-        TyKind::Alias(rustc_middle::ty::AliasTyKind::Free { def_id: _ }, _) => {
-            unsupported_err!(span, "opaque type")
         }
         TyKind::FnDef(def_id, args) => {
             let resolved = if tcx.trait_of_assoc(*def_id).is_none() {
@@ -2325,14 +2324,15 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
         ty.kind(),
         assume_specification_ty.map(|assume_specification_ty| assume_specification_ty.kind()),
     ) {
-        (rustc_middle::ty::TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque { .. }, al_ty), _) => {
-            let span = ctxt.tcx.def_span(al_ty.def_id);
+        (rustc_middle::ty::TyKind::Alias(al_ty), _) if matches!(al_ty.kind, rustc_middle::ty::AliasTyKind::Opaque { .. }) => {
+            let span = ctxt.tcx.def_span(al_ty.kind.def_id());
             let opaque_type_path = def_id_to_vir_path(
                 ctxt.tcx,
                 &ctxt.verus_items,
-                al_ty.def_id.into(),
+                al_ty.kind.def_id().into(),
                 None::<&mut HashMap<_, _>>,
             );
+            let alias_def_id = al_ty.kind.def_id();
             let mut trait_bounds = Vec::new();
             let mut args = Vec::new();
             for arg in al_ty.args {
@@ -2343,7 +2343,7 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                             ctxt.tcx,
                             &ctxt.verus_items,
                             None::<&mut HashMap<_, _>>,
-                            al_ty.def_id.into(),
+                            alias_def_id.into(),
                             span,
                             &ty,
                             None,
@@ -2360,23 +2360,22 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
             }
 
             let instantiated_bounds =
-                ctxt.tcx.item_bounds(al_ty.def_id).instantiate(ctxt.tcx, al_ty.args);
+                ctxt.tcx.item_bounds(alias_def_id).instantiate(ctxt.tcx, al_ty.args);
 
             // If the opaque type is defined by assume specification, recursively reveal the
             // bounds of the assume_specification opaque type too.
             let assume_specification_ty_instantiated_bounds =
                 if let Some(assume_specification_ty) = assume_specification_ty {
                     if let rustc_middle::ty::TyKind::Alias(
-                        rustc_middle::ty::AliasTyKind::Opaque { .. },
                         assume_specification_al_ty,
-                    ) = assume_specification_ty.kind()
+                    ) = assume_specification_ty.kind() && matches!(assume_specification_al_ty.kind,rustc_middle::ty::AliasTyKind::Opaque { .. })
                     {
                         let assume_specification_span =
-                            ctxt.tcx.def_span(assume_specification_al_ty.def_id);
+                            ctxt.tcx.def_span(assume_specification_al_ty.kind.def_id());
 
                         Some((
                             ctxt.tcx
-                                .item_bounds(assume_specification_al_ty.def_id)
+                                .item_bounds(assume_specification_al_ty.kind.def_id())
                                 .instantiate(ctxt.tcx, assume_specification_al_ty.args),
                             assume_specification_span,
                         ))
@@ -2398,7 +2397,7 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                         let generic_bound = check_generic_bound(
                             ctxt.tcx,
                             &ctxt.verus_items,
-                            al_ty.def_id,
+                            alias_def_id,
                             span,
                             trait_def_id,
                             substs,
@@ -2464,7 +2463,7 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                                 ctxt.tcx,
                                 &ctxt.verus_items,
                                 None::<&mut HashMap<_, _>>,
-                                al_ty.def_id.into(),
+                                alias_def_id.into(),
                                 span,
                                 &nested_ty,
                                 None,
@@ -2479,7 +2478,7 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                         let generic_bound = check_generic_bound(
                             ctxt.tcx,
                             &ctxt.verus_items,
-                            al_ty.def_id.into(),
+                            alias_def_id.into(),
                             span,
                             trait_def_id,
                             substs,

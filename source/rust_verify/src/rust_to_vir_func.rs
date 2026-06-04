@@ -659,12 +659,13 @@ fn compare_external_ty<'tcx>(
     else {
         match (ty1.kind(), ty2.kind()) {
             (
-                rustc_middle::ty::TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque, al_ty1),
-                rustc_middle::ty::TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque, al_ty2),
-            ) => {
+                rustc_middle::ty::TyKind::Alias(al_ty1),
+                rustc_middle::ty::TyKind::Alias(al_ty2),
+            ) if matches!(al_ty1.kind, rustc_middle::ty::AliasTyKind::Opaque { .. })
+                && matches!(al_ty2.kind, rustc_middle::ty::AliasTyKind::Opaque { ..}) => {
                 // two opaque types. We compare their trait bounds
-                let ty1_bounds = tcx.item_bounds(al_ty1.def_id).instantiate(tcx, al_ty1.args);
-                let ty2_bounds = tcx.item_bounds(al_ty2.def_id).instantiate(tcx, al_ty2.args);
+                let ty1_bounds = tcx.item_bounds(al_ty1.kind.def_id()).instantiate(tcx, al_ty1.args);
+                let ty2_bounds = tcx.item_bounds(al_ty2.kind.def_id()).instantiate(tcx, al_ty2.args);
                 if ty1_bounds.len() != ty2_bounds.len() {
                     return false;
                 }
