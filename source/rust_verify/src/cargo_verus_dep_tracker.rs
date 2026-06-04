@@ -46,11 +46,11 @@ impl DepTracker {
             for (var, val) in self.env.iter() {
                 sess
                     .env_depinfo
-                    .get_mut()
+                    .borrow_mut()
                     .insert((Symbol::intern(var), val.as_deref().map(Symbol::intern)));
             }
             for path in self.files.iter() {
-                sess.file_depinfo.get_mut().insert(Symbol::intern(
+                sess.file_depinfo.borrow_mut().insert(Symbol::intern(
                     path.to_str().unwrap_or_else(|| panic!("path {:?} is not valid unicode", path)),
                 ));
             }
