@@ -1179,6 +1179,9 @@ impl<'fcx, 'a, 'tcx> euv::Delegate<'tcx> for InferBorrowKind<'fcx, 'a, 'tcx> {
         diag_expr_id: HirId,
         bk: ty::BorrowKind,
     ) {
+        let PlaceBase::Upvar(upvar_id) = place_with_id.place.base else { return };
+        assert_eq!(self.closure_def_id, upvar_id.closure_expr_id);
+
         let capture_kind = ty::UpvarCapture::ByRef(bk);
         /*
         let PlaceBase::Upvar(upvar_id) = place_with_id.place.base else { return };
