@@ -8,7 +8,7 @@ use super::super::string::StringSliceAdditionalSpecFns;
 use core::ops::Index;
 use core::slice::{Iter, SliceIndex};
 
-use core::ops::{Range, RangeFrom, RangeTo};
+use core::ops::{Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive};
 
 use verus as verus_;
 
@@ -38,6 +38,7 @@ impl<T> IndexSetTrustedSpec<usize> for [T] {
     }
 }
 
+#[cfg(not(verus_verify_core))]
 impl<T, I: SliceIndex<[T]>> super::core::IndexSpecImpl<I> for [T] {
     open spec fn index_req(&self, index: &I) -> bool {
         valid_indices_slice(index.spec_start(self), index.spec_end(self), self)
@@ -52,6 +53,7 @@ impl<T, I, const N: usize> super::core::IndexSpecImpl<I> for [T; N]
     }
 }
 
+#[cfg(not(verus_verify_core))]
 pub assume_specification<T, I: SliceIndex<[T]>> [<[T] as Index<I>>::index] (
     slice: &[T],
     index: I,
@@ -76,28 +78,17 @@ pub assume_specification[ core::hint::unreachable_unchecked ]() -> !
 
 /* SliceIndex */
 
-/// Precondition on the "sliced" data for `SliceIndex` functions.
-// Currently, this is only used for asserting the valid UTF-8 invariant on `str` within the Rust standard library.
-// In vstd, this property is assumed to hold for `str`, so this is trivial.
-pub uninterp spec fn valid_slice<T: ?Sized>(slice: &T) -> bool;
-
-pub broadcast axiom fn def_valid_slice_slice<T>(slice: &[T])
-    ensures
-        #[trigger] valid_slice(slice);
-
-#[cfg(not(verus_verify_core))]
-pub broadcast axiom fn def_valid_slice_str(slice: &str)
-    ensures
-        #[trigger] valid_slice(slice);
-
 /// True when the indices `start` and `end` (exclusive) are considered valid indices for `slice`.
+#[cfg(not(verus_verify_core))]
 pub uninterp spec fn valid_indices<T: ?Sized>(start: int, end: int, slice: &T) -> bool;
 
 // For slices, the indices must be in bounds.
+#[cfg(not(verus_verify_core))]
 pub open spec fn valid_indices_slice<T>(start: int, end: int, slice: &[T]) -> bool {
     start <= end <= slice@.len()
 }
 
+#[cfg(not(verus_verify_core))]
 pub broadcast axiom fn def_valid_indices_slice<T>(start: int, end: int, slice: &[T])
     ensures
         valid_indices_slice(start, end, slice) <==> #[trigger] valid_indices(start, end, slice);
@@ -116,20 +107,25 @@ pub broadcast axiom fn def_valid_indices_str(start: int, end: int, slice: &str)
 /// True when `output` is the result of slicing `slice` from `start` to `end` (exclusive) indices.
 // This is written as a relation because `Output` is an exec type (e.g. [T]),
 // and so we cannot necessarily return it from a spec function.
+#[cfg(not(verus_verify_core))]
 pub uninterp spec fn index_result<T: ?Sized, Output: ?Sized>(start: int, end: int, slice: &T, output: &Output) -> bool;
 
+#[cfg(not(verus_verify_core))]
 pub open spec fn index_result_slice_usize<T>(start: int, end: int, slice: &[T], output: &T) -> bool {
     *output =~= slice@[start]
 }
 
+#[cfg(not(verus_verify_core))]
 pub broadcast axiom fn def_index_result_slice_usize<T>(start: int, end: int, slice: &[T], output: &T)
     ensures
         #[trigger] index_result::<[T], T>(start, end, slice, output) <==> index_result_slice_usize(start, end, slice, output);
 
+#[cfg(not(verus_verify_core))]
 pub open spec fn index_result_slice<T>(start: int, end: int, slice: &[T], output: &[T]) -> bool {
     output@ =~= slice@.subrange(start, end)
 }
 
+#[cfg(not(verus_verify_core))]
 pub broadcast axiom fn def_index_result_slice<T>(start: int, end: int, slice: &[T], output: &[T])
     ensures
         #[trigger] index_result::<[T], [T]>(start, end, slice, output) <==> index_result_slice(start, end, slice, output);
@@ -147,21 +143,26 @@ pub broadcast axiom fn def_index_result_str(start: int, end: int, slice: &str, o
 /// True when the final value of the slice (`final_slice`) will be the result of
 /// mutating the original slice (`old_slice`) between the indices `start` and `end`,
 /// where the final value between those indices is given by `final_output`.
+#[cfg(not(verus_verify_core))]
 pub uninterp spec fn index_mut_result<T: ?Sized, Output: ?Sized>(start: int, end: int, old_slice: &T, final_slice: &T, final_output: &Output) -> bool;
 
+#[cfg(not(verus_verify_core))]
 pub open spec fn index_mut_result_slice_usize<T>(start: int, end: int, old_slice: &[T], final_slice: &[T], final_output: &T) -> bool {
     final_slice@ =~= old_slice@.update(start, *final_output)
 }
 
+#[cfg(not(verus_verify_core))]
 pub broadcast axiom fn def_index_mut_result_slice_usize<T>(start: int, end: int, old_slice: &[T], final_slice: &[T], final_output: &T)
     ensures
         #[trigger] index_mut_result::<[T], T>(start, end, old_slice, final_slice, final_output) <==> index_mut_result_slice_usize(start, end, old_slice, final_slice, final_output)
     ;
 
+#[cfg(not(verus_verify_core))]
 pub open spec fn index_mut_result_slice<T>(start: int, end: int, old_slice: &[T], final_slice: &[T], final_output: &[T]) -> bool {
     final_slice@ =~= old_slice@.subrange(0, start) + final_output@ + old_slice@.subrange(end, old_slice@.len() as int)
 }
 
+#[cfg(not(verus_verify_core))]
 pub broadcast axiom fn def_index_mut_result_slice<T>(start: int, end: int, old_slice: &[T], final_slice: &[T], final_output: &[T])
     ensures
         #[trigger] index_mut_result::<[T], [T]>(start, end, old_slice, final_slice, final_output) <==> index_mut_result_slice(start, end, old_slice, final_slice, final_output)
@@ -178,9 +179,12 @@ pub broadcast axiom fn def_index_mut_result_str(start: int, end: int, old_slice:
         #[trigger] index_mut_result::<str, str>(start, end, old_slice, final_slice, final_output) <==> index_mut_result_str(start, end, old_slice, final_slice, final_output)
     ;
 
+// Version for outside of `core`, where we add an external_trait private bound
+#[cfg(not(verus_verify_core))]
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(SliceIndexSpec via SliceIndexSpecImpl)]
-pub trait ExSliceIndex<T> where T: ?Sized {
+#[verifier::external_trait_private_bound(core::slice::index::private_slice_index::Sealed)]
+pub trait ExSliceIndex<T: ?Sized> {
     type ExternalTraitSpecificationFor: core::slice::SliceIndex<T>;
 
     type Output: ?Sized;
@@ -192,23 +196,15 @@ pub trait ExSliceIndex<T> where T: ?Sized {
     spec fn spec_end(&self, slice: &T) -> int;
 
     fn get(self, slice: &T) -> (out: Option<&Self::Output>)
-        requires
-            valid_slice::<T>(slice),
         ensures
             out.is_some() <==> valid_indices(self.spec_start(slice), self.spec_end(slice), slice),
-            out.is_some() ==> {
-                &&& valid_slice::<Self::Output>(out.unwrap())
-                &&& index_result(self.spec_start(slice), self.spec_end(slice), slice, out.unwrap())
-            }
+            out.is_some() ==> index_result(self.spec_start(slice), self.spec_end(slice), slice, out.unwrap())
     ;
 
     fn get_mut(self, slice: &mut T) -> (out: Option<&mut Self::Output>)
-        requires
-            valid_slice::<T>(old(slice)),
         ensures
             out.is_some() <==> valid_indices(self.spec_start(old(slice)), self.spec_end(old(slice)), old(slice)),
             out.is_some() ==> {
-                &&& valid_slice::<Self::Output>(out.unwrap())
                 &&& index_result(self.spec_start(old(slice)), self.spec_end(old(slice)), old(slice), out.unwrap())
                 &&& index_mut_result(self.spec_start(old(slice)), self.spec_end(old(slice)), old(slice), final(slice), final(out.unwrap()))
             },
@@ -216,24 +212,21 @@ pub trait ExSliceIndex<T> where T: ?Sized {
 
     fn index(self, slice: &T) -> (out: &Self::Output)
         requires
-            valid_slice::<T>(slice),
             valid_indices(self.spec_start(slice), self.spec_end(slice), slice)
         ensures
-            valid_slice::<Self::Output>(out),
             index_result(self.spec_start(slice), self.spec_end(slice), slice, out)
         ;
 
     fn index_mut(self, slice: &mut T) -> (out: &mut Self::Output)
         requires
-            valid_slice::<T>(old(slice)),
             valid_indices(self.spec_start(old(slice)), self.spec_end(old(slice)), old(slice))
         ensures
-            valid_slice::<Self::Output>(out),
             index_result(self.spec_start(old(slice)), self.spec_end(old(slice)), old(slice), out),
             index_mut_result(self.spec_start(old(slice)), self.spec_end(old(slice)), old(slice), final(slice), final(out))
         ;
 }
 
+#[cfg(not(verus_verify_core))]
 impl<T> SliceIndexSpecImpl<[T]> for usize {
     open spec fn spec_start(&self, slice: &[T]) -> int {
         self as int
@@ -243,6 +236,7 @@ impl<T> SliceIndexSpecImpl<[T]> for usize {
     }
 }
 // describes range: start..end
+#[cfg(not(verus_verify_core))]
 impl<T> SliceIndexSpecImpl<[T]> for Range<usize> {
     open spec fn spec_start(&self, slice: &[T]) -> int {
         self.start as int
@@ -253,6 +247,7 @@ impl<T> SliceIndexSpecImpl<[T]> for Range<usize> {
     }
 }
 // describes range: start..
+#[cfg(not(verus_verify_core))]
 impl<T> SliceIndexSpecImpl<[T]> for RangeFrom<usize> {
     open spec fn spec_start(&self, slice: &[T]) -> int {
         self.start as int
@@ -262,7 +257,30 @@ impl<T> SliceIndexSpecImpl<[T]> for RangeFrom<usize> {
         slice@.len() as int
     }
 }
+// describes full range: ..
+#[cfg(not(verus_verify_core))]
+impl<T> SliceIndexSpecImpl<[T]> for RangeFull {
+    open spec fn spec_start(&self, slice: &[T]) -> int {
+        0
+    }
+
+    open spec fn spec_end(&self, slice: &[T]) -> int {
+        slice@.len() as int
+    }
+}
+// describes range: start..=end
+#[cfg(not(verus_verify_core))]
+impl<T> SliceIndexSpecImpl<[T]> for RangeInclusive<usize> {
+    open spec fn spec_start(&self, slice: &[T]) -> int {
+        self@.start as int
+    }
+
+    open spec fn spec_end(&self, slice: &[T]) -> int {
+        self@.end as int + 1
+    }
+}
 // describes range: ..end
+#[cfg(not(verus_verify_core))]
 impl<T> SliceIndexSpecImpl<[T]> for RangeTo<usize> {
     open spec fn spec_start(&self, slice: &[T]) -> int {
         0
@@ -270,6 +288,17 @@ impl<T> SliceIndexSpecImpl<[T]> for RangeTo<usize> {
 
     open spec fn spec_end(&self, slice: &[T]) -> int {
         self.end as int
+    }
+}
+// describes range: ..=end
+#[cfg(not(verus_verify_core))]
+impl<T> SliceIndexSpecImpl<[T]> for RangeToInclusive<usize> {
+    open spec fn spec_start(&self, slice: &[T]) -> int {
+        0
+    }
+
+    open spec fn spec_end(&self, slice: &[T]) -> int {
+        self.end as int + 1
     }
 }
 // describes range: start..end
@@ -294,6 +323,28 @@ impl SliceIndexSpecImpl<str> for RangeFrom<usize> {
         slice.spec_bytes().len() as int
     }
 }
+// describes full range: ..
+#[cfg(not(verus_verify_core))]
+impl SliceIndexSpecImpl<str> for RangeFull {
+    open spec fn spec_start(&self, slice: &str) -> int {
+        0
+    }
+
+    open spec fn spec_end(&self, slice: &str) -> int {
+        slice.spec_bytes().len() as int
+    }
+}
+// describes range: start..=end
+#[cfg(not(verus_verify_core))]
+impl SliceIndexSpecImpl<str> for RangeInclusive<usize> {
+    open spec fn spec_start(&self, slice: &str) -> int {
+        self@.start as int
+    }
+
+    open spec fn spec_end(&self, slice: &str) -> int {
+        self@.end as int + 1
+    }
+}
 // describes range: ..end
 #[cfg(not(verus_verify_core))]
 impl SliceIndexSpecImpl<str> for RangeTo<usize> {
@@ -305,11 +356,20 @@ impl SliceIndexSpecImpl<str> for RangeTo<usize> {
         self.end as int
     }
 }
+// describes range: ..=end
+#[cfg(not(verus_verify_core))]
+impl SliceIndexSpecImpl<str> for RangeToInclusive<usize> {
+    open spec fn spec_start(&self, slice: &str) -> int {
+        0
+    }
+
+    open spec fn spec_end(&self, slice: &str) -> int {
+        self.end as int + 1
+    }
+}
 
 #[cfg(not(verus_verify_core))]
 pub broadcast group group_slice_index_specs {
-    def_valid_slice_slice,
-    def_valid_slice_str,
     def_valid_indices_slice,
     def_valid_indices_str,
     def_index_result_slice,
@@ -318,16 +378,6 @@ pub broadcast group group_slice_index_specs {
     def_index_mut_result_slice,
     def_index_mut_result_slice_usize,
     def_index_mut_result_str
-}
-
-#[cfg(verus_verify_core)]
-pub broadcast group group_slice_index_specs {
-    def_valid_slice_slice,
-    def_valid_indices_slice,
-    def_index_result_slice,
-    def_index_result_slice_usize,
-    def_index_mut_result_slice,
-    def_index_mut_result_slice_usize
 }
 
 // The `iter` method of a `<T>` returns an iterator of type `Iter<'_, T>`,
@@ -445,9 +495,15 @@ pub assume_specification<T> [ <[T]>::split_at_mut ](slice: &mut [T], mid: usize)
         final(slice)@ == final(ret.0)@ + final(ret.1)@,
 ;
 
+#[cfg(not(verus_verify_core))]
 pub broadcast group group_slice_axioms {
     axiom_spec_slice_iter,
     group_slice_index_specs
+}
+
+#[cfg(verus_verify_core)]
+pub broadcast group group_slice_axioms {
+    axiom_spec_slice_iter,
 }
 
 } // verus!

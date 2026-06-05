@@ -139,6 +139,47 @@ pub(crate) fn exit_guard<'tcx>(cx: &mut ThirBuildCx<'tcx>) {
     cx.verus_ctxt.guard_pattern_vars.pop().unwrap();
 }
 
+pub(crate) fn enter_block<'tcx>(
+    cx: &mut ThirBuildCx<'tcx>,
+    block: &'tcx rustc_hir::Block<'tcx>,
+) -> bool {
+    if let Some(ctxt) = cx.verus_ctxt.ctxt.clone()
+        && ctxt.local_invariant_bodies.contains_key(&block.hir_id)
+    {
+        cx.verus_ctxt.local_invariants.push(cx.thir.exprs.len());
+        true
+    } else {
+        false
+    }
+}
+
+pub(crate) fn exit_block<'tcx>(cx: &mut ThirBuildCx<'tcx>, block: &'tcx rustc_hir::Block<'tcx>) {
+    if let Some(ctxt) = cx.verus_ctxt.ctxt.clone()
+        && let Some(body) = ctxt.local_invariant_bodies.get(&block.hir_id)
+    {
+        let old_idx = cx.verus_ctxt.local_invariants.pop().unwrap();
+        let new_idx = cx.thir.exprs.len();
+        for i in old_idx..new_idx {
+            let expr_id = ExprId::from_usize(i);
+            if matches!(
+                cx.thir.exprs[expr_id].kind,
+                rustc_middle::thir::ExprKind::Call { .. }
+                    | rustc_middle::thir::ExprKind::Loop { .. }
+                    | rustc_middle::thir::ExprKind::LoopMatch { .. }
+            ) {
+                cx.verus_ctxt
+                    .extra_thir
+                    .local_invs_for_node
+                    .entry(expr_id)
+                    .or_insert_with(|| vec![])
+                    .push(body.clone());
+            }
+        }
+    } else {
+        unreachable!()
+    }
+}
+
 pub(crate) fn is_bound_via_pattern_guard<'tcx>(cx: &ThirBuildCx<'tcx>, var_hir_id: HirId) -> bool {
     let var = LocalVarId(var_hir_id);
     cx.verus_ctxt.guard_pattern_vars.iter().any(|v| v.iter().any(|v| v == &var))

@@ -2928,6 +2928,12 @@ pub fn ptr_ref2<'a, T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (
     SharedReference(unsafe { &*ptr })
 }
 
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::spec_ptr_addr")]
+#[verifier::inline]
+pub open spec fn spec_ptr_addr<T: Sized>(ptr: *mut T) -> usize {
+    spec_cast_ptr_to_usize(ptr)
+}
+
 /// Same as [`ptr_ref2`], but operates on ghost values.
 /// Because this doesn't constitute a retag, the returned value's pointer has the same provenance as the original pointer.
 pub axiom fn ptr_ref2_ghost<'a, T>(ptr: *const T, tracked perm: &PointsTo<T>) -> (tracked v: SharedReference<'a, T>)

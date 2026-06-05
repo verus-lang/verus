@@ -363,6 +363,7 @@ pub(crate) enum VstdItem {
     VecIndex,
     VecIndexMut,
     SharedReference,
+    SpecPtrAddr,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -440,6 +441,7 @@ pub(crate) enum VerusItem {
     HasResolvedUnsized,
     MutRefCurrent,
     MutRefFuture,
+    MutRefPtr,
     Final,
     AfterBorrow,
     ErasedGhostValue,
@@ -676,6 +678,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::raw_ptr::cast_slice_ptr_to_str_ptr", VerusItem::Vstd(VstdItem::CastSlicePtrToStrPtr, Some(Arc::new("raw_ptr::cast_slice_ptr_to_str_ptr".to_owned())))),
         ("verus::vstd::raw_ptr::cast_str_ptr_to_slice_ptr", VerusItem::Vstd(VstdItem::CastStrPtrToSlicePtr, Some(Arc::new("raw_ptr::cast_str_ptr_to_slice_ptr".to_owned())))),
         ("verus::vstd::raw_ptr::cast_ptr_to_usize", VerusItem::Vstd(VstdItem::CastPtrToUsize, Some(Arc::new("raw_ptr::cast_ptr_to_usize".to_owned())))),
+        ("verus::vstd::raw_ptr::spec_ptr_addr", VerusItem::Vstd(VstdItem::SpecPtrAddr, Some(Arc::new("raw_ptr::spec_ptr_addr".to_owned())))),
         ("verus::vstd::raw_ptr::SharedReference", VerusItem::Vstd(VstdItem::SharedReference, Some(Arc::new("raw_ptr::SharedReference".to_owned())))),
         ("verus::vstd::float::float_cast", VerusItem::Vstd(VstdItem::FloatCast, Some(Arc::new("float::float_cast".to_owned())))),
             // SeqFn(vir::interpreter::SeqFn::Last    ))),
@@ -713,6 +716,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::has_resolved_unsized",     VerusItem::HasResolvedUnsized),
         ("verus::verus_builtin::mut_ref_current",  VerusItem::MutRefCurrent),
         ("verus::verus_builtin::mut_ref_future",   VerusItem::MutRefFuture),
+        ("verus::verus_builtin::mut_ref_ptr",      VerusItem::MutRefPtr),
         ("verus::verus_builtin::final_",           VerusItem::Final),
         ("verus::verus_builtin::after_borrow",     VerusItem::AfterBorrow),
         ("verus::verus_builtin::mut_ref_tracked",  VerusItem::MutRefTracked),

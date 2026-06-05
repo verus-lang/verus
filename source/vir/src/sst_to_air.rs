@@ -1115,12 +1115,13 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             UnaryOp::CastToInteger => {
                 panic!("internal error: CastToInteger should have been removed before here")
             }
-            UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_) => {
+            UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_) | UnaryOp::MutRefPtr => {
                 let expr = exp_to_expr(ctx, e, expr_ctxt)?;
                 let exprs = vec![expr];
                 let ident = match op {
                     UnaryOp::MutRefCurrent => crate::def::MUT_REF_CURRENT,
                     UnaryOp::MutRefFuture(_) => crate::def::MUT_REF_FUTURE,
+                    UnaryOp::MutRefPtr => crate::def::MUT_REF_PTR,
                     _ => unreachable!(),
                 };
                 let ident = Arc::new(ident.to_string());

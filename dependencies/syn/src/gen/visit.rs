@@ -3497,9 +3497,9 @@ where
         v.visit_attribute(it);
     }
     v.visit_visibility(&node.vis);
+    skip!(node.constness);
     skip!(node.unsafety);
     skip!(node.auto_token);
-    skip!(node.constness);
     if let Some(it) = &node.restriction {
         v.visit_impl_restriction(it);
     }
