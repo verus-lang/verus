@@ -576,7 +576,7 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
     );
     let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
     let resolved_call = ResolvedCall::Ctor(vir_path.clone(), variant_name.clone());
-    erasure_info.resolved_calls.push((expr.hir_id, fun_span.data(), resolved_call));
+    erasure_info.resolved_calls.push((expr.hir_id, fun_span.data(), resolved_call, bctx.in_ghost));
     let exprx = ExprX::Ctor(Dt::Path(vir_path), variant_name, vir_fields, None);
     Ok(bctx.spanned_typed_new(expr.span, &expr_typ, exprx))
 }
@@ -2113,6 +2113,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             expr.hir_id,
                             fun.span.data(),
                             resolved_call,
+                            bctx.in_ghost,
                         ));
                     }
 
@@ -2542,6 +2543,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             expr.hir_id,
                             expr.span.data(),
                             ResolvedCall::CompilableOperator(CompilableOperator::IntIntrinsic),
+                            bctx.in_ghost,
                         ));
                         return Ok(ExprOrPlace::Expr(vir_expr));
                     } else {
@@ -2917,7 +2919,12 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 Arc::new(vir_fields.iter().map(|f| f.name.clone()).collect::<Vec<_>>()),
                 update.is_some(),
             );
-            erasure_info.resolved_calls.push((expr.hir_id, expr.span.data(), resolved_call));
+            erasure_info.resolved_calls.push((
+                expr.hir_id,
+                expr.span.data(),
+                resolved_call,
+                bctx.in_ghost,
+            ));
             mk_expr(ExprX::Ctor(Dt::Path(path), variant_name, vir_fields, update))
         }
         ExprKind::MethodCall(_name_and_generics, receiver, other_args, fn_span) => {
@@ -3492,7 +3499,12 @@ fn unwrap_parameter_to_vir<'tcx>(
             erasure_info.direct_var_modes.push((hir_id1, mode));
             erasure_info.direct_var_modes.push((hir_id2, mode));
             erasure_info.direct_var_modes.push((hir_id_y, Mode::Exec));
-            erasure_info.resolved_calls.push((hir_id_get, stmt2.span.data(), resolved_call));
+            erasure_info.resolved_calls.push((
+                hir_id_get,
+                stmt2.span.data(),
+                resolved_call,
+                bctx.in_ghost,
+            ));
             let unwrap = vir::ast::UnwrapParameter { mode, outer_name: y, inner_name: x1 };
             let headerx = HeaderExprX::UnwrapParameter(unwrap.clone());
             let exprx = ExprX::Header(Arc::new(headerx));
