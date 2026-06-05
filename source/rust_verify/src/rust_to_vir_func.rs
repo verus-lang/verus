@@ -506,7 +506,7 @@ fn compare_external_ty_or_true<'tcx>(
         (TyKind::Alias(t1), TyKind::Alias(t2)) => {
             let k1 = t1.kind;
             let k2 = t2.kind;
-            if k1 != k2 {
+            if std::mem::discriminant(&k1) != std::mem::discriminant(&k2) {
                 return false;
             }
             if tcx.associated_item(k1.def_id()).name() != tcx.associated_item(k2.def_id()).name() {
