@@ -27,7 +27,7 @@ fields of type `Set<T>` and `Map<T, U>` but not `ISet<T>` or `IMap<T, U>`.
 Second, the verifier knows the finiteness property always holds, which can
 prevent some SMT-time proof failure surprises. For instance, adding a new
 element to a `Set` increases its `len()` by 1, but this doesn't always hold
-for an `ISet` since it might be of infinite size.
+for an `ISet` since it might have infinite size.
 
 ## Constructing and using Seq, Set, ISet, Map, and IMap
 
