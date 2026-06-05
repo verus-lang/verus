@@ -412,6 +412,10 @@ pub broadcast group group_slice_index_specs {
     def_index_mut_result_str
 }
 
+}
+
+verus! {
+
 // The `iter` method of a `<T>` returns an iterator of type `Iter<'_, T>`,
 // so we specify that type here.
 #[verifier::external_type_specification]

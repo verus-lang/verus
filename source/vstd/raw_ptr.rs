@@ -2884,26 +2884,7 @@ pub const fn cast_mut_ref_str_to_ptr(mut_ref: &mut str) -> (out: (*mut str, Trac
 //     type Output: ?Sized;
 //     fn index(&self, index: Idx) -> &Self::Output;
 // }
-// impl<'a, T, I> Index<I> for &'a T
-// where
-//     T: Index<I>,
-// {
-//     type Output = T::Output;
-//     fn index(&self, index: I) -> &T::Output {
-//         self.index(index)
-//     }
-// }
-// impl<'a, T, I> Index<I> for SharedReference<'a, T>
-// where
-//     T: SliceIndex<I>,
-//     I: std::slice::SliceIndex<[T]>,
-// {
-//     type Output = T::Output;
-//     #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::Index::index")]
-//     fn index(&self, index: I) -> &T::Output {
-//         self.as_ref().index(&index)
-//     }
-// }
+
 /// Like [`ptr_ref`] but returns a `SharedReference` so it keeps track of the relationship
 /// between the pointers.
 /// Note the resulting reference's pointers does NOT have the same provenance.
@@ -2971,36 +2952,6 @@ pub axiom fn ptr_ref2_slice_ghost<'a, T>(
 pub open spec fn spec_ptr_addr<T: Sized>(ptr: *mut T) -> usize {
     spec_cast_ptr_to_usize(ptr)
 }
-
-/// Same as [`ptr_ref2`], but operates on ghost values.
-/// Because this doesn't constitute a retag, the returned value's pointer has the same provenance as the original pointer.
-pub axiom fn ptr_ref2_ghost<'a, T>(ptr: *const T, tracked perm: &PointsTo<T>) -> (tracked v: SharedReference<'a, T>)
-    requires
-        perm.ptr() == ptr,
-        perm.is_init(),
-    ensures
-        v.value() == perm.value(),
-        v.ptr() == ptr;
-
-/// Same as [`ptr_ref2`], but operates on ghost values.
-/// Because this doesn't constitute a retag, the returned value's pointer has the same provenance as the original pointer.
-pub axiom fn ptr_ref2_str_ghost<'a>(ptr: *const str, tracked perm: &PointsTo<str>) -> (tracked v: SharedReference<'a, str>)
-    requires
-        perm.ptr() == ptr,
-        perm.is_init(),
-    ensures
-        v.value() == perm.value(),
-        v.ptr() == ptr;
-
-/// Same as [`ptr_ref2`], but operates on ghost values.
-/// Because this doesn't constitute a retag, the returned value's pointer has the same provenance as the original pointer.
-pub axiom fn ptr_ref2_slice_ghost<'a, T>(ptr: *const [T], tracked perm: &PointsTo<[T]>) -> (tracked v: SharedReference<'a, [T]>)
-    requires
-        perm.ptr() == ptr,
-        perm.is_init(),
-    ensures
-        v.value()@ == perm.value(),
-        v.ptr() == ptr;
 
 } // verus!
 /// Trusted wrapper around `ptr_ref`, due to
