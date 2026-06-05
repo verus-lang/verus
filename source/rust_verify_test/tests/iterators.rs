@@ -39,9 +39,7 @@ test_verify_one_file! {
             } else {
                 proof{
                     if v.len() > 0  {
-                        assert(v[0] >= 10) by {
-                            assert(v.into_iter().peek(0).unwrap() >= 10);
-                        }
+                        assert(v[0] >= 10);
                     }
                 }
             }

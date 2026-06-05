@@ -95,7 +95,6 @@ pub trait ExIterator {
                 FromIteratorSpec::from_iter_ensures(self.remaining(), collection),
     ;
 
-    /// Users may need extra proofs to trigger the `old(self).peek(i)`
     fn find<P>(&mut self, predicate: P) -> (r: Option<Self::Item>)
         where Self: Sized,
             P: FnMut(&Self::Item) -> bool
@@ -112,7 +111,8 @@ pub trait ExIterator {
             // iterator's elements.
             final(self).obeys_prophetic_iter_laws() && r.is_none() ==> {
                 &&& final(self).remaining().len() == 0
-                &&& forall |i| (0 <= i < old(self).remaining().len()) ==> predicate.ensures((&(#[trigger]old(self).peek(i)).unwrap(),), false)
+                &&& forall |i| 0 <= i < old(self).remaining().len() ==>
+                    predicate.ensures((#[trigger]&old(self).remaining()[i],), false)
             },
             // If find returns Some, then the returned value satisfies the
             // predicate, and all previous elements did not satisfy the
@@ -122,8 +122,9 @@ pub trait ExIterator {
                 {
                     &&& old(self).remaining().len() > 0
                     &&& predicate.ensures((&r.unwrap(),), true)
-                    &&& old(self).peek(idx) == r
-                    &&& forall |i| (0 <= i < idx) ==> predicate.ensures((&(#[trigger]old(self).peek(i)).unwrap(),), false)
+                    &&& old(self).remaining()[idx] == r.unwrap()
+                    &&& forall |i| 0 <= i < idx ==>
+                        predicate.ensures((#[trigger] &old(self).remaining()[i],), false)
                 }
             };
 }
