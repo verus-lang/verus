@@ -576,6 +576,13 @@ pub fn is_unit(t: &Typ) -> bool {
     matches!(&**t, TypX::Datatype(Dt::Tuple(0), ..))
 }
 
+pub fn is_never(t: &Typ) -> bool {
+    match &**t {
+        TypX::Decorate(TypDecoration::Never, None, t) => is_unit(t),
+        _ => false,
+    }
+}
+
 pub fn mk_bool(span: &Span, b: bool) -> Expr {
     SpannedTyped::new(span, &Arc::new(TypX::Bool), ExprX::Const(Constant::Bool(b)))
 }
