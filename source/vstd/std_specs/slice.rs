@@ -136,7 +136,6 @@ pub open spec fn index_result_str(start: int, end: int, slice: &str, output: &st
     output.spec_bytes() == slice.spec_bytes().subrange(start, end)
 }
 
-#[cfg(not(verus_verify_core))]
 pub broadcast axiom fn def_index_result_str(start: int, end: int, slice: &str, output: &str)
     ensures
         #[trigger] index_result::<str, str>(start, end, slice, output) <==> index_result_str(start, end, slice, output);
@@ -165,7 +164,6 @@ pub open spec fn index_mut_result_slice<T>(start: int, end: int, old_slice: &[T]
     final_slice@ =~= old_slice@.subrange(0, start) + final_output@ + old_slice@.subrange(end, old_slice@.len() as int)
 }
 
-#[cfg(not(verus_verify_core))]
 pub broadcast axiom fn def_index_mut_result_slice<T>(start: int, end: int, old_slice: &[T], final_slice: &[T], final_output: &[T])
     ensures
         #[trigger] index_mut_result::<[T], [T]>(start, end, old_slice, final_slice, final_output) <==> index_mut_result_slice(start, end, old_slice, final_slice, final_output)
@@ -252,7 +250,6 @@ pub trait ExSliceIndex<T: ?Sized> {
     ;
 }
 
-#[cfg(not(verus_verify_core))]
 impl<T> SliceIndexSpecImpl<[T]> for usize {
     open spec fn spec_start(&self, slice: &[T]) -> int {
         self as int
@@ -264,7 +261,6 @@ impl<T> SliceIndexSpecImpl<[T]> for usize {
 }
 
 // describes range: start..end
-#[cfg(not(verus_verify_core))]
 impl<T> SliceIndexSpecImpl<[T]> for Range<usize> {
     open spec fn spec_start(&self, slice: &[T]) -> int {
         self.start as int
@@ -276,7 +272,6 @@ impl<T> SliceIndexSpecImpl<[T]> for Range<usize> {
 }
 
 // describes range: start..
-#[cfg(not(verus_verify_core))]
 impl<T> SliceIndexSpecImpl<[T]> for RangeFrom<usize> {
     open spec fn spec_start(&self, slice: &[T]) -> int {
         self.start as int
@@ -288,7 +283,6 @@ impl<T> SliceIndexSpecImpl<[T]> for RangeFrom<usize> {
 }
 
 // describes full range: ..
-#[cfg(not(verus_verify_core))]
 impl<T> SliceIndexSpecImpl<[T]> for RangeFull {
     open spec fn spec_start(&self, slice: &[T]) -> int {
         0
@@ -300,7 +294,6 @@ impl<T> SliceIndexSpecImpl<[T]> for RangeFull {
 }
 
 // describes range: start..=end
-#[cfg(not(verus_verify_core))]
 impl<T> SliceIndexSpecImpl<[T]> for RangeInclusive<usize> {
     open spec fn spec_start(&self, slice: &[T]) -> int {
         self@.start as int
@@ -312,7 +305,6 @@ impl<T> SliceIndexSpecImpl<[T]> for RangeInclusive<usize> {
 }
 
 // describes range: ..end
-#[cfg(not(verus_verify_core))]
 impl<T> SliceIndexSpecImpl<[T]> for RangeTo<usize> {
     open spec fn spec_start(&self, slice: &[T]) -> int {
         0
@@ -324,7 +316,6 @@ impl<T> SliceIndexSpecImpl<[T]> for RangeTo<usize> {
 }
 
 // describes range: ..=end
-#[cfg(not(verus_verify_core))]
 impl<T> SliceIndexSpecImpl<[T]> for RangeToInclusive<usize> {
     open spec fn spec_start(&self, slice: &[T]) -> int {
         0
