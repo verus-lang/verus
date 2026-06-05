@@ -2347,13 +2347,13 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
             if matches!(al_ty.kind, rustc_middle::ty::AliasTyKind::Opaque { .. }) =>
         {
             let span = ctxt.tcx.def_span(al_ty.kind.def_id());
+            let alias_def_id = al_ty.kind.def_id();
             let opaque_type_path = def_id_to_vir_path(
                 ctxt.tcx,
                 &ctxt.verus_items,
-                al_ty.kind.def_id().into(),
+                alias_def_id.into(),
                 None::<&mut HashMap<_, _>>,
             );
-            let alias_def_id = al_ty.kind.def_id();
             let mut trait_bounds = Vec::new();
             let mut args = Vec::new();
             for arg in al_ty.args {
