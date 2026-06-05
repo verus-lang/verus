@@ -238,6 +238,9 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                     // introduce a unit temporary as the destination for the loop body.
                     let tmp = this.get_unit_temp();
                     // Execute the body, branching back to the test.
+                    crate::builder::verus_builder::emit_extra_constraints(
+                        this, body_block, expr_id,
+                    );
                     let body_block_end = this.expr_into_dest(tmp, body_block, body).into_block();
                     this.cfg.goto(body_block_end, source_info, loop_block);
 
@@ -293,6 +296,10 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                         },
                     );
                     this.diverge_from(loop_block);
+
+                    crate::builder::verus_builder::emit_extra_constraints(
+                        this, body_block, expr_id,
+                    );
 
                     // Logic for `match`.
                     let scrutinee_span = this.thir.exprs[scrutinee].span;
@@ -525,6 +532,8 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 this.record_operands_moved(&args);
 
                 debug!("expr_into_dest: fn_span={:?}", fn_span);
+
+                crate::builder::verus_builder::emit_extra_constraints(this, block, expr_id);
 
                 this.cfg.terminate(
                     block,

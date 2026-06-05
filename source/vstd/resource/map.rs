@@ -1306,8 +1306,10 @@ impl<K, V> GhostPointsTo<K, V> {
         self.lemma_map_view();
         self.submap.agree(auth);
         assert(self.submap@ <= auth@);
-        assert(self.submap@.contains_key(self.key()));
-        assert(self.submap@.contains_pair(self.key(), self.value()));
+        assert(self.submap@.dom().contains(self.key()));
+        assert(auth@.dom().contains(self.key()));
+        assert(self.submap@[self.key()] == self.value());
+        assert(auth@[self.key()] == self.value());
     }
 
     /// We can combine two [`GhostPointsTo`]s into a [`GhostSubmap`]

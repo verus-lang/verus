@@ -35,6 +35,7 @@ enum ReachedType {
     Float(u32),
     SpecFn(usize),
     Datatype(Dt),
+    FnDef(Fun, Vec<ReachedType>),
     StrSlice,
     Array,
     Primitive,
@@ -131,7 +132,9 @@ fn typ_to_reached_type(typ: &Typ) -> ReachedType {
         TypX::AnonymousClosure(..) => ReachedType::None,
         TypX::Datatype(dt, _, _) => ReachedType::Datatype(dt.clone()),
         TypX::Dyn(..) => ReachedType::None,
-        TypX::FnDef(..) => ReachedType::None,
+        TypX::FnDef(fun, typs, _) => {
+            ReachedType::FnDef(fun.clone(), typs.iter().map(typ_to_reached_type).collect())
+        }
         TypX::Decorate(_, _, t) => typ_to_reached_type(t),
         TypX::Boxed(t) => typ_to_reached_type(t),
         TypX::TypParam(_) => ReachedType::None,
@@ -309,9 +312,11 @@ fn reach_typ(ctxt: &Ctxt, state: &mut State, typ: &Typ) {
             reach_assoc_type_decl(ctxt, state, &(trait_path.clone(), name.clone()));
             // let visitor handle self_typ, trait_typ_args
         }
-        TypX::FnDef(fun, _typs, res_fun_opt) => {
+        TypX::FnDef(fun, typs, res_fun_opt) => {
             state.fndef_types.insert(fun.clone());
             reach_function(ctxt, state, fun);
+            let typ_args: Vec<ReachedType> = typs.iter().map(typ_to_reached_type).collect();
+            reach_type(ctxt, state, &ReachedType::FnDef(fun.clone(), typ_args));
 
             if let Some(res_fun) = res_fun_opt {
                 state.fndef_types.insert(res_fun.clone());

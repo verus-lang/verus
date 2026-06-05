@@ -1,5 +1,5 @@
 {
-  "version": "0.0.0-2026-05-10-0145",
+  "version": "0.0.0-2026-05-24-0157",
   "types": [
     {
       "ident": "Abi",
@@ -4464,6 +4464,11 @@
         "vis": {
           "syn": "Visibility"
         },
+        "constness": {
+          "option": {
+            "token": "Const"
+          }
+        },
         "unsafety": {
           "option": {
             "token": "Unsafe"
@@ -4472,11 +4477,6 @@
         "auto_token": {
           "option": {
             "token": "Auto"
-          }
-        },
-        "constness": {
-          "option": {
-            "token": "Const"
           }
         },
         "restriction": {
