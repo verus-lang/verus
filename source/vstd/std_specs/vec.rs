@@ -3,6 +3,7 @@ use super::iter::{FromIteratorSpecImpl, IteratorSpec};
 use verus_builtin::*;
 
 use super::core::IndexSpec;
+#[cfg(not(verus_verify_core))]
 use super::slice::SliceIndexSpec;
 use alloc::collections::TryReserveError;
 use alloc::vec::{IntoIter, Vec};
@@ -175,12 +176,14 @@ pub assume_specification<T: core::clone::Clone, A: Allocator>[ Vec::<T, A>::exte
             },
 ;
 
+#[cfg(not(verus_verify_core))]
 impl<T: Sized, I: SliceIndex<[T]>, A: Allocator> super::core::IndexSpecImpl<I> for Vec<T, A> {
     open spec fn index_req(&self, index: &I) -> bool {
         forall|s: &[T]| #[trigger] s@ == self@ ==> crate::std_specs::slice::valid_indices_slice(index.spec_start(s), index.spec_end(s), s)
     }
 }
 
+#[cfg(not(verus_verify_core))]
 pub assume_specification<T, I: SliceIndex<[T]>, A: Allocator>[Vec::<T, A>::index](
     vec: &Vec<T, A>,
     i: I,
