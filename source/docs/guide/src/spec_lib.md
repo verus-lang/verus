@@ -25,9 +25,9 @@ without proving they're finite. The finite versions have two key benefits.
 First, they can be used in recursive types; e.g., an `enum T` can contain
 fields of type `Set<T>` and `Map<T, U>` but not `ISet<T>` or `IMap<T, U>`.
 Second, the verifier knows the finiteness property always holds, which can
-prevent some SMT-time proof failure surprises. For instance, adding an element
-to a `Set` increases its `len()` by 1, but this doesn't always hold for an
-`ISet` since it might have an undefined length.
+prevent some SMT-time proof failure surprises. For instance, adding a new
+element to a `Set` increases its `len()` by 1, but this doesn't always hold
+for an `ISet` since it might be of infinite size.
 
 ## Constructing and using Seq, Set, ISet, Map, and IMap
 
@@ -40,8 +40,8 @@ finite values of the possibly-infinite types `ISet` and `IMap`:
 ```
 
 The macros above can only construct finite (literal) sequences, sets, and maps.
-Sequences can be constructed with `Seq::new`.
-Infinite-type sets and maps can be constructed with `ISet::new` and `IMap::new`.
+Sequences, potentially-infinite sets, and potentially-infinite maps can also
+be constructed with `Seq::new`, `ISet::new`, and `IMap::new`.
 
 A `Set` can only be constructed if it's provably finite. There are several
 ways to do this, including the following:
@@ -75,10 +75,12 @@ while `m_infinite`'s domain is the infinite set `{..., -20, 10, 0, 10, 20, ...}`
 Likewise, each `IMap<Key, Value>` has a domain of type `ISet<Key>`.
 
 Some constructors of `Set<T>` don't necessarily produce a finite set; they
-produce an `Option<Set<T>>` that's only `Some` when the set would be finite.
-So they're only useful if you can prove that they produce a finite set. If you
-can't (or don't need to) prove the set is finite, just use an `ISet` instead.
-Examples of functions that produce an `Option<Set<T>>` are:
+produce an `Option<Set<T>>` that's only `Some` when the set is finite. Thus,
+they're only useful if you can prove finiteness (usually by recursion, using
+the facts that `ISet::empty()` is finite and that `ISet::insert` preserves
+finiteness). If you can't (or don't need to) prove that the set is finite,
+just use an `ISet` instead. Examples of functions that produce an
+`Option<Set<T>>` are:
 * `Set::<T>::new(f)` constructs a set of all members of `T` satisfying
   predicate `f: spec_fn(T) -> bool`.
 * `Set::<T>::full()` constructs a set of all members of `T`. If `T` has trait
