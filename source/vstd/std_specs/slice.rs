@@ -39,16 +39,7 @@ impl<T> IndexSetTrustedSpec<usize> for [T] {
     }
 }
 
-// pub assume_specification<T>[ <usize as SliceIndex<[T]>>::index ](i: usize, slice: &[T]) -> &T
-//     returns
-//         slice@[i as int],
-// ;
-
-// pub assume_specification<T>[ <Range<usize> as SliceIndex<[T]>>::index ](i: Range<usize>, slice: &[T]) -> (r: &[T])
-//     ensures
-//         r@ == slice@.subrange(i.start as int, i.end as int),
-// ;
-
+#[cfg(not(verus_verify_core))]
 impl<T, I: SliceIndex<[T]>> super::core::IndexSpecImpl<I> for [T] {
     open spec fn index_req(&self, index: &I) -> bool {
         valid_indices(index.spec_start(self), index.spec_end(self), self)
@@ -63,6 +54,7 @@ impl<T, I, const N: usize> super::core::IndexSpecImpl<I> for [T; N]
     }
 }
 
+#[cfg(not(verus_verify_core))]
 pub assume_specification<T, I: SliceIndex<[T]>> [<[T] as Index<I>>::index] (
     slice: &[T],
     index: I,
@@ -154,58 +146,6 @@ pub broadcast axiom fn index_mut_result_str(start: int, end: int, old_slice: &st
         #[trigger] index_mut_result::<str, str>(start, end, old_slice, final_slice, final_output) <==> final_slice.spec_bytes() =~= old_slice.spec_bytes().subrange(0, start) + final_output.spec_bytes() + old_slice.spec_bytes().subrange(end, old_slice.spec_bytes().len() as int)
     ;
 
-// // Version for inside of `core`, where we directly apply the bound
-// #[cfg(verus_verify_core)]
-// #[verifier::external_trait_specification]
-// #[cfg_attr(verus_verify_core, verifier::external_trait_extension(SliceIndexSpec via SliceIndexSpecImpl))]
-// pub trait ExSliceIndex<T: ?Sized>: core::slice::index::private_slice_index::Sealed {
-//     type ExternalTraitSpecificationFor: core::slice::SliceIndex<T>;
-
-//     type Output: ?Sized;
-
-//     /// Start index of this slice index on the given slice.
-//     spec fn spec_start(&self, slice: &T) -> int;
-
-//     /// End index (exclusive) of this slice index on the given slice.
-//     spec fn spec_end(&self, slice: &T) -> int;
-
-//     fn get(self, slice: &T) -> (out: Option<&Self::Output>)
-//         requires
-//             valid_slice::<T>(slice),
-//         ensures
-//             out.is_some() <==> valid_indices(self.spec_start(slice), self.spec_end(slice), slice),
-//             out.is_some() ==> index_result(self.spec_start(slice), self.spec_end(slice), slice, out.unwrap())
-//     ;
-
-//     fn get_mut(self, slice: &mut T) -> (out: Option<&mut Self::Output>)
-//         requires
-//             valid_slice::<T>(old(slice)),
-//         ensures
-//             out.is_some() <==> valid_indices(self.spec_start(old(slice)), self.spec_end(old(slice)), old(slice)),
-//             out.is_some() ==> {
-//                 &&& index_result(self.spec_start(old(slice)), self.spec_end(old(slice)), old(slice), out.unwrap())
-//                 &&& index_mut_result(self.spec_start(old(slice)), self.spec_end(old(slice)), old(slice), final(slice), final(out.unwrap()))
-//             },
-//     ;
-
-//     fn index(self, slice: &T) -> (out: &Self::Output)
-//         requires
-//             valid_slice::<T>(slice),
-//             valid_indices(self.spec_start(slice), self.spec_end(slice), slice)
-//         ensures
-//             index_result(self.spec_start(slice), self.spec_end(slice), slice, out)
-//         ;
-
-//     fn index_mut(self, slice: &mut T) -> (out: &mut Self::Output)
-//         requires
-//             valid_slice::<T>(old(slice)),
-//             valid_indices(self.spec_start(old(slice)), self.spec_end(old(slice)), old(slice))
-//         ensures
-//             index_result(self.spec_start(old(slice)), self.spec_end(old(slice)), old(slice), out),
-//             index_mut_result(self.spec_start(old(slice)), self.spec_end(old(slice)), old(slice), final(slice), final(out))
-//         ;
-// }
-
 // Version for outside of `core`, where we add an external_trait private bound
 #[cfg(not(verus_verify_core))]
 #[verifier::external_trait_specification]
@@ -259,6 +199,7 @@ pub trait ExSliceIndex<T: ?Sized> {
         ;
 }
 
+#[cfg(not(verus_verify_core))]
 impl<T> SliceIndexSpecImpl<[T]> for usize {
     open spec fn spec_start(&self, slice: &[T]) -> int {
         self as int
@@ -268,6 +209,7 @@ impl<T> SliceIndexSpecImpl<[T]> for usize {
     }
 }
 // describes range: start..end
+#[cfg(not(verus_verify_core))]
 impl<T> SliceIndexSpecImpl<[T]> for Range<usize> {
     open spec fn spec_start(&self, slice: &[T]) -> int {
         self.start as int
@@ -278,6 +220,7 @@ impl<T> SliceIndexSpecImpl<[T]> for Range<usize> {
     }
 }
 // describes range: start..
+#[cfg(not(verus_verify_core))]
 impl<T> SliceIndexSpecImpl<[T]> for RangeFrom<usize> {
     open spec fn spec_start(&self, slice: &[T]) -> int {
         self.start as int
@@ -288,6 +231,7 @@ impl<T> SliceIndexSpecImpl<[T]> for RangeFrom<usize> {
     }
 }
 // describes full range: ..
+#[cfg(not(verus_verify_core))]
 impl<T> SliceIndexSpecImpl<[T]> for RangeFull {
     open spec fn spec_start(&self, slice: &[T]) -> int {
         0
@@ -298,6 +242,7 @@ impl<T> SliceIndexSpecImpl<[T]> for RangeFull {
     }
 }
 // describes range: start..=end
+#[cfg(not(verus_verify_core))]
 impl<T> SliceIndexSpecImpl<[T]> for RangeInclusive<usize> {
     open spec fn spec_start(&self, slice: &[T]) -> int {
         self@.start as int
@@ -308,6 +253,7 @@ impl<T> SliceIndexSpecImpl<[T]> for RangeInclusive<usize> {
     }
 }
 // describes range: ..end
+#[cfg(not(verus_verify_core))]
 impl<T> SliceIndexSpecImpl<[T]> for RangeTo<usize> {
     open spec fn spec_start(&self, slice: &[T]) -> int {
         0
@@ -318,6 +264,7 @@ impl<T> SliceIndexSpecImpl<[T]> for RangeTo<usize> {
     }
 }
 // describes range: ..=end
+#[cfg(not(verus_verify_core))]
 impl<T> SliceIndexSpecImpl<[T]> for RangeToInclusive<usize> {
     open spec fn spec_start(&self, slice: &[T]) -> int {
         0
