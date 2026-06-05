@@ -288,7 +288,7 @@ impl PointsTo<str> {
     /// Creates a `&PointsTo<[u8]>` from a `&PointsTo<str>`.
     /// Requires that it is possible to transmute between the pointed-to value of `self`
     /// and the provided value `target`. This value (`target`) will become the pointed-to value
-    /// of the resuling `&PointsTo<[u8]>`.
+    /// of the resulting `&PointsTo<[u8]>`.
     pub axiom fn transmute_shared<'a>(tracked &'a self, tracked target: &[u8]) -> (tracked ret:
         &'a PointsTo<[u8]>)
         requires
@@ -307,7 +307,7 @@ impl PointsTo<[u8]> {
     /// Creates a `&PointsTo<str>` from a `&PointsTo<[u8]>`.
     /// Requires that it is possible to transmute between the pointed-to value of `self`
     /// and the provided value `target`. This value (`target`) will become the pointed-to value
-    /// of the resuling `&PointsTo<str>`.
+    /// of the resulting `&PointsTo<str>`.
     pub axiom fn transmute_shared<'a>(
         tracked &'a self,
         value: &[u8],
