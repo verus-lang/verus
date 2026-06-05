@@ -91,8 +91,8 @@ use rustc_middle::ty::{
 };
 use rustc_mir_build_verus::verus::BodyErasure;
 use rustc_span::Span;
-use rustc_span::def_id::DefId;
 use rustc_span::Spanned;
+use rustc_span::def_id::DefId;
 use std::sync::Arc;
 use vir::ast::{
     ArithOp, ArmX, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp, BoundsCheck, CallTarget,

@@ -13,8 +13,8 @@ use crate::util::{err_span, err_span_bare};
 use crate::verus_items::{BuiltinTypeItem, VerusItem};
 use crate::{unsupported_err, unsupported_err_unless};
 use rustc_hir::{
-    Attribute, Body, BodyId, Expr, ExprKind, FnDecl, FnHeader, FnSig, Generics,
-    HeaderSafety, HirId, MaybeOwner, Param, Safety,
+    Attribute, Body, BodyId, Expr, ExprKind, FnDecl, FnHeader, FnSig, Generics, HeaderSafety,
+    HirId, MaybeOwner, Param, Safety,
 };
 use rustc_middle::hir::Crate;
 use rustc_middle::ty::{
@@ -658,14 +658,15 @@ fn compare_external_ty<'tcx>(
     // we recursively reach all the nested opaque types.
     else {
         match (ty1.kind(), ty2.kind()) {
-            (
-                rustc_middle::ty::TyKind::Alias(al_ty1),
-                rustc_middle::ty::TyKind::Alias(al_ty2),
-            ) if matches!(al_ty1.kind, rustc_middle::ty::AliasTyKind::Opaque { .. })
-                && matches!(al_ty2.kind, rustc_middle::ty::AliasTyKind::Opaque { ..}) => {
+            (rustc_middle::ty::TyKind::Alias(al_ty1), rustc_middle::ty::TyKind::Alias(al_ty2))
+                if matches!(al_ty1.kind, rustc_middle::ty::AliasTyKind::Opaque { .. })
+                    && matches!(al_ty2.kind, rustc_middle::ty::AliasTyKind::Opaque { .. }) =>
+            {
                 // two opaque types. We compare their trait bounds
-                let ty1_bounds = tcx.item_bounds(al_ty1.kind.def_id()).instantiate(tcx, al_ty1.args);
-                let ty2_bounds = tcx.item_bounds(al_ty2.kind.def_id()).instantiate(tcx, al_ty2.args);
+                let ty1_bounds =
+                    tcx.item_bounds(al_ty1.kind.def_id()).instantiate(tcx, al_ty1.args);
+                let ty2_bounds =
+                    tcx.item_bounds(al_ty2.kind.def_id()).instantiate(tcx, al_ty2.args);
                 if ty1_bounds.len() != ty2_bounds.len() {
                     return false;
                 }

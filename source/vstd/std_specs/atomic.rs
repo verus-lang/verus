@@ -103,4 +103,3 @@ atomic_specs_int!(AtomicI64, i64);
 atomic_specs_int!(AtomicIsize, isize);
 
 atomic_specs_bool!(AtomicBool, bool);
-

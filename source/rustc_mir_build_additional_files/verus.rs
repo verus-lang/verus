@@ -838,9 +838,7 @@ fn erase_pat_rec<'tcx>(emode: &PatBindingEraserMode, p: &mut Pat<'tcx>) {
                 erase_pat_rec(emode, p);
             }
         }
-        PatKind::Guard { subpattern, condition: _ } => {
-            erase_pat_rec(emode, subpattern)
-        }
+        PatKind::Guard { subpattern, condition: _ } => erase_pat_rec(emode, subpattern),
         PatKind::Never => {}
         PatKind::Error(_error_guaranteed) => {}
     }

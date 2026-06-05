@@ -145,10 +145,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
             pat,
             let_stmt_type,
         );
-        crate::verus::erase_pat(
-            self,
-            pat,
-        )
+        crate::verus::erase_pat(self, pat)
     }
 
     fn closure_env_param(&self, owner_def: LocalDefId, expr_id: HirId) -> Option<Param<'tcx>> {

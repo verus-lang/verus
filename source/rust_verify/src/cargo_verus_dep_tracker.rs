@@ -44,8 +44,7 @@ impl DepTracker {
     pub(crate) fn config_install(self, config: &mut rustc_interface::Config) {
         config.track_state = Some(Box::new(move |sess, _hasher| {
             for (var, val) in self.env.iter() {
-                sess
-                    .env_depinfo
+                sess.env_depinfo
                     .borrow_mut()
                     .insert((Symbol::intern(var), val.as_deref().map(Symbol::intern)));
             }
