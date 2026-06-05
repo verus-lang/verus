@@ -1,4 +1,5 @@
 use rustc_hir::{ExprKind, MaybeOwner, OwnerNode, def_id::LocalDefId};
+use rustc_span::def_id::DefIndex;
 use rustc_index::IndexVec;
 use rustc_middle::ty::TyCtxt;
 use std::collections::HashMap;
@@ -9,36 +10,48 @@ pub(crate) enum ResOrSymbol {
 }
 
 pub(crate) fn hir_hide_reveal_rewrite<'tcx>(
-    crate_: rustc_middle::hir::Crate<'tcx>,
+    mut crate_: rustc_middle::hir::Crate<'tcx>,
     tcx: TyCtxt<'tcx>,
 ) -> rustc_middle::hir::Crate<'tcx> {
-    let mut new_owners/*IndexVec<LocalDefId, MaybeOwner<'tcx>>*/ = IndexVec::new();
-    for def_id in crate_.delayed_ids.iter() {
-        let new_owner: MaybeOwner<'tcx> = new_hide_reveal_owner(&crate_, tcx, *def_id);
-        let owner = new_owners.ensure_contains_elem(*def_id, || MaybeOwner::Phantom);
-        *owner = new_owner;
-        // new_owners.insert(*def_id, new_hide_reveal_owner(crate_, tcx, *def_id));
+    // To read all owners from the original crate without triggering query cycles,
+    // we temporarily clear delayed_ids. With delayed_ids empty, Crate::owner()
+    // returns directly from the internal owners vec (even for Phantom entries)
+    // without falling through to tcx.delayed_owner().
+    let delayed_ids = std::mem::take(&mut crate_.delayed_ids);
+    let mut new_owners: IndexVec<LocalDefId, MaybeOwner<'tcx>> = IndexVec::new();
+    let num_defs = tcx.definitions_untracked().num_definitions();
+    for i in 0..num_defs {
+        let def_id = LocalDefId { local_def_index: DefIndex::from_usize(i) };
+        let owner = new_owners.ensure_contains_elem(def_id, || MaybeOwner::Phantom);
+        *owner = crate_.owner(tcx, def_id);
+    }
+    for new_owner in new_owners.iter_mut() {
+        if let MaybeOwner::Owner(inner_owner) = new_owner {
+            if let OwnerNode::Item(item) = inner_owner.node() {
+                if let rustc_hir::ItemKind::Fn { ident, body: body_id, .. } = &item.kind {
+                    if ident.as_str() == "__VERUS_REVEAL_INTERNAL__" {
+                        *new_owner =
+                            rewrite_reveal_internal(inner_owner, item, body_id, tcx);
+                    }
+                }
+            }
+        }
     }
     rustc_middle::hir::Crate::new(
         new_owners,
-        crate_.delayed_ids.clone(),
+        delayed_ids,
         crate_.delayed_resolver,
-        crate_.opt_hir_hash.clone(), // Do we need to recompute this?
+        crate_.opt_hir_hash.clone(),
     )
 }
 
-fn new_hide_reveal_owner<'tcx>(
-    crate_: &rustc_middle::hir::Crate<'tcx>,
+fn rewrite_reveal_internal<'tcx>(
+    inner_owner: &'tcx rustc_hir::OwnerInfo<'tcx>,
+    item: &'tcx rustc_hir::Item<'tcx>,
+    body_id: &rustc_hir::BodyId,
     tcx: TyCtxt<'tcx>,
-    def_id: LocalDefId,
 ) -> MaybeOwner<'tcx> {
-    let old_owner = crate_.owner(tcx, def_id);
-    if let MaybeOwner::Owner(inner_owner) = old_owner {
-        match inner_owner.node() {
-            OwnerNode::Item(item) => {
-                match &item.kind {
-                    rustc_hir::ItemKind::Fn { ident, body: body_id, .. } => {
-                        if ident.as_str() == "__VERUS_REVEAL_INTERNAL__" {
+    {
                             assert_eq!(inner_owner.nodes.bodies.len(), 1);
                             let mut bodies = inner_owner.nodes.bodies.clone();
                             let old_body = bodies[&body_id.hir_id.local_id];
@@ -223,14 +236,6 @@ fn new_hide_reveal_owner<'tcx>(
                                     opt_hash: None,
                                 },
                             });
-                            return rustc_hir::MaybeOwner::Owner(owner_info);
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            _ => {}
-        }
+                            rustc_hir::MaybeOwner::Owner(owner_info)
     }
-    return old_owner;
 }

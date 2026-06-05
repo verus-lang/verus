@@ -2574,22 +2574,14 @@ impl Verifier {
 
         self.air_no_span = {
             let hir_crate = tcx.hir_crate(());
-            let no_span =
-                hir_crate
-                .delayed_ids
-                .iter()
-                .map(|def_id| hir_crate.owner(tcx, *def_id))
-                .filter_map(|oi| {
-                    oi.as_owner().as_ref().and_then(|o| {
-                        if let OwnerNode::Crate(c) = o.node() {
-                            Some(c.spans.inner_span)
-                        } else {
-                            None
-                        }
-                    })
-                })
-                .next()
-                .expect("OwnerNode::Crate missing");
+            let no_span = {
+                let crate_owner = hir_crate.owner(tcx, rustc_span::def_id::CRATE_DEF_ID);
+                let owner_info = crate_owner.as_owner().expect("OwnerNode::Crate missing");
+                let OwnerNode::Crate(c) = owner_info.node() else {
+                    panic!("OwnerNode::Crate missing");
+                };
+                c.spans.inner_span
+            };
             Some(vir::messages::Span {
                 raw_span: crate::spans::to_raw_span(no_span),
                 id: 0,
