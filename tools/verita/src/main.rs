@@ -544,9 +544,24 @@ fn main() -> anyhow::Result<()> {
 
     debug!("Loaded run configuration:");
 
+    // Apply command-line project filters.
+    let mut ignored_projects: Vec<String> = Vec::new();
+    let mut active_projects: Vec<&RunConfigurationProject> = Vec::new();
+    for project in run_configuration.projects.iter() {
+        if !args.projects.is_empty() && !args.projects.contains(&project.name) {
+            debug!("Skipping project {} (not in --project filter)", project.name);
+            continue;
+        }
+        if project.ignore && !args.run_ignored {
+            info!("Skipping ignored project {}", project.name);
+            ignored_projects.push(project.name.clone());
+            continue;
+        }
+        active_projects.push(project);
+    }
+
     // Check that extra_cargo_args is only used with cargo_verus projects
-    let invalid_cargo_args: Vec<&str> = run_configuration
-        .projects
+    let invalid_cargo_args: Vec<&str> = active_projects
         .iter()
         .filter(|p| !p.cargo_verus && p.extra_cargo_args.is_some())
         .map(|p| p.name.as_str())
@@ -560,7 +575,7 @@ fn main() -> anyhow::Result<()> {
     }
 
     // Check that cargo-verus executable is present if any project needs it
-    if run_configuration.projects.iter().any(|p| p.cargo_verus) {
+    if active_projects.iter().any(|p| p.cargo_verus) {
         if fs::metadata(&cargo_verus_binary_path).is_err() {
             return Err(anyhow!(
                 "failed to find cargo-verus binary: {}",
@@ -572,10 +587,9 @@ fn main() -> anyhow::Result<()> {
 
     // Check that --singular was provided (or VERUS_SINGULAR_PATH is already set)
     // if any active project requires it
-    let singular_required: Vec<&str> = run_configuration
-        .projects
+    let singular_required: Vec<&str> = active_projects
         .iter()
-        .filter(|p| (!p.ignore || args.run_ignored) && p.requires_singular)
+        .filter(|p| p.requires_singular)
         .map(|p| p.name.as_str())
         .collect();
     if !singular_required.is_empty()
@@ -663,22 +677,9 @@ fn main() -> anyhow::Result<()> {
     let mut project_summaries = Vec::new();
     let mut failed_projects: Vec<(String, Option<PathBuf>)> = Vec::new();
     let mut succeeded_projects: Vec<String> = Vec::new();
-    let mut ignored_projects: Vec<String> = Vec::new();
     let mut all_warnings: Vec<String> = Vec::new();
 
-    for project in run_configuration.projects.iter() {
-        if !args.projects.is_empty() && !args.projects.contains(&project.name) {
-            debug!(
-                "Skipping project {} (not in --project filter)",
-                project.name
-            );
-            continue;
-        }
-        if project.ignore && !args.run_ignored {
-            info!("Skipping ignored project {}", project.name);
-            ignored_projects.push(project.name.clone());
-            continue;
-        }
+    for &project in &active_projects {
         match process_project(&ctx, project, workdir) {
             Ok((summaries, any_verus_failure, warnings)) => {
                 all_warnings.extend(warnings);
