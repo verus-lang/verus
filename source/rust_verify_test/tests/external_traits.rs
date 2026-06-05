@@ -872,3 +872,28 @@ test_verify_one_file! {
         "Verus does not recognize associated type `Owned` of trait `alloc::borrow::ToOwned`"
     )
 }
+
+test_verify_one_file! {
+    #[test] external_trait_private_bound_local verus_code! {
+        trait U {}
+
+        #[verifier::external]
+        trait T: U {}
+
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_private_bound(test_crate::U)]
+        trait ExT {
+            type ExternalTraitSpecificationFor: T;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "not a private non-local bound")
+}
+
+test_verify_one_file! {
+    #[test] external_trait_private_bound_pub verus_code! {
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_private_bound(core::marker::Copy)]
+        pub trait ExInteger {
+            type ExternalTraitSpecificationFor: Integer;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "not a private non-local bound")
+}

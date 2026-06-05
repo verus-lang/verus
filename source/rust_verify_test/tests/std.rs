@@ -926,3 +926,39 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 7)
 }
+
+test_verify_one_file! {
+    #[test] hash_map_clone_issue1835 verus_code! {
+        use vstd::prelude::*;
+        use std::collections::HashMap;
+
+        pub struct WeirdPair {
+            pub x: u64,
+            pub y: u64,
+        }
+
+        impl Clone for WeirdPair {
+            fn clone(&self) -> (ret: Self)
+                ensures ret == (Self { x: self.x, y: 0 })
+            {
+                Self { x: self.x, y: 0 }
+            }
+        }
+
+        fn test() {
+            let mut h = HashMap::<u64, WeirdPair>::new();
+            h.insert(0, WeirdPair { x: 1, y: 2 });
+            let h2 = h.clone();
+            assert(h2@.dom() == h@.dom());
+            assert(h2@[0] == WeirdPair { x: 1, y: 0 } || h@[0] == h2@[0]);
+        }
+
+        fn test_fails() {
+            let mut h = HashMap::<u64, WeirdPair>::new();
+            h.insert(0, WeirdPair { x: 1, y: 2 });
+            let h2 = h.clone();
+            assert(h2@.dom() == h@.dom());
+            assert(h2@[0] == WeirdPair { x: 1, y: 2 }); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}

@@ -4694,11 +4694,15 @@ test_verify_one_file_with_options! {
         const trait T {
             fn f() -> u8;
         }
+        const unsafe trait U {
+        }
         impl const T for bool {
             fn f() -> (r: u8) ensures r == 3 { 3 }
         }
         const impl T for () {
             fn f() -> (r: u8) ensures r == 4 { 4 }
+        }
+        unsafe impl const U for () {
         }
         fn test() {
             let c1 = <bool as T>::f();

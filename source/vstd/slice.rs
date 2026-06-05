@@ -114,6 +114,7 @@ pub exec fn slice_subrange<T, 'a>(slice: &'a [T], i: usize, j: usize) -> (out: &
     &slice[i..j]
 }
 
+#[cfg(not(verus_verify_core))]
 pub assume_specification<T, I>[ <[T]>::get::<I> ](slice: &[T], i: I) -> (b: Option<
     &<I as SliceIndex<[T]>>::Output,
 >) where I: SliceIndex<[T]>
@@ -121,10 +122,12 @@ pub assume_specification<T, I>[ <[T]>::get::<I> ](slice: &[T], i: I) -> (b: Opti
         spec_slice_get(slice, i),
 ;
 
+#[cfg(not(verus_verify_core))]
 pub uninterp spec fn spec_slice_get<T: ?Sized, I: SliceIndex<T>>(val: &T, idx: I) -> Option<
     &<I as SliceIndex<T>>::Output,
 >;
 
+#[cfg(not(verus_verify_core))]
 pub broadcast axiom fn axiom_slice_get_usize<T>(v: &[T], i: usize)
     ensures
         i < v.len() ==> #[trigger] spec_slice_get(v, i) == Some(&v[i as int]),
@@ -162,9 +165,19 @@ pub broadcast axiom fn axiom_slice_has_resolved<T>(slice: &[T], i: int)
             ==> has_resolved(#[trigger] slice@[i]),
 ;
 
+#[cfg(not(verus_verify_core))]
 pub broadcast group group_slice_axioms {
     axiom_spec_len,
     axiom_slice_get_usize,
+    axiom_slice_ext_equal,
+    axiom_spec_slice_update,
+    axiom_spec_slice_index,
+    axiom_slice_has_resolved,
+}
+
+#[cfg(verus_verify_core)]
+pub broadcast group group_slice_axioms {
+    axiom_spec_len,
     axiom_slice_ext_equal,
     axiom_spec_slice_update,
     axiom_spec_slice_index,
