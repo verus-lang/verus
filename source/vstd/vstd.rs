@@ -7,6 +7,7 @@
 #![allow(unused_imports)]
 #![allow(dead_code)]
 #![allow(unused_attributes)]
+#![allow(unused_features)] // silences spurious warnings for features that cause errors when omitted
 #![allow(rustdoc::invalid_rust_codeblocks)]
 #![cfg_attr(verus_keep_ghost, feature(atomic_internals))]
 #![cfg_attr(verus_keep_ghost, feature(generic_atomic))]
