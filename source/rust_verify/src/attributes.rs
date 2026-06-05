@@ -287,6 +287,8 @@ pub(crate) enum Attr {
     NoAutoTrigger,
     // when used in a ghost context, redirect to a specified spec method
     Autospec(String),
+    // For a spec function conditional on a trait bound
+    TraitBoundSpec(String),
     // when used in a ghost context, redirect to the 'returns' clause
     AllowInSpec,
     // specify list of places where == is promoted to =~=
@@ -561,6 +563,11 @@ pub(crate) fn parse_attrs(
                     if arg == "when_used_as_spec" =>
                 {
                     v.push(Attr::Autospec(ident.clone()))
+                }
+                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, ident, None)]))
+                    if arg == "if_trait_bound_then_redirect_to" =>
+                {
+                    v.push(Attr::TraitBoundSpec(ident.clone()))
                 }
                 AttrTree::Fun(_, arg, None) if arg == "allow_in_spec" => v.push(Attr::AllowInSpec),
                 AttrTree::Fun(_, arg, None) if arg == "atomic" => v.push(Attr::Atomic),
@@ -1161,6 +1168,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) broadcast_use_by_default_when_this_crate_is_imported: bool,
     pub(crate) no_auto_trigger: bool,
     pub(crate) autospec: Option<String>,
+    pub(crate) trait_bound_spec_conditional: Option<String>,
     pub(crate) allow_in_spec: bool,
     pub(crate) bit_vector: bool,
     pub(crate) for_loop: bool,
@@ -1354,6 +1362,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
         broadcast_use_by_default_when_this_crate_is_imported: false,
         no_auto_trigger: false,
         autospec: None,
+        trait_bound_spec_conditional: None,
         allow_in_spec: false,
         bit_vector: false,
         for_loop: false,
@@ -1440,6 +1449,9 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             }
             Attr::NoAutoTrigger => vs.no_auto_trigger = true,
             Attr::Autospec(method_ident) => vs.autospec = Some(method_ident),
+            Attr::TraitBoundSpec(method_ident) => {
+                vs.trait_bound_spec_conditional = Some(method_ident)
+            }
             Attr::AllowInSpec => vs.allow_in_spec = true,
             Attr::BitVector => vs.bit_vector = true,
             Attr::ForLoop => vs.for_loop = true,

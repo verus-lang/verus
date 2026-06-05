@@ -1515,6 +1515,8 @@ pub struct FunctionAttrsX {
     pub tracked_take_option: bool,
     /// Whether the function is an async function
     pub is_async: bool,
+    /// Is this the 'if_trait_bound_then_redirect_to'
+    pub trait_bound_conditional: Option<Fun>,
 }
 
 /// Function specification of its invariant mask

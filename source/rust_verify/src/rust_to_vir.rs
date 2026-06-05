@@ -590,6 +590,8 @@ pub fn crate_to_vir<'a, 'tcx>(
 
     crate::rust_to_vir_adts::setup_type_invariants(&mut vir).map_err(|e| vec![e])?;
     vir::traits::set_krate_dyn_compatibility(imported, &mut vir);
+    crate::trait_bound_redirect::handle_trait_conditional_fns(&ctxt, &mut vir)
+        .map_err(|e| vec![e])?;
 
     Ok((ctxt, Arc::new(vir)))
 }
