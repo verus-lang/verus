@@ -70,9 +70,10 @@ the first parameter to `Map::new`.
 ```
 
 Each `Map<Key, Value>` value has a domain of type `Set<Key>` given by `.dom()`.
-In the `test_map2` example above, `m`'s domain is the finite set `{0, 10, 20, 30, 40}`,
-while `m_infinite`'s domain is the infinite set `{..., -20, 10, 0, 10, 20, ...}`.
 Likewise, each `IMap<Key, Value>` has a domain of type `ISet<Key>`.
+In the `test_map2` example above, each of `m` and `m_finite` has the finite
+domain `{0, 10, 20, 30, 40}`
+while `m_infinite`'s domain is the infinite set `{..., -20, 10, 0, 10, 20, ...}`.
 
 Some constructors of `Set<T>` don't necessarily produce a finite set; they
 produce an `Option<Set<T>>` that's only `Some` when the set is finite. Thus,
