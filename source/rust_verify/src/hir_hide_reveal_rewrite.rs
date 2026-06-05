@@ -30,8 +30,7 @@ pub(crate) fn hir_hide_reveal_rewrite<'tcx>(
             if let OwnerNode::Item(item) = inner_owner.node() {
                 if let rustc_hir::ItemKind::Fn { ident, body: body_id, .. } = &item.kind {
                     if ident.as_str() == "__VERUS_REVEAL_INTERNAL__" {
-                        *new_owner =
-                            rewrite_reveal_internal(inner_owner, item, body_id, tcx);
+                        *new_owner = rewrite_reveal_internal(inner_owner, item, body_id, tcx);
                     }
                 }
             }

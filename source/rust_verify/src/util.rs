@@ -376,11 +376,10 @@ pub(crate) fn iter_crate_owners<'tcx>(
 ) -> impl Iterator<Item = rustc_hir::MaybeOwner<'tcx>> {
     // Note that using tcx.iter_local_def_id() instead of definitions_untracked() causes a query cycle
     let num_defs = tcx.definitions_untracked().num_definitions();
-    (0..num_defs)
-        .map(move |i| {
-            let def_id = rustc_hir::def_id::LocalDefId {
-                local_def_index: rustc_span::def_id::DefIndex::from_usize(i),
-            };
-            krate.owner(tcx, def_id)
-        })
+    (0..num_defs).map(move |i| {
+        let def_id = rustc_hir::def_id::LocalDefId {
+            local_def_index: rustc_span::def_id::DefIndex::from_usize(i),
+        };
+        krate.owner(tcx, def_id)
+    })
 }
