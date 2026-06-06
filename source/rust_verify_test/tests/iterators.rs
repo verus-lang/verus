@@ -37,11 +37,7 @@ test_verify_one_file! {
             if let Some(i) = v_result {
                 assert(i < 10);
             } else {
-                proof{
-                    if v.len() > 0  {
-                        assert(v[0] >= 10);
-                    }
-                }
+                assert(forall |i| 0 <= i < v.len() ==> v[i] >= 10);
             }
         }
     } => Ok(())
