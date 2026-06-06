@@ -906,6 +906,7 @@ pub broadcast proof fn valid_utf8_split(bytes: Seq<u8>, index: int)
     }
 }
 
+/// Ensures that a char boundary remains a char boundary on a UTF-8 prefix of a UTF-8 byte sequence.
 pub broadcast proof fn is_char_boundary_split(bytes: Seq<u8>, index1: int, index2: int)
     requires
         valid_utf8(bytes),
@@ -1177,6 +1178,7 @@ pub broadcast group group_utf8_lib {
     partial_valid_utf8_extend,
     partial_valid_utf8_extend_ascii_block,
     valid_utf8_split,
+    is_char_boundary_split,
     valid_utf8_subrange,
     decode_utf8_split,
     is_char_boundary_start_end_of_seq,
