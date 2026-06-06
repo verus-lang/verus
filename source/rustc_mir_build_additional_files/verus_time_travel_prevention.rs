@@ -923,7 +923,7 @@ fn make_half_pat_rec<'tcx>(pat: &mut Pat<'tcx>, half_kind: Half) {
                 make_half_pat_rec(p, half_kind);
             }
         }
-        PatKind::Guard { subpattern, condition: _ } => make_half_pat_rec(subpattern, half_kind),
+        PatKind::Guard { subpattern: _, condition: _ } => unimplemented!("pattern guards"),
         PatKind::Never => {}
         PatKind::Error(_error_guaranteed) => {}
     }
