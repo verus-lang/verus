@@ -11,7 +11,7 @@ use crate::sst::{BndX, CallFun, Exp, ExpX};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-pub fn check_safe_api(krate: &Krate) -> Result<(), VirErr> {
+pub fn check_safe_api(krate: &Krate, is_core: bool) -> Result<(), VirErr> {
     let mut trait_map = HashMap::<Path, Trait>::new();
     for t in krate.traits.iter() {
         trait_map.insert(t.x.name.clone(), t.clone());
@@ -22,6 +22,12 @@ pub fn check_safe_api(krate: &Krate) -> Result<(), VirErr> {
     }
 
     for function in krate.functions.iter() {
+        if *function.x.name.path.segments[0] != "vstd" {
+            dbg!(&function.x.name.path);
+        }
+        if *function.x.name.path.segments[0] == "vstd" && is_core {
+            continue;
+        }
         if matches!(*function.x.ret.x.typ, TypX::Opaque { .. }) {
             return Err(error(
                 &function.span,

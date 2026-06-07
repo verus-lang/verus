@@ -2867,7 +2867,7 @@ impl Verifier {
             .map_err(|e| (vec![e], Vec::new()))?;
 
         if self.args.check_api_safety {
-            vir::safe_api::check_safe_api(&vir_crate).map_err(|e| (vec![e], Vec::new()))?;
+            vir::safe_api::check_safe_api(&vir_crate, matches!(self.args.vstd, crate::config::Vstd::IsCore | crate::config::Vstd::ImportedViaCore)).map_err(|e| (vec![e], Vec::new()))?;
         }
 
         let check_crate_result1 = vir::well_formed::check_one_crate(&current_vir_crate);
