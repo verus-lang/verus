@@ -223,6 +223,7 @@ macro_rules! def_uop_impls {
                     }
                 }
 
+                #[cfg(not(verus_verify_core))]
                 pub assume_specification[ <$typ as $trait>::$fun ](x: $typ) -> $typ;
             )*
         }
@@ -247,6 +248,7 @@ macro_rules! def_bop_impls {
                     }
                 }
 
+                #[cfg(not(verus_verify_core))]
                 pub assume_specification[ <$typ as $trait>::$fun ](x: $typ, y: $typ) -> $typ;
             )*
         }
@@ -461,51 +463,61 @@ pub uninterp spec fn mul_ensures<A>(x: A, y: A, o: A) -> bool;
 
 pub uninterp spec fn div_ensures<A>(x: A, y: A, o: A) -> bool;
 
+#[cfg(not(verus_verify_core))]
 pub assume_specification[ <f32 as core::ops::Neg>::neg ](x: f32) -> (o: f32)
     ensures
         neg_ensures::<f32>(x, o),
 ;
 
+#[cfg(not(verus_verify_core))]
 pub assume_specification[ <f32 as core::ops::Add>::add ](x: f32, y: f32) -> (o: f32)
     ensures
         add_ensures::<f32>(x, y, o),
 ;
 
+#[cfg(not(verus_verify_core))]
 pub assume_specification[ <f32 as core::ops::Sub>::sub ](x: f32, y: f32) -> (o: f32)
     ensures
         sub_ensures::<f32>(x, y, o),
 ;
 
+#[cfg(not(verus_verify_core))]
 pub assume_specification[ <f32 as core::ops::Mul>::mul ](x: f32, y: f32) -> (o: f32)
     ensures
         mul_ensures::<f32>(x, y, o),
 ;
 
+#[cfg(not(verus_verify_core))]
 pub assume_specification[ <f32 as core::ops::Div>::div ](x: f32, y: f32) -> (o: f32)
     ensures
         div_ensures::<f32>(x, y, o),
 ;
 
+#[cfg(not(verus_verify_core))]
 pub assume_specification[ <f64 as core::ops::Neg>::neg ](x: f64) -> (o: f64)
     ensures
         neg_ensures::<f64>(x, o),
 ;
 
+#[cfg(not(verus_verify_core))]
 pub assume_specification[ <f64 as core::ops::Add>::add ](x: f64, y: f64) -> (o: f64)
     ensures
         add_ensures::<f64>(x, y, o),
 ;
 
+#[cfg(not(verus_verify_core))]
 pub assume_specification[ <f64 as core::ops::Sub>::sub ](x: f64, y: f64) -> (o: f64)
     ensures
         sub_ensures::<f64>(x, y, o),
 ;
 
+#[cfg(not(verus_verify_core))]
 pub assume_specification[ <f64 as core::ops::Mul>::mul ](x: f64, y: f64) -> (o: f64)
     ensures
         mul_ensures::<f64>(x, y, o),
 ;
 
+#[cfg(not(verus_verify_core))]
 pub assume_specification[ <f64 as core::ops::Div>::div ](x: f64, y: f64) -> (o: f64)
     ensures
         div_ensures::<f64>(x, y, o),

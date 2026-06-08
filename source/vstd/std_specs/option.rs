@@ -154,6 +154,7 @@ pub open spec fn spec_unwrap<T>(option: Option<T>) -> T
 }
 
 #[verifier::when_used_as_spec(spec_unwrap)]
+#[cfg(not(verus_verify_core))]
 pub assume_specification<T>[ Option::<T>::unwrap ](option: Option<T>) -> (t: T)
     requires
         option is Some,
@@ -186,6 +187,7 @@ pub open spec fn spec_expect<T>(option: Option<T>, msg: &str) -> T
 }
 
 #[verifier::when_used_as_spec(spec_expect)]
+#[cfg(not(verus_verify_core))]
 pub assume_specification<T>[ Option::<T>::expect ](option: Option<T>, msg: &str) -> (t: T)
     requires
         option is Some,
@@ -201,6 +203,7 @@ pub assume_specification<T>[ Option::<T>::take ](option: &mut Option<T>) -> (t: 
 ;
 
 // map
+#[cfg(not(verus_verify_core))]
 pub assume_specification<T, U, F: FnOnce(T) -> U>[ Option::<T>::map ](a: Option<T>, f: F) -> (ret:
     Option<U>)
     requires
@@ -219,6 +222,7 @@ pub assume_specification<'a, T: Clone>[ Option::<&'a T>::cloned ](opt: Option<&'
 ;
 
 // and_then
+#[cfg(not(verus_verify_core))]
 pub assume_specification<T, U, F: FnOnce(T) -> Option<U>>[ Option::<T>::and_then ](
     option: Option<T>,
     f: F,
@@ -231,6 +235,7 @@ pub assume_specification<T, U, F: FnOnce(T) -> Option<U>>[ Option::<T>::and_then
 ;
 
 // ok_or_else
+#[cfg(not(verus_verify_core))]
 pub assume_specification<T, E, F: FnOnce() -> E>[ Option::<T>::ok_or_else ](
     option: Option<T>,
     err: F,
@@ -255,6 +260,7 @@ pub assume_specification<T: core::default::Default>[ Option::<T>::unwrap_or_defa
 ;
 
 // unwrap_or_else
+#[cfg(not(verus_verify_core))]
 pub assume_specification<T, F: FnOnce() -> T>[ Option::<T>::unwrap_or_else ](
     option: Option<T>,
     f: F,

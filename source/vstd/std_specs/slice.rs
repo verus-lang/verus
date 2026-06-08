@@ -63,6 +63,7 @@ impl<T, I, const N: usize> super::core::IndexSpecImpl<I> for [T; N]
     }
 }
 
+#[cfg(not(verus_verify_core))]
 pub assume_specification<T, I: SliceIndex<[T]>> [<[T] as Index<I>>::index] (
     slice: &[T],
     index: I,
@@ -71,6 +72,7 @@ pub assume_specification<T, I: SliceIndex<[T]>> [<[T] as Index<I>>::index] (
         call_ensures(<I as SliceIndex<[T]>>::index, (index, slice), output),
 ;
 
+#[cfg(not(verus_verify_core))]
 pub assume_specification<T, I, const N: usize> [<[T; N] as Index<I>>::index] (
     array: &[T; N],
     index: I,
@@ -460,6 +462,7 @@ pub assume_specification<T> [ <[T]>::last_mut ](slice: &mut [T]) -> (res: Option
             && final(slice)@ == old(slice)@.update(old(slice).len() - 1, *final(res.unwrap()))
 ;
 
+#[cfg(not(verus_verify_core))]
 pub assume_specification<T> [ <[T]>::split_at ](slice: &[T], mid: usize) -> (ret: (&[T], &[T]))
     requires
         0 <= mid <= slice.len(),
@@ -469,6 +472,7 @@ pub assume_specification<T> [ <[T]>::split_at ](slice: &[T], mid: usize) -> (ret
 ;
 
 #[doc(hidden)]
+#[cfg(not(verus_verify_core))]
 pub assume_specification<T> [ <[T]>::split_at_mut ](slice: &mut [T], mid: usize) -> (ret: (&mut [T], &mut [T]))
     requires
         0 <= mid <= slice.len(),

@@ -171,6 +171,7 @@ pub open spec fn spec_unwrap<T, E: core::fmt::Debug>(result: Result<T, E>) -> T
 }
 
 #[verifier::when_used_as_spec(spec_unwrap)]
+#[cfg(not(verus_verify_core))]
 pub assume_specification<T, E: core::fmt::Debug>[ Result::<T, E>::unwrap ](
     result: Result<T, E>,
 ) -> (t: T)
@@ -190,6 +191,7 @@ pub open spec fn spec_unwrap_err<T: core::fmt::Debug, E>(result: Result<T, E>) -
 }
 
 #[verifier::when_used_as_spec(spec_unwrap_err)]
+#[cfg(not(verus_verify_core))]
 pub assume_specification<T: core::fmt::Debug, E>[ Result::<T, E>::unwrap_err ](
     result: Result<T, E>,
 ) -> (e: E)
@@ -209,6 +211,7 @@ pub open spec fn spec_expect<T, E: core::fmt::Debug>(result: Result<T, E>, msg: 
 }
 
 #[verifier::when_used_as_spec(spec_expect)]
+#[cfg(not(verus_verify_core))]
 pub assume_specification<T, E: core::fmt::Debug>[ Result::<T, E>::expect ](
     result: Result<T, E>,
     msg: &str,
@@ -220,6 +223,7 @@ pub assume_specification<T, E: core::fmt::Debug>[ Result::<T, E>::expect ](
 ;
 
 // map
+#[cfg(not(verus_verify_core))]
 pub assume_specification<T, E, U, F: FnOnce(T) -> U>[ Result::<T, E>::map ](
     result: Result<T, E>,
     op: F,
@@ -236,6 +240,7 @@ pub assume_specification<T, E, U, F: FnOnce(T) -> U>[ Result::<T, E>::map ](
 
 // map_err
 #[verusfmt::skip]
+#[cfg(not(verus_verify_core))]
 pub assume_specification<T, E, F, O: FnOnce(E) -> F>[Result::<T, E>::map_err](result: Result<T, E>, op: O) -> (mapped_result: Result<T, F>)
     requires
         result.is_err() ==> op.requires((result->Err_0,)),
