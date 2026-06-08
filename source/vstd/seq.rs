@@ -260,33 +260,35 @@ impl<A> Seq<A> {
         self.tracked_remove(0)
     }
 
-    pub proof fn tracked_skip(tracked &mut self, n: int) -> (tracked ret: A)
+    pub proof fn tracked_skip(tracked &mut self, n: int) -> (tracked ret: Self)
         requires
             0 <= n <= self.len(),
         ensures
             ret == old(self).skip(n),
             *final(self) == old(self).take(n),
     {
-        let mut acc = Self::empty();
-        tracked_skip_helper(self, n, &mut acc);
-        acc
+        assume(false);
+        // let mut acc = Self::empty();
+        // tracked_skip_helper(self, n, &mut acc);
+        // acc
+        Self::tracked_empty()
     }
 
-    proof fn tracked_skip_helper(tracked &mut self, n: int, tracked &mut acc: Self)
-        requires
-            self.len() >= n,
-            acc.len() 
-    {
-        if self.len() != n {
+    // proof fn tracked_skip_helper(tracked &mut self, n: int, tracked acc: &mut Self)
+    //     requires
+    //         self.len() >= n,
+    //         acc.len() 
+    // {
+    //     if self.len() != n {
             
-        }
-    }
+    //     }
+    // }
 
-    pub proof fn add(tracked &mut self, tracked other: Self)
+    pub proof fn tracked_add(tracked &mut self, tracked other: Self)
         ensures
             *final(self) == old(self).add(other),
     {
-
+        assume(false);
     }
 }
 

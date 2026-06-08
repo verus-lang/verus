@@ -1461,7 +1461,7 @@ impl<T> SeqPointsTo<T> {
 
     }
 
-    // TODO: come back and figure out what to do about the value transformation (sigh)
+    // TODO: come back and figure out what to do about the value transformation
     pub axiom fn cast_to_u8(tracked self) -> (tracked out: SeqPointsTo<u8>)
         ensures
             out.ptr() == self.ptr() as *mut u8,
