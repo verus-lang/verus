@@ -165,6 +165,10 @@ impl<A> Seq<A> {
         self[0]
     }
 
+    pub open spec fn push_front(self, a: A) -> Self {
+        self.insert(0, a)
+    }
+
     #[verifier(external_body)]
     pub proof fn tracked_empty() -> (tracked ret: Self)
         ensures
@@ -231,6 +235,17 @@ impl<A> Seq<A> {
         self.tracked_remove(self.len() - 1)
     }
 
+    pub proof fn tracked_push_front(tracked &mut self, tracked v: A)
+        ensures
+            *final(self) == old(self).push_front(v),
+            final(self).len() == old(self).len() + 1,
+    {
+        broadcast use group_seq_axioms;
+
+        assert(self.insert(0, v) =~= self.push_front(v));
+        self.tracked_insert(0, v);
+    }
+
     pub proof fn tracked_pop_front(tracked &mut self) -> (tracked ret: A)
         requires
             old(self).len() > 0,
@@ -243,6 +258,35 @@ impl<A> Seq<A> {
 
         assert(self.remove(0) =~= self.drop_first());
         self.tracked_remove(0)
+    }
+
+    pub proof fn tracked_skip(tracked &mut self, n: int) -> (tracked ret: A)
+        requires
+            0 <= n <= self.len(),
+        ensures
+            ret == old(self).skip(n),
+            *final(self) == old(self).take(n),
+    {
+        let mut acc = Self::empty();
+        tracked_skip_helper(self, n, &mut acc);
+        acc
+    }
+
+    proof fn tracked_skip_helper(tracked &mut self, n: int, tracked &mut acc: Self)
+        requires
+            self.len() >= n,
+            acc.len() 
+    {
+        if self.len() != n {
+            
+        }
+    }
+
+    pub proof fn add(tracked &mut self, tracked other: Self)
+        ensures
+            *final(self) == old(self).add(other),
+    {
+
     }
 }
 

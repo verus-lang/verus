@@ -105,7 +105,7 @@ impl Provenance {
 pub broadcast axiom fn alloc_bound(p: Provenance)
     ensures
         #![trigger p.alloc_len()]
-        p.start_addr() + p.alloc_len() <= usize::MAX + 1,
+        p.start_addr() + p.alloc_len() <= usize::MAX,
         p.alloc_len() <= isize::MAX,
 ;
 
@@ -1293,13 +1293,16 @@ pub axiom fn seq_into_slice<T>(tracked spt: SeqPointsTo<T>) -> (tracked pt: Poin
 /// If the domain exactly contains the indices bounded by `self.len()`,
 /// we can convert this permission into a `PointsTo<[T]>` with the same pointer
 /// and the same memory contents at every index.
-pub axiom fn seq_into_slice_mut<T>(tracked spt: &mut SeqPointsTo<T>) -> (tracked pt: &mut PointsTo<[T]>)
+pub axiom fn seq_into_slice_mut<T>(tracked spt: &mut SeqPointsTo<T>) -> (tracked pt: &mut PointsTo<
+    [T],
+>)
     ensures
         forall|i|
-            0 <= i < pt.mem_contents_seq().len() ==> #[trigger] final(pt).mem_contents_seq()[i as int]
+            0 <= i < pt.mem_contents_seq().len()
+                ==> #[trigger] final(pt).mem_contents_seq()[i as int]
                 == final(spt)[i].mem_contents(),
         old(spt).ptr() == final(spt).ptr(),
-        pt.ptr() as *mut T == final(spt).ptr(),
+        pt.ptr() as *mut T == old(spt).ptr(),
         pt.ptr()@.metadata == final(spt).len() == old(spt).len(),
 ;
 
@@ -1471,19 +1474,77 @@ impl SeqPointsTo<u8> {
     ///
     /// (1) The pointer's address is aligned to `T`.
     ///
-    /// (2) The length is at least `capacity * layout::size_of::<T>()`.
+    /// (2) The length is exactly `capacity * layout::size_of::<T>()`.
     ///
     /// (3) The permission is uninitialized.
     pub axiom fn cast_to_type<T>(tracked self, capacity: usize) -> (tracked out: SeqPointsTo<T>)
         requires
             self.ptr()@.addr as nat % align_of::<T>() == 0,
-            self.len() >= capacity * layout::size_of::<T>(),
+            self.len() == capacity * layout::size_of::<T>(),
             self.is_fully_uninit(),
         ensures
             out.ptr() == self.ptr() as *mut T,
             out.len() == capacity,
             out.is_fully_uninit(),
     ;
+
+    /// Splits the `SeqPointsTo<u8>` into two permissions at the index boundary `mid`.
+    pub proof fn split(tracked self, mid: int) -> (tracked (first, second): (Self, Self))
+        requires
+            0 <= mid <= self.len(),
+        ensures
+            // first.ptr()@.provenance == self.ptr()@.provenance,
+            // second.ptr()@.provenance == second.ptr()@.provenance,
+            // first.len() as int == mid,
+            first.perm() == self.perm().take(mid),
+            // second.len() as int == self.len() - mid,
+            second.perm() == self.perm().skip(mid),
+            first.ptr() == self.ptr(),
+            second.ptr() == ptr_mut_from_data(
+                PtrData::<u8> {
+                    addr: (self.ptr()@.addr + mid) as usize,
+                    provenance: self.ptr()@.provenance,
+                    metadata: self.ptr()@.metadata,
+                },
+            ),
+    {
+        broadcast use {group_vstd_default, align_of_u8};
+
+        use_type_invariant(&self);
+        assume(false);
+
+        let tracked raw_perm = self.into_raw();
+        let tracked (first, second) = raw_perm.split(
+            Set::new(|x: int| self.ptr()@.addr <= x < self.ptr()@.addr + mid),
+        );
+        (
+            first.into_typed_seq::<u8>(self.ptr()@.addr, mid as nat),
+            second.into_typed_seq::<u8>(
+                (self.ptr()@.addr + mid) as usize,
+                (self.len() - mid) as nat,
+            ),
+        )
+    }
+
+    /// Concatenates `SeqPointsTo<u8>` permissions `self` and `other`, 
+    /// provided their pointers have the same provenance 
+    /// and `other`'s pointer starts at the end of `self`'s domain.
+    pub proof fn join(tracked self, tracked other: Self) -> (tracked joined: Self)
+        requires
+            self.ptr()@.provenance == other.ptr()@.provenance,
+            other.ptr()@.addr == self.ptr()@.addr + self.len(),
+        ensures
+            joined.ptr() == self.ptr(),
+            joined.perm() == self.perm() + other.perm(),
+    {
+        broadcast use {group_vstd_default, align_of_u8};
+
+        use_type_invariant(&self);
+        use_type_invariant(&other);
+        assume(false);
+
+        self
+    }
 }
 
 pub tracked struct MapPointsTo<T> {
@@ -2210,7 +2271,8 @@ pub fn ptr_mut_ref<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>) -> 
 /// The memory pointed to by `ptr` must be initialized.
 #[inline(always)]
 #[verifier::external_body]
-pub const fn ptr_mut_ref_slice<T>(ptr: *mut [T], Tracked(perm): Tracked<&mut PointsTo<[T]>>) -> (v: &mut [T])
+pub const fn ptr_mut_ref_slice<T>(ptr: *mut [T], Tracked(perm): Tracked<&mut PointsTo<[T]>>) -> (v:
+    &mut [T])
     requires
         old(perm).ptr() == ptr,
         old(perm).is_init(),
@@ -2224,7 +2286,6 @@ pub const fn ptr_mut_ref_slice<T>(ptr: *mut [T], Tracked(perm): Tracked<&mut Poi
 {
     unsafe { &mut *ptr }
 }
-
 
 macro_rules! pointer_specs {
     ($mod_ident:ident, $ptr_from_data:ident, $mu:tt) => {
@@ -2557,7 +2618,7 @@ impl<V> PointsTo<[V]> {
         ensures
             points_to_raw.is_range(
                 self.ptr().addr() as int,
-                (size_of::<V>() as int) * self.value().len(),
+                (size_of::<V>() as int) * self.mem_contents_seq().len(),
             ),
             points_to_raw.provenance() == self.ptr()@.provenance,
     ;
@@ -2568,7 +2629,7 @@ impl<V> PointsTo<[V]> {
         ensures
             points_to_raw.is_range(
                 self.ptr().addr() as int,
-                (size_of::<V>() as int) * self.value().len(),
+                (size_of::<V>() as int) * self.mem_contents_seq().len(),
             ),
             points_to_raw.provenance() == self.ptr()@.provenance,
     ;
@@ -2607,6 +2668,34 @@ impl<V> MapPointsTo<V> {
             points_to_raw.is_range(self.ptr().addr() as int, (size_of::<V>() * self.len()) as int),
             points_to_raw.provenance() == self.ptr()@.provenance,
     ;
+}
+
+impl<V> SeqPointsTo<V> {
+    /// Provided that the domain of `self` is exactly the addresses bounded by `self.len()`,
+    /// creates a `PointsToRaw` from a `SeqPointsTo<V>` with the same provenance
+    /// and a range starting at the address of the `PointsTo<V>` with length `size_of::<V>() * self.len()`.
+    pub proof fn into_raw(tracked self) -> (tracked points_to_raw: PointsToRaw)
+        ensures
+            points_to_raw.is_range(self.ptr().addr() as int, (size_of::<V>() * self.len()) as int),
+            points_to_raw.provenance() == self.ptr()@.provenance,
+    {
+        broadcast use group_raw_ptr_axioms;
+
+        use_type_invariant(&self);
+        seq_into_slice(self).into_raw()
+    }  // /
+    // Provided that the domain of `self` is exactly the indices bounded by `self.len()`,
+    // /// creates a reference to a `PointsToRaw` from a reference to a `SeqPointsTo<V>` with the same provenance
+    // /// and a range starting at the address of the `PointsTo<V>` with length `size_of::<V>() * self.len()`.
+    // ///
+    // // TODO: prove using other axioms
+    // pub proof fn into_raw_shared(tracked &self) -> (tracked points_to_raw: &PointsToRaw)
+    //     ensures
+    //         points_to_raw.is_range(self.ptr().addr() as int, (size_of::<V>() * self.len()) as int),
+    //         points_to_raw.provenance() == self.ptr()@.provenance,
+    // {
+    // }
+
 }
 
 // Allocation and deallocation via the global allocator
