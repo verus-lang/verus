@@ -368,8 +368,9 @@ pub(crate) fn no_builtin_err(span: &vir::messages::Span) -> VirErr {
     .help("For getting started with Verus, see: https://verus-lang.github.io/verus/guide/getting_started.html")
 }
 
-/// Iterate all owners in the crate. In rustc 1.96+, `Crate.owners` is private,
-/// so we enumerate all LocalDefIds via definitions_untracked() and look each up.
+/// Iterate over all owners in the crate. In rustc 1.96+, `Crate.owners` is
+/// private, so we enumerate all LocalDefIds via definitions_untracked() and
+/// look each one up.
 pub(crate) fn iter_crate_owners<'tcx>(
     krate: &rustc_middle::hir::Crate<'tcx>,
     tcx: rustc_middle::ty::TyCtxt<'tcx>,
