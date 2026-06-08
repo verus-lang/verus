@@ -94,6 +94,39 @@ pub trait ExIterator {
             self.obeys_prophetic_iter_laws() && self.initial_value_relation(&self) ==>
                 FromIteratorSpec::from_iter_ensures(self.remaining(), collection),
     ;
+
+    fn find<P>(&mut self, predicate: P) -> (r: Option<Self::Item>)
+        where Self: Sized,
+            P: FnMut(&Self::Item) -> bool
+        default_ensures
+            // The iterator consistently obeys, completes, and decreases throughout its lifetime
+            final(self).obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
+            final(self).obeys_prophetic_iter_laws() ==> final(self).will_return_none() == old(self).will_return_none(),
+            final(self).obeys_prophetic_iter_laws() ==> (old(self).decrease() is Some <==> final(self).decrease() is Some),
+            final(self).obeys_prophetic_iter_laws() ==> {
+                final(self).remaining().is_suffix_of(old(self).remaining())
+            },
+            // If find returns None, then the iterator has no remaining
+            // elements, and the predicate was false for all of the original
+            // iterator's elements.
+            final(self).obeys_prophetic_iter_laws() && r.is_none() ==> {
+                &&& final(self).remaining().len() == 0
+                &&& forall |i| 0 <= i < old(self).remaining().len() ==>
+                    predicate.ensures((#[trigger]&old(self).remaining()[i],), false)
+            },
+            // If find returns Some, then the returned value satisfies the
+            // predicate, and all previous elements did not satisfy the
+            // predicate.
+            final(self).obeys_prophetic_iter_laws() && r.is_some() ==> {
+                let idx = old(self).remaining().len() - final(self).remaining().len() - 1;
+                {
+                    &&& old(self).remaining().len() > 0
+                    &&& predicate.ensures((&r.unwrap(),), true)
+                    &&& old(self).remaining()[idx] == r.unwrap()
+                    &&& forall |i| 0 <= i < idx ==>
+                        predicate.ensures((#[trigger] &old(self).remaining()[i],), false)
+                }
+            };
 }
 
 #[verifier::external_trait_specification]
