@@ -4,6 +4,26 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
+    #[test] mut_ref_forwarding verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        pub fn next_test<I: Iterator>(i: &mut I)
+            requires
+                i.obeys_prophetic_iter_laws(),
+                i.will_return_none(),
+            ensures
+                // TODO: The number of operators needed here is unfortunate
+                (&(*final(i))).obeys_prophetic_iter_laws(),
+                (&(*final(i))).will_return_none(),
+        {
+            i.next();
+
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] range_works verus_code! {
         use vstd::prelude::*;
 

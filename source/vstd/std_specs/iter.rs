@@ -258,6 +258,40 @@ impl <I> DoubleEndedIteratorSpecImpl for Rev<I>
     }
 }
 
+// Forwarding spec impl for the Rust-supplied blanket `impl<I> Iterator for &mut I`.
+// Without this, bare method-call syntax on a `i: &mut I` receiver (e.g. `i.remaining()`)
+// resolves to these (otherwise uninterpreted) functions on `&mut I` rather than on `I`,
+// silently disconnecting clients from `I`'s actual specs.
+impl <I> IteratorSpecImpl for &mut I
+    where I: Iterator {
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        <I as IteratorSpec>::obeys_prophetic_iter_laws(*self)
+    }
+
+    #[verifier::prophetic]
+    open spec fn remaining(&self) -> Seq<Self::Item> {
+        <I as IteratorSpec>::remaining(*self)
+    }
+
+    #[verifier::prophetic]
+    open spec fn will_return_none(&self) -> bool {
+        <I as IteratorSpec>::will_return_none(*self)
+    }
+
+    #[verifier::prophetic]
+    open spec fn initial_value_relation(&self, init: &Self) -> bool {
+        <I as IteratorSpec>::initial_value_relation(*self, &**init)
+    }
+
+    open spec fn decrease(&self) -> Option<nat> {
+        <I as IteratorSpec>::decrease(*self)
+    }
+
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        <I as IteratorSpec>::peek(*self, index)
+    }
+}
+
 /********************************************************************************
  * Defines a convenient wrapper type that bundles state and invariants needed
  * for ergonomic for-loop support.
