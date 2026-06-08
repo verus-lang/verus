@@ -120,6 +120,7 @@
   - [Installing and configuring Singular](./install-singular.md)
 
 - [Project setup and development]()
+  - [Using Verus via Cargo](./cargo_verus.md)
   - [Working with crates]()
   - [Invoking Verus code from Rust]()
   - [Documentation with Rustdoc](./verusdoc.md)
