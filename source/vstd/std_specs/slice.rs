@@ -88,23 +88,26 @@ verus! {
 /// True when the indices `start` and `end` (exclusive) are considered valid indices for `slice`.
 pub uninterp spec fn valid_indices<T: ?Sized>(start: int, end: int, slice: &T) -> bool;
 
-// For slices, the indices must be in bounds.
+/// For `[T]`, the indices must be in bounds.
 pub open spec fn valid_indices_slice<T>(start: int, end: int, slice: &[T]) -> bool {
     start <= end <= slice@.len()
 }
 
 pub broadcast axiom fn def_valid_indices_slice<T>(start: int, end: int, slice: &[T])
     ensures
-        valid_indices_slice(start, end, slice) <==> #[trigger] valid_indices(start, end, slice);
+        valid_indices_slice(start, end, slice) <==> #[trigger] valid_indices(start, end, slice),
+;
 
-// For str, the indices must be in bounds and fall on a char boundary.
+/// For `str`, the indices must be in bounds and on a char boundary.
 pub open spec fn valid_indices_str(start: int, end: int, slice: &str) -> bool {
-    start <= end <= slice.spec_bytes().len() && is_char_boundary(slice.spec_bytes(), start) && is_char_boundary(slice.spec_bytes(), end)
+    start <= end <= slice.spec_bytes().len() && is_char_boundary(slice.spec_bytes(), start)
+        && is_char_boundary(slice.spec_bytes(), end)
 }
 
 pub broadcast axiom fn def_valid_indices_str(start: int, end: int, slice: &str)
     ensures
-        valid_indices_str(start, end, slice) <==> #[trigger] valid_indices(start, end, slice);
+        valid_indices_str(start, end, slice) <==> #[trigger] valid_indices(start, end, slice),
+;
 
 /// True when `output` is the result of slicing `slice` from `start` to `end` (exclusive) indices.
 // This is written as a relation because `Output` is an exec type (e.g. [T]),
@@ -116,29 +119,60 @@ pub uninterp spec fn index_result<T: ?Sized, Output: ?Sized>(
     output: &Output,
 ) -> bool;
 
-pub open spec fn index_result_slice_usize<T>(start: int, end: int, slice: &[T], output: &T) -> bool {
+/// For `[T]`, the result of slicing to a single `T` will be the element at the given index.
+pub open spec fn index_result_slice_usize<T>(
+    start: int,
+    end: int,
+    slice: &[T],
+    output: &T,
+) -> bool {
     *output =~= slice@[start]
 }
 
-pub broadcast axiom fn def_index_result_slice_usize<T>(start: int, end: int, slice: &[T], output: &T)
+pub broadcast axiom fn def_index_result_slice_usize<T>(
+    start: int,
+    end: int,
+    slice: &[T],
+    output: &T,
+)
     ensures
-        #[trigger] index_result::<[T], T>(start, end, slice, output) <==> index_result_slice_usize(start, end, slice, output);
+        #[trigger] index_result::<[T], T>(start, end, slice, output) <==> index_result_slice_usize(
+            start,
+            end,
+            slice,
+            output,
+        ),
+;
 
+/// For `[T]`, the result of slicing to another `[T]` will be a subsequence of the original sequence.
 pub open spec fn index_result_slice<T>(start: int, end: int, slice: &[T], output: &[T]) -> bool {
     output@ =~= slice@.subrange(start, end)
 }
 
 pub broadcast axiom fn def_index_result_slice<T>(start: int, end: int, slice: &[T], output: &[T])
     ensures
-        #[trigger] index_result::<[T], [T]>(start, end, slice, output) <==> index_result_slice(start, end, slice, output);
+        #[trigger] index_result::<[T], [T]>(start, end, slice, output) <==> index_result_slice(
+            start,
+            end,
+            slice,
+            output,
+        ),
+;
 
+/// For `str`, the result of slicing to another `str` will be a sub-string of the original string.
 pub open spec fn index_result_str(start: int, end: int, slice: &str, output: &str) -> bool {
     output.spec_bytes() == slice.spec_bytes().subrange(start, end)
 }
 
 pub broadcast axiom fn def_index_result_str(start: int, end: int, slice: &str, output: &str)
     ensures
-        #[trigger] index_result::<str, str>(start, end, slice, output) <==> index_result_str(start, end, slice, output);
+        #[trigger] index_result::<str, str>(start, end, slice, output) <==> index_result_str(
+            start,
+            end,
+            slice,
+            output,
+        ),
+;
 
 /// True when the final value of the slice (`final_slice`) will be the result of
 /// mutating the original slice (`old_slice`) between the indices `start` and `end`,
@@ -151,32 +185,84 @@ pub uninterp spec fn index_mut_result<T: ?Sized, Output: ?Sized>(
     final_output: &Output,
 ) -> bool;
 
-pub open spec fn index_mut_result_slice_usize<T>(start: int, end: int, old_slice: &[T], final_slice: &[T], final_output: &T) -> bool {
+/// For `[T]` sliced to a single `T`, the final `[T]` will be updated at the corresponding index
+/// with the final value of the single element.
+pub open spec fn index_mut_result_slice_usize<T>(
+    start: int,
+    end: int,
+    old_slice: &[T],
+    final_slice: &[T],
+    final_output: &T,
+) -> bool {
     final_slice@ =~= old_slice@.update(start, *final_output)
 }
 
-pub broadcast axiom fn def_index_mut_result_slice_usize<T>(start: int, end: int, old_slice: &[T], final_slice: &[T], final_output: &T)
+pub broadcast axiom fn def_index_mut_result_slice_usize<T>(
+    start: int,
+    end: int,
+    old_slice: &[T],
+    final_slice: &[T],
+    final_output: &T,
+)
     ensures
-        #[trigger] index_mut_result::<[T], T>(start, end, old_slice, final_slice, final_output) <==> index_mut_result_slice_usize(start, end, old_slice, final_slice, final_output)
-    ;
+        #[trigger] index_mut_result::<[T], T>(start, end, old_slice, final_slice, final_output)
+            <==> index_mut_result_slice_usize(start, end, old_slice, final_slice, final_output),
+;
 
-pub open spec fn index_mut_result_slice<T>(start: int, end: int, old_slice: &[T], final_slice: &[T], final_output: &[T]) -> bool {
-    final_slice@ =~= old_slice@.subrange(0, start) + final_output@ + old_slice@.subrange(end, old_slice@.len() as int)
+/// For `[T]` sliced to another slice `[T]`, the final `[T]` will be updated at the corresponding subrange
+/// with the final value of the subslice.
+pub open spec fn index_mut_result_slice<T>(
+    start: int,
+    end: int,
+    old_slice: &[T],
+    final_slice: &[T],
+    final_output: &[T],
+) -> bool {
+    final_slice@ =~= old_slice@.subrange(0, start) + final_output@ + old_slice@.subrange(
+        end,
+        old_slice@.len() as int,
+    )
 }
 
-pub broadcast axiom fn def_index_mut_result_slice<T>(start: int, end: int, old_slice: &[T], final_slice: &[T], final_output: &[T])
+pub broadcast axiom fn def_index_mut_result_slice<T>(
+    start: int,
+    end: int,
+    old_slice: &[T],
+    final_slice: &[T],
+    final_output: &[T],
+)
     ensures
-        #[trigger] index_mut_result::<[T], [T]>(start, end, old_slice, final_slice, final_output) <==> index_mut_result_slice(start, end, old_slice, final_slice, final_output)
-    ;
+        #[trigger] index_mut_result::<[T], [T]>(start, end, old_slice, final_slice, final_output)
+            <==> index_mut_result_slice(start, end, old_slice, final_slice, final_output),
+;
 
-pub open spec fn index_mut_result_str(start: int, end: int, old_slice: &str, final_slice: &str, final_output: &str) -> bool {
-    final_slice.spec_bytes() =~= old_slice.spec_bytes().subrange(0, start) + final_output.spec_bytes() + old_slice.spec_bytes().subrange(end, old_slice.spec_bytes().len() as int)
+/// For `str` sliced to another `str`, the final `str` will be updated at the corresponding subrange
+/// with the final value of the sub-string.
+pub open spec fn index_mut_result_str(
+    start: int,
+    end: int,
+    old_slice: &str,
+    final_slice: &str,
+    final_output: &str,
+) -> bool {
+    final_slice.spec_bytes() =~= old_slice.spec_bytes().subrange(0, start)
+        + final_output.spec_bytes() + old_slice.spec_bytes().subrange(
+        end,
+        old_slice.spec_bytes().len() as int,
+    )
 }
 
-pub broadcast axiom fn def_index_mut_result_str(start: int, end: int, old_slice: &str, final_slice: &str, final_output: &str)
+pub broadcast axiom fn def_index_mut_result_str(
+    start: int,
+    end: int,
+    old_slice: &str,
+    final_slice: &str,
+    final_output: &str,
+)
     ensures
-        #[trigger] index_mut_result::<str, str>(start, end, old_slice, final_slice, final_output) <==> index_mut_result_str(start, end, old_slice, final_slice, final_output)
-    ;
+        #[trigger] index_mut_result::<str, str>(start, end, old_slice, final_slice, final_output)
+            <==> index_mut_result_str(start, end, old_slice, final_slice, final_output),
+;
 
 // Version for outside of `core`, where we add an external_trait private bound
 #[verifier::external_trait_specification]
@@ -400,11 +486,10 @@ pub broadcast group group_slice_index_specs {
     def_index_result_str,
     def_index_mut_result_slice,
     def_index_mut_result_slice_usize,
-    def_index_mut_result_str
+    def_index_mut_result_str,
 }
 
-}
-
+} // verus!
 verus! {
 
 // The `iter` method of a `<T>` returns an iterator of type `Iter<'_, T>`,
