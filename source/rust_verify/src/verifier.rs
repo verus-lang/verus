@@ -2573,21 +2573,15 @@ impl Verifier {
         }
 
         self.air_no_span = {
-            let no_span = tcx
-                .hir_crate(())
-                .owners
-                .iter()
-                .filter_map(|oi| {
-                    oi.as_owner().as_ref().and_then(|o| {
-                        if let OwnerNode::Crate(c) = o.node() {
-                            Some(c.spans.inner_span)
-                        } else {
-                            None
-                        }
-                    })
-                })
-                .next()
-                .expect("OwnerNode::Crate missing");
+            let hir_crate = tcx.hir_crate(());
+            let no_span = {
+                let crate_owner = hir_crate.owner(tcx, rustc_span::def_id::CRATE_DEF_ID);
+                let owner_info = crate_owner.as_owner().expect("OwnerNode::Crate missing");
+                let OwnerNode::Crate(c) = owner_info.node() else {
+                    panic!("OwnerNode::Crate missing");
+                };
+                c.spans.inner_span
+            };
             Some(vir::messages::Span {
                 raw_span: crate::spans::to_raw_span(no_span),
                 id: 0,
@@ -3022,10 +3016,9 @@ pub(crate) static BODY_HIR_ID_TO_REVEAL_PATH_RES: std::sync::RwLock<
     >,
 > = std::sync::RwLock::new(None);
 
-fn hir_crate<'tcx>(tcx: TyCtxt<'tcx>, _: ()) -> rustc_hir::Crate<'tcx> {
-    let mut crate_ = (rustc_interface::DEFAULT_QUERY_PROVIDERS.queries.hir_crate)(tcx, ());
-    crate::hir_hide_reveal_rewrite::hir_hide_reveal_rewrite(&mut crate_, tcx);
-    crate_
+fn hir_crate<'tcx>(tcx: TyCtxt<'tcx>, _: ()) -> rustc_middle::hir::Crate<'tcx> {
+    let crate_ = (rustc_interface::DEFAULT_QUERY_PROVIDERS.queries.hir_crate)(tcx, ());
+    crate::hir_hide_reveal_rewrite::hir_hide_reveal_rewrite(crate_, tcx)
 }
 
 impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {

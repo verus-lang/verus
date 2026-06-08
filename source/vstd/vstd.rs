@@ -7,7 +7,10 @@
 #![allow(unused_imports)]
 #![allow(dead_code)]
 #![allow(unused_attributes)]
+#![allow(unused_features)] // silences spurious warnings for features that cause errors when omitted
 #![allow(rustdoc::invalid_rust_codeblocks)]
+#![cfg_attr(verus_keep_ghost, feature(atomic_internals))]
+#![cfg_attr(verus_keep_ghost, feature(generic_atomic))]
 #![cfg_attr(verus_keep_ghost, feature(core_intrinsics))]
 #![cfg_attr(any(verus_keep_ghost, feature = "allocator"), feature(allocator_api))]
 #![cfg_attr(verus_keep_ghost, feature(step_trait))]
@@ -18,7 +21,6 @@
 #![cfg_attr(verus_keep_ghost, feature(derive_eq_internals))]
 #![cfg_attr(verus_keep_ghost, feature(slice_index_methods))]
 #![cfg_attr(all(feature = "alloc", verus_keep_ghost), feature(liballoc_internals))]
-#![cfg_attr(verus_keep_ghost, feature(new_range_api))]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;

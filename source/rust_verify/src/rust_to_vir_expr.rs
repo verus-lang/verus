@@ -91,8 +91,8 @@ use rustc_middle::ty::{
 };
 use rustc_mir_build_verus::verus::BodyErasure;
 use rustc_span::Span;
+use rustc_span::Spanned;
 use rustc_span::def_id::DefId;
-use rustc_span::source_map::Spanned;
 use std::sync::Arc;
 use vir::ast::{
     ArithOp, ArmX, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp, BoundsCheck, CallTarget,
@@ -501,7 +501,7 @@ pub(crate) fn patexpr_to_vir<'tcx>(
         PatExprKind::Path(qpath) => {
             let res = bctx.types.qpath_res(&qpath, pat_expr.hir_id);
             match res {
-                Res::Def(DefKind::Const, id) => {
+                Res::Def(DefKind::Const { is_type_const: _ }, id) => {
                     let node_substs = bctx.types.node_args(pat_expr.hir_id);
                     let x = const_var_to_vir(bctx, None, id, node_substs, &pat_expr.hir_id, span)?;
                     let expr = bctx.spanned_typed_new(pat.span, &pat_typ, x.x.clone());
@@ -1515,8 +1515,11 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
         Adjust::Pointer(_cast) => {
             unsupported_err!(expr.span, "casting a pointer (here the cast is implicit)")
         }
-        Adjust::ReborrowPin(_mut) => {
-            unsupported_err!(expr.span, "reborrowing a pinned reference")
+        Adjust::Deref(DerefAdjustKind::Pin) => {
+            unsupported_err!(expr.span, "automatic deref of a pinned reference")
+        }
+        Adjust::Borrow(AutoBorrow::Pin(_)) => {
+            unsupported_err!(expr.span, "borrowing a pinned reference")
         }
     }
 }
@@ -2534,7 +2537,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         expr.span,
                     )?))
                 }
-                (Res::Def(DefKind::AssocConst, id), _) => {
+                (Res::Def(DefKind::AssocConst { is_type_const: _ }, id), _) => {
                     if let Some(vir_expr) =
                         int_intrinsic_constant_to_vir(&bctx.ctxt, expr.span, &expr_typ()?, id)
                     {
@@ -2559,7 +2562,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         Ok(ExprOrPlace::Expr(e))
                     }
                 }
-                (Res::Def(DefKind::Const, id), _) => {
+                (Res::Def(DefKind::Const { is_type_const: _ }, id), _) => {
                     let node_substs = bctx.types.node_args(expr.hir_id);
                     let e = const_var_to_vir(
                         bctx,
@@ -3147,7 +3150,7 @@ fn lit_to_vir<'tcx>(
         LitKind::Float(..) => {
             if let Some(ty) = ty {
                 use rustc_middle::ty::LitToConstInput;
-                let lit_const = LitToConstInput { lit: lit.node, ty, neg: negated };
+                let lit_const = LitToConstInput { lit: lit.node, ty: Some(ty), neg: negated };
                 if let Some(v) = bctx.ctxt.tcx.lit_to_const(lit_const) {
                     if let Some(i) = v.valtree.try_to_leaf() {
                         match i.size().bytes() {
