@@ -31,6 +31,23 @@ This creates a new directory with a correctly-configured `Cargo.toml`, an initia
 `src/main.rs` (or `src/lib.rs`), and a `.gitignore`. The generated project already has
 `vstd` as a dependency and the `[package.metadata.verus]` section described below.
 
+## Updating an existing Rust project to support Verus
+
+To enable verification for one or more of the crates in your project,
+add the following to each of their `Cargo.toml` files:
+
+```toml
+[package.metadata.verus]
+verify = true
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(verus_only)'] }
+```
+See below for more details.
+
+Note that you can still use normal `cargo` commands (e.g., `cargo build`) on
+crates and projects that include Verus annotations.
+
 ## Cargo.toml configuration
 
 Crates that should be verified must opt in by adding a `[package.metadata.verus]`
