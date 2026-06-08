@@ -10,6 +10,7 @@ use core::mem::ManuallyDrop;
 use core::mem::MaybeUninit;
 
 use verus as verus_;
+#[cfg(not(verus_verify_core))]
 verus_! {
 
 /**

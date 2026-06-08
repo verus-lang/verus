@@ -125,6 +125,7 @@ pub broadcast group group_vstd_default {
     std_specs::bits::group_bits_axioms,
     std_specs::control_flow::group_control_flow_axioms,
     std_specs::slice::group_slice_axioms,
+    #[cfg(not(verus_verify_core))]
     std_specs::manually_drop::group_manually_drop_axioms,
     std_specs::iter::group_iter_axioms,
     //

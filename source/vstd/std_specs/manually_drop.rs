@@ -4,6 +4,7 @@ use super::super::prelude::*;
 use core::mem::ManuallyDrop;
 use core::ops::Deref;
 
+#[cfg(not(verus_verify_core))]
 verus! {
 
 #[verifier::external_type_specification]

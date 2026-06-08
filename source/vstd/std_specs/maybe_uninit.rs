@@ -5,6 +5,7 @@ use core::mem::MaybeUninit;
 use verus as verus_;
 verus_! {
 
+#[cfg(not(verus_verify_core))]
 #[verifier::external_type_specification]
 #[verifier::external_body]
 #[verifier::accept_recursive_types(T)]
@@ -26,28 +27,33 @@ impl<T> MaybeUninitAdditionalSpecFns<T> for MaybeUninit<T> {
     }
 }
 
+#[cfg(not(verus_verify_core))]
 pub assume_specification<T>[ MaybeUninit::<T>::new ](val: T) -> (res: MaybeUninit<T>)
     ensures res.mem_contents() == MemContents::Init(val),
     opens_invariants none
     no_unwind;
 
+#[cfg(not(verus_verify_core))]
 pub assume_specification<T>[ MaybeUninit::<T>::uninit ]() -> (res: MaybeUninit<T>)
     ensures res.mem_contents() == MemContents::Uninit,
     opens_invariants none
     no_unwind;
 
+#[cfg(not(verus_verify_core))]
 pub assume_specification<T>[ MaybeUninit::<T>::assume_init ](m: MaybeUninit<T>) -> T
     requires m.mem_contents().is_init(),
     returns m.mem_contents().value(),
     opens_invariants none
     no_unwind;
 
+#[cfg(not(verus_verify_core))]
 pub assume_specification<T>[ MaybeUninit::<T>::assume_init_ref ](m: &MaybeUninit<T>) -> (ret: &T)
     requires m.mem_contents().is_init(),
     ensures ret == m.mem_contents().value(),
     opens_invariants none
     no_unwind;
 
+#[cfg(not(verus_verify_core))]
 pub assume_specification<T>[ MaybeUninit::<T>::assume_init_mut ](m: &mut MaybeUninit<T>) -> (ret: &mut T)
     requires m.mem_contents().is_init(),
     ensures *ret == old(m).mem_contents().value(),
