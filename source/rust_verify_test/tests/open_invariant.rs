@@ -380,6 +380,38 @@ test_both! {
     } => Err(err) => assert_vir_error_msg(err, "invariant block might exit early")
 }
 
+test_verify_one_file! {
+    #[test] into_inner_atomic verus_code! {
+        use vstd::invariant::*;
+        pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<AtomicInvariant<A, u8, B>>, Tracked(j): Tracked<AtomicInvariant<A, u8, B>>)
+            requires
+                i.inv(0),
+        {
+          open_atomic_invariant!(&i => inner => {
+              proof {
+                  j.into_inner(); // FAILS
+              }
+          });
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] into_inner_local verus_code! {
+        use vstd::invariant::*;
+        pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<LocalInvariant<A, u8, B>>, Tracked(j): Tracked<LocalInvariant<A, u8, B>>)
+            requires
+                i.inv(0),
+        {
+          open_local_invariant!(&i => inner => {
+              proof {
+                  j.into_inner();
+              }
+          });
+        }
+    } => Ok(())
+}
+
 // Check that we can't open an AtomicInvariant with open_local_invariant and vice-versa
 
 test_verify_one_file! {

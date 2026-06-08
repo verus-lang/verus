@@ -1,4 +1,34 @@
-//! This is used to inject logic in the MIR-builder code.
+/*! This is used to inject logic in the MIR-builder code.
+
+There are a few reasons we need to modify the MIR:
+
+### Fixing CFG deletions
+
+Typically, the MIR builder deletes CFG edges coming out of function calls that never return,
+as judged by the inhabitedness of the return type.
+However, Rust may determine some types are uninhabited when they are NOT uninhabited in
+Verus's model because of the mode system (e.g. all spec values are inhabited).
+Thus, we inject our own check before the builder deletes the edge.
+
+### Emitting constraints for LocalInvariant
+
+An open_local_invariant block looks like this in the macro-expanded source:
+
+```rust
+let (guard, mut i) = vstd::invariant::open_atomic_invariant_begin(inv);
+{ body ... }
+vstd::invariant::open_atomic_invariant_end(guard, i);
+```
+
+where `guard: InvariantBlockGuard<'a>`.
+
+We need to keep 'a alive through the entire block. Initially, it seems the easiest
+way to do this is just add a constraint that 'a is alive at the
+`open_atomic_invariant_end` call (and indeed we do have such a constraint); the problem
+is this call might not be reached in the event of nontermination.
+Therefore, we need to inject this `'a alive` constraint at enough points in the invariant
+body so that some constraint is always reachable.
+*/
 
 use crate::builder::{BasicBlock, BorrowKind, Builder, PlaceBuilder, Rvalue, TerminatorKind, Ty};
 use rustc_middle::thir::ExprId;
@@ -17,6 +47,7 @@ impl VerusMirBuilderCtxt {
     }
 }
 
+/// The builder calls this when emitting the call into the CFG for the first time.
 pub(super) fn record_call_inhabitedness<'a, 'tcx>(
     this: &mut Builder<'a, 'tcx>,
     block: rustc_middle::mir::BasicBlock,
@@ -32,6 +63,7 @@ pub(super) fn record_call_inhabitedness<'a, 'tcx>(
     }
 }
 
+/// The builder calls this when deciding if it should delete the edge.
 pub(crate) fn skip_edge_deletion_for_uninhabited_ty<'a, 'tcx>(
     verus_mir_builder_ctxt: &VerusMirBuilderCtxt,
     block: rustc_middle::mir::BasicBlock,
@@ -59,6 +91,7 @@ pub fn func_ty_skip_edge_deletion_for_uninhabited_ty<'tcx>(ty: Ty<'tcx>) -> bool
     }
 }
 
+/// Emit constraints for every open_local_invariant block are currently in.
 pub(super) fn emit_extra_constraints<'a, 'tcx>(
     this: &mut Builder<'a, 'tcx>,
     block: rustc_middle::mir::BasicBlock,
@@ -86,10 +119,33 @@ pub(super) fn emit_extra_constraints<'a, 'tcx>(
     }
 }
 
-/// When a call never returns, if we delete the CFG we need to make sure it doesn't ruin
-/// the constraints relating to local_invariant.
-/// Thus, if this is a call with local_invariant constraints, then instead of deleting the edge,
-/// make a new edge to a block with the constraints, then loop forever.
+/// If we have a call that never returns, and we want to delete the CFG edge,
+/// we need to make sure it doesn't ruin the constraints relating to local_invariant.
+///
+/// Specifically, if we're in some open_local_invariant block with lifetime `'a`,
+/// then `'a` needs to outlive the function lifetime. The only way to make such a constraint
+/// is to add an `'a alive` constraint immediately after the call:
+///
+/// Call(...)
+///    |
+///    |
+///    v
+/// [ constraints...; ... ]
+///
+/// which is what we normally do.
+/// However, we can't do this if the Call never returns.
+/// Thus, for any Call where we would otherwise want to delete the CFG edge,
+/// we instead draw an edge to an infinite-looping basic block that has the
+/// necessary constraints:
+///
+/// Call(...)
+///    |
+///    |
+///    v
+/// [ constraints...; goto ]
+///    ^                |
+///    \                /
+///     ----------------
 pub(super) fn cfg_removal_fix_constraints<'a, 'tcx>(
     this: &mut Builder<'a, 'tcx>,
     basic_blocks_edited: Vec<usize>,
