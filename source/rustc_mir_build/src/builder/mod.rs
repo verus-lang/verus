@@ -71,11 +71,11 @@ pub(crate) fn closure_saved_names_of_captured_variables<'tcx>(
 /// be called by the query `mir_built`.
 pub fn build_mir_inner_impl<'tcx>(tcx: TyCtxt<'tcx>, def: LocalDefId) -> Body<'tcx> {
     tcx.ensure_done().thir_abstract_const(def);
-    if let Err(e) = tcx.ensure_ok().check_match(def) {
+    if let Err(e) = tcx.ensure_result().check_match(def) {
         return construct_error(tcx, def, e);
     }
 
-    if let Err(err) = tcx.ensure_ok().check_tail_calls(def) {
+    if let Err(err) = tcx.ensure_result().check_tail_calls(def) {
         return construct_error(tcx, def, err);
     }
 
@@ -238,6 +238,7 @@ struct Builder<'a, 'tcx> {
     coverage_info: Option<coverageinfo::CoverageInfoBuilder>,
 
     verus_extra_thir: Option<std::sync::Arc<crate::verus::ExtraThir>>,
+    verus_mir_builder_ctxt: crate::builder::verus_builder::VerusMirBuilderCtxt,
 }
 
 type CaptureMap<'tcx> = SortedIndexMultiMap<usize, ItemLocalId, Capture<'tcx>>;
@@ -514,7 +515,7 @@ fn construct_fn<'tcx>(
     };
 
     if let Some((dialect, phase)) =
-        find_attr!(tcx.hir_attrs(fn_id), CustomMir(dialect, phase, _) => (dialect, phase))
+        find_attr!(tcx, fn_id, CustomMir(dialect, phase, _) => (dialect, phase))
     {
         return custom::build_custom_mir(
             tcx,
@@ -640,8 +641,8 @@ fn construct_error(tcx: TyCtxt<'_>, def_id: LocalDefId, guar: ErrorGuaranteed) -
     let hir_id = tcx.local_def_id_to_hir_id(def_id);
 
     let (inputs, output, coroutine) = match tcx.def_kind(def_id) {
-        DefKind::Const
-        | DefKind::AssocConst
+        DefKind::Const { .. }
+        | DefKind::AssocConst { .. }
         | DefKind::AnonConst
         | DefKind::InlineConst
         | DefKind::Static { .. }
@@ -817,6 +818,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             lint_level_roots_cache: GrowableBitSet::new_empty(),
             coverage_info: coverageinfo::CoverageInfoBuilder::new_if_enabled(tcx, def),
             verus_extra_thir: crate::verus::get_extra_thir(def),
+            verus_mir_builder_ctxt: crate::builder::verus_builder::VerusMirBuilderCtxt::new(),
         };
 
         assert_eq!(builder.cfg.start_new_block(), START_BLOCK);
@@ -849,7 +851,9 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
     fn lint_and_remove_uninhabited(&mut self) {
         let mut lints = vec![];
 
-        for bbdata in self.cfg.basic_blocks.iter_mut() {
+        let mut basic_blocks_edited = vec![];
+
+        for (bbindex, bbdata) in self.cfg.basic_blocks.iter_mut().enumerate() {
             let term = bbdata.terminator_mut();
             let TerminatorKind::Call { ref func, ref mut target, destination, .. } = term.kind
             else {
@@ -857,7 +861,9 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             };
             let Some(target_bb) = *target else { continue };
 
-            if crate::verus::func_ty_skip_edge_deletion_for_uninhabited_ty(
+            if crate::builder::verus_builder::skip_edge_deletion_for_uninhabited_ty(
+                &self.verus_mir_builder_ctxt,
+                BasicBlock::from_usize(bbindex),
                 func.ty(&self.local_decls, self.tcx),
             ) {
                 continue;
@@ -904,6 +910,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 // omit the return edge if a return type is visibly uninhabited to a module
                 // that makes the call.
                 *target = None;
+                basic_blocks_edited.push(bbindex);
             }
         }
 
@@ -964,6 +971,8 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 },
             );
         }
+
+        crate::builder::verus_builder::cfg_removal_fix_constraints(self, basic_blocks_edited);
     }
 
     fn finish(self) -> Body<'tcx> {

@@ -4,6 +4,26 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
+    #[test] mut_ref_forwarding verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        pub fn next_test<I: Iterator>(i: &mut I)
+            requires
+                i.obeys_prophetic_iter_laws(),
+                i.will_return_none(),
+            ensures
+                // TODO: The number of operators needed here is unfortunate
+                (&(*final(i))).obeys_prophetic_iter_laws(),
+                (&(*final(i))).will_return_none(),
+        {
+            i.next();
+
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] range_works verus_code! {
         use vstd::prelude::*;
 
@@ -58,6 +78,27 @@ test_verify_one_file! {
             let y: Vec<u32> = vec![1, 2, 3, 4];
             let z: Vec<u32> = y.into_iter().rev().rev().collect();
             assert(z@ == y@);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] find_works verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        fn test(v: Vec<u32>)
+        {
+            let v_result = v.into_iter().find(
+                |i| -> (ret: bool)
+                ensures ret == (*i < 10)
+                {*i < 10}
+            );
+            if let Some(i) = v_result {
+                assert(i < 10);
+            } else {
+                assert(forall |i| 0 <= i < v.len() ==> v[i] >= 10);
+            }
         }
     } => Ok(())
 }

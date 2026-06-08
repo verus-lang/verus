@@ -412,7 +412,7 @@ pub fn crate_to_vir<'a, 'tcx>(
     let mut errors = vec![];
 
     let mut typs_sizes_set: HashMap<TypIgnoreImplPaths, u128> = HashMap::new();
-    for (_, owner_opt) in ctxtx.krate.owners.iter_enumerated() {
+    for owner_opt in crate::util::iter_crate_owners(ctxtx.krate, tcx) {
         if let MaybeOwner::Owner(owner) = owner_opt {
             match owner.node() {
                 OwnerNode::Item(item) => {
@@ -462,7 +462,7 @@ pub fn crate_to_vir<'a, 'tcx>(
             vir::ast::ModuleX { path: root_module_path.clone(), reveals: None },
         ));
     }
-    for (_owner_id, owner_opt) in ctxt.krate.owners.iter_enumerated() {
+    for owner_opt in crate::util::iter_crate_owners(ctxt.krate, tcx) {
         if let MaybeOwner::Owner(owner) = owner_opt {
             match owner.node() {
                 OwnerNode::Item(

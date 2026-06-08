@@ -94,6 +94,39 @@ pub trait ExIterator {
             self.obeys_prophetic_iter_laws() && self.initial_value_relation(&self) ==>
                 FromIteratorSpec::from_iter_ensures(self.remaining(), collection),
     ;
+
+    fn find<P>(&mut self, predicate: P) -> (r: Option<Self::Item>)
+        where Self: Sized,
+            P: FnMut(&Self::Item) -> bool
+        default_ensures
+            // The iterator consistently obeys, completes, and decreases throughout its lifetime
+            final(self).obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
+            final(self).obeys_prophetic_iter_laws() ==> final(self).will_return_none() == old(self).will_return_none(),
+            final(self).obeys_prophetic_iter_laws() ==> (old(self).decrease() is Some <==> final(self).decrease() is Some),
+            final(self).obeys_prophetic_iter_laws() ==> {
+                final(self).remaining().is_suffix_of(old(self).remaining())
+            },
+            // If find returns None, then the iterator has no remaining
+            // elements, and the predicate was false for all of the original
+            // iterator's elements.
+            final(self).obeys_prophetic_iter_laws() && r.is_none() ==> {
+                &&& final(self).remaining().len() == 0
+                &&& forall |i| 0 <= i < old(self).remaining().len() ==>
+                    predicate.ensures((#[trigger]&old(self).remaining()[i],), false)
+            },
+            // If find returns Some, then the returned value satisfies the
+            // predicate, and all previous elements did not satisfy the
+            // predicate.
+            final(self).obeys_prophetic_iter_laws() && r.is_some() ==> {
+                let idx = old(self).remaining().len() - final(self).remaining().len() - 1;
+                {
+                    &&& old(self).remaining().len() > 0
+                    &&& predicate.ensures((&r.unwrap(),), true)
+                    &&& old(self).remaining()[idx] == r.unwrap()
+                    &&& forall |i| 0 <= i < idx ==>
+                        predicate.ensures((#[trigger] &old(self).remaining()[i],), false)
+                }
+            };
 }
 
 #[verifier::external_trait_specification]
@@ -255,6 +288,40 @@ impl <I> DoubleEndedIteratorSpecImpl for Rev<I>
 
     open spec fn peek_back(&self, index: int) -> Option<Self::Item> {
         rev_iter(*self).peek(index)
+    }
+}
+
+// Forwarding spec impl for the Rust-supplied blanket `impl<I> Iterator for &mut I`.
+// Without this, bare method-call syntax on a `i: &mut I` receiver (e.g. `i.remaining()`)
+// resolves to these (otherwise uninterpreted) functions on `&mut I` rather than on `I`,
+// silently disconnecting clients from `I`'s actual specs.
+impl <I> IteratorSpecImpl for &mut I
+    where I: Iterator {
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        <I as IteratorSpec>::obeys_prophetic_iter_laws(*self)
+    }
+
+    #[verifier::prophetic]
+    open spec fn remaining(&self) -> Seq<Self::Item> {
+        <I as IteratorSpec>::remaining(*self)
+    }
+
+    #[verifier::prophetic]
+    open spec fn will_return_none(&self) -> bool {
+        <I as IteratorSpec>::will_return_none(*self)
+    }
+
+    #[verifier::prophetic]
+    open spec fn initial_value_relation(&self, init: &Self) -> bool {
+        <I as IteratorSpec>::initial_value_relation(*self, &**init)
+    }
+
+    open spec fn decrease(&self) -> Option<nat> {
+        <I as IteratorSpec>::decrease(*self)
+    }
+
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        <I as IteratorSpec>::peek(*self, index)
     }
 }
 

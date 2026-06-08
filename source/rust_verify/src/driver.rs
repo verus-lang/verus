@@ -363,7 +363,6 @@ fn stable_attr(span: Span) -> Attribute {
             level: StabilityLevel::Unstable {
                 reason: UnstableReason::Default,
                 issue: None,
-                is_soft: false,
                 implied_by: None,
                 old_name: None,
             },

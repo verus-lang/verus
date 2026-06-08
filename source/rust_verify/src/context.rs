@@ -1,8 +1,8 @@
 use crate::{erase::ResolvedCall, verus_items::VerusItems};
 use rustc_hir::Attribute;
-use rustc_hir::Crate;
 use rustc_hir::HirId;
 use rustc_hir::def_id::LocalDefId;
+use rustc_middle::hir::Crate;
 use rustc_middle::ty::{TyCtxt, TypeckResults};
 use rustc_mir_build_verus::verus::BodyErasure;
 use rustc_span::SpanData;
@@ -18,7 +18,7 @@ use vir::messages::AstId;
 
 pub struct ErasureInfo {
     pub(crate) hir_vir_ids: Vec<(HirId, AstId)>,
-    pub(crate) resolved_calls: Vec<(HirId, SpanData, ResolvedCall)>,
+    pub(crate) resolved_calls: Vec<(HirId, SpanData, ResolvedCall, bool)>,
     pub(crate) resolved_pats: Vec<(SpanData, Pattern)>,
     pub(crate) direct_var_modes: Vec<(HirId, Mode)>,
     pub(crate) external_functions: Vec<vir::ast::Fun>,
@@ -194,11 +194,10 @@ impl<'tcx> ContextX<'tcx> {
 
 impl<'tcx> BodyCtxt<'tcx> {
     pub(crate) fn is_copy(&self, ty: rustc_middle::ty::Ty<'tcx>) -> bool {
-        let param_env = self.ctxt.tcx.param_env(self.fun_id);
-        let typing_env = rustc_middle::ty::TypingEnv {
-            param_env,
-            typing_mode: rustc_middle::ty::TypingMode::non_body_analysis(),
-        };
+        let typing_env = rustc_middle::ty::TypingEnv::new(
+            self.ctxt.tcx.param_env(self.fun_id),
+            rustc_middle::ty::TypingMode::non_body_analysis(),
+        );
         self.ctxt.tcx.type_is_copy_modulo_regions(typing_env, ty)
     }
 

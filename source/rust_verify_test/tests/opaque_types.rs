@@ -547,3 +547,18 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file_with_options! {
+    // Regression test for ensuring opaque type constructor context is present
+    // in spinoff queries. -V spinoff-all verifies every function in its own context.
+    #[test] opaque_type_in_spinoff_context ["-V spinoff-all"] => verus_code! {
+        trait DummyTrait {}
+        impl DummyTrait for bool {}
+        fn return_opaque() -> impl DummyTrait {
+            true
+        }
+        fn test() {
+            let x = return_opaque();
+        }
+    } => Ok(())
+}
