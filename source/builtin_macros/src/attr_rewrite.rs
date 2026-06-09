@@ -1218,4 +1218,3 @@ fn rewrite_const_ret_proxy(const_fun: &mut syn::ItemFn) -> syn::ItemFn {
     proxy_fun.attrs.push(mk_verus_attr_syn(span, quote! { unerased_proxy }));
     proxy_fun
 }
-

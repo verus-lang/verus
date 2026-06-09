@@ -5045,18 +5045,14 @@ fn take_sig_with_spec(
         if let verus_syn::FnArgKind::Typed(pat_type) = &arg.kind {
             let ty = &pat_type.ty;
             let span = arg.span();
-            let tmp_ident = verus_syn::Ident::new(
-                &format!("__verus_with_in_{i}"),
-                Span::call_site(),
-            );
+            let tmp_ident =
+                verus_syn::Ident::new(&format!("__verus_with_in_{i}"), Span::call_site());
             // Emit: let __verus_with_in_N = declare_with::<Type>();
             // Using turbofish to avoid lifetime elision issues in let bindings.
             let declare_stmt = Stmt::Expr(
-                Expr::Verbatim(
-                    quote_spanned_builtin!(verus_builtin, span =>
-                        let #tmp_ident = #verus_builtin::declare_with::<#ty>()
-                    ),
-                ),
+                Expr::Verbatim(quote_spanned_builtin!(verus_builtin, span =>
+                    let #tmp_ident = #verus_builtin::declare_with::<#ty>()
+                )),
                 Some(Token![;](span)),
             );
             spec_stmts.push(declare_stmt);
@@ -5090,63 +5086,59 @@ fn take_sig_with_spec(
     //     (Verus spec auto-coerces Ghost<int> to int in ensures)
     let mut output_var_names: Vec<String> = Vec::new();
     if let Some((_token, extra_ret)) = outputs {
-       for (i, pt) in extra_ret.iter().enumerate() {
-           let ty = &pt.ty;
-           let span = pt.span();
+        for (i, pt) in extra_ret.iter().enumerate() {
+            let ty = &pt.ty;
+            let span = pt.span();
 
-           // For `-> Ghost(z): Ghost<u32>`, unwrap into inner variable z
-           if let Pat::TupleStruct(tup) = &*pt.pat {
-               let is_ghost = path_is_ident(&tup.path, "Ghost");
-               let is_tracked = path_is_ident(&tup.path, "Tracked");
-               if (is_ghost || is_tracked) && tup.elems.len() == 1 {
-                   if let Pat::Ident(id) = &tup.elems[0] {
-                       let x = &id.ident;
-                       // Use a separate outer variable for declare_ret_with
-                       let out_ident = verus_syn::Ident::new(
-                           &format!("__verus_with_out_{i}"),
-                           Span::call_site(),
-                       );
-                       output_var_names.push(out_ident.to_string());
-                       let declare_stmt = Stmt::Expr(
-                           Expr::Verbatim(
-                               quote_spanned_builtin!(verus_builtin, span =>
-                                   let mut #out_ident = #verus_builtin::declare_ret_with::<#ty>()
-                               ),
-                           ),
-                           Some(Token![;](span)),
-                       );
-                       spec_stmts.push(declare_stmt);
-                       if erase_ghost.keep() {
-                           spec_stmts.push(stmt_with_semi!(
+            // For `-> Ghost(z): Ghost<u32>`, unwrap into inner variable z
+            if let Pat::TupleStruct(tup) = &*pt.pat {
+                let is_ghost = path_is_ident(&tup.path, "Ghost");
+                let is_tracked = path_is_ident(&tup.path, "Tracked");
+                if (is_ghost || is_tracked) && tup.elems.len() == 1 {
+                    if let Pat::Ident(id) = &tup.elems[0] {
+                        let x = &id.ident;
+                        // Use a separate outer variable for declare_ret_with
+                        let out_ident = verus_syn::Ident::new(
+                            &format!("__verus_with_out_{i}"),
+                            Span::call_site(),
+                        );
+                        output_var_names.push(out_ident.to_string());
+                        let declare_stmt = Stmt::Expr(
+                            Expr::Verbatim(quote_spanned_builtin!(verus_builtin, span =>
+                                let mut #out_ident = #verus_builtin::declare_ret_with::<#ty>()
+                            )),
+                            Some(Token![;](span)),
+                        );
+                        spec_stmts.push(declare_stmt);
+                        if erase_ghost.keep() {
+                            spec_stmts.push(stmt_with_semi!(
                                span => #[verus::internal(header_unwrap_parameter)] let #x));
-                           if is_tracked {
-                               spec_stmts.push(stmt_with_semi!(
+                            if is_tracked {
+                                spec_stmts.push(stmt_with_semi!(
                                    span => #[verifier::proof_block] { #x = #out_ident.get() }));
-                           } else {
-                               spec_stmts.push(stmt_with_semi!(
+                            } else {
+                                spec_stmts.push(stmt_with_semi!(
                                    span => #[verifier::proof_block] { #x = #out_ident.view() }));
-                           }
-                       }
-                   }
-               }
-           } else if let Pat::Ident(id) = &*pt.pat {
-               // Plain ident pattern like `g: Ghost<int>` — use `g` directly
-               // as the declare_ret_with variable. No unwrap needed since the
-               // ensures clause refers to `g` as the wrapper type directly
-               // (Verus spec auto-coerces Ghost<T> to T).
-               let x = &id.ident;
-               output_var_names.push(x.to_string());
-               let declare_stmt = Stmt::Expr(
-                   Expr::Verbatim(
-                       quote_spanned_builtin!(verus_builtin, span =>
-                           let mut #x = #verus_builtin::declare_ret_with::<#ty>()
-                       ),
-                   ),
-                   Some(Token![;](span)),
-               );
-               spec_stmts.push(declare_stmt);
-           }
-       }
+                            }
+                        }
+                    }
+                }
+            } else if let Pat::Ident(id) = &*pt.pat {
+                // Plain ident pattern like `g: Ghost<int>` — use `g` directly
+                // as the declare_ret_with variable. No unwrap needed since the
+                // ensures clause refers to `g` as the wrapper type directly
+                // (Verus spec auto-coerces Ghost<T> to T).
+                let x = &id.ident;
+                output_var_names.push(x.to_string());
+                let declare_stmt = Stmt::Expr(
+                    Expr::Verbatim(quote_spanned_builtin!(verus_builtin, span =>
+                        let mut #x = #verus_builtin::declare_ret_with::<#ty>()
+                    )),
+                    Some(Token![;](span)),
+                );
+                spec_stmts.push(declare_stmt);
+            }
+        }
     };
     // Store output names for apply_follows to use
     set_with_output_names(output_var_names);

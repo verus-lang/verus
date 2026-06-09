@@ -1979,15 +1979,13 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             if func.x.ens_has_return {
                 if let Some(Dest { dest, is_init }) = dest {
                     let var = suffix_local_unique_id(&get_loc_var(dest));
-                    if !func.x.extra_ret_params.is_empty() {
-                        // proof_with_ret is enforced, so dest must be a 2-tuple
-                        assert!(
-                            matches!(
-                                &*crate::ast_util::undecorate_typ(&dest.typ),
-                                TypX::Datatype(crate::ast::Dt::Tuple(2), _, _)
-                            ),
-                            "internal error: function with extra_ret_params should have tuple dest"
+                    // Check if dest is a tuple type (from proof_with_ret call site)
+                    let dest_is_extra_ret_tuple = !func.x.extra_ret_params.is_empty()
+                        && matches!(
+                            &*crate::ast_util::undecorate_typ(&dest.typ),
+                            TypX::Datatype(crate::ast::Dt::Tuple(2), _, _)
                         );
+                    if dest_is_extra_ret_tuple {
                         // dest has tuple type (ret, (extra_ret_0, ...)) — project field 0 for ret
                         let dest_expr = exp_to_expr(ctx, &dest, expr_ctxt)?;
                         let outer_path = crate::def::prefix_tuple_type(2);
@@ -2032,49 +2030,79 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 }
             }
             // Handle extra_ret_params: project from dest tuple for extra_ret ensures args
-            // Handle extra_ret_params: project from dest tuple for extra_ret ensures args
+            let mut extra_ret_binders: Vec<Binder<air::ast::Typ>> = Vec::new();
             if has_ens && !func.x.extra_ret_params.is_empty() {
-                // proof_with_ret is required, so dest must be a tuple
-                let Dest { dest, .. } = dest.as_ref().expect(
-                    "internal error: function with extra_ret_params must be called with proof_with_ret"
-                );
-                // dest type = (ret, (extra_ret_0, extra_ret_1, ...))
-                // Project: dest.1 to get inner tuple, then dest.1.i for each extra_ret
-                let dest_expr = exp_to_expr(ctx, &dest, expr_ctxt)?;
-                let outer_path = crate::def::prefix_tuple_type(2);
-                let outer_variant = crate::def::prefix_tuple_variant(2);
-                let field_1 = crate::def::positional_field_ident(1);
-                let inner_tuple_raw = Arc::new(ExprX::Apply(
-                    ctx.name_ctxt.variant_field_ident(&outer_path, &outer_variant, &field_1),
-                    Arc::new(vec![dest_expr.clone()]),
-                ));
-                // Unbox the inner tuple projection to the inner tuple type
-                let n_extra = func.x.extra_ret_params.len();
-                let inner_tuple_typ: Typ = Arc::new(TypX::Datatype(
-                    crate::ast::Dt::Tuple(n_extra),
-                    Arc::new(func.x.extra_ret_params.iter().map(|p| p.x.typ.clone()).collect()),
-                    Arc::new(vec![]),
-                ));
-                let inner_tuple = try_unbox(ctx, inner_tuple_raw.clone(), &inner_tuple_typ)
-                    .unwrap_or(inner_tuple_raw);
-                let inner_path = crate::def::prefix_tuple_type(n_extra);
-                let inner_variant = crate::def::prefix_tuple_variant(n_extra);
-                for (i, par) in func.x.extra_ret_params.iter().enumerate() {
-                    let field_i = crate::def::positional_field_ident(i);
-                    let proj_i_raw = Arc::new(ExprX::Apply(
-                        ctx.name_ctxt.variant_field_ident(&inner_path, &inner_variant, &field_i),
-                        Arc::new(vec![inner_tuple.clone()]),
+                // Check if dest is a tuple (proof_with_ret) vs plain return (proof_with)
+                let dest_is_tuple = dest.as_ref().map_or(false, |Dest { dest, .. }| {
+                    matches!(
+                        &*crate::ast_util::undecorate_typ(&dest.typ),
+                        TypX::Datatype(crate::ast::Dt::Tuple(2), _, _)
+                    )
+                });
+                if dest_is_tuple {
+                    let Dest { dest, .. } = dest.as_ref().unwrap();
+                    // dest type = (ret, (extra_ret_0, extra_ret_1, ...))
+                    // Project: dest.1 to get inner tuple, then dest.1.i for each extra_ret
+                    let dest_expr = exp_to_expr(ctx, &dest, expr_ctxt)?;
+                    let outer_path = crate::def::prefix_tuple_type(2);
+                    let outer_variant = crate::def::prefix_tuple_variant(2);
+                    let field_1 = crate::def::positional_field_ident(1);
+                    let inner_tuple_raw = Arc::new(ExprX::Apply(
+                        ctx.name_ctxt.variant_field_ident(&outer_path, &outer_variant, &field_1),
+                        Arc::new(vec![dest_expr.clone()]),
                     ));
-                    // Unbox the extra_ret projection to its type
-                    let proj_i =
-                        try_unbox(ctx, proj_i_raw.clone(), &par.x.typ).unwrap_or(proj_i_raw);
-                    ens_args.push(proj_i);
+                    // Unbox the inner tuple projection to the inner tuple type
+                    let n_extra = func.x.extra_ret_params.len();
+                    let inner_tuple_typ: Typ = Arc::new(TypX::Datatype(
+                        crate::ast::Dt::Tuple(n_extra),
+                        Arc::new(func.x.extra_ret_params.iter().map(|p| p.x.typ.clone()).collect()),
+                        Arc::new(vec![]),
+                    ));
+                    let inner_tuple = try_unbox(ctx, inner_tuple_raw.clone(), &inner_tuple_typ)
+                        .unwrap_or(inner_tuple_raw);
+                    let inner_path = crate::def::prefix_tuple_type(n_extra);
+                    let inner_variant = crate::def::prefix_tuple_variant(n_extra);
+                    for (i, par) in func.x.extra_ret_params.iter().enumerate() {
+                        let field_i = crate::def::positional_field_ident(i);
+                        let proj_i_raw = Arc::new(ExprX::Apply(
+                            ctx.name_ctxt.variant_field_ident(
+                                &inner_path,
+                                &inner_variant,
+                                &field_i,
+                            ),
+                            Arc::new(vec![inner_tuple.clone()]),
+                        ));
+                        // Unbox the extra_ret projection to its type
+                        let proj_i =
+                            try_unbox(ctx, proj_i_raw.clone(), &par.x.typ).unwrap_or(proj_i_raw);
+                        ens_args.push(proj_i);
+                    }
+                } else {
+                    // Fallback: existential quantification (no dest available)
+                    for (i, par) in func.x.extra_ret_params.iter().enumerate() {
+                        let fresh_name: air::ast::Ident = Arc::new(format!("__extra_ret_{}", i));
+                        let air_typ = typ_to_air(ctx, &par.x.typ);
+                        extra_ret_binders
+                            .push(Arc::new(BinderX { name: fresh_name.clone(), a: air_typ }));
+                        ens_args.push(Arc::new(ExprX::Var(fresh_name)));
+                    }
                 }
             }
             if has_ens {
                 let f_ens = prefix_ensures(&fun_to_air_ident(&ctx.name_ctxt, &ens_fun));
                 let e_ens = Arc::new(ExprX::Apply(f_ens, Arc::new(ens_args)));
-                stmts.push(Arc::new(StmtX::Assume(e_ens)));
+                if extra_ret_binders.is_empty() {
+                    stmts.push(Arc::new(StmtX::Assume(e_ens)));
+                } else {
+                    // Wrap in existential: assume (exists extra_ret_vars . ens(...))
+                    let e_exists = mk_exists(
+                        &extra_ret_binders,
+                        &vec![], // no triggers
+                        None,    // no qid
+                        &e_ens,
+                    );
+                    stmts.push(Arc::new(StmtX::Assume(e_exists)));
+                }
             }
             if emit_generic_conditions {
                 let dest_exp =

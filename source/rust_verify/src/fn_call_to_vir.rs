@@ -338,14 +338,9 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
                             ),
                         );
                     }
-                    // Callee has declare_ret_with but no declare_with —
-                    // caller must use proof_with_ret to capture extra returns
-                    if has_ret_params {
-                        return err_span(
-                            expr.span,
-                            "this function has extra return values from declare_ret_with(); use proof_with_ret() to call it",
-                        );
-                    }
+                    // Callee only has declare_ret_with, no declare_with — caller must use proof_with_ret
+                    // but didn't use proof_with/proof_with_ret at all. This is OK if there are
+                    // no extra input params required.
                     Vec::new()
                 }
             };
@@ -2102,22 +2097,6 @@ fn verus_item_to_vir<'tcx, 'a>(
             re @ (BuiltinFunctionItem::CallRequires | BuiltinFunctionItem::CallEnsures),
         ) => {
             record_spec_fn(bctx, expr);
-
-            // Check if the target function has extra ghost/tracked params from declare_with/declare_ret_with
-            {
-                let fn_arg = &args[0];
-                let fn_ty = bctx.types.expr_ty_adjusted(fn_arg);
-                if let rustc_middle::ty::TyKind::FnDef(def_id, _) = fn_ty.kind() {
-                    if bctx.ctxt.declare_ret_with_params.borrow().contains_key(def_id)
-                        || bctx.ctxt.declare_with_params.borrow().contains_key(def_id)
-                    {
-                        return err_span(
-                            expr.span,
-                            "call_requires/call_ensures cannot be used with functions that have extra parameters from declare_with/declare_ret_with",
-                        );
-                    }
-                }
-            }
 
             let bsf = match re {
                 BuiltinFunctionItem::CallRequires => {
