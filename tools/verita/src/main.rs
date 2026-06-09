@@ -41,9 +41,15 @@ struct Args {
     /// `--run-ignored` still apply to the named projects.
     #[arg(long = "project", value_name = "NAME")]
     projects: Vec<String>,
+    /// Output directory for this run (default: `output/<date>-<label>`).
+    #[arg(long)]
+    output_dir: Option<PathBuf>,
     /// Exit with a non-zero status if any active project fails verification.
     #[arg(long)]
     fail_on_error: bool,
+    /// Extra args appended to every Verus invocation (given after `--`).
+    #[arg(last = true)]
+    verus_extra_args: Vec<String>,
 }
 
 fn get_solver_version(
@@ -96,6 +102,7 @@ struct RunContext<'a> {
     date: &'a str,
     z3_version: &'a str,
     cvc5_version: &'a str,
+    verus_extra_args: &'a [String],
 }
 
 /// Compute the output-file suffix for a given crate-root target.
@@ -146,6 +153,41 @@ fn process_target(
         target_index + 1,
         total_targets
     );
+
+    // Output-file stem: project name alone for single targets, or
+    // "project-crate-root-dir" for multiple targets. Also names the log dir.
+    let output_name = if total_targets == 1 {
+        project.name.clone()
+    } else {
+        let suffix = target_output_suffix(target);
+        if suffix.is_empty() {
+            project.name.clone()
+        } else {
+            format!("{}-{}", project.name, suffix)
+        }
+    };
+
+    // Per-target Verus log directory. Note this directory is only created if
+    // the user specifies a `--log` argument to Verus via one of the extra
+    // arguments configurations.
+    let log_dir = ctx.output_path.join("logs").join(&output_name);
+
+    // Verus options shared by both invocation branches below.
+    let mut verus_args = vec![
+        "--output-json".to_string(),
+        "--time".to_string(),
+        "--log-dir".to_string(),
+        log_dir.to_string_lossy().into_owned(),
+    ];
+    verus_args.extend_from_slice(
+        ctx.run_configuration
+            .verus_extra_args
+            .as_deref()
+            .unwrap_or_default(),
+    );
+    verus_args.extend_from_slice(project.extra_verus_args.as_deref().unwrap_or_default());
+    verus_args.extend_from_slice(ctx.verus_extra_args);
+
     let project_verification_start = std::time::Instant::now();
     let output = if project.cargo_verus {
         // Run cargo-verus focus in the target directory
@@ -195,18 +237,16 @@ fn process_target(
             cmd!(sh, "{cargo_verus_binary_path} verus focus")
                 .args(project.extra_cargo_args.iter().flatten())
                 .args(&cargo_target_args)
-                .args(["--", "--output-json", "--time"])
-                .args(ctx.run_configuration.verus_extra_args.iter().flatten())
-                .args(project.extra_verus_args.iter().flatten())
+                .arg("--")
+                .args(&verus_args)
                 .into(),
         )
         .output()
         .map_err(|e| anyhow!("cannot execute cargo verus on {}: {}", &project.name, e))?
     } else {
         log_command(
-            cmd!(sh, "{verus_binary_path} --output-json --time {target}")
-                .args(ctx.run_configuration.verus_extra_args.iter().flatten())
-                .args(project.extra_verus_args.iter().flatten())
+            cmd!(sh, "{verus_binary_path} {target}")
+                .args(&verus_args)
                 .into(),
         )
         .output()
@@ -227,18 +267,6 @@ fn process_target(
         }
     }
 
-    // Build output filename: use project name alone for single targets,
-    // or "project-crate-root-dir" for multiple targets
-    let output_name = if total_targets == 1 {
-        project.name.clone()
-    } else {
-        let suffix = target_output_suffix(target);
-        if suffix.is_empty() {
-            project.name.clone()
-        } else {
-            format!("{}-{}", project.name, suffix)
-        }
-    };
     let project_output_path_json = ctx.output_path.join(&output_name).with_extension("json");
 
     let mut warnings = Vec::new();
@@ -633,10 +661,14 @@ fn main() -> anyhow::Result<()> {
     let date = chrono::Utc::now()
         .format("%Y-%m-%d-%H-%M-%S-%3f")
         .to_string();
-    let output_path = Path::new("output").join(format!("{}-{}", &date, &args.label));
+    let output_path = args
+        .output_dir
+        .clone()
+        .unwrap_or_else(|| Path::new("output").join(format!("{}-{}", &date, &args.label)));
     let tmp_dir = TempDir::new("verita")?;
     let perm_temp_dir = std::env::temp_dir().join("verita").join(&date);
     std::fs::create_dir_all(&output_path)?;
+    let output_path = dunce::canonicalize(&output_path)?;
     let workdir = if args.debug_level > 0 {
         // Use a directory that won't disappear after we run, so we can debug any issues that arise
         std::fs::create_dir_all(&perm_temp_dir)?;
@@ -658,6 +690,7 @@ fn main() -> anyhow::Result<()> {
         date: &date,
         z3_version: &z3_version,
         cvc5_version: &cvc5_version,
+        verus_extra_args: &args.verus_extra_args,
     };
 
     let mut project_summaries = Vec::new();
