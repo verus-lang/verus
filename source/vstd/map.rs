@@ -93,6 +93,12 @@ impl<K, V> Map<K, V> {
     ///
     /// If the key is already present from the map, then its existing value is overwritten
     /// by the new value.
+    ///
+    /// Note: It's not recommended to `index` into a `Map` outside of its domain,
+    /// since it just produces meaningless values. If you do so, `Map::insert` won't
+    /// necessarily preserve which meaningless values you get for keys outside the
+    /// original domain. (This is in contrast to `IMap::insert`, where the current
+    /// implementation happens to preserve them.)
     pub closed spec fn insert(self, key: K, value: V) -> Map<K, V> {
         Map::new(self.dom().insert(key), |k| if k == key { value } else { self[k] })
     }
