@@ -146,7 +146,7 @@ fn demote_one_expr(
             && !funs.contains(resolved_fun) =>
         {
             // The trait method is declared via `external_trait_specification`,
-            // but the concrete impl method `resolved_fun` is external and has no `assume_specification` 
+            // but the concrete impl method `resolved_fun` is external and has no `assume_specification`
             // of its own.  Treat the call as a dynamic call to the trait declaration.
             let ct = CallTarget::Fun(
                 CallTargetKind::Dynamic,
