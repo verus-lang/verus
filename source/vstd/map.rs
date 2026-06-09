@@ -93,12 +93,6 @@ impl<K, V> Map<K, V> {
     ///
     /// If the key is already present from the map, then its existing value is overwritten
     /// by the new value.
-    ///
-    /// Note: It's not recommended to `index` into a `Map` outside of its domain,
-    /// since it just produces meaningless values. If you do so, `Map::insert` won't
-    /// necessarily preserve which meaningless values you get for keys outside the
-    /// original domain. (This is in contrast to `IMap::insert`, where the current
-    /// implementation happens to preserve them.)
     pub closed spec fn insert(self, key: K, value: V) -> Map<K, V> {
         Map::new(self.dom().insert(key), |k| if k == key { value } else { self[k] })
     }
@@ -280,17 +274,15 @@ pub broadcast proof fn lemma_map_insert_same<K, V>(m: Map<K, V>, key: K, value: 
     broadcast use Map::axiom_new;
 }
 
-/// Inserting `value` at `key2` does not change the value mapped to by any other keys in `m`
-pub broadcast proof fn lemma_map_insert_different<K, V>(m: Map<K, V>, key1: K, key2: K, value: V)
+/// Inserting `value` at `key2` does not change the value mapped to by any other keys in `m`.
+/// This has to be an axiom because normally constructing a new map sets values outside
+/// the domain to arbitrary values.
+pub broadcast axiom fn axiom_map_insert_different<K, V>(m: Map<K, V>, key1: K, key2: K, value: V)
     requires
         key1 != key2,
-        m.dom().contains(key1),
     ensures
-        m.insert(key2, value).dom().contains(key1),
         #[trigger] m.insert(key2, value)[key1] == m[key1],
-{
-    broadcast use Map::axiom_new;
-}
+;
 
 /// The domain of a map after removing a key-value pair is equivalent to removing the key from
 /// the original map's domain set.
@@ -303,16 +295,14 @@ pub broadcast proof fn lemma_map_remove_domain<K, V>(m: Map<K, V>, key: K)
 
 /// Removing a key-value pair from a map does not change the value mapped to by
 /// any other keys in the map.
-pub broadcast proof fn lemma_map_remove_different<K, V>(m: Map<K, V>, key1: K, key2: K)
+/// This has to be an axiom because normally constructing a new map sets values outside
+/// the domain to arbitrary values.
+pub broadcast axiom fn axiom_map_remove_different<K, V>(m: Map<K, V>, key1: K, key2: K)
     requires
         key1 != key2,
-        m.dom().contains(key1),
     ensures
-        m.remove(key2).dom().contains(key1),
         #[trigger] m.remove(key2)[key1] == m[key1],
-{
-    broadcast use Map::axiom_new;
-}
+;
 
 /// Two maps are equivalent if their domains are equivalent and every key in their domains map to the same value.
 pub broadcast axiom fn axiom_map_ext_equal<K, V>(m1: Map<K, V>, m2: Map<K, V>)
@@ -343,9 +333,9 @@ pub broadcast group group_map_lemmas {
     lemma_map_empty,
     lemma_map_insert_domain,
     lemma_map_insert_same,
-    lemma_map_insert_different,
+    axiom_map_insert_different,
     lemma_map_remove_domain,
-    lemma_map_remove_different,
+    axiom_map_remove_different,
     axiom_map_ext_equal,
     axiom_map_ext_equal_deep,
 }
