@@ -1246,6 +1246,32 @@ impl Verifier {
         Ok(air_context)
     }
 
+    /// Per-query SMT tuning options.
+    fn apply_per_query_smt_options(
+        &self,
+        air_context: &mut air::context::Context,
+        prover_choice: vir::def::ProverChoice,
+    ) {
+        match prover_choice {
+            vir::def::ProverChoice::BitVector => match self.args.solver {
+                air::context::SmtSolver::Z3 => {
+                    air_context.set_z3_param("sat.euf", "true");
+                    air_context.set_z3_param("tactic.default_tactic", "sat");
+                    air_context.set_z3_param("smt.ematching", "false");
+                    air_context.set_z3_param("smt.case_split", "0");
+                }
+                // TODO: What options are best for cvc5 here?
+                air::context::SmtSolver::Cvc5 => {}
+            },
+            vir::def::ProverChoice::Nonlinear => match self.args.solver {
+                air::context::SmtSolver::Z3 => air_context.set_z3_param("smt.arith.solver", "6"),
+                // TODO: What cvc5 settings would help here?
+                air::context::SmtSolver::Cvc5 => {}
+            },
+            vir::def::ProverChoice::DefaultProver | vir::def::ProverChoice::Singular => {}
+        }
+    }
+
     fn new_air_context_with_bucket_context<'m>(
         &mut self,
         message_interface: Arc<dyn air::messages::MessageInterface>,
@@ -1550,6 +1576,11 @@ impl Verifier {
                                 if cmds.prover_choice == vir::def::ProverChoice::BitVector {
                                     spinoff_z3_context.disable_incremental_solving();
                                 }
+                                // Apply prover-specific SMT tuning.
+                                self.apply_per_query_smt_options(
+                                    &mut spinoff_z3_context,
+                                    cmds.prover_choice,
+                                );
                                 spinoff_context_counter += 1;
                                 &mut spinoff_z3_context
                             } else {
