@@ -4739,3 +4739,79 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    // External trait-definition specification covers external concrete impl
+    #[test] direct_concrete_call_trait_spec_only verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::external]
+        trait Tr {
+            fn next(&mut self) -> Option<u8>;
+        }
+
+        #[verifier::external_trait_specification]
+        trait ExTr {
+            type ExternalTraitSpecificationFor: Tr;
+
+            fn next(&mut self) -> (ret: Option<u8>)
+                ensures
+                    ret == Some(7u8),
+            ;
+        }
+
+        #[verifier::external_body]
+        struct S { x: u8 }
+
+        #[verifier::external]
+        impl Tr for S {
+            fn next(&mut self) -> Option<u8> { Some(self.x) }
+        }
+
+        fn test(s: &mut S) {
+            let r = s.next();
+            assert(r == Some(7u8));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // When we assume a spec for both trait defintion and impl functions,
+    // the strong impl postcondition comes through (assuming we know the concrete type)
+    #[test] direct_concrete_call_with_assume_specification verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::external]
+        trait Tr {
+            fn next(&mut self) -> Option<u8>;
+        }
+
+        #[verifier::external_trait_specification]
+        trait ExTr {
+            type ExternalTraitSpecificationFor: Tr;
+
+            fn next(&mut self) -> (ret: Option<u8>)
+                ensures
+                    ret is Some,
+            ;
+        }
+
+        #[verifier::external_body]
+        struct S { x: u8 }
+
+        #[verifier::external]
+        impl Tr for S {
+            fn next(&mut self) -> Option<u8> { Some(self.x) }
+        }
+
+        assume_specification[ <S as Tr>::next ](s: &mut S) -> (ret: Option<u8>)
+            ensures
+                ret == Some(7u8),   // Strengthens the postcondition from the trait definition
+        ;
+
+        fn test(s: &mut S) {
+            let r = s.next();
+            assert(r == Some(7u8));
+        }
+    } => Ok(())
+}

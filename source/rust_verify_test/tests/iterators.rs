@@ -24,6 +24,23 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] chars_next_falls_back_to_iterator_spec verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        fn test(s: &str)
+            requires
+                s@.len() >= 1,
+        {
+            let mut it = s.chars();
+            assert(it.remaining() == s@);
+            let r = it.next();
+            assert(r == Some(s@[0]));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] range_works verus_code! {
         use vstd::prelude::*;
 
