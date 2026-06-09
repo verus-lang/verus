@@ -848,7 +848,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] opens_invariants_set verus_code!{
         use vstd::invariant::*;
-        use vstd::set::*;
+        use vstd::iset::*;
 
         struct P {}
         impl InvariantPredicate<(), ()> for P {
@@ -859,7 +859,7 @@ test_verify_one_file! {
                    tracked credit2: OpenInvariantCredit,
                    tracked inv1: AtomicInvariant<(), (), P>,
                    tracked inv2: AtomicInvariant<(), (), P>,
-                   s: Set<int>)
+                   s: ISet<int>)
             requires
                 !s.contains(inv1.namespace()),
                 !s.contains(inv2.namespace()),
@@ -875,7 +875,7 @@ test_verify_one_file! {
             });
         }
 
-        proof fn b(s: Set<int>)
+        proof fn b(s: ISet<int>)
             opens_invariants s
         {
         }
@@ -885,7 +885,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] opens_invariants_set_fails verus_code!{
         use vstd::invariant::*;
-        use vstd::set::*;
+        use vstd::iset::*;
 
         struct P {}
         impl InvariantPredicate<(), ()> for P {
@@ -894,7 +894,7 @@ test_verify_one_file! {
 
         proof fn a(tracked credit: OpenInvariantCredit,
                    tracked inv: AtomicInvariant<(), (), P>,
-                   s: Set<int>)
+                   s: ISet<int>)
             opens_invariants
                 any
         {
@@ -903,7 +903,7 @@ test_verify_one_file! {
             });
         }
 
-        proof fn b(s: Set<int>)
+        proof fn b(s: ISet<int>)
             opens_invariants s
         {
         }

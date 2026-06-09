@@ -132,12 +132,12 @@ impl<T> GhostSetAuth<T> {
         self.map.id()
     }
 
-    /// Logically underlying [`Set`]
-    pub closed spec fn view(self) -> Set<T> {
+    /// Logically underlying [`ISet`]
+    pub closed spec fn view(self) -> ISet<T> {
         self.map@.dom()
     }
 
-    /// Create a new [`GhostSetAuth`] from a [`Set`].
+    /// Create a new [`GhostSetAuth`] from a [`ISet`].
     /// Gives the other half of ownership in the form of a [`GhostSubset`]
     ///
     /// ```
@@ -148,7 +148,7 @@ impl<T> GhostSetAuth<T> {
     ///     assert(sub@ == auth@);
     /// }
     /// ```
-    pub proof fn new(s: Set<T>) -> (tracked result: (GhostSetAuth<T>, GhostSubset<T>))
+    pub proof fn new(s: ISet<T>) -> (tracked result: (GhostSetAuth<T>, GhostSubset<T>))
         ensures
             result.0.id() == result.1.id(),
             result.0@ == s,
@@ -178,13 +178,13 @@ impl<T> GhostSetAuth<T> {
     pub proof fn empty(tracked &self) -> (tracked result: GhostSubset<T>)
         ensures
             result.id() == self.id(),
-            result@ == Set::<T>::empty(),
+            result@ == ISet::<T>::empty(),
     {
         let tracked map = self.map.empty();
         GhostSubset { map }
     }
 
-    /// Insert a [`Set`] of values, receiving the [`GhostSubset`] that asserts ownership over the set inserted.
+    /// Insert a [`ISet`] of values, receiving the [`GhostSubset`] that asserts ownership over the set inserted.
     ///
     /// ```
     /// proof fn insert_set_example(tracked mut m: GhostSetAuth<int>) -> (tracked r: GhostSubset<int>)
@@ -197,7 +197,7 @@ impl<T> GhostSetAuth<T> {
     ///     subset
     /// }
     /// ```
-    pub proof fn insert_set(tracked &mut self, s: Set<T>) -> (tracked result: GhostSubset<T>)
+    pub proof fn insert_set(tracked &mut self, s: ISet<T>) -> (tracked result: GhostSubset<T>)
         requires
             old(self)@.disjoint(s),
         ensures
@@ -298,8 +298,8 @@ impl<T> GhostSubset<T> {
         self.map.id()
     }
 
-    /// Logically underlying [`Set`]
-    pub closed spec fn view(self) -> Set<T> {
+    /// Logically underlying [`ISet`]
+    pub closed spec fn view(self) -> ISet<T> {
         self.map@.dom()
     }
 
@@ -313,7 +313,7 @@ impl<T> GhostSubset<T> {
     pub proof fn empty(tracked &self) -> (tracked result: GhostSubset<T>)
         ensures
             result.id() == self.id(),
-            result@ == Set::<T>::empty(),
+            result@ == ISet::<T>::empty(),
     {
         let tracked map = self.map.empty();
         GhostSubset { map }
@@ -440,7 +440,7 @@ impl<T> GhostSubset<T> {
     }
 
     /// We can split a [`GhostSubset`] based on a set of values
-    pub proof fn split(tracked &mut self, s: Set<T>) -> (tracked result: GhostSubset<T>)
+    pub proof fn split(tracked &mut self, s: ISet<T>) -> (tracked result: GhostSubset<T>)
         requires
             s <= old(self)@,
         ensures
@@ -474,7 +474,7 @@ impl<T> GhostSubset<T> {
         requires
             self.is_singleton(),
         ensures
-            self@ == set![r@],
+            self@ == iset![r@],
             self.id() == r.id(),
     {
         let tracked map = self.map.points_to();
@@ -506,8 +506,8 @@ impl<T> GhostPersistentSubset<T> {
         self.map.id()
     }
 
-    /// Logically underlying [`Set`]
-    pub closed spec fn view(self) -> Set<T> {
+    /// Logically underlying [`ISet`]
+    pub closed spec fn view(self) -> ISet<T> {
         self.map@.dom()
     }
 
@@ -521,7 +521,7 @@ impl<T> GhostPersistentSubset<T> {
     pub proof fn empty(tracked &self) -> (tracked result: GhostPersistentSubset<T>)
         ensures
             result.id() == self.id(),
-            result@ == Set::<T>::empty(),
+            result@ == ISet::<T>::empty(),
     {
         let tracked map = self.map.empty();
         GhostPersistentSubset { map }
@@ -616,7 +616,7 @@ impl<T> GhostPersistentSubset<T> {
     }
 
     /// We can split a [`GhostPersistentSubset`] based on a set of keys in its domain.
-    pub proof fn split(tracked &mut self, s: Set<T>) -> (tracked result: GhostPersistentSubset<T>)
+    pub proof fn split(tracked &mut self, s: ISet<T>) -> (tracked result: GhostPersistentSubset<T>)
         requires
             s <= old(self)@,
         ensures
@@ -651,7 +651,7 @@ impl<T> GhostPersistentSubset<T> {
         requires
             self.is_singleton(),
         ensures
-            self@ == set![r@],
+            self@ == iset![r@],
             self.id() == r.id(),
     {
         let tracked map = self.map.points_to();
@@ -705,7 +705,7 @@ impl<T> GhostSingleton<T> {
             self.id() == other.id(),
         ensures
             r.id() == self.id(),
-            r@ == set![self@, other@],
+            r@ == iset![self@, other@],
             self@ != other@,
     {
         let tracked map = self.map.combine(other.map);
@@ -767,7 +767,7 @@ impl<T> GhostSingleton<T> {
     pub proof fn subset(tracked self) -> (tracked r: GhostSubset<T>)
         ensures
             r.id() == self.id(),
-            r@ == set![self@],
+            r@ == iset![self@],
     {
         let tracked map = self.map.submap();
         GhostSubset { map }
@@ -838,7 +838,7 @@ impl<T> GhostPersistentSingleton<T> {
             self.id() == other.id(),
         ensures
             r.id() == self.id(),
-            r@ == set![self@, other@],
+            r@ == iset![self@, other@],
             self@ != other@ ==> r@.len() == 2,
             self@ == other@ ==> r@.len() == 1,
     {
@@ -874,7 +874,7 @@ impl<T> GhostPersistentSingleton<T> {
     pub proof fn subset(tracked self) -> (tracked r: GhostPersistentSubset<T>)
         ensures
             r.id() == self.id(),
-            r@ == set![self@],
+            r@ == iset![self@],
     {
         let tracked map = self.map.submap();
         GhostPersistentSubset { map }

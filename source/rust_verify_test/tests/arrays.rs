@@ -234,10 +234,10 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_recursion_checks_1 verus_code! {
         use vstd::array::*;
-        use vstd::map::*;
+        use vstd::imap::*;
 
         struct Foo {
-            field: [ Map<Foo, int> ; 20 ],
+            field: [ IMap<Foo, int> ; 20 ],
         }
 
     } => Err(err) => assert_vir_error_msg(err, "non-positive position")
