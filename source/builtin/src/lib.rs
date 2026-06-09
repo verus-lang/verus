@@ -26,8 +26,9 @@ pub fn admit() {
 /// Pass tracked or ghost values to the immediately following external function call.
 /// Used with `external_fn_specification` functions that have extra tracked/ghost parameters.
 /// Pass ghost/tracked arguments to a function call with proper borrow checking.
-/// `_a` is a tuple of `Tracked<T>` or `Ghost<T>` values.
-/// `_b` is the function call expression whose result is returned.
+/// `_a` is a tuple of `Tracked<T>` or `Ghost<T>` values to pass as extra inputs.
+/// `_b` is the function call expression.
+/// Returns the call's return value.
 /// Usage: `proof_with((Tracked(&mut x), Ghost(y)), f(a))`
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::proof_with"]
@@ -36,13 +37,33 @@ pub fn proof_with<A, B>(_a: A, _b: B) -> B {
     unimplemented!();
 }
 
-/// Zero-arg version of proof_with for output parameters.
-/// The type parameter indicates the output container type.
+/// Like `proof_with`, but also receives extra ghost/tracked return values from
+/// `declare_ret_with()` in the callee.
+/// Returns `(B, C)` where B is the call's return type and C is the tuple of extra
+/// ghost/tracked returns.
+/// Usage: `let (ret, extras): (_, (Tracked<u8>,)) = proof_with_ret((args,), f(a));`
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::proof_with_ret"]
+#[verifier::proof]
+pub fn proof_with_ret<A, B, C>(_a: A, _b: B) -> (B, C) {
+    unimplemented!();
+}
 
+/// Declares an extra ghost/tracked input parameter for the enclosing function.
+/// Callers must pass corresponding values via `proof_with` or `proof_with_ret`.
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::declare_with"]
 #[verifier::proof]
 pub fn declare_with<A>() -> A {
+    unimplemented!();
+}
+
+/// Declares an extra ghost/tracked return value from the enclosing function.
+/// Callers receive corresponding values via `proof_with_ret`.
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::declare_ret_with"]
+#[verifier::proof]
+pub fn declare_ret_with<A>() -> A {
     unimplemented!();
 }
 

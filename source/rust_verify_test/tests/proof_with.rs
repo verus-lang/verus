@@ -135,7 +135,7 @@ test_verify_one_file! {
         fn call_test() {
             negate_bool(true, 1);
         }
-     } => Err(e) => assert_vir_error_msg(e, "this external function requires 1 extra tracked/ghost argument(s) via proof_with()")
+     } => Err(e) => assert_vir_error_msg(e, "this function requires 1 extra tracked/ghost argument(s) via proof_with()")
 }
 
 test_verify_one_file! {
@@ -326,4 +326,272 @@ test_verify_one_file! {
             proof_with((Tracked(&mut a), Ghost(2u32)), test(&mut a));
         }
      } => Err(e) => assert_rust_error_msg_skip_spec_msgs(e, "cannot borrow `a` as mutable more than once at a time")
+}
+
+// ---- declare_ret_with / proof_with_ret tests ----
+
+test_verify_one_file! {
+     #[test] test_declare_ret_with_basic verus_code!{
+        use vstd::prelude::*;
+        fn callee(a: u64) -> u64
+        {
+            let mut out1: Tracked<u8> = declare_ret_with();
+            1
+        }
+
+        fn call_test() {
+            let (ret, extra): (_, (Tracked<u8>,)) = proof_with_ret((), callee(5));
+        }
+     } => Ok(())
+}
+
+test_verify_one_file! {
+     #[test] test_declare_ret_with_multiple verus_code!{
+        use vstd::prelude::*;
+        fn callee(a: u64) -> u64
+        {
+            let mut out1: Tracked<u8> = declare_ret_with();
+            let mut out2: Ghost<u32> = declare_ret_with();
+            1
+        }
+
+        fn call_test() {
+            let (ret, (e1, e2)): (_, (Tracked<u8>, Ghost<u32>)) = proof_with_ret((), callee(5));
+        }
+     } => Ok(())
+}
+
+test_verify_one_file! {
+     #[test] test_declare_ret_with_with_inputs verus_code!{
+        use vstd::prelude::*;
+        fn callee(a: u64) -> u64
+        {
+            let inp: Tracked<u64> = declare_with();
+            let mut out1: Tracked<u8> = declare_ret_with();
+            1
+        }
+
+        fn call_test() {
+            let (ret, extra): (_, (Tracked<u8>,)) = proof_with_ret(Tracked(42u64), callee(5));
+        }
+     } => Ok(())
+}
+
+test_verify_one_file! {
+     #[test] test_declare_ret_with_outside_let verus_code!{
+        use vstd::prelude::*;
+        fn callee(a: u64) -> u64
+        {
+            declare_ret_with::<Tracked<u8>>();
+            1
+        }
+     } => Err(e) => assert_vir_error_msg(e, "declare_ret_with() must be used as a let initializer")
+}
+
+test_verify_one_file! {
+     #[test] test_declare_ret_with_requires_mut verus_code!{
+        use vstd::prelude::*;
+        fn callee(a: u64) -> u64
+        {
+            let out1: Tracked<u8> = declare_ret_with();
+            1
+        }
+     } => Err(e) => assert_vir_error_msg(e, "declare_ret_with() variable must be declared as `let mut`")
+}
+
+test_verify_one_file! {
+     #[test] test_declare_ret_with_ensures verus_code!{
+        use vstd::prelude::*;
+        fn callee(a: u64) -> u64
+        {
+            let mut out1: Tracked<u8> = declare_ret_with();
+            ensures(|ret: u64| ret == 1 && out1@ == 42);
+
+            proof { out1 = Tracked(42u8); }
+            1
+        }
+
+        fn call_test() {
+            let tracked z2: u8;
+            let (_ret, (tmp_z2,)): (_, (Tracked<u8>,)) = proof_with_ret((), callee(5));
+            proof {
+                z2 = tmp_z2.get();
+            }
+
+        }
+     } => Ok(())
+}
+
+test_verify_one_file! {
+     #[test] test_declare_ret_with_ensures_fail verus_code!{
+        use vstd::prelude::*;
+        fn callee(a: u64) -> u64
+        {
+            let mut out1: Tracked<u8> = declare_ret_with();
+            ensures(|ret: u64| ret == 1 && out1@ == 42);
+
+            proof { out1 = Tracked(10u8); } // FAILS
+            1
+        }
+     } => Err(e) => assert!(e.errors.len() > 0)
+}
+
+// Tests for ensures propagation when both declare_with and declare_ret_with are present.
+// This verifies that the caller can assert postconditions about both:
+// - The tracked/ghost input params (old/final semantics)
+// - The extra return values from declare_ret_with
+
+test_verify_one_file! {
+     #[test] test_declare_ret_with_caller_assert verus_code!{
+        use vstd::prelude::*;
+        fn callee(a: u64) -> u64
+        {
+           let mut out1: Tracked<u8> = declare_ret_with();
+           ensures(|ret: u64| ret == 1 && out1@ == 42);
+
+           proof { out1 = Tracked(42u8); }
+           1
+        }
+
+        fn call_test() {
+           let tracked z2: u8;
+           let (_ret, (tmp_z2,)): (_, (Tracked<u8>,)) = proof_with_ret((), callee(5));
+           proof {
+               z2 = tmp_z2.get();
+               assert(z2 == 42);
+           }
+           assert(_ret == 1);
+        }
+     } => Ok(())
+}
+
+test_verify_one_file! {
+     #[test] test_declare_with_and_ret_with_ensures verus_code!{
+        use vstd::prelude::*;
+
+        // Function with both declare_with (input) and declare_ret_with (output)
+        fn callee(x: u32) -> u32
+        {
+           let w: Ghost<u32> = declare_with();
+           let mut z: Ghost<u32> = declare_ret_with();
+           requires(w@ < 100);
+           ensures(|ret: u32| ret == x && z@ == x);
+
+           proof {
+               z = Ghost(x);
+           }
+           x
+        }
+
+        fn caller_test() {
+           let ghost z: u32;
+           let (_ret, (tmp_z,)): (_, (Ghost<u32>,)) = proof_with_ret(
+               (Ghost(0u32),),
+               callee(1)
+           );
+           proof {
+               z = tmp_z.view();
+               assert(z == 1);   // from z@ == x postcondition
+           }
+           assert(_ret == 1);    // from ret == x postcondition
+        }
+     } => Ok(())
+}
+
+test_verify_one_file! {
+     #[test] test_proof_with_tracked_mut_ensures verus_code!{
+        use vstd::prelude::*;
+
+        // Function with only declare_with (tracked value), no declare_ret_with
+        fn set_val(x: u32) -> u32
+        {
+           let y: Tracked<u64> = declare_with();
+           requires((x as u64) < 100 && y@ < 100);
+           ensures(|ret: u32| ret == x);
+
+           x
+        }
+
+        fn caller_test() {
+           let ret = proof_with((Tracked(1u64),), set_val(1));
+           assert(ret == 1);
+
+           let ret2 = proof_with((Tracked(42u64),), set_val(42));
+           assert(ret2 == 42);
+        }
+     } => Ok(())
+}
+
+test_verify_one_file! {
+     #[test] test_call_requires_with_extra_params verus_code!{
+        use vstd::prelude::*;
+
+        #[verifier(external_body)]
+        fn callee(a: u64) -> u64
+        {
+            let b: Tracked<u64> = declare_with();
+            requires(a == 1 && b@ == 42);
+            ensures(|ret: u64| ret == a + b@);
+            unimplemented!()
+        }
+
+        proof fn test_call_requires() {
+            assert(call_requires(callee, (1,)));
+        }
+     } => Err(e) => assert_vir_error_msg(e, "call_requires/call_ensures cannot be used with functions that have extra parameters")
+}
+
+test_verify_one_file! {
+     #[test] test_call_ensures_with_extra_params verus_code!{
+        use vstd::prelude::*;
+
+        #[verifier(external_body)]
+        fn callee(a: u64) -> u64
+        {
+            let b: Tracked<u64> = declare_with();
+            requires(a == 1 && b@ == 42);
+            ensures(|ret: u64| ret == a + b@);
+            unimplemented!()
+        }
+
+        proof fn test_call_ensures() {
+            assert(call_ensures(callee, (1,), 43));
+        }
+     } => Err(e) => assert_vir_error_msg(e, "call_requires/call_ensures cannot be used with functions that have extra parameters")
+}
+
+test_verify_one_file! {
+     #[test] test_call_ensures_with_extra_ret_fail verus_code!{
+        use vstd::prelude::*;
+
+        #[verifier(external_body)]
+        fn callee(a: u64) -> u64
+        {
+            let mut out1: Tracked<u8> = declare_ret_with();
+            ensures(|ret: u64| ret == 1 && out1@ == 42);
+            unimplemented!()
+        }
+
+        proof fn test_call_ensures() {
+            assert(call_ensures(callee, (1,), 1));
+        }
+     } => Err(e) => assert_vir_error_msg(e, "call_requires/call_ensures cannot be used with functions that have extra parameters")
+}
+
+test_verify_one_file! {
+     #[test] test_declare_ret_with_requires_proof_with_ret verus_code!{
+        use vstd::prelude::*;
+
+        #[verifier(external_body)]
+        fn callee(a: u64) -> u64
+        {
+            let mut out1: Tracked<u8> = declare_ret_with();
+            ensures(|ret: u64| ret == 1 && out1@ == 42);
+            unimplemented!()
+        }
+
+        fn caller() {
+            let _ret = callee(1); // should fail: must use proof_with_ret
+        }
+     } => Err(e) => assert_vir_error_msg(e, "use proof_with_ret()")
 }

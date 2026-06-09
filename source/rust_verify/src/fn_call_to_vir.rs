@@ -33,8 +33,8 @@ use vir::ast::{
     BoundsCheck, BuiltinSpecFun, CallTarget, ChainedOp, ComputeMode, Constant, CrateId,
     Div0Behavior, ExprX, FieldOpr, FunX, HeaderExpr, HeaderExprX, InequalityOp, IntRange,
     IntegerTypeBoundKind, Mode, ModeCoercion, ModeWrapperMode, MultiOp, OverflowBehavior, Place,
-    PlaceX, Quant, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, VarBinder, VarBinderX, VarIdent,
-    VariantCheck, VirErr,
+    PlaceX, Quant, SpannedTyped, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, VarBinder,
+    VarBinderX, VarIdent, VariantCheck, VirErr,
 };
 use vir::ast_util::{
     const_int_from_string, mk_tuple_typ, mk_tuple_x, typ_to_diagnostic_str, types_equal,
@@ -313,24 +313,40 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
 
     let vir_args = if let Some(args) = args { mk_vir_args(bctx, &args)? } else { vec![] };
 
-    // Consume pending tracked args from proof_with() if present.
-    // Only consume when callee expects extra params (has declare_with entries).
+    // Consume pending tracked args from proof_with() / proof_with_ret() if present.
+    // Consume when callee expects extra input params (declare_with) or has extra
+    // return params (declare_ret_with) — the latter indicates proof_with_ret was used.
     let vir_args = {
         let mut args = vir_args;
         let extra_params = bctx.ctxt.declare_with_params.borrow().get(&f).cloned();
-        if let Some(ref expected_params) = extra_params {
+        let has_ret_params = bctx.ctxt.declare_ret_with_params.borrow().contains_key(&f);
+
+        // Consume pending args if callee has declare_with or declare_ret_with
+        if extra_params.is_some() || has_ret_params {
+            let expected_params = extra_params.unwrap_or_default();
             let extra_count = expected_params.len();
             let mut pending_opt = bctx.pending_tracked_args.borrow_mut();
             let pending = match pending_opt.take() {
                 Some(p) => p,
                 None => {
-                    return err_span(
-                        expr.span,
-                        format!(
-                            "this external function requires {} extra tracked/ghost argument(s) via proof_with()",
-                            extra_count
-                        ),
-                    );
+                    if extra_count > 0 {
+                        return err_span(
+                            expr.span,
+                            format!(
+                                "this function requires {} extra tracked/ghost argument(s) via proof_with()",
+                                extra_count
+                            ),
+                        );
+                    }
+                    // Callee has declare_ret_with but no declare_with —
+                    // caller must use proof_with_ret to capture extra returns
+                    if has_ret_params {
+                        return err_span(
+                            expr.span,
+                            "this function has extra return values from declare_ret_with(); use proof_with_ret() to call it",
+                        );
+                    }
+                    Vec::new()
                 }
             };
             if pending.len() != extra_count {
@@ -2087,6 +2103,22 @@ fn verus_item_to_vir<'tcx, 'a>(
         ) => {
             record_spec_fn(bctx, expr);
 
+            // Check if the target function has extra ghost/tracked params from declare_with/declare_ret_with
+            {
+                let fn_arg = &args[0];
+                let fn_ty = bctx.types.expr_ty_adjusted(fn_arg);
+                if let rustc_middle::ty::TyKind::FnDef(def_id, _) = fn_ty.kind() {
+                    if bctx.ctxt.declare_ret_with_params.borrow().contains_key(def_id)
+                        || bctx.ctxt.declare_with_params.borrow().contains_key(def_id)
+                    {
+                        return err_span(
+                            expr.span,
+                            "call_requires/call_ensures cannot be used with functions that have extra parameters from declare_with/declare_ret_with",
+                        );
+                    }
+                }
+            }
+
             let bsf = match re {
                 BuiltinFunctionItem::CallRequires => {
                     assert!(args.len() == 2);
@@ -2216,8 +2248,10 @@ fn verus_item_to_vir<'tcx, 'a>(
         }
         VerusItem::ProofWith => {
             // proof_with(ghost_args, call) — ghost args and call in one expression.
-            // First arg: single Tracked/Ghost or tuple of them.
-            // Second arg: the actual function call, whose result is returned.
+            // First arg: single Tracked/Ghost or tuple of them (extra inputs).
+            // Second arg: the actual function call.
+            // Returns (B, C) where B is the call's return type and C is the tuple of
+            // extra ghost/tracked returns from declare_ret_with() in the callee.
             unsupported_err_unless!(
                 args_len == 2,
                 expr.span,
@@ -2273,6 +2307,72 @@ fn verus_item_to_vir<'tcx, 'a>(
 
             Ok(call_expr)
         }
+        VerusItem::ProofWithRet => {
+            // proof_with_ret(ghost_args, call) — like proof_with but also receives extra
+            // ghost/tracked return values from declare_ret_with() in the callee.
+            // Returns (B, C) where B is the call's return and C is the extra outputs tuple.
+            unsupported_err_unless!(
+                args_len == 2,
+                expr.span,
+                "expected proof_with_ret(ghost_args, call)",
+                &args
+            );
+
+            // Extract individual ghost/tracked items from the first arg.
+            let ghost_arg = &args[0];
+            let ghost_items: Vec<&rustc_hir::Expr> = match &ghost_arg.kind {
+                rustc_hir::ExprKind::Tup(elems) => elems.iter().collect(),
+                _ => vec![ghost_arg],
+            };
+
+            let bctx_ghost = &BodyCtxt { in_ghost: true, ..bctx.clone() };
+            let mut pending_args = Vec::new();
+            for item in &ghost_items {
+                let arg_typ = typ_of_expr_adjusted(bctx, item.span, &item.hir_id)?;
+                let is_tracked = match &*arg_typ {
+                    TypX::Decorate(TypDecoration::Tracked, _, _) => true,
+                    TypX::Decorate(TypDecoration::Ghost, _, _) => false,
+                    _ => {
+                        return err_span(
+                            item.span,
+                            "proof_with_ret expects arguments of type Tracked<T> or Ghost<T>",
+                        );
+                    }
+                };
+                let arg_expr = expr_to_vir_consume(bctx_ghost, item)?;
+                pending_args.push(crate::context::PendingTrackedArg {
+                    expr: arg_expr,
+                    is_tracked,
+                    arg_hir_id: item.hir_id,
+                });
+            }
+
+            // Set pending args for consumption by the inner fn_call_to_vir
+            *bctx.pending_tracked_args.borrow_mut() = Some(pending_args);
+
+            // Record erasure: replace proof_with_ret(A, B) with just B (arg index 1)
+            record_call(bctx, expr, ResolvedCall::SpecAllowProofArgs);
+
+            // Process second arg (the function call) — this will consume pending args
+            let call_expr = expr_to_vir_consume(bctx, &args[1])?;
+
+            // Assert pending args were consumed
+            if bctx.pending_tracked_args.borrow().is_some() {
+                return err_span(
+                    expr.span,
+                    "proof_with_ret second argument must be a function call that accepts extra tracked/ghost arguments",
+                );
+            }
+
+            // proof_with_ret returns (B, C) at Rust level. At VIR level, we make the
+            // call expression have the full tuple type (ret, extra_ret...) so that
+            // normal dest/destructuring at SST level propagates extra_ret values.
+            // The function's VIR return type is just B, but we re-type the call_expr
+            // to the full tuple type so SST sees it as returning (B, C).
+            let ret_typ = typ_of_expr_adjusted(bctx, expr.span, &expr.hir_id)?;
+            // Re-type call_expr to the full tuple return type
+            Ok(SpannedTyped::new(&call_expr.span, &ret_typ, call_expr.x.clone()))
+        }
         VerusItem::BuiltinDeref(d) => {
             // This would be easy to support (similar to handling borrow_mut etc.) but their usage
             // would be very rare so I'm skipping for now
@@ -2294,6 +2394,11 @@ fn verus_item_to_vir<'tcx, 'a>(
             // declare_with() is handled at let-stmt level
             // in rust_to_vir_expr.rs. If we reach here, it's used outside a let-stmt.
             return err_span(expr.span, "declare_with() must be used as a let initializer");
+        }
+        VerusItem::DeclareRetWith => {
+            // declare_ret_with() is handled at let-stmt level
+            // in rust_to_vir_func.rs. If we reach here, it's used outside a let-stmt.
+            return err_span(expr.span, "declare_ret_with() must be used as a let initializer");
         }
         VerusItem::Vstd(_, _)
         | VerusItem::Marker(_)

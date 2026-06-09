@@ -451,7 +451,9 @@ pub(crate) enum VerusItem {
     DummyCapture(DummyCaptureItem),
     MutRefTracked,
     ProofWith,
+    ProofWithRet,
     DeclareWith,
+    DeclareRetWith,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash)]
@@ -465,7 +467,9 @@ pub(crate) enum DummyCaptureItem {
 fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
     vec![
         ("verus::verus_builtin::proof_with",                VerusItem::ProofWith),
+        ("verus::verus_builtin::proof_with_ret",             VerusItem::ProofWithRet),
         ("verus::verus_builtin::declare_with",               VerusItem::DeclareWith),
+        ("verus::verus_builtin::declare_ret_with",           VerusItem::DeclareRetWith),
         ("verus::verus_builtin::admit",                   VerusItem::Spec(SpecItem::Admit)),
         ("verus::verus_builtin::assume_",                 VerusItem::Spec(SpecItem::Assume)),
         ("verus::verus_builtin::no_method_body",          VerusItem::Spec(SpecItem::NoMethodBody)),

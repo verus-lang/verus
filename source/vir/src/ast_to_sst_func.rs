@@ -412,6 +412,11 @@ fn req_ens_to_sst(
             ));
         }
     }
+    if !pre {
+        for param in function.x.extra_ret_params.iter() {
+            pars_mut.push(param_to_par(param));
+        }
+    }
     let mut exps: Vec<Exp> = Vec::new();
 
     let specs = if function.x.attrs.is_async && !pre {
@@ -835,6 +840,10 @@ pub fn func_def_to_sst(
     } else {
         None
     };
+    for param in function.x.extra_ret_params.iter() {
+        ens_params.push(param.clone());
+        state.declare_var_stm(&param.x.name, &param.x.typ, PreLocalDeclKind::StmtLet, false);
+    }
     let ens_params = Arc::new(ens_params);
     let ens_pars = params_to_pars(&ens_params);
 
@@ -1109,6 +1118,7 @@ pub fn function_to_sst(
         typ_bounds: function.x.typ_bounds.clone(),
         pars: params_to_pars(&function.x.params),
         ret: param_to_par(&function.x.ret),
+        extra_ret_pars: params_to_pars(&function.x.extra_ret_params),
         ens_has_return: function.x.ens_has_return,
         item_kind: function.x.item_kind,
         attrs: function.x.attrs.clone(),
