@@ -44,7 +44,11 @@ pub mod future;
 pub mod hash_map;
 #[cfg(all(feature = "alloc", feature = "std"))]
 pub mod hash_set;
+pub mod imap;
+pub mod imap_lib;
 pub mod invariant;
+pub mod iset;
+pub mod iset_lib;
 #[cfg(verus_keep_ghost)]
 pub mod laws_cmp;
 #[cfg(verus_keep_ghost)]
@@ -99,8 +103,10 @@ pub broadcast group group_vstd_default {
     //
     seq::group_seq_axioms,
     seq_lib::group_seq_lib_default,
-    map::group_map_axioms,
-    set::group_set_axioms,
+    map::group_map_lemmas,
+    set::group_set_lemmas,
+    imap::group_imap_lemmas,
+    iset::group_iset_lemmas,
     set_lib::group_set_lib_default,
     multiset::group_multiset_axioms,
     compute::all_spec_ensures,

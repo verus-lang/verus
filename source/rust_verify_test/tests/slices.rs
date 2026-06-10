@@ -108,10 +108,10 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_recursion_checks verus_code! {
-        use vstd::map::*;
+        use vstd::imap::*;
 
         struct Foo {
-            field: Box<[ Map<Foo, int> ]>,
+            field: Box<[ IMap<Foo, int> ]>,
         }
 
     } => Err(err) => assert_vir_error_msg(err, "non-positive position")

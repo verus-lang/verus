@@ -7,29 +7,38 @@ verus_extra_args = ["--no-report-long-running"]
 [[project]]
 name = "ironkv"
 git_url = "https://github.com/verus-lang/verified-ironkv.git"
-refspec = "main"
+#TODO: restore this after it is updated to new Set/Map/ISet/IMap
+refspec = "origin/finite-sets"
 cargo_verus = true
 crate_roots = ["ironsht"]
 
 [[project]]
 name = "node-replication"
-git_url = "https://github.com/verus-lang/verified-node-replication.git"
-refspec = "main"
+#TODO: restore this after it is updated to new Set/Map/ISet/IMap
+#git_url = "https://github.com/verus-lang/verified-node-replication.git"
+#refspec = "main"
+git_url = "https://github.com/jaylorch/verified-node-replication.git"
+refspec = "origin/finite-sets"
 crate_roots = ["verified-node-replication/src/lib.rs"]
 extra_verus_args = ["--crate-type=dylib"]
 
 [[project]]
 name = "verified-storage"
 git_url = "https://github.com/microsoft/verified-storage.git"
-refspec = "main"
+#TODO: restore this after it is updated to new Set/Map/ISet/IMap
+#refspec = "main"
+refspec = "origin/finite-sets"
 cargo_verus = true
 extra_cargo_args = ["--no-default-features"]
 crate_roots = ["capybaraKV/capybarakv", "multilog/multilog", "pmemlog"]
 
 [[project]]
 name = "memory-allocator"
-git_url = "https://github.com/verus-lang/verified-memory-allocator.git"
-refspec = "main"
+#TODO: restore this after it is updated to new Set/Map/ISet/IMap
+#git_url = "https://github.com/verus-lang/verified-memory-allocator.git"
+#refspec = "main"
+git_url = "https://github.com/jaylorch/verified-memory-allocator.git"
+refspec = "origin/finite-sets"
 requires_singular = true
 crate_roots = ["verus-mimalloc/lib.rs"]
 extra_verus_args = [
@@ -40,7 +49,7 @@ extra_verus_args = [
 prepare_script = """
 pushd test_libc
 cargo clean
-cargo +1.95.0 build --release
+cargo +1.96.0 build --release
 popd
 LIBC_RLIB_NAME=$(find ./test_libc/target/release/deps/ -name 'liblibc-*.rlib')
 mkdir -p build
@@ -50,7 +59,7 @@ prepare_script_windows = """
 $ErrorActionPreference = 'Stop'
 Push-Location test_libc
 cargo clean
-cargo +1.95.0 build --release
+cargo +1.96.0 build --release
 Pop-Location
 $libcRlib = Get-ChildItem -Path "./test_libc/target/release/deps/" -Filter "liblibc-*.rlib" | Select-Object -First 1
 New-Item -ItemType Directory -Path "build" -Force | Out-Null
@@ -73,22 +82,31 @@ cargo install vest
 
 [[project]]
 name = "human-eval"
-git_url = "https://github.com/secure-foundations/human-eval-verus.git"
-refspec = "main"
+#TODO: restore this after it is updated to new Set/Map/ISet/IMap
+#git_url = "https://github.com/secure-foundations/human-eval-verus.git"
+#refspec = "main"
+git_url = "https://github.com/jaylorch/human-eval-verus.git"
+refspec = "origin/finite-sets"
 crate_roots = ["tasks/lib.rs"]
 extra_verus_args = ["--crate-type=lib"]
 
 [[project]]
 name = "page-table"
-git_url = "https://github.com/matthias-brun/verified-nrkernel.git"
-refspec = "main"
+#TODO: restore this after it is updated to new Set/Map/ISet/IMap
+#git_url = "https://github.com/matthias-brun/verified-nrkernel.git"
+#refspec = "main"
+git_url = "https://github.com/jaylorch/verified-nrkernel.git"
+refspec = "origin/finite-sets"
 crate_roots = ["page-table/src/lib.rs"]
 extra_verus_args = ["--crate-type=lib", "--rlimit", "100", "--cfg", "feature=\"impl\""]
 
 [[project]]
 name = "svsm"
-git_url = "https://github.com/ziqiaozhou/svsm.git"
-refspec = "origin/verita"
+#TODO: restore this after it is updated to new Set/Map/ISet/IMap
+#git_url = "https://github.com/ziqiaozhou/svsm.git"
+#refspec = "origin/verita"
+git_url = "https://github.com/jaylorch/svsm.git"
+refspec = "origin/finite-sets"
 cargo_verus = true
 extra_cargo_args = ["--features", "verus"]
 crate_roots = ["kernel"]
@@ -98,12 +116,15 @@ prepare_script = """
 git submodule init
 git submodule update
 cargo update
-rustup target add x86_64-unknown-none --toolchain 1.95.0
+rustup target add x86_64-unknown-none --toolchain 1.96.0
 """
 
 [[project]]
 name = "anvil"
-git_url = "https://github.com/anvil-verifier/anvil"
+#TODO: restore this after it is updated to new Set/Map/ISet/IMap
+#git_url = "https://github.com/anvil-verifier/anvil"
+#refspec = "main"
+git_url = "https://github.com/jaylorch/anvil"
 refspec = "main"
 crate_roots = ["src/esr_composition.rs"]
 extra_verus_args = ["--crate-type=lib", 

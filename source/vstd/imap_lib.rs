@@ -1,29 +1,25 @@
 #[macro_use]
-use super::map::{Map, assert_maps_equal, assert_maps_equal_internal};
+use super::imap::{IMap, assert_imaps_equal, assert_imaps_equal_internal};
+#[cfg(verus_keep_ghost)]
+use super::iset::*;
+#[cfg(verus_keep_ghost)]
+use super::iset_lib::*;
 #[allow(unused_imports)]
 use super::pervasive::*;
 #[allow(unused_imports)]
 use super::prelude::*;
 #[allow(unused_imports)]
 use super::relations::*;
-use super::set::*;
-#[cfg(verus_keep_ghost)]
-use super::set_lib::*;
 
 verus! {
 
-broadcast use {
-    super::map::group_map_lemmas,
-    super::set::group_set_lemmas,
-    super::set_lib::group_set_lib_default,
-    super::iset::group_iset_lemmas,
-};
+broadcast use {super::imap::group_imap_lemmas, super::iset::group_iset_lemmas};
 
-impl<K, V> Map<K, V> {
+impl<K, V> IMap<K, V> {
     /// Is `true` if called by a "full" map, i.e., a map containing every element of type `A`.
     #[verifier::inline]
     pub open spec fn is_full(self) -> bool {
-        forall|k: K| self.dom().contains(k)
+        self.dom().is_full()
     }
 
     /// Is `true` if called by an "empty" map, i.e., a map containing no elements and has length 0
@@ -59,15 +55,15 @@ impl<K, V> Map<K, V> {
     /// ## Example
     ///
     /// ```rust
-    /// let m: Map<int, int> = map![1 => 10, 2 => 11];
-    /// assert(m.values() == set![10int, 11int]) by {
+    /// let m: IMap<int, int> = imap![1 => 10, 2 => 11];
+    /// assert(m.values() == iset![10int, 11int]) by {
     ///     assert(m.contains_key(1));
     ///     assert(m.contains_key(2));
-    ///     assert(m.values() =~= set![10int, 11int]);
+    ///     assert(m.values() =~= iset![10int, 11int]);
     /// }
     /// ```
-    pub open spec fn values(self) -> Set<V> {
-        self.dom().map(|k: K| self[k])
+    pub open spec fn values(self) -> ISet<V> {
+        ISet::<V>::new(|v: V| self.contains_value(v))
     }
 
     ///
@@ -76,15 +72,15 @@ impl<K, V> Map<K, V> {
     /// ## Example
     ///
     /// ```rust
-    /// let m: Map<int, int> = map![1 => 10, 2 => 11];
-    /// assert(m.kv_pairs() == set![(1int, 10int), (2int, 11int)] by {
+    /// let m: IMap<int, int> = imap![1 => 10, 2 => 11];
+    /// assert(m.kv_pairs() == iset![(1int, 10int), (2int, 11int)] by {
     ///     assert(m.contains_pair(1int, 10int));
     ///     assert(m.contains_pair(2int, 11int));
-    ///     assert(m.kv_pairs() =~= set![(1int, 10int), (2int, 11int)]);
+    ///     assert(m.kv_pairs() =~= iset![(1int, 10int), (2int, 11int)]);
     /// }
     /// ```
-    pub open spec fn kv_pairs(self) -> Set<(K, V)> {
-        self.dom().map(|k: K| (k, self[k]))
+    pub open spec fn kv_pairs(self) -> ISet<(K, V)> {
+        ISet::<(K, V)>::new(|kv: (K, V)| self.dom().contains(kv.0) && self[kv.0] == kv.1)
     }
 
     /// Returns true if the key `k` is in the domain of `self`, and it maps to the value `v`.
@@ -103,7 +99,7 @@ impl<K, V> Map<K, V> {
     ///
     /// ```rust
     /// assert(
-    ///    map![1 => 10, 2 => 11].le(map![1 => 10, 2 => 11, 3 => 12])
+    ///    imap![1 => 10, 2 => 11].le(imap![1 => 10, 2 => 11, 3 => 12])
     /// );
     /// ```
     pub open spec fn submap_of(self, m2: Self) -> bool {
@@ -131,7 +127,7 @@ impl<K, V> Map<K, V> {
     /// ```
     pub open spec fn union_prefer_right(self, m2: Self) -> Self {
         Self::new(
-            self.dom().union(m2.dom()),
+            |k: K| self.dom().contains(k) || m2.dom().contains(k),
             |k: K|
                 if m2.dom().contains(k) {
                     m2[k]
@@ -149,11 +145,11 @@ impl<K, V> Map<K, V> {
     ///
     /// ```rust
     /// assert(
-    ///    map![1 => 10, 2 => 11, 3 => 12].remove_keys(set!{2, 3, 4})
-    ///    =~= map![1 => 10]);
+    ///    imap![1 => 10, 2 => 11, 3 => 12].remove_keys(iset!{2, 3, 4})
+    ///    =~= imap![1 => 10]);
     /// ```
-    pub open spec fn remove_keys(self, keys: Set<K>) -> Self {
-        Self::new(self.dom().difference(keys), |k: K| self[k])
+    pub open spec fn remove_keys(self, keys: ISet<K>) -> Self {
+        Self::new(|k: K| self.dom().contains(k) && !keys.contains(k), |k: K| self[k])
     }
 
     /// Complement to `remove_keys`. Restricts the map to (key, value) pairs
@@ -167,8 +163,8 @@ impl<K, V> Map<K, V> {
     ///    map![1 => 10, 2 => 11, 3 => 12].remove_keys(set!{2, 3, 4})
     ///    =~= map![2 => 11, 3 => 12]);
     /// ```
-    pub open spec fn restrict(self, keys: Set<K>) -> Self {
-        Self::new(self.dom().intersect(keys), |k: K| self[k])
+    pub open spec fn restrict(self, keys: ISet<K>) -> Self {
+        Self::new(|k: K| self.dom().contains(k) && keys.contains(k), |k: K| self[k])
     }
 
     /// Returns `true` if and only if the given key maps to the same value or does not exist in self and m2.
@@ -183,13 +179,13 @@ impl<K, V> Map<K, V> {
     }
 
     /// Map a function `f` over all (k, v) pairs in `self`.
-    pub open spec fn map_entries<W>(self, f: spec_fn(K, V) -> W) -> Map<K, W> {
-        Map::<K, W>::new(self.dom(), |k: K| f(k, self[k]))
+    pub open spec fn map_entries<W>(self, f: spec_fn(K, V) -> W) -> IMap<K, W> {
+        IMap::new(|k: K| self.contains_key(k), |k: K| f(k, self[k]))
     }
 
     /// Map a function `f` over the values in `self`.
-    pub open spec fn map_values<W>(self, f: spec_fn(V) -> W) -> Map<K, W> {
-        Map::<K, W>::new(self.dom(), |k: K| f(self[k]))
+    pub open spec fn map_values<W>(self, f: spec_fn(V) -> W) -> IMap<K, W> {
+        IMap::new(|k: K| self.contains_key(k), |k: K| f(self[k]))
     }
 
     /// Returns `true` if and only if a map is injective
@@ -201,8 +197,11 @@ impl<K, V> Map<K, V> {
 
     /// Swaps map keys and values. Values are not required to be unique; no
     /// promises on which key is chosen on the intersection.
-    pub open spec fn invert(self) -> Map<V, K> {
-        Map::<V, K>::new(self.values(), |v: V| choose|k: K| self.contains_pair(k, v))
+    pub open spec fn invert(self) -> IMap<V, K> {
+        IMap::<V, K>::new(
+            |v: V| self.contains_value(v),
+            |v: V| choose|k: K| self.contains_pair(k, v),
+        )
     }
 
     // Proven lemmas
@@ -211,6 +210,7 @@ impl<K, V> Map<K, V> {
     pub proof fn lemma_remove_key_len(self, key: K)
         requires
             self.dom().contains(key),
+            self.dom().finite(),
         ensures
             self.dom().len() == 1 + self.remove(key).dom().len(),
     {
@@ -226,14 +226,16 @@ impl<K, V> Map<K, V> {
 
     /// Removing a set of n keys from a map that previously contained all n keys
     /// results in a domain of size n less than the original domain.
-    pub proof fn lemma_remove_keys_len(self, keys: Set<K>)
+    pub proof fn lemma_remove_keys_len(self, keys: ISet<K>)
         requires
             forall|k: K| #[trigger] keys.contains(k) ==> self.contains_key(k),
+            keys.finite(),
+            self.dom().finite(),
         ensures
             self.remove_keys(keys).dom().len() == self.dom().len() - keys.len(),
         decreases keys.len(),
     {
-        broadcast use group_set_properties;
+        broadcast use group_iset_properties;
 
         if keys.len() > 0 {
             let key = keys.choose();
@@ -254,11 +256,9 @@ impl<K, V> Map<K, V> {
             x != y && self.invert().dom().contains(x) && self.invert().dom().contains(
                 y,
             ) implies #[trigger] self.invert()[x] != #[trigger] self.invert()[y] by {
-            assert(exists|i: K| #[trigger] self.dom().contains(i) && self[i] == x);
             let i = choose|i: K| #[trigger] self.dom().contains(i) && self[i] == x;
             assert(self.contains_pair(i, x));
             let j = choose|j: K| self.contains_pair(j, x) && self.invert()[x] == j;
-            assert(exists|k: K| #[trigger] self.dom().contains(k) && self[k] == y);
             let k = choose|k: K| #[trigger] self.dom().contains(k) && self[k] == y;
             assert(self.contains_pair(k, y));
             let l = choose|l: K| self.contains_pair(l, y) && self.invert()[y] == l && l != j;
@@ -270,9 +270,9 @@ impl<K, V> Map<K, V> {
     /// ## Example
     /// ```rust
     /// proof fn example() {
-    ///     let m = map![1 => 10, 2 => 20];
+    ///     let m = imap![1 => 10, 2 => 20];
     ///     let even = |k: int| k % 2 == 0;
-    ///     assert(m.filter_keys(even) =~= map![2 => 20]);
+    ///     assert(m.filter_keys(even) =~= imap![2 => 20]);
     /// }
     /// ```
     pub open spec fn filter_keys(self, p: spec_fn(K) -> bool) -> Self {
@@ -285,7 +285,7 @@ impl<K, V> Map<K, V> {
     /// ## Example
     /// ```rust
     /// proof fn get_test() {
-    ///     let m: Map<int, bool> = map![
+    ///     let m: IMap<int, bool> = imap![
     ///         1 => true,
     ///         2 => false
     ///     ];
@@ -307,7 +307,7 @@ impl<K, V> Map<K, V> {
     /// ## Example
     /// ```rust
     /// proof fn get_dom_value_any_test() {
-    ///     let m = map![1 => 10, 2 => 20, 3 => 30];
+    ///     let m = imap![1 => 10, 2 => 20, 3 => 30];
     ///     let p = |v: int| v > 25;
     ///     assert(m[3] == 30);
     ///     assert(m.dom().any(|k| p(m[k])));
@@ -317,7 +317,7 @@ impl<K, V> Map<K, V> {
         ensures
             self.dom().any(|k: K| p(self[k])) <==> self.values().any(p),
     {
-        broadcast use group_map_properties;
+        broadcast use group_imap_properties;
 
         if self.dom().any(|k: K| p(self[k])) {
             let k = choose|k: K| self.dom().contains(k) && #[trigger] p(self[k]);
@@ -331,9 +331,9 @@ impl<K, V> Map<K, V> {
     /// ## Example
     /// ```rust
     /// proof fn submap_eq_test() {
-    ///     let m1 = map![1 => 10, 2 => 20];
-    ///     let m2 = map![1 => 10, 2 => 20];
-    ///     let m3 = map![1 => 10, 2 => 30];
+    ///     let m1 = imap![1 => 10, 2 => 20];
+    ///     let m2 = imap![1 => 10, 2 => 20];
+    ///     let m3 = imap![1 => 10, 2 => 30];
     ///
     ///     assert(m1.submap_of(m2) && m2.submap_of(m1));
     ///     assert(m1 == m2);
@@ -343,7 +343,7 @@ impl<K, V> Map<K, V> {
         ensures
             (self == m) <==> (self.submap_of(m) && m.submap_of(self)),
     {
-        broadcast use group_map_properties;
+        broadcast use group_imap_properties;
 
         if self.submap_of(m) && m.submap_of(self) {
             assert(self.dom() == m.dom());
@@ -359,7 +359,7 @@ impl<K, V> Map<K, V> {
     /// ## Example
     /// ```rust
     /// proof fn map_remove_keys_insert_test() {
-    ///     let m = map![1 => 10, 2 => 20, 3 => 30];
+    ///     let m = imap![1 => 10, 2 => 20, 3 => 30];
     ///     let to_remove = set![2, 4];
     ///
     ///     // 5 not in m: insert happens after remove
@@ -369,7 +369,7 @@ impl<K, V> Map<K, V> {
     ///     assert(m.insert(2, 25).remove_keys(to_remove) == m.remove_keys(to_remove));
     /// }
     /// ```
-    pub broadcast proof fn lemma_map_remove_keys_insert(self, r: Set<K>, k: K, v: V)
+    pub broadcast proof fn lemma_imap_remove_keys_insert(self, r: ISet<K>, k: K, v: V)
         ensures
             #[trigger] self.insert(k, v).remove_keys(r) == if r.contains(k) {
                 self.remove_keys(r)
@@ -377,7 +377,7 @@ impl<K, V> Map<K, V> {
                 self.remove_keys(r).insert(k, v)
             },
     {
-        broadcast use group_map_properties;
+        broadcast use group_imap_properties;
 
         let lhs = self.insert(k, v).remove_keys(r);
         let rhs = if r.contains(k) {
@@ -394,7 +394,7 @@ impl<K, V> Map<K, V> {
     /// ## Example
     /// ```rust
     /// proof fn example() {
-    ///     let m = map![1 => 10];
+    ///     let m = imap![1 => 10];
     ///     let even = |k: int| k % 2 == 0;
     ///
     ///     assert(m.insert(3, 30).filter_keys(even) =~= m.filter_keys(even));
@@ -410,7 +410,7 @@ impl<K, V> Map<K, V> {
                 self.filter_keys(p)
             }),
     {
-        broadcast use group_map_properties;
+        broadcast use group_imap_properties;
 
         let lhs = self.insert(k, v).filter_keys(p);
         let rhs = if p(k) {
@@ -426,7 +426,7 @@ impl<K, V> Map<K, V> {
     /// ## Example
     /// ```rust
     /// proof fn example() {
-    ///     let a = map![1int => 2int];
+    ///     let a = imap![1int => 2int];
     ///     assert(a.contains_value(2));
     /// }
     /// ```
@@ -443,7 +443,7 @@ impl<K, V> Map<K, V> {
     /// ## Example
     /// ```rust
     /// proof fn example() {
-    ///     let a = map![1int => 2int].insert(1int, 3int);
+    ///     let a = imap![1int => 2int].insert(1int, 3int);
     ///     assert(!a.contains_value(2));
     ///     assert(a.contains_value(3));
     /// }
@@ -463,47 +463,52 @@ impl<K, V> Map<K, V> {
 
     pub proof fn lemma_injective_values_len(self)
         requires
+            self.dom().finite(),
             self.is_injective(),
         ensures
+            self.values().finite(),
             self.values().len() == self.dom().len(),
     {
         let f = |k: K|
             if self.contains_key(k) {
                 self[k]
             } else {
-                arbitrary()
+                ISet::<V>::full().difference(self.values()).choose()
             };
         assert(forall|a1: K, a2: K|
             self.dom().contains(a1) && self.dom().contains(a2) && #[trigger] f(a1) == #[trigger] f(
                 a2,
             ) ==> a1 == a2);
         assert(self.dom().map(f) == self.values());
-        lemma_map_size(self.dom(), self.values(), f);
+        super::iset_lib::lemma_map_size(self.dom(), self.values(), f);
     }
 
     pub proof fn lemma_values_len(self)
+        requires
+            self.dom().finite(),
         ensures
+            self.values().finite(),
             self.values().len() <= self.dom().len(),
     {
         let f = |k: K|
             if self.contains_key(k) {
                 self[k]
             } else {
-                Set::<V>::full().unwrap().difference(self.values()).choose()
+                ISet::<V>::full().difference(self.values()).choose()
             };
         assert(self.dom().map(f) == self.values());
-        lemma_map_size_bound(self.dom(), self.values(), f);
+        super::iset_lib::lemma_map_size_bound(self.dom(), self.values(), f);
     }
 }
 
-impl<K, V> Map<Seq<K>, V> {
+impl<K, V> IMap<Seq<K>, V> {
     /// Returns a sub-map of all entries whose key begins with `prefix`,
     /// re-indexed so that the stored keys have that prefix removed.
     ///
     /// ## Example
     /// ```rust
     /// proof fn example() {
-    ///     let m = map![seq![1, 2] => 10, seq![1, 2, 3] => 20, seq![2] => 30];
+    ///     let m = imap![seq![1, 2] => 10, seq![1, 2, 3] => 20, seq![2] => 30];
     ///     let sub = m.prefixed_entries(seq![1, 2]);
     ///
     ///     assert(sub.contains_key(seq![]));          // original key [1,2]
@@ -516,62 +521,7 @@ impl<K, V> Map<Seq<K>, V> {
     /// }
     /// ```
     pub open spec fn prefixed_entries(self, prefix: Seq<K>) -> Self {
-        Map::new(
-            Set::new(|k: Seq<K>| self.contains_key(prefix + k)).unwrap(),
-            |k: Seq<K>| self[prefix + k],
-        )
-    }
-
-    /// This internal helper lemma says that if sequences `s1` and
-    /// `s2` differ, then they differ when prefixed by the sequence
-    /// `prefix`.
-    proof fn lemma_ne_implies_prefixed_ne(prefix: Seq<K>, s1: Seq<K>, s2: Seq<K>)
-        requires
-            s1 != s2,
-        ensures
-            prefix + s1 != prefix + s2,
-        decreases prefix.len(),
-    {
-        broadcast use super::seq::group_seq_axioms;
-
-        if s1.len() == s2.len() {
-            if forall|i: int| 0 <= i < s1.len() ==> s1[i] == s2[i] {
-                assert(s1 =~= s2);
-            } else {
-                let i: int = choose|i: int| 0 <= i < s1.len() && s1[i] != s2[i];
-                assert((prefix + s1)[prefix.len() + i] == s1[i]);
-                assert((prefix + s2)[prefix.len() + i] == s2[i]);
-            }
-        } else {
-            assert((prefix + s1).len() == prefix.len() + s1.len());
-            assert((prefix + s2).len() == prefix.len() + s2.len());
-        }
-    }
-
-    /// This helper lemma establishes that the set used in the body of
-    /// `prefixed_entries` is finite, so the set it produces is valid.
-    proof fn lemma_prefixed_entries_dom_finite(self, prefix: Seq<K>)
-        ensures
-            ISet::new(|k: Seq<K>| self.contains_key(prefix + k)).finite(),
-        decreases self.dom().len(),
-    {
-        let f = |k: Seq<K>| self.contains_key(prefix + k);
-        if forall|k: Seq<K>| !(#[trigger] self.contains_key(prefix + k)) {
-            assert(ISet::new(f) =~= ISet::empty());
-        } else {
-            let s: Seq<K> = choose|s: Seq<K>| #[trigger] self.contains_key(prefix + s);
-            self.remove(prefix + s).lemma_prefixed_entries_dom_finite(prefix);
-            let set_remove_f = |k: Seq<K>| self.remove(prefix + s).contains_key(prefix + k);
-            let is1 = ISet::new(f);
-            let is2 = ISet::new(set_remove_f).insert(s);
-            assert forall|x| is1.contains(x) implies is2.contains(x) by {
-                if x != s {
-                    Self::lemma_ne_implies_prefixed_ne(prefix, s, x);
-                    assert(self.remove(prefix + s).contains_key(prefix + x));
-                }
-            }
-            assert(ISet::new(f) =~= ISet::new(set_remove_f).insert(s));
-        }
+        IMap::new(|k: Seq<K>| self.contains_key(prefix + k), |k: Seq<K>| self[prefix + k])
     }
 
     /// For every key `k` kept by `prefixed_entries(prefix)`,
@@ -580,7 +530,7 @@ impl<K, V> Map<Seq<K>, V> {
     /// ## Example
     /// ```rust
     /// proof fn example() {
-    ///     let m = map![seq![1, 2] => 10, seq![1, 2, 3] => 20];
+    ///     let m = imap![seq![1, 2] => 10, seq![1, 2, 3] => 20];
     ///     let p = seq![1, 2];
     ///
     ///     // key inside the sub-map
@@ -594,9 +544,8 @@ impl<K, V> Map<Seq<K>, V> {
         ensures
             self.prefixed_entries(prefix)[k] == #[trigger] self[prefix + k],
     {
-        broadcast use group_map_properties;
+        broadcast use group_imap_properties;
 
-        self.lemma_prefixed_entries_dom_finite(prefix);
     }
 
     /// A key `k` is in `prefixed_entries(prefix)` exactly when the original map
@@ -605,7 +554,7 @@ impl<K, V> Map<Seq<K>, V> {
     /// ## Example
     /// ```rust
     /// proof fn example() {
-    ///     let m = map![seq![1, 2] => 10, seq![1, 2, 3] => 20];
+    ///     let m = imap![seq![1, 2] => 10, seq![1, 2, 3] => 20];
     ///     let p = seq![1, 2];
     ///
     ///     assert(m.prefixed_entries(p).contains_key(seq![])
@@ -623,12 +572,10 @@ impl<K, V> Map<Seq<K>, V> {
                 prefix + k,
             ),
     {
-        broadcast use group_map_properties;
+        broadcast use group_imap_properties;
 
         let lhs = self.prefixed_entries(prefix);
         let rhs = self;
-
-        self.lemma_prefixed_entries_dom_finite(prefix);
     }
 
     /// Inserting `(prefix + k, v)` before taking `prefixed_entries(prefix)`
@@ -637,7 +584,7 @@ impl<K, V> Map<Seq<K>, V> {
     /// ## Example
     /// ```rust
     /// proof fn example() {
-    ///     let m = map![seq![1, 2] => 10];
+    ///     let m = imap![seq![1, 2] => 10];
     ///     let p = seq![1, 2];
     ///
     ///     let left  = m.insert(p + seq![3], 20).prefixed_entries(p);
@@ -652,7 +599,7 @@ impl<K, V> Map<Seq<K>, V> {
                 prefix,
             ).insert(k, v),
     {
-        broadcast use group_map_properties;
+        broadcast use group_imap_properties;
         broadcast use super::seq::group_seq_axioms;
         broadcast use super::seq_lib::group_seq_properties, super::seq_lib::lemma_seq_skip_of_skip;
         broadcast use Map::lemma_prefixed_entries_contains, Map::lemma_prefixed_entries_get;
@@ -671,8 +618,8 @@ impl<K, V> Map<Seq<K>, V> {
     /// ## Example
     /// ```rust
     /// proof fn example() {
-    ///     let a = map![seq![1, 2] => 10, seq![2, 3] => 20];
-    ///     let b = map![seq![1, 2] => 99, seq![2, 4] => 40];
+    ///     let a = imap![seq![1, 2] => 10, seq![2, 3] => 20];
+    ///     let b = imap![seq![1, 2] => 99, seq![2, 4] => 40];
     ///     let p = seq![2];
     ///
     ///     assert(
@@ -687,11 +634,11 @@ impl<K, V> Map<Seq<K>, V> {
                 prefix,
             ).union_prefer_right(m.prefixed_entries(prefix)),
     {
-        broadcast use group_map_properties;
+        broadcast use group_imap_properties;
         broadcast use
-            Map::lemma_prefixed_entries_contains,
-            Map::lemma_prefixed_entries_get,
-            Map::lemma_prefixed_entries_insert,
+            IMap::lemma_prefixed_entries_contains,
+            IMap::lemma_prefixed_entries_get,
+            IMap::lemma_prefixed_entries_insert,
         ;
 
         let lhs = self.union_prefer_right(m).prefixed_entries(prefix);
@@ -700,7 +647,7 @@ impl<K, V> Map<Seq<K>, V> {
     }
 }
 
-impl Map<int, int> {
+impl IMap<int, int> {
     /// Returns `true` if a map is monotonic -- that is, if the mapping between ordered sets
     /// preserves the regular `<=` ordering on integers.
     pub open spec fn is_monotonic(self) -> bool {
@@ -719,7 +666,7 @@ impl Map<int, int> {
 }
 
 // Proven lemmas
-pub broadcast proof fn lemma_union_insert_left<K, V>(m1: Map<K, V>, m2: Map<K, V>, k: K, v: V)
+pub broadcast proof fn lemma_union_insert_left<K, V>(m1: IMap<K, V>, m2: IMap<K, V>, k: K, v: V)
     requires
         !m2.contains_key(k),
     ensures
@@ -728,14 +675,14 @@ pub broadcast proof fn lemma_union_insert_left<K, V>(m1: Map<K, V>, m2: Map<K, V
     assert(m1.insert(k, v).union_prefer_right(m2) =~= m1.union_prefer_right(m2).insert(k, v));
 }
 
-pub broadcast proof fn lemma_union_insert_right<K, V>(m1: Map<K, V>, m2: Map<K, V>, k: K, v: V)
+pub broadcast proof fn lemma_union_insert_right<K, V>(m1: IMap<K, V>, m2: IMap<K, V>, k: K, v: V)
     ensures
         #[trigger] m1.union_prefer_right(m2.insert(k, v)) == m1.union_prefer_right(m2).insert(k, v),
 {
     assert(m1.union_prefer_right(m2.insert(k, v)) =~= m1.union_prefer_right(m2).insert(k, v));
 }
 
-pub broadcast proof fn lemma_union_remove_left<K, V>(m1: Map<K, V>, m2: Map<K, V>, k: K)
+pub broadcast proof fn lemma_union_remove_left<K, V>(m1: IMap<K, V>, m2: IMap<K, V>, k: K)
     requires
         m1.contains_key(k),
         !m2.contains_key(k),
@@ -745,7 +692,7 @@ pub broadcast proof fn lemma_union_remove_left<K, V>(m1: Map<K, V>, m2: Map<K, V
     assert(m1.remove(k).union_prefer_right(m2) =~= m1.union_prefer_right(m2).remove(k));
 }
 
-pub broadcast proof fn lemma_union_remove_right<K, V>(m1: Map<K, V>, m2: Map<K, V>, k: K)
+pub broadcast proof fn lemma_union_remove_right<K, V>(m1: IMap<K, V>, m2: IMap<K, V>, k: K)
     requires
         !m1.contains_key(k),
         m2.contains_key(k),
@@ -755,7 +702,7 @@ pub broadcast proof fn lemma_union_remove_right<K, V>(m1: Map<K, V>, m2: Map<K, 
     assert(m1.union_prefer_right(m2.remove(k)) =~= m1.union_prefer_right(m2).remove(k));
 }
 
-pub broadcast proof fn lemma_union_dom<K, V>(m1: Map<K, V>, m2: Map<K, V>)
+pub broadcast proof fn lemma_union_dom<K, V>(m1: IMap<K, V>, m2: IMap<K, V>)
     ensures
         #[trigger] m1.union_prefer_right(m2).dom() == m1.dom().union(m2.dom()),
 {
@@ -763,21 +710,23 @@ pub broadcast proof fn lemma_union_dom<K, V>(m1: Map<K, V>, m2: Map<K, V>)
 }
 
 /// The size of the union of two disjoint maps is equal to the sum of the sizes of the individual maps
-pub broadcast proof fn lemma_disjoint_union_size<K, V>(m1: Map<K, V>, m2: Map<K, V>)
+pub broadcast proof fn lemma_disjoint_union_size<K, V>(m1: IMap<K, V>, m2: IMap<K, V>)
     requires
         m1.dom().disjoint(m2.dom()),
+        m1.dom().finite(),
+        m2.dom().finite(),
     ensures
         #[trigger] m1.union_prefer_right(m2).dom().len() == m1.dom().len() + m2.dom().len(),
 {
     let u = m1.union_prefer_right(m2);
-    assert(u.dom() =~= m1.dom() + m2.dom());
+    assert(u.dom() =~= m1.dom() + m2.dom());  //proves u.dom() is finite
     assert(u.remove_keys(m1.dom()).dom() =~= m2.dom());
     assert(u.remove_keys(m1.dom()).dom().len() == u.dom().len() - m1.dom().len()) by {
         u.lemma_remove_keys_len(m1.dom());
     }
 }
 
-pub broadcast group group_map_union {
+pub broadcast group group_imap_union {
     lemma_union_dom,
     lemma_union_remove_left,
     lemma_union_remove_right,
@@ -787,7 +736,7 @@ pub broadcast group group_map_union {
 }
 
 /// submap_of (<=) is transitive.
-pub broadcast proof fn lemma_submap_of_trans<K, V>(m1: Map<K, V>, m2: Map<K, V>, m3: Map<K, V>)
+pub broadcast proof fn lemma_submap_of_trans<K, V>(m1: IMap<K, V>, m2: IMap<K, V>, m3: IMap<K, V>)
     requires
         #[trigger] m1.submap_of(m2),
         #[trigger] m2.submap_of(m3),
@@ -800,38 +749,83 @@ pub broadcast proof fn lemma_submap_of_trans<K, V>(m1: Map<K, V>, m2: Map<K, V>,
     }
 }
 
-// This verified lemma corresponds to an axiom in the Dafny prelude saying that:
-/// The domain of a map constructed with `Map::new(fk, fv)` is equivalent to the set constructed with `Set::new(fk)`.
-pub broadcast proof fn lemma_map_new_domain<K, V>(s: Set<K>, fv: spec_fn(K) -> V)
+// This verified lemma used to be an axiom in the Dafny prelude
+/// The domain of a map constructed with `IMap::new(fk, fv)` is equivalent to the set constructed with `ISet::new(fk)`.
+pub broadcast proof fn lemma_imap_new_domain<K, V>(fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V)
     ensures
-        #[trigger] Map::<K, V>::new(s, fv).dom() == s,
+        #[trigger] IMap::<K, V>::new(fk, fv).dom() == ISet::<K>::new(|k: K| fk(k)),
 {
+    assert(ISet::new(fk) =~= ISet::<K>::new(|k: K| fk(k)));
 }
 
-// This verified lemma used to be an axiom in the Dafny prelude saying that:
-/// The set of values of a map constructed with `Map::new(fk, fv)` is equivalent to
-/// the set constructed with `Set::new(|v: V| (exists |k: K| fk(k) && fv(k) == v)`. In other words,
+// This verified lemma used to be an axiom in the Dafny prelude
+/// The set of values of a map constructed with `IMap::new(fk, fv)` is equivalent to
+/// the set constructed with `ISet::new(|v: V| (exists |k: K| fk(k) && fv(k) == v)`. In other words,
 /// the set of all values fv(k) where fk(k) is true.
-pub broadcast proof fn lemma_map_new_values<K, V>(s: Set<K>, fv: spec_fn(K) -> V)
+pub broadcast proof fn lemma_imap_new_values<K, V>(fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V)
     ensures
-        #[trigger] Map::<K, V>::new(s, fv).values() == s.map(fv),
+        #[trigger] IMap::<K, V>::new(fk, fv).values() == ISet::<V>::new(
+            |v: V| (exists|k: K| #[trigger] fk(k) && #[trigger] fv(k) == v),
+        ),
 {
+    let keys = ISet::<K>::new(fk);
+    let values = IMap::<K, V>::new(fk, fv).values();
+    let map = IMap::<K, V>::new(fk, fv);
+    assert(map.dom() =~= keys);
+    assert(forall|k: K| #[trigger] fk(k) ==> keys.contains(k));
+    assert(values =~= ISet::<V>::new(
+        |v: V| (exists|k: K| #[trigger] fk(k) && #[trigger] fv(k) == v),
+    ));
 }
 
-pub broadcast group group_map_properties {
-    lemma_map_new_domain,
-    lemma_map_new_values,
+pub broadcast group group_imap_properties {
+    lemma_imap_new_domain,
+    lemma_imap_new_values,
 }
 
-pub broadcast group group_map_extra {
-    Map::lemma_map_remove_keys_insert,
-    Map::lemma_filter_keys_insert,
-    Map::lemma_insert_contains_value,
-    Map::lemma_insert_invariant_contains,
-    Map::lemma_prefixed_entries_get,
-    Map::lemma_prefixed_entries_contains,
-    Map::lemma_prefixed_entries_insert,
-    Map::lemma_prefixed_entries_union,
+pub broadcast group group_imap_extra {
+    IMap::lemma_imap_remove_keys_insert,
+    IMap::lemma_filter_keys_insert,
+    IMap::lemma_insert_contains_value,
+    IMap::lemma_insert_invariant_contains,
+    IMap::lemma_prefixed_entries_get,
+    IMap::lemma_prefixed_entries_contains,
+    IMap::lemma_prefixed_entries_insert,
+    IMap::lemma_prefixed_entries_union,
+}
+
+pub proof fn lemma_values_finite<K, V>(m: IMap<K, V>)
+    requires
+        m.dom().finite(),
+    ensures
+        m.values().finite(),
+    decreases m.len(),
+{
+    if m.len() > 0 {
+        let k = m.dom().choose();
+        let v = m[k];
+        let m1 = m.remove(k);
+        assert(m.contains_key(k));
+        assert(m.contains_value(v));
+        let mv = m.values();
+        let m1v = m1.values();
+        assert_isets_equal!(mv == m1v.insert(v), v0 => {
+            if m.contains_value(v0) {
+                if v0 != v {
+                    let k0 = choose|k0| #![auto] m.contains_key(k0) && m[k0] == v0;
+                    assert(k0 != k);
+                    assert(m1.contains_key(k0));
+                    assert(mv.contains(v0) ==> m1v.insert(v).contains(v0));
+                    assert(mv.contains(v0) <== m1v.insert(v).contains(v0));
+                }
+            }
+        });
+        assert(m1.len() < m.len());
+        lemma_values_finite(m1);
+        lemma_iset_insert_finite(m1.values(), v);
+    } else {
+        assert(m.values() =~= ISet::<V>::empty());
+    }
 }
 
 } // verus!

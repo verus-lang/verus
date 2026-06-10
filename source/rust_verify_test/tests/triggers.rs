@@ -615,13 +615,14 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] issue2123 verus_code! {
         use vstd::prelude::*;
+        use vstd::iset::*;
 
         pub enum A {
             Foo { xyz: Result<(), ()> },
         }
 
-        pub open spec fn foo(a: A) -> Set<nat> {
-            Set::new(|x: nat| {
+        pub open spec fn foo(a: A) -> ISet<nat> {
+            ISet::new(|x: nat| {
                 match a {
                     A::Foo { xyz, .. } => {
                         let _ = xyz.ok();
