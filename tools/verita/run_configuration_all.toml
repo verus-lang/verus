@@ -125,7 +125,7 @@ name = "anvil"
 #git_url = "https://github.com/anvil-verifier/anvil"
 #refspec = "main"
 git_url = "https://github.com/jaylorch/anvil"
-refspec = "origin/finite-sets"
+refspec = "main"
 crate_roots = ["src/esr_composition.rs"]
 extra_verus_args = ["--crate-type=lib", 
               "-L", "dependency=src/deps_hack/target/debug/deps",
