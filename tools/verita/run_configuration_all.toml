@@ -5,6 +5,18 @@ verus_extra_args = ["--no-report-long-running"]
 # Successes
 
 [[project]]
+name = "vstd"
+git_url = "https://github.com/verus-lang/verus.git"
+refspec = "main"
+crate_roots = ["source/vstd/vstd.rs"]
+extra_verus_args = [
+    "--crate-type=lib",
+    "--is-vstd",
+    "--cfg", "feature=\"std\"",
+    "--cfg", "feature=\"alloc\"",
+]
+
+[[project]]
 name = "ironkv"
 git_url = "https://github.com/verus-lang/verified-ironkv.git"
 #TODO: restore this after it is updated to new Set/Map/ISet/IMap
