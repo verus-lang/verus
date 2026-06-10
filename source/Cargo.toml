@@ -15,7 +15,7 @@ members = [
   "verusdoc",
   "vstd_build",
   "tools/internals_interface",
-  "tools/line_count",
+  "tools/line_count", "cargo-verus-toolchains",
 ]
 exclude = [
   "vstd",
