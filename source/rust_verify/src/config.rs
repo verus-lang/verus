@@ -118,7 +118,6 @@ pub struct ArgsX {
     pub axiom_usage_info: bool,
     pub check_api_safety: bool,
     pub no_bv_simplify: bool,
-    pub slim_bitvector: bool,
 }
 
 impl ArgsX {
@@ -166,7 +165,6 @@ impl ArgsX {
             axiom_usage_info: Default::default(),
             check_api_safety: Default::default(),
             no_bv_simplify: Default::default(),
-            slim_bitvector: Default::default(),
         }
     }
 }
@@ -410,7 +408,6 @@ pub fn parse_args_with_imports(
     const EXTENDED_AXIOM_USAGE_INFO: &str = "axiom-usage-info";
     const EXTENDED_CHECK_API_SAFETY: &str = "check-api-safety";
     const EXTENDED_NO_BV_SIMPLIFY: &str = "no-bv-simplify";
-    const EXTENDED_SLIM_BITVECTOR: &str = "slim-bitvector";
     const EXTENDED_KEYS: &[(&str, &str)] = &[
         (EXTENDED_IGNORE_UNEXPECTED_SMT, "Ignore unexpected SMT output"),
         (EXTENDED_DEBUG, "Enable debugging of proof failures"),
@@ -437,10 +434,6 @@ pub fn parse_args_with_imports(
         (
             EXTENDED_NO_BV_SIMPLIFY,
             "internal option to disable simplification of bit-vector assertions before sending to the SMT solver",
-        ),
-        (
-            EXTENDED_SLIM_BITVECTOR,
-            "internal option to verify by(bit_vector) assertions in a prelude-free SMT context",
         ),
     ];
 
@@ -835,7 +828,6 @@ pub fn parse_args_with_imports(
         axiom_usage_info: extended.contains_key(EXTENDED_AXIOM_USAGE_INFO),
         check_api_safety: extended.contains_key(EXTENDED_CHECK_API_SAFETY),
         no_bv_simplify: extended.contains_key(EXTENDED_NO_BV_SIMPLIFY),
-        slim_bitvector: extended.contains_key(EXTENDED_SLIM_BITVECTOR),
     };
 
     if args.compile && args.no_erasure_check {

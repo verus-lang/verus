@@ -1224,17 +1224,17 @@ impl Verifier {
             air_context.set_smt_transcript_log(Box::new(file));
         }
 
-        let bv_slim = self.is_bv_slim(prover_choice);
-        // air_recommended_options applies AIR's preset Z3 options; a prelude-free (slim) query omits
-        // it, along with the prelude and bucket background.
-        if !bv_slim {
+        // A by(bit_vector) query is self-contained, so it runs prelude-free: it omits the
+        // recommended-options preset, the prelude, and the bucket background.
+        let bitvector = prover_choice == vir::def::ProverChoice::BitVector;
+        if !bitvector {
             air_context.set_z3_param("air_recommended_options", "true");
         }
         self.set_default_rlimit(&mut air_context);
         for (option, value) in self.args.smt_options.iter() {
             air_context.set_z3_param(&option, &value);
         }
-        if !bv_slim {
+        if !bitvector {
             if self.args.axiom_usage_info {
                 air_context.enable_usage_info();
             }
@@ -1252,11 +1252,6 @@ impl Verifier {
         Ok(air_context)
     }
 
-    /// A `by(bit_vector)` query runs in a prelude-free context under `-V slim-bitvector`.
-    fn is_bv_slim(&self, prover_choice: vir::def::ProverChoice) -> bool {
-        self.args.slim_bitvector && prover_choice == vir::def::ProverChoice::BitVector
-    }
-
     /// Per-query SMT tuning options.
     fn apply_per_query_smt_options(
         &self,
@@ -1264,17 +1259,12 @@ impl Verifier {
         prover_choice: vir::def::ProverChoice,
     ) {
         match prover_choice {
-            vir::def::ProverChoice::BitVector if self.is_bv_slim(prover_choice) => {}
-            vir::def::ProverChoice::BitVector => match self.args.solver {
-                air::context::SmtSolver::Z3 => {
-                    air_context.set_z3_param("sat.euf", "true");
-                    air_context.set_z3_param("tactic.default_tactic", "sat");
-                    air_context.set_z3_param("smt.ematching", "false");
-                    air_context.set_z3_param("smt.case_split", "0");
-                }
-                // TODO: What options are best for cvc5 here?
-                air::context::SmtSolver::Cvc5 => {}
-            },
+            vir::def::ProverChoice::BitVector => {
+                // A prelude-free by(bit_vector) query carries no per-query
+                // options: solver defaults work well.
+                //
+                // TODO: tune Z3/CVC5 options for bit-vector queries
+            }
             vir::def::ProverChoice::Nonlinear => match self.args.solver {
                 air::context::SmtSolver::Z3 => air_context.set_z3_param("smt.arith.solver", "6"),
                 // TODO: What cvc5 settings would help here?
@@ -1315,8 +1305,8 @@ impl Verifier {
         air_context.blank_line();
         air_context.comment(&format!("query spun off because: {}", spinoff_reason));
 
-        // set up bucket context (skipped for a prelude-free slim query)
-        if !self.is_bv_slim(prover_choice) {
+        // set up bucket context (skipped for a prelude-free bit_vector query)
+        if prover_choice != vir::def::ProverChoice::BitVector {
             self.run_command_batches(bucket_id, diagnostics, &mut air_context, bucket_context);
         }
 
