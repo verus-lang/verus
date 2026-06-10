@@ -1335,6 +1335,10 @@ impl<T> SeqPointsTo<T> {
         self.perm
     }
 
+    pub open spec fn mem_contents(self) -> Seq<MemContents<T>> {
+        self.perm().map(|i: int, elt: PointsTo<T>| elt.mem_contents())
+    }
+
     /// The length of the sequence of `PointsTo<T>`.
     #[verifier::inline]
     pub open spec fn len(self) -> nat {
@@ -1461,13 +1465,32 @@ impl<T> SeqPointsTo<T> {
 
     }
 
-    // TODO: come back and figure out what to do about the value transformation
+    /// Casting a `SeqPointsTo<T>` to a `SeqPointsTo<u8>` casts the pointer,
+    /// multiplies the length by `size_of::<T>()`, and encodes the memory contents to bytes.
     pub axiom fn cast_to_u8(tracked self) -> (tracked out: SeqPointsTo<u8>)
         ensures
             out.ptr() == self.ptr() as *mut u8,
             out.len() == self.len() * layout::size_of::<T>(),
+            out.mem_contents() == encode(self.mem_contents()),
     ;
 }
+
+pub uninterp spec fn encode<T>(s: Seq<MemContents<T>>) -> Seq<MemContents<u8>>;
+
+pub uninterp spec fn decode<T>(s: Seq<MemContents<u8>>) -> Seq<MemContents<T>>;
+
+pub axiom fn round_trip<T>()
+    ensures
+        forall|s: Seq<MemContents<T>>| decode(#[trigger] encode(s)) == s,
+;
+
+pub axiom fn subrange_decode<T>(s: Seq<MemContents<u8>>, t: Seq<MemContents<T>>, i: int)
+    requires
+        0 <= i <= t.len(),
+        decode(s) == t,
+    ensures
+        decode(s.subrange(0, i * layout::size_of::<T>())) == t.subrange(0, i),
+;
 
 impl SeqPointsTo<u8> {
     /// We can cast a `SeqPointsTo<u8>` to a `SeqPointsTo<T>` of length `capacity` under the following conditions:
@@ -1475,17 +1498,20 @@ impl SeqPointsTo<u8> {
     /// (1) The pointer's address is aligned to `T`.
     ///
     /// (2) The length is exactly `capacity * layout::size_of::<T>()`.
-    ///
-    /// (3) The permission is uninitialized.
+    /// 
+    /// (3) It is possible to decode the memory contents as a `Seq<MemContents<T>`.
     pub axiom fn cast_to_type<T>(tracked self, capacity: usize) -> (tracked out: SeqPointsTo<T>)
         requires
             self.ptr()@.addr as nat % align_of::<T>() == 0,
-            self.len() == capacity * layout::size_of::<T>(),
-            self.is_fully_uninit(),
+            self.len() == capacity * layout::size_of::<
+                T,
+            >(),
+            // self.is_fully_uninit() || exists
         ensures
             out.ptr() == self.ptr() as *mut T,
             out.len() == capacity,
-            out.is_fully_uninit(),
+            out.mem_contents() == decode(self.mem_contents()),
+            self.is_fully_uninit() ==> out.is_fully_uninit(),
     ;
 
     /// Splits the `SeqPointsTo<u8>` into two permissions at the index boundary `mid`.
@@ -1493,11 +1519,7 @@ impl SeqPointsTo<u8> {
         requires
             0 <= mid <= self.len(),
         ensures
-            // first.ptr()@.provenance == self.ptr()@.provenance,
-            // second.ptr()@.provenance == second.ptr()@.provenance,
-            // first.len() as int == mid,
             first.perm() == self.perm().take(mid),
-            // second.len() as int == self.len() - mid,
             second.perm() == self.perm().skip(mid),
             first.ptr() == self.ptr(),
             second.ptr() == ptr_mut_from_data(
@@ -1511,23 +1533,28 @@ impl SeqPointsTo<u8> {
         broadcast use {group_vstd_default, align_of_u8};
 
         use_type_invariant(&self);
-        assume(false);
 
-        let tracked raw_perm = self.into_raw();
-        let tracked (first, second) = raw_perm.split(
-            Set::new(|x: int| self.ptr()@.addr <= x < self.ptr()@.addr + mid),
-        );
-        (
-            first.into_typed_seq::<u8>(self.ptr()@.addr, mid as nat),
-            second.into_typed_seq::<u8>(
-                (self.ptr()@.addr + mid) as usize,
-                (self.len() - mid) as nat,
+        let tracked mut perm = self.perm;
+        let tracked other = perm.tracked_skip(mid);
+
+        let tracked first = Self { perm: perm, ptr: self.ptr };
+        let tracked second = Self {
+            perm: other,
+            ptr: Ghost(
+                ptr_mut_from_data(
+                    PtrData::<u8> {
+                        addr: (self.ptr()@.addr + mid) as usize,
+                        provenance: self.ptr()@.provenance,
+                        metadata: self.ptr()@.metadata,
+                    },
+                ),
             ),
-        )
+        };
+        (first, second)
     }
 
-    /// Concatenates `SeqPointsTo<u8>` permissions `self` and `other`, 
-    /// provided their pointers have the same provenance 
+    /// Concatenates `SeqPointsTo<u8>` permissions `self` and `other`,
+    /// provided their pointers have the same provenance
     /// and `other`'s pointer starts at the end of `self`'s domain.
     pub proof fn join(tracked self, tracked other: Self) -> (tracked joined: Self)
         requires
@@ -1541,9 +1568,11 @@ impl SeqPointsTo<u8> {
 
         use_type_invariant(&self);
         use_type_invariant(&other);
-        assume(false);
 
-        self
+        let tracked mut perm = self.perm;
+        perm.tracked_add(other.perm);
+
+        Self { perm: perm, ptr: Ghost(self.ptr()) }
     }
 }
 

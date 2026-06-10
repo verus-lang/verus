@@ -268,21 +268,9 @@ impl<A> Seq<A> {
             *final(self) == old(self).take(n),
     {
         assume(false);
-        // let mut acc = Self::empty();
-        // tracked_skip_helper(self, n, &mut acc);
-        // acc
+
         Self::tracked_empty()
     }
-
-    // proof fn tracked_skip_helper(tracked &mut self, n: int, tracked acc: &mut Self)
-    //     requires
-    //         self.len() >= n,
-    //         acc.len() 
-    // {
-    //     if self.len() != n {
-            
-    //     }
-    // }
 
     pub proof fn tracked_add(tracked &mut self, tracked other: Self)
         ensures
