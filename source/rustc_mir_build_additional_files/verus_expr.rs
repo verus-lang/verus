@@ -79,7 +79,7 @@ pub(crate) fn mirror_expr_pre<'tcx>(
 ) -> Option<rustc_middle::thir::ExprKind<'tcx>> {
     match expr.kind {
         ExprKind::MethodCall(..) | ExprKind::Call(..) | ExprKind::Struct(..) => {
-            let call_erasure = handle_call(&cx.verus_ctxt, expr);
+            let (call_erasure, _) = handle_call(&cx.verus_ctxt, expr);
             match call_erasure {
                 CallErasure::EraseTree(t) => Some(erase_tree_kind(cx, expr, expr.hir_id, t)),
                 _ => None,
@@ -106,7 +106,13 @@ pub(crate) fn mirror_expr_post<'tcx>(
 
     let kind = match expr.kind {
         ExprKind::MethodCall(..) | ExprKind::Call(..) | ExprKind::Struct(..) => {
-            let call_erasure = handle_call(&cx.verus_ctxt, expr);
+            let (call_erasure, force_treat_inhabited) = handle_call(&cx.verus_ctxt, expr);
+            if force_treat_inhabited {
+                // We use the id of the fun because we don't know the id of the call yet
+                if let thir::ExprKind::Call { fun, .. } = kind {
+                    cx.verus_ctxt.extra_thir.force_treat_inhabited.insert(fun);
+                }
+            }
             if call_erasure.should_erase() { erase_node_unadjusted(cx, expr, kind) } else { kind }
         }
         ExprKind::Field(..) | ExprKind::AddrOf(..) => {
@@ -137,6 +143,47 @@ pub(crate) fn enter_guard<'tcx>(cx: &mut ThirBuildCx<'tcx>, pat: &Pat<'tcx>) {
 
 pub(crate) fn exit_guard<'tcx>(cx: &mut ThirBuildCx<'tcx>) {
     cx.verus_ctxt.guard_pattern_vars.pop().unwrap();
+}
+
+pub(crate) fn enter_block<'tcx>(
+    cx: &mut ThirBuildCx<'tcx>,
+    block: &'tcx rustc_hir::Block<'tcx>,
+) -> bool {
+    if let Some(ctxt) = cx.verus_ctxt.ctxt.clone()
+        && ctxt.local_invariant_bodies.contains_key(&block.hir_id)
+    {
+        cx.verus_ctxt.local_invariants.push(cx.thir.exprs.len());
+        true
+    } else {
+        false
+    }
+}
+
+pub(crate) fn exit_block<'tcx>(cx: &mut ThirBuildCx<'tcx>, block: &'tcx rustc_hir::Block<'tcx>) {
+    if let Some(ctxt) = cx.verus_ctxt.ctxt.clone()
+        && let Some(body) = ctxt.local_invariant_bodies.get(&block.hir_id)
+    {
+        let old_idx = cx.verus_ctxt.local_invariants.pop().unwrap();
+        let new_idx = cx.thir.exprs.len();
+        for i in old_idx..new_idx {
+            let expr_id = ExprId::from_usize(i);
+            if matches!(
+                cx.thir.exprs[expr_id].kind,
+                rustc_middle::thir::ExprKind::Call { .. }
+                    | rustc_middle::thir::ExprKind::Loop { .. }
+                    | rustc_middle::thir::ExprKind::LoopMatch { .. }
+            ) {
+                cx.verus_ctxt
+                    .extra_thir
+                    .local_invs_for_node
+                    .entry(expr_id)
+                    .or_insert_with(|| vec![])
+                    .push(body.clone());
+            }
+        }
+    } else {
+        unreachable!()
+    }
 }
 
 pub(crate) fn is_bound_via_pattern_guard<'tcx>(cx: &ThirBuildCx<'tcx>, var_hir_id: HirId) -> bool {

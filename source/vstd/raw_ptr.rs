@@ -98,12 +98,13 @@ impl Provenance {
 }
 
 /// Allocations do not "wrap around" the address space.
-/// A given allocation is of length at most `isize::MAX`.
-// Q: Where in the documentation do we get this fact?
-// A: Should be self-evident, comes from allocations being contiguous regions of memory
-// TODO-Elanor: update with links to Rust documentation
+/// From: <https://doc.rust-lang.org/std/ptr/index.html#allocation>:
+/// For any allocation with `base` address and size `size`, the following are guaranteed:
+/// - `base + size <= usize::MAX`
+/// - `size <= isize::MAX`
 pub broadcast axiom fn alloc_bound(p: Provenance)
     ensures
+        #![trigger p.start_addr()]
         #![trigger p.alloc_len()]
         p.start_addr() + p.alloc_len() <= usize::MAX,
         p.alloc_len() <= isize::MAX,
@@ -1269,7 +1270,7 @@ impl PointsTo<str> {
     // Note that even for ZSTs, pointers need to be aligned.
     pub axiom fn is_aligned(tracked &self)
         ensures
-            self.ptr()@.addr as nat % spec_align_of_val::<str>(self.value()) == 0,
+            self.ptr()@.addr as int % spec_align_of_val::<str>(self.value()) as int == 0,
     ;
 }
 
@@ -2860,6 +2861,7 @@ pub fn deallocate(
 #[verifier::external_body]
 #[verifier::accept_recursive_types(T)]
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::SharedReference")]
+#[repr(transparent)]
 pub struct SharedReference<'a, T: ?Sized>(&'a T);
 
 impl<'a, T: ?Sized> Clone for SharedReference<'a, T> {
@@ -2910,7 +2912,7 @@ impl<'a, T: ?Sized> SharedReference<'a, T> {
     }
 
     #[verifier::external_body]
-    const fn as_ref(self) -> (t: &'a T)
+    pub const fn as_ref(self) -> (t: &'a T)
         ensures
             t == self.value(),
     {
@@ -3068,6 +3070,50 @@ pub fn ptr_ref2<'a, T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (
     no_unwind
 {
     SharedReference(unsafe { &*ptr })
+}
+
+/// Same as [`ptr_ref2`], but operates on ghost values.
+/// Because this doesn't constitute a retag, the returned value's pointer has the same provenance as the original pointer.
+pub axiom fn ptr_ref2_ghost<'a, T>(ptr: *const T, tracked perm: &PointsTo<T>) -> (tracked v:
+    SharedReference<'a, T>)
+    requires
+        perm.ptr() == ptr,
+        perm.is_init(),
+    ensures
+        v.value() == perm.value(),
+        v.ptr() == ptr,
+;
+
+/// Same as [`ptr_ref2`], but operates on ghost values.
+/// Because this doesn't constitute a retag, the returned value's pointer has the same provenance as the original pointer.
+pub axiom fn ptr_ref2_str_ghost<'a>(ptr: *const str, tracked perm: &PointsTo<str>) -> (tracked v:
+    SharedReference<'a, str>)
+    requires
+        perm.ptr() == ptr,
+        perm.is_init(),
+    ensures
+        v.value() == perm.value(),
+        v.ptr() == ptr,
+;
+
+/// Same as [`ptr_ref2`], but operates on ghost values.
+/// Because this doesn't constitute a retag, the returned value's pointer has the same provenance as the original pointer.
+pub axiom fn ptr_ref2_slice_ghost<'a, T>(
+    ptr: *const [T],
+    tracked perm: &PointsTo<[T]>,
+) -> (tracked v: SharedReference<'a, [T]>)
+    requires
+        perm.ptr() == ptr,
+        perm.is_init(),
+    ensures
+        v.value()@ == perm.value(),
+        v.ptr() == ptr,
+;
+
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::spec_ptr_addr")]
+#[verifier::inline]
+pub open spec fn spec_ptr_addr<T: Sized>(ptr: *mut T) -> usize {
+    spec_cast_ptr_to_usize(ptr)
 }
 
 } // verus!

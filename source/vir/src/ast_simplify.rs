@@ -1001,7 +1001,8 @@ fn add_fndef_axioms_to_function(
     _ctx: &GlobalCtx,
     state: &mut State,
     function: &Function,
-) -> Result<Function, VirErr> {
+    fn_once_trait_in_scope: bool,
+) -> Result<(Function, Vec<TraitImpl>, Option<AssocTypeImpl>), VirErr> {
     state.reset_for_function();
 
     let params: Vec<_> = function
@@ -1031,9 +1032,61 @@ fn add_fndef_axioms_to_function(
 
     let fndef_singleton = SpannedTyped::new(
         &function.span,
-        &Arc::new(TypX::FnDef(fun.clone(), typ_args, None)),
+        &Arc::new(TypX::FnDef(fun.clone(), typ_args.clone(), None)),
         ExprX::ExecFnByName(fun.clone()),
     );
+
+    // Emit `FnDef : {Fn, FnMut, FnOnce}<Args>` and `<FnDef as FnOnce<Args>>::Output = Ret`.
+    //
+    // We emit a TraitImpl for each of the three Fn-family traits (not just Fn), because
+    // code that mentions only one through an associated-type projection (e.g. `Map::Item = F::Output`)
+    // never creates a Fn term for the Fn-related axioms to trigger on.
+    let (trait_impls_out, assoc_type_impl) = if fn_once_trait_in_scope {
+        let self_typ = Arc::new(TypX::FnDef(fun.clone(), typ_args.clone(), None));
+        let arg_typs: Vec<Typ> = params.iter().map(|p| p.a.clone()).collect();
+        let tuple_dt = state.tuple_type_name(arg_typs.len());
+        let args_tuple_typ =
+            Arc::new(TypX::Datatype(tuple_dt, Arc::new(arg_typs), Arc::new(vec![])));
+        let trait_typ_args = Arc::new(vec![self_typ, args_tuple_typ]);
+
+        let mk_impl_path = |kind: ClosureKind| {
+            Arc::new(crate::ast::PathX {
+                krate: CrateId::Internal,
+                segments: Arc::new(vec![crate::def::impl_fndef(&function.x.name, kind)]),
+            })
+        };
+
+        let mut trait_impls_out: Vec<TraitImpl> = Vec::new();
+        for kind in [ClosureKind::Fn, ClosureKind::FnMut, ClosureKind::FnOnce] {
+            let trait_implx = crate::ast::TraitImplX {
+                impl_path: mk_impl_path(kind),
+                typ_params: function.x.typ_params.clone(),
+                typ_bounds: function.x.typ_bounds.clone(),
+                trait_path: kind.trait_path(),
+                trait_typ_args: trait_typ_args.clone(),
+                trait_typ_arg_impls: Spanned::new(function.span.clone(), Arc::new(vec![])),
+                owning_module: None,
+                auto_imported: true,
+                external_trait_blanket: false,
+            };
+            trait_impls_out.push(Spanned::new(function.span.clone(), trait_implx));
+        }
+
+        let assoc_typ_implx = crate::ast::AssocTypeImplX {
+            name: Arc::new("Output".to_string()),
+            impl_path: mk_impl_path(ClosureKind::FnOnce),
+            typ_params: function.x.typ_params.clone(),
+            typ_bounds: function.x.typ_bounds.clone(),
+            trait_path: ClosureKind::FnOnce.trait_path(),
+            trait_typ_args,
+            typ: function.x.ret.x.typ.clone(),
+            impl_paths: Arc::new(vec![]),
+        };
+
+        (trait_impls_out, Some(Spanned::new(function.span.clone(), assoc_typ_implx)))
+    } else {
+        (Vec::new(), None)
+    };
 
     let mut fndef_axioms = vec![];
 
@@ -1087,7 +1140,7 @@ fn add_fndef_axioms_to_function(
     let mut functionx = function.x.clone();
     assert!(functionx.fndef_axioms.is_none());
     functionx.fndef_axioms = Some(Arc::new(fndef_axioms));
-    Ok(Spanned::new(function.span.clone(), functionx))
+    Ok((Spanned::new(function.span.clone(), functionx), trait_impls_out, assoc_type_impl))
 }
 
 fn simplify_function(
@@ -1349,13 +1402,24 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
     let mut assoc_type_impls =
         vec_map_result(&assoc_type_impls, |a| simplify_assoc_type_impl(&mut state, a))?;
 
-    let functions = vec_map_result(&functions, |f: &Function| {
+    let fn_once_trait_path = ClosureKind::FnOnce.trait_path();
+    let fn_once_trait_in_scope = traits.iter().any(|t| t.x.name == fn_once_trait_path);
+
+    let mut new_functions: Vec<Function> = Vec::with_capacity(functions.len());
+    for f in functions.iter() {
         if need_fndef_axiom(&state.fndef_typs, f) {
-            add_fndef_axioms_to_function(ctx, &mut state, f)
+            let (f2, tis, ai) =
+                add_fndef_axioms_to_function(ctx, &mut state, f, fn_once_trait_in_scope)?;
+            trait_impls.extend(tis);
+            if let Some(ai) = ai {
+                assoc_type_impls.push(ai);
+            }
+            new_functions.push(f2);
         } else {
-            Ok(f.clone())
+            new_functions.push(f.clone());
         }
-    })?;
+    }
+    let functions = new_functions;
 
     // Add a generic datatype to represent each tuple arity
     // Iterate in sorted order to get consistent output

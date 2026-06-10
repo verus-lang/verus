@@ -1,10 +1,10 @@
 use crate::ast::{
-    ArithOp, BinaryOp, BinaryOpr, BitwiseOp, Constant, CtorPrintStyle, Dt, Fun, GenericBound,
-    GenericBoundX, GenericBounds, Ident, InequalityOp, IntRange, IntegerTypeBitwidth,
+    ArithOp, BinaryOp, BinaryOpr, BitwiseOp, Constant, CrateId, CtorPrintStyle, Dt, Fun,
+    GenericBound, GenericBoundX, GenericBounds, Ident, InequalityOp, IntRange, IntegerTypeBitwidth,
     IntegerTypeBoundKind, Mode, ProofNoteLabel, Quant, SpannedTyped, Typ, TypX, Typs, UnaryOp,
     UnaryOpr, VarAt, VarBinder, VarBinderX, VarBinders,
 };
-use crate::ast_util::{get_variant, unit_typ};
+use crate::ast_util::{get_variant, undecorate_typ, unit_typ};
 use crate::context::GlobalCtx;
 use crate::def::{Spanned, unique_bound, user_local_name};
 use crate::interpreter::InterpExp;
@@ -533,6 +533,9 @@ impl ExpX {
                 UnaryOp::MutRefFuture(_) => {
                     (format!("mut_ref_future({})", exp.x.to_string_prec(global, 99)), 0)
                 }
+                UnaryOp::MutRefPtr => {
+                    (format!("mut_ref_ptr({})", exp.x.to_string_prec(global, 99)), 0)
+                }
                 UnaryOp::MutRefFinal(_) => {
                     (format!("final({})", exp.x.to_string_prec(global, 99)), 0)
                 }
@@ -981,6 +984,28 @@ pub fn sst_mut_ref_future(span: &Span, e1: &Exp) -> Exp {
     };
     let op = UnaryOp::MutRefFuture(crate::ast::MutRefFutureSourceName::MutRefFuture);
     SpannedTyped::new(span, &t, ExpX::Unary(op, e1.clone()))
+}
+
+pub fn sst_mut_ref_ptr(span: &Span, e1: &Exp) -> Exp {
+    let t = match &*undecorate_typ(&e1.typ) {
+        TypX::MutRef(t) => t.clone(),
+        _ => panic!("sst_mut_ref_ptr expected MutRef type"),
+    };
+    let ptr_t = Arc::new(TypX::Primitive(crate::ast::Primitive::Ptr, Arc::new(vec![t])));
+    let op = UnaryOp::MutRefPtr;
+    SpannedTyped::new(span, &ptr_t, ExpX::Unary(op, e1.clone()))
+}
+
+pub fn sst_ptr_addr(span: &Span, e1: &Exp) -> Exp {
+    let t = match &*undecorate_typ(&e1.typ) {
+        TypX::Primitive(crate::ast::Primitive::Ptr, ts) => ts[0].clone(),
+        _ => panic!("sst_ptr_addr expects ptr type"),
+    };
+    let fun = crate::fun!(CrateId::Vstd => "raw_ptr", "spec_ptr_addr");
+    let cf = CallFun::Fun(fun, None);
+    let expx = ExpX::Call(cf, Arc::new(vec![t]), Arc::new(vec![e1.clone()]));
+    let usize_t = Arc::new(TypX::Int(IntRange::USize));
+    SpannedTyped::new(span, &usize_t, expx)
 }
 
 pub fn sst_equal_ext(span: &Span, e1: &Exp, e2: &Exp, ext: Option<bool>) -> Exp {

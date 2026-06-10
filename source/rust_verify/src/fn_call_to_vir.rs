@@ -306,8 +306,7 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
             bctx.fun_id,
         );
 
-    let resolved_call =
-        ResolvedCall::Call(name.clone(), record_name, bctx.in_ghost, assume_external_allowed);
+    let resolved_call = ResolvedCall::Call(name.clone(), record_name, assume_external_allowed);
     record_call(bctx, expr, resolved_call);
 
     let vir_args = if let Some(args) = args { mk_vir_args(bctx, &args)? } else { vec![] };
@@ -2061,10 +2060,14 @@ fn verus_item_to_vir<'tcx, 'a>(
             let t = bctx.mid_ty_to_vir(expr.span, &arg_typ)?;
             mk_expr(ExprX::UnaryOpr(UnaryOpr::HasResolved(t), exp))
         }
-        VerusItem::MutRefCurrent | VerusItem::MutRefFuture | VerusItem::Final => {
+        VerusItem::MutRefPtr
+        | VerusItem::MutRefCurrent
+        | VerusItem::MutRefFuture
+        | VerusItem::Final => {
             let name = match verus_item {
                 VerusItem::MutRefCurrent => "mut_ref_current",
                 VerusItem::MutRefFuture => "mut_ref_future",
+                VerusItem::MutRefPtr => "mut_ref_ptr",
                 VerusItem::Final => "final",
                 _ => unreachable!(),
             };
@@ -2089,6 +2092,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     UnaryOp::MutRefFuture(vir::ast::MutRefFutureSourceName::MutRefFuture)
                 }
                 VerusItem::Final => UnaryOp::MutRefFinal(false),
+                VerusItem::MutRefPtr => UnaryOp::MutRefPtr,
                 _ => unreachable!(),
             };
             mk_expr(ExprX::Unary(op, exp))
@@ -2830,17 +2834,17 @@ fn record_loop_spec<'tcx>(
 
 pub(crate) fn record_call<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr, resolved_call: ResolvedCall) {
     let resolved_call = match (resolved_call, &bctx.external_trait_from_to) {
-        (ResolvedCall::Call(ufun, rfun, in_ghost, ae), Some(paths)) if paths.2.is_some() => {
+        (ResolvedCall::Call(ufun, rfun, ae), Some(paths)) if paths.2.is_some() => {
             let (from_path, _to_path, to_spec_path) = &**paths;
             use vir::traits::rewrite_fun;
             let ufun = rewrite_fun(from_path, to_spec_path.as_ref().unwrap(), &ufun);
             let rfun = rewrite_fun(from_path, to_spec_path.as_ref().unwrap(), &rfun);
-            ResolvedCall::Call(ufun, rfun, in_ghost, ae)
+            ResolvedCall::Call(ufun, rfun, ae)
         }
         (resolved_call, _) => resolved_call,
     };
     let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-    erasure_info.resolved_calls.push((expr.hir_id, expr.span.data(), resolved_call));
+    erasure_info.resolved_calls.push((expr.hir_id, expr.span.data(), resolved_call, bctx.in_ghost));
 }
 
 /// Remove two-phaseness from the root node of the given expression, if applicable.

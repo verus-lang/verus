@@ -471,6 +471,7 @@ pub enum UnaryOp {
     CastToInteger,
     MutRefCurrent,
     MutRefFuture(MutRefFutureSourceName),
+    MutRefPtr,
     /// The `final` keyword.
     /// Note: `final` on its own is unsupported.
     /// `*final(e)` should be replaced with `mut_ref_future(e)`; other appearances are an error

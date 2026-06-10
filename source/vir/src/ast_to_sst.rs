@@ -21,8 +21,8 @@ use crate::sst::{
 };
 use crate::sst_util::{
     exp_with_vars_at_pre_state, sst_bitwidth, sst_conjoin, sst_equal, sst_exp_get_proof_note,
-    sst_int_literal, sst_le, sst_lt, sst_mut_ref_current, sst_unit_value,
-    stm_with_vars_at_pre_state, subst_exp, subst_pre_local_decl, subst_stm,
+    sst_int_literal, sst_le, sst_lt, sst_mut_ref_current, sst_mut_ref_ptr, sst_ptr_addr,
+    sst_unit_value, stm_with_vars_at_pre_state, subst_exp, subst_pre_local_decl, subst_stm,
 };
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor, stm_visitor_check};
 use crate::util::vec_map_result;
@@ -3180,6 +3180,24 @@ fn borrow_mut_to_sst(
     let mut phase1_stms = stms;
     phase1_stms.push(has_typ_stm);
     phase1_stms.push(assume_stm);
+
+    if let PlaceX::DerefMut(p_inner) = &place.x
+        && types_equal(&expr.typ, &p_inner.typ)
+        && let ExpX::Unary(crate::ast::UnaryOp::MutRefCurrent, inner_exp) = &normal_exp.x
+        && ctx.func_map.contains_key(&crate::fun!(CrateId::Vstd => "raw_ptr", "spec_ptr_addr"))
+    {
+        // Add assumption about addr being preserved for `&mut *r`
+        let new_ptr_exp = sst_mut_ref_ptr(&expr.span, &mut_ref_exp);
+        let new_ptr_addr_exp = sst_ptr_addr(&expr.span, &new_ptr_exp);
+
+        let old_ptr_exp = sst_mut_ref_ptr(&expr.span, &inner_exp);
+        let old_ptr_addr_exp = sst_ptr_addr(&expr.span, &old_ptr_exp);
+
+        let equal = sst_equal(&expr.span, &new_ptr_addr_exp, &old_ptr_addr_exp);
+        let assume_stm = Spanned::new(expr.span.clone(), StmX::Assume(equal));
+
+        phase1_stms.push(assume_stm);
+    }
 
     // phase 2
 

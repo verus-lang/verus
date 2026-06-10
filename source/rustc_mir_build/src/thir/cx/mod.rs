@@ -61,6 +61,8 @@ pub(crate) fn thir_body(
     // Note: this call requires cx.thir.params to be initialized
     let expr = crate::verus_time_travel_prevention::body_post(&mut cx, body.value, expr);
 
+    cx.verus_ctxt.finish();
+
     Ok((tcx.alloc_steal_thir(cx.thir), expr))
 }
 

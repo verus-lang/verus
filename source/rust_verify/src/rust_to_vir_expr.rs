@@ -576,7 +576,7 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
     );
     let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
     let resolved_call = ResolvedCall::Ctor(vir_path.clone(), variant_name.clone());
-    erasure_info.resolved_calls.push((expr.hir_id, fun_span.data(), resolved_call));
+    erasure_info.resolved_calls.push((expr.hir_id, fun_span.data(), resolved_call, bctx.in_ghost));
     let exprx = ExprX::Ctor(Dt::Path(vir_path), variant_name, vir_fields, None);
     Ok(bctx.spanned_typed_new(expr.span, &expr_typ, exprx))
 }
@@ -1004,6 +1004,7 @@ pub(crate) fn invariant_block_open<'a>(
                     return None;
                 }
             };
+
             Some((*guard_hir, *inner_hir, inner_pat, arg, atomicity))
         }
         _ => {
@@ -1116,7 +1117,7 @@ fn invariant_block_to_vir<'tcx>(
         return malformed_inv_block_err(expr);
     }
 
-    let vir_body = match mid_stmt.kind {
+    let (vir_body, block_hir_id) = match mid_stmt.kind {
         StmtKind::Expr(e @ Expr { kind: ExprKind::Block(body, None), .. }) => {
             assert!(!is_invariant_block(bctx, e)?);
             let vir_stmts: Stmts = Arc::new(
@@ -1131,12 +1132,25 @@ fn invariant_block_to_vir<'tcx>(
             // body.span leads to better error messages
             // (e.g., the "Cannot show invariant holds at end of block" error)
             // (e.span or mid_stmt.span would expose macro internals)
-            bctx.spanned_typed_new(body.span, &ty, ExprX::Block(vir_stmts, vir_expr))
+            let vir_body =
+                bctx.spanned_typed_new(body.span, &ty, ExprX::Block(vir_stmts, vir_expr));
+            (vir_body, body.hir_id)
         }
         _ => {
             return malformed_inv_block_err(expr);
         }
     };
+
+    if matches!(atomicity, InvAtomicity::NonAtomic) {
+        let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+        erasure_info.local_invariant_bodies.push(
+            rustc_mir_build_verus::verus::LocalInvariantBody {
+                inner_block_hir_id: block_hir_id,
+                span: expr.span,
+                guard_var: rustc_middle::thir::LocalVarId(guard_hir),
+            },
+        );
+    }
 
     let vir_arg = expr_to_vir_consume(bctx, &inv_arg)?;
 
@@ -2099,6 +2113,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             expr.hir_id,
                             fun.span.data(),
                             resolved_call,
+                            bctx.in_ghost,
                         ));
                     }
 
@@ -2528,6 +2543,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             expr.hir_id,
                             expr.span.data(),
                             ResolvedCall::CompilableOperator(CompilableOperator::IntIntrinsic),
+                            bctx.in_ghost,
                         ));
                         return Ok(ExprOrPlace::Expr(vir_expr));
                     } else {
@@ -2903,7 +2919,12 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 Arc::new(vir_fields.iter().map(|f| f.name.clone()).collect::<Vec<_>>()),
                 update.is_some(),
             );
-            erasure_info.resolved_calls.push((expr.hir_id, expr.span.data(), resolved_call));
+            erasure_info.resolved_calls.push((
+                expr.hir_id,
+                expr.span.data(),
+                resolved_call,
+                bctx.in_ghost,
+            ));
             mk_expr(ExprX::Ctor(Dt::Path(path), variant_name, vir_fields, update))
         }
         ExprKind::MethodCall(_name_and_generics, receiver, other_args, fn_span) => {
@@ -3478,7 +3499,12 @@ fn unwrap_parameter_to_vir<'tcx>(
             erasure_info.direct_var_modes.push((hir_id1, mode));
             erasure_info.direct_var_modes.push((hir_id2, mode));
             erasure_info.direct_var_modes.push((hir_id_y, Mode::Exec));
-            erasure_info.resolved_calls.push((hir_id_get, stmt2.span.data(), resolved_call));
+            erasure_info.resolved_calls.push((
+                hir_id_get,
+                stmt2.span.data(),
+                resolved_call,
+                bctx.in_ghost,
+            ));
             let unwrap = vir::ast::UnwrapParameter { mode, outer_name: y, inner_name: x1 };
             let headerx = HeaderExprX::UnwrapParameter(unwrap.clone());
             let exprx = ExprX::Header(Arc::new(headerx));

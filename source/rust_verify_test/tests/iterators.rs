@@ -4,6 +4,65 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
+    #[test] range_works verus_code! {
+        use vstd::prelude::*;
+
+        fn test()
+        {
+            let mut v = vec![];
+            for i in iter: 0..4
+            invariant
+                v.len() == iter.index(),
+                iter.index() <= 4,
+            {
+                assert(i < 4);
+                v.push(i);
+            }
+            assert(v.len() == 4);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] range_inclusive_works verus_code! {
+        use vstd::prelude::*;
+
+        fn test()
+        {
+            let mut v = vec![];
+            for i in iter: 0..=4
+            invariant
+                v.len() == iter.index(),
+                i <= 5,
+            {
+                assert(i <= 4);
+                v.push(i);
+            }
+            assert(v.len() == 5);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] collect_works verus_code! {
+        use vstd::prelude::*;
+
+        fn test(u: &Vec<u32>)
+        {
+            let v: Vec<u32> = vec![1, 2, 3, 4];
+            let w: Vec<u32> = v.into_iter().collect();
+            assert(v@ == w@);
+            let x: Vec<u32> = w.into_iter().rev().collect();
+            assert(x@ == seq![4u32, 3, 2, 1]);
+
+            let y: Vec<u32> = vec![1, 2, 3, 4];
+            let z: Vec<u32> = y.into_iter().rev().rev().collect();
+            assert(z@ == y@);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] map_can_be_implemented verus_code! {
         use vstd::prelude::*;
         use vstd::std_specs::iter::*;
