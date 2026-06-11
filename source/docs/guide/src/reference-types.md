@@ -1,12 +1,17 @@
 # Mathematical interpretations of types
 
+To define the meaning of any given type (whether it be a common Rust type or Verus-specific type) in specification code, we assign to each type a _mathematical domain_.
+In some cases, we also define a _spec-validity predicate_ which further restricts the domain.
+We can define the various spec operations in terms of the mathematical domain.
+
 ## Integer types
 
 Verus integer types include the standard Rust primitive types (`u8`, `u16`, `u32`, `u64`, `u128`, `usize`, `i8`, `i16`, `i132`, `i64`, `i128`, and `isize`) together with Verus builtin types
 `int` and `nat`.
 
-**Mathematical interpretation.**
-Every integer type is represented as an integer (i.e., an element of ℤ) together with a range of accepted values:
+**Mathematical domain.**
+The mathematical domain of each integer type is the set of integers, ℤ.
+Some types have an additional validity predicate restricting their range:
 
 | Type    | Bound |
 |---------|-------|
@@ -34,8 +39,9 @@ Types are inferred for bare literals, but the types may be made explicit (e.g., 
 
 ## Bool
 
-**Mathematical interpretation.**
-A `bool` is represented by a standard boolean value, `true` or `false`.
+**Mathematical domain.**
+The mathematical domain of `bool` is the set of discrete boolean values,
+𝔹 = `{true, false}`.
 
 **Spec equality.** Spec equality on `bool` is defined by standard boolean equivalence.
 
@@ -48,8 +54,9 @@ standard in logic, including [`implication and equivalence`](./reference-implica
 
 ## Char
 
-**Mathematical interpreation.**
-A `char` is interpreted as an [integer type](#integer-types) with a bespoke validity range:
+**Mathematical domain.**
+A `char` is interpreted as an [integer type](#integer-types) with mathematical
+domain ℤ with a bespoke validity range:
 
 | Type    | Bound |
 |---------|-------|
@@ -73,7 +80,7 @@ fit in the target range.
 
 ## Box (`Box<T>`)
 
-**Mathematical interpretation.**
+**Mathematical domain.**
 A `Box<T>` is interpreted identically to `T` with no additional metadata.
 
 **Spec equality.**
