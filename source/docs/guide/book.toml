@@ -11,3 +11,6 @@ smart-punctuation = true
 
 [output.html.playground]
 runnable = false
+
+[preprocessor.verus-grammar]
+command = "python3 verus-grammar.py"

@@ -39,7 +39,7 @@ pub mod test_mod {
 }
 ```
 
-Anoter use-case for the `verus_only` flag is setting attributes that only make sense during verification.
+Another use-case for the `verus_only` flag is setting attributes that only make sense during verification.
 For instance, the code below sets the `verifier::loop_isolation` option to false for the file, only if `verus_only` is set:
 ```rust
 #![cfg_attr(verus_only, verus::loop_isolation(false))]
