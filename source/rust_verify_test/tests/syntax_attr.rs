@@ -1296,6 +1296,20 @@ test_verify_one_file! {
     } => Ok(())
 }
 
+// test forloop without verus_spec invariant in #[verus_verify] function
+test_verify_one_file_with_options! {
+    #[test] test_verus_verify_attr_for_loop ["exec_allows_no_decreases_clause"] => code!{
+        use vstd::prelude::*;
+        #[verus_verify]
+        fn test_for_loop()
+        {
+            for i in 0..10
+            {
+            }
+        }
+    } => Ok(())
+}
+
 test_verify_one_file! {
     #[test] test_skip_desugar_loop_with_external_body code!{
         use vstd::prelude::*;

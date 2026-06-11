@@ -188,7 +188,11 @@ pub(crate) fn rewrite_verus_attribute(
     }
 
     // Special handling for impl blocks, add marker attribute to each method for `#[verus_spec]`.
-    let mut visitor = VerusVerifyVisitor { verify_const: true };
+    let mut visitor = VerusVerifyVisitor {
+        verify_const: true,
+        erase: erase.clone(),
+        inside_external_code: contains_external,
+    };
     visitor.visit_item_mut(&mut item);
     let mut new_stream = quote_spanned! {item.span()=>
         #(#attributes)*
@@ -345,6 +349,8 @@ impl VisitMut for ExecReplacer {
 
 struct VerusVerifyVisitor {
     verify_const: bool,
+    erase: EraseGhost,
+    inside_external_code: bool,
 }
 
 fn get_verus_spec(attrs: &[syn::Attribute]) -> Option<&syn::Attribute> {
@@ -391,6 +397,24 @@ impl VisitMut for VerusVerifyVisitor {
         syn::visit_mut::visit_item_static_mut(self, i);
         let span = i.span();
         self.add_verus_spec_if_needed(&mut i.attrs, span);
+    }
+
+    // Desugar bare for-loops in `#[verus_verify]` bodies, mirroring
+    // what `ExecReplacer` does for `#[verus_spec]` functions.
+    fn visit_expr_for_loop_mut(&mut self, for_loop: &mut syn::ExprForLoop) {
+        syn::visit_mut::visit_expr_for_loop_mut(self, for_loop);
+
+        if !self.erase.keep() || self.inside_external_code {
+            return;
+        }
+
+        if get_verus_spec(&for_loop.attrs).is_none() {
+            for_loop.attrs.push(crate::syntax::mk_rust_attr_syn(
+                for_loop.span(),
+                VERUS_SPEC,
+                TokenStream::new(),
+            ));
+        }
     }
 }
 
