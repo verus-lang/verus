@@ -16,9 +16,9 @@ pub struct Toolchain {
 #[serde(untagged)]
 pub enum Crate {
     /// Identifies a version published in a registry.
-    Simple(String),
+    Version(String),
     /// Identifies a commit in a git repository (e.g. GitHub).
-    Git { git: String, rev: String },
+    GitCommit { git: String, rev: String },
 }
 
 #[cfg(test)]

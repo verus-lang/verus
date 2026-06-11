@@ -10,7 +10,7 @@ fn parse_toolchain_release() {
 
     let expected = Toolchain {
         verus: "0.2026.06.07.cd03505".into(),
-        vstd: Crate::Simple("0.0.0-2026-05-31-0205".into()),
+        vstd: Crate::Version("0.0.0-2026-05-31-0205".into()),
         z3: "4.12.5".into(),
     };
 
@@ -29,7 +29,7 @@ fn parse_toolchain_rolling_release() {
 
     let expected = Toolchain {
         verus: "0.2026.06.10.e6a6d4f".into(),
-        vstd: Crate::Git {
+        vstd: Crate::GitCommit {
             git: "https://github.com/verus-lang/verus.git".into(),
             rev: "e6a6d4f".into(),
         },
