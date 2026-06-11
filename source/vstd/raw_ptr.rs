@@ -1297,8 +1297,10 @@ pub axiom fn seq_into_slice<T>(tracked spt: SeqPointsTo<T>) -> (tracked pt: Poin
 ;
 
 /// If the domain exactly contains the indices bounded by `self.len()`,
-/// we can convert this permission into a `PointsTo<[T]>` with the same pointer
-/// and the same memory contents at every index.
+/// we can convert a mutable reference to this permission into a `&mut PointsTo<[T]>`
+/// with the same pointer and the same memory contents at every index.
+/// While the pointer and length will stay the same, any changes to the memory contents
+/// will be reflected in the original `SeqPointsTo<T>` permission.
 pub axiom fn seq_into_slice_mut<T>(tracked spt: &mut SeqPointsTo<T>) -> (tracked pt: &mut PointsTo<
     [T],
 >)
@@ -1308,8 +1310,12 @@ pub axiom fn seq_into_slice_mut<T>(tracked spt: &mut SeqPointsTo<T>) -> (tracked
                 ==> #[trigger] final(pt).mem_contents_seq()[i as int]
                 == final(spt)[i].mem_contents(),
         old(spt).ptr() == final(spt).ptr(),
+        old(spt).len() == final(spt).len(),
+        forall|i|
+            0 <= i < pt.mem_contents_seq().len() ==> #[trigger] pt.mem_contents_seq()[i as int]
+                == old(spt)[i].mem_contents(),
         pt.ptr() as *mut T == old(spt).ptr(),
-        pt.ptr()@.metadata == final(spt).len() == old(spt).len(),
+        pt.ptr()@.metadata == old(spt).len(),
 ;
 
 impl<T> SeqPointsTo<T> {

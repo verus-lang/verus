@@ -8,7 +8,6 @@
     feature(fn_traits),
     feature(register_tool),
     feature(tuple_trait),
-    // Elanor: Ok to add?
     feature(const_trait_impl)
 )]
 #![cfg_attr(verus_keep_ghost, register_tool(verus), register_tool(verifier))]
