@@ -6,7 +6,6 @@
 //! (The module formulation seemed cleaner than defining a `wrapping_add_u8` for every
 //! operation and type.)
 use super::prelude::*;
-use super::arithmetic::power2::is_pow2;
 
 macro_rules! wrapping_specs {
     ([$(($uN: ty, $iN: ty, $modname_u:ident, $modname_i:ident, $range:expr, $bits:expr),)*]) => {
@@ -46,56 +45,13 @@ macro_rules! wrapping_specs {
                     ((x as nat * y as nat) % $range as nat) as $uN
                 }
 
-                pub open spec fn count_ones(x: $uN) -> nat
-                    decreases x,
-                {
-                    if x == 0 {
-                        0
-                    } else {
-                        (x % 2) as nat + count_ones(x / 2)
-                    }
-                }
-
-                pub proof fn lemma_count_ones_pos(x: $uN)
-                    requires
-                        x >= 1,
-                    ensures
-                        count_ones(x) >= 1,
-                    decreases x,
-                {
-                    if x > 1 && x % 2 == 0 {
-                        lemma_count_ones_pos(x / 2);
-                    }
-                }
-
-                pub broadcast proof fn lemma_count_ones_is_pow2(x: $uN)
-                    ensures
-                        #![trigger count_ones(x)] 
-                        #![trigger is_pow2(x as int)] 
-                        count_ones(x) == 1
-                            <==> is_pow2(x as int),
-                    // decreases x,
-                {
-                    assume(false);
-                    // use super::super::arithmetic::power2::is_pow2;
-                    // reveal(is_pow2);
-                    // if x == 0 {
-                    // } else if x == 1 {
-                    // } else {
-                    //     lemma_count_ones_is_pow2(x / 2);
-                    //     if x % 2 == 1 {
-                    //         lemma_count_ones_pos(x / 2);
-                    //     }
-                    // }
-
-                }
-
                 pub open spec fn wrapping_shl(x: $uN, shift: u32) -> $uN {
                     x << (shift % $bits)
                 }
                 pub open spec fn wrapping_shr(x: $uN, shift: u32) -> $uN {
                     x >> (shift % $bits)
                 }
+
             }
             pub mod $modname_i {
                 use super::*;
@@ -140,10 +96,6 @@ macro_rules! wrapping_specs {
                     signed_crop(x * y)
                 }
 
-                pub open spec fn count_ones(x: $iN) -> nat {
-                    super::$modname_u::count_ones(x as $uN)
-                }
-
                 pub open spec fn wrapping_shl(x: $iN, shift: u32) -> $iN {
                     x << (shift % $bits)
                 }
@@ -152,9 +104,8 @@ macro_rules! wrapping_specs {
                 }
 
             }
-            
-            }
-        )*
+        }
+            )*
     }
 }
 wrapping_specs!([
@@ -165,16 +116,3 @@ wrapping_specs!([
     (u128, i128, u128_specs, i128_specs, 0x1_0000_0000_0000_0000_0000_0000_0000_0000, 128u32),
     (usize, isize, usize_specs, isize_specs, (usize::MAX - usize::MIN + 1), usize::BITS),
 ]);
-
-verus! {
-
-pub broadcast group group_count_ones_is_pow2 {
-    u8_specs::lemma_count_ones_is_pow2,
-    u16_specs::lemma_count_ones_is_pow2,
-    u32_specs::lemma_count_ones_is_pow2,
-    u64_specs::lemma_count_ones_is_pow2,
-    u128_specs::lemma_count_ones_is_pow2,
-    usize_specs::lemma_count_ones_is_pow2,
-}
-
-} // verus!
