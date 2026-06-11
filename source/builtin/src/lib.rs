@@ -7,7 +7,8 @@
     feature(unboxed_closures),
     feature(fn_traits),
     feature(register_tool),
-    feature(tuple_trait)
+    feature(tuple_trait),
+    feature(const_trait_impl)
 )]
 #![cfg_attr(verus_keep_ghost, register_tool(verus), register_tool(verifier))]
 
@@ -438,9 +439,20 @@ impl<A> core::ops::DerefMut for Ghost<A> {
 /// Note: This special behavior requires support from Verus,
 /// and this trait impl cannot be used generically.
 #[cfg(verus_keep_ghost)]
+#[cfg(not(verus_verify_core))]
 impl<A> core::ops::Deref for Tracked<A> {
     type Target = A;
     #[rustc_diagnostic_item = "verus::verus_builtin::Tracked::deref"]
+    fn deref(&self) -> &Self::Target {
+        unimplemented!();
+    }
+}
+
+#[cfg(verus_keep_ghost)]
+#[cfg(verus_verify_core)]
+#[rustc_const_unstable(feature = "your_feature_name", issue = "none")]
+impl<A> const core::ops::Deref for Tracked<A> {
+    type Target = A;
     fn deref(&self) -> &Self::Target {
         unimplemented!();
     }
@@ -451,8 +463,18 @@ impl<A> core::ops::Deref for Tracked<A> {
 /// Note: This special behavior requires support from Verus,
 /// and this trait impl cannot be used generically.
 #[cfg(verus_keep_ghost)]
+#[cfg(not(verus_verify_core))]
 impl<A> core::ops::DerefMut for Tracked<A> {
     #[rustc_diagnostic_item = "verus::verus_builtin::Tracked::deref_mut"]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unimplemented!();
+    }
+}
+
+#[cfg(verus_keep_ghost)]
+#[cfg(verus_verify_core)]
+#[rustc_const_unstable(feature = "your_feature_name", issue = "none")]
+impl<A> const core::ops::DerefMut for Tracked<A> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         unimplemented!();
     }
