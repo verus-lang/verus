@@ -142,6 +142,7 @@ pub broadcast axiom fn is_nonnull(p: Provenance)
 ;
 
 pub broadcast group group_provenance_properties {
+    prov_alignment,
     alloc_bound,
     start_addr_aligned,
     is_nonnull,
@@ -584,6 +585,21 @@ impl<T> PointsTo<[T]> {
     /// Delegates to the underlying `PointsToUnaligned<[T]>`.
     pub closed spec fn mem_contents_seq(&self) -> Seq<MemContents<T>> {
         self.inner.mem_contents_seq()
+    }
+
+    /// The length of the memory that this permission gives access to.
+    #[verifier::inline]
+    pub open spec fn len(self) -> nat {
+        self.mem_contents_seq().len()
+    }
+
+    /// `[]` operator, synonymous with `index`.
+    #[verifier::inline]
+    pub open spec fn spec_index(self, index: nat) -> MemContents<T>
+        recommends
+            0 <= index < self.len(),
+    {
+        self.mem_contents_seq()[index as int]
     }
 
     /// Returns `true` if all of the permission's associated memory is initialized.
@@ -1280,12 +1296,35 @@ pub axiom fn seq_into_slice<T>(tracked spt: SeqPointsTo<T>) -> (tracked pt: Poin
         pt.ptr()@.metadata == spt.len(),
 ;
 
+/// If the domain exactly contains the indices bounded by `self.len()`,
+/// we can convert a mutable reference to this permission into a `&mut PointsTo<[T]>` 
+/// with the same pointer and the same memory contents at every index.
+/// While the pointer and length will stay the same, any changes to the memory contents
+/// will be reflected in the original `SeqPointsTo<T>` permission.
+pub axiom fn seq_into_slice_mut<T>(tracked spt: &mut SeqPointsTo<T>) -> (tracked pt: &mut PointsTo<
+    [T],
+>)
+    ensures
+        forall|i|
+            0 <= i < pt.mem_contents_seq().len()
+                ==> #[trigger] final(pt).mem_contents_seq()[i as int]
+                == final(spt)[i].mem_contents(),
+        old(spt).ptr() == final(spt).ptr(),
+        old(spt).len() == final(spt).len(),
+        forall|i|
+            0 <= i < pt.mem_contents_seq().len()
+                ==> #[trigger] pt.mem_contents_seq()[i as int]
+                == old(spt)[i].mem_contents(),
+        pt.ptr() as *mut T == old(spt).ptr(),
+        pt.ptr()@.metadata == old(spt).len(),
+;
+
 impl<T> SeqPointsTo<T> {
     /// The keys must fall in the range `[0, self.len())`.
     /// For each key `i`, the corresponding `PointsTo<T>` must have the same provenance as
     /// the `self.ptr()`, and its pointer's address is offset from `self.ptr()` by `i`.
     #[verifier::type_invariant]
-    spec fn inv(self) -> bool {
+    pub open spec fn inv(self) -> bool {
         &&& forall|i|
             #![trigger self[i].ptr()@.provenance]
             #![trigger self[i].ptr()@.addr]
@@ -1307,6 +1346,10 @@ impl<T> SeqPointsTo<T> {
     /// The `Seq<PointsTo<T>>` that this type is a wrapper for.
     pub closed spec fn perm(self) -> Seq<PointsTo<T>> {
         self.perm
+    }
+
+    pub open spec fn mem_contents(self) -> Seq<MemContents<T>> {
+        self.perm().map(|i: int, elt: PointsTo<T>| elt.mem_contents())
     }
 
     /// The length of the sequence of `PointsTo<T>`.
@@ -2188,8 +2231,8 @@ pub broadcast group group_raw_ptr_axioms {
     axiom_ptr_mut_from_data,
     ptrs_mut_eq,
     ptrs_mut_eq_sized,
-    alloc_bound,
     axiom_pt_slice_len,
+    group_provenance_properties,
 }
 
 /// Tracked object that indicates a given provenance has been exposed.
@@ -2465,7 +2508,7 @@ impl<V> PointsTo<[V]> {
         ensures
             points_to_raw.is_range(
                 self.ptr().addr() as int,
-                (size_of::<V>() as int) * self.value().len(),
+                (size_of::<V>() as int) * self.mem_contents_seq().len(),
             ),
             points_to_raw.provenance() == self.ptr()@.provenance,
     ;
@@ -2476,7 +2519,7 @@ impl<V> PointsTo<[V]> {
         ensures
             points_to_raw.is_range(
                 self.ptr().addr() as int,
-                (size_of::<V>() as int) * self.value().len(),
+                (size_of::<V>() as int) * self.mem_contents_seq().len(),
             ),
             points_to_raw.provenance() == self.ptr()@.provenance,
     ;
@@ -2510,6 +2553,23 @@ impl<V> MapPointsTo<V> {
             points_to_raw.is_range(self.ptr().addr() as int, size_of::<V>() * self.ptr()@.metadata),
             points_to_raw.provenance() == self.ptr()@.provenance,
     ;
+}
+
+// TODO: Add uninit requires on into_raw and add leak_contents axiom
+impl<V> SeqPointsTo<V> {
+    /// Provided that the domain of `self` is exactly the addresses bounded by `self.len()`,
+    /// creates a `PointsToRaw` from a `SeqPointsTo<V>` with the same provenance
+    /// and a range starting at the address of the `PointsTo<V>` with length `size_of::<V>() * self.len()`.
+    pub proof fn into_raw(tracked self) -> (tracked points_to_raw: PointsToRaw)
+        ensures
+            points_to_raw.is_range(self.ptr().addr() as int, (size_of::<V>() * self.len()) as int),
+            points_to_raw.provenance() == self.ptr()@.provenance,
+    {
+        broadcast use group_raw_ptr_axioms;
+
+        use_type_invariant(&self);
+        seq_into_slice(self).into_raw()
+    }
 }
 
 // Allocation and deallocation via the global allocator
@@ -2553,6 +2613,13 @@ impl Dealloc {
     pub open spec fn provenance(self) -> Provenance {
         self.view().provenance
     }
+
+    /// We can always create a `Dealloc` permission for an empty allocation with null provenance.
+    pub axiom fn empty() -> (tracked dealloc: Self)
+        ensures
+            dealloc@.provenance == Provenance::null(),
+            dealloc@.size == 0,
+    ;
 }
 
 /// Allocate with the global allocator.
