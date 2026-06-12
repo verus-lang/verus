@@ -127,6 +127,72 @@ pub trait ExIterator {
                         predicate.ensures((#[trigger] &old(self).remaining()[i],), false)
                 }
             };
+
+    // TODO: The Rust implementations of `all` and `any` depend on a correct implementation of `try_fold`
+    //       For now, we assume obeys_prophetic_iter_laws() entails such an implementation, but we should
+    //       eventually constrain implementations of `try_fold` to actually be correct enough to uphold the specs below.
+
+    fn all<F>(&mut self, f: F) -> (r: bool)
+        where Self: Sized,
+            F: FnMut(Self::Item) -> bool
+        default_ensures
+            // The iterator consistently obeys, completes, and decreases throughout its lifetime
+            final(self).obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
+            final(self).obeys_prophetic_iter_laws() ==> final(self).will_return_none() == old(self).will_return_none(),
+            final(self).obeys_prophetic_iter_laws() ==> (old(self).decrease() is Some <==> final(self).decrease() is Some),
+            final(self).obeys_prophetic_iter_laws() ==> {
+                final(self).remaining().is_suffix_of(old(self).remaining())
+            },
+            // If all returns true, then the iterator has no remaining elements,
+            // and the predicate was true for all of the original iterator's elements.
+            final(self).obeys_prophetic_iter_laws() && r ==> {
+                &&& final(self).remaining().len() == 0
+                &&& forall |i| 0 <= i < old(self).remaining().len() ==>
+                    f.ensures((#[trigger] old(self).remaining()[i],), true)
+            },
+            // If all returns false, then there is some element for which the
+            // predicate was false, and all previous elements satisfied the predicate.
+            final(self).obeys_prophetic_iter_laws() && !r ==> {
+                let idx = old(self).remaining().len() - final(self).remaining().len() - 1;
+                {
+                    // The failing element was consumed, so the remaining sequence strictly shrank
+                    &&& final(self).remaining().len() < old(self).remaining().len()
+                    &&& f.ensures((old(self).remaining()[idx],), false)
+                    &&& forall |i| 0 <= i < idx ==>
+                        f.ensures((#[trigger] old(self).remaining()[i],), true)
+                }
+            };
+
+    fn any<F>(&mut self, f: F) -> (r: bool)
+        where Self: Sized,
+            F: FnMut(Self::Item) -> bool
+        default_ensures
+            // The iterator consistently obeys, completes, and decreases throughout its lifetime
+            final(self).obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
+            final(self).obeys_prophetic_iter_laws() ==> final(self).will_return_none() == old(self).will_return_none(),
+            final(self).obeys_prophetic_iter_laws() ==> (old(self).decrease() is Some <==> final(self).decrease() is Some),
+            final(self).obeys_prophetic_iter_laws() ==> {
+                final(self).remaining().is_suffix_of(old(self).remaining())
+            },
+            // If any returns false, then the iterator has no remaining elements,
+            // and the predicate was false for all of the original iterator's elements.
+            final(self).obeys_prophetic_iter_laws() && !r ==> {
+                &&& final(self).remaining().len() == 0
+                &&& forall |i| 0 <= i < old(self).remaining().len() ==>
+                    f.ensures((#[trigger] old(self).remaining()[i],), false)
+            },
+            // If any returns true, then there is some element that satisfied the predicate,
+            // and all previous elements did not satisfy the predicate.
+            final(self).obeys_prophetic_iter_laws() && r ==> {
+                let idx = old(self).remaining().len() - final(self).remaining().len() - 1;
+                {
+                    // The satisfying element was consumed, so the remaining sequence strictly shrank
+                    &&& final(self).remaining().len() < old(self).remaining().len()
+                    &&& f.ensures((old(self).remaining()[idx],), true)
+                    &&& forall |i| 0 <= i < idx ==>
+                        f.ensures((#[trigger] old(self).remaining()[i],), false)
+                }
+            };
 }
 
 #[verifier::external_trait_specification]

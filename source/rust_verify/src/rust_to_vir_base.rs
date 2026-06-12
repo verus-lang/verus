@@ -2756,3 +2756,20 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
         _ => Ok(None),
     }
 }
+
+/// https://github.com/verus-lang/verus/issues/2541
+pub(crate) fn hack_fix_no_lifetime_opaque_ty_issue2541<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    ty: rustc_middle::ty::Ty<'tcx>,
+) -> rustc_middle::ty::Ty<'tcx> {
+    // replace unbound lifetime vars with 'static
+    // this is _kind of_ like ignoring lifetime constraints, though only works if lifetime
+    // params are used covariantly
+    rustc_middle::ty::fold_regions(tcx, ty, |region, _debruijn| {
+        if matches!(region.kind(), rustc_middle::ty::ReErased) {
+            rustc_middle::ty::Region::new_from_kind(tcx, rustc_middle::ty::ReStatic)
+        } else {
+            region
+        }
+    })
+}
