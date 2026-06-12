@@ -119,9 +119,8 @@
   - [IDE Support](ide_support.md)
   - [Installing and configuring Singular](./install-singular.md)
 
-- [Project setup and development]()
-  - [Working with crates]()
-  - [Invoking Verus code from Rust]()
+- [Project setup and development](./projects.md)
+  - [Using Verus via Cargo](./cargo_verus.md)
   - [Documentation with Rustdoc](./verusdoc.md)
   - [Ghost Erasure](./erasure.md)
 
