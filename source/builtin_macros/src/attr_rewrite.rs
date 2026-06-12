@@ -48,11 +48,13 @@ use crate::{
     unerased_proxies::VERUS_UNERASED_PROXY,
 };
 
-pub const VERIFIED: &str = "_VERUS_VERIFIED";
-
 pub const DUAL_SPEC_PREFIX: &str = "__VERUS_SPEC";
 
 const VERUS_SPEC: &str = "verus_spec";
+
+// No cross-function type registry. When Rust cannot infer types for
+// proof_with/proof_with_ret (e.g., cross-crate calls or when callee is processed
+// after caller), the user must provide explicit type annotations on their variables.
 
 enum VerusIOTarget {
     Local(syn::Local),
@@ -626,24 +628,13 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
                 }
             }
 
-            // Create a copy of unverified function.
-            // To avoid misuse of the unverified function,
-            // we add `requires false` and thus prevent verified function to use it.
-            // Allow unverified code to use the function without changing in/output.
-            if let Some(with) = &spec_attr.spec.with {
-                let mut extra_funs = rewrite_unverified_func(&mut fun, with.with.span(), erase);
-
+            // With declare_with/declare_ret_with approach, no need to create
+            // a VERIFIED_ copy. The function keeps its original name and uses
+            // declare_with() in its body for extra ghost/tracked params.
+            if let Some(_with) = &spec_attr.spec.with {
                 if crate::rustdoc::env_rustdoc() {
-                    if let Some(unverified_fun) = extra_funs.last_mut() {
-                        unverified_fun.attrs.extend(rustdoc_attrs.clone());
-                    }
-                    fun.attrs.push(crate::syntax::mk_rust_attr_syn(
-                        with.with.span(),
-                        "doc",
-                        quote! {hidden},
-                    ));
+                    fun.attrs.extend(rustdoc_attrs.clone());
                 }
-                extra_funs.iter().for_each(|f| f.to_tokens(&mut new_stream));
             } else if crate::rustdoc::env_rustdoc() {
                 fun.attrs.extend(rustdoc_attrs);
             }
@@ -880,12 +871,47 @@ fn rewrite_verus_spec_on_expr_local(
     tokens.into()
 }
 
-/// Wrap an expression with a `|=` follow clause, producing a tuple `(expr, follow)`.
-/// Used by both struct-constructor and function-call proof_with! handling.
+/// Wrap an expression with a `|=` follow clause by assigning to output variables.
+/// The `|=` expression assigns values to `__verus_with_out_N` declare_ret_with variables.
 fn apply_follows(erase: &EraseGhost, expr: &mut Expr, follow_tokens: TokenStream) {
-    let follow: TokenStream =
-        syntax::rewrite_expr(erase.clone(), false, follow_tokens.into()).into();
-    *expr = Expr::Verbatim(quote_spanned!(expr.span() => (#expr, #follow)));
+    // Parse the follow expression to extract Ghost(...)/Tracked(...) wrappers
+    let Ok(follow_expr) = verus_syn::parse2::<verus_syn::Expr>(follow_tokens.clone()) else {
+        *expr = Expr::Verbatim(quote_spanned!(expr.span() =>
+            compile_error!("invalid `|=` follow expression")
+        ));
+        return;
+    };
+
+    // Flatten tuple of follows into individual expressions
+    let mut follow_exprs = Vec::new();
+    fn flatten_follow(expr: verus_syn::Expr, out: &mut Vec<verus_syn::Expr>) {
+        match expr {
+            verus_syn::Expr::Tuple(tuple) => {
+                for elem in tuple.elems {
+                    flatten_follow(elem, out);
+                }
+            }
+            other => out.push(other),
+        }
+    }
+    flatten_follow(follow_expr, &mut follow_exprs);
+
+    let mut assigns = Vec::new();
+    for (i, follow_expr) in follow_exprs.into_iter().enumerate() {
+        let rewritten: TokenStream =
+            syntax::rewrite_expr(erase.clone(), true, follow_expr.to_token_stream().into()).into();
+        let name = syntax::get_with_output_name(i);
+        let out_ident = syn::Ident::new(&name, proc_macro2::Span::call_site());
+        assigns.push(quote_spanned!(expr.span() =>
+            #[verifier::proof_block] { #out_ident = #rewritten; }
+        ));
+    }
+
+    let expr_tokens = expr.to_token_stream();
+    *expr = Expr::Verbatim(quote_spanned!(expr.span() => {
+        #(#assigns)*
+        #expr_tokens
+    }));
 }
 
 fn is_tracked_ghost_expr(expr: &verus_syn::Expr) -> bool {
@@ -951,21 +977,14 @@ fn rewrite_with_expr(
     erase: EraseGhost,
     expr: &mut Expr,
     call_with_spec: verus_syn::WithSpecOnExpr,
-) -> Vec<verus_syn::Stmt> {
+) -> Vec<proc_macro2::TokenStream> {
     let verus_syn::WithSpecOnExpr { inputs, outputs, follows, erased_fields, .. } = call_with_spec;
 
+    // Handle Try expressions by recursing into inner
     if outputs.is_some() || inputs.len() > 0 {
         match expr {
-            syn::Expr::Call(syn::ExprCall { func, .. }) => {
-                if let Expr::Path(path) = func.as_mut() {
-                    let x = &path.path.segments.last().unwrap().ident;
-                    path.path.segments.last_mut().unwrap().ident =
-                        syn::Ident::new(&format!("{VERIFIED}_{x}"), x.span());
-                }
-            }
-            syn::Expr::MethodCall(syn::ExprMethodCall { method, .. }) => {
-                let x = &method;
-                *method = syn::Ident::new(&format!("{VERIFIED}_{x}"), x.span());
+            syn::Expr::Call(_) | syn::Expr::MethodCall(_) => {
+                // OK — these are valid call expressions
             }
             syn::Expr::Try(syn::ExprTry { expr, .. }) => {
                 let call_with_spec = verus_syn::WithSpecOnExpr {
@@ -989,48 +1008,193 @@ fn rewrite_with_expr(
     if apply_erased_fields(erase.clone(), expr, erased_fields.iter()).is_err() {
         return vec![];
     }
-    match expr {
-        syn::Expr::Call(syn::ExprCall { args, .. })
-        | syn::Expr::MethodCall(syn::ExprMethodCall { args, .. }) => {
-            for arg in inputs {
-                let arg =
-                    syntax::rewrite_expr(erase.clone(), false, arg.into_token_stream().into());
-                args.push(syn::Expr::Verbatim(arg.into()));
+
+    // Build proof_with input args
+    let input_args: Vec<proc_macro2::TokenStream> = inputs
+        .into_iter()
+        .map(|arg| {
+            let rewritten: proc_macro2::TokenStream =
+                syntax::rewrite_expr(erase.clone(), false, arg.into_token_stream().into()).into();
+            rewritten
+        })
+        .collect();
+
+    let has_inputs = !input_args.is_empty();
+    let has_outputs = outputs.is_some();
+
+    if has_inputs || has_outputs {
+        let inputs_expr = if input_args.len() == 1 {
+            let arg = &input_args[0];
+            quote! { #arg }
+        } else if input_args.is_empty() {
+            quote! { () }
+        } else {
+            quote! { (#(#input_args),*) }
+        };
+
+        let call_expr = expr.to_token_stream();
+
+        if has_outputs {
+            let (_, extra_pat) = outputs.unwrap();
+            let mut out_pats = Vec::new();
+            flatten_output_pat(extra_pat, &mut out_pats);
+
+            // If all outputs are wildcard, just use proof_with (no ret needed)
+            let all_wild = out_pats.iter().all(|p| matches!(p, OutputPat::Wild));
+            let mut pre_decls: Vec<proc_macro2::TokenStream> = Vec::new();
+            if all_wild {
+                *expr = syn::Expr::Verbatim(quote_spanned_builtin!(verus_builtin, expr.span() =>
+                    #verus_builtin::proof_with(#inputs_expr, #call_expr)
+                ));
+            } else {
+                // Use proof_with_ret to capture extra outputs.
+                // Type annotation uses `_` — user must ensure Rust can infer types
+                // (e.g., by annotating their variables explicitly).
+                let mut tmp_idents = Vec::new();
+                let mut unwrap_stmts = Vec::new();
+
+                let mut tmp_type_annotations: Vec<proc_macro2::TokenStream> = Vec::new();
+
+                for (i, pat) in out_pats.iter().enumerate() {
+                    let tmp_ident = syn::Ident::new(
+                        &format!("__verus_out_tmp_{i}"),
+                        proc_macro2::Span::call_site(),
+                    );
+                    match pat {
+                        OutputPat::Ghost(ident, explicit_ty) => {
+                            unwrap_stmts.push(quote! {
+                                #[verifier::proof_block]
+                                { #ident = #tmp_ident.view(); }
+                            });
+                            if let Some(ty) = explicit_ty {
+                                tmp_type_annotations.push(ty.clone());
+                            } else {
+                                tmp_type_annotations.push(quote! { Ghost<_> });
+                            }
+                        }
+                        OutputPat::Tracked(ident, explicit_ty) => {
+                            unwrap_stmts.push(quote! {
+                                #[verifier::proof_block]
+                                { #ident = #tmp_ident.get(); }
+                            });
+                            if let Some(ty) = explicit_ty {
+                                tmp_type_annotations.push(ty.clone());
+                            } else {
+                                tmp_type_annotations.push(quote! { Tracked<_> });
+                            }
+                        }
+                        OutputPat::Wild => {
+                            tmp_type_annotations.push(quote! { _ });
+                        }
+                    }
+                    tmp_idents.push(tmp_ident);
+                }
+
+                let tmp_pat_tokens = if tmp_idents.len() == 1 {
+                    let t = &tmp_idents[0];
+                    quote! { (#t,) }
+                } else {
+                    quote! { (#(#tmp_idents),*) }
+                };
+
+                let tmp_type_tokens = if tmp_type_annotations.len() == 1 {
+                    let t = &tmp_type_annotations[0];
+                    quote! { (#t,) }
+                } else {
+                    quote! { (#(#tmp_type_annotations),*) }
+                };
+
+                *expr = syn::Expr::Verbatim(quote_spanned_builtin!(verus_builtin, expr.span() =>
+                    {
+                        let (__verus_tmp_expr_var__, #tmp_pat_tokens): (_, #tmp_type_tokens) = #verus_builtin::proof_with_ret(#inputs_expr, #call_expr);
+                        #(#unwrap_stmts)*
+                        __verus_tmp_expr_var__
+                    }
+                ));
             }
+            return pre_decls;
+        } else {
+            // Inputs only — use proof_with
+            *expr = syn::Expr::Verbatim(quote_spanned_builtin!(verus_builtin, expr.span() =>
+                #verus_builtin::proof_with(#inputs_expr, #call_expr)
+            ));
         }
-        _ => {}
-    };
-    let x_declares = if let Some((_, extra_pat)) = outputs {
-        // The expected pat.
-        let tmp_pat =
-            verus_syn::Pat::Verbatim(quote_spanned! {expr.span() => __verus_tmp_expr_var__});
-        let mut elems =
-            verus_syn::punctuated::Punctuated::<verus_syn::Pat, verus_syn::Token![,]>::new();
-        elems.push(tmp_pat.clone());
-        elems.push(extra_pat);
-        // The actual pat.
-        let mut pat = verus_syn::Pat::Tuple(verus_syn::PatTuple {
-            attrs: vec![],
-            paren_token: verus_syn::token::Paren::default(),
-            elems,
-        });
-        let (x_declares, x_assigns) = syntax::rewrite_exe_pat(&mut pat);
-        *expr = syn::Expr::Verbatim(quote_spanned! {expr.span() => {
-            let #pat = #expr;
-            proof!{
-                #(#x_assigns)*
-            }
-            #tmp_pat
-        }
-        });
-        x_declares
-    } else {
-        vec![]
-    };
+    }
+
     if let Some((_, follow)) = follows {
         apply_follows(&erase, expr, follow.into_token_stream());
     }
-    x_declares
+    vec![]
+}
+
+enum OutputPat {
+    Ghost(syn::Ident, Option<proc_macro2::TokenStream>),
+    Tracked(syn::Ident, Option<proc_macro2::TokenStream>),
+    Wild,
+}
+
+fn flatten_output_pat(pat: verus_syn::Pat, out: &mut Vec<OutputPat>) {
+    match pat {
+        verus_syn::Pat::Tuple(tuple) => {
+            for elem in tuple.elems {
+                flatten_output_pat(elem, out);
+            }
+        }
+        verus_syn::Pat::Type(pat_type) => {
+            // Handle `Ghost(z): Ghost<u32>` — extract the explicit type annotation
+            let explicit_ty: proc_macro2::TokenStream = pat_type.ty.to_token_stream();
+            let inner = *pat_type.pat;
+            flatten_output_pat_with_type(inner, Some(explicit_ty), out);
+        }
+        _ => flatten_output_pat_with_type(pat, None, out),
+    }
+}
+
+fn flatten_output_pat_with_type(
+    pat: verus_syn::Pat,
+    explicit_ty: Option<proc_macro2::TokenStream>,
+    out: &mut Vec<OutputPat>,
+) {
+    match pat {
+        verus_syn::Pat::Tuple(tuple) => {
+            for elem in tuple.elems {
+                flatten_output_pat(elem, out);
+            }
+        }
+        verus_syn::Pat::TupleStruct(ts) => {
+            let is_ghost = ts.path.is_ident("Ghost");
+            let is_tracked = ts.path.is_ident("Tracked");
+            if (is_ghost || is_tracked) && ts.elems.len() == 1 {
+                if let verus_syn::Pat::Ident(id) = &ts.elems[0] {
+                    if is_ghost {
+                        out.push(OutputPat::Ghost(
+                            syn::Ident::new(&id.ident.to_string(), id.ident.span()),
+                            explicit_ty,
+                        ));
+                    } else {
+                        out.push(OutputPat::Tracked(
+                            syn::Ident::new(&id.ident.to_string(), id.ident.span()),
+                            explicit_ty,
+                        ));
+                    }
+                    return;
+                }
+            }
+            out.push(OutputPat::Wild);
+        }
+        verus_syn::Pat::Wild(_) => {
+            out.push(OutputPat::Wild);
+        }
+        verus_syn::Pat::Ident(id) => {
+            out.push(OutputPat::Ghost(
+                syn::Ident::new(&id.ident.to_string(), id.ident.span()),
+                explicit_ty,
+            ));
+        }
+        _ => {
+            out.push(OutputPat::Wild);
+        }
+    }
 }
 
 /// Rewrite the const function and return a proxy function.
@@ -1055,67 +1219,3 @@ fn rewrite_const_ret_proxy(const_fun: &mut syn::ItemFn) -> syn::ItemFn {
     proxy_fun
 }
 
-// Create a copy of function with unverified function signature without a
-// function body, to enable seamless use of unverified call to the function in
-// verification.
-// If the function is const, it will be rewritten to a proxy function and a verified function.
-fn rewrite_unverified_func(
-    fun: &mut syn::ItemFn,
-    span: proc_macro2::Span,
-    erase: EraseGhost,
-) -> Vec<syn::ItemFn> {
-    let mut ret = vec![];
-    let mut unverified_fun = fun.clone();
-    if fun.sig.constness.is_some() {
-        // Create a proxy function to include requires/ensures.
-        let proxy = rewrite_const_ret_proxy(&mut unverified_fun);
-        ret.push(unverified_fun);
-        unverified_fun = proxy;
-    }
-    let unimplemented = syn::Stmt::Expr(
-        syn::Expr::Verbatim(quote_spanned! {span => unimplemented!()}),
-        Some(syn::token::Semi { spans: [span] }),
-    );
-    let precondition_false = syn::Stmt::Expr(
-        syn::Expr::Verbatim(
-            quote_spanned_builtin!(verus_builtin, span => #verus_builtin::requires([false])),
-        ),
-        Some(syn::token::Semi { spans: [span] }),
-    );
-    unverified_fun.attrs_mut().push(mk_verus_attr_syn(span, quote! { external_body }));
-    if !crate::rustdoc::env_rustdoc() {
-        unverified_fun.attrs_mut().push(crate::syntax::mk_rust_attr_syn(
-            span,
-            "doc",
-            quote! {hidden},
-        ));
-    }
-    if let Some(block) = unverified_fun.block_mut() {
-        // For an unverified function, if it is in keep mode,
-        // we erase the function body to avoid using
-        // proof code, since we do not need to verify anything in unverified
-        // function and we never pass ghost/tracked to unverified function
-        // and so it may cause errors due to undefined vars.
-        // Since the body is erased only in keep mode, we still
-        // see correct body in generated executable in erase mode.
-        if erase.keep() {
-            block.stmts.clear();
-            block.stmts.push(precondition_false);
-            block.stmts.push(unimplemented.clone());
-        }
-    }
-    // change name to verified_{fname}
-    let x = &fun.sig.ident;
-    fun.sig.ident = syn::Ident::new(&format!("{VERIFIED}_{x}"), x.span());
-    fun.attrs.push(crate::syntax::mk_rust_attr_syn(span, "allow", quote! {non_snake_case}));
-
-    // In erase mode, we just keep the verified function with unimplemented!()
-    // since we do not need to verifying the function body and only unverified
-    // function is called in erase mode.
-    if erase.erase() {
-        fun.block.stmts.clear();
-        fun.block.stmts.push(unimplemented);
-    }
-    ret.push(unverified_fun);
-    ret
-}

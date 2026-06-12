@@ -319,21 +319,21 @@ fn test_mut_tracked(x: u32) -> u32 {
     proof!{
         *y = x as int;
     }
-    #[verus_spec(with |=Ghost(x))]
+    proof_with!(|=Ghost(x));
     x
 }
 
 fn test_cal_mut_tracked(x: u32) {
     proof_decl!{
         let ghost mut z;
-        let tracked mut y = 0;
+        let tracked mut y: int = 0;
         z = 0u32;
     }
-    #[verus_spec(with Tracked(&mut y), Ghost(0) => Ghost(z))]
+    proof_with!(Tracked(&mut y), Ghost(0u32) => Ghost(z): Ghost<u32>);
     let _ = test_mut_tracked(0u32);
 
-    (#[verus_spec(with Tracked(&mut y), Ghost(0))]
-    test_mut_tracked(0u32));
+    proof_with!(with Tracked(&mut y), Ghost(0u32));
+    test_mut_tracked(0u32);
 
     return;
 }

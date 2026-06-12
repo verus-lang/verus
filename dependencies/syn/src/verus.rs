@@ -2713,7 +2713,18 @@ impl parse::Parse for WithSpecOnExpr {
         }
         let outputs = if input.peek(Token![=>]) {
             let token = input.parse()?;
-            let outs = Pat::parse_single(&input)?;
+            let mut outs = Pat::parse_single(&input)?;
+            // Support explicit type annotation: `=> Ghost(z): Ghost<u32>`
+            if input.peek(Token![:]) && !input.peek(Token![::]) {
+                let colon_token: Token![:] = input.parse()?;
+                let ty: Type = input.parse()?;
+                outs = Pat::Type(PatType {
+                    attrs: Vec::new(),
+                    pat: Box::new(outs),
+                    colon_token,
+                    ty: Box::new(ty),
+                });
+            }
             Some((token, outs))
         } else {
             None
