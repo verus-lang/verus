@@ -5,31 +5,52 @@ verus_extra_args = ["--no-report-long-running"]
 # Successes
 
 [[project]]
+name = "vstd"
+git_url = "https://github.com/verus-lang/verus.git"
+refspec = "main"
+crate_roots = ["source/vstd/vstd.rs"]
+extra_verus_args = [
+    "--crate-type=lib",
+    "--is-vstd",
+    "--cfg", "feature=\"std\"",
+    "--cfg", "feature=\"alloc\"",
+]
+
+[[project]]
 name = "ironkv"
 git_url = "https://github.com/verus-lang/verified-ironkv.git"
-refspec = "main"
+#TODO: restore this after it is updated to new Set/Map/ISet/IMap
+refspec = "origin/finite-sets"
 cargo_verus = true
 crate_roots = ["ironsht"]
 
 [[project]]
 name = "node-replication"
-git_url = "https://github.com/verus-lang/verified-node-replication.git"
-refspec = "main"
+#TODO: restore this after it is updated to new Set/Map/ISet/IMap
+#git_url = "https://github.com/verus-lang/verified-node-replication.git"
+#refspec = "main"
+git_url = "https://github.com/jaylorch/verified-node-replication.git"
+refspec = "origin/finite-sets"
 crate_roots = ["verified-node-replication/src/lib.rs"]
 extra_verus_args = ["--crate-type=dylib"]
 
 [[project]]
 name = "verified-storage"
 git_url = "https://github.com/microsoft/verified-storage.git"
-refspec = "main"
+#TODO: restore this after it is updated to new Set/Map/ISet/IMap
+#refspec = "main"
+refspec = "origin/finite-sets"
 cargo_verus = true
 extra_cargo_args = ["--no-default-features"]
 crate_roots = ["capybaraKV/capybarakv", "multilog/multilog", "pmemlog"]
 
 [[project]]
 name = "memory-allocator"
-git_url = "https://github.com/verus-lang/verified-memory-allocator.git"
-refspec = "main"
+#TODO: restore this after it is updated to new Set/Map/ISet/IMap
+#git_url = "https://github.com/verus-lang/verified-memory-allocator.git"
+#refspec = "main"
+git_url = "https://github.com/jaylorch/verified-memory-allocator.git"
+refspec = "origin/finite-sets"
 requires_singular = true
 crate_roots = ["verus-mimalloc/lib.rs"]
 extra_verus_args = [
@@ -73,8 +94,11 @@ cargo install vest
 
 [[project]]
 name = "human-eval"
-git_url = "https://github.com/secure-foundations/human-eval-verus.git"
-refspec = "main"
+#TODO: restore this after it is updated to new Set/Map/ISet/IMap
+#git_url = "https://github.com/secure-foundations/human-eval-verus.git"
+#refspec = "main"
+git_url = "https://github.com/jaylorch/human-eval-verus.git"
+refspec = "origin/finite-sets"
 crate_roots = ["tasks/lib.rs"]
 extra_verus_args = ["--crate-type=lib"]
 
@@ -83,12 +107,15 @@ name = "page-table"
 git_url = "https://github.com/matthias-brun/verified-nrkernel.git"
 refspec = "main"
 crate_roots = ["page-table/src/lib.rs"]
-extra_verus_args = ["--crate-type=lib", "--rlimit", "100", "--cfg", "feature=\"impl\""]
+extra_verus_args = ["--crate-type=lib", "--rlimit", "100", "--cfg", "feature=\"impl\"", "--cfg", "feature=\"hlspec_user\""]
 
 [[project]]
 name = "svsm"
-git_url = "https://github.com/ziqiaozhou/svsm.git"
-refspec = "origin/verita"
+#TODO: restore this after it is updated to new Set/Map/ISet/IMap
+#git_url = "https://github.com/ziqiaozhou/svsm.git"
+#refspec = "origin/verita"
+git_url = "https://github.com/jaylorch/svsm.git"
+refspec = "origin/finite-sets"
 cargo_verus = true
 extra_cargo_args = ["--features", "verus"]
 crate_roots = ["kernel"]

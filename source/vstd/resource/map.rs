@@ -73,11 +73,11 @@
 //!     // clients that might need to operate on different keys in this map.
 //! }
 //! ```
-use super::super::map::*;
-use super::super::map_lib::*;
+use super::super::imap::*;
+use super::super::imap_lib::*;
+use super::super::iset_lib::*;
 use super::super::modes::*;
 use super::super::prelude::*;
-use super::super::set_lib::*;
 use super::Loc;
 use super::algebra::ResourceAlgebra;
 #[cfg(verus_keep_ghost)]
@@ -89,12 +89,12 @@ use super::split_mut;
 
 verus! {
 
-broadcast use super::super::group_vstd_default;
+broadcast use {super::super::group_vstd_default, super::super::imap::group_imap_lemmas};
 
 #[verifier::reject_recursive_types(K)]
 #[verifier::ext_equal]
 enum AuthCarrier<K, V> {
-    Auth(Map<K, V>),
+    Auth(IMap<K, V>),
     Frac,
     Invalid,
 }
@@ -102,7 +102,7 @@ enum AuthCarrier<K, V> {
 #[verifier::reject_recursive_types(K)]
 #[verifier::ext_equal]
 enum FracCarrier<K, V> {
-    Frac { owning: Map<K, V>, dup: Map<K, V> },
+    Frac { owning: IMap<K, V>, dup: IMap<K, V> },
     Invalid,
 }
 
@@ -111,14 +111,14 @@ impl<K, V> AuthCarrier<K, V> {
         !(self is Invalid)
     }
 
-    spec fn map(self) -> Map<K, V>
+    spec fn map(self) -> IMap<K, V>
         recommends
             self.valid(),
     {
         match self {
             AuthCarrier::Auth(m) => m,
-            AuthCarrier::Frac => Map::empty(),
-            AuthCarrier::Invalid => Map::empty(),
+            AuthCarrier::Frac => IMap::empty(),
+            AuthCarrier::Invalid => IMap::empty(),
         }
     }
 }
@@ -131,17 +131,17 @@ impl<K, V> FracCarrier<K, V> {
         }
     }
 
-    spec fn owning_map(self) -> Map<K, V> {
+    spec fn owning_map(self) -> IMap<K, V> {
         match self {
             FracCarrier::Frac { owning, .. } => owning,
-            FracCarrier::Invalid => Map::empty(),
+            FracCarrier::Invalid => IMap::empty(),
         }
     }
 
-    spec fn dup_map(self) -> Map<K, V> {
+    spec fn dup_map(self) -> IMap<K, V> {
         match self {
             FracCarrier::Frac { dup, .. } => dup,
-            FracCarrier::Invalid => Map::empty(),
+            FracCarrier::Invalid => IMap::empty(),
         }
     }
 }
@@ -225,7 +225,7 @@ impl<K, V> ResourceAlgebra for MapCarrier<K, V> {
         // derive contradiction that the items are disjoint
         if !a.frac.owning_map().dom().disjoint(a.frac.dup_map().dom()) {
             // The intersection is not empty
-            lemma_disjoint_iff_empty_intersection(
+            lemma_iset_disjoint_iff_empty_intersection(
                 a.frac.owning_map().dom(),
                 a.frac.dup_map().dom(),
             );
@@ -254,7 +254,7 @@ impl<K, V> PCM for MapCarrier<K, V> {
     closed spec fn unit() -> Self {
         MapCarrier {
             auth: AuthCarrier::Frac,
-            frac: FracCarrier::Frac { owning: Map::empty(), dup: Map::empty() },
+            frac: FracCarrier::Frac { owning: IMap::empty(), dup: IMap::empty() },
         }
     }
 
@@ -356,8 +356,8 @@ impl<K, V> GhostMapAuth<K, V> {
     spec fn inv(self) -> bool {
         &&& self.r.value().auth is Auth
         &&& self.r.value().frac == FracCarrier::Frac {
-            owning: Map::<K, V>::empty(),
-            dup: Map::<K, V>::empty(),
+            owning: IMap::<K, V>::empty(),
+            dup: IMap::<K, V>::empty(),
         }
     }
 
@@ -366,13 +366,13 @@ impl<K, V> GhostMapAuth<K, V> {
         self.r.loc()
     }
 
-    /// Logically underlying [`Map`]
-    pub closed spec fn view(self) -> Map<K, V> {
+    /// Logically underlying [`IMap`]
+    pub closed spec fn view(self) -> IMap<K, V> {
         self.r.value().auth.map()
     }
 
     /// Domain of the [`GhostMapAuth`]
-    pub open spec fn dom(self) -> Set<K> {
+    pub open spec fn dom(self) -> ISet<K> {
         self@.dom()
     }
 
@@ -386,7 +386,7 @@ impl<K, V> GhostMapAuth<K, V> {
 
     /// Instantiate a dummy [`GhostMapAuth`]
     pub proof fn dummy() -> (tracked result: GhostMapAuth<K, V>) {
-        let tracked (auth, submap) = GhostMapAuth::<K, V>::new(Map::empty());
+        let tracked (auth, submap) = GhostMapAuth::<K, V>::new(IMap::empty());
         auth
     }
 
@@ -405,14 +405,14 @@ impl<K, V> GhostMapAuth<K, V> {
     pub proof fn empty(tracked &self) -> (tracked result: GhostSubmap<K, V>)
         ensures
             result.id() == self.id(),
-            result@ == Map::<K, V>::empty(),
+            result@ == IMap::<K, V>::empty(),
     {
         use_type_invariant(self);
         let tracked r = Resource::<MapCarrier<_, _>>::create_unit(self.r.loc());
         GhostSubmap { r }
     }
 
-    /// Insert a [`Map`] of values, receiving the [`GhostSubmap`] that asserts ownership over the key
+    /// Insert an [`IMap`] of values, receiving the [`GhostSubmap`] that asserts ownership over the key
     /// domain inserted.
     ///
     /// ```
@@ -426,7 +426,7 @@ impl<K, V> GhostMapAuth<K, V> {
     ///     submap
     /// }
     /// ```
-    pub proof fn insert_map(tracked &mut self, m: Map<K, V>) -> (tracked result: GhostSubmap<K, V>)
+    pub proof fn insert_map(tracked &mut self, m: IMap<K, V>) -> (tracked result: GhostSubmap<K, V>)
         requires
             old(self)@.dom().disjoint(m.dom()),
         ensures
@@ -447,7 +447,7 @@ impl<K, V> GhostMapAuth<K, V> {
 
         let full_carrier = MapCarrier {
             auth: AuthCarrier::Auth(self_r.value().auth.map().union_prefer_right(m)),
-            frac: FracCarrier::Frac { owning: m, dup: Map::empty() },
+            frac: FracCarrier::Frac { owning: m, dup: IMap::empty() },
         };
 
         assert(full_carrier.valid());
@@ -455,7 +455,7 @@ impl<K, V> GhostMapAuth<K, V> {
 
         let auth_carrier = MapCarrier {
             auth: updated_r.value().auth,
-            frac: FracCarrier::Frac { owning: Map::empty(), dup: Map::empty() },
+            frac: FracCarrier::Frac { owning: IMap::empty(), dup: IMap::empty() },
         };
         let frac_carrier = MapCarrier { auth: AuthCarrier::Frac, frac: updated_r.value().frac };
 
@@ -486,7 +486,7 @@ impl<K, V> GhostMapAuth<K, V> {
             result.id() == final(self).id(),
             result@ == (k, v),
     {
-        let tracked submap = self.insert_map(map![k => v]);
+        let tracked submap = self.insert_map(imap![k => v]);
         GhostPointsTo { submap }
     }
 
@@ -530,7 +530,7 @@ impl<K, V> GhostMapAuth<K, V> {
 
         let new_r = MapCarrier {
             auth: AuthCarrier::Auth(new_auth_map),
-            frac: FracCarrier::Frac { owning: Map::empty(), dup: Map::empty() },
+            frac: FracCarrier::Frac { owning: IMap::empty(), dup: IMap::empty() },
         };
 
         // update the resource
@@ -562,7 +562,7 @@ impl<K, V> GhostMapAuth<K, V> {
         self.delete(p.submap);
     }
 
-    /// Create a new [`GhostMapAuth`] from a [`Map`].
+    /// Create a new [`GhostMapAuth`] from an [`IMap`].
     /// Gives the other half of ownership in the form of a [`GhostSubmap`].
     ///
     /// ```
@@ -573,7 +573,7 @@ impl<K, V> GhostMapAuth<K, V> {
     ///     assert(sub.dom() == m.dom());
     /// }
     /// ```
-    pub proof fn new(m: Map<K, V>) -> (tracked result: (GhostMapAuth<K, V>, GhostSubmap<K, V>))
+    pub proof fn new(m: IMap<K, V>) -> (tracked result: (GhostMapAuth<K, V>, GhostSubmap<K, V>))
         ensures
             result.0.id() == result.1.id(),
             result.0@ == m,
@@ -582,18 +582,18 @@ impl<K, V> GhostMapAuth<K, V> {
         let tracked full_r = Resource::alloc(
             MapCarrier {
                 auth: AuthCarrier::Auth(m),
-                frac: FracCarrier::Frac { owning: m, dup: Map::empty() },
+                frac: FracCarrier::Frac { owning: m, dup: IMap::empty() },
             },
         );
 
         let auth_carrier = MapCarrier {
             auth: AuthCarrier::Auth(m),
-            frac: FracCarrier::Frac { owning: Map::empty(), dup: Map::empty() },
+            frac: FracCarrier::Frac { owning: IMap::empty(), dup: IMap::empty() },
         };
 
         let frac_carrier = MapCarrier {
             auth: AuthCarrier::Frac,
-            frac: FracCarrier::Frac { owning: m, dup: Map::empty() },
+            frac: FracCarrier::Frac { owning: m, dup: IMap::empty() },
         };
 
         assert(full_r.value() == MapCarrier::op(auth_carrier, frac_carrier));
@@ -623,13 +623,13 @@ impl<K, V> GhostSubmap<K, V> {
         self.r.loc()
     }
 
-    /// Logically underlying [`Map`]
-    pub closed spec fn view(self) -> Map<K, V> {
+    /// Logically underlying [`IMap`]
+    pub closed spec fn view(self) -> IMap<K, V> {
         self.r.value().frac.owning_map()
     }
 
     /// Domain of the [`GhostSubmap`]
-    pub open spec fn dom(self) -> Set<K> {
+    pub open spec fn dom(self) -> ISet<K> {
         self@.dom()
     }
 
@@ -643,7 +643,7 @@ impl<K, V> GhostSubmap<K, V> {
 
     /// Instantiate a dummy [`GhostSubmap`]
     pub proof fn dummy() -> (tracked result: GhostSubmap<K, V>) {
-        let tracked (auth, submap) = GhostMapAuth::<K, V>::new(Map::empty());
+        let tracked (auth, submap) = GhostMapAuth::<K, V>::new(IMap::empty());
         submap
     }
 
@@ -651,7 +651,7 @@ impl<K, V> GhostSubmap<K, V> {
     pub proof fn empty(tracked &self) -> (tracked result: GhostSubmap<K, V>)
         ensures
             result.id() == self.id(),
-            result@ == Map::<K, V>::empty(),
+            result@ == IMap::<K, V>::empty(),
     {
         use_type_invariant(self);
         let tracked r = Resource::<MapCarrier<_, _>>::create_unit(self.r.loc());
@@ -806,7 +806,7 @@ impl<K, V> GhostSubmap<K, V> {
     }
 
     /// We can split a [`GhostSubmap`] based on a set of keys in its domain.
-    pub proof fn split(tracked &mut self, s: Set<K>) -> (tracked result: GhostSubmap<K, V>)
+    pub proof fn split(tracked &mut self, s: ISet<K>) -> (tracked result: GhostSubmap<K, V>)
         requires
             s <= old(self)@.dom(),
         ensures
@@ -839,6 +839,29 @@ impl<K, V> GhostSubmap<K, V> {
         GhostSubmap { r }
     }
 
+    pub proof fn split_with_olddom(
+        tracked &mut self,
+        s: ISet<K>,
+        olddom: ISet<K>,
+    ) -> (tracked result: GhostSubmap<K, V>)
+        requires
+            olddom == old(self)@.dom(),
+            s <= olddom,
+        ensures
+            final(self).id() == old(self).id(),
+            result.id() == final(self).id(),
+            old(self)@ == final(self)@.union_prefer_right(result@),
+            result@.dom() == s,
+            final(self)@.dom() == olddom - s,
+    {
+        let tracked out = self.split(s);
+        assert(olddom == old(self)@.dom());
+        assert(self@.dom() == old(self)@.dom() - s);
+        assert(self@.dom() == olddom - s);
+        assert(out@.dom() == s);
+        out
+    }
+
     /// We can separate a single key out of a [`GhostSubmap`]
     pub proof fn split_points_to(tracked &mut self, k: K) -> (tracked result: GhostPointsTo<K, V>)
         requires
@@ -852,7 +875,7 @@ impl<K, V> GhostSubmap<K, V> {
     {
         use_type_invariant(&*self);
 
-        let tracked submap = self.split(set![k]);
+        let tracked submap = self.split(iset![k]);
         GhostPointsTo { submap }
     }
 
@@ -874,7 +897,7 @@ impl<K, V> GhostSubmap<K, V> {
     ///     sub.update(map![1int => 9int, 2int => 10int, 3int => 11int]);
     /// }
     /// ```
-    pub proof fn update(tracked &mut self, tracked auth: &mut GhostMapAuth<K, V>, m: Map<K, V>)
+    pub proof fn update(tracked &mut self, tracked auth: &mut GhostMapAuth<K, V>, m: IMap<K, V>)
         requires
             m.dom() <= old(self)@.dom(),
             old(self).id() == old(auth).id(),
@@ -906,7 +929,7 @@ impl<K, V> GhostSubmap<K, V> {
         let auth_carrier = AuthCarrier::Auth(full_r.value().auth.map().union_prefer_right(m));
         let frac_carrier = FracCarrier::Frac {
             owning: full_r.value().frac.owning_map().union_prefer_right(m),
-            dup: Map::empty(),
+            dup: IMap::empty(),
         };
         let new_full_carrier = MapCarrier { auth: auth_carrier, frac: frac_carrier };
 
@@ -915,7 +938,7 @@ impl<K, V> GhostSubmap<K, V> {
 
         let new_auth_carrier = MapCarrier {
             auth: r_upd.value().auth,
-            frac: FracCarrier::Frac { owning: Map::empty(), dup: Map::empty() },
+            frac: FracCarrier::Frac { owning: IMap::empty(), dup: IMap::empty() },
         };
         let new_frac_carrier = MapCarrier { auth: AuthCarrier::Frac, frac: r_upd.value().frac };
         assert(r_upd.value().frac == MapCarrier::op(new_auth_carrier, new_frac_carrier).frac);
@@ -931,7 +954,7 @@ impl<K, V> GhostSubmap<K, V> {
         requires
             self.is_points_to(),
         ensures
-            self@ == map![r.key() => r.value()],
+            self@ == imap![r.key() => r.value()],
             self.id() == r.id(),
     {
         let tracked r = GhostPointsTo { submap: self };
@@ -994,13 +1017,13 @@ impl<K, V> GhostPersistentSubmap<K, V> {
         self.r.loc()
     }
 
-    /// Logically underlying [`Map`]
-    pub closed spec fn view(self) -> Map<K, V> {
+    /// Logically underlying [`IMap`]
+    pub closed spec fn view(self) -> IMap<K, V> {
         self.r.value().frac.dup_map()
     }
 
     /// Domain of the [`GhostPersistentSubmap`]
-    pub open spec fn dom(self) -> Set<K> {
+    pub open spec fn dom(self) -> ISet<K> {
         self@.dom()
     }
 
@@ -1022,7 +1045,7 @@ impl<K, V> GhostPersistentSubmap<K, V> {
     pub proof fn empty(tracked &self) -> (tracked result: GhostPersistentSubmap<K, V>)
         ensures
             result.id() == self.id(),
-            result@ == Map::<K, V>::empty(),
+            result@ == IMap::<K, V>::empty(),
     {
         use_type_invariant(self);
         let tracked r = Resource::<MapCarrier<_, _>>::create_unit(self.r.loc());
@@ -1179,7 +1202,7 @@ impl<K, V> GhostPersistentSubmap<K, V> {
     }
 
     /// We can split a [`GhostPersistentSubmap`] based on a set of keys in its domain.
-    pub proof fn split(tracked &mut self, s: Set<K>) -> (tracked result: GhostPersistentSubmap<
+    pub proof fn split(tracked &mut self, s: ISet<K>) -> (tracked result: GhostPersistentSubmap<
         K,
         V,
     >)
@@ -1233,7 +1256,7 @@ impl<K, V> GhostPersistentSubmap<K, V> {
     {
         use_type_invariant(&*self);
 
-        let tracked submap = self.split(set![k]);
+        let tracked submap = self.split(iset![k]);
         GhostPersistentPointsTo { submap }
     }
 
@@ -1242,7 +1265,7 @@ impl<K, V> GhostPersistentSubmap<K, V> {
         requires
             self.is_points_to(),
         ensures
-            self@ == map![r.key() => r.value()],
+            self@ == imap![r.key() => r.value()],
             self.id() == r.id(),
     {
         let tracked r = GhostPersistentPointsTo { submap: self };
@@ -1320,7 +1343,7 @@ impl<K, V> GhostPointsTo<K, V> {
             self.id() == other.id(),
         ensures
             r.id() == self.id(),
-            r@ == map![self.key() => self.value(), other.key() => other.value()],
+            r@ == imap![self.key() => self.value(), other.key() => other.value()],
             self.key() != other.key(),
     {
         use_type_invariant(&self);
@@ -1403,7 +1426,7 @@ impl<K, V> GhostPointsTo<K, V> {
             final(auth).id() == old(auth).id(),
             final(self).key() == old(self).key(),
             final(self)@ == (final(self).key(), v),
-            final(auth)@ == old(auth)@.union_prefer_right(map![final(self).key() => v]),
+            final(auth)@ == old(auth)@.union_prefer_right(imap![final(self).key() => v]),
     {
         broadcast use lemma_submap_of_trans;
         broadcast use lemma_submap_of_op;
@@ -1413,7 +1436,7 @@ impl<K, V> GhostPointsTo<K, V> {
 
         let ghost old_dom = self.submap.dom();
         self.lemma_map_view();
-        let m = map![self.key() => v];
+        let m = imap![self.key() => v];
         assert(self.submap@.union_prefer_right(m) == m);
         self.submap.update(auth, m);
     }
@@ -1422,7 +1445,7 @@ impl<K, V> GhostPointsTo<K, V> {
     pub proof fn submap(tracked self) -> (tracked r: GhostSubmap<K, V>)
         ensures
             r.id() == self.id(),
-            r@ == map![self.key() => self.value()],
+            r@ == imap![self.key() => self.value()],
     {
         self.lemma_map_view();
         self.submap
@@ -1430,11 +1453,11 @@ impl<K, V> GhostPointsTo<K, V> {
 
     proof fn lemma_map_view(tracked &self)
         ensures
-            self.submap@ == map![self.key() => self.value()],
+            self.submap@ == imap![self.key() => self.value()],
     {
         use_type_invariant(self);
         let key = self.key();
-        let target_dom = set![key];
+        let target_dom = iset![key];
 
         assert(self.submap@.dom().len() == 1);
         assert(target_dom.len() == 1);
@@ -1449,7 +1472,7 @@ impl<K, V> GhostPointsTo<K, V> {
         assert(target_dom.remove(key).len() == 0);
 
         assert(self.submap@.dom() =~= target_dom);
-        assert(self.submap@ == map![self.key() => self.value()]);
+        assert(self.submap@ == imap![self.key() => self.value()]);
     }
 
     /// Can be used to learn what the key-value pair of [`GhostPointsTo`] is
@@ -1551,7 +1574,7 @@ impl<K, V> GhostPersistentPointsTo<K, V> {
             self.id() == other.id(),
         ensures
             submap.id() == self.id(),
-            submap@ == map![self.key() => self.value(), other.key() => other.value()],
+            submap@ == imap![self.key() => self.value(), other.key() => other.value()],
             self.key() != other.key() ==> submap@.len() == 2,
             self.key() == other.key() ==> submap@.len() == 1,
     {
@@ -1634,7 +1657,7 @@ impl<K, V> GhostPersistentPointsTo<K, V> {
     pub proof fn submap(tracked self) -> (tracked r: GhostPersistentSubmap<K, V>)
         ensures
             r.id() == self.id(),
-            r@ == map![self.key() => self.value()],
+            r@ == imap![self.key() => self.value()],
     {
         self.lemma_map_view();
         self.submap
@@ -1642,11 +1665,11 @@ impl<K, V> GhostPersistentPointsTo<K, V> {
 
     proof fn lemma_map_view(tracked &self)
         ensures
-            self.submap@ == map![self.key() => self.value()],
+            self.submap@ == imap![self.key() => self.value()],
     {
         use_type_invariant(self);
         let key = self.key();
-        let target_dom = set![key];
+        let target_dom = iset![key];
 
         assert(self.submap@.dom().len() == 1);
         assert(target_dom.len() == 1);
@@ -1661,7 +1684,7 @@ impl<K, V> GhostPersistentPointsTo<K, V> {
         assert(target_dom.remove(key).len() == 0);
 
         assert(self.submap@.dom() =~= target_dom);
-        assert(self.submap@ == map![self.key() => self.value()]);
+        assert(self.submap@ == imap![self.key() => self.value()]);
     }
 
     /// Can be used to learn what the key-value pair of [`GhostPersistentPointsTo`] is

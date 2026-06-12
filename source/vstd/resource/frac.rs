@@ -11,8 +11,6 @@ use super::*;
 
 verus! {
 
-broadcast use {super::super::map::group_map_axioms, super::super::set::group_set_axioms};
-
 pub enum FractionRA {
     Frac(real),
     Invalid,

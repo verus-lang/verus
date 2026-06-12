@@ -187,9 +187,8 @@ pub(crate) fn rewrite_verus_attribute(
         attributes.push(quote_spanned!(item.span() => #[verifier::verify]));
     }
 
-    // Special handling for impl blocks, add marker attribute to each method for `#[verus_spec]`.
-    let mut visitor = VerusVerifyVisitor { verify_const: true };
-    visitor.visit_item_mut(&mut item);
+    // Inject #[verus_spec] where missing and stamp impl methods with the sentinel marker.
+    prepare_items_for_verus_spec(args.span(), &mut item);
     let mut new_stream = quote_spanned! {item.span()=>
         #(#attributes)*
         #item
@@ -260,22 +259,10 @@ impl VisitMut for ExecReplacer {
             let span = stmt.span();
             match stmt {
                 syn::Stmt::Item(Item::Fn(item)) => {
-                    if get_verus_spec(&item.attrs).is_none() {
-                        item.attrs.push(crate::syntax::mk_rust_attr_syn(
-                            span,
-                            VERUS_SPEC,
-                            TokenStream::new(),
-                        ));
-                    }
+                    add_verus_spec_if_needed(&mut item.attrs, span);
                 }
                 syn::Stmt::Item(Item::Const(item)) => {
-                    if get_verus_spec(&item.attrs).is_none() {
-                        item.attrs.push(crate::syntax::mk_rust_attr_syn(
-                            span,
-                            VERUS_SPEC,
-                            TokenStream::new(),
-                        ));
-                    }
+                    add_verus_spec_if_needed(&mut item.attrs, span);
                 }
                 _ => self.visit_stmt_mut(stmt),
             }
@@ -333,64 +320,62 @@ impl VisitMut for ExecReplacer {
         // In verification mode, even without verus spec on the loop, we still
         // need to desugar the for loop.
         // So, if there's no `verus_spec` attribute, we need to add an empty one.
-        if get_verus_spec(&for_loop.attrs).is_none() {
-            for_loop.attrs.push(crate::syntax::mk_rust_attr_syn(
-                for_loop.span(),
-                VERUS_SPEC,
-                TokenStream::new(),
-            ));
+        let span = for_loop.span();
+        add_verus_spec_if_needed(&mut for_loop.attrs, span);
+    }
+}
+
+fn add_verus_spec_if_needed(attrs: &mut Vec<syn::Attribute>, span: proc_macro2::Span) {
+    if attrs.iter().any(|attr| attr.path().get_ident().map_or(false, |ident| ident == VERUS_SPEC)) {
+        return;
+    }
+    attrs.push(crate::syntax::mk_rust_attr_syn(span, VERUS_SPEC, TokenStream::new()));
+}
+
+/// Prepares items under `#[verus_verify]` for subsequent `#[verus_spec]` expansion.
+///
+/// This function performs two tasks:
+///
+/// 1. **Inject `#[verus_spec]` where missing.** Items and impl items that carry
+///    `#[verus_verify]` but no `#[verus_spec]` would otherwise be marked as
+///    verifier-aware without receiving the necessary rewrites (loop desugaring,
+///    const/static proxy generation, etc.), resulting in confusing error messages.
+///    An empty `#[verus_spec]` is added so the rewriter has something to act on.
+///
+/// 2. **Mark impl methods with a sentinel attribute.** Each impl method that has
+///    (or just received) a `#[verus_spec]` attribute is tagged with an internal
+///    `#[allow(unused, verus_impl_method_marker)]` attribute. This signals to the
+///    `#[verus_spec]` expansion that the method lives inside an impl block,
+///    enabling it to apply impl-specific rewrites.
+///
+/// Recursion into nested items is intentionally skipped here; `#[verus_spec]`
+/// handles that during its own expansion pass.
+fn prepare_items_for_verus_spec(span: proc_macro2::Span, i: &mut syn::Item) {
+    match i {
+        syn::Item::Const(syn::ItemConst { attrs, .. })
+        | syn::Item::Static(syn::ItemStatic { attrs, .. })
+        | syn::Item::Fn(syn::ItemFn { attrs, .. }) => {
+            add_verus_spec_if_needed(attrs, span);
         }
-    }
-}
-
-struct VerusVerifyVisitor {
-    verify_const: bool,
-}
-
-fn get_verus_spec(attrs: &[syn::Attribute]) -> Option<&syn::Attribute> {
-    attrs.iter().find(|attr| attr.path().get_ident().map_or(false, |ident| ident == VERUS_SPEC))
-}
-
-impl VerusVerifyVisitor {
-    fn add_verus_spec_if_needed(&self, attrs: &mut Vec<syn::Attribute>, span: proc_macro2::Span) {
-        if !self.verify_const || get_verus_spec(attrs).is_some() {
-            return;
+        syn::Item::Impl(i) => {
+            for item in &mut i.items {
+                match item {
+                    syn::ImplItem::Const(syn::ImplItemConst { attrs, .. }) => {
+                        add_verus_spec_if_needed(attrs, span);
+                    }
+                    syn::ImplItem::Fn(syn::ImplItemFn { attrs, .. }) => {
+                        add_verus_spec_if_needed(attrs, span);
+                        attrs.push(crate::syntax::mk_rust_attr_syn(
+                            span,
+                            "allow",
+                            quote_spanned! { span => (unused, verus_impl_method_marker)},
+                        ));
+                    }
+                    _ => {}
+                }
+            }
         }
-
-        attrs.push(crate::syntax::mk_rust_attr_syn(span, VERUS_SPEC, TokenStream::new()));
-    }
-}
-
-impl VisitMut for VerusVerifyVisitor {
-    fn visit_impl_item_fn_mut(&mut self, method: &mut syn::ImplItemFn) {
-        syn::visit_mut::visit_impl_item_fn_mut(self, method);
-        // Help verus_spec be aware that it is in impl function.
-        if let Some(verus_spec) = get_verus_spec(&method.attrs) {
-            let span = verus_spec.span();
-            method.attrs.push(crate::syntax::mk_rust_attr_syn(
-                span,
-                "allow",
-                quote_spanned! { span => (unused, verus_impl_method_marker)},
-            ));
-        }
-    }
-
-    fn visit_impl_item_const_mut(&mut self, i: &mut syn::ImplItemConst) {
-        syn::visit_mut::visit_impl_item_const_mut(self, i);
-        let span = i.span();
-        self.add_verus_spec_if_needed(&mut i.attrs, span);
-    }
-
-    fn visit_item_const_mut(&mut self, i: &mut syn::ItemConst) {
-        syn::visit_mut::visit_item_const_mut(self, i);
-        let span = i.span();
-        self.add_verus_spec_if_needed(&mut i.attrs, span);
-    }
-
-    fn visit_item_static_mut(&mut self, i: &mut syn::ItemStatic) {
-        syn::visit_mut::visit_item_static_mut(self, i);
-        let span = i.span();
-        self.add_verus_spec_if_needed(&mut i.attrs, span);
+        _ => {}
     }
 }
 
