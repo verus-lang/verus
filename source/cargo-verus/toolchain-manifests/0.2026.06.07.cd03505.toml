@@ -1,3 +1,6 @@
+# Not a real toolchain manifest.
+# Only here temporarily to test that the `build.rs` works in CI.
+# It should be removed when the `release.yml` CI flow is extended.
 verus = "0.2026.06.07.cd03505"
 vstd = "0.0.0-2026-05-31-0205"
 z3 = "4.12.5"
