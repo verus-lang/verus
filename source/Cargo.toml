@@ -25,6 +25,9 @@ exclude = [
 [workspace.metadata.vargo]
 tag = "workspace"
 
+[workspace.dependencies]
+cargo-verus-toolchains = { path = "cargo-verus-toolchains" }
+
 [workspace.lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [
   'cfg(verus_keep_ghost)',

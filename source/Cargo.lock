@@ -270,6 +270,7 @@ name = "cargo-verus"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "cargo-verus-toolchains",
  "cargo_metadata",
  "clap",
  "clap-cargo",

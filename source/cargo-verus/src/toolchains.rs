@@ -16,16 +16,4 @@ pub enum Crate<Str> {
     GitCommit { git: Str, rev: Str },
 }
 
-/// An entry for each file in the `toolchain-manifests` directory.
-pub const TOOLCHAINS: [Toolchain; 2] = [
-    Toolchain {
-        verus: "0.2026.06.07.cd03505",
-        vstd: Crate::Registry { version: "0.0.0-2026-05-31-0205" },
-        z3: "4.12.5",
-    },
-    Toolchain {
-        verus: "0.2026.06.10.e6a6d4f",
-        vstd: Crate::GitCommit { git: "https://github.com/verus-lang/verus.git", rev: "e6a6d4f" },
-        z3: "4.12.5",
-    },
-];
+include!(concat!(env!("OUT_DIR"), "/toolchain_list.rs"));

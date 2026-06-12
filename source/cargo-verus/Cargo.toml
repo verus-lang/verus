@@ -18,6 +18,7 @@ colored = "3.0.0"
 tempfile = "3"
 
 [build-dependencies]
+cargo-verus-toolchains.workspace = true
 rustc_tools_util = "0.3.0"
 
 [lints]
