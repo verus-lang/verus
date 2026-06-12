@@ -32,7 +32,6 @@ pub enum Crate {
 impl ToolchainList {
     /// Format the toolchain list as Rust code.
     pub fn format_code(&self, i0: Indent, out: &mut impl Write) -> std::fmt::Result {
-        writeln!(out, "{i0}/// An entry for each file in the `toolchain-manifests` directory.")?;
         writeln!(out, "{i0}pub const TOOLCHAINS: [Toolchain; {}] = [", self.items.len())?;
         let i1 = i0.increase();
         for toolchain in &self.items {

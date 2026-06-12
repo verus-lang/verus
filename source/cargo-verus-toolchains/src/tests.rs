@@ -78,8 +78,7 @@ fn print_toolchains_code() {
     let toolchains =
         ToolchainList { items: vec![make_rolling_release_manifest(), make_release_manifest()] };
 
-    let expected_code = r#"/// An entry for each file in the `toolchain-manifests` directory.
-pub const TOOLCHAINS: [Toolchain; 2] = [
+    let expected_code = r#"pub const TOOLCHAINS: [Toolchain; 2] = [
     Toolchain {
         verus: "0.2026.06.10.e6a6d4f",
         vstd: Crate::GitCommit { git: "https://github.com/verus-lang/verus.git", rev: "e6a6d4f" },
