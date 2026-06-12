@@ -74,6 +74,9 @@ vargo test --release -p rust_verify_test "$@"
 # Only the test-* prefix; the build-* prefix is left for the trap to clean.
 llvm-profdata merge -sparse "${PROF_DIR}"/test-*.profraw -o "${PROF_DIR}/cov.profdata"
 
+# Version metadata for the report.
+GIT_VERSION="$(git describe --always --dirty)"
+
 # Generate the coverage report.
 #
 # Scoped to SOURCE_DIR; llvm-cov only reports files that have coverage maps in
@@ -81,6 +84,7 @@ llvm-profdata merge -sparse "${PROF_DIR}"/test-*.profraw -o "${PROF_DIR}/cov.pro
 # automatically.
 mkdir -p "${OUT_DIR}"
 llvm-cov show -format=html -output-dir="${OUT_DIR}" \
+	--project-title="rust_verify_test coverage (${GIT_VERSION})" --show-created-time \
 	--instr-profile="${PROF_DIR}/cov.profdata" "${BIN}" "${SOURCE_DIR}"
 llvm-cov export -format=lcov \
 	--instr-profile="${PROF_DIR}/cov.profdata" "${BIN}" "${SOURCE_DIR}" >"${OUT_DIR}/coverage.lcov"
