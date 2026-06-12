@@ -1155,6 +1155,7 @@ impl Verifier {
         is_rerun: bool,
         prelude_config: vir::prelude::PreludeConfig,
         profile_file_name: Option<&std::path::PathBuf>,
+        prover_choice: vir::def::ProverChoice,
     ) -> Result<air::context::Context, VirErr> {
         let mut air_context =
             air::context::Context::new(message_interface.clone(), self.args.solver);
@@ -1223,22 +1224,27 @@ impl Verifier {
             air_context.set_smt_transcript_log(Box::new(file));
         }
 
-        // air_recommended_options causes AIR to apply a preset collection of Z3 options
-        air_context.set_z3_param("air_recommended_options", "true");
+        // A by(bit_vector) query is self-contained, so it runs prelude-free: it omits the
+        // recommended-options preset, the prelude, and the bucket background.
+        let bitvector = prover_choice == vir::def::ProverChoice::BitVector;
+        if !bitvector {
+            air_context.set_z3_param("air_recommended_options", "true");
+        }
         self.set_default_rlimit(&mut air_context);
         for (option, value) in self.args.smt_options.iter() {
             air_context.set_z3_param(&option, &value);
         }
-        if self.args.axiom_usage_info {
-            air_context.enable_usage_info();
+        if !bitvector {
+            if self.args.axiom_usage_info {
+                air_context.enable_usage_info();
+            }
+            self.run_command_batch(
+                bucket_id,
+                diagnostics,
+                &mut air_context,
+                &CommandBatch::new("Prelude", ctx.prelude(prelude_config)),
+            );
         }
-
-        self.run_command_batch(
-            bucket_id,
-            diagnostics,
-            &mut air_context,
-            &CommandBatch::new("Prelude", ctx.prelude(prelude_config)),
-        );
 
         air_context.blank_line();
         air_context.comment(&("MODULE '".to_string() + &bucket_id.friendly_name() + "'"));
@@ -1253,16 +1259,12 @@ impl Verifier {
         prover_choice: vir::def::ProverChoice,
     ) {
         match prover_choice {
-            vir::def::ProverChoice::BitVector => match self.args.solver {
-                air::context::SmtSolver::Z3 => {
-                    air_context.set_z3_param("sat.euf", "true");
-                    air_context.set_z3_param("tactic.default_tactic", "sat");
-                    air_context.set_z3_param("smt.ematching", "false");
-                    air_context.set_z3_param("smt.case_split", "0");
-                }
-                // TODO: What options are best for cvc5 here?
-                air::context::SmtSolver::Cvc5 => {}
-            },
+            vir::def::ProverChoice::BitVector => {
+                // A prelude-free by(bit_vector) query carries no per-query
+                // options: solver defaults work well.
+                //
+                // TODO: tune Z3/CVC5 options for bit-vector queries
+            }
             vir::def::ProverChoice::Nonlinear => match self.args.solver {
                 air::context::SmtSolver::Z3 => air_context.set_z3_param("smt.arith.solver", "6"),
                 // TODO: What cvc5 settings would help here?
@@ -1284,6 +1286,7 @@ impl Verifier {
         span: &vir::messages::Span,
         profile_file_name: Option<&std::path::PathBuf>,
         spinoff_reason: &str,
+        prover_choice: vir::def::ProverChoice,
     ) -> Result<air::context::Context, VirErr> {
         let mut air_context = self.new_air_context_with_prelude(
             ctx,
@@ -1294,6 +1297,7 @@ impl Verifier {
             is_rerun,
             PreludeConfig { arch_word_bits: ctx.arch_word_bits, solver: self.args.solver },
             profile_file_name,
+            prover_choice,
         )?;
 
         // Write the span of spun-off query
@@ -1301,8 +1305,10 @@ impl Verifier {
         air_context.blank_line();
         air_context.comment(&format!("query spun off because: {}", spinoff_reason));
 
-        // set up bucket context
-        self.run_command_batches(bucket_id, diagnostics, &mut air_context, bucket_context);
+        // set up bucket context (skipped for a prelude-free bit_vector query)
+        if prover_choice != vir::def::ProverChoice::BitVector {
+            self.run_command_batches(bucket_id, diagnostics, &mut air_context, bucket_context);
+        }
 
         Ok(air_context)
     }
@@ -1348,6 +1354,7 @@ impl Verifier {
             false,
             PreludeConfig { arch_word_bits: ctx.arch_word_bits, solver: self.args.solver },
             profile_all_file_name.as_ref(),
+            vir::def::ProverChoice::DefaultProver,
         )?;
         if self.args.solver_version_check {
             air_context.set_expected_solver_version(match self.args.solver {
@@ -1571,10 +1578,11 @@ impl Verifier {
                                     &cmds.context.span,
                                     profile_file_name.as_ref(),
                                     spinoff_reason,
+                                    cmds.prover_choice,
                                 )?;
                                 // for bitvector, only one query, no push/pop
                                 if cmds.prover_choice == vir::def::ProverChoice::BitVector {
-                                    spinoff_z3_context.disable_incremental_solving();
+                                    spinoff_z3_context.set_single_check_query();
                                 }
                                 // Apply prover-specific SMT tuning.
                                 self.apply_per_query_smt_options(
