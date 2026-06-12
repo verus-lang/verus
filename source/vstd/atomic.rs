@@ -11,6 +11,7 @@ use core::sync::atomic::{AtomicI64, AtomicU64};
 use super::modes::*;
 use super::pervasive::*;
 use super::prelude::*;
+use super::view::*;
 use super::wrapping::*;
 
 macro_rules! make_unsigned_integer_atomic {
@@ -600,7 +601,550 @@ impl<T> PAtomicPtr<T> {
     );
 }
 
+impl<X, Y, Pred> core::fmt::Debug for AtomicUpdate<X, Y, Pred> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("AtomicUpdate").finish_non_exhaustive()
+    }
+}
+
+/// Mark the `AtomicUpdate` as `Send` if both `X` and `Y` are also `Send`.
+///
+/// # SAFETY
+/// While the `AtomicUpdate` is only a stand-in for a stack of nested callback functions,
+/// when the AU is moved to another thread, e.g. by moving it in and out of an atomic invariant,
+/// it allows resources to cross thread boundaries with it,
+/// so we must ensure the AU is only `Send` when `X: Send` and `Y: Send`.
+///
+/// The predicate type we generate as part of the atomic specification only contains
+/// a ghost copy of function arguments, and ghost-mode data is always fine to move between threads.
+/// There is no need to restrict it, as it is safe by construction.
+unsafe impl<X: Send, Y: Send, Pred> Send for AtomicUpdate<X, Y, Pred> {}
+
+/// Unconditionally mark the `AtomicUpdate` as `Sync`.
+///
+/// # SAFETY
+/// A shared reference to an `AtomicUpdate` is pretty much useless.
+/// The only thing the user can do with an AU is open it, which requires full ownership.
+/// All methods provided by this type are spec-mode,
+/// meaning they can already be used with a much weaker ghost copy of the AU.
+unsafe impl<X, Y, Pred> Sync for AtomicUpdate<X, Y, Pred> {}
+
 verus! {
+
+/// The **atomic update (AU)** is a ghost object which encapsulates the linearization point of a logically atomic function.
+///
+/// Logical atomicity is a proof technique that allows us to treat a function as if it was atomic, i.e. as if it evaluates in a single atomic step, even though it might perform multiple `exec`-mode operations internally.
+/// The key idea is that a logically atomic function contains a **linearization point (LP)**, that is, a point in the function which updates the state of the program in a single atomic step of computation.
+/// We specify the behavior of such a function by describing the state of the program at four distinct points in time, specifically:
+/// - **(private pre)** at the start of the function,
+/// - **(atomic pre)** just before the linearization point,
+/// - **(atomic post)** just after the linearization point,
+/// - **(private post)** at the end of the function.
+/// ```
+///                        linearization point
+///                                 🠗
+/// ├──────────────────────────────┤●├─────────────────────────┤
+///  private                 atomic   atomic            private
+///  pre                        pre   post                 post
+/// ```
+/// The `AtomicUpdate` ghost object is the central abstraction for our implementation if logical atomicity, as it encapsulates the behavior of the function at the linearization point.
+/// The atomic update is declared by the atomic specification, it is constructed by the atomic function call (i.e. the "client"), and it is opened/destructed at the linearization point of the logically atomic function (i.e. the "library").
+///
+/// # The Atomic Specification
+///
+/// We can declare a function to be logically atomic by adding an `atomically` block to its specification.
+/// The atomic specification has the following general shape:
+/// ```
+/// exec fn function(px: PX) -> (py: PY)
+///     atomically (atomic_update) {
+///         type PredType,
+///
+///         (ax: AX) -> (ay: AY),
+///
+///         requires atomic_pre(px, ax),
+///         ensures atomic_post(px, ax, ay),
+///
+///         outer_mask Eo,
+///         inner_mask Ei,
+///     },
+///
+///     requires private_pre(px),
+///     ensures private_post(px, ax, ay, py),
+/// ```
+/// This specification binds an additional `tracked` variable `atomic_update: AtomicUpdate<AX, AY, PredType>`, where the type `PredType` is generated automatically by the atomic specification.
+/// See the documentation for the [`UpdatePredicate`] trait for more information about the predicate type.
+///
+/// ## Notes on the Abort Case
+///
+/// Our implementation supports aborting, which allows the library to "peak" at the resources of the atomic update without committing to the linearization point.
+/// To this end, we require the output type of the atomic update (named `AY` above) to implement the [`UpdateTry`] trait.
+///
+/// The most canonical type for the output is [`Result`], where `Ok(..)` indicates the atomic update has been committed at the linearization point of the function, and `Err(..)` indicates that the atomic update has been aborted.
+/// In cases where the abort mechanism is undesirable, we provide a trivial wrapper type [`Commit`] which prevents the atomic update from being aborted.
+///
+/// # Opening the Atomic Update
+/// To open the atomic update, we use the [`try_open_atomic_update`] macro as follows:
+/// ```
+/// let res_au = try_open_atomic_update!(au, ax => {
+///     // assume atomic pre
+///     // ...
+///     // assert atomic post
+///     Tracked(ay)
+/// })
+/// ```
+/// When we open the atomic update, we are given the input (`ax: AX`) and learn the atomic precondition, and at the end of the macro call, we return the output (`ay: AY`) and prove the atomic postcondition.
+/// The macro outputs a value of type `Result<(), Tracked<AtomicUpdate<AX, AY, PredType>>>`.
+/// If the atomic update is committed, as indicated by the [`UpdateTry`] trait, then the atomic update is consumed and we get `Ok(())`.
+/// Otherwise, if the atomic update is aborted, we get back the same atomic update we put in (i.e. `Err(Tracked(au))`), allowing us to open it again later.
+///
+/// # The Atomic Function Call
+///
+/// To call a logically atomic function, we use the following syntax:
+/// ```
+/// let py = function(px) atomically |update| {
+///     // ...
+///     // assert atomic pre
+///     let ay = update(ax);
+///     // assume atomic post
+///     // ...
+///     break/continue
+/// }
+/// ```
+/// The atomic function call binds an `update` function, which represents the effects of the [`try_open_atomic_update`] macro to the client.
+/// It is helpful to think of the macro as defining the `update` function, as their inputs and outputs, as well as their pre- and postcondition match precisely.
+/// The `update` function is `proof`-mode, allowing atomic invariants to be opened around it.
+///
+/// Since the library function may open the atomic update multiple times, due to aborting, the client must prove that it can provide the required resources as many times as necessary, meaning the atomic function call must be a loop.
+/// If the atomic update is committed by the library, as indicated by the [`UpdateTry`] implementation on the output type, the client must `break` out of the loop.
+/// Similarly, if the library aborts the atomic update, the loop must `continue`, either explicitly or implicitly.
+#[verifier::reject_recursive_types(X)]
+#[verifier::reject_recursive_types(Y)]
+#[verifier::reject_recursive_types(Pred)]
+#[verifier::external_body]
+pub struct AtomicUpdate<X, Y, Pred> {
+    pred: Pred,
+    _dummy: core::marker::PhantomData<fn (fn (X) -> Y)>,
+    _not_send_sync: core::marker::PhantomData<*const ()>,
+}
+
+impl<X, Y, Pred> AtomicUpdate<X, Y, Pred> {
+    /// The predicate of the atomic update.
+    ///
+    /// See [`UpdatePredicate`] for more information.
+    #[rustc_diagnostic_item = "verus::vstd::atomic::AtomicUpdate::pred"]
+    pub uninterp spec fn pred(self) -> Pred;
+
+    /// A prophesy variable which indicates that an atomic update has been resolved.
+    ///
+    /// Initially, the value of this function is unknown, i.e. we can neither prove that it is `true` or `false`.
+    /// Once the atomic update has been committed using the [`try_open_atomic_update`] macro, we learn that `au.resolves()` is `true`.
+    ///
+    /// We must be able to prove that `au.resolves()` when the logically atomic function exits.
+    #[rustc_diagnostic_item = "verus::vstd::atomic::AtomicUpdate::resolves"]
+    pub uninterp spec fn resolves(self) -> bool;
+
+    /// A prophesy variable for the input value of the atomic update.
+    ///
+    /// When the atomic update is committed, this variable is resolved to the input value of the atomic update.
+    /// This variable is used internally in the (private) postcondition of the logically atomic function.
+    #[rustc_diagnostic_item = "verus::vstd::atomic::AtomicUpdate::input"]
+    pub uninterp spec fn input(self) -> X;
+
+    /// A prophesy variable for the output value of the atomic update.
+    ///
+    /// When the atomic update is committed, this variable is resolved to the output value of the atomic update.
+    /// This variable is used internally in the (private) postcondition of the logically atomic function.
+    #[rustc_diagnostic_item = "verus::vstd::atomic::AtomicUpdate::output"]
+    pub uninterp spec fn output(self) -> Y;
+}
+
+impl<X, Y, Pred: UpdatePredicate<X, Y>> AtomicUpdate<X, Y, Pred> {
+    #[rustc_diagnostic_item = "verus::vstd::atomic::AtomicUpdate::req"]
+    pub open spec fn req(self, x: X) -> bool {
+        self.pred().req(x)
+    }
+
+    #[rustc_diagnostic_item = "verus::vstd::atomic::AtomicUpdate::ens"]
+    pub open spec fn ens(self, x: X, y: Y) -> bool {
+        self.pred().ens(x, y)
+    }
+
+    #[rustc_diagnostic_item = "verus::vstd::atomic::AtomicUpdate::outer_mask"]
+    pub open spec fn outer_mask(self) -> ISet<int> {
+        self.pred().outer_mask()
+    }
+
+    #[rustc_diagnostic_item = "verus::vstd::atomic::AtomicUpdate::inner_mask"]
+    pub open spec fn inner_mask(self) -> ISet<int> {
+        self.pred().inner_mask()
+    }
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::vstd::atomic::pred_args"]
+#[doc(hidden)]
+pub uninterp spec fn pred_args<Pred, Args>(pred: Pred) -> Args;
+
+/// Trait used to specify the update predicate for the [`AtomicUpdate`].
+///
+/// This trait is implemented automatically by Verus when a logically atomic function is defined.
+/// ```
+/// exec fn function(px: PX) -> (py: PY)
+///     atomically (atomic_update) {
+///         type PredType,
+///
+///         (ax: AX) -> (ay: AY),
+///
+///         requires atomic_pre(px, ax),
+///         ensures atomic_post(px, ax, ay),
+///
+///         outer_mask Eo,
+///         inner_mask Ei,
+///     },
+///     requires private_pre(px),
+///     ensures private_post(px, ax, ay, py),
+/// ```
+/// The above code snipped generates (roughly) the type and trait implementation below.
+/// ```
+/// struct PredType { px: Ghost<PX> }
+///
+/// impl UpdatePredicate<AX, AY> for PredType {
+///     open spec fn req(self, x: X)       -> bool { atomic_pre  }
+///     open spec fn ens(self, x: X, y: Y) -> bool { atomic_post }
+///
+///     open spec fn outer_mask(self) -> ISet<int> { Eo }
+///     open spec fn inner_mask(self) -> ISet<int> { Ei }
+/// }
+/// ```
+pub trait UpdatePredicate<X, Y>: Sized {
+    /// The atomic pre-condition.
+    spec fn req(self, x: X) -> bool;
+
+    /// The atomic post-condition.
+    spec fn ens(self, x: X, y: Y) -> bool;
+
+    /// The outer mask of the atomic update.
+    open spec fn outer_mask(self) -> ISet<int> {
+        ISet::empty()
+    }
+
+    /// The inner mask of the atomic update.
+    open spec fn inner_mask(self) -> ISet<int> {
+        ISet::empty()
+    }
+}
+
+/// The control flow corresponding to the atomic update output.
+pub enum UpdateControlFlow {
+    /// The update output value indicates that the atomic update has been committed.
+    ///
+    /// This means [`try_open_atomic_update`] will consume the atomic update (i.e. return `Ok(())`),
+    /// and the atomic function call has to `break`.
+    Commit,
+    /// The update output value indicates that the atomic update has been aborted.
+    ///
+    /// This means [`try_open_atomic_update`] will give back the atomic update (i.e. return `Err(Tracked(au))`),
+    /// and the atomic function call has to `continue`.
+    Abort,
+}
+
+impl UpdateControlFlow {
+    pub open spec fn is_commit(self) -> bool {
+        match self {
+            UpdateControlFlow::Commit => true,
+            UpdateControlFlow::Abort => false,
+        }
+    }
+
+    pub open spec fn is_abort(self) -> bool {
+        !self.is_commit()
+    }
+}
+
+pub trait UpdateTry {
+    spec fn branch(self) -> UpdateControlFlow;
+}
+
+impl<T, E> UpdateTry for Result<T, E> {
+    open spec fn branch(self) -> UpdateControlFlow {
+        match self {
+            Ok(_) => UpdateControlFlow::Commit,
+            Err(_) => UpdateControlFlow::Abort,
+        }
+    }
+}
+
+/// A trivial wrapper type which indicates a commit.
+///
+/// This is useful for logically atomic functions which do not require an abort case.
+#[derive(Debug)]
+pub struct Commit<T>(pub T);
+
+impl<T> Commit<T> {
+    pub proof fn get(tracked self) -> (tracked out: T)
+        ensures
+            self@ == out,
+    {
+        self.0
+    }
+}
+
+impl<T> View for Commit<T> {
+    type V = T;
+
+    #[verifier::inline]
+    open spec fn view(&self) -> T {
+        self.0
+    }
+}
+
+impl<T> UpdateTry for Commit<T> {
+    open spec fn branch(self) -> UpdateControlFlow {
+        UpdateControlFlow::Commit
+    }
+}
+
+impl UpdateTry for () {
+    open spec fn branch(self) -> UpdateControlFlow {
+        UpdateControlFlow::Commit
+    }
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::vstd::atomic::branch_bool"]
+#[doc(hidden)]
+pub open spec fn branch_bool<T: UpdateTry>(this: T) -> bool {
+    this.branch().is_commit()
+}
+
+// Definition for atomic function call
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::vstd::atomic::atomically"]
+#[doc(hidden)]
+#[verifier::external]
+pub fn atomically<X, Y: UpdateTry, P: UpdatePredicate<X, Y>>(
+    _body: impl FnOnce(fn (X) -> Y, Ghost<AtomicUpdate<X, Y, P>>),
+) -> AtomicUpdate<X, Y, P> {
+    arbitrary()
+}
+
+// Definitions for `try_open_atomic_update` macro
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::vstd::atomic::try_open_au"]
+#[doc(hidden)]
+#[verifier::external_body]
+pub fn try_open_au<X, Y: UpdateTry, P: UpdatePredicate<X, Y>>(
+    _atomic_update: AtomicUpdate<X, Y, P>,
+    _body: impl FnOnce(X) -> Tracked<Y>,
+) -> Tracked<Result<(), AtomicUpdate<X, Y, P>>> {
+    arbitrary()
+}
+
+// Definitions for `try_open_atomic_update` macro
+#[doc(hidden)]
+pub struct BlockGuard<T> {
+    _inner: core::marker::PhantomData<T>,
+}
+
+#[cfg(verus_keep_ghost)]
+#[doc(hidden)]
+#[verifier::external]  /* vattr */
+pub fn bind_lifetime_internal<'a, X: 'a, Y, P>(
+    _block_guard: &'a BlockGuard<AtomicUpdate<X, Y, P>>,
+) -> X {
+    unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::vstd::atomic::try_open_atomic_update_begin"]
+#[doc(hidden)]
+#[verifier::external]  /* vattr */
+pub fn try_open_atomic_update_begin<X, Y: UpdateTry, P: UpdatePredicate<X, Y>>(
+    _atomic_update: AtomicUpdate<X, Y, P>,
+) -> BlockGuard<AtomicUpdate<X, Y, P>> {
+    unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::vstd::atomic::try_open_atomic_update_end"]
+#[doc(hidden)]
+#[verifier::external]  /* vattr */
+pub fn try_open_atomic_update_end<X, Y: UpdateTry, P: UpdatePredicate<X, Y>>(
+    _guard: BlockGuard<AtomicUpdate<X, Y, P>>,
+    _y: Tracked<Y>,
+) -> Tracked<Result<(), AtomicUpdate<X, Y, P>>> {
+    unimplemented!()
+}
+
+// Macro definitions
+#[macro_export]
+macro_rules! open_atomic_update {
+    ($($tail:tt)*) => {
+        {
+            let _ = ::verus_builtin_macros::verus_exec_open_au_macro_exprs!(
+                $crate::atomic::try_open_atomic_update_internal!(
+                    $($tail)*, @EXEC, au_commit_wrap_exec
+                )
+            );
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! open_atomic_update_in_proof {
+    ($($tail:tt)*) => {
+        {
+            let _ = ::verus_builtin_macros::verus_ghost_open_au_macro_exprs!(
+                $crate::atomic::try_open_atomic_update_internal!(
+                    $($tail)*, @PROOF, au_commit_wrap_proof
+                )
+            );
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! peek_atomic_update {
+    ($($tail:tt)*) => {
+        {
+            #[verifier::exec]
+            let err_au = ::verus_builtin_macros::verus_exec_open_au_macro_exprs!(
+                $crate::atomic::try_open_atomic_update_internal!(
+                    $($tail)*, @EXEC, au_abort_wrap_exec
+                )
+            );
+
+            match () {
+                #[cfg(verus_keep_ghost_body)]
+                _ => $crate::atomic::au_abort_unwrap_exec(err_au),
+
+                #[cfg(not(verus_keep_ghost_body))]
+                _ => ::verus_builtin::Tracked::assume_new_fallback(|| ::core::unreachable!()),
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! peek_atomic_update_in_proof {
+    ($($tail:tt)*) => {
+        {
+            #[verifier::proof]
+            let err_au = ::verus_builtin_macros::verus_ghost_open_au_macro_exprs!(
+                $crate::atomic::try_open_atomic_update_internal!(
+                    $($tail)*, @PROOF, au_abort_wrap_proof
+                )
+            );
+
+            match () {
+                #[cfg(verus_keep_ghost_body)]
+                _ => $crate::atomic::au_abort_unwrap_proof(err_au),
+
+                #[cfg(not(verus_keep_ghost_body))]
+                _ => ::verus_builtin::Tracked::assume_new_fallback(|| ::core::unreachable!()),
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! try_open_atomic_update {
+    ($($tail:tt)*) => {
+        ::verus_builtin_macros::verus_exec_open_au_macro_exprs!(
+            $crate::atomic::try_open_atomic_update_internal!($($tail)*)
+        )
+    };
+}
+
+#[macro_export]
+macro_rules! try_open_atomic_update_in_proof {
+    ($($tail:tt)*) => {
+        ::verus_builtin_macros::verus_ghost_open_au_macro_exprs!(
+            $crate::atomic::try_open_atomic_update_internal!($($tail)*)
+        )
+    };
+}
+
+#[macro_export]
+macro_rules! try_open_atomic_update_internal {
+    ($au:expr, $x:pat => $body:block, @EXEC, $wrap_fn:ident) => {
+        $crate::atomic::try_open_atomic_update_internal!($au, $x => {
+            #[verifier::exec]
+            let v = $body;
+
+            match () {
+                #[cfg(verus_keep_ghost_body)]
+                _ => $crate::atomic::$wrap_fn(v),
+
+                #[cfg(not(verus_keep_ghost_body))]
+                _ => ::verus_builtin::Tracked::assume_new_fallback(|| ::core::unreachable!()),
+            }
+        })
+    };
+
+    ($au:expr, $x:pat => $body:block, @PROOF, $wrap_fn:ident) => {
+        $crate::atomic::try_open_atomic_update_internal!($au, $x => {
+            #[verifier::proof]
+            let v = $body;
+
+            match () {
+                #[cfg(verus_keep_ghost_body)]
+                _ => $crate::atomic::$wrap_fn(v),
+
+                #[cfg(not(verus_keep_ghost_body))]
+                _ => ::verus_builtin::Tracked::assume_new_fallback(|| ::core::unreachable!()),
+            }
+        })
+    };
+
+    ($au:expr, $x:pat => $body:block) => {
+        #[cfg_attr(verus_keep_ghost, verifier::open_au_block)] /* vattr */ {
+            #[cfg(verus_keep_ghost_body)]
+            let guard = $crate::atomic::try_open_atomic_update_begin($au);
+            #[cfg(verus_keep_ghost_body)]
+            let $x = $crate::atomic::bind_lifetime_internal(&guard);
+            let res = $body;
+
+            match res {
+                #[cfg(verus_keep_ghost_body)]
+                res => $crate::atomic::try_open_atomic_update_end(guard, res),
+
+                #[cfg(not(verus_keep_ghost_body))]
+                _ => ::verus_builtin::Tracked::assume_new_fallback(|| ::core::unreachable!()),
+            }
+        }
+    };
+
+    // ($au:expr, $x:pat => $body:block) => {
+    //     match () {
+    //         #[cfg(verus_keep_ghost_body)]
+    //         _ => $crate::atomic::try_open_au($au, {
+    //             let _verus_internal_identifier_for_closures = ::verus_builtin::dummy_capture_new();
+    //             |$x| {
+    //                 ::verus_builtin::dummy_capture_consume(_verus_internal_identifier_for_closures);
+    //                 $body
+    //             }
+    //         }),
+
+    //         #[cfg(not(verus_keep_ghost_body))]
+    //         _ => {
+    //             let _ = $body;
+    //             ::verus_builtin::Tracked::assume_new_fallback(|| ::core::unreachable!())
+    //         },
+    //     }
+    // };
+}
+
+#[doc(hidden)]
+pub use {try_open_atomic_update_internal};
+pub use {
+    open_atomic_update,
+    open_atomic_update_in_proof,
+    peek_atomic_update,
+    peek_atomic_update_in_proof,
+    try_open_atomic_update,
+    try_open_atomic_update_in_proof,
+};
 
 impl<T> PAtomicPtr<T> {
     #[inline(always)]

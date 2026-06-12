@@ -281,7 +281,18 @@ fn stm_assign(
     stm: &Stm,
 ) -> Stm {
     let result = match &stm.x {
-        StmX::Call { args, dest, .. } => {
+        StmX::Call {
+            fun,
+            resolved_method,
+            mode,
+            is_trait_default,
+            typ_args,
+            args,
+            split,
+            dest,
+            assert_id,
+            body,
+        } => {
             if let Some(dest) = dest {
                 let var: UniqueIdent = get_loc_var(&dest.dest);
                 assigned.insert(var.clone());
@@ -307,7 +318,23 @@ fn stm_assign(
                 })
                 .unwrap();
             }
-            stm.clone()
+
+            let body = body
+                .as_ref()
+                .map(|body_stm| stm_assign(assign_map, declared, assigned, modified, body_stm));
+
+            stm.new_x(StmX::Call {
+                fun: fun.clone(),
+                resolved_method: resolved_method.clone(),
+                mode: mode.clone(),
+                is_trait_default: is_trait_default.clone(),
+                typ_args: typ_args.clone(),
+                args: args.clone(),
+                split: split.clone(),
+                dest: dest.clone(),
+                assert_id: assert_id.clone(),
+                body,
+            })
         }
         StmX::AssertQuery { mode, typ_inv_exps, typ_inv_vars, body } => {
             assert!(typ_inv_vars.len() == 0);
@@ -384,6 +411,7 @@ fn stm_assign(
             decrease,
             typ_inv_vars,
             modified_vars,
+            au_branch_bool,
             pre_modified_params,
         } => {
             let mut inner_modified = HavocSet::new();
@@ -420,6 +448,7 @@ fn stm_assign(
                 decrease: decrease.clone(),
                 typ_inv_vars: Arc::new(typ_inv_vars),
                 modified_vars: Some(Arc::new(inner_modified)),
+                au_branch_bool: au_branch_bool.clone(),
                 pre_modified_params: pre_modified_params.clone(),
             };
             Spanned::new(stm.span.clone(), loop_x)
@@ -471,11 +500,36 @@ fn stm_mutations(param_typs: &[(VarIdent, Typ)], mutations: &mut HavocSet, stm: 
         | StmX::Return { .. }
         | StmX::BreakOrContinue { .. }
         | StmX::Air(_) => stm.clone(),
-        StmX::Call { dest, .. } => {
+        StmX::Call {
+            fun,
+            resolved_method,
+            mode,
+            is_trait_default,
+            typ_args,
+            args,
+            split,
+            dest,
+            assert_id,
+            body,
+        } => {
             if let Some(Dest { is_init: false, dest }) = dest {
                 mutations.insert(dest);
             }
-            stm.clone()
+
+            let body = body.as_ref().map(|stm| stm_mutations(param_typs, mutations, stm));
+
+            stm.new_x(StmX::Call {
+                fun: fun.clone(),
+                resolved_method: resolved_method.clone(),
+                mode: mode.clone(),
+                is_trait_default: is_trait_default.clone(),
+                typ_args: typ_args.clone(),
+                args: args.clone(),
+                split: split.clone(),
+                dest: dest.clone(),
+                assert_id: assert_id.clone(),
+                body,
+            })
         }
         StmX::Assign { lhs, rhs: _ } => {
             if let Dest { is_init: false, dest } = lhs {
@@ -520,6 +574,7 @@ fn stm_mutations(param_typs: &[(VarIdent, Typ)], mutations: &mut HavocSet, stm: 
             typ_inv_vars,
             modified_vars,
             pre_modified_params,
+            au_branch_bool,
         } => {
             assert!(pre_modified_params.is_none());
 
@@ -548,6 +603,7 @@ fn stm_mutations(param_typs: &[(VarIdent, Typ)], mutations: &mut HavocSet, stm: 
                 typ_inv_vars: typ_inv_vars.clone(),
                 modified_vars: modified_vars.clone(),
                 pre_modified_params: Some(Arc::new(pre_modified_params)),
+                au_branch_bool: au_branch_bool.clone(),
             };
             stm.new_x(loopx)
         }

@@ -443,7 +443,12 @@ fn check_one_expr<Emit: EmitError>(
         ExprX::ConstVar(x, _) => {
             check_function_access(ctxt, x, disallow_private_access, &expr.span, emit)?;
         }
-        ExprX::Call(CallTarget::Fun(kind, x, _, _, attrs), _args, _post_args) => {
+        ExprX::Call {
+            target: CallTarget::Fun(kind, x, _, _, attrs),
+            args: _,
+            post_args: _,
+            body: _,
+        } => {
             if attrs.assume_external_allowed && !ctxt.funs.contains_key(x) {
                 if ctxt.no_cheating {
                     return Err(error(

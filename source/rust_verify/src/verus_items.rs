@@ -97,15 +97,20 @@ pub(crate) enum SpecItem {
     Returns,
     InvariantExceptBreak,
     Invariant,
+    AtomicSpec,
+    AtomicCallLoop,
     Decreases,
     DecreasesWhen,
     DecreasesBy,
     RecommendsBy,
-    OpensInvariantsNone,
-    OpensInvariantsAny,
-    OpensInvariants,
-    OpensInvariantsExcept,
-    OpensInvariantsSet,
+    OpensInvariantMask,
+    InvMaskNone,
+    InvMaskAny,
+    InvMaskList,
+    InvMaskListCompl,
+    InvMaskSet,
+    Atomically,
+    TryOpenAU,
     NoUnwind,
     NoUnwindWhen,
 }
@@ -316,6 +321,12 @@ pub(crate) enum OpenInvariantBlockItem {
     OpenInvariantEnd,
 }
 
+#[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
+pub(crate) enum OpenAtomicUpdateItem {
+    TryOpenAtomicUpdateBegin,
+    TryOpenAtomicUpdateEnd,
+}
+
 #[derive(PartialEq, Eq, Debug, Clone, Hash)]
 pub(crate) enum InvariantItem {
     AtomicInvariantNamespace,
@@ -325,6 +336,18 @@ pub(crate) enum InvariantItem {
     CreateOpenInvariantCredit,
     SpendOpenInvariantCredit,
     SpendOpenInvariantCreditInProof,
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Hash)]
+pub(crate) enum AtomicUpdateItem {
+    AtomicUpdateReq,
+    AtomicUpdateEns,
+    AtomicUpdatePred,
+    AtomicUpdateResolves,
+    AtomicUpdateInput,
+    AtomicUpdateOutput,
+    AtomicUpdateOuterMask,
+    AtomicUpdateInnerMask,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash)]
@@ -343,6 +366,9 @@ pub(crate) enum VstdItem {
     SetFn(SetItem),
     ISetFn(SetItem),
     Invariant(InvariantItem),
+    AtomicUpdate(AtomicUpdateItem),
+    PredArgs,
+    BranchBool,
     ExecNonstaticCall,
     ProofNonstaticCall,
     ArrayIndexGet,
@@ -429,6 +455,7 @@ pub(crate) enum VerusItem {
     UseTypeInvariant,
     WithTriggers,
     OpenInvariantBlock(OpenInvariantBlockItem),
+    OpenAtomicUpdate(OpenAtomicUpdateItem),
     Vstd(VstdItem, Option<Ident>),
     Marker(MarkerItem),
     BuiltinType(BuiltinTypeItem),
@@ -471,15 +498,20 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::returns",                 VerusItem::Spec(SpecItem::Returns)),
         ("verus::verus_builtin::invariant_except_break",  VerusItem::Spec(SpecItem::InvariantExceptBreak)),
         ("verus::verus_builtin::invariant",               VerusItem::Spec(SpecItem::Invariant)),
+        ("verus::verus_builtin::atomic_spec",             VerusItem::Spec(SpecItem::AtomicSpec)),
+        ("verus::verus_builtin::atomic_call_loop",        VerusItem::Spec(SpecItem::AtomicCallLoop)),
         ("verus::verus_builtin::decreases",               VerusItem::Spec(SpecItem::Decreases)),
         ("verus::verus_builtin::decreases_when",          VerusItem::Spec(SpecItem::DecreasesWhen)),
         ("verus::verus_builtin::decreases_by",            VerusItem::Spec(SpecItem::DecreasesBy)),
         ("verus::verus_builtin::recommends_by",           VerusItem::Spec(SpecItem::RecommendsBy)),
-        ("verus::verus_builtin::opens_invariants_none",   VerusItem::Spec(SpecItem::OpensInvariantsNone)),
-        ("verus::verus_builtin::opens_invariants_any",    VerusItem::Spec(SpecItem::OpensInvariantsAny)),
-        ("verus::verus_builtin::opens_invariants",        VerusItem::Spec(SpecItem::OpensInvariants)),
-        ("verus::verus_builtin::opens_invariants_except", VerusItem::Spec(SpecItem::OpensInvariantsExcept)),
-        ("verus::verus_builtin::opens_invariants_set",    VerusItem::Spec(SpecItem::OpensInvariantsSet)),
+
+        ("verus::verus_builtin::opens_invariant_mask",   VerusItem::Spec(SpecItem::OpensInvariantMask)),
+
+        ("verus::verus_builtin::inv_mask_none",           VerusItem::Spec(SpecItem::InvMaskNone)),
+        ("verus::verus_builtin::inv_mask_any",            VerusItem::Spec(SpecItem::InvMaskAny)),
+        ("verus::verus_builtin::inv_mask_list",           VerusItem::Spec(SpecItem::InvMaskList)),
+        ("verus::verus_builtin::inv_mask_list_compl",     VerusItem::Spec(SpecItem::InvMaskListCompl)),
+        ("verus::verus_builtin::inv_mask_set",            VerusItem::Spec(SpecItem::InvMaskSet)),
 
         ("verus::verus_builtin::no_unwind",               VerusItem::Spec(SpecItem::NoUnwind)),
         ("verus::verus_builtin::no_unwind_when",          VerusItem::Spec(SpecItem::NoUnwindWhen)),
@@ -632,6 +664,9 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::invariant::open_local_invariant_begin",  VerusItem::OpenInvariantBlock(OpenInvariantBlockItem::OpenLocalInvariantBegin)),
         ("verus::vstd::invariant::open_invariant_end",          VerusItem::OpenInvariantBlock(OpenInvariantBlockItem::OpenInvariantEnd)),
 
+        ("verus::vstd::atomic::try_open_atomic_update_begin",   VerusItem::OpenAtomicUpdate(OpenAtomicUpdateItem::TryOpenAtomicUpdateBegin)),
+        ("verus::vstd::atomic::try_open_atomic_update_end",     VerusItem::OpenAtomicUpdate(OpenAtomicUpdateItem::TryOpenAtomicUpdateEnd)),
+
         ("verus::vstd::seq::Seq::empty",       VerusItem::Vstd(VstdItem::SeqFn(vir::interpreter::SeqFn::Empty   ), Some(Arc::new("seq::Seq::empty"      .to_owned())))),
         ("verus::vstd::seq::Seq::new",         VerusItem::Vstd(VstdItem::SeqFn(vir::interpreter::SeqFn::New     ), Some(Arc::new("seq::Seq::new"        .to_owned())))),
         ("verus::vstd::seq::Seq::push",        VerusItem::Vstd(VstdItem::SeqFn(vir::interpreter::SeqFn::Push    ), Some(Arc::new("seq::Seq::push"       .to_owned())))),
@@ -666,6 +701,19 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::invariant::spend_open_invariant_credit_in_proof", VerusItem::Vstd(VstdItem::Invariant(InvariantItem::SpendOpenInvariantCreditInProof), Some(Arc::new("invariant::spend_open_invariant_credit_in_proof".to_owned())))),
         ("verus::vstd::vstd::exec_nonstatic_call", VerusItem::Vstd(VstdItem::ExecNonstaticCall, Some(Arc::new("pervasive::exec_nonstatic_call".to_owned())))),
         ("verus::vstd::vstd::proof_nonstatic_call", VerusItem::Vstd(VstdItem::ProofNonstaticCall, Some(Arc::new("pervasive::proof_nonstatic_call".to_owned())))),
+
+        ("verus::vstd::atomic::atomically",               VerusItem::Spec(SpecItem::Atomically)),
+        ("verus::vstd::atomic::try_open_au",              VerusItem::Spec(SpecItem::TryOpenAU)),
+        ("verus::vstd::atomic::pred_args",                VerusItem::Vstd(VstdItem::PredArgs,                                              Some(Arc::new("atomic::pred_args".to_owned())))),
+        ("verus::vstd::atomic::branch_bool",              VerusItem::Vstd(VstdItem::BranchBool,                                            Some(Arc::new("atomic::branch_bool".to_owned())))),
+        ("verus::vstd::atomic::AtomicUpdate::req",        VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateReq),       Some(Arc::new("atomic::AtomicUpdate::req".to_owned())))),
+        ("verus::vstd::atomic::AtomicUpdate::ens",        VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateEns),       Some(Arc::new("atomic::AtomicUpdate::ens".to_owned())))),
+        ("verus::vstd::atomic::AtomicUpdate::pred",       VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdatePred),      Some(Arc::new("atomic::AtomicUpdate::pred".to_owned())))),
+        ("verus::vstd::atomic::AtomicUpdate::resolves",   VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateResolves),  Some(Arc::new("atomic::AtomicUpdate::resolves".to_owned())))),
+        ("verus::vstd::atomic::AtomicUpdate::input",      VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateInput),     Some(Arc::new("atomic::AtomicUpdate::input".to_owned())))),
+        ("verus::vstd::atomic::AtomicUpdate::output",     VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateOutput),    Some(Arc::new("atomic::AtomicUpdate::output".to_owned())))),
+        ("verus::vstd::atomic::AtomicUpdate::outer_mask", VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateOuterMask), Some(Arc::new("atomic::AtomicUpdate::outer_mask".to_owned())))),
+        ("verus::vstd::atomic::AtomicUpdate::inner_mask", VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateInnerMask), Some(Arc::new("atomic::AtomicUpdate::inner_mask".to_owned())))),
 
         ("verus::vstd::std_specs::vec::vec_index", VerusItem::Vstd(VstdItem::VecIndex, Some(Arc::new("std_specs::vec::vec_index".to_owned())))),
         ("verus::vstd::std_specs::vec::vec_index_mut", VerusItem::Vstd(VstdItem::VecIndexMut, Some(Arc::new("std_specs::vec::vec_index_mut".to_owned())))),
@@ -705,7 +753,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::call_ensures",  VerusItem::BuiltinFunction(BuiltinFunctionItem::CallEnsures)),
         ("verus::verus_builtin::constrain_type",          VerusItem::BuiltinFunction(BuiltinFunctionItem::ConstrainType)),
         ("verus::verus_builtin::get_future_output_type",          VerusItem::BuiltinFunction(BuiltinFunctionItem::GetFutureOutputType)),
-        
+
         ("verus::verus_builtin::global_size_of", VerusItem::Global(GlobalItem::SizeOf)),
 
         ("verus::verus_builtin::FnProof",          VerusItem::External(ExternalItem::FnProof)),
@@ -735,8 +783,7 @@ pub(crate) struct VerusItems {
 pub(crate) fn from_diagnostic_items(
     diagnostic_items: &rustc_hir::diagnostic_items::DiagnosticItems,
 ) -> VerusItems {
-    let verus_item_map: HashMap<&str, VerusItem> =
-        verus_items_map().iter().map(|(k, v)| (*k, v.clone())).collect();
+    let verus_item_map: HashMap<&str, VerusItem> = verus_items_map().into_iter().collect();
     let diagnostic_name_to_id = &diagnostic_items.name_to_id;
     let mut id_to_name: HashMap<DefId, VerusItem> = HashMap::new();
     let mut name_to_id: HashMap<VerusItem, DefId> = HashMap::new();
