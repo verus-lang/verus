@@ -106,7 +106,7 @@ fn parse_toolchains_from_dir() {
     let dir = tempfile::tempdir().expect("create temp dir");
     for toolchain in &toolchains.items {
         let toml = toml::to_string_pretty(toolchain).expect("serialize manifest");
-        let path = dir.path().join(format!("{}.toml", toolchain.verus.contents));
+        let path = dir.path().join(format!("{}.toml", toolchain.verus));
         fs::write(path, toml).expect("write manifest");
     }
 

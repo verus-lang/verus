@@ -13,11 +13,11 @@ pub struct ToolchainList {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Toolchain {
     /// The Verus version; the primary key to identify a toolchain.
-    pub verus: StrLit,
+    pub verus: String,
     /// The vstd version.
     pub vstd: Crate,
     /// The Z3 version.
-    pub z3: StrLit,
+    pub z3: String,
 }
 
 /// Identifies a crate in a registry (i.e. crates.io) or git.
@@ -25,9 +25,9 @@ pub struct Toolchain {
 #[serde(untagged)]
 pub enum Crate {
     /// A version published in a registry.
-    Version(StrLit),
+    Version(String),
     /// A commit in a git repository (e.g. GitHub).
-    GitCommit { git: StrLit, rev: StrLit },
+    GitCommit { git: String, rev: String },
 }
 
 impl ToolchainList {
@@ -80,33 +80,13 @@ impl ToolchainList {
     }
 }
 
-/// A string literal.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct StrLit {
-    pub contents: String,
-}
-
-impl std::fmt::Display for StrLit {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // TODO: Escape contents.
-        write!(f, "\"{}\"", self.contents)
-    }
-}
-
-impl From<&str> for StrLit {
-    fn from(value: &str) -> Self {
-        StrLit { contents: value.to_string() }
-    }
-}
-
 impl Toolchain {
     pub fn format_code(&self, i0: Indent, out: &mut impl Write) -> std::fmt::Result {
         let i1 = i0.increase();
         writeln!(out, "{i0}Toolchain {{")?;
-        writeln!(out, "{i1}verus: {},", self.verus)?;
+        writeln!(out, "{i1}verus: {:?},", self.verus)?;
         writeln!(out, "{i1}vstd: {},", self.vstd)?;
-        writeln!(out, "{i1}z3: {},", self.z3)?;
+        writeln!(out, "{i1}z3: {:?},", self.z3)?;
         write!(out, "{i0}}}")?;
         Ok(())
     }
@@ -115,9 +95,9 @@ impl Toolchain {
 impl std::fmt::Display for Crate {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Crate::Version(version) => write!(f, "Crate::Registry {{ version: {version} }}")?,
+            Crate::Version(version) => write!(f, "Crate::Registry {{ version: {version:?} }}")?,
             Crate::GitCommit { git, rev } => {
-                write!(f, "Crate::GitCommit {{ git: {git}, rev: {rev} }}")?
+                write!(f, "Crate::GitCommit {{ git: {git:?}, rev: {rev:?} }}")?
             }
         }
         Ok(())
