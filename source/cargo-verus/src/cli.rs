@@ -21,6 +21,9 @@ pub enum VerusSubcommand {
     /// Create a new Verus project
     New(NewCommand),
 
+    /// Manage Verus toolchain information
+    Toolchain(ToolchainCommand),
+
     /// Verify the current crate with 'cargo build'
     Verify(VerifyCommand),
 
@@ -32,6 +35,18 @@ pub enum VerusSubcommand {
 
     /// Runs the 'cargo check' subcommand
     Check(VerifyCommand),
+}
+
+#[derive(Clone, Debug, Args)]
+pub struct ToolchainCommand {
+    #[command(subcommand)]
+    pub command: ToolchainSubcommand,
+}
+
+#[derive(Clone, Debug, Subcommand)]
+pub enum ToolchainSubcommand {
+    /// List bundled toolchains
+    List,
 }
 
 #[derive(Clone, Debug, Args)]
@@ -191,7 +206,7 @@ impl CargoVerusCli {
 
     fn set_fwd_verus_args_to_default(&mut self) {
         match &mut self.command {
-            VerusSubcommand::New(_) => {}
+            VerusSubcommand::New(_) | VerusSubcommand::Toolchain(_) => {}
             VerusSubcommand::Verify(cmd)
             | VerusSubcommand::Build(cmd)
             | VerusSubcommand::Check(cmd) => {
@@ -223,7 +238,7 @@ impl CargoVerusCli {
                     cmd.verus_args = verus_args;
                 }
             }
-            VerusSubcommand::New(_) => {}
+            VerusSubcommand::New(_) | VerusSubcommand::Toolchain(_) => {}
         }
         self
     }
@@ -236,7 +251,7 @@ impl CargoVerusCli {
             | VerusSubcommand::Check(cmd) => {
                 has_flag_arg_without_space(&cmd.cargo_opts) || has_late_verus_arg(&cmd.cargo_opts)
             }
-            VerusSubcommand::New(_) => false,
+            VerusSubcommand::New(_) | VerusSubcommand::Toolchain(_) => false,
         }
     }
 }
