@@ -131,7 +131,6 @@ pub fn build(
         "vstd_build",
         "verus",
         "cargo-verus",
-        "cargo-verus-toolchains",
     ];
 
     if context.in_nextest {
