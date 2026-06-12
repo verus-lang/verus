@@ -92,6 +92,10 @@ changed crates are re-verified.
 Like `verify`, but skips re-verification of dependencies. Useful when you are only
 iterating on root crates and their dependencies have not changed.
 
+Unlike `verify`, `focus` stores its artifacts in a separate target directory
+under `target/verus-partial`, so that a full `cargo verus verify` isn't misled
+by the cached partial results.
+
 ```bash
 # Verify all of the root crates, but not their dependencies
 cargo verus focus
@@ -128,6 +132,16 @@ cargo verus verify -p my_crate --release -- --rlimit 60 --expand-errors
 #                  ^^^^^^^^^^^^^^^^^^^^^    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 #                  Cargo arguments            Verus arguments
 ```
+
+Verus-relevant Cargo options must come before generic Cargo flags such as `--release`.
+The Verus-relevant options are:
+- `-p`/`--package`, `--workspace`, `--all`, `--exclude`
+- `--features`, `--all-features`, `--no-default-features`
+- `--manifest-path`, `--target-dir`
+- `--frozen`, `--locked`, `--offline`
+- `--config`, `-Z`
+The `-Z` option must be written with a space, e.g. `-Z unstable-options`, the
+compact form is not supported.
 
 Common Verus arguments that can be passed this way include `--rlimit`,
 `--expand-errors`, and `--log-all`.  You should typically avoid passing
