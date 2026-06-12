@@ -1,7 +1,7 @@
 use super::super::super::modes::*;
 use super::super::super::prelude::*;
 use super::super::Loc;
-use super::super::map::*;
+use super::super::imap::*;
 
 verus! {
 
@@ -65,13 +65,13 @@ fn example_use() {
 pub tracked struct GhostSeqAuth<V> {
     ghost off: nat,
     ghost len: nat,
-    auth: GhostMapAuth<int, V>,
+    auth: GhostIMapAuth<int, V>,
 }
 
 pub tracked struct GhostSubseq<V> {
     ghost off: nat,
     ghost len: nat,
-    frac: GhostSubmap<int, V>,
+    frac: GhostISubmap<int, V>,
 }
 
 impl<V> GhostSeqAuth<V> {
@@ -118,7 +118,7 @@ impl<V> GhostSeqAuth<V> {
             result.1.off() == off,
             result.1@ =~= s,
     {
-        let tracked (mauth, mfrac) = GhostMapAuth::<int, V>::new(seq_to_map(s, off as int));
+        let tracked (mauth, mfrac) = GhostIMapAuth::<int, V>::new(seq_to_map(s, off as int));
         let tracked auth = GhostSeqAuth { off: off, len: s.len(), auth: mauth };
         let tracked frac = GhostSubseq { off: off, len: s.len(), frac: mfrac };
         (auth, frac)
@@ -242,7 +242,7 @@ impl<V> GhostSubseq<V> {
         }
     }
 
-    pub proof fn agree_map(tracked self: &GhostSubseq<V>, tracked auth: &GhostMapAuth<int, V>)
+    pub proof fn agree_map(tracked self: &GhostSubseq<V>, tracked auth: &GhostIMapAuth<int, V>)
         requires
             self.id() == auth.id(),
         ensures
@@ -288,7 +288,7 @@ impl<V> GhostSubseq<V> {
 
     pub proof fn update_map(
         tracked self: &mut GhostSubseq<V>,
-        tracked auth: &mut GhostMapAuth<int, V>,
+        tracked auth: &mut GhostIMapAuth<int, V>,
         v: Seq<V>,
     )
         requires
@@ -392,8 +392,8 @@ impl<V> GhostSubseq<V> {
         subseq
     }
 
-    // Helper to lift GhostSubmap into GhostSubseq.
-    pub proof fn new(off: nat, len: nat, tracked f: GhostSubmap<int, V>) -> (tracked result:
+    // Helper to lift GhostISubmap into GhostSubseq.
+    pub proof fn new(off: nat, len: nat, tracked f: GhostISubmap<int, V>) -> (tracked result:
         GhostSubseq<V>)
         requires
             f@.dom() == ISet::new(|i: int| off <= i < off + len),

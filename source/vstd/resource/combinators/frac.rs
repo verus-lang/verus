@@ -93,7 +93,7 @@ type FractionalCarrier<T> = ProductRA<FractionRA, AgreementRA<T>>;
 /// An implementation of a resource for fractional ownership of a ghost variable.
 ///
 /// If you just want to split the permission in half, you can also use the
-/// [`GhostVar<T>`](super::ghost_var::GhostVar) and [`GhostVarAuth<T>`](super::ghost_var::GhostVarAuth) library.
+/// [`GhostVar<T>`](super::super::ghost_var::GhostVar) and [`GhostVarAuth<T>`](super::super::ghost_var::GhostVarAuth) library.
 ///
 /// ### Example
 ///

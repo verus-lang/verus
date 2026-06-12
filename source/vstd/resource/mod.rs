@@ -18,6 +18,8 @@ pub use combinators::sum;
 
 pub use impls::frac_opt;
 pub use impls::ghost_var;
+pub use impls::imap;
+pub use impls::iset;
 pub use impls::map;
 pub use impls::seq;
 pub use impls::set;
