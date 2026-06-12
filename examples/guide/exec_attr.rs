@@ -63,8 +63,8 @@ ensures
 fn exec_tracked(x: u32) -> u32 {
   proof! {
     *y = x as int;
+    z = Ghost(x);
   }
-  proof_with!(|= Ghost(x));
   (x + 1)
 }
 

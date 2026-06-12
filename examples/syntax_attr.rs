@@ -318,8 +318,8 @@ trait T {
 fn test_mut_tracked(x: u32) -> u32 {
     proof!{
         *y = x as int;
+        z = Ghost(x);
     }
-    proof_with!(|=Ghost(x));
     x
 }
 

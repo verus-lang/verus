@@ -4994,43 +4994,6 @@ pub(crate) fn rewrite_expr_node(erase_ghost: EraseGhost, inside_ghost: bool, exp
     visitor.visit_expr_mut(expr);
 }
 
-use std::cell::RefCell;
-
-// ─── Output Variable Name Registry (thread-local, definition-site) ───────────
-//
-// Problem: The `|= Ghost(x)` follow expression in a function body needs to assign
-// to the correct output variable. For TupleStruct patterns like `-> Ghost(z): Ghost<u32>`,
-// the output variable is `__verus_with_out_N`. But for plain ident patterns like
-// `-> z: Ghost<u32>`, the output variable IS `z` (named directly by the user).
-//
-// Solution: `take_sig_with_spec` stores the actual output variable names here.
-// `apply_follows` (in attr_rewrite.rs) reads them to generate correct assignments.
-//
-// Scope: Thread-local, valid only during a single function's macro expansion.
-// Both `take_sig_with_spec` and `apply_follows` run within the same proc-macro
-// invocation for a given function, so thread-local state is safe.
-//
-// Fallback: If no names are stored (e.g., function has no outputs), defaults to
-// `__verus_with_out_N` naming convention.
-thread_local! {
-    static WITH_OUTPUT_NAMES: RefCell<Vec<String>> = RefCell::new(Vec::new());
-}
-
-pub(crate) fn set_with_output_names(names: Vec<String>) {
-    WITH_OUTPUT_NAMES.with(|n| *n.borrow_mut() = names);
-}
-
-pub(crate) fn get_with_output_name(index: usize) -> String {
-    WITH_OUTPUT_NAMES.with(|n| {
-        let names = n.borrow();
-        if let Some(name) = names.get(index) {
-            name.clone()
-        } else {
-            format!("__verus_with_out_{index}")
-        }
-    })
-}
-
 fn take_sig_with_spec(
     erase_ghost: EraseGhost,
     with: verus_syn::WithSpecOnFn,
@@ -5081,10 +5044,13 @@ fn take_sig_with_spec(
     }
     // For outputs: generate declare_ret_with and optional unwrap.
     // Two cases:
-    //   `-> Ghost(z): Ghost<u32>` — declare_ret_with var is `z_out`, unwrap into `z`
+    //   `-> Ghost(z): Ghost<u32>` — declare_ret_with var is `__verus_with_out_N`, unwrap into `z`
     //   `-> g: Ghost<int>` — declare_ret_with var IS `g`, no unwrap needed
     //     (Verus spec auto-coerces Ghost<int> to int in ensures)
-    let mut output_var_names: Vec<String> = Vec::new();
+    //
+    // The output variable is always named directly (either the user-given ident
+    // or `__verus_with_out_N`) so users assign to it with `proof!{ name = ... }`
+    // rather than a separate `|=` mechanism.
     if let Some((_token, extra_ret)) = outputs {
         for (i, pt) in extra_ret.iter().enumerate() {
             let ty = &pt.ty;
@@ -5102,7 +5068,6 @@ fn take_sig_with_spec(
                             &format!("__verus_with_out_{i}"),
                             Span::call_site(),
                         );
-                        output_var_names.push(out_ident.to_string());
                         let declare_stmt = Stmt::Expr(
                             Expr::Verbatim(quote_spanned_builtin!(verus_builtin, span =>
                                 let mut #out_ident = #verus_builtin::declare_ret_with::<#ty>()
@@ -5129,7 +5094,6 @@ fn take_sig_with_spec(
                 // ensures clause refers to `g` as the wrapper type directly
                 // (Verus spec auto-coerces Ghost<T> to T).
                 let x = &id.ident;
-                output_var_names.push(x.to_string());
                 let declare_stmt = Stmt::Expr(
                     Expr::Verbatim(quote_spanned_builtin!(verus_builtin, span =>
                         let mut #x = #verus_builtin::declare_ret_with::<#ty>()
@@ -5140,8 +5104,6 @@ fn take_sig_with_spec(
             }
         }
     };
-    // Store output names for apply_follows to use
-    set_with_output_names(output_var_names);
     // Don't modify sig.output or ret_pat — outputs are handled via declare_ret_with
     spec_stmts
 }

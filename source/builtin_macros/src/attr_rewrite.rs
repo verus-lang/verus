@@ -871,45 +871,25 @@ fn rewrite_verus_spec_on_expr_local(
     tokens.into()
 }
 
-/// Wrap an expression with a `|=` follow clause by assigning to output variables.
-/// The `|=` expression assigns values to `__verus_with_out_N` declare_ret_with variables.
-fn apply_follows(erase: &EraseGhost, expr: &mut Expr, follow_tokens: TokenStream) {
-    // Parse the follow expression to extract Ghost(...)/Tracked(...) wrappers
-    let Ok(follow_expr) = verus_syn::parse2::<verus_syn::Expr>(follow_tokens.clone()) else {
-        *expr = Expr::Verbatim(quote_spanned!(expr.span() =>
-            compile_error!("invalid `|=` follow expression")
-        ));
-        return;
-    };
-
-    // Flatten tuple of follows into individual expressions
-    let mut follow_exprs = Vec::new();
-    fn flatten_follow(expr: verus_syn::Expr, out: &mut Vec<verus_syn::Expr>) {
-        match expr {
-            verus_syn::Expr::Tuple(tuple) => {
-                for elem in tuple.elems {
-                    flatten_follow(elem, out);
-                }
-            }
-            other => out.push(other),
-        }
-    }
-    flatten_follow(follow_expr, &mut follow_exprs);
-
-    let mut assigns = Vec::new();
-    for (i, follow_expr) in follow_exprs.into_iter().enumerate() {
-        let rewritten: TokenStream =
-            syntax::rewrite_expr(erase.clone(), true, follow_expr.to_token_stream().into()).into();
-        let name = syntax::get_with_output_name(i);
-        let out_ident = syn::Ident::new(&name, proc_macro2::Span::call_site());
-        assigns.push(quote_spanned!(expr.span() =>
-            #[verifier::proof_block] { #out_ident = #rewritten; }
-        ));
-    }
-
+/// The `|= Ghost(...)` follow-expression syntax is no longer supported.
+/// Users should assign directly to the named output variable instead, e.g.:
+///
+/// ```ignore
+/// #[verus_spec(with -> z: Ghost<u32>)]
+/// fn f() -> u32 {
+///     proof! { z = Ghost(0); }
+///     0
+/// }
+/// ```
+fn apply_follows(expr: &mut Expr, follow_tokens: TokenStream) {
+    let span = if follow_tokens.is_empty() { expr.span() } else { follow_tokens.span() };
     let expr_tokens = expr.to_token_stream();
-    *expr = Expr::Verbatim(quote_spanned!(expr.span() => {
-        #(#assigns)*
+    *expr = Expr::Verbatim(quote_spanned!(span => {
+        compile_error!(
+            "the `|= ...` follow-expression is no longer supported; \
+             assign to the extra named output directly with `proof! { name = value; }` \
+             (the output name is the ident from `-> name: Type` in the function's `with` clause)"
+        );
         #expr_tokens
     }));
 }
@@ -1122,7 +1102,7 @@ fn rewrite_with_expr(
     }
 
     if let Some((_, follow)) = follows {
-        apply_follows(&erase, expr, follow.into_token_stream());
+        apply_follows(expr, follow.into_token_stream());
     }
     vec![]
 }
