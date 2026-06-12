@@ -181,6 +181,17 @@ pub broadcast proof fn view_contains_trans(v1: ThreadView, v2: ThreadView, v3: T
     reveal(ThreadView::contains);
 }
 
+pub broadcast proof fn view_contains_loc(v1: ThreadView, v2: ThreadView, l: CellId)
+    requires
+        #[trigger] v1.contains(v2),
+        #[trigger] v2.contains_loc(l)
+    ensures
+        v1.contains_loc(l),
+        v1.get_timestamp(l) >= v2.get_timestamp(l)
+{
+    reveal(ThreadView::contains);
+}
+
 pub broadcast proof fn view_join_assoc(v1: ThreadView, v2: ThreadView, v3: ThreadView)
     ensures
         #[trigger] v1.join(v2.join(v3)) =~= #[trigger] v1.join(v2).join(v3)
@@ -245,12 +256,21 @@ pub broadcast proof fn history_singleton_dom_singleton<T>(h: History<T>, ts : na
     assert (forall |ts1| #[trigger] h.0.dom().contains(ts1) ==>  ts1 == ts);
 }
 
-
+// todo - can this be proven?
+// this is kind of like a type invariant
+pub broadcast axiom fn points_to_history_get_timestamp<T>(p: AtomicPointsTo<T>, t: nat)
+    requires
+        #[trigger] p.hist().contains_timestamp(t)
+    ensures
+        p.hist().get(t).unwrap().1.contains_loc(p.loc()),
+        p.hist().get(t).unwrap().1.get_timestamp(p.loc()) == t
+;
 
 pub broadcast group group_view_history {
     view_contains_refl,
     view_contains_anti_sym,
     view_contains_trans,
+    view_contains_loc,
     view_join_assoc,
     view_join_comm,
     view_join_idemp,
@@ -260,6 +280,7 @@ pub broadcast group group_view_history {
     history_get_contains_timestamp,
     view_join_comm,
     view_join_contains,
+    points_to_history_get_timestamp
 }
 
 // Fence modalities
@@ -736,6 +757,13 @@ impl<T> AtomicPointsTo<T> {
         &&& self.hist().0.len() > 0 
         &&& self.hist().0.dom().finite()
         &&& forall |t| #[trigger] self.hist().contains_timestamp(t) ==> self.hist().get(t).unwrap().1.contains_loc(self.loc()) && self.hist().get(t).unwrap().1.get_timestamp(self.loc()) == t
+    }
+
+    pub proof fn history_finite(tracked &self)
+        ensures
+            self.hist().0.dom().finite()
+    {
+        use_type_invariant(self);
     }
 
     pub proof fn apply_inv(tracked &self, t: nat)
