@@ -45,6 +45,8 @@ impl ToolchainList {
 
     /// Attempts to parse each `*.toml` file under `dir` as a toolchain manifest.
     pub fn parse_from_dir(dir: impl AsRef<Path>) -> Self {
+        // TODO: Implement proper error handling.
+
         let dir = dir.as_ref();
         assert!(dir.is_dir());
 
