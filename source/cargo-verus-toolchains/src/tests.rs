@@ -1,4 +1,4 @@
-use crate::{Crate, Indent, Toolchain, format_toolchains_code};
+use crate::{Crate, Indent, Toolchain, ToolchainList};
 use pretty_assertions::assert_eq;
 
 fn make_release_manifest() -> Toolchain {
@@ -73,8 +73,9 @@ fn parse_print_toolchain_rolling_release() {
 }
 
 #[test]
-fn print_toolchain_const() {
-    let toolchains = [make_rolling_release_manifest(), make_release_manifest()];
+fn print_toolchains_code() {
+    let toolchains =
+        ToolchainList { items: vec![make_rolling_release_manifest(), make_release_manifest()] };
 
     let expected_code = r#"/// An entry for each file in the `toolchain-manifests` directory.
 pub const TOOLCHAINS: [Toolchain; 2] = [
@@ -92,8 +93,7 @@ pub const TOOLCHAINS: [Toolchain; 2] = [
 "#;
 
     let mut observed_code = String::new();
-    format_toolchains_code(&toolchains, Indent::default(), &mut observed_code)
-        .expect("format code");
+    toolchains.format_code(Indent::default(), &mut observed_code).expect("format code");
 
     assert_eq!(observed_code, expected_code);
 }

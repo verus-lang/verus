@@ -2,6 +2,11 @@ use std::fmt::Write;
 
 use serde::{Deserialize, Serialize};
 
+/// A list of toolchains.
+pub struct ToolchainList {
+    pub items: Vec<Toolchain>,
+}
+
 /// A set of Verus components meant to be used together.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Toolchain {
@@ -23,20 +28,18 @@ pub enum Crate {
     GitCommit { git: StrLit, rev: StrLit },
 }
 
-pub fn format_toolchains_code(
-    toolchains: &[Toolchain],
-    i0: Indent,
-    out: &mut impl Write,
-) -> std::fmt::Result {
-    writeln!(out, "{i0}/// An entry for each file in the `toolchain-manifests` directory.")?;
-    writeln!(out, "{i0}pub const TOOLCHAINS: [Toolchain; {}] = [", toolchains.len())?;
-    let i1 = i0.increase();
-    for toolchain in toolchains {
-        toolchain.format_code(i1, out)?;
-        writeln!(out, ",")?;
+impl ToolchainList {
+    pub fn format_code(&self, i0: Indent, out: &mut impl Write) -> std::fmt::Result {
+        writeln!(out, "{i0}/// An entry for each file in the `toolchain-manifests` directory.")?;
+        writeln!(out, "{i0}pub const TOOLCHAINS: [Toolchain; {}] = [", self.items.len())?;
+        let i1 = i0.increase();
+        for toolchain in &self.items {
+            toolchain.format_code(i1, out)?;
+            writeln!(out, ",")?;
+        }
+        writeln!(out, "{i0}];")?;
+        Ok(())
     }
-    writeln!(out, "{i0}];")?;
-    Ok(())
 }
 
 /// A string literal.
