@@ -850,7 +850,7 @@ impl Visitor {
         if let Some(outer_mask) = outer_mask {
             let mask_expr = self.inv_name_set_to_mask_expr(outer_mask.set);
             let fn_tokens = &quote_spanned_vstd!(vstd, outer_mask.token.span =>
-                open spec fn outer_mask(self) -> #vstd::set::Set<vstd::prelude::int> {
+                open spec fn outer_mask(self) -> #vstd::iset::ISet<vstd::prelude::int> {
                     #mask_expr
                 }
             );
@@ -861,7 +861,7 @@ impl Visitor {
         if let Some(inner_mask) = inner_mask {
             let mask_expr = self.inv_name_set_to_mask_expr(inner_mask.set);
             let fn_tokens = &quote_spanned_vstd!(vstd, inner_mask.token.span =>
-                open spec fn inner_mask(self) -> #vstd::set::Set<vstd::prelude::int> {
+                open spec fn inner_mask(self) -> #vstd::iset::ISet<vstd::prelude::int> {
                     #mask_expr
                 }
             );

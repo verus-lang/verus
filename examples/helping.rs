@@ -6,7 +6,7 @@ use vstd::atomic::*;
 use vstd::invariant::*;
 use vstd::resource::*;
 use vstd::resource::ghost_var::*;
-use vstd::set::Set;
+use vstd::iset::ISet;
 
 verus! {
 
@@ -137,7 +137,7 @@ impl Flag {
             ensures
                 new_token@ == old_token,
 
-            outer_mask Set::<int>::full().remove(FLAG_INV),
+            outer_mask ISet::<int>::full().remove(FLAG_INV),
             inner_mask none,
         },
         requires self.wf(),

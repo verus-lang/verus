@@ -770,12 +770,12 @@ impl<X, Y, Pred: UpdatePredicate<X, Y>> AtomicUpdate<X, Y, Pred> {
     }
 
     #[rustc_diagnostic_item = "verus::vstd::atomic::AtomicUpdate::outer_mask"]
-    pub open spec fn outer_mask(self) -> Set<int> {
+    pub open spec fn outer_mask(self) -> ISet<int> {
         self.pred().outer_mask()
     }
 
     #[rustc_diagnostic_item = "verus::vstd::atomic::AtomicUpdate::inner_mask"]
-    pub open spec fn inner_mask(self) -> Set<int> {
+    pub open spec fn inner_mask(self) -> ISet<int> {
         self.pred().inner_mask()
     }
 }
@@ -812,8 +812,8 @@ pub uninterp spec fn pred_args<Pred, Args>(pred: Pred) -> Args;
 ///     open spec fn req(self, x: X)       -> bool { atomic_pre  }
 ///     open spec fn ens(self, x: X, y: Y) -> bool { atomic_post }
 ///
-///     open spec fn outer_mask(self) -> Set<int> { Eo }
-///     open spec fn inner_mask(self) -> Set<int> { Ei }
+///     open spec fn outer_mask(self) -> ISet<int> { Eo }
+///     open spec fn inner_mask(self) -> ISet<int> { Ei }
 /// }
 /// ```
 pub trait UpdatePredicate<X, Y>: Sized {
@@ -824,13 +824,13 @@ pub trait UpdatePredicate<X, Y>: Sized {
     spec fn ens(self, x: X, y: Y) -> bool;
 
     /// The outer mask of the atomic update.
-    open spec fn outer_mask(self) -> Set<int> {
-        Set::empty()
+    open spec fn outer_mask(self) -> ISet<int> {
+        ISet::empty()
     }
 
     /// The inner mask of the atomic update.
-    open spec fn inner_mask(self) -> Set<int> {
-        Set::empty()
+    open spec fn inner_mask(self) -> ISet<int> {
+        ISet::empty()
     }
 }
 

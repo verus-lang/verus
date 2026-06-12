@@ -438,8 +438,8 @@ pub struct ClientInvCarrier<'a> {
 impl logatom::MutLinearizer<IncrementOp> for ClientInvCarrier<'_> {
     type Completion = ();
 
-    open spec fn namespaces(self) -> Set<int> {
-        set![USER_INV]
+    open spec fn namespaces(self) -> ISet<int> {
+        iset![USER_INV]
     }
 
     open spec fn pre(self, op: IncrementOp) -> bool {
