@@ -128,6 +128,10 @@ pub trait ExIterator {
                 }
             };
 
+    // TODO: The Rust implementations of `all` and `any` depend on a correct implementation of `try_fold`
+    //       For now, we assume obeys_prophetic_iter_laws() entails such an implementation, but we should
+    //       eventually constrain implementations of `try_fold` to actually be correct enough to uphold the specs below.
+
     fn all<F>(&mut self, f: F) -> (r: bool)
         where Self: Sized,
             F: FnMut(Self::Item) -> bool
