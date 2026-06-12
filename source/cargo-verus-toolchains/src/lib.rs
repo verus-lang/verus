@@ -49,7 +49,7 @@ impl ToolchainList {
         let dir = dir.as_ref();
         assert!(dir.is_dir());
 
-        let mut items = vec![];
+        let mut items = Vec::<Toolchain>::new();
         for entry in std::fs::read_dir(dir).expect("read toolchain manifest directory") {
             let entry = entry.expect("read toolchain manifest directory entry");
             let path = entry.path();
@@ -65,6 +65,9 @@ impl ToolchainList {
             items.push(toolchain);
         }
 
+        // Sort entries *descending* by Verus version.
+        items.sort_by(|a, b| b.verus.cmp(&a.verus));
+
         // TODO: Validate data.
 
         ToolchainList { items }
@@ -72,10 +75,10 @@ impl ToolchainList {
 }
 
 /// A string literal.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct StrLit {
-    contents: String,
+    pub contents: String,
 }
 
 impl std::fmt::Display for StrLit {
