@@ -36,7 +36,7 @@
     - [Struct](datatypes_struct.md)
     - [Enum](datatypes_enum.md)
 - [Libraries](vstd.md)
-    - [Specification libraries: Seq, Set, Map](spec_lib.md)
+    - [Specification libraries: Seq, Set, ISet, Map, IMap](spec_lib.md)
     - [Executable libraries: Vec](exec_lib.md)
 - [Spec closures](spec_closures.md)
 - [Quantifiers](quants.md)

@@ -13,9 +13,10 @@ use crate::util::{err_span, err_span_bare};
 use crate::verus_items::{BuiltinTypeItem, VerusItem};
 use crate::{unsupported_err, unsupported_err_unless};
 use rustc_hir::{
-    Attribute, Body, BodyId, Crate, Expr, ExprKind, FnDecl, FnHeader, FnSig, Generics,
-    HeaderSafety, HirId, MaybeOwner, Param, Safety,
+    Attribute, Body, BodyId, Expr, ExprKind, FnDecl, FnHeader, FnSig, Generics, HeaderSafety,
+    HirId, MaybeOwner, Param, Safety,
 };
+use rustc_middle::hir::Crate;
 use rustc_middle::ty::{
     AdtDef, BoundRegion, BoundRegionKind, BoundVar, Clause, ClauseKind, ConstKind, GenericArg,
     GenericArgKind, GenericArgsRef, Region, RegionKind, TyCtxt, TyKind, TypingEnv, ValTreeKind,
@@ -434,9 +435,10 @@ fn check_fn_decl<'tcx>(
 
 pub(crate) fn find_body_krate<'tcx>(
     krate: &'tcx Crate<'tcx>,
+    tcx: TyCtxt<'tcx>,
     body_id: &BodyId,
 ) -> &'tcx Body<'tcx> {
-    let owner = krate.owners[body_id.hir_id.owner.def_id];
+    let owner = krate.owner(tcx, body_id.hir_id.owner.def_id);
     if let MaybeOwner::Owner(owner) = owner {
         if let Some(body) = owner.nodes.bodies.get(&body_id.hir_id.local_id) {
             return body;
@@ -446,7 +448,7 @@ pub(crate) fn find_body_krate<'tcx>(
 }
 
 pub(crate) fn find_body<'tcx>(ctxt: &ContextX<'tcx>, body_id: &BodyId) -> &'tcx Body<'tcx> {
-    find_body_krate(ctxt.krate, body_id)
+    find_body_krate(ctxt.krate, ctxt.tcx, body_id)
 }
 
 // Check for any obvious type mismatches
@@ -501,18 +503,20 @@ fn compare_external_ty_or_true<'tcx>(
         (TyKind::RawPtr(t1, m1), TyKind::RawPtr(t2, m2)) => m1 == m2 && check_t(t1, t2),
         (TyKind::Array(t1, len1), TyKind::Array(t2, len2)) => len1 == len2 && check_t(t1, t2),
         (TyKind::Adt(a1, args1), TyKind::Adt(a2, args2)) => a1 == a2 && check_args(args1, args2),
-        (TyKind::Alias(k1, t1), TyKind::Alias(k2, t2)) => {
-            if k1 != k2 {
+        (TyKind::Alias(t1), TyKind::Alias(t2)) => {
+            let k1 = t1.kind;
+            let k2 = t2.kind;
+            if std::mem::discriminant(&k1) != std::mem::discriminant(&k2) {
                 return false;
             }
-            if tcx.associated_item(t1.def_id).name() != tcx.associated_item(t2.def_id).name() {
+            if tcx.associated_item(k1.def_id()).name() != tcx.associated_item(k2.def_id()).name() {
                 return false;
             }
             if !check_args(&t1.args, &t2.args) {
                 return false;
             }
-            let trait_def1 = tcx.generics_of(t1.def_id).parent;
-            let trait_def2 = tcx.generics_of(t2.def_id).parent;
+            let trait_def1 = tcx.generics_of(k1.def_id()).parent;
+            let trait_def2 = tcx.generics_of(k2.def_id()).parent;
             match (trait_def1, trait_def2) {
                 (None, None) => true,
                 (Some(trait_def1), Some(trait_def2)) => {
@@ -654,13 +658,15 @@ fn compare_external_ty<'tcx>(
     // we recursively reach all the nested opaque types.
     else {
         match (ty1.kind(), ty2.kind()) {
-            (
-                rustc_middle::ty::TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque, al_ty1),
-                rustc_middle::ty::TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque, al_ty2),
-            ) => {
+            (rustc_middle::ty::TyKind::Alias(al_ty1), rustc_middle::ty::TyKind::Alias(al_ty2))
+                if matches!(al_ty1.kind, rustc_middle::ty::AliasTyKind::Opaque { .. })
+                    && matches!(al_ty2.kind, rustc_middle::ty::AliasTyKind::Opaque { .. }) =>
+            {
                 // two opaque types. We compare their trait bounds
-                let ty1_bounds = tcx.item_bounds(al_ty1.def_id).instantiate(tcx, al_ty1.args);
-                let ty2_bounds = tcx.item_bounds(al_ty2.def_id).instantiate(tcx, al_ty2.args);
+                let ty1_bounds =
+                    tcx.item_bounds(al_ty1.kind.def_id()).instantiate(tcx, al_ty1.args);
+                let ty2_bounds =
+                    tcx.item_bounds(al_ty2.kind.def_id()).instantiate(tcx, al_ty2.args);
                 if ty1_bounds.len() != ty2_bounds.len() {
                     return false;
                 }
@@ -2463,7 +2469,7 @@ pub(crate) fn remove_ignored_trait_bounds_from_predicates<'tcx>(
                         {
                             false
                         }
-                        ty::TyKind::Alias(_, _) if Some(tp.trait_ref.args[0]) == ex_trait_assoc => {
+                        ty::TyKind::Alias(_) if Some(tp.trait_ref.args[0]) == ex_trait_assoc => {
                             false
                         }
                         _ => true,
@@ -2710,9 +2716,9 @@ fn get_external_def_id<'tcx>(
         ExprKind::Path(qpath) => {
             use rustc_hir::def::{DefKind, Res};
             let res = types.qpath_res(&qpath, expr.hir_id);
-            if let Res::Def(DefKind::Const, def_id) = res {
+            if let Res::Def(DefKind::Const { .. }, def_id) = res {
                 (def_id, expr.hir_id, true)
-            } else if let Res::Def(DefKind::AssocConst, def_id) = res {
+            } else if let Res::Def(DefKind::AssocConst { .. }, def_id) = res {
                 (def_id, expr.hir_id, true)
             } else {
                 return err();

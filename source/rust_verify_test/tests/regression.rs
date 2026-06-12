@@ -610,37 +610,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_multiset_finite_false_1 verus_code! {
-        use vstd::{map::*, multiset::*};
-        proof fn test(mymap: Map<nat, nat>)
-            requires !mymap.dom().finite() {
-
-            let m = Multiset::from_map(mymap);
-            assert(m.dom().finite());
-
-            assert(!m.dom().finite()); // FAILS
-            // assert(false);
-        }
-    } => Err(err) => assert_one_fails(err)
-}
-
-test_verify_one_file! {
-    #[test] test_multiset_finite_false_2 verus_code! {
-        use vstd::{map::*, multiset::*};
-        proof fn test(mymap: Map<nat, nat>)
-            requires !mymap.dom().finite() {
-
-            let m = Multiset::from_map(mymap);
-            assert(m.dom().finite());
-
-            assert(m.dom() =~= mymap.dom()); // FAILS
-            // assert(!m.dom().finite());
-            // assert(false);
-        }
-    } => Err(err) => assert_one_fails(err)
-}
-
-test_verify_one_file! {
     #[test] str_len_contradiction_from_suspect_unsoundness_report verus_code! {
         use vstd::string::*;
         use vstd::seq::*;

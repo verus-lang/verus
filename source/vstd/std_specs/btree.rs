@@ -271,8 +271,7 @@ pub open spec fn btree_map_deep_view_impl<Key: DeepView, Value: DeepView, A: All
     m: BTreeMap<Key, Value, A>,
 ) -> Map<Key::V, Value::V> {
     Map::new(
-        |k: Key::V|
-            exists|orig_k: Key| #[trigger] m@.contains_key(orig_k) && k == orig_k.deep_view(),
+        m@.dom().map(|k: Key| k.deep_view()),
         |dk: Key::V|
             {
                 let k = choose|k: Key| m@.contains_key(k) && #[trigger] k.deep_view() == dk;
@@ -360,12 +359,6 @@ pub broadcast axiom fn axiom_btree_map_deepview_borrow<
         crate::relations::injective(|k: K| k.deep_view()),
     ensures
         #[trigger] contains_borrowed_key(m@, k) <==> m.deep_view().contains_key(k@),
-;
-
-/// A `Map` constructed from a `BTreeMap` is always finite.
-pub broadcast axiom fn axiom_btree_map_view_finite_dom<K, V>(m: BTreeMap<K, V>)
-    ensures
-        #[trigger] m@.dom().finite(),
 ;
 
 pub uninterp spec fn spec_btree_map_len<Key, Value, A: Allocator + Clone>(
@@ -964,7 +957,6 @@ pub broadcast group group_btree_axioms {
     axiom_maps_deref_key_to_value,
     axiom_maps_box_key_to_value,
     axiom_btree_map_deepview_borrow,
-    axiom_btree_map_view_finite_dom,
     axiom_spec_btree_map_len,
     axiom_set_box_key_removed,
     axiom_set_contains_deref_key,
