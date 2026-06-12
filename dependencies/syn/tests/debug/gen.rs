@@ -4230,14 +4230,14 @@ impl Debug for Lite<syn::Item> {
                     formatter.field("attrs", Lite(&_val.attrs));
                 }
                 formatter.field("vis", Lite(&_val.vis));
+                if _val.constness.is_some() {
+                    formatter.field("constness", &Present);
+                }
                 if _val.unsafety.is_some() {
                     formatter.field("unsafety", &Present);
                 }
                 if _val.auto_token.is_some() {
                     formatter.field("auto_token", &Present);
-                }
-                if _val.constness.is_some() {
-                    formatter.field("constness", &Present);
                 }
                 if let Some(val) = &_val.restriction {
                     #[derive(RefCast)]
@@ -4701,14 +4701,14 @@ impl Debug for Lite<syn::ItemTrait> {
             formatter.field("attrs", Lite(&self.value.attrs));
         }
         formatter.field("vis", Lite(&self.value.vis));
+        if self.value.constness.is_some() {
+            formatter.field("constness", &Present);
+        }
         if self.value.unsafety.is_some() {
             formatter.field("unsafety", &Present);
         }
         if self.value.auto_token.is_some() {
             formatter.field("auto_token", &Present);
-        }
-        if self.value.constness.is_some() {
-            formatter.field("constness", &Present);
         }
         if let Some(val) = &self.value.restriction {
             #[derive(RefCast)]

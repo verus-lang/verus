@@ -21,7 +21,7 @@ pub open spec fn frame_preserving_update<P: PCM>(a: P, b: P) -> bool {
 }
 
 /// A nondeterministic version of a [`frame_preserving_update`].
-pub open spec fn frame_preserving_update_nondeterministic<P: PCM>(a: P, bs: Set<P>) -> bool {
+pub open spec fn frame_preserving_update_nondeterministic<P: PCM>(a: P, bs: ISet<P>) -> bool {
     forall|c|
         #![trigger P::op(a, c)]
         P::op(a, c).valid() ==> exists|b| #[trigger] bs.contains(b) && P::op(b, c).valid()
@@ -40,7 +40,7 @@ pub open spec fn frame_preserving_update_opt<RA: ResourceAlgebra>(a: RA, b: RA) 
 /// A nondeterministic version of a [`frame_preserving_update_opt`].
 pub open spec fn frame_preserving_update_nondeterministic_opt<RA: ResourceAlgebra>(
     a: RA,
-    bs: Set<RA>,
+    bs: ISet<RA>,
 ) -> bool {
     forall|c|
         #![trigger Option::<RA>::op(Some(a), c)]
@@ -49,8 +49,8 @@ pub open spec fn frame_preserving_update_nondeterministic_opt<RA: ResourceAlgebr
 }
 
 /// The set of values such that can be created by composing an element of `s` with `t`.
-pub open spec fn set_op<RA: ResourceAlgebra>(s: Set<RA>, t: RA) -> Set<RA> {
-    Set::new(|v| exists|q| s.contains(q) && v == RA::op(q, t))
+pub open spec fn set_op<RA: ResourceAlgebra>(s: ISet<RA>, t: RA) -> ISet<RA> {
+    ISet::new(|v| exists|q| s.contains(q) && v == RA::op(q, t))
 }
 
 pub proof fn lemma_incl_transitive<RA: ResourceAlgebra>(a: RA, b: RA, c: RA)
@@ -77,14 +77,14 @@ pub proof fn lemma_frame_preserving_opt<RA: ResourceAlgebra>(a: RA, b: RA)
 
 pub proof fn lemma_frame_preserving_update_nondeterministic_opt<RA: ResourceAlgebra>(
     a: RA,
-    bs: Set<RA>,
+    bs: ISet<RA>,
 )
     requires
         frame_preserving_update_nondeterministic_opt::<RA>(a, bs),
     ensures
         frame_preserving_update_nondeterministic::<Option<RA>>(Some(a), bs.map(|b| Some(b))),
 {
-    broadcast use super::super::set::group_set_axioms;
+    broadcast use super::super::iset::group_iset_lemmas;
 
     let bs_mapped = bs.map(|b| Some(b));
     assert forall|c|

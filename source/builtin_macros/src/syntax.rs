@@ -648,9 +648,9 @@ impl Visitor {
 
             InvariantNameSet::Set(InvariantNameSetSet { mut expr }) => {
                 self.visit_expr_mut(&mut expr);
-
+                let typ = quote_vstd! { vstd => #vstd::iset::ISet<int> };
                 quote_spanned_builtin!(verus_builtin, expr.span() =>
-                    #verus_builtin::inv_mask_set(#expr)
+                    #verus_builtin::inv_mask_set::<_, #typ>(#expr)
                 )
             }
         }

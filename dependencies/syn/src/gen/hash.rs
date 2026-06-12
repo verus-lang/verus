@@ -2284,9 +2284,9 @@ impl Hash for crate::ItemTrait {
     {
         self.attrs.hash(state);
         self.vis.hash(state);
+        self.constness.hash(state);
         self.unsafety.hash(state);
         self.auto_token.hash(state);
-        self.constness.hash(state);
         self.restriction.hash(state);
         self.ident.hash(state);
         self.generics.hash(state);

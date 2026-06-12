@@ -24,8 +24,8 @@ use rustc_hir::{Block, BlockCheckMode, Expr, ExprKind, QPath, StmtKind};
 use rustc_middle::ty::{GenericArg, GenericArgKind, TyKind, TypingEnv};
 use rustc_mir_build_verus::verus::BodyErasure;
 use rustc_span::Span;
+use rustc_span::Spanned;
 use rustc_span::def_id::DefId;
-use rustc_span::source_map::Spanned;
 use rustc_trait_selection::infer::InferCtxtExt;
 use std::sync::Arc;
 use vir::ast::{
@@ -303,8 +303,7 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
             bctx.fun_id,
         );
 
-    let resolved_call =
-        ResolvedCall::Call(name.clone(), record_name, bctx.in_ghost, assume_external_allowed);
+    let resolved_call = ResolvedCall::Call(name.clone(), record_name, assume_external_allowed);
     record_call(bctx, expr, resolved_call);
 
     // REVIEW: The atomic function call is encoded using the following construction:
@@ -699,13 +698,13 @@ fn verus_item_to_vir<'tcx, 'a>(
                     }))
                 }
                 SpecItem::InvMaskSet => {
-                    pub fn typ_is_int_set(typ: &Typ) -> bool {
+                    fn typ_is_int_iset(typ: &Typ) -> bool {
                         // NOTE: This validation check is a little bit fuzzy on purpose, since there
                         // are some tests (e.g. `tests/core_special_setup.rs`) that import vstd as a
                         // module rather than a crate, so we need to accept either.
                         //
-                        // A user can fool this check by defining a type named "Set", and placing it
-                        // in a module called "set". This is fine however, since the inv mask is not
+                        // A user can fool this check by making a type called "ISet", and placing it
+                        // in a module named "iset". This is fine however, since the inv mask is not
                         // trusted code. A non-sensical mask simply makes the corresponding function
                         // or atomic update annoying/impossible to define/call. This check exists to
                         // help, rather than to restrict the user.
@@ -718,7 +717,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                             return false;
                         };
 
-                        if module_name.as_str() != "set" || type_name.as_str() != "Set" {
+                        if module_name.as_str() != "iset" || type_name.as_str() != "ISet" {
                             return false;
                         }
 
@@ -729,7 +728,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     record_spec_fn_pure_args_only(bctx, expr);
                     let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
                     let set_expr = expr_to_vir_consume(&bctx, args[0])?;
-                    if !typ_is_int_set(&set_expr.typ) {
+                    if !typ_is_int_iset(&set_expr.typ) {
                         return err_span(
                             args[0].span.clone(),
                             "invariant mask must be a set of ints",
@@ -3110,17 +3109,17 @@ fn record_loop_spec<'tcx>(
 
 pub(crate) fn record_call<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr, resolved_call: ResolvedCall) {
     let resolved_call = match (resolved_call, &bctx.external_trait_from_to) {
-        (ResolvedCall::Call(ufun, rfun, in_ghost, ae), Some(paths)) if paths.2.is_some() => {
+        (ResolvedCall::Call(ufun, rfun, ae), Some(paths)) if paths.2.is_some() => {
             let (from_path, _to_path, to_spec_path) = &**paths;
             use vir::traits::rewrite_fun;
             let ufun = rewrite_fun(from_path, to_spec_path.as_ref().unwrap(), &ufun);
             let rfun = rewrite_fun(from_path, to_spec_path.as_ref().unwrap(), &rfun);
-            ResolvedCall::Call(ufun, rfun, in_ghost, ae)
+            ResolvedCall::Call(ufun, rfun, ae)
         }
         (resolved_call, _) => resolved_call,
     };
     let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-    erasure_info.resolved_calls.push((expr.hir_id, expr.span.data(), resolved_call));
+    erasure_info.resolved_calls.push((expr.hir_id, expr.span.data(), resolved_call, bctx.in_ghost));
 }
 
 /// Remove two-phaseness from the root node of the given expression, if applicable.

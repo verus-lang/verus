@@ -380,6 +380,38 @@ test_both! {
     } => Err(err) => assert_vir_error_msg(err, "invariant block might exit early")
 }
 
+test_verify_one_file! {
+    #[test] into_inner_atomic verus_code! {
+        use vstd::invariant::*;
+        pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<AtomicInvariant<A, u8, B>>, Tracked(j): Tracked<AtomicInvariant<A, u8, B>>)
+            requires
+                i.inv(0),
+        {
+          open_atomic_invariant!(&i => inner => {
+              proof {
+                  j.into_inner(); // FAILS
+              }
+          });
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] into_inner_local verus_code! {
+        use vstd::invariant::*;
+        pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<LocalInvariant<A, u8, B>>, Tracked(j): Tracked<LocalInvariant<A, u8, B>>)
+            requires
+                i.inv(0),
+        {
+          open_local_invariant!(&i => inner => {
+              proof {
+                  j.into_inner();
+              }
+          });
+        }
+    } => Ok(())
+}
+
 // Check that we can't open an AtomicInvariant with open_local_invariant and vice-versa
 
 test_verify_one_file! {
@@ -816,7 +848,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] opens_invariants_set verus_code!{
         use vstd::invariant::*;
-        use vstd::set::*;
+        use vstd::iset::*;
 
         struct P {}
         impl InvariantPredicate<(), ()> for P {
@@ -827,7 +859,7 @@ test_verify_one_file! {
                    tracked credit2: OpenInvariantCredit,
                    tracked inv1: AtomicInvariant<(), (), P>,
                    tracked inv2: AtomicInvariant<(), (), P>,
-                   s: Set<int>)
+                   s: ISet<int>)
             requires
                 !s.contains(inv1.namespace()),
                 !s.contains(inv2.namespace()),
@@ -843,7 +875,7 @@ test_verify_one_file! {
             });
         }
 
-        proof fn b(s: Set<int>)
+        proof fn b(s: ISet<int>)
             opens_invariants s
         {
         }
@@ -853,7 +885,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] opens_invariants_set_fails verus_code!{
         use vstd::invariant::*;
-        use vstd::set::*;
+        use vstd::iset::*;
 
         struct P {}
         impl InvariantPredicate<(), ()> for P {
@@ -862,7 +894,7 @@ test_verify_one_file! {
 
         proof fn a(tracked credit: OpenInvariantCredit,
                    tracked inv: AtomicInvariant<(), (), P>,
-                   s: Set<int>)
+                   s: ISet<int>)
             opens_invariants
                 any
         {
@@ -871,7 +903,7 @@ test_verify_one_file! {
             });
         }
 
-        proof fn b(s: Set<int>)
+        proof fn b(s: ISet<int>)
             opens_invariants s
         {
         }
@@ -924,7 +956,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] local_inv_lifetime_checking3 verus_code!{
+    #[test] local_inv_lifetime_checking3 verus_code!{
         use vstd::prelude::*;
         use vstd::invariant::*;
 
@@ -935,7 +967,8 @@ test_verify_one_file! {
             closed spec fn inv(k: (), v: X) -> bool { true }
         }
 
-        fn consume_and_never<A>(a: A) -> ! { }
+        #[verifier::exec_allows_no_decreases_clause]
+        fn consume_and_never<A>(a: A) -> ! { loop { } }
 
         fn hello(Tracked(l): Tracked<LocalInvariant<(), X, P>>) {
             open_local_invariant!(&l => i => {
@@ -967,4 +1000,34 @@ test_verify_one_file! {
             });
         }
     } => Err(err) => assert_rust_error_msg(err, "cannot move out of `l` because it is borrowed")
+}
+
+test_verify_one_file! {
+    #[test] local_inv_lifetime_checking5 verus_code!{
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+
+        tracked struct X { u: u64 }
+
+        struct P {}
+        impl InvariantPredicate<(), X> for P {
+            closed spec fn inv(k: (), v: X) -> bool { true }
+        }
+
+        proof fn consume<A>(tracked a: A) { }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn never_return() -> !
+            opens_invariants none
+            no_unwind
+        { loop { } }
+
+        #[allow(unreachable_code)]
+        fn hello(Tracked(l): Tracked<LocalInvariant<(), X, P>>, tracked x1: X) {
+            open_local_invariant!(&l => i => {
+                never_return();
+                proof { consume(x1); consume(x1); }
+            });
+        }
+    } => Ok(())
 }

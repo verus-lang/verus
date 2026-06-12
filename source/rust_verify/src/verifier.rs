@@ -1,5 +1,5 @@
 use crate::boundary_suggestions::build_boundary_suggestion;
-use crate::commands::{Op, OpGenerator, OpKind, QueryOp, Style};
+use crate::commands::{OpGenerator, OpKind, QueryOp, Style};
 use crate::config::{Args, CargoVerusArgs, ShowTriggers};
 use crate::context::{ContextX, ErasureInfo};
 use crate::debugger::Debugger;
@@ -467,6 +467,18 @@ pub(crate) enum VerifyErr {
 impl From<VirErr> for VerifyErr {
     fn from(err: VirErr) -> Self {
         VerifyErr::Vir(err)
+    }
+}
+
+/// A titled group of AIR commands.
+struct CommandBatch {
+    title: String,
+    commands: Commands,
+}
+
+impl CommandBatch {
+    fn new(title: impl Into<String>, commands: Commands) -> Self {
+        CommandBatch { title: title.into(), commands }
     }
 }
 
@@ -994,19 +1006,18 @@ impl Verifier {
         }
     }
 
-    fn run_commands(
+    fn run_command_batch(
         &mut self,
         bucket_id: &BucketId,
         diagnostics: &impl air::messages::Diagnostics,
         air_context: &mut air::context::Context,
-        commands: &Vec<Command>,
-        comment: &str,
+        batch: &CommandBatch,
     ) {
-        if commands.len() > 0 {
+        if batch.commands.len() > 0 {
             air_context.blank_line();
-            air_context.comment(comment);
+            air_context.comment(&batch.title);
         }
-        for command in commands.iter() {
+        for command in batch.commands.iter() {
             let time0 = Instant::now();
             Self::check_internal_result(air_context.command(
                 &vir::messages::VirMessageInterface {},
@@ -1018,6 +1029,18 @@ impl Verifier {
 
             let bucket_time = self.bucket_stats.get_mut(bucket_id).expect("bucket time not found");
             bucket_time.time_air += time1 - time0;
+        }
+    }
+
+    fn run_command_batches(
+        &mut self,
+        bucket_id: &BucketId,
+        diagnostics: &impl air::messages::Diagnostics,
+        air_context: &mut air::context::Context,
+        batches: &[CommandBatch],
+    ) {
+        for batch in batches {
+            self.run_command_batch(bucket_id, diagnostics, air_context, batch);
         }
     }
 
@@ -1132,6 +1155,7 @@ impl Verifier {
         is_rerun: bool,
         prelude_config: vir::prelude::PreludeConfig,
         profile_file_name: Option<&std::path::PathBuf>,
+        prover_choice: vir::def::ProverChoice,
     ) -> Result<air::context::Context, VirErr> {
         let mut air_context =
             air::context::Context::new(message_interface.clone(), self.args.solver);
@@ -1200,25 +1224,26 @@ impl Verifier {
             air_context.set_smt_transcript_log(Box::new(file));
         }
 
-        // air_recommended_options causes AIR to apply a preset collection of Z3 options
-        air_context.set_z3_param("air_recommended_options", "true");
+        // A by(bit_vector) query is self-contained, so it runs prelude-free: it omits the
+        // recommended-options preset, the prelude, and the bucket background.
+        let bitvector = prover_choice == vir::def::ProverChoice::BitVector;
+        if !bitvector {
+            air_context.set_z3_param("air_recommended_options", "true");
+        }
         self.set_default_rlimit(&mut air_context);
         for (option, value) in self.args.smt_options.iter() {
             air_context.set_z3_param(&option, &value);
         }
-        if self.args.axiom_usage_info {
-            air_context.enable_usage_info();
-        }
-
-        air_context.blank_line();
-        air_context.comment("Prelude");
-        for command in ctx.prelude(prelude_config).iter() {
-            Self::check_internal_result(air_context.command(
-                &*message_interface,
+        if !bitvector {
+            if self.args.axiom_usage_info {
+                air_context.enable_usage_info();
+            }
+            self.run_command_batch(
+                bucket_id,
                 diagnostics,
-                &command,
-                Default::default(),
-            ));
+                &mut air_context,
+                &CommandBatch::new("Prelude", ctx.prelude(prelude_config)),
+            );
         }
 
         air_context.blank_line();
@@ -1227,106 +1252,62 @@ impl Verifier {
         Ok(air_context)
     }
 
+    /// Per-query SMT tuning options.
+    fn apply_per_query_smt_options(
+        &self,
+        air_context: &mut air::context::Context,
+        prover_choice: vir::def::ProverChoice,
+    ) {
+        match prover_choice {
+            vir::def::ProverChoice::BitVector => {
+                // A prelude-free by(bit_vector) query carries no per-query
+                // options: solver defaults work well.
+                //
+                // TODO: tune Z3/CVC5 options for bit-vector queries
+            }
+            vir::def::ProverChoice::Nonlinear => match self.args.solver {
+                air::context::SmtSolver::Z3 => air_context.set_z3_param("smt.arith.solver", "6"),
+                // TODO: What cvc5 settings would help here?
+                air::context::SmtSolver::Cvc5 => {}
+            },
+            vir::def::ProverChoice::DefaultProver | vir::def::ProverChoice::Singular => {}
+        }
+    }
+
     fn new_air_context_with_bucket_context<'m>(
         &mut self,
         message_interface: Arc<dyn air::messages::MessageInterface>,
         ctx: &vir::context::Ctx,
         diagnostics: &impl air::messages::Diagnostics,
         bucket_id: &BucketId,
-        function_path: &vir::ast::Path,
-        trait_decl_commands: Commands,
-        datatype_commands: Commands,
-        assoc_type_decl_commands: Commands,
-        trait_type_bounds_commands: Commands,
-        assoc_type_impl_commands: Commands,
-        function_decl_commands: Arc<Vec<(Commands, String)>>,
-        ops: &Vec<Op>,
+        query_function_path_counter: Option<(&vir::ast::Path, usize)>,
+        bucket_context: &[CommandBatch],
         is_rerun: bool,
-        context_counter: usize,
         span: &vir::messages::Span,
         profile_file_name: Option<&std::path::PathBuf>,
         spinoff_reason: &str,
+        prover_choice: vir::def::ProverChoice,
     ) -> Result<air::context::Context, VirErr> {
         let mut air_context = self.new_air_context_with_prelude(
             ctx,
             message_interface.clone(),
             diagnostics,
             bucket_id,
-            Some((function_path, context_counter)),
+            query_function_path_counter,
             is_rerun,
             PreludeConfig { arch_word_bits: ctx.arch_word_bits, solver: self.args.solver },
             profile_file_name,
+            prover_choice,
         )?;
 
         // Write the span of spun-off query
         air_context.comment(&span.as_string);
         air_context.blank_line();
         air_context.comment(&format!("query spun off because: {}", spinoff_reason));
-        air_context.blank_line();
-        air_context.comment("Fuel");
-        for command in ctx.fuel().iter() {
-            Self::check_internal_result(air_context.command(
-                &*message_interface,
-                diagnostics,
-                &command,
-                Default::default(),
-            ));
-        }
 
-        // set up bucket context
-        self.run_commands(
-            bucket_id,
-            diagnostics,
-            &mut air_context,
-            &trait_decl_commands,
-            "Trait-Decls",
-        );
-        self.run_commands(
-            bucket_id,
-            diagnostics,
-            &mut air_context,
-            &assoc_type_decl_commands,
-            "Associated-Type-Decls",
-        );
-        self.run_commands(
-            bucket_id,
-            diagnostics,
-            &mut air_context,
-            &datatype_commands,
-            "Datatypes",
-        );
-        self.run_commands(
-            bucket_id,
-            diagnostics,
-            &mut air_context,
-            &trait_type_bounds_commands,
-            "Trait-Bounds",
-        );
-        self.run_commands(
-            bucket_id,
-            diagnostics,
-            &mut air_context,
-            &assoc_type_impl_commands,
-            "Associated-Type-Impls",
-        );
-        for commands in &*function_decl_commands {
-            self.run_commands(bucket_id, diagnostics, &mut air_context, &commands.0, &commands.1);
-        }
-        for op in ops.iter() {
-            match &op.kind {
-                OpKind::Context(_context_op, commands) => {
-                    self.run_commands(
-                        bucket_id,
-                        diagnostics,
-                        &mut air_context,
-                        commands,
-                        &op.to_air_comment(),
-                    );
-                }
-                OpKind::Query { .. } => {
-                    panic!("should have only got Context ops");
-                }
-            }
+        // set up bucket context (skipped for a prelude-free bit_vector query)
+        if prover_choice != vir::def::ProverChoice::BitVector {
+            self.run_command_batches(bucket_id, diagnostics, &mut air_context, bucket_context);
         }
 
         Ok(air_context)
@@ -1373,6 +1354,7 @@ impl Verifier {
             false,
             PreludeConfig { arch_word_bits: ctx.arch_word_bits, solver: self.args.solver },
             profile_all_file_name.as_ref(),
+            vir::def::ProverChoice::DefaultProver,
         )?;
         if self.args.solver_version_check {
             air_context.set_expected_solver_version(match self.args.solver {
@@ -1389,79 +1371,43 @@ impl Verifier {
         };
 
         let module = &ctx.module_path();
-        air_context.blank_line();
-        air_context.comment("Fuel");
-        for command in ctx.fuel().iter() {
-            Self::check_internal_result(air_context.command(
-                &*message_interface,
-                reporter,
-                &command,
-                Default::default(),
-            ));
-        }
 
-        let trait_decl_commands = vir::traits::trait_decls_to_air(ctx, &krate);
-        self.run_commands(
-            bucket_id,
-            reporter,
-            &mut air_context,
-            &trait_decl_commands,
-            "Trait-Decls",
-        );
+        // Bucket context.
+        //
+        // Inserted into the main context, but also stored so the identical
+        // context can be used for spinoff queries.  Extended as context ops are
+        // encountered below.
+        let mut bucket_context = vec![
+            CommandBatch::new("Fuel", ctx.fuel()),
+            CommandBatch::new("Trait-Decls", vir::traits::trait_decls_to_air(ctx, &krate)),
+            CommandBatch::new(
+                "Associated-Type-Decls",
+                vir::assoc_types_to_air::assoc_type_decls_to_air(ctx, &krate.traits),
+            ),
+            CommandBatch::new(
+                "Datatypes",
+                vir::datatype_to_air::datatypes_and_primitives_to_air(
+                    ctx,
+                    &krate
+                        .datatypes
+                        .iter()
+                        .filter(|d| is_visible_to(&d.x.visibility, module))
+                        .cloned()
+                        .collect(),
+                ),
+            ),
+            CommandBatch::new("Trait-Bounds", vir::traits::trait_bound_axioms(ctx, &krate.traits)),
+            CommandBatch::new(
+                "Associated-Type-Impls",
+                vir::assoc_types_to_air::assoc_type_impls_to_air(ctx, &krate.assoc_type_impls),
+            ),
+            CommandBatch::new(
+                "Opaque-Type-Constructors",
+                vir::opaque_type_to_air::opaque_types_to_air(ctx, &krate.opaque_types),
+            ),
+        ];
 
-        let assoc_type_decl_commands =
-            vir::assoc_types_to_air::assoc_type_decls_to_air(ctx, &krate.traits);
-        self.run_commands(
-            bucket_id,
-            reporter,
-            &mut air_context,
-            &assoc_type_decl_commands,
-            "Associated-Type-Decls",
-        );
-
-        let datatype_commands = vir::datatype_to_air::datatypes_and_primitives_to_air(
-            ctx,
-            &krate
-                .datatypes
-                .iter()
-                .filter(|d| is_visible_to(&d.x.visibility, module))
-                .cloned()
-                .collect(),
-        );
-        self.run_commands(bucket_id, reporter, &mut air_context, &datatype_commands, "Datatypes");
-
-        let trait_type_bounds_commands = vir::traits::trait_bound_axioms(ctx, &krate.traits);
-        self.run_commands(
-            bucket_id,
-            reporter,
-            &mut air_context,
-            &trait_type_bounds_commands,
-            "Trait-Bounds",
-        );
-
-        let assoc_type_impl_commands =
-            vir::assoc_types_to_air::assoc_type_impls_to_air(ctx, &krate.assoc_type_impls);
-        self.run_commands(
-            bucket_id,
-            reporter,
-            &mut air_context,
-            &assoc_type_impl_commands,
-            "Associated-Type-Impls",
-        );
-
-        // Declare opaque type defs
-        let opaque_type_impl_commands =
-            vir::opaque_type_to_air::opaque_types_to_air(ctx, &krate.opaque_types);
-        self.run_commands(
-            bucket_id,
-            reporter,
-            &mut air_context,
-            &opaque_type_impl_commands,
-            "Opaque-Type-Constructors",
-        );
-
-        let mut function_decl_commands = vec![];
-
+        // Function declarations and their proof notes.
         let func_to_requires_proof_notes =
             HashMap::from_iter(krate.functions.iter().map(|function| {
                 (
@@ -1469,8 +1415,6 @@ impl Verifier {
                     vir::sst_util::func_collect_requires_proof_notes(function),
                 )
             }));
-
-        // Declare the function symbols
         for function in &krate.functions {
             let obligation_proof_notes = vir::sst_util::func_collect_obligation_proof_notes(
                 function,
@@ -1483,18 +1427,16 @@ impl Verifier {
 
             ctx.fun = vir::ast_to_sst_func::mk_fun_ctx(function, false);
             let commands = vir::sst_to_air_func::func_name_to_air(ctx, reporter, function)?;
-            let comment =
-                "Function-Decl ".to_string() + &fun_as_friendly_rust_name(&function.x.name);
-            self.run_commands(bucket_id, reporter, &mut air_context, &commands, &comment);
-            function_decl_commands.push((commands.clone(), comment.clone()));
+            let title = "Function-Decl ".to_string() + &fun_as_friendly_rust_name(&function.x.name);
+            bucket_context.push(CommandBatch::new(title, commands));
         }
         ctx.fun = None;
 
-        let function_decl_commands = Arc::new(function_decl_commands);
+        // Insert initial bucket context.
+        self.run_command_batches(bucket_id, reporter, &mut air_context, &bucket_context);
 
         let bucket = self.get_bucket(bucket_id);
         let mut opgen = OpGenerator::new(ctx, krate, bucket.clone());
-        let mut all_context_ops = vec![];
         while let Some(mut function_opgen) = opgen.next()? {
             let diagnostics_to_report: std::cell::RefCell<
                 Option<PanicOnDropVec<(Message, MessageLevel)>>,
@@ -1539,14 +1481,9 @@ impl Verifier {
                 };
                 match &op.kind {
                     OpKind::Context(_context_op, commands) => {
-                        self.run_commands(
-                            bucket_id,
-                            reporter,
-                            &mut air_context,
-                            commands,
-                            &op.to_air_comment(),
-                        );
-                        all_context_ops.push(op);
+                        let batch = CommandBatch::new(op.to_air_comment(), commands.clone());
+                        self.run_command_batch(bucket_id, reporter, &mut air_context, &batch);
+                        bucket_context.push(batch);
                     }
                     OpKind::Query {
                         query_op,
@@ -1635,24 +1572,23 @@ impl Verifier {
                                     function_opgen.ctx(),
                                     reporter,
                                     bucket_id,
-                                    &(function.x.name).path,
-                                    trait_decl_commands.clone(),
-                                    datatype_commands.clone(),
-                                    assoc_type_decl_commands.clone(),
-                                    trait_type_bounds_commands.clone(),
-                                    assoc_type_impl_commands.clone(),
-                                    function_decl_commands.clone(),
-                                    &all_context_ops,
+                                    Some((&(function.x.name).path, spinoff_context_counter)),
+                                    &bucket_context,
                                     is_recommend,
-                                    spinoff_context_counter,
                                     &cmds.context.span,
                                     profile_file_name.as_ref(),
                                     spinoff_reason,
+                                    cmds.prover_choice,
                                 )?;
                                 // for bitvector, only one query, no push/pop
                                 if cmds.prover_choice == vir::def::ProverChoice::BitVector {
-                                    spinoff_z3_context.disable_incremental_solving();
+                                    spinoff_z3_context.set_single_check_query();
                                 }
+                                // Apply prover-specific SMT tuning.
+                                self.apply_per_query_smt_options(
+                                    &mut spinoff_z3_context,
+                                    cmds.prover_choice,
+                                );
                                 spinoff_context_counter += 1;
                                 &mut spinoff_z3_context
                             } else {
@@ -2676,21 +2612,15 @@ impl Verifier {
         }
 
         self.air_no_span = {
-            let no_span = tcx
-                .hir_crate(())
-                .owners
-                .iter()
-                .filter_map(|oi| {
-                    oi.as_owner().as_ref().and_then(|o| {
-                        if let OwnerNode::Crate(c) = o.node() {
-                            Some(c.spans.inner_span)
-                        } else {
-                            None
-                        }
-                    })
-                })
-                .next()
-                .expect("OwnerNode::Crate missing");
+            let hir_crate = tcx.hir_crate(());
+            let no_span = {
+                let crate_owner = hir_crate.owner(tcx, rustc_span::def_id::CRATE_DEF_ID);
+                let owner_info = crate_owner.as_owner().expect("OwnerNode::Crate missing");
+                let OwnerNode::Crate(c) = owner_info.node() else {
+                    panic!("OwnerNode::Crate missing");
+                };
+                c.spans.inner_span
+            };
             Some(vir::messages::Span {
                 raw_span: crate::spans::to_raw_span(no_span),
                 id: 0,
@@ -3125,10 +3055,9 @@ pub(crate) static BODY_HIR_ID_TO_REVEAL_PATH_RES: std::sync::RwLock<
     >,
 > = std::sync::RwLock::new(None);
 
-fn hir_crate<'tcx>(tcx: TyCtxt<'tcx>, _: ()) -> rustc_hir::Crate<'tcx> {
-    let mut crate_ = (rustc_interface::DEFAULT_QUERY_PROVIDERS.queries.hir_crate)(tcx, ());
-    crate::hir_hide_reveal_rewrite::hir_hide_reveal_rewrite(&mut crate_, tcx);
-    crate_
+fn hir_crate<'tcx>(tcx: TyCtxt<'tcx>, _: ()) -> rustc_middle::hir::Crate<'tcx> {
+    let crate_ = (rustc_interface::DEFAULT_QUERY_PROVIDERS.queries.hir_crate)(tcx, ());
+    crate::hir_hide_reveal_rewrite::hir_hide_reveal_rewrite(crate_, tcx)
 }
 
 impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
@@ -3171,6 +3100,15 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
 
                 providers.queries.mir_borrowck =
                     |tcx, _local_def_id| Ok(tcx.arena.alloc(Default::default()));
+
+                providers.queries.type_of_opaque = |tcx, def_id| {
+                    let ty = (rustc_interface::DEFAULT_QUERY_PROVIDERS.queries.type_of_opaque)(
+                        tcx, def_id,
+                    );
+                    ty.map_bound(|ty| {
+                        crate::rust_to_vir_base::hack_fix_no_lifetime_opaque_ty_issue2541(tcx, ty)
+                    })
+                };
             });
         } else {
             config.override_queries = Some(|_session, providers| {

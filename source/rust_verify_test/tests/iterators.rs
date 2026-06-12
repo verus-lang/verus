@@ -4,6 +4,66 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
+    #[test] mut_ref_forwarding verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        pub fn next_test<I: Iterator>(i: &mut I)
+            requires
+                i.obeys_prophetic_iter_laws(),
+                i.will_return_none(),
+            ensures
+                // TODO: The number of operators needed here is unfortunate
+                (&(*final(i))).obeys_prophetic_iter_laws(),
+                (&(*final(i))).will_return_none(),
+        {
+            i.next();
+
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] range_works verus_code! {
+        use vstd::prelude::*;
+
+        fn test()
+        {
+            let mut v = vec![];
+            for i in iter: 0..4
+            invariant
+                v.len() == iter.index(),
+                iter.index() <= 4,
+            {
+                assert(i < 4);
+                v.push(i);
+            }
+            assert(v.len() == 4);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] range_inclusive_works verus_code! {
+        use vstd::prelude::*;
+
+        fn test()
+        {
+            let mut v = vec![];
+            for i in iter: 0..=4
+            invariant
+                v.len() == iter.index(),
+                i <= 5,
+            {
+                assert(i <= 4);
+                v.push(i);
+            }
+            assert(v.len() == 5);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] collect_works verus_code! {
         use vstd::prelude::*;
 
@@ -18,6 +78,83 @@ test_verify_one_file! {
             let y: Vec<u32> = vec![1, 2, 3, 4];
             let z: Vec<u32> = y.into_iter().rev().rev().collect();
             assert(z@ == y@);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] find_works verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        fn test(v: Vec<u32>)
+        {
+            let v_result = v.into_iter().find(
+                |i| -> (ret: bool)
+                ensures ret == (*i < 10)
+                {*i < 10}
+            );
+            if let Some(i) = v_result {
+                assert(i < 10);
+            } else {
+                assert(forall |i| 0 <= i < v.len() ==> v[i] >= 10);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] all_works verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        fn test(v: Vec<u32>)
+        {
+            let mut it = v.into_iter();
+            let ghost g = it;
+            let v_result = it.all(
+                |i: u32| -> (ret: bool)
+                    ensures ret == (i < 10)
+                {i < 10}
+            );
+            if v_result {
+                // If `all` returned true, every element was below 10.
+                assert(forall |i| 0 <= i < v.len() ==> v[i] < 10);
+            } else {
+                // If `all` returned false, at least one element was >= 10.
+                // The witness is the (consumed) element that failed the predicate.
+                let ghost idx = g.remaining().len() - it.remaining().len() - 1;
+                assert(0 <= idx < v.len() && v[idx] >= 10);
+                assert(exists |i| 0 <= i < v.len() && v[i] >= 10);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] any_works verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        fn test(v: Vec<u32>)
+        {
+            let mut it = v.into_iter();
+            let ghost g = it;
+            let v_result = it.any(
+                |i: u32| -> (ret: bool)
+                    ensures ret == (i < 10)
+                {i < 10}
+            );
+            if v_result {
+                // If `any` returned true, at least one element was below 10.
+                // The witness is the (consumed) element that satisfied the predicate.
+                let ghost idx = g.remaining().len() - it.remaining().len() - 1;
+                assert(0 <= idx < v.len() && v[idx] < 10);
+                assert(exists |i| 0 <= i < v.len() && v[i] < 10);
+            } else {
+                // If `any` returned false, every element was >= 10.
+                assert(forall |i| 0 <= i < v.len() ==> v[i] >= 10);
+            }
         }
     } => Ok(())
 }

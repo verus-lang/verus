@@ -19,6 +19,27 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] while_let_loop verus_code! {
+        enum MaybeU64 {
+            Some(u64),
+            None,
+        }
+
+        fn test1() {
+            let mut i: u64 = 0;
+            while let MaybeU64::Some(x) = if i < 1 { MaybeU64::Some(i) } else { MaybeU64::None }
+                invariant i <= 1
+                decreases 1 - i
+            {
+                assert(x == i);
+                i = i + 1;
+            }
+            assert(i <= 1);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] basic_while_fail1 verus_code! {
         fn test1() {
             let mut i = 0;
@@ -1843,4 +1864,18 @@ test_verify_one_file! {
           result
       }
   } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_for_loop_with_pattern_binding_issue2495 verus_code! {
+        use vstd::prelude::*;
+        fn foo(v: &Vec<(u32, u32)>) {
+            for (a, b) in iter: v
+                invariant iter.index() >= 0,
+            {
+                assert(iter.seq()[iter.index()].0 == a);
+                assert(iter.seq()[iter.index()].1 == b);
+            }
+        }
+    } => Ok(())
 }

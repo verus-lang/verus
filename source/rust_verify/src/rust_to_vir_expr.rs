@@ -91,8 +91,8 @@ use rustc_middle::ty::{
 };
 use rustc_mir_build_verus::verus::BodyErasure;
 use rustc_span::Span;
+use rustc_span::Spanned;
 use rustc_span::def_id::DefId;
-use rustc_span::source_map::Spanned;
 use std::sync::Arc;
 use vir::ast::{
     ArithOp, ArmX, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp, BoundsCheck, CallTarget,
@@ -501,7 +501,7 @@ pub(crate) fn patexpr_to_vir<'tcx>(
         PatExprKind::Path(qpath) => {
             let res = bctx.types.qpath_res(&qpath, pat_expr.hir_id);
             match res {
-                Res::Def(DefKind::Const, id) => {
+                Res::Def(DefKind::Const { is_type_const: _ }, id) => {
                     let node_substs = bctx.types.node_args(pat_expr.hir_id);
                     let x = const_var_to_vir(bctx, None, id, node_substs, &pat_expr.hir_id, span)?;
                     let expr = bctx.spanned_typed_new(pat.span, &pat_typ, x.x.clone());
@@ -576,7 +576,7 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
     );
     let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
     let resolved_call = ResolvedCall::Ctor(vir_path.clone(), variant_name.clone());
-    erasure_info.resolved_calls.push((expr.hir_id, fun_span.data(), resolved_call));
+    erasure_info.resolved_calls.push((expr.hir_id, fun_span.data(), resolved_call, bctx.in_ghost));
     let exprx = ExprX::Ctor(Dt::Path(vir_path), variant_name, vir_fields, None);
     Ok(bctx.spanned_typed_new(expr.span, &expr_typ, exprx))
 }
@@ -1759,8 +1759,11 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
         Adjust::Pointer(_cast) => {
             unsupported_err!(expr.span, "casting a pointer (here the cast is implicit)")
         }
-        Adjust::ReborrowPin(_mut) => {
-            unsupported_err!(expr.span, "reborrowing a pinned reference")
+        Adjust::Deref(DerefAdjustKind::Pin) => {
+            unsupported_err!(expr.span, "automatic deref of a pinned reference")
+        }
+        Adjust::Borrow(AutoBorrow::Pin(_)) => {
+            unsupported_err!(expr.span, "borrowing a pinned reference")
         }
     }
 }
@@ -2104,6 +2107,43 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         mk_expr(ExprX::Const(c))
     };
 
+    let cond_let_expr_to_vir_match = |cond: &Expr<'tcx>,
+                                      lhs_body,
+                                      lhs_span,
+                                      rhs_body,
+                                      rhs_span|
+     -> Result<ExprX, VirErr> {
+        let ExprKind::Let(LetExpr { pat, init: expr, .. }) = &cond.kind else {
+            panic!("Expected let expression");
+        };
+        // if let
+        let vir_place = expr_to_vir_place(bctx, expr)?;
+        let vir_place = simplify_place_by_cancelling(&vir_place);
+        let mut vir_arms: Vec<vir::ast::Arm> = Vec::new();
+        /* lhs */
+        {
+            let pattern = pattern_to_vir(bctx, pat)?;
+            let guard =
+                bctx.spanned_typed_new(expr.span, &bool_typ(), ExprX::Const(Constant::Bool(true)));
+            let vir_arm = ArmX { pattern, guard, body: lhs_body };
+            vir_arms.push(bctx.spanned_new(lhs_span, vir_arm));
+        }
+        /* rhs */
+        {
+            let pat_typ = vir_arms[0].x.pattern.typ.clone();
+            let pattern = bctx.spanned_typed_new(cond.span, &pat_typ, PatternX::Wildcard(false));
+            {
+                let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+                erasure_info.hir_vir_ids.push((cond.hir_id, pattern.span.id));
+            }
+            let guard =
+                bctx.spanned_typed_new(expr.span, &bool_typ(), ExprX::Const(Constant::Bool(true)));
+            let vir_arm = ArmX { pattern, guard, body: rhs_body };
+            vir_arms.push(bctx.spanned_new(rhs_span, vir_arm));
+        }
+        Ok(ExprX::Match(vir_place, Arc::new(vir_arms)))
+    };
+
     let expr_attrs = bctx.ctxt.tcx.hir_attrs(expr.hir_id);
     let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;
     if expr_vattrs.truncate {
@@ -2380,6 +2420,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             expr.hir_id,
                             fun.span.data(),
                             resolved_call,
+                            bctx.in_ghost,
                         ));
                     }
 
@@ -2811,7 +2852,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         expr.span,
                     )?))
                 }
-                (Res::Def(DefKind::AssocConst, id), _) => {
+                (Res::Def(DefKind::AssocConst { is_type_const: _ }, id), _) => {
                     if let Some(vir_expr) =
                         int_intrinsic_constant_to_vir(&bctx.ctxt, expr.span, &expr_typ()?, id)
                     {
@@ -2820,6 +2861,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             expr.hir_id,
                             expr.span.data(),
                             ResolvedCall::CompilableOperator(CompilableOperator::IntIntrinsic),
+                            bctx.in_ghost,
                         ));
                         return Ok(ExprOrPlace::Expr(vir_expr));
                     } else {
@@ -2835,7 +2877,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         Ok(ExprOrPlace::Expr(e))
                     }
                 }
-                (Res::Def(DefKind::Const, id), _) => {
+                (Res::Def(DefKind::Const { is_type_const: _ }, id), _) => {
                     let node_substs = bctx.types.node_args(expr.hir_id);
                     let e = const_var_to_vir(
                         bctx,
@@ -2951,46 +2993,22 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::If(cond, lhs, rhs) => {
             let cond = cond.peel_drop_temps();
             match cond.kind {
-                ExprKind::Let(LetExpr { pat, init: expr, ty: _, span: _, recovered: _ }) => {
-                    // if let
-                    let vir_place = expr_to_vir_place(bctx, expr)?;
-                    let vir_place = simplify_place_by_cancelling(&vir_place);
-                    let mut vir_arms: Vec<vir::ast::Arm> = Vec::new();
-                    /* lhs */
-                    {
-                        let pattern = pattern_to_vir(bctx, pat)?;
-                        let guard = bctx.spanned_typed_new(
-                            expr.span,
-                            &bool_typ(),
-                            ExprX::Const(Constant::Bool(true)),
-                        );
-                        let body = expr_to_vir_consume(bctx, &lhs)?;
-                        let vir_arm = ArmX { pattern, guard, body };
-                        vir_arms.push(bctx.spanned_new(lhs.span, vir_arm));
-                    }
-                    /* rhs */
-                    {
-                        let pat_typ = vir_arms[0].x.pattern.typ.clone();
-                        let pattern =
-                            bctx.spanned_typed_new(cond.span, &pat_typ, PatternX::Wildcard(false));
-                        {
-                            let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-                            erasure_info.hir_vir_ids.push((cond.hir_id, pattern.span.id));
-                        }
-                        let guard = bctx.spanned_typed_new(
-                            expr.span,
-                            &bool_typ(),
-                            ExprX::Const(Constant::Bool(true)),
-                        );
-                        let body = if let Some(rhs) = rhs {
-                            expr_to_vir_consume(bctx, &rhs)?
-                        } else {
-                            mk_expr(ExprX::Block(Arc::new(Vec::new()), None))?.expect_expr()
-                        };
-                        let vir_arm = ArmX { pattern, guard, body };
-                        vir_arms.push(bctx.spanned_new(lhs.span, vir_arm));
-                    }
-                    mk_expr(ExprX::Match(vir_place, Arc::new(vir_arms)))
+                ExprKind::Let(_) => {
+                    let (rhs_vir, rhs_span) = if let Some(rhs) = rhs {
+                        (expr_to_vir_consume(bctx, &rhs)?, rhs.span)
+                    } else {
+                        (
+                            mk_expr(ExprX::Block(Arc::new(Vec::new()), None))?.expect_expr(),
+                            cond.span,
+                        )
+                    };
+                    mk_expr(cond_let_expr_to_vir_match(
+                        cond,
+                        expr_to_vir_consume(bctx, &lhs)?,
+                        lhs.span,
+                        rhs_vir,
+                        rhs_span,
+                    )?)
                 }
                 _ => {
                     let vir_cond = expr_to_vir_consume(bctx, cond)?;
@@ -3124,9 +3142,34 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             } else {
                 unsupported_err!(expr.span, "loop else");
             }
-            let cond = Some(expr_to_vir_consume(bctx, cond)?);
+            let body_span = body.span;
             let mut body = expr_to_vir_consume(bctx, body)?;
             let header = vir::headers::read_header(&mut body, &vir::headers::HeaderAllows::Loop)?;
+            let (cond, body) = match &cond.peel_drop_temps().kind {
+                ExprKind::Let(_) => {
+                    let body_ty = body.typ.clone();
+                    let wildcard_body = bctx.spanned_typed_new(
+                        cond.span,
+                        &body_ty,
+                        ExprX::BreakOrContinue { label: None, is_break: true },
+                    );
+                    (
+                        None,
+                        bctx.spanned_typed_new(
+                            cond.span,
+                            &body_ty,
+                            cond_let_expr_to_vir_match(
+                                cond,
+                                body,
+                                body_span,
+                                wildcard_body,
+                                cond.span,
+                            )?,
+                        ),
+                    )
+                }
+                _ => (Some(expr_to_vir_consume(bctx, cond)?), body),
+            };
             let label = label.map(|l| l.ident.to_string());
             Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(
                 *header_span,
@@ -3201,7 +3244,12 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 Arc::new(vir_fields.iter().map(|f| f.name.clone()).collect::<Vec<_>>()),
                 update.is_some(),
             );
-            erasure_info.resolved_calls.push((expr.hir_id, expr.span.data(), resolved_call));
+            erasure_info.resolved_calls.push((
+                expr.hir_id,
+                expr.span.data(),
+                resolved_call,
+                bctx.in_ghost,
+            ));
             mk_expr(ExprX::Ctor(Dt::Path(path), variant_name, vir_fields, update))
         }
         ExprKind::MethodCall(_name_and_generics, receiver, other_args, fn_span) => {
@@ -3424,7 +3472,7 @@ fn lit_to_vir<'tcx>(
         LitKind::Float(..) => {
             if let Some(ty) = ty {
                 use rustc_middle::ty::LitToConstInput;
-                let lit_const = LitToConstInput { lit: lit.node, ty, neg: negated };
+                let lit_const = LitToConstInput { lit: lit.node, ty: Some(ty), neg: negated };
                 if let Some(v) = bctx.ctxt.tcx.lit_to_const(lit_const) {
                     if let Some(i) = v.valtree.try_to_leaf() {
                         match i.size().bytes() {
@@ -3776,7 +3824,12 @@ fn unwrap_parameter_to_vir<'tcx>(
             erasure_info.direct_var_modes.push((hir_id1, mode));
             erasure_info.direct_var_modes.push((hir_id2, mode));
             erasure_info.direct_var_modes.push((hir_id_y, Mode::Exec));
-            erasure_info.resolved_calls.push((hir_id_get, stmt2.span.data(), resolved_call));
+            erasure_info.resolved_calls.push((
+                hir_id_get,
+                stmt2.span.data(),
+                resolved_call,
+                bctx.in_ghost,
+            ));
             let unwrap = vir::ast::UnwrapParameter { mode, outer_name: y, inner_name: x1 };
             let headerx = HeaderExprX::UnwrapParameter(unwrap.clone());
             let exprx = ExprX::Header(Arc::new(headerx));

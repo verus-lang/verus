@@ -2919,7 +2919,7 @@ pub(crate) fn expr_to_stm_opt(
 
             let int_typ = Arc::new(TypX::Int(IntRange::Int));
             let int_set_typ = Arc::new(TypX::Datatype(
-                crate::ast::Dt::Path(def::set_type_path()),
+                crate::ast::Dt::Path(def::iset_type_path()),
                 Arc::new(vec![int_typ]),
                 Default::default(),
             ));
@@ -3201,7 +3201,7 @@ pub(crate) fn expr_to_stm_opt(
             // check invariant mask
             let int_typ = Arc::new(TypX::Int(IntRange::Int));
             let int_set_typ = Arc::new(TypX::Datatype(
-                Dt::Path(def::set_type_path()),
+                Dt::Path(def::iset_type_path()),
                 Arc::new(vec![int_typ]),
                 Default::default(),
             ));
@@ -3305,7 +3305,7 @@ pub(crate) fn expr_to_stm_opt(
 
             let int_typ = Arc::new(TypX::Int(IntRange::Int));
             let int_set_typ = Arc::new(TypX::Datatype(
-                Dt::Path(def::set_type_path()),
+                Dt::Path(def::iset_type_path()),
                 Arc::new(vec![int_typ]),
                 Default::default(),
             ));

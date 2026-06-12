@@ -3561,9 +3561,9 @@ where
     crate::ItemTrait {
         attrs: f.fold_attributes(node.attrs),
         vis: f.fold_visibility(node.vis),
+        constness: node.constness,
         unsafety: node.unsafety,
         auto_token: node.auto_token,
-        constness: node.constness,
         restriction: (node.restriction).map(|it| f.fold_impl_restriction(it)),
         trait_token: node.trait_token,
         ident: f.fold_ident(node.ident),
