@@ -5,6 +5,7 @@ edition = "2024"
 description = "Data types and utilities for bundling Verus toolchain info into cargo-verus"
 
 [dependencies]
+pretty_assertions = "1.4.1"
 serde = { version = "1.0", features = ["derive"] }
 toml = "1.1.2"
 

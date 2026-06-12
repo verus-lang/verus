@@ -51,7 +51,7 @@ dependencies = [
  "sise",
  "smt-scope",
  "win32job",
- "yansi",
+ "yansi 0.5.1",
 ]
 
 [[package]]
@@ -286,6 +286,7 @@ dependencies = [
 name = "cargo-verus-toolchains"
 version = "0.1.0"
 dependencies = [
+ "pretty_assertions",
  "serde",
  "toml 1.1.2+spec-1.1.0",
 ]
@@ -526,6 +527,12 @@ dependencies = [
  "rustc_version",
  "syn 2.0.101",
 ]
+
+[[package]]
+name = "diff"
+version = "0.1.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "56254986775e3233ffa9c4d7d3faaf6d36a2c09d30b20687e9f88bc8bafc16c8"
 
 [[package]]
 name = "digest"
@@ -1639,6 +1646,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "925383efa346730478fb4838dbe9137d2a47675ad789c546d150a6e1dd4ab31c"
 
 [[package]]
+name = "pretty_assertions"
+version = "1.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3ae130e2f271fbc2ac3a40fb1d07180839cdbbe443c7a27e1e3c13c5cac0116d"
+dependencies = [
+ "diff",
+ "yansi 1.0.1",
+]
+
+[[package]]
 name = "proc-macro-error"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1866,7 +1883,7 @@ dependencies = [
  "tempfile",
  "toml 0.9.8",
  "vir",
- "yansi",
+ "yansi 0.5.1",
 ]
 
 [[package]]
@@ -2610,7 +2627,7 @@ dependencies = [
  "serde_json",
  "toml 0.7.8",
  "win32job",
- "yansi",
+ "yansi 0.5.1",
  "zip",
 ]
 
@@ -2696,7 +2713,7 @@ dependencies = [
 name = "vstd_build"
 version = "0.1.0"
 dependencies = [
- "yansi",
+ "yansi 0.5.1",
 ]
 
 [[package]]
@@ -3068,6 +3085,12 @@ name = "yansi"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "09041cd90cf85f7f8b2df60c646f853b7f535ce68f85244eb6731cf89fa498ec"
+
+[[package]]
+name = "yansi"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cfe53a6657fd280eaa890a3bc59152892ffa3e30101319d168b781ed6529b049"
 
 [[package]]
 name = "yoke"
