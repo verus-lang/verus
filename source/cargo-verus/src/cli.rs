@@ -21,7 +21,7 @@ pub enum VerusSubcommand {
     /// Create a new Verus project
     New(NewCommand),
 
-    /// Manage Verus toolchain information
+    /// Manage Verus toolchains
     Toolchain(ToolchainCommand),
 
     /// Verify the current crate with 'cargo build'
@@ -45,7 +45,7 @@ pub struct ToolchainCommand {
 
 #[derive(Clone, Debug, Subcommand)]
 pub enum ToolchainSubcommand {
-    /// List bundled toolchains
+    /// List known toolchains
     List,
 }
 
