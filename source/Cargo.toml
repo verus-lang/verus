@@ -5,6 +5,7 @@ members = [
   "builtin",
   "builtin_macros",
   "cargo-verus",
+  "cargo-verus-toolchains",
   "vir",
   "vir_macros",
   "rust_verify",
@@ -15,7 +16,7 @@ members = [
   "verusdoc",
   "vstd_build",
   "tools/internals_interface",
-  "tools/line_count", "cargo-verus-toolchains",
+  "tools/line_count",
 ]
 exclude = [
   "vstd",
