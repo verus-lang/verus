@@ -104,6 +104,62 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] all_works verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        fn test(v: Vec<u32>)
+        {
+            let mut it = v.into_iter();
+            let ghost g = it;
+            let v_result = it.all(
+                |i: u32| -> (ret: bool)
+                    ensures ret == (i < 10)
+                {i < 10}
+            );
+            if v_result {
+                // If `all` returned true, every element was below 10.
+                assert(forall |i| 0 <= i < v.len() ==> v[i] < 10);
+            } else {
+                // If `all` returned false, at least one element was >= 10.
+                // The witness is the (consumed) element that failed the predicate.
+                let ghost idx = g.remaining().len() - it.remaining().len() - 1;
+                assert(0 <= idx < v.len() && v[idx] >= 10);
+                assert(exists |i| 0 <= i < v.len() && v[i] >= 10);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] any_works verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        fn test(v: Vec<u32>)
+        {
+            let mut it = v.into_iter();
+            let ghost g = it;
+            let v_result = it.any(
+                |i: u32| -> (ret: bool)
+                    ensures ret == (i < 10)
+                {i < 10}
+            );
+            if v_result {
+                // If `any` returned true, at least one element was below 10.
+                // The witness is the (consumed) element that satisfied the predicate.
+                let ghost idx = g.remaining().len() - it.remaining().len() - 1;
+                assert(0 <= idx < v.len() && v[idx] < 10);
+                assert(exists |i| 0 <= i < v.len() && v[i] < 10);
+            } else {
+                // If `any` returned false, every element was >= 10.
+                assert(forall |i| 0 <= i < v.len() ==> v[i] >= 10);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] map_can_be_implemented verus_code! {
         use vstd::prelude::*;
         use vstd::std_specs::iter::*;
