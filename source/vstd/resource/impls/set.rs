@@ -63,22 +63,22 @@
 //!     // clients that might need to operate on different values in the set
 //! }
 //! ```
-use super::super::map::*;
-use super::super::map_lib::*;
-use super::super::modes::*;
-use super::super::prelude::*;
-use super::super::set::*;
-use super::super::set_lib::*;
-use super::Loc;
-use super::map::GhostMapAuth;
-use super::map::GhostPersistentPointsTo;
-use super::map::GhostPersistentSubmap;
-use super::map::GhostPointsTo;
-use super::map::GhostSubmap;
+use super::super::super::map::*;
+use super::super::super::map_lib::*;
+use super::super::super::modes::*;
+use super::super::super::prelude::*;
+use super::super::super::set::*;
+use super::super::super::set_lib::*;
+use super::super::Loc;
+use super::super::map::GhostMapAuth;
+use super::super::map::GhostPersistentPointsTo;
+use super::super::map::GhostPersistentSubmap;
+use super::super::map::GhostPointsTo;
+use super::super::map::GhostSubmap;
 
 verus! {
 
-broadcast use super::super::group_vstd_default;
+broadcast use super::super::super::group_vstd_default;
 
 /// A resource that has the authoritative ownership on the entire set
 ///

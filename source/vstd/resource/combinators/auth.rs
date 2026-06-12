@@ -1,13 +1,13 @@
-use super::super::prelude::*;
-use super::algebra::ResourceAlgebra;
-use super::exclusive::ExclusiveRA;
+use super::super::super::prelude::*;
+use super::super::algebra::ResourceAlgebra;
+use super::super::exclusive::ExclusiveRA;
 #[cfg(verus_keep_ghost)]
-use super::option::lemma_incl_opt_rev;
-use super::pcm::PCM;
+use super::super::option::lemma_incl_opt_rev;
+use super::super::pcm::PCM;
 #[cfg(verus_keep_ghost)]
-use super::relations::incl;
+use super::super::relations::incl;
 #[cfg(verus_keep_ghost)]
-use super::relations::lemma_incl_transitive;
+use super::super::relations::lemma_incl_transitive;
 
 verus! {
 

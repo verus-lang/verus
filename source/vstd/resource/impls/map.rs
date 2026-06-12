@@ -73,23 +73,26 @@
 //!     // clients that might need to operate on different keys in this map.
 //! }
 //! ```
-use super::super::imap::*;
-use super::super::imap_lib::*;
-use super::super::iset_lib::*;
-use super::super::modes::*;
-use super::super::prelude::*;
-use super::Loc;
-use super::algebra::ResourceAlgebra;
+use super::super::super::imap::*;
+use super::super::super::imap_lib::*;
+use super::super::super::iset_lib::*;
+use super::super::super::modes::*;
+use super::super::super::prelude::*;
+use super::super::Loc;
+use super::super::algebra::ResourceAlgebra;
 #[cfg(verus_keep_ghost)]
-use super::incorporate;
-use super::pcm::PCM;
-use super::pcm::Resource;
+use super::super::incorporate;
+use super::super::pcm::PCM;
+use super::super::pcm::Resource;
 #[cfg(verus_keep_ghost)]
-use super::split_mut;
+use super::super::split_mut;
 
 verus! {
 
-broadcast use {super::super::group_vstd_default, super::super::imap::group_imap_lemmas};
+broadcast use {
+    super::super::super::group_vstd_default,
+    super::super::super::imap::group_imap_lemmas,
+};
 
 #[verifier::reject_recursive_types(K)]
 #[verifier::ext_equal]
@@ -1061,7 +1064,7 @@ impl<K, V> GhostPersistentSubmap<K, V> {
         use_type_invariant(&*self);
 
         assert(MapCarrier::op(self.r.value(), self.r.value()) == self.r.value());
-        let tracked r = super::lib::duplicate(&self.r);
+        let tracked r = super::super::lib::duplicate(&self.r);
 
         GhostPersistentSubmap { r }
     }

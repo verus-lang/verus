@@ -1,11 +1,11 @@
-use super::super::modes::*;
-use super::super::prelude::*;
-use super::Loc;
-use super::map::*;
+use super::super::super::modes::*;
+use super::super::super::prelude::*;
+use super::super::Loc;
+use super::super::map::*;
 
 verus! {
 
-broadcast use super::super::group_vstd_default;
+broadcast use super::super::super::group_vstd_default;
 
 pub open spec fn seq_to_map<V>(s: Seq<V>, off: int) -> IMap<int, V> {
     IMap::new(|i: int| off <= i < off + s.len(), |i: int| s[i - off])
