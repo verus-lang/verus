@@ -1,5 +1,6 @@
 use std::{fmt::Write, path::Path};
 
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
 /// A list of toolchains.
@@ -68,7 +69,12 @@ impl ToolchainList {
         // Sort entries *descending* by Verus version.
         items.sort_by(|a, b| b.verus.cmp(&a.verus));
 
-        // TODO: Validate data.
+        // Check for duplicate Verus versions.
+        for (a, b) in items.iter().tuple_windows() {
+            if a.verus == b.verus {
+                panic!("duplicate Verus versions in toolchain manifests: {}", a.verus);
+            }
+        }
 
         ToolchainList { items }
     }
