@@ -5,6 +5,18 @@ verus_extra_args = ["--no-report-long-running"]
 # Successes
 
 [[project]]
+name = "vstd"
+git_url = "https://github.com/verus-lang/verus.git"
+refspec = "main"
+crate_roots = ["source/vstd/vstd.rs"]
+extra_verus_args = [
+    "--crate-type=lib",
+    "--is-vstd",
+    "--cfg", "feature=\"std\"",
+    "--cfg", "feature=\"alloc\"",
+]
+
+[[project]]
 name = "ironkv"
 git_url = "https://github.com/verus-lang/verified-ironkv.git"
 #TODO: restore this after it is updated to new Set/Map/ISet/IMap
@@ -92,13 +104,10 @@ extra_verus_args = ["--crate-type=lib"]
 
 [[project]]
 name = "page-table"
-#TODO: restore this after it is updated to new Set/Map/ISet/IMap
-#git_url = "https://github.com/matthias-brun/verified-nrkernel.git"
-#refspec = "main"
-git_url = "https://github.com/jaylorch/verified-nrkernel.git"
-refspec = "origin/finite-sets"
+git_url = "https://github.com/matthias-brun/verified-nrkernel.git"
+refspec = "main"
 crate_roots = ["page-table/src/lib.rs"]
-extra_verus_args = ["--crate-type=lib", "--rlimit", "100", "--cfg", "feature=\"impl\""]
+extra_verus_args = ["--crate-type=lib", "--rlimit", "100", "--cfg", "feature=\"impl\"", "--cfg", "feature=\"hlspec_user\""]
 
 [[project]]
 name = "svsm"
@@ -121,10 +130,7 @@ rustup target add x86_64-unknown-none --toolchain 1.96.0
 
 [[project]]
 name = "anvil"
-#TODO: restore this after it is updated to new Set/Map/ISet/IMap
-#git_url = "https://github.com/anvil-verifier/anvil"
-#refspec = "main"
-git_url = "https://github.com/jaylorch/anvil"
+git_url = "https://github.com/anvil-verifier/anvil"
 refspec = "main"
 crate_roots = ["src/esr_composition.rs"]
 extra_verus_args = ["--crate-type=lib", 
