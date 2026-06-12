@@ -3,6 +3,7 @@ use std::{fmt::Write, path::Path};
 use serde::{Deserialize, Serialize};
 
 /// A list of toolchains.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToolchainList {
     pub items: Vec<Toolchain>,
 }
@@ -48,7 +49,20 @@ impl ToolchainList {
         assert!(dir.is_dir());
 
         let mut items = vec![];
-        // TODO
+        for entry in std::fs::read_dir(dir).expect("read toolchain manifest directory") {
+            let entry = entry.expect("read toolchain manifest directory entry");
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            if path.extension().is_none_or(|ext| ext != "toml") {
+                continue;
+            }
+
+            let contents = std::fs::read_to_string(&path).expect("read toolchain manifest file");
+            let toolchain = toml::from_str(&contents).expect("parse toolchain manifest file");
+            items.push(toolchain);
+        }
 
         ToolchainList { items }
     }

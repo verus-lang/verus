@@ -288,6 +288,7 @@ version = "0.1.0"
 dependencies = [
  "pretty_assertions",
  "serde",
+ "tempfile",
  "toml 1.1.2+spec-1.1.0",
 ]
 
