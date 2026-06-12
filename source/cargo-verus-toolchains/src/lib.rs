@@ -1,4 +1,4 @@
-use std::fmt::Write;
+use std::{fmt::Write, path::Path};
 
 use serde::{Deserialize, Serialize};
 
@@ -29,6 +29,7 @@ pub enum Crate {
 }
 
 impl ToolchainList {
+    /// Format the toolchain list as Rust code.
     pub fn format_code(&self, i0: Indent, out: &mut impl Write) -> std::fmt::Result {
         writeln!(out, "{i0}/// An entry for each file in the `toolchain-manifests` directory.")?;
         writeln!(out, "{i0}pub const TOOLCHAINS: [Toolchain; {}] = [", self.items.len())?;
@@ -39,6 +40,17 @@ impl ToolchainList {
         }
         writeln!(out, "{i0}];")?;
         Ok(())
+    }
+
+    /// Attempts to parse each `*.toml` file under `dir` as a toolchain manifest.
+    pub fn parse_from_dir(dir: impl AsRef<Path>) -> Self {
+        let dir = dir.as_ref();
+        assert!(dir.is_dir());
+
+        let mut items = vec![];
+        // TODO
+
+        ToolchainList { items }
     }
 }
 
