@@ -3,5 +3,5 @@ target/
 /cvc5
 .verus-log/
 doc/
-coverage/
+/coverage/
 /target-verus/
