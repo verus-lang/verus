@@ -3096,10 +3096,10 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 providers.queries.type_of_opaque = |tcx, def_id| {
                     let ty = (rustc_interface::DEFAULT_QUERY_PROVIDERS.queries.type_of_opaque)(
                         tcx, def_id,
-                    )?;
-                    Ok(ty.map_bound(|ty| {
+                    );
+                    ty.map_bound(|ty| {
                         crate::rust_to_vir_base::hack_fix_no_lifetime_opaque_ty_issue2541(tcx, ty)
-                    }))
+                    })
                 };
             });
         } else {
