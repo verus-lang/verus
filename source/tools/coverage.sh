@@ -42,7 +42,7 @@ export PATH="${LLVM_BIN}:${PATH}"
 # Binary under test to pass to llvm-cov reporting.
 BIN="target-verus/release/rust_verify"
 
-# Directory for profiling data output, cleaned on exit.
+# Directory for profiling data output (cleaned on exit).
 PROF_DIR="$(mktemp -d)"
 trap 'rm -rf "${PROF_DIR}"' EXIT
 
@@ -72,7 +72,8 @@ vargo test --release -p rust_verify_test "$@"
 # Merge the test profraw.
 #
 # Only the test-* prefix; the build-* prefix is left for the trap to clean.
-llvm-profdata merge -sparse "${PROF_DIR}"/test-*.profraw -o "${PROF_DIR}/cov.profdata"
+PROF_DATA="${PROF_DIR}/cov.profdata"
+llvm-profdata merge -sparse "${PROF_DIR}"/test-*.profraw -o "${PROF_DATA}"
 
 # Version metadata for the report.
 GIT_VERSION="$(git describe --always --dirty)"
@@ -85,9 +86,12 @@ GIT_VERSION="$(git describe --always --dirty)"
 mkdir -p "${OUT_DIR}"
 llvm-cov show -format=html -output-dir="${OUT_DIR}" \
 	--project-title="rust_verify_test coverage (${GIT_VERSION})" --show-created-time \
-	--instr-profile="${PROF_DIR}/cov.profdata" "${BIN}" "${SOURCE_DIR}"
+	--instr-profile="${PROF_DATA}" "${BIN}" "${SOURCE_DIR}"
+llvm-cov report \
+	--instr-profile="${PROF_DATA}" "${BIN}" "${SOURCE_DIR}" >"${OUT_DIR}/coverage.txt"
 llvm-cov export -format=lcov \
-	--instr-profile="${PROF_DIR}/cov.profdata" "${BIN}" "${SOURCE_DIR}" >"${OUT_DIR}/coverage.lcov"
+	--instr-profile="${PROF_DATA}" "${BIN}" "${SOURCE_DIR}" >"${OUT_DIR}/coverage.lcov"
 
 echo "report: ${OUT_DIR}/index.html"
+echo "text:   ${OUT_DIR}/coverage.txt"
 echo "lcov:   ${OUT_DIR}/coverage.lcov"
