@@ -106,6 +106,10 @@ pub struct ArgsX {
     pub profile_all: bool,
     pub capture_profiles: bool,
     pub spinoff_all: bool,
+    /// If set, treat every function as if it had `#[verifier::spinoff_prover]`,
+    /// putting each function in its own bucket. Lets every function be a unit
+    /// of parallel scheduling without source annotations.
+    pub spinoff_prover_all: bool,
     pub vstd: Vstd,
     pub compile: bool,
     pub solver_version_check: bool,
@@ -153,6 +157,7 @@ impl ArgsX {
             profile_all: Default::default(),
             capture_profiles: Default::default(),
             spinoff_all: Default::default(),
+            spinoff_prover_all: Default::default(),
             vstd: Vstd::Imported,
             compile: Default::default(),
             solver_version_check: Default::default(),
@@ -401,6 +406,7 @@ pub fn parse_args_with_imports(
     const EXTENDED_DEBUG: &str = "debug";
     const EXTENDED_NO_SOLVER_VERSION_CHECK: &str = "no-solver-version-check";
     const EXTENDED_SPINOFF_ALL: &str = "spinoff-all";
+    const EXTENDED_SPINOFF_PROVER_ALL: &str = "spinoff-prover-all";
     const EXTENDED_CAPTURE_PROFILES: &str = "capture-profiles";
     const EXTENDED_CVC5: &str = "cvc5";
     const EXTENDED_ALLOW_INLINE_AIR: &str = "allow-inline-air";
@@ -416,6 +422,10 @@ pub fn parse_args_with_imports(
             "Skip the check that the solver has the expected version (useful to experiment with different versions of z3)",
         ),
         (EXTENDED_SPINOFF_ALL, "Always spinoff individual functions to separate z3 instances"),
+        (
+            EXTENDED_SPINOFF_PROVER_ALL,
+            "Treat every function as if it had spinoff_prover attribute, putting each in its own bucket. This flag is useful for projects with skewed distribution of per-module proof work",
+        ),
         (
             EXTENDED_CAPTURE_PROFILES,
             "Always collect prover performance data, but don't generate output reports",
@@ -813,6 +823,7 @@ pub fn parse_args_with_imports(
             extended.contains_key(EXTENDED_CAPTURE_PROFILES)
         },
         spinoff_all: extended.contains_key(EXTENDED_SPINOFF_ALL),
+        spinoff_prover_all: extended.contains_key(EXTENDED_SPINOFF_PROVER_ALL),
         compile: matches.opt_present(OPT_COMPILE),
         vstd,
         solver_version_check: !extended.contains_key(EXTENDED_NO_SOLVER_VERSION_CHECK),

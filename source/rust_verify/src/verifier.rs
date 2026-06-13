@@ -2077,7 +2077,8 @@ impl Verifier {
                 .expect("current_crate_module_ids should be initialized");
             user_filter.filter_modules(current_crate_module_ids)?
         };
-        let buckets = crate::buckets::get_buckets(&krate, &modules_to_verify);
+        let buckets =
+            crate::buckets::get_buckets(&krate, &modules_to_verify, self.args.spinoff_prover_all);
         let buckets = user_filter.filter_buckets(buckets);
         let bucket_ids: Vec<BucketId> = buckets.iter().map(|p| p.0.clone()).collect();
         self.buckets = buckets.into_iter().collect();
