@@ -370,8 +370,8 @@ test_verify_one_file! {
         {
             let mut out1: Tracked<u8> = declare_ret_with();
             let mut out2: Ghost<u32> = declare_ret_with();
-            
-            proof { 
+
+            proof {
                 out1 = Tracked(42u8);
                 out2 = Ghost(7u32);
             }

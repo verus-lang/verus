@@ -1021,7 +1021,7 @@ fn rewrite_with_expr(
 
             // If all outputs are wildcard, just use proof_with (no ret needed)
             let all_wild = out_pats.iter().all(|p| matches!(p, OutputPat::Wild));
-            let mut pre_decls: Vec<proc_macro2::TokenStream> = Vec::new();
+            let pre_decls: Vec<proc_macro2::TokenStream> = Vec::new();
             if all_wild {
                 *expr = syn::Expr::Verbatim(quote_spanned_builtin!(verus_builtin, expr.span() =>
                     #verus_builtin::proof_with(#inputs_expr, #call_expr)
