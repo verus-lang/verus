@@ -111,11 +111,8 @@ extra_verus_args = ["--crate-type=lib", "--rlimit", "100", "--cfg", "feature=\"i
 
 [[project]]
 name = "svsm"
-#TODO: restore this after it is updated to new Set/Map/ISet/IMap
-#git_url = "https://github.com/ziqiaozhou/svsm.git"
-#refspec = "origin/verita"
-git_url = "https://github.com/jaylorch/svsm.git"
-refspec = "origin/finite-sets"
+git_url = "https://github.com/ziqiaozhou/svsm.git"
+refspec = "origin/verita"
 cargo_verus = true
 extra_cargo_args = ["--features", "verus"]
 crate_roots = ["kernel"]
