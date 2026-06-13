@@ -114,10 +114,10 @@ jobs:
         working-directory: ./source
         run: cargo test -p cargo-verus
 
-  # check if it builds and runs on macos, running the full test suite
+  # check if it builds and runs, running the full test suite
   # (in release mode because it makes a huge difference)
   full-test:
-    runs-on: macos-14
+    runs-on: ubuntu-22.04
 
     defaults:
       run:
@@ -171,10 +171,10 @@ jobs:
   basic-test:
     strategy:
       matrix:
-        build: [macos-x86_64, linux, windows]
+        build: [macos, linux, windows]
         include:
-          - build: macos-x86_64
-            os: macos-15-intel
+          - build: macos
+            os: macos-14
           - build: linux
             os: ubuntu-22.04
           - build: windows
