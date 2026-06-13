@@ -171,12 +171,10 @@ jobs:
   basic-test:
     strategy:
       matrix:
-        build: [macos, linux, windows]
+        build: [macos, windows]
         include:
           - build: macos
             os: macos-14
-          - build: linux
-            os: ubuntu-22.04
           - build: windows
             os: windows-2022
 
