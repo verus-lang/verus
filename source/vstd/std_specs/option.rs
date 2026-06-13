@@ -50,6 +50,16 @@ pub trait OptionAdditionalFns<T>: Sized {
     ;
 
     #[allow(deprecated)]
+    proof fn tracked_mut_borrow(tracked &mut self) -> (tracked t: &mut T)
+        requires
+            self.is_Some(),
+        ensures
+            final(self).is_Some(),
+            *t == old(self)->0,
+            final(self)->0 == *final(t),
+    ;
+
+    #[allow(deprecated)]
     #[verifier::tracked_take_option_primitive]
     proof fn tracked_take(tracked &mut self) -> (tracked t: T)
         requires
@@ -106,6 +116,8 @@ impl<T> OptionAdditionalFns<T> for Option<T> {
             Option::None => proof_from_false(),
         }
     }
+
+    axiom fn tracked_mut_borrow(tracked &mut self) -> (tracked t: &mut T);
 
     /// Similar to `Option::take`
     #[verifier::tracked_take_option_primitive]
