@@ -428,20 +428,6 @@ fn proof_fn_tracks_to_type(span: Span, tracks: impl Iterator<Item = bool>) -> Ty
     Type::Tuple(verus_syn::TypeTuple { paren_token, elems })
 }
 
-pub(crate) fn rewrite_exe_pat(pat: &mut Pat) -> (Vec<Stmt>, Vec<Stmt>) {
-    let mut visit_pat = ExecGhostPatVisitor {
-        inside_ghost: 0,
-        tracked: None,
-        ghost: None,
-        x_decls: Vec::new(),
-        x_assigns: Vec::new(),
-    };
-
-    visit_pat.visit_pat_mut(pat);
-    let ExecGhostPatVisitor { x_decls, x_assigns, .. } = visit_pat;
-    return (x_decls, x_assigns);
-}
-
 fn rewrite_args_unwrap_ghost_tracked(erase_ghost: &EraseGhost, arg: &mut FnArg) -> Vec<Stmt> {
     // Check for Ghost(x) or Tracked(x) argument
     let mut unwrap_ghost_tracked = Vec::new();

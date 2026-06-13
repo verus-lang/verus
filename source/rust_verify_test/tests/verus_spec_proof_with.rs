@@ -33,6 +33,7 @@ test_verify_one_file! {
                 z@ == extra,
         )]
         fn negate_bool_requires_ensures(b: bool, x: u8) -> bool {
+            proof!{z = Tracked::assume_new();}
             negate_bool(b, x)
         }
 

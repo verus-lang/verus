@@ -336,6 +336,9 @@ test_verify_one_file! {
         fn callee(a: u64) -> u64
         {
             let mut out1: Tracked<u8> = declare_ret_with();
+            proof {
+                out1 = Tracked(42u8);
+            }
             1
         }
 
@@ -346,12 +349,32 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+     #[test] test_declare_ret_with_no_assigned verus_code!{
+        use vstd::prelude::*;
+        fn callee(a: u64) -> u64
+        {
+            let mut out1: Tracked<u8> = declare_ret_with();
+            1
+        }
+
+        fn call_test() {
+            let (ret, extra): (_, (Tracked<u8>,)) = proof_with_ret((), callee(5));
+        }
+     } => Err(e) => assert_any_vir_error_msg(e, "declare_ret_with() variable must be assigned to")
+}
+
+test_verify_one_file! {
      #[test] test_declare_ret_with_multiple verus_code!{
         use vstd::prelude::*;
         fn callee(a: u64) -> u64
         {
             let mut out1: Tracked<u8> = declare_ret_with();
             let mut out2: Ghost<u32> = declare_ret_with();
+
+            proof {
+                out1 = Tracked(42u8);
+                out2 = Ghost(7u32);
+            }
             1
         }
 
@@ -368,6 +391,7 @@ test_verify_one_file! {
         {
             let inp: Tracked<u64> = declare_with();
             let mut out1: Tracked<u8> = declare_ret_with();
+            proof { out1 = Tracked(0u8); }
             1
         }
 

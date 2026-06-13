@@ -457,6 +457,7 @@ fn pre_scan_declare_ret_with_params<'tcx>(
 > {
     let mut extra_params = Vec::new();
     let mut hir_ids = HashSet::new();
+    let mut ret_with_locals: Vec<(HirId, VarIdent, Span)> = Vec::new();
     let types = body_id_to_types(ctxt.tcx, body_id);
 
     let stmts = match &body.value.kind {
@@ -556,10 +557,55 @@ fn pre_scan_declare_ret_with_params<'tcx>(
 
             extra_params.push((vir_param, None, ty));
             hir_ids.insert(stmt.hir_id);
+            ret_with_locals.push((pat.hir_id, name, pat.span));
+        }
+    }
+
+    // Verify each `declare_ret_with()` variable is assigned at least once in
+    // the body. Without an assignment, the extra ret value is uninitialized,
+    // which is unsound and a clear authoring mistake.
+    if !ret_with_locals.is_empty() {
+        let mut assigned: HashSet<HirId> = HashSet::new();
+        let mut visitor = AssignedLocalsVisitor { assigned: &mut assigned };
+        rustc_hir::intravisit::Visitor::visit_body(&mut visitor, body);
+        for (local_id, name, span) in &ret_with_locals {
+            if !assigned.contains(local_id) {
+                return err_span(
+                    *span,
+                    format!(
+                        "declare_ret_with() variable must be assigned to in the function body: `{}`",
+                        vir::def::user_local_name(name)
+                    ),
+                );
+            }
         }
     }
 
     Ok((extra_params, hir_ids))
+}
+
+/// Collects the `HirId`s of bindings that appear on the LHS of any
+/// assignment (`x = ...` or `x op= ...`) in a body.
+struct AssignedLocalsVisitor<'a> {
+    assigned: &'a mut HashSet<HirId>,
+}
+
+impl<'tcx> rustc_hir::intravisit::Visitor<'tcx> for AssignedLocalsVisitor<'_> {
+    fn visit_expr(&mut self, expr: &'tcx Expr<'tcx>) {
+        match &expr.kind {
+            ExprKind::Assign(lhs, _, _) | ExprKind::AssignOp(_, lhs, _) => {
+                if let ExprKind::Path(rustc_hir::QPath::Resolved(
+                    None,
+                    rustc_hir::Path { res: rustc_hir::def::Res::Local(hir_id), .. },
+                )) = &lhs.kind
+                {
+                    self.assigned.insert(*hir_id);
+                }
+            }
+            _ => {}
+        }
+        rustc_hir::intravisit::walk_expr(self, expr);
+    }
 }
 
 fn body_to_vir<'tcx>(
