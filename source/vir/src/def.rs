@@ -645,10 +645,8 @@ pub(crate) fn impl_closure(kind: ClosureKind, id: usize) -> Ident {
     Arc::new(format!("{}{}{}", PREFIX_IMPL_CLOSURE, kind, id))
 }
 
-pub(crate) fn impl_fndef(fun: &Fun, kind: ClosureKind) -> Ident {
-    let joined =
-        fun.path.segments.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(PATH_SEPARATOR);
-    Arc::new(format!("{}{}{}", PREFIX_IMPL_FNDEF, kind, joined))
+pub(crate) fn impl_fndef_path(fun: &Fun, kind: ClosureKind) -> Path {
+    fun.path.push_segment(Arc::new(format!("{}{}", PREFIX_IMPL_FNDEF, kind)))
 }
 
 impl NameCtxt {
