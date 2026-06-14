@@ -1219,7 +1219,7 @@ pub(crate) fn expr_to_one_stm_with_post(
                 expr.span.clone(),
                 StmX::Return {
                     base_error,
-                    ret_exp: Some(exp),
+                    ret_exp: Arc::new(vec![exp]),
                     inside_body: false,
                     assert_id: state.next_assert_id(),
                 },
@@ -1316,7 +1316,7 @@ fn stm_call(
     is_trait_default: Option<bool>,
     typs: Typs,
     args: Exps,
-    dest: Option<Dest>,
+    dest: Vec<Dest>,
 ) -> Result<Stm, VirErr> {
     let fun = get_function(ctx, span, &name)?;
     let mut stms: Vec<Stm> = Vec::new();
@@ -1361,7 +1361,7 @@ fn stm_call(
         typ_args: typs,
         args: small_args,
         split: None,
-        dest,
+        dest: Arc::new(dest),
         assert_id: state.next_assert_id(),
     };
 
@@ -1633,7 +1633,7 @@ pub(crate) fn expr_to_stm_opt(
                             is_trait_default,
                             typs.clone(),
                             args.clone(),
-                            Some(dest),
+                            vec![dest],
                         )?);
                         // REVIEW: this emits a StmX::Assign to set the value of the destination when,
                         // in recommends checking, the StmX::Call is used to check its recommends, however
@@ -1672,7 +1672,7 @@ pub(crate) fn expr_to_stm_opt(
                             is_trait_default,
                             typs.clone(),
                             args,
-                            None,
+                            vec![],
                         )?);
                         let ti = if may_unwind { TypInv::UnwindError } else { TypInv::Call(x) };
                         typ_inv_obligations(ctx, state, &mut stms, obligations, ti)?;
@@ -1707,7 +1707,7 @@ pub(crate) fn expr_to_stm_opt(
                 typ_args: Arc::new(vec![]),
                 args: Arc::new(exps),
                 split: None,
-                dest: Some(dest),
+                dest: Arc::new(vec![dest]),
                 assert_id: None,
             };
             stms.push(Spanned::new(expr.span.clone(), call));
@@ -2727,7 +2727,7 @@ pub(crate) fn expr_to_stm_opt(
                         expr.span.clone(),
                         StmX::Return {
                             base_error,
-                            ret_exp: Some(ret_exp),
+                            ret_exp: Arc::new(vec![ret_exp]),
                             inside_body: true,
                             assert_id: state.next_assert_id(),
                         },
@@ -3552,7 +3552,7 @@ fn stmt_to_stm(
                             is_trait_default,
                             typs,
                             args,
-                            Some(dest),
+                            vec![dest],
                         )?);
                         // REVIEW: for a similar case in `ExprX::Call` we emit a StmX::Assign to set the
                         // value of the destination when, in recommends checking, the StmX::Call is used

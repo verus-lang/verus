@@ -66,16 +66,16 @@ pub(crate) fn stm_get_mutations_shallow(stm: &Stm, m: &mut HashMap<VarIdent, Spa
         _ => {}
     }
 
-    match &stm.x {
-        StmX::Call { dest: Some(dest), .. } | StmX::Assign { lhs: dest, .. } => {
-            let Dest { dest, is_init } = dest;
-            if !*is_init {
-                let v = get_loc_var(dest);
-                m.insert(v, stm.span.clone());
-            }
+    let mut add_dest = |Dest { dest, is_init }: &Dest| {
+        if !*is_init {
+            let v = get_loc_var(dest);
+            m.insert(v, stm.span.clone());
         }
-        StmX::Call { dest: None, .. }
-        | StmX::Assert(..)
+    };
+    match &stm.x {
+        StmX::Assign { lhs, .. } => add_dest(lhs),
+        StmX::Call { dest, .. } => dest.iter().for_each(add_dest),
+        StmX::Assert(..)
         | StmX::AssertBitVector { .. }
         | StmX::AssertQuery { .. }
         | StmX::AssertCompute(..)
@@ -94,16 +94,13 @@ pub(crate) fn stm_get_mutations_shallow(stm: &Stm, m: &mut HashMap<VarIdent, Spa
     }
 }
 
-/// If there's an assignment associated with this Stm (shallowly), return it.
-/// There can be at most one (in new-mut-ref, they no longer appear in calls)
-pub(crate) fn stm_get_assignment_shallow(stm: &Stm) -> Option<&Exp> {
+/// If there are assignments associated with this Stm (shallowly), return them.
+/// (In new-mut-ref, all assignments are in Dest values.)
+pub(crate) fn stm_get_assignment_shallow(stm: &Stm) -> Vec<&Exp> {
     match &stm.x {
-        StmX::Call { dest: Some(dest), .. } | StmX::Assign { lhs: dest, .. } => {
-            let Dest { dest, is_init: _ } = dest;
-            Some(dest)
-        }
-        StmX::Call { dest: None, .. }
-        | StmX::Assert(..)
+        StmX::Assign { lhs: Dest { dest, is_init: _ }, .. } => vec![dest],
+        StmX::Call { dest, .. } => dest.iter().map(|Dest { dest, is_init: _ }| dest).collect(),
+        StmX::Assert(..)
         | StmX::AssertBitVector { .. }
         | StmX::AssertQuery { .. }
         | StmX::AssertCompute(..)
@@ -118,15 +115,19 @@ pub(crate) fn stm_get_assignment_shallow(stm: &Stm) -> Option<&Exp> {
         | StmX::OpenInvariant(..)
         | StmX::ClosureInner { .. }
         | StmX::Air(..)
-        | StmX::Block(..) => None,
+        | StmX::Block(..) => vec![],
     }
 }
 
 /// Find any assignment that overlaps the given loc if it exists
 pub(crate) fn find_overlapping_assignment(stm: &Stm, loc: &Exp) -> Option<Span> {
-    crate::sst_visitor::stm_visitor_check(&stm, &mut |stm| match stm_get_assignment_shallow(stm) {
-        Some(assigned_loc) if locs_may_overlap(assigned_loc, loc) => Err(stm.span.clone()),
-        _ => Ok(()),
+    crate::sst_visitor::stm_visitor_check(&stm, &mut |stm| {
+        for assigned_loc in stm_get_assignment_shallow(stm) {
+            if locs_may_overlap(assigned_loc, loc) {
+                return Err(stm.span.clone());
+            }
+        }
+        Ok(())
     })
     .err()
 }
@@ -282,7 +283,7 @@ fn stm_assign(
 ) -> Stm {
     let result = match &stm.x {
         StmX::Call { args, dest, .. } => {
-            if let Some(dest) = dest {
+            for dest in dest.iter() {
                 let var: UniqueIdent = get_loc_var(&dest.dest);
                 assigned.insert(var.clone());
                 if !dest.is_init {
@@ -472,8 +473,10 @@ fn stm_mutations(param_typs: &[(VarIdent, Typ)], mutations: &mut HavocSet, stm: 
         | StmX::BreakOrContinue { .. }
         | StmX::Air(_) => stm.clone(),
         StmX::Call { dest, .. } => {
-            if let Some(Dest { is_init: false, dest }) = dest {
-                mutations.insert(dest);
+            for Dest { is_init, dest } in dest.iter() {
+                if !is_init {
+                    mutations.insert(dest);
+                }
             }
             stm.clone()
         }
