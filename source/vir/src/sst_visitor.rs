@@ -434,7 +434,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                 }?;
                 let typ_args = self.visit_typs(typ_args)?;
                 let args = self.visit_exps(args)?;
-                let dest = R::map_opt(dest, &mut |d| self.visit_dest(d))?;
+                let dest = R::map_vec(dest, &mut |d| self.visit_dest(d))?;
                 R::ret(|| {
                     stm_new(StmX::Call {
                         fun: fun.clone(),
@@ -444,7 +444,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                         typ_args: R::get_vec_a(typ_args),
                         args: R::get_vec_a(args),
                         split: split.clone(),
-                        dest: R::get_opt(dest),
+                        dest: R::get_vec_a(dest),
                         assert_id: assert_id.clone(),
                     })
                 })
@@ -483,11 +483,11 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                 R::ret(|| stm_new(StmX::DeadEnd(R::get(s))))
             }
             StmX::Return { base_error, ret_exp, inside_body, assert_id } => {
-                let ret_exp = R::map_opt(ret_exp, &mut |e| self.visit_exp(e))?;
+                let ret_exp = self.visit_exps(ret_exp)?;
                 R::ret(|| {
                     stm_new(StmX::Return {
                         base_error: base_error.clone(),
-                        ret_exp: R::get_opt(ret_exp),
+                        ret_exp: R::get_vec_a(ret_exp),
                         inside_body: *inside_body,
                         assert_id: assert_id.clone(),
                     })
@@ -737,7 +737,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
     fn visit_function(&mut self, f: &FunctionSst) -> Result<R::Ret<FunctionSst>, Err> {
         let typ_bounds = self.visit_generic_bounds(&f.x.typ_bounds)?;
         let pars = self.visit_pars(&f.x.pars)?;
-        let ret = self.visit_par(&f.x.ret)?;
+        let ret = self.visit_pars(&f.x.ret)?;
         let decl = self.visit_func_decl(&f.x.decl)?;
         let axioms = self.visit_func_axioms(&f.x.axioms)?;
         let exec_proof_check =
@@ -758,8 +758,9 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                     mode: f.x.mode,
                     typ_params: f.x.typ_params.clone(),
                     typ_bounds: R::get_vec_a(typ_bounds),
+                    n_orig_params: f.x.n_orig_params,
                     pars: R::get_vec_a(pars),
-                    ret: R::get(ret),
+                    ret: R::get_vec_a(ret),
                     ens_has_return: f.x.ens_has_return,
                     item_kind: f.x.item_kind,
                     attrs: f.x.attrs.clone(),

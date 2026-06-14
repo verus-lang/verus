@@ -292,15 +292,15 @@ fn do_expansion_if_assert_id_matches(
         StmX::Return { assert_id: Some(a_id), ret_exp, .. } if a_id == assert_id => {
             let postcondition = sst_conjoin(&stm.span, &post_condition_sst.ens_exps);
             let (stm, tree) = expand_exp(ctx, ectx, assert_id, &postcondition, local_decls);
-            let stm = match (&post_condition_sst.dest, ret_exp) {
-                (Some(dest_uid), Some(ret_exp)) => Spanned::new(
-                    stm.span.clone(),
-                    StmX::Block(Arc::new(vec![
-                        crate::sst_to_air::assume_var(&stm.span, dest_uid, ret_exp),
-                        stm,
-                    ])),
-                ),
-                _ => stm,
+            let stm = if post_condition_sst.dest.len() == ret_exp.len() && ret_exp.len() > 0 {
+                let mut stms: Vec<Stm> = Vec::new();
+                for (dest_uid, r_exp) in post_condition_sst.dest.iter().zip(ret_exp.iter()) {
+                    stms.push(crate::sst_to_air::assume_var(&stm.span, dest_uid, r_exp))
+                }
+                stms.push(stm.clone());
+                stm.new_x(StmX::Block(Arc::new(stms)))
+            } else {
+                stm
             };
             Some((stm, tree))
         }

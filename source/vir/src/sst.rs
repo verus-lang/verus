@@ -179,7 +179,12 @@ pub enum StmX {
         args: Exps,
         /// If Some, this is a placeholder call to be expanded into split assertions for error reporting
         split: Option<Message>,
-        dest: Option<Dest>,
+        /// One destination per return value,
+        /// or an empty Vec (the caller can ignore all the return values)
+        /// Each destination must have a distinct get_loc_var
+        /// (e.g. you can't assign to two different fields x.f1 and x.f2 of the same var x)
+        /// In practice, we currently generate a temp variable for each destination anyway
+        dest: Arc<Vec<Dest>>,
         assert_id: Option<AssertId>,
     },
     /// Assertion to be verified by the SMT solver; reports Stm's span on failure plus optional extra info
@@ -209,12 +214,7 @@ pub enum StmX {
     DeadEnd(Stm),
     /// Function return: asserts postcondition holds, then exits function.
     /// If `inside_body` is true, adds `assume false` afterward (early return).
-    Return {
-        assert_id: Option<AssertId>,
-        base_error: Message,
-        ret_exp: Option<Exp>,
-        inside_body: bool,
-    },
+    Return { assert_id: Option<AssertId>, base_error: Message, ret_exp: Exps, inside_body: bool },
     /// Loop control flow to a labeled or innermost loop
     BreakOrContinue { label: Option<String>, is_break: bool },
     /// Conditional statement (condition, then-branch, optional else-branch)
@@ -308,9 +308,9 @@ pub enum PostConditionKind {
 
 #[derive(Debug, Clone, ToDebugSNode)]
 pub struct PostConditionSst {
-    /// Identifier that holds the return value.
+    /// Identifiers that hold the return values.
     /// May be referenced by `ens_exprs` or `ens_spec_precondition_stms`.
-    pub dest: Option<VarIdent>,
+    pub dest: Vec<VarIdent>,
     /// Post-conditions (only used in non-recommends-checking mode)
     pub ens_exps: Exps,
     /// Recommends checks (only used in recommends-checking mode)
@@ -378,8 +378,17 @@ pub struct FunctionSstX {
     pub opaqueness: crate::ast::Opaqueness,
     pub typ_params: crate::ast::Idents,
     pub typ_bounds: crate::ast::GenericBounds,
+    // For exec/proof functions that are not const/static values,
+    // pars may contain arbitrarily many extra parameters after the original Rust parameters.
+    // n_orig_params is the number of original Rust parameters,
+    // or 1 if we inserted dummy_param_name into an originally empty parameter list.
+    pub n_orig_params: usize,
     pub pars: Pars,
-    pub ret: Par,
+    // For unit-value returning functions, ret includes the unit value,
+    // so it's always the case that ret.len() >= 1
+    // For exec/proof functions that are not const/static values,
+    // ret may contain arbitrarily many extra return values after the original one Rust return value
+    pub ret: Pars,
     pub ens_has_return: bool,
     pub item_kind: crate::ast::ItemKind,
     pub attrs: crate::ast::FunctionAttrs,
