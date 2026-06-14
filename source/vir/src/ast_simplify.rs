@@ -1051,7 +1051,7 @@ fn add_fndef_axioms_to_function(
 
         let mk_impl_path = |kind: ClosureKind| {
             Arc::new(crate::ast::PathX {
-                krate: CrateId::Internal,
+                krate: function.x.name.path.krate.clone(),
                 segments: Arc::new(vec![crate::def::impl_fndef(&function.x.name, kind)]),
             })
         };
