@@ -428,20 +428,6 @@ fn proof_fn_tracks_to_type(span: Span, tracks: impl Iterator<Item = bool>) -> Ty
     Type::Tuple(verus_syn::TypeTuple { paren_token, elems })
 }
 
-pub(crate) fn rewrite_exe_pat(pat: &mut Pat) -> (Vec<Stmt>, Vec<Stmt>) {
-    let mut visit_pat = ExecGhostPatVisitor {
-        inside_ghost: 0,
-        tracked: None,
-        ghost: None,
-        x_decls: Vec::new(),
-        x_assigns: Vec::new(),
-    };
-
-    visit_pat.visit_pat_mut(pat);
-    let ExecGhostPatVisitor { x_decls, x_assigns, .. } = visit_pat;
-    return (x_decls, x_assigns);
-}
-
 fn rewrite_args_unwrap_ghost_tracked(erase_ghost: &EraseGhost, arg: &mut FnArg) -> Vec<Stmt> {
     // Check for Ghost(x) or Tracked(x) argument
     let mut unwrap_ghost_tracked = Vec::new();
@@ -4997,55 +4983,114 @@ pub(crate) fn rewrite_expr_node(erase_ghost: EraseGhost, inside_ghost: bool, exp
 fn take_sig_with_spec(
     erase_ghost: EraseGhost,
     with: verus_syn::WithSpecOnFn,
-    sig: &mut syn::Signature,
-    ret_pat: &mut Option<Pat>,
+    _sig: &mut syn::Signature,
+    _ret_pat: &mut Option<Pat>,
 ) -> Vec<Stmt> {
-    let verus_syn::WithSpecOnFn { mut inputs, outputs, .. } = with;
+    let verus_syn::WithSpecOnFn { inputs, outputs, .. } = with;
     let mut spec_stmts = vec![];
-    if inputs.len() > 0 {
-        for arg in inputs.iter_mut() {
-            spec_stmts.extend(rewrite_args_unwrap_ghost_tracked(&erase_ghost, arg));
-            sig.inputs.push(syn::parse_quote_spanned! { arg.span() => #arg })
+    // Generate `let tmp: Type = declare_with(); let x = tmp.get()/tmp.view();`
+    // for each input with-param, instead of adding to signature.
+    for (i, arg) in inputs.iter().enumerate() {
+        if let verus_syn::FnArgKind::Typed(pat_type) = &arg.kind {
+            let ty = &pat_type.ty;
+            let span = arg.span();
+            let tmp_ident =
+                verus_syn::Ident::new(&format!("__verus_with_in_{i}"), Span::call_site());
+            // Emit: let __verus_with_in_N = declare_with::<Type>();
+            // Using turbofish to avoid lifetime elision issues in let bindings.
+            let declare_stmt = Stmt::Expr(
+                Expr::Verbatim(quote_spanned_builtin!(verus_builtin, span =>
+                    let #tmp_ident = #verus_builtin::declare_with::<#ty>()
+                )),
+                Some(Token![;](span)),
+            );
+            spec_stmts.push(declare_stmt);
+            // Now unwrap: check if pattern is Tracked(x) or Ghost(x)
+            if let Pat::TupleStruct(tup) = &*pat_type.pat {
+                let is_ghost = path_is_ident(&tup.path, "Ghost");
+                let is_tracked = path_is_ident(&tup.path, "Tracked");
+                if (is_ghost || is_tracked) && tup.elems.len() == 1 {
+                    if let Pat::Ident(id) = &tup.elems[0] {
+                        let x = &id.ident;
+                        if erase_ghost.keep() {
+                            spec_stmts.push(stmt_with_semi!(
+                                span => #[verus::internal(header_unwrap_parameter)] let #x));
+                            if is_tracked {
+                                spec_stmts.push(stmt_with_semi!(
+                                    span => #[verifier::proof_block] { #x = #tmp_ident.get() }));
+                            } else {
+                                spec_stmts.push(stmt_with_semi!(
+                                    span => #[verifier::proof_block] { #x = #tmp_ident.view() }));
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
-    // ret.0 is executable returns.
-    // ret.1.. is the tracked/ghost returns.
-    if let Some((token, extra_ret)) = outputs {
-        if extra_ret.len() > 0 {
-            let span = extra_ret.span();
-            let extra_ret_typs: Vec<_> = extra_ret.iter().map(|pt| pt.ty.clone()).collect();
-            let mut elems = Punctuated::new();
-            if let Some(pat) = ret_pat {
-                elems.push(pat.clone());
-            } else {
-                elems.push(Pat::Wild(verus_syn::PatWild {
-                    attrs: vec![],
-                    underscore_token: Token![_](span),
-                }));
-            }
-            for pt in extra_ret {
-                elems.push(pt.pat.as_ref().clone());
-            }
-            *ret_pat = Some(Pat::Tuple(verus_syn::PatTuple {
-                attrs: vec![],
-                paren_token: Paren::default(),
-                elems,
-            }));
-            match &mut sig.output {
-                syn::ReturnType::Default => {
-                    let ty = syn::Type::Verbatim(quote_spanned!(
-                        sig.output.span() => (() #(,#extra_ret_typs)*)
-                    ));
-                    sig.output = syn::ReturnType::Type(syn::Token![->](token.span()), Box::new(ty));
+    // For outputs: generate declare_ret_with and optional unwrap.
+    // Two cases:
+    //   `-> Ghost(z): Ghost<u32>` — declare_ret_with var is `__verus_with_out_N`, unwrap into `z`
+    //   `-> g: Ghost<int>` — declare_ret_with var IS `g`, no unwrap needed
+    //     (Verus spec auto-coerces Ghost<int> to int in ensures)
+    //
+    // The output variable is always named directly (either the user-given ident
+    // or `__verus_with_out_N`) so users assign to it with `proof!{ name = ... }`
+    // rather than a separate `|=` mechanism.
+    if let Some((_token, extra_ret)) = outputs {
+        for (i, pt) in extra_ret.iter().enumerate() {
+            let ty = &pt.ty;
+            let span = pt.span();
+
+            // For `-> Ghost(z): Ghost<u32>`, unwrap into inner variable z
+            if let Pat::TupleStruct(tup) = &*pt.pat {
+                let is_ghost = path_is_ident(&tup.path, "Ghost");
+                let is_tracked = path_is_ident(&tup.path, "Tracked");
+                if (is_ghost || is_tracked) && tup.elems.len() == 1 {
+                    if let Pat::Ident(id) = &tup.elems[0] {
+                        let x = &id.ident;
+                        // Use a separate outer variable for declare_ret_with
+                        let out_ident = verus_syn::Ident::new(
+                            &format!("__verus_with_out_{i}"),
+                            Span::call_site(),
+                        );
+                        let declare_stmt = Stmt::Expr(
+                            Expr::Verbatim(quote_spanned_builtin!(verus_builtin, span =>
+                                let mut #out_ident = #verus_builtin::declare_ret_with::<#ty>()
+                            )),
+                            Some(Token![;](span)),
+                        );
+                        spec_stmts.push(declare_stmt);
+                        if erase_ghost.keep() {
+                            spec_stmts.push(stmt_with_semi!(
+                               span => #[verus::internal(header_unwrap_parameter)] let #x));
+                            if is_tracked {
+                                spec_stmts.push(stmt_with_semi!(
+                                   span => #[verifier::proof_block] { #x = #out_ident.get() }));
+                            } else {
+                                spec_stmts.push(stmt_with_semi!(
+                                   span => #[verifier::proof_block] { #x = #out_ident.view() }));
+                            }
+                        }
+                    }
                 }
-                syn::ReturnType::Type(_, ty) => {
-                    **ty = syn::Type::Verbatim(quote_spanned!(
-                        ty.span() => (#ty #(,#extra_ret_typs)*)
-                    ));
-                }
+            } else if let Pat::Ident(id) = &*pt.pat {
+                // Plain ident pattern like `g: Ghost<int>` — use `g` directly
+                // as the declare_ret_with variable. No unwrap needed since the
+                // ensures clause refers to `g` as the wrapper type directly
+                // (Verus spec auto-coerces Ghost<T> to T).
+                let x = &id.ident;
+                let declare_stmt = Stmt::Expr(
+                    Expr::Verbatim(quote_spanned_builtin!(verus_builtin, span =>
+                        let mut #x = #verus_builtin::declare_ret_with::<#ty>()
+                    )),
+                    Some(Token![;](span)),
+                );
+                spec_stmts.push(declare_stmt);
             }
         }
     };
+    // Don't modify sig.output or ret_pat — outputs are handled via declare_ret_with
     spec_stmts
 }
 

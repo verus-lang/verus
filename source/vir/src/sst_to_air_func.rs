@@ -735,6 +735,13 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
                 ens_typing_invs.push(expr);
             }
         }
+        // Add types for extra_ret_pars (from declare_ret_with)
+        for par in function.x.extra_ret_pars.iter() {
+            ens_typs.push(typ_to_air(ctx, &par.x.typ));
+            if let Some(expr) = typ_invariant(ctx, &par.x.typ, &ident_var(&par.x.name.lower())) {
+                ens_typing_invs.push(expr);
+            }
+        }
         // typing invariants for synthetic out-params for &mut params
         for param in
             func_decl_sst.ens_pars.iter().filter(|p| matches!(p.x.purpose, ParPurpose::MutPost))

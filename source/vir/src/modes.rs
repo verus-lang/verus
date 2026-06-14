@@ -3509,6 +3509,17 @@ fn check_function(
             if let Some((mode, _)) = param.x.unwrapped_info { mode } else { param.x.mode };
         fun_typing.insert(&param.x.name, inner_param_mode, Some(ProphVar::No));
     }
+    for param in function.x.extra_ret_params.iter() {
+        if !mode_le(function.x.mode, param.x.mode) {
+            return Err(error(
+                &function.span,
+                format!("return parameter {} cannot have mode {}", param.x.name, param.x.mode),
+            ));
+        }
+        let inner_param_mode =
+            if let Some((mode, _)) = param.x.unwrapped_info { mode } else { param.x.mode };
+        fun_typing.insert(&param.x.name, inner_param_mode, Some(ProphVar::No));
+    }
 
     for expr in function.x.require.iter() {
         let mut req_typing = fun_typing.push_block_ghostness(Ghost::Ghost);
@@ -3527,6 +3538,11 @@ fn check_function(
     let mut ens_typing = fun_typing.push_var_scope();
     if function.x.ens_has_return {
         ens_typing.insert(&function.x.ret.x.name, Mode::Spec, Some(ProphVar::No));
+    }
+    for param in function.x.extra_ret_params.iter() {
+        let inner_param_mode =
+            if let Some((mode, _)) = param.x.unwrapped_info { mode } else { param.x.mode };
+        ens_typing.insert(&param.x.name, inner_param_mode, Some(ProphVar::No));
     }
 
     for expr in function.x.ensure.0.iter().chain(function.x.ensure.1.iter()) {
@@ -3750,8 +3766,11 @@ fn check_function(
             // resolution_inference does some extra (soundness-related) checks
             // besides resolution inference that would not be good to skip
             if let Some(body) = &mut functionx.body {
+                let mut resolution_params = (*functionx.params).clone();
+                resolution_params.extend(functionx.extra_ret_params.iter().cloned());
+                let resolution_params = Arc::new(resolution_params);
                 *body = crate::resolution_inference::infer_resolution(
-                    &functionx.params,
+                    &resolution_params,
                     &body,
                     &record.read_kind_finals,
                     &ctxt.datatypes,

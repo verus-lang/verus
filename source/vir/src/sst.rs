@@ -380,6 +380,7 @@ pub struct FunctionSstX {
     pub typ_bounds: crate::ast::GenericBounds,
     pub pars: Pars,
     pub ret: Par,
+    pub extra_ret_pars: Pars,
     pub ens_has_return: bool,
     pub item_kind: crate::ast::ItemKind,
     pub attrs: crate::ast::FunctionAttrs,

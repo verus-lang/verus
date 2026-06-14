@@ -1626,6 +1626,8 @@ pub struct FunctionX {
     pub params: Params,
     /// Return value
     pub ret: Param,
+    /// Extra ghost/tracked return values from declare_ret_with()
+    pub extra_ret_params: Params,
     /// Can the ensures clause reference the 'ret' param (must be true for non-unit types)
     pub ens_has_return: bool,
     /// Preconditions (requires for proof/exec functions, recommends for spec functions)
