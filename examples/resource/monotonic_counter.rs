@@ -285,8 +285,8 @@ impl MonotonicCounterResource {
         ensures
             old(self)@ == old(other)@,
             final(self).id() == old(self).id(),
-            final(other).id() == old(self).id(),
-            final(other)@ == final(self)@,
+            final(other).id() == old(other).id(),
+            final(self)@ == final(other)@,
             final(self)@ == (MonotonicCounterResourceValue::HalfRightToAdvance {
                 value: old(self)@->HalfRightToAdvance_value + 1,
             }),
