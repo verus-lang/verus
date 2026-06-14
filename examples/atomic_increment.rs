@@ -75,8 +75,6 @@ pub fn increment_good(var: &PAtomicU64) -> (out: u64)
 
         let res;
         let maybe_au = try_open_atomic_update!(au, mut perm => {
-            let ghost prev = perm;
-
             res = var.compare_exchange_weak(Tracked(&mut perm), curr, next);
 
             Tracked(match res {

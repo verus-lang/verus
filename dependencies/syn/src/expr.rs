@@ -3466,13 +3466,13 @@ pub(crate) mod printing {
         tokens.append_all(attrs.outer());
     }
 
-    #[cfg(not(feature = "full"))]
-    pub(crate) fn outer_attrs_to_tokens(_attrs: &[Attribute], _tokens: &mut TokenStream) {}
-
     #[cfg(feature = "full")]
     fn inner_attrs_to_tokens(attrs: &[Attribute], tokens: &mut TokenStream) {
         tokens.append_all(attrs.inner());
     }
+
+    #[cfg(not(feature = "full"))]
+    pub(crate) fn outer_attrs_to_tokens(_attrs: &[Attribute], _tokens: &mut TokenStream) {}
 
     pub(crate) fn print_subexpression(
         expr: &Expr,
