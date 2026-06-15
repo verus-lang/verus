@@ -379,6 +379,7 @@ pub(crate) enum BuiltinTypeItem {
     FnSpec,
     Ghost,
     Tracked,
+    ShadowData,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -394,6 +395,7 @@ pub(crate) enum BuiltinFunctionItem {
     CallEnsures,
     ConstrainType,
     GetFutureOutputType,
+    ShadowData,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -696,6 +698,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::FnSpec",                  VerusItem::BuiltinType(BuiltinTypeItem::FnSpec)),
         ("verus::verus_builtin::Ghost",                   VerusItem::BuiltinType(BuiltinTypeItem::Ghost)),
         ("verus::verus_builtin::Tracked",                 VerusItem::BuiltinType(BuiltinTypeItem::Tracked)),
+        ("verus::verus_builtin::ShadowData",              VerusItem::BuiltinType(BuiltinTypeItem::ShadowData)),
 
         ("verus::verus_builtin::Integer",                 VerusItem::BuiltinTrait(BuiltinTraitItem::Integer)),
         ("verus::verus_builtin::Chainable",               VerusItem::BuiltinTrait(BuiltinTraitItem::Chainable)),
@@ -705,6 +708,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::call_ensures",  VerusItem::BuiltinFunction(BuiltinFunctionItem::CallEnsures)),
         ("verus::verus_builtin::constrain_type",          VerusItem::BuiltinFunction(BuiltinFunctionItem::ConstrainType)),
         ("verus::verus_builtin::get_future_output_type",          VerusItem::BuiltinFunction(BuiltinFunctionItem::GetFutureOutputType)),
+        ("verus::verus_builtin::shadow_data",             VerusItem::BuiltinFunction(BuiltinFunctionItem::ShadowData)),
         
         ("verus::verus_builtin::global_size_of", VerusItem::Global(GlobalItem::SizeOf)),
 

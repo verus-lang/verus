@@ -156,7 +156,11 @@ pub(crate) fn typ_as_mono(typ: &Typ) -> Option<MonoTyp> {
             Some(Arc::new(MonoTypX::Decorate2(*d, Arc::new(vec![m1, m2]))))
         }
         TypX::Primitive(Primitive::Array, _) => None,
-        TypX::Primitive(name, typs) => {
+        TypX::Primitive(Primitive::ShadowData, _) => None,
+        TypX::Primitive(
+            name @ (Primitive::Slice | Primitive::StrSlice | Primitive::Ptr | Primitive::Global),
+            typs,
+        ) => {
             let monotyps = monotyps_as_mono(typs)?;
             Some(Arc::new(MonoTypX::Primitive(*name, Arc::new(monotyps))))
         }
@@ -600,6 +604,7 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 UnaryOp::MutRefFinal(_) => {
                     panic!("internal error: MustBeFinalized in SST")
                 }
+                UnaryOp::ShadowData => mk_exp(ExpX::Unary(*op, e1)),
             }
         }
         ExpX::UnaryOpr(op, e1) => {

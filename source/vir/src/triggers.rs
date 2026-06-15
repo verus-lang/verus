@@ -133,6 +133,7 @@ fn check_trigger_expr_arg(state: &mut State, arg: &Exp) {
             | UnaryOp::MutRefFuture(_)
             | UnaryOp::MutRefFinal(_)
             | UnaryOp::Length(_)
+            | UnaryOp::ShadowData
             | UnaryOp::InferSpecForLoopIter { .. } => {}
         },
         ExpX::UnaryOpr(op, arg) => match op {
@@ -292,6 +293,7 @@ fn check_trigger_expr(
             UnaryOp::Length(_) => {
                 Err(error(&exp.span, "triggers cannot contain builtin Length operator"))
             }
+            UnaryOp::ShadowData => Err(error(&exp.span, "triggers cannot contain shadow_data")),
         },
         ExpX::UnaryOpr(op, arg) => match op {
             UnaryOpr::Box(_) | UnaryOpr::Unbox(_) => panic!("unexpected box"),

@@ -94,12 +94,10 @@ pub(crate) fn stm_get_mutations_shallow(stm: &Stm, m: &mut HashMap<VarIdent, Spa
     }
 }
 
-/// If there are assignments associated with this Stm (shallowly), return them.
-/// (In new-mut-ref, all assignments are in Dest values.)
-pub(crate) fn stm_get_assignment_shallow(stm: &Stm) -> Vec<&Exp> {
+pub(crate) fn stm_get_dest_shallow(stm: &Stm) -> Arc<Vec<Dest>> {
     match &stm.x {
-        StmX::Assign { lhs: Dest { dest, is_init: _ }, .. } => vec![dest],
-        StmX::Call { dest, .. } => dest.iter().map(|Dest { dest, is_init: _ }| dest).collect(),
+        StmX::Assign { lhs, .. } => Arc::new(vec![lhs.clone()]),
+        StmX::Call { dest, .. } => dest.clone(),
         StmX::Assert(..)
         | StmX::AssertBitVector { .. }
         | StmX::AssertQuery { .. }
@@ -115,15 +113,21 @@ pub(crate) fn stm_get_assignment_shallow(stm: &Stm) -> Vec<&Exp> {
         | StmX::OpenInvariant(..)
         | StmX::ClosureInner { .. }
         | StmX::Air(..)
-        | StmX::Block(..) => vec![],
+        | StmX::Block(..) => Arc::new(vec![]),
     }
+}
+
+/// If there's an assignment associated with this Stm (shallowly), return it.
+/// There can be at most one (in new-mut-ref, they no longer appear in calls)
+pub(crate) fn stm_get_assignment_shallow(stm: &Stm) -> Vec<Exp> {
+    stm_get_dest_shallow(stm).iter().map(|dest| dest.dest.clone()).collect()
 }
 
 /// Find any assignment that overlaps the given loc if it exists
 pub(crate) fn find_overlapping_assignment(stm: &Stm, loc: &Exp) -> Option<Span> {
     crate::sst_visitor::stm_visitor_check(&stm, &mut |stm| {
         for assigned_loc in stm_get_assignment_shallow(stm) {
-            if locs_may_overlap(assigned_loc, loc) {
+            if locs_may_overlap(&assigned_loc, loc) {
                 return Err(stm.span.clone());
             }
         }

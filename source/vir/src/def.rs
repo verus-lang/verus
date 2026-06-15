@@ -43,6 +43,7 @@ const SUFFIX_RUSTC_ID: &str = "~";
 const SUFFIX_DECORATE_TYPE_PARAM: &str = "&.";
 const SUFFIX_REC_PARAM: &str = "!$";
 const SUFFIX_PATH: &str = ".";
+const SUFFIX_SHADOW_VAR: &str = "~shadow";
 const PREFIX_ESCAPE: &str = "$~";
 const PREFIX_FUEL_ID: &str = "fuel%";
 const PREFIX_FUEL_NAT: &str = "fuel_nat%";
@@ -53,6 +54,7 @@ const PREFIX_OPEN_INV: &str = "openinv%";
 const PREFIX_NO_UNWIND_WHEN: &str = "no_unwind_when%";
 const PREFIX_RECURSIVE: &str = "rec%";
 const PREFIX_SIMPLIFY_TEMP_VAR: &str = "tmp%%";
+const PREFIX_SHADOW_DATA_TEMP_VAR: &str = "shadow_tmp%%";
 const PREFIX_TEMP_VAR: &str = "tmp%";
 pub const PREFIX_EXPAND_ERRORS_TEMP_VAR: &str = "expand%";
 const PREFIX_PRE_VAR: &str = "pre%";
@@ -201,6 +203,7 @@ pub const TYPE_ID_SLICE: &str = "SLICE";
 pub const TYPE_ID_STRSLICE: &str = "STRSLICE";
 pub const TYPE_ID_PTR: &str = "PTR";
 pub const TYPE_ID_GLOBAL: &str = "ALLOCATOR_GLOBAL";
+pub const TYPE_ID_SHADOW_DATA: &str = "SHADOW_DATA";
 pub const TYPE_ID_MUT_REF: &str = "MUTREF";
 pub const HAS_TYPE: &str = "has_type";
 pub const AS_TYPE: &str = "as_type";
@@ -762,6 +765,13 @@ pub fn simplify_temp_var(n: u64) -> VarIdent {
     )
 }
 
+pub fn shadow_data_temp_var(n: u64) -> VarIdent {
+    crate::ast_util::str_unique_var(
+        PREFIX_SHADOW_DATA_TEMP_VAR,
+        crate::ast::VarIdentDisambiguate::VirTemp(n),
+    )
+}
+
 pub fn closure_param_var() -> VarIdent {
     crate::ast_util::str_unique_var(CLOSURE_PARAM, crate::ast::VarIdentDisambiguate::AirLocal)
 }
@@ -1244,6 +1254,10 @@ pub fn unique_var_name(
         VarIdentDisambiguate::ResInfTemp(id) => {
             out.push_str(RES_INF_TEMP_SEPARATOR);
             write!(&mut out, "{}", id).unwrap();
+        }
+        VarIdentDisambiguate::ShadowData(id) => {
+            out = unique_var_name(out, (*id).clone());
+            out.push_str(SUFFIX_SHADOW_VAR);
         }
     }
     out

@@ -50,6 +50,8 @@ pub fn ast_to_sst_krate(
     }
     assert!(func_workmap.len() == 0);
 
+    crate::shadow_data::shadow_data_functions(&mut functions)?;
+
     let sst_map = Arc::new(sst_infos);
     for func_sst in &mut functions {
         elaborate_function_rewrite_recursive(ctx, diagnostics, sst_map.clone(), func_sst)?;

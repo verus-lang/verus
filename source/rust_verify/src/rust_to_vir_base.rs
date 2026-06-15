@@ -1178,6 +1178,13 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                     };
                     return Ok((Arc::new(TypX::SpecFn(param_typs, ret_typ)), false));
                 }
+                if let Some(VerusItem::BuiltinType(BuiltinTypeItem::ShadowData)) =
+                    verus_items.id_to_name.get(&did)
+                {
+                    assert!(typ_args.len() == 1);
+                    let args = Arc::new(vec![typ_args[0].0.clone()]);
+                    return Ok((Arc::new(TypX::Primitive(Primitive::ShadowData, args)), false));
+                }
                 let typ_args = typ_args.into_iter().map(|(t, _)| t).collect();
                 let impl_paths =
                     get_impl_paths(tcx, verus_items, param_env_src, did, args, None, span)?;
