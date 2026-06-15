@@ -165,6 +165,8 @@ impl<A> Seq<A> {
         self[0]
     }
 
+    /// Prepends the value `a` to the start of the sequence.
+    /// This always increases the length of the sequence by 1.
     pub open spec fn push_front(self, a: A) -> Self {
         self.insert(0, a)
     }

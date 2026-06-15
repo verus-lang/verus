@@ -1420,6 +1420,8 @@ impl<T> SeqPointsTo<T> {
         Seq::new(self.len(), |i| self[i as nat].value())
     }
 
+    /// Returns a `tracked` reference to the underlying `Seq<PointsTo<T>>`, 
+    /// given `tracked &self`.
     pub proof fn tracked_perm_seq(tracked &self) -> (tracked ret: &Seq<PointsTo<T>>)
         requires
             self.wf(),
@@ -1429,6 +1431,11 @@ impl<T> SeqPointsTo<T> {
         &self.perm
     }
 
+    /// Returns a `tracked` mutable reference to the underlying `Seq<PointsTo<T>>`, 
+    /// given `tracked &mut self`. `self.ptr` will remain unchanged.
+    /// 
+    /// Provided that this reference is not used to change the sequence length 
+    /// or any of the `PointsTo<T>` pointers, the invariant will be preserved.
     pub proof fn tracked_perm_seq_mut(tracked &mut self) -> (tracked ret: &mut Seq<PointsTo<T>>)
         requires
             self.wf(),
@@ -1444,7 +1451,12 @@ impl<T> SeqPointsTo<T> {
         &mut self.perm
     }
 
-    // Sanity check for what is needed to reestablish `wf`
+    /// Sanity check for the criteria for ensuring that the final value of `&mut self` is still well-founded:
+    /// 
+    /// * All pointers remain the same.
+    /// * The length remains the same.
+    /// 
+    /// Note that we _are_ allowed to change `self.mem_contents()` without affecting the invariant's validity.
     pub broadcast proof fn constants(&mut self)
         requires
             old(self).wf(),
@@ -1459,6 +1471,7 @@ impl<T> SeqPointsTo<T> {
     {
     }
 
+    /// Proof of equivalence for two different ways to get the `MemContents<T>` at a given index `i`.
     pub broadcast proof fn mem_contents_equiv(self, i: int)
         requires
             0 <= i < self.len(),
@@ -1614,7 +1627,6 @@ impl SeqPointsTo<u8> {
             out.ptr() == self.ptr() as *mut T,
             out.len() == capacity,
             out.mem_contents() == decode(self.mem_contents()),
-            // self.is_fully_uninit() ==> out.is_fully_uninit(),
             out.wf(),
     ;
 
