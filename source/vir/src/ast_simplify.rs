@@ -24,7 +24,8 @@ use crate::context::GlobalCtx;
 use crate::def::dummy_param_name;
 use crate::def::is_dummy_param_name;
 use crate::def::{
-    Spanned, positional_field_ident, prefix_tuple_param, prefix_tuple_variant, user_local_name,
+    Spanned, impl_fndef_path, positional_field_ident, prefix_tuple_param, prefix_tuple_variant,
+    user_local_name,
 };
 use crate::messages::Span;
 use crate::messages::{error, internal_error};
@@ -1049,17 +1050,10 @@ fn add_fndef_axioms_to_function(
             Arc::new(TypX::Datatype(tuple_dt, Arc::new(arg_typs), Arc::new(vec![])));
         let trait_typ_args = Arc::new(vec![self_typ, args_tuple_typ]);
 
-        let mk_impl_path = |kind: ClosureKind| {
-            Arc::new(crate::ast::PathX {
-                krate: CrateId::Internal,
-                segments: Arc::new(vec![crate::def::impl_fndef(&function.x.name, kind)]),
-            })
-        };
-
         let mut trait_impls_out: Vec<TraitImpl> = Vec::new();
         for kind in [ClosureKind::Fn, ClosureKind::FnMut, ClosureKind::FnOnce] {
             let trait_implx = crate::ast::TraitImplX {
-                impl_path: mk_impl_path(kind),
+                impl_path: impl_fndef_path(&function.x.name, kind),
                 typ_params: function.x.typ_params.clone(),
                 typ_bounds: function.x.typ_bounds.clone(),
                 trait_path: kind.trait_path(),
@@ -1074,7 +1068,7 @@ fn add_fndef_axioms_to_function(
 
         let assoc_typ_implx = crate::ast::AssocTypeImplX {
             name: Arc::new("Output".to_string()),
-            impl_path: mk_impl_path(ClosureKind::FnOnce),
+            impl_path: impl_fndef_path(&function.x.name, ClosureKind::FnOnce),
             typ_params: function.x.typ_params.clone(),
             typ_bounds: function.x.typ_bounds.clone(),
             trait_path: ClosureKind::FnOnce.trait_path(),
