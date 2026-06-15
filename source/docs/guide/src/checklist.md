@@ -21,7 +21,3 @@
 
  * Try adding `#[verifier::spinoff_prover]` to the function. This can make it a little more stable.
  * Try [breaking the proof into pieces](./breaking_proofs_into_pieces.md).
- * If you are using `--expand-errors` and all postconditions clauses (A, B, C, ...) individually succeed but the overall postcondition fails,
-   this may happen because there are dependencies between clauses (e.g., we need to know clause A to prove clause B), 
-   but Z3 is not using the correct order to reason about them.
-   Try adding assertions of the form (A ==> B) in the function body.
