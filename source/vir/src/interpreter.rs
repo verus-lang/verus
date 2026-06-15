@@ -1181,6 +1181,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | MutRefFuture(_)
                         | MutRefFinal(_)
                         | MutRefPtr
+                        | ShadowData
                         | InferSpecForLoopIter { .. } => ok,
                         MustBeFinalized | UnaryOp::MustBeElaborated => {
                             panic!("Found MustBeFinalized op {:?} after calling finalize_exp", exp)
@@ -1302,6 +1303,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | MutRefFuture(_)
                         | MutRefFinal(_)
                         | MutRefPtr
+                        | ShadowData
                         | InferSpecForLoopIter { .. } => ok,
                     }
                 }

@@ -29,6 +29,7 @@ fn auto_ext_equal_typ(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::Primitive(crate::ast::Primitive::StrSlice, _) => true,
         TypX::Primitive(crate::ast::Primitive::Ptr, _) => false,
         TypX::Primitive(crate::ast::Primitive::Global, _) => false,
+        TypX::Primitive(crate::ast::Primitive::ShadowData, _) => false,
         TypX::FnDef(..) => false,
         TypX::MutRef(_) => false,
         TypX::Opaque { .. } => false,
@@ -58,6 +59,7 @@ fn insert_auto_ext_equal(ctx: &Ctx, exp: &Exp) -> Exp {
             UnaryOp::FloatToBits => exp.clone(),
             UnaryOp::IeeeFloat(_) => exp.clone(),
             UnaryOp::StrLen | UnaryOp::Length(_) => exp.clone(),
+            UnaryOp::ShadowData => exp.clone(),
             UnaryOp::InferSpecForLoopIter { .. } => exp.clone(),
             UnaryOp::Trigger(_)
             | UnaryOp::CoerceMode { .. }

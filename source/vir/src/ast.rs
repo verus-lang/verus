@@ -46,7 +46,7 @@ pub struct PathX {
 }
 
 #[derive(
-    Copy,
+//    Copy,
     Clone,
     Debug,
     Serialize,
@@ -86,6 +86,8 @@ pub enum VarIdentDisambiguate {
     BitVectorToAirDecl(u64),
     UserDefinedTypeInvariantPass(u64),
     ResInfTemp(u64),
+    // shadow_data variable
+    ShadowData(Box<VarIdentDisambiguate>),
 }
 
 /// A local variable name, possibly renamed for disambiguation
@@ -255,6 +257,7 @@ pub enum Primitive {
     StrSlice,
     Ptr, // Mut ptr, unless Const decoration is applied
     Global,
+    ShadowData,
 }
 
 #[derive(Debug, Serialize, Deserialize, Hash, ToDebugSNode, Clone)]
@@ -477,9 +480,10 @@ pub enum UnaryOp {
     /// `*final(e)` should be replaced with `mut_ref_future(e)`; other appearances are an error
     /// boolean param = did this arise from migration?
     MutRefFinal(bool),
-
     /// Length of an array or slice
     Length(ArrayKind),
+    /// shadow_data(x) operator to get shadow data of a variable (e.g. pointer for x if x: &t)
+    ShadowData,
 }
 
 /// Which builtin source name does this come from
@@ -1516,6 +1520,8 @@ pub struct FunctionAttrsX {
     pub tracked_take_option: bool,
     /// Whether the function is an async function
     pub is_async: bool,
+    /// Does this function track the underlying pointer values in shared references
+    pub has_shadow_data: bool,
 }
 
 /// Function specification of its invariant mask

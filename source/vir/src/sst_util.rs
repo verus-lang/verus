@@ -542,6 +542,9 @@ impl ExpX {
                 UnaryOp::Length(_kind) => {
                     (format!("length({})", exp.x.to_string_prec(global, 99)), 0)
                 }
+                UnaryOp::ShadowData => {
+                    (format!("shadow_data({})", exp.x.to_string_prec(global, 99)), 0)
+                }
             },
             UnaryOpr(op, exp) => {
                 use crate::ast::UnaryOpr::*;
