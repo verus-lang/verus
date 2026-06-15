@@ -1364,18 +1364,18 @@ impl<T> SeqPointsTo<T> {
     }
 
     /// The `Seq<PointsTo<T>>` that this type is a wrapper for.
-    pub closed spec fn perm(self) -> Seq<PointsTo<T>> {
+    pub closed spec fn seq_perm(self) -> Seq<PointsTo<T>> {
         self.perm
     }
 
     pub open spec fn mem_contents(self) -> Seq<MemContents<T>> {
-        self.perm().map(|i: int, elt: PointsTo<T>| elt.mem_contents())
+        self.seq_perm().map(|i: int, elt: PointsTo<T>| elt.mem_contents())
     }
 
     /// The length of the sequence of `PointsTo<T>`.
     #[verifier::inline]
     pub open spec fn len(self) -> nat {
-        self.perm().len()
+        self.seq_perm().len()
     }
 
     /// `[]` operator, synonymous with `index`.
@@ -1384,7 +1384,7 @@ impl<T> SeqPointsTo<T> {
         recommends
             0 <= index < self.len(),
     {
-        self.perm()[index as int]
+        self.seq_perm()[index as int]
     }
 
     /// Returns `true` if all of the permission's associated memory is initialized.
@@ -1426,7 +1426,7 @@ impl<T> SeqPointsTo<T> {
         requires
             self.wf(),
         ensures
-            ret == self.perm(),
+            ret == self.seq_perm(),
     {
         &self.perm
     }
@@ -1435,13 +1435,13 @@ impl<T> SeqPointsTo<T> {
         requires
             self.wf(),
         ensures
-            *ret == old(self).perm(),
-            final(self).perm() == *final(ret),
+            *ret == old(self).seq_perm(),
+            final(self).seq_perm() == *final(ret),
             old(self).ptr() == final(self).ptr(),
-
-            (old(self).len() == final(self).len()
-            && forall|i| #![auto] 0 <= i < final(self).len() ==> final(self)[i].ptr() == old(self)[i].ptr())
-            ==> final(self).wf(),
+            (old(self).len() == final(self).len() && forall|i|
+                #![auto]
+                0 <= i < final(self).len() ==> final(self)[i].ptr() == old(self)[i].ptr())
+                ==> final(self).wf(),
     {
         &mut self.perm
     }
@@ -1450,16 +1450,28 @@ impl<T> SeqPointsTo<T> {
     pub broadcast proof fn constants(&mut self)
         requires
             old(self).wf(),
-            forall|i| 
+            forall|i|
                 #![trigger old(self)[i].ptr()]
                 #![trigger final(self)[i].ptr()]
                 0 <= i < final(self).len() ==> old(self)[i].ptr() == final(self)[i].ptr(),
             old(self).len() == final(self).len(),
-            old(self).ptr()@.addr == final(self).ptr()@.addr,
-            old(self).ptr()@ == final(self).ptr()@,
+            old(self).ptr() == final(self).ptr(),
         ensures
             #[trigger] final(self).wf(),
-    {}
+    {
+    }
+
+    pub broadcast proof fn mem_contents_equiv(self, i: int)
+        requires
+            0 <= i < self.len(),
+        ensures
+            #![trigger self.mem_contents()[i]]
+            #![trigger self.seq_perm()[i]]
+            self.mem_contents()[i] == self.seq_perm()[i].mem_contents(),
+    {
+        broadcast use group_vstd_default;
+
+    }
 
     /// Given an aligned and non-null pointer,
     /// it is always possible to construct a `SeqPointsTo` with an empty sequence of permissions.
@@ -1468,7 +1480,7 @@ impl<T> SeqPointsTo<T> {
             ptr@.addr != 0,
             ptr@.addr as nat % align_of::<T>() == 0,
         ensures
-            spt.perm() == Seq::<PointsTo<T>>::empty(),
+            spt.seq_perm() == Seq::<PointsTo<T>>::empty(),
             spt.ptr() == ptr,
             spt.len() == 0,
             spt.wf(),
@@ -1515,7 +1527,6 @@ impl<T> SeqPointsTo<T> {
             self
         } else {
             // use_type_invariant(&self);
-
             let tracked zs_pt = PointsToRaw::empty(self.ptr()@.provenance).into_typed::<T>(
                 self.ptr()@.addr,
             );
@@ -1566,12 +1577,18 @@ pub axiom fn round_trip<T>()
         forall|s: Seq<MemContents<T>>| decode(#[trigger] encode(s)) == s,
 ;
 
-pub axiom fn subrange_decode<T>(s: Seq<MemContents<u8>>, t: Seq<MemContents<T>>, start: int, end: int)
+pub axiom fn subrange_decode<T>(
+    s: Seq<MemContents<u8>>,
+    t: Seq<MemContents<T>>,
+    start: int,
+    end: int,
+)
     requires
         0 <= start <= end <= t.len(),
         decode(s) == t,
     ensures
-        decode(s.subrange(start * layout::size_of::<T>(), end * layout::size_of::<T>())) == t.subrange(start, end),
+        decode(s.subrange(start * layout::size_of::<T>(), end * layout::size_of::<T>()))
+            == t.subrange(start, end),
 ;
 
 pub axiom fn decode_uninit<T>(s: Seq<MemContents<u8>>)
@@ -1587,14 +1604,12 @@ impl SeqPointsTo<u8> {
     /// (1) The pointer's address is aligned to `T`.
     ///
     /// (2) The length is exactly `capacity * layout::size_of::<T>()`.
-    /// 
+    ///
     /// (3) It is possible to decode the memory contents as a `Seq<MemContents<T>`.
     pub axiom fn cast_to_type<T>(tracked self, capacity: usize) -> (tracked out: SeqPointsTo<T>)
         requires
             self.ptr()@.addr as nat % align_of::<T>() == 0,
-            self.len() == capacity * layout::size_of::<
-                T,
-            >(),
+            self.len() == capacity * layout::size_of::<T>(),
             // self.is_fully_uninit() || exists
             self.wf(),
         ensures
@@ -1611,8 +1626,8 @@ impl SeqPointsTo<u8> {
             0 <= mid <= self.len(),
             self.wf(),
         ensures
-            first.perm() == self.perm().take(mid),
-            second.perm() == self.perm().skip(mid),
+            first.seq_perm() == self.seq_perm().take(mid),
+            second.seq_perm() == self.seq_perm().skip(mid),
             first.ptr() == self.ptr(),
             second.ptr() == ptr_mut_from_data(
                 PtrData::<u8> {
@@ -1625,7 +1640,6 @@ impl SeqPointsTo<u8> {
             second.wf(),
     {
         broadcast use {group_vstd_default, align_of_u8};
-
         // use_type_invariant(&self);
 
         let tracked mut perm = self.perm;
@@ -1658,11 +1672,10 @@ impl SeqPointsTo<u8> {
             other.wf(),
         ensures
             joined.ptr() == self.ptr(),
-            joined.perm() == self.perm() + other.perm(),
+            joined.seq_perm() == self.seq_perm() + other.seq_perm(),
             joined.wf(),
     {
         broadcast use {group_vstd_default, align_of_u8};
-
         // use_type_invariant(&self);
         // use_type_invariant(&other);
 
@@ -2783,8 +2796,8 @@ impl<V> SeqPointsTo<V> {
             points_to_raw.provenance() == self.ptr()@.provenance,
     {
         broadcast use group_raw_ptr_axioms;
-
         // use_type_invariant(&self);
+
         seq_into_slice(self).into_raw()
     }
 
@@ -2799,8 +2812,8 @@ impl<V> SeqPointsTo<V> {
             points_to_raw.provenance() == self.ptr()@.provenance,
     {
         broadcast use group_raw_ptr_axioms;
-
         // use_type_invariant(&self);
+
         seq_into_slice_shared(self).into_raw_shared()
     }
 }
