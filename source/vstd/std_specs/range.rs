@@ -2,7 +2,9 @@ use super::super::prelude::*;
 use super::super::view::View;
 use super::cmp::{PartialOrdIs, PartialOrdSpec};
 use super::iter::{IteratorSpec, StepSpec, StepSpecImpl};
-use core::ops::{Range, RangeInclusive};
+use core::ops::{
+    Bound, Range, RangeBounds, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive,
+};
 
 verus! {
 
@@ -229,6 +231,313 @@ pub assume_specification<A: core::iter::Step>[ <Range<A> as Iterator>::next ](
     ensures
         (*final(range), r) == spec_range_next(*old(range)),
 ;
+
+/// Spec model of [`core::ops::Bound`], used by [`RangeBoundsSpec`] to describe
+/// the start and end bounds of a range. See [`spec_bound`] for the connection
+/// to `Bound` values.
+pub enum SpecBound<T> {
+    Included(T),
+    Excluded(T),
+    Unbounded,
+}
+
+impl<'a, T> SpecBound<T> {
+    /// Borrow the contents of a `SpecBound<T>` as a `SpecBound<&T>`, mirroring
+    /// [`core::ops::Bound::as_ref`].
+    pub open spec fn as_ref(self) -> SpecBound<&'a T> {
+        match self {
+            SpecBound::Included(value) => SpecBound::Included(&value),
+            SpecBound::Excluded(value) => SpecBound::Excluded(&value),
+            SpecBound::Unbounded => SpecBound::Unbounded,
+        }
+    }
+}
+
+/// Spec model of a [`core::ops::Bound`] value as a [`SpecBound`].
+pub open spec fn spec_bound<T>(bound: Bound<T>) -> SpecBound<T> {
+    match bound {
+        Bound::Included(value) => SpecBound::Included(value),
+        Bound::Excluded(value) => SpecBound::Excluded(value),
+        Bound::Unbounded => SpecBound::Unbounded,
+    }
+}
+
+#[verifier::external_type_specification]
+pub struct ExBound<T>(Bound<T>);
+
+#[verifier::external_type_specification]
+pub struct ExRangeFull(RangeFull);
+
+#[verifier::external_type_specification]
+#[verifier::reject_recursive_types(Idx)]
+pub struct ExRangeFrom<Idx>(RangeFrom<Idx>);
+
+#[verifier::external_type_specification]
+#[verifier::reject_recursive_types(Idx)]
+pub struct ExRangeTo<Idx>(RangeTo<Idx>);
+
+#[verifier::external_type_specification]
+#[verifier::reject_recursive_types(Idx)]
+pub struct ExRangeToInclusive<Idx>(RangeToInclusive<Idx>);
+
+// Per-type specifications for `RangeBounds::start_bound`/`end_bound`, so these
+// methods can also be called directly in exec code (not just via the spec-mode
+// models above). Each spec agrees with the corresponding `RangeBoundsSpecImpl`.
+pub assume_specification<'s, T>[ <Range<T> as RangeBounds<T>>::start_bound ](
+    range: &'s Range<T>,
+) -> (result: Bound<&'s T>)
+    ensures
+        spec_bound(result) == SpecBound::Included(&range.start),
+;
+
+pub assume_specification<'s, T>[ <Range<T> as RangeBounds<T>>::end_bound ](
+    range: &'s Range<T>,
+) -> (result: Bound<&'s T>)
+    ensures
+        spec_bound(result) == SpecBound::Excluded(&range.end),
+;
+
+pub assume_specification<'s, T: ?Sized>[ <RangeFull as RangeBounds<T>>::start_bound ](
+    range: &'s RangeFull,
+) -> (result: Bound<&'s T>)
+    ensures
+        spec_bound(result) == SpecBound::Unbounded,
+;
+
+pub assume_specification<'s, T: ?Sized>[ <RangeFull as RangeBounds<T>>::end_bound ](
+    range: &'s RangeFull,
+) -> (result: Bound<&'s T>)
+    ensures
+        spec_bound(result) == SpecBound::Unbounded,
+;
+
+pub assume_specification<'s, T>[ <RangeFrom<T> as RangeBounds<T>>::start_bound ](
+    range: &'s RangeFrom<T>,
+) -> (result: Bound<&'s T>)
+    ensures
+        spec_bound(result) == SpecBound::Included(&range.start),
+;
+
+pub assume_specification<'s, T>[ <RangeFrom<T> as RangeBounds<T>>::end_bound ](
+    range: &'s RangeFrom<T>,
+) -> (result: Bound<&'s T>)
+    ensures
+        spec_bound(result) == SpecBound::Unbounded,
+;
+
+pub assume_specification<'s, T>[ <RangeTo<T> as RangeBounds<T>>::start_bound ](
+    range: &'s RangeTo<T>,
+) -> (result: Bound<&'s T>)
+    ensures
+        spec_bound(result) == SpecBound::Unbounded,
+;
+
+pub assume_specification<'s, T>[ <RangeTo<T> as RangeBounds<T>>::end_bound ](
+    range: &'s RangeTo<T>,
+) -> (result: Bound<&'s T>)
+    ensures
+        spec_bound(result) == SpecBound::Excluded(&range.end),
+;
+
+pub assume_specification<'s, T>[ <RangeInclusive<T> as RangeBounds<T>>::start_bound ](
+    range: &'s RangeInclusive<T>,
+) -> (result: Bound<&'s T>)
+    ensures
+        spec_bound(result) == SpecBound::Included(&range@.start),
+;
+
+pub assume_specification<'s, T>[ <RangeInclusive<T> as RangeBounds<T>>::end_bound ](
+    range: &'s RangeInclusive<T>,
+) -> (result: Bound<&'s T>)
+    ensures
+        spec_bound(result) == SpecBound::Included(&range@.end),
+;
+
+pub assume_specification<'s, T>[ <RangeToInclusive<T> as RangeBounds<T>>::start_bound ](
+    range: &'s RangeToInclusive<T>,
+) -> (result: Bound<&'s T>)
+    ensures
+        spec_bound(result) == SpecBound::Unbounded,
+;
+
+pub assume_specification<'s, T>[ <RangeToInclusive<T> as RangeBounds<T>>::end_bound ](
+    range: &'s RangeToInclusive<T>,
+) -> (result: Bound<&'s T>)
+    ensures
+        spec_bound(result) == SpecBound::Included(&range.end),
+;
+
+pub assume_specification<'s, T>[ <(Bound<T>, Bound<T>) as RangeBounds<T>>::start_bound ](
+    range: &'s (Bound<T>, Bound<T>),
+) -> (result: Bound<&'s T>)
+    ensures
+        spec_bound(result) == spec_bound(range.0).as_ref(),
+;
+
+pub assume_specification<'s, T>[ <(Bound<T>, Bound<T>) as RangeBounds<T>>::end_bound ](
+    range: &'s (Bound<T>, Bound<T>),
+) -> (result: Bound<&'s T>)
+    ensures
+        spec_bound(result) == spec_bound(range.1).as_ref(),
+;
+
+/// Specification for [`core::ops::RangeBounds`], exposing spec-mode models
+/// [`spec_start_bound`](RangeBoundsSpec::spec_start_bound) and
+/// [`spec_end_bound`](RangeBoundsSpec::spec_end_bound) of the trait's
+/// `start_bound`/`end_bound` methods. This mirrors std's normalization of an
+/// arbitrary range into a pair of bounds and is the model used by
+/// `<[T]>::copy_within` (see `vstd::std_specs::slice`).
+#[verifier::external_trait_specification]
+#[verifier::external_trait_extension(RangeBoundsSpec via RangeBoundsSpecImpl)]
+pub trait ExRangeBounds<T: ?Sized> {
+    type ExternalTraitSpecificationFor: RangeBounds<T>;
+
+    spec fn spec_start_bound(&self) -> SpecBound<&T>;
+
+    spec fn spec_end_bound(&self) -> SpecBound<&T>;
+
+    fn start_bound(&self) -> Bound<&T>;
+
+    fn end_bound(&self) -> Bound<&T>;
+}
+
+impl<T> RangeBoundsSpecImpl<T> for Range<T> {
+    open spec fn spec_start_bound(&self) -> SpecBound<&T> {
+        SpecBound::Included(&self.start)
+    }
+
+    open spec fn spec_end_bound(&self) -> SpecBound<&T> {
+        SpecBound::Excluded(&self.end)
+    }
+}
+
+impl<T: ?Sized> RangeBoundsSpecImpl<T> for RangeFull {
+    open spec fn spec_start_bound(&self) -> SpecBound<&T> {
+        SpecBound::Unbounded
+    }
+
+    open spec fn spec_end_bound(&self) -> SpecBound<&T> {
+        SpecBound::Unbounded
+    }
+}
+
+impl<T> RangeBoundsSpecImpl<T> for RangeFrom<T> {
+    open spec fn spec_start_bound(&self) -> SpecBound<&T> {
+        SpecBound::Included(&self.start)
+    }
+
+    open spec fn spec_end_bound(&self) -> SpecBound<&T> {
+        SpecBound::Unbounded
+    }
+}
+
+impl<T> RangeBoundsSpecImpl<T> for RangeTo<T> {
+    open spec fn spec_start_bound(&self) -> SpecBound<&T> {
+        SpecBound::Unbounded
+    }
+
+    open spec fn spec_end_bound(&self) -> SpecBound<&T> {
+        SpecBound::Excluded(&self.end)
+    }
+}
+
+impl<T> RangeBoundsSpecImpl<T> for RangeInclusive<T> {
+    open spec fn spec_start_bound(&self) -> SpecBound<&T> {
+        SpecBound::Included(&self@.start)
+    }
+
+    open spec fn spec_end_bound(&self) -> SpecBound<&T> {
+        SpecBound::Included(&self@.end)
+    }
+}
+
+impl<T> RangeBoundsSpecImpl<T> for RangeToInclusive<T> {
+    open spec fn spec_start_bound(&self) -> SpecBound<&T> {
+        SpecBound::Unbounded
+    }
+
+    open spec fn spec_end_bound(&self) -> SpecBound<&T> {
+        SpecBound::Included(&self.end)
+    }
+}
+
+impl<T> RangeBoundsSpecImpl<T> for (Bound<T>, Bound<T>) {
+    open spec fn spec_start_bound(&self) -> SpecBound<&T> {
+        spec_bound(self.0).as_ref()
+    }
+
+    open spec fn spec_end_bound(&self) -> SpecBound<&T> {
+        spec_bound(self.1).as_ref()
+    }
+}
+
+impl<'a, T: ?Sized + 'a> RangeBoundsSpecImpl<T> for (Bound<&'a T>, Bound<&'a T>) {
+    open spec fn spec_start_bound(&self) -> SpecBound<&T> {
+        match self.0 {
+            Bound::Included(start) => SpecBound::Included(start),
+            Bound::Excluded(start) => SpecBound::Excluded(start),
+            Bound::Unbounded => SpecBound::Unbounded,
+        }
+    }
+
+    open spec fn spec_end_bound(&self) -> SpecBound<&T> {
+        match self.1 {
+            Bound::Included(end) => SpecBound::Included(end),
+            Bound::Excluded(end) => SpecBound::Excluded(end),
+            Bound::Unbounded => SpecBound::Unbounded,
+        }
+    }
+}
+
+impl<T> RangeBoundsSpecImpl<T> for RangeFrom<&T> {
+    open spec fn spec_start_bound(&self) -> SpecBound<&T> {
+        SpecBound::Included(self.start)
+    }
+
+    open spec fn spec_end_bound(&self) -> SpecBound<&T> {
+        SpecBound::Unbounded
+    }
+}
+
+impl<T> RangeBoundsSpecImpl<T> for RangeTo<&T> {
+    open spec fn spec_start_bound(&self) -> SpecBound<&T> {
+        SpecBound::Unbounded
+    }
+
+    open spec fn spec_end_bound(&self) -> SpecBound<&T> {
+        SpecBound::Excluded(self.end)
+    }
+}
+
+impl<T> RangeBoundsSpecImpl<T> for Range<&T> {
+    open spec fn spec_start_bound(&self) -> SpecBound<&T> {
+        SpecBound::Included(self.start)
+    }
+
+    open spec fn spec_end_bound(&self) -> SpecBound<&T> {
+        SpecBound::Excluded(self.end)
+    }
+}
+
+impl<T> RangeBoundsSpecImpl<T> for RangeInclusive<&T> {
+    open spec fn spec_start_bound(&self) -> SpecBound<&T> {
+        SpecBound::Included(self@.start)
+    }
+
+    open spec fn spec_end_bound(&self) -> SpecBound<&T> {
+        SpecBound::Included(self@.end)
+    }
+}
+
+impl<T> RangeBoundsSpecImpl<T> for RangeToInclusive<&T> {
+    open spec fn spec_start_bound(&self) -> SpecBound<&T> {
+        SpecBound::Unbounded
+    }
+
+    open spec fn spec_end_bound(&self) -> SpecBound<&T> {
+        SpecBound::Included(self.end)
+    }
+}
 
 } // verus!
 macro_rules! step_specs {

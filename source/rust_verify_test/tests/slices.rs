@@ -361,3 +361,174 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 5)
 }
+
+test_verify_one_file! {
+    #[test] test_copy_from_slice verus_code! {
+        use vstd::prelude::*;
+
+        fn test(dst: &mut [u8], src: &[u8])
+            requires
+                old(dst)@.len() == src@.len(),
+            ensures
+                final(dst)@ == src@,
+        {
+            dst.copy_from_slice(src);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_copy_within_range verus_code! {
+        use vstd::prelude::*;
+
+        fn test(s: &mut [u8])
+            requires
+                old(s)@.len() == 5,
+            ensures
+                final(s)@[0] == old(s)@[1],
+                final(s)@[1] == old(s)@[2],
+                final(s)@[2] == old(s)@[2],
+                final(s)@[3] == old(s)@[3],
+                final(s)@[4] == old(s)@[4],
+        {
+            s.copy_within(1..3, 0);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_copy_within_range_from verus_code! {
+        use vstd::prelude::*;
+
+        fn test(s: &mut [u8])
+            requires
+                old(s)@.len() == 5,
+            ensures
+                final(s)@[0] == old(s)@[2],
+                final(s)@[1] == old(s)@[3],
+                final(s)@[2] == old(s)@[4],
+                final(s)@[3] == old(s)@[3],
+                final(s)@[4] == old(s)@[4],
+        {
+            s.copy_within(2.., 0);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_copy_within_full verus_code! {
+        use vstd::prelude::*;
+
+        fn test(s: &mut [u8])
+            ensures
+                final(s)@ == old(s)@,
+        {
+            s.copy_within(.., 0);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_copy_within_out_of_bounds_fails verus_code! {
+        use vstd::prelude::*;
+
+        fn test(s: &mut [u8])
+            requires
+                old(s)@.len() == 5,
+        {
+            s.copy_within(3..5, 4); // FAILS: dest 4 + count 2 > len 5
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+test_verify_one_file! {
+    #[test] test_copy_within_range_inclusive verus_code! {
+        use vstd::prelude::*;
+
+        fn test(s: &mut [u8])
+            requires
+                old(s)@.len() == 5,
+            ensures
+                final(s)@[0] == old(s)@[1],
+                final(s)@[1] == old(s)@[2],
+                final(s)@[2] == old(s)@[2],
+                final(s)@[3] == old(s)@[3],
+                final(s)@[4] == old(s)@[4],
+        {
+            s.copy_within(1..=2, 0);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_copy_within_range_to verus_code! {
+        use vstd::prelude::*;
+
+        fn test(s: &mut [u8])
+            requires
+                old(s)@.len() == 5,
+            ensures
+                final(s)@[0] == old(s)@[0],
+                final(s)@[1] == old(s)@[0],
+                final(s)@[2] == old(s)@[1],
+                final(s)@[3] == old(s)@[2],
+                final(s)@[4] == old(s)@[4],
+        {
+            s.copy_within(..3, 1);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_copy_within_range_to_inclusive verus_code! {
+        use vstd::prelude::*;
+
+        fn test(s: &mut [u8])
+            requires
+                old(s)@.len() == 5,
+            ensures
+                final(s)@[0] == old(s)@[0],
+                final(s)@[1] == old(s)@[0],
+                final(s)@[2] == old(s)@[1],
+                final(s)@[3] == old(s)@[2],
+                final(s)@[4] == old(s)@[4],
+        {
+            s.copy_within(..=2, 1);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_copy_within_bound_tuple verus_code! {
+        use vstd::prelude::*;
+        use std::ops::Bound;
+
+        fn test(s: &mut [u8])
+            requires
+                old(s)@.len() == 5,
+            ensures
+                final(s)@[0] == old(s)@[1],
+                final(s)@[1] == old(s)@[2],
+                final(s)@[2] == old(s)@[2],
+                final(s)@[3] == old(s)@[3],
+                final(s)@[4] == old(s)@[4],
+        {
+            let src = (Bound::Included(1usize), Bound::Excluded(3usize));
+            s.copy_within(src, 0);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_range_start_end_bound verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::range::*;
+        use std::ops::RangeBounds;
+
+        fn test(r: &core::ops::Range<usize>) {
+            let lb = r.start_bound();
+            let ub = r.end_bound();
+            assert(spec_bound(lb) == SpecBound::<&usize>::Included(&r.start));
+            assert(spec_bound(ub) == SpecBound::<&usize>::Excluded(&r.end));
+        }
+    } => Ok(())
+}
