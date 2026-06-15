@@ -1286,8 +1286,7 @@ pub tracked struct SeqPointsTo<T> {
     ptr: Ghost<*mut T>,
 }
 
-/// If the domain exactly contains the indices bounded by `self.len()`,
-/// we can convert this permission into a `PointsTo<[T]>` with the same pointer
+/// We can convert this permission into a `PointsTo<[T]>` with the same pointer
 /// and the same memory contents at every index.
 pub axiom fn seq_into_slice<T>(tracked spt: SeqPointsTo<T>) -> (tracked pt: PointsTo<[T]>)
     requires
@@ -1300,9 +1299,8 @@ pub axiom fn seq_into_slice<T>(tracked spt: SeqPointsTo<T>) -> (tracked pt: Poin
         pt.ptr()@.metadata == spt.len(),
 ;
 
-/// If the domain exactly contains the indices bounded by `self.len()`,
-/// we can convert this permission into a `PointsTo<[T]>` with the same pointer
-/// and the same memory contents at every index.
+/// We can create a reference to a `PointsTo<[T]>` from a reference to a `SeqPointsTo<T>`,
+/// with the same pointer and the same memory contents at every index.
 pub axiom fn seq_into_slice_shared<T>(tracked spt: &SeqPointsTo<T>) -> (tracked pt: &PointsTo<[T]>)
     requires
         spt.wf(),
@@ -2785,8 +2783,7 @@ impl<V> MapPointsTo<V> {
 
 // TODO: Add uninit requires on into_raw and add leak_contents axiom
 impl<V> SeqPointsTo<V> {
-    /// Provided that the domain of `self` is exactly the addresses bounded by `self.len()`,
-    /// creates a `PointsToRaw` from a `SeqPointsTo<V>` with the same provenance
+    /// Creates a `PointsToRaw` from a `SeqPointsTo<V>` with the same provenance
     /// and a range starting at the address of the `PointsTo<V>` with length `size_of::<V>() * self.len()`.
     pub proof fn into_raw(tracked self) -> (tracked points_to_raw: PointsToRaw)
         requires
@@ -2801,8 +2798,7 @@ impl<V> SeqPointsTo<V> {
         seq_into_slice(self).into_raw()
     }
 
-    /// Provided that the domain of `self` is exactly the addresses bounded by `self.len()`,
-    /// creates a `PointsToRaw` from a `SeqPointsTo<V>` with the same provenance
+    /// Creates a `PointsToRaw` reference from a `SeqPointsTo<V>` reference with the same provenance
     /// and a range starting at the address of the `PointsTo<V>` with length `size_of::<V>() * self.len()`.
     pub proof fn into_raw_shared(tracked &self) -> (tracked points_to_raw: &PointsToRaw)
         requires
