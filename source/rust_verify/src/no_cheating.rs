@@ -1,4 +1,4 @@
-//! `--no-cheating` structural checks for `#[allow(verus::assumptions)]` 
+//! `--no-cheating` structural checks for `#[allow(verus::assumptions)]`
 //! (the actual `assume`/`external_body`/... checks live in `well_formed.rs`):
 //! 1. the crate root must contain `#![deny(verus::assumptions)]`;
 //! 2. `#[allow(verus::assumptions)]` may only appear in the crate root, on a `mod` item;
