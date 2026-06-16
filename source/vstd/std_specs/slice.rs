@@ -2,7 +2,7 @@ use super::super::prelude::*;
 use super::super::slice::SliceIndexSpec;
 use super::core::{IndexSetTrustedSpec, IndexSpec, TrustedSpecSealed};
 use super::iter::IteratorSpec;
-use super::range::{RangeBoundsSpec, SpecBound};
+use super::range::{slice_range_end, slice_range_start, slice_range_valid};
 
 use core::ops::{Index, Range};
 use core::slice::{Iter, SliceIndex};
@@ -217,35 +217,6 @@ pub assume_specification<T: Copy>[ <[T]>::copy_from_slice ](dst: &mut [T], src: 
         final(dst)@ == src@,
 ;
 
-/// Normalized (exclusive) end index of a slice range, matching std's
-/// `core::slice::range`: an inclusive bound `i` becomes `i + 1`, an exclusive
-/// bound `i` stays `i`, and an unbounded end is the slice length.
-pub open spec fn slice_range_end<R: RangeBoundsSpec<usize>>(src: &R, len: nat) -> int {
-    match src.spec_end_bound() {
-        SpecBound::Included(i) => (*i as int) + 1,
-        SpecBound::Excluded(i) => *i as int,
-        SpecBound::Unbounded => len as int,
-    }
-}
-
-/// Normalized (inclusive) start index of a slice range, matching std's
-/// `core::slice::range`: an inclusive bound `i` stays `i`, an exclusive bound
-/// `i` becomes `i + 1`, and an unbounded start is `0`.
-pub open spec fn slice_range_start<R: RangeBoundsSpec<usize>>(src: &R, len: nat) -> int {
-    let end = slice_range_end(src, len);
-    match src.spec_start_bound() {
-        SpecBound::Included(i) => *i as int,
-        SpecBound::Excluded(i) => (*i as int) + 1,
-        SpecBound::Unbounded => 0,
-    }
-}
-
-/// Whether a slice range normalizes to `start <= end <= len`, i.e. the
-/// condition under which std's `core::slice::range` does not panic.
-pub open spec fn slice_range_valid<R: RangeBoundsSpec<usize>>(src: &R, len: nat) -> bool {
-    slice_range_start(src, len) <= slice_range_end(src, len) <= len
-}
-
 /// The sequence resulting from copying `old_slice[src_start..src_end]` to start
 /// at index `dest`, leaving all other positions unchanged. Reads are taken from
 /// `old_slice`, so overlapping source and destination ranges are handled like
@@ -276,14 +247,12 @@ pub assume_specification<T: Copy, R: core::ops::RangeBounds<usize>>[ <[T]>::copy
 )
     requires
         slice_range_valid(&src, old(slice)@.len()),
-        (dest as int) + (slice_range_end(&src, old(slice)@.len()) - slice_range_start(
-            &src,
-            old(slice)@.len(),
-        )) <= old(slice)@.len(),
+        (dest as int) + (slice_range_end(&src, old(slice)@.len()) - slice_range_start(&src))
+            <= old(slice)@.len(),
     ensures
         final(slice)@ == copy_within_result(
             old(slice)@,
-            slice_range_start(&src, old(slice)@.len()),
+            slice_range_start(&src),
             slice_range_end(&src, old(slice)@.len()),
             dest as int,
         ),

@@ -539,6 +539,34 @@ impl<T> RangeBoundsSpecImpl<T> for RangeToInclusive<&T> {
     }
 }
 
+/// Normalized (inclusive) start index of `range`, matching std's
+/// `core::slice::range`: an inclusive bound `i` stays `i`, an exclusive bound
+/// `i` becomes `i + 1`, and an unbounded start is `0`.
+pub open spec fn slice_range_start<R: RangeBoundsSpec<usize>>(range: &R) -> int {
+    match range.spec_start_bound() {
+        SpecBound::Included(i) => *i as int,
+        SpecBound::Excluded(i) => (*i as int) + 1,
+        SpecBound::Unbounded => 0,
+    }
+}
+
+/// Normalized (exclusive) end index of a range over a sequence of length `len`,
+/// matching std's `core::slice::range`: an inclusive bound `i` becomes `i + 1`,
+/// an exclusive bound `i` stays `i`, and an unbounded end is `len`.
+pub open spec fn slice_range_end<R: RangeBoundsSpec<usize>>(range: &R, len: nat) -> int {
+    match range.spec_end_bound() {
+        SpecBound::Included(i) => (*i as int) + 1,
+        SpecBound::Excluded(i) => *i as int,
+        SpecBound::Unbounded => len as int,
+    }
+}
+
+/// Whether a range normalizes to `start <= end <= len`, i.e. the condition
+/// under which std's `core::slice::range` does not panic.
+pub open spec fn slice_range_valid<R: RangeBoundsSpec<usize>>(range: &R, len: nat) -> bool {
+    slice_range_start(range) <= slice_range_end(range, len) <= len
+}
+
 } // verus!
 macro_rules! step_specs {
     ($t: ty, $axiom: ident) => {

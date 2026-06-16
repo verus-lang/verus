@@ -440,6 +440,43 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] test_copy_within_src_out_of_bounds_fails verus_code! {
+        use vstd::prelude::*;
+
+        fn test(s: &mut [u8])
+            requires
+                old(s)@.len() == 5,
+        {
+            s.copy_within(0..10, 0); // FAILS: src end 10 > len 5
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_copy_within_malformed_range_fails verus_code! {
+        use vstd::prelude::*;
+
+        fn test(s: &mut [u8])
+            requires
+                old(s)@.len() == 5,
+        {
+            s.copy_within(3..1, 0); // FAILS: src start 3 > end 1
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_copy_from_slice_len_mismatch_fails verus_code! {
+        use vstd::prelude::*;
+
+        fn test(dst: &mut [u8], src: &[u8]) {
+            dst.copy_from_slice(src); // FAILS: lengths may differ
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
 test_verify_one_file! {
     #[test] test_copy_within_range_inclusive verus_code! {
         use vstd::prelude::*;
