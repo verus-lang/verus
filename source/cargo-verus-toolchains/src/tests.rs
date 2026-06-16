@@ -5,7 +5,7 @@ use std::fs;
 fn make_release_manifest() -> Toolchain {
     Toolchain {
         verus: "0.2026.06.07.cd03505".into(),
-        vstd: Crate::Version("0.0.0-2026-05-31-0205".into()),
+        vstd: Crate::Registry("0.0.0-2026-05-31-0205".into()),
         z3: "4.12.5".into(),
     }
 }
@@ -37,7 +37,7 @@ fn parse_print_toolchain_release() {
 
     let expected_code = r#"Toolchain {
     verus: "0.2026.06.07.cd03505",
-    vstd: Crate::Registry { version: "0.0.0-2026-05-31-0205" },
+    vstd: Crate::Registry("0.0.0-2026-05-31-0205"),
     z3: "4.12.5",
 }"#;
 
@@ -86,7 +86,7 @@ fn print_toolchains_code() {
     },
     Toolchain {
         verus: "0.2026.06.07.cd03505",
-        vstd: Crate::Registry { version: "0.0.0-2026-05-31-0205" },
+        vstd: Crate::Registry("0.0.0-2026-05-31-0205"),
         z3: "4.12.5",
     },
 ];

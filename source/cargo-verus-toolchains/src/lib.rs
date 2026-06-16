@@ -11,23 +11,23 @@ pub struct ToolchainList {
 
 /// A set of Verus components meant to be used together.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Toolchain {
+pub struct Toolchain<Str = String> {
     /// The Verus version; the primary key to identify a toolchain.
-    pub verus: String,
+    pub verus: Str,
     /// The vstd version.
-    pub vstd: Crate,
+    pub vstd: Crate<Str>,
     /// The Z3 version.
-    pub z3: String,
+    pub z3: Str,
 }
 
 /// Identifies a crate in a registry (i.e. crates.io) or git.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
-pub enum Crate {
+pub enum Crate<Str = String> {
     /// A version published in a registry.
-    Version(String),
+    Registry(/*version*/ Str),
     /// A commit in a git repository (e.g. GitHub).
-    GitCommit { git: String, rev: String },
+    GitCommit { git: Str, rev: Str },
 }
 
 impl ToolchainList {
@@ -90,10 +90,10 @@ impl Toolchain {
     }
 }
 
-impl std::fmt::Display for Crate {
+impl<Str: std::fmt::Debug> std::fmt::Display for Crate<Str> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Crate::Version(version) => write!(f, "Crate::Registry {{ version: {version:?} }}")?,
+            Crate::Registry(version) => write!(f, "Crate::Registry({version:?})")?,
             Crate::GitCommit { git, rev } => {
                 write!(f, "Crate::GitCommit {{ git: {git:?}, rev: {rev:?} }}")?
             }
