@@ -5,6 +5,10 @@ verified code to call unverified code. To do this, we need to make Verus
 aware of the unverified code, and we need to tell Verus what it should
 **assume without proof**.
 
+The mechanisms below (`external_body`, `assume_specification`) introduce unverified assumptions,
+so they are rejected under [no-cheating mode](./tcb.md#no-cheating-mode) unless they appear in an
+explicitly-allowed module.
+
 ## Specifications without proof
 
 One way to apply an assumption to an unverified function is to use the `#[verifier::external_body]` attribute.
