@@ -629,17 +629,14 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
 
     let vis = &item_enum.vis;
 
-    // Generate `exec_is_<Variant>(&self) -> bool` predicates on the Exec 
+    // Generate `exec_is_<Variant>(&self) -> bool` predicates on the Exec
     // enum, used to compile the `e is Variant` spec pattern.
     let is_variant_methods = item_enum
         .variants
         .iter()
         .map(|variant| {
             let variant_name = &variant.ident;
-            let method_name = Ident::new(
-                &format!("exec_is_{}", variant_name),
-                variant_name.span(),
-            );
+            let method_name = Ident::new(&format!("exec_is_{}", variant_name), variant_name.span());
             // create an exec match statement between named fields
             let pat = match &variant.fields {
                 Fields::Named(_) => quote! { #exec_name::#variant_name { .. } },
@@ -648,9 +645,9 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
             };
             let span = variant.span();
 
-            // each method's visibility tracks the enum's visibility, ensuring 
+            // each method's visibility tracks the enum's visibility, ensuring
             // the method is not any more visible than the spec enum itself
-            quote_spanned! { span => 
+            quote_spanned! { span =>
                 #[allow(unreachable_patterns)]
                 #[allow(non_snake_case)]
                 #vis fn #method_name(&self) -> (res: bool)
@@ -662,7 +659,8 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
                     }
                 }
             }
-        }).collect::<Vec<_>>();
+        })
+        .collect::<Vec<_>>();
 
     let span = item_enum.vis.span();
     let open_or_close = if let Visibility::Public(..) = item_enum.vis {
@@ -736,16 +734,16 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
 }
 
 /// Token-level rewrite of `self` to a non-Rust keyword in spec-mode clause expressions.
-/// 
-/// `replace_self_tokens` exists to allow `compile_sig` to support specs with 
-/// the self type. `compile_sig` emits deep-view snapshot at the top of the emitted exec 
+///
+/// `replace_self_tokens` exists to allow `compile_sig` to support specs with
+/// the self type. `compile_sig` emits deep-view snapshot at the top of the emitted exec
 /// function's body:
 ///
 /// ```ignore
 /// let __exec_spec_self_view: <SelfTy> = self.deep_view();
 /// ```
 ///
-/// then runs ever clause expression through this function with 
+/// then runs ever clause expression through this function with
 /// `replacement = __exec_spec_self_view`.
 fn replace_self_tokens(ts: TokenStream2, replacement: &Ident) -> TokenStream2 {
     ts.into_iter()
@@ -754,13 +752,14 @@ fn replace_self_tokens(ts: TokenStream2, replacement: &Ident) -> TokenStream2 {
                 TokenTree::Ident(Ident::new(&replacement.to_string(), ident.span()))
             }
             TokenTree::Group(g) => {
-                let mut new_g = 
+                let mut new_g =
                     Group::new(g.delimiter(), replace_self_tokens(g.stream(), replacement));
                 new_g.set_span(g.span());
                 TokenTree::Group(new_g)
             }
             other => other,
-        }).collect()
+        })
+        .collect()
 }
 
 /// Compiles a spec fn to the exec fn signature.
@@ -772,10 +771,10 @@ fn compile_sig(
     self_ty: Option<&Ident>,
     unverified: bool,
 ) -> Result<TokenStream2, Error> {
-    // Does this function have a receiver, e.g. `receiver.function_call()` ? 
+    // Does this function have a receiver, e.g. `receiver.function_call()` ?
     let mut has_receiver = false;
     let receiver_param = if let Some(self_ty_ident) = self_ty {
-        if let Some(verus_syn::FnArg { kind: FnArgKind::Receiver(receiver), .. }) = 
+        if let Some(verus_syn::FnArg { kind: FnArgKind::Receiver(receiver), .. }) =
             sig.inputs.first()
         {
             // Only `&self` is supported for now
@@ -793,12 +792,11 @@ fn compile_sig(
             }
 
             has_receiver = true;
-            let exec_spec = 
-                Ident::new(&format!("Exec{}", self_ty_ident), self_ty_ident.span());
+            let exec_spec = Ident::new(&format!("Exec{}", self_ty_ident), self_ty_ident.span());
             ctx.add(Ident::new("self", receiver.self_token.span), VarMode::Ref);
             let span = receiver.span();
             Some(quote_spanned! { span => self: &#exec_spec })
-        } else { 
+        } else {
             None
         }
     } else {
@@ -834,7 +832,7 @@ fn compile_sig(
 
     // Compile return type
     let span = sig.output.span();
-    let ret_type = match &sig.output { 
+    let ret_type = match &sig.output {
         ReturnType::Default => quote_spanned! { span => () },
         ReturnType::Type(_, _, _, ty) => {
             let typ = compile_type(ty, TypeKind::Owned)?;
@@ -857,7 +855,7 @@ fn compile_sig(
     let self_view_ident = Ident::new("__exec_spec_self_view", Span::call_site());
     let self_binding = if has_receiver {
         let self_ty_ident = self_ty.unwrap();
-        quote! { let #self_view_ident: #self_ty_ident = self.deep_view(); } 
+        quote! { let #self_view_ident: #self_ty_ident = self.deep_view(); }
     } else {
         quote! {}
     };
@@ -876,7 +874,7 @@ fn compile_sig(
     let rewrite_clause = |expr: &Expr| -> TokenStream2 {
         let raw = quote! { #expr };
         // replace `&self` with `__exec_spec_self_view` throughout the entire expression
-        if has_receiver { replace_self_tokens(raw, &self_view_ident) } else { raw } 
+        if has_receiver { replace_self_tokens(raw, &self_view_ident) } else { raw }
     };
 
     let span = sig.spec.span();
@@ -936,9 +934,9 @@ fn compile_sig(
     let post_call = if has_receiver {
         quote! { self.deep_view().#spec_name(#(#args_deep_view),*) }
     } else {
-        quote! { #spec_name(#(#args_deep_view),*) } 
+        quote! { #spec_name(#(#args_deep_view),*) }
     };
-    
+
     // build the full parameter list (receiver first if present)
     let all_params: Vec<TokenStream2> = receiver_param.into_iter().chain(params).collect();
 
@@ -1131,18 +1129,18 @@ fn compile_expr_path(
         return Ok((path.clone(), ExprPathKind::StructOrEnum));
     }
 
-    // For self-prefixed paths inside `impl ExecT { ... }`, `Self` already 
+    // For self-prefixed paths inside `impl ExecT { ... }`, `Self` already
     // resolves to `ExecT`. So:
     //   - `Self::Variant` (variant constructor): leave as-is
     //   - `Self::method` (associated fn call): rewrite last segment to
     //     `exec_method`, but keep the leading `Self`.
-    if path.segments.len() == 1 && path.segments[0].ident == "Self" { 
+    if path.segments.len() == 1 && path.segments[0].ident == "Self" {
         let last_ident = &path.segments[1].ident;
         let last_str = last_ident.to_string();
         let starts_upper = last_str.chars().next().is_some_and(|c| c.is_uppercase());
         if starts_upper {
             // Variants constructor: Self::Variant
-            return Ok((path.clone(), ExprPathKind::StructOrEnum)); 
+            return Ok((path.clone(), ExprPathKind::StructOrEnum));
         } else {
             // Associated method: Self::method -> Self::exec_method
             let new_path = prefix_nth_segment(path, "exec_", path.segments.len() - 1)?;
@@ -2939,26 +2937,24 @@ fn compile_expr(
 
             // _ => return Err(Error::new_spanned(expr_method_call, "unsupported method call")),
 
-            // 
+            //
             other => {
                 // Fallthrough: unrecognized methods are rewritten from `recv.foo(args)`
                 // to `recv.exec_foo(args)`, with `recv` and each arg compiled in `VarMode::Ref`
-                // and the result adapted to the caller's mode. 
+                // and the result adapted to the caller's mode.
                 //
                 // This matches the naming convention of what `compile_impl` emits for user-defined
-                // spec methods on types compiled within the same `exec_spec` invocation, so this 
+                // spec methods on types compiled within the same `exec_spec` invocation, so this
                 // resolves correctly when `foo` is one such method.
                 //
                 // If `foo` is genuinely unknown, rustc will report `no method named exec_foo`
-                // at the original call site. The only soundness risk is a collision, where the 
-                // receiver's type is literally `exec_foo`. 
+                // at the original call site. The only soundness risk is a collision, where the
+                // receiver's type is literally `exec_foo`.
 
-                let receiver = 
-                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref,unverified)?;
-                let exec_method = Ident::new(
-                    &format!("exec_{}", other),
-                    expr_method_call.method.span(),
-                );
+                let receiver =
+                    compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref, unverified)?;
+                let exec_method =
+                    Ident::new(&format!("exec_{}", other), expr_method_call.method.span());
                 let args = expr_method_call
                     .args
                     .iter()
@@ -2967,8 +2963,8 @@ fn compile_expr(
 
                 let owned = quote! { #receiver.#exec_method(#(#args),*) };
 
-                match mode { 
-                    VarMode::Ref => quote ! { #owned.get_ref() },
+                match mode {
+                    VarMode::Ref => quote! { #owned.get_ref() },
                     VarMode::Owned => owned,
                 }
             }
@@ -3083,11 +3079,11 @@ fn compile_expr(
         }
 
         // `expr is Variant`: dispatched to a generated `exec_is_<Variant>` method
-        // on the Exec enum. 
+        // on the Exec enum.
         Expr::Is(ExprIs { base, variant_ident, .. }) => {
             let base_compiled = compile_expr(ctx, base, VarMode::Ref, unverified)?;
             let owned = match variant_ident.to_string().as_str() {
-                "Some" => quote_spanned! {variant_ident.span() => 
+                "Some" => quote_spanned! {variant_ident.span() =>
                     matches!(#base_compiled, Some(_))
                 },
                 "None" => quote_spanned! { variant_ident.span() =>
@@ -3100,11 +3096,9 @@ fn compile_expr(
                     matches!(#base_compiled, Err(_))
                 },
                 _ => {
-                    let method = Ident::new(
-                        &format!("exec_is_{}", variant_ident),
-                        variant_ident.span(),
-                    );
-                    quote_spanned! { variant_ident.span() => 
+                    let method =
+                        Ident::new(&format!("exec_is_{}", variant_ident), variant_ident.span());
+                    quote_spanned! { variant_ident.span() =>
                         #base_compiled.#method()
                     }
                 }
@@ -3119,7 +3113,7 @@ fn compile_expr(
         Expr::IsNot(ExprIsNot { base, variant_ident, .. }) => {
             let base_compiled = compile_expr(ctx, base, VarMode::Ref, unverified)?;
             let owned = match variant_ident.to_string().as_str() {
-                "Some" => quote_spanned! {variant_ident.span() => 
+                "Some" => quote_spanned! {variant_ident.span() =>
                     !matches!(#base_compiled, Some(_))
                 },
                 "None" => quote_spanned! { variant_ident.span() =>
@@ -3132,11 +3126,9 @@ fn compile_expr(
                     !matches!(#base_compiled, Err(_))
                 },
                 _ => {
-                    let method = Ident::new(
-                        &format!("exec_is_{}", variant_ident),
-                        variant_ident.span(),
-                    );
-                    quote_spanned! { variant_ident.span() => 
+                    let method =
+                        Ident::new(&format!("exec_is_{}", variant_ident), variant_ident.span());
+                    quote_spanned! { variant_ident.span() =>
                         !#base_compiled.#method()
                     }
                 }
@@ -3146,7 +3138,6 @@ fn compile_expr(
                 VarMode::Owned => owned,
             }
         }
-
 
         // TODOs:
         // Expr::Let(expr_let) => todo!(),
@@ -3303,7 +3294,7 @@ fn compile_spec_fn(item_fn: &ItemFn, unverified: bool) -> Result<TokenStream2, E
 }
 
 /// Compiles an impl block. Each spec method becomes an exec method on the corresponding
-/// `Exec<T>` type. The original `impl` block is preserved verbatim so spec-mode 
+/// `Exec<T>` type. The original `impl` block is preserved verbatim so spec-mode
 /// verification still sees the original methods.
 fn compile_impl(item_impl: &ItemImpl, unverified: bool) -> Result<TokenStream2, Error> {
     if !item_impl.generics.params.is_empty() {
