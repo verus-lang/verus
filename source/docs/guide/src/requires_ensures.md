@@ -151,6 +151,8 @@ or as a placeholder for parts of the proof that haven't yet been written.
 As the proof evolves, the programmer replaces `assume`s with `assert`s,
 and may eventually remove the `assert`s.
 A complete proof may contain `assert`s, but should not contain any `assume`s.
+(To have Verus enforce this, see [no-cheating mode](./tcb.md#no-cheating-mode),
+which rejects leftover `assume`s outside of explicitly-allowed modules.)
 
 (In some situations, `assert` can help the SMT solver complete a proof,
 by giving the SMT hints about how to [manipulate `forall` and `exists` expressions](forall.md).
