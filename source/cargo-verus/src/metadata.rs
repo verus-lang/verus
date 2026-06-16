@@ -132,6 +132,16 @@ impl<'a> MetadataIndex<'a> {
         }
         names
     }
+
+    pub fn get_packages_named(&self, name: &str) -> Vec<&Package> {
+        let mut matching_packages = vec![];
+        for entry in self.entries.values() {
+            if entry.package.name == name {
+                matching_packages.push(entry.package);
+            }
+        }
+        matching_packages
+    }
 }
 
 impl<'a> MetadataIndexEntry<'a> {
