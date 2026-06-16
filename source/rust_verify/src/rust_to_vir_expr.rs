@@ -225,11 +225,12 @@ impl ExprOrPlace {
         bctx: &BodyCtxt<'tcx>,
         span: Span,
         inner_ty: rustc_middle::ty::Ty<'tcx>,
+        is_expr_addr_of: bool,
     ) -> Result<vir::ast::Expr, VirErr> {
         // We always need to create a Temporary here,
         // since the expression might require resolution.
         let p = self.to_place(bctx, span, inner_ty)?;
-        let rk = vir::ast::ReadKind::ImmutBor;
+        let rk = vir::ast::ReadKind::ImmutBor { is_expr_addr_of };
         let rk = UnfinalizedReadKind { preliminary_kind: rk, id: bctx.ctxt.unique_read_kind_id() };
         let typ = Arc::new(TypX::Decorate(vir::ast::TypDecoration::Ref, None, p.typ.clone()));
         Ok(bctx.ctxt.spanned_typed_new_vir(&p.span, &typ, ExprX::ReadPlace(p.clone(), rk)))
@@ -1287,7 +1288,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 let inner_place = inner.to_place(bctx, expr.span, inner_ty)?;
                 borrow_mut_vir(bctx, expr.span, &inner_place, AllowTwoPhase::No)
             } else {
-                inner.immut_bor(bctx, expr.span, inner_ty)?
+                inner.immut_bor(bctx, expr.span, inner_ty, false)?
             };
             let ref_inner_ty = bctx.ctxt.tcx.mk_ty_from_kind(TyKind::Ref(
                 bctx.ctxt.tcx.lifetimes.re_erased,
@@ -1309,7 +1310,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
             // Similar to ExprKind::AddrOf
             let new_expr =
                 expr_to_vir_with_adjustments(bctx, expr, adjustments, adjustment_idx - 1)?
-                    .immut_bor(bctx, expr.span, get_inner_ty())?;
+                    .immut_bor(bctx, expr.span, get_inner_ty(), false)?;
             Ok(ExprOrPlace::Expr(new_expr))
         }
         Adjust::Borrow(AutoBorrow::Ref(AutoBorrowMutability::Mut { allow_two_phase_borrow })) => {
@@ -2287,7 +2288,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         }
         ExprKind::AddrOf(BorrowKind::Ref, Mutability::Not, e) => {
             let inner_ty = bctx.types.expr_ty_adjusted(e);
-            let new_expr = expr_to_vir_inner(bctx, e)?.immut_bor(bctx, expr.span, inner_ty)?;
+            let new_expr =
+                expr_to_vir_inner(bctx, e)?.immut_bor(bctx, expr.span, inner_ty, true)?;
             Ok(ExprOrPlace::Expr(new_expr))
         }
         ExprKind::AddrOf(BorrowKind::Ref, Mutability::Mut, e) => {

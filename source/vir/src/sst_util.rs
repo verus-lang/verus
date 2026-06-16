@@ -545,6 +545,9 @@ impl ExpX {
                 UnaryOp::ShadowData => {
                     (format!("shadow_data({})", exp.x.to_string_prec(global, 99)), 0)
                 }
+                UnaryOp::ShadowAddrOf => {
+                    (format!("sst_read_place({})", exp.x.to_string_prec(global, 99)), 0)
+                }
             },
             UnaryOpr(op, exp) => {
                 use crate::ast::UnaryOpr::*;

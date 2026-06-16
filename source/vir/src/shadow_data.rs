@@ -376,12 +376,22 @@ fn shadow_data_function(
     Ok(())
 }
 
-pub(crate) fn shadow_data_functions(functions: &mut Vec<FunctionSst>) -> Result<(), VirErr> {
-    if !functions.iter().any(|f| f.x.attrs.has_shadow_data) {
-        return Ok(());
+pub(crate) fn shadow_data_function_sst(
+    shadow_funs: &Rc<HashSet<Fun>>,
+    function: &mut FunctionSst,
+) -> Result<(), VirErr> {
+    if shadow_funs.contains(&function.x.name) {
+        shadow_data_function(shadow_funs.clone(), function)?;
+    } else if function.x.mode == Mode::Exec && shadow_funs.len() != 0 {
+        no_shadow_data_function(shadow_funs.clone(), function)?;
     }
+
+    Ok(())
+}
+
+pub(crate) fn shadow_data_funs(krate: &crate::ast::Krate) -> Result<Rc<HashSet<Fun>>, VirErr> {
     let mut shadow_funs: HashSet<Fun> = HashSet::new();
-    for f in functions.iter_mut() {
+    for f in krate.functions.iter() {
         if f.x.attrs.has_shadow_data {
             if let FunctionKind::TraitMethodImpl { .. } = &f.x.kind {
                 return Err(error(&f.span, "shadow_data only allowed in trait, not in impl"));
@@ -389,21 +399,12 @@ pub(crate) fn shadow_data_functions(functions: &mut Vec<FunctionSst>) -> Result<
             shadow_funs.insert(f.x.name.clone());
         }
     }
-    for f in functions.iter_mut() {
+    for f in krate.functions.iter() {
         if let FunctionKind::TraitMethodImpl { method, .. } = &f.x.kind {
             if shadow_funs.contains(method) {
                 shadow_funs.insert(f.x.name.clone());
             }
         }
     }
-    let shadow_funs = Rc::new(shadow_funs);
-    for f in functions.iter_mut() {
-        if shadow_funs.contains(&f.x.name) {
-            shadow_data_function(shadow_funs.clone(), f)?;
-        } else if f.x.mode == Mode::Exec {
-            no_shadow_data_function(shadow_funs.clone(), f)?;
-        }
-    }
-
-    Ok(())
+    Ok(Rc::new(shadow_funs))
 }

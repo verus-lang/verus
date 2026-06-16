@@ -1175,6 +1175,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             UnaryOp::ShadowData => {
                 return Err(error(&exp.span, "shadow_data is not supported in this location"));
             }
+            UnaryOp::ShadowAddrOf => panic!("ShadowAddrOf should have been removed"),
         },
         ExpX::UnaryOpr(op, e) => match op {
             UnaryOpr::Box(typ) => {

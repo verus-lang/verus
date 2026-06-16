@@ -60,6 +60,7 @@ fn insert_auto_ext_equal(ctx: &Ctx, exp: &Exp) -> Exp {
             UnaryOp::IeeeFloat(_) => exp.clone(),
             UnaryOp::StrLen | UnaryOp::Length(_) => exp.clone(),
             UnaryOp::ShadowData => exp.clone(),
+            UnaryOp::ShadowAddrOf => panic!("unexpected ShadowAddrOf"),
             UnaryOp::InferSpecForLoopIter { .. } => exp.clone(),
             UnaryOp::Trigger(_)
             | UnaryOp::CoerceMode { .. }
