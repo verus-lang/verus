@@ -186,6 +186,14 @@ impl<K, V> Map<K, V> {
                     == old_map[key_map[j]],
     ;
 
+    pub axiom fn tracked_map_values<U>(tracked old_map: Map<K, V>, tracked f: proof_fn(tracked v: V) -> tracked U) -> (tracked new_map: Map<K, U>)
+        requires
+            forall |k| #[trigger] old_map.contains_key(k) ==> call_requires(f, (old_map[k],))
+        ensures
+            new_map.dom() == old_map.dom(),
+            forall |k| #[trigger] new_map.contains_key(k) ==> call_ensures(f, (old_map[k],), new_map[k])
+    ;
+
     /// Extract a set of keys (and their corresponding values) out of the map.
     ///
     /// This allows us to split a map based on a subset of the domain.

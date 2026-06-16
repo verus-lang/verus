@@ -549,7 +549,7 @@ impl<T> ViewAt<T> {
         ensures
             out.0.value() == t,
             out.0.thread_view() == out.1@,
-            out.1.thread_view().contains(sn@),
+            out.1@.contains(sn@)
     ;
 
     // VA-BOPS for the separating conjunction case
@@ -756,22 +756,18 @@ impl<T> AtomicPointsTo<T> {
     pub closed spec fn inv(&self) -> bool {
         &&& self.hist().0.len() > 0 
         &&& self.hist().0.dom().finite()
-        &&& forall |t| #[trigger] self.hist().contains_timestamp(t) ==> self.hist().get(t).unwrap().1.contains_loc(self.loc()) && self.hist().get(t).unwrap().1.get_timestamp(self.loc()) == t
     }
+
+    pub axiom fn view_seen_ts(tracked &self, tracked vs: &ViewSeen)
+        requires
+            vs@.contains_loc(self.loc())
+        ensures
+            self.hist().contains_timestamp(vs@.get_timestamp(self.loc()))
+        ;
 
     pub proof fn history_finite(tracked &self)
         ensures
             self.hist().0.dom().finite()
-    {
-        use_type_invariant(self);
-    }
-
-    pub proof fn apply_inv(tracked &self, t: nat)
-        requires
-            self.hist().contains_timestamp(t)
-        ensures
-            self.hist().get(t).unwrap().1.contains_loc(self.loc()),
-            self.hist().get(t).unwrap().1.get_timestamp(self.loc()) == t
     {
         use_type_invariant(self);
     }
