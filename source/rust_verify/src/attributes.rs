@@ -117,6 +117,46 @@ fn attr_args_to_tree(span: Span, name: String, args: &AttrArgs) -> Result<AttrTr
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LintLevel {
+    Allow,
+    Warn,
+    Deny,
+    Forbid,
+}
+
+/// If `attr` is a lint-level attribute (`allow`/`warn`/`deny`/`forbid`)
+/// that mentions `verus::assumptions` return the level and the span of
+/// the attribute. Returns `None` for any other attribute.
+pub(crate) fn get_assumptions_lint_level(attr: &Attribute) -> Option<(LintLevel, Span)> {
+    let Attribute::Unparsed(item) = attr else {
+        return None;
+    };
+    let level = match &item.path.segments[..] {
+        [segment] => match segment.as_str() {
+            "allow" => LintLevel::Allow,
+            "warn" => LintLevel::Warn,
+            "deny" => LintLevel::Deny,
+            "forbid" => LintLevel::Forbid,
+            _ => return None,
+        },
+        _ => return None,
+    };
+    let tree =
+        attr_args_to_tree(attr.span(), item.path.segments[0].as_str().to_string(), &item.args)
+            .ok()?;
+    let AttrTree::Fun(_, _, Some(args)) = tree else {
+        return None;
+    };
+    let mentions_assumptions = args.iter().any(|arg| match arg {
+        AttrTree::PathSegments(segments) => {
+            segments.len() == 2 && segments[0] == "verus" && segments[1] == "assumptions"
+        }
+        _ => false,
+    });
+    if mentions_assumptions { Some((level, attr.span())) } else { None }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum VerusPrefix {
     None,
     Internal,

@@ -438,6 +438,19 @@ pub fn crate_to_vir<'a, 'tcx>(
     vir.arch.word_bits = arch_word_bits;
     let ctxt = Rc::new(ctxtx);
 
+    // Build the allow list of modules that are permitted to contain assumptions in --no-cheating mode
+    let assumptions_allow_roots: Vec<Path> = if ctxt.cmd_line_args.no_cheating {
+        let (allow_roots, no_cheating_errors) = crate::no_cheating::check_assumptions(&ctxt);
+        errors.extend(no_cheating_errors);
+        allow_roots
+    } else {
+        Vec::new()
+    };
+    // A module allows assumptions if it (or an ancestor file-module) is on the allow list.
+    let assumptions_allowed = |path: &Path| -> bool {
+        assumptions_allow_roots.iter().any(|root| path.matches_prefix(root))
+    };
+
     // Find all modules that contain at least 1 item of interest
     let mut used_modules = HashSet::<Path>::new();
     for crate_item in crate_items.items.iter() {
@@ -459,7 +472,11 @@ pub fn crate_to_vir<'a, 'tcx>(
         let owner = ctxt.tcx.hir_owner_node(rustc_hir::CRATE_OWNER_ID);
         vir.modules.push(ctxt.spanned_new(
             owner.span(),
-            vir::ast::ModuleX { path: root_module_path.clone(), reveals: None },
+            vir::ast::ModuleX {
+                path: root_module_path.clone(),
+                reveals: None,
+                assumptions_allowed: assumptions_allowed(&root_module_path),
+            },
         ));
     }
     for owner_opt in crate::util::iter_crate_owners(ctxt.krate, tcx) {
@@ -477,7 +494,11 @@ pub fn crate_to_vir<'a, 'tcx>(
                         if used_modules.contains(&path) {
                             vir.modules.push(ctxt.spanned_new(
                                 item.span,
-                                vir::ast::ModuleX { path: path.clone(), reveals: None },
+                                vir::ast::ModuleX {
+                                    path: path.clone(),
+                                    reveals: None,
+                                    assumptions_allowed: assumptions_allowed(&path),
+                                },
                             ));
                         }
                     }
