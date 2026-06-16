@@ -19,8 +19,7 @@ extra_verus_args = [
 [[project]]
 name = "ironkv"
 git_url = "https://github.com/verus-lang/verified-ironkv.git"
-#TODO: restore this after it is updated to new Set/Map/ISet/IMap
-refspec = "origin/finite-sets"
+refspec = "main"
 cargo_verus = true
 crate_roots = ["ironsht"]
 
@@ -37,9 +36,7 @@ extra_verus_args = ["--crate-type=dylib"]
 [[project]]
 name = "verified-storage"
 git_url = "https://github.com/microsoft/verified-storage.git"
-#TODO: restore this after it is updated to new Set/Map/ISet/IMap
-#refspec = "main"
-refspec = "origin/finite-sets"
+refspec = "main"
 cargo_verus = true
 extra_cargo_args = ["--no-default-features"]
 crate_roots = ["capybaraKV/capybarakv", "multilog/multilog", "pmemlog"]
@@ -94,11 +91,8 @@ cargo install vest
 
 [[project]]
 name = "human-eval"
-#TODO: restore this after it is updated to new Set/Map/ISet/IMap
-#git_url = "https://github.com/secure-foundations/human-eval-verus.git"
-#refspec = "main"
-git_url = "https://github.com/jaylorch/human-eval-verus.git"
-refspec = "origin/finite-sets"
+git_url = "https://github.com/secure-foundations/human-eval-verus.git"
+refspec = "main"
 crate_roots = ["tasks/lib.rs"]
 extra_verus_args = ["--crate-type=lib"]
 
