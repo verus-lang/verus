@@ -135,6 +135,7 @@ fn check_trigger_expr_arg(state: &mut State, arg: &Exp) {
             | UnaryOp::Length(_)
             | UnaryOp::ShadowData
             | UnaryOp::InferSpecForLoopIter { .. } => {}
+            UnaryOp::ShadowAddrOf => panic!("unexpected ShadowAddrOf"),
         },
         ExpX::UnaryOpr(op, arg) => match op {
             UnaryOpr::Box(_) | UnaryOpr::Unbox(_) => panic!("unexpected box"),
@@ -286,6 +287,7 @@ fn check_trigger_expr(
             | UnaryOp::MustBeFinalized
             | UnaryOp::MustBeElaborated
             | UnaryOp::CastToInteger => Ok(()),
+            UnaryOp::ShadowAddrOf => panic!("unexpected ShadowAddrOf"),
             UnaryOp::InferSpecForLoopIter { .. } => {
                 Err(error(&exp.span, "triggers cannot contain loop spec inference"))
             }

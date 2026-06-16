@@ -30,11 +30,13 @@ pub fn ast_to_sst_krate(
 
     let mut sst_infos: HashMap<Fun, FunctionSst> = HashMap::new();
     let mut functions: Vec<FunctionSst> = Vec::new();
+    let shadow_funs = crate::shadow_data::shadow_data_funs(krate)?;
     for scc_rep in ctx.global.func_call_sccs.iter() {
         let mut scc_functions: Vec<FunctionSst> = Vec::new();
         for node in ctx.global.func_call_graph.get_scc_nodes(&scc_rep) {
             if let crate::recursion::Node::Fun(f) = &node {
                 if let Some(mut func_sst) = func_workmap.remove(f) {
+                    crate::shadow_data::shadow_data_function_sst(&shadow_funs, &mut func_sst)?;
                     elaborate_function1(ctx, diagnostics, &sst_infos, &mut func_sst)?;
                     scc_functions.push(func_sst);
                 }
@@ -49,8 +51,6 @@ pub fn ast_to_sst_krate(
         }
     }
     assert!(func_workmap.len() == 0);
-
-    crate::shadow_data::shadow_data_functions(&mut functions)?;
 
     let sst_map = Arc::new(sst_infos);
     for func_sst in &mut functions {

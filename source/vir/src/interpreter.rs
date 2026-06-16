@@ -1188,6 +1188,9 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         CastToInteger => {
                             panic!("CastToInteger should have been removed by poly!")
                         }
+                        ShadowAddrOf => {
+                            panic!("ShadowAddrOf should have been removed")
+                        }
                     }
                 }
                 Const(Int(i)) => {
@@ -1287,6 +1290,9 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         }
                         CastToInteger => {
                             panic!("CastToInteger should have been removed by poly!")
+                        }
+                        ShadowAddrOf => {
+                            panic!("ShadowAddrOf should have been removed")
                         }
                         Not
                         | HeightTrigger
