@@ -164,7 +164,7 @@ pub enum CallTarget {
 
 pub type Stm = Arc<Spanned<StmX>>;
 pub type Stms = Arc<Vec<Stm>>;
-#[derive(Debug, ToDebugSNode)]
+#[derive(Clone, Debug, ToDebugSNode)]
 pub enum StmX {
     /// Call to exec/proof function (or spec function when checking preconditions).
     /// Unlike `ExpX::Call`, this has side effects and may modify state.
@@ -319,7 +319,7 @@ pub struct PostConditionSst {
     pub kind: PostConditionKind,
 }
 
-#[derive(Debug, ToDebugSNode)]
+#[derive(Debug, Clone, ToDebugSNode)]
 pub struct FuncDeclSst {
     pub req_inv_pars: Pars,
     pub ens_pars: Pars,

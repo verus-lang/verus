@@ -384,6 +384,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
         ExpX::NullaryOpr(_) => (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![])))),
         ExpX::Unary(UnaryOp::Trigger(_), e1) => gather_terms(ctxt, ctx, e1, depth),
         ExpX::Unary(UnaryOp::CoerceMode { .. }, e1) => gather_terms(ctxt, ctx, e1, depth),
+        ExpX::Unary(UnaryOp::ShadowAddrOf, _) => panic!("unexpected ShadowAddrOf"),
         ExpX::Unary(UnaryOp::MustBeFinalized | UnaryOp::MustBeElaborated, e1) => {
             gather_terms(ctxt, ctx, e1, depth)
         }
@@ -407,6 +408,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 | UnaryOp::MustBeElaborated
                 | UnaryOp::CastToInteger
                 | UnaryOp::Length(_) => 0,
+                UnaryOp::ShadowAddrOf => panic!("unexpected ShadowAddrOf"),
                 UnaryOp::HeightTrigger => 1,
                 UnaryOp::Trigger(_) | UnaryOp::Clip { .. } | UnaryOp::BitNot(_) => 1,
                 UnaryOp::IntToReal => 1,
@@ -416,6 +418,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 UnaryOp::InferSpecForLoopIter { .. } => 1,
                 UnaryOp::StrLen => fail_on_strop(),
                 UnaryOp::MutRefFinal(_) => 1,
+                UnaryOp::ShadowData => 1,
                 UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_) => unreachable!(),
             };
             let (is_pure1, term1) = gather_terms(ctxt, ctx, e1, depth);

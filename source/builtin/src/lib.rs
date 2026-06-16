@@ -2361,6 +2361,27 @@ pub use decreases_to;
 #[cfg(verus_verify_core)]
 pub use decreases_to_internal;
 
+/// Type of shadow data that accompanies parameters, return values, and local variables
+/// in verifier::shadow_data functions.
+/// This does not contain the value A,
+/// but instead may contain extra data associated with a value of type A.
+/// In particular, it contains pointer data for shared reference types &t,
+/// for the purpose of verifying low-level code in the Rust standard library.
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::verus_builtin::ShadowData")]
+#[cfg_attr(verus_keep_ghost, verifier::external_body)]
+#[cfg_attr(verus_keep_ghost, verifier::reject_recursive_types(A))]
+pub struct ShadowData<A> {
+    phantom: PhantomData<A>,
+}
+
+/// Construct a spec ShadowData for a parameter, return value, or local variable
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::shadow_data"]
+#[verifier::spec]
+pub fn shadow_data<A>(_a: A) -> ShadowData<A> {
+    unimplemented!()
+}
+
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::infer_spec_for_loop_iter"]
 #[verifier::spec]
