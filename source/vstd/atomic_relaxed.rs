@@ -741,6 +741,8 @@ impl<T> ViewJoin<T> {
 // AT-CAS-SPLIT -- skip, taken care of by borrowing
 // AT-SN-UNFOLD -- skip for now, only relates to race detector info
 // note: skipped ghost name, single-writer timestamp
+#[verifier::external_body]
+#[verifier::reject_recursive_types(T)]
 pub tracked struct AtomicPointsTo<T> {
     v: T
 }
