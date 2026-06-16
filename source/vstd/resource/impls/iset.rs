@@ -1,25 +1,25 @@
 //! Implementation of a resource for ownership of subsets of values in a set
 //!
-//! - [`GhostSetAuth<T>`] represents authoritative ownership of the entire set;
-//! - [`GhostSubset<T>`] represents client ownership of some subset;
-//! - [`GhostPersistentSubset<T>`] represents duplicable client knowledge of some persistent subset;
-//! - [`GhostSingleton<T>`] represents client ownership of a singleton.
-//! - [`GhostPersistentSingleton<T>`] represents duplicable client knowledge of a persistent singleton;
+//! - [`GhostISetAuth<T>`] represents authoritative ownership of the entire set;
+//! - [`GhostISubset<T>`] represents client ownership of some subset;
+//! - [`GhostPersistentISubset<T>`] represents duplicable client knowledge of some persistent subset;
+//! - [`GhostISingleton<T>`] represents client ownership of a singleton.
+//! - [`GhostPersistentISingleton<T>`] represents duplicable client knowledge of a persistent singleton;
 //!
-//! Updating the authoritative `GhostSetAuth<T>` requires a `GhostSubset<T>` containing
+//! Updating the authoritative `GhostISetAuth<T>` requires a `GhostISubset<T>` containing
 //! the values being updated.
 //!
-//! `GhostSubset<T>`s can be combined or split.
-//! Whenever a `GhostSubset<T>` can be used, we can instead use a `GhostSingleton<T>` (but not vice-versa).
+//! `GhostISubset<T>`s can be combined or split.
+//! Whenever a `GhostISubset<T>` can be used, we can instead use a `GhostISingleton<T>` (but not vice-versa).
 //!
-//! `GhostPersistentSubset<T>`s can be combined or split.
-//! Whenever a `GhostPersistentSubset<T>` can be used, we can instead use a `GhostPersistentSingleton<T>` (but not vice-versa).
+//! `GhostPersistentISubset<T>`s can be combined or split.
+//! Whenever a `GhostPersistentISubset<T>` can be used, we can instead use a `GhostPersistentISingleton<T>` (but not vice-versa).
 //!
 //! ### Example
 //!
 //! ```
 //! fn example_use() {
-//!     let tracked (mut auth, mut sub) = GhostSetAuth::new(set![1u8, 2u8, 3u8]);
+//!     let tracked (mut auth, mut sub) = GhostISetAuth::new(set![1u8, 2u8, 3u8]);
 //!
 //!     // Allocate some more values in the auth set, receiving a new subset.
 //!     let tracked sub2 = auth.insert_set(set![4u8, 5u8]);
@@ -56,77 +56,77 @@
 //!     assert(psub2.contains(2u8));
 //!
 //!     // Not shown in this simple example is the main use case of this resource:
-//!     // maintaining an invariant between GhostSetAuth<T> and some exec-mode
-//!     // shared state with a map view (e.g., HashSet<T>), which states that
-//!     // the Set<T> view of GhostSetAuth<T> is the same as the view of the
-//!     // HashSet<T>, and then handing out a GhostSubset<T> to different
+//!     // maintaining an invariant between GhostISetAuth<T> and some exec-mode
+//!     // shared state with a map view (e.g., HashISet<T>), which states that
+//!     // the ISet<T> view of GhostISetAuth<T> is the same as the view of the
+//!     // HashISet<T>, and then handing out a GhostISubset<T> to different
 //!     // clients that might need to operate on different values in the set
 //! }
 //! ```
-use super::super::map::*;
-use super::super::map_lib::*;
-use super::super::modes::*;
-use super::super::prelude::*;
-use super::super::set::*;
-use super::super::set_lib::*;
-use super::Loc;
-use super::map::GhostMapAuth;
-use super::map::GhostPersistentPointsTo;
-use super::map::GhostPersistentSubmap;
-use super::map::GhostPointsTo;
-use super::map::GhostSubmap;
+use super::super::super::map::*;
+use super::super::super::map_lib::*;
+use super::super::super::modes::*;
+use super::super::super::prelude::*;
+use super::super::super::set::*;
+use super::super::super::set_lib::*;
+use super::super::Loc;
+use super::imap::GhostIMapAuth;
+use super::imap::GhostIPointsTo;
+use super::imap::GhostISubmap;
+use super::imap::GhostPersistentIPointsTo;
+use super::imap::GhostPersistentISubmap;
 
 verus! {
 
-broadcast use super::super::group_vstd_default;
+broadcast use super::super::super::group_vstd_default;
 
 /// A resource that has the authoritative ownership on the entire set
 ///
-/// For ownership of only a subset of values, see [`GhostSubset`].
-/// For ownership of a single value, see [`GhostSingleton`].
+/// For ownership of only a subset of values, see [`GhostISubset`].
+/// For ownership of a single value, see [`GhostISingleton`].
 #[verifier::reject_recursive_types(T)]
-pub struct GhostSetAuth<T> {
-    map: GhostMapAuth<T, ()>,
+pub struct GhostISetAuth<T> {
+    map: GhostIMapAuth<T, ()>,
 }
 
 /// A resource that has client ownership of a subset
 ///
-/// The existence of a [`GhostSubset`] implies that:
+/// The existence of a [`GhostISubset`] implies that:
 ///  - Those values will remain in the set unless ;
-///  - Those values will remain in the set (unless the onwer of the [`GhostSubset`] deletes it using [`GhostSetAuth::delete`]);
-///  - All other [`GhostSubset`]/[`GhostSingleton`] are disjoint from it
+///  - Those values will remain in the set (unless the onwer of the [`GhostISubset`] deletes it using [`GhostISetAuth::delete`]);
+///  - All other [`GhostISubset`]/[`GhostISingleton`] are disjoint from it
 #[verifier::reject_recursive_types(T)]
-pub struct GhostSubset<T> {
-    map: GhostSubmap<T, ()>,
+pub struct GhostISubset<T> {
+    map: GhostISubmap<T, ()>,
 }
 
 /// A resource that asserts duplicable client knowledge of a persistent subset
 ///
-/// For the authoritative resource of the whole set, see [`GhostSetAuth`]
+/// For the authoritative resource of the whole set, see [`GhostISetAuth`]
 #[verifier::reject_recursive_types(T)]
-pub struct GhostPersistentSubset<T> {
-    map: GhostPersistentSubmap<T, ()>,
+pub struct GhostPersistentISubset<T> {
+    map: GhostPersistentISubmap<T, ()>,
 }
 
 /// A resource that has client ownership of a singleton
 ///
-/// The existence of a [`GhostSingleton`] implies that:
+/// The existence of a [`GhostISingleton`] implies that:
 ///  - The value will remain in the set;
-///  - All other [`GhostSubset`]/[`GhostSingleton`] are disjoint subsets of the domain
+///  - All other [`GhostISubset`]/[`GhostISingleton`] are disjoint subsets of the domain
 #[verifier::reject_recursive_types(T)]
-pub struct GhostSingleton<T> {
-    map: GhostPointsTo<T, ()>,
+pub struct GhostISingleton<T> {
+    map: GhostIPointsTo<T, ()>,
 }
 
 /// A resource that asserts duplicable client knowledge of a persistent singleton
 ///
-/// For the authoritative resource of the whole set, see [`GhostSetAuth`]
+/// For the authoritative resource of the whole set, see [`GhostISetAuth`]
 #[verifier::reject_recursive_types(T)]
-pub struct GhostPersistentSingleton<T> {
-    map: GhostPersistentPointsTo<T, ()>,
+pub struct GhostPersistentISingleton<T> {
+    map: GhostPersistentIPointsTo<T, ()>,
 }
 
-impl<T> GhostSetAuth<T> {
+impl<T> GhostISetAuth<T> {
     /// Resource location
     pub closed spec fn id(self) -> Loc {
         self.map.id()
@@ -137,57 +137,57 @@ impl<T> GhostSetAuth<T> {
         self.map@.dom()
     }
 
-    /// Create a new [`GhostSetAuth`] from a [`ISet`].
-    /// Gives the other half of ownership in the form of a [`GhostSubset`]
+    /// Create a new [`GhostISetAuth`] from a [`ISet`].
+    /// Gives the other half of ownership in the form of a [`GhostISubset`]
     ///
     /// ```
     /// fn example() {
     ///     let s = set![1int, 2int];
-    ///     let tracked (auth, sub) = GhostSetAuth::new(s);
+    ///     let tracked (auth, sub) = GhostISetAuth::new(s);
     ///     assert(auth@ == s);
     ///     assert(sub@ == auth@);
     /// }
     /// ```
-    pub proof fn new(s: ISet<T>) -> (tracked result: (GhostSetAuth<T>, GhostSubset<T>))
+    pub proof fn new(s: ISet<T>) -> (tracked result: (GhostISetAuth<T>, GhostISubset<T>))
         ensures
             result.0.id() == result.1.id(),
             result.0@ == s,
             result.1@ == s,
     {
         let m = s.mk_map(|k: T| ());
-        let tracked (map, submap) = GhostMapAuth::new(m);
-        (GhostSetAuth { map }, GhostSubset { map: submap })
+        let tracked (map, submap) = GhostIMapAuth::new(m);
+        (GhostISetAuth { map }, GhostISubset { map: submap })
     }
 
-    /// Instantiate a dummy [`GhostSetAuth`]
-    pub proof fn dummy() -> (tracked result: GhostSetAuth<T>) {
-        let tracked map = GhostMapAuth::dummy();
-        GhostSetAuth { map }
+    /// Instantiate a dummy [`GhostISetAuth`]
+    pub proof fn dummy() -> (tracked result: GhostISetAuth<T>) {
+        let tracked map = GhostIMapAuth::dummy();
+        GhostISetAuth { map }
     }
 
-    /// Extract the [`GhostSetAuth`] from a mutable reference
-    pub proof fn take(tracked &mut self) -> (tracked result: GhostSetAuth<T>)
+    /// Extract the [`GhostISetAuth`] from a mutable reference
+    pub proof fn take(tracked &mut self) -> (tracked result: GhostISetAuth<T>)
         ensures
             result == *old(self),
     {
         let tracked map = self.map.take();
-        GhostSetAuth { map }
+        GhostISetAuth { map }
     }
 
-    /// Create an empty [`GhostSubset`]
-    pub proof fn empty(tracked &self) -> (tracked result: GhostSubset<T>)
+    /// Create an empty [`GhostISubset`]
+    pub proof fn empty(tracked &self) -> (tracked result: GhostISubset<T>)
         ensures
             result.id() == self.id(),
             result@ == ISet::<T>::empty(),
     {
         let tracked map = self.map.empty();
-        GhostSubset { map }
+        GhostISubset { map }
     }
 
-    /// Insert a [`ISet`] of values, receiving the [`GhostSubset`] that asserts ownership over the set inserted.
+    /// Insert a [`ISet`] of values, receiving the [`GhostISubset`] that asserts ownership over the set inserted.
     ///
     /// ```
-    /// proof fn insert_set_example(tracked mut m: GhostSetAuth<int>) -> (tracked r: GhostSubset<int>)
+    /// proof fn insert_set_example(tracked mut m: GhostISetAuth<int>) -> (tracked r: GhostISubset<int>)
     ///     requires
     ///         m@.contains(1int),
     ///         m@.contains(2int),
@@ -197,7 +197,7 @@ impl<T> GhostSetAuth<T> {
     ///     subset
     /// }
     /// ```
-    pub proof fn insert_set(tracked &mut self, s: ISet<T>) -> (tracked result: GhostSubset<T>)
+    pub proof fn insert_set(tracked &mut self, s: ISet<T>) -> (tracked result: GhostISubset<T>)
         requires
             old(self)@.disjoint(s),
         ensures
@@ -208,13 +208,13 @@ impl<T> GhostSetAuth<T> {
     {
         let m = s.mk_map(|k: T| ());
         let tracked submap = self.map.insert_map(m);
-        GhostSubset { map: submap }
+        GhostISubset { map: submap }
     }
 
-    /// Insert a value, receiving the [`GhostSingleton`] that asserts ownerships over the value.
+    /// Insert a value, receiving the [`GhostISingleton`] that asserts ownerships over the value.
     ///
     /// ```
-    /// proof fn insert_example(tracked mut s: GhostSetAuth<int>) -> (tracked r: GhostSingleton<int>)
+    /// proof fn insert_example(tracked mut s: GhostISetAuth<int>) -> (tracked r: GhostISingleton<int>)
     ///     requires
     ///         !m@.contains(1int),
     /// {
@@ -223,7 +223,7 @@ impl<T> GhostSetAuth<T> {
     ///     singleton
     /// }
     /// ```
-    pub proof fn insert(tracked &mut self, v: T) -> (tracked result: GhostSingleton<T>)
+    pub proof fn insert(tracked &mut self, v: T) -> (tracked result: GhostISingleton<T>)
         requires
             !old(self)@.contains(v),
         ensures
@@ -233,12 +233,12 @@ impl<T> GhostSetAuth<T> {
             result@ == v,
     {
         let tracked map = self.map.insert(v, ());
-        GhostSingleton { map }
+        GhostISingleton { map }
     }
 
     /// Delete a set of values
     /// ```
-    /// proof fn delete(tracked mut auth: GhostSetAuth<int>)
+    /// proof fn delete(tracked mut auth: GhostISetAuth<int>)
     ///     requires
     ///         auth@.contains(1int),
     ///         auth@.contains(2int),
@@ -250,7 +250,7 @@ impl<T> GhostSetAuth<T> {
     ///     auth.delete(submap)
     /// }
     /// ```
-    pub proof fn delete(tracked &mut self, tracked f: GhostSubset<T>)
+    pub proof fn delete(tracked &mut self, tracked f: GhostISubset<T>)
         requires
             f.id() == old(self).id(),
         ensures
@@ -262,7 +262,7 @@ impl<T> GhostSetAuth<T> {
 
     /// Delete a single key from the map
     /// ```
-    /// proof fn delete_key(tracked mut auth: GhostSetAuth<int>)
+    /// proof fn delete_key(tracked mut auth: GhostISetAuth<int>)
     ///     requires
     ///         auth.dom().contains(1int),
     ///     ensures
@@ -273,7 +273,7 @@ impl<T> GhostSetAuth<T> {
     ///     auth.delete_points_to(points_to)
     /// }
     /// ```
-    pub proof fn delete_singleton(tracked &mut self, tracked p: GhostSingleton<T>)
+    pub proof fn delete_singleton(tracked &mut self, tracked p: GhostISingleton<T>)
         requires
             p.id() == old(self).id(),
         ensures
@@ -284,9 +284,9 @@ impl<T> GhostSetAuth<T> {
     }
 }
 
-impl<T> GhostSubset<T> {
-    /// Checks whether the [`GhostSubset`] refers to a single value (and thus can be converted to a
-    /// [`GhostSingleton`]).
+impl<T> GhostISubset<T> {
+    /// Checks whether the [`GhostISubset`] refers to a single value (and thus can be converted to a
+    /// [`GhostISingleton`]).
     pub open spec fn is_singleton(self) -> bool {
         &&& self@.len() == 1
         &&& self@.finite()
@@ -303,24 +303,24 @@ impl<T> GhostSubset<T> {
         self.map@.dom()
     }
 
-    /// Instantiate a dummy [`GhostSubset`]
-    pub proof fn dummy() -> (tracked result: GhostSubset<T>) {
-        let tracked map = GhostSubmap::dummy();
-        GhostSubset { map }
+    /// Instantiate a dummy [`GhostISubset`]
+    pub proof fn dummy() -> (tracked result: GhostISubset<T>) {
+        let tracked map = GhostISubmap::dummy();
+        GhostISubset { map }
     }
 
-    /// Create an empty [`GhostSubset`]
-    pub proof fn empty(tracked &self) -> (tracked result: GhostSubset<T>)
+    /// Create an empty [`GhostISubset`]
+    pub proof fn empty(tracked &self) -> (tracked result: GhostISubset<T>)
         ensures
             result.id() == self.id(),
             result@ == ISet::<T>::empty(),
     {
         let tracked map = self.map.empty();
-        GhostSubset { map }
+        GhostISubset { map }
     }
 
-    /// Extract the [`GhostSubset`] from a mutable reference, leaving behind an empty map.
-    pub proof fn take(tracked &mut self) -> (tracked result: GhostSubset<T>)
+    /// Extract the [`GhostISubset`] from a mutable reference, leaving behind an empty map.
+    pub proof fn take(tracked &mut self) -> (tracked result: GhostISubset<T>)
         ensures
             old(self).id() == final(self).id(),
             final(self)@.is_empty(),
@@ -328,16 +328,16 @@ impl<T> GhostSubset<T> {
             result.id() == final(self).id(),
     {
         let tracked map = self.map.take();
-        GhostSubset { map }
+        GhostISubset { map }
     }
 
-    /// Agreement between a [`GhostSubset`] and a corresponding [`GhostSetAuth`]
+    /// Agreement between a [`GhostISubset`] and a corresponding [`GhostISetAuth`]
     ///
-    /// Verus might not have full context of the [`GhostSetAuth`] and a corresponding [`GhostSubset`].
+    /// Verus might not have full context of the [`GhostISetAuth`] and a corresponding [`GhostISubset`].
     /// However, whenever we know that they refer to the same resource (i.e., have matching ids) we
-    /// can assert that the [`GhostSubset`] is a submap of the [`GhostSetAuth`].
+    /// can assert that the [`GhostISubset`] is a submap of the [`GhostISetAuth`].
     /// ```
-    /// proof fn test(tracked &auth: GhostSetAuth<int>, tracked &sub: GhostSubset<int>)
+    /// proof fn test(tracked &auth: GhostISetAuth<int>, tracked &sub: GhostISubset<int>)
     ///     requires
     ///         auth.id() == sub.id(),
     ///         sub@.contains(1int),
@@ -349,7 +349,7 @@ impl<T> GhostSubset<T> {
     ///     assert(auth.contains(1int));
     /// }
     /// ```
-    pub proof fn agree(tracked self: &GhostSubset<T>, tracked auth: &GhostSetAuth<T>)
+    pub proof fn agree(tracked self: &GhostISubset<T>, tracked auth: &GhostISetAuth<T>)
         requires
             self.id() == auth.id(),
         ensures
@@ -358,10 +358,10 @@ impl<T> GhostSubset<T> {
         self.map.agree(&auth.map);
     }
 
-    /// Combining two [`GhostSubset`]s is possible.
-    /// We consume the input [`GhostSubset`] and merge it into the first.
+    /// Combining two [`GhostISubset`]s is possible.
+    /// We consume the input [`GhostISubset`] and merge it into the first.
     /// We also learn that they were disjoint.
-    pub proof fn combine(tracked &mut self, tracked other: GhostSubset<T>)
+    pub proof fn combine(tracked &mut self, tracked other: GhostISubset<T>)
         requires
             old(self).id() == other.id(),
         ensures
@@ -372,9 +372,9 @@ impl<T> GhostSubset<T> {
         self.map.combine(other.map);
     }
 
-    /// Combining a [`GhostSingleton`] into [`GhostSubset`] is possible, in a similar way to the way to combine
-    /// [`GhostSubset`]s.
-    pub proof fn combine_singleton(tracked &mut self, tracked other: GhostSingleton<T>)
+    /// Combining a [`GhostISingleton`] into [`GhostISubset`] is possible, in a similar way to the way to combine
+    /// [`GhostISubset`]s.
+    pub proof fn combine_singleton(tracked &mut self, tracked other: GhostISingleton<T>)
         requires
             old(self).id() == other.id(),
         ensures
@@ -385,8 +385,8 @@ impl<T> GhostSubset<T> {
         self.map.combine_points_to(other.map);
     }
 
-    /// When we have two [`GhostSubset`]s we can prove that they have disjoint domains.
-    pub proof fn disjoint(tracked &mut self, tracked other: &GhostSubset<T>)
+    /// When we have two [`GhostISubset`]s we can prove that they have disjoint domains.
+    pub proof fn disjoint(tracked &mut self, tracked other: &GhostISubset<T>)
         requires
             old(self).id() == other.id(),
         ensures
@@ -397,9 +397,9 @@ impl<T> GhostSubset<T> {
         self.map.disjoint(&other.map);
     }
 
-    /// When we have a [`GhostSubset`] and a [`GhostPersistentSubset`] we can prove that they are in disjoint
+    /// When we have a [`GhostISubset`] and a [`GhostPersistentISubset`] we can prove that they are in disjoint
     /// domains.
-    pub proof fn disjoint_persistent(tracked &mut self, tracked other: &GhostPersistentSubset<T>)
+    pub proof fn disjoint_persistent(tracked &mut self, tracked other: &GhostPersistentISubset<T>)
         requires
             old(self).id() == other.id(),
         ensures
@@ -410,9 +410,9 @@ impl<T> GhostSubset<T> {
         self.map.disjoint_persistent(&other.map);
     }
 
-    /// When we have a [`GhostSubset`] and a [`GhostSingleton`] we can prove that they are in disjoint
+    /// When we have a [`GhostISubset`] and a [`GhostISingleton`] we can prove that they are in disjoint
     /// domains.
-    pub proof fn disjoint_singleton(tracked &mut self, tracked other: &GhostSingleton<T>)
+    pub proof fn disjoint_singleton(tracked &mut self, tracked other: &GhostISingleton<T>)
         requires
             old(self).id() == other.id(),
         ensures
@@ -423,11 +423,11 @@ impl<T> GhostSubset<T> {
         self.map.disjoint_points_to(&other.map);
     }
 
-    /// When we have a [`GhostSubset`] and a [`GhostPersistentSingleton`] we can prove that they are in disjoint
+    /// When we have a [`GhostISubset`] and a [`GhostPersistentISingleton`] we can prove that they are in disjoint
     /// domains.
     pub proof fn disjoint_persistent_singleton(
         tracked &mut self,
-        tracked other: &GhostPersistentSingleton<T>,
+        tracked other: &GhostPersistentISingleton<T>,
     )
         requires
             old(self).id() == other.id(),
@@ -439,8 +439,8 @@ impl<T> GhostSubset<T> {
         self.map.disjoint_persistent_points_to(&other.map);
     }
 
-    /// We can split a [`GhostSubset`] based on a set of values
-    pub proof fn split(tracked &mut self, s: ISet<T>) -> (tracked result: GhostSubset<T>)
+    /// We can split a [`GhostISubset`] based on a set of values
+    pub proof fn split(tracked &mut self, s: ISet<T>) -> (tracked result: GhostISubset<T>)
         requires
             s <= old(self)@,
         ensures
@@ -451,11 +451,11 @@ impl<T> GhostSubset<T> {
             final(self)@ =~= old(self)@ - s,
     {
         let tracked map = self.map.split(s);
-        GhostSubset { map }
+        GhostISubset { map }
     }
 
-    /// We can separate a single value out of a [`GhostSubset`]
-    pub proof fn split_singleton(tracked &mut self, v: T) -> (tracked result: GhostSingleton<T>)
+    /// We can separate a single value out of a [`GhostISubset`]
+    pub proof fn split_singleton(tracked &mut self, v: T) -> (tracked result: GhostISingleton<T>)
         requires
             old(self)@.contains(v),
         ensures
@@ -466,11 +466,11 @@ impl<T> GhostSubset<T> {
             final(self)@ =~= old(self)@.remove(v),
     {
         let tracked map = self.map.split_points_to(v);
-        GhostSingleton { map }
+        GhostISingleton { map }
     }
 
-    /// Converting a [`GhostSubset`] into a [`GhostSingleton`]
-    pub proof fn singleton(tracked self) -> (tracked r: GhostSingleton<T>)
+    /// Converting a [`GhostISubset`] into a [`GhostISingleton`]
+    pub proof fn singleton(tracked self) -> (tracked r: GhostISingleton<T>)
         requires
             self.is_singleton(),
         ensures
@@ -478,23 +478,23 @@ impl<T> GhostSubset<T> {
             self.id() == r.id(),
     {
         let tracked map = self.map.points_to();
-        GhostSingleton { map }
+        GhostISingleton { map }
     }
 
-    /// Converting a [`GhostSubset`] into a [`GhostPersistentSubset`]
-    pub proof fn persist(tracked self) -> (tracked r: GhostPersistentSubset<T>)
+    /// Converting a [`GhostISubset`] into a [`GhostPersistentISubset`]
+    pub proof fn persist(tracked self) -> (tracked r: GhostPersistentISubset<T>)
         ensures
             self@ == r@,
             self.id() == r.id(),
     {
         let tracked map = self.map.persist();
-        GhostPersistentSubset { map }
+        GhostPersistentISubset { map }
     }
 }
 
-impl<T> GhostPersistentSubset<T> {
-    /// Checks whether the [`GhostPersistentSubset`] refers to a single key (and thus can be converted to a
-    /// [`GhostPersistentPointsTo`]).
+impl<T> GhostPersistentISubset<T> {
+    /// Checks whether the [`GhostPersistentISubset`] refers to a single key (and thus can be converted to a
+    /// [`GhostPersistentIPointsTo`]).
     pub open spec fn is_singleton(self) -> bool {
         &&& self@.len() == 1
         &&& self@.finite()
@@ -511,39 +511,39 @@ impl<T> GhostPersistentSubset<T> {
         self.map@.dom()
     }
 
-    /// Instantiate a dummy [`GhostPersistentSubset`]
-    pub proof fn dummy() -> (tracked result: GhostPersistentSubset<T>) {
-        let tracked map = GhostPersistentSubmap::dummy();
-        GhostPersistentSubset { map }
+    /// Instantiate a dummy [`GhostPersistentISubset`]
+    pub proof fn dummy() -> (tracked result: GhostPersistentISubset<T>) {
+        let tracked map = GhostPersistentISubmap::dummy();
+        GhostPersistentISubset { map }
     }
 
-    /// Create an empty [`GhostPersistentSubset`]
-    pub proof fn empty(tracked &self) -> (tracked result: GhostPersistentSubset<T>)
+    /// Create an empty [`GhostPersistentISubset`]
+    pub proof fn empty(tracked &self) -> (tracked result: GhostPersistentISubset<T>)
         ensures
             result.id() == self.id(),
             result@ == ISet::<T>::empty(),
     {
         let tracked map = self.map.empty();
-        GhostPersistentSubset { map }
+        GhostPersistentISubset { map }
     }
 
-    /// Duplicate the [`GhostPersistentSubset`]
-    pub proof fn duplicate(tracked &self) -> (tracked result: GhostPersistentSubset<T>)
+    /// Duplicate the [`GhostPersistentISubset`]
+    pub proof fn duplicate(tracked &self) -> (tracked result: GhostPersistentISubset<T>)
         ensures
             result@ == self@,
             result.id() == self.id(),
     {
         let tracked map = self.map.duplicate();
-        GhostPersistentSubset { map }
+        GhostPersistentISubset { map }
     }
 
-    /// Agreement between a [`GhostPersistentSubset`] and a corresponding [`GhostMapAuth`]
+    /// Agreement between a [`GhostPersistentISubset`] and a corresponding [`GhostIMapAuth`]
     ///
-    /// Verus might not have full context of the [`GhostMapAuth`] and a corresponding [`GhostPersistentSubset`].
+    /// Verus might not have full context of the [`GhostIMapAuth`] and a corresponding [`GhostPersistentISubset`].
     /// However, whenever we know that they refer to the same resource (i.e., have matching ids) we
-    /// can assert that the [`GhostPersistentSubset`] is a subset of the [`GhostMapAuth`].
+    /// can assert that the [`GhostPersistentISubset`] is a subset of the [`GhostIMapAuth`].
     /// ```
-    /// proof fn test(tracked &auth: GhostMapAuth<int, int>, tracked &sub: GhostPersistentSubset<int, int>)
+    /// proof fn test(tracked &auth: GhostIMapAuth<int, int>, tracked &sub: GhostPersistentISubset<int, int>)
     ///     requires
     ///         auth.id() == sub.id(),
     ///         sub.dom().contains(1int),
@@ -556,7 +556,7 @@ impl<T> GhostPersistentSubset<T> {
     ///     assert(auth[1int] == 1int);
     /// }
     /// ```
-    pub proof fn agree(tracked self: &GhostPersistentSubset<T>, tracked auth: &GhostSetAuth<T>)
+    pub proof fn agree(tracked self: &GhostPersistentISubset<T>, tracked auth: &GhostISetAuth<T>)
         requires
             self.id() == auth.id(),
         ensures
@@ -565,10 +565,10 @@ impl<T> GhostPersistentSubset<T> {
         self.map.agree(&auth.map);
     }
 
-    /// Combining two [`GhostPersistentSubset`]s is possible.
-    /// We consume the input [`GhostPersistentSubset`] and merge it into the first.
+    /// Combining two [`GhostPersistentISubset`]s is possible.
+    /// We consume the input [`GhostPersistentISubset`] and merge it into the first.
     /// We also learn that they agreed
-    pub proof fn combine(tracked &mut self, tracked other: GhostPersistentSubset<T>)
+    pub proof fn combine(tracked &mut self, tracked other: GhostPersistentISubset<T>)
         requires
             old(self).id() == other.id(),
         ensures
@@ -578,9 +578,9 @@ impl<T> GhostPersistentSubset<T> {
         self.map.combine(other.map);
     }
 
-    /// Combining a [`GhostPersistentSingleton`] into [`GhostPersistentSubset`] is possible, in a similar way to the way to combine
-    /// [`GhostPersistentSubset`]s.
-    pub proof fn combine_points_to(tracked &mut self, tracked other: GhostPersistentSingleton<T>)
+    /// Combining a [`GhostPersistentISingleton`] into [`GhostPersistentISubset`] is possible, in a similar way to the way to combine
+    /// [`GhostPersistentISubset`]s.
+    pub proof fn combine_points_to(tracked &mut self, tracked other: GhostPersistentISingleton<T>)
         requires
             old(self).id() == other.id(),
         ensures
@@ -590,8 +590,8 @@ impl<T> GhostPersistentSubset<T> {
         self.map.combine_points_to(other.map);
     }
 
-    /// When we have a [`GhostPersistentSubset`] and a [`GhostSubset`] we can prove that they have disjoint domains.
-    pub proof fn disjoint(tracked &mut self, tracked other: &GhostSubset<T>)
+    /// When we have a [`GhostPersistentISubset`] and a [`GhostISubset`] we can prove that they have disjoint domains.
+    pub proof fn disjoint(tracked &mut self, tracked other: &GhostISubset<T>)
         requires
             old(self).id() == other.id(),
         ensures
@@ -602,9 +602,9 @@ impl<T> GhostPersistentSubset<T> {
         self.map.disjoint(&other.map);
     }
 
-    /// When we have a [`GhostPersistentSubset`] and a [`GhostSingleton`], we can prove that they are in disjoint
+    /// When we have a [`GhostPersistentISubset`] and a [`GhostISingleton`], we can prove that they are in disjoint
     /// domains.
-    pub proof fn disjoint_singleton(tracked &mut self, tracked other: &GhostSingleton<T>)
+    pub proof fn disjoint_singleton(tracked &mut self, tracked other: &GhostISingleton<T>)
         requires
             old(self).id() == other.id(),
         ensures
@@ -615,8 +615,8 @@ impl<T> GhostPersistentSubset<T> {
         self.map.disjoint_points_to(&other.map);
     }
 
-    /// We can split a [`GhostPersistentSubset`] based on a set of keys in its domain.
-    pub proof fn split(tracked &mut self, s: ISet<T>) -> (tracked result: GhostPersistentSubset<T>)
+    /// We can split a [`GhostPersistentISubset`] based on a set of keys in its domain.
+    pub proof fn split(tracked &mut self, s: ISet<T>) -> (tracked result: GhostPersistentISubset<T>)
         requires
             s <= old(self)@,
         ensures
@@ -627,12 +627,12 @@ impl<T> GhostPersistentSubset<T> {
             final(self)@ =~= old(self)@ - s,
     {
         let tracked map = self.map.split(s);
-        GhostPersistentSubset { map }
+        GhostPersistentISubset { map }
     }
 
-    /// We can separate a single value out of a [`GhostPersistentSubset`]
+    /// We can separate a single value out of a [`GhostPersistentISubset`]
     pub proof fn split_singleton(tracked &mut self, v: T) -> (tracked result:
-        GhostPersistentSingleton<T>)
+        GhostPersistentISingleton<T>)
         requires
             old(self)@.contains(v),
         ensures
@@ -643,11 +643,11 @@ impl<T> GhostPersistentSubset<T> {
             final(self)@ =~= old(self)@.remove(v),
     {
         let tracked map = self.map.split_points_to(v);
-        GhostPersistentSingleton { map }
+        GhostPersistentISingleton { map }
     }
 
-    /// Convert a [`GhostPersistentSubset`] into a [`GhostPersistentSingleton`]
-    pub proof fn singleton(tracked self) -> (tracked r: GhostPersistentSingleton<T>)
+    /// Convert a [`GhostPersistentISubset`] into a [`GhostPersistentISingleton`]
+    pub proof fn singleton(tracked self) -> (tracked r: GhostPersistentISingleton<T>)
         requires
             self.is_singleton(),
         ensures
@@ -655,11 +655,11 @@ impl<T> GhostPersistentSubset<T> {
             self.id() == r.id(),
     {
         let tracked map = self.map.points_to();
-        GhostPersistentSingleton { map }
+        GhostPersistentISingleton { map }
     }
 }
 
-impl<T> GhostSingleton<T> {
+impl<T> GhostISingleton<T> {
     /// Location of the underlying resource
     pub closed spec fn id(self) -> Loc {
         self.map.id()
@@ -670,13 +670,13 @@ impl<T> GhostSingleton<T> {
         self.map@.0
     }
 
-    /// Agreement between a [`GhostSingleton`] and a corresponding [`GhostSetAuth`]
+    /// Agreement between a [`GhostISingleton`] and a corresponding [`GhostISetAuth`]
     ///
-    /// Verus might not have full context of the [`GhostSetAuth`] and a corresponding [`GhostSingleton`].
+    /// Verus might not have full context of the [`GhostISetAuth`] and a corresponding [`GhostISingleton`].
     /// However, whenever we know that they refer to the same resource (i.e., have matching ids) we
-    /// can assert that the [`GhostSingleton`] is a subset of the [`GhostSetAuth`].
+    /// can assert that the [`GhostISingleton`] is a subset of the [`GhostISetAuth`].
     /// ```
-    /// proof fn test(tracked &auth: GhostSetAuth<int>, tracked &pt: GhostSingleton<int>)
+    /// proof fn test(tracked &auth: GhostISetAuth<int>, tracked &pt: GhostISingleton<int>)
     ///     requires
     ///         auth.id() == sub.id(),
     ///         pt@ == 1int
@@ -687,7 +687,7 @@ impl<T> GhostSingleton<T> {
     ///     assert(auth@.contains(1int));
     /// }
     /// ```
-    pub proof fn agree(tracked self: &GhostSingleton<T>, tracked auth: &GhostSetAuth<T>)
+    pub proof fn agree(tracked self: &GhostISingleton<T>, tracked auth: &GhostISetAuth<T>)
         requires
             self.id() == auth.id(),
         ensures
@@ -696,11 +696,10 @@ impl<T> GhostSingleton<T> {
         self.map.agree(&auth.map);
     }
 
-    /// We can combine two [`GhostSingleton`]s into a [`GhostSubset`]
+    /// We can combine two [`GhostISingleton`]s into a [`GhostISubset`]
     /// We also learn that they were disjoint.
-    pub proof fn combine(tracked self, tracked other: GhostSingleton<T>) -> (tracked r: GhostSubset<
-        T,
-    >)
+    pub proof fn combine(tracked self, tracked other: GhostISingleton<T>) -> (tracked r:
+        GhostISubset<T>)
         requires
             self.id() == other.id(),
         ensures
@@ -709,11 +708,11 @@ impl<T> GhostSingleton<T> {
             self@ != other@,
     {
         let tracked map = self.map.combine(other.map);
-        GhostSubset { map }
+        GhostISubset { map }
     }
 
-    /// Shows that if a two [`GhostSingleton`]s are not owning the same value
-    pub proof fn disjoint(tracked &mut self, tracked other: &GhostSingleton<T>)
+    /// Shows that if a two [`GhostISingleton`]s are not owning the same value
+    pub proof fn disjoint(tracked &mut self, tracked other: &GhostISingleton<T>)
         requires
             old(self).id() == other.id(),
         ensures
@@ -724,8 +723,11 @@ impl<T> GhostSingleton<T> {
         self.map.disjoint(&other.map)
     }
 
-    /// Shows that if a [`GhostSingleton`] and a [`GhostPersistentSingleton`] are not owning the same value
-    pub proof fn disjoint_persistent(tracked &mut self, tracked other: &GhostPersistentSingleton<T>)
+    /// Shows that if a [`GhostISingleton`] and a [`GhostPersistentISingleton`] are not owning the same value
+    pub proof fn disjoint_persistent(
+        tracked &mut self,
+        tracked other: &GhostPersistentISingleton<T>,
+    )
         requires
             old(self).id() == other.id(),
         ensures
@@ -736,8 +738,8 @@ impl<T> GhostSingleton<T> {
         self.map.disjoint_persistent(&other.map)
     }
 
-    /// Shows that if a [`GhostSingleton`] and a [`GhostSubset`] are not owning the same value
-    pub proof fn disjoint_subset(tracked &mut self, tracked other: &GhostSubset<T>)
+    /// Shows that if a [`GhostISingleton`] and a [`GhostISubset`] are not owning the same value
+    pub proof fn disjoint_subset(tracked &mut self, tracked other: &GhostISubset<T>)
         requires
             old(self).id() == other.id(),
         ensures
@@ -748,10 +750,10 @@ impl<T> GhostSingleton<T> {
         self.map.disjoint_submap(&other.map);
     }
 
-    /// Shows that if a [`GhostSingleton`] and a [`GhostPersistentSubset`] are not owning the same value
+    /// Shows that if a [`GhostISingleton`] and a [`GhostPersistentISubset`] are not owning the same value
     pub proof fn disjoint_persistent_subset(
         tracked &mut self,
-        tracked other: &GhostPersistentSubset<T>,
+        tracked other: &GhostPersistentISubset<T>,
     )
         requires
             old(self).id() == other.id(),
@@ -763,28 +765,28 @@ impl<T> GhostSingleton<T> {
         self.map.disjoint_persistent_submap(&other.map);
     }
 
-    /// Convert the [`GhostSingleton`] a [`GhostSubset`]
-    pub proof fn subset(tracked self) -> (tracked r: GhostSubset<T>)
+    /// Convert the [`GhostISingleton`] a [`GhostISubset`]
+    pub proof fn subset(tracked self) -> (tracked r: GhostISubset<T>)
         ensures
             r.id() == self.id(),
             r@ == iset![self@],
     {
         let tracked map = self.map.submap();
-        GhostSubset { map }
+        GhostISubset { map }
     }
 
-    /// Converting a [`GhostSingleton`] into a [`GhostPersistentSingleton`]
-    pub proof fn persist(tracked self) -> (tracked r: GhostPersistentSingleton<T>)
+    /// Converting a [`GhostISingleton`] into a [`GhostPersistentISingleton`]
+    pub proof fn persist(tracked self) -> (tracked r: GhostPersistentISingleton<T>)
         ensures
             self@ == r@,
             self.id() == r.id(),
     {
         let tracked map = self.map.persist();
-        GhostPersistentSingleton { map }
+        GhostPersistentISingleton { map }
     }
 }
 
-impl<T> GhostPersistentSingleton<T> {
+impl<T> GhostPersistentISingleton<T> {
     /// Location of the underlying resource
     pub closed spec fn id(self) -> Loc {
         self.map.id()
@@ -795,23 +797,23 @@ impl<T> GhostPersistentSingleton<T> {
         self.map@.0
     }
 
-    /// Duplicate the [`GhostPersistentSingleton`]
-    pub proof fn duplicate(tracked &self) -> (tracked result: GhostPersistentSingleton<T>)
+    /// Duplicate the [`GhostPersistentISingleton`]
+    pub proof fn duplicate(tracked &self) -> (tracked result: GhostPersistentISingleton<T>)
         ensures
             result@ == self@,
             result.id() == self.id(),
     {
         let tracked map = self.map.duplicate();
-        GhostPersistentSingleton { map }
+        GhostPersistentISingleton { map }
     }
 
-    /// Agreement between a [`GhostPersistentSingleton`] and a corresponding [`GhostSetAuth`]
+    /// Agreement between a [`GhostPersistentISingleton`] and a corresponding [`GhostISetAuth`]
     ///
-    /// Verus might not have full context of the [`GhostSetAuth`] and a corresponding [`GhostPersistentSingleton`].
+    /// Verus might not have full context of the [`GhostISetAuth`] and a corresponding [`GhostPersistentISingleton`].
     /// However, whenever we know that they refer to the same resource (i.e., have matching ids) we
-    /// can assert that the [`GhostPersistentSingleton`] is a subset of the [`GhostSetAuth`].
+    /// can assert that the [`GhostPersistentISingleton`] is a subset of the [`GhostISetAuth`].
     /// ```
-    /// proof fn test(tracked &auth: GhostSetAuth<int>, tracked &pt: GhostPersistentSingleton<int>)
+    /// proof fn test(tracked &auth: GhostISetAuth<int>, tracked &pt: GhostPersistentISingleton<int>)
     ///     requires
     ///         auth.id() == sub.id(),
     ///         pt@ == 1int
@@ -822,7 +824,7 @@ impl<T> GhostPersistentSingleton<T> {
     ///     assert(auth@.contains(1int));
     /// }
     /// ```
-    pub proof fn agree(tracked self: &GhostPersistentSingleton<T>, tracked auth: &GhostSetAuth<T>)
+    pub proof fn agree(tracked self: &GhostPersistentISingleton<T>, tracked auth: &GhostISetAuth<T>)
         requires
             self.id() == auth.id(),
         ensures
@@ -831,9 +833,9 @@ impl<T> GhostPersistentSingleton<T> {
         self.map.agree(&auth.map);
     }
 
-    /// We can combine two [`GhostPersistentSingleton`]s into a [`GhostPersistentSubset`]
-    pub proof fn combine(tracked self, tracked other: GhostPersistentSingleton<T>) -> (tracked r:
-        GhostPersistentSubset<T>)
+    /// We can combine two [`GhostPersistentISingleton`]s into a [`GhostPersistentISubset`]
+    pub proof fn combine(tracked self, tracked other: GhostPersistentISingleton<T>) -> (tracked r:
+        GhostPersistentISubset<T>)
         requires
             self.id() == other.id(),
         ensures
@@ -843,11 +845,11 @@ impl<T> GhostPersistentSingleton<T> {
             self@ == other@ ==> r@.len() == 1,
     {
         let tracked map = self.map.combine(other.map);
-        GhostPersistentSubset { map }
+        GhostPersistentISubset { map }
     }
 
-    /// Shows that a [`GhostPersistentSingleton`] and a [`GhostSingleton`] are not owning the same value
-    pub proof fn disjoint(tracked &mut self, tracked other: &GhostSingleton<T>)
+    /// Shows that a [`GhostPersistentISingleton`] and a [`GhostISingleton`] are not owning the same value
+    pub proof fn disjoint(tracked &mut self, tracked other: &GhostISingleton<T>)
         requires
             old(self).id() == other.id(),
         ensures
@@ -858,8 +860,8 @@ impl<T> GhostPersistentSingleton<T> {
         self.map.disjoint(&other.map)
     }
 
-    /// Shows that if a [`GhostPersistentSingleton`] and a [`GhostSubset`] are not owning the same value
-    pub proof fn disjoint_subset(tracked &mut self, tracked other: &GhostSubset<T>)
+    /// Shows that if a [`GhostPersistentISingleton`] and a [`GhostISubset`] are not owning the same value
+    pub proof fn disjoint_subset(tracked &mut self, tracked other: &GhostISubset<T>)
         requires
             old(self).id() == other.id(),
         ensures
@@ -870,14 +872,14 @@ impl<T> GhostPersistentSingleton<T> {
         self.map.disjoint_submap(&other.map);
     }
 
-    /// Convert the [`GhostPersistentSingleton`] a [`GhostPersistentSubset`]
-    pub proof fn subset(tracked self) -> (tracked r: GhostPersistentSubset<T>)
+    /// Convert the [`GhostPersistentISingleton`] a [`GhostPersistentISubset`]
+    pub proof fn subset(tracked self) -> (tracked r: GhostPersistentISubset<T>)
         ensures
             r.id() == self.id(),
             r@ == iset![self@],
     {
         let tracked map = self.map.submap();
-        GhostPersistentSubset { map }
+        GhostPersistentISubset { map }
     }
 }
 

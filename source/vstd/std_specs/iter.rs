@@ -120,7 +120,7 @@ pub trait ExIterator {
             final(self).obeys_prophetic_iter_laws() && r.is_some() ==> {
                 let idx = old(self).remaining().len() - final(self).remaining().len() - 1;
                 {
-                    &&& old(self).remaining().len() > 0
+                    &&& 0 <= final(self).remaining().len() < old(self).remaining().len()
                     &&& predicate.ensures((&r.unwrap(),), true)
                     &&& old(self).remaining()[idx] == r.unwrap()
                     &&& forall |i| 0 <= i < idx ==>

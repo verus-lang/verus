@@ -1,6 +1,6 @@
-use super::super::prelude::*;
-use super::algebra::Resource;
-use super::algebra::ResourceAlgebra;
+use super::super::super::prelude::*;
+use super::super::algebra::Resource;
+use super::super::algebra::ResourceAlgebra;
 
 verus! {
 
