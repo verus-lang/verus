@@ -134,31 +134,56 @@ impl<'a> MetadataIndex<'a> {
     }
 
     /// Collect sources of `vstd` that appear in the build.
-    pub fn collect_vstd_sources(&self) -> Vec<SourceMetadata> {
+    pub fn collect_vstd_sources(&self) -> Vec<PackageMetadata> {
         self.entries
             .values()
             .filter(|entry| entry.verus_metadata.is_vstd)
-            .map(|entry| SourceMetadata::from(entry.package))
+            .map(|entry| PackageMetadata::from(entry.package))
             .collect()
     }
 }
 
-/// Metadata about a package source.
+/// Metadata about a package.
 #[derive(Debug, Clone)]
-pub struct SourceMetadata {
-    version: Version,
-    registry: Option<String>,
-    git: Option<String>,
-    rev: Option<String>,
+pub struct PackageMetadata {
+    pub version: Version,
+    pub source: PackageSource,
 }
 
-impl From<&Package> for SourceMetadata {
+/// Metadata about a package.
+#[derive(Debug, Clone)]
+pub enum PackageSource {
+    Registry { registry: String },
+    Git { git: String, rev: Option<String> },
+    Unsupported,
+}
+
+impl From<&Package> for PackageMetadata {
     fn from(package: &Package) -> Self {
         let version = package.version.clone();
-        let mut registry = None;
-        let mut git = None;
-        let mut rev = None;
-        SourceMetadata { version, registry, git, rev }
+        let source = PackageSource::from(package.source.as_ref());
+        PackageMetadata { version, source }
+    }
+}
+
+impl From<Option<&Source>> for PackageSource {
+    fn from(source: Option<&Source>) -> Self {
+        let Some(source) = source else {
+            return PackageSource::Unsupported;
+        };
+
+        let repr = &source.repr;
+        if let Some(registry) = repr.strip_prefix("registry+") {
+            PackageSource::Registry { registry: registry.to_string() }
+        } else if let Some(git_source) = repr.strip_prefix("git+") {
+            if let Some((git, rev)) = git_source.rsplit_once('#') {
+                PackageSource::Git { git: git.to_string(), rev: Some(rev.to_string()) }
+            } else {
+                PackageSource::Git { git: git_source.to_string(), rev: None }
+            }
+        } else {
+            PackageSource::Unsupported
+        }
     }
 }
 
