@@ -147,7 +147,7 @@ impl<'a> MetadataIndex<'a> {
 #[derive(Debug, Clone)]
 pub struct SourceMetadata {
     version: Version,
-    registry: String,
+    registry: Option<String>,
     git: Option<String>,
     rev: Option<String>,
 }
@@ -155,9 +155,9 @@ pub struct SourceMetadata {
 impl From<&Package> for SourceMetadata {
     fn from(package: &Package) -> Self {
         let version = package.version.clone();
-        let registry = todo!();
-        let git = todo!();
-        let rev = todo!();
+        let mut registry = None;
+        let mut git = None;
+        let mut rev = None;
         SourceMetadata { version, registry, git, rev }
     }
 }
