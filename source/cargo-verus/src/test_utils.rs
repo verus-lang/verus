@@ -24,18 +24,21 @@ pub struct MockPackage {
     deps: Vec<(DepKind, Option<String>, MockDep)>,
     features: Vec<String>,
     verus_verify: Option<bool>,
+    is_vstd: bool,
 }
 
 #[derive(Clone)]
 pub struct MockDep {
     alias: Option<String>,
     package: String,
+    version: Option<String>,
     source: DepSource,
 }
 
 #[derive(Clone)]
 enum DepSource {
-    Registry { version: String },
+    Registry,
+    Git { url: String, rev: String },
     Path(String),
     Workspace,
 }
@@ -45,20 +48,45 @@ impl MockDep {
         Self {
             alias: None,
             package: package.to_owned(),
-            source: DepSource::Registry { version: version.to_owned() },
+            version: Some(version.to_owned()),
+            source: DepSource::Registry,
         }
     }
 
     pub fn path(package: &str, path: &str) -> Self {
-        Self { alias: None, package: package.to_owned(), source: DepSource::Path(path.to_owned()) }
+        Self {
+            alias: None,
+            package: package.to_owned(),
+            version: None,
+            source: DepSource::Path(path.to_owned()),
+        }
+    }
+
+    pub fn git(package: &str, url: &str, rev: &str) -> Self {
+        Self {
+            alias: None,
+            package: package.to_owned(),
+            version: None,
+            source: DepSource::Git { url: url.to_owned(), rev: rev.to_owned() },
+        }
     }
 
     pub fn workspace(package: &str) -> Self {
-        Self { alias: None, package: package.to_owned(), source: DepSource::Workspace }
+        Self {
+            alias: None,
+            package: package.to_owned(),
+            version: None,
+            source: DepSource::Workspace,
+        }
     }
 
     pub fn alias(mut self, alias: &str) -> Self {
         self.alias = Some(alias.to_owned());
+        self
+    }
+
+    pub fn version(mut self, version: &str) -> Self {
+        self.version = Some(version.to_owned());
         self
     }
 }
@@ -82,7 +110,11 @@ impl MockWorkspace {
 
     pub fn materialize(self) -> tempfile::TempDir {
         let root = tempfile::tempdir().expect("create temp dir");
+        self.materialize_in_dir(root.path());
+        root
+    }
 
+    pub fn materialize_in_dir(self, root: &Path) {
         let mut member_names = vec![];
         let mut workspace_aliases = BTreeMap::<String, String>::new();
         for member in self.members {
@@ -93,7 +125,7 @@ impl MockWorkspace {
                     panic!("workspace-level alias `{alias}` already exists for `{package_name}`");
                 }
             }
-            let package_dir = root.path().join(&package_name);
+            let package_dir = root.join(&package_name);
             std::fs::create_dir(&package_dir).expect("create package dir {package_dir:?}");
             member.materialize_in_dir(&package_dir);
         }
@@ -124,11 +156,9 @@ impl MockWorkspace {
         }
         manifest_lines.push("".to_owned());
 
-        let manifest = root.path().join("Cargo.toml");
+        let manifest = root.join("Cargo.toml");
         std::fs::write(&manifest, manifest_lines.join("\n"))
             .unwrap_or_else(|_| panic!("write manifest to {manifest:?}"));
-
-        root
     }
 }
 
@@ -144,6 +174,7 @@ impl MockPackage {
             deps: vec![],
             features: vec![],
             verus_verify: None,
+            is_vstd: false,
         }
     }
 
@@ -202,6 +233,11 @@ impl MockPackage {
         self
     }
 
+    pub fn mark_as_vstd(mut self) -> Self {
+        self.is_vstd = true;
+        self
+    }
+
     pub fn materialize(self) -> tempfile::TempDir {
         let root = tempfile::tempdir().expect("create temp dir");
         self.materialize_in_dir(root.path());
@@ -224,20 +260,33 @@ impl MockPackage {
         let mut targets: BTreeMap<String, Vec<String>> = Default::default();
         for (kind, cfg, dep) in self.deps {
             let name = dep.alias.as_ref().unwrap_or(&dep.package);
+
             let package_part = dep
                 .alias
                 .as_ref()
-                .map(|_| format!("package = \"{}\",", dep.package))
+                .map(|_| format!("package = {:?},", dep.package))
                 .unwrap_or(String::new());
+
+            let version_part = if let Some(version) = dep.version {
+                format!("version = {version:?},")
+            } else {
+                String::new()
+            };
+
             let entry = match dep.source {
                 DepSource::Workspace => {
-                    format!("{name} = {{ {package_part} workspace = true }}")
+                    format!("{name} = {{ {package_part} {version_part} workspace = true }}")
                 }
                 DepSource::Path(path) => {
-                    format!("{name} = {{ {package_part} path = \"{}\" }}", path)
+                    format!("{name} = {{ {package_part} {version_part} path = {path:?} }}")
                 }
-                DepSource::Registry { version } => {
-                    format!("{name} = {{ {package_part} version = \"{}\" }}", version)
+                DepSource::Git { url, rev } => {
+                    format!(
+                        "{name} = {{ {package_part} {version_part} git = {url:?}, rev = {rev:?} }}"
+                    )
+                }
+                DepSource::Registry => {
+                    format!("{name} = {{ {package_part} {version_part} }}")
                 }
             };
 
@@ -287,9 +336,14 @@ impl MockPackage {
             manifest_lines.push("".to_owned());
         }
 
-        if let Some(verus_verify) = self.verus_verify {
+        if self.verus_verify.is_some() || self.is_vstd {
             manifest_lines.push("[package.metadata.verus]".to_owned());
-            manifest_lines.push(format!("verify = {verus_verify}"));
+            if let Some(verus_verify) = self.verus_verify {
+                manifest_lines.push(format!("verify = {verus_verify}"));
+            }
+            if self.is_vstd {
+                manifest_lines.push("is-vstd = true".to_owned());
+            }
             manifest_lines.push("".to_owned());
         }
 
