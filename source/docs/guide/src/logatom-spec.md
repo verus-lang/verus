@@ -33,18 +33,61 @@ The predicate type can be given a name using the optional `type PredType` clause
 The final two clauses `outer_mask` and `inner_mask` specify the invariant masks of the atomic update.
 We will see what they do in later sections.
 
-## Notes on the abort case
+## The abort case
 
 The output type of the atomic update (`AY` above) must implement the `UpdateTry` trait.
 This trait allows us to determine if a specific output value indicates that the atomic update has been committed or aborted.
 
-The Verus standard library provides two types which implement this trait:
+```rs
+pub enum UpdateControlFlow {
+    Commit,
+    Abort,
+}
 
-- `AY = Result<T, E>` specifies an atomic update which can be committed by outputting `Ok(t)` and aborted using `Err(e)`, this is equivalent to the atomic update as it can be found in Iris, except that we do not force `AX` and `E` to be equal.
+pub trait UpdateTry {
+    spec fn branch(self) -> UpdateControlFlow;
+}
+```
+
+The Verus standard library provides implementations of this trait for two types:
+
+- `AY = Result<T, E>` specifies an atomic update which can be committed by outputting `Ok(t)` and aborted using `Err(e)`, this is equivalent to the atomic update as it can be found in Iris, except that we do not force `AX` and `E` to be the same.
 
 - `AY = Commit<T>` specifies an atomic update that cannot be aborted.
 
+In cases where one wants to differentiate between multiple different commit or abort cases, it can be helpful to implement this trait for custom types.
+
+It is possible to define an abort-only type `Abort<T>` analogously to `Commit<T>`, though such an output type would prevent both the library function and the atomic function call from terminating, which is typically undesirable for a logically atomic function.
+
+## The predicate type
+
+The atomic update object bound by the above specification has type `AtomicUpdate<AX, AY, PredType>`.
+Similar to the invariant types in Verus, there is just one `AtomicUpdate` type provided by `vstd` that is *configured* using its last type argument (which we call the **predicate type**) using a trait implementation.
+
+The predicate type and it's trait implementation is generated automatically by Verus when the user writes an atomic specification.
+For the specification above, we generate (roughly) the following:
+
+```rs
+struct PredType { px: Ghost<PX> }
+
+impl UpdatePredicate<AX, AY> for PredType {
+    open spec fn req(self, x: X)       -> bool { atomic_pre  }
+    open spec fn ens(self, x: X, y: Y) -> bool { atomic_post }
+
+    open spec fn outer_mask(self) -> ISet<int> { [...] }
+    open spec fn inner_mask(self) -> ISet<int> { [...] }
+}
+
+impl PredType {
+    open spec fn args(self, px: PX) -> bool { self.px == px }
+}
+```
+
+We store the function arguments in the predicate type to allow the atomic pre- and postcondition to depend on them.
+
 ## Running examples
+
+This is what the atomic specification for our two example functions may look like:
 
 ```rs
 pub fn reset(var: &PAtomicU64)
