@@ -27,8 +27,9 @@ To attach resources to the atomic pre- and postcondition, we can use the arrow `
 In what follows, we will refer to `ax: AX` as the "input type" of the atomic update, and `ay: AY` as the output type.
 Both `ax` and `ay` are always tracked-mode.
 
-This atomic specification binds an additional variable called `atomic_update` which has type `AtomicUpdate<AX, AY, PredType>`.
-The predicate type can be given a name using the optional `type PredType` clause as seen above.
+This atomic specification binds an additional variable of type `AtomicUpdate<AX, AY, PredType>`.
+While the name of this `tracked` variable is user-defined, we will call it `atomic_update` throughout this guide for consistency.
+The predicate type can be given a name using the optional `type PredType` clause as seen above. For more information, see the [section on the predicate type](#the-predicate-type) below.
 
 The final two clauses `outer_mask` and `inner_mask` specify the invariant masks of the atomic update.
 We will see what they do in later sections.
@@ -51,11 +52,11 @@ pub trait UpdateTry {
 
 The Verus standard library provides implementations of this trait for two types:
 
-- `AY = Result<T, E>` specifies an atomic update which can be committed by outputting `Ok(t)` and aborted using `Err(e)`, this is equivalent to the atomic update as it can be found in Iris, except that we do not force `AX` and `E` to be the same.
+- `AY = Result<T, E>` specifies an atomic update which can be committed by outputting `Ok(t)` and aborted using `Err(e)`; this is equivalent an Iris atomic update, except that we do not force `AX` and `E` to be the same.
 
 - `AY = Commit<T>` specifies an atomic update that cannot be aborted.
 
-In cases where one wants to differentiate between multiple different commit or abort cases, it can be helpful to implement this trait for custom types.
+To differentiate between multiple different commit or abort cases, it can be helpful to implement this trait for a custom output type.
 
 It is possible to define an abort-only type `Abort<T>` analogously to `Commit<T>`, though such an output type would prevent both the library function and the atomic function call from terminating, which is typically undesirable for a logically atomic function.
 
@@ -64,7 +65,7 @@ It is possible to define an abort-only type `Abort<T>` analogously to `Commit<T>
 The atomic update object bound by the above specification has type `AtomicUpdate<AX, AY, PredType>`.
 Similar to the invariant types in Verus, there is just one `AtomicUpdate` type provided by `vstd` that is *configured* using its last type argument (which we call the **predicate type**) using a trait implementation.
 
-The predicate type and it's trait implementation is generated automatically by Verus when the user writes an atomic specification.
+The predicate type and its trait implementation is generated automatically by Verus when the user writes an atomic specification.
 For the specification above, we generate (roughly) the following:
 
 ```rs
@@ -82,6 +83,9 @@ impl PredType {
     open spec fn args(self, px: PX) -> bool { self.px == px }
 }
 ```
+
+It is currently not possible to use a custom or pre-existing predicate type to define a logically atomic function.
+This also means it is not useful to implement the `UpdatePredicate` trait by hand.
 
 We store the function arguments in the predicate type to allow the atomic pre- and postcondition to depend on them.
 

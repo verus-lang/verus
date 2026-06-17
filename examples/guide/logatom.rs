@@ -32,16 +32,14 @@ pub fn reset(var: &PAtomicU64)
     },
 // ANCHOR_END: reset_signature
 {
-    let tracked au = atomic_update;
-
     // open atomic update and commit
-    try_open_atomic_update!(au, mut perm => {
+    try_open_atomic_update!(atomic_update, mut perm => {
         var.store(Tracked(&mut perm), 0);
         Tracked(Commit(perm))
     });
 
     // verify that the atomic update had been resolved
-    assert(au.resolves());
+    assert(atomic_update.resolves());
 }
 // ANCHOR_END: reset_definition
 
