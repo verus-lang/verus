@@ -4,7 +4,7 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use cargo_metadata::{Metadata, MetadataCommand, Package, PackageId, Source};
+use cargo_metadata::{Metadata, MetadataCommand, Package, PackageId, Source, semver::Version};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
@@ -134,14 +134,31 @@ impl<'a> MetadataIndex<'a> {
     }
 
     /// Collect sources of `vstd` that appear in the build.
-    pub fn collect_vstd_sources(&self) -> Vec<&Source> {
-        let mut sources = vec![];
-        for entry in self.entries.values().filter(|entry| entry.verus_metadata.is_vstd) {
-            if let Some(source) = &entry.package.source {
-                sources.push(source);
-            }
-        }
-        sources
+    pub fn collect_vstd_sources(&self) -> Vec<SourceMetadata> {
+        self.entries
+            .values()
+            .filter(|entry| entry.verus_metadata.is_vstd)
+            .map(|entry| SourceMetadata::from(entry.package))
+            .collect()
+    }
+}
+
+/// Metadata about a package source.
+#[derive(Debug, Clone)]
+pub struct SourceMetadata {
+    version: Version,
+    registry: String,
+    git: Option<String>,
+    rev: Option<String>,
+}
+
+impl From<&Package> for SourceMetadata {
+    fn from(package: &Package) -> Self {
+        let version = package.version.clone();
+        let registry = todo!();
+        let git = todo!();
+        let rev = todo!();
+        SourceMetadata { version, registry, git, rev }
     }
 }
 
