@@ -157,10 +157,12 @@ pub fn plan_cargo_run(cfg: VerusConfig) -> Result<CargoRunPlan> {
     };
 
     if cfg.options.toolchain_checks {
-        let vstd_sources = metadata_index.collect_vstd_sources();
-        println!("`vstd` sources:");
-        for source in vstd_sources {
-            println!("    {source:?}");
+        let vstd_metadata = metadata_index.collect_vstd_metadata(packages_to_verify);
+        println!("`vstd` metadata instances:");
+        for metadata in vstd_metadata {
+            println!("version = {:?}", metadata.version);
+            println!("source = {:?}", metadata.source);
+            println!();
         }
     }
 
@@ -369,12 +371,12 @@ fn make_cargo_plan(
         let receives_fwd_verus_args = fwd_verus_args_packages.contains(&pkg_id);
 
         let entry = metadata_index.get(pkg_id);
-        let package = entry.package();
+        let package = entry.package;
 
         let package_id =
             make_package_id(&package.name, package.version.to_string(), &package.manifest_path);
 
-        let verus_metadata = entry.verus_metadata();
+        let verus_metadata = &entry.verus_metadata;
 
         // The is_builtin, is_builtin_macro, and verify fields are passed as env vars as they
         // are relevant for crates which are skipped by Verus. In such cases, the driver avoids

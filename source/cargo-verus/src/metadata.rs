@@ -42,9 +42,9 @@ pub struct MetadataIndex<'a> {
 }
 
 pub struct MetadataIndexEntry<'a> {
-    package: &'a Package,
-    verus_metadata: VerusMetadata,
-    deps: BTreeMap<&'a PackageId, &'a cargo_metadata::NodeDep>,
+    pub package: &'a Package,
+    pub verus_metadata: VerusMetadata,
+    pub deps: BTreeMap<&'a PackageId, &'a cargo_metadata::NodeDep>,
 }
 
 impl<'a> MetadataIndex<'a> {
@@ -133,13 +133,35 @@ impl<'a> MetadataIndex<'a> {
         names
     }
 
-    /// Collect sources of `vstd` that appear in the build.
-    pub fn collect_vstd_sources(&self) -> Vec<PackageMetadata> {
-        self.entries
-            .values()
-            .filter(|entry| entry.verus_metadata.is_vstd)
-            .map(|entry| PackageMetadata::from(entry.package))
-            .collect()
+    /// Collect sources of `vstd` that appear in the verified part of the build.
+    pub fn collect_vstd_metadata(
+        &self,
+        packages_to_verify: &Set<PackageId>,
+    ) -> Vec<PackageMetadata> {
+        // Packages that verification will run on.
+        let packages_will_verify = Set::from_iter(
+            packages_to_verify
+                .iter()
+                .filter(|package_id| self.get(package_id).verus_metadata.verify)
+                .cloned(),
+        );
+        // Transitive closure of packages that verification will run on.
+        let tclosure_will_verify = self.get_transitive_closure(packages_will_verify);
+
+        // Metadata of all `vstd` instances that appear anywhere in the transitive closure.
+        let vstd_metadata = tclosure_will_verify
+            .iter()
+            .flat_map(|package_id| {
+                let entry = self.get(package_id);
+                if entry.verus_metadata.is_vstd {
+                    Some(PackageMetadata::from(entry.package))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        vstd_metadata
     }
 }
 
@@ -150,7 +172,7 @@ pub struct PackageMetadata {
     pub source: PackageSource,
 }
 
-/// Metadata about a package.
+/// Details of a package source.
 #[derive(Debug, Clone)]
 pub enum PackageSource {
     Registry { registry: String },
@@ -184,16 +206,6 @@ impl From<Option<&Source>> for PackageSource {
         } else {
             PackageSource::Unsupported
         }
-    }
-}
-
-impl<'a> MetadataIndexEntry<'a> {
-    pub fn package(&self) -> &'a Package {
-        self.package
-    }
-
-    pub fn verus_metadata(&self) -> &VerusMetadata {
-        &self.verus_metadata
     }
 }
 
