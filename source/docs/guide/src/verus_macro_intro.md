@@ -13,10 +13,7 @@ Specifically, the `verus!` macro extends Rust's syntax with verification-related
 such as preconditions, postconditions, assertions, `forall`, `exists`, etc.,
 which we will learn more about in this tutorial.
 
-
-Verus uses a macro named `verus!` to extend Rust's syntax with verification-related features
-such as preconditions, postconditions, assertions, `forall`, `exists`, etc.
-Therefore, each file in a crate will typically take the following form:
+Each file in a crate will typically take the following form:
 
 ```rust
 use vstd::prelude::*;

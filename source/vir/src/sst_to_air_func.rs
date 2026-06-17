@@ -720,15 +720,8 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
     }
 
     // Ensures
-    let mut ens_typs: Vec<_> = function
-        .x
-        .pars
-        .iter()
-        .flat_map(|param| {
-            let air_typ = typ_to_air(ctx, &param.x.typ);
-            if !param.x.is_mut { vec![air_typ] } else { vec![air_typ.clone(), air_typ] }
-        })
-        .collect();
+    let mut ens_typs: Vec<_> =
+        function.x.pars.iter().map(|param| typ_to_air(ctx, &param.x.typ)).collect();
     let mut ens_typing_invs: Vec<Expr> = Vec::new();
     if matches!(function.x.mode, Mode::Exec | Mode::Proof) {
         if function.x.has.has_return_name {

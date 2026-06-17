@@ -196,7 +196,7 @@ fn fn_mode_to_string(mode: &FnMode, publish: &Publish) -> String {
             Publish::OpenRestricted(res) => {
                 "open(".to_string() + &module_path_to_string(&res.path) + ") spec"
             }
-            Publish::Uninterp(_) => "uninterp".to_string(),
+            Publish::Uninterp(_) => "uninterp spec".to_string(),
             Publish::Default => "spec".to_string(),
         },
         FnMode::Proof(_) | FnMode::ProofAxiom(_) => "proof".to_string(),

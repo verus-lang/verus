@@ -198,7 +198,7 @@ fn check_decrease_call(
         let decreases_exp = expr_to_exp_skip_checks(
             ctxt.ctx,
             diagnostics,
-            &params_to_pars(&function.x.params, true),
+            &params_to_pars(&function.x.params),
             expr,
         )?;
         let dec_exp = exp_rename_vars(&decreases_exp, &renames);
@@ -376,7 +376,7 @@ fn check_termination<'a>(
 
     // use expr_to_exp_skip_checks here because checks in decreases done by func_def_to_air
     let decreases_exps = vec_map_result(&function.x.decrease, |e| {
-        expr_to_exp_skip_checks(ctx, diagnostics, &params_to_pars(&function.x.params, true), e)
+        expr_to_exp_skip_checks(ctx, diagnostics, &params_to_pars(&function.x.params), e)
     })?;
     let scc_rep = ctx.global.func_call_graph.get_scc_rep(&Node::Fun(function.x.name.clone()));
     let caller_decreases_typs: Vec<Typ> =
@@ -389,9 +389,9 @@ fn check_termination<'a>(
         caller_decreases_typs,
     };
     let stm = map_stm_visitor(body, &mut |s| match &s.x {
-        StmX::Call { fun, resolved_method, args, dest, .. }
-            if is_recursive_call(&ctxt, fun, resolved_method) =>
-        {
+        StmX::Call {
+            fun: crate::sst::CallTarget::Fun(fun), resolved_method, args, dest, ..
+        } if is_recursive_call(&ctxt, fun, resolved_method) => {
             let check =
                 check_decrease_call(&ctxt, diagnostics, &s.span, fun, resolved_method, args)?;
             let error = error(&s.span, "could not prove termination");
@@ -585,8 +585,8 @@ pub(crate) fn expand_call_graph(
     // (See, for example, test_default17 in rust_verify_test/tests/traits.rs.)
     let add_calls = &mut |expr: &crate::ast::Expr| {
         match &expr.x {
-            ExprX::Call(CallTarget::Fun(kind, x, ts, impl_paths, autospec, _), _, _) => {
-                assert!(*autospec == AutospecUsage::Final);
+            ExprX::Call(CallTarget::Fun(kind, x, ts, impl_paths, attrs), _, _) => {
+                assert!(attrs.autospec == AutospecUsage::Final);
                 let (callee, ts, impl_paths) = if let CallTargetKind::DynamicResolved {
                     resolved: x_resolved,
                     typs: ts_resolved,

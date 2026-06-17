@@ -117,7 +117,6 @@ pub struct ArgsX {
     pub solver: SmtSolver,
     pub axiom_usage_info: bool,
     pub check_api_safety: bool,
-    pub new_mut_ref: bool,
     pub no_bv_simplify: bool,
 }
 
@@ -165,7 +164,6 @@ impl ArgsX {
             solver: Default::default(),
             axiom_usage_info: Default::default(),
             check_api_safety: Default::default(),
-            new_mut_ref: Default::default(),
             no_bv_simplify: Default::default(),
         }
     }
@@ -829,7 +827,6 @@ pub fn parse_args_with_imports(
         solver: if extended.contains_key(EXTENDED_CVC5) { SmtSolver::Cvc5 } else { SmtSolver::Z3 },
         axiom_usage_info: extended.contains_key(EXTENDED_AXIOM_USAGE_INFO),
         check_api_safety: extended.contains_key(EXTENDED_CHECK_API_SAFETY),
-        new_mut_ref: true,
         no_bv_simplify: extended.contains_key(EXTENDED_NO_BV_SIMPLIFY),
     };
 
@@ -837,16 +834,5 @@ pub fn parse_args_with_imports(
         error("--compile and --no-erasure-check are mutually exclusive".to_string())
     }
 
-    if args.new_mut_ref {
-        NEW_MUT_REF.store(true, std::sync::atomic::Ordering::SeqCst);
-    }
-
     (Arc::new(args), unmatched)
-}
-
-pub(crate) static NEW_MUT_REF: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
-
-pub(crate) fn new_mut_ref() -> bool {
-    NEW_MUT_REF.load(std::sync::atomic::Ordering::SeqCst)
 }

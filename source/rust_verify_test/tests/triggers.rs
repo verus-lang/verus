@@ -549,3 +549,102 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] issue2342 verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::inline]
+        spec fn unwrap_or(a: Option<int>, b: int) -> int {
+            match a {
+                Some(x) => x,
+                None => b,
+            }
+        }
+
+        spec fn f(opt: Option<int>, opt2: Option<int>) -> (spec_fn(int) -> bool) {
+            |s: int| {
+                match opt {
+                    Some(x) => {
+                        unwrap_or(opt2, 1) == x
+                    },
+                    None => { false }
+                }
+            }
+        }
+
+        fn test() {
+            assert(f(None, None)(0)); // FAILS
+        }
+
+        fn test2() {
+            assert(f(Some(1), None)(0));
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] issue2342_2 verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::inline]
+        spec fn unwrap_or(a: Option<int>, b: int) -> int {
+            match a {
+                Some(x) => x,
+                None => b,
+            }
+        }
+
+        spec fn f_quant(opt: Option<int>, opt2: Option<int>) -> bool {
+            forall |s: int| {
+                match opt {
+                    Some(x) => {
+                        unwrap_or(opt2, s) == x
+                    },
+                    None => { false }
+                }
+            }
+        }
+
+        fn test3() {
+            assert(f_quant(Some(2), Some(2)));
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Could not automatically infer triggers for this quantifier")
+}
+
+test_verify_one_file! {
+    #[test] issue2123 verus_code! {
+        use vstd::prelude::*;
+        use vstd::iset::*;
+
+        pub enum A {
+            Foo { xyz: Result<(), ()> },
+        }
+
+        pub open spec fn foo(a: A) -> ISet<nat> {
+            ISet::new(|x: nat| {
+                match a {
+                    A::Foo { xyz, .. } => {
+                        let _ = xyz.ok();
+                        true
+                    },
+                }
+            })
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] trigger_with_mixed_outer_quantifier_inner_closure verus_code! {
+        spec fn foo(y: int, z: int) -> bool { y == z }
+
+        spec fn test(x: int) -> bool {
+            forall |y: int| (|z: int| #[trigger] foo(y, z))(x)
+        }
+    } => Err(err) => {
+        assert!(err.warnings.len() == 1);
+        assert!(err.warnings[0].message.contains("#[trigger] on a spec_fn closure is deprecated"));
+        assert!(err.errors.len() == 1);
+        assert!(err.errors[0].message.contains("Could not automatically infer triggers for this quantifier"));
+    }
+}

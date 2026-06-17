@@ -180,8 +180,7 @@ fn check_item<'tcx>(
         }
 
         let mid_ty = ctxt.tcx.type_of(def_id).skip_binder();
-        let vir_ty =
-            ctxt.mid_ty_to_vir(def_id, item.span, &mid_ty, false, None).map_err(|e| vec![e])?;
+        let vir_ty = ctxt.mid_ty_to_vir(def_id, item.span, &mid_ty, None).map_err(|e| vec![e])?;
 
         crate::rust_to_vir_func::check_item_const_or_static(
             ctxt,
@@ -195,7 +194,6 @@ fn check_item<'tcx>(
             &vir_ty,
             body_id,
             matches!(item.kind, ItemKind::Static(_, _, _, _)),
-            false,
         )
         .map_err(|e| vec![e])?;
 
@@ -436,7 +434,7 @@ pub fn crate_to_vir<'a, 'tcx>(
     let mut errors = vec![];
 
     let mut typs_sizes_set: HashMap<TypIgnoreImplPaths, u128> = HashMap::new();
-    for (_, owner_opt) in ctxtx.krate.owners.iter_enumerated() {
+    for owner_opt in crate::util::iter_crate_owners(ctxtx.krate, tcx) {
         if let MaybeOwner::Owner(owner) = owner_opt {
             match owner.node() {
                 OwnerNode::Item(item) => {
@@ -486,7 +484,7 @@ pub fn crate_to_vir<'a, 'tcx>(
             vir::ast::ModuleX { path: root_module_path.clone(), reveals: None },
         ));
     }
-    for (_owner_id, owner_opt) in ctxt.krate.owners.iter_enumerated() {
+    for owner_opt in crate::util::iter_crate_owners(ctxt.krate, tcx) {
         if let MaybeOwner::Owner(owner) = owner_opt {
             match owner.node() {
                 OwnerNode::Item(

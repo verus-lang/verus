@@ -1,8 +1,8 @@
 use crate::{erase::ResolvedCall, verus_items::VerusItems};
 use rustc_hir::Attribute;
-use rustc_hir::Crate;
 use rustc_hir::HirId;
 use rustc_hir::def_id::LocalDefId;
+use rustc_middle::hir::Crate;
 use rustc_middle::ty::{TyCtxt, TypeckResults};
 use rustc_mir_build_verus::verus::BodyErasure;
 use rustc_span::SpanData;
@@ -18,7 +18,7 @@ use vir::messages::{AstId, WarningAllow};
 
 pub struct ErasureInfo {
     pub(crate) hir_vir_ids: Vec<(HirId, AstId)>,
-    pub(crate) resolved_calls: Vec<(HirId, SpanData, ResolvedCall)>,
+    pub(crate) resolved_calls: Vec<(HirId, SpanData, ResolvedCall, bool)>,
     pub(crate) resolved_pats: Vec<(SpanData, Pattern)>,
     pub(crate) direct_var_modes: Vec<(HirId, Mode)>,
     pub(crate) external_functions: Vec<vir::ast::Fun>,
@@ -30,6 +30,7 @@ pub struct ErasureInfo {
     pub(crate) extra_erase_ast_ids: Vec<vir::messages::Span>,
     /// Extra nodes to erase, use this when an HIR tree gets dropped without becoming a VIR tree.
     pub(crate) extra_erase_hir_ids_including_adjustments: Vec<HirId>,
+    pub(crate) local_invariant_bodies: Vec<rustc_mir_build_verus::verus::LocalInvariantBody>,
 }
 
 type ErasureInfoRef = std::rc::Rc<std::cell::RefCell<ErasureInfo>>;
@@ -73,7 +74,6 @@ pub(crate) struct BodyCtxt<'tcx> {
     pub(crate) in_ghost: bool,
     // loop_isolation for the nearest enclosing loop, false otherwise
     pub(crate) loop_isolation: bool,
-    pub(crate) new_mut_ref: bool,
     pub(crate) migrate_postcondition_vars: Option<std::collections::HashSet<vir::ast::VarIdent>>,
     /// Context to interpret a header if we encounter one
     /// (this is used to determine when it's correct to set `in_fn_sig`).
@@ -174,7 +174,6 @@ impl<'tcx> ContextX<'tcx> {
         param_env_src: DefId,
         span: rustc_span::Span,
         ty: &rustc_middle::ty::Ty<'tcx>,
-        allow_mut_ref: bool,
         assume_specification_opaque_type_map: Option<&HashMap<Path, Path>>,
     ) -> Result<vir::ast::Typ, VirErr> {
         crate::rust_to_vir_base::mid_ty_to_vir(
@@ -184,7 +183,6 @@ impl<'tcx> ContextX<'tcx> {
             param_env_src,
             span,
             ty,
-            allow_mut_ref,
             assume_specification_opaque_type_map,
         )
     }
@@ -196,11 +194,10 @@ impl<'tcx> ContextX<'tcx> {
 
 impl<'tcx> BodyCtxt<'tcx> {
     pub(crate) fn is_copy(&self, ty: rustc_middle::ty::Ty<'tcx>) -> bool {
-        let param_env = self.ctxt.tcx.param_env(self.fun_id);
-        let typing_env = rustc_middle::ty::TypingEnv {
-            param_env,
-            typing_mode: rustc_middle::ty::TypingMode::non_body_analysis(),
-        };
+        let typing_env = rustc_middle::ty::TypingEnv::new(
+            self.ctxt.tcx.param_env(self.fun_id),
+            rustc_middle::ty::TypingMode::non_body_analysis(),
+        );
         self.ctxt.tcx.type_is_copy_modulo_regions(typing_env, ty)
     }
 
@@ -208,15 +205,8 @@ impl<'tcx> BodyCtxt<'tcx> {
         &self,
         span: rustc_span::Span,
         ty: &rustc_middle::ty::Ty<'tcx>,
-        allow_mut_ref: bool,
     ) -> Result<vir::ast::Typ, VirErr> {
-        self.ctxt.mid_ty_to_vir(
-            self.fun_id,
-            span,
-            ty,
-            allow_mut_ref,
-            self.external_opaque_type_map.as_ref(),
-        )
+        self.ctxt.mid_ty_to_vir(self.fun_id, span, ty, self.external_opaque_type_map.as_ref())
     }
     pub(crate) fn is_param_migrated(&self, ident: &vir::ast::VarIdent) -> bool {
         let Some(vars) = &self.migrate_postcondition_vars else {

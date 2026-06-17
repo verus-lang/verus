@@ -355,7 +355,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] arrays_reference ["new-mut-ref"] => verus_code! {
+    #[test] arrays_reference [] => verus_code! {
         use vstd::prelude::*;
 
         const MyArray: &'static [u32; 3] = &[1, 2, 3];

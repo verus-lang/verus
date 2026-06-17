@@ -12,9 +12,9 @@ use crate::ast_util::{is_body_visible_to, is_visible_to, is_visible_to_or_true};
 use crate::ast_visitor::{VisitorControlFlow, VisitorScopeMap};
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::{
-    Spanned, fn_array_update, fn_inv_name, fn_namespace_name, fn_set_contains_name,
-    fn_set_empty_name, fn_set_full_name, fn_set_insert_name, fn_set_remove_name,
-    fn_set_subset_of_name, fn_slice_index, fn_slice_len, fn_slice_update,
+    Spanned, fn_array_update, fn_inv_name, fn_iset_contains_name, fn_iset_empty_name,
+    fn_iset_full_name, fn_iset_insert_name, fn_iset_remove_name, fn_iset_subset_of_name,
+    fn_namespace_name, fn_slice_index, fn_slice_len, fn_slice_update,
 };
 use crate::poly::MonoTyp;
 use crate::resolve_axioms::{ResolvableType, ResolvedTypeCollection};
@@ -35,6 +35,7 @@ enum ReachedType {
     Float(u32),
     SpecFn(usize),
     Datatype(Dt),
+    FnDef(Fun, Vec<ReachedType>),
     StrSlice,
     Array,
     Primitive,
@@ -131,7 +132,9 @@ fn typ_to_reached_type(typ: &Typ) -> ReachedType {
         TypX::AnonymousClosure(..) => ReachedType::None,
         TypX::Datatype(dt, _, _) => ReachedType::Datatype(dt.clone()),
         TypX::Dyn(..) => ReachedType::None,
-        TypX::FnDef(..) => ReachedType::None,
+        TypX::FnDef(fun, typs, _) => {
+            ReachedType::FnDef(fun.clone(), typs.iter().map(typ_to_reached_type).collect())
+        }
         TypX::Decorate(_, _, t) => typ_to_reached_type(t),
         TypX::Boxed(t) => typ_to_reached_type(t),
         TypX::TypParam(_) => ReachedType::None,
@@ -309,9 +312,11 @@ fn reach_typ(ctxt: &Ctxt, state: &mut State, typ: &Typ) {
             reach_assoc_type_decl(ctxt, state, &(trait_path.clone(), name.clone()));
             // let visitor handle self_typ, trait_typ_args
         }
-        TypX::FnDef(fun, _typs, res_fun_opt) => {
+        TypX::FnDef(fun, typs, res_fun_opt) => {
             state.fndef_types.insert(fun.clone());
             reach_function(ctxt, state, fun);
+            let typ_args: Vec<ReachedType> = typs.iter().map(typ_to_reached_type).collect();
+            reach_type(ctxt, state, &ReachedType::FnDef(fun.clone(), typ_args));
 
             if let Some(res_fun) = res_fun_opt {
                 state.fndef_types.insert(res_fun.clone());
@@ -435,12 +440,12 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             // set operations may be invoked for checking invariant masks,
             // either when opening an invariant or invoking another function.
             let reach_set_ops = |state: &mut State| {
-                reach_function(ctxt, state, &fn_set_contains_name());
-                reach_function(ctxt, state, &fn_set_empty_name());
-                reach_function(ctxt, state, &fn_set_full_name());
-                reach_function(ctxt, state, &fn_set_insert_name());
-                reach_function(ctxt, state, &fn_set_remove_name());
-                reach_function(ctxt, state, &fn_set_subset_of_name());
+                reach_function(ctxt, state, &fn_iset_contains_name());
+                reach_function(ctxt, state, &fn_iset_empty_name());
+                reach_function(ctxt, state, &fn_iset_full_name());
+                reach_function(ctxt, state, &fn_iset_insert_name());
+                reach_function(ctxt, state, &fn_iset_remove_name());
+                reach_function(ctxt, state, &fn_iset_subset_of_name());
             };
             let maybe_reach_set_ops_for_call = |state: &mut State, callee_name: &Fun| {
                 let caller =
@@ -468,9 +473,9 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                     ExprX::StaticVar(name) => {
                         reach_function(ctxt, state, name);
                     }
-                    ExprX::Call(CallTarget::Fun(kind, name, _, _impl_paths, autospec, _), _, _) => {
+                    ExprX::Call(CallTarget::Fun(kind, name, _, _impl_paths, attrs), _, _) => {
                         // REVIEW: maybe we can be more precise if we use impl_paths here
-                        assert!(ctxt.module.is_none() || *autospec == AutospecUsage::Final);
+                        assert!(ctxt.module.is_none() || attrs.autospec == AutospecUsage::Final);
                         reach_function(ctxt, state, name);
                         if let crate::ast::CallTargetKind::DynamicResolved { resolved, .. } = kind {
                             reach_function(ctxt, state, resolved);
@@ -776,7 +781,7 @@ fn collect_broadcast_triggers(f: &Function) -> Vec<(Vec<Fun>, Vec<ReachedType>)>
         let mut f_get_calls = |_: &mut VisitorScopeMap, expr: &Expr| {
             ft(&expr.typ);
             match &expr.x {
-                ExprX::Call(CallTarget::Fun(_, name, ts, _, _, _), _, _) => {
+                ExprX::Call(CallTarget::Fun(_, name, ts, _, _), _, _) => {
                     for typ in ts.iter() {
                         ft(typ);
                     }

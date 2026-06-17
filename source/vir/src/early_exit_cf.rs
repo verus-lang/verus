@@ -49,14 +49,13 @@ fn expr_get_early_exits_rec(
         match &expr.x {
             ExprX::Const(..)
             | ExprX::Var(..)
-            | ExprX::VarLoc(..)
             | ExprX::VarAt(..)
             | ExprX::ConstVar(..)
             | ExprX::StaticVar(..)
-            | ExprX::Loc(..)
             | ExprX::Call(CallTarget::Fun(..), _, _)
             | ExprX::Call(CallTarget::FnSpec(..), _, _)
             | ExprX::Call(CallTarget::BuiltinSpecFun(..), _, _)
+            | ExprX::Call(CallTarget::AssumeExternal, _, _)
             | ExprX::ArrayLiteral(..)
             | ExprX::Ctor(..)
             | ExprX::NullaryOpr(..)
@@ -65,7 +64,6 @@ fn expr_get_early_exits_rec(
             | ExprX::Binary(..)
             | ExprX::BinaryOpr(..)
             | ExprX::Multi(..)
-            | ExprX::Assign { .. }
             | ExprX::AssignToPlace { .. }
             | ExprX::If(..)
             | ExprX::Match(..)
@@ -82,6 +80,7 @@ fn expr_get_early_exits_rec(
             | ExprX::Old(..)
             | ExprX::Block(..)
             | ExprX::MatchGuardFreeze(..)
+            | ExprX::ShrRefStructWrap(..)
             | ExprX::Await(_) => VisitorControlFlow::Recurse,
             ExprX::Quant(..)
             | ExprX::Closure(..)

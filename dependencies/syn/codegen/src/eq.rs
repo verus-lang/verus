@@ -158,6 +158,8 @@ pub fn generate(defs: &Definitions) -> Result<()> {
         quote! {
             #[cfg(any(feature = "derive", feature = "full"))]
             use crate::tt::TokenStreamHelper;
+            #[cfg(feature = "extra-traits")]
+            use alloc::string::ToString;
 
             #impls
         },

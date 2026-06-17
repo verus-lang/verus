@@ -1,4 +1,5 @@
 use super::super::prelude::*;
+use super::iter::{FromIteratorSpecImpl, IteratorSpec};
 use verus_builtin::*;
 
 use super::super::slice::SliceIndexSpec;
@@ -61,7 +62,6 @@ pub fn vec_index<T, A: Allocator>(vec: &Vec<T, A>, i: usize) -> (element: &T)
 
 /// This is a specification for the indexing operator `vec[i]` when it expands to the `IndexMut` trait
 #[doc(hidden)]
-#[verifier::ignore_outside_new_mut_ref_experiment]
 #[verifier::external_body]
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::std_specs::vec::vec_index_mut")]
 pub fn vec_index_mut<T, A: Allocator>(vec: &mut Vec<T, A>, i: usize) -> (element: &mut T)
@@ -127,7 +127,7 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::reserve ](
     additional: usize,
 )
     ensures
-        vec@ == old(vec)@,
+        final(vec)@ == old(vec)@,
 ;
 
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::try_reserve ](
@@ -135,21 +135,20 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::try_reserve ](
     additional: usize,
 ) -> (result: Result<(), TryReserveError>)
     ensures
-        vec@ == old(vec)@,
+        final(vec)@ == old(vec)@,
 ;
 
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::push ](vec: &mut Vec<T, A>, value: T)
     ensures
-        vec@ == old(vec)@.push(value),
+        final(vec)@ == old(vec)@.push(value),
 ;
 
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::pop ](vec: &mut Vec<T, A>) -> (value:
     Option<T>)
     ensures
-        old(vec)@.len() > 0 ==> value == Some(old(vec)@[old(vec)@.len() - 1]) && vec@ == old(
-            vec,
-        )@.subrange(0, old(vec)@.len() - 1),
-        old(vec)@.len() == 0 ==> value == None::<T> && vec@ == old(vec)@,
+        old(vec)@.len() > 0 ==> value == Some(old(vec)@[old(vec)@.len() - 1])
+            && final(vec)@ == old(vec)@.subrange(0, old(vec)@.len() - 1),
+        old(vec)@.len() == 0 ==> value == None::<T> && final(vec)@ == old(vec)@,
 ;
 
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::append ](
@@ -157,8 +156,8 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::append ](
     other: &mut Vec<T, A>,
 )
     ensures
-        vec@ == old(vec)@ + old(other)@,
-        other@ == Seq::<T>::empty(),
+        final(vec)@ == old(vec)@ + old(other)@,
+        final(other)@ == Seq::<T>::empty(),
 ;
 
 pub assume_specification<T: core::clone::Clone, A: Allocator>[ Vec::<T, A>::extend_from_slice ](
@@ -166,13 +165,13 @@ pub assume_specification<T: core::clone::Clone, A: Allocator>[ Vec::<T, A>::exte
     other: &[T],
 )
     ensures
-        vec@.len() == old(vec)@.len() + other@.len(),
+        final(vec)@.len() == old(vec)@.len() + other@.len(),
         forall|i: int|
-            #![trigger vec@[i]]
-            0 <= i < vec@.len() ==> if i < old(vec)@.len() {
-                vec@[i] == old(vec)@[i]
+            #![trigger final(vec)@[i]]
+            0 <= i < final(vec)@.len() ==> if i < old(vec)@.len() {
+                final(vec)@[i] == old(vec)@[i]
             } else {
-                cloned::<T>(other@[i - old(vec)@.len()], vec@[i])
+                cloned::<T>(other@[i - old(vec)@.len()], final(vec)@[i])
             },
 ;
 
@@ -198,7 +197,7 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::swap_remove ](
         i < old(vec).len(),
     ensures
         element == old(vec)[i as int],
-        vec@ == old(vec)@.update(i as int, old(vec)@.last()).drop_last(),
+        final(vec)@ == old(vec)@.update(i as int, old(vec)@.last()).drop_last(),
 ;
 
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::insert ](
@@ -209,7 +208,7 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::insert ](
     requires
         i <= old(vec).len(),
     ensures
-        vec@ == old(vec)@.insert(i as int, element),
+        final(vec)@ == old(vec)@.insert(i as int, element),
 ;
 
 pub assume_specification<T, A: Allocator> [ <Vec<T, A>>::is_empty ](
@@ -226,12 +225,12 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::remove ](
         i < old(vec).len(),
     ensures
         element == old(vec)[i as int],
-        vec@ == old(vec)@.remove(i as int),
+        final(vec)@ == old(vec)@.remove(i as int),
 ;
 
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::clear ](vec: &mut Vec<T, A>)
     ensures
-        vec.view() == Seq::<T>::empty(),
+        final(vec).view() == Seq::<T>::empty(),
 ;
 
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::as_slice ](vec: &Vec<T, A>) -> (slice: &[T])
@@ -240,7 +239,6 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::as_slice ](vec: &Vec<T, 
 ;
 
 #[doc(hidden)]
-#[verifier::ignore_outside_new_mut_ref_experiment]
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::as_mut_slice ](vec: &mut Vec<T, A>) -> (slice: &mut [T])
     ensures
         slice@ == old(vec)@,
@@ -254,6 +252,14 @@ pub assume_specification<T, A: Allocator>[ <Vec<T, A> as core::ops::Deref>::dere
         slice@ == vec@,
 ;
 
+pub assume_specification<T, A: Allocator>[ <Vec<T, A> as core::ops::DerefMut>::deref_mut ](
+    vec: &mut Vec<T, A>,
+) -> (slice: &mut [T])
+    ensures
+        slice@ == old(vec)@,
+        final(slice)@ == final(vec)@,
+;
+
 pub assume_specification<T, A: Allocator + core::clone::Clone>[ Vec::<T, A>::split_off ](
     vec: &mut Vec<T, A>,
     at: usize,
@@ -261,7 +267,7 @@ pub assume_specification<T, A: Allocator + core::clone::Clone>[ Vec::<T, A>::spl
     requires
         at <= old(vec)@.len(),
     ensures
-        vec@ == old(vec)@.subrange(0, at as int),
+        final(vec)@ == old(vec)@.subrange(0, at as int),
         return_value@ == old(vec)@.subrange(at as int, old(vec)@.len() as int),
 ;
 
@@ -293,8 +299,8 @@ pub broadcast proof fn vec_clone_deep_view_proof<T: DeepView, A: Allocator>(
 
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::truncate ](vec: &mut Vec<T, A>, len: usize)
     ensures
-        len <= old(vec).len() ==> vec@ == old(vec)@.subrange(0, len as int),
-        len > old(vec).len() ==> vec@ == old(vec)@,
+        len <= old(vec).len() ==> final(vec)@ == old(vec)@.subrange(0, len as int),
+        len > old(vec).len() ==> final(vec)@ == old(vec)@,
 ;
 
 pub assume_specification<T: Clone, A: Allocator>[ Vec::<T, A>::resize ](
@@ -303,11 +309,11 @@ pub assume_specification<T: Clone, A: Allocator>[ Vec::<T, A>::resize ](
     value: T,
 )
     ensures
-        len <= old(vec).len() ==> vec@ == old(vec)@.subrange(0, len as int),
+        len <= old(vec).len() ==> final(vec)@ == old(vec)@.subrange(0, len as int),
         len > old(vec).len() ==> {
-            &&& vec@.len() == len
-            &&& vec@.subrange(0, old(vec).len() as int) == old(vec)@
-            &&& forall|i| #![all_triggers] old(vec).len() <= i < len ==> cloned::<T>(value, vec@[i])
+            &&& final(vec)@.len() == len
+            &&& final(vec)@.subrange(0, old(vec).len() as int) == old(vec)@
+            &&& forall|i| #![all_triggers] old(vec).len() <= i < len ==> cloned::<T>(value, final(vec)@[i])
         },
 ;
 
@@ -330,7 +336,7 @@ impl<T, A: Allocator> super::core::IndexSetTrustedSpec<usize> for Vec<T, A> {
     }
 
     open spec fn spec_index_set_ensures(&self, new_container: &Self, index: usize, val: T) -> bool {
-        new_container@ === self@.update(index as int, val)
+        new_container@ == self@.update(index as int, val)
     }
 }
 
@@ -359,45 +365,43 @@ impl<T: super::cmp::PartialEqSpec<U>, U, A1: Allocator, A2: Allocator> super::cm
 #[verifier::reject_recursive_types(A)]
 pub struct ExIntoIter<T, A: Allocator>(IntoIter<T, A>);
 
-impl<T, A: Allocator> View for IntoIter<T, A> {
-    type V = (int, Seq<T>);
+// To allow reasoning about the "contents" of the Vec iterator, without using
+// a prophecy, we need a function that gives us the underlying sequence of the original vec.
+pub uninterp spec fn into_iter_elts<T, A: Allocator>(i: IntoIter<T, A>) -> Seq<T>;
 
-    uninterp spec fn view(self: &IntoIter<T, A>) -> (int, Seq<T>);
+impl <T, A: Allocator> super::iter::IteratorSpecImpl for IntoIter<T, A> {
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        true
+    }
+
+    uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+    uninterp spec fn will_return_none(&self) -> bool;
+
+    #[verifier::prophetic]
+    open spec fn initial_value_relation(&self, init: &Self) -> bool {
+        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
+        &&& into_iter_elts(*self) == IteratorSpec::remaining(self)
+    }
+
+    uninterp spec fn decrease(&self) -> Option<nat>;
+
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        if 0 <= index < into_iter_elts(*self).len() {
+            Some(into_iter_elts(*self)[index])
+        } else {
+            None
+        }
+    }
 }
 
-pub assume_specification<T, A: Allocator>[ IntoIter::<T, A>::next ](
-    elements: &mut IntoIter<T, A>,
-) -> (r: Option<T>)
-    ensures
-        ({
-            let (old_index, old_seq) = old(elements)@;
-            match r {
-                None => {
-                    &&& elements@ == old(elements)@
-                    &&& old_index >= old_seq.len()
-                },
-                Some(element) => {
-                    let (new_index, new_seq) = elements@;
-                    &&& 0 <= old_index < old_seq.len()
-                    &&& new_seq == old_seq
-                    &&& new_index == old_index + 1
-                    &&& element == old_seq[old_index]
-                },
-            }
-        }),
-;
-
-pub struct IntoIterGhostIterator<T, A: Allocator> {
-    pub pos: int,
-    pub elements: Seq<T>,
-    pub _marker: PhantomData<A>,
-}
-
-impl<T, A: Allocator> super::super::pervasive::ForLoopGhostIteratorNew for IntoIter<T, A> {
-    type GhostIter = IntoIterGhostIterator<T, A>;
-
-    open spec fn ghost_iter(&self) -> IntoIterGhostIterator<T, A> {
-        IntoIterGhostIterator { pos: self@.0, elements: self@.1, _marker: PhantomData }
+impl <T, A: Allocator> super::iter::DoubleEndedIteratorSpecImpl for IntoIter<T, A> {
+    open spec fn peek_back(&self, index: int) -> Option<Self::Item> {
+        let len = into_iter_elts(*self).len();
+        if 0 <= index < len {
+            Some(into_iter_elts(*self)[len - index - 1])
+        } else {
+            None
+        }
     }
 }
 
@@ -407,59 +411,7 @@ pub assume_specification<T: Clone>[ alloc::vec::from_elem ](elem: T, n: usize) -
         v.len() == n,
         forall |i| 0 <= i < n ==> cloned(elem, #[trigger] v@[i]);
 
-impl<T, A: Allocator> super::super::pervasive::ForLoopGhostIterator for IntoIterGhostIterator<
-    T,
-    A,
-> {
-    type ExecIter = IntoIter<T, A>;
-
-    type Item = T;
-
-    type Decrease = int;
-
-    open spec fn exec_invariant(&self, exec_iter: &IntoIter<T, A>) -> bool {
-        &&& self.pos == exec_iter@.0
-        &&& self.elements == exec_iter@.1
-    }
-
-    open spec fn ghost_invariant(&self, init: Option<&Self>) -> bool {
-        init matches Some(init) ==> {
-            &&& init.pos == 0
-            &&& init.elements == self.elements
-            &&& 0 <= self.pos <= self.elements.len()
-        }
-    }
-
-    open spec fn ghost_ensures(&self) -> bool {
-        self.pos == self.elements.len()
-    }
-
-    open spec fn ghost_decrease(&self) -> Option<int> {
-        Some(self.elements.len() - self.pos)
-    }
-
-    open spec fn ghost_peek_next(&self) -> Option<T> {
-        if 0 <= self.pos < self.elements.len() {
-            Some(self.elements[self.pos])
-        } else {
-            None
-        }
-    }
-
-    open spec fn ghost_advance(&self, _exec_iter: &IntoIter<T, A>) -> IntoIterGhostIterator<T, A> {
-        Self { pos: self.pos + 1, ..*self }
-    }
-}
-
-impl<T, A: Allocator> View for IntoIterGhostIterator<T, A> {
-    type V = Seq<T>;
-
-    open spec fn view(&self) -> Seq<T> {
-        self.elements.take(self.pos)
-    }
-}
-
-// To allow reasoning about the ghost iterator when the executable
+// To allow reasoning about the returned iterator when the executable
 // function `into_iter()` is invoked in a `for` loop header (e.g., in
 // `for x in it: v.into_iter() { ... }`), we need to specify the behavior of
 // the iterator in spec mode. To do that, we add
@@ -470,9 +422,22 @@ pub uninterp spec fn spec_into_iter<T, A: Allocator>(v: Vec<T, A>) -> (iter: <Ve
     A,
 > as core::iter::IntoIterator>::IntoIter);
 
+pub uninterp spec fn spec_into_iter_borrowed<T, A: Allocator>(v: &Vec<T, A>) -> (iter: <&Vec<
+    T,
+    A,
+> as core::iter::IntoIterator>::IntoIter);
+
+
 pub broadcast proof fn axiom_spec_into_iter<T, A: Allocator>(v: Vec<T, A>)
     ensures
-        (#[trigger] spec_into_iter(v))@ == (0int, v@),
+        #[trigger] spec_into_iter(v).remaining() == v@,
+{
+    admit();
+}
+
+pub broadcast proof fn axiom_spec_into_iter_borrowed<T, A: Allocator>(v: &Vec<T, A>)
+    ensures
+        #[trigger] spec_into_iter_borrowed(v).remaining() == v@.as_ref(),
 {
     admit();
 }
@@ -483,8 +448,25 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::into_iter ](vec: Vec<T, 
     A,
 > as core::iter::IntoIterator>::IntoIter)
     ensures
-        iter@ == (0int, vec@),
+        iter == spec_into_iter(vec),
+        IteratorSpec::decrease(&iter) is Some,
+        IteratorSpec::initial_value_relation(&iter, &iter),
 ;
+
+#[verifier::when_used_as_spec(spec_into_iter_borrowed)]
+pub assume_specification<'a, T, A: Allocator> [<&'a Vec<T, A> as core::iter::IntoIterator>::into_iter] (vec: &'a Vec<T, A>) ->
+    (iter: <&'a Vec<T, A> as core::iter::IntoIterator>::IntoIter)
+    ensures
+        iter == spec_into_iter_borrowed(vec),
+        IteratorSpec::decrease(&iter) is Some,
+        IteratorSpec::initial_value_relation(&iter, &iter),
+;
+
+impl<T>  FromIteratorSpecImpl<T> for Vec<T> {
+    open spec fn from_iter_ensures(remaining: Seq<T>, s: Self) -> bool {
+        remaining == s@
+    }
+}
 
 pub broadcast proof fn lemma_vec_obeys_eq_spec<T: PartialEq>()
     requires
@@ -545,6 +527,7 @@ pub broadcast group group_vec_axioms {
     axiom_vec_index_decreases,
     vec_clone_deep_view_proof,
     axiom_spec_into_iter,
+    axiom_spec_into_iter_borrowed,
     axiom_vec_has_resolved,
     axiom_vec_decreases_to_view,
 }

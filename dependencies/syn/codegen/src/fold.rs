@@ -255,6 +255,11 @@ pub fn generate(defs: &Definitions) -> Result<()> {
                 clippy::needless_pass_by_ref_mut,
             )]
 
+            #[cfg(any(feature = "derive", feature = "full"))]
+            use alloc::boxed::Box;
+            #[cfg(any(feature = "derive", feature = "full"))]
+            use alloc::vec::Vec;
+
             #full_macro
 
             /// Syntax tree traversal to transform the nodes of an owned syntax tree.

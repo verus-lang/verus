@@ -5,6 +5,8 @@
 #![allow(clippy::needless_pass_by_ref_mut)]
 #[cfg(any(feature = "full", feature = "derive"))]
 use crate::punctuated::Punctuated;
+#[cfg(any(feature = "derive", feature = "full"))]
+use alloc::vec::Vec;
 #[cfg(feature = "full")]
 macro_rules! full {
     ($e:expr) => {
@@ -2110,8 +2112,14 @@ where
         skip!((* * it).1);
     }
     v.visit_expr_mut(&mut *node.expr);
+    if let Some(it) = &mut node.invariant_except_break {
+        v.visit_invariant_except_break_mut(it);
+    }
     if let Some(it) = &mut node.invariant {
         v.visit_invariant_mut(it);
+    }
+    if let Some(it) = &mut node.ensures {
+        v.visit_ensures_mut(it);
     }
     if let Some(it) = &mut node.decreases {
         v.visit_decreases_mut(it);
@@ -3239,6 +3247,7 @@ where
     v.visit_attributes_mut(&mut node.attrs);
     skip!(node.defaultness);
     skip!(node.unsafety);
+    skip!(node.constness);
     skip!(node.impl_token);
     v.visit_generics_mut(&mut node.generics);
     if let Some(it) = &mut node.trait_ {
@@ -3334,6 +3343,7 @@ where
 {
     v.visit_attributes_mut(&mut node.attrs);
     v.visit_visibility_mut(&mut node.vis);
+    skip!(node.constness);
     skip!(node.unsafety);
     skip!(node.auto_token);
     if let Some(it) = &mut node.restriction {
@@ -4965,6 +4975,10 @@ where
     if let Some(it) = &mut node.follows {
         skip!((it).0);
         full!(v.visit_pat_mut(& mut (it).1));
+    }
+    for mut el in Punctuated::pairs_mut(&mut node.erased_fields) {
+        let it = el.value_mut();
+        v.visit_field_value_mut(it);
     }
 }
 pub fn visit_with_spec_on_fn_mut<V>(v: &mut V, node: &mut crate::WithSpecOnFn)

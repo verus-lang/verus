@@ -717,17 +717,14 @@ impl<'a> Builder<'a> {
         match &expr.x {
             ExprX::Const(_)
             | ExprX::Var(_)
-            | ExprX::VarLoc(_)
             | ExprX::VarAt(..)
             | ExprX::ConstVar(..)
             | ExprX::StaticVar(_)
-            | ExprX::Loc(_)
             | ExprX::Quant(..)
             | ExprX::Closure(..)
             | ExprX::ExecFnByName(..)
             | ExprX::Choose { .. }
             | ExprX::WithTriggers { .. }
-            | ExprX::Assign { .. }
             | ExprX::Fuel(..)
             | ExprX::RevealString(_)
             | ExprX::Header(_)
@@ -1216,6 +1213,11 @@ impl<'a> Builder<'a> {
                 self.basic_blocks[bb].successors.push(main_bb);
                 self.basic_blocks[cancel_bb].is_exit = true;
                 Ok(main_bb)
+            }
+            ExprX::ShrRefStructWrap(e1, e2, _t1, _t2, _variant, _ident) => {
+                bb = self.build(e1, bb)?;
+                bb = self.build(e2, bb)?;
+                Ok(bb)
             }
         }
     }

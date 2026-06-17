@@ -1,6 +1,7 @@
 use super::super::prelude::*;
 use super::super::view::View;
 use super::cmp::{PartialOrdIs, PartialOrdSpec};
+use super::iter::{IteratorSpec, StepSpec, StepSpecImpl};
 use core::ops::{Range, RangeInclusive};
 
 verus! {
@@ -62,30 +63,7 @@ impl<Idx> View for RangeInclusive<Idx> {
     uninterp spec fn view(&self) -> Self::V;
 }
 
-pub trait StepSpec where Self: Sized {
-    // REVIEW: it would be nice to be able to use SpecOrd::spec_lt (not yet supported)
-    spec fn spec_is_lt(self, other: Self) -> bool;
-
-    spec fn spec_steps_between(self, end: Self) -> Option<usize>;
-
-    spec fn spec_steps_between_int(self, end: Self) -> int;
-
-    spec fn spec_forward_checked(self, count: usize) -> Option<Self>;
-
-    spec fn spec_forward_checked_int(self, count: int) -> Option<Self>;
-
-    spec fn spec_backward_checked(self, count: usize) -> Option<Self>;
-
-    spec fn spec_backward_checked_int(self, count: int) -> Option<Self>;
-}
-
 pub uninterp spec fn spec_range_next<A>(a: Range<A>) -> (Range<A>, Option<A>);
-
-pub assume_specification<A: core::iter::Step>[ Range::<A>::next ](range: &mut Range<A>) -> (r:
-    Option<A>)
-    ensures
-        (*range, r) == spec_range_next(*old(range)),
-;
 
 /// Range::contains method is valid and safe to use only when cmp operations are implemented to satisfy
 /// obeys_partial_cmp_spec. Specifically, the comparison must be deterministic, and `lt` (less than)
@@ -108,90 +86,155 @@ pub assume_specification<Idx: PartialOrd<Idx>, U>[ RangeInclusive::<Idx>::contai
             == r.contains_spec(i),
 ;
 
+// To allow reasoning about the returned range when the executable
+// function `RangeInclusive::new()` is invoked in a `for` loop header
+// (e.g., in `for x in it: start..=end { ... }`), we need to specify the
+// behavior of the constructed range in spec mode. To do that, we add
+// `#[verifier::when_used_as_spec(spec_range_inclusive_new)]` to the
+// specification for the executable `RangeInclusive::new` method and define
+// that spec function here.
+pub uninterp spec fn spec_range_inclusive_new<Idx>(
+    start: Idx,
+    end: Idx,
+) -> core::ops::RangeInclusive<Idx>;
+
+pub broadcast axiom fn axiom_spec_range_inclusive_new<Idx>(start: Idx, end: Idx)
+    ensures
+        (#[trigger] spec_range_inclusive_new(start, end))@ == {
+            RangeInclusiveView { start, end, exhausted: false }
+        },
+;
+
+#[verifier::when_used_as_spec(spec_range_inclusive_new)]
 pub assume_specification<Idx>[ RangeInclusive::<Idx>::new ](start: Idx, end: Idx) -> (ret:
     core::ops::RangeInclusive<Idx>)
     ensures
-        ret@.start == start,
-        ret@.end == end,
-        ret@.exhausted == false,
+        ret == spec_range_inclusive_new(start, end),
 ;
 
-pub struct RangeGhostIterator<A> {
-    pub start: A,
-    pub cur: A,
-    pub end: A,
-}
-
-impl<A: StepSpec> super::super::pervasive::ForLoopGhostIteratorNew for Range<A> {
-    type GhostIter = RangeGhostIterator<A>;
-
-    open spec fn ghost_iter(&self) -> RangeGhostIterator<A> {
-        RangeGhostIterator { start: self.start, cur: self.start, end: self.end }
-    }
-}
-
-impl<
-    A: StepSpec + core::iter::Step,
-> super::super::pervasive::ForLoopGhostIterator for RangeGhostIterator<A> {
-    type ExecIter = Range<A>;
-
-    type Item = A;
-
-    type Decrease = int;
-
-    open spec fn exec_invariant(&self, exec_iter: &Range<A>) -> bool {
-        &&& self.cur == exec_iter.start
-        &&& self.end == exec_iter.end
+impl<A: core::iter::Step> super::iter::IteratorSpecImpl for Range<A> {
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        true
     }
 
-    open spec fn ghost_invariant(&self, init: Option<&Self>) -> bool {
-        &&& self.start.spec_is_lt(self.cur) || self.start == self.cur
-        &&& self.cur.spec_is_lt(self.end) || self.cur
-            == self.end
-        // TODO (not important): use new "matches ==>" syntax here
-        &&& if let Some(init) = init {
-            &&& init.start == init.cur
-            &&& init.start == self.start
-            &&& init.end == self.end
-        } else {
-            true
-        }
-    }
-
-    open spec fn ghost_ensures(&self) -> bool {
-        !self.cur.spec_is_lt(self.end)
-    }
-
-    open spec fn ghost_decrease(&self) -> Option<int> {
-        Some(self.cur.spec_steps_between_int(self.end))
-    }
-
-    open spec fn ghost_peek_next(&self) -> Option<A> {
-        Some(self.cur)
-    }
-
-    open spec fn ghost_advance(&self, _exec_iter: &Range<A>) -> RangeGhostIterator<A> {
-        RangeGhostIterator { cur: self.cur.spec_forward_checked(1).unwrap(), ..*self }
-    }
-}
-
-impl<A: StepSpec + core::iter::Step> View for RangeGhostIterator<A> {
-    type V = Seq<A>;
-
-    // generate seq![start, start + 1, start + 2, ..., cur - 1]
-    open spec fn view(&self) -> Seq<A> {
+    open spec fn remaining(&self) -> Seq<Self::Item> {
         Seq::new(
-            self.start.spec_steps_between_int(self.cur) as nat,
+            self.start.spec_steps_between_int(self.end) as nat,
             |i: int| self.start.spec_forward_checked_int(i).unwrap(),
         )
     }
+
+    uninterp spec fn will_return_none(&self) -> bool;
+
+    #[verifier::prophetic]
+    open spec fn initial_value_relation(&self, init: &Self) -> bool {
+        // Standard invariant for the iterator itself:
+        //   If there are no steps between start and end, then remaining is empty;
+        //   otherwise it contains all of the steps in between start and end
+        &&& (self.start.spec_steps_between_int(self.end) <= 0 && IteratorSpec::remaining(self).len()
+            == 0) || (self.start.spec_steps_between_int(self.end) == IteratorSpec::remaining(
+            self,
+        ).len() as int)
+        &&& forall|i: int|
+            0 <= i < IteratorSpec::remaining(self).len() ==> #[trigger] IteratorSpec::remaining(
+                self,
+            )[i] == self.start.spec_forward_checked_int(
+                i,
+            ).unwrap()
+        // Connections to init
+        &&& self.start == init.start
+        &&& self.end == init.end
+        &&& (init.start.spec_steps_between_int(init.end) <= 0 && IteratorSpec::remaining(self).len()
+            == 0) || (init.start.spec_steps_between_int(self.end) == IteratorSpec::remaining(
+            self,
+        ).len() as int)
+        &&& forall|i: int|
+            0 <= i < IteratorSpec::remaining(self).len() ==> #[trigger] IteratorSpec::remaining(
+                self,
+            )[i] == init.start.spec_forward_checked_int(i).unwrap()
+    }
+
+    open spec fn decrease(&self) -> Option<nat> {
+        Some(self.start.spec_steps_between_int(self.end) as nat)
+    }
+
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        //Some(self.start.spec_forward_checked_int(index).unwrap())
+        if 0 <= index <= self.start.spec_steps_between_int(self.end) {
+            Some(self.start.spec_forward_checked_int(index).unwrap())
+        } else {
+            None
+        }
+    }
 }
+
+impl<A: core::iter::Step> super::iter::IteratorSpecImpl for RangeInclusive<A> {
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        true
+    }
+
+    open spec fn remaining(&self) -> Seq<Self::Item> {
+        Seq::new(
+            (self@.start.spec_steps_between_int(self@.end) + 1) as nat,
+            |i: int| self@.start.spec_forward_checked_int(i).unwrap(),
+        )
+    }
+
+    uninterp spec fn will_return_none(&self) -> bool;
+
+    #[verifier::prophetic]
+    open spec fn initial_value_relation(&self, init: &Self) -> bool {
+        // Standard invariant for the iterator itself:
+        //   If there are no steps between start and end, then remaining is empty;
+        //   otherwise it contains all of the steps in between start and end
+        &&& (self@.start.spec_steps_between_int(self@.end) + 1 <= 0 && IteratorSpec::remaining(
+            self,
+        ).len() == 0) || (self@.start.spec_steps_between_int(self@.end) + 1
+            == IteratorSpec::remaining(self).len() as int)
+        &&& forall|i: int|
+            0 <= i < IteratorSpec::remaining(self).len() ==> #[trigger] IteratorSpec::remaining(
+                self,
+            )[i] == self@.start.spec_forward_checked_int(
+                i,
+            ).unwrap()
+        // Connections to init
+        &&& self@.start == init@.start
+        &&& self@.end == init@.end
+        &&& (init@.start.spec_steps_between_int(init@.end) + 1 <= 0 && IteratorSpec::remaining(
+            self,
+        ).len() == 0) || (init@.start.spec_steps_between_int(self@.end) + 1
+            == IteratorSpec::remaining(self).len() as int)
+        &&& forall|i: int|
+            0 <= i < IteratorSpec::remaining(self).len() ==> #[trigger] IteratorSpec::remaining(
+                self,
+            )[i] == init@.start.spec_forward_checked_int(i).unwrap()
+    }
+
+    open spec fn decrease(&self) -> Option<nat> {
+        Some((self@.start.spec_steps_between_int(self@.end) + 1) as nat)
+    }
+
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        if 0 <= index <= self@.start.spec_steps_between_int(self@.end) + 1 {
+            Some(self@.start.spec_forward_checked_int(index).unwrap())
+        } else {
+            None
+        }
+    }
+}
+
+pub assume_specification<A: core::iter::Step>[ <Range<A> as Iterator>::next ](
+    range: &mut Range<A>,
+) -> (r: Option<A>)
+    ensures
+        (*final(range), r) == spec_range_next(*old(range)),
+;
 
 } // verus!
 macro_rules! step_specs {
     ($t: ty, $axiom: ident) => {
         verus! {
-        impl StepSpec for $t {
+        impl StepSpecImpl for $t {
             open spec fn spec_is_lt(self, other: Self) -> bool {
                 self < other
             }
@@ -207,7 +250,7 @@ macro_rules! step_specs {
                 end - self
             }
             open spec fn spec_forward_checked(self, count: usize) -> Option<Self> {
-                self.spec_forward_checked_int(count as int)
+                StepSpec::spec_forward_checked_int(self, count as int)
             }
             open spec fn spec_forward_checked_int(self, count: int) -> Option<Self> {
                 if self + count <= $t::MAX {
@@ -217,7 +260,7 @@ macro_rules! step_specs {
                 }
             }
             open spec fn spec_backward_checked(self, count: usize) -> Option<Self> {
-                self.spec_backward_checked_int(count as int)
+                StepSpec::spec_backward_checked_int(self, count as int)
             }
             open spec fn spec_backward_checked_int(self, count: int) -> Option<Self> {
                 if self - count >= $t::MIN {
@@ -231,14 +274,14 @@ macro_rules! step_specs {
         // once we settle on a way to connect std traits like Step with spec traits like StepSpec.
         pub broadcast proof fn $axiom(range: Range<$t>)
             ensures
-                range.start.spec_is_lt(range.end) ==>
+                StepSpec::spec_is_lt(range.start, range.end) ==>
                     // TODO (not important): use new "matches ==>" syntax here
-                    (if let Some(n) = range.start.spec_forward_checked(1) {
+                    (if let Some(n) = StepSpec::spec_forward_checked(range.start, 1) {
                         spec_range_next(range) == (Range { start: n, ..range }, Some(range.start))
                     } else {
                         true
                     }),
-                !range.start.spec_is_lt(range.end) ==>
+                !StepSpec::spec_is_lt(range.start, range.end) ==>
                     #[trigger] spec_range_next(range) == (range, None::<$t>),
         {
             admit();
@@ -275,6 +318,7 @@ pub broadcast group group_range_axioms {
     axiom_spec_range_next_i64,
     axiom_spec_range_next_i128,
     axiom_spec_range_next_isize,
+    axiom_spec_range_inclusive_new,
 }
 
 } // verus!

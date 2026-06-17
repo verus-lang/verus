@@ -8,7 +8,7 @@ use super::super::modes::tracked_swap;
 
 verus! {
 
-broadcast use super::super::set::group_set_axioms;
+broadcast use super::super::iset::group_iset_lemmas;
 
 /// Interface for PCM / Resource Algebra ghost state.
 ///
@@ -142,13 +142,29 @@ impl<P: PCM> Resource<P> {
 
     /// This is a more general version of [`update`](Self::update).
     // GHOST-UPDATE rule
-    pub axiom fn update_nondeterministic(tracked self, new_values: Set<P>) -> (tracked out: Self)
+    pub proof fn update_nondeterministic(tracked self, new_values: ISet<P>) -> (tracked out: Self)
         requires
             frame_preserving_update_nondeterministic(self.value(), new_values),
         ensures
             out.loc() == self.loc(),
             new_values.contains(out.value()),
-    ;
+    {
+        let tracked u = Self::create_unit(self.loc());
+        PCM::op_unit(self.value());
+        assert(set_op(new_values, u.value()) =~= new_values) by {
+            assert forall|x|
+                set_op(new_values, u.value()).contains(x) <==> #[trigger] new_values.contains(
+                    x,
+                ) by {
+                PCM::op_unit(x);
+                if set_op(new_values, u.value()).contains(x) {
+                    let q = choose|q| #[trigger] new_values.contains(q) && x == P::op(q, u.value());
+                    PCM::op_unit(q);
+                }
+            }
+        };
+        self.update_nondeterministic_with_shared(&u, new_values)
+    }
 
     // VERIFIED
     /// Update a resource to a new value. This can only be done if the update is frame preserving
@@ -164,7 +180,7 @@ impl<P: PCM> Resource<P> {
             out.loc() == self.loc(),
             out.value() == new_value,
     {
-        let new_values = set![new_value];
+        let new_values = iset![new_value];
         assert(new_values.contains(new_value));
         self.update_nondeterministic(new_values)
     }
@@ -211,15 +227,15 @@ impl<P: PCM> Resource<P> {
         requires
             old(self).loc() == other.loc(),
         ensures
-            *self == *old(self),
-            P::op(self.value(), other.value()).valid(),
+            *final(self) == *old(self),
+            P::op(final(self).value(), other.value()).valid(),
     ;
 
     /// We can do a similar update to [`update_with_shared`](Self::update_with_shared) for non-deterministic updates
     pub axiom fn update_nondeterministic_with_shared(
         tracked self,
         tracked other: &Self,
-        new_values: Set<P>,
+        new_values: ISet<P>,
     ) -> (tracked out: Self)
         requires
             self.loc() == other.loc(),
@@ -268,7 +284,7 @@ impl<P: PCM> Resource<P> {
             out.loc() == self.loc(),
             out.value() == new_value,
     {
-        let new_values = set![new_value];
+        let new_values = iset![new_value];
         let so = set_op(new_values, other.value());
         assert(so.contains(P::op(new_value, other.value())));
         self.update_nondeterministic_with_shared(other, new_values)

@@ -273,7 +273,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] mut_ref_arg_not_supported ["new-mut-ref"] => verus_code! {
+    #[test] mut_ref_arg_not_supported [] => verus_code! {
         pub open spec fn d_spec(a: &mut bool) -> bool {
             *a
         }

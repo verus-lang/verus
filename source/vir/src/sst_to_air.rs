@@ -3,11 +3,10 @@ use crate::ast::{
     GenericBoundX, Ident, Idents, InequalityOp, IntRange, IntegerTypeBitwidth,
     IntegerTypeBoundKind, Mode, Path, PathX, Primitive, ProofNoteLabel, SpannedTyped, Typ,
     TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr, UnwindSpec, VarAt, VarIdent,
-    VariantCheck, VirErr, Visibility,
+    VirErr,
 };
 use crate::ast_util::{
-    LowerUniqueVar, fun_as_friendly_rust_name, get_field, get_variant, typ_args_for_datatype_typ,
-    undecorate_typ,
+    LowerUniqueVar, fun_as_friendly_rust_name, get_field, get_variant, undecorate_typ,
 };
 use crate::bitvector_to_air::bv_to_queries;
 use crate::context::Ctx;
@@ -37,12 +36,11 @@ use air::ast::{
 };
 use air::ast_util::{
     bool_typ, ident_apply, ident_binder, ident_typ, ident_var, int_typ, mk_and, mk_bind_expr,
-    mk_bitvector_option, mk_eq, mk_exists, mk_implies, mk_ite, mk_nat, mk_not, mk_option_command,
-    mk_or, mk_sub, mk_unnamed_axiom, mk_xor, str_apply, str_ident, str_typ, str_var, string_var,
+    mk_eq, mk_exists, mk_implies, mk_ite, mk_nat, mk_not, mk_or, mk_sub, mk_unnamed_axiom, mk_xor,
+    str_apply, str_ident, str_typ, str_var, string_var,
 };
-use air::context::SmtSolver;
 use num_bigint::BigInt;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::mem::swap;
 use std::sync::Arc;
 
@@ -219,7 +217,6 @@ pub fn range_to_id(range: &IntRange) -> Expr {
 fn decoration_str(d: TypDecoration) -> &'static str {
     match d {
         TypDecoration::Ref => crate::def::DECORATE_REF,
-        TypDecoration::MutRef => crate::def::DECORATE_MUT_REF,
         TypDecoration::Box => crate::def::DECORATE_BOX,
         TypDecoration::Rc => crate::def::DECORATE_RC,
         TypDecoration::Arc => crate::def::DECORATE_ARC,
@@ -1228,8 +1225,14 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     Arc::new(exprs),
                 ))
             }
-            UnaryOpr::ProofNote(_) => {
+            UnaryOpr::ProofNote(_) | UnaryOpr::CustomErr(_) => {
                 // A `proof_note` label is metadata and has no effect otherwise.
+                return exp_to_expr(ctx, e, expr_ctxt);
+            }
+            UnaryOpr::AutoDecreases | UnaryOpr::AutoLoopEnsures => {
+                // AutoDecreases and AutoLoopEnsures are just markers for filtering
+                // invariants and ensures during loop construction. Unwrap and process
+                // the inner expression.
                 return exp_to_expr(ctx, e, expr_ctxt);
             }
             UnaryOpr::HasResolved(t) => {
@@ -1676,7 +1679,6 @@ pub(crate) fn one_stmt(stmts: Vec<Stmt>) -> Stmt {
 #[derive(Debug)]
 struct LocFieldInfo<A> {
     base_typ: Typ,
-    base_span: Span,
     a: A,
 }
 
@@ -1691,16 +1693,6 @@ enum FieldUpdateDatumOpr {
     Field(FieldOpr),
     MutRefCurrent,
     Index(Exp, Typ, ArrayKind),
-}
-
-impl FieldUpdateDatumOpr {
-    // Useful for old-mut-ref code that doesn't use the MutRefCurrent projection
-    fn expect_field(&self) -> &FieldOpr {
-        match self {
-            FieldUpdateDatumOpr::Field(opr) => opr,
-            _ => panic!("FieldUpdateDatumOpr::expect_field failed"),
-        }
-    }
 }
 
 struct FieldUpdateDatum {
@@ -1718,10 +1710,7 @@ fn loc_to_field_update_data(loc: &Exp) -> (UniqueIdent, LocFieldInfo<Vec<FieldUp
             ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), ee) => e = ee,
             ExpX::VarLoc(x) => {
                 fields.reverse();
-                return (
-                    x.clone(),
-                    LocFieldInfo { base_typ: e.typ.clone(), base_span: e.span.clone(), a: fields },
-                );
+                return (x.clone(), LocFieldInfo { base_typ: e.typ.clone(), a: fields });
             }
             ExpX::UnaryOpr(UnaryOpr::Field(opr), ee) => {
                 fields.push(FieldUpdateDatum {
@@ -1758,166 +1747,87 @@ fn loc_to_field_update_data(loc: &Exp) -> (UniqueIdent, LocFieldInfo<Vec<FieldUp
     }
 }
 
-fn snapshotted_var_locs(arg: &Exp, snapshot_name: &str) -> Exp {
-    crate::sst_visitor::map_exp_visitor(arg, &mut |e| match &e.x {
-        ExpX::VarLoc(x) => {
-            SpannedTyped::new(&e.span, &e.typ, ExpX::Old(snapshot_ident(snapshot_name), x.clone()))
-        }
-        _ => e.clone(),
-    })
+// Semantically equivalent to BinaryOp::FieldUpdate (the SMT update-field),
+// but deliberately mentions each unchanged field explicitly for better quantifier triggering.
+fn update_field(
+    ctx: &Ctx,
+    expr_ctxt: &ExprCtxt,
+    base_exp: &Exp,
+    opr: &FieldOpr,
+    value: &Expr,
+) -> Result<Expr, VirErr> {
+    let mut args: Vec<Expr> = Vec::new();
+    let datatype = &ctx.datatype_map[&opr.datatype];
+    let fields = &get_variant(&datatype.x.variants, &opr.variant).fields;
+    for field in fields.iter() {
+        if &field.name == &opr.field {
+            args.push(value.clone());
+        } else {
+            let op = UnaryOpr::Field(FieldOpr {
+                datatype: opr.datatype.clone(),
+                variant: opr.variant.clone(),
+                field: field.name.clone(),
+                get_variant: false,
+                check: crate::ast::VariantCheck::None,
+            });
+            let expx = ExpX::UnaryOpr(op, base_exp.clone());
+            let typ_args = crate::ast_util::typ_args_for_datatype_typ(&base_exp.typ);
+            let ty = subst_typ_for_datatype(&datatype.x.typ_params, typ_args, &field.a.0);
+            let exp = SpannedTyped::new(&base_exp.span, &ty, expx);
+            args.push(exp_to_expr(ctx, &exp, expr_ctxt)?);
+        };
+    }
+    let variant_ident = ctx.name_ctxt.variant_ident(&opr.datatype, &opr.variant);
+    Ok(Arc::new(ExprX::Apply(variant_ident, Arc::new(args))))
 }
 
-// REVIEW this function will likely no longer be necessary once we handle mutable references
-// using prophecy variables (it is currently used on function call when one of the arguments
-// is a mutable reference to a path)
-fn assume_other_fields_unchanged(
+fn call_args_to_air(
     ctx: &Ctx,
-    snapshot_name: &str,
-    stm_span: &Span,
-    base: &UniqueIdent,
-    mutated_fields: &LocFieldInfo<Vec<Vec<(FieldOpr, Typ)>>>,
+    state: &mut State,
     expr_ctxt: &ExprCtxt,
-) -> Result<Option<Stmt>, VirErr> {
-    let LocFieldInfo { base_typ, base_span, a: updates } = mutated_fields;
-    let base_exp = SpannedTyped::new(base_span, base_typ, ExpX::VarLoc(base.clone()));
-    let eqs = assume_other_fields_unchanged_inner(
-        ctx,
-        snapshot_name,
-        stm_span,
-        &base_exp,
-        updates,
-        expr_ctxt,
-    )?;
-    Ok((eqs.len() > 0)
-        .then(|| Arc::new(StmtX::Assume(Arc::new(ExprX::Multi(MultiOp::And, Arc::new(eqs)))))))
-}
+    args: &Vec<Exp>,
+    dest: &Option<Dest>,
+    stm: &Stm,
+    ens_args_wo_typ: &mut Vec<Expr>,
+    stmts: &mut Vec<Stmt>,
+) -> Result<(), VirErr> {
+    let mut call_snapshot = false;
+    for arg in args.iter() {
+        let arg_x = if let Some(Dest { dest, is_init: _ }) = dest {
+            let var = get_loc_var(dest);
+            crate::sst_visitor::map_exp_visitor(arg, &mut |e| match &e.x {
+                ExpX::Var(x) if *x == var => {
+                    call_snapshot = true;
+                    SpannedTyped::new(
+                        &e.span,
+                        &e.typ,
+                        ExpX::Old(snapshot_ident(SNAPSHOT_CALL), x.clone()),
+                    )
+                }
+                _ => e.clone(),
+            })
+        } else {
+            arg.clone()
+        };
+        ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt)?)
+    }
 
-fn assume_other_fields_unchanged_inner(
-    ctx: &Ctx,
-    snapshot_name: &str,
-    stm_span: &Span,
-    base: &Exp,
-    updates: &Vec<Vec<(FieldOpr, Typ)>>,
-    expr_ctxt: &ExprCtxt,
-) -> Result<Vec<Expr>, VirErr> {
-    match &updates[..] {
-        [f] if f.len() == 0 => Ok(vec![]),
-        _ => {
-            let mut updated_fields: BTreeMap<_, Vec<_>> = BTreeMap::new();
-            let (FieldOpr { datatype: dt, variant, field: _, get_variant: _, check: _ }, _) =
-                &updates[0][0];
-            for u in updates {
-                assert!(u[0].0.datatype == *dt && u[0].0.variant == *variant);
-                updated_fields.entry(&u[0].0.field).or_insert(Vec::new()).push(u[1..].to_vec());
-            }
-            let datatype = &ctx.datatype_map[dt];
-            let datatype_fields = &get_variant(&datatype.x.variants, variant).fields;
-            let mut box_unbox_eq: Vec<Expr> = Vec::new();
-            let exps_for_fields =
-                vec_map_result(&**datatype_fields, |field: &Binder<(Typ, Mode, Visibility)>| {
-                    let base_exp = if let TypX::Boxed(base_typ) = &*undecorate_typ(&base.typ) {
-                        // TODO this replicates logic from poly, but factoring it out is currently tricky
-                        // because we don't have a representation for a variable used as a location in VIR
-                        if crate::poly::typ_is_poly(ctx, base_typ) {
-                            base.clone()
-                        } else {
-                            let op = UnaryOpr::Unbox(base_typ.clone());
-                            let exprx = ExpX::UnaryOpr(op, base.clone());
-                            let unbox = SpannedTyped::new(&base.span, base_typ, exprx);
-                            if box_unbox_eq.len() == 0 {
-                                // trigger Box(Unbox(base)) so that has_type succeeds on base
-                                let box_op = UnaryOpr::Box(base_typ.clone());
-                                let exprx = ExpX::UnaryOpr(box_op, unbox.clone());
-                                let box_unbox = SpannedTyped::new(&base.span, &base.typ, exprx);
-                                let eq = ExprX::Binary(
-                                    air::ast::BinaryOp::Eq,
-                                    exp_to_expr(ctx, &box_unbox, expr_ctxt)?,
-                                    exp_to_expr(ctx, &base, expr_ctxt)?,
-                                );
-                                box_unbox_eq.push(Arc::new(eq));
-                            }
-                            unbox
-                        }
-                    } else {
-                        base.clone()
-                    };
-
-                    let typ = if let Some(first_update) =
-                        updates.iter().find(|u| u[0].0.field == field.name)
-                    {
-                        // Mutated fields need a precise type for `field_exp` because
-                        // `assume_other_fields_unchanged_inner` recurses into them.
-                        // The AST already contains the correct normalized type for this
-                        // field (typeck has resolved any projections), so we use it
-                        // directly instead of trying to reconstruct it from `base_exp.typ`.
-                        first_update[0].1.clone()
-                    } else {
-                        // Unmodified fields only need a type to emit an equality
-                        // `old == new`; they are never recursed into, so `field_exp.typ`
-                        // does not need to be fully normalized.
-                        //
-                        // `base_exp.typ` is guaranteed to be a concrete datatype here:
-                        // - at the top level it is the variable's declared type;
-                        // - inside a recursive call it is the normalized type taken from
-                        //   `updates` for the mutated parent field.
-                        // Hence `typ_args_for_datatype_typ` will not panic.
-                        let typ_args = typ_args_for_datatype_typ(&base_exp.typ);
-                        subst_typ_for_datatype(&datatype.x.typ_params, typ_args, &field.a.0)
-                    };
-                    let typ = if crate::poly::typ_is_poly(ctx, &field.a.0) {
-                        crate::poly::coerce_typ_to_poly(ctx, &typ)
-                    } else {
-                        crate::poly::coerce_typ_to_native(ctx, &typ)
-                    };
-
-                    let field_exp = SpannedTyped::new(
-                        stm_span,
-                        &typ,
-                        ExpX::UnaryOpr(
-                            UnaryOpr::Field(FieldOpr {
-                                datatype: dt.clone(),
-                                variant: variant.clone(),
-                                field: field.name.clone(),
-                                get_variant: false,
-                                check: VariantCheck::None,
-                            }),
-                            base_exp,
-                        ),
-                    );
-                    if let Some(further_updates) = updated_fields.get(&field.name) {
-                        assume_other_fields_unchanged_inner(
-                            ctx,
-                            snapshot_name,
-                            stm_span,
-                            &field_exp,
-                            further_updates,
-                            expr_ctxt,
-                        )
-                    } else {
-                        let old = exp_to_expr(
-                            ctx,
-                            &snapshotted_var_locs(&field_exp, snapshot_name),
-                            expr_ctxt,
-                        )?;
-                        let new = exp_to_expr(ctx, &field_exp, expr_ctxt)?;
-                        Ok(vec![Arc::new(ExprX::Binary(air::ast::BinaryOp::Eq, old, new))])
-                    }
-                })?;
-            Ok(exps_for_fields.into_iter().flatten().chain(box_unbox_eq.into_iter()).collect())
+    if call_snapshot {
+        stmts.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_CALL))));
+    } else {
+        if ctx.debug {
+            state.map_span(&stm, SpanKind::Full);
         }
     }
+    Ok(())
 }
-
-// fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, VirErr> {
-//     let expr_ctxt = ExprCtxt { mode: ExprMode::Body, is_bit_vector: false };
-//     let result = match &stm.x {
 
 fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, VirErr> {
     let typ_to_ids = |typ| typ_to_ids(ctx, typ);
     let expr_ctxt = &ExprCtxt::new();
     let result = match &stm.x {
         StmX::Call {
-            fun,
+            fun: crate::sst::CallTarget::Fun(fun),
             resolved_method,
             is_trait_default,
             mode,
@@ -2035,97 +1945,19 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 stmts.push(Arc::new(StmtX::Assert(None, error, None, e)));
             }
 
-            let typ_args: Vec<Expr> = typs.iter().flat_map(typ_to_ids).collect();
-            if func.x.params.iter().any(|p| p.x.is_mut) && ctx.debug {
-                unimplemented!("&mut args are unsupported in debugger mode");
-            }
-            let mut call_snapshot = false;
             let mut ens_args_wo_typ = Vec::new();
-            let mut mutated_fields: BTreeMap<_, LocFieldInfo<Vec<_>>> = BTreeMap::new();
-            for (param, arg) in func.x.params.iter().zip(args.iter()) {
-                let arg_x = if let Some(Dest { dest, is_init: _ }) = dest {
-                    let var = get_loc_var(dest);
-                    crate::sst_visitor::map_exp_visitor(arg, &mut |e| match &e.x {
-                        ExpX::Var(x) if *x == var => {
-                            call_snapshot = true;
-                            SpannedTyped::new(
-                                &e.span,
-                                &e.typ,
-                                ExpX::Old(snapshot_ident(SNAPSHOT_CALL), x.clone()),
-                            )
-                        }
-                        _ => e.clone(),
-                    })
-                } else {
-                    arg.clone()
-                };
-                if param.x.is_mut {
-                    call_snapshot = true;
-                    let (base_var, LocFieldInfo { base_typ, base_span, a: fields }) =
-                        loc_to_field_update_data(arg);
-                    mutated_fields
-                        .entry(base_var)
-                        .or_insert(LocFieldInfo { base_typ, base_span, a: Vec::new() })
-                        .a
-                        .push(
-                            fields
-                                .iter()
-                                .map(|o| (o.opr.expect_field().clone(), o.field_typ.clone()))
-                                .collect(),
-                        );
-                    let arg_old = snapshotted_var_locs(arg, SNAPSHOT_CALL);
-                    ens_args_wo_typ.push(exp_to_expr(ctx, &arg_old, expr_ctxt)?);
-                    ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt)?);
-                } else {
-                    ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt)?)
-                };
-            }
-            let havoc_stmts = mutated_fields
-                .keys()
-                .map(|base| Arc::new(StmtX::Havoc(suffix_local_unique_id(&base))));
+            call_args_to_air(
+                ctx,
+                state,
+                expr_ctxt,
+                args,
+                dest,
+                stm,
+                &mut ens_args_wo_typ,
+                &mut stmts,
+            )?;
 
-            let unchaged_stmts = mutated_fields
-                .iter()
-                .map(|(base, mutated_fields)| {
-                    let LocFieldInfo { base_typ, base_span: _, a: _ } = mutated_fields;
-                    match assume_other_fields_unchanged(
-                        ctx,
-                        SNAPSHOT_CALL,
-                        &stm.span,
-                        base,
-                        mutated_fields,
-                        expr_ctxt,
-                    ) {
-                        Ok(stmt) => {
-                            let typ_inv_stmts = typ_invariant(
-                                ctx,
-                                base_typ,
-                                &string_var(&suffix_local_unique_id(base)),
-                            )
-                            .into_iter()
-                            .map(|e| Arc::new(StmtX::Assume(e)));
-                            let unchanged_and_typ_inv: Vec<Stmt> =
-                                stmt.into_iter().chain(typ_inv_stmts).collect();
-                            Ok(unchanged_and_typ_inv)
-                        }
-                        Err(vir_err) => Err(vir_err.clone()),
-                    }
-                })
-                .collect::<Result<Vec<Vec<Stmt>>, VirErr>>()?
-                .into_iter()
-                .flatten();
-            let mut_stmts: Vec<_> = havoc_stmts.chain(unchaged_stmts).collect::<Vec<_>>();
-
-            if call_snapshot {
-                stmts.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_CALL))));
-                stmts.extend(mut_stmts.into_iter());
-            } else {
-                assert_eq!(mut_stmts.len(), 0);
-                if ctx.debug {
-                    state.map_span(&stm, SpanKind::Full);
-                }
-            }
-
+            let typ_args: Vec<Expr> = typs.iter().flat_map(typ_to_ids).collect();
             let (has_ens, resolved_ens, ens_fun, ens_typ_args) = match resolved_method {
                 Some((res_fun, res_typs)) if ctx.funcs_with_ensure_predicate[res_fun] => {
                     // Use ens predicate for the statically-resolved function
@@ -2190,6 +2022,29 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 );
                 let generic_ens_expr = exp_to_expr(ctx, &generic_ens_exp, expr_ctxt)?;
                 stmts.push(Arc::new(StmtX::Assume(generic_ens_expr)));
+            }
+            vec![Arc::new(StmtX::Block(Arc::new(stmts)))] // wrap in block for readability
+        }
+        StmX::Call { fun: crate::sst::CallTarget::AssumeExternal, args, dest, .. } => {
+            let mut stmts: Vec<Stmt> = Vec::new();
+            let mut ens_args_wo_typ = Vec::new();
+            call_args_to_air(
+                ctx,
+                state,
+                expr_ctxt,
+                args,
+                dest,
+                stm,
+                &mut ens_args_wo_typ,
+                &mut stmts,
+            )?;
+            if let Some(Dest { dest, is_init }) = dest {
+                let var = suffix_local_unique_id(&get_loc_var(dest));
+                assert!(*is_init); // for simplicity, ast_to_sst always generates is_init = true
+                let typ_inv = typ_invariant(ctx, &dest.typ, &ident_var(&var));
+                if let Some(expr) = typ_inv {
+                    stmts.push(Arc::new(StmtX::Assume(expr)));
+                }
             }
             vec![Arc::new(StmtX::Block(Arc::new(stmts)))] // wrap in block for readability
         }
@@ -2352,18 +2207,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                             .clone(),
                         stm.span.clone(),
                         "assert_nonlinear_by".to_string(),
-                        match ctx.global.solver {
-                            SmtSolver::Z3 => Arc::new(vec![
-                                mk_option_command("smt.arith.solver", "6"),
-                                Arc::new(CommandX::CheckValid(query)),
-                            ]),
-                            SmtSolver::Cvc5 =>
-                            // TODO: What cvc5 settings would help here?
-                            // TODO: Can we even adjust the settings at this point?
-                            {
-                                Arc::new(vec![Arc::new(CommandX::CheckValid(query))])
-                            }
-                        },
+                        Arc::new(vec![Arc::new(CommandX::CheckValid(query))]),
                         ProverChoice::Nonlinear,
                         true,
                     ));
@@ -2381,8 +2225,6 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             let queries = bv_to_queries(ctx, requires, ensures)?;
 
             for (query, error_desc) in queries.into_iter() {
-                let mut bv_commands = mk_bitvector_option(&ctx.global.solver);
-                bv_commands.push(Arc::new(CommandX::CheckValid(query)));
                 state.commands.push(CommandsWithContextX::new(
                     ctx.fun
                         .as_ref()
@@ -2391,7 +2233,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                         .clone(),
                     stm.span.clone(),
                     error_desc,
-                    Arc::new(bv_commands),
+                    Arc::new(vec![Arc::new(CommandX::CheckValid(query))]),
                     ProverChoice::BitVector,
                     true,
                 ));
@@ -2417,8 +2259,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             let mut value = exp_to_expr(ctx, &rhs, expr_ctxt)?;
             let mut value_typ = rhs.typ.clone();
 
-            let (base_var, LocFieldInfo { base_typ, base_span: _, a: fields }) =
-                loc_to_field_update_data(&dest);
+            let (base_var, LocFieldInfo { base_typ, a: fields }) = loc_to_field_update_data(&dest);
 
             for FieldUpdateDatum { opr, field_typ, base_exp } in fields.iter().rev() {
                 // TODO(andrea) move this to poly.rs once we have general support for mutable references
@@ -2428,14 +2269,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 let base_expr = exp_to_expr(ctx, &base_exp, expr_ctxt)?;
                 match opr {
                     FieldUpdateDatumOpr::Field(opr) => {
-                        let acc = ctx.name_ctxt.variant_field_ident_internal(
-                            &encode_dt_as_path(&opr.datatype),
-                            &opr.variant,
-                            &opr.field,
-                            true,
-                        );
-                        let bop = air::ast::BinaryOp::FieldUpdate(acc);
-                        value = Arc::new(ExprX::Binary(bop, base_expr, value));
+                        value = update_field(ctx, expr_ctxt, base_exp, opr, &value)?;
                     }
                     FieldUpdateDatumOpr::MutRefCurrent => {
                         let ident = Arc::new(crate::def::MUT_REF_UPDATE_CURRENT.to_string());
@@ -3113,13 +2947,11 @@ pub(crate) fn body_stm_to_air(
         let mut commands = vec![];
 
         for (query, error_desc) in queries.into_iter() {
-            let mut bv_commands = mk_bitvector_option(&ctx.global.solver);
-            bv_commands.push(Arc::new(CommandX::CheckValid(query)));
             commands.push(CommandsWithContextX::new(
                 ctx.fun.as_ref().expect("function expected here").current_fun.clone(),
                 func_span.clone(),
                 error_desc,
-                Arc::new(bv_commands),
+                Arc::new(vec![Arc::new(CommandX::CheckValid(query))]),
                 ProverChoice::BitVector,
                 true,
             ));
@@ -3287,26 +3119,7 @@ pub(crate) fn body_stm_to_air(
         }
     } else {
         let query = Arc::new(QueryX { local: Arc::new(local), assertion });
-        let commands = if is_nonlinear {
-            match ctx.global.solver {
-                SmtSolver::Z3 => vec![
-                    mk_option_command("smt.arith.solver", "6"),
-                    Arc::new(CommandX::CheckValid(query)),
-                ],
-                SmtSolver::Cvc5 =>
-                // TODO: What cvc5 settings would help here?
-                // TODO: Can we even adjust the settings at this point?
-                {
-                    vec![Arc::new(CommandX::CheckValid(query))]
-                }
-            }
-        } else if is_bit_vector_mode {
-            let mut bv_commands = mk_bitvector_option(&ctx.global.solver);
-            bv_commands.push(Arc::new(CommandX::CheckValid(query)));
-            bv_commands
-        } else {
-            vec![Arc::new(CommandX::CheckValid(query))]
-        };
+        let commands = vec![Arc::new(CommandX::CheckValid(query))];
         state.commands.push(CommandsWithContextX::new(
             ctx.fun.as_ref().expect("function expected here").current_fun.clone(),
             func_span.clone(),

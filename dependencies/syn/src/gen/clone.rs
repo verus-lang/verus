@@ -679,7 +679,9 @@ impl Clone for crate::ExprForLoop {
             in_token: self.in_token.clone(),
             expr_name: self.expr_name.clone(),
             expr: self.expr.clone(),
+            invariant_except_break: self.invariant_except_break.clone(),
             invariant: self.invariant.clone(),
+            ensures: self.ensures.clone(),
             decreases: self.decreases.clone(),
             body: self.body.clone(),
         }
@@ -1660,6 +1662,7 @@ impl Clone for crate::ItemImpl {
             attrs: self.attrs.clone(),
             defaultness: self.defaultness.clone(),
             unsafety: self.unsafety.clone(),
+            constness: self.constness.clone(),
             impl_token: self.impl_token.clone(),
             generics: self.generics.clone(),
             trait_: self.trait_.clone(),
@@ -1741,6 +1744,7 @@ impl Clone for crate::ItemTrait {
         crate::ItemTrait {
             attrs: self.attrs.clone(),
             vis: self.vis.clone(),
+            constness: self.constness.clone(),
             unsafety: self.unsafety.clone(),
             auto_token: self.auto_token.clone(),
             restriction: self.restriction.clone(),

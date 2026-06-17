@@ -9,8 +9,9 @@ use vir::modes::ErasureModes;
 use crate::verus_items::{DummyCaptureItem, VerusItem, VerusItems};
 use rustc_hir::def_id::LocalDefId;
 use rustc_mir_build_verus::verus::{
-    BodyErasure, CallErasure, LoopErasure, LoopSpecEvaluationLocation, NodeErase, TreeErase,
-    VarErasure, VerusErasureCtxt, set_verus_aware_def_ids, set_verus_erasure_ctxt,
+    BodyErasure, CallErasure, LocalInvariantBody, LoopErasure, LoopSpecEvaluationLocation,
+    NodeErase, TreeErase, VarErasure, VerusErasureCtxt, set_verus_aware_def_ids,
+    set_verus_erasure_ctxt,
 };
 use rustc_span::Span;
 use std::collections::HashMap;
@@ -18,6 +19,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use vir::ast::VirErr;
 
+// TODO: CompilableOperator is an outdated name; many of these aren't compilable
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum CompilableOperator {
     IntIntrinsic,
@@ -37,6 +39,7 @@ pub enum CompilableOperator {
     ClosureToFnProof(Mode),
     GhostBorrowMut,
     MutRefTracked,
+    ShrRefStructWrap,
 }
 
 /// Information about each call in the AST (each ExprKind::Call).
@@ -49,7 +52,7 @@ pub enum ResolvedCall {
     /// The call is to an operator like == or + that should be compiled.
     CompilableOperator(CompilableOperator),
     /// The call is to a function, and we record the name of the function here
-    /// (both unresolved and resolved), as well as an in_ghost flag.
+    /// (both unresolved and resolved), as well as the 'assume_external' flag.
     /// This is replaced by CallModes as soon as the modes are available.
     Call(Fun, Fun, bool),
     /// Path and variant of datatype constructor
@@ -109,8 +112,11 @@ pub struct ErasureHints {
     pub vir_crate: Krate,
     /// Connect expression and pattern HirId to corresponding vir AstId
     pub hir_vir_ids: Vec<(HirId, AstId)>,
-    /// Details of each call in the first run's HIR
-    pub resolved_calls: Vec<(HirId, SpanData, ResolvedCall)>,
+    /// Details of each call in the first run's HIR.
+    /// The last bool is "in ghost block?".
+    /// (This is false for "boundary" calls like Ghost/Tracked
+    /// though that shouldn't matter right now).
+    pub resolved_calls: Vec<(HirId, SpanData, ResolvedCall, bool)>,
     /// Details of some patterns in first run's HIR
     pub resolved_pats: Vec<(SpanData, Pattern)>,
     /// Results of mode (spec/proof/exec) inference from first run's VIR
@@ -126,6 +132,7 @@ pub struct ErasureHints {
     pub(crate) shadow_check: Vec<HirId>,
     pub(crate) extra_erase_ast_ids: Vec<vir::messages::Span>,
     pub(crate) extra_erase_hir_ids_including_adjustments: Vec<HirId>,
+    pub(crate) local_invariant_bodies: Vec<LocalInvariantBody>,
 }
 
 /// How to erase the given var usage
@@ -163,19 +170,29 @@ fn resolved_call_to_call_erase(
     resolved_call: &ResolvedCall,
     ctor_mode: Option<Mode>,
     infer_spec_for_loop_iter_erase: &HashMap<AstId, bool>,
-) -> Result<CallErasure, VirErr> {
-    Ok(match resolved_call {
+    in_ghost: bool,
+) -> Result<(CallErasure, bool), VirErr> {
+    let mut call_returning_never = false;
+    let call_erasure = match resolved_call {
         ResolvedCall::SpecPure => CallErasure::EraseTree(TreeErase::IncludeBasicChecks),
         ResolvedCall::SpecAllowProofArgs => CallErasure::Call(NodeErase::Erase),
-        ResolvedCall::Call(ufun, rfun, in_ghost) => {
+        ResolvedCall::Call(ufun, rfun, assume_external) => {
             // Note: in principle, the unresolved function ufun should always be present,
             // but we currently allow external declarations of resolved trait functions
             // without a corresponding external trait declaration.
             let Some(f) = functions.get(ufun).or_else(|| functions.get(rfun)) else {
+                if *assume_external {
+                    let erase = CallErasure::Call(NodeErase::Keep);
+                    let force_treat_as_inhabited = false;
+                    return Ok((erase, force_treat_as_inhabited));
+                }
                 dbg!(ufun, rfun);
                 panic!("internal Verus error: could not find mode declarations for function")
             };
-            if *in_ghost && f.x.mode == Mode::Exec {
+            if f.x.ret.x.mode != Mode::Spec && vir::ast_util::is_never(&f.x.ret.x.typ) {
+                call_returning_never = true;
+            }
+            if in_ghost && f.x.mode == Mode::Exec {
                 // This must be an autospec, so change exec -> spec
                 CallErasure::Call(NodeErase::Erase)
             } else if f.x.mode == Mode::Spec {
@@ -210,6 +227,7 @@ fn resolved_call_to_call_erase(
             | CompilableOperator::TrackedBorrowMut
             | CompilableOperator::GhostBorrowMut
             | CompilableOperator::MutRefTracked
+            | CompilableOperator::ShrRefStructWrap
             | CompilableOperator::UseTypeInvariant => CallErasure::keep_all(),
         },
         ResolvedCall::MiscEraseAbsolutely => CallErasure::EraseTree(TreeErase::EraseAbsolutely),
@@ -223,7 +241,20 @@ fn resolved_call_to_call_erase(
                 CallErasure::Call(NodeErase::Erase)
             }
         }
-    })
+    };
+
+    // Rust prunes the CFG when a call returns an uninhabited type. However, there are
+    // a few ways that ghost calls might inadvertently cheat this.
+    // Specifically, by returning spec-mode never, or returning a tracked struct
+    // with a ghost field never.
+    // In most cases, we force rust to treat the type as inhabited anyway.
+    // The only exception is if: the function returns non-spec-mode never type.
+    // This is overly conservative, as there could be other valid, tracked, actually-uninhabited
+    // types. Note though that the user is always free to match on an uninhabited
+    // type to prove false, rather than relying on CFG pruning.
+    let force_treat_as_inhabited = in_ghost && !call_returning_never;
+
+    Ok((call_erasure, force_treat_as_inhabited))
 }
 
 fn get_binder_hir_id<'tcx>(
@@ -342,22 +373,21 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
         assert!(found.is_none());
     }
 
-    let mut calls = HashMap::<HirId, CallErasure>::new();
+    let mut calls = HashMap::<HirId, (CallErasure, bool)>::new();
     let mut loop_erasure = HashMap::<HirId, LoopErasure>::new();
-    for (hir_id, span_data, resolved_call) in &erasure_hints.resolved_calls {
+    for (hir_id, span_data, resolved_call, in_ghost) in &erasure_hints.resolved_calls {
         let span = span_data.span();
         let ctor_mode = ctor_modes.get(hir_id).cloned();
-        let _found = calls.insert(
-            *hir_id,
-            resolved_call_to_call_erase(
-                span,
-                &functions,
-                &datatypes,
-                resolved_call,
-                ctor_mode,
-                &infer_spec_for_loop_iter_erase,
-            )?,
-        );
+        let (call_erasure, force_treat_as_inhabited) = resolved_call_to_call_erase(
+            span,
+            &functions,
+            &datatypes,
+            resolved_call,
+            ctor_mode,
+            &infer_spec_for_loop_iter_erase,
+            *in_ghost,
+        )?;
+        let _found = calls.insert(*hir_id, (call_erasure, force_treat_as_inhabited));
         // REVIEW: we should check that that there aren't conflicting entries, but right now,
         // there are some redundant traversals
         //assert!(found.is_none());
@@ -379,12 +409,19 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
         adjusted_node_erasure.insert(*hir_id);
     }
 
+    let mut local_invariant_bodies = HashMap::new();
+    for l in erasure_hints.local_invariant_bodies.iter() {
+        let found = local_invariant_bodies.insert(l.inner_block_hir_id, l.clone());
+        assert!(found.is_none());
+    }
+
     let verus_erasure_ctxt = VerusErasureCtxt {
         vars,
         calls,
         bodies,
         adjusted_node_erasure,
         loop_erasure,
+        local_invariant_bodies,
 
         erased_ghost_value_fn_def_id: *verus_items
             .name_to_id
@@ -402,9 +439,11 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
             .name_to_id
             .get(&VerusItem::MutableReferenceTie)
             .unwrap(),
+        two_phase_mutable_reference_tie_fn_def_id: *verus_items
+            .name_to_id
+            .get(&VerusItem::TwoPhaseMutableReferenceTie)
+            .unwrap(),
         get_first_fn_def_id: *verus_items.name_to_id.get(&VerusItem::GetFirst).unwrap(),
-
-        new_mut_ref: crate::config::new_mut_ref(),
     };
     set_verus_erasure_ctxt(Arc::new(verus_erasure_ctxt));
 

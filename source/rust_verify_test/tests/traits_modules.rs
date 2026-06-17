@@ -967,13 +967,13 @@ test_verify_one_file! {
 
                 fn f<'a>(&'a self, x: &'a Self, b: bool) -> (r: &'a Self)
                     ensures
-                        b ==> r === self,
-                        !b ==> r === x;
+                        b ==> r == self,
+                        !b ==> r == x;
             }
 
             fn p<A: T>(a1: &A, a2: &A) {
                 let a3 = a1.f(a2, true);
-                assert(a3 === a1);
+                assert(a3 == a1);
             }
         }
 
@@ -987,7 +987,7 @@ test_verify_one_file! {
 
                 fn f<'a>(&'a self, x: &'a Self, b: bool) -> &'a Self {
                     let x = if b { self } else { x };
-                    assert(x === self.r(x, b));
+                    assert(x == self.r(x, b));
                     x
                 }
             }
@@ -999,7 +999,7 @@ test_verify_one_file! {
                 let s1 = crate::M2::S(1);
                 let s2 = crate::M2::S(2);
                 let s3 = s1.f(&s2, true);
-                assert(s1.0 === s3.0);
+                assert(s1.0 == s3.0);
             }
         }
     } => Ok(())
@@ -1011,15 +1011,15 @@ test_verify_one_file! {
             pub trait T {
                 fn f<'a>(&'a self, x: &'a Self, b: bool) -> (r: &'a Self)
                     ensures
-                        b ==> r === self,
-                        !b ==> r === x; // TRAIT
+                        b ==> r == self,
+                        !b ==> r == x; // TRAIT
             }
         }
 
         mod M2 {
             fn p<A: crate::M1::T>(a1: &A, a2: &A) {
                 let a3 = a1.f(a2, false);
-                assert(a3 === a1); // FAILS
+                assert(a3 == a1); // FAILS
             }
         }
 
@@ -1039,7 +1039,7 @@ test_verify_one_file! {
                 let s1 = crate::M3::S(1);
                 let s2 = crate::M3::S(2);
                 let s3 = s1.f(&s2, false);
-                assert(s1.0 === s3.0); // FAILS
+                assert(s1.0 == s3.0); // FAILS
             }
         }
     } => Err(err) => assert_fails(err, 3)

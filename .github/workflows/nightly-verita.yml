@@ -23,7 +23,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.95.0
+          toolchain: 1.96.0
 
       - name: setup python
         uses: actions/setup-python@v6
@@ -56,7 +56,7 @@ jobs:
 
       - name: try to download previous results
         id: previous
-        uses: dawidd6/action-download-artifact@v17
+        uses: dawidd6/action-download-artifact@v21
         with:
           workflow: nightly-verita.yml
           name: verita-results

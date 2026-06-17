@@ -141,6 +141,25 @@ background, and it's invalidating the build cache. To prevent this, you need
 to configure your IDE for Verus development. See above for how to do
 this for VS Code.
 
+### Measuring test coverage
+
+`tools/coverage.sh` reports how much of the verifier the `rust_verify_test`
+suite exercises. Run it from `source/`:
+
+```
+./tools/coverage.sh                    # whole suite
+./tools/coverage.sh --test bitvector   # narrow to one suite
+```
+
+This writes the reports to `coverage/`. Open `coverage/index.html` in a browser
+for the annotated source view, or read the text summary with `cat
+coverage/coverage.txt`. An `lcov` file (`coverage/coverage.lcov`) is also
+written for external tools.
+
+The tests run the verifier as a spawned subprocess, so the script instruments
+that `rust_verify` binary (not the test binary), and gathers coverage from those
+processes.
+
 ## Contributing to the standard library (`vstd`)
 
 ### What to contribute
@@ -245,3 +264,7 @@ vargo build --vstd-no-verify
 # for tests
 vargo test --vstd-no-verify -p rust_verify_test --test <test file> <test name>
 ```
+
+If you modify the syntax parsing inside of the `dependencies/syn/src` directory,
+be sure to regenerate the auto-generated files in the `dependencies/syn/src/gen` directory.
+See `dependencies/syn/README.md` for details.

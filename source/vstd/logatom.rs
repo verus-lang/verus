@@ -60,8 +60,8 @@ pub trait MutOperation: Sized {
 pub trait ReadLinearizer<Op: ReadOperation>: Sized {
     type Completion;
 
-    open spec fn namespaces(self) -> Set<int> {
-        Set::empty()
+    open spec fn namespaces(self) -> ISet<int> {
+        ISet::empty()
     }
 
     open spec fn pre(self, op: Op) -> bool {
@@ -99,8 +99,8 @@ pub trait ReadLinearizer<Op: ReadOperation>: Sized {
 pub trait MutLinearizer<Op: MutOperation>: Sized {
     type Completion;
 
-    open spec fn namespaces(self) -> Set<int> {
-        Set::empty()
+    open spec fn namespaces(self) -> ISet<int> {
+        ISet::empty()
     }
 
     open spec fn pre(self, op: Op) -> bool {
@@ -122,7 +122,7 @@ pub trait MutLinearizer<Op: MutOperation>: Sized {
             self.pre(op),
             op.requires(*old(r), new_state, *e),
         ensures
-            op.ensures(*old(r), *r, new_state),
+            op.ensures(*old(r), *final(r), new_state),
             self.post(op, *e, out),
         opens_invariants self.namespaces()
     ;

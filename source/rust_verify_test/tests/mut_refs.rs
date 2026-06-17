@@ -4,7 +4,7 @@ mod common;
 use common::*;
 
 test_verify_one_file_with_options! {
-    #[test] test_basic ["new-mut-ref"] => verus_code! {
+    #[test] test_basic [] => verus_code! {
         fn test_no_update() {
             let mut u: u64 = 20;
             let u_ref: &mut u64 = &mut u;
@@ -79,7 +79,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_paren_ctors_with_mut_refs ["new-mut-ref"] => verus_code! {
+    #[test] test_paren_ctors_with_mut_refs [] => verus_code! {
         struct Pair<A, B>(A, B);
 
         fn test_mut_ref_in_pair() {
@@ -98,7 +98,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_spec_functions_ok ["new-mut-ref"] => verus_code! {
+    #[test] test_spec_functions_ok [] => verus_code! {
         spec fn test<T>(x: &mut T) -> T {
             mut_ref_current(x)
         }
@@ -121,7 +121,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_mut_ref_future_proph ["new-mut-ref"] => verus_code! {
+    #[test] test_mut_ref_future_proph [] => verus_code! {
         spec fn test<T>(x: &mut T) -> T {
             mut_ref_future(x)
         }
@@ -129,7 +129,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_fin_proph ["new-mut-ref"] => verus_code! {
+    #[test] test_fin_proph [] => verus_code! {
         spec fn test<T>(x: &mut T) -> T {
             *final(x)
         }
@@ -137,7 +137,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_resolved_proph ["new-mut-ref"] => verus_code! {
+    #[test] test_resolved_proph [] => verus_code! {
         spec fn test<T>(x: &mut T) -> bool {
             has_resolved(x)
         }
@@ -145,7 +145,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_after_borrow_proph ["new-mut-ref"] => verus_code! {
+    #[test] test_after_borrow_proph [] => verus_code! {
         fn test() {
             let mut x = 0;
             let x_ref = &mut x;
@@ -158,7 +158,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_after_borrow_ok ["new-mut-ref"] => verus_code! {
+    #[test] test_after_borrow_ok [] => verus_code! {
         fn test() {
             let mut x = 0;
             let x_ref = &mut x;
@@ -171,7 +171,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_after_borrow_bad_expr ["new-mut-ref"] => verus_code! {
+    #[test] test_after_borrow_bad_expr [] => verus_code! {
         fn test() {
             let mut x = 0;
             let x_ref = &mut x;
@@ -184,7 +184,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] mut_ref_not_extensional ["new-mut-ref"] => verus_code! {
+    #[test] mut_ref_not_extensional [] => verus_code! {
         // &mut T doesn't have extensionality because that would cause (==) to be
         // a prophetic operator
 
@@ -209,7 +209,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_resolved_axioms ["new-mut-ref"] => verus_code! {
+    #[test] test_resolved_axioms [] => verus_code! {
         use vstd::prelude::*;
 
         proof fn test_pair<A, B>(pair: (A, B)) {
@@ -275,7 +275,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_resolve_axioms_in_context ["new-mut-ref"] => verus_code! {
+    #[test] test_resolve_axioms_in_context [] => verus_code! {
         use vstd::prelude::*;
 
         fn resolve<T>(t: T)
@@ -332,7 +332,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_nested_mut_refs ["new-mut-ref"] => verus_code! {
+    #[test] test_nested_mut_refs [] => verus_code! {
         fn test_nested() {
             let mut x: u64 = 0;
             let mut y: u64 = 10;
@@ -432,7 +432,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_structs_and_boxes ["new-mut-ref"] => verus_code! {
+    #[test] test_structs_and_boxes [] => verus_code! {
         use vstd::prelude::*;
 
         struct X<'a> {
@@ -556,7 +556,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_structs_and_boxes_double_nested ["new-mut-ref"] => verus_code! {
+    #[test] test_structs_and_boxes_double_nested [] => verus_code! {
         use vstd::prelude::*;
 
         struct X<'a, 'b> {
@@ -571,7 +571,7 @@ test_verify_one_file_with_options! {
             };
             assert(has_resolved(x.a.1.0)); // TODO(new_mut_ref): (triggers) should be automatic
             assert(has_resolved(pair_ref_pair.1));
-            assert(pair === (0, 1));
+            assert(pair == (0, 1));
         }
 
         fn test2() {
@@ -583,7 +583,7 @@ test_verify_one_file_with_options! {
             x.a.1.0.1.1 = 19;
             assert(has_resolved(x.a.1.0));
             assert(has_resolved(pair_ref_pair.1));
-            assert(pair === (0, 19));
+            assert(pair == (0, 19));
         }
 
         fn test3() {
@@ -604,8 +604,8 @@ test_verify_one_file_with_options! {
             assert(has_resolved(pair_ref_pair.1));
             assert(has_resolved(pair2_ref_pair.1));
 
-            assert(pair === (0, 1));
-            assert(pair2 === (2, 19));
+            assert(pair == (0, 1));
+            assert(pair2 == (2, 19));
         }
 
         fn test4() {
@@ -626,10 +626,10 @@ test_verify_one_file_with_options! {
             assert(has_resolved(pair_ref_pair.1));
             assert(has_resolved(pair2_ref_pair.1));
 
-            assert(pair === (0, 1));
-            assert(pair2 === (2, 3));
-            assert(pair_ref_pair.0 === 3);
-            assert(pair2_ref_pair.0 === 19);
+            assert(pair == (0, 1));
+            assert(pair2 == (2, 3));
+            assert(pair_ref_pair.0 == 3);
+            assert(pair2_ref_pair.0 == 19);
         }
 
         fn test5() {
@@ -653,10 +653,10 @@ test_verify_one_file_with_options! {
             assert(has_resolved(pair_ref_pair.1));
             assert(has_resolved(pair2_ref_pair.1));
 
-            assert(pair === (23, 1));
-            assert(pair2 === (24, 3));
-            assert(pair_ref_pair.0 === 3);
-            assert(pair2_ref_pair.0 === 19);
+            assert(pair == (23, 1));
+            assert(pair2 == (24, 3));
+            assert(pair_ref_pair.0 == 3);
+            assert(pair2_ref_pair.0 == 19);
         }
 
         fn test_fails() {
@@ -667,7 +667,7 @@ test_verify_one_file_with_options! {
             };
             assert(has_resolved(x.a.1.0)); // TODO(new_mut_ref): (triggers) should be automatic
             assert(has_resolved(pair_ref_pair.1));
-            assert(pair === (0, 1));
+            assert(pair == (0, 1));
             assert(false); // FAILS
         }
 
@@ -680,7 +680,7 @@ test_verify_one_file_with_options! {
             x.a.1.0.1.1 = 19;
             assert(has_resolved(x.a.1.0));
             assert(has_resolved(pair_ref_pair.1));
-            assert(pair === (0, 19));
+            assert(pair == (0, 19));
             assert(false); // FAILS
         }
 
@@ -702,8 +702,8 @@ test_verify_one_file_with_options! {
             assert(has_resolved(pair_ref_pair.1));
             assert(has_resolved(pair2_ref_pair.1));
 
-            assert(pair === (0, 1));
-            assert(pair2 === (2, 19));
+            assert(pair == (0, 1));
+            assert(pair2 == (2, 19));
             assert(false); // FAILS
         }
 
@@ -725,10 +725,10 @@ test_verify_one_file_with_options! {
             assert(has_resolved(pair_ref_pair.1));
             assert(has_resolved(pair2_ref_pair.1));
 
-            assert(pair === (0, 1));
-            assert(pair2 === (2, 3));
-            assert(pair_ref_pair.0 === 3);
-            assert(pair2_ref_pair.0 === 19);
+            assert(pair == (0, 1));
+            assert(pair2 == (2, 3));
+            assert(pair_ref_pair.0 == 3);
+            assert(pair2_ref_pair.0 == 19);
             assert(false); // FAILS
         }
 
@@ -753,17 +753,17 @@ test_verify_one_file_with_options! {
             assert(has_resolved(pair_ref_pair.1));
             assert(has_resolved(pair2_ref_pair.1));
 
-            assert(pair === (23, 1));
-            assert(pair2 === (24, 3));
-            assert(pair_ref_pair.0 === 3);
-            assert(pair2_ref_pair.0 === 19);
+            assert(pair == (23, 1));
+            assert(pair2 == (24, 3));
+            assert(pair_ref_pair.0 == 3);
+            assert(pair2_ref_pair.0 == 19);
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 5)
 }
 
 test_verify_one_file_with_options! {
-    #[test] control_flow_match_on_never ["new-mut-ref"] => verus_code! {
+    #[test] control_flow_match_on_never [] => verus_code! {
         #[allow(unreachable_code)]
         fn test(x: !) {
             let mut y = 0;
@@ -779,7 +779,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] control_flow_conditional ["new-mut-ref"] => verus_code! {
+    #[test] control_flow_conditional [] => verus_code! {
         fn test(b: bool) {
             let mut x: u64 = 0;
             let mut x_ref = &mut x;
@@ -790,7 +790,7 @@ test_verify_one_file_with_options! {
                 *x_ref = 30;
             }
 
-            assert(x === (if b { 20 } else { 30 }));
+            assert(x == (if b { 20u64 } else { 30 }));
         }
 
         fn test_fails(b: bool) {
@@ -895,7 +895,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] control_flow_conditional_2 ["new-mut-ref"] => verus_code! {
+    #[test] control_flow_conditional_2 [] => verus_code! {
         fn test(b: bool) {
             let mut x: u64 = 0;
             let mut x_ref = &mut x;
@@ -947,7 +947,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] control_flow_conditional_with_pair ["new-mut-ref"] => verus_code! {
+    #[test] control_flow_conditional_with_pair [] => verus_code! {
         fn test(b: bool) {
             let mut x: u64 = 0;
             let mut y: u64 = 0;
@@ -959,8 +959,8 @@ test_verify_one_file_with_options! {
                 *x_ref.1 = 30;
             }
 
-            assert(x === (if b { 20 } else { 0 }));
-            assert(y === (if b { 0 } else { 30 }));
+            assert(x == (if b { 20u64 } else { 0 }));
+            assert(y == (if b { 0u64 } else { 30 }));
         }
 
         fn test_fails(b: bool) {
@@ -978,8 +978,8 @@ test_verify_one_file_with_options! {
                 assert(has_resolved(x_ref.1));
             }
 
-            assert(x === (if b { 20 } else { 0 }));
-            assert(y === (if b { 0 } else { 30 }));
+            assert(x == (if b { 20u64 } else { 0 }));
+            assert(y == (if b { 0u64 } else { 30 }));
             assert(b); // FAILS
         }
 
@@ -998,15 +998,15 @@ test_verify_one_file_with_options! {
                 assert(has_resolved(x_ref.1));
             }
 
-            assert(x === (if b { 20 } else { 0 }));
-            assert(y === (if b { 0 } else { 30 }));
+            assert(x == (if b { 20u64 } else { 0 }));
+            assert(y == (if b { 0u64 } else { 30 }));
             assert(!b); // FAILS
         }
     } => Err(err) => assert_fails(err, 2)
 }
 
 test_verify_one_file_with_options! {
-    #[test] control_flow_bin_ops_short_circuiting ["new-mut-ref"] => verus_code! {
+    #[test] control_flow_bin_ops_short_circuiting [] => verus_code! {
         fn test_and_1(arg1: u64, arg2: u64) {
             let mut x = 0;
             let mut y = 0;
@@ -1127,7 +1127,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] control_flow_bin_ops_short_circuiting2 ["new-mut-ref"] => verus_code! {
+    #[test] control_flow_bin_ops_short_circuiting2 [] => verus_code! {
         fn test_and_1(arg1: u64, arg2: u64) {
             let mut x = 0;
             let mut y = 0;
@@ -1279,7 +1279,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] uninitialized ["new-mut-ref"] => verus_code! {
+    #[test] uninitialized [] => verus_code! {
         fn test_uninit(b: bool) {
             let mut x = 0;
             let x_ref: &mut u64;
@@ -1315,7 +1315,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] control_flow_never ["new-mut-ref"] => verus_code! {
+    #[test] control_flow_never [] => verus_code! {
         fn some_bool() -> bool { true }
 
         #[verifier::exec_allows_no_decreases_clause]
@@ -1390,7 +1390,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] let_decl_partial_move ["new-mut-ref"] => verus_code! {
+    #[test] let_decl_partial_move [] => verus_code! {
         struct X<'a, 'b, 'c, 'd> {
             f1: (&'a mut u64, &'b mut u64),
             f2: (&'c mut u64, &'d mut u64),
@@ -1473,7 +1473,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] place_behind_mut_ref_doesnt_resolve ["new-mut-ref"] => verus_code! {
+    #[test] place_behind_mut_ref_doesnt_resolve [] => verus_code! {
         fn test1() {
             let mut x: u64 = 0;
 
@@ -1523,7 +1523,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] temporaries_with_semantically_trivial_ops ["new-mut-ref"] => verus_code! {
+    #[test] temporaries_with_semantically_trivial_ops [] => verus_code! {
         use std::sync::Arc;
         use std::rc::Rc;
         use vstd::prelude::*;
@@ -1614,7 +1614,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_params ["new-mut-ref"] => verus_code! {
+    #[test] test_params [] => verus_code! {
         fn test1(x: &mut u64)
             ensures mut_ref_current(x) == mut_ref_future(x)
         {
@@ -1650,7 +1650,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_params_with_reborrow ["new-mut-ref"] => verus_code! {
+    #[test] test_params_with_reborrow [] => verus_code! {
         fn test4_1(x: &mut (u64, u64)) -> (ret: &mut u64)
             ensures {
                 mut_ref_future(x).1 == mut_ref_current(x).1 &&
@@ -1696,7 +1696,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_param_nested ["new-mut-ref"] => verus_code! {
+    #[test] test_param_nested [] => verus_code! {
         fn test(x: &mut &mut u64) {
             assert(has_resolved(x));
         }
@@ -1713,7 +1713,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_param_nested_with_return_stmt ["new-mut-ref"] => verus_code! {
+    #[test] test_param_nested_with_return_stmt [] => verus_code! {
         fn some_bool() -> bool { true }
 
         fn test(x: &mut &mut u64) {
@@ -1741,7 +1741,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] auto_coerce_to_shr_borrow ["new-mut-ref"] => verus_code! {
+    #[test] auto_coerce_to_shr_borrow [] => verus_code! {
         fn foo(x: &u64) { }
 
         fn test_shr() {
@@ -1799,7 +1799,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_moves_via_let_decl ["new-mut-ref"] => verus_code! {
+    #[test] test_moves_via_let_decl [] => verus_code! {
         fn test(b: bool) {
             let mut x: u64 = 0;
             let mut y: u64 = 0;
@@ -1846,7 +1846,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_moves_via_fn_arg ["new-mut-ref"] => verus_code! {
+    #[test] test_moves_via_fn_arg [] => verus_code! {
         fn id<A>(a: A) -> A { a }
 
         fn test(b: bool) {
@@ -1895,7 +1895,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] copy_from_behind_mut_ref_doesnt_leave_anything_uninitialized ["new-mut-ref"] => verus_code! {
+    #[test] copy_from_behind_mut_ref_doesnt_leave_anything_uninitialized [] => verus_code! {
         fn id<A>(a: A) -> A { a }
 
         fn test() {
@@ -1923,7 +1923,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] two_phase_borrow_resolving ["new-mut-ref"] => verus_code! {
+    #[test] two_phase_borrow_resolving [] => verus_code! {
         struct X<'a> {
             x: u64,
             y: &'a mut u64,
@@ -2038,7 +2038,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] two_phase_borrow_basic ["new-mut-ref"] => verus_code! {
+    #[test] two_phase_borrow_basic [] => verus_code! {
         fn call_takes_mut_ref(a: &mut u64, x: u64)
             requires x < 50
             ensures mut_ref_future(a) == x + 1
@@ -2068,7 +2068,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] two_phase_lifetime_error ["new-mut-ref"] => verus_code! {
+    #[test] two_phase_lifetime_error [] => verus_code! {
         fn call_takes_mut_ref(a: &mut u64, x: u64) {
             *a = x + 1;
         }
@@ -2085,7 +2085,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] two_phase_lifetime_error_generic ["new-mut-ref"] => verus_code! {
+    #[test] two_phase_lifetime_error_generic [] => verus_code! {
         fn call_generic<T>(a: T, x: u64) {
         }
 
@@ -2099,7 +2099,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] two_phase_receiver_struct ["new-mut-ref"] => verus_code! {
+    #[test] two_phase_receiver_struct [] => verus_code! {
         struct X {
             a: u64,
             b: u64,
@@ -2189,7 +2189,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] two_phase_arrays_slices ["new-mut-ref"] => verus_code! {
+    #[test] two_phase_arrays_slices [] => verus_code! {
         use vstd::prelude::*;
 
         struct X {
@@ -2336,7 +2336,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] two_phase_vec ["new-mut-ref"] => verus_code! {
+    #[test] two_phase_vec [] => verus_code! {
         use vstd::prelude::*;
 
         struct X {
@@ -2365,7 +2365,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] two_phase_ctor ["new-mut-ref"] => verus_code! {
+    #[test] two_phase_ctor [] => verus_code! {
         struct Pair<A, B>(A, B);
 
         fn test1() {
@@ -2401,7 +2401,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] two_phase_tuple ["new-mut-ref"] => verus_code! {
+    #[test] two_phase_tuple [] => verus_code! {
         fn test1() {
             let mut a = 24;
             let mut a_ref = &mut a;
@@ -2419,7 +2419,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] two_phase_struct ["new-mut-ref"] => verus_code! {
+    #[test] two_phase_struct [] => verus_code! {
         struct Pair<'a> {
             a_ref: &'a mut u64,
             a: u64,
@@ -2435,7 +2435,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] two_phase_proof_code ["new-mut-ref"] => verus_code! {
+    #[test] two_phase_proof_code [] => verus_code! {
         proof fn set_to(tracked a: &mut Ghost<int>, tracked b: Ghost<int>)
             ensures *final(a) == b
         {
@@ -2460,7 +2460,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] struct_mut_ref_pair_immut_ref ["new-mut-ref"] => verus_code! {
+    #[test] struct_mut_ref_pair_immut_ref [] => verus_code! {
         struct BigStruct<'a, 'b>(&'a mut (u64, &'b (u64, u64)));
 
         fn test1() {
@@ -2477,7 +2477,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] calls_unwind_extra_cfg_edge ["new-mut-ref"] => verus_code! {
+    #[test] calls_unwind_extra_cfg_edge [] => verus_code! {
         fn call_might_unwind() { }
         fn call_no_unwind() no_unwind { }
 
@@ -2510,7 +2510,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] has_resolved_for_struct_with_drop_impl ["new-mut-ref"] => verus_code! {
+    #[test] has_resolved_for_struct_with_drop_impl [] => verus_code! {
         struct XNoDrop<'a> {
             b: &'a mut u64,
         }
@@ -2568,7 +2568,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] has_resolved_field_of_struct_with_drop_impl ["new-mut-ref"] => verus_code! {
+    #[test] has_resolved_field_of_struct_with_drop_impl [] => verus_code! {
         struct X {
             s: &'static mut u64,
         }
@@ -2590,7 +2590,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] assign_op_to_mut_ref ["new-mut-ref"] => verus_code! {
+    #[test] assign_op_to_mut_ref [] => verus_code! {
         fn test_add_assign(i: u64)
             requires i < 1000
         {
@@ -2675,7 +2675,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] ctor_with_update_tail ["new-mut-ref"] => verus_code! {
+    #[test] ctor_with_update_tail [] => verus_code! {
         tracked struct TTPair<A, B> {
             tracked a: A,
             tracked b: B,
@@ -2799,7 +2799,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] shr_bor_of_pair_of_mut_bor ["new-mut-ref"] => verus_code! {
+    #[test] shr_bor_of_pair_of_mut_bor [] => verus_code! {
         enum BigEnum<'a, 'b> {
             A(&'a (u64, &'b mut u64)),
         }
@@ -2817,7 +2817,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] fin_keyword ["new-mut-ref"] => verus_code! {
+    #[test] fin_keyword [] => verus_code! {
         fn foo(x: &mut u64) {
             assert(mut_ref_future(x) == *final(x));
         }
@@ -2825,7 +2825,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] fin_keyword2 ["new-mut-ref"] => verus_code! {
+    #[test] fin_keyword2 [] => verus_code! {
         fn foo(x: &mut bool) {
             assert(mut_ref_current(final(x)));
         }
@@ -2833,7 +2833,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] resolve_places_with_projection_types ["new-mut-ref"] => verus_code! {
+    #[test] resolve_places_with_projection_types [] => verus_code! {
         trait Tr {
             type AssocType;
         }
@@ -2867,7 +2867,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] place_that_doesnt_return ["new-mut-ref"] => verus_code! {
+    #[test] place_that_doesnt_return [] => verus_code! {
         use vstd::prelude::*;
 
         #[allow(unreachable_code)]
@@ -2933,7 +2933,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] compound_op_that_doesnt_return ["new-mut-ref"] => verus_code! {
+    #[test] compound_op_that_doesnt_return [] => verus_code! {
         #[allow(unreachable_code)]
         #[verifier::exec_allows_no_decreases_clause]
         fn test1(y: [&mut (u64, u64); 2]) {
@@ -2981,7 +2981,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] call_with_args_that_dont_return ["new-mut-ref"] => verus_code! {
+    #[test] call_with_args_that_dont_return [] => verus_code! {
         fn call(a: &mut u64, b: &mut u64, c: &mut u64) { }
 
         fn call_requires_false(a: &mut u64, b: &mut u64, c: &mut u64)
@@ -3050,7 +3050,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] ctor_with_args_that_dont_return ["new-mut-ref"] => verus_code! {
+    #[test] ctor_with_args_that_dont_return [] => verus_code! {
         struct Ctor<'a, 'b, 'c>(&'a mut u64, &'b mut u64, &'c mut u64);
 
         #[verifier::exec_allows_no_decreases_clause]
@@ -3115,7 +3115,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] mut_ref_with_implicit_box_deref ["new-mut-ref"] => verus_code! {
+    #[test] mut_ref_with_implicit_box_deref [] => verus_code! {
         use vstd::prelude::*;
 
         enum List {
@@ -3150,7 +3150,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] mut_ref_snapshot ["new-mut-ref"] => verus_code! {
+    #[test] mut_ref_snapshot [] => verus_code! {
         fn test() {
             let mut a = 0;
             let a_ref = &mut a;
@@ -3177,7 +3177,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] backwards_compat ["new-mut-ref"] => verus_code! {
+    #[test] backwards_compat [] => verus_code! {
         #[verifier::deprecated_postcondition_mut_ref_style(true)]
         fn test(a: &mut u8)
             requires *old(a) < 255,
@@ -3197,7 +3197,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] backwards_compat_unwrapped_param ["new-mut-ref"] => verus_code! {
+    #[test] backwards_compat_unwrapped_param [] => verus_code! {
         #[verifier::deprecated_postcondition_mut_ref_style(true)]
         fn test(Tracked(a): Tracked<&mut Ghost<u8>>)
             requires old(a)@ < 255,
@@ -3233,7 +3233,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] backwards_compat_fail ["new-mut-ref"] => verus_code! {
+    #[test] backwards_compat_fail [] => verus_code! {
         #[verifier::deprecated_postcondition_mut_ref_style(true)]
         fn test(a: &mut u8)
             requires *old(a) < 255,
@@ -3253,7 +3253,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] backwards_compat_fail2 ["new-mut-ref"] => verus_code! {
+    #[test] backwards_compat_fail2 [] => verus_code! {
         #[verifier::deprecated_postcondition_mut_ref_style(true)]
         fn test(a: &mut u8)
             requires *old(a) < 255,
@@ -3273,7 +3273,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] false_two_phase ["new-mut-ref"] => verus_code! {
+    #[test] false_two_phase [] => verus_code! {
         fn set_to(Tracked(a): Tracked<&mut Ghost<int>>, Tracked(b): Tracked<Ghost<int>>)
             ensures *final(a) == b
         {
@@ -3293,7 +3293,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] false_two_phase2 ["new-mut-ref"] => verus_code! {
+    #[test] false_two_phase2 [] => verus_code! {
         fn set_to(Tracked(a): Tracked<&mut Tracked<int>>, Tracked(b): Tracked<int>)
             ensures *final(a) == b
         {
@@ -3304,14 +3304,14 @@ test_verify_one_file_with_options! {
             let tracked mut x: Tracked<int> = Tracked(0);
             let tracked x_ref = &mut x;
             set_to(Tracked(x_ref), Tracked(x_ref.get() + 1));
-            assert(x == 1);
+            assert(*x == 1);
             assert(false);
         }
     } => Err(err) => assert_rust_error_msg(err, "cannot use `*x_ref` because it was mutably borrowed")
 }
 
 test_verify_one_file_with_options! {
-    #[test] overwrite_reborrowed_mut_ref ["new-mut-ref"] => verus_code! {
+    #[test] overwrite_reborrowed_mut_ref [] => verus_code! {
         fn overwrite() {
             let mut a = 0;
             let mut b = 0;
@@ -3350,7 +3350,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] overwrite_reborrowed_mut_ref_match_guard ["new-mut-ref"] => verus_code! {
+    #[test] overwrite_reborrowed_mut_ref_match_guard [] => verus_code! {
         enum Foo {
             Bar,
             Qux
@@ -3375,7 +3375,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] overwrite_in_slice_index_after_index_read ["new-mut-ref"] => verus_code! {
+    #[test] overwrite_in_slice_index_after_index_read [] => verus_code! {
         fn slice_test(slice1: &mut [[u64; 2]], slice2: &mut [[u64; 2]]) {
             let mut x = slice1;
             let j = x[0][({ x = slice2; 0 })];
@@ -3384,7 +3384,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] overwrite_in_slice_index_after_index_assign ["new-mut-ref"] => verus_code! {
+    #[test] overwrite_in_slice_index_after_index_assign [] => verus_code! {
         fn slice_test(slice1: &mut [[u64; 2]], slice2: &mut [[u64; 2]]) {
             let mut x = slice1;
             let j = x[0][({ x = slice2; 0 })];
@@ -3393,7 +3393,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] overwrite_in_slice_index_after_index_mut_ref ["new-mut-ref"] => verus_code! {
+    #[test] overwrite_in_slice_index_after_index_mut_ref [] => verus_code! {
         fn slice_test(slice1: &mut [[u64; 2]], slice2: &mut [[u64; 2]]) {
             let mut x = slice1;
             let j = &mut x[0][({ x = slice2; 0 })];
@@ -3402,7 +3402,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] overwrite_two_phase_borrow ["new-mut-ref"] => verus_code! {
+    #[test] overwrite_two_phase_borrow [] => verus_code! {
         fn set_to(a: &mut u64, b: u64)
             ensures *final(a) == b,
         {
@@ -3423,7 +3423,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] overwrite_two_phase_borrow2 ["new-mut-ref"] => verus_code! {
+    #[test] overwrite_two_phase_borrow2 [] => verus_code! {
         fn set_to(a: (&mut u64, u64), b: u64)
             ensures *final(a.0) == b,
         {
@@ -3444,7 +3444,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] overwrite_two_phase_borrow3 ["new-mut-ref"] => verus_code! {
+    #[test] overwrite_two_phase_borrow3 [] => verus_code! {
         fn set_to(a: &mut u64, b: u64)
             ensures *final(a) == b,
         {
@@ -3465,7 +3465,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] overwrite_two_phase_borrow4 ["new-mut-ref"] => verus_code! {
+    #[test] overwrite_two_phase_borrow4 [] => verus_code! {
         fn set_to(a: &mut u64, b: u64)
             ensures *final(a) == b,
         {
@@ -3486,7 +3486,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] overwrite_two_phase_borrow5 ["new-mut-ref"] => verus_code! {
+    #[test] overwrite_two_phase_borrow5 [] => verus_code! {
         fn set_to(a: &mut u64, b: u64)
             ensures *final(a) == b,
         {
@@ -3522,7 +3522,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] overwrite_two_phase_borrow6 ["new-mut-ref"] => verus_code! {
+    #[test] overwrite_two_phase_borrow6 [] => verus_code! {
         fn set_to(a: &mut u64, b: u64)
             ensures *final(a) == b,
         {
@@ -3543,7 +3543,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] overwrite_two_phase_borrow7 ["new-mut-ref"] => verus_code! {
+    #[test] overwrite_two_phase_borrow7 [] => verus_code! {
         fn set_to(a: &mut u64, b: u64)
             ensures *final(a) == b,
         {
@@ -3565,7 +3565,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] overwrite_two_phase_borrow8 ["new-mut-ref"] => verus_code! {
+    #[test] overwrite_two_phase_borrow8 [] => verus_code! {
         fn set_to(a: &mut u64, b: u64)
             ensures *final(a) == b,
         {
@@ -3587,7 +3587,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] overwrite_two_phase_borrow9 ["new-mut-ref"] => verus_code! {
+    #[test] overwrite_two_phase_borrow9 [] => verus_code! {
         fn set_to(a: &mut u64, b: u64)
             ensures *final(a) == b,
         {
@@ -3609,7 +3609,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] overwrite_two_phase_borrow10 ["new-mut-ref"] => verus_code! {
+    #[test] overwrite_two_phase_borrow10 [] => verus_code! {
         use vstd::prelude::*;
 
         fn set_to(a: &mut u64, b: u64)
@@ -3676,7 +3676,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] overwrite_two_phase_borrow11 ["new-mut-ref"] => verus_code! {
+    #[test] overwrite_two_phase_borrow11 [] => verus_code! {
         fn set_to(a: &mut u64, b: u64)
             ensures *final(a) == b,
         {
@@ -3698,7 +3698,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] overwrite_two_phase_borrow12 ["new-mut-ref"] => verus_code! {
+    #[test] overwrite_two_phase_borrow12 [] => verus_code! {
         fn set_to(a: &mut u64, b: u64)
             ensures *final(a) == b,
         {
@@ -3720,7 +3720,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] overwrite_two_phase_borrow13 ["new-mut-ref"] => verus_code! {
+    #[test] overwrite_two_phase_borrow13 [] => verus_code! {
         struct Ctor<'a>(&'a mut u64, u64);
 
         fn two_phase_test() {
@@ -3735,7 +3735,7 @@ test_verify_one_file_with_options! {
 
 // vec works differently than slice/array since it's a method call instead of a place expression
 test_verify_one_file_with_options! {
-    #[test] overwrite_vec_while_indexing ["new-mut-ref"] => verus_code! {
+    #[test] overwrite_vec_while_indexing [] => verus_code! {
         use vstd::prelude::*;
         fn vec_index_read() {
             let mut a: Vec<u64> = vec![0, 1];
@@ -3748,7 +3748,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] overwrite_vec_while_indexing2 ["new-mut-ref"] => verus_code! {
+    #[test] overwrite_vec_while_indexing2 [] => verus_code! {
         use vstd::prelude::*;
 
         // When x: &mut Vec<T>,
@@ -3763,7 +3763,7 @@ test_verify_one_file_with_options! {
 
             let mut x = &mut a;
             let j = x[({ x = &mut b; 0 })];
-            assert((*x)@ === seq![2, 3]);
+            assert((*x)@ == seq![2, 3]);
             assert(j == 0);
         }
 
@@ -3773,9 +3773,9 @@ test_verify_one_file_with_options! {
 
             let mut x = &mut a;
             x[({ x = &mut b; 0 })] = 100;
-            assert((*x)@ === seq![2, 3]);
-            assert(a@ === seq![100, 1]);
-            assert(b@ === seq![2, 3]);
+            assert((*x)@ == seq![2, 3]);
+            assert(a@ == seq![100, 1]);
+            assert(b@ == seq![2, 3]);
         }
 
         fn mut_ref_vec_index_mut_ref() {
@@ -3785,9 +3785,9 @@ test_verify_one_file_with_options! {
             let mut x = &mut a;
             let r = &mut x[({ x = &mut b; 0 })];
             *r = 100;
-            assert((*x)@ === seq![2, 3]);
-            assert(a@ === seq![100, 1]);
-            assert(b@ === seq![2, 3]);
+            assert((*x)@ == seq![2, 3]);
+            assert(a@ == seq![100, 1]);
+            assert(b@ == seq![2, 3]);
         }
 
         fn mut_ref_vec_index_read_fails() {
@@ -3796,7 +3796,7 @@ test_verify_one_file_with_options! {
 
             let mut x = &mut a;
             let j = x[({ x = &mut b; 0 })];
-            assert((*x)@ === seq![2, 3]);
+            assert((*x)@ == seq![2, 3]);
             assert(j == 0);
             assert(false); // FAILS
         }
@@ -3807,9 +3807,9 @@ test_verify_one_file_with_options! {
 
             let mut x = &mut a;
             x[({ x = &mut b; 0 })] = 100;
-            assert((*x)@ === seq![2, 3]);
-            assert(a@ === seq![100, 1]);
-            assert(b@ === seq![2, 3]);
+            assert((*x)@ == seq![2, 3]);
+            assert(a@ == seq![100, 1]);
+            assert(b@ == seq![2, 3]);
             assert(false); // FAILS
         }
 
@@ -3820,16 +3820,16 @@ test_verify_one_file_with_options! {
             let mut x = &mut a;
             let r = &mut x[({ x = &mut b; 0 })];
             *r = 100;
-            assert((*x)@ === seq![2, 3]);
-            assert(a@ === seq![100, 1]);
-            assert(b@ === seq![2, 3]);
+            assert((*x)@ == seq![2, 3]);
+            assert(a@ == seq![100, 1]);
+            assert(b@ == seq![2, 3]);
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 3)
 }
 
 test_verify_one_file_with_options! {
-    #[test] overwrite_vec_during_indexing3 ["new-mut-ref"] => verus_code! {
+    #[test] overwrite_vec_during_indexing3 [] => verus_code! {
         use vstd::prelude::*;
 
         fn mut_ref_vec_index_read() {
@@ -3839,7 +3839,7 @@ test_verify_one_file_with_options! {
             let mut x = &mut a;
             let j = x[({ x = &mut b; 0 })];
             x[0] = 200;
-            assert((*x)@ === seq![200, 3]);
+            assert((*x)@ == seq![200, 3]);
             assert(j == 0);
         }
 
@@ -3851,9 +3851,9 @@ test_verify_one_file_with_options! {
             x[({ x = &mut b; 0 })] = 100;
             x[0] = 200;
 
-            assert((*x)@ === seq![200, 3]);
-            assert(a@ === seq![100, 1]);
-            assert(b@ === seq![200, 3]);
+            assert((*x)@ == seq![200, 3]);
+            assert(a@ == seq![100, 1]);
+            assert(b@ == seq![200, 3]);
         }
 
         fn mut_ref_vec_index_mut_ref() {
@@ -3864,9 +3864,9 @@ test_verify_one_file_with_options! {
             let r = &mut x[({ x = &mut b; 0 })];
             *r = 100;
             x[0] = 200;
-            assert((*x)@ === seq![200, 3]);
-            assert(a@ === seq![100, 1]);
-            assert(b@ === seq![200, 3]);
+            assert((*x)@ == seq![200, 3]);
+            assert(a@ == seq![100, 1]);
+            assert(b@ == seq![200, 3]);
         }
 
         fn mut_ref_vec_index_read_fails() {
@@ -3876,7 +3876,7 @@ test_verify_one_file_with_options! {
             let mut x = &mut a;
             let j = x[({ x = &mut b; 0 })];
             x[0] = 200;
-            assert((*x)@ === seq![200, 3]);
+            assert((*x)@ == seq![200, 3]);
             assert(j == 0);
             assert(false); // FAILS
         }
@@ -3889,9 +3889,9 @@ test_verify_one_file_with_options! {
             x[({ x = &mut b; 0 })] = 100;
             x[0] = 200;
 
-            assert((*x)@ === seq![200, 3]);
-            assert(a@ === seq![100, 1]);
-            assert(b@ === seq![200, 3]);
+            assert((*x)@ == seq![200, 3]);
+            assert(a@ == seq![100, 1]);
+            assert(b@ == seq![200, 3]);
             assert(false); // FAILS
         }
 
@@ -3903,16 +3903,16 @@ test_verify_one_file_with_options! {
             let r = &mut x[({ x = &mut b; 0 })];
             *r = 100;
             x[0] = 200;
-            assert((*x)@ === seq![200, 3]);
-            assert(a@ === seq![100, 1]);
-            assert(b@ === seq![200, 3]);
+            assert((*x)@ == seq![200, 3]);
+            assert(a@ == seq![100, 1]);
+            assert(b@ == seq![200, 3]);
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 3)
 }
 
 test_verify_one_file_with_options! {
-    #[test] overwrite_during_indexing ["new-mut-ref"] => verus_code! {
+    #[test] overwrite_during_indexing [] => verus_code! {
         use vstd::prelude::*;
 
         // I was kinda surprised most of these are accepted by rustc,
@@ -3935,8 +3935,8 @@ test_verify_one_file_with_options! {
             let b: [u64; 2] = [2, 3];
 
             a[({ a = b; 0 })] = 100;
-            assert(a === [100, 3]);
-            assert(b === [2, 3]);
+            assert(a == [100, 3]);
+            assert(b == [2, 3]);
         }
 
         fn array_index_mut_ref() {
@@ -3945,8 +3945,8 @@ test_verify_one_file_with_options! {
 
             let r = &mut a[({ a = b; 0 })];
             *r = 100;
-            assert(a === [100, 3]);
-            assert(b === [2, 3]);
+            assert(a == [100, 3]);
+            assert(b == [2, 3]);
         }
 
         fn mut_ref_array_index_read() {
@@ -3955,7 +3955,7 @@ test_verify_one_file_with_options! {
 
             let mut x = &mut a;
             let j = x[({ x = &mut b; 0 })];
-            assert(j === 2);
+            assert(j == 2);
         }
 
         fn mut_ref_array_index_assign() {
@@ -3964,8 +3964,8 @@ test_verify_one_file_with_options! {
 
             let mut x = &mut a;
             x[({ x = &mut b; 0 })] = 100;
-            assert(a === [0, 1]);
-            assert(b === [100, 3]);
+            assert(a == [0, 1]);
+            assert(b == [100, 3]);
         }
 
         fn mut_ref_array_index_mut_ref() {
@@ -3975,8 +3975,8 @@ test_verify_one_file_with_options! {
             let mut x = &mut a;
             let r = &mut x[({ x = &mut b; 0 })];
             *r = 100;
-            assert(a === [0, 1]);
-            assert(b === [100, 3]);
+            assert(a == [0, 1]);
+            assert(b == [100, 3]);
         }
 
         fn double_mut_ref_array_index_read() {
@@ -3987,7 +3987,7 @@ test_verify_one_file_with_options! {
 
             let mut x: &mut &mut [u64; 2] = &mut a_ref;
             let j = x[({ x = &mut b_ref; 0 })];
-            assert(j === 2);
+            assert(j == 2);
         }
 
         fn double_mut_ref_array_index_assign() {
@@ -3998,8 +3998,8 @@ test_verify_one_file_with_options! {
 
             let mut x: &mut &mut [u64; 2] = &mut a_ref;
             x[({ x = &mut b_ref; 0 })] = 100;
-            assert(a === [0, 1]);
-            assert(b === [100, 3]);
+            assert(a == [0, 1]);
+            assert(b == [100, 3]);
         }
 
         fn double_mut_ref_array_index_mut_ref() {
@@ -4011,8 +4011,8 @@ test_verify_one_file_with_options! {
             let mut x: &mut &mut [u64; 2] = &mut a_ref;
             let r = &mut x[({ x = &mut b_ref; 0 })];
             *r = 100;
-            assert(a === [0, 1]);
-            assert(b === [100, 3]);
+            assert(a == [0, 1]);
+            assert(b == [100, 3]);
         }
 
         fn mut_ref_array2_index_read() {
@@ -4021,7 +4021,7 @@ test_verify_one_file_with_options! {
 
             let mut x = &mut a;
             let j = x[1][({ x = &mut b; 0 })];
-            assert(j === 12);
+            assert(j == 12);
         }
 
         fn mut_ref_array2_index_assign() {
@@ -4030,8 +4030,8 @@ test_verify_one_file_with_options! {
 
             let mut x = &mut a;
             x[1][({ x = &mut b; 0 })] = 100;
-            assert(a@[0] === [0, 1] && a[1] === [10, 11]);
-            assert(b@[0] === [2, 3] && b[1] === [100, 13]);
+            assert(a@[0] == [0, 1] && a[1] == [10, 11]);
+            assert(b@[0] == [2, 3] && b[1] == [100, 13]);
         }
 
         fn mut_ref_array2_index_mut_ref() {
@@ -4041,8 +4041,8 @@ test_verify_one_file_with_options! {
             let mut x = &mut a;
             let r = &mut x[1][({ x = &mut b; 0 })];
             *r = 100;
-            assert(a@[0] === [0, 1] && a[1] === [10, 11]);
-            assert(b@[0] === [2, 3] && b[1] === [100, 13]);
+            assert(a@[0] == [0, 1] && a[1] == [10, 11]);
+            assert(b@[0] == [2, 3] && b[1] == [100, 13]);
         }
 
         fn mut_ref_slice_index_read() {
@@ -4054,7 +4054,7 @@ test_verify_one_file_with_options! {
 
             let mut x = slice1;
             let j = x[({ x = slice2; 0 })];
-            assert(j === 2);
+            assert(j == 2);
         }
 
         fn mut_ref_slice_index_assign() {
@@ -4066,8 +4066,8 @@ test_verify_one_file_with_options! {
 
             let mut x = slice1;
             x[({ x = slice2; 0 })] = 100;
-            assert(a === [0, 1]);
-            assert(b === [100, 3]);
+            assert(a == [0, 1]);
+            assert(b == [100, 3]);
         }
 
         fn mut_ref_slice_index_mut_ref() {
@@ -4079,14 +4079,14 @@ test_verify_one_file_with_options! {
 
             let mut x = slice1;
             x[({ x = slice2; 0 })] = 100;
-            assert(a === [0, 1]);
-            assert(b === [100, 3]);
+            assert(a == [0, 1]);
+            assert(b == [100, 3]);
         }
     } => Ok(())
 }
 
 test_verify_one_file_with_options! {
-    #[test] overwrite_during_indexing_fails ["new-mut-ref"] => verus_code! {
+    #[test] overwrite_during_indexing_fails [] => verus_code! {
         use vstd::prelude::*;
 
         fn array_index_read() {
@@ -4103,8 +4103,8 @@ test_verify_one_file_with_options! {
             let b: [u64; 2] = [2, 3];
 
             a[({ a = b; 0 })] = 100;
-            assert(a === [100, 3]);
-            assert(b === [2, 3]);
+            assert(a == [100, 3]);
+            assert(b == [2, 3]);
             assert(false); // FAILS
         }
 
@@ -4114,8 +4114,8 @@ test_verify_one_file_with_options! {
 
             let r = &mut a[({ a = b; 0 })];
             *r = 100;
-            assert(a === [100, 3]);
-            assert(b === [2, 3]);
+            assert(a == [100, 3]);
+            assert(b == [2, 3]);
             assert(false); // FAILS
         }
 
@@ -4125,7 +4125,7 @@ test_verify_one_file_with_options! {
 
             let mut x = &mut a;
             let j = x[({ x = &mut b; 0 })];
-            assert(j === 2);
+            assert(j == 2);
             assert(false); // FAILS
         }
 
@@ -4135,8 +4135,8 @@ test_verify_one_file_with_options! {
 
             let mut x = &mut a;
             x[({ x = &mut b; 0 })] = 100;
-            assert(a === [0, 1]);
-            assert(b === [100, 3]);
+            assert(a == [0, 1]);
+            assert(b == [100, 3]);
             assert(false); // FAILS
         }
 
@@ -4147,8 +4147,8 @@ test_verify_one_file_with_options! {
             let mut x = &mut a;
             let r = &mut x[({ x = &mut b; 0 })];
             *r = 100;
-            assert(a === [0, 1]);
-            assert(b === [100, 3]);
+            assert(a == [0, 1]);
+            assert(b == [100, 3]);
             assert(false); // FAILS
         }
 
@@ -4160,7 +4160,7 @@ test_verify_one_file_with_options! {
 
             let mut x: &mut &mut [u64; 2] = &mut a_ref;
             let j = x[({ x = &mut b_ref; 0 })];
-            assert(j === 2);
+            assert(j == 2);
             assert(false); // FAILS
         }
 
@@ -4172,8 +4172,8 @@ test_verify_one_file_with_options! {
 
             let mut x: &mut &mut [u64; 2] = &mut a_ref;
             x[({ x = &mut b_ref; 0 })] = 100;
-            assert(a === [0, 1]);
-            assert(b === [100, 3]);
+            assert(a == [0, 1]);
+            assert(b == [100, 3]);
             assert(false); // FAILS
         }
 
@@ -4186,8 +4186,8 @@ test_verify_one_file_with_options! {
             let mut x: &mut &mut [u64; 2] = &mut a_ref;
             let r = &mut x[({ x = &mut b_ref; 0 })];
             *r = 100;
-            assert(a === [0, 1]);
-            assert(b === [100, 3]);
+            assert(a == [0, 1]);
+            assert(b == [100, 3]);
             assert(false); // FAILS
         }
 
@@ -4197,7 +4197,7 @@ test_verify_one_file_with_options! {
 
             let mut x = &mut a;
             let j = x[1][({ x = &mut b; 0 })];
-            assert(j === 12);
+            assert(j == 12);
             assert(false); // FAILS
         }
 
@@ -4207,8 +4207,8 @@ test_verify_one_file_with_options! {
 
             let mut x = &mut a;
             x[1][({ x = &mut b; 0 })] = 100;
-            assert(a@[0] === [0, 1] && a[1] === [10, 11]);
-            assert(b@[0] === [2, 3] && b[1] === [100, 13]);
+            assert(a@[0] == [0, 1] && a[1] == [10, 11]);
+            assert(b@[0] == [2, 3] && b[1] == [100, 13]);
             assert(false); // FAILS
         }
 
@@ -4219,8 +4219,8 @@ test_verify_one_file_with_options! {
             let mut x = &mut a;
             let r = &mut x[1][({ x = &mut b; 0 })];
             *r = 100;
-            assert(a@[0] === [0, 1] && a[1] === [10, 11]);
-            assert(b@[0] === [2, 3] && b[1] === [100, 13]);
+            assert(a@[0] == [0, 1] && a[1] == [10, 11]);
+            assert(b@[0] == [2, 3] && b[1] == [100, 13]);
             assert(false); // FAILS
         }
 
@@ -4233,7 +4233,7 @@ test_verify_one_file_with_options! {
 
             let mut x = slice1;
             let j = x[({ x = slice2; 0 })];
-            assert(j === 2);
+            assert(j == 2);
             assert(false); // FAILS
         }
 
@@ -4246,8 +4246,8 @@ test_verify_one_file_with_options! {
 
             let mut x = slice1;
             x[({ x = slice2; 0 })] = 100;
-            assert(a === [0, 1]);
-            assert(b === [100, 3]);
+            assert(a == [0, 1]);
+            assert(b == [100, 3]);
             assert(false); // FAILS
         }
 
@@ -4260,15 +4260,15 @@ test_verify_one_file_with_options! {
 
             let mut x = slice1;
             x[({ x = slice2; 0 })] = 100;
-            assert(a === [0, 1]);
-            assert(b === [100, 3]);
+            assert(a == [0, 1]);
+            assert(b == [100, 3]);
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 15)
 }
 
 test_verify_one_file_with_options! {
-    #[test] overwrite_during_indexing2 ["new-mut-ref"] => verus_code! {
+    #[test] overwrite_during_indexing2 [] => verus_code! {
         use vstd::prelude::*;
         fn id<A>(a: A) -> (ret: A) ensures ret == a { a }
 
@@ -4324,7 +4324,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] overwrite_during_indexing2_fails ["new-mut-ref"] => verus_code! {
+    #[test] overwrite_during_indexing2_fails [] => verus_code! {
         use vstd::prelude::*;
         fn id<A>(a: A) -> (ret: A) ensures ret == a { a }
 
@@ -4385,7 +4385,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] overwrite_during_ctor_tail ["new-mut-ref"] => verus_code! {
+    #[test] overwrite_during_ctor_tail [] => verus_code! {
         use vstd::prelude::*;
         struct Foo {
             i: u64,
@@ -4451,7 +4451,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] overwrite_during_ctor_tail_fails ["new-mut-ref"] => verus_code! {
+    #[test] overwrite_during_ctor_tail_fails [] => verus_code! {
         use vstd::prelude::*;
         struct Foo {
             i: u64,
@@ -4522,7 +4522,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] overwrite_during_scrutinee ["new-mut-ref"] => verus_code! {
+    #[test] overwrite_during_scrutinee [] => verus_code! {
         use vstd::prelude::*;
         struct Foo {
             i: u64,
@@ -4537,7 +4537,7 @@ test_verify_one_file_with_options! {
             let j = match a[({ a = b; 0 })] {
                 Foo { i, j, k } => (i, j, k),
             };
-            assert(j === (6, 7, 8));
+            assert(j == (6, 7, 8));
         }
 
         fn mut_ref_array_index_read() {
@@ -4548,7 +4548,7 @@ test_verify_one_file_with_options! {
             let j = match x[({ x = &mut b; 0 })] {
                 Foo { i, j, k } => (i, j, k),
             };
-            assert(j === (6, 7, 8));
+            assert(j == (6, 7, 8));
         }
 
         fn double_mut_ref_array_index_read() {
@@ -4561,7 +4561,7 @@ test_verify_one_file_with_options! {
             let j = match x[({ x = &mut b_ref; 0 })] {
                 Foo { i, j, k } => (i, j, k),
             };
-            assert(j === (6, 7, 8));
+            assert(j == (6, 7, 8));
         }
 
         fn mut_ref_array2_index_read() {
@@ -4578,7 +4578,7 @@ test_verify_one_file_with_options! {
             let j = match x[1][({ x = &mut b; 0 })] {
                 Foo { i, j, k } => (i, j, k),
             };
-            assert(j === (206, 207, 208));
+            assert(j == (206, 207, 208));
         }
 
         fn mut_ref_slice_index_read() {
@@ -4592,13 +4592,13 @@ test_verify_one_file_with_options! {
             let j = match x[({ x = slice2; 0 })] {
                 Foo { i, j, k } => (i, j, k),
             };
-            assert(j === (6, 7, 8));
+            assert(j == (6, 7, 8));
         }
     } => Ok(())
 }
 
 test_verify_one_file_with_options! {
-    #[test] overwrite_during_scrutinee_fails ["new-mut-ref"] => verus_code! {
+    #[test] overwrite_during_scrutinee_fails [] => verus_code! {
         use vstd::prelude::*;
         struct Foo {
             i: u64,
@@ -4613,7 +4613,7 @@ test_verify_one_file_with_options! {
             let j = match a[({ a = b; 0 })] {
                 Foo { i, j, k } => (i, j, k),
             };
-            assert(j === (6, 7, 8));
+            assert(j == (6, 7, 8));
             assert(false); // FAILS
         }
 
@@ -4625,7 +4625,7 @@ test_verify_one_file_with_options! {
             let j = match x[({ x = &mut b; 0 })] {
                 Foo { i, j, k } => (i, j, k),
             };
-            assert(j === (6, 7, 8));
+            assert(j == (6, 7, 8));
             assert(false); // FAILS
         }
 
@@ -4639,7 +4639,7 @@ test_verify_one_file_with_options! {
             let j = match x[({ x = &mut b_ref; 0 })] {
                 Foo { i, j, k } => (i, j, k),
             };
-            assert(j === (6, 7, 8));
+            assert(j == (6, 7, 8));
             assert(false); // FAILS
         }
 
@@ -4657,7 +4657,7 @@ test_verify_one_file_with_options! {
             let j = match x[1][({ x = &mut b; 0 })] {
                 Foo { i, j, k } => (i, j, k),
             };
-            assert(j === (206, 207, 208));
+            assert(j == (206, 207, 208));
             assert(false); // FAILS
         }
 
@@ -4672,14 +4672,14 @@ test_verify_one_file_with_options! {
             let j = match x[({ x = slice2; 0 })] {
                 Foo { i, j, k } => (i, j, k),
             };
-            assert(j === (6, 7, 8));
+            assert(j == (6, 7, 8));
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 5)
 }
 
 test_verify_one_file_with_options! {
-    #[test] resolution_move_from_array_error ["new-mut-ref"] => verus_code! {
+    #[test] resolution_move_from_array_error [] => verus_code! {
         struct X { }
 
         fn id<A>(a: A) -> A { a }
@@ -4691,7 +4691,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] resolution_move_from_array_error2 ["new-mut-ref"] => verus_code! {
+    #[test] resolution_move_from_array_error2 [] => verus_code! {
         struct X { }
 
         fn test_basic_move<T>(t: [X; 2]) {
@@ -4701,7 +4701,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] resolution_move_from_array_error3 ["new-mut-ref"] => verus_code! {
+    #[test] resolution_move_from_array_error3 [] => verus_code! {
         struct X { }
 
         struct Pair<A, B> {
@@ -4716,7 +4716,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] not_extensional_equ ["new-mut-ref"] => verus_code! {
+    #[test] not_extensional_equ [] => verus_code! {
         proof fn x<T>(a: &mut T, b: &mut T) {
             assume(mut_ref_current(a) == mut_ref_current(b));
             assume(mut_ref_future(a) == mut_ref_future(b));
@@ -4729,7 +4729,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] final_is_not_decreases ["new-mut-ref"] => verus_code! {
+    #[test] final_is_not_decreases [] => verus_code! {
         use vstd::prelude::*;
 
         struct Rec {
@@ -4744,7 +4744,7 @@ test_verify_one_file_with_options! {
 
             // We're allowed to create this value with a "cycle"
             assert(r.g.is_some());
-            assert(r === *final(r.g.unwrap()@));
+            assert(r == *final(r.g.unwrap()@));
 
             // This is okay because 'final' doesn't imply 'decreases_to'.
             // In the VerusBelt model, final is only obtained by "looking up" the value
@@ -4880,7 +4880,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] proof_fn_returns_mut_ref ["new-mut-ref"] => verus_code! {
+    #[test] proof_fn_returns_mut_ref [] => verus_code! {
         pub tracked struct X { ghost g: int }
 
         pub tracked struct S {
@@ -4911,7 +4911,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] async_could_get_cancelled ["new-mut-ref"] => verus_code! {
+    #[test] async_could_get_cancelled [] => verus_code! {
         use vstd::prelude::*;
 
         async fn callee() {
@@ -4943,7 +4943,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_local_invariant ["new-mut-ref"] => verus_code! {
+    #[test] test_local_invariant [] => verus_code! {
         use vstd::prelude::*;
         use vstd::invariant::*;
 
@@ -4969,7 +4969,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_local_invariant2 ["new-mut-ref"] => verus_code! {
+    #[test] test_local_invariant2 [] => verus_code! {
         use vstd::prelude::*;
         use vstd::invariant::*;
 
@@ -4989,7 +4989,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_local_invariant_control_flow ["new-mut-ref"] => verus_code! {
+    #[test] test_local_invariant_control_flow [] => verus_code! {
         use vstd::prelude::*;
         use vstd::invariant::*;
 
@@ -5024,7 +5024,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] mut_ref_assign_in_rhs ["new-mut-ref"] => verus_code! {
+    #[test] mut_ref_assign_in_rhs [] => verus_code! {
         fn test1() {
             let mut a = 0;
             let mut a_ref = &mut a;
@@ -5087,7 +5087,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] compound_op_primitive_evaluation_order ["new-mut-ref"] => verus_code! {
+    #[test] compound_op_primitive_evaluation_order [] => verus_code! {
         use vstd::prelude::*;
 
         fn test_primitive() {
@@ -5129,7 +5129,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] compound_op_overloaded_evaluation_order ["new-mut-ref"] => verus_code! {
+    #[test] compound_op_overloaded_evaluation_order [] => verus_code! {
         // Future-proofing test; overloaded compound assignment isn't supported yet
         use vstd::prelude::*;
 
@@ -5188,7 +5188,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] coarse_grained ["new-mut-ref"] => verus_code! {
+    #[test] coarse_grained [] => verus_code! {
         // For this test, the analysis operates over subplaces r.0 and r.1
         // to prove the assert, we need the analysis that is based on explicit asserts
         fn test() {
@@ -5215,7 +5215,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] trivial_resolve ["new-mut-ref"] => verus_code! {
+    #[test] trivial_resolve [] => verus_code! {
         // Resolution of non-mut-ref types are skipped by default
         // unless you explicitly trigger them
         fn test() {
@@ -5231,7 +5231,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] typ_param_resolve ["new-mut-ref"] => verus_code! {
+    #[test] typ_param_resolve [] => verus_code! {
         // Params are always resolvable, even without an assert to trigger it
         fn test<T>(a: T) {
             assert(has_resolved(a));
@@ -5244,7 +5244,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] option_resolve ["new-mut-ref"] => verus_code! {
+    #[test] option_resolve [] => verus_code! {
         enum Option<V> { Some(V), None }
 
         // Params are always resolvable, even without an assert to trigger it
@@ -5264,4 +5264,16 @@ test_verify_one_file_with_options! {
             assert(has_resolved({a})); // FAILS
         }
     } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] mut_ref_in_return_stmt_unit_return [] => verus_code! {
+        pub fn mutates(Tracked(a): Tracked<&mut int>)
+        {
+        }
+
+        pub fn returns(Tracked(a): Tracked<&mut int>) {
+            return mutates(Tracked(a));
+        }
+    } => Ok(())
 }

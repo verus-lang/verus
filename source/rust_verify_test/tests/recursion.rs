@@ -1544,13 +1544,33 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] decrease_through_my_map verus_code! {
+    #[test] decrease_through_my_map_map verus_code! {
         // Err on the side of caution; see https://github.com/FStarLang/FStar/pull/2954
         use vstd::prelude::*;
 
         #[verifier::reject_recursive_types(A)]
         #[verifier::accept_recursive_types(B)]
         struct MyMap<A, B>(Map<A, B>);
+        struct S {
+            x: MyMap<int, Box<S>>,
+        }
+
+        spec fn f(s: S) -> int
+            decreases s
+        {
+            if s.x.0.dom().contains(3) { f(*s.x.0[3]) } else { 0 }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] decrease_through_my_map_imap verus_code! {
+        // Err on the side of caution; see https://github.com/FStarLang/FStar/pull/2954
+        use vstd::prelude::*;
+
+        #[verifier::reject_recursive_types(A)]
+        #[verifier::accept_recursive_types(B)]
+        struct MyMap<A, B>(IMap<A, B>);
         struct S {
             x: MyMap<int, Box<S>>,
         }

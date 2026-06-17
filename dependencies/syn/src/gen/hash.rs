@@ -3,7 +3,9 @@
 
 #[cfg(any(feature = "derive", feature = "full"))]
 use crate::tt::TokenStreamHelper;
-use std::hash::{Hash, Hasher};
+#[cfg(feature = "extra-traits")]
+use alloc::string::ToString;
+use core::hash::{Hash, Hasher};
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Hash for crate::Abi {
@@ -986,7 +988,9 @@ impl Hash for crate::ExprForLoop {
         self.pat.hash(state);
         self.expr_name.hash(state);
         self.expr.hash(state);
+        self.invariant_except_break.hash(state);
         self.invariant.hash(state);
+        self.ensures.hash(state);
         self.decreases.hash(state);
         self.body.hash(state);
     }
@@ -2141,6 +2145,7 @@ impl Hash for crate::ItemImpl {
         self.attrs.hash(state);
         self.defaultness.hash(state);
         self.unsafety.hash(state);
+        self.constness.hash(state);
         self.generics.hash(state);
         self.trait_.hash(state);
         self.self_ty.hash(state);
@@ -2221,6 +2226,7 @@ impl Hash for crate::ItemTrait {
     {
         self.attrs.hash(state);
         self.vis.hash(state);
+        self.constness.hash(state);
         self.unsafety.hash(state);
         self.auto_token.hash(state);
         self.restriction.hash(state);
@@ -3842,6 +3848,7 @@ impl Hash for crate::WithSpecOnExpr {
         self.inputs.hash(state);
         self.outputs.hash(state);
         self.follows.hash(state);
+        self.erased_fields.hash(state);
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]

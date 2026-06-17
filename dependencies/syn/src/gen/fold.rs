@@ -7,6 +7,10 @@
     clippy::needless_match,
     clippy::needless_pass_by_ref_mut,
 )]
+#[cfg(any(feature = "derive", feature = "full"))]
+use alloc::boxed::Box;
+#[cfg(any(feature = "derive", feature = "full"))]
+use alloc::vec::Vec;
 #[cfg(feature = "full")]
 macro_rules! full {
     ($e:expr) => {
@@ -2132,7 +2136,10 @@ where
         in_token: node.in_token,
         expr_name: (node.expr_name).map(|it| Box::new((f.fold_ident((*it).0), (*it).1))),
         expr: Box::new(f.fold_expr(*node.expr)),
+        invariant_except_break: (node.invariant_except_break)
+            .map(|it| f.fold_invariant_except_break(it)),
         invariant: (node.invariant).map(|it| f.fold_invariant(it)),
+        ensures: (node.ensures).map(|it| f.fold_ensures(it)),
         decreases: (node.decreases).map(|it| f.fold_decreases(it)),
         body: f.fold_block(node.body),
     }
@@ -3350,6 +3357,7 @@ where
         attrs: f.fold_attributes(node.attrs),
         defaultness: node.defaultness,
         unsafety: node.unsafety,
+        constness: node.constness,
         impl_token: node.impl_token,
         generics: f.fold_generics(node.generics),
         trait_: (node.trait_).map(|it| ((it).0, f.fold_path((it).1), (it).2)),
@@ -3436,6 +3444,7 @@ where
     crate::ItemTrait {
         attrs: f.fold_attributes(node.attrs),
         vis: f.fold_visibility(node.vis),
+        constness: node.constness,
         unsafety: node.unsafety,
         auto_token: node.auto_token,
         restriction: (node.restriction).map(|it| f.fold_impl_restriction(it)),
@@ -5117,6 +5126,11 @@ where
         inputs: crate::punctuated::fold(node.inputs, f, F::fold_expr),
         outputs: (node.outputs).map(|it| ((it).0, full!(f.fold_pat((it).1)))),
         follows: (node.follows).map(|it| ((it).0, full!(f.fold_pat((it).1)))),
+        erased_fields: crate::punctuated::fold(
+            node.erased_fields,
+            f,
+            F::fold_field_value,
+        ),
     }
 }
 pub fn fold_with_spec_on_fn<F>(

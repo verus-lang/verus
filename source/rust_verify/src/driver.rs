@@ -115,6 +115,7 @@ This would avoid the complex interleaving above and avoid needing to use lifetim
 for all functions (it would only be needed for functions with tracked data in proof code).
 */
 struct CompilerCallbacksEraseMacro {
+    pub do_compile: bool,
     pub override_stability: bool,
 }
 
@@ -136,6 +137,18 @@ impl rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
             });
         }
     }
+
+    fn after_analysis<'tcx>(
+        &mut self,
+        _compiler: &rustc_interface::interface::Compiler,
+        _tcx: TyCtxt<'tcx>,
+    ) -> rustc_driver::Compilation {
+        if self.do_compile {
+            rustc_driver::Compilation::Continue
+        } else {
+            rustc_driver::Compilation::Stop
+        }
+    }
 }
 
 /// Captures the verification and compilation time
@@ -153,9 +166,11 @@ pub struct Stats {
 
 pub(crate) fn run_with_erase_macro_compile(
     mut rustc_args: Vec<String>,
+    do_compile: bool,
     vstd: Vstd,
 ) -> Result<(), ()> {
     let mut callbacks = CompilerCallbacksEraseMacro {
+        do_compile,
         override_stability: matches!(vstd, Vstd::IsCore | Vstd::ImportedViaCore),
     };
     rustc_args.extend(["--cfg", "verus_only", "--cfg", "verus_keep_ghost"].map(|s| s.to_string()));
@@ -281,6 +296,7 @@ pub fn run(
         tc_end_time: None,
         verus_externs,
         spans: None,
+        unresolved_import_deps: std::collections::HashSet::new(),
     };
     let status = run_compiler(rustc_args_verify.clone(), true, false, &mut verifier_callbacks);
     let VerifierCallbacksEraseMacro {
@@ -319,7 +335,8 @@ pub fn run(
         if !verifier.compile && (verifier.args.no_erasure_check || verifier.args.no_lifetime) {
             Ok(())
         } else {
-            run_with_erase_macro_compile(rustc_args, verifier.args.vstd)
+            let do_compile = verifier.compile || verifier.via_cargo_args.is_some();
+            run_with_erase_macro_compile(rustc_args, do_compile, verifier.args.vstd)
         };
 
     let time2 = Instant::now();
@@ -346,7 +363,6 @@ fn stable_attr(span: Span) -> Attribute {
             level: StabilityLevel::Unstable {
                 reason: UnstableReason::Default,
                 issue: None,
-                is_soft: false,
                 implied_by: None,
                 old_name: None,
             },

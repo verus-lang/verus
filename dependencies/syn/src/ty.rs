@@ -10,6 +10,8 @@ use crate::path::{Path, QSelf};
 use crate::punctuated::Punctuated;
 use crate::token;
 use crate::verus::{TypeFnProof, TypeFnSpec};
+use alloc::boxed::Box;
+use alloc::vec::Vec;
 use proc_macro2::TokenStream;
 
 ast_enum_of_structs! {
@@ -48,7 +50,7 @@ ast_enum_of_structs! {
         /// A parenthesized type equivalent to the inner type.
         Paren(TypeParen),
 
-        /// A path like `std::slice::Iter`, optionally qualified with a
+        /// A path like `core::slice::Iter`, optionally qualified with a
         /// self-type as in `<Vec<T> as SomeTrait>::Associated`.
         Path(TypePath),
 
@@ -174,7 +176,7 @@ ast_struct! {
 }
 
 ast_struct! {
-    /// A path like `std::slice::Iter`, optionally qualified with a
+    /// A path like `core::slice::Iter`, optionally qualified with a
     /// self-type as in `<Vec<T> as SomeTrait>::Associated`.
     #[cfg_attr(docsrs, doc(cfg(any(feature = "full", feature = "derive"))))]
     pub struct TypePath {
@@ -296,6 +298,8 @@ pub(crate) mod parsing {
         TypeReference, TypeSlice, TypeTraitObject, TypeTuple,
     };
     use crate::verbatim;
+    use alloc::boxed::Box;
+    use alloc::vec::Vec;
     use proc_macro2::Span;
 
     #[cfg_attr(docsrs, doc(cfg(feature = "parsing")))]

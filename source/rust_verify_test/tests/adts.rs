@@ -524,7 +524,7 @@ test_verify_one_file! {
 
         fn test() -> (s: (S, S))
             ensures
-                s.0 === s.1,
+                s.0 == s.1,
         {
 
             let s1 = S { a: 10, b: Ghost(20) };
@@ -548,7 +548,7 @@ test_verify_one_file! {
         fn test() {
             let s1 = S { a: 10, b: Ghost(20) };
             let s2 = S { a: 10, b: Ghost(30) };
-            assert(s1 === s2); // FAILS
+            assert(s1 == s2); // FAILS
         }
     } => Err(e) => assert_one_fails(e)
 }
@@ -1955,6 +1955,36 @@ test_verify_one_file! {
             {
                 Self::Output {}
             }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] trigger_on_unchanged_fields verus_code! {
+        use vstd::prelude::*;
+
+        struct S {
+            x1: usize,
+            x2: usize,
+            x3: usize,
+            x4: Vec<usize>,
+        }
+
+        fn foo(u: &mut usize) {
+        }
+
+        fn test1(s: &mut S) {
+            assume(forall|i: int| 0 <= i < s.x4.len() ==> #[trigger] s.x4[i] == 3);
+            s.x2 = 5;
+            // assert(s.x4 == old(s).x4); // not needed
+            assert(forall|i: int| 0 <= i < s.x4.len() ==> #[trigger] s.x4[i] == 3);
+        }
+
+        fn test2(s: &mut S) {
+            assume(forall|i: int| 0 <= i < s.x4.len() ==> #[trigger] s.x4[i] == 3);
+            foo(&mut s.x2);
+            // assert(s.x4 == old(s).x4); // not needed
+            assert(forall|i: int| 0 <= i < s.x4.len() ==> #[trigger] s.x4[i] == 3);
         }
     } => Ok(())
 }

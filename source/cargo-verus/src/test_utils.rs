@@ -17,6 +17,7 @@ pub struct MockWorkspace {
 pub struct MockPackage {
     name: String,
     version: String,
+    aliases: Vec<String>,
     has_lib: bool,
     bin_names: Vec<String>,
     example_names: Vec<String>,
@@ -83,12 +84,18 @@ impl MockWorkspace {
         let root = tempfile::tempdir().expect("create temp dir");
 
         let mut member_names = vec![];
+        let mut workspace_aliases = BTreeMap::<String, String>::new();
         for member in self.members {
-            let name = member.name.clone();
-            let package_dir = root.path().join(&name);
+            let package_name = &member.name;
+            member_names.push(package_name.clone());
+            for alias in &member.aliases {
+                if workspace_aliases.insert(alias.clone(), package_name.clone()).is_some() {
+                    panic!("workspace-level alias `{alias}` already exists for `{package_name}`");
+                }
+            }
+            let package_dir = root.path().join(&package_name);
             std::fs::create_dir(&package_dir).expect("create package dir {package_dir:?}");
             member.materialize_in_dir(&package_dir);
-            member_names.push(name);
         }
 
         let mut manifest_lines = vec!["[workspace]".to_owned()];
@@ -105,6 +112,10 @@ impl MockWorkspace {
         for name in &member_names {
             manifest_lines.push(format!("{name} = {{ path = \"{name}\" }}"));
         }
+        for (alias, package) in &workspace_aliases {
+            manifest_lines
+                .push(format!("{alias} = {{ path = \"{package}\", package = \"{package}\" }}"));
+        }
         manifest_lines.push("".to_owned());
 
         manifest_lines.push("[patch.crates-io]".to_owned());
@@ -115,7 +126,7 @@ impl MockWorkspace {
 
         let manifest = root.path().join("Cargo.toml");
         std::fs::write(&manifest, manifest_lines.join("\n"))
-            .expect(&format!("write manifest to {manifest:?}"));
+            .unwrap_or_else(|_| panic!("write manifest to {manifest:?}"));
 
         root
     }
@@ -126,6 +137,7 @@ impl MockPackage {
         MockPackage {
             name: name.to_owned(),
             version: "0.1.0".to_owned(),
+            aliases: vec![],
             has_lib: false,
             bin_names: vec![],
             example_names: vec![],
@@ -137,6 +149,11 @@ impl MockPackage {
 
     pub fn version(mut self, version: &str) -> Self {
         self.version = version.to_owned();
+        self
+    }
+
+    pub fn aliases(mut self, names: impl IntoIterator<Item = impl AsRef<str>>) -> Self {
+        self.aliases.extend(names.into_iter().map(|n| n.as_ref().to_owned()));
         self
     }
 
@@ -278,7 +295,7 @@ impl MockPackage {
 
         let manifest = root.join("Cargo.toml");
         std::fs::write(&manifest, manifest_lines.join("\n"))
-            .expect(&format!("write manifest to {manifest:?}"));
+            .unwrap_or_else(|_| panic!("write manifest to {manifest:?}"));
 
         if !self.has_lib || self.bin_names.is_empty() {
             let src = root.join("src");
@@ -286,12 +303,12 @@ impl MockPackage {
 
             if self.has_lib {
                 let lib = src.join("lib.rs");
-                std::fs::write(&lib, "").expect(&format!("write {lib:?}"));
+                std::fs::write(&lib, "").unwrap_or_else(|_| panic!("write {lib:?}"));
             }
 
             for name in self.bin_names {
                 let bin = src.join(format!("{name}.rs"));
-                std::fs::write(&bin, "").expect(&format!("write {bin:?}"));
+                std::fs::write(&bin, "").unwrap_or_else(|_| panic!("write {bin:?}"));
             }
         }
 
@@ -301,7 +318,8 @@ impl MockPackage {
 
             for name in self.example_names {
                 let example = examples.join(format!("{name}.rs"));
-                std::fs::write(&example, "fn main() {}").expect(&format!("write {example:?}"));
+                std::fs::write(&example, "fn main() {}")
+                    .unwrap_or_else(|_| panic!("write {example:?}"));
             }
         }
     }
@@ -340,7 +358,8 @@ impl CargoRunPlan {
     }
 
     pub fn parse_driver_args(&self, key: &str) -> Vec<&str> {
-        let encoded_args = self.env.get(key).expect(&format!("retrieve env var `{}`", key));
+        let encoded_args =
+            self.env.get(key).unwrap_or_else(|| panic!("retrieve env var `{}`", key));
         encoded_args.split(VERUS_DRIVER_ARGS_SEP).collect()
     }
 

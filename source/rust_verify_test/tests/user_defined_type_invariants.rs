@@ -2294,7 +2294,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] mut_ref_not_supported ["new-mut-ref"] => verus_code! {
+    #[test] mut_ref_not_supported [] => verus_code! {
         struct A {
             i: u64,
             j: u64,
@@ -2313,7 +2313,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] mut_ref_not_supported2 ["new-mut-ref"] => verus_code! {
+    #[test] mut_ref_not_supported2 [] => verus_code! {
         struct A {
             i: u64,
             j: u64,
@@ -2334,7 +2334,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] mut_ref_not_supported_match1 ["new-mut-ref"] => verus_code! {
+    #[test] mut_ref_not_supported_match1 [] => verus_code! {
         struct A {
             i: u64,
             j: u64,
@@ -2357,7 +2357,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] mut_ref_not_supported_match2 ["new-mut-ref"] => verus_code! {
+    #[test] mut_ref_not_supported_match2 [] => verus_code! {
         struct A {
             i: u64,
             j: u64,
@@ -2380,7 +2380,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] mut_ref_not_supported_let1 ["new-mut-ref"] => verus_code! {
+    #[test] mut_ref_not_supported_let1 [] => verus_code! {
         struct A {
             i: u64,
             j: u64,
@@ -2399,7 +2399,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] mut_ref_not_supported_let2 ["new-mut-ref"] => verus_code! {
+    #[test] mut_ref_not_supported_let2 [] => verus_code! {
         struct A {
             i: u64,
             j: u64,
@@ -2418,7 +2418,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] use_type_invariant_in_arg ["new-mut-ref"] => verus_code! {
+    #[test] use_type_invariant_in_arg [] => verus_code! {
         struct A {
             i: u64,
             j: u64,
@@ -2444,7 +2444,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] use_type_invariant_in_arg_no_lifetime ["new-mut-ref", "--no-lifetime"] => verus_code! {
+    #[test] use_type_invariant_in_arg_no_lifetime ["--no-lifetime"] => verus_code! {
         struct A {
             i: u64,
             j: u64,
@@ -2476,7 +2476,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] array_of_structs ["new-mut-ref"] => verus_code! {
+    #[test] array_of_structs [] => verus_code! {
         use vstd::prelude::*;
 
         pub(crate) struct A {
@@ -2531,7 +2531,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] struct_of_array ["new-mut-ref"] => verus_code! {
+    #[test] struct_of_array [] => verus_code! {
         use vstd::prelude::*;
 
         pub(crate) struct A {
@@ -2574,7 +2574,7 @@ test_verify_one_file_with_options! {
 
 // TODO(new_mut_ref): (low-pri) this is a bad user experience
 test_verify_one_file_with_options! {
-    #[test] struct_of_vec ["new-mut-ref"] => verus_code! {
+    #[test] struct_of_vec [] => verus_code! {
         use vstd::prelude::*;
 
         // this is currently unsupported since Vec doesn't get the same special treatment
@@ -2620,7 +2620,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] with_reborrow ["new-mut-ref"] => verus_code! {
+    #[test] with_reborrow [] => verus_code! {
         struct X {
             i: (u64, u64),
             j: (u64, u64),
@@ -2676,7 +2676,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] with_tracked_wrapper ["new-mut-ref"] => verus_code! {
+    #[test] with_tracked_wrapper [] => verus_code! {
         struct X {
             i: (u64, u64),
             j: (u64, u64),

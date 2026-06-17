@@ -1959,3 +1959,106 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file_with_options! {
+    #[test] fndef_output_through_assoc_type_gh_issue_2427 ["vstd"] => verus_code! {
+        use vstd::prelude::*;
+
+        pub trait HasItem { type Item; }
+
+        pub struct Ad<F>(pub F);
+        impl<F: FnOnce(u32) -> u32> HasItem for Ad<F> {
+            type Item = F::Output;
+        }
+
+        pub struct W<I: HasItem> { pub i: I }
+
+        impl<I: HasItem> W<I> {
+            pub uninterp spec fn index(self) -> int;
+            pub uninterp spec fn seq(self) -> Seq<I::Item>;
+
+            fn touch(&mut self)
+                ensures final(self).index() == final(self).seq().len(),
+            {
+                assume(false);
+            }
+        }
+
+        fn foo(x: u32) -> u32 { x }
+
+        fn use_top_level_fn() {
+            let mut y = W { i: Ad(foo) };
+            y.touch();
+            assert(y.index() == y.seq().len());
+        }
+
+        fn use_closure() {
+            let f = |x: u32| -> u32 { x };
+            let mut y = W { i: Ad(f) };
+            y.touch();
+            assert(y.index() == y.seq().len());
+        }
+
+        fn id<T>(x: T) -> T { x }
+
+        fn use_generic_fn() {
+            let mut y = W { i: Ad(id::<u32>) };
+            y.touch();
+            assert(y.index() == y.seq().len());
+        }
+
+
+        // Module `a` defines a struct with restricted visibility and a
+        // function whose signature mentions it. The function is used as an
+        // FnDef value, so Verus emits an auto-generated
+        // `<FnDef(takes_hidden) as FnOnce<(Hidden,)>>::Output = Hidden`
+        // AssocTypeImpl referencing `Hidden`.
+        mod a {
+            mod inner {
+                pub(super) struct Hidden { pub x: u32 }
+            }
+
+            fn takes_hidden(h: inner::Hidden) -> inner::Hidden { h }
+
+            fn use_as_fndef() {
+                let _f = takes_hidden;
+            }
+        }
+
+        // Module `b` cannot see `Hidden`.
+        // `b`'s code reaches the `FnOnce::Output` associated-type decl via
+        // the `F::Output` projection inside the `HasItem for Ad<F>` impl.
+        mod b {
+            fn foo(x: u32) -> u32 { x }
+
+            fn use_fn() {
+                let _y = crate::W { i: crate::Ad(foo) };
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    // Regression test for a panic due to fndef impl path collision across
+    // crates.
+    //
+    // The test defines 12 `Clone` impls in the crate root, which are enough to
+    // collide with the `Clone` impls for `Ghost` and `Tracked` in
+    // `verus_builtin` at the same disambiguator (brought in by `["vstd"]`).
+    #[test] fndef_impl_path_includes_crate ["vstd"] => verus_code! {
+        use vstd::prelude::*;
+
+        struct S0;  impl Clone for S0  { fn clone(&self) -> Self { S0  } }
+        struct S1;  impl Clone for S1  { fn clone(&self) -> Self { S1  } }
+        struct S2;  impl Clone for S2  { fn clone(&self) -> Self { S2  } }
+        struct S3;  impl Clone for S3  { fn clone(&self) -> Self { S3  } }
+        struct S4;  impl Clone for S4  { fn clone(&self) -> Self { S4  } }
+        struct S5;  impl Clone for S5  { fn clone(&self) -> Self { S5  } }
+        struct S6;  impl Clone for S6  { fn clone(&self) -> Self { S6  } }
+        struct S7;  impl Clone for S7  { fn clone(&self) -> Self { S7  } }
+        struct S8;  impl Clone for S8  { fn clone(&self) -> Self { S8  } }
+        struct S9;  impl Clone for S9  { fn clone(&self) -> Self { S9  } }
+        struct S10; impl Clone for S10 { fn clone(&self) -> Self { S10 } }
+        struct S11; impl Clone for S11 { fn clone(&self) -> Self { S11 } }
+    } => Ok(())
+}

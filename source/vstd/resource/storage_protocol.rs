@@ -3,7 +3,7 @@ use super::Loc;
 
 verus! {
 
-broadcast use {super::super::set::group_set_axioms, super::super::map::group_map_axioms};
+broadcast use {super::super::iset::group_iset_lemmas, super::super::imap::group_imap_lemmas};
 
 /// Interface for "storage protocol" ghost state.
 /// This is an extension-slash-variant on the more well-known concept
@@ -18,7 +18,7 @@ broadcast use {super::super::set::group_set_axioms, super::super::map::group_map
 /// <https://github.com/secure-foundations/leaf/blob/9d72b880feb6af0a7e752b2b2a43806a0812ad56/src/guarding/protocol_relational.v>
 ///
 /// The reference version requires two monoids, the "protocol monoid" and the "base monoid".
-/// In this interface, we fix the base monoid to be of the form [`Map<K, V>`](crate::map::Map).
+/// In this interface, we fix the base monoid to be of the form [`IMap<K, V>`](crate::imap::IMap).
 /// (with composition of overlapping maps being undefined), which has all the necessary properties.
 /// Note that there's no `create_unit` (it's not sound to do this for an arbitrary location unless you
 /// already know a protocol was initialized at that location).
@@ -32,7 +32,7 @@ broadcast use {super::super::set::group_set_axioms, super::super::map::group_map
 #[verifier::accept_recursive_types(V)]
 pub tracked struct StorageResource<K, V, P> {
     _p: core::marker::PhantomData<(K, V, P)>,
-    _send_sync: super::super::state_machine_internal::SyncSendIfSyncSend<Map<K, V>>,
+    _send_sync: super::super::state_machine_internal::SyncSendIfSyncSend<IMap<K, V>>,
 }
 
 /// See [`StorageResource`] for more information.
@@ -41,7 +41,7 @@ pub trait Protocol<K, V>: Sized {
 
     /// Note that `rel`, in contrast to [`PCM::valid`](crate::resource::algebra::ResourceAlgebra::valid), is not
     /// necessarily closed under inclusion.
-    spec fn rel(self, s: Map<K, V>) -> bool;
+    spec fn rel(self, s: IMap<K, V>) -> bool;
 
     spec fn unit() -> Self;
 
@@ -65,19 +65,19 @@ pub open spec fn incl<K, V, P: Protocol<K, V>>(a: P, b: P) -> bool {
     exists|c| P::op(a, c) == b
 }
 
-pub open spec fn guards<K, V, P: Protocol<K, V>>(p: P, b: Map<K, V>) -> bool {
-    forall|q: P, t: Map<K, V>| #![all_triggers] P::rel(P::op(p, q), t) ==> b.submap_of(t)
+pub open spec fn guards<K, V, P: Protocol<K, V>>(p: P, b: IMap<K, V>) -> bool {
+    forall|q: P, t: IMap<K, V>| #![all_triggers] P::rel(P::op(p, q), t) ==> b.submap_of(t)
 }
 
 pub open spec fn exchanges<K, V, P: Protocol<K, V>>(
     p1: P,
-    b1: Map<K, V>,
+    b1: IMap<K, V>,
     p2: P,
-    b2: Map<K, V>,
+    b2: IMap<K, V>,
 ) -> bool {
-    forall|q: P, t1: Map<K, V>|
+    forall|q: P, t1: IMap<K, V>|
         #![all_triggers]
-        P::rel(P::op(p1, q), t1) ==> exists|t2: Map<K, V>|
+        P::rel(P::op(p1, q), t1) ==> exists|t2: IMap<K, V>|
             #![all_triggers]
             P::rel(P::op(p2, q), t2) && t1.dom().disjoint(b1.dom()) && t2.dom().disjoint(b2.dom())
                 && t1.union_prefer_right(b1) =~= t2.union_prefer_right(b2)
@@ -85,31 +85,31 @@ pub open spec fn exchanges<K, V, P: Protocol<K, V>>(
 
 pub open spec fn exchanges_nondeterministic<K, V, P: Protocol<K, V>>(
     p1: P,
-    s1: Map<K, V>,
-    new_values: Set<(P, Map<K, V>)>,
+    s1: IMap<K, V>,
+    new_values: ISet<(P, IMap<K, V>)>,
 ) -> bool {
-    forall|q: P, t1: Map<K, V>|
+    forall|q: P, t1: IMap<K, V>|
         #![all_triggers]
-        P::rel(P::op(p1, q), t1) ==> exists|p2: P, s2: Map<K, V>, t2: Map<K, V>|
+        P::rel(P::op(p1, q), t1) ==> exists|p2: P, s2: IMap<K, V>, t2: IMap<K, V>|
             #![all_triggers]
             new_values.contains((p2, s2)) && P::rel(P::op(p2, q), t2) && t1.dom().disjoint(s1.dom())
                 && t2.dom().disjoint(s2.dom()) && t1.union_prefer_right(s1)
                 =~= t2.union_prefer_right(s2)
 }
 
-pub open spec fn deposits<K, V, P: Protocol<K, V>>(p1: P, b1: Map<K, V>, p2: P) -> bool {
-    forall|q: P, t1: Map<K, V>|
+pub open spec fn deposits<K, V, P: Protocol<K, V>>(p1: P, b1: IMap<K, V>, p2: P) -> bool {
+    forall|q: P, t1: IMap<K, V>|
         #![all_triggers]
-        P::rel(P::op(p1, q), t1) ==> exists|t2: Map<K, V>|
+        P::rel(P::op(p1, q), t1) ==> exists|t2: IMap<K, V>|
             #![all_triggers]
             P::rel(P::op(p2, q), t2) && t1.dom().disjoint(b1.dom()) && t1.union_prefer_right(b1)
                 =~= t2
 }
 
-pub open spec fn withdraws<K, V, P: Protocol<K, V>>(p1: P, p2: P, b2: Map<K, V>) -> bool {
-    forall|q: P, t1: Map<K, V>|
+pub open spec fn withdraws<K, V, P: Protocol<K, V>>(p1: P, p2: P, b2: IMap<K, V>) -> bool {
+    forall|q: P, t1: IMap<K, V>|
         #![all_triggers]
-        P::rel(P::op(p1, q), t1) ==> exists|t2: Map<K, V>|
+        P::rel(P::op(p1, q), t1) ==> exists|t2: IMap<K, V>|
             #![all_triggers]
             P::rel(P::op(p2, q), t2) && t2.dom().disjoint(b2.dom()) && t1 =~= t2.union_prefer_right(
                 b2,
@@ -117,15 +117,15 @@ pub open spec fn withdraws<K, V, P: Protocol<K, V>>(p1: P, p2: P, b2: Map<K, V>)
 }
 
 pub open spec fn updates<K, V, P: Protocol<K, V>>(p1: P, p2: P) -> bool {
-    forall|q: P, t1: Map<K, V>|
+    forall|q: P, t1: IMap<K, V>|
         #![all_triggers]
         P::rel(P::op(p1, q), t1) ==> P::rel(P::op(p2, q), t1)
 }
 
-pub open spec fn set_op<K, V, P: Protocol<K, V>>(s: Set<(P, Map<K, V>)>, t: P) -> Set<
-    (P, Map<K, V>),
+pub open spec fn set_op<K, V, P: Protocol<K, V>>(s: ISet<(P, IMap<K, V>)>, t: P) -> ISet<
+    (P, IMap<K, V>),
 > {
-    Set::new(|v: (P, Map<K, V>)| exists|q| s.contains((q, v.1)) && v.0 == #[trigger] P::op(q, t))
+    ISet::new(|v: (P, IMap<K, V>)| exists|q| s.contains((q, v.1)) && v.0 == #[trigger] P::op(q, t))
 }
 
 impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
@@ -133,7 +133,7 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
 
     pub uninterp spec fn loc(self) -> Loc;
 
-    pub axiom fn alloc(p: P, tracked s: Map<K, V>) -> (tracked out: Self)
+    pub axiom fn alloc(p: P, tracked s: IMap<K, V>) -> (tracked out: Self)
         requires
             P::rel(p, s),
         ensures
@@ -162,7 +162,7 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
     /// is defined as the inclusion-closure of invariant, i.e., an element
     /// is valid if there exists another element `x` that, added to it,
     /// meets the invariant.
-    pub axiom fn validate(tracked self: &Self) -> (out: (P, Map<K, V>))
+    pub axiom fn validate(tracked self: &Self) -> (out: (P, IMap<K, V>))
         ensures
             ({
                 let (q, t) = out;
@@ -174,10 +174,10 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
     /// Most general kind of update, potentially depositing and withdrawing
     pub proof fn exchange(
         tracked p: Self,
-        tracked s: Map<K, V>,
+        tracked s: IMap<K, V>,
         new_p_value: P,
-        new_s_value: Map<K, V>,
-    ) -> (tracked out: (Self, Map<K, V>))
+        new_s_value: IMap<K, V>,
+    ) -> (tracked out: (Self, IMap<K, V>))
         requires
             exchanges(p.value(), s, new_p_value, new_s_value),
         ensures
@@ -186,23 +186,24 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
                 new_p.loc() == p.loc() && new_p.value() == new_p_value && new_s == new_s_value
             }),
     {
-        let se = set![(new_p_value, new_s_value)];
+        let se = iset![(new_p_value, new_s_value)];
         Self::exchange_nondeterministic(p, s, se)
     }
 
-    pub proof fn deposit(tracked self, tracked base: Map<K, V>, new_value: P) -> (tracked out: Self)
+    pub proof fn deposit(tracked self, tracked base: IMap<K, V>, new_value: P) -> (tracked out:
+        Self)
         requires
             deposits(self.value(), base, new_value),
         ensures
             out.loc() == self.loc(),
             out.value() == new_value,
     {
-        Self::exchange(self, base, new_value, Map::empty()).0
+        Self::exchange(self, base, new_value, IMap::empty()).0
     }
 
-    pub proof fn withdraw(tracked self, new_value: P, new_base: Map<K, V>) -> (tracked out: (
+    pub proof fn withdraw(tracked self, new_value: P, new_base: IMap<K, V>) -> (tracked out: (
         Self,
-        Map<K, V>,
+        IMap<K, V>,
     ))
         requires
             withdraws(self.value(), new_value, new_base),
@@ -211,7 +212,7 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
             out.0.value() == new_value,
             out.1 == new_base,
     {
-        Self::exchange(self, Map::tracked_empty(), new_value, new_base)
+        Self::exchange(self, IMap::tracked_empty(), new_value, new_base)
     }
 
     /// "Normal" update, no depositing or withdrawing
@@ -222,14 +223,14 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
             out.loc() == self.loc(),
             out.value() == new_value,
     {
-        Self::exchange(self, Map::tracked_empty(), new_value, Map::empty()).0
+        Self::exchange(self, IMap::tracked_empty(), new_value, IMap::empty()).0
     }
 
     pub proof fn exchange_nondeterministic(
         tracked p: Self,
-        tracked s: Map<K, V>,
-        new_values: Set<(P, Map<K, V>)>,
-    ) -> (tracked out: (Self, Map<K, V>))
+        tracked s: IMap<K, V>,
+        new_values: ISet<(P, IMap<K, V>)>,
+    ) -> (tracked out: (Self, IMap<K, V>))
         requires
             exchanges_nondeterministic(p.value(), s, new_values),
         ensures
@@ -241,7 +242,7 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
         P::op_unit(p.value());
         let tracked (selff, unit) = p.split(p.value(), P::unit());
         let new_values0 = set_op(new_values, P::unit());
-        super::super::set_lib::assert_sets_equal!(new_values0, new_values, v => {
+        super::super::iset_lib::assert_isets_equal!(new_values0, new_values, v => {
             P::op_unit(v.0);
             if new_values.contains(v) {
                 assert(new_values0.contains(v));
@@ -255,7 +256,7 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
         Self::exchange_nondeterministic_with_shared(selff, &unit, s, new_values)
     }
 
-    pub axiom fn guard(tracked p: &Self, s_value: Map<K, V>) -> (tracked s: &Map<K, V>)
+    pub axiom fn guard(tracked p: &Self, s_value: IMap<K, V>) -> (tracked s: &IMap<K, V>)
         requires
             guards(p.value(), s_value),
         ensures
@@ -283,15 +284,15 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
 
     pub axiom fn validate_with_shared(tracked self: &mut Self, tracked x: &Self) -> (res: (
         P,
-        Map<K, V>,
+        IMap<K, V>,
     ))
         requires
             old(self).loc() == x.loc(),
         ensures
-            *self == *old(self),
+            *final(self) == *old(self),
             ({
                 let (q, t) = res;
-                { P::rel(P::op(P::op(self.value(), x.value()), q), t) }
+                { P::rel(P::op(P::op(final(self).value(), x.value()), q), t) }
             }),
     ;
 
@@ -300,10 +301,10 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
     pub proof fn exchange_with_shared(
         tracked p: Self,
         tracked x: &Self,
-        tracked s: Map<K, V>,
+        tracked s: IMap<K, V>,
         new_p_value: P,
-        new_s_value: Map<K, V>,
-    ) -> (tracked out: (Self, Map<K, V>))
+        new_s_value: IMap<K, V>,
+    ) -> (tracked out: (Self, IMap<K, V>))
         requires
             p.loc() == x.loc(),
             exchanges(P::op(p.value(), x.value()), s, P::op(new_p_value, x.value()), new_s_value),
@@ -312,7 +313,7 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
             out.0.value() == new_p_value,
             out.1 == new_s_value,
     {
-        let se = set![(new_p_value, new_s_value)];
+        let se = iset![(new_p_value, new_s_value)];
         Self::exchange_nondeterministic_with_shared(p, x, s, se)
     }
 
@@ -322,9 +323,9 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
     pub axiom fn exchange_nondeterministic_with_shared(
         tracked p: Self,
         tracked x: &Self,
-        tracked s: Map<K, V>,
-        new_values: Set<(P, Map<K, V>)>,
-    ) -> (tracked out: (Self, Map<K, V>))
+        tracked s: IMap<K, V>,
+        new_values: ISet<(P, IMap<K, V>)>,
+    ) -> (tracked out: (Self, IMap<K, V>))
         requires
             p.loc() == x.loc(),
             exchanges_nondeterministic(
