@@ -765,7 +765,6 @@ fn replace_self_tokens(ts: TokenStream2, replacement: &Ident) -> TokenStream2 {
 /// Compiles a spec fn to the exec fn signature.
 fn compile_sig(
     ctx: &mut LocalCtx,
-    // item_fn: &ItemFn,
     sig: &Signature,
     vis: &Visibility,
     self_ty: Option<&Ident>,
@@ -2935,9 +2934,6 @@ fn compile_expr(
                 }
             }
 
-            // _ => return Err(Error::new_spanned(expr_method_call, "unsupported method call")),
-
-            //
             other => {
                 // Fallthrough: unrecognized methods are rewritten from `recv.foo(args)`
                 // to `recv.exec_foo(args)`, with `recv` and each arg compiled in `VarMode::Ref`
@@ -3388,7 +3384,7 @@ fn compile_impl(item_impl: &ItemImpl, unverified: bool) -> Result<TokenStream2, 
     })
 }
 
-/// Compiles a fn/struct/enum item.
+/// Compiles a fn/struct/enum/impl item.
 fn compile_item(item: Item, unverified: bool) -> Result<TokenStream2, Error> {
     match item {
         Item::Fn(item_fn) => compile_spec_fn(&item_fn, unverified),

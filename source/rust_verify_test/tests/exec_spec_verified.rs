@@ -1623,13 +1623,9 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-// ---------------------------------------------------------------------------
-// impl-block support
-// ---------------------------------------------------------------------------
-
 test_verify_one_file! {
     /// Inherent impl on a struct: `&self` method using fields, with `recommends`
-    /// referencing `self`.
+    /// referencing `self` as well.
     #[test] test_exec_spec_impl_struct IMPORTS.to_string() + verus_code_str! {
         exec_spec_verified! {
             pub struct Pair {
@@ -1707,7 +1703,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    /// Recursive method on an enum (linked list shape) using `decreases self`.
+    /// Recursive method on an enum (linked list shape).
     #[test] test_exec_spec_impl_enum_recursion IMPORTS.to_string() + verus_code_str! {
         exec_spec_verified! {
             pub enum List {
@@ -1741,7 +1737,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    /// `decreases ... when ...` clause referencing `self`.
+    /// `decreases ... when ...` clause referencing `self`, using a `decreases self` pattern.
     #[test] test_exec_spec_impl_decreases_when IMPORTS.to_string() + verus_code_str! {
         exec_spec_verified! {
             pub struct Counter {
@@ -1898,21 +1894,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    /// `pub closed spec fn` works as a free function: the original spec stays
-    /// closed (callers cannot reason about its body across modules) while the
-    /// generated exec function still verifies internally against it.
-    #[test] test_exec_spec_closed_fn IMPORTS.to_string() + verus_code_str! {
-        exec_spec_verified! {
-            pub closed spec fn add1(x: u32) -> u32
-                recommends x < u32::MAX
-            {
-                (x + 1) as u32
-            }
-        }
-    } => Ok(())
-}
-
-test_verify_one_file! {
     /// Mix of `pub closed` and `pub open` spec functions in the same macro
     /// invocation.
     #[test] test_exec_spec_closed_and_open_fns IMPORTS.to_string() + verus_code_str! {
@@ -2022,7 +2003,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    /// `e is Variant` on `Option` (std, not user-defined).
+    /// `e is Variant` on `Option`.
     #[test] test_exec_spec_is_option IMPORTS.to_string() + verus_code_str! {
         exec_spec_verified! {
             pub open spec fn is_some(o: Option<u32>) -> bool {
