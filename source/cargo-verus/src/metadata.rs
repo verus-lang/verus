@@ -4,7 +4,7 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use cargo_metadata::{Metadata, MetadataCommand, Package, PackageId};
+use cargo_metadata::{Metadata, MetadataCommand, Package, PackageId, Source};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
@@ -133,14 +133,15 @@ impl<'a> MetadataIndex<'a> {
         names
     }
 
-    pub fn get_packages_named(&self, name: &str) -> Vec<&Package> {
-        let mut matching_packages = vec![];
-        for entry in self.entries.values() {
-            if entry.package.name == name {
-                matching_packages.push(entry.package);
+    /// Collect sources of `vstd` that appear in the build.
+    pub fn collect_vstd_sources(&self) -> Vec<&Source> {
+        let mut sources = vec![];
+        for entry in self.entries.values().filter(|entry| entry.verus_metadata.is_vstd) {
+            if let Some(source) = &entry.package.source {
+                sources.push(source);
             }
         }
-        matching_packages
+        sources
     }
 }
 

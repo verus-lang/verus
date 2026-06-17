@@ -156,10 +156,12 @@ pub fn plan_cargo_run(cfg: VerusConfig) -> Result<CargoRunPlan> {
         VerusArgFwdSelector::Deps => &dep_packages,
     };
 
-    // Collect all different instances of vstd that appear in the build.
-    let vstd_packages = metadata_index.get_packages_named("vstd");
-    for vstd in vstd_packages {
-        println!("VSTD version: {}, source: {:?}", vstd.version, vstd.source);
+    if cfg.options.toolchain_checks {
+        let vstd_sources = metadata_index.collect_vstd_sources();
+        println!("`vstd` sources:");
+        for source in vstd_sources {
+            println!("    {source:?}");
+        }
     }
 
     /////////////////////////////////////////////////////////
