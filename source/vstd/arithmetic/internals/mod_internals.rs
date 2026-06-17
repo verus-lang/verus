@@ -203,22 +203,17 @@ pub proof fn lemma_mod_add_denominator(n: int, x: int)
     lemma_fundamental_div_mod(x + n, n);
     let zp = (x + n) / n - x / n - 1;
     assert(n * zp == n * ((x + n) / n - x / n) - n) by {
-        assert(n * (((x + n) / n - x / n) - 1) == n * ((x + n) / n - x / n) - n) by {
-            broadcast use group_mul_is_commutative_and_distributive;
-
-        };
+        lemma_mul_is_distributive_sub(n, (x + n) / n - x / n, 1);
     };
     assert(0 == n * zp + ((x + n) % n) - (x % n)) by {
-        broadcast use group_mul_properties_internal;
-
+        lemma_mul_is_distributive_sub(n, (x + n) / n, x / n);
     }
     if (zp > 0) {
         lemma_mul_inequality(1, zp, n);
     } else if (zp < 0) {
         lemma_mul_inequality(zp, -1, n);
     } else {
-        broadcast use group_mul_properties_internal;
-
+        lemma_mul_by_zero_is_zero(n);
     }
 }
 

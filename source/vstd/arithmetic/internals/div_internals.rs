@@ -194,37 +194,37 @@ proof fn lemma_div_auto_minus(n: int)
 {
     lemma_mod_auto(n);
     lemma_div_basics(n);
+    let f = |xx: int, yy: int|
+        {
+            let z = (xx % n) - (yy % n);
+            ((0 <= z < n && ((xx - yy) / n) == xx / n - yy / n) || (-n <= z < 0 && (xx - yy) / n
+                == xx / n - yy / n - 1))
+        };
+    assert forall|i: int, j: int|
+        {
+            &&& (j >= 0 && #[trigger] f(i, j) ==> f(i, add1(j, n)))
+            &&& (i < n && f(i, j) ==> f(sub1(i, n), j))
+            &&& (j < n && f(i, j) ==> f(i, sub1(j, n)))
+            &&& (i >= 0 && f(i, j) ==> f(add1(i, n), j))
+        } by {
+        assert(((i + n) - j) / n == ((i - j) + n) / n);
+        assert((i - (j - n)) / n == ((i - j) + n) / n);
+        assert(((i - n) - j) / n == ((i - j) - n) / n);
+        assert((i - (j + n)) / n == ((i - j) - n) / n);
+    }
+    assert forall|i: int, j: int| 0 <= i < n && 0 <= j < n implies #[trigger] f(i, j) by {
+        assert(((i + n) - j) / n == ((i - j) + n) / n);
+        assert((i - (j - n)) / n == ((i - j) + n) / n);
+        assert(((i - n) - j) / n == ((i - j) - n) / n);
+        assert((i - (j + n)) / n == ((i - j) - n) / n);
+    }
+    lemma_mod_induction_forall2(n, f);
     assert forall|x: int, y: int|
         {
             let z = (x % n) - (y % n);
             ((0 <= z < n && #[trigger] ((x - y) / n) == x / n - y / n) || (-n <= z < 0 && ((x - y)
                 / n) == x / n - y / n - 1))
         } by {
-        let f = |xx: int, yy: int|
-            {
-                let z = (xx % n) - (yy % n);
-                ((0 <= z < n && ((xx - yy) / n) == xx / n - yy / n) || (-n <= z < 0 && (xx - yy) / n
-                    == xx / n - yy / n - 1))
-            };
-        assert forall|i: int, j: int|
-            {
-                &&& (j >= 0 && #[trigger] f(i, j) ==> f(i, add1(j, n)))
-                &&& (i < n && f(i, j) ==> f(sub1(i, n), j))
-                &&& (j < n && f(i, j) ==> f(i, sub1(j, n)))
-                &&& (i >= 0 && f(i, j) ==> f(add1(i, n), j))
-            } by {
-            assert(((i + n) - j) / n == ((i - j) + n) / n);
-            assert((i - (j - n)) / n == ((i - j) + n) / n);
-            assert(((i - n) - j) / n == ((i - j) - n) / n);
-            assert((i - (j + n)) / n == ((i - j) - n) / n);
-        }
-        assert forall|i: int, j: int| 0 <= i < n && 0 <= j < n implies #[trigger] f(i, j) by {
-            assert(((i + n) - j) / n == ((i - j) + n) / n);
-            assert((i - (j - n)) / n == ((i - j) + n) / n);
-            assert(((i - n) - j) / n == ((i - j) - n) / n);
-            assert((i - (j + n)) / n == ((i - j) - n) / n);
-        }
-        lemma_mod_induction_forall2(n, f);
         assert(f(x, y));
     }
 }

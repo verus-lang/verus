@@ -49,6 +49,11 @@ proof fn is_perfect_square_wlog(a: int, b: int, q: int) -> (sqrt: int)
     if a == 0 {
         assert(a * a == 0);
         assert(a * b == 0);
+        assert(b * b == q) by (nonlinear_arith)
+            requires
+                a == 0,
+                a * a + b * b == (a * b + 1) * q,
+        ;
         return b;
     } else {
         assert(b * b - (q * a) * b + (a * a - q) == 0) by {
