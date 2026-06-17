@@ -241,20 +241,17 @@ pub enum SpecBound<T> {
     Unbounded,
 }
 
-impl<'a, T> SpecBound<T> {
-    /// Borrow the contents of a `SpecBound<T>` as a `SpecBound<&T>`, mirroring
-    /// [`core::ops::Bound::as_ref`].
-    pub open spec fn as_ref(self) -> SpecBound<&'a T> {
-        match self {
-            SpecBound::Included(value) => SpecBound::Included(&value),
-            SpecBound::Excluded(value) => SpecBound::Excluded(&value),
-            SpecBound::Unbounded => SpecBound::Unbounded,
-        }
+/// Spec model of a [`core::ops::Bound`] value as a [`SpecBound`].
+pub open spec fn spec_bound<T>(bound: Bound<T>) -> SpecBound<T> {
+    match bound {
+        Bound::Included(value) => SpecBound::Included(value),
+        Bound::Excluded(value) => SpecBound::Excluded(value),
+        Bound::Unbounded => SpecBound::Unbounded,
     }
 }
 
-/// Spec model of a [`core::ops::Bound`] value as a [`SpecBound`].
-pub open spec fn spec_bound<T>(bound: Bound<T>) -> SpecBound<T> {
+/// Spec model of a borrowed [`core::ops::Bound`] value as a [`SpecBound`].
+pub open spec fn spec_bound_ref<'a, T>(bound: &'a Bound<T>) -> SpecBound<&'a T> {
     match bound {
         Bound::Included(value) => SpecBound::Included(value),
         Bound::Excluded(value) => SpecBound::Excluded(value),
@@ -371,14 +368,14 @@ pub assume_specification<'s, T>[ <(Bound<T>, Bound<T>) as RangeBounds<T>>::start
     range: &'s (Bound<T>, Bound<T>),
 ) -> (result: Bound<&'s T>)
     ensures
-        spec_bound(result) == spec_bound(range.0).as_ref(),
+        spec_bound(result) == spec_bound_ref(&range.0),
 ;
 
 pub assume_specification<'s, T>[ <(Bound<T>, Bound<T>) as RangeBounds<T>>::end_bound ](
     range: &'s (Bound<T>, Bound<T>),
 ) -> (result: Bound<&'s T>)
     ensures
-        spec_bound(result) == spec_bound(range.1).as_ref(),
+        spec_bound(result) == spec_bound_ref(&range.1),
 ;
 
 /// Specification for [`core::ops::RangeBounds`], exposing spec-mode models
@@ -463,11 +460,11 @@ impl<T> RangeBoundsSpecImpl<T> for RangeToInclusive<T> {
 
 impl<T> RangeBoundsSpecImpl<T> for (Bound<T>, Bound<T>) {
     open spec fn spec_start_bound(&self) -> SpecBound<&T> {
-        spec_bound(self.0).as_ref()
+        spec_bound_ref(&self.0)
     }
 
     open spec fn spec_end_bound(&self) -> SpecBound<&T> {
-        spec_bound(self.1).as_ref()
+        spec_bound_ref(&self.1)
     }
 }
 
