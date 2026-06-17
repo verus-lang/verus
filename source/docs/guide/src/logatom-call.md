@@ -35,67 +35,21 @@ Inversely, if the inner mask is not a subset of the outer mask, the function can
 This is how we can call our two example functions *synchronously*, meaning we have full ownership of the permission object:
 
 ```rs
-let (var, Tracked(mut perm)) = PAtomicU64::new(3);
+{{#include ../../../../examples/guide/logatom.rs:reset_client_sync}}
 
-reset(&var) atomically |update| {
-    perm = update(perm)
-};
-
-assert(perm.is_for(var));
-assert(perm.points_to(0));
 ```
 
 ```rs
-let (var, Tracked(mut perm)) = PAtomicU64::new(3);
-
-let prev = increment(&var) atomically loop |update|
-    invariant
-        perm.is_for(var),
-        perm.points_to(3),
-{
-    match update(perm) {
-        Err((p, _)) => perm = p,
-        Ok(p) => { perm = p; break }
-    }
-};
-
-assert(prev == 3);
-assert(perm.is_for(var));
-assert(perm.points_to(4));
+{{#include ../../../../examples/guide/logatom.rs:increment_client_sync}}
 ```
 
 Here are two simple *asynchronous* clients for our example functions, where we call the functions using an atomic invariant, allowing multiple threads to use these functions concurrently.
 The invariant we use in this example makes no statement about the value of the atomic, we simply assert that `perm.is_for(var)`.
 
 ```rs
-let Tracked(mut credit) = vstd::invariant::create_open_invariant_credit();
-
-reset(&var) atomically |update| {
-    open_atomic_invariant!(credit => &inv => perm => {
-        perm = update(perm);
-    });
-};
+{{#include ../../../../examples/guide/logatom.rs:reset_client_async}}
 ```
 
 ```rs
-let Tracked(mut credit) = vstd::invariant::create_open_invariant_credit();
-
-increment(&var) atomically loop |update| {
-    let tracked mut spare = None;
-    open_atomic_invariant!(credit => &inv => perm => {
-        let tracked res = update(perm);
-        match res {
-            Ok(p) => perm = p,
-            Err((p, c)) => {
-                perm = p;
-                spare = Some(c);
-            }
-        }
-    });
-
-    match spare {
-        None => break,
-        Some(c) => credit = c,
-    }
-};
+{{#include ../../../../examples/guide/logatom.rs:increment_client_async}}
 ```

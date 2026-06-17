@@ -90,43 +90,9 @@ We store the function arguments in the predicate type to allow the atomic pre- a
 This is what the atomic specification for our two example functions may look like:
 
 ```rs
-pub fn reset(var: &PAtomicU64)
-    atomically (atomic_update) {
-        (perm: PermissionU64) -> (commit: Commit<PermissionU64>),
-
-        requires
-            perm@.patomic == var.id(),
-
-        ensures
-            commit@.patomic == perm@.patomic,
-            commit@.value == 0,
-
-        outer_mask any,
-        inner_mask none,
-    },
+{{#include ../../../../examples/guide/logatom.rs:reset_signature}}
 ```
 
 ```rs
-pub fn increment(var: &PAtomicU64) -> (out: u64)
-    atomically (atomic_update) {
-        (perm: PermissionU64)
-            -> (res: Result<PermissionU64, (PermissionU64, OpenInvariantCredit)>),
-
-        requires
-            perm@.patomic == var.id(),
-
-        ensures match res {
-            Err((p, _)) => p@ == perm@,
-            Ok(p) => {
-                &&& p@.patomic == perm@.patomic
-                &&& p@.value == perm@.value.wrapping_add(1)
-            }
-        },
-
-        outer_mask any,
-        inner_mask none,
-    },
-
-    ensures
-        out == perm@.value,
+{{#include ../../../../examples/guide/logatom.rs:increment_signature}}
 ```
