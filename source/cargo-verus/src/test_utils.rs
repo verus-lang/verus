@@ -24,7 +24,6 @@ pub struct MockPackage {
     deps: Vec<(DepKind, Option<String>, MockDep)>,
     features: Vec<String>,
     verus_verify: Option<bool>,
-    is_vstd: bool,
 }
 
 #[derive(Clone)]
@@ -174,7 +173,6 @@ impl MockPackage {
             deps: vec![],
             features: vec![],
             verus_verify: None,
-            is_vstd: false,
         }
     }
 
@@ -230,11 +228,6 @@ impl MockPackage {
 
     pub fn verify(mut self, setting: bool) -> Self {
         self.verus_verify = Some(setting);
-        self
-    }
-
-    pub fn mark_as_vstd(mut self) -> Self {
-        self.is_vstd = true;
         self
     }
 
@@ -336,13 +329,10 @@ impl MockPackage {
             manifest_lines.push("".to_owned());
         }
 
-        if self.verus_verify.is_some() || self.is_vstd {
+        if self.verus_verify.is_some() {
             manifest_lines.push("[package.metadata.verus]".to_owned());
             if let Some(verus_verify) = self.verus_verify {
                 manifest_lines.push(format!("verify = {verus_verify}"));
-            }
-            if self.is_vstd {
-                manifest_lines.push("is-vstd = true".to_owned());
             }
             manifest_lines.push("".to_owned());
         }
