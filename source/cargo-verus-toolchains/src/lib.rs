@@ -11,7 +11,7 @@ pub struct ToolchainList {
 
 /// A set of Verus components meant to be used together.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Toolchain<Str = String> {
+pub struct Toolchain<Str: AsRef<str> = String> {
     /// The Verus version; the primary key to identify a toolchain.
     pub verus: Str,
     /// The vstd version.
@@ -23,7 +23,7 @@ pub struct Toolchain<Str = String> {
 /// Identifies a crate in a registry (i.e. crates.io) or git.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
-pub enum Crate<Str = String> {
+pub enum Crate<Str: AsRef<str> = String> {
     /// A version published in a registry.
     Registry(/*version*/ Str),
     /// A commit in a git repository (e.g. GitHub).
@@ -83,20 +83,39 @@ impl Toolchain {
         let i1 = i0.increase();
         writeln!(out, "{i0}Toolchain {{")?;
         writeln!(out, "{i1}verus: {:?},", self.verus)?;
-        writeln!(out, "{i1}vstd: {},", self.vstd)?;
+
+        write!(out, "{i1}vstd: ")?;
+        self.vstd.format_code(out)?;
+        writeln!(out, ",")?;
+
         writeln!(out, "{i1}z3: {:?},", self.z3)?;
         write!(out, "{i0}}}")?;
         Ok(())
     }
 }
 
-impl<Str: std::fmt::Debug> std::fmt::Display for Crate<Str> {
+impl<Str: AsRef<str>> std::fmt::Display for Crate<Str> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Crate::Registry(version) => write!(f, "Crate::Registry({version:?})")?,
+            Crate::Registry(version) => write!(f, "{:?}", version.as_ref())?,
             Crate::GitCommit { git, rev } => {
-                write!(f, "Crate::GitCommit {{ git: {git:?}, rev: {rev:?} }}")?
+                write!(f, "{{ git = {:?}, rev = {:?} }}", git.as_ref(), rev.as_ref())?
             }
+        }
+        Ok(())
+    }
+}
+
+impl<Str: AsRef<str>> Crate<Str> {
+    fn format_code(&self, out: &mut impl Write) -> std::fmt::Result {
+        match self {
+            Crate::Registry(version) => write!(out, "Crate::Registry({:?})", version.as_ref())?,
+            Crate::GitCommit { git, rev } => write!(
+                out,
+                "Crate::GitCommit {{ git: {:?}, rev: {:?} }}",
+                git.as_ref(),
+                rev.as_ref()
+            )?,
         }
         Ok(())
     }
