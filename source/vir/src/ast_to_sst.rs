@@ -13,8 +13,8 @@ use crate::def::{self, Spanned};
 use crate::fun;
 use crate::inv_masks::{MaskQueryKind, MaskSet};
 use crate::messages::{
-    Message, Span, ToAny, error, error_with_label, error_with_secondary_label, internal_error,
-    warning,
+    Message, Span, ToAny, WarningAllow, error, error_with_label, error_with_secondary_label,
+    internal_error,
 };
 use crate::sst::{
     Bnd, BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclKind, LocalDeclX,
@@ -2151,8 +2151,12 @@ pub(crate) fn expr_to_stm_opt(
             let skip = !ctx.reveal_group_set.contains(x) && !ctx.func_map.contains_key(x);
 
             if skip {
-                state.diagnostics.report(&warning(
-                            &expr.span, "this reveal/fuel statement has no effect because no verification condition in this module depends on this function").to_any());
+                ctx.warning_maybe_if_in_local_crate(
+                    &expr.span,
+                    &WarningAllow::DeadReveal,
+                    || "this reveal/fuel statement has no effect because no verification condition in this module depends on this function",
+                    |msg| state.diagnostics.report(&msg.to_any()),
+                );
             }
 
             let stms = if skip {

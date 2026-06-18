@@ -1,24 +1,24 @@
-//! Maps that support ownership of keys
+//! IMaps that support ownership of keys
 //!
-//! - [`GhostMapAuth<K, V>`] represents authoritative ownership of the entire map;
-//! - [`GhostSubmap<K, V>`] represents client ownership of a submap;
-//! - [`GhostPersistentSubmap<K, V>`] represents duplicable client knowledge of a submap which will never change;
-//! - [`GhostPointsTo<K, V>`] represents client ownership of a single key-value pair.
-//! - [`GhostPersistentPointsTo<K, V>`] represents duplicable client knowledge of a single key-value pair which will never change.
+//! - [`GhostIMapAuth<K, V>`] represents authoritative ownership of the entire map;
+//! - [`GhostISubmap<K, V>`] represents client ownership of a submap;
+//! - [`GhostPersistentISubmap<K, V>`] represents duplicable client knowledge of a submap which will never change;
+//! - [`GhostIPointsTo<K, V>`] represents client ownership of a single key-value pair.
+//! - [`GhostPersistentIPointsTo<K, V>`] represents duplicable client knowledge of a single key-value pair which will never change.
 //!
-//! Updating the authoritative `GhostMapAuth<K, V>` requires a `GhostSubmap<K, V>` containing the keys being updated.
+//! Updating the authoritative `GhostIMapAuth<K, V>` requires a `GhostISubmap<K, V>` containing the keys being updated.
 //!
-//! `GhostSubmap<K, V>`s can be combined or split.
-//! Whenever a `GhostSubmap<K, V>` can be used, we can instead use a `GhostPointsTo<K, V>` (but not vice-versa).
+//! `GhostISubmap<K, V>`s can be combined or split.
+//! Whenever a `GhostISubmap<K, V>` can be used, we can instead use a `GhostIPointsTo<K, V>` (but not vice-versa).
 //!
-//! `GhostPersistentSubmap<K, V>`s can be combined or split.
-//! Whenever a `GhostPersistentSubmap<K, V>` can be used, we can instead use a `GhostPersistentPointsTo<K, V>` (but not vice-versa).
+//! `GhostPersistentISubmap<K, V>`s can be combined or split.
+//! Whenever a `GhostPersistentISubmap<K, V>` can be used, we can instead use a `GhostPersistentIPointsTo<K, V>` (but not vice-versa).
 //!
 //! ### Example
 //!
 //! ```
 //! fn example_use() {
-//!     let tracked (mut auth, mut sub) = GhostMapAuth::new(map![1u8 => 1u64, 2u8 => 2u64, 3u8 => 3u64]);
+//!     let tracked (mut auth, mut sub) = GhostIMapAuth::new(map![1u8 => 1u64, 2u8 => 2u64, 3u8 => 3u64]);
 //!
 //!     // Allocate some more keys in the auth map, receiving a new submap.
 //!     let tracked sub2 = auth.insert_map(map![4u8 => 4u64, 5u8 => 5u64]);
@@ -66,30 +66,33 @@
 //!     assert(psub2[2u8] == 22u64);
 //!
 //!     // Not shown in this simple example is the main use case of this resource:
-//!     // maintaining an invariant between GhostMapAuth<K, V> and some exec-mode
-//!     // shared state with a map view (e.g., HashMap<K, V>), which states that
-//!     // the Map<K, V> view of GhostMapAuth<K, V> is the same as the view of the
-//!     // HashMap<K, V>, and then handing out a GhostSubmap<K, V> to different
+//!     // maintaining an invariant between GhostIMapAuth<K, V> and some exec-mode
+//!     // shared state with a map view (e.g., HashIMap<K, V>), which states that
+//!     // the IMap<K, V> view of GhostIMapAuth<K, V> is the same as the view of the
+//!     // HashIMap<K, V>, and then handing out a GhostISubmap<K, V> to different
 //!     // clients that might need to operate on different keys in this map.
 //! }
 //! ```
-use super::super::imap::*;
-use super::super::imap_lib::*;
-use super::super::iset_lib::*;
-use super::super::modes::*;
-use super::super::prelude::*;
-use super::Loc;
-use super::algebra::ResourceAlgebra;
+use super::super::super::imap::*;
+use super::super::super::imap_lib::*;
+use super::super::super::iset_lib::*;
+use super::super::super::modes::*;
+use super::super::super::prelude::*;
+use super::super::Loc;
+use super::super::algebra::ResourceAlgebra;
 #[cfg(verus_keep_ghost)]
-use super::incorporate;
-use super::pcm::PCM;
-use super::pcm::Resource;
+use super::super::incorporate;
+use super::super::pcm::PCM;
+use super::super::pcm::Resource;
 #[cfg(verus_keep_ghost)]
-use super::split_mut;
+use super::super::split_mut;
 
 verus! {
 
-broadcast use {super::super::group_vstd_default, super::super::imap::group_imap_lemmas};
+broadcast use {
+    super::super::super::group_vstd_default,
+    super::super::super::imap::group_imap_lemmas,
+};
 
 #[verifier::reject_recursive_types(K)]
 #[verifier::ext_equal]
@@ -148,13 +151,13 @@ impl<K, V> FracCarrier<K, V> {
 
 #[verifier::reject_recursive_types(K)]
 #[verifier::ext_equal]
-// This struct represents the underlying resource algebra for GhostMaps
-tracked struct MapCarrier<K, V> {
+// This struct represents the underlying resource algebra for GhostIMaps
+tracked struct IMapCarrier<K, V> {
     auth: AuthCarrier<K, V>,
     frac: FracCarrier<K, V>,
 }
 
-impl<K, V> ResourceAlgebra for MapCarrier<K, V> {
+impl<K, V> ResourceAlgebra for IMapCarrier<K, V> {
     closed spec fn valid(self) -> bool {
         match (self.auth, self.frac) {
             (AuthCarrier::Invalid, _) => false,
@@ -214,13 +217,13 @@ impl<K, V> ResourceAlgebra for MapCarrier<K, V> {
             },
         };
 
-        MapCarrier { auth, frac }
+        IMapCarrier { auth, frac }
     }
 
     proof fn valid_op(a: Self, b: Self) {
         broadcast use lemma_submap_of_trans;
 
-        let ab = MapCarrier::op(a, b);
+        let ab = IMapCarrier::op(a, b);
         lemma_submap_of_op_frac(a, b);
         // derive contradiction that the items are disjoint
         if !a.frac.owning_map().dom().disjoint(a.frac.dup_map().dom()) {
@@ -250,9 +253,9 @@ impl<K, V> ResourceAlgebra for MapCarrier<K, V> {
     }
 }
 
-impl<K, V> PCM for MapCarrier<K, V> {
+impl<K, V> PCM for IMapCarrier<K, V> {
     closed spec fn unit() -> Self {
-        MapCarrier {
+        IMapCarrier {
             auth: AuthCarrier::Frac,
             frac: FracCarrier::Frac { owning: IMap::empty(), dup: IMap::empty() },
         }
@@ -267,91 +270,91 @@ impl<K, V> PCM for MapCarrier<K, V> {
     }
 }
 
-proof fn lemma_submap_of_op_frac<K, V>(a: MapCarrier<K, V>, b: MapCarrier<K, V>)
+proof fn lemma_submap_of_op_frac<K, V>(a: IMapCarrier<K, V>, b: IMapCarrier<K, V>)
     requires
-        MapCarrier::op(a, b).valid(),
+        IMapCarrier::op(a, b).valid(),
     ensures
-        a.frac.owning_map() <= MapCarrier::op(a, b).frac.owning_map(),
-        a.frac.dup_map() <= MapCarrier::op(a, b).frac.dup_map(),
-        b.frac.owning_map() <= MapCarrier::op(a, b).frac.owning_map(),
-        b.frac.dup_map() <= MapCarrier::op(a, b).frac.dup_map(),
+        a.frac.owning_map() <= IMapCarrier::op(a, b).frac.owning_map(),
+        a.frac.dup_map() <= IMapCarrier::op(a, b).frac.dup_map(),
+        b.frac.owning_map() <= IMapCarrier::op(a, b).frac.owning_map(),
+        b.frac.dup_map() <= IMapCarrier::op(a, b).frac.dup_map(),
 {
-    let ab = MapCarrier::op(a, b);
+    let ab = IMapCarrier::op(a, b);
     assert(ab.frac.owning_map() == a.frac.owning_map().union_prefer_right(b.frac.owning_map()));
     assert(ab.frac.dup_map() == a.frac.dup_map().union_prefer_right(b.frac.dup_map()));
     assert(a.frac.owning_map().dom().disjoint(b.frac.owning_map().dom()));
 }
 
-broadcast proof fn lemma_submap_of_op<K, V>(a: MapCarrier<K, V>, b: MapCarrier<K, V>)
+broadcast proof fn lemma_submap_of_op<K, V>(a: IMapCarrier<K, V>, b: IMapCarrier<K, V>)
     requires
-        #[trigger] MapCarrier::op(a, b).valid(),
+        #[trigger] IMapCarrier::op(a, b).valid(),
     ensures
-        a.frac.owning_map() <= MapCarrier::op(a, b).frac.owning_map(),
-        a.frac.dup_map() <= MapCarrier::op(a, b).frac.dup_map(),
-        a.auth.map() <= MapCarrier::op(a, b).auth.map(),
-        b.frac.owning_map() <= MapCarrier::op(a, b).frac.owning_map(),
-        b.frac.dup_map() <= MapCarrier::op(a, b).frac.dup_map(),
-        b.auth.map() <= MapCarrier::op(a, b).auth.map(),
+        a.frac.owning_map() <= IMapCarrier::op(a, b).frac.owning_map(),
+        a.frac.dup_map() <= IMapCarrier::op(a, b).frac.dup_map(),
+        a.auth.map() <= IMapCarrier::op(a, b).auth.map(),
+        b.frac.owning_map() <= IMapCarrier::op(a, b).frac.owning_map(),
+        b.frac.dup_map() <= IMapCarrier::op(a, b).frac.dup_map(),
+        b.auth.map() <= IMapCarrier::op(a, b).auth.map(),
         a.valid(),
         b.valid(),
 {
     lemma_submap_of_op_frac(a, b);
-    MapCarrier::valid_op(a, b);
-    MapCarrier::commutative(a, b);
-    MapCarrier::valid_op(b, a);
-    let ab = MapCarrier::op(a, b);
+    IMapCarrier::valid_op(a, b);
+    IMapCarrier::commutative(a, b);
+    IMapCarrier::valid_op(b, a);
+    let ab = IMapCarrier::op(a, b);
     assert(ab.auth.map() == a.auth.map().union_prefer_right(b.auth.map()));
 }
 
 /// A resource that has the authoritative ownership on the entire map
 #[verifier::reject_recursive_types(K)]
-pub tracked struct GhostMapAuth<K, V> {
-    r: Resource<MapCarrier<K, V>>,
+pub tracked struct GhostIMapAuth<K, V> {
+    r: Resource<IMapCarrier<K, V>>,
 }
 
 /// A resource that asserts client ownership of a submap.
 ///
-/// The existence of a [`GhostSubmap`] implies that:
-///  - Those keys will remain in the map (unless the onwer of the [`GhostSubmap`] deletes it using [`GhostMapAuth::delete`]);
-///  - Those keys will remain pointing to the same values (unless the onwer of the [`GhostSubmap`] updates them using [`GhostSubmap::update`])
-///  - All other [`GhostSubmap`]/[`GhostPointsTo`]/[`GhostPersistentSubmap`]/[`GhostPersistentPointsTo`] are disjoint subsets of the domain
+/// The existence of a [`GhostISubmap`] implies that:
+///  - Those keys will remain in the map (unless the onwer of the [`GhostISubmap`] deletes it using [`GhostIMapAuth::delete`]);
+///  - Those keys will remain pointing to the same values (unless the onwer of the [`GhostISubmap`] updates them using [`GhostISubmap::update`])
+///  - All other [`GhostISubmap`]/[`GhostIPointsTo`]/[`GhostPersistentISubmap`]/[`GhostPersistentIPointsTo`] are disjoint subsets of the domain
 #[verifier::reject_recursive_types(K)]
-pub tracked struct GhostSubmap<K, V> {
-    r: Resource<MapCarrier<K, V>>,
+pub tracked struct GhostISubmap<K, V> {
+    r: Resource<IMapCarrier<K, V>>,
 }
 
 /// A resource representing duplicable client knowledge of a persistent submap.
 ///
-/// The existence of a [`GhostPersistentSubmap`] implies that:
+/// The existence of a [`GhostPersistentISubmap`] implies that:
 ///  - Those keys will remain in the map, pointing to the same values, forever;
-///  - All other [`GhostSubmap`]/[`GhostPointsTo`] are disjoint subsets of the domain
+///  - All other [`GhostISubmap`]/[`GhostIPointsTo`] are disjoint subsets of the domain
 #[verifier::reject_recursive_types(K)]
-pub tracked struct GhostPersistentSubmap<K, V> {
-    r: Resource<MapCarrier<K, V>>,
+pub tracked struct GhostPersistentISubmap<K, V> {
+    r: Resource<IMapCarrier<K, V>>,
 }
 
 /// A resource that asserts client ownership over a single key in the map.
 ///
-/// The existence of a [`GhostPointsTo`] implies that:
-///  - Those key will remain in the map (unless the onwer of the [`GhostPointsTo`] deletes it using [`GhostMapAuth::delete_points_to`]);
-///  - Those key will remain pointing to the same value (unless the onwer of the [`GhostPointsTo`] updates them using [`GhostPointsTo::update`])
-///  - All other [`GhostSubmap`]/[`GhostPointsTo`]/[`GhostPersistentSubmap`]/[`GhostPersistentPointsTo`] are disjoint subsets of the domain
+/// The existence of a [`GhostIPointsTo`] implies that:
+///  - Those key will remain in the map (unless the onwer of the [`GhostIPointsTo`] deletes it using [`GhostIMapAuth::delete_points_to`]);
+///  - Those key will remain pointing to the same value (unless the onwer of the [`GhostIPointsTo`] updates them using [`GhostIPointsTo::update`])
+///  - All other [`GhostISubmap`]/[`GhostIPointsTo`]/[`GhostPersistentISubmap`]/[`GhostPersistentIPointsTo`] are disjoint subsets of the domain
 #[verifier::reject_recursive_types(K)]
-pub tracked struct GhostPointsTo<K, V> {
-    submap: GhostSubmap<K, V>,
+pub tracked struct GhostIPointsTo<K, V> {
+    submap: GhostISubmap<K, V>,
 }
 
 /// A resource representing duplicable client knowledge of a single key in the map.
 ///
-/// The existence of a [`GhostPersistentPointsTo`] implies that:
+/// The existence of a [`GhostPersistentIPointsTo`] implies that:
 ///  - The key-value pair will remain in the map, forever;
-///  - All other [`GhostSubmap`]/[`GhostPointsTo`] are disjoint subsets of the domain
+///  - All other [`GhostISubmap`]/[`GhostIPointsTo`] are disjoint subsets of the domain
 #[verifier::reject_recursive_types(K)]
-pub tracked struct GhostPersistentPointsTo<K, V> {
-    submap: GhostPersistentSubmap<K, V>,
+pub tracked struct GhostPersistentIPointsTo<K, V> {
+    submap: GhostPersistentISubmap<K, V>,
 }
 
-impl<K, V> GhostMapAuth<K, V> {
+impl<K, V> GhostIMapAuth<K, V> {
     #[verifier::type_invariant]
     spec fn inv(self) -> bool {
         &&& self.r.value().auth is Auth
@@ -371,7 +374,7 @@ impl<K, V> GhostMapAuth<K, V> {
         self.r.value().auth.map()
     }
 
-    /// Domain of the [`GhostMapAuth`]
+    /// Domain of the [`GhostIMapAuth`]
     pub open spec fn dom(self) -> ISet<K> {
         self@.dom()
     }
@@ -384,14 +387,14 @@ impl<K, V> GhostMapAuth<K, V> {
         self@[key]
     }
 
-    /// Instantiate a dummy [`GhostMapAuth`]
-    pub proof fn dummy() -> (tracked result: GhostMapAuth<K, V>) {
-        let tracked (auth, submap) = GhostMapAuth::<K, V>::new(IMap::empty());
+    /// Instantiate a dummy [`GhostIMapAuth`]
+    pub proof fn dummy() -> (tracked result: GhostIMapAuth<K, V>) {
+        let tracked (auth, submap) = GhostIMapAuth::<K, V>::new(IMap::empty());
         auth
     }
 
-    /// Extract the [`GhostMapAuth`] from a mutable reference
-    pub proof fn take(tracked &mut self) -> (tracked result: GhostMapAuth<K, V>)
+    /// Extract the [`GhostIMapAuth`] from a mutable reference
+    pub proof fn take(tracked &mut self) -> (tracked result: GhostIMapAuth<K, V>)
         ensures
             result == *old(self),
     {
@@ -401,22 +404,22 @@ impl<K, V> GhostMapAuth<K, V> {
         r
     }
 
-    /// Create an empty [`GhostSubmap`]
-    pub proof fn empty(tracked &self) -> (tracked result: GhostSubmap<K, V>)
+    /// Create an empty [`GhostISubmap`]
+    pub proof fn empty(tracked &self) -> (tracked result: GhostISubmap<K, V>)
         ensures
             result.id() == self.id(),
             result@ == IMap::<K, V>::empty(),
     {
         use_type_invariant(self);
-        let tracked r = Resource::<MapCarrier<_, _>>::create_unit(self.r.loc());
-        GhostSubmap { r }
+        let tracked r = Resource::<IMapCarrier<_, _>>::create_unit(self.r.loc());
+        GhostISubmap { r }
     }
 
-    /// Insert an [`IMap`] of values, receiving the [`GhostSubmap`] that asserts ownership over the key
+    /// Insert an [`IMap`] of values, receiving the [`GhostISubmap`] that asserts ownership over the key
     /// domain inserted.
     ///
     /// ```
-    /// proof fn insert_map_example(tracked mut m: GhostMapAuth<int, int>) -> (tracked r: GhostSubmap<int, int>)
+    /// proof fn insert_map_example(tracked mut m: GhostIMapAuth<int, int>) -> (tracked r: GhostISubmap<int, int>)
     ///     requires
     ///         !m.dom().contains(1int),
     ///         !m.dom().contains(2int),
@@ -426,7 +429,10 @@ impl<K, V> GhostMapAuth<K, V> {
     ///     submap
     /// }
     /// ```
-    pub proof fn insert_map(tracked &mut self, m: IMap<K, V>) -> (tracked result: GhostSubmap<K, V>)
+    pub proof fn insert_map(tracked &mut self, m: IMap<K, V>) -> (tracked result: GhostISubmap<
+        K,
+        V,
+    >)
         requires
             old(self)@.dom().disjoint(m.dom()),
         ensures
@@ -445,7 +451,7 @@ impl<K, V> GhostMapAuth<K, V> {
         assert(mself.inv());
         let tracked mut self_r = mself.r;
 
-        let full_carrier = MapCarrier {
+        let full_carrier = IMapCarrier {
             auth: AuthCarrier::Auth(self_r.value().auth.map().union_prefer_right(m)),
             frac: FracCarrier::Frac { owning: m, dup: IMap::empty() },
         };
@@ -453,22 +459,22 @@ impl<K, V> GhostMapAuth<K, V> {
         assert(full_carrier.valid());
         let tracked updated_r = self_r.update(full_carrier);
 
-        let auth_carrier = MapCarrier {
+        let auth_carrier = IMapCarrier {
             auth: updated_r.value().auth,
             frac: FracCarrier::Frac { owning: IMap::empty(), dup: IMap::empty() },
         };
-        let frac_carrier = MapCarrier { auth: AuthCarrier::Frac, frac: updated_r.value().frac };
+        let frac_carrier = IMapCarrier { auth: AuthCarrier::Frac, frac: updated_r.value().frac };
 
-        assert(updated_r.value() == MapCarrier::op(auth_carrier, frac_carrier));
+        assert(updated_r.value() == IMapCarrier::op(auth_carrier, frac_carrier));
         let tracked (auth_r, frac_r) = updated_r.split(auth_carrier, frac_carrier);
         self.r = auth_r;
-        GhostSubmap { r: frac_r }
+        GhostISubmap { r: frac_r }
     }
 
-    /// Insert a key-value pair, receiving the [`GhostPointsTo`] that asserts ownerships over the key.
+    /// Insert a key-value pair, receiving the [`GhostIPointsTo`] that asserts ownerships over the key.
     ///
     /// ```
-    /// proof fn insert_example(tracked mut m: GhostMapAuth<int, int>) -> (tracked r: GhostPointsTo<int, int>)
+    /// proof fn insert_example(tracked mut m: GhostIMapAuth<int, int>) -> (tracked r: GhostIPointsTo<int, int>)
     ///     requires
     ///         !m.dom().contains(1int),
     /// {
@@ -477,7 +483,7 @@ impl<K, V> GhostMapAuth<K, V> {
     ///     points_to
     /// }
     /// ```
-    pub proof fn insert(tracked &mut self, k: K, v: V) -> (tracked result: GhostPointsTo<K, V>)
+    pub proof fn insert(tracked &mut self, k: K, v: V) -> (tracked result: GhostIPointsTo<K, V>)
         requires
             !old(self)@.contains_key(k),
         ensures
@@ -487,12 +493,12 @@ impl<K, V> GhostMapAuth<K, V> {
             result@ == (k, v),
     {
         let tracked submap = self.insert_map(imap![k => v]);
-        GhostPointsTo { submap }
+        GhostIPointsTo { submap }
     }
 
     /// Delete a set of keys
     /// ```
-    /// proof fn delete(tracked mut auth: GhostMapAuth<int, int>)
+    /// proof fn delete(tracked mut auth: GhostIMapAuth<int, int>)
     ///     requires
     ///         auth.dom().contains(1int),
     ///         auth.dom().contains(2int),
@@ -504,7 +510,7 @@ impl<K, V> GhostMapAuth<K, V> {
     ///     auth.delete(submap)
     /// }
     /// ```
-    pub proof fn delete(tracked &mut self, tracked submap: GhostSubmap<K, V>)
+    pub proof fn delete(tracked &mut self, tracked submap: GhostISubmap<K, V>)
         requires
             submap.id() == old(self).id(),
         ensures
@@ -528,7 +534,7 @@ impl<K, V> GhostMapAuth<K, V> {
         let auth_map = self_r.value().auth.map();
         let new_auth_map = auth_map.remove_keys(submap@.dom());
 
-        let new_r = MapCarrier {
+        let new_r = IMapCarrier {
             auth: AuthCarrier::Auth(new_auth_map),
             frac: FracCarrier::Frac { owning: IMap::empty(), dup: IMap::empty() },
         };
@@ -539,7 +545,7 @@ impl<K, V> GhostMapAuth<K, V> {
 
     /// Delete a single key from the map
     /// ```
-    /// proof fn delete_key(tracked mut auth: GhostMapAuth<int, int>)
+    /// proof fn delete_key(tracked mut auth: GhostIMapAuth<int, int>)
     ///     requires
     ///         auth.dom().contains(1int),
     ///     ensures
@@ -550,7 +556,7 @@ impl<K, V> GhostMapAuth<K, V> {
     ///     auth.delete_points_to(points_to)
     /// }
     /// ```
-    pub proof fn delete_points_to(tracked &mut self, tracked p: GhostPointsTo<K, V>)
+    pub proof fn delete_points_to(tracked &mut self, tracked p: GhostIPointsTo<K, V>)
         requires
             p.id() == old(self).id(),
         ensures
@@ -562,47 +568,47 @@ impl<K, V> GhostMapAuth<K, V> {
         self.delete(p.submap);
     }
 
-    /// Create a new [`GhostMapAuth`] from an [`IMap`].
-    /// Gives the other half of ownership in the form of a [`GhostSubmap`].
+    /// Create a new [`GhostIMapAuth`] from an [`IMap`].
+    /// Gives the other half of ownership in the form of a [`GhostISubmap`].
     ///
     /// ```
     /// fn example() {
     ///     let m = map![1int => 1int, 2int => 4int, 3int => 9int];
-    ///     let tracked (auth, sub) = GhostMapAuth::new(m);
+    ///     let tracked (auth, sub) = GhostIMapAuth::new(m);
     ///     assert(auth@ == m);
     ///     assert(sub.dom() == m.dom());
     /// }
     /// ```
-    pub proof fn new(m: IMap<K, V>) -> (tracked result: (GhostMapAuth<K, V>, GhostSubmap<K, V>))
+    pub proof fn new(m: IMap<K, V>) -> (tracked result: (GhostIMapAuth<K, V>, GhostISubmap<K, V>))
         ensures
             result.0.id() == result.1.id(),
             result.0@ == m,
             result.1@ == m,
     {
         let tracked full_r = Resource::alloc(
-            MapCarrier {
+            IMapCarrier {
                 auth: AuthCarrier::Auth(m),
                 frac: FracCarrier::Frac { owning: m, dup: IMap::empty() },
             },
         );
 
-        let auth_carrier = MapCarrier {
+        let auth_carrier = IMapCarrier {
             auth: AuthCarrier::Auth(m),
             frac: FracCarrier::Frac { owning: IMap::empty(), dup: IMap::empty() },
         };
 
-        let frac_carrier = MapCarrier {
+        let frac_carrier = IMapCarrier {
             auth: AuthCarrier::Frac,
             frac: FracCarrier::Frac { owning: m, dup: IMap::empty() },
         };
 
-        assert(full_r.value() == MapCarrier::op(auth_carrier, frac_carrier));
+        assert(full_r.value() == IMapCarrier::op(auth_carrier, frac_carrier));
         let tracked (auth_r, frac_r) = full_r.split(auth_carrier, frac_carrier);
-        (GhostMapAuth { r: auth_r }, GhostSubmap { r: frac_r })
+        (GhostIMapAuth { r: auth_r }, GhostISubmap { r: frac_r })
     }
 }
 
-impl<K, V> GhostSubmap<K, V> {
+impl<K, V> GhostISubmap<K, V> {
     #[verifier::type_invariant]
     spec fn inv(self) -> bool {
         &&& self.r.value().auth is Frac
@@ -610,8 +616,8 @@ impl<K, V> GhostSubmap<K, V> {
         &&& self.r.value().frac.dup_map().is_empty()
     }
 
-    /// Checks whether the [`GhostSubmap`] refers to a single key (and thus can be converted to a
-    /// [`GhostPointsTo`]).
+    /// Checks whether the [`GhostISubmap`] refers to a single key (and thus can be converted to a
+    /// [`GhostIPointsTo`]).
     pub open spec fn is_points_to(self) -> bool {
         &&& self@.len() == 1
         &&& self.dom().finite()
@@ -628,7 +634,7 @@ impl<K, V> GhostSubmap<K, V> {
         self.r.value().frac.owning_map()
     }
 
-    /// Domain of the [`GhostSubmap`]
+    /// Domain of the [`GhostISubmap`]
     pub open spec fn dom(self) -> ISet<K> {
         self@.dom()
     }
@@ -641,25 +647,25 @@ impl<K, V> GhostSubmap<K, V> {
         self@[key]
     }
 
-    /// Instantiate a dummy [`GhostSubmap`]
-    pub proof fn dummy() -> (tracked result: GhostSubmap<K, V>) {
-        let tracked (auth, submap) = GhostMapAuth::<K, V>::new(IMap::empty());
+    /// Instantiate a dummy [`GhostISubmap`]
+    pub proof fn dummy() -> (tracked result: GhostISubmap<K, V>) {
+        let tracked (auth, submap) = GhostIMapAuth::<K, V>::new(IMap::empty());
         submap
     }
 
-    /// Create an empty [`GhostSubmap`]
-    pub proof fn empty(tracked &self) -> (tracked result: GhostSubmap<K, V>)
+    /// Create an empty [`GhostISubmap`]
+    pub proof fn empty(tracked &self) -> (tracked result: GhostISubmap<K, V>)
         ensures
             result.id() == self.id(),
             result@ == IMap::<K, V>::empty(),
     {
         use_type_invariant(self);
-        let tracked r = Resource::<MapCarrier<_, _>>::create_unit(self.r.loc());
-        GhostSubmap { r }
+        let tracked r = Resource::<IMapCarrier<_, _>>::create_unit(self.r.loc());
+        GhostISubmap { r }
     }
 
-    /// Extract the [`GhostSubmap`] from a mutable reference, leaving behind an empty map.
-    pub proof fn take(tracked &mut self) -> (tracked result: GhostSubmap<K, V>)
+    /// Extract the [`GhostISubmap`] from a mutable reference, leaving behind an empty map.
+    pub proof fn take(tracked &mut self) -> (tracked result: GhostISubmap<K, V>)
         ensures
             old(self).id() == final(self).id(),
             final(self)@.is_empty(),
@@ -673,13 +679,13 @@ impl<K, V> GhostSubmap<K, V> {
         r
     }
 
-    /// Agreement between a [`GhostSubmap`] and a corresponding [`GhostMapAuth`]
+    /// Agreement between a [`GhostISubmap`] and a corresponding [`GhostIMapAuth`]
     ///
-    /// Verus might not have full context of the [`GhostMapAuth`] and a corresponding [`GhostSubmap`].
+    /// Verus might not have full context of the [`GhostIMapAuth`] and a corresponding [`GhostISubmap`].
     /// However, whenever we know that they refer to the same resource (i.e., have matching ids) we
-    /// can assert that the [`GhostSubmap`] is a submap of the [`GhostMapAuth`].
+    /// can assert that the [`GhostISubmap`] is a submap of the [`GhostIMapAuth`].
     /// ```
-    /// proof fn test(tracked &auth: GhostMapAuth<int, int>, tracked &sub: GhostSubmap<int, int>)
+    /// proof fn test(tracked &auth: GhostIMapAuth<int, int>, tracked &sub: GhostISubmap<int, int>)
     ///     requires
     ///         auth.id() == sub.id(),
     ///         sub.dom().contains(1int),
@@ -692,7 +698,7 @@ impl<K, V> GhostSubmap<K, V> {
     ///     assert(auth[1int] == 1int);
     /// }
     /// ```
-    pub proof fn agree(tracked self: &GhostSubmap<K, V>, tracked auth: &GhostMapAuth<K, V>)
+    pub proof fn agree(tracked self: &GhostISubmap<K, V>, tracked auth: &GhostIMapAuth<K, V>)
         requires
             self.id() == auth.id(),
         ensures
@@ -708,10 +714,10 @@ impl<K, V> GhostSubmap<K, V> {
         assert(self.r.value().frac.owning_map() <= joined.value().frac.owning_map());
     }
 
-    /// Combining two [`GhostSubmap`]s is possible.
-    /// We consume the input [`GhostSubmap`] and merge it into the first.
+    /// Combining two [`GhostISubmap`]s is possible.
+    /// We consume the input [`GhostISubmap`] and merge it into the first.
     /// We also learn that they were disjoint.
-    pub proof fn combine(tracked &mut self, tracked other: GhostSubmap<K, V>)
+    pub proof fn combine(tracked &mut self, tracked other: GhostISubmap<K, V>)
         requires
             old(self).id() == other.id(),
         ensures
@@ -726,9 +732,9 @@ impl<K, V> GhostSubmap<K, V> {
         incorporate(&mut self.r, other.r);
     }
 
-    /// Combining a [`GhostPointsTo`] into [`GhostSubmap`] is possible, in a similar way to the way to combine
-    /// [`GhostSubmap`]s.
-    pub proof fn combine_points_to(tracked &mut self, tracked other: GhostPointsTo<K, V>)
+    /// Combining a [`GhostIPointsTo`] into [`GhostISubmap`] is possible, in a similar way to the way to combine
+    /// [`GhostISubmap`]s.
+    pub proof fn combine_points_to(tracked &mut self, tracked other: GhostIPointsTo<K, V>)
         requires
             old(self).id() == other.id(),
         ensures
@@ -743,8 +749,8 @@ impl<K, V> GhostSubmap<K, V> {
         self.combine(other.submap);
     }
 
-    /// When we have two [`GhostSubmap`]s we can prove that they have disjoint domains.
-    pub proof fn disjoint(tracked &mut self, tracked other: &GhostSubmap<K, V>)
+    /// When we have two [`GhostISubmap`]s we can prove that they have disjoint domains.
+    pub proof fn disjoint(tracked &mut self, tracked other: &GhostISubmap<K, V>)
         requires
             old(self).id() == other.id(),
         ensures
@@ -757,9 +763,12 @@ impl<K, V> GhostSubmap<K, V> {
         self.r.validate_2(&other.r);
     }
 
-    /// When we have a [`GhostSubmap`] and a [`GhostPersistentSubmap`] we can prove that they are in disjoint
+    /// When we have a [`GhostISubmap`] and a [`GhostPersistentISubmap`] we can prove that they are in disjoint
     /// domains.
-    pub proof fn disjoint_persistent(tracked &mut self, tracked other: &GhostPersistentSubmap<K, V>)
+    pub proof fn disjoint_persistent(
+        tracked &mut self,
+        tracked other: &GhostPersistentISubmap<K, V>,
+    )
         requires
             old(self).id() == other.id(),
         ensures
@@ -772,9 +781,9 @@ impl<K, V> GhostSubmap<K, V> {
         self.r.validate_2(&other.r);
     }
 
-    /// When we have a [`GhostSubmap`] and a [`GhostPointsTo`] we can prove that they are in disjoint
+    /// When we have a [`GhostISubmap`] and a [`GhostIPointsTo`] we can prove that they are in disjoint
     /// domains.
-    pub proof fn disjoint_points_to(tracked &mut self, tracked other: &GhostPointsTo<K, V>)
+    pub proof fn disjoint_points_to(tracked &mut self, tracked other: &GhostIPointsTo<K, V>)
         requires
             old(self).id() == other.id(),
         ensures
@@ -787,11 +796,11 @@ impl<K, V> GhostSubmap<K, V> {
         self.disjoint(&other.submap);
     }
 
-    /// When we have a [`GhostSubmap`] and a [`GhostPersistentPointsTo`] we can prove that they are in disjoint
+    /// When we have a [`GhostISubmap`] and a [`GhostPersistentIPointsTo`] we can prove that they are in disjoint
     /// domains.
     pub proof fn disjoint_persistent_points_to(
         tracked &mut self,
-        tracked other: &GhostPersistentPointsTo<K, V>,
+        tracked other: &GhostPersistentIPointsTo<K, V>,
     )
         requires
             old(self).id() == other.id(),
@@ -805,8 +814,8 @@ impl<K, V> GhostSubmap<K, V> {
         self.disjoint_persistent(&other.submap);
     }
 
-    /// We can split a [`GhostSubmap`] based on a set of keys in its domain.
-    pub proof fn split(tracked &mut self, s: ISet<K>) -> (tracked result: GhostSubmap<K, V>)
+    /// We can split a [`GhostISubmap`] based on a set of keys in its domain.
+    pub proof fn split(tracked &mut self, s: ISet<K>) -> (tracked result: GhostISubmap<K, V>)
         requires
             s <= old(self)@.dom(),
         ensures
@@ -818,7 +827,7 @@ impl<K, V> GhostSubmap<K, V> {
     {
         use_type_invariant(&*self);
 
-        let self_carrier = MapCarrier {
+        let self_carrier = IMapCarrier {
             auth: AuthCarrier::Frac,
             frac: FracCarrier::Frac {
                 owning: self.r.value().frac.owning_map().remove_keys(s),
@@ -826,7 +835,7 @@ impl<K, V> GhostSubmap<K, V> {
             },
         };
 
-        let res_carrier = MapCarrier {
+        let res_carrier = IMapCarrier {
             auth: AuthCarrier::Frac,
             frac: FracCarrier::Frac {
                 owning: self.r.value().frac.owning_map().restrict(s),
@@ -834,16 +843,16 @@ impl<K, V> GhostSubmap<K, V> {
             },
         };
 
-        assert(self.r.value().frac == MapCarrier::op(self_carrier, res_carrier).frac);
+        assert(self.r.value().frac == IMapCarrier::op(self_carrier, res_carrier).frac);
         let tracked r = split_mut(&mut self.r, self_carrier, res_carrier);
-        GhostSubmap { r }
+        GhostISubmap { r }
     }
 
     pub proof fn split_with_olddom(
         tracked &mut self,
         s: ISet<K>,
         olddom: ISet<K>,
-    ) -> (tracked result: GhostSubmap<K, V>)
+    ) -> (tracked result: GhostISubmap<K, V>)
         requires
             olddom == old(self)@.dom(),
             s <= olddom,
@@ -862,8 +871,8 @@ impl<K, V> GhostSubmap<K, V> {
         out
     }
 
-    /// We can separate a single key out of a [`GhostSubmap`]
-    pub proof fn split_points_to(tracked &mut self, k: K) -> (tracked result: GhostPointsTo<K, V>)
+    /// We can separate a single key out of a [`GhostISubmap`]
+    pub proof fn split_points_to(tracked &mut self, k: K) -> (tracked result: GhostIPointsTo<K, V>)
         requires
             old(self)@.contains_key(k),
         ensures
@@ -876,13 +885,13 @@ impl<K, V> GhostSubmap<K, V> {
         use_type_invariant(&*self);
 
         let tracked submap = self.split(iset![k]);
-        GhostPointsTo { submap }
+        GhostIPointsTo { submap }
     }
 
-    /// When we have both the [`GhostMapAuth`] and a [`GhostSubmap`] we can update the values for a
+    /// When we have both the [`GhostIMapAuth`] and a [`GhostISubmap`] we can update the values for a
     /// subset of keys in our submap.
     /// ```
-    /// proof fn test(tracked auth: &mut GhostMapAuth<int, int>, tracked sub: &mut GhostSubmap<int, int>)
+    /// proof fn test(tracked auth: &mut GhostIMapAuth<int, int>, tracked sub: &mut GhostISubmap<int, int>)
     ///     requires
     ///         auth.id() == sub.id(),
     ///         sub.dom() == set![1int, 2int, 3int]
@@ -897,7 +906,7 @@ impl<K, V> GhostSubmap<K, V> {
     ///     sub.update(map![1int => 9int, 2int => 10int, 3int => 11int]);
     /// }
     /// ```
-    pub proof fn update(tracked &mut self, tracked auth: &mut GhostMapAuth<K, V>, m: IMap<K, V>)
+    pub proof fn update(tracked &mut self, tracked auth: &mut GhostIMapAuth<K, V>, m: IMap<K, V>)
         requires
             m.dom() <= old(self)@.dom(),
             old(self).id() == old(auth).id(),
@@ -917,7 +926,7 @@ impl<K, V> GhostSubmap<K, V> {
         tracked_swap(self, &mut mself);
         let tracked mut frac_r = mself.r;
 
-        let tracked mut mauth = GhostMapAuth::<K, V>::dummy();
+        let tracked mut mauth = GhostIMapAuth::<K, V>::dummy();
         tracked_swap(auth, &mut mauth);
         let tracked mut auth_r = mauth.r;
 
@@ -931,39 +940,39 @@ impl<K, V> GhostSubmap<K, V> {
             owning: full_r.value().frac.owning_map().union_prefer_right(m),
             dup: IMap::empty(),
         };
-        let new_full_carrier = MapCarrier { auth: auth_carrier, frac: frac_carrier };
+        let new_full_carrier = IMapCarrier { auth: auth_carrier, frac: frac_carrier };
 
         assert(new_full_carrier.valid());
         let tracked r_upd = full_r.update(new_full_carrier);
 
-        let new_auth_carrier = MapCarrier {
+        let new_auth_carrier = IMapCarrier {
             auth: r_upd.value().auth,
             frac: FracCarrier::Frac { owning: IMap::empty(), dup: IMap::empty() },
         };
-        let new_frac_carrier = MapCarrier { auth: AuthCarrier::Frac, frac: r_upd.value().frac };
-        assert(r_upd.value().frac == MapCarrier::op(new_auth_carrier, new_frac_carrier).frac);
-        assert(r_upd.value() == MapCarrier::op(new_auth_carrier, new_frac_carrier));
+        let new_frac_carrier = IMapCarrier { auth: AuthCarrier::Frac, frac: r_upd.value().frac };
+        assert(r_upd.value().frac == IMapCarrier::op(new_auth_carrier, new_frac_carrier).frac);
+        assert(r_upd.value() == IMapCarrier::op(new_auth_carrier, new_frac_carrier));
 
         let tracked (new_auth_r, new_frac_r) = r_upd.split(new_auth_carrier, new_frac_carrier);
         auth.r = new_auth_r;
         self.r = new_frac_r;
     }
 
-    /// Converting a [`GhostSubmap`] into a [`GhostPointsTo`]
-    pub proof fn points_to(tracked self) -> (tracked r: GhostPointsTo<K, V>)
+    /// Converting a [`GhostISubmap`] into a [`GhostIPointsTo`]
+    pub proof fn points_to(tracked self) -> (tracked r: GhostIPointsTo<K, V>)
         requires
             self.is_points_to(),
         ensures
             self@ == imap![r.key() => r.value()],
             self.id() == r.id(),
     {
-        let tracked r = GhostPointsTo { submap: self };
+        let tracked r = GhostIPointsTo { submap: self };
         r.lemma_map_view();
         r
     }
 
-    /// Convert a [`GhostSubmap`] into a [`GhostPersistentSubmap`]
-    pub proof fn persist(tracked self) -> (tracked r: GhostPersistentSubmap<K, V>)
+    /// Convert a [`GhostISubmap`] into a [`GhostPersistentISubmap`]
+    pub proof fn persist(tracked self) -> (tracked r: GhostPersistentISubmap<K, V>)
         ensures
             self@ == r@,
             self.id() == r.id(),
@@ -975,7 +984,7 @@ impl<K, V> GhostSubmap<K, V> {
 
         let tracked mut r = self.r;
 
-        let self_carrier = MapCarrier {
+        let self_carrier = IMapCarrier {
             auth: AuthCarrier::Frac,
             frac: FracCarrier::Frac {
                 owning: self.r.value().frac.owning_map(),
@@ -983,7 +992,7 @@ impl<K, V> GhostSubmap<K, V> {
             },
         };
 
-        let res_carrier = MapCarrier {
+        let res_carrier = IMapCarrier {
             auth: AuthCarrier::Frac,
             frac: FracCarrier::Frac {
                 owning: self.r.value().frac.dup_map(),
@@ -992,11 +1001,11 @@ impl<K, V> GhostSubmap<K, V> {
         };
 
         let tracked r = r.update(res_carrier);
-        GhostPersistentSubmap { r }
+        GhostPersistentISubmap { r }
     }
 }
 
-impl<K, V> GhostPersistentSubmap<K, V> {
+impl<K, V> GhostPersistentISubmap<K, V> {
     #[verifier::type_invariant]
     spec fn inv(self) -> bool {
         &&& self.r.value().auth is Frac
@@ -1004,8 +1013,8 @@ impl<K, V> GhostPersistentSubmap<K, V> {
         &&& self.r.value().frac.owning_map().is_empty()
     }
 
-    /// Checks whether the [`GhostPersistentSubmap`] refers to a single key (and thus can be converted to a
-    /// [`GhostPersistentPointsTo`]).
+    /// Checks whether the [`GhostPersistentISubmap`] refers to a single key (and thus can be converted to a
+    /// [`GhostPersistentIPointsTo`]).
     pub open spec fn is_points_to(self) -> bool {
         &&& self@.len() == 1
         &&& self.dom().finite()
@@ -1022,7 +1031,7 @@ impl<K, V> GhostPersistentSubmap<K, V> {
         self.r.value().frac.dup_map()
     }
 
-    /// Domain of the [`GhostPersistentSubmap`]
+    /// Domain of the [`GhostPersistentISubmap`]
     pub open spec fn dom(self) -> ISet<K> {
         self@.dom()
     }
@@ -1035,44 +1044,44 @@ impl<K, V> GhostPersistentSubmap<K, V> {
         self@[key]
     }
 
-    /// Instantiate a dummy [`GhostPersistentSubmap`]
-    pub proof fn dummy() -> (tracked result: GhostPersistentSubmap<K, V>) {
-        let tracked owned = GhostSubmap::<K, V>::dummy();
+    /// Instantiate a dummy [`GhostPersistentISubmap`]
+    pub proof fn dummy() -> (tracked result: GhostPersistentISubmap<K, V>) {
+        let tracked owned = GhostISubmap::<K, V>::dummy();
         owned.persist()
     }
 
-    /// Create an empty [`GhostPersistentSubmap`]
-    pub proof fn empty(tracked &self) -> (tracked result: GhostPersistentSubmap<K, V>)
+    /// Create an empty [`GhostPersistentISubmap`]
+    pub proof fn empty(tracked &self) -> (tracked result: GhostPersistentISubmap<K, V>)
         ensures
             result.id() == self.id(),
             result@ == IMap::<K, V>::empty(),
     {
         use_type_invariant(self);
-        let tracked r = Resource::<MapCarrier<_, _>>::create_unit(self.r.loc());
-        GhostSubmap { r }.persist()
+        let tracked r = Resource::<IMapCarrier<_, _>>::create_unit(self.r.loc());
+        GhostISubmap { r }.persist()
     }
 
-    /// Duplicate the [`GhostPersistentSubmap`]
-    pub proof fn duplicate(tracked &self) -> (tracked result: GhostPersistentSubmap<K, V>)
+    /// Duplicate the [`GhostPersistentISubmap`]
+    pub proof fn duplicate(tracked &self) -> (tracked result: GhostPersistentISubmap<K, V>)
         ensures
             result.id() == self.id(),
             result@ == self@,
     {
         use_type_invariant(&*self);
 
-        assert(MapCarrier::op(self.r.value(), self.r.value()) == self.r.value());
-        let tracked r = super::lib::duplicate(&self.r);
+        assert(IMapCarrier::op(self.r.value(), self.r.value()) == self.r.value());
+        let tracked r = super::super::lib::duplicate(&self.r);
 
-        GhostPersistentSubmap { r }
+        GhostPersistentISubmap { r }
     }
 
-    /// Agreement between a [`GhostPersistentSubmap`] and a corresponding [`GhostMapAuth`]
+    /// Agreement between a [`GhostPersistentISubmap`] and a corresponding [`GhostIMapAuth`]
     ///
-    /// Verus might not have full context of the [`GhostMapAuth`] and a corresponding [`GhostPersistentSubmap`].
+    /// Verus might not have full context of the [`GhostIMapAuth`] and a corresponding [`GhostPersistentISubmap`].
     /// However, whenever we know that they refer to the same resource (i.e., have matching ids) we
-    /// can assert that the [`GhostPersistentSubmap`] is a submap of the [`GhostMapAuth`].
+    /// can assert that the [`GhostPersistentISubmap`] is a submap of the [`GhostIMapAuth`].
     /// ```
-    /// proof fn test(tracked &auth: GhostMapAuth<int, int>, tracked &sub: GhostPersistentSubmap<int, int>)
+    /// proof fn test(tracked &auth: GhostIMapAuth<int, int>, tracked &sub: GhostPersistentISubmap<int, int>)
     ///     requires
     ///         auth.id() == sub.id(),
     ///         sub.dom().contains(1int),
@@ -1086,8 +1095,8 @@ impl<K, V> GhostPersistentSubmap<K, V> {
     /// }
     /// ```
     pub proof fn agree(
-        tracked self: &GhostPersistentSubmap<K, V>,
-        tracked auth: &GhostMapAuth<K, V>,
+        tracked self: &GhostPersistentISubmap<K, V>,
+        tracked auth: &GhostIMapAuth<K, V>,
     )
         requires
             self.id() == auth.id(),
@@ -1104,10 +1113,10 @@ impl<K, V> GhostPersistentSubmap<K, V> {
         assert(self.r.value().frac.dup_map() <= joined.value().frac.dup_map());
     }
 
-    /// Combining two [`GhostPersistentSubmap`]s is possible.
-    /// We consume the input [`GhostPersistentSubmap`] and merge it into the first.
+    /// Combining two [`GhostPersistentISubmap`]s is possible.
+    /// We consume the input [`GhostPersistentISubmap`] and merge it into the first.
     /// We also learn that they agreed
-    pub proof fn combine(tracked &mut self, tracked other: GhostPersistentSubmap<K, V>)
+    pub proof fn combine(tracked &mut self, tracked other: GhostPersistentISubmap<K, V>)
         requires
             old(self).id() == other.id(),
         ensures
@@ -1122,9 +1131,9 @@ impl<K, V> GhostPersistentSubmap<K, V> {
         incorporate(&mut self.r, other.r);
     }
 
-    /// Combining a [`GhostPersistentPointsTo`] into [`GhostPersistentSubmap`] is possible, in a similar way to the way to combine
-    /// [`GhostPersistentSubmap`]s.
-    pub proof fn combine_points_to(tracked &mut self, tracked other: GhostPersistentPointsTo<K, V>)
+    /// Combining a [`GhostPersistentIPointsTo`] into [`GhostPersistentISubmap`] is possible, in a similar way to the way to combine
+    /// [`GhostPersistentISubmap`]s.
+    pub proof fn combine_points_to(tracked &mut self, tracked other: GhostPersistentIPointsTo<K, V>)
         requires
             old(self).id() == other.id(),
         ensures
@@ -1139,8 +1148,8 @@ impl<K, V> GhostPersistentSubmap<K, V> {
         self.combine(other.submap);
     }
 
-    /// When we have a [`GhostPersistentSubmap`] and a [`GhostSubmap`] we can prove that they have disjoint domains.
-    pub proof fn disjoint(tracked &mut self, tracked other: &GhostSubmap<K, V>)
+    /// When we have a [`GhostPersistentISubmap`] and a [`GhostISubmap`] we can prove that they have disjoint domains.
+    pub proof fn disjoint(tracked &mut self, tracked other: &GhostISubmap<K, V>)
         requires
             old(self).id() == other.id(),
         ensures
@@ -1153,8 +1162,11 @@ impl<K, V> GhostPersistentSubmap<K, V> {
         self.r.validate_2(&other.r);
     }
 
-    /// When we have two [`GhostPersistentSubmap`]s we can prove that they agree on their intersection.
-    pub proof fn intersection_agrees(tracked &mut self, tracked other: &GhostPersistentSubmap<K, V>)
+    /// When we have two [`GhostPersistentISubmap`]s we can prove that they agree on their intersection.
+    pub proof fn intersection_agrees(
+        tracked &mut self,
+        tracked other: &GhostPersistentISubmap<K, V>,
+    )
         requires
             old(self).id() == other.id(),
         ensures
@@ -1167,9 +1179,9 @@ impl<K, V> GhostPersistentSubmap<K, V> {
         self.r.validate_2(&other.r);
     }
 
-    /// When we have a [`GhostPersistentSubmap`] and a [`GhostPointsTo`] we can prove that they are in disjoint
+    /// When we have a [`GhostPersistentISubmap`] and a [`GhostIPointsTo`] we can prove that they are in disjoint
     /// domains.
-    pub proof fn disjoint_points_to(tracked &mut self, tracked other: &GhostPointsTo<K, V>)
+    pub proof fn disjoint_points_to(tracked &mut self, tracked other: &GhostIPointsTo<K, V>)
         requires
             old(self).id() == other.id(),
         ensures
@@ -1182,12 +1194,12 @@ impl<K, V> GhostPersistentSubmap<K, V> {
         self.disjoint(&other.submap);
     }
 
-    /// When we have a [`GhostPersistentSubmap`] and a [`GhostPersistentPointsTo`],
+    /// When we have a [`GhostPersistentISubmap`] and a [`GhostPersistentIPointsTo`],
     /// we can prove that either they are disjoint domains or the key-value pair is in the
     /// persistent submap.
     pub proof fn intersection_agrees_points_to(
         tracked &mut self,
-        tracked other: &GhostPersistentPointsTo<K, V>,
+        tracked other: &GhostPersistentIPointsTo<K, V>,
     )
         requires
             old(self).id() == other.id(),
@@ -1201,8 +1213,8 @@ impl<K, V> GhostPersistentSubmap<K, V> {
         self.intersection_agrees(&other.submap);
     }
 
-    /// We can split a [`GhostPersistentSubmap`] based on a set of keys in its domain.
-    pub proof fn split(tracked &mut self, s: ISet<K>) -> (tracked result: GhostPersistentSubmap<
+    /// We can split a [`GhostPersistentISubmap`] based on a set of keys in its domain.
+    pub proof fn split(tracked &mut self, s: ISet<K>) -> (tracked result: GhostPersistentISubmap<
         K,
         V,
     >)
@@ -1217,10 +1229,10 @@ impl<K, V> GhostPersistentSubmap<K, V> {
     {
         use_type_invariant(&*self);
 
-        let tracked mut r = Resource::alloc(MapCarrier::<K, V>::unit());
+        let tracked mut r = Resource::alloc(IMapCarrier::<K, V>::unit());
         tracked_swap(&mut self.r, &mut r);
 
-        let self_carrier = MapCarrier {
+        let self_carrier = IMapCarrier {
             auth: AuthCarrier::Frac,
             frac: FracCarrier::Frac {
                 owning: r.value().frac.owning_map(),
@@ -1228,7 +1240,7 @@ impl<K, V> GhostPersistentSubmap<K, V> {
             },
         };
 
-        let res_carrier = MapCarrier {
+        let res_carrier = IMapCarrier {
             auth: AuthCarrier::Frac,
             frac: FracCarrier::Frac {
                 owning: r.value().frac.owning_map(),
@@ -1236,15 +1248,15 @@ impl<K, V> GhostPersistentSubmap<K, V> {
             },
         };
 
-        assert(r.value().frac == MapCarrier::op(self_carrier, res_carrier).frac);
+        assert(r.value().frac == IMapCarrier::op(self_carrier, res_carrier).frac);
         let tracked (self_r, res_r) = r.split(self_carrier, res_carrier);
         self.r = self_r;
-        GhostPersistentSubmap { r: res_r }
+        GhostPersistentISubmap { r: res_r }
     }
 
-    /// We can separate a single key out of a [`GhostPersistentSubmap`]
+    /// We can separate a single key out of a [`GhostPersistentISubmap`]
     pub proof fn split_points_to(tracked &mut self, k: K) -> (tracked result:
-        GhostPersistentPointsTo<K, V>)
+        GhostPersistentIPointsTo<K, V>)
         requires
             old(self)@.contains_key(k),
         ensures
@@ -1257,24 +1269,24 @@ impl<K, V> GhostPersistentSubmap<K, V> {
         use_type_invariant(&*self);
 
         let tracked submap = self.split(iset![k]);
-        GhostPersistentPointsTo { submap }
+        GhostPersistentIPointsTo { submap }
     }
 
-    /// Convert a [`GhostPersistentSubmap`] into a [`GhostPersistentPointsTo`]
-    pub proof fn points_to(tracked self) -> (tracked r: GhostPersistentPointsTo<K, V>)
+    /// Convert a [`GhostPersistentISubmap`] into a [`GhostPersistentIPointsTo`]
+    pub proof fn points_to(tracked self) -> (tracked r: GhostPersistentIPointsTo<K, V>)
         requires
             self.is_points_to(),
         ensures
             self@ == imap![r.key() => r.value()],
             self.id() == r.id(),
     {
-        let tracked r = GhostPersistentPointsTo { submap: self };
+        let tracked r = GhostPersistentIPointsTo { submap: self };
         r.lemma_map_view();
         r
     }
 }
 
-impl<K, V> GhostPointsTo<K, V> {
+impl<K, V> GhostIPointsTo<K, V> {
     #[verifier::type_invariant]
     spec fn inv(self) -> bool {
         self.submap.is_points_to()
@@ -1300,13 +1312,13 @@ impl<K, V> GhostPointsTo<K, V> {
         self.submap[self.key()]
     }
 
-    /// Agreement between a [`GhostPointsTo`] and a corresponding [`GhostMapAuth`]
+    /// Agreement between a [`GhostIPointsTo`] and a corresponding [`GhostIMapAuth`]
     ///
-    /// Verus might not have full context of the [`GhostMapAuth`] and a corresponding [`GhostPointsTo`].
+    /// Verus might not have full context of the [`GhostIMapAuth`] and a corresponding [`GhostIPointsTo`].
     /// However, whenever we know that they refer to the same resource (i.e., have matching ids) we
-    /// can assert that the [`GhostPointsTo`] is a key-value pair in the [`GhostMapAuth`].
+    /// can assert that the [`GhostIPointsTo`] is a key-value pair in the [`GhostIMapAuth`].
     /// ```
-    /// proof fn test(tracked &auth: GhostMapAuth<int, int>, tracked &pt: GhostPointsTo<int, int>)
+    /// proof fn test(tracked &auth: GhostIMapAuth<int, int>, tracked &pt: GhostIPointsTo<int, int>)
     ///     requires
     ///         auth.id() == sub.id(),
     ///         pt@ == (1int, 1int)
@@ -1317,7 +1329,7 @@ impl<K, V> GhostPointsTo<K, V> {
     ///     assert(auth[1int] == 1int);
     /// }
     /// ```
-    pub proof fn agree(tracked self: &GhostPointsTo<K, V>, tracked auth: &GhostMapAuth<K, V>)
+    pub proof fn agree(tracked self: &GhostIPointsTo<K, V>, tracked auth: &GhostIMapAuth<K, V>)
         requires
             self.id() == auth.id(),
         ensures
@@ -1335,10 +1347,10 @@ impl<K, V> GhostPointsTo<K, V> {
         assert(auth@[self.key()] == self.value());
     }
 
-    /// We can combine two [`GhostPointsTo`]s into a [`GhostSubmap`]
+    /// We can combine two [`GhostIPointsTo`]s into a [`GhostISubmap`]
     /// We also learn that they were disjoint.
-    pub proof fn combine(tracked self, tracked other: GhostPointsTo<K, V>) -> (tracked r:
-        GhostSubmap<K, V>)
+    pub proof fn combine(tracked self, tracked other: GhostIPointsTo<K, V>) -> (tracked r:
+        GhostISubmap<K, V>)
         requires
             self.id() == other.id(),
         ensures
@@ -1355,8 +1367,8 @@ impl<K, V> GhostPointsTo<K, V> {
         submap
     }
 
-    /// Shows that if a two [`GhostPointsTo`]s are not owning the same key
-    pub proof fn disjoint(tracked &mut self, tracked other: &GhostPointsTo<K, V>)
+    /// Shows that if a two [`GhostIPointsTo`]s are not owning the same key
+    pub proof fn disjoint(tracked &mut self, tracked other: &GhostIPointsTo<K, V>)
         requires
             old(self).id() == other.id(),
         ensures
@@ -1369,8 +1381,8 @@ impl<K, V> GhostPointsTo<K, V> {
         self.submap.disjoint(&other.submap);
     }
 
-    /// Shows that if a [`GhostPointsTo`] and a [`GhostSubmap`] are not owning the same key
-    pub proof fn disjoint_submap(tracked &mut self, tracked other: &GhostSubmap<K, V>)
+    /// Shows that if a [`GhostIPointsTo`] and a [`GhostISubmap`] are not owning the same key
+    pub proof fn disjoint_submap(tracked &mut self, tracked other: &GhostISubmap<K, V>)
         requires
             old(self).id() == other.id(),
         ensures
@@ -1383,10 +1395,10 @@ impl<K, V> GhostPointsTo<K, V> {
         self.submap.disjoint(other);
     }
 
-    /// Shows that if a [`GhostPointsTo`] and a [`GhostPersistentSubmap`] are not owning the same key
+    /// Shows that if a [`GhostIPointsTo`] and a [`GhostPersistentISubmap`] are not owning the same key
     pub proof fn disjoint_persistent_submap(
         tracked &mut self,
-        tracked other: &GhostPersistentSubmap<K, V>,
+        tracked other: &GhostPersistentISubmap<K, V>,
     )
         requires
             old(self).id() == other.id(),
@@ -1400,10 +1412,10 @@ impl<K, V> GhostPointsTo<K, V> {
         self.submap.disjoint_persistent(other);
     }
 
-    /// Shows that if a [`GhostPointsTo`] and a [`GhostPersistentPointsTo`] are not owning the same key
+    /// Shows that if a [`GhostIPointsTo`] and a [`GhostPersistentIPointsTo`] are not owning the same key
     pub proof fn disjoint_persistent(
         tracked &mut self,
-        tracked other: &GhostPersistentPointsTo<K, V>,
+        tracked other: &GhostPersistentIPointsTo<K, V>,
     )
         requires
             old(self).id() == other.id(),
@@ -1418,7 +1430,7 @@ impl<K, V> GhostPointsTo<K, V> {
     }
 
     /// Update pointed to value
-    pub proof fn update(tracked &mut self, tracked auth: &mut GhostMapAuth<K, V>, v: V)
+    pub proof fn update(tracked &mut self, tracked auth: &mut GhostIMapAuth<K, V>, v: V)
         requires
             old(self).id() == old(auth).id(),
         ensures
@@ -1441,8 +1453,8 @@ impl<K, V> GhostPointsTo<K, V> {
         self.submap.update(auth, m);
     }
 
-    /// Convert the [`GhostPointsTo`] a [`GhostSubmap`]
-    pub proof fn submap(tracked self) -> (tracked r: GhostSubmap<K, V>)
+    /// Convert the [`GhostIPointsTo`] a [`GhostISubmap`]
+    pub proof fn submap(tracked self) -> (tracked r: GhostISubmap<K, V>)
         ensures
             r.id() == self.id(),
             r@ == imap![self.key() => self.value()],
@@ -1475,15 +1487,15 @@ impl<K, V> GhostPointsTo<K, V> {
         assert(self.submap@ == imap![self.key() => self.value()]);
     }
 
-    /// Can be used to learn what the key-value pair of [`GhostPointsTo`] is
+    /// Can be used to learn what the key-value pair of [`GhostIPointsTo`] is
     pub proof fn lemma_view(self)
         ensures
             self@ == (self.key(), self.value()),
     {
     }
 
-    /// Convert a [`GhostPointsTo`] into a [`GhostPersistentPointsTo`]
-    pub proof fn persist(tracked self) -> (tracked r: GhostPersistentPointsTo<K, V>)
+    /// Convert a [`GhostIPointsTo`] into a [`GhostPersistentIPointsTo`]
+    pub proof fn persist(tracked self) -> (tracked r: GhostPersistentIPointsTo<K, V>)
         ensures
             self@ == r@,
             self.id() == r.id(),
@@ -1493,7 +1505,7 @@ impl<K, V> GhostPointsTo<K, V> {
     }
 }
 
-impl<K, V> GhostPersistentPointsTo<K, V> {
+impl<K, V> GhostPersistentIPointsTo<K, V> {
     #[verifier::type_invariant]
     spec fn inv(self) -> bool {
         self.submap.is_points_to()
@@ -1519,24 +1531,24 @@ impl<K, V> GhostPersistentPointsTo<K, V> {
         self.submap[self.key()]
     }
 
-    /// Duplicate the [`GhostPersistentPointsTo`]
-    pub proof fn duplicate(tracked &self) -> (tracked result: GhostPersistentPointsTo<K, V>)
+    /// Duplicate the [`GhostPersistentIPointsTo`]
+    pub proof fn duplicate(tracked &self) -> (tracked result: GhostPersistentIPointsTo<K, V>)
         ensures
             result.id() == self.id(),
             result@ == self@,
     {
         use_type_invariant(&*self);
         let tracked submap = self.submap.duplicate();
-        GhostPersistentPointsTo { submap }
+        GhostPersistentIPointsTo { submap }
     }
 
-    /// Agreement between a [`GhostPersistentPointsTo`] and a corresponding [`GhostMapAuth`]
+    /// Agreement between a [`GhostPersistentIPointsTo`] and a corresponding [`GhostIMapAuth`]
     ///
-    /// Verus might not have full context of the [`GhostMapAuth`] and a corresponding [`GhostPersistentPointsTo`].
+    /// Verus might not have full context of the [`GhostIMapAuth`] and a corresponding [`GhostPersistentIPointsTo`].
     /// However, whenever we know that they refer to the same resource (i.e., have matching ids) we
-    /// can assert that the [`GhostPersistentPointsTo`] is a key-value pair in the [`GhostMapAuth`].
+    /// can assert that the [`GhostPersistentIPointsTo`] is a key-value pair in the [`GhostIMapAuth`].
     /// ```
-    /// proof fn test(tracked &auth: GhostMapAuth<int, int>, tracked &pt: GhostPersistentPointsTo<int, int>)
+    /// proof fn test(tracked &auth: GhostIMapAuth<int, int>, tracked &pt: GhostPersistentIPointsTo<int, int>)
     ///     requires
     ///         auth.id() == sub.id(),
     ///         pt@ == (1int, 1int)
@@ -1548,8 +1560,8 @@ impl<K, V> GhostPersistentPointsTo<K, V> {
     /// }
     /// ```
     pub proof fn agree(
-        tracked self: &GhostPersistentPointsTo<K, V>,
-        tracked auth: &GhostMapAuth<K, V>,
+        tracked self: &GhostPersistentIPointsTo<K, V>,
+        tracked auth: &GhostIMapAuth<K, V>,
     )
         requires
             self.id() == auth.id(),
@@ -1565,11 +1577,11 @@ impl<K, V> GhostPersistentPointsTo<K, V> {
         assert(self.submap@.contains_key(self.key()));
     }
 
-    /// We can combine two [`GhostPersistentPointsTo`]s into a [`GhostPersistentSubmap`]
+    /// We can combine two [`GhostPersistentIPointsTo`]s into a [`GhostPersistentISubmap`]
     pub proof fn combine(
         tracked self,
-        tracked other: GhostPersistentPointsTo<K, V>,
-    ) -> (tracked submap: GhostPersistentSubmap<K, V>)
+        tracked other: GhostPersistentIPointsTo<K, V>,
+    ) -> (tracked submap: GhostPersistentISubmap<K, V>)
         requires
             self.id() == other.id(),
         ensures
@@ -1587,9 +1599,9 @@ impl<K, V> GhostPersistentPointsTo<K, V> {
         submap
     }
 
-    /// When we have a [`GhostPersistentPointsTo`] and a [`GhostPointsTo`], we can prove that they are in disjoint
+    /// When we have a [`GhostPersistentIPointsTo`] and a [`GhostIPointsTo`], we can prove that they are in disjoint
     /// domains.
-    pub proof fn disjoint(tracked &mut self, tracked other: &GhostPointsTo<K, V>)
+    pub proof fn disjoint(tracked &mut self, tracked other: &GhostIPointsTo<K, V>)
         requires
             old(self).id() == other.id(),
         ensures
@@ -1602,9 +1614,9 @@ impl<K, V> GhostPersistentPointsTo<K, V> {
         self.disjoint_submap(&other.submap);
     }
 
-    /// When we have a [`GhostPersistentPointsTo`] and a [`GhostSubmap`], we can prove that they are in disjoint
+    /// When we have a [`GhostPersistentIPointsTo`] and a [`GhostISubmap`], we can prove that they are in disjoint
     /// domains.
-    pub proof fn disjoint_submap(tracked &mut self, tracked other: &GhostSubmap<K, V>)
+    pub proof fn disjoint_submap(tracked &mut self, tracked other: &GhostISubmap<K, V>)
         requires
             old(self).id() == other.id(),
         ensures
@@ -1617,11 +1629,11 @@ impl<K, V> GhostPersistentPointsTo<K, V> {
         self.submap.disjoint(&other);
     }
 
-    /// Shows that if a client has two [`GhostPersistentPointsTo`]s they are either disjoint or
+    /// Shows that if a client has two [`GhostPersistentIPointsTo`]s they are either disjoint or
     /// agreeing in values in the intersection
     pub proof fn intersection_agrees(
         tracked &mut self,
-        tracked other: &GhostPersistentPointsTo<K, V>,
+        tracked other: &GhostPersistentIPointsTo<K, V>,
     )
         requires
             old(self).id() == other.id(),
@@ -1635,10 +1647,10 @@ impl<K, V> GhostPersistentPointsTo<K, V> {
         self.submap.intersection_agrees_points_to(&other);
     }
 
-    /// Shows that if a [`GhostPersistentPointsTo`] and a [`GhostSubmap`] are not owning the same key
+    /// Shows that if a [`GhostPersistentIPointsTo`] and a [`GhostISubmap`] are not owning the same key
     pub proof fn intersection_agrees_submap(
         tracked &mut self,
-        tracked other: &GhostPersistentSubmap<K, V>,
+        tracked other: &GhostPersistentISubmap<K, V>,
     )
         requires
             old(self).id() == other.id(),
@@ -1653,8 +1665,8 @@ impl<K, V> GhostPersistentPointsTo<K, V> {
         self.submap.intersection_agrees(other);
     }
 
-    /// Convert the [`GhostPersistentPointsTo`] a [`GhostPersistentSubmap`]
-    pub proof fn submap(tracked self) -> (tracked r: GhostPersistentSubmap<K, V>)
+    /// Convert the [`GhostPersistentIPointsTo`] a [`GhostPersistentISubmap`]
+    pub proof fn submap(tracked self) -> (tracked r: GhostPersistentISubmap<K, V>)
         ensures
             r.id() == self.id(),
             r@ == imap![self.key() => self.value()],
@@ -1687,7 +1699,7 @@ impl<K, V> GhostPersistentPointsTo<K, V> {
         assert(self.submap@ == imap![self.key() => self.value()]);
     }
 
-    /// Can be used to learn what the key-value pair of [`GhostPersistentPointsTo`] is
+    /// Can be used to learn what the key-value pair of [`GhostPersistentIPointsTo`] is
     pub proof fn lemma_view(self)
         ensures
             self@ == (self.key(), self.value()),
