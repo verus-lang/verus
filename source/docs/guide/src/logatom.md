@@ -1,6 +1,6 @@
 # Logical atomicity
 
-In short, logical atomicity allows us to treat an `exec`-mode function as if it executes in a single atomic step, even if internally, it performs multiple atomic operations.
+In short, logical atomicity is a proof technique that allows us to treat an `exec`-mode function as if it executes in a single atomic step, even if internally, it performs multiple atomic operations.
 This enables us to call such a function using an atomic invariant.
 
 ## Running examples
@@ -64,4 +64,4 @@ Finally, this approach only allows ghost state to be updated at the LP, making t
 TaDA-style logical atomicity is named after the TaDA logic ([da Rocha Pinto et al. ECOOP'14](https://link.springer.com/chapter/10.1007/978-3-662-44202-9_9)) which introduced atomic triples as a primitive part of its logic.
 Building on these ideas, Iris ([Jung et al. POPL'15](https://dl.acm.org/doi/abs/10.1145/2775051.2676980)) then presented a similar notion of atomic specifications, which can be fully encoded in its separation logic.
 Our implementation of logical atomicity in Verus is based on the atomic specification as they have been verified in Iris.
-This extension to Verus is the master thesis project of Aaron Bies at Saarland University and MPI-SWS.
+<!-- This extension to Verus is the master thesis project of Aaron Bies at Saarland University and MPI-SWS. -->

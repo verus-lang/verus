@@ -8,7 +8,6 @@ use vstd::prelude::*;
 verus! {
 
 pub struct UserInv;
-pub open spec const USER_INV: int = 12345;
 impl InvariantPredicate<int, PermissionU64> for UserInv {
     open spec fn inv(id: int, perm: PermissionU64) -> bool {
         &&& perm.id() == id
@@ -22,11 +21,14 @@ impl InvariantPredicate<int, PermissionU64> for UserInv {
 pub fn reset(var: &PAtomicU64)
     atomically (atomic_update) {
         (perm: PermissionU64) -> (commit: Commit<PermissionU64>),
+
         requires
             perm@.patomic == var.id(),
+
         ensures
             commit@@.patomic == perm@.patomic,
             commit@@.value == 0,
+
         outer_mask any,
         inner_mask none,
     },
@@ -63,7 +65,7 @@ assert(perm.points_to(0));
 fn reset_client_async() {
     let (var, Tracked(perm)) = PAtomicU64::new(6);
     let tracked inv = AtomicInvariant::<int, PermissionU64, UserInv>::new(
-        perm.id(), perm, USER_INV
+        perm.id(), perm, 235
     );
 
 // ANCHOR: reset_client_async
@@ -85,16 +87,20 @@ pub fn increment(var: &PAtomicU64) -> (out: u64)
     atomically (atomic_update) {
         (perm: PermissionU64)
             -> (res: Result<PermissionU64, (PermissionU64, OpenInvariantCredit)>),
+
         requires
             perm@.patomic == var.id(),
+
         ensures match res {
             Err((p, _)) => p@ == perm@,
             Ok(p) => p@.patomic == perm@.patomic
                   && p@.value == perm@.value.wrapping_add(1),
         },
+
         outer_mask any,
         inner_mask none,
     },
+
     ensures
         out == perm@.value,
 // ANCHOR_END: increment_signature
@@ -169,7 +175,7 @@ assert(perm.points_to(4));
 fn increment_client_async() {
     let (var, Tracked(perm)) = PAtomicU64::new(6);
     let tracked inv = AtomicInvariant::<int, PermissionU64, UserInv>::new(
-        perm.id(), perm, USER_INV
+        perm.id(), perm, 235
     );
 
 // ANCHOR: increment_client_async

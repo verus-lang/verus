@@ -97,6 +97,18 @@ This is what the atomic specification for our two example functions may look lik
 {{#include ../../../../examples/guide/logatom.rs:reset_signature}}
 ```
 
+Here, we specify that the atomic update takes a `PermissionU64` for the atomic variable `var` as its input, and the output is a permission object with the same ID (i.e. for the same variable), with a value of zero.
+The output of the atomic update is wrapped in a `Commit<...>` which specifies that this AU cannot abort.
+
 ```rs
 {{#include ../../../../examples/guide/logatom.rs:increment_signature}}
 ```
+
+This specification is a bit more interesting.
+Here, the output if a `Result<...>` which means that the atomic update can be aborted.
+The atomic postcondition specifies that when the AU is aborted (i.e. when `res` is `Err`), the ID and value of the permission stays the same,
+otherwise when the AU is committed, the value increases by one.
+When the AU is aborted, we also pass an `OpenInvariantCredit` from the library to the client.
+This allows the client to open an invariant multiple times in the atomic function call.
+We will see more about this later.
+Finally, the function returns the previous value of the atomic variable, as specified by the function postcondition.
