@@ -40,6 +40,16 @@ Here are the full definitions of our two example functions:
 {{#include ../../../../examples/guide/logatom.rs:reset_definition}}
 ```
 
+Here, we open the atomic update, take the permission object for the atomic variable which we bind as `mut perm`, and use it to perform the store operation.
+Then, we commit the atomic update by returning `Commit(perm)` from the body of the `try_open_atomic_update` macro call.
+We can confirm that the atomic update has been resolved successfully using the `assert` at the end of the function body.
+
 ```rs
 {{#include ../../../../examples/guide/logatom.rs:increment_definition}}
 ```
+
+In this example, we use the abort case of the atomic update to gain temporary access of the permission object without modifying it.
+This allows us to perform the initial `load`, as well as all failed `compare_exchange_weak` operations, as they require access to the permission to be executed.
+
+For the initial `load`, we open the atomic update and abort it unconditionally.
+For the `compare_exchange_weak` on the other hand, we check if the operation was successful to determine whether the atomic update should be committed or aborted.

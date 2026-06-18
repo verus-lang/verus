@@ -7,7 +7,7 @@ use vstd::prelude::*;
 
 verus! {
 
-pub struct UserInv;
+struct UserInv;
 impl InvariantPredicate<int, PermissionU64> for UserInv {
     open spec fn inv(id: int, perm: PermissionU64) -> bool {
         &&& perm.id() == id
@@ -17,22 +17,25 @@ impl InvariantPredicate<int, PermissionU64> for UserInv {
 
 
 // ANCHOR: reset_definition
-// ANCHOR: reset_signature
-pub fn reset(var: &PAtomicU64)
+// ANCHOR: reset_signature_1
+fn reset(var: &PAtomicU64)
     atomically (atomic_update) {
         (perm: PermissionU64) -> (commit: Commit<PermissionU64>),
-
+// ANCHOR_END: reset_signature_1
+// ANCHOR: reset_signature_2
         requires
             perm@.patomic == var.id(),
-
+// ANCHOR_END: reset_signature_2
+// ANCHOR: reset_signature_3
         ensures
             commit@@.patomic == perm@.patomic,
             commit@@.value == 0,
-
+// ANCHOR_END: reset_signature_3
+// ANCHOR: reset_signature_4
         outer_mask any,
         inner_mask none,
     },
-// ANCHOR_END: reset_signature
+// ANCHOR_END: reset_signature_4
 {
     // open atomic update and commit
     try_open_atomic_update!(atomic_update, mut perm => {
@@ -82,28 +85,32 @@ reset(&var) atomically |update| {
 
 
 // ANCHOR: increment_definition
-// ANCHOR: increment_signature
-pub fn increment(var: &PAtomicU64) -> (out: u64)
+// ANCHOR: increment_signature_1
+fn increment(var: &PAtomicU64) -> (out: u64)
     atomically (atomic_update) {
         (perm: PermissionU64)
             -> (res: Result<PermissionU64, (PermissionU64, OpenInvariantCredit)>),
-
+// ANCHOR_END: increment_signature_1
+// ANCHOR: increment_signature_2
         requires
             perm@.patomic == var.id(),
-
+// ANCHOR_END: increment_signature_2
+// ANCHOR: increment_signature_3
         ensures match res {
             Err((p, _)) => p@ == perm@,
             Ok(p) => p@.patomic == perm@.patomic
                   && p@.value == perm@.value.wrapping_add(1),
         },
-
+// ANCHOR_END: increment_signature_3
+// ANCHOR: increment_signature_4
         outer_mask any,
         inner_mask none,
     },
-
+// ANCHOR_END: increment_signature_4
+// ANCHOR: increment_signature_5
     ensures
         out == perm@.value,
-// ANCHOR_END: increment_signature
+// ANCHOR_END: increment_signature_5
 {
     let Tracked(credit) = vstd::invariant::create_open_invariant_credit();
     let tracked mut au = atomic_update;

@@ -68,3 +68,15 @@ The invariant we use in this example makes no statement about the value of the a
 ```rs
 {{#include ../../../../examples/guide/logatom.rs:increment_client_async}}
 ```
+
+The last example shows the need for the invariant credits in the signature of the `increment` function.
+Since the body of the atomic function call is `proof`-mode, we must spend an invariant credit to open the atomic invariant in both of our asynchronous example clients.
+To call our `reset` function, we only need to open the invariant once, so we just need one credit.
+For the `increment` function, we want to open an invariant in an unbounded loop, so we need a steady supply of credits that we can spend on the invariant.
+
+We solve this by passing an invariant credit from the library to the client every time the atomic update is aborted.
+The client then acquires one initial credit before the atomic function call, which is then spent on the invariant, and restored in case the atomic update is aborted, which can then be spent in the next loop iteration.
+
+Note that we need two `match` expressions here, because `break` and `continue` are not allowed to appear inside the `open_atomic_invariant` macro.
+The first `match` closes the invariant, and the second `match` handles the control flow of the atomic function call.
+Nevertheless, Verus is smart enough to realize that the `break` is executed if and only if the result of the `update` functions signals that the atomic update has been aborted.

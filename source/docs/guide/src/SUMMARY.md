@@ -96,6 +96,11 @@
   - [Pointers](./pointers.md)
   - [Concurrency](concurrency.md)
 
+- [Logical atomicity](./logatom.md)
+  - [Atomic specifications](./logatom-spec.md)
+  - [Invoking the linearization point](./logatom-open.md)
+  - [Calling a logically atomic function](./logatom-call.md)
+
 - [Verifying a container library: Binary Search Tree](./container_bst.md)
   - [First draft](./container_bst_first_draft.md)
   - [Encapsulating well-formedness with type invariants](./container_bst_type_invariant.md)
@@ -173,10 +178,6 @@
     - [recommends](./reference-recommends.md)
   - [Traits and signature inheritance](./reference-signature-inheritance.md)
   - [Specifications on FnOnce](./reference-signature-fnonce.md)
-- [Logical atomicity](./logatom.md)
-  - [Atomic specifications](./logatom-spec.md)
-  - [Invoking the linearization point](./logatom-open.md)
-  - [Calling a logically atomic function](./logatom-call.md)
 - [External trait specifications](./external_trait_specifications.md)
 - [Loop specifications]()
   - [invariant]()

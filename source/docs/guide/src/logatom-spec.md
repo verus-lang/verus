@@ -94,19 +94,33 @@ We store the function arguments in the predicate type to allow the atomic pre- a
 This is what the atomic specification for our two example functions may look like:
 
 ```rs
-{{#include ../../../../examples/guide/logatom.rs:reset_signature}}
+{{#include ../../../../examples/guide/logatom.rs:reset_signature_1}}
+
+{{#include ../../../../examples/guide/logatom.rs:reset_signature_2}}
+
+{{#include ../../../../examples/guide/logatom.rs:reset_signature_3}}
+
+{{#include ../../../../examples/guide/logatom.rs:reset_signature_4}}
 ```
 
 Here, we specify that the atomic update takes a `PermissionU64` for the atomic variable `var` as its input, and the output is a permission object with the same ID (i.e. for the same variable), with a value of zero.
 The output of the atomic update is wrapped in a `Commit<...>` which specifies that this AU cannot abort.
 
 ```rs
-{{#include ../../../../examples/guide/logatom.rs:increment_signature}}
+{{#include ../../../../examples/guide/logatom.rs:increment_signature_1}}
+
+{{#include ../../../../examples/guide/logatom.rs:increment_signature_2}}
+
+{{#include ../../../../examples/guide/logatom.rs:increment_signature_3}}
+
+{{#include ../../../../examples/guide/logatom.rs:increment_signature_4}}
+
+{{#include ../../../../examples/guide/logatom.rs:increment_signature_5}}
 ```
 
 This specification is a bit more interesting.
-Here, the output if a `Result<...>` which means that the atomic update can be aborted.
-The atomic postcondition specifies that when the AU is aborted (i.e. when `res` is `Err`), the ID and value of the permission stays the same,
+Here, the output is a `Result<...>` which means that the atomic update can be aborted.
+The atomic postcondition specifies that when the AU is aborted (that is, when `res` is `Err`), the ID and value of the permission stays the same;
 otherwise when the AU is committed, the value increases by one.
 When the AU is aborted, we also pass an `OpenInvariantCredit` from the library to the client.
 This allows the client to open an invariant multiple times in the atomic function call.

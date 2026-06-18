@@ -825,7 +825,7 @@ impl Visitor {
         self.additional_items.push(parse_quote_spanned_vstd!(vstd, full_span =>
             impl #impl_generics #pred_ident #ty_generics #where_clause {
                 #[allow(private_interfaces)]
-                #vis open spec fn args(self, #args_full_tokens ) -> bool {
+                pub open spec fn args(self, #args_full_tokens ) -> bool {
                     #vstd::atomic::pred_args::< Self, ( #args_ty_tokens ) >(self)
                         == ( #args_pat_tokens )
                 }
