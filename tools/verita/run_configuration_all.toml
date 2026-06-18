@@ -92,7 +92,7 @@ cargo install vest
 [[project]]
 name = "human-eval"
 git_url = "https://github.com/secure-foundations/human-eval-verus.git"
-refspec = "origin/z3.4.16.0"
+refspec = "origin/z3-4.16.0"
 crate_roots = ["tasks/lib.rs"]
 extra_verus_args = ["--crate-type=lib"]
 
@@ -107,7 +107,7 @@ extra_verus_args = ["--crate-type=lib", "--rlimit", "100", "--cfg", "feature=\"i
 
 [[project]]
 name = "svsm"
-git_url = "https://github.com/ziqiaozhou/svsm.git"
+git_url = "https://github.com/parno/svsm.git"
 refspec = "origin/z3-4.16.0"
 #git_url = "https://github.com/ziqiaozhou/svsm.git"
 #refspec = "origin/verita"
