@@ -12,6 +12,11 @@
 )]
 #![cfg_attr(verus_keep_ghost, register_tool(verus), register_tool(verifier))]
 
+#[cfg(all(verus_keep_ghost, verus_verify_core))]
+mod core_special;
+#[cfg(all(verus_keep_ghost, verus_verify_core))]
+pub use core_special::*;
+
 #[cfg(verus_keep_ghost)]
 use core::future::Future;
 use core::marker::PhantomData;
