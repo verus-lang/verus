@@ -175,8 +175,8 @@ pub struct PackageMetadata {
 /// Details of a package source.
 #[derive(Debug, Clone)]
 pub enum PackageSource {
-    Registry { registry: String },
-    Git { git: String, rev: Option<String> },
+    Registry { url: String },
+    Git { url: String, rev: Option<String> },
     Unsupported,
 }
 
@@ -196,12 +196,12 @@ impl From<Option<&Source>> for PackageSource {
 
         let repr = &source.repr;
         if let Some(registry) = repr.strip_prefix("registry+") {
-            PackageSource::Registry { registry: registry.to_string() }
+            PackageSource::Registry { url: registry.to_string() }
         } else if let Some(git_source) = repr.strip_prefix("git+") {
             if let Some((git, rev)) = git_source.rsplit_once('#') {
-                PackageSource::Git { git: git.to_string(), rev: Some(rev.to_string()) }
+                PackageSource::Git { url: git.to_string(), rev: Some(rev.to_string()) }
             } else {
-                PackageSource::Git { git: git_source.to_string(), rev: None }
+                PackageSource::Git { url: git_source.to_string(), rev: None }
             }
         } else {
             PackageSource::Unsupported

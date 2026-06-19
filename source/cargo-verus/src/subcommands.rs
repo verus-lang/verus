@@ -160,7 +160,7 @@ pub fn plan_cargo_run(cfg: VerusConfig) -> Result<CargoRunPlan> {
         let vstd_metadata = metadata_index.collect_vstd_metadata(packages_to_verify);
         println!("`vstd` metadata instances:");
         for metadata in vstd_metadata {
-            println!("version = {:?}", metadata.version);
+            println!("version = {:?}", metadata.version.to_string());
             println!("source = {:?}", metadata.source);
             println!();
         }
