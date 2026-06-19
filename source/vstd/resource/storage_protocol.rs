@@ -174,6 +174,26 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
             }),
     ;
 
+    // Helper lemma saying that unioning with an empty map is a no-op.
+    proof fn lemma_union_prefer_right_empty_is_noop_forall()
+        ensures
+            forall|m: IMap<K, V>| #[trigger] m.union_prefer_right(IMap::empty()) == m,
+    {
+        assert forall|m: IMap<K, V>| #[trigger] m.union_prefer_right(IMap::empty()) == m by {
+            assert(m.union_prefer_right(IMap::empty()) =~= m);
+        }
+    }
+
+    // Helper lemma saying that removing the empty set of keys from a map is a no-op.
+    proof fn lemma_removing_empty_keys_is_noop_forall()
+        ensures
+            forall|m: IMap<K, V>| #[trigger] m.remove_keys(ISet::empty()) == m,
+    {
+        assert forall|m: IMap<K, V>| m.remove_keys(ISet::empty()) == m by {
+            assert(m.remove_keys(ISet::empty()) =~= m);
+        }
+    }
+
     // Updates and guards
     /// Most general kind of update, potentially depositing and withdrawing
     pub proof fn exchange(
@@ -202,7 +222,7 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
             out.loc() == self.loc(),
             out.value() == new_value,
     {
-        assert(forall|m: IMap<K, V>| m.remove_keys(ISet::empty()) =~= m);
+        Self::lemma_removing_empty_keys_is_noop_forall();
         Self::exchange(self, base, new_value, IMap::empty()).0
     }
 
@@ -217,7 +237,7 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
             out.0.value() == new_value,
             out.1 == new_base,
     {
-        assert(forall|m: IMap<K, V>| m.union_prefer_right(IMap::empty()) =~= m);
+        Self::lemma_union_prefer_right_empty_is_noop_forall();
         Self::exchange(self, IMap::tracked_empty(), new_value, new_base)
     }
 
@@ -229,8 +249,8 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
             out.loc() == self.loc(),
             out.value() == new_value,
     {
-        assert(forall|m: IMap<K, V>| m.union_prefer_right(IMap::empty()) =~= m);
-        assert(forall|m: IMap<K, V>| m.remove_keys(ISet::empty()) =~= m);
+        Self::lemma_union_prefer_right_empty_is_noop_forall();
+        Self::lemma_removing_empty_keys_is_noop_forall();
         Self::exchange(self, IMap::tracked_empty(), new_value, IMap::empty()).0
     }
 
@@ -323,7 +343,8 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
             out.1 == new_s_value,
     {
         let se = iset![(new_p_value, new_s_value)];
-        assert(exchanges_nondeterministic(P::op(p.value(), x.value()), s, set_op(se, x.value()))) by {
+        assert(exchanges_nondeterministic(P::op(p.value(), x.value()), s, set_op(se, x.value())))
+            by {
             let new_values = set_op(se, x.value());
             assert(se.contains((new_p_value, new_s_value)));
             assert(new_values.contains((P::op(new_p_value, x.value()), new_s_value)));
