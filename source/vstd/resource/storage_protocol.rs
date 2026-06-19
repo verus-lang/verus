@@ -77,10 +77,11 @@ pub open spec fn exchanges<K, V, P: Protocol<K, V>>(
 ) -> bool {
     forall|q: P, t1: IMap<K, V>|
         #![all_triggers]
-        P::rel(P::op(p1, q), t1) ==> exists|t2: IMap<K, V>|
-            #![all_triggers]
-            P::rel(P::op(p2, q), t2) && t1.dom().disjoint(b1.dom()) && t2.dom().disjoint(b2.dom())
-                && t1.union_prefer_right(b1) =~= t2.union_prefer_right(b2)
+        P::rel(P::op(p1, q), t1) ==> {
+            &&& P::rel(P::op(p2, q), t1.union_prefer_right(b1).remove_keys(b2.dom()))
+            &&& t1.dom().disjoint(b1.dom())
+            &&& b2.submap_of(t1)
+        }
 }
 
 pub open spec fn exchanges_nondeterministic<K, V, P: Protocol<K, V>>(
@@ -100,20 +101,16 @@ pub open spec fn exchanges_nondeterministic<K, V, P: Protocol<K, V>>(
 pub open spec fn deposits<K, V, P: Protocol<K, V>>(p1: P, b1: IMap<K, V>, p2: P) -> bool {
     forall|q: P, t1: IMap<K, V>|
         #![all_triggers]
-        P::rel(P::op(p1, q), t1) ==> exists|t2: IMap<K, V>|
-            #![all_triggers]
-            P::rel(P::op(p2, q), t2) && t1.dom().disjoint(b1.dom()) && t1.union_prefer_right(b1)
-                =~= t2
+        P::rel(P::op(p1, q), t1) ==> P::rel(P::op(p2, q), t1.union_prefer_right(b1))
+            && t1.dom().disjoint(b1.dom())
 }
 
 pub open spec fn withdraws<K, V, P: Protocol<K, V>>(p1: P, p2: P, b2: IMap<K, V>) -> bool {
     forall|q: P, t1: IMap<K, V>|
         #![all_triggers]
-        P::rel(P::op(p1, q), t1) ==> exists|t2: IMap<K, V>|
-            #![all_triggers]
-            P::rel(P::op(p2, q), t2) && t2.dom().disjoint(b2.dom()) && t1 =~= t2.union_prefer_right(
-                b2,
-            )
+        P::rel(P::op(p1, q), t1) ==> P::rel(P::op(p2, q), t1.remove_keys(b2.dom())) && b2.submap_of(
+            t1,
+        )
 }
 
 pub open spec fn updates<K, V, P: Protocol<K, V>>(p1: P, p2: P) -> bool {
@@ -198,6 +195,7 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
             out.loc() == self.loc(),
             out.value() == new_value,
     {
+        assert(forall|m: IMap<K, V>| m.remove_keys(ISet::empty()) =~= m);
         Self::exchange(self, base, new_value, IMap::empty()).0
     }
 
@@ -212,6 +210,7 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
             out.0.value() == new_value,
             out.1 == new_base,
     {
+        assert(forall|m: IMap<K, V>| m.union_prefer_right(IMap::empty()) =~= m);
         Self::exchange(self, IMap::tracked_empty(), new_value, new_base)
     }
 
@@ -223,6 +222,8 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
             out.loc() == self.loc(),
             out.value() == new_value,
     {
+        assert(forall|m: IMap<K, V>| m.union_prefer_right(IMap::empty()) =~= m);
+        assert(forall|m: IMap<K, V>| m.remove_keys(ISet::empty()) =~= m);
         Self::exchange(self, IMap::tracked_empty(), new_value, IMap::empty()).0
     }
 
@@ -314,6 +315,8 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
             out.1 == new_s_value,
     {
         let se = iset![(new_p_value, new_s_value)];
+        assert(forall|m: IMap<K, V>| m.union_prefer_right(IMap::empty()) =~= m);
+        assert(forall|m: IMap<K, V>| m.remove_keys(ISet::empty()) =~= m);
         Self::exchange_nondeterministic_with_shared(p, x, s, se)
     }
 
