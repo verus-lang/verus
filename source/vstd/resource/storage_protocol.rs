@@ -80,7 +80,7 @@ pub open spec fn exchanges<K, V, P: Protocol<K, V>>(
         P::rel(P::op(p1, q), t1) ==> {
             &&& P::rel(P::op(p2, q), t1.union_prefer_right(b1).remove_keys(b2.dom()))
             &&& t1.dom().disjoint(b1.dom())
-            &&& b2.submap_of(t1)
+            &&& b2.submap_of(t1.union_prefer_right(b1))
         }
 }
 
