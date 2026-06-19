@@ -93,24 +93,31 @@ pub open spec fn exchanges_nondeterministic<K, V, P: Protocol<K, V>>(
         #![all_triggers]
         P::rel(P::op(p1, q), t1) ==> exists|p2: P, s2: IMap<K, V>, t2: IMap<K, V>|
             #![all_triggers]
-            new_values.contains((p2, s2)) && P::rel(P::op(p2, q), t2) && t1.dom().disjoint(s1.dom())
-                && t2.dom().disjoint(s2.dom()) && t1.union_prefer_right(s1)
-                =~= t2.union_prefer_right(s2)
+            {
+                &&& new_values.contains((p2, s2))
+                &&& P::rel(P::op(p2, q), t2)
+                &&& t1.dom().disjoint(s1.dom())
+                &&& t2.dom().disjoint(s2.dom())
+                &&& t1.union_prefer_right(s1) =~= t2.union_prefer_right(s2)
+            }
 }
 
 pub open spec fn deposits<K, V, P: Protocol<K, V>>(p1: P, b1: IMap<K, V>, p2: P) -> bool {
     forall|q: P, t1: IMap<K, V>|
         #![all_triggers]
-        P::rel(P::op(p1, q), t1) ==> P::rel(P::op(p2, q), t1.union_prefer_right(b1))
-            && t1.dom().disjoint(b1.dom())
+        P::rel(P::op(p1, q), t1) ==> {
+            &&& P::rel(P::op(p2, q), t1.union_prefer_right(b1))
+            &&& t1.dom().disjoint(b1.dom())
+        }
 }
 
 pub open spec fn withdraws<K, V, P: Protocol<K, V>>(p1: P, p2: P, b2: IMap<K, V>) -> bool {
     forall|q: P, t1: IMap<K, V>|
         #![all_triggers]
-        P::rel(P::op(p1, q), t1) ==> P::rel(P::op(p2, q), t1.remove_keys(b2.dom())) && b2.submap_of(
-            t1,
-        )
+        P::rel(P::op(p1, q), t1) ==> {
+            &&& P::rel(P::op(p2, q), t1.remove_keys(b2.dom()))
+            &&& b2.submap_of(t1)
+        }
 }
 
 pub open spec fn updates<K, V, P: Protocol<K, V>>(p1: P, p2: P) -> bool {
