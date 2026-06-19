@@ -129,7 +129,7 @@ pub open spec fn updates<K, V, P: Protocol<K, V>>(p1: P, p2: P) -> bool {
 pub open spec fn set_op<K, V, P: Protocol<K, V>>(s: ISet<(P, IMap<K, V>)>, t: P) -> ISet<
     (P, IMap<K, V>),
 > {
-    ISet::new(|v: (P, IMap<K, V>)| exists|q| s.contains((q, v.1)) && v.0 == #[trigger] P::op(q, t))
+    s.map(|q: (P, IMap<K, V>)| (P::op(q.0, t), q.1))
 }
 
 impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
@@ -256,8 +256,9 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
                 assert(new_values0.contains(v));
             }
             if new_values0.contains(v) {
-                let q = choose |q| new_values.contains((q, v.1)) && v.0 == #[trigger] P::op(q, P::unit());
-                P::op_unit(q);
+                let q = choose |q| #[trigger] new_values.contains(q) && v == (P::op(q.0, P::unit()), q.1);
+                assert(P::op(q.0, P::unit()) == q.0) by { P::op_unit(q.0) }
+                assert(v =~= q);
                 assert(new_values.contains(v));
             }
         });
@@ -322,8 +323,11 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
             out.1 == new_s_value,
     {
         let se = iset![(new_p_value, new_s_value)];
-        assert(forall|m: IMap<K, V>| m.union_prefer_right(IMap::empty()) =~= m);
-        assert(forall|m: IMap<K, V>| m.remove_keys(ISet::empty()) =~= m);
+        assert(exchanges_nondeterministic(P::op(p.value(), x.value()), s, set_op(se, x.value()))) by {
+            let new_values = set_op(se, x.value());
+            assert(se.contains((new_p_value, new_s_value)));
+            assert(new_values.contains((P::op(new_p_value, x.value()), new_s_value)));
+        }
         Self::exchange_nondeterministic_with_shared(p, x, s, se)
     }
 
