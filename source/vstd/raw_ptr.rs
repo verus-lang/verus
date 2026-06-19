@@ -677,12 +677,7 @@ impl<T> PointsTo<[T]> {
                 start_index as int + len as int,
             ),
     {
-        broadcast use {
-            axiom_ptr_mut_from_data,
-            crate::vstd::group_vstd_default,
-            group_layout_axioms,
-            alloc_bound,
-        };
+        broadcast use {axiom_ptr_mut_from_data, group_layout_axioms, alloc_bound};
 
         let tracked unaligned_self_ref = self.as_unaligned();
 
@@ -786,12 +781,7 @@ impl<T> PointsTo<[T]> {
                 old(self).mem_contents_seq().len() as int,
             ),
     {
-        broadcast use {
-            axiom_ptr_mut_from_data,
-            crate::vstd::group_vstd_default,
-            group_layout_axioms,
-            alloc_bound,
-        };
+        broadcast use {axiom_ptr_mut_from_data, group_layout_axioms, alloc_bound};
 
         let ghost self_ref = self;
 
@@ -2990,41 +2980,47 @@ pub broadcast axiom fn axiom_shared_ref_value_view<'a, T>(shared_ref: SharedRefe
         shared_ref.value()@ == #[trigger] shared_ref@,
 ;
 
+/// Convert a mutable reference into a raw pointer and accompanying `PointsTo` permission.
 #[verifier::external_body]
-pub const fn cast_mut_ref_to_ptr<T>(mut_ref: &mut T) -> (out: (*mut T, Tracked<&mut PointsTo<T>>))
+pub const fn cast_mut_ref_to_ptr<T>(mut_ref: &mut T) -> ((ptr, perm): (
+    *mut T,
+    Tracked<&mut PointsTo<T>>,
+))
     ensures
-        out.1@.ptr() == out.0,
-        out.1@.is_init(),
-        out.1@.value() == *old(mut_ref),
-        *final(mut_ref) == final(out.1@).value(),
+        perm@.ptr() == ptr,
+        perm@.is_init(),
+        perm@.value() == *old(mut_ref),
+        *final(mut_ref) == final(perm@).value(),
 {
     (mut_ref as *mut T, Tracked::assume_new())
 }
 
+/// Convert a mutable reference into a raw pointer and accompanying `PointsTo` permission.
 #[verifier::external_body]
-pub const fn cast_mut_ref_slice_to_ptr<T>(mut_ref: &mut [T]) -> (out: (
+pub const fn cast_mut_ref_slice_to_ptr<T>(mut_ref: &mut [T]) -> ((ptr, perm): (
     *mut [T],
     Tracked<&mut PointsTo<[T]>>,
 ))
     ensures
-        out.1@.ptr() == out.0,
-        out.1@.is_init(),
-        out.1@.value() == old(mut_ref)@,
-        final(mut_ref)@ == final(out.1@).value(),
+        perm@.ptr() == ptr,
+        perm@.is_init(),
+        perm@.value() == old(mut_ref)@,
+        final(mut_ref)@ == final(perm@).value(),
 {
     (mut_ref as *mut [T], Tracked::assume_new())
 }
 
+/// Convert a mutable reference into a raw pointer and accompanying `PointsTo` permission.
 #[verifier::external_body]
-pub const fn cast_mut_ref_str_to_ptr(mut_ref: &mut str) -> (out: (
+pub const fn cast_mut_ref_str_to_ptr(mut_ref: &mut str) -> ((ptr, perm): (
     *mut str,
     Tracked<&mut PointsTo<str>>,
 ))
     ensures
-        out.1@.ptr() == out.0,
-        out.1@.is_init(),
-        out.1@.value() == &*old(mut_ref),
-        &*final(mut_ref) == final(out.1@).value(),
+        perm@.ptr() == ptr,
+        perm@.is_init(),
+        perm@.value() == &*old(mut_ref),
+        &*final(mut_ref) == final(perm@).value(),
 {
     (mut_ref as *mut str, Tracked::assume_new())
 }
