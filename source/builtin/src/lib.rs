@@ -7,15 +7,9 @@
     feature(unboxed_closures),
     feature(fn_traits),
     feature(register_tool),
-    feature(tuple_trait),
-    feature(const_trait_impl)
+    feature(tuple_trait)
 )]
 #![cfg_attr(verus_keep_ghost, register_tool(verus), register_tool(verifier))]
-
-#[cfg(all(verus_keep_ghost, verus_verify_core))]
-mod core_special;
-#[cfg(all(verus_keep_ghost, verus_verify_core))]
-pub use core_special::*;
 
 #[cfg(verus_keep_ghost)]
 use core::future::Future;
