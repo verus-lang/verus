@@ -3001,6 +3001,15 @@ impl<'a, T: ?Sized> SharedReference<'a, T> {
         self.0
     }
 
+
+    #[verifier::external_body]
+    pub proof fn as_ref_tracked(tracked &self) -> (tracked t: &'a T)
+        ensures
+            t == self.value(),
+    {
+        self.0
+    }
+
     // References must be nonnull - https://doc.rust-lang.org/reference/behavior-considered-undefined.html#r-undefined.validity.reference-box
     pub axiom fn ptr_nonnull(tracked self)
         ensures
