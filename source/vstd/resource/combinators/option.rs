@@ -1,7 +1,7 @@
-use super::super::prelude::*;
-use super::algebra::ResourceAlgebra;
-use super::pcm::PCM;
-use super::relations::*;
+use super::super::super::prelude::*;
+use super::super::algebra::ResourceAlgebra;
+use super::super::pcm::PCM;
+use super::super::relations::*;
 
 verus! {
 
@@ -86,11 +86,11 @@ pub proof fn lemma_incl_opt_rev<RA: ResourceAlgebra>(a: RA, b: RA)
     }
 }
 
-pub proof fn lemma_set_op_opt<RA: ResourceAlgebra>(s: Set<RA>, t: RA)
+pub proof fn lemma_set_op_opt<RA: ResourceAlgebra>(s: ISet<RA>, t: RA)
     ensures
         set_op(s, t).map(|b| Some(b)) == set_op(s.map(|x| Some(x)), Some(t)),
 {
-    broadcast use super::super::set::group_set_axioms;
+    broadcast use super::super::super::iset::group_iset_lemmas;
 
     let s_mapped = s.map(|x| Some(x));
     let original = set_op(s, t);

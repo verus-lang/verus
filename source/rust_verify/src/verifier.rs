@@ -338,6 +338,7 @@ pub struct Verifier {
     air_no_span: Option<vir::messages::Span>,
     current_crate_modules: Option<Vec<vir::ast::Module>>,
     crate_items: Option<Arc<crate::external::CrateItems>>,
+    warning_ctx: Option<Arc<vir::context::WarningCtx>>,
     buckets: HashMap<BucketId, Bucket>,
 
     // proof debugging purposes
@@ -528,6 +529,7 @@ impl Verifier {
             air_no_span: None,
             current_crate_modules: None,
             crate_items: None,
+            warning_ctx: None,
             buckets: HashMap::new(),
 
             expand_flag: false,
@@ -576,6 +578,7 @@ impl Verifier {
             air_no_span: self.air_no_span.clone(),
             current_crate_modules: self.current_crate_modules.clone(),
             crate_items: self.crate_items.clone(),
+            warning_ctx: self.warning_ctx.clone(),
             buckets: self.buckets.clone(),
 
             expand_flag: self.expand_flag,
@@ -1155,6 +1158,7 @@ impl Verifier {
         is_rerun: bool,
         prelude_config: vir::prelude::PreludeConfig,
         profile_file_name: Option<&std::path::PathBuf>,
+        prover_choice: vir::def::ProverChoice,
     ) -> Result<air::context::Context, VirErr> {
         let mut air_context =
             air::context::Context::new(message_interface.clone(), self.args.solver);
@@ -1223,27 +1227,54 @@ impl Verifier {
             air_context.set_smt_transcript_log(Box::new(file));
         }
 
-        // air_recommended_options causes AIR to apply a preset collection of Z3 options
-        air_context.set_z3_param("air_recommended_options", "true");
+        // A by(bit_vector) query is self-contained, so it runs prelude-free: it omits the
+        // recommended-options preset, the prelude, and the bucket background.
+        let bitvector = prover_choice == vir::def::ProverChoice::BitVector;
+        if !bitvector {
+            air_context.set_z3_param("air_recommended_options", "true");
+        }
         self.set_default_rlimit(&mut air_context);
         for (option, value) in self.args.smt_options.iter() {
             air_context.set_z3_param(&option, &value);
         }
-        if self.args.axiom_usage_info {
-            air_context.enable_usage_info();
+        if !bitvector {
+            if self.args.axiom_usage_info {
+                air_context.enable_usage_info();
+            }
+            self.run_command_batch(
+                bucket_id,
+                diagnostics,
+                &mut air_context,
+                &CommandBatch::new("Prelude", ctx.prelude(prelude_config)),
+            );
         }
-
-        self.run_command_batch(
-            bucket_id,
-            diagnostics,
-            &mut air_context,
-            &CommandBatch::new("Prelude", ctx.prelude(prelude_config)),
-        );
 
         air_context.blank_line();
         air_context.comment(&("MODULE '".to_string() + &bucket_id.friendly_name() + "'"));
 
         Ok(air_context)
+    }
+
+    /// Per-query SMT tuning options.
+    fn apply_per_query_smt_options(
+        &self,
+        air_context: &mut air::context::Context,
+        prover_choice: vir::def::ProverChoice,
+    ) {
+        match prover_choice {
+            vir::def::ProverChoice::BitVector => {
+                // A prelude-free by(bit_vector) query carries no per-query
+                // options: solver defaults work well.
+                //
+                // TODO: tune Z3/CVC5 options for bit-vector queries
+            }
+            vir::def::ProverChoice::Nonlinear => match self.args.solver {
+                air::context::SmtSolver::Z3 => air_context.set_z3_param("smt.arith.solver", "6"),
+                // TODO: What cvc5 settings would help here?
+                air::context::SmtSolver::Cvc5 => {}
+            },
+            vir::def::ProverChoice::DefaultProver | vir::def::ProverChoice::Singular => {}
+        }
     }
 
     fn new_air_context_with_bucket_context<'m>(
@@ -1258,6 +1289,7 @@ impl Verifier {
         span: &vir::messages::Span,
         profile_file_name: Option<&std::path::PathBuf>,
         spinoff_reason: &str,
+        prover_choice: vir::def::ProverChoice,
     ) -> Result<air::context::Context, VirErr> {
         let mut air_context = self.new_air_context_with_prelude(
             ctx,
@@ -1268,6 +1300,7 @@ impl Verifier {
             is_rerun,
             PreludeConfig { arch_word_bits: ctx.arch_word_bits, solver: self.args.solver },
             profile_file_name,
+            prover_choice,
         )?;
 
         // Write the span of spun-off query
@@ -1275,8 +1308,10 @@ impl Verifier {
         air_context.blank_line();
         air_context.comment(&format!("query spun off because: {}", spinoff_reason));
 
-        // set up bucket context
-        self.run_command_batches(bucket_id, diagnostics, &mut air_context, bucket_context);
+        // set up bucket context (skipped for a prelude-free bit_vector query)
+        if prover_choice != vir::def::ProverChoice::BitVector {
+            self.run_command_batches(bucket_id, diagnostics, &mut air_context, bucket_context);
+        }
 
         Ok(air_context)
     }
@@ -1322,6 +1357,7 @@ impl Verifier {
             false,
             PreludeConfig { arch_word_bits: ctx.arch_word_bits, solver: self.args.solver },
             profile_all_file_name.as_ref(),
+            vir::def::ProverChoice::DefaultProver,
         )?;
         if self.args.solver_version_check {
             air_context.set_expected_solver_version(match self.args.solver {
@@ -1545,11 +1581,17 @@ impl Verifier {
                                     &cmds.context.span,
                                     profile_file_name.as_ref(),
                                     spinoff_reason,
+                                    cmds.prover_choice,
                                 )?;
                                 // for bitvector, only one query, no push/pop
                                 if cmds.prover_choice == vir::def::ProverChoice::BitVector {
-                                    spinoff_z3_context.disable_incremental_solving();
+                                    spinoff_z3_context.set_single_check_query();
                                 }
+                                // Apply prover-specific SMT tuning.
+                                self.apply_per_query_smt_options(
+                                    &mut spinoff_z3_context,
+                                    cmds.prover_choice,
+                                );
                                 spinoff_context_counter += 1;
                                 &mut spinoff_z3_context
                             } else {
@@ -1988,6 +2030,7 @@ impl Verifier {
             self.args.rlimit,
             Arc::new(std::sync::Mutex::new(None)),
             Arc::new(std::sync::Mutex::new(call_graph_log)),
+            self.warning_ctx.clone().expect("warning_ctx"),
             self.args.solver,
             false,
             self.args.check_api_safety,
@@ -2573,21 +2616,15 @@ impl Verifier {
         }
 
         self.air_no_span = {
-            let no_span = tcx
-                .hir_crate(())
-                .owners
-                .iter()
-                .filter_map(|oi| {
-                    oi.as_owner().as_ref().and_then(|o| {
-                        if let OwnerNode::Crate(c) = o.node() {
-                            Some(c.spans.inner_span)
-                        } else {
-                            None
-                        }
-                    })
-                })
-                .next()
-                .expect("OwnerNode::Crate missing");
+            let hir_crate = tcx.hir_crate(());
+            let no_span = {
+                let crate_owner = hir_crate.owner(tcx, rustc_span::def_id::CRATE_DEF_ID);
+                let owner_info = crate_owner.as_owner().expect("OwnerNode::Crate missing");
+                let OwnerNode::Crate(c) = owner_info.node() else {
+                    panic!("OwnerNode::Crate missing");
+                };
+                c.spans.inner_span
+            };
             Some(vir::messages::Span {
                 raw_span: crate::spans::to_raw_span(no_span),
                 id: 0,
@@ -2669,7 +2706,7 @@ impl Verifier {
         // Convert HIR -> VIR
         let time1 = Instant::now();
 
-        let (ctxt, vir_crate) =
+        let (ctxt, mut warning_ctx, vir_crate) =
             crate::rust_to_vir::crate_to_vir(ctxtx, &other_vir_crates, &crate_items)
                 .map_err(map_errs_diagnostics)?;
 
@@ -2756,11 +2793,15 @@ impl Verifier {
         }
         let path_to_well_known_item = crate::def::path_to_well_known_item(&ctxt);
 
-        let vir_crate =
-            vir::traits::demote_external_traits(diagnostics, &path_to_well_known_item, &vir_crate)
-                .map_err(map_err_diagnostics)?;
-        let vir_crate =
-            vir::traits::inherit_default_bodies(&vir_crate).map_err(|e| (vec![e], Vec::new()))?;
+        let vir_crate = vir::traits::demote_external_traits(
+            diagnostics,
+            &warning_ctx,
+            &path_to_well_known_item,
+            &vir_crate,
+        )
+        .map_err(map_err_diagnostics)?;
+        let vir_crate = vir::traits::inherit_default_bodies(&vir_crate, &mut warning_ctx)
+            .map_err(|e| (vec![e], Vec::new()))?;
         let vir_crate = vir::traits::fixup_ens_has_return_for_trait_method_impls(vir_crate)
             .map_err(|e| (vec![e], Vec::new()))?;
 
@@ -2773,6 +2814,7 @@ impl Verifier {
             &vir_crate,
             &unpruned_crate,
             &mut *ctxt.diagnostics.borrow_mut(),
+            &warning_ctx,
             self.args.no_verify,
             self.args.no_cheating,
         );
@@ -2844,6 +2886,7 @@ impl Verifier {
             vir::modes::check_crate(&vir_crate).map_err(|e| (vec![e], Vec::new()))?;
 
         self.vir_crate = Some(vir_crate.clone());
+        self.warning_ctx = Some(Arc::new(warning_ctx));
 
         let erasure_info = ctxt.erasure_info.borrow();
         let hir_vir_ids = erasure_info.hir_vir_ids.clone();
@@ -3022,10 +3065,9 @@ pub(crate) static BODY_HIR_ID_TO_REVEAL_PATH_RES: std::sync::RwLock<
     >,
 > = std::sync::RwLock::new(None);
 
-fn hir_crate<'tcx>(tcx: TyCtxt<'tcx>, _: ()) -> rustc_hir::Crate<'tcx> {
-    let mut crate_ = (rustc_interface::DEFAULT_QUERY_PROVIDERS.queries.hir_crate)(tcx, ());
-    crate::hir_hide_reveal_rewrite::hir_hide_reveal_rewrite(&mut crate_, tcx);
-    crate_
+fn hir_crate<'tcx>(tcx: TyCtxt<'tcx>, _: ()) -> rustc_middle::hir::Crate<'tcx> {
+    let crate_ = (rustc_interface::DEFAULT_QUERY_PROVIDERS.queries.hir_crate)(tcx, ());
+    crate::hir_hide_reveal_rewrite::hir_hide_reveal_rewrite(crate_, tcx)
 }
 
 impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
@@ -3068,6 +3110,15 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
 
                 providers.queries.mir_borrowck =
                     |tcx, _local_def_id| Ok(tcx.arena.alloc(Default::default()));
+
+                providers.queries.type_of_opaque = |tcx, def_id| {
+                    let ty = (rustc_interface::DEFAULT_QUERY_PROVIDERS.queries.type_of_opaque)(
+                        tcx, def_id,
+                    );
+                    ty.map_bound(|ty| {
+                        crate::rust_to_vir_base::hack_fix_no_lifetime_opaque_ty_issue2541(tcx, ty)
+                    })
+                };
             });
         } else {
             config.override_queries = Some(|_session, providers| {

@@ -2037,3 +2037,28 @@ test_verify_one_file_with_options! {
         }
     } => Ok(())
 }
+
+test_verify_one_file_with_options! {
+    // Regression test for a panic due to fndef impl path collision across
+    // crates.
+    //
+    // The test defines 12 `Clone` impls in the crate root, which are enough to
+    // collide with the `Clone` impls for `Ghost` and `Tracked` in
+    // `verus_builtin` at the same disambiguator (brought in by `["vstd"]`).
+    #[test] fndef_impl_path_includes_crate ["vstd"] => verus_code! {
+        use vstd::prelude::*;
+
+        struct S0;  impl Clone for S0  { fn clone(&self) -> Self { S0  } }
+        struct S1;  impl Clone for S1  { fn clone(&self) -> Self { S1  } }
+        struct S2;  impl Clone for S2  { fn clone(&self) -> Self { S2  } }
+        struct S3;  impl Clone for S3  { fn clone(&self) -> Self { S3  } }
+        struct S4;  impl Clone for S4  { fn clone(&self) -> Self { S4  } }
+        struct S5;  impl Clone for S5  { fn clone(&self) -> Self { S5  } }
+        struct S6;  impl Clone for S6  { fn clone(&self) -> Self { S6  } }
+        struct S7;  impl Clone for S7  { fn clone(&self) -> Self { S7  } }
+        struct S8;  impl Clone for S8  { fn clone(&self) -> Self { S8  } }
+        struct S9;  impl Clone for S9  { fn clone(&self) -> Self { S9  } }
+        struct S10; impl Clone for S10 { fn clone(&self) -> Self { S10 } }
+        struct S11; impl Clone for S11 { fn clone(&self) -> Self { S11 } }
+    } => Ok(())
+}

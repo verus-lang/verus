@@ -604,6 +604,7 @@ pub const FEATURE_PRELUDE: &str = crate::common::code_str! {
     #![feature(fmt_internals)]
 
     #![allow(unused_imports)]
+    #![allow(unused_features)]
     #![allow(unused_macros)]
     #![allow(deprecated)]
     #![allow(non_snake_case)]

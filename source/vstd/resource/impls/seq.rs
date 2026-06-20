@@ -1,14 +1,14 @@
-use super::super::modes::*;
-use super::super::prelude::*;
-use super::Loc;
-use super::map::*;
+use super::super::super::modes::*;
+use super::super::super::prelude::*;
+use super::super::Loc;
+use super::super::imap::*;
 
 verus! {
 
-broadcast use super::super::group_vstd_default;
+broadcast use super::super::super::group_vstd_default;
 
-pub open spec fn seq_to_map<V>(s: Seq<V>, off: int) -> Map<int, V> {
-    Map::new(|i: int| off <= i < off + s.len(), |i: int| s[i - off])
+pub open spec fn seq_to_map<V>(s: Seq<V>, off: int) -> IMap<int, V> {
+    IMap::new(|i: int| off <= i < off + s.len(), |i: int| s[i - off])
 }
 
 /** An implementation of a resource for owning a subrange of a sequence.
@@ -65,19 +65,19 @@ fn example_use() {
 pub tracked struct GhostSeqAuth<V> {
     ghost off: nat,
     ghost len: nat,
-    auth: GhostMapAuth<int, V>,
+    auth: GhostIMapAuth<int, V>,
 }
 
 pub tracked struct GhostSubseq<V> {
     ghost off: nat,
     ghost len: nat,
-    frac: GhostSubmap<int, V>,
+    frac: GhostISubmap<int, V>,
 }
 
 impl<V> GhostSeqAuth<V> {
     #[verifier::type_invariant]
     spec fn inv(self) -> bool {
-        &&& self.auth@.dom() =~= Set::new(|i: int| self.off <= i < self.off + self.len)
+        &&& self.auth@.dom() =~= ISet::new(|i: int| self.off <= i < self.off + self.len)
     }
 
     pub closed spec fn id(self) -> Loc {
@@ -118,7 +118,7 @@ impl<V> GhostSeqAuth<V> {
             result.1.off() == off,
             result.1@ =~= s,
     {
-        let tracked (mauth, mfrac) = GhostMapAuth::<int, V>::new(seq_to_map(s, off as int));
+        let tracked (mauth, mfrac) = GhostIMapAuth::<int, V>::new(seq_to_map(s, off as int));
         let tracked auth = GhostSeqAuth { off: off, len: s.len(), auth: mauth };
         let tracked frac = GhostSubseq { off: off, len: s.len(), frac: mfrac };
         (auth, frac)
@@ -175,7 +175,7 @@ impl<V> GhostSeqAuth<V> {
 impl<V> GhostSubseq<V> {
     #[verifier::type_invariant]
     spec fn inv(self) -> bool {
-        &&& self.frac@.dom() =~= Set::new(|i: int| self.off <= i < self.off + self.len)
+        &&& self.frac@.dom() =~= ISet::new(|i: int| self.off <= i < self.off + self.len)
     }
 
     pub closed spec fn view(self) -> Seq<V> {
@@ -242,7 +242,7 @@ impl<V> GhostSubseq<V> {
         }
     }
 
-    pub proof fn agree_map(tracked self: &GhostSubseq<V>, tracked auth: &GhostMapAuth<int, V>)
+    pub proof fn agree_map(tracked self: &GhostSubseq<V>, tracked auth: &GhostIMapAuth<int, V>)
         requires
             self.id() == auth.id(),
         ensures
@@ -288,7 +288,7 @@ impl<V> GhostSubseq<V> {
 
     pub proof fn update_map(
         tracked self: &mut GhostSubseq<V>,
-        tracked auth: &mut GhostMapAuth<int, V>,
+        tracked auth: &mut GhostIMapAuth<int, V>,
         v: Seq<V>,
     )
         requires
@@ -299,7 +299,7 @@ impl<V> GhostSubseq<V> {
             final(self).off() == old(self).off(),
             final(auth).id() == old(auth).id(),
             final(self)@ =~= v,
-            final(auth)@ =~= Map::new(
+            final(auth)@ =~= IMap::new(
                 |i: int| old(auth)@.contains_key(i),
                 |i: int|
                     if final(self).off() <= i < final(self).off() + v.len() {
@@ -337,7 +337,7 @@ impl<V> GhostSubseq<V> {
         let tracked mut mselffrac = mself.frac;
 
         let tracked mfrac = mselffrac.split(
-            Set::new(|i: int| mself.off + n <= i < mself.off + mself.len),
+            ISet::new(|i: int| mself.off + n <= i < mself.off + mself.len),
         );
         let tracked result = GhostSubseq {
             off: (mself.off + n) as nat,
@@ -392,11 +392,11 @@ impl<V> GhostSubseq<V> {
         subseq
     }
 
-    // Helper to lift GhostSubmap into GhostSubseq.
-    pub proof fn new(off: nat, len: nat, tracked f: GhostSubmap<int, V>) -> (tracked result:
+    // Helper to lift GhostISubmap into GhostSubseq.
+    pub proof fn new(off: nat, len: nat, tracked f: GhostISubmap<int, V>) -> (tracked result:
         GhostSubseq<V>)
         requires
-            f@.dom() == Set::new(|i: int| off <= i < off + len),
+            f@.dom() == ISet::new(|i: int| off <= i < off + len),
         ensures
             result.id() == f.id(),
             result.off() == off,

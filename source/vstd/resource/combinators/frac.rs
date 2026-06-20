@@ -1,17 +1,15 @@
-use super::super::modes::*;
-use super::super::prelude::*;
-use super::Loc;
-use super::agree::AgreementRA;
-use super::algebra::Resource;
-use super::algebra::ResourceAlgebra;
-use super::pcm::PCM;
-use super::product::ProductRA;
-use super::storage_protocol::*;
-use super::*;
+use super::super::super::modes::*;
+use super::super::super::prelude::*;
+use super::super::Loc;
+use super::super::agree::AgreementRA;
+use super::super::algebra::Resource;
+use super::super::algebra::ResourceAlgebra;
+use super::super::pcm::PCM;
+use super::super::product::ProductRA;
+use super::super::storage_protocol::*;
+use super::super::*;
 
 verus! {
-
-broadcast use {super::super::map::group_map_axioms, super::super::set::group_set_axioms};
 
 pub enum FractionRA {
     Frac(real),
@@ -95,7 +93,7 @@ type FractionalCarrier<T> = ProductRA<FractionRA, AgreementRA<T>>;
 /// An implementation of a resource for fractional ownership of a ghost variable.
 ///
 /// If you just want to split the permission in half, you can also use the
-/// [`GhostVar<T>`](super::ghost_var::GhostVar) and [`GhostVarAuth<T>`](super::ghost_var::GhostVarAuth) library.
+/// [`GhostVar<T>`](super::super::ghost_var::GhostVar) and [`GhostVarAuth<T>`](super::super::ghost_var::GhostVarAuth) library.
 ///
 /// ### Example
 ///

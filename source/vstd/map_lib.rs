@@ -12,13 +12,18 @@ use super::set_lib::*;
 
 verus! {
 
-broadcast use {super::map::group_map_axioms, super::set::group_set_axioms};
+broadcast use {
+    super::map::group_map_lemmas,
+    super::set::group_set_lemmas,
+    super::set_lib::group_set_lib_default,
+    super::iset::group_iset_lemmas,
+};
 
 impl<K, V> Map<K, V> {
     /// Is `true` if called by a "full" map, i.e., a map containing every element of type `A`.
     #[verifier::inline]
     pub open spec fn is_full(self) -> bool {
-        self.dom().is_full()
+        forall|k: K| self.dom().contains(k)
     }
 
     /// Is `true` if called by an "empty" map, i.e., a map containing no elements and has length 0
@@ -62,7 +67,7 @@ impl<K, V> Map<K, V> {
     /// }
     /// ```
     pub open spec fn values(self) -> Set<V> {
-        Set::<V>::new(|v: V| self.contains_value(v))
+        self.dom().map(|k: K| self[k])
     }
 
     ///
@@ -79,12 +84,16 @@ impl<K, V> Map<K, V> {
     /// }
     /// ```
     pub open spec fn kv_pairs(self) -> Set<(K, V)> {
-        Set::<(K, V)>::new(|kv: (K, V)| self.dom().contains(kv.0) && self[kv.0] == kv.1)
+        self.dom().map(|k: K| (k, self[k]))
     }
 
     /// Returns true if the key `k` is in the domain of `self`, and it maps to the value `v`.
     pub open spec fn contains_pair(self, k: K, v: V) -> bool {
-        self.dom().contains(k) && self[k] == v
+        // We use the implication below to make sure that the solver tries to prove
+        // `self.dom().contains(k)` first. That fact is sometimes necessary to trigger
+        // a quantifier helpful in proving `self[k] == v`.
+        &&& self.dom().contains(k)
+        &&& self.dom().contains(k) ==> self[k] == v
     }
 
     /// Returns true if `m1` is _contained in_ `m2`, i.e., the domain of `m1` is a subset
@@ -122,7 +131,7 @@ impl<K, V> Map<K, V> {
     /// ```
     pub open spec fn union_prefer_right(self, m2: Self) -> Self {
         Self::new(
-            |k: K| self.dom().contains(k) || m2.dom().contains(k),
+            self.dom().union(m2.dom()),
             |k: K|
                 if m2.dom().contains(k) {
                     m2[k]
@@ -144,7 +153,7 @@ impl<K, V> Map<K, V> {
     ///    =~= map![1 => 10]);
     /// ```
     pub open spec fn remove_keys(self, keys: Set<K>) -> Self {
-        Self::new(|k: K| self.dom().contains(k) && !keys.contains(k), |k: K| self[k])
+        Self::new(self.dom().difference(keys), |k: K| self[k])
     }
 
     /// Complement to `remove_keys`. Restricts the map to (key, value) pairs
@@ -159,7 +168,7 @@ impl<K, V> Map<K, V> {
     ///    =~= map![2 => 11, 3 => 12]);
     /// ```
     pub open spec fn restrict(self, keys: Set<K>) -> Self {
-        Self::new(|k: K| self.dom().contains(k) && keys.contains(k), |k: K| self[k])
+        Self::new(self.dom().intersect(keys), |k: K| self[k])
     }
 
     /// Returns `true` if and only if the given key maps to the same value or does not exist in self and m2.
@@ -175,12 +184,12 @@ impl<K, V> Map<K, V> {
 
     /// Map a function `f` over all (k, v) pairs in `self`.
     pub open spec fn map_entries<W>(self, f: spec_fn(K, V) -> W) -> Map<K, W> {
-        Map::new(|k: K| self.contains_key(k), |k: K| f(k, self[k]))
+        Map::<K, W>::new(self.dom(), |k: K| f(k, self[k]))
     }
 
     /// Map a function `f` over the values in `self`.
     pub open spec fn map_values<W>(self, f: spec_fn(V) -> W) -> Map<K, W> {
-        Map::new(|k: K| self.contains_key(k), |k: K| f(self[k]))
+        Map::<K, W>::new(self.dom(), |k: K| f(self[k]))
     }
 
     /// Returns `true` if and only if a map is injective
@@ -193,10 +202,7 @@ impl<K, V> Map<K, V> {
     /// Swaps map keys and values. Values are not required to be unique; no
     /// promises on which key is chosen on the intersection.
     pub open spec fn invert(self) -> Map<V, K> {
-        Map::<V, K>::new(
-            |v: V| self.contains_value(v),
-            |v: V| choose|k: K| self.contains_pair(k, v),
-        )
+        Map::<V, K>::new(self.values(), |v: V| choose|k: K| self.contains_pair(k, v))
     }
 
     // Proven lemmas
@@ -205,7 +211,6 @@ impl<K, V> Map<K, V> {
     pub proof fn lemma_remove_key_len(self, key: K)
         requires
             self.dom().contains(key),
-            self.dom().finite(),
         ensures
             self.dom().len() == 1 + self.remove(key).dom().len(),
     {
@@ -224,8 +229,6 @@ impl<K, V> Map<K, V> {
     pub proof fn lemma_remove_keys_len(self, keys: Set<K>)
         requires
             forall|k: K| #[trigger] keys.contains(k) ==> self.contains_key(k),
-            keys.finite(),
-            self.dom().finite(),
         ensures
             self.remove_keys(keys).dom().len() == self.dom().len() - keys.len(),
         decreases keys.len(),
@@ -251,9 +254,11 @@ impl<K, V> Map<K, V> {
             x != y && self.invert().dom().contains(x) && self.invert().dom().contains(
                 y,
             ) implies #[trigger] self.invert()[x] != #[trigger] self.invert()[y] by {
+            assert(exists|i: K| #[trigger] self.dom().contains(i) && self[i] == x);
             let i = choose|i: K| #[trigger] self.dom().contains(i) && self[i] == x;
             assert(self.contains_pair(i, x));
             let j = choose|j: K| self.contains_pair(j, x) && self.invert()[x] == j;
+            assert(exists|k: K| #[trigger] self.dom().contains(k) && self[k] == y);
             let k = choose|k: K| #[trigger] self.dom().contains(k) && self[k] == y;
             assert(self.contains_pair(k, y));
             let l = choose|l: K| self.contains_pair(l, y) && self.invert()[y] == l && l != j;
@@ -458,17 +463,15 @@ impl<K, V> Map<K, V> {
 
     pub proof fn lemma_injective_values_len(self)
         requires
-            self.dom().finite(),
             self.is_injective(),
         ensures
-            self.values().finite(),
             self.values().len() == self.dom().len(),
     {
         let f = |k: K|
             if self.contains_key(k) {
                 self[k]
             } else {
-                Set::<V>::full().difference(self.values()).choose()
+                arbitrary()
             };
         assert(forall|a1: K, a2: K|
             self.dom().contains(a1) && self.dom().contains(a2) && #[trigger] f(a1) == #[trigger] f(
@@ -479,17 +482,14 @@ impl<K, V> Map<K, V> {
     }
 
     pub proof fn lemma_values_len(self)
-        requires
-            self.dom().finite(),
         ensures
-            self.values().finite(),
             self.values().len() <= self.dom().len(),
     {
         let f = |k: K|
             if self.contains_key(k) {
                 self[k]
             } else {
-                Set::<V>::full().difference(self.values()).choose()
+                Set::<V>::full().unwrap().difference(self.values()).choose()
             };
         assert(self.dom().map(f) == self.values());
         lemma_map_size_bound(self.dom(), self.values(), f);
@@ -516,7 +516,62 @@ impl<K, V> Map<Seq<K>, V> {
     /// }
     /// ```
     pub open spec fn prefixed_entries(self, prefix: Seq<K>) -> Self {
-        Map::new(|k: Seq<K>| self.contains_key(prefix + k), |k: Seq<K>| self[prefix + k])
+        Map::new(
+            Set::new(|k: Seq<K>| self.contains_key(prefix + k)).unwrap(),
+            |k: Seq<K>| self[prefix + k],
+        )
+    }
+
+    /// This internal helper lemma says that if sequences `s1` and
+    /// `s2` differ, then they differ when prefixed by the sequence
+    /// `prefix`.
+    proof fn lemma_ne_implies_prefixed_ne(prefix: Seq<K>, s1: Seq<K>, s2: Seq<K>)
+        requires
+            s1 != s2,
+        ensures
+            prefix + s1 != prefix + s2,
+        decreases prefix.len(),
+    {
+        broadcast use super::seq::group_seq_axioms;
+
+        if s1.len() == s2.len() {
+            if forall|i: int| 0 <= i < s1.len() ==> s1[i] == s2[i] {
+                assert(s1 =~= s2);
+            } else {
+                let i: int = choose|i: int| 0 <= i < s1.len() && s1[i] != s2[i];
+                assert((prefix + s1)[prefix.len() + i] == s1[i]);
+                assert((prefix + s2)[prefix.len() + i] == s2[i]);
+            }
+        } else {
+            assert((prefix + s1).len() == prefix.len() + s1.len());
+            assert((prefix + s2).len() == prefix.len() + s2.len());
+        }
+    }
+
+    /// This helper lemma establishes that the set used in the body of
+    /// `prefixed_entries` is finite, so the set it produces is valid.
+    proof fn lemma_prefixed_entries_dom_finite(self, prefix: Seq<K>)
+        ensures
+            ISet::new(|k: Seq<K>| self.contains_key(prefix + k)).finite(),
+        decreases self.dom().len(),
+    {
+        let f = |k: Seq<K>| self.contains_key(prefix + k);
+        if forall|k: Seq<K>| !(#[trigger] self.contains_key(prefix + k)) {
+            assert(ISet::new(f) =~= ISet::empty());
+        } else {
+            let s: Seq<K> = choose|s: Seq<K>| #[trigger] self.contains_key(prefix + s);
+            self.remove(prefix + s).lemma_prefixed_entries_dom_finite(prefix);
+            let set_remove_f = |k: Seq<K>| self.remove(prefix + s).contains_key(prefix + k);
+            let is1 = ISet::new(f);
+            let is2 = ISet::new(set_remove_f).insert(s);
+            assert forall|x| is1.contains(x) implies is2.contains(x) by {
+                if x != s {
+                    Self::lemma_ne_implies_prefixed_ne(prefix, s, x);
+                    assert(self.remove(prefix + s).contains_key(prefix + x));
+                }
+            }
+            assert(ISet::new(f) =~= ISet::new(set_remove_f).insert(s));
+        }
     }
 
     /// For every key `k` kept by `prefixed_entries(prefix)`,
@@ -541,6 +596,7 @@ impl<K, V> Map<Seq<K>, V> {
     {
         broadcast use group_map_properties;
 
+        self.lemma_prefixed_entries_dom_finite(prefix);
     }
 
     /// A key `k` is in `prefixed_entries(prefix)` exactly when the original map
@@ -571,6 +627,8 @@ impl<K, V> Map<Seq<K>, V> {
 
         let lhs = self.prefixed_entries(prefix);
         let rhs = self;
+
+        self.lemma_prefixed_entries_dom_finite(prefix);
     }
 
     /// Inserting `(prefix + k, v)` before taking `prefixed_entries(prefix)`
@@ -708,13 +766,11 @@ pub broadcast proof fn lemma_union_dom<K, V>(m1: Map<K, V>, m2: Map<K, V>)
 pub broadcast proof fn lemma_disjoint_union_size<K, V>(m1: Map<K, V>, m2: Map<K, V>)
     requires
         m1.dom().disjoint(m2.dom()),
-        m1.dom().finite(),
-        m2.dom().finite(),
     ensures
         #[trigger] m1.union_prefer_right(m2).dom().len() == m1.dom().len() + m2.dom().len(),
 {
     let u = m1.union_prefer_right(m2);
-    assert(u.dom() =~= m1.dom() + m2.dom());  //proves u.dom() is finite
+    assert(u.dom() =~= m1.dom() + m2.dom());
     assert(u.remove_keys(m1.dom()).dom() =~= m2.dom());
     assert(u.remove_keys(m1.dom()).dom().len() == u.dom().len() - m1.dom().len()) by {
         u.lemma_remove_keys_len(m1.dom());
@@ -744,33 +800,22 @@ pub broadcast proof fn lemma_submap_of_trans<K, V>(m1: Map<K, V>, m2: Map<K, V>,
     }
 }
 
-// This verified lemma used to be an axiom in the Dafny prelude
+// This verified lemma corresponds to an axiom in the Dafny prelude saying that:
 /// The domain of a map constructed with `Map::new(fk, fv)` is equivalent to the set constructed with `Set::new(fk)`.
-pub broadcast proof fn lemma_map_new_domain<K, V>(fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V)
+pub broadcast proof fn lemma_map_new_domain<K, V>(s: Set<K>, fv: spec_fn(K) -> V)
     ensures
-        #[trigger] Map::<K, V>::new(fk, fv).dom() == Set::<K>::new(|k: K| fk(k)),
+        #[trigger] Map::<K, V>::new(s, fv).dom() == s,
 {
-    assert(Set::new(fk) =~= Set::<K>::new(|k: K| fk(k)));
 }
 
-// This verified lemma used to be an axiom in the Dafny prelude
+// This verified lemma used to be an axiom in the Dafny prelude saying that:
 /// The set of values of a map constructed with `Map::new(fk, fv)` is equivalent to
 /// the set constructed with `Set::new(|v: V| (exists |k: K| fk(k) && fv(k) == v)`. In other words,
 /// the set of all values fv(k) where fk(k) is true.
-pub broadcast proof fn lemma_map_new_values<K, V>(fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V)
+pub broadcast proof fn lemma_map_new_values<K, V>(s: Set<K>, fv: spec_fn(K) -> V)
     ensures
-        #[trigger] Map::<K, V>::new(fk, fv).values() == Set::<V>::new(
-            |v: V| (exists|k: K| #[trigger] fk(k) && #[trigger] fv(k) == v),
-        ),
+        #[trigger] Map::<K, V>::new(s, fv).values() == s.map(fv),
 {
-    let keys = Set::<K>::new(fk);
-    let values = Map::<K, V>::new(fk, fv).values();
-    let map = Map::<K, V>::new(fk, fv);
-    assert(map.dom() =~= keys);
-    assert(forall|k: K| #[trigger] fk(k) ==> keys.contains(k));
-    assert(values =~= Set::<V>::new(
-        |v: V| (exists|k: K| #[trigger] fk(k) && #[trigger] fv(k) == v),
-    ));
 }
 
 pub broadcast group group_map_properties {
@@ -787,40 +832,6 @@ pub broadcast group group_map_extra {
     Map::lemma_prefixed_entries_contains,
     Map::lemma_prefixed_entries_insert,
     Map::lemma_prefixed_entries_union,
-}
-
-pub proof fn lemma_values_finite<K, V>(m: Map<K, V>)
-    requires
-        m.dom().finite(),
-    ensures
-        m.values().finite(),
-    decreases m.len(),
-{
-    if m.len() > 0 {
-        let k = m.dom().choose();
-        let v = m[k];
-        let m1 = m.remove(k);
-        assert(m.contains_key(k));
-        assert(m.contains_value(v));
-        let mv = m.values();
-        let m1v = m1.values();
-        assert_sets_equal!(mv == m1v.insert(v), v0 => {
-            if m.contains_value(v0) {
-                if v0 != v {
-                    let k0 = choose|k0| #![auto] m.contains_key(k0) && m[k0] == v0;
-                    assert(k0 != k);
-                    assert(m1.contains_key(k0));
-                    assert(mv.contains(v0) ==> m1v.insert(v).contains(v0));
-                    assert(mv.contains(v0) <== m1v.insert(v).contains(v0));
-                }
-            }
-        });
-        assert(m1.len() < m.len());
-        lemma_values_finite(m1);
-        axiom_set_insert_finite(m1.values(), v);
-    } else {
-        assert(m.values() =~= Set::<V>::empty());
-    }
 }
 
 } // verus!
