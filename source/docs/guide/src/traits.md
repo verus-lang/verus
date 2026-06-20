@@ -1,22 +1,22 @@
 # Traits
 
-Verus supports writing specifications for trait methods, including `requires` and
-`ensures` clauses. Specifications on a trait method serve as a *contract* that all
-implementations must satisfy, and that callers can rely on when they call the method
+Verus supports writing specifications for trait functions, including `requires` and
+`ensures` clauses. Specifications on a trait function serve as a *contract* that all
+implementations must satisfy, and that callers can rely on when they call the function
 through a trait bound.
 
 For traits defined in external crates (e.g., from the Rust standard library), see
 [External trait specifications](./external_trait_specifications.md).
 
-## Trait method specifications
+## Trait function specifications
 
-Trait methods can have `requires` and `ensures` clauses just like ordinary functions:
+Trait functions can have `requires` and `ensures` clauses just like ordinary functions:
 
 ```rust
 {{#include ../../../../examples/guide/traits.rs:basic_trait}}
 ```
 
-Any type implementing `Compressor` must provide a `compress` method whose body
+Any type implementing `Compressor` must provide a `compress` function whose body
 satisfies `output <= input`.
 
 ## Extending specifications in implementations
@@ -49,7 +49,7 @@ A trait function can also include both `requires` and `ensures`:
 
 ## Generic vs. concrete dispatch
 
-When Verus can statically determine the concrete type of a trait method call, it uses
+When Verus can statically determine the concrete type of a trait function call, it uses
 the possibly-stronger specification from the `impl`.  When the call is through a generic
 type parameter, Verus only knows the trait-level specification.
 
@@ -112,17 +112,17 @@ then define `type V` and `spec fn view`:
 
 Because `Stack`'s `data` is a private field, `view` is `closed` — callers cannot see its
 definition, but they can still reason about the effect each function has on that view,
-as illsutrated by the postconditions on `push` and `is_empty`.  If you want
+as illustrated by the postconditions on `push` and `is_empty`.  If you want
 callers to unfold `@` to its definition (e.g., for a `pub` type with a `pub`
 field), use `open spec fn view` instead.
 
 `vstd` also provides `DeepView`, which recursively applies the view abstraction
 to nested elements.  Most code only needs `View`.
 
-## `default_ensures`: specifications for default method implementations
+## `default_ensures`: specifications for default function implementations
 
-In Rust, a trait method can provide a *default implementation* — a body that
-implementations inherit if they do not override the method.  This creates a subtle
+In Rust, a trait function can provide a *default implementation* — a body that
+implementations inherit if they do not override the function.  This creates a subtle
 specification problem: the trait-level `ensures` clause must be weak enough to allow
 any valid override, but the default body may satisfy a *stronger* postcondition.
 
@@ -138,7 +138,7 @@ that holds *only* when a type uses the default implementation without overriding
 
 The rules:
 
- * `default_ensures` is only allowed on a trait method that has a default body in the
+ * `default_ensures` is only allowed on a trait function that has a default body in the
    trait declaration.
  * `default_ensures` is checked against the default body just like a normal `ensures`.
  * Callers that statically know the type inherits the default learn both `ensures` and
