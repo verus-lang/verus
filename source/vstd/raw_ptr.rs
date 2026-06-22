@@ -2811,6 +2811,9 @@ impl<'a, T: ?Sized> SharedReference<'a, T> {
     ;
 }
 
+/// Extracts the pointer from the shadow data of a shared reference.
+pub uninterp spec fn shared_ref_ptr<T: ?Sized>(s: ShadowData<&T>) -> *const T;
+
 impl<'a, T> SharedReference<'a, [T]> {
     #[verifier::external_body]
     pub const fn as_ptr(self) -> (ptr: *const T)

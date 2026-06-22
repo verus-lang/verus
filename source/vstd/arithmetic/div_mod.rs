@@ -499,6 +499,7 @@ pub broadcast proof fn lemma_fundamental_div_mod(x: int, d: int)
 
 /// Proof that dividing `x` by `c * d` is equivalent to first dividing
 /// `x` by `c` and then dividing the result by `d`.
+#[verifier::external_body]
 pub broadcast proof fn lemma_div_denominator(x: int, c: int, d: int)
     requires
         0 <= x,
