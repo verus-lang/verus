@@ -109,11 +109,6 @@ impl MockWorkspace {
 
     pub fn materialize(self) -> tempfile::TempDir {
         let root = tempfile::tempdir().expect("create temp dir");
-        self.materialize_in_dir(root.path());
-        root
-    }
-
-    pub fn materialize_in_dir(self, root: &Path) {
         let mut member_names = vec![];
         let mut workspace_aliases = BTreeMap::<String, String>::new();
         for member in self.members {
@@ -124,7 +119,7 @@ impl MockWorkspace {
                     panic!("workspace-level alias `{alias}` already exists for `{package_name}`");
                 }
             }
-            let package_dir = root.join(&package_name);
+            let package_dir = root.path().join(&package_name);
             std::fs::create_dir(&package_dir).expect("create package dir {package_dir:?}");
             member.materialize_in_dir(&package_dir);
         }
@@ -155,9 +150,11 @@ impl MockWorkspace {
         }
         manifest_lines.push("".to_owned());
 
-        let manifest = root.join("Cargo.toml");
+        let manifest = root.path().join("Cargo.toml");
         std::fs::write(&manifest, manifest_lines.join("\n"))
             .unwrap_or_else(|_| panic!("write manifest to {manifest:?}"));
+
+        root
     }
 }
 
@@ -329,11 +326,9 @@ impl MockPackage {
             manifest_lines.push("".to_owned());
         }
 
-        if self.verus_verify.is_some() {
+        if let Some(verus_verify) = self.verus_verify {
             manifest_lines.push("[package.metadata.verus]".to_owned());
-            if let Some(verus_verify) = self.verus_verify {
-                manifest_lines.push(format!("verify = {verus_verify}"));
-            }
+            manifest_lines.push(format!("verify = {verus_verify}"));
             manifest_lines.push("".to_owned());
         }
 
