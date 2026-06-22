@@ -20,5 +20,12 @@ fn constructs_workspace_with_vstd_registry_git_and_path_dependencies() {
         ])
         .materialize();
 
-    // TODO: Print each Cargo.toml files in the workspace.
+    print_cargo_toml(workspace.path().join("Cargo.toml"));
+    print_cargo_toml(workspace.path().join("consumer").join("Cargo.toml"));
+    print_cargo_toml(workspace.path().join("fake-vstd").join("Cargo.toml"));
+}
+
+fn print_cargo_toml(path: PathBuf) {
+    let contents = fs::read_to_string(&path).unwrap_or_else(|_| panic!("read {path:?}"));
+    println!("== {} ==\n{contents}", path.display());
 }
