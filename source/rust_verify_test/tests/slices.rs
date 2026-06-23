@@ -234,8 +234,6 @@ test_verify_one_file! {
         use std::ops::Index;
         use vstd::prelude::*;
 
-        broadcast use vstd::group_vstd_default;
-
         fn element(a: &[u8; 5]) {
             let x = a[2];
             assert(x == a[2]);
@@ -282,8 +280,6 @@ test_verify_one_file! {
     #[test] test_vec_index verus_code! {
         use std::ops::Index;
         use vstd::prelude::*;
-
-        broadcast use vstd::group_vstd_default;
 
         fn element(v: &Vec<u8>) {
             assume(v.len() == 5);
@@ -339,8 +335,6 @@ test_verify_one_file! {
     #[test] test_other_index verus_code! {
         use std::ops::Index;
         use vstd::prelude::*;
-
-        broadcast use vstd::group_vstd_default;
 
         fn range(v: Vec<u8>) {
             assume(v.len() == 5);

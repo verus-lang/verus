@@ -906,6 +906,69 @@ pub broadcast proof fn valid_utf8_split(bytes: Seq<u8>, index: int)
     }
 }
 
+/// Ensures that a char boundary remains a char boundary on a UTF-8 prefix of a UTF-8 byte sequence.
+pub broadcast proof fn is_char_boundary_split(bytes: Seq<u8>, index1: int, index2: int)
+    requires
+        valid_utf8(bytes),
+        is_char_boundary(bytes, index1),
+        is_char_boundary(bytes, index2),
+        0 <= index1 <= index2,
+    ensures
+        valid_utf8(bytes.subrange(0, index2)),
+        #[trigger] is_char_boundary(bytes.subrange(0, index2), index1),
+    decreases bytes.len(),
+{
+    if index1 == 0 {
+        valid_utf8_split(bytes, index2);
+    } else {
+        let tail = pop_first_scalar(bytes);
+        let new_index1 = index1 - length_of_first_scalar(bytes);
+        let new_index2 = index2 - length_of_first_scalar(bytes);
+        is_char_boundary_len_first_scalar(bytes, index1);
+        is_char_boundary_len_first_scalar(bytes, index2);
+        assert(valid_utf8(tail.subrange(0, new_index2)) && is_char_boundary(
+            tail.subrange(0, new_index2),
+            new_index1,
+        )) by {
+            valid_utf8_split(tail, new_index2);
+            is_char_boundary_split(tail, new_index1, new_index2);
+        }
+        assert(valid_utf8(bytes.subrange(0, index2)) && is_char_boundary(
+            bytes.subrange(0, index2),
+            index1,
+        )) by {
+            valid_utf8_split(bytes, index2);
+            assert(pop_first_scalar(bytes.subrange(0, index2)) =~= tail.subrange(0, new_index2));
+        }
+    }
+}
+
+/// Ensures that a subrange from a valid UTF-8 byte sequence on character boundaries is also a valid UTF-8 byte sequence.
+pub broadcast proof fn valid_utf8_subrange(bytes: Seq<u8>, start: int, end: int)
+    requires
+        valid_utf8(bytes),
+        #[trigger] is_char_boundary(bytes, start),
+        #[trigger] is_char_boundary(bytes, end),
+        0 <= start <= end,
+    ensures
+        valid_utf8(bytes.subrange(start, end)),
+    decreases bytes.len(),
+{
+    if end == 0 {
+    } else {
+        let subr1 = bytes.subrange(0, end);
+        assert(valid_utf8(subr1)) by {
+            valid_utf8_split(bytes, end);
+        }
+        let subr2 = subr1.subrange(start, subr1.len() as int);
+        assert(subr2 =~= bytes.subrange(start, end));
+        assert(valid_utf8(subr2)) by {
+            is_char_boundary_split(bytes, start, end);
+            valid_utf8_split(subr1, start);
+        }
+    }
+}
+
 /// Ensures that a valid UTF-8 byte sequence can be decoded by separately decoding the two subsequences formed by splitting the original sequence at a character boundary.
 pub broadcast proof fn decode_utf8_split(bytes: Seq<u8>, index: int)
     requires
@@ -1115,6 +1178,8 @@ pub broadcast group group_utf8_lib {
     partial_valid_utf8_extend,
     partial_valid_utf8_extend_ascii_block,
     valid_utf8_split,
+    is_char_boundary_split,
+    valid_utf8_subrange,
     decode_utf8_split,
     is_char_boundary_start_end_of_seq,
     is_char_boundary_iff_not_is_continuation_byte,
