@@ -5,8 +5,8 @@
 //! To get the spec for `wrapping_add` on `u8`, for example, call `u8_specs::wrapping_add`.
 //! (The module formulation seemed cleaner than defining a `wrapping_add_u8` for every
 //! operation and type.)
-use super::prelude::*;
 use super::arithmetic::power2::is_pow2;
+use super::prelude::*;
 
 macro_rules! wrapping_specs {
     ([$(($uN: ty, $iN: ty, $modname_u:ident, $modname_i:ident, $range:expr, $bits:expr),)*]) => {
@@ -70,8 +70,8 @@ macro_rules! wrapping_specs {
 
                 pub broadcast proof fn lemma_count_ones_is_pow2(x: $uN)
                     ensures
-                        #![trigger count_ones(x)] 
-                        #![trigger is_pow2(x as int)] 
+                        #![trigger count_ones(x)]
+                        #![trigger is_pow2(x as int)]
                         count_ones(x) == 1
                             <==> is_pow2(x as int),
                     decreases x,
@@ -152,9 +152,9 @@ macro_rules! wrapping_specs {
                 }
 
             }
-            
+
             }
-        )*
+            )*
     }
 }
 wrapping_specs!([
