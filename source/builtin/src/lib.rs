@@ -437,7 +437,7 @@ impl<A> core::ops::DerefMut for Ghost<A> {
 ///
 /// Note: This special behavior requires support from Verus,
 /// and this trait impl cannot be used generically.
-#[cfg(verus_keep_ghost)]
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 impl<A> core::ops::Deref for Tracked<A> {
     type Target = A;
     #[rustc_diagnostic_item = "verus::verus_builtin::Tracked::deref"]
@@ -450,7 +450,7 @@ impl<A> core::ops::Deref for Tracked<A> {
 ///
 /// Note: This special behavior requires support from Verus,
 /// and this trait impl cannot be used generically.
-#[cfg(verus_keep_ghost)]
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 impl<A> core::ops::DerefMut for Tracked<A> {
     #[rustc_diagnostic_item = "verus::verus_builtin::Tracked::deref_mut"]
     fn deref_mut(&mut self) -> &mut Self::Target {
