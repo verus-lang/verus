@@ -197,17 +197,16 @@ pub enum PackageSource {
 impl From<&Package> for PackageMetadata {
     fn from(package: &Package) -> Self {
         let version = package.version.clone();
-        let source = PackageSource::from(package.source.as_ref());
+        let source =
+            package.source.as_ref().map(PackageSource::from).unwrap_or(PackageSource::Unsupported);
         PackageMetadata { version, source }
     }
 }
 
-impl From<Option<&Source>> for PackageSource {
-    fn from(source: Option<&Source>) -> Self {
-        let Some(source) = source else {
-            return PackageSource::Unsupported;
-        };
-
+/// NOTE: This code relies on Cargo internals because there's no stable API.
+/// The tests in `test_vstd_sources.rs` should be able to detect if these assumptions break.
+impl From<&Source> for PackageSource {
+    fn from(source: &Source) -> Self {
         let repr = &source.repr;
         if let Some(registry) = repr.strip_prefix("registry+") {
             PackageSource::Registry { url: registry.to_string() }
