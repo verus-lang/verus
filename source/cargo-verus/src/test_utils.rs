@@ -38,9 +38,17 @@ pub struct MockDep {
 #[derive(Clone)]
 enum DepSource {
     Registry,
-    Git { url: String, rev: String },
+    Git { url: String, commit: GitCommit },
     Path(String),
     Workspace,
+}
+
+#[derive(Clone)]
+enum GitCommit {
+    Latest,
+    Rev(String),
+    Tag(String),
+    Branch(String),
 }
 
 impl MockDep {
@@ -62,12 +70,42 @@ impl MockDep {
         }
     }
 
-    pub fn git(package: &str, url: &str, rev: &str) -> Self {
+    pub fn git(package: &str, url: &str) -> Self {
         Self {
             alias: None,
             package: package.to_owned(),
             version: None,
-            source: DepSource::Git { url: url.to_owned(), rev: rev.to_owned() },
+            source: DepSource::Git { url: url.to_owned(), commit: GitCommit::Latest },
+        }
+    }
+
+    pub fn git_rev(package: &str, url: &str, rev: &str) -> Self {
+        Self {
+            alias: None,
+            package: package.to_owned(),
+            version: None,
+            source: DepSource::Git { url: url.to_owned(), commit: GitCommit::Rev(rev.to_owned()) },
+        }
+    }
+
+    pub fn git_tag(package: &str, url: &str, tag: &str) -> Self {
+        Self {
+            alias: None,
+            package: package.to_owned(),
+            version: None,
+            source: DepSource::Git { url: url.to_owned(), commit: GitCommit::Tag(tag.to_owned()) },
+        }
+    }
+
+    pub fn git_branch(package: &str, url: &str, branch: &str) -> Self {
+        Self {
+            alias: None,
+            package: package.to_owned(),
+            version: None,
+            source: DepSource::Git {
+                url: url.to_owned(),
+                commit: GitCommit::Branch(branch.to_owned()),
+            },
         }
     }
 
@@ -278,9 +316,15 @@ impl MockPackage {
                 DepSource::Path(path) => {
                     format!("{name} = {{ {package_part} {version_part} path = {path:?} }}")
                 }
-                DepSource::Git { url, rev } => {
+                DepSource::Git { url, commit } => {
+                    let commit_part = match commit {
+                        GitCommit::Latest => "".to_owned(),
+                        GitCommit::Rev(rev) => format!(", rev = {rev:?}"),
+                        GitCommit::Tag(tag) => format!(", tag = {tag:?}"),
+                        GitCommit::Branch(branch) => format!(", branch = {branch:?}"),
+                    };
                     format!(
-                        "{name} = {{ {package_part} {version_part} git = {url:?}, rev = {rev:?} }}"
+                        "{name} = {{ {package_part} {version_part} git = {url:?} {commit_part} }}"
                     )
                 }
                 DepSource::Registry => {
