@@ -212,11 +212,14 @@ impl From<Option<&Source>> for PackageSource {
         if let Some(registry) = repr.strip_prefix("registry+") {
             PackageSource::Registry { url: registry.to_string() }
         } else if let Some(git_source) = repr.strip_prefix("git+") {
-            if let Some((git, rev)) = git_source.rsplit_once('#') {
-                PackageSource::Git { url: git.to_string(), rev: Some(rev.to_string()) }
+            let (url, rev) = if let Some((url, rev)) = git_source.rsplit_once('#') {
+                (url, Some(rev.to_owned()))
             } else {
-                PackageSource::Git { url: git_source.to_string(), rev: None }
-            }
+                (git_source, None)
+            };
+            // Trim the query part of the URL.
+            let url = url.split_once('?').map_or(url, |(trimmed_url, _query)| trimmed_url);
+            PackageSource::Git { url: url.to_string(), rev }
         } else {
             PackageSource::Unsupported
         }
