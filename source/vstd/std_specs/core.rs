@@ -27,41 +27,22 @@ pub trait ExFn<Args: core::marker::Tuple>: FnMut<Args> {
     type ExternalTraitSpecificationFor: core::ops::Fn<Args>;
 }
 
+#[cfg(not(verus_verify_core))]
 #[verifier::external_trait_specification]
-#[verifier::external_trait_extension(DerefSpec via DerefSpecImpl)]
 pub trait ExDeref: PointeeSized {
     type ExternalTraitSpecificationFor: core::ops::Deref;
 
     type Target: ?Sized;
 
-    spec fn deref_req(&self) -> bool;
-
-    spec fn deref_ens(&self, out: &Self::Target) -> bool;
-
-    fn deref(&self) -> (out: &Self::Target)
-        requires
-            self.deref_req(),
-        ensures
-            self.deref_ens(out)
-    ;
+    fn deref(&self) -> &Self::Target;
 }
 
+#[cfg(not(verus_verify_core))]
 #[verifier::external_trait_specification]
-#[verifier::external_trait_extension(DerefMutSpec via DerefMutSpecImpl)]
 pub trait ExDerefMut: core::ops::Deref + PointeeSized {
     type ExternalTraitSpecificationFor: core::ops::DerefMut;
 
-    spec fn deref_mut_req(&mut self) -> bool;
-
-    #[verifier::prophetic]
-    spec fn deref_mut_ens(&mut self, final_out: &mut Self::Target) -> bool;
-
-    fn deref_mut(&mut self) -> (out: &mut Self::Target)
-        requires
-            self.deref_mut_req()
-        ensures
-            self.deref_mut_ens(out)
-    ;
+    fn deref_mut(&mut self) -> &mut Self::Target;
 }
 
 #[verifier::external_trait_specification]
