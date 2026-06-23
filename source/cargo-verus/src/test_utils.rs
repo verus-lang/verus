@@ -125,7 +125,8 @@ impl MockWorkspace {
         }
 
         let mut manifest_lines = vec!["[workspace]".to_owned()];
-        manifest_lines.push("net.offline = true".to_owned());
+        manifest_lines.push("resolver = \"2\"".to_owned());
+        //manifest_lines.push("net.offline = true".to_owned());
 
         manifest_lines.push("members = [".to_owned());
         for name in &member_names {

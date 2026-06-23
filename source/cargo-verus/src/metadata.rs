@@ -38,7 +38,7 @@ impl VerusMetadata {
 }
 
 pub struct MetadataIndex<'a> {
-    entries: BTreeMap<&'a PackageId, MetadataIndexEntry<'a>>,
+    pub entries: BTreeMap<&'a PackageId, MetadataIndexEntry<'a>>,
 }
 
 pub struct MetadataIndexEntry<'a> {
@@ -75,6 +75,10 @@ impl<'a> MetadataIndex<'a> {
         }
         assert!(deps_by_package.is_empty());
         Ok(Self { entries })
+    }
+
+    pub fn iter_package_ids(&self) -> impl Iterator<Item = &PackageId> {
+        self.entries.keys().map(|package_id| *package_id)
     }
 
     pub fn get(&self, id: &PackageId) -> &MetadataIndexEntry<'a> {
@@ -166,14 +170,14 @@ impl<'a> MetadataIndex<'a> {
 }
 
 /// Metadata about a package.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PackageMetadata {
     pub version: Version,
     pub source: PackageSource,
 }
 
 /// Details of a package source.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PackageSource {
     Registry { url: String },
     Git { url: String, rev: Option<String> },
