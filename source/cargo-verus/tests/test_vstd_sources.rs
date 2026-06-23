@@ -1,7 +1,7 @@
 use cargo_metadata::{PackageId, semver::Version};
 
 use cargo_verus::metadata::{MetadataIndex, PackageMetadata, PackageSource, fetch_metadata};
-use cargo_verus::test_utils::{MockDep, MockPackage};
+use cargo_verus::test_utils::{MockDep, MockPackage, MockWorkspace};
 
 use std::str::FromStr;
 use std::{collections::BTreeSet as Set, fs, path::PathBuf};
@@ -17,6 +17,7 @@ fn package_depends_on_vstd_directly_via_registry() {
     let package = MockPackage::new("vstd_consumer")
         .lib()
         .deps([MockDep::registry("vstd", VSTD_VERSION).alias("vstd_via_registry")])
+        .verify(true)
         .materialize();
 
     let expected = Set::from_iter([PackageMetadata {
@@ -24,19 +25,11 @@ fn package_depends_on_vstd_directly_via_registry() {
         source: PackageSource::Registry { url: CRATES_IO_INDEX_URL.into() },
     }]);
 
-    print_cargo_toml(package.path().join("Cargo.toml"));
-
     let metadata = fetch_metadata(vec![], package.path().to_owned()).expect("fetch metadata");
     let metadata_index = MetadataIndex::new(&metadata).expect("index metadata");
     let all_packages: Set<PackageId> = metadata_index.iter_package_ids().cloned().collect();
 
     let observed = metadata_index.collect_vstd_metadata(&all_packages);
-
-    for metadata in &observed {
-        println!("version = {:?}", metadata.version.to_string());
-        println!("source = {:?}", metadata.source);
-        println!();
-    }
 
     assert_eq!(observed, expected);
 }
@@ -47,6 +40,7 @@ fn package_depends_on_vstd_directly_via_git_commit() {
         .lib()
         .deps([MockDep::git("vstd", VERUS_GITHUB_URL, VERUS_GITHUB_COMMIT_SHORT)
             .alias("vstd_via_git_commit")])
+        .verify(true)
         .materialize();
 
     let expected = Set::from_iter([PackageMetadata {
@@ -57,9 +51,35 @@ fn package_depends_on_vstd_directly_via_git_commit() {
         },
     }]);
 
-    print_cargo_toml(package.path().join("Cargo.toml"));
-
     let metadata = fetch_metadata(vec![], package.path().to_owned()).expect("fetch metadata");
+    let metadata_index = MetadataIndex::new(&metadata).expect("index metadata");
+    let all_packages: Set<PackageId> = metadata_index.iter_package_ids().cloned().collect();
+
+    let observed = metadata_index.collect_vstd_metadata(&all_packages);
+
+    assert_eq!(observed, expected);
+}
+
+#[test]
+fn package_depends_on_vstd_directly_via_path() {
+    let workspace = MockWorkspace::new()
+        .members([
+            MockPackage::new("vstd_consumer")
+                .lib()
+                .deps([MockDep::path("vstd", "../vstd").alias("vstd_via_path")])
+                .verify(true),
+            MockPackage::new("vstd").version(VSTD_VERSION).lib().mark_as_vstd(),
+        ])
+        .materialize();
+
+    let expected = Set::from_iter([PackageMetadata {
+        version: Version::from_str(VSTD_VERSION).expect("parse `vstd` version"),
+        source: PackageSource::Unsupported,
+    }]);
+
+    print_cargo_toml(workspace.path().join("Cargo.toml"));
+
+    let metadata = fetch_metadata(vec![], workspace.path().to_owned()).expect("fetch metadata");
     let metadata_index = MetadataIndex::new(&metadata).expect("index metadata");
     let all_packages: Set<PackageId> = metadata_index.iter_package_ids().cloned().collect();
 
