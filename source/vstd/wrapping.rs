@@ -74,20 +74,20 @@ macro_rules! wrapping_specs {
                         #![trigger is_pow2(x as int)] 
                         count_ones(x) == 1
                             <==> is_pow2(x as int),
-                    // decreases x,
+                    decreases x,
                 {
-                    assume(false);
-                    // use super::super::arithmetic::power2::is_pow2;
-                    // reveal(is_pow2);
-                    // if x == 0 {
-                    // } else if x == 1 {
-                    // } else {
-                    //     lemma_count_ones_is_pow2(x / 2);
-                    //     if x % 2 == 1 {
-                    //         lemma_count_ones_pos(x / 2);
-                    //     }
-                    // }
-
+                    use super::super::arithmetic::power2::is_pow2;
+                    reveal(is_pow2);
+                    reveal_with_fuel(count_ones, 2);
+                    if x > 1 {
+                        assert((x as int) / 2 == (x / 2) as int);
+                        if x % 2 == 0 {
+                            lemma_count_ones_is_pow2(x / 2);
+                        } else {
+                            // x is odd and > 1, so x / 2 > 0 contributes at least one more bit
+                            lemma_count_ones_pos(x / 2);
+                        }
+                    }
                 }
 
                 pub open spec fn wrapping_shl(x: $uN, shift: u32) -> $uN {
