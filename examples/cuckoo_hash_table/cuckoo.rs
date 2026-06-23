@@ -64,17 +64,17 @@ fn compute_hash2(key: Key) -> (h: usize)
 
 tokenized_state_machine!{ Cuckoo {
     fields {
-        #[sharding(map)]
-        pub frag: Map<Key, Option<Value>>,
+        #[sharding(imap)]
+        pub frag: IMap<Key, Option<Value>>,
 
-        #[sharding(map)]
-        pub matrix: Map<Row, Seq<Option<(Key, Value)>>>,
+        #[sharding(imap)]
+        pub matrix: IMap<Row, Seq<Option<(Key, Value)>>>,
     }
 
     init!{
         initialize() {
-            init frag = Map::new(|key| true, |key| None);
-            init matrix = Map::new(
+            init frag = IMap::new(|key| true, |key| None);
+            init matrix = IMap::new(
                 |p: Row| p < HEIGHT,
                 |p: Row| Seq::new(WIDTH as nat, |col| None),
             );
@@ -367,7 +367,7 @@ tracked struct RowStore {
 }
 
 tracked struct LockStore {
-    pub tracked rows: Map<Row, RowStore>,
+    pub tracked rows: IMap<Row, RowStore>,
 }
 
 ghost struct LockPred {
@@ -424,16 +424,16 @@ impl MyHashMap {
 
 pub type MPointsTo = Cuckoo::frag;
 
-proof fn initialize_lock_store_map(j: nat) -> (tracked m: Map<LockIdx, LockStore>)
+proof fn initialize_lock_store_map(j: nat) -> (tracked m: IMap<LockIdx, LockStore>)
     ensures forall |i| 0 <= i < j ==> m.dom().contains(i)
-        && m[i].rows =~= Map::empty()
+        && m[i].rows =~= IMap::empty()
     decreases j
 {
     if j == 0 {
-        Map::tracked_empty()
+        IMap::tracked_empty()
     } else {
         let tracked mut m = initialize_lock_store_map((j-1) as nat);
-        m.tracked_insert((j-1) as nat, LockStore { rows: Map::tracked_empty() });
+        m.tracked_insert((j-1) as nat, LockStore { rows: IMap::tracked_empty() });
         m
     }
 }
@@ -450,10 +450,10 @@ enum Attempt {
 }
 
 impl MyHashMap {
-    pub fn new() -> (ret: (Self, Tracked<MapToken<Key, Option<Value>, MPointsTo>>))
+    pub fn new() -> (ret: (Self, Tracked<IMapToken<Key, Option<Value>, MPointsTo>>))
         ensures
             ret.0.wf(),
-            ret.1.map() =~= Map::new(|key: Key| true, |key: Key| None),
+            ret.1.map() =~= IMap::new(|key: Key| true, |key: Key| None),
             ret.1.instance_id() == ret.0.id(),
     {
         let mut locks: Vec<RwLock<LockStore, LockPred>> = vec![];

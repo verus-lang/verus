@@ -22,6 +22,7 @@ examples_in_dir!("../../examples/summer_school");
 examples_in_dir!("../../examples/state_machines/tutorial");
 examples_in_dir!("../../examples/state_machines/reference-examples");
 examples_in_dir!("../../examples/std_test");
+examples_in_dir!("../../examples/cuckoo_hash_table");
 
 #[cfg(feature = "singular")]
 examples_in_dir!("../../examples/integer_ring");
