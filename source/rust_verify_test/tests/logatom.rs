@@ -672,3 +672,22 @@ test_verify_one_file! {
         }
     } => Err(err) => assert!(err.errors[0].message.contains("failed to resolve `self` type"))
 }
+
+test_verify_one_file! {
+    #[test] args_in_mask
+    verus_code! {
+        use vstd::prelude::*;
+        use vstd::atomic::*;
+
+        pub uninterp spec fn ns<X>(x: X) -> int;
+
+        fn function(num: i32, text: &str)
+            atomically (au) {
+                outer_mask any / [ns(num)],
+                inner_mask [ns(text)],
+            },
+        {
+            assume(false);
+        }
+    } => Ok(())
+}

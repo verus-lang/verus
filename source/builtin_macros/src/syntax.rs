@@ -851,6 +851,7 @@ impl Visitor {
             let mask_expr = self.inv_name_set_to_mask_expr(outer_mask.set);
             let fn_tokens = &quote_spanned_vstd!(vstd, outer_mask.token.span =>
                 open spec fn outer_mask(self) -> #vstd::iset::ISet<vstd::prelude::int> {
+                    let ( #args_pat_tokens ) = #vstd::atomic::pred_args::< #pred_ident #ty_generics , ( #args_ty_tokens ) >(self);
                     #mask_expr
                 }
             );
@@ -862,6 +863,7 @@ impl Visitor {
             let mask_expr = self.inv_name_set_to_mask_expr(inner_mask.set);
             let fn_tokens = &quote_spanned_vstd!(vstd, inner_mask.token.span =>
                 open spec fn inner_mask(self) -> #vstd::iset::ISet<vstd::prelude::int> {
+                    let ( #args_pat_tokens ) = #vstd::atomic::pred_args::< #pred_ident #ty_generics , ( #args_ty_tokens ) >(self);
                     #mask_expr
                 }
             );
