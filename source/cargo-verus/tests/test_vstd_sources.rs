@@ -19,10 +19,10 @@ fn package_depends_on_vstd_directly_via_registry() {
         .deps([MockDep::registry("vstd", VSTD_VERSION).alias("vstd_via_registry")])
         .materialize();
 
-    let expected = vec![PackageMetadata {
+    let expected = Set::from_iter([PackageMetadata {
         version: Version::from_str(VSTD_VERSION).expect("parse `vstd` version"),
         source: PackageSource::Registry { url: CRATES_IO_INDEX_URL.into() },
-    }];
+    }]);
 
     print_cargo_toml(package.path().join("Cargo.toml"));
 
@@ -49,13 +49,13 @@ fn package_depends_on_vstd_directly_via_git_commit() {
             .alias("vstd_via_git_commit")])
         .materialize();
 
-    let expected = vec![PackageMetadata {
+    let expected = Set::from_iter([PackageMetadata {
         version: Version::from_str(VSTD_VERSION).expect("parse `vstd` version"),
         source: PackageSource::Git {
             url: VERUS_GITHUB_URL.into(),
             rev: Some(VERUS_GITHUB_COMMIT_FULL.into()),
         },
-    }];
+    }]);
 
     print_cargo_toml(package.path().join("Cargo.toml"));
 

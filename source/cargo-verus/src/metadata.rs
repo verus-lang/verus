@@ -141,7 +141,7 @@ impl<'a> MetadataIndex<'a> {
     pub fn collect_vstd_metadata(
         &self,
         packages_to_verify: &Set<PackageId>,
-    ) -> Vec<PackageMetadata> {
+    ) -> Set<PackageMetadata> {
         // Packages that verification will run on.
         let packages_will_verify = Set::from_iter(
             packages_to_verify
@@ -153,7 +153,7 @@ impl<'a> MetadataIndex<'a> {
         let tclosure_will_verify = self.get_transitive_closure(packages_will_verify);
 
         // Metadata of all `vstd` instances that appear anywhere in the transitive closure.
-        let vstd_metadata = tclosure_will_verify
+        let vstd_metadata: Set<PackageMetadata> = tclosure_will_verify
             .iter()
             .flat_map(|package_id| {
                 let entry = self.get(package_id);
@@ -165,19 +165,29 @@ impl<'a> MetadataIndex<'a> {
             })
             .collect();
 
+        assert!(
+            vstd_metadata.len() <= 1,
+            "The `vstd` versioning scheme prevents multiple instances in a resolve set.",
+            // This is a consequence of the current `vstd` versioning scheme.
+            // In the current scheme, each version matches `0.0.0-*`.
+            // By definition, *all* such versions are semver-compatible.
+            // Cargo disallows different *compatible* versions in a resolve set.
+            // https://doc.rust-lang.org/cargo/reference/resolver.html#semver-compatibility
+        );
+
         vstd_metadata
     }
 }
 
 /// Metadata about a package.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct PackageMetadata {
     pub version: Version,
     pub source: PackageSource,
 }
 
 /// Details of a package source.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PackageSource {
     Registry { url: String },
     Git { url: String, rev: Option<String> },
