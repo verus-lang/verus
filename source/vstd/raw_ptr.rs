@@ -3001,7 +3001,6 @@ impl<'a, T: ?Sized> SharedReference<'a, T> {
         self.0
     }
 
-
     #[verifier::external_body]
     pub proof fn as_ref_tracked(tracked &self) -> (tracked t: &'a T)
         ensures
