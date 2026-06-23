@@ -693,12 +693,7 @@ impl<T> PointsTo<[T]> {
                 start_index as int + len as int,
             ),
     {
-        broadcast use {
-            axiom_ptr_mut_from_data,
-            crate::vstd::group_vstd_default,
-            group_layout_axioms,
-            alloc_bound,
-        };
+        broadcast use {axiom_ptr_mut_from_data, group_layout_axioms, alloc_bound};
 
         let tracked unaligned_self_ref = self.as_unaligned();
 
@@ -771,6 +766,112 @@ impl<T> PointsTo<[T]> {
         };
 
         unaligned_sub.as_aligned()
+    }
+
+    /// Given that the subrange is within bounds, it is always possible to get a permission to just that subrange.
+    pub proof fn subrange_mut(
+        tracked &mut self,
+        start_index: nat,
+        len: nat,
+    ) -> (tracked sub_points_to: &mut Self)
+        requires
+            start_index + len <= old(self).mem_contents_seq().len(),
+        ensures
+            sub_points_to.ptr() == ptr_mut_from_data::<[T]>(
+                PtrData {
+                    addr: ((old(self).ptr()@.addr + start_index * size_of::<T>()) as usize),
+                    provenance: old(self).ptr()@.provenance,
+                    metadata: (len as usize),
+                },
+            ),
+            sub_points_to.mem_contents_seq() == old(self).mem_contents_seq().subrange(
+                start_index as int,
+                start_index as int + len as int,
+            ),
+            final(self).ptr() == old(self).ptr(),
+            final(self).mem_contents_seq() == old(self).mem_contents_seq().subrange(
+                0,
+                start_index as int,
+            ) + final(sub_points_to).mem_contents_seq() + old(self).mem_contents_seq().subrange(
+                start_index as int + len as int,
+                old(self).mem_contents_seq().len() as int,
+            ),
+    {
+        broadcast use {axiom_ptr_mut_from_data, group_layout_axioms, alloc_bound};
+
+        let ghost self_ref = self;
+
+        let tracked unaligned_self_ref = self.as_unaligned();
+
+        if start_index > 0 && size_of::<T>() > 0 {
+            assert(self.mem_contents_seq().len() > 0);
+            assert(self.mem_contents_seq().len() * size_of::<T>() != 0) by (nonlinear_arith)
+                requires
+                    self.mem_contents_seq().len() > 0,
+                    size_of::<T>() > 0,
+            ;
+            unaligned_self_ref.ptr_bounds();
+            assert(start_index * size_of::<T>() <= self.mem_contents_seq().len() * size_of::<T>())
+                by (nonlinear_arith)
+                requires
+                    start_index <= self.mem_contents_seq().len(),
+                    size_of::<T>() >= 0,
+            ;
+            assert(self.ptr()@.addr + start_index * size_of::<T>() <= usize::MAX as int + 1)
+                by (nonlinear_arith)
+                requires
+                    self.ptr()@.addr <= usize::MAX as int + 1,
+                    start_index == 0 || size_of::<T>() == 0 || (self.ptr()@.addr
+                        + self.mem_contents_seq().len() * size_of::<T>()
+                        <= self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len()
+                        && self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len()
+                        <= usize::MAX as int + 1 && start_index * size_of::<T>()
+                        <= self.mem_contents_seq().len() * size_of::<T>()),
+            ;
+
+        } else {
+            assert(start_index * size_of::<T>() == 0) by (nonlinear_arith)
+                requires
+                    start_index == 0 || size_of::<T>() == 0,
+                    start_index >= 0,
+                    size_of::<T>() >= 0,
+            ;
+        }
+
+        use_type_invariant(&*self);
+        assert((self.ptr()@.addr + start_index * size_of::<T>()) as nat % align_of::<T>() == 0) by {
+            broadcast use {lemma_mul_mod_noop_right, lemma_add_mod_noop, layout_of_sized};
+
+        };
+
+        let tracked unaligned_sub = self.inner.subrange_mut(start_index, len);
+
+        assert(unaligned_sub.ptr()@.addr as int % align_of::<T>() as int == 0) by {
+            let exact_addr = self_ref.ptr()@.addr + start_index * size_of::<T>();
+
+            let expected_data = PtrData::<[T]> {
+                addr: (exact_addr as usize),
+                provenance: self_ref.ptr()@.provenance,
+                metadata: (len as usize),
+            };
+            assert(ptr_mut_from_data::<[T]>(expected_data)@ == expected_data);
+
+            if exact_addr as int <= usize::MAX as int {
+                assert((exact_addr as usize) as int == exact_addr as int);
+            } else {
+                assert(exact_addr as int == usize::MAX as int + 1);
+
+                assert(arch_word_bits() == 64 ==> ((u64::MAX as int + 1) as usize) as int == 0)
+                    by (bit_vector);
+                assert(arch_word_bits() == 32 ==> ((u32::MAX as int + 1) as usize) as int == 0)
+                    by (bit_vector);
+
+                assert(((usize::MAX as int + 1) as usize) as int == 0);
+                assert(0 as int % align_of::<T>() as int == 0);
+            }
+        };
+
+        unaligned_sub.as_aligned_mut()
     }
 
     /// We can cast a `[T]` permission to a `V` permission under the following conditions:
@@ -900,6 +1001,18 @@ impl<T> PointsTo<[T]> {
         &self.inner
     }
 
+    /// Mutably borrow an aligned `PointsTo<[\T\]>` as an unaligned `PointsToUnaligned<[\T\]>`.
+    /// This is always safe since aligned is stricter than unaligned.
+    ///
+    /// Axiomatized: this currently cannot be implemented due to the limited support of type invariants with mutable references.
+    pub axiom fn as_unaligned_mut(tracked &mut self) -> (tracked perm: &mut PointsToUnaligned<[T]>)
+        ensures
+            perm.ptr() == old(self).ptr(),
+            perm.mem_contents_seq() == old(self).mem_contents_seq(),
+            final(perm).ptr() == final(self).ptr(),
+            final(perm).mem_contents_seq() == final(self).mem_contents_seq(),
+    ;
+
     /// We can always convert a `PointsTo<[T]>` into a `MapPointsTo<T>` for the same pointer,
     /// whose keys are the valid slice indices
     /// and whose values are individual `PointsTo<T>` with the same memory contents.
@@ -966,6 +1079,7 @@ impl<T> PointsTo<[T]> {
             // && s.pt_seq()[i].ptr() == self.ptr()
             s.ptr() == self.ptr() as *mut T,
             s.len() == self.mem_contents_seq().len(),
+            s.wf(),
     {
         broadcast use layout_of_sized;
         broadcast use layout_of_slices;
@@ -1105,6 +1219,20 @@ impl<T> PointsToUnaligned<[T]> {
             perm.mem_contents_seq() == self.mem_contents_seq(),
     ;
 
+    /// Mutably borrow an unaligned `PointsToUnaligned<[\T\]>` as an aligned `PointsTo<[\T\]>`.
+    /// Requires the pointer address to be properly aligned.
+    ///
+    /// Note: Currently an axiom since we don't have support for coercing equivalent references.
+    pub axiom fn as_aligned_mut(tracked &mut self) -> (tracked perm: &mut PointsTo<[T]>)
+        requires
+            old(self).ptr()@.addr as int % align_of::<T>() as int == 0,
+        ensures
+            perm.ptr() == old(self).ptr(),
+            perm.mem_contents_seq() == old(self).mem_contents_seq(),
+            final(perm).ptr() == final(self).ptr(),
+            final(perm).mem_contents_seq() == final(self).mem_contents_seq(),
+    ;
+
     /// Like [`PointsTo<[T]>::cast_points_to_unaligned`], but on the unaligned version directly.
     ///
     /// We can cast a `[T]` permission to an unaligned `V` permission under the following conditions:
@@ -1152,6 +1280,36 @@ impl<T> PointsToUnaligned<[T]> {
             sub_points_to.mem_contents_seq() == self.mem_contents_seq().subrange(
                 start_index as int,
                 start_index as int + len as int,
+            ),
+    ;
+
+    /// Given that the subrange is within bounds, it is always possible to get a permission to just that subrange.
+    pub axiom fn subrange_mut(
+        tracked &mut self,
+        start_index: nat,
+        len: nat,
+    ) -> (tracked sub_points_to: &mut Self)
+        requires
+            start_index + len <= old(self).mem_contents_seq().len(),
+        ensures
+            sub_points_to.ptr() == ptr_mut_from_data::<[T]>(
+                PtrData {
+                    addr: ((old(self).ptr()@.addr + start_index * size_of::<T>()) as usize),
+                    provenance: old(self).ptr()@.provenance,
+                    metadata: (len as usize),
+                },
+            ),
+            sub_points_to.mem_contents_seq() == old(self).mem_contents_seq().subrange(
+                start_index as int,
+                start_index as int + len as int,
+            ),
+            final(self).ptr() == old(self).ptr(),
+            final(self).mem_contents_seq() == old(self).mem_contents_seq().subrange(
+                0,
+                start_index as int,
+            ) + final(sub_points_to).mem_contents_seq() + old(self).mem_contents_seq().subrange(
+                start_index as int + len as int,
+                old(self).mem_contents_seq().len() as int,
             ),
     ;
 
@@ -1232,6 +1390,7 @@ impl<T> PointsToUnaligned<[T]> {
             // && s.pt_seq()[i].ptr() == self.ptr()
             s.ptr() == self.ptr() as *mut T,
             s.len() == self.mem_contents_seq().len(),
+            s.wf(),
     ;
 }
 
@@ -1284,10 +1443,24 @@ pub tracked struct SeqPointsTo<T> {
     ptr: Ghost<*mut T>,
 }
 
-/// If the domain exactly contains the indices bounded by `self.len()`,
-/// we can convert this permission into a `PointsTo<[T]>` with the same pointer
+/// We can convert this permission into a `PointsTo<[T]>` with the same pointer
 /// and the same memory contents at every index.
 pub axiom fn seq_into_slice<T>(tracked spt: SeqPointsTo<T>) -> (tracked pt: PointsTo<[T]>)
+    requires
+        spt.wf(),
+    ensures
+        forall|i|
+            0 <= i < pt.mem_contents_seq().len() ==> #[trigger] pt.mem_contents_seq()[i as int]
+                == spt[i].mem_contents(),
+        pt.ptr() as *mut T == spt.ptr(),
+        pt.ptr()@.metadata == spt.len(),
+;
+
+/// We can create a reference to a `PointsTo<[T]>` from a reference to a `SeqPointsTo<T>`,
+/// with the same pointer and the same memory contents at every index.
+pub axiom fn seq_into_slice_shared<T>(tracked spt: &SeqPointsTo<T>) -> (tracked pt: &PointsTo<[T]>)
+    requires
+        spt.wf(),
     ensures
         forall|i|
             0 <= i < pt.mem_contents_seq().len() ==> #[trigger] pt.mem_contents_seq()[i as int]
@@ -1304,6 +1477,8 @@ pub axiom fn seq_into_slice<T>(tracked spt: SeqPointsTo<T>) -> (tracked pt: Poin
 pub axiom fn seq_into_slice_mut<T>(tracked spt: &mut SeqPointsTo<T>) -> (tracked pt: &mut PointsTo<
     [T],
 >)
+    requires
+        spt.wf(),
     ensures
         forall|i|
             0 <= i < pt.mem_contents_seq().len()
@@ -1322,8 +1497,9 @@ impl<T> SeqPointsTo<T> {
     /// The keys must fall in the range `[0, self.len())`.
     /// For each key `i`, the corresponding `PointsTo<T>` must have the same provenance as
     /// the `self.ptr()`, and its pointer's address is offset from `self.ptr()` by `i`.
-    #[verifier::type_invariant]
-    pub open spec fn inv(self) -> bool {
+    // #[verifier::type_invariant]
+    // Cannot use type invariant since we need to return a mutable reference to `perm`.
+    pub open spec fn wf(self) -> bool {
         &&& forall|i|
             #![trigger self[i].ptr()@.provenance]
             #![trigger self[i].ptr()@.addr]
@@ -1343,18 +1519,18 @@ impl<T> SeqPointsTo<T> {
     }
 
     /// The `Seq<PointsTo<T>>` that this type is a wrapper for.
-    pub closed spec fn perm(self) -> Seq<PointsTo<T>> {
+    pub closed spec fn seq_perm(self) -> Seq<PointsTo<T>> {
         self.perm
     }
 
     pub open spec fn mem_contents(self) -> Seq<MemContents<T>> {
-        self.perm().map(|i: int, elt: PointsTo<T>| elt.mem_contents())
+        self.seq_perm().map(|i: int, elt: PointsTo<T>| elt.mem_contents())
     }
 
     /// The length of the sequence of `PointsTo<T>`.
     #[verifier::inline]
     pub open spec fn len(self) -> nat {
-        self.perm().len()
+        self.seq_perm().len()
     }
 
     /// `[]` operator, synonymous with `index`.
@@ -1363,7 +1539,7 @@ impl<T> SeqPointsTo<T> {
         recommends
             0 <= index < self.len(),
     {
-        self.perm()[index as int]
+        self.seq_perm()[index as int]
     }
 
     /// Returns `true` if all of the permission's associated memory is initialized.
@@ -1408,9 +1584,10 @@ impl<T> SeqPointsTo<T> {
             ptr@.addr != 0,
             ptr@.addr as nat % align_of::<T>() == 0,
         ensures
-            spt.perm() == Seq::<PointsTo<T>>::empty(),
+            spt.seq_perm() == Seq::<PointsTo<T>>::empty(),
             spt.ptr() == ptr,
             spt.len() == 0,
+            spt.wf(),
     {
         broadcast use group_vstd_default;
 
@@ -1428,6 +1605,7 @@ impl<T> SeqPointsTo<T> {
             forall|i| #![auto] 0 <= i < spt.len() ==> spt[i].is_uninit(),
             spt.ptr() == ptr,
             spt.len() == length,
+            spt.wf(),
     {
         SeqPointsTo::empty(ptr).zero_sized_helper(length, length)
     }
@@ -1439,10 +1617,12 @@ impl<T> SeqPointsTo<T> {
             layout::size_of::<T>() == 0,
             self.len() + remaining == total,
             forall|i| #![auto] 0 <= i < self.len() ==> self[i].is_uninit(),
+            self.wf(),
         ensures
             spt.ptr() == self.ptr(),
             spt.len() == total,
             forall|i| #![auto] 0 <= i < spt.len() ==> spt[i].is_uninit(),
+            spt.wf(),
         decreases remaining,
     {
         broadcast use group_vstd_default;
@@ -1450,8 +1630,7 @@ impl<T> SeqPointsTo<T> {
         if remaining == 0 {
             self
         } else {
-            use_type_invariant(&self);
-
+            // use_type_invariant(&self);
             let tracked zs_pt = PointsToRaw::empty(self.ptr()@.provenance).into_typed::<T>(
                 self.ptr()@.addr,
             );
@@ -1469,10 +1648,13 @@ impl<T> SeqPointsTo<T> {
     // ZST pointers *are* allowed to be null, so we need a precondition that size != 0.
     // See https://doc.rust-lang.org/std/ptr/#safety
     pub proof fn is_nonnull(tracked &self)
+        requires
+            self.wf(),
         ensures
             self.ptr()@.addr != 0,
+            self.wf(),
     {
-        use_type_invariant(self);
+        // use_type_invariant(self);
         broadcast use is_nonnull;
 
     }
@@ -2107,7 +2289,7 @@ pub fn ptr_mut_write<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>, v
 /// without destroying it; should be able to leave the bytes intact without uninitializing them).
 #[inline(always)]
 #[verifier::external_body]
-pub fn ptr_mut_read<T>(ptr: *const T, Tracked(perm): Tracked<&mut PointsTo<T>>) -> (v: T)
+pub const fn ptr_mut_read<T>(ptr: *const T, Tracked(perm): Tracked<&mut PointsTo<T>>) -> (v: T)
     requires
         old(perm).ptr() == ptr,
         old(perm).is_init(),
@@ -2173,7 +2355,7 @@ pub const fn ptr_ref_slice<T>(ptr: *const [T], Tracked(perm): Tracked<&PointsTo<
 /// The memory pointed to by `ptr` must be initialized.
 #[inline(always)]
 #[verifier::external_body]
-pub fn ptr_mut_ref<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>) -> (v: &mut T)
+pub const fn ptr_mut_ref<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>) -> (v: &mut T)
     requires
         old(perm).ptr() == ptr,
         old(perm).is_init(),
@@ -2182,6 +2364,46 @@ pub fn ptr_mut_ref<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>) -> 
         final(perm).is_init(),
         old(perm).value() == *v,
         final(perm).value() == *final(v),
+    opens_invariants none
+    no_unwind
+{
+    unsafe { &mut *ptr }
+}
+
+/// Equivalent to `&mut *X`, passing in a permission `perm` to ensure safety.
+/// The memory pointed to by `ptr` must be initialized.
+#[inline(always)]
+#[verifier::external_body]
+pub const fn ptr_mut_ref_slice<T>(ptr: *mut [T], Tracked(perm): Tracked<&mut PointsTo<[T]>>) -> (v:
+    &mut [T])
+    requires
+        old(perm).ptr() == ptr,
+        old(perm).is_init(),
+    ensures
+        final(perm).ptr() == ptr,
+        final(perm).is_init(),
+        old(perm).value() == v@,
+        final(perm).value() == final(v)@,
+    opens_invariants none
+    no_unwind
+{
+    unsafe { &mut *ptr }
+}
+
+/// Equivalent to `&mut *X`, passing in a permission `perm` to ensure safety.
+/// The memory pointed to by `ptr` must be initialized.
+#[inline(always)]
+#[verifier::external_body]
+pub const fn ptr_mut_ref_str(ptr: *mut str, Tracked(perm): Tracked<&mut PointsTo<str>>) -> (v:
+    &mut str)
+    requires
+        old(perm).ptr() == ptr,
+        old(perm).is_init(),
+    ensures
+        final(perm).ptr() == ptr,
+        final(perm).is_init(),
+        old(perm).value() == &*v,
+        final(perm).value() == &*final(v),
     opens_invariants none
     no_unwind
 {
@@ -2465,6 +2687,7 @@ impl PointsToRaw {
             ),
             spt.is_uninit(),
             spt.len() == length as nat,
+            spt.wf(),
     {
         broadcast use group_raw_ptr_axioms;
 
@@ -2556,18 +2779,34 @@ impl<V> MapPointsTo<V> {
 
 // TODO: Add uninit requires on into_raw and add leak_contents axiom
 impl<V> SeqPointsTo<V> {
-    /// Provided that the domain of `self` is exactly the addresses bounded by `self.len()`,
-    /// creates a `PointsToRaw` from a `SeqPointsTo<V>` with the same provenance
+    /// Creates a `PointsToRaw` from a `SeqPointsTo<V>` with the same provenance
     /// and a range starting at the address of the `PointsTo<V>` with length `size_of::<V>() * self.len()`.
     pub proof fn into_raw(tracked self) -> (tracked points_to_raw: PointsToRaw)
+        requires
+            self.wf(),
         ensures
             points_to_raw.is_range(self.ptr().addr() as int, (size_of::<V>() * self.len()) as int),
             points_to_raw.provenance() == self.ptr()@.provenance,
     {
         broadcast use group_raw_ptr_axioms;
+        // use_type_invariant(&self);
 
-        use_type_invariant(&self);
         seq_into_slice(self).into_raw()
+    }
+
+    /// Creates a `PointsToRaw` reference from a `SeqPointsTo<V>` reference with the same provenance
+    /// and a range starting at the address of the `PointsTo<V>` with length `size_of::<V>() * self.len()`.
+    pub proof fn into_raw_shared(tracked &self) -> (tracked points_to_raw: &PointsToRaw)
+        requires
+            self.wf(),
+        ensures
+            points_to_raw.is_range(self.ptr().addr() as int, (size_of::<V>() * self.len()) as int),
+            points_to_raw.provenance() == self.ptr()@.provenance,
+    {
+        broadcast use group_raw_ptr_axioms;
+        // use_type_invariant(&self);
+
+        seq_into_slice_shared(self).into_raw_shared()
     }
 }
 
@@ -2762,6 +3001,14 @@ impl<'a, T: ?Sized> SharedReference<'a, T> {
         self.0
     }
 
+    #[verifier::external_body]
+    pub proof fn as_ref_tracked(tracked &self) -> (tracked t: &'a T)
+        ensures
+            t == self.value(),
+    {
+        self.0
+    }
+
     // References must be nonnull - https://doc.rust-lang.org/reference/behavior-considered-undefined.html#r-undefined.validity.reference-box
     pub axiom fn ptr_nonnull(tracked self)
         ensures
@@ -2771,11 +3018,19 @@ impl<'a, T: ?Sized> SharedReference<'a, T> {
 
 impl<'a, T> SharedReference<'a, [T]> {
     #[verifier::external_body]
+    pub const fn as_slice_ptr(self) -> (ptr: *const [T])
+        ensures
+            ptr == self.ptr(),
+    {
+        self.0 as *const [T]
+    }
+
+    // commonly used operation: this function's signature corresponds to Rust's `slice::as_ptr`
     pub const fn as_ptr(self) -> (ptr: *const T)
         ensures
             ptr == self.ptr() as *const T,
     {
-        self.0.as_ptr()
+        self.as_slice_ptr() as *const T
     }
 
     pub const fn len(self) -> (output: usize)
@@ -2806,11 +3061,19 @@ impl<'a, T> SharedReference<'a, [T]> {
 
 impl<'a> SharedReference<'a, str> {
     #[verifier::external_body]
+    pub const fn as_str_ptr(self) -> (ptr: *const str)
+        ensures
+            ptr == self.ptr(),
+    {
+        self.0 as *const str
+    }
+
+    // commonly used operation: this function's signature corresponds to Rust's `str::as_ptr`
     pub const fn as_ptr(self) -> (ptr: *const u8)
         ensures
             ptr == self.ptr() as *const u8,
     {
-        self.0.as_ptr()
+        self.as_str_ptr() as *const u8
     }
 
     pub axiom fn points_to(tracked self) -> (tracked pt: &'a PointsTo<str>)
@@ -2832,6 +3095,51 @@ pub broadcast axiom fn axiom_shared_ref_value_view<'a, T>(shared_ref: SharedRefe
     ensures
         shared_ref.value()@ == #[trigger] shared_ref@,
 ;
+
+/// Convert a mutable reference into a raw pointer and accompanying `PointsTo` permission.
+#[verifier::external_body]
+pub const fn cast_mut_ref_to_ptr<T>(mut_ref: &mut T) -> ((ptr, perm): (
+    *mut T,
+    Tracked<&mut PointsTo<T>>,
+))
+    ensures
+        perm@.ptr() == ptr,
+        perm@.is_init(),
+        perm@.value() == *old(mut_ref),
+        *final(mut_ref) == final(perm@).value(),
+{
+    (mut_ref as *mut T, Tracked::assume_new())
+}
+
+/// Convert a mutable reference into a raw pointer and accompanying `PointsTo` permission.
+#[verifier::external_body]
+pub const fn cast_mut_ref_slice_to_ptr<T>(mut_ref: &mut [T]) -> ((ptr, perm): (
+    *mut [T],
+    Tracked<&mut PointsTo<[T]>>,
+))
+    ensures
+        perm@.ptr() == ptr,
+        perm@.is_init(),
+        perm@.value() == old(mut_ref)@,
+        final(mut_ref)@ == final(perm@).value(),
+{
+    (mut_ref as *mut [T], Tracked::assume_new())
+}
+
+/// Convert a mutable reference into a raw pointer and accompanying `PointsTo` permission.
+#[verifier::external_body]
+pub const fn cast_mut_ref_str_to_ptr(mut_ref: &mut str) -> ((ptr, perm): (
+    *mut str,
+    Tracked<&mut PointsTo<str>>,
+))
+    ensures
+        perm@.ptr() == ptr,
+        perm@.is_init(),
+        perm@.value() == &*old(mut_ref),
+        &*final(mut_ref) == final(perm@).value(),
+{
+    (mut_ref as *mut str, Tracked::assume_new())
+}
 
 // impl<'a, T> Index<usize> for SharedReference<'a, [T]>
 // where
