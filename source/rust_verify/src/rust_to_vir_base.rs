@@ -1,6 +1,7 @@
 use crate::attributes::get_verifier_attrs;
 use crate::context::{BodyCtxt, Context};
 use crate::resolve_traits::{ResolutionResult, ResolvedItem};
+use crate::rust_to_vir_func::fixup_unerased_proxy_path_for_opaque_types;
 use crate::rust_to_vir_impl::ExternalInfo;
 use crate::util::err_span;
 use crate::verus_items::{self, BuiltinTypeItem, RustItem, VerusItem};
@@ -1001,7 +1002,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
     param_env_src: DefId,
     span: Span,
     ty: &rustc_middle::ty::Ty<'tcx>,
-    assume_specification_opaque_type_map: Option<&HashMap<Path, Path>>,
+    proxy_opaque_type_map: Option<&HashMap<Path, Path>>,
 ) -> Result<(Typ, bool), VirErr> {
     use rustc_middle::ty::GenericArgs;
     use vir::ast::TypDecoration;
@@ -1013,7 +1014,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             param_env_src,
             span,
             t,
-            assume_specification_opaque_type_map,
+            proxy_opaque_type_map,
         )
     };
     let t_rec_flags = |t: &rustc_middle::ty::Ty<'tcx>| {
@@ -1024,7 +1025,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             param_env_src,
             span,
             t,
-            assume_specification_opaque_type_map,
+            proxy_opaque_type_map,
         )
     };
     let mk_typ_args = |args: &GenericArgs<'tcx>| -> Result<Vec<(Typ, bool)>, VirErr> {
@@ -1103,7 +1104,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                 param_env_src,
                 span,
                 ty,
-                assume_specification_opaque_type_map,
+                proxy_opaque_type_map,
             )?
             .0;
             let len = mid_ty_const_to_vir(tcx, Some(span), const_len)?;
@@ -1311,7 +1312,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                                     param_env_src,
                                     span,
                                     &ty,
-                                    assume_specification_opaque_type_map,
+                                    proxy_opaque_type_map,
                                 )?);
                             }
                             rustc_type_ir::GenericArgKind::Const(cnst) => {
@@ -1323,17 +1324,15 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                             }
                         }
                     }
-                    let def_path = if let Some(assume_specification_opaque_type_map) =
-                        assume_specification_opaque_type_map
-                    {
+                    let def_path = if let Some(proxy_opaque_type_map) = proxy_opaque_type_map {
                         let def_path = def_id_to_vir_path(
                             tcx,
                             verus_items,
                             al_ty.kind.def_id(),
                             None::<&mut HashMap<_, _>>,
                         );
-                        if assume_specification_opaque_type_map.contains_key(&def_path) {
-                            assume_specification_opaque_type_map[&def_path].clone()
+                        if proxy_opaque_type_map.contains_key(&def_path) {
+                            proxy_opaque_type_map[&def_path].clone()
                         } else {
                             def_path
                         }
@@ -1448,7 +1447,7 @@ pub(crate) fn mid_ty_to_vir<'tcx>(
     param_env_src: DefId,
     span: Span,
     ty: &rustc_middle::ty::Ty<'tcx>,
-    assume_specification_opaque_type_map: Option<&HashMap<Path, Path>>,
+    proxy_opaque_type_map: Option<&HashMap<Path, Path>>,
 ) -> Result<Typ, VirErr> {
     Ok(mid_ty_to_vir_ghost(
         tcx,
@@ -1457,7 +1456,7 @@ pub(crate) fn mid_ty_to_vir<'tcx>(
         param_env_src,
         span,
         ty,
-        assume_specification_opaque_type_map,
+        proxy_opaque_type_map,
     )?
     .0)
 }
@@ -1719,6 +1718,7 @@ pub(crate) fn check_generic_bound<'tcx>(
     span: Span,
     trait_def_id: DefId,
     args: &[GenericArg<'tcx>],
+    proxy_opaque_type_map: Option<&HashMap<Path, Path>>,
 ) -> Result<Option<vir::ast::GenericBound>, VirErr> {
     if Some(trait_def_id) == tcx.lang_items().unpin_trait()
         || Some(trait_def_id) == tcx.lang_items().sync_trait()
@@ -1739,7 +1739,7 @@ pub(crate) fn check_generic_bound<'tcx>(
                         param_env_src,
                         span,
                         &ty,
-                        None,
+                        proxy_opaque_type_map,
                     )?);
                 }
                 GenericArgKind::Const(cnst) => {
@@ -1854,6 +1854,7 @@ where
                     *span,
                     trait_def_id,
                     substs,
+                    None,
                 )?;
                 if let Some(bound) = generic_bound {
                     bounds.push(bound);
@@ -1885,6 +1886,7 @@ where
                     *span,
                     trait_def_id,
                     substs,
+                    None,
                 )?;
                 if let Some(generic_bound) = generic_bound {
                     if let GenericBoundX::Trait(TraitId::Path(path), typs) = &*generic_bound {
@@ -2286,8 +2288,15 @@ pub(crate) fn ty_remove_references<'tcx>(
 }
 
 /// Add the OpaqueDef to vir if the function returns an opaque type.
+///
 /// If the opaque type is defined by assume specification,
 /// check the opaque type defined by the original assume_specification function too.
+///
+/// If the opaque type is defined by a proxy function for an async function,
+/// replace the opaque types of the unerased proxy with the opaque types of the proxy function,
+/// as the proxy function is what is actually being called.
+/// The unerased function is just a proof/spec code carrier.
+///
 /// Note: We have checked that the return types of the assume_specification function and
 /// assume specification match exactly.
 pub(crate) fn check_fn_opaque_ty<'tcx>(
@@ -2296,10 +2305,11 @@ pub(crate) fn check_fn_opaque_ty<'tcx>(
     fn_def_id: &DefId,
     span: Span,
     assume_specification_def_id: Option<&DefId>,
+    erased_proxy_path: Option<Path>,
 ) -> Result<HashMap<Path, Path>, VirErr> {
-    let mut assume_specification_opaque_type_map = HashMap::new();
+    let mut proxy_opaque_type_map = HashMap::new();
     if !ctxt.tcx.def_kind(*fn_def_id).is_fn_like() {
-        return Ok(assume_specification_opaque_type_map);
+        return Ok(proxy_opaque_type_map);
     }
     let ty = ctxt.tcx.fn_sig(*fn_def_id).skip_binder().output().skip_binder();
     let assume_specification_ty =
@@ -2321,9 +2331,10 @@ pub(crate) fn check_fn_opaque_ty<'tcx>(
         span,
         assume_specification_ty.as_ref(),
         false,
-        &mut assume_specification_opaque_type_map,
+        &mut proxy_opaque_type_map,
+        &erased_proxy_path,
     )?;
-    Ok(assume_specification_opaque_type_map)
+    Ok(proxy_opaque_type_map)
 }
 
 pub(crate) fn opaque_def_to_vir<'tcx>(
@@ -2334,10 +2345,22 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
     span: Span,
     assume_specification_ty: Option<&rustc_middle::ty::Ty<'tcx>>,
     is_assume_specification_ty: bool,
-    assume_specification_opaque_type_map: &mut HashMap<Path, Path>,
+    proxy_opaque_type_map: &mut HashMap<Path, Path>,
+    erased_proxy_path: &Option<Path>,
 ) -> Result<Option<OpaqueType>, VirErr> {
+    // external async functions do not need proxies.
+    assert!(!(is_assume_specification_ty && erased_proxy_path.is_some()));
+
     let unmatch_err_msg = "opaque type of assume assume_specification specification does not match the opaque type of the orginal function";
     let unmatch_err = || crate::internal_err!(span, unmatch_err_msg);
+
+    let fixup_unerased_proxy_path_if = |unfixed_path, span| {
+        if let Some(erased_proxy_path) = erased_proxy_path {
+            fixup_unerased_proxy_path_for_opaque_types(&unfixed_path, span, erased_proxy_path)
+        } else {
+            Ok(unfixed_path)
+        }
+    };
 
     match (
         ty.kind(),
@@ -2348,12 +2371,30 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
         {
             let span = ctxt.tcx.def_span(al_ty.kind.def_id());
             let alias_def_id = al_ty.kind.def_id();
-            let opaque_type_path = def_id_to_vir_path(
-                ctxt.tcx,
-                &ctxt.verus_items,
-                alias_def_id.into(),
-                None::<&mut HashMap<_, _>>,
-            );
+            let proxy_type_path = if erased_proxy_path.is_some() {
+                Some(def_id_to_vir_path(
+                    ctxt.tcx,
+                    &ctxt.verus_items,
+                    alias_def_id.into(),
+                    None::<&mut HashMap<_, _>>,
+                ))
+            } else {
+                None
+            };
+            let opaque_type_path = fixup_unerased_proxy_path_if(
+                def_id_to_vir_path(
+                    ctxt.tcx,
+                    &ctxt.verus_items,
+                    alias_def_id.into(),
+                    None::<&mut HashMap<_, _>>,
+                ),
+                span,
+            )?;
+
+            if erased_proxy_path.is_some() {
+                proxy_opaque_type_map.insert(proxy_type_path.unwrap(), opaque_type_path.clone());
+            }
+
             let mut trait_bounds = Vec::new();
             let mut args = Vec::new();
             for arg in al_ty.args {
@@ -2367,7 +2408,7 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                             alias_def_id.into(),
                             span,
                             &ty,
-                            None,
+                            Some(&proxy_opaque_type_map),
                         )?);
                     }
                     rustc_type_ir::GenericArgKind::Const(cnst) => {
@@ -2425,6 +2466,7 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                             span,
                             trait_def_id,
                             substs,
+                            Some(proxy_opaque_type_map),
                         )?;
                         if let Some(generic_bound) = generic_bound {
                             trait_bounds.push(generic_bound);
@@ -2481,7 +2523,8 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                                 span,
                                 nested_assume_specification_ty.as_ref(),
                                 is_assume_specification_ty,
-                                assume_specification_opaque_type_map,
+                                proxy_opaque_type_map,
+                                erased_proxy_path,
                             )?;
                             mid_ty_to_vir(
                                 ctxt.tcx,
@@ -2490,7 +2533,7 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                                 alias_def_id.into(),
                                 span,
                                 &nested_ty,
-                                None,
+                                Some(&proxy_opaque_type_map),
                             )?
                         } else {
                             return err_span(span, "Verus does not yet support this type of bound");
@@ -2506,6 +2549,7 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                             span,
                             trait_def_id,
                             substs,
+                            Some(proxy_opaque_type_map),
                         )?;
                         if let Some(generic_bound) = generic_bound {
                             if let GenericBoundX::Trait(TraitId::Path(path), typs) = &*generic_bound
@@ -2544,7 +2588,8 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                             span,
                             None,
                             true,
-                            assume_specification_opaque_type_map,
+                            proxy_opaque_type_map,
+                            erased_proxy_path,
                         )?
                         .expect(unmatch_err_msg),
                     )
@@ -2556,12 +2601,15 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                 span,
                 OpaqueTypeX {
                     def_fun: Arc::new(vir::ast::FunX {
-                        path: def_id_to_vir_path(
-                            ctxt.tcx,
-                            &ctxt.verus_items,
-                            *fn_def_id,
-                            None::<&mut HashMap<_, _>>,
-                        ),
+                        path: fixup_unerased_proxy_path_if(
+                            def_id_to_vir_path(
+                                ctxt.tcx,
+                                &ctxt.verus_items,
+                                *fn_def_id,
+                                None::<&mut HashMap<_, _>>,
+                            ),
+                            span,
+                        )?,
                     }),
                     name: opaque_type_path.clone(),
                     typ_params: Arc::new(args),
@@ -2569,7 +2617,7 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                 },
             );
             if let Some(assume_specification_opaque_ty_vir) = &assume_specification_opaque_ty_vir {
-                assume_specification_opaque_type_map.insert(
+                proxy_opaque_type_map.insert(
                     assume_specification_opaque_ty_vir.x.name.clone(),
                     opaque_type_path.clone(),
                 );
@@ -2593,7 +2641,8 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                 span,
                 None,
                 false,
-                assume_specification_opaque_type_map,
+                proxy_opaque_type_map,
+                erased_proxy_path,
             )?;
             Ok(None)
         }
@@ -2616,7 +2665,8 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                 span,
                 Some(ty2),
                 false,
-                assume_specification_opaque_type_map,
+                proxy_opaque_type_map,
+                erased_proxy_path,
             )?;
             Ok(None)
         }
@@ -2630,7 +2680,8 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                     span,
                     None,
                     false,
-                    assume_specification_opaque_type_map,
+                    proxy_opaque_type_map,
+                    erased_proxy_path,
                 )?;
             }
             Ok(None)
@@ -2648,7 +2699,8 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                     span,
                     Some(&ty2),
                     false,
-                    assume_specification_opaque_type_map,
+                    proxy_opaque_type_map,
+                    erased_proxy_path,
                 )?;
             }
             Ok(None)
@@ -2669,7 +2721,8 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                         span,
                         None,
                         false,
-                        assume_specification_opaque_type_map,
+                        proxy_opaque_type_map,
+                        erased_proxy_path,
                     )?;
                 } else {
                     continue;
@@ -2715,7 +2768,8 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                             span,
                             Some(&ty2),
                             false,
-                            assume_specification_opaque_type_map,
+                            proxy_opaque_type_map,
+                            erased_proxy_path,
                         )?;
                     }
                     (None, None) => continue,
@@ -2733,7 +2787,8 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                 span,
                 None,
                 false,
-                assume_specification_opaque_type_map,
+                proxy_opaque_type_map,
+                erased_proxy_path,
             )?;
             Ok(None)
         }
@@ -2749,7 +2804,8 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                 span,
                 Some(&fn_tys2.skip_binder().output()),
                 false,
-                assume_specification_opaque_type_map,
+                proxy_opaque_type_map,
+                erased_proxy_path,
             )?;
             Ok(None)
         }

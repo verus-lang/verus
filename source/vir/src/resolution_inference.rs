@@ -241,14 +241,15 @@ use crate::ast::{
 use crate::ast_util::{bool_typ, mk_bool, typ_to_diagnostic_str, undecorate_typ, unit_typ};
 use crate::ast_visitor::VisitorScopeMap;
 use crate::def::Spanned;
-use crate::messages::error;
 use crate::messages::{AstId, Span};
+use crate::messages::{error, internal_error};
 use crate::modes::ReadKindFinals;
 use crate::patterns::pattern_has_mut;
 use crate::resolution_types::ResolutionTypes;
 use crate::sst_util::subst_typ_for_datatype;
 use air::ast_util::str_ident;
 use air::scope_map::ScopeMap;
+use im::{HashSet, hashset};
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
@@ -269,11 +270,26 @@ pub(crate) fn infer_resolution(
     temporary_modes: &HashMap<AstId, Mode>,
     rtypes: &ResolutionTypes,
     dual_mode: bool,
+    is_async_fn: bool,
+    no_lifetime: bool,
 ) -> Result<Expr, VirErr> {
-    let (cfg, assigns_to_resolve, typ_inv_obligations, asserts) =
-        new_cfg(params, body, read_kind_finals, datatypes, functions, &var_modes, temporary_modes)?;
+    let (cfg, assigns_to_resolve, typ_inv_obligations, asserts) = new_cfg(
+        params,
+        body,
+        read_kind_finals,
+        datatypes,
+        functions,
+        &var_modes,
+        temporary_modes,
+        is_async_fn,
+    )?;
     //println!("{:}", pretty_cfg(&cfg));
-    let resolutions = if dual_mode { vec![] } else { get_resolutions(&cfg, rtypes, asserts) };
+    let (resolutions, initialization_analyses) =
+        if dual_mode { (vec![], vec![]) } else { get_resolutions(&cfg, rtypes, asserts) };
+
+    if is_async_fn && !no_lifetime {
+        check_tracked_vars_alive_across_await(&cfg, body, &initialization_analyses)?;
+    }
     apply_resolutions(
         &cfg,
         params,
@@ -323,6 +339,7 @@ struct Local {
 }
 
 /// Collection of all the locals in the program.
+#[derive(Debug)]
 struct LocalCollection<'a> {
     locals: Vec<Local>,
     /// Map LocalName to index within the 'locals' vec
@@ -394,14 +411,27 @@ enum AstPosition {
     /// Extra place generated during Match that doesn't go anywhere nice
     MatchIntermediate,
 }
-
+impl AstPosition {
+    fn ast_id(&self) -> Option<AstId> {
+        match self {
+            AstPosition::Before(id)
+            | AstPosition::After(id)
+            | AstPosition::AfterArguments(id)
+            | AstPosition::OnUnwind(id)
+            | AstPosition::AfterBool(id, _)
+            | AstPosition::AfterTempAssignment(id) => Some(*id),
+            AstPosition::MatchIntermediate => None,
+        }
+    }
+}
+#[derive(Debug)]
 struct Instruction {
     kind: InstructionKind,
     /// Position in the Expr that corresponds to the point right *after* the execution of
     /// this instruction.
     post_instruction_position: AstPosition,
 }
-
+#[derive(Debug)]
 enum InstructionKind {
     /// Move from the place; must previously be initialized, becomes uninitialized.
     MoveFrom(FlattenedPlace),
@@ -415,9 +445,13 @@ enum InstructionKind {
     /// or partially initialized. Whatever was there before gets dropped.
     /// The place is subsequently uninitialized.
     DropFrom(FlattenedPlace),
+    /// Read to a tracked variable.
+    /// This is only used when the function is an async function
+    Read(FlattenedPlace),
 }
 
 type BBIndex = usize;
+#[derive(Debug)]
 struct BasicBlock {
     instructions: Vec<Instruction>,
     /// Basic blocks that might jump to this one
@@ -439,9 +473,12 @@ struct BasicBlock {
     position_of_start: AstPosition,
 }
 
+#[derive(Debug)]
 struct CFG<'a> {
     basic_blocks: Vec<BasicBlock>,
     locals: LocalCollection<'a>,
+    /// BB indices of the block *before* each await (the block that branches to cancel/main)
+    await_bbs: Vec<(BBIndex, Span)>,
 }
 
 #[derive(Debug)]
@@ -459,6 +496,8 @@ struct Builder<'a> {
     typ_inv_obligations: Vec<(AstId, Fun)>,
     asserts: Vec<((BBIndex, usize), Expr)>,
     errors: Vec<VirErr>,
+    is_async_fn: bool,
+    await_bbs: Vec<(BBIndex, Span)>,
 
     /// Loop stack, outermost to innermost
     loops: Vec<LoopEntry>,
@@ -526,6 +565,7 @@ fn new_cfg<'a>(
     functions: &'a HashMap<Fun, Function>,
     var_modes: &'a HashMap<VarIdent, Mode>,
     temporary_modes: &'a HashMap<AstId, Mode>,
+    is_async_fn: bool,
 ) -> Result<(CFG<'a>, Vec<AstId>, Vec<(AstId, Fun)>, Vec<((BBIndex, usize), Expr)>), VirErr> {
     let mut var_modes = var_modes.clone();
     for p in params.iter() {
@@ -540,6 +580,8 @@ fn new_cfg<'a>(
         typ_inv_obligations: vec![],
         asserts: vec![],
         errors: vec![],
+        is_async_fn: is_async_fn,
+        await_bbs: vec![],
         locals: LocalCollection {
             locals: vec![],
             ident_to_idx: HashMap::new(),
@@ -588,7 +630,8 @@ fn new_cfg<'a>(
         return Err(builder.errors[0].clone());
     }
 
-    let cfg = CFG { basic_blocks: builder.basic_blocks, locals: builder.locals };
+    let await_bbs = builder.await_bbs.clone();
+    let cfg = CFG { basic_blocks: builder.basic_blocks, locals: builder.locals, await_bbs };
     Ok((cfg, builder.assigns_to_resolve, builder.typ_inv_obligations, builder.asserts))
 }
 
@@ -657,6 +700,7 @@ impl<'a> Builder<'a> {
                 }
             }
             InstructionKind::DropFrom(_) => {}
+            InstructionKind::Read(_) => {}
         }
         self.push_instruction_raw(bb, post_instruction_position, instr);
     }
@@ -1146,6 +1190,7 @@ impl<'a> Builder<'a> {
             }
             ExprX::ReadPlace(place, unfinal_read_kind) => {
                 let (p, bb) = self.build_place_typed(place, bb, TypInv::No)?;
+
                 if self.is_move(unfinal_read_kind) {
                     if !matches!(p, ComputedPlaceTyped::Exact(..)) {
                         self.emit_bad_move_err(&p, &place.span);
@@ -1160,6 +1205,23 @@ impl<'a> Builder<'a> {
                     }
                     Ok(bb)
                 } else {
+                    // In async functions, we also record the read places for tracked variables.
+                    if let Some(p) = p.get_place_for_read() {
+                        let var_mode = match &p.local {
+                            LocalName::Named(var) => self.locals.var_modes.get(&var).copied(),
+                            LocalName::Temporary(ast_id, _) => {
+                                self.locals.temporary_modes.get(&ast_id).copied()
+                            }
+                        };
+                        if self.is_async_fn && matches!(var_mode, Some(Mode::Proof)) {
+                            let p = self.locals.add_place(&p);
+                            self.push_instruction_propagate(
+                                bb,
+                                AstPosition::After(span_id),
+                                InstructionKind::Read(p),
+                            );
+                        }
+                    }
                     Ok(bb)
                 }
             }
@@ -1212,6 +1274,7 @@ impl<'a> Builder<'a> {
                 self.basic_blocks[bb].successors.push(cancel_bb);
                 self.basic_blocks[bb].successors.push(main_bb);
                 self.basic_blocks[cancel_bb].is_exit = true;
+                self.await_bbs.push((main_bb, expr.span.clone()));
                 Ok(main_bb)
             }
             ExprX::ShrRefStructWrap(e1, e2, _t1, _t2, _variant, _ident) => {
@@ -2514,6 +2577,7 @@ impl FlattenedPlace {
             InstructionKind::Overwrite(sp) => self.intersects(sp),
             InstructionKind::Mutate(sp) => self.intersects(sp),
             InstructionKind::DropFrom(_) => false,
+            InstructionKind::Read(_) => false,
         }
     }
 
@@ -2565,6 +2629,15 @@ impl ComputedPlaceTyped {
         match self {
             ComputedPlaceTyped::Exact(p) => Some(p),
             ComputedPlaceTyped::Partial(_) | ComputedPlaceTyped::Ghost(_) => {
+                // reading out of a ghost field is NOT a move
+                None
+            }
+        }
+    }
+    fn get_place_for_read(self) -> Option<FlattenedPlaceTyped> {
+        match self {
+            ComputedPlaceTyped::Exact(p) | ComputedPlaceTyped::Partial(p) => Some(p),
+            ComputedPlaceTyped::Ghost(_) => {
                 // reading out of a ghost field is NOT a move
                 None
             }
@@ -2962,6 +3035,7 @@ fn pretty_instr(locals: &LocalCollection, instr: &Instruction) -> String {
         InstructionKind::Overwrite(fp) => ("Overwrite", fp),
         InstructionKind::Mutate(fp) => ("Mutate", fp),
         InstructionKind::DropFrom(fp) => ("DropFrom", fp),
+        InstructionKind::Read(fp) => ("Read", fp),
     };
     format!("{:}({:})", name, pretty_flattened_place(locals, fp))
 }
@@ -3069,6 +3143,7 @@ impl DataflowState for InitializationPossibilities {
                     *self
                 }
             }
+            InstructionKind::Read(_sp) => *self,
         }
     }
 }
@@ -3116,6 +3191,7 @@ impl DataflowState for ResolveSafety {
                     *self
                 }
             }
+            InstructionKind::Read(_sp) => *self,
         }
     }
 }
@@ -3138,10 +3214,10 @@ fn get_resolutions(
     cfg: &CFG,
     rtypes: &ResolutionTypes,
     asserts: Vec<((BBIndex, usize), Expr)>,
-) -> Vec<ResolutionToInsert> {
+) -> (Vec<ResolutionToInsert>, Vec<DataflowOutput<InitializationPossibilities>>) {
     // A place behind an initialized mutable reference can't be uninitialized,
     // so we only check places that aren't behind mutable references.
-    let initialization_places = cfg.locals.places_skip_insides_of_mut_refs();
+    let initialization_places: Vec<FlattenedPlace> = cfg.locals.places_skip_insides_of_mut_refs();
     let initialization_analyses: Vec<DataflowOutput<InitializationPossibilities>> =
         initialization_places
             .iter()
@@ -3155,7 +3231,6 @@ fn get_resolutions(
                 )
             })
             .collect();
-
     // A place typed as a mutable reference needs to be checked separately from
     // the places behind that mutable reference (see the explanation above).
     let resolve_places = cfg.locals.places_including_insides_of_mut_refs();
@@ -3227,7 +3302,7 @@ fn get_resolutions(
         .unwrap();
     }
 
-    output
+    (output, initialization_analyses)
 }
 
 fn whole_is_initialized(
@@ -3310,6 +3385,153 @@ impl BasicBlock {
             self.instructions[i - 1].post_instruction_position
         }
     }
+}
+
+/// Check that no tracked-mode (Mode::Proof) variable is alive across an await point.
+fn check_tracked_vars_alive_across_await(
+    cfg: &CFG,
+    body: &Expr,
+    initialization_analyses: &[DataflowOutput<InitializationPossibilities>],
+) -> Result<(), VirErr> {
+    println!("cfg.await_bbs {:#?}", cfg.await_bbs);
+    for (bb_idx, await_span) in cfg.await_bbs.iter() {
+        // collect all inited tracked variables at this await point.
+        let mut tracked_vars = HashSet::new();
+        for local in 0..cfg.locals.locals.len() {
+            let var_name = &cfg.locals.locals[local].name;
+            let var_mode = match var_name {
+                LocalName::Named(var) => cfg.locals.var_modes.get(&var).copied(),
+                LocalName::Temporary(ast_id, _) => cfg.locals.temporary_modes.get(&ast_id).copied(),
+            };
+            if !matches!(var_mode, Some(Mode::Proof)) {
+                continue;
+            }
+
+            let is_init = !initialization_analyses[local].output[*bb_idx][0].can_be_uninit;
+            if !is_init {
+                continue;
+            }
+
+            println!("tracked_var {:#?}\n name {:#?}", local, var_name);
+            tracked_vars.insert(local);
+        }
+
+        // check if any of these tracked variables is referenced after the await point.
+        // if so, return the first occurrence.
+        let next_ref_place = find_first_reference(cfg, *bb_idx, tracked_vars, false);
+        println!("next_ref_place {:#?}", next_ref_place);
+        let (local, reference_ast_id) = if let Some((local, ast_id)) = next_ref_place {
+            (local, ast_id)
+        } else {
+            continue;
+        };
+        let name = match &cfg.locals.locals[local].name {
+            LocalName::Named(v) => crate::def::user_local_name(v).to_string(),
+            LocalName::Temporary(..) => {
+                return Err(internal_error(
+                    &body.span,
+                    "a temporary shouldn't be able to live across await points",
+                ));
+            }
+        };
+        let define_ast_id = find_first_reference(cfg, 0, hashset![local], true).expect("internal error: a tracked variable alive across an await point has no define point").1;
+
+        // find the spans so we can produce a nice error msg.
+        let spans = find_spans(body, &[define_ast_id, reference_ast_id]);
+        let define_span = spans[0].as_ref();
+        let reference_span = spans[1].as_ref();
+
+        let mut err = crate::messages::error_with_label(
+            await_span,
+            format!(
+                "a tracked variable `{name}` is alive, \
+                    across an `await` point, \
+                    which is not currently supported in an async function, \
+                    please wrap it in Tracked<> to work around it"
+            ),
+            "await point",
+        );
+        if let Some(define_span) = define_span {
+            err = err.secondary_label(define_span, "the tracked variable is initialized here");
+        }
+        if let Some(reference_span) = reference_span {
+            err = err.secondary_label(reference_span, "and is later used here");
+        }
+        return Err(err);
+    }
+
+    Ok(())
+}
+
+fn find_spans(body: &Expr, ids: &[Option<AstId>]) -> Vec<Option<Span>> {
+    let mut found: Vec<Option<Span>> = vec![None; ids.len()];
+    let record = |found: &mut Vec<Option<Span>>, span: &Span| {
+        for (i, id) in ids.iter().enumerate() {
+            if *id == Some(span.id) && found[i].is_none() {
+                found[i] = Some(span.clone());
+            }
+        }
+    };
+    crate::ast_visitor::ast_visitor_check::<(), _, _, _, _, _, _>(
+        body,
+        &mut found,
+        &mut |found, _, e: &Expr| {
+            record(found, &e.span);
+            Ok(())
+        },
+        &mut |found, _, s: &Stmt| {
+            record(found, &s.span);
+            Ok(())
+        },
+        &mut |found, _, p: &Pattern| {
+            record(found, &p.span);
+            Ok(())
+        },
+        &mut |_, _, _, _| Ok(()),
+        &mut |found, _, pl: &Place| {
+            record(found, &pl.span);
+            Ok(())
+        },
+    )
+    .unwrap();
+    found
+}
+
+/// Find the first access instruction for the given variable, scanning from the entry BB forward.
+fn find_first_reference(
+    cfg: &CFG,
+    start_bb: BBIndex,
+    locals: HashSet<usize>,
+    overwrite_only: bool,
+) -> Option<(usize, Option<AstId>)> {
+    let mut visited = vec![false; cfg.basic_blocks.len()];
+    let mut queue = VecDeque::new();
+    visited[start_bb] = true;
+    queue.push_back(start_bb);
+
+    while let Some(bb_idx) = queue.pop_front() {
+        let bb = &cfg.basic_blocks[bb_idx];
+        for instr in bb.instructions.iter() {
+            if let (InstructionKind::MoveFrom(fp), false)
+            | (InstructionKind::Overwrite(fp), _)
+            | (InstructionKind::Mutate(fp), false)
+            | (InstructionKind::DropFrom(fp), false)
+            | (InstructionKind::Read(fp), false) = (&instr.kind, overwrite_only)
+            {
+                if locals.contains(&fp.local) {
+                    println!("found a reference {:#?}", instr);
+                    return Some((fp.local, instr.post_instruction_position.ast_id()));
+                }
+            }
+        }
+        for &succ in &bb.successors {
+            if !visited[succ] {
+                visited[succ] = true;
+                queue.push_back(succ);
+            }
+        }
+    }
+    None
 }
 
 ////// Modify the AST Expr with the new resolutions

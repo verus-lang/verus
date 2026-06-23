@@ -31,7 +31,7 @@ use std::sync::Arc;
 use std::vec;
 use vir::ast::{
     BodyVisibility, CrateId, Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, ItemKind, KrateX,
-    Mode, OpaqueTypes, Opaqueness, ParamX, Path, Typ, TypDecoration, TypX, VarIdent, VirErr,
+    Mode, OpaqueTypes, Opaqueness, ParamX, Path, PathX, Typ, TypDecoration, TypX, VarIdent, VirErr,
     Visibility,
 };
 use vir::ast_util::{air_unique_var, unit_typ};
@@ -409,7 +409,7 @@ fn check_fn_decl<'tcx>(
     attrs: &[Attribute],
     mode: Mode,
     output_ty: rustc_middle::ty::Ty<'tcx>,
-    assume_specification_opaque_type_map: Option<&HashMap<Path, Path>>,
+    proxy_opaque_type_map: Option<&HashMap<Path, Path>>,
 ) -> Result<Option<(Typ, Mode)>, VirErr> {
     let FnDecl { inputs: _, output, c_variadic, implicit_self, lifetime_elision_allowed: _ } = decl;
     unsupported_err_unless!(!c_variadic, span, "c_variadic functions");
@@ -426,8 +426,7 @@ fn check_fn_decl<'tcx>(
         // so we always return the default mode.
         // The current workaround is to return a struct if the default doesn't work.
         rustc_hir::FnRetTy::Return(_ty) => {
-            let typ =
-                ctxt.mid_ty_to_vir(id, span, &output_ty, assume_specification_opaque_type_map)?;
+            let typ = ctxt.mid_ty_to_vir(id, span, &output_ty, proxy_opaque_type_map)?;
             Ok(Some((typ, get_ret_mode(mode, attrs))))
         }
     }
@@ -1422,6 +1421,36 @@ pub(crate) fn fixup_unerased_proxy_path(
     }
 }
 
+pub(crate) fn fixup_unerased_proxy_path_for_opaque_types(
+    path: &vir::ast::Path,
+    span: Span,
+    erased_proxy_path: &vir::ast::Path,
+) -> Result<vir::ast::Path, VirErr> {
+    if path.krate != erased_proxy_path.krate {
+        crate::internal_err!(span, "bad use of unerased_proxy attribute")
+    } else {
+        let mut segments = vec![];
+        for i in 0..path.segments.len() {
+            match (path.segments.get(i), erased_proxy_path.segments.get(i)) {
+                (Some(x), Some(y)) => {
+                    if x == y || **x == "VERUS_UNERASED_PROXY__".to_owned() + &**y {
+                        segments.push(y.clone());
+                    } else {
+                        crate::internal_err!(span, "bad use of unerased_proxy attribute")
+                    }
+                }
+                (Some(x), _) => {
+                    segments.push(x.clone());
+                }
+                (_, _) => {
+                    crate::internal_err!(span, "bad use of unerased_proxy attribute")
+                }
+            }
+        }
+        Ok(Arc::new(PathX { krate: path.krate.clone(), segments: Arc::new(segments) }))
+    }
+}
+
 pub(crate) fn check_item_fn<'tcx>(
     ctxt: &Context<'tcx>,
     functions: &mut Vec<vir::ast::Function>,
@@ -1572,13 +1601,21 @@ pub(crate) fn check_item_fn<'tcx>(
         (this_path.clone(), None, visibility, kind, has_self_param, safety, false, None, is_async)
     };
 
-    let assume_specification_opaque_type_map = if let Some(proxy_id) = proxy_id {
-        Some(check_fn_opaque_ty(ctxt, opaque_types, &proxy_id, sig.output_span(), Some(&id))?)
+    let proxy_opaque_type_map = if let Some(proxy_id) = proxy_id {
+        Some(check_fn_opaque_ty(ctxt, opaque_types, &proxy_id, sig.output_span(), Some(&id), None)?)
+    } else if vattrs.unerased_proxy {
+        Some(check_fn_opaque_ty(
+            ctxt,
+            opaque_types,
+            &id,
+            sig.output_span(),
+            None,
+            Some(this_path.clone()),
+        )?)
     } else {
-        check_fn_opaque_ty(ctxt, opaque_types, &id, sig.output_span(), None)?;
+        check_fn_opaque_ty(ctxt, opaque_types, &id, sig.output_span(), None, None)?;
         None
     };
-
     let name = Arc::new(FunX { path: path.clone() });
 
     let self_typ_params = if let Some((cg, impl_def_id)) = self_generics {
@@ -1616,7 +1653,7 @@ pub(crate) fn check_item_fn<'tcx>(
                 attrs,
                 mode,
                 fn_sig.output().skip_binder(),
-                assume_specification_opaque_type_map.as_ref(),
+                proxy_opaque_type_map.as_ref(),
             )?;
             (ret_typ_mode, inputs.to_vec())
         }
@@ -1734,7 +1771,7 @@ pub(crate) fn check_item_fn<'tcx>(
             let body = find_body(ctxt, body_id);
             let external_body = vattrs.external_body || vattrs.external_fn_specification;
             let param_names = vir_params.iter().map(|p| p.x.name.clone()).collect::<Vec<_>>();
-            let mut vir_body = body_to_vir(
+            let mut vir_body: Arc<vir::ast::SpannedTyped<vir::ast::ExprX>> = body_to_vir(
                 ctxt,
                 id,
                 body_id,
@@ -1744,7 +1781,7 @@ pub(crate) fn check_item_fn<'tcx>(
                 &external_trait_from_to,
                 migrate_postcondition_vars.clone(),
                 param_names,
-                assume_specification_opaque_type_map.clone(),
+                proxy_opaque_type_map.clone(),
                 is_async,
             )?;
             let header =

@@ -292,6 +292,7 @@ fn check_item<'tcx>(
                 item.span,
                 "const generics"
             );
+            // println!("found a const item: {:#?}", item);
             handle_const_or_static(body_id)?;
         }
         ItemKind::Static(Mutability::Not, _ident, _ty, body_id) => {

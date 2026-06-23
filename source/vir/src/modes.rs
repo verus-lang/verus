@@ -481,6 +481,7 @@ struct Ctxt {
     pub(crate) check_ghost_blocks: bool,
     pub(crate) fun_mode: Mode,
     pub(crate) special_paths: SpecialPaths,
+    pub(crate) no_lifetime: bool,
 }
 
 pub(crate) struct TypeInvInfo {
@@ -3762,6 +3763,8 @@ fn check_function(
                     &record.temporary_modes,
                     &rtypes,
                     dual_mode_fn,
+                    functionx.attrs.is_async,
+                    ctxt.no_lifetime,
                 )?;
             }
         }
@@ -3771,7 +3774,10 @@ fn check_function(
     Ok(())
 }
 
-pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes, ReadKindFinals), VirErr> {
+pub fn check_crate(
+    krate: &Krate,
+    no_lifetime: bool,
+) -> Result<(Krate, ErasureModes, ReadKindFinals), VirErr> {
     let mut funs: HashMap<Fun, Function> = HashMap::new();
     let mut datatypes: HashMap<Path, Datatype> = HashMap::new();
     for function in krate.functions.iter() {
@@ -3800,6 +3806,7 @@ pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes, ReadKindFinals
         check_ghost_blocks: false,
         fun_mode: Mode::Exec,
         special_paths,
+        no_lifetime,
     };
     let type_inv_info = TypeInvInfo { ctor_needs_check: HashMap::new() };
     let mut record = Record {

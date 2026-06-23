@@ -192,6 +192,9 @@ pub(crate) fn get_extra_thir(local_def_id: LocalDefId) -> Option<Arc<ExtraThir>>
 /// If the VERUS_ERASURE_CTXT hasn't been initialized yet, we check that the given
 /// item is one that doesn't need it.
 pub(crate) fn check_this_query_isnt_running_early(local_def_id: LocalDefId) {
+    // println!("local_def_id lifetime checking {:#?}", local_def_id);
+    // println!("is erasure ctxt none: {:#?}", get_verus_erasure_ctxt_option().is_none());
+    // println!("is item verus aware? {:#?}", VERUS_AWARE_DEF_IDS.read().unwrap().as_ref().unwrap().contains(&local_def_id));
     if get_verus_erasure_ctxt_option().is_none() {
         match VERUS_AWARE_DEF_IDS.read().unwrap().clone() {
             Some(m) => {
@@ -234,7 +237,7 @@ pub(crate) struct VerusThirBuildCtxt {
 impl VerusThirBuildCtxt {
     pub(crate) fn new<'tcx>(tcx: TyCtxt<'tcx>, local_def_id: LocalDefId) -> Self {
         let fn_local_def_id = enclosing_fn_local_def_id(tcx, local_def_id);
-        let verus_aware =
+        let verus_aware: bool =
             VERUS_AWARE_DEF_IDS.read().unwrap().clone().unwrap().contains(&fn_local_def_id);
         let ctxt = get_verus_erasure_ctxt_option();
 
