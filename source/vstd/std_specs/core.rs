@@ -27,6 +27,7 @@ pub trait ExFn<Args: core::marker::Tuple>: FnMut<Args> {
     type ExternalTraitSpecificationFor: core::ops::Fn<Args>;
 }
 
+#[cfg(not(verus_verify_core))]
 #[verifier::external_trait_specification]
 pub trait ExDeref: PointeeSized {
     type ExternalTraitSpecificationFor: core::ops::Deref;
@@ -36,6 +37,7 @@ pub trait ExDeref: PointeeSized {
     fn deref(&self) -> &Self::Target;
 }
 
+#[cfg(not(verus_verify_core))]
 #[verifier::external_trait_specification]
 pub trait ExDerefMut: core::ops::Deref + PointeeSized {
     type ExternalTraitSpecificationFor: core::ops::DerefMut;
