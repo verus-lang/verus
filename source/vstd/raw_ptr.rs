@@ -1843,13 +1843,13 @@ pub axiom fn subrange_decode<T>(
             == t.subrange(start, end),
 ;
 
-pub axiom fn decode_uninit<T>(s: Seq<MemContents<u8>>)
-    requires
-        forall|i| 0 <= i < s.len() ==> s[i].is_uninit(),
-    ensures
-        forall|i| 0 <= i < decode::<T>(s).len() ==> decode::<T>(s)[i].is_uninit(),
-;
-
+// Not needed for Vec but may be useful in the future
+// pub axiom fn decode_uninit<T>(s: Seq<MemContents<u8>>)
+//     requires
+//         forall|i| 0 <= i < s.len() ==> s[i].is_uninit(),
+//     ensures
+//         forall|i| 0 <= i < decode::<T>(s).len() ==> decode::<T>(s)[i].is_uninit(),
+// ;
 impl SeqPointsTo<u8> {
     /// We can cast a `SeqPointsTo<u8>` to a `SeqPointsTo<T>` of length `capacity` under the following conditions:
     ///
@@ -1862,7 +1862,7 @@ impl SeqPointsTo<u8> {
         requires
             self.ptr()@.addr as nat % align_of::<T>() == 0,
             self.len() == capacity * layout::size_of::<T>(),
-            // self.is_fully_uninit() || exists
+            // self.is_fully_uninit() || exists|s: Seq<MemContents<T>>| self.mem_contents() == encode(s),
             self.wf(),
         ensures
             out.ptr() == self.ptr() as *mut T,

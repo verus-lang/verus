@@ -42,6 +42,31 @@ test_verify_one_file_with_options! {
             use crate::vstd::prelude::*;
 
             verus!{
+            #[verifier::external_type_specification]
+            #[verifier::accept_recursive_types(V)]
+            #[verifier::ext_equal]
+            pub struct ExOption<V>(core::option::Option<V>);
+
+            #[verifier::external_type_specification]
+            #[verifier::accept_recursive_types(T)]
+            #[verifier::reject_recursive_types_in_ground_variants(E)]
+            pub struct ExResult<T, E>(core::result::Result<T, E>);
+
+            #[verifier::inline]
+            pub open spec fn spec_unwrap<T>(option: Option<T>) -> T
+                recommends
+                    option is Some,
+            {
+                option->0
+            }
+
+            #[verifier::when_used_as_spec(spec_unwrap)]
+            pub assume_specification<T>[ Option::<T>::unwrap ](option: Option<T>) -> (t: T)
+                requires
+                    option is Some,
+                ensures
+                    t == spec_unwrap(option),
+            ;
 
             proof fn test_seqs(a: Seq<int>, b: Seq<int>)
                 requires a == b,
