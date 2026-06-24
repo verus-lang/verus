@@ -265,6 +265,8 @@ pub(crate) enum Attr {
     GhostBlock(GhostBlockAttr),
     // proof block inside spec-mode code
     ProofInSpec,
+    // use for loop_isolation_boundary, should be in a block surrounding a loop
+    LoopIsolationBoundary,
     // Header to unwrap Tracked<T> and Ghost<T> parameters
     UnwrapParameter,
     // type parameter is not necessarily used in strictly positive positions
@@ -514,6 +516,9 @@ pub(crate) fn parse_attrs(
                     v.push(Attr::GhostBlock(GhostBlockAttr::Wrapper))
                 }
                 AttrTree::Fun(_, arg, None) if arg == "proof_in_spec" => v.push(Attr::ProofInSpec),
+                AttrTree::Fun(_, arg, None) if arg == "loop_isolation_boundary" => {
+                    v.push(Attr::LoopIsolationBoundary)
+                }
                 // TODO: remove maybe_negative, strictly_positive
                 AttrTree::Fun(_, arg, None)
                     if arg == "maybe_negative" || arg == "reject_recursive_types" =>
@@ -1097,6 +1102,16 @@ pub(crate) fn is_proof_in_spec(attrs: &[Attribute]) -> bool {
     for attr in parse_attrs_opt(attrs, None) {
         match attr {
             Attr::ProofInSpec => return true,
+            _ => {}
+        }
+    }
+    false
+}
+
+pub(crate) fn is_loop_isolation_boundary(attrs: &[Attribute]) -> bool {
+    for attr in parse_attrs_opt(attrs, None) {
+        match attr {
+            Attr::LoopIsolationBoundary => return true,
             _ => {}
         }
     }

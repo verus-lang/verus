@@ -572,6 +572,18 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                 })
             }
             StmX::Air(_) => R::ret(|| stm.clone()),
+            StmX::LoopIsolationBoundary { pre_stms, loop_stm, pre_modified_params } => {
+                let pre_stms = self.visit_stms(pre_stms)?;
+                let loop_stm = self.visit_stm(loop_stm)?;
+                let pre_modified_params = self.visit_havoc_set_opt(pre_modified_params)?;
+                R::ret(|| {
+                    stm_new(StmX::LoopIsolationBoundary {
+                        pre_stms: R::get_vec_a(pre_stms),
+                        loop_stm: R::get(loop_stm),
+                        pre_modified_params: R::get_opt(pre_modified_params),
+                    })
+                })
+            }
         }
     }
 
