@@ -176,7 +176,7 @@ pub fn plan_cargo_run(cfg: VerusConfig) -> Result<CargoRunPlan> {
         }
 
         let vstd_metadata = metadata_index.collect_vstd_metadata(packages_to_verify);
-        let verus_version = get_verus_driver_version();
+        let verus_version = get_verus_driver_version()?;
 
         if cfg.options.verbosity > 0 {
             println!("verus version: {verus_version:?}");
@@ -194,11 +194,11 @@ pub fn plan_cargo_run(cfg: VerusConfig) -> Result<CargoRunPlan> {
                     && is_matching_known_and_used(&toolchain.vstd, used_vstd)
             });
             if !is_compatible {
-                return Err(anyhow::format_err!(
+                bail!(
                     "Components are incompatible:\n\
                     * verus = {verus_version}\n\
                     * vstd = {used_vstd:?}\n"
-                ));
+                );
             }
         }
     }
@@ -526,30 +526,29 @@ fn get_verus_driver_path() -> PathBuf {
 }
 
 /// Run `verus --version` and capture its output.
-fn get_verus_driver_version() -> String {
+fn get_verus_driver_version() -> Result<String> {
     let command = get_verus_driver_path();
     let output = Command::new(&command)
         .arg("--version")
         .output()
-        .unwrap_or_else(|err| panic!("Failed to run `{}`: {err}", command.display()));
+        .context(format!("running `{} --version`", command.display()))?;
 
-    assert!(
-        output.status.success(),
-        "`{} --version` failed with status {}.\nstdout:\n{}\nstderr:\n{}",
-        command.display(),
-        output.status,
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr),
-    );
+    if !output.status.success() {
+        bail!(
+            "`{} --version` failed with status {}.\n\
+            stdout:\n{}\n\
+            stderr:\n{}",
+            command.display(),
+            output.status,
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr),
+        );
+    }
 
-    let stdout = String::from_utf8(output.stdout).unwrap_or_else(|err| {
-        panic!("`{} --version` produced non-UTF-8 stdout: {err}", command.display())
-    });
+    let stdout = String::from_utf8(output.stdout)
+        .context(format!("`{} --version` produced non-UTF-8 stdout", command.display()))?;
 
-    stdout
-        .lines()
-        .find_map(|line| line.strip_prefix("  Version: ").map(ToOwned::to_owned))
-        .unwrap_or_else(|| {
-            panic!("Failed to parse version from `{}` output:\n{}", command.display(), stdout)
-        })
+    stdout.lines().find_map(|line| line.strip_prefix("  Version: ").map(ToOwned::to_owned)).context(
+        format!("Failed to parse version from `{}` output:\n{}", command.display(), stdout),
+    )
 }
