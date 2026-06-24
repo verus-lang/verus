@@ -1,0 +1,18 @@
+[package]
+publish = false
+name = "cargo-verus-toolchains"
+version = "0.1.0"
+edition = "2024"
+description = "Data types and utilities for bundling Verus toolchain info into cargo-verus."
+
+[dependencies]
+itertools = "0.14.0"
+serde = { version = "1.0", features = ["derive"] }
+toml = "1.1.2"
+
+[dev-dependencies]
+pretty_assertions = "1.4.1"
+tempfile = "3"
+
+[lints]
+workspace = true
