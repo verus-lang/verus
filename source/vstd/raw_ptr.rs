@@ -1577,7 +1577,7 @@ impl<T> SeqPointsTo<T> {
         Seq::new(self.len(), |i| self[i as nat].value())
     }
 
-    /// Returns a `tracked` reference to the underlying `Seq<PointsTo<T>>`, 
+    /// Returns a `tracked` reference to the underlying `Seq<PointsTo<T>>`,
     /// given `tracked &self`.
     pub proof fn tracked_perm_seq(tracked &self) -> (tracked ret: &Seq<PointsTo<T>>)
         requires
@@ -1588,10 +1588,10 @@ impl<T> SeqPointsTo<T> {
         &self.perm
     }
 
-    /// Returns a `tracked` mutable reference to the underlying `Seq<PointsTo<T>>`, 
+    /// Returns a `tracked` mutable reference to the underlying `Seq<PointsTo<T>>`,
     /// given `tracked &mut self`. `self.ptr` will remain unchanged.
-    /// 
-    /// Provided that this reference is not used to change the sequence length 
+    ///
+    /// Provided that this reference is not used to change the sequence length
     /// or any of the `PointsTo<T>` pointers, the invariant will be preserved.
     pub proof fn tracked_perm_seq_mut(tracked &mut self) -> (tracked ret: &mut Seq<PointsTo<T>>)
         requires
@@ -1609,10 +1609,10 @@ impl<T> SeqPointsTo<T> {
     }
 
     /// Sanity check for the criteria for ensuring that the final value of `&mut self` is still well-founded:
-    /// 
+    ///
     /// * All pointers remain the same.
     /// * The length remains the same.
-    /// 
+    ///
     /// Note that we _are_ allowed to change `self.mem_contents()` without affecting the invariant's validity.
     pub broadcast proof fn constants(&mut self)
         requires
@@ -1759,13 +1759,13 @@ pub axiom fn subrange_decode<T>(
             == t.subrange(start, end),
 ;
 
-pub axiom fn decode_uninit<T>(s: Seq<MemContents<u8>>)
-    requires
-        forall|i| 0 <= i < s.len() ==> s[i].is_uninit(),
-    ensures
-        forall|i| 0 <= i < decode::<T>(s).len() ==> decode::<T>(s)[i].is_uninit(),
-;
-
+// Not needed for Vec but may be useful in the future
+// pub axiom fn decode_uninit<T>(s: Seq<MemContents<u8>>)
+//     requires
+//         forall|i| 0 <= i < s.len() ==> s[i].is_uninit(),
+//     ensures
+//         forall|i| 0 <= i < decode::<T>(s).len() ==> decode::<T>(s)[i].is_uninit(),
+// ;
 impl SeqPointsTo<u8> {
     /// We can cast a `SeqPointsTo<u8>` to a `SeqPointsTo<T>` of length `capacity` under the following conditions:
     ///
@@ -1778,7 +1778,7 @@ impl SeqPointsTo<u8> {
         requires
             self.ptr()@.addr as nat % align_of::<T>() == 0,
             self.len() == capacity * layout::size_of::<T>(),
-            // self.is_fully_uninit() || exists
+            // self.is_fully_uninit() || exists|s: Seq<MemContents<T>>| self.mem_contents() == encode(s),
             self.wf(),
         ensures
             out.ptr() == self.ptr() as *mut T,
