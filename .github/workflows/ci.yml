@@ -13,7 +13,7 @@ on:
 # How:
 #   - This creates a concurrency group for workflow runs;
 #   - When the workflow runs, it cancels in-progress runs if the concurrency group is the same
-#   - The group names are ci-refs/pull/<PR #>/merge (in the case of PRs) and 
+#   - The group names are ci-refs/pull/<PR #>/merge (in the case of PRs) and
 #     ci-refs/heads/gh-readonly-queue/main/pr-<N>-<sha> for merge queue executions
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -89,6 +89,7 @@ jobs:
           filters: |
             cargo_verus:
               - 'source/cargo-verus/**'
+              - 'source/cargo-verus-toolchains/**'
 
   # run cargo-verus tests
   cargo-verus-test:

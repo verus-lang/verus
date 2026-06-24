@@ -1,4 +1,5 @@
 [package]
+publish = false
 name = "cargo-verus"
 version = "0.1.0"
 edition = "2021"
@@ -6,6 +7,7 @@ description = "A Cargo subcommand that enables verification of Rust code as part
 
 [dependencies]
 cargo_metadata = "0.23.1"
+cargo-verus-toolchains.workspace = true
 clap = { version = "4.5.53", features = ["derive"] }
 clap-cargo = { version = "0.18.3", features = ["clap", "cargo_metadata"] }
 rustc_tools_util = "0.3.0"
@@ -18,6 +20,7 @@ colored = "3.0.0"
 tempfile = "3"
 
 [build-dependencies]
+cargo-verus-toolchains.workspace = true
 rustc_tools_util = "0.3.0"
 
 [lints]
