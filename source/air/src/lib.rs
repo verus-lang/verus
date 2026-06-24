@@ -7,6 +7,7 @@ pub mod messages;
 pub mod model;
 pub mod parser;
 pub mod profiler;
+pub mod remove_asserts;
 pub mod scope_map;
 pub mod smt_process;
 

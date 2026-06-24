@@ -2146,6 +2146,17 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 let block = block_to_vir(bctx, body, &expr.span, &expr_typ()?)?;
                 if crate::attributes::is_proof_in_spec(bctx.ctxt.tcx.hir_attrs(expr.hir_id)) {
                     mk_expr(ExprX::ProofInSpec(block))
+                } else if crate::attributes::is_loop_isolation_boundary(
+                    bctx.ctxt.tcx.hir_attrs(expr.hir_id),
+                ) {
+                    let wrap = loop_isolation_boundary_check(expr.span, &block)?;
+                    let block = if wrap {
+                        let x = ExprX::Unary(UnaryOp::LoopIsolationBoundary, block);
+                        bctx.spanned_typed_new(expr.span, &expr_typ()?, x)
+                    } else {
+                        block
+                    };
+                    Ok(ExprOrPlace::Expr(block))
                 } else {
                     Ok(ExprOrPlace::Expr(block))
                 }
@@ -4671,4 +4682,14 @@ fn ty_is_float_or_ref_float<'tcx>(ty: rustc_middle::ty::Ty<'tcx>) -> bool {
         _ => &ty,
     };
     t.is_floating_point()
+}
+
+fn loop_isolation_boundary_check(span: Span, block: &vir::ast::Expr) -> Result<bool, VirErr> {
+    let ExprX::Block(_stmts, Some(e)) = &block.x else {
+        crate::internal_err!(span, "loop_isolation_boundary expected Block")
+    };
+    if let ExprX::Loop { loop_isolation, .. } = &e.x {
+        return Ok(*loop_isolation);
+    }
+    crate::internal_err!(span, "loop_isolation_boundary expected block containing loop")
 }
