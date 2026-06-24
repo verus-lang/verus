@@ -156,11 +156,13 @@ pub struct ExOrdering(core::cmp::Ordering);
 #[verifier::external_type_specification]
 #[verifier::accept_recursive_types(V)]
 #[verifier::ext_equal]
+#[cfg(not(verus_verify_core))]
 pub struct ExOption<V>(core::option::Option<V>);
 
 #[verifier::external_type_specification]
 #[verifier::accept_recursive_types(T)]
 #[verifier::reject_recursive_types_in_ground_variants(E)]
+#[cfg(not(verus_verify_core))]
 pub struct ExResult<T, E>(core::result::Result<T, E>);
 
 // I don't really expect this to be particularly useful;
