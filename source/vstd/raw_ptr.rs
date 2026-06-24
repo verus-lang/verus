@@ -1075,8 +1075,6 @@ impl<T> PointsTo<[T]> {
                 #![trigger self.mem_contents_seq()[i as int]]
                 0 <= i < self.mem_contents_seq().len() ==> s[i].mem_contents()
                     == self.mem_contents_seq()[i as int],
-            // Do I need to specify the ptrs? Or does this follow from the invariant?
-            // && s.pt_seq()[i].ptr() == self.ptr()
             s.ptr() == self.ptr() as *mut T,
             s.len() == self.mem_contents_seq().len(),
             s.wf(),
@@ -1098,8 +1096,6 @@ impl<T> PointsTo<[T]> {
                 #![trigger self.mem_contents_seq()[i as int]]
                 0 <= i < self.mem_contents_seq().len() ==> s[i].mem_contents()
                     == self.mem_contents_seq()[i as int],
-            // Do I need to specify the ptrs? Or does this follow from the invariant?
-            // && s.pt_seq()[i].ptr() == self.ptr()
             s.ptr() == self.ptr() as *mut T,
             s.len() == self.mem_contents_seq().len(),
             s.wf(),
@@ -1129,8 +1125,6 @@ impl<T> PointsTo<[T]> {
                 0 <= i < old(self).mem_contents_seq().len() ==> s[i].mem_contents() == old(
                     self,
                 ).mem_contents_seq()[i as int],
-            // Do I need to specify the ptrs? Or does this follow from the invariant?
-            // && s.pt_seq()[i].ptr() == self.ptr()
             s.ptr() == old(self).ptr() as *mut T,
             s.len() == old(self).mem_contents_seq().len(),
             s.wf(),
@@ -1440,8 +1434,6 @@ impl<T> PointsToUnaligned<[T]> {
                 #![trigger self.mem_contents_seq()[i as int]]
                 0 <= i < self.mem_contents_seq().len() ==> s[i].mem_contents()
                     == self.mem_contents_seq()[i as int],
-            // Do I need to specify the ptrs? Or does this follow from the invariant?
-            // && s.pt_seq()[i].ptr() == self.ptr()
             s.ptr() == self.ptr() as *mut T,
             s.len() == self.mem_contents_seq().len(),
             s.wf(),
@@ -1457,8 +1449,6 @@ impl<T> PointsToUnaligned<[T]> {
                 #![trigger self.mem_contents_seq()[i as int]]
                 0 <= i < self.mem_contents_seq().len() ==> s[i].mem_contents()
                     == self.mem_contents_seq()[i as int],
-            // Do I need to specify the ptrs? Or does this follow from the invariant?
-            // && s.pt_seq()[i].ptr() == self.ptr()
             s.ptr() == self.ptr() as *mut T,
             s.len() == self.mem_contents_seq().len(),
             s.wf(),
@@ -1482,8 +1472,6 @@ impl<T> PointsToUnaligned<[T]> {
                 0 <= i < old(self).mem_contents_seq().len() ==> s[i].mem_contents() == old(
                     self,
                 ).mem_contents_seq()[i as int],
-            // Do I need to specify the ptrs? Or does this follow from the invariant?
-            // && s.pt_seq()[i].ptr() == self.ptr()
             s.ptr() == old(self).ptr() as *mut T,
             s.len() == old(self).mem_contents_seq().len(),
             s.wf(),
