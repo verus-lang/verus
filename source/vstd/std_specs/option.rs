@@ -118,6 +118,7 @@ impl<T> OptionAdditionalFns<T> for Option<T> {
     }
 
     axiom fn tracked_mut_borrow(tracked &mut self) -> (tracked t: &mut T);
+
     // Proof version fails because a mut ref binding in a pattern is only allowed in exec mode
     // proof fn tracked_mut_borrow(tracked &mut self) -> (tracked t: &mut T) {
     //     match self {
@@ -125,7 +126,6 @@ impl<T> OptionAdditionalFns<T> for Option<T> {
     //         Option::None => proof_from_false(),
     //     }
     // }
-
     /// Similar to `Option::take`
     #[verifier::tracked_take_option_primitive]
     axiom fn tracked_take(tracked &mut self) -> (tracked t: T);
