@@ -1675,7 +1675,7 @@ impl<T> SeqPointsTo<T> {
     /// Returns a `tracked` mutable reference to the underlying `Seq<PointsTo<T>>`,
     /// given `tracked &mut self`. `self.ptr` will remain unchanged.
     ///
-    /// Provided that this reference is not used to change the sequence length
+    /// Provided that this mutable reference is not used to change the sequence length
     /// or any of the `PointsTo<T>` pointers, the invariant will be preserved.
     pub proof fn tracked_perm_seq_mut(tracked &mut self) -> (tracked ret: &mut Seq<PointsTo<T>>)
         requires
@@ -1684,6 +1684,7 @@ impl<T> SeqPointsTo<T> {
             *ret == old(self).seq_perm(),
             final(self).seq_perm() == *final(ret),
             old(self).ptr() == final(self).ptr(),
+            // Criteria necessary for re-establishing invariants
             (old(self).len() == final(self).len() && forall|i|
                 #![auto]
                 0 <= i < final(self).len() ==> final(self)[i].ptr() == old(self)[i].ptr())
@@ -1692,7 +1693,7 @@ impl<T> SeqPointsTo<T> {
         &mut self.perm
     }
 
-    /// Sanity check for the criteria for ensuring that the final value of `&mut self` is still well-founded:
+    /// Sanity check for the criteria for ensuring that the final value of `&mut self` is still well-formed:
     ///
     /// * All pointers remain the same.
     /// * The length remains the same.
