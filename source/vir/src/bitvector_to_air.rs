@@ -471,6 +471,9 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
             UnaryOp::Length(_) => {
                 panic!("ArrayLength operation not allowed in bitvector query")
             }
+            UnaryOp::LoopIsolationBoundary => {
+                panic!("LoopIsolationBoundary operation not allowed in bitvector query")
+            }
         },
         ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), exp) => {
             bv_exp_to_expr(ctx, state, exp)

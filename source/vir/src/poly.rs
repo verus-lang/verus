@@ -600,6 +600,9 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 UnaryOp::MutRefFinal(_) => {
                     panic!("internal error: MustBeFinalized in SST")
                 }
+                UnaryOp::LoopIsolationBoundary => {
+                    panic!("internal error: LoopIsolationBoundary in SST")
+                }
             }
         }
         ExpX::UnaryOpr(op, e1) => {
@@ -1034,6 +1037,13 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
         }
         StmX::Air(_) => stm.clone(),
         StmX::Block(stms) => mk_stm(StmX::Block(visit_stms(ctx, state, stms))),
+        StmX::LoopIsolationBoundary { pre_stms, loop_stm, pre_modified_params } => {
+            mk_stm(StmX::LoopIsolationBoundary {
+                pre_stms: visit_stms(ctx, state, pre_stms),
+                loop_stm: visit_stm(ctx, state, loop_stm),
+                pre_modified_params: pre_modified_params.clone(),
+            })
+        }
     }
 }
 

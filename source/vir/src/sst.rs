@@ -257,6 +257,15 @@ pub enum StmX {
     Air(Arc<String>),
     /// Sequential composition of statements
     Block(Stms),
+    /// Wraps a Loop with statements whose effects should be visible from the inner query
+    LoopIsolationBoundary {
+        pre_stms: Stms,
+        /// This must be a Loop with loop_isolation=true
+        loop_stm: Stm,
+        /// Same as Loop's `pre_modified_params` but only vars modified
+        /// before this LoopIsolationBoundary statement evaluates.
+        pre_modified_params: Option<Arc<crate::sst_vars::HavocSet>>,
+    },
 }
 
 // poly.rs uses the specific kind of each local to decide on a poly/native type for the local

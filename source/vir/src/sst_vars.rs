@@ -87,6 +87,7 @@ pub(crate) fn stm_get_mutations_shallow(stm: &Stm, m: &mut HashMap<VarIdent, Spa
         | StmX::BreakOrContinue { .. }
         | StmX::If(..)
         | StmX::Loop { .. }
+        | StmX::LoopIsolationBoundary { .. }
         | StmX::OpenInvariant(..)
         | StmX::ClosureInner { .. }
         | StmX::Air(..)
@@ -95,7 +96,7 @@ pub(crate) fn stm_get_mutations_shallow(stm: &Stm, m: &mut HashMap<VarIdent, Spa
 }
 
 /// If there's an assignment associated with this Stm (shallowly), return it.
-/// There can be at most one (in new-mut-ref, they no longer appear in calls)
+/// There can be at most one (in new-mut-ref, they no longer appear in call arguments)
 pub(crate) fn stm_get_assignment_shallow(stm: &Stm) -> Option<&Exp> {
     match &stm.x {
         StmX::Call { dest: Some(dest), .. } | StmX::Assign { lhs: dest, .. } => {
@@ -115,6 +116,7 @@ pub(crate) fn stm_get_assignment_shallow(stm: &Stm) -> Option<&Exp> {
         | StmX::BreakOrContinue { .. }
         | StmX::If(..)
         | StmX::Loop { .. }
+        | StmX::LoopIsolationBoundary { .. }
         | StmX::OpenInvariant(..)
         | StmX::ClosureInner { .. }
         | StmX::Air(..)
@@ -439,6 +441,18 @@ fn stm_assign(
             *assigned = pre_assigned;
             Spanned::new(stm.span.clone(), StmX::Block(stms))
         }
+        StmX::LoopIsolationBoundary { pre_stms, loop_stm, pre_modified_params } => {
+            let pre_stms = stms_assign(assign_map, declared, assigned, modified, pre_stms);
+            let loop_stm = stm_assign(assign_map, declared, assigned, modified, loop_stm);
+            Spanned::new(
+                stm.span.clone(),
+                StmX::LoopIsolationBoundary {
+                    pre_stms,
+                    loop_stm,
+                    pre_modified_params: pre_modified_params.clone(),
+                },
+            )
+        }
     };
 
     assign_map.insert(Arc::as_ptr(&result), to_ident_set(assigned));
@@ -566,7 +580,30 @@ fn stm_mutations(param_typs: &[(VarIdent, Typ)], mutations: &mut HavocSet, stm: 
             }
             stm.new_x(StmX::Block(Arc::new(v)))
         }
+        StmX::LoopIsolationBoundary { pre_stms, loop_stm, pre_modified_params } => {
+            assert!(pre_modified_params.is_none());
+            let pre_modified_params = mutations.filter_by_params(param_typs);
+
+            let pre_stms = stms_mutations(param_typs, mutations, pre_stms);
+            let loop_stm = stm_mutations(param_typs, mutations, loop_stm);
+            Spanned::new(
+                stm.span.clone(),
+                StmX::LoopIsolationBoundary {
+                    pre_stms,
+                    loop_stm,
+                    pre_modified_params: Some(Arc::new(pre_modified_params)),
+                },
+            )
+        }
     }
+}
+
+fn stms_mutations(param_typs: &[(VarIdent, Typ)], mutations: &mut HavocSet, stms: &Stms) -> Stms {
+    let mut v = vec![];
+    for stm in stms.iter() {
+        v.push(stm_mutations(param_typs, mutations, stm));
+    }
+    Arc::new(v)
 }
 
 /// Represents a set of locations that need to be havoc'ed
