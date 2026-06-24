@@ -196,8 +196,8 @@ pub fn plan_cargo_run(cfg: VerusConfig) -> Result<CargoRunPlan> {
             if !is_compatible {
                 return Err(anyhow::format_err!(
                     "Components are incompatible:\n\
-  verus = {verus_version}\n
-  vstd = {used_vstd:?}\n"
+                    * verus = {verus_version}\n\
+                    * vstd = {used_vstd:?}\n"
                 ));
             }
         }
@@ -525,6 +525,31 @@ fn get_verus_driver_path() -> PathBuf {
     path
 }
 
+/// Run `verus --version` and capture its output.
 fn get_verus_driver_version() -> String {
-    todo!()
+    let command = get_verus_driver_path();
+    let output = Command::new(&command)
+        .arg("--version")
+        .output()
+        .unwrap_or_else(|err| panic!("Failed to run `{}`: {err}", command.display()));
+
+    assert!(
+        output.status.success(),
+        "`{} --version` failed with status {}.\nstdout:\n{}\nstderr:\n{}",
+        command.display(),
+        output.status,
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
+
+    let stdout = String::from_utf8(output.stdout).unwrap_or_else(|err| {
+        panic!("`{} --version` produced non-UTF-8 stdout: {err}", command.display())
+    });
+
+    stdout
+        .lines()
+        .find_map(|line| line.strip_prefix("  Version: ").map(ToOwned::to_owned))
+        .unwrap_or_else(|| {
+            panic!("Failed to parse version from `{}` output:\n{}", command.display(), stdout)
+        })
 }
