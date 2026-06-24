@@ -1089,6 +1089,60 @@ impl<T> PointsTo<[T]> {
         use_type_invariant(&self);
         self.inner.into_seq_pt()
     }
+
+    /// Same as `into_seq_pt`, but for `&PointsTo<[T]>`.
+    pub proof fn into_seq_pt_shared(tracked &self) -> (tracked s: &SeqPointsTo<T>)
+        ensures
+            forall|i|
+                #![trigger s[i].mem_contents()]
+                #![trigger self.mem_contents_seq()[i as int]]
+                0 <= i < self.mem_contents_seq().len() ==> s[i].mem_contents()
+                    == self.mem_contents_seq()[i as int],
+            // Do I need to specify the ptrs? Or does this follow from the invariant?
+            // && s.pt_seq()[i].ptr() == self.ptr()
+            s.ptr() == self.ptr() as *mut T,
+            s.len() == self.mem_contents_seq().len(),
+            s.wf(),
+    {
+        broadcast use layout_of_sized;
+        broadcast use layout_of_slices;
+
+        let ghost v: &[T] = arbitrary();
+        assert(spec_align_of_val::<[T]>(v) == align_of::<T>());
+        use_type_invariant(self);
+        self.inner.into_seq_pt_shared()
+    }
+
+    /// Same as `into_seq_pt`, but for `&mut PointsTo<[T]>`.
+    pub proof fn into_seq_pt_mut(tracked &mut self) -> (tracked s: &mut SeqPointsTo<T>)
+        ensures
+            forall|i|
+                #![trigger final(s)[i].mem_contents()]
+                #![trigger final(self).mem_contents_seq()[i as int]]
+                0 <= i < old(self).mem_contents_seq().len() ==> final(s)[i].mem_contents()
+                    == final(self).mem_contents_seq()[i as int],
+            old(self).ptr() == final(self).ptr(),
+            old(self).mem_contents_seq().len() == final(self).mem_contents_seq().len(),
+            forall|i|
+                #![trigger s[i].mem_contents()]
+                #![trigger old(self).mem_contents_seq()[i as int]]
+                0 <= i < old(self).mem_contents_seq().len() ==> s[i].mem_contents() == old(
+                    self,
+                ).mem_contents_seq()[i as int],
+            // Do I need to specify the ptrs? Or does this follow from the invariant?
+            // && s.pt_seq()[i].ptr() == self.ptr()
+            s.ptr() == old(self).ptr() as *mut T,
+            s.len() == old(self).mem_contents_seq().len(),
+            s.wf(),
+    {
+        broadcast use layout_of_sized;
+        broadcast use layout_of_slices;
+
+        let ghost v: &[T] = arbitrary();
+        assert(spec_align_of_val::<[T]>(v) == align_of::<T>());
+        use_type_invariant(&*self);
+        self.inner.into_seq_pt_mut()
+    }
 }
 
 // PointsToUnaligned<[T]>: the unaligned slice permission that PointsTo<[T]> delegates to.
@@ -1392,6 +1446,48 @@ impl<T> PointsToUnaligned<[T]> {
             s.len() == self.mem_contents_seq().len(),
             s.wf(),
     ;
+
+    /// Same as `into_seq_pt`, but for `&PointsToUnaligned<[T]>`.
+    pub axiom fn into_seq_pt_shared(tracked &self) -> (tracked s: &SeqPointsTo<T>)
+        requires
+            self.ptr()@.addr as int % align_of::<T>() as int == 0,
+        ensures
+            forall|i|
+                #![trigger s[i].mem_contents()]
+                #![trigger self.mem_contents_seq()[i as int]]
+                0 <= i < self.mem_contents_seq().len() ==> s[i].mem_contents()
+                    == self.mem_contents_seq()[i as int],
+            // Do I need to specify the ptrs? Or does this follow from the invariant?
+            // && s.pt_seq()[i].ptr() == self.ptr()
+            s.ptr() == self.ptr() as *mut T,
+            s.len() == self.mem_contents_seq().len(),
+            s.wf(),
+    ;
+
+    /// Same as `into_seq_pt`, but for `&mut PointsToUnaligned<[T]>`.
+    pub axiom fn into_seq_pt_mut(tracked &mut self) -> (tracked s: &mut SeqPointsTo<T>)
+        requires
+            self.ptr()@.addr as int % align_of::<T>() as int == 0,
+        ensures
+            forall|i|
+                #![trigger final(s)[i].mem_contents()]
+                #![trigger final(self).mem_contents_seq()[i as int]]
+                0 <= i < old(self).mem_contents_seq().len() ==> final(s)[i].mem_contents()
+                    == final(self).mem_contents_seq()[i as int],
+            old(self).ptr() == final(self).ptr(),
+            old(self).mem_contents_seq().len() == final(self).mem_contents_seq().len(),
+            forall|i|
+                #![trigger s[i].mem_contents()]
+                #![trigger old(self).mem_contents_seq()[i as int]]
+                0 <= i < old(self).mem_contents_seq().len() ==> s[i].mem_contents() == old(
+                    self,
+                ).mem_contents_seq()[i as int],
+            // Do I need to specify the ptrs? Or does this follow from the invariant?
+            // && s.pt_seq()[i].ptr() == self.ptr()
+            s.ptr() == old(self).ptr() as *mut T,
+            s.len() == old(self).mem_contents_seq().len(),
+            s.wf(),
+    ;
 }
 
 impl PointsTo<str> {
@@ -1577,7 +1673,7 @@ impl<T> SeqPointsTo<T> {
         Seq::new(self.len(), |i| self[i as nat].value())
     }
 
-    /// Returns a `tracked` reference to the underlying `Seq<PointsTo<T>>`, 
+    /// Returns a `tracked` reference to the underlying `Seq<PointsTo<T>>`,
     /// given `tracked &self`.
     pub proof fn tracked_perm_seq(tracked &self) -> (tracked ret: &Seq<PointsTo<T>>)
         requires
@@ -1588,10 +1684,10 @@ impl<T> SeqPointsTo<T> {
         &self.perm
     }
 
-    /// Returns a `tracked` mutable reference to the underlying `Seq<PointsTo<T>>`, 
+    /// Returns a `tracked` mutable reference to the underlying `Seq<PointsTo<T>>`,
     /// given `tracked &mut self`. `self.ptr` will remain unchanged.
-    /// 
-    /// Provided that this reference is not used to change the sequence length 
+    ///
+    /// Provided that this reference is not used to change the sequence length
     /// or any of the `PointsTo<T>` pointers, the invariant will be preserved.
     pub proof fn tracked_perm_seq_mut(tracked &mut self) -> (tracked ret: &mut Seq<PointsTo<T>>)
         requires
@@ -1609,10 +1705,10 @@ impl<T> SeqPointsTo<T> {
     }
 
     /// Sanity check for the criteria for ensuring that the final value of `&mut self` is still well-founded:
-    /// 
+    ///
     /// * All pointers remain the same.
     /// * The length remains the same.
-    /// 
+    ///
     /// Note that we _are_ allowed to change `self.mem_contents()` without affecting the invariant's validity.
     pub broadcast proof fn constants(&mut self)
         requires
