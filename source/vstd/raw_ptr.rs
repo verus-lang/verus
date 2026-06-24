@@ -1075,8 +1075,6 @@ impl<T> PointsTo<[T]> {
                 #![trigger self.mem_contents_seq()[i as int]]
                 0 <= i < self.mem_contents_seq().len() ==> s[i].mem_contents()
                     == self.mem_contents_seq()[i as int],
-            // Do I need to specify the ptrs? Or does this follow from the invariant?
-            // && s.pt_seq()[i].ptr() == self.ptr()
             s.ptr() == self.ptr() as *mut T,
             s.len() == self.mem_contents_seq().len(),
             s.wf(),
@@ -1088,6 +1086,56 @@ impl<T> PointsTo<[T]> {
         assert(spec_align_of_val::<[T]>(v) == align_of::<T>());
         use_type_invariant(&self);
         self.inner.into_seq_pt()
+    }
+
+    /// Same as `into_seq_pt`, but for `&PointsTo<[T]>`.
+    pub proof fn into_seq_pt_shared(tracked &self) -> (tracked s: &SeqPointsTo<T>)
+        ensures
+            forall|i|
+                #![trigger s[i].mem_contents()]
+                #![trigger self.mem_contents_seq()[i as int]]
+                0 <= i < self.mem_contents_seq().len() ==> s[i].mem_contents()
+                    == self.mem_contents_seq()[i as int],
+            s.ptr() == self.ptr() as *mut T,
+            s.len() == self.mem_contents_seq().len(),
+            s.wf(),
+    {
+        broadcast use layout_of_sized;
+        broadcast use layout_of_slices;
+
+        let ghost v: &[T] = arbitrary();
+        assert(spec_align_of_val::<[T]>(v) == align_of::<T>());
+        use_type_invariant(self);
+        self.inner.into_seq_pt_shared()
+    }
+
+    /// Same as `into_seq_pt`, but for `&mut PointsTo<[T]>`.
+    pub proof fn into_seq_pt_mut(tracked &mut self) -> (tracked s: &mut SeqPointsTo<T>)
+        ensures
+            forall|i|
+                #![trigger final(s)[i].mem_contents()]
+                #![trigger final(self).mem_contents_seq()[i as int]]
+                0 <= i < old(self).mem_contents_seq().len() ==> final(s)[i].mem_contents()
+                    == final(self).mem_contents_seq()[i as int],
+            old(self).ptr() == final(self).ptr(),
+            old(self).mem_contents_seq().len() == final(self).mem_contents_seq().len(),
+            forall|i|
+                #![trigger s[i].mem_contents()]
+                #![trigger old(self).mem_contents_seq()[i as int]]
+                0 <= i < old(self).mem_contents_seq().len() ==> s[i].mem_contents() == old(
+                    self,
+                ).mem_contents_seq()[i as int],
+            s.ptr() == old(self).ptr() as *mut T,
+            s.len() == old(self).mem_contents_seq().len(),
+            s.wf(),
+    {
+        broadcast use layout_of_sized;
+        broadcast use layout_of_slices;
+
+        let ghost v: &[T] = arbitrary();
+        assert(spec_align_of_val::<[T]>(v) == align_of::<T>());
+        use_type_invariant(&*self);
+        self.inner.into_seq_pt_mut()
     }
 }
 
@@ -1386,10 +1434,46 @@ impl<T> PointsToUnaligned<[T]> {
                 #![trigger self.mem_contents_seq()[i as int]]
                 0 <= i < self.mem_contents_seq().len() ==> s[i].mem_contents()
                     == self.mem_contents_seq()[i as int],
-            // Do I need to specify the ptrs? Or does this follow from the invariant?
-            // && s.pt_seq()[i].ptr() == self.ptr()
             s.ptr() == self.ptr() as *mut T,
             s.len() == self.mem_contents_seq().len(),
+            s.wf(),
+    ;
+
+    /// Same as `into_seq_pt`, but for `&PointsToUnaligned<[T]>`.
+    pub axiom fn into_seq_pt_shared(tracked &self) -> (tracked s: &SeqPointsTo<T>)
+        requires
+            self.ptr()@.addr as int % align_of::<T>() as int == 0,
+        ensures
+            forall|i|
+                #![trigger s[i].mem_contents()]
+                #![trigger self.mem_contents_seq()[i as int]]
+                0 <= i < self.mem_contents_seq().len() ==> s[i].mem_contents()
+                    == self.mem_contents_seq()[i as int],
+            s.ptr() == self.ptr() as *mut T,
+            s.len() == self.mem_contents_seq().len(),
+            s.wf(),
+    ;
+
+    /// Same as `into_seq_pt`, but for `&mut PointsToUnaligned<[T]>`.
+    pub axiom fn into_seq_pt_mut(tracked &mut self) -> (tracked s: &mut SeqPointsTo<T>)
+        requires
+            self.ptr()@.addr as int % align_of::<T>() as int == 0,
+        ensures
+            forall|i|
+                #![trigger final(s)[i].mem_contents()]
+                #![trigger final(self).mem_contents_seq()[i as int]]
+                0 <= i < old(self).mem_contents_seq().len() ==> final(s)[i].mem_contents()
+                    == final(self).mem_contents_seq()[i as int],
+            old(self).ptr() == final(self).ptr(),
+            old(self).mem_contents_seq().len() == final(self).mem_contents_seq().len(),
+            forall|i|
+                #![trigger s[i].mem_contents()]
+                #![trigger old(self).mem_contents_seq()[i as int]]
+                0 <= i < old(self).mem_contents_seq().len() ==> s[i].mem_contents() == old(
+                    self,
+                ).mem_contents_seq()[i as int],
+            s.ptr() == old(self).ptr() as *mut T,
+            s.len() == old(self).mem_contents_seq().len(),
             s.wf(),
     ;
 }
