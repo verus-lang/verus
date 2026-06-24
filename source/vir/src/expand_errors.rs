@@ -99,10 +99,14 @@ pub fn get_expansion_ctx(stm: &Stm, assert_id: &AssertId) -> ExpansionContext {
 
 fn get_fuel_at_id(stm: &Stm, a_id: &AssertId, fuels: &mut HashMap<Fun, u32>) -> bool {
     match &stm.x {
-        StmX::Call { assert_id, .. }
-        | StmX::Assert(assert_id, ..)
-        | StmX::Return { assert_id, .. } => *assert_id == Some(a_id.clone()),
-        StmX::AssertBitVector { requires: _, ensures: _ }
+        StmX::Assert(assert_id, ..) | StmX::Return { assert_id, .. } => {
+            assert_id.as_ref() == Some(a_id)
+        }
+        StmX::Call { assert_id, body, .. } => {
+            assert_id.as_ref() == Some(a_id)
+                || body.as_ref().is_some_and(|stm| get_fuel_at_id(stm, a_id, fuels))
+        }
+        StmX::AssertBitVector { .. }
         | StmX::AssertCompute(..)
         | StmX::Assume(..)
         | StmX::Assign { .. }

@@ -26,6 +26,12 @@ Initially, the value of `au.resolves()` is unknown;
 when the atomic update is resolved by the `try_open_atomic_update!` macro, the value of `au.resolves()` becomes `true`.
 The user must then prove that `au.resolves()` when the function returns.
 
+Besides `au.resolves()`, there are two more prophecies we set when the atomic update is committed: `au.input()` and `au.ouput()`.
+These store the final value of `ax` and `ay` respectively.
+We use them internally to give the function postcondition access to the input and output resources of the atomic update.
+
+For more complicate data structures where the resolution of the atomic update is non-trivial (such as those that [exhibit "helping"](logatom.html#notes-on-helping)), it may be necessary to assert the value of these prophecy variables manually after the AU has been committed.
+
 ## Invariant masks
 
 To open the atomic update, its outer mask must be valid in the current scope, that is, we must be able to open every invariant namespace in the set `au.outer_mask()` at the current program point.
@@ -50,6 +56,9 @@ We can confirm that the atomic update has been resolved successfully using the `
 
 In this example, we use the abort case of the atomic update to gain temporary access of the permission object without modifying it.
 This allows us to perform the initial `load`, as well as all failed `compare_exchange_weak` operations, as they require access to the permission to be executed.
-
 For the initial `load`, we open the atomic update and abort it unconditionally.
 For the `compare_exchange_weak` on the other hand, we check if the operation was successful to determine whether the atomic update should be committed or aborted.
+
+We note that, for Verus to accept this function definition, we need to set two verifier attributes on the function or in the module:
+- `#[verifier::exec_allows_no_decreases_clause]` allows us to use unbounded loops in exec-mode without proving termination via a `decreases` clause, and
+- `#[verifier::loop_isolation(false)]` gives us slightly better proof automation around the loop, allowing us to simplify the loop invariant quite a bit.

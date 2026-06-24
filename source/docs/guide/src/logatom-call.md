@@ -48,6 +48,9 @@ Inversely, if the inner mask is not a subset of the outer mask, the function can
 
 ## Running examples
 
+In this section, we will see two different clients for each of our two example functions, a *synchronous* client, which has full ownership of the permission object, and an *asynchronous* client, which shares the permission object with multiple concurrent processes using an atomic invariant.
+We note that we have [disabled loop isolation](./reference-attributes.html#verifierloop_isolation) for all example clients below.
+
 This is how we can call our two example functions *synchronously*, meaning we have full ownership of the permission object:
 
 ```rs

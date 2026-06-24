@@ -50,6 +50,27 @@ Following the Iris implementation of logical atomicity, we abstract the LP using
 The atomic specification declares what the atomic update looks like for a particular function.
 This object is constructed by the client/caller, and it is destructed (or "opened") by the library/callee.
 
+### The abort case
+
+In some cases, it is not enough to open the AU just once at the LP, we also need a mechanism to "peek into" the AU without consuming it.
+In our `increment` function, for example, we need some way to reason about the initial load and the failed compare exchange operations.
+To do so, we need some way to gain temporary read-only access to the resources in the AU, but opening it would consume the AU, making it impossible to open it again at the LP.
+
+To get around this, our atomic update has an abort case, meaning when we open the atomic update, we have the choice to either "commit" it and prove the atomic postcondition at the LP, or to "abort" it, in which case we re-establish the atomic precondition and get back the AU, allowing us to open it again later.
+We will see how this works in detail throughout the rest of this chapter.
+
+### Notes on helping
+
+One important concept in the design and implementation of lock-free and wait-free algorithms is "helping", i.e. where one process starts a task, gets interrupted by another process, and the interrupting process "helps" to finish the incomplete task.
+This kind of interaction can be difficult to reason about, because it allows the linearization point of one function to be invoked on a *different concurrent process* entirely.
+
+Our implementation of logical atomicity yields a powerful proof technique for these cases.
+In particular, we can "send" an atomic update to a different process by placing it into an [`AtomicInvariant`](https://verus-lang.github.io/verus/verusdoc/vstd/invariant/struct.AtomicInvariant.html) on one thread, and taking it back out on another.
+We can use the same invariant to communicate back to the first thread that the atomic update has been committed successfully.
+
+For a simple example that demonstrates the concept of helping, `examples/helping.rs` implements a simple boolean flag with a logically atomic `flip` method.
+When two concurrent processes call `flip` at the same time, we perform a handshake that *logically* flips the boolean twice, while leaving the underlying physical boolean unchanged.
+
 ## Previous & related work
 
 Formalizations of logical atomicity come in two flavors, which are commonly referred to as "HOCAP-style" and "TaDA-style" logical atomicity.

@@ -72,8 +72,8 @@ For the specification above, we generate (roughly) the following:
 struct PredType { px: Ghost<PX> }
 
 impl UpdatePredicate<AX, AY> for PredType {
-    open spec fn req(self, x: X)       -> bool { atomic_pre  }
-    open spec fn ens(self, x: X, y: Y) -> bool { atomic_post }
+    open spec fn req(self, ax: AX)         -> bool { atomic_pre  }
+    open spec fn ens(self, ax: AX, ay: AY) -> bool { atomic_post }
 
     open spec fn outer_mask(self) -> ISet<int> { [...] }
     open spec fn inner_mask(self) -> ISet<int> { [...] }
@@ -84,10 +84,14 @@ impl PredType {
 }
 ```
 
+We store the function arguments in the predicate type to allow the atomic pre- and postcondition to depend on them.
+If the atomic update is moved across function boundaries,
+or around loops (especially when [loop isolation is enabled](./reference-attributes.html#verifierloop_isolation)),
+it is sometimes necessary to reassert the value of the function arguments.
+This can be done with `au.pred().args(...)`, using the `PredType::args` predicate defined above.
+
 It is currently not possible to use a custom or pre-existing predicate type to define a logically atomic function.
 This also means it is not useful to implement the `UpdatePredicate` trait by hand.
-
-We store the function arguments in the predicate type to allow the atomic pre- and postcondition to depend on them.
 
 ## Running examples
 
