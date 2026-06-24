@@ -2,6 +2,7 @@ use super::super::prelude::*;
 use super::iter::{FromIteratorSpecImpl, IteratorSpec};
 use verus_builtin::*;
 
+#[cfg(not(verus_verify_core))]
 use super::core::IndexSpec;
 #[cfg(not(verus_verify_core))]
 use super::slice::SliceIndexSpec;
@@ -333,6 +334,7 @@ impl<T, A: Allocator> super::core::TrustedSpecSealed for Vec<T, A> {
 
 }
 
+#[cfg(not(verus_verify_core))]
 impl<T, A: Allocator> super::core::IndexSetTrustedSpec<usize> for Vec<T, A> {
     open spec fn spec_index_set_requires(&self, index: usize) -> bool {
         0 <= index < self.len()

@@ -1,10 +1,14 @@
 use super::super::prelude::*;
 use super::super::utf8::is_char_boundary;
+#[cfg(verus_verify_core)]
+use super::core::TrustedSpecSealed;
+#[cfg(not(verus_verify_core))]
 use super::core::{IndexSetTrustedSpec, IndexSpec, TrustedSpecSealed};
 use super::iter::IteratorSpec;
 
 #[cfg(not(verus_verify_core))]
 use super::super::string::StringSliceAdditionalSpecFns;
+#[cfg(not(verus_verify_core))]
 use core::ops::Index;
 use core::slice::{Iter, SliceIndex};
 
