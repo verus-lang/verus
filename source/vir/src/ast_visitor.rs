@@ -23,6 +23,7 @@ pub(crate) trait Scoper {
 pub(crate) struct NoScoper;
 impl Scoper for NoScoper {}
 
+#[derive(Debug)]
 pub struct ScopeEntry {
     #[allow(dead_code)]
     pub typ: Typ,

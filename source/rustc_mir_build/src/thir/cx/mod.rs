@@ -27,12 +27,15 @@ pub(crate) fn thir_body<'tcx>(
 
     crate::verus::check_this_query_isnt_running_early(owner_def);
 
+    // println!("erase body? {:#?}", crate::verus::erase_body(&mut cx, owner_def));
+
     let expr = if crate::verus::erase_body(&mut cx, owner_def) {
         crate::verus::erase_tree(&mut cx, body.value, crate::verus::TreeErase::IncludeBasicChecks)
     } else {
         cx.mirror_expr(body.value)
     };
 
+    // println!("expr erase_body: {:#?}", expr);
     //dbg!(cx.thir.exprs.iter().enumerate().collect::<Vec<_>>());
     //dbg!(cx.thir.blocks.iter().enumerate().collect::<Vec<_>>());
     //dbg!(cx.thir.stmts.iter().enumerate().collect::<Vec<_>>());
@@ -60,6 +63,8 @@ pub(crate) fn thir_body<'tcx>(
 
     // Note: this call requires cx.thir.params to be initialized
     let expr = crate::verus_time_travel_prevention::body_post(&mut cx, body.value, expr);
+
+    // println!("expr body_post: {:#?}", expr);
 
     cx.verus_ctxt.finish();
 

@@ -59,6 +59,8 @@ impl<'tcx> ThirBuildCx<'tcx> {
 
         let mut expr = self.make_mirror_unadjusted(hir_expr);
 
+        // println!("mirrored expr: {:#?}", expr);
+
         trace!(?expr.ty);
 
         // Now apply adjustments, if any.
@@ -83,6 +85,8 @@ impl<'tcx> ThirBuildCx<'tcx> {
                 hir_id: hir_expr.hir_id,
             },
         };
+
+        // println!("enrased expr: {:#?}", expr);
 
         // OK, all done!
         let expr_id = self.thir.exprs.push(expr);

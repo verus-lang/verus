@@ -174,7 +174,7 @@ impl<'tcx> ContextX<'tcx> {
         param_env_src: DefId,
         span: rustc_span::Span,
         ty: &rustc_middle::ty::Ty<'tcx>,
-        assume_specification_opaque_type_map: Option<&HashMap<Path, Path>>,
+        proxy_opaque_type_map: Option<&HashMap<Path, Path>>,
     ) -> Result<vir::ast::Typ, VirErr> {
         crate::rust_to_vir_base::mid_ty_to_vir(
             self.tcx,
@@ -183,7 +183,7 @@ impl<'tcx> ContextX<'tcx> {
             param_env_src,
             span,
             ty,
-            assume_specification_opaque_type_map,
+            proxy_opaque_type_map,
         )
     }
 

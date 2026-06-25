@@ -33,7 +33,7 @@ fn VERUS_UNERASED_PROXY__X() -> u64 {
 }
 
 #[verifier::external]
-#[verus::internal(has_unerased_proxy)]
+#[verus::internal(uses_unerased_proxy)]
 const X: u64 = { 0 };
 ```
 
@@ -66,7 +66,9 @@ const fn x(t: u64): u64 = {
 */
 
 use crate::EraseGhost;
-use crate::syntax::{into_spans, is_external, mk_verifier_attr, mk_verus_attr};
+use crate::syntax::{
+    into_spans, is_assume_specification, is_external, mk_verifier_attr, mk_verus_attr,
+};
 use quote::{quote, quote_spanned};
 use verus_syn::punctuated::Punctuated;
 use verus_syn::spanned::Spanned;
@@ -134,7 +136,12 @@ impl crate::syntax::Visitor {
         match item {
             Item::Const(item_const) => !is_external(&item_const.attrs),
             Item::Static(item_static) => !is_external(&item_static.attrs),
-            Item::Fn(item_fn) => item_fn.sig.constness.is_some() && !is_external(&item_fn.attrs),
+            Item::Fn(item_fn) => {
+                (item_fn.sig.constness.is_some() && !is_external(&item_fn.attrs))
+                    || (item_fn.sig.asyncness.is_some()
+                        && !is_external(&item_fn.attrs)
+                        && !is_assume_specification(&item_fn.attrs))
+            }
             _ => false,
         }
     }
@@ -443,6 +450,10 @@ impl crate::syntax::Visitor {
                     item_fn.sig.span(),
                 );
                 item_fn.attrs.push(mk_verus_attr(item_fn.span(), quote! { unerased_proxy }));
+
+                if item_fn.sig.asyncness.is_some() {
+                    item_fn.attrs.push(mk_verus_attr(item_fn.span(), quote! { encoded_async_fn }));
+                }
             }
             Item::Verbatim(_) => {
                 // in case item_translate_const_to_0_arg_fn returns compile_error

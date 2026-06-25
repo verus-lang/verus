@@ -11,6 +11,10 @@ use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
 impl PathX {
+    pub fn first_segment(&self) -> Ident {
+        self.segments[0].clone()
+    }
+
     pub fn last_segment(&self) -> Ident {
         self.segments[self.segments.len() - 1].clone()
     }
@@ -24,6 +28,12 @@ impl PathX {
     pub fn push_segment(&self, ident: Ident) -> Path {
         let mut segments = (*self.segments).clone();
         segments.push(ident);
+        Arc::new(PathX { krate: self.krate.clone(), segments: Arc::new(segments) })
+    }
+
+    pub fn replace_first(&self, ident: Ident) -> Path {
+        let mut segments = (*self.segments).clone();
+        segments[0] = ident;
         Arc::new(PathX { krate: self.krate.clone(), segments: Arc::new(segments) })
     }
 
