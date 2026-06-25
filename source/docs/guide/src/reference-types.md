@@ -1,8 +1,8 @@
 # Mathematical interpretations of types
 
 To define the meaning of any given type (whether it be a common Rust type or Verus-specific type) in specification code, we assign to each type a _mathematical domain_.
-In some cases, we also define a _spec-validity predicate_ which further restricts the domain.
-We can define the various spec operations in terms of the mathematical domain.
+In some cases, we also define a _validity predicate_ which further restricts the domain.
+We then define the semantics of specification expressions in terms of the mathematical domain.
 
 ## Integer types
 

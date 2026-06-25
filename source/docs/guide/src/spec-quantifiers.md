@@ -25,7 +25,9 @@ variables within the body. Both `forall` and `exists` expressions have type `boo
 `forall|x: T| P(x)` is `true` if and only if `P(x)` is `true` for every value `x` of type `T`.
 
 `exists|x: T| P(x)` is `true` if and only if there exists at least one value `x` of type `T`
-such that `P(x)` is `true`. The two are duals, and because Verus uses classical logic:
+such that `P(x)` is `true`.
+
+The two are duals. Verus uses classical logic, so:
 
 ```
 exists|x: T| P(x)  ≡  !forall|x: T| !P(x)
