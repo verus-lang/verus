@@ -165,12 +165,6 @@ impl<A> Seq<A> {
         self[0]
     }
 
-    /// Prepends the value `a` to the start of the sequence.
-    /// This always increases the length of the sequence by 1.
-    pub open spec fn push_front(self, a: A) -> Self {
-        self.insert(0, a)
-    }
-
     #[verifier(external_body)]
     pub proof fn tracked_empty() -> (tracked ret: Self)
         ensures
@@ -248,17 +242,6 @@ impl<A> Seq<A> {
 
         assert(self.remove(self.len() - 1) =~= self.take(self.len() - 1));
         self.tracked_remove(self.len() - 1)
-    }
-
-    pub proof fn tracked_push_front(tracked &mut self, tracked v: A)
-        ensures
-            *final(self) == old(self).push_front(v),
-            final(self).len() == old(self).len() + 1,
-    {
-        broadcast use group_seq_axioms;
-
-        assert(self.insert(0, v) =~= self.push_front(v));
-        self.tracked_insert(0, v);
     }
 
     pub proof fn tracked_pop_front(tracked &mut self) -> (tracked ret: A)
