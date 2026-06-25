@@ -8,6 +8,7 @@ V@[spec_fn_item] ::=
         R@[where_clause]?
         V@[recommends_clause]?
         V@[spec_decreases_clause]?
+    ( ; | { V@[spec_expr] } )
 
 V@[openness] ::= closed
            | open
@@ -45,7 +46,7 @@ The openness specifier is required whenever the body is given.
 ## The `uninterp` specifier
 
 The `uninterp` specifier declares the function as _uninterpreted_, meaning the body of the 
-spec function is not given.
+spec function is not specified.
 
 > [!NOTE]
 > Uninterpreted functions are usually not useful unless they are used
@@ -53,4 +54,4 @@ spec function is not given.
 > for an uninterpreted function is to define the spec interpretation of a type from a
 > trusted (i.e., unverified) library.
 >
-> However, it is always sound to declare an `uninterp` function with no additional axioms.
+> However, it _is_ always sound to declare an `uninterp` function with no additional axioms.

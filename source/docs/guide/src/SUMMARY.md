@@ -135,7 +135,7 @@
   - [Automatic spec to exec functions](exec_spec.md)
   - [Spec and proof attributes for exec functions](exec_attr.md)
     - [Automatic exec to spec functions](exec_to_spec.md)
-- [Specification language]()
+- [Specification language](./reference-specification-language.md)
   - [Type Interpretations](./reference-types.md)
   - [Spec expressions](./spec-expressions.md)
     - [Operator Precedence](./spec-operator-precedence.md)
