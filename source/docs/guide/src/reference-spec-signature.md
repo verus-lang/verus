@@ -38,7 +38,7 @@ of the function name. Specifically:
  * `open` means the body is visible everywhere, to all crates.
  * <code>open(R@[visibility])</code> means the body is visible to the given visibility specifier.
    * e.g., `open(crate)`, `open(self)`, `open(super)`, `open(in some::module::path)`
- * `closed` means the body is visible only to module where the function is defined, i.e., it is equivalent to `open(self)`.
+ * `closed` means the body is visible only within the module where the function is defined; i.e., it is equivalent to `open(self)`.
 
 The openness specifier is required whenever the body is given.
 
@@ -47,9 +47,10 @@ The openness specifier is required whenever the body is given.
 The `uninterp` specifier declares the function as _uninterpreted_, meaning the body of the 
 spec function is not given.
 
-> **Note.** Uninterpreted functions are usually not useful unless they are used
+> [!NOTE]
+> Uninterpreted functions are usually not useful unless they are used
 > in combination with axioms that define the properties of the function. A common use case
-> for an interpreted function is to define the spec interpretation of a type from a
+> for an uninterpreted function is to define the spec interpretation of a type from a
 > trusted (i.e., unverified) library.
 >
-> Do note, however, that `uninterp` functions are always sound to _declare_.
+> However, it is always sound to declare an `uninterp` function with no additional axioms.

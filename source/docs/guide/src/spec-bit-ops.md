@@ -31,7 +31,7 @@ This is true even for negative operands, as a result of the way two's complement
 
 **`>>` and `<<`**.
 
-Verus specifications, like Rust, does not require the left and right sides of a _shift_ operator
+Verus specifications (like Rust's) do not require the left and right sides of a _shift_ operator
 to be the same type. Shift is unspecified when the right-hand side is negative.
 Unlike in executable code, however, there is no _upper_ bound on the right-hand side.
 

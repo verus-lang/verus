@@ -84,7 +84,7 @@ Tips:
 1. It usually helps to make all lifetime variables (e.g., `'a`) explicit.
 
 2. The `Sized` trait is somewhat complex, as the source form of `Sized`-bounds doesn't always look like
-   Rust's internal represenation of the trait bound. This is also complicated by unstable `Sized` features.
+   Rust's internal representation of the trait bound. This is also complicated by unstable `Sized` features.
    As of Rust 1.95.0, these are related as follows:
 
 | Source bound      | Internal bound |

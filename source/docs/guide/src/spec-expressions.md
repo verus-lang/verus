@@ -1,7 +1,6 @@
 # Spec expressions
 
-Many built-in operators are in spec mode, i.e., they can be used in
-specification expressions. This section discusses those operators.
+Here we discuss the syntax and semantics for _pure specification expressions_.
 
 ## Syntax
 

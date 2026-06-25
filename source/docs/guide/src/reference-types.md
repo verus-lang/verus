@@ -22,7 +22,7 @@ Some types have an additional validity predicate restricting their range:
 | `usize` | <code>&#x5b;0, 2<sup>usize::BITS</sup>)</code> |
 | `isize` | <code>&#x5b;-2<sup>isize::BITS-1</sup>, 2<sup>isize::BITS-1</sup>)</code>  |
 
-For `isize` and `usize`, assumptions of the platform word size (`usize::BITS`, or equivalently, `isize::BITS`) is configurable
+For `isize` and `usize`, the assumptions Verus makes about the platform word size (`usize::BITS`, or equivalently, `isize::BITS`) are configurable
 via the [`global` directive](http://localhost:3000/reference-global.html#with-usize-and-isize).
 
 **Spec equality.** Spec equality on integers is defined as integer equality.
@@ -106,7 +106,8 @@ Our encoding for mutable references is based on the [RustHorn encoding](https://
 See [the guide page](./mutable-references.md)
 for practical information on using mutable references.
 
-> **Note:** Verus used to treat mutable references very differently before 2026-05-03 release.
+> [!NOTE]
+> Verus used to treat mutable references very differently before 2026-05-03 release.
 > See [the migration guide](https://github.com/verus-lang/verus/blob/main/source/docs/migration-mut-ref.md) for more information about the transition.
 
 
@@ -122,7 +123,7 @@ no way to prove equality except via basic reflexivity.
 This means that even if two mutables have the same current value, final value, and address,
 they are not necessarily equal. In particular, a reborrow is not equal to the mutable borrow
 it is borrowed from.
-For two references to compare equal, they must originate from the same borrow instruction.
+For two references to be provably equal, they must originate from the same borrow instruction.
 
 ```rust
 fn example() {
@@ -158,7 +159,8 @@ fn example2() {
 }
 ```
 
-> **Note:** Equality of mutable references in spec code is not the same as equality of mutable references in exec code. In exec code, equality on mutable references is defined by equality on the referred-to values.
+> [!NOTE]
+> Equality of mutable references in spec code is not the same as equality of mutable references in exec code. In exec code, equality on mutable references is defined by equality on the referred-to values.
 
 **Spec operators.**
 In spec code, one reasons about a mutable reference `x: &mut T` through two key values:
@@ -167,16 +169,19 @@ In spec code, one reasons about a mutable reference `x: &mut T` through two key 
  * `*final(x)`: the final value the mutable reference will point to when it expires.
    This value is considered [prophetic](./reference-attributes.md#verifierprophetic).
 
-> **Note:** In postconditions, you may be required to write `*old(x)` instead of `*x`
+> [!NOTE]
+> In postconditions, you may be required to write `*old(x)` instead of `*x`
 > where `x: &mut T` is an input to the function.
 > This has no meaning at a formal level;
 > it is only used to prevent user confusion regarding which value `*x` refers to.
 
 **Additional notes.**
 
-> **Note:** Verus does not insert "implicit reborrows" for spec-mode uses of a mutable reference.
+> [!NOTE]
+> Verus does not insert "implicit reborrows" for spec-mode uses of a mutable reference.
 
-> **Note:** Through spec-snapshots, it is possible to create self-referential mutable references
+> [!NOTE]
+> Through spec-snapshots, it is possible to create self-referential mutable references
 > via the `final` operator.
 >
 > ```rust
@@ -196,7 +201,7 @@ In spec code, one reasons about a mutable reference `x: &mut T` through two key 
 > ```
 >
 > As a result, Verus does not treat <code>*final(x)</code> as a subfield of `x` for the purposes of
-> [decreases-to](./reference-decreases-to.md), i.e., recursion through the `final` value is
+> [decreases-to](./reference-decreases-to.md); i.e., recursion through the `final` value is
 > not considered to be well-founded recursion.
 
 ## Raw Pointer (`*const T` and `*mut T`)
@@ -212,15 +217,17 @@ pieces of data:
  * `ptr@.metadata` of type [`<T as Pointee>::Metadata`](https://doc.rust-lang.org/std/ptr/trait.Pointee.html)
  * `ptr@.provenance` of abstract type [`Provenance`](https://verus-lang.github.io/verus/verusdoc/vstd/raw_ptr/struct.Provenance.html)
 
-> **Note:** Verus treats `*const T` and `*mut T` identically. Though they differ
+> [!NOTE]
+> Verus treats `*const T` and `*mut T` identically. Though they differ
 > in [variance](https://doc.rust-lang.org/reference/subtyping.html?#variance), this does
 > not impact their mathematical, spec-level interpretation.
-> Casting `*const T` to `*mut T` and vice versa is semantically a no-op.
+> Casting `*const T` to `*mut T` and vice versa is semantically the identity function.
 
 **Spec equality.**
 Two pointers are equal if the address, metadata, and provenance are equal.
 
-> **Note:** Equality of pointers in spec code is not the same as equality of pointers in exec code.
+> [!NOTE]
+> Equality of pointers in spec code is not the same as equality of pointers in exec code.
 > Exec comparisons only compare the address and metadata, while spec comparisons also compare provenance.
 
 **Spec operators.**
@@ -235,7 +242,8 @@ Two pointers are equal if the address, metadata, and provenance are equal.
 It is guaranteed that this type is consistent with a surjective `view` function
 to <code>Seq&lt;<a href="#char">char</a>&gt;</code>.
 
-> **Note:** In Rust, it is possible to obtain a `str` whose bytes do not form a valid UTF-8
+> [!NOTE]
+> In Rust, it is possible to obtain a `str` whose bytes do not form a valid UTF-8
 > encoding, using, e.g., [`from_utf8_unchecked`](https://doc.rust-lang.org/std/string/struct.String.html#method.from_utf8_unchecked) or [`as_bytes_mut`](https://doc.rust-lang.org/std/string/struct.String.html#method.as_bytes_mut), though such functions are unsafe, and creating ill-formed strings can easily lead to UB. Verus does not currently support ill-formed strings, and thus `String`/`str` values are assumed to contain valid UTF-8.
 
 **Spec equality.**
@@ -245,7 +253,8 @@ use the `view` function.
 **Literal expressions.**
 Verus supports [string literal expressions](https://doc.rust-lang.org/reference/tokens.html#grammar-STRING_LITERAL) in spec code.
 
-> **Note:** The contents of string literals are opaque to the prover by default. Use [`reveal_strlit`](./reference-reveal-strlit.md) to expose the contents of a string literal.
+> [!NOTE]
+> The contents of string literals are opaque to the prover by default. Use [`reveal_strlit`](./reference-reveal-strlit.md) to expose the contents of a string literal.
 
 **Spec operators.**
 

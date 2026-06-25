@@ -12,10 +12,10 @@ The expression `expr@` desugars to the expression `expr.view()`, which is resolv
 Rust's [method resolution](https://doc.rust-lang.org/reference/expressions/method-call-expr.html).
 This usually, but not always, resolves to the `view` method [defined by the `View` trait](https://verus-lang.github.io/verus/verusdoc/vstd/view/trait.View.html).
 
-### Use cases
+### Examples
 
-By convention, the `view()` function is a Verus
-convention for the abstraction of an exec-mode object.
+By convention, the `view()` function is spec function
+for the abstraction of an exec-mode object.
 See, for example:
 
  * [Using view to reason about `Vec`](./exec_lib.md)

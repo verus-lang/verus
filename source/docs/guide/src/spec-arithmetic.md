@@ -29,20 +29,20 @@ The types of various operators, given as functions of the input types, are summa
 the below table.
 Note that in most cases, the types of the inputs are not required to be the same.
 
-| operation | LHS type            | RHS type             | result type | notes   |
+| operation | LHS type            | RHS type             | result type | notes                |
 |-----------|---------------------|----------------------|-------------|----------------------|
-| `<=` `<` `>=` `>`        | t<sub>1</sub>     | t<sub>2</sub>        | bool        |         |
+| `<=` `<` `>=` `>`  | t<sub>1</sub>  | t<sub>2</sub>    | bool        |                      |
 | `+`         | t<sub>1</sub>     | t<sub>2</sub>        | int         | except for nat + nat |
-| `+`         | nat               | nat                  | nat         |         |
-| `-`         | t<sub>1</sub>     | t<sub>2</sub>        | int         |         |
+| `+`         | nat               | nat                  | nat         |                      |
+| `-`         | t<sub>1</sub>     | t<sub>2</sub>        | int         |                      |
 | `*`         | t<sub>1</sub>     | t<sub>2</sub>        | int         | except for nat * nat |
-| `*`         | nat               | nat                  | nat         |         |
+| `*`         | nat               | nat                  | nat         |                      |
 | `/`         | t                 | t                    | int         | for i8...isize, int  |
 | `/`         | t                 | t                    | t           | for u8...usize, nat  |
-| `%`         | t                 | t                    | t           |         |
-| `add(_, _)` | t                 | t                    | t           |         |
-| `sub(_, _)` | t                 | t                    | t           |         |
-| `mul(_, _)` | t                 | t                    | t           |         |
+| `%`         | t                 | t                    | t           |                      |
+| `add(_, _)` | t                 | t                    | t           |                      |
+| `sub(_, _)` | t                 | t                    | t           |                      |
+| `mul(_, _)` | t                 | t                    | t           |                      |
 
 ### Semantics
 
