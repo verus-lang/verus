@@ -1570,6 +1570,7 @@ pub axiom fn seq_into_slice_mut<T>(tracked spt: &mut SeqPointsTo<T>) -> (tracked
                 == final(spt)[i].mem_contents(),
         old(spt).ptr() == final(spt).ptr(),
         old(spt).len() == final(spt).len(),
+        forall|i| 0 <= i < final(spt).len() ==> #[trigger] final(spt)[i].ptr() == old(spt)[i].ptr(),
         forall|i|
             0 <= i < pt.mem_contents_seq().len() ==> #[trigger] pt.mem_contents_seq()[i as int]
                 == old(spt)[i].mem_contents(),
