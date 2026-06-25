@@ -281,17 +281,34 @@ impl<A> Seq<A> {
         ensures
             ret == old(self).skip(n),
             *final(self) == old(self).take(n),
+        decreases self.len() - n,
     {
-        assume(false);
+        broadcast use group_seq_axioms;
 
-        Self::tracked_empty()
+        if n == self.len() {
+            Self::tracked_empty()
+        } else {
+            let tracked last = self.tracked_pop();
+            let tracked mut ret = self.tracked_skip(n);
+            ret.tracked_push(last);
+            ret
+        }
     }
 
     pub proof fn tracked_add(tracked &mut self, tracked other: Self)
         ensures
             *final(self) == old(self).add(other),
+        decreases other.len(),
     {
-        assume(false);
+        broadcast use group_seq_axioms;
+
+        let tracked mut other = other;
+        if other.len() == 0 {
+        } else {
+            let tracked x = other.tracked_pop_front();
+            self.tracked_push(x);
+            self.tracked_add(other);
+        }
     }
 }
 
