@@ -4,9 +4,9 @@
 ///    since we're traversing the module-visible datatypes anyway.
 use crate::ast::{
     ArrayKind, AssocTypeImpl, AssocTypeImplX, AutospecUsage, BinaryOp, BoundsCheck, CallTarget,
-    CrateId, Datatype, Dt, Expr, ExprX, Fun, Function, FunctionKind, Ident, Krate, KrateX, Mode,
-    Module, ModuleX, OpaqueType, Path, Place, PlaceX, RevealGroup, Stmt, Trait, TraitId, TraitX,
-    Typ, TypX, UnaryOp, UnaryOpr,
+    CrateId, Datatype, Dt, Expr, ExprX, Fun, FunWithVis, Function, FunctionKind, Ident, Krate,
+    KrateX, Mode, Module, ModuleX, OpaqueType, Path, Place, PlaceX, RevealGroup, Stmt, Trait,
+    TraitId, TraitX, Typ, TypX, UnaryOp, UnaryOpr,
 };
 use crate::ast_util::{is_body_visible_to, is_visible_to, is_visible_to_or_true};
 use crate::ast_visitor::{VisitorControlFlow, VisitorScopeMap};
@@ -582,6 +582,12 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                     let datatype = &ctxt.datatype_map[dt];
                     traverse_generic_bounds(ctxt, state, &datatype.x.typ_bounds, false);
                     crate::ast_visitor::map_datatype_visitor_env(&datatype, state, &ft).unwrap();
+                    if let Some(FunWithVis { fun, visibility }) =
+                        &datatype.x.user_defined_invariant_fn
+                        && is_visible_to_or_true(visibility, &ctxt.module)
+                    {
+                        reach_function(ctxt, state, fun);
+                    }
                 }
                 ReachedType::SpecFn(arity) => {
                     state.spec_fn_types.insert(*arity);

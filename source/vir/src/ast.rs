@@ -1724,6 +1724,12 @@ pub enum Dt {
     Tuple(usize),
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
+pub struct FunWithVis {
+    pub visibility: Visibility,
+    pub fun: Fun,
+}
+
 /// struct or enum
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub struct DatatypeX {
@@ -1744,7 +1750,7 @@ pub struct DatatypeX {
     pub mode: Mode,
     /// Generate ext_equal lemmas for datatype
     pub ext_equal: bool,
-    pub user_defined_invariant_fn: Option<Fun>,
+    pub user_defined_invariant_fn: Option<FunWithVis>,
     /// This is an optional value -- None means "always sized"
     /// whereas Some(T) means "The given type is Sized iff T is Sized".
     /// For structs, this is usually the last field of the struct, or is derived from it.
