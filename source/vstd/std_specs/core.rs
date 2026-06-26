@@ -27,6 +27,7 @@ pub trait ExFn<Args: core::marker::Tuple>: FnMut<Args> {
     type ExternalTraitSpecificationFor: core::ops::Fn<Args>;
 }
 
+#[cfg(not(verus_verify_core))]
 #[verifier::external_trait_specification]
 pub trait ExDeref: PointeeSized {
     type ExternalTraitSpecificationFor: core::ops::Deref;
@@ -36,12 +37,17 @@ pub trait ExDeref: PointeeSized {
     fn deref(&self) -> &Self::Target;
 }
 
+#[cfg(not(verus_verify_core))]
 #[verifier::external_trait_specification]
 pub trait ExDerefMut: core::ops::Deref + PointeeSized {
     type ExternalTraitSpecificationFor: core::ops::DerefMut;
 
     fn deref_mut(&mut self) -> &mut Self::Target;
 }
+}
+
+#[cfg(not(verus_verify_core))]
+verus_! {
 
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(IndexSpec via IndexSpecImpl)]
@@ -61,7 +67,9 @@ pub trait ExIndex<Idx> where Idx: ?Sized {
 pub trait ExIndexMut<Idx>: core::ops::Index<Idx> where Idx: ?Sized {
     type ExternalTraitSpecificationFor: core::ops::IndexMut<Idx>;
 }
+}
 
+verus_! {
 #[verifier::external_trait_specification]
 pub trait ExInteger: Copy {
     type ExternalTraitSpecificationFor: Integer;
@@ -148,11 +156,13 @@ pub struct ExOrdering(core::cmp::Ordering);
 #[verifier::external_type_specification]
 #[verifier::accept_recursive_types(V)]
 #[verifier::ext_equal]
+#[cfg(not(verus_verify_core))]
 pub struct ExOption<V>(core::option::Option<V>);
 
 #[verifier::external_type_specification]
 #[verifier::accept_recursive_types(T)]
 #[verifier::reject_recursive_types_in_ground_variants(E)]
+#[cfg(not(verus_verify_core))]
 pub struct ExResult<T, E>(core::result::Result<T, E>);
 
 // I don't really expect this to be particularly useful;
@@ -189,6 +199,7 @@ pub assume_specification<T, F: FnOnce() -> T>[ bool::then ](b: bool, f: F) -> (r
 // A private seal trait to prevent a trait from being implemented outside of vstd.
 pub(crate) trait TrustedSpecSealed {}
 
+#[cfg(not(verus_verify_core))]
 #[allow(private_bounds)]
 pub trait IndexSetTrustedSpec<Idx>: core::ops::IndexMut<Idx> + TrustedSpecSealed {
     spec fn spec_index_set_requires(&self, index: Idx) -> bool;
@@ -206,6 +217,7 @@ pub trait IndexSetTrustedSpec<Idx>: core::ops::IndexMut<Idx> + TrustedSpecSealed
 // Users must provide IndexSetTrustedSpec to use it.
 // It could be replaced after mutable reference is fully supported
 // Avoid call it explicitly.
+#[cfg(not(verus_verify_core))]
 #[verifier(external_body)]
 pub fn index_set<T, Idx, E>(container: &mut T, index: Idx, val: E) where
     T: ?Sized + core::ops::IndexMut<Idx> + core::ops::Index<Idx, Output = E> + IndexSetTrustedSpec<

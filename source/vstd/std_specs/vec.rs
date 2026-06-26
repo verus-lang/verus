@@ -2,6 +2,7 @@ use super::super::prelude::*;
 use super::iter::{FromIteratorSpecImpl, IteratorSpec};
 use verus_builtin::*;
 
+#[cfg(not(verus_verify_core))]
 use super::core::IndexSpec;
 #[cfg(not(verus_verify_core))]
 use super::slice::SliceIndexSpec;
@@ -179,7 +180,7 @@ pub assume_specification<T: core::clone::Clone, A: Allocator>[ Vec::<T, A>::exte
 #[cfg(not(verus_verify_core))]
 impl<T: Sized, I: SliceIndex<[T]>, A: Allocator> super::core::IndexSpecImpl<I> for Vec<T, A> {
     open spec fn index_req(&self, index: &I) -> bool {
-        forall|s: &[T]| #[trigger] s@ == self@ ==> crate::std_specs::slice::valid_indices(index.spec_start(s), index.spec_end(s), s)
+        forall|s: &[T]| #[trigger] s@ == self@ ==> crate::std_specs::slice::valid_indices_slice(index.spec_start(s), index.spec_end(s), s)
     }
 }
 
@@ -333,6 +334,7 @@ impl<T, A: Allocator> super::core::TrustedSpecSealed for Vec<T, A> {
 
 }
 
+#[cfg(not(verus_verify_core))]
 impl<T, A: Allocator> super::core::IndexSetTrustedSpec<usize> for Vec<T, A> {
     open spec fn spec_index_set_requires(&self, index: usize) -> bool {
         0 <= index < self.len()
