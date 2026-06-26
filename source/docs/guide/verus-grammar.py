@@ -42,8 +42,8 @@ DEFINITION_RE = re.compile(r'V@\[([^\]]*)\](\s*::=)')
 V_AT_RE = re.compile(r'V@\[([^\]]*)\]')
 R_AT_RE = re.compile(r'R@\[([^\]]*)\]')
 
-V_COLOR = '#000080'
-R_COLOR = '#800000'
+V_COLOR = 'light-dark(#000080, #8080ff)'
+R_COLOR = 'light-dark(#800000, #ff8080)'
 
 
 def v_span(name, anchor=None):
