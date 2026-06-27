@@ -17,7 +17,7 @@ as its corresponding function. However:
 The general form of this directive is:
 
 ```verus-grammar
-assume_specification_item ::=
+V@[assume_specification_item] ::=
     visibility? assume_specification R@[generics]? [ R@[function_path] ] (R@[args...]) ( -> V@[exec_return_type] )?
         R@[where_clause]?
         V@[requires_clause]?

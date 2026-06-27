@@ -51,8 +51,7 @@ without any consideration for overflow or truncation, with the exception of the 
 `add`, `sub`, and `mul` operators, which truncate.
 
 **Quotient and remainder.**
-In Verus specifications, `/` and `%` are defined by [Euclidean division](https://en.wikipedia.org/wiki/Euclidean_division). Euclidean division may differ from the usual Rust `/` and `%` operators
-when operands are negative.
+In Verus specifications, `/` and `%` are defined by [Euclidean division](https://en.wikipedia.org/wiki/Euclidean_division).
 
 For `b != 0`, the quotient `a / b` and remainder `a % b` are defined as the unique integers
 `q` and `r` such that:
@@ -69,6 +68,28 @@ Note that:
 Also note that `a / b` and `a % b` are unspecified when `b == 0`.
 However, because all spec functions
 are total, division-by-0 or mod-by-0 are not hard errors.
+
+> [!DIFF]
+> The `/` and `%` in spec code may differ from Rust's `/` and `%` operators in executable code
+> when either operand is negative.
+>
+> For `/`:
+>
+> |               | Verus spec `/` (Euclidean) | Rust `/` |
+> |---------------|----------------------------|----------|
+> | `7 / 3`       | 2                          | 2        |
+> | `7 / (-3)`    | -2                         | -2       |
+> | `(-7) / 3`    | -3                         | -2       |
+> | `(-7) / (-3)` | 3                          | 2        |
+>
+> For `%`:
+>
+> |               | Verus spec `%` (Euclidean) | Rust `%` |
+> |---------------|----------------------------|----------|
+> | `7 % 3`       | 1                          | 1        |
+> | `7 % (-3)`    | 1                          | 1        |
+> | `(-7) % 3`    | 2                          | -1       |
+> | `(-7) % (-3)` | 2                          | -1       |
 
 ## More advanced arithmetic
 

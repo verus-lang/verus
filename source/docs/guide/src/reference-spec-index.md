@@ -10,7 +10,7 @@ V@[spec_index_expr] ::= V@[spec_expr] [ V@[spec_expr] ]
 
 In spec code, the expression `expr[i]` desguars to `expr.spec_index(i)`, which is resolved as normal via Rust's [method resolution](https://doc.rust-lang.org/reference/expressions/method-call-expr.html).
 
-> [!NOTE]
+> [!DIFF]
 > This is different than the index operator in executable code,
 > where it is either a [place expression](https://doc.rust-lang.org/reference/expressions.html#place-expressions-and-value-expressions) indexing into a slice or an array, or is overloaded via the [`Index`](https://doc.rust-lang.org/std/ops/trait.Index.html) or [`IndexMut`](https://doc.rust-lang.org/std/ops/trait.IndexMut.html) traits.
 

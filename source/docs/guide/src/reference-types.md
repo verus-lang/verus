@@ -159,7 +159,7 @@ fn example2() {
 }
 ```
 
-> [!NOTE]
+> [!DIFF]
 > Equality of mutable references in spec code is not the same as equality of mutable references in exec code. In exec code, equality on mutable references is defined by equality on the referred-to values.
 
 **Spec operators.**
@@ -226,7 +226,7 @@ pieces of data:
 **Spec equality.**
 Two pointers are equal if the address, metadata, and provenance are equal.
 
-> [!NOTE]
+> [!DIFF]
 > Equality of pointers in spec code is not the same as equality of pointers in exec code.
 > Exec comparisons only compare the address and metadata, while spec comparisons also compare provenance.
 

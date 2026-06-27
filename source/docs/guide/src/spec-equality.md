@@ -1,6 +1,6 @@
 # Spec equality (`==`)
 
-> [!NOTE]
+> [!DIFF]
 > In spec mode, `==` is mathematical equality — it is not the same as `==` in exec code,
 which dispatches to the [`PartialEq`](https://doc.rust-lang.org/std/cmp/trait.PartialEq.html) trait.
 

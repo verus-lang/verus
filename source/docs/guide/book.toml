@@ -14,3 +14,6 @@ runnable = false
 
 [preprocessor.verus-grammar]
 command = "python3 verus-grammar.py"
+
+[preprocessor.custom-admonitions]
+command = "python3 custom-admonitions.py"
