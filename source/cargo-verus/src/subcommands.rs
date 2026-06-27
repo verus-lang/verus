@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap as Map, BTreeSet as Set};
 use std::env;
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, ExitCode};
 
@@ -10,6 +11,7 @@ use colored::Colorize;
 
 use crate::cli::{CargoOptions, VerifyCommand, VerusArgFwdSelector};
 use crate::metadata::{MetadataIndex, fetch_metadata, make_package_id};
+use crate::toolchains::TOOLCHAINS;
 
 pub const CARGO_DEFAULT_LIB_METADATA: &str = "__CARGO_DEFAULT_LIB_METADATA";
 
@@ -114,6 +116,18 @@ unexpected_cfgs = {{ level = "warn", check-cfg = [
 
     println!("Created new Verus project at {name}");
 
+    Ok(ExitCode::SUCCESS)
+}
+
+pub fn list_toolchains() -> Result<ExitCode> {
+    let stdout = std::io::stdout();
+    let mut out = stdout.lock();
+    for toolchain in TOOLCHAINS.iter() {
+        writeln!(&mut out, "verus = {:?}", toolchain.verus)?;
+        writeln!(&mut out, "vstd = {}", toolchain.vstd)?;
+        writeln!(&mut out, "z3 = {:?}", toolchain.z3)?;
+        writeln!(&mut out)?;
+    }
     Ok(ExitCode::SUCCESS)
 }
 

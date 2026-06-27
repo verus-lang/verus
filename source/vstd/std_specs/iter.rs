@@ -480,22 +480,8 @@ impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
             // History updates always hold
             ret matches Some(i) ==> final(self).history@ == old(self).history@.push(i),
             ret is None ==> final(self).history@ == old(self).history@,
-            // TODO: Uncomment this line to replace everything below, once general mutable refs are supported
-            //call_ensures(I::next, (old(self).iter,), ret),
-            final(self).iter.obeys_prophetic_iter_laws() == old(self).iter.obeys_prophetic_iter_laws(),
-            final(self).iter.obeys_prophetic_iter_laws() ==> final(self).iter.will_return_none() == old(self).iter.will_return_none(),
-            final(self).iter.obeys_prophetic_iter_laws() ==> (old(self).iter.decrease() is Some <==> final(self).iter.decrease() is Some),
-            final(self).iter.obeys_prophetic_iter_laws() ==>
-            ({
-                if old(self).iter.remaining().len() > 0 {
-                    &&& final(self).iter.remaining() == old(self).iter.remaining().drop_first()
-                    &&& ret == Some(old(self).iter.remaining()[0])
-                } else {
-                    final(self).iter.remaining() == old(self).iter.remaining() && ret == None && final(self).iter.will_return_none()
-                }
-            }),
-            final(self).iter.obeys_prophetic_iter_laws() && old(self).iter.remaining().len() > 0 && final(self).iter.decrease() is Some ==>
-                decreases_to!(old(self).iter.decrease()->0 => final(self).iter.decrease()->0),
+            // All of the standard Iterator::next guarantees still hold
+            exists |m: &mut I| #![auto] call_ensures(I::next, (m,), ret) && *m == old(self).iter && *final(m) == final(self).iter,
     {
         let ghost old_history = self.history@;
         let ret = self.iter.next();

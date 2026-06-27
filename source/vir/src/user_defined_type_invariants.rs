@@ -1,4 +1,6 @@
-use crate::ast::{Datatype, Dt, Expr, ExprX, Fun, Function, Path, SpannedTyped, Typ, TypX, VirErr};
+use crate::ast::{
+    Datatype, Dt, Expr, ExprX, Fun, FunWithVis, Function, Path, SpannedTyped, Typ, TypX, VirErr,
+};
 use crate::ast_util::undecorate_typ;
 use crate::messages::Span;
 use crate::messages::{error, internal_error};
@@ -20,22 +22,24 @@ pub(crate) fn annotate_one(
             };
 
             if needs_check && typ_has_user_defined_type_invariant(datatypes, &expr.typ) {
-                let fun = typ_get_user_defined_type_invariant(datatypes, &expr.typ).unwrap();
+                let fun_vis = typ_get_user_defined_type_invariant(datatypes, &expr.typ).unwrap();
+                let fun = fun_vis.check_vis(&expr.span, module)?;
                 let Some(function) = functions.get(&fun) else {
                     return Err(internal_error(&expr.span, "missing type invariant function"));
                 };
-                Ok(assert_and_return(&expr, function, module)?)
+                Ok(assert_and_return(&expr, function)?)
             } else {
                 Ok(expr.clone())
             }
         }
         ExprX::ShrRefStructWrap(..) => {
             if typ_has_user_defined_type_invariant(datatypes, &expr.typ) {
-                let fun = typ_get_user_defined_type_invariant(datatypes, &expr.typ).unwrap();
+                let fun_vis = typ_get_user_defined_type_invariant(datatypes, &expr.typ).unwrap();
+                let fun = fun_vis.check_vis(&expr.span, module)?;
                 let Some(function) = functions.get(&fun) else {
                     return Err(internal_error(&expr.span, "missing type invariant function"));
                 };
-                Ok(assert_and_return(&expr, function, module)?)
+                Ok(assert_and_return(&expr, function)?)
             } else {
                 Ok(expr.clone())
             }
@@ -47,7 +51,8 @@ pub(crate) fn annotate_one(
             if !matches!(&*typ, TypX::Datatype(..)) {
                 return Err(error(&expr.span, "this type is not a datatype"));
             }
-            if let Some(fun) = typ_get_user_defined_type_invariant(datatypes, &typ) {
+            if let Some(fun_vis) = typ_get_user_defined_type_invariant(datatypes, &typ) {
+                let fun = fun_vis.check_vis(&expr.span, module)?;
                 let Some(function) = functions.get(&fun) else {
                     return Err(internal_error(&expr.span, "missing type invariant function"));
                 };
@@ -75,18 +80,22 @@ pub(crate) fn annotate_one(
     }
 }
 
-pub(crate) fn check_vis(span: &Span, function: &Function, module: &Path) -> Result<(), VirErr> {
-    if !crate::ast_util::is_visible_to(&function.x.visibility, module) {
-        return Err(error(
-            span,
-            "type invariant function is not visible to this program point, which requires us to prove the invariant is preserved",
-        ).secondary_span(&function.span));
+impl FunWithVis {
+    pub(crate) fn check_vis(&self, span: &Span, module: &Path) -> Result<Fun, VirErr> {
+        if !crate::ast_util::is_visible_to(&self.visibility, module) {
+            return Err(error(
+                span,
+                format!(
+                    "type invariant function `{:}` is not visible to this program point, which requires us to prove the invariant is preserved",
+                    crate::ast_util::fun_as_friendly_rust_name(&self.fun)
+                ),
+            ));
+        }
+        Ok(self.fun.clone())
     }
-    Ok(())
 }
 
-fn assert_and_return(e: &Expr, function: &Function, module: &Path) -> Result<Expr, VirErr> {
-    check_vis(&e.span, function, module)?;
+fn assert_and_return(e: &Expr, function: &Function) -> Result<Expr, VirErr> {
     Ok(SpannedTyped::new(
         &e.span,
         &e.typ,
@@ -101,7 +110,7 @@ fn assert_and_return(e: &Expr, function: &Function, module: &Path) -> Result<Exp
 fn typ_get_user_defined_type_invariant(
     datatypes: &HashMap<Path, Datatype>,
     typ: &Typ,
-) -> Option<Fun> {
+) -> Option<FunWithVis> {
     match &*undecorate_typ(typ) {
         TypX::Datatype(dt, ..) => match dt {
             Dt::Path(path) => match &datatypes.get(path).unwrap().x.user_defined_invariant_fn {

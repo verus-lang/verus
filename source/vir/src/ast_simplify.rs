@@ -321,7 +321,7 @@ fn simplify_one_expr(
     match &expr.x {
         ExprX::Var(x) => Ok(expr.new_x(ExprX::Var(rename_var(state, scope_map, x)))),
         ExprX::VarAt(x, at) => Ok(expr.new_x(ExprX::VarAt(rename_var(state, scope_map, x), *at))),
-        ExprX::AssignToPlace { place, .. }
+        ExprX::Assign { place, .. }
         | ExprX::BorrowMut(place)
         | ExprX::TwoPhaseBorrowMut(place)
         | ExprX::BorrowMutTracked(place) => {

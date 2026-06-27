@@ -255,7 +255,7 @@ fn outer_reason_by_expr_kind(e: &Expr) -> Option<OuterProphReason> {
             | ExprX::ExecFnByName(_)
             | ExprX::Choose { .. }
             | ExprX::WithTriggers { .. }
-            | ExprX::AssignToPlace { .. } // requires more complex checks
+            | ExprX::Assign { .. } // requires more complex checks
             | ExprX::Fuel(..)
             | ExprX::RevealString(..)
             | ExprX::Header(..)
@@ -2488,7 +2488,7 @@ fn check_expr(
             )?;
             Ok((Mode::Spec, proph))
         }
-        ExprX::AssignToPlace { place, rhs, op: _, resolve: _, typ } => {
+        ExprX::Assign { place, rhs, op: _, resolve: _, typ } => {
             if typing.in_forall_stmt {
                 return Err(error(
                     &expr.span,

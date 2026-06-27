@@ -812,6 +812,7 @@ pub assume_specification<Key: Borrow<Q> + Ord, A: Allocator + Clone, Q: Ord + ?S
 >::contains ](m: &BTreeSet<Key, A>, k: &Q) -> (result: bool)
     ensures
         obeys_cmp::<Key>() ==> result == set_contains_borrowed_key(m@, k),
+    no_unwind
 ;
 
 // The specification for `get` has a parameter `key: &Q` where you'd

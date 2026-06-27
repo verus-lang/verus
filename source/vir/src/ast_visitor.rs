@@ -465,12 +465,12 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                     })
                 })
             }
-            ExprX::AssignToPlace { place, rhs, op, resolve, typ } => {
+            ExprX::Assign { place, rhs, op, resolve, typ } => {
                 let place = self.visit_place(place)?;
                 let rhs = self.visit_expr(rhs)?;
                 let typ = self.visit_typ(typ)?;
                 R::ret(|| {
-                    expr_new(ExprX::AssignToPlace {
+                    expr_new(ExprX::Assign {
                         place: R::get(place),
                         rhs: R::get(rhs),
                         op: *op,

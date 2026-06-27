@@ -3652,7 +3652,7 @@ fn expr_assign_to_vir_innermost<'tcx>(
         None => None,
     };
 
-    mk_expr(ExprX::AssignToPlace {
+    mk_expr(ExprX::Assign {
         place: vir_lhs,
         rhs: vir_rhs,
         op: op,

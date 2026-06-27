@@ -1710,7 +1710,7 @@ test_verify_one_file! {
         fn test() {
             let j = X { i: 5, j: 5 };
         }
-    } => Err(err) => assert_vir_error_msg(err, "type invariant function is not visible to this program point")
+    } => Err(err) => assert_vir_error_msg(err, "type invariant function `test_crate::m::X::the_inv` is not visible to this program point")
 }
 
 test_verify_one_file! {
@@ -1737,7 +1737,7 @@ test_verify_one_file! {
             let mut y = x;
             y.i = 20;
         }
-    } => Err(err) => assert_vir_error_msg(err, "type invariant function is not visible to this program point")
+    } => Err(err) => assert_vir_error_msg(err, "type invariant function `test_crate::m::X::the_inv` is not visible to this program point")
 }
 
 test_verify_one_file! {
@@ -1766,7 +1766,7 @@ test_verify_one_file! {
             let mut y = x;
             stuff(&mut y.i);
         }
-    } => Err(err) => assert_vir_error_msg(err, "type invariant function is not visible to this program point")
+    } => Err(err) => assert_vir_error_msg(err, "type invariant function `test_crate::m::X::the_inv` is not visible to this program point")
 }
 
 test_verify_one_file! {
@@ -1995,7 +1995,7 @@ test_verify_one_file! {
         fn test_normal_struct(x: hello_mod::X) {
             proof { use_type_invariant(&x); }
         }
-    } => Err(err) => assert_vir_error_msg(err, "type invariant function is not visible to this program point")
+    } => Err(err) => assert_vir_error_msg(err, "type invariant function `test_crate::hello_mod::X::the_inv` is not visible to this program point")
 }
 
 test_verify_one_file! {
@@ -2721,4 +2721,17 @@ test_verify_one_file_with_options! {
             set_to(Tracked(&mut x.i.0), 15); // FAILS
         }
     } => Err(err) => assert_fails_type_invariant_error(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] visibility_issue2171 verus_code! {
+        use vstd::prelude::*;
+        use vstd::resource::frac_opt::Frac;
+
+        // For this test we need anything in vstd which has a type_invariant defined
+        // (and which is private to vstd)
+        pub proof fn new(tracked p: Frac<u64>) {
+            use_type_invariant(&p);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "type invariant function `vstd::resource::impls::frac_opt::impl&%2::inv` is not visible to this program point, which requires us to prove the invariant is preserved")
 }

@@ -77,10 +77,11 @@ pub open spec fn exchanges<K, V, P: Protocol<K, V>>(
 ) -> bool {
     forall|q: P, t1: IMap<K, V>|
         #![all_triggers]
-        P::rel(P::op(p1, q), t1) ==> exists|t2: IMap<K, V>|
-            #![all_triggers]
-            P::rel(P::op(p2, q), t2) && t1.dom().disjoint(b1.dom()) && t2.dom().disjoint(b2.dom())
-                && t1.union_prefer_right(b1) =~= t2.union_prefer_right(b2)
+        P::rel(P::op(p1, q), t1) ==> {
+            &&& P::rel(P::op(p2, q), t1.union_prefer_right(b1).remove_keys(b2.dom()))
+            &&& t1.dom().disjoint(b1.dom())
+            &&& b2.submap_of(t1.union_prefer_right(b1))
+        }
 }
 
 pub open spec fn exchanges_nondeterministic<K, V, P: Protocol<K, V>>(
@@ -92,28 +93,31 @@ pub open spec fn exchanges_nondeterministic<K, V, P: Protocol<K, V>>(
         #![all_triggers]
         P::rel(P::op(p1, q), t1) ==> exists|p2: P, s2: IMap<K, V>, t2: IMap<K, V>|
             #![all_triggers]
-            new_values.contains((p2, s2)) && P::rel(P::op(p2, q), t2) && t1.dom().disjoint(s1.dom())
-                && t2.dom().disjoint(s2.dom()) && t1.union_prefer_right(s1)
-                =~= t2.union_prefer_right(s2)
+            {
+                &&& new_values.contains((p2, s2))
+                &&& P::rel(P::op(p2, q), t2)
+                &&& t1.dom().disjoint(s1.dom())
+                &&& t2.dom().disjoint(s2.dom())
+                &&& t1.union_prefer_right(s1) =~= t2.union_prefer_right(s2)
+            }
 }
 
 pub open spec fn deposits<K, V, P: Protocol<K, V>>(p1: P, b1: IMap<K, V>, p2: P) -> bool {
     forall|q: P, t1: IMap<K, V>|
         #![all_triggers]
-        P::rel(P::op(p1, q), t1) ==> exists|t2: IMap<K, V>|
-            #![all_triggers]
-            P::rel(P::op(p2, q), t2) && t1.dom().disjoint(b1.dom()) && t1.union_prefer_right(b1)
-                =~= t2
+        P::rel(P::op(p1, q), t1) ==> {
+            &&& P::rel(P::op(p2, q), t1.union_prefer_right(b1))
+            &&& t1.dom().disjoint(b1.dom())
+        }
 }
 
 pub open spec fn withdraws<K, V, P: Protocol<K, V>>(p1: P, p2: P, b2: IMap<K, V>) -> bool {
     forall|q: P, t1: IMap<K, V>|
         #![all_triggers]
-        P::rel(P::op(p1, q), t1) ==> exists|t2: IMap<K, V>|
-            #![all_triggers]
-            P::rel(P::op(p2, q), t2) && t2.dom().disjoint(b2.dom()) && t1 =~= t2.union_prefer_right(
-                b2,
-            )
+        P::rel(P::op(p1, q), t1) ==> {
+            &&& P::rel(P::op(p2, q), t1.remove_keys(b2.dom()))
+            &&& b2.submap_of(t1)
+        }
 }
 
 pub open spec fn updates<K, V, P: Protocol<K, V>>(p1: P, p2: P) -> bool {
@@ -125,7 +129,7 @@ pub open spec fn updates<K, V, P: Protocol<K, V>>(p1: P, p2: P) -> bool {
 pub open spec fn set_op<K, V, P: Protocol<K, V>>(s: ISet<(P, IMap<K, V>)>, t: P) -> ISet<
     (P, IMap<K, V>),
 > {
-    ISet::new(|v: (P, IMap<K, V>)| exists|q| s.contains((q, v.1)) && v.0 == #[trigger] P::op(q, t))
+    s.map(|q: (P, IMap<K, V>)| (P::op(q.0, t), q.1))
 }
 
 impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
@@ -170,6 +174,26 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
             }),
     ;
 
+    // Helper lemma saying that unioning with an empty map is a no-op.
+    proof fn lemma_union_prefer_right_empty_is_noop_forall()
+        ensures
+            forall|m: IMap<K, V>| #[trigger] m.union_prefer_right(IMap::empty()) == m,
+    {
+        assert forall|m: IMap<K, V>| #[trigger] m.union_prefer_right(IMap::empty()) == m by {
+            assert(m.union_prefer_right(IMap::empty()) =~= m);
+        }
+    }
+
+    // Helper lemma saying that removing the empty set of keys from a map is a no-op.
+    proof fn lemma_removing_empty_keys_is_noop_forall()
+        ensures
+            forall|m: IMap<K, V>| #[trigger] m.remove_keys(ISet::empty()) == m,
+    {
+        assert forall|m: IMap<K, V>| m.remove_keys(ISet::empty()) == m by {
+            assert(m.remove_keys(ISet::empty()) =~= m);
+        }
+    }
+
     // Updates and guards
     /// Most general kind of update, potentially depositing and withdrawing
     pub proof fn exchange(
@@ -198,6 +222,7 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
             out.loc() == self.loc(),
             out.value() == new_value,
     {
+        Self::lemma_removing_empty_keys_is_noop_forall();
         Self::exchange(self, base, new_value, IMap::empty()).0
     }
 
@@ -212,6 +237,7 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
             out.0.value() == new_value,
             out.1 == new_base,
     {
+        Self::lemma_union_prefer_right_empty_is_noop_forall();
         Self::exchange(self, IMap::tracked_empty(), new_value, new_base)
     }
 
@@ -223,6 +249,8 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
             out.loc() == self.loc(),
             out.value() == new_value,
     {
+        Self::lemma_union_prefer_right_empty_is_noop_forall();
+        Self::lemma_removing_empty_keys_is_noop_forall();
         Self::exchange(self, IMap::tracked_empty(), new_value, IMap::empty()).0
     }
 
@@ -248,8 +276,9 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
                 assert(new_values0.contains(v));
             }
             if new_values0.contains(v) {
-                let q = choose |q| new_values.contains((q, v.1)) && v.0 == #[trigger] P::op(q, P::unit());
-                P::op_unit(q);
+                let q = choose |q| #[trigger] new_values.contains(q) && v == (P::op(q.0, P::unit()), q.1);
+                assert(P::op(q.0, P::unit()) == q.0) by { P::op_unit(q.0) }
+                assert(v =~= q);
                 assert(new_values.contains(v));
             }
         });
@@ -314,6 +343,12 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
             out.1 == new_s_value,
     {
         let se = iset![(new_p_value, new_s_value)];
+        assert(exchanges_nondeterministic(P::op(p.value(), x.value()), s, set_op(se, x.value())))
+            by {
+            let new_values = set_op(se, x.value());
+            assert(se.contains((new_p_value, new_s_value)));
+            assert(new_values.contains((P::op(new_p_value, x.value()), new_s_value)));
+        }
         Self::exchange_nondeterministic_with_shared(p, x, s, se)
     }
 

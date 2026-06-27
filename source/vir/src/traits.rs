@@ -146,6 +146,45 @@ fn demote_one_expr(
                 body: body.clone(),
             }))
         }
+        ExprX::Call {
+            target:
+                CallTarget::Fun(
+                    CallTargetKind::DynamicResolved {
+                        resolved: resolved_fun,
+                        typs: _,
+                        impl_paths: _,
+                        is_trait_default: false,
+                    },
+                    fun,
+                    typs,
+                    impl_paths,
+                    attrs,
+                ),
+            args,
+            post_args,
+            body,
+        } if traits.contains(&get_trait(fun))
+            && !internal_traits.contains(&get_trait(fun))
+            && funs.contains(fun)
+            && !funs.contains(resolved_fun) =>
+        {
+            // The trait method is declared via `external_trait_specification`,
+            // but the concrete impl method `resolved_fun` is external and has no `assume_specification`
+            // of its own.  Treat the call as a dynamic call to the trait declaration.
+            let ct = CallTarget::Fun(
+                CallTargetKind::Dynamic,
+                fun.clone(),
+                typs.clone(),
+                impl_paths.clone(),
+                attrs.clone(),
+            );
+            Ok(expr.new_x(ExprX::Call {
+                target: ct,
+                args: args.clone(),
+                post_args: post_args.clone(),
+                body: body.clone(),
+            }))
+        }
         _ => Ok(expr.clone()),
     }
 }
