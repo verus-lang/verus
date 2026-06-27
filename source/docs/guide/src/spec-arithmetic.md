@@ -71,7 +71,7 @@ are total, division-by-0 or mod-by-0 are not hard errors.
 
 > [!DIFF]
 > The `/` and `%` in spec code may differ from Rust's `/` and `%` operators in executable code
-> when either operand is negative.
+> when the left operand is negative.
 >
 > For `/`:
 >
