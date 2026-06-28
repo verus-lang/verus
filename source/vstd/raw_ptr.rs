@@ -1647,7 +1647,7 @@ impl<T> SeqPointsTo<T> {
 
     /// A "flattened" view of the abstract bytes.
     /// Because the abstract bytes do not change across casting/transmuting, it is often more
-    /// convenient to have a single flattened view of the bytes for all types of permissions.
+    /// convenient to have a single flattened view of the bytes that is the same as for `PointsTo<[T]>`.
     pub open spec fn abstract_bytes(self) -> Seq<AbstractByte> {
         Self::abstract_bytes_inner(self.seq_perm())
     }
@@ -2208,8 +2208,8 @@ impl SeqPointsTo<u8> {
     ///     into the given `MemContents<T>`. Note that `mem_contents` is allowed to contain uninitialized items (these are ignored)
     ///     and can be a prefix of the total `capacity` (in which case, the remaining memory is all logically uninitialized).
     ///
-    /// The resulting `SeqPointsTo<T>` will have a prefix of initialized memory corresponding to `mem_contents`.
-    /// The rest will be logically uninitialized. The abstract bytes will also remain the same.
+    /// The resulting `SeqPointsTo<T>` will have a prefix of memory corresponding to `mem_contents`.
+    /// The rest of the memory will be logically uninitialized. The abstract bytes will also remain the same.
     pub proof fn cast_to_typed<T>(
         tracked self,
         capacity: usize,

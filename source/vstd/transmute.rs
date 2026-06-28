@@ -388,7 +388,7 @@ impl<T> PointsTo<T> {
     /// Transmutes an initialized `&PointsTo<T>` to an initialized `&PointsTo<U>`,
     /// where the resulting permission will take on the given `target` value in memory.
     /// Requires that it is possible to transmute between the pointed-to value of `self` and the provided value `target`.
-    // This axiom is friendlier to use because it hides the details of the abstract bytes.
+    // This function is friendlier to use because it hides the details of the abstract bytes.
     // Clients do not have to invoke the `abstract_bytes_decode` axiom.
     // TODO: version for nondeterministic targets
     pub proof fn transmute_shared<'a, U>(tracked &'a self, tracked target: U) -> (tracked ret:
