@@ -13,7 +13,7 @@ use crate::context::Ctx;
 use crate::def::{
     ARCH_SIZE, CommandsWithContext, CommandsWithContextX, FUEL_BOOL, FUEL_BOOL_DEFAULT,
     FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, NameCtxt, POLY, ProverChoice,
-    SNAPSHOT_CALL, SNAPSHOT_LOOP, SNAPSHOT_PRE, STRSLICE_GET_CHAR, STRSLICE_LEN,
+    SNAPSHOT_BOUNDARY, SNAPSHOT_CALL, SNAPSHOT_LOOP, SNAPSHOT_PRE, STRSLICE_GET_CHAR, STRSLICE_LEN,
     STRSLICE_NEW_STRLIT, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN,
     SUFFIX_SNAP_WHILE_END, SnapPos, SpanKind, Spanned, U_HI, encode_dt_as_path, new_internal_qid,
     new_user_qid_name, prefix_ensures, prefix_fuel_id, prefix_no_unwind_when, prefix_open_inv,
@@ -1127,6 +1127,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             }
             UnaryOp::MutRefFinal(_) => {
                 panic!("internal error: MutRefFinal should have been removed before here")
+            }
+            UnaryOp::LoopIsolationBoundary => {
+                panic!("internal error: LoopIsolationBoundary should have been removed before here")
             }
             UnaryOp::Length(kind) => {
                 let typ = undecorate_typ(&e.typ);
@@ -2455,303 +2458,20 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             }
             stmts
         }
-        StmX::Loop {
-            loop_isolation,
-            is_for_loop,
-            id,
-            label,
-            cond,
-            body,
-            invs,
-            decrease,
-            typ_inv_vars,
-            modified_vars,
-            pre_modified_params,
-        } => {
-            let loop_isolation = *loop_isolation;
-            let (cond_stm, pos_assume, neg_assume) = if let Some((cond_stm, cond_exp)) = cond {
-                let pos_cond = exp_to_expr(ctx, &cond_exp, expr_ctxt)?;
-                let neg_cond = Arc::new(ExprX::Unary(air::ast::UnaryOp::Not, pos_cond.clone()));
-                let pos_assume = Arc::new(StmtX::Assume(pos_cond));
-                let neg_assume = Arc::new(StmtX::Assume(neg_cond));
-                (Some(cond_stm), Some(pos_assume), Some(neg_assume))
-            } else {
-                (None, None, None)
-            };
-            let mut invs_entry: Vec<(Span, Expr, Option<Arc<String>>, bool)> = Vec::new();
-            let mut invs_exit: Vec<(Span, Expr, Option<Arc<String>>, bool)> = Vec::new();
-            let mut hint_message = None;
-            let modified_vars = modified_vars.as_ref().unwrap();
-            for inv in invs.iter() {
-                let inv_exp = crate::loop_inference::finalize_inv(
-                    &modified_vars,
-                    &inv.inv,
-                    &mut hint_message,
-                );
-                let expr = exp_to_expr(ctx, &inv_exp, expr_ctxt)?;
-                if cond.is_some() {
-                    assert!(inv.at_entry);
-                    assert!(inv.at_exit);
-                }
-                let both = inv.at_entry && inv.at_exit;
-                if inv.at_entry {
-                    invs_entry.push((inv.inv.span.clone(), expr.clone(), None, both));
-                }
-                if inv.at_exit {
-                    invs_exit.push((inv.inv.span.clone(), expr.clone(), None, both));
-                }
-            }
-            let invs_entry = Arc::new(invs_entry);
-            let invs_exit = Arc::new(invs_exit);
-
-            let (_, decrease_init) =
-                crate::recursion::mk_decreases_at_entry(ctx, &stm.span, Some(*id), &decrease)?;
-
-            let entry_snap_id = if ctx.debug {
-                // Add a snapshot to capture the start of the while loop
-                // We add the snapshot via Block to avoid copying the entire AST of the loop body
-                let entry_snap = state.update_current_sid(SUFFIX_SNAP_WHILE_BEGIN);
-                Some(entry_snap)
-            } else {
-                None
-            };
-
-            /*
-            When loop_isolation = true:
-            Generate a separate SMT query for the loop body.
-            Rationale: large functions with while loops tend to be slow to verify.
-            Therefore, it's good to try to factor large functions
-            into smaller, easier-to-verify pieces.
-            Since we have programmer-supplied invariants anyway,
-            this is a good place for such refactoring.
-            This isn't necessarily a benefit for small functions or small loops,
-            but in practice, verification for large functions and large loops are slow
-            enough that programmers often do this refactoring by hand anyway,
-            so it's a benefit when verification gets hard, which is arguably what matters most.
-            (The downside: the programmer might have to write more complete invariants,
-            but this is part of the point: the invariants specify a precise interface
-            between the outer function and the inner loop body, so we don't have to import
-            the outer function's entire context into the verification of the loop body,
-            which would slow verification of the loop body.)
-            */
-
-            /*
-            Suppose we have:
-                loop invs { body }
-            When loop_isolation = false, we generate this AIR:
-                assert invs
-                breakable(break_label) {
-                    havoc modified_vars
-                    assume typ_inv(modified_vars)
-                    assume invs
-                    body // "break" inside body turns into break(break_label)
-                    assert invs
-                    assume false
-                }
-                // note that we don't assume the invs after the loop,
-                // because we may have come from a break statement where the invs don't hold
-            When loop_isolation = true:
-                We generate this AIR in the outer query:
-                    assert invs
-                    havoc modified_vars
-                    assume typ_invs(modified_vars)
-                    assume invs_exit
-                We generate this AIR in the spun-off loop query:
-                    axiom typ_invs(all_used_vars)
-                    assume invs_entry
-                    body // "break" inside body turns into assert invs_exit; assume false
-                    assert invs_entry
-            Suppose we have:
-                while cond invs { body }
-            When loop_isolation = false, this is represented as a "loop"; see the case above.
-            When loop_isolation = true:
-                We generate this AIR in the outer query:
-                    assert invs
-                    havoc modified_vars
-                    assume typ_invs(modified_vars)
-                    assume invs_exit
-                    cond_stm
-                    assume !cond_exp
-                We generate this AIR in the spun-off loop query:
-                    axiom typ_invs(all_used_vars)
-                    assume invs_entry
-                    cond_stm
-                    assume cond_exp
-                    body // "break" inside body turns into assert invs_exit; assume false
-                    assert invs_entry
-            */
-
-            let mut air_body: Vec<Stmt> = state.static_prelude.clone();
-            if !loop_isolation {
-                air_body.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_LOOP))));
-                modified_vars.emit_havocs(ctx, SNAPSHOT_LOOP, &mut air_body);
-            }
-
-            let mut local = state.local_shared.clone();
-            if loop_isolation {
-                for (x, typ) in typ_inv_vars.iter() {
-                    let typ_inv = typ_invariant(ctx, typ, &ident_var(&suffix_local_unique_id(x)));
-                    if let Some(expr) = typ_inv {
-                        local.push(mk_unnamed_axiom(expr));
-                    }
-                }
-
-                // For any mutable param `x` to the function, we might refer to either
-                // *x or *old(x) within the loop body or invariants.
-                // (This could either be because the user uses `old`, or because of expressions
-                // derived from the specification, which refer to params at input time).
-                // Thus we need to create the "pre" snapshot so that `old` has something to refer to.
-                air_body.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_PRE))));
-
-                for exp in state.local_decls_decreases_init.clone().iter() {
-                    air_body.append(&mut stm_to_stmts(ctx, state, exp)?);
-                }
-
-                // For any variable that might have been mutated since the beginning of the
-                // function, we need to havoc it, in order to create a difference between
-                // the "current" value and the "pre-state" value.
-                let pre_modified_params = pre_modified_params.as_ref().unwrap();
-                pre_modified_params.emit_havocs(ctx, SNAPSHOT_PRE, &mut air_body);
-            }
-
-            // Assume invariants for the beginning of the loop body.
-            // (These need to go after the above Havoc statements.)
-            for (_, inv, _, _) in invs_entry.iter() {
-                air_body.push(Arc::new(StmtX::Assume(inv.clone())));
-            }
-            for dec in decrease_init.iter() {
-                air_body.append(&mut stm_to_stmts(ctx, state, dec)?);
-            }
-
-            let cond_stmts = cond_stm.map(|s| stm_to_stmts(ctx, state, s)).transpose()?;
-            if let Some(cond_stmts) = &cond_stmts {
-                assert!(loop_isolation);
-                air_body.append(&mut cond_stmts.clone());
-            }
-            if let Some(pos_assume) = pos_assume {
-                assert!(loop_isolation);
-                air_body.push(pos_assume);
-            }
-            let air_break_label = crate::def::break_label(*id);
-            let loop_info = LoopInfo {
-                loop_isolation,
-                is_for_loop: *is_for_loop,
-                label: label.clone(),
-                loop_id: *id,
-                air_break_label: air_break_label.clone(),
-                some_cond: cond.is_some(),
-                invs_entry: invs_entry.clone(),
-                invs_exit: invs_exit.clone(),
-                decrease: decrease.clone(),
-            };
-            state.loop_infos.push(loop_info);
-            air_body.append(&mut stm_to_stmts(ctx, state, body)?);
-            state.loop_infos.pop();
-
-            if !ctx.checking_spec_preconditions() {
-                for (span, inv, msg, _) in invs_entry.iter() {
-                    let mut error = error(span, crate::def::INV_FAIL_LOOP_END);
-                    if let Some(msg) = msg {
-                        error = error.secondary_label(span, &**msg);
-                    }
-                    let inv_stmt = StmtX::Assert(None, error, None, inv.clone());
-                    air_body.push(Arc::new(inv_stmt));
-                }
-                if decrease.len() > 0 {
-                    let dec_exp = crate::recursion::check_decrease(
-                        ctx,
-                        &stm.span,
-                        Some(*id),
-                        decrease,
-                        decrease.len(),
-                    )?;
-                    let expr = exp_to_expr(ctx, &dec_exp, expr_ctxt)?;
-                    let error = error(&stm.span, crate::def::DEC_FAIL_LOOP_END);
-                    let dec_stmt = StmtX::Assert(None, error, None, expr);
-                    air_body.push(Arc::new(dec_stmt));
-                }
-            }
-            if !loop_isolation {
-                let loop_end = StmtX::Assume(air::ast_util::mk_false());
-                air_body.push(Arc::new(loop_end));
-            }
-            let assertion = one_stmt(air_body);
-
-            let assertion = if !ctx.debug {
-                assertion
-            } else {
-                // Update the snap_map to associate the start of the while loop with the new snapshot
-                let entry_snap_id = entry_snap_id.unwrap(); // Always Some if ctx.debug
-                let snapshot: Stmt = Arc::new(StmtX::Snapshot(entry_snap_id.clone()));
-                state.map_span(&body, SpanKind::Start);
-                let block_contents: Vec<Stmt> = vec![snapshot, assertion];
-                Arc::new(StmtX::Block(Arc::new(block_contents)))
-            };
-            if loop_isolation {
-                let assertion = assertion.clone();
-                let query = Arc::new(QueryX { local: Arc::new(local), assertion });
-                let loop_cmd_context = CommandsWithContextX::new(
-                    ctx.fun
-                        .as_ref()
-                        .expect("asserts are expected to be in a function")
-                        .current_fun
-                        .clone(),
-                    stm.span.clone(),
-                    "while loop".to_string(),
-                    Arc::new(vec![Arc::new(CommandX::CheckValid(query))]),
-                    ProverChoice::DefaultProver,
-                    false,
-                );
-                {
-                    let mut guard =
-                        loop_cmd_context.hint_upon_failure.lock().expect("we abort on poisoning");
-                    *guard = hint_message;
-                }
-                state.commands.push(loop_cmd_context);
-            }
-
-            // At original site of while loop, assert invariant, havoc, assume invariant + neg_cond
+        StmX::Loop { .. } => loop_to_stmts(ctx, state, stm, None)?,
+        StmX::LoopIsolationBoundary { pre_stms, loop_stm, pre_modified_params } => {
             let mut stmts: Vec<Stmt> = Vec::new();
-            if !ctx.checking_spec_preconditions() {
-                for (span, inv, msg, _) in invs_entry.iter() {
-                    let mut error = error(span, crate::def::INV_FAIL_LOOP_FRONT);
-                    if let Some(msg) = msg {
-                        error = error.secondary_label(span, &**msg);
-                    }
-                    let inv_stmt = StmtX::Assert(None, error, None, inv.clone());
-                    stmts.push(Arc::new(inv_stmt));
-                }
+            for s in pre_stms.iter() {
+                stmts.extend(stm_to_stmts(ctx, state, s)?);
             }
-            if !loop_isolation {
-                let break_label = air_break_label.clone();
-                let loop_breakable = Arc::new(StmtX::Breakable(break_label, assertion));
-                stmts.push(loop_breakable);
-            }
-            if loop_isolation {
-                stmts.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_LOOP))));
-                modified_vars.emit_havocs(ctx, SNAPSHOT_LOOP, &mut stmts);
-                for (_, inv, _, _) in invs_exit.iter() {
-                    let inv_stmt = StmtX::Assume(inv.clone());
-                    stmts.push(Arc::new(inv_stmt));
-                }
-            }
-            if let Some(cond_stmts) = &cond_stmts {
-                assert!(loop_isolation);
-                stmts.append(&mut cond_stmts.clone());
-            }
-            if let Some(neg_assume) = neg_assume {
-                assert!(loop_isolation);
-                stmts.push(neg_assume);
-            }
-            if ctx.debug {
-                // Add a snapshot for the state after we emerge from the while loop
-                let sid = state.update_current_sid(SUFFIX_SNAP_WHILE_END);
-                // Update the snap_map so that it reflects the state _after_ the
-                // statement takes effect.
-                state.map_span(&stm, SpanKind::End);
-                let snapshot = Arc::new(StmtX::Snapshot(sid));
-                stmts.push(snapshot);
-            }
+
+            let boundary = LoopIsolationBoundaryInfo {
+                pre_modified_params: pre_modified_params.clone().unwrap(),
+                pre_stmts: stmts.iter().map(|s| air::remove_asserts::remove_asserts(s)).collect(),
+            };
+            let loop_stmts = loop_to_stmts(ctx, state, loop_stm, Some(boundary))?;
+            stmts.extend(loop_stmts);
+
             stmts
         }
         StmX::OpenInvariant(body_stm) => {
@@ -2834,6 +2554,335 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
         }
     };
     Ok(result)
+}
+
+struct LoopIsolationBoundaryInfo {
+    pre_modified_params: Arc<crate::sst_vars::HavocSet>,
+    pre_stmts: Vec<Stmt>,
+}
+
+fn loop_to_stmts(
+    ctx: &Ctx,
+    state: &mut State,
+    stm: &Stm,
+    boundary: Option<LoopIsolationBoundaryInfo>,
+) -> Result<Vec<Stmt>, VirErr> {
+    let expr_ctxt = &ExprCtxt::new();
+    let StmX::Loop {
+        loop_isolation,
+        is_for_loop,
+        id,
+        label,
+        cond,
+        body,
+        invs,
+        decrease,
+        typ_inv_vars,
+        modified_vars,
+        pre_modified_params,
+    } = &stm.x
+    else {
+        unreachable!()
+    };
+
+    let loop_isolation = *loop_isolation;
+    let (cond_stm, pos_assume, neg_assume) = if let Some((cond_stm, cond_exp)) = cond {
+        let pos_cond = exp_to_expr(ctx, &cond_exp, expr_ctxt)?;
+        let neg_cond = Arc::new(ExprX::Unary(air::ast::UnaryOp::Not, pos_cond.clone()));
+        let pos_assume = Arc::new(StmtX::Assume(pos_cond));
+        let neg_assume = Arc::new(StmtX::Assume(neg_cond));
+        (Some(cond_stm), Some(pos_assume), Some(neg_assume))
+    } else {
+        (None, None, None)
+    };
+    let mut invs_entry: Vec<(Span, Expr, Option<Arc<String>>, bool)> = Vec::new();
+    let mut invs_exit: Vec<(Span, Expr, Option<Arc<String>>, bool)> = Vec::new();
+    let mut hint_message = None;
+    let modified_vars = modified_vars.as_ref().unwrap();
+    for inv in invs.iter() {
+        let inv_exp =
+            crate::loop_inference::finalize_inv(&modified_vars, &inv.inv, &mut hint_message);
+        let expr = exp_to_expr(ctx, &inv_exp, expr_ctxt)?;
+        if cond.is_some() {
+            assert!(inv.at_entry);
+            assert!(inv.at_exit);
+        }
+        let both = inv.at_entry && inv.at_exit;
+        if inv.at_entry {
+            invs_entry.push((inv.inv.span.clone(), expr.clone(), None, both));
+        }
+        if inv.at_exit {
+            invs_exit.push((inv.inv.span.clone(), expr.clone(), None, both));
+        }
+    }
+    let invs_entry = Arc::new(invs_entry);
+    let invs_exit = Arc::new(invs_exit);
+
+    let (_, decrease_init) =
+        crate::recursion::mk_decreases_at_entry(ctx, &stm.span, Some(*id), &decrease)?;
+
+    let entry_snap_id = if ctx.debug {
+        // Add a snapshot to capture the start of the while loop
+        // We add the snapshot via Block to avoid copying the entire AST of the loop body
+        let entry_snap = state.update_current_sid(SUFFIX_SNAP_WHILE_BEGIN);
+        Some(entry_snap)
+    } else {
+        None
+    };
+
+    /*
+    When loop_isolation = true:
+    Generate a separate SMT query for the loop body.
+    Rationale: large functions with while loops tend to be slow to verify.
+    Therefore, it's good to try to factor large functions
+    into smaller, easier-to-verify pieces.
+    Since we have programmer-supplied invariants anyway,
+    this is a good place for such refactoring.
+    This isn't necessarily a benefit for small functions or small loops,
+    but in practice, verification for large functions and large loops are slow
+    enough that programmers often do this refactoring by hand anyway,
+    so it's a benefit when verification gets hard, which is arguably what matters most.
+    (The downside: the programmer might have to write more complete invariants,
+    but this is part of the point: the invariants specify a precise interface
+    between the outer function and the inner loop body, so we don't have to import
+    the outer function's entire context into the verification of the loop body,
+    which would slow verification of the loop body.)
+    */
+
+    /*
+    Suppose we have:
+        loop invs { body }
+    When loop_isolation = false, we generate this AIR:
+        assert invs
+        breakable(break_label) {
+            havoc modified_vars
+            assume typ_inv(modified_vars)
+            assume invs
+            body // "break" inside body turns into break(break_label)
+            assert invs
+            assume false
+        }
+        // note that we don't assume the invs after the loop,
+        // because we may have come from a break statement where the invs don't hold
+    When loop_isolation = true:
+        We generate this AIR in the outer query:
+            assert invs
+            havoc modified_vars
+            assume typ_invs(modified_vars)
+            assume invs_exit
+        We generate this AIR in the spun-off loop query:
+            axiom typ_invs(all_used_vars)
+            assume invs_entry
+            body // "break" inside body turns into assert invs_exit; assume false
+            assert invs_entry
+    Suppose we have:
+        while cond invs { body }
+    When loop_isolation = false, this is represented as a "loop"; see the case above.
+    When loop_isolation = true:
+        We generate this AIR in the outer query:
+            assert invs
+            havoc modified_vars
+            assume typ_invs(modified_vars)
+            assume invs_exit
+            cond_stm
+            assume !cond_exp
+        We generate this AIR in the spun-off loop query:
+            axiom typ_invs(all_used_vars)
+            assume invs_entry
+            cond_stm
+            assume cond_exp
+            body // "break" inside body turns into assert invs_exit; assume false
+            assert invs_entry
+    */
+
+    let mut air_body: Vec<Stmt> = state.static_prelude.clone();
+    if !loop_isolation {
+        air_body.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_LOOP))));
+        modified_vars.emit_havocs(ctx, SNAPSHOT_LOOP, &mut air_body);
+    }
+
+    let mut local = state.local_shared.clone();
+    if loop_isolation {
+        for (x, typ) in typ_inv_vars.iter() {
+            let typ_inv = typ_invariant(ctx, typ, &ident_var(&suffix_local_unique_id(x)));
+            if let Some(expr) = typ_inv {
+                local.push(mk_unnamed_axiom(expr));
+            }
+        }
+
+        // For any mutable param `x` to the function, we might refer to either
+        // *x or *old(x) within the loop body or invariants.
+        // (This could either be because the user uses `old`, or because of expressions
+        // derived from the specification, which refer to params at input time).
+        // Thus we need to create the "pre" snapshot so that `old` has something to refer to.
+        air_body.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_PRE))));
+
+        for exp in state.local_decls_decreases_init.clone().iter() {
+            air_body.append(&mut stm_to_stmts(ctx, state, exp)?);
+        }
+
+        match boundary {
+            None => {
+                // For any variable that might have been mutated from the beginning of the
+                // function to the beginning of some iteration,
+                // (i.e. anything mutated before or during the loop)
+                // we need to havoc it, in order to create a difference between
+                // the "current" value and the "pre-state" value.
+                let pre_modified_params = pre_modified_params.as_ref().unwrap();
+                pre_modified_params.emit_havocs(ctx, SNAPSHOT_PRE, &mut air_body);
+            }
+            Some(LoopIsolationBoundaryInfo { pre_modified_params, pre_stmts }) => {
+                // Similar, but this time accounting for isolation boundary
+
+                // Havoc vars between beginning of the function and the start of
+                // the isolation_boundary
+                pre_modified_params.emit_havocs(ctx, SNAPSHOT_PRE, &mut air_body);
+
+                // Execute the code between the isolation boundary and the actual loop start
+                air_body.extend(pre_stmts);
+
+                // Havoc all vars that might be modified during the loop
+                air_body.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_BOUNDARY))));
+                modified_vars.emit_havocs(ctx, SNAPSHOT_BOUNDARY, &mut air_body);
+            }
+        }
+    }
+
+    // Assume invariants for the beginning of the loop body.
+    // (These need to go after the above Havoc statements.)
+    for (_, inv, _, _) in invs_entry.iter() {
+        air_body.push(Arc::new(StmtX::Assume(inv.clone())));
+    }
+    for dec in decrease_init.iter() {
+        air_body.append(&mut stm_to_stmts(ctx, state, dec)?);
+    }
+
+    let cond_stmts = cond_stm.map(|s| stm_to_stmts(ctx, state, s)).transpose()?;
+    if let Some(cond_stmts) = &cond_stmts {
+        assert!(loop_isolation);
+        air_body.append(&mut cond_stmts.clone());
+    }
+    if let Some(pos_assume) = pos_assume {
+        assert!(loop_isolation);
+        air_body.push(pos_assume);
+    }
+    let air_break_label = crate::def::break_label(*id);
+    let loop_info = LoopInfo {
+        loop_isolation,
+        is_for_loop: *is_for_loop,
+        label: label.clone(),
+        loop_id: *id,
+        air_break_label: air_break_label.clone(),
+        some_cond: cond.is_some(),
+        invs_entry: invs_entry.clone(),
+        invs_exit: invs_exit.clone(),
+        decrease: decrease.clone(),
+    };
+    state.loop_infos.push(loop_info);
+    air_body.append(&mut stm_to_stmts(ctx, state, body)?);
+    state.loop_infos.pop();
+
+    if !ctx.checking_spec_preconditions() {
+        for (span, inv, msg, _) in invs_entry.iter() {
+            let mut error = error(span, crate::def::INV_FAIL_LOOP_END);
+            if let Some(msg) = msg {
+                error = error.secondary_label(span, &**msg);
+            }
+            let inv_stmt = StmtX::Assert(None, error, None, inv.clone());
+            air_body.push(Arc::new(inv_stmt));
+        }
+        if decrease.len() > 0 {
+            let dec_exp = crate::recursion::check_decrease(
+                ctx,
+                &stm.span,
+                Some(*id),
+                decrease,
+                decrease.len(),
+            )?;
+            let expr = exp_to_expr(ctx, &dec_exp, expr_ctxt)?;
+            let error = error(&stm.span, crate::def::DEC_FAIL_LOOP_END);
+            let dec_stmt = StmtX::Assert(None, error, None, expr);
+            air_body.push(Arc::new(dec_stmt));
+        }
+    }
+    if !loop_isolation {
+        let loop_end = StmtX::Assume(air::ast_util::mk_false());
+        air_body.push(Arc::new(loop_end));
+    }
+    let assertion = one_stmt(air_body);
+
+    let assertion = if !ctx.debug {
+        assertion
+    } else {
+        // Update the snap_map to associate the start of the while loop with the new snapshot
+        let entry_snap_id = entry_snap_id.unwrap(); // Always Some if ctx.debug
+        let snapshot: Stmt = Arc::new(StmtX::Snapshot(entry_snap_id.clone()));
+        state.map_span(&body, SpanKind::Start);
+        let block_contents: Vec<Stmt> = vec![snapshot, assertion];
+        Arc::new(StmtX::Block(Arc::new(block_contents)))
+    };
+    if loop_isolation {
+        let assertion = assertion.clone();
+        let query = Arc::new(QueryX { local: Arc::new(local), assertion });
+        let loop_cmd_context = CommandsWithContextX::new(
+            ctx.fun.as_ref().expect("asserts are expected to be in a function").current_fun.clone(),
+            stm.span.clone(),
+            "while loop".to_string(),
+            Arc::new(vec![Arc::new(CommandX::CheckValid(query))]),
+            ProverChoice::DefaultProver,
+            false,
+        );
+        {
+            let mut guard =
+                loop_cmd_context.hint_upon_failure.lock().expect("we abort on poisoning");
+            *guard = hint_message;
+        }
+        state.commands.push(loop_cmd_context);
+    }
+
+    // At original site of while loop, assert invariant, havoc, assume invariant + neg_cond
+    let mut stmts: Vec<Stmt> = Vec::new();
+    if !ctx.checking_spec_preconditions() {
+        for (span, inv, msg, _) in invs_entry.iter() {
+            let mut error = error(span, crate::def::INV_FAIL_LOOP_FRONT);
+            if let Some(msg) = msg {
+                error = error.secondary_label(span, &**msg);
+            }
+            let inv_stmt = StmtX::Assert(None, error, None, inv.clone());
+            stmts.push(Arc::new(inv_stmt));
+        }
+    }
+    if !loop_isolation {
+        let break_label = air_break_label.clone();
+        let loop_breakable = Arc::new(StmtX::Breakable(break_label, assertion));
+        stmts.push(loop_breakable);
+    }
+    if loop_isolation {
+        stmts.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_LOOP))));
+        modified_vars.emit_havocs(ctx, SNAPSHOT_LOOP, &mut stmts);
+        for (_, inv, _, _) in invs_exit.iter() {
+            let inv_stmt = StmtX::Assume(inv.clone());
+            stmts.push(Arc::new(inv_stmt));
+        }
+    }
+    if let Some(cond_stmts) = &cond_stmts {
+        assert!(loop_isolation);
+        stmts.append(&mut cond_stmts.clone());
+    }
+    if let Some(neg_assume) = neg_assume {
+        assert!(loop_isolation);
+        stmts.push(neg_assume);
+    }
+    if ctx.debug {
+        // Add a snapshot for the state after we emerge from the while loop
+        let sid = state.update_current_sid(SUFFIX_SNAP_WHILE_END);
+        // Update the snap_map so that it reflects the state _after_ the
+        // statement takes effect.
+        state.map_span(&stm, SpanKind::End);
+        let snapshot = Arc::new(StmtX::Snapshot(sid));
+        stmts.push(snapshot);
+    }
+    Ok(stmts)
 }
 
 fn string_len_to_air(ctx: &Ctx, lit: Arc<String>) -> Expr {

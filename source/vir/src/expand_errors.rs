@@ -156,6 +156,17 @@ fn get_fuel_at_id(stm: &Stm, a_id: &AssertId, fuels: &mut HashMap<Fun, u32>) -> 
             }
             return false;
         }
+        StmX::LoopIsolationBoundary { pre_stms, loop_stm, pre_modified_params: _ } => {
+            for stm in pre_stms.iter() {
+                if get_fuel_at_id(stm, a_id, fuels) {
+                    return true;
+                }
+            }
+            if get_fuel_at_id(loop_stm, a_id, fuels) {
+                return true;
+            }
+            return false;
+        }
         StmX::DeadEnd(body) | StmX::ClosureInner { body, .. } | StmX::AssertQuery { body, .. } => {
             let mut inside_fuels = fuels.clone();
             if get_fuel_at_id(body, a_id, &mut inside_fuels) {
