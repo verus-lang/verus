@@ -26,11 +26,11 @@ use super::layout;
 use super::layout::*;
 use super::prelude::*;
 use super::set::group_set_axioms;
+use super::type_representation::*;
 use crate::vstd::endian::*;
 use crate::vstd::group_vstd_default;
 use crate::vstd::seq::*;
 use crate::vstd::slice::*;
-use crate::vstd::type_representation::*;
 use core::ops::Index;
 use core::slice::SliceIndex;
 
