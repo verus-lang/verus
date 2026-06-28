@@ -6,7 +6,7 @@ use crate::debugger::Debugger;
 use crate::external::VerifOrExternal;
 use crate::externs::VerusExterns;
 use crate::rust_to_vir_base::mk_crate_id;
-use crate::try_broadcasts::{self, sledgehammer};
+use crate::try_broadcasts::{self, try_broadcasts};
 use crate::spans::{SpanContext, SpanContextX, from_raw_span};
 use crate::user_filter::UserFilter;
 use crate::util::{HashMapAbsorbWith, error};
@@ -1936,7 +1936,7 @@ impl Verifier {
                 .report_now(&note_bare(format!("verifying {bucket_name}{functions_msg}")).to_any());
         }
         let (sh_result, new_ctx) =
-            sledgehammer(self, reporter, krate, source_map, bucket_id, global_ctx)?;
+            try_broadcasts(self, reporter, krate, source_map, bucket_id, global_ctx)?;
         let krate = sh_result.as_ref().unwrap_or(krate);
         global_ctx = new_ctx;
         let (pruned_krate, prune_info) = vir::prune::prune_krate_for_module_or_krate(

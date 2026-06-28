@@ -81,7 +81,7 @@ impl VerificationOutcome {
     }
 }
 
-pub(crate) struct Sledgehammer<'a, R: Diagnostics> {
+pub(crate) struct TryBroadcasts<'a, R: Diagnostics> {
     verifier: &'a mut Verifier,
     reporter: &'a R,
     krate: &'a Krate,
@@ -92,7 +92,7 @@ pub(crate) struct Sledgehammer<'a, R: Diagnostics> {
     do_minimize: bool,
 }
 
-pub(crate) fn sledgehammer<'a, R: Diagnostics + 'a>(
+pub(crate) fn try_broadcasts<'a, R: Diagnostics + 'a>(
     verifier: &'a mut Verifier,
     reporter: &'a R,
     krate: &'a Krate,
@@ -100,7 +100,7 @@ pub(crate) fn sledgehammer<'a, R: Diagnostics + 'a>(
     bucket_id: &BucketId,
     gctx: GlobalCtx,
 ) -> Result<(Option<Krate>, GlobalCtx), VirErr> {
-    let Some(mut sh) = Sledgehammer::<'a, R>::new(verifier, reporter, krate, source_map, bucket_id)
+    let Some(mut sh) = TryBroadcasts::<'a, R>::new(verifier, reporter, krate, source_map, bucket_id)
     else {
         // TODO: report error here
         return Ok((None, gctx));
@@ -180,7 +180,7 @@ impl MinimizeState {
     }
 }
 
-impl<'a, R: Diagnostics> Sledgehammer<'a, R> {
+impl<'a, R: Diagnostics> TryBroadcasts<'a, R> {
     fn new(
         verifier: &'a mut Verifier,
         reporter: &'a R,
@@ -206,7 +206,7 @@ impl<'a, R: Diagnostics> Sledgehammer<'a, R> {
         let Some(minimize) = target_func.x.attrs.try_broadcasts.as_ref() else {
             return None;
         };
-        Some(Sledgehammer {
+        Some(TryBroadcasts {
             verifier,
             reporter,
             krate,
@@ -233,8 +233,8 @@ impl<'a, R: Diagnostics> Sledgehammer<'a, R> {
                             &note(
                                 &self.span(),
                                 format!(
-                                    "Sledgehammer found proof with {} lemmas, minimizing..",
-                                    guess.broadcasts.len()
+                                    "try_broadcasts found proof with {}, minimizing..",
+                                    guess.lemmas_msg(),
                                 ),
                             )
                             .to_any(),
@@ -247,8 +247,8 @@ impl<'a, R: Diagnostics> Sledgehammer<'a, R> {
                         &note(
                             &self.span(),
                             format!(
-                                "Sledgehammer found proof with {} lemmas: \n{}",
-                                guess.broadcasts.len(),
+                                "try_broadcasts found proof with {}: \n{}",
+                                guess.lemmas_msg(),
                                 guess.pretty_print(&self.target_func.x.owning_module)
                             ),
                         )
@@ -266,7 +266,7 @@ impl<'a, R: Diagnostics> Sledgehammer<'a, R> {
             }
         }
         self.reporter.report(
-            &warning(&self.target_func.span, "Sledgehammer failed to find a proof").to_any(),
+            &warning(&self.target_func.span, "try_broadcasts failed to find a proof").to_any(),
         );
         Ok((None, gctx))
     }
@@ -705,6 +705,15 @@ impl Guess {
             }
         }
         s
+    }
+
+    fn lemmas_msg(&self) -> String {
+        let num_lemmas = self.broadcasts.len();
+        if num_lemmas == 1 {
+            "1 lemma".to_string()
+        } else {
+            format!("{num_lemmas} lemmas")
+        }
     }
 }
 
