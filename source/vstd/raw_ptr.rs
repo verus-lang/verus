@@ -30,6 +30,7 @@ use crate::vstd::endian::*;
 use crate::vstd::group_vstd_default;
 use crate::vstd::seq::*;
 use crate::vstd::slice::*;
+use crate::vstd::type_representation::*;
 use core::ops::Index;
 use core::slice::SliceIndex;
 
@@ -249,7 +250,7 @@ pub ghost enum MemContents<T> {
     /// Represents uninitialized memory.
     Uninit,
     /// Represents initialized memory with the given value of type `T`.
-    Init(T),
+    Init(ghost T),
 }
 
 /// Data associated with a `PointsTo` permission.
@@ -321,6 +322,10 @@ impl<T> View for PointsTo<T> {
 }
 
 impl<T: ?Sized> PointsTo<T> {
+    pub closed spec fn abstract_bytes(&self) -> Seq<AbstractByte> {
+        self.inner.abstract_bytes()
+    }
+
     /// The pointer that this permission is associated with.
     /// Delegates to the underlying `PointsToUnaligned`.
     pub closed spec fn ptr(&self) -> *mut T {
@@ -340,6 +345,8 @@ impl<T: ?Sized> PointsTo<T> {
 impl<T: ?Sized> PointsToUnaligned<T> {
     /// The pointer that this permission is associated with.
     pub uninterp spec fn ptr(&self) -> *mut T;
+
+    pub uninterp spec fn abstract_bytes(&self) -> Seq<AbstractByte>;
 }
 
 impl<T> View for PointsToUnaligned<T> {
@@ -573,6 +580,14 @@ impl<T> PointsToUnaligned<T> {
             perm.mem_contents() == self.mem_contents(),
     ;
 }
+
+pub broadcast axiom fn axiom_pt_abstract_bytes_len<T>(pt: PointsTo<T>)
+    ensures
+        #[trigger] pt.abstract_bytes().len() == size_of::<T>();
+
+pub broadcast axiom fn axiom_pt_slice_abstract_bytes_len<T>(pt: PointsTo<[T]>)
+    ensures
+        #[trigger] pt.abstract_bytes().len() == size_of::<T>() * pt.mem_contents_seq().len();
 
 /// The length of `mem_contents_seq()` should always match the pointer's metadata.
 pub broadcast axiom fn axiom_pt_slice_len<T>(pt: PointsTo<[T]>)
@@ -1077,6 +1092,7 @@ impl<T> PointsTo<[T]> {
                     == self.mem_contents_seq()[i as int],
             s.ptr() == self.ptr() as *mut T,
             s.len() == self.mem_contents_seq().len(),
+            s.abstract_bytes() == self.abstract_bytes(),
             s.wf(),
     {
         broadcast use layout_of_sized;
@@ -1098,6 +1114,7 @@ impl<T> PointsTo<[T]> {
                     == self.mem_contents_seq()[i as int],
             s.ptr() == self.ptr() as *mut T,
             s.len() == self.mem_contents_seq().len(),
+            s.abstract_bytes() == self.abstract_bytes(),
             s.wf(),
     {
         broadcast use layout_of_sized;
@@ -1117,6 +1134,7 @@ impl<T> PointsTo<[T]> {
                 #![trigger final(self).mem_contents_seq()[i as int]]
                 0 <= i < old(self).mem_contents_seq().len() ==> final(s)[i].mem_contents()
                     == final(self).mem_contents_seq()[i as int],
+            final(s).abstract_bytes() == final(self).abstract_bytes(),
             old(self).ptr() == final(self).ptr(),
             old(self).mem_contents_seq().len() == final(self).mem_contents_seq().len(),
             forall|i|
@@ -1127,6 +1145,7 @@ impl<T> PointsTo<[T]> {
                 ).mem_contents_seq()[i as int],
             s.ptr() == old(self).ptr() as *mut T,
             s.len() == old(self).mem_contents_seq().len(),
+            s.abstract_bytes() == old(self).abstract_bytes(),
             s.wf(),
     {
         broadcast use layout_of_sized;
@@ -1436,6 +1455,7 @@ impl<T> PointsToUnaligned<[T]> {
                     == self.mem_contents_seq()[i as int],
             s.ptr() == self.ptr() as *mut T,
             s.len() == self.mem_contents_seq().len(),
+            s.abstract_bytes() == self.abstract_bytes(),
             s.wf(),
     ;
 
@@ -1451,6 +1471,7 @@ impl<T> PointsToUnaligned<[T]> {
                     == self.mem_contents_seq()[i as int],
             s.ptr() == self.ptr() as *mut T,
             s.len() == self.mem_contents_seq().len(),
+            s.abstract_bytes() == self.abstract_bytes(),
             s.wf(),
     ;
 
@@ -1464,6 +1485,7 @@ impl<T> PointsToUnaligned<[T]> {
                 #![trigger final(self).mem_contents_seq()[i as int]]
                 0 <= i < old(self).mem_contents_seq().len() ==> final(s)[i].mem_contents()
                     == final(self).mem_contents_seq()[i as int],
+            final(s).abstract_bytes() == final(self).abstract_bytes(),
             old(self).ptr() == final(self).ptr(),
             old(self).mem_contents_seq().len() == final(self).mem_contents_seq().len(),
             forall|i|
@@ -1474,6 +1496,7 @@ impl<T> PointsToUnaligned<[T]> {
                 ).mem_contents_seq()[i as int],
             s.ptr() == old(self).ptr() as *mut T,
             s.len() == old(self).mem_contents_seq().len(),
+            s.abstract_bytes() == old(self).abstract_bytes(),
             s.wf(),
     ;
 }
@@ -1536,6 +1559,7 @@ pub axiom fn seq_into_slice<T>(tracked spt: SeqPointsTo<T>) -> (tracked pt: Poin
         forall|i|
             0 <= i < pt.mem_contents_seq().len() ==> #[trigger] pt.mem_contents_seq()[i as int]
                 == spt[i].mem_contents(),
+        spt.abstract_bytes() == pt.abstract_bytes(),
         pt.ptr() as *mut T == spt.ptr(),
         pt.ptr()@.metadata == spt.len(),
 ;
@@ -1549,6 +1573,7 @@ pub axiom fn seq_into_slice_shared<T>(tracked spt: &SeqPointsTo<T>) -> (tracked 
         forall|i|
             0 <= i < pt.mem_contents_seq().len() ==> #[trigger] pt.mem_contents_seq()[i as int]
                 == spt[i].mem_contents(),
+        spt.abstract_bytes() == pt.abstract_bytes(),
         pt.ptr() as *mut T == spt.ptr(),
         pt.ptr()@.metadata == spt.len(),
 ;
@@ -1568,12 +1593,14 @@ pub axiom fn seq_into_slice_mut<T>(tracked spt: &mut SeqPointsTo<T>) -> (tracked
             0 <= i < pt.mem_contents_seq().len()
                 ==> #[trigger] final(pt).mem_contents_seq()[i as int]
                 == final(spt)[i].mem_contents(),
+        final(spt).abstract_bytes() == final(pt).abstract_bytes(),
         old(spt).ptr() == final(spt).ptr(),
         old(spt).len() == final(spt).len(),
         forall|i| 0 <= i < final(spt).len() ==> #[trigger] final(spt)[i].ptr() == old(spt)[i].ptr(),
         forall|i|
             0 <= i < pt.mem_contents_seq().len() ==> #[trigger] pt.mem_contents_seq()[i as int]
                 == old(spt)[i].mem_contents(),
+        old(spt).abstract_bytes() == pt.abstract_bytes(),
         pt.ptr() as *mut T == old(spt).ptr(),
         pt.ptr()@.metadata == old(spt).len(),
 ;
@@ -1610,6 +1637,15 @@ impl<T> SeqPointsTo<T> {
 
     pub open spec fn mem_contents(self) -> Seq<MemContents<T>> {
         self.seq_perm().map(|i: int, elt: PointsTo<T>| elt.mem_contents())
+    }
+
+    /// A "flattened" view of the abstract bytes.
+    pub open spec fn abstract_bytes(self) -> Seq<AbstractByte> {
+        Self::abstract_bytes_inner(self.seq_perm())
+    }
+
+    pub open spec fn abstract_bytes_inner(perms: Seq<PointsTo<T>>) -> Seq<AbstractByte> {
+        perms.fold_left(Seq::empty(), |acc: Seq<AbstractByte>, elt: PointsTo<T>, | acc + elt.abstract_bytes())
     }
 
     /// The length of the sequence of `PointsTo<T>`.
@@ -1786,6 +1822,7 @@ impl<T> SeqPointsTo<T> {
             );
             let tracked mut mut_spt = self;
             mut_spt.perm.tracked_push(zs_pt);
+            Self::abstract_bytes_len_helper(mut_spt.seq_perm());
 
             mut_spt.zero_sized_helper((remaining - 1) as nat, total)
         }
@@ -1809,49 +1846,268 @@ impl<T> SeqPointsTo<T> {
 
     }
 
+    proof fn abstract_bytes_len_helper(perms: Seq<PointsTo<T>>)
+        ensures
+            Self::abstract_bytes_inner(perms).len() == perms.len() * layout::size_of::<T>()
+        decreases
+            perms.len()
+    {
+        broadcast use crate::vstd::seq::group_seq_axioms;
+
+        if perms.len() > 0 {
+            Self::abstract_bytes_len_helper(perms.drop_last());
+            axiom_pt_abstract_bytes_len(perms.last());
+            assert((perms.len() - 1) * layout::size_of::<T>() + layout::size_of::<T>() == perms.len() * layout::size_of::<T>()) by (nonlinear_arith);
+        }
+    }
+
+    pub broadcast proof fn abstract_bytes_len(&self)
+        ensures
+            #[trigger] self.abstract_bytes().len() == self.len() * layout::size_of::<T>()
+    {
+        Self::abstract_bytes_len_helper(self.seq_perm());
+    }
+
+    proof fn abstract_bytes_subrange(perms: Seq<PointsTo<T>>, split: int)
+        requires
+            0 <= split <= perms.len()
+        ensures
+            // abstract bytes can be split by subranges of the permissions themselves
+            Self::abstract_bytes_inner(perms) == Self::abstract_bytes_inner(perms.subrange(0, split)) + Self::abstract_bytes_inner(perms.subrange(split, perms.len() as int)),
+            // abstract bytes of a prefix correspond to a prefix of the entire abstract bytes
+            Self::abstract_bytes_inner(perms.subrange(0, split)) == Self::abstract_bytes_inner(perms).subrange(0, split * layout::size_of::<T>()),
+            // abstract bytes of a suffix correspond to suffix of the entire abstract bytes
+            Self::abstract_bytes_inner(perms.subrange(split, perms.len() as int)) == Self::abstract_bytes_inner(perms).subrange(split * layout::size_of::<T>(), perms.len() as int * layout::size_of::<T>()),
+            Self::abstract_bytes_inner(perms.subrange(0, split)).len() == split * layout::size_of::<T>(),
+            Self::abstract_bytes_inner(perms.subrange(split, perms.len() as int)).len() == (perms.len() - split) * layout::size_of::<T>(),
+        decreases perms.len() - split
+    {
+        broadcast use group_vstd_default, crate::vstd::arithmetic::mul::group_mul_basics;
+
+        if perms.len() > split {
+            Self::abstract_bytes_subrange(perms.subrange(0, perms.len() - 1), split);
+            perms.lemma_slice_of_slice(0, perms.len() - 1, 0, split);
+            perms.lemma_slice_of_slice(0, perms.len() - 1, split, perms.len() - 1);
+            assert(
+                Self::abstract_bytes_inner(perms.subrange(0, perms.len() - 1)) 
+                == 
+                Self::abstract_bytes_inner(perms.subrange(0, split)) 
+                + Self::abstract_bytes_inner(perms.subrange(split, perms.len() - 1))
+            );
+
+            assert(perms.last() == perms[perms.len() - 1]);
+            assert(perms.drop_last() == perms.subrange(0, perms.len() - 1));
+            assert(
+                Self::abstract_bytes_inner(perms) 
+                == 
+                Self::abstract_bytes_inner(perms.subrange(0, perms.len() - 1)) 
+                + perms[perms.len() - 1].abstract_bytes()
+            );
+            assert(perms.subrange(split, perms.len() as int).last() == perms[perms.len() - 1]);
+            assert(perms.subrange(split, perms.len() as int).drop_last() == perms.subrange(split, perms.len() - 1));
+            assert(
+                Self::abstract_bytes_inner(perms.subrange(split, perms.len() as int))
+                ==
+                Self::abstract_bytes_inner(perms.subrange(split, perms.len() - 1)) 
+                + perms[perms.len() - 1].abstract_bytes()
+            );
+
+            Self::abstract_bytes_len_helper(perms.subrange(0, split));
+            Self::abstract_bytes_len_helper(perms.subrange(split, perms.len() as int));
+            assert(perms.subrange(split, perms.len() as int).len() == perms.len() - split);
+            assert(Self::abstract_bytes_inner(perms.subrange(0, perms.len() - 1).subrange(0, split)).len() == Self::abstract_bytes_inner(perms.subrange(0, split)).len());
+            assert(Self::abstract_bytes_inner(perms).len() - Self::abstract_bytes_inner(perms.subrange(0, split)).len() == Self::abstract_bytes_inner(perms.subrange(split, perms.len() as int)).len());
+            assert(perms.len() * layout::size_of::<T>() - split * layout::size_of::<T>() == (perms.len() - split) * layout::size_of::<T>()) by (nonlinear_arith);
+        } else {
+            Self::abstract_bytes_len_helper(perms);
+        }
+    }
+
+    broadcast proof fn abstract_bytes_equiv(&self, i: int)
+        requires
+            0 <= i < self.len()
+        ensures
+            #[trigger] self.seq_perm()[i].abstract_bytes() == self.abstract_bytes().subrange(i * layout::size_of::<T>(), (i + 1) * layout::size_of::<T>())
+    {
+        broadcast use group_vstd_default;
+
+        Self::abstract_bytes_len_helper(self.seq_perm());
+
+        Self::abstract_bytes_subrange(self.seq_perm(), i + 1);
+        Self::abstract_bytes_subrange(self.seq_perm().subrange(0, i + 1), i);
+        assert(self.seq_perm()[i] == self.seq_perm().subrange(0, i + 1).subrange(i, i + 1)[0]);
+        self.abstract_bytes().lemma_slice_of_slice(0, (i + 1) * layout::size_of::<T>(), i * layout::size_of::<T>(), (i + 1) * layout::size_of::<T>());
+    }
+
+    pub proof fn abstract_bytes_decode(&self)
+        requires
+            self.wf()
+        ensures
+            forall |i: int| 0 <= i < self.len() ==> 
+                #[trigger] abs_decode::<MemContents<T>>(
+                    self.abstract_bytes().subrange(i * layout::size_of::<T>(), (i + 1) * layout::size_of::<T>()), 
+                    &self.mem_contents()[i]
+                )
+    {
+        broadcast use SeqPointsTo::abstract_bytes_equiv;
+
+        self.abstract_bytes_decode_helper(self.len() as int);
+    }
+
+    proof fn abstract_bytes_decode_helper(&self, len: int)
+        requires
+            0 <= len <= self.len(),
+            self.wf()
+        ensures
+            forall |i: int| 0 <= i < len ==> 
+                #[trigger] abs_decode::<MemContents<T>>(
+                    self.seq_perm()[i].abstract_bytes(), 
+                    &self.mem_contents()[i]
+                )
+        decreases len
+    {
+        broadcast use group_vstd_default;
+
+        if len > 0 {
+            self.abstract_bytes_decode_helper(len - 1);
+            self.perm[len - 1].abstract_bytes_decode();
+            self.mem_contents_equiv(len - 1);
+        }
+    }
+
     /// Casting a `SeqPointsTo<T>` to a `SeqPointsTo<u8>` casts the pointer,
     /// multiplies the length by `size_of::<T>()`, and encodes the memory contents to bytes.
-    pub axiom fn cast_to_u8(tracked self) -> (tracked out: SeqPointsTo<u8>)
+    pub proof fn cast_to_u8(tracked self) -> (tracked out: SeqPointsTo<u8>)
         requires
             self.wf(),
         ensures
             out.ptr() == self.ptr() as *mut u8,
             out.len() == self.len() * layout::size_of::<T>(),
-            out.mem_contents() == encode(self.mem_contents()),
+            out.abstract_bytes() == self.abstract_bytes(),
             out.wf(),
-    ;
+        decreases
+            self.len()
+    {
+        broadcast use group_vstd_default, align_of_u8, crate::vstd::arithmetic::mul::group_mul_basics;
+
+        self.is_nonnull();
+
+        if self.len() == 0 {
+            SeqPointsTo::<u8>::empty(self.ptr() as *mut u8)
+        } else {
+            let tracked (head, mut tail) = self.split((self.len() - 1) as nat);
+            let tracked tail_u8 = tail.perm.tracked_remove(0).transmute_to_u8().into_seq_pt();
+            let tracked head_u8 = head.cast_to_u8();
+            assert(layout::size_of::<T>() + (self.len() - 1) * layout::size_of::<T>() == self.len() * layout::size_of::<T>()) by (nonlinear_arith);
+            head_u8.join(tail_u8)
+        }
+    }
+
+    /// Splits the `SeqPointsTo<T>` into two permissions at the index boundary `mid`.
+    pub proof fn split(tracked self, mid: nat) -> (tracked (first, second): (Self, Self))
+        requires
+            0 <= mid <= self.len(),
+            self.wf(),
+        ensures
+            first.seq_perm() == self.seq_perm().take(mid as int),
+            second.seq_perm() == self.seq_perm().skip(mid as int),
+            first.abstract_bytes() == self.abstract_bytes().take(mid as int * layout::size_of::<T>()),
+            second.abstract_bytes() == self.abstract_bytes().skip(mid as int * layout::size_of::<T>()),
+            first.ptr() == self.ptr(),
+            second.ptr() == ptr_mut_from_data(
+                PtrData::<T> {
+                    addr: (self.ptr()@.addr + mid * layout::size_of::<T>()) as usize,
+                    provenance: self.ptr()@.provenance,
+                    metadata: self.ptr()@.metadata,
+                },
+            ),
+            first.wf(),
+            second.wf()
+    {
+        broadcast use {group_vstd_default, crate::vstd::arithmetic::mul::lemma_mul_inequality};
+
+        let ghost ghost_self = self;
+
+        let tracked mut perm = self.perm;
+        let tracked other = perm.tracked_skip(mid as int);
+
+        let tracked first = Self { perm: perm, ptr: self.ptr };
+        let tracked second = Self {
+            perm: other,
+            ptr: Ghost(
+                ptr_mut_from_data(
+                    PtrData::<T> {
+                        addr: (self.ptr()@.addr + mid * layout::size_of::<T>()) as usize,
+                        provenance: self.ptr()@.provenance,
+                        metadata: self.ptr()@.metadata,
+                    },
+                ),
+            ),
+        };
+        assert((ghost_self.ptr()@.addr + mid * layout::size_of::<T>()) as nat % align_of::<T>() == 0) by {
+            broadcast use {lemma_mul_mod_noop_right, lemma_add_mod_noop, layout_of_sized};
+        }
+        assert(ghost_self.ptr()@.addr + mid * layout::size_of::<T>() + second.len() * layout::size_of::<T>() == ghost_self.ptr()@.addr + ghost_self.len() * layout::size_of::<T>()) by (nonlinear_arith)
+            requires
+                mid + second.len() == ghost_self.len();
+        assert forall |i: nat| 0 <= i < second.len() implies
+            #[trigger] second[i].ptr()@.addr == second.ptr()@.addr + i * layout::size_of::<T>()
+        by {
+            assert(ghost_self.ptr()@.addr + (i + mid) * layout::size_of::<T>() == ghost_self.ptr()@.addr + mid * layout::size_of::<T>() + i * layout::size_of::<T>()) by (nonlinear_arith);
+        }
+        Self::abstract_bytes_subrange(ghost_self.seq_perm(), mid as int);
+        (first, second)
+    }
+
+    /// Concatenates `SeqPointsTo<T>` permissions `self` and `other`,
+    /// provided their pointers have the same provenance
+    /// and `other`'s pointer starts at the end of `self`'s domain.
+    pub proof fn join(tracked self, tracked other: Self) -> (tracked joined: Self)
+        requires
+            self.ptr()@.provenance == other.ptr()@.provenance,
+            other.ptr()@.addr == self.ptr()@.addr + self.len() * layout::size_of::<T>(),
+            self.wf(),
+            other.wf(),
+        ensures
+            joined.ptr() == self.ptr(),
+            joined.seq_perm() == self.seq_perm() + other.seq_perm(),
+            joined.abstract_bytes() == self.abstract_bytes() + other.abstract_bytes(),
+            joined.wf(),
+    {
+        broadcast use {group_vstd_default};
+
+        let tracked mut perm = self.perm;
+        perm.tracked_add(other.perm);
+
+        let tracked joined = Self { perm: perm, ptr: Ghost(self.ptr()) };
+
+        Self::abstract_bytes_subrange(joined.seq_perm(), self.len() as int);
+        assert(joined.seq_perm().subrange(0, self.len() as int) == self.seq_perm());
+        assert(joined.seq_perm().subrange(self.len() as int, joined.len() as int) == other.seq_perm());
+
+        assert(joined.ptr()@.addr + self.len() * layout::size_of::<T>() + other.len() * layout::size_of::<T>() == joined.ptr()@.addr + joined.len() * layout::size_of::<T>()) by (nonlinear_arith)
+            requires
+                self.len() + other.len() == joined.len();
+
+        assert forall |i: nat| 0 <= i < other.len() implies
+            #[trigger] joined[i + self.len()].ptr()@.addr == joined.ptr()@.addr + (i + self.len()) * layout::size_of::<T>()
+        by {
+            assert(self.ptr()@.addr + self.len() * layout::size_of::<T>() + i * layout::size_of::<T>() == self.ptr()@.addr + (i + self.len()) * layout::size_of::<T>()) by (nonlinear_arith);
+        }
+        assert forall |i: nat| 0 <= i < joined.len() implies
+            #[trigger] joined[i].ptr()@.addr == joined.ptr()@.addr + i * layout::size_of::<T>()
+        by {
+            if i < self.len() {
+                assert(joined[i].ptr()@.addr == joined.ptr()@.addr + i * layout::size_of::<T>());
+            } else {
+                assert(joined[i].ptr()@.addr == joined[(i - self.len()) as nat + self.len()].ptr()@.addr);
+            }
+        }
+
+        joined
+    }
 }
 
-pub uninterp spec fn encode<T>(s: Seq<MemContents<T>>) -> Seq<MemContents<u8>>;
-
-pub uninterp spec fn decode<T>(s: Seq<MemContents<u8>>) -> Seq<MemContents<T>>;
-
-pub axiom fn round_trip<T>()
-    ensures
-        forall|s: Seq<MemContents<T>>| decode(#[trigger] encode(s)) == s,
-;
-
-pub axiom fn subrange_decode<T>(
-    s: Seq<MemContents<u8>>,
-    t: Seq<MemContents<T>>,
-    start: int,
-    end: int,
-)
-    requires
-        0 <= start <= end <= t.len(),
-        decode(s) == t,
-    ensures
-        decode(s.subrange(start * layout::size_of::<T>(), end * layout::size_of::<T>()))
-            == t.subrange(start, end),
-;
-
-// Not needed for Vec but may be useful in the future
-// pub axiom fn decode_uninit<T>(s: Seq<MemContents<u8>>)
-//     requires
-//         forall|i| 0 <= i < s.len() ==> s[i].is_uninit(),
-//     ensures
-//         forall|i| 0 <= i < decode::<T>(s).len() ==> decode::<T>(s)[i].is_uninit(),
-// ;
 impl SeqPointsTo<u8> {
     /// We can cast a `SeqPointsTo<u8>` to a `SeqPointsTo<T>` of length `capacity` under the following conditions:
     ///
@@ -1860,82 +2116,87 @@ impl SeqPointsTo<u8> {
     /// (2) The length is exactly `capacity * layout::size_of::<T>()`.
     ///
     /// (3) It is possible to decode the memory contents as a `Seq<MemContents<T>`.
-    pub axiom fn cast_to_type<T>(tracked self, capacity: usize) -> (tracked out: SeqPointsTo<T>)
+    pub proof fn cast_to_typed<T>(tracked self, capacity: usize, mem_contents: Seq<MemContents<T>>) -> (tracked out: SeqPointsTo<T>)
         requires
             self.ptr()@.addr as nat % align_of::<T>() == 0,
             self.len() == capacity * layout::size_of::<T>(),
-            // self.is_fully_uninit() || exists|s: Seq<MemContents<T>>| self.mem_contents() == encode(s),
+            mem_contents.len() <= capacity,
+            forall |i: int| 0 <= i < mem_contents.len() ==> 
+                #[trigger] abs_decode::<MemContents<T>>(
+                    self.abstract_bytes().subrange(i * layout::size_of::<T>(), (i + 1) * layout::size_of::<T>()),
+                    &mem_contents[i]
+                ),
             self.wf(),
         ensures
             out.ptr() == self.ptr() as *mut T,
             out.len() == capacity,
-            out.mem_contents() == decode(self.mem_contents()),
+            out.abstract_bytes() == self.abstract_bytes(),
+            out.mem_contents().take(mem_contents.len() as int) == mem_contents,
             out.wf(),
-    ;
-
-    /// Splits the `SeqPointsTo<u8>` into two permissions at the index boundary `mid`.
-    pub proof fn split(tracked self, mid: int) -> (tracked (first, second): (Self, Self))
-        requires
-            0 <= mid <= self.len(),
-            self.wf(),
-        ensures
-            first.seq_perm() == self.seq_perm().take(mid),
-            second.seq_perm() == self.seq_perm().skip(mid),
-            first.ptr() == self.ptr(),
-            second.ptr() == ptr_mut_from_data(
-                PtrData::<u8> {
-                    addr: (self.ptr()@.addr + mid) as usize,
-                    provenance: self.ptr()@.provenance,
-                    metadata: self.ptr()@.metadata,
-                },
-            ),
-            first.wf(),
-            second.wf(),
+        decreases 
+            capacity
     {
-        broadcast use {group_vstd_default, align_of_u8};
-        // use_type_invariant(&self);
+        broadcast use group_vstd_default, align_of_u8, crate::vstd::arithmetic::mul::group_mul_basics;
 
-        let tracked mut perm = self.perm;
-        let tracked other = perm.tracked_skip(mid);
+        self.is_nonnull();
 
-        let tracked first = Self { perm: perm, ptr: self.ptr };
-        let tracked second = Self {
-            perm: other,
-            ptr: Ghost(
-                ptr_mut_from_data(
-                    PtrData::<u8> {
-                        addr: (self.ptr()@.addr + mid) as usize,
-                        provenance: self.ptr()@.provenance,
-                        metadata: self.ptr()@.metadata,
-                    },
-                ),
-            ),
-        };
-        (first, second)
-    }
+        if capacity == 0 {
+            SeqPointsTo::<T>::empty(self.ptr() as *mut T)
+        } else {
+            assert(0 <= (capacity - 1) as nat * layout::size_of::<T>() <= capacity * layout::size_of::<T>()) by (nonlinear_arith)
+                requires
+                    capacity > 0;
+            
+            Self::abstract_bytes_subrange(self.seq_perm(), (capacity - 1) * layout::size_of::<T>());
 
-    /// Concatenates `SeqPointsTo<u8>` permissions `self` and `other`,
-    /// provided their pointers have the same provenance
-    /// and `other`'s pointer starts at the end of `self`'s domain.
-    pub proof fn join(tracked self, tracked other: Self) -> (tracked joined: Self)
-        requires
-            self.ptr()@.provenance == other.ptr()@.provenance,
-            other.ptr()@.addr == self.ptr()@.addr + self.len(),
-            self.wf(),
-            other.wf(),
-        ensures
-            joined.ptr() == self.ptr(),
-            joined.seq_perm() == self.seq_perm() + other.seq_perm(),
-            joined.wf(),
-    {
-        broadcast use {group_vstd_default, align_of_u8};
-        // use_type_invariant(&self);
-        // use_type_invariant(&other);
+            let tracked (head, mut tail) = self.split((capacity - 1) as nat * layout::size_of::<T>());
+            
+            let tracked tail_slice = seq_into_slice(tail);
+            assert(layout::size_of::<T>() == (capacity - 1 + 1) * layout::size_of::<T>() - (capacity - 1) * layout::size_of::<T>()) by (nonlinear_arith);
+            let tracked tail_pt;
+            if mem_contents.len() == capacity {
+                tail_pt = tail_slice.transmute_to_typed(mem_contents[capacity - 1]);
+            } else {
+                tail_pt = tail_slice.transmute_to_typed_uninit();
+            }
+            let tracked mut tail_perm = Seq::tracked_empty();
+            tail_perm.tracked_push(tail_pt);
+            let tracked tail_typed = SeqPointsTo {
+                perm: tail_perm,
+                ptr: Ghost(tail_pt.ptr())
+            };
+            SeqPointsTo::<T>::abstract_bytes_len_helper(tail_typed.seq_perm());
 
-        let tracked mut perm = self.perm;
-        perm.tracked_add(other.perm);
+            assert((self.ptr()@.addr + (capacity - 1) as nat * layout::size_of::<T>()) as nat % align_of::<T>() == 0) by {
+                broadcast use {lemma_mul_mod_noop_right, lemma_add_mod_noop, layout_of_sized};
+            }
 
-        Self { perm: perm, ptr: Ghost(self.ptr()) }
+            assert forall |i: int| 0 <= i < capacity - 1 implies 
+                #[trigger] head.abstract_bytes().subrange(i * layout::size_of::<T>(), (i + 1) * layout::size_of::<T>()) == self.abstract_bytes().subrange(i * layout::size_of::<T>(), (i + 1) * layout::size_of::<T>())
+            by {
+                assert(0 <= i * layout::size_of::<T>() <= (i + 1) * layout::size_of::<T>() <= (capacity - 1) * layout::size_of::<T>()) by (nonlinear_arith)
+                    requires
+                        0 <= i < capacity - 1;
+                self.abstract_bytes().lemma_slice_of_slice(0, (capacity - 1) * layout::size_of::<T>(), i * layout::size_of::<T>(), (i + 1) * layout::size_of::<T>());
+            }
+            let new_mem_contents;
+            if mem_contents.len() == capacity {
+                new_mem_contents = mem_contents.drop_last();
+            } else {
+                new_mem_contents = mem_contents;
+            }
+            let tracked head_typed = head.cast_to_typed((capacity - 1) as usize, new_mem_contents);
+
+            let tracked res = head_typed.join(tail_typed);
+            assert(res.mem_contents() == head_typed.mem_contents() + tail_typed.mem_contents());
+            if mem_contents.len() == capacity {
+                assert(head_typed.mem_contents() == new_mem_contents);
+                assert(tail_typed.mem_contents()[0] == mem_contents.last());
+            } else {
+                assert(head_typed.mem_contents().take(mem_contents.len() as int) == new_mem_contents);
+            }
+            res
+        }
     }
 }
 
@@ -2732,6 +2993,9 @@ pub broadcast group group_raw_ptr_axioms {
     ptrs_mut_eq,
     ptrs_mut_eq_sized,
     axiom_pt_slice_len,
+    axiom_pt_abstract_bytes_len,
+    axiom_pt_slice_abstract_bytes_len,
+    SeqPointsTo::abstract_bytes_len,
     group_provenance_properties,
 }
 

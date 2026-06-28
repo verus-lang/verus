@@ -266,6 +266,69 @@ pub proof fn transmute_usize_mut_ptr<T: Sized>(tracked src: usize) -> (tracked d
     dst
 }
 
+// TODO:
+// - transmute requires `can_be_encoded`? 
+// - ensure initialization properties are preserved
+// - redo transmutes for other types
+// - move defs to PointsToUnalighed
+
+// TODO comment
+// value is Uninit ==> any bytes are valid. anything can be safely treated as uninit
+pub broadcast axiom fn abs_decode_mem_contents<T>(bytes: Seq<AbstractByte>, value: MemContents<T>)
+    ensures
+        #[trigger] abs_decode::<MemContents<T>>(bytes, &value) <==> (bytes.len() == size_of::<T>() && (value matches MemContents::Init(t) ==> abs_decode::<T>(bytes, &t)))
+    ;
+
+impl<T> PointsTo<T> {  
+    // todo - unsized versions of these axioms?
+    pub axiom fn abstract_bytes_decode(&self)
+        ensures
+            #[trigger] abs_decode::<MemContents<T>>(self.abstract_bytes(), &self.mem_contents());
+
+    // Note: we could have a stronger version of this axiom which takes a tracked Seq<MemContents<u8>> as an argument,
+    // and ensures that dst.mem_contents_seq() is equal to that Seq<MemContents<u8>>.
+    // However, this isn't needed for our current uses.
+    // TODO - actually we might need the MemContents<u8> for soundness ?
+    pub axiom fn transmute_to_u8(tracked self) -> (tracked dst: PointsTo<[u8]>)
+        ensures
+	        self.abstract_bytes() == dst.abstract_bytes(), // the bytes stay the same. this is to ensure that provenance is not lost
+            self.ptr()@.addr == dst.ptr()@.addr,
+            self.ptr()@.provenance == dst.ptr()@.provenance,
+            size_of::<T>() == dst.ptr()@.metadata;
+
+    pub proof fn test_roundtrip(tracked self) -> (tracked out: Self) 
+        ensures
+            self.ptr() == out.ptr(),
+            self.value() == out.value()
+    {
+        self.abstract_bytes_decode();
+        let tracked u8_seq = self.transmute_to_u8();
+        let tracked rt = u8_seq.transmute_to_typed(self.mem_contents());
+        rt
+    }
+}
+
+impl PointsTo<[u8]> {
+    // todo - do the MemContents need to be tracked ??
+    pub axiom fn transmute_to_typed<T>(tracked self, dst_mem_contents: MemContents<T>) 
+        -> (tracked dst: PointsTo<T>)
+        requires
+            abs_decode::<MemContents<T>>(self.abstract_bytes(), &dst_mem_contents),
+            size_of::<T>() == self.ptr()@.metadata
+        ensures
+	        self.abstract_bytes() == dst.abstract_bytes(), // the bytes stay the same. this is to ensure that provenance is not lost
+            dst.mem_contents() == dst_mem_contents, // the resulting mem_contents are the given value
+            self.ptr() as *mut T == dst.ptr();
+
+    pub axiom fn transmute_to_typed_uninit<T>(tracked self) 
+        -> (tracked dst: PointsTo<T>)
+        requires
+            size_of::<T>() == self.ptr()@.metadata
+        ensures
+	        self.abstract_bytes() == dst.abstract_bytes(), // the bytes stay the same. this is to ensure that provenance is not lost
+            self.ptr() as *mut T == dst.ptr();
+}
+
 impl<T: AbstractByteRepresentation> PointsTo<T> {
     // TODO: version for nondeterministic targets
     pub axiom fn transmute_shared<'a, U: AbstractByteRepresentation>(
@@ -278,9 +341,7 @@ impl<T: AbstractByteRepresentation> PointsTo<T> {
         ensures
             transmute_post::<U>(target, ret.value()),
             ret.is_init(),
-            ret.ptr()@.addr == self.ptr()@.addr,
-            ret.ptr()@.provenance == self.ptr()@.provenance,
-            ret.ptr()@.metadata == self.ptr()@.metadata,
+            ret.ptr() == self.ptr() as *mut U
     ;
 }
 
@@ -297,9 +358,7 @@ impl PointsTo<str> {
         ensures
             ret.is_init(),
             ret.value() == target@,
-            ret.ptr()@.addr == self.ptr()@.addr,
-            ret.ptr()@.provenance == self.ptr()@.provenance,
-            ret.ptr()@.metadata == self.ptr()@.metadata,
+            ret.ptr() == self.ptr() as *mut [u8]
     ;
 }
 
@@ -322,9 +381,7 @@ impl PointsTo<[u8]> {
         ensures
             ret.is_init(),
             ret.value() == target,
-            ret.ptr()@.addr == self.ptr()@.addr,
-            ret.ptr()@.provenance == self.ptr()@.provenance,
-            ret.ptr()@.metadata == self.ptr()@.metadata,
+            ret.ptr() == self.ptr() as *mut str
     ;
 }
 
