@@ -1322,22 +1322,38 @@ impl AbstractByteRepresentationUnsized<[u8]> for EncodingU8Slice {
     }
 
     open spec fn encode(value: &[u8], bytes: Seq<AbstractByte>) -> bool {
-        bytes == value@.map_values(|e| AbstractByte::Init(e, None))
+        &&& value@.len() == bytes.len()
+        &&& forall|i| 0 <= i < value@.len() ==> u8::encode(#[trigger] value@[i], seq![bytes[i]])
     }
 
     open spec fn decode(bytes: Seq<AbstractByte>, value: &[u8]) -> bool {
-        value@ == bytes.map_values(|b: AbstractByte| b.byte())
+        &&& value@.len() == bytes.len()
+        &&& forall|i| 0 <= i < value@.len() ==> u8::decode(seq![bytes[i]], #[trigger] value@[i])
     }
 
     proof fn encoding_size(v: &[u8], b: Seq<AbstractByte>) {
     }
 
     proof fn encoding_exists(tracked v: &[u8]) -> (b: Seq<AbstractByte>) {
-        v@.map_values(|e| AbstractByte::Init(e, None))
+        broadcast use endian_to_bytes_to_endian, EndianNat::from_nat_to_nat;
+
+        unsigned_int_max_values();
+        let bytes = v@.map_values(
+            |e| endian_to_bytes(EndianNat::<u8>::from_nat(e as nat, size_of::<u8>()), None)[0],
+        );
+        assert forall|i| 0 <= i < v@.len() implies u8::encode(#[trigger] v@[i], seq![bytes[i]]) by {
+            assert(seq![bytes[i]] == endian_to_bytes(
+                EndianNat::<u8>::from_nat(v@[i] as nat, size_of::<u8>()),
+                None,
+            ));
+        }
+        bytes
     }
 
     proof fn encoding_invertible(v: &[u8], b: Seq<AbstractByte>) {
-        assert(v@ == b.map_values(|bt: AbstractByte| bt.byte()));
+        assert forall|i| 0 <= i < v@.len() implies u8::decode(seq![b[i]], #[trigger] v@[i]) by {
+            u8::encoding_invertible(v@[i], seq![b[i]]);
+        }
     }
 
     axiom fn abs_encode_impl(v: &[u8], b: Seq<AbstractByte>);

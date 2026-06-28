@@ -322,6 +322,7 @@ impl<T> View for PointsTo<T> {
 }
 
 impl<T: ?Sized> PointsTo<T> {
+    /// The abstract bytes corresponding to this memory.
     pub closed spec fn abstract_bytes(&self) -> Seq<AbstractByte> {
         self.inner.abstract_bytes()
     }
@@ -346,6 +347,7 @@ impl<T: ?Sized> PointsToUnaligned<T> {
     /// The pointer that this permission is associated with.
     pub uninterp spec fn ptr(&self) -> *mut T;
 
+    /// The abstract bytes corresponding to this memory.
     pub uninterp spec fn abstract_bytes(&self) -> Seq<AbstractByte>;
 }
 
@@ -581,13 +583,17 @@ impl<T> PointsToUnaligned<T> {
     ;
 }
 
+/// The length of `abstract_bytes()` must match the size of the type.
 pub broadcast axiom fn axiom_pt_abstract_bytes_len<T>(pt: PointsTo<T>)
     ensures
-        #[trigger] pt.abstract_bytes().len() == size_of::<T>();
+        #[trigger] pt.abstract_bytes().len() == size_of::<T>(),
+;
 
+/// The length of `abstract_bytes()` must match the size of this slice.
 pub broadcast axiom fn axiom_pt_slice_abstract_bytes_len<T>(pt: PointsTo<[T]>)
     ensures
-        #[trigger] pt.abstract_bytes().len() == size_of::<T>() * pt.mem_contents_seq().len();
+        #[trigger] pt.abstract_bytes().len() == size_of::<T>() * pt.mem_contents_seq().len(),
+;
 
 /// The length of `mem_contents_seq()` should always match the pointer's metadata.
 pub broadcast axiom fn axiom_pt_slice_len<T>(pt: PointsTo<[T]>)
@@ -1640,12 +1646,17 @@ impl<T> SeqPointsTo<T> {
     }
 
     /// A "flattened" view of the abstract bytes.
+    /// Because the abstract bytes do not change across casting/transmuting, it is often more
+    /// convenient to have a single flattened view of the bytes for all types of permissions.
     pub open spec fn abstract_bytes(self) -> Seq<AbstractByte> {
         Self::abstract_bytes_inner(self.seq_perm())
     }
 
     pub open spec fn abstract_bytes_inner(perms: Seq<PointsTo<T>>) -> Seq<AbstractByte> {
-        perms.fold_left(Seq::empty(), |acc: Seq<AbstractByte>, elt: PointsTo<T>, | acc + elt.abstract_bytes())
+        perms.fold_left(
+            Seq::empty(),
+            |acc: Seq<AbstractByte>, elt: PointsTo<T>| acc + elt.abstract_bytes(),
+        )
     }
 
     /// The length of the sequence of `PointsTo<T>`.
@@ -1848,39 +1859,56 @@ impl<T> SeqPointsTo<T> {
 
     proof fn abstract_bytes_len_helper(perms: Seq<PointsTo<T>>)
         ensures
-            Self::abstract_bytes_inner(perms).len() == perms.len() * layout::size_of::<T>()
-        decreases
-            perms.len()
+            Self::abstract_bytes_inner(perms).len() == perms.len() * layout::size_of::<T>(),
+        decreases perms.len(),
     {
         broadcast use crate::vstd::seq::group_seq_axioms;
 
         if perms.len() > 0 {
             Self::abstract_bytes_len_helper(perms.drop_last());
             axiom_pt_abstract_bytes_len(perms.last());
-            assert((perms.len() - 1) * layout::size_of::<T>() + layout::size_of::<T>() == perms.len() * layout::size_of::<T>()) by (nonlinear_arith);
+            assert((perms.len() - 1) * layout::size_of::<T>() + layout::size_of::<T>()
+                == perms.len() * layout::size_of::<T>()) by (nonlinear_arith);
         }
     }
 
+    /// The length of the abstract bytes matches the size of this type multiplied by the number of elements this permission represents.
     pub broadcast proof fn abstract_bytes_len(&self)
         ensures
-            #[trigger] self.abstract_bytes().len() == self.len() * layout::size_of::<T>()
+            #[trigger] self.abstract_bytes().len() == self.len() * layout::size_of::<T>(),
     {
         Self::abstract_bytes_len_helper(self.seq_perm());
     }
 
+    // Relates the abstract bytes for a sequence of permissions to subranges of those permissions and subranges of the abstract bytes.
+    // Useful for avoiding reasoning about fold_left directly. 
     proof fn abstract_bytes_subrange(perms: Seq<PointsTo<T>>, split: int)
         requires
-            0 <= split <= perms.len()
+            0 <= split <= perms.len(),
         ensures
-            // abstract bytes can be split by subranges of the permissions themselves
-            Self::abstract_bytes_inner(perms) == Self::abstract_bytes_inner(perms.subrange(0, split)) + Self::abstract_bytes_inner(perms.subrange(split, perms.len() as int)),
-            // abstract bytes of a prefix correspond to a prefix of the entire abstract bytes
-            Self::abstract_bytes_inner(perms.subrange(0, split)) == Self::abstract_bytes_inner(perms).subrange(0, split * layout::size_of::<T>()),
-            // abstract bytes of a suffix correspond to suffix of the entire abstract bytes
-            Self::abstract_bytes_inner(perms.subrange(split, perms.len() as int)) == Self::abstract_bytes_inner(perms).subrange(split * layout::size_of::<T>(), perms.len() as int * layout::size_of::<T>()),
-            Self::abstract_bytes_inner(perms.subrange(0, split)).len() == split * layout::size_of::<T>(),
-            Self::abstract_bytes_inner(perms.subrange(split, perms.len() as int)).len() == (perms.len() - split) * layout::size_of::<T>(),
-        decreases perms.len() - split
+    // abstract bytes can be split by subranges of the permissions themselves
+
+            Self::abstract_bytes_inner(perms) == Self::abstract_bytes_inner(
+                perms.subrange(0, split),
+            ) + Self::abstract_bytes_inner(perms.subrange(split, perms.len() as int)),
+            // abstract bytes of a prefix of permssions correspond to a prefix of the entire abstract bytes
+            Self::abstract_bytes_inner(perms.subrange(0, split)) == Self::abstract_bytes_inner(
+                perms,
+            ).subrange(0, split * layout::size_of::<T>()),
+            // abstract bytes of a suffix of permissions correspond to suffix of the entire abstract bytes
+            Self::abstract_bytes_inner(perms.subrange(split, perms.len() as int))
+                == Self::abstract_bytes_inner(perms).subrange(
+                split * layout::size_of::<T>(),
+                perms.len() as int * layout::size_of::<T>(),
+            ),
+            // the abstract bytes of a prefix of permissions has the expected length
+            Self::abstract_bytes_inner(perms.subrange(0, split)).len() == split * layout::size_of::<
+                T,
+            >(),
+            // the abstract bytes of a suffix of permissions has the expected length
+            Self::abstract_bytes_inner(perms.subrange(split, perms.len() as int)).len() == (
+            perms.len() - split) * layout::size_of::<T>(),
+        decreases perms.len() - split,
     {
         broadcast use group_vstd_default, crate::vstd::arithmetic::mul::group_mul_basics;
 
@@ -1888,46 +1916,50 @@ impl<T> SeqPointsTo<T> {
             Self::abstract_bytes_subrange(perms.subrange(0, perms.len() - 1), split);
             perms.lemma_slice_of_slice(0, perms.len() - 1, 0, split);
             perms.lemma_slice_of_slice(0, perms.len() - 1, split, perms.len() - 1);
-            assert(
-                Self::abstract_bytes_inner(perms.subrange(0, perms.len() - 1)) 
-                == 
-                Self::abstract_bytes_inner(perms.subrange(0, split)) 
-                + Self::abstract_bytes_inner(perms.subrange(split, perms.len() - 1))
-            );
+            assert(Self::abstract_bytes_inner(perms.subrange(0, perms.len() - 1))
+                == Self::abstract_bytes_inner(perms.subrange(0, split))
+                + Self::abstract_bytes_inner(perms.subrange(split, perms.len() - 1)));
 
             assert(perms.last() == perms[perms.len() - 1]);
             assert(perms.drop_last() == perms.subrange(0, perms.len() - 1));
-            assert(
-                Self::abstract_bytes_inner(perms) 
-                == 
-                Self::abstract_bytes_inner(perms.subrange(0, perms.len() - 1)) 
-                + perms[perms.len() - 1].abstract_bytes()
-            );
+            assert(Self::abstract_bytes_inner(perms) == Self::abstract_bytes_inner(
+                perms.subrange(0, perms.len() - 1),
+            ) + perms[perms.len() - 1].abstract_bytes());
             assert(perms.subrange(split, perms.len() as int).last() == perms[perms.len() - 1]);
-            assert(perms.subrange(split, perms.len() as int).drop_last() == perms.subrange(split, perms.len() - 1));
-            assert(
-                Self::abstract_bytes_inner(perms.subrange(split, perms.len() as int))
-                ==
-                Self::abstract_bytes_inner(perms.subrange(split, perms.len() - 1)) 
-                + perms[perms.len() - 1].abstract_bytes()
-            );
+            assert(perms.subrange(split, perms.len() as int).drop_last() == perms.subrange(
+                split,
+                perms.len() - 1,
+            ));
+            assert(Self::abstract_bytes_inner(perms.subrange(split, perms.len() as int))
+                == Self::abstract_bytes_inner(perms.subrange(split, perms.len() - 1))
+                + perms[perms.len() - 1].abstract_bytes());
 
             Self::abstract_bytes_len_helper(perms.subrange(0, split));
             Self::abstract_bytes_len_helper(perms.subrange(split, perms.len() as int));
             assert(perms.subrange(split, perms.len() as int).len() == perms.len() - split);
-            assert(Self::abstract_bytes_inner(perms.subrange(0, perms.len() - 1).subrange(0, split)).len() == Self::abstract_bytes_inner(perms.subrange(0, split)).len());
-            assert(Self::abstract_bytes_inner(perms).len() - Self::abstract_bytes_inner(perms.subrange(0, split)).len() == Self::abstract_bytes_inner(perms.subrange(split, perms.len() as int)).len());
-            assert(perms.len() * layout::size_of::<T>() - split * layout::size_of::<T>() == (perms.len() - split) * layout::size_of::<T>()) by (nonlinear_arith);
+            assert(Self::abstract_bytes_inner(
+                perms.subrange(0, perms.len() - 1).subrange(0, split),
+            ).len() == Self::abstract_bytes_inner(perms.subrange(0, split)).len());
+            assert(Self::abstract_bytes_inner(perms).len() - Self::abstract_bytes_inner(
+                perms.subrange(0, split),
+            ).len() == Self::abstract_bytes_inner(perms.subrange(split, perms.len() as int)).len());
+            assert(perms.len() * layout::size_of::<T>() - split * layout::size_of::<T>() == (
+            perms.len() - split) * layout::size_of::<T>()) by (nonlinear_arith);
         } else {
             Self::abstract_bytes_len_helper(perms);
         }
     }
 
-    broadcast proof fn abstract_bytes_equiv(&self, i: int)
+    /// The abstract bytes of an individual permission in a sequence corresponds to a subrange of length `layout::size_of::<T>()`
+    /// from the entire abstract bytes.
+    pub broadcast proof fn abstract_bytes_equiv(&self, i: int)
         requires
-            0 <= i < self.len()
+            0 <= i < self.len(),
         ensures
-            #[trigger] self.seq_perm()[i].abstract_bytes() == self.abstract_bytes().subrange(i * layout::size_of::<T>(), (i + 1) * layout::size_of::<T>())
+            #[trigger] self.seq_perm()[i].abstract_bytes() == self.abstract_bytes().subrange(
+                i * layout::size_of::<T>(),
+                (i + 1) * layout::size_of::<T>(),
+            ),
     {
         broadcast use group_vstd_default;
 
@@ -1936,35 +1968,24 @@ impl<T> SeqPointsTo<T> {
         Self::abstract_bytes_subrange(self.seq_perm(), i + 1);
         Self::abstract_bytes_subrange(self.seq_perm().subrange(0, i + 1), i);
         assert(self.seq_perm()[i] == self.seq_perm().subrange(0, i + 1).subrange(i, i + 1)[0]);
-        self.abstract_bytes().lemma_slice_of_slice(0, (i + 1) * layout::size_of::<T>(), i * layout::size_of::<T>(), (i + 1) * layout::size_of::<T>());
-    }
-
-    pub proof fn abstract_bytes_decode(&self)
-        requires
-            self.wf()
-        ensures
-            forall |i: int| 0 <= i < self.len() ==> 
-                #[trigger] abs_decode::<MemContents<T>>(
-                    self.abstract_bytes().subrange(i * layout::size_of::<T>(), (i + 1) * layout::size_of::<T>()), 
-                    &self.mem_contents()[i]
-                )
-    {
-        broadcast use SeqPointsTo::abstract_bytes_equiv;
-
-        self.abstract_bytes_decode_helper(self.len() as int);
+        self.abstract_bytes().lemma_slice_of_slice(
+            0,
+            (i + 1) * layout::size_of::<T>(),
+            i * layout::size_of::<T>(),
+            (i + 1) * layout::size_of::<T>(),
+        );
     }
 
     proof fn abstract_bytes_decode_helper(&self, len: int)
         requires
             0 <= len <= self.len(),
-            self.wf()
+            self.wf(),
         ensures
-            forall |i: int| 0 <= i < len ==> 
-                #[trigger] abs_decode::<MemContents<T>>(
-                    self.seq_perm()[i].abstract_bytes(), 
-                    &self.mem_contents()[i]
-                )
-        decreases len
+            forall|i: int|
+                0 <= i < len && self.mem_contents()[i].is_init() ==> #[trigger] abs_decode::<
+                    MemContents<T>,
+                >(self.seq_perm()[i].abstract_bytes(), &self.mem_contents()[i]),
+        decreases len,
     {
         broadcast use group_vstd_default;
 
@@ -1975,8 +1996,45 @@ impl<T> SeqPointsTo<T> {
         }
     }
 
+    /// For all initialized positions in this sequence, the abstract bytes for that position can be decoded into the value in memory at that position.
+    pub proof fn abstract_bytes_decode(&self)
+        requires
+            self.wf(),
+        ensures
+            forall|i: int|
+                0 <= i < self.len() && self.mem_contents()[i].is_init() ==> #[trigger] abs_decode::<
+                    MemContents<T>,
+                >(
+                    self.abstract_bytes().subrange(
+                        i * layout::size_of::<T>(),
+                        (i + 1) * layout::size_of::<T>(),
+                    ),
+                    &self.mem_contents()[i],
+                ),
+    {
+        broadcast use SeqPointsTo::abstract_bytes_equiv;
+
+        self.abstract_bytes_decode_helper(self.len() as int);
+        assert forall|i: int|
+            0 <= i < self.len() && self.mem_contents()[i].is_init() implies #[trigger] abs_decode::<
+            MemContents<T>,
+        >(
+            self.abstract_bytes().subrange(
+                i * layout::size_of::<T>(),
+                (i + 1) * layout::size_of::<T>(),
+            ),
+            &self.mem_contents()[i],
+        ) by {
+            assert(abs_decode::<MemContents<T>>(
+                self.seq_perm()[i].abstract_bytes(),
+                &self.mem_contents()[i],
+            ));
+        }
+    }
+
     /// Casting a `SeqPointsTo<T>` to a `SeqPointsTo<u8>` casts the pointer,
-    /// multiplies the length by `size_of::<T>()`, and encodes the memory contents to bytes.
+    /// multiplies the length by `size_of::<T>()`, and preserves the abstract bytes.
+    /// The resulting `SeqPointsTo<u8>` is logically uninitialized, so it cannot be read from.
     pub proof fn cast_to_u8(tracked self) -> (tracked out: SeqPointsTo<u8>)
         requires
             self.wf(),
@@ -1985,10 +2043,13 @@ impl<T> SeqPointsTo<T> {
             out.len() == self.len() * layout::size_of::<T>(),
             out.abstract_bytes() == self.abstract_bytes(),
             out.wf(),
-        decreases
-            self.len()
+        decreases self.len(),
     {
-        broadcast use group_vstd_default, align_of_u8, crate::vstd::arithmetic::mul::group_mul_basics;
+        broadcast use
+            group_vstd_default,
+            align_of_u8,
+            crate::vstd::arithmetic::mul::group_mul_basics,
+        ;
 
         self.is_nonnull();
 
@@ -1998,7 +2059,8 @@ impl<T> SeqPointsTo<T> {
             let tracked (head, mut tail) = self.split((self.len() - 1) as nat);
             let tracked tail_u8 = tail.perm.tracked_remove(0).transmute_to_u8().into_seq_pt();
             let tracked head_u8 = head.cast_to_u8();
-            assert(layout::size_of::<T>() + (self.len() - 1) * layout::size_of::<T>() == self.len() * layout::size_of::<T>()) by (nonlinear_arith);
+            assert(layout::size_of::<T>() + (self.len() - 1) * layout::size_of::<T>() == self.len()
+                * layout::size_of::<T>()) by (nonlinear_arith);
             head_u8.join(tail_u8)
         }
     }
@@ -2011,8 +2073,12 @@ impl<T> SeqPointsTo<T> {
         ensures
             first.seq_perm() == self.seq_perm().take(mid as int),
             second.seq_perm() == self.seq_perm().skip(mid as int),
-            first.abstract_bytes() == self.abstract_bytes().take(mid as int * layout::size_of::<T>()),
-            second.abstract_bytes() == self.abstract_bytes().skip(mid as int * layout::size_of::<T>()),
+            first.abstract_bytes() == self.abstract_bytes().take(
+                mid as int * layout::size_of::<T>(),
+            ),
+            second.abstract_bytes() == self.abstract_bytes().skip(
+                mid as int * layout::size_of::<T>(),
+            ),
             first.ptr() == self.ptr(),
             second.ptr() == ptr_mut_from_data(
                 PtrData::<T> {
@@ -2022,7 +2088,7 @@ impl<T> SeqPointsTo<T> {
                 },
             ),
             first.wf(),
-            second.wf()
+            second.wf(),
     {
         broadcast use {group_vstd_default, crate::vstd::arithmetic::mul::lemma_mul_inequality};
 
@@ -2044,16 +2110,23 @@ impl<T> SeqPointsTo<T> {
                 ),
             ),
         };
-        assert((ghost_self.ptr()@.addr + mid * layout::size_of::<T>()) as nat % align_of::<T>() == 0) by {
+        assert((ghost_self.ptr()@.addr + mid * layout::size_of::<T>()) as nat % align_of::<T>()
+            == 0) by {
             broadcast use {lemma_mul_mod_noop_right, lemma_add_mod_noop, layout_of_sized};
+
         }
-        assert(ghost_self.ptr()@.addr + mid * layout::size_of::<T>() + second.len() * layout::size_of::<T>() == ghost_self.ptr()@.addr + ghost_self.len() * layout::size_of::<T>()) by (nonlinear_arith)
+        assert(ghost_self.ptr()@.addr + mid * layout::size_of::<T>() + second.len()
+            * layout::size_of::<T>() == ghost_self.ptr()@.addr + ghost_self.len()
+            * layout::size_of::<T>()) by (nonlinear_arith)
             requires
-                mid + second.len() == ghost_self.len();
-        assert forall |i: nat| 0 <= i < second.len() implies
-            #[trigger] second[i].ptr()@.addr == second.ptr()@.addr + i * layout::size_of::<T>()
-        by {
-            assert(ghost_self.ptr()@.addr + (i + mid) * layout::size_of::<T>() == ghost_self.ptr()@.addr + mid * layout::size_of::<T>() + i * layout::size_of::<T>()) by (nonlinear_arith);
+                mid + second.len() == ghost_self.len(),
+        ;
+        assert forall|i: nat| 0 <= i < second.len() implies #[trigger] second[i].ptr()@.addr
+            == second.ptr()@.addr + i * layout::size_of::<T>() by {
+            assert(ghost_self.ptr()@.addr + (i + mid) * layout::size_of::<T>()
+                == ghost_self.ptr()@.addr + mid * layout::size_of::<T>() + i * layout::size_of::<
+                T,
+            >()) by (nonlinear_arith);
         }
         Self::abstract_bytes_subrange(ghost_self.seq_perm(), mid as int);
         (first, second)
@@ -2074,7 +2147,7 @@ impl<T> SeqPointsTo<T> {
             joined.abstract_bytes() == self.abstract_bytes() + other.abstract_bytes(),
             joined.wf(),
     {
-        broadcast use {group_vstd_default};
+        broadcast use group_vstd_default;
 
         let tracked mut perm = self.perm;
         perm.tracked_add(other.perm);
@@ -2083,24 +2156,32 @@ impl<T> SeqPointsTo<T> {
 
         Self::abstract_bytes_subrange(joined.seq_perm(), self.len() as int);
         assert(joined.seq_perm().subrange(0, self.len() as int) == self.seq_perm());
-        assert(joined.seq_perm().subrange(self.len() as int, joined.len() as int) == other.seq_perm());
+        assert(joined.seq_perm().subrange(self.len() as int, joined.len() as int)
+            == other.seq_perm());
 
-        assert(joined.ptr()@.addr + self.len() * layout::size_of::<T>() + other.len() * layout::size_of::<T>() == joined.ptr()@.addr + joined.len() * layout::size_of::<T>()) by (nonlinear_arith)
+        assert(joined.ptr()@.addr + self.len() * layout::size_of::<T>() + other.len()
+            * layout::size_of::<T>() == joined.ptr()@.addr + joined.len() * layout::size_of::<T>())
+            by (nonlinear_arith)
             requires
-                self.len() + other.len() == joined.len();
+                self.len() + other.len() == joined.len(),
+        ;
 
-        assert forall |i: nat| 0 <= i < other.len() implies
-            #[trigger] joined[i + self.len()].ptr()@.addr == joined.ptr()@.addr + (i + self.len()) * layout::size_of::<T>()
-        by {
-            assert(self.ptr()@.addr + self.len() * layout::size_of::<T>() + i * layout::size_of::<T>() == self.ptr()@.addr + (i + self.len()) * layout::size_of::<T>()) by (nonlinear_arith);
+        assert forall|i: nat| 0 <= i < other.len() implies #[trigger] joined[i
+            + self.len()].ptr()@.addr == joined.ptr()@.addr + (i + self.len()) * layout::size_of::<
+            T,
+        >() by {
+            assert(self.ptr()@.addr + self.len() * layout::size_of::<T>() + i * layout::size_of::<
+                T,
+            >() == self.ptr()@.addr + (i + self.len()) * layout::size_of::<T>())
+                by (nonlinear_arith);
         }
-        assert forall |i: nat| 0 <= i < joined.len() implies
-            #[trigger] joined[i].ptr()@.addr == joined.ptr()@.addr + i * layout::size_of::<T>()
-        by {
+        assert forall|i: nat| 0 <= i < joined.len() implies #[trigger] joined[i].ptr()@.addr
+            == joined.ptr()@.addr + i * layout::size_of::<T>() by {
             if i < self.len() {
                 assert(joined[i].ptr()@.addr == joined.ptr()@.addr + i * layout::size_of::<T>());
             } else {
-                assert(joined[i].ptr()@.addr == joined[(i - self.len()) as nat + self.len()].ptr()@.addr);
+                assert(joined[i].ptr()@.addr == joined[(i - self.len()) as nat
+                    + self.len()].ptr()@.addr);
             }
         }
 
@@ -2115,16 +2196,26 @@ impl SeqPointsTo<u8> {
     ///
     /// (2) The length is exactly `capacity * layout::size_of::<T>()`.
     ///
-    /// (3) It is possible to decode the memory contents as a `Seq<MemContents<T>`.
-    pub proof fn cast_to_typed<T>(tracked self, capacity: usize, mem_contents: Seq<MemContents<T>>) -> (tracked out: SeqPointsTo<T>)
+    /// (3) The prefix of abstract bytes for the `SeqPointsTo<u8>` can be decoded into the given `Seq<MemContents<T>`.
+    ///
+    /// The resulting `SeqPointsTo<T>` will have a prefix of initialized memory corresponding to `mem_contents`.
+    /// The rest will be logically uninitialized. The abstract bytes will also remain the same.
+    pub proof fn cast_to_typed<T>(
+        tracked self,
+        capacity: usize,
+        mem_contents: Seq<MemContents<T>>,
+    ) -> (tracked out: SeqPointsTo<T>)
         requires
             self.ptr()@.addr as nat % align_of::<T>() == 0,
             self.len() == capacity * layout::size_of::<T>(),
             mem_contents.len() <= capacity,
-            forall |i: int| 0 <= i < mem_contents.len() ==> 
-                #[trigger] abs_decode::<MemContents<T>>(
-                    self.abstract_bytes().subrange(i * layout::size_of::<T>(), (i + 1) * layout::size_of::<T>()),
-                    &mem_contents[i]
+            forall|i: int|
+                0 <= i < mem_contents.len() ==> #[trigger] abs_decode::<MemContents<T>>(
+                    self.abstract_bytes().subrange(
+                        i * layout::size_of::<T>(),
+                        (i + 1) * layout::size_of::<T>(),
+                    ),
+                    &mem_contents[i],
                 ),
             self.wf(),
         ensures
@@ -2133,26 +2224,34 @@ impl SeqPointsTo<u8> {
             out.abstract_bytes() == self.abstract_bytes(),
             out.mem_contents().take(mem_contents.len() as int) == mem_contents,
             out.wf(),
-        decreases 
-            capacity
+        decreases capacity,
     {
-        broadcast use group_vstd_default, align_of_u8, crate::vstd::arithmetic::mul::group_mul_basics;
+        broadcast use
+            group_vstd_default,
+            align_of_u8,
+            crate::vstd::arithmetic::mul::group_mul_basics,
+        ;
 
         self.is_nonnull();
 
         if capacity == 0 {
             SeqPointsTo::<T>::empty(self.ptr() as *mut T)
         } else {
-            assert(0 <= (capacity - 1) as nat * layout::size_of::<T>() <= capacity * layout::size_of::<T>()) by (nonlinear_arith)
+            assert(0 <= (capacity - 1) as nat * layout::size_of::<T>() <= capacity
+                * layout::size_of::<T>()) by (nonlinear_arith)
                 requires
-                    capacity > 0;
-            
+                    capacity > 0,
+            ;
+
             Self::abstract_bytes_subrange(self.seq_perm(), (capacity - 1) * layout::size_of::<T>());
 
-            let tracked (head, mut tail) = self.split((capacity - 1) as nat * layout::size_of::<T>());
-            
+            let tracked (head, mut tail) = self.split(
+                (capacity - 1) as nat * layout::size_of::<T>(),
+            );
+
             let tracked tail_slice = seq_into_slice(tail);
-            assert(layout::size_of::<T>() == (capacity - 1 + 1) * layout::size_of::<T>() - (capacity - 1) * layout::size_of::<T>()) by (nonlinear_arith);
+            assert(layout::size_of::<T>() == (capacity - 1 + 1) * layout::size_of::<T>() - (capacity
+                - 1) * layout::size_of::<T>()) by (nonlinear_arith);
             let tracked tail_pt;
             if mem_contents.len() == capacity {
                 tail_pt = tail_slice.transmute_to_typed(mem_contents[capacity - 1]);
@@ -2161,23 +2260,34 @@ impl SeqPointsTo<u8> {
             }
             let tracked mut tail_perm = Seq::tracked_empty();
             tail_perm.tracked_push(tail_pt);
-            let tracked tail_typed = SeqPointsTo {
-                perm: tail_perm,
-                ptr: Ghost(tail_pt.ptr())
-            };
+            let tracked tail_typed = SeqPointsTo { perm: tail_perm, ptr: Ghost(tail_pt.ptr()) };
             SeqPointsTo::<T>::abstract_bytes_len_helper(tail_typed.seq_perm());
 
-            assert((self.ptr()@.addr + (capacity - 1) as nat * layout::size_of::<T>()) as nat % align_of::<T>() == 0) by {
+            assert((self.ptr()@.addr + (capacity - 1) as nat * layout::size_of::<T>()) as nat
+                % align_of::<T>() == 0) by {
                 broadcast use {lemma_mul_mod_noop_right, lemma_add_mod_noop, layout_of_sized};
+
             }
 
-            assert forall |i: int| 0 <= i < capacity - 1 implies 
-                #[trigger] head.abstract_bytes().subrange(i * layout::size_of::<T>(), (i + 1) * layout::size_of::<T>()) == self.abstract_bytes().subrange(i * layout::size_of::<T>(), (i + 1) * layout::size_of::<T>())
-            by {
-                assert(0 <= i * layout::size_of::<T>() <= (i + 1) * layout::size_of::<T>() <= (capacity - 1) * layout::size_of::<T>()) by (nonlinear_arith)
+            assert forall|i: int|
+                0 <= i < capacity - 1 implies #[trigger] head.abstract_bytes().subrange(
+                i * layout::size_of::<T>(),
+                (i + 1) * layout::size_of::<T>(),
+            ) == self.abstract_bytes().subrange(
+                i * layout::size_of::<T>(),
+                (i + 1) * layout::size_of::<T>(),
+            ) by {
+                assert(0 <= i * layout::size_of::<T>() <= (i + 1) * layout::size_of::<T>() <= (
+                capacity - 1) * layout::size_of::<T>()) by (nonlinear_arith)
                     requires
-                        0 <= i < capacity - 1;
-                self.abstract_bytes().lemma_slice_of_slice(0, (capacity - 1) * layout::size_of::<T>(), i * layout::size_of::<T>(), (i + 1) * layout::size_of::<T>());
+                        0 <= i < capacity - 1,
+                ;
+                self.abstract_bytes().lemma_slice_of_slice(
+                    0,
+                    (capacity - 1) * layout::size_of::<T>(),
+                    i * layout::size_of::<T>(),
+                    (i + 1) * layout::size_of::<T>(),
+                );
             }
             let new_mem_contents;
             if mem_contents.len() == capacity {
@@ -2193,7 +2303,8 @@ impl SeqPointsTo<u8> {
                 assert(head_typed.mem_contents() == new_mem_contents);
                 assert(tail_typed.mem_contents()[0] == mem_contents.last());
             } else {
-                assert(head_typed.mem_contents().take(mem_contents.len() as int) == new_mem_contents);
+                assert(head_typed.mem_contents().take(mem_contents.len() as int)
+                    == new_mem_contents);
             }
             res
         }
