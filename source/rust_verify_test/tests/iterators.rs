@@ -82,6 +82,29 @@ test_verify_one_file! {
     } => Ok(())
 }
 
+
+test_verify_one_file! {
+    #[test] vec_iter_mut_works verus_code! {
+        use vstd::prelude::*;
+        
+        fn client_for_loop() {
+            let mut v: Vec<u32> = vec![1, 2, 3, 4];
+            for x in it: v.iter_mut() 
+                invariant
+                    // TODO: Ideally we shouldn't need these first two invariants
+                    after_borrow(v)@.len() == it.seq().len(),
+                    forall |i: int| #![auto] 0 <= i < it.seq().len() ==> *final(it.seq()[i]) == after_borrow(v)@[i],
+                    forall |i: int| #![auto] 0 <= i < it.index() ==> *final(it.seq()[i]) == 0,
+            {
+                *x = 0;
+            }
+            assert(forall |i: int| 0 <= i < v.len() ==> v[i] == 0);
+            assert(v@ == seq![0, 0, 0, 0]);
+        }        
+
+    } => Ok(())
+}
+
 test_verify_one_file! {
     #[test] map_can_be_implemented verus_code! {
         use vstd::prelude::*;
@@ -359,41 +382,29 @@ test_verify_one_file! {
         fn split_all<'a, T>(s: &'a mut [T]) -> (refs: Vec<&'a mut T>)
             ensures
                 refs@.len() == old(s)@.len(),
-                // Current value of each element reference (reversed indexing).
                 forall|i: int| #![trigger refs@[i]] 0 <= i < refs@.len() ==>
                     *(refs@[i]) == old(s)@[refs@.len() - 1 - i],
-                // The slice's final length matches.
                 final(s)@.len() == old(s)@.len(),
-                // The prophesied final value of each element reference flows back to the
-                // slice's final value (reversed indexing).
                 forall|i: int| #![trigger refs@[i]] 0 <= i < refs@.len() ==>
                     *final(refs@[i]) == final(s)@[refs@.len() - 1 - i],
         {
             let ghost n0 = s@.len();
-            // Capture the slice's prophesied final value *before* we move `s` into `rest`;
-            // afterwards `s` is borrowed and `final(s)` can no longer be named directly.
             let ghost sf: Seq<T> = final(s)@;
             let mut refs: Vec<&'a mut T> = Vec::new();
             let mut rest: &'a mut [T] = s;
             while rest.len() > 0
                 invariant
                     rest@.len() + refs@.len() == n0,
-                    // `rest` is the not-yet-peeled prefix.
                     forall|i: int| #![trigger rest@[i]] 0 <= i < rest@.len() ==> rest@[i] == old(s)@[i],
-                    // Already-peeled references carry the correct current values.
                     forall|i: int| #![trigger refs@[i]] 0 <= i < refs@.len() ==>
                         *(refs@[i]) == old(s)@[n0 - 1 - i],
-                    // Telescoping prophecy: the original final value equals the still-to-be
-                    // peeled prefix's final value, followed by the finals of the peeled
-                    // references (in forward order, hence the reversal).
                     sf == final(rest)@ + Seq::new(
                         refs@.len() as nat,
                         |j: int| *final(refs@[refs@.len() - 1 - j]),
                     ),
                 decreases rest.len(),
             {
-                let n = rest.len();
-                let (head, tail) = rest.split_at_mut(n - 1);
+                let (head, tail) = rest.split_at_mut(rest.len() - 1);
                 let last = tail.first_mut().unwrap();
                 refs.push(last);
                 rest = head;
@@ -439,7 +450,6 @@ test_verify_one_file! {
         impl<'a, T> Iterator for MyIterMut<'a, T> {
             type Item = &'a mut T;
 
-            // Verus checks this `next` against the `IteratorSpec` trait specification.
             fn next(&mut self) -> (r: Option<&'a mut T>) {
                 self.refs.pop()
             }
@@ -450,8 +460,6 @@ test_verify_one_file! {
                 true
             }
 
-            // The forward sequence of references still to be returned is the reverse of the
-            // (reverse-stored) `refs` vector.
             #[verifier::prophetic]
             closed spec fn remaining(&self) -> Seq<Self::Item> {
                 Seq::new(self.refs@.len(), |i: int| self.refs@[self.refs@.len() - 1 - i])
@@ -485,8 +493,6 @@ test_verify_one_file! {
         {
         }
 
-        /// Client 1: drive the iterator by hand and overwrite each element, then observe
-        /// the updates reflected back in the original `Vec` (the `*x = <const>` shape).
         fn client_set() {
             let mut v: Vec<u32> = vec![10, 20];
             let mut it = MyIterMut::new(&mut v);
@@ -496,13 +502,9 @@ test_verify_one_file! {
             let r1 = it.next().unwrap();
             *r1 = 200;
 
-            // After the references resolve and `it`'s borrow of `v` expires, the mutations
-            // are visible in `v`.
             assert(v@ == seq![100u32, 200]);
         }
 
-        /// Client 2: read-modify-write through the mutable references (the `*x = x + 1`
-        /// shape from the motivating example).
         fn client_increment() {
             let mut v: Vec<u32> = vec![1, 2, 3];
             let mut it = MyIterMut::new(&mut v);
@@ -517,50 +519,21 @@ test_verify_one_file! {
             assert(v@ == seq![2u32, 3, 4]);
         }
 
-        /// Client 3: a general, arbitrary-length `while` loop over `next()` -- the manual
-        /// equivalent of `for x in v.iter_mut() { *x = 0; }`.  Proves that every element
-        /// of `v` ends up zeroed.
-        fn client_loop_general() {
-            broadcast use lemma_rem_len;
-            broadcast use vstd::seq_lib::group_seq_properties;
+        fn client_for_loop() {
+            let mut v: Vec<u32> = vec![1, 2, 3, 4];
+            let mut iter = MyIterMut::new(&mut v);
 
-            let mut v: Vec<u32> = vec![5u32, 6, 7, 8, 9];
-            let blen = v.len();
-            let ghost n = v@.len();
-            let mut it = MyIterMut::new(&mut v);
-            // Prophetic snapshot of the references the iterator will hand out.
-            let ghost rem0 = IteratorSpec::remaining(&it);
-            let mut k: usize = 0;
-            while k < blen
+            for x in it: iter 
                 invariant
-                    k <= n,
-                    n == rem0.len(),
-                    n == blen,
-                    it.rem_len() == n - k,
-                    IteratorSpec::remaining(&it) == rem0.skip(k as int),
-                    IteratorSpec::obeys_prophetic_iter_laws(&it),
-                    // Each handed-out reference's eventual value flows back to `v`.
-                    forall|j: int| #![trigger rem0[j]] 0 <= j < n ==> *final(rem0[j]) == after_borrow(v)@[j],
-                    after_borrow(v)@.len() == n,
-                    // Every reference processed so far has been set to 0.
-                    forall|j: int| #![trigger rem0[j]] 0 <= j < k ==> *final(rem0[j]) == 0,
-                decreases it.rem_len(),
+                    // TODO: Ideally we shouldn't need these first two invariants
+                    after_borrow(v)@.len() == it.seq().len(),
+                    forall |i: int| #![auto] 0 <= i < it.seq().len() ==> *final(it.seq()[i]) == after_borrow(v)@[i],
+                    forall |i: int| #![auto] 0 <= i < it.index() ==> *final(it.seq()[i]) == 0,
             {
-                let ghost k_old = k as int;
-                assert(rem0.skip(k_old).len() > 0);
-                let x = it.next().unwrap();
-                assert(x == rem0[k_old]);
                 *x = 0;
-                k += 1;
-                assert(IteratorSpec::remaining(&it) =~= rem0.skip(k as int));
             }
-
-            // On loop exit k == n, so every reference was set to 0; chain that back to `v`.
-            assert forall|j: int| 0 <= j < n implies after_borrow(v)@[j] == 0 by {
-                assert(*final(rem0[j]) == 0);
-            }
-            assert(v@ =~= after_borrow(v)@);
-            assert(forall|j: int| 0 <= j < n ==> v@[j] == 0);
-        }
+            assert(forall |i: int| 0 <= i < v.len() ==> v[i] == 0);
+            assert(v@ == seq![0, 0, 0, 0]);
+        }        
     } => Ok(())
 }
