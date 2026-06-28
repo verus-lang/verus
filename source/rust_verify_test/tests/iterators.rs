@@ -82,14 +82,13 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-
 test_verify_one_file! {
     #[test] vec_iter_mut_works verus_code! {
         use vstd::prelude::*;
-        
+
         fn client_for_loop() {
             let mut v: Vec<u32> = vec![1, 2, 3, 4];
-            for x in it: v.iter_mut() 
+            for x in it: v.iter_mut()
                 invariant
                     // TODO: Ideally we shouldn't need these first two invariants
                     after_borrow(v)@.len() == it.seq().len(),
@@ -100,7 +99,7 @@ test_verify_one_file! {
             }
             assert(forall |i: int| 0 <= i < v.len() ==> v[i] == 0);
             assert(v@ == seq![0, 0, 0, 0]);
-        }        
+        }
 
     } => Ok(())
 }
@@ -377,8 +376,8 @@ test_verify_one_file! {
         use vstd::prelude::*;
         use vstd::std_specs::iter::*;
 
-        // Eagerly split a mutable slice into the mutable references to each of its elements, 
-        // returned in *reversed* order (so popping the `Vec` yields elements front-to-back).  
+        // Eagerly split a mutable slice into the mutable references to each of its elements,
+        // returned in *reversed* order (so popping the `Vec` yields elements front-to-back).
         fn split_all<'a, T>(s: &'a mut [T]) -> (refs: Vec<&'a mut T>)
             ensures
                 refs@.len() == old(s)@.len(),
@@ -419,7 +418,7 @@ test_verify_one_file! {
         }
 
         impl<'a, T> MyIterMut<'a, T> {
-            /// Non-prophetic count of references still to be returned 
+            /// Non-prophetic count of references still to be returned
             pub closed spec fn rem_len(&self) -> nat {
                 self.refs@.len()
             }
@@ -523,7 +522,7 @@ test_verify_one_file! {
             let mut v: Vec<u32> = vec![1, 2, 3, 4];
             let mut iter = MyIterMut::new(&mut v);
 
-            for x in it: iter 
+            for x in it: iter
                 invariant
                     // TODO: Ideally we shouldn't need these first two invariants
                     after_borrow(v)@.len() == it.seq().len(),
@@ -534,6 +533,6 @@ test_verify_one_file! {
             }
             assert(forall |i: int| 0 <= i < v.len() ==> v[i] == 0);
             assert(v@ == seq![0, 0, 0, 0]);
-        }        
+        }
     } => Ok(())
 }
