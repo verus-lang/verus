@@ -3716,6 +3716,10 @@ impl Visitor {
             };
             VERUS_loop_result
         }));
+        let f = Expr::Verbatim(quote_spanned!(span => {
+            #[verifier::loop_isolation_boundary]
+            #f
+        }));
         //eprintln!("{}", verus_prettyplease::unparse_expr(&f));
         f
     }
