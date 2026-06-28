@@ -81,6 +81,7 @@ impl Clone for LogArgs {
             log_smt_transcript: self.log_smt_transcript,
             log_triggers: self.log_triggers,
             log_call_graph: self.log_call_graph,
+            log_impl_names: self.log_impl_names,
         }
     }
 }

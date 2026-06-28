@@ -5,11 +5,8 @@ use crate::context::{ContextX, ErasureInfo};
 use crate::debugger::Debugger;
 use crate::external::VerifOrExternal;
 use crate::externs::VerusExterns;
-<<<<<<< HEAD
 use crate::rust_to_vir_base::mk_crate_id;
-=======
-use crate::sledgehammer::{self, sledgehammer};
->>>>>>> 3ad86db96 (Implement Sledgehammer-style proof search)
+use crate::try_broadcasts::{self, sledgehammer};
 use crate::spans::{SpanContext, SpanContextX, from_raw_span};
 use crate::user_filter::UserFilter;
 use crate::util::{HashMapAbsorbWith, error};
@@ -338,12 +335,7 @@ pub struct Verifier {
     created_log_dir: Arc<std::sync::Mutex<Option<std::path::PathBuf>>>,
     created_solver_log_dir: Arc<std::sync::Mutex<Option<std::path::PathBuf>>>,
     vir_crate: Option<Krate>,
-<<<<<<< HEAD
-    crate_id: Option<CrateId>,
-=======
-    pub(crate) crate_name: Option<String>,
-    crate_names: Option<Vec<String>>,
->>>>>>> 3ad86db96 (Implement Sledgehammer-style proof search)
+    pub(crate) crate_id: Option<CrateId>,
     air_no_span: Option<vir::messages::Span>,
     current_crate_modules: Option<Vec<vir::ast::Module>>,
     crate_items: Option<Arc<crate::external::CrateItems>>,
@@ -1336,9 +1328,15 @@ impl Verifier {
         // If `outcome` is Some, populate with information on whether
         // verification succeeded and what axioms were used if axiom-usage-info
         // is enabled.
-        mut outcome: Option<&mut sledgehammer::VerificationOutcome>,
+        mut outcome: Option<&mut try_broadcasts::VerificationOutcome>,
     ) -> Result<VerifyBucketOut, VirErr> {
         let message_interface = Arc::new(vir::messages::VirMessageInterface {});
+
+        // Record the naming context used for this bucket so that Sledgehammer can map the
+        // `used_axioms` AIR identifiers back to the corresponding `Fun`s.
+        if let Some(outcome) = outcome.as_deref_mut() {
+            outcome.name_ctxt = Some(ctx.name_ctxt.clone());
+        }
 
         assert!(!(self.args.profile && self.args.profile_all));
         assert!(!(self.args.profile && self.args.capture_profiles));

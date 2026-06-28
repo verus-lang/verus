@@ -30,14 +30,14 @@ broadcast proof fn union_len<A>(xs: Set<A>, ys: Set<A>)
 // ANCHOR_END: set_example_lemma
 */
 
-// ANCHOR: set_example_sledgehammer
-#[verifier::sledgehammer]
+// ANCHOR: set_example_try_broadcasts
+#[verifier::try_broadcasts]
 proof fn union_three_sets<A>(xs: Set<A>, ys: Set<A>, zs: Set<A>)
     ensures
         xs.union(ys).union(zs).len() <= xs.len() + ys.len() + zs.len()
 {
 }
-// ANCHOR_END: set_example_sledgehammer
+// ANCHOR_END: set_example_try_broadcasts
 
 broadcast proof fn union_len<A>(xs: Set<A>, ys: Set<A>)
     ensures
@@ -46,17 +46,17 @@ broadcast proof fn union_len<A>(xs: Set<A>, ys: Set<A>)
     admit();
 }
 
-// ANCHOR: set_example_sledgehammer_no_min
-#[verifier::sledgehammer(false)]
+// ANCHOR: set_example_try_broadcasts_no_min
+#[verifier::try_broadcasts(false)]
 proof fn union_three_sets_unminimized<A>(xs: Set<A>, ys: Set<A>, zs: Set<A>)
     ensures
         xs.union(ys).union(zs).len() <= xs.len() + ys.len() + zs.len()
 {
 }
-// ANCHOR_END: set_example_sledgehammer_no_min
+// ANCHOR_END: set_example_try_broadcasts_no_min
 
 // ANCHOR: requires_vstd_lemma
-#[verifier::sledgehammer]
+#[verifier::try_broadcasts]
 proof fn my_proof() {
     let xs = seq![seq![1int, 2], seq![3]];
     assert(xs.push(seq![5]).flatten() =~= xs.flatten() + seq![5]);
@@ -64,7 +64,7 @@ proof fn my_proof() {
 // ANCHOR_END: requires_vstd_lemma
 
 // ANCHOR: vstd_lemma_reference
-broadcast group sledgehammer_hints {
+broadcast group try_broadcasts_hints {
     vstd::seq::Seq::group_seq_flatten,
 }
 // ANCHOR_END: vstd_lemma_reference

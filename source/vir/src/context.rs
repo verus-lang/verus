@@ -781,6 +781,10 @@ impl GlobalCtx {
         self.chosen_triggers.borrow().clone()
     }
 
+    pub fn warning_ctx(&self) -> Arc<WarningCtx> {
+        self.warning_ctx.clone()
+    }
+
     pub fn set_interpreter_log_file(
         &mut self,
         interpreter_log: Arc<std::sync::Mutex<Option<File>>>,

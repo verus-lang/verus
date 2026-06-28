@@ -73,9 +73,9 @@ mod trait_check_ast;
 mod trait_check_emit;
 mod trait_check_generate;
 mod trait_conflicts;
+mod try_broadcasts;
 mod user_filter;
 pub mod util;
 pub mod verifier;
 pub mod verus_items;
 
-mod sledgehammer;

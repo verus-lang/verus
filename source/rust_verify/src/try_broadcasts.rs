@@ -24,20 +24,20 @@ use crate::{buckets::BucketId, verifier::Verifier};
 /// Sledgehammer might fail in two ways: either we called another Verus function that returned a `VirErr`, which
 /// we may not be able to recover from if that function consumed the `GlobalCtx` or Sledgehammer itself produced
 /// an error, in which case we can signal that to verify_bucket_outer and return back the original GlobalCtx.
-pub(crate) enum SledgehammerErr {
+pub(crate) enum TryBroadcastsErr {
     VirErr(VirErr),
     InternalError { msg: String, global_ctx: GlobalCtx },
 }
 
-impl SledgehammerErr {
+impl TryBroadcastsErr {
     fn internal_err(global_ctx: GlobalCtx, msg: String) -> Self {
-        SledgehammerErr::InternalError { msg, global_ctx }
+        TryBroadcastsErr::InternalError { msg, global_ctx }
     }
 }
 
-impl From<VirErr> for SledgehammerErr {
+impl From<VirErr> for TryBroadcastsErr {
     fn from(err: VirErr) -> Self {
-        SledgehammerErr::VirErr(err)
+        TryBroadcastsErr::VirErr(err)
     }
 }
 
@@ -46,11 +46,20 @@ pub(crate) struct VerificationOutcome {
     pub(crate) any_invalid: bool,
     pub(crate) any_timeout: bool,
     pub(crate) used_axioms: Option<Vec<air::ast::Ident>>,
+    // The naming context used while verifying. Needed to map `Fun`s back to the
+    // AIR identifiers recorded in `used_axioms`, since names are disambiguated
+    // per-`NameCtxt` (e.g. when multiple crates share a name).
+    pub(crate) name_ctxt: Option<vir::def::NameCtxt>,
 }
 
 impl VerificationOutcome {
     fn new() -> Self {
-        VerificationOutcome { any_invalid: false, any_timeout: false, used_axioms: None }
+        VerificationOutcome {
+            any_invalid: false,
+            any_timeout: false,
+            used_axioms: None,
+            name_ctxt: None,
+        }
     }
 
     #[allow(dead_code)]
@@ -98,8 +107,8 @@ pub(crate) fn sledgehammer<'a, R: Diagnostics + 'a>(
     };
     match sh.find_proof(gctx) {
         Ok((result, new_ctx)) => Ok((result.map(|result| result.1), new_ctx)),
-        Err(SledgehammerErr::VirErr(err)) => Err(err),
-        Err(SledgehammerErr::InternalError { msg, global_ctx }) => {
+        Err(TryBroadcastsErr::VirErr(err)) => Err(err),
+        Err(TryBroadcastsErr::InternalError { msg, global_ctx }) => {
             reporter.report(
                 &warning(&global_ctx.no_span, format!("Sledgehammer internal error: {}", msg))
                     .to_any(),
@@ -194,7 +203,7 @@ impl<'a, R: Diagnostics> Sledgehammer<'a, R> {
 
         let target_func =
             fun_to_function.get(target_fun).expect("Target function must be in crate");
-        let Some(minimize) = target_func.x.attrs.sledgehammer.as_ref() else {
+        let Some(minimize) = target_func.x.attrs.try_broadcasts.as_ref() else {
             return None;
         };
         Some(Sledgehammer {
@@ -212,7 +221,7 @@ impl<'a, R: Diagnostics> Sledgehammer<'a, R> {
     fn find_proof(
         &mut self,
         mut gctx: GlobalCtx,
-    ) -> Result<(Option<(Guess, Krate)>, GlobalCtx), SledgehammerErr> {
+    ) -> Result<(Option<(Guess, Krate)>, GlobalCtx), TryBroadcastsErr> {
         // TODO: this will eventually need to be generalized to allow for multiple strategies
         let relevant = self.try_all_relevant_lemmas()?;
         let mut guesses = VecDeque::from([relevant]);
@@ -296,7 +305,7 @@ impl<'a, R: Diagnostics> Sledgehammer<'a, R> {
         &mut self,
         guess: &Guess,
         global_ctx: GlobalCtx,
-    ) -> Result<(GuessOutcome, GlobalCtx), SledgehammerErr> {
+    ) -> Result<(GuessOutcome, GlobalCtx), TryBroadcastsErr> {
         let span = self.target_func.x.body.as_ref().expect("body").span.clone();
         let (new_krate, global_ctx) = self.insert_broadcasts(
             &self.target_func.clone(),
@@ -325,7 +334,7 @@ impl<'a, R: Diagnostics> Sledgehammer<'a, R> {
         &mut self,
         guess: Guess,
         global_ctx: GlobalCtx,
-    ) -> Result<(Guess, GlobalCtx), SledgehammerErr> {
+    ) -> Result<(Guess, GlobalCtx), TryBroadcastsErr> {
         let mut min_state = MinimizeState::from(&guess);
         self.minimize_outer(guess, 2, &mut min_state, global_ctx)
     }
@@ -336,7 +345,7 @@ impl<'a, R: Diagnostics> Sledgehammer<'a, R> {
         k: usize,
         min_state: &mut MinimizeState,
         global_ctx: GlobalCtx,
-    ) -> Result<(Guess, GlobalCtx), SledgehammerErr> {
+    ) -> Result<(Guess, GlobalCtx), TryBroadcastsErr> {
         if self.verifier.args.trace {
             self.reporter.report(
                 &note(
@@ -368,7 +377,7 @@ impl<'a, R: Diagnostics> Sledgehammer<'a, R> {
         mut k: usize,
         min_state: &mut MinimizeState,
         mut global_ctx: GlobalCtx,
-    ) -> Result<(Guess, GlobalCtx), SledgehammerErr> {
+    ) -> Result<(Guess, GlobalCtx), TryBroadcastsErr> {
         assert!(k > 1);
         min_state.print_stats();
         let num_broadcasts = guess.broadcasts.len();
@@ -413,7 +422,7 @@ impl<'a, R: Diagnostics> Sledgehammer<'a, R> {
         &mut self,
         mut guess: Guess,
         mut global_ctx: GlobalCtx,
-    ) -> Result<(Option<Guess>, GlobalCtx), SledgehammerErr> {
+    ) -> Result<(Option<Guess>, GlobalCtx), TryBroadcastsErr> {
         let old_args = self.verifier.args.clone();
         let new_args = ArgsX { axiom_usage_info: true, ..old_args.as_ref().clone() };
         self.verifier.args = Arc::new(new_args);
@@ -422,12 +431,17 @@ impl<'a, R: Diagnostics> Sledgehammer<'a, R> {
         let (outcome, mut new_ctx) = self.try_guess(&guess, global_ctx)?;
         match outcome {
             GuessOutcome::Success {
-                verification_outcome: VerificationOutcome { used_axioms: Some(used_axioms), .. },
+                verification_outcome:
+                    VerificationOutcome {
+                        used_axioms: Some(used_axioms),
+                        name_ctxt: Some(name_ctxt),
+                        ..
+                    },
                 ..
             } => {
-                guess
-                    .broadcasts
-                    .retain(|bc| used_axioms.contains(&vir::sst_to_air::fun_to_air_ident(bc)));
+                guess.broadcasts.retain(|bc| {
+                    used_axioms.contains(&vir::sst_to_air::fun_to_air_ident(&name_ctxt, bc))
+                });
             }
             _ => {
                 self.reporter
@@ -475,7 +489,7 @@ impl<'a, R: Diagnostics> Sledgehammer<'a, R> {
         guess: &Guess,
         span: &Span,
         global_ctx: GlobalCtx,
-    ) -> Result<(Krate, GlobalCtx), SledgehammerErr> {
+    ) -> Result<(Krate, GlobalCtx), TryBroadcastsErr> {
         self.insert_broadcasts(&self.target_func.clone(), &guess.broadcasts, span, global_ctx)
     }
 
@@ -485,11 +499,11 @@ impl<'a, R: Diagnostics> Sledgehammer<'a, R> {
         broadcasts: &[Fun],
         span: &Span,
         global_ctx: GlobalCtx,
-    ) -> Result<(Krate, GlobalCtx), SledgehammerErr> {
+    ) -> Result<(Krate, GlobalCtx), TryBroadcastsErr> {
         let mut cloned_krate: KrateX = self.krate.as_ref().clone();
         let mut fun_with_broadcasts: Spanned<FunctionX> = (**fun).clone();
         let Some(body) = &mut fun_with_broadcasts.x.body else {
-            return Err(SledgehammerErr::internal_err(
+            return Err(TryBroadcastsErr::internal_err(
                 global_ctx,
                 "Function must have a body".to_string(),
             ));
@@ -525,7 +539,7 @@ impl<'a, R: Diagnostics> Sledgehammer<'a, R> {
                     cloned_body.x = new_never_to_any
                 }
                 unhandled => {
-                    return Err(SledgehammerErr::internal_err(
+                    return Err(TryBroadcastsErr::internal_err(
                         global_ctx,
                         format!(
                             "Unhandled expression kind when inserting broadcasts: {unhandled:#?}"
@@ -534,7 +548,7 @@ impl<'a, R: Diagnostics> Sledgehammer<'a, R> {
                 }
             },
             unhandled => {
-                return Err(SledgehammerErr::internal_err(
+                return Err(TryBroadcastsErr::internal_err(
                     global_ctx,
                     format!("Unhandled expression kind when inserting broadcasts: {unhandled:#?}"),
                 ));
@@ -571,6 +585,7 @@ impl<'a, R: Diagnostics> Sledgehammer<'a, R> {
         // provide a graph update API that allows more fine-grained changes to
         // the call graph.
         let cloned_krate = Arc::new(cloned_krate);
+        let warning_ctx = global_ctx.warning_ctx();
         let global_ctx = GlobalCtx::new(
             &cloned_krate,
             global_ctx.crate_name,
@@ -578,11 +593,11 @@ impl<'a, R: Diagnostics> Sledgehammer<'a, R> {
             global_ctx.rlimit,
             global_ctx.interpreter_log,
             global_ctx.func_call_graph_log,
+            warning_ctx,
             global_ctx.solver,
             true,
             false,
             global_ctx.axiom_usage_info,
-            global_ctx.new_mut_ref,
             global_ctx.no_bv_simplify,
             global_ctx.report_long_running,
         )
@@ -729,7 +744,7 @@ impl Verifier {
         // copied from Verifier::verify_bucket_outer
         let (pruned_krate, prune_info) = vir::prune::prune_krate_for_module_or_krate(
             &krate,
-            &Arc::new(self.crate_name.clone().expect("crate_name")),
+            self.crate_id.as_ref().expect("crate_id"),
             None,
             Some(bucket_id.module().clone()),
             bucket_id.function(),

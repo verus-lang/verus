@@ -324,6 +324,7 @@ fn krate_ident_to_string(krate: &str) -> String {
 //   but if two crates have the same name, we have to disambiguate them
 // - for simplicity, we handle this disambiguation on demand so that we don't
 //   do any more renaming than necessary in each AIR file
+#[derive(Clone, Debug)]
 struct NameCtxtImpl {
     duplicate_name_counter: HashMap<String, u32>,
     stable_id_map: HashMap<u64, String>,
@@ -345,6 +346,7 @@ impl NameCtxtImpl {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct NameCtxt {
     imp: std::rc::Rc<std::cell::RefCell<NameCtxtImpl>>,
 }

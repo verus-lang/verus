@@ -61,7 +61,7 @@
     - [Recursive functions]() <!--- Chris --->
     - [Extensional equality](extensional_equality.md)
     - [Libraries: incomplete axioms for Seq, Set, Map]() <!--- Chris --->
-    - [Sledgehammer: automatically finding broadcast lemmas](sledgehammer.md)
+    - [`try_broadcasts`: automatically finding broadcast lemmas](try_broadcasts.md)
 - [Managing proof performance and why it's critical](smt_perf_overview.md)
     - [Measuring verification performance](performance.md)
     - [Quantifier profiling](profiling.md)

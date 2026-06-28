@@ -122,7 +122,7 @@ pub(crate) fn rewrite_verus_attribute(
     let mut contains_non_external = false;
     let mut contains_external = false;
     let mut spec_fun = None;
-    const VERIFY_ATTRS: [&str; 5] = ["rlimit", "spinoff_prover", "external_derive", "ext_equal", "sledgehammer"];
+    const VERIFY_ATTRS: [&str; 5] = ["rlimit", "spinoff_prover", "external_derive", "ext_equal", "try_broadcasts"];
     const DUAL_ATTR: &str = "dual_spec";
     const IGNORE_VERIFY_ATTRS: [&str; 3] =
         ["external", "external_body", "external_type_specification"];

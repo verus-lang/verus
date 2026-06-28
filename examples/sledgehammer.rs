@@ -16,13 +16,13 @@ verus! {
         ensures #[trigger] f(x) > 42;
 
 
-    #[verifier::sledgehammer]
+    #[verifier::try_broadcasts]
     proof fn foo(x: int)
         ensures f(x) * 2 > 84
     {
     }
 
-    #[verifier::sledgehammer]
+    #[verifier::try_broadcasts]
     proof fn f_in_body(x: int)
     {
         assert(f(x) * 2 > 84);
@@ -38,7 +38,7 @@ verus! {
     broadcast axiom fn other_prop()
         ensures #[trigger] other() ==> implies_goal();
 
-    #[verifier::sledgehammer]
+    #[verifier::try_broadcasts]
     proof fn function_in_requires()
         requires other(),
         ensures f(2) > 80,
