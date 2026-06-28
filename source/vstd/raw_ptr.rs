@@ -2035,7 +2035,7 @@ impl<T> SeqPointsTo<T> {
     /// Casting a `SeqPointsTo<T>` to a `SeqPointsTo<u8>` casts the pointer,
     /// multiplies the length by `size_of::<T>()`, and preserves the abstract bytes.
     /// The resulting `SeqPointsTo<u8>` is logically uninitialized, so it cannot be read from.
-    pub proof fn cast_to_u8(tracked self) -> (tracked out: SeqPointsTo<u8>)
+    pub proof fn cast_to_u8_uninit(tracked self) -> (tracked out: SeqPointsTo<u8>)
         requires
             self.wf(),
         ensures
@@ -2057,8 +2057,8 @@ impl<T> SeqPointsTo<T> {
             SeqPointsTo::<u8>::empty(self.ptr() as *mut u8)
         } else {
             let tracked (head, mut tail) = self.split((self.len() - 1) as nat);
-            let tracked tail_u8 = tail.perm.tracked_remove(0).transmute_to_u8().into_seq_pt();
-            let tracked head_u8 = head.cast_to_u8();
+            let tracked tail_u8 = tail.perm.tracked_remove(0).transmute_to_u8_uninit().into_seq_pt();
+            let tracked head_u8 = head.cast_to_u8_uninit();
             assert(layout::size_of::<T>() + (self.len() - 1) * layout::size_of::<T>() == self.len()
                 * layout::size_of::<T>()) by (nonlinear_arith);
             head_u8.join(tail_u8)
@@ -2196,7 +2196,9 @@ impl SeqPointsTo<u8> {
     ///
     /// (2) The length is exactly `capacity * layout::size_of::<T>()`.
     ///
-    /// (3) The prefix of abstract bytes for the `SeqPointsTo<u8>` can be decoded into the given `Seq<MemContents<T>`.
+    /// (3) For each initialized element in `mem_contents`, the corresponding abstract bytes for the `SeqPointsTo<u8>` can be decoded 
+    ///     into the given `MemContents<T>`. Note that `mem_contents` is allowed to contain uninitialized items (these are ignored)
+    ///     and can be a prefix of the total `capacity` (in which case, the remaining memory is all logically uninitialized).
     ///
     /// The resulting `SeqPointsTo<T>` will have a prefix of initialized memory corresponding to `mem_contents`.
     /// The rest will be logically uninitialized. The abstract bytes will also remain the same.
@@ -2210,7 +2212,7 @@ impl SeqPointsTo<u8> {
             self.len() == capacity * layout::size_of::<T>(),
             mem_contents.len() <= capacity,
             forall|i: int|
-                0 <= i < mem_contents.len() ==> #[trigger] abs_decode::<MemContents<T>>(
+                0 <= i < mem_contents.len() && mem_contents[i].is_init() ==> #[trigger] abs_decode::<MemContents<T>>(
                     self.abstract_bytes().subrange(
                         i * layout::size_of::<T>(),
                         (i + 1) * layout::size_of::<T>(),
@@ -2222,7 +2224,8 @@ impl SeqPointsTo<u8> {
             out.ptr() == self.ptr() as *mut T,
             out.len() == capacity,
             out.abstract_bytes() == self.abstract_bytes(),
-            out.mem_contents().take(mem_contents.len() as int) == mem_contents,
+            forall|i: int|
+                0 <= i < mem_contents.len() && mem_contents[i].is_init() ==> #[trigger] out.mem_contents()[i] == mem_contents[i],
             out.wf(),
         decreases capacity,
     {
@@ -2237,23 +2240,28 @@ impl SeqPointsTo<u8> {
         if capacity == 0 {
             SeqPointsTo::<T>::empty(self.ptr() as *mut T)
         } else {
+            // split into "head" and "tail", where tail is the last permission
             assert(0 <= (capacity - 1) as nat * layout::size_of::<T>() <= capacity
                 * layout::size_of::<T>()) by (nonlinear_arith)
                 requires
                     capacity > 0,
             ;
+            assert((self.ptr()@.addr + (capacity - 1) as nat * layout::size_of::<T>()) as nat
+                % align_of::<T>() == 0) by {
+                broadcast use {lemma_mul_mod_noop_right, lemma_add_mod_noop, layout_of_sized};
 
+            }
             Self::abstract_bytes_subrange(self.seq_perm(), (capacity - 1) * layout::size_of::<T>());
-
             let tracked (head, mut tail) = self.split(
                 (capacity - 1) as nat * layout::size_of::<T>(),
             );
 
+            // transmute the tail into either an init or uninit permission, depending on mem_contents
             let tracked tail_slice = seq_into_slice(tail);
             assert(layout::size_of::<T>() == (capacity - 1 + 1) * layout::size_of::<T>() - (capacity
                 - 1) * layout::size_of::<T>()) by (nonlinear_arith);
             let tracked tail_pt;
-            if mem_contents.len() == capacity {
+            if mem_contents.len() == capacity && mem_contents[capacity - 1].is_init() {
                 tail_pt = tail_slice.transmute_to_typed(mem_contents[capacity - 1]);
             } else {
                 tail_pt = tail_slice.transmute_to_typed_uninit();
@@ -2263,12 +2271,7 @@ impl SeqPointsTo<u8> {
             let tracked tail_typed = SeqPointsTo { perm: tail_perm, ptr: Ghost(tail_pt.ptr()) };
             SeqPointsTo::<T>::abstract_bytes_len_helper(tail_typed.seq_perm());
 
-            assert((self.ptr()@.addr + (capacity - 1) as nat * layout::size_of::<T>()) as nat
-                % align_of::<T>() == 0) by {
-                broadcast use {lemma_mul_mod_noop_right, lemma_add_mod_noop, layout_of_sized};
-
-            }
-
+            // invoke inductive hypothesis on head
             assert forall|i: int|
                 0 <= i < capacity - 1 implies #[trigger] head.abstract_bytes().subrange(
                 i * layout::size_of::<T>(),
@@ -2297,14 +2300,12 @@ impl SeqPointsTo<u8> {
             }
             let tracked head_typed = head.cast_to_typed((capacity - 1) as usize, new_mem_contents);
 
+            // join head and tail
             let tracked res = head_typed.join(tail_typed);
             assert(res.mem_contents() == head_typed.mem_contents() + tail_typed.mem_contents());
-            if mem_contents.len() == capacity {
-                assert(head_typed.mem_contents() == new_mem_contents);
+            if mem_contents.len() == capacity && mem_contents[capacity - 1].is_init() {
+               // assert(head_typed.mem_contents() == new_mem_contents);
                 assert(tail_typed.mem_contents()[0] == mem_contents.last());
-            } else {
-                assert(head_typed.mem_contents().take(mem_contents.len() as int)
-                    == new_mem_contents);
             }
             res
         }

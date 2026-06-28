@@ -304,7 +304,7 @@ impl<T> PointsTo<T> {
     /// that the abstract bytes can be decoded into `u8` values. For our current use cases, this is not necessary.)
     /// The abstract bytes remain the same. This preserves the typed contents in memory on a roundtrip transmute (see `PointsTo<[u8]>::transmute_to_typed`).
     /// Note that this means provenance is not lost, which matches Rust's semantics for transmuting in-memory values.
-    pub axiom fn transmute_to_u8(tracked self) -> (tracked dst: PointsTo<[u8]>)
+    pub axiom fn transmute_to_u8_uninit(tracked self) -> (tracked dst: PointsTo<[u8]>)
         ensures
             self.abstract_bytes() == dst.abstract_bytes(),
             self.ptr()@.addr == dst.ptr()@.addr,
