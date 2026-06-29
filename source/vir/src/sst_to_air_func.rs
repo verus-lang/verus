@@ -322,8 +322,14 @@ fn func_body_to_air(
     let mut impl_def_reqs: Vec<Expr> = Vec::new();
     let (name, rec_name, typ_args) =
         if let FunctionKind::TraitMethodImpl { method, trait_typ_args, .. } = &function.x.kind {
-            let (trait_typ_args, holes) = crate::traits::hide_projections(trait_typ_args);
+            let (mut trait_typ_args, holes) = crate::traits::hide_projections(trait_typ_args);
             let (typ_params, eqs) = hide_projections_air(ctx, &typ_params, holes);
+            let n_inner_typ_params = ctx.func_map[method].x.typ_params.len() - trait_typ_args.len();
+            let inner_typ_params_lo = typ_params.len() - n_inner_typ_params;
+            let inner_typ_params = typ_params[inner_typ_params_lo..].to_vec();
+            for x in &inner_typ_params {
+                Arc::make_mut(&mut trait_typ_args).push(Arc::new(TypX::TypParam(x.clone())));
+            }
             impl_typ_params = typ_params;
             impl_def_reqs.extend(eqs);
             (method.clone(), function.x.name.clone(), trait_typ_args.clone())
