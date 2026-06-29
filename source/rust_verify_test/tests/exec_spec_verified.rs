@@ -2020,3 +2020,24 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    /// Tests prefix deref `*self` in a spec method body (exercises `UnOp::Deref`).
+    #[test] test_exec_spec_impl_deref_self IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            pub struct W { pub v: u32 }
+
+            impl W {
+                pub open spec fn copy(&self) -> W {
+                    *self
+                }
+            }
+        }
+
+        fn sanity_check() {
+            let w = ExecW { v: 7 };
+            let c = w.exec_copy();
+            assert(c.v == 7);
+        }
+    } => Ok(())
+}
