@@ -1,4 +1,4 @@
-# assert ... by(compute) / by(compute_only)
+# The compute mode
 
 See [this section of the tutorial](./assert_by_compute.md) for motivation and an example.
 

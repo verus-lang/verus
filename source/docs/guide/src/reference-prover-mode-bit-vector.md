@@ -1,4 +1,4 @@
-# assert ... by(bit_vector)
+# The `bit_vector` prover mode
 
 Invoke Verus's bitvector solver to prove the given predicate.
 This is particularly useful for bitwise operators
