@@ -1486,7 +1486,7 @@ pub(crate) fn expr_to_stm_opt(
             ))
         }
         ExprX::ConstVar(..) => panic!("ConstVar should already be removed"),
-        ExprX::AssignToPlace { place, rhs, op: Some(binary_op), resolve, typ: _ } => {
+        ExprX::Assign { place, rhs, op: Some(binary_op), resolve, typ: _ } => {
             assert!(!resolve);
 
             // No support for short-circuit ops here
@@ -1522,7 +1522,7 @@ pub(crate) fn expr_to_stm_opt(
 
             Ok((stms, Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
         }
-        ExprX::AssignToPlace { place, rhs, op: None, resolve, typ } => {
+        ExprX::Assign { place, rhs, op: None, resolve, typ } => {
             let (stms_r, e_r) = expr_to_stm_opt(ctx, state, rhs)?;
             let e_r = to_exp_or_return_never!(e_r, stms_r);
 

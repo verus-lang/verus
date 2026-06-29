@@ -1090,7 +1090,7 @@ impl<'a> Builder<'a> {
                 let _ = self.build(e, bb)?;
                 Err(())
             }
-            ExprX::AssignToPlace { place, rhs, op, resolve, typ: _ } => {
+            ExprX::Assign { place, rhs, op, resolve, typ: _ } => {
                 assert!(!resolve);
                 // Right-hand side first!
                 let bb = self.build(rhs, bb)?;
@@ -3608,13 +3608,13 @@ fn make_assume(cfg: &CFG, span: &Span, fp: &FlattenedPlace) -> Expr {
     crate::ast_util::mk_assume(&ast_place.span, &conditional_has_resolved)
 }
 
-/// Given an `AssignToPlace`, sets the `resolve` field to true
+/// Given an `Assign`, sets the `resolve` field to true
 /// (Equivalently, adds an `assume(has_resolved(...))` for the value being overwritten
 fn apply_resolution_to_assignment(e: &Expr) -> Expr {
     match &e.x {
-        ExprX::AssignToPlace { place, rhs, op, resolve, typ } => {
+        ExprX::Assign { place, rhs, op, resolve, typ } => {
             assert!(!resolve);
-            e.new_x(ExprX::AssignToPlace {
+            e.new_x(ExprX::Assign {
                 place: place.clone(),
                 rhs: rhs.clone(),
                 op: *op,
@@ -3623,7 +3623,7 @@ fn apply_resolution_to_assignment(e: &Expr) -> Expr {
             })
         }
         _ => {
-            panic!("apply_resolution_to_assignment expects AssignToPlace node");
+            panic!("apply_resolution_to_assignment expects Assign node");
         }
     }
 }
@@ -3781,7 +3781,7 @@ fn apply_temp_simplification(cfg: &CFG, place: &Place, exprs: Vec<Expr>) -> Plac
     let assign_expr = SpannedTyped::new(
         &place.span,
         &unit_typ(),
-        ExprX::AssignToPlace {
+        ExprX::Assign {
             place: tmp_local_place.clone(),
             rhs: expr.clone(),
             op: None,
