@@ -206,6 +206,19 @@ impl<A> Seq<A> {
         unimplemented!()
     }
 
+    #[verifier(external_body)]
+    pub proof fn tracked_mut_borrow(tracked &mut self, i: int) -> (tracked ret: &mut A)
+        requires
+            0 <= i < self.len(),
+        ensures
+            *ret == old(self)[i],
+            final(self)[i] == *final(ret),
+            final(self).len() == old(self).len(),
+            forall|j: int| 0 <= j < final(self).len() && j != i ==> final(self)[j] == old(self)[j],
+    {
+        unimplemented!()
+    }
+
     pub proof fn tracked_push(tracked &mut self, tracked v: A)
         ensures
             *final(self) == old(self).push(v),
@@ -243,6 +256,42 @@ impl<A> Seq<A> {
 
         assert(self.remove(0) =~= self.drop_first());
         self.tracked_remove(0)
+    }
+
+    pub proof fn tracked_skip(tracked &mut self, n: int) -> (tracked ret: Self)
+        requires
+            0 <= n <= self.len(),
+        ensures
+            ret == old(self).skip(n),
+            *final(self) == old(self).take(n),
+        decreases self.len() - n,
+    {
+        broadcast use group_seq_axioms;
+
+        if n == self.len() {
+            Self::tracked_empty()
+        } else {
+            let tracked last = self.tracked_pop();
+            let tracked mut ret = self.tracked_skip(n);
+            ret.tracked_push(last);
+            ret
+        }
+    }
+
+    pub proof fn tracked_add(tracked &mut self, tracked other: Self)
+        ensures
+            *final(self) == old(self).add(other),
+        decreases other.len(),
+    {
+        broadcast use group_seq_axioms;
+
+        let tracked mut other = other;
+        if other.len() == 0 {
+        } else {
+            let tracked x = other.tracked_pop_front();
+            self.tracked_push(x);
+            self.tracked_add(other);
+        }
     }
 }
 
