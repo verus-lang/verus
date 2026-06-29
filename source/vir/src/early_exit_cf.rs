@@ -64,7 +64,7 @@ fn expr_get_early_exits_rec(
             | ExprX::Binary(..)
             | ExprX::BinaryOpr(..)
             | ExprX::Multi(..)
-            | ExprX::AssignToPlace { .. }
+            | ExprX::Assign { .. }
             | ExprX::If(..)
             | ExprX::Match(..)
             | ExprX::Ghost { .. }
