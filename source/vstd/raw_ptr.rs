@@ -26,6 +26,7 @@ use super::layout;
 use super::layout::*;
 use super::prelude::*;
 use super::set::group_set_axioms;
+#[cfg(verus_keep_ghost)]
 use super::type_representation::*;
 use crate::vstd::endian::*;
 use crate::vstd::group_vstd_default;
