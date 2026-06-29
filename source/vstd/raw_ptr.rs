@@ -418,6 +418,22 @@ impl<T> PointsTo<T> {
         self.as_unaligned().ptr_bounds()
     }
 
+    /// If `T` is not a ZST, then the pointer's provenance is non-null.
+    /// https://doc.rust-lang.org/std/ptr/index.html#provenance
+    /// says that it is still sound to create a pointer without provenance from just an address (see without_provenance). 
+    /// Such a pointer cannot be used for memory accesses (except for zero-sized accesses).
+    /// 
+    /// So if you have a pointer with null provenance, then that pointer can be used for zero-sized accesses.
+    /// Therefore the contrapositive says that if you know you can't use a pointer for zero-sized accesses
+    /// (that is, `T` is not a ZST), then that pointer must have non-null provenance.
+    /// Hmm there could be other reasons that you can't use a pointer for ZST accesses?
+    pub axiom fn provenance_non_null(tracked &self)
+        requires
+            layout::size_of::<T>() != 0,
+        ensures
+            self.ptr()@.provenance != Provenance::null(),
+    ;
+
     /// Guarantees that the memory ranges associated with two distinct, non-ZST permissions will not overlap,
     /// since you cannot have two permissions to the same memory.
     /// (`self` is an &mut reference to enforce distinctness,
