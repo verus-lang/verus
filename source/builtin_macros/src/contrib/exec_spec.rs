@@ -743,7 +743,7 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
 /// let __exec_spec_self_view: <SelfTy> = self.deep_view();
 /// ```
 ///
-/// then runs ever clause expression through this function with
+/// then runs every clause expression through this function with
 /// `replacement = __exec_spec_self_view`.
 fn replace_self_tokens(ts: TokenStream2, replacement: &Ident) -> TokenStream2 {
     ts.into_iter()
@@ -3290,8 +3290,8 @@ fn compile_spec_fn(item_fn: &ItemFn, unverified: bool) -> Result<TokenStream2, E
 }
 
 /// Compiles an impl block. Each spec method becomes an exec method on the corresponding
-/// `Exec<T>` type. The original `impl` block is preserved verbatim so spec-mode
-/// verification still sees the original methods.
+/// `Exec<T>` type. The original impl block is preserved verbatim so verification still
+/// sees the original spec methods.
 fn compile_impl(item_impl: &ItemImpl, unverified: bool) -> Result<TokenStream2, Error> {
     if !item_impl.generics.params.is_empty() {
         return Err(Error::new_spanned(&item_impl.generics, "generics not supported"));
