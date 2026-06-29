@@ -386,16 +386,22 @@ test_verify_one_file_with_options! {
         use std::collections::BTreeMap;
         use std::collections::btree_map::Iter;
         use vstd::std_specs::btree::*;
-        use vstd::set::set;
+        use vstd::set::{set, Set};
         use vstd::map::Map;
         use vstd::string::View;
         fn test()
         {
+            broadcast use vstd::map::group_map_lemmas;
+            broadcast use vstd::map_lib::group_map_extra;
+            broadcast use vstd::set_lib::group_set_lib_default;
+
             let mut m = BTreeMap::<u32, i8>::new();
             assert(m@ == Map::<u32, i8>::empty());
 
             m.insert(3, 4);
             m.insert(6, -8);
+            assert(m@.dom().contains(3u32));
+            assert(m@.dom().contains(6u32));
 
             let mut idx = 0;
             for (k, v) in iter: m.iter()

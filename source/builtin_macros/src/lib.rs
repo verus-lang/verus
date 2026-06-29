@@ -1,8 +1,6 @@
 #![cfg_attr(
     verus_keep_ghost,
-    feature(proc_macro_span),
     feature(proc_macro_tracked_env),
-    feature(proc_macro_quote),
     feature(proc_macro_expand),
     feature(proc_macro_diagnostic)
 )]

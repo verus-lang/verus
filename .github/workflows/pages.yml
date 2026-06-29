@@ -9,6 +9,7 @@ permissions:
   contents: read
   pages: write
   id-token: write
+  actions: read
 
 # Cancel previous pages workflows if a new one comes in
 concurrency:
@@ -29,7 +30,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.95.0
+          toolchain: 1.96.0
 
       - name: build verusdoc
         working-directory: ./source
@@ -58,6 +59,16 @@ jobs:
 
       - name: copy verusdoc into site
         run: cp -R source/doc ./_site/verusdoc
+
+      # Pull the latest nightly coverage report.
+      - name: add coverage report
+        uses: dawidd6/action-download-artifact@v21
+        with:
+          workflow: coverage.yml
+          name: coverage
+          path: ./_site/dev/coverage
+          workflow_conclusion: success
+          if_no_artifact_found: warn
 
       - name: add publications and projects page
         uses: actions/jekyll-build-pages@v1

@@ -175,7 +175,7 @@ pub(crate) fn handle_transitive_imports<'tcx>(
         }
         let vir_path_str =
             vir_path.to_str().unwrap_or_else(|| panic!("path {:?} is not valid unicode", vir_path));
-        tcx.sess.psess.file_depinfo.lock().insert(rustc_span::Symbol::intern(vir_path_str));
+        tcx.sess.file_depinfo.lock().insert(rustc_span::Symbol::intern(vir_path_str));
         imports.push((name, vir_path_str.to_owned()));
     }
     Ok(imports)

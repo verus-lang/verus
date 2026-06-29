@@ -814,6 +814,61 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_const_fn_with_verus_spec_and_then_verus_verify code!{
+        use vstd::prelude::*;
+        #[verus_spec(ret =>
+            ensures ret == x
+        )]
+        #[verus_verify(rlimit(1))]
+        pub const fn const_fn(x: u64) -> u64 {
+            proof!{
+                assert(true);
+            }
+            {
+                proof!{assert(true);}
+            }
+            x
+        }
+    } => Err(e) => assert_any_vir_error_msg(e, "#[verus_verify] attributes should be applied before #[verus_spec].")
+}
+
+test_verify_one_file! {
+    /// A bad style to mix verus and verus_spec
+    /// This is not recommanded, but we allow it for this test
+    /// to avoid confusing error messages.
+    /// But we will raise a warning message saying #[verus_spec] is used inside verus!
+    #[test] test_const_fn_inside_verus_macro_with_warning code!{
+        use vstd::prelude::*;
+        verus!{
+        #[verus_spec(ensures false)]
+        pub const fn const_fn(x: u64) -> u64
+        {
+            x
+        }
+
+        #[verus_spec]
+        const C: u8 = 8;
+        }
+    } => Err(e) => assert!(e.warnings.iter().any(|x| x.message.contains("#[verus_spec] is likely used inside a verus! block.")))
+}
+
+test_verify_one_file! {
+    #[test] test_duplicated_verus_spec code!{
+        use vstd::prelude::*;
+        verus!{
+        #[verus_spec(ret =>
+            ensures ret == x
+        )]
+        #[verus_spec]
+        pub fn const_fn(x: u64) -> u64
+        {
+            x
+        }
+        }
+    } => Err(e) => assert_any_vir_error_msg(e, "Multiple #[verus_spec] attributes are not allowed.")
+}
+
+test_verify_one_file! {
     #[test] test_const_fn_with_ghost code!{
         use vstd::prelude::*;
         #[verus_spec(ret =>
@@ -1287,6 +1342,20 @@ test_verify_one_file! {
     #[test] test_for_loop_without_loop_spec code!{
         use vstd::prelude::*;
         #[verus_spec]
+        fn test_for_loop()
+        {
+            for i in 0..10
+            {
+            }
+        }
+    } => Ok(())
+}
+
+// test forloop without verus_spec on either function or loop
+test_verify_one_file! {
+    #[test] test_verus_verify_on_func_for_loop code!{
+        use vstd::prelude::*;
+        #[verus_verify]
         fn test_for_loop()
         {
             for i in 0..10

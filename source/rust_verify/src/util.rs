@@ -367,3 +367,20 @@ pub(crate) fn no_builtin_err(span: &vir::messages::Span) -> VirErr {
         "Error: The verus_builtin crate was not imported. This is usually imported via `vstd`, and it is necessary to run Verus.")
     .help("For getting started with Verus, see: https://verus-lang.github.io/verus/guide/getting_started.html")
 }
+
+/// Iterate over all owners in the crate. In rustc 1.96+, `Crate.owners` is
+/// private, so we enumerate all LocalDefIds via definitions_untracked() and
+/// look each one up.
+pub(crate) fn iter_crate_owners<'tcx>(
+    krate: &rustc_middle::hir::Crate<'tcx>,
+    tcx: rustc_middle::ty::TyCtxt<'tcx>,
+) -> impl Iterator<Item = rustc_hir::MaybeOwner<'tcx>> {
+    // Note that using tcx.iter_local_def_id() instead of definitions_untracked() causes a query cycle
+    let num_defs = tcx.definitions_untracked().num_definitions();
+    (0..num_defs).map(move |i| {
+        let def_id = rustc_hir::def_id::LocalDefId {
+            local_def_index: rustc_span::def_id::DefIndex::from_usize(i),
+        };
+        krate.owner(tcx, def_id)
+    })
+}

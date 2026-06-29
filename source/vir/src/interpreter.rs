@@ -14,7 +14,7 @@ use crate::ast::{
 use crate::ast_to_sst_func::SstMap;
 use crate::ast_util::{path_as_vstd_name, undecorate_typ};
 use crate::context::GlobalCtx;
-use crate::messages::{Message, Span, ToAny, error, warning};
+use crate::messages::{Message, Span, ToAny, WarningAllow, error};
 use crate::sst::{Bnd, BndX, CallFun, Exp, ExpX, Exps, FunctionSst, Trigs, UniqueIdent};
 use crate::sst_util::subst_exp;
 use crate::unicode::valid_unicode_scalar_bigint;
@@ -201,7 +201,25 @@ struct Ctx<'a> {
     max_depth: usize,
     arch: ArchWordBits,
     global: &'a GlobalCtx,
+    current_fun: Option<Fun>,
     report_long_running: bool,
+}
+
+impl<'a> Ctx<'a> {
+    pub(crate) fn warning<S: Into<String>>(
+        &self,
+        span: &Span,
+        allow: &WarningAllow,
+        note: impl FnOnce() -> S,
+        emit: impl FnOnce(crate::messages::Message) -> (),
+    ) {
+        if let Some(current_fun) = &self.current_fun {
+            let check_allow = &self.global.warning_ctx.fun_warn_configs[current_fun];
+            crate::messages::warning_maybe_if_in_local_crate(check_allow, span, allow, note, emit);
+        } else {
+            emit(crate::messages::warning(span, note()));
+        }
+    }
 }
 
 /// Interpreter-internal expressions
@@ -990,17 +1008,24 @@ fn eval_seq(
                     Interp(Seq(s)) => match &args[1].x {
                         Const(Constant::Int(index)) => match BigInt::to_usize(index) {
                             None => {
-                                let msg = "Computation tried to index into a sequence using a value that does not fit into usize";
-                                state.msgs.push(warning(&exp.span, msg));
+                                ctx.warning(
+                                    &exp.span,
+                                    &WarningAllow::AssertComputeUnsimplified,
+                                    || "Computation tried to index into a sequence using a value that does not fit into usize",
+                                    |msg| state.msgs.push(msg),
+                                );
                                 ok_seq(&args[0], &s, &args[1..])
                             }
                             Some(index) => {
                                 if index < s.len() {
                                     Ok(s[index].clone())
                                 } else {
-                                    let msg =
-                                        "Computation tried to index past the length of a sequence";
-                                    state.msgs.push(warning(&exp.span, msg));
+                                    ctx.warning(
+                                        &exp.span,
+                                        &WarningAllow::AssertComputeUnsimplified,
+                                        || "Computation tried to index past the length of a sequence",
+                                        |msg| state.msgs.push(msg),
+                                    );
                                     ok_seq(&args[0], &s, &args[1..])
                                 }
                             }
@@ -1046,6 +1071,7 @@ fn eval_seq(
 
 /// Custom interpretation for array_index
 fn eval_array_index(
+    ctx: &Ctx,
     state: &mut State,
     exp: &Exp,
     arr: &Exp,
@@ -1065,16 +1091,24 @@ fn eval_array_index(
         Interp(Array(s)) => match &index_exp.x {
             Const(Constant::Int(i)) => match BigInt::to_usize(i) {
                 None => {
-                    let msg = "Computation tried to index into an array using a value that does not fit into usize";
-                    state.msgs.push(warning(&exp.span, msg));
+                    ctx.warning(
+                        &exp.span,
+                        &WarningAllow::AssertComputeUnsimplified,
+                        || "Computation tried to index into an array using a value that does not fit into usize",
+                        |msg| state.msgs.push(msg),
+                    );
                     ok
                 }
                 Some(index) => {
                     if index < s.len() {
                         Ok(s[index].clone())
                     } else {
-                        let msg = "Computation tried to index past the length of an array";
-                        state.msgs.push(warning(&exp.span, msg));
+                        ctx.warning(
+                            &exp.span,
+                            &WarningAllow::AssertComputeUnsimplified,
+                            || "Computation tried to index past the length of an array",
+                            |msg| state.msgs.push(msg),
+                        );
                         ok
                     }
                 }
@@ -1208,9 +1242,12 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                 |lower: BigInt, upper: BigInt| !(i < &lower || i > &upper);
                             let mut apply_range = |lower: BigInt, upper: BigInt| {
                                 if !in_range(lower, upper) {
-                                    let msg =
-                                        "Computation clipped an integer that was out of range";
-                                    state.msgs.push(warning(&exp.span, msg));
+                                    ctx.warning(
+                                        &exp.span,
+                                        &WarningAllow::AssertComputeUnsimplified,
+                                        || "Computation clipped an integer that was out of range",
+                                        |msg| state.msgs.push(msg),
+                                    );
                                     ok.clone()
                                 } else {
                                     // Use the type of clip, not the inner expression,
@@ -1220,9 +1257,12 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                             };
                             let apply_unicode_scalar_range = |state: &mut State| {
                                 if !valid_unicode_scalar_bigint(i) {
-                                    let msg =
-                                        "Computation clipped an integer that was out of range";
-                                    state.msgs.push(warning(&exp.span, msg));
+                                    ctx.warning(
+                                        &exp.span,
+                                        &WarningAllow::AssertComputeUnsimplified,
+                                        || "Computation clipped an integer that was out of range",
+                                        |msg| state.msgs.push(msg),
+                                    );
                                     ok.clone()
                                 } else {
                                     // Use the type of clip, not the inner expression,
@@ -1255,7 +1295,12 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                                 apply_range(lower, upper(32))
                                             } else {
                                                 // may or may not be in range of 64, we must conservatively give up.
-                                                state.msgs.push(warning(&exp.span, "Computation clipped an arch-dependent integer that was out of range"));
+                                                ctx.warning(
+                                                    &exp.span,
+                                                    &WarningAllow::AssertComputeUnsimplified,
+                                                    || "Computation clipped an arch-dependent integer that was out of range",
+                                                    |msg| state.msgs.push(msg),
+                                                );
                                                 ok.clone()
                                             }
                                         }
@@ -1272,7 +1317,12 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                                 apply_range(lower(32), upper(32))
                                             } else {
                                                 // may or may not be in range of 64, we must conservatively give up.
-                                                state.msgs.push(warning(&exp.span, "Computation clipped an arch-dependent integer that was out of range"));
+                                                ctx.warning(
+                                                    &exp.span,
+                                                    &WarningAllow::AssertComputeUnsimplified,
+                                                    || "Computation clipped an arch-dependent integer that was out of range",
+                                                    |msg| state.msgs.push(msg),
+                                                );
                                                 ok.clone()
                                             }
                                         }
@@ -1621,7 +1671,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 }
                 Index(ArrayKind::Array, _) => {
                     let e2 = eval_expr_internal(ctx, state, e2)?;
-                    eval_array_index(state, exp, &e1, &e2)
+                    eval_array_index(ctx, state, exp, &e1, &e2)
                 }
                 Index(ArrayKind::Slice, _)
                 | HeightCompare { .. }
@@ -1962,6 +2012,7 @@ fn eval_expr_top(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Simplificati
 /// We run the interpreter on a separate thread, so that we can give it a larger-than-default stack
 fn eval_expr_launch(
     global: &GlobalCtx,
+    current_fun: Option<Fun>,
     exp: Exp,
     fun_ssts: &HashMap<Fun, FunctionSst>,
     rlimit: f32,
@@ -2006,6 +2057,7 @@ fn eval_expr_launch(
         max_depth,
         arch,
         global,
+        current_fun,
         report_long_running: global.report_long_running,
     };
     let result = eval_expr_top(&ctx, &mut state, &exp)?;
@@ -2044,11 +2096,17 @@ fn eval_expr_launch(
                 let res = cleanup_exp(&res)?;
                 // Send partial result to Z3
                 if exp.definitely_eq(&res) {
-                    let msg = format!(
-                        "Failed to simplify expression <<{}>> before sending to Z3",
-                        exp.x.to_user_string(&ctx.global)
+                    ctx.warning(
+                        &exp.span,
+                        &WarningAllow::AssertComputeUnsimplified,
+                        || {
+                            format!(
+                                "Failed to simplify expression <<{}>> before sending to Z3",
+                                exp.x.to_user_string(&ctx.global),
+                            )
+                        },
+                        |msg| state.msgs.push(msg),
                     );
-                    state.msgs.push(warning(&exp.span, msg));
                 }
                 Ok((res, state.msgs))
             }
@@ -2070,7 +2128,7 @@ fn eval_expr_launch(
 
 /// Symbolically evaluate an expression, simplifying it as much as possible
 pub fn eval_expr<D>(
-    global: &GlobalCtx,
+    ctx: &crate::context::Ctx,
     exp: &Exp,
     diagnostics: Option<&D>,
     fun_ssts: SstMap,
@@ -2083,7 +2141,8 @@ where
     D: air::messages::Diagnostics + ?Sized,
 {
     // Make a new global so we can move it into the new thread
-    let global = global.from_self_with_log(global.interpreter_log.clone());
+    let global = ctx.global.from_self_with_log(ctx.global.interpreter_log.clone());
+    let current_fun = ctx.fun.as_ref().map(|f| f.current_fun.clone());
 
     let builder =
         thread::Builder::new().name("interpreter".to_string()).stack_size(1024 * 1024 * 1024); // 1 GB
@@ -2097,6 +2156,7 @@ where
                 .spawn(move || {
                     let res = eval_expr_launch(
                         &global,
+                        current_fun,
                         exp,
                         &*fun_ssts,
                         rlimit,

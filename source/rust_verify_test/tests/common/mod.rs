@@ -324,6 +324,9 @@ pub fn run_verus(
         } else if *option == "-V check-api-safety" {
             verus_args.push("-V".to_string());
             verus_args.push("check-api-safety".to_string());
+        } else if *option == "-V spinoff-all" {
+            verus_args.push("-V".to_string());
+            verus_args.push("spinoff-all".to_string());
         } else if *option == "--is-core" {
             verus_args.push("--is-core".to_string());
             is_core = true;
@@ -601,6 +604,7 @@ pub const FEATURE_PRELUDE: &str = crate::common::code_str! {
     #![feature(fmt_internals)]
 
     #![allow(unused_imports)]
+    #![allow(unused_features)]
     #![allow(unused_macros)]
     #![allow(deprecated)]
     #![allow(non_snake_case)]

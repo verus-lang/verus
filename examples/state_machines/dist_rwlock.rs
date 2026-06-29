@@ -3,7 +3,7 @@
 use verus_builtin::*;
 use verus_builtin_macros::*;
 use vstd::atomic_ghost::*;
-use vstd::map::*;
+use vstd::imap::*;
 use vstd::multiset::*;
 use vstd::prelude::*;
 
@@ -23,8 +23,8 @@ tokenized_state_machine!{
             #[sharding(variable)]
             pub exc_locked: bool,
 
-            #[sharding(map)]
-            pub ref_counts: Map<int, int>,
+            #[sharding(imap)]
+            pub ref_counts: IMap<int, int>,
 
             #[sharding(option)]
             pub exc_pending: Option<int>,
@@ -45,7 +45,7 @@ tokenized_state_machine!{
                 init rc_width = rc_width;
                 init storage = Option::Some(init_t);
                 init exc_locked = false;
-                init ref_counts = Map::new(
+                init ref_counts = IMap::new(
                     |i| 0 <= i < rc_width,
                     |i| 0,
                 );

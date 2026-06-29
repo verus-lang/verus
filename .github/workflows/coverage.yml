@@ -1,0 +1,51 @@
+name: coverage
+
+on:
+  schedule:
+    - cron: '37 7 * * *'  # 2:37 AM EST
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  coverage:
+    if: github.repository == 'verus-lang/verus'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+
+    steps:
+      - name: checkout verus
+        uses: actions/checkout@v6
+
+      - name: setup rust
+        run: rustup toolchain install
+
+      - name: get z3
+        working-directory: ./source
+        run: ./tools/get-z3.sh
+
+      - name: run coverage
+        working-directory: ./source
+        run: ./tools/coverage.sh
+
+      - name: upload coverage report
+        id: upload
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage
+          path: source/coverage
+          retention-days: 30
+
+      - name: coverage summary
+        working-directory: ./source
+        run: |
+          {
+            echo '## `rust_verify_test` coverage'
+            echo ''
+            echo ":package: [Download full HTML report (coverage artifact)](${{ steps.upload.outputs.artifact-url }})"
+            echo ''
+            echo '```'
+            cat coverage/coverage.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
