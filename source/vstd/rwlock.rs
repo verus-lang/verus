@@ -234,7 +234,6 @@ RwLockToks<K, V, Pred: InvariantPredicate<K, V>> {
     }
 });
 
-#[cfg(not(verus_verify_core))]
 verus! {
 
 pub trait RwLockPredicate<V>: Sized {
