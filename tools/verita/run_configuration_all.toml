@@ -7,7 +7,7 @@ verus_extra_args = ["--no-report-long-running"]
 [[project]]
 name = "vstd"
 git_url = "https://github.com/verus-lang/verus.git"
-refspec = "main"
+refspec = "origin/z3-4.16.0"
 crate_roots = ["source/vstd/vstd.rs"]
 extra_verus_args = [
     "--crate-type=lib",
@@ -35,8 +35,10 @@ extra_verus_args = ["--crate-type=dylib"]
 
 [[project]]
 name = "verified-storage"
-git_url = "https://github.com/microsoft/verified-storage.git"
-refspec = "main"
+git_url = "https://github.com/parno/verified-storage"
+refspec = "origin/z3-4.16.0"
+#git_url = "https://github.com/microsoft/verified-storage.git"
+#refspec = "main"
 cargo_verus = true
 extra_cargo_args = ["--no-default-features"]
 crate_roots = ["capybaraKV/capybarakv", "multilog/multilog", "pmemlog"]
@@ -44,10 +46,8 @@ crate_roots = ["capybaraKV/capybarakv", "multilog/multilog", "pmemlog"]
 [[project]]
 name = "memory-allocator"
 #TODO: restore this after it is updated to new Set/Map/ISet/IMap
-#git_url = "https://github.com/verus-lang/verified-memory-allocator.git"
-#refspec = "main"
-git_url = "https://github.com/jaylorch/verified-memory-allocator.git"
-refspec = "origin/finite-sets"
+git_url = "https://github.com/verus-lang/verified-memory-allocator.git"
+refspec = "origin/z3-4.16.0"
 requires_singular = true
 crate_roots = ["verus-mimalloc/lib.rs"]
 extra_verus_args = [
@@ -92,21 +92,25 @@ cargo install vest
 [[project]]
 name = "human-eval"
 git_url = "https://github.com/secure-foundations/human-eval-verus.git"
-refspec = "main"
+refspec = "origin/z3-4.16.0"
 crate_roots = ["tasks/lib.rs"]
 extra_verus_args = ["--crate-type=lib"]
 
 [[project]]
 name = "page-table"
-git_url = "https://github.com/matthias-brun/verified-nrkernel.git"
-refspec = "main"
+#git_url = "https://github.com/matthias-brun/verified-nrkernel.git"
+#refspec = "main"
+git_url = "https://github.com/parno/verified-nrkernel"
+refspec = "origin/z3-4.16.0"
 crate_roots = ["page-table/src/lib.rs"]
 extra_verus_args = ["--crate-type=lib", "--rlimit", "100", "--cfg", "feature=\"impl\"", "--cfg", "feature=\"hlspec_user\""]
 
 [[project]]
 name = "svsm"
-git_url = "https://github.com/ziqiaozhou/svsm.git"
-refspec = "origin/verita"
+git_url = "https://github.com/parno/svsm.git"
+refspec = "origin/z3-4.16.0"
+#git_url = "https://github.com/ziqiaozhou/svsm.git"
+#refspec = "origin/verita"
 cargo_verus = true
 extra_cargo_args = ["--features", "verus"]
 crate_roots = ["kernel"]
@@ -121,8 +125,10 @@ rustup target add x86_64-unknown-none --toolchain 1.96.0
 
 [[project]]
 name = "anvil"
-git_url = "https://github.com/anvil-verifier/anvil"
-refspec = "main"
+git_url = "https://github.com/parno/anvil"
+refspec = "origin/z3-4.16.0"
+#git_url = "https://github.com/anvil-verifier/anvil"
+#refspec = "main"
 crate_roots = ["src/esr_composition.rs"]
 extra_verus_args = ["--crate-type=lib", 
               "-L", "dependency=src/deps_hack/target/debug/deps",

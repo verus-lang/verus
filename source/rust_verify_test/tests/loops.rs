@@ -1351,6 +1351,12 @@ test_verify_one_file_with_options! {
                 if result as u64 * result as u64 > n as u64 {
                     break;
                 }
+                assert(n != 1 ==> 1 <= result < n) by (nonlinear_arith)
+                    requires
+                        1 <= result,
+                        result as u64 * result as u64 <= n as u64,
+                        1 <= n,
+                { }
             }
             result - 1
         }

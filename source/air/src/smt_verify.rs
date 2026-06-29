@@ -117,10 +117,15 @@ pub(crate) fn smt_add_decl<'ctx>(context: &mut Context, decl: &Decl) {
 }
 
 impl SmtSolver {
-    pub fn reason_unknown_canceled_str(&self) -> &str {
+    /// The `(get-info :reason-unknown)` responses that mean "the solver hit its
+    /// resource/time budget".  These vary across Z3 versions.
+    pub fn reason_unknown_canceled_strs(&self) -> &'static [&'static str] {
         match self {
-            SmtSolver::Z3 => "(:reason-unknown \"canceled\")",
-            SmtSolver::Cvc5 => "(:reason-unknown resourceout)",
+            SmtSolver::Z3 => &[
+                "(:reason-unknown \"canceled\")",
+                "(:reason-unknown \"max. resource limit exceeded\")",
+            ],
+            SmtSolver::Cvc5 => &["(:reason-unknown resourceout)"],
         }
     }
 
@@ -290,7 +295,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
 
             let mut reason = None;
             for line in smt_output {
-                if line == context.solver.reason_unknown_canceled_str() {
+                if context.solver.reason_unknown_canceled_strs().iter().any(|s| line == *s) {
                     assert!(reason == None);
                     reason = Some(SmtReasonUnknown::Canceled);
                 } else if line == "(:reason-unknown \"unknown\")" {

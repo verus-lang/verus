@@ -328,6 +328,8 @@ test_verify_one_file! {
         }
 
         fn test_signed_div() {
+            assert(53int / 10int == 5) by (compute_only);
+            assert(53int / (-10int) == -5) by (compute_only);
             let x = 53i8 / 10i8;
             assert(x == 5);
             let x = (-53i8) / 10i8;
@@ -340,6 +342,8 @@ test_verify_one_file! {
         }
 
         fn test_signed_mod() {
+            assert(53int % 10int == 3) by (compute_only);
+            assert(53int % (-10int) == 3) by (compute_only);
             let x = 53i8 % 10i8;
             assert(x == 3);
             let x = (-53i8) % 10i8;
