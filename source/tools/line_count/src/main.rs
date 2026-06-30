@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet},
     fmt::Debug,
     ops::RangeInclusive,
     rc::Rc,
@@ -165,10 +165,10 @@ enum LineContent {
 }
 
 struct LineInfo {
-    kinds: HashSet<CodeKind>,
+    kinds: BTreeSet<CodeKind>,
     #[allow(dead_code)]
     path: Vec<String>,
-    line_content: HashSet<LineContent>,
+    line_content: BTreeSet<LineContent>,
     text: String,
 }
 
@@ -1498,7 +1498,7 @@ fn get_dependencies(
 
 #[derive(Debug, Clone)]
 struct Summary {
-    lines_by_kind: HashMap<Vec<CodeKind>, usize>,
+    lines_by_kind: BTreeMap<Vec<CodeKind>, usize>,
 }
 
 impl std::ops::Add for Summary {
@@ -1507,7 +1507,7 @@ impl std::ops::Add for Summary {
     fn add(self, rhs: Self) -> Self::Output {
         Summary {
             lines_by_kind: {
-                let mut lines_by_kind = HashMap::new();
+                let mut lines_by_kind = BTreeMap::new();
                 for (kinds, count) in self.lines_by_kind.into_iter() {
                     *lines_by_kind.entry(kinds).or_default() += count;
                 }
@@ -1522,14 +1522,12 @@ impl std::ops::Add for Summary {
 
 impl std::iter::Sum for Summary {
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
-        iter.fold(Summary { lines_by_kind: HashMap::new() }, |a, b| a + b)
+        iter.fold(Summary { lines_by_kind: BTreeMap::new() }, |a, b| a + b)
     }
 }
 
-fn hash_set_to_sorted_vec<V: Clone + Ord>(h: &HashSet<V>) -> Vec<V> {
-    let mut v: Vec<_> = h.iter().cloned().collect();
-    v.sort();
-    v
+fn btree_set_to_sorted_vec<V: Clone + Ord>(h: &BTreeSet<V>) -> Vec<V> {
+    h.iter().cloned().collect()
 }
 
 fn process_file(config: Rc<Config>, input_path: &std::path::Path) -> Result<FileStats, String> {
@@ -1544,9 +1542,9 @@ fn process_file(config: Rc<Config>, input_path: &std::path::Path) -> Result<File
         lines: file_content
             .lines()
             .map(|x| LineInfo {
-                kinds: HashSet::new(),
+                kinds: BTreeSet::new(),
                 path: Vec::new(),
-                line_content: HashSet::new(),
+                line_content: BTreeSet::new(),
                 text: x.into(),
             })
             .collect::<Vec<_>>()
@@ -1677,16 +1675,16 @@ fn process_file(config: Rc<Config>, input_path: &std::path::Path) -> Result<File
         }
         let entirely_comment = entirely_comment && (multiline_comment > 0 || had_comment_start_end);
         if entirely_comment {
-            line.line_content = HashSet::from([LineContent::Comment]);
-            line.kinds = HashSet::from([CodeKind::Comment])
+            line.line_content = BTreeSet::from([LineContent::Comment]);
+            line.kinds = BTreeSet::from([CodeKind::Comment])
         }
         if trimmed.starts_with("//") {
-            line.line_content = HashSet::from([LineContent::Comment]);
-            line.kinds = HashSet::from([CodeKind::Comment])
+            line.line_content = BTreeSet::from([LineContent::Comment]);
+            line.kinds = BTreeSet::from([CodeKind::Comment])
         }
         if trimmed == "" {
             if !line.kinds.is_empty() {
-                line.kinds = HashSet::from([CodeKind::Layout])
+                line.kinds = BTreeSet::from([CodeKind::Layout])
             }
         }
         if config.delimiters_are_layout
@@ -1695,18 +1693,18 @@ fn process_file(config: Rc<Config>, input_path: &std::path::Path) -> Result<File
                 .all(|c| c == '(' || c == ')' || c == '{' || c == '}' || c == '[' || c == ']')
         {
             if !line.kinds.is_empty() {
-                line.kinds = HashSet::from([CodeKind::Layout])
+                line.kinds = BTreeSet::from([CodeKind::Layout])
             }
         }
         if config.proofs_arent_trusted {
             if (line.line_content.contains(&LineContent::Body(CodeKind::Proof))
                 || line.line_content.contains(&LineContent::Signature(CodeKind::Proof)))
-                && line.kinds == HashSet::from([CodeKind::Trusted])
+                && line.kinds == BTreeSet::from([CodeKind::Trusted])
             {
                 if line.line_content.contains(&LineContent::FunctionSpec) {
-                    line.kinds = HashSet::from([CodeKind::Spec]);
+                    line.kinds = BTreeSet::from([CodeKind::Spec]);
                 } else {
-                    line.kinds = HashSet::from([CodeKind::Proof]);
+                    line.kinds = BTreeSet::from([CodeKind::Proof]);
                 }
             }
         }
@@ -1727,9 +1725,9 @@ fn process_file(config: Rc<Config>, input_path: &std::path::Path) -> Result<File
                             "Definitions" => CodeKind::Definitions,
                             _ => panic!("unknown code kind {}", x),
                         })
-                        .collect::<HashSet<_>>()
+                        .collect::<BTreeSet<_>>()
                 } else {
-                    HashSet::new()
+                    BTreeSet::new()
                 };
                 if captures.get(3).is_some() {
                     kind_multiline_override = Some(kinds);
@@ -1742,9 +1740,9 @@ fn process_file(config: Rc<Config>, input_path: &std::path::Path) -> Result<File
             }
         }
         if let Some(kinds) = &kind_multiline_override {
-            if line.kinds != HashSet::from([CodeKind::Comment])
-                && line.kinds != HashSet::from([CodeKind::Layout])
-                && line.kinds != HashSet::from([])
+            if line.kinds != BTreeSet::from([CodeKind::Comment])
+                && line.kinds != BTreeSet::from([CodeKind::Layout])
+                && line.kinds != BTreeSet::from([])
             {
                 line.kinds = kinds.clone();
             }
@@ -1790,8 +1788,8 @@ fn run(config: Config, run_mode_paths: RunMode<'_>) -> Result<(), String> {
             for l in file_stats.lines.iter() {
                 eprintln!(
                     "{:18} | {:30} | {}",
-                    hash_map_to_fit_string(&hash_set_to_sorted_vec(&l.kinds)[..], 30),
-                    hash_map_to_fit_string(&hash_set_to_sorted_vec(&l.line_content)[..], 30),
+                    hash_map_to_fit_string(&btree_set_to_sorted_vec(&l.kinds)[..], 30),
+                    hash_map_to_fit_string(&btree_set_to_sorted_vec(&l.line_content)[..], 30),
                     l.text
                 );
             }
@@ -1802,7 +1800,7 @@ fn run(config: Config, run_mode_paths: RunMode<'_>) -> Result<(), String> {
     let file_summaries = file_stats
         .iter()
         .map(|(name, file_stats)| {
-            let mut lines_by_kind = HashMap::new();
+            let mut lines_by_kind = BTreeMap::new();
             for l in file_stats.lines.iter() {
                 let mut kinds = l.kinds.clone();
                 if kinds.contains(&CodeKind::Exec)
@@ -1812,7 +1810,7 @@ fn run(config: Config, run_mode_paths: RunMode<'_>) -> Result<(), String> {
                     kinds
                         .retain(|x| matches!(x, CodeKind::Exec | CodeKind::Proof | CodeKind::Spec));
                 }
-                *lines_by_kind.entry(hash_set_to_sorted_vec(&kinds)).or_default() += 1;
+                *lines_by_kind.entry(btree_set_to_sorted_vec(&kinds)).or_default() += 1;
             }
             (name, Summary { lines_by_kind })
         })
@@ -1820,27 +1818,27 @@ fn run(config: Config, run_mode_paths: RunMode<'_>) -> Result<(), String> {
 
     let total: Summary = file_summaries.iter().map(|(_, fs)| fs).cloned().sum();
 
-    let kinds: HashSet<_> =
+    let kinds: BTreeSet<_> =
         file_summaries.iter().flat_map(|(_, s)| s.lines_by_kind.keys()).cloned().collect();
 
     if !config.json {
         let columns: Vec<_> = {
             let mut columns: Vec<_> = vec![
-                HashSet::from([CodeKind::Trusted]),
-                HashSet::from([CodeKind::Spec]),
-                HashSet::from([CodeKind::Proof]),
-                HashSet::from([CodeKind::Exec]),
-                HashSet::from([CodeKind::Proof, CodeKind::Exec]),
-                HashSet::from([CodeKind::Comment]),
-                HashSet::from([CodeKind::Layout]),
-                HashSet::from([]),
+                BTreeSet::from([CodeKind::Trusted]),
+                BTreeSet::from([CodeKind::Spec]),
+                BTreeSet::from([CodeKind::Proof]),
+                BTreeSet::from([CodeKind::Exec]),
+                BTreeSet::from([CodeKind::Proof, CodeKind::Exec]),
+                BTreeSet::from([CodeKind::Comment]),
+                BTreeSet::from([CodeKind::Layout]),
+                BTreeSet::from([]),
             ];
             let other_columns: Vec<_> = kinds
-                .difference(&HashSet::from_iter(columns.iter().map(hash_set_to_sorted_vec)))
-                .map(|h| HashSet::from_iter(h.iter().cloned()))
+                .difference(&BTreeSet::from_iter(columns.iter().map(btree_set_to_sorted_vec)))
+                .map(|h| BTreeSet::from_iter(h.iter().cloned()))
                 .collect();
             columns.extend(other_columns);
-            columns.iter().map(hash_set_to_sorted_vec).collect()
+            columns.iter().map(btree_set_to_sorted_vec).collect()
         };
 
         let mut table_data: Vec<Vec<String>> = file_summaries
@@ -1891,7 +1889,7 @@ fn run(config: Config, run_mode_paths: RunMode<'_>) -> Result<(), String> {
             );
         println!("{}", table);
     } else {
-        let kinds_map: HashMap<_, _> = kinds
+        let kinds_map: BTreeMap<_, _> = kinds
             .iter()
             .map(|k| {
                 (
@@ -1907,9 +1905,9 @@ fn run(config: Config, run_mode_paths: RunMode<'_>) -> Result<(), String> {
             "kinds": kinds_map.iter().collect::<Vec<(_, _)>>(),
             "files": file_summaries.iter().map(|(f, s)| {
                 (f.display().to_string(),
-                     s.lines_by_kind.iter().map(|(k, v)| (kinds_map[k].clone(), v)).collect::<HashMap<_, _>>())
-            }).collect::<HashMap<_, _>>(),
-            "total": total.lines_by_kind.iter().map(|(k, v)| (kinds_map[k].clone(), v)).collect::<HashMap<_, _>>()
+                     s.lines_by_kind.iter().map(|(k, v)| (kinds_map[k].clone(), v)).collect::<BTreeMap<_, _>>())
+            }).collect::<BTreeMap<_, _>>(),
+            "total": total.lines_by_kind.iter().map(|(k, v)| (kinds_map[k].clone(), v)).collect::<BTreeMap<_, _>>()
         });
         println!("{}", serde_json::to_string_pretty(&json).expect("invalid json"));
     }

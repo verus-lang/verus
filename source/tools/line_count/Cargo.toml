@@ -16,5 +16,9 @@ toml = { workspace = true }
 verus_prettyplease = { workspace = true }
 verus_syn = { workspace = true }
 
+[dev-dependencies]
+insta = { workspace = true }
+
 [lints]
 workspace = true
+
