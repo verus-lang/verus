@@ -1689,7 +1689,7 @@ pub(crate) fn try_get_proof_fn_modes<'tcx>(
                 let ret_mode = if let Some(ty) = ret_mode_typ.as_type() {
                     get_proof_fn_one_mode(ctxt, span, &ty)?
                 } else {
-                    panic!("unexpected FnProof argument")
+                    return err_span(span, "unexpected FnProof argument")
                 };
                 let arg_modes = if let Some(ty) = arg_mode_tuple.as_type() {
                     if let TyKind::Tuple(_) = ty.kind() {
@@ -1699,10 +1699,10 @@ pub(crate) fn try_get_proof_fn_modes<'tcx>(
                         }
                         modes
                     } else {
-                        panic!("unexpected FnProof argument")
+                        return err_span(span, "unexpected FnProof argument")
                     }
                 } else {
-                    panic!("unexpected FnProof argument")
+                    return err_span(span, "unexpected FnProof argument")
                 };
                 return Ok(Some((arg_modes, ret_mode)));
             }
