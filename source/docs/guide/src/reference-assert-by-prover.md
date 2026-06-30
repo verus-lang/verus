@@ -44,9 +44,9 @@ If a `requires P` clause is additionally provides, then Verus:
  * And finally assumes `Q` for subsequent code.
 
 **Interpreter modes.**
-For `compute` and `compute_only` modes, Verus uses its [specification interpreter](./reference-prover-mode-compute.md) to simplify the expression `P` as much as possible, yielding an expression `P'`.
+For `compute` and `compute_only` modes, Verus uses its [specification interpreter](./reference-prover-mode-compute.md) to simplify the expression `Q` as much as possible, yielding an expression `Q'`.
 
- * For `compute_only`, Verus will check that `P'` is the boolean value `true`, and then assumes
+ * For `compute_only`, Verus will check that `Q'` is the boolean value `true`, and then assumes
    the given predicate for all subsequent code.
- * For `compute`, Verus will replace the assert-by statement with `assert(P')`, which then behaves
+ * For `compute`, Verus will replace the assert-by statement with `assert(Q')`, which then behaves
    like an ordinary [`assert`](./reference-assert.md).

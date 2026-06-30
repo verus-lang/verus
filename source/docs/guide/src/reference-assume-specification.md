@@ -1,5 +1,11 @@
 # assume_specification
 
+> [!CAUTION]
+> Since the `assume_specification` statement is unchecked, it can easily be used to subvert
+> Verus's guarantees.
+>
+> Be sure to read our [advice on interacting with unverified code](./interacting-with-unverified-code.md).
+
 The `assume_specification` directive tells Verus to use the given specification for the given function.
 Verus assumes that this specification holds **without proof**.
 

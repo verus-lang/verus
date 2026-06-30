@@ -1,7 +1,9 @@
 # `assume`
 
+<!-- TODO: Should decide whether or not the presence of an assume still gives guarantees about the subset of program executions where the assumption holds. -->
+
 > [!CAUTION]
-> Since the `assume` statement is unchecked, it can be used to subvert Verus's guarantees.
+> Since the `assume` statement is unchecked, it can easily be used to subvert Verus's guarantees.
 > In particular, successful "verification" by Verus provides **no guarantees** on the program
 > if it includes any `assume` statements, unless those `assume` statements could in principle
 > be replaced by a successful `assert` statement.
