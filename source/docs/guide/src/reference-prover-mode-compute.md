@@ -1,15 +1,30 @@
-# assert ... by(compute) / by(compute_only)
+# The compute mode
 
-See [this section of the tutorial](./assert_by_compute.md) for motivation and an example.
+> [!TIP]
+> See the [guide page](./assert_by_compute.md) for practical tips on using this feature.
 
-A statement of the form:
+### Methods of invocation
+
+**By assertion.**
+The `nonlinear_arith` solver can be invoked via an [`assert-by` statement](./reference-assert-by-prover.md):
 
 ```
-assert(P) by(compute_only);
+assert(Q) by(compute_only);
 ```
 
-Will evaluate the expression `P` as far a possible, and Verus accepts the result if it
-evaluates to the boolean expression `true`. It unfolds function definitions and evaluates
+Proves `Q` by simplifying it via the interpreter and checking
+if the result is the boolean value `true`.
+
+```
+assert(Q) by(compute);
+```
+
+Proves `Q` by simplifying it via the interpreter to an expression `Q'` and replacing
+the statement with `assert(Q);`.
+
+### Interpreter operation
+
+The interpreter unfolds function definitions and evaluates
 arithmetic expressions. It is capable of some symbolic manipulation, but it does not handle
 algebraic laws like `a + b == b + a`, and it works best when evaluating constant expressions.
 
@@ -27,7 +42,7 @@ to finish the problem through the normal solver. So for example, if after expans
 `P` results in a trivial expression like `a+b == b+a`, then it should be solved
 with `by(compute)`.
 
-### Memoization
+### Configurating the evaluation strategy
 
 The [`#[verifier::memoize]` attribute](./reference-attributes.md#verifiermemoize) can be used to mark
 certain functions for [memoizing](https://en.wikipedia.org/wiki/Memoization).
