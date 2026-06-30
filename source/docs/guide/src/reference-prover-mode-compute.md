@@ -1,6 +1,7 @@
 # The compute mode
 
-See [this section of the tutorial](./assert_by_compute.md) for motivation and an example.
+> [!TIP]
+> See the [guide page](./assert_by_compute.md) for practical tips on using this feature.
 
 A statement of the form:
 

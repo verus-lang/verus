@@ -6,7 +6,7 @@
 > if it includes any `assume` statements, unless those `assume` statements could in principle
 > be replaced by a successful `assert` statement.
 >
-> The `assume` statement is most useful during an intermediate stage of development,
+> The `assume` statement is most useful during _intermediate_ stages of development,
 > e.g., within an [assert/assume-driven proof-development process](./assert_assume.md).
 
 > [!TIP]
