@@ -419,20 +419,14 @@ impl<T> PointsTo<T> {
     }
 
     /// If `T` is not a ZST, then the pointer's provenance is non-null.
-    /// https://doc.rust-lang.org/std/ptr/index.html#provenance
-    /// says that it is still sound to create a pointer without provenance from just an address (see without_provenance). 
-    /// Such a pointer cannot be used for memory accesses (except for zero-sized accesses).
-    /// 
-    /// So if you have a pointer with null provenance, then that pointer can be used for zero-sized accesses.
-    /// Therefore the contrapositive says that if you know you can't use a pointer for zero-sized accesses
-    /// (that is, `T` is not a ZST), then that pointer must have non-null provenance.
-    /// Hmm there could be other reasons that you can't use a pointer for ZST accesses?
-    pub axiom fn provenance_non_null(tracked &self)
+    pub proof fn provenance_non_null(tracked &self)
         requires
             layout::size_of::<T>() != 0,
         ensures
             self.ptr()@.provenance != Provenance::null(),
-    ;
+    {
+        self.inner.provenance_non_null()
+    }
 
     /// Guarantees that the memory ranges associated with two distinct, non-ZST permissions will not overlap,
     /// since you cannot have two permissions to the same memory.
@@ -534,6 +528,22 @@ impl<T> PointsToUnaligned<T> {
             self.ptr()@.addr as int >= self.ptr()@.provenance.start_addr(),
             self.ptr()@.addr + size_of::<T>() <= self.ptr()@.provenance.start_addr()
                 + self.ptr()@.provenance.alloc_len(),
+    ;
+
+    /// If `T` is not a ZST, then the pointer's provenance is non-null.
+    /// https://doc.rust-lang.org/std/ptr/index.html#provenance
+    /// says that it is still sound to create a pointer without provenance from just an address (see without_provenance).
+    /// Such a pointer cannot be used for memory accesses (except for zero-sized accesses).
+    ///
+    /// So if you have a pointer with null provenance, then that pointer can be used for zero-sized accesses.
+    /// Therefore the contrapositive says that if you know you can't use a pointer for zero-sized accesses
+    /// (that is, `T` is not a ZST), then that pointer must have non-null provenance.
+    /// Hmm there could be other reasons that you can't use a pointer for ZST accesses?
+    pub axiom fn provenance_non_null(tracked &self)
+        requires
+            layout::size_of::<T>() != 0,
+        ensures
+            self.ptr()@.provenance != Provenance::null(),
     ;
 
     /// Guarantees that the memory ranges associated with two distinct, non-ZST permissions will not overlap,
@@ -689,6 +699,17 @@ impl<T> PointsTo<[T]> {
                 <= self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len(),
     {
         self.inner.ptr_bounds();
+    }
+
+    /// If the memory covered by this permission is not zero-sized,
+    /// then the pointer's provenance is non-null.
+    pub proof fn provenance_non_null(tracked &self)
+        requires
+            layout::size_of::<T>() * self.len() != 0,
+        ensures
+            self.ptr()@.provenance != Provenance::null(),
+    {
+        self.inner.provenance_non_null();
     }
 
     /// Given that the subrange is within bounds, it is always possible to get a permission to just that subrange.
@@ -1229,6 +1250,15 @@ impl<T> PointsToUnaligned<[T]> {
             self.ptr()@.provenance.start_addr() <= self.ptr()@.addr,
             self.ptr()@.addr + self.mem_contents_seq().len() * size_of::<T>()
                 <= self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len(),
+    ;
+
+    /// If the memory covered by this permission is not zero-sized,
+    /// then the pointer's provenance is non-null.
+    pub axiom fn provenance_non_null(tracked &self)
+        requires
+            layout::size_of::<T>() * self.mem_contents_seq().len() != 0,
+        ensures
+            self.ptr()@.provenance != Provenance::null(),
     ;
 
     /// Guarantees that the memory ranges associated with two distinct, non-ZST permissions will not overlap,
