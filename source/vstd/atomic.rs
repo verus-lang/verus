@@ -861,18 +861,6 @@ pub fn atomically<X, Y: UpdateTry, P: UpdatePredicate<X, Y>>(
 }
 
 // Definitions for `try_open_atomic_update` macro
-#[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::vstd::atomic::try_open_au"]
-#[doc(hidden)]
-#[verifier::external_body]
-pub fn try_open_au<X, Y: UpdateTry, P: UpdatePredicate<X, Y>>(
-    _atomic_update: AtomicUpdate<X, Y, P>,
-    _body: impl FnOnce(X) -> Tracked<Y>,
-) -> Tracked<Result<(), AtomicUpdate<X, Y, P>>> {
-    arbitrary()
-}
-
-// Definitions for `try_open_atomic_update` macro
 #[doc(hidden)]
 pub struct BlockGuard<T> {
     _inner: core::marker::PhantomData<T>,
@@ -1046,25 +1034,6 @@ macro_rules! try_open_atomic_update_internal {
             }
         }
     };
-
-    // ($au:expr, $x:pat => $body:block) => {
-    //     match () {
-    //         #[cfg(verus_keep_ghost_body)]
-    //         _ => $crate::atomic::try_open_au($au, {
-    //             let _verus_internal_identifier_for_closures = ::verus_builtin::dummy_capture_new();
-    //             |$x| {
-    //                 ::verus_builtin::dummy_capture_consume(_verus_internal_identifier_for_closures);
-    //                 $body
-    //             }
-    //         }),
-
-    //         #[cfg(not(verus_keep_ghost_body))]
-    //         _ => {
-    //             let _ = $body;
-    //             ::verus_builtin::Tracked::assume_new_fallback(|| ::core::unreachable!())
-    //         },
-    //     }
-    // };
 }
 
 #[doc(hidden)]
