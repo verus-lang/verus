@@ -1065,9 +1065,18 @@ pub enum ExprX {
     /// Use of a static variable.
     StaticVar(Fun),
     /// Call to a function passing some expression arguments
-    /// The optional expression is to be executed *after* the arguments but *before* the call.
-    /// This is used for two-phase borrows.
-    Call(CallTarget, Exprs, Option<Expr>),
+    Call {
+        target: CallTarget,
+        args: Exprs,
+        /// To be executed *after* the arguments but *before* the call.
+        ///
+        /// This is used for two-phase borrows.
+        post_args: Option<Expr>,
+        /// Executed *inside* the function call, between the pre- and postcondition.
+        ///
+        /// We use this for the `atomically |update| { ... }` block of the atomic function call.
+        body: Option<Expr>,
+    },
     /// Construct datatype value of type Path and variant Ident,
     /// with field initializers Binders<Expr> and an optional ".." update expression.
     /// For tuple-style variants, the fields are named "0", "1", etc.
