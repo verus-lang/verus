@@ -8,7 +8,27 @@
 #![feature(iterator_try_collect)]
 #![feature(try_blocks)]
 #![feature(yeet_expr)]
+#![feature(rustc_private)]
 // tidy-alphabetical-end
+
+extern crate rustc_abi;
+extern crate rustc_arena;
+extern crate rustc_ast;
+extern crate rustc_const_eval;
+extern crate rustc_data_structures;
+extern crate rustc_errors;
+extern crate rustc_hir;
+extern crate rustc_index;
+extern crate rustc_infer;
+extern crate rustc_macros;
+extern crate rustc_middle;
+extern crate rustc_mir_dataflow;
+extern crate rustc_session;
+extern crate rustc_span;
+extern crate rustc_target;
+extern crate rustc_trait_selection;
+extern crate either;
+extern crate itertools;
 
 use hir::ConstContext;
 use required_consts::RequiredConstsVisitor;

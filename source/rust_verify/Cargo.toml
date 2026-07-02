@@ -23,6 +23,8 @@ indicatif = "0.17.7"
 console = { version = "0.15", default-features = false, features = ["ansi-parsing"] }
 indexmap = { version = "1" }
 rustc_mir_build_verus = { path = "../rustc_mir_build", package = "rustc_mir_build" }
+rustc_mir_transform_verus = { path = "../rustc_mir_transform", package = "rustc_mir_transform" }
+rustc_borrowck_verus = { path = "../rustc_borrowck", package = "rustc_borrowck" }
 
 [target.'cfg(windows)'.dependencies]
 win32job = "1"

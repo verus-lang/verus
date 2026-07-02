@@ -4,9 +4,10 @@
 #![cfg_attr(bootstrap, feature(assert_matches))]
 #![feature(box_patterns)]
 #![feature(try_blocks)]
-#![feature(rustc_private)]
 #![feature(never_type)]
 // tidy-alphabetical-end
+
+#![feature(rustc_private)]
 
 extern crate rustc_abi;
 extern crate rustc_apfloat;

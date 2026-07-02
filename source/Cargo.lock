@@ -1874,7 +1874,9 @@ dependencies = [
  "num-format",
  "regex",
  "rust_verify_test_macros",
+ "rustc_borrowck",
  "rustc_mir_build",
+ "rustc_mir_transform",
  "serde",
  "serde_json",
  "sha2",
@@ -1908,10 +1910,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustc_borrowck"
+version = "0.0.0"
+dependencies = [
+ "itertools 0.12.1",
+ "rustc_mir_transform",
+ "smallvec",
+ "tracing",
+]
+
+[[package]]
 name = "rustc_mir_build"
 version = "0.0.0"
 dependencies = [
  "itertools 0.12.1",
+ "tracing",
+]
+
+[[package]]
+name = "rustc_mir_transform"
+version = "0.0.0"
+dependencies = [
+ "rustc_mir_build",
+ "smallvec",
  "tracing",
 ]
 
