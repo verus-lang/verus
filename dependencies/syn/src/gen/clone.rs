@@ -128,6 +128,43 @@ impl Clone for crate::AssumeSpecification {
         }
     }
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::AtomicSpec {
+    fn clone(&self) -> Self {
+        crate::AtomicSpec {
+            atomically_token: self.atomically_token.clone(),
+            paren_token: self.paren_token.clone(),
+            atomic_update: self.atomic_update.clone(),
+            block_token: self.block_token.clone(),
+            type_clause: self.type_clause.clone(),
+            perm_clause: self.perm_clause.clone(),
+            requires: self.requires.clone(),
+            ensures: self.ensures.clone(),
+            outer_mask: self.outer_mask.clone(),
+            inner_mask: self.inner_mask.clone(),
+            comma_token: self.comma_token.clone(),
+        }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::AtomicallyBlock {
+    fn clone(&self) -> Self {
+        crate::AtomicallyBlock {
+            label: self.label.clone(),
+            atomically_token: self.atomically_token.clone(),
+            loop_token: self.loop_token.clone(),
+            or1_token: self.or1_token.clone(),
+            update_fn_binder: self.update_fn_binder.clone(),
+            comma_token: self.comma_token.clone(),
+            or2_token: self.or2_token.clone(),
+            spec_au_binder: self.spec_au_binder.clone(),
+            invariant_except_breaks: self.invariant_except_breaks.clone(),
+            invariants: self.invariants.clone(),
+            ensures: self.ensures.clone(),
+            body: self.body.clone(),
+        }
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
 impl Copy for crate::AttrStyle {}
@@ -583,6 +620,7 @@ impl Clone for crate::ExprCall {
             func: self.func.clone(),
             paren_token: self.paren_token.clone(),
             args: self.args.clone(),
+            atomically: self.atomically.clone(),
         }
     }
 }
@@ -875,6 +913,7 @@ impl Clone for crate::ExprMethodCall {
             turbofish: self.turbofish.clone(),
             paren_token: self.paren_token.clone(),
             args: self.args.clone(),
+            atomically: self.atomically.clone(),
         }
     }
 }
@@ -1458,6 +1497,16 @@ impl Clone for crate::Index {
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::InnerMask {
+    fn clone(&self) -> Self {
+        crate::InnerMask {
+            token: self.token.clone(),
+            set: self.set.clone(),
+            comma_token: self.comma_token.clone(),
+        }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
 impl Clone for crate::Invariant {
     fn clone(&self) -> Self {
         crate::Invariant {
@@ -1495,6 +1544,9 @@ impl Clone for crate::InvariantNameSet {
             crate::InvariantNameSet::List(v0) => {
                 crate::InvariantNameSet::List(v0.clone())
             }
+            crate::InvariantNameSet::ListCompl(v0) => {
+                crate::InvariantNameSet::ListCompl(v0.clone())
+            }
             crate::InvariantNameSet::Set(v0) => crate::InvariantNameSet::Set(v0.clone()),
         }
     }
@@ -1511,6 +1563,17 @@ impl Clone for crate::InvariantNameSetAny {
 impl Clone for crate::InvariantNameSetList {
     fn clone(&self) -> Self {
         crate::InvariantNameSetList {
+            bracket_token: self.bracket_token.clone(),
+            exprs: self.exprs.clone(),
+        }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::InvariantNameSetListCompl {
+    fn clone(&self) -> Self {
+        crate::InvariantNameSetListCompl {
+            any_token: self.any_token.clone(),
+            op_token: self.op_token.clone(),
             bracket_token: self.bracket_token.clone(),
             exprs: self.exprs.clone(),
         }
@@ -2082,6 +2145,16 @@ impl Clone for crate::OpenRestricted {
         }
     }
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::OuterMask {
+    fn clone(&self) -> Self {
+        crate::OuterMask {
+            token: self.token.clone(),
+            set: self.set.clone(),
+            comma_token: self.comma_token.clone(),
+        }
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
 impl Clone for crate::ParenthesizedGenericArguments {
@@ -2281,6 +2354,36 @@ impl Clone for crate::PathSegment {
         }
     }
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::PermClause {
+    fn clone(&self) -> Self {
+        crate::PermClause {
+            old_perms: self.old_perms.clone(),
+            arrow_token: self.arrow_token.clone(),
+            new_perms: self.new_perms.clone(),
+            comma_token: self.comma_token.clone(),
+        }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::PermTuple {
+    fn clone(&self) -> Self {
+        crate::PermTuple {
+            paren_token: self.paren_token.clone(),
+            fields: self.fields.clone(),
+        }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::PermTupleField {
+    fn clone(&self) -> Self {
+        crate::PermTupleField {
+            ident: self.ident.clone(),
+            colon_token: self.colon_token.clone(),
+            ty: self.ty.clone(),
+        }
+    }
+}
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
 impl Clone for crate::PointerMutability {
@@ -2304,6 +2407,16 @@ impl Clone for crate::PreciseCapture {
             lt_token: self.lt_token.clone(),
             params: self.params.clone(),
             gt_token: self.gt_token.clone(),
+        }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::PredTypeClause {
+    fn clone(&self) -> Self {
+        crate::PredTypeClause {
+            type_token: self.type_token.clone(),
+            ident: self.ident.clone(),
+            comma_token: self.comma_token.clone(),
         }
     }
 }
@@ -2410,6 +2523,20 @@ impl Clone for crate::Requires {
         }
     }
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::ReturnPat {
+    fn clone(&self) -> Self {
+        match self {
+            crate::ReturnPat::Default => crate::ReturnPat::Default,
+            crate::ReturnPat::Pat(v0, v1, v2, v3) => {
+                crate::ReturnPat::Pat(v0.clone(), v1.clone(), v2.clone(), v3.clone())
+            }
+            crate::ReturnPat::Type(v0, v1) => {
+                crate::ReturnPat::Type(v0.clone(), v1.clone())
+            }
+        }
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
 impl Clone for crate::ReturnType {
@@ -2419,6 +2546,15 @@ impl Clone for crate::ReturnType {
             crate::ReturnType::Type(v0, v1, v2, v3) => {
                 crate::ReturnType::Type(v0.clone(), v1.clone(), v2.clone(), v3.clone())
             }
+        }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::ReturnValue {
+    fn clone(&self) -> Self {
+        crate::ReturnValue {
+            token: self.token.clone(),
+            pat: self.pat.clone(),
         }
     }
 }
@@ -2484,6 +2620,7 @@ impl Clone for crate::SignatureInvariants {
         crate::SignatureInvariants {
             token: self.token.clone(),
             set: self.set.clone(),
+            comma: self.comma.clone(),
         }
     }
 }
@@ -2492,6 +2629,7 @@ impl Clone for crate::SignatureSpec {
     fn clone(&self) -> Self {
         crate::SignatureSpec {
             prover: self.prover.clone(),
+            atomic_spec: self.atomic_spec.clone(),
             requires: self.requires.clone(),
             recommends: self.recommends.clone(),
             ensures: self.ensures.clone(),

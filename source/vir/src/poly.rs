@@ -459,7 +459,14 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
     let mk_exp_typ = |t: &Typ, e: ExpX| SpannedTyped::new(&exp.span, t, e);
     match &exp.x {
         ExpX::Const(_) => exp.clone(),
-        ExpX::Var(x) => SpannedTyped::new(&exp.span, &state.types[x], ExpX::Var(x.clone())),
+        ExpX::Var(x) => SpannedTyped::new(
+            &exp.span,
+            match state.types.get(x) {
+                Some(typ) => typ,
+                None => panic!("unknown variable: {:?}", x),
+            },
+            ExpX::Var(x.clone()),
+        ),
         ExpX::VarLoc(x) => SpannedTyped::new(&exp.span, &state.types[x], ExpX::VarLoc(x.clone())),
         ExpX::VarAt(x, at) => {
             SpannedTyped::new(&exp.span, &state.types[x], ExpX::VarAt(x.clone(), *at))
@@ -472,7 +479,11 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
         ExpX::Old(..) => panic!("internal error: unexpected ExpX::Old"),
         ExpX::Call(call_fun, typs, exps) => match call_fun {
             CallFun::Fun(name, _) | CallFun::Recursive(name) => {
-                let function = &ctx.func_sst_map[name].x;
+                let function = match ctx.func_sst_map.get(name) {
+                    Some(fun) => &fun.x,
+                    None => panic!("unknown function: {:?}", name),
+                };
+
                 let is_spec = function.mode == Mode::Spec;
                 let is_trait = !matches!(function.kind, FunctionKind::Static);
                 let mut args: Vec<Exp> = Vec::new();
@@ -536,7 +547,10 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
             mk_exp_typ(&typ, ExpX::CallLambda(callee, args))
         }
         ExpX::Ctor(path, variant, binders) => {
-            let fields = &ctx.datatype_map[path].x.get_variant(variant).fields;
+            let Some(dt) = ctx.datatype_map.get(path) else {
+                panic!("failed to find {path:?} in datatype map");
+            };
+            let fields = &dt.x.get_variant(variant).fields;
             let mut bs: Vec<Binder<Exp>> = Vec::new();
             for binder in binders.iter() {
                 let field = crate::ast_util::get_field(fields, &binder.name);
@@ -833,6 +847,7 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
             split,
             dest,
             assert_id,
+            body,
         } => {
             let (is_polys, function) = if let crate::sst::CallTarget::Fun(fun) = fun {
                 let function = &ctx.func_sst_map[fun].x;
@@ -876,7 +891,8 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
             } else {
                 None
             };
-            let callx = StmX::Call {
+            let body = body.as_ref().map(|stm| visit_stm(ctx, state, stm));
+            mk_stm(StmX::Call {
                 fun: fun.clone(),
                 resolved_method: resolved_method.clone(),
                 is_trait_default: *is_trait_default,
@@ -886,8 +902,8 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
                 split: split.clone(),
                 dest,
                 assert_id: assert_id.clone(),
-            };
-            mk_stm(callx)
+                body,
+            })
         }
         StmX::Assert(id, msg, e1) => {
             let e1 = visit_exp_native(ctx, state, e1);
@@ -986,6 +1002,7 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
             decrease,
             typ_inv_vars,
             modified_vars,
+            au_branch_bool,
             pre_modified_params,
         } => {
             let cond = cond
@@ -998,6 +1015,7 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
             });
             let invs = Arc::new(invs.collect());
             let decrease = visit_exps_native(ctx, state, decrease);
+            let au_branch_bool = au_branch_bool.as_ref().map(|e| visit_exp_native(ctx, state, e));
             mk_stm(StmX::Loop {
                 loop_isolation: *loop_isolation,
                 is_for_loop: *is_for_loop,
@@ -1009,6 +1027,7 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
                 decrease,
                 typ_inv_vars: typ_inv_vars.clone(),
                 modified_vars: modified_vars.clone(),
+                au_branch_bool,
                 pre_modified_params: pre_modified_params.clone(),
             })
         }

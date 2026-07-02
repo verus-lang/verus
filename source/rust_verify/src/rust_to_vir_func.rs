@@ -230,6 +230,7 @@ fn handle_autospec<'tcx>(
                 decrease_by: None,
                 fndef_axioms: None,
                 mask_spec: None,
+                atomic_update: None,
                 unwind_spec: None,
                 item_kind: ItemKind::Function,
                 attrs: Arc::new(FunctionAttrsX {
@@ -302,6 +303,7 @@ fn mk_bctx<'tcx>(
         external_body,
         in_ghost: mode != Mode::Exec,
         loop_isolation: false,
+        atomically: None,
         migrate_postcondition_vars,
         in_fn_sig: false,
         in_postcondition: false,
@@ -1813,6 +1815,9 @@ pub(crate) fn check_item_fn<'tcx>(
     if mode != Mode::Spec && header.recommend.len() > 0 {
         return err_span(sig.span, "non-spec functions cannot have recommends");
     }
+    if mode != Mode::Exec && header.atomic_update.is_some() {
+        return err_span(sig.span, "non-exec function cannot have atomic specification");
+    }
     if mode != Mode::Exec && vattrs.external_fn_specification {
         return err_span(sig.span, "assume_specification should be 'exec'");
     }
@@ -2100,6 +2105,7 @@ pub(crate) fn check_item_fn<'tcx>(
         decrease_by: header.decrease_by,
         fndef_axioms: None,
         mask_spec: header.invariant_mask,
+        atomic_update: header.atomic_update,
         unwind_spec: header.unwind_spec,
         item_kind,
         attrs: fattrs,
@@ -2189,6 +2195,7 @@ fn fix_external_fn_specification_trait_method_decl_typs(
             decrease_by,
             fndef_axioms,
             mask_spec,
+            atomic_update,
             unwind_spec,
             item_kind,
             attrs,
@@ -2212,19 +2219,11 @@ fn fix_external_fn_specification_trait_method_decl_typs(
 
         //params = params.iter().map(|p| p.new_x(p.x.new_a(subst_typ(&typ_substs, &p.a)))).collect();
         //ret = ret.new_x(ret.x.new_a(&typ_substs, &ret.a));
-        params = Arc::new(
-            params
-                .iter()
-                .map(|p| {
-                    p.new_x(vir::ast::ParamX {
-                        typ: subst_typ(&typ_substs, &p.x.typ),
-                        ..p.x.clone()
-                    })
-                })
-                .collect(),
-        );
-        ret = ret
-            .new_x(vir::ast::ParamX { typ: subst_typ(&typ_substs, &ret.x.typ), ..ret.x.clone() });
+        params = Arc::new(crate::util::vec_map(&params, |p| {
+            p.new_x(ParamX { typ: subst_typ(&typ_substs, &p.x.typ), ..p.x.clone() })
+        }));
+
+        ret = ret.new_x(ParamX { typ: subst_typ(&typ_substs, &ret.x.typ), ..ret.x.clone() });
 
         unsupported_err_unless!(require.len() == 0, span, "requires clauses");
         unsupported_err_unless!(ensure.0.len() + ensure.1.len() == 0, span, "ensures clauses");
@@ -2259,6 +2258,7 @@ fn fix_external_fn_specification_trait_method_decl_typs(
             decrease_by,
             fndef_axioms,
             mask_spec,
+            atomic_update,
             unwind_spec,
             item_kind,
             attrs,
@@ -2950,6 +2950,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         decrease_by: None,
         fndef_axioms: None,
         mask_spec: None,
+        atomic_update: None,
         unwind_spec: None,
         item_kind: if is_static { ItemKind::Static } else { ItemKind::Const },
         attrs: fattrs,
@@ -3066,6 +3067,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         decrease_by: None,
         fndef_axioms: None,
         mask_spec: None,
+        atomic_update: None,
         unwind_spec: None,
         item_kind: ItemKind::Function,
         attrs: Default::default(),

@@ -181,6 +181,9 @@ pub enum StmX {
         split: Option<Message>,
         dest: Option<Dest>,
         assert_id: Option<AssertId>,
+        /// Code to be executed *inside* the function call,
+        /// i.e. emplaced between the pre- and postcondition
+        body: Option<Stm>,
     },
     /// Assertion to be verified by the SMT solver; reports Stm's span on failure plus optional extra info
     Assert(Option<AssertId>, Option<Message>, Exp),
@@ -243,6 +246,7 @@ pub enum StmX {
         typ_inv_vars: Arc<Vec<(UniqueIdent, Typ)>>,
         /// Variables potentially modified by the loop body
         modified_vars: Option<Arc<crate::sst_vars::HavocSet>>,
+        au_branch_bool: Option<Exp>,
         /// Params (including closure params) that may be modified _in or before_ this loop body
         /// but *excluding* their initial assignments.
         /// This is the same set of variables for which we need to consider different values
