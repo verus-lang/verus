@@ -145,7 +145,7 @@ These attributes attach a string note to a `requires`/`ensures` clause or `assum
 - The outer attribute `#[verifier::proof_note]` must attach to an `assume`/`assert` statement.
 - The inner attribute `#![verifier::proof_note]` (note the `!`) must attach to a `requires`/`ensures` clause.
 
-When a proof obligation (`requires`/`ensures`/`assert`) fails, then the `"text"` of the note is included in the error message, as well as in the JSON output under the key `func-details`. An `assume` statement flagged by the `--no-cheating` mode is treated similarly. This can be useful for connecting informal spec requirements (say from a text description of desired properties) to obligations in the verified code.
+When a proof obligation (`requires`/`ensures`/`assert`) fails, then the `"text"` of the note is included in the error message, as well as in the JSON output under the key `func-details`. An `assume` statement flagged by the [`--no-cheating` mode](./tcb.md#no-cheating-mode) is treated similarly. This can be useful for connecting informal spec requirements (say from a text description of desired properties) to obligations in the verified code.
 
 Cannot be used together with [`custom_err`](#verifiercustom_errtext-and-verifiercustom_errtext).
 
@@ -295,3 +295,5 @@ Disables the requirement that `exec` functions with recursion or loops have a de
 
 Assumes that an `exec` function is guaranteed to terminate, even if it does not have a `decreases` clause.
 This is currently unneeded, as `exec` termination checking does not check that callees also terminate.
+Because it introduces an unverified assumption, it is rejected under
+[no-cheating mode](./tcb.md#no-cheating-mode) outside of explicitly-allowed modules.

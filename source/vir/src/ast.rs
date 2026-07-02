@@ -1850,6 +1850,9 @@ pub struct ModuleX {
     pub path: Path,
     // add attrs here
     pub reveals: Option<ModuleReveals>,
+    /// True if this module is allowed to introduce unverified assumptions even under `--no-cheating`.
+    /// Always false when `--no-cheating` is not in effect.
+    pub assumptions_allowed: bool,
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, ToDebugSNode)]

@@ -26,6 +26,20 @@ struct Ctxt<'a> {
     pub(crate) krate: &'a Krate,
     unpruned_krate: &'a Krate,
     no_cheating: bool,
+    /// Module paths that may introduce unverified assumptions even under `--no-cheating`
+    assumptions_allowed_modules: HashSet<Path>,
+}
+
+impl<'a> Ctxt<'a> {
+    /// Whether the owning module is permitted to introduce unverified assumptions:
+    /// either it is part of `vstd`, or it is in (the subtree of) an `#[allow(verus::assumptions)]` module.
+    fn assumptions_allowed(&self, owning_module: &Option<Path>) -> bool {
+        match owning_module {
+            Some(path) if path.is_vstd_path() => true,
+            Some(path) => self.assumptions_allowed_modules.contains(path),
+            None => false,
+        }
+    }
 }
 
 /// Details from well-formedness checking.
@@ -447,7 +461,7 @@ fn check_one_expr<Emit: EmitError>(
         }
         ExprX::Call(CallTarget::Fun(kind, x, _, _, attrs), _args, _post_args) => {
             if attrs.assume_external_allowed && !ctxt.funs.contains_key(x) {
-                if ctxt.no_cheating {
+                if ctxt.no_cheating && !ctxt.assumptions_allowed(&function.x.owning_module) {
                     return Err(error(
                         &expr.span,
                         "call via externals_available_without_declaration not allowed with --no-cheating",
@@ -581,7 +595,10 @@ fn check_one_expr<Emit: EmitError>(
             )?;
         }
         ExprX::AssertAssume { is_assume, expr: inner_expr, .. } => {
-            if ctxt.no_cheating && *is_assume {
+            if ctxt.no_cheating
+                && *is_assume
+                && !ctxt.assumptions_allowed(&function.x.owning_module)
+            {
                 let mut msg = error(&expr.span, "assume/admit not allowed with --no-cheating");
                 if let Some(label) = ast_expr_get_proof_note(inner_expr) {
                     msg =
@@ -1178,7 +1195,10 @@ fn check_function<Emit: EmitError>(
         ));
     }
 
-    if function.x.attrs.exec_assume_termination && ctxt.no_cheating {
+    if function.x.attrs.exec_assume_termination
+        && ctxt.no_cheating
+        && !ctxt.assumptions_allowed(&function.x.owning_module)
+    {
         let msg =
             error(&function.span, "#[verifier::assume_termination] not allowed with --no-cheating");
         emit.emit(None, VirErrAs::NonFatalError(msg, None));
@@ -1524,18 +1544,15 @@ fn check_function<Emit: EmitError>(
         }
     }
 
-    if ctxt.no_cheating && (function.x.attrs.is_external_body || function.x.proxy.is_some()) {
-        match &function.x.owning_module {
-            // Allow external_body/assume_specification inside vstd
-            Some(path) if path.is_vstd_path() => {}
-            _ => {
-                let msg = error(
-                    &function.span,
-                    "external_body/assume_specification not allowed with --no-cheating",
-                );
-                emit.emit(None, VirErrAs::NonFatalError(msg, None));
-            }
-        }
+    if ctxt.no_cheating
+        && (function.x.attrs.is_external_body || function.x.proxy.is_some())
+        && !ctxt.assumptions_allowed(&function.x.owning_module)
+    {
+        let msg = error(
+            &function.span,
+            "external_body/assume_specification not allowed with --no-cheating",
+        );
+        emit.emit(None, VirErrAs::NonFatalError(msg, None));
     }
 
     Ok(())
@@ -2010,7 +2027,22 @@ pub fn check_crate(
     let new_diags: Vec<VirErrAs> = Vec::new();
     let mut emit =
         EmitErrorState { diag_map, diags: new_diags, func_failed_proof_notes: HashMap::new() };
-    let ctxt = Ctxt { funs, reveal_groups, dts, traits, krate, unpruned_krate, no_cheating };
+    let assumptions_allowed_modules: HashSet<Path> = krate
+        .modules
+        .iter()
+        .filter(|m| m.x.assumptions_allowed)
+        .map(|m| m.x.path.clone())
+        .collect();
+    let ctxt = Ctxt {
+        funs,
+        reveal_groups,
+        dts,
+        traits,
+        krate,
+        unpruned_krate,
+        no_cheating,
+        assumptions_allowed_modules,
+    };
     // TODO remove once `uninterp` is enforced for uninterpreted functions
     for function in krate.functions.iter() {
         let Some(warn_config) = warning_ctx.fun_warn_configs.get(&function.x.name) else {
