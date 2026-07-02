@@ -8,9 +8,13 @@
 #![feature(iterator_try_collect)]
 #![feature(try_blocks)]
 #![feature(yeet_expr)]
-#![feature(rustc_private)]
 // tidy-alphabetical-end
+#![feature(rustc_private)]
+#![allow(unused_imports)]
+#![allow(dead_code)]
 
+extern crate either;
+extern crate itertools;
 extern crate rustc_abi;
 extern crate rustc_arena;
 extern crate rustc_ast;
@@ -27,8 +31,6 @@ extern crate rustc_session;
 extern crate rustc_span;
 extern crate rustc_target;
 extern crate rustc_trait_selection;
-extern crate either;
-extern crate itertools;
 
 use hir::ConstContext;
 use required_consts::RequiredConstsVisitor;
@@ -48,6 +50,7 @@ use rustc_middle::mir::{
 use rustc_middle::ty::{self, TyCtxt, TypeVisitableExt};
 use rustc_middle::util::Providers;
 use rustc_middle::{bug, query, span_bug};
+use rustc_mir_build_verus::verus::VerusMirBuildPhase;
 use rustc_span::{DUMMY_SP, Spanned, sym};
 use tracing::debug;
 
@@ -232,6 +235,7 @@ declare_passes! {
     mod validate : Validator;
 }
 
+/*
 pub fn provide(providers: &mut Providers) {
     coverage::query::provide(providers);
     ffi_unwind_calls::provide(&mut providers.queries);
@@ -257,6 +261,7 @@ pub fn provide(providers: &mut Providers) {
         ..providers.queries
     };
 }
+*/
 
 fn remap_mir_for_const_eval_select<'tcx>(
     tcx: TyCtxt<'tcx>,
@@ -408,17 +413,23 @@ fn mir_const_qualif(tcx: TyCtxt<'_>, def: LocalDefId) -> ConstQualifs {
 fn mir_built(tcx: TyCtxt<'_>, def: LocalDefId) -> &Steal<Body<'_>> {
     // Delegate to the main MIR building code in the `rustc_mir_build` crate.
     // This is the one place that is allowed to call `build_mir_inner_impl`.
-    let mut body = tcx.build_mir_inner_impl(def);
+    let mut body = rustc_mir_build_verus::builder::build_mir_inner_impl_verus(
+        tcx,
+        def,
+        VerusMirBuildPhase::ExecAndProof,
+    );
 
     // Identifying trivial consts based on their mir_built is easy, but a little wasteful.
     // Trying to push this logic earlier in the compiler and never even produce the Body would
     // probably improve compile time.
+    /*
     if trivial_const::trivial_const(tcx, def, || &body).is_some() {
         // Skip all the passes below for trivial consts.
         let body = tcx.alloc_steal_mir(body);
         pass_manager::dump_mir_for_phase_change(tcx, &body.borrow());
         return body;
     }
+    */
 
     pass_manager::dump_mir_for_phase_change(tcx, &body);
 
@@ -446,7 +457,7 @@ fn mir_built(tcx: TyCtxt<'_>, def: LocalDefId) -> &Steal<Body<'_>> {
 }
 
 /// Compute the main MIR body and the list of MIR bodies of the promoteds.
-fn mir_promoted(
+pub fn mir_promoted(
     tcx: TyCtxt<'_>,
     def: LocalDefId,
 ) -> (&Steal<Body<'_>>, &Steal<IndexVec<Promoted, Body<'_>>>) {
@@ -456,20 +467,24 @@ fn mir_promoted(
     // this point, before we steal the mir-const result.
     // Also this means promotion can rely on all const checks having been done.
 
+    /*
     let const_qualifs = match tcx.def_kind(def) {
         DefKind::Fn | DefKind::AssocFn | DefKind::Closure
             if tcx.constness(def) == hir::Constness::Const =>
         {
-            tcx.mir_const_qualif(def)
+            mir_const_qualif(tcx, def)
         }
         DefKind::AssocConst { .. }
         | DefKind::Const { .. }
         | DefKind::Static { .. }
         | DefKind::InlineConst
-        | DefKind::AnonConst => tcx.mir_const_qualif(def),
+        | DefKind::AnonConst => mir_const_qualif(tcx, def),
         _ => ConstQualifs::default(),
     };
+    */
+    let const_qualifs = ConstQualifs::default();
 
+    /*
     // the `has_ffi_unwind_calls` query uses the raw mir, so make sure it is run.
     tcx.ensure_done().has_ffi_unwind_calls(def);
 
@@ -480,8 +495,9 @@ fn mir_promoted(
 
     // the `trivial_const` query uses mir_built, so make sure it is run.
     tcx.ensure_done().trivial_const(def);
+    */
 
-    let mut body = tcx.mir_built(def).steal();
+    let mut body = mir_built(tcx, def).steal();
     if let Some(error_reported) = const_qualifs.tainted_by_errors {
         body.tainted_by_errors = Some(error_reported);
     }

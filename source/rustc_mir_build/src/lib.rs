@@ -6,7 +6,6 @@
 #![feature(try_blocks)]
 #![feature(never_type)]
 // tidy-alphabetical-end
-
 #![feature(rustc_private)]
 
 extern crate rustc_abi;

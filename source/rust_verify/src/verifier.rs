@@ -3353,7 +3353,7 @@ impl VerifierCallbacksEraseMacro {
                         external_body: false,
                         external_fn_specification: false,
                     }) => {
-                        tcx.ensure_ok().mir_borrowck(def_id);
+                        let _ = rustc_borrowck_verus::mir_borrowck(tcx, def_id);
                     }
                     Some(VerifOrExternal::VerusAware { .. })
                     | Some(VerifOrExternal::External { .. })

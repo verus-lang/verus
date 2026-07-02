@@ -12,7 +12,6 @@
 #![feature(stmt_expr_attributes)]
 #![feature(try_blocks)]
 // tidy-alphabetical-end
-
 #![feature(rustc_private)]
 
 extern crate either;
@@ -131,18 +130,18 @@ pub fn provide(providers: &mut Providers) {
 /// Provider for `query mir_borrowck`. Unlike `typeck`, this must
 /// only be called for typeck roots which *similar* to `typeck` will
 /// then borrowck all nested bodies as well.
-fn mir_borrowck(
+pub fn mir_borrowck(
     tcx: TyCtxt<'_>,
     def: LocalDefId,
 ) -> Result<&FxIndexMap<LocalDefId, ty::DefinitionSiteHiddenType<'_>>, ErrorGuaranteed> {
     assert!(!tcx.is_typeck_child(def.to_def_id()));
-    let (input_body, _) = tcx.mir_promoted(def);
+    let (input_body, _) = rustc_mir_transform_verus::mir_promoted(tcx, def);
     debug!("run query mir_borrowck: {}", tcx.def_path_str(def));
 
     // We should eagerly check stalled coroutine obligations from HIR typeck.
     // Not doing so leads to silent normalization failures later, which will
     // fail to register opaque types in the next solver.
-    tcx.ensure_result().check_coroutine_obligations(def)?;
+    //tcx.ensure_result().check_coroutine_obligations(def)?;
 
     let input_body: &Body<'_> = &input_body.borrow();
     if let Some(guar) = input_body.tainted_by_errors {

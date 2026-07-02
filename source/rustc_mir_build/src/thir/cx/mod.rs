@@ -17,10 +17,18 @@ pub(crate) fn thir_body<'tcx>(
     tcx: TyCtxt<'tcx>,
     owner_def: LocalDefId,
 ) -> Result<(&'tcx Steal<Thir<'tcx>>, ExprId), ErrorGuaranteed> {
+    thir_body_verus(tcx, owner_def, crate::verus::VerusMirBuildPhase::ExecOnly)
+}
+
+pub(crate) fn thir_body_verus<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    owner_def: LocalDefId,
+    phase: crate::verus::VerusMirBuildPhase,
+) -> Result<(&'tcx Steal<Thir<'tcx>>, ExprId), ErrorGuaranteed> {
     debug_assert!(!tcx.is_type_const(owner_def.to_def_id()), "thir_body queried for type_const");
 
     let body = tcx.hir_body_owned_by(owner_def);
-    let mut cx: ThirBuildCx<'tcx> = ThirBuildCx::new(tcx, owner_def);
+    let mut cx: ThirBuildCx<'tcx> = ThirBuildCx::new(tcx, owner_def, phase);
     if let Some(reported) = cx.typeck_results.tainted_by_errors {
         return Err(reported);
     }
@@ -86,7 +94,7 @@ pub(crate) struct ThirBuildCx<'tcx> {
 }
 
 impl<'tcx> ThirBuildCx<'tcx> {
-    fn new(tcx: TyCtxt<'tcx>, def: LocalDefId) -> Self {
+    fn new(tcx: TyCtxt<'tcx>, def: LocalDefId, phase: crate::verus::VerusMirBuildPhase) -> Self {
         let typeck_results = tcx.typeck(def);
         let hir_id = tcx.local_def_id_to_hir_id(def);
 
@@ -124,7 +132,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
             typeck_results,
             body_owner: def.to_def_id(),
             apply_adjustments: !find_attr!(tcx, hir_id, CustomMir(..)),
-            verus_ctxt: crate::verus::VerusThirBuildCtxt::new(tcx, def),
+            verus_ctxt: crate::verus::VerusThirBuildCtxt::new(tcx, def, phase),
         }
     }
 

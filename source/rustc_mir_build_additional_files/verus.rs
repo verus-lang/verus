@@ -26,6 +26,11 @@ use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 
+pub enum VerusMirBuildPhase {
+    ExecOnly,
+    ExecAndProof,
+}
+
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum VarErasure {
     /// Erase this var binding or var use.
@@ -229,19 +234,34 @@ pub(crate) struct VerusThirBuildCtxt {
     pub(crate) local_invariants: Vec<usize>,
     pub(crate) extra_thir: ExtraThir,
     pub(crate) local_def_id: LocalDefId,
+    pub(crate) phase: VerusMirBuildPhase,
 }
 
 impl VerusThirBuildCtxt {
-    pub(crate) fn new<'tcx>(tcx: TyCtxt<'tcx>, local_def_id: LocalDefId) -> Self {
+    pub(crate) fn new<'tcx>(
+        tcx: TyCtxt<'tcx>,
+        local_def_id: LocalDefId,
+        phase: VerusMirBuildPhase,
+    ) -> Self {
         let fn_local_def_id = enclosing_fn_local_def_id(tcx, local_def_id);
         let verus_aware =
             VERUS_AWARE_DEF_IDS.read().unwrap().clone().unwrap().contains(&fn_local_def_id);
-        let ctxt = get_verus_erasure_ctxt_option();
+        let ctxt = match phase {
+            VerusMirBuildPhase::ExecOnly => None,
+            VerusMirBuildPhase::ExecAndProof => get_verus_erasure_ctxt_option(),
+        };
+
+        if matches!(phase, VerusMirBuildPhase::ExecAndProof) && ctxt.is_none() {
+            panic!(
+                "Internal Verus Error: The thir_body query is running for item {:?}, but the VerusAwareDefIds map has not been initialized. Please file a github issue for this error and consider using `--no-lifetime` as a temporary measure to work around the issue.",
+                local_def_id
+            );
+        }
 
         let do_time_travel_prevention = verus_aware && ctxt.is_some();
 
         VerusThirBuildCtxt {
-            ctxt: get_verus_erasure_ctxt_option(),
+            ctxt: ctxt,
             closure_overrides: HashMap::new(),
             do_time_travel_prevention,
             guard_pattern_vars: vec![],
@@ -251,6 +271,7 @@ impl VerusThirBuildCtxt {
                 force_treat_inhabited: HashSet::new(),
             },
             local_def_id: local_def_id,
+            phase: phase,
         }
     }
 
@@ -265,11 +286,13 @@ impl VerusThirBuildCtxt {
     }
 
     pub(crate) fn finish(self) {
-        let opt_map: &mut Option<HashMap<LocalDefId, Arc<ExtraThir>>> =
-            &mut EXTRA_THIR.write().unwrap();
-        let map = opt_map.get_or_insert_with(|| HashMap::new());
-        let found = map.insert(self.local_def_id, Arc::new(self.extra_thir));
-        assert!(found.is_none());
+        if matches!(self.phase, VerusMirBuildPhase::ExecAndProof) {
+            let opt_map: &mut Option<HashMap<LocalDefId, Arc<ExtraThir>>> =
+                &mut EXTRA_THIR.write().unwrap();
+            let map = opt_map.get_or_insert_with(|| HashMap::new());
+            let found = map.insert(self.local_def_id, Arc::new(self.extra_thir));
+            assert!(found.is_none());
+        }
     }
 }
 

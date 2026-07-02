@@ -70,16 +70,33 @@ pub(crate) fn closure_saved_names_of_captured_variables<'tcx>(
 /// This is the implementation of hook `build_mir_inner_impl`, which should only
 /// be called by the query `mir_built`.
 pub fn build_mir_inner_impl<'tcx>(tcx: TyCtxt<'tcx>, def: LocalDefId) -> Body<'tcx> {
-    tcx.ensure_done().thir_abstract_const(def);
-    if let Err(e) = tcx.ensure_result().check_match(def) {
-        return construct_error(tcx, def, e);
-    }
+    build_mir_inner_impl_verus(tcx, def, crate::verus::VerusMirBuildPhase::ExecOnly)
+}
 
-    if let Err(err) = tcx.ensure_result().check_tail_calls(def) {
-        return construct_error(tcx, def, err);
-    }
+pub fn build_mir_inner_impl_verus<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    def: LocalDefId,
+    phase: crate::verus::VerusMirBuildPhase,
+) -> Body<'tcx> {
+    let thir_body = match phase {
+        crate::verus::VerusMirBuildPhase::ExecOnly => {
+            tcx.ensure_done().thir_abstract_const(def);
+            if let Err(e) = tcx.ensure_result().check_match(def) {
+                return construct_error(tcx, def, e);
+            }
 
-    let body = match tcx.thir_body(def) {
+            if let Err(err) = tcx.ensure_result().check_tail_calls(def) {
+                return construct_error(tcx, def, err);
+            }
+
+            tcx.thir_body(def)
+        }
+        crate::verus::VerusMirBuildPhase::ExecAndProof => {
+            crate::thir::cx::thir_body_verus(tcx, def, phase)
+        }
+    };
+
+    let body = match thir_body {
         Err(error_reported) => construct_error(tcx, def, error_reported),
         Ok((thir, expr)) => {
             let build_mir = |thir: &Thir<'tcx>| match thir.body_type {

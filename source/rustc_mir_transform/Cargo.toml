@@ -10,5 +10,8 @@ smallvec = { version = "1.8.1", features = ["union", "may_dangle"] }
 rustc_mir_build_verus = { path = "../rustc_mir_build", package = "rustc_mir_build" }
 # tidy-alphabetical-end
 
+[lints.clippy]
+all = "allow"
+
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(bootstrap)'] }
