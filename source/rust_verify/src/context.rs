@@ -8,13 +8,24 @@ use rustc_mir_build_verus::verus::BodyErasure;
 use rustc_span::SpanData;
 use rustc_span::def_id::DefId;
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ops::DerefMut;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use vir::ast::{CrateId, Mode, Path, Pattern, VirErr};
 use vir::messages::{AstId, WarningAllow};
+
+/// A pending tracked/ghost argument from a `proof_with()` call, waiting to be
+/// appended to the next function call's argument list.
+pub(crate) struct PendingTrackedArg {
+    /// The VIR expression for the argument value
+    pub expr: vir::ast::Expr,
+    /// true for Tracked<T>, false for Ghost<T>
+    pub is_tracked: bool,
+    /// HirId of the proof_with argument expression (for type lookup)
+    pub arg_hir_id: HirId,
+}
 
 pub struct ErasureInfo {
     pub(crate) hir_vir_ids: Vec<(HirId, AstId)>,
@@ -49,6 +60,14 @@ pub struct ContextX<'tcx> {
     pub(crate) crate_name: CrateId,
     pub(crate) name_def_id_map: Rc<RefCell<HashMap<Path, DefId>>>,
     pub(crate) next_read_kind_id: AtomicU64,
+    /// For functions with extra ghost/tracked params (from declare_with() stmts):
+    /// maps the function's DefId to a Vec of (is_tracked, expected_ty) pairs
+    pub(crate) declare_with_params:
+        Rc<RefCell<std::collections::HashMap<DefId, Vec<(bool, rustc_middle::ty::Ty<'tcx>)>>>>,
+    /// For functions with extra ghost/tracked return values (from declare_ret_with() stmts):
+    /// maps the function's DefId to a Vec of (is_tracked, expected_ty) pairs
+    pub(crate) declare_ret_with_params:
+        Rc<RefCell<std::collections::HashMap<DefId, Vec<(bool, rustc_middle::ty::Ty<'tcx>)>>>>,
 }
 
 /// The context in which a given header node might be interpretted
@@ -93,6 +112,11 @@ pub(crate) struct BodyCtxt<'tcx> {
     /// Assume specification defines a new opaque type for each opaque type in the external function.
     /// We use this map to resolve them later.
     pub(crate) external_opaque_type_map: Option<HashMap<Path, Path>>,
+    /// Pending tracked/ghost args from proof_with() calls, to be consumed by the next function call.
+    /// Set to Some(...) by ProofWith handler, taken (consumed) by fn_call_to_vir.
+    pub(crate) pending_tracked_args: Rc<RefCell<Option<Vec<PendingTrackedArg>>>>,
+    /// HirIds of declare_with() let-stmts to skip during body conversion
+    pub(crate) declare_with_hir_ids: Rc<HashSet<HirId>>,
 }
 
 impl<'tcx> ContextX<'tcx> {
@@ -118,6 +142,8 @@ impl<'tcx> ContextX<'tcx> {
             crate_name,
             name_def_id_map: Rc::new(RefCell::new(HashMap::new())),
             next_read_kind_id: AtomicU64::new(0),
+            declare_with_params: Rc::new(RefCell::new(HashMap::new())),
+            declare_ret_with_params: Rc::new(RefCell::new(HashMap::new())),
         }
     }
 

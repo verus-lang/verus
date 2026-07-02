@@ -1223,6 +1223,7 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
         ref typ_bounds,
         ref pars,
         ref ret,
+        ref extra_ret_pars,
         ref ens_has_return,
         ref item_kind,
         ref attrs,
@@ -1288,6 +1289,7 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
 
     state.types.push_scope(true);
     let pars = visit_and_insert_pars(ctx, &mut state.types, &poly_pars, pars);
+    let extra_ret_pars = visit_and_insert_pars(ctx, &mut state.types, &poly_pars, extra_ret_pars);
 
     let spec_axioms = if let Some(spec_body) = &axioms.spec_axioms {
         let decrease_when =
@@ -1332,6 +1334,7 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
         typ_bounds: typ_bounds.clone(),
         pars,
         ret,
+        extra_ret_pars: extra_ret_pars.clone(),
         ens_has_return: *ens_has_return,
         item_kind: *item_kind,
         attrs: attrs.clone(),
