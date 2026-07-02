@@ -125,5 +125,7 @@ git_url = "https://github.com/anvil-verifier/anvil"
 refspec = "main"
 cargo_verus = true
 crate_roots = ["."]
-# comment this line to run full verification on all 4 controllers and libraries, need ~30mins
-extra_verus_args = ["--verify-module", "vdeployment_controller"]
+extra_cargo_args = ["--lib"]
+extra_verus_args = [
+    "--verify-module", "vdeployment_controller", # To run full verification on all controllers, comment this line, need ~30mins.
+]
