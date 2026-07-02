@@ -1580,6 +1580,7 @@ struct LoopInfo {
     invs_entry: Arc<Vec<(Span, Expr, Option<Arc<String>>, bool)>>,
     invs_exit: Arc<Vec<(Span, Expr, Option<Arc<String>>, bool)>>,
     decrease: crate::sst::Exps,
+    au_branch_bool: Option<crate::sst::Exp>,
 }
 
 enum ReasonForNoUnwind {
@@ -1779,6 +1780,33 @@ fn update_field(
     }
     let variant_ident = ctx.name_ctxt.variant_ident(&opr.datatype, &opr.variant);
     Ok(Arc::new(ExprX::Apply(variant_ident, Arc::new(args))))
+}
+
+fn assert_atomic_update_control_flow(
+    ctx: &Ctx,
+    expr_ctxt: &ExprCtxt,
+    span: &Span,
+    stmts: &mut Vec<Stmt>,
+    is_break: bool,
+    branch_bool: &Exp,
+) -> Result<(), crate::messages::Message> {
+    let (cond, error) = if is_break {
+        let err = error(span, "cannot show the atomic update was committed");
+        let branch_is_commit = branch_bool.clone();
+        (branch_is_commit, err)
+    } else {
+        let err = error(span, "cannot show the atomic update was aborted");
+        let branch_is_abort = SpannedTyped::new(
+            &branch_bool.span,
+            &branch_bool.typ,
+            ExpX::Unary(UnaryOp::Not, branch_bool.clone()),
+        );
+        (branch_is_abort, err)
+    };
+
+    let cond = exp_to_expr(ctx, &cond, expr_ctxt)?;
+    stmts.push(Arc::new(StmtX::Assert(None, error, None, cond)));
+    Ok(())
 }
 
 fn call_args_to_air(
@@ -2353,8 +2381,22 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             } else {
                 state.loop_infos.last().expect("inside loop")
             };
-            let is_air_break = *is_break && !loop_info.loop_isolation;
+
             let mut stmts: Vec<Stmt> = Vec::new();
+            //if ctx.checking_spec_preconditions() {
+            if let Some(branch_bool) = &loop_info.au_branch_bool {
+                assert_atomic_update_control_flow(
+                    ctx,
+                    expr_ctxt,
+                    &stm.span,
+                    &mut stmts,
+                    *is_break,
+                    branch_bool,
+                )?;
+            }
+            //}
+
+            let is_air_break = *is_break && !loop_info.loop_isolation;
             if !ctx.checking_spec_preconditions() && !is_air_break {
                 assert!(!is_break || !loop_info.some_cond); // AST-to-SST conversion must eliminate the cond
                 if loop_info.is_for_loop && !*is_break {
@@ -2472,6 +2514,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             decrease,
             typ_inv_vars,
             modified_vars,
+            au_branch_bool,
             pre_modified_params,
         } => {
             let loop_isolation = *loop_isolation;
@@ -2649,10 +2692,23 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 invs_entry: invs_entry.clone(),
                 invs_exit: invs_exit.clone(),
                 decrease: decrease.clone(),
+                au_branch_bool: au_branch_bool.clone(),
             };
             state.loop_infos.push(loop_info);
             air_body.append(&mut stm_to_stmts(ctx, state, body)?);
             state.loop_infos.pop();
+
+            if let Some(branch_bool) = au_branch_bool {
+                let is_break = false;
+                assert_atomic_update_control_flow(
+                    ctx,
+                    expr_ctxt,
+                    &stm.span,
+                    &mut air_body,
+                    is_break,
+                    branch_bool,
+                )?;
+            }
 
             if !ctx.checking_spec_preconditions() {
                 for (span, inv, msg, _) in invs_entry.iter() {

@@ -246,6 +246,7 @@ pub enum StmX {
         typ_inv_vars: Arc<Vec<(UniqueIdent, Typ)>>,
         /// Variables potentially modified by the loop body
         modified_vars: Option<Arc<crate::sst_vars::HavocSet>>,
+        au_branch_bool: Option<Exp>,
         /// Params (including closure params) that may be modified _in or before_ this loop body
         /// but *excluding* their initial assignments.
         /// This is the same set of variables for which we need to consider different values

@@ -1,5 +1,5 @@
 use crate::attributes::{GhostBlockAttr, get_ghost_block_opt};
-use crate::context::{BodyCtxt, HeaderSetting};
+use crate::context::{AtomicallyCtxt, BodyCtxt, HeaderSetting};
 use crate::erase::{CompilableOperator, LoopSpecKind, ResolvedCall};
 use crate::resolve_traits::{ResolutionResult, ResolvedItem, resolve_trait_item};
 use crate::reveal_hide::RevealHideResult;
@@ -29,8 +29,8 @@ use rustc_span::def_id::DefId;
 use rustc_trait_selection::infer::InferCtxtExt;
 use std::sync::Arc;
 use vir::ast::{
-    ArithOp, ArrayKind, AssertQueryMode, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp,
-    BoundsCheck, BuiltinSpecFun, CallTarget, ChainedOp, ComputeMode, Constant, CrateId,
+    ArithOp, ArrayKind, AssertQueryMode, AtomicallyKind, AutospecUsage, BinaryOp, BitshiftBehavior,
+    BitwiseOp, BoundsCheck, BuiltinSpecFun, CallTarget, ChainedOp, ComputeMode, Constant, CrateId,
     Div0Behavior, ExprX, FieldOpr, FunX, HeaderExpr, HeaderExprX, InequalityOp, IntRange,
     IntegerTypeBoundKind, MaskSpec, Mode, ModeCoercion, ModeWrapperMode, MultiOp, OverflowBehavior,
     Place, PlaceX, Quant, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, VarBinder, VarBinderX,
@@ -306,7 +306,58 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
     let resolved_call = ResolvedCall::Call(name.clone(), record_name, assume_external_allowed);
     record_call(bctx, expr, resolved_call);
 
-    let vir_args = if let Some(args) = args { mk_vir_args(bctx, &args)? } else { vec![] };
+    // REVIEW: The atomic function call is encoded using the following construction:
+    //
+    // #[verifier::atomic_call]
+    // function(x1, x2, x3, ::vstd::atomic::atomically(|update| {
+    //     ...
+    //     ay = update(ax);
+    //     ...
+    // }))
+    //
+    // If we translate this construction naively into VIR, we end up evaluating
+    // the `atomically` in its entirety before the actual call to `function`,
+    // meaning the atomic pre- and postcondition are generated *before* the
+    // private pre- and postcondition.
+    //
+    // To fix this, we use the "body" of the call to place the `atomically` block
+    // in-between the private pre- and postcondition:
+    //
+    // vir_call(
+    //     target: function,
+    //     args: [x1, x2, x3, atomic_update_init_dummy],
+    //     body: atomically({
+    //         ...
+    //         ay = update(ax);
+    //         ...
+    //     }),
+    // )
+
+    let is_atomic_function_call = || -> Result<bool, VirErr> {
+        let hir_attrs = bctx.ctxt.tcx.hir_attrs(expr.hir_id);
+        let vir_attrs = crate::attributes::parse_attrs(hir_attrs, None)?;
+        Ok(vir_attrs.contains(&crate::attributes::Attr::AtomicCall))
+    };
+
+    let (vir_args, call_body) = match args.as_deref() {
+        Some(arg_slice) if is_atomic_function_call()? => {
+            let [prefix @ .., au] = arg_slice else {
+                panic!("atomic call must have at least one argument");
+            };
+
+            let mut vir_args = mk_vir_args(bctx, prefix)?;
+            let au_expr = expr_to_vir_consume(&bctx, au)?;
+            vir_args.push(bctx.spanned_typed_new(
+                au.span,
+                &au_expr.typ,
+                ExprX::AtomicUpdateInitDummy,
+            ));
+
+            (vir_args, Some(au_expr))
+        }
+        Some(arg_slice) => (mk_vir_args(bctx, arg_slice)?, None),
+        None => Default::default(),
+    };
 
     let typ_args = mk_typ_args(bctx, node_substs, f, expr.span)?;
     let impl_paths = get_impl_paths(bctx, f, node_substs, None, const_var, expr.span)?;
@@ -316,7 +367,7 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
     Ok(bctx.spanned_typed_new(
         expr.span,
         &expr_typ()?,
-        ExprX::Call { target, args: Arc::new(vir_args), post_args: None, body: None },
+        ExprX::Call { target, args: Arc::new(vir_args), post_args: None, body: call_body },
     ))
 }
 
@@ -422,6 +473,10 @@ fn verus_item_to_vir<'tcx, 'a>(
                 f_name
             ),
         ),
+        VerusItem::OpenAtomicUpdate(_) => err_span(
+            expr.span,
+            format!("{f_name} should never be used except through open_atomic_update macro"),
+        ),
         VerusItem::UnaryOp(UnaryOpItem::SpecLiteral(SpecLiteralItem::Decimal)) => {
             record_spec_fn(bctx, expr);
             unsupported_err_unless!(args_len == 1, expr.span, "expected spec_literal_*", &args);
@@ -521,6 +576,10 @@ fn verus_item_to_vir<'tcx, 'a>(
                     | SpecItem::NoUnwindWhen => (true, false),
 
                     SpecItem::Ensures | SpecItem::Returns => (true, true),
+
+                    SpecItem::AtomicSpec | SpecItem::AtomicCallLoop | SpecItem::Atomically => {
+                        (false, false)
+                    }
                 };
                 if sig {
                     &BodyCtxt { in_fn_sig: sig, in_postcondition: postcondition, ..bctx.clone() }
@@ -678,6 +737,26 @@ fn verus_item_to_vir<'tcx, 'a>(
                     // extract_ensures does most of the necessary work, so we can return at this point
                     mk_expr_span(args[0].span, ExprX::Header(header))
                 }
+                SpecItem::AtomicSpec => {
+                    record_spec_fn_pure_args_only(bctx, expr);
+                    unsupported_err_unless!(
+                        args_len == 1,
+                        expr.span,
+                        "expected atomic spec",
+                        &args
+                    );
+                    let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
+                    let expr = expr_to_vir_consume(&bctx, args[0])?;
+                    mk_expr_span(
+                        args[0].span,
+                        ExprX::Header(Arc::new(HeaderExprX::AtomicSpec(expr))),
+                    )
+                }
+                SpecItem::AtomicCallLoop => {
+                    record_spec_fn_pure_args_only(bctx, expr);
+                    let header = Arc::new(HeaderExprX::AtomicCallLoop);
+                    mk_expr(ExprX::Header(header))
+                }
                 SpecItem::Decreases => {
                     if let HeaderSetting::Loop(loop_hir_id) = bctx.header_setting {
                         record_loop_spec(bctx, expr, loop_hir_id, LoopSpecKind::Decreases);
@@ -772,6 +851,94 @@ fn verus_item_to_vir<'tcx, 'a>(
                     record_spec_fn_pure_args_only(bctx, expr);
                     let arg = mk_one_vir_arg(bctx, expr.span, &args)?;
                     mk_expr(ExprX::AssertAssume { is_assume: true, expr: arg, msg: None })
+                }
+                SpecItem::Atomically => {
+                    // The atomic function call expands as follows:
+                    //
+                    // function(x1, x2, x3) atomically |update| {
+                    //     ...
+                    // }
+                    //
+                    // #[verifier::atomic_call]
+                    // function(x1, x2, x3, ::vstd::atomic::atomically({
+                    //     let _verus_internal_identifier_for_closures = ::vstd::prelude::dummy_capture_new();
+                    //     |update, atomic_update| {
+                    //         ::vstd::prelude::dummy_capture_consume(_verus_internal_identifier_for_closures);
+                    //
+                    //         #[verifier::internal(spec)]
+                    //         let _ = atomic_update;
+                    //
+                    //         loop? {
+                    //             { ... }
+                    //         }
+                    //     }
+                    // }))
+                    //
+                    // Most of the structure is enforced by the type checker, we need to identify the
+                    // let binding and use it to construct the correct function predicate type
+
+                    fn malformed_err<'tcx, X>(expr: &Expr<'tcx>) -> Result<X, VirErr> {
+                        let msg = "malformed atomic call; please do not use `vstd::atomic::atomically` directly";
+                        err_span(expr.span, msg)
+                    }
+
+                    assert!(bctx.atomically.is_none());
+                    let bctx = BodyCtxt { mode: Mode::Proof, ..bctx.clone() };
+
+                    let [
+                        Expr {
+                            kind: ExprKind::Block(Block { expr: Some(inner), .. }, None), ..
+                        },
+                    ] = args.as_slice()
+                    else {
+                        return malformed_err(expr);
+                    };
+
+                    let Expr { kind: ExprKind::Closure(closure), .. } = inner else {
+                        return malformed_err(expr);
+                    };
+
+                    let body = tcx.hir_body(closure.body);
+                    let [update_param, ghost_au_param] = body.params else {
+                        panic!("the closure should take exactly two argument")
+                    };
+
+                    let ExprKind::Block(Block { expr: Some(inner), .. }, _) = body.value.kind
+                    else {
+                        return malformed_err(expr);
+                    };
+
+                    let kind = match &inner.kind {
+                        ExprKind::Loop(..) => AtomicallyKind::Loop,
+                        _ => AtomicallyKind::Simple,
+                    };
+
+                    let ghost_au_var = pat_to_var(ghost_au_param.pat)?;
+                    let (tx, rx) = std::sync::mpsc::channel();
+                    let actx = Arc::new(AtomicallyCtxt {
+                        update_binder: update_param.pat.hir_id,
+                        call_spans: tx,
+                    });
+
+                    let atomically = Some(actx.clone());
+                    let bctx_inner = BodyCtxt { atomically, mode: Mode::Proof, ..bctx.clone() };
+                    let value = expr_to_vir_consume(&bctx_inner, body.value)?;
+
+                    let update_span = update_param.span.clone();
+                    let call_spans = rx.try_iter().collect::<Vec<_>>();
+                    match call_spans.len() {
+                        0 => err_span(update_span, "function must be called in `atomically` block"),
+                        1 => mk_expr(ExprX::Atomically(kind, ghost_au_var, value)),
+                        _ => Err(Arc::new(vir::messages::MessageX {
+                            level: air::messages::MessageLevel::Error,
+                            note: "function must be called exactly once in `atomically` block"
+                                .into(),
+                            spans: call_spans,
+                            labels: Vec::new(),
+                            help: None,
+                            fancy_note: None,
+                        })),
+                    }
                 }
             }
         }
@@ -2270,6 +2437,7 @@ fn extract_ensures<'tcx>(
             for param in body.params.iter() {
                 xs.push(pat_to_var(param.pat)?);
             }
+
             let expr = &body.value;
             let args = get_args(expr)?;
             if typs.len() == 0 && xs.len() == 1 {
@@ -2654,7 +2822,7 @@ pub(crate) fn mk_typ_args<'tcx>(
 
 fn mk_vir_args<'tcx>(
     bctx: &BodyCtxt<'tcx>,
-    args: &Vec<&'tcx Expr<'tcx>>,
+    args: &[&'tcx Expr<'tcx>],
 ) -> Result<Vec<vir::ast::Expr>, VirErr> {
     args.iter().map(|arg| expr_to_vir_consume(bctx, arg)).collect::<Result<Vec<_>, _>>()
 }

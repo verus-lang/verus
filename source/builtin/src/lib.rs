@@ -49,6 +49,14 @@ pub fn ensures<A>(_a: A) {
 
 // Can only appear at beginning of function body
 #[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::atomic_spec"]
+#[verifier::proof]
+pub fn atomic_spec<A>(_a: A) {
+    unimplemented!();
+}
+
+// Can only appear at beginning of function body
+#[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::returns"]
 #[verifier::proof]
 pub fn returns<A>(_a: A) {
@@ -76,6 +84,14 @@ pub fn invariant_except_break<A>(_a: A) {
 #[rustc_diagnostic_item = "verus::verus_builtin::invariant"]
 #[verifier::proof]
 pub fn invariant<A>(_a: A) {
+    unimplemented!();
+}
+
+// Can only appear at beginning of loop body
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::atomic_call_loop"]
+#[verifier::proof]
+pub fn atomic_call_loop() {
     unimplemented!();
 }
 

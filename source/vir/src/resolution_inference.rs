@@ -962,11 +962,13 @@ impl<'a> Builder<'a> {
                 // for-loops have already been de-sugared by this point, so they don't
                 // need special handling
                 is_for_loop: _,
+                assume_termination: _,
                 label,
                 cond,
                 body,
                 invs: _,
                 decrease: _,
+                atomic_call: _,
             } => {
                 let outer_body_bb_pos = match cond {
                     Some(cond) => AstPosition::Before(cond.span.id),
@@ -1035,8 +1037,8 @@ impl<'a> Builder<'a> {
 
                 Ok(post_bb)
             }
-
-            ExprX::OpenInvariant(arg, binder, body, _) => {
+            ExprX::OpenInvariant(arg, binder, body, _)
+            | ExprX::TryOpenAtomicUpdate(arg, binder, body) => {
                 bb = self.build(arg, bb)?;
 
                 let local = FlattenedPlaceTyped {
@@ -1068,6 +1070,15 @@ impl<'a> Builder<'a> {
                 );
                 self.pop_scope();
 
+                Ok(bb)
+            }
+            ExprX::AtomicUpdateInitDummy => Ok(bb),
+            ExprX::Atomically(_k, _v, e) => {
+                bb = self.build(e, bb)?;
+                Ok(bb)
+            }
+            ExprX::Update(e) => {
+                bb = self.build(e, bb)?;
                 Ok(bb)
             }
             ExprX::InvMask(_m) => Ok(bb),
@@ -1384,8 +1395,11 @@ impl<'a> Builder<'a> {
                 }
             }
             PlaceX::Local(var) => {
-                let mode = self.locals.var_modes[var];
-                if mode == Mode::Spec {
+                let Some(mode) = self.locals.var_modes.get(var) else {
+                    panic!("unkown mode for var {var:?}")
+                };
+
+                if *mode == Mode::Spec {
                     Ok((ComputedPlaceTyped::Ghost(None), bb))
                 } else {
                     let fpt = FlattenedPlaceTyped {
@@ -1398,8 +1412,11 @@ impl<'a> Builder<'a> {
             }
             PlaceX::Temporary(e) => {
                 let bb = self.build(e, bb)?;
-                let mode = self.locals.temporary_modes[&place.span.id];
-                if mode == Mode::Spec {
+                let Some(mode) = self.locals.temporary_modes.get(&place.span.id) else {
+                    panic!("unknown mode for temporary place {:?}", place);
+                };
+
+                if *mode == Mode::Spec {
                     Ok((ComputedPlaceTyped::Ghost(None), bb))
                 } else {
                     let temp_name = self.locals.new_temp_name(place.span.id);
@@ -1881,7 +1898,7 @@ impl<'a> Builder<'a> {
                         return i != self.fns.len() - 1;
                     }
                 }
-                panic!("Verus Internal Error: place_is_upvar failed to find var");
+                panic!("Verus Internal Error: place_is_upvar failed to find var {var_ident:?}");
             }
             LocalName::Temporary(..) => false,
         }
@@ -2074,7 +2091,10 @@ impl<'a> LocalCollection<'a> {
     fn new_temp_name(&mut self, ast_id: AstId) -> LocalName {
         let temp_id = TempId(self.next_temp_id);
         self.next_temp_id += 1;
-        assert!(!self.ast_id_to_temp_id.contains_key(&ast_id));
+        if let Some(prev) = self.ast_id_to_temp_id.get(&ast_id) {
+            panic!("attempt to override entry AstId({ast_id}) => {prev:?} with {temp_id:?}");
+        };
+
         self.ast_id_to_temp_id.insert(ast_id, temp_id);
         LocalName::Temporary(ast_id, temp_id)
     }
