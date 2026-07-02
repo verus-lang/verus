@@ -157,24 +157,33 @@ impl<A: ToDebugSNode> ToDebugSNode for Option<A> {
     }
 }
 
-impl<A: ToDebugSNode, B: ToDebugSNode> ToDebugSNode for (A, B) {
-    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
-        let (a, b) = self;
-        Node::List(vec![Node::Atom("tuple".to_string()), a.to_node(opts), b.to_node(opts)])
-    }
+macro_rules! tuple_impls {
+    ($($typ:ident)+) => {
+        impl<$($typ: ToDebugSNode),+> ToDebugSNode for ($($typ,)+) {
+            fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
+                #[allow(non_snake_case)]
+                let ($($typ,)+) = self;
+
+                Node::List(vec![
+                    Node::Atom("tuple".to_string()),
+                    $($typ.to_node(opts),)+
+                ])
+            }
+        }
+    };
 }
 
-impl<A: ToDebugSNode, B: ToDebugSNode, C: ToDebugSNode> ToDebugSNode for (A, B, C) {
-    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
-        let (a, b, c) = self;
-        Node::List(vec![
-            Node::Atom("tuple".to_string()),
-            a.to_node(opts),
-            b.to_node(opts),
-            c.to_node(opts),
-        ])
-    }
-}
+tuple_impls! { A B }
+tuple_impls! { A B C }
+tuple_impls! { A B C D }
+tuple_impls! { A B C D E }
+tuple_impls! { A B C D E F }
+tuple_impls! { A B C D E F G }
+tuple_impls! { A B C D E F G H }
+tuple_impls! { A B C D E F G H I }
+tuple_impls! { A B C D E F G H I J }
+tuple_impls! { A B C D E F G H I J K }
+tuple_impls! { A B C D E F G H I J K L }
 
 impl ToDebugSNode for bool {
     fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
