@@ -1,5 +1,5 @@
 {
-  "version": "0.0.0-2026-05-24-0157",
+  "version": "0.0.0-2026-05-31-0205",
   "types": [
     {
       "ident": "Abi",
@@ -3773,6 +3773,11 @@
             "syn": "InvariantNameSetList"
           }
         ],
+        "ListCompl": [
+          {
+            "syn": "InvariantNameSetListCompl"
+          }
+        ],
         "Set": [
           {
             "syn": "InvariantNameSetSet"
@@ -3797,6 +3802,31 @@
         "any": []
       },
       "fields": {
+        "bracket_token": {
+          "group": "Bracket"
+        },
+        "exprs": {
+          "punctuated": {
+            "element": {
+              "syn": "Expr"
+            },
+            "punct": "Comma"
+          }
+        }
+      }
+    },
+    {
+      "ident": "InvariantNameSetListCompl",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "any_token": {
+          "token": "InvAny"
+        },
+        "op_token": {
+          "token": "Slash"
+        },
         "bracket_token": {
           "group": "Bracket"
         },
@@ -6260,6 +6290,11 @@
         },
         "set": {
           "syn": "InvariantNameSet"
+        },
+        "comma": {
+          "option": {
+            "token": "Comma"
+          }
         }
       }
     },
