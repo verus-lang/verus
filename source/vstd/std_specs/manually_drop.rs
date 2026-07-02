@@ -51,6 +51,12 @@ pub assume_specification<T: ?Sized>[ <ManuallyDrop<T> as Deref>::deref ](
         m.view_ref(),
 ;
 
+impl<T: ?Sized> super::core::DerefSpecImpl for ManuallyDrop<T> {
+    open spec fn deref_req(&self) -> bool {
+        true
+    }
+}
+
 pub broadcast axiom fn axiom_manually_drop_has_resolved<T: ?Sized>(m: &ManuallyDrop<T>)
     ensures
         #[trigger] has_resolved_unsized::<ManuallyDrop<T>>(m) ==> has_resolved_unsized::<T>(
