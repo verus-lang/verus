@@ -370,6 +370,7 @@ pub assume_specification<T, E>[ Option::ok_or ](option: Option<T>, err: E) -> (r
 ;
 
 #[doc(hidden)]
+#[cfg(not(verus_verify_core))]
 pub assume_specification<T>[ Option::as_mut ](option: &mut Option<T>) -> (res: Option<&mut T>)
     ensures
         (match *old(option) {
