@@ -1093,7 +1093,7 @@ impl Visitor {
 
     pub fn desugar_const_or_static(
         &mut self,
-        con_mode: &FnMode,
+        _con_mode: &FnMode,
         con_ensures: &mut Option<Ensures>,
         con_block: &mut Option<Box<Block>>,
         con_expr: &mut Option<Box<Expr>>,
