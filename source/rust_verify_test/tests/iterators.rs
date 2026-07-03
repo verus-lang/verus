@@ -828,11 +828,8 @@ test_verify_one_file! {
             // Verus:
             let mut r = v.into_iter().take(n).skip(n);
             assert(r.remaining().len() == 0);
-
-            // TODO: We can't call next() here, b/c Verus says we that `core::iter::adapters::skip::impl&%1::next`
-            // is not supported, even though it's covered by the trait specification for Iterator
-            // let out = r.next();
-            // assert(out is None);
+            let out = r.next();
+            assert(out is None);
         }
     } => Ok(())
 }
