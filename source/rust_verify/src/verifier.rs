@@ -3123,37 +3123,10 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
         } else {
             config.override_queries = Some(|_session, providers| {
                 providers.queries.hir_crate = hir_crate;
-                providers.queries.mir_const_qualif =
-                    |_, _| rustc_middle::mir::ConstQualifs::default();
                 providers.queries.lint_mod = |_, _| {};
                 providers.queries.check_liveness = |_, _| DenseBitSet::new_empty(0);
                 providers.queries.check_mod_deathness = |_, _| {};
-
                 rustc_mir_build_verus::verus_provide(providers);
-                providers.queries.mir_built = |tcx, def| {
-                    // We need to override this to call our verus of build_mir.
-                    // mir_built is defined in the crate rustc_mir_transform, which I prefer
-                    // not to fork. The actual implementation of mir_built is more complicated
-                    // than this, but this seems to be the essential functionality.
-                    let body = rustc_mir_build_verus::builder::build_mir_inner_impl(tcx, def);
-                    //let pass = rustc_mir_transform::simplify::SimplifyCfg::Initial;
-                    //pass.run_pass(tcx, &mut body);
-                    tcx.alloc_steal_mir(body)
-                };
-
-                // check_well_formed when called on an OpaqueTy will trigger mir_borrowck to run.
-                // This happens earlier than we'd like, so we disable it.
-                // TODO: when we support opaque types we should run this check later
-                providers.queries.check_well_formed =
-                    |tcx: TyCtxt<'_>, def_id: rustc_hir::def_id::LocalDefId| {
-                        let node = tcx.hir_node_by_def_id(def_id);
-                        if matches!(node, rustc_hir::Node::OpaqueTy(_)) {
-                            return Ok(());
-                        }
-                        (rustc_interface::DEFAULT_QUERY_PROVIDERS.queries.check_well_formed)(
-                            tcx, def_id,
-                        )
-                    };
             });
         }
     }

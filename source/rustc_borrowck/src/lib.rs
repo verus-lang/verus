@@ -333,7 +333,7 @@ fn borrowck_collect_region_constraints<'tcx>(
 ) -> CollectRegionConstraintsResult<'tcx> {
     let tcx = root_cx.tcx;
     let infcx = BorrowckInferCtxt::new(tcx, def, root_cx.root_def_id());
-    let (input_body, promoted) = tcx.mir_promoted(def);
+    let (input_body, promoted) = rustc_mir_transform_verus::mir_promoted(tcx, def);
     let input_body: &Body<'_> = &input_body.borrow();
     let input_promoted: &IndexSlice<_, _> = &promoted.borrow();
     if let Some(e) = input_body.tainted_by_errors {

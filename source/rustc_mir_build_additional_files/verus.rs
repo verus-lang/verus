@@ -26,6 +26,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 
+#[derive(Debug, Copy, Clone)]
 pub enum VerusMirBuildPhase {
     ExecOnly,
     ExecAndProof,

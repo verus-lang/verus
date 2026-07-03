@@ -457,7 +457,33 @@ fn mir_built(tcx: TyCtxt<'_>, def: LocalDefId) -> &Steal<Body<'_>> {
 }
 
 /// Compute the main MIR body and the list of MIR bodies of the promoteds.
-pub fn mir_promoted(
+pub fn mir_promoted<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    def: LocalDefId,
+) -> (&'tcx Steal<Body<'tcx>>, &'tcx Steal<IndexVec<Promoted, Body<'tcx>>>) {
+    // Note(verus): this gets called multiple times from the rustc_mir_borrowck, fork;
+    // we need our own poor-man's query system
+
+    use std::sync::Mutex;
+    use std::sync::Arc;
+    use std::collections::HashMap;
+
+    static CACHE: Mutex<Option<HashMap<LocalDefId, (&Steal<Body<'static>>, &Steal<IndexVec<Promoted, Body<'static>>>)>>> = Mutex::new(None);
+
+    let opt_map: &mut Option<HashMap<LocalDefId, _>> = &mut *CACHE.lock().unwrap();
+    let map = opt_map.get_or_insert_with(|| HashMap::new());
+    let res = map.entry(def).or_insert_with(|| {
+        let x: (&'tcx Steal<Body<'tcx>>, &'tcx Steal<IndexVec<Promoted, Body<'tcx>>>) = mir_promoted_verus(tcx, def);
+        let y: (&'static Steal<Body<'static>>, &'static Steal<IndexVec<Promoted, Body<'static>>>) = unsafe { std::mem::transmute(x) };
+        y
+    });
+
+    let x: (&'static Steal<Body<'_>>, &'static Steal<IndexVec<Promoted, Body<'_>>>) = res.clone();
+    let y: (&'tcx Steal<Body<'tcx>>, &'tcx Steal<IndexVec<Promoted, Body<'tcx>>>) = unsafe { std::mem::transmute(x) };
+    y
+}
+
+pub fn mir_promoted_verus(
     tcx: TyCtxt<'_>,
     def: LocalDefId,
 ) -> (&Steal<Body<'_>>, &Steal<IndexVec<Promoted, Body<'_>>>) {
