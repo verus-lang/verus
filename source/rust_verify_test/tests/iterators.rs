@@ -178,6 +178,31 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] map_works verus_code! {
+        use vstd::prelude::*;
+
+        fn double_it() {
+            let f = |x: &u32| -> (y: u32) requires *x < 10, ensures y == x * 2 { *x * 2 };
+            let v = vec![1u32, 2, 3, 4];
+            let mut w = Vec::new();
+            for x in iter: v.iter().map(f)
+                invariant
+                    w.len() == iter.index(),
+                    forall |i| 0 <= i < w.len() ==> w[i] == iter.seq()[i],
+                    // TODO: Fails b/c we can't have a when_used_as_spec version of `map`
+                    //forall |i| 0 <= i < w.len() ==> w[i] == v[i] * 2,
+            {
+                assert(x == iter.seq()[iter.index()]);
+                // TODO: Fails b/c we can't have a when_used_as_spec version of `map`
+                //assert(x == v[iter.index()] * 2);
+                w.push(x);
+            }
+            assert(w@ == seq![2u32, 4, 6, 8]);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] map_can_be_implemented verus_code! {
         use vstd::prelude::*;
         use vstd::std_specs::iter::*;

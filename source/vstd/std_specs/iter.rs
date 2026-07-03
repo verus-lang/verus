@@ -280,6 +280,20 @@ pub trait ExFromIterator<A>: Sized {
         ensures
             Self::from_iter_ensures(into_iter_remaining(iter), s),
     ;
+
+    //#[verifier::when_used_as_spec(into_map_spec)]
+    fn map<B, F>(self, f: F) -> (r: core::iter::Map<Self, F>)
+        where
+            Self: Sized,
+            F: FnMut(Self::Item) -> B,
+        requires
+            self.obeys_prophetic_iter_laws(),
+            forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(f, (self.remaining()[k], )),
+            self.initial_value_relation(&self),
+        default_ensures
+            self.obeys_prophetic_iter_laws() && self.initial_value_relation(&self) ==>
+                r == into_map_spec::<Self, F>(self, f) && map_post(self, f, r),
+    ;
 }
 
 /********************************************************************************
@@ -390,6 +404,109 @@ impl <I> IteratorSpecImpl for &mut I
         <I as IteratorSpec>::peek(*self, index)
     }
 }
+
+/********************************************************************************
+ * Definitions for `map()`
+ ********************************************************************************/
+
+#[verifier::external_body]
+#[verifier::external_type_specification]
+#[verifier::reject_recursive_types(I)]
+#[verifier::reject_recursive_types(F)]
+pub struct ExMap<I, F>(core::iter::Map<I, F>);
+
+// Ghost accessor for the inner iterator
+pub uninterp spec fn map_iter<I, F>(r: core::iter::Map<I, F>) -> I;
+
+// Ghost accessor for the inner function
+pub uninterp spec fn map_fun<I, F>(r: core::iter::Map<I, F>) -> F;
+
+// Spec version of Map::new()
+pub uninterp spec fn into_map_spec<I, F>(i: I, f: F) -> core::iter::Map<I, F>;
+
+// Ideally, we would write this postcondition directly on the definition of
+// Iterator::map above.  However, to do so, we would need to impose a trait
+// bound of `Self: IteratorSpec`.  However, this introduces a cyclic
+// dependency, since IteratorSpec depends on Iterator.  Hence,
+// we introduce a layer of indirection via this uninterp spec function.
+pub uninterp spec fn map_post<I, F>(i: I, f: F, r: core::iter::Map<I, F>) -> bool;
+
+pub broadcast axiom fn map_postcondition<I, F>(i: I, f: F)
+    where
+        I: IteratorSpec,
+        F: FnMut<(I::Item,)>,
+    requires
+        i.obeys_prophetic_iter_laws(),
+        i.initial_value_relation(&i),
+        map_post(i, f, into_map_spec(i, f)),
+    ensures
+        {
+            let r = #[trigger] into_map_spec(i, f);
+            {
+            &&& IteratorSpec::remaining(&r).len() <= i.remaining().len()
+            &&& forall |k| #![auto] 0 <= k < IteratorSpec::remaining(&r).len() ==> call_ensures(f, (i.remaining()[k],), IteratorSpec::remaining(&r)[k])
+            &&& IteratorSpec::will_return_none(&r) ==> i.will_return_none() && IteratorSpec::remaining(&r).len() == i.remaining().len()
+            &&& IteratorSpec::decrease(&r) is Some == i.decrease() is Some
+            &&& IteratorSpec::initial_value_relation(&r, &r)
+            &&& map_iter(r) == i
+            &&& map_fun(r) == f
+            }
+       },
+;
+
+// See rust_verify_test/tests/iterators.rs for how this Map
+// spec can be verifiably implemented when Map is not an
+// external type.
+impl <B, I, F> IteratorSpecImpl for core::iter::Map<I, F>
+    where
+        I: Iterator + IteratorSpec,
+        F: FnMut(I::Item) -> B,
+{
+
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        map_iter(*self).obeys_prophetic_iter_laws()
+    }
+
+    #[verifier::prophetic]
+    uninterp spec fn remaining(&self) -> Seq<B>;
+
+    #[verifier::prophetic]
+    uninterp spec fn will_return_none(&self) -> bool;
+
+    #[verifier::prophetic]
+    open spec fn initial_value_relation(&self, init: &Self) -> bool {
+        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
+        &&& map_iter(*self).initial_value_relation(&map_iter(*init))
+    }
+
+    uninterp spec fn decrease(&self) -> Option<nat>;
+
+    open spec fn peek(&self, index: int) -> Option<B> {
+        match map_iter(*self).peek(index) {
+            Some(v) => {
+                let x = choose |x| map_fun(*self).ensures((v,), x);
+                Some(x)
+            }
+            None => None,
+        }
+    }
+}
+
+impl <B, I, F> DoubleEndedIteratorSpecImpl for core::iter::Map<I, F>
+    where I: DoubleEndedIterator + IteratorSpec,
+          F: FnMut(I::Item) -> B,
+{
+    open spec fn peek_back(&self, index: int) -> Option<B> {
+        match map_iter(*self).peek_back(index) {
+            Some(v) => {
+                let x = choose |x| map_fun(*self).ensures((v,), x);
+                Some(x)
+            }
+            None => None,
+        }
+    }
+}
+
 
 /********************************************************************************
  * Defines a convenient wrapper type that bundles state and invariants needed
@@ -549,6 +666,7 @@ pub trait ExIterStep: Clone + PartialOrd + Sized {
 
 pub broadcast group group_iter_axioms {
     rev_postcondition,
+    map_postcondition,
 }
 
 } // verus!
