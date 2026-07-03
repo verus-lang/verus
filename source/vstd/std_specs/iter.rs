@@ -5,7 +5,7 @@ use super::super::seq::{
 
 use verus as verus_;
 
-use core::iter::{FromIterator, Iterator, Rev, Skip, Take};
+use core::iter::{Filter, FromIterator, Iterator, Rev, Skip, Take};
 
 verus_! {
 
@@ -97,6 +97,24 @@ pub trait ExIterator {
         default_ensures
             self.obeys_prophetic_iter_laws() && self.initial_value_relation(&self) ==>
                 r == into_map_spec::<Self, F>(self, f) && map_post(self, f, r),
+    ;
+
+    //#[verifier::when_used_as_spec(into_filter_spec)]
+    fn filter<P>(self, predicate: P) -> (r: core::iter::Filter<Self, P>)
+        where
+            Self: Sized,
+            P: FnMut(&Self::Item) -> bool,
+        requires
+            self.obeys_prophetic_iter_laws(),
+            // `filter`'s implementation loops over the inner iterator until the
+            // predicate accepts an element, so it needs a decreases metric to
+            // prove termination.
+            self.decrease() is Some,
+            forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(predicate, (&self.remaining()[k], )),
+            self.initial_value_relation(&self),
+        default_ensures
+            self.obeys_prophetic_iter_laws() && self.initial_value_relation(&self) ==>
+                r == into_filter_spec::<Self, P>(self, predicate) && filter_post(self, predicate, r),
     ;
 
     // We can't provide the ensures directly here, since Rust doesn't think that Take<Self> is an iterator
@@ -704,6 +722,104 @@ impl <B, I, F> DoubleEndedIteratorSpecImpl for core::iter::Map<I, F>
     }
 }
 
+/********************************************************************************
+ * Definitions for `filter()`
+ ********************************************************************************/
+
+#[verifier::external_body]
+#[verifier::external_type_specification]
+#[verifier::reject_recursive_types(I)]
+#[verifier::reject_recursive_types(F)]
+pub struct ExFilter<I, F>(Filter<I, F>);
+
+// Ghost accessor for the inner iterator
+pub uninterp spec fn filter_iter<I, F>(r: Filter<I, F>) -> I;
+
+// Ghost accessor for the inner predicate
+pub uninterp spec fn filter_fun<I, F>(r: Filter<I, F>) -> F;
+
+// Ghost accessor for the sequence of predicate decisions made for the (prefix of) the
+// inner iterator's elements
+pub uninterp spec fn filter_keep<I, F>(r: Filter<I, F>) -> Seq<bool>;
+
+// Spec version of Filter::new()
+pub uninterp spec fn into_filter_spec<I, F>(i: I, f: F) -> Filter<I, F>;
+
+// Ideally, we would write this postcondition directly on the definition of
+// Iterator::filter above.  However, to do so, we would need to impose a trait
+// bound of `Self: IteratorSpec`.  However, this introduces a cyclic
+// dependency, since IteratorSpec depends on Iterator.  Hence,
+// we introduce a layer of indirection via this uninterp spec function.
+pub uninterp spec fn filter_post<I, F>(i: I, f: F, r: Filter<I, F>) -> bool;
+
+pub broadcast axiom fn filter_postcondition<I, F>(i: I, f: F)
+    where
+        I: IteratorSpec,
+        F: FnMut(&I::Item) -> bool,
+    requires
+        i.obeys_prophetic_iter_laws(),
+        i.decrease() is Some,
+        i.initial_value_relation(&i),
+        forall |k| #![auto] 0 <= k < i.remaining().len() ==> call_requires(f, (&i.remaining()[k], )),
+        filter_post(i, f, into_filter_spec(i, f)),
+    ensures
+        {
+            let r = #[trigger] into_filter_spec(i, f);
+            let keep = filter_keep(r);
+            {
+            // `keep` records, for each inspected inner element, the predicate's decision
+            &&& keep.len() <= i.remaining().len()
+            &&& forall |j| 0 <= j < keep.len() ==> call_ensures(f, (&i.remaining()[j],), #[trigger] keep[j])
+            // Completeness: Every inner element the predicate keeps is retained and in order.
+            &&& IteratorSpec::remaining(&r) == i.remaining().take(keep.len() as int).filter_index(|j: int| keep[j])
+            // The two facts below follow from the `filter_index` above; we expose them directly for convenience.
+            &&& IteratorSpec::remaining(&r).len() <= i.remaining().len()
+            &&& forall |k| #![trigger IteratorSpec::remaining(&r)[k]] 0 <= k < IteratorSpec::remaining(&r).len() ==>
+                    exists |j| 0 <= j < i.remaining().len()
+                        && IteratorSpec::remaining(&r)[k] == #[trigger] i.remaining()[j]
+                        && call_ensures(f, (&i.remaining()[j],), true)
+            &&& IteratorSpec::will_return_none(&r) ==> i.will_return_none() && keep.len() == i.remaining().len()
+            &&& IteratorSpec::decrease(&r) is Some == i.decrease() is Some
+            &&& IteratorSpec::initial_value_relation(&r, &r)
+            &&& filter_iter(r) == i
+            &&& filter_fun(r) == f
+            }
+        },
+;
+
+// See rust_verify_test/tests/iterators.rs for how this Filter
+// spec can be verifiably implemented when Filter is not an
+// external type.
+impl <I, P> IteratorSpecImpl for core::iter::Filter<I, P>
+    where
+        I: Iterator + IteratorSpec,
+        P: FnMut(&I::Item) -> bool,
+{
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        filter_iter(*self).obeys_prophetic_iter_laws()
+    }
+
+    #[verifier::prophetic]
+    uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+
+    #[verifier::prophetic]
+    uninterp spec fn will_return_none(&self) -> bool;
+
+    #[verifier::prophetic]
+    open spec fn initial_value_relation(&self, init: &Self) -> bool {
+        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
+        &&& filter_iter(*self).initial_value_relation(&filter_iter(*init))
+    }
+
+    uninterp spec fn decrease(&self) -> Option<nat>;
+
+    // `filter` cannot make a useful static guess about which element will be returned at a given index,
+    // since that depends on prophetic evaluations of the predicate.
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        None
+    }
+}
+
 
 /********************************************************************************
  * Defines a convenient wrapper type that bundles state and invariants needed
@@ -867,6 +983,7 @@ pub broadcast group group_iter_axioms {
     skip_postcondition,
     iter_len_exact,
     map_postcondition,
+    filter_postcondition,
 }
 
 } // verus!
