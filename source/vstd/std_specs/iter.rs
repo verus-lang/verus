@@ -5,7 +5,7 @@ use super::super::seq::{
 
 use verus as verus_;
 
-use core::iter::{Iterator, Rev};
+use core::iter::{Iterator, Rev, Zip};
 
 verus_! {
 
@@ -42,7 +42,7 @@ pub trait ExIterator {
     /// Advances the iterator and returns the next value.
     fn next(&mut self) -> (ret: Option<Self::Item>)
         ensures
-            // The iterator consistently obeys, completes, and decreases throughout its lifetime
+            // The iterator consistently obeys, will_return_none, and decreases throughout its lifetime
             self.obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
             self.obeys_prophetic_iter_laws() ==> self.will_return_none() == old(self).will_return_none(),
             self.obeys_prophetic_iter_laws() ==> (old(self).decrease() is Some <==> self.decrease() is Some),
@@ -91,26 +91,27 @@ pub trait ExIterator {
                 r == into_rev_spec(self) && rev_post(self, r),
     ;
 
-    fn zip<U>(self, other: U) -> (r: Zip<Self, <U as IntoIterator>::IntoIter>>)
-    where
-        Self: Sized,
-        U: IntoIterator,
-        default_ensures
-            self.obeys_prophetic_iter_laws() && self.initial_value_relation(&self) 
-            other.obeys_prophetic_iter_laws() && other.initial_value_relation(&other) 
-            ==> {
-              &&& zip_iter_fst(r) == a
-              &&& zip_iter_snd(r) == b
-              &&& IteratorSpec::remaining(&r) == zip_truncate(a.remaining(), b.remaining())
-              &&& IteratorSpec::will_return_none(&r) ==> a.will_return_none() && b.will_return_none()
-              &&& IteratorSpec::decrease(&r) is Some == (a.decrease() is Some || b.decrease() is Some)
-              &&& IteratorSpec::initial_value_relation(&r, &r)
-            }
+    // See below for why we can't use this at present
+    // fn zip<U>(self, other: U) -> (r: Zip<Self, <U as IntoIterator>::IntoIter>>)
+    // where
+    //     Self: Sized,
+    //     U: IntoIterator,
+    //     default_ensures
     //         self.obeys_prophetic_iter_laws() && self.initial_value_relation(&self) 
     //         other.obeys_prophetic_iter_laws() && other.initial_value_relation(&other) 
-    //         ==>
-    //             z == into_zip_spec(self) && zip_post(self, r),
-    // ;
+    //         ==> {
+    //           &&& zip_iter_fst(r) == a
+    //           &&& zip_iter_snd(r) == b
+    //           &&& IteratorSpec::remaining(&r) == a.remaining().zip_truncate(b.remaining())
+    //           &&& IteratorSpec::will_return_none(&r) ==> a.will_return_none() && b.will_return_none()
+    //           &&& IteratorSpec::decrease(&r) is Some == (a.decrease() is Some || b.decrease() is Some)
+    //           &&& IteratorSpec::initial_value_relation(&r, &r)
+    //         }
+    // //         self.obeys_prophetic_iter_laws() && self.initial_value_relation(&self) 
+    // //         other.obeys_prophetic_iter_laws() && other.initial_value_relation(&other) 
+    // //         ==>
+    // //             z == into_zip_spec(self) && zip_post(self, r),
+    // // ;
 
 }
 
@@ -123,7 +124,7 @@ pub trait ExDoubleEndedIterator : Iterator {
     //       At present, without it, we get "The verifier does not yet support the following Rust feature: &mut types, except in special cases"
     fn next_back(&mut self) -> (ret: Option<<Self as core::iter::Iterator>::Item>)
         ensures
-            // The iterator consistently obeys, completes, and decreases throughout its lifetime
+            // The iterator consistently obeys, will_return_none, and decreases throughout its lifetime
             (&*self).obeys_prophetic_iter_laws() == (&*old(self)).obeys_prophetic_iter_laws(),
             (&*self).obeys_prophetic_iter_laws() ==> (&*self).will_return_none() == (&*old(self)).will_return_none(),
             (&*self).obeys_prophetic_iter_laws() ==> ((&*old(self)).decrease() is Some <==> (&*self).decrease() is Some),
@@ -239,37 +240,22 @@ pub uninterp spec fn zip_iter_fst<A, B>(z: Zip<A, B>) -> A;
 // Ghost accessor for the second inner iterator
 pub uninterp spec fn zip_iter_snd<A, B>(z: Zip<A, B>) -> B;
 
-/// Helper spec function to compute the remaining elements of a zipped iterator.
-/// Truncates both sequences to the minimum length, then zips them.
-pub open spec fn zip_truncate<A, B>(a: Seq<A>, b: Seq<B>) -> Seq<(A, B)> {
-    if a.len() == b.len() {
-        // Simplify the triggers involved in the common case
-        a.zip_with(b)
-    } else if a.len() < b.len() {
-        a.zip_with(b.take(a.len() as int))
-    } else {
-        a.take(b.len() as int).zip_with(b)
-    }
-}
-
-/// Wrapper for `Iterator::zip` that establishes verifiable postconditions.
-/// Use this instead of `.zip()` when you need to reason about the zipped iterator.
-/// Note: `.zip()` itself cannot be given specs due to a Verus limitation with
-/// `IntoIterator::IntoIter` type projections (similar to issue 2236 for `map`).
+/// Wrapper for `Iterator::zip`, since the actual function takes an `IntoIter`,
+/// which creates a cylic dependency cycle.
 #[verifier::external_body]
 pub fn zip_iterators<A: Iterator, B: Iterator>(a: A, b: B) -> (r: Zip<A, B>)
     requires
         a.obeys_prophetic_iter_laws(),
-        a.initial_value_inv(&a),
+        a.initial_value_relation(&a),
         b.obeys_prophetic_iter_laws(),
-        b.initial_value_inv(&b),
+        b.initial_value_relation(&b),
     ensures
         zip_iter_fst(r) == a,
         zip_iter_snd(r) == b,
-        IteratorSpec::remaining(&r) == zip_truncate(a.remaining(), b.remaining()),
-        IteratorSpec::completes(&r) ==> a.completes() && b.completes(),
+        IteratorSpec::remaining(&r) == a.remaining().zip_truncate(b.remaining()),
+        IteratorSpec::will_return_none(&r) ==> a.will_return_none() && b.will_return_none(),
         IteratorSpec::decrease(&r) is Some == (a.decrease() is Some || b.decrease() is Some),
-        IteratorSpec::initial_value_inv(&r, &r),
+        IteratorSpec::initial_value_relation(&r, &r),
 {
     a.zip(b)
 }
@@ -284,7 +270,7 @@ impl<A, B> IteratorSpecImpl for Zip<A, B>
 
     #[verifier::prophetic]
     closed spec fn remaining(&self) -> Seq<Self::Item> {
-        zip_truncate(zip_iter_fst(*self).remaining(), zip_iter_snd(*self).remaining())
+        zip_iter_fst(*self).remaining().zip_truncate(zip_iter_snd(*self).remaining())
     }
 
     #[verifier::prophetic]

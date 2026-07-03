@@ -638,6 +638,18 @@ impl<A> Seq<A> {
         }
     }
 
+    /// Truncates both sequences to the minimum length, then zips them.
+    pub open spec fn zip_truncate<B>(self, other: Seq<B>) -> Seq<(A, B)> {
+        if self.len() == other.len() {
+            // Simplify the triggers involved in the common case
+            self.zip_with(other)
+        } else if self.len() < other.len() {
+            self.zip_with(other.take(self.len() as int))
+        } else {
+            self.take(other.len() as int).zip_with(other)
+        }
+    }
+
     /// Folds the sequence to the left, applying `f` to perform the fold.
     ///
     /// Equivalent to `Iterator::fold` in Rust.
