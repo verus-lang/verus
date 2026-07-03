@@ -43,9 +43,8 @@ use syn::{Expr, Item, ItemConst, parse2, spanned::Spanned};
 use crate::{
     EraseGhost,
     attr_block_trait::{AnyAttrBlock, AnyFnOrLoop},
-    syntax::{self, has_external_code_syn, mk_verifier_attr_syn, mk_verus_attr_syn},
+    syntax::{self, has_external_code_syn, mk_verus_attr_syn},
     syntax_trait,
-    unerased_proxies::VERUS_UNERASED_PROXY,
 };
 
 pub const VERIFIED: &str = "_VERUS_VERIFIED";
@@ -652,7 +651,7 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
 ) -> proc_macro::TokenStream {
     match f {
         AnyFnOrLoop::Fn(mut fun) => {
-            let verus_applied = match check_misuse_verus_spec(&fun.attrs, true) {
+            let _verus_applied = match check_misuse_verus_spec(&fun.attrs, true) {
                 Ok(verus_applied) => verus_applied,
                 Err(error_tokens) => return error_tokens,
             };
@@ -776,13 +775,6 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
                 // No need to add proof statements.
                 fun.to_tokens(&mut new_stream);
                 return proc_macro::TokenStream::from(new_stream);
-            }
-            // Create const proxy function if it is a const function.
-            // Skip it if it is already inside verus!
-            if fun.sig.constness.is_some() && !verus_applied {
-                let proxy = rewrite_const_ret_proxy(&mut fun);
-                fun.to_tokens(&mut new_stream);
-                fun = proxy; // Add proof and spec on proxy func.
             }
 
             // Add the spec/proof (requires/ensures) to the function body.
@@ -1126,28 +1118,6 @@ fn rewrite_with_expr(
     x_declares
 }
 
-/// Rewrite the const function and return a proxy function.
-fn rewrite_const_ret_proxy(const_fun: &mut syn::ItemFn) -> syn::ItemFn {
-    // This function is used to rewrite a const function to link it to a proxy function
-    // that can be used to verify code.
-    // It seems that we do not need to erase anything.
-    // But just do it to be safe and consistent with verus macro.
-    let span = const_fun.sig.constness.unwrap().span();
-    let mut proxy_fun = const_fun.clone();
-    let inside_external_code = has_external_code_syn(&const_fun.attrs);
-    replace_block(EraseGhost::Erase, const_fun.block_mut().unwrap(), inside_external_code);
-    const_fun.attrs.push(mk_verifier_attr_syn(span, quote! { external }));
-    const_fun.attrs.push(mk_verus_attr_syn(span, quote! { uses_unerased_proxy }));
-    const_fun.attrs.push(mk_verus_attr_syn(span, quote! { encoded_const }));
-
-    proxy_fun.sig.ident = syn::Ident::new(
-        &format!("{VERUS_UNERASED_PROXY}{}", const_fun.sig.ident),
-        const_fun.sig.ident.span(),
-    );
-    proxy_fun.attrs.push(mk_verus_attr_syn(span, quote! { unerased_proxy }));
-    proxy_fun
-}
-
 // Create a copy of function with unverified function signature without a
 // function body, to enable seamless use of unverified call to the function in
 // verification.
@@ -1159,12 +1129,6 @@ fn rewrite_unverified_func(
 ) -> Vec<syn::ItemFn> {
     let mut ret = vec![];
     let mut unverified_fun = fun.clone();
-    if fun.sig.constness.is_some() {
-        // Create a proxy function to include requires/ensures.
-        let proxy = rewrite_const_ret_proxy(&mut unverified_fun);
-        ret.push(unverified_fun);
-        unverified_fun = proxy;
-    }
     let unimplemented = syn::Stmt::Expr(
         syn::Expr::Verbatim(quote_spanned! {span => unimplemented!()}),
         Some(syn::token::Semi { spans: [span] }),

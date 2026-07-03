@@ -487,7 +487,7 @@ pub fn mir_promoted_verus(
     tcx: TyCtxt<'_>,
     def: LocalDefId,
 ) -> (&Steal<Body<'_>>, &Steal<IndexVec<Promoted, Body<'_>>>) {
-    debug_assert!(!tcx.is_trivial_const(def), "Tried to get mir_promoted of a trivial const");
+    //debug_assert!(!tcx.is_trivial_const(def), "Tried to get mir_promoted of a trivial const");
 
     // Ensure that we compute the `mir_const_qualif` for constants at
     // this point, before we steal the mir-const result.

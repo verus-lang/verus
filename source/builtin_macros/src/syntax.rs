@@ -1437,7 +1437,6 @@ impl Visitor {
 
     fn visit_items_prefilter(&mut self, items: &mut Vec<Item>) {
         crate::contrib::contrib_preprocess_items(items);
-        self.visit_items_make_unerased_proxies(items);
         crate::syntax_trait::expand_extension_traits(self.erase_ghost.erase_all(), items);
 
         if self.erase_ghost.erase_all() {
@@ -1941,7 +1940,6 @@ impl Visitor {
 
     fn visit_impl_items_prefilter(&mut self, items: &mut Vec<ImplItem>, for_trait: bool) {
         crate::contrib::contrib_preprocess_impl_items(items);
-        self.visit_impl_items_make_unerased_proxies(items, for_trait);
 
         if self.erase_ghost.erase_all() {
             items.retain(|item| match item {
@@ -5445,6 +5443,7 @@ pub(crate) fn is_encoded_const(attrs: &Vec<Attribute>) -> bool {
     })
 }
 
+#[allow(dead_code)]
 pub(crate) fn is_external(attrs: &Vec<Attribute>) -> bool {
     attrs.iter().any(|attr| {
         // verifier::external

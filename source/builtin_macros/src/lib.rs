@@ -23,7 +23,6 @@ mod struct_decl_inv;
 mod structural;
 mod syntax_trait;
 mod topological_sort;
-mod unerased_proxies;
 
 decl_derive!([Structural] => structural::derive_structural);
 decl_derive!([StructuralEq] => structural::derive_structural_eq);
