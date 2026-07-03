@@ -4,7 +4,7 @@ use crate::ast::{
 use crate::ast_to_sst_func::SstMap;
 use crate::context::Ctx;
 use crate::def::{Spanned, unique_local};
-use crate::messages::{ToAny, error_with_label, warning};
+use crate::messages::{ToAny, WarningAllow, error_with_label};
 use crate::sst::{BndX, CallFun, Exp, ExpX, FuncCheckSst, FunctionSst, Stm, StmX, UniqueIdent};
 use crate::sst_visitor::{NoScoper, Rewrite, Visitor};
 use crate::triggers::build_triggers;
@@ -100,7 +100,12 @@ fn elaborate_one_exp<D: Diagnostics + ?Sized>(
                         If you think you need additional triggers, see the discussion in \
                         https://github.com/verus-lang/verus/pull/331 \
                         for alternatives.";
-                    diagnostics.report(&warning(&exp.span, msg).to_any());
+                    ctx.warning_maybe_if_in_local_crate(
+                        &exp.span,
+                        &WarningAllow::TriggerOnSpecFn,
+                        || msg,
+                        |msg| diagnostics.report(&msg.to_any()),
+                    );
                 }
                 let bnd = Spanned::new(bnd.span.clone(), BndX::Lambda(bs.clone(), trigs));
                 Ok(SpannedTyped::new(&exp.span, &exp.typ, ExpX::Bind(bnd, body.clone())))
@@ -122,7 +127,7 @@ fn elaborate_one_stm<D: Diagnostics + ?Sized>(
     match &stm.x {
         StmX::AssertCompute(id, exp, compute) => {
             let interp_exp = crate::interpreter::eval_expr(
-                &ctx.global,
+                ctx,
                 exp,
                 Some(diagnostics),
                 fun_ssts.clone(),
@@ -147,7 +152,7 @@ fn elaborate_one_stm<D: Diagnostics + ?Sized>(
             }
             let reqs = vec_map_result(requires, |e| {
                 crate::interpreter::eval_expr(
-                    &ctx.global,
+                    ctx,
                     e,
                     None::<&air::messages::Reporter>, // Don't print (internal) diagnostics
                     fun_ssts.clone(),
@@ -159,7 +164,7 @@ fn elaborate_one_stm<D: Diagnostics + ?Sized>(
             })?;
             let ens = vec_map_result(ensures, |e| {
                 crate::interpreter::eval_expr(
-                    &ctx.global,
+                    ctx,
                     e,
                     None::<&air::messages::Reporter>, // Don't print (internal) diagnostics
                     fun_ssts.clone(),
@@ -305,7 +310,7 @@ pub(crate) fn elaborate_function_rewrite_recursive<'a, 'b, D: Diagnostics>(
 fn expand<'a>(ctx: &'a Ctx, fun_ssts: &SstMap, exps: Vec<Exp>) -> Result<Vec<Exp>, VirErr> {
     vec_map_result(&exps, |e| {
         crate::interpreter::eval_expr(
-            &ctx.global,
+            ctx,
             e,
             None::<&air::messages::Reporter>,
             fun_ssts.clone(),

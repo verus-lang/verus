@@ -890,6 +890,8 @@ test_verify_one_file_with_options! {
 
             m.insert(3, 4);
             m.insert(6, -8);
+            assert(m@.contains_pair(3u32, 4i8));
+            assert(m@.contains_pair(6u32, -8i8));
 
             let mut idx = 0;
             for (k, v) in iter: m.iter()

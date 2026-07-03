@@ -42,15 +42,14 @@ impl DepTracker {
     }
 
     pub(crate) fn config_install(self, config: &mut rustc_interface::Config) {
-        config.psess_created = Some(Box::new(move |psess| {
+        config.track_state = Some(Box::new(move |sess, _hasher| {
             for (var, val) in self.env.iter() {
-                psess
-                    .env_depinfo
-                    .get_mut()
+                sess.env_depinfo
+                    .borrow_mut()
                     .insert((Symbol::intern(var), val.as_deref().map(Symbol::intern)));
             }
             for path in self.files.iter() {
-                psess.file_depinfo.get_mut().insert(Symbol::intern(
+                sess.file_depinfo.borrow_mut().insert(Symbol::intern(
                     path.to_str().unwrap_or_else(|| panic!("path {:?} is not valid unicode", path)),
                 ));
             }

@@ -2,31 +2,51 @@
 
 The general form of a `proof` function signature takes the form:
 
-<pre>
-<code class="hljs">proof fn <span style="color: #800000; font-style: italic">function_name</span> <span style="color: #800000; font-style: italic">generics</span><sup>?</sup>(<span style="color: #800000; font-style: italic">args...</span>) -&gt; <span style="color: #800000; font-style: italic">return_type_and_name</span><sup>?</sup>
-    <span style="color: #800000; font-style: italic">where_clause</span><sup>?</sup>
-    <span style="color: #000080; font-style: italic">requires_clause</span><sup>?</sup>
-    <span style="color: #000080; font-style: italic">ensures_clause</span><sup>?</sup>
-    <span style="color: #000080; font-style: italic">returns_clause</span><sup>?</sup>
-    <span style="color: #000080; font-style: italic">invariants_clause</span><sup>?</sup>
-</code>
-</pre>
+```verus-grammar
+V@[proof_fn_item] ::= V@[proof_fn_proved] | V@[proof_fn_axiom]
+
+V@[proof_fn_proved] ::=
+    R@[visibility]? broadcast? proof fn R@[function_name] R@[generics]?(R@[args...]) ( by(function_prover_mode) )? ( -> V@[proof_return_type] )?
+        R@[where_clause]?
+        V@[requires_clause]?
+        V@[ensures_clause]?
+        V@[returns_clause]?
+        V@[invariants_clause]?
+        V@[decreases_clause]?
+    { V@[proof_stmt]* }
+
+V@[proof_fn_axiom] ::=
+    R@[visibility]? broadcast? axiom fn R@[function_name] R@[generics]?(R@[args...]) ( -> V@[proof_return_type] )?
+        R@[where_clause]?
+        V@[requires_clause]?
+        V@[ensures_clause]?
+        V@[returns_clause]?
+        V@[invariants_clause]?
+        V@[decreases_clause]?
+        ;
+
+V@[function_prover_mode]    ::= integer_ring | bit_vector | nonlinear_arith
+
+V@[proof_return_type]       ::= V@[proof_return_type_named] | V@[proof_return_type_anon]
+V@[proof_return_type_named] ::= ( tracked? R@[pattern] : R@[type] )
+V@[proof_return_type_anon]  ::= R@[type]
+```
 
 ## Function specification
 
 The elements of the function specification are given by the signature clauses.
 
 **The precondition.**
-The <code class="hljs"><span style="color: #000080; font-style: italic">requires_clause</span></code> is the precondition.
+The V@[requires_clause] is the precondition.
 
 **The postcondition.**
-The <code class="hljs"><span style="color: #000080; font-style: italic">ensures_clause</span></code>
+The V@[ensures_clause]
 and the
-<code class="hljs"><span style="color: #000080; font-style: italic">returns_clause</span></code>
+V@[returns_clause]
 together form the postcondition.
 
 **The invariants.**
-The <code class="hljs"><span style="color: #000080; font-style: italic">invariants_clause</span></code> specifies what invariants can be opened by the function.
+The V@[invariants_clause] specifies which invariants can be opened by the function.
 For proof functions, the default is `open_invariants none`.
 See [this page](./reference-opens-invariants.md) for more details.
 
@@ -36,3 +56,10 @@ All arguments and return values need to have `ghost` or `tracked` mode.
 Arguments are `ghost` by default, and they can be declared `tracked` with the `tracked` keyword.
 
 See [here](./reference-var-modes.md#cheat-sheet) for more information.
+
+## Function prover mode
+
+If the V@[function_prover_mode] is provided, the proof is dispatched via the given solver
+([`integer_ring`](./reference-prover-mode-integer-ring.md),
+[`bit_vector`](./reference-prover-mode-bit-vector.md),
+or [`nonlinear_arith`](./reference-prover-mode-nonlinear.md)).

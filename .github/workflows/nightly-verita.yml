@@ -13,7 +13,7 @@ permissions:
 jobs:
   verita:
     if: github.repository == 'verus-lang/verus'
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
 
     steps:
@@ -23,7 +23,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.95.0
+          toolchain: 1.96.0
 
       - name: setup python
         uses: actions/setup-python@v6

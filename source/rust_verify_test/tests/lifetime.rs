@@ -1825,7 +1825,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] lifetime_cfg_doesnt_delete_nodes_due_to_ghost_uninhabitness5 verus_code! {
+    #[test] lifetime_cfg_doesnt_delete_nodes_due_to_ghost_uninhabitness5 verus_code! {
         #[verifier::external]
         enum X { }
 
@@ -1850,7 +1850,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] lifetime_cfg_doesnt_delete_nodes_due_to_ghost_uninhabitness6 verus_code! {
+    #[test] lifetime_cfg_doesnt_delete_nodes_due_to_ghost_uninhabitness6 verus_code! {
         tracked struct X {
             ghost g: !,
         }
@@ -1869,7 +1869,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] lifetime_cfg_doesnt_delete_nodes_due_to_ghost_uninhabitness7 verus_code! {
+    #[test] lifetime_cfg_doesnt_delete_nodes_due_to_ghost_uninhabitness7 verus_code! {
         tracked struct X {
             ghost g: !,
         }
@@ -1923,7 +1923,134 @@ test_verify_one_file! {
             consume(t);
             consume(t);
         }
-    } => Ok(())
+    // This would be okay but we are overly conservation on this
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `t`")
+}
+
+test_verify_one_file! {
+    #[test] lifetime_cfg_delete_nodes_due_to_spec_box verus_code! {
+        use vstd::prelude::*;
+        proof fn consume<T>(tracked t: T) { }
+
+        #[allow(unreachable_code)]
+        proof fn test2<T>(tracked t: T, r: !) {
+            let z = Box::new(r);
+
+            consume(t);
+            consume(t);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "never-to-any coercion is not allowed in spec mode")
+}
+
+test_verify_one_file! {
+    #[test] lifetime_cfg_delete_nodes_due_to_deref_box verus_code! {
+        use vstd::prelude::*;
+        proof fn consume<T>(tracked t: T) { }
+
+        #[allow(unreachable_code)]
+        proof fn test2<T>(tracked t: T, r: Box<!>) {
+            let z = *r;
+
+            consume(t);
+            consume(t);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "never-to-any coercion is not allowed in spec mode")
+}
+
+test_verify_one_file! {
+    #[test] lifetime_cfg_delete_nodes_due_to_implicit_deref_box verus_code! {
+        use vstd::prelude::*;
+        proof fn consume<T>(tracked t: T) { }
+
+        #[allow(unreachable_code)]
+        proof fn test2<T>(tracked t: T, r: Box<!>) {
+            let z: &! = &r;
+
+            consume(t);
+            consume(t);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `t`")
+}
+
+test_verify_one_file! {
+    #[test] lifetime_cfg_delete_nodes_due_to_spec_rc verus_code! {
+        use std::rc::Rc;
+        use vstd::prelude::*;
+        proof fn consume<T>(tracked t: T) { }
+
+        #[allow(unreachable_code)]
+        proof fn test2<T>(tracked t: T, r: !) {
+            let z = Rc::new(r);
+
+            consume(t);
+            consume(t);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "never-to-any coercion is not allowed in spec mode")
+}
+
+test_verify_one_file! {
+    #[test] lifetime_cfg_delete_nodes_due_to_deref_rc verus_code! {
+        use std::rc::Rc;
+        use vstd::prelude::*;
+        proof fn consume<T>(tracked t: T) { }
+
+        #[allow(unreachable_code)]
+        proof fn test2<T>(tracked t: T, r: Rc<!>) {
+            let z = *r;
+
+            consume(t);
+            consume(t);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "never-to-any coercion is not allowed in spec mode")
+}
+
+test_verify_one_file! {
+    #[test] lifetime_cfg_delete_nodes_due_to_implicit_deref_rc verus_code! {
+        use std::rc::Rc;
+        use vstd::prelude::*;
+        proof fn consume<T>(tracked t: T) { }
+
+        #[allow(unreachable_code)]
+        proof fn test2<T>(tracked t: T, r: Rc<!>) {
+            let z: &! = &r;
+
+            consume(t);
+            consume(t);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `t`")
+}
+
+test_verify_one_file! {
+    #[test] lifetime_cfg_delete_nodes_due_to_proof_fn_call verus_code! {
+        use std::rc::Rc;
+        use vstd::prelude::*;
+        proof fn consume<T>(tracked t: T) { }
+
+        #[allow(unreachable_code)]
+        proof fn test2<T>(tracked t: T, tracked r: proof_fn() -> !) {
+            let z = r();
+
+            consume(t);
+            consume(t);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "never-to-any coercion is not allowed in spec mode")
+}
+
+test_verify_one_file! {
+    #[test] lifetime_cfg_delete_nodes_due_to_proof_fn_call2 verus_code! {
+        use std::rc::Rc;
+        use vstd::prelude::*;
+        proof fn consume<T>(tracked t: T) { }
+
+        #[allow(unreachable_code)]
+        proof fn test2<T>(tracked t: T, tracked r: proof_fn() -> tracked !) {
+            let z = r();
+
+            consume(t);
+            consume(t);
+        }
+    // This would be okay; overly conservative
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `t`")
 }
 
 test_verify_one_file! {

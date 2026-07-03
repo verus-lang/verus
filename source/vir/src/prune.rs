@@ -4,17 +4,17 @@
 ///    since we're traversing the module-visible datatypes anyway.
 use crate::ast::{
     ArrayKind, AssocTypeImpl, AssocTypeImplX, AutospecUsage, BinaryOp, BoundsCheck, CallTarget,
-    CrateId, Datatype, Dt, Expr, ExprX, Fun, Function, FunctionKind, Ident, Krate, KrateX, Mode,
-    Module, ModuleX, OpaqueType, Path, Place, PlaceX, RevealGroup, Stmt, Trait, TraitId, TraitX,
-    Typ, TypX, UnaryOp, UnaryOpr,
+    CrateId, Datatype, Dt, Expr, ExprX, Fun, FunWithVis, Function, FunctionKind, Ident, Krate,
+    KrateX, Mode, Module, ModuleX, OpaqueType, Path, Place, PlaceX, RevealGroup, Stmt, Trait,
+    TraitId, TraitX, Typ, TypX, UnaryOp, UnaryOpr,
 };
 use crate::ast_util::{is_body_visible_to, is_visible_to, is_visible_to_or_true};
 use crate::ast_visitor::{VisitorControlFlow, VisitorScopeMap};
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::{
-    Spanned, fn_array_update, fn_inv_name, fn_namespace_name, fn_set_contains_name,
-    fn_set_empty_name, fn_set_full_name, fn_set_insert_name, fn_set_remove_name,
-    fn_set_subset_of_name, fn_slice_index, fn_slice_len, fn_slice_update,
+    Spanned, fn_array_update, fn_inv_name, fn_iset_contains_name, fn_iset_empty_name,
+    fn_iset_full_name, fn_iset_insert_name, fn_iset_remove_name, fn_iset_subset_of_name,
+    fn_namespace_name, fn_slice_index, fn_slice_len, fn_slice_update,
 };
 use crate::poly::MonoTyp;
 use crate::resolve_axioms::{ResolvableType, ResolvedTypeCollection};
@@ -440,12 +440,12 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             // set operations may be invoked for checking invariant masks,
             // either when opening an invariant or invoking another function.
             let reach_set_ops = |state: &mut State| {
-                reach_function(ctxt, state, &fn_set_contains_name());
-                reach_function(ctxt, state, &fn_set_empty_name());
-                reach_function(ctxt, state, &fn_set_full_name());
-                reach_function(ctxt, state, &fn_set_insert_name());
-                reach_function(ctxt, state, &fn_set_remove_name());
-                reach_function(ctxt, state, &fn_set_subset_of_name());
+                reach_function(ctxt, state, &fn_iset_contains_name());
+                reach_function(ctxt, state, &fn_iset_empty_name());
+                reach_function(ctxt, state, &fn_iset_full_name());
+                reach_function(ctxt, state, &fn_iset_insert_name());
+                reach_function(ctxt, state, &fn_iset_remove_name());
+                reach_function(ctxt, state, &fn_iset_subset_of_name());
             };
             let maybe_reach_set_ops_for_call = |state: &mut State, callee_name: &Fun| {
                 let caller =
@@ -582,6 +582,12 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                     let datatype = &ctxt.datatype_map[dt];
                     traverse_generic_bounds(ctxt, state, &datatype.x.typ_bounds, false);
                     crate::ast_visitor::map_datatype_visitor_env(&datatype, state, &ft).unwrap();
+                    if let Some(FunWithVis { fun, visibility }) =
+                        &datatype.x.user_defined_invariant_fn
+                        && is_visible_to_or_true(visibility, &ctxt.module)
+                    {
+                        reach_function(ctxt, state, fun);
+                    }
                 }
                 ReachedType::SpecFn(arity) => {
                     state.spec_fn_types.insert(*arity);

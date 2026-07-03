@@ -110,6 +110,105 @@ pub trait ExIterator {
             self.obeys_prophetic_iter_laws() ==>
                 s == into_skip_spec(self, n) && skip_post(self, n, s),
     ;
+
+    fn find<P>(&mut self, predicate: P) -> (r: Option<Self::Item>)
+        where Self: Sized,
+            P: FnMut(&Self::Item) -> bool
+        default_ensures
+            // The iterator consistently obeys, completes, and decreases throughout its lifetime
+            final(self).obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
+            final(self).obeys_prophetic_iter_laws() ==> final(self).will_return_none() == old(self).will_return_none(),
+            final(self).obeys_prophetic_iter_laws() ==> (old(self).decrease() is Some <==> final(self).decrease() is Some),
+            final(self).obeys_prophetic_iter_laws() ==> {
+                final(self).remaining().is_suffix_of(old(self).remaining())
+            },
+            // If find returns None, then the iterator has no remaining
+            // elements, and the predicate was false for all of the original
+            // iterator's elements.
+            final(self).obeys_prophetic_iter_laws() && r.is_none() ==> {
+                &&& final(self).remaining().len() == 0
+                &&& forall |i| 0 <= i < old(self).remaining().len() ==>
+                    predicate.ensures((#[trigger]&old(self).remaining()[i],), false)
+            },
+            // If find returns Some, then the returned value satisfies the
+            // predicate, and all previous elements did not satisfy the
+            // predicate.
+            final(self).obeys_prophetic_iter_laws() && r.is_some() ==> {
+                let idx = old(self).remaining().len() - final(self).remaining().len() - 1;
+                {
+                    &&& 0 <= final(self).remaining().len() < old(self).remaining().len()
+                    &&& predicate.ensures((&r.unwrap(),), true)
+                    &&& old(self).remaining()[idx] == r.unwrap()
+                    &&& forall |i| 0 <= i < idx ==>
+                        predicate.ensures((#[trigger] &old(self).remaining()[i],), false)
+                }
+            };
+
+    // TODO: The Rust implementations of `all` and `any` depend on a correct implementation of `try_fold`
+    //       For now, we assume obeys_prophetic_iter_laws() entails such an implementation, but we should
+    //       eventually constrain implementations of `try_fold` to actually be correct enough to uphold the specs below.
+
+    fn all<F>(&mut self, f: F) -> (r: bool)
+        where Self: Sized,
+            F: FnMut(Self::Item) -> bool
+        default_ensures
+            // The iterator consistently obeys, completes, and decreases throughout its lifetime
+            final(self).obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
+            final(self).obeys_prophetic_iter_laws() ==> final(self).will_return_none() == old(self).will_return_none(),
+            final(self).obeys_prophetic_iter_laws() ==> (old(self).decrease() is Some <==> final(self).decrease() is Some),
+            final(self).obeys_prophetic_iter_laws() ==> {
+                final(self).remaining().is_suffix_of(old(self).remaining())
+            },
+            // If all returns true, then the iterator has no remaining elements,
+            // and the predicate was true for all of the original iterator's elements.
+            final(self).obeys_prophetic_iter_laws() && r ==> {
+                &&& final(self).remaining().len() == 0
+                &&& forall |i| 0 <= i < old(self).remaining().len() ==>
+                    f.ensures((#[trigger] old(self).remaining()[i],), true)
+            },
+            // If all returns false, then there is some element for which the
+            // predicate was false, and all previous elements satisfied the predicate.
+            final(self).obeys_prophetic_iter_laws() && !r ==> {
+                let idx = old(self).remaining().len() - final(self).remaining().len() - 1;
+                {
+                    // The failing element was consumed, so the remaining sequence strictly shrank
+                    &&& final(self).remaining().len() < old(self).remaining().len()
+                    &&& f.ensures((old(self).remaining()[idx],), false)
+                    &&& forall |i| 0 <= i < idx ==>
+                        f.ensures((#[trigger] old(self).remaining()[i],), true)
+                }
+            };
+
+    fn any<F>(&mut self, f: F) -> (r: bool)
+        where Self: Sized,
+            F: FnMut(Self::Item) -> bool
+        default_ensures
+            // The iterator consistently obeys, completes, and decreases throughout its lifetime
+            final(self).obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
+            final(self).obeys_prophetic_iter_laws() ==> final(self).will_return_none() == old(self).will_return_none(),
+            final(self).obeys_prophetic_iter_laws() ==> (old(self).decrease() is Some <==> final(self).decrease() is Some),
+            final(self).obeys_prophetic_iter_laws() ==> {
+                final(self).remaining().is_suffix_of(old(self).remaining())
+            },
+            // If any returns false, then the iterator has no remaining elements,
+            // and the predicate was false for all of the original iterator's elements.
+            final(self).obeys_prophetic_iter_laws() && !r ==> {
+                &&& final(self).remaining().len() == 0
+                &&& forall |i| 0 <= i < old(self).remaining().len() ==>
+                    f.ensures((#[trigger] old(self).remaining()[i],), false)
+            },
+            // If any returns true, then there is some element that satisfied the predicate,
+            // and all previous elements did not satisfy the predicate.
+            final(self).obeys_prophetic_iter_laws() && r ==> {
+                let idx = old(self).remaining().len() - final(self).remaining().len() - 1;
+                {
+                    // The satisfying element was consumed, so the remaining sequence strictly shrank
+                    &&& final(self).remaining().len() < old(self).remaining().len()
+                    &&& f.ensures((old(self).remaining()[idx],), true)
+                    &&& forall |i| 0 <= i < idx ==>
+                        f.ensures((#[trigger] old(self).remaining()[i],), false)
+                }
+            };
 }
 
 #[verifier::external_trait_specification]
@@ -288,6 +387,40 @@ impl <I> DoubleEndedIteratorSpecImpl for Rev<I>
 
     open spec fn peek_back(&self, index: int) -> Option<Self::Item> {
         rev_iter(*self).peek(index)
+    }
+}
+
+// Forwarding spec impl for the Rust-supplied blanket `impl<I> Iterator for &mut I`.
+// Without this, bare method-call syntax on a `i: &mut I` receiver (e.g. `i.remaining()`)
+// resolves to these (otherwise uninterpreted) functions on `&mut I` rather than on `I`,
+// silently disconnecting clients from `I`'s actual specs.
+impl <I> IteratorSpecImpl for &mut I
+    where I: Iterator {
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        <I as IteratorSpec>::obeys_prophetic_iter_laws(*self)
+    }
+
+    #[verifier::prophetic]
+    open spec fn remaining(&self) -> Seq<Self::Item> {
+        <I as IteratorSpec>::remaining(*self)
+    }
+
+    #[verifier::prophetic]
+    open spec fn will_return_none(&self) -> bool {
+        <I as IteratorSpec>::will_return_none(*self)
+    }
+
+    #[verifier::prophetic]
+    open spec fn initial_value_relation(&self, init: &Self) -> bool {
+        <I as IteratorSpec>::initial_value_relation(*self, &**init)
+    }
+
+    open spec fn decrease(&self) -> Option<nat> {
+        <I as IteratorSpec>::decrease(*self)
+    }
+
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        <I as IteratorSpec>::peek(*self, index)
     }
 }
 
@@ -540,22 +673,8 @@ impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
             // History updates always hold
             ret matches Some(i) ==> final(self).history@ == old(self).history@.push(i),
             ret is None ==> final(self).history@ == old(self).history@,
-            // TODO: Uncomment this line to replace everything below, once general mutable refs are supported
-            //call_ensures(I::next, (old(self).iter,), ret),
-            final(self).iter.obeys_prophetic_iter_laws() == old(self).iter.obeys_prophetic_iter_laws(),
-            final(self).iter.obeys_prophetic_iter_laws() ==> final(self).iter.will_return_none() == old(self).iter.will_return_none(),
-            final(self).iter.obeys_prophetic_iter_laws() ==> (old(self).iter.decrease() is Some <==> final(self).iter.decrease() is Some),
-            final(self).iter.obeys_prophetic_iter_laws() ==>
-            ({
-                if old(self).iter.remaining().len() > 0 {
-                    &&& final(self).iter.remaining() == old(self).iter.remaining().drop_first()
-                    &&& ret == Some(old(self).iter.remaining()[0])
-                } else {
-                    final(self).iter.remaining() == old(self).iter.remaining() && ret == None && final(self).iter.will_return_none()
-                }
-            }),
-            final(self).iter.obeys_prophetic_iter_laws() && old(self).iter.remaining().len() > 0 && final(self).iter.decrease() is Some ==>
-                decreases_to!(old(self).iter.decrease()->0 => final(self).iter.decrease()->0),
+            // All of the standard Iterator::next guarantees still hold
+            exists |m: &mut I| #![auto] call_ensures(I::next, (m,), ret) && *m == old(self).iter && *final(m) == final(self).iter,
     {
         let ghost old_history = self.history@;
         let ret = self.iter.next();

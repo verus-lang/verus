@@ -1123,9 +1123,7 @@ pub enum ExprX {
     /// See: [https://doc.rust-lang.org/reference/expressions/operator-expr.html#r-expr.assign.evaluation-order]
     /// (Also note that this does not apply to overloaded compound assignment, which should
     /// lower to a Call node instead.)
-    ///
-    /// Used only when new-mut-refs is enabled.
-    AssignToPlace { place: Place, rhs: Expr, op: Option<BinaryOp>, typ: Typ, resolve: bool },
+    Assign { place: Place, rhs: Expr, op: Option<BinaryOp>, typ: Typ, resolve: bool },
     /// Reveal definition of an opaque function with some integer fuel amount
     Fuel(Fun, u32, bool),
     /// Reveal a string
@@ -1183,7 +1181,6 @@ pub enum ExprX {
     /// nondeterministic choice
     Nondeterministic,
     /// Creates a mutable borrow from the given place
-    /// Used only when new-mut-refs is enabled.
     BorrowMut(Place),
     /// A "two-phase" mutable borrow. These are often created when Rust inserts implicit
     /// borrows. See [https://rustc-dev-guide.rust-lang.org/borrow_check/two_phase_borrows.html].
@@ -1192,8 +1189,6 @@ pub enum ExprX {
     /// the semantics of a TwoPhaseBorrowMut node are contextual.
     /// It is the structure of the parent node that determines where the "second phase"
     /// of the borrow is.
-    ///
-    /// Used only when new-mut-refs is enabled.
     TwoPhaseBorrowMut(Place),
     /// Borrow from a tracked place to get &mut Tracked<T>
     BorrowMutTracked(Place),
@@ -1210,7 +1205,7 @@ pub enum ExprX {
     /// The right side should only contain `assume(has_resolved(...))` statements
     /// emitted by the resolution analysis.
     EvalAndResolve(Expr, Expr),
-    /// The `old` node. (new-mut-ref only)
+    /// The `old` node.
     /// Note: to explicitly refer to the pre-state of a variable, the ExprX::VarAt(e, Pre)
     /// node should be used. The 'old' node itself is used for some bookkeeping purposes
     /// and well-formedness checks, but otherwise has no meaning. The `Old` node is
@@ -1264,9 +1259,7 @@ pub enum ModeWrapperMode {
     Proof,
 }
 
-/// `Place` is the replacement for `Loc` used for new-mut-refs.
-/// (Actually, `Place` is already used sometimes even when
-/// new-mut-refs is disabled, but only for reading.)
+/// `Place` represents a place that can be read or assigned to.
 ///
 /// A `Place` represents (the computation of) a place that can be read from,
 /// moved from, or mutated. Like ordinary Exprs, the evaluation of a Place expression
@@ -1724,6 +1717,12 @@ pub enum Dt {
     Tuple(usize),
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
+pub struct FunWithVis {
+    pub visibility: Visibility,
+    pub fun: Fun,
+}
+
 /// struct or enum
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub struct DatatypeX {
@@ -1744,7 +1743,7 @@ pub struct DatatypeX {
     pub mode: Mode,
     /// Generate ext_equal lemmas for datatype
     pub ext_equal: bool,
-    pub user_defined_invariant_fn: Option<Fun>,
+    pub user_defined_invariant_fn: Option<FunWithVis>,
     /// This is an optional value -- None means "always sized"
     /// whereas Some(T) means "The given type is Sized iff T is Sized".
     /// For structs, this is usually the last field of the struct, or is derived from it.
