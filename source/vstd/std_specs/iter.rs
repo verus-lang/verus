@@ -5,7 +5,7 @@ use super::super::seq::{
 
 use verus as verus_;
 
-use core::iter::{Filter, FromIterator, Iterator, Rev, Skip, Take};
+use core::iter::{Filter, FromIterator, Iterator, Rev, Skip, Take, Zip};
 
 verus_! {
 
@@ -132,6 +132,28 @@ pub trait ExIterator {
             self.obeys_prophetic_iter_laws() ==>
                 s == into_skip_spec(self, n) && skip_post(self, n, s),
     ;
+
+    // See below for why we can't use this at present
+    // fn zip<U>(self, other: U) -> (r: Zip<Self, <U as IntoIterator>::IntoIter>>)
+    // where
+    //     Self: Sized,
+    //     U: IntoIterator,
+    //     default_ensures
+    //         self.obeys_prophetic_iter_laws() && self.initial_value_relation(&self)
+    //         other.obeys_prophetic_iter_laws() && other.initial_value_relation(&other)
+    //         ==> {
+    //           &&& zip_iter_fst(r) == a
+    //           &&& zip_iter_snd(r) == b
+    //           &&& IteratorSpec::remaining(&r) == a.remaining().zip_truncate(b.remaining())
+    //           &&& IteratorSpec::will_return_none(&r) ==> a.will_return_none() && b.will_return_none()
+    //           &&& IteratorSpec::decrease(&r) is Some == (a.decrease() is Some || b.decrease() is Some)
+    //           &&& IteratorSpec::initial_value_relation(&r, &r)
+    //         }
+    // //         self.obeys_prophetic_iter_laws() && self.initial_value_relation(&self)
+    // //         other.obeys_prophetic_iter_laws() && other.initial_value_relation(&other)
+    // //         ==>
+    // //             z == into_zip_spec(self) && zip_post(self, r),
+    // // ;
 
     fn collect<B>(self) -> (collection: B)
         where
@@ -454,6 +476,84 @@ impl <I> IteratorSpecImpl for &mut I
 
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
         <I as IteratorSpec>::peek(*self, index)
+    }
+}
+
+
+/********************************************************************************
+ * Definitions for `zip()`
+ ********************************************************************************/
+#[verifier::external_body]
+#[verifier::external_type_specification]
+#[verifier::reject_recursive_types(A)]
+#[verifier::reject_recursive_types(B)]
+pub struct ExZip<A, B>(Zip<A, B>);
+
+// Ghost accessor for the first inner iterator
+pub uninterp spec fn zip_iter_fst<A, B>(z: Zip<A, B>) -> A;
+
+// Ghost accessor for the second inner iterator
+pub uninterp spec fn zip_iter_snd<A, B>(z: Zip<A, B>) -> B;
+
+/// Wrapper for `Iterator::zip`, since the actual function takes an `IntoIter`,
+/// which creates a cylic dependency cycle.
+#[verifier::external_body]
+pub fn zip_iterators<A: Iterator, B: Iterator>(a: A, b: B) -> (r: Zip<A, B>)
+    requires
+        a.obeys_prophetic_iter_laws(),
+        a.initial_value_relation(&a),
+        b.obeys_prophetic_iter_laws(),
+        b.initial_value_relation(&b),
+    ensures
+        zip_iter_fst(r) == a,
+        zip_iter_snd(r) == b,
+        IteratorSpec::remaining(&r) == a.remaining().zip_truncate(b.remaining()),
+        IteratorSpec::will_return_none(&r) ==> a.will_return_none() && b.will_return_none(),
+        IteratorSpec::decrease(&r) is Some == (a.decrease() is Some || b.decrease() is Some),
+        IteratorSpec::initial_value_relation(&r, &r),
+{
+    a.zip(b)
+}
+
+impl<A, B> IteratorSpecImpl for Zip<A, B>
+    where A: Iterator + IteratorSpec, B: Iterator + IteratorSpec
+{
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        &&& zip_iter_fst(*self).obeys_prophetic_iter_laws()
+        &&& zip_iter_snd(*self).obeys_prophetic_iter_laws()
+    }
+
+    #[verifier::prophetic]
+    closed spec fn remaining(&self) -> Seq<Self::Item> {
+        zip_iter_fst(*self).remaining().zip_truncate(zip_iter_snd(*self).remaining())
+    }
+
+    #[verifier::prophetic]
+    closed spec fn will_return_none(&self) -> bool {
+        zip_iter_fst(*self).will_return_none() || zip_iter_snd(*self).will_return_none()
+    }
+
+    #[verifier::prophetic]
+    open spec fn initial_value_relation(&self, init: &Self) -> bool {
+        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
+        &&& zip_iter_fst(*self).initial_value_relation(&zip_iter_fst(*init))
+        &&& zip_iter_snd(*self).initial_value_relation(&zip_iter_snd(*init))
+    }
+
+    closed spec fn decrease(&self) -> Option<nat> {
+        match (zip_iter_fst(*self).decrease(), zip_iter_snd(*self).decrease()) {
+            (Some(a), Some(b)) => if a <= b { Some(a) } else { Some(b) },
+            (Some(a), None) => Some(a),
+            (None, Some(b)) => Some(b),
+            (None, None) => None,
+        }
+    }
+
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        match (zip_iter_fst(*self).peek(index), zip_iter_snd(*self).peek(index)) {
+            (Some(a), Some(b)) => Some((a, b)),
+            _ => None,
+        }
     }
 }
 
