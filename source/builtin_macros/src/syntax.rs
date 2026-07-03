@@ -1102,7 +1102,7 @@ impl Visitor {
         _con_ty: &Type,
         con_span: Span,
     ) {
-        if matches!(con_mode, FnMode::Spec(_) | FnMode::SpecChecked(_)) {
+        /*if matches!(con_mode, FnMode::Spec(_) | FnMode::SpecChecked(_)) {
             if let Some(expr) = con_expr.take() {
                 let mut stmts = Vec::new();
                 stmts.push(Stmt::Expr(
@@ -1115,14 +1115,14 @@ impl Visitor {
                     block: Block { brace_token: token::Brace(expr.span()), stmts },
                 })));
             }
-        } else {
+        } else {*/
             if let Some(block) = std::mem::take(con_block) {
                 let expr_block = verus_syn::ExprBlock { attrs: vec![], label: None, block: *block };
                 *con_expr = Some(Box::new(Expr::Block(expr_block)));
                 *con_eq_token = Some(verus_syn::token::Eq { spans: [con_span] });
                 *con_semi_token = Some(Semi { spans: [con_span] });
             }
-        }
+        //}
         *con_ensures = None;
     }
 

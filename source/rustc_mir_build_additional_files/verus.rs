@@ -200,7 +200,7 @@ pub(crate) fn get_extra_thir(local_def_id: LocalDefId) -> Option<Arc<ExtraThir>>
 pub(crate) fn check_this_query_isnt_running_early(local_def_id: LocalDefId) {
     if get_verus_erasure_ctxt_option().is_none() {
         match VERUS_AWARE_DEF_IDS.read().unwrap().clone() {
-            Some(m) => {
+            Some(_m) => {
                 // TODO: VERUS_AWARE_DEF_IDS map not needed any more?
                 /*if m.contains(&local_def_id) {
                     panic!(
@@ -259,9 +259,6 @@ impl VerusThirBuildCtxt {
                 local_def_id
             );
         }
-
-        dbg!((local_def_id, phase));
-        panic!("asdfasfdsfadfds");
 
         let do_time_travel_prevention = verus_aware && ctxt.is_some();
 
