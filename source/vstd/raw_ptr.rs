@@ -1642,6 +1642,8 @@ impl<T> SeqPointsTo<T> {
         &&& self.ptr()@.addr + self.len() * layout::size_of::<T>()
             <= self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len()
         &&& self.ptr()@.addr as nat % align_of::<T>() == 0
+        &&& self.ptr()@.provenance != Provenance::null()
+        // TODO: fix so we condition on being non-empty...
     }
 
     /// The pointer that this permission is associated with.
