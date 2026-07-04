@@ -3545,7 +3545,7 @@ impl Visitor {
         ));
         let ghost_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
             #[verifier::custom_err(#ghost_inv_msg)]
-            match vstd::prelude::infer_spec_for_loop_iter(
+            match #vstd::prelude::infer_spec_for_loop_iter(
                 &::core::iter::IntoIterator::into_iter(#x_verus_iter_init),
                 &::core::iter::IntoIterator::into_iter(#expr_inv),
                 #print_hint,
@@ -3696,7 +3696,7 @@ impl Visitor {
                 #x_exec_iter,
                 // Spec-level iterator (relies on `when_used_as_spec` on into_iter)
                 #[verifier::ghost_wrapper]
-                ::vstd::prelude::ghost_exec(#[verifier::ghost_block_wrapped] Some(&#x_exec_iter)),
+                #vstd::prelude::ghost_exec(#[verifier::ghost_block_wrapped] Some(&#x_exec_iter)),
             );
             // Hold on to the initial snapshot value so that after the loop, we know it didn't change
             #[allow(non_snake_case)]
