@@ -3566,7 +3566,7 @@ impl Visitor {
             for inv in &mut invariant.exprs.exprs {
                 *inv = Expr::Verbatim(quote_spanned_vstd!(vstd, inv.span() => {
                     let #pat = #vstd::std_specs::iter::IteratorSpec::peek(&#x_iter_name.snapshot.view(), #x_iter_name.index.view())
-                        .unwrap_or(vstd::pervasive::arbitrary());
+                        .unwrap_or(#vstd::pervasive::arbitrary());
                     #inv
                 }));
             }
@@ -3589,7 +3589,7 @@ impl Visitor {
             for inv in &mut invariant_except_break.exprs.exprs {
                 *inv = Expr::Verbatim(quote_spanned_vstd!(vstd, inv.span() => {
                     let #pat = #vstd::std_specs::iter::IteratorSpec::peek(&#x_iter_name.snapshot.view(), #x_iter_name.index.view())
-                        .unwrap_or(vstd::pervasive::arbitrary());
+                        .unwrap_or(#vstd::pervasive::arbitrary());
                     #inv
                 }));
             }
