@@ -268,122 +268,6 @@ pub proof fn transmute_usize_mut_ptr<T: Sized>(tracked src: usize) -> (tracked d
     dst
 }
 
-/// If the memory is initialized, then the bytes must decode into the given value in memory.
-/// If the memory is uninitialized, then the bytes cannot be decoded to any value.
-pub broadcast axiom fn abs_decode_mem_contents<T>(bytes: Seq<AbstractByte>, value: MemContents<T>)
-    ensures
-        #[trigger] abs_decode::<MemContents<T>>(bytes, &value) <==> (
-        value matches MemContents::Init(t) && abs_decode::<T>(bytes, &t)),
-;
-
-/// If the memory is initialized, then the bytes must decode into the given value in memory.
-/// If the memory is uninitialized, then the bytes cannot be decoded to any value.
-pub broadcast axiom fn abs_decode_mem_contents_unsized<T: ?Sized>(
-    bytes: Seq<AbstractByte>,
-    value: MemContents<&T>,
-)
-    ensures
-        #[trigger] abs_decode::<MemContents<&T>>(bytes, &value) <==> (
-        value matches MemContents::Init(t) && abs_decode::<T>(bytes, t)),
-;
-
-impl<T> PointsTo<T> {
-    /// Invariant: If this memory is initialized, then it its abstract bytes must decode into the value in memory.
-    pub axiom fn abstract_bytes_decode(&self)
-        ensures
-            self.is_init() ==> #[trigger] abs_decode::<MemContents<T>>(
-                self.abstract_bytes(),
-                &self.mem_contents(),
-            ),
-    ;
-
-    /// A `PointsTo<T>` can always be transmuted to a logically uninitialized `PointsTo<[u8]>`.
-    /// The `mem_contents_seq()` on the resulting permission is not specified, meaning that the permission cannot be used to read `u8` values from this memory.
-    /// (In some scenarios, it could be safe to read `u8` values from this memory, but this would require a stronger precondition
-    /// that the abstract bytes of `self` can be decoded into `u8` values, i.e., the abstract bytes must be initialized.
-    /// For our current use cases, this is not necessary.)
-    /// The abstract bytes remain the same. This preserves the typed contents in memory on a roundtrip transmute (see `PointsTo<[u8]>::transmute_to_typed`).
-    /// Note that this means provenance is not lost, which matches Rust's semantics for transmuting in-memory values.
-    ///
-    /// This axiom also returns a `tracked MemContents<T>`, which is intended to be used with `PointsTo<[u8]>::transmute_to_typed` in order to maintain the contents of the memory on a roundtrip.
-    /// Because the `T` field for the `MemContents::Init` variant is marked as `ghost`, one cannot extract a `tracked T` from a `tracked MemContents<T>`.
-    /// This prohibits creating permissions out of thin air, in the case where `T` is a type that stores/represents a permission (e.g., shared references).
-    pub axiom fn transmute_to_u8_uninit(tracked self) -> (tracked (dst, mem_contents): (
-        PointsTo<[u8]>,
-        MemContents<T>,
-    ))
-        ensures
-            self.abstract_bytes() == dst.abstract_bytes(),
-            self.ptr()@.addr == dst.ptr()@.addr,
-            self.ptr()@.provenance == dst.ptr()@.provenance,
-            size_of::<T>() == dst.ptr()@.metadata,
-            mem_contents == self.mem_contents(),
-    ;
-}
-
-impl<T> PointsTo<[T]> {
-    /// Invariant: For all elements in this slice of memory, if the memory is initialized, then the corresponding abstract bytes must decode into the value in memory.
-    pub axiom fn abstract_bytes_decode(&self)
-        ensures
-            forall|i|
-                0 <= i < self.mem_contents_seq().len() && self.mem_contents_seq()[i].is_init()
-                    ==> #[trigger] abs_decode::<MemContents<T>>(
-                    self.abstract_bytes().subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()),
-                    &self.mem_contents_seq()[i],
-                ),
-    ;
-}
-
-impl PointsTo<str> {
-    /// Invariant: If this memory is initialized, then the corresponding abstract bytes must decode into the value in memory.
-    pub axiom fn abstract_bytes_decode(&self)
-        ensures
-            self.is_init() ==> abs_decode::<MemContents<&str>>(
-                self.abstract_bytes(),
-                &self.mem_contents(),
-            ),
-    ;
-}
-
-impl PointsTo<[u8]> {
-    /// A `PointsTo<[u8]>` can be transmuted to an initialized `PointsTo<T>` when the abstract bytes can be
-    /// decoded into a `MemContents<T>` and the pointer for this permission is of the expected length.
-    /// The resulting permission will take on the given `MemContents<T>`.
-    /// The abstract bytes remain the same. This preserves the typed contents in memory on a roundtrip transmute (see `PointsTo<T>::transmute_to_u8`).
-    /// Note that this means provenance is not lost, which matches Rust's semantics for transmuting in-memory values.
-    ///
-    /// The `dst_mem_contents` argument must be tracked in order to prohibit creating permissions out of thin air,
-    /// in the case where `T` is a type that stores/represents a permission (e.g., shared references).
-    /// Note because `MemContents<T>` is a `ghost` struct, one cannot create a `tracked MemContents<T>` out of "raw", `ghost` or `tracked` `T` values.
-    /// The only way to obtain a `tracked MemContents<T>` is via the `PointsTo<T>::transmute_to_u8_uninit` axiom.
-    /// This ensures that the `dst_mem_contents` in fact correspond to actual values in memory.
-    pub axiom fn transmute_to_typed<T>(
-        tracked self,
-        tracked dst_mem_contents: MemContents<T>,
-    ) -> (tracked dst: PointsTo<T>)
-        requires
-            abs_decode::<MemContents<T>>(self.abstract_bytes(), &dst_mem_contents),
-            size_of::<T>() == self.ptr()@.metadata,
-        ensures
-            self.abstract_bytes() == dst.abstract_bytes(),
-            dst.mem_contents() == dst_mem_contents,
-            self.ptr() as *mut T == dst.ptr(),
-    ;
-
-    /// A `PointsTo<[u8]>` can always be transmuted to a logically uninitialized `PointsTo<T>`.
-    /// The `mem_contents_seq()` on the resulting permission is not specified, meaning that the permission cannot
-    /// be used to read `T` values from this memory.
-    /// The abstract bytes remain the same. This preserves the typed contents in memory on a roundtrip transmute (see `PointsTo<T>::transmute_to_u8`).
-    /// Note that this means provenance is not lost, which matches Rust's semantics for transmuting in-memory values.
-    pub axiom fn transmute_to_typed_uninit<T>(tracked self) -> (tracked dst: PointsTo<T>)
-        requires
-            size_of::<T>() == self.ptr()@.metadata,
-        ensures
-            self.abstract_bytes() == dst.abstract_bytes(),
-            self.ptr() as *mut T == dst.ptr(),
-    ;
-}
-
 impl<T> PointsTo<T> {
     /// Transmutes an initialized `&PointsTo<T>` to an initialized `&PointsTo<U>`,
     /// where the resulting permission will take on the given `target` value in memory.
@@ -416,6 +300,7 @@ impl<T> PointsTo<T> {
         &'a PointsTo<U>)
         requires
             abs_decode::<U>(self.abstract_bytes(), &target),
+            self.is_init(),
         ensures
             ret.is_init(),
             ret.value() == target,
@@ -451,6 +336,7 @@ impl PointsTo<str> {
         &'a PointsTo<[u8]>)
         requires
             abs_decode::<[u8]>(self.abstract_bytes(), target),
+            self.is_init(),
         ensures
             ret.is_init(),
             ret.value() == target@,
@@ -508,6 +394,7 @@ impl PointsTo<[u8]> {
     ) -> (tracked ret: &'a PointsTo<str>)
         requires
             abs_decode::<str>(self.abstract_bytes(), target),
+            self.is_init(),
             self.value() == value@,
         ensures
             ret.is_init(),
