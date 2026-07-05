@@ -7,7 +7,10 @@
 #![allow(unused_imports)]
 #![allow(dead_code)]
 #![allow(unused_attributes)]
+#![allow(unused_features)] // silences spurious warnings for features that cause errors when omitted
 #![allow(rustdoc::invalid_rust_codeblocks)]
+#![cfg_attr(verus_keep_ghost, feature(atomic_internals))]
+#![cfg_attr(verus_keep_ghost, feature(generic_atomic))]
 #![cfg_attr(verus_keep_ghost, feature(core_intrinsics))]
 #![cfg_attr(any(verus_keep_ghost, feature = "allocator"), feature(allocator_api))]
 #![cfg_attr(verus_keep_ghost, feature(step_trait))]
@@ -43,7 +46,11 @@ pub mod future;
 pub mod hash_map;
 #[cfg(all(feature = "alloc", feature = "std"))]
 pub mod hash_set;
+pub mod imap;
+pub mod imap_lib;
 pub mod invariant;
+pub mod iset;
+pub mod iset_lib;
 #[cfg(verus_keep_ghost)]
 pub mod laws_cmp;
 #[cfg(verus_keep_ghost)]
@@ -98,8 +105,10 @@ pub broadcast group group_vstd_default {
     //
     seq::group_seq_axioms,
     seq_lib::group_seq_lib_default,
-    map::group_map_axioms,
-    set::group_set_axioms,
+    map::group_map_lemmas,
+    set::group_set_lemmas,
+    imap::group_imap_lemmas,
+    iset::group_iset_lemmas,
     set_lib::group_set_lib_default,
     multiset::group_multiset_axioms,
     compute::all_spec_ensures,

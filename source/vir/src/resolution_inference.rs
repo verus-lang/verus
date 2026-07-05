@@ -233,10 +233,10 @@ The analysis is pretty weak right now but could be improved.
 */
 
 use crate::ast::{
-    Arm, BinaryOp, ByRef, CtorUpdateTail, Datatype, Dt, Expr, ExprX, FieldOpr, Fun, Function,
-    Ident, Mode, ModeWrapperMode, Params, Path, Pattern, PatternBinding, PatternX, Place, PlaceX,
-    ReadKind, SpannedTyped, Stmt, StmtX, Typ, TypDecoration, TypX, UnaryOpr, UnfinalizedReadKind,
-    VarBinders, VarIdent, VarIdentDisambiguate, VariantCheck, VirErr,
+    Arm, BinaryOp, ByRef, CtorUpdateTail, Datatype, Dt, Expr, ExprX, FieldOpr, Fun, FunWithVis,
+    Function, Ident, Mode, ModeWrapperMode, Params, Path, Pattern, PatternBinding, PatternX, Place,
+    PlaceX, ReadKind, SpannedTyped, Stmt, StmtX, Typ, TypDecoration, TypX, UnaryOpr,
+    UnfinalizedReadKind, VarBinders, VarIdent, VarIdentDisambiguate, VariantCheck, VirErr,
 };
 use crate::ast_util::{bool_typ, mk_bool, typ_to_diagnostic_str, undecorate_typ, unit_typ};
 use crate::ast_visitor::VisitorScopeMap;
@@ -456,7 +456,7 @@ struct Builder<'a> {
     basic_blocks: Vec<BasicBlock>,
     locals: LocalCollection<'a>,
     assigns_to_resolve: Vec<AstId>,
-    typ_inv_obligations: Vec<(AstId, Fun)>,
+    typ_inv_obligations: Vec<(AstId, FunWithVis)>,
     asserts: Vec<((BBIndex, usize), Expr)>,
     errors: Vec<VirErr>,
 
@@ -526,7 +526,8 @@ fn new_cfg<'a>(
     functions: &'a HashMap<Fun, Function>,
     var_modes: &'a HashMap<VarIdent, Mode>,
     temporary_modes: &'a HashMap<AstId, Mode>,
-) -> Result<(CFG<'a>, Vec<AstId>, Vec<(AstId, Fun)>, Vec<((BBIndex, usize), Expr)>), VirErr> {
+) -> Result<(CFG<'a>, Vec<AstId>, Vec<(AstId, FunWithVis)>, Vec<((BBIndex, usize), Expr)>), VirErr>
+{
     let mut var_modes = var_modes.clone();
     for p in params.iter() {
         var_modes.insert(p.x.name.clone(), p.x.mode);
@@ -1089,7 +1090,7 @@ impl<'a> Builder<'a> {
                 let _ = self.build(e, bb)?;
                 Err(())
             }
-            ExprX::AssignToPlace { place, rhs, op, resolve, typ: _ } => {
+            ExprX::Assign { place, rhs, op, resolve, typ: _ } => {
                 assert!(!resolve);
                 // Right-hand side first!
                 let bb = self.build(rhs, bb)?;
@@ -1883,7 +1884,7 @@ impl<'a> Builder<'a> {
 
     //// User-defined type invariants
 
-    fn get_typ_inv_fun(&mut self, p: &Place) -> Option<Fun> {
+    fn get_typ_inv_fun(&mut self, p: &Place) -> Option<FunWithVis> {
         match &*undecorate_typ(&p.typ) {
             TypX::Datatype(dt, ..) => get_typ_inv_fun_dt(&self.locals.datatypes, dt),
             _ => {
@@ -1924,10 +1925,10 @@ impl<'a> Builder<'a> {
     }
 }
 
-fn get_typ_inv_fun_dt(datatypes: &HashMap<Path, Datatype>, dt: &Dt) -> Option<Fun> {
+fn get_typ_inv_fun_dt(datatypes: &HashMap<Path, Datatype>, dt: &Dt) -> Option<FunWithVis> {
     match dt {
         Dt::Path(path) => match &datatypes.get(path).unwrap().x.user_defined_invariant_fn {
-            Some(fun) => Some(fun.clone()),
+            Some(vis_fun) => Some(vis_fun.clone()),
             None => None,
         },
         Dt::Tuple(_) => None,
@@ -3321,13 +3322,13 @@ fn apply_resolutions(
     body: &Expr,
     resolutions: Vec<ResolutionToInsert>,
     assigns_to_resolve: Vec<AstId>,
-    typ_inv_obligations: Vec<(AstId, Fun)>,
+    typ_inv_obligations: Vec<(AstId, FunWithVis)>,
     typ_inv_info: &crate::modes::TypeInvInfo,
     module: &Path,
 ) -> Result<Expr, VirErr> {
     // All the resolutions that apply to PlaceX::Temporary nodes
     let mut temp_map = HashMap::<AstId, (Vec<FlattenedPlace>, bool)>::new();
-    let mut typ_inv_map = HashMap::<AstId, (Fun, bool)>::new();
+    let mut typ_inv_map = HashMap::<AstId, (FunWithVis, bool)>::new();
 
     // All the resolutions that apply to Expr and Stmt nodes
     let mut id_map = HashMap::<
@@ -3524,8 +3525,7 @@ fn apply_resolutions(
                 }
                 *seen_yet = true;
 
-                let function = cfg.locals.functions.get(fun).unwrap();
-                crate::user_defined_type_invariants::check_vis(&p.span, function, module)?;
+                let fun = fun.check_vis(&p.span, module)?;
 
                 let x = PlaceX::UserDefinedTypInvariantObligation(p1.clone(), fun.clone());
                 Ok(SpannedTyped::new(&p1.span, &p1.typ, x))
@@ -3608,13 +3608,13 @@ fn make_assume(cfg: &CFG, span: &Span, fp: &FlattenedPlace) -> Expr {
     crate::ast_util::mk_assume(&ast_place.span, &conditional_has_resolved)
 }
 
-/// Given an `AssignToPlace`, sets the `resolve` field to true
+/// Given an `Assign`, sets the `resolve` field to true
 /// (Equivalently, adds an `assume(has_resolved(...))` for the value being overwritten
 fn apply_resolution_to_assignment(e: &Expr) -> Expr {
     match &e.x {
-        ExprX::AssignToPlace { place, rhs, op, resolve, typ } => {
+        ExprX::Assign { place, rhs, op, resolve, typ } => {
             assert!(!resolve);
-            e.new_x(ExprX::AssignToPlace {
+            e.new_x(ExprX::Assign {
                 place: place.clone(),
                 rhs: rhs.clone(),
                 op: *op,
@@ -3623,7 +3623,7 @@ fn apply_resolution_to_assignment(e: &Expr) -> Expr {
             })
         }
         _ => {
-            panic!("apply_resolution_to_assignment expects AssignToPlace node");
+            panic!("apply_resolution_to_assignment expects Assign node");
         }
     }
 }
@@ -3781,7 +3781,7 @@ fn apply_temp_simplification(cfg: &CFG, place: &Place, exprs: Vec<Expr>) -> Plac
     let assign_expr = SpannedTyped::new(
         &place.span,
         &unit_typ(),
-        ExprX::AssignToPlace {
+        ExprX::Assign {
             place: tmp_local_place.clone(),
             rhs: expr.clone(),
             op: None,

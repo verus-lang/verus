@@ -1,0 +1,34 @@
+{
+  "lsp": {
+    "rust-analyzer": {
+      "initialization_options": {
+        "linkedProjects": ["source/Cargo.toml"],
+        "cargo": {
+          "buildScripts": {
+            "enable": true,
+          },
+          "features": ["record-history"],
+          "extraEnv": {
+            "RUSTC_BOOTSTRAP": "1",
+            "RUSTFLAGS": "--cfg proc_macro_span --cfg verus_keep_ghost --cfg span_locations",
+          },
+        },
+        "check": {
+          "extraEnv": {
+            "RUSTC_BOOTSTRAP": "1",
+            "RUSTFLAGS": "--cfg proc_macro_span --cfg verus_keep_ghost --cfg span_locations",
+          },
+        },
+        "procMacro": {
+          "enable": true,
+        },
+        "rustc": {
+          "source": "discover",
+        },
+        "diagnostics": {
+          "disabled": ["unresolved-extern-crate", "syntax-error"],
+        },
+      },
+    },
+  },
+}

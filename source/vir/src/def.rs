@@ -69,6 +69,7 @@ const PREFIX_SPEC_FN_TYPE: &str = "fun%";
 const PREFIX_IMPL_IDENT: &str = "impl&%";
 pub(crate) const PREFIX_IMPL_TUPLE: &str = "impl_tuple&%";
 pub(crate) const PREFIX_IMPL_CLOSURE: &str = "impl_closure&%";
+pub(crate) const PREFIX_IMPL_FNDEF: &str = "impl_fndef&%";
 const PREFIX_PROJECT: &str = "proj%";
 const PREFIX_PROJECT_DECORATION: &str = "proj%%";
 pub(crate) const PREFIX_DEFAULT_TYP_PARAM: &str = "def_typ_param%";
@@ -644,6 +645,10 @@ pub(crate) fn impl_closure(kind: ClosureKind, id: usize) -> Ident {
     Arc::new(format!("{}{}{}", PREFIX_IMPL_CLOSURE, kind, id))
 }
 
+pub(crate) fn impl_fndef_path(fun: &Fun, kind: ClosureKind) -> Path {
+    fun.path.push_segment(Arc::new(format!("{}{}", PREFIX_IMPL_FNDEF, kind)))
+}
+
 impl NameCtxt {
     pub fn projection(&self, decoration: bool, trait_path: &Path, name: &Ident) -> Ident {
         let proj = if decoration { PREFIX_PROJECT_DECORATION } else { PREFIX_PROJECT };
@@ -1070,85 +1075,85 @@ pub fn fn_namespace_name(atomicity: InvAtomicity) -> Fun {
     })
 }
 
-pub fn set_type_path() -> Path {
+pub fn iset_type_path() -> Path {
     Arc::new(PathX {
         krate: CrateId::Vstd,
-        segments: Arc::new(vec![Arc::new("set".to_string()), Arc::new("Set".to_string())]),
+        segments: Arc::new(vec![Arc::new("iset".to_string()), Arc::new("ISet".to_string())]),
     })
 }
 
-pub fn fn_set_empty_name() -> Fun {
+pub fn fn_iset_empty_name() -> Fun {
     Arc::new(FunX {
         path: Arc::new(PathX {
             krate: CrateId::Vstd,
             segments: Arc::new(vec![
-                Arc::new("set".to_string()),
-                Arc::new("Set".to_string()),
+                Arc::new("iset".to_string()),
+                Arc::new("ISet".to_string()),
                 Arc::new("empty".to_string()),
             ]),
         }),
     })
 }
 
-pub fn fn_set_full_name() -> Fun {
+pub fn fn_iset_full_name() -> Fun {
     Arc::new(FunX {
         path: Arc::new(PathX {
             krate: CrateId::Vstd,
             segments: Arc::new(vec![
-                Arc::new("set".to_string()),
-                Arc::new("Set".to_string()),
+                Arc::new("iset".to_string()),
+                Arc::new("ISet".to_string()),
                 Arc::new("full".to_string()),
             ]),
         }),
     })
 }
 
-pub fn fn_set_subset_of_name() -> Fun {
+pub fn fn_iset_subset_of_name() -> Fun {
     Arc::new(FunX {
         path: Arc::new(PathX {
             krate: CrateId::Vstd,
             segments: Arc::new(vec![
-                Arc::new("set".to_string()),
-                Arc::new("Set".to_string()),
+                Arc::new("iset".to_string()),
+                Arc::new("ISet".to_string()),
                 Arc::new("subset_of".to_string()),
             ]),
         }),
     })
 }
 
-pub fn fn_set_insert_name() -> Fun {
+pub fn fn_iset_insert_name() -> Fun {
     Arc::new(FunX {
         path: Arc::new(PathX {
             krate: CrateId::Vstd,
             segments: Arc::new(vec![
-                Arc::new("set".to_string()),
-                Arc::new("Set".to_string()),
+                Arc::new("iset".to_string()),
+                Arc::new("ISet".to_string()),
                 Arc::new("insert".to_string()),
             ]),
         }),
     })
 }
 
-pub fn fn_set_remove_name() -> Fun {
+pub fn fn_iset_remove_name() -> Fun {
     Arc::new(FunX {
         path: Arc::new(PathX {
             krate: CrateId::Vstd,
             segments: Arc::new(vec![
-                Arc::new("set".to_string()),
-                Arc::new("Set".to_string()),
+                Arc::new("iset".to_string()),
+                Arc::new("ISet".to_string()),
                 Arc::new("remove".to_string()),
             ]),
         }),
     })
 }
 
-pub fn fn_set_contains_name() -> Fun {
+pub fn fn_iset_contains_name() -> Fun {
     Arc::new(FunX {
         path: Arc::new(PathX {
             krate: CrateId::Vstd,
             segments: Arc::new(vec![
-                Arc::new("set".to_string()),
-                Arc::new("Set".to_string()),
+                Arc::new("iset".to_string()),
+                Arc::new("ISet".to_string()),
                 Arc::new("contains".to_string()),
             ]),
         }),

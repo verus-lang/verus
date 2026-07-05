@@ -12,6 +12,9 @@ impl<'tcx> ThirBuildCx<'tcx> {
             return b;
         }
 
+        let hir_block = block;
+        let did_enter = crate::verus_expr::enter_block(self, hir_block);
+
         // We have to eagerly lower the "spine" of the statements
         // in order to get the lexical scoping correctly.
         let stmts = self.mirror_stmts(block.hir_id.local_id, block.stmts);
@@ -34,6 +37,10 @@ impl<'tcx> ThirBuildCx<'tcx> {
                 }
             },
         };
+
+        if did_enter {
+            crate::verus_expr::exit_block(self, hir_block);
+        }
 
         self.thir.blocks.push(block)
     }
@@ -87,6 +94,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
                             }
                             Some(_) | None => local.span,
                         };
+                        let initializer = local.init.map(|init| self.mirror_expr(init));
                         let stmt = Stmt {
                             kind: StmtKind::Let {
                                 remainder_scope,
@@ -95,7 +103,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
                                     data: region::ScopeData::Node,
                                 },
                                 pattern,
-                                initializer: local.init.map(|init| self.mirror_expr(init)),
+                                initializer,
                                 else_block,
                                 hir_id: local.hir_id,
                                 span,

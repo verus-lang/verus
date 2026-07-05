@@ -28,7 +28,7 @@ jobs:
             os: macos-15-intel
             release_name: verus-x86-macos
           - build: linux
-            os: ubuntu-22.04
+            os: ubuntu-24.04
             release_name: verus-x86-linux
           - build: windows
             os: windows-2022
@@ -53,7 +53,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.95.0
+          toolchain: 1.96.0
 
       - name: build
         working-directory: ./source
@@ -83,7 +83,7 @@ jobs:
   # publish the release artifacts to the rolling pre-release
   publish:
     needs: [build]
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: download all artifacts
         uses: actions/download-artifact@v8

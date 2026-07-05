@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap as Map, BTreeSet as Set};
 use std::env;
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, ExitCode};
 
@@ -10,6 +11,7 @@ use colored::Colorize;
 
 use crate::cli::{CargoOptions, VerifyCommand, VerusArgFwdSelector};
 use crate::metadata::{MetadataIndex, fetch_metadata, make_package_id};
+use crate::toolchains::TOOLCHAINS;
 
 pub const CARGO_DEFAULT_LIB_METADATA: &str = "__CARGO_DEFAULT_LIB_METADATA";
 
@@ -73,7 +75,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-vstd = "=0.0.0-2026-05-17-0151"
+vstd = "=0.0.0-2026-06-14-0213"
 
 [package.metadata.verus]
 verify = true
@@ -117,6 +119,18 @@ unexpected_cfgs = {{ level = "warn", check-cfg = [
     Ok(ExitCode::SUCCESS)
 }
 
+pub fn list_toolchains() -> Result<ExitCode> {
+    let stdout = std::io::stdout();
+    let mut out = stdout.lock();
+    for toolchain in TOOLCHAINS.iter() {
+        writeln!(&mut out, "verus = {:?}", toolchain.verus)?;
+        writeln!(&mut out, "vstd = {}", toolchain.vstd)?;
+        writeln!(&mut out, "z3 = {:?}", toolchain.z3)?;
+        writeln!(&mut out)?;
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
 pub struct VerusConfig {
     pub current_dir: PathBuf,
     pub subcommand: &'static str,
@@ -134,7 +148,7 @@ pub fn plan_cargo_run(cfg: VerusConfig) -> Result<CargoRunPlan> {
     //////////////////////////////////////////////////
     let metadata_args = {
         let for_cargo_metadata = true;
-        make_cargo_args(&cfg.options.cargo_opts, for_cargo_metadata)
+        make_cargo_args(&cfg.options.cargo_opts, for_cargo_metadata, cfg.options.verbosity)
     };
     let metadata = fetch_metadata(metadata_args, cfg.current_dir.clone())?;
     let metadata_index = MetadataIndex::new(&metadata)?;
@@ -170,7 +184,7 @@ pub fn plan_cargo_run(cfg: VerusConfig) -> Result<CargoRunPlan> {
         }
 
         let for_cargo_metadata = false;
-        make_cargo_args(&options, for_cargo_metadata)
+        make_cargo_args(&options, for_cargo_metadata, cfg.options.verbosity)
     };
 
     let mut common_verus_driver_args: Vec<String> =
@@ -181,6 +195,12 @@ pub fn plan_cargo_run(cfg: VerusConfig) -> Result<CargoRunPlan> {
             "--VIA-CARGO".to_owned(),
             "compile-when-primary-package".to_owned(),
         ]);
+    }
+    if cfg.options.verbosity >= 2 {
+        common_verus_driver_args.push("-v".to_owned());
+        eprintln!("verbosity level >= 2; forwarding 1 `-v` to Verus");
+    } else if cfg.options.verbosity > 0 {
+        eprintln!("verbosity level = 1; keeping Verus non-verbose");
     }
 
     let plan = make_cargo_plan(
@@ -195,7 +215,7 @@ pub fn plan_cargo_run(cfg: VerusConfig) -> Result<CargoRunPlan> {
         fwd_verus_args_packages,
     )?;
 
-    if cfg.options.verbose {
+    if cfg.options.verbosity > 0 {
         let command = plan.to_command();
         eprintln!(
             "forwarding Verus args to crates: <{}>",
@@ -220,8 +240,18 @@ WARNING: You asked for verification, but cargo did not find any crates that opte
     Ok(plan)
 }
 
-fn make_cargo_args(opts: &CargoOptions, for_cargo_metadata: bool) -> Vec<String> {
+fn make_cargo_args(opts: &CargoOptions, for_cargo_metadata: bool, verbosity: u8) -> Vec<String> {
     let mut args = vec![];
+
+    for _ in 1..verbosity {
+        args.push("-v".to_owned());
+    }
+    if verbosity > 0 {
+        eprintln!(
+            "verbosity level = {verbosity}; forwarding {} `-v` arg(s) to Cargo",
+            verbosity - 1,
+        );
+    }
 
     if opts.frozen {
         args.push("--frozen".to_owned());

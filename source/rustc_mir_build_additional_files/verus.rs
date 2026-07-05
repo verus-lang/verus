@@ -86,6 +86,14 @@ pub struct LoopErasure {
     pub specs: Vec<(HirId, LoopSpecEvaluationLocation)>,
 }
 
+/// Information about a LocalInvariant open block
+#[derive(Debug, Clone)]
+pub struct LocalInvariantBody {
+    pub inner_block_hir_id: HirId,
+    pub span: rustc_span::Span,
+    pub guard_var: LocalVarId,
+}
+
 /// Global context with all information across the krate.
 /// This is created after mode-checking and passed here via the VERUS_ERASURE_CTXT global.
 #[derive(Debug)]
@@ -98,7 +106,8 @@ pub struct VerusErasureCtxt {
     /// This includes struct constructors as well. The "args" go in source order,
     /// i.e., same order as the fields on the Struct node.
     /// If there's a '..struct_tail' in the ctor, it's the last argument.
-    pub calls: HashMap<HirId, CallErasure>,
+    /// The bool indicates if we should force the return type to be treated as inhabited.
+    pub calls: HashMap<HirId, (CallErasure, bool)>,
 
     /// Node that should be erased (absolutely), including its adjustments.
     /// Useful, e.g., to erase a single argument of some call.
@@ -110,6 +119,8 @@ pub struct VerusErasureCtxt {
     pub loop_erasure: HashMap<HirId, LoopErasure>,
 
     pub bodies: HashMap<LocalDefId, BodyErasure>,
+
+    pub local_invariant_bodies: HashMap<HirId, LocalInvariantBody>,
 
     /// Some DefIds from builtin that we'll need to handle directly
     pub erased_ghost_value_fn_def_id: DefId,
@@ -125,6 +136,9 @@ static VERUS_AWARE_DEF_IDS: RwLock<Option<Arc<HashSet<LocalDefId>>>> = RwLock::n
 
 /// Used to communicate the VerusErasureCtxt
 static VERUS_ERASURE_CTXT: RwLock<Option<Arc<VerusErasureCtxt>>> = RwLock::new(None);
+
+/// Used to store the ExtraThir so MIR lowering can pick it up
+static EXTRA_THIR: RwLock<Option<HashMap<LocalDefId, Arc<ExtraThir>>>> = RwLock::new(None);
 
 pub fn set_verus_aware_def_ids(ids: Arc<HashSet<LocalDefId>>) {
     let v: &mut Option<Arc<HashSet<LocalDefId>>> = &mut VERUS_AWARE_DEF_IDS.write().unwrap();
@@ -153,6 +167,14 @@ fn get_verus_erasure_ctxt() -> Arc<VerusErasureCtxt> {
 
 pub(crate) fn get_verus_erasure_ctxt_option() -> Option<Arc<VerusErasureCtxt>> {
     VERUS_ERASURE_CTXT.read().unwrap().clone()
+}
+
+pub(crate) fn get_extra_thir(local_def_id: LocalDefId) -> Option<Arc<ExtraThir>> {
+    let opt_map: &Option<HashMap<LocalDefId, Arc<ExtraThir>>> = &EXTRA_THIR.read().unwrap();
+    match opt_map {
+        Some(map) => map.get(&local_def_id).cloned(),
+        None => None,
+    }
 }
 
 /// Our erasure scheme will fail if this query runs too early, before we initialize the
@@ -190,12 +212,23 @@ pub(crate) fn check_this_query_isnt_running_early(local_def_id: LocalDefId) {
     }
 }
 
+/// Extra information we'd like to add to THIR so that the MIR builder also has access to it
+pub(crate) struct ExtraThir {
+    /// Maps ExprId (Call node or a Loop) -> LocalInvariant bodies it is contained in
+    pub local_invs_for_node: HashMap<ExprId, Vec<LocalInvariantBody>>,
+    /// Treat this call as having an inhabited return type (i.e., don't prune the CFG)
+    pub force_treat_inhabited: HashSet<ExprId>,
+}
+
 /// Per-body context (i.e., one for each function or closure).
 pub(crate) struct VerusThirBuildCtxt {
     pub(crate) ctxt: Option<Arc<VerusErasureCtxt>>,
     closure_overrides: HashMap<LocalDefId, ClosureOverrides>,
     pub(crate) do_time_travel_prevention: bool,
     pub(crate) guard_pattern_vars: Vec<Vec<LocalVarId>>,
+    pub(crate) local_invariants: Vec<usize>,
+    pub(crate) extra_thir: ExtraThir,
+    pub(crate) local_def_id: LocalDefId,
 }
 
 impl VerusThirBuildCtxt {
@@ -212,6 +245,12 @@ impl VerusThirBuildCtxt {
             closure_overrides: HashMap::new(),
             do_time_travel_prevention,
             guard_pattern_vars: vec![],
+            local_invariants: vec![],
+            extra_thir: ExtraThir {
+                local_invs_for_node: HashMap::new(),
+                force_treat_inhabited: HashSet::new(),
+            },
+            local_def_id: local_def_id,
         }
     }
 
@@ -223,6 +262,14 @@ impl VerusThirBuildCtxt {
                 None => false,
             },
         }
+    }
+
+    pub(crate) fn finish(self) {
+        let opt_map: &mut Option<HashMap<LocalDefId, Arc<ExtraThir>>> =
+            &mut EXTRA_THIR.write().unwrap();
+        let map = opt_map.get_or_insert_with(|| HashMap::new());
+        let found = map.insert(self.local_def_id, Arc::new(self.extra_thir));
+        assert!(found.is_none());
     }
 }
 
@@ -264,13 +311,13 @@ impl CallErasure {
 pub(crate) fn handle_call<'tcx>(
     verus_ctxt: &VerusThirBuildCtxt,
     expr: &'tcx hir::Expr<'tcx>,
-) -> CallErasure {
+) -> (CallErasure, bool) {
     let Some(erasure_ctxt) = verus_ctxt.ctxt.clone() else {
-        return CallErasure::keep_all();
+        return (CallErasure::keep_all(), false);
     };
 
     match erasure_ctxt.calls.get(&expr.hir_id) {
-        None => CallErasure::keep_all(),
+        None => (CallErasure::keep_all(), false),
         Some(call_erasure) => call_erasure.clone(),
     }
 }
@@ -791,6 +838,7 @@ fn erase_pat_rec<'tcx>(emode: &PatBindingEraserMode, p: &mut Pat<'tcx>) {
                 erase_pat_rec(emode, p);
             }
         }
+        PatKind::Guard { subpattern, condition: _ } => erase_pat_rec(emode, subpattern),
         PatKind::Never => {}
         PatKind::Error(_error_guaranteed) => {}
     }
@@ -856,7 +904,7 @@ impl<'a, 'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitTreeForPats<'a, 'tc
             hir::ExprKind::Call(..) | hir::ExprKind::MethodCall(..) => {
                 if matches!(
                     self.erasure_ctxt.calls.get(&expr.hir_id),
-                    Some(CallErasure::EraseTree(TreeErase::EraseAbsolutely))
+                    Some((CallErasure::EraseTree(TreeErase::EraseAbsolutely), _))
                 ) {
                     return;
                 }
@@ -909,7 +957,7 @@ impl<'a, 'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitTreeForLocalUses<'a
             hir::ExprKind::Call(..) | hir::ExprKind::MethodCall(..) => {
                 if matches!(
                     self.erasure_ctxt.calls.get(&expr.hir_id),
-                    Some(CallErasure::EraseTree(TreeErase::EraseAbsolutely))
+                    Some((CallErasure::EraseTree(TreeErase::EraseAbsolutely), _))
                 ) {
                     return;
                 }
@@ -1044,7 +1092,7 @@ fn erase_let_for_pattern_checking<'tcx>(
 
     let pattern = erase_pat_all_binders(cx.pattern_from_hir(pat));
 
-    let init_ty = cx.typeck_results.node_type(pat.hir_id);
+    let init_ty = pattern.ty;
     let init =
         init.map(|init| erased_ghost_value(cx, erasure_ctxt, root_hir_id, init.span, init_ty));
 
@@ -1116,26 +1164,6 @@ fn erase_arm_for_pattern_checking<'tcx>(
         span: arm.span,
     };
     cx.thir.arms.push(arm)
-}
-
-/// This is used to inject logic in the MIR-builder code.
-///
-/// Typically, Rust removes part of the CFG if a function returns an uninhabited type.
-/// However, we might have erased code with uninhabited types, e.g.,
-/// `erased_ghost_value::<!>()`.
-/// To prevent such calls from influencing the CFG, we check if any call is to
-/// `erased_ghost_value`, and if so, skip the CFG trimming logic.
-pub(crate) fn func_ty_skip_edge_deletion_for_uninhabited_ty<'tcx>(ty: Ty<'tcx>) -> bool {
-    match ty.kind() {
-        TyKind::FnDef(fn_def_id, _) => {
-            let Some(erasure_ctxt) = get_verus_erasure_ctxt_option() else {
-                return false;
-            };
-            *fn_def_id == erasure_ctxt.erased_ghost_value_fn_def_id
-                || *fn_def_id == erasure_ctxt.shadow_ghost_value_fn_def_id
-        }
-        _ => false,
-    }
 }
 
 /*////// Closures

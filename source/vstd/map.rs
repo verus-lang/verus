@@ -7,8 +7,13 @@ use super::set::*;
 use verus as verus_; // skip verusfmt due to unhandled return-value-pattern
 verus_! {
 
+broadcast use {
+    super::set::group_set_lemmas,
+    super::set_lib::group_set_lib_default,
+};
+
 /// `Map<K, V>` is an abstract map type for specifications.
-/// To use a "map" in compiled code, use an `exec` type like HashMap (TODO)
+/// To use a "map" in compiled code, use an `exec` type like HashMap
 /// that has a `Map<K, V>` as its specification type.
 ///
 /// An object `map: Map<K, V>` has a _domain_, a set of keys given by [`map.dom()`](Map::dom),
@@ -16,54 +21,63 @@ verus_! {
 /// Alternatively, a map can be thought of as a set of `(K, V)` pairs where each key
 /// appears in at most entry.
 ///
-/// In general, a map might be infinite.
-/// To work specifically with finite maps, see the [`self.finite()`](Set::finite) predicate.
+/// A Map must will always be finite.
+/// To work with infinite maps, see `IMap`.
 ///
 /// Maps can be constructed in a few different ways:
 ///  * [`Map::empty()`] constructs an empty map.
-///  * [`Map::new`] and [`Map::total`] construct a map given functions that specify its domain and the mapping
+///  * [`Map::new`] constructs a map given a `Set` that specifies its domain and the mapping
 ///     from keys to values (a _map comprehension_).
 ///  * The [`map!`] macro, to construct small maps of a fixed size.
 ///  * By manipulating an existing map with [`Map::insert`] or [`Map::remove`].
 ///
 /// To prove that two maps are equal, it is usually easiest to use the extensionality operator `=~=`.
+///
+/// `Map` always has a finite domain, so it can be used in recursive types. For instance,
+/// a type `T` can contain a `Map<T, T>`.
 #[verifier::ext_equal]
-#[verifier::reject_recursive_types(K)]
+#[verifier::external_body]
+#[verifier::accept_recursive_types(K)]
 #[verifier::accept_recursive_types(V)]
 pub tracked struct Map<K, V> {
-    mapping: spec_fn(K) -> Option<V>,
+    // To prevent Verus's internal checks from rejecting recursive types
+    // using `Map`, we use an artificial definition of `Map` that hides its
+    // inclusion of a function from keys to values.
+    //
+    // To make sure that proofs in this file don't take advantage of
+    // this artificial structure (e.g., to prove that any two `Map`s are
+    // equal), we mark this definition as `external_body`.
+    dummy_key: core::marker::PhantomData<K>,
+    dummy_value: core::marker::PhantomData<V>,
 }
 
 impl<K, V> Map<K, V> {
-    /// An empty map.
-    pub closed spec fn empty() -> Map<K, V> {
-        Map { mapping: |k| None }
-    }
-
-    /// Gives a `Map<K, V>` whose domain contains every key, and maps each key
-    /// to the value given by `fv`.
-    pub open spec fn total(fv: spec_fn(K) -> V) -> Map<K, V> {
-        Set::full().mk_map(fv)
-    }
-
-    /// Gives a `Map<K, V>` whose domain is given by the boolean predicate on keys `fk`,
-    /// and maps each key to the value given by `fv`.
-    pub open spec fn new(fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V) -> Map<K, V> {
-        Set::new(fk).mk_map(fv)
-    }
-
     /// The domain of the map as a set.
-    pub closed spec fn dom(self) -> Set<K> {
-        Set::new(|k| (self.mapping)(k) is Some)
-    }
+    pub uninterp spec fn dom(self) -> Set<K>;
 
     /// Gets the value that the given key `key` maps to.
     /// For keys not in the domain, the result is meaningless and arbitrary.
-    pub closed spec fn index(self, key: K) -> V
+    pub uninterp spec fn index(self, key: K) -> V
         recommends
             self.dom().contains(key),
-    {
-        (self.mapping)(key)->Some_0
+    ;
+
+    /// Gives a `Map<K, V>` whose domain is given, mapping each key to
+    /// the value given by `fv`.
+    pub uninterp spec fn new(s: Set<K>, fv: spec_fn(K) -> V) -> Map<K, V>;
+
+    /// This axiom says that `Map<K, V>::new` produces a `Map` whose domain
+    /// is given, mapping each key `k` to the value given by `fv(k)`.
+    broadcast axiom fn axiom_new(s: Set<K>, fv: spec_fn(K) -> V)
+        ensures
+            #![trigger Self::new(s, fv)]
+            Self::new(s, fv).dom() == s,
+            forall|k| s.contains(k) ==> #[trigger] Self::new(s, fv)[k] == fv(k),
+    ;
+
+    /// An empty map.
+    pub closed spec fn empty() -> Map<K, V> {
+        Self::new(Set::<K>::empty(), |k| arbitrary())
     }
 
     /// `[]` operator, synonymous with `index`
@@ -80,33 +94,30 @@ impl<K, V> Map<K, V> {
     /// If the key is already present from the map, then its existing value is overwritten
     /// by the new value.
     pub closed spec fn insert(self, key: K, value: V) -> Map<K, V> {
-        Map {
-            mapping: |k|
-                if k == key {
-                    Some(value)
-                } else {
-                    (self.mapping)(k)
-                },
-        }
+        Map::new(self.dom().insert(key), |k| if k == key { value } else { self[k] })
     }
 
     /// Removes the given key and its associated value from the map.
     ///
     /// If the key is already absent from the map, then the map is left unchanged.
     pub closed spec fn remove(self, key: K) -> Map<K, V> {
-        Map {
-            mapping: |k|
-                if k == key {
-                    None
-                } else {
-                    (self.mapping)(k)
-                },
-        }
+        Map::new(self.dom().remove(key), |k| self[k])
     }
 
     /// Returns the number of key-value pairs in the map
     pub open spec fn len(self) -> nat {
         self.dom().len()
+    }
+
+    /// Converts this `Map` into an equivalent `IMap`
+    pub open spec fn to_imap(self) -> IMap<K, V> {
+        IMap::new(|k| self.dom().contains(k), |k| self[k])
+    }
+
+    /// Indicates if this `Map` is equivalent to the given `IMap`.
+    pub open spec fn congruent(self, m2: IMap<K, V>) -> bool {
+        &&& self.dom().congruent(m2.dom())
+        &&& forall|k| #[trigger] self.dom().contains(k) ==> self[k] == m2[k]
     }
 
     /// Create an empty tracked map.
@@ -210,119 +221,101 @@ impl<K, V> Map<K, V> {
 }
 
 // Trusted axioms
-/* REVIEW: this is simpler than the two separate axioms below -- would this be ok?
 pub broadcast axiom fn axiom_map_index_decreases<K, V>(m: Map<K, V>, key: K)
     requires
         m.dom().contains(key),
     ensures
         #[trigger](decreases_to!(m => m[key]));
-*/
 
-pub broadcast axiom fn axiom_map_index_decreases_finite<K, V>(m: Map<K, V>, key: K)
-    requires
-        m.dom().finite(),
-        m.dom().contains(key),
+/// Since `Map::new` is uninterpret, this broadcast lemma is needed to establish
+/// that it produces a map with the given set as its domain.
+pub broadcast proof fn lemma_map_new_domain<K, V>(s: Set<K>, fv: spec_fn(K) -> V)
     ensures
-        #[trigger] (decreases_to!(m => m[key])),
-;
+        #![trigger Map::new(s, fv)]
+        Map::new(s, fv).dom() == s,
+{
+    broadcast use Map::axiom_new;
+}
 
-// REVIEW: this is currently a special case that is hard-wired into the verifier
-// It implements a version of https://github.com/FStarLang/FStar/pull/2954 .
-pub broadcast axiom fn axiom_map_index_decreases_infinite<K, V>(m: Map<K, V>, key: K)
+/// Since `Map::new` is closed, this broadcast lemma is needed to establish
+/// that it produces a map that maps elements using the given function.
+pub broadcast proof fn lemma_map_new_index<K, V>(s: Set<K>, fv: spec_fn(K) -> V, k: K)
     requires
-        m.dom().contains(key),
+        s.contains(k),
     ensures
-        #[trigger] is_smaller_than_recursive_function_field(m[key], m),
-;
+        #![trigger Map::new(s, fv)[k]]
+        Map::new(s, fv)[k] == fv(k)
+{
+    broadcast use Map::axiom_new;
+}
 
 /// The domain of the empty map is the empty set
-pub broadcast proof fn axiom_map_empty<K, V>()
+pub broadcast proof fn lemma_map_empty<K, V>()
     ensures
         #[trigger] Map::<K, V>::empty().dom() == Set::<K>::empty(),
 {
-    broadcast use super::set::group_set_axioms;
-
-    assert(Set::new(|k: K| (|k| None::<V>)(k) is Some) == Set::<K>::empty());
+    broadcast use Map::axiom_new;
 }
 
 /// The domain of a map after inserting a key-value pair is equivalent to inserting the key into
 /// the original map's domain set.
-pub broadcast proof fn axiom_map_insert_domain<K, V>(m: Map<K, V>, key: K, value: V)
+pub broadcast proof fn lemma_map_insert_domain<K, V>(m: Map<K, V>, key: K, value: V)
     ensures
         #[trigger] m.insert(key, value).dom() == m.dom().insert(key),
 {
-    broadcast use super::set::group_set_axioms;
-
-    assert(m.insert(key, value).dom() =~= m.dom().insert(key));
+    broadcast use Map::axiom_new;
 }
 
 /// Inserting `value` at `key` in `m` results in a map that maps `key` to `value`
-pub broadcast proof fn axiom_map_insert_same<K, V>(m: Map<K, V>, key: K, value: V)
+pub broadcast proof fn lemma_map_insert_same<K, V>(m: Map<K, V>, key: K, value: V)
     ensures
         #[trigger] m.insert(key, value)[key] == value,
 {
+    broadcast use Map::axiom_new;
 }
 
-/// Inserting `value` at `key2` does not change the value mapped to by any other keys in `m`
-pub broadcast proof fn axiom_map_insert_different<K, V>(m: Map<K, V>, key1: K, key2: K, value: V)
+/// Inserting `value` at `key2` does not change the value mapped to by any other keys in `m`.
+/// This has to be an axiom because normally constructing a new map sets values outside
+/// the domain to arbitrary values.
+pub broadcast axiom fn axiom_map_insert_different<K, V>(m: Map<K, V>, key1: K, key2: K, value: V)
     requires
         key1 != key2,
     ensures
         #[trigger] m.insert(key2, value)[key1] == m[key1],
-{
-}
+;
 
 /// The domain of a map after removing a key-value pair is equivalent to removing the key from
 /// the original map's domain set.
-pub broadcast proof fn axiom_map_remove_domain<K, V>(m: Map<K, V>, key: K)
+pub broadcast proof fn lemma_map_remove_domain<K, V>(m: Map<K, V>, key: K)
     ensures
         #[trigger] m.remove(key).dom() == m.dom().remove(key),
 {
-    broadcast use super::set::group_set_axioms;
-
-    assert(m.remove(key).dom() =~= m.dom().remove(key));
+    broadcast use Map::axiom_new;
 }
 
 /// Removing a key-value pair from a map does not change the value mapped to by
 /// any other keys in the map.
-pub broadcast proof fn axiom_map_remove_different<K, V>(m: Map<K, V>, key1: K, key2: K)
+/// This has to be an axiom because normally constructing a new map sets values outside
+/// the domain to arbitrary values.
+pub broadcast axiom fn axiom_map_remove_different<K, V>(m: Map<K, V>, key1: K, key2: K)
     requires
         key1 != key2,
     ensures
         #[trigger] m.remove(key2)[key1] == m[key1],
-{
-}
+;
 
 /// Two maps are equivalent if their domains are equivalent and every key in their domains map to the same value.
-pub broadcast proof fn axiom_map_ext_equal<K, V>(m1: Map<K, V>, m2: Map<K, V>)
+pub broadcast axiom fn axiom_map_ext_equal<K, V>(m1: Map<K, V>, m2: Map<K, V>)
     ensures
         #[trigger] (m1 =~= m2) <==> {
             &&& m1.dom() =~= m2.dom()
             &&& forall|k: K| #![auto] m1.dom().contains(k) ==> m1[k] == m2[k]
         },
-{
-    broadcast use super::set::group_set_axioms;
+;
 
-    if m1 =~= m2 {
-        assert(m1.dom() =~= m2.dom());
-        assert(forall|k: K| #![auto] m1.dom().contains(k) ==> m1[k] == m2[k]);
-    }
-    if ({
-        &&& m1.dom() =~= m2.dom()
-        &&& forall|k: K| #![auto] m1.dom().contains(k) ==> m1[k] == m2[k]
-    }) {
-        if m1.mapping != m2.mapping {
-            assert(exists|k| #[trigger] (m1.mapping)(k) != (m2.mapping)(k));
-            let k = choose|k| #[trigger] (m1.mapping)(k) != (m2.mapping)(k);
-            if m1.dom().contains(k) {
-                assert(m1[k] == m2[k]);
-            }
-            assert(false);
-        }
-        assert(m1 =~= m2);
-    }
-}
-
+/// Two maps are deeply equivalent if their domains are equivalent and
+/// every key in their domains map to values that are deeply
+/// equivalent.
 pub broadcast proof fn axiom_map_ext_equal_deep<K, V>(m1: Map<K, V>, m2: Map<K, V>)
     ensures
         #[trigger] (m1 =~~= m2) <==> {
@@ -333,14 +326,15 @@ pub broadcast proof fn axiom_map_ext_equal_deep<K, V>(m1: Map<K, V>, m2: Map<K, 
     axiom_map_ext_equal(m1, m2);
 }
 
-pub broadcast group group_map_axioms {
-    axiom_map_index_decreases_finite,
-    axiom_map_index_decreases_infinite,
-    axiom_map_empty,
-    axiom_map_insert_domain,
-    axiom_map_insert_same,
+pub broadcast group group_map_lemmas {
+    axiom_map_index_decreases,
+    lemma_map_new_domain,
+    lemma_map_new_index,
+    lemma_map_empty,
+    lemma_map_insert_domain,
+    lemma_map_insert_same,
     axiom_map_insert_different,
-    axiom_map_remove_domain,
+    lemma_map_remove_domain,
     axiom_map_remove_different,
     axiom_map_ext_equal,
     axiom_map_ext_equal_deep,
