@@ -254,9 +254,47 @@ pub ghost enum MemContents<T> {
     Init(ghost T),
 }
 
+/// If the memory is initialized, then the bytes must decode into the given value in memory.
+/// If the memory is uninitialized, then the bytes can be anything.
+pub broadcast axiom fn abs_decode_mem_contents<T>(bytes: Seq<AbstractByte>, value: MemContents<T>)
+    ensures
+        bytes.len() == size_of::<T>(),
+        #[trigger] abs_decode::<MemContents<T>>(bytes, &value) <==> (match value {
+            MemContents::Uninit => true,
+            MemContents::Init(t) => abs_decode::<T>(bytes, &t),
+        }),
+;
+
+/// If the memory is initialized, then the bytes must decode into the given value in memory.
+/// If the memory is uninitialized, then the bytes can be anything.
+pub broadcast axiom fn abs_decode_mem_contents_unsized<T: ?Sized>(
+    bytes: Seq<AbstractByte>,
+    value: MemContents<&T>,
+)
+    ensures
+        #[trigger] abs_decode::<MemContents<&T>>(bytes, &value) <==> (match value {
+            MemContents::Uninit => true,
+            MemContents::Init(t) => abs_decode::<T>(bytes, t),
+        }),
+;
+
+/// Represents that the given (typed) value exists in memory.
+/// Used for casting between typed and untyped views of memory.
+#[verifier::external_body]
+#[verifier::reject_recursive_types(T)]
+pub tracked struct TypedMemory<T> {
+    phantom: core::marker::PhantomData<T>,
+    no_copy: NoCopy,
+}
+
+impl<T> TypedMemory<T> {
+    /// The value in memory.
+    pub uninterp spec fn contents(&self) -> MemContents<T>;
+}
+
 /// Data associated with a `PointsTo` permission.
-/// We keep track of both the pointer and the (potentially uninitialized) value
-/// it points to.
+/// We keep track of both the pointer, the (potentially uninitialized) value
+/// it points to, and the abstract bytes in memory corresponding to Rust's abstract machine.
 ///
 /// If `mem_contents` is `Init(T)`, this signifies that `ptr` points to initialized memory,
 /// and the value of `mem_contents` is consistent with the bytes `ptr` points to,
@@ -269,6 +307,7 @@ pub ghost enum MemContents<T> {
 pub ghost struct PointsToData<T> {
     pub ptr: *mut T,
     pub mem_contents: MemContents<T>,
+    pub abstract_bytes: Seq<AbstractByte>,
 }
 
 #[cfg(verus_keep_ghost)]
@@ -318,7 +357,11 @@ impl<T> View for PointsTo<T> {
     type V = PointsToData<T>;
 
     open spec fn view(&self) -> Self::V {
-        PointsToData { ptr: self.ptr(), mem_contents: self.mem_contents() }
+        PointsToData {
+            ptr: self.ptr(),
+            mem_contents: self.mem_contents(),
+            abstract_bytes: self.abstract_bytes(),
+        }
     }
 }
 
@@ -356,7 +399,11 @@ impl<T> View for PointsToUnaligned<T> {
     type V = PointsToData<T>;
 
     open spec fn view(&self) -> Self::V {
-        PointsToData { ptr: self.ptr(), mem_contents: self.mem_contents() }
+        PointsToData {
+            ptr: self.ptr(),
+            mem_contents: self.mem_contents(),
+            abstract_bytes: self.abstract_bytes(),
+        }
     }
 }
 
@@ -479,6 +526,42 @@ impl<T> PointsTo<T> {
     {
         &self.inner
     }
+
+    /// Invariant: The abstract bytes must decode into the value in memory.
+    pub broadcast axiom fn abstract_bytes_decode(&self)
+        ensures
+            #[trigger] abs_decode::<MemContents<T>>(self.abstract_bytes(), &self.mem_contents()),
+    ;
+
+    pub broadcast proof fn abstract_bytes_len(&self)
+        ensures
+            #[trigger] self.abstract_bytes().len() == size_of::<T>(),
+    {
+        broadcast use abs_decode_mem_contents;
+
+        self.abstract_bytes_decode();
+    }
+
+    /// A `PointsTo<T>` can always be cast to a logically uninitialized `PointsTo<[u8]>`, an untyped view of this memory.
+    /// The `mem_contents_seq()` on the resulting permission is fully uninitialized, meaning that the permission cannot be used to read `u8` values from this memory.
+    ///
+    /// The abstract bytes remain the same. This preserves the typed contents in memory on a roundtrip cast (see `PointsTo<[u8]>::cast_to_typed`).
+    /// Note that this means provenance is not lost, which matches Rust's semantics for casting/transmuting in-memory values.
+    ///
+    /// This axiom also returns a `TypedMemory<T>`, which is intended to be used with `PointsTo<[u8]>::cast_to_typed` in order to maintain the contents of the memory on a roundtrip.
+    /// The `TypedMemory<T>` permission prohibits creating permission-carrying types out of thin air, i.e. in the case where `T` is a type that stores/represents a permission (e.g., shared references).
+    pub axiom fn cast_to_untyped(tracked self) -> (tracked (dst, typed_memory): (
+        PointsTo<[u8]>,
+        TypedMemory<T>,
+    ))
+        ensures
+            self.abstract_bytes() == dst.abstract_bytes(),
+            dst.is_fully_uninit(),
+            self.ptr()@.addr == dst.ptr()@.addr,
+            self.ptr()@.provenance == dst.ptr()@.provenance,
+            size_of::<T>() == dst.ptr()@.metadata,
+            typed_memory.contents() == self.mem_contents(),
+    ;
 }
 
 impl<T> PointsToUnaligned<T> {
@@ -583,18 +666,6 @@ impl<T> PointsToUnaligned<T> {
             perm.mem_contents() == self.mem_contents(),
     ;
 }
-
-/// The length of `abstract_bytes()` must match the size of the type.
-pub broadcast axiom fn axiom_pt_abstract_bytes_len<T>(pt: PointsTo<T>)
-    ensures
-        #[trigger] pt.abstract_bytes().len() == size_of::<T>(),
-;
-
-/// The length of `abstract_bytes()` must match the size of this slice.
-pub broadcast axiom fn axiom_pt_slice_abstract_bytes_len<T>(pt: PointsTo<[T]>)
-    ensures
-        #[trigger] pt.abstract_bytes().len() == size_of::<T>() * pt.mem_contents_seq().len(),
-;
 
 /// The length of `mem_contents_seq()` should always match the pointer's metadata.
 pub broadcast axiom fn axiom_pt_slice_len<T>(pt: PointsTo<[T]>)
@@ -1035,6 +1106,20 @@ impl<T> PointsTo<[T]> {
             final(perm).mem_contents_seq() == final(self).mem_contents_seq(),
     ;
 
+    /// Invariant: For all elements in this slice of memory, the corresponding abstract bytes must decode into the value in memory.
+    pub axiom fn abstract_bytes_decode(&self)
+        ensures
+            forall|i: int|
+                0 <= i < self.mem_contents_seq().len() ==> #[trigger] abs_decode::<MemContents<T>>(
+                    self.abstract_bytes().subrange(
+                        i * layout::size_of::<T>(),
+                        (i + 1) * layout::size_of::<T>(),
+                    ),
+                    &self.mem_contents_seq()[i],
+                ),
+            self.abstract_bytes().len() == self.mem_contents_seq().len() * layout::size_of::<T>(),
+    ;
+
     /// We can always convert a `PointsTo<[T]>` into a `MapPointsTo<T>` for the same pointer,
     /// whose keys are the valid slice indices
     /// and whose values are individual `PointsTo<T>` with the same memory contents.
@@ -1163,6 +1248,46 @@ impl<T> PointsTo<[T]> {
         use_type_invariant(&*self);
         self.inner.into_seq_pt_mut()
     }
+}
+
+impl PointsTo<[u8]> {
+    /// A `PointsTo<[u8]>` can be cast to an initialized `PointsTo<T>` when the abstract bytes can be
+    /// decoded into the given `TypedMemory<T>` and the pointer for this permission is of the expected length.
+    /// The resulting permission will take on the value in memory from the given `TypedMemory<T>`.
+    ///
+    /// The abstract bytes remain the same. This preserves the typed contents in memory on a roundtrip cast (see `PointsTo<T>::cast_to_untyped`).
+    /// Note that this means provenance is not lost, which matches Rust's semantics for casting/transmuting in-memory values.
+    ///
+    /// The `typed_memory` permission prohibits creating permission-carrying types out of thin air, in the case where `T` is a type that stores/represents a permission (e.g., shared references).
+    /// The only way to obtain a `tracked TypedMemory<T>` is via the `PointsTo<T>::cast_to_untyped` axiom.
+    /// This ensures that `typed_memory` in fact corresponds to actual values in memory.
+    pub axiom fn cast_to_typed<T>(
+        tracked self,
+        tracked typed_memory: TypedMemory<T>,
+    ) -> (tracked dst: PointsTo<T>)
+        requires
+            abs_decode::<MemContents<T>>(self.abstract_bytes(), &typed_memory.contents()),
+            size_of::<T>() == self.ptr()@.metadata,
+        ensures
+            self.abstract_bytes() == dst.abstract_bytes(),
+            dst.mem_contents() == typed_memory.contents(),
+            self.ptr() as *mut T == dst.ptr(),
+    ;
+
+    /// A `PointsTo<[u8]>` can always be cast to a logically uninitialized `PointsTo<T>`.
+    /// The `mem_contents_seq()` on the resulting permission is uninitialized, meaning that the permission cannot
+    /// be used to read `T` values from this memory.
+    ///
+    /// The abstract bytes remain the same.
+    /// Note that this means provenance is not lost, which matches Rust's semantics for transmuting in-memory values.
+    pub axiom fn cast_to_typed_uninit<T>(tracked self) -> (tracked dst: PointsTo<T>)
+        requires
+            size_of::<T>() == self.ptr()@.metadata,
+        ensures
+            self.abstract_bytes() == dst.abstract_bytes(),
+            dst.mem_contents().is_uninit(),
+            self.ptr() as *mut T == dst.ptr(),
+    ;
 }
 
 // PointsToUnaligned<[T]>: the unaligned slice permission that PointsTo<[T]> delegates to.
@@ -1550,6 +1675,12 @@ impl PointsTo<str> {
         ensures
             self.ptr()@.addr as int % spec_align_of_val::<str>(self.value()) as int == 0,
     ;
+
+    /// Invariant: The corresponding abstract bytes must decode into the value in memory.
+    pub axiom fn abstract_bytes_decode(&self)
+        ensures
+            abs_decode::<MemContents<&str>>(self.abstract_bytes(), &self.mem_contents()),
+    ;
 }
 
 pub tracked struct SeqPointsTo<T> {
@@ -1867,7 +1998,7 @@ impl<T> SeqPointsTo<T> {
 
         if perms.len() > 0 {
             Self::abstract_bytes_len_helper(perms.drop_last());
-            axiom_pt_abstract_bytes_len(perms.last());
+            perms.last().abstract_bytes_len();
             assert((perms.len() - 1) * layout::size_of::<T>() + layout::size_of::<T>()
                 == perms.len() * layout::size_of::<T>()) by (nonlinear_arith);
         }
@@ -1983,9 +2114,10 @@ impl<T> SeqPointsTo<T> {
             self.wf(),
         ensures
             forall|i: int|
-                0 <= i < len && self.mem_contents()[i].is_init() ==> #[trigger] abs_decode::<
-                    MemContents<T>,
-                >(self.seq_perm()[i].abstract_bytes(), &self.mem_contents()[i]),
+                0 <= i < len ==> #[trigger] abs_decode::<MemContents<T>>(
+                    self.seq_perm()[i].abstract_bytes(),
+                    &self.mem_contents()[i],
+                ),
         decreases len,
     {
         broadcast use group_vstd_default;
@@ -1997,15 +2129,13 @@ impl<T> SeqPointsTo<T> {
         }
     }
 
-    /// For all initialized positions in this sequence, the abstract bytes for that position can be decoded into the value in memory at that position.
+    /// For all positions in this sequence, the abstract bytes for that position can be decoded into the value in memory at that position.
     pub proof fn abstract_bytes_decode(&self)
         requires
             self.wf(),
         ensures
             forall|i: int|
-                0 <= i < self.len() && self.mem_contents()[i].is_init() ==> #[trigger] abs_decode::<
-                    MemContents<T>,
-                >(
+                0 <= i < self.len() ==> #[trigger] abs_decode::<MemContents<T>>(
                     self.abstract_bytes().subrange(
                         i * layout::size_of::<T>(),
                         (i + 1) * layout::size_of::<T>(),
@@ -2016,10 +2146,7 @@ impl<T> SeqPointsTo<T> {
         broadcast use SeqPointsTo::abstract_bytes_equiv;
 
         self.abstract_bytes_decode_helper(self.len() as int);
-        assert forall|i: int|
-            0 <= i < self.len() && self.mem_contents()[i].is_init() implies #[trigger] abs_decode::<
-            MemContents<T>,
-        >(
+        assert forall|i: int| 0 <= i < self.len() implies #[trigger] abs_decode::<MemContents<T>>(
             self.abstract_bytes().subrange(
                 i * layout::size_of::<T>(),
                 (i + 1) * layout::size_of::<T>(),
@@ -2036,9 +2163,9 @@ impl<T> SeqPointsTo<T> {
     /// Casting a `SeqPointsTo<T>` to a `SeqPointsTo<u8>` casts the pointer,
     /// multiplies the length by `size_of::<T>()`, and preserves the abstract bytes.
     /// The resulting `SeqPointsTo<u8>` is logically uninitialized, so it cannot be read from.
-    pub proof fn cast_to_u8_uninit(tracked self) -> (tracked (dst, mem_contents): (
+    pub proof fn cast_to_untyped(tracked self) -> (tracked (dst, typed_memory): (
         SeqPointsTo<u8>,
-        Seq<MemContents<T>>,
+        Seq<TypedMemory<T>>,
     ))
         requires
             self.wf(),
@@ -2046,8 +2173,11 @@ impl<T> SeqPointsTo<T> {
             dst.ptr() == self.ptr() as *mut u8,
             dst.len() == self.len() * layout::size_of::<T>(),
             dst.abstract_bytes() == self.abstract_bytes(),
+            forall|i|
+                0 <= i < self.len() ==> #[trigger] typed_memory[i].contents()
+                    == self.mem_contents()[i],
+            typed_memory.len() == self.len(),
             dst.wf(),
-            mem_contents == self.mem_contents(),
         decreases self.len(),
     {
         broadcast use
@@ -2064,9 +2194,9 @@ impl<T> SeqPointsTo<T> {
             let tracked (head, mut tail) = self.split((self.len() - 1) as nat);
             let tracked (tail_u8_slice, tail_mem_contents) = tail.perm.tracked_remove(
                 0,
-            ).transmute_to_u8_uninit();
+            ).cast_to_untyped();
             let tracked tail_u8 = tail_u8_slice.into_seq_pt();
-            let tracked (head_u8, mut head_mem_contents) = head.cast_to_u8_uninit();
+            let tracked (head_u8, mut head_mem_contents) = head.cast_to_untyped();
             head_mem_contents.tracked_push(tail_mem_contents);
             assert(layout::size_of::<T>() + (self.len() - 1) * layout::size_of::<T>() == self.len()
                 * layout::size_of::<T>()) by (nonlinear_arith);
@@ -2214,20 +2344,19 @@ impl SeqPointsTo<u8> {
     pub proof fn cast_to_typed<T>(
         tracked self,
         capacity: usize,
-        tracked mem_contents: Seq<MemContents<T>>,
+        tracked typed_memory: Seq<TypedMemory<T>>,
     ) -> (tracked out: SeqPointsTo<T>)
         requires
             self.ptr()@.addr as nat % align_of::<T>() == 0,
             self.len() == capacity * layout::size_of::<T>(),
-            mem_contents.len() <= capacity,
+            typed_memory.len() <= capacity,
             forall|i: int|
-                0 <= i < mem_contents.len() && mem_contents[i].is_init()
-                    ==> #[trigger] abs_decode::<MemContents<T>>(
+                0 <= i < typed_memory.len() ==> #[trigger] abs_decode::<MemContents<T>>(
                     self.abstract_bytes().subrange(
                         i * layout::size_of::<T>(),
                         (i + 1) * layout::size_of::<T>(),
                     ),
-                    &mem_contents[i],
+                    &typed_memory[i].contents(),
                 ),
             self.wf(),
         ensures
@@ -2235,8 +2364,8 @@ impl SeqPointsTo<u8> {
             out.len() == capacity,
             out.abstract_bytes() == self.abstract_bytes(),
             forall|i: int|
-                0 <= i < mem_contents.len() && mem_contents[i].is_init()
-                    ==> #[trigger] out.mem_contents()[i] == mem_contents[i],
+                0 <= i < typed_memory.len() ==> #[trigger] out.mem_contents()[i]
+                    == typed_memory[i].contents(),
             out.wf(),
         decreases capacity,
     {
@@ -2267,23 +2396,27 @@ impl SeqPointsTo<u8> {
                 (capacity - 1) as nat * layout::size_of::<T>(),
             );
 
-            // transmute the tail into either an init or uninit permission, depending on mem_contents
-            let tracked mut head_mem_contents = mem_contents;
-            let tracked mut tail_mem_contents_opt;
-            if mem_contents.len() == capacity {
-                tail_mem_contents_opt = Some(head_mem_contents.tracked_pop());
+            // cast the tail into either an init or uninit permission, depending on typed_memory
+            let tracked mut head_typed_memory = typed_memory;
+            let tracked mut tail_typed_memory_opt;
+            if typed_memory.len() == capacity {
+                tail_typed_memory_opt = Some(head_typed_memory.tracked_pop());
             } else {
-                tail_mem_contents_opt = None;
+                tail_typed_memory_opt = None;
             }
             let tracked tail_slice = seq_into_slice(tail);
             assert(layout::size_of::<T>() == (capacity - 1 + 1) * layout::size_of::<T>() - (capacity
                 - 1) * layout::size_of::<T>()) by (nonlinear_arith);
             let tracked tail_pt;
-            if mem_contents.len() == capacity && mem_contents[capacity - 1].is_init() {
-                let tracked tail_mem_contents = tail_mem_contents_opt.tracked_take();
-                tail_pt = tail_slice.transmute_to_typed(tail_mem_contents);
+            if typed_memory.len() == capacity && typed_memory[capacity - 1].contents().is_init() {
+                let tracked tail_typed_memory = tail_typed_memory_opt.tracked_take();
+                tail_pt = tail_slice.cast_to_typed(tail_typed_memory);
+                assert(tail_pt.mem_contents() == typed_memory[capacity - 1].contents());
             } else {
-                tail_pt = tail_slice.transmute_to_typed_uninit();
+                tail_pt = tail_slice.cast_to_typed_uninit();
+                if typed_memory.len() == capacity {
+                    assert(tail_pt.mem_contents() == typed_memory[capacity - 1].contents());
+                }
             }
             let tracked mut tail_perm = Seq::tracked_empty();
             tail_perm.tracked_push(tail_pt);
@@ -2311,14 +2444,19 @@ impl SeqPointsTo<u8> {
                     (i + 1) * layout::size_of::<T>(),
                 );
             }
-            let tracked head_typed = head.cast_to_typed((capacity - 1) as usize, head_mem_contents);
+            let tracked head_typed = head.cast_to_typed((capacity - 1) as usize, head_typed_memory);
+            assert(forall|i: int|
+                0 <= i < head_typed_memory.len() ==> head_typed.mem_contents()[i]
+                    == #[trigger] head_typed_memory[i].contents());
 
             // join head and tail
             let tracked res = head_typed.join(tail_typed);
             assert(res.mem_contents() == head_typed.mem_contents() + tail_typed.mem_contents());
-            if mem_contents.len() == capacity && mem_contents[capacity - 1].is_init() {
-                // assert(head_typed.mem_contents() == new_mem_contents);
-                assert(tail_typed.mem_contents()[0] == mem_contents.last());
+            if typed_memory.len() == capacity {
+                assert(tail_typed.mem_contents()[0] == typed_memory.last().contents());
+                assert(forall|i: int|
+                    0 <= i < typed_memory.len() - 1 ==> head_typed_memory[i].contents()
+                        == #[trigger] typed_memory[i].contents());
             }
             res
         }
@@ -3118,9 +3256,6 @@ pub broadcast group group_raw_ptr_axioms {
     ptrs_mut_eq,
     ptrs_mut_eq_sized,
     axiom_pt_slice_len,
-    axiom_pt_abstract_bytes_len,
-    axiom_pt_slice_abstract_bytes_len,
-    SeqPointsTo::abstract_bytes_len,
     group_provenance_properties,
 }
 
