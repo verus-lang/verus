@@ -9,9 +9,9 @@ verus! {
 
 #[verifier::ext_equal]
 #[verifier::accept_recursive_types(A)]
-enum SeqInner<A> {
+tracked enum SeqInner<A> {
     Nil,
-    Cons { head: A, tail: Box<SeqInner<A>> },
+    Cons { head: A, tail: Ghost<SeqInner<A>> },
 }
 
 // This indirection is required to show the termination of `Seq::len`
@@ -55,10 +55,10 @@ impl<A> SeqInner<A> {
         decreases self.len(),
     {
         match self {
-            SeqInner::Nil => SeqInner::Cons { head: a, tail: Box::new(SeqInner::Nil) },
+            SeqInner::Nil => SeqInner::Cons { head: a, tail: Ghost(SeqInner::Nil) },
             SeqInner::Cons { head, tail } => {
                 let new_tail = tail.push(a);
-                SeqInner::Cons { head, tail: Box::new(new_tail) }
+                SeqInner::Cons { head, tail: Ghost(new_tail) }
             },
         }
     }
@@ -77,7 +77,7 @@ impl<A> SeqInner<A> {
                     SeqInner::Cons { head: a, tail }
                 } else {
                     let new_tail = tail.update(i - 1, a);
-                    SeqInner::Cons { head, tail: Box::new(new_tail) }
+                    SeqInner::Cons { head, tail: Ghost(new_tail) }
                 },
             }
         }
@@ -102,7 +102,7 @@ impl<A> SeqInner<A> {
                     SeqInner::Nil
                 } else {
                     let new_tail = tail.subrange(start_inclusive, end_exclusive - 1);
-                    SeqInner::Cons { head, tail: Box::new(new_tail) }
+                    SeqInner::Cons { head, tail: Ghost(new_tail) }
                 }
             },
         }
@@ -115,7 +115,7 @@ impl<A> SeqInner<A> {
             SeqInner::Nil => rhs,
             SeqInner::Cons { head, tail } => {
                 let new_tail = tail.add(rhs);
-                SeqInner::Cons { head, tail: Box::new(new_tail) }
+                SeqInner::Cons { head, tail: Ghost(new_tail) }
             },
         }
     }
@@ -398,9 +398,9 @@ proof fn lemma_seq_inner_index_decreases<A>(s: SeqInner<A>, i: int)
                 assert(decreases_to!(s => s[i]));
             } else {
                 assert(tail[i - 1] == s[i]);
-                lemma_seq_inner_index_decreases(*tail, i - 1);
-                assert(decreases_to!(s => *tail));
-                assert(decreases_to!(*tail => tail[i-1]));
+                lemma_seq_inner_index_decreases(tail@, i - 1);
+                assert(decreases_to!(s => tail@));
+                assert(decreases_to!(tail@ => tail[i-1]));
             }
         },
     }
@@ -453,7 +453,7 @@ pub broadcast proof fn axiom_seq_empty<A>()
             assert(s == Seq { inner: SeqInner::Nil });
         },
         SeqInner::Cons { tail, .. } => {
-            let seq_tail = Seq { inner: *tail };
+            let seq_tail = Seq { inner: tail@ };
             assert(s.len() == 1 + seq_tail.len());
             assert(s.len() > 0);
         },
@@ -519,7 +519,7 @@ proof fn lemma_seq_inner_push_len<A>(s: SeqInner<A>, a: A)
     match s {
         SeqInner::Nil => {},
         SeqInner::Cons { tail, .. } => {
-            lemma_seq_inner_push_len(*tail, a);
+            lemma_seq_inner_push_len(tail@, a);
         },
     }
 }
@@ -540,11 +540,11 @@ proof fn lemma_seq_inner_push_index_same<A>(s: SeqInner<A>, a: A, i: int)
 {
     match s {
         SeqInner::Nil => {
-            assert(s.push(a) == SeqInner::Cons { head: a, tail: Box::new(SeqInner::Nil) });
+            assert(s.push(a) == SeqInner::Cons { head: a, tail: Ghost(SeqInner::Nil) });
             assert(s.push(a)[0] == a);
         },
         SeqInner::Cons { tail, .. } => {
-            lemma_seq_inner_push_index_same(*tail, a, i - 1);
+            lemma_seq_inner_push_index_same(tail@, a, i - 1);
         },
     }
 }
@@ -568,7 +568,7 @@ proof fn lemma_seq_inner_index_out_of_bounds<A>(s: SeqInner<A>, i: int)
     match s {
         SeqInner::Nil => {},
         SeqInner::Cons { tail, .. } => {
-            lemma_seq_inner_index_out_of_bounds(*tail, i - 1);
+            lemma_seq_inner_index_out_of_bounds(tail@, i - 1);
         },
     }
 }
@@ -587,7 +587,7 @@ proof fn lemma_seq_inner_push_index_different<A>(s: SeqInner<A>, a: A, i: int)
         SeqInner::Cons { tail, .. } => {
             if i == 0 {
             } else {
-                lemma_seq_inner_push_index_different(*tail, a, i - 1);
+                lemma_seq_inner_push_index_different(tail@, a, i - 1);
             }
         },
     }
@@ -631,7 +631,7 @@ proof fn lemma_seq_inner_update_len<A>(s: SeqInner<A>, i: int, a: A)
                         if i == 0 {
                             assert(head_upd == a);
                         } else {
-                            lemma_seq_inner_update_len(*tail, (i - 1), a);
+                            lemma_seq_inner_update_len(tail@, (i - 1), a);
                         }
                     },
                 }
@@ -661,7 +661,7 @@ proof fn lemma_seq_inner_update_index_same<A>(s: SeqInner<A>, i: int, a: A)
             if i == 0 {
                 assert(s.update(i, a)[i] == a)
             } else {
-                lemma_seq_inner_update_index_same(*tail, i - 1, a);
+                lemma_seq_inner_update_index_same(tail@, i - 1, a);
             }
         },
     }
@@ -706,7 +706,7 @@ proof fn lemma_seq_inner_update_index_different<A>(s: SeqInner<A>, i1: int, i2: 
                 } else if i1 == 0 {
                     assert(s.update(i2, a)[i1] == s[i1]);
                 } else {
-                    lemma_seq_inner_update_index_different(*tail, i1 - 1, i2 - 1, a);
+                    lemma_seq_inner_update_index_different(tail@, i1 - 1, i2 - 1, a);
                 }
             },
         }
@@ -746,7 +746,7 @@ pub broadcast proof fn axiom_seq_ext_equal<A>(s1: Seq<A>, s2: Seq<A>)
             assert(s1.len() == s2.len() <==> s1 =~= s2);
         },
         SeqInner::Cons { head: head1, tail: tail1 } => {
-            let seq_tail1 = Seq { inner: *tail1 };
+            let seq_tail1 = Seq { inner: tail1@ };
 
             match s2.inner {
                 SeqInner::Nil => {
@@ -756,7 +756,7 @@ pub broadcast proof fn axiom_seq_ext_equal<A>(s1: Seq<A>, s2: Seq<A>)
                     if head1 != head2 {
                         assert(s1[0] != s2[0]);
                     } else {
-                        let seq_tail2 = Seq { inner: *tail2 };
+                        let seq_tail2 = Seq { inner: tail2@ };
                         axiom_seq_ext_equal(seq_tail1, seq_tail2);
                         if seq_tail1 =~= seq_tail2 {
                             assert(s1.len() == seq_tail1.len() + 1 == seq_tail2.len() + 1
@@ -796,7 +796,7 @@ pub broadcast proof fn axiom_seq_ext_equal_deep<A>(s1: Seq<A>, s2: Seq<A>)
             assert(s1.len() == s2.len() <==> s1 =~~= s2);
         },
         SeqInner::Cons { head: head1, tail: tail1 } => {
-            let seq_tail1 = Seq { inner: *tail1 };
+            let seq_tail1 = Seq { inner: tail1@ };
 
             match s2.inner {
                 SeqInner::Nil => {
@@ -806,7 +806,7 @@ pub broadcast proof fn axiom_seq_ext_equal_deep<A>(s1: Seq<A>, s2: Seq<A>)
                     if head1 != head2 {
                         assert(s1[0] != s2[0]);
                     } else {
-                        let seq_tail2 = Seq { inner: *tail2 };
+                        let seq_tail2 = Seq { inner: tail2@ };
                         axiom_seq_ext_equal(seq_tail1, seq_tail2);
                         if seq_tail1 =~~= seq_tail2 {
                             assert(s1.len() == seq_tail1.len() + 1 == seq_tail2.len() + 1
@@ -846,12 +846,12 @@ proof fn lemma_seq_inner_subrange_len<A>(s: SeqInner<A>, j: int, k: int)
         SeqInner::Cons { head, tail } => {
             if j > 0 {
                 assert(s.subrange(j, k) == tail.subrange(j - 1, k - 1));
-                lemma_seq_inner_subrange_len(*tail, j - 1, k - 1);
+                lemma_seq_inner_subrange_len(tail@, j - 1, k - 1);
             } else if k > 0 {
-                let new_tail = tail.subrange(j, k - 1);
-                lemma_seq_inner_subrange_len(*tail, j, k - 1);
+                let new_tail = tail@.subrange(j, k - 1);
+                lemma_seq_inner_subrange_len(tail@, j, k - 1);
                 assert(new_tail.len() == k - j - 1);
-                let sub = SeqInner::Cons { head, tail: Box::new(new_tail) };
+                let sub = SeqInner::Cons { head, tail: Ghost(new_tail) };
                 assert(sub.len() == 1 + new_tail.len());
             } else {
                 assert(j == k == 0);
@@ -890,7 +890,7 @@ proof fn lemma_seq_inner_subrange_index_aux<A>(s: SeqInner<A>, k: int, i: int)
                 // assert(s[0] == head);
                 assert(s.subrange(0, k)[0] == head);
             } else {
-                lemma_seq_inner_subrange_index_aux(*tail, k - 1, i - 1);
+                lemma_seq_inner_subrange_index_aux(tail@, k - 1, i - 1);
             }
         },
     }
@@ -913,7 +913,7 @@ proof fn lemma_seq_inner_subrange_index<A>(s: SeqInner<A>, j: int, k: int, i: in
                 assert(false);
             },
             SeqInner::Cons { head, tail } => {
-                lemma_seq_inner_subrange_index(*tail, j - 1, k - 1, i);
+                lemma_seq_inner_subrange_index(tail@, j - 1, k - 1, i);
             },
         }
     }
@@ -966,8 +966,8 @@ proof fn lemma_seq_inner_add_len<A>(s1: SeqInner<A>, s2: SeqInner<A>)
             assert(sum == s2);
         },
         SeqInner::Cons { head, tail } => {
-            let new_tail = tail.add(s2);
-            lemma_seq_inner_add_len(*tail, s2);
+            let new_tail = tail@.add(s2);
+            lemma_seq_inner_add_len(tail@, s2);
             assert(new_tail.len() == (s1.len() - 1) + s2.len());
             assert(sum.len() == 1 + new_tail.len());
         },
@@ -998,7 +998,7 @@ proof fn lemma_seq_inner_add_index1<A>(s1: SeqInner<A>, s2: SeqInner<A>, i: int)
                 if i == 0 {
                     assert(s1[i] == s1.add(s2)[i]);
                 } else {
-                    lemma_seq_inner_add_index1(*tail, s2, i - 1);
+                    lemma_seq_inner_add_index1(tail@, s2, i - 1);
                 }
             },
         }
@@ -1030,7 +1030,7 @@ proof fn lemma_seq_inner_add_index2<A>(s1: SeqInner<A>, s2: SeqInner<A>, i: int)
             if i == 0 {
                 assert(s1.add(s2)[i] == s2[i - s1.len()]);
             } else {
-                lemma_seq_inner_add_index2(*tail, s2, i - 1);
+                lemma_seq_inner_add_index2(tail@, s2, i - 1);
                 assert(s1.add(s2)[i] == s2[i - s1.len()]);
             }
         },
