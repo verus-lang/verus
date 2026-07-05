@@ -27,8 +27,10 @@ use super::layout::*;
 use super::prelude::*;
 use super::set::group_set_axioms;
 #[cfg(verus_keep_ghost)]
-use super::type_representation::*;
+use super::transmute::{group_transmute_axioms, transmute_post, transmute_pre_points_to};
 use super::type_representation::AbstractByte;
+#[cfg(verus_keep_ghost)]
+use super::type_representation::*;
 use crate::vstd::endian::*;
 use crate::vstd::group_vstd_default;
 use crate::vstd::seq::*;
@@ -1303,7 +1305,7 @@ impl PointsTo<[u8]> {
         requires
             abs_decode::<MemContents<T>>(self.abstract_bytes(), &typed_memory.contents()),
             layout::size_of::<T>() == self.ptr()@.metadata,
-            self.ptr()@.addr as int % layout::align_of::<T>() as int == 0
+            self.ptr()@.addr as int % layout::align_of::<T>() as int == 0,
         ensures
             self.abstract_bytes() == dst.abstract_bytes(),
             dst.mem_contents() == typed_memory.contents(),
@@ -1324,7 +1326,7 @@ impl PointsTo<[u8]> {
     pub proof fn cast_to_typed_uninit<T>(tracked self) -> (tracked dst: PointsTo<T>)
         requires
             layout::size_of::<T>() == self.ptr()@.metadata,
-            self.ptr()@.addr as int % layout::align_of::<T>() as int == 0
+            self.ptr()@.addr as int % layout::align_of::<T>() as int == 0,
         ensures
             self.abstract_bytes() == dst.abstract_bytes(),
             dst.mem_contents().is_uninit(),
@@ -1335,6 +1337,66 @@ impl PointsTo<[u8]> {
         let tracked inner = self.inner.cast_to_typed_uninit();
         PointsTo::<T> { inner }
     }
+
+    /// Casts an initialized `&PointsTo<[u8]>` to an initialized `&PointsTo<str>`,
+    /// where the resulting permission will take on the given `target` value in memory.
+    /// Requires that it is possible to transmute between the pointed-to value of `self` and the provided value `target`.
+    pub proof fn cast_to_str_shared<'a>(
+        tracked &'a self,
+        value: &[u8],
+        tracked target: &str,
+    ) -> (tracked ret: &'a PointsTo<str>)
+        requires
+            transmute_pre_points_to::<[u8], str>(value, target),
+            self.is_init(),
+            //require a separate argument for value since transmute_pre_points_to expects a &[u8] instead of a Seq<u8>
+            self.value() == value@,
+        ensures
+            ret.is_init(),
+            ret.value() == target,
+            ret.ptr() == self.ptr() as *mut str,
+    {
+        broadcast use group_vstd_default, group_transmute_axioms, layout_of_slices, layout_of_str;
+
+        use_type_invariant(self);
+
+        self.abstract_bytes_decode();
+        assert(value@.len() == self.abstract_bytes().len());
+        assert forall|i: int| 0 <= i < self.mem_contents_seq().len() implies #[trigger] u8::decode(
+            seq![self.abstract_bytes()[i]],
+            value[i],
+        ) by {
+            assert(abs_decode::<MemContents<u8>>(
+                self.abstract_bytes().subrange(i * size_of::<u8>(), (i + 1) * size_of::<u8>()),
+                &self.mem_contents_seq()[i],
+            ));
+            assert(self.abstract_bytes().subrange(i * size_of::<u8>(), (i + 1) * size_of::<u8>())
+                == seq![self.abstract_bytes()[i]]);
+        }
+        assert(EncodingU8Slice::decode(self.abstract_bytes(), value));
+        assert(abs_decode::<[u8]>(self.abstract_bytes(), value));
+        self.cast_to_str_shared_inner(value, target)
+    }
+
+    /// An initialized `&PointsTo<[u8]>` can always be cast to an initialized `&PointsTo<str>` provided that the resulting
+    /// `str` value in memory can be decoded from the original permission's abstract bytes.
+    /// The abstract bytes remain unchanged in the resulting permission.
+    axiom fn cast_to_str_shared_inner<'a>(
+        tracked &'a self,
+        value: &[u8],
+        tracked target: &str,
+    ) -> (tracked ret: &'a PointsTo<str>)
+        requires
+            abs_decode::<str>(self.abstract_bytes(), target),
+            self.is_init(),
+            self.value() == value@,
+            self.ptr()@.addr as int % layout::spec_align_of_val(value) as int == 0,
+        ensures
+            ret.is_init(),
+            ret.value() == target,
+            ret.ptr() == self.ptr() as *mut str,
+            ret.abstract_bytes() == self.abstract_bytes(),
+    ;
 }
 
 // PointsToUnaligned<[T]>: the unaligned slice permission that PointsTo<[T]> delegates to.
@@ -1767,6 +1829,43 @@ impl PointsTo<str> {
     pub axiom fn abstract_bytes_decode(&self)
         ensures
             abs_decode::<MemContents<&str>>(self.abstract_bytes(), &self.mem_contents()),
+    ;
+
+    /// Casts an initialized `&PointsTo<str>` to an initialized `&PointsTo<[u8]>`,
+    /// where the resulting permission will take on the given `target` value in memory.
+    /// Requires that it is possible to transmute between the pointed-to value of `self` and the provided value `target`.
+    pub proof fn cast_to_u8_shared<'a>(tracked &'a self, tracked target: &[u8]) -> (tracked ret:
+        &'a PointsTo<[u8]>)
+        requires
+            transmute_pre_points_to::<str, [u8]>(self.value(), target),
+            self.is_init(),
+        ensures
+            ret.is_init(),
+            ret.value() == target@,
+            ret.ptr() == self.ptr() as *mut [u8],
+    {
+        broadcast use group_transmute_axioms, layout_of_slices, layout_of_str;
+
+        use_type_invariant(self);
+
+        self.abstract_bytes_decode();
+        self.cast_to_u8_shared_inner(target)
+    }
+
+    /// An initialized `&PointsTo<str>` can always be cast to an initialized `&PointsTo<[u8]>` provided that the resulting
+    /// `[u8]` value in memory can be decoded from the original permission's abstract bytes.
+    /// The abstract bytes remain unchanged in the resulting permission.
+    axiom fn cast_to_u8_shared_inner<'a>(tracked &'a self, tracked target: &[u8]) -> (tracked ret:
+        &'a PointsTo<[u8]>)
+        requires
+            abs_decode::<[u8]>(self.abstract_bytes(), target),
+            self.is_init(),
+            self.ptr()@.addr as int % layout::spec_align_of_val::<[u8]>(target) as int == 0,
+        ensures
+            ret.is_init(),
+            ret.value() == target@,
+            ret.ptr() == self.ptr() as *mut [u8],
+            ret.abstract_bytes() == self.abstract_bytes(),
     ;
 }
 
