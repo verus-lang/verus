@@ -28,6 +28,7 @@ use super::prelude::*;
 use super::set::group_set_axioms;
 #[cfg(verus_keep_ghost)]
 use super::type_representation::*;
+use super::type_representation::AbstractByte;
 use crate::vstd::endian::*;
 use crate::vstd::group_vstd_default;
 use crate::vstd::seq::*;
@@ -528,10 +529,12 @@ impl<T> PointsTo<T> {
     }
 
     /// Invariant: The abstract bytes must decode into the value in memory.
-    pub broadcast axiom fn abstract_bytes_decode(&self)
+    pub broadcast proof fn abstract_bytes_decode(&self)
         ensures
             #[trigger] abs_decode::<MemContents<T>>(self.abstract_bytes(), &self.mem_contents()),
-    ;
+    {
+        self.inner.abstract_bytes_decode();
+    }
 
     pub broadcast proof fn abstract_bytes_len(&self)
         ensures
@@ -550,7 +553,7 @@ impl<T> PointsTo<T> {
     ///
     /// This axiom also returns a `TypedMemory<T>`, which is intended to be used with `PointsTo<[u8]>::cast_to_typed` in order to maintain the contents of the memory on a roundtrip.
     /// The `TypedMemory<T>` permission prohibits creating permission-carrying types out of thin air, i.e. in the case where `T` is a type that stores/represents a permission (e.g., shared references).
-    pub axiom fn cast_to_untyped(tracked self) -> (tracked (dst, typed_memory): (
+    pub proof fn cast_to_untyped(tracked self) -> (tracked (dst, typed_memory): (
         PointsTo<[u8]>,
         TypedMemory<T>,
     ))
@@ -561,7 +564,12 @@ impl<T> PointsTo<T> {
             self.ptr()@.provenance == dst.ptr()@.provenance,
             size_of::<T>() == dst.ptr()@.metadata,
             typed_memory.contents() == self.mem_contents(),
-    ;
+    {
+        broadcast use layout_of_slices, align_of_u8;
+
+        let tracked (inner, typed_memory) = self.inner.cast_to_untyped();
+        (PointsTo::<[u8]> { inner }, typed_memory)
+    }
 }
 
 impl<T> PointsToUnaligned<T> {
@@ -632,6 +640,33 @@ impl<T> PointsToUnaligned<T> {
             *old(self) == *final(self),
             final(self).ptr() as int + size_of::<T>() <= other.ptr() as int || other.ptr() as int
                 + size_of::<S>() <= final(self).ptr() as int,
+    ;
+
+    /// Invariant: The abstract bytes must decode into the value in memory.
+    pub broadcast axiom fn abstract_bytes_decode(&self)
+        ensures
+            #[trigger] abs_decode::<MemContents<T>>(self.abstract_bytes(), &self.mem_contents()),
+    ;
+
+    /// A `PointsToUnaligned<T>` can always be cast to a logically uninitialized `PointsTo<[u8]>`, an untyped view of this memory.
+    /// The `mem_contents_seq()` on the resulting permission is fully uninitialized, meaning that the permission cannot be used to read `u8` values from this memory.
+    ///
+    /// The abstract bytes remain the same. This preserves the typed contents in memory on a roundtrip cast (see `PointsToUnaligned<[u8]>::cast_to_typed`).
+    /// Note that this means provenance is not lost, which matches Rust's semantics for casting/transmuting in-memory values.
+    ///
+    /// This axiom also returns a `TypedMemory<T>`, which is intended to be used with `PointsToUnaligned<[u8]>::cast_to_typed` in order to maintain the contents of the memory on a roundtrip.
+    /// The `TypedMemory<T>` permission prohibits creating permission-carrying types out of thin air, i.e. in the case where `T` is a type that stores/represents a permission (e.g., shared references).
+    pub axiom fn cast_to_untyped(tracked self) -> (tracked (dst, typed_memory): (
+        PointsToUnaligned<[u8]>,
+        TypedMemory<T>,
+    ))
+        ensures
+            self.abstract_bytes() == dst.abstract_bytes(),
+            dst.is_fully_uninit(),
+            self.ptr()@.addr == dst.ptr()@.addr,
+            self.ptr()@.provenance == dst.ptr()@.provenance,
+            size_of::<T>() == dst.ptr()@.metadata,
+            typed_memory.contents() == self.mem_contents(),
     ;
 
     /// Convert PointsToUnaligned to an aligned PointsTo.
@@ -1261,18 +1296,24 @@ impl PointsTo<[u8]> {
     /// The `typed_memory` permission prohibits creating permission-carrying types out of thin air, in the case where `T` is a type that stores/represents a permission (e.g., shared references).
     /// The only way to obtain a `tracked TypedMemory<T>` is via the `PointsTo<T>::cast_to_untyped` axiom.
     /// This ensures that `typed_memory` in fact corresponds to actual values in memory.
-    pub axiom fn cast_to_typed<T>(
+    pub proof fn cast_to_typed<T>(
         tracked self,
         tracked typed_memory: TypedMemory<T>,
     ) -> (tracked dst: PointsTo<T>)
         requires
             abs_decode::<MemContents<T>>(self.abstract_bytes(), &typed_memory.contents()),
-            size_of::<T>() == self.ptr()@.metadata,
+            layout::size_of::<T>() == self.ptr()@.metadata,
+            self.ptr()@.addr as int % layout::align_of::<T>() as int == 0
         ensures
             self.abstract_bytes() == dst.abstract_bytes(),
             dst.mem_contents() == typed_memory.contents(),
             self.ptr() as *mut T == dst.ptr(),
-    ;
+    {
+        broadcast use layout_of_sized, axiom_ptr_mut_from_data;
+
+        let tracked inner = self.inner.cast_to_typed(typed_memory);
+        PointsTo::<T> { inner }
+    }
 
     /// A `PointsTo<[u8]>` can always be cast to a logically uninitialized `PointsTo<T>`.
     /// The `mem_contents_seq()` on the resulting permission is uninitialized, meaning that the permission cannot
@@ -1280,14 +1321,20 @@ impl PointsTo<[u8]> {
     ///
     /// The abstract bytes remain the same.
     /// Note that this means provenance is not lost, which matches Rust's semantics for transmuting in-memory values.
-    pub axiom fn cast_to_typed_uninit<T>(tracked self) -> (tracked dst: PointsTo<T>)
+    pub proof fn cast_to_typed_uninit<T>(tracked self) -> (tracked dst: PointsTo<T>)
         requires
-            size_of::<T>() == self.ptr()@.metadata,
+            layout::size_of::<T>() == self.ptr()@.metadata,
+            self.ptr()@.addr as int % layout::align_of::<T>() as int == 0
         ensures
             self.abstract_bytes() == dst.abstract_bytes(),
             dst.mem_contents().is_uninit(),
             self.ptr() as *mut T == dst.ptr(),
-    ;
+    {
+        broadcast use layout_of_sized, axiom_ptr_mut_from_data;
+
+        let tracked inner = self.inner.cast_to_typed_uninit();
+        PointsTo::<T> { inner }
+    }
 }
 
 // PointsToUnaligned<[T]>: the unaligned slice permission that PointsTo<[T]> delegates to.
@@ -1630,6 +1677,46 @@ impl<T> PointsToUnaligned<[T]> {
             s.len() == old(self).mem_contents_seq().len(),
             s.abstract_bytes() == old(self).abstract_bytes(),
             s.wf(),
+    ;
+}
+
+impl PointsToUnaligned<[u8]> {
+    /// A `PointsToUnaligned<[u8]>` can be cast to an initialized `PointsToUnaligned<T>` when the abstract bytes can be
+    /// decoded into the given `TypedMemory<T>` and the pointer for this permission is of the expected length.
+    /// The resulting permission will take on the value in memory from the given `TypedMemory<T>`.
+    ///
+    /// The abstract bytes remain the same. This preserves the typed contents in memory on a roundtrip cast (see `PointsToUnaligned<T>::cast_to_untyped`).
+    /// Note that this means provenance is not lost, which matches Rust's semantics for casting/transmuting in-memory values.
+    ///
+    /// The `typed_memory` permission prohibits creating permission-carrying types out of thin air, in the case where `T` is a type that stores/represents a permission (e.g., shared references).
+    /// The only way to obtain a `tracked TypedMemory<T>` is via the `PointsToUnaligned<T>::cast_to_untyped` axiom.
+    /// This ensures that `typed_memory` in fact corresponds to actual values in memory.
+    pub axiom fn cast_to_typed<T>(
+        tracked self,
+        tracked typed_memory: TypedMemory<T>,
+    ) -> (tracked dst: PointsToUnaligned<T>)
+        requires
+            abs_decode::<MemContents<T>>(self.abstract_bytes(), &typed_memory.contents()),
+            size_of::<T>() == self.ptr()@.metadata,
+        ensures
+            self.abstract_bytes() == dst.abstract_bytes(),
+            dst.mem_contents() == typed_memory.contents(),
+            self.ptr() as *mut T == dst.ptr(),
+    ;
+
+    /// A `PointsToUnaligned<[u8]>` can always be cast to a logically uninitialized `PointsToUnaligned<T>`.
+    /// The `mem_contents_seq()` on the resulting permission is uninitialized, meaning that the permission cannot
+    /// be used to read `T` values from this memory.
+    ///
+    /// The abstract bytes remain the same.
+    /// Note that this means provenance is not lost, which matches Rust's semantics for transmuting in-memory values.
+    pub axiom fn cast_to_typed_uninit<T>(tracked self) -> (tracked dst: PointsToUnaligned<T>)
+        requires
+            size_of::<T>() == self.ptr()@.metadata,
+        ensures
+            self.abstract_bytes() == dst.abstract_bytes(),
+            dst.mem_contents().is_uninit(),
+            self.ptr() as *mut T == dst.ptr(),
     ;
 }
 
