@@ -28,6 +28,7 @@ use super::prelude::*;
 use super::set::group_set_axioms;
 #[cfg(verus_keep_ghost)]
 use super::transmute::{group_transmute_axioms, transmute_post, transmute_pre_points_to};
+#[cfg(verus_keep_ghost)]
 use super::type_representation::AbstractByte;
 #[cfg(verus_keep_ghost)]
 use super::type_representation::*;
