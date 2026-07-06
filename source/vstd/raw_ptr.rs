@@ -2670,6 +2670,9 @@ pub const fn ptr_mut_ref_join<T: ?Sized>(ptr: *mut T, Tracked(perm): Tracked<&mu
     unsafe { &mut *ptr }
 }
 
+pub axiom fn mut_ref_slice_len<T>(tracked b: &&mut [T])
+    ensures mut_ref_ptr(*b)@.metadata == old(*b).len();
+
 /// Equivalent to `&mut *X`, passing in a permission `perm` to ensure safety.
 /// The memory pointed to by `ptr` must be initialized.
 #[inline(always)]
@@ -3418,14 +3421,21 @@ pub axiom fn tracked_mut_ref_slice_subrange<T>(tracked mut_ref: &mut [T], i: int
         -> (tracked sub_mut_ref: &mut [T])
     requires 0 <= i <= j <= mut_ref.len(),
     ensures 
+        mut_ref_ptr(sub_mut_ref)@.provenance == mut_ref_ptr(mut_ref)@.provenance,
+        mut_ref_ptr(sub_mut_ref)@.metadata == j - i,
+        mut_ref_ptr(sub_mut_ref).addr() == mut_ref_ptr(mut_ref).addr() + i * size_of::<T>(),
+
         sub_mut_ref.len() == final(sub_mut_ref).len() == j - i,
         sub_mut_ref@ == (*old(mut_ref))@.subrange(i, j),
-        (*final(mut_ref))@ == (*old(mut_ref))@.subrange(0, i) + (*final(sub_mut_ref))@ + (*old(mut_ref))@.subrange(i, old(mut_ref).len() as int);
+        (*final(mut_ref))@ == (*old(mut_ref))@.subrange(0, i) + (*final(sub_mut_ref))@ + (*old(mut_ref))@.subrange(j, old(mut_ref).len() as int);
 
 pub axiom fn tracked_mut_ref_slice_idx<T>(tracked mut_ref: &mut [T], i: int)
         -> (tracked sub_mut_ref: &mut T)
     requires 0 <= i < mut_ref.len(),
     ensures 
+        mut_ref_ptr(sub_mut_ref)@.provenance == mut_ref_ptr(mut_ref)@.provenance,
+        mut_ref_ptr(sub_mut_ref)@.metadata == (),
+        mut_ref_ptr(sub_mut_ref).addr() == mut_ref_ptr(mut_ref).addr() + i * size_of::<T>(),
         *sub_mut_ref == (*old(mut_ref))@[i],
         (*final(mut_ref))@ == (*old(mut_ref))@.update(i, *final(sub_mut_ref));
 

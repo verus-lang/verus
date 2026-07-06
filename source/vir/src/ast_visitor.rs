@@ -636,13 +636,13 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let e = self.visit_expr(e)?;
                 R::ret(|| expr_new(ExprX::NeverToAny(R::get(e))))
             }
-            ExprX::BorrowMut(p) => {
+            ExprX::BorrowMut(p, is_ghost) => {
                 let p = self.visit_place(p)?;
-                R::ret(|| expr_new(ExprX::BorrowMut(R::get(p))))
+                R::ret(|| expr_new(ExprX::BorrowMut(R::get(p), *is_ghost)))
             }
-            ExprX::TwoPhaseBorrowMut(p) => {
+            ExprX::TwoPhaseBorrowMut(p, is_ghost) => {
                 let p = self.visit_place(p)?;
-                R::ret(|| expr_new(ExprX::TwoPhaseBorrowMut(R::get(p))))
+                R::ret(|| expr_new(ExprX::TwoPhaseBorrowMut(R::get(p), *is_ghost)))
             }
             ExprX::BorrowMutTracked(p) => {
                 let p = self.visit_place(p)?;
