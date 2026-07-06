@@ -280,20 +280,6 @@ pub broadcast axiom fn abs_decode_mem_contents_unsized<T: ?Sized>(
         }),
 ;
 
-/// Represents that the given (typed) value exists in memory.
-/// Used for casting between typed and untyped views of memory.
-#[verifier::external_body]
-#[verifier::reject_recursive_types(T)]
-pub tracked struct TypedMemory<T> {
-    phantom: core::marker::PhantomData<T>,
-    no_copy: NoCopy,
-}
-
-impl<T> TypedMemory<T> {
-    /// The value in memory.
-    pub uninterp spec fn contents(&self) -> MemContents<T>;
-}
-
 /// Data associated with a `PointsTo` permission.
 /// We keep track of both the pointer, the (potentially uninitialized) value
 /// it points to, and the abstract bytes in memory corresponding to Rust's abstract machine.
@@ -565,11 +551,12 @@ impl<T> PointsTo<T> {
     /// The abstract bytes remain the same. This preserves the typed contents in memory on a roundtrip cast (see `PointsTo<[u8]>::cast_to_typed`).
     /// Note that this means provenance is not lost, which matches Rust's semantics for casting/transmuting in-memory values.
     ///
-    /// This axiom also returns a `TypedMemory<T>`, which is intended to be used with `PointsTo<[u8]>::cast_to_typed` in order to maintain the contents of the memory on a roundtrip.
-    /// The `TypedMemory<T>` permission prohibits creating permission-carrying types out of thin air, i.e. in the case where `T` is a type that stores/represents a permission (e.g., shared references).
-    pub proof fn cast_to_untyped(tracked self) -> (tracked (dst, typed_memory): (
+    /// This function also returns a `tracked Option<T>` corresponding to the `MemContents<T>` on `self`.
+    /// This is intended to be used with `PointsTo<[u8]>::cast_to_typed` in order to maintain the typed contents of the memory on a roundtrip.
+    /// The use of `tracked Option<T>` prohibits creating permission-carrying types out of thin air, i.e. in the case where `T` is a type that stores/represents a permission (e.g., shared references).
+    pub proof fn cast_to_untyped(tracked self) -> (tracked (dst, typed_value): (
         PointsTo<[u8]>,
-        TypedMemory<T>,
+        Option<T>,
     ))
         ensures
             self.abstract_bytes() == dst.abstract_bytes(),
@@ -577,12 +564,13 @@ impl<T> PointsTo<T> {
             self.ptr()@.addr == dst.ptr()@.addr,
             self.ptr()@.provenance == dst.ptr()@.provenance,
             size_of::<T>() == dst.ptr()@.metadata,
-            typed_memory.contents() == self.mem_contents(),
+            typed_value.is_some() <==> self.is_init(),
+            typed_value.is_some() ==> typed_value.unwrap() == self.value(),
     {
         broadcast use layout_of_slices, align_of_u8;
 
-        let tracked (inner, typed_memory) = self.inner.cast_to_untyped();
-        (PointsTo::<[u8]> { inner }, typed_memory)
+        let tracked (inner, typed_value) = self.inner.cast_to_untyped();
+        (PointsTo::<[u8]> { inner }, typed_value)
     }
 }
 
@@ -677,11 +665,12 @@ impl<T> PointsToUnaligned<T> {
     /// The abstract bytes remain the same. This preserves the typed contents in memory on a roundtrip cast (see `PointsToUnaligned<[u8]>::cast_to_typed`).
     /// Note that this means provenance is not lost, which matches Rust's semantics for casting/transmuting in-memory values.
     ///
-    /// This axiom also returns a `TypedMemory<T>`, which is intended to be used with `PointsToUnaligned<[u8]>::cast_to_typed` in order to maintain the contents of the memory on a roundtrip.
-    /// The `TypedMemory<T>` permission prohibits creating permission-carrying types out of thin air, i.e. in the case where `T` is a type that stores/represents a permission (e.g., shared references).
-    pub axiom fn cast_to_untyped(tracked self) -> (tracked (dst, typed_memory): (
+    /// This axiom also returns a `tracked Option<T>` corresponding to the `MemContents<T>` on `self`.
+    /// This is intended to be used with `PointsTo<[u8]>::cast_to_typed` in order to maintain the typed contents of the memory on a roundtrip.
+    /// The use of `tracked Option<T>` prohibits creating permission-carrying types out of thin air, i.e. in the case where `T` is a type that stores/represents a permission (e.g., shared references).
+    pub axiom fn cast_to_untyped(tracked self) -> (tracked (dst, typed_value): (
         PointsToUnaligned<[u8]>,
-        TypedMemory<T>,
+        Option<T>,
     ))
         ensures
             self.abstract_bytes() == dst.abstract_bytes(),
@@ -689,7 +678,8 @@ impl<T> PointsToUnaligned<T> {
             self.ptr()@.addr == dst.ptr()@.addr,
             self.ptr()@.provenance == dst.ptr()@.provenance,
             size_of::<T>() == dst.ptr()@.metadata,
-            typed_memory.contents() == self.mem_contents(),
+            typed_value.is_some() <==> self.is_init(),
+            typed_value.is_some() ==> typed_value.unwrap() == self.value(),
     ;
 
     /// Convert PointsToUnaligned to an aligned PointsTo.
@@ -1321,31 +1311,29 @@ impl<T> PointsTo<[T]> {
 
 impl PointsTo<[u8]> {
     /// A `PointsTo<[u8]>` can be cast to an initialized `PointsTo<T>` when the abstract bytes can be
-    /// decoded into the given `TypedMemory<T>` and the pointer for this permission is of the expected length.
-    /// The resulting permission will take on the value in memory from the given `TypedMemory<T>`.
+    /// decoded into the given `tracked typed_value` and the pointer for this permission is of the expected length.
+    /// The resulting permission will take on the value in memory given by `typed_value`.
     ///
     /// The abstract bytes remain the same. This preserves the typed contents in memory on a roundtrip cast (see `PointsTo<T>::cast_to_untyped`).
     /// Note that this means provenance is not lost, which matches Rust's semantics for casting/transmuting in-memory values.
     ///
-    /// The `typed_memory` permission prohibits creating permission-carrying types out of thin air, in the case where `T` is a type that stores/represents a permission (e.g., shared references).
-    /// The only way to obtain a `tracked TypedMemory<T>` is via the `PointsTo<T>::cast_to_untyped` axiom.
-    /// This ensures that `typed_memory` in fact corresponds to actual values in memory.
-    pub proof fn cast_to_typed<T>(
-        tracked self,
-        tracked typed_memory: TypedMemory<T>,
-    ) -> (tracked dst: PointsTo<T>)
+    /// The inclusion of `tracked typed_value` prohibits creating permission-carrying types out of thin air, in the case where `T` is a type that stores/represents a permission (e.g., shared references).
+    pub proof fn cast_to_typed<T>(tracked self, tracked typed_value: T) -> (tracked dst: PointsTo<
+        T,
+    >)
         requires
-            abs_decode::<MemContents<T>>(self.abstract_bytes(), &typed_memory.contents()),
+            abs_decode::<T>(self.abstract_bytes(), &typed_value),
             layout::size_of::<T>() == self.ptr()@.metadata,
             self.ptr()@.addr as int % layout::align_of::<T>() as int == 0,
         ensures
             self.abstract_bytes() == dst.abstract_bytes(),
-            dst.mem_contents() == typed_memory.contents(),
+            dst.is_init(),
+            dst.value() == typed_value,
             self.ptr() as *mut T == dst.ptr(),
     {
         broadcast use layout_of_sized, axiom_ptr_mut_from_data;
 
-        let tracked inner = self.inner.cast_to_typed(typed_memory);
+        let tracked inner = self.inner.cast_to_typed(typed_value);
         PointsTo::<T> { inner }
     }
 
@@ -1762,25 +1750,22 @@ impl<T> PointsToUnaligned<[T]> {
 
 impl PointsToUnaligned<[u8]> {
     /// A `PointsToUnaligned<[u8]>` can be cast to an initialized `PointsToUnaligned<T>` when the abstract bytes can be
-    /// decoded into the given `TypedMemory<T>` and the pointer for this permission is of the expected length.
-    /// The resulting permission will take on the value in memory from the given `TypedMemory<T>`.
+    /// decoded into the given `tracked typed_value` and the pointer for this permission is of the expected length.
+    /// The resulting permission will take on the value in memory given by `typed_value`.
     ///
     /// The abstract bytes remain the same. This preserves the typed contents in memory on a roundtrip cast (see `PointsToUnaligned<T>::cast_to_untyped`).
     /// Note that this means provenance is not lost, which matches Rust's semantics for casting/transmuting in-memory values.
     ///
-    /// The `typed_memory` permission prohibits creating permission-carrying types out of thin air, in the case where `T` is a type that stores/represents a permission (e.g., shared references).
-    /// The only way to obtain a `tracked TypedMemory<T>` is via the `PointsToUnaligned<T>::cast_to_untyped` axiom.
-    /// This ensures that `typed_memory` in fact corresponds to actual values in memory.
-    pub axiom fn cast_to_typed<T>(
-        tracked self,
-        tracked typed_memory: TypedMemory<T>,
-    ) -> (tracked dst: PointsToUnaligned<T>)
+    /// The inclusion of `tracked typed_value` prohibits creating permission-carrying types out of thin air, in the case where `T` is a type that stores/represents a permission (e.g., shared references).
+    pub axiom fn cast_to_typed<T>(tracked self, tracked typed_value: T) -> (tracked dst:
+        PointsToUnaligned<T>)
         requires
-            abs_decode::<MemContents<T>>(self.abstract_bytes(), &typed_memory.contents()),
+            abs_decode::<T>(self.abstract_bytes(), &typed_value),
             size_of::<T>() == self.ptr()@.metadata,
         ensures
             self.abstract_bytes() == dst.abstract_bytes(),
-            dst.mem_contents() == typed_memory.contents(),
+            dst.is_init(),
+            dst.value() == typed_value,
             self.ptr() as *mut T == dst.ptr(),
     ;
 
@@ -2367,9 +2352,11 @@ impl<T> SeqPointsTo<T> {
     /// Casting a `SeqPointsTo<T>` to a `SeqPointsTo<u8>` casts the pointer,
     /// multiplies the length by `size_of::<T>()`, and preserves the abstract bytes.
     /// The resulting `SeqPointsTo<u8>` is logically uninitialized, so it cannot be read from.
-    pub proof fn cast_to_untyped(tracked self) -> (tracked (dst, typed_memory): (
+    /// The `tracked typed_value` represents the typed contents from this memory,
+    /// which can be later used to cast the `dst` permission back to a typed permission.
+    pub proof fn cast_to_untyped(tracked self) -> (tracked (dst, typed_value): (
         SeqPointsTo<u8>,
-        Seq<TypedMemory<T>>,
+        Seq<Option<T>>,
     ))
         requires
             self.wf(),
@@ -2377,10 +2364,13 @@ impl<T> SeqPointsTo<T> {
             dst.ptr() == self.ptr() as *mut u8,
             dst.len() == self.len() * layout::size_of::<T>(),
             dst.abstract_bytes() == self.abstract_bytes(),
-            forall|i|
-                0 <= i < self.len() ==> #[trigger] typed_memory[i].contents()
-                    == self.mem_contents()[i],
-            typed_memory.len() == self.len(),
+            forall|i: int|
+                0 <= i < self.len() ==> {
+                    &&& typed_value[i].is_some() <==> (#[trigger] self.mem_contents()[i]).is_init()
+                    &&& typed_value[i].is_some() ==> typed_value[i].unwrap()
+                        == self.mem_contents()[i].value()
+                },
+            typed_value.len() == self.len(),
             dst.wf(),
         decreases self.len(),
     {
@@ -2404,6 +2394,9 @@ impl<T> SeqPointsTo<T> {
             head_mem_contents.tracked_push(tail_mem_contents);
             assert(layout::size_of::<T>() + (self.len() - 1) * layout::size_of::<T>() == self.len()
                 * layout::size_of::<T>()) by (nonlinear_arith);
+            assert(forall|i: int|
+                0 <= i < self.len() - 1 ==> #[trigger] self.mem_contents()[i]
+                    == head.mem_contents()[i]);
             (head_u8.join(tail_u8), head_mem_contents)
         }
     }
@@ -2539,28 +2532,30 @@ impl SeqPointsTo<u8> {
     ///
     /// (2) The length is exactly `capacity * layout::size_of::<T>()`.
     ///
-    /// (3) For each initialized element in `mem_contents`, the corresponding abstract bytes for the `SeqPointsTo<u8>` can be decoded
-    ///     into the given `MemContents<T>`. Note that `mem_contents` is allowed to contain uninitialized items (these are ignored)
+    /// (3) For each non-None element in `typed_value`, the corresponding abstract bytes for the `SeqPointsTo<u8>` can be decoded
+    ///     into the given value. Note that `typed_value` is allowed to contain None items (these are ignored for purposes of decoding)
     ///     and can be a prefix of the total `capacity` (in which case, the remaining memory is all logically uninitialized).
     ///
-    /// The resulting `SeqPointsTo<T>` will have a prefix of memory corresponding to `mem_contents`.
+    /// The resulting `SeqPointsTo<T>` will have a prefix of memory corresponding to `typed_value`.
     /// The rest of the memory will be logically uninitialized. The abstract bytes will also remain the same.
     pub proof fn cast_to_typed<T>(
         tracked self,
         capacity: usize,
-        tracked typed_memory: Seq<TypedMemory<T>>,
+        tracked typed_value: Seq<Option<T>>,
     ) -> (tracked out: SeqPointsTo<T>)
         requires
             self.ptr()@.addr as nat % align_of::<T>() == 0,
             self.len() == capacity * layout::size_of::<T>(),
-            typed_memory.len() <= capacity,
+            typed_value.len() <= capacity,
             forall|i: int|
-                0 <= i < typed_memory.len() ==> #[trigger] abs_decode::<MemContents<T>>(
+                0 <= i < typed_value.len() && typed_value[i].is_some() ==> #[trigger] abs_decode::<
+                    T,
+                >(
                     self.abstract_bytes().subrange(
                         i * layout::size_of::<T>(),
                         (i + 1) * layout::size_of::<T>(),
                     ),
-                    &typed_memory[i].contents(),
+                    &typed_value[i].unwrap(),
                 ),
             self.wf(),
         ensures
@@ -2568,8 +2563,11 @@ impl SeqPointsTo<u8> {
             out.len() == capacity,
             out.abstract_bytes() == self.abstract_bytes(),
             forall|i: int|
-                0 <= i < typed_memory.len() ==> #[trigger] out.mem_contents()[i]
-                    == typed_memory[i].contents(),
+                0 <= i < typed_value.len() ==> {
+                    &&& (#[trigger] out.mem_contents()[i]).is_init() <==> typed_value[i].is_some()
+                    &&& typed_value[i].is_some() ==> typed_value[i].unwrap()
+                        == out.mem_contents()[i].value()
+                },
             out.wf(),
         decreases capacity,
     {
@@ -2600,26 +2598,26 @@ impl SeqPointsTo<u8> {
                 (capacity - 1) as nat * layout::size_of::<T>(),
             );
 
-            // cast the tail into either an init or uninit permission, depending on typed_memory
-            let tracked mut head_typed_memory = typed_memory;
-            let tracked mut tail_typed_memory_opt;
-            if typed_memory.len() == capacity {
-                tail_typed_memory_opt = Some(head_typed_memory.tracked_pop());
+            // cast the tail into either an init or uninit permission, depending on typed_value
+            let tracked mut head_typed_value = typed_value;
+            let tracked mut tail_typed_value_opt;
+            if typed_value.len() == capacity {
+                tail_typed_value_opt = Some(head_typed_value.tracked_pop());
             } else {
-                tail_typed_memory_opt = None;
+                tail_typed_value_opt = None;
             }
             let tracked tail_slice = seq_into_slice(tail);
             assert(layout::size_of::<T>() == (capacity - 1 + 1) * layout::size_of::<T>() - (capacity
                 - 1) * layout::size_of::<T>()) by (nonlinear_arith);
             let tracked tail_pt;
-            if typed_memory.len() == capacity && typed_memory[capacity - 1].contents().is_init() {
-                let tracked tail_typed_memory = tail_typed_memory_opt.tracked_take();
-                tail_pt = tail_slice.cast_to_typed(tail_typed_memory);
-                assert(tail_pt.mem_contents() == typed_memory[capacity - 1].contents());
+            if typed_value.len() == capacity && typed_value[capacity - 1].is_some() {
+                let tracked tail_typed_value = tail_typed_value_opt.tracked_take().tracked_take();
+                tail_pt = tail_slice.cast_to_typed(tail_typed_value);
+                assert(tail_pt.value() == typed_value[capacity - 1].unwrap());
             } else {
                 tail_pt = tail_slice.cast_to_typed_uninit();
-                if typed_memory.len() == capacity {
-                    assert(tail_pt.mem_contents() == typed_memory[capacity - 1].contents());
+                if typed_value.len() == capacity {
+                    assert(tail_pt.is_uninit());
                 }
             }
             let tracked mut tail_perm = Seq::tracked_empty();
@@ -2648,20 +2646,11 @@ impl SeqPointsTo<u8> {
                     (i + 1) * layout::size_of::<T>(),
                 );
             }
-            let tracked head_typed = head.cast_to_typed((capacity - 1) as usize, head_typed_memory);
-            assert(forall|i: int|
-                0 <= i < head_typed_memory.len() ==> head_typed.mem_contents()[i]
-                    == #[trigger] head_typed_memory[i].contents());
+            let tracked head_typed = head.cast_to_typed((capacity - 1) as usize, head_typed_value);
 
             // join head and tail
             let tracked res = head_typed.join(tail_typed);
             assert(res.mem_contents() == head_typed.mem_contents() + tail_typed.mem_contents());
-            if typed_memory.len() == capacity {
-                assert(tail_typed.mem_contents()[0] == typed_memory.last().contents());
-                assert(forall|i: int|
-                    0 <= i < typed_memory.len() - 1 ==> head_typed_memory[i].contents()
-                        == #[trigger] typed_memory[i].contents());
-            }
             res
         }
     }
