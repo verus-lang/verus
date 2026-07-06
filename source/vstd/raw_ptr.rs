@@ -260,7 +260,6 @@ pub ghost enum MemContents<T> {
 /// If the memory is uninitialized, then the bytes can be anything.
 pub broadcast axiom fn abs_decode_mem_contents<T>(bytes: Seq<AbstractByte>, value: MemContents<T>)
     ensures
-        bytes.len() == size_of::<T>(),
         #[trigger] abs_decode::<MemContents<T>>(bytes, &value) <==> (match value {
             MemContents::Uninit => true,
             MemContents::Init(t) => abs_decode::<T>(bytes, &t),
@@ -532,17 +531,9 @@ impl<T> PointsTo<T> {
     pub broadcast proof fn abstract_bytes_decode(&self)
         ensures
             #[trigger] abs_decode::<MemContents<T>>(self.abstract_bytes(), &self.mem_contents()),
+            self.abstract_bytes().len() == size_of::<T>(),
     {
         self.inner.abstract_bytes_decode();
-    }
-
-    pub broadcast proof fn abstract_bytes_len(&self)
-        ensures
-            #[trigger] self.abstract_bytes().len() == size_of::<T>(),
-    {
-        broadcast use abs_decode_mem_contents;
-
-        self.abstract_bytes_decode();
     }
 
     /// A `PointsTo<T>` can always be cast to a logically uninitialized `PointsTo<[u8]>`, an untyped view of this memory.
@@ -657,6 +648,7 @@ impl<T> PointsToUnaligned<T> {
     pub broadcast axiom fn abstract_bytes_decode(&self)
         ensures
             #[trigger] abs_decode::<MemContents<T>>(self.abstract_bytes(), &self.mem_contents()),
+            self.abstract_bytes().len() == size_of::<T>(),
     ;
 
     /// A `PointsToUnaligned<T>` can always be cast to a logically uninitialized `PointsTo<[u8]>`, an untyped view of this memory.
@@ -1837,6 +1829,7 @@ impl PointsTo<str> {
     pub axiom fn abstract_bytes_decode(&self)
         ensures
             abs_decode::<MemContents<&str>>(self.abstract_bytes(), &self.mem_contents()),
+            self.abstract_bytes().len() == size_of::<u8>() * spec_size_of_val::<str>(self.value()),
     ;
 
     /// Casts an initialized `&PointsTo<str>` to an initialized `&PointsTo<[u8]>`,
@@ -2192,7 +2185,7 @@ impl<T> SeqPointsTo<T> {
 
         if perms.len() > 0 {
             Self::abstract_bytes_len_helper(perms.drop_last());
-            perms.last().abstract_bytes_len();
+            perms.last().abstract_bytes_decode();
             assert((perms.len() - 1) * layout::size_of::<T>() + layout::size_of::<T>()
                 == perms.len() * layout::size_of::<T>()) by (nonlinear_arith);
         }
