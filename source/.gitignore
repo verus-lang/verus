@@ -5,3 +5,4 @@ target/
 doc/
 /coverage/
 /target-verus/
+.direnv/
