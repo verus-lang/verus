@@ -356,6 +356,7 @@ pub assume_specification<T: core::marker::PointeeSized>[ <*const T as PartialEq<
         res <==> (x@.addr == y@.addr) && (x@.metadata == y@.metadata),
 ;
 
+#[cfg(verus_keep_ghost)]
 impl<T> View for PointsTo<T> {
     type V = PointsToData<T>;
 
@@ -398,6 +399,7 @@ impl<T: ?Sized> PointsToUnaligned<T> {
     pub uninterp spec fn abstract_bytes(&self) -> Seq<AbstractByte>;
 }
 
+#[cfg(verus_keep_ghost)]
 impl<T> View for PointsToUnaligned<T> {
     type V = PointsToData<T>;
 
@@ -634,7 +636,7 @@ impl<T> PointsToUnaligned<T> {
     ;
 
     /// If `T` is not a ZST, then the pointer's provenance is non-null.
-    /// https://doc.rust-lang.org/std/ptr/index.html#provenance
+    /// <https://doc.rust-lang.org/std/ptr/index.html#provenance>
     pub axiom fn provenance_non_null(tracked &self)
         requires
             layout::size_of::<T>() != 0,
@@ -3619,7 +3621,7 @@ impl PointsToRaw {
     ;
 
     /// If the address domain is non-empty, then the provenance is non-null.
-    /// https://doc.rust-lang.org/std/ptr/index.html#provenance
+    /// <https://doc.rust-lang.org/std/ptr/index.html#provenance>
     pub axiom fn provenance_non_null(tracked &self)
         requires
             self.dom() != Set::<int>::empty(),
