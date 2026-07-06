@@ -19,6 +19,15 @@ verus_syn = { workspace = true }
 [dev-dependencies]
 insta = { workspace = true }
 
+[lib]
+name = "line_count_lib"
+path = "src/lib.rs"
+
+[[bin]]
+name = "line_count"
+path = "src/main.rs"
+
+
 [lints]
 workspace = true
 
