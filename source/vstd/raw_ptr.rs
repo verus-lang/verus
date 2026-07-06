@@ -29,8 +29,6 @@ use super::set::group_set_axioms;
 #[cfg(verus_keep_ghost)]
 use super::transmute::{group_transmute_axioms, transmute_post, transmute_pre_points_to};
 #[cfg(verus_keep_ghost)]
-use super::type_representation::AbstractByte;
-#[cfg(verus_keep_ghost)]
 use super::type_representation::*;
 use crate::vstd::endian::*;
 use crate::vstd::group_vstd_default;
@@ -308,6 +306,7 @@ impl<T> TypedMemory<T> {
 /// and we assume `ptr` points to uninitialized memory.
 /// (To be pedantic, the bytes might be initialized in Rust's abstract machine,
 ///  but we don't know, so we have to pretend they're uninitialized.)
+#[cfg(verus_keep_ghost)]
 pub ghost struct PointsToData<T> {
     pub ptr: *mut T,
     pub mem_contents: MemContents<T>,
