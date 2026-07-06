@@ -3627,6 +3627,7 @@ impl PointsToRaw {
                 PtrData { addr: start, provenance: self.provenance(), metadata: () },
             ),
             points_to.is_uninit(),
+            points_to.abstract_bytes().len() == size_of::<V>(),
     ;
 
     /// Creates a `PointsTo<[V]>` permission from a `PointsToRaw` permission
@@ -3654,6 +3655,7 @@ impl PointsToRaw {
                 PtrData { addr: start, provenance: self.provenance(), metadata: length as usize },
             ),
             points_to.is_uninit(),
+            points_to.abstract_bytes().len() == length * size_of::<V>(),
     ;
 
     /// Given that `start` is aligned to `V` and
