@@ -1604,3 +1604,45 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 20)
 }
+
+test_verify_one_file! {
+    #[test] nonzero verus_code! {
+
+        use vstd::prelude::*;
+        use vstd::std_specs::nonzero::*;
+        use std::num::{NonZeroU64, NonZeroI32};
+
+        fn test() {
+            let x = NonZeroI32::new(-20).unwrap();
+            assert(x@ == -20);
+
+            let x1 = x.clone();
+            assert(x1@ == -20);
+
+            let x2 = unsafe { NonZeroI32::new_unchecked(30)};
+            assert(x2@ == 30);
+
+            // assert(x1 < x2); SpecOrd is not supported.
+
+            let b = x1 < x2;
+            assert(b);
+
+            let x3 = x2.get();
+            assert(x3 == 30);
+        }
+
+        fn test_bitor() {
+            let x = NonZeroU64::new(0x1011).unwrap();
+            let y = NonZeroU64::new(0x100).unwrap();
+            let z = x | y;
+            assert(0x1011 | 0x100 == 0x1111) by (compute_only);
+            assert(z@ == 0x1111);
+
+            let z1 = x | 0x1000;
+            assert(0x1011 == 0x1011 | 0x1000) by (compute_only);
+            assert(z1@ == x@);
+            assert(z1 == x);
+        }
+
+    } => Ok(())
+}
