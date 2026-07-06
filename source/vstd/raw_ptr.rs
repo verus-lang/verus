@@ -1662,29 +1662,6 @@ impl<T> PointsToUnaligned<[T]> {
             ),
     ;
 
-    /// Provided that memory is initialized, the pointer's address is aligned to `V`,
-    /// and `self.value().len() * size_of::<T>() == size_of::<V>()`,
-    /// we can always cast a `[T]` permission to a `V` permission.
-    pub axiom fn cast_points_to<V>(tracked &self) -> (tracked points_to: &PointsTo<V>) where
-        T: CompatibleSmallerBaseFor<V> + Integer,
-        V: BasePow2 + Integer,
-
-        requires
-            self.is_init(),
-            self.ptr()@.addr as int % align_of::<V>() as int == 0,
-            self.value().len() * size_of::<T>() == size_of::<V>(),
-        ensures
-            points_to.ptr() == ptr_mut_from_data::<V>(
-                PtrData {
-                    addr: self.ptr()@.addr,
-                    provenance: self.ptr()@.provenance,
-                    metadata: (),
-                },
-            ),
-            points_to.is_init(),
-            points_to.value() as int == to_big_from_digits::<V, T>(self.value()).index(0),
-    ;
-
     /// We can always convert a `PointsToUnaligned<[\T\]>` into a `MapPointsTo<\T\>` for the
     /// same pointer, whose keys are the valid slice indices and whose values are individual
     /// `PointsTo<\T\>` with the same memory contents. Requires the pointer address to be
