@@ -112,12 +112,6 @@ impl<T: ZeroablePrimitive + PartialEqSpec> PartialEqSpecImpl for NonZero<T> {
     }
 }
 
-pub assume_specification<T: ZeroablePrimitive + PartialEq>[ <NonZero<T> as PartialEq>::eq ](
-    x: &NonZero<T>,
-    y: &NonZero<T>,
-) -> bool
-;
-
 // Ord is not implemented because of the [`Destruct`](https://doc.rust-lang.org/std/marker/trait.Destruct.html) trait bound.
 impl<T: ZeroablePrimitive + PartialOrdSpec> PartialOrdSpecImpl for NonZero<T> {
     open spec fn obeys_partial_cmp_spec() -> bool {
@@ -128,35 +122,6 @@ impl<T: ZeroablePrimitive + PartialOrdSpec> PartialOrdSpecImpl for NonZero<T> {
         self.get().partial_cmp_spec(&other.get())
     }
 }
-
-pub assume_specification<T: ZeroablePrimitive + PartialOrd>[ <NonZero<
-    T,
-> as PartialOrd>::partial_cmp ](x: &NonZero<T>, y: &NonZero<T>) -> Option<Ordering>
-;
-
-pub assume_specification<T: ZeroablePrimitive + PartialOrd>[ <NonZero<T> as PartialOrd>::lt ](
-    x: &NonZero<T>,
-    y: &NonZero<T>,
-) -> bool
-;
-
-pub assume_specification<T: ZeroablePrimitive + PartialOrd>[ <NonZero<T> as PartialOrd>::le ](
-    x: &NonZero<T>,
-    y: &NonZero<T>,
-) -> bool
-;
-
-pub assume_specification<T: ZeroablePrimitive + PartialOrd>[ <NonZero<T> as PartialOrd>::gt ](
-    x: &NonZero<T>,
-    y: &NonZero<T>,
-) -> bool
-;
-
-pub assume_specification<T: ZeroablePrimitive + PartialOrd>[ <NonZero<T> as PartialOrd>::ge ](
-    x: &NonZero<T>,
-    y: &NonZero<T>,
-) -> bool
-;
 
 impl<T: ZeroablePrimitive + BitOrSpec<Output = T>> BitOrSpecImpl<T> for NonZero<T> {
     open spec fn obeys_bitor_spec() -> bool {
@@ -172,11 +137,6 @@ impl<T: ZeroablePrimitive + BitOrSpec<Output = T>> BitOrSpecImpl<T> for NonZero<
     }
 }
 
-pub assume_specification<T: ZeroablePrimitive + BitOr<Output = T>>[ <NonZero<T> as BitOr<
-    T,
->>::bitor ](x: NonZero<T>, y: T) -> <NonZero<T> as BitOr<T>>::Output
-;
-
 impl<T: ZeroablePrimitive + BitOrSpec<Output = T>> BitOrSpecImpl<NonZero<T>> for NonZero<T> {
     open spec fn obeys_bitor_spec() -> bool {
         true
@@ -191,11 +151,6 @@ impl<T: ZeroablePrimitive + BitOrSpec<Output = T>> BitOrSpecImpl<NonZero<T>> for
     }
 }
 
-pub assume_specification<T: ZeroablePrimitive + BitOr<Output = T>>[ <NonZero<T> as BitOr<
-    NonZero<T>,
->>::bitor ](x: NonZero<T>, y: NonZero<T>) -> <NonZero<T> as BitOr<NonZero<T>>>::Output
-;
-
 impl<T: ZeroablePrimitive> FromSpecImpl<NonZero<T>> for T {
     open spec fn obeys_from_spec() -> bool {
         true
@@ -205,9 +160,6 @@ impl<T: ZeroablePrimitive> FromSpecImpl<NonZero<T>> for T {
         nz.get()
     }
 }
-
-pub assume_specification<T: ZeroablePrimitive>[ <T as From<NonZero<T>>>::from ](nz: NonZero<T>) -> T
-;
 
 pub assume_specification<T: ZeroablePrimitive>[ <NonZero<T> as Clone>::clone ](
     nz: &NonZero<T>,
