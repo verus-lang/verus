@@ -768,6 +768,7 @@ impl<T> PointsTo<[T]> {
         unaligned_sub.as_aligned()
     }
 
+    /*
     /// Given that the subrange is within bounds, it is always possible to get a permission to just that subrange.
     pub proof fn subrange_mut(
         tracked &mut self,
@@ -873,6 +874,7 @@ impl<T> PointsTo<[T]> {
 
         unaligned_sub.as_aligned_mut()
     }
+    */
 
     /// We can cast a `[T]` permission to a `V` permission under the following conditions:
     ///
@@ -1001,6 +1003,7 @@ impl<T> PointsTo<[T]> {
         &self.inner
     }
 
+    /*
     /// Mutably borrow an aligned `PointsTo<[\T\]>` as an unaligned `PointsToUnaligned<[\T\]>`.
     /// This is always safe since aligned is stricter than unaligned.
     ///
@@ -1012,6 +1015,7 @@ impl<T> PointsTo<[T]> {
             final(perm).ptr() == final(self).ptr(),
             final(perm).mem_contents_seq() == final(self).mem_contents_seq(),
     ;
+    */
 
     /// We can always convert a `PointsTo<[T]>` into a `MapPointsTo<T>` for the same pointer,
     /// whose keys are the valid slice indices
@@ -1331,6 +1335,7 @@ impl<T> PointsToUnaligned<[T]> {
             ),
     ;
 
+    /*
     /// Given that the subrange is within bounds, it is always possible to get a permission to just that subrange.
     pub axiom fn subrange_mut(
         tracked &mut self,
@@ -1360,6 +1365,7 @@ impl<T> PointsToUnaligned<[T]> {
                 old(self).mem_contents_seq().len() as int,
             ),
     ;
+    */
 
     /// Provided that memory is initialized, the pointer's address is aligned to `V`,
     /// and `self.value().len() * size_of::<T>() == size_of::<V>()`,
@@ -1558,9 +1564,7 @@ pub axiom fn seq_into_slice_shared<T>(tracked spt: &SeqPointsTo<T>) -> (tracked 
 /// with the same pointer and the same memory contents at every index.
 /// While the pointer and length will stay the same, any changes to the memory contents
 /// will be reflected in the original `SeqPointsTo<T>` permission.
-pub axiom fn seq_into_slice_mut<T>(tracked spt: &mut SeqPointsTo<T>) -> (tracked pt: &mut PointsTo<
-    [T],
->)
+pub axiom fn seq_into_slice_mut<T>(tracked spt: &mut SeqPointsTo<T>) -> (tracked pt: &mut PointsTo<[T]>)
     requires
         spt.wf(),
     ensures
@@ -1673,6 +1677,7 @@ impl<T> SeqPointsTo<T> {
         &self.perm
     }
 
+    /*
     /// Returns a `tracked` mutable reference to the underlying `Seq<PointsTo<T>>`,
     /// given `tracked &mut self`. `self.ptr` will remain unchanged.
     ///
@@ -1693,6 +1698,7 @@ impl<T> SeqPointsTo<T> {
     {
         &mut self.perm
     }
+    */
 
     /// Sanity check for the criteria for ensuring that the final value of `&mut self` is still well-formed:
     ///
@@ -2649,6 +2655,21 @@ pub const fn ptr_mut_ref<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>
     unsafe { &mut *ptr }
 }
 
+#[inline(always)]
+#[verifier::external_body]
+pub const fn ptr_mut_ref_join<T: ?Sized>(ptr: *mut T, Tracked(perm): Tracked<&mut T>) -> (v: &mut T)
+    requires
+        mut_ref_ptr(perm) == ptr,
+    ensures
+        &*v == &*old(perm),
+        &*final(v) == &*final(perm),
+        ptr_eq_up_to_tag(ptr, mut_ref_ptr(v)),
+    opens_invariants none
+    no_unwind
+{
+    unsafe { &mut *ptr }
+}
+
 /// Equivalent to `&mut *X`, passing in a permission `perm` to ensure safety.
 /// The memory pointed to by `ptr` must be initialized.
 #[inline(always)]
@@ -3375,32 +3396,76 @@ pub broadcast axiom fn axiom_shared_ref_value_view<'a, T>(shared_ref: SharedRefe
         shared_ref.value()@ == #[trigger] shared_ref@,
 ;
 
+pub axiom fn mut_ref_to_shr_points_to<'a, T>(tracked mut_ref: &'a &'a mut T) -> (tracked pt: &'a PointsTo<T>)
+    ensures pt.ptr() == mut_ref_ptr(*mut_ref),
+        pt.is_init(),
+        pt.value() == *old(*mut_ref),
+        *final(*mut_ref) == *old(*mut_ref);
+
+pub axiom fn mut_ref_to_shr_points_to_slice<'a, T>(tracked mut_ref: &'a &'a mut [T]) -> (tracked pt: &'a PointsTo<[T]>)
+    ensures pt.ptr() == mut_ref_ptr(*mut_ref),
+        pt.is_init(),
+        pt.value() == (*old(*mut_ref))@,
+        &*final(*mut_ref) == &*old(*mut_ref);
+
+pub axiom fn mut_ref_to_shr_points_to_str<'a>(tracked mut_ref: &'a &'a mut str) -> (tracked pt: &'a PointsTo<str>)
+    ensures pt.ptr() == mut_ref_ptr(*mut_ref),
+        pt.is_init(),
+        &pt.value() == &(*old(*mut_ref)),
+        &*final(*mut_ref) == &*old(*mut_ref);
+
+pub axiom fn tracked_mut_ref_slice_subrange<T>(tracked mut_ref: &mut [T], i: int, j: int)
+        -> (tracked sub_mut_ref: &mut [T])
+    requires 0 <= i <= j <= mut_ref.len(),
+    ensures 
+        sub_mut_ref.len() == final(sub_mut_ref).len() == j - i,
+        sub_mut_ref@ == (*old(mut_ref))@.subrange(i, j),
+        (*final(mut_ref))@ == (*old(mut_ref))@.subrange(0, i) + (*final(sub_mut_ref))@ + (*old(mut_ref))@.subrange(i, old(mut_ref).len() as int);
+
+pub axiom fn tracked_mut_ref_slice_idx<T>(tracked mut_ref: &mut [T], i: int)
+        -> (tracked sub_mut_ref: &mut T)
+    requires 0 <= i < mut_ref.len(),
+    ensures 
+        *sub_mut_ref == (*old(mut_ref))@[i],
+        (*final(mut_ref))@ == (*old(mut_ref))@.update(i, *final(sub_mut_ref));
+
+// Conceptually, turning a mut ref into a ptr is just splitting it into exec and tracked components.
+// Ideally, we wouldn't need a dedicated function for doing both of these things; we would just
+// model the exec operation turning a mut ref into a pointer, and then getting the tracked mut ref
+// by mode coercion.
+//
+// However, the actual operation still requires a (nondeterministic) retag, so we need one function
+// that produces both the raw pointer and the permission and ties the fresh pointer values together.
+
+pub open spec fn ptr_eq_up_to_tag<T: ?Sized>(p: *mut T, q: *mut T) -> bool {
+    p.addr() == q.addr() && p@.metadata == q@.metadata
+    // should also compare the spatial elements of provenance, i.e., the non-tag
+    // part of provenance
+}
+
 /// Convert a mutable reference into a raw pointer and accompanying `PointsTo` permission.
 #[verifier::external_body]
 pub const fn cast_mut_ref_to_ptr<T>(mut_ref: &mut T) -> ((ptr, perm): (
     *mut T,
-    Tracked<&mut PointsTo<T>>,
+    Tracked<&mut T>,
 ))
     ensures
-        perm@.ptr() == ptr,
-        perm@.is_init(),
-        perm@.value() == *old(mut_ref),
-        *final(mut_ref) == final(perm@).value(),
+        ptr_eq_up_to_tag(ptr, mut_ref_ptr(mut_ref)),
+        mut_ref_ptr(perm@) == ptr,
+        &**perm == &*old(mut_ref),
+        &*final(perm@) == &*final(mut_ref),
 {
     (mut_ref as *mut T, Tracked::assume_new())
 }
 
 /// Convert a mutable reference into a raw pointer and accompanying `PointsTo` permission.
 #[verifier::external_body]
-pub const fn cast_mut_ref_slice_to_ptr<T>(mut_ref: &mut [T]) -> ((ptr, perm): (
-    *mut [T],
-    Tracked<&mut PointsTo<[T]>>,
-))
+pub const fn cast_mut_ref_slice_to_ptr<T>(mut_ref: &mut [T]) -> ((ptr, perm): (*mut [T], Tracked<&mut [T]>))
     ensures
-        perm@.ptr() == ptr,
-        perm@.is_init(),
-        perm@.value() == old(mut_ref)@,
-        final(mut_ref)@ == final(perm@).value(),
+        ptr_eq_up_to_tag(ptr, mut_ref_ptr(mut_ref)),
+        mut_ref_ptr(perm@) == ptr,
+        &**perm == &*old(mut_ref),
+        &*final(perm@) == &*final(mut_ref),
 {
     (mut_ref as *mut [T], Tracked::assume_new())
 }
@@ -3409,13 +3474,13 @@ pub const fn cast_mut_ref_slice_to_ptr<T>(mut_ref: &mut [T]) -> ((ptr, perm): (
 #[verifier::external_body]
 pub const fn cast_mut_ref_str_to_ptr(mut_ref: &mut str) -> ((ptr, perm): (
     *mut str,
-    Tracked<&mut PointsTo<str>>,
+    Tracked<&mut str>,
 ))
     ensures
-        perm@.ptr() == ptr,
-        perm@.is_init(),
-        perm@.value() == &*old(mut_ref),
-        &*final(mut_ref) == final(perm@).value(),
+        ptr_eq_up_to_tag(ptr, mut_ref_ptr(mut_ref)),
+        mut_ref_ptr(perm@) == ptr,
+        &**perm == &*old(mut_ref),
+        &*final(perm@) == &*final(mut_ref),
 {
     (mut_ref as *mut str, Tracked::assume_new())
 }
