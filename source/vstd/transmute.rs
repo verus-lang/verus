@@ -89,6 +89,8 @@ pub broadcast group group_transmute_axioms {
     abs_encode_impl,
     abs_can_be_encoded_impl,
     abs_encode_impl_unsized,
+    abs_decode_mem_contents,
+    abs_decode_mem_contents_unsized,
     group_type_representation_axioms,
 }
 
@@ -264,68 +266,6 @@ pub proof fn transmute_usize_mut_ptr<T: Sized>(tracked src: usize) -> (tracked d
         ));
     }
     dst
-}
-
-impl<T: AbstractByteRepresentation> PointsTo<T> {
-    // TODO: version for nondeterministic targets
-    pub axiom fn transmute_shared<'a, U: AbstractByteRepresentation>(
-        tracked &'a self,
-        tracked target: U,
-    ) -> (tracked ret: &'a PointsTo<U>)
-        requires
-            transmute_pre::<T, U>(self.value(), target),
-            self.is_init(),
-        ensures
-            transmute_post::<U>(target, ret.value()),
-            ret.is_init(),
-            ret.ptr()@.addr == self.ptr()@.addr,
-            ret.ptr()@.provenance == self.ptr()@.provenance,
-            ret.ptr()@.metadata == self.ptr()@.metadata,
-    ;
-}
-
-impl PointsTo<str> {
-    /// Creates a `&PointsTo<[u8]>` from a `&PointsTo<str>`.
-    /// Requires that it is possible to transmute between the pointed-to value of `self`
-    /// and the provided value `target`. This value (`target`) will become the pointed-to value
-    /// of the resulting `&PointsTo<[u8]>`.
-    pub axiom fn transmute_shared<'a>(tracked &'a self, tracked target: &[u8]) -> (tracked ret:
-        &'a PointsTo<[u8]>)
-        requires
-            transmute_pre_points_to::<str, [u8]>(self.value(), target),
-            self.is_init(),
-        ensures
-            ret.is_init(),
-            ret.value() == target@,
-            ret.ptr()@.addr == self.ptr()@.addr,
-            ret.ptr()@.provenance == self.ptr()@.provenance,
-            ret.ptr()@.metadata == self.ptr()@.metadata,
-    ;
-}
-
-impl PointsTo<[u8]> {
-    /// Creates a `&PointsTo<str>` from a `&PointsTo<[u8]>`.
-    /// Requires that it is possible to transmute between the pointed-to value of `self`
-    /// and the provided value `target`. This value (`target`) will become the pointed-to value
-    /// of the resulting `&PointsTo<str>`.
-    pub axiom fn transmute_shared<'a>(
-        tracked &'a self,
-        value: &[u8],
-        tracked target: &str,
-    ) -> (tracked ret: &'a PointsTo<str>)
-        requires
-            transmute_pre_points_to::<[u8], str>(value, target),
-            self.is_init(),
-            self.value()
-                == value@,  //require a separate argument for value since transmute_pre_points_to expects a &[u8] instead of a Seq<u8>
-
-        ensures
-            ret.is_init(),
-            ret.value() == target,
-            ret.ptr()@.addr == self.ptr()@.addr,
-            ret.ptr()@.provenance == self.ptr()@.provenance,
-            ret.ptr()@.metadata == self.ptr()@.metadata,
-    ;
 }
 
 } // verus!
