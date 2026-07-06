@@ -14,7 +14,7 @@ use core::marker::PhantomData;
 use core::ops::Index;
 use core::option::Option;
 use core::option::Option::None;
-use core::slice::SliceIndex;
+use core::slice::{IterMut, SliceIndex};
 
 use verus as verus_;
 verus_! {
@@ -473,6 +473,114 @@ impl<T>  FromIteratorSpecImpl<T> for Vec<T> {
     }
 }
 
+
+/***********************************************************************************************
+ * Definitions for `slice::IterMut` (the iterator behind `<[T]>::iter_mut` and `Vec::iter_mut`)
+ ***********************************************************************************************/
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::accept_recursive_types(T)]
+pub struct ExIterMut<'a, T: 'a>(IterMut<'a, T>);
+
+// See rust_verify_test/tests/iterators.rs for a verified implementation of this interface.
+// Any changes here should first be verified over there.
+impl<'a, T: 'a> super::iter::IteratorSpecImpl for IterMut<'a, T> {
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        true
+    }
+
+    #[verifier::prophetic]
+    uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+
+    open spec fn will_return_none(&self) -> bool { true }
+
+    #[verifier::prophetic]
+    open spec fn initial_value_relation(&self, init: &Self) -> bool {
+        IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
+    }
+
+    uninterp spec fn decrease(&self) -> Option<nat>;
+
+    open spec fn peek(&self, index: int) -> Option<Self::Item> { None }
+}
+
+// Common postcondition shared by `<[T]>::iter_mut` and `Vec::iter_mut`, relating
+// the freshly-created iterator `iter` to the borrowed-from sequence.  `cur` is the
+// borrowed-from contents at the start (`old(..)@`) and `fut` is its prophesied
+// final contents (`final(..)@`).
+#[verifier::prophetic]
+pub open spec fn iter_mut_ensures<'a, T>(
+    iter: &IterMut<'a, T>,
+    cur: Seq<T>,
+    fut: Seq<T>,
+) -> bool {
+    &&& IteratorSpec::remaining(iter).len() == cur.len() == fut.len()
+    // Each yielded reference initially points at the corresponding element...
+    &&& forall|i: int| #![trigger IteratorSpec::remaining(iter)[i]]
+        0 <= i < cur.len() ==> *(IteratorSpec::remaining(iter)[i]) == cur[i]
+    // ...and its eventual value flows back to the corresponding element.
+    &&& forall|i: int| #![trigger IteratorSpec::remaining(iter)[i]]
+        0 <= i < cur.len() ==> *final(IteratorSpec::remaining(iter)[i]) == fut[i]
+    &&& IteratorSpec::obeys_prophetic_iter_laws(iter)
+    &&& IteratorSpec::will_return_none(iter)
+    &&& IteratorSpec::decrease(iter) is Some
+    &&& IteratorSpec::initial_value_relation(iter, iter)
+}
+
+// Also covers `vec.iter_mut(), which reaches this slice fn through `Vec`'s `DerefMut`
+pub assume_specification<'a, T>[ <[T]>::iter_mut ](slice: &'a mut [T]) -> (iter: IterMut<'a, T>)
+    ensures
+        iter_mut_ensures(&iter, old(slice)@, final(slice)@),
+;
+
+pub uninterp spec fn iter_mut_next_post<'a, T>(
+    old_iter: &IterMut<'a, T>,
+    new_iter: &IterMut<'a, T>,
+    ret: Option<&'a mut T>,
+) -> bool;
+
+// Duplicates Iterator::next's postcondition, so we use it as a postcondition on the concrete
+// IterMut type.  See `Chars::next` for why all of this indirection is needed.
+pub broadcast axiom fn iter_mut_next_postcondition<'a, T>(
+    old_iter: &IterMut<'a, T>,
+    new_iter: &IterMut<'a, T>,
+    ret: Option<&'a mut T>,
+)
+    requires
+        #[trigger] iter_mut_next_post(old_iter, new_iter, ret),
+    ensures
+        // The iterator consistently obeys, completes, and decreases throughout its lifetime.
+        IteratorSpec::obeys_prophetic_iter_laws(new_iter)
+            == IteratorSpec::obeys_prophetic_iter_laws(old_iter),
+        IteratorSpec::obeys_prophetic_iter_laws(new_iter) ==> IteratorSpec::will_return_none(new_iter)
+            == IteratorSpec::will_return_none(old_iter),
+        IteratorSpec::obeys_prophetic_iter_laws(new_iter) ==> (IteratorSpec::decrease(old_iter) is Some
+            <==> IteratorSpec::decrease(new_iter) is Some),
+        // `next` pops the head of the prophesized remaining(), or returns None.
+        IteratorSpec::obeys_prophetic_iter_laws(new_iter) ==> ({
+            if IteratorSpec::remaining(old_iter).len() > 0 {
+                &&& IteratorSpec::remaining(new_iter) == IteratorSpec::remaining(old_iter).drop_first()
+                &&& ret == Some(IteratorSpec::remaining(old_iter)[0])
+            } else {
+                IteratorSpec::remaining(new_iter) == IteratorSpec::remaining(old_iter) && ret == None
+                    && IteratorSpec::will_return_none(new_iter)
+            }
+        }),
+        // If the iterator isn't done yet, then it successfully decreases its metric (if any).
+        IteratorSpec::obeys_prophetic_iter_laws(new_iter) && IteratorSpec::remaining(old_iter).len() > 0
+            && IteratorSpec::decrease(new_iter) is Some
+            ==> decreases_to!(IteratorSpec::decrease(old_iter)->0 => IteratorSpec::decrease(new_iter)->0),
+;
+
+pub assume_specification<'a, T>[ <IterMut<'a, T> as Iterator>::next ](
+    iter: &mut IterMut<'a, T>,
+) -> (ret: Option<&'a mut T>)
+    ensures
+        iter_mut_next_post(old(iter), final(iter), ret),
+;
+
+
+
 pub broadcast proof fn lemma_vec_obeys_eq_spec<T: PartialEq>()
     requires
         super::super::laws_eq::obeys_eq::<T>(),
@@ -535,6 +643,7 @@ pub broadcast group group_vec_axioms {
     axiom_spec_into_iter_borrowed,
     axiom_vec_has_resolved,
     axiom_vec_decreases_to_view,
+    iter_mut_next_postcondition,
 }
 
 } // verus!
