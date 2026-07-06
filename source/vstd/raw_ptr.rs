@@ -478,6 +478,16 @@ impl<T> PointsTo<T> {
         self.as_unaligned().ptr_bounds()
     }
 
+    /// If `T` is not a ZST, then the pointer's provenance is non-null.
+    pub proof fn provenance_non_null(tracked &self)
+        requires
+            layout::size_of::<T>() != 0,
+        ensures
+            self.ptr()@.provenance != Provenance::null(),
+    {
+        self.inner.provenance_non_null()
+    }
+
     /// Guarantees that the memory ranges associated with two distinct, non-ZST permissions will not overlap,
     /// since you cannot have two permissions to the same memory.
     /// (`self` is an &mut reference to enforce distinctness,
@@ -621,6 +631,15 @@ impl<T> PointsToUnaligned<T> {
             self.ptr()@.addr as int >= self.ptr()@.provenance.start_addr(),
             self.ptr()@.addr + size_of::<T>() <= self.ptr()@.provenance.start_addr()
                 + self.ptr()@.provenance.alloc_len(),
+    ;
+
+    /// If `T` is not a ZST, then the pointer's provenance is non-null.
+    /// https://doc.rust-lang.org/std/ptr/index.html#provenance
+    pub axiom fn provenance_non_null(tracked &self)
+        requires
+            layout::size_of::<T>() != 0,
+        ensures
+            self.ptr()@.provenance != Provenance::null(),
     ;
 
     /// Guarantees that the memory ranges associated with two distinct, non-ZST permissions will not overlap,
@@ -803,6 +822,17 @@ impl<T> PointsTo<[T]> {
                 <= self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len(),
     {
         self.inner.ptr_bounds();
+    }
+
+    /// If the memory covered by this permission is not zero-sized,
+    /// then the pointer's provenance is non-null.
+    pub proof fn provenance_non_null(tracked &self)
+        requires
+            layout::size_of::<T>() * self.len() != 0,
+        ensures
+            self.ptr()@.provenance != Provenance::null(),
+    {
+        self.inner.provenance_non_null();
     }
 
     /// Given that the subrange is within bounds, it is always possible to get a permission to just that subrange.
@@ -1473,6 +1503,15 @@ impl<T> PointsToUnaligned<[T]> {
             self.ptr()@.provenance.start_addr() <= self.ptr()@.addr,
             self.ptr()@.addr + self.mem_contents_seq().len() * size_of::<T>()
                 <= self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len(),
+    ;
+
+    /// If the memory covered by this permission is not zero-sized,
+    /// then the pointer's provenance is non-null.
+    pub axiom fn provenance_non_null(tracked &self)
+        requires
+            layout::size_of::<T>() * self.mem_contents_seq().len() != 0,
+        ensures
+            self.ptr()@.provenance != Provenance::null(),
     ;
 
     /// Guarantees that the memory ranges associated with two distinct, non-ZST permissions will not overlap,
@@ -3569,6 +3608,36 @@ impl PointsToRaw {
         ensures
             joined.provenance() == self.provenance(),
             joined.dom() == self.dom() + other.dom(),
+    ;
+
+    /// The memory associated with a pointer should always be within bounds of its spatial provenance.
+    pub axiom fn ptr_bounds(tracked &self)
+        ensures
+            forall|i|
+                self.dom().contains(i) ==> self.provenance().start_addr() <= i
+                    <= self.provenance().start_addr() + self.provenance().alloc_len(),
+    ;
+
+    /// If the address domain is non-empty, then the provenance is non-null.
+    /// https://doc.rust-lang.org/std/ptr/index.html#provenance
+    pub axiom fn provenance_non_null(tracked &self)
+        requires
+            self.dom() != Set::<int>::empty(),
+        ensures
+            self.provenance() != Provenance::null(),
+    ;
+
+    /// Guarantees that the memory ranges associated with two distinct, non-empty permissions will not overlap,
+    /// since you cannot have two permissions to the same memory.
+    /// (`self` is an &mut reference to enforce distinctness,
+    /// so you cannot pass the same PointsToRaw as both arguments.)
+    pub axiom fn is_disjoint(tracked &mut self, tracked other: &PointsToRaw)
+        requires
+            self.dom() != Set::<int>::empty(),
+            other.dom() != Set::<int>::empty(),
+        ensures
+            *old(self) == *final(self),
+            final(self).dom().intersect(other.dom()).is_empty(),
     ;
 
     /// Creates a `PointsTo<V>` permission from a `PointsToRaw` permission
