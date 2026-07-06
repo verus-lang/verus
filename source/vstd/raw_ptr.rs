@@ -1599,6 +1599,7 @@ impl<T> PointsToUnaligned<[T]> {
             ),
             points_to.is_init(),
             points_to.value() as int == to_big_from_digits::<V, T>(self.value()).index(0),
+            points_to.abstract_bytes() == self.abstract_bytes(),
     ;
 
     /// Given that the subrange is within bounds, it is always possible to get a permission to just that subrange.
@@ -1617,6 +1618,10 @@ impl<T> PointsToUnaligned<[T]> {
             sub_points_to.mem_contents_seq() == self.mem_contents_seq().subrange(
                 start_index as int,
                 start_index as int + len as int,
+            ),
+            sub_points_to.abstract_bytes() == self.abstract_bytes().subrange(
+                start_index * layout::size_of::<T>() as int,
+                (start_index + len) * layout::size_of::<T>() as int,
             ),
     ;
 
