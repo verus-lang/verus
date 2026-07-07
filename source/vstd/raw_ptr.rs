@@ -1556,6 +1556,7 @@ pub axiom fn seq_into_slice_shared<T>(tracked spt: &SeqPointsTo<T>) -> (tracked 
         pt.ptr()@.metadata == spt.len(),
 ;
 
+/*
 /// If the domain exactly contains the indices bounded by `self.len()`,
 /// we can convert a mutable reference to this permission into a `&mut PointsTo<[T]>`
 /// with the same pointer and the same memory contents at every index.
@@ -1580,6 +1581,7 @@ pub axiom fn seq_into_slice_mut<T>(tracked spt: &mut SeqPointsTo<T>) -> (tracked
         pt.ptr() as *mut T == old(spt).ptr(),
         pt.ptr()@.metadata == old(spt).len(),
 ;
+*/
 
 impl<T> SeqPointsTo<T> {
     /// The keys must fall in the range `[0, self.len())`.
@@ -1824,6 +1826,30 @@ impl<T> SeqPointsTo<T> {
             out.mem_contents() == encode(self.mem_contents()),
             out.wf(),
     ;
+
+    pub proof fn into_seq(tracked self) -> (tracked r: Seq<PointsTo<T>>)
+        ensures r == self.seq_perm(),
+    {
+        self.perm
+    }
+
+    pub proof fn from_seq(tracked r: Seq<PointsTo<T>>, ptr: *mut T) -> (tracked s: Self)
+        requires
+            (forall|i|
+                #![trigger r[i].ptr()@.provenance]
+                #![trigger r[i].ptr()@.addr]
+                0 <= i < r.len() ==> {
+                    &&& r[i].ptr()@.provenance == ptr@.provenance
+                    &&& r[i].ptr()@.addr == ptr@.addr + i * layout::size_of::<T>()
+                }),
+            ptr@.provenance.start_addr() <= ptr@.addr,
+            ptr@.addr + r.len() * layout::size_of::<T>()
+                <= ptr@.provenance.start_addr() + ptr@.provenance.alloc_len(),
+            ptr@.addr as nat % align_of::<T>() == 0,
+        ensures r == s.seq_perm(), s.ptr() == ptr,
+    {
+        SeqPointsTo::<T> { perm: r, ptr: Ghost(ptr) }
+    }
 }
 
 pub uninterp spec fn encode<T>(s: Seq<MemContents<T>>) -> Seq<MemContents<u8>>;
@@ -2276,7 +2302,6 @@ impl<T> MapPointsTo<T> {
     {
         use_type_invariant(self);
         broadcast use is_nonnull;
-
     }
 }
 

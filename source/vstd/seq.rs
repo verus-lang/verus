@@ -197,6 +197,17 @@ impl<A> Seq<A> {
     }
 
     #[verifier(external_body)]
+    pub proof fn tracked_borrow_mut(tracked &mut self, i: int) -> (tracked ret: &mut A)
+        requires
+            0 <= i < self.len(),
+        ensures
+            *ret == old(self)[i],
+            *final(self) == old(self).update(i, *final(ret)),
+    {
+        unimplemented!()
+    }
+
+    #[verifier(external_body)]
     pub proof fn tracked_borrow(tracked &self, i: int) -> (tracked ret: &A)
         requires
             0 <= i < self.len(),
