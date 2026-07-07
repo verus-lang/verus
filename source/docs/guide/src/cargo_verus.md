@@ -123,7 +123,7 @@ cargo verus focus
 cargo verus focus -p my_crate
 ```
 
-Dependencies are still _built_ (so their types are available), but their proofs are
+Dependencies are still *built* (so their types are available), but their proofs are
 not re-checked. `cargo verus verify` should be used before committing to ensure the project's
 end-to-end proof is sound.
 
@@ -138,6 +138,7 @@ cargo verus build --release
 ```
 
 Note that Verus-annotated code can also be built with a normal `cargo build` command, if you prefer.
+
 
 ## Passing arguments
 
@@ -154,20 +155,19 @@ cargo verus verify -p my_crate --release -- --rlimit 60 --expand-errors
 
 Verus-relevant Cargo options must come before generic Cargo flags such as `--release`.
 The Verus-relevant options are:
-
 - `-p`/`--package`, `--workspace`, `--all`, `--exclude`
 - `--features`, `--all-features`, `--no-default-features`
 - `--manifest-path`, `--target-dir`
 - `--frozen`, `--locked`, `--offline`
 - `--config`, `-Z`
-  The `-Z` option must be written with a space, e.g. `-Z unstable-options`, the
-  compact form is not supported.
+The `-Z` option must be written with a space, e.g. `-Z unstable-options`, the
+compact form is not supported.
 
 Common Verus arguments that can be passed this way include `--rlimit`,
-`--expand-errors`, and `--log-all`. You should typically avoid passing
-crate-specific arguments this way. For example, passing `--verify-module`
+`--expand-errors`, and `--log-all`.  You should typically avoid passing
+crate-specific arguments this way.  For example, passing `--verify-module`
 or `--verify-function` is unlikely to work, unless you have the same module/function
-in every verified crate in your project and its dependencies. To pass these
+in every verified crate in your project and its dependencies.  To pass these
 project-specific flags, see below for how to control which crates receive
 which the Verus arguments.
 
@@ -176,11 +176,11 @@ which the Verus arguments.
 By default, the Verus arguments after `--` are forwarded to **all** verified crates.
 Use `--fwd-verus-args-to <target>` to narrow or widen the target.
 
-| Value   | Effect                                                                                 |
-| ------- | -------------------------------------------------------------------------------------- |
-| `all`   | Forward to all verified crates, including dependencies (default for `verify`, `build`) |
-| `roots` | Forward only to the root (selected) crates (default for `focus`)                       |
-| `deps`  | Forward only to dependency crates, not to root crates                                  |
+| Value    | Effect                                                         |
+|----------|----------------------------------------------------------------|
+| `all`    | Forward to all verified crates, including dependencies (default for `verify`, `build`) |
+| `roots`  | Forward only to the root (selected) crates (default for `focus`) |
+| `deps`   | Forward only to dependency crates, not to root crates          |
 
 ```bash
 # Only pass --rlimit to the root crate, not to its verified dependencies
