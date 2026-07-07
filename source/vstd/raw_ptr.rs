@@ -3654,8 +3654,7 @@ fn write<T>(ptr: *mut T, val: T, Tracked(t_perm): Tracked<&mut T>)
     requires
         ptr == mut_ref_ptr(t_perm)
     ensures
-        *final(t_perm) == val,
-        abs_decode::<T>(abs_bytes(final(t_perm)), &*final(t_perm))
+        *final(t_perm) == val
 {
     unimplemented!()
 }
