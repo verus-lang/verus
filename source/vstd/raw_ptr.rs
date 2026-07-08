@@ -1159,7 +1159,6 @@ impl<T> PointsTo<[T]> {
             final(perm).mem_contents_seq() == final(self).mem_contents_seq(),
     ;
     */
-
     /// Invariant: For all elements in this slice of memory, the corresponding abstract bytes must decode into the value in memory.
     pub axiom fn abstract_bytes_decode(&self)
         ensures
@@ -2378,7 +2377,8 @@ impl<T> SeqPointsTo<T> {
     }
 
     pub proof fn into_seq(tracked self) -> (tracked r: Seq<PointsTo<T>>)
-        ensures r == self.seq_perm(),
+        ensures
+            r == self.seq_perm(),
     {
         self.perm
     }
@@ -2393,10 +2393,12 @@ impl<T> SeqPointsTo<T> {
                     &&& r[i].ptr()@.addr == ptr@.addr + i * layout::size_of::<T>()
                 }),
             ptr@.provenance.start_addr() <= ptr@.addr,
-            ptr@.addr + r.len() * layout::size_of::<T>()
-                <= ptr@.provenance.start_addr() + ptr@.provenance.alloc_len(),
+            ptr@.addr + r.len() * layout::size_of::<T>() <= ptr@.provenance.start_addr()
+                + ptr@.provenance.alloc_len(),
             ptr@.addr as nat % align_of::<T>() == 0,
-        ensures r == s.seq_perm(), s.ptr() == ptr,
+        ensures
+            r == s.seq_perm(),
+            s.ptr() == ptr,
     {
         SeqPointsTo::<T> { perm: r, ptr: Ghost(ptr) }
     }
@@ -3041,6 +3043,7 @@ impl<T> MapPointsTo<T> {
     {
         use_type_invariant(self);
         broadcast use is_nonnull;
+
     }
 }
 
