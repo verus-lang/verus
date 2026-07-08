@@ -30,7 +30,7 @@ use crate::vstd::endian::*;
 use crate::vstd::group_vstd_default;
 use crate::vstd::seq::*;
 use crate::vstd::slice::*;
-use crate::type_representation::{AbstractByte, abs_decode};
+use crate::type_representation::{AbstractByte, abs_decode, abs_encode};
 use core::ops::Index;
 use core::slice::SliceIndex;
 
@@ -3557,13 +3557,21 @@ struct MyPointsTo<T> {
     bytes: Seq<AbstractByte>
 }
 
+axiom fn encoding_inv<T>(tracked val: &T)
+    ensures
+        forall|bytes| #[trigger] abs_encode::<T>(val, bytes) ==> bytes.len() == size_of::<T>(),
+        exists|bytes| #[trigger] abs_encode::<T>(val, bytes),
+        forall|bytes| #[trigger] abs_encode::<T>(val, bytes) ==> abs_decode::<T>(bytes, val)
+    ;
+
 axiom fn untyped_inv(tracked u_perm: &MyPointsToUntyped)
     // omitted: spatial invariants
 ;
 
 axiom fn typed_inv<T>(tracked t_perm: &MyPointsTo<T>)
     ensures
-        t_perm.val is Valid ==> abs_decode::<T>(t_perm.bytes, &t_perm.val->0)
+        t_perm.val is Valid ==> abs_decode::<T>(t_perm.bytes, &t_perm.val->0),
+        t_perm.val is Empty ==> t_perm.bytes.len() == size_of::<T>()
         // omitted: spatial invariants
     ;
 
@@ -3576,59 +3584,35 @@ axiom fn into_untyped<T>(tracked t_perm: MyPointsTo<T>) -> (tracked (u_perm, val
         t_perm.bytes == u_perm.bytes,
         t_perm.val->0 == val;
 
-axiom fn into_untyped_empty<T>(tracked t_perm: MyPointsTo<T>) -> (tracked u_perm: MyPointsToUntyped)
-    ensures
-        t_perm.ptr == u_perm.ptr as *mut T,
-        size_of::<T>() == u_perm.ptr@.metadata as int,
-        t_perm.bytes == u_perm.bytes;
-
-axiom fn as_untyped<T>(tracked t_perm: &MyPointsTo<T>) -> (tracked (u_perm, val): (&MyPointsToUntyped, &T))
-    requires
-        t_perm.val is Valid
-    ensures
-        t_perm.ptr == u_perm.ptr as *mut T,
-        size_of::<T>() == u_perm.ptr@.metadata as int,
-        t_perm.bytes == u_perm.bytes,
-        t_perm.val->0 == val;
-
-axiom fn as_untyped_empty<T>(tracked t_perm: &MyPointsTo<T>) -> (tracked u_perm: &MyPointsToUntyped)
-    ensures
-        t_perm.ptr == u_perm.ptr as *mut T,
-        size_of::<T>() == u_perm.ptr@.metadata as int,
-        t_perm.bytes == u_perm.bytes;
-
-// This moves the `T` out from `t_perm`.
-axiom fn as_untyped_mut<T>(tracked t_perm: &mut MyPointsTo<T>) -> (tracked (u_perm, val): (&mut MyPointsToUntyped, T))
-    requires
-        t_perm.val is Valid
-    ensures
-        old(t_perm).ptr == u_perm.ptr as *mut T,
-        size_of::<T>() == u_perm.ptr@.metadata as int,
-        old(t_perm).bytes == u_perm.bytes,
-        old(t_perm).val->0 == val,
-        final(t_perm).ptr == old(t_perm).ptr,
-        final(t_perm).bytes == final(u_perm).bytes,
-        final(t_perm).val is Empty
-    ;
-
-axiom fn as_untyped_mut_empty<T>(tracked t_perm: &mut MyPointsTo<T>) -> (tracked u_perm: &mut MyPointsToUntyped)
-    ensures
-        old(t_perm).ptr == u_perm.ptr as *mut T,
-        size_of::<T>() == u_perm.ptr@.metadata as int,
-        old(t_perm).bytes == u_perm.bytes,
-        final(t_perm).ptr == old(t_perm).ptr,
-        final(t_perm).bytes == final(u_perm).bytes,
-        final(t_perm).val is Empty
-    ;
-
 axiom fn into_typed<T>(tracked u_perm: MyPointsToUntyped) -> (tracked t_perm: MyPointsTo<T>)
     requires
         size_of::<T>() == u_perm.ptr@.metadata as int,
     ensures
         t_perm.ptr == u_perm.ptr as *mut T,
         t_perm.bytes == u_perm.bytes,
-        t_perm.val is Empty,
-;
+        t_perm.val is Empty;
+
+axiom fn as_untyped<T>(tracked t_perm: &MyPointsTo<T>) -> (tracked u_perm: &MyPointsToUntyped)
+    ensures
+        t_perm.ptr == u_perm.ptr as *mut T,
+        size_of::<T>() == u_perm.ptr@.metadata as int,
+        t_perm.bytes == u_perm.bytes;
+
+axiom fn as_untyped_mut<T>(tracked t_perm: &mut MyPointsTo<T>) -> (tracked u_perm: &mut MyPointsToUntyped)
+    ensures
+        old(t_perm).ptr == u_perm.ptr as *mut T,
+        size_of::<T>() == u_perm.ptr@.metadata as int,
+        old(t_perm).bytes == u_perm.bytes,
+        final(t_perm).ptr == old(t_perm).ptr,
+        final(t_perm).bytes == final(u_perm).bytes,
+        final(t_perm).val is Empty
+    ;
+
+axiom fn borrow<T>(tracked t_perm: &MyPointsTo<T>) -> (tracked val: &T)
+    requires
+        t_perm.val is Valid
+    ensures
+        t_perm.val->0 == val;
 
 // Consumes the `T` and puts it in `t_perm`.
 axiom fn put<T>(tracked t_perm: &mut MyPointsTo<T>, tracked val: T)
@@ -3640,8 +3624,12 @@ axiom fn put<T>(tracked t_perm: &mut MyPointsTo<T>, tracked val: T)
         final(t_perm).val == MyTypedValue::Valid(val)
 ;
 
-axiom fn forget<T>(tracked t_perm: &mut MyPointsTo<T>)
+// This moves the `T` out from `t_perm`.
+axiom fn take<T>(tracked t_perm: &mut MyPointsTo<T>) -> (tracked val: T)
+    requires
+        t_perm.val is Valid
     ensures
+        old(t_perm).val->0 == val,
         final(t_perm).ptr == old(t_perm).ptr,
         final(t_perm).bytes == old(t_perm).bytes,
         final(t_perm).val is Empty
@@ -3650,13 +3638,32 @@ axiom fn forget<T>(tracked t_perm: &mut MyPointsTo<T>)
 /// MEMORY OPS
 
 #[verifier::external_body]
-fn write<T>(ptr: *mut T, val: T, Tracked(t_perm): Tracked<&mut T>)
+fn write_untyped<T>(ptr: *mut T, val: T, Tracked(u_perm): Tracked<&mut MyPointsToUntyped>) -> (out: Tracked<T>)
     requires
-        ptr == mut_ref_ptr(t_perm)
+        ptr == u_perm.ptr as *const T,
+        size_of::<T>() == u_perm.ptr@.metadata as int,
     ensures
-        *final(t_perm) == val
+        final(u_perm).ptr == old(u_perm).ptr,
+        abs_encode::<T>(&val, final(u_perm).bytes), // encode instead of decode, right ??
+        out@ == val
 {
     unimplemented!()
+}
+
+fn write_typed<T>(ptr: *mut T, val: T, Tracked(t_perm): Tracked<&mut MyPointsTo<T>>)
+    requires
+        ptr == t_perm.ptr
+    ensures
+        final(t_perm).ptr == old(t_perm).ptr,
+        abs_decode::<T>(final(t_perm).bytes, &val),
+        final(t_perm).val == MyTypedValue::Valid(val)
+{
+    let tracked u_perm = as_untyped_mut(t_perm);
+    let Tracked(written_val) = write_untyped(ptr, val, Tracked(u_perm));
+    proof {
+        encoding_inv(&written_val);
+        put(t_perm, written_val);
+    }
 }
 
 // This function consumes a Tracked<T> (representing that T is stored in memory) and produces a physical T,
@@ -3683,9 +3690,9 @@ fn read_typed_copy<T: Copy>(ptr: *const T, Tracked(t_perm): Tracked<&MyPointsTo<
     proof {
         typed_inv(t_perm);
     }
-    let tracked (u_perm, typed_val) = as_untyped(t_perm);
-    let tracked typed_copy = *typed_val;
-    read_untyped(ptr, Tracked(u_perm), Tracked(typed_copy))
+    let tracked u_perm = as_untyped(t_perm);
+    let tracked typed_val = *borrow(t_perm);
+    read_untyped(ptr, Tracked(u_perm), Tracked(typed_val))
 }
 
 fn read_typed_move<T>(ptr: *const T, Tracked(t_perm): Tracked<&mut MyPointsTo<T>>) -> (out: T)
@@ -3701,7 +3708,8 @@ fn read_typed_move<T>(ptr: *const T, Tracked(t_perm): Tracked<&mut MyPointsTo<T>
     proof {
         typed_inv(&t_perm);
     }
-    let tracked (u_perm, typed_val) = as_untyped_mut(t_perm);
+    let tracked typed_val = take(t_perm);
+    let tracked u_perm = as_untyped_mut(t_perm);
     read_untyped(ptr, Tracked(&u_perm), Tracked(typed_val))
 }
 
