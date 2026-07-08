@@ -4134,12 +4134,12 @@ pub(crate) fn borrow_mut_vir(
     let x = match allow_two_phase {
         AllowTwoPhase::Yes => {
             if place.x.uses_unnamed_temporary() {
-                ExprX::BorrowMut(place.clone())
+                ExprX::BorrowMut(place.clone(), bctx.in_ghost)
             } else {
-                ExprX::TwoPhaseBorrowMut(place.clone())
+                ExprX::TwoPhaseBorrowMut(place.clone(), bctx.in_ghost)
             }
         }
-        AllowTwoPhase::No => ExprX::BorrowMut(place.clone()),
+        AllowTwoPhase::No => ExprX::BorrowMut(place.clone(), bctx.in_ghost),
     };
     let typ = Arc::new(TypX::MutRef(place.typ.clone()));
     bctx.spanned_typed_new(span, &typ, x)
@@ -4245,10 +4245,10 @@ pub(crate) fn simplify_place_by_cancelling(place: &Place) -> Place {
             match &p.x {
                 PlaceX::Temporary(e) => {
                     match &e.x {
-                        ExprX::BorrowMut(p) => {
+                        ExprX::BorrowMut(p, _) => {
                             return p.clone();
                         }
-                        ExprX::TwoPhaseBorrowMut(p) => {
+                        ExprX::TwoPhaseBorrowMut(p, _) => {
                             return p.clone();
                         }
                         ExprX::ImplicitReborrowOrSpecRead(inner_place, _, _inner_span) => {

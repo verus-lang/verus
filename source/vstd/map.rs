@@ -482,7 +482,7 @@ impl<K, V> Map<K, V> {
                 j1 != j2 && key_map.dom().contains(j1) && key_map.dom().contains(j2)
                     ==> key_map.index(j1) != key_map.index(j2),
         ensures
-            forall|j| #[trigger] final(self).dom().contains(j) == key_map.dom().contains(j),
+            final(self).dom() == key_map.dom(),
             forall|j|
                 key_map.dom().contains(j) ==> final(self).dom().contains(j) && #[trigger] final(self).index(j)
                     == old(self).index(key_map.index(j)),
