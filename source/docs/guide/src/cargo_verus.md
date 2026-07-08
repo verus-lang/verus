@@ -33,7 +33,8 @@ This creates a new directory with a correctly-configured `Cargo.toml`, an initia
 
 ## Updating an existing Rust project to support Verus
 
-To enable verification for one or more of the crates in your project, add `vstd` as a dependency as follows:
+To enable verification for one or more of the crates in your project, add `vstd` as a
+dependency as follows:
 
 ```sh
 cargo add vstd
@@ -45,14 +46,15 @@ Then import the Verus prelude in each root module (e.g. `lib.rs` or `main.rs`):
 use vstd::prelude::*;
 ```
 
-Also include the following in the `Cargo.toml` file of each crate, to opt it into verification:
+To opt a crate into verification, include the following in its `Cargo.toml`:
 
 ```toml
 [package.metadata.verus]
 verify = true
 ```
 
-If the crate is not in a workspace, also add the following to suppress warnings about `cfg(verus_only)`:
+If the crate is not in a workspace, also add the following to suppress warnings
+about `cfg(verus_only)`:
 
 ```toml
 [lints.rust]
@@ -96,14 +98,14 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(verus_only)'] }
 `cargo verus new` adds this automatically. See [Ghost Erasure](./erasure.md) for a full
 explanation of `verus_only` and when to use it.
 
-In a Cargo workspace, you should instead add the following to the root Cargo.toml file:
+In a Cargo workspace, you should instead include the following in the root `Cargo.toml`:
 
 ```toml
 [workspace.lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(verus_only)'] }
 ```
 
-Then ensure that each member crate's Cargo.toml file has the following (which e.g. `cargo new` adds
+Then ensure that each member crate's `Cargo.toml` has the following (which e.g. `cargo new` adds
 automatically):
 
 ```toml
