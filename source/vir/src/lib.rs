@@ -67,6 +67,7 @@ mod resolution_types;
 mod resolve_axioms;
 pub mod safe_api;
 mod scc;
+mod shadow_data;
 pub mod sst;
 mod sst_elaborate;
 mod sst_to_air;

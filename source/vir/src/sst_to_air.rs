@@ -46,9 +46,9 @@ use std::mem::swap;
 use std::sync::Arc;
 
 pub struct PostConditionInfo {
-    /// Identifier that holds the return value.
+    /// Identifiers that hold the return values.
     /// May be referenced by `ens_exprs` or `ens_spec_precondition_stms`.
-    pub dest: Option<VarIdent>,
+    pub dest: Vec<VarIdent>,
     /// Post-conditions (only used in non-recommends-checking mode)
     /// Each entry carries the span, the AIR expression, and an optional `proof_note` label.
     pub ens_exprs: Vec<(Span, Expr, Option<ProofNoteLabel>)>,
@@ -99,6 +99,7 @@ pub(crate) fn primitive_path(name: &Primitive) -> Path {
         Primitive::StrSlice => crate::def::strslice_type(),
         Primitive::Ptr => crate::def::ptr_type(),
         Primitive::Global => crate::def::global_type(),
+        Primitive::ShadowData => panic!("ShadowData is not a monotype"),
     }
 }
 
@@ -109,6 +110,7 @@ pub(crate) fn primitive_type_id(name: &Primitive) -> Ident {
         Primitive::StrSlice => crate::def::TYPE_ID_STRSLICE,
         Primitive::Ptr => crate::def::TYPE_ID_PTR,
         Primitive::Global => crate::def::TYPE_ID_GLOBAL,
+        Primitive::ShadowData => crate::def::TYPE_ID_SHADOW_DATA,
     })
 }
 
@@ -184,7 +186,11 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         TypX::Boxed(_) => str_typ(POLY),
         TypX::TypParam(_) => str_typ(POLY),
         TypX::Primitive(
-            Primitive::Slice | Primitive::StrSlice | Primitive::Ptr | Primitive::Global,
+            Primitive::Slice
+            | Primitive::StrSlice
+            | Primitive::Ptr
+            | Primitive::Global
+            | Primitive::ShadowData,
             _,
         ) => match typ_as_mono(typ) {
             None => panic!("should be boxed"),
@@ -303,7 +309,9 @@ fn big_int_to_expr(i: &BigInt) -> Expr {
 
 fn decoration_base_for_primitive(name: Primitive) -> &'static str {
     match name {
-        Primitive::Array | Primitive::Ptr | Primitive::Global => crate::def::DECORATE_NIL_SIZED,
+        Primitive::Array | Primitive::Ptr | Primitive::Global | Primitive::ShadowData => {
+            crate::def::DECORATE_NIL_SIZED
+        }
         Primitive::Slice | Primitive::StrSlice => crate::def::DECORATE_NIL_SLICE,
     }
 }
@@ -594,7 +602,7 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
                         panic!("abstract datatype should be boxed")
                     }
                 }
-                Primitive::StrSlice | Primitive::Global => {}
+                Primitive::StrSlice | Primitive::Global | Primitive::ShadowData => {}
             }
             None
         }
@@ -1164,6 +1172,10 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     }
                 }
             }
+            UnaryOp::ShadowData => {
+                return Err(error(&exp.span, "shadow_data is not supported in this location"));
+            }
+            UnaryOp::ShadowAddrOf => panic!("ShadowAddrOf should have been removed"),
         },
         ExpX::UnaryOpr(op, e) => match op {
             UnaryOpr::Box(typ) => {
@@ -1788,17 +1800,23 @@ fn call_args_to_air(
     state: &mut State,
     expr_ctxt: &ExprCtxt,
     args: &Vec<Exp>,
-    dest: &Option<Dest>,
+    dest: &Vec<Dest>,
     stm: &Stm,
     ens_args_wo_typ: &mut Vec<Expr>,
     stmts: &mut Vec<Stmt>,
 ) -> Result<(), VirErr> {
     let mut call_snapshot = false;
     for arg in args.iter() {
-        let arg_x = if let Some(Dest { dest, is_init: _ }) = dest {
-            let var = get_loc_var(dest);
+        let arg_x = if dest.len() > 0 {
+            let vars: Vec<UniqueIdent> = dest.iter().map(|d| get_loc_var(&d.dest)).collect();
+            for i in 0..vars.len() {
+                for j in 0..vars.len() {
+                    // Each destination var must be distinct
+                    assert!(i == j || vars[i] != vars[j]);
+                }
+            }
             crate::sst_visitor::map_exp_visitor(arg, &mut |e| match &e.x {
-                ExpX::Var(x) if *x == var => {
+                ExpX::Var(x) if vars.contains(x) => {
                     call_snapshot = true;
                     SpannedTyped::new(
                         &e.span,
@@ -1850,6 +1868,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             assert!(split.is_none());
             let mut stmts: Vec<Stmt> = Vec::new();
             let func = &ctx.func_map[fun];
+            let func_sst = &ctx.func_sst_map[fun];
 
             let mut req_args: Vec<Expr> = typs.iter().flat_map(typ_to_ids).collect();
             for arg in args.iter() {
@@ -1866,13 +1885,14 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
 
                 let mut e_req = Arc::new(ExprX::Apply(f_req, req_args.clone()));
 
-                if emit_generic_conditions {
+                let no_extra_parameters = func_sst.x.pars.len() == func_sst.x.n_orig_params;
+                if emit_generic_conditions && no_extra_parameters {
                     let generic_req_exp = crate::sst_util::sst_call_requires(
                         ctx,
                         &stm.span,
                         fun,
                         typs,
-                        func,
+                        func_sst,
                         &resolved_fun,
                         args,
                     );
@@ -1948,11 +1968,17 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             }
 
             let mut ens_args_wo_typ = Vec::new();
+            let mut ens_args_dests = (**args).clone();
+            if func.x.ens_has_return {
+                for Dest { dest, is_init: _ } in dest.iter() {
+                    ens_args_dests.push(dest.clone());
+                }
+            }
             call_args_to_air(
                 ctx,
                 state,
                 expr_ctxt,
-                args,
+                &ens_args_dests,
                 dest,
                 stm,
                 &mut ens_args_wo_typ,
@@ -1979,12 +2005,13 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             let mut ens_args: Vec<_> =
                 ens_typ_args.into_iter().chain(ens_args_wo_typ.into_iter()).collect();
             if func.x.ens_has_return {
-                if let Some(Dest { dest, is_init }) = dest {
-                    let var = suffix_local_unique_id(&get_loc_var(dest));
-                    ens_args.push(exp_to_expr(ctx, &dest, expr_ctxt)?);
-                    if !*is_init {
-                        let havoc = StmtX::Havoc(var);
-                        stmts.push(Arc::new(havoc));
+                if dest.len() > 0 {
+                    for Dest { dest, is_init } in dest.iter() {
+                        let var = suffix_local_unique_id(&get_loc_var(dest));
+                        if !*is_init {
+                            let havoc = StmtX::Havoc(var);
+                            stmts.push(Arc::new(havoc));
+                        }
                     }
                     if ctx.debug {
                         // Add a snapshot after we modify the destination
@@ -2010,14 +2037,13 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 stmts.push(Arc::new(StmtX::Assume(e_ens)));
             }
             if emit_generic_conditions {
-                let dest_exp =
-                    if func.x.ens_has_return { Some(dest.clone().unwrap().dest) } else { None };
+                let dest_exp = if func.x.ens_has_return { Some(dest) } else { None };
                 let generic_ens_exp = crate::sst_util::sst_call_ensures(
                     ctx,
                     &stm.span,
                     fun,
                     typs,
-                    func,
+                    func_sst,
                     &resolved_fun,
                     args,
                     dest_exp,
@@ -2040,7 +2066,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 &mut ens_args_wo_typ,
                 &mut stmts,
             )?;
-            if let Some(Dest { dest, is_init }) = dest {
+            for Dest { dest, is_init } in dest.iter() {
                 let var = suffix_local_unique_id(&get_loc_var(dest));
                 assert!(*is_init); // for simplicity, ast_to_sst always generates is_init = true
                 let typ_inv = typ_invariant(ctx, &dest.typ, &ident_var(&var));
@@ -2082,40 +2108,34 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             let mut stmts = if skip {
                 vec![]
             } else {
-                // Set `dest_id` variable to the returned expression.
+                let fun = ctx.fun.as_ref().and_then(|f| ctx.func_sst_map.get(&f.current_fun));
+                let dest = state.post_condition_info.dest.clone();
+                let mut stmts: Vec<Stmt> = Vec::new();
+                if dest.len() > 0 {
+                    assert!(ret_exp.len() == dest.len());
+                    for (i, (r_exp, dest_id)) in ret_exp.iter().zip(dest.iter()).enumerate() {
+                        // Set `dest_id` variable to the returned expression.
+                        let ss = stm_to_stmts(ctx, state, &assume_var(&stm.span, dest_id, r_exp))?;
+                        stmts.extend(ss);
 
-                let mut stmts = if let Some(dest_id) = state.post_condition_info.dest.clone() {
-                    let ret_exp: &Arc<SpannedTyped<ExpX>> =
-                        ret_exp.as_ref().expect("if dest is provided, expr must be provided");
-
-                    let mut stmts =
-                        stm_to_stmts(ctx, state, &assume_var(&stm.span, &dest_id, ret_exp))?;
-
-                    // if return value exists, check if we need to emit additional assumes for nested opaque types
-                    let ret_op = ctx
-                        .fun
-                        .as_ref()
-                        .and_then(|f| ctx.func_sst_map.get(&f.current_fun))
-                        .map(|fun| fun.x.ret.x.typ.clone());
-                    if let Some(ret) = ret_op {
-                        stmts.extend(opaque_ty_additional_stmts(
-                            ctx,
-                            state,
-                            &ret_exp.span,
-                            &try_reveal_opaque_ty_ctor(ret_exp),
-                            &ret,
-                        )?);
+                        // if return value exists, check if we need to emit additional assumes for nested opaque types
+                        if let Some(fun) = fun {
+                            assert!(ret_exp.len() == fun.x.ret.len());
+                            stmts.extend(opaque_ty_additional_stmts(
+                                ctx,
+                                state,
+                                &r_exp.span,
+                                &try_reveal_opaque_ty_ctor(r_exp),
+                                &fun.x.ret[i].x.typ,
+                            )?);
+                        }
                     }
-
-                    stmts
-                } else {
-                    // If there is no `dest_id`, then the returned expression
+                    // If dest.len() == 0, then the returned expression
                     // gets ignored. This should happen for functions that
                     // don't return anything (more technically, that return
                     // implicit unit) or other functions that don't have a name
                     // associated to their return value.
-                    vec![]
-                };
+                }
 
                 if ctx.checking_spec_preconditions() {
                     for stm in state.post_condition_info.ens_spec_precondition_stms.clone().iter() {

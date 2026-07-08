@@ -1181,12 +1181,16 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | MutRefFuture(_)
                         | MutRefFinal(_)
                         | MutRefPtr
+                        | ShadowData
                         | InferSpecForLoopIter { .. } => ok,
                         MustBeFinalized | UnaryOp::MustBeElaborated => {
                             panic!("Found MustBeFinalized op {:?} after calling finalize_exp", exp)
                         }
                         CastToInteger => {
                             panic!("CastToInteger should have been removed by poly!")
+                        }
+                        ShadowAddrOf => {
+                            panic!("ShadowAddrOf should have been removed")
                         }
                     }
                 }
@@ -1288,6 +1292,9 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         CastToInteger => {
                             panic!("CastToInteger should have been removed by poly!")
                         }
+                        ShadowAddrOf => {
+                            panic!("ShadowAddrOf should have been removed")
+                        }
                         Not
                         | HeightTrigger
                         | Trigger(_)
@@ -1302,6 +1309,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | MutRefFuture(_)
                         | MutRefFinal(_)
                         | MutRefPtr
+                        | ShadowData
                         | InferSpecForLoopIter { .. } => ok,
                     }
                 }

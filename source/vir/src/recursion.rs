@@ -413,7 +413,8 @@ fn check_termination<'a>(
             // It may be okay to emit this for non-spec functions too, but I have not checked, so
             // I'm restricting this to spec functions for now.
             if ctx.func_map[fun].x.mode == crate::ast::Mode::Spec {
-                if let Some(Dest { dest, is_init: true }) = &dest {
+                assert!(dest.len() <= 1); // spec functions cannot have extra return values
+                if let Some(Dest { dest, is_init: true }) = dest.get(0) {
                     let has_typx =
                         ExpX::UnaryOpr(UnaryOpr::HasType(dest.typ.clone()), dest.clone());
                     let has_typ = SpannedTyped::new(&s.span, &Arc::new(TypX::Bool), has_typx);

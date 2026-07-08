@@ -148,6 +148,7 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
     let type_id_strslice = str_to_node(TYPE_ID_STRSLICE);
     let type_id_ptr = str_to_node(TYPE_ID_PTR);
     let type_id_global = str_to_node(TYPE_ID_GLOBAL);
+    let type_id_shadow_data = str_to_node(TYPE_ID_SHADOW_DATA);
     let type_id_mut_ref = str_to_node(TYPE_ID_MUT_REF);
 
     let mut_ref_current = str_to_node(MUT_REF_CURRENT);
@@ -219,6 +220,7 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
         (declare-fun [type_id_slice] ([decoration] [typ]) [typ])
         (declare-const [type_id_strslice] [typ])
         (declare-const [type_id_global] [typ])
+        (declare-fun [type_id_shadow_data] ([decoration] [typ]) [typ])
         (declare-fun [type_id_ptr] ([decoration] [typ]) [typ])
         (declare-fun [has_type] ([Poly] [typ]) Bool)
         (declare-fun [sized] ([decoration]) Bool)

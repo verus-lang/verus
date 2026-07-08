@@ -66,7 +66,10 @@ fn read_place(place: &Place) -> Expr {
         &place.typ,
         ExprX::ReadPlace(
             place.clone(),
-            UnfinalizedReadKind { preliminary_kind: ReadKind::ImmutBor, id: 0 },
+            UnfinalizedReadKind {
+                preliminary_kind: ReadKind::ImmutBor { is_expr_addr_of: false },
+                id: 0,
+            },
         ),
     )
 }

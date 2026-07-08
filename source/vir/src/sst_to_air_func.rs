@@ -555,7 +555,8 @@ pub fn func_name_to_air(
                     }
                 }
                 rec_typs.push(str_typ(FUEL_TYPE));
-                let typ = typ_to_air(ctx, &function.x.ret.x.typ);
+                assert!(function.x.mode == Mode::Spec && function.x.ret.len() == 1);
+                let typ = typ_to_air(ctx, &function.x.ret[0].x.typ);
                 let rec_decl = Arc::new(DeclX::Fun(rec_f, Arc::new(rec_typs), typ));
                 commands.push(Arc::new(CommandX::Global(rec_decl)));
             }
@@ -579,7 +580,8 @@ pub fn func_name_to_air(
         let all_typs = Arc::new(all_typs);
 
         // Declare the function symbol itself
-        let typ = typ_to_air(ctx, &function.x.ret.x.typ);
+        assert!(function.x.ret.len() == 1);
+        let typ = typ_to_air(ctx, &function.x.ret[0].x.typ);
         let mut names = vec![function.x.name.clone()];
         if let FunctionKind::TraitMethodDecl { .. } = &function.x.kind {
             names.push(crate::def::trait_default_name(&function.x.name));
@@ -597,9 +599,10 @@ pub fn func_name_to_air(
         // Declare static%foo, which represents the result of 'foo()' when executed
         // at the beginning of a program (here, `foo` is a 'static' item which we
         // represent as 0-argument function)
+        assert!(function.x.ret.len() == 1);
         commands.push(Arc::new(CommandX::Global(Arc::new(DeclX::Const(
             ctx.name_ctxt.static_name(&function.x.name),
-            typ_to_air(ctx, &function.x.ret.x.typ),
+            typ_to_air(ctx, &function.x.ret[0].x.typ),
         )))));
     }
 
@@ -725,14 +728,18 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
     let mut ens_typing_invs: Vec<Expr> = Vec::new();
     if matches!(function.x.mode, Mode::Exec | Mode::Proof) {
         if function.x.has.has_return_name {
-            let ParX { name, typ, .. } = if function.x.attrs.is_async {
-                &function.x.async_ret.as_ref().expect("Async function has no return type").x
+            let ret = if function.x.attrs.is_async {
+                let r = function.x.async_ret.clone().expect("Async function has no return type");
+                Arc::new(vec![r])
             } else {
-                &function.x.ret.x
+                function.x.ret.clone()
             };
-            ens_typs.push(typ_to_air(ctx, &typ));
-            if let Some(expr) = typ_invariant(ctx, &typ, &ident_var(&name.lower())) {
-                ens_typing_invs.push(expr);
+            for r in ret.iter() {
+                let ParX { name, typ, .. } = &r.x;
+                ens_typs.push(typ_to_air(ctx, &typ));
+                if let Some(expr) = typ_invariant(ctx, &typ, &ident_var(&name.lower())) {
+                    ens_typing_invs.push(expr);
+                }
             }
         }
         // typing invariants for synthetic out-params for &mut params
@@ -745,9 +752,10 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
             }
         }
     } else {
+        assert!(function.x.ret.len() == 1);
         if function.x.has.has_ensures {
             return Err(crate::messages::error(
-                &function.x.ret.span,
+                &function.x.ret[0].span,
                 "ensures clause unsupported on spec function",
             ));
         }
@@ -783,6 +791,13 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
     ctx.funcs_with_ensure_predicate.insert(function.x.name.clone(), has_ens_pred);
 
     for exp in func_decl_sst.fndef_axioms.iter() {
+        // For now, if there are any extra parameters or return values,
+        // not reflected in call_requires/call_ensures,
+        // we disable axioms about call_requires/call_ensures.
+        // In the future, we could consider updating the axioms to account for the extra values.
+        assert!(function.x.pars.len() == function.x.n_orig_params);
+        assert!(function.x.ret.len() <= 1);
+
         let expr = exp_to_expr(ctx, exp, &ExprCtxt::new_mode(ExprMode::Spec))?;
         let axiom = mk_unnamed_axiom(expr);
         decl_commands.push(Arc::new(CommandX::Global(axiom)));
@@ -918,7 +933,8 @@ pub fn func_axioms_to_air(
                     f_args.push(str_var(FUEL_PARAM));
                 }
                 let f_app = ident_apply(&name, &Arc::new(f_args));
-                if let Some(post) = typ_invariant(ctx, &function.x.ret.x.typ, &f_app) {
+                assert!(function.x.ret.len() == 1);
+                if let Some(post) = typ_invariant(ctx, &function.x.ret[0].x.typ, &f_app) {
                     // (axiom (forall (...) (=> pre post)))
                     let name = format!("{}{}", name, qid);
                     let opts = if is_rec {
