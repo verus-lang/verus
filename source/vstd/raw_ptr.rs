@@ -4064,6 +4064,7 @@ impl<'a, T: ?Sized> Copy for SharedReference<'a, T> {
 
 impl<'a, T> SharedReference<'a, T> {
     #[verifier::external_body]
+    #[verifier::shadow_data]
     pub const fn as_ptr(self) -> (ptr: *const T)
         ensures
             ptr == self.ptr() as *const T,
@@ -4411,6 +4412,18 @@ pub axiom fn ptr_ref2_ghost<'a, T>(ptr: *const T, tracked perm: &PointsTo<T>) ->
         v.ptr() == ptr,
 ;
 
+// /// Same as [`ptr_ref`], but operates on ghost values.
+// /// Because this doesn't constitute a retag, the returned value's pointer has the same provenance as the original pointer.
+// #[verifier::shadow_data]
+// pub axiom fn ptr_ref_ghost<'a, T>(ptr: *const T, tracked perm: &PointsTo<T>) -> (tracked v:
+//     &'a T)
+//     requires
+//         perm.ptr() == ptr,
+//         perm.is_init(),
+//     ensures
+//         v == perm.value(),
+//         shared_ref_ptr(shadow_data(v)) == ptr,
+// ;
 /// Same as [`ptr_ref2`], but operates on ghost values.
 /// Because this doesn't constitute a retag, the returned value's pointer has the same provenance as the original pointer.
 pub axiom fn ptr_ref2_str_ghost<'a>(ptr: *const str, tracked perm: &PointsTo<str>) -> (tracked v:
@@ -4423,6 +4436,18 @@ pub axiom fn ptr_ref2_str_ghost<'a>(ptr: *const str, tracked perm: &PointsTo<str
         v.ptr() == ptr,
 ;
 
+// /// Same as [`ptr_ref`], but operates on ghost values.
+// /// Because this doesn't constitute a retag, the returned value's pointer has the same provenance as the original pointer.
+// #[verifier::shadow_data]
+// pub axiom fn ptr_ref_str_ghost<'a>(ptr: *const str, tracked perm: &PointsTo<str>) -> (tracked v:
+//     &'a str)
+//     requires
+//         perm.ptr() == ptr,
+//         perm.is_init(),
+//     ensures
+//         v == perm.value(),
+//         shared_ref_ptr(shadow_data(v)) == ptr,
+// ;
 /// Same as [`ptr_ref2`], but operates on ghost values.
 /// Because this doesn't constitute a retag, the returned value's pointer has the same provenance as the original pointer.
 pub axiom fn ptr_ref2_slice_ghost<'a, T>(
@@ -4437,6 +4462,20 @@ pub axiom fn ptr_ref2_slice_ghost<'a, T>(
         v.ptr() == ptr,
 ;
 
+// /// Same as [`ptr_ref`], but operates on ghost values.
+// /// Because this doesn't constitute a retag, the returned value's pointer has the same provenance as the original pointer.
+// #[verifier::shadow_data]
+// pub axiom fn ptr_ref_slice_ghost<'a, T>(
+//     ptr: *const [T],
+//     tracked perm: &PointsTo<[T]>,
+// ) -> (tracked v: &'a [T])
+//     requires
+//         perm.ptr() == ptr,
+//         perm.is_init(),
+//     ensures
+//         v@ == perm.value(),
+//         shared_ref_ptr(shadow_data(v)) == ptr,
+// ;
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::spec_ptr_addr")]
 #[verifier::inline]
 pub open spec fn spec_ptr_addr<T: Sized>(ptr: *mut T) -> usize {
