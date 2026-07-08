@@ -1256,7 +1256,6 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-
 // TODO: Remove the eager split in favor of a ProphSeq of mutable references
 test_verify_one_file! {
     #[test] iter_mut_can_be_implemented verus_code! {

@@ -1,8 +1,8 @@
 #![allow(unused_imports)]
 use super::super::prelude::*;
 
-use core::option::{IntoIter, Option};
 use super::iter::IteratorSpec;
+use core::option::{IntoIter, Option};
 
 verus! {
 
@@ -432,12 +432,13 @@ pub struct ExIntoIter<A>(IntoIter<A>);
 // a prophecy, we need a function that gives us the underlying value of the original Option.
 pub uninterp spec fn into_iter_opt<A>(i: IntoIter<A>) -> Option<A>;
 
-impl <A> super::iter::IteratorSpecImpl for IntoIter<A> {
+impl<A> super::iter::IteratorSpecImpl for IntoIter<A> {
     open spec fn obeys_prophetic_iter_laws(&self) -> bool {
         true
     }
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+
     uninterp spec fn will_return_none(&self) -> bool;
 
     #[verifier::prophetic]
@@ -468,8 +469,6 @@ impl <A> super::iter::IteratorSpecImpl for IntoIter<A> {
 //         }
 //     }
 // }
-
-
 // To allow reasoning about the returned iterator when the executable
 // function `into_iter()` is invoked in a `for` loop header (e.g., in
 // `for x in it: o.into_iter() { ... }`), we need to specify the behavior of
@@ -479,7 +478,6 @@ impl <A> super::iter::IteratorSpecImpl for IntoIter<A> {
 pub uninterp spec fn spec_into_iter<A>(o: Option<A>) -> (iter: core::option::IntoIter<A>);
 
 //pub uninterp spec fn spec_into_iter_borrowed<A>(v: &Option<A>) -> (iter: <&Option<A> as core::iter::IntoIterator>::IntoIter);
-
 pub broadcast proof fn axiom_spec_into_iter<A>(o: Option<A>)
     ensures
         o is None ==> (#[trigger] spec_into_iter(o)).remaining().len() == 0,
@@ -489,7 +487,8 @@ pub broadcast proof fn axiom_spec_into_iter<A>(o: Option<A>)
 }
 
 #[verifier::when_used_as_spec(spec_into_iter)]
-pub assume_specification<A>[ Option::<A>::into_iter ](o: Option<A>) -> (iter: core::option::IntoIter<A>)
+pub assume_specification<A>[ Option::<A>::into_iter ](o: Option<A>) -> (iter:
+    core::option::IntoIter<A>)
     ensures
         iter == spec_into_iter(o),
         IteratorSpec::decrease(&iter) is Some,
