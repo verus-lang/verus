@@ -349,8 +349,8 @@ fn shadow_data_function(
     let span = function.span.clone();
     let functionx = &mut Arc::make_mut(function).x;
 
-    if functionx.mode != Mode::Exec {
-        return Err(error(&span, "shadow_data only allowed for exec functions"));
+    if functionx.mode == Mode::Spec {
+        return Err(error(&span, "shadow_data only allowed for exec and proof functions"));
     }
     if !matches!(functionx.item_kind, crate::ast::ItemKind::Function) {
         return Err(error(&span, "shadow_data only allowed for functions, not const or static"));
