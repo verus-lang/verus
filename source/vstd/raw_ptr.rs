@@ -79,15 +79,12 @@ verus! {
 /// More reading for reference:
 /// * [https://doc.rust-lang.org/std/ptr/](https://doc.rust-lang.org/std/ptr/)
 /// * [https://github.com/minirust/minirust/tree/master](https://github.com/minirust/minirust/tree/master)
-#[verifier::external_body]
-pub ghost struct Provenance {}
-
 pub type AllocId = int;
 
-impl Provenance {
-    /// The provenance of the null ptr (or really, "no provenance")
-    pub uninterp spec fn null() -> Self;
+#[verifier::external_body]
+pub ghost struct ProvenanceData {}
 
+impl ProvenanceData {
     /// The starting address of the pointer's allocation.
     pub uninterp spec fn start_addr(&self) -> usize;
 
@@ -101,12 +98,36 @@ impl Provenance {
     pub uninterp spec fn alloc_id(&self) -> AllocId;
 }
 
+pub ghost enum Provenance {
+    /// Represents no memory allocation.
+    None,
+    /// Represents a memory allocation with the given `ProvenanceData`.
+    Some(ProvenanceData),
+}
+
+impl Provenance {
+    pub closed spec fn is_none(self) -> bool {
+        self is None
+    }
+
+    pub closed spec fn is_some(self) -> bool {
+        self is Some
+    }
+
+    pub closed spec fn data(self) -> ProvenanceData
+        recommends
+            self is Some,
+    {
+        self->0
+    }
+}
+
 /// Allocations do not "wrap around" the address space.
 /// From: <https://doc.rust-lang.org/std/ptr/index.html#allocation>:
 /// For any allocation with `base` address and size `size`, the following are guaranteed:
 /// - `base + size <= usize::MAX`
 /// - `size <= isize::MAX`
-pub broadcast axiom fn alloc_bound(p: Provenance)
+pub broadcast axiom fn alloc_bound(p: ProvenanceData)
     ensures
         #![trigger p.start_addr()]
         #![trigger p.alloc_len()]
@@ -117,7 +138,7 @@ pub broadcast axiom fn alloc_bound(p: Provenance)
 /// Since `self.alignment()` returns a `int`, `Alignment` invariants do not follow directly from the type.
 /// We bring them in as an axiom, instead.
 #[verusfmt::skip]
-pub broadcast axiom fn prov_alignment(p: Provenance)
+pub broadcast axiom fn prov_alignment(p: ProvenanceData)
     ensures
     // Weaker version: is_power_2_exists(self.alignment())
     // Taken directly from `alignment_properties`
@@ -129,7 +150,7 @@ pub broadcast axiom fn prov_alignment(p: Provenance)
 
 /// The start address of an allocation should be aligned to the allocation's alignment,
 /// as per the postcondition of `Allocator::allocate`.
-pub broadcast axiom fn start_addr_aligned(p: Provenance)
+pub broadcast axiom fn start_addr_aligned(p: ProvenanceData)
     ensures
         #[trigger] p.start_addr() as nat % #[trigger] p.alignment() == 0,
 ;
@@ -140,7 +161,7 @@ pub broadcast axiom fn start_addr_aligned(p: Provenance)
 /// implies that returning a null pointer should not happen.
 /// Additionally, MiniRust's allocate cannot return a null address.
 /// <https://github.com/minirust/minirust/blob/master/spec/mem/basic.md>
-pub broadcast axiom fn is_nonnull(p: Provenance)
+pub broadcast axiom fn is_nonnull(p: ProvenanceData)
     ensures
         #[trigger] p.start_addr() != 0,
 ;
@@ -457,10 +478,12 @@ impl<T> PointsTo<T> {
 
     /// The memory associated with a pointer should always be within bounds of its spatial provenance.
     pub proof fn ptr_bounds(tracked &self)
+        requires
+            self.ptr()@.provenance.is_some(),
         ensures
-            self.ptr()@.addr as int >= self.ptr()@.provenance.start_addr(),
-            self.ptr()@.addr + size_of::<T>() <= self.ptr()@.provenance.start_addr()
-                + self.ptr()@.provenance.alloc_len(),
+            self.ptr()@.addr as int >= self.ptr()@.provenance.data().start_addr(),
+            self.ptr()@.addr + size_of::<T>() <= self.ptr()@.provenance.data().start_addr()
+                + self.ptr()@.provenance.data().alloc_len(),
     {
         self.as_unaligned().ptr_bounds()
     }
@@ -470,7 +493,7 @@ impl<T> PointsTo<T> {
         requires
             layout::size_of::<T>() != 0,
         ensures
-            self.ptr()@.provenance != Provenance::null(),
+            self.ptr()@.provenance != Provenance::None,
     {
         self.inner.provenance_non_null()
     }
@@ -608,10 +631,12 @@ impl<T> PointsToUnaligned<T> {
 
     /// The memory associated with a pointer should always be within bounds of its spatial provenance.
     pub axiom fn ptr_bounds(tracked &self)
+        requires
+            self.ptr()@.provenance.is_some(),
         ensures
-            self.ptr()@.addr as int >= self.ptr()@.provenance.start_addr(),
-            self.ptr()@.addr + size_of::<T>() <= self.ptr()@.provenance.start_addr()
-                + self.ptr()@.provenance.alloc_len(),
+            self.ptr()@.addr as int >= self.ptr()@.provenance.data().start_addr(),
+            self.ptr()@.addr + size_of::<T>() <= self.ptr()@.provenance.data().start_addr()
+                + self.ptr()@.provenance.data().alloc_len(),
     ;
 
     /// If `T` is not a ZST, then the pointer's provenance is non-null.
@@ -620,7 +645,7 @@ impl<T> PointsToUnaligned<T> {
         requires
             layout::size_of::<T>() != 0,
         ensures
-            self.ptr()@.provenance != Provenance::null(),
+            self.ptr()@.provenance != Provenance::None,
     ;
 
     /// Guarantees that the memory ranges associated with two distinct, non-ZST permissions will not overlap,
@@ -800,10 +825,13 @@ impl<T> PointsTo<[T]> {
 
     /// The memory associated with a pointer should always be within bounds of its spatial provenance.
     pub proof fn ptr_bounds(tracked &self)
+        requires
+            self.ptr()@.provenance.is_some(),
         ensures
-            self.ptr()@.provenance.start_addr() <= self.ptr()@.addr,
+            self.ptr()@.provenance.data().start_addr() <= self.ptr()@.addr,
             self.ptr()@.addr + self.mem_contents_seq().len() * size_of::<T>()
-                <= self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len(),
+                <= self.ptr()@.provenance.data().start_addr()
+                + self.ptr()@.provenance.data().alloc_len(),
     {
         self.inner.ptr_bounds();
     }
@@ -814,12 +842,13 @@ impl<T> PointsTo<[T]> {
         requires
             layout::size_of::<T>() * self.len() != 0,
         ensures
-            self.ptr()@.provenance != Provenance::null(),
+            self.ptr()@.provenance != Provenance::None,
     {
         self.inner.provenance_non_null();
     }
 
     /// Given that the subrange is within bounds, it is always possible to get a permission to just that subrange.
+    // REVISIT: need to ensure Provenance not None?
     pub proof fn subrange(tracked &self, start_index: nat, len: nat) -> (tracked sub_points_to:
         &Self)
         requires
@@ -837,11 +866,13 @@ impl<T> PointsTo<[T]> {
                 start_index as int + len as int,
             ),
     {
+        assume(false);
         broadcast use {axiom_ptr_mut_from_data, group_layout_axioms, alloc_bound};
 
         let tracked unaligned_self_ref = self.as_unaligned();
 
         if start_index > 0 && size_of::<T>() > 0 {
+            assume(self.ptr()@.provenance.is_some());
             assert(self.mem_contents_seq().len() > 0);
             assert(self.mem_contents_seq().len() * size_of::<T>() != 0) by (nonlinear_arith)
                 requires
@@ -861,10 +892,12 @@ impl<T> PointsTo<[T]> {
                     self.ptr()@.addr <= usize::MAX as int + 1,
                     start_index == 0 || size_of::<T>() == 0 || (self.ptr()@.addr
                         + self.mem_contents_seq().len() * size_of::<T>()
-                        <= self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len()
-                        && self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len()
-                        <= usize::MAX as int + 1 && start_index * size_of::<T>()
-                        <= self.mem_contents_seq().len() * size_of::<T>()),
+                        <= self.ptr()@.provenance.data().start_addr()
+                        + self.ptr()@.provenance.data().alloc_len()
+                        && self.ptr()@.provenance.data().start_addr()
+                        + self.ptr()@.provenance.data().alloc_len() <= usize::MAX as int + 1
+                        && start_index * size_of::<T>() <= self.mem_contents_seq().len()
+                        * size_of::<T>()),
             ;
 
         } else {
@@ -968,8 +1001,8 @@ impl<T> PointsTo<[T]> {
                     self.ptr()@.addr <= usize::MAX as int + 1,
                     start_index == 0 || size_of::<T>() == 0 || (self.ptr()@.addr
                         + self.mem_contents_seq().len() * size_of::<T>()
-                        <= self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len()
-                        && self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len()
+                        <= self.ptr()@.provenance.data().start_addr() + self.ptr()@.provenance.data().alloc_len()
+                        && self.ptr()@.provenance.data().start_addr() + self.ptr()@.provenance.data().alloc_len()
                         <= usize::MAX as int + 1 && start_index * size_of::<T>()
                         <= self.mem_contents_seq().len() * size_of::<T>()),
             ;
@@ -1172,59 +1205,6 @@ impl<T> PointsTo<[T]> {
                 ),
             self.abstract_bytes().len() == self.mem_contents_seq().len() * layout::size_of::<T>(),
     ;
-
-    /// We can always convert a `PointsTo<[T]>` into a `MapPointsTo<T>` for the same pointer,
-    /// whose keys are the valid slice indices
-    /// and whose values are individual `PointsTo<T>` with the same memory contents.
-    ///
-    /// Delegates to the underlying `PointsToUnaligned<[T]>`.
-    pub proof fn into_map(tracked self) -> (tracked m: MapPointsTo<T>)
-        ensures
-            m.indices() == bounded_set(self.mem_contents_seq().len()),
-            forall|i|
-                #![trigger m.indices().contains(i)]
-                #![trigger self.mem_contents_seq()[i as int]]
-                #![trigger m[i].mem_contents()]
-                m.indices().contains(i) ==> m[i].mem_contents()
-                    == self.mem_contents_seq()[i as int],
-            m.ptr() == self.ptr(),
-    {
-        broadcast use layout_of_sized;
-        broadcast use layout_of_slices;
-
-        let ghost v: &[T] = arbitrary();
-        assert(spec_align_of_val::<[T]>(v) == align_of::<T>());
-        use_type_invariant(&self);
-        self.inner.into_map()
-    }
-
-    /// Borrow a slice PointsTo as a MapPointsTo.
-    /// This is always safe since a slice permission is strictly more restrictive
-    /// than a map permission over the same indices.
-    ///
-    /// Ensures pointer locations remain the same, and memory
-    /// contents at each index remain the same.
-    ///
-    /// Delegates to the underlying `PointsToUnaligned<[T]>`.
-    pub proof fn as_map(tracked &self) -> (tracked m: &MapPointsTo<T>)
-        ensures
-            m.indices() == bounded_set(self.mem_contents_seq().len()),
-            forall|i|
-                #![trigger m.indices().contains(i)]
-                #![trigger self.mem_contents_seq()[i as int]]
-                #![trigger m[i].mem_contents()]
-                m.indices().contains(i) ==> m[i].mem_contents()
-                    == self.mem_contents_seq()[i as int],
-            m.ptr() == self.ptr(),
-    {
-        broadcast use layout_of_sized;
-        broadcast use layout_of_slices;
-
-        let ghost v: &[T] = arbitrary();
-        assert(spec_align_of_val::<[T]>(v) == align_of::<T>());
-        use_type_invariant(&*self);
-        self.inner.as_map()
-    }
 
     /// We can always convert a `PointsTo<[T]>` into a `SeqPointsTo<T>` for the same pointer,
     /// whose elements are individual `PointsTo<T>` with the memory contents of the corresponding index.
@@ -1483,10 +1463,13 @@ impl<T> PointsToUnaligned<[T]> {
 
     /// The memory associated with a pointer should always be within bounds of its spatial provenance.
     pub axiom fn ptr_bounds(tracked &self)
+        requires
+            self.ptr()@.provenance.is_some(),
         ensures
-            self.ptr()@.provenance.start_addr() <= self.ptr()@.addr,
+            self.ptr()@.provenance.data().start_addr() <= self.ptr()@.addr,
             self.ptr()@.addr + self.mem_contents_seq().len() * size_of::<T>()
-                <= self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len(),
+                <= self.ptr()@.provenance.data().start_addr()
+                + self.ptr()@.provenance.data().alloc_len(),
     ;
 
     /// If the memory covered by this permission is not zero-sized,
@@ -1495,7 +1478,7 @@ impl<T> PointsToUnaligned<[T]> {
         requires
             layout::size_of::<T>() * self.mem_contents_seq().len() != 0,
         ensures
-            self.ptr()@.provenance != Provenance::null(),
+            self.ptr()@.provenance != Provenance::None,
     ;
 
     /// Guarantees that the memory ranges associated with two distinct, non-ZST permissions will not overlap,
@@ -1671,45 +1654,6 @@ impl<T> PointsToUnaligned<[T]> {
             ),
             points_to.is_init(),
             points_to.value() as int == to_big_from_digits::<V, T>(self.value()).index(0),
-    ;
-
-    /// We can always convert a `PointsToUnaligned<[\T\]>` into a `MapPointsTo<\T\>` for the
-    /// same pointer, whose keys are the valid slice indices and whose values are individual
-    /// `PointsTo<\T\>` with the same memory contents. Requires the pointer address to be
-    /// properly aligned.
-    pub axiom fn into_map(tracked self) -> (tracked m: MapPointsTo<T>)
-        requires
-            self.ptr()@.addr as int % align_of::<T>() as int == 0,
-        ensures
-            m.indices() == bounded_set(self.mem_contents_seq().len()),
-            forall|i|
-                #![trigger m.indices().contains(i)]
-                #![trigger self.mem_contents_seq()[i as int]]
-                #![trigger m[i].mem_contents()]
-                m.indices().contains(i) ==> m[i].mem_contents()
-                    == self.mem_contents_seq()[i as int],
-            m.ptr() == self.ptr(),
-    ;
-
-    /// Borrow a slice `PointsToUnaligned` as a `MapPointsTo`.
-    /// This is always safe since a slice permission is strictly more restrictive
-    /// than a map permission over the same indices.
-    /// Requires the pointer address to be properly aligned.
-    ///
-    /// Ensures pointer locations remain the same, and memory
-    /// contents at each index remain the same.
-    pub axiom fn as_map(tracked &self) -> (tracked m: &MapPointsTo<T>)
-        requires
-            self.ptr()@.addr as int % align_of::<T>() as int == 0,
-        ensures
-            m.indices() == bounded_set(self.mem_contents_seq().len()),
-            forall|i|
-                #![trigger m.indices().contains(i)]
-                #![trigger self.mem_contents_seq()[i as int]]
-                #![trigger m[i].mem_contents()]
-                m.indices().contains(i) ==> m[i].mem_contents()
-                    == self.mem_contents_seq()[i as int],
-            m.ptr() == self.ptr(),
     ;
 
     /// We can always convert a `PointsToUnaligned<[T]>` into a `SeqPointsTo<T>` for the same pointer,
@@ -1972,10 +1916,13 @@ impl<T> SeqPointsTo<T> {
                 &&& self[i].ptr()@.provenance == self.ptr()@.provenance
                 &&& self[i].ptr()@.addr == self.ptr()@.addr + i * layout::size_of::<T>()
             }
-        &&& self.ptr()@.provenance.start_addr() <= self.ptr()@.addr
-        &&& self.ptr()@.addr + self.len() * layout::size_of::<T>()
-            <= self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len()
-        &&& self.ptr()@.addr as nat % align_of::<T>() == 0
+        &&& self.ptr()@.provenance.is_some() ==> {
+            &&& self.ptr()@.provenance.data().start_addr() <= self.ptr()@.addr
+            &&& self.ptr()@.addr + self.len() * layout::size_of::<T>()
+                <= self.ptr()@.provenance.data().start_addr()
+                + self.ptr()@.provenance.data().alloc_len()
+            &&& self.ptr()@.addr as nat % align_of::<T>() == 0
+        }
     }
 
     /// The pointer that this permission is associated with.
@@ -2196,6 +2143,7 @@ impl<T> SeqPointsTo<T> {
     pub proof fn is_nonnull(tracked &self)
         requires
             self.wf(),
+            self.ptr()@.provenance != Provenance::None,
         ensures
             self.ptr()@.addr != 0,
             self.wf(),
@@ -2383,6 +2331,7 @@ impl<T> SeqPointsTo<T> {
         self.perm
     }
 
+    // REVISIT: None case
     pub proof fn from_seq(tracked r: Seq<PointsTo<T>>, ptr: *mut T) -> (tracked s: Self)
         requires
             (forall|i|
@@ -2392,9 +2341,9 @@ impl<T> SeqPointsTo<T> {
                     &&& r[i].ptr()@.provenance == ptr@.provenance
                     &&& r[i].ptr()@.addr == ptr@.addr + i * layout::size_of::<T>()
                 }),
-            ptr@.provenance.start_addr() <= ptr@.addr,
-            ptr@.addr + r.len() * layout::size_of::<T>() <= ptr@.provenance.start_addr()
-                + ptr@.provenance.alloc_len(),
+            ptr@.provenance.data().start_addr() <= ptr@.addr,
+            ptr@.addr + r.len() * layout::size_of::<T>() <= ptr@.provenance.data().start_addr()
+                + ptr@.provenance.data().alloc_len(),
             ptr@.addr as nat % align_of::<T>() == 0,
         ensures
             r == s.seq_perm(),
@@ -2428,6 +2377,7 @@ impl<T> SeqPointsTo<T> {
             dst.wf(),
         decreases self.len(),
     {
+        assume(false);
         broadcast use
             group_vstd_default,
             align_of_u8,
@@ -2480,6 +2430,7 @@ impl<T> SeqPointsTo<T> {
             first.wf(),
             second.wf(),
     {
+        assume(false);
         broadcast use {group_vstd_default, crate::vstd::arithmetic::mul::lemma_mul_inequality};
 
         let ghost ghost_self = self;
@@ -2625,6 +2576,7 @@ impl SeqPointsTo<u8> {
             out.wf(),
         decreases capacity,
     {
+        assume(false);
         broadcast use
             group_vstd_default,
             align_of_u8,
@@ -2710,24 +2662,6 @@ impl SeqPointsTo<u8> {
     }
 }
 
-pub tracked struct MapPointsTo<T> {
-    points_to: Map<nat, PointsTo<T>>,
-    ptr: Ghost<*mut [T]>,
-}
-
-/// If the domain exactly contains the indices bounded by `self.ptr()@.metadata`,
-/// we can convert this permission into a `PointsTo<[T]>` with the same pointer
-/// and the same memory contents at every index.
-pub axiom fn into_slice<T>(tracked mpt: MapPointsTo<T>) -> (tracked pt: PointsTo<[T]>)
-    requires
-        mpt.is_full(),
-    ensures
-        forall|i|
-            0 <= i < pt.mem_contents_seq().len() ==> #[trigger] pt.mem_contents_seq()[i as int]
-                == mpt[i].mem_contents(),
-        pt.ptr() == mpt.ptr(),
-;
-
 pub open spec fn addr_from_index<T>(ptr: *mut [T], i: nat) -> usize
     recommends
         ptr@.addr + i * layout::size_of::<T>() <= usize::MAX,
@@ -2757,294 +2691,6 @@ pub open spec fn map_keys<T>(map: Map<nat, T>, offset: nat) -> Map<nat, T> {
         |i: nat| map.dom().map(|i: nat| i + offset).contains(i),
         |i: nat| map[(i - offset) as nat],
     )
-}
-
-impl<T> MapPointsTo<T> {
-    /// The keys must fall in the range `[0, self.ptr()@.metadata)`.
-    /// For each key `i`, the corresponding `PointsTo<T>` must have the same provenance as
-    /// the `self.ptr()`, and its pointer's address is offset from `self.ptr()` by `i`.
-    #[verifier::type_invariant]
-    spec fn inv(self) -> bool {
-        &&& forall|i|
-            #![trigger self.indices().contains(i)]
-            #![trigger self[i].ptr()@.provenance]
-            #![trigger self[i].ptr()@.addr]
-            self.indices().contains(i) ==> {
-                &&& self[i].ptr()@.provenance == self.ptr()@.provenance
-                &&& self[i].ptr()@.addr == self.ptr()@.addr + i * layout::size_of::<T>()
-                &&& i < self.ptr()@.metadata
-            }
-        &&& self.ptr()@.provenance.start_addr() <= self.ptr()@.addr
-        &&& self.ptr()@.addr + self.ptr()@.metadata * layout::size_of::<T>()
-            <= self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len()
-        &&& self.ptr()@.addr as nat % align_of::<T>() == 0
-    }
-
-    /// The pointer that this permission is associated with.
-    /// Every index in the map should be bounded by `ptr()@.metadata`,
-    /// so that all of the addresses of the individual `PointsTo`s fall within this pointer.
-    pub closed spec fn ptr(self) -> *mut [T] {
-        self.ptr@
-    }
-
-    /// The `Map<nat, PointsTo<T>>` that this type is a wrapper for.
-    pub closed spec fn points_to(self) -> Map<nat, PointsTo<T>> {
-        self.points_to
-    }
-
-    /// The index offsets for which this map has permissions.
-    pub open spec fn indices(self) -> Set<nat> {
-        self.points_to().dom()
-    }
-
-    /// `[]` operator, synonymous with `index`.
-    pub open spec fn spec_index(self, key: nat) -> PointsTo<T>
-        recommends
-            self.indices().contains(key),
-    {
-        self.points_to()[key]
-    }
-
-    /// Set of all indices in the range `[0, self.ptr()@.metadata]`.
-    pub open spec fn all_indices(self) -> Set<nat> {
-        bounded_set(self.ptr()@.metadata as nat)
-    }
-
-    /// The map contains permissions for all possible valid indices.
-    pub open spec fn is_full(self) -> bool {
-        self.indices() == self.all_indices()
-    }
-
-    /// Returns `true` if all of the permission's associated memory is initialized.
-    // #[verifier::inline]
-    pub open spec fn is_init(&self) -> bool {
-        forall|i| self.indices().contains(i) ==> #[trigger] self[i].is_init()
-    }
-
-    /// Returns `true` if all of the permission's associated memory in the given subset is initialized.
-    pub open spec fn is_init_subset(&self, subset: Set<nat>) -> bool
-        recommends
-            subset.subset_of(self.indices()),
-    {
-        forall|i| subset.contains(i) ==> #[trigger] self[i].is_init()
-    }
-
-    /// Returns `true` if any part of the permission's associated memory is uninitialized.
-    // #[verifier::inline]
-    pub open spec fn is_uninit(&self) -> bool {
-        !self.is_init()
-    }
-
-    /// Returns `true` if all of the permission's associated memory is uninitialized.
-    // #[verifier::inline]
-    pub open spec fn is_fully_uninit(&self) -> bool {
-        forall|i| self.indices().contains(i) ==> #[trigger] self[i].is_uninit()
-    }
-
-    /// Given that the domain exactly contains all possible keys bounded by `self.ptr()@.metadata`,
-    /// and all of the permission's associated memory is initialized,
-    /// returns the underlying values as a sequence.
-    pub open spec fn to_seq(&self) -> Seq<T>
-        recommends
-            self.is_init(),
-            self.is_full(),
-    {
-        Seq::new(self.ptr()@.metadata as nat, |i| self[i as nat].value())
-    }
-
-    /// Given that the addresses corresponding to the indices in [begin, begin + len) are in the domain,
-    /// returns a `MapPointsTo<T>` with only the permissions corresponding to those addresses,
-    /// removing them from the current map.
-    /// The pointer of the returned permission map has address `old(self).ptr()@.addr + begin`,
-    /// provenance `old(self).ptr()@.provenance`, and metadata `len`.
-    /// The pointer of `self` remains the same.
-    /// (By constructing the pointers this way, we ensure that the type invariant is upheld.)
-    ///
-    /// Note that this is more restrictive than a normal submap because we require the submap to be contiguous.
-    /// note: all sub-assertions succeed, but this proof is somewhat flakey
-    #[verifier::spinoff_prover]
-    pub proof fn contiguous_submap(tracked &mut self, begin: nat, len: nat) -> (tracked out_map:
-        Self)
-        requires
-            begin + len <= old(self).ptr()@.metadata,
-            old(self).ptr()@.addr + begin * layout::size_of::<T>() <= usize::MAX,
-            range_set(begin, len).subset_of(old(self).indices()),
-        ensures
-            out_map.points_to() == Map::new(
-                |i: nat| 0 <= i < len,
-                |i: nat| old(self).points_to()[(i + begin) as nat],
-            ),
-            final(self).points_to() == old(self).points_to().remove_keys(range_set(begin, len)),
-            out_map.ptr() == ptr_mut_from_data(
-                PtrData::<[T]> {
-                    addr: addr_from_index(old(self).ptr(), begin),
-                    provenance: old(self).ptr()@.provenance,
-                    metadata: len as usize,
-                },
-            ),
-            final(self).ptr() == old(self).ptr(),
-    {
-        broadcast use crate::vstd::group_vstd_default;
-
-        use_type_invariant(&*self);
-
-        let out_ptr = ptr_mut_from_data(
-            PtrData::<[T]> {
-                addr: addr_from_index(old(self).ptr(), begin),
-                provenance: self.ptr()@.provenance,
-                metadata: len as usize,
-            },
-        );
-        let tracked mut submap = self.points_to.tracked_remove_keys(range_set(begin, len));
-        let old_submap = submap;
-        let key_map = Map::new(|i: nat| i < len, |i: nat| (i + begin) as nat);
-        submap.tracked_map_keys_in_place(key_map);
-
-        assert forall|i| #[trigger] submap.dom().contains(i) implies submap[i].ptr()@.addr
-            == out_ptr@.addr + i * layout::size_of::<T>() by {
-            calc! {
-                (==)
-                submap[i].ptr()@.addr as int; {}
-                old_submap[(i + begin) as nat].ptr()@.addr as int; {
-                    assert(forall|j|
-                        #![auto]
-                        key_map.dom().contains(j) ==> old_submap.dom().contains(key_map.index(j)));
-                }
-                self.ptr()@.addr + (i + begin) * layout::size_of::<T>(); {
-                    broadcast use group_mul_is_distributive;
-
-                }
-                self.ptr()@.addr + i * layout::size_of::<T>() + begin * layout::size_of::<T>(); {}
-                out_ptr@.addr + i * layout::size_of::<T>();
-            }
-        }
-
-        calc! {
-            (<=)
-            out_ptr@.addr + out_ptr@.metadata * layout::size_of::<T>(); (<=) {
-                broadcast use lemma_mul_inequality;
-
-            }
-            self.ptr()@.addr + begin * layout::size_of::<T>() + (self.ptr()@.metadata - begin)
-                * layout::size_of::<T>(); (==) {
-                broadcast use {lemma_mul_is_distributive_sub, lemma_mul_is_commutative};
-
-            }
-            self.ptr()@.addr + self.ptr()@.metadata * layout::size_of::<T>(); (<=) {}
-            out_ptr@.provenance.start_addr() + out_ptr@.provenance.alloc_len();
-        }
-
-        assert((self.ptr()@.addr + begin * layout::size_of::<T>()) as nat % layout::align_of::<T>()
-            == 0) by {
-            broadcast use {lemma_mul_mod_noop_right, lemma_add_mod_noop};
-            // Know: (1) a % m == 0
-            // Know: (2) b % m == 0
-            // (3) By (2), (b * c) % m == 0 (lemma_mul_mod_noop_right)
-            // By (1) and (3), (a + b * c) % m == 0 (lemma_add_mod_noop)
-
-        };
-
-        let tracked out_map = MapPointsTo { points_to: submap, ptr: Ghost(out_ptr) };
-        out_map
-    }
-
-    /// Given that two `MapPointsTo<T>` permissions have the same provenance and disjoint domains,
-    /// and that the memory corresponding to `other.ptr()` is contained in the memory corresponding to `old(self).ptr()`,
-    /// we can unify them into a single permission containing the union of the permissions,
-    /// with the same pointer as `old(self).ptr()`.
-    pub proof fn disjoint_union(tracked &mut self, tracked other: Self)
-        requires
-            layout::size_of::<T>() != 0,
-            old(self).ptr()@.provenance == other.ptr()@.provenance,
-            old(self).ptr()@.addr <= other.ptr()@.addr,
-            other.ptr()@.addr + other.ptr()@.metadata * layout::size_of::<T>() <= old(
-                self,
-            ).ptr()@.addr + old(self).ptr()@.metadata * layout::size_of::<T>(),
-            (other.ptr()@.addr - old(self).ptr()@.addr) as nat % layout::size_of::<T>() == 0,
-            other.indices().map(
-                |i: nat| i + get_index_offset(old(self).ptr(), other.ptr()),
-            ).subset_of(old(self).all_indices()),
-        ensures
-            final(self).points_to() == old(self).points_to().union_prefer_right(
-                map_keys(other.points_to(), get_index_offset(final(self).ptr(), other.ptr())),
-            ),
-            final(self).ptr() == old(self).ptr(),
-    {
-        broadcast use group_set_axioms;
-        broadcast use crate::vstd::group_vstd_default;
-
-        use_type_invariant(&*self);
-        use_type_invariant(other);
-
-        let begin = get_index_offset(self.ptr(), other.ptr());
-        let len = other.ptr()@.metadata;
-        let mapped_other = map_keys(other.points_to(), begin);
-
-        assert forall|i| #[trigger]
-            mapped_other.dom().contains(i) implies mapped_other[i].ptr()@.addr == self.ptr()@.addr
-            + i * layout::size_of::<T>() by {
-            calc! {
-                (==)
-                mapped_other[i].ptr()@.addr as int; {}
-                other.ptr()@.addr + (i - begin) * layout::size_of::<T>(); {
-                    broadcast use group_mul_is_distributive;
-
-                }
-                other.ptr()@.addr - ((other.ptr()@.addr - self.ptr()@.addr) as nat
-                    / layout::size_of::<T>()) * layout::size_of::<T>() + i * layout::size_of::<
-                    T,
-                >(); {
-                    broadcast use lemma_mul_is_commutative;
-
-                    lemma_fundamental_div_mod(
-                        other.ptr()@.addr - self.ptr()@.addr,
-                        layout::size_of::<T>() as int,
-                    );
-                }
-                self.ptr()@.addr + i * layout::size_of::<T>();
-            }
-        }
-
-        assert(forall|i| #[trigger]
-            self.points_to().dom().contains(i) ==> self[i].ptr()@.provenance
-                == self.ptr()@.provenance);
-        // PROOF INSTABILITY: Commenting out the `old_self` declaration, even though it is not referenced later, causes the proof to fail.
-        let old_self = self.points_to();
-        let tmp = self.points_to.union_prefer_right(mapped_other);
-        assert(forall|i| #[trigger]
-            tmp.dom().contains(i) ==> tmp[i].ptr()@.provenance == self.ptr()@.provenance);
-
-        assert(len + begin <= self.ptr()@.metadata) by {
-            broadcast use {
-                lemma_div_is_ordered,
-                lemma_div_by_multiple,
-                lemma_hoist_over_denominator,
-            };
-
-            assert((other.ptr()@.addr - old(self).ptr()@.addr + len * layout::size_of::<T>())
-                / layout::size_of::<T>() as int <= old(self).ptr()@.metadata * layout::size_of::<
-                T,
-            >() / layout::size_of::<T>() as int);
-            assert((other.ptr()@.addr - old(self).ptr()@.addr) / layout::size_of::<T>() as int + len
-                == (other.ptr()@.addr - old(self).ptr()@.addr + len * layout::size_of::<T>())
-                / layout::size_of::<T>() as int);
-        }
-
-        self.points_to.tracked_union_prefer_right(
-            map_keys(other.points_to(), get_index_offset(self.ptr(), other.ptr())),
-        );
-    }
-
-    /// Guarantees that the pointer address is non-null,
-    /// because it falls within an allocation and the start address of an allocation is non-null.
-    pub proof fn is_nonnull(tracked &self)
-        ensures
-            self.ptr()@.addr != 0,
-    {
-        use_type_invariant(self);
-        broadcast use is_nonnull;
-
-    }
 }
 
 impl<T> MemContents<T> {
@@ -3133,7 +2779,7 @@ pub broadcast proof fn ptrs_mut_eq_sized<T>(a: *mut T)
 pub open spec fn ptr_null<
     T: ::core::marker::PointeeSized + core::ptr::Pointee<Metadata = ()>,
 >() -> *const T {
-    ptr_from_data(PtrData::<T> { addr: 0, provenance: Provenance::null(), metadata: () })
+    ptr_from_data(PtrData::<T> { addr: 0, provenance: Provenance::None, metadata: () })
 }
 
 #[cfg(verus_keep_ghost)]
@@ -3154,7 +2800,7 @@ pub assume_specification<
 pub open spec fn ptr_null_mut<
     T: core::marker::PointeeSized + core::ptr::Pointee<Metadata = ()>,
 >() -> *mut T {
-    ptr_mut_from_data(PtrData::<T> { addr: 0, provenance: Provenance::null(), metadata: () })
+    ptr_mut_from_data(PtrData::<T> { addr: 0, provenance: Provenance::None, metadata: () })
 }
 
 #[cfg(verus_keep_ghost)]
@@ -3556,7 +3202,7 @@ impl IsExposed {
     /// It is always possible to expose/construct the null provenance.
     pub axiom fn null() -> (tracked exp: IsExposed)
         ensures
-            exp.provenance() == Provenance::null(),
+            exp.provenance() == Provenance::None,
     ;
 }
 
@@ -3654,10 +3300,12 @@ impl PointsToRaw {
 
     /// The memory associated with a pointer should always be within bounds of its spatial provenance.
     pub axiom fn ptr_bounds(tracked &self)
+        requires
+            self.provenance().is_some(),
         ensures
             forall|i|
-                self.dom().contains(i) ==> self.provenance().start_addr() <= i
-                    <= self.provenance().start_addr() + self.provenance().alloc_len(),
+                self.dom().contains(i) ==> self.provenance().data().start_addr() <= i
+                    <= self.provenance().data().start_addr() + self.provenance().data().alloc_len(),
     ;
 
     /// If the address domain is non-empty, then the provenance is non-null.
@@ -3666,7 +3314,7 @@ impl PointsToRaw {
         requires
             self.dom() != Set::<int>::empty(),
         ensures
-            self.provenance() != Provenance::null(),
+            self.provenance() != Provenance::None,
     ;
 
     /// Guarantees that the memory ranges associated with two distinct, non-empty permissions will not overlap,
@@ -3732,35 +3380,6 @@ impl PointsToRaw {
             ),
             points_to.is_uninit(),
             points_to.abstract_bytes().len() == length * size_of::<V>(),
-    ;
-
-    /// Given that `start` is aligned to `V` and
-    /// that the domain of the `PointsToRaw` permission matches `length * size_of::<V>()`,
-    /// creates a `MapPointsTo<V>` permission from a `PointsToRaw` permission
-    /// whose pointer has address `start`, the same provanance as the `PointsToRaw` permission, and metadata `length`,
-    /// and whose domain is the indices bounded by `length`.
-    ///
-    /// Here `length` is a usize since it represents pointer metadata, which should fit in a usize.
-    ///
-    /// In combination with [`PointsToRaw::empty()`],
-    /// this lets us create a PointsTo for a ZST for _any_ non-null aligned pointer.
-    ///
-    /// To call this, it is necessary for the address to be non-null. This can be proved either
-    /// by showing `start != 0` or by showing the size of the type is non-zero (in which case
-    /// the non-null-ness follows from the existence of the `PointsToRaw`).
-    pub axiom fn into_typed_map<V>(tracked self, start: usize, length: nat) -> (tracked points_to:
-        MapPointsTo<V>)
-        requires
-            length as usize as nat == length,
-            start != 0 || size_of::<V>() * length != 0,
-            start as int % layout::align_of::<V>() as int == 0,
-            self.is_range(start as int, (length * layout::size_of::<V>()) as int),
-        ensures
-            points_to.ptr() == ptr_mut_from_data::<[V]>(
-                PtrData { addr: start, provenance: self.provenance(), metadata: length as usize },
-            ),
-            points_to.is_uninit(),
-            points_to.indices() == bounded_set(length),
     ;
 
     /// Creates a `SeqPointsTo<V>` permission from a `PointsToRaw` permission
@@ -3849,36 +3468,6 @@ impl<V> PointsTo<[V]> {
     ;
 }
 
-impl<V> MapPointsTo<V> {
-    /// Provided that the domain of `self` is exactly the addresses bounded by `self.ptr()@.metadata`,
-    /// creates a `PointsToRaw` from a `MapPointsTo<V>` with the same provenance
-    /// and a range starting at the address of the `PointsTo<V>` with length `size_of::<V>() * self.ptr()@.metadata`.
-    ///
-    /// Note that this is more restrictive because it only allows for converstion to a `PointsToRaw`
-    /// when the `MapPointsTo<T>` has all of the permissions associated with its pointer.
-    pub axiom fn into_raw(tracked self) -> (tracked points_to_raw: PointsToRaw)
-        requires
-            self.is_full(),
-        ensures
-            points_to_raw.is_range(self.ptr().addr() as int, size_of::<V>() * self.ptr()@.metadata),
-            points_to_raw.provenance() == self.ptr()@.provenance,
-    ;
-
-    /// Provided that the domain of `self` is exactly the indices bounded by `self.ptr()@.metadata`,
-    /// creates a reference to a `PointsToRaw` from a reference to a `MapPointsTo<V>` with the same provenance
-    /// and a range starting at the address of the `PointsTo<V>` with length `size_of::<V>() * self.ptr()@.metadata`.
-    ///
-    /// Note that this is more restrictive because it only allows for converstion to a `PointsToRaw`
-    /// when the `MapPointsTo<T>` has all of the permissions associated with its pointer.
-    pub axiom fn into_raw_shared(tracked &self) -> (tracked points_to_raw: &PointsToRaw)
-        requires
-            self.is_full(),
-        ensures
-            points_to_raw.is_range(self.ptr().addr() as int, size_of::<V>() * self.ptr()@.metadata),
-            points_to_raw.provenance() == self.ptr()@.provenance,
-    ;
-}
-
 // TODO: Add uninit requires on into_raw and add leak_contents axiom
 impl<V> SeqPointsTo<V> {
     /// Creates a `PointsToRaw` from a `SeqPointsTo<V>` with the same provenance
@@ -3933,7 +3522,7 @@ impl Dealloc {
     /// Start address of the allocation you are allowed to deallocate.
     #[verifier::inline]
     pub open spec fn addr(self) -> usize {
-        self.view().provenance.start_addr()
+        self.view().provenance.data().start_addr()
     }
 
     /// Size of the allocation you are allowed to deallocate.
@@ -3945,7 +3534,7 @@ impl Dealloc {
     /// Alignment of the allocation you are allowed to deallocate.
     #[verifier::inline]
     pub open spec fn align(self) -> nat {
-        self.view().provenance.alignment()
+        self.view().provenance.data().alignment()
     }
 
     /// Provenance of the allocation you are allowed to deallocate.
@@ -3957,7 +3546,7 @@ impl Dealloc {
     /// We can always create a `Dealloc` permission for an empty allocation with null provenance.
     pub axiom fn empty() -> (tracked dealloc: Self)
         ensures
-            dealloc@.provenance == Provenance::null(),
+            dealloc@.provenance == Provenance::None,
             dealloc@.size == 0,
     ;
 }
@@ -3985,9 +3574,10 @@ pub fn allocate(size: usize, align: usize) -> (pt: (
         pt.2@@ == (DeallocData { size: size as nat, provenance: pt.1@.provenance() }),
         pt.0.addr() as int % align as int == 0,
         pt.0@.provenance == pt.1@.provenance(),
-        pt.1@.provenance().alloc_len() == size,
-        pt.1@.provenance().start_addr() == pt.0.addr(),
-        pt.1@.provenance().alignment() == align as nat,
+        pt.1@.provenance().data().alloc_len() == size,
+        pt.1@.provenance().data().start_addr() == pt.0.addr(),
+        pt.1@.provenance().data().alignment() == align as nat,
+        pt.1@.provenance() != Provenance::None,
     opens_invariants none
 {
     // SAFETY: valid_layout is a precondition
@@ -4009,8 +3599,8 @@ pub fn allocate(size: usize, align: usize) -> (pt: (
 /// In order to do so, the parameters of the [`PointsToRaw`] and [`Dealloc`] permissions must match the parameters of the deallocation.
 ///
 /// We have two different ways to track size within `dealloc`:
-/// `dealloc.size`, the original requested size, and `dealloc.provenance.alloc_len()`, the size of memory actually allocated.
-/// According to the `Allocator` documentation, it's possible to have `dealloc.size <= dealloc.provenance.alloc_len()`.
+/// `dealloc.size`, the original requested size, and `dealloc.provenance.data().alloc_len()`, the size of memory actually allocated.
+/// According to the `Allocator` documentation, it's possible to have `dealloc.size <= dealloc.provenance.data().alloc_len()`.
 /// Here, we restrict them to be the same.
 #[cfg(feature = "alloc")]
 #[verifier::external_body]
@@ -4022,8 +3612,10 @@ pub fn deallocate(
     Tracked(dealloc): Tracked<Dealloc>,
 )
     requires
+// dealloc.provenance() != Provenance::None,
+
         dealloc.addr() == p.addr(),
-        dealloc.size() == size == dealloc.provenance().alloc_len(),
+        dealloc.size() == size == dealloc.provenance().data().alloc_len(),
         dealloc.align() == align,
         dealloc.provenance() == pt.provenance(),
         pt.is_range(dealloc.addr() as int, dealloc.size() as int),

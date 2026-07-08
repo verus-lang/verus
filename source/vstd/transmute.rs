@@ -247,13 +247,13 @@ pub proof fn transmute_usize_mut_ptr<T: Sized>(tracked src: usize) -> (tracked d
     ensures
         transmute_pre(src, dst),
         dst == ptr_mut_from_data(
-            PtrData::<T> { addr: src, provenance: Provenance::null(), metadata: () },
+            PtrData::<T> { addr: src, provenance: Provenance::None, metadata: () },
         ),
 {
     broadcast use group_transmute_axioms;
 
     let tracked dst = tracked_ptr_mut_from_data(
-        PtrData { addr: src, provenance: Provenance::null(), metadata: () },
+        PtrData { addr: src, provenance: Provenance::None, metadata: () },
     );
     assert forall|bytes| #[trigger] abs_encode::<usize>(&src, bytes) implies abs_decode::<*mut T>(
         bytes,

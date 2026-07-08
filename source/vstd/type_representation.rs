@@ -65,12 +65,12 @@ impl AbstractByte {
 
     /// Returns the Provenance shared by all of the (initialized) bytes in the sequence.
     /// If some bytes are uninitialized, or if some bytes do not share the same provenance (including having no provenance),
-    /// then `Provenance::null()` is returned.
+    /// then `Provenance::None` is returned.
     pub open spec fn shared_provenance(bytes: Seq<Self>) -> Provenance
         decreases bytes.len(),
     {
         if bytes.len() == 0 {
-            Provenance::null()
+            Provenance::None
         } else if bytes.len() == 1 {
             bytes.last().provenance_or_null()
         } else {
@@ -78,7 +78,7 @@ impl AbstractByte {
             if Self::shared_provenance(bytes.drop_last()) == last_p {
                 last_p
             } else {
-                Provenance::null()
+                Provenance::None
             }
         }
     }
@@ -100,7 +100,7 @@ impl AbstractByte {
     pub open spec fn provenance_or_null(self) -> Provenance {
         match self.provenance() {
             Some(p) => p,
-            _ => Provenance::null(),
+            _ => Provenance::None,
         }
     }
 }
@@ -349,7 +349,7 @@ pub broadcast proof fn endian_to_bytes_shared_provenance_none(endian: EndianNat<
         endian.len() > 0,
     ensures
         #[trigger] AbstractByte::shared_provenance(endian_to_bytes(endian, None))
-            == Provenance::null(),
+            == Provenance::None,
     decreases endian.len(),
 {
     if endian.len() == 1 {
@@ -420,7 +420,7 @@ macro_rules! unsigned_int_encoding {
                 ensures
                     bytes.len() == size_of::<$int>(),
                     AbstractByte::all_init(bytes),
-                    AbstractByte::shared_provenance(bytes) == Provenance::null(),
+                    AbstractByte::shared_provenance(bytes) == Provenance::None,
                     bytes_to_endian(bytes).to_nat() as $int == v,
                     bytes_to_endian(bytes).wf(),
             {
@@ -519,7 +519,7 @@ macro_rules! signed_int_encoding {
                 ensures
                     bytes.len() == size_of::<$int>(),
                     AbstractByte::all_init(bytes),
-                    AbstractByte::shared_provenance(bytes) == Provenance::null(),
+                    AbstractByte::shared_provenance(bytes) == Provenance::None,
                     bytes_to_endian(bytes).to_nat() == signed_to_unsigned(v as int, size_of::<$int>()),
                     bytes_to_endian(bytes).wf(),
             {
