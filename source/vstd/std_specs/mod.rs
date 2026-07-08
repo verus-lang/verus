@@ -34,6 +34,15 @@ pub mod vec;
 pub mod vecdeque;
 
 #[cfg(feature = "alloc")]
+pub mod binary_heap;
+
+#[cfg(feature = "alloc")]
+pub mod btree_map;
+
+#[cfg(feature = "alloc")]
+pub mod btree_set;
+
+#[cfg(feature = "alloc")]
 pub mod smart_ptrs;
 
 #[cfg(feature = "nonzero_internals")]
