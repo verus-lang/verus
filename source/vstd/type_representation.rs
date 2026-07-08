@@ -1087,6 +1087,49 @@ pub broadcast axiom fn shared_ref_cannot_be_encoded<T: ?Sized>()
         !(#[trigger] abs_can_be_encoded::<&T>()),
 ;
 
+// comment out for now
+// /// The layout for shared references is the same as that for pointers
+// /// (see: <https://doc.rust-lang.org/reference/type-layout.html#pointers-and-references-layout>).
+// ///
+// /// To transmute values of type `&T`, we must first construct a `PointsTo` for the destination type.
+// /// This is done using the `transmute_shared` axioms on `PointsTo`.
+// /// Then, one constructs a tracked `&'a T` for the destination type using the `ptr_shared_ref_ghost` axioms.
+// impl<'a, T: ?Sized> AbstractByteRepresentation for &'a T {
+//     open spec fn can_be_encoded() -> bool {
+//         <*const T as AbstractByteRepresentation>::can_be_encoded()
+//     }
+//     #[verifier::shadow_data]
+//     open spec fn encode(value: Self, bytes: Seq<AbstractByte>) -> bool {
+//         <*const T as AbstractByteRepresentation>::encode(shared_ref_ptr(shadow_data(value)), bytes)
+//     }
+//     #[verifier::shadow_data]
+//     open spec fn decode(bytes: Seq<AbstractByte>, value: Self) -> bool {
+//         <*const T as AbstractByteRepresentation>::decode(bytes, shared_ref_ptr(shadow_data(value)))
+//     }
+//     axiom fn encoding_size(v: Self, b: Seq<AbstractByte>);
+//     #[verifier::shadow_data]
+//     proof fn encoding_exists(tracked v: Self) -> (b: Seq<AbstractByte>) {
+//         broadcast use endian_to_bytes_to_endian;
+//         unsigned_int_max_values();
+//         let prefix = endian_to_bytes(
+//             EndianNat::<u8>::from_nat(shared_ref_ptr(shadow_data(v))@.addr as nat, size_of::<usize>()),
+//             Some(shared_ref_ptr(shadow_data(v))@.provenance),
+//         );
+//         assert(encoding_exists::<<T as core::ptr::Pointee>::Metadata>(shared_ref_ptr(shadow_data(v))@.metadata));
+//         let suffix = choose|bytes|
+//             abs_encode::<<T as core::ptr::Pointee>::Metadata>(&(shared_ref_ptr(shadow_data(v))@.metadata), bytes);
+//         let b = prefix.add(suffix);
+//         assert(b.subrange(0, size_of::<usize>() as int) == prefix);
+//         assert(b.subrange(size_of::<usize>() as int, size_of::<*mut T>() as int) == suffix);
+//         b
+//     }
+//     #[verifier::shadow_data]
+//     proof fn encoding_invertible(v: Self, b: Seq<AbstractByte>) {
+//         <*const T as AbstractByteRepresentation>::encoding_invertible(shared_ref_ptr(shadow_data(v)), b);
+//     }
+//     axiom fn abs_encode_impl(v: Self, b: Seq<AbstractByte>);
+//     axiom fn abs_can_be_encoded_impl();
+// }
 /// The layout for shared references is the same as that for pointers
 /// (see: <https://doc.rust-lang.org/reference/type-layout.html#pointers-and-references-layout>).
 ///
