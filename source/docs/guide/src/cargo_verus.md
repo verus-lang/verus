@@ -45,12 +45,16 @@ Then import the Verus prelude in each root module (e.g. `lib.rs` or `main.rs`):
 use vstd::prelude::*;
 ```
 
-Also include the following in the `Cargo.toml` file of each crate, to opt it into verification, and suppress warnings about `cfg(verus_only)`:
+Also include the following in the `Cargo.toml` file of each crate, to opt it into verification:
 
 ```toml
 [package.metadata.verus]
 verify = true
+```
 
+If your package isn't in a workspace, also add the following to suppress warnings about `cfg(verus_only)`:
+
+```toml
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(verus_only)'] }
 ```
@@ -91,6 +95,22 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(verus_only)'] }
 
 `cargo verus new` adds this automatically. See [Ghost Erasure](./erasure.md) for a full
 explanation of `verus_only` and when to use it.
+
+Note that in a Cargo workspace, you can instead add the following to the Cargo.toml in the workspace
+root:
+
+```toml
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(verus_only)'] }
+```
+
+Then e.g. `cargo new` will automatically propagate that setting into package-local Cargo.toml files
+as follows:
+
+```toml
+[lints.rust]
+workspace = true
+```
 
 ## Subcommands
 
