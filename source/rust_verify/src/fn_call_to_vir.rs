@@ -2854,7 +2854,7 @@ pub(crate) fn record_call<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr, resolved_cal
 /// For example, if the node is the only argument to the given call.
 fn strip_two_phase(e: &vir::ast::Expr) -> vir::ast::Expr {
     match &e.x {
-        ExprX::TwoPhaseBorrowMut(p) => e.new_x(ExprX::BorrowMut(p.clone())),
+        ExprX::TwoPhaseBorrowMut(p, is_ghost) => e.new_x(ExprX::BorrowMut(p.clone(), *is_ghost)),
         ExprX::ImplicitReborrowOrSpecRead(p, true, s) => {
             e.new_x(ExprX::ImplicitReborrowOrSpecRead(p.clone(), false, s.clone()))
         }

@@ -321,8 +321,8 @@ fn simplify_one_expr(
         ExprX::Var(x) => Ok(expr.new_x(ExprX::Var(rename_var(state, scope_map, x)))),
         ExprX::VarAt(x, at) => Ok(expr.new_x(ExprX::VarAt(rename_var(state, scope_map, x), *at))),
         ExprX::AssignToPlace { place, .. }
-        | ExprX::BorrowMut(place)
-        | ExprX::TwoPhaseBorrowMut(place)
+        | ExprX::BorrowMut(place, _)
+        | ExprX::TwoPhaseBorrowMut(place, _)
         | ExprX::BorrowMutTracked(place) => {
             // This check is no longer needed for soundness because ast_to_sst infers
             // mutability rather than relying on the user annotations.

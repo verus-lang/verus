@@ -1,7 +1,8 @@
 #![allow(unused_imports)]
 use super::super::prelude::*;
 
-use core::option::Option;
+use core::option::{IntoIter, Option};
+use super::iter::IteratorSpec;
 
 verus! {
 
@@ -418,6 +419,81 @@ pub assume_specification<T>[ Option::get_or_insert ](option: &mut Option<T>, val
             None => value,
         }),
         *final(option) == Some(*final(res)),
+;
+
+// The `into_iter` method of an `Option` returns an iterator of type `IntoIter`,
+// so we specify that type here.
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::accept_recursive_types(A)]
+pub struct ExIntoIter<A>(IntoIter<A>);
+
+// To allow reasoning about the "contents" of the Option iterator, without using
+// a prophecy, we need a function that gives us the underlying value of the original Option.
+pub uninterp spec fn into_iter_opt<A>(i: IntoIter<A>) -> Option<A>;
+
+impl <A> super::iter::IteratorSpecImpl for IntoIter<A> {
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        true
+    }
+
+    uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+    uninterp spec fn will_return_none(&self) -> bool;
+
+    #[verifier::prophetic]
+    open spec fn initial_value_relation(&self, init: &Self) -> bool {
+        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
+        &&& into_iter_opt(*self) is None ==> IteratorSpec::remaining(self).len() == 0
+        &&& into_iter_opt(*self) matches Some(a) ==> IteratorSpec::remaining(self) == seq![a]
+    }
+
+    uninterp spec fn decrease(&self) -> Option<nat>;
+
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        if index == 0 && into_iter_opt(*self) is Some {
+            Some(into_iter_opt(*self)->0)
+        } else {
+            None
+        }
+    }
+}
+
+// impl <A> super::iter::DoubleEndedIteratorSpecImpl for IntoIter<A> {
+//     open spec fn peek_back(&self, index: int) -> Option<Self::Item> {
+//         let len = into_iter_elts(*self).len();
+//         if 0 <= index < len {
+//             Some(into_iter_elts(*self)[len - index - 1])
+//         } else {
+//             None
+//         }
+//     }
+// }
+
+
+// To allow reasoning about the returned iterator when the executable
+// function `into_iter()` is invoked in a `for` loop header (e.g., in
+// `for x in it: o.into_iter() { ... }`), we need to specify the behavior of
+// the iterator in spec mode. To do that, we add
+// `#[verifier::when_used_as_spec(spec_into_iter)` to the specification for
+// the executable `into_iter` method and define that spec function here.
+pub uninterp spec fn spec_into_iter<A>(o: Option<A>) -> (iter: core::option::IntoIter<A>);
+
+//pub uninterp spec fn spec_into_iter_borrowed<A>(v: &Option<A>) -> (iter: <&Option<A> as core::iter::IntoIterator>::IntoIter);
+
+pub broadcast proof fn axiom_spec_into_iter<A>(o: Option<A>)
+    ensures
+        o is None ==> (#[trigger] spec_into_iter(o)).remaining().len() == 0,
+        o matches Some(a) ==> (#[trigger] spec_into_iter(o)).remaining() == seq![a],
+{
+    admit();
+}
+
+#[verifier::when_used_as_spec(spec_into_iter)]
+pub assume_specification<A>[ Option::<A>::into_iter ](o: Option<A>) -> (iter: core::option::IntoIter<A>)
+    ensures
+        iter == spec_into_iter(o),
+        IteratorSpec::decrease(&iter) is Some,
+        IteratorSpec::initial_value_relation(&iter, &iter),
 ;
 
 } // verus!
