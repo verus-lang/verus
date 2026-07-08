@@ -2377,6 +2377,30 @@ impl<T> SeqPointsTo<T> {
         }
     }
 
+    pub proof fn into_seq(tracked self) -> (tracked r: Seq<PointsTo<T>>)
+        ensures r == self.seq_perm(),
+    {
+        self.perm
+    }
+
+    pub proof fn from_seq(tracked r: Seq<PointsTo<T>>, ptr: *mut T) -> (tracked s: Self)
+        requires
+            (forall|i|
+                #![trigger r[i].ptr()@.provenance]
+                #![trigger r[i].ptr()@.addr]
+                0 <= i < r.len() ==> {
+                    &&& r[i].ptr()@.provenance == ptr@.provenance
+                    &&& r[i].ptr()@.addr == ptr@.addr + i * layout::size_of::<T>()
+                }),
+            ptr@.provenance.start_addr() <= ptr@.addr,
+            ptr@.addr + r.len() * layout::size_of::<T>()
+                <= ptr@.provenance.start_addr() + ptr@.provenance.alloc_len(),
+            ptr@.addr as nat % align_of::<T>() == 0,
+        ensures r == s.seq_perm(), s.ptr() == ptr,
+    {
+        SeqPointsTo::<T> { perm: r, ptr: Ghost(ptr) }
+    }
+
     /// Casting a `SeqPointsTo<T>` to a `SeqPointsTo<u8>` casts the pointer,
     /// multiplies the length by `size_of::<T>()`, and preserves the abstract bytes.
     /// The resulting `SeqPointsTo<u8>` is logically uninitialized, so it cannot be read from.
@@ -2407,37 +2431,6 @@ impl<T> SeqPointsTo<T> {
             align_of_u8,
             crate::vstd::arithmetic::mul::group_mul_basics,
         ;
-    }
-    //         out.ptr() == self.ptr() as *mut u8,
-    //         out.len() == self.len() * layout::size_of::<T>(),
-    //         out.mem_contents() == encode(self.mem_contents()),
-    //         out.wf(),
-    // ;
-
-    pub proof fn into_seq(tracked self) -> (tracked r: Seq<PointsTo<T>>)
-        ensures r == self.seq_perm(),
-    {
-        self.perm
-    }
-
-    pub proof fn from_seq(tracked r: Seq<PointsTo<T>>, ptr: *mut T) -> (tracked s: Self)
-        requires
-            (forall|i|
-                #![trigger r[i].ptr()@.provenance]
-                #![trigger r[i].ptr()@.addr]
-                0 <= i < r.len() ==> {
-                    &&& r[i].ptr()@.provenance == ptr@.provenance
-                    &&& r[i].ptr()@.addr == ptr@.addr + i * layout::size_of::<T>()
-                }),
-            ptr@.provenance.start_addr() <= ptr@.addr,
-            ptr@.addr + r.len() * layout::size_of::<T>()
-                <= ptr@.provenance.start_addr() + ptr@.provenance.alloc_len(),
-            ptr@.addr as nat % align_of::<T>() == 0,
-        ensures r == s.seq_perm(), s.ptr() == ptr,
-    {
-        SeqPointsTo::<T> { perm: r, ptr: Ghost(ptr) }
-    }
-}
 
         self.is_nonnull();
 
