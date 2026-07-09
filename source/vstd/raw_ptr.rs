@@ -277,16 +277,7 @@ pub ghost enum MemContents<T> {
     Init(ghost T),
 }
 
-/// If the memory is initialized, then the bytes must decode into the given value in memory.
-/// If the memory is uninitialized, then the bytes can be anything.
-pub broadcast axiom fn abs_decode_mem_contents<T>(bytes: Seq<AbstractByte>, value: MemContents<T>)
-    ensures
-        #[trigger] abs_decode::<MemContents<T>>(bytes, &value) <==> (match value {
-            MemContents::Uninit => true,
-            MemContents::Init(t) => abs_decode::<T>(bytes, &t),
-        }),
-;
-
+/// TODO - port to axiom on PointsTo<[T]> ?
 /// If the memory is initialized, then the bytes must decode into the given value in memory.
 /// If the memory is uninitialized, then the bytes can be anything.
 pub broadcast axiom fn abs_decode_mem_contents_unsized<T: ?Sized>(
@@ -498,6 +489,16 @@ impl<T> PointsTo<T> {
         self.inner.provenance_non_null()
     }
 
+    /// A `PointsTo<T>` is always aligned.
+    pub proof fn is_aligned(tracked &self)
+        ensures
+            self.ptr()@.addr as int % layout::align_of::<T>() as int == 0
+    {
+        broadcast use group_layout_axioms;
+
+        use_type_invariant(self);
+    }
+
     /// Guarantees that the memory ranges associated with two distinct, non-ZST permissions will not overlap,
     /// since you cannot have two permissions to the same memory.
     /// (`self` is an &mut reference to enforce distinctness,
@@ -550,11 +551,12 @@ impl<T> PointsTo<T> {
         &self.inner
     }
 
-    /// Invariant: The abstract bytes must decode into the value in memory.
+    /// If the memory is initialized, then the bytes must decode into the given value in memory.
+    /// If the memory is uninitialized, then the bytes can be anything.
     pub broadcast proof fn abstract_bytes_decode(&self)
         ensures
-            #[trigger] abs_decode::<MemContents<T>>(self.abstract_bytes(), &self.mem_contents()),
-            self.abstract_bytes().len() == size_of::<T>(),
+            self.is_init() ==> #[trigger] abs_decode::<T>(self.abstract_bytes(), &self.value()),
+            self.is_uninit() ==> self.abstract_bytes().len() == size_of::<T>()
     {
         self.inner.abstract_bytes_decode();
     }
@@ -691,8 +693,8 @@ impl<T> PointsToUnaligned<T> {
     /// Invariant: The abstract bytes must decode into the value in memory.
     pub broadcast axiom fn abstract_bytes_decode(&self)
         ensures
-            #[trigger] abs_decode::<MemContents<T>>(self.abstract_bytes(), &self.mem_contents()),
-            self.abstract_bytes().len() == size_of::<T>(),
+            self.is_init() ==> #[trigger] abs_decode::<T>(self.abstract_bytes(), &self.value()),
+            self.is_uninit() ==> self.abstract_bytes().len() == size_of::<T>(),
     ;
 
     /// A `PointsToUnaligned<T>` can always be cast to a logically uninitialized `PointsTo<[u8]>`, an untyped view of this memory.
@@ -2192,7 +2194,7 @@ impl<T> SeqPointsTo<T> {
             Self::abstract_bytes_inner(perms).len() == perms.len() * layout::size_of::<T>(),
         decreases perms.len(),
     {
-        broadcast use crate::vstd::seq::group_seq_axioms;
+        broadcast use crate::vstd::seq::group_seq_axioms, crate::vstd::type_representation::encode_decode_len;
 
         if perms.len() > 0 {
             Self::abstract_bytes_len_helper(perms.drop_last());
@@ -2312,10 +2314,10 @@ impl<T> SeqPointsTo<T> {
             self.wf(),
         ensures
             forall|i: int|
-                0 <= i < len ==> #[trigger] abs_decode::<MemContents<T>>(
-                    self.seq_perm()[i].abstract_bytes(),
-                    &self.mem_contents()[i],
-                ),
+                0 <= i < len ==> {
+                    &&& (#[trigger] self.mem_contents()[i]).is_init() ==> abs_decode::<T>(self.seq_perm()[i].abstract_bytes(), &self.mem_contents()[i].value())
+                    &&& self.mem_contents()[i].is_uninit() ==> self.seq_perm()[i].abstract_bytes().len() == size_of::<T>()
+                }
         decreases len,
     {
         broadcast use group_vstd_default;
@@ -2333,29 +2335,21 @@ impl<T> SeqPointsTo<T> {
             self.wf(),
         ensures
             forall|i: int|
-                0 <= i < self.len() ==> #[trigger] abs_decode::<MemContents<T>>(
-                    self.abstract_bytes().subrange(
-                        i * layout::size_of::<T>(),
-                        (i + 1) * layout::size_of::<T>(),
-                    ),
-                    &self.mem_contents()[i],
-                ),
+                0 <= i < self.len() ==> {
+                    &&& (#[trigger] self.mem_contents()[i]).is_init() ==> 
+                    abs_decode::<T>(
+                        self.abstract_bytes().subrange(
+                            i * layout::size_of::<T>(),
+                            (i + 1) * layout::size_of::<T>(),
+                        ), 
+                        &self.mem_contents()[i].value()
+                    )
+                    &&& self.mem_contents()[i].is_uninit() ==> self.seq_perm()[i].abstract_bytes().len() == size_of::<T>()
+                }
     {
         broadcast use SeqPointsTo::abstract_bytes_equiv;
 
         self.abstract_bytes_decode_helper(self.len() as int);
-        assert forall|i: int| 0 <= i < self.len() implies #[trigger] abs_decode::<MemContents<T>>(
-            self.abstract_bytes().subrange(
-                i * layout::size_of::<T>(),
-                (i + 1) * layout::size_of::<T>(),
-            ),
-            &self.mem_contents()[i],
-        ) by {
-            assert(abs_decode::<MemContents<T>>(
-                self.seq_perm()[i].abstract_bytes(),
-                &self.mem_contents()[i],
-            ));
-        }
     }
 
     pub proof fn into_seq(tracked self) -> (tracked r: Seq<PointsTo<T>>)
@@ -3492,6 +3486,38 @@ impl<V> PointsTo<V> {
             layout::size_of::<V>() == raw.ptr()@.metadata,
             self.abstract_bytes() == raw.abstract_bytes(),
             raw.is_fully_uninit()
+    ;
+
+    /// Creates a mutable reference to a `PointsToUnaligned<[u8]>` from a reference to a `PointsTo<V>` with the same provenance
+    /// and a range corresponding to the address of the `PointsTo<V>` and size of the `V`.
+    /// If this permission carries any MemContents, they are dropped here.
+    pub axiom fn as_untyped_mut(tracked &mut self) -> (tracked raw: &mut PointsToUnaligned<[u8]>)
+        ensures
+            old(self).ptr() == raw.ptr() as *mut V,
+            layout::size_of::<V>() == raw.ptr()@.metadata,
+            old(self).abstract_bytes() == raw.abstract_bytes(),
+            raw.is_fully_uninit(),
+            final(self).ptr() == old(self).ptr(),
+            final(self).abstract_bytes() == final(raw).abstract_bytes(),
+            final(self).is_uninit()
+    ;
+
+    /// This takes a borrow of the `MemContents<T>` from `self`.
+    pub axiom fn borrow_mem_contents(tracked &self) -> (tracked val: &V)
+        requires
+            self.is_init()
+        ensures
+            val == self.value();
+
+    /// This moves the `MemContents<T>` out from `self`.
+    pub axiom fn take_mem_contents(tracked &mut self) -> (tracked val: V)
+        requires
+            self.is_init()
+        ensures
+            val == old(self).value(),
+            final(self).ptr() == old(self).ptr(),
+            final(self).abstract_bytes() == old(self).abstract_bytes(),
+            final(self).is_uninit()
     ;
 }
 

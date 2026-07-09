@@ -117,6 +117,14 @@ pub uninterp spec fn abs_encode<T: ?Sized>(value: &T, bytes: Seq<AbstractByte>) 
 /// Can the given bytes always be decoded to the given value?
 pub uninterp spec fn abs_decode<T: ?Sized>(bytes: Seq<AbstractByte>, value: &T) -> bool;
 
+/// For any type `T`, the encoding must correctly translate the size of the type.
+pub broadcast axiom fn encode_decode_len<T>(value: T, bytes: Seq<AbstractByte>)
+    ensures
+        #![trigger abs_encode::<T>(&value, bytes)] 
+        #![trigger abs_decode::<T>(bytes, &value)] 
+        abs_encode::<T>(&value, bytes) ==> bytes.len() == size_of::<T>(),
+        abs_decode::<T>(bytes, &value) ==> bytes.len() == size_of::<T>();
+
 /// This trait defines the concrete specification for the given type's `AbstractByte` encoding.
 pub trait AbstractByteRepresentation where Self: Sized {
     /// Is encoding allowed for this type?
