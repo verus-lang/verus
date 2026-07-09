@@ -866,19 +866,18 @@ impl<T> PointsTo<[T]> {
                 start_index as int + len as int,
             ),
     {
-        assume(false);
         broadcast use {axiom_ptr_mut_from_data, group_layout_axioms, alloc_bound};
 
         let tracked unaligned_self_ref = self.as_unaligned();
 
         if start_index > 0 && size_of::<T>() > 0 {
-            assume(self.ptr()@.provenance.is_some());
             assert(self.mem_contents_seq().len() > 0);
             assert(self.mem_contents_seq().len() * size_of::<T>() != 0) by (nonlinear_arith)
                 requires
                     self.mem_contents_seq().len() > 0,
                     size_of::<T>() > 0,
             ;
+            unaligned_self_ref.provenance_non_null();
             unaligned_self_ref.ptr_bounds();
             assert(start_index * size_of::<T>() <= self.mem_contents_seq().len() * size_of::<T>())
                 by (nonlinear_arith)
@@ -1921,8 +1920,9 @@ impl<T> SeqPointsTo<T> {
             &&& self.ptr()@.addr + self.len() * layout::size_of::<T>()
                 <= self.ptr()@.provenance.data().start_addr()
                 + self.ptr()@.provenance.data().alloc_len()
-            &&& self.ptr()@.addr as nat % align_of::<T>() == 0
         }
+        &&& self.ptr()@.addr != 0
+        &&& self.ptr()@.addr as nat % align_of::<T>() == 0
     }
 
     /// The pointer that this permission is associated with.
@@ -2086,6 +2086,20 @@ impl<T> SeqPointsTo<T> {
         PointsToRaw::empty(ptr@.provenance).into_typed_seq(ptr@.addr, 0)
     }
 
+    /// If the memory covered by this permission is not zero-sized,
+    /// then the pointer's provenance is non-null.
+    pub proof fn provenance_non_null(tracked &self)
+        requires
+            layout::size_of::<T>() * self.len() != 0,
+            self.wf(),
+        ensures
+            self.ptr()@.provenance != Provenance::None,
+    {
+        assert(layout::size_of::<T>() != 0);
+        assert(self.len() != 0);
+        self.perm.tracked_borrow(0).provenance_non_null();
+    }
+
     /// We can construct a `SeqPointsTo` with `length`-many `PointsTo` permissions,
     /// provided that `T` is zero-sized and that the pointer is non-null and aligned.
     pub proof fn zero_sized(ptr: *mut T, length: nat) -> (tracked spt: Self)
@@ -2132,25 +2146,6 @@ impl<T> SeqPointsTo<T> {
 
             mut_spt.zero_sized_helper((remaining - 1) as nat, total)
         }
-    }
-
-    /// Guarantees that the pointer address is non-null,
-    /// because it falls within an allocation and the start address of an allocation is non-null.
-    /// Guarantee that the `PointsTo` for any non-zero-sized type points to a non-null address.
-    ///
-    // ZST pointers *are* allowed to be null, so we need a precondition that size != 0.
-    // See https://doc.rust-lang.org/std/ptr/#safety
-    pub proof fn is_nonnull(tracked &self)
-        requires
-            self.wf(),
-            self.ptr()@.provenance != Provenance::None,
-        ensures
-            self.ptr()@.addr != 0,
-            self.wf(),
-    {
-        // use_type_invariant(self);
-        broadcast use is_nonnull;
-
     }
 
     proof fn abstract_bytes_len_helper(perms: Seq<PointsTo<T>>)
@@ -2377,14 +2372,11 @@ impl<T> SeqPointsTo<T> {
             dst.wf(),
         decreases self.len(),
     {
-        assume(false);
         broadcast use
             group_vstd_default,
             align_of_u8,
             crate::vstd::arithmetic::mul::group_mul_basics,
         ;
-
-        self.is_nonnull();
 
         if self.len() == 0 {
             (SeqPointsTo::<u8>::empty(self.ptr() as *mut u8), Seq::tracked_empty())
@@ -2430,9 +2422,16 @@ impl<T> SeqPointsTo<T> {
             first.wf(),
             second.wf(),
     {
-        assume(false);
         broadcast use {group_vstd_default, crate::vstd::arithmetic::mul::lemma_mul_inequality};
 
+        if self.len() != 0 && size_of::<T>() != 0 {
+            assert(layout::size_of::<T>() * self.len() != 0) by (nonlinear_arith)
+                requires
+                    self.len() != 0,
+                    size_of::<T>() != 0,
+            ;
+            self.provenance_non_null();
+        }
         let ghost ghost_self = self;
 
         let tracked mut perm = self.perm;
@@ -2451,25 +2450,29 @@ impl<T> SeqPointsTo<T> {
                 ),
             ),
         };
-        assert((ghost_self.ptr()@.addr + mid * layout::size_of::<T>()) as nat % align_of::<T>()
-            == 0) by {
-            broadcast use {lemma_mul_mod_noop_right, lemma_add_mod_noop, layout_of_sized};
+        if self.len() != 0 {
+            if size_of::<T>() != 0 {
+                assert((ghost_self.ptr()@.addr + mid * layout::size_of::<T>()) as nat % align_of::<
+                    T,
+                >() == 0) by {
+                    broadcast use {lemma_mul_mod_noop_right, lemma_add_mod_noop, layout_of_sized};
 
+                }
+                assert(ghost_self.ptr()@.addr + mid * layout::size_of::<T>() + second.len()
+                    * layout::size_of::<T>() == ghost_self.ptr()@.addr + ghost_self.len()
+                    * layout::size_of::<T>()) by (nonlinear_arith)
+                    requires
+                        mid + second.len() == ghost_self.len(),
+                ;
+                assert forall|i: nat| 0 <= i < second.len() implies #[trigger] second[i].ptr()@.addr
+                    == second.ptr()@.addr + i * layout::size_of::<T>() by {
+                    assert(ghost_self.ptr()@.addr + (i + mid) * layout::size_of::<T>()
+                        == ghost_self.ptr()@.addr + mid * layout::size_of::<T>() + i
+                        * layout::size_of::<T>()) by (nonlinear_arith);
+                }
+            }
+            Self::abstract_bytes_subrange(ghost_self.seq_perm(), mid as int);
         }
-        assert(ghost_self.ptr()@.addr + mid * layout::size_of::<T>() + second.len()
-            * layout::size_of::<T>() == ghost_self.ptr()@.addr + ghost_self.len()
-            * layout::size_of::<T>()) by (nonlinear_arith)
-            requires
-                mid + second.len() == ghost_self.len(),
-        ;
-        assert forall|i: nat| 0 <= i < second.len() implies #[trigger] second[i].ptr()@.addr
-            == second.ptr()@.addr + i * layout::size_of::<T>() by {
-            assert(ghost_self.ptr()@.addr + (i + mid) * layout::size_of::<T>()
-                == ghost_self.ptr()@.addr + mid * layout::size_of::<T>() + i * layout::size_of::<
-                T,
-            >()) by (nonlinear_arith);
-        }
-        Self::abstract_bytes_subrange(ghost_self.seq_perm(), mid as int);
         (first, second)
     }
 
@@ -2576,19 +2579,25 @@ impl SeqPointsTo<u8> {
             out.wf(),
         decreases capacity,
     {
-        assume(false);
         broadcast use
             group_vstd_default,
             align_of_u8,
             crate::vstd::arithmetic::mul::group_mul_basics,
         ;
 
-        self.is_nonnull();
-
         if capacity == 0 {
             SeqPointsTo::<T>::empty(self.ptr() as *mut T)
         } else {
+            if layout::size_of::<T>() != 0 {
+                assert(capacity * layout::size_of::<T>() != 0) by (nonlinear_arith)
+                    requires
+                        capacity != 0,
+                        layout::size_of::<T>() != 0,
+                ;
+                self.provenance_non_null();
+            }
             // split into "head" and "tail", where tail is the last permission
+
             assert(0 <= (capacity - 1) as nat * layout::size_of::<T>() <= capacity
                 * layout::size_of::<T>()) by (nonlinear_arith)
                 requires
