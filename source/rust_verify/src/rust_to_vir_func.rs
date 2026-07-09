@@ -664,10 +664,14 @@ fn compare_external_ty<'tcx>(
                     && matches!(al_ty2.kind, rustc_middle::ty::AliasTyKind::Opaque { .. }) =>
             {
                 // two opaque types. We compare their trait bounds
-                let ty1_bounds =
-                    tcx.item_bounds(al_ty1.kind.def_id()).instantiate(tcx, al_ty1.args);
-                let ty2_bounds =
-                    tcx.item_bounds(al_ty2.kind.def_id()).instantiate(tcx, al_ty2.args);
+                let ty1_bounds = tcx.normalize_erasing_regions(
+                    TypingEnv::non_body_analysis(tcx, al_ty1.kind.def_id()),
+                    tcx.item_bounds(al_ty1.kind.def_id()).instantiate(tcx, al_ty1.args),
+                );
+                let ty2_bounds = tcx.normalize_erasing_regions(
+                    TypingEnv::non_body_analysis(tcx, al_ty2.kind.def_id()),
+                    tcx.item_bounds(al_ty2.kind.def_id()).instantiate(tcx, al_ty2.args),
+                );
                 if ty1_bounds.len() != ty2_bounds.len() {
                     return false;
                 }
@@ -987,11 +991,11 @@ fn handle_external_fn<'tcx>(
             mismatch_type_error_user_str_early(ctxt, substs2_early, poly_sig2),
         );
     };
-    let poly_sig1x = poly_sig1.instantiate(ctxt.tcx, substs1_early);
+    let poly_sig1x = poly_sig1.instantiate(ctxt.tcx, substs1_early).skip_norm_wip();
     let poly_sig1x =
         ctxt.tcx.instantiate_bound_regions(poly_sig1x, |br| substs1_late[usize::from(br.var)]).0;
 
-    let poly_sig2x = poly_sig2.instantiate(ctxt.tcx, substs2_early);
+    let poly_sig2x = poly_sig2.instantiate(ctxt.tcx, substs2_early).skip_norm_wip();
     let poly_sig2x =
         ctxt.tcx.instantiate_bound_regions(poly_sig2x, |br| substs2_late[usize::from(br.var)]).0;
 
@@ -1223,7 +1227,7 @@ fn mismatch_type_error_user_str_early<'tcx>(
 
     let early_binder_str = substs_to_string(&substs);
 
-    let poly_sig = poly_sig.instantiate(ctxt.tcx, substs);
+    let poly_sig = poly_sig.instantiate(ctxt.tcx, substs).skip_norm_wip();
     use rustc_middle::ty::FnSig;
 
     let binder_str = binders_to_string(ctxt.tcx, &poly_sig.bound_vars());
@@ -2385,6 +2389,8 @@ fn check_generics_for_invariant_fn<'tcx>(
 
             let datatype_predicates = adt_def.predicates(tcx);
             let func_predicates = tcx.predicates_of(id);
+            let datatype_typing_env = TypingEnv::post_analysis(tcx, adt_def.did());
+            let func_typing_env = TypingEnv::post_analysis(tcx, id);
             let preds1 = datatype_predicates.instantiate(tcx, substs).predicates;
             let preds2 = func_predicates.instantiate(tcx, substs).predicates;
             // The 'outlives' predicates don't always line up; I don't know why.
@@ -2397,6 +2403,7 @@ fn check_generics_for_invariant_fn<'tcx>(
                         ClauseKind::RegionOutlives(..) | ClauseKind::TypeOutlives(..)
                     )
                 })
+                .map(|clause| tcx.normalize_erasing_regions(datatype_typing_env, clause))
                 .collect();
             let preds2 = preds2
                 .into_iter()
@@ -2406,6 +2413,7 @@ fn check_generics_for_invariant_fn<'tcx>(
                         ClauseKind::RegionOutlives(..) | ClauseKind::TypeOutlives(..)
                     )
                 })
+                .map(|clause| tcx.normalize_erasing_regions(func_typing_env, clause))
                 .collect();
             let preds_match = crate::rust_to_vir_func::predicates_match(tcx, &preds1, &preds2);
             if !preds_match {
@@ -2607,16 +2615,26 @@ fn all_predicates<'tcx>(
                 rustc_middle::ty::ClauseKind::<'tcx>::Trait(tp) => {
                     if tcx.trait_is_alias(tp.trait_ref.def_id) {
                         let preds = tcx.predicates_of(tp.trait_ref.def_id);
-                        trait_alias_clauses
-                            .extend(preds.instantiate(tcx, substs).into_iter().map(|(p, _)| p));
+                        let alias_typing_env =
+                            TypingEnv::post_analysis(tcx, tp.trait_ref.def_id);
+                        trait_alias_clauses.extend(
+                            preds.instantiate(tcx, substs).into_iter().map(|(p, _)| {
+                                tcx.normalize_erasing_regions(alias_typing_env, p)
+                            }),
+                        );
                     }
                 }
                 _ => {}
             }
         }
     }
+    let typing_env = TypingEnv::post_analysis(tcx, id);
     let preds = preds.instantiate(tcx, substs);
-    let mut clauses = preds.predicates;
+    let mut clauses: Vec<Clause<'tcx>> = preds
+        .predicates
+        .into_iter()
+        .map(|clause| tcx.normalize_erasing_regions(typing_env, clause))
+        .collect();
     if preliminarily_try_to_process_and_eliminate_trait_aliases {
         clauses.retain(|clause| match clause.kind().skip_binder() {
             rustc_middle::ty::ClauseKind::<'tcx>::Trait(tp) => {
@@ -2781,8 +2799,12 @@ fn get_external_def_id<'tcx>(
                 let mut types: Vec<Typ> = vec![];
 
                 let trait_ref = tcx.impl_trait_ref(impl_def_id);
+                let trait_ref = tcx.normalize_erasing_regions(
+                    TypingEnv::post_analysis(tcx, impl_item_id),
+                    trait_ref.instantiate(tcx, impl_args),
+                );
 
-                for ty in trait_ref.instantiate(tcx, impl_args).args.types() {
+                for ty in trait_ref.args.types() {
                     types.push(ctxt.mid_ty_to_vir(impl_item_id, sig.span, &ty, None)?);
                 }
 

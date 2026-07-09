@@ -185,8 +185,15 @@ fn translate_assoc_type<'tcx>(
     let assoc_def_id = ai.trait_item_def_id().unwrap();
     let bounds = ctxt.tcx.item_bounds(assoc_def_id);
     let assoc_generics = ctxt.tcx.generics_of(assoc_def_id);
-    let mut assoc_args: Vec<rustc_middle::ty::GenericArg> =
-        trait_ref.instantiate_identity().args.into_iter().collect();
+    let mut assoc_args: Vec<rustc_middle::ty::GenericArg> = ctxt
+        .tcx
+        .normalize_erasing_regions(
+            TypingEnv::post_analysis(ctxt.tcx, impl_item_id),
+            trait_ref.instantiate_identity(),
+        )
+        .args
+        .into_iter()
+        .collect();
     for p in &assoc_generics.own_params {
         let e = rustc_middle::ty::EarlyParamRegion {
             //def_id: p.def_id,

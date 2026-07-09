@@ -6,6 +6,7 @@ use std::{
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty::{
     EarlyParamRegion, GenericArg, GenericParamDefKind, InstantiatedPredicates, Ty, TyCtxt, TyKind,
+    TypingEnv,
 };
 use rustc_type_ir::{
     Interner, TypeFoldable, TypeFolder, TypeSuperVisitable, TypeVisitable, TypeVisitor,
@@ -263,8 +264,12 @@ fn build_region_renamer<'tcx>(
     external_def_id: DefId,
     generics: &'tcx rustc_middle::ty::Generics,
 ) -> Result<RegionRenamer<'tcx>, Arc<vir::messages::MessageX>> {
+    let typing_env = TypingEnv::non_body_analysis(ctxt.tcx, external_def_id);
     let substs_early = crate::rust_to_vir_func::get_substs_early(
-        ctxt.tcx.type_of(external_def_id).instantiate_identity(),
+        ctxt.tcx.normalize_erasing_regions(
+            typing_env,
+            ctxt.tcx.type_of(external_def_id).instantiate_identity(),
+        ),
         ctxt.tcx.def_span(external_def_id),
     )?;
     let early_lifetimes = substs_early.iter().filter_map(GenericArg::as_region);

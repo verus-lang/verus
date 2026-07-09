@@ -8,7 +8,7 @@ use crate::rust_to_vir_impl::ExternalInfo;
 use crate::unsupported_err_unless;
 use crate::util::{err_span, err_span_bare};
 use rustc_hir::{Generics, Safety, TraitFn, TraitItem, TraitItemId, TraitItemKind};
-use rustc_middle::ty::{ClauseKind, TraitPredicate, TraitRef, TyCtxt};
+use rustc_middle::ty::{ClauseKind, TraitPredicate, TraitRef, TyCtxt, TypingEnv};
 use rustc_span::Span;
 use rustc_span::def_id::DefId;
 use std::sync::Arc;
@@ -152,6 +152,7 @@ pub(crate) fn translate_trait<'tcx>(
     let mut method_names: Vec<Fun> = Vec::new();
     let ex_trait_ref_for = external_trait_specification_of(tcx, trait_items, trait_vattrs)?;
     let external_trait_extension = &trait_vattrs.external_trait_extension;
+    let typing_env = TypingEnv::fully_monomorphized();
     let trait_extension = if let Some((spec, _)) = external_trait_extension {
         if ex_trait_ref_for.is_none() {
             return err_span(trait_span, "unexpected `external_trait_extension`");
@@ -172,8 +173,24 @@ pub(crate) fn translate_trait<'tcx>(
         )?;
         let external_predicates = tcx.predicates_of(ex_trait_ref_for.def_id);
         let proxy_predicates = tcx.predicates_of(trait_def_id);
-        let mut preds1 = external_predicates.instantiate(tcx, ex_trait_ref_for.args).predicates;
-        let mut preds2 = proxy_predicates.instantiate(tcx, ex_trait_ref_for.args).predicates;
+        let mut preds1 = external_predicates
+            .instantiate(tcx, ex_trait_ref_for.args)
+            .predicates
+            .into_iter()
+            .map(|clause| {
+                tcx.try_normalize_erasing_regions(typing_env, clause)
+                    .unwrap_or_else(|_| clause.skip_norm_wip())
+            })
+            .collect();
+        let mut preds2 = proxy_predicates
+            .instantiate(tcx, ex_trait_ref_for.args)
+            .predicates
+            .into_iter()
+            .map(|clause| {
+                tcx.try_normalize_erasing_regions(typing_env, clause)
+                    .unwrap_or_else(|_| clause.skip_norm_wip())
+            })
+            .collect();
         let mut external_trait_private_bounds = trait_vattrs.external_trait_private_bounds.clone();
         use crate::rust_to_vir_func::remove_ignored_trait_bounds_from_predicates;
         remove_ignored_trait_bounds_from_predicates(
@@ -426,8 +443,16 @@ pub(crate) fn translate_trait<'tcx>(
                     let ex_item_id_for = ex_item_id_for.expect("ex_item_id_for");
                     let external_predicates = tcx.item_bounds(ex_item_id_for);
                     let proxy_predicates = tcx.item_bounds(owner_id.to_def_id());
-                    let preds1 = external_predicates.instantiate(tcx, ex_trait_ref_for.args);
-                    let preds2 = proxy_predicates.instantiate(tcx, ex_trait_ref_for.args);
+                    let external_instantiated =
+                        external_predicates.instantiate(tcx, ex_trait_ref_for.args);
+                    let preds1 = tcx
+                        .try_normalize_erasing_regions(typing_env, external_instantiated)
+                        .unwrap_or_else(|_| external_instantiated.skip_norm_wip());
+                    let proxy_instantiated =
+                        proxy_predicates.instantiate(tcx, ex_trait_ref_for.args);
+                    let preds2 = tcx
+                        .try_normalize_erasing_regions(typing_env, proxy_instantiated)
+                        .unwrap_or_else(|_| proxy_instantiated.skip_norm_wip());
                     // TODO, but low priority, since this is just a check for trusted declarations:
                     // crate::rust_to_vir_func::predicates_match(tcx, true, &preds1.iter().collect(), &preds2.iter().collect())?;
                     // (would need to fix up the TyKind::Alias projections inside the clauses)

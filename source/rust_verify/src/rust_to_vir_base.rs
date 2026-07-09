@@ -390,7 +390,13 @@ fn instantiate_pred_clauses<'tcx>(
     args: rustc_middle::ty::GenericArgsRef<'tcx>,
 ) -> Vec<(Option<ClauseFrom<'tcx>>, Clause<'tcx>)> {
     // We could get the information directly like this:
-    let direct_clauses = tcx.predicates_of(def_id).instantiate(tcx, args).predicates;
+    let direct_clauses: Vec<Clause<'tcx>> = tcx
+        .predicates_of(def_id)
+        .instantiate(tcx, args)
+        .predicates
+        .into_iter()
+        .map(|c| c.skip_norm_wip())
+        .collect();
     // but we need a little more information, so we manually reimplement some of instantiate here:
     let mut ancestors: Vec<DefId> = Vec::new();
     loop {
@@ -409,7 +415,8 @@ fn instantiate_pred_clauses<'tcx>(
             // This is based on GenericPredicates.instantiate_into, which is close to what
             // we need but doesn't track the relation between the uninstantiated and
             // instantiated clauses.
-            let inst = rustc_middle::ty::EarlyBinder::bind(*clause).instantiate(tcx, args);
+            let inst =
+                rustc_middle::ty::EarlyBinder::bind(*clause).instantiate(tcx, args).skip_norm_wip();
             let is_self_trait_bound = *span == rustc_span::DUMMY_SP;
             if is_self_trait_bound {
                 if let ClauseKind::Trait(TraitPredicate { trait_ref, .. }) =
@@ -505,7 +512,10 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
             let candidate_query_input = typing_env.as_query_input(trait_refs);
             let candidate = tcx.codegen_select_candidate(candidate_query_input);
             let candidate = candidate.or_else(|_| {
-                let trait_refs = tcx.normalize_erasing_regions(typing_env, trait_refs);
+                let trait_refs = tcx.normalize_erasing_regions(
+                    typing_env,
+                    rustc_middle::ty::Unnormalized::new_wip(trait_refs),
+                );
                 let candidate_query_input = typing_env.as_query_input(trait_refs);
                 tcx.codegen_select_candidate(candidate_query_input)
             });
@@ -1234,7 +1244,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                     let cause = rustc_infer::traits::ObligationCause::dummy();
                     let at = infcx.at(&cause, param_env);
                     let ty = &clean_all_escaping_bound_vars(tcx, *ty, param_env_src);
-                    let norm = at.normalize(*ty);
+                    let norm = at.normalize(rustc_middle::ty::Unnormalized::new_wip(*ty));
                     if norm.value != *ty {
                         for arg in norm.value.walk().into_iter() {
                             if let Some(t) = arg.as_type() {
@@ -1471,7 +1481,10 @@ pub(crate) fn mid_ty_const_to_vir<'tcx>(
         ConstKind::Unevaluated(unevaluated) => {
             let typing_env =
                 TypingEnv::new(tcx.param_env(unevaluated.def), TypingMode::PostAnalysis);
-            &tcx.normalize_erasing_regions(typing_env, cnst.clone())
+            &tcx.normalize_erasing_regions(
+                typing_env,
+                rustc_middle::ty::Unnormalized::new_wip(cnst.clone()),
+            )
         }
         _ => cnst,
     };
@@ -2386,8 +2399,11 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                 }
             }
 
-            let instantiated_bounds =
-                ctxt.tcx.item_bounds(alias_def_id).instantiate(ctxt.tcx, al_ty.args);
+            let typing_env = TypingEnv::non_body_analysis(ctxt.tcx, alias_def_id);
+            let instantiated_bounds = ctxt.tcx.normalize_erasing_regions(
+                typing_env,
+                ctxt.tcx.item_bounds(alias_def_id).instantiate(ctxt.tcx, al_ty.args),
+            );
 
             // If the opaque type is defined by assume specification, recursively reveal the
             // bounds of the assume_specification opaque type too.
@@ -2403,10 +2419,17 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                         let assume_specification_span =
                             ctxt.tcx.def_span(assume_specification_al_ty.kind.def_id());
 
+                        let assume_specification_typing_env = TypingEnv::non_body_analysis(
+                            ctxt.tcx,
+                            assume_specification_al_ty.kind.def_id(),
+                        );
                         Some((
-                            ctxt.tcx
-                                .item_bounds(assume_specification_al_ty.kind.def_id())
-                                .instantiate(ctxt.tcx, assume_specification_al_ty.args),
+                            ctxt.tcx.normalize_erasing_regions(
+                                assume_specification_typing_env,
+                                ctxt.tcx
+                                    .item_bounds(assume_specification_al_ty.kind.def_id())
+                                    .instantiate(ctxt.tcx, assume_specification_al_ty.args),
+                            ),
                             assume_specification_span,
                         ))
                     } else {

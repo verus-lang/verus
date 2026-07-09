@@ -39,6 +39,10 @@ fn check_variant_data<'tcx, 'fd>(
 where
     'tcx: 'fd,
 {
+    let typing_env = TypingEnv::post_analysis(
+        ctxt.tcx,
+        item_id.owner_id.to_def_id(),
+    );
     let empty = [];
     let hir_fields_opt = match variant_data_opt {
         Some(VariantData::Struct { fields, recovered }) => {
@@ -71,7 +75,10 @@ where
             Some(substs) => {
                 // For external types, we need to substitute in the generics
                 // from the proxy type
-                field_def.ty(ctxt.tcx, substs)
+                ctxt.tcx.normalize_erasing_regions(
+                    typing_env,
+                    field_def.ty(ctxt.tcx, substs)
+                )
             }
             None => {
                 // For normal datatypes, this seems to work fine.
@@ -450,7 +457,10 @@ fn get_sized_constraint<'tcx>(
         return Ok(None);
     };
     let mut sized_constraint = if let Some(substs) = substs {
-        sized_constraint.instantiate(tcx, substs)
+        tcx.normalize_erasing_regions(
+            typing_env,
+            sized_constraint.instantiate(tcx, substs)
+        )
     } else {
         sized_constraint.skip_binder()
     };
@@ -472,7 +482,7 @@ fn get_sized_constraint<'tcx>(
             sized_constraint,
             adt_def.did(),
         );
-        let norm = at.normalize(*ty);
+        let norm = at.normalize(rustc_middle::ty::Unnormalized::new_wip(*ty));
         if norm.value != *ty {
             for arg in norm.value.walk().into_iter() {
                 if let Some(t) = arg.as_type() {
@@ -491,7 +501,7 @@ fn get_sized_constraint<'tcx>(
                 let Some(sc3) = opt else {
                     return Ok(None);
                 };
-                sc3.instantiate(tcx, args)
+                tcx.normalize_erasing_regions(typing_env, sc3.instantiate(tcx, args))
             }
             _ => sc2,
         };
@@ -584,8 +594,20 @@ pub(crate) fn check_item_external<'tcx>(
         // 'Parent' nodes should only exist for stuff in an impl
         return err_span(span, "expected GenericPredicates to not have a parent");
     }
-    let preds1 = external_predicates.instantiate(ctxt.tcx, substs_ref).predicates;
-    let preds2 = proxy_predicates.instantiate(ctxt.tcx, substs_ref).predicates;
+    let external_typing_env = TypingEnv::post_analysis(ctxt.tcx, external_adt_def.did());
+    let proxy_typing_env = TypingEnv::post_analysis(ctxt.tcx, proxy_adt_def.did());
+    let preds1 = external_predicates
+        .instantiate(ctxt.tcx, substs_ref)
+        .predicates
+        .into_iter()
+        .map(|clause| ctxt.tcx.normalize_erasing_regions(external_typing_env, clause))
+        .collect();
+    let preds2 = proxy_predicates
+        .instantiate(ctxt.tcx, substs_ref)
+        .predicates
+        .into_iter()
+        .map(|clause| ctxt.tcx.normalize_erasing_regions(proxy_typing_env, clause))
+        .collect();
     let preds_match = crate::rust_to_vir_func::predicates_match(ctxt.tcx, &preds1, &preds2);
     if !preds_match {
         println!("external_predicates: {:#?}", external_predicates.predicates);
