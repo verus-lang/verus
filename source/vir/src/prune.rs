@@ -473,7 +473,12 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                     ExprX::StaticVar(name) => {
                         reach_function(ctxt, state, name);
                     }
-                    ExprX::Call(CallTarget::Fun(kind, name, _, _impl_paths, attrs), _, _) => {
+                    ExprX::Call {
+                        target: CallTarget::Fun(kind, name, _, _impl_paths, attrs),
+                        args: _,
+                        post_args: _,
+                        body: _,
+                    } => {
                         // REVIEW: maybe we can be more precise if we use impl_paths here
                         assert!(ctxt.module.is_none() || attrs.autospec == AutospecUsage::Final);
                         reach_function(ctxt, state, name);
@@ -787,7 +792,12 @@ fn collect_broadcast_triggers(f: &Function) -> Vec<(Vec<Fun>, Vec<ReachedType>)>
         let mut f_get_calls = |_: &mut VisitorScopeMap, expr: &Expr| {
             ft(&expr.typ);
             match &expr.x {
-                ExprX::Call(CallTarget::Fun(_, name, ts, _, _), _, _) => {
+                ExprX::Call {
+                    target: CallTarget::Fun(_, name, ts, _, _),
+                    args: _,
+                    post_args: _,
+                    body: _,
+                } => {
                     for typ in ts.iter() {
                         ft(typ);
                     }
