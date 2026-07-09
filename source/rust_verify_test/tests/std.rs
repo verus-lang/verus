@@ -603,6 +603,65 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_vir_error_msg(err, "cannot use function `test_crate::X::clone` which is ignored")
 }
 
+// Proc-macro crates (e.g., serde) do not emit #[automatically_derived], so
+// their impls have span.from_expansion() == true but no automatically_derived attr.
+// We simulate this with a macro_rules! that produces an impl without that attribute.
+test_verify_one_file_with_options! {
+    #[test] external_derive_proc_macro_all ["--no-external-by-default"] => verus_code! {
+        macro_rules! fake_serialize {
+            ($t:ty) => {
+                impl FakeSerialize for $t {
+                    fn serialize(&self) -> u64 { 0 }
+                }
+            }
+        }
+
+        trait FakeSerialize {
+            fn serialize(&self) -> u64;
+        }
+
+        #[verifier::external_derive]
+        struct X {
+            u: u64,
+        }
+
+        fake_serialize!(X);
+
+        fn test(x: X) {
+            // calling serialize on X should work since the impl is marked external
+            let _ = x.serialize();
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] external_derive_proc_macro_named ["--no-external-by-default"] => verus_code! {
+        macro_rules! fake_serialize {
+            ($t:ty) => {
+                impl FakeSerialize for $t {
+                    fn serialize(&self) -> u64 { 0 }
+                }
+            }
+        }
+
+        trait FakeSerialize {
+            fn serialize(&self) -> u64;
+        }
+
+        // only FakeSerialize is listed -- the macro-expanded impl should be ignored
+        #[verifier::external_derive(FakeSerialize)]
+        struct X {
+            u: u64,
+        }
+
+        fake_serialize!(X);
+
+        fn test(x: X) {
+            let _ = x.serialize();
+        }
+    } => Ok(())
+}
+
 test_verify_one_file! {
     #[test] vec_index_nounwind verus_code! {
         use vstd::*;
