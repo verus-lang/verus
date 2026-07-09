@@ -1379,10 +1379,6 @@ impl PointsTo<[u8]> {
             seq![self.abstract_bytes()[i]],
             value[i],
         ) by {
-            // assert(abs_decode::<MemContents<u8>>(
-            //     self.abstract_bytes().subrange(i * size_of::<u8>(), (i + 1) * size_of::<u8>()),
-            //     &self.mem_contents_seq()[i],
-            // ));
             assert(self.abstract_bytes().subrange(i * size_of::<u8>(), (i + 1) * size_of::<u8>())
                 == seq![self.abstract_bytes()[i]]);
         }
@@ -3496,14 +3492,14 @@ impl<V> PointsTo<V> {
             final(self).is_uninit()
     ;
 
-    /// This takes a borrow of the `MemContents<T>` from `self`.
+    /// This takes a borrow of the `MemContents<V>` from `self`.
     pub axiom fn borrow_mem_contents(tracked &self) -> (tracked val: &V)
         requires
             self.is_init()
         ensures
             val == self.value();
 
-    /// This moves the `MemContents<T>` out from `self`.
+    /// This moves the `MemContents<V>` out from `self`.
     pub axiom fn take_mem_contents(tracked &mut self) -> (tracked val: V)
         requires
             self.is_init()
@@ -3512,6 +3508,17 @@ impl<V> PointsTo<V> {
             final(self).ptr() == old(self).ptr(),
             final(self).abstract_bytes() == old(self).abstract_bytes(),
             final(self).is_uninit()
+    ;
+
+    // Consumes the `V` and puts it in the `MemContents<T>` for `self`.
+    pub axiom fn put_mem_contents(tracked &mut self, tracked val: V)
+        requires
+            abs_decode::<V>(self.abstract_bytes(), &val)
+        ensures
+            final(self).ptr() == old(self).ptr(),
+            final(self).abstract_bytes() == old(self).abstract_bytes(),
+            final(self).is_init(),
+            final(self).value() == val
     ;
 }
 
