@@ -588,18 +588,23 @@ impl<T> PointsTo<T> {
     }
 
     pub axiom fn tracked_borrow(tracked &self) -> (tracked r: &T)
-        requires self.is_init(),
-        ensures r == self.value();
+        requires
+            self.is_init(),
+        ensures
+            r == self.value(),
+    ;
 
     pub axiom fn tracked_borrow_mut(tracked &mut self) -> (tracked r: &mut T)
-        requires self.is_init(),
+        requires
+            self.is_init(),
         ensures
             *r == old(self).value(),
             mut_ref_ptr(r) == old(self).ptr(),
             //
             final(self).is_init(),
             final(self).ptr() == old(self).ptr(),
-            final(self).value() == *final(r);
+            final(self).value() == *final(r),
+    ;
 }
 
 impl<T> PointsToUnaligned<T> {
@@ -862,7 +867,6 @@ impl<T> PointsTo<[T]> {
     }
 
     /// Given that the subrange is within bounds, it is always possible to get a permission to just that subrange.
-    // REVISIT: need to ensure Provenance not None?
     pub proof fn subrange(tracked &self, start_index: nat, len: nat) -> (tracked sub_points_to:
         &Self)
         requires
@@ -2031,14 +2035,15 @@ impl<T> SeqPointsTo<T> {
     pub proof fn borrow_mut(tracked &mut self, i: int) -> (tracked ret: &mut PointsTo<T>)
         requires
             self.wf(),
-            0 <= i < self.len()
+            0 <= i < self.len(),
         ensures
             final(self).ptr() == old(self).ptr(),
             final(ret).ptr() == ret.ptr() ==> final(self).wf(),
             *ret == old(self).seq_perm()[i],
-            final(self).seq_perm() == old(self).seq_perm().update(i, *final(ret))
+            final(self).seq_perm() == old(self).seq_perm().update(i, *final(ret)),
     {
         broadcast use group_seq_axioms;
+
         self.perm.tracked_borrow_mut(i)
     }
 
@@ -2354,7 +2359,6 @@ impl<T> SeqPointsTo<T> {
         self.perm
     }
 
-    // REVISIT: None case
     pub proof fn from_seq(tracked r: Seq<PointsTo<T>>, ptr: *mut T) -> (tracked s: Self)
         requires
             (forall|i|
@@ -2364,10 +2368,11 @@ impl<T> SeqPointsTo<T> {
                     &&& r[i].ptr()@.provenance == ptr@.provenance
                     &&& r[i].ptr()@.addr == ptr@.addr + i * layout::size_of::<T>()
                 }),
-            ptr@.provenance.data().start_addr() <= ptr@.addr,
-            ptr@.addr + r.len() * layout::size_of::<T>() <= ptr@.provenance.data().start_addr()
-                + ptr@.provenance.data().alloc_len(),
+            ptr@.provenance.is_some() ==> ptr@.provenance.data().start_addr() <= ptr@.addr
+                && ptr@.addr + r.len() * layout::size_of::<T>()
+                <= ptr@.provenance.data().start_addr() + ptr@.provenance.data().alloc_len(),
             ptr@.addr as nat % align_of::<T>() == 0,
+            ptr@.addr != 0,
         ensures
             r == s.seq_perm(),
             s.ptr() == ptr,
