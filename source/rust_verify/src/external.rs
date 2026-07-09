@@ -646,6 +646,11 @@ impl<'a> GeneralItem<'a> {
 /// the *type* has the verus_macro attribute.
 ///
 /// Different traits are handled on a case-by-case basis; see automatic_derive.rs
+///
+/// Proc-macro crates (e.g., serde) do not emit `#[automatically_derived]`, so
+/// their impls would normally be invisible to this function. As a second path,
+/// we also handle macro-expanded impls where the struct has an explicit
+/// `#[verifier::external_derive]` annotation naming the trait.
 fn get_attributes_for_automatic_derive<'tcx>(
     ctxt: &ContextX<'tcx>,
     general_item: &GeneralItem<'tcx>,
@@ -663,7 +668,11 @@ fn get_attributes_for_automatic_derive<'tcx>(
         );
     };
 
-    if !crate::automatic_derive::is_automatically_derived(attrs) {
+    let is_auto_derived = crate::automatic_derive::is_automatically_derived(attrs);
+    // proc-macro derives do not emit #[automatically_derived]; check span origin instead
+    let is_macro_expanded = !is_auto_derived && span.from_expansion();
+
+    if !is_auto_derived && !is_macro_expanded {
         return None;
     }
 
@@ -679,7 +688,9 @@ fn get_attributes_for_automatic_derive<'tcx>(
                         path.res.def_id()
                     }
                     _ => {
-                        warn_unknown();
+                        if is_auto_derived {
+                            warn_unknown();
+                        }
                         return None;
                     }
                 };
@@ -689,10 +700,24 @@ fn get_attributes_for_automatic_derive<'tcx>(
                     let mut type_eattrs = match ctxt.get_external_attrs(type_attrs) {
                         Ok(eattrs) => eattrs,
                         Err(_) => {
-                            warn_unknown();
+                            if is_auto_derived {
+                                warn_unknown();
+                            }
                             return None;
                         }
                     };
+
+                    // for proc-macro-derived impls, only proceed if the type explicitly
+                    // requests external treatment via external_derive; otherwise fall through
+                    // to None so the impl is handled by the normal classification logic
+                    if is_macro_expanded
+                        && matches!(
+                            &type_eattrs.external_auto_derives,
+                            crate::attributes::AutoDerivesAttr::Regular
+                        )
+                    {
+                        return None;
+                    }
 
                     if match &type_eattrs.external_auto_derives {
                         crate::attributes::AutoDerivesAttr::Regular => false,
@@ -721,6 +746,12 @@ fn get_attributes_for_automatic_derive<'tcx>(
                         return Some(type_eattrs);
                     }
 
+                    // for proc-macro impls that have external_derive but the trait name did not
+                    // match any listed name, fall through to normal classification
+                    if is_macro_expanded {
+                        return None;
+                    }
+
                     if opts_in_to_verus(&type_eattrs) {
                         let trait_def_id = impll.of_trait.unwrap().trait_ref.path.res.def_id();
                         let rust_item = get_rust_item(ctxt.tcx, trait_def_id);
@@ -737,17 +768,23 @@ fn get_attributes_for_automatic_derive<'tcx>(
                         None
                     }
                 } else {
-                    warn_unknown();
+                    if is_auto_derived {
+                        warn_unknown();
+                    }
                     None
                 }
             }
             _ => {
-                warn_unknown();
+                if is_auto_derived {
+                    warn_unknown();
+                }
                 None
             }
         },
         _ => {
-            warn_unknown();
+            if is_auto_derived {
+                warn_unknown();
+            }
             None
         }
     }
