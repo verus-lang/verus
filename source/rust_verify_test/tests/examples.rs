@@ -156,6 +156,6 @@ fn run_example_for_file(file_path: &str) {
             }
         }
         eprintln!("- stdout -\n{}\n", stdout);
-        assert!(false);
+        panic!();
     }
 }

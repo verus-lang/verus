@@ -1,4 +1,4 @@
-#![allow(dead_code)]
+#![allow(dead_code, clippy::result_large_err)]
 
 extern crate rustc_driver;
 extern crate rustc_errors;
@@ -66,7 +66,7 @@ pub fn verify_files(
 
 use std::{cell::RefCell, path};
 thread_local! {
-    pub static THREAD_LOCAL_TEST_NAME: RefCell<Option<String>> = RefCell::new(None);
+    pub static THREAD_LOCAL_TEST_NAME: RefCell<Option<String>> = const { RefCell::new(None) };
 }
 
 #[allow(dead_code)]
@@ -791,10 +791,7 @@ pub fn relevant_error_span(err: &Vec<DiagnosticSpan>) -> &DiagnosticSpan {
     }) {
         return e;
     }
-    err.iter()
-        .filter(|e| e.label != Some(vir::def::THIS_PRE_FAILED.to_string()))
-        .next()
-        .expect("span")
+    err.iter().find(|e| e.label != Some(vir::def::THIS_PRE_FAILED.to_string())).expect("span")
 }
 
 /// Assert that one verification failure happened on source lines containing the string "FAILS".
@@ -897,9 +894,8 @@ pub fn assert_rust_error_msg(err: TestErr, expected_msg: &str) {
 }
 
 #[allow(dead_code)]
-pub fn assert_rust_error_msg_skip_spec_msgs(err: TestErr, expected_msg: &str) {
-    let mut err = err;
-    err.errors = err.errors.into_iter().filter(|e| !e.message.contains("(Verus spec")).collect();
+pub fn assert_rust_error_msg_skip_spec_msgs(mut err: TestErr, expected_msg: &str) {
+    err.errors.retain(|e| !e.message.contains("(Verus spec"));
     assert_rust_error_msg(err, expected_msg)
 }
 
@@ -980,10 +976,7 @@ pub fn assert_fails_bv_32bit_64bit(err: TestErr) {
 }
 
 pub fn typ_inv_relevant_error_span(err: &Vec<DiagnosticSpan>) -> &DiagnosticSpan {
-    err.iter()
-        .filter(|e| e.label != Some("type invariant declared here".to_string()))
-        .next()
-        .expect("span")
+    err.iter().find(|e| e.label != Some("type invariant declared here".to_string())).expect("span")
 }
 
 #[allow(dead_code)]
