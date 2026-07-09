@@ -1,4 +1,5 @@
 use rustc_hir::{ExprKind, MaybeOwner, OwnerNode, def_id::LocalDefId};
+use rustc_data_structures::steal::Steal;
 use rustc_index::IndexVec;
 use rustc_middle::ty::TyCtxt;
 use rustc_span::def_id::DefIndex;
@@ -196,6 +197,7 @@ fn rewrite_reveal_internal<'tcx>(
             opt_hash: inner_owner.attrs.opt_hash,
             define_opaque: None,
         };
+        let delayed_lints = Steal::new(Vec::new().into_boxed_slice());
         let owner_info = tcx.hir_arena.alloc(rustc_hir::OwnerInfo {
             nodes,
             parenting: inner_owner.parenting.clone(),
@@ -217,7 +219,7 @@ fn rewrite_reveal_internal<'tcx>(
                     (id, alloced)
                 })
                 .collect(),
-            delayed_lints: Box::new([]),
+            delayed_lints,
         });
         rustc_hir::MaybeOwner::Owner(owner_info)
     }

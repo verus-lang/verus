@@ -411,7 +411,7 @@ fn check_fn_decl<'tcx>(
     output_ty: rustc_middle::ty::Ty<'tcx>,
     assume_specification_opaque_type_map: Option<&HashMap<Path, Path>>,
 ) -> Result<Option<(Typ, Mode)>, VirErr> {
-    let FnDecl { inputs: _, output, c_variadic, implicit_self, lifetime_elision_allowed: _ } = decl;
+    let FnDecl { inputs: _, output, fn_decl_kind: _ } = decl;
     unsupported_err_unless!(!c_variadic, span, "c_variadic functions");
     match implicit_self {
         rustc_hir::ImplicitSelfKind::None => {}
@@ -574,7 +574,7 @@ fn compare_clause_kind<'tcx>(
             rustc_middle::ty::ClauseKind::Projection(pred1),
             rustc_middle::ty::ClauseKind::Projection(pred2),
         ) => {
-            let projection_term_eq = pred1.projection_term.def_id == pred2.projection_term.def_id;
+            let projection_term_eq = pred1.projection_term.def_id() == pred2.projection_term.def_id();
             let term_eq =
                 if let (rustc_middle::ty::TermKind::Ty(ty1), rustc_middle::ty::TermKind::Ty(ty2)) =
                     (pred1.term.kind(), pred2.term.kind())
@@ -808,8 +808,8 @@ fn compare_external_sig<'tcx>(
     use rustc_middle::ty::FnSig;
     // Ignore abi and safety for the sake of comparison
     // Useful for rust-intrinsics
-    let FnSig { inputs_and_output: io1, c_variadic: c1, safety: _, abi: _ } = sig1;
-    let FnSig { inputs_and_output: io2, c_variadic: c2, safety: _, abi: _ } = sig2;
+    let FnSig { inputs_and_output: io1, fn_sig_kind: _} = sig1;
+    let FnSig { inputs_and_output: io2, fn_sig_kind: _} = sig2;
     if io1.len() != io2.len() {
         return Ok(false);
     }
@@ -936,7 +936,7 @@ fn handle_external_fn<'tcx>(
         }
         let sig1 = poly_sig1x.skip_binder();
         use rustc_middle::ty::FnSig;
-        let FnSig { inputs_and_output: io1, c_variadic: _, safety: _, abi: _ } = &sig1;
+        let FnSig { inputs_and_output: io1, fn_sig_kind: _ } = &sig1;
         if io1.len() != 1 {
             return err_span(sig.span, "external specification for const must have 0 parameters");
         }
@@ -1226,7 +1226,7 @@ fn mismatch_type_error_user_str_early<'tcx>(
     let binder_str = binders_to_string(ctxt.tcx, &poly_sig.bound_vars());
 
     let mut args: Vec<String> = vec![];
-    let FnSig { inputs_and_output: io, c_variadic: _, safety: _, abi: _ } = poly_sig.skip_binder();
+    let FnSig { inputs_and_output: io, fn_sig_kind: _ } = poly_sig.skip_binder();
     for t in io.iter() {
         args.push(format!("{:}", t));
     }
