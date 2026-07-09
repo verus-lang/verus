@@ -323,7 +323,7 @@ fn check_item<'tcx>(
         ItemKind::Trait {
             constness: _,
             is_auto: IsAuto::No,
-            safety: _,
+            safety,
             ident: _,
             generics: trait_generics,
             bounds: _,

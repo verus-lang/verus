@@ -3735,9 +3735,9 @@ pub(crate) fn closure_to_vir<'tcx>(
     proof_fn_modes: Option<(Arc<Vec<Mode>>, Mode)>,
 ) -> Result<vir::ast::Expr, VirErr> {
     if let ExprKind::Closure(Closure { fn_decl, body: body_id, def_id, .. }) = &closure_expr.kind {
-        unsupported_err_unless!(!fn_decl.c_variadic, closure_expr.span, "c_variadic");
+        unsupported_err_unless!(!fn_decl.c_variadic(), closure_expr.span, "c_variadic");
         unsupported_err_unless!(
-            matches!(fn_decl.implicit_self, rustc_hir::ImplicitSelfKind::None),
+            matches!(fn_decl.implicit_self(), rustc_hir::ImplicitSelfKind::None),
             closure_expr.span,
             "implicit_self in closure"
         );

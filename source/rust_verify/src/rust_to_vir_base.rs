@@ -1860,7 +1860,7 @@ where
                 }
             }
             ClauseKind::Projection(pred) => {
-                let item_def_id = pred.projection_term.def_id;
+                let item_def_id = pred.projection_term.def_id();
                 let typ = if let Some(ty) = pred.term.as_type() {
                     mid_ty_to_vir(
                         tcx,
@@ -2441,7 +2441,7 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
 
                     // Additional opaque types can be defined in projections, recurse into them.
                     ClauseKind::Projection(pred) => {
-                        let item_def_id = pred.projection_term.def_id;
+                        let item_def_id = pred.projection_term.def_id();
                         // find the corresponding nested type in the opaque type projection, if it exists
                         let nested_assume_specification_ty = if let Some((
                             assume_specification_ty_instantiated_bounds,
@@ -2453,7 +2453,7 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                                 assume_specification_ty_instantiated_bounds[i].kind().skip_binder()
                             {
                                 let assume_specification_item_def_id =
-                                    assume_specification_pred.projection_term.def_id;
+                                    assume_specification_pred.projection_term.def_id();
 
                                 if Some(assume_specification_item_def_id)
                                     == ctxt.tcx.lang_items().fn_once_output()

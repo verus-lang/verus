@@ -411,9 +411,9 @@ fn check_fn_decl<'tcx>(
     output_ty: rustc_middle::ty::Ty<'tcx>,
     assume_specification_opaque_type_map: Option<&HashMap<Path, Path>>,
 ) -> Result<Option<(Typ, Mode)>, VirErr> {
-    let FnDecl { inputs: _, output, fn_decl_kind: _ } = decl;
-    unsupported_err_unless!(!c_variadic, span, "c_variadic functions");
-    match implicit_self {
+    let FnDecl { inputs: _, output, fn_decl_kind } = decl;
+    unsupported_err_unless!(!fn_decl_kind.c_variadic(), span, "c_variadic functions");
+    match fn_decl_kind.implicit_self() {
         rustc_hir::ImplicitSelfKind::None => {}
         rustc_hir::ImplicitSelfKind::Imm => {}
         rustc_hir::ImplicitSelfKind::RefImm => {}
@@ -809,8 +809,10 @@ fn compare_external_sig<'tcx>(
     use rustc_middle::ty::FnSig;
     // Ignore abi and safety for the sake of comparison
     // Useful for rust-intrinsics
-    let FnSig { inputs_and_output: io1, fn_sig_kind: _ } = sig1;
-    let FnSig { inputs_and_output: io2, fn_sig_kind: _ } = sig2;
+    let FnSig { inputs_and_output: io1, fn_sig_kind: fn_sig_kind1 } = sig1;
+    let FnSig { inputs_and_output: io2, fn_sig_kind: fn_sig_kind2 } = sig2;
+    let c1 = fn_sig_kind1.c_variadic();
+    let c2 = fn_sig_kind2.c_variadic();
     if io1.len() != io2.len() {
         return Ok(false);
     }

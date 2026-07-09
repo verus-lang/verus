@@ -43,7 +43,7 @@ pub(crate) fn make_external_trait_extension_impl_map<'tcx>(
                     let item = ctxt.tcx.hir_item(item_id);
                     let trait_def_id = item.owner_id.to_def_id();
                     match &item.kind {
-                        ItemKind::Trait(..) => {
+                        ItemKind::Trait { .. } => {
                             let attrs = ctxt.tcx.hir_attrs(item.hir_id());
                             let vattrs = ctxt.get_verifier_attrs(attrs)?;
                             if let Some((spec, imp)) = vattrs.external_trait_extension {
