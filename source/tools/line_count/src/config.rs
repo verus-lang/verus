@@ -9,4 +9,5 @@ pub struct Config {
 pub enum RunMode<'a> {
     DepsPath(&'a std::path::Path),
     OneFile(&'a std::path::Path),
+    Dir(&'a std::path::Path),
 }

@@ -2,6 +2,7 @@ use line_count_lib::{
     attribution::CodeKind,
     config::{Config, RunMode},
     deps::get_dependencies,
+    files::find_rust_files,
     stats::Summary,
     *,
 };
@@ -30,6 +31,10 @@ fn run(config: Config, run_mode_paths: RunMode<'_>) -> Result<(), String> {
                 )],
             )
         }
+        RunMode::Dir(path) => (
+            path.to_owned(),
+            find_rust_files(path).map_err(|e| format!("failed to find rust files: {e:?}"))?,
+        ),
     };
 
     let file_stats = files
@@ -184,6 +189,7 @@ fn main() {
     opts.optflag("", "delimiters-are-layout", "consider delimiter-only lines as layout");
     opts.optflag("", "proofs-arent-trusted", "do not apply trusted to proofs");
     opts.optflag("", "one-file", "parse one file, isntead of using the .d file produced by rustc");
+    opts.optflag("", "dir", "parse files in a dir, isntead of using the .d file produced by rustc");
 
     let matches = match opts.parse(&args[1..]) {
         Ok(m) => m,
@@ -220,6 +226,8 @@ fn main() {
 
     let run_mode_paths = if matches.opt_present("one-file") {
         RunMode::OneFile(path)
+    } else if matches.opt_present("dir") {
+        RunMode::Dir(path)
     } else {
         RunMode::DepsPath(path)
     };

@@ -16,6 +16,7 @@ use self::syn_visitor::Visitor;
 pub mod attribution;
 pub mod config;
 pub mod deps;
+pub mod files;
 pub mod stats;
 pub mod syn_visitor;
 
