@@ -3491,6 +3491,7 @@ impl<V> PointsTo<V> {
             self.ptr() == raw.ptr() as *mut V,
             layout::size_of::<V>() == raw.ptr()@.metadata,
             self.abstract_bytes() == raw.abstract_bytes(),
+            raw.is_fully_uninit()
     ;
 }
 
@@ -3514,6 +3515,7 @@ impl<V> PointsTo<[V]> {
             self.ptr()@.provenance == raw.ptr()@.provenance,
             self.ptr()@.metadata * layout::size_of::<V>() == raw.ptr()@.metadata,
             self.abstract_bytes() == raw.abstract_bytes(),
+            raw.is_fully_uninit()
     ;
 }
 
@@ -3544,6 +3546,7 @@ impl<V> SeqPointsTo<V> {
             self.ptr()@.provenance == raw.ptr()@.provenance,
             self.len() * layout::size_of::<V>() == raw.ptr()@.metadata,
             self.abstract_bytes() == raw.abstract_bytes(),
+            raw.is_fully_uninit()
     {
         broadcast use group_raw_ptr_axioms;
         // use_type_invariant(&self);
