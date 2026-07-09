@@ -1854,26 +1854,27 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
     }
 }
 
-struct ExprPlaceDelegate;
+// TODO(1.97.0): remove if not needed
+// struct ExprPlaceDelegate;
 
-impl<'tcx> Delegate<'tcx> for ExprPlaceDelegate {
-    fn consume(&mut self, _: &PlaceWithHirId<'tcx>, _: HirId) {}
+// impl<'tcx> Delegate<'tcx> for ExprPlaceDelegate {
+//     fn consume(&mut self, _: &PlaceWithHirId<'tcx>, _: HirId) {}
 
-    fn use_cloned(&mut self, _: &PlaceWithHirId<'tcx>, _: HirId) {}
+//     fn use_cloned(&mut self, _: &PlaceWithHirId<'tcx>, _: HirId) {}
 
-    fn borrow(&mut self, _: &PlaceWithHirId<'tcx>, _: HirId, _: ty::BorrowKind) {}
+//     fn borrow(&mut self, _: &PlaceWithHirId<'tcx>, _: HirId, _: ty::BorrowKind) {}
 
-    fn mutate(&mut self, _: &PlaceWithHirId<'tcx>, _: HirId) {}
+//     fn mutate(&mut self, _: &PlaceWithHirId<'tcx>, _: HirId) {}
 
-    fn fake_read(&mut self, _: &PlaceWithHirId<'tcx>, _: FakeReadCause, _: HirId) {}
-}
+//     fn fake_read(&mut self, _: &PlaceWithHirId<'tcx>, _: FakeReadCause, _: HirId) {}
+// }
 
-/// Categorizes `expr` as a place for diagnostic suggestions.
-///
-/// This should be used for diagnostics purpose only.
-pub(crate) fn expr_place<'tcx>(
-    fcx: &FnCtxt<'_, 'tcx>,
-    expr: &hir::Expr<'_>,
-) -> Result<PlaceWithHirId<'tcx>, ErrorGuaranteed> {
-    ExprUseVisitor::new(fcx, ExprPlaceDelegate).cat_expr(expr)
-}
+// /// Categorizes `expr` as a place for diagnostic suggestions.
+// ///
+// /// This should be used for diagnostics purpose only.
+// pub(crate) fn expr_place<'tcx>(
+//     fcx: &FnCtxt<'_, 'tcx>,
+//     expr: &hir::Expr<'_>,
+// ) -> Result<PlaceWithHirId<'tcx>, ErrorGuaranteed> {
+//     ExprUseVisitor::new(fcx, ExprPlaceDelegate).cat_expr(expr)
+// }
