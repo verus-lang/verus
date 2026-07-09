@@ -3575,14 +3575,13 @@ axiom fn typed_inv<T>(tracked t_perm: &MyPointsTo<T>)
         // omitted: spatial invariants
     ;
 
-axiom fn into_untyped<T>(tracked t_perm: MyPointsTo<T>) -> (tracked (u_perm, val): (MyPointsToUntyped, T))
+axiom fn into_untyped<T>(tracked t_perm: MyPointsTo<T>) -> (tracked u_perm: MyPointsToUntyped)
     requires
         t_perm.val is Valid
     ensures
         t_perm.ptr == u_perm.ptr as *mut T,
         size_of::<T>() == u_perm.ptr@.metadata as int,
-        t_perm.bytes == u_perm.bytes,
-        t_perm.val->0 == val;
+        t_perm.bytes == u_perm.bytes;
 
 axiom fn into_typed<T>(tracked u_perm: MyPointsToUntyped) -> (tracked t_perm: MyPointsTo<T>)
     requires
@@ -3709,8 +3708,60 @@ fn read_typed_move<T>(ptr: *const T, Tracked(t_perm): Tracked<&mut MyPointsTo<T>
         typed_inv(&t_perm);
     }
     let tracked typed_val = take(t_perm);
-    let tracked u_perm = as_untyped_mut(t_perm);
-    read_untyped(ptr, Tracked(&u_perm), Tracked(typed_val))
+    let tracked u_perm = as_untyped(t_perm);
+    read_untyped(ptr, Tracked(u_perm), Tracked(typed_val))
+}
+
+#[verifier::external_body]
+fn copy_untyped<T>(src: *const T, dst: *mut T, count: usize, Tracked(src_perm): Tracked<&MyPointsToUntyped>, Tracked(dst_perm): Tracked<&mut MyPointsToUntyped>)
+    requires
+        size_of::<T>() <= src_perm.ptr@.metadata as int,
+        size_of::<T>() <= src_perm.ptr@.metadata as int
+        // spatial requirements
+    ensures
+        final(dst_perm).ptr == old(dst_perm).ptr,
+        final(dst_perm).bytes == old(dst_perm).bytes.update_subrange_with(0, src_perm.bytes.subrange(0, size_of::<T>() * count))
+{
+    unimplemented!()
+}
+
+#[verifier::external_body]
+fn copy_untyped_single<T>(src: *const T, dst: *mut T, Tracked(src_perm): Tracked<&MyPointsToUntyped>, Tracked(dst_perm): Tracked<&mut MyPointsToUntyped>)
+    requires
+        src_perm.ptr@.metadata == dst_perm.ptr@.metadata
+        // spatial requirements
+    ensures
+        final(dst_perm).ptr == old(dst_perm).ptr,
+        final(dst_perm).bytes == src_perm.bytes
+{
+    unimplemented!()
+}
+
+fn copy_typed_single_move<T>(src: *const T, dst: *mut T, Tracked(src_perm): Tracked<&mut MyPointsTo<T>>, Tracked(dst_perm): Tracked<&mut MyPointsTo<T>>)
+    ensures
+        final(src_perm).ptr == old(src_perm).ptr,
+        final(src_perm).bytes == old(src_perm).bytes,
+        final(src_perm).val is Empty,
+        final(dst_perm).ptr == old(dst_perm).ptr,
+        final(dst_perm).bytes == old(src_perm).bytes,
+        final(dst_perm).val == old(src_perm).val
+{
+    let tracked typed_val: Option<T> = None;
+    proof {
+        typed_inv(&src_perm);
+        if src_perm.val is Valid {
+            typed_val = Some(take(src_perm));
+        }
+    } 
+    let tracked src_u_perm = as_untyped(src_perm);
+    let tracked dst_u_perm = as_untyped_mut(dst_perm);
+    copy_untyped_single(src, dst, Tracked(src_u_perm), Tracked(dst_u_perm));
+    proof {
+        if typed_val.is_some() {
+            encoding_inv(typed_val.tracked_borrow());
+            put(dst_perm, typed_val.tracked_take());
+        }
+    }
 }
 
 // impl<'a, T> Index<usize> for SharedReference<'a, [T]>
