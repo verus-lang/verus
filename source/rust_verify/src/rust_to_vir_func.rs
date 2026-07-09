@@ -574,7 +574,8 @@ fn compare_clause_kind<'tcx>(
             rustc_middle::ty::ClauseKind::Projection(pred1),
             rustc_middle::ty::ClauseKind::Projection(pred2),
         ) => {
-            let projection_term_eq = pred1.projection_term.def_id() == pred2.projection_term.def_id();
+            let projection_term_eq =
+                pred1.projection_term.def_id() == pred2.projection_term.def_id();
             let term_eq =
                 if let (rustc_middle::ty::TermKind::Ty(ty1), rustc_middle::ty::TermKind::Ty(ty2)) =
                     (pred1.term.kind(), pred2.term.kind())
@@ -808,8 +809,8 @@ fn compare_external_sig<'tcx>(
     use rustc_middle::ty::FnSig;
     // Ignore abi and safety for the sake of comparison
     // Useful for rust-intrinsics
-    let FnSig { inputs_and_output: io1, fn_sig_kind: _} = sig1;
-    let FnSig { inputs_and_output: io2, fn_sig_kind: _} = sig2;
+    let FnSig { inputs_and_output: io1, fn_sig_kind: _ } = sig1;
+    let FnSig { inputs_and_output: io2, fn_sig_kind: _ } = sig2;
     if io1.len() != io2.len() {
         return Ok(false);
     }

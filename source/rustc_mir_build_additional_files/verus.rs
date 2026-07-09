@@ -17,8 +17,8 @@ use rustc_middle::thir::{
 use rustc_middle::ty;
 use rustc_middle::ty::{
     Binder, BoundRegion, BoundRegionKind, BoundVar, BoundVarIndexKind, BoundVariableKind,
-    CapturedPlace, FnSigKind, GenericArg, Mutability, Ty, TyCtxt, TyKind, TypeSuperFoldable, UpvarCapture,
-    adjustment::DerefAdjustKind,
+    CapturedPlace, FnSigKind, GenericArg, Mutability, Ty, TyCtxt, TyKind, TypeSuperFoldable,
+    UpvarCapture, adjustment::DerefAdjustKind,
 };
 use rustc_middle::ty::{TypeFoldable, TypeFolder, UpvarArgs};
 use rustc_span::Span;
@@ -1537,11 +1537,7 @@ fn mk_closure_magic_coercion_fn<'tcx, 'a>(
     let fnty = tcx.mk_ty_from_kind(TyKind::FnPtr(
         Binder::bind_with_vars(rustc_middle::ty::FnSigTys { inputs_and_output }, bound_var_kinds),
         rustc_middle::ty::FnHeader {
-            fn_sig_kind: FnSigKind::new(
-                rustc_abi::ExternAbi::Rust,
-                rustc_hir::Safety::Safe,
-                false
-            ),
+            fn_sig_kind: FnSigKind::new(rustc_abi::ExternAbi::Rust, rustc_hir::Safety::Safe, false),
         },
     ));
 
@@ -1566,8 +1562,10 @@ pub(crate) fn apply_projection<'tcx>(
         ProjectionKind::Field(field_idx, variant_idx) => match ty.kind() {
             TyKind::Tuple(tys) => tys[field_idx.as_usize()],
             TyKind::Adt(adt, args) =>
-                // TODO(1.97.0): do we need to normalize here?
-                adt.variant(*variant_idx).fields[*field_idx].ty(tcx, args).skip_normalization(),
+            // TODO(1.97.0): do we need to normalize here?
+            {
+                adt.variant(*variant_idx).fields[*field_idx].ty(tcx, args).skip_normalization()
+            }
             _ => {
                 panic!("apply_projection: unexpected type");
             }

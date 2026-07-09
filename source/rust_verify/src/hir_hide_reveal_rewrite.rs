@@ -1,5 +1,5 @@
-use rustc_hir::{ExprKind, MaybeOwner, OwnerNode, def_id::LocalDefId};
 use rustc_data_structures::steal::Steal;
+use rustc_hir::{ExprKind, MaybeOwner, OwnerNode, def_id::LocalDefId};
 use rustc_index::IndexVec;
 use rustc_middle::ty::TyCtxt;
 use rustc_span::def_id::DefIndex;

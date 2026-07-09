@@ -1360,10 +1360,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
             Ok(ExprOrPlace::Expr(borrow_mut_vir(bctx, expr.span, &place, *allow_two_phase_borrow)))
         }
         Adjust::GenericReborrow(_) => {
-            unsupported_err!(
-                expr.span,
-                "User-defined Reborrow implementations"
-            )
+            unsupported_err!(expr.span, "User-defined Reborrow implementations")
         }
         Adjust::Borrow(AutoBorrow::RawPtr(_)) => {
             // Despite the name 'borrow', the docs seem to indicate this is a dereference

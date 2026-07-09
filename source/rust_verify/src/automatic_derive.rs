@@ -52,9 +52,7 @@ pub fn is_automatically_derived(attrs: &[rustc_hir::Attribute]) -> bool {
                 }
                 _ => {}
             },
-            rustc_hir::Attribute::Parsed(
-                rustc_hir::attrs::AttributeKind::AutomaticallyDerived,
-            ) => {
+            rustc_hir::Attribute::Parsed(rustc_hir::attrs::AttributeKind::AutomaticallyDerived) => {
                 return true;
             }
             _ => {}
