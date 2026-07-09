@@ -48,7 +48,8 @@ pub(crate) fn build_external_type_suggestion<'tcx>(
         build_region_renamer(ctxt, external_def_id, generics)?;
 
     let predicates = ctxt.tcx.predicates_of(external_def_id).instantiate_identity(ctxt.tcx);
-    let predicates = predicates.fold_with(&mut region_renamer);
+    // TODO(1.97.0): figure out how to replace this. InstantiatedPredicates no longer implements TypeFoldable
+    // let predicates = predicates.fold_with(&mut region_renamer);
 
     let (param_declarations, type_param_set) =
         build_generics_declarations(ctxt, generics, &predicates, &region_renamer)?;
@@ -150,7 +151,9 @@ pub(crate) fn build_fn_assume_specification_suggestion<'tcx>(
     let mut region_renamer: RegionRenamer<'_> =
         build_region_renamer(ctxt, external_def_id, generics)?;
     let fn_sig = fn_sig.fold_with(&mut region_renamer);
-    let inst_predicates = inst_predicates.fold_with(&mut region_renamer);
+    // TODO(1.97.0): figure out how to replace this. InstantiatedPredicates no longer implements TypeFoldable
+    // let predicates = predicates.fold_with(&mut region_renamer);
+    // let inst_predicates = inst_predicates.fold_with(&mut region_renamer);
     let (param_declarations, type_params) =
         build_generics_declarations(ctxt, generics, &inst_predicates, &region_renamer)?;
 
@@ -361,7 +364,7 @@ fn build_where_clauses<'tcx>(
             rustc_type_ir::ClauseKind::Projection(projection_predicate) => {
                 let (trait_ref, proj_term_args) =
                     projection_predicate.projection_term.trait_ref_and_own_args(ctxt.tcx);
-                let projected_item_id = projection_predicate.projection_term.def_id;
+                let projected_item_id = projection_predicate.projection_term.def_id();
                 // Assuming here that the only projection predicate possible on an Fn trait is the Output restriction.
                 // Assuming that trait ref args for an fn trait are [self_ty, args_tuple]
                 if ctxt.tcx.is_fn_trait(trait_ref.def_id) {

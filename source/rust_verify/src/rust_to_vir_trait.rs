@@ -468,7 +468,7 @@ pub(crate) fn translate_trait<'tcx>(
                                 }
                             }
                             (ClauseKind::Projection(p1), ClauseKind::Projection(p2)) => {
-                                if p1.projection_term.def_id != p2.projection_term.def_id {
+                                if p1.projection_term.def_id() != p2.projection_term.def_id() {
                                     return err_span(
                                         trait_span,
                                         format!(

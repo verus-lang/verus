@@ -217,7 +217,7 @@ fn rewrite_reveal_internal<'tcx>(
                     (id, alloced)
                 })
                 .collect(),
-            delayed_lints: rustc_hir::lints::DelayedLints { lints: Box::new([]), opt_hash: None },
+            delayed_lints: Box::new([]),
         });
         rustc_hir::MaybeOwner::Owner(owner_info)
     }
