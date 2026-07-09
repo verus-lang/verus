@@ -3610,7 +3610,26 @@ impl<V> PointsTo<[V]> {
             final(self).mem_contents_seq() == old(self).mem_contents_seq().update_subrange_with(start, Seq::new(end as nat, |i| MemContents::Uninit)),
     ;
 
-    // Consumes the `V` and puts it in the specified subrange of the `MemContents<T>` for `self`.
+    // Consumes the `Seq<V>` and puts it in the specified subrange of the `MemContents<T>` for `self`.
+    pub axiom fn put_subrange(tracked &mut self, start: int, tracked val: Seq<V>)
+        requires
+            0 <= start <= start + val.len() <= old(self).mem_contents_seq().len(),
+            forall |i| 0 <= i < val.len() ==> {
+                abs_decode::<V>(
+                    old(self).abstract_bytes().subrange(
+                        (start + i) * layout::size_of::<V>(),
+                        (start + i + 1) * layout::size_of::<V>(),
+                    ), 
+                    &val[i]
+                )
+            }
+        ensures
+            final(self).ptr() == old(self).ptr(),
+            final(self).abstract_bytes() == old(self).abstract_bytes(),
+            final(self).mem_contents_seq() == old(self).mem_contents_seq().update_subrange_with(start, Seq::new(val.len(), |i| MemContents::Init(val[i])))
+    ;
+
+    // Consumes the `Seq<MemContents<V>>` and puts it in the specified subrange of the `MemContents<T>` for `self`.
     pub axiom fn put_mem_contents_subrange(tracked &mut self, start: int, tracked val: Seq<MemContents<V>>)
         requires
             0 <= start <= start + val.len() <= old(self).mem_contents_seq().len(),
