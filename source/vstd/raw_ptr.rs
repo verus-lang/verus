@@ -277,20 +277,6 @@ pub ghost enum MemContents<T> {
     Init(ghost T),
 }
 
-/// TODO - port to axiom on PointsTo<[T]> ?
-/// If the memory is initialized, then the bytes must decode into the given value in memory.
-/// If the memory is uninitialized, then the bytes can be anything.
-pub broadcast axiom fn abs_decode_mem_contents_unsized<T: ?Sized>(
-    bytes: Seq<AbstractByte>,
-    value: MemContents<&T>,
-)
-    ensures
-        #[trigger] abs_decode::<MemContents<&T>>(bytes, &value) <==> (match value {
-            MemContents::Uninit => true,
-            MemContents::Init(t) => abs_decode::<T>(bytes, t),
-        }),
-;
-
 /// Data associated with a `PointsTo` permission.
 /// We keep track of both the pointer, the (potentially uninitialized) value
 /// it points to, and the abstract bytes in memory corresponding to Rust's abstract machine.
@@ -1221,13 +1207,21 @@ impl<T> PointsTo<[T]> {
     pub axiom fn abstract_bytes_decode(&self)
         ensures
             forall|i: int|
-                0 <= i < self.mem_contents_seq().len() ==> #[trigger] abs_decode::<MemContents<T>>(
-                    self.abstract_bytes().subrange(
-                        i * layout::size_of::<T>(),
-                        (i + 1) * layout::size_of::<T>(),
-                    ),
-                    &self.mem_contents_seq()[i],
-                ),
+                0 <= i < self.mem_contents_seq().len() ==> {
+                    &&& (#[trigger] self.mem_contents_seq()[i]).is_init() ==> 
+                        abs_decode::<T>(
+                        self.abstract_bytes().subrange(
+                            i * layout::size_of::<T>(),
+                            (i + 1) * layout::size_of::<T>(),
+                        ), 
+                        &self.mem_contents_seq()[i].value()
+                    )
+                    &&& self.mem_contents_seq()[i].is_uninit() ==> 
+                        self.abstract_bytes().subrange(
+                            i * layout::size_of::<T>(),
+                            (i + 1) * layout::size_of::<T>(),
+                        ).len() == size_of::<T>()
+                },
             self.abstract_bytes().len() == self.mem_contents_seq().len() * layout::size_of::<T>(),
     ;
 
@@ -1385,10 +1379,10 @@ impl PointsTo<[u8]> {
             seq![self.abstract_bytes()[i]],
             value[i],
         ) by {
-            assert(abs_decode::<MemContents<u8>>(
-                self.abstract_bytes().subrange(i * size_of::<u8>(), (i + 1) * size_of::<u8>()),
-                &self.mem_contents_seq()[i],
-            ));
+            // assert(abs_decode::<MemContents<u8>>(
+            //     self.abstract_bytes().subrange(i * size_of::<u8>(), (i + 1) * size_of::<u8>()),
+            //     &self.mem_contents_seq()[i],
+            // ));
             assert(self.abstract_bytes().subrange(i * size_of::<u8>(), (i + 1) * size_of::<u8>())
                 == seq![self.abstract_bytes()[i]]);
         }
@@ -1823,8 +1817,8 @@ impl PointsTo<str> {
     /// Invariant: The corresponding abstract bytes must decode into the value in memory.
     pub axiom fn abstract_bytes_decode(&self)
         ensures
-            abs_decode::<MemContents<&str>>(self.abstract_bytes(), &self.mem_contents()),
-            self.abstract_bytes().len() == size_of::<u8>() * spec_size_of_val::<str>(self.value()),
+            self.is_init() ==> abs_decode::<str>(self.abstract_bytes(), self.value()),
+            !self.is_init() ==> self.abstract_bytes().len() == size_of::<u8>() * spec_size_of_val::<str>(self.value()),
     ;
 
     /// Casts an initialized `&PointsTo<str>` to an initialized `&PointsTo<[u8]>`,

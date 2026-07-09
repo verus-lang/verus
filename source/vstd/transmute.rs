@@ -89,8 +89,6 @@ pub broadcast group group_transmute_axioms {
     abs_encode_impl,
     abs_can_be_encoded_impl,
     abs_encode_impl_unsized,
-    abs_decode_mem_contents,
-    abs_decode_mem_contents_unsized,
     group_type_representation_axioms,
 }
 
