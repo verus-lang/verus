@@ -3484,13 +3484,6 @@ impl<V> PointsTo<V> {
             points_to_raw.provenance() == self.ptr()@.provenance,
     ;
 
-    // /// Creates a reference to a `PointsToRaw` from a reference to a `PointsTo<V>` with the same provenance
-    // /// and a range corresponding to the address of the `PointsTo<V>` and size of `V`.
-    // pub axiom fn into_raw_shared(tracked &self) -> (tracked points_to_raw: &PointsToRaw)
-    //     ensures
-    //         points_to_raw.is_range(self.ptr().addr() as int, size_of::<V>() as int),
-    //         points_to_raw.provenance() == self.ptr()@.provenance,
-    // ;
     /// Creates a reference to a `PointsToUnaligned<[u8]>` from a reference to a `PointsTo<V>` with the same provenance
     /// and a range corresponding to the address of the `PointsTo<V>` and size of the `V`.
     pub axiom fn as_untyped(tracked &self) -> (tracked raw: &PointsToUnaligned<[u8]>)
@@ -3513,16 +3506,6 @@ impl<V> PointsTo<[V]> {
             points_to_raw.provenance() == self.ptr()@.provenance,
     ;
 
-    // /// Creates a reference to a `PointsToRaw` from a reference to a `PointsTo<[V]>` with the same provenance
-    // /// and a range corresponding to the address of the `PointsTo<V>`, size of `V`, and length.
-    // pub axiom fn into_raw_shared(tracked &self) -> (tracked points_to_raw: &PointsToRaw)
-    //     ensures
-    //         points_to_raw.is_range(
-    //             self.ptr().addr() as int,
-    //             (size_of::<V>() as int) * self.mem_contents_seq().len(),
-    //         ),
-    //         points_to_raw.provenance() == self.ptr()@.provenance,
-    // ;
     /// Creates a reference to a `PointsToUnaligned<[u8]>` from a reference to a `PointsTo<V>` with the same provenance
     /// and a range corresponding to the address of the `PointsTo<V>` and size of the `V`.
     pub axiom fn as_untyped(tracked &self) -> (tracked raw: &PointsToUnaligned<[u8]>)
