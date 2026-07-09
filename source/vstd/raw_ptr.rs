@@ -926,113 +926,6 @@ impl<T> PointsTo<[T]> {
         unaligned_sub.as_aligned()
     }
 
-    /*
-    /// Given that the subrange is within bounds, it is always possible to get a permission to just that subrange.
-    pub proof fn subrange_mut(
-        tracked &mut self,
-        start_index: nat,
-        len: nat,
-    ) -> (tracked sub_points_to: &mut Self)
-        requires
-            start_index + len <= old(self).mem_contents_seq().len(),
-        ensures
-            sub_points_to.ptr() == ptr_mut_from_data::<[T]>(
-                PtrData {
-                    addr: ((old(self).ptr()@.addr + start_index * size_of::<T>()) as usize),
-                    provenance: old(self).ptr()@.provenance,
-                    metadata: (len as usize),
-                },
-            ),
-            sub_points_to.mem_contents_seq() == old(self).mem_contents_seq().subrange(
-                start_index as int,
-                start_index as int + len as int,
-            ),
-            final(self).ptr() == old(self).ptr(),
-            final(self).mem_contents_seq() == old(self).mem_contents_seq().subrange(
-                0,
-                start_index as int,
-            ) + final(sub_points_to).mem_contents_seq() + old(self).mem_contents_seq().subrange(
-                start_index as int + len as int,
-                old(self).mem_contents_seq().len() as int,
-            ),
-    {
-        broadcast use {axiom_ptr_mut_from_data, group_layout_axioms, alloc_bound};
-
-        let ghost self_ref = self;
-
-        let tracked unaligned_self_ref = self.as_unaligned();
-
-        if start_index > 0 && size_of::<T>() > 0 {
-            assert(self.mem_contents_seq().len() > 0);
-            assert(self.mem_contents_seq().len() * size_of::<T>() != 0) by (nonlinear_arith)
-                requires
-                    self.mem_contents_seq().len() > 0,
-                    size_of::<T>() > 0,
-            ;
-            unaligned_self_ref.ptr_bounds();
-            assert(start_index * size_of::<T>() <= self.mem_contents_seq().len() * size_of::<T>())
-                by (nonlinear_arith)
-                requires
-                    start_index <= self.mem_contents_seq().len(),
-                    size_of::<T>() >= 0,
-            ;
-            assert(self.ptr()@.addr + start_index * size_of::<T>() <= usize::MAX as int + 1)
-                by (nonlinear_arith)
-                requires
-                    self.ptr()@.addr <= usize::MAX as int + 1,
-                    start_index == 0 || size_of::<T>() == 0 || (self.ptr()@.addr
-                        + self.mem_contents_seq().len() * size_of::<T>()
-                        <= self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len()
-                        && self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len()
-                        <= usize::MAX as int + 1 && start_index * size_of::<T>()
-                        <= self.mem_contents_seq().len() * size_of::<T>()),
-            ;
-
-        } else {
-            assert(start_index * size_of::<T>() == 0) by (nonlinear_arith)
-                requires
-                    start_index == 0 || size_of::<T>() == 0,
-                    start_index >= 0,
-                    size_of::<T>() >= 0,
-            ;
-        }
-
-        use_type_invariant(&*self);
-        assert((self.ptr()@.addr + start_index * size_of::<T>()) as nat % align_of::<T>() == 0) by {
-            broadcast use {lemma_mul_mod_noop_right, lemma_add_mod_noop, layout_of_sized};
-
-        };
-
-        let tracked unaligned_sub = self.inner.subrange_mut(start_index, len);
-
-        assert(unaligned_sub.ptr()@.addr as int % align_of::<T>() as int == 0) by {
-            let exact_addr = self_ref.ptr()@.addr + start_index * size_of::<T>();
-
-            let expected_data = PtrData::<[T]> {
-                addr: (exact_addr as usize),
-                provenance: self_ref.ptr()@.provenance,
-                metadata: (len as usize),
-            };
-            assert(ptr_mut_from_data::<[T]>(expected_data)@ == expected_data);
-
-            if exact_addr as int <= usize::MAX as int {
-                assert((exact_addr as usize) as int == exact_addr as int);
-            } else {
-                assert(exact_addr as int == usize::MAX as int + 1);
-
-                assert(arch_word_bits() == 64 ==> ((u64::MAX as int + 1) as usize) as int == 0)
-                    by (bit_vector);
-                assert(arch_word_bits() == 32 ==> ((u32::MAX as int + 1) as usize) as int == 0)
-                    by (bit_vector);
-
-                assert(((usize::MAX as int + 1) as usize) as int == 0);
-                assert(0 as int % align_of::<T>() as int == 0);
-            }
-        };
-
-        unaligned_sub.as_aligned_mut()
-    }
-    */
     /// We can cast a `[T]` permission to a `V` permission under the following conditions:
     ///
     /// (1) `T` and `V` are integer types where `V` is a power of 2
@@ -1315,6 +1208,20 @@ impl<T> PointsTo<[T]> {
         use_type_invariant(&*self);
         self.inner.into_seq_pt_mut()
     }
+
+    pub axiom fn tracked_borrow(tracked &self) -> (tracked r: &[T])
+        requires self.is_init(),
+        ensures (*r)@ == self.value();
+
+    pub axiom fn tracked_borrow_mut(tracked &mut self) -> (tracked r: &mut [T])
+        requires self.is_init(),
+        ensures
+            (*r)@ == old(self).value(),
+            mut_ref_ptr(r) == old(self).ptr(),
+            //
+            final(self).is_init(),
+            final(self).ptr() == old(self).ptr(),
+            final(self).value() == (*final(r))@;
 }
 
 impl PointsTo<[u8]> {
@@ -1943,34 +1850,36 @@ pub axiom fn seq_into_slice_shared<T>(tracked spt: &SeqPointsTo<T>) -> (tracked 
         pt.ptr()@.metadata == spt.len(),
 ;
 
-/*
 /// If the domain exactly contains the indices bounded by `self.len()`,
 /// we can convert a mutable reference to this permission into a `&mut PointsTo<[T]>`
 /// with the same pointer and the same memory contents at every index.
 /// While the pointer and length will stay the same, any changes to the memory contents
 /// will be reflected in the original `SeqPointsTo<T>` permission.
-pub axiom fn seq_into_slice_mut<T>(tracked spt: &mut SeqPointsTo<T>) -> (tracked pt: &mut PointsTo<
-    [T],
->)
+pub axiom fn seq_into_slice_mut<T>(tracked spt: &mut SeqPointsTo<T>) -> (tracked pt: &mut PointsTo<[T]>)
     requires
         spt.wf(),
     ensures
-        forall|i|
-            0 <= i < pt.mem_contents_seq().len()
-                ==> #[trigger] final(pt).mem_contents_seq()[i as int]
-                == final(spt)[i].mem_contents(),
-        final(spt).abstract_bytes() == final(pt).abstract_bytes(),
-        old(spt).ptr() == final(spt).ptr(),
-        old(spt).len() == final(spt).len(),
-        forall|i| 0 <= i < final(spt).len() ==> #[trigger] final(spt)[i].ptr() == old(spt)[i].ptr(),
-        forall|i|
-            0 <= i < pt.mem_contents_seq().len() ==> #[trigger] pt.mem_contents_seq()[i as int]
-                == old(spt)[i].mem_contents(),
-        old(spt).abstract_bytes() == pt.abstract_bytes(),
         pt.ptr() as *mut T == old(spt).ptr(),
         pt.ptr()@.metadata == old(spt).len(),
+        pt.abstract_bytes() == old(spt).abstract_bytes(),
+        forall|i|
+            0 <= i < pt.mem_contents_seq().len() ==> #[trigger] pt.mem_contents_seq()[i as int] == old(spt)[i].mem_contents(),
+        // Gurantees on final(spt) are conditional on the final(pt) having the same pointer and length
+        final(pt).ptr() == pt.ptr() ==> ({
+            &&& final(spt).wf()
+            &&& (forall|i|
+                0 <= i < pt.mem_contents_seq().len()
+                    ==> #[trigger] final(pt).mem_contents_seq()[i as int]
+                    == final(spt)[i].mem_contents())
+            &&& final(spt).abstract_bytes() == final(pt).abstract_bytes()
+            &&& old(spt).ptr() == final(spt).ptr()
+            &&& old(spt).len() == final(spt).len()
+            &&& (forall|i| 0 <= i < final(spt).len() ==> #[trigger] final(spt)[i].ptr() == old(spt)[i].ptr())
+            &&& (forall|i|
+                0 <= i < pt.mem_contents_seq().len() ==> #[trigger] pt.mem_contents_seq()[i as int]
+                    == old(spt)[i].mem_contents())
+        })
 ;
-*/
 
 impl<T> SeqPointsTo<T> {
     /// The keys must fall in the range `[0, self.len())`.
@@ -2095,7 +2004,6 @@ impl<T> SeqPointsTo<T> {
         self.perm.tracked_borrow_mut(i)
     }
 
-    /*
     /// Returns a `tracked` mutable reference to the underlying `Seq<PointsTo<T>>`,
     /// given `tracked &mut self`. `self.ptr` will remain unchanged.
     ///
@@ -2116,7 +2024,7 @@ impl<T> SeqPointsTo<T> {
     {
         &mut self.perm
     }
-    */
+
     /// Sanity check for the criteria for ensuring that the final value of `&mut self` is still well-formed:
     ///
     /// * All pointers remain the same.
@@ -2605,6 +2513,29 @@ impl<T> SeqPointsTo<T> {
 
         joined
     }
+
+    pub axiom fn subrange_mut(tracked &mut self, i: nat, j: nat) -> (tracked r: &mut Self)
+        requires
+            self.wf(),
+            0 <= i <= j <= self.len(),
+        ensures
+            r.wf(),
+            r.ptr() == ptr_mut_from_data::<T>(
+                PtrData {
+                    addr: ((old(self).ptr()@.addr + i * size_of::<T>()) as usize),
+                    provenance: old(self).ptr()@.provenance,
+                    metadata: (),
+                },
+            ),
+            r.seq_perm() == old(self).seq_perm().subrange(i as int, j as int),
+            final(r).wf() && final(r).ptr() == r.ptr() && final(r).len() == r.len() ==> {
+                &&& final(self).wf()
+                &&& final(self).ptr() == old(self).ptr()
+                &&& final(self).seq_perm() ==
+                    old(self).seq_perm().subrange(0, i as int) +
+                    final(r).seq_perm() +
+                    old(self).seq_perm().subrange(j as int, old(self).len() as int)
+            };
 }
 
 impl SeqPointsTo<u8> {
