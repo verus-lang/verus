@@ -106,11 +106,11 @@ pub ghost enum Provenance {
 }
 
 impl Provenance {
-    pub closed spec fn is_none(self) -> bool {
+    pub open spec fn is_none(self) -> bool {
         self is None
     }
 
-    pub closed spec fn is_some(self) -> bool {
+    pub open spec fn is_some(self) -> bool {
         self is Some
     }
 
