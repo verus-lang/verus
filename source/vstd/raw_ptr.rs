@@ -563,6 +563,20 @@ impl<T> PointsTo<T> {
         let tracked (inner, typed_value) = self.inner.cast_to_untyped();
         (PointsTo::<[u8]> { inner }, typed_value)
     }
+
+    pub axiom fn tracked_borrow(tracked &self) -> (tracked r: &T)
+        requires self.is_init(),
+        ensures r == self.value();
+
+    pub axiom fn tracked_borrow_mut(tracked &mut self) -> (tracked r: &mut T)
+        requires self.is_init(),
+        ensures
+            *r == old(self).value(),
+            mut_ref_ptr(r) == old(self).ptr(),
+            //
+            final(self).is_init(),
+            final(self).ptr() == old(self).ptr(),
+            final(self).value() == *final(r);
 }
 
 impl<T> PointsToUnaligned<T> {
@@ -2065,6 +2079,20 @@ impl<T> SeqPointsTo<T> {
             ret == self.seq_perm(),
     {
         &self.perm
+    }
+
+    pub proof fn borrow_mut(tracked &mut self, i: int) -> (tracked ret: &mut PointsTo<T>)
+        requires
+            self.wf(),
+            0 <= i < self.len()
+        ensures
+            final(self).ptr() == old(self).ptr(),
+            final(ret).ptr() == ret.ptr() ==> final(self).wf(),
+            *ret == old(self).seq_perm()[i],
+            final(self).seq_perm() == old(self).seq_perm().update(i, *final(ret))
+    {
+        broadcast use group_seq_axioms;
+        self.perm.tracked_borrow_mut(i)
     }
 
     /*
