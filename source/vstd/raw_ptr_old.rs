@@ -478,7 +478,7 @@ impl<T> PointsTo<T> {
     /// A `PointsTo<T>` is always aligned.
     pub proof fn is_aligned(tracked &self)
         ensures
-            self.ptr()@.addr as int % layout::align_of::<T>() as int == 0
+            self.ptr()@.addr as int % layout::align_of::<T>() as int == 0,
     {
         broadcast use group_layout_axioms;
 
@@ -542,7 +542,7 @@ impl<T> PointsTo<T> {
     pub broadcast proof fn abstract_bytes_decode(&self)
         ensures
             self.is_init() ==> #[trigger] abs_decode::<T>(self.abstract_bytes(), &self.value()),
-            self.is_uninit() ==> self.abstract_bytes().len() == size_of::<T>()
+            self.is_uninit() ==> self.abstract_bytes().len() == size_of::<T>(),
     {
         self.inner.abstract_bytes_decode();
     }
@@ -839,7 +839,7 @@ impl<T> PointsTo<[T]> {
     /// A `PointsTo<[T]>` is always aligned to `T`.
     pub proof fn is_aligned(tracked &self)
         ensures
-            self.ptr()@.addr as int % layout::align_of::<T>() as int == 0
+            self.ptr()@.addr as int % layout::align_of::<T>() as int == 0,
     {
         broadcast use group_layout_axioms;
 
@@ -1218,19 +1218,17 @@ impl<T> PointsTo<[T]> {
         ensures
             forall|i: int|
                 0 <= i < self.mem_contents_seq().len() ==> {
-                    &&& (#[trigger] self.mem_contents_seq()[i]).is_init() ==> 
-                        abs_decode::<T>(
+                    &&& (#[trigger] self.mem_contents_seq()[i]).is_init() ==> abs_decode::<T>(
                         self.abstract_bytes().subrange(
                             i * layout::size_of::<T>(),
                             (i + 1) * layout::size_of::<T>(),
-                        ), 
-                        &self.mem_contents_seq()[i].value()
+                        ),
+                        &self.mem_contents_seq()[i].value(),
                     )
-                    &&& self.mem_contents_seq()[i].is_uninit() ==> 
-                        self.abstract_bytes().subrange(
-                            i * layout::size_of::<T>(),
-                            (i + 1) * layout::size_of::<T>(),
-                        ).len() == size_of::<T>()
+                    &&& self.mem_contents_seq()[i].is_uninit() ==> self.abstract_bytes().subrange(
+                        i * layout::size_of::<T>(),
+                        (i + 1) * layout::size_of::<T>(),
+                    ).len() == size_of::<T>()
                 },
             self.abstract_bytes().len() == self.mem_contents_seq().len() * layout::size_of::<T>(),
     ;
@@ -1824,7 +1822,9 @@ impl PointsTo<str> {
     pub axiom fn abstract_bytes_decode(&self)
         ensures
             self.is_init() ==> abs_decode::<str>(self.abstract_bytes(), self.value()),
-            !self.is_init() ==> self.abstract_bytes().len() == size_of::<u8>() * spec_size_of_val::<str>(self.value()),
+            !self.is_init() ==> self.abstract_bytes().len() == size_of::<u8>() * spec_size_of_val::<
+                str,
+            >(self.value()),
     ;
 
     /// Casts an initialized `&PointsTo<str>` to an initialized `&PointsTo<[u8]>`,
@@ -2143,7 +2143,10 @@ impl<T> SeqPointsTo<T> {
             Self::abstract_bytes_inner(perms).len() == perms.len() * layout::size_of::<T>(),
         decreases perms.len(),
     {
-        broadcast use crate::vstd::seq::group_seq_axioms, crate::vstd::type_representation::encode_decode_len;
+        broadcast use
+            crate::vstd::seq::group_seq_axioms,
+            crate::vstd::type_representation::encode_decode_len,
+        ;
 
         if perms.len() > 0 {
             Self::abstract_bytes_len_helper(perms.drop_last());
@@ -2264,9 +2267,13 @@ impl<T> SeqPointsTo<T> {
         ensures
             forall|i: int|
                 0 <= i < len ==> {
-                    &&& (#[trigger] self.mem_contents()[i]).is_init() ==> abs_decode::<T>(self.seq_perm()[i].abstract_bytes(), &self.mem_contents()[i].value())
-                    &&& self.mem_contents()[i].is_uninit() ==> self.seq_perm()[i].abstract_bytes().len() == size_of::<T>()
-                }
+                    &&& (#[trigger] self.mem_contents()[i]).is_init() ==> abs_decode::<T>(
+                        self.seq_perm()[i].abstract_bytes(),
+                        &self.mem_contents()[i].value(),
+                    )
+                    &&& self.mem_contents()[i].is_uninit()
+                        ==> self.seq_perm()[i].abstract_bytes().len() == size_of::<T>()
+                },
         decreases len,
     {
         broadcast use group_vstd_default;
@@ -2285,16 +2292,16 @@ impl<T> SeqPointsTo<T> {
         ensures
             forall|i: int|
                 0 <= i < self.len() ==> {
-                    &&& (#[trigger] self.mem_contents()[i]).is_init() ==> 
-                    abs_decode::<T>(
+                    &&& (#[trigger] self.mem_contents()[i]).is_init() ==> abs_decode::<T>(
                         self.abstract_bytes().subrange(
                             i * layout::size_of::<T>(),
                             (i + 1) * layout::size_of::<T>(),
-                        ), 
-                        &self.mem_contents()[i].value()
+                        ),
+                        &self.mem_contents()[i].value(),
                     )
-                    &&& self.mem_contents()[i].is_uninit() ==> self.seq_perm()[i].abstract_bytes().len() == size_of::<T>()
-                }
+                    &&& self.mem_contents()[i].is_uninit()
+                        ==> self.seq_perm()[i].abstract_bytes().len() == size_of::<T>()
+                },
     {
         broadcast use SeqPointsTo::abstract_bytes_equiv;
 
@@ -3424,9 +3431,8 @@ impl<V> PointsTo<V> {
             self.is_uninit(),
         ensures
             points_to_raw.is_range(self.ptr().addr() as int, size_of::<V>() as int),
-            points_to_raw.provenance() == self.ptr()@.provenance
-        ;
-
+            points_to_raw.provenance() == self.ptr()@.provenance,
+    ;
 
     /// Creates a `PointsToUnaligned<[u8]>` from a `PointsTo<V>` with the same provenance
     /// and a range corresponding to the address of the `PointsTo<V>` and size of `V`.
@@ -3436,7 +3442,7 @@ impl<V> PointsTo<V> {
             self.ptr() == raw.ptr() as *mut V,
             layout::size_of::<V>() == raw.ptr()@.metadata,
             self.abstract_bytes() == raw.abstract_bytes(),
-            raw.is_fully_uninit()
+            raw.is_fully_uninit(),
     ;
 
     /// Creates a reference to a `PointsToUnaligned<[u8]>` from a reference to a `PointsTo<V>` with the same provenance
@@ -3446,7 +3452,7 @@ impl<V> PointsTo<V> {
             self.ptr() == raw.ptr() as *mut V,
             layout::size_of::<V>() == raw.ptr()@.metadata,
             self.abstract_bytes() == raw.abstract_bytes(),
-            raw.is_fully_uninit()
+            raw.is_fully_uninit(),
     ;
 
     /// Creates a mutable reference to a `PointsToUnaligned<[u8]>` from a reference to a `PointsTo<V>` with the same provenance
@@ -3460,37 +3466,38 @@ impl<V> PointsTo<V> {
             raw.is_fully_uninit(),
             final(self).ptr() == old(self).ptr(),
             final(self).abstract_bytes() == final(raw).abstract_bytes(),
-            final(self).is_uninit()
+            final(self).is_uninit(),
     ;
 
     /// This takes a borrow of the `MemContents<V>` from `self`.
     /// TODO: duplicate of tracked_borrow
     pub axiom fn borrow_mem_contents(tracked &self) -> (tracked val: &V)
         requires
-            self.is_init()
+            self.is_init(),
         ensures
-            val == self.value();
+            val == self.value(),
+    ;
 
     /// This moves the `MemContents<V>` out from `self`.
     pub axiom fn take_mem_contents(tracked &mut self) -> (tracked val: V)
         requires
-            self.is_init()
+            self.is_init(),
         ensures
             val == old(self).value(),
             final(self).ptr() == old(self).ptr(),
             final(self).abstract_bytes() == old(self).abstract_bytes(),
-            final(self).is_uninit()
+            final(self).is_uninit(),
     ;
 
     // Consumes the `V` and puts it in the `MemContents<T>` for `self`.
     pub axiom fn put_mem_contents(tracked &mut self, tracked val: V)
         requires
-            abs_decode::<V>(self.abstract_bytes(), &val)
+            abs_decode::<V>(self.abstract_bytes(), &val),
         ensures
             final(self).ptr() == old(self).ptr(),
             final(self).abstract_bytes() == old(self).abstract_bytes(),
             final(self).is_init(),
-            final(self).value() == val
+            final(self).value() == val,
     ;
 }
 
@@ -3514,7 +3521,7 @@ impl<V> PointsTo<[V]> {
             self.ptr()@.provenance == raw.ptr()@.provenance,
             self.ptr()@.metadata * layout::size_of::<V>() == raw.ptr()@.metadata,
             self.abstract_bytes() == raw.abstract_bytes(),
-            raw.is_fully_uninit()
+            raw.is_fully_uninit(),
     ;
 
     /// Creates a mutable reference to a `PointsToUnaligned<[u8]>` from a reference to a `PointsTo<[V]>` with the same provenance
@@ -3529,84 +3536,111 @@ impl<V> PointsTo<[V]> {
             raw.is_fully_uninit(),
             final(self).ptr() == old(self).ptr(),
             final(self).abstract_bytes() == final(raw).abstract_bytes(),
-            final(self).is_uninit()
+            final(self).is_uninit(),
     ;
 
     /// This takes a borrow of a subrange of the `MemContents<V>` out from `self`.
-    pub axiom fn borrow_mem_contents_subrange(tracked &self, start: int, end: int) -> (tracked val: &Seq<MemContents<V>>)
+    pub axiom fn borrow_mem_contents_subrange(tracked &self, start: int, end: int) -> (tracked val:
+        &Seq<MemContents<V>>)
         requires
-            0 <= start <= end <= self.mem_contents_seq().len()
+            0 <= start <= end <= self.mem_contents_seq().len(),
         ensures
             val == self.mem_contents_seq().subrange(start, end),
     ;
 
     // TODO: could be proved with other low-level axioms and Seq tracked_ proof fns.
-    pub axiom fn copy_mem_contents_subrange(tracked &mut self, start: int, tracked val: &Seq<MemContents<V>>)
-        where V: Copy
+    pub axiom fn copy_mem_contents_subrange(
+        tracked &mut self,
+        start: int,
+        tracked val: &Seq<MemContents<V>>,
+    ) where V: Copy
         requires
             0 <= start <= start + val.len() <= old(self).mem_contents_seq().len(),
-            forall |i| 0 <= i < val.len() ==> {
-                (#[trigger] val[i]).is_init() ==> abs_decode::<V>(
-                    old(self).abstract_bytes().subrange(
-                        (start + i) * layout::size_of::<V>(),
-                        (start + i + 1) * layout::size_of::<V>(),
-                    ), 
-                    &val[i].value()
-                )
-            }
+            forall|i|
+                0 <= i < val.len() ==> {
+                    (#[trigger] val[i]).is_init() ==> abs_decode::<V>(
+                        old(self).abstract_bytes().subrange(
+                            (start + i) * layout::size_of::<V>(),
+                            (start + i + 1) * layout::size_of::<V>(),
+                        ),
+                        &val[i].value(),
+                    )
+                },
         ensures
             final(self).ptr() == old(self).ptr(),
             final(self).abstract_bytes() == old(self).abstract_bytes(),
-            final(self).mem_contents_seq() == old(self).mem_contents_seq().update_subrange_with(start, *val);
-
+            final(self).mem_contents_seq() == old(self).mem_contents_seq().update_subrange_with(
+                start,
+                *val,
+            ),
+    ;
 
     /// This moves a subrange of the `MemContents<V>` out from `self`.
-    pub axiom fn take_mem_contents_subrange(tracked &mut self, start: int, end: int) -> (tracked val: Seq<MemContents<V>>)
+    pub axiom fn take_mem_contents_subrange(
+        tracked &mut self,
+        start: int,
+        end: int,
+    ) -> (tracked val: Seq<MemContents<V>>)
         requires
-            0 <= start <= end <= old(self).mem_contents_seq().len()
+            0 <= start <= end <= old(self).mem_contents_seq().len(),
         ensures
             val == old(self).mem_contents_seq().subrange(start, end),
             final(self).ptr() == old(self).ptr(),
             final(self).abstract_bytes() == old(self).abstract_bytes(),
-            final(self).mem_contents_seq() == old(self).mem_contents_seq().update_subrange_with(start, Seq::new(end as nat, |i| MemContents::Uninit)),
+            final(self).mem_contents_seq() == old(self).mem_contents_seq().update_subrange_with(
+                start,
+                Seq::new(end as nat, |i| MemContents::Uninit),
+            ),
     ;
 
     // Consumes the `Seq<V>` and puts it in the specified subrange of the `MemContents<T>` for `self`.
     pub axiom fn put_subrange(tracked &mut self, start: int, tracked val: Seq<V>)
         requires
             0 <= start <= start + val.len() <= old(self).mem_contents_seq().len(),
-            forall |i| 0 <= i < val.len() ==> {
-                abs_decode::<V>(
-                    old(self).abstract_bytes().subrange(
-                        (start + i) * layout::size_of::<V>(),
-                        (start + i + 1) * layout::size_of::<V>(),
-                    ), 
-                    &val[i]
-                )
-            }
+            forall|i|
+                0 <= i < val.len() ==> {
+                    abs_decode::<V>(
+                        old(self).abstract_bytes().subrange(
+                            (start + i) * layout::size_of::<V>(),
+                            (start + i + 1) * layout::size_of::<V>(),
+                        ),
+                        &val[i],
+                    )
+                },
         ensures
             final(self).ptr() == old(self).ptr(),
             final(self).abstract_bytes() == old(self).abstract_bytes(),
-            final(self).mem_contents_seq() == old(self).mem_contents_seq().update_subrange_with(start, Seq::new(val.len(), |i| MemContents::Init(val[i])))
+            final(self).mem_contents_seq() == old(self).mem_contents_seq().update_subrange_with(
+                start,
+                Seq::new(val.len(), |i| MemContents::Init(val[i])),
+            ),
     ;
 
     // Consumes the `Seq<MemContents<V>>` and puts it in the specified subrange of the `MemContents<T>` for `self`.
-    pub axiom fn put_mem_contents_subrange(tracked &mut self, start: int, tracked val: Seq<MemContents<V>>)
+    pub axiom fn put_mem_contents_subrange(
+        tracked &mut self,
+        start: int,
+        tracked val: Seq<MemContents<V>>,
+    )
         requires
             0 <= start <= start + val.len() <= old(self).mem_contents_seq().len(),
-            forall |i| 0 <= i < val.len() ==> {
-                (#[trigger] val[i]).is_init() ==> abs_decode::<V>(
-                    old(self).abstract_bytes().subrange(
-                        (start + i) * layout::size_of::<V>(),
-                        (start + i + 1) * layout::size_of::<V>(),
-                    ), 
-                    &val[i].value()
-                )
-            }
+            forall|i|
+                0 <= i < val.len() ==> {
+                    (#[trigger] val[i]).is_init() ==> abs_decode::<V>(
+                        old(self).abstract_bytes().subrange(
+                            (start + i) * layout::size_of::<V>(),
+                            (start + i + 1) * layout::size_of::<V>(),
+                        ),
+                        &val[i].value(),
+                    )
+                },
         ensures
             final(self).ptr() == old(self).ptr(),
             final(self).abstract_bytes() == old(self).abstract_bytes(),
-            final(self).mem_contents_seq() == old(self).mem_contents_seq().update_subrange_with(start, val)
+            final(self).mem_contents_seq() == old(self).mem_contents_seq().update_subrange_with(
+                start,
+                val,
+            ),
     ;
 }
 
@@ -3637,7 +3671,7 @@ impl<V> SeqPointsTo<V> {
             self.ptr()@.provenance == raw.ptr()@.provenance,
             self.len() * layout::size_of::<V>() == raw.ptr()@.metadata,
             self.abstract_bytes() == raw.abstract_bytes(),
-            raw.is_fully_uninit()
+            raw.is_fully_uninit(),
     {
         broadcast use group_raw_ptr_axioms;
         // use_type_invariant(&self);

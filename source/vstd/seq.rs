@@ -231,12 +231,16 @@ impl<A> Seq<A> {
     }
 
     #[verifier(external_body)]
-    pub proof fn tracked_mut_borrow_subrange(tracked &mut self, i: int, j: int) -> (tracked ret: &mut Self)
+    pub proof fn tracked_mut_borrow_subrange(tracked &mut self, i: int, j: int) -> (tracked ret:
+        &mut Self)
         requires
             0 <= i <= j <= self.len(),
         ensures
             *ret == old(self).subrange(i, j),
-            *final(self) == old(self).subrange(0, i) + *final(ret) + old(self).subrange(j, old(self).len() as int)
+            *final(self) == old(self).subrange(0, i) + *final(ret) + old(self).subrange(
+                j,
+                old(self).len() as int,
+            ),
     {
         unimplemented!()
     }

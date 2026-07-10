@@ -120,14 +120,16 @@ pub uninterp spec fn abs_decode<T: ?Sized>(bytes: Seq<AbstractByte>, value: &T) 
 /// For any type `T`, the encoding must correctly translate the size of the type.
 pub broadcast axiom fn encode_decode_len<T>(value: T, bytes: Seq<AbstractByte>)
     ensures
-        #![trigger abs_encode::<T>(&value, bytes)] 
-        #![trigger abs_decode::<T>(bytes, &value)] 
+        #![trigger abs_encode::<T>(&value, bytes)]
+        #![trigger abs_decode::<T>(bytes, &value)]
         abs_encode::<T>(&value, bytes) ==> bytes.len() == size_of::<T>(),
-        abs_decode::<T>(bytes, &value) ==> bytes.len() == size_of::<T>();
+        abs_decode::<T>(bytes, &value) ==> bytes.len() == size_of::<T>(),
+;
 
 pub axiom fn encode_decode_inverse<T>(tracked value: &T)
     ensures
-        forall|bytes| #[trigger] abs_encode::<T>(value, bytes) ==> abs_decode::<T>(bytes, value);
+        forall|bytes| #[trigger] abs_encode::<T>(value, bytes) ==> abs_decode::<T>(bytes, value),
+;
 
 /// This trait defines the concrete specification for the given type's `AbstractByte` encoding.
 pub trait AbstractByteRepresentation where Self: Sized {
