@@ -67,8 +67,9 @@ pub mod seq_lib;
 pub mod set;
 pub mod set_lib;
 pub mod shared;
-#[cfg(feature = "alloc")]
-pub mod simple_pptr;
+// comment out - pptr depends on raw_ptr_old
+// #[cfg(feature = "alloc")]
+// pub mod simple_pptr;
 pub mod slice;
 pub mod state_machine_internal;
 pub mod string;

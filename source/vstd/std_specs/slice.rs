@@ -566,18 +566,21 @@ pub assume_specification<'a, T>[ <&'a [T] as core::iter::IntoIterator>::into_ite
         IteratorSpec::initial_value_relation(&iter, &iter),
 ;
 
+#[cfg(not(verus_verify_core))]
 pub assume_specification<T>[ <[T]>::first ](slice: &[T]) -> (res: Option<&T>)
     ensures
         slice.len() == 0 ==> res.is_none(),
         slice.len() != 0 ==> res.is_some() && res.unwrap() == slice[0],
 ;
 
+#[cfg(not(verus_verify_core))]
 pub assume_specification<T>[ <[T]>::last ](slice: &[T]) -> (res: Option<&T>)
     ensures
         slice.len() == 0 ==> res.is_none(),
         slice.len() != 0 ==> res.is_some() && res.unwrap() == slice@.last(),
 ;
 
+#[cfg(not(verus_verify_core))]
 #[doc(hidden)]
 pub assume_specification<T>[ <[T]>::first_mut ](slice: &mut [T]) -> (res: Option<&mut T>)
     ensures
@@ -586,6 +589,7 @@ pub assume_specification<T>[ <[T]>::first_mut ](slice: &mut [T]) -> (res: Option
             == old(slice)@.update(0, *final(res.unwrap())),
 ;
 
+#[cfg(not(verus_verify_core))]
 #[doc(hidden)]
 pub assume_specification<T>[ <[T]>::last_mut ](slice: &mut [T]) -> (res: Option<&mut T>)
     ensures
@@ -594,6 +598,7 @@ pub assume_specification<T>[ <[T]>::last_mut ](slice: &mut [T]) -> (res: Option<
             && final(slice)@ == old(slice)@.update(old(slice).len() - 1, *final(res.unwrap())),
 ;
 
+#[cfg(not(verus_verify_core))]
 pub assume_specification<T>[ <[T]>::split_at ](slice: &[T], mid: usize) -> (ret: (&[T], &[T]))
     requires
         0 <= mid <= slice.len(),
@@ -603,6 +608,7 @@ pub assume_specification<T>[ <[T]>::split_at ](slice: &[T], mid: usize) -> (ret:
 ;
 
 #[doc(hidden)]
+#[cfg(not(verus_verify_core))]
 pub assume_specification<T>[ <[T]>::split_at_mut ](slice: &mut [T], mid: usize) -> (ret: (
     &mut [T],
     &mut [T],

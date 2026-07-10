@@ -233,7 +233,7 @@ impl<V> PointsTo<V> {
         &&& match self.dealloc {
             Some(dealloc) => {
                 &&& dealloc.addr() == self.points_to.ptr().addr()
-                &&& dealloc.size() == size_of::<V>() == dealloc.provenance().alloc_len()
+                &&& dealloc.size() == size_of::<V>() == dealloc.provenance().data().alloc_len()
                 &&& dealloc.align() == align_of::<V>()
                 &&& dealloc.provenance() == self.points_to.ptr()@.provenance
                 &&& size_of::<V>() > 0
@@ -371,7 +371,7 @@ impl<V> PPtr<V> {
                 requires
                     p != 0,
             ;
-            let tracked emp = PointsToRaw::empty(Provenance::null());
+            let tracked emp = PointsToRaw::empty(Provenance::None);
             let tracked points_to = emp.into_typed(p);
             let tracked pt = PointsTo { points_to, exposed: IsExposed::null(), dealloc: None };
             let pptr = PPtr(p, PhantomData);

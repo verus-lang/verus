@@ -80,6 +80,7 @@ pub broadcast axiom fn axiom_spec_len<T>(slice: &[T])
 ;
 
 #[verifier::allow_in_spec]
+#[cfg(not(verus_verify_core))]
 pub assume_specification<T>[ <[T]>::len ](slice: &[T]) -> (len: usize)
     returns
         spec_slice_len(slice),
@@ -136,8 +137,8 @@ pub broadcast axiom fn axiom_slice_get_usize<T>(v: &[T], i: usize)
 
 pub broadcast axiom fn axiom_slice_ext_equal<T>(a1: &[T], a2: &[T])
     ensures
-        #[trigger] (a1 =~= a2) <==> (a1.len() == a2.len() && forall|i: int|
-            0 <= i < a1.len() ==> a1[i] == a2[i]),
+        #[trigger] (a1 =~= a2) <==> (a1@.len() == a2@.len() && forall|i: int|
+            0 <= i < a1@.len() ==> a1[i] == a2[i]),
 ;
 
 #[verifier::external_body]
