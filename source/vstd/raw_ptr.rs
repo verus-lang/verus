@@ -462,6 +462,10 @@ impl<T> PointsTo<T> {
     pub proof fn zero_sized(ptr: *mut T) -> (tracked perm: PointsTo<T>)
         requires
             ptr@.addr != 0,
+            ptr@.provenance.is_some() ==>
+                ptr@.addr as int >= ptr@.provenance.data().start_addr(),
+                ptr@.addr + size_of::<T>() <= ptr@.provenance.data().start_addr()
+                    + ptr@.provenance.data().alloc_len(),
             ptr@.addr as nat % align_of::<T>() == 0,
             layout::size_of::<T>() == 0,
         ensures
@@ -1820,6 +1824,10 @@ impl PointsToUnaligned<[u8]> {
         requires
             ptr@.addr != 0,
             layout::size_of::<T>() == 0,
+            ptr@.provenance.is_some() ==>
+                ptr@.addr as int >= ptr@.provenance.data().start_addr(),
+                ptr@.addr + size_of::<T>() <= ptr@.provenance.data().start_addr()
+                    + ptr@.provenance.data().alloc_len(),
         ensures
             perm.ptr()@.addr == ptr@.addr,
             perm.ptr()@.provenance == ptr@.provenance,
@@ -2209,6 +2217,10 @@ impl<T> SeqPointsTo<T> {
         requires
             ptr@.addr != 0,
             ptr@.addr as nat % align_of::<T>() == 0,
+            ptr@.provenance.is_some() ==>
+                ptr@.addr as int >= ptr@.provenance.data().start_addr(),
+                ptr@.addr + size_of::<T>() <= ptr@.provenance.data().start_addr()
+                    + ptr@.provenance.data().alloc_len(),
             layout::size_of::<T>() == 0,
         ensures
             forall|i| #![auto] 0 <= i < spt.len() ==> spt[i].is_uninit(),
@@ -2227,6 +2239,11 @@ impl<T> SeqPointsTo<T> {
             self.len() + remaining == total,
             forall|i| #![auto] 0 <= i < self.len() ==> self[i].is_uninit(),
             self.wf(),
+
+            self.ptr()@.provenance.is_some() ==>
+                self.ptr()@.addr as int >= self.ptr()@.provenance.data().start_addr(),
+                self.ptr()@.addr + size_of::<T>() <= self.ptr()@.provenance.data().start_addr()
+                    + self.ptr()@.provenance.data().alloc_len(),
         ensures
             spt.ptr() == self.ptr(),
             spt.len() == total,
