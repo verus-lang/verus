@@ -270,11 +270,11 @@ pub tracked struct PointsToUnaligned<T: ?Sized> {
 // (Also, using our own enum here lets us have more meaningful
 // variant names like Uninit/Init.)
 #[verifier::accept_recursive_types(T)]
-pub ghost enum MemContents<T> {
+pub tracked enum MemContents<T> {
     /// Represents uninitialized memory.
     Uninit,
     /// Represents initialized memory with the given value of type `T`.
-    Init(ghost T),
+    Init(T),
 }
 
 /// Data associated with a `PointsTo` permission.
