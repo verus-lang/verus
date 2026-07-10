@@ -1302,9 +1302,11 @@ impl<T> PointsTo<[T]> {
             old(self).ptr()@.metadata * layout::size_of::<T>() == raw.ptr()@.metadata,
             old(self).abstract_bytes() == raw.abstract_bytes(),
             raw.is_fully_uninit(),
-            final(self).ptr() == old(self).ptr(),
-            final(self).abstract_bytes() == final(raw).abstract_bytes(),
-            final(self).is_uninit(),
+            final(raw).ptr() == raw.ptr() ==> ({
+                &&& final(self).ptr() == old(self).ptr()
+                &&& final(self).abstract_bytes() == final(raw).abstract_bytes()
+                &&& final(self).is_uninit()
+            })
     ;
 
     /// This takes a borrow of a subrange of the `MemContents<V>` out from `self`.
