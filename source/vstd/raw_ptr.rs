@@ -631,9 +631,11 @@ impl<T> PointsTo<T> {
             layout::size_of::<T>() == raw.ptr()@.metadata,
             old(self).abstract_bytes() == raw.abstract_bytes(),
             raw.is_fully_uninit(),
-            final(self).ptr() == old(self).ptr(),
-            final(self).abstract_bytes() == final(raw).abstract_bytes(),
-            final(self).is_uninit(),
+            final(raw).ptr() == raw.ptr() ==> ({
+                &&& final(self).ptr() == old(self).ptr()
+                &&& final(self).abstract_bytes() == final(raw).abstract_bytes()
+                &&& final(self).is_uninit()
+            })
     ;
 
     /// This takes a borrow of the `T` from `MemContents<T>` from `self`.
