@@ -435,24 +435,6 @@ impl<T> PointsTo<T> {
         self.as_unaligned().is_nonnull()
     }
 
-    /// "Forgets" about the value stored behind the pointer.
-    /// Updates the `PointsTo` value to [`MemContents::Uninit`](MemContents::Uninit).
-    /// Note that this is a `proof` function, i.e.,
-    /// it is operationally a no-op in executable code, even on the Rust Abstract Machine.
-    /// Only the proof-code representation changes.
-    ///
-    /// Delegates to the underlying `PointsToUnaligned`.
-    pub proof fn leak_contents(tracked &mut self)
-        ensures
-            final(self).ptr() == old(self).ptr(),
-            final(self).is_uninit(),
-    {
-        broadcast use layout_of_sized;
-
-        use_type_invariant(&*self);
-        self.inner.leak_contents();
-    }
-
     /// The memory associated with a pointer should always be within bounds of its spatial provenance.
     pub proof fn ptr_bounds(tracked &self)
         requires
@@ -475,8 +457,9 @@ impl<T> PointsTo<T> {
         self.inner.provenance_non_null()
     }
 
-    // TODO - lower
-    pub axiom fn zero_sized(ptr: *mut T) -> (tracked perm: PointsTo<T>)
+    /// From a non-null pointer to a zero-sized type, we can construct an uninitialized `PointsTo<T>`.
+    /// The memory range pointed to by this pointer will be empty.
+    pub proof fn zero_sized(ptr: *mut T) -> (tracked perm: PointsTo<T>)
         requires
             ptr@.addr != 0,
             ptr@.addr as nat % align_of::<T>() == 0,
@@ -484,7 +467,12 @@ impl<T> PointsTo<T> {
         ensures
             perm.ptr() == ptr,
             perm.is_uninit(),
-            perm.abstract_bytes().len() == size_of::<T>();
+            perm.abstract_bytes().len() == size_of::<T>() 
+    {
+        broadcast use group_raw_ptr_axioms;
+
+        PointsTo::<T>::from_untyped(PointsToUnaligned::<[u8]>::zero_sized(ptr))
+    }
 
     /// A `PointsTo<T>` is always aligned.
     pub proof fn is_aligned(tracked &self)
@@ -720,13 +708,6 @@ impl<T> PointsToUnaligned<T> {
     pub axiom fn is_nonnull(tracked &self)
         ensures
             self.ptr()@.addr != 0,
-    ;
-
-    /// "Forgets" about the value stored behind the pointer.
-    pub axiom fn leak_contents(tracked &mut self)
-        ensures
-            final(self).ptr() == old(self).ptr(),
-            final(self).is_uninit(),
     ;
 
     /// The memory associated with a pointer should always be within bounds of its spatial provenance.
@@ -1640,6 +1621,7 @@ impl<T> PointsToUnaligned<[T]> {
             final(perm).mem_contents_seq() == final(self).mem_contents_seq(),
     ;
 
+    // TODO - verify using as_untyped, as_typed axioms by reasoning about the encoding of integer types
     /// Like [`PointsTo<[T]>::cast_points_to_unaligned`], but on the unaligned version directly.
     ///
     /// We can cast a `[T]` permission to an unaligned `V` permission under the following conditions:
@@ -1695,6 +1677,7 @@ impl<T> PointsToUnaligned<[T]> {
             ),
     ;
 
+    // TODO - verify using as_untyped, as_typed axioms by reasoning about the encoding of integer types
     /// Provided that memory is initialized, the pointer's address is aligned to `V`,
     /// and `self.value().len() * size_of::<T>() == size_of::<V>()`,
     /// we can always cast a `[T]` permission to a `V` permission.
@@ -1775,6 +1758,22 @@ impl<T> PointsToUnaligned<[T]> {
             s.abstract_bytes() == old(self).abstract_bytes(),
             s.wf(),
     ;
+}
+
+impl PointsToUnaligned<[u8]> {
+    /// If `T` is zero sized, then we can construct an uninitialized `PointsToUnaligned<[T]>` from any non-null pointer.
+    /// The range of memory pointed to by this permission will be empty.
+    pub axiom fn zero_sized<T>(ptr: *mut T) -> (tracked perm: Self)
+        requires
+            ptr@.addr != 0,
+            layout::size_of::<T>() == 0,
+        ensures
+            perm.ptr()@.addr == ptr@.addr,
+            perm.ptr()@.provenance == ptr@.provenance,
+            perm.ptr()@.metadata == 0,
+            perm.is_fully_uninit(),
+            perm.abstract_bytes().len() == layout::size_of::<T>()
+        ;
 }
 
 impl PointsTo<str> {
@@ -1862,6 +1861,15 @@ impl PointsTo<str> {
             ret.value() == target@,
             ret.ptr() == self.ptr() as *mut [u8],
             ret.abstract_bytes() == self.abstract_bytes(),
+    ;
+
+    /// Creates a reference to a `PointsToUnaligned<[u8]>` from a reference to a `PointsTo<str>` with the same provenance
+    /// and a range corresponding to the address of the `PointsTo<str>`, size of the `str`, and length.
+    pub axiom fn as_untyped(tracked &self) -> (tracked raw: &PointsToUnaligned<[u8]>)
+        ensures
+            self.ptr() == raw.ptr() as *mut str,  // since *mut str is the same as *mut [u8], this condition captures addr, provenance, and metadata
+            self.abstract_bytes() == raw.abstract_bytes(),
+            raw.is_uninit()
     ;
 }
 
