@@ -3437,6 +3437,7 @@ impl<'a, T> SharedReference<'a, [T]> {
         ensures
             output == self.value()@.len(),
     {
+        broadcast use super::slice::group_slice_axioms;
         self.as_ref().len()
     }
 
