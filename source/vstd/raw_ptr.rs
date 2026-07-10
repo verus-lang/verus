@@ -1242,6 +1242,20 @@ impl<T> PointsTo<[T]> {
         self.inner.into_seq_pt_mut()
     }
 
+    pub axiom fn tracked_borrow(tracked &self) -> (tracked r: &[T])
+        requires self.is_init(),
+        ensures (*r)@ == self.value();
+
+    pub axiom fn tracked_borrow_mut(tracked &mut self) -> (tracked r: &mut [T])
+        requires self.is_init(),
+        ensures
+            (*r)@ == old(self).value(),
+            mut_ref_ptr(r) == old(self).ptr(),
+            //
+            final(self).is_init(),
+            final(self).ptr() == old(self).ptr(),
+            final(self).value() == (*final(r))@;
+
     /// Creates a `PointsTo<T>` from a `PointsToUnaligned<[u8]>` from with the same provenance
     /// and a ptr corresponding to the range of the `PointsToUnaligned<[u8]>`.
     /// The resulting `PointsTo<T>` will be uninitialized.
@@ -1906,6 +1920,37 @@ pub axiom fn seq_into_slice_shared<T>(tracked spt: &SeqPointsTo<T>) -> (tracked 
         pt.ptr()@.metadata == spt.len(),
 ;
 
+/// If the domain exactly contains the indices bounded by `self.len()`,
+/// we can convert a mutable reference to this permission into a `&mut PointsTo<[T]>`
+/// with the same pointer and the same memory contents at every index.
+/// While the pointer and length will stay the same, any changes to the memory contents
+/// will be reflected in the original `SeqPointsTo<T>` permission.
+pub axiom fn seq_into_slice_mut<T>(tracked spt: &mut SeqPointsTo<T>) -> (tracked pt: &mut PointsTo<[T]>)
+    requires
+        spt.wf(),
+    ensures
+        pt.ptr() as *mut T == old(spt).ptr(),
+        pt.ptr()@.metadata == old(spt).len(),
+        pt.abstract_bytes() == old(spt).abstract_bytes(),
+        forall|i|
+            0 <= i < pt.mem_contents_seq().len() ==> #[trigger] pt.mem_contents_seq()[i as int] == old(spt)[i].mem_contents(),
+        // Gurantees on final(spt) are conditional on the final(pt) having the same pointer and length
+        final(pt).ptr() == pt.ptr() ==> ({
+            &&& final(spt).wf()
+            &&& (forall|i|
+                0 <= i < pt.mem_contents_seq().len()
+                    ==> #[trigger] final(pt).mem_contents_seq()[i as int]
+                    == final(spt)[i].mem_contents())
+            &&& final(spt).abstract_bytes() == final(pt).abstract_bytes()
+            &&& old(spt).ptr() == final(spt).ptr()
+            &&& old(spt).len() == final(spt).len()
+            &&& (forall|i| 0 <= i < final(spt).len() ==> #[trigger] final(spt)[i].ptr() == old(spt)[i].ptr())
+            &&& (forall|i|
+                0 <= i < pt.mem_contents_seq().len() ==> #[trigger] pt.mem_contents_seq()[i as int]
+                    == old(spt)[i].mem_contents())
+        })
+;
+
 impl<T> SeqPointsTo<T> {
     /// The keys must fall in the range `[0, self.len())`.
     /// For each key `i`, the corresponding `PointsTo<T>` must have the same provenance as
@@ -2026,6 +2071,27 @@ impl<T> SeqPointsTo<T> {
         broadcast use group_seq_axioms;
 
         self.perm.tracked_borrow_mut(i)
+    }
+
+    /// Returns a `tracked` mutable reference to the underlying `Seq<PointsTo<T>>`,
+    /// given `tracked &mut self`. `self.ptr` will remain unchanged.
+    ///
+    /// Provided that this mutable reference is not used to change the sequence length
+    /// or any of the `PointsTo<T>` pointers, the invariant will be preserved.
+    pub proof fn tracked_perm_seq_mut(tracked &mut self) -> (tracked ret: &mut Seq<PointsTo<T>>)
+        requires
+            self.wf(),
+        ensures
+            *ret == old(self).seq_perm(),
+            final(self).seq_perm() == *final(ret),
+            old(self).ptr() == final(self).ptr(),
+            // Criteria necessary for re-establishing invariants
+            (old(self).len() == final(self).len() && forall|i|
+                #![auto]
+                0 <= i < final(self).len() ==> final(self)[i].ptr() == old(self)[i].ptr())
+                ==> final(self).wf(),
+    {
+        &mut self.perm
     }
 
     /// Sanity check for the criteria for ensuring that the final value of `&mut self` is still well-formed:
@@ -2519,6 +2585,29 @@ impl<T> SeqPointsTo<T> {
 
         joined
     }
+
+    pub axiom fn subrange_mut(tracked &mut self, i: nat, j: nat) -> (tracked r: &mut Self)
+        requires
+            self.wf(),
+            0 <= i <= j <= self.len(),
+        ensures
+            r.wf(),
+            r.ptr() == ptr_mut_from_data::<T>(
+                PtrData {
+                    addr: ((old(self).ptr()@.addr + i * size_of::<T>()) as usize),
+                    provenance: old(self).ptr()@.provenance,
+                    metadata: (),
+                },
+            ),
+            r.seq_perm() == old(self).seq_perm().subrange(i as int, j as int),
+            final(r).wf() && final(r).ptr() == r.ptr() && final(r).len() == r.len() ==> {
+                &&& final(self).wf()
+                &&& final(self).ptr() == old(self).ptr()
+                &&& final(self).seq_perm() ==
+                    old(self).seq_perm().subrange(0, i as int) +
+                    final(r).seq_perm() +
+                    old(self).seq_perm().subrange(j as int, old(self).len() as int)
+            };
 
     /// Creates a `PointsToRaw` reference from a `SeqPointsTo<V>` reference with the same provenance
     /// and a range starting at the address of the `PointsTo<V>` with length `size_of::<V>() * self.len()`.
