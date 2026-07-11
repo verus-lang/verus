@@ -21,7 +21,7 @@ use crate::sst::{
     FuncAxiomsSst, FuncCheckSst, FuncDeclSst, FuncSpecBodySst, FunctionSst, FunctionSstHas,
     FunctionSstX, PostConditionKind, PostConditionSst, UnwindSst,
 };
-use crate::sst_util::subst_exp;
+use crate::sst_util::{sst_equal, subst_exp};
 use crate::util::{vec_map, vec_map_result};
 use crate::{ast_visitor, fun};
 use std::collections::{HashMap, HashSet};
@@ -966,12 +966,7 @@ pub fn func_def_to_sst(
             ),
         );
 
-        let spec_eq = SpannedTyped::new(
-            &span,
-            &Arc::new(TypX::Bool),
-            ExpX::Binary(BinaryOp::Eq(Mode::Spec), call_pred_args, param_tuple),
-        );
-
+        let spec_eq = sst_equal(&span, &call_pred_args, &param_tuple);
         stms.push(Spanned::new(span, StmX::Assume(spec_eq)));
         state.au_var_exp_to_resolve = Some(au_exp);
         au_stms = stms;
