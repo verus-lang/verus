@@ -3078,7 +3078,7 @@ fn binary_op_exp(
         },
         BinaryOp::Bitwise(bitwise, mode) => {
             match (mode, bitwise) {
-                (BitshiftBehavior::Error, BitwiseOp::Shr(w) | BitwiseOp::Shl(w, _)) => {
+                (BitshiftBehavior::Error(w), BitwiseOp::Shr | BitwiseOp::Shl(_, _)) => {
                     // Add overflow checks for bit shifts
                     // For a shift `a << b` or `a >> b`, Rust requires that
                     //    0 <= b < (bitsize of a)
@@ -3097,7 +3097,7 @@ fn binary_op_exp(
                     let msg = "possible bit shift underflow/overflow";
                     Some((assert_exp, error(span, msg)))
                 }
-                (BitshiftBehavior::Allow, BitwiseOp::Shr(..) | BitwiseOp::Shl(..)) => None,
+                (BitshiftBehavior::Allow, BitwiseOp::Shr | BitwiseOp::Shl(..)) => None,
                 (_, BitwiseOp::BitXor | BitwiseOp::BitAnd | BitwiseOp::BitOr) => {
                     // no overflow check needed
                     None

@@ -553,7 +553,7 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
 
             Ok(BvExpr { expr: Arc::new(ExprX::Binary(op, lhs.expr, rhs.expr)), bv_typ: lhs.bv_typ })
         }
-        ExpX::Binary(BinaryOp::Bitwise(BitwiseOp::Shr(_), _), lhs, rhs) => {
+        ExpX::Binary(BinaryOp::Bitwise(BitwiseOp::Shr, _), lhs, rhs) => {
             let lhs = bv_exp_to_expr(ctx, state, lhs)?;
             let rhs = bv_exp_to_expr(ctx, state, rhs)?;
 

@@ -1974,13 +1974,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                             BinaryOp::Bitwise(BitwiseOp::Shl(w, s), BitshiftBehavior::Allow)
                         }
                         verus_items::SpecBitwiseItem::Shr => {
-                            let (Some(w), _s) = bitwidth_and_signedness_of_integer_type(
-                                &bctx.ctxt.verus_items,
-                                bctx.types.expr_ty(expr),
-                            ) else {
-                                return err_span(expr.span, "expected finite integer width");
-                            };
-                            BinaryOp::Bitwise(BitwiseOp::Shr(w), BitshiftBehavior::Allow)
+                            BinaryOp::Bitwise(BitwiseOp::Shr, BitshiftBehavior::Allow)
                         }
                     }
                 }

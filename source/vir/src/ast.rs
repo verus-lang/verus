@@ -600,7 +600,7 @@ pub enum BitshiftBehavior {
     /// Allow any int value for the RHS. Bitshift for negative ints is undefined.
     Allow,
     /// Error if the right-hand side of the bit-shift is outside the allowed range
-    Error,
+    Error(IntegerTypeBitwidth),
 }
 
 /// Arithmetic operation that might fail (overflow or divide by zero)
@@ -638,17 +638,14 @@ pub enum IntegerTypeBitwidth {
     ArchWordSize,
 }
 
-/// Bitwise operation
+/// Bitwise operation. Note these are all specified as functions over unbounded integers,
+/// using infinite binary representations.
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
 pub enum BitwiseOp {
     BitXor,
     BitAnd,
     BitOr,
-    /// Shift right. The bitwidth argument is only needed to do a bounds-check
-    /// (see `BitshiftBehavior`). The actual result, when computed on unbounded integers,
-    /// is independent of the bitwidth.
-    /// TODO move the IntegerTypeBitwidth field to BitshiftBehavior enum
-    Shr(IntegerTypeBitwidth),
+    Shr,
     /// Shift left up to w bits, ignoring everything to the left of w.
     /// To interpret the result as an unbounded int,
     /// either zero-extend or sign-extend, depending on the bool argument.

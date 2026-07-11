@@ -1614,7 +1614,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                             BitXor => int_new(i1 ^ i2),
                             BitAnd => int_new(i1 & i2),
                             BitOr => int_new(i1 | i2),
-                            Shr(_) => match i2.to_u128() {
+                            Shr => match i2.to_u128() {
                                 None => ok,
                                 Some(i2) => int_new(i1 >> i2),
                             },
