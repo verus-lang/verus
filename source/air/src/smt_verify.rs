@@ -375,7 +375,15 @@ pub(crate) fn smt_get_rlimit_count(context: &mut Context) -> Result<u64, Validit
     context.smt_log.log_get_info("all-statistics");
     let smt_data = context.smt_log.take_pipe_data();
     let smt_output = context.get_smt_process().send_commands(smt_data);
-    let statistics = crate::parser::parse_sexpression(&smt_output);
+    let statistics = match crate::parser::parse_sexpression(&smt_output) {
+        Ok(s) => s,
+        Err(e) => {
+            return Err(ValidityResult::UnexpectedOutput(format!(
+                "could not parse Z3 statistics output: {}",
+                e
+            )));
+        }
+    };
     let stats_map = statistics
         .as_list()
         .unwrap()
@@ -434,8 +442,21 @@ fn smt_get_model(
         return ValidityResult::Invalid(None, None, None);
     };
 
-    let model =
-        crate::parser::Parser::new(context.message_interface.clone()).lines_to_model(&smt_output);
+    let model = match crate::parser::Parser::new(context.message_interface.clone())
+        .lines_to_model(&smt_output)
+    {
+        Ok(model) => model,
+        Err(e) => {
+            // Unparseable (get-model) output: degrade to invalid-without-model like the
+            // "model is not available" branch above instead of panicking (which becomes a
+            // non-unwinding abort via PanicOnDrop).
+            if context.debug {
+                println!("could not parse Z3 (get-model) output: {}", e);
+            }
+            context.state = ContextState::FoundInvalid(infos, None);
+            return ValidityResult::Invalid(None, None, None);
+        }
+    };
     let mut model_defs: HashMap<Ident, ModelDef> = HashMap::new();
     for def in model.iter() {
         model_defs.insert(def.name.clone(), def.clone());
