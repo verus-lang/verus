@@ -1096,6 +1096,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             typ_bounds,
             params: ps,
             ret: rt,
+            extra_ret_params,
             ens_has_return,
             require,
             ensure: (ensure0, ensure1),
@@ -1123,6 +1124,13 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             );
         }
         let ret = self.visit_param(rt)?;
+        let extra_ret_params_visited = self.visit_params(extra_ret_params)?;
+        for p in R::get_vec_or(&extra_ret_params_visited, &*extra_ret_params).iter() {
+            let _ = self.insert_binding(
+                &p.x.name.clone(),
+                ScopeEntry::new_outer_param_ret(&p.x.typ, Some(p.x.user_mut), true),
+            );
+        }
         let require = self.visit_exprs(require)?;
         let async_ret = R::map_opt(async_ret, &mut |async_ret| self.visit_param(&async_ret))?;
 
@@ -1132,6 +1140,12 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             let _ = self.insert_binding(
                 &r.x.name.clone(),
                 ScopeEntry::new_outer_param_ret(&r.x.typ, Some(false), true),
+            );
+        }
+        for p in R::get_vec_or(&extra_ret_params_visited, &*extra_ret_params).iter() {
+            let _ = self.insert_binding(
+                &p.x.name.clone(),
+                ScopeEntry::new_outer_param_ret(&p.x.typ, Some(p.x.user_mut), true),
             );
         }
         let ensure0 = self.visit_exprs(ensure0)?;
@@ -1161,6 +1175,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 typ_bounds: R::get_vec_a(type_bounds),
                 params: R::get_vec_a(params),
                 ret: R::get(ret),
+                extra_ret_params: R::get_vec_a(extra_ret_params_visited),
                 ens_has_return: *ens_has_return,
                 require: R::get_vec_a(require),
                 ensure: (R::get_vec_a(ensure0), R::get_vec_a(ensure1)),

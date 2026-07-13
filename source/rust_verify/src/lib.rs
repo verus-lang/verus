@@ -51,6 +51,7 @@ mod fn_call_to_vir;
 mod hir_hide_reveal_rewrite;
 mod import_export;
 pub mod profiler;
+mod proof_with_lifetime;
 mod resolve_traits;
 pub mod reveal_hide;
 mod rust_intrinsics_to_vir;
