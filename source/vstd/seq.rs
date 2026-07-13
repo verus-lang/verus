@@ -11,7 +11,7 @@ verus! {
 #[verifier::accept_recursive_types(A)]
 tracked enum SeqInner<A> {
     Nil,
-    Cons { head: A, tail: Ghost<SeqInner<A>> },
+    Cons { head: Tracked<A>, tail: Tracked<SeqInner<A>> },
 }
 
 // This indirection is required to show the termination of `Seq::len`
@@ -36,7 +36,7 @@ impl<A> SeqInner<A> {
         match self {
             SeqInner::Nil => arbitrary(),
             SeqInner::Cons { head, tail } => if i == 0 {
-                head
+                head@
             } else {
                 tail.index(i - 1)
             },
@@ -51,14 +51,28 @@ impl<A> SeqInner<A> {
         self.index(i)
     }
 
+    spec fn first(self) -> A
+        recommends
+            0 < self.len(),
+    {
+        self[0]
+    }
+
+    spec fn last(self) -> A
+        recommends
+            0 < self.len(),
+    {
+        self[self.len() as int - 1]
+    }
+
     spec fn push(self, a: A) -> SeqInner<A>
         decreases self.len(),
     {
         match self {
-            SeqInner::Nil => SeqInner::Cons { head: a, tail: Ghost(SeqInner::Nil) },
+            SeqInner::Nil => SeqInner::Cons { head: Tracked(a), tail: Tracked(SeqInner::Nil) },
             SeqInner::Cons { head, tail } => {
                 let new_tail = tail.push(a);
-                SeqInner::Cons { head, tail: Ghost(new_tail) }
+                SeqInner::Cons { head, tail: Tracked(new_tail) }
             },
         }
     }
@@ -74,10 +88,10 @@ impl<A> SeqInner<A> {
             match self {
                 SeqInner::Nil => arbitrary(),
                 SeqInner::Cons { head, tail } => if i == 0 {
-                    SeqInner::Cons { head: a, tail }
+                    SeqInner::Cons { head: Tracked(a), tail }
                 } else {
                     let new_tail = tail.update(i - 1, a);
-                    SeqInner::Cons { head, tail: Ghost(new_tail) }
+                    SeqInner::Cons { head, tail: Tracked(new_tail) }
                 },
             }
         }
@@ -102,7 +116,7 @@ impl<A> SeqInner<A> {
                     SeqInner::Nil
                 } else {
                     let new_tail = tail.subrange(start_inclusive, end_exclusive - 1);
-                    SeqInner::Cons { head, tail: Ghost(new_tail) }
+                    SeqInner::Cons { head, tail: Tracked(new_tail) }
                 }
             },
         }
@@ -115,10 +129,752 @@ impl<A> SeqInner<A> {
             SeqInner::Nil => rhs,
             SeqInner::Cons { head, tail } => {
                 let new_tail = tail.add(rhs);
-                SeqInner::Cons { head, tail: Ghost(new_tail) }
+                SeqInner::Cons { head, tail: Tracked(new_tail) }
             },
         }
     }
+
+    spec fn insert(self, i: int, a: A) -> SeqInner<A>
+        recommends
+            0 <= i <= self.len(),
+    {
+        self.subrange(0, i).push(a).add(self.subrange(i, self.len() as int))
+    }
+
+    spec fn remove(self, i: int) -> SeqInner<A>
+        recommends
+            0 <= i < self.len(),
+    {
+        self.subrange(0, i).add(self.subrange(i + 1, self.len() as int))
+    }
+
+    // return the suffix
+    proof fn tracked_split_at(tracked &mut self, i: int) -> (tracked ret: Self)
+        requires
+            0 <= i <= old(self).len(),
+        ensures
+            *final(self) == old(self).subrange(0, i),
+            ret == old(self).subrange(i, old(self).len() as int),
+            final(self).len() == i,
+            ret.len() == old(self).len() - i,
+        decreases self.len(),
+    {
+        let tracked mut s = SeqInner::Nil;
+        super::modes::tracked_swap(&mut s, self);
+        let tracked ret = if i == 0 {
+            seq_inner::lemma_subrange_len(*old(self), 0, i);
+            seq_inner::lemma_empty(old(self).subrange(0, i));
+            seq_inner::lemma_full_subrange_idempotent(*old(self));
+
+            s
+        } else {
+            let ghost old_self = s;
+            match s {
+                SeqInner::Nil => {
+                    assert(false);
+                    proof_from_false()
+                },
+                SeqInner::Cons { head, tail } => {
+                    let tracked Tracked(mut tail) = tail;
+                    let ghost old_tail = tail;
+                    let tracked suff = tail.tracked_split_at(i - 1);
+
+                    let tracked mut new = SeqInner::Cons { head, tail: Tracked(tail) };
+
+                    super::modes::tracked_swap(&mut new, self);
+
+                    suff
+                },
+            }
+        };
+
+        assert(*final(self) == old(self).subrange(0, i));
+        assert(ret == old(self).subrange(i, old(self).len() as int));
+        seq_inner::lemma_subrange_len(*old(self), 0, i);
+        seq_inner::lemma_subrange_len(*old(self), i, old(self).len() as int);
+
+        ret
+    }
+
+    proof fn tracked_add(tracked &mut self, tracked mut b: Self)
+        ensures
+            *final(self) == old(self).add(b),
+            final(self).len() == old(self).len() + b.len(),
+        decreases self.len(),
+    {
+        let tracked mut s = SeqInner::Nil;
+        super::modes::tracked_swap(&mut s, self);
+        match s {
+            SeqInner::Nil => {
+                seq_inner::lemma_empty(*old(self));
+                super::modes::tracked_swap(&mut b, self);
+            },
+            SeqInner::Cons { head, tail } => {
+                let tracked Tracked(mut tail) = tail;
+                tail.tracked_add(b);
+                let tracked mut new = SeqInner::Cons { head, tail: Tracked(tail) };
+                super::modes::tracked_swap(&mut new, self);
+                seq_inner::lemma_add_len(s, b);
+            },
+        }
+    }
+
+    proof fn tracked_insert(tracked &mut self, i: int, tracked v: A)
+        requires
+            0 <= i <= old(self).len(),
+        ensures
+            final(self).len() == old(self).len() + 1,
+            *final(self) == old(self).insert(i, v),
+        decreases self.len(),
+    {
+        if i == self.len() {
+            seq_inner::lemma_subrange_len(*old(self), i, self.len() as int);
+            seq_inner::lemma_empty(old(self).subrange(i, self.len() as int));
+            seq_inner::lemma_full_subrange_idempotent(*old(self));
+            seq_inner::lemma_add_empty(self.push(v));
+            self.tracked_push(v);
+        } else {
+            let tracked suff = self.tracked_split_at(i);
+            self.tracked_push(v);
+            self.tracked_add(suff);
+        }
+    }
+
+    proof fn tracked_remove(tracked &mut self, i: int) -> (tracked ret: A)
+        requires
+            0 <= i < old(self).len(),
+        ensures
+            ret == old(self)[i],
+            final(self).len() == old(self).len() - 1,
+            *final(self) == old(self).remove(i),
+        decreases self.len(),
+    {
+        if i == 0 {
+            self.tracked_pop_front()
+        } else {
+            let tracked suff = self.tracked_split_at(i + 1);
+            assert(suff == old(self).subrange(i + 1, old(self).len() as int));
+
+            let tracked ret = self.tracked_pop();
+            seq_inner::lemma_subrange_index(*old(self), 0, i + 1, i);
+            assert(ret == old(self)[i]);
+            assert(*self == old(self).subrange(0, i + 1).subrange(0, i));
+            seq_inner::lemma_subrange_composition(*old(self), 0, i + 1, 0, i);
+
+            self.tracked_add(suff);
+            ret
+        }
+    }
+
+    proof fn tracked_borrow(tracked &self, i: int) -> (tracked ret: &A)
+        requires
+            0 <= i < self.len(),
+        ensures
+            *ret == self[i],
+        decreases self.len(),
+    {
+        if i == 0 {
+            match self {
+                SeqInner::Nil => {
+                    assert(false);
+                    proof_from_false()
+                },
+                SeqInner::Cons { head, .. } => { head.borrow() },
+            }
+        } else {
+            match self {
+                SeqInner::Nil => {
+                    assert(false);
+                    proof_from_false()
+                },
+                SeqInner::Cons { tail, .. } => { tail.tracked_borrow(i - 1) },
+            }
+        }
+    }
+
+    proof fn tracked_push(tracked &mut self, tracked v: A)
+        ensures
+            *final(self) == old(self).push(v),
+            final(self).len() == old(self).len() + 1,
+        decreases self.len(),
+    {
+        let tracked mut s = SeqInner::Nil;
+        super::modes::tracked_swap(&mut s, self);
+        match s {
+            SeqInner::Nil => {
+                let tracked mut new = SeqInner::Cons {
+                    head: Tracked(v),
+                    tail: Tracked(SeqInner::Nil),
+                };
+                super::modes::tracked_swap(&mut new, self);
+            },
+            SeqInner::Cons { head, tail } => {
+                let tracked Tracked(mut tail) = tail;
+                tail.tracked_push(v);
+                let tracked mut new = SeqInner::Cons { head, tail: Tracked(tail) };
+                super::modes::tracked_swap(&mut new, self);
+            },
+        }
+        assert(*final(self) == old(self).push(v));
+        seq_inner::lemma_push_len(*old(self), v);
+    }
+
+    proof fn tracked_push_front(tracked &mut self, tracked v: A)
+        ensures
+            *final(self) == old(self).insert(0, v),
+            final(self).len() == old(self).len() + 1,
+        decreases self.len(),
+    {
+        self.tracked_insert(0, v);
+    }
+
+    proof fn tracked_pop(tracked &mut self) -> (tracked ret: A)
+        requires
+            old(self).len() > 0,
+        ensures
+            ret == old(self).last(),
+            final(self).len() == old(self).len() - 1,
+            *final(self) == old(self).subrange(0, old(self).len() - 1),
+        decreases self.len(),
+    {
+        let tracked mut s = SeqInner::Nil;
+        super::modes::tracked_swap(&mut s, self);
+
+        let tracked ret = match s {
+            SeqInner::Nil => {
+                assert(false);
+                proof_from_false()
+            },
+            SeqInner::Cons { head, tail } => {
+                let tracked Tracked(mut tail) = tail;
+                let tracked Tracked(head) = head;
+
+                let tracked v = match tail {
+                    SeqInner::Nil => {
+                        let tracked mut new = SeqInner::Nil;
+                        super::modes::tracked_swap(&mut new, self);
+
+                        seq_inner::lemma_empty(tail);
+                        seq_inner::lemma_subrange_len(*old(self), 0, old(self).len() - 1);
+                        seq_inner::lemma_empty(old(self).subrange(0, old(self).len() - 1));
+
+                        head
+                    },
+                    SeqInner::Cons { head: thead, tail: ttail } => {
+                        let tracked mut tail = SeqInner::Cons { head: thead, tail: ttail };
+                        let tracked v = tail.tracked_pop();
+
+                        let tracked mut new = SeqInner::Cons {
+                            head: Tracked(head),
+                            tail: Tracked(tail),
+                        };
+                        super::modes::tracked_swap(&mut new, self);
+
+                        v
+                    },
+                };
+
+                v
+            },
+        };
+
+        assert(*final(self) == old(self).subrange(0, old(self).len() - 1));
+        seq_inner::lemma_subrange_len(*old(self), 0, old(self).len() - 1);
+
+        ret
+    }
+
+    proof fn tracked_pop_front(tracked &mut self) -> (tracked ret: A)
+        requires
+            old(self).len() > 0,
+        ensures
+            ret == old(self).first(),
+            final(self).len() == old(self).len() - 1,
+            *final(self) == old(self).subrange(1, old(self).len() as int),
+    {
+        let tracked mut s = SeqInner::Nil;
+        super::modes::tracked_swap(&mut s, self);
+        let tracked ret = match s {
+            SeqInner::Nil => {
+                assert(false);
+                proof_from_false()
+            },
+            SeqInner::Cons { head, tail } => {
+                let tracked Tracked(mut tail) = tail;
+                let tracked Tracked(head) = head;
+                seq_inner::lemma_tail_subrange(head, tail);
+                assert(tail == old(self).subrange(1, old(self).len() as int));
+                super::modes::tracked_swap(&mut tail, self);
+                head
+            },
+        };
+
+        assert(*final(self) == old(self).subrange(1, old(self).len() as int));
+        seq_inner::lemma_subrange_len(*old(self), 1, old(self).len() as int);
+
+        ret
+    }
+}
+
+mod seq_inner {
+    use super::*;
+
+    // empty
+    pub(super) proof fn lemma_empty<A>(s: SeqInner<A>)
+        ensures
+            s.len() == 0 <==> s == SeqInner::Nil,
+    {
+        if s.len() == 0 {
+            assert(s == SeqInner::Nil)
+        }
+        if s == SeqInner::Nil {
+            assert(s.len() == 0);
+        }
+    }
+
+    // push lemmas
+    pub(super) proof fn lemma_push_len<A>(s: SeqInner<A>, a: A)
+        ensures
+            s.push(a).len() == s.len() + 1,
+        decreases s.len(),
+    {
+        match s {
+            SeqInner::Nil => {},
+            SeqInner::Cons { tail, .. } => {
+                lemma_push_len(tail@, a);
+            },
+        }
+    }
+
+    pub(super) proof fn lemma_push_index_different<A>(s: SeqInner<A>, a: A, i: int)
+        requires
+            i < s.len(),
+        ensures
+            #[trigger] s.push(a)[i] == s[i],
+        decreases s,
+    {
+        match s {
+            SeqInner::Nil => {
+                lemma_index_out_of_bounds(s.push(a), i);
+            },
+            SeqInner::Cons { tail, .. } => {
+                if i == 0 {
+                } else {
+                    lemma_push_index_different(tail@, a, i - 1);
+                }
+            },
+        }
+    }
+
+    pub(super) proof fn lemma_push_index_same<A>(s: SeqInner<A>, a: A, i: int)
+        requires
+            i == s.len(),
+        ensures
+            #[trigger] s.push(a)[i] == a,
+        decreases s,
+    {
+        match s {
+            SeqInner::Nil => {
+                assert(s.push(a) == SeqInner::Cons {
+                    head: Tracked(a),
+                    tail: Tracked(SeqInner::Nil),
+                });
+                assert(s.push(a)[0] == a);
+            },
+            SeqInner::Cons { tail, .. } => {
+                lemma_push_index_same(tail@, a, i - 1);
+            },
+        }
+    }
+
+    // update lemmas
+    pub(super) proof fn lemma_update_len<A>(s: SeqInner<A>, i: int, a: A)
+        ensures
+            s.update(i, a).len() == s.len(),
+        decreases i,
+    {
+        if !(0 <= i < s.len()) {
+            assert(s.update(i, a) == s);
+        } else {
+            let s_upd = s.update(i, a);
+            match s {
+                SeqInner::Nil => {},
+                SeqInner::Cons { head, tail } => {
+                    match s_upd {
+                        SeqInner::Nil => {},
+                        SeqInner::Cons { head: head_upd, tail: tail_upd } => {
+                            if i == 0 {
+                                assert(head_upd == a);
+                            } else {
+                                lemma_update_len(tail@, (i - 1), a);
+                            }
+                        },
+                    }
+                },
+            }
+        }
+    }
+
+    pub(super) proof fn lemma_update_index_same<A>(s: SeqInner<A>, i: int, a: A)
+        requires
+            0 <= i < s.len(),
+        ensures
+            #[trigger] s.update(i, a)[i] == a,
+        decreases s,
+    {
+        match s {
+            SeqInner::Nil => {},
+            SeqInner::Cons { tail, .. } => {
+                if i == 0 {
+                    assert(s.update(i, a)[i] == a)
+                } else {
+                    lemma_update_index_same(tail@, i - 1, a);
+                }
+            },
+        }
+    }
+
+    pub(super) proof fn lemma_update_index_different<A>(s: SeqInner<A>, i1: int, i2: int, a: A)
+        requires
+            i1 != i2,
+        ensures
+            #[trigger] s.update(i2, a)[i1] == s[i1],
+        decreases s,
+    {
+        if !(0 <= i2 < s.len()) {
+            assert(s.update(i2, a) == s);
+        } else {
+            match s {
+                SeqInner::Nil => {},
+                SeqInner::Cons { tail, .. } => {
+                    if i2 == 0 {
+                        assert(s.update(i2, a)[i1] == s[i1]);
+                    } else if i1 == 0 {
+                        assert(s.update(i2, a)[i1] == s[i1]);
+                    } else {
+                        lemma_update_index_different(tail@, i1 - 1, i2 - 1, a);
+                    }
+                },
+            }
+        }
+    }
+
+    // subrange lemmas
+    pub(super) proof fn lemma_subrange_len<A>(s: SeqInner<A>, j: int, k: int)
+        requires
+            0 <= j <= k <= s.len(),
+        ensures
+            s.subrange(j, k).len() == k - j,
+        decreases j, k,
+    {
+        match s {
+            SeqInner::Nil => {},
+            SeqInner::Cons { head, tail } => {
+                if j > 0 {
+                    assert(s.subrange(j, k) == tail.subrange(j - 1, k - 1));
+                    lemma_subrange_len(tail@, j - 1, k - 1);
+                } else if k > 0 {
+                    let new_tail = tail@.subrange(j, k - 1);
+                    lemma_subrange_len(tail@, j, k - 1);
+                    assert(new_tail.len() == k - j - 1);
+                    let sub = SeqInner::Cons { head, tail: Tracked(new_tail) };
+                    assert(sub.len() == 1 + new_tail.len());
+                } else {
+                    assert(j == k == 0);
+                    assert(s.subrange(j, k).len() == 0);
+                }
+            },
+        }
+    }
+
+    pub(super) proof fn lemma_subrange_composition_aux2<A>(s: SeqInner<A>, j1: int, j2: int)
+        requires
+            0 <= j2 <= j1 <= s.len(),
+        ensures
+            s.subrange(0, j1).subrange(0, j2) == s.subrange(0, j2),
+        decreases s.len(),
+    {
+        if j1 == j2 {
+            lemma_subrange_len(s, 0, j1);
+            lemma_full_subrange_idempotent(s.subrange(0, j1));
+        } else if j1 == 0 {
+            assert(false);
+        } else if j2 == 0 {
+            lemma_subrange_len(s.subrange(0, j1), 0, j2);
+            lemma_empty(s.subrange(0, j1).subrange(0, j2));
+        } else {
+            match s {
+                SeqInner::Nil => {},
+                SeqInner::Cons { head, tail } => {
+                    lemma_subrange_composition_aux2(tail@, j1 - 1, j2 - 1);
+                },
+            }
+        }
+    }
+
+    pub(super) proof fn lemma_subrange_index_aux<A>(s: SeqInner<A>, k: int, i: int)
+        requires
+            0 <= k <= s.len(),
+            0 <= i < k,
+        ensures
+            s.subrange(0, k)[i] == s[i],
+        decreases s,
+    {
+        lemma_subrange_len(s, 0, k);
+        // assert(s.subrange(0, k).len() == k);
+        // assert(0 <= i < s.subrange(0, k).len());
+        match s {
+            SeqInner::Nil => {
+                // assert(false);
+            },
+            SeqInner::Cons { head, tail } => {
+                if i == 0 {
+                    // assert(s[0] == head);
+                    assert(s.subrange(0, k)[0] == head);
+                } else {
+                    lemma_subrange_index_aux(tail@, k - 1, i - 1);
+                }
+            },
+        }
+    }
+
+    pub(super) proof fn lemma_subrange_index<A>(s: SeqInner<A>, j: int, k: int, i: int)
+        requires
+            0 <= j <= k <= s.len(),
+            0 <= i < k - j,
+        ensures
+            s.subrange(j, k)[i] == s[i + j],
+        decreases s,
+    {
+        lemma_subrange_len(s, j, k);
+        if j == 0 {
+            lemma_subrange_index_aux(s, k, i);
+        } else {
+            match s {
+                SeqInner::Nil => {
+                    assert(false);
+                },
+                SeqInner::Cons { head, tail } => {
+                    lemma_subrange_index(tail@, j - 1, k - 1, i);
+                },
+            }
+        }
+    }
+
+    pub(super) proof fn lemma_subrange_composition_aux1<A>(
+        s: SeqInner<A>,
+        j1: int,
+        i2: int,
+        j2: int,
+    )
+        requires
+            0 <= j1 <= s.len(),
+            0 <= i2 <= j2 <= j1,
+        ensures
+            s.subrange(0, j1).subrange(i2, j2) == s.subrange(i2, j2),
+        decreases s.len(),
+    {
+        if i2 == 0 {
+            lemma_subrange_composition_aux2(s, j1, j2);
+        } else {
+            match s {
+                SeqInner::Nil => {},
+                SeqInner::Cons { head, tail } => {
+                    lemma_subrange_composition_aux1(tail@, j1 - 1, i2 - 1, j2 - 1);
+                },
+            }
+        }
+    }
+
+    pub(super) proof fn lemma_subrange_composition<A>(
+        s: SeqInner<A>,
+        i1: int,
+        j1: int,
+        i2: int,
+        j2: int,
+    )
+        requires
+            0 <= i1 <= j1 <= s.len(),
+            0 <= i2 <= j2 <= j1 - i1,
+        ensures
+            s.subrange(i1, j1).subrange(i2, j2) == s.subrange(i1 + i2, i1 + j2),
+        decreases s.len(),
+    {
+        if i1 == 0 {
+            lemma_subrange_composition_aux1(s, j1, i2, j2);
+        } else {
+            match s {
+                SeqInner::Nil => {},
+                SeqInner::Cons { head, tail } => {
+                    lemma_subrange_composition(tail@, i1 - 1, j1 - 1, i2, j2);
+                },
+            }
+        }
+    }
+
+    pub(super) open spec fn cons_list<A>(head: A, tail: SeqInner<A>) -> SeqInner<A> {
+        SeqInner::Cons { head: Tracked(head), tail: Tracked(tail) }
+    }
+
+    pub(super) proof fn lemma_tail_subrange<A>(head: A, tail: SeqInner<A>)
+        ensures
+            cons_list(head, tail).subrange(1, cons_list(head, tail).len() as int) == tail,
+    {
+        let s = SeqInner::Cons { head: Tracked(head), tail: Tracked(tail) };
+        match s {
+            SeqInner::Nil => {
+                assert(false);
+            },
+            SeqInner::Cons { head: h, tail: t } => { lemma_full_subrange_idempotent(tail) },
+        }
+    }
+
+    pub(super) proof fn lemma_full_subrange_idempotent<A>(s: SeqInner<A>)
+        ensures
+            s.subrange(0, s.len() as int) == s,
+        decreases s.len(),
+    {
+        match s {
+            SeqInner::Nil => {
+                assert(s.subrange(0, s.len() as int) == s);
+            },
+            SeqInner::Cons { head, tail } => {
+                lemma_subrange_index(s, 0, s.len() as int, 0);
+                lemma_full_subrange_idempotent(tail@);
+            },
+        }
+    }
+
+    // decrease to index
+    pub(super) proof fn lemma_index_decreases<A>(s: SeqInner<A>, i: int)
+        requires
+            0 <= i < s.len(),
+        ensures
+            (decreases_to!(s => s[i])),
+        decreases i,
+    {
+        match s {
+            SeqInner::Nil => {
+                assert(s.len() == 0);
+                assert(false);
+            },
+            SeqInner::Cons { head, tail } => {
+                if i == 0 {
+                    assert(decreases_to!(s => s[i]));
+                } else {
+                    assert(tail[i - 1] == s[i]);
+                    lemma_index_decreases(tail@, i - 1);
+                    assert(decreases_to!(s => tail@));
+                    assert(decreases_to!(tail@ => tail[i-1]));
+                }
+            },
+        }
+    }
+
+    // add lemmas
+    pub(super) proof fn lemma_add_empty<A>(s: SeqInner<A>)
+        ensures
+            s.add(SeqInner::Nil) == s,
+            SeqInner::Nil.add(s) == s,
+        decreases s.len(),
+    {
+        assert(SeqInner::Nil.add(s) == s);
+
+        let sum = s.add(SeqInner::Nil);
+        match s {
+            SeqInner::Nil => {
+                assert(sum == SeqInner::Nil);
+                assert(s == SeqInner::Nil);
+            },
+            SeqInner::Cons { head, tail } => {
+                assert(sum == SeqInner::Cons { head, tail: Tracked(tail@.add(SeqInner::Nil)) });
+                lemma_add_empty(tail@);
+            },
+        }
+    }
+
+    pub(super) proof fn lemma_add_len<A>(s1: SeqInner<A>, s2: SeqInner<A>)
+        ensures
+            s1.add(s2).len() == s1.len() + s2.len(),
+        decreases s1.add(s2).len(),
+    {
+        let sum = s1.add(s2);
+        match s1 {
+            SeqInner::Nil => {
+                assert(sum == s2);
+            },
+            SeqInner::Cons { head, tail } => {
+                let new_tail = tail@.add(s2);
+                lemma_add_len(tail@, s2);
+                assert(new_tail.len() == (s1.len() - 1) + s2.len());
+                assert(sum.len() == 1 + new_tail.len());
+            },
+        }
+    }
+
+    pub(super) proof fn lemma_add_index1<A>(s1: SeqInner<A>, s2: SeqInner<A>, i: int)
+        requires
+            i < s1.len(),
+        ensures
+            s1.add(s2)[i] == s1[i],
+        decreases s1,
+    {
+        if i < 0 {
+            lemma_index_out_of_bounds(s1, i);
+            lemma_index_out_of_bounds(s1.add(s2), i);
+        } else {
+            match s1 {
+                SeqInner::Nil => {},
+                SeqInner::Cons { head, tail } => {
+                    if i == 0 {
+                        assert(s1[i] == s1.add(s2)[i]);
+                    } else {
+                        lemma_add_index1(tail@, s2, i - 1);
+                    }
+                },
+            }
+        }
+    }
+
+    pub(super) proof fn lemma_add_index2<A>(s1: SeqInner<A>, s2: SeqInner<A>, i: int)
+        requires
+            s1.len() <= i < s1.len() + s2.len(),
+        ensures
+            s1.add(s2)[i] == s2[i - s1.len()],
+        decreases s1,
+    {
+        match s1 {
+            SeqInner::Nil => {
+                assert(s1.add(s2) == s2);
+                assert(s1.add(s2)[i] == s2[i - s1.len()]);
+            },
+            SeqInner::Cons { head, tail } => {
+                if i == 0 {
+                    assert(s1.add(s2)[i] == s2[i - s1.len()]);
+                } else {
+                    lemma_add_index2(tail@, s2, i - 1);
+                    assert(s1.add(s2)[i] == s2[i - s1.len()]);
+                }
+            },
+        }
+    }
+
+    // index lemma
+    pub(super) proof fn lemma_index_out_of_bounds<A>(s: SeqInner<A>, i: int)
+        requires
+            !(0 <= i < s.len()),
+        ensures
+            s[i] == arbitrary::<A>(),
+        decreases s,
+    {
+        match s {
+            SeqInner::Nil => {},
+            SeqInner::Cons { tail, .. } => {
+                lemma_index_out_of_bounds(tail@, i - 1);
+            },
+        }
+    }
+
 }
 
 /// `Seq<A>` is a sequence type for specifications.
@@ -300,15 +1056,39 @@ impl<A> Seq<A> {
         self[0]
     }
 
-    #[verifier(external_body)]
+    /// Create an empty sequence
     pub proof fn tracked_empty() -> (tracked ret: Self)
         ensures
             ret == Seq::empty(),
     {
-        unimplemented!()
+        Seq { inner: SeqInner::Nil }
     }
 
-    #[verifier(external_body)]
+    /// Insert a tracked element into a sequence
+    ///
+    /// ## Example
+    ///
+    /// ```rust
+    /// proof fn insert_test(tracked &mut s: Seq<int>, tracked v: int)
+    ///     requires
+    ///         old(s)@ == seq![0, 1, 2]
+    ///     ensures
+    ///         final(s)@ == seq![0, 1, v, 2]
+    /// {
+    ///     s.tracked_insert(2, v)
+    /// }
+    /// ```
+    pub proof fn tracked_insert(tracked &mut self, i: int, tracked v: A)
+        requires
+            0 <= i <= old(self).len(),
+        ensures
+            final(self).len() == old(self).len() + 1,
+            *final(self) == old(self).insert(i, v),
+    {
+        self.inner.tracked_insert(i, v)
+    }
+
+    /// Remove a tracked element from a sequence
     pub proof fn tracked_remove(tracked &mut self, i: int) -> (tracked ret: A)
         requires
             0 <= i < old(self).len(),
@@ -317,41 +1097,38 @@ impl<A> Seq<A> {
             final(self).len() == old(self).len() - 1,
             *final(self) == old(self).remove(i),
     {
-        unimplemented!()
+        self.inner.tracked_remove(i)
     }
 
-    #[verifier(external_body)]
-    pub proof fn tracked_insert(tracked &mut self, i: int, tracked v: A)
-        requires
-            0 <= i <= old(self).len(),
-        ensures
-            final(self).len() == old(self).len() + 1,
-            *final(self) == old(self).insert(i, v),
-    {
-        unimplemented!()
-    }
-
-    #[verifier(external_body)]
+    /// Obtain a tracked borrow into an element of a sequence
     pub proof fn tracked_borrow(tracked &self, i: int) -> (tracked ret: &A)
         requires
             0 <= i < self.len(),
         ensures
             *ret == self[i],
     {
-        unimplemented!()
+        self.inner.tracked_borrow(i)
     }
 
+    /// Push a tracked value into the end of a sequence
     pub proof fn tracked_push(tracked &mut self, tracked v: A)
         ensures
             *final(self) == old(self).push(v),
             final(self).len() == old(self).len() + 1,
     {
-        broadcast use group_seq_axioms;
-
-        assert(self.insert(self.len() as int, v) =~= self.push(v));
-        self.tracked_insert(self.len() as int, v);
+        self.inner.tracked_push(v)
     }
 
+    /// Push a tracked value into the beginning of a sequence
+    pub proof fn tracked_push_front(tracked &mut self, tracked v: A)
+        ensures
+            *final(self) == old(self).insert(0, v),
+            final(self).len() == old(self).len() + 1,
+    {
+        self.inner.tracked_push_front(v)
+    }
+
+    /// Pop a tracked value from the end of a sequence
     pub proof fn tracked_pop(tracked &mut self) -> (tracked ret: A)
         requires
             old(self).len() > 0,
@@ -360,12 +1137,10 @@ impl<A> Seq<A> {
             final(self).len() == old(self).len() - 1,
             *final(self) == old(self).take(old(self).len() - 1),
     {
-        broadcast use group_seq_axioms;
-
-        assert(self.remove(self.len() - 1) =~= self.take(self.len() - 1));
-        self.tracked_remove(self.len() - 1)
+        self.inner.tracked_pop()
     }
 
+    /// Pop a tracked value from the beginning of a sequence
     pub proof fn tracked_pop_front(tracked &mut self) -> (tracked ret: A)
         requires
             old(self).len() > 0,
@@ -374,35 +1149,28 @@ impl<A> Seq<A> {
             final(self).len() == old(self).len() - 1,
             *final(self) == old(self).drop_first(),
     {
-        broadcast use group_seq_axioms;
-
-        assert(self.remove(0) =~= self.drop_first());
-        self.tracked_remove(0)
+        self.inner.tracked_pop_front()
     }
-}
 
-proof fn lemma_seq_inner_index_decreases<A>(s: SeqInner<A>, i: int)
-    requires
-        0 <= i < s.len(),
-    ensures
-        (decreases_to!(s => s[i])),
-    decreases i,
-{
-    match s {
-        SeqInner::Nil => {
-            assert(s.len() == 0);
-            assert(false);
-        },
-        SeqInner::Cons { head, tail } => {
-            if i == 0 {
-                assert(decreases_to!(s => s[i]));
-            } else {
-                assert(tail[i - 1] == s[i]);
-                lemma_seq_inner_index_decreases(tail@, i - 1);
-                assert(decreases_to!(s => tail@));
-                assert(decreases_to!(tail@ => tail[i-1]));
-            }
-        },
+    /// Split a tracked sequence around an index
+    pub proof fn tracked_split_at(tracked &mut self, i: int) -> (tracked ret: Self)
+        requires
+            0 <= i <= old(self).len(),
+        ensures
+            *final(self) == old(self).subrange(0, i),
+            ret == old(self).subrange(i, old(self).len() as int),
+            final(self).len() == i,
+            ret.len() == old(self).len() - i,
+    {
+        Seq { inner: self.inner.tracked_split_at(i) }
+    }
+
+    proof fn tracked_add(tracked &mut self, tracked b: Self)
+        ensures
+            *final(self) == old(self).add(b),
+            final(self).len() == old(self).len() + b.len(),
+    {
+        self.inner.tracked_add(b.inner)
     }
 }
 
@@ -412,7 +1180,7 @@ pub broadcast proof fn axiom_seq_index_decreases<A>(s: Seq<A>, i: int)
     ensures
         #[trigger] (decreases_to!(s => s[i])),
 {
-    lemma_seq_inner_index_decreases(s.inner, i)
+    seq_inner::lemma_index_decreases(s.inner, i)
 }
 
 // TODO: this should be provable
@@ -511,42 +1279,11 @@ pub broadcast proof fn axiom_seq_new_index<A>(len: nat, f: spec_fn(int) -> A, i:
     }
 }
 
-proof fn lemma_seq_inner_push_len<A>(s: SeqInner<A>, a: A)
-    ensures
-        s.push(a).len() == s.len() + 1,
-    decreases s.len(),
-{
-    match s {
-        SeqInner::Nil => {},
-        SeqInner::Cons { tail, .. } => {
-            lemma_seq_inner_push_len(tail@, a);
-        },
-    }
-}
-
 pub broadcast proof fn axiom_seq_push_len<A>(s: Seq<A>, a: A)
     ensures
         #[trigger] s.push(a).len() == s.len() + 1,
 {
-    lemma_seq_inner_push_len(s.inner, a)
-}
-
-proof fn lemma_seq_inner_push_index_same<A>(s: SeqInner<A>, a: A, i: int)
-    requires
-        i == s.len(),
-    ensures
-        #[trigger] s.push(a)[i] == a,
-    decreases s,
-{
-    match s {
-        SeqInner::Nil => {
-            assert(s.push(a) == SeqInner::Cons { head: a, tail: Ghost(SeqInner::Nil) });
-            assert(s.push(a)[0] == a);
-        },
-        SeqInner::Cons { tail, .. } => {
-            lemma_seq_inner_push_index_same(tail@, a, i - 1);
-        },
-    }
+    seq_inner::lemma_push_len(s.inner, a)
 }
 
 pub broadcast proof fn axiom_seq_push_index_same<A>(s: Seq<A>, a: A, i: int)
@@ -555,42 +1292,7 @@ pub broadcast proof fn axiom_seq_push_index_same<A>(s: Seq<A>, a: A, i: int)
     ensures
         #[trigger] s.push(a)[i] == a,
 {
-    lemma_seq_inner_push_index_same(s.inner, a, i);
-}
-
-proof fn lemma_seq_inner_index_out_of_bounds<A>(s: SeqInner<A>, i: int)
-    requires
-        !(0 <= i < s.len()),
-    ensures
-        s[i] == arbitrary::<A>(),
-    decreases s,
-{
-    match s {
-        SeqInner::Nil => {},
-        SeqInner::Cons { tail, .. } => {
-            lemma_seq_inner_index_out_of_bounds(tail@, i - 1);
-        },
-    }
-}
-
-proof fn lemma_seq_inner_push_index_different<A>(s: SeqInner<A>, a: A, i: int)
-    requires
-        i < s.len(),
-    ensures
-        #[trigger] s.push(a)[i] == s[i],
-    decreases s,
-{
-    match s {
-        SeqInner::Nil => {
-            lemma_seq_inner_index_out_of_bounds(s.push(a), i);
-        },
-        SeqInner::Cons { tail, .. } => {
-            if i == 0 {
-            } else {
-                lemma_seq_inner_push_index_different(tail@, a, i - 1);
-            }
-        },
-    }
+    seq_inner::lemma_push_index_same(s.inner, a, i);
 }
 
 pub broadcast proof fn axiom_seq_push_index_different<A>(s: Seq<A>, a: A, i: int)
@@ -599,7 +1301,7 @@ pub broadcast proof fn axiom_seq_push_index_different<A>(s: Seq<A>, a: A, i: int
     ensures
         #[trigger] s.push(a)[i] == s[i],
 {
-    lemma_seq_inner_push_index_different(s.inner, a, i);
+    seq_inner::lemma_push_index_different(s.inner, a, i);
 }
 
 // Expensive lemma; not in the default broadcast group
@@ -613,58 +1315,12 @@ pub broadcast proof fn lemma_seq_push_index_different_alt<A>(s: Seq<A>, a: A, i:
 
 }
 
-proof fn lemma_seq_inner_update_len<A>(s: SeqInner<A>, i: int, a: A)
-    ensures
-        s.update(i, a).len() == s.len(),
-    decreases i,
-{
-    if !(0 <= i < s.len()) {
-        assert(s.update(i, a) == s);
-    } else {
-        let s_upd = s.update(i, a);
-        match s {
-            SeqInner::Nil => {},
-            SeqInner::Cons { head, tail } => {
-                match s_upd {
-                    SeqInner::Nil => {},
-                    SeqInner::Cons { head: head_upd, tail: tail_upd } => {
-                        if i == 0 {
-                            assert(head_upd == a);
-                        } else {
-                            lemma_seq_inner_update_len(tail@, (i - 1), a);
-                        }
-                    },
-                }
-            },
-        }
-    }
-}
-
 pub broadcast proof fn axiom_seq_update_len<A>(s: Seq<A>, i: int, a: A)
     ensures
         #[trigger] s.update(i, a).len() == s.len(),
     decreases i,
 {
-    lemma_seq_inner_update_len(s.inner, i, a)
-}
-
-proof fn lemma_seq_inner_update_index_same<A>(s: SeqInner<A>, i: int, a: A)
-    requires
-        0 <= i < s.len(),
-    ensures
-        #[trigger] s.update(i, a)[i] == a,
-    decreases s,
-{
-    match s {
-        SeqInner::Nil => {},
-        SeqInner::Cons { tail, .. } => {
-            if i == 0 {
-                assert(s.update(i, a)[i] == a)
-            } else {
-                lemma_seq_inner_update_index_same(tail@, i - 1, a);
-            }
-        },
-    }
+    seq_inner::lemma_update_len(s.inner, i, a)
 }
 
 pub broadcast proof fn axiom_seq_update_same<A>(s: Seq<A>, i: int, a: A)
@@ -673,7 +1329,7 @@ pub broadcast proof fn axiom_seq_update_same<A>(s: Seq<A>, i: int, a: A)
     ensures
         #[trigger] s.update(i, a)[i] == a,
 {
-    lemma_seq_inner_update_index_same(s.inner, i, a);
+    seq_inner::lemma_update_index_same(s.inner, i, a);
 }
 
 // Expensive lemma; not in the default broadcast group
@@ -688,38 +1344,13 @@ pub broadcast proof fn lemma_seq_update_same_alt<A>(s: Seq<A>, i: int, a: A)
 
 }
 
-proof fn lemma_seq_inner_update_index_different<A>(s: SeqInner<A>, i1: int, i2: int, a: A)
-    requires
-        i1 != i2,
-    ensures
-        #[trigger] s.update(i2, a)[i1] == s[i1],
-    decreases s,
-{
-    if !(0 <= i2 < s.len()) {
-        assert(s.update(i2, a) == s);
-    } else {
-        match s {
-            SeqInner::Nil => {},
-            SeqInner::Cons { tail, .. } => {
-                if i2 == 0 {
-                    assert(s.update(i2, a)[i1] == s[i1]);
-                } else if i1 == 0 {
-                    assert(s.update(i2, a)[i1] == s[i1]);
-                } else {
-                    lemma_seq_inner_update_index_different(tail@, i1 - 1, i2 - 1, a);
-                }
-            },
-        }
-    }
-}
-
 pub broadcast proof fn axiom_seq_update_different<A>(s: Seq<A>, i1: int, i2: int, a: A)
     requires
         i1 != i2,
     ensures
         #[trigger] s.update(i2, a)[i1] == s[i1],
 {
-    lemma_seq_inner_update_index_different(s.inner, i1, i2, a);
+    seq_inner::lemma_update_index_different(s.inner, i1, i2, a);
 }
 
 // Expensive lemma; not in the default broadcast group
@@ -834,89 +1465,13 @@ pub broadcast proof fn axiom_seq_ext_equal_deep<A>(s1: Seq<A>, s2: Seq<A>)
     }
 }
 
-proof fn lemma_seq_inner_subrange_len<A>(s: SeqInner<A>, j: int, k: int)
-    requires
-        0 <= j <= k <= s.len(),
-    ensures
-        s.subrange(j, k).len() == k - j,
-    decreases j, k,
-{
-    match s {
-        SeqInner::Nil => {},
-        SeqInner::Cons { head, tail } => {
-            if j > 0 {
-                assert(s.subrange(j, k) == tail.subrange(j - 1, k - 1));
-                lemma_seq_inner_subrange_len(tail@, j - 1, k - 1);
-            } else if k > 0 {
-                let new_tail = tail@.subrange(j, k - 1);
-                lemma_seq_inner_subrange_len(tail@, j, k - 1);
-                assert(new_tail.len() == k - j - 1);
-                let sub = SeqInner::Cons { head, tail: Ghost(new_tail) };
-                assert(sub.len() == 1 + new_tail.len());
-            } else {
-                assert(j == k == 0);
-                assert(s.subrange(j, k).len() == 0);
-            }
-        },
-    }
-}
-
 pub broadcast proof fn axiom_seq_subrange_len<A>(s: Seq<A>, j: int, k: int)
     requires
         0 <= j <= k <= s.len(),
     ensures
         #[trigger] s.subrange(j, k).len() == k - j,
 {
-    lemma_seq_inner_subrange_len(s.inner, j, k)
-}
-
-proof fn lemma_seq_inner_subrange_index_aux<A>(s: SeqInner<A>, k: int, i: int)
-    requires
-        0 <= k <= s.len(),
-        0 <= i < k,
-    ensures
-        s.subrange(0, k)[i] == s[i],
-    decreases s,
-{
-    lemma_seq_inner_subrange_len(s, 0, k);
-    // assert(s.subrange(0, k).len() == k);
-    // assert(0 <= i < s.subrange(0, k).len());
-    match s {
-        SeqInner::Nil => {
-            // assert(false);
-        },
-        SeqInner::Cons { head, tail } => {
-            if i == 0 {
-                // assert(s[0] == head);
-                assert(s.subrange(0, k)[0] == head);
-            } else {
-                lemma_seq_inner_subrange_index_aux(tail@, k - 1, i - 1);
-            }
-        },
-    }
-}
-
-proof fn lemma_seq_inner_subrange_index<A>(s: SeqInner<A>, j: int, k: int, i: int)
-    requires
-        0 <= j <= k <= s.len(),
-        0 <= i < k - j,
-    ensures
-        s.subrange(j, k)[i] == s[i + j],
-    decreases s,
-{
-    lemma_seq_inner_subrange_len(s, j, k);
-    if j == 0 {
-        lemma_seq_inner_subrange_index_aux(s, k, i);
-    } else {
-        match s {
-            SeqInner::Nil => {
-                assert(false);
-            },
-            SeqInner::Cons { head, tail } => {
-                lemma_seq_inner_subrange_index(tail@, j - 1, k - 1, i);
-            },
-        }
-    }
+    seq_inner::lemma_subrange_len(s.inner, j, k)
 }
 
 pub broadcast proof fn axiom_seq_subrange_index<A>(s: Seq<A>, j: int, k: int, i: int)
@@ -926,7 +1481,7 @@ pub broadcast proof fn axiom_seq_subrange_index<A>(s: Seq<A>, j: int, k: int, i:
     ensures
         #[trigger] s.subrange(j, k)[i] == s[i + j],
 {
-    lemma_seq_inner_subrange_index(s.inner, j, k, i);
+    seq_inner::lemma_subrange_index(s.inner, j, k, i);
 }
 
 // Expensive lemma; not in the default broadcast group
@@ -955,54 +1510,11 @@ pub broadcast proof fn lemma_seq_two_subranges_index<A>(s: Seq<A>, j: int, k1: i
 
 }
 
-proof fn lemma_seq_inner_add_len<A>(s1: SeqInner<A>, s2: SeqInner<A>)
-    ensures
-        s1.add(s2).len() == s1.len() + s2.len(),
-    decreases s1.add(s2).len(),
-{
-    let sum = s1.add(s2);
-    match s1 {
-        SeqInner::Nil => {
-            assert(sum == s2);
-        },
-        SeqInner::Cons { head, tail } => {
-            let new_tail = tail@.add(s2);
-            lemma_seq_inner_add_len(tail@, s2);
-            assert(new_tail.len() == (s1.len() - 1) + s2.len());
-            assert(sum.len() == 1 + new_tail.len());
-        },
-    }
-}
-
 pub broadcast proof fn axiom_seq_add_len<A>(s1: Seq<A>, s2: Seq<A>)
     ensures
         #[trigger] s1.add(s2).len() == s1.len() + s2.len(),
 {
-    lemma_seq_inner_add_len(s1.inner, s2.inner);
-}
-
-proof fn lemma_seq_inner_add_index1<A>(s1: SeqInner<A>, s2: SeqInner<A>, i: int)
-    requires
-        i < s1.len(),
-    ensures
-        s1.add(s2)[i] == s1[i],
-    decreases s1,
-{
-    if i < 0 {
-        lemma_seq_inner_index_out_of_bounds(s1, i);
-        lemma_seq_inner_index_out_of_bounds(s1.add(s2), i);
-    } else {
-        match s1 {
-            SeqInner::Nil => {},
-            SeqInner::Cons { head, tail } => {
-                if i == 0 {
-                    assert(s1[i] == s1.add(s2)[i]);
-                } else {
-                    lemma_seq_inner_add_index1(tail@, s2, i - 1);
-                }
-            },
-        }
-    }
+    seq_inner::lemma_add_len(s1.inner, s2.inner);
 }
 
 pub broadcast proof fn axiom_seq_add_index1<A>(s1: Seq<A>, s2: Seq<A>, i: int)
@@ -1011,30 +1523,7 @@ pub broadcast proof fn axiom_seq_add_index1<A>(s1: Seq<A>, s2: Seq<A>, i: int)
     ensures
         #[trigger] s1.add(s2)[i] == s1[i],
 {
-    lemma_seq_inner_add_index1(s1.inner, s2.inner, i)
-}
-
-proof fn lemma_seq_inner_add_index2<A>(s1: SeqInner<A>, s2: SeqInner<A>, i: int)
-    requires
-        s1.len() <= i < s1.len() + s2.len(),
-    ensures
-        s1.add(s2)[i] == s2[i - s1.len()],
-    decreases s1,
-{
-    match s1 {
-        SeqInner::Nil => {
-            assert(s1.add(s2) == s2);
-            assert(s1.add(s2)[i] == s2[i - s1.len()]);
-        },
-        SeqInner::Cons { head, tail } => {
-            if i == 0 {
-                assert(s1.add(s2)[i] == s2[i - s1.len()]);
-            } else {
-                lemma_seq_inner_add_index2(tail@, s2, i - 1);
-                assert(s1.add(s2)[i] == s2[i - s1.len()]);
-            }
-        },
-    }
+    seq_inner::lemma_add_index1(s1.inner, s2.inner, i)
 }
 
 pub broadcast proof fn axiom_seq_add_index2<A>(s1: Seq<A>, s2: Seq<A>, i: int)
@@ -1043,7 +1532,7 @@ pub broadcast proof fn axiom_seq_add_index2<A>(s1: Seq<A>, s2: Seq<A>, i: int)
     ensures
         #[trigger] s1.add(s2)[i] == s2[i - s1.len()],
 {
-    lemma_seq_inner_add_index2(s1.inner, s2.inner, i);
+    seq_inner::lemma_add_index2(s1.inner, s2.inner, i);
 }
 
 // Expensive lemma; not in the default broadcast group
