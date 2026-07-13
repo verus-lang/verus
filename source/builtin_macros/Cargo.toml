@@ -1,6 +1,6 @@
 [package]
 name = "verus_builtin_macros"
-version = "0.0.0-2026-06-14-0213"
+version = "0.0.0-2026-07-12-0122"
 edition = "2018"
 license = "MIT"
 description = "Verus Builtin Macros: Various macros used by Verus"
