@@ -6,8 +6,8 @@ pub struct Config {
     pub proofs_arent_trusted: bool,
 }
 
-pub enum RunMode<'a> {
-    DepsPath(&'a std::path::Path),
-    OneFile(&'a std::path::Path),
-    Dir(&'a std::path::Path),
+pub enum RunMode {
+    DepsPath(std::path::PathBuf),
+    OneFile(std::path::PathBuf),
+    Dir(Vec<std::path::PathBuf>),
 }
