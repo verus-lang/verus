@@ -30,6 +30,7 @@ pub trait Iterator {
     /// Index of the value that will be returned by the next call to `next()`
     spec fn offset(self) -> int;
 
+// TODO: What should this mean in a world where Iterators sometimes return None and then start returning Some again?
     /// Does this iterator eventually complete with a `None`?
     /// (As opposed to hanging indefinitely on a `next()` call)
     #[verifier::prophetic]
@@ -43,18 +44,18 @@ pub trait Iterator {
             final(self).obeys_iter_laws() ==> forall |i| final(self).index(i) == old(self).index(i),
             final(self).obeys_iter_laws() ==> ret == final(self).index(old(self).offset()),
             final(self).obeys_iter_laws() ==> final(self).offset() == old(self).offset() + 1,
-            final(self).obeys_iter_laws() ==> ({
-                match final(self).length() {
-                    None => true,
-                    Some(len) => 
-                        if old(self).offset() < len {
-                            &&& ret is Some
-                        } else {
-                            &&& ret is None 
-                            &&& final(self).completes()
-                        }
-                    }
-            }),
+            // final(self).obeys_iter_laws() ==> ({
+            //     match final(self).length() {
+            //         None => true,
+            //         Some(len) => 
+            //             if old(self).offset() < len {
+            //                 &&& ret is Some
+            //             } else {
+            //                 &&& ret is None 
+            //                 &&& final(self).completes()
+            //             }
+            //         }
+            // }),
             // Note: replaced `old(self).seq().len() > 0` with `ret is Some`
             final(self).obeys_iter_laws() && final(self).decrease() is Some && ret is Some ==> 
                 old(self).decrease()->0 > final(self).decrease()->0,
@@ -75,29 +76,33 @@ pub trait Iterator {
 
 }
 
-/*
 pub trait DoubleEndedIterator : Iterator {
+// TODO: I think we need next() to promise it doesn't change this...
+    /// Index of the value that will be returned by the next call to `next_back()`
+    spec fn offset_back(self) -> int;
 
     fn next_back(&mut self) -> (ret: Option<Self::Item>)
         ensures
-            self.obeys_iter_laws() == old(self).obeys_iter_laws(),
-            self.obeys_iter_laws() ==> self.completes() == old(self).completes(),
-            self.obeys_iter_laws() ==> (old(self).decrease() is Some <==> self.decrease() is Some),
-            self.obeys_iter_laws() ==> 
-            ({
-                if old(self).seq().len() > 0 {
-                    self.seq() == old(self).seq().drop_last()
-                        && ret == Some(old(self).seq().last())
-                } else {
-                    self.seq() === old(self).seq() && ret === None && self.completes()
-                }
-            }),
-            self.obeys_iter_laws() && old(self).seq().len() > 0 && self.decrease() is Some ==> 
-                old(self).decrease()->0 > self.decrease()->0,
+            final(self).obeys_iter_laws() == old(self).obeys_iter_laws(),
+            final(self).obeys_iter_laws() ==> (old(self).length() == final(self).length()),
+            final(self).obeys_iter_laws() ==> final(self).completes() == old(self).completes(),
+            final(self).obeys_iter_laws() ==> forall |i| final(self).index(i) == old(self).index(i),
+            final(self).obeys_iter_laws() ==> final(self).offset() == old(self).offset(),
+            final(self).obeys_iter_laws() ==> ret == final(self).index(old(self).offset_back()),
+            final(self).obeys_iter_laws() ==> final(self).offset_back() == old(self).offset_back() - 1,
+            // final(self).obeys_iter_laws() ==> 
+            //     if old(self).offset_back() > old(self).offset() {
+            //         ret is Some
+            //     } else {
+            //         &&& ret is None 
+            //         &&& final(self).completes()
+            //     }
+            // ,
+            // Note: replaced `old(self).seq().len() > 0` with `ret is Some`
+            final(self).obeys_iter_laws() && final(self).decrease() is Some && ret is Some ==> 
+                old(self).decrease()->0 > final(self).decrease()->0,
     ;
-
 }
-*/
 
 /* vec iterator */
 
@@ -129,11 +134,11 @@ impl <'a, T> VecIterator<'a, T> {
     //#[verifier::type_invariant]
     pub closed spec fn wf(self) -> bool {
         &&& self.i <= self.j <= self.v.len() 
-        &&& self.j == self.v.len()
+        &&& self.j <= self.v.len()
         &&& if self.i < self.j {
-                self.i_g == self.i && self.j_g == self.j
+                self.i_g == self.i && self.j_g == self.j - 1
             } else {
-                self.i_g >= self.i
+                self.i_g >= self.i && self.j_g <= self.j
             }
     }
 }
@@ -157,23 +162,20 @@ pub broadcast proof fn vec_iter_spec_properties<'a, T>(v: &'a Vec<T>)
 {
 }
 
-/* 
 #[verifier::when_used_as_spec(vec_iter_spec)]
 pub fn vec_iter<'a, T>(v: &'a Vec<T>) -> (iter: VecIterator<'a, T>)
     ensures 
-        iter.seq() == v@.map(|i, v| &v),
-        iter.vec_iterator_type_inv(),
+        forall |i| 0 <= i < v.len() ==> #[trigger] iter.index(i) == Some(&v[i]),
+        iter.wf(),
         iter.front() == 0,
         iter.back() == v.len(),
         iter.elts() == v@,
         iter.decrease() is Some,
         iter.initial_value_inv(Some(&vec_iter_spec(v))),
 {
-    let i = VecIterator { v: v, i: 0, j: v.len() };
-    assert(i.elts() == i.seq().map_values(|v: &T| *v));     // OBSERVE
+    let i = VecIterator { v: v, i: 0, j: v.len(), i_g: Ghost(0), j_g: Ghost(v.len() as int - 1) };
     i
 }
-*/
 
 impl<'a, T> Iterator for VecIterator<'a, T> {
     type Item = &'a T;
@@ -187,7 +189,14 @@ impl<'a, T> Iterator for VecIterator<'a, T> {
     }
 
     closed spec fn index(self, i: int) -> Option<Self::Item> {
-        if 0 <= i < self.v@.len() {
+        // If we use `if self.i <= i < self.j`, then when `next` or `next_back`
+        // updates `i`/`j``, then we fail: 
+        //   `forall |i| final(self).index(i) == old(self).index(i)
+        // Same problem with basing this on self.i_g and self.j_g
+        // If we use `if 0 <= i < self.v.len()`, then we fail:
+        //   `ret == final(self).index(old(self).offset())`
+        // since we return None when `i` and `j` meet 
+        if 0 <= i < self.j {
             Some(&self.v@[i])
         } else {
             None
@@ -195,7 +204,7 @@ impl<'a, T> Iterator for VecIterator<'a, T> {
     }
 
     closed spec fn offset(self) -> int {
-        self.i_g as int
+        self.i_g@ 
     }
 
     closed spec fn completes(&self) -> bool {
@@ -228,20 +237,27 @@ impl<'a, T> Iterator for VecIterator<'a, T> {
         Some((self.back() - self.front()) as nat)
     }
 }
-/*
+
 impl<'a, T> DoubleEndedIterator for VecIterator<'a, T> {
+    closed spec fn offset_back(self) -> int {
+        self.j_g@ 
+    }
+
     fn next_back(&mut self) -> (ret: Option<Self::Item>) {
-        assume(self.vec_iterator_type_inv());
         //proof { use_type_invariant(&*self); }
+        assume(self.wf());
+        self.j_g = Ghost(self.j_g@ - 1);
         if self.i < self.j {
             self.j = self.j - 1;
+            assert(self.wf());
+assume(false);
             return Some(&self.v[self.j]);
         } else {
+            assert(self.wf());
             return None;
         }
     }
 }
-    */
 /*
 /* proph util (this should be implementable) */
 
