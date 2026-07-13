@@ -47,7 +47,7 @@ pub trait Iterator {
                 match final(self).length() {
                     None => true,
                     Some(len) => 
-                        if final(self).offset() < len {
+                        if old(self).offset() < len {
                             &&& ret is Some
                         } else {
                             &&& ret is None 
@@ -133,7 +133,7 @@ impl <'a, T> VecIterator<'a, T> {
         &&& if self.i < self.j {
                 self.i_g == self.i && self.j_g == self.j
             } else {
-                self.i_g > self.i
+                self.i_g >= self.i
             }
     }
 }
@@ -216,14 +216,9 @@ impl<'a, T> Iterator for VecIterator<'a, T> {
         if self.i < self.j {
             let i = self.i;
             self.i = self.i + 1;
-assume(false);
             assert(self.wf());
             return Some(&self.v[i]);
         } else {
-            assert(self.v.len() >= self.i >= self.j);
-            assert(self.j == self.v.len());
-            assert(self.front() <= self.length().unwrap());
-//assume(false);
             assert(self.wf());
             return None;
         }
