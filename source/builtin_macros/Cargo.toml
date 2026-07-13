@@ -14,12 +14,12 @@ categories = ["development-tools"]
 proc-macro = true
 
 [dependencies]
-proc-macro2 = "1.0.39"
-quote = "1.0"
-synstructure = "0.13.2"
-syn = { version = "2.0", features = ["full", "visit", "visit-mut", "extra-traits"] }
-verus_syn = { version = "=0.0.0-2026-05-31-0205", path = "../../dependencies/syn", features = ["full", "visit", "visit-mut", "extra-traits"] }
-verus_prettyplease = { version = "=0.0.0-2026-05-31-0205", path = "../../dependencies/prettyplease" }
+proc-macro2 = { workspace = true }
+quote = { workspace = true }
+synstructure = { workspace = true }
+syn = { workspace = true }
+verus_syn = { workspace = true }
+verus_prettyplease = { workspace = true }
 
 [package.metadata.verus]
 is-builtin-macros = true

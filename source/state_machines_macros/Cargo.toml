@@ -14,10 +14,10 @@ categories = ["development-tools"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-verus_syn = { version= "=0.0.0-2026-05-31-0205", path="../../dependencies/syn", features = ["full", "visit", "visit-mut", "extra-traits"] }
-quote = "1.0"
-proc-macro2 = "1.0"
-indexmap = { version = "1" }
+verus_syn = { workspace = true }
+quote = { workspace = true }
+proc-macro2 = { workspace = true }
+indexmap = { workspace = true }
 
 [lib]
 proc-macro = true
