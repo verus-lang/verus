@@ -640,7 +640,7 @@ impl<T> PointsTo<T> {
                 &&& final(self).ptr() == old(self).ptr()
                 &&& final(self).abstract_bytes() == final(raw).abstract_bytes()
                 &&& final(self).is_uninit()
-            })
+            }),
     ;
 
     /// This takes a borrow of the `T` from `MemContents<T>` from `self`.
@@ -1311,7 +1311,7 @@ impl<T> PointsTo<[T]> {
                 &&& final(self).ptr() == old(self).ptr()
                 &&& final(self).abstract_bytes() == final(raw).abstract_bytes()
                 &&& final(self).is_uninit()
-            })
+            }),
     ;
 
     /// This takes a borrow of a subrange of the `MemContents<V>` out from `self`.
@@ -1829,7 +1829,7 @@ impl PointsToUnaligned<[u8]> {
                 &&& ptr@.addr as int >= ptr@.provenance.data().start_addr()
                 &&& ptr@.addr + size_of::<T>() <= ptr@.provenance.data().start_addr()
                     + ptr@.provenance.data().alloc_len()
-            }
+            },
         ensures
             perm.ptr()@.addr == ptr@.addr,
             perm.ptr()@.provenance == ptr@.provenance,
@@ -2221,7 +2221,7 @@ impl<T> SeqPointsTo<T> {
             ptr@.addr as nat % align_of::<T>() == 0,
             ptr@.provenance.is_some() ==> {
                 &&& ptr@.addr as int >= ptr@.provenance.data().start_addr()
-                &&& ptr@.addr + size_of::<T>() <= ptr@.provenance.data().start_addr()
+                &&& ptr@.addr <= ptr@.provenance.data().start_addr()
                     + ptr@.provenance.data().alloc_len()
             },
             layout::size_of::<T>() == 0,
@@ -2242,11 +2242,11 @@ impl<T> SeqPointsTo<T> {
             self.len() + remaining == total,
             forall|i| #![auto] 0 <= i < self.len() ==> self[i].is_uninit(),
             self.wf(),
-
-            self.ptr()@.provenance.is_some() ==>
-                self.ptr()@.addr as int >= self.ptr()@.provenance.data().start_addr(),
-                self.ptr()@.addr + size_of::<T>() <= self.ptr()@.provenance.data().start_addr()
-                    + self.ptr()@.provenance.data().alloc_len(),
+            self.ptr()@.provenance.is_some() ==> {
+                &&& self.ptr()@.addr as int >= self.ptr()@.provenance.data().start_addr()
+                &&& self.ptr()@.addr <= self.ptr()@.provenance.data().start_addr()
+                    + self.ptr()@.provenance.data().alloc_len()
+            },
         ensures
             spt.ptr() == self.ptr(),
             spt.len() == total,
@@ -3458,6 +3458,7 @@ impl<'a, T> SharedReference<'a, [T]> {
             output == self.value()@.len(),
     {
         broadcast use super::slice::group_slice_axioms;
+
         self.as_ref().len()
     }
 
