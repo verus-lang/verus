@@ -1,23 +1,24 @@
-use line_count_lib::{
-    attribution::CodeKind,
-    config::{Config, RunMode},
-    deps::get_dependencies,
-    files::find_rust_files,
-    stats::Summary,
-    *,
-};
+use clap::Parser;
+use line_count_lib::attribution::CodeKind;
+use line_count_lib::config::{Config, RunMode};
+use line_count_lib::deps::get_dependencies;
+use line_count_lib::files::find_rust_files;
+use line_count_lib::stats::Summary;
+use line_count_lib::*;
 
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    path::PathBuf,
-    rc::Rc,
-};
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
+use std::rc::Rc;
 
-use tabled::settings::{
-    Alignment, Modify, Style,
-    object::{Columns, Rows},
-    style::On,
-};
+use tabled::settings::Alignment;
+use tabled::settings::Modify;
+use tabled::settings::Style;
+use tabled::settings::object::{Columns, Rows};
+use tabled::settings::style::On;
+
+use self::cli::LineCountArgs;
+
+mod cli;
 
 fn run(config: Config, run_mode_paths: RunMode) -> Result<(), String> {
     let config = Rc::new(config);
@@ -178,60 +179,15 @@ fn run(config: Config, run_mode_paths: RunMode) -> Result<(), String> {
 }
 
 fn main() {
-    let args: Vec<String> = std::env::args().collect();
-    let program = args[0].clone();
-
-    let mut opts = getopts::Options::new();
-    opts.optflag("h", "help", "print this help menu");
-    opts.optflag("p", "print-all", "print all the annotated files");
-    opts.optflag("", "no-external-by-default", "do not ignore items outside of verus! by default");
-    opts.optflag("", "json", "output as machine-readable json");
-    opts.optflag("", "delimiters-are-layout", "consider delimiter-only lines as layout");
-    opts.optflag("", "proofs-arent-trusted", "do not apply trusted to proofs");
-    opts.optflag("", "one-file", "parse one file, isntead of using the .d file produced by rustc");
-    opts.optflag("", "dir", "parse files in a dir, isntead of using the .d file produced by rustc");
-
-    let matches = match opts.parse(&args[1..]) {
-        Ok(m) => m,
-        Err(f) => {
-            panic!("{}", f.to_string())
-        }
-    };
-
-    fn print_usage(program: &str, opts: getopts::Options) {
-        let brief = format!("Usage: {} DEPS_FILE.d [options]", program);
-        print!("{}", opts.usage(&brief));
-    }
-
-    if matches.opt_present("h") {
-        print_usage(&program, opts);
+    let args = LineCountArgs::parse();
+    if let Err(e) = args.validate() {
+        eprintln!("{e}");
         return;
     }
 
-    let paths: Vec<PathBuf> = if !matches.free.is_empty() {
-        matches.free.iter().map(|p| std::path::Path::new(&p).to_owned()).collect()
-    } else {
-        print_usage(&program, opts);
-        return;
-    };
+    let (config, run_mode) = args.separate_config();
 
-    let config = Config {
-        print_all: matches.opt_present("p"),
-        json: matches.opt_present("json"),
-        no_external_by_default: matches.opt_present("no-external-by-default"),
-        delimiters_are_layout: matches.opt_present("delimiters-are-layout"),
-        proofs_arent_trusted: matches.opt_present("proofs-arent-trusted"),
-    };
-
-    let run_mode_paths = if matches.opt_present("one-file") {
-        RunMode::OneFile(paths.into_iter().next().expect("we know paths is not empty"))
-    } else if matches.opt_present("dir") {
-        RunMode::Dir(paths)
-    } else {
-        RunMode::DepsPath(paths.into_iter().next().expect("we know paths is not empty"))
-    };
-
-    match run(config, run_mode_paths) {
+    match run(config, run_mode) {
         Ok(()) => (),
         Err(err) => {
             eprintln!("error: {}", err);

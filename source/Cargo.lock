@@ -1476,6 +1476,7 @@ dependencies = [
 name = "line_count"
 version = "0.1.0"
 dependencies = [
+ "clap",
  "getopts",
  "insta",
  "proc-macro2",
