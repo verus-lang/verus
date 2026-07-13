@@ -30,7 +30,7 @@ pub(crate) fn import_crates(
     let mut metadatas = Vec::new();
     let mut vir_crates = Vec::new();
     for (_, file_path) in args.import.iter().chain(import_virs_via_cargo.iter()) {
-        let file = std::io::BufReader::new(match std::fs::File::open(file_path) {
+        let mut file = std::io::BufReader::new(match std::fs::File::open(file_path) {
             Ok(file) => file,
             Err(err) => {
                 return Err(io_vir_err(
@@ -39,7 +39,10 @@ pub(crate) fn import_crates(
                 ));
             }
         });
-        let CrateWithMetadata { krate, metadata } = match bincode::deserialize_from(file) {
+        let CrateWithMetadata { krate, metadata } = match bincode_next::serde::decode_from_std_read(
+            &mut file,
+            bincode_next::config::legacy(),
+        ) {
             Ok(crate_with_metadata) => crate_with_metadata,
             Err(_e) => {
                 return Err(crate::util::error(format!(
@@ -78,7 +81,7 @@ pub(crate) fn export_crate(
         }
         let vir_crate = Arc::new(kratex);
 
-        let file = std::io::BufWriter::new(match std::fs::File::create(file_path) {
+        let mut file = std::io::BufWriter::new(match std::fs::File::create(file_path) {
             Ok(file) => file,
             Err(err) => {
                 return Err(io_vir_err(
@@ -88,7 +91,12 @@ pub(crate) fn export_crate(
             }
         });
         let krate_with_metadata = CrateWithMetadata { krate: vir_crate, metadata: vir_metadata };
-        bincode::serialize_into(file, &krate_with_metadata).expect("write crate to file");
+        bincode_next::serde::encode_into_std_write(
+            &krate_with_metadata,
+            &mut file,
+            bincode_next::config::legacy(),
+        )
+        .expect("write crate to file");
         //serde_json::to_writer(file, &vir_crate).expect("write crate to file");
         //serde_json::to_writer_pretty(file, &vir_crate).expect("write crate to file");
     }

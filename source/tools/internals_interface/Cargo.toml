@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 serde = { workspace = true }
-bincode = { workspace = true }
+bincode-next = { workspace = true }
 
 [lints]
 workspace = true
