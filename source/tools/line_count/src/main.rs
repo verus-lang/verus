@@ -9,6 +9,7 @@ use line_count_lib::{
 
 use std::{
     collections::{BTreeMap, BTreeSet},
+    path::PathBuf,
     rc::Rc,
 };
 
@@ -18,10 +19,10 @@ use tabled::settings::{
     style::On,
 };
 
-fn run(config: Config, run_mode_paths: RunMode<'_>) -> Result<(), String> {
+fn run(config: Config, run_mode_paths: RunMode) -> Result<(), String> {
     let config = Rc::new(config);
     let (root_path, files) = match run_mode_paths {
-        RunMode::DepsPath(path) => get_dependencies(path)?,
+        RunMode::DepsPath(path) => get_dependencies(&path)?,
         RunMode::OneFile(path) => {
             let pathd = path.display();
             (
@@ -31,10 +32,9 @@ fn run(config: Config, run_mode_paths: RunMode<'_>) -> Result<(), String> {
                 )],
             )
         }
-        RunMode::Dir(path) => (
-            path.to_owned(),
-            find_rust_files(path).map_err(|e| format!("failed to find rust files: {e:?}"))?,
-        ),
+        RunMode::Dir(paths) => {
+            find_rust_files(&paths).map_err(|e| format!("failed to find rust files: {e:?}"))?
+        }
     };
 
     let file_stats = files
@@ -208,13 +208,12 @@ fn main() {
         return;
     }
 
-    let path = if !matches.free.is_empty() {
-        matches.free[0].clone()
+    let paths: Vec<PathBuf> = if !matches.free.is_empty() {
+        matches.free.iter().map(|p| std::path::Path::new(&p).to_owned()).collect()
     } else {
         print_usage(&program, opts);
         return;
     };
-    let path = std::path::Path::new(&path);
 
     let config = Config {
         print_all: matches.opt_present("p"),
@@ -225,11 +224,11 @@ fn main() {
     };
 
     let run_mode_paths = if matches.opt_present("one-file") {
-        RunMode::OneFile(path)
+        RunMode::OneFile(paths.into_iter().next().expect("we know paths is not empty"))
     } else if matches.opt_present("dir") {
-        RunMode::Dir(path)
+        RunMode::Dir(paths)
     } else {
-        RunMode::DepsPath(path)
+        RunMode::DepsPath(paths.into_iter().next().expect("we know paths is not empty"))
     };
 
     match run(config, run_mode_paths) {
