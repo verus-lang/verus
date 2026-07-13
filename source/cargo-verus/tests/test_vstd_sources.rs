@@ -16,7 +16,7 @@ const VSTD_VERSION: &str = "0.0.0-2026-06-14-0213";
 fn package_depends_on_vstd_directly_via_registry() {
     let package = MockPackage::new("vstd_consumer")
         .lib()
-        .deps([MockDep::registry("vstd", VSTD_VERSION).alias("vstd_via_registry")])
+        .deps([MockDep::registry("vstd", &format!("={VSTD_VERSION}")).alias("vstd_via_registry")])
         .verify(true)
         .materialize();
 
