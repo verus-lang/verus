@@ -171,7 +171,7 @@ macro_rules! atomic_common_methods {
             opens_invariants none
             no_unwind
         {
-            return self.ato.load(Ordering::SeqCst);
+            self.ato.load(Ordering::SeqCst)
         }
 
         #[inline(always)]
@@ -184,7 +184,7 @@ macro_rules! atomic_common_methods {
             opens_invariants none
             no_unwind
         {
-            self.ato.store(v, Ordering::SeqCst);
+            self.ato.store(v, Ordering::SeqCst)
         }
 
         #[inline(always)]
@@ -208,10 +208,7 @@ macro_rules! atomic_common_methods {
             opens_invariants none
             no_unwind
         {
-            match self.ato.compare_exchange(current, new, Ordering::SeqCst, Ordering::SeqCst) {
-                Ok(x) => Result::Ok(x),
-                Err(x) => Result::Err(x),
-            }
+            self.ato.compare_exchange(current, new, Ordering::SeqCst, Ordering::SeqCst)
         }
 
         #[inline(always)]
@@ -234,10 +231,7 @@ macro_rules! atomic_common_methods {
             opens_invariants none
             no_unwind
         {
-            match self.ato.compare_exchange_weak(current, new, Ordering::SeqCst, Ordering::SeqCst) {
-                Ok(x) => Result::Ok(x),
-                Err(x) => Result::Err(x),
-            }
+            self.ato.compare_exchange_weak(current, new, Ordering::SeqCst, Ordering::SeqCst)
         }
 
         #[inline(always)]
@@ -253,7 +247,7 @@ macro_rules! atomic_common_methods {
             opens_invariants none
             no_unwind
         {
-            return self.ato.swap(v, Ordering::SeqCst);
+            self.ato.swap(v, Ordering::SeqCst)
         }
 
         #[inline(always)]
@@ -265,7 +259,7 @@ macro_rules! atomic_common_methods {
             opens_invariants none
             no_unwind
         {
-            return self.ato.into_inner();
+            self.ato.into_inner()
         }
 
         }
@@ -291,7 +285,7 @@ macro_rules! atomic_integer_methods {
             opens_invariants none
             no_unwind
         {
-            return self.ato.fetch_add(n, Ordering::SeqCst);
+            self.ato.fetch_add(n, Ordering::SeqCst)
         }
 
         #[inline(always)]
@@ -306,7 +300,7 @@ macro_rules! atomic_integer_methods {
             opens_invariants none
             no_unwind
         {
-            return self.ato.fetch_sub(n, Ordering::SeqCst);
+            self.ato.fetch_sub(n, Ordering::SeqCst)
         }
 
         // fetch_add and fetch_sub are more natural in the common case that you
@@ -358,7 +352,7 @@ macro_rules! atomic_integer_methods {
             opens_invariants none
             no_unwind
         {
-            return self.ato.fetch_and(n, Ordering::SeqCst);
+            self.ato.fetch_and(n, Ordering::SeqCst)
         }
 
         #[inline(always)]
@@ -373,7 +367,7 @@ macro_rules! atomic_integer_methods {
             opens_invariants none
             no_unwind
         {
-            return self.ato.fetch_or(n, Ordering::SeqCst);
+            self.ato.fetch_or(n, Ordering::SeqCst)
         }
 
         #[inline(always)]
@@ -388,7 +382,7 @@ macro_rules! atomic_integer_methods {
             opens_invariants none
             no_unwind
         {
-            return self.ato.fetch_xor(n, Ordering::SeqCst);
+            self.ato.fetch_xor(n, Ordering::SeqCst)
         }
 
         #[inline(always)]
@@ -403,7 +397,7 @@ macro_rules! atomic_integer_methods {
             opens_invariants none
             no_unwind
         {
-            return self.ato.fetch_nand(n, Ordering::SeqCst);
+            self.ato.fetch_nand(n, Ordering::SeqCst)
         }
 
         #[inline(always)]
@@ -418,7 +412,7 @@ macro_rules! atomic_integer_methods {
             opens_invariants none
             no_unwind
         {
-            return self.ato.fetch_max(n, Ordering::SeqCst);
+            self.ato.fetch_max(n, Ordering::SeqCst)
         }
 
         #[inline(always)]
@@ -433,7 +427,7 @@ macro_rules! atomic_integer_methods {
             opens_invariants none
             no_unwind
         {
-            return self.ato.fetch_min(n, Ordering::SeqCst);
+            self.ato.fetch_min(n, Ordering::SeqCst)
         }
 
         }
@@ -457,7 +451,7 @@ macro_rules! atomic_bool_methods {
             opens_invariants none
             no_unwind
         {
-            return self.ato.fetch_and(n, Ordering::SeqCst);
+            self.ato.fetch_and(n, Ordering::SeqCst)
         }
 
         #[inline(always)]
@@ -473,7 +467,7 @@ macro_rules! atomic_bool_methods {
             opens_invariants none
             no_unwind
         {
-            return self.ato.fetch_or(n, Ordering::SeqCst);
+            self.ato.fetch_or(n, Ordering::SeqCst)
         }
 
         #[inline(always)]
@@ -489,7 +483,7 @@ macro_rules! atomic_bool_methods {
             opens_invariants none
             no_unwind
         {
-            return self.ato.fetch_xor(n, Ordering::SeqCst);
+            self.ato.fetch_xor(n, Ordering::SeqCst)
         }
 
         #[inline(always)]
@@ -505,7 +499,7 @@ macro_rules! atomic_bool_methods {
             opens_invariants none
             no_unwind
         {
-            return self.ato.fetch_nand(n, Ordering::SeqCst);
+            self.ato.fetch_nand(n, Ordering::SeqCst)
         }
 
         }
@@ -620,7 +614,7 @@ impl<T> PAtomicPtr<T> {
         opens_invariants none
         no_unwind
     {
-        return self.ato.fetch_and(n, Ordering::SeqCst);
+        self.ato.fetch_and(n, Ordering::SeqCst)
     }
 
     #[inline(always)]
@@ -640,7 +634,7 @@ impl<T> PAtomicPtr<T> {
         opens_invariants none
         no_unwind
     {
-        return self.ato.fetch_xor(n, Ordering::SeqCst);
+        self.ato.fetch_xor(n, Ordering::SeqCst)
     }
 
     #[inline(always)]
@@ -659,7 +653,7 @@ impl<T> PAtomicPtr<T> {
         opens_invariants none
         no_unwind
     {
-        return self.ato.fetch_or(n, Ordering::SeqCst);
+        self.ato.fetch_or(n, Ordering::SeqCst)
     }
 }
 

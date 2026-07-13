@@ -11,7 +11,7 @@ use colored::Colorize;
 
 use crate::cli::{CargoOptions, VerifyCommand, VerusArgFwdSelector};
 use crate::metadata::{MetadataIndex, fetch_metadata, make_package_id};
-use crate::toolchains::TOOLCHAINS;
+use crate::toolchains::{self, TOOLCHAINS, is_matching_known_and_used};
 
 pub const CARGO_DEFAULT_LIB_METADATA: &str = "__CARGO_DEFAULT_LIB_METADATA";
 
@@ -75,7 +75,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-vstd = "=0.0.0-2026-06-14-0213"
+vstd = "=0.0.0-2026-07-12-0122"
 
 [package.metadata.verus]
 verify = true
@@ -169,6 +169,39 @@ pub fn plan_cargo_run(cfg: VerusConfig) -> Result<CargoRunPlan> {
         VerusArgFwdSelector::Roots => &root_packages,
         VerusArgFwdSelector::Deps => &dep_packages,
     };
+
+    if cfg.options.check_toolchain {
+        if cfg.options.verbosity > 0 {
+            println!("Checking toolchain components...");
+        }
+
+        let vstd_metadata = metadata_index.collect_vstd_metadata(packages_to_verify);
+        let verus_version = get_verus_driver_version()?;
+
+        if cfg.options.verbosity > 0 {
+            println!("verus version: {verus_version:?}");
+            println!("`vstd` instances:");
+            for vstd in &vstd_metadata {
+                println!("version = {:?}", vstd.version.to_string());
+                println!("source = {:?}", vstd.source);
+                println!();
+            }
+        }
+
+        for used_vstd in &vstd_metadata {
+            let is_compatible = toolchains::TOOLCHAINS.iter().any(|toolchain| {
+                toolchain.verus == verus_version
+                    && is_matching_known_and_used(&toolchain.vstd, used_vstd)
+            });
+            if !is_compatible {
+                bail!(
+                    "Components are incompatible:\n\
+                    * verus = {verus_version}\n\
+                    * vstd = {used_vstd:?}\n"
+                );
+            }
+        }
+    }
 
     /////////////////////////////////////////////////////////
     // Phase 2: plan to run Verus via `cargo {subcommand}` //
@@ -375,12 +408,12 @@ fn make_cargo_plan(
         let receives_fwd_verus_args = fwd_verus_args_packages.contains(&pkg_id);
 
         let entry = metadata_index.get(pkg_id);
-        let package = entry.package();
+        let package = entry.package;
 
         let package_id =
             make_package_id(&package.name, package.version.to_string(), &package.manifest_path);
 
-        let verus_metadata = entry.verus_metadata();
+        let verus_metadata = &entry.verus_metadata;
 
         // The is_builtin, is_builtin_macro, and verify fields are passed as env vars as they
         // are relevant for crates which are skipped by Verus. In such cases, the driver avoids
@@ -490,4 +523,32 @@ fn get_verus_driver_path() -> PathBuf {
     }
 
     path
+}
+
+/// Run `verus --version` and capture its output.
+fn get_verus_driver_version() -> Result<String> {
+    let command = get_verus_driver_path();
+    let output = Command::new(&command)
+        .arg("--version")
+        .output()
+        .context(format!("running `{} --version`", command.display()))?;
+
+    if !output.status.success() {
+        bail!(
+            "`{} --version` failed with status {}.\n\
+            stdout:\n{}\n\
+            stderr:\n{}",
+            command.display(),
+            output.status,
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr),
+        );
+    }
+
+    let stdout = String::from_utf8(output.stdout)
+        .context(format!("`{} --version` produced non-UTF-8 stdout", command.display()))?;
+
+    stdout.lines().find_map(|line| line.strip_prefix("  Version: ").map(ToOwned::to_owned)).context(
+        format!("Failed to parse version from `{}` output:\n{}", command.display(), stdout),
+    )
 }

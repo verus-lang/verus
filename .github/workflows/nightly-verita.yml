@@ -13,7 +13,7 @@ permissions:
 jobs:
   verita:
     if: github.repository == 'verus-lang/verus'
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
 
     steps:

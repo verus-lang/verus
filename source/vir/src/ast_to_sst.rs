@@ -11,7 +11,7 @@ use crate::ast_util::{QUANT_FORALL, bool_typ, types_equal, undecorate_typ, unit_
 use crate::context::Ctx;
 use crate::def::{Spanned, unique_local};
 use crate::fun;
-use crate::inv_masks::MaskSet;
+use crate::inv_masks::{MaskQueryKind, MaskSet};
 use crate::messages::{
     Span, ToAny, WarningAllow, error, error_with_label, error_with_secondary_label, internal_error,
 };
@@ -825,6 +825,7 @@ struct ReturnedCall {
     args: Exps,
     obligations: Vec<Obligation>,
     may_unwind: bool,
+    body: Option<Stm>,
 }
 
 fn get_call_args(
@@ -832,9 +833,10 @@ fn get_call_args(
     state: &mut State,
     args: &Exprs,
     post_args: &Option<Expr>,
+    body: &Option<Expr>,
     function_kind: &crate::ast::FunctionKind,
     function_mode: Mode,
-) -> Result<(Vec<Stm>, Vec<Obligation>, Option<Vec<Exp>>), VirErr> {
+) -> Result<(Vec<Stm>, Vec<Obligation>, Option<Vec<Exp>>, Option<Stm>), VirErr> {
     let mut sequr = Sequencer::new();
 
     // Suppose have as arguments:
@@ -869,7 +871,7 @@ fn get_call_args(
 
                 let early_return = sequr.push_2phase(phase1_stms, &bor_sst, kind);
                 if let Some(stms) = early_return {
-                    return Ok((stms, all_obligations, None));
+                    return Ok((stms, all_obligations, None, None));
                 }
 
                 let Maybe::Some((bor_sst, obligations)) = bor_sst else { unreachable!() };
@@ -886,7 +888,7 @@ fn get_call_args(
 
                 let early_return = sequr.push(stms0, exp0, kind);
                 if let Some(stms) = early_return {
-                    return Ok((stms, all_obligations, None));
+                    return Ok((stms, all_obligations, None, None));
                 }
 
                 let Maybe::Some((_exp0, obligations)) = e0 else { unreachable!() };
@@ -902,7 +904,15 @@ fn get_call_args(
     }
 
     let (stms, exps) = sequr.into_stms_exps_with_extra(state, second_phase)?;
-    Ok((stms, all_obligations, Some(exps)))
+    let body = match body {
+        Some(expr) => {
+            let (stms, _) = expr_to_stm_opt(ctx, state, expr)?;
+            stms_to_one_stm_opt(&expr.span, stms)
+        }
+        None => None,
+    };
+
+    Ok((stms, all_obligations, Some(exps), body))
 }
 
 fn expr_get_call(
@@ -912,7 +922,7 @@ fn expr_get_call(
     expr: &Expr,
 ) -> Result<Option<(Vec<Stm>, Maybe<ReturnedCall>)>, VirErr> {
     match &expr.x {
-        ExprX::Call(target, args, post_args) => match target {
+        ExprX::Call { target, args, post_args, body } => match target {
             CallTarget::FnSpec(..) => {
                 panic!("internal error: CallTarget::FnSpec");
             }
@@ -939,8 +949,15 @@ fn expr_get_call(
                     return Ok(None);
                 }
 
-                let (stms, all_obligations, exps) =
-                    get_call_args(ctx, state, args, post_args, &function.x.kind, function.x.mode)?;
+                let (stms, all_obligations, exps, body) = get_call_args(
+                    ctx,
+                    state,
+                    args,
+                    post_args,
+                    body,
+                    &function.x.kind,
+                    function.x.mode,
+                )?;
                 let Some(exps) = exps else {
                     return Ok(Some((stms, Maybe::Never)));
                 };
@@ -976,6 +993,7 @@ fn expr_get_call(
                             function.x.unwind_spec_or_default(),
                             UnwindSpec::NoUnwind
                         ),
+                        body,
                     }),
                 )))
             }
@@ -998,9 +1016,12 @@ fn expr_must_be_call_stm(
     expr: &Expr,
 ) -> Result<Option<(Vec<Stm>, Maybe<ReturnedCall>)>, VirErr> {
     match &expr.x {
-        ExprX::Call(CallTarget::Fun(kind, x, _, _, _), _, _)
-            if !function_can_be_exp(ctx, state, expr, x, &kind.resolved())? =>
-        {
+        ExprX::Call {
+            target: CallTarget::Fun(kind, x, _, _, _),
+            args: _,
+            post_args: _,
+            body: _,
+        } if !function_can_be_exp(ctx, state, expr, x, &kind.resolved())? => {
             expr_get_call(ctx, state, disallow_poly_ret, expr)
         }
         _ => Ok(None),
@@ -1317,6 +1338,7 @@ fn stm_call(
     typs: Typs,
     args: Exps,
     dest: Option<Dest>,
+    body: Option<Stm>,
 ) -> Result<Stm, VirErr> {
     let fun = get_function(ctx, span, &name)?;
     let mut stms: Vec<Stm> = Vec::new();
@@ -1342,7 +1364,9 @@ fn stm_call(
         match &state.mask {
             Some(caller_mask) => {
                 let callee_mask = mask_set_for_call(&fun, &typs, small_args.clone());
-                for assertion in callee_mask.subset_of(ctx, caller_mask, span) {
+                for assertion in
+                    callee_mask.subset_of(ctx, caller_mask, span, MaskQueryKind::FunctionCall)
+                {
                     stms.push(Spanned::new(
                         span.clone(),
                         StmX::Assert(state.next_assert_id(), Some(assertion.err), assertion.cond),
@@ -1363,6 +1387,7 @@ fn stm_call(
         split: None,
         dest,
         assert_id: state.next_assert_id(),
+        body,
     };
 
     stms.push(Spanned::new(span.clone(), call));
@@ -1557,8 +1582,9 @@ pub(crate) fn expr_to_stm_opt(
 
             Ok((stms, Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
         }
-        ExprX::Call(CallTarget::FnSpec(e0), args, post_args) => {
+        ExprX::Call { target: CallTarget::FnSpec(e0), args, post_args, body } => {
             assert!(post_args.is_none());
+            assert!(body.is_none());
             let (mut check_stms, e0) = expr_to_pure_exp_check(ctx, state, e0)?;
             let mut arg_exps: Vec<Exp> = Vec::new();
             for arg in args.iter() {
@@ -1569,8 +1595,14 @@ pub(crate) fn expr_to_stm_opt(
             let call = ExpX::CallLambda(e0, Arc::new(arg_exps));
             Ok((check_stms, Maybe::Some(Value::Exp(mk_exp(call)))))
         }
-        ExprX::Call(CallTarget::BuiltinSpecFun(bsf, ts, _impl_paths), args, post_args) => {
+        ExprX::Call {
+            target: CallTarget::BuiltinSpecFun(bsf, ts, _impl_paths),
+            args,
+            post_args,
+            body,
+        } => {
             assert!(post_args.is_none());
+            assert!(body.is_none());
             let mut check_stms: Vec<Stm> = Vec::new();
             let mut arg_exps: Vec<Exp> = Vec::new();
             for arg in args.iter() {
@@ -1592,7 +1624,7 @@ pub(crate) fn expr_to_stm_opt(
                 )))),
             ))
         }
-        ExprX::Call(CallTarget::Fun(..), _, _) => {
+        ExprX::Call { target: CallTarget::Fun(..), args: _, post_args: _, body: _ } => {
             match expr_get_call(ctx, state, None, expr)?.expect("Call") {
                 (stms, Maybe::Never) => Ok((stms, Maybe::Never)),
                 (
@@ -1606,6 +1638,7 @@ pub(crate) fn expr_to_stm_opt(
                         args,
                         obligations,
                         may_unwind,
+                        body,
                     }),
                 ) => {
                     if function_can_be_exp(ctx, state, expr, &x, &resolved_method)? {
@@ -1634,6 +1667,7 @@ pub(crate) fn expr_to_stm_opt(
                             typs.clone(),
                             args.clone(),
                             Some(dest),
+                            body,
                         )?);
                         // REVIEW: this emits a StmX::Assign to set the value of the destination when,
                         // in recommends checking, the StmX::Call is used to check its recommends, however
@@ -1673,6 +1707,7 @@ pub(crate) fn expr_to_stm_opt(
                             typs.clone(),
                             args,
                             None,
+                            body,
                         )?);
                         let ti = if may_unwind { TypInv::UnwindError } else { TypInv::Call(x) };
                         typ_inv_obligations(ctx, state, &mut stms, obligations, ti)?;
@@ -1681,12 +1716,13 @@ pub(crate) fn expr_to_stm_opt(
                 }
             }
         }
-        ExprX::Call(CallTarget::AssumeExternal, args, post_args) => {
-            let (mut stms, all_obligations, exps) = get_call_args(
+        ExprX::Call { target: CallTarget::AssumeExternal, args, post_args, body } => {
+            let (mut stms, all_obligations, exps, body) = get_call_args(
                 ctx,
                 state,
                 args,
                 post_args,
+                body,
                 &crate::ast::FunctionKind::Static,
                 Mode::Exec,
             )?;
@@ -1709,6 +1745,7 @@ pub(crate) fn expr_to_stm_opt(
                 split: None,
                 dest: Some(dest),
                 assert_id: None,
+                body,
             };
             stms.push(Spanned::new(expr.span.clone(), call));
             let ti = TypInv::UnwindError; // exec functions are may_unwind = true by default
@@ -2435,15 +2472,17 @@ pub(crate) fn expr_to_stm_opt(
             let invs = if is_for_loop && !loop_isolation {
                 // The syntax macro doesn't have enough context to know whether ensures is needed,
                 // so we have to fix up the invariants here.
-                Arc::new(
-                    invs.iter()
-                        .filter_map(|inv| match inv.kind {
-                            LoopInvariantKind::InvariantExceptBreak => Some(inv.clone()),
-                            LoopInvariantKind::InvariantAndEnsures => Some(inv.clone()),
-                            LoopInvariantKind::Ensures => None,
-                        })
-                        .collect(),
-                )
+                let invs = invs
+                    .iter()
+                    .filter(|inv| match inv.kind {
+                        LoopInvariantKind::InvariantExceptBreak => true,
+                        LoopInvariantKind::InvariantAndEnsures => true,
+                        LoopInvariantKind::Ensures => false,
+                    })
+                    .cloned()
+                    .collect();
+
+                Arc::new(invs)
             } else {
                 invs.clone()
             };
@@ -2658,7 +2697,12 @@ pub(crate) fn expr_to_stm_opt(
             let ns_exp = call_namespace(ctx, &inv_tmp_var, &typ_args, *atomicity);
 
             if !state.checking_recommends(ctx) {
-                for assertion in state.mask.as_ref().unwrap().contains(ctx, &ns_exp) {
+                for assertion in state.mask.as_ref().unwrap().contains(
+                    ctx,
+                    &ns_exp,
+                    &expr.span,
+                    MaskQueryKind::OpenInvariant,
+                ) {
                     stms1.push(Spanned::new(
                         expr.span.clone(),
                         StmX::Assert(state.next_assert_id(), Some(assertion.err), assertion.cond),
@@ -2706,6 +2750,32 @@ pub(crate) fn expr_to_stm_opt(
             let block_stm = stms_to_one_stm(&expr.span, stms1);
             stms0.push(Spanned::new(expr.span.clone(), StmX::OpenInvariant(block_stm)));
             return Ok((stms0, Maybe::Some(Value::ImplicitUnit(expr.span.clone()))));
+        }
+        ExprX::InvMask(mask_spec) => {
+            let (span, exprs, compl) = match mask_spec {
+                MaskSpec::InvariantOpens(span, exprs) => (span, exprs, false),
+                MaskSpec::InvariantOpensExcept(span, exprs) => (span, exprs, true),
+                MaskSpec::InvariantOpensSet(expr) => return expr_to_stm_opt(ctx, state, expr),
+            };
+
+            let mut sequr = Sequencer::new();
+            for expr in exprs.as_ref() {
+                let (exp_stms, ret_val) = expr_to_stm_opt(ctx, state, expr)?;
+                push_or_return_never!(sequr.push(
+                    exp_stms,
+                    ret_val,
+                    Immutable(LocalDeclKind::TempViaAssign)
+                ));
+            }
+
+            let (stms, exps) = sequr.into_stms_exps(state)?;
+            let mask = match compl {
+                false => MaskSet::from_list(&exps, span),
+                true => MaskSet::from_list_complement(&exps, span),
+            };
+
+            let exp = mask.to_exp(ctx);
+            Ok((stms, Maybe::Some(Value::Exp(exp))))
         }
         ExprX::Return(e1) => {
             let (mut stms, ret_exp) = match e1 {
@@ -2867,17 +2937,18 @@ pub(crate) fn expr_to_stm_opt(
             let call_expr = SpannedTyped::new(
                 &expr.span,
                 &expr.typ,
-                ExprX::Call(
-                    CallTarget::Fun(
+                ExprX::Call {
+                    target: CallTarget::Fun(
                         crate::ast::CallTargetKind::Static,
                         fun!(CrateId::Vstd => "future", "exec_await"),
                         Arc::new(vec![e.typ.clone()]),
                         Arc::new(vec![]),
                         attrs,
                     ),
-                    Arc::new(vec![e.clone()]),
-                    None,
-                ),
+                    args: Arc::new(vec![e.clone()]),
+                    post_args: None,
+                    body: None,
+                },
             );
             let rewritten = expr_to_stm_opt(ctx, state, &call_expr)?;
             Ok(rewritten)
@@ -3042,7 +3113,7 @@ fn binary_op_exp(
         },
         BinaryOp::Bitwise(bitwise, mode) => {
             match (mode, bitwise) {
-                (BitshiftBehavior::Error, BitwiseOp::Shr(w) | BitwiseOp::Shl(w, _)) => {
+                (BitshiftBehavior::Error(w), BitwiseOp::Shr | BitwiseOp::Shl(_, _)) => {
                     // Add overflow checks for bit shifts
                     // For a shift `a << b` or `a >> b`, Rust requires that
                     //    0 <= b < (bitsize of a)
@@ -3061,7 +3132,7 @@ fn binary_op_exp(
                     let msg = "possible bit shift underflow/overflow";
                     Some((assert_exp, error(span, msg)))
                 }
-                (BitshiftBehavior::Allow, BitwiseOp::Shr(..) | BitwiseOp::Shl(..)) => None,
+                (BitshiftBehavior::Allow, BitwiseOp::Shr | BitwiseOp::Shl(..)) => None,
                 (_, BitwiseOp::BitXor | BitwiseOp::BitAnd | BitwiseOp::BitOr) => {
                     // no overflow check needed
                     None
@@ -3521,6 +3592,7 @@ fn stmt_to_stm(
                             args,
                             obligations,
                             may_unwind,
+                            body,
                         }),
                     )) => {
                         // Special case: convert to a Call
@@ -3539,6 +3611,7 @@ fn stmt_to_stm(
                             typs,
                             args,
                             Some(dest),
+                            body,
                         )?);
                         // REVIEW: for a similar case in `ExprX::Call` we emit a StmX::Assign to set the
                         // value of the destination when, in recommends checking, the StmX::Call is used

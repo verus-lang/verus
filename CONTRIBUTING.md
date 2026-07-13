@@ -143,6 +143,8 @@ this for VS Code.
 
 ### Measuring test coverage
 
+See: **[Nightly Coverage Report](https://verus-lang.github.io/verus/dev/coverage/)**
+
 `tools/coverage.sh` reports how much of the verifier the `rust_verify_test`
 suite exercises. Run it from `source/`:
 
