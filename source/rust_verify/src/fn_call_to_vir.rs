@@ -1667,7 +1667,8 @@ fn verus_item_to_vir<'tcx, 'a>(
             let vir_args = mk_vir_args(bctx, &args)?;
             assert!(vir_args.len() == 1);
             let op = UnaryOp::CoerceMode {
-                op_mode: Mode::Proof,
+                // Allow the constructor to be weakened to spec when its result is spec-only.
+                op_mode: Mode::Spec,
                 from_mode: Mode::Proof,
                 to_mode: Mode::Proof,
                 kind: ModeCoercion::Constructor,
