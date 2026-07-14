@@ -225,7 +225,7 @@ pub fn demote_external_traits(
             let our_trait = traits.contains(trait_path);
             if !our_trait {
                 let Some(warn_config) = warning_ctx.fun_warn_configs.get(&function.x.name) else {
-                    panic!("missing warn_config for function {:?}", &function.x.name);
+                    panic!("missing warn_config for function {:?}", function.x.name);
                 };
                 crate::messages::warning_maybe_if_in_local_crate(
                     warn_config,

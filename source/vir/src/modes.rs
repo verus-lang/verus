@@ -2096,7 +2096,7 @@ fn check_expr(
                         &expr.span,
                         format!(
                             "cannot perform operation with mode {}, {:?},\n{:?}",
-                            op_mode, &expr.x, &e1
+                            op_mode, expr.x, e1
                         ),
                     ));
                 }
@@ -2104,7 +2104,7 @@ fn check_expr(
             if !mode_le(outer_mode, *op_mode) {
                 return Err(error(
                     &expr.span,
-                    format!("cannot perform operation with mode {}, {:?}", op_mode, &expr.x),
+                    format!("cannot perform operation with mode {}, {:?}", op_mode, expr.x),
                 ));
             }
             let param_mode = mode_join(outer_mode, *from_mode);

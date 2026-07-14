@@ -347,7 +347,7 @@ fn datatype_or_fun_to_air_commands(
                 }
                 let name = format!(
                     "{}_{}",
-                    &ctx.name_ctxt.variant_ident(&dt, &variant.name),
+                    ctx.name_ctxt.variant_ident(&dt, &variant.name),
                     QID_CONSTRUCTOR,
                 );
                 let bind = func_bind(ctx, name, tparams, &params, &has_ctor, None);
@@ -559,7 +559,7 @@ fn datatype_or_fun_to_air_commands(
         let has_y = expr_has_type(&y_var, &id);
         let eq_command = |s_name: &str, pre: &Vec<Expr>| {
             let params = Arc::new(vec![deep_param.clone(), x_param(&vpolytyp), y_param(&vpolytyp)]);
-            let name = format!("{}_{}", &s_name, QID_EXT_EQUAL);
+            let name = format!("{}_{}", s_name, QID_EXT_EQUAL);
             let mut args = vec![deep_var.clone()];
             args.push(id.clone());
             args.push(x_var.clone());

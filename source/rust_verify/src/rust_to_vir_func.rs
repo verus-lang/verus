@@ -1839,7 +1839,7 @@ pub(crate) fn check_item_fn<'tcx>(
                         sig.span,
                         format!(
                             "return type is {:?}, but ensures expects type {:?}",
-                            &ret_typ, &typ
+                            ret_typ, typ
                         ),
                     );
                 }
@@ -1850,7 +1850,7 @@ pub(crate) fn check_item_fn<'tcx>(
                         sig.span,
                         format!(
                             "async function must return opaque type (impl Future) {:?}",
-                            &ret_typ,
+                            ret_typ,
                         ),
                     );
                 }

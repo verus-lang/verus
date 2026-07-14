@@ -1446,7 +1446,7 @@ fn get_dependencies(
         let common = path_iters
             .iter_mut()
             .map(|x| x.next())
-            .reduce(|acc, x| acc.and_then(|a| if Some(a) == x { Some(a) } else { None }))
+            .reduce(|acc, x| acc.filter(|&a| Some(a) == x))
             .flatten();
         if common.is_some() {
             chomp_components += 1;

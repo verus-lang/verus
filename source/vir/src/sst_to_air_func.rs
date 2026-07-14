@@ -376,8 +376,8 @@ fn func_body_to_air(
         let rec_f_def = ident_apply(&rec_f, &args_def);
         let eq_zero = mk_eq(&rec_f_fuel, &rec_f_zero);
         let eq_body = mk_eq(&rec_f_succ, &body_expr);
-        let name_zero = format!("{}_fuel_to_zero", &fun_to_air_ident(&ctx.name_ctxt, &name));
-        let name_body = format!("{}_fuel_to_body", &fun_to_air_ident(&ctx.name_ctxt, &name));
+        let name_zero = format!("{}_fuel_to_zero", fun_to_air_ident(&ctx.name_ctxt, &name));
+        let name_body = format!("{}_fuel_to_body", fun_to_air_ident(&ctx.name_ctxt, &name));
         let opts = Some(FuncBindOpts { add_fuel: true, add_default_ensures: false });
         let bind_zero = func_bind(ctx, name_zero, &typ_params, pars, &rec_f_fuel, opts);
         let bind_body = func_bind(ctx, name_body, &typ_params, pars, &rec_f_succ, opts);

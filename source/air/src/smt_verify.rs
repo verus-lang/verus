@@ -472,7 +472,7 @@ fn smt_get_model(
     }
 
     if context.debug {
-        println!("Z3 model: {:?}", &model);
+        println!("Z3 model: {:?}", model);
     }
 
     // Attach the additional info to the error
