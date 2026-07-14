@@ -204,7 +204,8 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
         Ok(typ_inv_vars2)
     }
 
-    fn visit_havoc_set(&mut self, hset: &Arc<HavocSet>) -> Result<R::Ret<Arc<HavocSet>>, Err> {
+    fn visit_havoc_set(&mut self, _hset: &Arc<HavocSet>) -> Result<R::Ret<Arc<HavocSet>>, Err> {
+        /*
         let mut typ_inv_vars2 = R::vec();
         for (uid, (typ, hvar)) in hset.vars.iter() {
             let typ = self.visit_typ(typ)?;
@@ -212,6 +213,8 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
             R::push(&mut typ_inv_vars2, R::ret(|| (uid.clone(), (R::get(typ), hvar)))?);
         }
         R::ret(|| Arc::new(HavocSet { vars: R::get_vec(typ_inv_vars2).into_iter().collect() }))
+        */
+        unimplemented!()
     }
 
     fn visit_havoc_set_opt(

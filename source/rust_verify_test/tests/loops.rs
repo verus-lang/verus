@@ -1879,3 +1879,32 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_field_havocing1 verus_code! {
+        fn cond() -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        pub fn bar(x: (u64, u64))
+            requires x.0 == 0, x.1 == 1,
+        {
+            let mut x = x;
+            while cond() {
+                x.1 = 5;
+            }
+            assert(x.0 == 0);
+        }
+
+
+        #[verifier::exec_allows_no_decreases_clause]
+        pub fn bar(x: (u64, u64))
+            requires x.0 == 0, x.1 == 1,
+        {
+            let mut x = x;
+            while cond() {
+                x.1 = 5;
+            }
+            assert(x.1 == 1); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
