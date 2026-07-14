@@ -1,0 +1,26 @@
+name: test-shim
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
+    with:
+      checkout_ref: ${{ github.sha }}
+
+  report:
+    needs: [build]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: report version
+        run: |
+          echo "Reusable build version: ${{ needs.build.outputs.version }}"
+          {
+            echo "## Reusable Build"
+            echo ""
+            echo "Version: \`${{ needs.build.outputs.version }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
