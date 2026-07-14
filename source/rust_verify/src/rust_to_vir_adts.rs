@@ -39,10 +39,7 @@ fn check_variant_data<'tcx, 'fd>(
 where
     'tcx: 'fd,
 {
-    let typing_env = TypingEnv::post_analysis(
-        ctxt.tcx,
-        item_id.owner_id.to_def_id(),
-    );
+    let typing_env = TypingEnv::post_analysis(ctxt.tcx, item_id.owner_id.to_def_id());
     let empty = [];
     let hir_fields_opt = match variant_data_opt {
         Some(VariantData::Struct { fields, recovered }) => {
@@ -75,10 +72,7 @@ where
             Some(substs) => {
                 // For external types, we need to substitute in the generics
                 // from the proxy type
-                ctxt.tcx.normalize_erasing_regions(
-                    typing_env,
-                    field_def.ty(ctxt.tcx, substs)
-                )
+                ctxt.tcx.normalize_erasing_regions(typing_env, field_def.ty(ctxt.tcx, substs))
             }
             None => {
                 // For normal datatypes, this seems to work fine.
@@ -457,10 +451,7 @@ fn get_sized_constraint<'tcx>(
         return Ok(None);
     };
     let mut sized_constraint = if let Some(substs) = substs {
-        tcx.normalize_erasing_regions(
-            typing_env,
-            sized_constraint.instantiate(tcx, substs)
-        )
+        tcx.normalize_erasing_regions(typing_env, sized_constraint.instantiate(tcx, substs))
     } else {
         sized_constraint.skip_binder()
     };

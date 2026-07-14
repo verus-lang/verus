@@ -2615,12 +2615,12 @@ fn all_predicates<'tcx>(
                 rustc_middle::ty::ClauseKind::<'tcx>::Trait(tp) => {
                     if tcx.trait_is_alias(tp.trait_ref.def_id) {
                         let preds = tcx.predicates_of(tp.trait_ref.def_id);
-                        let alias_typing_env =
-                            TypingEnv::post_analysis(tcx, tp.trait_ref.def_id);
+                        let alias_typing_env = TypingEnv::post_analysis(tcx, tp.trait_ref.def_id);
                         trait_alias_clauses.extend(
-                            preds.instantiate(tcx, substs).into_iter().map(|(p, _)| {
-                                tcx.normalize_erasing_regions(alias_typing_env, p)
-                            }),
+                            preds
+                                .instantiate(tcx, substs)
+                                .into_iter()
+                                .map(|(p, _)| tcx.normalize_erasing_regions(alias_typing_env, p)),
                         );
                     }
                 }
