@@ -457,8 +457,7 @@ pub fn write_krate(mut write: impl std::io::Write, vir_crate: &Krate, opts: &ToD
     }
     for assoc in assoc_type_impls.iter() {
         if opts.no_span {
-            writeln!(&mut write, ";; {}", assoc.span.as_string)
-                .expect("cannot write to vir write");
+            writeln!(&mut write, ";; {}", assoc.span.as_string).expect("cannot write to vir write");
         }
         writeln!(&mut write, "{}\n", nw.node_to_string(&assoc.to_node(opts)))
             .expect("cannot write to vir write");
@@ -538,8 +537,7 @@ pub fn write_krate_sst(
     writeln!(&mut write, ";; assoc_type_impls").expect("cannot write to vir write");
     for assoc in assoc_type_impls.iter() {
         if opts.no_span {
-            writeln!(&mut write, ";; {}", assoc.span.as_string)
-                .expect("cannot write to vir write");
+            writeln!(&mut write, ";; {}", assoc.span.as_string).expect("cannot write to vir write");
         }
         let assoc_type_impl = nodes!(assoc_type_impl {assoc.to_node(opts)});
         writeln!(&mut write, "{}\n", nw.node_to_string(&assoc_type_impl))

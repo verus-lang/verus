@@ -1837,10 +1837,7 @@ pub(crate) fn check_item_fn<'tcx>(
                 if !vir::ast_util::types_equal(&typ, &ret_typ) {
                     return err_span(
                         sig.span,
-                        format!(
-                            "return type is {:?}, but ensures expects type {:?}",
-                            ret_typ, typ
-                        ),
+                        format!("return type is {:?}, but ensures expects type {:?}", ret_typ, typ),
                     );
                 }
             }
