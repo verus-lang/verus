@@ -6,17 +6,17 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-air = { path = "../air" }
-vir = { path = "../vir" }
+air = { workspace = true }
+vir = { workspace = true }
 
 [dev-dependencies]
-rust_verify_test_macros = { path = "../rust_verify_test_macros" }
-regex = "1"
-serde = "1"
-serde_json = "1"
-tempfile = "3.23.0"
-toml = "0.9.8"
-yansi = "0.5"
+regex = { workspace = true }
+rust_verify_test_macros = { workspace = true }
+serde_json = { workspace = true }
+serde = { workspace = true }
+tempfile = { workspace = true }
+toml = { workspace = true }
+yansi = { workspace = true }
 
 [features]
 singular = ["vir/singular", "air/singular"]
