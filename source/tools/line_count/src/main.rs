@@ -9,6 +9,7 @@ use serde::Serialize;
 use tabled::settings::{
     Alignment, Modify, Style,
     object::{Columns, Rows},
+    style::On,
 };
 use verus_syn::{Attribute, File, Meta, MetaList, Signature, spanned::Spanned, visit::Visit};
 
@@ -1847,7 +1848,7 @@ fn run(config: Config, run_mode_paths: RunMode<'_>) -> Result<(), String> {
             .with(Style::markdown())
             .with(Modify::new(Columns::new(1..=kinds.len() + 1)).with(Alignment::right()))
             .with(
-                Modify::new(Rows::last()).with(
+                Modify::new(Rows::last()).with::<tabled::settings::Border<On, On, On, On>>(
                     tabled::settings::Border::default()
                         .corner_top_left('|')
                         .corner_top_right('|')

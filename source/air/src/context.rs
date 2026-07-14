@@ -12,7 +12,6 @@ use crate::scope_map::ScopeMap;
 use crate::smt_process::SmtProcess;
 use crate::smt_verify::ReportLongRunning;
 use crate::typecheck::Typing;
-use sise::Node;
 use std::any::Any;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -527,7 +526,7 @@ impl Context {
         }
     }
 
-    pub fn eval_expr(&mut self, expr: sise::Node) -> String {
+    pub fn eval_expr(&mut self, expr: sise::TreeNode) -> String {
         self.smt_log.log_eval(expr);
         let smt_data = self.smt_log.take_pipe_data();
         let smt_output = self.get_smt_process().send_commands(smt_data);
