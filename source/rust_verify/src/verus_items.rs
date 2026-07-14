@@ -101,11 +101,12 @@ pub(crate) enum SpecItem {
     DecreasesWhen,
     DecreasesBy,
     RecommendsBy,
-    OpensInvariantsNone,
-    OpensInvariantsAny,
-    OpensInvariants,
-    OpensInvariantsExcept,
-    OpensInvariantsSet,
+    OpensInvariantMask,
+    InvMaskNone,
+    InvMaskAny,
+    InvMaskList,
+    InvMaskListCompl,
+    InvMaskSet,
     NoUnwind,
     NoUnwindWhen,
 }
@@ -329,6 +330,7 @@ pub(crate) enum InvariantItem {
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash)]
 pub(crate) enum SetItem {
+    Type,
     Empty,
     Full,
     Contains,
@@ -340,8 +342,8 @@ pub(crate) enum SetItem {
 #[derive(PartialEq, Eq, Debug, Clone, Hash)]
 pub(crate) enum VstdItem {
     SeqFn(vir::interpreter::SeqFn),
-    SetFn(SetItem),
-    ISetFn(SetItem),
+    SetItem(SetItem),
+    ISetItem(SetItem),
     Invariant(InvariantItem),
     ExecNonstaticCall,
     ProofNonstaticCall,
@@ -475,11 +477,14 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::decreases_when",          VerusItem::Spec(SpecItem::DecreasesWhen)),
         ("verus::verus_builtin::decreases_by",            VerusItem::Spec(SpecItem::DecreasesBy)),
         ("verus::verus_builtin::recommends_by",           VerusItem::Spec(SpecItem::RecommendsBy)),
-        ("verus::verus_builtin::opens_invariants_none",   VerusItem::Spec(SpecItem::OpensInvariantsNone)),
-        ("verus::verus_builtin::opens_invariants_any",    VerusItem::Spec(SpecItem::OpensInvariantsAny)),
-        ("verus::verus_builtin::opens_invariants",        VerusItem::Spec(SpecItem::OpensInvariants)),
-        ("verus::verus_builtin::opens_invariants_except", VerusItem::Spec(SpecItem::OpensInvariantsExcept)),
-        ("verus::verus_builtin::opens_invariants_set",    VerusItem::Spec(SpecItem::OpensInvariantsSet)),
+
+        ("verus::verus_builtin::opens_invariant_mask",   VerusItem::Spec(SpecItem::OpensInvariantMask)),
+
+        ("verus::verus_builtin::inv_mask_none",           VerusItem::Spec(SpecItem::InvMaskNone)),
+        ("verus::verus_builtin::inv_mask_any",            VerusItem::Spec(SpecItem::InvMaskAny)),
+        ("verus::verus_builtin::inv_mask_list",           VerusItem::Spec(SpecItem::InvMaskList)),
+        ("verus::verus_builtin::inv_mask_list_compl",     VerusItem::Spec(SpecItem::InvMaskListCompl)),
+        ("verus::verus_builtin::inv_mask_set",            VerusItem::Spec(SpecItem::InvMaskSet)),
 
         ("verus::verus_builtin::no_unwind",               VerusItem::Spec(SpecItem::NoUnwind)),
         ("verus::verus_builtin::no_unwind_when",          VerusItem::Spec(SpecItem::NoUnwindWhen)),
@@ -618,7 +623,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::IeeeFloat::ieee_is_positive",  VerusItem::UnaryOp(UnaryOpItem::IeeeFloat(IeeeFloatUnaryItem::IsPositive))),
         ("verus::verus_builtin::IeeeFloat::ieee_is_positive",  VerusItem::UnaryOp(UnaryOpItem::IeeeFloat(IeeeFloatUnaryItem::IsPositive))),
         ("verus::verus_builtin::IeeeFloatCast::ieee_cast",     VerusItem::UnaryOp(UnaryOpItem::IeeeFloat(IeeeFloatUnaryItem::Cast))),
-        
+
         ("verus::verus_builtin::erased_ghost_value",      VerusItem::ErasedGhostValue),
         ("verus::verus_builtin::shadow_ghost_value",      VerusItem::ShadowGhostValue),
         ("verus::verus_builtin::mutable_reference_tie",   VerusItem::MutableReferenceTie),
@@ -643,19 +648,21 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::seq::Seq::ext_equal",   VerusItem::Vstd(VstdItem::SeqFn(vir::interpreter::SeqFn::ExtEqual), Some(Arc::new("seq::Seq::ext_equal"  .to_owned())))),
         ("verus::vstd::seq::Seq::last",        VerusItem::Vstd(VstdItem::SeqFn(vir::interpreter::SeqFn::Last    ), Some(Arc::new("seq::Seq::last"       .to_owned())))),
 
-        ("verus::vstd::set::Set::empty",     VerusItem::Vstd(VstdItem::SetFn(SetItem::Empty),    Some(Arc::new("set::Set::empty".to_owned())))),
-        ("verus::vstd::set::Set::full",      VerusItem::Vstd(VstdItem::SetFn(SetItem::Full),     Some(Arc::new("set::Set::full".to_owned())))),
-        ("verus::vstd::set::Set::contains",  VerusItem::Vstd(VstdItem::SetFn(SetItem::Contains), Some(Arc::new("set::Set::contains".to_owned())))),
-        ("verus::vstd::set::Set::subset_of", VerusItem::Vstd(VstdItem::SetFn(SetItem::SubsetOf), Some(Arc::new("set::Set::subset_of".to_owned())))),
-        ("verus::vstd::set::Set::insert",    VerusItem::Vstd(VstdItem::SetFn(SetItem::Insert),   Some(Arc::new("set::Set::insert".to_owned())))),
-        ("verus::vstd::set::Set::remove",    VerusItem::Vstd(VstdItem::SetFn(SetItem::Remove),   Some(Arc::new("set::Set::remove".to_owned())))),
+        ("verus::vstd::set::Set",              VerusItem::Vstd(VstdItem::SetItem(SetItem::Type),      Some(Arc::new("set::Set".to_owned())))),
+        ("verus::vstd::set::Set::empty",       VerusItem::Vstd(VstdItem::SetItem(SetItem::Empty),     Some(Arc::new("set::Set::empty".to_owned())))),
+        ("verus::vstd::set::Set::full",        VerusItem::Vstd(VstdItem::SetItem(SetItem::Full),      Some(Arc::new("set::Set::full".to_owned())))),
+        ("verus::vstd::set::Set::contains",    VerusItem::Vstd(VstdItem::SetItem(SetItem::Contains),  Some(Arc::new("set::Set::contains".to_owned())))),
+        ("verus::vstd::set::Set::subset_of",   VerusItem::Vstd(VstdItem::SetItem(SetItem::SubsetOf),  Some(Arc::new("set::Set::subset_of".to_owned())))),
+        ("verus::vstd::set::Set::insert",      VerusItem::Vstd(VstdItem::SetItem(SetItem::Insert),    Some(Arc::new("set::Set::insert".to_owned())))),
+        ("verus::vstd::set::Set::remove",      VerusItem::Vstd(VstdItem::SetItem(SetItem::Remove),    Some(Arc::new("set::Set::remove".to_owned())))),
 
-        ("verus::vstd::iset::ISet::empty",     VerusItem::Vstd(VstdItem::ISetFn(SetItem::Empty),    Some(Arc::new("iset::ISet::empty".to_owned())))),
-        ("verus::vstd::iset::ISet::full",      VerusItem::Vstd(VstdItem::ISetFn(SetItem::Full),     Some(Arc::new("iset::ISet::full".to_owned())))),
-        ("verus::vstd::iset::ISet::contains",  VerusItem::Vstd(VstdItem::ISetFn(SetItem::Contains), Some(Arc::new("iset::ISet::contains".to_owned())))),
-        ("verus::vstd::iset::ISet::subset_of", VerusItem::Vstd(VstdItem::ISetFn(SetItem::SubsetOf), Some(Arc::new("iset::ISet::subset_of".to_owned())))),
-        ("verus::vstd::iset::ISet::insert",    VerusItem::Vstd(VstdItem::ISetFn(SetItem::Insert),   Some(Arc::new("iset::ISet::insert".to_owned())))),
-        ("verus::vstd::iset::ISet::remove",    VerusItem::Vstd(VstdItem::ISetFn(SetItem::Remove),   Some(Arc::new("iset::ISet::remove".to_owned())))),
+        ("verus::vstd::iset::ISet",            VerusItem::Vstd(VstdItem::ISetItem(SetItem::Type),     Some(Arc::new("iset::ISet".to_owned())))),
+        ("verus::vstd::iset::ISet::empty",     VerusItem::Vstd(VstdItem::ISetItem(SetItem::Empty),    Some(Arc::new("iset::ISet::empty".to_owned())))),
+        ("verus::vstd::iset::ISet::full",      VerusItem::Vstd(VstdItem::ISetItem(SetItem::Full),     Some(Arc::new("iset::ISet::full".to_owned())))),
+        ("verus::vstd::iset::ISet::contains",  VerusItem::Vstd(VstdItem::ISetItem(SetItem::Contains), Some(Arc::new("iset::ISet::contains".to_owned())))),
+        ("verus::vstd::iset::ISet::subset_of", VerusItem::Vstd(VstdItem::ISetItem(SetItem::SubsetOf), Some(Arc::new("iset::ISet::subset_of".to_owned())))),
+        ("verus::vstd::iset::ISet::insert",    VerusItem::Vstd(VstdItem::ISetItem(SetItem::Insert),   Some(Arc::new("iset::ISet::insert".to_owned())))),
+        ("verus::vstd::iset::ISet::remove",    VerusItem::Vstd(VstdItem::ISetItem(SetItem::Remove),   Some(Arc::new("iset::ISet::remove".to_owned())))),
 
         ("verus::vstd::invariant::AtomicInvariant::namespace",           VerusItem::Vstd(VstdItem::Invariant(InvariantItem::AtomicInvariantNamespace       ), Some(Arc::new("invariant::AtomicInvariant::namespace"          .to_owned())))),
         ("verus::vstd::invariant::AtomicInvariant::inv",                 VerusItem::Vstd(VstdItem::Invariant(InvariantItem::AtomicInvariantInv             ), Some(Arc::new("invariant::AtomicInvariant::inv"                .to_owned())))),
@@ -735,8 +742,7 @@ pub(crate) struct VerusItems {
 pub(crate) fn from_diagnostic_items(
     diagnostic_items: &rustc_hir::diagnostic_items::DiagnosticItems,
 ) -> VerusItems {
-    let verus_item_map: HashMap<&str, VerusItem> =
-        verus_items_map().iter().map(|(k, v)| (*k, v.clone())).collect();
+    let verus_item_map: HashMap<&str, VerusItem> = verus_items_map().into_iter().collect();
     let diagnostic_name_to_id = &diagnostic_items.name_to_id;
     let mut id_to_name: HashMap<DefId, VerusItem> = HashMap::new();
     let mut name_to_id: HashMap<VerusItem, DefId> = HashMap::new();

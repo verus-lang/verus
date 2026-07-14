@@ -3252,8 +3252,6 @@ fn binopkind_to_binaryop_inner<'tcx>(
     let tc = bctx.types;
 
     let d0b = if bctx.in_ghost { Div0Behavior::Allow } else { Div0Behavior::Error };
-    let bb_for_ghostness =
-        if bctx.in_ghost { BitshiftBehavior::Allow } else { BitshiftBehavior::Error };
 
     let vop = match op {
         BinOpKind::And => BinaryOp::And,
@@ -3335,6 +3333,8 @@ fn binopkind_to_binaryop_inner<'tcx>(
             ) else {
                 return err_span(lhs.span, "expected finite integer width for <<");
             };
+            let bb_for_ghostness =
+                if bctx.in_ghost { BitshiftBehavior::Allow } else { BitshiftBehavior::Error(w) };
             BinaryOp::Bitwise(BitwiseOp::Shl(w, s), bb_for_ghostness)
         }
         BinOpKind::Shr => {
@@ -3344,7 +3344,9 @@ fn binopkind_to_binaryop_inner<'tcx>(
             ) else {
                 return err_span(lhs.span, "expected finite integer width for >>");
             };
-            BinaryOp::Bitwise(BitwiseOp::Shr(w), bb_for_ghostness)
+            let bb_for_ghostness =
+                if bctx.in_ghost { BitshiftBehavior::Allow } else { BitshiftBehavior::Error(w) };
+            BinaryOp::Bitwise(BitwiseOp::Shr, bb_for_ghostness)
         }
     };
     Ok(vop)

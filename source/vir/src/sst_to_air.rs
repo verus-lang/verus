@@ -1395,7 +1395,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                             }
                             crate::def::BIT_SHL
                         }
-                        BitwiseOp::Shr(_) => crate::def::BIT_SHR,
+                        BitwiseOp::Shr => crate::def::BIT_SHR,
                     };
                     let args = vec![box_lh, box_rh];
                     let bit_expr = ExprX::Apply(Arc::new(fname.to_string()), Arc::new(args));

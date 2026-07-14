@@ -30,6 +30,7 @@ verus! {
 #[verifier::ext_equal]
 #[verifier::external_body]
 #[verifier::accept_recursive_types(A)]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::set::Set")]
 pub struct Set<A> {
     // To prevent Verus's internal checks from rejecting recursive types,
     // we use an artificial definition of `Set` that hides its inclusion

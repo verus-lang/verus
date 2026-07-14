@@ -197,7 +197,7 @@ test_verify_one_file_with_options! {
             vstd::invariant::open_atomic_invariant!(t => i => {
             });
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot show invariant namespace is in the mask given by the function signature")
+    } => Err(err) => assert_vir_error_msg(err, "cannot show invariant namespace is in the mask given by the scope")
 }
 
 test_verify_one_file_with_options! {

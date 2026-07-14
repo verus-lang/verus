@@ -11,7 +11,7 @@ use crate::ast_util::{QUANT_FORALL, bool_typ, types_equal, undecorate_typ, unit_
 use crate::context::Ctx;
 use crate::def::{Spanned, unique_local};
 use crate::fun;
-use crate::inv_masks::MaskSet;
+use crate::inv_masks::{MaskQueryKind, MaskSet};
 use crate::messages::{
     Span, ToAny, WarningAllow, error, error_with_label, error_with_secondary_label, internal_error,
 };
@@ -1364,7 +1364,9 @@ fn stm_call(
         match &state.mask {
             Some(caller_mask) => {
                 let callee_mask = mask_set_for_call(&fun, &typs, small_args.clone());
-                for assertion in callee_mask.subset_of(ctx, caller_mask, span) {
+                for assertion in
+                    callee_mask.subset_of(ctx, caller_mask, span, MaskQueryKind::FunctionCall)
+                {
                     stms.push(Spanned::new(
                         span.clone(),
                         StmX::Assert(state.next_assert_id(), Some(assertion.err), assertion.cond),
@@ -2470,15 +2472,17 @@ pub(crate) fn expr_to_stm_opt(
             let invs = if is_for_loop && !loop_isolation {
                 // The syntax macro doesn't have enough context to know whether ensures is needed,
                 // so we have to fix up the invariants here.
-                Arc::new(
-                    invs.iter()
-                        .filter_map(|inv| match inv.kind {
-                            LoopInvariantKind::InvariantExceptBreak => Some(inv.clone()),
-                            LoopInvariantKind::InvariantAndEnsures => Some(inv.clone()),
-                            LoopInvariantKind::Ensures => None,
-                        })
-                        .collect(),
-                )
+                let invs = invs
+                    .iter()
+                    .filter(|inv| match inv.kind {
+                        LoopInvariantKind::InvariantExceptBreak => true,
+                        LoopInvariantKind::InvariantAndEnsures => true,
+                        LoopInvariantKind::Ensures => false,
+                    })
+                    .cloned()
+                    .collect();
+
+                Arc::new(invs)
             } else {
                 invs.clone()
             };
@@ -2693,7 +2697,12 @@ pub(crate) fn expr_to_stm_opt(
             let ns_exp = call_namespace(ctx, &inv_tmp_var, &typ_args, *atomicity);
 
             if !state.checking_recommends(ctx) {
-                for assertion in state.mask.as_ref().unwrap().contains(ctx, &ns_exp) {
+                for assertion in state.mask.as_ref().unwrap().contains(
+                    ctx,
+                    &ns_exp,
+                    &expr.span,
+                    MaskQueryKind::OpenInvariant,
+                ) {
                     stms1.push(Spanned::new(
                         expr.span.clone(),
                         StmX::Assert(state.next_assert_id(), Some(assertion.err), assertion.cond),
@@ -2741,6 +2750,32 @@ pub(crate) fn expr_to_stm_opt(
             let block_stm = stms_to_one_stm(&expr.span, stms1);
             stms0.push(Spanned::new(expr.span.clone(), StmX::OpenInvariant(block_stm)));
             return Ok((stms0, Maybe::Some(Value::ImplicitUnit(expr.span.clone()))));
+        }
+        ExprX::InvMask(mask_spec) => {
+            let (span, exprs, compl) = match mask_spec {
+                MaskSpec::InvariantOpens(span, exprs) => (span, exprs, false),
+                MaskSpec::InvariantOpensExcept(span, exprs) => (span, exprs, true),
+                MaskSpec::InvariantOpensSet(expr) => return expr_to_stm_opt(ctx, state, expr),
+            };
+
+            let mut sequr = Sequencer::new();
+            for expr in exprs.as_ref() {
+                let (exp_stms, ret_val) = expr_to_stm_opt(ctx, state, expr)?;
+                push_or_return_never!(sequr.push(
+                    exp_stms,
+                    ret_val,
+                    Immutable(LocalDeclKind::TempViaAssign)
+                ));
+            }
+
+            let (stms, exps) = sequr.into_stms_exps(state)?;
+            let mask = match compl {
+                false => MaskSet::from_list(&exps, span),
+                true => MaskSet::from_list_complement(&exps, span),
+            };
+
+            let exp = mask.to_exp(ctx);
+            Ok((stms, Maybe::Some(Value::Exp(exp))))
         }
         ExprX::Return(e1) => {
             let (mut stms, ret_exp) = match e1 {
@@ -3078,7 +3113,7 @@ fn binary_op_exp(
         },
         BinaryOp::Bitwise(bitwise, mode) => {
             match (mode, bitwise) {
-                (BitshiftBehavior::Error, BitwiseOp::Shr(w) | BitwiseOp::Shl(w, _)) => {
+                (BitshiftBehavior::Error(w), BitwiseOp::Shr | BitwiseOp::Shl(_, _)) => {
                     // Add overflow checks for bit shifts
                     // For a shift `a << b` or `a >> b`, Rust requires that
                     //    0 <= b < (bitsize of a)
@@ -3097,7 +3132,7 @@ fn binary_op_exp(
                     let msg = "possible bit shift underflow/overflow";
                     Some((assert_exp, error(span, msg)))
                 }
-                (BitshiftBehavior::Allow, BitwiseOp::Shr(..) | BitwiseOp::Shl(..)) => None,
+                (BitshiftBehavior::Allow, BitwiseOp::Shr | BitwiseOp::Shl(..)) => None,
                 (_, BitwiseOp::BitXor | BitwiseOp::BitAnd | BitwiseOp::BitOr) => {
                     // no overflow check needed
                     None

@@ -1495,6 +1495,9 @@ impl Clone for crate::InvariantNameSet {
             crate::InvariantNameSet::List(v0) => {
                 crate::InvariantNameSet::List(v0.clone())
             }
+            crate::InvariantNameSet::ListCompl(v0) => {
+                crate::InvariantNameSet::ListCompl(v0.clone())
+            }
             crate::InvariantNameSet::Set(v0) => crate::InvariantNameSet::Set(v0.clone()),
         }
     }
@@ -1511,6 +1514,17 @@ impl Clone for crate::InvariantNameSetAny {
 impl Clone for crate::InvariantNameSetList {
     fn clone(&self) -> Self {
         crate::InvariantNameSetList {
+            bracket_token: self.bracket_token.clone(),
+            exprs: self.exprs.clone(),
+        }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::InvariantNameSetListCompl {
+    fn clone(&self) -> Self {
+        crate::InvariantNameSetListCompl {
+            any_token: self.any_token.clone(),
+            op_token: self.op_token.clone(),
             bracket_token: self.bracket_token.clone(),
             exprs: self.exprs.clone(),
         }
@@ -2484,6 +2498,7 @@ impl Clone for crate::SignatureInvariants {
         crate::SignatureInvariants {
             token: self.token.clone(),
             set: self.set.clone(),
+            comma: self.comma.clone(),
         }
     }
 }
