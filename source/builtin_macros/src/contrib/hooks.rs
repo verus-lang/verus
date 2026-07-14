@@ -2,17 +2,17 @@
 //!
 //! This module is a *stable seam* that lets out-of-tree tooling observe and
 //! rewrite the `verus_syn` item lists that flow through `contrib` before
-//! `verus!` processes them. It exists such that projects layered on top of Verus 
-//! have a stable upstream source to patch into that persists over updates to 
-//! `verus_builtin_macros`. 
+//! `verus!` processes them. It exists such that projects layered on top of Verus
+//! have a stable upstream source to patch into that persists over updates to
+//! `verus_builtin_macros`.
 //!
 //! Everything is gated behind the `contrib-hooks` cargo feature, which is
-//! **off by default**. 
+//! **off by default**.
 //!
 //! Note: a downstream still ships a full `[patch.crates-io]` copy of this
-//! crate. The seam just makes that copy a verbatim mirror of
-//! upstream (synced by a file copy) instead of a hand-patched fork
-//! for each update.
+//! crate — whole-crate substitution is the only way to give it a dependency
+//! on the provider's code. The seam just makes that copy a verbatim mirror of
+//! upstream (synced by a file copy) instead of a hand-patched fork.
 //!
 //! # Enabling hooks
 //!
