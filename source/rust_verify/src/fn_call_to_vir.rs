@@ -32,9 +32,9 @@ use vir::ast::{
     ArithOp, ArrayKind, AssertQueryMode, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp,
     BoundsCheck, BuiltinSpecFun, CallTarget, ChainedOp, ComputeMode, Constant, CrateId,
     Div0Behavior, ExprX, FieldOpr, FunX, HeaderExpr, HeaderExprX, InequalityOp, IntRange,
-    IntegerTypeBoundKind, Mode, ModeCoercion, ModeWrapperMode, MultiOp, OverflowBehavior, Place,
-    PlaceX, Quant, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, VarBinder, VarBinderX, VarIdent,
-    VariantCheck, VirErr,
+    IntegerTypeBoundKind, MaskSpec, Mode, ModeCoercion, ModeWrapperMode, MultiOp, OverflowBehavior,
+    Place, PlaceX, Quant, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, VarBinder, VarBinderX,
+    VarIdent, VariantCheck, VirErr,
 };
 use vir::ast_util::{
     const_int_from_string, mk_tuple_typ, mk_tuple_x, typ_to_diagnostic_str, types_equal,
@@ -67,10 +67,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                         | SpecItem::Recommends
                         | SpecItem::Ensures
                         | SpecItem::Returns
-                        | SpecItem::OpensInvariantsNone
-                        | SpecItem::OpensInvariantsAny
-                        | SpecItem::OpensInvariants
-                        | SpecItem::OpensInvariantsExcept
+                        | SpecItem::OpensInvariantMask
                         | SpecItem::NoUnwind
                         | SpecItem::NoUnwindWhen
                 ) | VerusItem::Directive(DirectiveItem::ExtraDependency)
@@ -514,11 +511,12 @@ fn verus_item_to_vir<'tcx, 'a>(
 
                     SpecItem::Requires
                     | SpecItem::Decreases
-                    | SpecItem::OpensInvariantsNone
-                    | SpecItem::OpensInvariantsAny
-                    | SpecItem::OpensInvariants
-                    | SpecItem::OpensInvariantsExcept
-                    | SpecItem::OpensInvariantsSet
+                    | SpecItem::OpensInvariantMask
+                    | SpecItem::InvMaskNone
+                    | SpecItem::InvMaskAny
+                    | SpecItem::InvMaskList
+                    | SpecItem::InvMaskListCompl
+                    | SpecItem::InvMaskSet
                     | SpecItem::NoUnwind
                     | SpecItem::NoUnwindWhen => (true, false),
 
@@ -538,10 +536,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     record_spec_fn_pure_args_only(bctx, expr);
                     mk_expr(ExprX::Header(Arc::new(HeaderExprX::NoMethodBody)))
                 }
-                SpecItem::Requires
-                | SpecItem::Recommends
-                | SpecItem::OpensInvariants
-                | SpecItem::Returns => {
+                SpecItem::Requires | SpecItem::Recommends | SpecItem::Returns => {
                     record_spec_fn_pure_args_only(bctx, expr);
                     unsupported_err_unless!(
                         args_len == 1,
@@ -573,15 +568,6 @@ fn verus_item_to_vir<'tcx, 'a>(
                                     );
                                 }
                             },
-                            SpecItem::OpensInvariants => match &*typ {
-                                TypX::Int(_) => {}
-                                _ => {
-                                    return err_span(
-                                        arg.span,
-                                        "opens_invariants needs an int expression",
-                                    );
-                                }
-                            },
                             SpecItem::Returns => {
                                 // type is checked in well_formed.rs
                             }
@@ -594,44 +580,91 @@ fn verus_item_to_vir<'tcx, 'a>(
                         SpecItem::Recommends => {
                             Arc::new(HeaderExprX::Recommends(Arc::new(vir_args)))
                         }
-                        SpecItem::OpensInvariants => Arc::new(HeaderExprX::InvariantOpens(
-                            bctx.ctxt.spans.to_air_span(expr.span.clone()),
-                            Arc::new(vir_args),
-                        )),
                         SpecItem::Returns => Arc::new(HeaderExprX::Returns(vir_args[0].clone())),
                         _ => unreachable!(),
                     };
                     mk_expr(ExprX::Header(header))
                 }
-                SpecItem::OpensInvariantsExcept => {
-                    record_spec_fn_pure_args_only(bctx, expr);
-                    err_span(
-                        expr.span,
-                        "'is_opens_invariants' and 'is_opens_invariants_except' are not yet implemented",
-                    )
-                }
-                SpecItem::OpensInvariantsNone => {
-                    record_spec_fn_pure_args_only(bctx, expr);
-                    let header = Arc::new(HeaderExprX::InvariantOpens(
-                        bctx.ctxt.spans.to_air_span(expr.span.clone()),
-                        Arc::new(Vec::new()),
-                    ));
-                    mk_expr(ExprX::Header(header))
-                }
-                SpecItem::OpensInvariantsAny => {
-                    record_spec_fn_pure_args_only(bctx, expr);
-                    let header = Arc::new(HeaderExprX::InvariantOpensExcept(
-                        bctx.ctxt.spans.to_air_span(expr.span.clone()),
-                        Arc::new(Vec::new()),
-                    ));
-                    mk_expr(ExprX::Header(header))
-                }
-                SpecItem::OpensInvariantsSet => {
+                SpecItem::OpensInvariantMask => {
                     record_spec_fn_pure_args_only(bctx, expr);
                     let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
-                    let arg = mk_one_vir_arg(bctx, expr.span, &args)?;
-                    let header = Arc::new(HeaderExprX::InvariantOpensSet(arg));
-                    mk_expr(ExprX::Header(header))
+                    let inner = expr_to_vir_consume(&bctx, args[0])?;
+                    let ExprX::InvMask(mask_spec) = &inner.x else {
+                        return err_span(
+                            expr.span,
+                            "malformed opens_invariants item; \
+                            expected invariant mask expression",
+                        );
+                    };
+
+                    let header = HeaderExprX::OpensInvariantMask(mask_spec.clone());
+                    mk_expr(ExprX::Header(Arc::new(header)))
+                }
+                SpecItem::InvMaskNone => {
+                    record_spec_fn_pure_args_only(bctx, expr);
+                    mk_expr(ExprX::InvMask(MaskSpec::InvariantOpens(
+                        bctx.ctxt.spans.to_air_span(expr.span.clone()),
+                        Default::default(),
+                    )))
+                }
+                SpecItem::InvMaskAny => {
+                    record_spec_fn_pure_args_only(bctx, expr);
+                    mk_expr(ExprX::InvMask(MaskSpec::InvariantOpensExcept(
+                        bctx.ctxt.spans.to_air_span(expr.span.clone()),
+                        Default::default(),
+                    )))
+                }
+                SpecItem::InvMaskList | SpecItem::InvMaskListCompl => {
+                    record_spec_fn_pure_args_only(bctx, expr);
+                    let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
+                    let subargs = extract_array(args[0]);
+                    let mut vir_args = Vec::with_capacity(subargs.len());
+                    for arg in subargs {
+                        let vir_arg = expr_to_vir_consume(&bctx, arg)?;
+                        let typ = undecorate_typ(&vir_arg.typ);
+                        let TypX::Int(..) = &*typ else {
+                            return err_span(arg.span, "invariant mask must be type int");
+                        };
+
+                        vir_args.push(vir_arg);
+                    }
+
+                    let span = bctx.ctxt.spans.to_air_span(expr.span.clone());
+                    let args = Arc::new(vir_args);
+                    mk_expr(ExprX::InvMask(match spec_item {
+                        SpecItem::InvMaskList => MaskSpec::InvariantOpens(span, args),
+                        SpecItem::InvMaskListCompl => MaskSpec::InvariantOpensExcept(span, args),
+                        _ => unreachable!(),
+                    }))
+                }
+                SpecItem::InvMaskSet => {
+                    fn typ_is_int_iset(typ: &Typ) -> bool {
+                        let TypX::Datatype(vir::ast::Dt::Path(path), args, _) = typ.as_ref() else {
+                            return false;
+                        };
+
+                        let [int_typ] = args.as_slice() else {
+                            return false;
+                        };
+
+                        let TypX::Int(..) = int_typ.as_ref() else {
+                            return false;
+                        };
+
+                        path == &vir::def::iset_type_path()
+                    }
+
+                    record_spec_fn_pure_args_only(bctx, expr);
+                    let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
+                    let set_expr = expr_to_vir_consume(&bctx, args[0])?;
+                    if !typ_is_int_iset(&set_expr.typ) {
+                        return err_span(
+                            args[0].span.clone(),
+                            "invariant mask must be a set of ints",
+                        );
+                    }
+
+                    mk_expr(ExprX::InvMask(MaskSpec::InvariantOpensSet(set_expr)))
                 }
                 SpecItem::Ensures => {
                     if let HeaderSetting::Loop(loop_hir_id) = bctx.header_setting {
@@ -1634,7 +1667,8 @@ fn verus_item_to_vir<'tcx, 'a>(
             let vir_args = mk_vir_args(bctx, &args)?;
             assert!(vir_args.len() == 1);
             let op = UnaryOp::CoerceMode {
-                op_mode: Mode::Proof,
+                // Allow the constructor to be weakened to spec when its result is spec-only.
+                op_mode: Mode::Spec,
                 from_mode: Mode::Proof,
                 to_mode: Mode::Proof,
                 kind: ModeCoercion::Constructor,
@@ -2213,19 +2247,15 @@ fn extract_ensures<'tcx>(
     let tcx = bctx.ctxt.tcx;
     use vir::ast::Exprs;
     let get_args = |body_value: &'tcx Expr<'tcx>| -> Result<(Exprs, Exprs), VirErr> {
-        let args = vec_map_result(
-            &extract_array(body_value)
-                .iter()
-                .filter(|e| check_is_builtin_constrain_typ(bctx, **e))
-                .map(|x: &&_| (*x).clone())
-                .collect(),
-            |e| get_ensures_arg(bctx, e),
-        )?;
-        let args0 =
-            args.iter().filter_map(|(b, e)| if !*b { Some(e.clone()) } else { None }).collect();
-        let args1 =
-            args.iter().filter_map(|(b, e)| if *b { Some(e.clone()) } else { None }).collect();
-        Ok((Arc::new(args0), Arc::new(args1)))
+        let args = extract_array(body_value)
+            .into_iter()
+            .filter(|e| check_is_builtin_constrain_typ(bctx, e))
+            .map(|e| get_ensures_arg(bctx, e))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let regular = args.iter().filter(|&(b, _)| !b).map(|(_, e)| e.clone()).collect();
+        let default = args.iter().filter(|&(b, _)| *b).map(|(_, e)| e.clone()).collect();
+        Ok((Arc::new(regular), Arc::new(default)))
     };
     match &expr.kind {
         ExprKind::Closure(closure) => {

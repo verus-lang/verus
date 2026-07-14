@@ -31,13 +31,14 @@ use verus_syn::{
     AssumeSpecification, Attribute, BareFnArg, BinOp, Block, DataMode, Decreases, Ensures, Expr,
     ExprBinary, ExprCall, ExprLit, ExprLoop, ExprMatches, ExprTuple, ExprUnary, ExprWhile, Field,
     FnArg, FnArgKind, FnMode, Global, Ident, ImplItem, ImplItemFn, Invariant, InvariantEnsures,
-    InvariantExceptBreak, InvariantNameSet, InvariantNameSetList, InvariantNameSetSet, Item,
-    ItemBroadcastGroup, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemMod, ItemStatic, ItemStruct,
-    ItemTrait, ItemUnion, Lit, Local, MatchesOpExpr, MatchesOpToken, Meta, MetaList, ModeSpec,
-    ModeSpecChecked, Pat, PatIdent, PatType, Path, PathArguments, Publish, Recommends, Requires,
-    ReturnType, Returns, Signature, SignatureDecreases, SignatureInvariants, SignatureSpec,
-    SignatureSpecAttr, SignatureUnwind, Stmt, Token, TraitItem, TraitItemFn, Type, TypeFnProof,
-    TypeFnSpec, TypePath, UnOp, Visibility, braced, bracketed, parenthesized, parse_macro_input,
+    InvariantExceptBreak, InvariantNameSet, InvariantNameSetList, InvariantNameSetListCompl,
+    InvariantNameSetSet, Item, ItemBroadcastGroup, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemMod,
+    ItemStatic, ItemStruct, ItemTrait, ItemUnion, Lit, Local, MatchesOpExpr, MatchesOpToken, Meta,
+    MetaList, ModeSpec, ModeSpecChecked, Pat, PatIdent, PatType, Path, PathArguments, Publish,
+    Recommends, Requires, ReturnType, Returns, Signature, SignatureDecreases, SignatureInvariants,
+    SignatureSpec, SignatureSpecAttr, SignatureUnwind, Stmt, Token, TraitItem, TraitItemFn, Type,
+    TypeFnProof, TypeFnSpec, TypePath, UnOp, Visibility, braced, bracketed, parenthesized,
+    parse_macro_input,
 };
 
 pub(crate) const VERUS_SPEC: &str = "VERUS_SPEC__";
@@ -527,6 +528,54 @@ impl Visitor {
         }
     }
 
+    fn inv_name_set_to_mask_expr(&mut self, set: InvariantNameSet) -> TokenStream {
+        match set {
+            InvariantNameSet::Any(any) => {
+                quote_spanned_builtin!(verus_builtin, any.span() =>
+                    #verus_builtin::inv_mask_any()
+                )
+            }
+
+            InvariantNameSet::None(none) => {
+                quote_spanned_builtin!(verus_builtin, none.span() =>
+                    #verus_builtin::inv_mask_none()
+                )
+            }
+
+            InvariantNameSet::List(InvariantNameSetList { bracket_token, mut exprs }) => {
+                for expr in exprs.iter_mut() {
+                    self.visit_expr_mut(expr);
+                }
+
+                quote_spanned_builtin!(verus_builtin, bracket_token.span.join() =>
+                    #verus_builtin::inv_mask_list([#exprs])
+                )
+            }
+
+            InvariantNameSet::ListCompl(InvariantNameSetListCompl {
+                bracket_token,
+                mut exprs,
+                ..
+            }) => {
+                for expr in exprs.iter_mut() {
+                    self.visit_expr_mut(expr);
+                }
+
+                quote_spanned_builtin!(verus_builtin, bracket_token.span.join() =>
+                    #verus_builtin::inv_mask_list_compl([#exprs])
+                )
+            }
+
+            InvariantNameSet::Set(InvariantNameSetSet { mut expr }) => {
+                self.visit_expr_mut(&mut expr);
+                let typ = quote_vstd! { vstd => #vstd::iset::ISet<int> };
+                quote_spanned_builtin!(verus_builtin, expr.span() =>
+                    #verus_builtin::inv_mask_set::<_, #typ>(#expr)
+                )
+            }
+        }
+    }
+
     fn take_sig_specs<TType: ToTokens>(
         &mut self,
         spec: &mut SignatureSpec,
@@ -646,11 +695,8 @@ impl Visitor {
                     self.visit_expr_mut(expr);
                 }
                 let cont = match self.extract_quant_triggers(attrs, token.span) {
-                    Ok(
-                        found @ (ExtractQuantTriggersFound::Auto
-                        | ExtractQuantTriggersFound::AllTriggers
-                        | ExtractQuantTriggersFound::Triggers(..)),
-                    ) => {
+                    Ok(ExtractQuantTriggersFound::None) => true,
+                    Ok(found) => {
                         if exprs.exprs.len() == 0 {
                             let err =
                                 "when using #![trigger f(x)], at least one ensures is required";
@@ -682,7 +728,6 @@ impl Visitor {
                             true
                         }
                     }
-                    Ok(ExtractQuantTriggersFound::None) => true,
                     Err(err_expr) => {
                         exprs.exprs[0] = *err_expr;
                         false
@@ -793,46 +838,15 @@ impl Visitor {
                 ));
             }
         }
-        if let Some(SignatureInvariants { token: _, set }) = opens_invariants {
-            match set {
-                InvariantNameSet::Any(any) => {
-                    spec_stmts.push(Stmt::Expr(
-                        Expr::Verbatim(
-                            quote_spanned_builtin!(verus_builtin, any.span() => #verus_builtin::opens_invariants_any()),
-                        ),
-                        Some(Semi { spans: [any.span()] }),
-                    ));
-                }
-                InvariantNameSet::None(none) => {
-                    spec_stmts.push(Stmt::Expr(
-                        Expr::Verbatim(
-                            quote_spanned_builtin!(verus_builtin, none.span() => #verus_builtin::opens_invariants_none()),
-                        ),
-                        Some(Semi { spans: [none.span()] }),
-                    ));
-                }
-                InvariantNameSet::List(InvariantNameSetList { bracket_token, mut exprs }) => {
-                    for expr in exprs.iter_mut() {
-                        self.visit_expr_mut(expr);
-                    }
-                    spec_stmts.push(Stmt::Expr(
-                        Expr::Verbatim(
-                            quote_spanned_builtin!(verus_builtin, bracket_token.span.join() => #verus_builtin::opens_invariants([#exprs])),
-                        ),
-                        Some(Semi { spans: [bracket_token.span.close()] }),
-                    ));
-                }
-                InvariantNameSet::Set(InvariantNameSetSet { mut expr }) => {
-                    self.visit_expr_mut(&mut expr);
-                    let typ = quote_vstd! { vstd => #vstd::iset::ISet<int> };
-                    spec_stmts.push(Stmt::Expr(
-                        Expr::Verbatim(
-                            quote_spanned_builtin!(verus_builtin, expr.span() => #verus_builtin::opens_invariants_set::<#typ>(#expr)),
-                        ),
-                        Some(Semi { spans: [expr.span()] }),
-                    ));
-                }
-            }
+        if let Some(SignatureInvariants { set, .. }) = opens_invariants {
+            let full_span = set.span();
+            let mask_expr = self.inv_name_set_to_mask_expr(set);
+            spec_stmts.push(Stmt::Expr(
+                Expr::Verbatim(quote_spanned_builtin!(verus_builtin, full_span =>
+                    #verus_builtin::opens_invariant_mask(#mask_expr)
+                )),
+                Some(Semi { spans: [full_span] }),
+            ));
         }
 
         if let Some(SignatureUnwind { token, when }) = unwind {
@@ -1085,6 +1099,7 @@ impl Visitor {
         attrs.extend(prover_attr.into_iter());
         attrs.extend(ext_attrs);
         self.filter_attrs(attrs);
+
         // unwrap_ghost_tracked must go first so that unwrapped vars are in scope in other headers
         stmts.splice(0..0, unwrap_ghost_tracked);
         stmts.extend(unimpl);
@@ -3546,7 +3561,7 @@ impl Visitor {
         ));
         let ghost_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
             #[verifier::custom_err(#ghost_inv_msg)]
-            match vstd::prelude::infer_spec_for_loop_iter(
+            match #vstd::prelude::infer_spec_for_loop_iter(
                 &::core::iter::IntoIterator::into_iter(#x_verus_iter_init),
                 &::core::iter::IntoIterator::into_iter(#expr_inv),
                 #print_hint,
@@ -3567,7 +3582,7 @@ impl Visitor {
             for inv in &mut invariant.exprs.exprs {
                 *inv = Expr::Verbatim(quote_spanned_vstd!(vstd, inv.span() => {
                     let #pat = #vstd::std_specs::iter::IteratorSpec::peek(&#x_iter_name.snapshot.view(), #x_iter_name.index.view())
-                        .unwrap_or(vstd::pervasive::arbitrary());
+                        .unwrap_or(#vstd::pervasive::arbitrary());
                     #inv
                 }));
             }
@@ -3590,7 +3605,7 @@ impl Visitor {
             for inv in &mut invariant_except_break.exprs.exprs {
                 *inv = Expr::Verbatim(quote_spanned_vstd!(vstd, inv.span() => {
                     let #pat = #vstd::std_specs::iter::IteratorSpec::peek(&#x_iter_name.snapshot.view(), #x_iter_name.index.view())
-                        .unwrap_or(vstd::pervasive::arbitrary());
+                        .unwrap_or(#vstd::pervasive::arbitrary());
                     #inv
                 }));
             }
@@ -3610,7 +3625,7 @@ impl Visitor {
             for expr in &mut decreases.exprs.exprs {
                 *expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() => {
                     let #pat = #vstd::std_specs::iter::IteratorSpec::peek(&#x_iter_name.snapshot.view(), #x_iter_name.index.view())
-                        .unwrap_or(vstd::pervasive::arbitrary());
+                        .unwrap_or(#vstd::pervasive::arbitrary());
                     #expr
                 }));
             }
@@ -3697,7 +3712,7 @@ impl Visitor {
                 #x_exec_iter,
                 // Spec-level iterator (relies on `when_used_as_spec` on into_iter)
                 #[verifier::ghost_wrapper]
-                ::vstd::prelude::ghost_exec(#[verifier::ghost_block_wrapped] Some(&#x_exec_iter)),
+                #vstd::prelude::ghost_exec(#[verifier::ghost_block_wrapped] Some(&#x_exec_iter)),
             );
             // Hold on to the initial snapshot value so that after the loop, we know it didn't change
             #[allow(non_snake_case)]
