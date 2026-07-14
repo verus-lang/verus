@@ -1,0 +1,107 @@
+name: build
+
+on:
+  workflow_call:
+    inputs:
+      checkout_ref:
+        description: Git ref or SHA to build
+        required: true
+        type: string
+    outputs:
+      version:
+        description: Version derived from the built Linux artifact
+        value: ${{ jobs.metadata.outputs.version }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    if: github.repository == 'verus-lang/verus'
+
+    strategy:
+      matrix:
+        build: [macos, macos-x86_64, linux, windows]
+        include:
+          - build: macos
+            os: macos-14
+            release_name: verus-arm64-macos
+          - build: macos-x86_64
+            os: macos-15-intel
+            release_name: verus-x86-macos
+          - build: linux
+            os: ubuntu-24.04
+            release_name: verus-x86-linux
+          - build: windows
+            os: windows-2022
+            release_name: verus-x86-win
+
+    runs-on: ${{ matrix.os }}
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.checkout_ref }}
+
+      - name: get z3
+        working-directory: ./source
+        run: |
+          ./tools/get-z3.sh
+          echo "z3 version $(./z3 --version)"
+
+      - name: setup rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.96.0
+
+      - name: build
+        working-directory: ./source
+        run: |
+          . ../tools/activate
+          vargo clean
+          vargo build --release
+
+      - name: create archive
+        working-directory: ./source
+        run: |
+          ./target-verus/release/verus --version --output-json > ./target-verus/release/version.json
+          cp -R ./target-verus/release "../${{ matrix.release_name }}"
+          cd ..
+          if [ "${{ matrix.os }}" == "windows-2022" ]; then
+            7z a "${{ matrix.release_name }}.zip" "./${{ matrix.release_name }}"
+          else
+            zip -r "${{ matrix.release_name }}.zip" "./${{ matrix.release_name }}"
+          fi
+
+      - name: upload release artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.release_name }}
+          path: ${{ matrix.release_name }}.zip
+
+  metadata:
+    needs: [build]
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.read_version.outputs.version }}
+    steps:
+      - name: download linux artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: verus-x86-linux
+          path: verus-x86-linux
+
+      - name: read version
+        id: read_version
+        shell: bash
+        run: |
+          cd verus-x86-linux
+          unzip verus-x86-linux.zip
+          version="$(cat ./verus-x86-linux/version.txt)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "${version}"
