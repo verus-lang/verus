@@ -22,13 +22,13 @@ pub struct Cli {
 }
 
 fn create_toolchain(is_rolling: bool) -> anyhow::Result<Toolchain> {
-    let verus = make_verus_version()?;
+    let verus = get_verus_version()?;
     let vstd = get_vstd_version(is_rolling)?;
     let z3 = "TODO".into();
     Ok(Toolchain { verus, vstd, z3 })
 }
 
-fn make_verus_version() -> anyhow::Result<String> {
+fn get_verus_version() -> anyhow::Result<String> {
     let git_rev_parse = Command::new("git")
         .args(["rev-parse", "-q", "--short=7", "HEAD"])
         .output()
