@@ -77,7 +77,8 @@ fn get_vstd_version(is_rolling: bool) -> anyhow::Result<Crate> {
         Ok(Crate::GitCommit { git, rev })
     } else {
         // For a stable release, use the latest published version.
-        let contents = std::fs::read_to_string("vstd/Cargo.toml")?;
+        let contents =
+            std::fs::read_to_string("vstd/Cargo.toml").context("reading `vstd/Cargo.toml`")?;
         let table: toml::Table = contents.parse()?;
         let value = table
             .get("package")
