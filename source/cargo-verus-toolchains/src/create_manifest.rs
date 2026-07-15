@@ -1,17 +1,31 @@
 use anyhow::Context;
+use clap::Parser;
 use std::process::Command;
 
 type Toolchain = cargo_verus_toolchains::Toolchain<String>;
 type Crate = cargo_verus_toolchains::Crate<String>;
 
 fn main() -> anyhow::Result<()> {
-    let verus = make_verus_version()?;
-    let vstd = Crate::Registry("TODO".into());
-    let z3 = "TODO".into();
-    let toolchain = Toolchain { verus, vstd, z3 };
+    let cli = Cli::parse_from(std::env::args());
+    let toolchain = create_toolchain(cli.rolling)?;
     let manifest = toml::to_string_pretty(&toolchain).context("format manifest")?;
     print!("{manifest}");
     Ok(())
+}
+
+/// Tool to create toolchain manifest files.
+#[derive(Clone, Debug, Parser)]
+pub struct Cli {
+    /// The manifest is for a rolling release.
+    #[arg(long)]
+    pub rolling: bool,
+}
+
+fn create_toolchain(is_rolling: bool) -> anyhow::Result<Toolchain> {
+    let verus = make_verus_version()?;
+    let vstd = Crate::Registry("TODO".into());
+    let z3 = "TODO".into();
+    Ok(Toolchain { verus, vstd, z3 })
 }
 
 fn make_verus_version() -> anyhow::Result<String> {

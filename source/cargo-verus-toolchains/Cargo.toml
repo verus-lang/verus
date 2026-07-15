@@ -11,6 +11,7 @@ path = "src/create_manifest.rs"
 
 [dependencies]
 anyhow = { workspace = true }
+clap = { workspace = true }
 itertools = { workspace = true }
 regex = { workspace = true }
 serde = { workspace = true }
