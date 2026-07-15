@@ -2,3 +2,6 @@
 /source/cargo-verus/** @mkovaxx
 /source/cargo-verus-toolchains/** @mkovaxx
 /.zed/** @mkovaxx
+/source/rustc_mir_build @tjhance
+/source/rustc_mir_build_additional_files @tjhance
+/source/rustc_hir_typeck @tjhance
