@@ -317,8 +317,10 @@ dependencies = [
 name = "cargo-verus-toolchains"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "itertools",
  "pretty_assertions",
+ "regex",
  "serde",
  "tempfile",
  "toml",

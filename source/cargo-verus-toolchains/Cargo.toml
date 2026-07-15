@@ -5,8 +5,14 @@ version = "0.1.0"
 edition = "2024"
 description = "Data types and utilities for bundling Verus toolchain info into cargo-verus."
 
+[[bin]]
+name = "create_manifest"
+path = "src/create_manifest.rs"
+
 [dependencies]
+anyhow = { workspace = true }
 itertools = { workspace = true }
+regex = { workspace = true }
 serde = { workspace = true }
 toml = { workspace = true }
 
