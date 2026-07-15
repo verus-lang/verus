@@ -23,18 +23,18 @@ pub struct Cli {
 
 fn create_toolchain(is_rolling: bool) -> anyhow::Result<Toolchain> {
     let verus = make_verus_version()?;
-    let vstd = Crate::Registry("TODO".into());
+    let vstd = get_vstd_version(is_rolling)?;
     let z3 = "TODO".into();
     Ok(Toolchain { verus, vstd, z3 })
 }
 
 fn make_verus_version() -> anyhow::Result<String> {
     let git_rev_parse = Command::new("git")
-        .args(["rev-parse", "--short=7", "HEAD"])
+        .args(["rev-parse", "-q", "--short=7", "HEAD"])
         .output()
         .context("failed to run `git rev-parse`")?;
-    let sha_str = String::from_utf8(git_rev_parse.stdout).context("commit sha is invalid utf8")?;
-    let sha_short = sha_str.trim();
+    let rev_raw = String::from_utf8(git_rev_parse.stdout).context("commit hash is invalid utf8")?;
+    let rev = rev_raw.trim();
 
     let git_show_date = std::process::Command::new("git")
         .args(["show", "-s", "--format=%cs", "HEAD"])
@@ -46,9 +46,37 @@ fn make_verus_version() -> anyhow::Result<String> {
         regex::Regex::new(r"^(\d{4})-(\d{2})-(\d{2})$").context("regex is well formed")?;
     let date_captures =
         date_re.captures(date_str.trim()).context("unexpected date string {date_str:?}")?;
-    let year = &date_captures[0];
-    let month = &date_captures[1];
-    let day = &date_captures[2];
+    let year = &date_captures[1];
+    let month = &date_captures[2];
+    let day = &date_captures[3];
 
-    Ok(format!("0.{year}.{month}.{day}.{sha_short}"))
+    Ok(format!("0.{year}.{month}.{day}.{rev}"))
+}
+
+fn get_vstd_version(is_rolling: bool) -> anyhow::Result<Crate> {
+    if is_rolling {
+        // For a rolling release, pin to the Git commit.
+        let git_rev_parse = Command::new("git")
+            .args(["rev-parse", "-q", "--short", "HEAD"])
+            .output()
+            .context("running `git rev-parse`")?;
+        let rev = String::from_utf8(git_rev_parse.stdout)
+            .context("commit hash is invalid utf8")?
+            .trim()
+            .to_owned();
+        let git = "https://github.com/verus-lang/verus.git".into();
+        Ok(Crate::GitCommit { git, rev })
+    } else {
+        // For a stable release, use the latest published version.
+        let cargo_tree_vstd = Command::new("cargo")
+            .args(["tree", "--frozen", "-q", "--depth", "0", "--manifest-path", "vstd/Cargo.toml"])
+            .output()
+            .context("running `cargo tree`")?;
+        let pkg_str =
+            String::from_utf8(cargo_tree_vstd.stdout).context("package spec is invalid utf8")?;
+        let version_re = regex::Regex::new(r"^vstd v(\S+) ").context("regex is well formed")?;
+        let captures =
+            version_re.captures(pkg_str.trim()).context("unexpected package spec {pkg_str:?}")?;
+        Ok(Crate::Registry(captures[1].into()))
+    }
 }
