@@ -205,16 +205,11 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
     }
 
     fn visit_havoc_set(&mut self, _hset: &Arc<HavocSet>) -> Result<R::Ret<Arc<HavocSet>>, Err> {
-        /*
-        let mut typ_inv_vars2 = R::vec();
-        for (uid, (typ, hvar)) in hset.vars.iter() {
-            let typ = self.visit_typ(typ)?;
-            let hvar = *hvar;
-            R::push(&mut typ_inv_vars2, R::ret(|| (uid.clone(), (R::get(typ), hvar)))?);
-        }
-        R::ret(|| Arc::new(HavocSet { vars: R::get_vec(typ_inv_vars2).into_iter().collect() }))
-        */
-        unimplemented!()
+        // The HavocSet internally has a bunch of types which need to be traversed
+        // to make an accurate visitor.
+        // Right now, the HavocSets are filled as the last step before translating to AIR,
+        // so it's fine to leave this unimplemented.
+        unimplemented!("running SST visitor after HavocSets are added");
     }
 
     fn visit_havoc_set_opt(
