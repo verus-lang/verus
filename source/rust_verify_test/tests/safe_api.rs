@@ -243,6 +243,7 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test] any_returned ["-V check-api-safety"] => verus_code! {
+        use vstd::prelude::*;
         fn foo(y: u32)
             requires y > 0
         {
