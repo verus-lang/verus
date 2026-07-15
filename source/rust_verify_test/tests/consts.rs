@@ -641,3 +641,26 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    // A generic associated const whose type refers to an associated type of a trait
+    // bound on the impl's type parameter (`T::Assoc` where `T: Tr`).
+    #[test] assoc_const_impl_type_param_assoc_type_issue2659 verus_code! {
+        trait Tr {
+            type Assoc;
+        }
+
+        enum Wrapper<A> { Empty, Full(A) }
+
+        struct MyStruct<T> { t: T }
+
+        impl<T: Tr> MyStruct<T> {
+            const X: Wrapper<T::Assoc> = Wrapper::Empty;
+        }
+
+        fn test<T: Tr>() {
+            let w = MyStruct::<T>::X;
+            assert(w is Empty);
+        }
+    } => Ok(())
+}
