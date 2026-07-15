@@ -2063,35 +2063,47 @@ pub fn check_crate(
         deferred_errors: vec![],
     };
     let ctxt = Ctxt { funs, reveal_groups, dts, traits, krate, unpruned_krate, no_cheating };
+
+    let mut errors = vec![];
+
     // TODO remove once `uninterp` is enforced for uninterpreted functions
     for function in krate.functions.iter() {
         let Some(warn_config) = warning_ctx.fun_warn_configs.get(&function.x.name) else {
             panic!("missing warn_config for function {:?}", &function.x.name);
         };
-        check_function(&ctxt, function, &mut emit, warn_config, no_verify).map_err(to_wf)?;
+        if let Err(e) = check_function(&ctxt, function, &mut emit, warn_config, no_verify) {
+            errors.push(e);
+        }
     }
     for dt in krate.datatypes.iter() {
-        check_datatype(&ctxt, dt, &mut emit).map_err(to_wf)?;
+        if let Err(e) = check_datatype(&ctxt, dt, &mut emit) {
+            errors.push(e);
+        }
     }
     for tr_impl in krate.trait_impls.iter() {
         for typ in tr_impl.x.trait_typ_args.iter() {
-            check_typ(&ctxt, typ, &tr_impl.span, &mut emit).map_err(to_wf)?;
+            if let Err(e) = check_typ(&ctxt, typ, &tr_impl.span, &mut emit) {
+                errors.push(e);
+            }
         }
     }
     for assoc_type_impl in krate.assoc_type_impls.iter() {
         for typ in assoc_type_impl.x.trait_typ_args.iter() {
-            check_typ(&ctxt, typ, &assoc_type_impl.span, &mut emit).map_err(to_wf)?;
+            if let Err(e) = check_typ(&ctxt, typ, &assoc_type_impl.span, &mut emit) {
+                errors.push(e);
+            }
         }
-        check_typ(&ctxt, &assoc_type_impl.x.typ, &assoc_type_impl.span, &mut emit)
-            .map_err(to_wf)?;
+        if let Err(e) = check_typ(&ctxt, &assoc_type_impl.x.typ, &assoc_type_impl.span, &mut emit) {
+            errors.push(e);
+        }
     }
 
     diags.append(&mut emit.diags);
     deferred_errors.append(&mut emit.deferred_errors);
 
-    if emit.has_fatal_errors() {
+    if emit.has_fatal_errors() || errors.len() > 0 {
         return Err(WFErr {
-            errors: vec![],
+            errors,
             boundary_errors: emit.boundary_errors.into_iter().collect(),
             check_details: CheckDetails { func_failed_proof_notes: emit.func_failed_proof_notes },
         });
