@@ -194,6 +194,7 @@ fn check_item<'tcx>(
             &vir_ty,
             body_id,
             matches!(item.kind, ItemKind::Static(_, _, _, _)),
+            None,
         )
         .map_err(|e| vec![e])?;
 

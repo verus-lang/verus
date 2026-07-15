@@ -331,7 +331,13 @@ pub(crate) fn const_var_to_vir<'tcx>(
     hir_id: &rustc_hir::HirId,
     span: Span,
 ) -> Result<vir::ast::Expr, VirErr> {
-    if bctx.ctxt.tcx.trait_of_assoc(id).is_some() {
+    // A trait associated const, or an inherent-impl associated const that has type
+    // parameters (e.g. `impl<T> S<T> { const C: ... = ...; }`), is encoded as a
+    // function taking those type parameters, so it must be lowered to ExprX::Call
+    // (which supplies the type arguments) rather than ExprX::ConstVar.
+    let is_generic_assoc_const =
+        bctx.ctxt.tcx.trait_of_assoc(id).is_some() || bctx.ctxt.tcx.generics_of(id).count() > 0;
+    if is_generic_assoc_const {
         // associated const --> ExprX::Call rather than ExprX::ConstVar
         let Some(expr) = expr else {
             unsupported_err!(span, "associated constant in pattern");

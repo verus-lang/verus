@@ -567,3 +567,77 @@ test_verify_one_file! {
         pub const C: char = 'x';
     } => Err(err) => assert_vir_error_msg(err, "const cannot have `ensures` unless it is `exec const`")
 }
+
+test_verify_one_file! {
+    // https://github.com/verus-lang/verus/issues/2659
+    // A type parameter from the surrounding `impl` block should be usable in an
+    // associated const's type.
+    #[test] assoc_const_impl_type_param_issue2659 verus_code! {
+        enum Maybe<T> { Nothing, Just(T) }
+
+        struct WrappedU64<T> {
+            val: u64,
+            t: Maybe<T>,
+        }
+
+        struct MyStruct<T> { t: T }
+
+        impl<T> MyStruct<T> {
+            const X: WrappedU64<T> = WrappedU64 {
+                val: 42,
+                t: Maybe::Nothing,
+            };
+        }
+
+        fn test() {
+            let w = MyStruct::<bool>::X;
+            assert(w.val == 42);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // Referencing the value of a generic associated const should still verify facts
+    // about the value, so a false assertion must fail.
+    #[test] assoc_const_impl_type_param_fails_issue2659 verus_code! {
+        enum Maybe<T> { Nothing, Just(T) }
+
+        struct WrappedU64<T> {
+            val: u64,
+            t: Maybe<T>,
+        }
+
+        struct MyStruct<T> { t: T }
+
+        impl<T> MyStruct<T> {
+            const X: WrappedU64<T> = WrappedU64 {
+                val: 42,
+                t: Maybe::Nothing,
+            };
+        }
+
+        fn test() {
+            let w = MyStruct::<bool>::X;
+            assert(w.val == 43); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    // A generic associated const whose type does not mention the type parameter,
+    // used from a generic function with a trait bound.
+    #[test] assoc_const_impl_type_param_bounded_issue2659 verus_code! {
+        trait Tr { spec fn v() -> u64; }
+
+        struct S<T> { t: T }
+
+        impl<T: Tr> S<T> {
+            const C: u64 = 7;
+        }
+
+        fn test<T: Tr>() {
+            let c = S::<T>::C;
+            assert(c == 7);
+        }
+    } => Ok(())
+}

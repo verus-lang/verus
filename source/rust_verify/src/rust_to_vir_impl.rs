@@ -542,6 +542,7 @@ pub(crate) fn translate_impl_item<'tcx>(
                         &vir_ty,
                         &body_id,
                         false,
+                        Some((&impll.generics, impl_def_id)),
                     )?;
                 } else {
                     let kind = mk_trait_function_kind();
