@@ -63,6 +63,9 @@ fn expr_get_early_exits_rec(
             | ExprX::UnaryOpr(..)
             | ExprX::Binary(..)
             | ExprX::BinaryOpr(..)
+            | ExprX::AtomicUpdateInitDummy
+            | ExprX::Atomically(..)
+            | ExprX::Update(..)
             | ExprX::InvMask(..)
             | ExprX::Multi(..)
             | ExprX::Assign { .. }
@@ -119,8 +122,8 @@ fn expr_get_early_exits_rec(
                 });
                 VisitorControlFlow::Recurse
             }
-            ExprX::OpenInvariant(inv, _binder, _body, _atomicity) => {
-                expr_get_early_exits_rec(inv, in_loop, scope_map, results);
+            ExprX::OpenInvariant(expr, ..) | ExprX::TryOpenAtomicUpdate(expr, ..) => {
+                expr_get_early_exits_rec(expr, in_loop, scope_map, results);
                 // Skip checking nested loops to avoid quadratic behavior:
                 VisitorControlFlow::Return
             }

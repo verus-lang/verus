@@ -27,7 +27,6 @@ pub struct Assertion {
     pub cond: Exp,
 }
 
-#[allow(unused)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MaskQueryKind {
     OpenInvariant,

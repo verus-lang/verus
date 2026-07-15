@@ -1,5 +1,5 @@
 {
-  "version": "0.0.0-2026-05-31-0205",
+  "version": "0.0.0-2026-05-24-0157",
   "types": [
     {
       "ident": "Abi",
@@ -365,6 +365,117 @@
         },
         "semi": {
           "token": "Semi"
+        }
+      }
+    },
+    {
+      "ident": "AtomicSpec",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "atomically_token": {
+          "token": "Atomically"
+        },
+        "paren_token": {
+          "group": "Paren"
+        },
+        "atomic_update": {
+          "proc_macro2": "Ident"
+        },
+        "block_token": {
+          "group": "Brace"
+        },
+        "type_clause": {
+          "option": {
+            "syn": "PredTypeClause"
+          }
+        },
+        "perm_clause": {
+          "syn": "PermClause"
+        },
+        "requires": {
+          "option": {
+            "syn": "Requires"
+          }
+        },
+        "ensures": {
+          "option": {
+            "syn": "Ensures"
+          }
+        },
+        "outer_mask": {
+          "option": {
+            "syn": "OuterMask"
+          }
+        },
+        "inner_mask": {
+          "option": {
+            "syn": "InnerMask"
+          }
+        },
+        "comma_token": {
+          "option": {
+            "token": "Comma"
+          }
+        }
+      }
+    },
+    {
+      "ident": "AtomicallyBlock",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "label": {
+          "option": {
+            "syn": "Label"
+          }
+        },
+        "atomically_token": {
+          "token": "Atomically"
+        },
+        "loop_token": {
+          "option": {
+            "token": "Loop"
+          }
+        },
+        "or1_token": {
+          "token": "Or"
+        },
+        "update_fn_binder": {
+          "proc_macro2": "Ident"
+        },
+        "comma_token": {
+          "option": {
+            "token": "Comma"
+          }
+        },
+        "or2_token": {
+          "token": "Or"
+        },
+        "spec_au_binder": {
+          "syn": "ReturnPat"
+        },
+        "invariant_except_breaks": {
+          "option": {
+            "syn": "InvariantExceptBreak"
+          }
+        },
+        "invariants": {
+          "option": {
+            "syn": "Invariant"
+          }
+        },
+        "ensures": {
+          "option": {
+            "syn": "Ensures"
+          }
+        },
+        "body": {
+          "box": {
+            "syn": "Block"
+          }
         }
       }
     },
@@ -1619,6 +1730,11 @@
             },
             "punct": "Comma"
           }
+        },
+        "atomically": {
+          "option": {
+            "syn": "AtomicallyBlock"
+          }
         }
       }
     },
@@ -2364,6 +2480,11 @@
               "syn": "Expr"
             },
             "punct": "Comma"
+          }
+        },
+        "atomically": {
+          "option": {
+            "syn": "AtomicallyBlock"
           }
         }
       }
@@ -3707,6 +3828,25 @@
         },
         "span": {
           "proc_macro2": "Span"
+        }
+      }
+    },
+    {
+      "ident": "InnerMask",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "InnerMask"
+        },
+        "set": {
+          "syn": "InvariantNameSet"
+        },
+        "comma_token": {
+          "option": {
+            "token": "Comma"
+          }
         }
       }
     },
@@ -5286,6 +5426,25 @@
       }
     },
     {
+      "ident": "OuterMask",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "OuterMask"
+        },
+        "set": {
+          "syn": "InvariantNameSet"
+        },
+        "comma_token": {
+          "option": {
+            "token": "Comma"
+          }
+        }
+      }
+    },
+    {
       "ident": "ParenthesizedGenericArguments",
       "features": {
         "any": [
@@ -5780,6 +5939,66 @@
       }
     },
     {
+      "ident": "PermClause",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "old_perms": {
+          "syn": "PermTuple"
+        },
+        "arrow_token": {
+          "option": {
+            "token": "RArrow"
+          }
+        },
+        "new_perms": {
+          "syn": "PermTuple"
+        },
+        "comma_token": {
+          "option": {
+            "token": "Comma"
+          }
+        }
+      }
+    },
+    {
+      "ident": "PermTuple",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "paren_token": {
+          "group": "Paren"
+        },
+        "fields": {
+          "punctuated": {
+            "element": {
+              "syn": "PermTupleField"
+            },
+            "punct": "Comma"
+          }
+        }
+      }
+    },
+    {
+      "ident": "PermTupleField",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "ident": {
+          "proc_macro2": "Ident"
+        },
+        "colon_token": {
+          "token": "Colon"
+        },
+        "ty": {
+          "syn": "Type"
+        }
+      }
+    },
+    {
       "ident": "PointerMutability",
       "features": {
         "any": [
@@ -5823,6 +6042,23 @@
         },
         "gt_token": {
           "token": "Gt"
+        }
+      }
+    },
+    {
+      "ident": "PredTypeClause",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "type_token": {
+          "token": "Type"
+        },
+        "ident": {
+          "proc_macro2": "Ident"
+        },
+        "comma_token": {
+          "token": "Comma"
         }
       }
     },
@@ -6065,6 +6301,50 @@
       }
     },
     {
+      "ident": "ReturnPat",
+      "features": {
+        "any": []
+      },
+      "variants": {
+        "Default": [],
+        "Pat": [
+          {
+            "token": "RArrow"
+          },
+          {
+            "group": "Paren"
+          },
+          {
+            "syn": "Pat"
+          },
+          {
+            "option": {
+              "box": {
+                "tuple": [
+                  {
+                    "token": "Colon"
+                  },
+                  {
+                    "syn": "Type"
+                  }
+                ]
+              }
+            }
+          }
+        ],
+        "Type": [
+          {
+            "token": "RArrow"
+          },
+          {
+            "box": {
+              "syn": "Type"
+            }
+          }
+        ]
+      }
+    },
+    {
       "ident": "ReturnType",
       "features": {
         "any": [
@@ -6106,6 +6386,20 @@
             }
           }
         ]
+      }
+    },
+    {
+      "ident": "ReturnValue",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "RArrow"
+        },
+        "pat": {
+          "syn": "Pat"
+        }
       }
     },
     {
@@ -6307,6 +6601,11 @@
         "prover": {
           "option": {
             "syn": "Prover"
+          }
+        },
+        "atomic_spec": {
+          "option": {
+            "syn": "AtomicSpec"
           }
         },
         "requires": {
@@ -7746,6 +8045,7 @@
     "AssumeSpecification": "assume_specification",
     "Async": "async",
     "At": "@",
+    "Atomically": "atomically",
     "Auto": "auto",
     "Await": "await",
     "Axiom": "axiom",
@@ -7805,6 +8105,7 @@
     "Implies": "implies",
     "Imply": "==>",
     "In": "in",
+    "InnerMask": "inner_mask",
     "InvAny": "any",
     "InvNone": "none",
     "Invariant": "invariant",
@@ -7835,6 +8136,7 @@
     "Or": "|",
     "OrEq": "|=",
     "OrOr": "||",
+    "OuterMask": "outer_mask",
     "Override": "override",
     "PathSep": "::",
     "Percent": "%",

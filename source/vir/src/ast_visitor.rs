@@ -554,11 +554,13 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 loop_isolation,
                 allow_complex_invariants,
                 is_for_loop,
+                assume_termination,
                 label,
                 cond,
                 body,
                 invs,
                 decrease,
+                atomic_call,
             } => {
                 let cond = self.visit_opt_expr(cond)?;
                 let body = self.visit_expr(body)?;
@@ -569,11 +571,13 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                         loop_isolation: *loop_isolation,
                         allow_complex_invariants: *allow_complex_invariants,
                         is_for_loop: *is_for_loop,
+                        assume_termination: *assume_termination,
                         label: label.clone(),
                         cond: R::get_opt(cond),
                         body: R::get(body),
                         invs: R::get_vec_a(invs),
                         decrease: R::get_vec_a(decrease),
+                        atomic_call: *atomic_call,
                     })
                 })
             }
@@ -593,6 +597,33 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 R::ret(|| {
                     expr_new(ExprX::OpenInvariant(R::get(e), R::get(binder), R::get(body), *ato))
                 })
+            }
+            ExprX::TryOpenAtomicUpdate(e, b, body) => {
+                let e = self.visit_expr(e)?;
+
+                let binder = self.visit_binder_typ(b)?;
+
+                self.push_scope();
+                let b = R::get_or(&binder, b);
+                self.insert_binding(&b.name, ScopeEntry::new(&b.a, None, true));
+
+                let body = self.visit_expr(body)?;
+
+                self.pop_scope();
+
+                R::ret(|| {
+                    expr_new(ExprX::TryOpenAtomicUpdate(R::get(e), R::get(binder), R::get(body)))
+                })
+            }
+            ExprX::AtomicUpdateInitDummy => R::ret(|| expr_new(ExprX::AtomicUpdateInitDummy)),
+            ExprX::Atomically(k, v, e) => {
+                let v = v.clone();
+                let e = self.visit_expr(e)?;
+                R::ret(|| expr_new(ExprX::Atomically(*k, v, R::get(e))))
+            }
+            ExprX::Update(e) => {
+                let e = self.visit_expr(e)?;
+                R::ret(|| expr_new(ExprX::Update(R::get(e))))
             }
             ExprX::InvMask(m) => match m {
                 MaskSpec::InvariantOpens(span, es) => {
@@ -1130,6 +1161,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             decrease_by,
             fndef_axioms,
             mask_spec,
+            atomic_update,
             unwind_spec,
             item_kind,
             attrs,
@@ -1167,6 +1199,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
         let decrease = self.visit_exprs(decrease)?;
         let decrease_when = self.visit_opt_expr(decrease_when)?;
         let mask_spec = R::map_opt(mask_spec, &mut |ms| self.visit_mask_spec(ms))?;
+        let atomic_update = R::map_opt(atomic_update, &mut |exp| self.visit_expr(exp))?;
         let unwind_spec = R::map_opt(unwind_spec, &mut |us| self.visit_unwind_spec(us))?;
         let body = self.visit_opt_expr(body)?;
         self.pop_scope();
@@ -1195,6 +1228,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 decrease_by: decrease_by.clone(),
                 fndef_axioms: R::get_opt(fndef_axioms),
                 mask_spec: R::get_opt(mask_spec),
+                atomic_update: R::get_opt(atomic_update),
                 unwind_spec: R::get_opt(unwind_spec),
                 item_kind: item_kind.clone(),
                 attrs: attrs.clone(),

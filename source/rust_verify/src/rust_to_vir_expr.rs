@@ -68,8 +68,8 @@ use crate::rust_to_vir_base::{
 use crate::rust_to_vir_ctor::{resolve_braces_ctor, resolve_ctor};
 use crate::util::{err_span, err_span_bare, slice_vec_map_result, vec_map_result};
 use crate::verus_items::{
-    self, CompilableOprItem, DummyCaptureItem, InvariantItem, OpenInvariantBlockItem, RustItem,
-    SpecGhostTrackedItem, UnaryOpItem, VerusItem, VstdItem,
+    self, CompilableOprItem, DummyCaptureItem, InvariantItem, OpenAtomicUpdateItem,
+    OpenInvariantBlockItem, RustItem, SpecGhostTrackedItem, UnaryOpItem, VerusItem, VstdItem,
 };
 use crate::{unsupported_err, unsupported_err_unless};
 use air::ast::Binder;
@@ -1173,6 +1173,250 @@ fn invariant_block_to_vir<'tcx>(
     )))
 }
 
+fn is_open_au_block(bctx: &BodyCtxt, expr: &Expr) -> Result<bool, VirErr> {
+    let hir_attrs = bctx.ctxt.tcx.hir_attrs(expr.hir_id);
+    let vir_attrs = parse_attrs(hir_attrs, None)?;
+    Ok(vir_attrs.contains(&Attr::AtomicUpdateBlock))
+}
+
+fn malformed_au_block_err<'tcx, X>(expr: &Expr<'tcx>, line: u32) -> Result<X, VirErr> {
+    err_span(
+        expr.span,
+        format!(
+            "malformed atomic update block; use `try_open_atomic_update!` macro instead ({line})"
+        ),
+    )
+}
+
+fn open_au_block_to_vir<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    expr: &Expr<'tcx>,
+) -> Result<ExprOrPlace, VirErr> {
+    // ```
+    // #[verifier::open_au_block] {
+    //     let guard = try_open_atomic_update_begin($au);
+    //     let $x = bind_lifetime_internal(&guard);
+    //     let res = $body;
+    //     match res {
+    //         res => try_open_atomic_update_end(guard, res),
+    //         ..?
+    //     }
+    // }
+    // ```
+
+    let ExprKind::Block(block, _) = expr.kind else {
+        panic!("expr should be a block expression");
+    };
+
+    let Block { stmts: [open_stmt, bind_stmt, mid_stmt], expr: Some(close_expr), .. } = block
+    else {
+        return malformed_au_block_err(expr, line!());
+    };
+
+    // ```
+    // let (guard, $x) = try_open_atomic_update_begin($au);
+    // ```
+    let StmtKind::Let(LetStmt {
+        pat:
+            Pat {
+                kind: PatKind::Binding(BindingMode(ByRef::No, Mutability::Not), guard_bind, _, None),
+                default_binding_modes: true,
+                ..
+            },
+        init:
+            Some(Expr {
+                kind:
+                    ExprKind::Call(
+                        Expr {
+                            kind:
+                                ExprKind::Path(QPath::Resolved(
+                                    None,
+                                    rustc_hir::Path {
+                                        res: Res::Def(DefKind::Fn, begin_fun_id),
+                                        ..
+                                    },
+                                )),
+                            ..
+                        },
+                        [au_arg, ..],
+                    ),
+                ..
+            }),
+        els: None,
+        ..
+    }) = open_stmt.kind
+    else {
+        return malformed_au_block_err(expr, line!());
+    };
+
+    let Some(&VerusItem::OpenAtomicUpdate(OpenAtomicUpdateItem::TryOpenAtomicUpdateBegin)) =
+        bctx.ctxt.verus_items.id_to_name.get(begin_fun_id)
+    else {
+        return malformed_au_block_err(expr, line!());
+    };
+
+    // ```
+    // let $x = bind_lifetime_internal(&guard, x);
+    // ```
+    let StmtKind::Let(LetStmt {
+        pat:
+            x_pat @ Pat {
+                kind: PatKind::Binding(BindingMode(ByRef::No, _), x_bind, _, None),
+                default_binding_modes: true,
+                ..
+            },
+        init: Some(_),
+        els: None,
+        ..
+    }) = bind_stmt.kind
+    else {
+        dbg!(bind_stmt.kind);
+        return malformed_au_block_err(expr, line!());
+    };
+
+    // ```
+    // let res = $body;
+    // ```
+    let StmtKind::Let(LetStmt {
+        pat:
+            Pat {
+                kind: PatKind::Binding(BindingMode(ByRef::No, Mutability::Not), res_bind, _, None),
+                default_binding_modes: true,
+                ..
+            },
+        init: Some(body_expr @ Expr { kind: ExprKind::Block(body_block, None), .. }),
+        els: None,
+        ..
+    }) = mid_stmt.kind
+    else {
+        return malformed_au_block_err(expr, line!());
+    };
+
+    // ```
+    // match res {
+    //     res => ...,
+    // }
+    // ```
+    let ExprKind::Match(
+        Expr {
+            kind:
+                ExprKind::Path(QPath::Resolved(
+                    None,
+                    rustc_hir::Path { res: Res::Local(res_proxy_use), .. },
+                )),
+            ..
+        },
+        [
+            rustc_hir::Arm {
+                pat:
+                    Pat {
+                        kind:
+                            PatKind::Binding(
+                                BindingMode(ByRef::No, Mutability::Not),
+                                res_proxy_bind,
+                                _,
+                                None,
+                            ),
+                        default_binding_modes: true,
+                        ..
+                    },
+                guard: None,
+                body: match_arm_body,
+                ..
+            },
+            ..,
+        ],
+        _,
+    ) = close_expr.kind
+    else {
+        return malformed_au_block_err(expr, line!());
+    };
+
+    if res_proxy_use != res_bind {
+        return malformed_au_block_err(expr, line!());
+    }
+
+    let res_bind = res_proxy_bind;
+    let close_expr = &**match_arm_body;
+
+    // ```
+    // try_open_atomic_update_end(guard, res)
+    // ```
+    let ExprKind::Call(
+        Expr {
+            kind:
+                ExprKind::Path(QPath::Resolved(
+                    None,
+                    rustc_hir::Path { res: Res::Def(DefKind::Fn, end_fun_id), .. },
+                )),
+            ..
+        },
+        [
+            Expr {
+                kind:
+                    ExprKind::Path(QPath::Resolved(
+                        None,
+                        rustc_hir::Path { res: Res::Local(guard_use), .. },
+                    )),
+                ..
+            },
+            Expr {
+                kind:
+                    ExprKind::Path(QPath::Resolved(
+                        None,
+                        rustc_hir::Path { res: Res::Local(res_use), .. },
+                    )),
+                ..
+            },
+        ],
+    ) = close_expr.kind
+    else {
+        return malformed_au_block_err(expr, line!());
+    };
+
+    let Some(&VerusItem::OpenAtomicUpdate(OpenAtomicUpdateItem::TryOpenAtomicUpdateEnd)) =
+        bctx.ctxt.verus_items.id_to_name.get(end_fun_id)
+    else {
+        return malformed_au_block_err(expr, line!());
+    };
+
+    if res_bind != res_use || guard_bind != guard_use {
+        return malformed_au_block_err(expr, line!());
+    }
+
+    let mut vir_stmts = Vec::new();
+    for stmt in body_block.stmts {
+        vir_stmts.extend(stmt_to_vir(bctx, stmt)?);
+    }
+
+    let vir_body = bctx.spanned_typed_new(
+        body_block.span,
+        &typ_of_node_unadjusted(bctx, body_expr.span, &body_expr.hir_id)?,
+        ExprX::Block(
+            Arc::new(vir_stmts),
+            body_block.expr.map(|expr| expr_to_vir_consume(bctx, &expr)).transpose()?,
+        ),
+    );
+
+    let au_vir_arg = expr_to_vir_consume(bctx, au_arg)?;
+    let au_vir_binder = Arc::new(VarBinderX {
+        name: pat_to_var(x_pat)?,
+        a: typ_of_node_unadjusted(bctx, x_pat.span, x_bind)?,
+    });
+
+    let mid_exp = bctx.spanned_typed_new(
+        mid_stmt.span,
+        &typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id)?,
+        ExprX::TryOpenAtomicUpdate(au_vir_arg, au_vir_binder, vir_body),
+    );
+
+    Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(
+        expr.span,
+        &typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id)?,
+        ExprX::Block(Default::default(), Some(mid_exp)),
+    )))
+}
+
 pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
@@ -1950,8 +2194,14 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::Block(body, label) => {
             unsupported_err_unless!(label.is_none(), expr.span, "block with label");
             if is_invariant_block(bctx, expr)? {
-                invariant_block_to_vir(bctx, expr)
-            } else if let Some(g_attr) = get_ghost_block_opt(bctx.ctxt.tcx.hir_attrs(expr.hir_id)) {
+                return invariant_block_to_vir(bctx, expr);
+            }
+
+            if is_open_au_block(bctx, expr)? {
+                return open_au_block_to_vir(bctx, expr);
+            }
+
+            if let Some(g_attr) = get_ghost_block_opt(bctx.ctxt.tcx.hir_attrs(expr.hir_id)) {
                 let bctx = &BodyCtxt { in_ghost: true, ..bctx.clone() };
                 let block = block_to_vir(bctx, body, &expr.span, &expr_typ()?)?;
                 let tracked = match g_attr {
@@ -2004,8 +2254,26 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                                 false,
                             )?)
                         }
-                        (rustc_hir::def::Res::Local(_), _) => {
-                            None // dynamically computed function, see below
+                        (rustc_hir::def::Res::Local(local_hir_id), _) => {
+                            match bctx.atomically.as_deref() {
+                                Some(actx) if actx.update_binder == local_hir_id => {
+                                    let vir_span = crate::spans::err_air_span(expr.span);
+                                    actx.call_spans.send(vir_span).unwrap();
+                                    let [input] = args_slice else {
+                                        panic!("update function should have exactly one parameter")
+                                    };
+
+                                    let arg = expr_to_vir_consume(bctx, input)?;
+                                    Some(bctx.spanned_typed_new(
+                                        fun.span,
+                                        &expr_typ()?,
+                                        ExprX::Update(arg),
+                                    ))
+                                }
+
+                                // dynamically computed function, see below
+                                _ => None,
+                            }
                         }
                         _ => {
                             unsupported_err!(
@@ -2015,9 +2283,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         }
                     }
                 }
-                _ => {
-                    None // dynamically computed function, see below
-                }
+                // dynamically computed function, see below
+                _ => None,
             };
             match res {
                 Some(res) => Ok(ExprOrPlace::Expr(res)),
@@ -2511,6 +2778,12 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let res = bctx.types.qpath_res(&qpath, expr.hir_id);
             let ctor_opt = resolve_ctor(bctx.ctxt.tcx, res);
             match (res, ctor_opt) {
+                (Res::Local(id), _)
+                    if let Some(actx) = bctx.atomically.as_deref()
+                        && actx.update_binder == id =>
+                {
+                    return err_span(expr.span, "update function must be called directly");
+                }
                 (Res::Local(id), _) => match tcx.hir_node(id) {
                     Node::Pat(pat) => {
                         let name = pat_to_var(pat)?;
@@ -2783,9 +3056,11 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let mut header =
                 vir::headers::read_header(&mut body, &vir::headers::HeaderAllows::Loop)?;
             let label = label.map(|l| l.ident.to_string());
-            use crate::attributes::get_allow_exec_allows_no_decreases_clause_walk_parents;
-            let allow_no_decreases =
-                get_allow_exec_allows_no_decreases_clause_walk_parents(bctx.ctxt.tcx, bctx.fun_id);
+            let allow_no_decreases = expr_vattrs.assume_termination
+                || crate::attributes::get_allow_exec_allows_no_decreases_clause_walk_parents(
+                    bctx.ctxt.tcx,
+                    bctx.fun_id,
+                );
             let decrease = if expr_vattrs.auto_decreases && allow_no_decreases {
                 for dec in header.decrease.iter() {
                     crate::erase::mark_tree_for_erasure(&bctx.ctxt, dec);
@@ -2813,12 +3088,14 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     loop_isolation,
                     allow_complex_invariants,
                     is_for_loop: expr_vattrs.for_loop,
+                    assume_termination: expr_vattrs.assume_termination,
                     label,
                     cond: None,
                     body,
                     invs: header.loop_invariants(),
                     //invs,
                     decrease,
+                    atomic_call: header.atomic_call_loop,
                 },
             )))
         }
@@ -2902,11 +3179,13 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     loop_isolation,
                     allow_complex_invariants: allow_complex_invariants(),
                     is_for_loop: false,
+                    assume_termination: expr_vattrs.assume_termination,
                     label,
                     cond,
                     body,
                     invs: header.loop_invariants(),
                     decrease: header.decrease,
+                    atomic_call: header.atomic_call_loop,
                 },
             )))
         }
