@@ -647,10 +647,15 @@ pub fn verify_one_file(name: &str, code: String, options: &[&str]) -> Result<Tes
         } else {
             ""
         };
+        // `--no-cheating` requires the crate root to contain `#![deny(verus::assumptions)]`;
+        // inject it for single-file tests so they exercise the intended checks.
+        let no_cheating_str =
+            if options.contains(&"--no-cheating") { "#![deny(verus::assumptions)]\n" } else { "" };
         format!(
-            "{}{}{}\n{}",
+            "{}{}{}{}\n{}",
             FEATURE_PRELUDE,
             exec_allows_no_decreases_clause_str,
+            no_cheating_str,
             USE_PRELUDE,
             code.as_str()
         )

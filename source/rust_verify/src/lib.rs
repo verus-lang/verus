@@ -50,6 +50,7 @@ pub mod file_loader;
 mod fn_call_to_vir;
 mod hir_hide_reveal_rewrite;
 mod import_export;
+mod no_cheating;
 pub mod profiler;
 mod resolve_traits;
 pub mod reveal_hide;

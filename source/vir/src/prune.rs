@@ -1279,6 +1279,7 @@ pub fn prune_krate_for_module_or_krate(
             mm.map_x(|m| ModuleX {
                 path: m.path.clone(),
                 reveals: if is_root_module(&m.path) { m.reveals.clone() } else { None },
+                assumptions_allowed: m.assumptions_allowed,
             })
         })
         .collect();
