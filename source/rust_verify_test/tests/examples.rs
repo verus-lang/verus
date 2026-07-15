@@ -16,7 +16,7 @@ enum Mode {
 
 examples_in_dir!("../../examples");
 examples_in_dir!("../../examples/guide");
-examples_in_dir!("../../examples/pcm");
+examples_in_dir!("../../examples/resource");
 examples_in_dir!("../../examples/state_machines");
 examples_in_dir!("../../examples/summer_school");
 examples_in_dir!("../../examples/state_machines/tutorial");
@@ -156,6 +156,6 @@ fn run_example_for_file(file_path: &str) {
             }
         }
         eprintln!("- stdout -\n{}\n", stdout);
-        assert!(false);
+        panic!();
     }
 }

@@ -238,7 +238,7 @@ fn outer_reason_by_expr_kind(e: &Expr) -> Option<OuterProphReason> {
             | ExprX::VarAt(..)
             | ExprX::ConstVar(..)
             | ExprX::StaticVar(..)
-            | ExprX::Call(..) // requires more complex checks
+            | ExprX::Call {..} // requires more complex checks
             | ExprX::Ctor(..)
             | ExprX::NullaryOpr(_)
             | ExprX::Unary(..)
@@ -277,6 +277,7 @@ fn outer_reason_by_expr_kind(e: &Expr) -> Option<OuterProphReason> {
             | ExprX::BorrowMut(..)
             | ExprX::BorrowMutTracked(..)
             | ExprX::TwoPhaseBorrowMut(..)
+            | ExprX::InvMask(..)
             | ExprX::Old(..)
             | ExprX::Await(..)
         => None,
@@ -1447,7 +1448,13 @@ fn check_tracked_swap(
     expr: &Expr,
     option_take: bool,
 ) -> Result<(), VirErr> {
-    let ExprX::Call(CallTarget::Fun(_, _, typ_args, ..), args, None) = &expr.x else {
+    let ExprX::Call {
+        target: CallTarget::Fun(_, _, typ_args, ..),
+        args,
+        post_args: None,
+        body: None,
+    } = &expr.x
+    else {
         unreachable!()
     };
     if option_take {
@@ -1701,11 +1708,12 @@ fn check_expr(
         }
         ExprX::ConstVar(x, _)
         | ExprX::StaticVar(x)
-        | ExprX::Call(
-            CallTarget::Fun(_, x, _, _, crate::ast::CallTargetAttrs { const_var: true, .. }),
-            _,
-            _,
-        ) => {
+        | ExprX::Call {
+            target: CallTarget::Fun(_, x, _, _, crate::ast::CallTargetAttrs { const_var: true, .. }),
+            args: _,
+            post_args: _,
+            body: _,
+        } => {
             let function = match ctxt.funs.get(x) {
                 None => {
                     let name = crate::ast_util::path_as_friendly_rust_name(&x.path);
@@ -1740,11 +1748,14 @@ fn check_expr(
             record.erasure_modes.var_modes.push((expr.span.clone(), (mode, mode)));
             Ok((mode, Proph::No))
         }
-        ExprX::Call(
-            CallTarget::Fun(CallTargetKind::ProofFn(param_modes, ret_mode), _, _, _, _),
-            es,
-            None,
-        ) => {
+        ExprX::Call {
+            target: CallTarget::Fun(CallTargetKind::ProofFn(param_modes, ret_mode), _, _, _, _),
+            args: es,
+            post_args: None,
+            body,
+        } => {
+            assert!(body.is_none());
+
             // es = [FnProof, (...args...)]
             assert!(es.len() == 2);
             let binders = if let ExprX::Ctor(Dt::Tuple(_), _, binders, None) = &es[1].x {
@@ -1789,7 +1800,12 @@ fn check_expr(
 
             Ok((*ret_mode, Proph::No))
         }
-        ExprX::Call(CallTarget::Fun(kind, x, _, _, attrs), es, None) => {
+        ExprX::Call {
+            target: CallTarget::Fun(kind, x, _, _, attrs),
+            args: es,
+            post_args: None,
+            body,
+        } => {
             assert!(attrs.autospec == AutospecUsage::Final);
             assert!(!attrs.const_var); // const_var is handled in ConstVar/StaticVar case
 
@@ -1887,9 +1903,15 @@ fn check_expr(
                 }
                 check_tracked_swap(ctxt, record, &expr, function.x.attrs.tracked_take_option)?;
             }
+
+            if let Some(expr) = body {
+                let _ = check_expr(ctxt, record, typing, outer_mode, expect, expr, outer_proph)?;
+            }
+
             Ok((function.x.ret.x.mode, out_proph))
         }
-        ExprX::Call(CallTarget::FnSpec(e0), es, None) => {
+        ExprX::Call { target: CallTarget::FnSpec(e0), args: es, post_args: None, body } => {
+            assert!(body.is_none());
             if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
                 return Err(error(&expr.span, "cannot call spec function from exec mode"));
             }
@@ -1909,7 +1931,13 @@ fn check_expr(
             }
             Ok((Mode::Spec, proph))
         }
-        ExprX::Call(CallTarget::BuiltinSpecFun(_f, _typs, _impl_paths), es, None) => {
+        ExprX::Call {
+            target: CallTarget::BuiltinSpecFun(_f, _typs, _impl_paths),
+            args: es,
+            post_args: None,
+            body,
+        } => {
+            assert!(body.is_none());
             if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
                 return Err(error(&expr.span, "cannot call spec function from exec mode"));
             }
@@ -1928,7 +1956,8 @@ fn check_expr(
             }
             Ok((Mode::Spec, proph))
         }
-        ExprX::Call(CallTarget::AssumeExternal, es, None) => {
+        ExprX::Call { target: CallTarget::AssumeExternal, args: es, post_args: None, body } => {
+            assert!(body.is_none());
             if ctxt.check_ghost_blocks && typing.block_ghostness != Ghost::Exec {
                 return Err(error(&expr.span, "cannot call external function from non-exec mode"));
             }
@@ -1945,7 +1974,7 @@ fn check_expr(
             }
             Ok((Mode::Exec, Proph::No))
         }
-        ExprX::Call(_, _, Some(_)) => {
+        ExprX::Call { post_args: Some(_), .. } => {
             return Err(error(&expr.span, "ExprX::Call should not have post_args at this point"));
         }
         ExprX::ArrayLiteral(es) => {
@@ -3069,6 +3098,27 @@ fn check_expr(
             }
 
             Ok((Mode::Exec, Proph::No))
+        }
+        ExprX::InvMask(mask_spec) => {
+            let proph = mask_spec
+                .exprs()
+                .iter()
+                .map(|expr| {
+                    let mut typing = typing.push_block_ghostness(Ghost::Ghost);
+                    let mut typing = typing.push_in_pure(true);
+                    check_expr_has_mode(
+                        ctxt,
+                        record,
+                        &mut typing,
+                        Mode::Spec,
+                        expr,
+                        Mode::Spec,
+                        outer_proph,
+                    )
+                })
+                .try_fold(Proph::No, |acc, res| res.map(|p| acc.join(p)))?;
+
+            Ok((Mode::Spec, proph))
         }
         ExprX::AirStmt(_) => Ok((Mode::Exec, Proph::No)),
         ExprX::NeverToAny(e) => {

@@ -317,11 +317,19 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             ExprX::BreakOrContinue { label: _, is_break: _ } => R::ret(|| expr_new(expr.x.clone())),
             ExprX::AirStmt(_) => R::ret(|| expr_new(expr.x.clone())),
             ExprX::Nondeterministic => R::ret(|| expr_new(expr.x.clone())),
-            ExprX::Call(call_target, exprs, opt_e) => {
-                let ct = self.visit_call_target(call_target)?;
-                let es = self.visit_exprs(exprs)?;
-                let oe = self.visit_opt_expr(opt_e)?;
-                R::ret(|| expr_new(ExprX::Call(R::get(ct), R::get_vec_a(es), R::get_opt(oe))))
+            ExprX::Call { target, args, post_args, body } => {
+                let ct = self.visit_call_target(target)?;
+                let es = self.visit_exprs(args)?;
+                let pa = self.visit_opt_expr(post_args)?;
+                let bd = self.visit_opt_expr(body)?;
+                R::ret(|| {
+                    expr_new(ExprX::Call {
+                        target: R::get(ct),
+                        args: R::get_vec_a(es),
+                        post_args: R::get_opt(pa),
+                        body: R::get_opt(bd),
+                    })
+                })
             }
             ExprX::Ctor(dt, id, binders, opt_tail) => {
                 let bs = self.visit_binders_expr(binders)?;
@@ -586,6 +594,31 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                     expr_new(ExprX::OpenInvariant(R::get(e), R::get(binder), R::get(body), *ato))
                 })
             }
+            ExprX::InvMask(m) => match m {
+                MaskSpec::InvariantOpens(span, es) => {
+                    let span = span.clone();
+                    let es = self.visit_exprs(es)?;
+                    R::ret(|| {
+                        let m = MaskSpec::InvariantOpens(span, R::get_vec_a(es));
+                        expr_new(ExprX::InvMask(m))
+                    })
+                }
+                MaskSpec::InvariantOpensExcept(span, es) => {
+                    let span = span.clone();
+                    let es = self.visit_exprs(es)?;
+                    R::ret(|| {
+                        let m = MaskSpec::InvariantOpensExcept(span, R::get_vec_a(es));
+                        expr_new(ExprX::InvMask(m))
+                    })
+                }
+                MaskSpec::InvariantOpensSet(e) => {
+                    let e = self.visit_expr(e)?;
+                    R::ret(|| {
+                        let m = MaskSpec::InvariantOpensSet(R::get(e));
+                        expr_new(ExprX::InvMask(m))
+                    })
+                }
+            },
             ExprX::Return(e) => {
                 let e = self.visit_opt_expr(e)?;
                 R::ret(|| expr_new(ExprX::Return(R::get_opt(e))))

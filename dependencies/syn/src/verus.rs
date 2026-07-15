@@ -219,6 +219,7 @@ ast_struct! {
     pub struct SignatureInvariants {
         pub token: Token![opens_invariants],
         pub set: InvariantNameSet,
+        pub comma: Option<Token![,]>,
     }
 }
 
@@ -234,6 +235,7 @@ ast_enum_of_structs! {
         Any(InvariantNameSetAny),
         None(InvariantNameSetNone),
         List(InvariantNameSetList),
+        ListCompl(InvariantNameSetListCompl),
         Set(InvariantNameSetSet),
     }
 }
@@ -252,6 +254,15 @@ ast_struct! {
 
 ast_struct! {
     pub struct InvariantNameSetList {
+        pub bracket_token: token::Bracket,
+        pub exprs: Punctuated<Expr, Token![,]>,
+    }
+}
+
+ast_struct! {
+    pub struct InvariantNameSetListCompl {
+        pub any_token: Token![any],
+        pub op_token: Token![/],
         pub bracket_token: token::Bracket,
         pub exprs: Punctuated<Expr, Token![,]>,
     }
@@ -1091,12 +1102,10 @@ pub mod parsing {
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for SignatureInvariants {
         fn parse(input: ParseStream) -> Result<Self> {
-            let opens_invariants = input.parse()?;
-            let set = input.parse()?;
-
             Ok(SignatureInvariants {
-                token: opens_invariants,
-                set,
+                token: input.parse()?,
+                set: input.parse()?,
+                comma: input.parse()?,
             })
         }
     }
@@ -1116,17 +1125,17 @@ pub mod parsing {
     impl Parse for InvariantNameSet {
         fn parse(input: ParseStream) -> Result<Self> {
             let set = if input.peek(Token![any]) {
-                let all = input.parse()?;
-                InvariantNameSet::Any(all)
+                if input.peek2(Token![/]) {
+                    InvariantNameSet::ListCompl(input.parse()?)
+                } else {
+                    InvariantNameSet::Any(input.parse()?)
+                }
             } else if input.peek(Token![none]) {
-                let none = input.parse()?;
-                InvariantNameSet::None(none)
+                InvariantNameSet::None(input.parse()?)
             } else if input.peek(token::Bracket) {
-                let list = input.parse()?;
-                InvariantNameSet::List(list)
+                InvariantNameSet::List(input.parse()?)
             } else {
-                let set = input.parse()?;
-                InvariantNameSet::Set(set)
+                InvariantNameSet::Set(input.parse()?)
             };
             Ok(set)
         }
@@ -1155,6 +1164,23 @@ pub mod parsing {
             let bracket_token = bracketed!(content in input);
             let exprs = content.parse_terminated(Expr::parse, Token![,])?;
             Ok(InvariantNameSetList {
+                bracket_token,
+                exprs,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for InvariantNameSetListCompl {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let any_token = input.parse()?;
+            let op_token = input.parse()?;
+            let content;
+            let bracket_token = bracketed!(content in input);
+            let exprs = content.parse_terminated(Expr::parse, Token![,])?;
+            Ok(InvariantNameSetListCompl {
+                any_token,
+                op_token,
                 bracket_token,
                 exprs,
             })
@@ -1985,6 +2011,17 @@ mod printing {
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
     impl ToTokens for InvariantNameSetList {
         fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.bracket_token.surround(tokens, |tokens| {
+                self.exprs.to_tokens(tokens);
+            });
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for InvariantNameSetListCompl {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.any_token.to_tokens(tokens);
+            self.op_token.to_tokens(tokens);
             self.bracket_token.surround(tokens, |tokens| {
                 self.exprs.to_tokens(tokens);
             });

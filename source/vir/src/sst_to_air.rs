@@ -1395,7 +1395,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                             }
                             crate::def::BIT_SHL
                         }
-                        BitwiseOp::Shr(_) => crate::def::BIT_SHR,
+                        BitwiseOp::Shr => crate::def::BIT_SHR,
                     };
                     let args = vec![box_lh, box_rh];
                     let bit_expr = ExprX::Apply(Arc::new(fname.to_string()), Arc::new(args));
@@ -1836,6 +1836,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             split,
             dest,
             assert_id,
+            body,
         } => {
             // When we emit the VCs for a call to `f`, we might also want these to include
             // the generic conditions
@@ -1843,7 +1844,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             // We don't want to do this all the time though --- only when the generic
             // FnDef types exist post-pruning.
             let emit_generic_conditions = ctx.fndef_types.contains(fun);
-            let resolved_fun = resolved_method.clone().map(|r| r.0);
+            let resolved_fun = resolved_method.as_ref().map(|(f, _)| f).cloned();
 
             assert!(split.is_none());
             let mut stmts: Vec<Stmt> = Vec::new();
@@ -1956,6 +1957,11 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 &mut ens_args_wo_typ,
                 &mut stmts,
             )?;
+
+            if let Some(stm) = body {
+                let stmt = stm_to_stmts(ctx, state, stm)?;
+                stmts.extend(stmt);
+            }
 
             let typ_args: Vec<Expr> = typs.iter().flat_map(typ_to_ids).collect();
             let (has_ens, resolved_ens, ens_fun, ens_typ_args) = match resolved_method {

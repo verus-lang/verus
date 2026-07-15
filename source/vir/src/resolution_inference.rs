@@ -744,7 +744,7 @@ impl<'a> Builder<'a> {
                 Ok(bb)
             }
 
-            ExprX::Call(call_target, es, post_args) => {
+            ExprX::Call { target: call_target, args: es, post_args, body } => {
                 assert!(post_args.is_none());
 
                 // Can skip the expression in CallTarget because
@@ -775,6 +775,10 @@ impl<'a> Builder<'a> {
                         AstPosition::AfterArguments(span_id),
                         InstructionKind::Mutate(p),
                     );
+                }
+
+                if let Some(e) = body {
+                    bb = self.build(e, bb)?;
                 }
 
                 if crate::ast_util::call_no_unwind(call_target, &self.locals.functions) {
@@ -1066,6 +1070,7 @@ impl<'a> Builder<'a> {
 
                 Ok(bb)
             }
+            ExprX::InvMask(_m) => Ok(bb),
             ExprX::Return(e_opt) => {
                 if let Some(e) = e_opt {
                     bb = self.build(e, bb)?;
@@ -3741,7 +3746,7 @@ fn apply_after_args_exprs(expr: Expr, exprs: Vec<Expr>) -> Expr {
         return expr;
     }
     match &expr.x {
-        ExprX::Call(ct, args, None) => {
+        ExprX::Call { target: ct, args, post_args: None, body } => {
             let mut stmts = vec![];
             for e in exprs.into_iter() {
                 stmts.push(Spanned::new(e.span.clone(), StmtX::Expr(e)));
@@ -3751,7 +3756,12 @@ fn apply_after_args_exprs(expr: Expr, exprs: Vec<Expr>) -> Expr {
             SpannedTyped::new(
                 &expr.span,
                 &expr.typ,
-                ExprX::Call(ct.clone(), args.clone(), Some(block)),
+                ExprX::Call {
+                    target: ct.clone(),
+                    args: args.clone(),
+                    post_args: Some(block),
+                    body: body.clone(),
+                },
             )
         }
         _ => {
