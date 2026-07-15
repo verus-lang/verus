@@ -32,14 +32,20 @@ fn make_verus_version() -> anyhow::Result<String> {
     let git_rev_parse = Command::new("git")
         .args(["rev-parse", "-q", "--short=7", "HEAD"])
         .output()
-        .context("failed to run `git rev-parse`")?;
+        .context("running `git rev-parse`")?;
+    if !git_rev_parse.status.success() {
+        anyhow::bail!("failed to run `git rev-parse`");
+    }
     let rev_raw = String::from_utf8(git_rev_parse.stdout).context("commit hash is invalid utf8")?;
     let rev = rev_raw.trim();
 
     let git_show_date = std::process::Command::new("git")
         .args(["show", "-s", "--format=%cs", "HEAD"])
         .output()
-        .context("failed to run `git show`")?;
+        .context("running `git show`")?;
+    if !git_show_date.status.success() {
+        anyhow::bail!("failed to run `git show`");
+    }
     let date_str =
         String::from_utf8(git_show_date.stdout).context("commit date is invalid utf8")?;
     let date_re =
@@ -60,6 +66,9 @@ fn get_vstd_version(is_rolling: bool) -> anyhow::Result<Crate> {
             .args(["rev-parse", "-q", "--short", "HEAD"])
             .output()
             .context("running `git rev-parse`")?;
+        if !git_rev_parse.status.success() {
+            anyhow::bail!("failed to run `git rev-parse`");
+        }
         let rev = String::from_utf8(git_rev_parse.stdout)
             .context("commit hash is invalid utf8")?
             .trim()
@@ -68,15 +77,16 @@ fn get_vstd_version(is_rolling: bool) -> anyhow::Result<Crate> {
         Ok(Crate::GitCommit { git, rev })
     } else {
         // For a stable release, use the latest published version.
-        let cargo_tree_vstd = Command::new("cargo")
-            .args(["tree", "--frozen", "-q", "--depth", "0", "--manifest-path", "vstd/Cargo.toml"])
-            .output()
-            .context("running `cargo tree`")?;
-        let pkg_str =
-            String::from_utf8(cargo_tree_vstd.stdout).context("package spec is invalid utf8")?;
-        let version_re = regex::Regex::new(r"^vstd v(\S+) ").context("regex is well formed")?;
-        let captures =
-            version_re.captures(pkg_str.trim()).context("unexpected package spec {pkg_str:?}")?;
-        Ok(Crate::Registry(captures[1].into()))
+        let contents = std::fs::read_to_string("vstd/Cargo.toml")?;
+        let table: toml::Table = contents.parse()?;
+        let value = table
+            .get("package")
+            .context("look up key `package`")?
+            .get("version")
+            .context("look up key `version`")?;
+        let toml::Value::String(version) = value else {
+            anyhow::bail!("version is not a string");
+        };
+        Ok(Crate::Registry(version.into()))
     }
 }
