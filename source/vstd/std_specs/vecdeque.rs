@@ -61,8 +61,24 @@ pub broadcast proof fn axiom_spec_len<T, A: Allocator>(v: &VecDeque<T, A>)
 }
 
 impl<T, A: Allocator> super::core::IndexSpecImpl<usize> for VecDeque<T, A> {
-    open spec fn index_req(&self, index: &usize) -> bool {
-        index < self.len()
+    open spec fn index_requires(&self, index: &usize) -> bool {
+        *index < self.len()
+    }
+
+    #[verifier::prophetic]
+    open spec fn index_ensures(&self, index: &usize, output: &Self::Output) -> bool {
+        output == self@[*index as int]
+    }
+}
+
+impl<T, A: Allocator> super::core::IndexMutSpecImpl<usize> for VecDeque<T, A> {
+    #[verifier::prophetic]
+    open spec fn index_mut_ensures(&mut self, index: &usize, output: &mut Self::Output) -> bool {
+        &&& *output == self@[*index as int]
+        &&& *final(output) == final(self)@[*index as int]
+        &&& forall|i: int| i == *index as int || {
+            (#[trigger] final(self)@[i]) == self@[i]
+        }
     }
 }
 

@@ -66,7 +66,7 @@ use crate::rust_to_vir_base::{
     typ_of_node_unadjusted,
 };
 use crate::rust_to_vir_ctor::{resolve_braces_ctor, resolve_ctor};
-use crate::util::{err_span, err_span_bare, slice_vec_map_result, vec_map_result};
+use crate::util::{err_span, slice_vec_map_result, vec_map_result};
 use crate::verus_items::{
     self, CompilableOprItem, DummyCaptureItem, InvariantItem, OpenAtomicUpdateItem,
     OpenInvariantBlockItem, RustItem, SpecGhostTrackedItem, UnaryOpItem, VerusItem, VstdItem,
@@ -3339,14 +3339,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         ),
                     };
                     Some((fun, typ_args))
-                } else if mutbl {
-                    return Err(err_span_bare(
-                        expr.span,
-                        format!("IndexMut operator not supported for ({:}, {:})", tgt_ty, idx_ty),
-                    )
-                    .help(
-                        "At present, the IndexMut operator is only supported for (Vec<_>, usize)",
-                    ));
                 } else {
                     None
                 };

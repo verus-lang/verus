@@ -88,10 +88,17 @@ pub broadcast axiom fn array_len_matches_n<T, const N: usize>(ar: &[T; N])
 ;
 
 pub uninterp spec fn spec_array_as_slice<T, const N: usize>(ar: &[T; N]) -> (out: &[T]);
-
+pub uninterp spec fn spec_array_as_slice_mut<T, const N: usize>(ar: &mut [T; N]) -> (out: &mut [T]);
 pub broadcast axiom fn axiom_spec_array_as_slice<T, const N: usize>(ar: &[T; N])
     ensures
         (#[trigger] spec_array_as_slice(ar))@ == ar@,
+;
+
+pub broadcast axiom fn axiom_spec_array_as_slice_mut<T, const N: usize>(ar: &mut [T; N])
+    ensures
+        #![trigger spec_array_as_slice_mut(ar)]
+        (old(spec_array_as_slice_mut(ar))).view() == old(ar).view(),
+        (final(spec_array_as_slice_mut(ar))).view() == final(ar).view(),
 ;
 
 // To allow reasoning about the returned iterator when the executable
@@ -191,11 +198,14 @@ pub broadcast axiom fn axiom_array_has_resolved<T, const N: usize>(array: [T; N]
 
 #[doc(hidden)]
 #[verifier::external_body]
+#[verifier::when_used_as_spec(spec_array_as_slice_mut)]
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::array::ref_mut_array_unsizing_coercion")]
 pub fn ref_mut_array_unsizing_coercion<T, const N: usize>(r: &mut [T; N]) -> (out: &mut [T])
     ensures
         out.view() == old(r).view(),
         final(out).view() == final(r).view(),
+    returns
+        spec_array_as_slice_mut(r),
     opens_invariants none
     no_unwind
 {

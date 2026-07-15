@@ -176,8 +176,23 @@ pub assume_specification<T: core::clone::Clone, A: Allocator>[ Vec::<T, A>::exte
 ;
 
 impl<T: Sized, I: SliceIndex<[T]>, A: Allocator> super::core::IndexSpecImpl<I> for Vec<T, A> {
-    open spec fn index_req(&self, index: &I) -> bool {
-        forall|s: &[T]| #[trigger] s@ == self@ ==> index.index_req(s)
+    open spec fn index_requires(&self, index: &I) -> bool {
+        forall|s: &[T]| #[trigger] s@ == self@ ==> index.index_requires(s)
+    }
+
+    #[verifier::prophetic]
+    open spec fn index_ensures(&self, index: &I, output: &Self::Output) -> bool {
+        forall|s: &[T]| #[trigger] s@ == self@ ==> index.index_ensures(s, output)
+    }
+}
+
+impl<T: Sized, I: SliceIndex<[T]>, A: Allocator> super::core::IndexMutSpecImpl<I> for Vec<T, A> {
+    #[verifier::prophetic]
+    open spec fn index_mut_ensures(&mut self, index: &I, output: &mut Self::Output) -> bool {
+        forall|s: &mut [T]| {
+            &&& (#[trigger] s@ == self@)
+            &&& (#[trigger] final(s)@ == final(self)@)
+        } ==> index.index_mut_ensures(s, output)
     }
 }
 
@@ -324,20 +339,6 @@ pub broadcast proof fn axiom_vec_index_decreases<A>(v: Vec<A>, i: int)
         #[trigger] (decreases_to!(v => v[i])),
 {
     admit();
-}
-
-impl<T, A: Allocator> super::core::TrustedSpecSealed for Vec<T, A> {
-
-}
-
-impl<T, A: Allocator> super::core::IndexSetTrustedSpec<usize> for Vec<T, A> {
-    open spec fn spec_index_set_requires(&self, index: usize) -> bool {
-        0 <= index < self.len()
-    }
-
-    open spec fn spec_index_set_ensures(&self, new_container: &Self, index: usize, val: T) -> bool {
-        new_container@ == self@.update(index as int, val)
-    }
 }
 
 pub assume_specification<T: PartialEq<U>, U, A1: Allocator, A2: Allocator>[ <Vec<T, A1> as PartialEq<Vec<U, A2>>>::eq ](
