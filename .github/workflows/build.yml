@@ -67,7 +67,7 @@ jobs:
         if: inputs.is_rolling
         working-directory: ./source
         run: |
-          cargo run -p cargo-verus-toolchains --bin create-manifest --rolling --write-to-dir cargo-verus/toolchain-manifests/
+          cargo run -p cargo-verus-toolchains --bin create-manifest -- --rolling --write-to-dir cargo-verus/toolchain-manifests/
 
       - name: build
         working-directory: ./source
