@@ -1,4 +1,4 @@
-use std::process::Command;
+use std::{path::PathBuf, process::Command};
 
 use anyhow::Context;
 use cargo_verus_toolchains::format_manifest;
@@ -9,9 +9,25 @@ type Toolchain = cargo_verus_toolchains::Toolchain<String>;
 type Crate = cargo_verus_toolchains::Crate<String>;
 
 fn main() -> anyhow::Result<()> {
+    use std::io::Write;
+
     let cli = Cli::parse_from(std::env::args());
     let toolchain = create_toolchain(cli.rolling)?;
     let manifest = format_manifest(&toolchain)?;
+
+    if let Some(output_dir) = cli.write_to_dir {
+        let name = if cli.rolling { "rolling-release" } else { &toolchain.verus };
+        let path = output_dir.join(&format!("{name}.toml"));
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&path)
+            .context(format!("opening file `{}`", path.display()))?;
+        write!(file, "{manifest}").context(format!("writing file `{}`", path.display()))?;
+        println!("manifest written to `{}`", path.display());
+    };
+
     print!("{manifest}");
     Ok(())
 }
@@ -19,6 +35,9 @@ fn main() -> anyhow::Result<()> {
 /// Tool to create toolchain manifest files.
 #[derive(Clone, Debug, Parser)]
 struct Cli {
+    /// Write the manifest into a file in a directory.
+    #[arg(long)]
+    pub write_to_dir: Option<PathBuf>,
     /// The manifest is for a rolling release.
     #[arg(long)]
     pub rolling: bool,
