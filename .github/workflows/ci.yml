@@ -33,7 +33,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.97.0
+          toolchain: 1.97.1
 
       - name: setup verusfmt
         run: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/verus-lang/verusfmt/releases/latest/download/verusfmt-installer.sh | sh
@@ -58,7 +58,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.97.0
+          toolchain: 1.97.1
           components: clippy
 
       - name: clippy check codebase
@@ -108,7 +108,7 @@ jobs:
         if: needs.change_filter.outputs.cargo_verus == 'true'
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.97.0
+          toolchain: 1.97.1
 
       - name: cargo-verus tests
         if: needs.change_filter.outputs.cargo_verus == 'true'
@@ -143,7 +143,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.97.0
+          toolchain: 1.97.1
 
       - name: setup nextest
         uses: taiki-e/install-action@nextest
@@ -200,7 +200,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.97.0
+          toolchain: 1.97.1
 
       - name: setup nextest
         uses: taiki-e/install-action@nextest
@@ -247,7 +247,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.97.0
+          toolchain: 1.97.1
 
       - name: setup nextest
         uses: taiki-e/install-action@nextest
@@ -313,7 +313,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.97.0
+          toolchain: 1.97.1
 
       - name: build docs
         working-directory: ./source

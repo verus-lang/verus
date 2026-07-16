@@ -57,7 +57,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.97.0
+          toolchain: 1.97.1
 
       - name: build
         working-directory: ./source

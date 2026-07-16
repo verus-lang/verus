@@ -24,7 +24,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.97.0
+          toolchain: 1.97.1
 
       - name: Configure git
         run: |

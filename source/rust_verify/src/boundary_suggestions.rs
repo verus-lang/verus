@@ -47,7 +47,7 @@ pub(crate) fn build_external_type_suggestion<'tcx>(
     let generics = ctxt.tcx.generics_of(external_def_id);
 
     let predicates = ctxt.tcx.predicates_of(external_def_id).instantiate_identity(ctxt.tcx);
-    // TODO(1.97.0): figure out how to replace this. InstantiatedPredicates no longer implements TypeFoldable
+    // TODO(1.97.1): figure out how to replace this. InstantiatedPredicates no longer implements TypeFoldable
     let region_renamer: RegionRenamer<'_> = build_region_renamer(ctxt, external_def_id, generics)?;
     // let predicates = predicates.fold_with(&mut region_renamer);
 
@@ -151,7 +151,7 @@ pub(crate) fn build_fn_assume_specification_suggestion<'tcx>(
     let mut region_renamer: RegionRenamer<'_> =
         build_region_renamer(ctxt, external_def_id, generics)?;
     let fn_sig = fn_sig.fold_with(&mut region_renamer);
-    // TODO(1.97.0): figure out how to replace this. InstantiatedPredicates no longer implements TypeFoldable
+    // TODO(1.97.1): figure out how to replace this. InstantiatedPredicates no longer implements TypeFoldable
     // let predicates = predicates.fold_with(&mut region_renamer);
     // let inst_predicates = inst_predicates.fold_with(&mut region_renamer);
     let (param_declarations, type_params) =

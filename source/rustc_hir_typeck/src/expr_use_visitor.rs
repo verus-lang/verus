@@ -1854,7 +1854,7 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
     }
 }
 
-// TODO(1.97.0): remove if not needed
+// TODO(1.97.1): remove if not needed
 // struct ExprPlaceDelegate;
 
 // impl<'tcx> Delegate<'tcx> for ExprPlaceDelegate {

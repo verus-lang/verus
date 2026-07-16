@@ -1562,7 +1562,7 @@ pub(crate) fn apply_projection<'tcx>(
         ProjectionKind::Field(field_idx, variant_idx) => match ty.kind() {
             TyKind::Tuple(tys) => tys[field_idx.as_usize()],
             TyKind::Adt(adt, args) =>
-            // TODO(1.97.0): do we need to normalize here?
+            // TODO(1.97.1): do we need to normalize here?
             {
                 adt.variant(*variant_idx).fields[*field_idx].ty(tcx, args).skip_normalization()
             }
