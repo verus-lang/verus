@@ -548,51 +548,14 @@ impl MessageX {
 }
 
 pub enum MessageAs {
-    NonBlockingError(Message, Option<crate::ast::Path>),
-    NonFatalError(Message, Option<crate::ast::Path>),
     Warning(Message),
     Note(Message),
 }
 
-impl MessageAs {
-    /// Given a primary diagnostic message and an additional message,
+impl MessageX {
+    /// Given a primary error message and an additional error message,
     /// fold the spans of the additional message into a new message copied from the original.
-    pub fn merge(&self, other: &MessageAs) -> MessageAs {
-        let added_msg = match other {
-            MessageAs::NonBlockingError(message_x, _)
-            | MessageAs::NonFatalError(message_x, _)
-            | MessageAs::Warning(message_x)
-            | MessageAs::Note(message_x) => message_x,
-        };
-        let new_msg_builder = |msg: &Message| {
-            added_msg.spans.iter().fold(msg.clone(), |acc, v| acc.secondary_span(v))
-        };
-        match (self, other) {
-            (MessageAs::NonBlockingError(orig_msg, p), _) => {
-                MessageAs::NonBlockingError(new_msg_builder(orig_msg), p.clone())
-            }
-            (MessageAs::NonFatalError(orig_msg, p), _) => {
-                MessageAs::NonFatalError(new_msg_builder(orig_msg), p.clone())
-            }
-            (MessageAs::Warning(orig_msg), MessageAs::NonBlockingError(_, p)) => {
-                MessageAs::NonBlockingError(new_msg_builder(orig_msg), p.clone())
-            }
-            (MessageAs::Warning(orig_msg), MessageAs::NonFatalError(_, p)) => {
-                MessageAs::NonFatalError(new_msg_builder(orig_msg), p.clone())
-            }
-            (MessageAs::Warning(orig_msg), _) => MessageAs::Warning(new_msg_builder(orig_msg)),
-            (MessageAs::Note(orig_msg), MessageAs::NonBlockingError(_, p)) => {
-                MessageAs::NonBlockingError(new_msg_builder(orig_msg), p.clone())
-            }
-            (MessageAs::Note(orig_msg), MessageAs::NonFatalError(_, p)) => {
-                MessageAs::NonFatalError(new_msg_builder(orig_msg), p.clone())
-            }
-            (MessageAs::Note(orig_msg), MessageAs::Warning(..)) => {
-                MessageAs::Warning(new_msg_builder(orig_msg))
-            }
-            (MessageAs::Note(orig_msg), MessageAs::Note(..)) => {
-                MessageAs::Note(new_msg_builder(orig_msg))
-            }
-        }
+    pub fn merge(self: &Arc<Self>, added_msg: &Message) -> Message {
+        added_msg.spans.iter().fold(self.clone(), |acc, v| acc.secondary_span(v))
     }
 }
