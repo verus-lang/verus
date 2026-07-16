@@ -28,50 +28,59 @@ exclude = [
 tag = "workspace"
 
 [workspace.dependencies]
-anyhow = "1.0"
-bincode = "1.0.1"
+anyhow = "1.0.103"
+bincode-next = { version = "3.1", features = ["serde"] }
 cargo_metadata = "0.23.1"
 chrono = "0.4.41"
 clap-cargo = { version = "0.18.3", features = ["clap", "cargo_metadata"] }
-clap = { version = "4.5.53", features = ["derive"] }
-colored = "3.0.0"
-console = { version = "0.15", default-features = false, features = ["ansi-parsing"] }
+clap = { version = "4.6.1", features = ["derive"] }
+colored = "3.1"
+console = { version = "0.16", default-features = false, features = ["ansi-parsing"] }
 convert_case = "0.4"
 crates_io_api = "0.12.0"
 getopts = { git = "https://github.com/utaal/getopts.git", branch = "parse-partial" }
-git2 = { version = "0.18", default-features = false, features = [] }
+git2 = { version = "0.21", default-features = false, features = [] }
 hex = "0.4.3"
-html5ever = "0.25.2"
+html5ever = "0.26" # TODO: kuchikiki depends on 0.26
 im = "15.1.0"
-indexmap = "1"
-indicatif = "0.17.7"
-is-terminal = { version = "0.4.9" }
-itertools = "0.14.0"
-kuchiki = "0.8.1"
-num-bigint = { version = "0.4.4", features = ["serde"] }
-num-format = "0.4.0"
+indexmap = "2"
+indicatif = "0.18"
+is-terminal = "0.4.17"
+itertools = "0.15.0"
+# kuchikiki has a shakey maintainability story, would be great to remove
+# it is transitively using an old version of html5ever and of rand (which has as security advisory)
+kuchikiki = "0.8.2"
+num-bigint = { version = "0.5.1", features = ["serde"] }
+num-format = "0.4.4"
 num-traits= "0.2.16"
 petgraph = "0.6"
-proc-macro2 = "1.0.39"
+proc-macro2 = "1.0.106"
 quote = "1.0"
-rand = { version = "0.8.0" }
-regex = "1.11"
-rustc_tools_util = "0.3.0"
-serde_json = { version = "1.0.145", features = ["preserve_order"] }
+rand = "0.10"
+regex = "1.13"
+rustc_tools_util = "0.4"
+serde_json = { version = "1.0.150", features = ["preserve_order"] }
 serde = { version = "1", features = ["std", "derive", "rc"] }
-sha2 = "0.10.2"
-sise = "0.6.0"
+sha2 = "0.11"
+sise = "0.8.0"
+# smt-scope is using very outdated dependencies and seems unmaintained
+# it is using:
+# - petgraph 0.6
+# - instant (unmaintained) -- transitive
+# - fxhash (unmaintained)
+# - bincode (unmaintained)
+# - proc-macro-error (unmaintained) -- transitive
 smt-scope = { version = "0.1.7", features = ["analysis"] }
 synstructure = "0.13.2"
 syn = { version = "2.0", features = ["full", "visit", "visit-mut", "extra-traits"] }
-tabled = "0.14.0"
-tempfile = "3.23"
+tabled = "0.21.0"
+tempfile = "3.27"
 toml = "1.1.2"
 toml_edit = "0.23.3"
 tracing = "0.1"
-walkdir = "2.3.2"
-yansi = "0.5"
-zip = "0.6.6"
+walkdir = "2.5"
+yansi = "1"
+zip = "8.6"
 
 # internal dependencies
 air = { path = "air" }

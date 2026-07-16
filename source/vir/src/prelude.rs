@@ -5,14 +5,13 @@ use air::ast::Ident;
 use air::context::SmtSolver;
 use air::printer::{macro_push_node, str_to_node};
 use air::{node, nodes, nodes_vec};
-use sise::Node;
 
 pub struct PreludeConfig {
     pub arch_word_bits: crate::ast::ArchWordBits,
     pub solver: SmtSolver,
 }
 
-pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<Node> {
+pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<sise::TreeNode> {
     #[allow(non_snake_case)]
     let FuelId = str_to_node(FUEL_ID);
     #[allow(non_snake_case)]
@@ -1033,7 +1032,7 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
     prelude
 }
 
-pub(crate) fn array_functions(box_array: &str) -> Vec<Node> {
+pub(crate) fn array_functions(box_array: &str) -> Vec<sise::TreeNode> {
     let box_array = str_to_node(box_array);
     let array_new = str_to_node(ARRAY_NEW);
     let array_index = str_to_node(ARRAY_INDEX);
@@ -1107,7 +1106,7 @@ pub(crate) fn array_functions(box_array: &str) -> Vec<Node> {
     )
 }
 
-pub(crate) fn strslice_functions(strslice_name: &str) -> Vec<Node> {
+pub(crate) fn strslice_functions(strslice_name: &str) -> Vec<sise::TreeNode> {
     let strslice = str_to_node(strslice_name);
     let strslice_len = str_to_node(STRSLICE_LEN);
     let strslice_get_char = str_to_node(STRSLICE_GET_CHAR);
@@ -1130,7 +1129,7 @@ pub(crate) fn strslice_functions(strslice_name: &str) -> Vec<Node> {
     )
 }
 
-pub(crate) fn pointee_metadata_prelude(name_ctxt: &NameCtxt) -> Vec<Node> {
+pub(crate) fn pointee_metadata_prelude(name_ctxt: &NameCtxt) -> Vec<sise::TreeNode> {
     let typ = str_to_node(TYPE);
     let decoration = str_to_node(DECORATION);
     let sized = str_to_node(SIZED_BOUND);
@@ -1210,7 +1209,7 @@ pub(crate) fn pointee_metadata_prelude(name_ctxt: &NameCtxt) -> Vec<Node> {
     )
 }
 
-pub(crate) fn ieee_float_prelude() -> Vec<Node> {
+pub(crate) fn ieee_float_prelude() -> Vec<sise::TreeNode> {
     let typ = str_to_node(TYPE);
     let ieee_float_cast = str_to_node(IEEE_FLOAT_CAST);
     let ieee_float_neg = str_to_node(IEEE_FLOAT_NEG);
@@ -1271,7 +1270,7 @@ fn datatype_height_axiom(
     tparams: &Idents,
     field: &Ident,
     recursive_function_field: bool,
-) -> Node {
+) -> sise::TreeNode {
     let height = str_to_node(HEIGHT);
     let height_lt = str_to_node(HEIGHT_LT);
     let height_rec_fun = str_to_node(HEIGHT_REC_FUN);
@@ -1281,8 +1280,8 @@ fn datatype_height_axiom(
     let is_variant = str_to_node(is_variant_ident.as_str());
     let typ1 = str_to_node(path_to_air_ident(&name_ctxt, typ_name1).as_str());
     let box_t1 = str_to_node(name_ctxt.prefix_box(typ_name1).as_str());
-    let mut forall_params: Vec<Node> = Vec::new();
-    let mut field_x: Vec<Node> = Vec::new();
+    let mut forall_params: Vec<sise::TreeNode> = Vec::new();
+    let mut field_x: Vec<sise::TreeNode> = Vec::new();
     field_x.push(field);
     for typ_param in tparams.iter() {
         for (x, t) in crate::def::suffix_typ_param_ids_types(&typ_param) {
@@ -1295,8 +1294,8 @@ fn datatype_height_axiom(
     }
     forall_params.push(node!((x[typ1])));
     field_x.push(node!(x));
-    let forall_params = Node::List(forall_params);
-    let field_x = Node::List(field_x);
+    let forall_params = sise::TreeNode::List(forall_params);
+    let field_x = sise::TreeNode::List(field_x);
     let field_of_x = match typ_name2 {
         Some(typ2) => {
             let box_t2 = str_to_node(name_ctxt.prefix_box(&typ2).as_str());
@@ -1331,7 +1330,7 @@ pub(crate) fn datatype_height_axioms(
     tparams: &Idents,
     field: &Ident,
     recursive_function_field: bool,
-) -> Vec<Node> {
+) -> Vec<sise::TreeNode> {
     let axiom1 = datatype_height_axiom(
         name_ctxt,
         typ_name1,

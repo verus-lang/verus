@@ -3,7 +3,6 @@ use air::ast::Ident;
 use air::model::Model as AModel;
 use rustc_span::Span;
 use rustc_span::source_map::SourceMap;
-use sise::Node;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
@@ -121,24 +120,24 @@ impl Debugger {
         self.air_model.translate_variable(sid, &name)
     }
 
-    fn rewrite_eval_expr(&self, expr: &sise::Node) -> Option<sise::Node> {
+    fn rewrite_eval_expr(&self, expr: &sise::TreeNode) -> Option<sise::TreeNode> {
         match expr {
-            Node::Atom(var) => {
+            sise::TreeNode::Atom(var) => {
                 let name = self.translate_variable(&Arc::new(String::from(var)))?;
-                Some(Node::Atom(name))
+                Some(sise::TreeNode::Atom(name))
             }
-            Node::List(app) => {
-                if let Node::Atom(var) = &app[0] {
+            sise::TreeNode::List(app) => {
+                if let sise::TreeNode::Atom(var) = &app[0] {
                     // TODO: should use suffix_global_id + path_to_air_ident?
                     let mut func_name = var.clone();
                     func_name.push('.');
                     func_name.push('?');
-                    let mut items = vec![Node::Atom(func_name)];
+                    let mut items = vec![sise::TreeNode::Atom(func_name)];
                     for name in app.iter().skip(1) {
                         let name = self.rewrite_eval_expr(name)?;
                         items.push(name);
                     }
-                    Some(Node::List(items))
+                    Some(sise::TreeNode::List(items))
                 } else {
                     None
                 }
@@ -146,9 +145,9 @@ impl Debugger {
         }
     }
 
-    fn eval_expr(&self, context: &mut air::context::Context, expr: &[u8]) {
+    fn eval_expr(&self, context: &mut air::context::Context, expr: &str) {
         let mut parser = sise::Parser::new(expr);
-        let node = sise::read_into_tree(&mut parser).unwrap();
+        let node = sise::parse_tree(&mut parser).unwrap();
         let expr = self.rewrite_eval_expr(&node).unwrap();
         let result = context.eval_expr(expr);
         println!("{}", result);
@@ -159,10 +158,10 @@ impl Debugger {
 
         self.set_line(26);
 
-        self.eval_expr(context, b"x");
-        // self.eval_expr(context, b"y");
-        self.eval_expr(context, b"(add_one x)");
-        // self.eval_expr(context, b"(add_one (add_one x))");
+        self.eval_expr(context, "x");
+        // self.eval_expr(context, "y");
+        self.eval_expr(context, "(add_one x)");
+        // self.eval_expr(context, "(add_one (add_one x))");
     }
 }
 

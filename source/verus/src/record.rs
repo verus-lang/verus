@@ -10,7 +10,8 @@ use std::{
     str,
 };
 use toml::{map::Map, value::Value};
-use zip::write::FileOptions;
+use yansi::Paint;
+use zip::write::SimpleFileOptions;
 
 pub fn get_z3_version(z3_path: &PathBuf) -> Option<std::process::Output> {
     match Command::new(z3_path.clone()).arg("--version").output() {
@@ -270,14 +271,11 @@ pub fn write_zip_archive(
     let path = std::path::Path::new(&zip_file_name);
     let file = std::fs::File::create(path).unwrap();
     let mut zip = zip::ZipWriter::new(file);
-    let options = FileOptions::default();
+    let options = SimpleFileOptions::default();
 
     for file in deps {
         let path = file;
-        eprintln!(
-            "{}",
-            yansi::Paint::blue(format!("Adding file {} to zip archive", path.display()))
-        );
+        eprintln!("{}", format!("Adding file {} to zip archive", path.display()).blue());
         let binding = fs::read_to_string(&prefix.join(&path)).map_err(|x| {
             format!("{}, file name: {}. Check if this file can be opened.", x, path.display())
         })?;

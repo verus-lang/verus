@@ -2,7 +2,6 @@ use crate::ast::{Decl, Expr, Ident, Query};
 use crate::context::SmtSolver;
 use crate::printer::{NodeWriter, Printer, macro_push_node};
 use crate::{node, nodes};
-use sise::Node;
 use std::io::Write;
 
 pub(crate) struct Emitter {
@@ -77,7 +76,7 @@ impl Emitter {
         }
     }
 
-    pub fn log_node(&mut self, node: &Node) {
+    pub fn log_node(&mut self, node: &sise::TreeNode) {
         if let Some(w) = &mut self.pipe_buffer {
             writeln!(w, "{}", self.node_writer.node_to_string_indent(&self.current_indent, &node))
                 .unwrap();
@@ -98,7 +97,7 @@ impl Emitter {
     pub fn log_set_option(&mut self, option: &str, value: &str) {
         if !self.is_none() {
             self.log_node(&node!(
-                (set-option {Node::Atom(":".to_owned() + option)} {Node::Atom(value.to_string())})
+                (set-option {sise::TreeNode::Atom(":".to_owned() + option)} {sise::TreeNode::Atom(value.to_string())})
             ));
         }
     }
@@ -106,7 +105,7 @@ impl Emitter {
     pub fn log_get_info(&mut self, param: &str) {
         if !self.is_none() {
             self.log_node(&node!(
-                (get-info {Node::Atom(format!(":{}", param))})
+                (get-info {sise::TreeNode::Atom(format!(":{}", param))})
             ));
         }
     }
@@ -143,7 +142,7 @@ impl Emitter {
         if !self.is_none() {
             self.log_node(&
                 if let Some(named) = named {
-                    nodes!(assert ({Node::Atom("!".to_string())} {self.printer.expr_to_node(expr)} {Node::Atom(":named".to_string())} {Node::Atom((**named).clone())}))
+                    nodes!(assert ({sise::TreeNode::Atom("!".to_string())} {self.printer.expr_to_node(expr)} {sise::TreeNode::Atom(":named".to_string())} {sise::TreeNode::Atom((**named).clone())}))
                 } else {
                     nodes!(assert {self.printer.expr_to_node(expr)})
                 })
@@ -152,7 +151,7 @@ impl Emitter {
 
     pub fn log_word(&mut self, s: &str) {
         if !self.is_none() {
-            self.log_node(&Node::List(vec![Node::Atom(s.to_string())]));
+            self.log_node(&sise::TreeNode::List(vec![sise::TreeNode::Atom(s.to_string())]));
         }
     }
 
@@ -162,7 +161,7 @@ impl Emitter {
         }
     }
 
-    pub fn log_eval(&mut self, expr: Node) {
+    pub fn log_eval(&mut self, expr: sise::TreeNode) {
         if !self.is_none() {
             self.log_node(&nodes!(eval { expr }));
         }
