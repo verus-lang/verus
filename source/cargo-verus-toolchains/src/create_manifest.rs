@@ -61,8 +61,8 @@ fn create_toolchain(is_rolling: bool) -> anyhow::Result<Toolchain> {
 
 fn get_external_deps() -> anyhow::Result<ExternalDeps> {
     const PATH: &str = "external-deps.toml";
-    let contents = std::fs::read_to_string(PATH).context("reading `{PATH}`")?;
-    let external_deps = toml::from_str(&contents).context("parsing `{PATH}`")?;
+    let contents = std::fs::read_to_string(PATH).context(format!("reading `{PATH}`"))?;
+    let external_deps = toml::from_str(&contents).context(format!("parsing `{PATH}`"))?;
     Ok(external_deps)
 }
 
@@ -88,8 +88,9 @@ fn get_verus_version() -> anyhow::Result<String> {
         String::from_utf8(git_show_date.stdout).context("commit date is invalid utf8")?;
     let date_re =
         regex::Regex::new(r"^(\d{4})-(\d{2})-(\d{2})$").context("regex is well formed")?;
-    let date_captures =
-        date_re.captures(date_str.trim()).context("unexpected date string {date_str:?}")?;
+    let date_captures = date_re
+        .captures(date_str.trim())
+        .context(format!("unexpected date string {date_str:?}"))?;
     let year = &date_captures[1];
     let month = &date_captures[2];
     let day = &date_captures[3];
@@ -116,14 +117,14 @@ fn get_vstd_version(is_rolling: bool) -> anyhow::Result<Crate> {
     } else {
         // For a stable release, use the latest published version.
         const VSTD_CARGO_TOML: &str = "vstd/Cargo.toml";
-        let contents =
-            std::fs::read_to_string(VSTD_CARGO_TOML).context("reading `{VSTD_CARGO_TOML}`")?;
+        let contents = std::fs::read_to_string(VSTD_CARGO_TOML)
+            .context(format!("reading `{VSTD_CARGO_TOML}`"))?;
         let table: toml::Table = contents.parse()?;
         let value = table
             .get("package")
-            .context("look up key `package`")?
+            .context("looking up key `package`")?
             .get("version")
-            .context("look up key `version`")?;
+            .context("looking up key `version`")?;
         let toml::Value::String(version) = value else {
             anyhow::bail!("version is not a string");
         };
