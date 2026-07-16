@@ -3,6 +3,7 @@ use std::{
     path::Path,
 };
 
+use anyhow::Context;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
@@ -10,6 +11,26 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToolchainList {
     pub items: Vec<Toolchain>,
+}
+
+/// Format a toolchain manifest similar to a Cargo.toml file's [dependencies] section.
+pub fn format_manifest(toolchain: &Toolchain) -> anyhow::Result<String> {
+    use toml_edit::{DocumentMut, Item, Value};
+
+    let value = toolchain
+        .serialize(toml_edit::ser::ValueSerializer::new())
+        .context("serialize manifest")?;
+
+    let Value::InlineTable(table) = value else {
+        anyhow::bail!("toolchain should serialize to an inline table");
+    };
+
+    let mut doc = DocumentMut::new();
+    for (key, value) in table {
+        doc.insert(&key, Item::Value(value));
+    }
+
+    Ok(doc.to_string())
 }
 
 /// A set of Verus components meant to be used together.

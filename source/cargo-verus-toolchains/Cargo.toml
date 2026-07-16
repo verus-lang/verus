@@ -19,6 +19,7 @@ toml = { workspace = true }
 toml_edit = { workspace = true }
 
 [dev-dependencies]
+indoc = { workspace = true }
 pretty_assertions = "1.4.1"
 tempfile = "3"
 
