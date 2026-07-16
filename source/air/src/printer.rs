@@ -6,20 +6,21 @@ use crate::ast::{
 use crate::context::SmtSolver;
 use crate::def::mk_skolem_id;
 use crate::util::vec_map;
+use sise::TreeNode as Node;
 use std::sync::Arc;
 
-pub fn str_to_node(s: &str) -> sise::TreeNode {
-    sise::TreeNode::Atom(s.to_string())
+pub fn str_to_node(s: &str) -> Node {
+    Node::Atom(s.to_string())
 }
 
-pub fn macro_push_node(nodes: &mut Vec<sise::TreeNode>, node: sise::TreeNode) {
+pub fn macro_push_node(nodes: &mut Vec<Node>, node: Node) {
     // turn a - b into a-b
     let len = nodes.len();
     if len != 0 {
-        if let sise::TreeNode::Atom(cur) = &node {
-            if let sise::TreeNode::Atom(prev) = &nodes[len - 1] {
+        if let Node::Atom(cur) = &node {
+            if let Node::Atom(prev) = &nodes[len - 1] {
                 if node == "-" || prev == ":" || (prev != "-" && prev.ends_with("-")) {
-                    nodes[len - 1] = sise::TreeNode::Atom(prev.to_owned() + cur);
+                    nodes[len - 1] = Node::Atom(prev.to_owned() + cur);
                     return;
                 }
             }
@@ -39,19 +40,19 @@ There's some limited support for atoms containing hyphens, at least for atoms in
 */
 #[macro_export]
 macro_rules! node {
-    ( - ) => { sise::TreeNode::Atom("-".to_string()) };
+    ( - ) => { Node::Atom("-".to_string()) };
     ( { $x:expr } ) => { $x };
     ( [ $x:expr ] ) => { $x.clone() };
-    ( $x:literal ) => { sise::TreeNode::Atom($x.to_string()) };
+    ( $x:literal ) => { Node::Atom($x.to_string()) };
     ( ( $( $x:tt )* ) ) => {
         {
             #[allow(unused_mut)]
             let mut v = Vec::new();
             $(macro_push_node(&mut v, node!($x));)*
-            sise::TreeNode::List(v)
+            Node::List(v)
         }
     };
-    ( $x:tt ) => { sise::TreeNode::Atom(stringify!($x).to_string()) };
+    ( $x:tt ) => { Node::Atom(stringify!($x).to_string()) };
 }
 #[macro_export]
 macro_rules! nodes {
@@ -59,7 +60,7 @@ macro_rules! nodes {
        {
            let mut v = Vec::new();
            $(macro_push_node(&mut v, node!($x));)*
-           sise::TreeNode::List(v)
+           Node::List(v)
        }
    };
 }
@@ -90,7 +91,7 @@ impl Printer {
         Printer { message_interface, print_as_smt, solver }
     }
 
-    pub(crate) fn typ_to_node(&self, typ: &Typ) -> sise::TreeNode {
+    pub(crate) fn typ_to_node(&self, typ: &Typ) -> Node {
         match &**typ {
             TypX::Bool => str_to_node("Bool"),
             TypX::Int => str_to_node("Int"),
@@ -98,7 +99,7 @@ impl Printer {
             TypX::Fun if self.print_as_smt => str_to_node(crate::def::FUNCTION),
             TypX::Fun => str_to_node("Fun"),
             TypX::Named(name) => str_to_node(&name.clone()),
-            TypX::BitVec(size) => sise::TreeNode::List(vec![
+            TypX::BitVec(size) => Node::List(vec![
                 str_to_node("_"),
                 str_to_node("BitVec"),
                 str_to_node(&size.to_string()),
@@ -107,7 +108,7 @@ impl Printer {
             TypX::Float { exp_bits: 8, sig_bits: 24 } => str_to_node("Float32"),
             TypX::Float { exp_bits: 11, sig_bits: 53 } => str_to_node("Float64"),
             TypX::Float { exp_bits: 15, sig_bits: 113 } => str_to_node("Float128"),
-            TypX::Float { exp_bits, sig_bits } => sise::TreeNode::List(vec![
+            TypX::Float { exp_bits, sig_bits } => Node::List(vec![
                 str_to_node("_"),
                 str_to_node("FloatingPoint"),
                 str_to_node(&exp_bits.to_string()),
@@ -116,25 +117,21 @@ impl Printer {
         }
     }
 
-    pub(crate) fn typs_to_node(&self, typs: &Typs) -> sise::TreeNode {
-        sise::TreeNode::List(vec_map(typs, |t| self.typ_to_node(t)))
+    pub(crate) fn typs_to_node(&self, typs: &Typs) -> Node {
+        Node::List(vec_map(typs, |t| self.typ_to_node(t)))
     }
 
-    pub(crate) fn bv_const_expr_to_node(&self, n: &Arc<String>, width: u32) -> sise::TreeNode {
+    pub(crate) fn bv_const_expr_to_node(&self, n: &Arc<String>, width: u32) -> Node {
         let bv_node = str_to_node(&format!("bv{}", n));
         let width_node = str_to_node(&width.to_string());
         node!((_ {bv_node} {width_node}))
     }
 
-    pub(crate) fn filter_to_node(&self, filter: &Option<Ident>) -> sise::TreeNode {
-        if let Some(filter) = filter {
-            nodes!({ str_to_node(filter) })
-        } else {
-            sise::TreeNode::List(vec![])
-        }
+    pub(crate) fn filter_to_node(&self, filter: &Option<Ident>) -> Node {
+        if let Some(filter) = filter { nodes!({ str_to_node(filter) }) } else { Node::List(vec![]) }
     }
 
-    fn rounding_mode_to_node(&self, r: &RoundingMode) -> sise::TreeNode {
+    fn rounding_mode_to_node(&self, r: &RoundingMode) -> Node {
         match r {
             RoundingMode::RNE => str_to_node("RNE"),
             RoundingMode::RNA => str_to_node("RNA"),
@@ -144,41 +141,37 @@ impl Printer {
         }
     }
 
-    pub fn expr_to_node(&self, expr: &Expr) -> sise::TreeNode {
+    pub fn expr_to_node(&self, expr: &Expr) -> Node {
         match &**expr {
-            ExprX::Const(Constant::Bool(b)) => sise::TreeNode::Atom(b.to_string()),
-            ExprX::Const(Constant::Nat(n)) => sise::TreeNode::Atom((**n).clone()),
-            ExprX::Const(Constant::Real(n)) => sise::TreeNode::Atom((**n).clone()),
+            ExprX::Const(Constant::Bool(b)) => Node::Atom(b.to_string()),
+            ExprX::Const(Constant::Nat(n)) => Node::Atom((**n).clone()),
+            ExprX::Const(Constant::Real(n)) => Node::Atom((**n).clone()),
             ExprX::Const(Constant::BitVec(n, width)) => self.bv_const_expr_to_node(n, *width),
-            ExprX::Var(x) => sise::TreeNode::Atom(x.to_string()),
+            ExprX::Var(x) => Node::Atom(x.to_string()),
             ExprX::Old(snap, x) => {
                 nodes!(old {str_to_node(&snap.to_string())} {str_to_node(&x.to_string())})
             }
             ExprX::Apply(x, exprs) => {
-                let mut nodes: Vec<sise::TreeNode> = Vec::new();
+                let mut nodes: Vec<Node> = Vec::new();
                 nodes.push(str_to_node(x));
                 for expr in exprs.iter() {
                     nodes.push(self.expr_to_node(expr));
                 }
-                sise::TreeNode::List(nodes)
+                Node::List(nodes)
             }
             ExprX::ApplyFun(typ, expr0, exprs) => {
-                let mut nodes: Vec<sise::TreeNode> = Vec::new();
+                let mut nodes: Vec<Node> = Vec::new();
                 nodes.push(str_to_node("apply"));
                 nodes.push(self.typ_to_node(typ));
                 nodes.push(self.expr_to_node(expr0));
                 for expr in exprs.iter() {
                     nodes.push(self.expr_to_node(expr));
                 }
-                sise::TreeNode::List(nodes)
+                Node::List(nodes)
             }
             ExprX::Unary(UnaryOp::FloatRoundToInt(r), expr) => {
                 let r = self.rounding_mode_to_node(r);
-                sise::TreeNode::List(vec![
-                    str_to_node("fp.roundToIntegral"),
-                    r,
-                    self.expr_to_node(expr),
-                ])
+                Node::List(vec![str_to_node("fp.roundToIntegral"), r, self.expr_to_node(expr)])
             }
             ExprX::Unary(op, expr) => {
                 let sop = match op {
@@ -215,15 +208,15 @@ impl Printer {
                             str_to_node(&high.to_string()),
                             str_to_node(&low.to_string()),
                         ];
-                        let nodes = vec![sise::TreeNode::List(nodes_in), self.expr_to_node(expr)];
+                        let nodes = vec![Node::List(nodes_in), self.expr_to_node(expr)];
 
-                        sise::TreeNode::List(nodes)
+                        Node::List(nodes)
                     }
                     UnaryOp::BitZeroExtend(w) | UnaryOp::BitSignExtend(w) => {
                         let nodes_in =
                             vec![str_to_node("_"), str_to_node(sop), str_to_node(&w.to_string())];
-                        let nodes = vec![sise::TreeNode::List(nodes_in), self.expr_to_node(expr)];
-                        sise::TreeNode::List(nodes)
+                        let nodes = vec![Node::List(nodes_in), self.expr_to_node(expr)];
+                        Node::List(nodes)
                     }
                     UnaryOp::FloatFromIeeeBits { exp_bits, sig_bits } => {
                         let nodes_in = vec![
@@ -232,8 +225,8 @@ impl Printer {
                             str_to_node(&exp_bits.to_string()),
                             str_to_node(&sig_bits.to_string()),
                         ];
-                        let nodes = vec![sise::TreeNode::List(nodes_in), self.expr_to_node(expr)];
-                        sise::TreeNode::List(nodes)
+                        let nodes = vec![Node::List(nodes_in), self.expr_to_node(expr)];
+                        Node::List(nodes)
                     }
                     UnaryOp::FloatFrom { exp_bits, sig_bits, signed: _, round } => {
                         let nodes_in = vec![
@@ -243,9 +236,8 @@ impl Printer {
                             str_to_node(&sig_bits.to_string()),
                         ];
                         let r = self.rounding_mode_to_node(round);
-                        let nodes =
-                            vec![sise::TreeNode::List(nodes_in), r, self.expr_to_node(expr)];
-                        sise::TreeNode::List(nodes)
+                        let nodes = vec![Node::List(nodes_in), r, self.expr_to_node(expr)];
+                        Node::List(nodes)
                     }
                     UnaryOp::FloatToBitVec { bits, signed: _, round } => {
                         let nodes_in = vec![
@@ -254,11 +246,10 @@ impl Printer {
                             str_to_node(&bits.to_string()),
                         ];
                         let r = self.rounding_mode_to_node(round);
-                        let nodes =
-                            vec![sise::TreeNode::List(nodes_in), r, self.expr_to_node(expr)];
-                        sise::TreeNode::List(nodes)
+                        let nodes = vec![Node::List(nodes_in), r, self.expr_to_node(expr)];
+                        Node::List(nodes)
                     }
-                    _ => sise::TreeNode::List(vec![str_to_node(sop), self.expr_to_node(expr)]),
+                    _ => Node::List(vec![str_to_node(sop), self.expr_to_node(expr)]),
                 }
             }
             ExprX::Binary(BinaryOp::Relation(relation, n), lhs, rhs) => {
@@ -269,12 +260,9 @@ impl Printer {
                     Relation::TreeOrder => "tree-order",
                     Relation::PiecewiseLinearOrder => "piecewise-linear-order",
                 };
-                let op = sise::TreeNode::List(vec![
-                    str_to_node("_"),
-                    str_to_node(s),
-                    sise::TreeNode::Atom(n.to_string()),
-                ]);
-                sise::TreeNode::List(vec![op, self.expr_to_node(lhs), self.expr_to_node(rhs)])
+                let op =
+                    Node::List(vec![str_to_node("_"), str_to_node(s), Node::Atom(n.to_string())]);
+                Node::List(vec![op, self.expr_to_node(lhs), self.expr_to_node(rhs)])
             }
             ExprX::Binary(op, lhs, rhs) => {
                 let sop = match op {
@@ -319,7 +307,7 @@ impl Printer {
                     BinaryOp::FloatGt => str_to_node("fp.gt"),
                     BinaryOp::FloatLe => str_to_node("fp.leq"),
                     BinaryOp::FloatGe => str_to_node("fp.geq"),
-                    BinaryOp::FieldUpdate(field_ident) => sise::TreeNode::List(vec![
+                    BinaryOp::FieldUpdate(field_ident) => Node::List(vec![
                         str_to_node("_"),
                         str_to_node("update-field"),
                         str_to_node(&**field_ident),
@@ -333,17 +321,10 @@ impl Printer {
                     _ => None,
                 };
                 match round {
-                    None => sise::TreeNode::List(vec![
-                        sop,
-                        self.expr_to_node(lhs),
-                        self.expr_to_node(rhs),
-                    ]),
-                    Some(r) => sise::TreeNode::List(vec![
-                        sop,
-                        r,
-                        self.expr_to_node(lhs),
-                        self.expr_to_node(rhs),
-                    ]),
+                    None => Node::List(vec![sop, self.expr_to_node(lhs), self.expr_to_node(rhs)]),
+                    Some(r) => {
+                        Node::List(vec![sop, r, self.expr_to_node(lhs), self.expr_to_node(rhs)])
+                    }
                 }
             }
             ExprX::Multi(op, exprs) => {
@@ -357,7 +338,7 @@ impl Printer {
                     MultiOp::Distinct => "distinct",
                     MultiOp::Float => "fp",
                 };
-                let mut nodes: Vec<sise::TreeNode> = Vec::new();
+                let mut nodes: Vec<Node> = Vec::new();
                 nodes.push(str_to_node(sop));
                 for expr in exprs.iter() {
                     nodes.push(self.expr_to_node(expr));
@@ -366,29 +347,29 @@ impl Printer {
                     MultiOp::Distinct if exprs.len() <= 1 => {
                         // Z3 doesn't like the expression "(distinct)"
                         // cvc5 doesn't like the singleton expression "(distinct expr)"
-                        return sise::TreeNode::Atom("true".to_string());
+                        return Node::Atom("true".to_string());
                     }
                     _ => {}
                 }
-                sise::TreeNode::List(nodes)
+                Node::List(nodes)
             }
             ExprX::IfElse(expr1, expr2, expr3) => {
                 nodes!(ite {self.expr_to_node(expr1)} {self.expr_to_node(expr2)} {self.expr_to_node(expr3)})
             }
             ExprX::Array(exprs) => {
-                let mut nodes: Vec<sise::TreeNode> = Vec::new();
+                let mut nodes: Vec<Node> = Vec::new();
                 nodes.push(str_to_node("array"));
                 for expr in exprs.iter() {
                     nodes.push(self.expr_to_node(expr));
                 }
-                sise::TreeNode::List(nodes)
+                Node::List(nodes)
             }
             ExprX::Bind(bind, expr) => {
                 let with_triggers = |expr: &Expr, triggers: &Triggers, qid: &Qid| {
                     if triggers.len() == 0 && qid.is_none() {
                         self.expr_to_node(expr)
                     } else {
-                        let mut nodes: Vec<sise::TreeNode> = Vec::new();
+                        let mut nodes: Vec<Node> = Vec::new();
                         nodes.push(str_to_node("!"));
                         nodes.push(self.expr_to_node(expr));
                         for trigger in triggers.iter() {
@@ -403,7 +384,7 @@ impl Printer {
                                 nodes.push(str_to_node(&mk_skolem_id(s)));
                             }
                         }
-                        sise::TreeNode::List(nodes)
+                        Node::List(nodes)
                     }
                 };
                 match &**bind {
@@ -434,73 +415,70 @@ impl Printer {
             }
             ExprX::LabeledAxiom(labels, filter, expr) => {
                 let spans = vec_map(labels, |s| {
-                    sise::TreeNode::Atom(format!(
-                        "\"{}\"",
-                        self.message_interface.get_message_label_note(s)
-                    ))
+                    Node::Atom(format!("\"{}\"", self.message_interface.get_message_label_note(s)))
                 });
                 if spans.len() == 0 && filter.is_none() {
                     self.expr_to_node(expr)
                 } else {
                     let filter_nodes = self.filter_to_node(filter);
-                    nodes!(axiom_location {sise::TreeNode::List(spans)} {filter_nodes} {self.expr_to_node(expr)})
+                    nodes!(axiom_location {Node::List(spans)} {filter_nodes} {self.expr_to_node(expr)})
                 }
             }
             ExprX::LabeledAssertion(_, error, filter, expr) => {
                 let spans = vec_map(&self.message_interface.all_msgs(error), |s| {
-                    sise::TreeNode::Atom(format!("\"{}\"", s))
+                    Node::Atom(format!("\"{}\"", s))
                 });
                 if spans.len() == 0 && filter.is_none() {
                     self.expr_to_node(expr)
                 } else {
                     let filter_nodes = self.filter_to_node(filter);
-                    nodes!(location {sise::TreeNode::List(spans)} {filter_nodes} {self.expr_to_node(expr)})
+                    nodes!(location {Node::List(spans)} {filter_nodes} {self.expr_to_node(expr)})
                 }
             }
         }
     }
 
-    pub fn exprs_to_node(&self, exprs: &Exprs) -> sise::TreeNode {
-        sise::TreeNode::List(vec_map(exprs, |e| self.expr_to_node(e)))
+    pub fn exprs_to_node(&self, exprs: &Exprs) -> Node {
+        Node::List(vec_map(exprs, |e| self.expr_to_node(e)))
     }
 
-    pub(crate) fn binder_to_node<A: Clone, F: Fn(&A) -> sise::TreeNode>(
+    pub(crate) fn binder_to_node<A: Clone, F: Fn(&A) -> Node>(
         &self,
         binder: &Binder<A>,
         f: &F,
-    ) -> sise::TreeNode {
-        sise::TreeNode::List([str_to_node(&binder.name), f(&binder.a)].to_vec())
+    ) -> Node {
+        Node::List([str_to_node(&binder.name), f(&binder.a)].to_vec())
     }
 
-    pub(crate) fn binders_to_node<A: Clone, F: Fn(&A) -> sise::TreeNode>(
+    pub(crate) fn binders_to_node<A: Clone, F: Fn(&A) -> Node>(
         &self,
         binders: &Binders<A>,
         f: &F,
-    ) -> sise::TreeNode {
-        sise::TreeNode::List(vec_map(binders, |b| self.binder_to_node(b, f)))
+    ) -> Node {
+        Node::List(vec_map(binders, |b| self.binder_to_node(b, f)))
     }
 
-    pub(crate) fn multibinder_to_node<A: Clone, F: Fn(&A) -> sise::TreeNode>(
+    pub(crate) fn multibinder_to_node<A: Clone, F: Fn(&A) -> Node>(
         &self,
         binder: &Binder<Arc<Vec<A>>>,
         f: &F,
-    ) -> sise::TreeNode {
-        let mut nodes: Vec<sise::TreeNode> = Vec::new();
+    ) -> Node {
+        let mut nodes: Vec<Node> = Vec::new();
         nodes.push(str_to_node(&binder.name));
         for a in binder.a.iter() {
             nodes.push(f(a));
         }
-        sise::TreeNode::List(nodes)
+        Node::List(nodes)
     }
 
-    pub fn sort_decl_to_node(&self, x: &Ident) -> sise::TreeNode {
+    pub fn sort_decl_to_node(&self, x: &Ident) -> Node {
         node!((declare-sort {str_to_node(x)} 0))
     }
 
-    pub fn datatypes_decl_to_node(&self, datatypes: &Datatypes) -> sise::TreeNode {
-        let decls = sise::TreeNode::List(vec_map(datatypes, |d| nodes!({str_to_node(&d.name)} 0)));
-        let defns = sise::TreeNode::List(vec_map(datatypes, |d| {
-            sise::TreeNode::List(vec_map(&d.a, |variant| {
+    pub fn datatypes_decl_to_node(&self, datatypes: &Datatypes) -> Node {
+        let decls = Node::List(vec_map(datatypes, |d| nodes!({str_to_node(&d.name)} 0)));
+        let defns = Node::List(vec_map(datatypes, |d| {
+            Node::List(vec_map(&d.a, |variant| {
                 self.multibinder_to_node(&variant, &|field| {
                     self.binder_to_node(&field, &|t| self.typ_to_node(t))
                 })
@@ -514,19 +492,19 @@ impl Printer {
         }
     }
 
-    pub fn const_decl_to_node(&self, x: &Ident, typ: &Typ) -> sise::TreeNode {
+    pub fn const_decl_to_node(&self, x: &Ident, typ: &Typ) -> Node {
         nodes!(declare-const {str_to_node(x)} {self.typ_to_node(typ)})
     }
 
-    pub fn fun_decl_to_node(&self, x: &Ident, typs: &Typs, typ: &Typ) -> sise::TreeNode {
+    pub fn fun_decl_to_node(&self, x: &Ident, typs: &Typs, typ: &Typ) -> Node {
         nodes!(declare-fun {str_to_node(x)} {self.typs_to_node(typs)} {self.typ_to_node(typ)})
     }
 
-    pub fn var_decl_to_node(&self, x: &Ident, typ: &Typ) -> sise::TreeNode {
+    pub fn var_decl_to_node(&self, x: &Ident, typ: &Typ) -> Node {
         nodes!(declare-var {str_to_node(x)} {self.typ_to_node(typ)})
     }
 
-    pub fn axiom_to_node(&self, axiom: &Axiom) -> sise::TreeNode {
+    pub fn axiom_to_node(&self, axiom: &Axiom) -> Node {
         let Axiom { named, expr } = axiom;
         if let Some(named) = named {
             nodes!(axiom ({str_to_node("!")} {self.expr_to_node(expr)} {str_to_node(":named")} {str_to_node(named)}))
@@ -535,7 +513,7 @@ impl Printer {
         }
     }
 
-    pub fn decl_to_node(&self, decl: &Decl) -> sise::TreeNode {
+    pub fn decl_to_node(&self, decl: &Decl) -> Node {
         match &**decl {
             DeclX::Sort(x) => self.sort_decl_to_node(x),
             DeclX::Datatypes(datatypes) => self.datatypes_decl_to_node(datatypes),
@@ -546,18 +524,18 @@ impl Printer {
         }
     }
 
-    pub fn stmt_to_node(&self, stmt: &Stmt) -> sise::TreeNode {
+    pub fn stmt_to_node(&self, stmt: &Stmt) -> Node {
         match &**stmt {
             StmtX::Assume(expr) => nodes!(assume {self.expr_to_node(expr)}),
             StmtX::Assert(_, labels, filter, expr) => {
                 let spans = vec_map(&self.message_interface.all_msgs(labels), |s| {
-                    sise::TreeNode::Atom(format!("\"{}\"", s))
+                    Node::Atom(format!("\"{}\"", s))
                 });
                 if spans.len() == 0 && filter.is_none() {
                     nodes!(assert {self.expr_to_node(expr)})
                 } else {
                     let filter_nodes = self.filter_to_node(filter);
-                    nodes!(assert {sise::TreeNode::List(spans)} {filter_nodes} {self.expr_to_node(expr)})
+                    nodes!(assert {Node::List(spans)} {filter_nodes} {self.expr_to_node(expr)})
                 }
             }
             StmtX::Havoc(x) => nodes!(havoc {str_to_node(x)}),
@@ -576,12 +554,12 @@ impl Printer {
                 for stmt in stmts.iter() {
                     nodes.push(self.stmt_to_node(stmt));
                 }
-                sise::TreeNode::List(nodes)
+                Node::List(nodes)
             }
         }
     }
 
-    pub fn query_to_node(&self, query: &Query) -> sise::TreeNode {
+    pub fn query_to_node(&self, query: &Query) -> Node {
         let QueryX { local, assertion } = &**query;
         let mut nodes = Vec::new();
         nodes.push(str_to_node("check-valid"));
@@ -589,7 +567,7 @@ impl Printer {
             nodes.push(self.decl_to_node(decl));
         }
         nodes.push(self.stmt_to_node(assertion));
-        sise::TreeNode::List(nodes)
+        Node::List(nodes)
     }
 }
 
@@ -603,16 +581,16 @@ impl NodeWriter {
     pub fn write_node(
         &mut self,
         serializer: &mut sise::Serializer,
-        node: &sise::TreeNode,
+        node: &Node,
         break_len: usize,
         brk: bool,
     ) {
         let break_line_at = if brk { 0 } else { break_len };
         match node {
-            sise::TreeNode::Atom(a) => {
+            Node::Atom(a) => {
                 serializer.put_atom(a, break_line_at);
             }
-            sise::TreeNode::List(l) => {
+            Node::List(l) => {
                 serializer.begin_list(break_line_at);
                 let mut brk = false;
                 let mut was_pattern = false;
@@ -620,7 +598,7 @@ impl NodeWriter {
                     self.write_node(serializer, n, break_len + 1, brk && !was_pattern);
                     was_pattern = false;
                     match n {
-                        sise::TreeNode::Atom(a)
+                        Node::Atom(a)
                             if a == "=>"
                                 || a == "and"
                                 || a == "or"
@@ -636,9 +614,7 @@ impl NodeWriter {
                         {
                             brk = true;
                         }
-                        sise::TreeNode::Atom(a)
-                            if a == ":pattern" || a == ":qid" || a == ":skolemid" =>
-                        {
+                        Node::Atom(a) if a == ":pattern" || a == ":qid" || a == ":skolemid" => {
                             was_pattern = true;
                         }
                         _ => {}
@@ -649,7 +625,7 @@ impl NodeWriter {
         }
     }
 
-    pub fn node_to_string_indent(&mut self, indent: &String, node: &sise::TreeNode) -> String {
+    pub fn node_to_string_indent(&mut self, indent: &String, node: &Node) -> String {
         let indentation = " ";
         let style =
             sise::SerializerStyle { line_break: &("\n".to_string() + &indent), indentation };
@@ -662,7 +638,7 @@ impl NodeWriter {
     }
 }
 
-pub(crate) fn node_to_string(node: &sise::TreeNode) -> String {
+pub(crate) fn node_to_string(node: &Node) -> String {
     NodeWriter::new().node_to_string_indent(&"".to_string(), node)
 }
 

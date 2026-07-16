@@ -12,6 +12,7 @@ use air::ast::{Axiom, Command, CommandX, DeclX};
 use air::ast_util::str_ident;
 use air::node;
 use air::printer::{macro_push_node, str_to_node};
+use sise::TreeNode as Node;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -138,7 +139,7 @@ impl ResolvedTypeCollection {
     }
 }
 
-pub fn resolve_mut_ref_axiom() -> sise::TreeNode {
+pub fn resolve_mut_ref_axiom() -> Node {
     let decoration = str_to_node(DECORATION);
     let typ = str_to_node(TYPE);
     #[allow(non_snake_case)]
@@ -166,7 +167,7 @@ pub fn resolve_mut_ref_axiom() -> sise::TreeNode {
     )
 }
 
-pub fn resolve_decoration_axiom(dec: &TypDecoration) -> sise::TreeNode {
+pub fn resolve_decoration_axiom(dec: &TypDecoration) -> Node {
     let decoration = str_to_node(DECORATION);
 
     let typ = str_to_node(TYPE);

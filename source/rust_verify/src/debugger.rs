@@ -3,6 +3,7 @@ use air::ast::Ident;
 use air::model::Model as AModel;
 use rustc_span::Span;
 use rustc_span::source_map::SourceMap;
+use sise::TreeNode as Node;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
@@ -120,24 +121,24 @@ impl Debugger {
         self.air_model.translate_variable(sid, &name)
     }
 
-    fn rewrite_eval_expr(&self, expr: &sise::TreeNode) -> Option<sise::TreeNode> {
+    fn rewrite_eval_expr(&self, expr: &Node) -> Option<Node> {
         match expr {
-            sise::TreeNode::Atom(var) => {
+            Node::Atom(var) => {
                 let name = self.translate_variable(&Arc::new(String::from(var)))?;
-                Some(sise::TreeNode::Atom(name))
+                Some(Node::Atom(name))
             }
-            sise::TreeNode::List(app) => {
-                if let sise::TreeNode::Atom(var) = &app[0] {
+            Node::List(app) => {
+                if let Node::Atom(var) = &app[0] {
                     // TODO: should use suffix_global_id + path_to_air_ident?
                     let mut func_name = var.clone();
                     func_name.push('.');
                     func_name.push('?');
-                    let mut items = vec![sise::TreeNode::Atom(func_name)];
+                    let mut items = vec![Node::Atom(func_name)];
                     for name in app.iter().skip(1) {
                         let name = self.rewrite_eval_expr(name)?;
                         items.push(name);
                     }
-                    Some(sise::TreeNode::List(items))
+                    Some(Node::List(items))
                 } else {
                     None
                 }

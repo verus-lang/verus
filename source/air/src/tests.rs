@@ -5,6 +5,8 @@ use crate::messages::Reporter;
 use crate::parser::Parser;
 #[allow(unused_imports)]
 use crate::printer::{macro_push_node, str_to_node};
+#[allow(unused_imports)]
+use sise::TreeNode as Node;
 
 #[allow(dead_code)]
 fn run_nodes_as_test(should_typecheck: bool, should_be_valid: bool, nodes: &[sise::TreeNode]) {

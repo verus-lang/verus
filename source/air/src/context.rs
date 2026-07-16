@@ -12,6 +12,7 @@ use crate::scope_map::ScopeMap;
 use crate::smt_process::SmtProcess;
 use crate::smt_verify::ReportLongRunning;
 use crate::typecheck::Typing;
+use sise::TreeNode as Node;
 use std::any::Any;
 use std::collections::HashSet;
 use std::sync::Arc;

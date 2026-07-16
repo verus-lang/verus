@@ -1,6 +1,7 @@
 use crate::ast::*;
 use air::printer::macro_push_node;
 use air::{node, nodes};
+use sise::TreeNode as Node;
 
 const VIR_BREAK_ON: &[&str] = &["Function"];
 const VIR_BREAK_AFTER: &[&str] =
@@ -23,17 +24,17 @@ impl<'a> NodeWriter<'a> {
     pub fn write_node(
         &mut self,
         serializer: &mut sise::Serializer,
-        node: &sise::TreeNode,
+        node: &Node,
         break_len: usize,
         brk: bool,
         brk_next: bool,
     ) {
         let break_line_at = if brk { 0 } else { break_len };
         match node {
-            sise::TreeNode::Atom(a) => {
+            Node::Atom(a) => {
                 serializer.put_atom(a, break_line_at);
             }
-            sise::TreeNode::List(l) => {
+            Node::List(l) => {
                 serializer.begin_list(break_line_at);
                 let mut brk = false;
                 let brk_from_next = brk_next;
@@ -42,7 +43,7 @@ impl<'a> NodeWriter<'a> {
                     self.write_node(serializer, n, break_len + 1, brk || brk_from_next, brk_next);
                     brk_next = false;
                     brk = false;
-                    if let sise::TreeNode::Atom(a) = n {
+                    if let Node::Atom(a) = n {
                         if self.break_on.contains(a.as_str()) {
                             brk = true;
                         }
@@ -75,7 +76,7 @@ impl<'a> NodeWriter<'a> {
         result
     }
 
-    pub fn node_to_string(&mut self, node: &sise::TreeNode) -> String {
+    pub fn node_to_string(&mut self, node: &Node) -> String {
         let indentation = " ";
         let style = sise::SerializerStyle { line_break: "\n", indentation };
         let mut result = String::new();
@@ -105,17 +106,17 @@ impl Default for ToDebugSNodeOpts {
 }
 
 pub(crate) trait ToDebugSNode {
-    fn to_node(&self, opts: &ToDebugSNodeOpts) -> sise::TreeNode;
+    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node;
 }
 
 impl<A: ToDebugSNode> ToDebugSNode for crate::def::Spanned<A> {
-    fn to_node(&self, opts: &ToDebugSNodeOpts) -> sise::TreeNode {
+    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
         if opts.no_span {
             self.x.to_node(opts)
         } else {
-            sise::TreeNode::List(vec![
-                sise::TreeNode::Atom("@".to_string()),
-                sise::TreeNode::Atom(format!("\"{}\"", self.span.as_string)),
+            Node::List(vec![
+                Node::Atom("@".to_string()),
+                Node::Atom(format!("\"{}\"", self.span.as_string)),
                 self.x.to_node(opts),
             ])
         }
@@ -123,21 +124,21 @@ impl<A: ToDebugSNode> ToDebugSNode for crate::def::Spanned<A> {
 }
 
 impl<A: ToDebugSNode> ToDebugSNode for Vec<A> {
-    fn to_node(&self, opts: &ToDebugSNodeOpts) -> sise::TreeNode {
+    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
         let nodes = self.iter().map(|x| x.to_node(opts)).collect();
-        sise::TreeNode::List(nodes)
+        Node::List(nodes)
     }
 }
 
 impl<A: ToDebugSNode> ToDebugSNode for std::sync::Arc<A> {
-    fn to_node(&self, opts: &ToDebugSNodeOpts) -> sise::TreeNode {
+    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
         (**self).to_node(opts)
     }
 }
 
 impl ToDebugSNode for String {
-    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> sise::TreeNode {
-        sise::TreeNode::Atom(match self.is_ascii() {
+    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
+        Node::Atom(match self.is_ascii() {
             true => format!("\"{}\"", self.replace("\n", "\\n")),
             false => "non_ascii_string".to_string(),
         })
@@ -145,10 +146,10 @@ impl ToDebugSNode for String {
 }
 
 impl<A: ToDebugSNode> ToDebugSNode for Option<A> {
-    fn to_node(&self, opts: &ToDebugSNodeOpts) -> sise::TreeNode {
+    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
         match self {
             Some(v) => v.to_node(opts),
-            None => sise::TreeNode::Atom("None".to_string()),
+            None => Node::Atom("None".to_string()),
         }
     }
 }
@@ -156,12 +157,12 @@ impl<A: ToDebugSNode> ToDebugSNode for Option<A> {
 macro_rules! tuple_impls {
     ($($typ:ident)+) => {
         impl<$($typ: ToDebugSNode),+> ToDebugSNode for ($($typ,)+) {
-            fn to_node(&self, opts: &ToDebugSNodeOpts) -> sise::TreeNode {
+            fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
                 #[allow(non_snake_case)]
                 let ($($typ,)+) = self;
 
-                sise::TreeNode::List(vec![
-                    sise::TreeNode::Atom("tuple".to_string()),
+                Node::List(vec![
+                    Node::Atom("tuple".to_string()),
                     $($typ.to_node(opts),)+
                 ])
             }
@@ -182,147 +183,143 @@ tuple_impls! { A B C D E F G H I J K }
 tuple_impls! { A B C D E F G H I J K L }
 
 impl ToDebugSNode for bool {
-    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> sise::TreeNode {
-        sise::TreeNode::Atom(format!("{:?}", self))
+    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
+        Node::Atom(format!("{:?}", self))
     }
 }
 
 impl ToDebugSNode for u32 {
-    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> sise::TreeNode {
-        sise::TreeNode::Atom(self.to_string())
+    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
+        Node::Atom(self.to_string())
     }
 }
 
 impl ToDebugSNode for char {
-    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> sise::TreeNode {
+    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
         let a = match self.is_ascii_alphanumeric() {
             true => format!("char<{}>", self),
             false => format!("char<{:x}>", *self as u32),
         };
-        sise::TreeNode::Atom(a)
+        Node::Atom(a)
     }
 }
 
 impl ToDebugSNode for u64 {
-    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> sise::TreeNode {
-        sise::TreeNode::Atom(self.to_string())
+    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
+        Node::Atom(self.to_string())
     }
 }
 
 impl ToDebugSNode for usize {
-    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> sise::TreeNode {
-        sise::TreeNode::Atom(self.to_string())
+    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
+        Node::Atom(self.to_string())
     }
 }
 
 impl ToDebugSNode for f32 {
-    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> sise::TreeNode {
-        sise::TreeNode::Atom(self.to_string())
+    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
+        Node::Atom(self.to_string())
     }
 }
 
 impl ToDebugSNode for num_bigint::BigInt {
-    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> sise::TreeNode {
-        sise::TreeNode::Atom(self.to_string())
+    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
+        Node::Atom(self.to_string())
     }
 }
 
 impl ToDebugSNode for air::ast::TypX {
-    fn to_node(&self, opts: &ToDebugSNodeOpts) -> sise::TreeNode {
+    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
         use air::ast::TypX;
         match self {
-            TypX::Bool => sise::TreeNode::Atom("Bool".to_string()),
-            TypX::Int => sise::TreeNode::Atom("Int".to_string()),
-            TypX::Real => sise::TreeNode::Atom("Real".to_string()),
-            TypX::Fun => sise::TreeNode::Atom("Fun".to_string()),
-            TypX::Named(ident) => sise::TreeNode::List(vec![
-                sise::TreeNode::Atom("Named".to_string()),
-                ident.to_node(opts),
-            ]),
-            TypX::BitVec(size) => sise::TreeNode::List(vec![
-                sise::TreeNode::Atom("BitVec".to_string()),
-                size.to_node(opts),
-            ]),
-            TypX::Float { exp_bits, sig_bits } => {
-                sise::TreeNode::Atom(format!("Float{exp_bits}_{sig_bits}"))
+            TypX::Bool => Node::Atom("Bool".to_string()),
+            TypX::Int => Node::Atom("Int".to_string()),
+            TypX::Real => Node::Atom("Real".to_string()),
+            TypX::Fun => Node::Atom("Fun".to_string()),
+            TypX::Named(ident) => {
+                Node::List(vec![Node::Atom("Named".to_string()), ident.to_node(opts)])
             }
+            TypX::BitVec(size) => {
+                Node::List(vec![Node::Atom("BitVec".to_string()), size.to_node(opts)])
+            }
+            TypX::Float { exp_bits, sig_bits } => Node::Atom(format!("Float{exp_bits}_{sig_bits}")),
         }
     }
 }
 
 impl<A: ToDebugSNode> ToDebugSNode for SpannedTyped<A> {
-    fn to_node(&self, opts: &ToDebugSNodeOpts) -> sise::TreeNode {
+    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
         if opts.no_span && opts.no_type {
             self.x.to_node(opts)
         } else {
-            let mut v = vec![sise::TreeNode::Atom("@@".to_string())];
+            let mut v = vec![Node::Atom("@@".to_string())];
             if !opts.no_span {
-                v.push(sise::TreeNode::Atom(format!("\"{}\"", self.span.as_string)));
+                v.push(Node::Atom(format!("\"{}\"", self.span.as_string)));
             }
             v.push(self.x.to_node(opts));
             if !opts.no_type {
                 v.push(self.typ.to_node(opts));
             }
-            sise::TreeNode::List(v)
+            Node::List(v)
         }
     }
 }
 
 impl<A: ToDebugSNode + Clone> ToDebugSNode for Binder<A> {
-    fn to_node(&self, opts: &ToDebugSNodeOpts) -> sise::TreeNode {
-        sise::TreeNode::List(vec![
-            sise::TreeNode::Atom("->".to_string()),
-            sise::TreeNode::Atom((**self.name).to_string()),
+    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
+        Node::List(vec![
+            Node::Atom("->".to_string()),
+            Node::Atom((**self.name).to_string()),
             self.a.to_node(opts),
         ])
     }
 }
 
 impl<A: ToDebugSNode + Clone> ToDebugSNode for VarBinder<A> {
-    fn to_node(&self, opts: &ToDebugSNodeOpts) -> sise::TreeNode {
-        sise::TreeNode::List(vec![
-            sise::TreeNode::Atom("->".to_string()),
-            sise::TreeNode::Atom((&self.name).into()),
+    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
+        Node::List(vec![
+            Node::Atom("->".to_string()),
+            Node::Atom((&self.name).into()),
             self.a.to_node(opts),
         ])
     }
 }
 
 impl ToDebugSNode for Quant {
-    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> sise::TreeNode {
+    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
         let Quant { quant } = self;
-        let nodes = vec![sise::TreeNode::Atom(format!("{:?}", quant))];
-        sise::TreeNode::List(nodes)
+        let nodes = vec![Node::Atom(format!("{:?}", quant))];
+        Node::List(nodes)
     }
 }
 
 impl ToDebugSNode for Mode {
-    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> sise::TreeNode {
-        sise::TreeNode::Atom(format!("{:?}", self))
+    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
+        Node::Atom(format!("{:?}", self))
     }
 }
 
 impl ToDebugSNode for FunctionX {
-    fn to_node(&self, opts: &ToDebugSNodeOpts) -> sise::TreeNode {
+    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
         if opts.no_fn_details {
             nodes!(
                 Function
                 {self.name.to_node(opts)}
-                {sise::TreeNode::Atom(":mode".to_string())}
+                {Node::Atom(":mode".to_string())}
                 {self.mode.to_node(opts)}
-                {sise::TreeNode::Atom(":typ_bounds".to_string())}
+                {Node::Atom(":typ_bounds".to_string())}
                 {self.typ_bounds.to_node(opts)}
-                {sise::TreeNode::Atom(":params".to_string())}
+                {Node::Atom(":params".to_string())}
                 {self.params.to_node(opts)}
-                {sise::TreeNode::Atom(":ret".to_string())}
+                {Node::Atom(":ret".to_string())}
                 {self.ret.to_node(opts)}
-                {sise::TreeNode::Atom(":require".to_string())}
+                {Node::Atom(":require".to_string())}
                 {self.require.to_node(opts)}
-                {sise::TreeNode::Atom(":ensure".to_string())}
+                {Node::Atom(":ensure".to_string())}
                 {self.ensure.0.to_node(opts)}
-                {sise::TreeNode::Atom(":d".to_string())}
+                {Node::Atom(":d".to_string())}
                 {self.ensure.1.to_node(opts)}
-                {sise::TreeNode::Atom(":body".to_string())}
+                {Node::Atom(":body".to_string())}
                 {self.body.to_node(opts)}
             )
         } else {
@@ -332,13 +329,13 @@ impl ToDebugSNode for FunctionX {
 }
 
 impl ToDebugSNode for crate::messages::Span {
-    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> sise::TreeNode {
-        sise::TreeNode::Atom(format!("\"{}\"", self.as_string))
+    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
+        Node::Atom(format!("\"{}\"", self.as_string))
     }
 }
 
 impl ToDebugSNode for ExprX {
-    fn to_node(&self, opts: &ToDebugSNodeOpts) -> sise::TreeNode {
+    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
         if opts.no_encoding {
             match self {
                 ExprX::Unary(UnaryOp::Clip { .. }, inner) => inner.to_node(opts),
@@ -354,57 +351,57 @@ impl ToDebugSNode for ExprX {
 }
 
 impl ToDebugSNode for air::messages::MessageLevel {
-    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> sise::TreeNode {
+    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
         match self {
-            air::messages::MessageLevel::Error => sise::TreeNode::Atom("Error".to_string()),
-            air::messages::MessageLevel::Warning => sise::TreeNode::Atom("Warning".to_string()),
-            air::messages::MessageLevel::Note => sise::TreeNode::Atom("Note".to_string()),
+            air::messages::MessageLevel::Error => Node::Atom("Error".to_string()),
+            air::messages::MessageLevel::Warning => Node::Atom("Warning".to_string()),
+            air::messages::MessageLevel::Note => Node::Atom("Note".to_string()),
         }
     }
 }
 
 impl<A: Clone + ToDebugSNode> ToDebugSNode for im::Vector<A> {
-    fn to_node(&self, opts: &ToDebugSNodeOpts) -> sise::TreeNode {
-        sise::TreeNode::List(self.iter().map(|x| x.to_node(opts)).collect())
+    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
+        Node::List(self.iter().map(|x| x.to_node(opts)).collect())
     }
 }
 
 impl<K: ToDebugSNode, V: ToDebugSNode> ToDebugSNode for std::collections::HashMap<K, V> {
-    fn to_node(&self, opts: &ToDebugSNodeOpts) -> sise::TreeNode {
+    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
         let mut nodes = vec![];
         for (k, v) in self.iter() {
-            nodes.push(sise::TreeNode::List(vec![k.to_node(opts), v.to_node(opts)]));
+            nodes.push(Node::List(vec![k.to_node(opts), v.to_node(opts)]));
         }
-        sise::TreeNode::List(nodes)
+        Node::List(nodes)
     }
 }
 
 impl<K: ToDebugSNode, V: ToDebugSNode> ToDebugSNode for indexmap::IndexMap<K, V> {
-    fn to_node(&self, opts: &ToDebugSNodeOpts) -> sise::TreeNode {
+    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
         let mut nodes = vec![];
         for (k, v) in self.iter() {
-            nodes.push(sise::TreeNode::List(vec![k.to_node(opts), v.to_node(opts)]));
+            nodes.push(Node::List(vec![k.to_node(opts), v.to_node(opts)]));
         }
-        sise::TreeNode::List(nodes)
+        Node::List(nodes)
     }
 }
 
-fn path_to_node(path: &Path) -> sise::TreeNode {
+fn path_to_node(path: &Path) -> Node {
     let s = &path.segments.iter().map(|s| s.to_string()).collect::<Vec<_>>().join("::");
     let k = crate::def::krate_to_string_ignore_stable_id(&path.krate);
     let path_string = k + "::" + &s;
     let path_string = path_string.replace("{", "_$LBRACE_").replace("}", "_$RBRACE_");
-    sise::TreeNode::Atom(path_string)
+    Node::Atom(path_string)
 }
 
 impl ToDebugSNode for CrateId {
-    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> sise::TreeNode {
-        sise::TreeNode::Atom(crate::def::krate_to_string_ignore_stable_id(self))
+    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
+        Node::Atom(crate::def::krate_to_string_ignore_stable_id(self))
     }
 }
 
 impl ToDebugSNode for Path {
-    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> sise::TreeNode {
+    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
         path_to_node(self)
     }
 }
@@ -521,10 +518,7 @@ pub fn write_krate_sst(
             writeln!(&mut write, ";; {}", &trait_.span.as_string)
                 .expect("cannot write to vir write");
         }
-        let trait_node = sise::TreeNode::List(vec![
-            sise::TreeNode::Atom("trait".to_owned()),
-            trait_.to_node(opts),
-        ]);
+        let trait_node = Node::List(vec![Node::Atom("trait".to_owned()), trait_.to_node(opts)]);
         writeln!(&mut write, "{}\n", nw.node_to_string(&trait_node))
             .expect("cannot write to vir write");
     }

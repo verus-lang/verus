@@ -4,6 +4,7 @@ use air::context::{Context, SmtSolver, ValidityResult};
 use air::messages::{AirMessage, AirMessageLabel, Reporter};
 use air::profiler::{PROVER_LOG_FILE, Profiler};
 use getopts::Options;
+use sise::TreeNode as Node;
 use std::fs::File;
 use std::io::Read;
 
@@ -94,11 +95,11 @@ pub fn main() {
     let mut parser = sise::Parser::new(in_string.as_str());
     let node = sise::parse_tree(&mut parser).unwrap();
     let nodes = match node {
-        sise::TreeNode::Atom(_) => panic!("internal error: nodes"),
-        sise::TreeNode::List(nodes) => nodes,
+        Node::Atom(_) => panic!("internal error: nodes"),
+        Node::List(nodes) => nodes,
     };
 
-    // Parse vector of sise::TreeNode to commands
+    // Parse vector of Node to commands
     let commands = air::parser::Parser::new(message_interface.clone())
         .nodes_to_commands(&nodes)
         .expect("parse error");

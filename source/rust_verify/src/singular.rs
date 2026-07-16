@@ -6,6 +6,7 @@ use air::messages::Diagnostics;
 use air::printer::Printer;
 use air::singular_manager::SingularManager;
 use indexmap::IndexSet;
+use sise::TreeNode as Node;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -62,7 +63,7 @@ fn is_zero(expr: &Expr) -> bool {
 
 struct SingularEncoder {
     tmp_idx: u32,
-    node_map: HashMap<sise::TreeNode, Ident>,
+    node_map: HashMap<Node, Ident>,
     singular_expr_map: HashMap<SingularExpr, Ident>,
     pp: Printer,
     user_vars: Vec<String>,
