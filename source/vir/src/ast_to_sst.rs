@@ -157,6 +157,12 @@ impl Value {
     }
 }
 
+impl<T> Maybe<T> {
+    pub(crate) fn is_never(&self) -> bool {
+        matches!(self, Maybe::Never)
+    }
+}
+
 impl Maybe<Value> {
     /// Map `to_exp` over the Some case
     pub(crate) fn to_maybe_exp(self) -> Maybe<Exp> {
