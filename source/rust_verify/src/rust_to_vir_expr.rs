@@ -3362,9 +3362,13 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 } else {
                     // general Index trait case
                     let (impl_paths, target_kind) =
-                        resolve_index_call(bctx, *tgt_ty, idx_ty, false, expr.span)?;
+                        resolve_index_call(bctx, *tgt_ty, idx_ty, mutbl, expr.span)?;
                     let typ_args = Arc::new(vec![tgt_typ_vir, idx_typ_vir]);
-                    let fun = vir::fun!(CrateId::Core => "ops", "index", "Index", "index");
+                    let fun = if mutbl {
+                        vir::fun!(CrateId::Core => "ops", "index", "IndexMut", "index_mut")
+                    } else {
+                        vir::fun!(CrateId::Core => "ops", "index", "Index", "index")
+                    };
                     CallTarget::Fun(target_kind, fun, typ_args, impl_paths, call_target_attrs)
                 };
 

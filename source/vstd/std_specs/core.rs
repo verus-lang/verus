@@ -34,11 +34,7 @@ pub trait ExDeref: PointeeSized {
 
     type Target: ?Sized;
 
-    spec fn deref_ensures(&self, output: &Self::Target) -> bool;
-
-    fn deref(&self) -> (output: &Self::Target)
-        ensures
-            self.deref_ensures(output);
+    fn deref(&self) -> (output: &Self::Target);
 }
 
 #[verifier::external_trait_specification]
@@ -46,11 +42,7 @@ pub trait ExDeref: PointeeSized {
 pub trait ExDerefMut: core::ops::Deref + PointeeSized {
     type ExternalTraitSpecificationFor: core::ops::DerefMut;
 
-    spec fn deref_mut_ensures(&mut self, output: &mut Self::Target) -> bool;
-
-    fn deref_mut(&mut self) -> (output: &mut Self::Target)
-        ensures
-            self.deref_mut_ensures(output);
+    fn deref_mut(&mut self) -> (output: &mut Self::Target);
 }
 
 #[verifier::external_trait_specification]
@@ -60,32 +52,23 @@ pub trait ExIndex<Idx> where Idx: ?Sized {
 
     type Output: ?Sized;
 
+    // NOTE: this used as a precondition for both `Index` and `IndexMut`,
+    // since both share the same `s[i]` syntax.
     spec fn index_requires(&self, index: &Idx) -> bool;
-
-    #[verifier::prophetic]
-    spec fn index_ensures(&self, index: &Idx, output: &Self::Output) -> bool;
 
     fn index(&self, index: Idx) -> (output: &Self::Output) where Idx: Sized
         requires
             self.index_requires(&index),
-        ensures
-            self.index_ensures(&index, output),
     ;
 }
 
 #[verifier::external_trait_specification]
-#[verifier::external_trait_extension(IndexMutSpec via IndexMutSpecImpl)]
 pub trait ExIndexMut<Idx>: core::ops::Index<Idx> where Idx: ?Sized {
     type ExternalTraitSpecificationFor: core::ops::IndexMut<Idx>;
-
-    #[verifier::prophetic]
-    spec fn index_mut_ensures(&mut self, index: &Idx, output: &mut Self::Output) -> bool;
 
     fn index_mut(&mut self, index: Idx) -> (output: &mut Self::Output) where Idx: Sized
         requires
             self.index_requires(&index),
-        ensures
-            self.index_mut_ensures(&index, output),
     ;
 }
 

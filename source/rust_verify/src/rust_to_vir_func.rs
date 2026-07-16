@@ -1686,6 +1686,21 @@ pub(crate) fn check_item_fn<'tcx>(
 
         let typ = ctxt.mid_ty_to_vir(id, span, input, None)?;
 
+        if matches!(&*typ, TypX::MutRef(_)) {
+            if vattrs.allow_in_spec {
+                return err_span(
+                    span,
+                    format!("allow_in_spec not supported for function with &mut param"),
+                );
+            }
+            if vattrs.autospec.is_some() {
+                return err_span(
+                    span,
+                    format!("when_used_as_spec not supported for function with &mut param"),
+                );
+            }
+        }
+
         let vir_param = ctxt.spanned_new(
             span,
             ParamX {

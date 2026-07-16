@@ -1,6 +1,6 @@
 use super::super::prelude::*;
 use super::super::slice::SliceIndexSpec;
-use super::core::{IndexMutSpec, IndexSpec};
+use super::core::IndexSpec;
 use super::iter::IteratorSpec;
 use super::range::{slice_range_end, slice_range_start, slice_range_valid};
 
@@ -15,82 +15,85 @@ impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for usize {
     open spec fn index_requires(&self, slice: &[T]) -> bool {
         *self < slice@.len()
     }
-
-    #[verifier::prophetic]
-    open spec fn index_ensures(&self, slice: &[T], output: &Self::Output) -> bool {
-        output == slice@[*self as int]
-    }
-
-    #[verifier::prophetic]
-    open spec fn index_mut_ensures(&self, slice: &mut [T], output: &mut Self::Output) -> bool {
-        &&& *output == slice@[*self as int]
-        &&& *final(output) == final(slice)@[*self as int]
-        &&& forall|i: int| i == *self as int || {
-            (#[trigger] final(slice)@[i]) == slice@[i]
-        }
-    }
 }
+
+pub assume_specification<T>[ <usize as SliceIndex<[T]>>::index ](i: usize, slice: &[T]) -> &T
+    returns
+        slice@[i as int],
+;
+
+pub assume_specification<T>[ <usize as SliceIndex<[T]>>::index_mut ](i: usize, slice: &mut [T]) -> (output: &mut T)
+    ensures
+        *output == old(slice)@[i as int],
+        final(slice)@ == old(slice)@.update(i as int, *final(output))
+;
 
 impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for Range<usize> {
     open spec fn index_requires(&self, slice: &[T]) -> bool {
         &&& self.start <= self.end
         &&& self.end <= slice@.len()
     }
-
-    #[verifier::prophetic]
-    open spec fn index_ensures(&self, slice: &[T], output: &Self::Output) -> bool {
-        output@ == slice@.subrange(self.start as int, self.end as int)
-    }
-
-    #[verifier::prophetic]
-    open spec fn index_mut_ensures(&self, slice: &mut [T], output: &mut Self::Output) -> bool {
-        &&& output@ == slice@.subrange(self.start as int, self.end as int)
-        &&& final(output)@ == final(slice)@.subrange(self.start as int, self.end as int)
-        &&& forall|i: int| (self.start <= i < self.end) || {
-            (#[trigger] final(slice)@[i]) == slice@[i]
-        }
-    }
 }
+
+pub assume_specification<T>[ <Range<usize> as SliceIndex<[T]>>::index ](i: Range<usize>, slice: &[T]) -> (r: &[T])
+    ensures
+        r@ == slice@.subrange(i.start as int, i.end as int),
+;
+
+pub assume_specification<T>[ <Range<usize> as SliceIndex<[T]>>::index_mut ](i: Range<usize>, slice: &mut [T]) -> (r: &mut [T])
+    ensures
+        r@ == old(slice)@.subrange(i.start as int, i.end as int),
+        final(r)@ == final(slice)@.subrange(i.start as int, i.end as int),
+        forall|j: int| !(i.start <= j < i.end) ==> final(slice)@[j] == old(slice)@[j],
+;
 
 impl<T, I: SliceIndex<[T]>> super::core::IndexSpecImpl<I> for [T] {
     open spec fn index_requires(&self, index: &I) -> bool {
         index.index_requires(self)
     }
-
-    #[verifier::prophetic]
-    open spec fn index_ensures(&self, index: &I, output: &Self::Output) -> bool {
-        index.index_ensures(self, output)
-    }
 }
 
-impl<T, I: SliceIndex<[T]>> super::core::IndexMutSpecImpl<I> for [T] {
-    #[verifier::prophetic]
-    open spec fn index_mut_ensures(&mut self, index: &I, output: &mut Self::Output) -> bool {
-        index.index_mut_ensures(self, output)
-    }
-}
+pub assume_specification<T, I: SliceIndex<[T]>>[ <[T] as Index<I>>::index ](
+    slice: &[T],
+    index: I,
+) -> (output: &<I as SliceIndex<[T]>>::Output)
+    ensures
+        call_ensures(<I as SliceIndex<[T]>>::index, (index, slice), output),
+;
+
+pub assume_specification<T, I: SliceIndex<[T]>>[ <[T] as IndexMut<I>>::index_mut ](
+    slice: &mut [T],
+    index: I,
+) -> (output: &mut <I as SliceIndex<[T]>>::Output)
+    ensures
+        call_ensures(<I as SliceIndex<[T]>>::index_mut, (index, slice), output),
+;
 
 impl<T, I, const N: usize> super::core::IndexSpecImpl<I> for [T; N]
-    where [T]: Index<I>
+where
+    [T]: Index<I>,
 {
     open spec fn index_requires(&self, index: &I) -> bool {
         <[T] as IndexSpec<I>>::index_requires(self, index)
     }
-
-    #[verifier::prophetic]
-    open spec fn index_ensures(&self, index: &I, output: &Self::Output) -> bool {
-        <[T] as IndexSpec<I>>::index_ensures(self, index, output)
-    }
 }
 
-impl<T, I: SliceIndex<[T]>, const N: usize> super::core::IndexMutSpecImpl<I> for [T; N]
-    where [T]: IndexMut<I>
-{
-    #[verifier::prophetic]
-    open spec fn index_mut_ensures(&mut self, index: &I, output: &mut Self::Output) -> bool {
-        <[T] as IndexMutSpec<I>>::index_mut_ensures(self, index, output)
-    }
-}
+pub assume_specification<T, I, const N: usize>[ <[T; N]>::index ](array: &[T; N], index: I) -> (output: &<[T; N] as Index<I>>::Output)
+    where
+        [T]: Index<I>,
+    ensures
+        call_ensures(<[T]>::index, (array, index), output),
+;
+
+pub assume_specification<T, I, const N: usize>[ <[T; N]>::index_mut ](array: &mut [T; N], index: I) -> (output: &mut <[T; N] as Index<I>>::Output)
+    where
+        [T]: IndexMut<I>,
+    ensures
+        forall|slice: &mut [T]| #![trigger slice@] {
+            &&& slice@ == old(array)@
+            &&& final(slice)@ == final(array)@
+        } ==> call_ensures(<[T]>::index_mut, (slice, index), output),
+;
 
 pub assume_specification[ core::hint::unreachable_unchecked ]() -> !
     requires

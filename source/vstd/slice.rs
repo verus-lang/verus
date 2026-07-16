@@ -124,24 +124,14 @@ pub trait ExSliceIndex<T> where T: ?Sized {
 
     spec fn index_requires(&self, slice: &T) -> bool;
 
-    #[verifier::prophetic]
-    spec fn index_ensures(&self, slice: &T, output: &Self::Output) -> bool;
-
-    #[verifier::prophetic]
-    spec fn index_mut_ensures(&self, slice: &mut T, output: &mut Self::Output) -> bool;
-
     fn index(self, slice: &T) -> (output: &Self::Output)
         requires
             self.index_requires(slice),
-        ensures
-            self.index_ensures(slice, output),
     ;
 
     fn index_mut(self, slice: &mut T) -> (output: &mut Self::Output)
         requires
             self.index_requires(slice),
-        ensures
-            self.index_mut_ensures(slice, output),
     ;
 }
 

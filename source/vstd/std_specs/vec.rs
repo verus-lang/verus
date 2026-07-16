@@ -179,21 +179,6 @@ impl<T: Sized, I: SliceIndex<[T]>, A: Allocator> super::core::IndexSpecImpl<I> f
     open spec fn index_requires(&self, index: &I) -> bool {
         forall|s: &[T]| #[trigger] s@ == self@ ==> index.index_requires(s)
     }
-
-    #[verifier::prophetic]
-    open spec fn index_ensures(&self, index: &I, output: &Self::Output) -> bool {
-        forall|s: &[T]| #[trigger] s@ == self@ ==> index.index_ensures(s, output)
-    }
-}
-
-impl<T: Sized, I: SliceIndex<[T]>, A: Allocator> super::core::IndexMutSpecImpl<I> for Vec<T, A> {
-    #[verifier::prophetic]
-    open spec fn index_mut_ensures(&mut self, index: &I, output: &mut Self::Output) -> bool {
-        forall|s: &mut [T]| {
-            &&& (#[trigger] s@ == self@)
-            &&& (#[trigger] final(s)@ == final(self)@)
-        } ==> index.index_mut_ensures(s, output)
-    }
 }
 
 pub assume_specification<T, I: SliceIndex<[T]>, A: Allocator>[Vec::<T, A>::index](

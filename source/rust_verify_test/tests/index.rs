@@ -8,7 +8,7 @@ test_verify_one_file! {
         use core::ops::{Index, IndexMut};
         use vstd::prelude::*;
 
-        use vstd::std_specs::core::{IndexSpecImpl, IndexMutSpecImpl};
+        use vstd::std_specs::core::IndexSpecImpl;
 
         pub struct One<T>(pub T);
 
@@ -16,32 +16,25 @@ test_verify_one_file! {
             open spec fn index_requires(&self, index: &usize) -> bool {
                 *index == 0
             }
-
-            #[verifier::prophetic]
-            open spec fn index_ensures(&self, _index: &usize, output: &Self::Output) -> bool {
-                output == &self.0
-            }
         }
-
-        impl<T> IndexMutSpecImpl<usize> for One<T> {
-            #[verifier::prophetic]
-            open spec fn index_mut_ensures(&mut self, _index: &usize, output: &mut Self::Output) -> bool {
-                &&& *output == self.0
-                &&& *final(output) == final(self).0
-            }
-        }
-
 
         impl<T> Index<usize> for One<T> {
             type Output = T;
 
-            fn index(&self, _index: usize) -> &Self::Output {
+            fn index(&self, _index: usize) -> (output: &Self::Output)
+            ensures
+                *output == self.0,
+            {
                 &self.0
             }
         }
 
         impl<T> IndexMut<usize> for One<T> {
-            fn index_mut(&mut self, _index: usize) -> &mut Self::Output {
+            fn index_mut(&mut self, _index: usize) -> (output: &mut Self::Output)
+            ensures
+                *output == old(self).0,
+                *final(output) == final(self).0,
+            {
                 &mut self.0
             }
         }

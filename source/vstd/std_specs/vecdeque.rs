@@ -7,7 +7,7 @@ use alloc::collections::vec_deque::Iter;
 use alloc::collections::vec_deque::VecDeque;
 use core::alloc::Allocator;
 use core::clone::Clone;
-use core::ops::Index;
+use core::ops::{Index, IndexMut};
 use core::option::Option;
 use core::option::Option::None;
 
@@ -64,30 +64,23 @@ impl<T, A: Allocator> super::core::IndexSpecImpl<usize> for VecDeque<T, A> {
     open spec fn index_requires(&self, index: &usize) -> bool {
         *index < self.len()
     }
-
-    #[verifier::prophetic]
-    open spec fn index_ensures(&self, index: &usize, output: &Self::Output) -> bool {
-        output == self@[*index as int]
-    }
-}
-
-impl<T, A: Allocator> super::core::IndexMutSpecImpl<usize> for VecDeque<T, A> {
-    #[verifier::prophetic]
-    open spec fn index_mut_ensures(&mut self, index: &usize, output: &mut Self::Output) -> bool {
-        &&& *output == self@[*index as int]
-        &&& *final(output) == final(self)@[*index as int]
-        &&& forall|i: int| i == *index as int || {
-            (#[trigger] final(self)@[i]) == self@[i]
-        }
-    }
 }
 
 pub assume_specification<T, A: Allocator>[ VecDeque::<T, A>::index ](
     v: &VecDeque<T, A>,
     i: usize,
-) -> (result: &T)
+) -> (output: &T)
     ensures
-        result == v.spec_index(i as int),
+        output == v.spec_index(i as int),
+;
+
+pub assume_specification<T, A: Allocator>[ VecDeque::<T, A>::index_mut ](
+    v: &mut VecDeque<T, A>,
+    i: usize,
+) -> (output: &mut T)
+    ensures
+        *output == old(v).spec_index(i as int),
+        final(v)@ == old(v)@.update(i as int, *final(output))
 ;
 
 #[verifier::when_used_as_spec(spec_vec_dequeue_len)]
