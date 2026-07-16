@@ -6,7 +6,7 @@ edition = "2024"
 description = "Data types and utilities for bundling Verus toolchain info into cargo-verus."
 
 [[bin]]
-name = "create_manifest"
+name = "create-manifest"
 path = "src/create_manifest.rs"
 
 [dependencies]
