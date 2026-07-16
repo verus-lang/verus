@@ -71,6 +71,24 @@ jobs:
         working-directory: ./tools/vargo
         run: cargo clippy -- -D warnings
 
+  # smoke test toolchain manifest creation
+  create-manifest-smoke-test:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: checkout
+        uses: actions/checkout@v6
+
+      - name: setup rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.96.0
+
+      - name: smoke test create-manifest
+        working-directory: ./source
+        run: |
+          cargo run -p cargo-verus-toolchains --bin create-manifest
+          cargo run -p cargo-verus-toolchains --bin create-manifest -- --rolling
+
   # detect whether subprojects (e.g. cargo-verus) changed
   change_filter:
     runs-on: ubuntu-24.04
