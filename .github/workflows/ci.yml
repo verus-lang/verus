@@ -86,8 +86,8 @@ jobs:
       - name: smoke test create-manifest
         working-directory: ./source
         run: |
-          cargo run -p cargo-verus-toolchains --bin create-manifest
-          cargo run -p cargo-verus-toolchains --bin create-manifest -- --rolling
+          cargo run -p cargo-verus-toolchains --bin create-manifest -- --write-to-dir cargo-verus/toolchain-manifests
+          cargo run -p cargo-verus-toolchains --bin create-manifest -- --rolling --write-to-dir cargo-verus/toolchain-manifests
 
   # detect whether subprojects (e.g. cargo-verus) changed
   change_filter:
