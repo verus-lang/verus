@@ -292,6 +292,33 @@ impl<A> SeqInner<A> {
         }
     }
 
+    proof fn tracked_borrow_mut(tracked &mut self, i: int) -> (tracked ret: &mut A)
+        requires
+            0 <= i < old(self).len(),
+        ensures
+            *ret == old(self)[i],
+            *final(self) == old(self).update(i, *final(ret)),
+        decreases self.len(),
+    {
+        if i == 0 {
+            match self {
+                SeqInner::Nil => {
+                    assert(false);
+                    proof_from_false()
+                },
+                SeqInner::Cons { head, .. } => { head.borrow_mut() },
+            }
+        } else {
+            match self {
+                SeqInner::Nil => {
+                    assert(false);
+                    proof_from_false()
+                },
+                SeqInner::Cons { tail, .. } => { tail.tracked_borrow_mut(i - 1) },
+            }
+        }
+    }
+
     proof fn tracked_push(tracked &mut self, tracked v: A)
         ensures
             *final(self) == old(self).push(v),
@@ -1108,6 +1135,17 @@ impl<A> Seq<A> {
             *ret == self[i],
     {
         self.inner.tracked_borrow(i)
+    }
+
+    /// Obtain a tracked mutable borrow into an element of a sequence
+    pub proof fn tracked_borrow_mut(tracked &mut self, i: int) -> (tracked ret: &mut A)
+        requires
+            0 <= i < old(self).len(),
+        ensures
+            *ret == old(self)[i],
+            *final(self) == old(self).update(i, *final(ret)),
+    {
+        self.inner.tracked_borrow_mut(i)
     }
 
     /// Push a tracked value into the end of a sequence
