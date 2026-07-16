@@ -15,6 +15,14 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Tool to create toolchain manifest files.
+#[derive(Clone, Debug, Parser)]
+struct Cli {
+    /// The manifest is for a rolling release.
+    #[arg(long)]
+    pub rolling: bool,
+}
+
 fn format_manifest(toolchain: &Toolchain) -> anyhow::Result<String> {
     let value = toolchain
         .serialize(toml_edit::ser::ValueSerializer::new())
@@ -30,14 +38,6 @@ fn format_manifest(toolchain: &Toolchain) -> anyhow::Result<String> {
     }
 
     Ok(doc.to_string())
-}
-
-/// Tool to create toolchain manifest files.
-#[derive(Clone, Debug, Parser)]
-struct Cli {
-    /// The manifest is for a rolling release.
-    #[arg(long)]
-    pub rolling: bool,
 }
 
 /// External components that Verus depends on.
