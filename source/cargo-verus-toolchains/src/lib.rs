@@ -18,6 +18,8 @@ pub struct Toolchain<Str: AsRef<str> = String> {
     pub vstd: Crate<Str>,
     /// The Z3 version.
     pub z3: Str,
+    /// The Singular version.
+    pub singular: Str,
 }
 
 /// Identifies a crate in a registry (i.e. crates.io) or git.
@@ -82,6 +84,7 @@ impl Toolchain {
     pub fn format_code(&self, i0: Indent, out: &mut impl Write) -> std::fmt::Result {
         let i1 = i0.increase();
         writeln!(out, "{i0}Toolchain {{")?;
+
         writeln!(out, "{i1}verus: {:?},", self.verus)?;
 
         write!(out, "{i1}vstd: ")?;
@@ -89,6 +92,9 @@ impl Toolchain {
         writeln!(out, ",")?;
 
         writeln!(out, "{i1}z3: {:?},", self.z3)?;
+
+        writeln!(out, "{i1}singular: {:?},", self.singular)?;
+
         write!(out, "{i0}}}")?;
         Ok(())
     }

@@ -4,3 +4,4 @@
 verus = "0.2026.06.10.e6a6d4f"
 vstd = { git = "https://github.com/verus-lang/verus.git", rev = "e6a6d4f" }
 z3 = "4.12.5"
+singular = "4.3.2"

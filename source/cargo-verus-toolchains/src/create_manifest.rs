@@ -1,5 +1,6 @@
 use anyhow::Context;
 use clap::Parser;
+use serde::{Deserialize, Serialize};
 use std::process::Command;
 
 type Toolchain = cargo_verus_toolchains::Toolchain<String>;
@@ -15,17 +16,33 @@ fn main() -> anyhow::Result<()> {
 
 /// Tool to create toolchain manifest files.
 #[derive(Clone, Debug, Parser)]
-pub struct Cli {
+struct Cli {
     /// The manifest is for a rolling release.
     #[arg(long)]
     pub rolling: bool,
 }
 
+/// External components that Verus depends on.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct ExternalDeps {
+    z3: String,
+    singular: String,
+}
+
 fn create_toolchain(is_rolling: bool) -> anyhow::Result<Toolchain> {
+    let external_deps = get_external_deps()?;
     let verus = get_verus_version()?;
     let vstd = get_vstd_version(is_rolling)?;
-    let z3 = "TODO".into();
-    Ok(Toolchain { verus, vstd, z3 })
+    let z3 = external_deps.z3;
+    let singular = external_deps.singular;
+    Ok(Toolchain { verus, vstd, z3, singular })
+}
+
+fn get_external_deps() -> anyhow::Result<ExternalDeps> {
+    const PATH: &str = "external-deps.toml";
+    let contents = std::fs::read_to_string(PATH).context("reading `{PATH}`")?;
+    let external_deps = toml::from_str(&contents).context("parsing `{PATH}`")?;
+    Ok(external_deps)
 }
 
 fn get_verus_version() -> anyhow::Result<String> {
