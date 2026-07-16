@@ -3036,6 +3036,7 @@ version = "0.0.0-2026-05-17-0151"
 name = "verus_builtin_macros"
 version = "0.0.0-2026-07-12-0122"
 dependencies = [
+ "convert_case",
  "proc-macro2",
  "quote",
  "syn 2.0.101",

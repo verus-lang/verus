@@ -36,6 +36,7 @@ clap-cargo = { version = "0.18.3", features = ["clap", "cargo_metadata"] }
 clap = { version = "4.5.53", features = ["derive"] }
 colored = "3.0.0"
 console = { version = "0.15", default-features = false, features = ["ansi-parsing"] }
+convert_case = "0.4"
 crates_io_api = "0.12.0"
 getopts = { git = "https://github.com/utaal/getopts.git", branch = "parse-partial" }
 git2 = { version = "0.18", default-features = false, features = [] }

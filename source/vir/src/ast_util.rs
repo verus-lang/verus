@@ -1290,15 +1290,16 @@ impl HeaderExprX {
             | HeaderExprX::DecreasesWhen(_)
             | HeaderExprX::DecreasesBy(_)
             | HeaderExprX::OpensInvariantMask(_)
+            | HeaderExprX::AtomicSpec(_)
             | HeaderExprX::Hide(_)
             | HeaderExprX::ExtraDependency(_)
             | HeaderExprX::OpenVisibilityQualifier(_)
             | HeaderExprX::NoUnwind
             | HeaderExprX::NoUnwindWhen(_) => "beginning of the function body",
 
-            HeaderExprX::InvariantExceptBreak(_) | HeaderExprX::Invariant(_) => {
-                "beginning of a loop body"
-            }
+            HeaderExprX::InvariantExceptBreak(_)
+            | HeaderExprX::Invariant(_)
+            | HeaderExprX::AtomicCallLoop => "beginning of a loop body",
 
             HeaderExprX::Ensures(..) | HeaderExprX::Decreases(_) => {
                 "beginning of the function body or a loop body"

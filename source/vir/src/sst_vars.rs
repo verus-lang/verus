@@ -411,6 +411,7 @@ fn stm_assign(
             decrease,
             typ_inv_vars,
             modified_vars,
+            au_branch_bool,
             pre_modified_params,
         } => {
             let mut inner_modified = HavocSet::new();
@@ -447,6 +448,7 @@ fn stm_assign(
                 decrease: decrease.clone(),
                 typ_inv_vars: Arc::new(typ_inv_vars),
                 modified_vars: Some(Arc::new(inner_modified)),
+                au_branch_bool: au_branch_bool.clone(),
                 pre_modified_params: pre_modified_params.clone(),
             };
             Spanned::new(stm.span.clone(), loop_x)
@@ -572,6 +574,7 @@ fn stm_mutations(param_typs: &[(VarIdent, Typ)], mutations: &mut HavocSet, stm: 
             typ_inv_vars,
             modified_vars,
             pre_modified_params,
+            au_branch_bool,
         } => {
             assert!(pre_modified_params.is_none());
 
@@ -600,6 +603,7 @@ fn stm_mutations(param_typs: &[(VarIdent, Typ)], mutations: &mut HavocSet, stm: 
                 typ_inv_vars: typ_inv_vars.clone(),
                 modified_vars: modified_vars.clone(),
                 pre_modified_params: Some(Arc::new(pre_modified_params)),
+                au_branch_bool: au_branch_bool.clone(),
             };
             stm.new_x(loopx)
         }
