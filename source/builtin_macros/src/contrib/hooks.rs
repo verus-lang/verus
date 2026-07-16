@@ -9,8 +9,8 @@
 //! Everything is gated behind the `contrib-hooks` cargo feature, which is
 //! **off by default**.
 //!
-//! Note: a downstream still ships a full `[patch.crates-io]` copy of this
-//! crate — whole-crate substitution is the only way to give it a dependency
+//! Note: a downstream project still ships a full `[patch.crates-io]` copy of this
+//! crate - whole-crate substitution is the only way to give it a dependency
 //! on the provider's code. The seam just makes that copy a verbatim mirror of
 //! upstream (synced by a file copy) instead of a hand-patched fork.
 //!
@@ -34,9 +34,10 @@
 //!
 //! # Example
 //!
-//! A downstream substitutes its own build of this crate (i.e. via
-//! `[patch.crates-io] verus_builtin_macros = { git = ... }`) and supplies the
-//! two wiring pieces. `build.rs` in that crate points at the provider:
+//! Setting up hooks requires configuring both the provider, and the end-user
+//! downstream project.
+//!
+//! First, the provider crate must specify the location of the hooks in its `build.rs`:
 //!
 //! ```ignore
 //! // build.rs
@@ -61,7 +62,7 @@
 //! mod trace { use super::Item; pub fn run(_items: &mut Vec<Item>) { /* ... */ } }
 //! ```
 //!
-//! The end-user project opts in per-project (the feature is off by default in
+//! Then, the end-user project opts in per-project (the feature is off by default in
 //! upstream Verus) and patches the source:
 //!
 //! ```toml
