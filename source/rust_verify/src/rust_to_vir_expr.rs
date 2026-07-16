@@ -3701,7 +3701,7 @@ pub(crate) fn let_stmt_to_vir<'tcx>(
                     &WarningAllow::NonExecGhostTrackedWrappers,
                     || "the right-hand side is already wrapped with `Tracked`, you likely don't need a `tracked` variable",
                     |msg| {
-                        let msg = msg.help("consider `.get()` on the right-hand side, or removing `tracked` on the left-hand side");
+                        let msg = msg.help_append("consider `.get()` on the right-hand side, or removing `tracked` on the left-hand side");
                         bctx.ctxt.diagnostics.borrow_mut().push(vir::ast::VirErrAs::Warning(msg));
                     }
                 );
@@ -3714,7 +3714,7 @@ pub(crate) fn let_stmt_to_vir<'tcx>(
                     &WarningAllow::NonExecGhostTrackedWrappers,
                     || "the right-hand side is already wrapped with `Ghost`, you likely don't need a `ghost` variable",
                     |msg| {
-                        let msg = msg.help("consider `@` on the right-hand side, or removing `ghost` on the left-hand side");
+                        let msg = msg.help_append("consider `@` on the right-hand side, or removing `ghost` on the left-hand side");
                         bctx.ctxt.diagnostics.borrow_mut().push(vir::ast::VirErrAs::Warning(msg));
                     }
                 );
