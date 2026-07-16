@@ -1641,6 +1641,22 @@ pub broadcast proof fn lemma_seq_subrange_len<A>(s: Seq<A>, j: int, k: int)
     seq_inner::lemma_subrange_len(s.inner, j, k)
 }
 
+pub broadcast proof fn lemma_seq_subrange_composition<A>(
+    s: Seq<A>,
+    i1: int,
+    j1: int,
+    i2: int,
+    j2: int,
+)
+    requires
+        0 <= i1 <= j1 <= s.len(),
+        0 <= i2 <= j2 <= j1 - i1,
+    ensures
+        #[trigger] s.subrange(i1, j1).subrange(i2, j2) == s.subrange(i1 + i2, i1 + j2),
+{
+    seq_inner::lemma_subrange_composition(s.inner, i1, j1, i2, j2)
+}
+
 #[deprecated(note = "Seq axioms have been verified, and are now lemmas")]
 pub broadcast proof fn axiom_seq_subrange_index<A>(s: Seq<A>, j: int, k: int, i: int)
     requires
