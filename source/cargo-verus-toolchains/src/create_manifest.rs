@@ -2,6 +2,7 @@ use anyhow::Context;
 use clap::Parser;
 use serde::{Deserialize, Serialize};
 use std::process::Command;
+use toml_edit::{DocumentMut, Item, Value};
 
 type Toolchain = cargo_verus_toolchains::Toolchain<String>;
 type Crate = cargo_verus_toolchains::Crate<String>;
@@ -9,9 +10,26 @@ type Crate = cargo_verus_toolchains::Crate<String>;
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse_from(std::env::args());
     let toolchain = create_toolchain(cli.rolling)?;
-    let manifest = toml::to_string_pretty(&toolchain).context("format manifest")?;
+    let manifest = format_manifest(&toolchain)?;
     print!("{manifest}");
     Ok(())
+}
+
+fn format_manifest(toolchain: &Toolchain) -> anyhow::Result<String> {
+    let value = toolchain
+        .serialize(toml_edit::ser::ValueSerializer::new())
+        .context("serialize manifest")?;
+
+    let Value::InlineTable(table) = value else {
+        anyhow::bail!("toolchain should serialize to an inline table");
+    };
+
+    let mut doc = DocumentMut::new();
+    for (key, value) in table {
+        doc.insert(&key, Item::Value(value));
+    }
+
+    Ok(doc.to_string())
 }
 
 /// Tool to create toolchain manifest files.

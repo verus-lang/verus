@@ -1,4 +1,7 @@
-use std::{fmt::Write, path::Path};
+use std::{
+    fmt::{Debug, Write},
+    path::Path,
+};
 
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
