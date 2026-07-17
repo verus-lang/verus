@@ -1,11 +1,11 @@
-use crate::ast::{FieldOpr, Typ, UnaryOp, UnaryOpr, VarIdent, TypX};
+use crate::ast::{FieldOpr, Typ, TypX, UnaryOp, UnaryOpr, VarIdent};
 use crate::def::Spanned;
 use crate::messages::Span;
+use crate::poly::typ_is_poly;
 use crate::sst::{
     BinaryOp, Dest, Exp, ExpX, LocalDecl, LocalDeclKind, Pars, Stm, StmX, Stms, UniqueIdent,
 };
-use crate::sst_to_air::{try_unbox, apply_field};
-use crate::poly::typ_is_poly;
+use crate::sst_to_air::{apply_field, try_unbox};
 use crate::sst_visitor::exp_visitor_check;
 use air::ast::{ExprX, Ident, StmtX};
 use air::scope_map::ScopeMap;
