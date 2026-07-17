@@ -1,7 +1,7 @@
 use crate::ast::*;
 use air::printer::macro_push_node;
 use air::{node, nodes};
-use sise::Node;
+use sise::TreeNode as Node;
 
 const VIR_BREAK_ON: &[&str] = &["Function"];
 const VIR_BREAK_AFTER: &[&str] =
@@ -23,26 +23,24 @@ impl<'a> NodeWriter<'a> {
 
     pub fn write_node(
         &mut self,
-        writer: &mut sise::SpacedStringWriter,
+        serializer: &mut sise::Serializer,
         node: &Node,
         break_len: usize,
         brk: bool,
         brk_next: bool,
     ) {
-        use sise::Writer;
-        let opts =
-            sise::SpacedStringWriterNodeOptions { break_line_len: if brk { 0 } else { break_len } };
+        let break_line_at = if brk { 0 } else { break_len };
         match node {
             Node::Atom(a) => {
-                writer.write_atom(a, opts).unwrap();
+                serializer.put_atom(a, break_line_at);
             }
             Node::List(l) => {
-                writer.begin_list(opts).unwrap();
+                serializer.begin_list(break_line_at);
                 let mut brk = false;
                 let brk_from_next = brk_next;
                 let mut brk_next = false;
                 for n in l {
-                    self.write_node(writer, n, break_len + 1, brk || brk_from_next, brk_next);
+                    self.write_node(serializer, n, break_len + 1, brk || brk_from_next, brk_next);
                     brk_next = false;
                     brk = false;
                     if let Node::Atom(a) = n {
@@ -54,7 +52,7 @@ impl<'a> NodeWriter<'a> {
                         }
                     }
                 }
-                writer.end_list(()).unwrap();
+                serializer.end_list();
             }
         }
     }
@@ -79,13 +77,12 @@ impl<'a> NodeWriter<'a> {
     }
 
     pub fn node_to_string(&mut self, node: &Node) -> String {
-        use sise::Writer;
         let indentation = " ";
-        let style = sise::SpacedStringWriterStyle { line_break: "\n", indentation };
+        let style = sise::SerializerStyle { line_break: "\n", indentation };
         let mut result = String::new();
-        let mut string_writer = sise::SpacedStringWriter::new(style, &mut result);
+        let mut string_writer = sise::Serializer::new(style, &mut result);
         self.write_node(&mut string_writer, &node, 120, false, false);
-        string_writer.finish(()).unwrap();
+        string_writer.finish(false);
         // Clean up result:
         Self::clean_up_lines(result, indentation)
     }

@@ -2,7 +2,7 @@ use crate::ast::{Decl, Expr, Ident, Query};
 use crate::context::SmtSolver;
 use crate::printer::{NodeWriter, Printer, macro_push_node};
 use crate::{node, nodes};
-use sise::Node;
+use sise::TreeNode as Node;
 use std::io::Write;
 
 pub(crate) struct Emitter {

@@ -5,7 +5,7 @@ use air::ast::Ident;
 use air::context::SmtSolver;
 use air::printer::{macro_push_node, str_to_node};
 use air::{node, nodes, nodes_vec};
-use sise::Node;
+use sise::TreeNode as Node;
 
 pub struct PreludeConfig {
     pub arch_word_bits: crate::ast::ArchWordBits,

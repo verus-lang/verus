@@ -6,7 +6,7 @@ use air::messages::Diagnostics;
 use air::printer::Printer;
 use air::singular_manager::SingularManager;
 use indexmap::IndexSet;
-use sise::Node;
+use sise::TreeNode as Node;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;

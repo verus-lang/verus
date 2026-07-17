@@ -3,7 +3,7 @@ use air::ast::Ident;
 use air::model::Model as AModel;
 use rustc_span::Span;
 use rustc_span::source_map::SourceMap;
-use sise::Node;
+use sise::TreeNode as Node;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
@@ -121,7 +121,7 @@ impl Debugger {
         self.air_model.translate_variable(sid, &name)
     }
 
-    fn rewrite_eval_expr(&self, expr: &sise::Node) -> Option<sise::Node> {
+    fn rewrite_eval_expr(&self, expr: &Node) -> Option<Node> {
         match expr {
             Node::Atom(var) => {
                 let name = self.translate_variable(&Arc::new(String::from(var)))?;
@@ -146,9 +146,9 @@ impl Debugger {
         }
     }
 
-    fn eval_expr(&self, context: &mut air::context::Context, expr: &[u8]) {
+    fn eval_expr(&self, context: &mut air::context::Context, expr: &str) {
         let mut parser = sise::Parser::new(expr);
-        let node = sise::read_into_tree(&mut parser).unwrap();
+        let node = sise::parse_tree(&mut parser).unwrap();
         let expr = self.rewrite_eval_expr(&node).unwrap();
         let result = context.eval_expr(expr);
         println!("{}", result);
@@ -159,10 +159,10 @@ impl Debugger {
 
         self.set_line(26);
 
-        self.eval_expr(context, b"x");
-        // self.eval_expr(context, b"y");
-        self.eval_expr(context, b"(add_one x)");
-        // self.eval_expr(context, b"(add_one (add_one x))");
+        self.eval_expr(context, "x");
+        // self.eval_expr(context, "y");
+        self.eval_expr(context, "(add_one x)");
+        // self.eval_expr(context, "(add_one (add_one x))");
     }
 }
 

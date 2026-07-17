@@ -4,7 +4,7 @@ use air::context::{Context, SmtSolver, ValidityResult};
 use air::messages::{AirMessage, AirMessageLabel, Reporter};
 use air::profiler::{PROVER_LOG_FILE, Profiler};
 use getopts::Options;
-use sise::Node;
+use sise::TreeNode as Node;
 use std::fs::File;
 use std::io::Read;
 
@@ -82,18 +82,18 @@ pub fn main() {
 
     // Open input file
     let in_filename = &matches.free[0];
-    let mut in_bytes: Vec<u8> = Vec::new();
-    in_bytes.push('(' as u8);
+    let mut in_string = String::new();
+    in_string.push('(');
     {
         File::open(in_filename)
-            .and_then(|mut file| file.read_to_end(&mut in_bytes))
+            .and_then(|mut file| file.read_to_string(&mut in_string))
             .unwrap_or_else(|e| panic!("could not read file {}: {:?}", in_filename, e));
     }
-    in_bytes.push(')' as u8);
+    in_string.push(')');
 
     // Parse input file to vector of Node
-    let mut parser = sise::Parser::new(&in_bytes);
-    let node = sise::read_into_tree(&mut parser).unwrap();
+    let mut parser = sise::Parser::new(in_string.as_str());
+    let node = sise::parse_tree(&mut parser).unwrap();
     let nodes = match node {
         Node::Atom(_) => panic!("internal error: nodes"),
         Node::List(nodes) => nodes,

@@ -7,7 +7,7 @@ edition = "2024"
 
 [dependencies]
 air = { workspace = true }
-bincode = { workspace = true }
+bincode-next = { workspace = true }
 console = { workspace = true }
 getopts = { git = "https://github.com/utaal/getopts.git", branch = "parse-partial" }
 hex = { workspace = true }
