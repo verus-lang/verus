@@ -1,4 +1,4 @@
-# Tips for Contributing to Verus
+# Tips and Expectations for Contributing to Verus
 
 Thanks for contributing to Verus!  Verus is an Open Source project and welcomes
 contributions.  Please report issues or start discussions here on GitHub.
@@ -15,6 +15,29 @@ Verus has a convenient feature to record an execution run, along with necessary 
 To record an execution run, simply add `--record` to the verus command that triggers the issue.  This will produce a `.zip` file (named with the current date/time) that you can attach when opening a GitHub issue.
 
 If you want to aid us in debugging (or are unable to share your full recording, which includes the full crate for us to be able to reproduce your issue), you can attempt to minimize the issue before recording it.  For automatic minimization of a crate or file (producing a smaller file that triggers the same error), see [source/tools/minimizers/README.md](./source/tools/minimizers/README.md) for more details.
+
+## Expectations when making a contribution
+
+Verus is a verification tool, but it is not itself verified, so we use traditional software methods like testing and human review to ensure quality. Therefore, we have high standards for code changes.
+
+
+As a new contributor, you should expect at least one review from a core contributor (e.g., @tjhance, @Chris-Hawblitzel, or @parno). The first reviewer will also determine if additional reviews are necessary.
+
+In the PR description, please describe:
+- What issue you're solving (please include a link to an existing GitHub issue if it exists)
+- Changed behavior, if any
+- A description of your code changes
+
+For *opinionated changes*, such as those that add a feature or dramatically modify code architecture, we would highly recommend checking with the Verus team first (by opening a [GitHub Discussion](https://github.com/verus-lang/verus/discussions)) to save time and to ensure the direction is a desirable one.
+
+### Policy for AI-generated and AI-assisted code
+
+AI use is permitted, but all code produced via agentic AI must be disclosed in the PR.  Regardless of how the code is produced, we expect the human contributor to take responsibility for the quality of the code.
+
+AI-assisted coding, or "vibecoding," carries a number of risks. These risks include both damage to overall code quality and the risk of overburdening the reviewers, as code can be generated faster than it can be reviewed. We will close a PR if we feel those risks cannot be satisfactorily managed, or if our time is abused.
+
+We expect professionalism and common sense from contributors; you, the human author, are responsible for the pull request. Be prepared to receive feedback or to answer questions about the PR. **The PR description, along with subsequent PR discussion comments, must be human-written in all cases.**
+
 
 ## Building Verus from Source
 
