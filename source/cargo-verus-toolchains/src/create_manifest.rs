@@ -119,7 +119,8 @@ fn get_vstd_version(is_rolling: bool) -> anyhow::Result<Crate> {
         const VSTD_CARGO_TOML: &str = "vstd/Cargo.toml";
         let contents = std::fs::read_to_string(VSTD_CARGO_TOML)
             .context(format!("reading `{VSTD_CARGO_TOML}`"))?;
-        let table: toml::Table = contents.parse()?;
+        let table: toml::Table =
+            contents.parse().context(format!("parsing `{VSTD_CARGO_TOML}`"))?;
         let value = table
             .get("package")
             .context("looking up key `package`")?
