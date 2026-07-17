@@ -78,7 +78,7 @@ fn compute_immediate_deps(crates: &Vec<Crate>) -> HashMap<Crate, Vec<Crate>> {
 
         // Read the Cargo.toml file
         let content = fs::read_to_string(&cargo_toml_path)
-            .expect(format!("Failed to read {}", cargo_toml_path.display()).as_str());
+            .unwrap_or_else(|e| panic!("Failed to read {}: {e:?}", cargo_toml_path.display()));
         let doc = content.parse::<DocumentMut>().expect("Failed to parse Cargo.toml");
 
         for maybe_dep in crates {
@@ -181,7 +181,7 @@ fn read_toml_version(dir: &Path) -> String {
 
     // Read the Cargo.toml file
     let content = fs::read_to_string(&cargo_toml_path)
-        .expect(format!("Failed to read {}", cargo_toml_path.display()).as_str());
+        .unwrap_or_else(|e| panic!("Failed to read {}: {e:?}", cargo_toml_path.display()));
     let doc = content.parse::<DocumentMut>().expect("Failed to parse Cargo.toml");
 
     doc["package"]["version"].as_str().expect("Version must be a string").to_string()
@@ -192,7 +192,7 @@ fn update_toml_version(dir: &Path) {
 
     // Read the Cargo.toml file
     let content = fs::read_to_string(&cargo_toml_path)
-        .expect(format!("Failed to read {}", cargo_toml_path.display()).as_str());
+        .unwrap_or_else(|e| panic!("Failed to read {}: {e:?}", cargo_toml_path.display()));
     let mut doc = content.parse::<DocumentMut>().expect("Failed to parse Cargo.toml");
 
     // Replace the version line
@@ -208,7 +208,7 @@ fn update_toml_dependencies(dir: &Path, dependencies: &Vec<&Crate>) {
 
     // Read the Cargo.toml file
     let content = fs::read_to_string(&cargo_toml_path)
-        .expect(format!("Failed to read {}", cargo_toml_path.display()).as_str());
+        .unwrap_or_else(|e| panic!("Failed to read {}: {e:?}", cargo_toml_path.display()));
     let mut doc = content.parse::<DocumentMut>().expect("Failed to parse Cargo.toml");
 
     // Update dependencies with the new version

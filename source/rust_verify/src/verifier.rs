@@ -2814,60 +2814,49 @@ impl Verifier {
             &vir_crate,
             &unpruned_crate,
             &mut *ctxt.diagnostics.borrow_mut(),
+            &mut self.deferred_errors,
             &warning_ctx,
             self.args.no_verify,
             self.args.no_cheating,
         );
-        let mut first_error: Option<VirErr> = check_crate_result1.err();
-        match check_crate_result {
-            Ok(check_details) => {
-                for (func, failed_proof_notes) in check_details.func_failed_proof_notes {
-                    self.record_func_failed_proof_notes(
-                        func,
-                        failed_proof_notes.into_iter().collect(),
-                    );
-                }
-            }
-            Err(err) => {
-                if first_error.is_none() {
-                    first_error = Some(err);
-                }
-            }
-        }
-        for diag in ctxt.diagnostics.borrow_mut().drain(..) {
-            match diag {
-                vir::ast::VirErrAs::NonBlockingError(err, maybe_p) => {
-                    // This diagnostic message may be a verification boundary violation.
-                    // In that case, we want to try to construct a suggestion to deal with the problem.
 
-                    let err = match maybe_p {
-                        Some(p) => {
-                            // Try to build a DefId, then check if the corresponding Def is an Adt or Fun-like
-                            // let did = vir_path_to_def_id(tcx, &ctxt.verus_items, &p);
-                            let map = ctxt.name_def_id_map.borrow();
-                            let did = map.get(&p);
-                            match did {
-                                Some(did) => match build_boundary_suggestion(&ctxt, *did, &p) {
-                                    Ok(s) => err.help(format!(
-                                        "The following declaration may resolve this error:\n{}",
-                                        s
-                                    )),
-                                    Err(_) => err,
-                                },
-                                None => err,
-                            }
-                        }
-                        None => err,
-                    };
-                    if first_error.is_none() {
-                        first_error = Some(err.clone().into())
-                    } else {
-                        diagnostics.report_as(&err.to_any(), MessageLevel::Error)
+        let check_details = match &check_crate_result {
+            Ok(check_details) => check_details,
+            Err(e) => &e.check_details,
+        };
+        for (func, failed_proof_notes) in &check_details.func_failed_proof_notes {
+            self.record_func_failed_proof_notes(func.clone(), failed_proof_notes.clone());
+        }
+
+        // Process errors from well_formed checks
+        let mut all_wf_errors = vec![];
+        if let Err(e) = check_crate_result1 {
+            all_wf_errors.push(e);
+        }
+        if let Err(vir::well_formed::WFErr { errors, boundary_errors, check_details: _ }) =
+            check_crate_result
+        {
+            all_wf_errors.extend(errors);
+            for (path, mut err) in boundary_errors.into_iter() {
+                let map = ctxt.name_def_id_map.borrow();
+                let did = map.get(&path);
+                if let Some(did) = did {
+                    if let Ok(s) = build_boundary_suggestion(&ctxt, *did, &path) {
+                        err = err.help(format!(
+                            "The following declaration may resolve this error:\n{}",
+                            s
+                        ));
                     }
                 }
-                vir::ast::VirErrAs::NonFatalError(err, _) => {
-                    self.deferred_errors.push(err);
-                }
+                all_wf_errors.push(err);
+            }
+        }
+        if all_wf_errors.len() > 0 {
+            return Err((all_wf_errors, ctxt_diagnostics.borrow_mut().drain(..).collect()));
+        }
+
+        for diag in ctxt.diagnostics.borrow_mut().drain(..) {
+            match diag {
                 vir::ast::VirErrAs::Warning(err) => {
                     diagnostics.report_as(&err.to_any(), MessageLevel::Warning)
                 }
@@ -2875,9 +2864,6 @@ impl Verifier {
                     diagnostics.report_as(&err.to_any(), MessageLevel::Note)
                 }
             }
-        }
-        if let Some(first_error) = first_error {
-            return Err((vec![first_error], Vec::new()));
         }
 
         let vir_crate =
@@ -3249,10 +3235,6 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                         }
                         vir::ast::VirErrAs::Note(err) => {
                             reporter.report_as(&err.to_any(), MessageLevel::Note)
-                        }
-                        vir::ast::VirErrAs::NonBlockingError(err, _)
-                        | vir::ast::VirErrAs::NonFatalError(err, _) => {
-                            reporter.report_as(&err.to_any(), MessageLevel::Error)
                         }
                     }
                 }

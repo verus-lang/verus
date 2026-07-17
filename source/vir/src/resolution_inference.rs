@@ -238,6 +238,7 @@ use crate::ast::{
     PlaceX, ReadKind, SpannedTyped, Stmt, StmtX, Typ, TypDecoration, TypX, UnaryOpr,
     UnfinalizedReadKind, VarBinders, VarIdent, VarIdentDisambiguate, VariantCheck, VirErr,
 };
+use crate::ast_to_sst::Maybe;
 use crate::ast_util::{bool_typ, mk_bool, typ_to_diagnostic_str, undecorate_typ, unit_typ};
 use crate::ast_visitor::VisitorScopeMap;
 use crate::def::Spanned;
@@ -499,7 +500,7 @@ enum ComputedPlaceTyped {
     ///  * if the place is like `w.f` where `w` has a Drop impl, then we'd return Partial(w).
     Partial(FlattenedPlaceTyped),
     /// Spec-mode place.
-    /// The field is the most specific exec-mode place that we can track,
+    /// The field is the most specific non-spec-mode place that we can track,
     /// or None if the local itself is ghost.
     /// Examples:
     ///   * If the user writes x.foo.bar, and `x.foo` is proof-mode but `x.foo.bar`
@@ -593,6 +594,17 @@ fn new_cfg<'a>(
     Ok((cfg, builder.assigns_to_resolve, builder.typ_inv_obligations, builder.asserts))
 }
 
+macro_rules! unwrap {
+    ($e:expr) => {
+        match $e {
+            Maybe::Some(e) => e,
+            Maybe::Never => {
+                return Maybe::Never;
+            }
+        }
+    };
+}
+
 impl<'a> Builder<'a> {
     fn compute_predecessors(&mut self) {
         for bb1 in 0..self.basic_blocks.len() {
@@ -621,18 +633,18 @@ impl<'a> Builder<'a> {
         self.basic_blocks.len() - 1
     }
 
-    fn optionally_exit(&mut self, bb: Result<BBIndex, ()>) {
+    fn optionally_exit(&mut self, bb: Maybe<BBIndex>) {
         match bb {
-            Ok(bb) => {
+            Maybe::Some(bb) => {
                 self.basic_blocks[bb].is_exit = true;
             }
             _ => {}
         }
     }
 
-    fn optionally_push_successor(&mut self, bb: Result<BBIndex, ()>, successor: BBIndex) {
+    fn optionally_push_successor(&mut self, bb: Maybe<BBIndex>, successor: BBIndex) {
         match bb {
-            Ok(bb) => {
+            Maybe::Some(bb) => {
                 self.basic_blocks[bb].successors.push(successor);
             }
             _ => {}
@@ -709,10 +721,9 @@ impl<'a> Builder<'a> {
     }
 
     /// Process the given expression for building the CFG. Return the basic block
-    /// corresponds to the end of the expression's execution, or Err(()) if
+    /// corresponds to the end of the expression's execution, or Maybe::Never if
     /// execution never reachs the end of the expression.
-    /// (This is not a real Err,
-    fn build(&mut self, expr: &Expr, bb: BBIndex) -> Result<BBIndex, ()> {
+    fn build(&mut self, expr: &Expr, bb: BBIndex) -> Maybe<BBIndex> {
         let span_id = expr.span.id;
         let mut bb = bb;
         match &expr.x {
@@ -732,7 +743,7 @@ impl<'a> Builder<'a> {
             | ExprX::ProofInSpec(..)
             | ExprX::AirStmt(..)
             | ExprX::Old(..)
-            | ExprX::Nondeterministic => Ok(bb),
+            | ExprX::Nondeterministic => Maybe::Some(bb),
 
             ExprX::AssertAssume { .. }
             | ExprX::AssertAssumeUserDefinedTypeInvariant { .. }
@@ -741,7 +752,7 @@ impl<'a> Builder<'a> {
             | ExprX::AssertCompute(..) => {
                 let idx = self.basic_blocks[bb].instructions.len();
                 self.asserts.push(((bb, idx), expr.clone()));
-                Ok(bb)
+                Maybe::Some(bb)
             }
 
             ExprX::Call { target: call_target, args: es, post_args, body } => {
@@ -755,14 +766,14 @@ impl<'a> Builder<'a> {
                 for e in es.iter() {
                     match &e.x {
                         ExprX::TwoPhaseBorrowMut(p) => {
-                            let (p, bb1) = self.build_place_and_intern(p, bb, TypInv::Yes)?;
+                            let (p, bb1) = unwrap!(self.build_place_and_intern(p, bb, TypInv::Yes));
                             bb = bb1;
                             if let Some(p) = p.get_place_for_mutation() {
                                 two_phase_delayed_mutations.push(p);
                             }
                         }
                         _ => {
-                            bb = self.build(e, bb)?;
+                            bb = unwrap!(self.build(e, bb));
                         }
                     }
                 }
@@ -778,11 +789,11 @@ impl<'a> Builder<'a> {
                 }
 
                 if let Some(e) = body {
-                    bb = self.build(e, bb)?;
+                    bb = unwrap!(self.build(e, bb));
                 }
 
                 if crate::ast_util::call_no_unwind(call_target, &self.locals.functions) {
-                    Ok(bb)
+                    Maybe::Some(bb)
                 } else {
                     // Create an extra edge that ends immediately to represent unwinding
                     let unwind_bb = self.new_bb(AstPosition::OnUnwind(expr.span.id), false);
@@ -790,7 +801,7 @@ impl<'a> Builder<'a> {
                     self.basic_blocks[bb].successors.push(unwind_bb);
                     self.basic_blocks[bb].successors.push(main_bb);
                     self.basic_blocks[unwind_bb].is_exit = true;
-                    Ok(main_bb)
+                    Maybe::Some(main_bb)
                 }
             }
             ExprX::Ctor(_dt, _id, binders, Some(CtorUpdateTail { place, taken_fields })) => {
@@ -800,10 +811,10 @@ impl<'a> Builder<'a> {
 
                 for b in binders.iter() {
                     let e = &b.a;
-                    bb = self.build(e, bb)?;
+                    bb = unwrap!(self.build(e, bb));
                 }
 
-                let (p, bb1) = self.build_place_typed(place, bb, TypInv::No)?;
+                let (p, bb1) = unwrap!(self.build_place_typed(place, bb, TypInv::No));
                 bb = bb1;
 
                 for (field_name, unfinal_read_kind) in taken_fields.iter() {
@@ -828,7 +839,7 @@ impl<'a> Builder<'a> {
                     }
                 }
 
-                Ok(bb)
+                Maybe::Some(bb)
             }
             ExprX::Ctor(_dt, _id, binders, None) => {
                 let mut two_phase_delayed_mutations = vec![];
@@ -837,14 +848,14 @@ impl<'a> Builder<'a> {
                     let e = &b.a;
                     match &e.x {
                         ExprX::TwoPhaseBorrowMut(p) => {
-                            let (p, bb1) = self.build_place_and_intern(p, bb, TypInv::Yes)?;
+                            let (p, bb1) = unwrap!(self.build_place_and_intern(p, bb, TypInv::Yes));
                             bb = bb1;
                             if let Some(p) = p.get_place_for_mutation() {
                                 two_phase_delayed_mutations.push(p);
                             }
                         }
                         _ => {
-                            bb = self.build(e, bb)?;
+                            bb = unwrap!(self.build(e, bb));
                         }
                     }
                 }
@@ -860,10 +871,10 @@ impl<'a> Builder<'a> {
                     );
                 }
 
-                Ok(bb)
+                Maybe::Some(bb)
             }
             ExprX::Binary(BinaryOp::And | BinaryOp::Or | BinaryOp::Implies, e1, e2) => {
-                bb = self.build(e1, bb)?;
+                bb = unwrap!(self.build(e1, bb));
 
                 let snd_block = self.new_bb(AstPosition::Before(e2.span.id), false);
                 self.basic_blocks[bb].successors.push(snd_block);
@@ -873,7 +884,7 @@ impl<'a> Builder<'a> {
                 let join_block = self.new_bb(AstPosition::After(span_id), false);
                 self.basic_blocks[bb].successors.push(join_block);
                 self.optionally_push_successor(snd_bb_end, join_block);
-                Ok(join_block)
+                Maybe::Some(join_block)
             }
             ExprX::If(cond, thn, els) => {
                 // TODO(new_mut_ref): (completeness) if the condition has conditional short-circuiting,
@@ -886,7 +897,7 @@ impl<'a> Builder<'a> {
                 };
                 let join_position = AstPosition::After(span_id);
 
-                bb = self.build(cond, bb)?;
+                bb = unwrap!(self.build(cond, bb));
 
                 let thn_block = self.new_bb(thn_position, false);
                 let els_block = self.new_bb(els_position, false);
@@ -897,33 +908,33 @@ impl<'a> Builder<'a> {
 
                 let els_bb_end = match els {
                     Some(els) => self.build(els, els_block),
-                    None => Ok(els_block),
+                    None => Maybe::Some(els_block),
                 };
 
-                if thn_bb_end.is_ok() || els_bb_end.is_ok() {
+                if !thn_bb_end.is_never() || !els_bb_end.is_never() {
                     let join_block = self.new_bb(join_position, false);
                     self.optionally_push_successor(thn_bb_end, join_block);
                     self.optionally_push_successor(els_bb_end, join_block);
-                    Ok(join_block)
+                    Maybe::Some(join_block)
                 } else {
-                    Err(())
+                    Maybe::Never
                 }
             }
-            ExprX::NullaryOpr(_) => Ok(bb),
+            ExprX::NullaryOpr(_) => Maybe::Some(bb),
             ExprX::Unary(_, e) | ExprX::UnaryOpr(_, e) => {
-                bb = self.build(e, bb)?;
-                Ok(bb)
+                bb = unwrap!(self.build(e, bb));
+                Maybe::Some(bb)
             }
             ExprX::Binary(_, e1, e2) | ExprX::BinaryOpr(_, e1, e2) => {
-                bb = self.build(e1, bb)?;
-                bb = self.build(e2, bb)?;
-                Ok(bb)
+                bb = unwrap!(self.build(e1, bb));
+                bb = unwrap!(self.build(e2, bb));
+                Maybe::Some(bb)
             }
             ExprX::Multi(_, es) => {
                 for e in es.iter() {
-                    bb = self.build(e, bb)?;
+                    bb = unwrap!(self.build(e, bb));
                 }
-                Ok(bb)
+                Maybe::Some(bb)
             }
             ExprX::NonSpecClosure {
                 params,
@@ -947,13 +958,13 @@ impl<'a> Builder<'a> {
                     );
                 }
 
-                Ok(bb)
+                Maybe::Some(bb)
             }
             ExprX::ArrayLiteral(es) => {
                 for e in es.iter() {
-                    bb = self.build(e, bb)?;
+                    bb = unwrap!(self.build(e, bb));
                 }
-                Ok(bb)
+                Maybe::Some(bb)
             }
             ExprX::Match(..) => self.build_match(expr, bb),
             ExprX::Loop {
@@ -962,11 +973,13 @@ impl<'a> Builder<'a> {
                 // for-loops have already been de-sugared by this point, so they don't
                 // need special handling
                 is_for_loop: _,
+                assume_termination: _,
                 label,
                 cond,
                 body,
                 invs: _,
                 decrease: _,
+                atomic_call: _,
             } => {
                 let outer_body_bb_pos = match cond {
                     Some(cond) => AstPosition::Before(cond.span.id),
@@ -1003,9 +1016,9 @@ impl<'a> Builder<'a> {
                     // to prove the invariants.
 
                     let cond_end_bb = self.build(cond, outer_body_bb);
-                    let Ok(cond_end_bb) = cond_end_bb else {
+                    let Maybe::Some(cond_end_bb) = cond_end_bb else {
                         self.loops.pop().unwrap();
-                        return Ok(post_bb);
+                        return Maybe::Some(post_bb);
                     };
 
                     let pre_break_bb =
@@ -1027,17 +1040,17 @@ impl<'a> Builder<'a> {
                 let _loop_entry = self.loops.pop().unwrap();
 
                 match end_bb {
-                    Err(()) => {}
-                    Ok(end_bb) => {
+                    Maybe::Never => {}
+                    Maybe::Some(end_bb) => {
                         self.basic_blocks[end_bb].successors.push(outer_body_bb);
                     }
                 }
 
-                Ok(post_bb)
+                Maybe::Some(post_bb)
             }
-
-            ExprX::OpenInvariant(arg, binder, body, _) => {
-                bb = self.build(arg, bb)?;
+            ExprX::OpenInvariant(arg, binder, body, _)
+            | ExprX::TryOpenAtomicUpdate(arg, binder, body) => {
+                bb = unwrap!(self.build(arg, bb));
 
                 let local = FlattenedPlaceTyped {
                     local: LocalName::Named(binder.name.clone()),
@@ -1055,10 +1068,10 @@ impl<'a> Builder<'a> {
                     InstructionKind::Overwrite(fp.clone()),
                 );
                 bb = match self.build(body, bb) {
-                    Ok(bb) => bb,
-                    Err(()) => {
+                    Maybe::Some(bb) => bb,
+                    Maybe::Never => {
                         self.pop_scope();
-                        return Err(());
+                        return Maybe::Never;
                     }
                 };
                 self.push_instruction_propagate(
@@ -1068,15 +1081,24 @@ impl<'a> Builder<'a> {
                 );
                 self.pop_scope();
 
-                Ok(bb)
+                Maybe::Some(bb)
             }
-            ExprX::InvMask(_m) => Ok(bb),
+            ExprX::AtomicUpdateInitDummy => Maybe::Some(bb),
+            ExprX::Atomically(_k, _v, e) => {
+                bb = unwrap!(self.build(e, bb));
+                Maybe::Some(bb)
+            }
+            ExprX::Update(e) => {
+                bb = unwrap!(self.build(e, bb));
+                Maybe::Some(bb)
+            }
+            ExprX::InvMask(_m) => Maybe::Some(bb),
             ExprX::Return(e_opt) => {
                 if let Some(e) = e_opt {
-                    bb = self.build(e, bb)?;
+                    bb = unwrap!(self.build(e, bb));
                 }
                 self.basic_blocks[bb].is_exit = true;
-                Err(())
+                Maybe::Never
             }
             ExprX::BreakOrContinue { label, is_break } => {
                 let entry = self.get_loop(label);
@@ -1085,21 +1107,21 @@ impl<'a> Builder<'a> {
                 } else {
                     self.basic_blocks[bb].successors.push(entry.continue_bb);
                 }
-                Err(())
+                Maybe::Never
             }
             ExprX::Ghost { alloc_wrapper: _, tracked: _, expr } => {
-                bb = self.build(expr, bb)?;
-                Ok(bb)
+                bb = unwrap!(self.build(expr, bb));
+                Maybe::Some(bb)
             }
             ExprX::NeverToAny(e) => {
-                let _ = self.build(e, bb)?;
-                Err(())
+                let _ = unwrap!(self.build(e, bb));
+                Maybe::Never
             }
             ExprX::Assign { place, rhs, op, resolve, typ: _ } => {
                 assert!(!resolve);
                 // Right-hand side first!
-                let bb = self.build(rhs, bb)?;
-                let (p, bb) = self.build_place_and_intern(place, bb, TypInv::Yes)?;
+                let bb = unwrap!(self.build(rhs, bb));
+                let (p, bb) = unwrap!(self.build_place_and_intern(place, bb, TypInv::Yes));
                 match &p {
                     ComputedPlace::Partial(_) => {
                         if op.is_none() {
@@ -1132,7 +1154,7 @@ impl<'a> Builder<'a> {
                     }
                     ComputedPlace::Ghost(None) => {}
                 }
-                Ok(bb)
+                Maybe::Some(bb)
             }
             ExprX::TwoPhaseBorrowMut(_p) => {
                 // These must be handled contextually, so the recursion should skip over
@@ -1140,7 +1162,7 @@ impl<'a> Builder<'a> {
                 panic!("Verus Internal Error: unhandled TwoPhaseBorrowMut node");
             }
             ExprX::BorrowMut(p) | ExprX::BorrowMutTracked(p) => {
-                let (p, bb) = self.build_place_and_intern(p, bb, TypInv::Yes)?;
+                let (p, bb) = unwrap!(self.build_place_and_intern(p, bb, TypInv::Yes));
                 if let Some(p) = p.get_place_for_mutation() {
                     self.push_instruction_propagate(
                         bb,
@@ -1148,10 +1170,10 @@ impl<'a> Builder<'a> {
                         InstructionKind::Mutate(p),
                     );
                 }
-                Ok(bb)
+                Maybe::Some(bb)
             }
             ExprX::ReadPlace(place, unfinal_read_kind) => {
-                let (p, bb) = self.build_place_typed(place, bb, TypInv::No)?;
+                let (p, bb) = unwrap!(self.build_place_typed(place, bb, TypInv::No));
                 if self.is_move(unfinal_read_kind) {
                     if !matches!(p, ComputedPlaceTyped::Exact(..)) {
                         self.emit_bad_move_err(&p, &place.span);
@@ -1164,21 +1186,21 @@ impl<'a> Builder<'a> {
                             InstructionKind::MoveFrom(p),
                         );
                     }
-                    Ok(bb)
+                    Maybe::Some(bb)
                 } else {
-                    Ok(bb)
+                    Maybe::Some(bb)
                 }
             }
             ExprX::Block(stmts, e_opt) => {
                 let mut scope_count = 0;
                 for s in stmts.iter() {
                     bb = match self.build_stmt(s, bb) {
-                        Ok(bb) => bb,
-                        Err(()) => {
+                        Maybe::Some(bb) => bb,
+                        Maybe::Never => {
                             for _i in 0..scope_count {
                                 self.pop_scope();
                             }
-                            return Err(());
+                            return Maybe::Never;
                         }
                     };
 
@@ -1188,19 +1210,19 @@ impl<'a> Builder<'a> {
                 }
                 if let Some(e) = e_opt {
                     bb = match self.build(e, bb) {
-                        Ok(bb) => bb,
-                        Err(()) => {
+                        Maybe::Some(bb) => bb,
+                        Maybe::Never => {
                             for _i in 0..scope_count {
                                 self.pop_scope();
                             }
-                            return Err(());
+                            return Maybe::Never;
                         }
                     };
                 }
                 for _i in 0..scope_count {
                     self.pop_scope();
                 }
-                Ok(bb)
+                Maybe::Some(bb)
             }
             ExprX::EvalAndResolve(..) => {
                 panic!("EvalAndResolve shouldn't be created yet");
@@ -1212,23 +1234,23 @@ impl<'a> Builder<'a> {
                 panic!("ImplicitReborrowOrSpecRead should have been removed");
             }
             ExprX::Await(e) => {
-                bb = self.build(e, bb)?;
+                bb = unwrap!(self.build(e, bb));
                 let cancel_bb = self.new_bb(AstPosition::OnUnwind(expr.span.id), false);
                 let main_bb = self.new_bb(AstPosition::After(expr.span.id), false);
                 self.basic_blocks[bb].successors.push(cancel_bb);
                 self.basic_blocks[bb].successors.push(main_bb);
                 self.basic_blocks[cancel_bb].is_exit = true;
-                Ok(main_bb)
+                Maybe::Some(main_bb)
             }
             ExprX::ShrRefStructWrap(e1, e2, _t1, _t2, _variant, _ident) => {
-                bb = self.build(e1, bb)?;
-                bb = self.build(e2, bb)?;
-                Ok(bb)
+                bb = unwrap!(self.build(e1, bb));
+                bb = unwrap!(self.build(e2, bb));
+                Maybe::Some(bb)
             }
         }
     }
 
-    fn build_stmt(&mut self, stmt: &Stmt, bb: BBIndex) -> Result<BBIndex, ()> {
+    fn build_stmt(&mut self, stmt: &Stmt, bb: BBIndex) -> Maybe<BBIndex> {
         match &stmt.x {
             StmtX::Expr(e) => self.build(e, bb),
             StmtX::Decl { pattern, mode: _, init: None, els: None } => {
@@ -1244,11 +1266,11 @@ impl<'a> Builder<'a> {
                     self.push_drops(bb, AstPosition::After(stmt.span.id), &fps);
                 }
 
-                Ok(bb)
+                Maybe::Some(bb)
             }
             StmtX::Decl { pattern, mode: _, init: Some(init), els } => {
                 let tinv = if pattern_has_mut(pattern) { TypInv::PatternError } else { TypInv::No };
-                let (cpt, bb) = self.build_place_typed(init, bb, tinv)?;
+                let (cpt, bb) = unwrap!(self.build_place_typed(init, bb, tinv));
 
                 let next_bb = match els {
                     Some(els) => {
@@ -1257,7 +1279,7 @@ impl<'a> Builder<'a> {
                         self.basic_blocks[bb].successors.push(els_bb);
                         self.basic_blocks[bb].successors.push(next_bb);
                         match self.build(els, els_bb) {
-                            Ok(_) | Err(()) => {}
+                            Maybe::Some(_) | Maybe::Never => {}
                         }
                         next_bb
                     }
@@ -1290,7 +1312,7 @@ impl<'a> Builder<'a> {
                         InstructionKind::Overwrite(fp),
                     );
                 }
-                Ok(next_bb)
+                Maybe::Some(next_bb)
             }
             StmtX::Decl { pattern: _, mode: _, init: None, els: Some(_) } => {
                 panic!("Unexpected let-else without an initializer");
@@ -1303,14 +1325,14 @@ impl<'a> Builder<'a> {
         place: &Place,
         bb: BBIndex,
         typ_invs: TypInv,
-    ) -> Result<(ComputedPlace, BBIndex), ()> {
+    ) -> Maybe<(ComputedPlace, BBIndex)> {
         let r = self.build_place_typed(place, bb, typ_invs);
         match r {
-            Ok((p, bb)) => {
+            Maybe::Some((p, bb)) => {
                 let sp = self.locals.add_computed_place(p);
-                Ok((sp, bb))
+                Maybe::Some((sp, bb))
             }
-            Err(e) => Err(e),
+            Maybe::Never => Maybe::Never,
         }
     }
 
@@ -1320,10 +1342,10 @@ impl<'a> Builder<'a> {
         place: &Place,
         bb: BBIndex,
         typ_invs: TypInv,
-    ) -> Result<(ComputedPlaceTyped, BBIndex), ()> {
+    ) -> Maybe<(ComputedPlaceTyped, BBIndex)> {
         match &place.x {
             PlaceX::Field(field_opr, p) => {
-                let (inner, bb) = self.build_place_typed(p, bb, typ_invs)?;
+                let (inner, bb) = unwrap!(self.build_place_typed(p, bb, typ_invs));
                 if typ_invs != TypInv::No {
                     match &inner {
                         ComputedPlaceTyped::Exact(_) | ComputedPlaceTyped::Partial(_) => {
@@ -1346,61 +1368,69 @@ impl<'a> Builder<'a> {
                     ComputedPlaceTyped::Exact(mut fpt) => {
                         let (mode, dtor) = field_opr_to_mode(field_opr, &self.locals.datatypes);
                         if mode == Mode::Spec {
-                            Ok((ComputedPlaceTyped::Ghost(Some(fpt)), bb))
+                            Maybe::Some((ComputedPlaceTyped::Ghost(Some(fpt)), bb))
                         } else if dtor {
-                            Ok((ComputedPlaceTyped::Partial(fpt), bb))
+                            Maybe::Some((ComputedPlaceTyped::Partial(fpt), bb))
                         } else {
                             fpt.projections.push(ProjectionTyped::StructField(
                                 FieldOpr { check: VariantCheck::None, ..field_opr.clone() },
                                 place.typ.clone(),
                             ));
-                            Ok((ComputedPlaceTyped::Exact(fpt), bb))
+                            Maybe::Some((ComputedPlaceTyped::Exact(fpt), bb))
                         }
                     }
                     ComputedPlaceTyped::Partial(fpt) => {
                         let (mode, _dtor) = field_opr_to_mode(field_opr, &self.locals.datatypes);
                         if mode == Mode::Spec {
-                            Ok((ComputedPlaceTyped::Ghost(Some(fpt)), bb))
+                            Maybe::Some((ComputedPlaceTyped::Ghost(Some(fpt)), bb))
                         } else {
-                            Ok((ComputedPlaceTyped::Partial(fpt), bb))
+                            Maybe::Some((ComputedPlaceTyped::Partial(fpt), bb))
                         }
                     }
                     ComputedPlaceTyped::Ghost(opt_fpt) => {
-                        Ok((ComputedPlaceTyped::Ghost(opt_fpt), bb))
+                        Maybe::Some((ComputedPlaceTyped::Ghost(opt_fpt), bb))
                     }
                 }
             }
             PlaceX::DerefMut(p) => {
-                let (inner, bb) = self.build_place_typed(p, bb, typ_invs)?;
+                let (inner, bb) = unwrap!(self.build_place_typed(p, bb, typ_invs));
                 match inner {
                     ComputedPlaceTyped::Exact(mut fpt) => {
                         fpt.projections.push(ProjectionTyped::DerefMut(place.typ.clone()));
-                        Ok((ComputedPlaceTyped::Exact(fpt), bb))
+                        Maybe::Some((ComputedPlaceTyped::Exact(fpt), bb))
                     }
-                    ComputedPlaceTyped::Partial(fpt) => Ok((ComputedPlaceTyped::Partial(fpt), bb)),
+                    ComputedPlaceTyped::Partial(fpt) => {
+                        Maybe::Some((ComputedPlaceTyped::Partial(fpt), bb))
+                    }
                     ComputedPlaceTyped::Ghost(opt_fpt) => {
-                        Ok((ComputedPlaceTyped::Ghost(opt_fpt), bb))
+                        Maybe::Some((ComputedPlaceTyped::Ghost(opt_fpt), bb))
                     }
                 }
             }
             PlaceX::Local(var) => {
-                let mode = self.locals.var_modes[var];
-                if mode == Mode::Spec {
-                    Ok((ComputedPlaceTyped::Ghost(None), bb))
+                let Some(mode) = self.locals.var_modes.get(var) else {
+                    panic!("unkown mode for var {var:?}")
+                };
+
+                if *mode == Mode::Spec {
+                    Maybe::Some((ComputedPlaceTyped::Ghost(None), bb))
                 } else {
                     let fpt = FlattenedPlaceTyped {
                         local: LocalName::Named(var.clone()),
                         typ: place.typ.clone(),
                         projections: vec![],
                     };
-                    Ok((ComputedPlaceTyped::Exact(fpt), bb))
+                    Maybe::Some((ComputedPlaceTyped::Exact(fpt), bb))
                 }
             }
             PlaceX::Temporary(e) => {
-                let bb = self.build(e, bb)?;
-                let mode = self.locals.temporary_modes[&place.span.id];
-                if mode == Mode::Spec {
-                    Ok((ComputedPlaceTyped::Ghost(None), bb))
+                let bb = unwrap!(self.build(e, bb));
+                let Some(mode) = self.locals.temporary_modes.get(&place.span.id) else {
+                    panic!("unknown mode for temporary place {:?}", place);
+                };
+
+                if *mode == Mode::Spec {
+                    Maybe::Some((ComputedPlaceTyped::Ghost(None), bb))
                 } else {
                     let temp_name = self.locals.new_temp_name(place.span.id);
 
@@ -1416,7 +1446,7 @@ impl<'a> Builder<'a> {
                         InstructionKind::Overwrite(fp),
                     );
 
-                    Ok((ComputedPlaceTyped::Exact(fpt), bb))
+                    Maybe::Some((ComputedPlaceTyped::Exact(fpt), bb))
                 }
             }
             PlaceX::ModeUnwrap(p, ModeWrapperMode::Proof) => {
@@ -1424,8 +1454,8 @@ impl<'a> Builder<'a> {
                 self.build_place_typed(p, bb, typ_invs)
             }
             PlaceX::ModeUnwrap(p, ModeWrapperMode::Spec) => {
-                let (cpt, bb) = self.build_place_typed(p, bb, typ_invs)?;
-                Ok((cpt.to_ghost(), bb))
+                let (cpt, bb) = unwrap!(self.build_place_typed(p, bb, typ_invs));
+                Maybe::Some((cpt.to_ghost(), bb))
             }
             PlaceX::WithExpr(..) => {
                 panic!("Verus Internal Error: unexpected PlaceX::WithExpr");
@@ -1436,9 +1466,9 @@ impl<'a> Builder<'a> {
                 );
             }
             PlaceX::Index(p, idx, _kind, _needs_bounds_check) => {
-                let (cpt, bb) = self.build_place_typed(p, bb, typ_invs)?;
-                let bb = self.build(idx, bb)?;
-                Ok((cpt.to_partial(), bb))
+                let (cpt, bb) = unwrap!(self.build_place_typed(p, bb, typ_invs));
+                let bb = unwrap!(self.build(idx, bb));
+                Maybe::Some((cpt.to_partial(), bb))
             }
         }
     }
@@ -1572,7 +1602,7 @@ impl<'a> Builder<'a> {
 
     //// Match
 
-    fn build_match(&mut self, expr: &Expr, bb: BBIndex) -> Result<BBIndex, ()> {
+    fn build_match(&mut self, expr: &Expr, bb: BBIndex) -> Maybe<BBIndex> {
         // TODO(new_mut_ref): (blocking) need more tests for guards
         // TODO(new_mut_ref): (blocking) need more tests for or-patterns
 
@@ -1585,10 +1615,10 @@ impl<'a> Builder<'a> {
         } else {
             TypInv::No
         };
-        let (cpt, bb) = self.build_place_typed(place, bb, tinv)?;
+        let (cpt, bb) = unwrap!(self.build_place_typed(place, bb, tinv));
 
         if arms.len() == 0 {
-            return Err(());
+            return Maybe::Never;
         }
 
         let mut cur_bb = bb;
@@ -1608,23 +1638,23 @@ impl<'a> Builder<'a> {
                 let arm_bb = self.new_bb(AstPosition::Before(arm.x.body.span.id), false);
                 self.basic_blocks[cur_bb].successors.push(arm_bb);
                 let arm_bb_end = self.build_arm_after_checks(&cpt, arm, arm_bb);
-                if let Ok(arm_bb_end) = arm_bb_end {
+                if let Maybe::Some(arm_bb_end) = arm_bb_end {
                     arm_bb_ends.push(arm_bb_end);
                 }
                 break;
             } else {
                 let (continue_bb, arm_bb_end) = self.build_arm_before_checks(&cpt, arm, cur_bb);
-                if let Ok(arm_bb_end) = arm_bb_end {
+                if let Maybe::Some(arm_bb_end) = arm_bb_end {
                     arm_bb_ends.push(arm_bb_end);
                 }
                 match continue_bb {
-                    Ok(continue_bb) => {
+                    Maybe::Some(continue_bb) => {
                         let next_bb = self.new_bb(AstPosition::MatchIntermediate, false);
                         self.basic_blocks[continue_bb].successors.push(next_bb);
                         self.basic_blocks[cur_bb].successors.push(next_bb);
                         cur_bb = next_bb;
                     }
-                    Err(()) => { /* leave cur_bb as it is */ }
+                    Maybe::Never => { /* leave cur_bb as it is */ }
                 }
             }
         }
@@ -1635,9 +1665,9 @@ impl<'a> Builder<'a> {
             for arm_bb_end in arm_bb_ends {
                 self.basic_blocks[arm_bb_end].successors.push(join_block);
             }
-            Ok(join_block)
+            Maybe::Some(join_block)
         } else {
-            Err(())
+            Maybe::Never
         }
     }
 
@@ -1653,7 +1683,7 @@ impl<'a> Builder<'a> {
         cpt: &ComputedPlaceTyped,
         arm: &Arm,
         cur_bb: BBIndex,
-    ) -> (Result<BBIndex, ()>, Result<BBIndex, ()>) {
+    ) -> (Maybe<BBIndex>, Maybe<BBIndex>) {
         if arm.x.has_guard() {
             // Note that because we currently disallow match guards together with or-patterns,
             // we don't have to worry about the match guard running more than once
@@ -1682,9 +1712,9 @@ impl<'a> Builder<'a> {
             self.pop_scope();
 
             let guard_bb_end = match guard_bb_end {
-                Ok(guard_bb_end) => guard_bb_end,
-                Err(()) => {
-                    return (Err(()), Err(()));
+                Maybe::Some(guard_bb_end) => guard_bb_end,
+                Maybe::Never => {
+                    return (Maybe::Never, Maybe::Never);
                 }
             };
 
@@ -1696,7 +1726,7 @@ impl<'a> Builder<'a> {
             self.basic_blocks[guard_bb_end].successors.push(guard_success_bb);
 
             let arm_end_bb = self.build_arm_after_checks(cpt, arm, guard_success_bb);
-            (Ok(guard_fail_bb), arm_end_bb)
+            (Maybe::Some(guard_fail_bb), arm_end_bb)
         } else {
             //           pattern succeeds
             // cur_bb           --->        arm_bb --> (arm body) --> arm_end_bb
@@ -1710,7 +1740,7 @@ impl<'a> Builder<'a> {
             let arm_bb = self.new_bb(AstPosition::Before(arm.x.body.span.id), false);
             self.basic_blocks[cur_bb].successors.push(arm_bb);
             let arm_end_bb = self.build_arm_after_checks(cpt, arm, arm_bb);
-            (Err(()), arm_end_bb)
+            (Maybe::Never, arm_end_bb)
         }
     }
 
@@ -1721,7 +1751,7 @@ impl<'a> Builder<'a> {
         cpt: &ComputedPlaceTyped,
         arm: &Arm,
         arm_bb: BBIndex,
-    ) -> Result<BBIndex, ()> {
+    ) -> Maybe<BBIndex> {
         self.append_instructions_for_pattern_moves_mutations(
             &arm.x.pattern,
             &cpt,
@@ -1881,7 +1911,7 @@ impl<'a> Builder<'a> {
                         return i != self.fns.len() - 1;
                     }
                 }
-                panic!("Verus Internal Error: place_is_upvar failed to find var");
+                panic!("Verus Internal Error: place_is_upvar failed to find var {var_ident:?}");
             }
             LocalName::Temporary(..) => false,
         }
@@ -2074,7 +2104,10 @@ impl<'a> LocalCollection<'a> {
     fn new_temp_name(&mut self, ast_id: AstId) -> LocalName {
         let temp_id = TempId(self.next_temp_id);
         self.next_temp_id += 1;
-        assert!(!self.ast_id_to_temp_id.contains_key(&ast_id));
+        if let Some(prev) = self.ast_id_to_temp_id.get(&ast_id) {
+            panic!("attempt to override entry AstId({ast_id}) => {prev:?} with {temp_id:?}");
+        };
+
         self.ast_id_to_temp_id.insert(ast_id, temp_id);
         LocalName::Temporary(ast_id, temp_id)
     }

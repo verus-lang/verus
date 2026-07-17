@@ -17,9 +17,11 @@ pub(crate) fn annotate_one(
 ) -> Result<Expr, VirErr> {
     match &expr.x {
         ExprX::Ctor(Dt::Path(_), ..) => {
-            if info.ctor_needs_check[&expr.span.id]
-                && typ_has_user_defined_type_invariant(datatypes, &expr.typ)
-            {
+            let Some(&needs_check) = info.ctor_needs_check.get(&expr.span.id) else {
+                panic!("info.ctor_needs_check has no entry for {expr:?}")
+            };
+
+            if needs_check && typ_has_user_defined_type_invariant(datatypes, &expr.typ) {
                 let fun_vis = typ_get_user_defined_type_invariant(datatypes, &expr.typ).unwrap();
                 let fun = fun_vis.check_vis(&expr.span, module)?;
                 let Some(function) = functions.get(&fun) else {

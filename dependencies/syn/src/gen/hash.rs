@@ -123,6 +123,39 @@ impl Hash for crate::AssumeSpecification {
         self.unwind.hash(state);
     }
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::AtomicSpec {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.atomic_update.hash(state);
+        self.type_clause.hash(state);
+        self.perm_clause.hash(state);
+        self.requires.hash(state);
+        self.ensures.hash(state);
+        self.outer_mask.hash(state);
+        self.inner_mask.hash(state);
+        self.comma_token.hash(state);
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::AtomicallyBlock {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.label.hash(state);
+        self.loop_token.hash(state);
+        self.update_fn_binder.hash(state);
+        self.comma_token.hash(state);
+        self.spec_au_binder.hash(state);
+        self.invariant_except_breaks.hash(state);
+        self.invariants.hash(state);
+        self.ensures.hash(state);
+        self.body.hash(state);
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Hash for crate::AttrStyle {
@@ -895,6 +928,7 @@ impl Hash for crate::ExprCall {
         self.attrs.hash(state);
         self.func.hash(state);
         self.args.hash(state);
+        self.atomically.hash(state);
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
@@ -1183,6 +1217,7 @@ impl Hash for crate::ExprMethodCall {
         self.method.hash(state);
         self.turbofish.hash(state);
         self.args.hash(state);
+        self.atomically.hash(state);
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
@@ -1869,6 +1904,16 @@ impl Hash for crate::ImplRestriction {
         H: Hasher,
     {
         match *self {}
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::InnerMask {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.set.hash(state);
+        self.comma_token.hash(state);
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
@@ -2621,6 +2666,16 @@ impl Hash for crate::OpenRestricted {
         self.path.hash(state);
     }
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::OuterMask {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.set.hash(state);
+        self.comma_token.hash(state);
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Hash for crate::ParenthesizedGenericArguments {
@@ -2885,6 +2940,37 @@ impl Hash for crate::PathSegment {
         self.arguments.hash(state);
     }
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::PermClause {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.old_perms.hash(state);
+        self.arrow_token.hash(state);
+        self.new_perms.hash(state);
+        self.comma_token.hash(state);
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::PermTuple {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.fields.hash(state);
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::PermTupleField {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.ident.hash(state);
+        self.ty.hash(state);
+    }
+}
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Hash for crate::PointerMutability {
@@ -2910,6 +2996,15 @@ impl Hash for crate::PreciseCapture {
         H: Hasher,
     {
         self.params.hash(state);
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::PredTypeClause {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.ident.hash(state);
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
@@ -3035,6 +3130,28 @@ impl Hash for crate::Requires {
         self.exprs.hash(state);
     }
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::ReturnPat {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        match self {
+            crate::ReturnPat::Default => {
+                state.write_u8(0u8);
+            }
+            crate::ReturnPat::Pat(_, _, v2, v3) => {
+                state.write_u8(1u8);
+                v2.hash(state);
+                v3.hash(state);
+            }
+            crate::ReturnPat::Type(_, v1) => {
+                state.write_u8(2u8);
+                v1.hash(state);
+            }
+        }
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Hash for crate::ReturnType {
@@ -3053,6 +3170,15 @@ impl Hash for crate::ReturnType {
                 v3.hash(state);
             }
         }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::ReturnValue {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.pat.hash(state);
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
@@ -3128,6 +3254,7 @@ impl Hash for crate::SignatureSpec {
         H: Hasher,
     {
         self.prover.hash(state);
+        self.atomic_spec.hash(state);
         self.requires.hash(state);
         self.recommends.hash(state);
         self.ensures.hash(state);

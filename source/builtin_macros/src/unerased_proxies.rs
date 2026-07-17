@@ -205,6 +205,7 @@ impl crate::syntax::Visitor {
                     sig: Signature {
                         spec: SignatureSpec {
                             prover: None,
+                            atomic_spec: None,
                             requires: None,
                             recommends: None,
                             ensures,
@@ -294,6 +295,7 @@ impl crate::syntax::Visitor {
                     sig: Signature {
                         spec: SignatureSpec {
                             prover: None,
+                            atomic_spec: None,
                             requires: None,
                             recommends: None,
                             ensures,
@@ -385,6 +387,7 @@ impl crate::syntax::Visitor {
                     sig: Signature {
                         spec: SignatureSpec {
                             prover: None,
+                            atomic_spec: None,
                             requires: None,
                             recommends: None,
                             ensures,

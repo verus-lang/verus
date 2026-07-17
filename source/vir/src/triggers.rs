@@ -1,10 +1,10 @@
 use crate::ast::{
-    BinaryOp, SpannedTyped, TriggerAnnotation, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VarBinders,
-    VarIdent, VirErr,
+    SpannedTyped, TriggerAnnotation, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VarBinders, VarIdent,
+    VirErr,
 };
 use crate::context::Ctx;
 use crate::messages::{Span, error};
-use crate::sst::{Exp, ExpX, Exps, Trig, Trigs};
+use crate::sst::{BinaryOp, Exp, ExpX, Exps, Trig, Trigs};
 use crate::sst_visitor::{BndKind, ScopeEntry};
 use crate::triggers_auto::AutoType;
 use crate::util::vec_map;
@@ -200,7 +200,7 @@ fn check_trigger_expr(
         | ExpX::UnaryOpr(UnaryOpr::Field { .. }, _)
         | ExpX::UnaryOpr(UnaryOpr::IsVariant { .. }, _)
         | ExpX::Unary(UnaryOp::Trigger(_) | UnaryOp::HeightTrigger, _) => {}
-        ExpX::Binary(BinaryOp::Bitwise(_, _) | BinaryOp::Index(..), _, _) => {}
+        ExpX::Binary(BinaryOp::Bitwise(_) | BinaryOp::Index(_), _, _) => {}
         ExpX::Unary(UnaryOp::BitNot(_), _) => {}
         ExpX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(..), _, _) => {}
         ExpX::Unary(UnaryOp::Clip { .. }, _) | ExpX::Binary(BinaryOp::Arith(..), _, _) => {}
@@ -317,7 +317,7 @@ fn check_trigger_expr(
         ExpX::Binary(op, arg1, arg2) => {
             use BinaryOp::*;
             match op {
-                And | Or | Xor | Implies | Eq(_) | Ne => {
+                And | Or | Xor | Implies | Eq | Ne => {
                     Err(error(&exp.span, "triggers cannot contain boolean operators"))
                 }
                 HeightCompare { .. } => Err(error(

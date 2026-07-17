@@ -1,7 +1,7 @@
-use crate::ast::{BinaryOp, Constant, Dt, IntRange, SpannedTyped, Typ, TypX, Typs, UnaryOp};
+use crate::ast::{Constant, Dt, IntRange, SpannedTyped, Typ, TypX, Typs, UnaryOp};
 use crate::context::Ctx;
 use crate::messages::{Message, Span, error, error_with_label};
-use crate::sst::{CallFun, Exp, ExpX};
+use crate::sst::{BinaryOp, CallFun, Exp, ExpX};
 use std::sync::Arc;
 
 /// This is where we handle VCs to ensure that the same invariant is not opened
@@ -27,7 +27,6 @@ pub struct Assertion {
     pub cond: Exp,
 }
 
-#[allow(unused)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MaskQueryKind {
     OpenInvariant,
