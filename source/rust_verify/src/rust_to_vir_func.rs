@@ -1498,6 +1498,7 @@ pub(crate) fn check_item_fn<'tcx>(
             &typ,
             body_id,
             vattrs.encoded_static,
+            self_generics,
         )?;
         return Ok(Some(fun));
     }
@@ -2831,6 +2832,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
     typ: &Typ,
     body_id: &BodyId,
     is_static: bool,
+    self_generics: Option<(&'tcx Generics, DefId)>,
 ) -> Result<Fun, VirErr> {
     let mut path = ctxt.def_id_to_vir_path(id);
 
@@ -2950,6 +2952,21 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         BodyErasure { erase_body: body_mode == Mode::Spec, ret_spec: ret_mode == Mode::Spec },
     );
 
+    // An associated const declared in an `impl<T> ...` block may refer to the impl's
+    // type parameters in its type or body, so include them here.
+    let (typ_params, typ_bounds) = if let Some((cg, impl_def_id)) = self_generics {
+        check_generics_bounds_no_polarity(
+            ctxt.tcx,
+            &ctxt.verus_items,
+            cg.span,
+            Some(cg),
+            impl_def_id,
+            Some(&mut *ctxt.diagnostics.borrow_mut()),
+        )?
+    } else {
+        (Arc::new(vec![]), Arc::new(vec![]))
+    };
+
     let mut functionx = FunctionX {
         name: name.clone(),
         proxy: None,
@@ -2959,8 +2976,8 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         opaqueness,
         owning_module: Some(module_path.clone()),
         mode: func_mode,
-        typ_params: Arc::new(vec![]),
-        typ_bounds: Arc::new(vec![]),
+        typ_params,
+        typ_bounds,
         params: Arc::new(vec![]),
         ret,
         ens_has_return,
