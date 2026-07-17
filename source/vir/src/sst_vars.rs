@@ -1,7 +1,9 @@
-use crate::ast::{BinaryOp, FieldOpr, Typ, UnaryOp, UnaryOpr, VarIdent};
+use crate::ast::{FieldOpr, Typ, UnaryOp, UnaryOpr, VarIdent};
 use crate::def::Spanned;
 use crate::messages::Span;
-use crate::sst::{Dest, Exp, ExpX, LocalDecl, LocalDeclKind, Pars, Stm, StmX, Stms, UniqueIdent};
+use crate::sst::{
+    BinaryOp, Dest, Exp, ExpX, LocalDecl, LocalDeclKind, Pars, Stm, StmX, Stms, UniqueIdent,
+};
 use crate::sst_visitor::exp_visitor_check;
 use air::ast::{ExprX, StmtX};
 use air::scope_map::ScopeMap;

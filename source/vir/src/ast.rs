@@ -717,9 +717,8 @@ pub enum BinaryOp {
     IeeeFloat(IeeeFloatBinaryOp),
     /// Used only for handling verus_builtin::strslice_get_char
     StrGetChar,
-    /// Index into an array or slice, no bounds-checking.
+    /// Index into an array or slice with the given bounds-checking
     /// `verus_builtin::array_index` lowers to this.
-    /// In SST, this can also be used as a Loc.
     Index(ArrayKind, BoundsCheck),
 }
 
