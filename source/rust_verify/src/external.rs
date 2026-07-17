@@ -684,8 +684,18 @@ fn get_attributes_for_automatic_derive<'tcx>(
                 };
 
                 let type_def_id = match impll.self_ty.kind {
+                    // self type may resolve to a primitive (e.g. macro-generated impls
+                    // on u8, usize, etc. in vstd), which has no def_id
                     rustc_hir::TyKind::Path(rustc_hir::QPath::Resolved(None, path)) => {
-                        path.res.def_id()
+                        match path.res.opt_def_id() {
+                            Some(def_id) => def_id,
+                            None => {
+                                if is_auto_derived {
+                                    warn_unknown();
+                                }
+                                return None;
+                            }
+                        }
                     }
                     _ => {
                         if is_auto_derived {
