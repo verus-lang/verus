@@ -11,7 +11,7 @@ type Crate = cargo_verus_toolchains::Crate<String>;
 fn main() -> anyhow::Result<()> {
     use std::io::Write;
 
-    let cli = Cli::parse_from(std::env::args());
+    let cli = Cli::parse();
     let toolchain = create_toolchain(cli.rolling)?;
     let manifest = format_manifest(&toolchain)?;
 
