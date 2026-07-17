@@ -3342,6 +3342,7 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test] not_support_let_pattern_mut_ref_binding_with_or_pat [] => verus_code! {
+        use vstd::prelude::*;
         fn test() {
             let x = Some((5, true));
             let Some((ref mut i, true | false)) = x;

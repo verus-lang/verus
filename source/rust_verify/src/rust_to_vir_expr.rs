@@ -3318,6 +3318,12 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 let tgt_vir = expr_to_vir_consume(bctx, tgt_expr)?;
                 let idx_vir = expr_to_vir_consume(bctx, idx_expr)?;
 
+                // typ args to Index:
+                // target typ without & or &mut
+                let tgt_typ_vir = bctx.mid_ty_to_vir(tgt_expr.span, &tgt_ty)?;
+                // idx typ
+                let idx_typ_vir = bctx.mid_ty_to_vir(idx_expr.span, &idx_ty)?;
+
                 let fun_typ_args = if ty_is_vec(bctx.ctxt.tcx, *tgt_ty) && idx_ty.is_usize() {
                     let fun = if mutbl {
                         vir::fun!(CrateId::Vstd => "std_specs", "vec", "vec_index_mut")
@@ -3325,16 +3331,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         vir::fun!(CrateId::Vstd => "std_specs", "vec", "vec_index")
                     };
 
-                    let mut tgt_typ_vir = undecorate_typ(&tgt_vir.typ);
-                    if mutbl {
-                        tgt_typ_vir = match &*tgt_typ_vir {
-                            TypX::MutRef(t) => t.clone(),
-                            _ => crate::internal_err!(
-                                expr.span,
-                                "Index operator expected TypX::MutRef"
-                            ),
-                        };
-                    }
                     let typ_args = match &*tgt_typ_vir {
                         TypX::Datatype(_, typ_args, _) => typ_args.clone(),
                         _ => crate::internal_err!(
@@ -3375,8 +3371,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     // general Index trait case
                     let (impl_paths, target_kind) =
                         resolve_index_call(bctx, *tgt_ty, idx_ty, false, expr.span)?;
-                    let typ_args =
-                        Arc::new(vec![undecorate_typ(&tgt_vir.typ), idx_vir.typ.clone()]);
+                    let typ_args = Arc::new(vec![tgt_typ_vir, idx_typ_vir]);
                     let fun = vir::fun!(CrateId::Core => "ops", "index", "Index", "index");
                     CallTarget::Fun(target_kind, fun, typ_args, impl_paths, call_target_attrs)
                 };
