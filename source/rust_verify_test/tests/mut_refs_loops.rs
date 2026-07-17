@@ -1224,11 +1224,10 @@ test_verify_one_file_with_options! {
         {
             loop {
                 *a.0 = 5;
-                // our analysis isn't precise enough to get this:
-                return; // FAILS
+                return;
             }
         }
-    } => Err(err) => assert_fails(err, 1)
+    } => Ok(())
 }
 
 test_verify_one_file_with_options! {
@@ -1549,11 +1548,10 @@ test_verify_one_file_with_options! {
         {
             loop {
                 *a.0 = 5;
-                // our analysis isn't precise enough to get this:
-                return; // FAILS
+                return;
             }
         }
-    } => Err(err) => assert_fails(err, 1)
+    } => Ok(())
 }
 
 test_verify_one_file_with_options! {

@@ -675,7 +675,7 @@ pub(crate) fn as_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Expr {
     try_box(ctx, expr.clone(), typ).unwrap_or(expr)
 }
 
-fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
+pub(crate) fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
     let f_name = match &**typ {
         TypX::Bool => Some(str_ident(crate::def::UNBOX_BOOL)),
         TypX::Int(_) => Some(str_ident(crate::def::UNBOX_INT)),
@@ -873,6 +873,33 @@ pub(crate) fn new_user_qid(ctx: &Ctx, exp: &Exp) -> Qid {
         None => {}
     }
     Some(Arc::new(qid))
+}
+
+pub(crate) fn apply_field(
+    ctx: &Ctx,
+    expr: Expr,
+    base_typ: &Typ,
+    datatype: &Dt,
+    variant: &Ident,
+    field: &Ident,
+) -> Expr {
+    let (ts, num_variants) = match &*undecorate_typ(base_typ) {
+        TypX::Datatype(Dt::Path(p), ts, _) => {
+            let (_, variants) = &ctx.global.datatypes[p];
+            (ts.clone(), variants.len())
+        }
+        TypX::Datatype(Dt::Tuple(_), ts, _) => (ts.clone(), 1),
+        _ => panic!("internal error: expected datatype in field op"),
+    };
+    let typ_to_ids = |typ| typ_to_ids(ctx, typ);
+    let mut exprs: Vec<Expr> = crate::datatype_to_air::field_typ_args(num_variants, || {
+        ts.iter().flat_map(typ_to_ids).collect()
+    });
+    exprs.push(expr);
+    Arc::new(ExprX::Apply(
+        ctx.name_ctxt.variant_field_ident(&encode_dt_as_path(datatype), variant, field),
+        Arc::new(exprs),
+    ))
 }
 
 pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<Expr, VirErr> {
@@ -1206,23 +1233,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             }
             UnaryOpr::Field(FieldOpr { datatype, variant, field, get_variant: _, check: _ }) => {
                 let expr = exp_to_expr(ctx, e, expr_ctxt)?;
-                let (ts, num_variants) = match &*undecorate_typ(&e.typ) {
-                    TypX::Datatype(Dt::Path(p), ts, _) => {
-                        let (_, variants) = &ctx.global.datatypes[p];
-                        (ts.clone(), variants.len())
-                    }
-                    TypX::Datatype(Dt::Tuple(_), ts, _) => (ts.clone(), 1),
-                    _ => panic!("internal error: expected datatype in field op"),
-                };
-                let mut exprs: Vec<Expr> =
-                    crate::datatype_to_air::field_typ_args(num_variants, || {
-                        ts.iter().flat_map(typ_to_ids).collect()
-                    });
-                exprs.push(expr);
-                Arc::new(ExprX::Apply(
-                    ctx.name_ctxt.variant_field_ident(&encode_dt_as_path(datatype), variant, field),
-                    Arc::new(exprs),
-                ))
+                apply_field(ctx, expr, &e.typ, datatype, variant, field)
             }
             UnaryOpr::ProofNote(_) | UnaryOpr::CustomErr(_) => {
                 // A `proof_note` label is metadata and has no effect otherwise.
