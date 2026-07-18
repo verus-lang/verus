@@ -397,6 +397,10 @@ pub struct FuncCheckSst {
     /// LocalDeclKind::Decreases have an assignment that must be carried into loop_isolation(false):
     pub local_decls_decreases_init: Stms,
     pub statics: Arc<Vec<Fun>>,
+    /// The last `AssertId` `ast_to_sst.rs` minted while building `body`, if
+    /// any. Lets sst_to_air.rs continue the same id sequence for checks it
+    /// synthesizes itself (see `sst_to_air::has_assert_stm_node`).
+    pub last_minted_id: Option<AssertId>,
 }
 
 #[derive(Debug, Clone, ToDebugSNode)]

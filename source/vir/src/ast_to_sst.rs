@@ -108,6 +108,7 @@ pub(crate) struct State<'a> {
     // Statics that are referenced (not counting statics in loops)
     statics: IndexSet<Fun>,
     pub assert_id_counter: u64,
+    last_minted_id: Option<air::ast::AssertId>,
     loop_id_counter: u64,
 
     pub mask: Option<MaskSet>,
@@ -132,6 +133,7 @@ pub(crate) struct State<'a> {
 pub(crate) struct FinalState {
     pub local_decls: Vec<LocalDecl>,
     pub statics: IndexSet<Fun>,
+    pub last_minted_id: Option<air::ast::AssertId>,
 }
 
 /// Used to represent the result of a computation that might not terminate
@@ -254,6 +256,7 @@ impl<'a> State<'a> {
             containing_closure: None,
             statics: IndexSet::new(),
             assert_id_counter: 0,
+            last_minted_id: None,
             loop_id_counter: 0,
             mask: None,
             au_pred_args: Vec::new(),
@@ -469,7 +472,7 @@ impl<'a> State<'a> {
             let mutbl = self.mutated_var_idents.get(&pre_local_decl.ident);
             local_decls.push(pre_local_decl.into_local_decl(mutbl)?);
         }
-        Ok(FinalState { local_decls, statics: self.statics })
+        Ok(FinalState { local_decls, statics: self.statics, last_minted_id: self.last_minted_id })
     }
 
     fn checking_spec_preconditions(&self, ctx: &Ctx) -> bool {
@@ -509,9 +512,10 @@ impl<'a> State<'a> {
     }
 
     pub fn next_assert_id(&mut self) -> Option<air::ast::AssertId> {
-        let aid = vec![self.assert_id_counter];
+        let aid = Arc::new(vec![self.assert_id_counter]);
         self.assert_id_counter += 1;
-        Some(Arc::new(aid))
+        self.last_minted_id = Some(aid.clone());
+        Some(aid)
     }
 
     /// Creates a new tmp var and adds a Stm to the stms vec asserting the new
@@ -1207,7 +1211,7 @@ pub(crate) fn expr_to_decls_exp_skip_checks(
     state.declare_params(params);
     let exp = expr_to_pure_exp_skip_checks(ctx, &mut state, expr)?;
     let exp = state.finalize_exp(ctx, &exp)?;
-    let FinalState { local_decls, statics: _ } = state.finalize()?;
+    let FinalState { local_decls, statics: _, last_minted_id: _ } = state.finalize()?;
     Ok((local_decls, exp))
 }
 
