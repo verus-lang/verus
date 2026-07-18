@@ -1418,16 +1418,6 @@ pub broadcast proof fn lemma_seq_push_index_different<A>(s: Seq<A>, a: A, i: int
     seq_inner::lemma_push_index_different(s.inner, a, i);
 }
 
-#[deprecated(note = "Seq axioms have been verified, and are now lemmas")]
-pub broadcast proof fn axiom_seq_push_index_different_alt<A>(s: Seq<A>, a: A, i: int)
-    requires
-        i < s.len(),
-    ensures
-        (#[trigger] s.push(a))[i] == #[trigger] s[i],
-{
-    lemma_seq_push_index_different_alt(s, a, i)
-}
-
 // Expensive lemma; not in the default broadcast group
 pub broadcast proof fn lemma_seq_push_index_different_alt<A>(s: Seq<A>, a: A, i: int)
     requires
@@ -1474,17 +1464,6 @@ pub broadcast proof fn lemma_seq_update_same<A>(s: Seq<A>, i: int, a: A)
     seq_inner::lemma_update_index_same(s.inner, i, a);
 }
 
-#[deprecated(note = "Seq axioms have been verified, and are now lemmas")]
-pub broadcast proof fn axiom_seq_update_same_alt<A>(s: Seq<A>, i: int, a: A)
-    requires
-        0 <= i < s.len(),
-    ensures
-        #![trigger s.update(i, a), s[i]]
-        s.update(i, a)[i] == a,
-{
-    lemma_seq_update_same_alt(s, i, a)
-}
-
 // Expensive lemma; not in the default broadcast group
 pub broadcast proof fn lemma_seq_update_same_alt<A>(s: Seq<A>, i: int, a: A)
     requires
@@ -1514,16 +1493,6 @@ pub broadcast proof fn lemma_seq_update_different<A>(s: Seq<A>, i1: int, i2: int
         #[trigger] s.update(i2, a)[i1] == s[i1],
 {
     seq_inner::lemma_update_index_different(s.inner, i1, i2, a);
-}
-
-#[deprecated(note = "Seq axioms have been verified, and are now lemmas")]
-pub broadcast proof fn axiom_seq_update_different_alt<A>(s: Seq<A>, i1: int, i2: int, a: A)
-    requires
-        i1 != i2,
-    ensures
-        (#[trigger] s.update(i2, a))[i1] == #[trigger] s[i1],
-{
-    lemma_seq_update_different_alt(s, i1, i2, a)
 }
 
 // Expensive lemma; not in the default broadcast group
@@ -1716,17 +1685,6 @@ pub broadcast proof fn lemma_seq_subrange_index<A>(s: Seq<A>, j: int, k: int, i:
     seq_inner::lemma_subrange_index(s.inner, j, k, i);
 }
 
-#[deprecated(note = "Seq axioms have been verified, and are now lemmas")]
-pub broadcast proof fn axiom_seq_subrange_index_alt<A>(s: Seq<A>, j: int, k: int, i: int)
-    requires
-        0 <= j <= k <= s.len(),
-        0 <= i - j < k - j,
-    ensures
-        (#[trigger] s.subrange(j, k))[i - j] == #[trigger] s[i],
-{
-    lemma_seq_subrange_index_alt(s, j, k, i)
-}
-
 // Expensive lemma; not in the default broadcast group
 pub broadcast proof fn lemma_seq_subrange_index_alt<A>(s: Seq<A>, j: int, k: int, i: int)
     requires
@@ -1737,19 +1695,6 @@ pub broadcast proof fn lemma_seq_subrange_index_alt<A>(s: Seq<A>, j: int, k: int
 {
     broadcast use lemma_seq_subrange_index;
 
-}
-
-#[deprecated(note = "Seq axioms have been verified, and are now lemmas")]
-pub broadcast proof fn axiom_seq_two_subranges_index<A>(s: Seq<A>, j: int, k1: int, k2: int, i: int)
-    requires
-        0 <= j <= k1 <= s.len(),
-        0 <= j <= k2 <= s.len(),
-        0 <= i < k1 - j,
-        0 <= i < k2 - j,
-    ensures
-        #[trigger] s.subrange(j, k1)[i] == (#[trigger] s.subrange(j, k2))[i],
-{
-    lemma_seq_two_subranges_index(s, j, k1, k2, i)
 }
 
 // Less expensive, more limited alternative to lemma_seq_subrange_index_alt
@@ -1819,16 +1764,6 @@ pub broadcast proof fn lemma_seq_add_index2<A>(s1: Seq<A>, s2: Seq<A>, i: int)
     seq_inner::lemma_add_index2(s1.inner, s2.inner, i);
 }
 
-#[deprecated(note = "Seq axioms have been verified, and are now lemmas")]
-pub broadcast proof fn axiom_seq_add_index1_alt<A>(s1: Seq<A>, s2: Seq<A>, i: int)
-    requires
-        0 <= i < s1.len(),
-    ensures
-        (#[trigger] s1.add(s2))[i] == #[trigger] s1[i],
-{
-    lemma_seq_add_index1_alt(s1, s2, i)
-}
-
 // Expensive lemma; not in the default broadcast group
 pub broadcast proof fn lemma_seq_add_index1_alt<A>(s1: Seq<A>, s2: Seq<A>, i: int)
     requires
@@ -1838,16 +1773,6 @@ pub broadcast proof fn lemma_seq_add_index1_alt<A>(s1: Seq<A>, s2: Seq<A>, i: in
 {
     broadcast use lemma_seq_add_index1;
 
-}
-
-#[deprecated(note = "Seq axioms have been verified, and are now lemmas")]
-pub broadcast proof fn axiom_seq_add_index2_alt<A>(s1: Seq<A>, s2: Seq<A>, i: int)
-    requires
-        0 <= i < s2.len(),
-    ensures
-        (#[trigger] s1.add(s2))[i + s1.len()] == #[trigger] s2[i],
-{
-    lemma_seq_add_index2_alt(s1, s2, i);
 }
 
 // Expensive lemma; not in the default broadcast group

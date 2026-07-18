@@ -102,7 +102,7 @@ pub broadcast group group_vstd_default {
     //
     // basic Verus math, types, and features
     //
-    seq::group_seq_axioms,
+    seq::group_seq_lemmas,
     seq_lib::group_seq_lib_default,
     map::group_map_lemmas,
     set::group_set_lemmas,

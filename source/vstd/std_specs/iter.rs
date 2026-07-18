@@ -1,6 +1,6 @@
 use super::super::prelude::*;
 use super::super::seq::{
-    group_seq_axioms, lemma_seq_empty, lemma_seq_subrange_index, lemma_seq_subrange_len,
+    group_seq_lemmas, lemma_seq_empty, lemma_seq_subrange_index, lemma_seq_subrange_len,
 };
 
 use verus as verus_;
@@ -489,7 +489,7 @@ impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
             self.history = Ghost(old_history.push(ret->0));
         }
         proof {
-            broadcast use group_seq_axioms;
+            broadcast use group_seq_lemmas;
             if ret.is_some() {
                 self.index@ = self.index@ + 1;
             }

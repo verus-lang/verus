@@ -15,7 +15,7 @@ use super::set::*;
 
 verus! {
 
-broadcast use group_seq_axioms;
+broadcast use group_seq_lemmas;
 
 impl<A> Seq<A> {
     /// Applies the function `f` to each element of the sequence, and returns
@@ -1222,7 +1222,7 @@ impl<A> Seq<A> {
         broadcast use lemma_seq_concat_contains_all_elements;
         broadcast use lemma_seq_empty_contains_nothing;
         broadcast use lemma_seq_contains_after_push;
-        broadcast use super::seq::group_seq_axioms;
+        broadcast use super::seq::group_seq_lemmas;
         broadcast use super::set_lib::group_set_properties;
 
     }
@@ -1237,7 +1237,7 @@ impl<A> Seq<A> {
         broadcast use lemma_seq_concat_contains_all_elements;
         broadcast use lemma_seq_empty_contains_nothing;
         broadcast use lemma_seq_contains_after_push;
-        broadcast use super::seq::group_seq_axioms;
+        broadcast use super::seq::group_seq_lemmas;
         broadcast use super::set_lib::group_set_properties;
 
     }
