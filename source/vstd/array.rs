@@ -88,6 +88,7 @@ pub broadcast axiom fn array_len_matches_n<T, const N: usize>(ar: &[T; N])
 ;
 
 pub uninterp spec fn spec_array_as_slice<T, const N: usize>(ar: &[T; N]) -> (out: &[T]);
+
 pub broadcast axiom fn axiom_spec_array_as_slice<T, const N: usize>(ar: &[T; N])
     ensures
         (#[trigger] spec_array_as_slice(ar))@ == ar@,

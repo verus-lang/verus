@@ -12,7 +12,7 @@ use verus as verus_;
 verus_! {
 
 impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for usize {
-    open spec fn index_requires(&self, slice: &[T]) -> bool {
+    open spec fn index_req(&self, slice: &[T]) -> bool {
         *self < slice@.len()
     }
 }
@@ -29,7 +29,7 @@ pub assume_specification<T>[ <usize as SliceIndex<[T]>>::index_mut ](i: usize, s
 ;
 
 impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for Range<usize> {
-    open spec fn index_requires(&self, slice: &[T]) -> bool {
+    open spec fn index_req(&self, slice: &[T]) -> bool {
         &&& self.start <= self.end
         &&& self.end <= slice@.len()
     }
@@ -48,8 +48,8 @@ pub assume_specification<T>[ <Range<usize> as SliceIndex<[T]>>::index_mut ](i: R
 ;
 
 impl<T, I: SliceIndex<[T]>> super::core::IndexSpecImpl<I> for [T] {
-    open spec fn index_requires(&self, index: &I) -> bool {
-        index.index_requires(self)
+    open spec fn index_req(&self, index: &I) -> bool {
+        index.index_req(self)
     }
 }
 
@@ -73,8 +73,8 @@ impl<T, I, const N: usize> super::core::IndexSpecImpl<I> for [T; N]
 where
     [T]: Index<I>,
 {
-    open spec fn index_requires(&self, index: &I) -> bool {
-        <[T] as IndexSpec<I>>::index_requires(self, index)
+    open spec fn index_req(&self, index: &I) -> bool {
+        <[T] as IndexSpec<I>>::index_req(self, index)
     }
 }
 
@@ -89,10 +89,11 @@ pub assume_specification<T, I, const N: usize>[ <[T; N]>::index_mut ](array: &mu
     where
         [T]: IndexMut<I>,
     ensures
-        forall|slice: &mut [T]| #![trigger slice@] {
-            &&& slice@ == old(array)@
+        exists|slice: &mut [T]| {
+            &&& #[trigger] slice@ == old(array)@
             &&& final(slice)@ == final(array)@
-        } ==> call_ensures(<[T]>::index_mut, (slice, index), output),
+            &&& call_ensures(<[T]>::index_mut, (slice, index), output)
+        },
 ;
 
 pub assume_specification[ core::hint::unreachable_unchecked ]() -> !

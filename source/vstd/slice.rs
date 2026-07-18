@@ -122,16 +122,16 @@ pub trait ExSliceIndex<T> where T: ?Sized {
 
     type Output: ?Sized;
 
-    spec fn index_requires(&self, slice: &T) -> bool;
+    spec fn index_req(&self, slice: &T) -> bool;
 
-    fn index(self, slice: &T) -> (output: &Self::Output)
+    fn index(self, slice: &T) -> &Self::Output
         requires
-            self.index_requires(slice),
+            self.index_req(slice),
     ;
 
-    fn index_mut(self, slice: &mut T) -> (output: &mut Self::Output)
+    fn index_mut(self, slice: &mut T) -> &mut Self::Output
         requires
-            self.index_requires(slice),
+            self.index_req(slice),
     ;
 }
 

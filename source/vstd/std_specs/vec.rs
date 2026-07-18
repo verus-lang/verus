@@ -176,8 +176,8 @@ pub assume_specification<T: core::clone::Clone, A: Allocator>[ Vec::<T, A>::exte
 ;
 
 impl<T: Sized, I: SliceIndex<[T]>, A: Allocator> super::core::IndexSpecImpl<I> for Vec<T, A> {
-    open spec fn index_requires(&self, index: &I) -> bool {
-        forall|s: &[T]| #[trigger] s@ == self@ ==> index.index_requires(s)
+    open spec fn index_req(&self, index: &I) -> bool {
+        forall|s: &[T]| #[trigger] s@ == self@ ==> index.index_req(s)
     }
 }
 
