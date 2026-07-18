@@ -1615,8 +1615,8 @@ struct State {
 }
 
 /// `--expand-errors` looks up its target assertion by id in the SST tree,
-/// which only has nodes for ids up to `last_minted_id`; anything past that
-/// is one of ours, and would make it panic.
+/// which only has nodes for ids up to `last_minted_id`; an id past that
+/// has no SST node and would make it panic.
 pub fn has_assert_stm_node(
     id: &air::ast::AssertId,
     last_minted_id: &Option<air::ast::AssertId>,
