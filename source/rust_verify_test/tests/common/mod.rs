@@ -335,6 +335,8 @@ pub fn run_verus(
         } else if *option == "--edition 2024" {
             verus_args.push("--edition".to_string());
             verus_args.push("2024".to_string());
+        } else if *option == "--triggers" {
+            verus_args.push("--triggers".to_string());
         } else {
             panic!("option '{}' not recognized by test harness", option);
         }
