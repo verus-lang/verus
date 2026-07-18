@@ -456,3 +456,28 @@ test_verify_one_file_with_options! {
         }
     } => Err(e) => assert_expand_fails(e, 1)
 }
+
+// A loop-invariant-preservation check is synthesized at SST->AIR lowering
+// time, with no pre-existing SST node (and hence no ordinary AssertId) to
+// forward for it - `--expand-errors` was never designed to receive this
+// shape of id at all, and used to crash the whole process
+// (`assert_id.len() == 1` in expand_errors_driver.rs) whenever such a check
+// happened to be a function's first failing assertion. Confirms
+// --expand-errors degrades to ordinary (non-expanded) error reporting for
+// this case instead of crashing.
+test_verify_one_file_with_options! {
+    #[test] test_expand_errors_does_not_crash_on_loop_invariant_failure ["--expand-errors"] => verus_code! {
+        fn count_up(n: u32) -> (r: u32)
+            ensures r == n, // FAILS
+        {
+            let mut i: u32 = 0;
+            while i < n
+                invariant i <= 100, // FAILS
+                decreases n - i,
+            {
+                i = i + 1;
+            }
+            i
+        }
+    } => Err(e) => assert_fails(e, 2)
+}
