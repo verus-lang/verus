@@ -5,8 +5,8 @@ edition = "2021"
 
 [dependencies]
 vstd = { path = "../../../source/vstd" }
-builtin = { path = "../../../source/builtin" }
-builtin_macros = { path = "../../../source/builtin_macros" }
+builtin = { package = "verus_builtin", path = "../../../source/builtin" }
+builtin_macros = { package = "verus_builtin_macros", path = "../../../source/builtin_macros" }
 library = { path = "../library", features = ["explicit-verus-deps"] }
 
 [package.metadata.verus]
