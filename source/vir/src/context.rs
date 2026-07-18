@@ -35,6 +35,72 @@ pub struct ChosenTriggers {
     pub manual: bool,
 }
 
+/// The same quantifier is sometimes independently elaborated more than once
+/// (e.g. once for a function's own postcondition check, and again for the
+/// fact assumed at its call sites) - each elaboration reruns trigger search
+/// from scratch, and tie-breaking among equally-scored candidates isn't
+/// fully deterministic, so two runs over the identical source span can
+/// report slightly different-looking results. Keep only the first report
+/// per (module, span) so a user never sees the same span's "chose triggers"
+/// note printed twice with confusingly different content.
+fn dedup_chosen_triggers_by_span<'a>(
+    all: impl Iterator<Item = &'a ChosenTriggers>,
+) -> Vec<ChosenTriggers> {
+    let mut seen = HashSet::new();
+    all.filter(|c| seen.insert((format!("{:?}", c.module), c.span.as_string.clone())))
+        .cloned()
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fake_span(as_string: &str) -> Span {
+        let raw_span: crate::messages::RawSpan = Arc::new(());
+        Span { raw_span, id: 0, data: vec![], as_string: as_string.to_string() }
+    }
+
+    fn fake_module() -> Path {
+        Arc::new(crate::ast::PathX { krate: CrateId::Internal, segments: Arc::new(vec![]) })
+    }
+
+    fn fake_chosen(span_str: &str, n_triggers: usize) -> ChosenTriggers {
+        ChosenTriggers {
+            module: fake_module(),
+            span: fake_span(span_str),
+            triggers: (0..n_triggers).map(|_| vec![]).collect(),
+            low_confidence: false,
+            manual: false,
+        }
+    }
+
+    /// Real bug this closes (verus-lang/verus#1907): the same quantifier
+    /// span could be reported twice, with confusingly different (and
+    /// overlapping-but-not-identical) numbered trigger lists both claiming
+    /// to be "the" chosen triggers for that expression.
+    #[test]
+    fn dedup_chosen_triggers_by_span_keeps_only_the_first_per_span() {
+        let all = vec![
+            fake_chosen("a.rs:1:1", 4),
+            fake_chosen("a.rs:1:1", 4),
+            fake_chosen("b.rs:2:2", 1),
+        ];
+        let deduped = dedup_chosen_triggers_by_span(all.iter());
+        assert_eq!(deduped.len(), 2);
+        assert_eq!(deduped[0].span.as_string, "a.rs:1:1");
+        assert_eq!(deduped[0].triggers.len(), 4);
+        assert_eq!(deduped[1].span.as_string, "b.rs:2:2");
+    }
+
+    #[test]
+    fn dedup_chosen_triggers_by_span_is_a_no_op_when_spans_differ() {
+        let all = vec![fake_chosen("a.rs:1:1", 4), fake_chosen("b.rs:2:2", 1)];
+        let deduped = dedup_chosen_triggers_by_span(all.iter());
+        assert_eq!(deduped.len(), 2);
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct WarningConfig(pub Vec<WarningAllow>);
 
@@ -778,7 +844,7 @@ impl GlobalCtx {
 
     // Report chosen triggers as strings for printing diagnostics
     pub fn get_chosen_triggers(&self) -> Vec<ChosenTriggers> {
-        self.chosen_triggers.borrow().clone()
+        dedup_chosen_triggers_by_span(self.chosen_triggers.borrow().iter())
     }
 
     pub fn set_interpreter_log_file(
