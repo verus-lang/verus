@@ -1784,6 +1784,9 @@ impl Verifier {
                             if any_invalid
                                 && self.args.expand_errors
                                 && default_prover_failed_assert_ids.len() > 0
+                                && !vir::sst_to_air::is_synthetic_assert_id(
+                                    &default_prover_failed_assert_ids[0],
+                                )
                             {
                                 function_opgen.start_expand_errors_if_possible(
                                     &op,

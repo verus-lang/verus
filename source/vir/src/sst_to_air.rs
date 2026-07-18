@@ -1611,9 +1611,34 @@ struct State {
     post_condition_info: PostConditionInfo,
     loop_infos: Vec<LoopInfo>,
     static_prelude: Vec<Stmt>,
+    /// Counter for minting synthetic AssertIds for loop-invariant/decreases
+    /// checks (see `next_synthetic_assert_id`).
+    synthetic_assert_id_counter: u64,
+}
+
+/// Whether `id` was minted by `next_synthetic_assert_id` rather than a real
+/// `ast_to_sst.rs` id (those are always one element; synthetic ids are
+/// always two, with `u64::MAX` first). Needed since `--expand-errors`
+/// assumes `assert_id.len() == 1` and panics otherwise.
+pub fn is_synthetic_assert_id(id: &air::ast::AssertId) -> bool {
+    matches!(id.as_slice(), [first, _] if *first == u64::MAX)
 }
 
 impl State {
+    /// Loop-invariant/decreases checks are synthesized here with no
+    /// SST-level `StmX::Assert` node to source a real id from, so they need
+    /// one minted fresh. The two-element shape (`vec![u64::MAX, n]`) can
+    /// never collide with a real, always-one-element id, with no
+    /// cross-module coordination needed. Takes `&mut u64` rather than
+    /// `&mut self` since every call site mints this while a `&LoopInfo`
+    /// borrowed from `state.loop_infos` is still live, and a `&mut self`
+    /// call would conflict with that.
+    fn next_synthetic_assert_id(counter: &mut u64) -> Option<air::ast::AssertId> {
+        let id = vec![u64::MAX, *counter];
+        *counter += 1;
+        Some(Arc::new(id))
+    }
+
     /// get the current sid (top of the scope stack)
     fn get_current_sid(&self) -> Ident {
         let last = self.sids.last().unwrap();
@@ -2425,7 +2450,12 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                             and use 'ensures' for what is true at the break)";
                         error = error.secondary_label(span, msg);
                     }
-                    stmts.push(Arc::new(StmtX::Assert(None, error, None, inv.clone())));
+                    stmts.push(Arc::new(StmtX::Assert(
+                        State::next_synthetic_assert_id(&mut state.synthetic_assert_id_counter),
+                        error,
+                        None,
+                        inv.clone(),
+                    )));
                 }
                 let decrease = &loop_info.decrease;
                 if !is_break && decrease.len() > 0 {
@@ -2448,7 +2478,12 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     )?;
                     let expr = exp_to_expr(ctx, &dec_exp, expr_ctxt)?;
                     let error = error(&stm.span, crate::def::DEC_FAIL_LOOP_CONTINUE);
-                    let dec_stmt = StmtX::Assert(None, error, None, expr);
+                    let dec_stmt = StmtX::Assert(
+                        State::next_synthetic_assert_id(&mut state.synthetic_assert_id_counter),
+                        error,
+                        None,
+                        expr,
+                    );
                     stmts.push(Arc::new(dec_stmt));
                 }
             }
@@ -2803,7 +2838,12 @@ fn loop_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, V
             if let Some(msg) = msg {
                 error = error.secondary_label(span, &**msg);
             }
-            let inv_stmt = StmtX::Assert(None, error, None, inv.clone());
+            let inv_stmt = StmtX::Assert(
+                State::next_synthetic_assert_id(&mut state.synthetic_assert_id_counter),
+                error,
+                None,
+                inv.clone(),
+            );
             air_body.push(Arc::new(inv_stmt));
         }
         if decrease.len() > 0 {
@@ -2816,7 +2856,12 @@ fn loop_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, V
             )?;
             let expr = exp_to_expr(ctx, &dec_exp, expr_ctxt)?;
             let error = error(&stm.span, crate::def::DEC_FAIL_LOOP_END);
-            let dec_stmt = StmtX::Assert(None, error, None, expr);
+            let dec_stmt = StmtX::Assert(
+                State::next_synthetic_assert_id(&mut state.synthetic_assert_id_counter),
+                error,
+                None,
+                expr,
+            );
             air_body.push(Arc::new(dec_stmt));
         }
     }
@@ -2863,7 +2908,12 @@ fn loop_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, V
             if let Some(msg) = msg {
                 error = error.secondary_label(span, &**msg);
             }
-            let inv_stmt = StmtX::Assert(None, error, None, inv.clone());
+            let inv_stmt = StmtX::Assert(
+                State::next_synthetic_assert_id(&mut state.synthetic_assert_id_counter),
+                error,
+                None,
+                inv.clone(),
+            );
             stmts.push(Arc::new(inv_stmt));
         }
     }
@@ -3088,6 +3138,7 @@ pub(crate) fn body_stm_to_air(
         },
         loop_infos: Vec::new(),
         static_prelude: mk_static_prelude(ctx, statics),
+        synthetic_assert_id_counter: 0,
     };
 
     let stm = crate::sst_vars::compute_assign_info(&mut state.assign_map, params, local_decls, stm);
