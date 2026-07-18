@@ -35,21 +35,29 @@ pub struct ChosenTriggers {
     pub manual: bool,
 }
 
-/// The same quantifier is sometimes independently elaborated more than once
-/// (e.g. once for a function's own postcondition check, and again for the
-/// fact assumed at its call sites) - each elaboration reruns trigger search
-/// from scratch, and tie-breaking among equally-scored candidates isn't
-/// fully deterministic, so two runs over the identical source span can
-/// report slightly different-looking results. Keep only the first report
-/// per (module, span) so a user never sees the same span's "chose triggers"
-/// note printed twice with confusingly different content.
+/// The same quantifier can re-elaborate more than once for the same span; a
+/// real minority of repeats genuinely differ (distinct variable
+/// incarnations, e.g. `m1!` vs. `old(m1!)`), so dedup by full content, not
+/// span alone - keeping every distinct report instead of arbitrarily just
+/// the first. Compares each trigger term's *rendered* text, not its raw
+/// `Span` (a fresh `Span` is minted per elaboration even when the text is
+/// identical, which would otherwise defeat this entirely).
 fn dedup_chosen_triggers_by_span<'a>(
     all: impl Iterator<Item = &'a ChosenTriggers>,
 ) -> Vec<ChosenTriggers> {
     let mut seen = HashSet::new();
-    all.filter(|c| seen.insert((format!("{:?}", c.module), c.span.as_string.clone())))
-        .cloned()
-        .collect()
+    all.filter(|c| {
+        let rendered_triggers: Vec<Vec<(&str, &str)>> = c
+            .triggers
+            .iter()
+            .map(|trig| {
+                trig.iter().map(|(span, term)| (span.as_string.as_str(), term.as_str())).collect()
+            })
+            .collect();
+        seen.insert((format!("{:?}", c.module), c.span.as_string.clone(), rendered_triggers))
+    })
+    .cloned()
+    .collect()
 }
 
 #[cfg(test)]
@@ -75,12 +83,25 @@ mod tests {
         }
     }
 
+    fn fake_chosen_trigger_text(span_str: &str, trigger_texts: &[&str]) -> ChosenTriggers {
+        ChosenTriggers {
+            module: fake_module(),
+            span: fake_span(span_str),
+            triggers: trigger_texts
+                .iter()
+                .map(|t| vec![(fake_span("term"), t.to_string())])
+                .collect(),
+            low_confidence: false,
+            manual: false,
+        }
+    }
+
     /// Real bug this closes (verus-lang/verus#1907): the same quantifier
-    /// span could be reported twice, with confusingly different (and
-    /// overlapping-but-not-identical) numbered trigger lists both claiming
-    /// to be "the" chosen triggers for that expression.
+    /// span could be reported twice with byte-for-byte identical content -
+    /// pure noise (766 of 879 real repeat-elaborations found in a live vstd
+    /// build were exactly this case). Keep only one copy.
     #[test]
-    fn dedup_chosen_triggers_by_span_keeps_only_the_first_per_span() {
+    fn dedup_chosen_triggers_by_span_drops_exact_duplicates() {
         let all = vec![
             fake_chosen("a.rs:1:1", 4),
             fake_chosen("a.rs:1:1", 4),
@@ -98,6 +119,34 @@ mod tests {
         let all = vec![fake_chosen("a.rs:1:1", 4), fake_chosen("b.rs:2:2", 1)];
         let deduped = dedup_chosen_triggers_by_span(all.iter());
         assert_eq!(deduped.len(), 2);
+    }
+
+    /// The real, more subtle case (113 of 879 repeat-elaborations in the
+    /// same live vstd build): the *same span* genuinely re-elaborates to
+    /// *different* trigger choices - confirmed to be a systematic
+    /// consequence of distinct variable incarnations (e.g. `m1!` on one
+    /// elaboration vs. `old(m1!)` on another, for the same `&mut` parameter
+    /// checked in two different contexts), not arbitrary noise. Both are
+    /// individually correct for their own elaboration and must both survive
+    /// - collapsing to "just keep the first" would silently discard one.
+    #[test]
+    fn dedup_chosen_triggers_by_span_keeps_every_distinct_content_for_the_same_span() {
+        let all = vec![
+            fake_chosen_trigger_text("a.rs:1:1", &["vstd::imap::IMap::index(K&, V&, m1!, k$)"]),
+            fake_chosen_trigger_text("a.rs:1:1", &["vstd::imap::IMap::index(K&, V&, m1!, k$)"]),
+            fake_chosen_trigger_text(
+                "a.rs:1:1",
+                &["vstd::imap::IMap::index(K&, V&, old(m1!), k$)"],
+            ),
+            fake_chosen_trigger_text(
+                "a.rs:1:1",
+                &["vstd::imap::IMap::index(K&, V&, old(m1!), k$)"],
+            ),
+        ];
+        let deduped = dedup_chosen_triggers_by_span(all.iter());
+        assert_eq!(deduped.len(), 2, "both distinct variants must survive, not just the first");
+        assert!(deduped.iter().any(|c| format!("{:?}", c.triggers).contains("old(m1!)")));
+        assert!(deduped.iter().any(|c| !format!("{:?}", c.triggers).contains("old(")));
     }
 }
 
