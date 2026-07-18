@@ -30,7 +30,7 @@ use super::seq::*;
 
 verus! {
 
-broadcast use super::seq::group_seq_axioms;
+broadcast use super::seq::group_seq_lemmas;
 /* Decoding UTF-8 to chars */
 
 /// True when the given byte conforms to the bit pattern for the first byte of a 1-byte UTF-8 encoding of a single codepoint.
