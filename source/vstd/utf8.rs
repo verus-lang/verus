@@ -460,6 +460,84 @@ pub open spec fn encode_utf8(chars: Seq<char>) -> Seq<u8>
     }
 }
 
+/* Relating encode_utf8 to the real char::len_utf8, for byte-offset/char-index reasoning */
+
+/// Matches Rust's real `char::len_utf8()` width to this module's own model:
+/// same scalar boundaries as [`encode_scalar`], and a `char` can never be a
+/// surrogate, so `encode_scalar`'s surrogate exclusion never applies here.
+#[verifier::allow_in_spec]
+pub assume_specification[ char::len_utf8 ](c: char) -> usize
+    returns
+        encode_scalar(c as u32).len() as usize,
+;
+
+/// [`encode_utf8`] distributes over sequence concatenation - lets a per-`char`
+/// byte offset be computed as a running sum instead of the whole string at once.
+pub proof fn lemma_encode_utf8_len_additive(a: Seq<char>, b: Seq<char>)
+    ensures
+        encode_utf8(a + b).len() == encode_utf8(a).len() + encode_utf8(b).len(),
+    decreases a.len(),
+{
+    if a.len() == 0 {
+        assert(a + b =~= b);
+    } else {
+        assert((a + b).drop_first() =~= a.drop_first() + b);
+        lemma_encode_utf8_len_additive(a.drop_first(), b);
+    }
+}
+
+/// Specialization of [`lemma_encode_utf8_len_additive`] for appending one
+/// `char` - ties `encode_utf8(chars.push(c))`'s length to `c`'s own width.
+pub proof fn lemma_encode_utf8_push_len(chars: Seq<char>, c: char)
+    ensures
+        encode_utf8(chars.push(c)).len() == encode_utf8(chars).len() + encode_scalar(
+            c as u32,
+        ).len(),
+{
+    assert(chars.push(c) =~= chars + seq![c]);
+    lemma_encode_utf8_len_additive(chars, seq![c]);
+    assert(seq![c].drop_first() =~= Seq::<char>::empty());
+    assert(encode_utf8(Seq::<char>::empty()) =~= Seq::<u8>::empty());
+    assert(encode_utf8(seq![c]) =~= encode_scalar(c as u32) + encode_utf8(
+        Seq::<char>::empty(),
+    ));
+    assert(encode_utf8(seq![c]).len() == encode_scalar(c as u32).len());
+}
+
+/// The `encode_utf8` byte length of a growing prefix never decreases.
+pub proof fn lemma_encode_utf8_len_monotonic(s: Seq<char>, i: int, j: int)
+    requires
+        0 <= i <= j <= s.len(),
+    ensures
+        encode_utf8(s.subrange(0, i)).len() <= encode_utf8(s.subrange(0, j)).len(),
+{
+    assert(s.subrange(0, i) + s.subrange(i, j) =~= s.subrange(0, j));
+    lemma_encode_utf8_len_additive(s.subrange(0, i), s.subrange(i, j));
+}
+
+/// A nonempty `char` sequence always encodes to at least one byte.
+pub proof fn lemma_encode_utf8_len_pos(s: Seq<char>)
+    requires
+        s.len() > 0,
+    ensures
+        encode_utf8(s).len() >= 1,
+{
+}
+
+/// Strict form of [`lemma_encode_utf8_len_monotonic`] - growing a prefix by
+/// at least one `char` strictly increases its encoded byte length.
+pub proof fn lemma_encode_utf8_len_strictly_monotonic(s: Seq<char>, i: int, j: int)
+    requires
+        0 <= i < j <= s.len(),
+    ensures
+        encode_utf8(s.subrange(0, i)).len() < encode_utf8(s.subrange(0, j)).len(),
+{
+    assert(s.subrange(0, i) + s.subrange(i, j) =~= s.subrange(0, j));
+    lemma_encode_utf8_len_additive(s.subrange(0, i), s.subrange(i, j));
+    assert(s.subrange(i, j).len() == j - i);
+    lemma_encode_utf8_len_pos(s.subrange(i, j));
+}
+
 /* Correspondence between encode_utf8 and decode_utf8 definitions */
 
 // Performing encode followed by decode on a scalar with a 1-byte UTF-8 encoding results in the same value.
