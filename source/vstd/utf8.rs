@@ -471,6 +471,17 @@ pub assume_specification[ char::len_utf8 ](c: char) -> usize
         encode_scalar(c as u32).len() as usize,
 ;
 
+/// For an ASCII `c`, `is_whitespace()` is exactly the 6-character C0 set
+/// (confirmed by exhaustively checking all 128 ASCII code points against
+/// real `rustc`) - Unicode's full `White_Space` property, which also covers
+/// non-ASCII code points, isn't modeled here, so `res` is unconstrained
+/// outside the ASCII case.
+pub assume_specification[ char::is_whitespace ](c: char) -> (res: bool)
+    ensures
+        c as u32 <= 0x7F ==> res == (c == ' ' || c == '\t' || c == '\n' || c == '\x0B'
+            || c == '\x0C' || c == '\r'),
+;
+
 /// [`encode_utf8`] distributes over sequence concatenation - lets a per-`char`
 /// byte offset be computed as a running sum instead of the whole string at once.
 pub proof fn lemma_encode_utf8_len_additive(a: Seq<char>, b: Seq<char>)
