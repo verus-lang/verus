@@ -172,6 +172,7 @@ jobs:
           . ../tools/activate
           vargo clean
           RUSTFLAGS="-C debug-assertions" vargo build --release
+          VERUS_Z3_PATH="$(pwd)/z3" cargo run -p vstd_build -- target-verus/release
 
       - name: full tests
         working-directory: ./source
