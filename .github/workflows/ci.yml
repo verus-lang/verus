@@ -223,6 +223,10 @@ jobs:
       - name: setup nextest
         uses: taiki-e/install-action@nextest
 
+      - name: build line-count tool
+        working-directory: ./source
+        run: cargo build -p line_count
+
       - name: build
         working-directory: ./source
         run: |
@@ -236,10 +240,6 @@ jobs:
         run: |
           . ../tools/activate
           VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run -p rust_verify_test --test basic
-
-      - name: build line-count tool
-        working-directory: ./source
-        run: cargo build -p line_count
 
   # check if esoteric conficurations build
   smoke-test:
