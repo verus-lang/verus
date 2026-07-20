@@ -13,7 +13,7 @@ test_verify_one_file! {
         pub struct One<T>(pub T);
 
         impl<T> IndexSpecImpl<usize> for One<T> {
-            open spec fn index_requires(&self, index: &usize) -> bool {
+            open spec fn index_req(&self, index: &usize) -> bool {
                 *index == 0
             }
         }
