@@ -14,11 +14,13 @@ members = [
   "rust_verify_test_macros",
   "state_machines_macros",
   "verusdoc",
-  "vstd",
   "vstd_build",
   "tools/bump_crate_versions",
   "tools/internals_interface",
   "tools/line_count",
+]
+exclude = [
+  "vstd",
 ]
 
 # do not modify the following two lines
