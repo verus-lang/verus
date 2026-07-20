@@ -1786,7 +1786,7 @@ pub broadcast proof fn lemma_seq_add_index2_alt<A>(s1: Seq<A>, s2: Seq<A>, i: in
 
 }
 
-#[deprecated(note = "Seq axioms have been verified, and are now lemmas")]
+#[deprecated(note = "Use `group_seq_lemmas` instead")]
 pub broadcast group group_seq_axioms {
     lemma_seq_index_decreases,
     lemma_seq_subrange_decreases,
