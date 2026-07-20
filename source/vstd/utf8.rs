@@ -471,34 +471,45 @@ pub assume_specification[ char::len_utf8 ](c: char) -> usize
         encode_scalar(c as u32).len() as usize,
 ;
 
-/// For an ASCII `c`, `is_whitespace()` is exactly the 6-character C0 set
-/// (confirmed by exhaustively checking all 128 ASCII code points against
-/// real `rustc`) - Unicode's full `White_Space` property, which also covers
-/// non-ASCII code points, isn't modeled here, so `res` is unconstrained
-/// outside the ASCII case.
+/// Unicode's `White_Space` property:
+/// <https://www.unicode.org/reports/tr44/#White_Space>.
+pub open spec fn is_white_space(c: char) -> bool {
+    c == '\u{9}' || c == '\u{A}' || c == '\u{B}' || c == '\u{C}' || c == '\u{D}' || c == '\u{20}'
+        || c == '\u{85}' || c == '\u{A0}' || c == '\u{1680}' || c == '\u{2000}' || c == '\u{2001}'
+        || c == '\u{2002}' || c == '\u{2003}' || c == '\u{2004}' || c == '\u{2005}' || c
+        == '\u{2006}' || c == '\u{2007}' || c == '\u{2008}' || c == '\u{2009}' || c == '\u{200A}'
+        || c == '\u{2028}' || c == '\u{2029}' || c == '\u{202F}' || c == '\u{205F}' || c
+        == '\u{3000}'
+}
+
 pub assume_specification[ char::is_whitespace ](c: char) -> (res: bool)
     ensures
-        c as u32 <= 0x7F ==> res == (c == ' ' || c == '\t' || c == '\n' || c == '\x0B' || c
-            == '\x0C' || c == '\r'),
+        res == is_white_space(c),
 ;
 
 /// [`encode_utf8`] distributes over sequence concatenation - lets a per-`char`
-/// byte offset be computed as a running sum instead of the whole string at once.
-pub proof fn lemma_encode_utf8_len_additive(a: Seq<char>, b: Seq<char>)
+/// byte offset be computed as a running sum instead of the whole string at
+/// once. Stated as full sequence equality (not just matching lengths), since
+/// the length fact then follows directly from `Seq`'s own additive-length
+/// property (`(a + b).len() == a.len() + b.len()`) at any call site that
+/// only needs it, with no separate length-specific lemma required.
+pub proof fn lemma_encode_utf8_concat(a: Seq<char>, b: Seq<char>)
     ensures
-        encode_utf8(a + b).len() == encode_utf8(a).len() + encode_utf8(b).len(),
+        encode_utf8(a + b) == encode_utf8(a) + encode_utf8(b),
     decreases a.len(),
 {
     if a.len() == 0 {
         assert(a + b =~= b);
     } else {
         assert((a + b).drop_first() =~= a.drop_first() + b);
-        lemma_encode_utf8_len_additive(a.drop_first(), b);
+        lemma_encode_utf8_concat(a.drop_first(), b);
+        assert(encode_scalar(a[0] as u32) + (encode_utf8(a.drop_first()) + encode_utf8(b)) =~= (
+        encode_scalar(a[0] as u32) + encode_utf8(a.drop_first())) + encode_utf8(b));
     }
 }
 
-/// Specialization of [`lemma_encode_utf8_len_additive`] for appending one
-/// `char` - ties `encode_utf8(chars.push(c))`'s length to `c`'s own width.
+/// Specialization of [`lemma_encode_utf8_concat`] for appending one `char` -
+/// ties `encode_utf8(chars.push(c))`'s length to `c`'s own width.
 pub proof fn lemma_encode_utf8_push_len(chars: Seq<char>, c: char)
     ensures
         encode_utf8(chars.push(c)).len() == encode_utf8(chars).len() + encode_scalar(
@@ -506,7 +517,7 @@ pub proof fn lemma_encode_utf8_push_len(chars: Seq<char>, c: char)
         ).len(),
 {
     assert(chars.push(c) =~= chars + seq![c]);
-    lemma_encode_utf8_len_additive(chars, seq![c]);
+    lemma_encode_utf8_concat(chars, seq![c]);
     assert(seq![c].drop_first() =~= Seq::<char>::empty());
     assert(encode_utf8(Seq::<char>::empty()) =~= Seq::<u8>::empty());
     assert(encode_utf8(seq![c]) =~= encode_scalar(c as u32) + encode_utf8(Seq::<char>::empty()));
@@ -521,7 +532,7 @@ pub proof fn lemma_encode_utf8_len_monotonic(s: Seq<char>, i: int, j: int)
         encode_utf8(s.subrange(0, i)).len() <= encode_utf8(s.subrange(0, j)).len(),
 {
     assert(s.subrange(0, i) + s.subrange(i, j) =~= s.subrange(0, j));
-    lemma_encode_utf8_len_additive(s.subrange(0, i), s.subrange(i, j));
+    lemma_encode_utf8_concat(s.subrange(0, i), s.subrange(i, j));
 }
 
 /// A nonempty `char` sequence always encodes to at least one byte.
@@ -542,7 +553,7 @@ pub proof fn lemma_encode_utf8_len_strictly_monotonic(s: Seq<char>, i: int, j: i
         encode_utf8(s.subrange(0, i)).len() < encode_utf8(s.subrange(0, j)).len(),
 {
     assert(s.subrange(0, i) + s.subrange(i, j) =~= s.subrange(0, j));
-    lemma_encode_utf8_len_additive(s.subrange(0, i), s.subrange(i, j));
+    lemma_encode_utf8_concat(s.subrange(0, i), s.subrange(i, j));
     assert(s.subrange(i, j).len() == j - i);
     lemma_encode_utf8_len_pos(s.subrange(i, j));
 }
