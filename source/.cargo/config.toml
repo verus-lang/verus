@@ -1,2 +1,7 @@
+[build]
+target-dir = "target-verus"
+
 [env]
 RUSTC_BOOTSTRAP = "1"
+VERUS_IN_VARGO = "1"
+VERUS_Z3_PATH = { value = "z3", relative = true }
