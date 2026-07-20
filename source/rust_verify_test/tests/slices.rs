@@ -237,6 +237,176 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 8)
 }
 
+// verus-lang/verus#2657: SliceIndex had no spec for RangeTo, so `s[..3]`
+// failed with a confusing precondition error even though `s[0..3]` worked.
+test_verify_one_file! {
+    #[test] test_slice_index_range_to verus_code! {
+        use std::ops::Index;
+        use vstd::prelude::*;
+
+        fn range_to(s: &[u8]) {
+            assume(s.len() == 5);
+            let x = &s[..3];
+            assert(x@ == s@.subrange(0, 3));
+            assert(x@ == s@.subrange(0, 4)); // FAILS
+        }
+
+        fn range_to_bounds(s: &[u8]) {
+            assume(s.len() == 5);
+            let x = &s[..7]; // FAILS
+        }
+
+        fn range_to_index(s: &[u8]) {
+            assume(s.len() == 5);
+            let x = s.index(..3);
+            assert(x@ == s@.subrange(0, 3));
+            assert(x@ == s@.subrange(0, 4)); // FAILS
+        }
+
+        fn range_to_index_bounds(s: &[u8]) {
+            assume(s.len() == 5);
+            let x = s.index(..7); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 4)
+}
+
+// The same gap existed for RangeFrom, RangeToInclusive, RangeFull, and
+// RangeInclusive - `s[5..]`, `s[..=3]`, `s[..]`, `s[1..=3]` all failed the
+// same way as `s[..3]` did before the RangeTo fix above.
+test_verify_one_file! {
+    #[test] test_slice_index_range_from verus_code! {
+        use vstd::prelude::*;
+
+        fn range_from(s: &[u8]) {
+            assume(s.len() == 5);
+            let x = &s[2..];
+            assert(x@ == s@.subrange(2, 5));
+            assert(x@ == s@.subrange(1, 5)); // FAILS
+        }
+
+        fn range_from_bounds(s: &[u8]) {
+            assume(s.len() == 5);
+            let x = &s[7..]; // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] test_slice_index_range_to_inclusive verus_code! {
+        use vstd::prelude::*;
+
+        fn range_to_inclusive(s: &[u8]) {
+            assume(s.len() == 5);
+            let x = &s[..=3];
+            assert(x@ == s@.subrange(0, 4));
+            assert(x@ == s@.subrange(0, 3)); // FAILS
+        }
+
+        fn range_to_inclusive_bounds(s: &[u8]) {
+            assume(s.len() == 5);
+            let x = &s[..=5]; // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] test_slice_index_range_full verus_code! {
+        use vstd::prelude::*;
+
+        fn range_full(s: &[u8]) {
+            assume(s.len() == 5);
+            let x = &s[..];
+            assert(x@ == s@);
+            assert(x@.len() == 4); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_slice_index_range_inclusive verus_code! {
+        use vstd::prelude::*;
+
+        fn range_inclusive(s: &[u8]) {
+            assume(s.len() == 5);
+            let x = &s[1..=3];
+            assert(x@ == s@.subrange(1, 4));
+            assert(x@ == s@.subrange(1, 3)); // FAILS
+        }
+
+        fn range_inclusive_bounds(s: &[u8]) {
+            assume(s.len() == 5);
+            let x = &s[1..=5]; // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+// The non-panicking `.get()` form went through `spec_slice_get`, which was
+// only ever given meaning for a `usize` index - for every range type, the
+// result was completely opaque, unprovable in either direction.
+test_verify_one_file! {
+    #[test] test_slice_get_ranges verus_code! {
+        use vstd::prelude::*;
+
+        fn range_get(s: &[u8]) {
+            assume(s.len() == 5);
+            let some = s.get(1..3);
+            assert(some.is_some());
+            assert(some.unwrap()@ == s@.subrange(1, 3));
+            let none = s.get(1..7);
+            assert(none.is_none());
+        }
+
+        fn range_to_get(s: &[u8]) {
+            assume(s.len() == 5);
+            let some = s.get(..3);
+            assert(some.is_some());
+            assert(some.unwrap()@ == s@.subrange(0, 3));
+            let none = s.get(..7);
+            assert(none.is_none());
+        }
+
+        fn range_from_get(s: &[u8]) {
+            assume(s.len() == 5);
+            let some = s.get(2..);
+            assert(some.is_some());
+            assert(some.unwrap()@ == s@.subrange(2, 5));
+            let none = s.get(7..);
+            assert(none.is_none());
+        }
+
+        fn range_to_inclusive_get(s: &[u8]) {
+            assume(s.len() == 5);
+            let some = s.get(..=3);
+            assert(some.is_some());
+            assert(some.unwrap()@ == s@.subrange(0, 4));
+            let none = s.get(..=7);
+            assert(none.is_none());
+        }
+
+        fn range_full_get(s: &[u8]) {
+            assume(s.len() == 5);
+            let some = s.get(..);
+            assert(some.is_some());
+            assert(some.unwrap()@ == s@);
+        }
+
+        fn range_inclusive_get(s: &[u8]) {
+            assume(s.len() == 5);
+            let some = s.get(1..=3);
+            assert(some.is_some());
+            assert(some.unwrap()@ == s@.subrange(1, 4));
+            let none = s.get(1..=7);
+            assert(none.is_none());
+        }
+
+        fn range_get_wrong_fails(s: &[u8]) {
+            assume(s.len() == 5);
+            let some = s.get(1..3);
+            assert(some.unwrap()@ == s@.subrange(1, 4)); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
 test_verify_one_file! {
     #[test] test_array_index verus_code! {
         use std::ops::Index;
