@@ -522,7 +522,13 @@ pub fn run_cargo_verus_with_target(
     let bin = verus_target_path.join(format!("cargo-verus{exe}"));
 
     let mut child = std::process::Command::new(bin);
-    child.current_dir(dir);
+    let invocation_dir = tempfile::tempdir().expect("temporary cargo invocation directory");
+    let manifest_path = dir.join("Cargo.toml");
+    if args.first() == Some(&"new") {
+        child.current_dir(dir);
+    } else {
+        child.current_dir(invocation_dir.path());
+    }
     child.env("CARGO_TARGET_DIR", target_dir);
     child.env("CARGO_BUILD_TARGET_DIR", target_dir);
     child.env("CARGO_BUILD_BUILD_DIR", target_dir);
@@ -543,8 +549,16 @@ pub fn run_cargo_verus_with_target(
     let z3 = path::absolute(z3).expect("Failed to find absolute path for Z3 executable");
     child.env("VERUS_Z3_PATH", z3);
 
+    let mut cargo_verus_args = Vec::new();
+    cargo_verus_args.push(args[0]);
+    if args.first() != Some(&"new") {
+        cargo_verus_args
+            .extend(["--manifest-path", manifest_path.to_str().expect("valid manifest path")]);
+    }
+    cargo_verus_args.extend(&args[1..]);
+
     let child = child
-        .args(args)
+        .args(cargo_verus_args)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -570,8 +584,10 @@ pub fn run_cargo_with_target(
     // if std::env::var("VERUS_IN_VARGO").is_err() {
     //     panic!("not running in vargo, read the README for instructions");
     // }
+    let invocation_dir = tempfile::tempdir().expect("temporary cargo invocation directory");
+    let manifest_path = dir.join("Cargo.toml");
     let mut child = std::process::Command::new("cargo");
-    child.current_dir(dir);
+    child.current_dir(invocation_dir.path());
 
     // Remove Verus-specific RUSTFLAGS that are set by vargo, as they cause
     // verus_builtin and vstd to require unstable features not available on stable Rust
@@ -582,6 +598,7 @@ pub fn run_cargo_with_target(
 
     let child = child
         .args(args)
+        .args(["--manifest-path", manifest_path.to_str().expect("valid manifest path")])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
