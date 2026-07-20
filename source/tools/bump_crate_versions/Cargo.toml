@@ -4,11 +4,13 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-chrono = "0.4.41"
-regex = "1.11.1"
-toml_edit = "0.23.3"
-clap = { version = "4.5.26", features = ["derive"] }
-petgraph = "0.8.3"
-crates_io_api = "0.12.0"
+chrono = { workspace = true }
+clap = { workspace = true }
+crates_io_api = { workspace = true }
+# petgraph 0.6.0 is a transient dependency of smt-scope, which has outdated dependencies
+petgraph = "0.8.0"
+regex = { workspace = true }
+toml_edit = { workspace = true }
 
-[workspace]
+[lints]
+workspace = true

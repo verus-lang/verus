@@ -10,7 +10,7 @@ use super::view::*;
 
 verus! {
 
-broadcast use group_seq_axioms;
+broadcast use group_seq_lemmas;
 // Conversion between u16 and little-endian byte sequences
 
 pub closed spec fn spec_u16_to_le_bytes(x: u16) -> Seq<u8> {

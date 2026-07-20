@@ -25,7 +25,7 @@ permissions:
 jobs:
   # check if formatting is correct
   fmt:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: checkout
         uses: actions/checkout@v6
@@ -50,7 +50,7 @@ jobs:
 
   # run linter (clippy)
   clippy:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: checkout
         uses: actions/checkout@v6
@@ -71,9 +71,27 @@ jobs:
         working-directory: ./tools/vargo
         run: cargo clippy -- -D warnings
 
+  # smoke test toolchain manifest creation
+  create-manifest-smoke-test:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: checkout
+        uses: actions/checkout@v6
+
+      - name: setup rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.96.0
+
+      - name: smoke test create-manifest
+        working-directory: ./source
+        run: |
+          cargo run -p cargo-verus-toolchains --bin create-manifest -- --write-to-dir cargo-verus/toolchain-manifests
+          cargo run -p cargo-verus-toolchains --bin create-manifest -- --rolling --write-to-dir cargo-verus/toolchain-manifests
+
   # detect whether subprojects (e.g. cargo-verus) changed
   change_filter:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     outputs:
       cargo_verus: ${{ steps.filter.outputs.cargo_verus }}
     steps:
@@ -94,7 +112,7 @@ jobs:
   # run cargo-verus tests
   cargo-verus-test:
     needs: [fmt, clippy, change_filter]
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: check for cargo-verus changes
         if: needs.change_filter.outputs.cargo_verus != 'true'
@@ -177,7 +195,7 @@ jobs:
           - build: macos-x86_64
             os: macos-15-intel
           - build: linux
-            os: ubuntu-22.04
+            os: ubuntu-24.04
           - build: windows
             os: windows-2022
 
@@ -305,7 +323,7 @@ jobs:
   # will complain if there are warnings
   build-docs:
     needs: [fmt, clippy]
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: checkout
         uses: actions/checkout@v6

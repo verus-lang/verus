@@ -219,6 +219,7 @@ ast_struct! {
     pub struct SignatureInvariants {
         pub token: Token![opens_invariants],
         pub set: InvariantNameSet,
+        pub comma: Option<Token![,]>,
     }
 }
 
@@ -234,6 +235,7 @@ ast_enum_of_structs! {
         Any(InvariantNameSetAny),
         None(InvariantNameSetNone),
         List(InvariantNameSetList),
+        ListCompl(InvariantNameSetListCompl),
         Set(InvariantNameSetSet),
     }
 }
@@ -252,6 +254,15 @@ ast_struct! {
 
 ast_struct! {
     pub struct InvariantNameSetList {
+        pub bracket_token: token::Bracket,
+        pub exprs: Punctuated<Expr, Token![,]>,
+    }
+}
+
+ast_struct! {
+    pub struct InvariantNameSetListCompl {
+        pub any_token: Token![any],
+        pub op_token: Token![/],
         pub bracket_token: token::Bracket,
         pub exprs: Punctuated<Expr, Token![,]>,
     }
@@ -285,6 +296,7 @@ ast_struct! {
     pub struct SignatureSpec {
         // When adding Verus fields here, update erase_spec_fields:
         pub prover: Option<Prover>,
+        pub atomic_spec: Option<AtomicSpec>,
         pub requires: Option<Requires>,
         pub recommends: Option<Recommends>,
         pub ensures: Option<Ensures>,
@@ -300,6 +312,7 @@ ast_struct! {
 impl SignatureSpec {
     pub fn erase_spec_fields(&mut self) {
         self.prover = None;
+        self.atomic_spec = None;
         self.requires = None;
         self.recommends = None;
         self.ensures = None;
@@ -609,6 +622,104 @@ ast_struct! {
     }
 }
 
+ast_struct! {
+    pub struct ReturnValue {
+        pub token: Token![->],
+        pub pat: Pat,
+    }
+}
+
+ast_enum! {
+    pub enum ReturnPat {
+        Default,
+        Pat(Token![->], token::Paren, Pat, Option<Box<(Token![:], Type)>>),
+        Type(Token![->], Box<Type>),
+    }
+}
+
+ast_struct! {
+    pub struct AtomicallyBlock {
+        pub label: Option<Label>,
+        pub atomically_token: Token![atomically],
+        pub loop_token: Option<Token![loop]>,
+        pub or1_token: Token![|],
+        pub update_fn_binder: Ident,
+        pub comma_token: Option<Token![,]>,
+        pub or2_token: Token![|],
+        pub spec_au_binder: ReturnPat,
+        pub invariant_except_breaks: Option<InvariantExceptBreak>,
+        pub invariants: Option<Invariant>,
+        pub ensures: Option<Ensures>,
+        pub body: Box<Block>,
+    }
+}
+
+ast_struct! {
+    pub struct PredTypeClause {
+        pub type_token: Token![type],
+        pub ident: Ident,
+        pub comma_token: Token![,],
+    }
+}
+
+ast_struct! {
+    pub struct PermTupleField {
+        pub ident: Ident,
+        pub colon_token: Token![:],
+        pub ty: Type,
+    }
+}
+
+ast_struct! {
+    #[derive(Default)]
+    pub struct PermTuple {
+        pub paren_token: token::Paren,
+        pub fields: Punctuated<PermTupleField, Token![,]>,
+    }
+}
+
+ast_struct! {
+    #[derive(Default)]
+    pub struct PermClause {
+        pub old_perms: PermTuple,
+        pub arrow_token: Option<Token![->]>,
+        pub new_perms: PermTuple,
+        pub comma_token: Option<Token![,]>,
+    }
+}
+
+ast_struct! {
+    pub struct OuterMask {
+        pub token: Token![outer_mask],
+        pub set: InvariantNameSet,
+        pub comma_token: Option<Token![,]>,
+    }
+}
+
+ast_struct! {
+    pub struct InnerMask {
+        pub token: Token![inner_mask],
+        pub set: InvariantNameSet,
+        pub comma_token: Option<Token![,]>,
+    }
+}
+
+ast_struct! {
+    pub struct AtomicSpec {
+        pub atomically_token: Token![atomically],
+        pub paren_token: token::Paren,
+        pub atomic_update: Ident,
+        pub block_token: token::Brace,
+        pub type_clause: Option<PredTypeClause>,
+        pub perm_clause: PermClause,
+        pub requires: Option<Requires>,
+        pub ensures: Option<Ensures>,
+        pub outer_mask: Option<OuterMask>,
+        pub inner_mask: Option<InnerMask>,
+        pub comma_token: Option<Token![,]>,
+    }
+}
+
 #[cfg(feature = "parsing")]
 pub mod parsing {
     use super::*;
@@ -797,6 +908,8 @@ pub mod parsing {
                 || input.peek(Token![when])
                 || input.peek(Token![no_unwind])
                 || input.peek(Token![opens_invariants])
+                || input.peek(Token![outer_mask])
+                || input.peek(Token![inner_mask])
         }
 
         fn peek2_spec_keyword(input: ParseStream) -> bool {
@@ -811,6 +924,8 @@ pub mod parsing {
                 || input.peek2(Token![when])
                 || input.peek2(Token![no_unwind])
                 || input.peek2(Token![opens_invariants])
+                || input.peek2(Token![outer_mask])
+                || input.peek2(Token![inner_mask])
         }
 
         /// Remove top-level attributes: `#![trigger ...]`, `#![all_triggers]`, and `#![auto]`.
@@ -1091,12 +1206,10 @@ pub mod parsing {
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for SignatureInvariants {
         fn parse(input: ParseStream) -> Result<Self> {
-            let opens_invariants = input.parse()?;
-            let set = input.parse()?;
-
             Ok(SignatureInvariants {
-                token: opens_invariants,
-                set,
+                token: input.parse()?,
+                set: input.parse()?,
+                comma: input.parse()?,
             })
         }
     }
@@ -1116,17 +1229,17 @@ pub mod parsing {
     impl Parse for InvariantNameSet {
         fn parse(input: ParseStream) -> Result<Self> {
             let set = if input.peek(Token![any]) {
-                let all = input.parse()?;
-                InvariantNameSet::Any(all)
+                if input.peek2(Token![/]) {
+                    InvariantNameSet::ListCompl(input.parse()?)
+                } else {
+                    InvariantNameSet::Any(input.parse()?)
+                }
             } else if input.peek(Token![none]) {
-                let none = input.parse()?;
-                InvariantNameSet::None(none)
+                InvariantNameSet::None(input.parse()?)
             } else if input.peek(token::Bracket) {
-                let list = input.parse()?;
-                InvariantNameSet::List(list)
+                InvariantNameSet::List(input.parse()?)
             } else {
-                let set = input.parse()?;
-                InvariantNameSet::Set(set)
+                InvariantNameSet::Set(input.parse()?)
             };
             Ok(set)
         }
@@ -1155,6 +1268,23 @@ pub mod parsing {
             let bracket_token = bracketed!(content in input);
             let exprs = content.parse_terminated(Expr::parse, Token![,])?;
             Ok(InvariantNameSetList {
+                bracket_token,
+                exprs,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for InvariantNameSetListCompl {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let any_token = input.parse()?;
+            let op_token = input.parse()?;
+            let content;
+            let bracket_token = bracketed!(content in input);
+            let exprs = content.parse_terminated(Expr::parse, Token![,])?;
+            Ok(InvariantNameSetListCompl {
+                any_token,
+                op_token,
                 bracket_token,
                 exprs,
             })
@@ -1273,6 +1403,7 @@ pub mod parsing {
         fn parse(input: ParseStream) -> Result<Self> {
             let prover: Option<Prover> = input.parse()?;
             let with: Option<WithSpecOnFn> = input.parse()?;
+            let atomic_spec: Option<AtomicSpec> = input.parse()?;
             let requires: Option<Requires> = Requires::parse_optional_in(Context::Item, input)?;
             let recommends: Option<Recommends> = input.parse()?;
             let ensures: Option<Ensures> = Ensures::parse_optional_in(Context::Item, input)?;
@@ -1284,6 +1415,7 @@ pub mod parsing {
 
             Ok(SignatureSpec {
                 prover,
+                atomic_spec,
                 requires,
                 recommends,
                 ensures,
@@ -1740,6 +1872,235 @@ pub mod parsing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for ReturnValue {
+        fn parse(input: ParseStream) -> Result<Self> {
+            Ok(Self {
+                token: input.parse()?,
+                pat: Pat::parse_single(&input)?,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Option<ReturnValue> {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Token![->]) {
+                input.parse().map(Some)
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for ReturnPat {
+        fn parse(input: ParseStream) -> Result<Self> {
+            // TODO: We decide whether this is a pattern or type by checking for
+            // parenthesis after the arrow. This logic breaks if the arrow is
+            // followed by a tuple type `-> (Ty, ..., Ty)`.
+
+            if !input.peek(Token![->]) {
+                return Ok(ReturnPat::Default);
+            }
+
+            let arrow: Token![->] = input.parse()?;
+            if !input.peek(token::Paren) {
+                return Ok(ReturnPat::Type(arrow, input.parse()?));
+            }
+
+            let content;
+            let paren = parenthesized!(content in input);
+            let pat = Pat::parse_single(&content)?;
+            let opt_ty = if content.peek(Token![:]) {
+                let colon = content.parse()?;
+                let ty = content.parse()?;
+                Some(Box::new((colon, ty)))
+            } else {
+                None
+            };
+
+            Ok(ReturnPat::Pat(arrow, paren, pat, opt_ty))
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for AtomicallyBlock {
+        fn parse(input: ParseStream) -> Result<Self> {
+            Ok(AtomicallyBlock {
+                label: input.parse()?,
+                atomically_token: input.parse()?,
+                loop_token: input.parse()?,
+                or1_token: input.parse()?,
+                update_fn_binder: input.parse()?,
+                comma_token: input.parse()?,
+                or2_token: input.parse()?,
+                spec_au_binder: input.parse()?,
+                invariant_except_breaks: input.parse()?,
+                invariants: input.parse()?,
+                ensures: input.parse()?,
+                body: input.parse()?,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Option<AtomicallyBlock> {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Token![atomically]) || input.peek(Lifetime) {
+                input.parse().map(Some)
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for PredTypeClause {
+        fn parse(input: ParseStream) -> Result<Self> {
+            Ok(PredTypeClause {
+                type_token: input.parse()?,
+                ident: input.parse()?,
+                comma_token: input.parse()?,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Option<PredTypeClause> {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Token![type]) {
+                input.parse().map(Some)
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for PermTupleField {
+        fn parse(input: ParseStream) -> Result<Self> {
+            Ok(PermTupleField {
+                ident: input.parse()?,
+                colon_token: input.parse()?,
+                ty: input.parse()?,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for PermTuple {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let content;
+            Ok(PermTuple {
+                paren_token: parenthesized!(content in input),
+                fields: content.parse_terminated(PermTupleField::parse, Token![,])?,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for PermClause {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if !input.peek(token::Paren) {
+                return Ok(Default::default());
+            }
+
+            let old_perms = input.parse()?;
+            let (arrow_token, new_perms) = if input.peek(Token![->]) {
+                let arrow_token = input.parse()?;
+                let new_perms = input.parse()?;
+                (Some(arrow_token), new_perms)
+            } else {
+                (None, Default::default())
+            };
+
+            let comma_token = input.parse()?;
+            Ok(PermClause {
+                old_perms,
+                arrow_token,
+                new_perms,
+                comma_token,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for OuterMask {
+        fn parse(input: ParseStream) -> Result<Self> {
+            Ok(OuterMask {
+                token: input.parse()?,
+                set: input.parse()?,
+                comma_token: input.parse()?,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Option<OuterMask> {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Token![outer_mask]) {
+                input.parse().map(Some)
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for InnerMask {
+        fn parse(input: ParseStream) -> Result<Self> {
+            Ok(InnerMask {
+                token: input.parse()?,
+                set: input.parse()?,
+                comma_token: input.parse()?,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Option<InnerMask> {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Token![inner_mask]) {
+                input.parse().map(Some)
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for AtomicSpec {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let parens;
+            let curlys;
+            Ok(AtomicSpec {
+                atomically_token: input.parse()?,
+                paren_token: parenthesized!(parens in input),
+                atomic_update: parens.parse()?,
+                block_token: braced!(curlys in input),
+                type_clause: curlys.parse()?,
+                perm_clause: curlys.parse()?,
+                requires: curlys.parse()?,
+                ensures: curlys.parse()?,
+                outer_mask: curlys.parse()?,
+                inner_mask: curlys.parse()?,
+                comma_token: input.parse()?,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Option<AtomicSpec> {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Token![atomically]) {
+                input.parse().map(Some)
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for ExprFinal {
         fn parse(input: ParseStream) -> Result<Self> {
             let attrs = Vec::new();
@@ -1759,7 +2120,9 @@ pub mod parsing {
 
 #[cfg(feature = "printing")]
 mod printing {
-    use crate::expr::printing::outer_attrs_to_tokens;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    use crate::{expr::printing::outer_attrs_to_tokens, spanned::Spanned};
 
     use super::*;
     use proc_macro2::TokenStream;
@@ -1992,6 +2355,17 @@ mod printing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for InvariantNameSetListCompl {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.any_token.to_tokens(tokens);
+            self.op_token.to_tokens(tokens);
+            self.bracket_token.surround(tokens, |tokens| {
+                self.exprs.to_tokens(tokens);
+            });
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
     impl ToTokens for InvariantNameSetSet {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             self.expr.to_tokens(tokens);
@@ -2002,6 +2376,7 @@ mod printing {
     impl ToTokens for SignatureSpec {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             self.prover.to_tokens(tokens);
+            self.atomic_spec.to_tokens(tokens);
             self.requires.to_tokens(tokens);
             self.recommends.to_tokens(tokens);
             self.ensures.to_tokens(tokens);
@@ -2370,6 +2745,164 @@ mod printing {
             self.semi.to_tokens(tokens);
         }
     }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for ReturnPat {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            match self {
+                ReturnPat::Default => {}
+                ReturnPat::Pat(arrow, paren, pat, type_hint) => {
+                    arrow.to_tokens(tokens);
+                    paren.surround(tokens, |tokens| {
+                        pat.to_tokens(tokens);
+                        if let Some((colon, ty)) = type_hint.as_deref() {
+                            colon.to_tokens(tokens);
+                            ty.to_tokens(tokens);
+                        }
+                    });
+                }
+                ReturnPat::Type(arrow, ty) => {
+                    arrow.to_tokens(tokens);
+                    ty.to_tokens(tokens);
+                }
+            }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for AtomicallyBlock {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.label.to_tokens(tokens);
+            self.atomically_token.to_tokens(tokens);
+            self.loop_token.to_tokens(tokens);
+            self.or1_token.to_tokens(tokens);
+            self.update_fn_binder.to_tokens(tokens);
+            self.comma_token.to_tokens(tokens);
+            self.or2_token.to_tokens(tokens);
+            self.spec_au_binder.to_tokens(tokens);
+            self.invariant_except_breaks.to_tokens(tokens);
+            self.invariants.to_tokens(tokens);
+            self.ensures.to_tokens(tokens);
+            self.body.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for PredTypeClause {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.type_token.to_tokens(tokens);
+            self.ident.to_tokens(tokens);
+            self.comma_token.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for PermTupleField {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.ident.to_tokens(tokens);
+            self.colon_token.to_tokens(tokens);
+            self.ty.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for PermTuple {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.paren_token.surround(tokens, |tokens| {
+                self.fields.to_tokens(tokens);
+            });
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl PermTuple {
+        pub fn to_type_tokens(&self, tokens: &mut TokenStream) {
+            self.paren_token.surround(tokens, |tokens| {
+                for pair in self.fields.pairs() {
+                    let (field, comma) = pair.into_tuple();
+                    field.ty.to_tokens(tokens);
+                    comma.to_tokens(tokens);
+                }
+            });
+        }
+
+        pub fn to_value_tokens(&self, tokens: &mut TokenStream) {
+            self.paren_token.surround(tokens, |tokens| {
+                for pair in self.fields.pairs() {
+                    let (field, comma) = pair.into_tuple();
+                    field.ident.to_tokens(tokens);
+                    comma.to_tokens(tokens);
+                }
+            });
+        }
+
+        pub fn to_pattern_tokens(&self, tokens: &mut TokenStream) {
+            // Since we don't have general support for pattern matching yet,
+            // we generate throw-away idents as patterns for empty tuples.
+            //
+            // The idents are never used, so we don't have to remember them,
+            // they just have to be locally unique to prevent name collisions
+            // in function argument position.
+            if self.fields.is_empty() {
+                static COUNTER: AtomicU64 = AtomicU64::new(0);
+                let id = COUNTER.fetch_add(1, Ordering::Relaxed);
+                let var_name = alloc::format!("_perm_tup{id}");
+                let ident = Ident::new(&var_name, self.span());
+                ident.to_tokens(tokens);
+            } else {
+                self.to_value_tokens(tokens);
+            }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for PermClause {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.old_perms.to_tokens(tokens);
+            self.arrow_token.to_tokens(tokens);
+            self.new_perms.to_tokens(tokens);
+            self.comma_token.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for OuterMask {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.token.to_tokens(tokens);
+            self.set.to_tokens(tokens);
+            self.comma_token.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for InnerMask {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.token.to_tokens(tokens);
+            self.set.to_tokens(tokens);
+            self.comma_token.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for AtomicSpec {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.atomically_token.to_tokens(tokens);
+            self.paren_token.surround(tokens, |tokens| {
+                self.atomic_update.to_tokens(tokens);
+            });
+
+            self.block_token.surround(tokens, |tokens| {
+                self.type_clause.to_tokens(tokens);
+                self.perm_clause.to_tokens(tokens);
+                self.requires.to_tokens(tokens);
+                self.ensures.to_tokens(tokens);
+                self.outer_mask.to_tokens(tokens);
+                self.inner_mask.to_tokens(tokens);
+            });
+
+            self.comma_token.to_tokens(tokens);
+        }
+    }
 }
 
 pub(crate) fn disallow_prefix_binop(input: crate::parse::ParseStream) -> crate::parse::Result<()> {
@@ -2626,7 +3159,8 @@ impl parse::Parse for WithSpecOnFn {
 
         // Helper function to check if we're at next spec keyword
         let is_next_spec_keyword = |input: ParseStream| -> bool {
-            input.peek(Token![requires])
+            input.peek(Token![atomically])
+                || input.peek(Token![requires])
                 || input.peek(Token![invariant_except_break])
                 || input.peek(Token![invariant])
                 || input.peek(Token![invariant_ensures])

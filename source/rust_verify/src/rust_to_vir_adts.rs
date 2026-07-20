@@ -803,9 +803,12 @@ pub(crate) fn setup_type_invariants(krate: &mut KrateX) -> Result<(), VirErr> {
                             &f.span,
                             "type_invariant: multiple type invariants defined for the same type",
                         )
-                        .primary_span(&get_fun_span(&krate.functions, f2)));
+                        .primary_span(&get_fun_span(&krate.functions, &f2.fun)));
                     }
-                    dt.x.user_defined_invariant_fn = Some(f.x.name.clone());
+                    dt.x.user_defined_invariant_fn = Some(vir::ast::FunWithVis {
+                        fun: f.x.name.clone(),
+                        visibility: f.x.visibility.clone(),
+                    });
                     krate.datatypes[idx] = Arc::new(dt);
                 } else {
                     return Err(vir::messages::error(

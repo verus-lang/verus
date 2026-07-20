@@ -1,3 +1,4 @@
+#![allow(clippy::unnecessary_map_on_constructor)]
 use crate::ast::{
     BodyVisibility, CallTarget, CallTargetKind, Constant, Datatype, DatatypeTransparency, Dt, Expr,
     ExprX, FieldOpr, Fun, Function, FunctionKind, Krate, MaskSpec, Mode, MultiOp, Opaqueness, Path,
@@ -14,6 +15,8 @@ use crate::def::user_local_name;
 use crate::early_exit_cf::assert_no_early_exit_in_inv_block;
 use crate::internal_err;
 use crate::messages::{Message, Span, WarningAllow, error, error_with_label};
+use indexmap::IndexMap;
+use indexmap::map::Entry;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -34,37 +37,48 @@ pub struct CheckDetails {
     pub func_failed_proof_notes: HashMap<Fun, HashSet<String>>,
 }
 
+// REVIEW: why is this a trait?
 trait EmitError {
-    fn emit(&mut self, path: Option<Path>, err: VirErrAs);
+    fn emit(&mut self, err: VirErrAs);
+    fn emit_deferred_err(&mut self, err: VirErr);
+    fn emit_boundary_err(&mut self, path: Path, err: VirErr);
     fn has_fatal_errors(&self) -> bool;
     fn record_func_failed_proof_note(&mut self, func: Fun, note: String);
 }
 
 struct EmitErrorState {
-    diags: Vec<VirErrAs>,
-    diag_map: HashMap<Path, usize>,
+    /// Errors that need more processing by the caller in rust_verify
+    boundary_errors: IndexMap<Path, VirErr>,
     func_failed_proof_notes: HashMap<Fun, HashSet<String>>,
+    /// Legit errors that nonetheless don't prevent us from proceeding
+    /// down the rest of the VC pipeline
+    deferred_errors: Vec<VirErr>,
+    /// Warnings, notes
+    diags: Vec<VirErrAs>,
 }
 
 impl EmitError for EmitErrorState {
-    fn emit(&mut self, path: Option<Path>, err: VirErrAs) {
-        match path {
-            Some(path) => match self.diag_map.get(&path) {
-                Some(msg_idx) => self.diags[*msg_idx] = self.diags[*msg_idx].merge(&err),
-                None => {
-                    self.diag_map.insert(path, self.diags.len());
-                    self.diags.push(err);
-                }
-            },
-            None => self.diags.push(err),
-        };
+    fn emit(&mut self, err: VirErrAs) {
+        self.diags.push(err);
+    }
+
+    fn emit_deferred_err(&mut self, err: VirErr) {
+        self.deferred_errors.push(err);
+    }
+
+    fn emit_boundary_err(&mut self, path: Path, err: VirErr) {
+        match self.boundary_errors.entry(path) {
+            Entry::Vacant(entry) => {
+                entry.insert(err);
+            }
+            Entry::Occupied(mut entry) => {
+                *entry.get_mut() = entry.get().merge(&err);
+            }
+        }
     }
 
     fn has_fatal_errors(&self) -> bool {
-        self.diags.iter().any(|err| match err {
-            VirErrAs::NonBlockingError(..) => true,
-            _ => false,
-        })
+        self.boundary_errors.len() > 0
     }
 
     fn record_func_failed_proof_note(&mut self, func: Fun, note: String) {
@@ -208,9 +222,7 @@ fn check_path_and_get_datatype<'a, Emit: EmitError>(
                         },
                     )
                 };
-                let err: VirErrAs =
-                    VirErrAs::NonBlockingError(error(span, msg), Some(path.clone()));
-                emit.emit(Some(path.clone()), err);
+                emit.emit_boundary_err(path.clone(), error(span, msg));
 
                 Ok(Err(()))
             }
@@ -278,10 +290,7 @@ fn check_path_and_get_function<'a, Emit: EmitError>(
                         },
                     )
                 };
-                emit.emit(
-                    Some(x.path.clone()),
-                    VirErrAs::NonBlockingError(error(span, &err_str), Some(x.path.clone())),
-                );
+                emit.emit_boundary_err(x.path.clone(), error(span, &err_str));
                 Err(())
             }
         }
@@ -445,7 +454,12 @@ fn check_one_expr<Emit: EmitError>(
         ExprX::ConstVar(x, _) => {
             check_function_access(ctxt, x, disallow_private_access, &expr.span, emit)?;
         }
-        ExprX::Call(CallTarget::Fun(kind, x, _, _, attrs), _args, _post_args) => {
+        ExprX::Call {
+            target: CallTarget::Fun(kind, x, _, _, attrs),
+            args: _,
+            post_args: _,
+            body: _,
+        } => {
             if attrs.assume_external_allowed && !ctxt.funs.contains_key(x) {
                 if ctxt.no_cheating {
                     return Err(error(
@@ -593,7 +607,7 @@ fn check_one_expr<Emit: EmitError>(
                         );
                     }
                 }
-                emit.emit(None, VirErrAs::NonFatalError(msg, None));
+                emit.emit_deferred_err(msg);
             }
         }
         ExprX::AssertBy { ensure, vars, .. } => match &ensure.x {
@@ -606,7 +620,7 @@ fn check_one_expr<Emit: EmitError>(
                         || "using ==> in `assert forall` does not currently assume the antecedent in the body; consider using `implies` instead of `==>`",
                         |msg| {
                             let msg = msg.help("If you didn't mean to assume the antecedent, we're very curious to hear why! To tell us, please open an issue on the Verus issue tracker on github with the title `Don't always make assert forall assume the antecedent`. If no one opens such an issue, we'll soon change the behavior of Verus to always assume the antecedent of the outermost implication");
-                            emit.emit(None, VirErrAs::Warning(msg));
+                            emit.emit(VirErrAs::Warning(msg));
                         },
                     );
                 }
@@ -1181,7 +1195,7 @@ fn check_function<Emit: EmitError>(
     if function.x.attrs.exec_assume_termination && ctxt.no_cheating {
         let msg =
             error(&function.span, "#[verifier::assume_termination] not allowed with --no-cheating");
-        emit.emit(None, VirErrAs::NonFatalError(msg, None));
+        emit.emit_deferred_err(msg);
     }
 
     #[cfg(feature = "singular")]
@@ -1471,7 +1485,7 @@ fn check_function<Emit: EmitError>(
             &function.span,
             &WarningAllow::DecreasesWhenExecAllowsNoDecreasesClause,
             || "if exec_allows_no_decreases_clause is set, decreases checks in exec functions do not guarantee termination of functions with loops",
-            |msg| emit.emit(None, VirErrAs::Warning(msg)),
+            |msg| emit.emit(VirErrAs::Warning(msg)),
         );
     }
 
@@ -1533,7 +1547,7 @@ fn check_function<Emit: EmitError>(
                     &function.span,
                     "external_body/assume_specification not allowed with --no-cheating",
                 );
-                emit.emit(None, VirErrAs::NonFatalError(msg, None));
+                emit.emit_deferred_err(msg);
             }
         }
     }
@@ -1746,19 +1760,41 @@ pub fn check_one_crate(krate: &Krate) -> Result<(), VirErr> {
     Ok(())
 }
 
+pub struct WFErr {
+    /// "Normal" errors
+    pub errors: Vec<VirErr>,
+    /// Boundary errors: these need additional processing in the rust_verify crate
+    pub boundary_errors: Vec<(Path, VirErr)>,
+    /// Other info that we want to pass back even in error-cases
+    pub check_details: CheckDetails,
+}
+
+fn to_wf(v: VirErr) -> WFErr {
+    WFErr {
+        errors: vec![v],
+        boundary_errors: vec![],
+        check_details: CheckDetails { func_failed_proof_notes: HashMap::new() },
+    }
+}
+
+/// - diags: for warnings and notes
+/// - deferred_errors: legit errors that nonetheless don't prevent
+///   us from going all the way to VCs
+/// - Err case: normal errors that prevent us from moving onto the next phase
 pub fn check_crate(
     krate: &Krate,
     unpruned_krate: &Krate,
     diags: &mut Vec<VirErrAs>,
+    deferred_errors: &mut Vec<VirErr>,
     warning_ctx: &crate::context::WarningCtx,
     no_verify: bool,
     no_cheating: bool,
-) -> Result<CheckDetails, VirErr> {
+) -> Result<CheckDetails, WFErr> {
     let mut funs: HashMap<Fun, Function> = HashMap::new();
     for function in krate.functions.iter() {
         match funs.get(&function.x.name) {
             Some(other_function) => {
-                return Err(func_conflict_error(function, other_function));
+                return Err(func_conflict_error(function, other_function)).map_err(to_wf);
             }
             None => {}
         }
@@ -1774,7 +1810,7 @@ pub fn check_crate(
         };
         match dts.get(path) {
             Some(other_datatype) => {
-                return Err(datatype_conflict_error(datatype, other_datatype));
+                return Err(datatype_conflict_error(datatype, other_datatype)).map_err(to_wf);
             }
             None => {}
         }
@@ -1784,7 +1820,8 @@ pub fn check_crate(
     for tr in krate.traits.iter() {
         match traits.get(&tr.x.name) {
             Some(other_tr) => {
-                return Err(trait_conflict_error(tr, other_tr, "duplicate specification for"));
+                return Err(trait_conflict_error(tr, other_tr, "duplicate specification for"))
+                    .map_err(to_wf);
             }
             None => {}
         }
@@ -1806,14 +1843,15 @@ pub fn check_crate(
                 return Err(error(
                     &function.span,
                     "cannot find function referred to in decreases_by/recommends_by",
-                ));
+                ))
+                .map_err(to_wf);
             };
             if !proof_function.x.attrs.is_decrease_by {
                 return Err(error(
                     &proof_function.span,
                     "proof function must be marked #[verifier::decreases_by] or #[verifier::recommends_by] to be used as decreases_by/recommends_by",
                 )
-                .secondary_span(&function.span));
+                .secondary_span(&function.span)).map_err(to_wf);
             }
             if let Some(prev) = decreases_by_proof_to_spec.get(proof_fun) {
                 return Err(error(
@@ -1821,21 +1859,24 @@ pub fn check_crate(
                     "same proof function used for two different decreases_by/recommends_by",
                 )
                 .secondary_span(&funs[prev].span)
-                .secondary_span(&function.span));
+                .secondary_span(&function.span))
+                .map_err(to_wf);
             }
             if proof_fun.path.pop_segment() != function.x.name.path.pop_segment() {
                 return Err(error(
                     &proof_function.span,
                     "a decreases_by function must be in the same module as the function definition",
                 )
-                .secondary_span(&function.span));
+                .secondary_span(&function.span))
+                .map_err(to_wf);
             }
 
             if proof_function.x.mode != Mode::Proof {
                 return Err(error(
                     &proof_function.span,
                     "decreases_by/recommends_by function must have mode proof",
-                ));
+                ))
+                .map_err(to_wf);
             }
 
             decreases_by_proof_to_spec.insert(proof_fun.clone(), function.x.name.clone());
@@ -1846,7 +1887,8 @@ pub fn check_crate(
                 false,
                 &proof_function,
                 &function,
-            )?;
+            )
+            .map_err(to_wf)?;
         }
         if let Some(spec_fun) = &function.x.attrs.autospec {
             let spec_function = if let Some(spec_function) = funs.get(spec_fun) {
@@ -1858,14 +1900,16 @@ pub fn check_crate(
                         "cannot find function referred to in when_used_as_spec: {}",
                         fun_as_friendly_rust_name(spec_fun),
                     ),
-                ));
+                ))
+                .map_err(to_wf);
             };
             if function.x.mode != Mode::Exec || spec_function.x.mode != Mode::Spec {
                 return Err(error(
                     &spec_function.span,
                     "when_used_as_spec must point from an exec function to a spec function",
                 )
-                .secondary_span(&function.span));
+                .secondary_span(&function.span))
+                .map_err(to_wf);
             }
             match (&function.x.kind, &spec_function.x.kind) {
                 (
@@ -1877,7 +1921,7 @@ pub fn check_crate(
                         &spec_function.span,
                         "when_used_as_spec on trait declaration must refer to a spec function in the same trait",
                     )
-                    .secondary_span(&function.span));
+                    .secondary_span(&function.span)).map_err(to_wf);
                 }
                 (_, FunctionKind::Static) => {}
                 (_, _) => {
@@ -1887,7 +1931,8 @@ pub fn check_crate(
                         &spec_function.span,
                         "when_used_as_spec must point to a non-trait spec function",
                     )
-                    .secondary_span(&function.span));
+                    .secondary_span(&function.span))
+                    .map_err(to_wf);
                 }
             }
             if !is_visible_to_opt(&spec_function.x.visibility, &function.x.visibility.restricted_to)
@@ -1895,7 +1940,8 @@ pub fn check_crate(
                 return Err(error(
                     &function.span,
                     "when_used_as_spec refers to function which is more private",
-                ));
+                ))
+                .map_err(to_wf);
             }
 
             check_functions_match(
@@ -1905,12 +1951,13 @@ pub fn check_crate(
                 true,
                 &spec_function,
                 &function,
-            )?;
+            )
+            .map_err(to_wf)?;
         }
         if function.x.ensure.1.len() > 0
             && !matches!(&function.x.kind, FunctionKind::TraitMethodDecl { .. })
         {
-            return Err(error(&function.span, "default_ensures not allowed here"));
+            return Err(error(&function.span, "default_ensures not allowed here")).map_err(to_wf);
         }
         if let FunctionKind::TraitMethodDecl { .. } = &function.x.kind {
             if function.x.body.is_some() {
@@ -1918,7 +1965,8 @@ pub fn check_crate(
                     return Err(error(
                         &function.span,
                         "trait default methods do not yet support recursion and decreases",
-                    ));
+                    ))
+                    .map_err(to_wf);
                 }
             }
         }
@@ -1966,7 +2014,7 @@ pub fn check_crate(
             return Err(error(
                 &function.span,
                 "function cannot be marked #[verifier::decreases_by] or #[verifier::recommends_by] unless it is used in some decreases_by/recommends_by",
-            ));
+            )).map_err(to_wf);
         }
     }
 
@@ -1981,7 +2029,8 @@ pub fn check_crate(
                                 "{} is not a broadcast proof fn",
                                 fun_as_friendly_rust_name(reveal)
                             ),
-                        ));
+                        ))
+                        .map_err(to_wf);
                     }
                 } else {
                     assert!(reveal_groups.contains(reveal));
@@ -2000,44 +2049,67 @@ pub fn check_crate(
                             "{} is not a broadcast proof fn",
                             fun_as_friendly_rust_name(member)
                         ),
-                    ));
+                    ))
+                    .map_err(to_wf);
                 }
             }
         }
     }
 
-    let diag_map: HashMap<Path, usize> = HashMap::new();
-    let new_diags: Vec<VirErrAs> = Vec::new();
-    let mut emit =
-        EmitErrorState { diag_map, diags: new_diags, func_failed_proof_notes: HashMap::new() };
+    let mut emit = EmitErrorState {
+        boundary_errors: IndexMap::new(),
+        diags: vec![],
+        func_failed_proof_notes: HashMap::new(),
+        deferred_errors: vec![],
+    };
     let ctxt = Ctxt { funs, reveal_groups, dts, traits, krate, unpruned_krate, no_cheating };
+
+    let mut errors = vec![];
+
     // TODO remove once `uninterp` is enforced for uninterpreted functions
     for function in krate.functions.iter() {
         let Some(warn_config) = warning_ctx.fun_warn_configs.get(&function.x.name) else {
             panic!("missing warn_config for function {:?}", &function.x.name);
         };
-        check_function(&ctxt, function, &mut emit, warn_config, no_verify)?;
+        if let Err(e) = check_function(&ctxt, function, &mut emit, warn_config, no_verify) {
+            errors.push(e);
+        }
     }
     for dt in krate.datatypes.iter() {
-        check_datatype(&ctxt, dt, &mut emit)?;
+        if let Err(e) = check_datatype(&ctxt, dt, &mut emit) {
+            errors.push(e);
+        }
     }
     for tr_impl in krate.trait_impls.iter() {
         for typ in tr_impl.x.trait_typ_args.iter() {
-            check_typ(&ctxt, typ, &tr_impl.span, &mut emit)?;
+            if let Err(e) = check_typ(&ctxt, typ, &tr_impl.span, &mut emit) {
+                errors.push(e);
+            }
         }
     }
     for assoc_type_impl in krate.assoc_type_impls.iter() {
         for typ in assoc_type_impl.x.trait_typ_args.iter() {
-            check_typ(&ctxt, typ, &assoc_type_impl.span, &mut emit)?;
+            if let Err(e) = check_typ(&ctxt, typ, &assoc_type_impl.span, &mut emit) {
+                errors.push(e);
+            }
         }
-        check_typ(&ctxt, &assoc_type_impl.x.typ, &assoc_type_impl.span, &mut emit)?;
+        if let Err(e) = check_typ(&ctxt, &assoc_type_impl.x.typ, &assoc_type_impl.span, &mut emit) {
+            errors.push(e);
+        }
     }
 
     diags.append(&mut emit.diags);
-    // There is no point in checking for well-founded types if we already have a fatal error:
-    if diags.iter().any(|x| matches!(x, VirErrAs::NonBlockingError(..))) {
-        return Ok(CheckDetails { func_failed_proof_notes: emit.func_failed_proof_notes });
+    deferred_errors.append(&mut emit.deferred_errors);
+
+    if emit.has_fatal_errors() || errors.len() > 0 {
+        return Err(WFErr {
+            errors,
+            boundary_errors: emit.boundary_errors.into_iter().collect(),
+            check_details: CheckDetails { func_failed_proof_notes: emit.func_failed_proof_notes },
+        });
     }
-    crate::recursive_types::check_recursive_types(krate)?;
+
+    crate::recursive_types::check_recursive_types(krate).map_err(to_wf)?;
+
     Ok(CheckDetails { func_failed_proof_notes: emit.func_failed_proof_notes })
 }

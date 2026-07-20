@@ -7,8 +7,9 @@
 //! SST is designed to make the translation to AIR as straightforward as possible.
 
 use crate::ast::{
-    AssertQueryMode, BinaryOp, Constant, Dt, Fun, Mode, NullaryOpr, Path, Quant, SpannedTyped, Typ,
-    Typs, UnaryOp, UnaryOpr, VarAt, VarBinders, VarIdent,
+    ArrayKind, AssertQueryMode, BitwiseOp, Constant, Dt, Fun, IeeeFloatBinaryOp, InequalityOp,
+    Mode, NullaryOpr, Path, Quant, RealArithOp, SpannedTyped, Typ, Typs, UnaryOp, UnaryOpr, VarAt,
+    VarBinders, VarIdent,
 };
 use crate::def::Spanned;
 use crate::interpreter::InterpExp;
@@ -61,6 +62,57 @@ pub enum CallFun {
     Fun(Fun, Option<(Fun, Typs)>),
     Recursive(Fun),
     InternalFun(InternalFun),
+}
+
+/// Arithmetic operation
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum ArithOp {
+    /// IntRange::Int +
+    Add,
+    /// IntRange::Int -
+    Sub,
+    /// IntRange::Int *
+    Mul,
+    /// IntRange::Int / defined as Euclidean (round towards -infinity, not round-towards zero)
+    EuclideanDiv,
+    /// IntRange::Int % defined as Euclidean (returns non-negative result even for negative divisor)
+    EuclideanMod,
+}
+
+/// Primitive binary operations, all are pure functions on 2 inputs
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum BinaryOp {
+    /// boolean and (short-circuiting: right side is evaluated only if left side is true)
+    And,
+    /// boolean or (short-circuiting: right side is evaluated only if left side is false)
+    Or,
+    /// boolean xor (no short-circuiting)
+    Xor,
+    /// boolean implies (short-circuiting: right side is evaluated only if left side is true)
+    Implies,
+    /// the is_smaller_than verus_builtin, used for decreases (true for <, false for ==)
+    HeightCompare { strictly_lt: bool, recursive_function_field: bool },
+    /// SMT equality for any type -- two expressions are exactly the same value
+    /// Some types support compilable equality (Mode == Exec); others only support spec equality (Mode == Spec)
+    Eq,
+    /// not Eq
+    Ne,
+    /// arithmetic inequality
+    Inequality(InequalityOp),
+    /// IntRange operations, all over int
+    Arith(ArithOp),
+    /// Spec-mode real number operations
+    RealArith(RealArithOp),
+    /// Bit Vector Operators
+    Bitwise(BitwiseOp),
+    /// IEEE floating point binary ops (rounding mode RNE)
+    IeeeFloat(IeeeFloatBinaryOp),
+    /// Used only for handling verus_builtin::strslice_get_char
+    StrGetChar,
+    /// Index into an array or slice, no bounds-checking.
+    /// `verus_builtin::array_index` lowers to this.
+    /// Can be used as a Loc
+    Index(ArrayKind),
 }
 
 pub type Exp = Arc<SpannedTyped<ExpX>>;
@@ -181,6 +233,9 @@ pub enum StmX {
         split: Option<Message>,
         dest: Option<Dest>,
         assert_id: Option<AssertId>,
+        /// Code to be executed *inside* the function call,
+        /// i.e. emplaced between the pre- and postcondition
+        body: Option<Stm>,
     },
     /// Assertion to be verified by the SMT solver; reports Stm's span on failure plus optional extra info
     Assert(Option<AssertId>, Option<Message>, Exp),
@@ -243,6 +298,7 @@ pub enum StmX {
         typ_inv_vars: Arc<Vec<(UniqueIdent, Typ)>>,
         /// Variables potentially modified by the loop body
         modified_vars: Option<Arc<crate::sst_vars::HavocSet>>,
+        au_branch_bool: Option<Exp>,
         /// Params (including closure params) that may be modified _in or before_ this loop body
         /// but *excluding* their initial assignments.
         /// This is the same set of variables for which we need to consider different values

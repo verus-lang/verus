@@ -230,6 +230,7 @@ fn handle_autospec<'tcx>(
                 decrease_by: None,
                 fndef_axioms: None,
                 mask_spec: None,
+                atomic_update: None,
                 unwind_spec: None,
                 item_kind: ItemKind::Function,
                 attrs: Arc::new(FunctionAttrsX {
@@ -302,6 +303,7 @@ fn mk_bctx<'tcx>(
         external_body,
         in_ghost: mode != Mode::Exec,
         loop_isolation: false,
+        atomically: None,
         migrate_postcondition_vars,
         in_fn_sig: false,
         in_postcondition: false,
@@ -1489,6 +1491,7 @@ pub(crate) fn check_item_fn<'tcx>(
             &typ,
             body_id,
             vattrs.encoded_static,
+            self_generics,
         )?;
         return Ok(Some(fun));
     }
@@ -1650,6 +1653,15 @@ pub(crate) fn check_item_fn<'tcx>(
             let Body { params, value: _ } = body;
             let mut ps = Vec::new();
             for Param { hir_id, pat, ty_span: _, span } in params.iter() {
+                // Check the parameter's pattern is a plain identifier (e.g., `x: T`).
+                // VIR expects each param to be associated with exactly one identifier so complex params
+                // (e.g., `(x, y): T` or `_: T` or `a @ b: T`) are unsupported
+                if !matches!(pat.kind, rustc_hir::PatKind::Binding(_, _, _, None)) {
+                    return err_span(
+                        *span,
+                        "function parameters must be a plain identifier pattern (e.g. `x: T` or `mut x: T`)",
+                    );
+                }
                 let (is_mut_var, name) = pat_to_mut_var(pat)?;
                 // is_mut_var: means a parameter is like `mut x: X`
                 // is_mut: means a parameter is like `x: &mut X` or `x: Tracked<&mut X>`
@@ -1812,6 +1824,9 @@ pub(crate) fn check_item_fn<'tcx>(
     }
     if mode != Mode::Spec && header.recommend.len() > 0 {
         return err_span(sig.span, "non-spec functions cannot have recommends");
+    }
+    if mode != Mode::Exec && header.atomic_update.is_some() {
+        return err_span(sig.span, "non-exec function cannot have atomic specification");
     }
     if mode != Mode::Exec && vattrs.external_fn_specification {
         return err_span(sig.span, "assume_specification should be 'exec'");
@@ -2100,6 +2115,7 @@ pub(crate) fn check_item_fn<'tcx>(
         decrease_by: header.decrease_by,
         fndef_axioms: None,
         mask_spec: header.invariant_mask,
+        atomic_update: header.atomic_update,
         unwind_spec: header.unwind_spec,
         item_kind,
         attrs: fattrs,
@@ -2189,6 +2205,7 @@ fn fix_external_fn_specification_trait_method_decl_typs(
             decrease_by,
             fndef_axioms,
             mask_spec,
+            atomic_update,
             unwind_spec,
             item_kind,
             attrs,
@@ -2212,19 +2229,11 @@ fn fix_external_fn_specification_trait_method_decl_typs(
 
         //params = params.iter().map(|p| p.new_x(p.x.new_a(subst_typ(&typ_substs, &p.a)))).collect();
         //ret = ret.new_x(ret.x.new_a(&typ_substs, &ret.a));
-        params = Arc::new(
-            params
-                .iter()
-                .map(|p| {
-                    p.new_x(vir::ast::ParamX {
-                        typ: subst_typ(&typ_substs, &p.x.typ),
-                        ..p.x.clone()
-                    })
-                })
-                .collect(),
-        );
-        ret = ret
-            .new_x(vir::ast::ParamX { typ: subst_typ(&typ_substs, &ret.x.typ), ..ret.x.clone() });
+        params = Arc::new(crate::util::vec_map(&params, |p| {
+            p.new_x(ParamX { typ: subst_typ(&typ_substs, &p.x.typ), ..p.x.clone() })
+        }));
+
+        ret = ret.new_x(ParamX { typ: subst_typ(&typ_substs, &ret.x.typ), ..ret.x.clone() });
 
         unsupported_err_unless!(require.len() == 0, span, "requires clauses");
         unsupported_err_unless!(ensure.0.len() + ensure.1.len() == 0, span, "ensures clauses");
@@ -2259,6 +2268,7 @@ fn fix_external_fn_specification_trait_method_decl_typs(
             decrease_by,
             fndef_axioms,
             mask_spec,
+            atomic_update,
             unwind_spec,
             item_kind,
             attrs,
@@ -2809,6 +2819,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
     typ: &Typ,
     body_id: &BodyId,
     is_static: bool,
+    self_generics: Option<(&'tcx Generics, DefId)>,
 ) -> Result<Fun, VirErr> {
     let mut path = ctxt.def_id_to_vir_path(id);
 
@@ -2928,6 +2939,21 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         BodyErasure { erase_body: body_mode == Mode::Spec, ret_spec: ret_mode == Mode::Spec },
     );
 
+    // An associated const declared in an `impl<T> ...` block may refer to the impl's
+    // type parameters in its type or body, so include them here.
+    let (typ_params, typ_bounds) = if let Some((cg, impl_def_id)) = self_generics {
+        check_generics_bounds_no_polarity(
+            ctxt.tcx,
+            &ctxt.verus_items,
+            cg.span,
+            Some(cg),
+            impl_def_id,
+            Some(&mut *ctxt.diagnostics.borrow_mut()),
+        )?
+    } else {
+        (Arc::new(vec![]), Arc::new(vec![]))
+    };
+
     let mut functionx = FunctionX {
         name: name.clone(),
         proxy: None,
@@ -2937,8 +2963,8 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         opaqueness,
         owning_module: Some(module_path.clone()),
         mode: func_mode,
-        typ_params: Arc::new(vec![]),
-        typ_bounds: Arc::new(vec![]),
+        typ_params,
+        typ_bounds,
         params: Arc::new(vec![]),
         ret,
         ens_has_return,
@@ -2950,6 +2976,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         decrease_by: None,
         fndef_axioms: None,
         mask_spec: None,
+        atomic_update: None,
         unwind_spec: None,
         item_kind: if is_static { ItemKind::Static } else { ItemKind::Const },
         attrs: fattrs,
@@ -3066,6 +3093,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         decrease_by: None,
         fndef_axioms: None,
         mask_spec: None,
+        atomic_update: None,
         unwind_spec: None,
         item_kind: ItemKind::Function,
         attrs: Default::default(),

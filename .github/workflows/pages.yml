@@ -22,7 +22,7 @@ env:
 jobs:
   build:
     if: github.repository == 'verus-lang/verus'
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: checkout
         uses: actions/checkout@v6
@@ -90,7 +90,7 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: deploy to github pages
         id: deployment

@@ -70,6 +70,10 @@ pub struct VerifyCommand {
     #[arg(short, long, action = ArgAction::Count)]
     pub verbosity: u8,
 
+    /// Check toolchain components, e.g. version compatibility of verus and vstd.
+    #[arg(long)]
+    pub check_toolchain: bool,
+
     /// Crates to receive forwarded Verus args
     #[arg(
         long,

@@ -600,7 +600,7 @@ pub enum BitshiftBehavior {
     /// Allow any int value for the RHS. Bitshift for negative ints is undefined.
     Allow,
     /// Error if the right-hand side of the bit-shift is outside the allowed range
-    Error,
+    Error(IntegerTypeBitwidth),
 }
 
 /// Arithmetic operation that might fail (overflow or divide by zero)
@@ -638,17 +638,14 @@ pub enum IntegerTypeBitwidth {
     ArchWordSize,
 }
 
-/// Bitwise operation
+/// Bitwise operation. Note these are all specified as functions over unbounded integers,
+/// using infinite binary representations.
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
 pub enum BitwiseOp {
     BitXor,
     BitAnd,
     BitOr,
-    /// Shift right. The bitwidth argument is only needed to do a bounds-check
-    /// (see `BitshiftBehavior`). The actual result, when computed on unbounded integers,
-    /// is independent of the bitwidth.
-    /// TODO move the IntegerTypeBitwidth field to BitshiftBehavior enum
-    Shr(IntegerTypeBitwidth),
+    Shr,
     /// Shift left up to w bits, ignoring everything to the left of w.
     /// To interpret the result as an unbounded int,
     /// either zero-extend or sign-extend, depending on the bool argument.
@@ -720,9 +717,8 @@ pub enum BinaryOp {
     IeeeFloat(IeeeFloatBinaryOp),
     /// Used only for handling verus_builtin::strslice_get_char
     StrGetChar,
-    /// Index into an array or slice, no bounds-checking.
+    /// Index into an array or slice with the given bounds-checking
     /// `verus_builtin::array_index` lowers to this.
-    /// In SST, this can also be used as a Loc.
     Index(ArrayKind, BoundsCheck),
 }
 
@@ -779,11 +775,11 @@ pub enum HeaderExprX {
     /// Proof function to prove termination for recursive functions
     DecreasesBy(Fun),
     /// The function might open the following invariants
-    InvariantOpens(Span, Exprs),
-    /// The function might open any BUT the following invariants
-    InvariantOpensExcept(Span, Exprs),
-    /// The function might open the following invariants, specified as a set
-    InvariantOpensSet(Expr),
+    OpensInvariantMask(MaskSpec),
+    /// Atomic update
+    AtomicSpec(Expr),
+    /// Atomic function call loop marker
+    AtomicCallLoop,
     /// Make a function f opaque (definition hidden) within the current function body.
     /// (The current function body can later reveal f in specific parts of the current function body if desired.)
     Hide(Fun),
@@ -1045,6 +1041,12 @@ pub enum ClosureKind {
     FnOnce,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, ToDebugSNode, Hash, PartialEq, Eq)]
+pub enum AtomicallyKind {
+    Simple,
+    Loop,
+}
+
 /// Expression, similar to rustc_hir::Expr
 pub type Expr = Arc<SpannedTyped<ExprX>>;
 pub type Exprs = Arc<Vec<Expr>>;
@@ -1065,9 +1067,18 @@ pub enum ExprX {
     /// Use of a static variable.
     StaticVar(Fun),
     /// Call to a function passing some expression arguments
-    /// The optional expression is to be executed *after* the arguments but *before* the call.
-    /// This is used for two-phase borrows.
-    Call(CallTarget, Exprs, Option<Expr>),
+    Call {
+        target: CallTarget,
+        args: Exprs,
+        /// To be executed *after* the arguments but *before* the call.
+        ///
+        /// This is used for two-phase borrows.
+        post_args: Option<Expr>,
+        /// Executed *inside* the function call, between the pre- and postcondition.
+        ///
+        /// We use this for the `atomically |update| { ... }` block of the atomic function call.
+        body: Option<Expr>,
+    },
     /// Construct datatype value of type Path and variant Ident,
     /// with field initializers Binders<Expr> and an optional ".." update expression.
     /// For tuple-style variants, the fields are named "0", "1", etc.
@@ -1123,9 +1134,7 @@ pub enum ExprX {
     /// See: [https://doc.rust-lang.org/reference/expressions/operator-expr.html#r-expr.assign.evaluation-order]
     /// (Also note that this does not apply to overloaded compound assignment, which should
     /// lower to a Call node instead.)
-    ///
-    /// Used only when new-mut-refs is enabled.
-    AssignToPlace { place: Place, rhs: Expr, op: Option<BinaryOp>, typ: Typ, resolve: bool },
+    Assign { place: Place, rhs: Expr, op: Option<BinaryOp>, typ: Typ, resolve: bool },
     /// Reveal definition of an opaque function with some integer fuel amount
     Fuel(Fun, u32, bool),
     /// Reveal a string
@@ -1154,14 +1163,26 @@ pub enum ExprX {
         loop_isolation: bool,
         allow_complex_invariants: bool,
         is_for_loop: bool,
+        assume_termination: bool,
         label: Option<String>,
         cond: Option<Expr>,
         body: Expr,
         invs: LoopInvariants,
         decrease: Exprs,
+        atomic_call: bool,
     },
     /// Open invariant
     OpenInvariant(Expr, VarBinder<Typ>, Expr, InvAtomicity),
+    /// Open Atomic Update
+    TryOpenAtomicUpdate(Expr, VarBinder<Typ>, Expr),
+    /// Placeholder expression for the atomic update argument in the atomic function call
+    AtomicUpdateInitDummy,
+    /// Atomic function call
+    Atomically(AtomicallyKind, VarIdent, Expr),
+    /// Atomic function call update marker
+    Update(Expr),
+    /// Invariant mask (generated by `opens_invariants`, `outer_mask` and `inner_mask` annotations)
+    InvMask(MaskSpec),
     /// Return from function
     Return(Option<Expr>),
     /// break or continue
@@ -1183,7 +1204,6 @@ pub enum ExprX {
     /// nondeterministic choice
     Nondeterministic,
     /// Creates a mutable borrow from the given place
-    /// Used only when new-mut-refs is enabled.
     BorrowMut(Place),
     /// A "two-phase" mutable borrow. These are often created when Rust inserts implicit
     /// borrows. See [https://rustc-dev-guide.rust-lang.org/borrow_check/two_phase_borrows.html].
@@ -1192,8 +1212,6 @@ pub enum ExprX {
     /// the semantics of a TwoPhaseBorrowMut node are contextual.
     /// It is the structure of the parent node that determines where the "second phase"
     /// of the borrow is.
-    ///
-    /// Used only when new-mut-refs is enabled.
     TwoPhaseBorrowMut(Place),
     /// Borrow from a tracked place to get &mut Tracked<T>
     BorrowMutTracked(Place),
@@ -1210,7 +1228,7 @@ pub enum ExprX {
     /// The right side should only contain `assume(has_resolved(...))` statements
     /// emitted by the resolution analysis.
     EvalAndResolve(Expr, Expr),
-    /// The `old` node. (new-mut-ref only)
+    /// The `old` node.
     /// Note: to explicitly refer to the pre-state of a variable, the ExprX::VarAt(e, Pre)
     /// node should be used. The 'old' node itself is used for some bookkeeping purposes
     /// and well-formedness checks, but otherwise has no meaning. The `Old` node is
@@ -1264,9 +1282,7 @@ pub enum ModeWrapperMode {
     Proof,
 }
 
-/// `Place` is the replacement for `Loc` used for new-mut-refs.
-/// (Actually, `Place` is already used sometimes even when
-/// new-mut-refs is disabled, but only for reading.)
+/// `Place` represents a place that can be read or assigned to.
 ///
 /// A `Place` represents (the computation of) a place that can be read from,
 /// moved from, or mutated. Like ordinary Exprs, the evaluation of a Place expression
@@ -1652,6 +1668,9 @@ pub struct FunctionX {
     pub fndef_axioms: Option<Exprs>,
     /// MaskSpec that specifies what invariants the function is allowed to open
     pub mask_spec: Option<MaskSpec>,
+    /// The atomic update bound by the atomic spec,
+    /// to be properly initialized at the start of the function.
+    pub atomic_update: Option<Expr>,
     /// UnwindSpec that specifies if the function is allowed to unwind
     pub unwind_spec: Option<UnwindSpec>,
     /// Allows the item to be a const declaration or static
@@ -1724,6 +1743,12 @@ pub enum Dt {
     Tuple(usize),
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
+pub struct FunWithVis {
+    pub visibility: Visibility,
+    pub fun: Fun,
+}
+
 /// struct or enum
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub struct DatatypeX {
@@ -1744,7 +1769,7 @@ pub struct DatatypeX {
     pub mode: Mode,
     /// Generate ext_equal lemmas for datatype
     pub ext_equal: bool,
-    pub user_defined_invariant_fn: Option<Fun>,
+    pub user_defined_invariant_fn: Option<FunWithVis>,
     /// This is an optional value -- None means "always sized"
     /// whereas Some(T) means "The given type is Sized iff T is Sized".
     /// For structs, this is usually the last field of the struct, or is derived from it.

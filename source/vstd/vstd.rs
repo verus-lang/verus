@@ -21,6 +21,7 @@
 #![cfg_attr(verus_keep_ghost, feature(derive_eq_internals))]
 #![cfg_attr(verus_keep_ghost, feature(slice_index_methods))]
 #![cfg_attr(all(feature = "alloc", verus_keep_ghost), feature(liballoc_internals))]
+#![cfg_attr(verus_keep_ghost, feature(nonzero_internals))]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
@@ -101,7 +102,7 @@ pub broadcast group group_vstd_default {
     //
     // basic Verus math, types, and features
     //
-    seq::group_seq_axioms,
+    seq::group_seq_lemmas,
     seq_lib::group_seq_lib_default,
     map::group_map_lemmas,
     set::group_set_lemmas,
@@ -145,6 +146,11 @@ pub broadcast group group_vstd_default {
     std_specs::hash::group_hash_axioms,
     #[cfg(feature = "alloc")]
     std_specs::btree::group_btree_axioms,
+    //
+    // std_specs for nonzero_internals
+    //
+    #[cfg(feature = "nonzero_internals")]
+    std_specs::nonzero::group_nonzero_axioms,
 }
 
 } // verus!

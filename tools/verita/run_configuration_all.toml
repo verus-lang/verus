@@ -25,11 +25,8 @@ crate_roots = ["ironsht"]
 
 [[project]]
 name = "node-replication"
-#TODO: restore this after it is updated to new Set/Map/ISet/IMap
-#git_url = "https://github.com/verus-lang/verified-node-replication.git"
-#refspec = "main"
-git_url = "https://github.com/jaylorch/verified-node-replication.git"
-refspec = "origin/finite-sets"
+git_url = "https://github.com/verus-lang/verified-node-replication.git"
+refspec = "main"
 crate_roots = ["verified-node-replication/src/lib.rs"]
 extra_verus_args = ["--crate-type=dylib"]
 
@@ -123,23 +120,9 @@ rustup target add x86_64-unknown-none --toolchain 1.96.0
 name = "anvil"
 git_url = "https://github.com/anvil-verifier/anvil"
 refspec = "main"
-crate_roots = ["src/esr_composition.rs"]
-extra_verus_args = ["--crate-type=lib", 
-              "-L", "dependency=src/deps_hack/target/debug/deps",
-              "--extern=deps_hack=src/deps_hack/target/debug/libdeps_hack.rlib",
-              "--rlimit", "50",
-              "--verify-module", "vdeployment_controller", # remove this line to run full verification on all 4 controllers
-              "-A", "warnings"]
-prepare_script = """
-pushd src/deps_hack
-cargo clean
-cargo build
-popd
-"""
-prepare_script_windows = """
-$ErrorActionPreference = 'Stop'
-Push-Location src/deps_hack
-cargo clean
-cargo build
-Pop-Location
-"""
+cargo_verus = true
+crate_roots = ["."]
+extra_cargo_args = ["--lib"]
+extra_verus_args = [
+    "--verify-module", "vdeployment_controller", # To run full verification on all controllers, comment this line, need ~30mins.
+]
