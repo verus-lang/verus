@@ -238,8 +238,8 @@ jobs:
           VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run -p rust_verify_test --test basic
 
       - name: build line-count tool
-        working-directory: ./source/tools/line_count
-        run: cargo build
+        working-directory: ./source
+        run: cargo build -p line_count
 
   # check if esoteric conficurations build
   smoke-test:
