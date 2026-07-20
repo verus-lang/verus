@@ -478,8 +478,8 @@ pub assume_specification[ char::len_utf8 ](c: char) -> usize
 /// outside the ASCII case.
 pub assume_specification[ char::is_whitespace ](c: char) -> (res: bool)
     ensures
-        c as u32 <= 0x7F ==> res == (c == ' ' || c == '\t' || c == '\n' || c == '\x0B'
-            || c == '\x0C' || c == '\r'),
+        c as u32 <= 0x7F ==> res == (c == ' ' || c == '\t' || c == '\n' || c == '\x0B' || c
+            == '\x0C' || c == '\r'),
 ;
 
 /// [`encode_utf8`] distributes over sequence concatenation - lets a per-`char`
@@ -509,9 +509,7 @@ pub proof fn lemma_encode_utf8_push_len(chars: Seq<char>, c: char)
     lemma_encode_utf8_len_additive(chars, seq![c]);
     assert(seq![c].drop_first() =~= Seq::<char>::empty());
     assert(encode_utf8(Seq::<char>::empty()) =~= Seq::<u8>::empty());
-    assert(encode_utf8(seq![c]) =~= encode_scalar(c as u32) + encode_utf8(
-        Seq::<char>::empty(),
-    ));
+    assert(encode_utf8(seq![c]) =~= encode_scalar(c as u32) + encode_utf8(Seq::<char>::empty()));
     assert(encode_utf8(seq![c]).len() == encode_scalar(c as u32).len());
 }
 
