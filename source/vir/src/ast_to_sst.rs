@@ -16,6 +16,7 @@ use crate::messages::{
     Message, Span, ToAny, WarningAllow, error, error_with_label, error_with_secondary_label,
     internal_error,
 };
+use crate::sst;
 use crate::sst::{
     Bnd, BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclKind, LocalDeclX,
     ParPurpose, Pars, Stm, StmX, UniqueIdent,
@@ -3137,11 +3138,7 @@ pub(crate) fn expr_to_stm_opt(
 
             stms.push(Spanned::new(
                 expr.span.clone(),
-                StmX::Assume(SpannedTyped::new(
-                    &expr.span,
-                    &Arc::new(TypX::Bool),
-                    ExpX::Binary(BinaryOp::Eq(Mode::Spec), call_pred_args, args_exp),
-                )),
+                StmX::Assume(sst_equal(&expr.span, &call_pred_args, &args_exp)),
             ));
 
             // construct atomic update
@@ -3161,11 +3158,7 @@ pub(crate) fn expr_to_stm_opt(
 
             stms.push(Spanned::new(
                 expr.span.clone(),
-                StmX::Assume(SpannedTyped::new(
-                    &expr.span,
-                    &Arc::new(TypX::Bool),
-                    ExpX::Binary(BinaryOp::Eq(Mode::Spec), call_au_pred, pred_var_exp),
-                )),
+                StmX::Assume(sst_equal(&expr.span, &call_au_pred, &pred_var_exp)),
             ));
 
             state.au_var_exp = Some(au_var_exp.clone());
@@ -3772,11 +3765,7 @@ fn atomic_update_bind_and_resolve(
 
         stms.push(Spanned::new(
             expr.span.clone(),
-            StmX::Assume(SpannedTyped::new(
-                &expr.span,
-                &Arc::new(TypX::Bool),
-                ExpX::Binary(BinaryOp::Eq(Mode::Spec), call_exp, var_exp.clone()),
-            )),
+            StmX::Assume(sst_equal(&expr.span, &call_exp, var_exp)),
         ));
     }
 
@@ -3806,17 +3795,35 @@ fn binary_op_exp(
     e2: &Exp,
 ) -> (Vec<Stm>, Exp) {
     let pure_op = match op {
-        BinaryOp::Arith(ArithOp::Add(_)) => BinaryOp::Arith(ArithOp::Add(OverflowBehavior::Allow)),
-        BinaryOp::Arith(ArithOp::Sub(_)) => BinaryOp::Arith(ArithOp::Sub(OverflowBehavior::Allow)),
-        BinaryOp::Arith(ArithOp::Mul(_)) => BinaryOp::Arith(ArithOp::Mul(OverflowBehavior::Allow)),
+        // Ops with side-effects are turned into sst ops without side-effects
+        BinaryOp::Arith(ArithOp::Add(_)) => sst::BinaryOp::Arith(sst::ArithOp::Add),
+        BinaryOp::Arith(ArithOp::Sub(_)) => sst::BinaryOp::Arith(sst::ArithOp::Sub),
+        BinaryOp::Arith(ArithOp::Mul(_)) => sst::BinaryOp::Arith(sst::ArithOp::Mul),
         BinaryOp::Arith(ArithOp::EuclideanDiv(_)) => {
-            BinaryOp::Arith(ArithOp::EuclideanDiv(Div0Behavior::Allow))
+            sst::BinaryOp::Arith(sst::ArithOp::EuclideanDiv)
         }
         BinaryOp::Arith(ArithOp::EuclideanMod(_)) => {
-            BinaryOp::Arith(ArithOp::EuclideanMod(Div0Behavior::Allow))
+            sst::BinaryOp::Arith(sst::ArithOp::EuclideanMod)
         }
-        BinaryOp::Index(kind, _) => BinaryOp::Index(kind, BoundsCheck::Allow),
-        op => op,
+        BinaryOp::Bitwise(op, _) => sst::BinaryOp::Bitwise(op),
+        BinaryOp::Index(kind, _) => sst::BinaryOp::Index(kind),
+
+        // Pure ops
+        BinaryOp::Xor => sst::BinaryOp::Xor,
+        BinaryOp::HeightCompare { strictly_lt, recursive_function_field } => {
+            sst::BinaryOp::HeightCompare { strictly_lt, recursive_function_field }
+        }
+        BinaryOp::Eq(_) => sst::BinaryOp::Eq,
+        BinaryOp::Ne => sst::BinaryOp::Ne,
+        BinaryOp::Inequality(op) => sst::BinaryOp::Inequality(op),
+        BinaryOp::RealArith(op) => sst::BinaryOp::RealArith(op),
+        BinaryOp::IeeeFloat(op) => sst::BinaryOp::IeeeFloat(op),
+        BinaryOp::StrGetChar => sst::BinaryOp::StrGetChar,
+
+        // short-circuiting, caller must check these are pure, first
+        BinaryOp::And => sst::BinaryOp::And,
+        BinaryOp::Or => sst::BinaryOp::Or,
+        BinaryOp::Implies => sst::BinaryOp::Implies,
     };
     let bin = SpannedTyped::new(span, typ, ExpX::Binary(pure_op, e1.clone(), e2.clone()));
 
@@ -3838,7 +3845,7 @@ fn binary_op_exp(
                 Div0Behavior::Allow => None,
                 Div0Behavior::Error => {
                     let zero = ExpX::Const(Constant::Int(BigInt::zero()));
-                    let ne = ExpX::Binary(BinaryOp::Ne, e2.clone(), e2.new_x(zero));
+                    let ne = ExpX::Binary(sst::BinaryOp::Ne, e2.clone(), e2.new_x(zero));
                     let ne = SpannedTyped::new(span, &Arc::new(TypX::Bool), ne);
                     Some((ne, error(span, "possible division by zero")))
                 }
@@ -4104,7 +4111,7 @@ fn place_to_exp_simple(
             let (stms, e) = place_to_exp_simple(ctx, state, p)?;
             let e = unwrap_or_return_never!(e, stms);
             let i = expr_to_pure_exp_skip_checks(ctx, state, i)?;
-            let op = BinaryOp::Index(*kind, BoundsCheck::Allow);
+            let op = sst::BinaryOp::Index(*kind);
             let e = mk_exp(ExpX::Binary(op, e, i));
             Ok((stms, Maybe::Some(e)))
         }
@@ -4252,7 +4259,7 @@ fn place_to_exp_pair_rec(
                 }
             }
 
-            let op = BinaryOp::Index(*kind, BoundsCheck::Allow);
+            let op = sst::BinaryOp::Index(*kind);
             let e_l = mk_exp(ExpX::Binary(op, e1, idx_exp.clone()));
             let e_r = mk_exp(ExpX::Binary(op, e2, idx_exp));
 
