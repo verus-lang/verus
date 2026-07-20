@@ -2895,9 +2895,7 @@ fn loop_to_stmts(
                 error = error.secondary_label(span, &**msg);
             }
             let inv_stmt = StmtX::Assert(
-                State::next_loop_check_assert_id(
-                    &mut state.next_loop_invariant_assert_id_counter,
-                ),
+                State::next_loop_check_assert_id(&mut state.next_loop_invariant_assert_id_counter),
                 error,
                 None,
                 inv.clone(),
@@ -2915,9 +2913,7 @@ fn loop_to_stmts(
             let expr = exp_to_expr(ctx, &dec_exp, expr_ctxt)?;
             let error = error(&stm.span, crate::def::DEC_FAIL_LOOP_END);
             let dec_stmt = StmtX::Assert(
-                State::next_loop_check_assert_id(
-                    &mut state.next_loop_invariant_assert_id_counter,
-                ),
+                State::next_loop_check_assert_id(&mut state.next_loop_invariant_assert_id_counter),
                 error,
                 None,
                 expr,
@@ -2964,9 +2960,7 @@ fn loop_to_stmts(
                 error = error.secondary_label(span, &**msg);
             }
             let inv_stmt = StmtX::Assert(
-                State::next_loop_check_assert_id(
-                    &mut state.next_loop_invariant_assert_id_counter,
-                ),
+                State::next_loop_check_assert_id(&mut state.next_loop_invariant_assert_id_counter),
                 error,
                 None,
                 inv.clone(),
