@@ -50,16 +50,24 @@ pub trait ExIndex<Idx> where Idx: ?Sized {
 
     type Output: ?Sized;
 
+    // NOTE: this used as a precondition for both `Index` and `IndexMut`,
+    // since both share the same `s[i]` syntax.
     spec fn index_req(&self, index: &Idx) -> bool;
 
     fn index(&self, index: Idx) -> (output: &Self::Output) where Idx: Sized
         requires
-            self.index_req(&index);
+            self.index_req(&index),
+    ;
 }
 
 #[verifier::external_trait_specification]
 pub trait ExIndexMut<Idx>: core::ops::Index<Idx> where Idx: ?Sized {
     type ExternalTraitSpecificationFor: core::ops::IndexMut<Idx>;
+
+    fn index_mut(&mut self, index: Idx) -> (output: &mut Self::Output) where Idx: Sized
+        requires
+            self.index_req(&index),
+    ;
 }
 
 #[verifier::external_trait_specification]
@@ -180,41 +188,6 @@ pub assume_specification<T, F: FnOnce() -> T>[ bool::then ](b: bool, f: F) -> (r
             ret.is_none()
         },
 ;
-
-// A private seal trait to prevent a trait from being implemented outside of vstd.
-pub(crate) trait TrustedSpecSealed {}
-
-#[allow(private_bounds)]
-pub trait IndexSetTrustedSpec<Idx>: core::ops::IndexMut<Idx> + TrustedSpecSealed {
-    spec fn spec_index_set_requires(&self, index: Idx) -> bool;
-
-    spec fn spec_index_set_ensures(
-        &self,
-        new_container: &Self,
-        index: Idx,
-        val: Self::Output,
-    ) -> bool where Self::Output: Sized;
-}
-
-// TODO(uutaal): Do not need index_set once mutable reference support lands.
-// Use index_set to replace IndexMut in assign-operator.
-// Users must provide IndexSetTrustedSpec to use it.
-// It could be replaced after mutable reference is fully supported
-// Avoid call it explicitly.
-#[verifier(external_body)]
-pub fn index_set<T, Idx, E>(container: &mut T, index: Idx, val: E) where
-    T: ?Sized + core::ops::IndexMut<Idx> + core::ops::Index<Idx, Output = E> + IndexSetTrustedSpec<
-        Idx,
-    >,
-
-    requires
-        old(container).spec_index_set_requires(index),
-    ensures
-        old(container).spec_index_set_ensures(final(container), index, val),
-    no_unwind
-{
-    container[index] = val;
-}
 
 } // verus!
 

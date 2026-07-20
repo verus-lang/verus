@@ -326,20 +326,6 @@ pub broadcast proof fn axiom_vec_index_decreases<A>(v: Vec<A>, i: int)
     admit();
 }
 
-impl<T, A: Allocator> super::core::TrustedSpecSealed for Vec<T, A> {
-
-}
-
-impl<T, A: Allocator> super::core::IndexSetTrustedSpec<usize> for Vec<T, A> {
-    open spec fn spec_index_set_requires(&self, index: usize) -> bool {
-        0 <= index < self.len()
-    }
-
-    open spec fn spec_index_set_ensures(&self, new_container: &Self, index: usize, val: T) -> bool {
-        new_container@ == self@.update(index as int, val)
-    }
-}
-
 pub assume_specification<T: PartialEq<U>, U, A1: Allocator, A2: Allocator>[ <Vec<T, A1> as PartialEq<Vec<U, A2>>>::eq ](
     x: &Vec<T, A1>,
     y: &Vec<U, A2>,
