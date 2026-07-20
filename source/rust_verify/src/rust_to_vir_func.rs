@@ -1660,6 +1660,15 @@ pub(crate) fn check_item_fn<'tcx>(
             let Body { params, value: _ } = body;
             let mut ps = Vec::new();
             for Param { hir_id, pat, ty_span: _, span } in params.iter() {
+                // Check the parameter's pattern is a plain identifier (e.g., `x: T`).
+                // VIR expects each param to be associated with exactly one identifier so complex params
+                // (e.g., `(x, y): T` or `_: T` or `a @ b: T`) are unsupported
+                if !matches!(pat.kind, rustc_hir::PatKind::Binding(_, _, _, None)) {
+                    return err_span(
+                        *span,
+                        "function parameters must be a plain identifier pattern (e.g. `x: T` or `mut x: T`)",
+                    );
+                }
                 let (is_mut_var, name) = pat_to_mut_var(pat)?;
                 // is_mut_var: means a parameter is like `mut x: X`
                 // is_mut: means a parameter is like `x: &mut X` or `x: Tracked<&mut X>`

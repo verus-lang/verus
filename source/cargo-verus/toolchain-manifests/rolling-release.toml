@@ -1,6 +1,0 @@
-# Not a real toolchain manifest.
-# Only here temporarily to test that the `build.rs` works in CI.
-# It should be removed when the `rolling-release.yml` CI flow is extended.
-verus = "0.2026.06.10.e6a6d4f"
-vstd = { git = "https://github.com/verus-lang/verus.git", rev = "e6a6d4f" }
-z3 = "4.12.5"

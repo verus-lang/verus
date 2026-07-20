@@ -1026,12 +1026,11 @@ fn add_pattern_rec(
 
 fn check_binding(span: &Span, by_ref: &ByRef, mode: Mode) -> Result<(), VirErr> {
     match (by_ref, mode) {
-        (ByRef::MutRef, Mode::Spec | Mode::Proof) => {
-            // Supporting this for Mode::Proof would be nice but requires thought for how
-            // to implement.
-            Err(error(span, "a 'mut ref' binding in a pattern is only allowed for exec mode"))
+        (ByRef::MutRef, Mode::Spec) => {
+            Err(error(span, "a 'mut ref' binding in a pattern is not allowed in spec mode"))
         }
         (ByRef::No | ByRef::ImmutRef, _) => Ok(()),
+        (_, Mode::Proof) => Ok(()),
         (_, Mode::Exec) => Ok(()),
     }
 }
