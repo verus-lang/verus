@@ -67,16 +67,7 @@ fn get_external_deps() -> anyhow::Result<ExternalDeps> {
 }
 
 fn get_verus_version() -> anyhow::Result<String> {
-    let git_rev_parse = Command::new("git")
-        .args(["rev-parse", "-q", "--short=7", "HEAD"])
-        .output()
-        .context("running `git rev-parse`")?;
-    if !git_rev_parse.status.success() {
-        anyhow::bail!("failed to run `git rev-parse`");
-    }
-    let rev_raw = String::from_utf8(git_rev_parse.stdout).context("commit hash is invalid utf8")?;
-    let rev = rev_raw.trim();
-
+    let rev = get_git_rev(Some(7))?;
     let git_show_date = std::process::Command::new("git")
         .args(["show", "-s", "--format=%cs", "HEAD"])
         .output()
@@ -101,17 +92,7 @@ fn get_verus_version() -> anyhow::Result<String> {
 fn get_vstd_version(is_rolling: bool) -> anyhow::Result<Crate> {
     if is_rolling {
         // For a rolling release, pin to the Git commit.
-        let git_rev_parse = Command::new("git")
-            .args(["rev-parse", "-q", "--short", "HEAD"])
-            .output()
-            .context("running `git rev-parse`")?;
-        if !git_rev_parse.status.success() {
-            anyhow::bail!("failed to run `git rev-parse`");
-        }
-        let rev = String::from_utf8(git_rev_parse.stdout)
-            .context("commit hash is invalid utf8")?
-            .trim()
-            .to_owned();
+        let rev = get_git_rev(None)?;
         let git = "https://github.com/verus-lang/verus.git".into();
         Ok(Crate::GitCommit { git, rev })
     } else {
@@ -131,4 +112,19 @@ fn get_vstd_version(is_rolling: bool) -> anyhow::Result<Crate> {
         };
         Ok(Crate::Registry(version.into()))
     }
+}
+
+fn get_git_rev(limit: Option<usize>) -> anyhow::Result<String> {
+    let short_flag =
+        if let Some(len) = limit { format!("--short={len}") } else { "--short".into() };
+    let git_rev_parse = Command::new("git")
+        .args(["rev-parse", "-q", &short_flag, "HEAD"])
+        .output()
+        .context("running `git rev-parse`")?;
+    if !git_rev_parse.status.success() {
+        anyhow::bail!("failed to run `git rev-parse`");
+    }
+    let raw_rev =
+        String::from_utf8(git_rev_parse.stdout).context("commit hash is invalid UTF-8")?;
+    Ok(raw_rev.trim().to_owned())
 }
