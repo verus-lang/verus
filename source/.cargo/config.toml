@@ -1,9 +1,14 @@
 [build]
 target-dir = "target-verus"
+rustflags = [
+    "--cfg", "proc_macro_span",
+    "--cfg", "verus_keep_ghost",
+    "--cfg", "span_locations",
+    "--cfg", "procmacro2_semver_exempt",
+]
 
 [env]
 RUSTC_BOOTSTRAP = "1"
-RUSTFLAGS = "--cfg proc_macro_span --cfg verus_keep_ghost --cfg span_locations --cfg procmacro2_semver_exempt"
 RUST_MIN_STACK = "20971520"
 VERUS_IN_VARGO = "1"
 VERUS_Z3_PATH = { value = "z3", relative = true }

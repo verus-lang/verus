@@ -229,6 +229,7 @@ jobs:
           . ../tools/activate
           vargo clean
           vargo build
+          VERUS_Z3_PATH="$(pwd)/z3" cargo run -p vstd_build -- target-verus/debug
 
       - name: basic tests
         working-directory: ./source
