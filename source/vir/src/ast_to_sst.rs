@@ -1890,12 +1890,31 @@ pub(crate) fn expr_to_stm_opt(
             assert!(stms.len() == 1);
             let StmX::Block(stms) = &stms[0].x else { unreachable!() };
 
+            // If the loop we're looking for is inside yet another StmX::Block, flatten
+            // it out.
+            let mut stms = stms.clone();
+            if stms.len() >= 2
+                && matches!(stms[stms.len() - 1].x, StmX::Assign { .. })
+                && let StmX::Block(inner_stms) = &stms[stms.len() - 2].x
+            {
+                let mut s: Vec<Stm> = stms[..stms.len() - 2].to_vec();
+                s.extend((**inner_stms).clone());
+                s.push(stms[stms.len() - 1].clone());
+                stms = Arc::new(s);
+            }
+
             // The Loop should be last or second-to-last statement
             let loop_idx = stms.iter().rposition(|s| matches!(s.x, StmX::Loop { .. })).unwrap();
             assert!(
                 stms.len() - loop_idx == 1
                     || (stms.len() - loop_idx == 2
-                        && matches!(stms[stms.len() - 1].x, StmX::Assume(..)))
+                        && matches!(
+                            stms[stms.len() - 1].x,
+                            StmX::Assume(..) | StmX::Assign { .. }
+                        ))
+                    || (stms.len() - loop_idx == 3
+                        && matches!(stms[stms.len() - 2].x, StmX::Assume(..))
+                        && matches!(stms[stms.len() - 1].x, StmX::Assign { .. }))
             );
 
             let mut stm = Spanned::new(

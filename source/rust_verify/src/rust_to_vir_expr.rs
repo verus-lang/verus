@@ -4684,12 +4684,63 @@ fn ty_is_float_or_ref_float<'tcx>(ty: rustc_middle::ty::Ty<'tcx>) -> bool {
     t.is_floating_point()
 }
 
+/// Check that we can unambiguously identify a loop inside this loop_isolation_boundary block,
+/// and return the 'loop_isolation' parameter of that loop.
+///
+/// The exact form of the block isn't really important;
+/// we just need to make sure that the loop we pick
+/// out is the last loop to appear in the block (since that's how ast_to_sst associates
+/// the loop_isolation_boundary block with the loop).
 fn loop_isolation_boundary_check(span: Span, block: &vir::ast::Expr) -> Result<bool, VirErr> {
-    let ExprX::Block(_stmts, Some(e)) = &block.x else {
-        crate::internal_err!(span, "loop_isolation_boundary expected Block")
+    let err =
+        || crate::internal_err!(span, "loop_isolation_boundary block not of the expected form");
+
+    let ExprX::Block(stmts, Some(e)) = &block.x else {
+        return err();
     };
     if let ExprX::Loop { loop_isolation, .. } = &e.x {
         return Ok(*loop_isolation);
     }
-    crate::internal_err!(span, "loop_isolation_boundary expected block containing loop")
+
+    // Check that this block has the form:
+    // {
+    //   let x = match y { mut z => loop { } }; x
+    // }
+
+    let ExprX::ReadPlace(place, _) = &e.x else {
+        return err();
+    };
+    let PlaceX::Local(l) = &place.x else {
+        return err();
+    };
+
+    if stmts.len() == 0 {
+        return err();
+    }
+    let StmtX::Decl { pattern, mode: _, init: Some(init), els: None } = &stmts[stmts.len() - 1].x
+    else {
+        return err();
+    };
+    let PatternX::Var(pattern_binding) = &pattern.x else {
+        return err();
+    };
+    if &pattern_binding.name != l {
+        return err();
+    }
+
+    let PlaceX::Temporary(temp) = &init.x else {
+        return err();
+    };
+    let ExprX::Match(_, arms) = &temp.x else {
+        return err();
+    };
+    if arms.len() != 1 {
+        return err();
+    }
+
+    if let ExprX::Loop { loop_isolation, .. } = &arms[0].x.body.x {
+        return Ok(*loop_isolation);
+    }
+
+    err()
 }
