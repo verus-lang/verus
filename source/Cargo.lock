@@ -317,11 +317,16 @@ dependencies = [
 name = "cargo-verus-toolchains"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "clap",
+ "indoc",
  "itertools",
  "pretty_assertions",
+ "regex",
  "serde",
  "tempfile",
  "toml",
+ "toml_edit",
 ]
 
 [[package]]
@@ -1259,6 +1264,15 @@ dependencies = [
  "portable-atomic",
  "unicode-width 0.2.0",
  "web-time",
+]
+
+[[package]]
+name = "indoc"
+version = "2.0.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "79cf5c93f93228cf8efb3ba362535fb11199ac548a09ce117c9b1adc3030d706"
+dependencies = [
+ "rustversion",
 ]
 
 [[package]]
@@ -2825,6 +2839,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "84c8b9f757e028cee9fa244aea147aab2a9ec09d5325a9b01e0a49730c2b5269"
 dependencies = [
  "indexmap 2.14.0",
+ "serde_core",
+ "serde_spanned",
  "toml_datetime 0.7.5+spec-1.1.0",
  "toml_parser",
  "toml_writer",
