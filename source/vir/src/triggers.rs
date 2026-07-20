@@ -134,6 +134,7 @@ fn check_trigger_expr_arg(state: &mut State, arg: &Exp) {
             | UnaryOp::MutRefFinal(_)
             | UnaryOp::Length(_)
             | UnaryOp::InferSpecForLoopIter { .. } => {}
+            UnaryOp::LoopIsolationBoundary => {}
         },
         ExpX::UnaryOpr(op, arg) => match op {
             UnaryOpr::Box(_) | UnaryOpr::Unbox(_) => panic!("unexpected box"),
@@ -287,6 +288,9 @@ fn check_trigger_expr(
             | UnaryOp::CastToInteger => Ok(()),
             UnaryOp::InferSpecForLoopIter { .. } => {
                 Err(error(&exp.span, "triggers cannot contain loop spec inference"))
+            }
+            UnaryOp::LoopIsolationBoundary { .. } => {
+                Err(error(&exp.span, "triggers cannot contain loop_isolation_boundary"))
             }
             UnaryOp::Not => Err(error(&exp.span, "triggers cannot contain boolean operators")),
             UnaryOp::Length(_) => {

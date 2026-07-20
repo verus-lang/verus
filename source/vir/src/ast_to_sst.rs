@@ -1888,6 +1888,37 @@ pub(crate) fn expr_to_stm_opt(
         ExprX::NullaryOpr(op) => {
             Ok((vec![], Maybe::Some(Value::Exp(mk_exp(ExpX::NullaryOpr(op.clone()))))))
         }
+        ExprX::Unary(UnaryOp::LoopIsolationBoundary, e) => {
+            let (stms, exp) = expr_to_stm_opt(ctx, state, e)?;
+
+            assert!(stms.len() == 1);
+            let StmX::Block(stms) = &stms[0].x else { unreachable!() };
+
+            // The Loop should be last or second-to-last statement
+            let loop_idx = stms.iter().rposition(|s| matches!(s.x, StmX::Loop { .. })).unwrap();
+            assert!(
+                stms.len() - loop_idx == 1
+                    || (stms.len() - loop_idx == 2
+                        && matches!(stms[stms.len() - 1].x, StmX::Assume(..)))
+            );
+
+            let mut stm = Spanned::new(
+                expr.span.clone(),
+                StmX::LoopIsolationBoundary {
+                    pre_stms: Arc::new(stms[0..loop_idx].to_vec()),
+                    loop_stm: stms[loop_idx].clone(),
+                    pre_modified_params: None,
+                },
+            );
+
+            if loop_idx + 1 < stms.len() {
+                let mut v = vec![stm];
+                v.extend(stms[loop_idx + 1..].to_vec());
+                stm = Spanned::new(expr.span.clone(), StmX::Block(Arc::new(v)))
+            }
+
+            Ok((vec![stm], exp))
+        }
         ExprX::Unary(op @ UnaryOp::InferSpecForLoopIter { .. }, spec_expr) => {
             let spec_exp = expr_to_pure_exp_skip_checks(ctx, state, &spec_expr)?;
             let infer_exp = mk_exp(ExpX::Unary(*op, spec_exp));
