@@ -160,4 +160,12 @@ fn main() {
         let code = result.code();
         panic!("vstd build failed with exit code {:?}", code);
     }
+
+    let verus_root_marker_path = verus_target_path.join("verus-root");
+    touch(&verus_root_marker_path).expect("touch verus-root");
+}
+
+/// A simple implementation of `touch $path` (ignores existing files)
+fn touch(path: &std::path::Path) -> std::io::Result<()> {
+    std::fs::OpenOptions::new().create(true).write(true).open(path).map(|_| ())
 }
