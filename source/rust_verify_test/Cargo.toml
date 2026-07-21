@@ -19,6 +19,7 @@ toml = { workspace = true }
 yansi = { workspace = true }
 
 [features]
+record-history = [] # for convenience only; inert at the moment
 singular = ["vir/singular", "air/singular"]
 
 [package.metadata.rust-analyzer]
