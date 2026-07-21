@@ -100,6 +100,7 @@
   - [Atomic specifications](./logatom-spec.md)
   - [Invoking the linearization point](./logatom-open.md)
   - [Calling a logically atomic function](./logatom-call.md)
+  - [HOCAP style linearization](./logatom-hocap.md)
 
 - [Verifying a container library: Binary Search Tree](./container_bst.md)
   - [First draft](./container_bst_first_draft.md)
