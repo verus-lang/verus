@@ -183,10 +183,6 @@ jobs:
           CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run --release -p air
           CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run --release -p rust_verify_test
 
-      - name: build line-count tool
-        working-directory: ./source/tools/line_count
-        run: cargo build
-
   # check if it builds and that basic tests pass on our main supported platforms
   basic-test:
     strategy:
