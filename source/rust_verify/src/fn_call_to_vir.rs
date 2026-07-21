@@ -399,27 +399,78 @@ pub(crate) fn const_var_to_vir<'tcx>(
     Ok(bctx.spanned_typed_new(span, &typ, ExprX::ConstVar(Arc::new(fun), autospec_usage)))
 }
 
-pub(crate) fn deref_to_vir<'tcx>(
+/// Emit a call to deref or deref_mut
+pub(crate) fn call_deref<'tcx>(
     bctx: &BodyCtxt<'tcx>,
+    span: Span,
+    expr_typ: Typ,
     trait_fun_id: DefId,
     arg: vir::ast::Expr,
-    expr_typ: Typ,
     arg_ty: rustc_middle::ty::Ty<'tcx>,
+) -> Result<vir::ast::Expr, VirErr> {
+    // deref has arg &Self
+    // deref_mut has arg &mut Self
+    // In either case, strip off the reference to get the Self type for the trait
+    let TyKind::Ref(_, self_ty, _) = arg_ty.kind() else {
+        crate::internal_err!(span, "deref_to_vir: expected ref")
+    };
+    let trait_args = bctx.ctxt.tcx.mk_args(&[GenericArg::from(*self_ty)]);
+    let args = Arc::new(vec![arg]);
+    call_overloaded_method(bctx, span, expr_typ, trait_fun_id, args, trait_args)
+}
+
+/// Emit a call to index or index_mut
+pub(crate) fn call_index<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
     span: Span,
+    expr_typ: Typ,
+    trait_fun_id: DefId,
+    arg: vir::ast::Expr,
+    arg_ty: rustc_middle::ty::Ty<'tcx>,
+    idx: vir::ast::Expr,
+    idx_ty: rustc_middle::ty::Ty<'tcx>,
+) -> Result<vir::ast::Expr, VirErr> {
+    // index has arg &Self
+    // index_mut has arg &mut Self
+    // In either case, strip off the reference to get the Self type for the trait
+    let TyKind::Ref(_, self_ty, _) = arg_ty.kind() else {
+        crate::internal_err!(span, "deref_to_vir: expected ref")
+    };
+    let trait_args = bctx.ctxt.tcx.mk_args(&[GenericArg::from(*self_ty), GenericArg::from(idx_ty)]);
+    let args = Arc::new(vec![arg, idx]);
+    call_overloaded_method(bctx, span, expr_typ, trait_fun_id, args, trait_args)
+}
+
+/// Emit a call to unary method call (Neg or Not)
+pub(crate) fn call_unary_method<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    span: Span,
+    expr_typ: Typ,
+    trait_fun_id: DefId,
+    arg: vir::ast::Expr,
+    arg_ty: rustc_middle::ty::Ty<'tcx>,
+) -> Result<vir::ast::Expr, VirErr> {
+    let self_ty = arg_ty;
+    let trait_args = bctx.ctxt.tcx.mk_args(&[GenericArg::from(self_ty)]);
+    let args = Arc::new(vec![arg]);
+    call_overloaded_method(bctx, span, expr_typ, trait_fun_id, args, trait_args)
+}
+
+/// Common logic for all the overloaded methods
+fn call_overloaded_method<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    span: Span,
+    expr_typ: Typ,
+    trait_fun_id: DefId,
+    args: vir::ast::Exprs,
+    trait_args: &'tcx rustc_middle::ty::GenericArgs<'tcx>,
 ) -> Result<vir::ast::Expr, VirErr> {
     let tcx = bctx.ctxt.tcx;
     let typing_env = TypingEnv::non_body_analysis(tcx, bctx.fun_id);
-    // The `arg_ty`, if `&T`, should be Rust automatically adding the `&`
-    // reference for calling `deref`. We strip it for trait resolution.
-    //
-    // Otherwise, it may be `deref` coercion. Leave it as-is.
-    let arg_ty =
-        if let TyKind::Ref(_, arg_ty, _) = arg_ty.kind() { arg_ty.clone() } else { arg_ty };
-    let node_substs = tcx.mk_args(&[GenericArg::from(arg_ty)]);
 
     let trait_fun = Arc::new(FunX { path: bctx.ctxt.def_id_to_vir_path(trait_fun_id) });
 
-    let res = resolve_trait_item(span, tcx, typing_env, trait_fun_id, node_substs)?;
+    let res = resolve_trait_item(span, tcx, typing_env, trait_fun_id, trait_args)?;
     let target_kind = match res {
         ResolutionResult::Resolved { resolved_item: ResolvedItem::FromImpl(did, args), .. } => {
             let typs = mk_typ_args(bctx, args, did, span)?;
@@ -439,8 +490,8 @@ pub(crate) fn deref_to_vir<'tcx>(
 
     let autospec_usage = if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
 
-    let typ_args = mk_typ_args(bctx, node_substs, trait_fun_id, span)?;
-    let impl_paths = get_impl_paths(bctx, trait_fun_id, node_substs, None, false, span)?;
+    let typ_args = mk_typ_args(bctx, trait_args, trait_fun_id, span)?;
+    let impl_paths = get_impl_paths(bctx, trait_fun_id, trait_args, None, false, span)?;
     let call_target_attrs = vir::ast::CallTargetAttrs {
         autospec: autospec_usage,
         assume_external_allowed: false,
@@ -448,7 +499,6 @@ pub(crate) fn deref_to_vir<'tcx>(
     };
     let call_target =
         CallTarget::Fun(target_kind, trait_fun, typ_args, impl_paths, call_target_attrs);
-    let args = Arc::new(vec![arg.clone()]);
     let x = ExprX::Call { target: call_target, args, post_args: None, body: None };
 
     Ok(bctx.spanned_typed_new(span, &expr_typ, x))
