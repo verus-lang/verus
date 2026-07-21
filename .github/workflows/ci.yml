@@ -171,15 +171,15 @@ jobs:
         run: |
           . ../tools/activate
           vargo clean
-          RUSTFLAGS="-C debug-assertions" vargo build --release
+          CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true vargo build --release
           VERUS_Z3_PATH="$(pwd)/z3" cargo run -p vstd_build -- target-verus/release
 
       - name: full tests
         working-directory: ./source
         run: |
           . ../tools/activate
-          RUSTFLAGS="-C debug-assertions" VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run --release -p air
-          RUSTFLAGS="-C debug-assertions" VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run --release -p rust_verify_test
+          CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run --release -p air
+          CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run --release -p rust_verify_test
           # check cvc5
           vargo run --release -p rust_verify -- -V cvc5 ../examples/assorted_demo.rs
 
