@@ -178,10 +178,10 @@ jobs:
         working-directory: ./source
         run: |
           . ../tools/activate
-          CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run --release -p air
-          CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run --release -p rust_verify_test
           # check cvc5
           VERUS_CVC5_PATH=./cvc5 vargo run --release -p rust_verify -- -V cvc5 ../examples/assorted_demo.rs
+          CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run --release -p air
+          CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run --release -p rust_verify_test
 
       - name: build line-count tool
         working-directory: ./source/tools/line_count
@@ -292,9 +292,7 @@ jobs:
               ;;
             "no-std")
               vargo build --vstd-no-std
-              cd vstd
-              unset -f cargo
-              cargo build --no-default-features --features alloc
+              cargo build --manifest-path vstd/Cargo.toml --no-default-features --features alloc
               ;;
             "no-alloc")
               vargo build --vstd-no-std --vstd-no-alloc
