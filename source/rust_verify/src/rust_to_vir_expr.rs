@@ -2523,7 +2523,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 }
 
                 // ! integer type (bitwise negation)
-                if matches!(op, UnOp::Not) && is_integer_ty(&bctx.ctxt.verus_items, &arg_ty) {
+                if matches!(op, UnOp::Not) && ty_is_integer_or_ref_integer(bctx, arg_ty) {
                     let varg = expr_to_vir_consume(bctx, arg)?;
 
                     let expr_ty = bctx.types.expr_ty(expr);
@@ -2540,18 +2540,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     return mk_expr(ExprX::Unary(op, varg));
                 }
 
-                // Neg of an integer type, a floating point type, or a reference to either one
-                if matches!(op, UnOp::Neg)
-                    && (is_integer_ty(&bctx.ctxt.verus_items, &arg_ty)
-                        || arg_ty.is_floating_point()
-                        ||
-                        (match arg_ty.kind() {
-                            TyKind::Ref(_, t, rustc_ast::Mutability::Not) =>
-                                is_integer_ty(&bctx.ctxt.verus_items, t) || t.is_floating_point(),
-                            _ => false
-                        })
-                    )
-                {
+                // Neg of an integer type
+                if matches!(op, UnOp::Neg) && ty_is_integer_or_ref_integer(bctx, arg_ty) {
                     // Translate `-a` to the binary op `0 - a`.
                     // Special-case the negation of literals.
                     let zero_const = vir::ast_util::const_int_from_u128(0);
@@ -2570,8 +2560,23 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             i.get(),
                             typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id)?,
                         )?
-                    } else if let ExprKind::Lit(lit @ Spanned { node: LitKind::Float(..), .. }) =
-                        &arg.kind
+                    } else {
+                        expr_to_vir(bctx, arg)?
+                    };
+                    let varg = varg.consume(bctx, bctx.types.expr_ty_adjusted(arg));
+                    let range = crate::rust_to_vir_base::get_range(&expr_typ()?);
+                    let ob = if bctx.in_ghost {
+                        OverflowBehavior::Allow
+                    } else {
+                        OverflowBehavior::Error(range)
+                    };
+                    return mk_expr(ExprX::Binary(BinaryOp::Arith(ArithOp::Sub(ob)), zero, varg));
+                }
+
+                // Neg of a floating point type
+                if matches!(op, UnOp::Neg) && ty_is_float_or_ref_float(arg_ty) {
+                    // Special-case the negation of literals.
+                    if let ExprKind::Lit(lit @ Spanned { node: LitKind::Float(..), .. }) = &arg.kind
                     {
                         if bctx.types.expr_adjustments(arg).len() != 0 {
                             crate::internal_err!(
@@ -2588,16 +2593,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             Some(arg_ty),
                         )?));
                     } else {
-                        expr_to_vir(bctx, arg)?
+                        unsupported_err!(expr.span, "unary op negation of floating point")
                     };
-                    let varg = varg.consume(bctx, bctx.types.expr_ty_adjusted(arg));
-                    let range = crate::rust_to_vir_base::get_range(&expr_typ()?);
-                    let ob = if bctx.in_ghost {
-                        OverflowBehavior::Allow
-                    } else {
-                        OverflowBehavior::Error(range)
-                    };
-                    return mk_expr(ExprX::Binary(BinaryOp::Arith(ArithOp::Sub(ob)), zero, varg));
                 }
 
                 // The above cases should handle (at mininum) all non-method-call cases.
@@ -4581,4 +4578,23 @@ fn ty_is_bool_or_ref_bool<'tcx>(ty: rustc_middle::ty::Ty<'tcx>) -> bool {
         },
         _ => false,
     }
+}
+
+fn ty_is_integer_or_ref_integer<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    ty: rustc_middle::ty::Ty<'tcx>,
+) -> bool {
+    let t = match ty.kind() {
+        TyKind::Ref(_, t, rustc_ast::Mutability::Not) => t,
+        _ => &ty,
+    };
+    is_integer_ty(&bctx.ctxt.verus_items, t)
+}
+
+fn ty_is_float_or_ref_float<'tcx>(ty: rustc_middle::ty::Ty<'tcx>) -> bool {
+    let t = match ty.kind() {
+        TyKind::Ref(_, t, rustc_ast::Mutability::Not) => t,
+        _ => &ty,
+    };
+    t.is_floating_point()
 }

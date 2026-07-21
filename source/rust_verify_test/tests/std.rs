@@ -1754,3 +1754,39 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] unary_op_of_refs verus_code! {
+        fn test_not() {
+            let x = false;
+            let x_ref = &x;
+
+            let y1 = !x;
+            let y2 = !x_ref;
+            assert(y1 == true);
+            assert(y2 == true);
+        }
+
+        fn test_bitnot() {
+            let x: u8 = 0;
+            let x_ref = &x;
+
+            assert(!0u8 == 255) by(compute_only);
+
+            let y1 = !x;
+            let y2 = !x_ref;
+            assert(y1 == 255);
+            assert(y2 == 255);
+        }
+
+        fn test_neg() {
+            let x: i8 = 10;
+            let x_ref = &x;
+
+            let y1 = -x;
+            let y2 = -x_ref;
+            assert(y1 == -10);
+            assert(y2 == -10);
+        }
+    } => Ok(())
+}
