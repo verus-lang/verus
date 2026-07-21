@@ -61,9 +61,9 @@ use crate::erase::{CompilableOperator, ResolvedCall};
 use crate::fn_call_to_vir::{const_var_to_vir, fn_call_to_vir};
 use crate::rust_intrinsics_to_vir::int_intrinsic_constant_to_vir;
 use crate::rust_to_vir_base::{
-    bitwidth_and_signedness_of_integer_type, get_impl_paths_for_clauses, get_range, is_smt_arith,
-    is_smt_equality, local_to_var, mid_ty_simplify, mk_range, ty_is_vec, typ_of_expr_adjusted,
-    typ_of_node_unadjusted,
+    bitwidth_and_signedness_of_integer_type, get_impl_paths_for_clauses, get_range, is_integer_ty,
+    is_smt_arith, is_smt_equality, local_to_var, mid_ty_simplify, mk_range, ty_is_vec,
+    typ_of_expr_adjusted, typ_of_node_unadjusted,
 };
 use crate::rust_to_vir_ctor::{resolve_braces_ctor, resolve_ctor};
 use crate::util::{err_span, err_span_bare, slice_vec_map_result, vec_map_result};
@@ -2513,7 +2513,102 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             unsupported_err!(expr.span, format!("offset_of!()"))
         }
         ExprKind::Unary(op, arg) => match op {
-            UnOp::Not | UnOp::Neg if bctx.types.is_method_call(expr) => {
+            UnOp::Not | UnOp::Neg => {
+                let arg_ty = bctx.types.expr_ty_adjusted(arg);
+
+                // ! bool
+                if matches!(op, UnOp::Not) && ty_is_bool_or_ref_bool(arg_ty) {
+                    let varg = expr_to_vir_consume(bctx, arg)?;
+                    return mk_expr(ExprX::Unary(UnaryOp::Not, varg));
+                }
+
+                // ! integer type (bitwise negation)
+                if matches!(op, UnOp::Not) && is_integer_ty(&bctx.ctxt.verus_items, &arg_ty) {
+                    let varg = expr_to_vir_consume(bctx, arg)?;
+
+                    let expr_ty = bctx.types.expr_ty(expr);
+                    let (Some(w), s) =
+                        bitwidth_and_signedness_of_integer_type(&bctx.ctxt.verus_items, expr_ty)
+                    else {
+                        crate::internal_err!(
+                            expr.span,
+                            "unexpected result of ! operator: {:?}",
+                            expr_ty
+                        );
+                    };
+                    let op = UnaryOp::BitNot(if s { None } else { Some(w) });
+                    return mk_expr(ExprX::Unary(op, varg));
+                }
+
+                // Neg of an integer type, a floating point type, or a reference to either one
+                if matches!(op, UnOp::Neg)
+                    && (is_integer_ty(&bctx.ctxt.verus_items, &arg_ty)
+                        || arg_ty.is_floating_point()
+                        ||
+                        (match arg_ty.kind() {
+                            TyKind::Ref(_, t, rustc_ast::Mutability::Not) =>
+                                is_integer_ty(&bctx.ctxt.verus_items, t) || t.is_floating_point(),
+                            _ => false
+                        })
+                    )
+                {
+                    // Translate `-a` to the binary op `0 - a`.
+                    // Special-case the negation of literals.
+                    let zero_const = vir::ast_util::const_int_from_u128(0);
+                    let zero = mk_expr(ExprX::Const(zero_const))?.expect_expr();
+                    let varg = if let ExprKind::Lit(Spanned { node: LitKind::Int(i, _), .. }) =
+                        &arg.kind
+                    {
+                        if bctx.types.expr_adjustments(arg).len() != 0 {
+                            crate::internal_err!(
+                                expr.span,
+                                "negation of literal expected no implicit adjustments"
+                            );
+                        }
+                        mk_lit_int(
+                            true,
+                            i.get(),
+                            typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id)?,
+                        )?
+                    } else if let ExprKind::Lit(lit @ Spanned { node: LitKind::Float(..), .. }) =
+                        &arg.kind
+                    {
+                        if bctx.types.expr_adjustments(arg).len() != 0 {
+                            crate::internal_err!(
+                                expr.span,
+                                "negation of literal expected no implicit adjustments"
+                            );
+                        }
+                        return Ok(ExprOrPlace::Expr(lit_to_vir(
+                            bctx,
+                            expr.span,
+                            *lit,
+                            true,
+                            &typ_of_expr_adjusted(bctx, expr.span, &arg.hir_id)?,
+                            Some(arg_ty),
+                        )?));
+                    } else {
+                        expr_to_vir(bctx, arg)?
+                    };
+                    let varg = varg.consume(bctx, bctx.types.expr_ty_adjusted(arg));
+                    let range = crate::rust_to_vir_base::get_range(&expr_typ()?);
+                    let ob = if bctx.in_ghost {
+                        OverflowBehavior::Allow
+                    } else {
+                        OverflowBehavior::Error(range)
+                    };
+                    return mk_expr(ExprX::Binary(BinaryOp::Arith(ArithOp::Sub(ob)), zero, varg));
+                }
+
+                // The above cases should handle (at mininum) all non-method-call cases.
+                if !bctx.types.is_method_call(expr) {
+                    unsupported_err!(
+                        expr.span,
+                        format!("applying unary operator {:?} to type {:?}", op, arg_ty)
+                    )
+                }
+
+                // Handle any method call case
                 let fn_def_id = bctx
                     .types
                     .type_dependent_def_id(expr.hir_id)
@@ -2528,73 +2623,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     arg_vir,
                     arg_ty,
                 )?))
-            }
-            UnOp::Not => {
-                let ty = tc.expr_ty_adjusted(arg);
-                let not_op = match ty.kind() {
-                    TyKind::Adt(_, _) | TyKind::Uint(_) | TyKind::Int(_) => {
-                        let (Some(w), s) = bitwidth_and_signedness_of_integer_type(
-                            &bctx.ctxt.verus_items,
-                            bctx.types.expr_ty(expr),
-                        ) else {
-                            return err_span(
-                                expr.span,
-                                "expected bool or finite integer width for !",
-                            );
-                        };
-                        UnaryOp::BitNot(if s { None } else { Some(w) })
-                    }
-                    TyKind::Bool => UnaryOp::Not,
-                    _ => {
-                        unsupported_err!(
-                            expr.span,
-                            format!("applying `!` operator to type {:}", ty)
-                        )
-                    }
-                };
-                let varg = expr_to_vir_consume(bctx, arg)?;
-                mk_expr(ExprX::Unary(not_op, varg))
-            }
-            UnOp::Neg => {
-                let zero_const = vir::ast_util::const_int_from_u128(0);
-                let zero = mk_expr(ExprX::Const(zero_const))?.expect_expr();
-                let varg =
-                    if let ExprKind::Lit(Spanned { node: LitKind::Int(i, _), .. }) = &arg.kind {
-                        mk_lit_int(
-                            true,
-                            i.get(),
-                            typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id)?,
-                        )?
-                    } else if let ExprKind::Lit(lit @ Spanned { node: LitKind::Float(..), .. }) =
-                        &arg.kind
-                    {
-                        if bctx.types.expr_adjustments(arg).len() != 0 {
-                            return err_span(
-                                expr.span,
-                                "negation of literal expected no implicit adjustments",
-                            );
-                        }
-                        let arg_ty = bctx.types.expr_ty(arg);
-
-                        return Ok(ExprOrPlace::Expr(lit_to_vir(
-                            bctx,
-                            expr.span,
-                            *lit,
-                            true,
-                            &typ_of_expr_adjusted(bctx, expr.span, &arg.hir_id)?,
-                            Some(arg_ty),
-                        )?));
-                    } else {
-                        expr_to_vir(bctx, arg)?
-                    };
-                let varg = varg.consume(bctx, bctx.types.expr_ty_adjusted(arg));
-                let range = crate::rust_to_vir_base::get_range(&expr_typ()?);
-                let ob = if bctx.in_ghost {
-                    OverflowBehavior::Allow
-                } else {
-                    OverflowBehavior::Error(range)
-                };
-                mk_expr(ExprX::Binary(BinaryOp::Arith(ArithOp::Sub(ob)), zero, varg))
             }
             UnOp::Deref => {
                 if bctx.types.is_method_call(expr) {
@@ -3283,7 +3311,12 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         call_target_attrs,
                     );
                     let args = Arc::new(vec![tgt_vir.clone(), idx_vir.clone()]);
-                    let x = ExprX::Call { target: call_target, args: args, post_args: None, body: None };
+                    let x = ExprX::Call {
+                        target: call_target,
+                        args: args,
+                        post_args: None,
+                        body: None,
+                    };
                     bctx.spanned_typed_new(expr.span, &call_ret_typ, x)
                 } else {
                     let fn_def_id = bctx
@@ -4536,5 +4569,16 @@ pub(crate) fn simplify_place_by_cancelling(place: &Place) -> Place {
         PlaceX::WithExpr(..) | PlaceX::UserDefinedTypInvariantObligation(..) => {
             panic!("simplify_place_by_cancelling got unexpected place kind");
         }
+    }
+}
+
+fn ty_is_bool_or_ref_bool<'tcx>(ty: rustc_middle::ty::Ty<'tcx>) -> bool {
+    match ty.kind() {
+        TyKind::Bool => true,
+        TyKind::Ref(_, t, rustc_ast::Mutability::Not) => match t.kind() {
+            TyKind::Bool => true,
+            _ => false,
+        },
+        _ => false,
     }
 }
