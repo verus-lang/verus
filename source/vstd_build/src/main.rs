@@ -167,5 +167,5 @@ fn main() {
 
 /// A simple implementation of `touch $path` (ignores existing files)
 fn touch(path: &std::path::Path) -> std::io::Result<()> {
-    std::fs::OpenOptions::new().create(true).write(true).open(path).map(|_| ())
+    std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(path).map(|_| ())
 }
