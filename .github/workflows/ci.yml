@@ -291,11 +291,13 @@ jobs:
               vargo build --features record-history
               ;;
             "no-std")
+              vargo build
               VERUS_Z3_PATH="$PWD/z3" vargo run -p vstd_build -- target-verus/debug --no-std
               cd ..
               cargo build --manifest-path source/vstd/Cargo.toml --no-default-features --features alloc
               ;;
             "no-alloc")
+              vargo build
               VERUS_Z3_PATH="$PWD/z3" vargo run -p vstd_build -- target-verus/debug --no-std --no-alloc
               cd ..
               cargo build --manifest-path source/vstd/Cargo.toml --no-default-features
