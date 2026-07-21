@@ -27,6 +27,7 @@ is-builtin-macros = true
 
 [features]
 vpanic = []
+contrib-hooks = []
 
 [lints]
 workspace = true
