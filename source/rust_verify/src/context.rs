@@ -1,8 +1,8 @@
 use crate::{erase::ResolvedCall, verus_items::VerusItems};
 use rustc_hir::Attribute;
-use rustc_hir::Crate;
 use rustc_hir::HirId;
 use rustc_hir::def_id::LocalDefId;
+use rustc_middle::hir::Crate;
 use rustc_middle::ty::{TyCtxt, TypeckResults};
 use rustc_mir_build_verus::verus::BodyErasure;
 use rustc_span::SpanData;
@@ -13,16 +13,17 @@ use std::ops::DerefMut;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
+use std::sync::mpsc::Sender;
 use vir::ast::{CrateId, Mode, Path, Pattern, VirErr};
-use vir::messages::AstId;
+use vir::messages::{AstId, WarningAllow};
 
 pub struct ErasureInfo {
     pub(crate) hir_vir_ids: Vec<(HirId, AstId)>,
-    pub(crate) resolved_calls: Vec<(HirId, SpanData, ResolvedCall)>,
+    pub(crate) resolved_calls: Vec<(HirId, SpanData, ResolvedCall, bool)>,
     pub(crate) resolved_pats: Vec<(SpanData, Pattern)>,
     pub(crate) direct_var_modes: Vec<(HirId, Mode)>,
     pub(crate) external_functions: Vec<vir::ast::Fun>,
-    pub(crate) ignored_functions: Vec<(rustc_span::def_id::DefId, SpanData)>,
+    pub(crate) ignored_functions: Vec<(DefId, SpanData)>,
     pub(crate) bodies: Vec<(LocalDefId, BodyErasure)>,
     pub(crate) shadow_check: Vec<HirId>,
     /// Extra nodes to erase, use this when a VIR tree gets dropped without getting to
@@ -47,7 +48,7 @@ pub struct ContextX<'tcx> {
     pub(crate) no_vstd: bool,
     pub(crate) arch_word_bits: Option<vir::ast::ArchWordBits>,
     pub(crate) crate_name: CrateId,
-    pub(crate) name_def_id_map: Rc<RefCell<std::collections::HashMap<Path, DefId>>>,
+    pub(crate) name_def_id_map: Rc<RefCell<HashMap<Path, DefId>>>,
     pub(crate) next_read_kind_id: AtomicU64,
 }
 
@@ -74,6 +75,7 @@ pub(crate) struct BodyCtxt<'tcx> {
     pub(crate) in_ghost: bool,
     // loop_isolation for the nearest enclosing loop, false otherwise
     pub(crate) loop_isolation: bool,
+    pub(crate) atomically: Option<Arc<AtomicallyCtxt>>,
     pub(crate) migrate_postcondition_vars: Option<std::collections::HashSet<vir::ast::VarIdent>>,
     /// Context to interpret a header if we encounter one
     /// (this is used to determine when it's correct to set `in_fn_sig`).
@@ -93,6 +95,11 @@ pub(crate) struct BodyCtxt<'tcx> {
     /// Assume specification defines a new opaque type for each opaque type in the external function.
     /// We use this map to resolve them later.
     pub(crate) external_opaque_type_map: Option<HashMap<Path, Path>>,
+}
+
+pub(crate) struct AtomicallyCtxt {
+    pub(crate) update_binder: HirId,
+    pub(crate) call_spans: Sender<vir::messages::Span>,
 }
 
 impl<'tcx> ContextX<'tcx> {
@@ -194,11 +201,10 @@ impl<'tcx> ContextX<'tcx> {
 
 impl<'tcx> BodyCtxt<'tcx> {
     pub(crate) fn is_copy(&self, ty: rustc_middle::ty::Ty<'tcx>) -> bool {
-        let param_env = self.ctxt.tcx.param_env(self.fun_id);
-        let typing_env = rustc_middle::ty::TypingEnv {
-            param_env,
-            typing_mode: rustc_middle::ty::TypingMode::non_body_analysis(),
-        };
+        let typing_env = rustc_middle::ty::TypingEnv::new(
+            self.ctxt.tcx.param_env(self.fun_id),
+            rustc_middle::ty::TypingMode::non_body_analysis(),
+        );
         self.ctxt.tcx.type_is_copy_modulo_regions(typing_env, ty)
     }
 
@@ -244,5 +250,15 @@ impl<'tcx> BodyCtxt<'tcx> {
 
     pub(crate) fn set_header_setting(&self, s: HeaderSetting) -> BodyCtxt<'tcx> {
         BodyCtxt { header_setting: s, ..self.clone() }
+    }
+
+    pub(crate) fn warning_maybe<S: Into<String>>(
+        &self,
+        span: rustc_span::Span,
+        allow: &WarningAllow,
+        note: impl FnOnce() -> S,
+        emit: impl FnOnce(vir::messages::Message) -> (),
+    ) {
+        crate::attributes::warning_maybe(self.ctxt.tcx, self.fun_id, span, allow, note, emit);
     }
 }

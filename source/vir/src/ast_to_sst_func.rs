@@ -14,13 +14,15 @@ use crate::context::{Ctx, FunctionCtx};
 use crate::def::{Spanned, unique_local};
 use crate::inv_masks::MaskSet;
 use crate::messages::{Message, error};
-use crate::sst::{BndX, Exp, ExpX, Exps, LocalDeclKind, Par, ParPurpose, ParX, Pars, Stm, StmX};
+use crate::sst::{
+    BndX, CallFun, Exp, ExpX, Exps, LocalDeclKind, Par, ParPurpose, ParX, Pars, Stm, StmX,
+};
 use crate::sst::{
     FuncAxiomsSst, FuncCheckSst, FuncDeclSst, FuncSpecBodySst, FunctionSst, FunctionSstHas,
     FunctionSstX, PostConditionKind, PostConditionSst, UnwindSst,
 };
-use crate::sst_util::subst_exp;
-use crate::util::vec_map;
+use crate::sst_util::{sst_equal, subst_exp};
+use crate::util::{vec_map, vec_map_result};
 use crate::{ast_visitor, fun};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -262,8 +264,8 @@ fn rewrite_async_ens_vir(function: &Function, specs: &Vec<Expr>) -> Result<Vec<E
         let awaited_call = SpannedTyped::new(
             &e.span,
             &Arc::new(TypX::Bool),
-            ExprX::Call(
-                CallTarget::Fun(
+            ExprX::Call {
+                target: CallTarget::Fun(
                     crate::ast::CallTargetKind::Dynamic,
                     fun!(CrateId::Vstd => "future", "FutureAdditionalSpecFns", "awaited"),
                     Arc::new(vec![
@@ -282,7 +284,7 @@ fn rewrite_async_ens_vir(function: &Function, specs: &Vec<Expr>) -> Result<Vec<E
                     )]),
                     call_target_attrs.clone(),
                 ),
-                Arc::new(vec![SpannedTyped::new(
+                args: Arc::new(vec![SpannedTyped::new(
                     &e.span,
                     &function
                         .x
@@ -303,8 +305,9 @@ fn rewrite_async_ens_vir(function: &Function, specs: &Vec<Expr>) -> Result<Vec<E
                             .clone(),
                     ),
                 )]),
-                None,
-            ),
+                post_args: None,
+                body: None,
+            },
         );
         let view_call = SpannedTyped::new(
             &e.span,
@@ -312,8 +315,8 @@ fn rewrite_async_ens_vir(function: &Function, specs: &Vec<Expr>) -> Result<Vec<E
             PlaceX::Temporary(SpannedTyped::new(
                 &e.span,
                 &function.x.ret.x.typ,
-                ExprX::Call(
-                    CallTarget::Fun(
+                ExprX::Call {
+                    target: CallTarget::Fun(
                         crate::ast::CallTargetKind::Dynamic,
                         fun!(CrateId::Vstd => "future", "FutureAdditionalSpecFns", "view"),
                         Arc::new(vec![
@@ -332,7 +335,7 @@ fn rewrite_async_ens_vir(function: &Function, specs: &Vec<Expr>) -> Result<Vec<E
                         )]),
                         call_target_attrs,
                     ),
-                    Arc::new(vec![SpannedTyped::new(
+                    args: Arc::new(vec![SpannedTyped::new(
                         &e.span,
                         &function
                             .x
@@ -353,8 +356,9 @@ fn rewrite_async_ens_vir(function: &Function, specs: &Vec<Expr>) -> Result<Vec<E
                                 .clone(),
                         ),
                     )]),
-                    None,
-                ),
+                    post_args: None,
+                    body: None,
+                },
             )),
         );
         let block = SpannedTyped::new(
@@ -760,17 +764,11 @@ impl MaskSpec {
     ) -> Result<MaskSet, VirErr> {
         let mask_set = match self {
             MaskSpec::InvariantOpens(span, exprs) => {
-                let mut exps = vec![];
-                for expr in exprs.iter() {
-                    exps.push(f(expr)?);
-                }
+                let exps = vec_map_result(&exprs, f)?;
                 MaskSet::from_list(&exps, &span)
             }
             MaskSpec::InvariantOpensExcept(span, exprs) => {
-                let mut exps = vec![];
-                for expr in exprs.iter() {
-                    exps.push(f(expr)?);
-                }
+                let exps = vec_map_result(&exprs, f)?;
                 MaskSet::from_list_complement(&exps, &span)
             }
             MaskSpec::InvariantOpensSet(expr) => {
@@ -914,6 +912,66 @@ pub fn func_def_to_sst(
     })?;
     state.mask = Some(mask_sst);
 
+    // Atomic spec
+    let mut au_stms = Vec::new();
+    if let Some(au_expr) = &function.x.atomic_update {
+        let (mut stms, au_ret_val) = expr_to_stm_opt(ctx, &mut state, au_expr)?;
+        let au_exp: Exp = au_ret_val.expect_exp();
+        let span = au_exp.span.clone();
+
+        let param_exps = function
+            .x
+            .params
+            .split_last()
+            .map(|(_, s)| s)
+            .unwrap_or_default()
+            .iter()
+            .map(|param| {
+                let var = ExpX::Var(param.x.name.clone());
+                let exp = SpannedTyped::new(&span, &param.x.typ, var);
+                exp_pre(&exp)
+            })
+            .collect::<Vec<Exp>>();
+
+        let param_tuple = match param_exps.len() {
+            1 => param_exps.into_iter().next().unwrap(),
+            _ => crate::sst_util::sst_tuple(&span, &Arc::new(param_exps)),
+        };
+
+        let TypX::Datatype(_, au_typ_args, _) = au_exp.typ.as_ref() else {
+            panic!("atomic update should be a datatype")
+        };
+
+        let [.., pred_typ] = au_typ_args.as_slice() else {
+            panic!("atomic update should have type arguments")
+        };
+
+        let call_pred = SpannedTyped::new(
+            &span,
+            &pred_typ,
+            ExpX::Call(
+                CallFun::Fun(crate::def::fn_au_pred(), None),
+                au_typ_args.clone(),
+                Arc::new(vec![au_exp.clone()]),
+            ),
+        );
+
+        let call_pred_args = SpannedTyped::new(
+            &span,
+            &param_tuple.typ,
+            ExpX::Call(
+                CallFun::Fun(crate::def::fn_pred_args(), None),
+                Arc::new(vec![pred_typ.clone(), param_tuple.typ.clone()]),
+                Arc::new(vec![call_pred]),
+            ),
+        );
+
+        let spec_eq = sst_equal(&span, &call_pred_args, &param_tuple);
+        stms.push(Spanned::new(span, StmX::Assume(spec_eq)));
+        state.au_var_exp_to_resolve = Some(au_exp);
+        au_stms = stms;
+    }
+
     // Unwind spec: take from trait method if it exists
     let unwind_ast = specs_function.x.unwind_spec_or_default();
     let unwind_sst = unwind_ast
@@ -957,7 +1015,11 @@ pub fn func_def_to_sst(
     }
 
     // AST --> SST
-    let mut stm = expr_to_one_stm_with_post(&ctx, &mut state, &body, &function.span)?;
+    let mut stm = expr_to_one_stm_with_post(ctx, &mut state, &body, &function.span)?;
+
+    // Add atomic spec related statements
+    au_stms.push(stm);
+    stm = stms_to_one_stm(&body.span, au_stms);
 
     // TODO handle via the Lowerer
     if ctx.checking_spec_preconditions() && !inherit {
@@ -1054,8 +1116,8 @@ pub fn function_to_sst(
     )?;
     ctx.fun = None;
 
-    let exec_proof_check = match (function.x.mode, function.x.body.is_some(), function.x.item_kind)
-    {
+    let has_body = function.x.body.is_some();
+    let exec_proof_check = match (function.x.mode, has_body, function.x.item_kind) {
         (Mode::Exec | Mode::Proof, true, _) | (Mode::Spec, true, ItemKind::Const) => {
             ctx.fun = mk_fun_ctx(&function, false);
             let def = crate::ast_to_sst_func::func_def_to_sst(ctx, diagnostics, function, false)?;
@@ -1068,7 +1130,7 @@ pub fn function_to_sst(
     let recommends_check = match function.x.mode {
         Mode::Spec if !verifying_owning_bucket => None,
         Mode::Spec if !is_recursive && !function.x.attrs.check_recommends => None,
-        _ if function.x.body.is_some() => {
+        _ if has_body => {
             // We eagerly generate SST for recommends_check even if we might not use it.
             // Experiments with veritas indicate that this generally causes < 1% overhead.
             ctx.fun = mk_fun_ctx(&function, true);
@@ -1089,7 +1151,7 @@ pub fn function_to_sst(
     };
 
     let has = FunctionSstHas {
-        has_body: function.x.body.is_some(),
+        has_body,
         has_requires: function.x.require.len() > 0,
         has_ensures: function.x.ensure.0.len() + function.x.ensure.1.len() > 0,
         has_decrease: function.x.decrease.len() > 0,

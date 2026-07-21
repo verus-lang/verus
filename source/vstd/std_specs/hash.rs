@@ -477,8 +477,7 @@ pub open spec fn hash_map_deep_view_impl<
     A: core::alloc::Allocator,
 >(m: HashMap<Key, Value, S, A>) -> Map<Key::V, Value::V> {
     Map::new(
-        |k: Key::V|
-            exists|orig_k: Key| #[trigger] m@.contains_key(orig_k) && k == orig_k.deep_view(),
+        m@.dom().map(|k: Key| k.deep_view()),
         |dk: Key::V|
             {
                 let k = choose|k: Key| m@.contains_key(k) && #[trigger] k.deep_view() == dk;
@@ -516,16 +515,29 @@ pub broadcast proof fn lemma_hashmap_deepview_properties<K: DeepView, V: DeepVie
     broadcast use group_hash_axioms;
     broadcast use crate::vstd::group_vstd_default;
 
+    lemma_hashmap_deepview_dom(m);
     assert(m.deep_view().dom() == m@.dom().map(|k: K| k.deep_view()));
     assert forall|k: K| #[trigger] m@.contains_key(k) implies m.deep_view().contains_key(
         k.deep_view(),
     ) && m.deep_view()[k.deep_view()] == m@[k].deep_view() by {
+        assert(m@.dom().contains(k));
+        assert(m@.dom().map(|k: K| k.deep_view()).contains(k.deep_view()));
+        assert(m.deep_view().dom().contains(k.deep_view()));
+        let k2 = choose|k2: K| m@.contains_key(k2) && #[trigger] k2.deep_view() == k.deep_view();
         assert forall|k1: K, k2: K| #[trigger]
             k1.deep_view() == #[trigger] k2.deep_view() implies k1 == k2 by {
             let ghost k_deepview = |k: K| k.deep_view();
             assert(crate::relations::injective(k_deepview));
             assert(k_deepview(k1) == k_deepview(k2));
         }
+        assert(k2 == k);
+    }
+    assert forall|dk: K::V| #[trigger] m.deep_view().contains_key(dk) implies exists|k: K|
+        k.deep_view() == dk && #[trigger] m@.contains_key(k) by {
+        assert(m.deep_view().dom().contains(dk));
+        assert(m@.dom().map(|k: K| k.deep_view()).contains(dk));
+        let k = choose|k: K| #[trigger] m@.dom().contains(k) && k.deep_view() == dk;
+        assert(m@.contains_key(k));
     }
 }
 
@@ -568,14 +580,6 @@ pub broadcast proof fn axiom_hashmap_deepview_borrow<
     admit();
 }
 
-/// A `Map` constructed from a `HashMap` is always finite.
-pub broadcast proof fn axiom_hashmap_view_finite_dom<K, V>(m: HashMap<K, V>)
-    ensures
-        #[trigger] m@.dom().finite(),
-{
-    admit();
-}
-
 pub uninterp spec fn spec_hash_map_len<Key, Value, S, A: Allocator>(
     m: &HashMap<Key, Value, S, A>,
 ) -> usize;
@@ -612,7 +616,10 @@ pub assume_specification<K: Clone, V: Clone, S: Clone, A: Allocator + Clone>[ <H
     A,
 > as Clone>::clone ](this: &HashMap<K, V, S, A>) -> (other: HashMap<K, V, S, A>)
     ensures
-        other@ == this@,
+        other@.dom() == this@.dom(),
+        forall|key|
+            #![trigger other@.dom().contains(key)]
+            other@.dom().contains(key) ==> cloned(this@[key], #[trigger] other@[key]),
 ;
 
 pub assume_specification<Key, Value>[ HashMap::<Key, Value>::new ]() -> (m: HashMap<
@@ -1508,7 +1515,6 @@ pub broadcast group group_hash_axioms {
     axiom_maps_deref_key_to_value,
     axiom_maps_box_key_to_value,
     axiom_hashmap_deepview_borrow,
-    axiom_hashmap_view_finite_dom,
     axiom_bool_obeys_hash_table_key_model,
     axiom_u8_obeys_hash_table_key_model,
     axiom_u16_obeys_hash_table_key_model,

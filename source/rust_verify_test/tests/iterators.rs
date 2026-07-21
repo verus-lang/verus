@@ -4,6 +4,83 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
+    #[test] mut_ref_forwarding verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        pub fn next_test<I: Iterator>(i: &mut I)
+            requires
+                i.obeys_prophetic_iter_laws(),
+                i.will_return_none(),
+            ensures
+                // TODO: The number of operators needed here is unfortunate
+                (&(*final(i))).obeys_prophetic_iter_laws(),
+                (&(*final(i))).will_return_none(),
+        {
+            i.next();
+
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] chars_next_falls_back_to_iterator_spec verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        fn test(s: &str)
+            requires
+                s@.len() >= 1,
+        {
+            let mut it = s.chars();
+            assert(it.remaining() == s@);
+            let r = it.next();
+            assert(r == Some(s@[0]));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] range_works verus_code! {
+        use vstd::prelude::*;
+
+        fn test()
+        {
+            let mut v = vec![];
+            for i in iter: 0..4
+            invariant
+                v.len() == iter.index(),
+                iter.index() <= 4,
+            {
+                assert(i < 4);
+                v.push(i);
+            }
+            assert(v.len() == 4);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] range_inclusive_works verus_code! {
+        use vstd::prelude::*;
+
+        fn test()
+        {
+            let mut v = vec![];
+            for i in iter: 0..=4
+            invariant
+                v.len() == iter.index(),
+                i <= 5,
+            {
+                assert(i <= 4);
+                v.push(i);
+            }
+            assert(v.len() == 5);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] collect_works verus_code! {
         use vstd::prelude::*;
 
@@ -23,42 +100,147 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] find_works verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        fn test(v: Vec<u32>)
+        {
+            let v_result = v.into_iter().find(
+                |i| -> (ret: bool)
+                ensures ret == (*i < 10)
+                {*i < 10}
+            );
+            if let Some(i) = v_result {
+                assert(i < 10);
+                assert(v@.contains(i));
+            } else {
+                assert(forall |i| 0 <= i < v.len() ==> v[i] >= 10);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] all_works verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        fn test(v: Vec<u32>)
+        {
+            let mut it = v.into_iter();
+            let ghost g = it;
+            let v_result = it.all(
+                |i: u32| -> (ret: bool)
+                    ensures ret == (i < 10)
+                {i < 10}
+            );
+            if v_result {
+                // If `all` returned true, every element was below 10.
+                assert(forall |i| 0 <= i < v.len() ==> v[i] < 10);
+            } else {
+                // If `all` returned false, at least one element was >= 10.
+                // The witness is the (consumed) element that failed the predicate.
+                let ghost idx = g.remaining().len() - it.remaining().len() - 1;
+                assert(0 <= idx < v.len() && v[idx] >= 10);
+                assert(exists |i| 0 <= i < v.len() && v[i] >= 10);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] any_works verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        fn test(v: Vec<u32>)
+        {
+            let mut it = v.into_iter();
+            let ghost g = it;
+            let v_result = it.any(
+                |i: u32| -> (ret: bool)
+                    ensures ret == (i < 10)
+                {i < 10}
+            );
+            if v_result {
+                // If `any` returned true, at least one element was below 10.
+                // The witness is the (consumed) element that satisfied the predicate.
+                let ghost idx = g.remaining().len() - it.remaining().len() - 1;
+                assert(0 <= idx < v.len() && v[idx] < 10);
+                assert(exists |i| 0 <= i < v.len() && v[i] < 10);
+            } else {
+                // If `any` returned false, every element was >= 10.
+                assert(forall |i| 0 <= i < v.len() ==> v[i] >= 10);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] map_can_be_implemented verus_code! {
         use vstd::prelude::*;
         use vstd::std_specs::iter::*;
-
-        /* proph util (this should be implementable) */
+        use vstd::proph::ProphecyGhost;
 
         pub trait Predicate<T> {
             #[verifier::prophetic]
             spec fn pred(&self, i: int, t: T) -> bool;
         }
 
-        #[verifier::external_body]
         #[verifier::accept_recursive_types(T)]
-        #[verifier::accept_recursive_types(Pred)]
-        pub tracked struct ProphSeq<T, Pred> { t: T, pred: Pred }
+        pub tracked struct ProphSeq<T, Pred> {
+            // A single prophecy for the prophesied value at every index.
+            tracked var: ProphecyGhost<spec_fn(int) -> T>,
+            // The values of indices that have already been resolved.
+            ghost resolved: Map<int, T>,
+            // The predicate this sequence is constrained by.
+            ghost p: Pred,
+        }
 
         impl<T, Pred> ProphSeq<T, Pred>
             where Pred: Predicate<T>
         {
-            pub uninterp spec fn pred(&self) -> Pred;
-            pub uninterp spec fn proph_elem(&self, i: int) -> Option<T>;
-            pub uninterp spec fn has_resolved(&self, i: int) -> bool;
+            pub closed spec fn pred(&self) -> Pred {
+                self.p
+            }
 
-            pub axiom fn new(pred: Pred) -> (tracked s: Self)
+            #[verifier::prophetic]
+            pub closed spec fn proph_elem(&self, i: int) -> Option<T> {
+                let v = if self.resolved.dom().contains(i) {
+                    self.resolved[i]
+                } else {
+                    self.var.value()(i)
+                };
+                if self.p.pred(i, v) {
+                    Some(v)
+                } else {
+                    None
+                }
+            }
+
+            pub closed spec fn has_resolved(&self, i: int) -> bool {
+                self.resolved.dom().contains(i)
+            }
+
+            pub proof fn new(pred: Pred) -> (tracked s: Self)
                 ensures
                     s.pred() == pred,
-                    forall |i| !s.has_resolved(i);
+                    forall |i| !s.has_resolved(i),
+            {
+                let tracked var = ProphecyGhost::new();
+                ProphSeq { var, resolved: Map::empty(), p: pred }
+            }
 
-
-            pub axiom fn proph_elem_meets_pred(tracked &self)
+            pub proof fn proph_elem_meets_pred(tracked &self)
                 ensures forall |i: int| (match #[trigger] self.proph_elem(i) {
                     Some(p) => self.pred().pred(i, p),
                     None => true,
-                });
+                }),
+            {
+            }
 
-            pub axiom fn resolve(tracked &mut self, i: int, t: T)
+            pub proof fn resolve(tracked &mut self, i: int, t: T)
                 requires
                     !old(self).has_resolved(i),
                     old(self).pred().pred(i, t),
@@ -67,7 +249,26 @@ test_verify_one_file! {
                     forall |j| final(self).proph_elem(j) == old(self).proph_elem(j),
                     forall |j| i != j ==> final(self).has_resolved(j) == old(self).has_resolved(j),
                     final(self).has_resolved(i),
-                    final(self).proph_elem(i) == Some(t);
+                    final(self).proph_elem(i) == Some(t),
+            {
+                // Peel off coordinate `i`: replace the live prophecy with a fresh one
+                // holding the remaining (still prophetic) coordinates, and resolve the
+                // old prophecy as a function of the fresh one that pins index `i` to `t`.
+                let tracked mut var = ProphecyGhost::new();
+                vstd::modes::tracked_swap(&mut var, &mut self.var);
+                var.resolve_dependent(
+                    &self.var,
+                    |g: spec_fn(int) -> T| (|j: int| if j == i { t } else { g(j) }),
+                );
+                self.resolved = self.resolved.insert(i, t);
+
+                assert forall |j| #[trigger] final(self).proph_elem(j) == old(self).proph_elem(j) by {
+                    if j != i && !old(self).resolved.dom().contains(j) {
+                        // Unresolved (other) coordinate: old and fresh prophecy agree.
+                        assert(old(self).var.value()(j) == final(self).var.value()(j));
+                    }
+                }
+            }
         }
 
 

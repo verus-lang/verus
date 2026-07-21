@@ -1,5 +1,5 @@
 use crate::attributes::{GhostBlockAttr, get_ghost_block_opt};
-use crate::context::{BodyCtxt, HeaderSetting};
+use crate::context::{AtomicallyCtxt, BodyCtxt, HeaderSetting};
 use crate::erase::{CompilableOperator, LoopSpecKind, ResolvedCall};
 use crate::resolve_traits::{ResolutionResult, ResolvedItem, resolve_trait_item};
 use crate::reveal_hide::RevealHideResult;
@@ -24,17 +24,17 @@ use rustc_hir::{Block, BlockCheckMode, Expr, ExprKind, QPath, StmtKind};
 use rustc_middle::ty::{GenericArg, GenericArgKind, TyKind, TypingEnv};
 use rustc_mir_build_verus::verus::BodyErasure;
 use rustc_span::Span;
+use rustc_span::Spanned;
 use rustc_span::def_id::DefId;
-use rustc_span::source_map::Spanned;
 use rustc_trait_selection::infer::InferCtxtExt;
 use std::sync::Arc;
 use vir::ast::{
-    ArithOp, ArrayKind, AssertQueryMode, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp,
-    BoundsCheck, BuiltinSpecFun, CallTarget, ChainedOp, ComputeMode, Constant, CrateId,
+    ArithOp, ArrayKind, AssertQueryMode, AtomicallyKind, AutospecUsage, BinaryOp, BitshiftBehavior,
+    BitwiseOp, BoundsCheck, BuiltinSpecFun, CallTarget, ChainedOp, ComputeMode, Constant, CrateId,
     Div0Behavior, ExprX, FieldOpr, FunX, HeaderExpr, HeaderExprX, InequalityOp, IntRange,
-    IntegerTypeBoundKind, Mode, ModeCoercion, ModeWrapperMode, MultiOp, OverflowBehavior, Place,
-    PlaceX, Quant, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, VarBinder, VarBinderX, VarIdent,
-    VariantCheck, VirErr,
+    IntegerTypeBoundKind, MaskSpec, Mode, ModeCoercion, ModeWrapperMode, MultiOp, OverflowBehavior,
+    Place, PlaceX, Quant, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, VarBinder, VarBinderX,
+    VarIdent, VariantCheck, VirErr,
 };
 use vir::ast_util::{
     const_int_from_string, mk_tuple_typ, mk_tuple_x, typ_to_diagnostic_str, types_equal,
@@ -67,10 +67,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                         | SpecItem::Recommends
                         | SpecItem::Ensures
                         | SpecItem::Returns
-                        | SpecItem::OpensInvariantsNone
-                        | SpecItem::OpensInvariantsAny
-                        | SpecItem::OpensInvariants
-                        | SpecItem::OpensInvariantsExcept
+                        | SpecItem::OpensInvariantMask
                         | SpecItem::NoUnwind
                         | SpecItem::NoUnwindWhen
                 ) | VerusItem::Directive(DirectiveItem::ExtraDependency)
@@ -306,11 +303,61 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
             bctx.fun_id,
         );
 
-    let resolved_call =
-        ResolvedCall::Call(name.clone(), record_name, bctx.in_ghost, assume_external_allowed);
+    let resolved_call = ResolvedCall::Call(name.clone(), record_name, assume_external_allowed);
     record_call(bctx, expr, resolved_call);
 
-    let vir_args = if let Some(args) = args { mk_vir_args(bctx, &args)? } else { vec![] };
+    // REVIEW: The atomic function call is encoded using the following construction:
+    //
+    // #[verifier::atomic_call]
+    // function(x1, x2, x3, ::vstd::atomic::atomically(|update| {
+    //     ...
+    //     ay = update(ax);
+    //     ...
+    // }))
+    //
+    // If we translate this construction naively into VIR, we end up evaluating
+    // the `atomically` in its entirety before the actual call to `function`,
+    // meaning the atomic pre- and postcondition are generated *before* the
+    // private pre- and postcondition.
+    //
+    // To fix this, we use the "body" of the call to place the `atomically` block
+    // in-between the private pre- and postcondition:
+    //
+    // vir_call(
+    //     target: function,
+    //     args: [x1, x2, x3, atomic_update_init_dummy],
+    //     body: atomically({
+    //         ...
+    //         ay = update(ax);
+    //         ...
+    //     }),
+    // )
+
+    let is_atomic_function_call = || -> Result<bool, VirErr> {
+        let hir_attrs = bctx.ctxt.tcx.hir_attrs(expr.hir_id);
+        let vir_attrs = crate::attributes::parse_attrs(hir_attrs, None)?;
+        Ok(vir_attrs.contains(&crate::attributes::Attr::AtomicCall))
+    };
+
+    let (vir_args, call_body) = match args.as_deref() {
+        Some(arg_slice) if is_atomic_function_call()? => {
+            let [prefix @ .., au] = arg_slice else {
+                panic!("atomic call must have at least one argument");
+            };
+
+            let mut vir_args = mk_vir_args(bctx, prefix)?;
+            let au_expr = expr_to_vir_consume(&bctx, au)?;
+            vir_args.push(bctx.spanned_typed_new(
+                au.span,
+                &au_expr.typ,
+                ExprX::AtomicUpdateInitDummy,
+            ));
+
+            (vir_args, Some(au_expr))
+        }
+        Some(arg_slice) => (mk_vir_args(bctx, arg_slice)?, None),
+        None => Default::default(),
+    };
 
     let typ_args = mk_typ_args(bctx, node_substs, f, expr.span)?;
     let impl_paths = get_impl_paths(bctx, f, node_substs, None, const_var, expr.span)?;
@@ -320,7 +367,7 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
     Ok(bctx.spanned_typed_new(
         expr.span,
         &expr_typ()?,
-        ExprX::Call(target, Arc::new(vir_args), None),
+        ExprX::Call { target, args: Arc::new(vir_args), post_args: None, body: call_body },
     ))
 }
 
@@ -332,7 +379,13 @@ pub(crate) fn const_var_to_vir<'tcx>(
     hir_id: &rustc_hir::HirId,
     span: Span,
 ) -> Result<vir::ast::Expr, VirErr> {
-    if bctx.ctxt.tcx.trait_of_assoc(id).is_some() {
+    // A trait associated const, or an inherent-impl associated const that has type
+    // parameters (e.g. `impl<T> S<T> { const C: ... = ...; }`), is encoded as a
+    // function taking those type parameters, so it must be lowered to ExprX::Call
+    // (which supplies the type arguments) rather than ExprX::ConstVar.
+    let is_generic_assoc_const =
+        bctx.ctxt.tcx.trait_of_assoc(id).is_some() || bctx.ctxt.tcx.generics_of(id).count() > 0;
+    if is_generic_assoc_const {
         // associated const --> ExprX::Call rather than ExprX::ConstVar
         let Some(expr) = expr else {
             unsupported_err!(span, "associated constant in pattern");
@@ -396,7 +449,7 @@ pub(crate) fn deref_to_vir<'tcx>(
     let call_target =
         CallTarget::Fun(target_kind, trait_fun, typ_args, impl_paths, call_target_attrs);
     let args = Arc::new(vec![arg.clone()]);
-    let x = ExprX::Call(call_target, args, None);
+    let x = ExprX::Call { target: call_target, args, post_args: None, body: None };
 
     Ok(bctx.spanned_typed_new(span, &expr_typ, x))
 }
@@ -425,6 +478,10 @@ fn verus_item_to_vir<'tcx, 'a>(
                 "{} should never be used except through open_atomic_invariant or open_local_invariant macro",
                 f_name
             ),
+        ),
+        VerusItem::OpenAtomicUpdate(_) => err_span(
+            expr.span,
+            format!("{f_name} should never be used except through open_atomic_update macro"),
         ),
         VerusItem::UnaryOp(UnaryOpItem::SpecLiteral(SpecLiteralItem::Decimal)) => {
             record_spec_fn(bctx, expr);
@@ -515,15 +572,20 @@ fn verus_item_to_vir<'tcx, 'a>(
 
                     SpecItem::Requires
                     | SpecItem::Decreases
-                    | SpecItem::OpensInvariantsNone
-                    | SpecItem::OpensInvariantsAny
-                    | SpecItem::OpensInvariants
-                    | SpecItem::OpensInvariantsExcept
-                    | SpecItem::OpensInvariantsSet
+                    | SpecItem::OpensInvariantMask
+                    | SpecItem::InvMaskNone
+                    | SpecItem::InvMaskAny
+                    | SpecItem::InvMaskList
+                    | SpecItem::InvMaskListCompl
+                    | SpecItem::InvMaskSet
                     | SpecItem::NoUnwind
                     | SpecItem::NoUnwindWhen => (true, false),
 
                     SpecItem::Ensures | SpecItem::Returns => (true, true),
+
+                    SpecItem::AtomicSpec | SpecItem::AtomicCallLoop | SpecItem::Atomically => {
+                        (false, false)
+                    }
                 };
                 if sig {
                     &BodyCtxt { in_fn_sig: sig, in_postcondition: postcondition, ..bctx.clone() }
@@ -539,10 +601,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     record_spec_fn_pure_args_only(bctx, expr);
                     mk_expr(ExprX::Header(Arc::new(HeaderExprX::NoMethodBody)))
                 }
-                SpecItem::Requires
-                | SpecItem::Recommends
-                | SpecItem::OpensInvariants
-                | SpecItem::Returns => {
+                SpecItem::Requires | SpecItem::Recommends | SpecItem::Returns => {
                     record_spec_fn_pure_args_only(bctx, expr);
                     unsupported_err_unless!(
                         args_len == 1,
@@ -574,15 +633,6 @@ fn verus_item_to_vir<'tcx, 'a>(
                                     );
                                 }
                             },
-                            SpecItem::OpensInvariants => match &*typ {
-                                TypX::Int(_) => {}
-                                _ => {
-                                    return err_span(
-                                        arg.span,
-                                        "opens_invariants needs an int expression",
-                                    );
-                                }
-                            },
                             SpecItem::Returns => {
                                 // type is checked in well_formed.rs
                             }
@@ -595,44 +645,91 @@ fn verus_item_to_vir<'tcx, 'a>(
                         SpecItem::Recommends => {
                             Arc::new(HeaderExprX::Recommends(Arc::new(vir_args)))
                         }
-                        SpecItem::OpensInvariants => Arc::new(HeaderExprX::InvariantOpens(
-                            bctx.ctxt.spans.to_air_span(expr.span.clone()),
-                            Arc::new(vir_args),
-                        )),
                         SpecItem::Returns => Arc::new(HeaderExprX::Returns(vir_args[0].clone())),
                         _ => unreachable!(),
                     };
                     mk_expr(ExprX::Header(header))
                 }
-                SpecItem::OpensInvariantsExcept => {
-                    record_spec_fn_pure_args_only(bctx, expr);
-                    err_span(
-                        expr.span,
-                        "'is_opens_invariants' and 'is_opens_invariants_except' are not yet implemented",
-                    )
-                }
-                SpecItem::OpensInvariantsNone => {
-                    record_spec_fn_pure_args_only(bctx, expr);
-                    let header = Arc::new(HeaderExprX::InvariantOpens(
-                        bctx.ctxt.spans.to_air_span(expr.span.clone()),
-                        Arc::new(Vec::new()),
-                    ));
-                    mk_expr(ExprX::Header(header))
-                }
-                SpecItem::OpensInvariantsAny => {
-                    record_spec_fn_pure_args_only(bctx, expr);
-                    let header = Arc::new(HeaderExprX::InvariantOpensExcept(
-                        bctx.ctxt.spans.to_air_span(expr.span.clone()),
-                        Arc::new(Vec::new()),
-                    ));
-                    mk_expr(ExprX::Header(header))
-                }
-                SpecItem::OpensInvariantsSet => {
+                SpecItem::OpensInvariantMask => {
                     record_spec_fn_pure_args_only(bctx, expr);
                     let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
-                    let arg = mk_one_vir_arg(bctx, expr.span, &args)?;
-                    let header = Arc::new(HeaderExprX::InvariantOpensSet(arg));
-                    mk_expr(ExprX::Header(header))
+                    let inner = expr_to_vir_consume(&bctx, args[0])?;
+                    let ExprX::InvMask(mask_spec) = &inner.x else {
+                        return err_span(
+                            expr.span,
+                            "malformed opens_invariants item; \
+                            expected invariant mask expression",
+                        );
+                    };
+
+                    let header = HeaderExprX::OpensInvariantMask(mask_spec.clone());
+                    mk_expr(ExprX::Header(Arc::new(header)))
+                }
+                SpecItem::InvMaskNone => {
+                    record_spec_fn_pure_args_only(bctx, expr);
+                    mk_expr(ExprX::InvMask(MaskSpec::InvariantOpens(
+                        bctx.ctxt.spans.to_air_span(expr.span.clone()),
+                        Default::default(),
+                    )))
+                }
+                SpecItem::InvMaskAny => {
+                    record_spec_fn_pure_args_only(bctx, expr);
+                    mk_expr(ExprX::InvMask(MaskSpec::InvariantOpensExcept(
+                        bctx.ctxt.spans.to_air_span(expr.span.clone()),
+                        Default::default(),
+                    )))
+                }
+                SpecItem::InvMaskList | SpecItem::InvMaskListCompl => {
+                    record_spec_fn_pure_args_only(bctx, expr);
+                    let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
+                    let subargs = extract_array(args[0]);
+                    let mut vir_args = Vec::with_capacity(subargs.len());
+                    for arg in subargs {
+                        let vir_arg = expr_to_vir_consume(&bctx, arg)?;
+                        let typ = undecorate_typ(&vir_arg.typ);
+                        let TypX::Int(..) = &*typ else {
+                            return err_span(arg.span, "invariant mask must be type int");
+                        };
+
+                        vir_args.push(vir_arg);
+                    }
+
+                    let span = bctx.ctxt.spans.to_air_span(expr.span.clone());
+                    let args = Arc::new(vir_args);
+                    mk_expr(ExprX::InvMask(match spec_item {
+                        SpecItem::InvMaskList => MaskSpec::InvariantOpens(span, args),
+                        SpecItem::InvMaskListCompl => MaskSpec::InvariantOpensExcept(span, args),
+                        _ => unreachable!(),
+                    }))
+                }
+                SpecItem::InvMaskSet => {
+                    fn typ_is_int_iset(typ: &Typ) -> bool {
+                        let TypX::Datatype(vir::ast::Dt::Path(path), args, _) = typ.as_ref() else {
+                            return false;
+                        };
+
+                        let [int_typ] = args.as_slice() else {
+                            return false;
+                        };
+
+                        let TypX::Int(..) = int_typ.as_ref() else {
+                            return false;
+                        };
+
+                        path == &vir::def::iset_type_path()
+                    }
+
+                    record_spec_fn_pure_args_only(bctx, expr);
+                    let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
+                    let set_expr = expr_to_vir_consume(&bctx, args[0])?;
+                    if !typ_is_int_iset(&set_expr.typ) {
+                        return err_span(
+                            args[0].span.clone(),
+                            "invariant mask must be a set of ints",
+                        );
+                    }
+
+                    mk_expr(ExprX::InvMask(MaskSpec::InvariantOpensSet(set_expr)))
                 }
                 SpecItem::Ensures => {
                     if let HeaderSetting::Loop(loop_hir_id) = bctx.header_setting {
@@ -645,6 +742,26 @@ fn verus_item_to_vir<'tcx, 'a>(
                     let header = extract_ensures(&bctx, args[0])?;
                     // extract_ensures does most of the necessary work, so we can return at this point
                     mk_expr_span(args[0].span, ExprX::Header(header))
+                }
+                SpecItem::AtomicSpec => {
+                    record_spec_fn_pure_args_only(bctx, expr);
+                    unsupported_err_unless!(
+                        args_len == 1,
+                        expr.span,
+                        "expected atomic spec",
+                        &args
+                    );
+                    let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
+                    let expr = expr_to_vir_consume(&bctx, args[0])?;
+                    mk_expr_span(
+                        args[0].span,
+                        ExprX::Header(Arc::new(HeaderExprX::AtomicSpec(expr))),
+                    )
+                }
+                SpecItem::AtomicCallLoop => {
+                    record_spec_fn_pure_args_only(bctx, expr);
+                    let header = Arc::new(HeaderExprX::AtomicCallLoop);
+                    mk_expr(ExprX::Header(header))
                 }
                 SpecItem::Decreases => {
                     if let HeaderSetting::Loop(loop_hir_id) = bctx.header_setting {
@@ -740,6 +857,94 @@ fn verus_item_to_vir<'tcx, 'a>(
                     record_spec_fn_pure_args_only(bctx, expr);
                     let arg = mk_one_vir_arg(bctx, expr.span, &args)?;
                     mk_expr(ExprX::AssertAssume { is_assume: true, expr: arg, msg: None })
+                }
+                SpecItem::Atomically => {
+                    // The atomic function call expands as follows:
+                    //
+                    // function(x1, x2, x3) atomically |update| {
+                    //     ...
+                    // }
+                    //
+                    // #[verifier::atomic_call]
+                    // function(x1, x2, x3, ::vstd::atomic::atomically({
+                    //     let _verus_internal_identifier_for_closures = ::vstd::prelude::dummy_capture_new();
+                    //     |update, atomic_update| {
+                    //         ::vstd::prelude::dummy_capture_consume(_verus_internal_identifier_for_closures);
+                    //
+                    //         #[verifier::internal(spec)]
+                    //         let _ = atomic_update;
+                    //
+                    //         loop? {
+                    //             { ... }
+                    //         }
+                    //     }
+                    // }))
+                    //
+                    // Most of the structure is enforced by the type checker, we need to identify the
+                    // let binding and use it to construct the correct function predicate type
+
+                    fn malformed_err<'tcx, X>(expr: &Expr<'tcx>) -> Result<X, VirErr> {
+                        let msg = "malformed atomic call; please do not use `vstd::atomic::atomically` directly";
+                        err_span(expr.span, msg)
+                    }
+
+                    assert!(bctx.atomically.is_none());
+                    let bctx = BodyCtxt { mode: Mode::Proof, ..bctx.clone() };
+
+                    let [
+                        Expr {
+                            kind: ExprKind::Block(Block { expr: Some(inner), .. }, None), ..
+                        },
+                    ] = args.as_slice()
+                    else {
+                        return malformed_err(expr);
+                    };
+
+                    let Expr { kind: ExprKind::Closure(closure), .. } = inner else {
+                        return malformed_err(expr);
+                    };
+
+                    let body = tcx.hir_body(closure.body);
+                    let [update_param, ghost_au_param] = body.params else {
+                        panic!("the closure should take exactly two argument")
+                    };
+
+                    let ExprKind::Block(Block { expr: Some(inner), .. }, _) = body.value.kind
+                    else {
+                        return malformed_err(expr);
+                    };
+
+                    let kind = match &inner.kind {
+                        ExprKind::Loop(..) => AtomicallyKind::Loop,
+                        _ => AtomicallyKind::Simple,
+                    };
+
+                    let ghost_au_var = pat_to_var(ghost_au_param.pat)?;
+                    let (tx, rx) = std::sync::mpsc::channel();
+                    let actx = Arc::new(AtomicallyCtxt {
+                        update_binder: update_param.pat.hir_id,
+                        call_spans: tx,
+                    });
+
+                    let atomically = Some(actx.clone());
+                    let bctx_inner = BodyCtxt { atomically, mode: Mode::Proof, ..bctx.clone() };
+                    let value = expr_to_vir_consume(&bctx_inner, body.value)?;
+
+                    let update_span = update_param.span.clone();
+                    let call_spans = rx.try_iter().collect::<Vec<_>>();
+                    match call_spans.len() {
+                        0 => err_span(update_span, "function must be called in `atomically` block"),
+                        1 => mk_expr(ExprX::Atomically(kind, ghost_au_var, value)),
+                        _ => Err(Arc::new(vir::messages::MessageX {
+                            level: air::messages::MessageLevel::Error,
+                            note: "function must be called exactly once in `atomically` block"
+                                .into(),
+                            spans: call_spans,
+                            labels: Vec::new(),
+                            help: None,
+                            fancy_note: None,
+                        })),
+                    }
                 }
             }
         }
@@ -1635,7 +1840,8 @@ fn verus_item_to_vir<'tcx, 'a>(
             let vir_args = mk_vir_args(bctx, &args)?;
             assert!(vir_args.len() == 1);
             let op = UnaryOp::CoerceMode {
-                op_mode: Mode::Proof,
+                // Allow the constructor to be weakened to spec when its result is spec-only.
+                op_mode: Mode::Spec,
                 from_mode: Mode::Proof,
                 to_mode: Mode::Proof,
                 kind: ModeCoercion::Constructor,
@@ -1975,13 +2181,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                             BinaryOp::Bitwise(BitwiseOp::Shl(w, s), BitshiftBehavior::Allow)
                         }
                         verus_items::SpecBitwiseItem::Shr => {
-                            let (Some(w), _s) = bitwidth_and_signedness_of_integer_type(
-                                &bctx.ctxt.verus_items,
-                                bctx.types.expr_ty(expr),
-                            ) else {
-                                return err_span(expr.span, "expected finite integer width");
-                            };
-                            BinaryOp::Bitwise(BitwiseOp::Shr(w), BitshiftBehavior::Allow)
+                            BinaryOp::Bitwise(BitwiseOp::Shr, BitshiftBehavior::Allow)
                         }
                     }
                 }
@@ -2023,11 +2223,12 @@ fn verus_item_to_vir<'tcx, 'a>(
 
             let impl_paths = get_impl_paths(bctx, f, node_substs, None, false, expr.span)?;
 
-            return mk_expr(ExprX::Call(
-                CallTarget::BuiltinSpecFun(bsf, typ_args, impl_paths),
-                Arc::new(vir_args),
-                None,
-            ));
+            return mk_expr(ExprX::Call {
+                target: CallTarget::BuiltinSpecFun(bsf, typ_args, impl_paths),
+                args: Arc::new(vir_args),
+                post_args: None,
+                body: None,
+            });
         }
         VerusItem::ErasedGhostValue
         | VerusItem::ShadowGhostValue
@@ -2219,19 +2420,15 @@ fn extract_ensures<'tcx>(
     let tcx = bctx.ctxt.tcx;
     use vir::ast::Exprs;
     let get_args = |body_value: &'tcx Expr<'tcx>| -> Result<(Exprs, Exprs), VirErr> {
-        let args = vec_map_result(
-            &extract_array(body_value)
-                .iter()
-                .filter(|e| check_is_builtin_constrain_typ(bctx, **e))
-                .map(|x: &&_| (*x).clone())
-                .collect(),
-            |e| get_ensures_arg(bctx, e),
-        )?;
-        let args0 =
-            args.iter().filter_map(|(b, e)| if !*b { Some(e.clone()) } else { None }).collect();
-        let args1 =
-            args.iter().filter_map(|(b, e)| if *b { Some(e.clone()) } else { None }).collect();
-        Ok((Arc::new(args0), Arc::new(args1)))
+        let args = extract_array(body_value)
+            .into_iter()
+            .filter(|e| check_is_builtin_constrain_typ(bctx, e))
+            .map(|e| get_ensures_arg(bctx, e))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let regular = args.iter().filter(|&(b, _)| !b).map(|(_, e)| e.clone()).collect();
+        let default = args.iter().filter(|&(b, _)| *b).map(|(_, e)| e.clone()).collect();
+        Ok((Arc::new(regular), Arc::new(default)))
     };
     match &expr.kind {
         ExprKind::Closure(closure) => {
@@ -2246,6 +2443,7 @@ fn extract_ensures<'tcx>(
             for param in body.params.iter() {
                 xs.push(pat_to_var(param.pat)?);
             }
+
             let expr = &body.value;
             let args = get_args(expr)?;
             if typs.len() == 0 && xs.len() == 1 {
@@ -2630,7 +2828,7 @@ pub(crate) fn mk_typ_args<'tcx>(
 
 fn mk_vir_args<'tcx>(
     bctx: &BodyCtxt<'tcx>,
-    args: &Vec<&'tcx Expr<'tcx>>,
+    args: &[&'tcx Expr<'tcx>],
 ) -> Result<Vec<vir::ast::Expr>, VirErr> {
     args.iter().map(|arg| expr_to_vir_consume(bctx, arg)).collect::<Result<Vec<_>, _>>()
 }
@@ -2830,17 +3028,17 @@ fn record_loop_spec<'tcx>(
 
 pub(crate) fn record_call<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr, resolved_call: ResolvedCall) {
     let resolved_call = match (resolved_call, &bctx.external_trait_from_to) {
-        (ResolvedCall::Call(ufun, rfun, in_ghost, ae), Some(paths)) if paths.2.is_some() => {
+        (ResolvedCall::Call(ufun, rfun, ae), Some(paths)) if paths.2.is_some() => {
             let (from_path, _to_path, to_spec_path) = &**paths;
             use vir::traits::rewrite_fun;
             let ufun = rewrite_fun(from_path, to_spec_path.as_ref().unwrap(), &ufun);
             let rfun = rewrite_fun(from_path, to_spec_path.as_ref().unwrap(), &rfun);
-            ResolvedCall::Call(ufun, rfun, in_ghost, ae)
+            ResolvedCall::Call(ufun, rfun, ae)
         }
         (resolved_call, _) => resolved_call,
     };
     let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-    erasure_info.resolved_calls.push((expr.hir_id, expr.span.data(), resolved_call));
+    erasure_info.resolved_calls.push((expr.hir_id, expr.span.data(), resolved_call, bctx.in_ghost));
 }
 
 /// Remove two-phaseness from the root node of the given expression, if applicable.

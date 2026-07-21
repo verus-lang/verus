@@ -7,5 +7,6 @@ type: internal
 category: "Language and Verification"
 pdf: https://iris-project.org/pdfs/2026-pldi-verusbelt.pdf
 code: https://zenodo.org/records/19613067
+award: Distinguished Paper Award, Distinguished Artifact Award
 ---
 

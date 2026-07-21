@@ -13,7 +13,7 @@ on:
 # How:
 #   - This creates a concurrency group for workflow runs;
 #   - When the workflow runs, it cancels in-progress runs if the concurrency group is the same
-#   - The group names are ci-refs/pull/<PR #>/merge (in the case of PRs) and 
+#   - The group names are ci-refs/pull/<PR #>/merge (in the case of PRs) and
 #     ci-refs/heads/gh-readonly-queue/main/pr-<N>-<sha> for merge queue executions
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -25,7 +25,7 @@ permissions:
 jobs:
   # check if formatting is correct
   fmt:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: checkout
         uses: actions/checkout@v6
@@ -33,7 +33,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.95.0
+          toolchain: 1.96.0
 
       - name: setup verusfmt
         run: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/verus-lang/verusfmt/releases/latest/download/verusfmt-installer.sh | sh
@@ -50,7 +50,7 @@ jobs:
 
   # run linter (clippy)
   clippy:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: checkout
         uses: actions/checkout@v6
@@ -58,7 +58,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.95.0
+          toolchain: 1.96.0
           components: clippy
 
       - name: clippy check codebase
@@ -71,9 +71,27 @@ jobs:
         working-directory: ./tools/vargo
         run: cargo clippy -- -D warnings
 
+  # smoke test toolchain manifest creation
+  create-manifest-smoke-test:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: checkout
+        uses: actions/checkout@v6
+
+      - name: setup rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.96.0
+
+      - name: smoke test create-manifest
+        working-directory: ./source
+        run: |
+          cargo run -p cargo-verus-toolchains --bin create-manifest -- --write-to-dir cargo-verus/toolchain-manifests
+          cargo run -p cargo-verus-toolchains --bin create-manifest -- --rolling --write-to-dir cargo-verus/toolchain-manifests
+
   # detect whether subprojects (e.g. cargo-verus) changed
   change_filter:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     outputs:
       cargo_verus: ${{ steps.filter.outputs.cargo_verus }}
     steps:
@@ -89,11 +107,12 @@ jobs:
           filters: |
             cargo_verus:
               - 'source/cargo-verus/**'
+              - 'source/cargo-verus-toolchains/**'
 
   # run cargo-verus tests
   cargo-verus-test:
     needs: [fmt, clippy, change_filter]
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: check for cargo-verus changes
         if: needs.change_filter.outputs.cargo_verus != 'true'
@@ -107,7 +126,7 @@ jobs:
         if: needs.change_filter.outputs.cargo_verus == 'true'
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.95.0
+          toolchain: 1.96.0
 
       - name: cargo-verus tests
         if: needs.change_filter.outputs.cargo_verus == 'true'
@@ -142,7 +161,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.95.0
+          toolchain: 1.96.0
 
       - name: setup nextest
         uses: taiki-e/install-action@nextest
@@ -176,7 +195,7 @@ jobs:
           - build: macos-x86_64
             os: macos-15-intel
           - build: linux
-            os: ubuntu-22.04
+            os: ubuntu-24.04
           - build: windows
             os: windows-2022
 
@@ -199,7 +218,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.95.0
+          toolchain: 1.96.0
 
       - name: setup nextest
         uses: taiki-e/install-action@nextest
@@ -246,7 +265,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.95.0
+          toolchain: 1.96.0
 
       - name: setup nextest
         uses: taiki-e/install-action@nextest
@@ -304,7 +323,7 @@ jobs:
   # will complain if there are warnings
   build-docs:
     needs: [fmt, clippy]
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: checkout
         uses: actions/checkout@v6
@@ -312,7 +331,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.95.0
+          toolchain: 1.96.0
 
       - name: build docs
         working-directory: ./source

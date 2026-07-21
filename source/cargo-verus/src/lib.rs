@@ -1,8 +1,9 @@
 mod cli;
-mod metadata;
+pub mod metadata;
 mod plan;
 mod subcommands;
 pub mod test_utils;
+mod toolchains;
 
 pub const BIN_NAME: &str = "cargo-verus";
 

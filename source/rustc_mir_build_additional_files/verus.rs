@@ -106,7 +106,8 @@ pub struct VerusErasureCtxt {
     /// This includes struct constructors as well. The "args" go in source order,
     /// i.e., same order as the fields on the Struct node.
     /// If there's a '..struct_tail' in the ctor, it's the last argument.
-    pub calls: HashMap<HirId, CallErasure>,
+    /// The bool indicates if we should force the return type to be treated as inhabited.
+    pub calls: HashMap<HirId, (CallErasure, bool)>,
 
     /// Node that should be erased (absolutely), including its adjustments.
     /// Useful, e.g., to erase a single argument of some call.
@@ -215,6 +216,8 @@ pub(crate) fn check_this_query_isnt_running_early(local_def_id: LocalDefId) {
 pub(crate) struct ExtraThir {
     /// Maps ExprId (Call node or a Loop) -> LocalInvariant bodies it is contained in
     pub local_invs_for_node: HashMap<ExprId, Vec<LocalInvariantBody>>,
+    /// Treat this call as having an inhabited return type (i.e., don't prune the CFG)
+    pub force_treat_inhabited: HashSet<ExprId>,
 }
 
 /// Per-body context (i.e., one for each function or closure).
@@ -243,7 +246,10 @@ impl VerusThirBuildCtxt {
             do_time_travel_prevention,
             guard_pattern_vars: vec![],
             local_invariants: vec![],
-            extra_thir: ExtraThir { local_invs_for_node: HashMap::new() },
+            extra_thir: ExtraThir {
+                local_invs_for_node: HashMap::new(),
+                force_treat_inhabited: HashSet::new(),
+            },
             local_def_id: local_def_id,
         }
     }
@@ -305,13 +311,13 @@ impl CallErasure {
 pub(crate) fn handle_call<'tcx>(
     verus_ctxt: &VerusThirBuildCtxt,
     expr: &'tcx hir::Expr<'tcx>,
-) -> CallErasure {
+) -> (CallErasure, bool) {
     let Some(erasure_ctxt) = verus_ctxt.ctxt.clone() else {
-        return CallErasure::keep_all();
+        return (CallErasure::keep_all(), false);
     };
 
     match erasure_ctxt.calls.get(&expr.hir_id) {
-        None => CallErasure::keep_all(),
+        None => (CallErasure::keep_all(), false),
         Some(call_erasure) => call_erasure.clone(),
     }
 }
@@ -832,6 +838,7 @@ fn erase_pat_rec<'tcx>(emode: &PatBindingEraserMode, p: &mut Pat<'tcx>) {
                 erase_pat_rec(emode, p);
             }
         }
+        PatKind::Guard { subpattern, condition: _ } => erase_pat_rec(emode, subpattern),
         PatKind::Never => {}
         PatKind::Error(_error_guaranteed) => {}
     }
@@ -897,7 +904,7 @@ impl<'a, 'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitTreeForPats<'a, 'tc
             hir::ExprKind::Call(..) | hir::ExprKind::MethodCall(..) => {
                 if matches!(
                     self.erasure_ctxt.calls.get(&expr.hir_id),
-                    Some(CallErasure::EraseTree(TreeErase::EraseAbsolutely))
+                    Some((CallErasure::EraseTree(TreeErase::EraseAbsolutely), _))
                 ) {
                     return;
                 }
@@ -950,7 +957,7 @@ impl<'a, 'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitTreeForLocalUses<'a
             hir::ExprKind::Call(..) | hir::ExprKind::MethodCall(..) => {
                 if matches!(
                     self.erasure_ctxt.calls.get(&expr.hir_id),
-                    Some(CallErasure::EraseTree(TreeErase::EraseAbsolutely))
+                    Some((CallErasure::EraseTree(TreeErase::EraseAbsolutely), _))
                 ) {
                     return;
                 }
@@ -1157,26 +1164,6 @@ fn erase_arm_for_pattern_checking<'tcx>(
         span: arm.span,
     };
     cx.thir.arms.push(arm)
-}
-
-/// This is used to inject logic in the MIR-builder code.
-///
-/// Typically, Rust removes part of the CFG if a function returns an uninhabited type.
-/// However, we might have erased code with uninhabited types, e.g.,
-/// `erased_ghost_value::<!>()`.
-/// To prevent such calls from influencing the CFG, we check if any call is to
-/// `erased_ghost_value`, and if so, skip the CFG trimming logic.
-pub(crate) fn func_ty_skip_edge_deletion_for_uninhabited_ty<'tcx>(ty: Ty<'tcx>) -> bool {
-    match ty.kind() {
-        TyKind::FnDef(fn_def_id, _) => {
-            let Some(erasure_ctxt) = get_verus_erasure_ctxt_option() else {
-                return false;
-            };
-            *fn_def_id == erasure_ctxt.erased_ghost_value_fn_def_id
-                || *fn_def_id == erasure_ctxt.shadow_ghost_value_fn_def_id
-        }
-        _ => false,
-    }
 }
 
 /*////// Closures
@@ -1792,6 +1779,17 @@ pub(crate) fn possibly_handle_complex_closure_block<'tcx>(
 }
 
 pub(crate) fn get_closure_expr<'tcx>(e: &'tcx hir::Expr<'tcx>) -> &'tcx hir::Expr<'tcx> {
+    // NOTE: We expect every closuse to have exactly this form:
+    //
+    // {
+    //     let _verus_internal_dummy_capture = ::builtin::dummy_capture_new();
+    //     || { ... }
+    // }
+    //
+    // This function is invoked when we detect the capture dummy, and tries
+    // to find the corresponding closure expression. If there are any other
+    // statements in the block, this function will fail.
+
     match &e.kind {
         hir::ExprKind::Closure(_) => e,
         hir::ExprKind::Call(_f, args) => get_closure_expr(&args[0]),

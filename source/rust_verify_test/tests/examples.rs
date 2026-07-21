@@ -16,12 +16,13 @@ enum Mode {
 
 examples_in_dir!("../../examples");
 examples_in_dir!("../../examples/guide");
-examples_in_dir!("../../examples/pcm");
+examples_in_dir!("../../examples/resource");
 examples_in_dir!("../../examples/state_machines");
 examples_in_dir!("../../examples/summer_school");
 examples_in_dir!("../../examples/state_machines/tutorial");
 examples_in_dir!("../../examples/state_machines/reference-examples");
 examples_in_dir!("../../examples/std_test");
+examples_in_dir!("../../examples/cuckoo_hash_table");
 
 #[cfg(feature = "singular")]
 examples_in_dir!("../../examples/integer_ring");
@@ -156,6 +157,6 @@ fn run_example_for_file(file_path: &str) {
             }
         }
         eprintln!("- stdout -\n{}\n", stdout);
-        assert!(false);
+        panic!();
     }
 }
