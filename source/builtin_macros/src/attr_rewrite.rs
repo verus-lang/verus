@@ -323,6 +323,34 @@ impl VisitMut for ExecReplacer {
         let span = for_loop.span();
         add_verus_spec_if_needed(&mut for_loop.attrs, span);
     }
+
+    fn visit_expr_closure_mut(&mut self, closure: &mut syn::ExprClosure) {
+        syn::visit_mut::visit_expr_closure_mut(self, closure);
+
+        if !self.erase.keep() || self.inside_external_code {
+            return;
+        }
+
+        // Normalize an expression-bodied closure `|..| EXPR` to a block-bodied
+        // closure `|..| { EXPR }`, matching what the `verus! {}` path does in
+        // `syntax::Visitor::handle_closures`. Without this, a closure whose body
+        // is a mutable reborrow such as `|c| &mut *c` trips a spurious
+        // "used binding isn't initialized" borrow-check error under the
+        // attribute form. The block body alone avoids it.
+        if !matches!(&*closure.body, syn::Expr::Block(_)) {
+            let span = closure.body.span();
+            let body =
+                std::mem::replace(&mut *closure.body, syn::Expr::Verbatim(TokenStream::new()));
+            *closure.body = syn::Expr::Block(syn::ExprBlock {
+                attrs: vec![],
+                label: None,
+                block: syn::Block {
+                    brace_token: syn::token::Brace(span),
+                    stmts: vec![syn::Stmt::Expr(body, None)],
+                },
+            });
+        }
+    }
 }
 
 /// Check for misuse of `#[verus_spec]` and `#[verus_verify]`.
