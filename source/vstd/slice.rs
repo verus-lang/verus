@@ -147,6 +147,15 @@ pub broadcast axiom fn axiom_slice_get_usize<T>(v: &[T], i: usize)
         i >= v.len() ==> spec_slice_get(v, i).is_none(),
 ;
 
+pub broadcast axiom fn axiom_slice_get_range<T>(v: &[T], r: core::ops::Range<usize>)
+    ensures
+        r.start <= r.end && r.end <= v.len() ==> {
+            &&& (#[trigger] spec_slice_get(v, r)) matches Some(s)
+            &&& s@ == v@.subrange(r.start as int, r.end as int)
+        },
+        r.start > r.end || r.end > v.len() ==> spec_slice_get(v, r).is_none(),
+;
+
 pub broadcast axiom fn axiom_slice_ext_equal<T>(a1: &[T], a2: &[T])
     ensures
         #[trigger] (a1 =~= a2) <==> (a1.len() == a2.len() && forall|i: int|
@@ -181,6 +190,7 @@ pub broadcast axiom fn axiom_slice_has_resolved<T>(slice: &[T], i: int)
 pub broadcast group group_slice_axioms {
     axiom_spec_len,
     axiom_slice_get_usize,
+    axiom_slice_get_range,
     axiom_slice_ext_equal,
     axiom_spec_slice_update,
     axiom_spec_slice_index,
