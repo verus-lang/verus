@@ -3748,7 +3748,7 @@ impl Visitor {
             let s2 = invariants.map(|x| x.token.span.unwrap());
             let s3 = ensures.map(|x| x.token.span.unwrap());
 
-            let spans = std::iter::chain(s1, s2).chain(s3).collect::<Vec<_>>();
+            let spans = s1.into_iter().chain(s2).chain(s3).collect::<Vec<_>>();
             if !spans.is_empty() {
                 #[cfg(verus_keep_ghost)]
                 proc_macro::Diagnostic::spanned(
