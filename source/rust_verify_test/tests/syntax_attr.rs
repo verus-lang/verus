@@ -1678,3 +1678,25 @@ test_verify_one_file! {
         static MY_STATIC2: u64 = 0;
     } => Err(e) => assert_any_vir_error_msg(e, "#[verifier::external_body] doesn't make sense for this item type -- it is only applicable to functions and datatype declarations" )
 }
+
+test_verify_one_file! {
+    #[test] test_verus_verify_reborrow_closure code! {
+        use vstd::prelude::*;
+
+        #[verus_verify]
+        struct Item { marker: bool }
+
+        #[verus_verify(external_body)]
+        fn take(_x: Option<&mut Item>) -> u32 { 0 }
+
+        // An expression-bodied closure whose body is a mutable reborrow used to
+        // hit a spurious "used binding isn't initialized" borrow-check error
+        // under the attribute form; the closure body must be block-wrapped like
+        // the `verus! { ... }` form does.
+        #[verus_verify]
+        fn caller(mut x: Option<&mut Item>, retry: bool) -> u32 {
+            let first = take(x.as_mut().map(|r| &mut **r));
+            if retry { take(x) } else { first }
+        }
+    } => Ok(())
+}
