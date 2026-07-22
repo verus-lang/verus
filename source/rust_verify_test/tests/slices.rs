@@ -569,3 +569,34 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_get_range verus_code! {
+        use vstd::{slice::*, prelude::*};
+
+        broadcast use group_slice_axioms;
+
+        fn in_bounds(v: &[u8])
+            requires v@.len() == 5,
+        {
+            let x = v.get(1..3);
+            assert(x matches Some(s) && s@ == v@.subrange(1, 3));
+        }
+
+        fn out_of_bounds(v: &[u8])
+            requires v@.len() == 5,
+        {
+            let a = v.get(2..6);
+            assert(a.is_none());
+            let b = v.get(4..2);
+            assert(b.is_none());
+        }
+
+        fn wrong_subrange(v: &[u8])
+            requires v@.len() == 5,
+        {
+            let x = v.get(1..3);
+            assert(x matches Some(s) && s@ == v@.subrange(2, 4)); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
