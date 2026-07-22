@@ -150,7 +150,7 @@ macro_rules! check_covariant {
             struct J { }
             impl<'a> J {
                 fn check_covariance$tparams(x: $WITH_STATIC) -> $WITH_A {
-                    x   
+                    x
                 }
             }
             ".replace("$tparams", $tparams)
@@ -163,7 +163,7 @@ macro_rules! check_covariant {
             struct J { }
             impl<'a> J {
                 fn check_contravariance$tparams(x: $WITH_A) -> $WITH_STATIC {
-                    x   
+                    x
                 }
             }
             ".replace("$tparams", $tparams)
@@ -171,7 +171,7 @@ macro_rules! check_covariant {
             .replace("$WITH_A", &($t).replace("$P", "&'a u8"))
             => Err(err) => assert_vir_error_msg(err, "lifetime may not live long enough")
         }
-    }
+    };
 }
 
 #[macro_export]
@@ -182,7 +182,7 @@ macro_rules! check_invariant {
             struct J { }
             impl<'a> J {
                 fn check_covariance$tparams(x: $WITH_STATIC) -> $WITH_A {
-                    x   
+                    x
                 }
             }
             ".replace("$tparams", $tparams)
@@ -195,7 +195,7 @@ macro_rules! check_invariant {
             struct J { }
             impl<'a> J {
                 fn check_contravariance$tparams(x: $WITH_A) -> $WITH_STATIC {
-                    x   
+                    x
                 }
             }
             ".replace("$tparams", $tparams)
@@ -203,7 +203,7 @@ macro_rules! check_invariant {
             .replace("$WITH_A", &($t).replace("$P", "&'a u8"))
             => Err(err) => assert_vir_error_msg(err, "lifetime may not live long enough")
         }
-    }
+    };
 }
 
 // raw ptrs
@@ -327,6 +327,37 @@ check_not_copy!(
     atomic_points_copy2,
     "<T: Copy>",
     "vstd::invariant::AtomicInvariant<(), T, Pred<(), T>>"
+);
+
+// AtomicUpdate
+
+check_send_sync!(
+    au_send_sync_of_send_sync,
+    "<X: Send + Sync, Y: Send + Sync, P>",
+    "vstd::atomic::AtomicUpdate<X, Y, P>"
+);
+check_send_sync!(
+    au_send_sync_of_send,
+    "<X: Send, Y: Send, P>",
+    "vstd::atomic::AtomicUpdate<X, Y, P>"
+);
+check_sync!(
+    au_sync_of_sync,
+    au_not_send_of_sync,
+    "<X: Sync, Y: Sync, P>",
+    "vstd::atomic::AtomicUpdate<X, Y, P>"
+);
+check_sync!(
+    au_sync_of_none,
+    au_not_send_of_none,
+    "<X, Y, P>",
+    "vstd::atomic::AtomicUpdate<X, Y, P>"
+);
+check_not_copy!(
+    au_not_copy,
+    au_still_not_copy,
+    "<X: Copy, Y: Copy, P: Copy>",
+    "vstd::atomic::AtomicUpdate<X, Y, P>"
 );
 
 // Ghost and Tracked

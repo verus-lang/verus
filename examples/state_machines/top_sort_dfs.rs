@@ -1,11 +1,11 @@
 #![cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
 #![allow(unused_imports)]
 use verus_state_machines_macros::tokenized_state_machine;
-use vstd::map::*;
+use vstd::imap::*;
+use vstd::iset::*;
 use vstd::modes::*;
 use vstd::prelude::*;
 use vstd::seq::*;
-use vstd::set::*;
 use vstd::slice::*;
 use vstd::{pervasive::*, prelude::*, *};
 
@@ -13,12 +13,12 @@ verus! {
 
 #[verifier::reject_recursive_types(V)]
 pub struct DirectedGraph<V> {
-    pub edges: Set<(V, V)>,
+    pub edges: ISet<(V, V)>,
 }
 
 impl<V> DirectedGraph<V> {
-    pub open spec fn dest_set(&self, v: V) -> Set<V> {
-        Set::new(|w: V| self.edges.contains((v, w)))
+    pub open spec fn dest_set(&self, v: V) -> ISet<V> {
+        ISet::new(|w: V| self.edges.contains((v, w)))
     }
 
     pub open spec fn is_sorted(&self, s: Seq<V>) -> bool {
@@ -42,11 +42,11 @@ tokenized_state_machine!{
             #[sharding(constant)]
             pub graph: DirectedGraph<V>,
 
-            #[sharding(set)]
-            pub unvisited: Set<V>,
+            #[sharding(iset)]
+            pub unvisited: ISet<V>,
 
-            #[sharding(persistent_set)]
-            pub visited: Set<V>,
+            #[sharding(persistent_iset)]
+            pub visited: ISet<V>,
 
             #[sharding(variable)]
             pub top_sort: Seq<V>,
@@ -55,8 +55,8 @@ tokenized_state_machine!{
         init!{
             initialize(graph: DirectedGraph<V>) {
                 init graph = graph;
-                init unvisited = Set::full();
-                init visited = Set::empty();
+                init unvisited = ISet::full();
+                init visited = ISet::empty();
                 init top_sort = Seq::empty();
             }
         }
@@ -73,7 +73,7 @@ tokenized_state_machine!{
         }
 
         property!{
-            done(s: Set<V>) {
+            done(s: ISet<V>) {
                 have visited >= (s);
                 assert(forall |i| s.contains(i) ==> pre.top_sort.contains(i));
                 assert(pre.graph.is_sorted(pre.top_sort));
@@ -82,7 +82,7 @@ tokenized_state_machine!{
 
         #[invariant]
         pub fn un_vis(&self) -> bool {
-            self.unvisited === self.visited.complement()
+            self.unvisited == self.visited.complement()
         }
 
         #[invariant]
@@ -108,19 +108,19 @@ tokenized_state_machine!{
 
         #[inductive(push_into_top_sort)]
         fn push_into_top_sort_inductive(pre: Self, post: Self, v: V) {
-            assert_sets_equal!(post.unvisited, post.visited.complement());
+            assert_isets_equal!(post.unvisited, post.visited.complement());
 
             assert forall |a| #[trigger] post.visited.contains(a) implies
                 post.top_sort.contains(a)
             by {
-                if a === v {
-                    assert(post.top_sort.last() === a);
+                if a == v {
+                    assert(post.top_sort.last() == a);
                     assert(post.top_sort.contains(a));
                 } else {
                     assert(pre.visited.contains(a));
                     assert(pre.top_sort.contains(a));
-                    let i = choose |i| 0 <= i < pre.top_sort.len() && pre.top_sort.index(i) === a;
-                    assert(post.top_sort.index(i) === a);
+                    let i = choose |i| 0 <= i < pre.top_sort.len() && pre.top_sort.index(i) == a;
+                    assert(post.top_sort.index(i) == a);
                     assert(post.top_sort.contains(a));
                 }
             }
@@ -147,7 +147,7 @@ impl ConcreteDirectedGraph {
 
     spec fn view(&self) -> DirectedGraph<usize> {
         DirectedGraph {
-            edges: Set::<(usize, usize)>::new(
+            edges: ISet::<(usize, usize)>::new(
                 |p: (usize, usize)|
                     0 <= (p.0 as int) < (self.edges@.len() as int) && self.edges@.index(
                         p.0 as int,
@@ -215,9 +215,9 @@ impl DfsState {
         &&& self.node_states@.len() == graph.edges@.len()
         &&& forall|i|
             0 <= i < self.node_states@.len() ==> self.node_states@[i].well_formed(i, self.instance@)
-        &&& self.top_sort_token@.instance_id() === self.instance@.id()
-        &&& self.top_sort_token@.value() === self.top_sort@
-        &&& self.instance@.graph() === graph@
+        &&& self.top_sort_token@.instance_id() == self.instance@.id()
+        &&& self.top_sort_token@.value() == self.top_sort@
+        &&& self.instance@.graph() == graph@
         &&& valid_stack(self.cur_stack@, graph@)
         &&& forall|i: usize|
             0 <= i < self.node_states@.len() ==> (self.node_states@[i as int].in_stack
@@ -531,7 +531,7 @@ fn compute_top_sort(graph: &ConcreteDirectedGraph) -> (tsr: TopSortResult)
     }
     let DfsState { top_sort, top_sort_token: Tracked(top_sort_token), .. } = dfs_state;
     proof {
-        let ghost s = Set::new(|i: usize| 0 <= i && i < graph.edges@.len());
+        let ghost s = ISet::new(|i: usize| 0 <= i && i < graph.edges@.len());
         dfs_state.instance.borrow().done(s, &map_visited_deps, &top_sort_token);
         assert forall|i: usize| 0 <= i && i < graph.edges@.len() implies top_sort@.contains(i) by {
             assert(s.contains(i));

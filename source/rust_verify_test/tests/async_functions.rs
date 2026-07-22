@@ -167,3 +167,14 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] unit_return_value_issue2321 verus_code! {
+        use vstd::prelude::*;
+        async fn set_zero(x: &mut usize)
+            ensures *final(x) == 0,
+        {
+            *x = 0;
+        }
+    } => Ok(())
+}

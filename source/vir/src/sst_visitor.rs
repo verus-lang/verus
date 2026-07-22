@@ -26,9 +26,24 @@ pub(crate) trait Scoper {
 pub(crate) struct NoScoper;
 impl Scoper for NoScoper {}
 
-pub type VisitorScopeMap = ScopeMap<VarIdent, bool>;
+pub enum BndKind {
+    Let,
+    Quant,
+    Lambda,
+    Choose,
+    /// Used by a pass in triggers.rs to distinguish trigger variables of interest
+    /// that are bound outside the walked expression.
+    OuterTrigger,
+}
 
-impl Scoper for ScopeMap<VarIdent, bool> {
+pub(crate) struct ScopeEntry {
+    /// Is this a Quant, Choose, or Let?
+    pub bnd_kind: BndKind,
+}
+
+pub type VisitorScopeMap = ScopeMap<VarIdent, ScopeEntry>;
+
+impl Scoper for ScopeMap<VarIdent, ScopeEntry> {
     fn push_scope(&mut self) {
         self.push_scope(true);
     }
@@ -38,17 +53,20 @@ impl Scoper for ScopeMap<VarIdent, bool> {
     }
 
     fn insert_binding_typ(&mut self, binder: &VarBinder<Typ>, bnd_source: &Bnd) {
-        let is_triggered = match bnd_source.x {
-            BndX::Quant(..) | BndX::Choose(..) => true,
-            BndX::Lambda(..) => false,
+        let bnd_kind = match bnd_source.x {
+            BndX::Quant(..) => BndKind::Quant,
+            BndX::Choose(..) => BndKind::Choose,
+            BndX::Lambda(..) => BndKind::Lambda,
             BndX::Let(..) => unreachable!(),
         };
-        let _ = self.insert(binder.name.clone(), is_triggered);
+        let entry = ScopeEntry { bnd_kind: bnd_kind };
+        let _ = self.insert(binder.name.clone(), entry);
     }
 
     fn insert_binding_exp(&mut self, binder: &VarBinder<Exp>, bnd_source: &Bnd) {
         assert!(matches!(bnd_source.x, BndX::Let(..)));
-        let _ = self.insert(binder.name.clone(), true);
+        let entry = ScopeEntry { bnd_kind: BndKind::Let };
+        let _ = self.insert(binder.name.clone(), entry);
     }
 }
 
@@ -186,14 +204,12 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
         Ok(typ_inv_vars2)
     }
 
-    fn visit_havoc_set(&mut self, hset: &Arc<HavocSet>) -> Result<R::Ret<Arc<HavocSet>>, Err> {
-        let mut typ_inv_vars2 = R::vec();
-        for (uid, (typ, hvar)) in hset.vars.iter() {
-            let typ = self.visit_typ(typ)?;
-            let hvar = *hvar;
-            R::push(&mut typ_inv_vars2, R::ret(|| (uid.clone(), (R::get(typ), hvar)))?);
-        }
-        R::ret(|| Arc::new(HavocSet { vars: R::get_vec(typ_inv_vars2).into_iter().collect() }))
+    fn visit_havoc_set(&mut self, _hset: &Arc<HavocSet>) -> Result<R::Ret<Arc<HavocSet>>, Err> {
+        // The HavocSet internally has a bunch of types which need to be traversed
+        // to make an accurate visitor.
+        // Right now, the HavocSets are filled as the last step before translating to AIR,
+        // so it's fine to leave this unimplemented.
+        unimplemented!("running SST visitor after HavocSets are added");
     }
 
     fn visit_havoc_set_opt(
@@ -304,6 +320,9 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                     UnaryOpr::IsVariant { .. }
                     | UnaryOpr::Field { .. }
                     | UnaryOpr::IntegerTypeBound(..)
+                    | UnaryOpr::CustomErr(..)
+                    | UnaryOpr::AutoDecreases
+                    | UnaryOpr::AutoLoopEnsures
                     | UnaryOpr::ProofNote(..) => R::ret(|| op.clone()),
                 }?;
                 R::ret(|| exp_new(ExpX::UnaryOpr(R::get(op), R::get(e1))))
@@ -404,6 +423,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                 split,
                 dest,
                 assert_id,
+                body,
             } => {
                 let resolved_method = if let Some((f, ts)) = resolved_method {
                     let ts = self.visit_typs(ts)?;
@@ -414,6 +434,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                 let typ_args = self.visit_typs(typ_args)?;
                 let args = self.visit_exps(args)?;
                 let dest = R::map_opt(dest, &mut |d| self.visit_dest(d))?;
+                let body = R::map_opt(body, &mut |s| self.visit_stm(s))?;
                 R::ret(|| {
                     stm_new(StmX::Call {
                         fun: fun.clone(),
@@ -425,6 +446,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                         split: split.clone(),
                         dest: R::get_opt(dest),
                         assert_id: assert_id.clone(),
+                        body: R::get_opt(body),
                     })
                 })
             }
@@ -490,12 +512,17 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                 decrease,
                 typ_inv_vars,
                 modified_vars,
+                au_branch_bool,
                 pre_modified_params,
             } => {
                 let cond = R::map_opt(cond, &mut |(cond_stm, cond_exp)| {
                     let cond_stm = self.visit_stm(cond_stm)?;
                     let cond_exp = self.visit_exp(cond_exp)?;
                     R::ret(|| (R::get(cond_stm), R::get(cond_exp)))
+                })?;
+                let au_branch_bool = R::map_opt(au_branch_bool, &mut |exp| {
+                    let exp = self.visit_exp(exp)?;
+                    R::ret(|| R::get(exp))
                 })?;
                 let body = self.visit_stm(body)?;
                 let invs = R::map_vec(invs, &mut |inv| self.visit_loop_inv(inv))?;
@@ -515,6 +542,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                         decrease: R::get_vec_a(decrease),
                         typ_inv_vars: R::get_vec_a(typ_inv_vars),
                         modified_vars: R::get_opt(modified_vars),
+                        au_branch_bool: R::get_opt(au_branch_bool),
                         pre_modified_params: R::get_opt(pre_modified_params),
                     })
                 })

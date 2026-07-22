@@ -11,6 +11,8 @@ test_verify_one_file_with_options! {
         #![allow(unused_attributes)]
         #![allow(unused_variables)]
 
+        #![cfg_attr(verus_keep_ghost, feature(atomic_internals))]
+        #![cfg_attr(verus_keep_ghost, feature(generic_atomic))]
         #![cfg_attr(verus_keep_ghost, feature(core_intrinsics))]
         #![cfg_attr(verus_keep_ghost, feature(allocator_api))]
         #![cfg_attr(verus_keep_ghost, feature(step_trait))]

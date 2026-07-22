@@ -94,7 +94,7 @@ You can also run the verifier directly (skipping the up-to-date check) with:
 on Linux and macOS:
 
 ```
-./target-verus/release/verus ./examples/vectors.rs
+./target-verus/release/verus ../examples/vectors.rs
 ```
 
 on Windows:

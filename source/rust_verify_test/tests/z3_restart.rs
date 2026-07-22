@@ -113,7 +113,7 @@ test_verify_one_file! {
         #[verifier(spinoff_prover)] /* vattr */
         pub proof fn commutative<V>(a: Multiset<V>, b: Multiset<V>)
             ensures
-                a.add(b) === b.add(a),
+                a.add(b) == b.add(a),
         {
             assert(a.add(b) =~= b.add(a));
         }
@@ -121,7 +121,7 @@ test_verify_one_file! {
         #[verifier(spinoff_prover)] /* vattr */
         pub proof fn associative<V>(a: Multiset<V>, b: Multiset<V>, c: Multiset<V>)
             ensures
-                a.add(b.add(c)) ===
+                a.add(b.add(c)) ==
                 a.add(b).add(c)
         {
             assert(a.add(b.add(c)) =~=
@@ -131,7 +131,7 @@ test_verify_one_file! {
         #[verifier(spinoff_prover)] /* vattr */
         pub proof fn insert2<V>(a: V, b: V)
             ensures
-                Multiset::empty().insert(a).insert(b) ===
+                Multiset::empty().insert(a).insert(b) ==
                 Multiset::empty().insert(b).insert(a)
         {
             assert(
@@ -142,7 +142,7 @@ test_verify_one_file! {
         #[verifier(spinoff_prover)] /* vattr */
         pub proof fn insert2_count<V>(a: V, b: V, c: V)
             requires
-                a !== b && b !== c && c !== a,
+                a != b && b != c && c != a,
         {
             assert(Multiset::empty().insert(a).insert(b).count(a) == 1);
             assert(Multiset::empty().insert(a).insert(b).count(b) == 1);
@@ -152,7 +152,7 @@ test_verify_one_file! {
         #[verifier(spinoff_prover)] /* vattr */
         pub proof fn add_sub_cancel<V>(a: Multiset<V>, b: Multiset<V>)
             ensures
-                a.add(b).sub(b) === a,
+                a.add(b).sub(b) == a,
         {
             assert(a.add(b).sub(b) =~= a);
         }
@@ -162,7 +162,7 @@ test_verify_one_file! {
             requires
                 b.subset_of(a),
             ensures
-                a.sub(b).add(b) === a
+                a.sub(b).add(b) == a
         {
             assert(a.sub(b).add(b) =~= a);
             assert(false) // FAILS

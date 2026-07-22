@@ -236,16 +236,16 @@ mod F1 {
     fn start_thread(counter: PPtr<u64>, Tracked(perm): Tracked<PointsTo<u64>>)
         requires
             counter == perm.pptr(),
-            perm.opt_value() === MemContents::Uninit,
+            perm.opt_value() == MemContents::Uninit,
     {
         send_pointer(counter);
         let tracked mut perm: PointsTo<u64> = perm;
         // pub fn put(&self, perm: &mut Tracked<PointsTo<V>>, v: V)
         counter.put(Tracked(&mut perm), 5);
-        assert(perm.opt_value() === MemContents::Init(5));
+        assert(perm.opt_value() == MemContents::Init(5));
         //+ proof { transfer_permission(perm) };
         increment(counter, Tracked(&mut perm));
-        assert(perm.opt_value() === MemContents::Init(6));
+        assert(perm.opt_value() == MemContents::Init(6));
     }
 
 }

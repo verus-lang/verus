@@ -879,12 +879,12 @@ test_verify_one_file_with_options! {
 
         proof fn test() {
             let tracked f = proof_fn|x: u64| -> (res: ())
-                ensures res === ()
+                ensures res == ()
             {
             };
 
             let tracked f1 = proof_fn|x: u64| -> (res: ())
-                ensures res === ()
+                ensures res == ()
             {
                 ()
             };

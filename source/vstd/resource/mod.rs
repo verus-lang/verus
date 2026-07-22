@@ -1,22 +1,28 @@
 use super::prelude::*;
 
-pub mod agree;
 pub mod algebra;
-pub mod auth;
-pub mod exclusive;
-pub mod frac;
-pub mod frac_opt;
-pub mod ghost_var;
+mod combinators;
+mod impls;
 mod lib;
-pub mod map;
-pub mod option;
 pub mod pcm;
-pub mod product;
 pub mod relations;
-pub mod seq;
-pub mod set;
 pub mod storage_protocol;
-pub mod sum;
+
+pub use combinators::agree;
+pub use combinators::auth;
+pub use combinators::exclusive;
+pub use combinators::frac;
+pub use combinators::option;
+pub use combinators::product;
+pub use combinators::sum;
+
+pub use impls::frac_opt;
+pub use impls::ghost_var;
+pub use impls::imap;
+pub use impls::iset;
+pub use impls::map;
+pub use impls::seq;
+pub use impls::set;
 
 pub use lib::*;
 

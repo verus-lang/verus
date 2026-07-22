@@ -9,7 +9,7 @@ use super::relations::*;
 
 verus! {
 
-broadcast use super::super::set::group_set_axioms;
+broadcast use super::super::iset::group_iset_lemmas;
 
 /// Interface for Resource Algebra ghost state.
 #[verifier::accept_recursive_types(RA)]
@@ -137,7 +137,7 @@ impl<RA: ResourceAlgebra> Resource<RA> {
 
     /// This is a more general version of [`update`](Self::update).
     // GHOST-UPDATE rule
-    pub proof fn update_nondeterministic(tracked self, new_values: Set<RA>) -> (tracked out: Self)
+    pub proof fn update_nondeterministic(tracked self, new_values: ISet<RA>) -> (tracked out: Self)
         requires
             frame_preserving_update_nondeterministic_opt(self.value(), new_values),
         ensures
@@ -164,7 +164,7 @@ impl<RA: ResourceAlgebra> Resource<RA> {
             out.loc() == self.loc(),
             out.value() == new_value,
     {
-        let new_values = set![new_value];
+        let new_values = iset![new_value];
         assert(new_values.contains(new_value));
         self.update_nondeterministic(new_values)
     }
@@ -200,7 +200,7 @@ impl<RA: ResourceAlgebra> Resource<RA> {
     pub proof fn update_nondeterministic_with_shared(
         tracked self,
         tracked other: &Resource<RA>,
-        new_values: Set<RA>,
+        new_values: ISet<RA>,
     ) -> (tracked out: Self)
         requires
             self.loc() == other.loc(),
@@ -242,10 +242,10 @@ impl<RA: ResourceAlgebra> Resource<RA> {
             out.loc() == self.loc(),
             out.value() == new_value,
     {
-        let new_values = set![new_value];
+        let new_values = iset![new_value];
         let so = set_op(new_values, other.value());
         assert(new_values.contains(new_value));
-        assert(so == set![new_value].map(|n| RA::op(new_value, other.value())));
+        assert(so == iset![new_value].map(|n| RA::op(new_value, other.value())));
         assert(so.contains(RA::op(new_value, other.value())));
         self.update_nondeterministic_with_shared(other, new_values)
     }

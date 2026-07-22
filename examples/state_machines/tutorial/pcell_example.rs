@@ -18,8 +18,8 @@ fn main() {
 
     // Initially, cell is unitialized, and the `perm` token
     // represents that as the value `MemContents::Uninit`.
-    assert(perm.id() === pcell.id());
-    assert(perm.mem_contents() === MemContents::Uninit);
+    assert(perm.id() == pcell.id());
+    assert(perm.mem_contents() == MemContents::Uninit);
 
     // We can write a value to the pcell (thus initializing it).
     // This only requires an `&` reference to the PCell, but it does
@@ -27,16 +27,16 @@ fn main() {
     pcell.put(Tracked(&mut perm), 5);
 
     // Having written the value, this is reflected in the token:
-    assert(perm.id() === pcell.id());
-    assert(perm.mem_contents() === MemContents::Init(5));
+    assert(perm.id() == pcell.id());
+    assert(perm.mem_contents() == MemContents::Init(5));
 
     // We can take the value back out:
     let x = pcell.take(Tracked(&mut perm));
 
     // Which leaves it uninitialized again:
     assert(x == 5);
-    assert(perm.id() === pcell.id());
-    assert(perm.mem_contents() === MemContents::Uninit);
+    assert(perm.id() == pcell.id());
+    assert(perm.mem_contents() == MemContents::Uninit);
 }
 // ANCHOR_END: example
 

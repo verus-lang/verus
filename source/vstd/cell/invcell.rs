@@ -81,7 +81,7 @@ impl<T, Pred: Predicate<T>> InvariantPredicate<(Pred, CellId), PointsTo<T>> for 
         let (pred, pcell_id) = k;
         {
             &&& pred.predicate(*perm.value())
-            &&& pcell_id === perm.id()
+            &&& pcell_id == perm.id()
         }
     }
 }
@@ -89,7 +89,7 @@ impl<T, Pred: Predicate<T>> InvariantPredicate<(Pred, CellId), PointsTo<T>> for 
 impl<T, Pred> InvCell<T, Pred> {
     #[verifier::type_invariant]
     closed spec fn wf(&self) -> bool {
-        &&& self.perm_inv@.constant().1 === self.pcell.id()
+        &&& self.perm_inv@.constant().1 == self.pcell.id()
     }
 
     pub closed spec fn predicate(&self) -> Pred {

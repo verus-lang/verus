@@ -29,7 +29,7 @@ pub(crate) fn build_boundary_suggestion<'tcx>(
         rustc_hir::def::DefKind::AssocFn | rustc_hir::def::DefKind::Fn => {
             build_fn_assume_specification_suggestion(ctxt, external_def_id)
         }
-        rustc_hir::def::DefKind::Const => {
+        rustc_hir::def::DefKind::Const { is_type_const: _ } => {
             build_const_assume_specification_suggestion(ctxt, external_def_id, path)
         }
         _ => Err(crate::util::error("Building boundary suggestion for non type/fn/const")),

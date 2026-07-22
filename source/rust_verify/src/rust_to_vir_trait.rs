@@ -1,6 +1,7 @@
 use crate::attributes::VerifierAttrs;
 use crate::context::Context;
 use crate::external::CrateItems;
+use crate::rust_to_vir::State;
 use crate::rust_to_vir_base::{check_generics_bounds_with_polarity, process_predicate_bounds};
 use crate::rust_to_vir_func::{CheckItemFnEither, check_item_fn};
 use crate::rust_to_vir_impl::ExternalInfo;
@@ -116,6 +117,7 @@ pub(crate) fn external_trait_specification_of<'tcx>(
 
 pub(crate) fn translate_trait<'tcx>(
     ctxt: &Context<'tcx>,
+    state: &mut State,
     vir: &mut KrateX,
     trait_span: Span,
     trait_def_id: DefId,
@@ -124,7 +126,6 @@ pub(crate) fn translate_trait<'tcx>(
     trait_generics: &'tcx Generics,
     trait_items: &'tcx [TraitItemId],
     trait_vattrs: &VerifierAttrs,
-    external_info: &mut ExternalInfo,
     crate_items: &CrateItems,
     safety: Safety,
 ) -> Result<(), VirErr> {
@@ -173,10 +174,12 @@ pub(crate) fn translate_trait<'tcx>(
         let proxy_predicates = tcx.predicates_of(trait_def_id);
         let mut preds1 = external_predicates.instantiate(tcx, ex_trait_ref_for.args).predicates;
         let mut preds2 = proxy_predicates.instantiate(tcx, ex_trait_ref_for.args).predicates;
+        let mut external_trait_private_bounds = trait_vattrs.external_trait_private_bounds.clone();
         use crate::rust_to_vir_func::remove_ignored_trait_bounds_from_predicates;
         remove_ignored_trait_bounds_from_predicates(
             ctxt,
             true,
+            Some(&mut external_trait_private_bounds),
             &[ex_trait_ref_for.def_id],
             Some(ex_trait_ref_for.args[0]),
             &mut preds1,
@@ -184,10 +187,20 @@ pub(crate) fn translate_trait<'tcx>(
         remove_ignored_trait_bounds_from_predicates(
             ctxt,
             true,
+            None,
             &[ex_trait_ref_for.def_id, trait_def_id],
             Some(ex_trait_ref_for.args[0]),
             &mut preds2,
         );
+        if let Some(bound) = external_trait_private_bounds.get(0) {
+            return err_span(
+                trait_span,
+                format!(
+                    "external_trait_private_bound {:?} is not a private non-local bound for this trait",
+                    bound,
+                ),
+            );
+        }
         if !crate::rust_to_vir_func::predicates_match(ctxt.tcx, &preds1, &preds2) {
             let err =
                 err_span_bare(trait_span, "external_trait_specification trait bound mismatch")
@@ -324,6 +337,7 @@ pub(crate) fn translate_trait<'tcx>(
                 // requires and ensures on exec functions can refer to spec extension trait:
                 let fun = check_item_fn(
                     ctxt,
+                    state,
                     &mut methods,
                     None,
                     owner_id.to_def_id(),
@@ -337,7 +351,6 @@ pub(crate) fn translate_trait<'tcx>(
                     body_id,
                     ex_trait_id_for.map(|d| (d, trait_extension_in_spec)),
                     ex_item_id_for,
-                    external_info,
                     None,
                     &mut vir.opaque_types,
                 )?;
@@ -366,6 +379,7 @@ pub(crate) fn translate_trait<'tcx>(
                 let typ = ctxt.mid_ty_to_vir(owner_id.to_def_id(), *span, &mid_ty, None)?;
                 let fun = crate::rust_to_vir_func::check_item_fn(
                     ctxt,
+                    state,
                     &mut methods,
                     None,
                     owner_id.to_def_id(),
@@ -379,7 +393,6 @@ pub(crate) fn translate_trait<'tcx>(
                     body_id,
                     ex_trait_id_for.map(|d| (d, trait_extension_in_spec)),
                     ex_item_id_for,
-                    external_info,
                     None,
                     &mut vir.opaque_types,
                 )?;
@@ -454,6 +467,24 @@ pub(crate) fn translate_trait<'tcx>(
                                     );
                                 }
                             }
+                            (ClauseKind::Projection(p1), ClauseKind::Projection(p2)) => {
+                                if p1.projection_term.def_id != p2.projection_term.def_id {
+                                    return err_span(
+                                        trait_span,
+                                        format!(
+                                            "Mismatched projection bounds on associated type ({} != {})",
+                                            p1, p2
+                                        ),
+                                    );
+                                }
+                            }
+                            (ClauseKind::RegionOutlives(..), ClauseKind::RegionOutlives(..))
+                            | (ClauseKind::TypeOutlives(..), ClauseKind::TypeOutlives(..)) => {
+                                // Lifetime bounds don't affect verification soundness —
+                                // they are handled entirely by the Rust borrow checker.
+                                // This is consistent with process_predicate_bounds and
+                                // compare_clause_kind, which also skip lifetime bounds.
+                            }
                             _ => {
                                 return err_span(
                                     trait_span,
@@ -478,7 +509,7 @@ pub(crate) fn translate_trait<'tcx>(
     } else {
         trait_def_id
     };
-    external_info.local_trait_ids.push(target_trait_id);
+    state.external_info.local_trait_ids.push(target_trait_id);
     let external_trait_extension = if let Some((spec, imp)) = external_trait_extension {
         let spec = orig_trait_path.replace_last(Arc::new(spec.clone()));
         let imp = orig_trait_path.replace_last(Arc::new(imp.clone()));

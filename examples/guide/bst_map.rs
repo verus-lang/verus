@@ -297,6 +297,88 @@ impl<V> TreeMap<V> {
 }
 // ANCHOR_END: get
 
+// ANCHOR: get_mut
+impl<V> Node<V> {
+    fn get_mut_from_optional(node: &mut Option<Box<Node<V>>>, key: u64) -> (ret: Option<&mut V>)
+        requires
+            node.is_some() ==> node.unwrap().well_formed(),
+        ensures
+            (match ret {
+                Some(r) =>
+                    old(node).is_some()
+                      && old(node).unwrap().as_map().dom().contains(key)
+                      && *r == old(node).unwrap().as_map()[key]
+                      && final(node).is_some()
+                      && final(node).unwrap().well_formed()
+                      && final(node).unwrap().as_map() == old(node).unwrap().as_map().insert(key, *final(r))
+                      && Node::optional_as_map(*final(node)).dom() =~= Node::optional_as_map(*old(node)).dom(),
+                None =>
+                    (old(node).is_some() ==> !old(node).unwrap().as_map().dom().contains(key))
+                      && *final(node) == *old(node)
+            }),
+        decreases *node,
+    {
+        match node {
+            None => None,
+            Some(node) => {
+                node.get_mut(key)
+            }
+        }
+    }
+
+    fn get_mut(&mut self, key: u64) -> (ret: Option<&mut V>)
+        requires
+            self.well_formed(),
+        ensures
+            (match ret {
+                Some(r) =>
+                    old(self).as_map().dom().contains(key)
+                      && *r == old(self).as_map()[key]
+                      && final(self).well_formed()
+                      && final(self).as_map() == old(self).as_map().insert(key, *final(r))
+                      && final(self).as_map().dom() =~= old(self).as_map().dom(),
+                None =>
+                    !old(self).as_map().dom().contains(key)
+                      && *final(self) == *old(self)
+            })
+        decreases *self,
+    {
+        if key == self.key {
+            return Some(&mut self.value);
+        } else if key < self.key {
+            proof { assert(!Node::<V>::optional_as_map(self.right).dom().contains(key)); }
+            return Self::get_mut_from_optional(&mut self.left, key);
+        } else {
+            proof { assert(!Node::<V>::optional_as_map(self.left).dom().contains(key)); }
+            return Self::get_mut_from_optional(&mut self.right, key);
+        }
+    }
+}
+
+impl<V> TreeMap<V> {
+// ANCHOR: get_mut_signature
+    pub fn get_mut(&mut self, key: u64) -> (ret: Option<&mut V>)
+        requires
+            self.well_formed(),
+        ensures
+            (match ret {
+                Some(r) =>
+                    old(self)@.dom().contains(key)
+                      && *r == old(self)@[key]
+                      && final(self).well_formed()
+                      && final(self).as_map() == old(self)@.insert(key, *final(r)),
+                None =>
+                    !old(self)@.dom().contains(key)
+                      && *final(self) == *old(self)
+            })
+// ANCHOR_END: get_mut_signature
+    {
+        Node::<V>::get_mut_from_optional(&mut self.root, key)
+    }
+}
+// ANCHOR_END: get_mut
+
+
 // ANCHOR: test
 fn test() {
     let mut tree_map = TreeMap::<bool>::new();
@@ -314,6 +396,9 @@ fn test() {
     let elem18 = tree_map.get(18);
     assert(elem17.is_none());
     assert(elem18 == Some(&false));
+
+    *tree_map.get_mut(18).unwrap() = true;
+    assert(tree_map@ == map![18u64 => true]);
 }
 // ANCHOR_END: test
 

@@ -246,6 +246,32 @@ test_verify_one_bv_file! {
 }
 
 test_verify_one_bv_file! {
+    #[test] strslice_len_not_supported_in_by_bit_vector verus_code! {
+        proof fn test() {
+            use verus_builtin::*;
+            assert(strslice_len::<u64>(7u64) == 0int) by(bit_vector);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "string slice length not supported in bit_vector assert")
+}
+
+test_verify_one_bv_file! {
+    #[test] float_to_bits_not_supported_in_by_bit_vector verus_code! {
+        proof fn test() {
+            use verus_builtin::*;
+            assert(f32_to_bits(0.0f32) == 0u32) by(bit_vector);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "float-to-bits coercion not supported in bit_vector assert")
+}
+
+test_verify_one_bv_file! {
+    #[test] real_to_int_not_supported_in_by_bit_vector verus_code! {
+        proof fn test() {
+            assert(1.0real.floor() == 1int) by(bit_vector);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "real-to-int coercion not supported in bit_vector assert")
+}
+
+test_verify_one_bv_file! {
     #[test] usize_cast_in_by_bit_vector verus_code! {
         proof fn test_usize(x: u64) {
             assert((x as usize) == (x as usize)) by (bit_vector);

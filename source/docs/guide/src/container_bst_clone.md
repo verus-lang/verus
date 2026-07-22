@@ -54,7 +54,7 @@ This can be done using [`call_ensures`](./exec_funs_as_values.md).
 The predicate `call_ensures(V::clone, (&self@[key],), res@[key])` effectively says
 "`self@[key]` and `res@[key]` are a possible input-output pair for `V::clone`".
 This predicate is a mouthful, so `vstd` provides a helper function:
-<code class="hljs"><a href="https://verus-lang.github.io/verus/source/doc/vstd/pervasive/fn.cloned.html">cloned::&lt;V&gt;</a>(self@[key], res@[key])</code>
+<code class="hljs"><a href="https://verus-lang.github.io/verus/verusdoc/vstd/pervasive/fn.cloned.html">cloned::&lt;V&gt;</a>(self@[key], res@[key])</code>
 
 ### Understanding the implications of the signature
 

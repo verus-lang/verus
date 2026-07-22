@@ -30,7 +30,7 @@ use super::seq::*;
 
 verus! {
 
-broadcast use super::seq::group_seq_axioms;
+broadcast use super::seq::group_seq_lemmas;
 /* Decoding UTF-8 to chars */
 
 /// True when the given byte conforms to the bit pattern for the first byte of a 1-byte UTF-8 encoding of a single codepoint.
@@ -256,7 +256,7 @@ proof fn lemma_pop_first_scalar_decreases(bytes: Seq<u8>)
 {
     assert(length_of_first_scalar(bytes) <= bytes.len() as int);
     assert(pop_first_scalar(bytes).len() == bytes.len() as int - length_of_first_scalar(bytes)) by {
-        axiom_seq_subrange_len(bytes, length_of_first_scalar(bytes), bytes.len() as int)
+        lemma_seq_subrange_len(bytes, length_of_first_scalar(bytes), bytes.len() as int)
     };
 }
 
@@ -880,7 +880,7 @@ pub broadcast proof fn valid_utf8_split(bytes: Seq<u8>, index: int)
     if index == 0 {
         assert(bytes =~= bytes.subrange(index, bytes.len() as int));
     } else {
-        broadcast use axiom_seq_subrange_len;
+        broadcast use lemma_seq_subrange_len;
 
         let s1 = bytes.subrange(0, index);
         let s2 = bytes.subrange(index, bytes.len() as int);

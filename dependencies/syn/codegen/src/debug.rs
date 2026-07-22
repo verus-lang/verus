@@ -198,7 +198,7 @@ pub fn generate(defs: &Definitions) -> Result<()> {
         quote! {
             #![allow(unknown_lints, non_local_definitions)]
 
-            use std::fmt::{self, Debug};
+            use core::fmt::{self, Debug};
 
             #impls
         },

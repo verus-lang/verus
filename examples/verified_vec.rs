@@ -69,7 +69,7 @@ impl<V> Vector<V> {
             self.well_formed(),
             0 <= i < self@.len(),
         ensures
-            *elem === self@.index(i as int),
+            *elem == self@.index(i as int),
     {
         let ptr_usize = self.ptr.to_usize();
         assume((i as int * size_of::<V>()) as usize as int == (i as int * size_of::<V>()));
@@ -87,8 +87,8 @@ impl<V> Vector<V> {
             old(self).len <= new_capacity,
         ensures
             self.well_formed(),
-            old(self)@ === self@,
-            self.capacity === new_capacity,
+            old(self)@ == self@,
+            self.capacity == new_capacity,
     {
         // TODO implement
         assume(false);
@@ -98,7 +98,7 @@ impl<V> Vector<V> {
         requires
             old(self).well_formed(),
         ensures
-            self@ === old(self)@.push(v),
+            self@ == old(self)@.push(v),
     {
         if self.len == self.capacity {
             assume((self.capacity as int * 2) as usize as int == (self.capacity as int * 2));

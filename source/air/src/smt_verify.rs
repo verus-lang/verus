@@ -357,7 +357,15 @@ pub(crate) fn smt_check_assertion<'ctx>(
 
             ValidityResult::Valid(usage_info)
         }
-        ResultDetermination::Undetermined(false) => smt_get_model(context, infos, air_model),
+        ResultDetermination::Undetermined(false) => {
+            if context.single_check_query {
+                // one obligation: nothing to localize, report it at the query level
+                context.state = ContextState::FoundInvalid(infos, None);
+                ValidityResult::Invalid(None, None, None)
+            } else {
+                smt_get_model(context, infos, air_model)
+            }
+        }
     }
 }
 
@@ -390,10 +398,18 @@ pub(crate) fn smt_get_rlimit_count(context: &mut Context) -> Result<u64, Validit
             Ok((key, value))
         })
         .collect::<Result<HashMap<&str, &str>, ValidityResult>>()?;
-    let Some(rlimit_count) = stats_map["rlimit-count"].parse().ok() else {
-        return Err(ValidityResult::UnexpectedOutput(format!(
-            "expected rlimit-count in smt statistics"
-        )));
+    // `rlimit-count` may be absent (e.g. a prelude-free bit_vector query with nothing yet to count);
+    // treat it as zero. This is resource accounting only, never the verification result.
+    let rlimit_count = match stats_map.get("rlimit-count") {
+        None => 0,
+        Some(value) => {
+            let Some(count) = value.parse().ok() else {
+                return Err(ValidityResult::UnexpectedOutput(format!(
+                    "expected rlimit-count in smt statistics"
+                )));
+            };
+            count
+        }
     };
     Ok(rlimit_count)
 }
@@ -479,7 +495,7 @@ pub(crate) fn smt_check_query<'ctx>(
     air_model: Model,
     report_long_running: Option<&mut ReportLongRunning>,
 ) -> ValidityResult {
-    if !context.disable_incremental_solving {
+    if !context.single_check_query {
         context.smt_log.log_push();
         context.push_name_scope();
     }

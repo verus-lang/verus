@@ -89,12 +89,12 @@ test_verify_one_file_with_options! {
 
             let mut x = (0, 1);
             *c(&mut x) = 10;
-            assert(x === (10, 1));
+            assert(x == (10, 1));
 
             let mut y = (2, 3);
             let r = c(&mut y);
             *r = 20;
-            assert(y === (20, 3));
+            assert(y == (20, 3));
         }
 
         fn test2() {
@@ -108,12 +108,12 @@ test_verify_one_file_with_options! {
 
             let mut x = (0, 1);
             *c(&mut x) = 10;
-            assert(x === (10, 1));
+            assert(x == (10, 1));
 
             let mut y = (2, 3);
             let r = c(&mut y);
             *r = 20;
-            assert(y === (20, 3));
+            assert(y == (20, 3));
 
             assert(false); // FAILS
         }
@@ -199,7 +199,7 @@ test_verify_one_file_with_options! {
         {
             let mut x = (0, 1);
             *c(&mut x) = 30;
-            assert(x === (30, 1));
+            assert(x == (30, 1));
         }
     } => Ok(())
 }

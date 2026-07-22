@@ -42,7 +42,7 @@ struct_with_invariants!{
                 GhostState::Uninitialized(points_to) => {
                     v == 0
                       && points_to.id() == cell.id()
-                      && (points_to.mem_contents() === MemContents::Init(None))
+                      && (points_to.mem_contents() == MemContents::Init(None))
                 }
                 GhostState::Initializing => {
                     v == 1

@@ -1,7 +1,5 @@
 # Iterators
 
-**These will be available starting May 8th**
-
 Verus supports verifying `for` loops over any type that implements the Rust
 [`Iterator`](https://doc.rust-lang.org/std/iter/trait.Iterator.html) trait, as
 long as that type comes with appropriate Verus specifications.  This page
@@ -31,7 +29,7 @@ also know that `my_iter.index() == my_iter.seq().len()`.
 ### Example: checking all elements are positive
 
 ```rust
-{{#include iterators.rs:usage_example}}
+{{#include ../../../../examples/guide/iterators.rs:usage_example}}
 ```
 
 The invariant tracks progress via `iter.index()`. When the loop finishes, we know the
@@ -42,7 +40,7 @@ invariant held for every `i` up to `iter.seq().len()`, which equals `v.len()`.
 Standard Rust integer ranges work the same way:
 
 ```rust
-{{#include iterators.rs:build_range}}
+{{#include ../../../../examples/guide/iterators.rs:build_range}}
 ```
 
 For a range `0..n`, `r_iter.seq()[k] == k`, so `r_iter.seq()[r_iter.index()]` equals the
@@ -53,7 +51,7 @@ current element `i`.
 If you don't need ghost state in your invariant, you can omit the `my_iter:` binding:
 
 ```rust
-{{#include iterators.rs:no_binding}}
+{{#include ../../../../examples/guide/iterators.rs:no_binding}}
 ```
 
 ### Reversed iteration
@@ -65,6 +63,6 @@ you can call `.rev()` to iterate in reverse.  The `seq()` and `index()`
 specifications work identically — they refer to the reversed sequence:
 
 ```rust
-{{#include iterators.rs:rev_example}}
+{{#include ../../../../examples/guide/iterators.rs:rev_example}}
 ```
 

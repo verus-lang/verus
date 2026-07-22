@@ -17,7 +17,7 @@ test_verify_one_file! {
                 bar();
             }
         }
-    } => Err(err) => assert_vir_error_msgs(err, &["bar", "foo"])
+    } => Err(err) => assert_vir_error_msgs(err, &["foo", "bar"])
 }
 test_verify_one_file! {
     #[test] test_assume_specification_simple_suggestion_made code! {

@@ -1622,3 +1622,422 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    /// Inherent impl on a struct: `&self` method using fields, with `recommends`
+    /// referencing `self` as well.
+    #[test] test_exec_spec_impl_struct IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            pub struct Pair {
+                pub x: u32,
+                pub y: u32,
+            }
+
+            impl Pair {
+                pub open spec fn sum(&self) -> u32
+                    recommends self.x + self.y <= u32::MAX
+                {
+                    (self.x + self.y) as u32
+                }
+
+                pub open spec fn max(&self) -> u32 {
+                    if self.x >= self.y { self.x } else { self.y }
+                }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    /// Inherent impl on an enum: `&self` method using `match self`.
+    #[test] test_exec_spec_impl_enum IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            pub enum E {
+                A(u32),
+                B { v: u32 },
+                C,
+            }
+
+            impl E {
+                pub open spec fn tag(&self) -> u32 {
+                    match self {
+                        E::A(_) => 0,
+                        E::B { .. } => 1,
+                        E::C => 2,
+                    }
+                }
+
+                pub open spec fn is_c(&self) -> bool {
+                    match self {
+                        E::C => true,
+                        _ => false,
+                    }
+                }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    /// Recursive method with `decreases` referencing `self`.
+    #[test] test_exec_spec_impl_self_recursion IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            pub struct Counter {
+                pub n: u32,
+            }
+
+            impl Counter {
+                pub open spec fn count_down(&self) -> u32
+                    decreases self.n
+                {
+                    if self.n == 0 {
+                        0
+                    } else {
+                        let next = Counter { n: (self.n - 1) as u32 };
+                        next.count_down()
+                    }
+                }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    /// Recursive method on an enum (linked list shape).
+    #[test] test_exec_spec_impl_enum_recursion IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            pub enum List {
+                Cons(u32, Seq<u32>),
+                Nil,
+            }
+
+            impl List {
+                pub open spec fn is_nil(&self) -> bool {
+                    match self {
+                        List::Cons(..) => false,
+                        List::Nil => true,
+                    }
+                }
+            }
+
+            // Free-standing recursion that calls a method on each step.
+            spec fn count_nils(l: List, n: usize) -> u32
+                decreases n
+            {
+                if n == 0 {
+                    0
+                } else if l.is_nil() {
+                    1
+                } else {
+                    0
+                }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    /// `decreases ... when ...` clause referencing `self`, using a `decreases self` pattern.
+    #[test] test_exec_spec_impl_decreases_when IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            pub struct Counter {
+                pub n: i32,
+            }
+
+            impl Counter {
+                pub open spec fn down(&self) -> i32
+                    decreases self.n when self.n >= 0
+                {
+                    if self.n == 0 {
+                        1
+                    } else {
+                        let next = Counter { n: (self.n - 1) as i32 };
+                        next.down()
+                    }
+                }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    /// Method body uses `match self` and post-condition `=~~=` against the
+    /// spec's match result, exercising the deep-view ext-eq path.
+    #[test] test_exec_spec_impl_matching_spec IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            pub enum Shape {
+                Square,
+                Rect,
+            }
+
+            impl Shape {
+                pub open spec fn is_square(&self) -> bool {
+                    match self {
+                        Shape::Square => true,
+                        Shape::Rect => false,
+                    }
+                }
+
+                pub open spec fn is_rect(&self) -> bool {
+                    match self {
+                        Shape::Square => false,
+                        Shape::Rect => true,
+                    }
+                }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    /// Free-standing function calls a user-defined method (exercises the
+    /// `Expr::MethodCall` fallthrough into `exec_<name>`).
+    #[test] test_exec_spec_impl_method_call_site IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            pub struct Pair {
+                pub x: u32,
+                pub y: u32,
+            }
+
+            impl Pair {
+                pub open spec fn sum(&self) -> u32
+                    recommends self.x <= 1000, self.y <= 1000
+                {
+                    (self.x + self.y) as u32
+                }
+            }
+
+            spec fn add_pairs(p: Pair, q: Pair) -> u32
+                recommends
+                    p.x <= 1000, p.y <= 1000,
+                    q.x <= 1000, q.y <= 1000,
+            {
+                (p.sum() + q.sum()) as u32
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    /// `&self` is supported. Using `self` by value or `&mut self` is rejected.
+    #[test] test_exec_spec_impl_ref_self_supported IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            pub struct W { pub v: u32 }
+
+            impl W {
+                pub open spec fn get(&self) -> u32 {
+                    self.v
+                }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    /// `self` by value is rejected with a clear error.
+    #[test] test_exec_spec_impl_value_self_rejected IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            pub struct W { pub v: u32 }
+
+            impl W {
+                pub open spec fn get(self) -> u32 {
+                    self.v
+                }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "only `&self` is supported")
+}
+
+test_verify_one_file! {
+    /// `&mut self` is rejected (spec methods are pure).
+    #[test] test_exec_spec_impl_mut_self_rejected IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            pub struct W { pub v: u32 }
+
+            impl W {
+                pub open spec fn get(&mut self) -> u32 {
+                    self.v
+                }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "`&mut self` is not supported")
+}
+
+test_verify_one_file! {
+    /// Trait impls are not supported in `exec_spec_verified!`.
+    #[test] test_exec_spec_impl_trait_rejected IMPORTS.to_string() + verus_code_str! {
+        trait MyTrait {
+            spec fn label() -> u32;
+        }
+
+        exec_spec_verified! {
+            pub struct S { pub v: u32 }
+
+            impl MyTrait for S {
+                open spec fn label() -> u32 { 0 }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "trait impls not supported in exec_spec")
+}
+
+test_verify_one_file! {
+    /// Generic impls are not supported.
+    #[test] test_exec_spec_impl_generics_rejected IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            pub struct W { pub v: u32 }
+
+            impl<T> W {
+                pub open spec fn get(&self) -> u32 { self.v }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "generics not supported")
+}
+
+test_verify_one_file! {
+    /// Mix of `pub closed` and `pub open` spec functions in the same macro
+    /// invocation.
+    #[test] test_exec_spec_closed_and_open_fns IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            pub closed spec fn squared(x: u32) -> u32
+                recommends x * x <= u32::MAX
+            {
+                (x * x) as u32
+            }
+
+            pub open spec fn doubled(x: u32) -> u32
+                recommends x + x <= u32::MAX
+            {
+                (x + x) as u32
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    /// Closed spec methods inside an impl block.
+    #[test] test_exec_spec_impl_closed_method IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            pub struct Pair {
+                pub x: u32,
+                pub y: u32,
+            }
+
+            impl Pair {
+                pub closed spec fn sum(&self) -> u32
+                    recommends self.x + self.y <= u32::MAX
+                {
+                    (self.x + self.y) as u32
+                }
+
+                pub open spec fn max(&self) -> u32 {
+                    if self.x >= self.y { self.x } else { self.y }
+                }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    /// `&&&` and `|||` (BigAnd / BigOr) inside impl method bodies and inside
+    /// `recommends` clauses.
+    #[test] test_exec_spec_impl_big_and_or IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            pub struct Triple {
+                pub a: u32,
+                pub b: u32,
+                pub c: u32,
+            }
+
+            impl Triple {
+                pub open spec fn all_small(&self) -> bool {
+                    &&& self.a <= 10
+                    &&& self.b <= 10
+                    &&& self.c <= 10
+                }
+
+                pub open spec fn any_small(&self) -> bool {
+                    ||| self.a <= 10
+                    ||| self.b <= 10
+                    ||| self.c <= 10
+                }
+
+                pub open spec fn well_formed(&self) -> u32
+                    recommends
+                        self.a <= 100,
+                        self.b <= 100,
+                        self.c <= 100,
+                {
+                    (self.a + self.b + self.c) as u32
+                }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    /// `e is Variant` over user-defined enums with all three variant shapes
+    /// (named, tuple, unit). Also `isnt`.
+    #[test] test_exec_spec_is_user_enum IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            pub enum E {
+                Named { v: u32 },
+                Tuple(u32),
+                Unit,
+            }
+
+            pub open spec fn classify(e: E) -> u32 {
+                if e is Named {
+                    1
+                } else if e is Tuple {
+                    2
+                } else {
+                    3
+                }
+            }
+
+            pub open spec fn not_named(e: E) -> bool {
+                e isnt Named
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    /// `e is Variant` on `Option`.
+    #[test] test_exec_spec_is_option IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            pub open spec fn is_some(o: Option<u32>) -> bool {
+                o is Some
+            }
+
+            pub open spec fn is_none(o: Option<u32>) -> bool {
+                o is None
+            }
+
+            pub open spec fn not_some(o: Option<u32>) -> bool {
+                o isnt Some
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    /// Tests prefix deref `*self` in a spec method body (exercises `UnOp::Deref`).
+    #[test] test_exec_spec_impl_deref_self IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            pub struct W { pub v: u32 }
+
+            impl W {
+                pub open spec fn copy(&self) -> W {
+                    *self
+                }
+            }
+        }
+
+        fn sanity_check() {
+            let w = ExecW { v: 7 };
+            let c = w.exec_copy();
+            assert(c.v == 7);
+        }
+    } => Ok(())
+}

@@ -571,7 +571,7 @@ test_verify_one_file_with_options! {
             };
             assert(has_resolved(x.a.1.0)); // TODO(new_mut_ref): (triggers) should be automatic
             assert(has_resolved(pair_ref_pair.1));
-            assert(pair === (0, 1));
+            assert(pair == (0, 1));
         }
 
         fn test2() {
@@ -583,7 +583,7 @@ test_verify_one_file_with_options! {
             x.a.1.0.1.1 = 19;
             assert(has_resolved(x.a.1.0));
             assert(has_resolved(pair_ref_pair.1));
-            assert(pair === (0, 19));
+            assert(pair == (0, 19));
         }
 
         fn test3() {
@@ -604,8 +604,8 @@ test_verify_one_file_with_options! {
             assert(has_resolved(pair_ref_pair.1));
             assert(has_resolved(pair2_ref_pair.1));
 
-            assert(pair === (0, 1));
-            assert(pair2 === (2, 19));
+            assert(pair == (0, 1));
+            assert(pair2 == (2, 19));
         }
 
         fn test4() {
@@ -626,10 +626,10 @@ test_verify_one_file_with_options! {
             assert(has_resolved(pair_ref_pair.1));
             assert(has_resolved(pair2_ref_pair.1));
 
-            assert(pair === (0, 1));
-            assert(pair2 === (2, 3));
-            assert(pair_ref_pair.0 === 3);
-            assert(pair2_ref_pair.0 === 19);
+            assert(pair == (0, 1));
+            assert(pair2 == (2, 3));
+            assert(pair_ref_pair.0 == 3);
+            assert(pair2_ref_pair.0 == 19);
         }
 
         fn test5() {
@@ -653,10 +653,10 @@ test_verify_one_file_with_options! {
             assert(has_resolved(pair_ref_pair.1));
             assert(has_resolved(pair2_ref_pair.1));
 
-            assert(pair === (23, 1));
-            assert(pair2 === (24, 3));
-            assert(pair_ref_pair.0 === 3);
-            assert(pair2_ref_pair.0 === 19);
+            assert(pair == (23, 1));
+            assert(pair2 == (24, 3));
+            assert(pair_ref_pair.0 == 3);
+            assert(pair2_ref_pair.0 == 19);
         }
 
         fn test_fails() {
@@ -667,7 +667,7 @@ test_verify_one_file_with_options! {
             };
             assert(has_resolved(x.a.1.0)); // TODO(new_mut_ref): (triggers) should be automatic
             assert(has_resolved(pair_ref_pair.1));
-            assert(pair === (0, 1));
+            assert(pair == (0, 1));
             assert(false); // FAILS
         }
 
@@ -680,7 +680,7 @@ test_verify_one_file_with_options! {
             x.a.1.0.1.1 = 19;
             assert(has_resolved(x.a.1.0));
             assert(has_resolved(pair_ref_pair.1));
-            assert(pair === (0, 19));
+            assert(pair == (0, 19));
             assert(false); // FAILS
         }
 
@@ -702,8 +702,8 @@ test_verify_one_file_with_options! {
             assert(has_resolved(pair_ref_pair.1));
             assert(has_resolved(pair2_ref_pair.1));
 
-            assert(pair === (0, 1));
-            assert(pair2 === (2, 19));
+            assert(pair == (0, 1));
+            assert(pair2 == (2, 19));
             assert(false); // FAILS
         }
 
@@ -725,10 +725,10 @@ test_verify_one_file_with_options! {
             assert(has_resolved(pair_ref_pair.1));
             assert(has_resolved(pair2_ref_pair.1));
 
-            assert(pair === (0, 1));
-            assert(pair2 === (2, 3));
-            assert(pair_ref_pair.0 === 3);
-            assert(pair2_ref_pair.0 === 19);
+            assert(pair == (0, 1));
+            assert(pair2 == (2, 3));
+            assert(pair_ref_pair.0 == 3);
+            assert(pair2_ref_pair.0 == 19);
             assert(false); // FAILS
         }
 
@@ -753,10 +753,10 @@ test_verify_one_file_with_options! {
             assert(has_resolved(pair_ref_pair.1));
             assert(has_resolved(pair2_ref_pair.1));
 
-            assert(pair === (23, 1));
-            assert(pair2 === (24, 3));
-            assert(pair_ref_pair.0 === 3);
-            assert(pair2_ref_pair.0 === 19);
+            assert(pair == (23, 1));
+            assert(pair2 == (24, 3));
+            assert(pair_ref_pair.0 == 3);
+            assert(pair2_ref_pair.0 == 19);
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 5)
@@ -790,7 +790,7 @@ test_verify_one_file_with_options! {
                 *x_ref = 30;
             }
 
-            assert(x === (if b { 20 } else { 30 }));
+            assert(x == (if b { 20u64 } else { 30 }));
         }
 
         fn test_fails(b: bool) {
@@ -959,8 +959,8 @@ test_verify_one_file_with_options! {
                 *x_ref.1 = 30;
             }
 
-            assert(x === (if b { 20 } else { 0 }));
-            assert(y === (if b { 0 } else { 30 }));
+            assert(x == (if b { 20u64 } else { 0 }));
+            assert(y == (if b { 0u64 } else { 30 }));
         }
 
         fn test_fails(b: bool) {
@@ -978,8 +978,8 @@ test_verify_one_file_with_options! {
                 assert(has_resolved(x_ref.1));
             }
 
-            assert(x === (if b { 20 } else { 0 }));
-            assert(y === (if b { 0 } else { 30 }));
+            assert(x == (if b { 20u64 } else { 0 }));
+            assert(y == (if b { 0u64 } else { 30 }));
             assert(b); // FAILS
         }
 
@@ -998,8 +998,8 @@ test_verify_one_file_with_options! {
                 assert(has_resolved(x_ref.1));
             }
 
-            assert(x === (if b { 20 } else { 0 }));
-            assert(y === (if b { 0 } else { 30 }));
+            assert(x == (if b { 20u64 } else { 0 }));
+            assert(y == (if b { 0u64 } else { 30 }));
             assert(!b); // FAILS
         }
     } => Err(err) => assert_fails(err, 2)
@@ -3304,7 +3304,7 @@ test_verify_one_file_with_options! {
             let tracked mut x: Tracked<int> = Tracked(0);
             let tracked x_ref = &mut x;
             set_to(Tracked(x_ref), Tracked(x_ref.get() + 1));
-            assert(x == 1);
+            assert(*x == 1);
             assert(false);
         }
     } => Err(err) => assert_rust_error_msg(err, "cannot use `*x_ref` because it was mutably borrowed")
@@ -3763,7 +3763,7 @@ test_verify_one_file_with_options! {
 
             let mut x = &mut a;
             let j = x[({ x = &mut b; 0 })];
-            assert((*x)@ === seq![2, 3]);
+            assert((*x)@ == seq![2, 3]);
             assert(j == 0);
         }
 
@@ -3773,9 +3773,9 @@ test_verify_one_file_with_options! {
 
             let mut x = &mut a;
             x[({ x = &mut b; 0 })] = 100;
-            assert((*x)@ === seq![2, 3]);
-            assert(a@ === seq![100, 1]);
-            assert(b@ === seq![2, 3]);
+            assert((*x)@ == seq![2, 3]);
+            assert(a@ == seq![100, 1]);
+            assert(b@ == seq![2, 3]);
         }
 
         fn mut_ref_vec_index_mut_ref() {
@@ -3785,9 +3785,9 @@ test_verify_one_file_with_options! {
             let mut x = &mut a;
             let r = &mut x[({ x = &mut b; 0 })];
             *r = 100;
-            assert((*x)@ === seq![2, 3]);
-            assert(a@ === seq![100, 1]);
-            assert(b@ === seq![2, 3]);
+            assert((*x)@ == seq![2, 3]);
+            assert(a@ == seq![100, 1]);
+            assert(b@ == seq![2, 3]);
         }
 
         fn mut_ref_vec_index_read_fails() {
@@ -3796,7 +3796,7 @@ test_verify_one_file_with_options! {
 
             let mut x = &mut a;
             let j = x[({ x = &mut b; 0 })];
-            assert((*x)@ === seq![2, 3]);
+            assert((*x)@ == seq![2, 3]);
             assert(j == 0);
             assert(false); // FAILS
         }
@@ -3807,9 +3807,9 @@ test_verify_one_file_with_options! {
 
             let mut x = &mut a;
             x[({ x = &mut b; 0 })] = 100;
-            assert((*x)@ === seq![2, 3]);
-            assert(a@ === seq![100, 1]);
-            assert(b@ === seq![2, 3]);
+            assert((*x)@ == seq![2, 3]);
+            assert(a@ == seq![100, 1]);
+            assert(b@ == seq![2, 3]);
             assert(false); // FAILS
         }
 
@@ -3820,9 +3820,9 @@ test_verify_one_file_with_options! {
             let mut x = &mut a;
             let r = &mut x[({ x = &mut b; 0 })];
             *r = 100;
-            assert((*x)@ === seq![2, 3]);
-            assert(a@ === seq![100, 1]);
-            assert(b@ === seq![2, 3]);
+            assert((*x)@ == seq![2, 3]);
+            assert(a@ == seq![100, 1]);
+            assert(b@ == seq![2, 3]);
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 3)
@@ -3839,7 +3839,7 @@ test_verify_one_file_with_options! {
             let mut x = &mut a;
             let j = x[({ x = &mut b; 0 })];
             x[0] = 200;
-            assert((*x)@ === seq![200, 3]);
+            assert((*x)@ == seq![200, 3]);
             assert(j == 0);
         }
 
@@ -3851,9 +3851,9 @@ test_verify_one_file_with_options! {
             x[({ x = &mut b; 0 })] = 100;
             x[0] = 200;
 
-            assert((*x)@ === seq![200, 3]);
-            assert(a@ === seq![100, 1]);
-            assert(b@ === seq![200, 3]);
+            assert((*x)@ == seq![200, 3]);
+            assert(a@ == seq![100, 1]);
+            assert(b@ == seq![200, 3]);
         }
 
         fn mut_ref_vec_index_mut_ref() {
@@ -3864,9 +3864,9 @@ test_verify_one_file_with_options! {
             let r = &mut x[({ x = &mut b; 0 })];
             *r = 100;
             x[0] = 200;
-            assert((*x)@ === seq![200, 3]);
-            assert(a@ === seq![100, 1]);
-            assert(b@ === seq![200, 3]);
+            assert((*x)@ == seq![200, 3]);
+            assert(a@ == seq![100, 1]);
+            assert(b@ == seq![200, 3]);
         }
 
         fn mut_ref_vec_index_read_fails() {
@@ -3876,7 +3876,7 @@ test_verify_one_file_with_options! {
             let mut x = &mut a;
             let j = x[({ x = &mut b; 0 })];
             x[0] = 200;
-            assert((*x)@ === seq![200, 3]);
+            assert((*x)@ == seq![200, 3]);
             assert(j == 0);
             assert(false); // FAILS
         }
@@ -3889,9 +3889,9 @@ test_verify_one_file_with_options! {
             x[({ x = &mut b; 0 })] = 100;
             x[0] = 200;
 
-            assert((*x)@ === seq![200, 3]);
-            assert(a@ === seq![100, 1]);
-            assert(b@ === seq![200, 3]);
+            assert((*x)@ == seq![200, 3]);
+            assert(a@ == seq![100, 1]);
+            assert(b@ == seq![200, 3]);
             assert(false); // FAILS
         }
 
@@ -3903,9 +3903,9 @@ test_verify_one_file_with_options! {
             let r = &mut x[({ x = &mut b; 0 })];
             *r = 100;
             x[0] = 200;
-            assert((*x)@ === seq![200, 3]);
-            assert(a@ === seq![100, 1]);
-            assert(b@ === seq![200, 3]);
+            assert((*x)@ == seq![200, 3]);
+            assert(a@ == seq![100, 1]);
+            assert(b@ == seq![200, 3]);
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 3)
@@ -3935,8 +3935,8 @@ test_verify_one_file_with_options! {
             let b: [u64; 2] = [2, 3];
 
             a[({ a = b; 0 })] = 100;
-            assert(a === [100, 3]);
-            assert(b === [2, 3]);
+            assert(a == [100, 3]);
+            assert(b == [2, 3]);
         }
 
         fn array_index_mut_ref() {
@@ -3945,8 +3945,8 @@ test_verify_one_file_with_options! {
 
             let r = &mut a[({ a = b; 0 })];
             *r = 100;
-            assert(a === [100, 3]);
-            assert(b === [2, 3]);
+            assert(a == [100, 3]);
+            assert(b == [2, 3]);
         }
 
         fn mut_ref_array_index_read() {
@@ -3955,7 +3955,7 @@ test_verify_one_file_with_options! {
 
             let mut x = &mut a;
             let j = x[({ x = &mut b; 0 })];
-            assert(j === 2);
+            assert(j == 2);
         }
 
         fn mut_ref_array_index_assign() {
@@ -3964,8 +3964,8 @@ test_verify_one_file_with_options! {
 
             let mut x = &mut a;
             x[({ x = &mut b; 0 })] = 100;
-            assert(a === [0, 1]);
-            assert(b === [100, 3]);
+            assert(a == [0, 1]);
+            assert(b == [100, 3]);
         }
 
         fn mut_ref_array_index_mut_ref() {
@@ -3975,8 +3975,8 @@ test_verify_one_file_with_options! {
             let mut x = &mut a;
             let r = &mut x[({ x = &mut b; 0 })];
             *r = 100;
-            assert(a === [0, 1]);
-            assert(b === [100, 3]);
+            assert(a == [0, 1]);
+            assert(b == [100, 3]);
         }
 
         fn double_mut_ref_array_index_read() {
@@ -3987,7 +3987,7 @@ test_verify_one_file_with_options! {
 
             let mut x: &mut &mut [u64; 2] = &mut a_ref;
             let j = x[({ x = &mut b_ref; 0 })];
-            assert(j === 2);
+            assert(j == 2);
         }
 
         fn double_mut_ref_array_index_assign() {
@@ -3998,8 +3998,8 @@ test_verify_one_file_with_options! {
 
             let mut x: &mut &mut [u64; 2] = &mut a_ref;
             x[({ x = &mut b_ref; 0 })] = 100;
-            assert(a === [0, 1]);
-            assert(b === [100, 3]);
+            assert(a == [0, 1]);
+            assert(b == [100, 3]);
         }
 
         fn double_mut_ref_array_index_mut_ref() {
@@ -4011,8 +4011,8 @@ test_verify_one_file_with_options! {
             let mut x: &mut &mut [u64; 2] = &mut a_ref;
             let r = &mut x[({ x = &mut b_ref; 0 })];
             *r = 100;
-            assert(a === [0, 1]);
-            assert(b === [100, 3]);
+            assert(a == [0, 1]);
+            assert(b == [100, 3]);
         }
 
         fn mut_ref_array2_index_read() {
@@ -4021,7 +4021,7 @@ test_verify_one_file_with_options! {
 
             let mut x = &mut a;
             let j = x[1][({ x = &mut b; 0 })];
-            assert(j === 12);
+            assert(j == 12);
         }
 
         fn mut_ref_array2_index_assign() {
@@ -4030,8 +4030,8 @@ test_verify_one_file_with_options! {
 
             let mut x = &mut a;
             x[1][({ x = &mut b; 0 })] = 100;
-            assert(a@[0] === [0, 1] && a[1] === [10, 11]);
-            assert(b@[0] === [2, 3] && b[1] === [100, 13]);
+            assert(a@[0] == [0, 1] && a[1] == [10, 11]);
+            assert(b@[0] == [2, 3] && b[1] == [100, 13]);
         }
 
         fn mut_ref_array2_index_mut_ref() {
@@ -4041,8 +4041,8 @@ test_verify_one_file_with_options! {
             let mut x = &mut a;
             let r = &mut x[1][({ x = &mut b; 0 })];
             *r = 100;
-            assert(a@[0] === [0, 1] && a[1] === [10, 11]);
-            assert(b@[0] === [2, 3] && b[1] === [100, 13]);
+            assert(a@[0] == [0, 1] && a[1] == [10, 11]);
+            assert(b@[0] == [2, 3] && b[1] == [100, 13]);
         }
 
         fn mut_ref_slice_index_read() {
@@ -4054,7 +4054,7 @@ test_verify_one_file_with_options! {
 
             let mut x = slice1;
             let j = x[({ x = slice2; 0 })];
-            assert(j === 2);
+            assert(j == 2);
         }
 
         fn mut_ref_slice_index_assign() {
@@ -4066,8 +4066,8 @@ test_verify_one_file_with_options! {
 
             let mut x = slice1;
             x[({ x = slice2; 0 })] = 100;
-            assert(a === [0, 1]);
-            assert(b === [100, 3]);
+            assert(a == [0, 1]);
+            assert(b == [100, 3]);
         }
 
         fn mut_ref_slice_index_mut_ref() {
@@ -4079,8 +4079,8 @@ test_verify_one_file_with_options! {
 
             let mut x = slice1;
             x[({ x = slice2; 0 })] = 100;
-            assert(a === [0, 1]);
-            assert(b === [100, 3]);
+            assert(a == [0, 1]);
+            assert(b == [100, 3]);
         }
     } => Ok(())
 }
@@ -4103,8 +4103,8 @@ test_verify_one_file_with_options! {
             let b: [u64; 2] = [2, 3];
 
             a[({ a = b; 0 })] = 100;
-            assert(a === [100, 3]);
-            assert(b === [2, 3]);
+            assert(a == [100, 3]);
+            assert(b == [2, 3]);
             assert(false); // FAILS
         }
 
@@ -4114,8 +4114,8 @@ test_verify_one_file_with_options! {
 
             let r = &mut a[({ a = b; 0 })];
             *r = 100;
-            assert(a === [100, 3]);
-            assert(b === [2, 3]);
+            assert(a == [100, 3]);
+            assert(b == [2, 3]);
             assert(false); // FAILS
         }
 
@@ -4125,7 +4125,7 @@ test_verify_one_file_with_options! {
 
             let mut x = &mut a;
             let j = x[({ x = &mut b; 0 })];
-            assert(j === 2);
+            assert(j == 2);
             assert(false); // FAILS
         }
 
@@ -4135,8 +4135,8 @@ test_verify_one_file_with_options! {
 
             let mut x = &mut a;
             x[({ x = &mut b; 0 })] = 100;
-            assert(a === [0, 1]);
-            assert(b === [100, 3]);
+            assert(a == [0, 1]);
+            assert(b == [100, 3]);
             assert(false); // FAILS
         }
 
@@ -4147,8 +4147,8 @@ test_verify_one_file_with_options! {
             let mut x = &mut a;
             let r = &mut x[({ x = &mut b; 0 })];
             *r = 100;
-            assert(a === [0, 1]);
-            assert(b === [100, 3]);
+            assert(a == [0, 1]);
+            assert(b == [100, 3]);
             assert(false); // FAILS
         }
 
@@ -4160,7 +4160,7 @@ test_verify_one_file_with_options! {
 
             let mut x: &mut &mut [u64; 2] = &mut a_ref;
             let j = x[({ x = &mut b_ref; 0 })];
-            assert(j === 2);
+            assert(j == 2);
             assert(false); // FAILS
         }
 
@@ -4172,8 +4172,8 @@ test_verify_one_file_with_options! {
 
             let mut x: &mut &mut [u64; 2] = &mut a_ref;
             x[({ x = &mut b_ref; 0 })] = 100;
-            assert(a === [0, 1]);
-            assert(b === [100, 3]);
+            assert(a == [0, 1]);
+            assert(b == [100, 3]);
             assert(false); // FAILS
         }
 
@@ -4186,8 +4186,8 @@ test_verify_one_file_with_options! {
             let mut x: &mut &mut [u64; 2] = &mut a_ref;
             let r = &mut x[({ x = &mut b_ref; 0 })];
             *r = 100;
-            assert(a === [0, 1]);
-            assert(b === [100, 3]);
+            assert(a == [0, 1]);
+            assert(b == [100, 3]);
             assert(false); // FAILS
         }
 
@@ -4197,7 +4197,7 @@ test_verify_one_file_with_options! {
 
             let mut x = &mut a;
             let j = x[1][({ x = &mut b; 0 })];
-            assert(j === 12);
+            assert(j == 12);
             assert(false); // FAILS
         }
 
@@ -4207,8 +4207,8 @@ test_verify_one_file_with_options! {
 
             let mut x = &mut a;
             x[1][({ x = &mut b; 0 })] = 100;
-            assert(a@[0] === [0, 1] && a[1] === [10, 11]);
-            assert(b@[0] === [2, 3] && b[1] === [100, 13]);
+            assert(a@[0] == [0, 1] && a[1] == [10, 11]);
+            assert(b@[0] == [2, 3] && b[1] == [100, 13]);
             assert(false); // FAILS
         }
 
@@ -4219,8 +4219,8 @@ test_verify_one_file_with_options! {
             let mut x = &mut a;
             let r = &mut x[1][({ x = &mut b; 0 })];
             *r = 100;
-            assert(a@[0] === [0, 1] && a[1] === [10, 11]);
-            assert(b@[0] === [2, 3] && b[1] === [100, 13]);
+            assert(a@[0] == [0, 1] && a[1] == [10, 11]);
+            assert(b@[0] == [2, 3] && b[1] == [100, 13]);
             assert(false); // FAILS
         }
 
@@ -4233,7 +4233,7 @@ test_verify_one_file_with_options! {
 
             let mut x = slice1;
             let j = x[({ x = slice2; 0 })];
-            assert(j === 2);
+            assert(j == 2);
             assert(false); // FAILS
         }
 
@@ -4246,8 +4246,8 @@ test_verify_one_file_with_options! {
 
             let mut x = slice1;
             x[({ x = slice2; 0 })] = 100;
-            assert(a === [0, 1]);
-            assert(b === [100, 3]);
+            assert(a == [0, 1]);
+            assert(b == [100, 3]);
             assert(false); // FAILS
         }
 
@@ -4260,8 +4260,8 @@ test_verify_one_file_with_options! {
 
             let mut x = slice1;
             x[({ x = slice2; 0 })] = 100;
-            assert(a === [0, 1]);
-            assert(b === [100, 3]);
+            assert(a == [0, 1]);
+            assert(b == [100, 3]);
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 15)
@@ -4537,7 +4537,7 @@ test_verify_one_file_with_options! {
             let j = match a[({ a = b; 0 })] {
                 Foo { i, j, k } => (i, j, k),
             };
-            assert(j === (6, 7, 8));
+            assert(j == (6, 7, 8));
         }
 
         fn mut_ref_array_index_read() {
@@ -4548,7 +4548,7 @@ test_verify_one_file_with_options! {
             let j = match x[({ x = &mut b; 0 })] {
                 Foo { i, j, k } => (i, j, k),
             };
-            assert(j === (6, 7, 8));
+            assert(j == (6, 7, 8));
         }
 
         fn double_mut_ref_array_index_read() {
@@ -4561,7 +4561,7 @@ test_verify_one_file_with_options! {
             let j = match x[({ x = &mut b_ref; 0 })] {
                 Foo { i, j, k } => (i, j, k),
             };
-            assert(j === (6, 7, 8));
+            assert(j == (6, 7, 8));
         }
 
         fn mut_ref_array2_index_read() {
@@ -4578,7 +4578,7 @@ test_verify_one_file_with_options! {
             let j = match x[1][({ x = &mut b; 0 })] {
                 Foo { i, j, k } => (i, j, k),
             };
-            assert(j === (206, 207, 208));
+            assert(j == (206, 207, 208));
         }
 
         fn mut_ref_slice_index_read() {
@@ -4592,7 +4592,7 @@ test_verify_one_file_with_options! {
             let j = match x[({ x = slice2; 0 })] {
                 Foo { i, j, k } => (i, j, k),
             };
-            assert(j === (6, 7, 8));
+            assert(j == (6, 7, 8));
         }
     } => Ok(())
 }
@@ -4613,7 +4613,7 @@ test_verify_one_file_with_options! {
             let j = match a[({ a = b; 0 })] {
                 Foo { i, j, k } => (i, j, k),
             };
-            assert(j === (6, 7, 8));
+            assert(j == (6, 7, 8));
             assert(false); // FAILS
         }
 
@@ -4625,7 +4625,7 @@ test_verify_one_file_with_options! {
             let j = match x[({ x = &mut b; 0 })] {
                 Foo { i, j, k } => (i, j, k),
             };
-            assert(j === (6, 7, 8));
+            assert(j == (6, 7, 8));
             assert(false); // FAILS
         }
 
@@ -4639,7 +4639,7 @@ test_verify_one_file_with_options! {
             let j = match x[({ x = &mut b_ref; 0 })] {
                 Foo { i, j, k } => (i, j, k),
             };
-            assert(j === (6, 7, 8));
+            assert(j == (6, 7, 8));
             assert(false); // FAILS
         }
 
@@ -4657,7 +4657,7 @@ test_verify_one_file_with_options! {
             let j = match x[1][({ x = &mut b; 0 })] {
                 Foo { i, j, k } => (i, j, k),
             };
-            assert(j === (206, 207, 208));
+            assert(j == (206, 207, 208));
             assert(false); // FAILS
         }
 
@@ -4672,7 +4672,7 @@ test_verify_one_file_with_options! {
             let j = match x[({ x = slice2; 0 })] {
                 Foo { i, j, k } => (i, j, k),
             };
-            assert(j === (6, 7, 8));
+            assert(j == (6, 7, 8));
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 5)
@@ -4744,7 +4744,7 @@ test_verify_one_file_with_options! {
 
             // We're allowed to create this value with a "cycle"
             assert(r.g.is_some());
-            assert(r === *final(r.g.unwrap()@));
+            assert(r == *final(r.g.unwrap()@));
 
             // This is okay because 'final' doesn't imply 'decreases_to'.
             // In the VerusBelt model, final is only obtained by "looking up" the value

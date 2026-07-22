@@ -14,9 +14,7 @@ We can rewrite this as a `for` loop as follows:
 
 The only difference between this `for` loop and the `while` loop 
 is that `idx` is automatically incremented by 1 at the end of the 
-each iteration. 
+each iteration, and we no longer need the `idx <= n` invariant.
 
-In addition, `iter.start`, `iter.cur`, `iter.end` reveal the start, current, and end
-for the iterator of range `0..n`. 
-`iter@` records all the elements that the iterator has iterated so far. 
-In the above example, if `idx=3`, `iter@ =~= seq![0,1,2]`
+For more complex examples, Verus also provides ghost specifications
+about the iterator used in `for` loops, as we discuss in the next section.

@@ -1548,8 +1548,8 @@ test_verify_one_file_with_options! {
             *x = 10;
             *y = 12;
 
-            assert(a === (10, 12));
-            assert(b === (2, 3));
+            assert(a == (10, 12));
+            assert(b == (2, 3));
         }
 
         fn test1_fails() {
@@ -1562,8 +1562,8 @@ test_verify_one_file_with_options! {
             *x = 10;
             *y = 12;
 
-            assert(a === (10, 12));
-            assert(b === (2, 3));
+            assert(a == (10, 12));
+            assert(b == (2, 3));
             assert(false); // FAILS
         }
 
@@ -1575,7 +1575,7 @@ test_verify_one_file_with_options! {
             *x = 3;
             *y = 4;
 
-            assert(a === (3, 4));
+            assert(a == (3, 4));
         }
 
         fn test2_fails() {
@@ -1586,7 +1586,7 @@ test_verify_one_file_with_options! {
             *x = 3;
             *y = 4;
 
-            assert(a === (3, 4));
+            assert(a == (3, 4));
             assert(false); // FAILS
         }
 
@@ -1599,8 +1599,8 @@ test_verify_one_file_with_options! {
             *x = 10;
             *y = 11;
 
-            assert(a === (10, 11));
-            assert(b === (2, 3));
+            assert(a == (10, 11));
+            assert(b == (2, 3));
         }
 
         fn test3_fails() {
@@ -1612,8 +1612,8 @@ test_verify_one_file_with_options! {
             *x = 10;
             *y = 11;
 
-            assert(a === (10, 11));
-            assert(b === (2, 3));
+            assert(a == (10, 11));
+            assert(b == (2, 3));
             assert(false); // FAILS
         }
 
@@ -1626,8 +1626,8 @@ test_verify_one_file_with_options! {
             *x = 10;
             *y = 11;
 
-            assert(a === (10, 11));
-            assert(b === (2, 3));
+            assert(a == (10, 11));
+            assert(b == (2, 3));
         }
 
         fn test4_fails() {
@@ -1639,8 +1639,8 @@ test_verify_one_file_with_options! {
             *x = 10;
             *y = 11;
 
-            assert(a === (10, 11));
-            assert(b === (2, 3));
+            assert(a == (10, 11));
+            assert(b == (2, 3));
             assert(false); // FAILS
         }
 
@@ -1657,8 +1657,8 @@ test_verify_one_file_with_options! {
             *j = 11;
 
             assert(y == 1);
-            assert(a === (10, 11));
-            assert(b === (2, 3));
+            assert(a == (10, 11));
+            assert(b == (2, 3));
         }
 
         fn test5_fails() {
@@ -1674,8 +1674,8 @@ test_verify_one_file_with_options! {
             *j = 11;
 
             assert(y == 1);
-            assert(a === (10, 11));
-            assert(b === (2, 3));
+            assert(a == (10, 11));
+            assert(b == (2, 3));
             assert(false); // FAILS
         }
 
@@ -1688,8 +1688,8 @@ test_verify_one_file_with_options! {
             *i = 10;
             *j = 11;
 
-            assert(a === (10, 11));
-            assert(b === (2, 3));
+            assert(a == (10, 11));
+            assert(b == (2, 3));
         }
 
         fn test6_fails() {
@@ -1701,8 +1701,8 @@ test_verify_one_file_with_options! {
             *i = 10;
             *j = 11;
 
-            assert(a === (10, 11));
-            assert(b === (2, 3));
+            assert(a == (10, 11));
+            assert(b == (2, 3));
             assert(false); // FAILS
         }
 
@@ -1719,8 +1719,8 @@ test_verify_one_file_with_options! {
             *j = 11;
 
             assert(y == 1);
-            assert(a === (10, 11));
-            assert(b === (2, 3));
+            assert(a == (10, 11));
+            assert(b == (2, 3));
         }
 
         fn test7_fails() {
@@ -1736,8 +1736,8 @@ test_verify_one_file_with_options! {
             *j = 11;
 
             assert(y == 1);
-            assert(a === (10, 11));
-            assert(b === (2, 3));
+            assert(a == (10, 11));
+            assert(b == (2, 3));
             assert(false); // FAILS
         }
 
@@ -1750,8 +1750,8 @@ test_verify_one_file_with_options! {
             *i = 10;
             *j = 11;
 
-            assert(a === (10, 11));
-            assert(b === (2, 3));
+            assert(a == (10, 11));
+            assert(b == (2, 3));
         }
 
         fn test8_fails() {
@@ -1763,8 +1763,8 @@ test_verify_one_file_with_options! {
             *i = 10;
             *j = 11;
 
-            assert(a === (10, 11));
-            assert(b === (2, 3));
+            assert(a == (10, 11));
+            assert(b == (2, 3));
             assert(false); // FAILS
         }
     } => Err(e) => assert_fails(e, 8)
@@ -2158,8 +2158,8 @@ test_verify_one_file_with_options! {
                 }
             }
 
-            assert(a === (10, 12));
-            assert(b === (2, 3));
+            assert(a == (10, 12));
+            assert(b == (2, 3));
         }
 
         fn test1_fails() {
@@ -2175,8 +2175,8 @@ test_verify_one_file_with_options! {
                 }
             }
 
-            assert(a === (10, 12));
-            assert(b === (2, 3));
+            assert(a == (10, 12));
+            assert(b == (2, 3));
             assert(false); // FAILS
         }
 
@@ -2191,7 +2191,7 @@ test_verify_one_file_with_options! {
                 }
             }
 
-            assert(a === (3, 4));
+            assert(a == (3, 4));
         }
 
         fn test2_fails() {
@@ -2205,7 +2205,7 @@ test_verify_one_file_with_options! {
                 }
             }
 
-            assert(a === (3, 4));
+            assert(a == (3, 4));
             assert(false); // FAILS
         }
 
@@ -2221,8 +2221,8 @@ test_verify_one_file_with_options! {
                 }
             }
 
-            assert(a === (10, 11));
-            assert(b === (2, 3));
+            assert(a == (10, 11));
+            assert(b == (2, 3));
         }
 
         fn test3_fails() {
@@ -2237,8 +2237,8 @@ test_verify_one_file_with_options! {
                 }
             }
 
-            assert(a === (10, 11));
-            assert(b === (2, 3));
+            assert(a == (10, 11));
+            assert(b == (2, 3));
             assert(false); // FAILS
         }
 
@@ -2254,8 +2254,8 @@ test_verify_one_file_with_options! {
                 }
             }
 
-            assert(a === (10, 11));
-            assert(b === (2, 3));
+            assert(a == (10, 11));
+            assert(b == (2, 3));
         }
 
         fn test4_fails() {
@@ -2270,8 +2270,8 @@ test_verify_one_file_with_options! {
                 }
             }
 
-            assert(a === (10, 11));
-            assert(b === (2, 3));
+            assert(a == (10, 11));
+            assert(b == (2, 3));
             assert(false); // FAILS
         }
 
@@ -2291,8 +2291,8 @@ test_verify_one_file_with_options! {
             }
 
             assert(y == 1);
-            assert(a === (10, 11));
-            assert(b === (2, 3));
+            assert(a == (10, 11));
+            assert(b == (2, 3));
         }
 
         fn test5_fails() {
@@ -2311,8 +2311,8 @@ test_verify_one_file_with_options! {
             }
 
             assert(y == 1);
-            assert(a === (10, 11));
-            assert(b === (2, 3));
+            assert(a == (10, 11));
+            assert(b == (2, 3));
             assert(false); // FAILS
         }
 
@@ -2329,8 +2329,8 @@ test_verify_one_file_with_options! {
                 }
             }
 
-            assert(a === (10, 11));
-            assert(b === (2, 3));
+            assert(a == (10, 11));
+            assert(b == (2, 3));
         }
 
         fn test6_fails() {
@@ -2345,8 +2345,8 @@ test_verify_one_file_with_options! {
                 }
             }
 
-            assert(a === (10, 11));
-            assert(b === (2, 3));
+            assert(a == (10, 11));
+            assert(b == (2, 3));
             assert(false); // FAILS
         }
 
@@ -2366,8 +2366,8 @@ test_verify_one_file_with_options! {
             }
 
             assert(y == 1);
-            assert(a === (10, 11));
-            assert(b === (2, 3));
+            assert(a == (10, 11));
+            assert(b == (2, 3));
         }
 
         fn test7_fails() {
@@ -2386,8 +2386,8 @@ test_verify_one_file_with_options! {
             }
 
             assert(y == 1);
-            assert(a === (10, 11));
-            assert(b === (2, 3));
+            assert(a == (10, 11));
+            assert(b == (2, 3));
             assert(false); // FAILS
         }
 
@@ -2403,8 +2403,8 @@ test_verify_one_file_with_options! {
                 }
             }
 
-            assert(a === (10, 11));
-            assert(b === (2, 3));
+            assert(a == (10, 11));
+            assert(b == (2, 3));
         }
 
         fn test8_fails() {
@@ -2419,8 +2419,8 @@ test_verify_one_file_with_options! {
                 }
             }
 
-            assert(a === (10, 11));
-            assert(b === (2, 3));
+            assert(a == (10, 11));
+            assert(b == (2, 3));
             assert(false); // FAILS
         }
     } => Err(e) => assert_fails(e, 8)
@@ -2458,8 +2458,8 @@ test_verify_one_file_with_options! {
                 _ => { assert(false); }
             }
 
-            assert(a === Some((10, 12)));
-            assert(b === Some((2, 3)));
+            assert(a == Some((10, 12)));
+            assert(b == Some((2, 3)));
         }
 
         fn test1_fails() {
@@ -2476,8 +2476,8 @@ test_verify_one_file_with_options! {
                 _ => { assert(false); }
             }
 
-            assert(a === Some((10, 12)));
-            assert(b === Some((2, 3)));
+            assert(a == Some((10, 12)));
+            assert(b == Some((2, 3)));
             assert(false); // FAILS
         }
 
@@ -2493,7 +2493,7 @@ test_verify_one_file_with_options! {
                 _ => { assert(false); }
             }
 
-            assert(a === Some((3, 4)));
+            assert(a == Some((3, 4)));
         }
 
         fn test2_fails() {
@@ -2508,7 +2508,7 @@ test_verify_one_file_with_options! {
                 _ => { assert(false); }
             }
 
-            assert(a === Some((3, 4)));
+            assert(a == Some((3, 4)));
             assert(false); // FAILS
         }
 
@@ -2525,8 +2525,8 @@ test_verify_one_file_with_options! {
                 _ => { assert(false); }
             }
 
-            assert(a === Some((10, 11)));
-            assert(b === Some((2, 3)));
+            assert(a == Some((10, 11)));
+            assert(b == Some((2, 3)));
         }
 
         fn test3_fails() {
@@ -2542,8 +2542,8 @@ test_verify_one_file_with_options! {
                 _ => { assert(false); }
             }
 
-            assert(a === Some((10, 11)));
-            assert(b === Some((2, 3)));
+            assert(a == Some((10, 11)));
+            assert(b == Some((2, 3)));
             assert(false); // FAILS
         }
 
@@ -2560,8 +2560,8 @@ test_verify_one_file_with_options! {
                 _ => { assert(false); }
             }
 
-            assert(a === Some((10, 11)));
-            assert(b === Some((2, 3)));
+            assert(a == Some((10, 11)));
+            assert(b == Some((2, 3)));
         }
 
         fn test4_fails() {
@@ -2577,8 +2577,8 @@ test_verify_one_file_with_options! {
                 _ => { assert(false); }
             }
 
-            assert(a === Some((10, 11)));
-            assert(b === Some((2, 3)));
+            assert(a == Some((10, 11)));
+            assert(b == Some((2, 3)));
             assert(false); // FAILS
         }
 
@@ -2599,8 +2599,8 @@ test_verify_one_file_with_options! {
             }
 
             assert(y == 1);
-            assert(a === Some((10, 11)));
-            assert(b === Some((2, 3)));
+            assert(a == Some((10, 11)));
+            assert(b == Some((2, 3)));
         }
 
         fn test5_fails() {
@@ -2620,8 +2620,8 @@ test_verify_one_file_with_options! {
             }
 
             assert(y == 1);
-            assert(a === Some((10, 11)));
-            assert(b === Some((2, 3)));
+            assert(a == Some((10, 11)));
+            assert(b == Some((2, 3)));
             assert(false); // FAILS
         }
 
@@ -2638,8 +2638,8 @@ test_verify_one_file_with_options! {
                 _ => { assert(false); }
             }
 
-            assert(a === Some((10, 11)));
-            assert(b === Some((2, 3)));
+            assert(a == Some((10, 11)));
+            assert(b == Some((2, 3)));
         }
 
         fn test6_fails() {
@@ -2655,8 +2655,8 @@ test_verify_one_file_with_options! {
                 _ => { assert(false); }
             }
 
-            assert(a === Some((10, 11)));
-            assert(b === Some((2, 3)));
+            assert(a == Some((10, 11)));
+            assert(b == Some((2, 3)));
             assert(false); // FAILS
         }
 
@@ -2677,8 +2677,8 @@ test_verify_one_file_with_options! {
             }
 
             assert(y == 1);
-            assert(a === Some((10, 11)));
-            assert(b === Some((2, 3)));
+            assert(a == Some((10, 11)));
+            assert(b == Some((2, 3)));
         }
 
         fn test7_fails() {
@@ -2698,8 +2698,8 @@ test_verify_one_file_with_options! {
             }
 
             assert(y == 1);
-            assert(a === Some((10, 11)));
-            assert(b === Some((2, 3)));
+            assert(a == Some((10, 11)));
+            assert(b == Some((2, 3)));
             assert(false); // FAILS
         }
 
@@ -2716,8 +2716,8 @@ test_verify_one_file_with_options! {
                 _ => { assert(false); }
             }
 
-            assert(a === Some((10, 11)));
-            assert(b === Some((2, 3)));
+            assert(a == Some((10, 11)));
+            assert(b == Some((2, 3)));
         }
 
         fn test8_fails() {
@@ -2733,8 +2733,8 @@ test_verify_one_file_with_options! {
                 _ => { assert(false); }
             }
 
-            assert(a === Some((10, 11)));
-            assert(b === Some((2, 3)));
+            assert(a == Some((10, 11)));
+            assert(b == Some((2, 3)));
             assert(false); // FAILS
         }
     } => Err(e) => assert_fails(e, 8)
@@ -3201,8 +3201,8 @@ test_verify_one_file_with_options! {
 
             *(&mut mut_ref_pairs(&mut a, &mut b).0.0) = 5;
 
-            assert(a === (5, 1));
-            assert(b === (2, 3));
+            assert(a == (5, 1));
+            assert(b == (2, 3));
         }
 
         fn test1_fails() {
@@ -3211,8 +3211,8 @@ test_verify_one_file_with_options! {
 
             *(&mut mut_ref_pairs(&mut a, &mut b).0.0) = 5;
 
-            assert(a === (5, 1));
-            assert(b === (2, 3));
+            assert(a == (5, 1));
+            assert(b == (2, 3));
             assert(false); // FAILS
         }
 
@@ -3222,8 +3222,8 @@ test_verify_one_file_with_options! {
 
             *({ (&mut mut_ref_pairs(&mut a, &mut b).0.0) }) = 5;
 
-            assert(a === (5, 1));
-            assert(b === (2, 3));
+            assert(a == (5, 1));
+            assert(b == (2, 3));
         }
 
         fn test1b_fails() {
@@ -3232,8 +3232,8 @@ test_verify_one_file_with_options! {
 
             *({ (&mut mut_ref_pairs(&mut a, &mut b).0.0) }) = 5;
 
-            assert(a === (5, 1));
-            assert(b === (2, 3));
+            assert(a == (5, 1));
+            assert(b == (2, 3));
             assert(false); // FAILS
         }
 

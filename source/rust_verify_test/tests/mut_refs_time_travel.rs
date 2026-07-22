@@ -159,7 +159,7 @@ test_verify_one_file_with_options! {
         fn test2() {
             let mut x = (0, 1);
             let (x_ref, _) = &mut x;
-            assert(x === (0, 1));
+            assert(x == (0, 1));
             *x_ref = 20;
         }
     } => Err(err) => assert_spec_borrowed(err, "x")
@@ -171,7 +171,7 @@ test_verify_one_file_with_options! {
             let mut x = (0, 1);
             let z = &mut x;
             let (x_ref, _) = z;
-            assert(x === (0, 1));
+            assert(x == (0, 1));
             *x_ref = 20;
         }
     } => Err(err) => assert_spec_borrowed(err, "x")
@@ -184,7 +184,7 @@ test_verify_one_file_with_options! {
             let mut x = Option::Some(0);
             let z = &mut x;
             let Option::Some(x_ref) = z else { loop{} };
-            assert(x === Option::Some(0));
+            assert(x == Option::Some(0));
             *x_ref = 20;
         }
     } => Err(err) => assert_spec_borrowed(err, "x")
@@ -197,7 +197,7 @@ test_verify_one_file_with_options! {
             let mut x = Option::Some(0);
             match x {
                 Option::Some(ref mut x_ref) => {
-                    assert(x === Option::Some(0));
+                    assert(x == Option::Some(0));
                     *x_ref = 20;
                 }
                 Option::None => { }
@@ -212,7 +212,7 @@ test_verify_one_file_with_options! {
         fn test_let_expr() {
             let mut o = Option::Some(0);
             if let Option::Some(ref mut x_ref) = o {
-                assert(o === Option::Some(0));
+                assert(o == Option::Some(0));
                 *x_ref = 20;
             }
         }
@@ -224,7 +224,7 @@ test_verify_one_file_with_options! {
         fn test13() {
             let mut x = (0, 1);
             let (ref mut x_ref, l) = x;
-            assert(x === (0, 1));
+            assert(x == (0, 1));
             *x_ref = 20;
         }
     } => Err(err) => assert_spec_borrowed(err, "x")
@@ -678,7 +678,7 @@ test_verify_one_file_with_options! {
         fn test() {
             let mut x = (0, 1);
             let x_ref = &mut x.0;
-            assert(x === (0, 1));
+            assert(x == (0, 1));
             *x_ref = 20;
         }
     } => Err(err) => assert_spec_borrowed(err, "x")
@@ -689,7 +689,7 @@ test_verify_one_file_with_options! {
         fn test() {
             let mut x = (0, 1);
             let x_ref = &mut x;
-            assert(x.0 === 0);
+            assert(x.0 == 0);
             *x_ref = (20, 21);
         }
     } => Err(err) => assert_spec_borrowed_field(err, "x", "", ".0")
@@ -700,7 +700,7 @@ test_verify_one_file_with_options! {
         fn test() {
             let mut x = (0, 1);
             let x_ref = &mut x.0;
-            assert(x.0 === 0);
+            assert(x.0 == 0);
             *x_ref = 20;
         }
     } => Err(err) => assert_spec_borrowed_field(err, "x", "", ".0")
@@ -711,7 +711,7 @@ test_verify_one_file_with_options! {
         fn test() {
             let mut x = (0, 1);
             let x_ref = &mut x.0;
-            assert(x.1 === 1);
+            assert(x.1 == 1);
             *x_ref = 20;
         }
     } => Ok(())
@@ -734,7 +734,7 @@ test_verify_one_file_with_options! {
             let mut y = (0, 1);
             let mut x = &mut y;
             let x_ref = &mut x.0;
-            assert(x.1 === 1);
+            assert(x.1 == 1);
             *x_ref = 20;
         }
     } => Ok(())
@@ -758,7 +758,7 @@ test_verify_one_file_with_options! {
             let mut y = (0, 1);
             let mut x = &mut y;
             let x_ref = &mut x.1;
-            assert(x.1 === 1);
+            assert(x.1 == 1);
             *x_ref = 20;
         }
     } => Err(err) => assert_spec_borrowed_field(err, "x", "", ".1")
@@ -782,7 +782,7 @@ test_verify_one_file_with_options! {
             let mut y = (0, 1);
             let mut x = &mut y;
             let x_ref = &mut x.1;
-            assert((*x).1 === 1);
+            assert((*x).1 == 1);
             *x_ref = 20;
         }
     } => Err(err) => assert_spec_borrowed_field(err, "x", "", ".1")
@@ -806,7 +806,7 @@ test_verify_one_file_with_options! {
             let mut y = (0, 1);
             let mut x = &mut y;
             let x_ref = &mut x.0;
-            assert((*x).1 === 1);
+            assert((*x).1 == 1);
             *x_ref = 20;
         }
     } => Ok(())
@@ -1072,8 +1072,7 @@ test_verify_one_file_with_options! {
 
             *z = 20;
         }
-    //} => Err(err) => assert_spec_borrowed(err, "a")
-    } => Err(err) => assert_vir_error_msg(err, "expected curly braces")
+    } => Err(err) => assert_spec_borrowed(err, "a")
 }
 
 test_verify_one_file_with_options! {
@@ -1181,7 +1180,7 @@ test_verify_one_file_with_options! {
 
             *z = 20;
         }
-    } => Err(err) => assert_vir_error_msg(err, "expected curly braces")
+    } => Ok(())
 }
 
 test_verify_one_file_with_options! {
@@ -1538,7 +1537,7 @@ test_verify_one_file_with_options! {
             let mut pair = (0, 1);
             let r = c(&mut pair);
 
-            assert(pair === (0, 1));
+            assert(pair == (0, 1));
 
             *r = 20;
         }
@@ -1764,6 +1763,38 @@ test_verify_one_file_with_options! {
                 }) => {
                 }
                 _ => { }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] complex_early_binder_and_two_phase_issue2433 [] => verus_code! {
+        use vstd::prelude::*;
+
+        pub trait MyCombinator<'x>: View {
+            type Type: View;
+            type SType: View;
+
+            fn serialize(&self, v: Self::SType, buf: &mut Vec<u8>) -> usize;
+        }
+
+        pub struct Wrap<Inner> { pub inner: Inner }
+
+        impl<Inner: View> View for Wrap<Inner> {
+            type V = Wrap<Inner::V>;
+            open spec fn view(&self) -> Self::V { Wrap { inner: self.inner@ } }
+        }
+
+        impl<'x, Inner> MyCombinator<'x> for Wrap<Inner> where
+            Inner: MyCombinator<'x, SType = &'x <Inner as MyCombinator<'x>>::Type>,
+            Inner::Type: 'x,
+        {
+            type Type = Inner::Type;
+            type SType = Inner::SType;
+
+            fn serialize(&self, v: Self::SType, buf: &mut Vec<u8>) -> usize {
+                self.inner.serialize(v, buf)
             }
         }
     } => Ok(())

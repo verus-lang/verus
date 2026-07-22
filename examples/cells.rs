@@ -15,7 +15,7 @@ fn main() {
     let x = X { i: 5 };
     let (pcell, Tracked(mut token)) = PCell::empty();
     pcell.put(Tracked(&mut token), x);
-    assert(token.mem_contents() === MemContents::Init(X { i: 5 }));
+    assert(token.mem_contents() == MemContents::Init(X { i: 5 }));
 }
 
 fn pcell_example() {

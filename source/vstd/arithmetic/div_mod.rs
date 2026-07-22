@@ -17,6 +17,32 @@ use super::super::prelude::*;
 
 verus! {
 
+pub open spec fn rust_div(a: int, b: int) -> int
+    recommends
+        b != 0,
+{
+    if a == 0 {
+        0
+    } else if a > 0 {
+        a / b
+    } else {
+        -((-a) / b)
+    }
+}
+
+pub open spec fn rust_rem(a: int, b: int) -> int
+    recommends
+        b != 0,
+{
+    if a == 0 {
+        0
+    } else if a > 0 {
+        a % b
+    } else {
+        -((-a) % b)
+    }
+}
+
 #[allow(unused_imports)]
 #[cfg(verus_keep_ghost)]
 use super::super::arithmetic::internals::div_internals::{

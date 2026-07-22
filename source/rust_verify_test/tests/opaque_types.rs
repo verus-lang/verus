@@ -3,16 +3,6 @@
 mod common;
 use common::*;
 
-fn assert_spec_eq_type_err(err: TestErr, typ1: &str, typ2: &str) {
-    assert_eq!(err.errors.len(), 1);
-    let err0 = &err.errors[0];
-    assert!(err0.code.is_none());
-    assert!(err0.message.contains("mismatched types; types must be compatible to use == or !="));
-    assert!(err0.spans.len() == 2 || err0.spans.len() == 3);
-    assert_spans_contain(err0, typ1);
-    assert_spans_contain(err0, typ2);
-}
-
 test_verify_one_file! {
     #[test] test_return_opaque_type verus_code! {
         use vstd::prelude::*;
@@ -136,7 +126,7 @@ test_verify_one_file! {
         {
             true
         }
-    } => Err(err) => assert_spec_eq_type_err(err, "opaque_ty", "bool")
+    } => Err(err) => assert_rust_error_msg(err, "the trait bound")
 }
 
 test_verify_one_file! {
@@ -157,7 +147,7 @@ test_verify_one_file! {
         {
             true
         }
-    } => Err(err) => assert_spec_eq_type_err(err, "<opaque_ty as test_crate::DummyTraitA>::Output", "bool")
+    } => Err(err) => assert_rust_error_msg(err, "the trait bound")
 }
 
 test_verify_one_file! {
@@ -555,5 +545,42 @@ test_verify_one_file! {
         {
             boo()
         }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    // Regression test for ensuring opaque type constructor context is present
+    // in spinoff queries. -V spinoff-all verifies every function in its own context.
+    #[test] opaque_type_in_spinoff_context ["-V spinoff-all"] => verus_code! {
+        trait DummyTrait {}
+        impl DummyTrait for bool {}
+        fn return_opaque() -> impl DummyTrait {
+            true
+        }
+        fn test() {
+            let x = return_opaque();
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] issue2541 ["--no-lifetime"] => code! {
+        use std::future::Future;
+        #[allow(unused_imports)]
+        use vstd::prelude::*;
+
+        pub trait F<T> {
+            fn f(x: &T) -> impl Future + Send;
+        }
+
+        struct E;
+        struct S;
+
+        #[allow(refining_impl_trait)]
+        impl F<E> for S {
+            async fn f(_x: &E) {}
+        }
+
+        fn main() {}
     } => Ok(())
 }
