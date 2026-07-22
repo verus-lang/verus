@@ -482,7 +482,8 @@ pub open spec fn is_white_space(c: char) -> bool {
 }
 
 pub assume_specification[ char::is_whitespace ](c: char) -> (res: bool)
-    returns is_white_space(c),
+    returns
+        is_white_space(c),
 ;
 
 /// [`encode_utf8`] distributes over sequence concatenation.
