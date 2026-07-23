@@ -5,6 +5,22 @@ use super::super::wrapping::*;
 
 use core::cmp::Ordering;
 
+verus! {
+
+/// The smallest multiple of `y` that is `>= x` (for `y > 0`), matching the value
+/// std's `next_multiple_of` / `checked_next_multiple_of` compute.
+pub open spec fn next_multiple_of(x: int, y: int) -> int
+    recommends
+        y > 0,
+{
+    if x % y == 0 {
+        x
+    } else {
+        x + (y - x % y)
+    }
+}
+
+} // verus!
 macro_rules! num_specs {
     ($uN: ty, $iN: ty, $mod_u_tmp:ident, $mod_i_tmp:ident, $mod_u:ident, $mod_i:ident, $range:expr) => {
         verus! {
@@ -160,6 +176,19 @@ macro_rules! num_specs {
                         None
                     } else {
                         Some((x * y) as $uN)
+                    }
+                );
+
+            #[verifier::allow_in_spec]
+            #[cfg(not(verus_verify_core))]
+            pub assume_specification[<$uN>::checked_next_multiple_of](x: $uN, rhs: $uN) -> Option<$uN>
+                returns (
+                    if rhs == 0 {
+                        None
+                    } else if next_multiple_of(x as int, rhs as int) > <$uN>::MAX {
+                        None
+                    } else {
+                        Some(next_multiple_of(x as int, rhs as int) as $uN)
                     }
                 );
 
