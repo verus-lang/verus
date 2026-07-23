@@ -2,6 +2,7 @@
 use super::pervasive::*;
 #[allow(unused_imports)]
 use super::prelude::*;
+use super::thread_view::Objective;
 
 // TODO:
 //  * utility for conveniently creating unique namespaces
@@ -114,12 +115,27 @@ pub trait InvariantPredicate<K, V> {
 ///
 /// **Note:** Rather than using `AtomicInvariant` directly, we generally recommend
 /// using the [`atomic_ghost` APIs](crate::atomic_ghost).
+#[cfg(not(weak_memory))]
 #[cfg_attr(verus_keep_ghost, verifier::proof)]
 #[cfg_attr(verus_keep_ghost, verifier::external_body)] /* vattr */
 #[cfg_attr(verus_keep_ghost, verifier::accept_recursive_types(K))]
 #[cfg_attr(verus_keep_ghost, verifier::accept_recursive_types(V))]
 #[cfg_attr(verus_keep_ghost, verifier::accept_recursive_types(Pred))]
 pub struct AtomicInvariant<K, V, Pred> {
+    dummy: super::prelude::SyncSendIfSend<V>,
+    dummy1: super::prelude::AlwaysSyncSend<(K, Pred, *mut V)>,
+}
+
+// TODO - document
+// TODO - can we fold this into a single AtomicInvariant definition without the Objective trait bound?
+// Creusot only implements Sync on AtomicInvariant when T: Send + Objective
+#[cfg(weak_memory)]
+#[cfg_attr(verus_keep_ghost, verifier::proof)]
+#[cfg_attr(verus_keep_ghost, verifier::external_body)] /* vattr */
+#[cfg_attr(verus_keep_ghost, verifier::accept_recursive_types(K))]
+#[cfg_attr(verus_keep_ghost, verifier::accept_recursive_types(V))]
+#[cfg_attr(verus_keep_ghost, verifier::accept_recursive_types(Pred))]
+pub struct AtomicInvariant<K, V: Objective, Pred> {
     dummy: super::prelude::SyncSendIfSend<V>,
     dummy1: super::prelude::AlwaysSyncSend<(K, Pred, *mut V)>,
 }
