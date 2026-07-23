@@ -209,6 +209,16 @@ pub assume_specification<T> [ <[T]>::split_at_mut ](slice: &mut [T], mid: usize)
         final(slice)@ == final(ret.0)@ + final(ret.1)@,
 ;
 
+// The non-panicking (`Option`-returning) form of `split_at`: `Some((a, b))` split at `mid`
+// when `mid <= len`, else `None`.
+pub assume_specification<T> [ <[T]>::split_at_checked ](slice: &[T], mid: usize) -> (ret: Option<(&[T], &[T])>)
+    ensures
+        mid <= slice.len() ==> (ret matches Some((a, b))
+            && a@ == slice@.subrange(0, mid as int)
+            && b@ == slice@.subrange(mid as int, slice@.len() as int)),
+        mid > slice.len() ==> ret is None,
+;
+
 /// Copy the contents of `src` into `dst`, which must have the same length.
 pub assume_specification<T: Copy>[ <[T]>::copy_from_slice ](dst: &mut [T], src: &[T])
     requires
