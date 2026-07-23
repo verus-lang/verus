@@ -463,7 +463,6 @@ pub open spec fn encode_utf8(chars: Seq<char>) -> Seq<u8>
 // See `vstd::std_specs::char` for the `char::len_utf8`/`char::is_whitespace`
 // `assume_specification`s that relate this module's model to those real
 // std-library methods.
-
 /// [`encode_utf8`] distributes over sequence concatenation.
 pub broadcast proof fn encode_utf8_concat(a: Seq<char>, b: Seq<char>)
     ensures
