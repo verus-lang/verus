@@ -1616,6 +1616,14 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
 
             let arg = expr_to_vir_with_adjustments(bctx, expr, adjustments, adjustment_idx - 1)?;
 
+            // rustc can emit no-op Pointer(Unsize) adjustments. If this is
+            // lowered into a visible `ToDyn`, facts about the original value
+            // are not propagated through the coercion, as in #2629.
+            // Don't emit anything for no-op coercions.
+            if ty1 == ty2 {
+                return Ok(arg);
+            }
+
             let (tyr1, tyr2) = remove_decoration_typs_for_unsizing(bctx.ctxt.tcx, ty1, ty2);
             let op = match (tyr1.kind(), tyr2.kind()) {
                 (_, TyKind::Dynamic(_, _)) => {
