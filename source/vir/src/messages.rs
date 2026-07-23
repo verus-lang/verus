@@ -534,6 +534,23 @@ impl MessageX {
         })
     }
 
+    /// Like `help`, but appends to any help text already present instead of discarding it
+    pub fn help_append(&self, help: impl Into<String>) -> Message {
+        let MessageX { level, note, spans, labels, help: prev_help, fancy_note } = &self;
+        let help = match prev_help {
+            Some(prev) => format!("{prev}\n{}", help.into()),
+            None => help.into(),
+        };
+        Arc::new(MessageX {
+            level: *level,
+            note: note.clone(),
+            spans: spans.clone(),
+            labels: labels.clone(),
+            help: Some(help),
+            fancy_note: fancy_note.clone(),
+        })
+    }
+
     pub fn fancy_note(&self, fancy_note: impl Into<String>) -> Message {
         let MessageX { level, note, spans, labels, help, fancy_note: _ } = &self;
         Arc::new(MessageX {
