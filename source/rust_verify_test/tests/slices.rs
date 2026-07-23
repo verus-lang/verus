@@ -699,6 +699,8 @@ test_verify_one_file! {
             assert(spec_range_inclusive_is_empty(&r));
         }
     } => Ok(())
+}
+
 test_verify_one_file! {
     #[test] test_split_at_checked verus_code! {
         use vstd::prelude::*;
