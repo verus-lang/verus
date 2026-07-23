@@ -38,6 +38,7 @@ mod automatic_derive;
 mod boundary_suggestions;
 pub mod cargo_verus;
 pub mod cargo_verus_dep_tracker;
+pub mod cli;
 pub mod context;
 pub mod debugger;
 pub mod def;

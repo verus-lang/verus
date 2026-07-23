@@ -3827,6 +3827,7 @@ impl Visitor {
     ) {
         // TODO: wrap specs inside ghost blocks
         self.inside_ghost += 1;
+        #[allow(clippy::needless_bool)]
         let old_style = if invariant_ensures.is_some() {
             #[cfg(verus_keep_ghost)]
             proc_macro::Diagnostic::spanned(

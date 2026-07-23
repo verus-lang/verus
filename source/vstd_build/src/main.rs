@@ -11,11 +11,19 @@ const VSTD_RS_PATH: &str = "vstd/vstd.rs";
 // name of generated veruslib.vir in target
 const VSTD_VIR: &str = "vstd.vir";
 
-fn log_command(cmd: &std::process::Command) {
-    eprintln!("{}", yansi::Paint::magenta(format!("vstd_build running: {:?}", cmd)));
+fn log_args(args: &[String]) {
+    eprintln!("{}", yansi::Paint::magenta(format!("vstd_build running: {args:?}")));
 }
 
 fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    if let Some(first_arg) = args.get(1) {
+        if first_arg == rust_verify::trait_check::TC_DRIVER_ARG {
+            rust_verify::cli::run_verifier(args);
+            return;
+        }
+    }
+
     if std::env::var("VERUS_IN_VARGO").is_err() {
         panic!("not running in vargo, read the README for instructions");
     }
@@ -91,6 +99,7 @@ fn main() {
     }
 
     let mut child_args: Vec<String> = vec![
+        "rust_verify".to_string(),
         "--internal-test-mode".to_string(),
         "--extern".to_string(),
         format!("verus_builtin={lib_builtin_path}"),
@@ -144,20 +153,20 @@ fn main() {
     child_args.push("feature=\"nonzero_internals\"".to_string());
     child_args.push(VSTD_RS_PATH.to_string());
 
-    let cmd = verus_target_path.join("rust_verify");
-    let mut child = std::process::Command::new(cmd);
-    child.env("RUST_MIN_STACK", (10 * 1024 * 1024).to_string());
-    child.env("VSTD_KIND", "IsVstd");
-    child.args(&child_args[..]);
+    std::env::set_var("RUST_MIN_STACK", (10 * 1024 * 1024).to_string());
+    std::env::set_var("VSTD_KIND", "IsVstd");
 
     if verbose {
-        log_command(&child);
+        log_args(&child_args);
     }
 
-    let mut child = child.spawn().expect("could not execute lifetime rustc process");
-    let result = child.wait().expect("vstd verus wait failed");
-    if !result.success() {
-        let code = result.code();
-        panic!("vstd build failed with exit code {:?}", code);
-    }
+    rust_verify::cli::run_verifier(child_args);
+
+    let verus_root_marker_path = verus_target_path.join("verus-root");
+    touch(&verus_root_marker_path).expect("touch verus-root");
+}
+
+/// A simple implementation of `touch $path` (ignores existing files)
+fn touch(path: &std::path::Path) -> std::io::Result<()> {
+    std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(path).map(|_| ())
 }

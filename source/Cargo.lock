@@ -3124,6 +3124,7 @@ dependencies = [
 name = "vstd_build"
 version = "0.1.0"
 dependencies = [
+ "rust_verify",
  "yansi 0.5.1",
 ]
 

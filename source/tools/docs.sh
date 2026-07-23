@@ -28,7 +28,7 @@ fi
 
 . ../tools/activate
 vargo build -p verusdoc
-vargo build --vstd-no-verify
+vargo build
 
 echo "Running rustdoc..."
 RUSTC_BOOTSTRAP=1 eval ""VERUSDOC=1 VSTD_KIND=IsVstd VERUS_Z3_PATH="$(pwd)/z3"  rustdoc \
@@ -56,6 +56,6 @@ RUSTC_BOOTSTRAP=1 eval ""VERUSDOC=1 VSTD_KIND=IsVstd VERUS_Z3_PATH="$(pwd)/z3"  
   vstd/vstd.rs""
 
 echo "Running post-processor..."
-./target/debug/verusdoc
+./target-verus/debug/verusdoc
 
 echo "Documentation generated at ./doc/vstd/index.html"
