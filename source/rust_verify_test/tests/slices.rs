@@ -569,3 +569,32 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_split_at_checked verus_code! {
+        use vstd::prelude::*;
+
+        fn in_bounds(s: &[u8])
+            requires s@.len() == 5,
+        {
+            let r = s.split_at_checked(2);
+            assert(r matches Some((a, b))
+                && a@ == s@.subrange(0, 2)
+                && b@ == s@.subrange(2, 5));
+        }
+
+        fn out_of_bounds(s: &[u8])
+            requires s@.len() == 5,
+        {
+            let r = s.split_at_checked(6);
+            assert(r.is_none());
+        }
+
+        fn wrong_split(s: &[u8])
+            requires s@.len() == 5,
+        {
+            let r = s.split_at_checked(2);
+            assert(r matches Some((a, b)) && a@ == s@.subrange(0, 3)); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
