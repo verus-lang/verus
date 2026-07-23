@@ -23,7 +23,9 @@ fn os_setup() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-pub fn run_verifier(mut internal_args: std::env::Args) {
+pub fn run_verifier<Args: IntoIterator<Item = String>>(internal_args: Args) {
+    let mut internal_args = internal_args.into_iter();
+
     let mut dep_tracker = rust_verify::cargo_verus_dep_tracker::DepTracker::init();
     let via_cargo = dep_tracker.compare_env(rust_verify::cargo_verus::VERUS_DRIVER_VIA_CARGO, "1");
     // For now, verus_builtin, vstd, etc. must be rebuilt for each via_cargo crate:
@@ -69,9 +71,13 @@ pub fn run_verifier(mut internal_args: std::env::Args) {
         std::process::exit(1);
     }
 
-    let mut args = if build_test_mode || via_cargo { internal_args } else { std::env::args() };
-    let program =
-        if build_test_mode || via_cargo { internal_program } else { args.next().unwrap() };
+    let (program, mut args): (String, Vec<String>) = if build_test_mode || via_cargo {
+        let iter = internal_args.into_iter();
+        (internal_program, iter.collect())
+    } else {
+        let mut iter = std::env::args().into_iter();
+        (iter.next().unwrap(), iter.collect())
+    };
 
     let mut vstd = None;
     let verus_root = if !(build_test_mode || via_cargo_rebuild_verus_libs) {
@@ -85,7 +91,6 @@ pub fn run_verifier(mut internal_args: std::env::Args) {
         None
     };
 
-    let mut args: Vec<String> = args.collect();
     let is_direct_rustc_call = via_cargo
         && rust_verify::cargo_verus::extend_args_and_check_is_direct_rustc_call(
             &mut args,
