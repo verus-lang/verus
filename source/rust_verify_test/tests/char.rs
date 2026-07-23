@@ -30,3 +30,31 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] test_char_len_utf8 verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let a = 'a'.len_utf8(); // ASCII, U+0061
+            assert(a == 1);
+            let b = '\u{a3}'.len_utf8(); // £, U+00A3
+            assert(b == 2);
+            let c = '\u{20ac}'.len_utf8(); // €, U+20AC
+            assert(c == 3);
+            let d = '\u{1f600}'.len_utf8(); // 😀, U+1F600
+            assert(d == 4);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_char_len_utf8_fails verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let a = 'a'.len_utf8();
+            assert(a == 2); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
