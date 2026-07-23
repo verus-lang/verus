@@ -813,13 +813,16 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
                 fun = proxy; // Add proof and spec on proxy func.
             }
 
+            // Parse and replace proof_xxx!() inside function and replace panic.
+            // Do this before injecting the generated requires/ensures statements so
+            // the exec rewriter only touches the user's exec body, not generated
+            // spec code (matching how the closure branch above is handled).
+            let inside_external_code = has_external_code_syn(&fun.attrs);
+            replace_block(erase, fun.block_mut().unwrap(), inside_external_code);
+
             // Add the spec/proof (requires/ensures) to the function body.
             let new_stmts = spec_stmts.into_iter().map(|s| parse2(quote! { #s }).unwrap());
             let _ = fun.block_mut().unwrap().stmts.splice(0..0, new_stmts);
-
-            // Parse and replace proof_xxx!() inside function and replace panic.
-            let inside_external_code = has_external_code_syn(&fun.attrs);
-            replace_block(erase, fun.block_mut().unwrap(), inside_external_code);
             fun.to_tokens(&mut new_stream);
             proc_macro::TokenStream::from(new_stream)
         }

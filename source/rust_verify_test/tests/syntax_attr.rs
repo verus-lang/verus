@@ -1700,3 +1700,26 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    // Block-wrapping the closure body must not touch the specification closures
+    // generated for requires/ensures or for a loop invariant.
+    #[test] test_verus_verify_reborrow_closure_with_spec code! {
+        use vstd::prelude::*;
+
+        #[verus_spec(r =>
+            requires n < 100,
+            ensures r == n,
+        )]
+        fn build(n: u32) -> u32 {
+            let mut v: Vec<u32> = Vec::new();
+            #[verus_spec(
+                invariant v@ =~= Seq::new(i as nat, |k| k as u32),
+            )]
+            for i in 0..n {
+                v.push(i);
+            }
+            n
+        }
+    } => Ok(())
+}
