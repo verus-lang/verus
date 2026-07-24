@@ -508,6 +508,82 @@ impl GlobalCtx {
                 f,
             )?;
         }
+
+        // A method of an external trait can have a contract or body that refers
+        // to spec functions supplied by its external-trait extension. The call
+        // graph only sees the extension's trait method declaration, so add an
+        // edge to the matching implementation.
+        for (origin_impl, extension_impls) in &trait_impl_to_extensions {
+            let mut extension_spec_functions: HashMap<Fun, Vec<Fun>> = HashMap::new();
+            for function in krate.functions.iter() {
+                if let crate::ast::FunctionKind::TraitMethodImpl { method, impl_path, .. } =
+                    &function.x.kind
+                {
+                    if function.x.mode == Mode::Spec && extension_impls.contains(impl_path) {
+                        extension_spec_functions
+                            .entry(method.clone())
+                            .or_default()
+                            .push(function.x.name.clone());
+                    }
+                }
+            }
+
+            for origin_method in &krate.functions {
+                let crate::ast::FunctionKind::TraitMethodImpl { impl_path, method, .. } =
+                    &origin_method.x.kind
+                else {
+                    continue;
+                };
+                if impl_path != origin_impl {
+                    continue;
+                }
+                let trait_method = &func_map[method];
+                let mut add_extension_spec_dependency =
+                    |_: &crate::ast_visitor::VisitorScopeMap,
+                     expr: &crate::ast::Expr|
+                     -> Result<(), VirErr> {
+                        if let crate::ast::ExprX::Call {
+                            target: crate::ast::CallTarget::Fun(kind, method, _, _, _),
+                            ..
+                        } = &expr.x
+                        {
+                            let methods = match kind {
+                                crate::ast::CallTargetKind::DynamicResolved {
+                                    resolved, ..
+                                } => {
+                                    vec![method, resolved]
+                                }
+                                _ => vec![method],
+                            };
+                            for method in methods {
+                                if let Some(spec_functions) = extension_spec_functions.get(method) {
+                                    for spec_function in spec_functions {
+                                        func_call_graph.add_edge(
+                                            Node::Fun(origin_method.x.name.clone()),
+                                            Node::Fun(spec_function.clone()),
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                        Ok(())
+                    };
+                for expr in trait_method
+                    .x
+                    .require
+                    .iter()
+                    .chain(trait_method.x.ensure.0.iter())
+                    .chain(trait_method.x.ensure.1.iter())
+                    .chain(trait_method.x.returns.iter())
+                {
+                    crate::ast_visitor::expr_visitor_check(
+                        expr,
+                        &mut add_extension_spec_dependency,
+                    )?;
+                }
+            }
+        }
+
         for group in &krate.reveal_groups {
             let group_node = Node::Fun(group.x.name.clone());
             func_call_graph.add_node(group_node.clone());
