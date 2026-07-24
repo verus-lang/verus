@@ -2697,6 +2697,16 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 }
             }
         },
+        ExprKind::Binary(Spanned { node: op @ (BinOpKind::And | BinOpKind::Or), .. }, lhs, rhs) => {
+            let vlhs = expr_to_vir_consume(bctx, lhs)?;
+            let vrhs = expr_to_vir_consume(bctx, rhs)?;
+            let vop = match op {
+                BinOpKind::And => vir::ast::LogicalOp::And,
+                BinOpKind::Or => vir::ast::LogicalOp::Or,
+                _ => unreachable!(),
+            };
+            mk_expr(ExprX::Logical(vop, vlhs, vrhs))
+        }
         ExprKind::Binary(op, lhs, rhs) => {
             let ret = binary_operator_overload_to_vir(bctx, expr)?;
             if let Some(r) = ret {
@@ -3493,8 +3503,11 @@ fn binopkind_to_binaryop_inner<'tcx>(
     let d0b = if bctx.in_ghost { Div0Behavior::Allow } else { Div0Behavior::Error };
 
     let vop = match op {
-        BinOpKind::And => BinaryOp::And,
-        BinOpKind::Or => BinaryOp::Or,
+        BinOpKind::And | BinOpKind::Or => {
+            // And and Or aren't allowed for AssignOp, and for normal BinOps,
+            // these are handled separately.
+            unsupported_err!(lhs.span, "use of `&&` or `||` here");
+        }
         BinOpKind::Eq => BinaryOp::Eq(Mode::Exec),
         BinOpKind::Ne => BinaryOp::Ne,
         BinOpKind::Le => BinaryOp::Inequality(InequalityOp::Le),

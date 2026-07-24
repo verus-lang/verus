@@ -351,6 +351,11 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let e1 = self.visit_expr(e)?;
                 R::ret(|| expr_new(ExprX::UnaryOpr(R::get(uo), R::get(e1))))
             }
+            ExprX::Logical(op, e1, e2) => {
+                let e1 = self.visit_expr(e1)?;
+                let e2 = self.visit_expr(e2)?;
+                R::ret(|| expr_new(ExprX::Logical(*op, R::get(e1), R::get(e2))))
+            }
             ExprX::Binary(op, e1, e2) => {
                 let e1 = self.visit_expr(e1)?;
                 let e2 = self.visit_expr(e2)?;

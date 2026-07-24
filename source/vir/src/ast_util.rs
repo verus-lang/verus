@@ -591,7 +591,7 @@ pub fn mk_implies(span: &Span, e1: &Expr, e2: &Expr) -> Expr {
     SpannedTyped::new(
         span,
         &Arc::new(TypX::Bool),
-        ExprX::Binary(BinaryOp::Implies, e1.clone(), e2.clone()),
+        ExprX::Logical(LogicalOp::Implies, e1.clone(), e2.clone()),
     )
 }
 
@@ -611,14 +611,14 @@ pub fn mk_ineq(span: &Span, e1: &Expr, e2: &Expr, op: InequalityOp) -> Expr {
     )
 }
 
-pub fn chain_binary(span: &Span, op: BinaryOp, init: &Expr, exprs: &Vec<Expr>) -> Expr {
+pub fn chain_logical(span: &Span, op: LogicalOp, init: &Expr, exprs: &Vec<Expr>) -> Expr {
     if exprs.len() == 0 {
         return init.clone();
     }
 
     let mut expr = exprs[0].clone();
     for e in exprs.iter().skip(1) {
-        expr = SpannedTyped::new(span, &init.typ, ExprX::Binary(op, expr, e.clone()));
+        expr = SpannedTyped::new(span, &init.typ, ExprX::Logical(op, expr, e.clone()));
     }
     expr
 }
@@ -644,11 +644,11 @@ pub fn const_int_from_string(s: String) -> Constant {
 }
 
 pub fn conjoin(span: &Span, exprs: &Vec<Expr>) -> Expr {
-    chain_binary(span, BinaryOp::And, &mk_bool(span, true), exprs)
+    chain_logical(span, LogicalOp::And, &mk_bool(span, true), exprs)
 }
 
 pub fn disjoin(span: &Span, exprs: &Vec<Expr>) -> Expr {
-    chain_binary(span, BinaryOp::Or, &mk_bool(span, false), exprs)
+    chain_logical(span, LogicalOp::Or, &mk_bool(span, false), exprs)
 }
 
 pub fn mk_block(span: &Span, stmts: Vec<Stmt>, expr: Option<Expr>) -> Expr {
@@ -1470,25 +1470,6 @@ impl MutRefFutureSourceName {
 impl ArmX {
     pub(crate) fn has_guard(&self) -> bool {
         !matches!(&self.guard.x, ExprX::Const(Constant::Bool(true)))
-    }
-}
-
-impl BinaryOp {
-    pub fn short_circuits(&self) -> bool {
-        match self {
-            BinaryOp::And | BinaryOp::Or | BinaryOp::Implies => true,
-            BinaryOp::Xor
-            | BinaryOp::HeightCompare { .. }
-            | BinaryOp::Eq(_)
-            | BinaryOp::Ne
-            | BinaryOp::Inequality(_)
-            | BinaryOp::Arith(_)
-            | BinaryOp::RealArith(_)
-            | BinaryOp::Bitwise(..)
-            | BinaryOp::IeeeFloat(_)
-            | BinaryOp::StrGetChar
-            | BinaryOp::Index(..) => false,
-        }
     }
 }
 
