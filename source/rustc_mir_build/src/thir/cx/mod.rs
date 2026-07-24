@@ -33,11 +33,6 @@ pub(crate) fn thir_body<'tcx>(
         cx.mirror_expr(body.value)
     };
 
-    //dbg!(cx.thir.exprs.iter().enumerate().collect::<Vec<_>>());
-    //dbg!(cx.thir.blocks.iter().enumerate().collect::<Vec<_>>());
-    //dbg!(cx.thir.stmts.iter().enumerate().collect::<Vec<_>>());
-    //dbg!(expr);
-
     // Lower the params before the body's expression so errors from params are shown first.
     let owner_id = tcx.local_def_id_to_hir_id(owner_def);
     if let Some(fn_decl) = tcx.hir_fn_decl_by_hir_id(owner_id) {
@@ -60,6 +55,11 @@ pub(crate) fn thir_body<'tcx>(
 
     // Note: this call requires cx.thir.params to be initialized
     let expr = crate::verus_time_travel_prevention::body_post(&mut cx, body.value, expr);
+
+    //dbg!(cx.thir.exprs.iter().enumerate().collect::<Vec<_>>());
+    //dbg!(cx.thir.blocks.iter().enumerate().collect::<Vec<_>>());
+    //dbg!(cx.thir.stmts.iter().enumerate().collect::<Vec<_>>());
+    //dbg!(expr);
 
     cx.verus_ctxt.finish();
 

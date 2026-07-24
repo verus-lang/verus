@@ -346,11 +346,22 @@ pub(crate) fn body_post<'tcx>(
         panic!("Verus does not support param binding with ref mut binding");
     }
 
-    let scope = region::Scope { local_id: hir_body.hir_id.local_id, data: region::ScopeData::Node };
+    // Use the parent_hir_id for the scope to make sure this doesn't conflict with an existing
+    // scope. In particular if you have something like:
+    // `|r| &mut **r`
+    // then the `&mut **r` expression creates a scope `Node(hir_body.hir_id)`.
+    // We want our block to have a different HirId.
+    // If we have nested scopes with the same HirId, then we end up with a situation where
+    // temporaries are created that are supposed to be dropped when the outer scope ends,
+    // but they end up getting dropped when the _inner scope_ ends (since it has the same ID),
+    // which is too early. This manifests as a spurious "used binding isn't initialized" error.
+    // See the test case `closure_without_block_and_mut_ref_body_issue2691`.
+    let parent_hir_id = cx.tcx.parent_hir_id(hir_body.hir_id);
+    let scope = region::Scope { local_id: parent_hir_id.local_id, data: region::ScopeData::Node };
 
     let mut stmts = vec![];
     for binding in bindings.iter() {
-        stmts.push(make_shadow_decl(cx, &erasure_ctxt, hir_body.hir_id, binding, scope));
+        stmts.push(make_shadow_decl(cx, &erasure_ctxt, parent_hir_id, binding, scope));
     }
 
     let block = Block {
@@ -365,7 +376,7 @@ pub(crate) fn body_post<'tcx>(
     expr_id_from_kind(
         cx,
         ExprKind::Block { block: block_id },
-        hir_body.hir_id,
+        parent_hir_id,
         hir_body.span,
         cx.thir.exprs[body_id].ty,
     )

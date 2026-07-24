@@ -4,6 +4,7 @@ pub mod alloc;
 pub mod atomic;
 pub mod bits;
 pub mod borrow;
+pub mod char;
 pub mod clone;
 pub mod cmp;
 pub mod control_flow;
