@@ -872,13 +872,15 @@ pub enum PatternX {
     Constructor(Dt, Ident, Binders<Pattern>),
     Or(Pattern, Pattern),
     /// Matches something equal to the value of this expr
-    /// This only supports literals and consts, so we don't need to worry
-    /// about side-effects, binding order, etc.
+    /// This only supports literals, consts, and pure functions
+    /// so we don't need to worry about side-effects, binding order, etc.
+    /// See `check_expr_in_pattern` for the exact supported expressions.
     Expr(Expr),
     /// `e1 <= x <= e2` or `e1 <= x < e2`
     /// The start of the range is always inclusive (<=)
     /// The end of the range may be inclusive (<=) or exclusive (<),
     /// as given by the InequalityOp argument.
+    /// Same constraints on the `Expr` fields as in `PatternX::Expr`.
     Range(Option<Expr>, Option<(Expr, InequalityOp)>),
     /// References, which are often automatically inserted due to "match ergonomics".
     /// A typical case is like, you have `y: &mut Option<T>` and bind it against the pattern

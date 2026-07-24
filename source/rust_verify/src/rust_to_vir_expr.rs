@@ -512,6 +512,23 @@ pub(crate) fn patexpr_to_vir<'tcx>(
 
                     Ok(PatternX::Expr(expr))
                 }
+                Res::Def(DefKind::AssocConst { is_type_const: _ }, id) => {
+                    if let Some(vir_expr) =
+                        int_intrinsic_constant_to_vir(&bctx.ctxt, pat.span, &pat_typ, id)
+                    {
+                        Ok(PatternX::Expr(vir_expr))
+                    } else {
+                        let node_substs = bctx.types.node_args(pat_expr.hir_id);
+                        let x =
+                            const_var_to_vir(bctx, None, id, node_substs, &pat_expr.hir_id, span)?;
+                        let expr = bctx.spanned_typed_new(pat.span, &pat_typ, x.x.clone());
+
+                        let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+                        erasure_info.hir_vir_ids.push((pat_expr.hir_id, expr.span.id));
+
+                        Ok(PatternX::Expr(expr))
+                    }
+                }
                 Res::Err => err_span(span, format!("Couldn't resolve {qpath:#?}")),
                 _ => match resolve_ctor(bctx.ctxt.tcx, res) {
                     Some((ctor, CtorKind::Const)) => {
@@ -524,7 +541,7 @@ pub(crate) fn patexpr_to_vir<'tcx>(
                         ))
                     }
                     _ => {
-                        crate::internal_err!(pat.span, "expected const constructor")
+                        unsupported_err!(pat.span, "this pattern: {:?}", res)
                     }
                 },
             }
