@@ -1784,6 +1784,10 @@ impl Verifier {
                             if any_invalid
                                 && self.args.expand_errors
                                 && default_prover_failed_assert_ids.len() > 0
+                                && vir::sst_to_air::has_assert_stm_node(
+                                    &default_prover_failed_assert_ids[0],
+                                    &func_check_sst.as_ref().and_then(|f| f.last_minted_id.clone()),
+                                )
                             {
                                 function_opgen.start_expand_errors_if_possible(
                                     &op,
