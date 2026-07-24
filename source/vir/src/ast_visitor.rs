@@ -124,6 +124,10 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
         })
     }
 
+    fn visit_patterns(&mut self, patterns: &Vec<Pattern>) -> Result<R::Vec<Pattern>, Err> {
+        R::map_vec(patterns, &mut |p| self.visit_pattern(p))
+    }
+
     #[allow(dead_code)]
     fn visit_opt_typ(&mut self, typ_opt: &Option<Typ>) -> Result<R::Opt<Typ>, Err> {
         R::map_opt(typ_opt, &mut |t| self.visit_typ(t))
@@ -889,6 +893,10 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let p = self.visit_pattern(p)?;
                 R::ret(|| pattern_new(PatternX::MutRef(R::get(p))))
             }
+            PatternX::Slice(patterns) => {
+                let ps = self.visit_patterns(patterns)?;
+                R::ret(|| pattern_new(PatternX::Slice(R::get_vec_a(ps))))
+            }
         }
     }
 
@@ -1580,6 +1588,11 @@ fn insert_pattern_vars(map: &mut VisitorScopeMap, pattern: &Pattern, init: bool)
         PatternX::Range(_, _) => {}
         PatternX::MutRef(pat1) | PatternX::ImmutRef(pat1) => {
             insert_pattern_vars(map, pat1, init);
+        }
+        PatternX::Slice(pats) => {
+            for pat in pats.iter() {
+                insert_pattern_vars(map, pat, init);
+            }
         }
     }
 }

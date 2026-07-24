@@ -1021,6 +1021,19 @@ fn add_pattern_rec(
         PatternX::MutRef(sub_pat) => {
             add_pattern_rec(ctxt, record, typing, decls, mode, sub_pat, false)
         }
+        PatternX::Slice(pats) => {
+            for pat in pats.iter() {
+                add_pattern_rec(
+                    ctxt,
+                    record,
+                    typing,
+                    decls,
+                    mode,
+                    pat,
+                    false)?;
+            }
+            Ok(())
+        }
     }
 }
 

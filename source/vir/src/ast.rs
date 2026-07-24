@@ -888,6 +888,8 @@ pub enum PatternX {
     /// and ultimately x will have type `&mut T`.
     MutRef(Pattern),
     ImmutRef(Pattern),
+    /// Match against a slice or array
+    Slice(Patterns),
 }
 
 /// Arms of match expressions

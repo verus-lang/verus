@@ -1900,6 +1900,11 @@ impl<'a> Builder<'a> {
             PatternX::Or(sub_pat, _) | PatternX::ImmutRef(sub_pat) | PatternX::MutRef(sub_pat) => {
                 self.scope_insert_pattern(sub_pat);
             }
+            PatternX::Slice(patterns) => {
+                for p in patterns.iter() {
+                    self.scope_insert_pattern(p);
+                }
+            }
         }
     }
 
@@ -2016,6 +2021,11 @@ pub fn pattern_all_bound_vars_with_ownership(
             }
             PatternX::Expr(_) => {}
             PatternX::Range(_, _) => {}
+            PatternX::Slice(patterns) => {
+                for p in patterns.iter() {
+                    pattern_all_bound_vars_rec(p, out, modes);
+                }
+            }
         }
     }
 

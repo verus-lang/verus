@@ -138,6 +138,10 @@ pub fn bool_typ() -> Typ {
     Arc::new(TypX::Bool)
 }
 
+pub fn int_typ() -> Typ {
+    Arc::new(TypX::Int(IntRange::Int))
+}
+
 // ImplPaths is ignored in types_equal
 pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
     match (&**typ1, &**typ2) {
@@ -629,6 +633,14 @@ pub fn mk_assume(span: &Span, e1: &Expr) -> Expr {
         &unit_typ(),
         ExprX::AssertAssume { is_assume: true, expr: e1.clone(), msg: None },
     )
+}
+
+pub fn mk_int_lit_from_usize(span: &Span, u: usize) -> Expr {
+    SpannedTyped::new(span, &int_typ(), ExprX::Const(const_int_from_usize(u)))
+}
+
+pub fn const_int_from_usize(u: usize) -> Constant {
+    Constant::Int(BigInt::from(u))
 }
 
 pub fn const_int_from_u128(u: u128) -> Constant {

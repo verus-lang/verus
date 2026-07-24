@@ -1,10 +1,11 @@
 use crate::ast::*;
 use crate::ast_util::{
     bool_typ, conjoin, disjoin, if_then_else, mk_eq, mk_ineq, place_to_spec_expr,
+    undecorate_typ, int_typ, mk_int_lit_from_usize,
 };
 use crate::context::GlobalCtx;
 use crate::def::Spanned;
-use crate::messages::{Span, error};
+use crate::messages::{Span, error, internal_error};
 use std::sync::Arc;
 
 pub fn pattern_to_exprs(
@@ -196,6 +197,38 @@ fn pattern_to_exprs_rec(
                 SpannedTyped::new(&sub_pat.span, &sub_pat.typ, PlaceX::DerefMut(place.clone()));
             pattern_to_exprs_rec(ctx, sub_pat, &deref_place, bindings, in_immut)
         }
+        PatternX::Slice(patterns) => {
+            let (kind, elem_typ) = match &*undecorate_typ(&pattern.typ) {
+                TypX::Primitive(Primitive::Array, ts) => (ArrayKind::Array, ts[0].clone()),
+                TypX::Primitive(Primitive::Slice, ts) => (ArrayKind::Slice, ts[0].clone()),
+                _ => {
+                    return Err(internal_error(&pattern.span, "expected type to be slice or array"));
+                }
+            };
+
+            let mut conjuncts = vec![];
+
+            // If it's a slice, we need to test the length
+            if kind == ArrayKind::Slice {
+                let actual_len = SpannedTyped::new(&pattern.span, &int_typ(),
+                    ExprX::Unary(UnaryOp::Length(ArrayKind::Slice), read_place(&place)));
+                let expected_len = mk_int_lit_from_usize(&pattern.span, patterns.len());
+                conjuncts.push(mk_eq(&pattern.span, &actual_len, &expected_len));
+            }
+
+            for (i, p) in patterns.iter().enumerate() {
+                let idx = mk_int_lit_from_usize(&p.span, i);
+                let index_place = SpannedTyped::new(
+                    &p.span,
+                    &elem_typ,
+                    PlaceX::Index(place.clone(), idx, kind, BoundsCheck::Allow));
+                let pattern_test =
+                    pattern_to_exprs_rec(ctx, p, &index_place, bindings, in_immut)?;
+                conjuncts.push(pattern_test);
+            }
+
+            Ok(conjoin(&pattern.span, &conjuncts))
+        }
     }
 }
 
@@ -239,6 +272,17 @@ pub(crate) fn pattern_find_mut_binding(pattern: &Pattern) -> Option<Span> {
         PatternX::Expr(_e) => None,
         PatternX::Range(_lower, _upper) => None,
         PatternX::ImmutRef(p) | PatternX::MutRef(p) => pattern_find_mut_binding(p),
+        PatternX::Slice(patterns) => {
+            for p in patterns.iter() {
+                match pattern_find_mut_binding(p) {
+                    s @ Some(_) => {
+                        return s;
+                    }
+                    None => {}
+                }
+            }
+            None
+        }
     }
 }
 
@@ -263,5 +307,13 @@ pub(crate) fn pattern_has_or(pattern: &Pattern) -> bool {
         PatternX::Expr(_e) => false,
         PatternX::Range(_lower, _upper) => false,
         PatternX::ImmutRef(p) | PatternX::MutRef(p) => pattern_has_or(p),
+        PatternX::Slice(patterns) => {
+            for p in patterns.iter() {
+                if pattern_has_or(p) {
+                    return true;
+                }
+            }
+            false
+        }
     }
 }

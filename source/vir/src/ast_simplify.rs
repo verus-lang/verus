@@ -196,6 +196,11 @@ fn pattern_to_decls_with_no_initializer(pattern: &Pattern, stmts: &mut Vec<Stmt>
         PatternX::ImmutRef(p) | PatternX::MutRef(p) => {
             pattern_to_decls_with_no_initializer(p, stmts);
         }
+        PatternX::Slice(pats) => {
+            for p in pats.iter() {
+                pattern_to_decls_with_no_initializer(p, stmts);
+            }
+        }
     }
 }
 
