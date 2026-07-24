@@ -543,18 +543,14 @@ macro_rules! def_bop_assign_impls_unsigned_div_rem {
 // - check for overflow (e.g. (-128i8) / (-1im))
 // - express truncating div, rem in terms of euclidean /, %
 macro_rules! def_bop_impls_signed_div_rem {
-    ($trait:path, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident, $self:ident, $rhs:ident, $op:tt, [$($typ:ty)*]) => {
+    ($trait:path, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident, $self:ident, $rhs:ident, $op:path, [$($typ:ty)*]) => {
         $crate::vstd::prelude::verus! {
             def_bop_impls!($trait, $impl_trait, $fun, $obeys, $req, $spec, $self, $rhs, [
                 $(
                     (
                         $typ,
                         $rhs != 0 && !($self == $typ::MIN && $rhs == -1),
-                        if $self >= 0 {
-                            ($self $op $rhs) as $typ
-                        } else {
-                            (-((-$self) $op ($rhs as int))) as $typ
-                        }
+                        $op($self as int, $rhs as int) as $typ
                     )
                 )*
             ]);
@@ -563,18 +559,14 @@ macro_rules! def_bop_impls_signed_div_rem {
 }
 
 macro_rules! def_bop_assign_impls_signed_div_rem {
-    ($trait:path, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident, $self:ident, $rhs:ident, $op:tt, [$($typ:ty)*]) => {
+    ($trait:path, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident, $self:ident, $rhs:ident, $op:path, [$($typ:ty)*]) => {
         $crate::vstd::prelude::verus! {
             def_bop_assign_impls!($trait, $impl_trait, $fun, $obeys, $req, $spec, $self, $rhs, [
                 $(
                     (
                         $typ,
                         $rhs != 0 && !($self == $typ::MIN && $rhs == -1),
-                        if $self >= 0 {
-                            ($self $op $rhs) as $typ
-                        } else {
-                            (-((-$self) $op ($rhs as int))) as $typ
-                        }
+                        $op($self as int, $rhs as int) as $typ
                     )
                 )*
             ]);
@@ -664,11 +656,11 @@ def_bop_assign_impls_unsigned_div_rem!(core::ops::DivAssign, DivAssignSpecImpl, 
     usize u8 u16 u32 u64 u128
 ]);
 
-def_bop_impls_signed_div_rem!(core::ops::Div, DivSpecImpl, div, obeys_div_spec, div_req, div_spec, self, rhs, /, [
+def_bop_impls_signed_div_rem!(core::ops::Div, DivSpecImpl, div, obeys_div_spec, div_req, div_spec, self, rhs, super::super::arithmetic::div_mod::rust_div, [
     isize i8 i16 i32 i64 i128
 ]);
 
-def_bop_assign_impls_signed_div_rem!(core::ops::DivAssign, DivAssignSpecImpl, div_assign, obeys_div_assign_spec, div_assign_req, div_assign_spec, self, rhs, /, [
+def_bop_assign_impls_signed_div_rem!(core::ops::DivAssign, DivAssignSpecImpl, div_assign, obeys_div_assign_spec, div_assign_req, div_assign_spec, self, rhs, super::super::arithmetic::div_mod::rust_div, [
     isize i8 i16 i32 i64 i128
 ]);
 
@@ -680,11 +672,11 @@ def_bop_assign_impls_unsigned_div_rem!(core::ops::RemAssign, RemAssignSpecImpl, 
     usize u8 u16 u32 u64 u128
 ]);
 
-def_bop_impls_signed_div_rem!(core::ops::Rem, RemSpecImpl, rem, obeys_rem_spec, rem_req, rem_spec, self, rhs, %, [
+def_bop_impls_signed_div_rem!(core::ops::Rem, RemSpecImpl, rem, obeys_rem_spec, rem_req, rem_spec, self, rhs, super::super::arithmetic::div_mod::rust_rem, [
     isize i8 i16 i32 i64 i128
 ]);
 
-def_bop_assign_impls_signed_div_rem!(core::ops::RemAssign, RemAssignSpecImpl, rem_assign, obeys_rem_assign_spec, rem_assign_req, rem_assign_spec, self, rhs, %, [
+def_bop_assign_impls_signed_div_rem!(core::ops::RemAssign, RemAssignSpecImpl, rem_assign, obeys_rem_assign_spec, rem_assign_req, rem_assign_spec, self, rhs, super::super::arithmetic::div_mod::rust_rem, [
     isize i8 i16 i32 i64 i128
 ]);
 
