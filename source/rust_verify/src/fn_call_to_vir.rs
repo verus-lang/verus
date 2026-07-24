@@ -1154,6 +1154,12 @@ fn verus_item_to_vir<'tcx, 'a>(
                 }
             }
             ExprItem::StrSliceLen => {
+                if !matches!(bctx.ctxt.cmd_line_args.vstd, Vstd::IsVstd | Vstd::IsCore) {
+                    return err_span(
+                        expr.span,
+                        "verus_builtin::strslice_len is for internal use only and cannot be used directly in user programs",
+                    );
+                }
                 record_spec_fn(bctx, expr);
                 match &expr.kind {
                     ExprKind::Call(_, args) => {
@@ -1169,6 +1175,12 @@ fn verus_item_to_vir<'tcx, 'a>(
                 }
             }
             ExprItem::StrSliceGetChar => {
+                if !matches!(bctx.ctxt.cmd_line_args.vstd, Vstd::IsVstd | Vstd::IsCore) {
+                    return err_span(
+                        expr.span,
+                        "verus_builtin::strslice_get_char is for internal use only and cannot be used directly in user programs",
+                    );
+                }
                 record_spec_fn(bctx, expr);
                 match &expr.kind {
                     ExprKind::Call(_, args) if args.len() == 2 => {
