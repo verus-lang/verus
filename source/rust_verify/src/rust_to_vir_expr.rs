@@ -1620,6 +1620,9 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 .to_place(bctx, expr.span, get_inner_ty())?;
             Ok(ExprOrPlace::Expr(borrow_mut_vir(bctx, expr.span, &place, *allow_two_phase_borrow)))
         }
+        Adjust::GenericReborrow(_) => {
+            unsupported_err!(expr.span, "User-defined Reborrow implementations")
+        }
         Adjust::Borrow(AutoBorrow::RawPtr(_)) => {
             // Despite the name 'borrow', the docs seem to indicate this is a dereference
             unsupported_err!(
@@ -3223,7 +3226,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 true,
             )?))
         }
-        ExprKind::Closure(Closure { fn_decl: _, .. }) => {
+        ExprKind::Closure(Closure { .. }) => {
             Ok(ExprOrPlace::Expr(closure_to_vir(bctx, expr, expr_typ()?, false, None)?))
         }
         ExprKind::Index(tgt_expr, idx_expr, _span) => {
@@ -3976,9 +3979,9 @@ pub(crate) fn closure_to_vir<'tcx>(
     proof_fn_modes: Option<(Arc<Vec<Mode>>, Mode)>,
 ) -> Result<vir::ast::Expr, VirErr> {
     if let ExprKind::Closure(Closure { fn_decl, body: body_id, def_id, .. }) = &closure_expr.kind {
-        unsupported_err_unless!(!fn_decl.c_variadic, closure_expr.span, "c_variadic");
+        unsupported_err_unless!(!fn_decl.c_variadic(), closure_expr.span, "c_variadic");
         unsupported_err_unless!(
-            matches!(fn_decl.implicit_self, rustc_hir::ImplicitSelfKind::None),
+            matches!(fn_decl.implicit_self(), rustc_hir::ImplicitSelfKind::None),
             closure_expr.span,
             "implicit_self in closure"
         );
@@ -4471,7 +4474,10 @@ fn ctor_tail_get_taken_fields<'tcx>(
         if fields.iter().any(|f| f.ident.name == field_def.name) {
             continue;
         }
-        let ty = field_def.ty(bctx.ctxt.tcx, args);
+        let ty = bctx.ctxt.tcx.normalize_erasing_regions(
+            TypingEnv::post_analysis(bctx.ctxt.tcx, bctx.fun_id),
+            field_def.ty(bctx.ctxt.tcx, args),
+        );
         let rk = if bctx.is_copy(ty) { vir::ast::ReadKind::Copy } else { vir::ast::ReadKind::Move };
         let rk = UnfinalizedReadKind { preliminary_kind: rk, id: bctx.ctxt.unique_read_kind_id() };
         let ident = field_ident_from_rust(field_def.name.as_str());

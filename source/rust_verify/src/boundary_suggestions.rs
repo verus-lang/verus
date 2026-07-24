@@ -6,6 +6,7 @@ use std::{
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty::{
     EarlyParamRegion, GenericArg, GenericParamDefKind, InstantiatedPredicates, Ty, TyCtxt, TyKind,
+    TypingEnv,
 };
 use rustc_type_ir::{
     Interner, TypeFoldable, TypeFolder, TypeSuperVisitable, TypeVisitable, TypeVisitor,
@@ -44,18 +45,17 @@ pub(crate) fn build_external_type_suggestion<'tcx>(
     let path_string = prepend_crate_if_local(external_def_id, path_string);
 
     let generics = ctxt.tcx.generics_of(external_def_id);
-    let mut region_renamer: RegionRenamer<'_> =
-        build_region_renamer(ctxt, external_def_id, generics)?;
 
     let predicates = ctxt.tcx.predicates_of(external_def_id).instantiate_identity(ctxt.tcx);
-    let predicates = predicates.fold_with(&mut region_renamer);
+    let mut region_renamer: RegionRenamer<'_> =
+        build_region_renamer(ctxt, external_def_id, generics)?;
 
     let (param_declarations, type_param_set) =
         build_generics_declarations(ctxt, generics, &predicates, &region_renamer)?;
     let all_type_symbols = type_param_set.clone();
     // Map to str so that the type params come out sorted.
     let all_type_params: BTreeSet<&str> = all_type_symbols.iter().map(|s| s.as_str()).collect(); // Need to have all type params for recursive declarations.
-    let where_clauses = build_where_clauses(ctxt, predicates, type_param_set)?;
+    let where_clauses = build_where_clauses(ctxt, predicates, type_param_set, &mut region_renamer)?;
     let visibility = mk_visibility(ctxt, external_def_id);
     let suggestion = format!(
             "{}{}{}{}{}{}{}{}{}{}{}{}",
@@ -150,11 +150,14 @@ pub(crate) fn build_fn_assume_specification_suggestion<'tcx>(
     let mut region_renamer: RegionRenamer<'_> =
         build_region_renamer(ctxt, external_def_id, generics)?;
     let fn_sig = fn_sig.fold_with(&mut region_renamer);
-    let inst_predicates = inst_predicates.fold_with(&mut region_renamer);
+    // `InstantiatedPredicates` is not `TypeFoldable`, so we cannot fold the whole
+    // list here; `build_where_clauses` folds each `Clause` individually so that
+    // anonymous early-bound lifetimes are renamed consistently with `fn_sig`.
     let (param_declarations, type_params) =
         build_generics_declarations(ctxt, generics, &inst_predicates, &region_renamer)?;
 
-    let where_clauses = build_where_clauses(ctxt, inst_predicates, type_params)?;
+    let where_clauses =
+        build_where_clauses(ctxt, inst_predicates, type_params, &mut region_renamer)?;
 
     let path_string = if let Some(_trait_def_id) = ctxt.tcx.trait_of_assoc(external_def_id) {
         return Err(crate::util::error(
@@ -261,8 +264,12 @@ fn build_region_renamer<'tcx>(
     external_def_id: DefId,
     generics: &'tcx rustc_middle::ty::Generics,
 ) -> Result<RegionRenamer<'tcx>, Arc<vir::messages::MessageX>> {
+    let typing_env = TypingEnv::non_body_analysis(ctxt.tcx, external_def_id);
     let substs_early = crate::rust_to_vir_func::get_substs_early(
-        ctxt.tcx.type_of(external_def_id).instantiate_identity(),
+        ctxt.tcx.normalize_erasing_regions(
+            typing_env,
+            ctxt.tcx.type_of(external_def_id).instantiate_identity(),
+        ),
         ctxt.tcx.def_span(external_def_id),
     )?;
     let early_lifetimes = substs_early.iter().filter_map(GenericArg::as_region);
@@ -284,9 +291,17 @@ fn build_where_clauses<'tcx>(
     ctxt: &crate::context::Context<'tcx>,
     inst_predicates: InstantiatedPredicates<'tcx>,
     mut unsized_type_params: BTreeSet<rustc_span::Symbol>,
+    region_renamer: &mut RegionRenamer<'tcx>,
 ) -> Result<Vec<String>, VirErr> {
     let mut where_clauses: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    let string_clauses = inst_predicates.iter().filter_map(|(pred_clause, _)| {
+    // `InstantiatedPredicates` is not `TypeFoldable`, but each individual `Clause`
+    // is, so we fold them one at a time to rename anonymous early-bound lifetimes
+    // consistently with the (already-folded) function signature.
+    let folded_clauses: Vec<_> = inst_predicates
+        .iter()
+        .map(|(pred_clause, span)| (pred_clause.skip_norm_wip().fold_with(region_renamer), span))
+        .collect();
+    let string_clauses = folded_clauses.iter().filter_map(|(pred_clause, _)| {
         match pred_clause.kind().skip_binder() {
             rustc_type_ir::ClauseKind::Trait(trait_predicate) => {
                 // Check if this is an implicit Sized trait bound.
@@ -361,7 +376,7 @@ fn build_where_clauses<'tcx>(
             rustc_type_ir::ClauseKind::Projection(projection_predicate) => {
                 let (trait_ref, proj_term_args) =
                     projection_predicate.projection_term.trait_ref_and_own_args(ctxt.tcx);
-                let projected_item_id = projection_predicate.projection_term.def_id;
+                let projected_item_id = projection_predicate.projection_term.def_id();
                 // Assuming here that the only projection predicate possible on an Fn trait is the Output restriction.
                 // Assuming that trait ref args for an fn trait are [self_ty, args_tuple]
                 if ctxt.tcx.is_fn_trait(trait_ref.def_id) {

@@ -266,7 +266,7 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
 
                 let Some(vir::ast::ImplPath::TraitImplPath(impl_path)) = self_trait_impl_path
                 else {
-                    panic!("{} {:?}", "could not resolve call to trait default method", &expr.span);
+                    panic!("{} {:?}", "could not resolve call to trait default method", expr.span);
                 };
 
                 let f = Arc::new(FunX { path: bctx.ctxt.def_id_to_vir_path(did) });
@@ -2980,7 +2980,8 @@ pub(crate) fn check_variant_field<'tcx>(
                 return err_span(span, format!("no field `{field_name:}` for this variant"));
             };
 
-            let field_ty = field.ty(tcx, substs);
+            let typing_env = TypingEnv::post_analysis(tcx, bctx.fun_id);
+            let field_ty = tcx.normalize_erasing_regions(typing_env, field.ty(tcx, substs));
             let vir_field_ty = bctx.mid_ty_to_vir(span, &field_ty)?;
             let vir_expected_field_ty = bctx.mid_ty_to_vir(span, &expected_field_typ)?;
             if !types_equal(&vir_field_ty, &vir_expected_field_ty) {
@@ -3026,7 +3027,8 @@ fn check_union_field<'tcx>(
         return err_span(span, format!("no field `{field_name:}` for this union"));
     };
 
-    let field_ty = field.ty(tcx, substs);
+    let typing_env = TypingEnv::post_analysis(tcx, bctx.fun_id);
+    let field_ty = tcx.normalize_erasing_regions(typing_env, field.ty(tcx, substs));
     let vir_field_ty = bctx.mid_ty_to_vir(span, &field_ty)?;
     let vir_expected_field_ty = bctx.mid_ty_to_vir(span, &expected_field_typ)?;
     if !types_equal(&vir_field_ty, &vir_expected_field_ty) {

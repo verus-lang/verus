@@ -267,7 +267,7 @@ pub(crate) fn check_trait_conflicts<'tcx>(
         rust_code.push('\n');
     }
     if let Some(mut file) = tc_log_file {
-        write!(file, "{}", &rust_code).expect("error writing to trait-conflict log file");
+        write!(file, "{}", rust_code).expect("error writing to trait-conflict log file");
     }
     let rustc_args = [TC_DRIVER_ARG, TCFileLoader::FILENAME, "--error-format=json"];
 
@@ -340,14 +340,14 @@ pub(crate) fn check_trait_conflicts<'tcx>(
                         }
                         if !missing_span_line_seqs.contains(&(l1, l2)) {
                             for i in l1..=l2 {
-                                eprintln!("{}", &emit_state.lines[i].text);
+                                eprintln!("{}", emit_state.lines[i].text);
                             }
                             missing_span_line_seqs.insert((l1, l2));
                         }
                     }
                 }
                 if missing_span {
-                    eprintln!("{}", &diag.rendered.unwrap());
+                    eprintln!("{}", diag.rendered.unwrap());
                 }
                 msgs.push(msg);
             }

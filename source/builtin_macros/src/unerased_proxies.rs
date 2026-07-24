@@ -442,7 +442,7 @@ impl crate::syntax::Visitor {
         match &mut item {
             Item::Fn(item_fn) => {
                 item_fn.sig.ident = Ident::new(
-                    &format!("{}{}", VERUS_UNERASED_PROXY, &item_fn.sig.ident),
+                    &format!("{}{}", VERUS_UNERASED_PROXY, item_fn.sig.ident),
                     item_fn.sig.span(),
                 );
                 item_fn.attrs.push(mk_verus_attr(item_fn.span(), quote! { unerased_proxy }));
@@ -461,7 +461,7 @@ impl crate::syntax::Visitor {
         match &mut impl_item {
             ImplItem::Fn(item_fn) => {
                 item_fn.sig.ident = Ident::new(
-                    &format!("{}{}", VERUS_UNERASED_PROXY, &item_fn.sig.ident),
+                    &format!("{}{}", VERUS_UNERASED_PROXY, item_fn.sig.ident),
                     item_fn.sig.span(),
                 );
                 item_fn.attrs.push(mk_verus_attr(item_fn.span(), quote! { unerased_proxy }));
