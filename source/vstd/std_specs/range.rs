@@ -88,6 +88,22 @@ pub assume_specification<Idx: PartialOrd<Idx>, U>[ RangeInclusive::<Idx>::contai
             == r.contains_spec(i),
 ;
 
+// A range is empty once its iterator is exhausted, or if it was never valid
+// to begin with (start > end).
+pub open spec fn spec_range_inclusive_is_empty<Idx: PartialOrd<Idx>>(
+    r: &RangeInclusive<Idx>,
+) -> bool {
+    !r@.start.is_le(&r@.end) || r@.exhausted
+}
+
+pub assume_specification<Idx: PartialOrd<Idx>>[ RangeInclusive::<Idx>::is_empty ](
+    r: &RangeInclusive<Idx>,
+) -> (res: bool) where Idx: PartialOrd<Idx>
+    ensures
+        <Idx as PartialOrdSpec<Idx>>::obeys_partial_cmp_spec() ==> res
+            == spec_range_inclusive_is_empty(r),
+;
+
 // To allow reasoning about the returned range when the executable
 // function `RangeInclusive::new()` is invoked in a `for` loop header
 // (e.g., in `for x in it: start..=end { ... }`), we need to specify the
@@ -343,11 +359,14 @@ pub assume_specification<'s, T>[ <RangeInclusive<T> as RangeBounds<T>>::start_bo
         spec_bound(result) == SpecBound::Included(&range@.start),
 ;
 
+// `end_bound()` returns `Included` while the range is not exhausted and
+// returns `Excluded` after it is exhausted.
 pub assume_specification<'s, T>[ <RangeInclusive<T> as RangeBounds<T>>::end_bound ](
     range: &'s RangeInclusive<T>,
 ) -> (result: Bound<&'s T>)
     ensures
-        spec_bound(result) == SpecBound::Included(&range@.end),
+        range@.exhausted ==> spec_bound(result) == SpecBound::Excluded(&range@.end),
+        !range@.exhausted ==> spec_bound(result) == SpecBound::Included(&range@.end),
 ;
 
 pub assume_specification<'s, T>[ <RangeToInclusive<T> as RangeBounds<T>>::start_bound ](
@@ -444,7 +463,11 @@ impl<T> RangeBoundsSpecImpl<T> for RangeInclusive<T> {
     }
 
     open spec fn spec_end_bound(&self) -> SpecBound<&T> {
-        SpecBound::Included(&self@.end)
+        if self@.exhausted {
+            SpecBound::Excluded(&self@.end)
+        } else {
+            SpecBound::Included(&self@.end)
+        }
     }
 }
 
@@ -522,7 +545,11 @@ impl<T> RangeBoundsSpecImpl<T> for RangeInclusive<&T> {
     }
 
     open spec fn spec_end_bound(&self) -> SpecBound<&T> {
-        SpecBound::Included(self@.end)
+        if self@.exhausted {
+            SpecBound::Excluded(self@.end)
+        } else {
+            SpecBound::Included(self@.end)
+        }
     }
 }
 
