@@ -1,9 +1,10 @@
 use crate::ast::{
     AssertQueryMode, AutospecUsage, BinaryOp, ByRef, CallTarget, CallTargetKind, CtorUpdateTail,
     Datatype, DeclProph, Dt, Expr, ExprX, FieldOpr, Fun, Function, FunctionKind, InvAtomicity,
-    ItemKind, Krate, Mode, ModeCoercion, MultiOp, MutRefFutureSourceName, OverflowBehavior, Path,
-    Pattern, PatternBinding, PatternX, Place, PlaceX, ReadKind, SpannedTyped, Stmt, StmtX, Typ,
-    TypDecoration, TypX, UnaryOp, UnaryOpr, UnfinalizedReadKind, UnwindSpec, VarIdent, VirErr,
+    ItemKind, Krate, LogicalOp, Mode, ModeCoercion, MultiOp, MutRefFutureSourceName,
+    OverflowBehavior, Path, Pattern, PatternBinding, PatternX, Place, PlaceX, ReadKind,
+    SpannedTyped, Stmt, StmtX, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, UnfinalizedReadKind,
+    UnwindSpec, VarIdent, VirErr,
 };
 use crate::ast_util::{get_field, is_unit, path_as_vstd_name, typ_to_diagnostic_str};
 use crate::def::user_local_name;
@@ -246,6 +247,7 @@ fn outer_reason_by_expr_kind(e: &Expr) -> Option<OuterProphReason> {
             | ExprX::NullaryOpr(_)
             | ExprX::Unary(..)
             | ExprX::UnaryOpr(..)
+            | ExprX::Logical(..)
             | ExprX::Binary(..)
             | ExprX::BinaryOpr(..)
             | ExprX::Multi(..)
@@ -2251,28 +2253,38 @@ fn check_expr(
                 check_expr_has_mode(ctxt, record, typing, Mode::Spec, e1, Mode::Spec, outer_proph)?;
             Ok((Mode::Spec, proph))
         }
+        ExprX::Logical(op, e1, e2) => {
+            let op_mode = match op {
+                LogicalOp::And | LogicalOp::Or => Mode::Exec,
+                LogicalOp::Implies => Mode::Spec,
+            };
+            let outer_mode = match op {
+                // because Implies isn't compiled, make it spec-only
+                LogicalOp::Implies => Mode::Spec,
+                _ => outer_mode,
+            };
+            let (mode1, proph1) =
+                check_expr(ctxt, record, typing, outer_mode, Expect(op_mode), e1, outer_proph)?;
+            // Join mode into the outer mode due to short-circuiting
+            let outer_proph2 = outer_proph.clone().join(proph1.clone());
+            let (mode2, proph2) =
+                check_expr(ctxt, record, typing, outer_mode, Expect(op_mode), e2, &outer_proph2)?;
+            Ok((mode_join(op_mode, mode_join(mode1, mode2)), proph1.join(proph2)))
+        }
         ExprX::Binary(op, e1, e2) => {
             let op_mode = match op {
                 BinaryOp::Eq(mode) => *mode,
                 BinaryOp::HeightCompare { .. } => Mode::Spec,
-                BinaryOp::Implies => Mode::Spec,
                 _ => Mode::Exec,
             };
             let outer_mode = match op {
-                // because Implies isn't compiled, make it spec-only
-                BinaryOp::Implies => Mode::Spec,
                 BinaryOp::HeightCompare { .. } => Mode::Spec,
                 _ => outer_mode,
             };
             let (mode1, proph1) =
                 check_expr(ctxt, record, typing, outer_mode, Expect(op_mode), e1, outer_proph)?;
-            let outer_proph2 = if op.short_circuits() {
-                outer_proph.clone().join(proph1.clone())
-            } else {
-                outer_proph.clone()
-            };
             let (mode2, proph2) =
-                check_expr(ctxt, record, typing, outer_mode, Expect(op_mode), e2, &outer_proph2)?;
+                check_expr(ctxt, record, typing, outer_mode, Expect(op_mode), e2, outer_proph)?;
             Ok((mode_join(op_mode, mode_join(mode1, mode2)), proph1.join(proph2)))
         }
         ExprX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(..), e1, e2) => {
