@@ -73,6 +73,30 @@ macro_rules! def_bin_ops_spec {
 };
 }
 
+macro_rules! def_bin_ops_assign_spec {
+    ($trait:path, $extrait: ident, $spec_trait:ident, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident) => {
+        $crate::vstd::prelude::verus! {
+            #[verifier::external_trait_specification]
+            #[verifier::external_trait_extension($spec_trait via $impl_trait)]
+            pub trait $extrait<Rhs = Self> {
+                type ExternalTraitSpecificationFor: $trait<Rhs>;
+
+                spec fn $obeys() -> bool;
+
+                spec fn $req(&self, rhs: Rhs) -> bool;
+
+                spec fn $spec(&self, rhs: Rhs) -> &Self;
+
+                fn $fun(&mut self, rhs: Rhs)
+                    requires
+                        self.$req(rhs),
+                    ensures
+                        Self::$obeys() ==> &*final(self) == old(self).$spec(rhs);
+            }
+        }
+};
+}
+
 def_un_ops_spec!(
     core::ops::Neg,
     ExNeg,
@@ -106,6 +130,17 @@ def_bin_ops_spec!(
     add_spec
 );
 
+def_bin_ops_assign_spec!(
+    core::ops::AddAssign,
+    ExAddAssign,
+    AddAssignSpec,
+    AddAssignSpecImpl,
+    add_assign,
+    obeys_add_assign_spec,
+    add_assign_req,
+    add_assign_spec
+);
+
 def_bin_ops_spec!(
     core::ops::Sub,
     ExSub,
@@ -115,6 +150,17 @@ def_bin_ops_spec!(
     obeys_sub_spec,
     sub_req,
     sub_spec
+);
+
+def_bin_ops_assign_spec!(
+    core::ops::SubAssign,
+    ExSubAssign,
+    SubAssignSpec,
+    SubAssignSpecImpl,
+    sub_assign,
+    obeys_sub_assign_spec,
+    sub_assign_req,
+    sub_assign_spec
 );
 
 def_bin_ops_spec!(
@@ -128,6 +174,17 @@ def_bin_ops_spec!(
     mul_spec
 );
 
+def_bin_ops_assign_spec!(
+    core::ops::MulAssign,
+    ExMulAssign,
+    MulAssignSpec,
+    MulAssignSpecImpl,
+    mul_assign,
+    obeys_mul_assign_spec,
+    mul_assign_req,
+    mul_assign_spec
+);
+
 def_bin_ops_spec!(
     core::ops::Div,
     ExDiv,
@@ -137,6 +194,17 @@ def_bin_ops_spec!(
     obeys_div_spec,
     div_req,
     div_spec
+);
+
+def_bin_ops_assign_spec!(
+    core::ops::DivAssign,
+    ExDivAssign,
+    DivAssignSpec,
+    DivAssignSpecImpl,
+    div_assign,
+    obeys_div_assign_spec,
+    div_assign_req,
+    div_assign_spec
 );
 
 def_bin_ops_spec!(
@@ -150,6 +218,17 @@ def_bin_ops_spec!(
     rem_spec
 );
 
+def_bin_ops_assign_spec!(
+    core::ops::RemAssign,
+    ExRemAssign,
+    RemAssignSpec,
+    RemAssignSpecImpl,
+    rem_assign,
+    obeys_rem_assign_spec,
+    rem_assign_req,
+    rem_assign_spec
+);
+
 def_bin_ops_spec!(
     core::ops::BitAnd,
     ExBitAnd,
@@ -159,6 +238,17 @@ def_bin_ops_spec!(
     obeys_bitand_spec,
     bitand_req,
     bitand_spec
+);
+
+def_bin_ops_assign_spec!(
+    core::ops::BitAndAssign,
+    ExBitAndAssign,
+    BitAndAssignSpec,
+    BitAndAssignSpecImpl,
+    bitand_assign,
+    obeys_bitand_assign_spec,
+    bitand_assign_req,
+    bitand_assign_spec
 );
 
 def_bin_ops_spec!(
@@ -172,6 +262,17 @@ def_bin_ops_spec!(
     bitor_spec
 );
 
+def_bin_ops_assign_spec!(
+    core::ops::BitOrAssign,
+    ExBitOrAssign,
+    BitOrAssignSpec,
+    BitOrAssignSpecImpl,
+    bitor_assign,
+    obeys_bitor_assign_spec,
+    bitor_assign_req,
+    bitor_assign_spec
+);
+
 def_bin_ops_spec!(
     core::ops::BitXor,
     ExBitXor,
@@ -181,6 +282,17 @@ def_bin_ops_spec!(
     obeys_bitxor_spec,
     bitxor_req,
     bitxor_spec
+);
+
+def_bin_ops_assign_spec!(
+    core::ops::BitXorAssign,
+    ExBitXorAssign,
+    BitXorAssignSpec,
+    BitXorAssignSpecImpl,
+    bitxor_assign,
+    obeys_bitxor_assign_spec,
+    bitxor_assign_req,
+    bitxor_assign_spec
 );
 
 def_bin_ops_spec!(
@@ -194,6 +306,17 @@ def_bin_ops_spec!(
     shl_spec
 );
 
+def_bin_ops_assign_spec!(
+    core::ops::ShlAssign,
+    ExShlAssign,
+    ShlAssignSpec,
+    ShlAssignSpecImpl,
+    shl_assign,
+    obeys_shl_assign_spec,
+    shl_assign_req,
+    shl_assign_spec
+);
+
 def_bin_ops_spec!(
     core::ops::Shr,
     ExShr,
@@ -203,6 +326,17 @@ def_bin_ops_spec!(
     obeys_shr_spec,
     shr_req,
     shr_spec
+);
+
+def_bin_ops_assign_spec!(
+    core::ops::ShrAssign,
+    ExShrAssign,
+    ShrAssignSpec,
+    ShrAssignSpecImpl,
+    shr_assign,
+    obeys_shr_assign_spec,
+    shr_assign_req,
+    shr_assign_spec
 );
 
 macro_rules! def_uop_impls {
@@ -248,6 +382,30 @@ macro_rules! def_bop_impls {
                 }
 
                 pub assume_specification[ <$typ as $trait>::$fun ](x: $typ, y: $typ) -> $typ;
+            )*
+        }
+};
+}
+
+macro_rules! def_bop_assign_impls {
+    ($trait:path, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident, $self:ident, $rhs:ident, [$(($typ:ty, $req_expr:expr, $spec_expr:expr))*]) => {
+        $crate::vstd::prelude::verus! {
+            $(
+                impl $impl_trait for $typ {
+                    open spec fn $obeys() -> bool {
+                        true
+                    }
+
+                    open spec fn $req(&$self, $rhs: $typ) -> bool {
+                        $req_expr
+                    }
+
+                    open spec fn $spec(&$self, $rhs: $typ) -> &Self {
+                        &$spec_expr
+                    }
+                }
+
+                pub assume_specification[ <$typ as $trait>::$fun ](x: &mut $typ, y: $typ);
             )*
         }
 };
@@ -301,6 +459,22 @@ macro_rules! def_bop_impls_no_check {
 };
 }
 
+macro_rules! def_bop_assign_impls_no_check {
+    ($trait:path, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident, $self:ident, $rhs:ident, $op:tt, [$($typ:ty)*]) => {
+        $crate::vstd::prelude::verus! {
+            def_bop_assign_impls!($trait, $impl_trait, $fun, $obeys, $req, $spec, $self, $rhs, [
+                $(
+                    (
+                        $typ,
+                        true,
+                        $self $op $rhs
+                    )
+                )*
+            ]);
+        }
+};
+}
+
 macro_rules! def_bop_impls_check_overflow {
     ($trait:path, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident, $self:ident, $rhs:ident, $op:tt, [$($typ:ty)*]) => {
         $crate::vstd::prelude::verus! {
@@ -317,10 +491,42 @@ macro_rules! def_bop_impls_check_overflow {
 };
 }
 
+macro_rules! def_bop_assign_impls_check_overflow {
+    ($trait:path, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident, $self:ident, $rhs:ident, $op:tt, [$($typ:ty)*]) => {
+        $crate::vstd::prelude::verus! {
+            def_bop_assign_impls!($trait, $impl_trait, $fun, $obeys, $req, $spec, $self, $rhs, [
+                $(
+                    (
+                        $typ,
+                        ($self $op $rhs) as $typ == ($self $op $rhs),
+                        ($self $op $rhs) as $typ
+                    )
+                )*
+            ]);
+        }
+};
+}
+
 macro_rules! def_bop_impls_unsigned_div_rem {
     ($trait:path, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident, $self:ident, $rhs:ident, $op:tt, [$($typ:ty)*]) => {
         $crate::vstd::prelude::verus! {
             def_bop_impls!($trait, $impl_trait, $fun, $obeys, $req, $spec, $self, $rhs, [
+                $(
+                    (
+                        $typ,
+                        $rhs != 0,
+                        $self $op $rhs
+                    )
+                )*
+            ]);
+        }
+};
+}
+
+macro_rules! def_bop_assign_impls_unsigned_div_rem {
+    ($trait:path, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident, $self:ident, $rhs:ident, $op:tt, [$($typ:ty)*]) => {
+        $crate::vstd::prelude::verus! {
+            def_bop_assign_impls!($trait, $impl_trait, $fun, $obeys, $req, $spec, $self, $rhs, [
                 $(
                     (
                         $typ,
@@ -356,12 +562,48 @@ macro_rules! def_bop_impls_signed_div_rem {
 };
 }
 
+macro_rules! def_bop_assign_impls_signed_div_rem {
+    ($trait:path, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident, $self:ident, $rhs:ident, $op:tt, [$($typ:ty)*]) => {
+        $crate::vstd::prelude::verus! {
+            def_bop_assign_impls!($trait, $impl_trait, $fun, $obeys, $req, $spec, $self, $rhs, [
+                $(
+                    (
+                        $typ,
+                        $rhs != 0 && !($self == $typ::MIN && $rhs == -1),
+                        if $self >= 0 {
+                            ($self $op $rhs) as $typ
+                        } else {
+                            (-((-$self) $op ($rhs as int))) as $typ
+                        }
+                    )
+                )*
+            ]);
+        }
+};
+}
+
 // TODO: there are many more combinations of primitive integer types supported by Shl and Shr,
 // such as (Self = u8, Rhs = u64)
 macro_rules! def_bop_impls_shift {
     ($trait:path, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident, $self:ident, $rhs:ident, $op:tt, [$($typ:ty)*]) => {
         $crate::vstd::prelude::verus! {
             def_bop_impls!($trait, $impl_trait, $fun, $obeys, $req, $spec, $self, $rhs, [
+                $(
+                    (
+                        $typ,
+                        $rhs < $typ::BITS,
+                        $self $op $rhs
+                    )
+                )*
+            ]);
+        }
+};
+}
+
+macro_rules! def_bop_assign_impls_shift {
+    ($trait:path, $impl_trait:ident, $fun:ident, $obeys:ident, $req:ident, $spec:ident, $self:ident, $rhs:ident, $op:tt, [$($typ:ty)*]) => {
+        $crate::vstd::prelude::verus! {
+            def_bop_assign_impls!($trait, $impl_trait, $fun, $obeys, $req, $spec, $self, $rhs, [
                 $(
                     (
                         $typ,
@@ -389,7 +631,17 @@ def_bop_impls_check_overflow!(core::ops::Add, AddSpecImpl, add, obeys_add_spec, 
     isize i8 i16 i32 i64 i128
 ]);
 
+def_bop_assign_impls_check_overflow!(core::ops::AddAssign, AddAssignSpecImpl, add_assign, obeys_add_assign_spec, add_assign_req, add_assign_spec, self, rhs, +, [
+    usize u8 u16 u32 u64 u128
+    isize i8 i16 i32 i64 i128
+]);
+
 def_bop_impls_check_overflow!(core::ops::Sub, SubSpecImpl, sub, obeys_sub_spec, sub_req, sub_spec, self, rhs, -, [
+    usize u8 u16 u32 u64 u128
+    isize i8 i16 i32 i64 i128
+]);
+
+def_bop_assign_impls_check_overflow!(core::ops::SubAssign, SubAssignSpecImpl, sub_assign, obeys_sub_assign_spec, sub_assign_req, sub_assign_spec, self, rhs, -, [
     usize u8 u16 u32 u64 u128
     isize i8 i16 i32 i64 i128
 ]);
@@ -399,7 +651,16 @@ def_bop_impls_check_overflow!(core::ops::Mul, MulSpecImpl, mul, obeys_mul_spec, 
     isize i8 i16 i32 i64 i128
 ]);
 
+def_bop_assign_impls_check_overflow!(core::ops::MulAssign, MulAssignSpecImpl, mul_assign, obeys_mul_assign_spec, mul_assign_req, mul_assign_spec, self, rhs, *, [
+    usize u8 u16 u32 u64 u128
+    isize i8 i16 i32 i64 i128
+]);
+
 def_bop_impls_unsigned_div_rem!(core::ops::Div, DivSpecImpl, div, obeys_div_spec, div_req, div_spec, self, rhs, /, [
+    usize u8 u16 u32 u64 u128
+]);
+
+def_bop_assign_impls_unsigned_div_rem!(core::ops::DivAssign, DivAssignSpecImpl, div_assign, obeys_div_assign_spec, div_assign_req, div_assign_spec, self, rhs, /, [
     usize u8 u16 u32 u64 u128
 ]);
 
@@ -407,11 +668,23 @@ def_bop_impls_signed_div_rem!(core::ops::Div, DivSpecImpl, div, obeys_div_spec, 
     isize i8 i16 i32 i64 i128
 ]);
 
+def_bop_assign_impls_signed_div_rem!(core::ops::DivAssign, DivAssignSpecImpl, div_assign, obeys_div_assign_spec, div_assign_req, div_assign_spec, self, rhs, /, [
+    isize i8 i16 i32 i64 i128
+]);
+
 def_bop_impls_unsigned_div_rem!(core::ops::Rem, RemSpecImpl, rem, obeys_rem_spec, rem_req, rem_spec, self, rhs, %, [
     usize u8 u16 u32 u64 u128
 ]);
 
+def_bop_assign_impls_unsigned_div_rem!(core::ops::RemAssign, RemAssignSpecImpl, rem_assign, obeys_rem_assign_spec, rem_assign_req, rem_assign_spec, self, rhs, %, [
+    usize u8 u16 u32 u64 u128
+]);
+
 def_bop_impls_signed_div_rem!(core::ops::Rem, RemSpecImpl, rem, obeys_rem_spec, rem_req, rem_spec, self, rhs, %, [
+    isize i8 i16 i32 i64 i128
+]);
+
+def_bop_assign_impls_signed_div_rem!(core::ops::RemAssign, RemAssignSpecImpl, rem_assign, obeys_rem_assign_spec, rem_assign_req, rem_assign_spec, self, rhs, %, [
     isize i8 i16 i32 i64 i128
 ]);
 
@@ -420,7 +693,17 @@ def_bop_impls_no_check!(core::ops::BitAnd, BitAndSpecImpl, bitand, obeys_bitand_
     isize i8 i16 i32 i64 i128
 ]);
 
+def_bop_assign_impls_no_check!(core::ops::BitAndAssign, BitAndAssignSpecImpl, bitand_assign, obeys_bitand_assign_spec, bitand_assign_req, bitand_assign_spec, self, rhs, &, [
+    usize u8 u16 u32 u64 u128
+    isize i8 i16 i32 i64 i128
+]);
+
 def_bop_impls_no_check!(core::ops::BitOr, BitOrSpecImpl, bitor, obeys_bitor_spec, bitor_req, bitor_spec, self, rhs, |, [
+    usize u8 u16 u32 u64 u128
+    isize i8 i16 i32 i64 i128
+]);
+
+def_bop_assign_impls_no_check!(core::ops::BitOrAssign, BitOrAssignSpecImpl, bitor_assign, obeys_bitor_assign_spec, bitor_assign_req, bitor_assign_spec, self, rhs, |, [
     usize u8 u16 u32 u64 u128
     isize i8 i16 i32 i64 i128
 ]);
@@ -431,12 +714,27 @@ def_bop_impls_no_check!(core::ops::BitXor, BitXorSpecImpl, bitxor, obeys_bitxor_
     isize i8 i16 i32 i64 i128
 ]);
 
+def_bop_assign_impls_no_check!(core::ops::BitXorAssign, BitXorAssignSpecImpl, bitxor_assign, obeys_bitxor_assign_spec, bitxor_assign_req, bitxor_assign_spec, self, rhs, ^, [
+    usize u8 u16 u32 u64 u128
+    isize i8 i16 i32 i64 i128
+]);
+
 def_bop_impls_shift!(core::ops::Shl, ShlSpecImpl, shl, obeys_shl_spec, shl_req, shl_spec, self, rhs, <<, [
     usize u8 u16 u32 u64 u128
     isize i8 i16 i32 i64 i128
 ]);
 
+def_bop_assign_impls_shift!(core::ops::ShlAssign, ShlAssignSpecImpl, shl_assign, obeys_shl_assign_spec, shl_assign_req, shl_assign_spec, self, rhs, <<, [
+    usize u8 u16 u32 u64 u128
+    isize i8 i16 i32 i64 i128
+]);
+
 def_bop_impls_shift!(core::ops::Shr, ShrSpecImpl, shr, obeys_shr_spec, shr_req, shr_spec, self, rhs, >>, [
+    usize u8 u16 u32 u64 u128
+    isize i8 i16 i32 i64 i128
+]);
+
+def_bop_assign_impls_shift!(core::ops::ShrAssign, ShrAssignSpecImpl, shr_assign, obeys_shr_assign_spec, shr_assign_req, shr_assign_spec, self, rhs, >>, [
     usize u8 u16 u32 u64 u128
     isize i8 i16 i32 i64 i128
 ]);

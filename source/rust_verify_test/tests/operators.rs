@@ -352,3 +352,131 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_fails(e, 4)
 }
+
+test_verify_one_file! {
+    #[test] test_arith_assign verus_code! {
+        use std::ops::DivAssign;
+        use std::ops::RemAssign;
+        use vstd::std_specs::ops::AddAssignSpec;
+
+        fn test_generic<T: std::ops::AddAssign<T>>(x: T, y: T) -> (r: T)
+            requires
+                T::obeys_add_assign_spec(),
+                x.add_assign_req(y),
+            ensures
+                r == x.add_assign_spec(y),
+        {
+            let mut x = x;
+            x += y;
+            x
+        }
+
+        fn test1() {
+            use std::ops::AddAssign;
+            let mut x: u8 = 3;
+            x.add_assign(4);
+            assert(x == 7);
+            assert(false); // FAILS
+        }
+
+        fn test2() {
+            let mut x: u8 = 3;
+            let r = test_generic(x, 4);
+            assert(r == 7);
+            assert(false); // FAILS
+        }
+
+        fn test_shl(u: u16) {
+            use core::ops::Shl;
+            let mut u1 = u;
+            let mut u1 = u;
+            u1 <<= 15i16;
+            let mut u2 = u;
+            u2 <<= 16i16; // FAILS
+        }
+
+        fn test_shr(u: i16) {
+            use core::ops::Shr;
+            let mut u1 = u;
+            u1 >>= 15i16;
+            let mut u2 = u;
+            u2 >>= 16i16; // FAILS
+        }
+
+        fn test_signed_div() {
+            let mut x = 53i8;
+            x.div_assign(10i8);
+            assert(x == 5);
+            let mut x = (-53i8);
+            x.div_assign(10i8);
+            assert(x == -5);
+            let mut x = 53i8;
+            x.div_assign((-10i8));
+            assert(x == -5);
+            let mut x = (-53i8);
+            x.div_assign((-10i8));
+            assert(x == 5);
+            let mut x = (-128i8);
+            x.div_assign((-1i8)); // FAILS
+        }
+
+        fn test_signed_mod() {
+            let mut x = 53i8;
+            x.rem_assign(10i8);
+            assert(x == 3);
+            let mut x = (-53i8);
+            x.rem_assign(10i8);
+            assert(x == -3);
+            let mut x = 53i8;
+            x.rem_assign((-10i8));
+            assert(x == 3);
+            let mut x = (-53i8);
+            x.rem_assign((-10i8));
+            assert(x == -3);
+            let mut x = (-128i8);
+            x.rem_assign((-1i8)); // FAILS
+        }
+    } => Err(e) => assert_fails(e, 6)
+}
+
+test_verify_one_file! {
+    #[test] test_arith_assign_signed verus_code! {
+        fn test_signed_div() {
+            let mut x = 53i8;
+            x /= 10i8;
+            assert(x == 5);
+            let mut x = (-53i8);
+            x /= 10i8;
+            assert(x == -5);
+            let mut x = 53i8;
+            x /= (-10i8);
+            assert(x == -5);
+            let mut x = (-53i8);
+            x /= (-10i8);
+            assert(x == 5);
+            let mut x = (-128i8);
+            x /= (-1i8); // FAILS
+        }
+
+        fn test_signed_mod() {
+            let mut x = 53i8;
+            x %= 10i8;
+            assert(x == 3);
+            let mut x = (-53i8);
+            x %= 10i8;
+            assert(x == -3);
+            let mut x = 53i8;
+            x %= (-10i8);
+            assert(x == 3);
+            let mut x = (-53i8);
+            x %= (-10i8);
+            assert(x == -3);
+            let mut x = (-128i8);
+            x %= (-1i8); // FAILS
+        }
+    // TODO: } => Err(e) => assert_fails(e, 4)
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "div/mod on signed finite-width integers",
+        "div/mod on signed finite-width integers",
+    ])
+}
