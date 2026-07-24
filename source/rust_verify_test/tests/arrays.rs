@@ -103,21 +103,24 @@ test_verify_one_file! {
     #[test] test_array_set_assign_customized_op verus_code! {
         use vstd::prelude::*;
         use vstd::array::*;
+        use vstd::std_specs::ops::AddAssignSpec;
 
         #[derive(Clone, Copy)]
         struct A(u8);
 
         impl core::ops::AddAssign<u8> for A {
+            #[verifier::external_body]
             fn add_assign(&mut self, rhs: u8) {
             }
         }
 
         fn test(ar: &mut [A; 20])
         {
+            assume(ar[0].add_assign_req(1));
             ar[0] += 1;
         }
 
-    } => Err(e) => assert_vir_error_msg(e, "The verifier does not yet support the following Rust feature: overloaded op-assignment operator")
+    } => Ok(())
 }
 
 test_verify_one_file! {

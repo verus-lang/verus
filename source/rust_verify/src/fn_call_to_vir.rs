@@ -457,7 +457,7 @@ pub(crate) fn call_unary_method<'tcx>(
 }
 
 /// Common logic for all the overloaded methods
-fn call_overloaded_method<'tcx>(
+pub(crate) fn call_overloaded_method<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     span: Span,
     expr_typ: Typ,

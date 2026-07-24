@@ -3374,7 +3374,29 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             //    to something that evaluates in the appropriate order.
 
             if bctx.types.is_method_call(expr) {
-                unsupported_err!(expr.span, "overloaded op-assignment operator");
+                let lhs_ty = bctx.types.expr_ty_adjusted(lhs);
+                let rhs_ty = bctx.types.expr_ty_adjusted(rhs);
+                let lhs_vir = expr_to_vir_consume(bctx, lhs)?;
+                let rhs_vir = expr_to_vir_consume(bctx, rhs)?;
+                let fn_def_id = bctx
+                    .types
+                    .type_dependent_def_id(expr.hir_id)
+                    .expect("cannot get the function definition id for AssignOp");
+                let TyKind::Ref(_, self_ty, _) = lhs_ty.kind() else {
+                    crate::internal_err!(expr.span, "AssignOp: expected ref")
+                };
+                let trait_args =
+                    bctx.ctxt.tcx.mk_args(&[GenericArg::from(*self_ty), GenericArg::from(rhs_ty)]);
+                let args = Arc::new(vec![lhs_vir, rhs_vir]);
+                let e = crate::fn_call_to_vir::call_overloaded_method(
+                    bctx,
+                    expr.span,
+                    vir::ast_util::unit_typ(),
+                    fn_def_id,
+                    args,
+                    trait_args,
+                )?;
+                return Ok(ExprOrPlace::Expr(e));
             }
 
             if matches!(op.node, AssignOpKind::DivAssign | AssignOpKind::RemAssign) {
