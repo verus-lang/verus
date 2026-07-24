@@ -1047,6 +1047,7 @@ fn check_expr_in_pattern(expr: &Expr) -> Result<(), VirErr> {
             check_expr_in_pattern(expr1)?;
             check_expr_in_pattern(expr2)
         }
+        ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(..), expr1) => check_expr_in_pattern(expr1),
         _ => Err(error(&expr.span, "Verus Internal Error: bad PatternX::Expr")),
     }
 }
