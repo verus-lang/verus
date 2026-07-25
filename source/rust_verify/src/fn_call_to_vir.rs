@@ -32,9 +32,9 @@ use vir::ast::{
     ArithOp, ArrayKind, AssertQueryMode, AtomicallyKind, AutospecUsage, BinaryOp, BitshiftBehavior,
     BitwiseOp, BoundsCheck, BuiltinSpecFun, CallTarget, ChainedOp, ComputeMode, Constant, CrateId,
     Div0Behavior, ExprX, FieldOpr, FunX, HeaderExpr, HeaderExprX, InequalityOp, IntRange,
-    IntegerTypeBoundKind, MaskSpec, Mode, ModeCoercion, ModeWrapperMode, MultiOp, OverflowBehavior,
-    Place, PlaceX, Quant, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, VarBinder, VarBinderX,
-    VarIdent, VariantCheck, VirErr,
+    IntegerTypeBoundKind, LogicalOp, MaskSpec, Mode, ModeCoercion, ModeWrapperMode, MultiOp,
+    OverflowBehavior, Place, PlaceX, Quant, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, VarBinder,
+    VarBinderX, VarIdent, VariantCheck, VirErr,
 };
 use vir::ast_util::{
     const_int_from_string, mk_tuple_typ, mk_tuple_x, typ_to_diagnostic_str, types_equal,
@@ -2033,8 +2033,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             record_compilable_operator(bctx, expr, CompilableOperator::Implies);
 
             let (lhs, rhs) = mk_two_vir_args(bctx, expr.span, &args)?;
-            let vop = BinaryOp::Implies;
-            mk_expr(ExprX::Binary(vop, lhs, rhs))
+            mk_expr(ExprX::Logical(LogicalOp::Implies, lhs, rhs))
         }
         VerusItem::UnaryOp(UnaryOpItem::IeeeFloat(fop)) => {
             use crate::verus_items::IeeeFloatUnaryItem;
@@ -2782,6 +2781,9 @@ fn mk_is_smaller_than<'tcx>(
         let mk_bop = |op: BinaryOp, e1: vir::ast::Expr, e2: vir::ast::Expr| {
             bctx.spanned_typed_new(span, &tbool, ExprX::Binary(op, e1, e2))
         };
+        let mk_lop = |op: LogicalOp, e1: vir::ast::Expr, e2: vir::ast::Expr| {
+            bctx.spanned_typed_new(span, &tbool, ExprX::Logical(op, e1, e2))
+        };
         let mk_cmp = |lt: bool| -> Result<vir::ast::Expr, VirErr> {
             let e0 = expr_to_vir_consume(bctx, exp0)?;
             let e1 = expr_to_vir_consume(bctx, exp1)?;
@@ -2795,7 +2797,7 @@ fn mk_is_smaller_than<'tcx>(
                     let op1 = BinaryOp::Inequality(InequalityOp::Lt);
                     let e0 = expr_to_vir_consume(bctx, exp0)?;
                     let cmp1 = mk_bop(op1, e0, e1);
-                    Ok(mk_bop(BinaryOp::And, cmp0, cmp1))
+                    Ok(mk_lop(LogicalOp::And, cmp0, cmp1))
                 } else {
                     Ok(mk_bop(BinaryOp::Eq(Mode::Spec), e0, e1))
                 }
@@ -2809,15 +2811,15 @@ fn mk_is_smaller_than<'tcx>(
             if args1.len() < args0.len() {
                 // if z0 == z1, we can ignore the extra args0:
                 // z0 < z1 || z0 == z1
-                dec_exp = mk_bop(BinaryOp::Or, mk_cmp(true)?, mk_cmp(false)?);
+                dec_exp = mk_lop(LogicalOp::Or, mk_cmp(true)?, mk_cmp(false)?);
             } else {
                 // z0 < z1
                 dec_exp = mk_cmp(true)?;
             }
         } else {
             // x0 < x1 || (x0 == x1 && dec_exp)
-            let and = mk_bop(BinaryOp::And, mk_cmp(false)?, dec_exp);
-            dec_exp = mk_bop(BinaryOp::Or, mk_cmp(true)?, and);
+            let and = mk_lop(LogicalOp::And, mk_cmp(false)?, dec_exp);
+            dec_exp = mk_lop(LogicalOp::Or, mk_cmp(true)?, and);
         }
     }
     return Ok(dec_exp);

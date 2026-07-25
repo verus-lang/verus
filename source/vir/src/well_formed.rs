@@ -611,7 +611,7 @@ fn check_one_expr<Emit: EmitError>(
             }
         }
         ExprX::AssertBy { ensure, vars, .. } => match &ensure.x {
-            ExprX::Binary(crate::ast::BinaryOp::Implies, _, _) => {
+            ExprX::Logical(crate::ast::LogicalOp::Implies, _, _) => {
                 if !vars.is_empty() {
                     crate::messages::warning_maybe_if_in_local_crate(
                         warn_config,

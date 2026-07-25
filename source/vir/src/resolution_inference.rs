@@ -233,10 +233,10 @@ The analysis is pretty weak right now but could be improved.
 */
 
 use crate::ast::{
-    Arm, BinaryOp, ByRef, CtorUpdateTail, Datatype, Dt, Expr, ExprX, FieldOpr, Fun, FunWithVis,
-    Function, Ident, Mode, ModeWrapperMode, Params, Path, Pattern, PatternBinding, PatternX, Place,
-    PlaceX, ReadKind, SpannedTyped, Stmt, StmtX, Typ, TypDecoration, TypX, UnaryOpr,
-    UnfinalizedReadKind, VarBinders, VarIdent, VarIdentDisambiguate, VariantCheck, VirErr,
+    Arm, ByRef, CtorUpdateTail, Datatype, Dt, Expr, ExprX, FieldOpr, Fun, FunWithVis, Function,
+    Ident, Mode, ModeWrapperMode, Params, Path, Pattern, PatternBinding, PatternX, Place, PlaceX,
+    ReadKind, SpannedTyped, Stmt, StmtX, Typ, TypDecoration, TypX, UnaryOpr, UnfinalizedReadKind,
+    VarBinders, VarIdent, VarIdentDisambiguate, VariantCheck, VirErr,
 };
 use crate::ast_to_sst::Maybe;
 use crate::ast_util::{bool_typ, mk_bool, typ_to_diagnostic_str, undecorate_typ, unit_typ};
@@ -873,7 +873,7 @@ impl<'a> Builder<'a> {
 
                 Maybe::Some(bb)
             }
-            ExprX::Binary(BinaryOp::And | BinaryOp::Or | BinaryOp::Implies, e1, e2) => {
+            ExprX::Logical(_op, e1, e2) => {
                 bb = unwrap!(self.build(e1, bb));
 
                 let snd_block = self.new_bb(AstPosition::Before(e2.span.id), false);

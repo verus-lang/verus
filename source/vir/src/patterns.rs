@@ -137,7 +137,7 @@ fn pattern_to_exprs_rec(
                 );
                 let pattern_test =
                     pattern_to_exprs_rec(ctx, &binder.a, &field_place, bindings, in_immut)?;
-                let and = ExprX::Binary(BinaryOp::And, test, pattern_test);
+                let and = ExprX::Logical(LogicalOp::And, test, pattern_test);
                 test = SpannedTyped::new(&pattern.span, &t_bool, and);
             }
 
