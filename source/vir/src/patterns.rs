@@ -1,11 +1,11 @@
 use crate::ast::*;
 use crate::ast_util::{
     bool_typ, conjoin, disjoin, if_then_else, mk_eq, mk_ineq, place_to_spec_expr,
-    undecorate_typ, int_typ, mk_int_lit_from_usize,
+    int_typ, mk_int_lit_from_usize,
 };
 use crate::context::GlobalCtx;
 use crate::def::Spanned;
-use crate::messages::{Span, error, internal_error};
+use crate::messages::{Span, error};
 use std::sync::Arc;
 
 pub fn pattern_to_exprs(
@@ -198,13 +198,7 @@ fn pattern_to_exprs_rec(
             pattern_to_exprs_rec(ctx, sub_pat, &deref_place, bindings, in_immut)
         }
         PatternX::Slice(patterns) => {
-            let (kind, elem_typ) = match &*undecorate_typ(&pattern.typ) {
-                TypX::Primitive(Primitive::Array, ts) => (ArrayKind::Array, ts[0].clone()),
-                TypX::Primitive(Primitive::Slice, ts) => (ArrayKind::Slice, ts[0].clone()),
-                _ => {
-                    return Err(internal_error(&pattern.span, "expected type to be slice or array"));
-                }
-            };
+            let (kind, elem_typ) = crate::ast_util::array_kind_of_typ(&pattern.typ);
 
             let mut conjuncts = vec![];
 

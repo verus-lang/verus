@@ -1532,3 +1532,32 @@ impl AssertQueryMode {
         }
     }
 }
+
+pub(crate) fn array_kind_of_typ(t: &Typ) -> (ArrayKind, Typ) {
+    match &*undecorate_typ(t) {
+        TypX::Primitive(Primitive::Array, ts) => (ArrayKind::Array, ts[0].clone()),
+        TypX::Primitive(Primitive::Slice, ts) => (ArrayKind::Slice, ts[0].clone()),
+        _ => panic!("expected type to be slice or array"),
+    }
+}
+
+pub(crate) fn const_array_len(t: &Typ) -> Option<usize> {
+    match &*undecorate_typ(t) {
+        TypX::Primitive(Primitive::Array, ts) => (ArrayKind::Array, ts[0].clone()),
+        TypX::Primitive(Primitive::Slice, ts) => (ArrayKind::Slice, ts[0].clone()),
+        _ => panic!("expected type to be slice or array"),
+    }
+}
+
+
+pub(crate) fn const_usize_of_expr(e: &Expr) -> Option<usize> {
+    match &e.x {
+        ExprX::Const(Constant::Int(bignum)) => {
+            match bignum.try_into() {
+                Ok(i) => Some(i),
+                Err(_) => None,
+            }
+        }
+        _ => None,
+    }
+}

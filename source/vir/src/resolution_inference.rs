@@ -237,9 +237,10 @@ use crate::ast::{
     Function, Ident, Mode, ModeWrapperMode, Params, Path, Pattern, PatternBinding, PatternX, Place,
     PlaceX, ReadKind, SpannedTyped, Stmt, StmtX, Typ, TypDecoration, TypX, UnaryOpr,
     UnfinalizedReadKind, VarBinders, VarIdent, VarIdentDisambiguate, VariantCheck, VirErr,
+    Primitive, ArrayKind, BoundsCheck,
 };
 use crate::ast_to_sst::Maybe;
-use crate::ast_util::{bool_typ, mk_bool, typ_to_diagnostic_str, undecorate_typ, unit_typ};
+use crate::ast_util::{bool_typ, mk_bool, typ_to_diagnostic_str, undecorate_typ, unit_typ, mk_int_lit_from_usize};
 use crate::ast_visitor::VisitorScopeMap;
 use crate::def::Spanned;
 use crate::messages::error;
@@ -288,7 +289,7 @@ pub(crate) fn infer_resolution(
 }
 
 /// Represents the tree structure of "places" under consideration.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum PlaceTree {
     Leaf(Typ),
     /// We have 1 child for every non-ghost field. Use None in place of the ghost fields.
@@ -296,6 +297,8 @@ enum PlaceTree {
     /// Use the same ordering as on the datatype.
     Struct(Typ, Dt, Vec<Vec<Option<PlaceTree>>>),
     MutRef(Typ, Box<PlaceTree>),
+    /// We only handle arrays of known fixed length (i.e., non-generic length)
+    Array(Typ, Vec<PlaceTree>),
 }
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
@@ -344,6 +347,7 @@ struct LocalCollection<'a> {
 pub(crate) enum ProjectionTyped {
     StructField(FieldOpr, Typ),
     DerefMut(Typ),
+    Index(usize, Typ),
 }
 
 /// "Flattened" form of the vir::ast::Place type.
@@ -360,6 +364,7 @@ struct FlattenedPlaceTyped {
 enum Projection {
     StructField((usize, usize)),
     DerefMut,
+    Index(usize),
 }
 
 // note: sort_and_remove_redundant relies on sorting order
@@ -2100,6 +2105,26 @@ fn moves_and_muts_for_pattern(
                 moves_and_muts_for_pattern_rec(sub_pat, projs, out, datatypes, modes, errors);
                 projs.pop();
             }
+            PatternX::Slice(sub_patterns) => {
+                let (kind, elem_typ) = crate::ast_util::array_kind_of_typ(&pattern.typ);
+                match kind {
+                    ArrayKind::Array => {
+                        for (i, sub_pat) in sub_patterns.iter().enumerate() {
+                            let proj = ProjectionTyped::Index(i, elem_typ.clone());
+                            projs.push(proj);
+                            moves_and_muts_for_pattern_rec(sub_pat, projs, out, datatypes, modes, errors);
+                            projs.pop();
+                        }
+                    }
+                    ArrayKind::Slice => {
+                        // We can assume there are no moves out of a slice pattern
+                        // TODO: would be good to sanity check anyway
+                        if pattern_has_mut(pattern) {
+                            out.push((projs.clone(), ByRef::MutRef));
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -2229,6 +2254,17 @@ impl<'a> LocalCollection<'a> {
                             *tree = PlaceTree::Struct(typ.clone(), dt.clone(), fields);
                         }
                     },
+                    TypX::Primitive(Primitive::Array, typs) => {
+                        assert!(typs.len() == 2);
+                        let len: usize = match &*typs[1] {
+                            TypX::ConstInt(n) => { n.try_into().unwrap() },
+                            _ => { todo!("slice"); }
+                        };
+                        let children =
+                            std::iter::repeat_n(PlaceTree::Leaf(typs[0].clone()), len)
+                                .collect::<Vec<PlaceTree>>();
+                        *tree = PlaceTree::Array(typ.clone(), children);
+                    }
                     _ => {
                         panic!("Verus internal error: unexpected type from projections")
                     }
@@ -2240,6 +2276,7 @@ impl<'a> LocalCollection<'a> {
                     Projection::StructField(field_opr_to_indices(field_opr, datatypes))
                 }
                 ProjectionTyped::DerefMut(_typ) => Projection::DerefMut,
+                ProjectionTyped::Index(idx, _typ) => Projection::Index(*idx),
             };
             output_projections.push(projection);
 
@@ -2251,7 +2288,7 @@ impl<'a> LocalCollection<'a> {
                         // manipulate a ghost place
                         tree = subtrees[*variant_idx][*field_idx].as_mut().unwrap();
                     }
-                    PlaceTree::MutRef(..) => {
+                    PlaceTree::MutRef(..) | PlaceTree::Array(..) => {
                         panic!(
                             "Verus internal error: extend_tree failed, conflicting projection type"
                         );
@@ -2259,7 +2296,7 @@ impl<'a> LocalCollection<'a> {
                 },
                 Projection::DerefMut => match tree {
                     PlaceTree::Leaf(_) => unreachable!(),
-                    PlaceTree::Struct(..) => {
+                    PlaceTree::Struct(..) | PlaceTree::Array(..) => {
                         panic!(
                             "Verus internal error: extend_tree failed, conflicting projection type"
                         );
@@ -2268,6 +2305,17 @@ impl<'a> LocalCollection<'a> {
                         tree = &mut *inner;
                     }
                 },
+                Projection::Index(idx) => match tree {
+                    PlaceTree::Leaf(_) => unreachable!(),
+                    PlaceTree::Array(_, subtrees) => {
+                        tree = &mut subtrees[*idx];
+                    }
+                    PlaceTree::Struct(..) | PlaceTree::MutRef(..) => {
+                        panic!(
+                            "Verus internal error: extend_tree failed, conflicting projection type"
+                        );
+                    }
+                }
             }
 
             cur_typ = projection_typed.typ();
@@ -2293,6 +2341,13 @@ impl<'a> LocalCollection<'a> {
                         _ => unreachable!(),
                     };
                     tree = &inner_tree;
+                }
+                Projection::Index(idx) => {
+                    let inner_trees = match tree {
+                        PlaceTree::Array(_ty, inner_trees) => inner_trees,
+                        _ => unreachable!(),
+                    };
+                    tree = &inner_trees[*idx];
                 }
             }
         }
@@ -2348,6 +2403,15 @@ impl<'a> LocalCollection<'a> {
                         SpannedTyped::new(span, inner_tree.typ(), PlaceX::DerefMut(ast_place));
                     tree = &inner_tree;
                 }
+                Projection::Index(idx) => {
+                    let inner_trees = match tree {
+                        PlaceTree::Array(_ty, inner_trees) => inner_trees,
+                        _ => unreachable!(),
+                    };
+                    let inner_tree = &inner_trees[*idx];
+                    ast_place = SpannedTyped::new(span, inner_tree.typ(), PlaceX::Index(ast_place, mk_int_lit_from_usize(span, *idx), ArrayKind::Array, BoundsCheck::Allow));
+                    tree = inner_tree;
+                }
             }
         }
         ast_place
@@ -2399,6 +2463,13 @@ impl<'a> LocalCollection<'a> {
                     cur.projections.pop();
                 }
             }
+            PlaceTree::Array(_t, children) => {
+                for (i, child) in children.iter().enumerate() {
+                    cur.projections.push(Projection::Index(i));
+                    Self::traverse_rec(child, cur, output, go_inside_muts);
+                    cur.projections.pop();
+                }
+            }
         }
     }
 
@@ -2427,6 +2498,9 @@ impl<'a> LocalCollection<'a> {
                     Some(PlaceTree::Struct(..)) => {
                         panic!("Verus Internal Error: unexpected PlaceTree::Struct")
                     }
+                    Some(PlaceTree::Array(..)) => {
+                        panic!("Verus Internal Error: unexpected PlaceTree::Array")
+                    }
                     Some(PlaceTree::MutRef(_, child)) => {
                         fp.projections.push(Projection::DerefMut);
                         let child: &PlaceTree = &child;
@@ -2440,7 +2514,10 @@ impl<'a> LocalCollection<'a> {
                     None => (fp, None),
                     Some(PlaceTree::Leaf(_)) => (fp, None),
                     Some(PlaceTree::MutRef(..)) => {
-                        panic!("Verus Internal Error: unexpected PlaceTree::Struct")
+                        panic!("Verus Internal Error: unexpected PlaceTree::MutRef")
+                    }
+                    Some(PlaceTree::Array(..)) => {
+                        panic!("Verus Internal Error: unexpected PlaceTree::Array")
                     }
                     Some(PlaceTree::Struct(_, _, variants)) => {
                         let indices = field_opr_to_indices(field_opr, &self.datatypes);
@@ -2456,9 +2533,28 @@ impl<'a> LocalCollection<'a> {
             PlaceX::WithExpr(..) | PlaceX::UserDefinedTypInvariantObligation(..) => {
                 panic!("Verus Internal Error: unexpected place");
             }
-            PlaceX::Index(p, ..) => {
+            PlaceX::Index(p, idx_expr, ..) => {
                 let m = self.try_get_flattened_place_rec(p);
-                m.map(|(fp, _tree)| (fp, None))
+                m.map(|(mut fp, tree)| match tree {
+                    None => (fp, None),
+                    Some(PlaceTree::Leaf(_)) => (fp, None),
+                    Some(PlaceTree::Struct(..)) => {
+                        panic!("Verus Internal Error: unexpected PlaceTree::Struct")
+                    }
+                    Some(PlaceTree::MutRef(..)) => {
+                        panic!("Verus Internal Error: unexpected PlaceTree::MutRef")
+                    }
+                    Some(PlaceTree::Array(_, children)) => {
+                        match crate::ast_util::const_usize_of_expr(idx_expr) {
+                            Some(i) if i < children.len() => {
+                                fp.projections.push(Projection::Index(i));
+                                let child: &PlaceTree = &children[i];
+                                (fp, Some(child))
+                            }
+                            _ => (fp, None)
+                        }
+                    }
+                })
             }
         }
     }
@@ -2516,6 +2612,7 @@ impl PlaceTree {
             PlaceTree::Leaf(t) => t,
             PlaceTree::Struct(t, _, _) => t,
             PlaceTree::MutRef(t, _) => t,
+            PlaceTree::Array(t, _) => t,
         }
     }
 }
@@ -2666,6 +2763,7 @@ impl ProjectionTyped {
         match self {
             ProjectionTyped::StructField(_, typ) => typ.clone(),
             ProjectionTyped::DerefMut(typ) => typ.clone(),
+            ProjectionTyped::Index(_, typ) => typ.clone(),
         }
     }
 }
@@ -2942,6 +3040,13 @@ fn pretty_tree(pt: &PlaceTree, datatypes: &HashMap<Path, Datatype>) -> String {
             }
             format!(".{{{:}}}", v.join(", "))
         }
+        PlaceTree::Array(_, children) => {
+            let mut v = vec![];
+            for (i, child) in children.iter().enumerate() {
+                v.push(format!("{:}{:}", i, pretty_tree(child, datatypes)));
+            }
+            format!(".[{:}]", v.join(", "))
+        }
     }
 }
 
@@ -3042,6 +3147,14 @@ fn pretty_flattened_place(locals: &LocalCollection, fp: &FlattenedPlace) -> Stri
                 let x = pretty_field_name(dt, *variant_idx, *field_idx, &locals.datatypes);
                 let x = format!(".{:}", x);
                 (x, inner_tree.as_ref().unwrap())
+            }
+            Projection::Index(idx) => {
+                let inner_tree = match tree {
+                    PlaceTree::Array(_, trees) => &trees[*idx],
+                    _ => unreachable!(),
+                };
+                let x = format!("[{:}]", idx);
+                (x, inner_tree)
             }
         };
         s += &x;
