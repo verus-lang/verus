@@ -172,7 +172,7 @@ jobs:
           . ../tools/activate
           vargo clean
           CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true vargo build --release
-          VERUS_Z3_PATH="$(pwd)/z3" cargo run -p vstd_build -- target-verus/release
+          VERUS_Z3_PATH="$(pwd)/z3" cargo run -p cargo-verus -- build --release --manifest-path vstd/Cargo.toml --features nonzero_internals
 
       - name: full tests
         working-directory: ./source
@@ -230,7 +230,7 @@ jobs:
           . ../tools/activate
           vargo clean
           vargo build
-          VERUS_Z3_PATH="$(pwd)/z3" cargo run -p vstd_build -- target-verus/debug
+          VERUS_Z3_PATH="$(pwd)/z3" cargo run -p cargo-verus -- build --manifest-path vstd/Cargo.toml --features nonzero_internals
 
       - name: basic tests
         working-directory: ./source
@@ -282,21 +282,21 @@ jobs:
             "singular")
               hdiutil attach ../Singular-4-3-2_M1.dmg
               DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo build --features singular
-              VERUS_Z3_PATH="$PWD/z3" vargo run -p vstd_build -- target-verus/debug
+              VERUS_Z3_PATH="$PWD/z3" cargo run -p cargo-verus -- build --manifest-path vstd/Cargo.toml --features nonzero_internals
               ;;
             "record-history")
               vargo build --features record-history
-              VERUS_Z3_PATH="$PWD/z3" vargo run -p vstd_build -- target-verus/debug
+              VERUS_Z3_PATH="$PWD/z3" cargo run -p cargo-verus -- build --manifest-path vstd/Cargo.toml --features nonzero_internals
               ;;
             "no-std")
               vargo build
-              VERUS_Z3_PATH="$PWD/z3" vargo run -p vstd_build -- target-verus/debug --no-std
+              VERUS_Z3_PATH="$PWD/z3" cargo run -p cargo-verus -- build --manifest-path vstd/Cargo.toml --no-default-features --features alloc,nonzero_internals
               cd ..
               cargo build --manifest-path source/vstd/Cargo.toml --no-default-features --features alloc
               ;;
             "no-alloc")
               vargo build
-              VERUS_Z3_PATH="$PWD/z3" vargo run -p vstd_build -- target-verus/debug --no-std --no-alloc
+              VERUS_Z3_PATH="$PWD/z3" cargo run -p cargo-verus -- build --manifest-path vstd/Cargo.toml --no-default-features --features nonzero_internals
               cd ..
               cargo build --manifest-path source/vstd/Cargo.toml --no-default-features
               ;;
