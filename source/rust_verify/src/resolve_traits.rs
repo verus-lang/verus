@@ -35,7 +35,8 @@ pub(crate) fn resolve_trait_item<'tcx>(
         crate::internal_err!(span, "resolve_trait_method called for non-trait item");
     };
 
-    let normalized_args = tcx.normalize_erasing_regions(typing_env, args);
+    let normalized_args =
+        tcx.normalize_erasing_regions(typing_env, rustc_middle::ty::Unnormalized::new_wip(args));
     let trait_ref = TraitRef::new(tcx, trait_def_id, normalized_args);
 
     let pseudo_canonical_inp =

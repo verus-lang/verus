@@ -984,7 +984,7 @@ impl Verifier {
                 }
                 ValidityResult::UnexpectedOutput(err) => {
                     util::PANIC_ON_DROP_VEC.store(false, std::sync::atomic::Ordering::SeqCst);
-                    panic!("unexpected output from solver: {} {}", &context.span.as_string, err);
+                    panic!("unexpected output from solver: {} {}", context.span.as_string, err);
                 }
             }
         }
@@ -2767,8 +2767,8 @@ impl Verifier {
                     "{}   ###   {}   ###   {}   ###   {}",
                     vir::ast_util::path_as_friendly_rust_name(&imp.x.impl_path),
                     vir::ast_util::path_as_friendly_rust_name(&imp.x.trait_path),
-                    &ts.join(", "),
-                    &imp.span.as_string,
+                    ts.join(", "),
+                    imp.span.as_string,
                 )
                 .map_err(|e| io_vir_err("log_impl_names".to_string(), e))
                 .map_err(map_err_diagnostics)?;

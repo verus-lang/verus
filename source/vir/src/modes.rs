@@ -1047,6 +1047,7 @@ fn check_expr_in_pattern(expr: &Expr) -> Result<(), VirErr> {
             check_expr_in_pattern(expr1)?;
             check_expr_in_pattern(expr2)
         }
+        ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(..), expr1) => check_expr_in_pattern(expr1),
         _ => Err(error(&expr.span, "Verus Internal Error: bad PatternX::Expr")),
     }
 }
@@ -2116,7 +2117,7 @@ fn check_expr(
                         &expr.span,
                         format!(
                             "cannot perform operation with mode {}, {:?},\n{:?}",
-                            op_mode, &expr.x, &e1
+                            op_mode, expr.x, e1
                         ),
                     ));
                 }
@@ -2124,7 +2125,7 @@ fn check_expr(
             if !mode_le(outer_mode, *op_mode) {
                 return Err(error(
                     &expr.span,
-                    format!("cannot perform operation with mode {}, {:?}", op_mode, &expr.x),
+                    format!("cannot perform operation with mode {}, {:?}", op_mode, expr.x),
                 ));
             }
             let param_mode = mode_join(outer_mode, *from_mode);

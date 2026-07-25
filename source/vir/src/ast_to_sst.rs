@@ -574,7 +574,7 @@ pub(crate) fn init_var(span: &Span, x: &UniqueIdent, exp: &Exp) -> Stm {
 
 pub(crate) fn get_function(ctx: &Ctx, span: &Span, name: &Fun) -> Result<Function, VirErr> {
     match ctx.func_map.get(name) {
-        None => Err(error(span, format!("could not find function {:?}", &name))),
+        None => Err(error(span, format!("could not find function {:?}", name))),
         Some(func) => Ok(func.clone()),
     }
 }
@@ -585,7 +585,7 @@ pub(crate) fn get_function_sst(
     name: &Fun,
 ) -> Result<crate::sst::FunctionSst, VirErr> {
     match ctx.func_sst_map.get(name) {
-        None => Err(error(span, format!("could not find function {:?}", &name))),
+        None => Err(error(span, format!("could not find function {:?}", name))),
         Some(func) => Ok(func.clone()),
     }
 }

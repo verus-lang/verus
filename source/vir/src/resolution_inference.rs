@@ -2962,7 +2962,7 @@ fn pretty_basic_blocks(
     for (i, bb) in cfg.basic_blocks.iter().enumerate() {
         v.push(format!("BasicBlock {:}:\n", i));
         v.push(format!("    is_entry = {:}\n", bb.is_entry));
-        v.push(format!("    Predecessors: {:?}\n", &pretty_bb_list(&bb.predecessors)));
+        v.push(format!("    Predecessors: {:?}\n", pretty_bb_list(&bb.predecessors)));
         v.push(format!(
             "    (always_add_resolution_at_start = {:?})\n",
             bb.always_add_resolution_at_start
@@ -2984,7 +2984,7 @@ fn pretty_basic_blocks(
             None => {}
         }
         v.push("    ----\n".to_string());
-        v.push(format!("    Successors: {:?}\n", &pretty_bb_list(&bb.successors)));
+        v.push(format!("    Successors: {:?}\n", pretty_bb_list(&bb.successors)));
         v.push(format!("    is_exit = {:}\n", bb.is_exit));
         v.push("\n".to_string());
     }
@@ -3476,7 +3476,7 @@ fn apply_resolutions(
                 id_map.get_mut(&expr.span.id)
             {
                 if *seen_yet {
-                    panic!("Verus internal error: duplicate AstId {:?}", &expr.span);
+                    panic!("Verus internal error: duplicate AstId {:?}", expr.span);
                 }
                 *seen_yet = true;
 
