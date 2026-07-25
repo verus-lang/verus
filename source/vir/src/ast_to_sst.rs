@@ -1,7 +1,7 @@
 use crate::ast::{
     ArithOp, AssertQueryMode, AtomicallyKind, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp,
     BoundsCheck, ByRef, CallTarget, ComputeMode, Constant, Div0Behavior, Dt, Expr, ExprX, FieldOpr,
-    Fun, Function, Ident, IntRange, InvAtomicity, LoopInvariantKind, MaskSpec, Mode,
+    Fun, Function, Ident, IntRange, InvAtomicity, LogicalOp, LoopInvariantKind, MaskSpec, Mode,
     OverflowBehavior, PatternBinding, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX, Typ,
     TypX, Typs, UnaryOp, UnaryOpr, UnwindSpec, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent,
     VarIdentDisambiguate, VariantCheck, VirErr,
@@ -1608,9 +1608,6 @@ pub(crate) fn expr_to_stm_opt(
         ExprX::Assign { place, rhs, op: Some(binary_op), resolve, typ: _ } => {
             assert!(!resolve);
 
-            // No support for short-circuit ops here
-            assert!(!matches!(binary_op, BinaryOp::And | BinaryOp::Or | BinaryOp::Implies));
-
             let (stms_r, e_r) = expr_to_stm_opt(ctx, state, rhs)?;
             let e_r = to_exp_or_return_never!(e_r, stms_r);
 
@@ -1940,60 +1937,66 @@ pub(crate) fn expr_to_stm_opt(
             }
             Ok((stms, Maybe::Some(Value::Exp(mk_exp(ExpX::UnaryOpr(op, exp))))))
         }
-        ExprX::Binary(op, e1, e2) => {
-            // Handle short-circuiting, when applicable.
-            // The pair (proceed_on, other) means:
-            // If e1 evaluates to `proceed_on`, then evaluate and
-            // return e2; otherwise, return the value `other`
-            // (without evaluating `e2`).
-            // Also note: if `e2` is a pure expression, we don't need to do the
-            // special handling.
-            let short_circuit = match op {
-                BinaryOp::And => Some((true, false)),
-                BinaryOp::Implies => Some((true, true)),
-                BinaryOp::Or => Some((false, true)),
-                _ => None,
-            };
+        ExprX::Logical(op, e1, e2) => {
             let (stms1, e1) = expr_to_stm_opt(ctx, state, e1)?;
+            let exp1 = to_exp_or_return_never!(e1.clone(), stms1);
+
             let (stms2, e2) = expr_to_stm_opt(ctx, state, e2)?;
-            match (short_circuit, stms2.len()) {
-                (Some((proceed_on, other)), n) if n > 0 => {
-                    // and:
-                    //   if e1 { stmts2; e2 } else { false }
-                    // implies:
-                    //   if e1 { stmts2; e2 } else { true }
-                    // or:
-                    //   if e1 { true } else { stmts2; e2 }
-                    let bx = ExpX::Const(Constant::Bool(other));
-                    let b = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), bx);
-                    let b = Maybe::Some(Value::Exp(b));
-                    if proceed_on {
-                        Ok(if_to_stm(state, expr, stms1, &e1, stms2, &e2, vec![], &b))
-                    } else {
-                        Ok(if_to_stm(state, expr, stms1, &e1, vec![], &b, stms2, &e2))
-                    }
-                }
-                _ => {
-                    let mut sequr = Sequencer::new();
-                    push_or_return_never!(sequr.push(
-                        stms1,
-                        e1,
-                        Immutable(LocalDeclKind::TempViaAssign)
-                    ));
-                    push_or_return_never!(sequr.push(
-                        stms2,
-                        e2,
-                        Immutable(LocalDeclKind::TempViaAssign)
-                    ));
-                    let (mut stms, e1, e2) = sequr.into_stms_exps_expect_2(state)?;
 
-                    let (mut stms3, bin) =
-                        binary_op_exp(ctx, state, &expr.span, &expr.typ, *op, &e1, &e2);
-                    stms.append(&mut stms3);
+            if stms2.len() == 0
+                && let Maybe::Some(exp2) = e2.clone().to_maybe_exp()
+            {
+                // If e2 is pure, we can lower the logical op to an ordinary, pure Exp
+                let sst_op = match op {
+                    LogicalOp::And => sst::BinaryOp::And,
+                    LogicalOp::Implies => sst::BinaryOp::Implies,
+                    LogicalOp::Or => sst::BinaryOp::Or,
+                };
+                let binx = ExpX::Binary(sst_op, exp1.clone(), exp2.clone());
+                let bin = SpannedTyped::new(&expr.span, &bool_typ(), binx);
+                Ok((stms1, Maybe::Some(Value::Exp(bin))))
+            } else {
+                // Handle short-circuiting.
+                // The pair (proceed_on, other) means:
+                // If e1 evaluates to `proceed_on`, then evaluate and
+                // return e2; otherwise, return the value `other`
+                // (without evaluating `e2`).
+                let (proceed_on, other) = match op {
+                    LogicalOp::And => (true, false),
+                    LogicalOp::Implies => (true, true),
+                    LogicalOp::Or => (false, true),
+                };
 
-                    Ok((stms, Maybe::Some(Value::Exp(bin))))
+                // and:
+                //   if e1 { stmts2; e2 } else { false }
+                // implies:
+                //   if e1 { stmts2; e2 } else { true }
+                // or:
+                //   if e1 { true } else { stmts2; e2 }
+                let bx = ExpX::Const(Constant::Bool(other));
+                let b = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), bx);
+                let b = Maybe::Some(Value::Exp(b));
+                if proceed_on {
+                    Ok(if_to_stm(state, expr, stms1, &e1, stms2, &e2, vec![], &b))
+                } else {
+                    Ok(if_to_stm(state, expr, stms1, &e1, vec![], &b, stms2, &e2))
                 }
             }
+        }
+        ExprX::Binary(op, e1, e2) => {
+            let mut sequr = Sequencer::new();
+
+            let (stms1, e1) = expr_to_stm_opt(ctx, state, e1)?;
+            push_or_return_never!(sequr.push(stms1, e1, Immutable(LocalDeclKind::TempViaAssign)));
+
+            let (stms2, e2) = expr_to_stm_opt(ctx, state, e2)?;
+            push_or_return_never!(sequr.push(stms2, e2, Immutable(LocalDeclKind::TempViaAssign)));
+            let (mut stms, e1, e2) = sequr.into_stms_exps_expect_2(state)?;
+
+            let (mut stms3, bin) = binary_op_exp(ctx, state, &expr.span, &expr.typ, *op, &e1, &e2);
+            stms.append(&mut stms3);
+
+            Ok((stms, Maybe::Some(Value::Exp(bin))))
         }
         ExprX::BinaryOpr(op, e1, e2) => {
             let (stms1, e1) = expr_to_stm_opt(ctx, state, e1)?;
@@ -2311,7 +2314,7 @@ pub(crate) fn expr_to_stm_opt(
             state.pop_scope();
 
             // Translate ensure into an assume
-            let implyx = ExprX::Binary(BinaryOp::Implies, require.clone(), ensure.clone());
+            let implyx = ExprX::Logical(LogicalOp::Implies, require.clone(), ensure.clone());
             let imply = SpannedTyped::new(&ensure.span, &Arc::new(TypX::Bool), implyx);
             state.push_scope();
             let vars = state.rename_binders_exp(vars);
@@ -3819,11 +3822,6 @@ fn binary_op_exp(
         BinaryOp::RealArith(op) => sst::BinaryOp::RealArith(op),
         BinaryOp::IeeeFloat(op) => sst::BinaryOp::IeeeFloat(op),
         BinaryOp::StrGetChar => sst::BinaryOp::StrGetChar,
-
-        // short-circuiting, caller must check these are pure, first
-        BinaryOp::And => sst::BinaryOp::And,
-        BinaryOp::Or => sst::BinaryOp::Or,
-        BinaryOp::Implies => sst::BinaryOp::Implies,
     };
     let bin = SpannedTyped::new(span, typ, ExpX::Binary(pure_op, e1.clone(), e2.clone()));
 
