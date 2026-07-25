@@ -1,11 +1,11 @@
 use std::collections::{BTreeMap as Map, BTreeSet as Set};
 use std::env;
-use std::io::Write;
+use std::io::{BufReader, Write};
 use std::path::PathBuf;
-use std::process::{Command, ExitCode};
+use std::process::{Command, ExitCode, Stdio};
 
 use anyhow::{Context, Result, anyhow, bail};
-use cargo_metadata::PackageId;
+use cargo_metadata::{Message, PackageId};
 use clap::ValueEnum;
 use colored::Colorize;
 
@@ -161,10 +161,14 @@ pub fn plan_cargo_run(cfg: VerusConfig) -> Result<CargoRunPlan> {
     let all_packages = metadata_index.get_transitive_closure(root_packages.clone());
     let dep_packages: Set<PackageId> = all_packages.difference(&root_packages).cloned().collect();
 
-    let is_building_vstd = root_packages.len() == 1
-        && root_packages
+    let only_primary_vstd: Option<PackageId> = if root_packages.len() == 1 {
+        root_packages
             .iter()
-            .all(|package_id| metadata_index.get(package_id).verus_metadata.is_vstd);
+            .find(|package_id| metadata_index.get(package_id).verus_metadata.is_vstd)
+            .cloned()
+    } else {
+        None
+    };
 
     let packages_to_process = &all_packages;
     let packages_to_verify = if cfg.verify_deps { &all_packages } else { &root_packages };
@@ -242,7 +246,7 @@ pub fn plan_cargo_run(cfg: VerusConfig) -> Result<CargoRunPlan> {
     }
 
     let plan = make_cargo_plan(
-        is_building_vstd,
+        only_primary_vstd,
         cfg.current_dir,
         cfg.subcommand,
         cargo_args,
@@ -364,7 +368,8 @@ fn make_cargo_args(opts: &CargoOptions, for_cargo_metadata: bool, verbosity: u8)
 
 #[derive(Clone, Debug)]
 pub struct CargoRunPlan {
-    pub is_building_vstd: bool,
+    /// Set when building `vstd` as the only primary package.
+    pub only_primary_vstd: Option<PackageId>,
     pub current_dir: PathBuf,
     pub args: Vec<String>,
     pub env: Map<String, String>,
@@ -384,7 +389,7 @@ impl CargoRunPlan {
 }
 
 fn make_cargo_plan(
-    is_building_vstd: bool,
+    only_primary_vstd: Option<PackageId>,
     current_dir: PathBuf,
     subcommand: &'static str,
     mut cargo_args: Vec<String>,
@@ -497,12 +502,22 @@ fn make_cargo_plan(
     let mut args = vec![subcommand.to_owned()];
     args.append(&mut cargo_args);
 
-    Ok(CargoRunPlan { is_building_vstd, current_dir, args, env: env_overrides, verified_something })
+    Ok(CargoRunPlan {
+        only_primary_vstd,
+        current_dir,
+        args,
+        env: env_overrides,
+        verified_something,
+    })
 }
 
 pub fn run_cargo(plan: &CargoRunPlan) -> Result<ExitCode> {
     // TODO: use the "+ ... toolchain" argument?
     let mut command = plan.to_command();
+
+    if let Some(vstd_id) = &plan.only_primary_vstd {
+        return run_cargo_building_vstd(command, vstd_id);
+    }
 
     let exit_status = command
         .spawn()
@@ -516,6 +531,54 @@ pub fn run_cargo(plan: &CargoRunPlan) -> Result<ExitCode> {
             .map_err(|_| anyhow!("Command {command:?} terminated with an odd exit code: {code}")),
         None => bail!("Command {command:?} was terminated by a signal: {exit_status}"),
     }
+}
+
+// Used to perform a build where the *only* primary package is `vstd` itself.
+fn run_cargo_building_vstd(mut command: Command, vstd_id: &PackageId) -> Result<ExitCode> {
+    command.arg("--message-format=json-render-diagnostics");
+    command.stdout(Stdio::piped()).stderr(Stdio::inherit());
+    let mut child = command.spawn().context("spawning cargo")?;
+    let stdout = child.stdout.take().expect("stdout was piped");
+    let mut vstd_rmeta = None;
+
+    for message in Message::parse_stream(BufReader::new(stdout)) {
+        match message? {
+            Message::CompilerArtifact(artifact) if artifact.package_id == *vstd_id => {
+                if let Some(rmeta) =
+                    artifact.filenames.iter().find(|path| path.extension() == Some("rmeta"))
+                {
+                    vstd_rmeta = Some(rmeta.as_std_path().to_path_buf());
+                }
+            }
+            Message::CompilerMessage(message) => {
+                if let Some(rendered) = message.message.rendered {
+                    eprint!("{rendered}");
+                }
+            }
+            Message::TextLine(line) => eprintln!("{line}"),
+            _ => {}
+        }
+    }
+
+    let exit_status = child.wait().context("Failed to wait for cargo")?;
+    let exit_code = match exit_status.code() {
+        Some(code) => u8::try_from(code).map(ExitCode::from).map_err(|_| {
+            anyhow!("Cargo command {command:?} terminated with an odd exit code: {code}")
+        })?,
+        None => bail!("Cargo command {command:?} was terminated by a signal: {exit_status}"),
+    };
+
+    if exit_code != ExitCode::SUCCESS {
+        bail!("Cargo command {command:?} failed")
+    }
+
+    let Some(vstd_rmeta_path) = vstd_rmeta else {
+        bail!("Cargo command {command:?} did not produce a `vstd.rmeta` artifact")
+    };
+
+    println!("vstd.rmeta is at {}", vstd_rmeta_path.display());
+
+    Ok(exit_code)
 }
 
 fn pack_verus_driver_args_for_env(args: impl Iterator<Item = impl AsRef<str>>) -> String {
