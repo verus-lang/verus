@@ -45,6 +45,8 @@ const RUST_VERIFY_FILE_NAME: &str =
 const Z3_FILE_NAME: &str = if cfg!(target_os = "windows") { ".\\z3.exe" } else { "./z3" };
 const CVC5_FILE_NAME: &str = if cfg!(target_os = "windows") { ".\\cvc5.exe" } else { "./cvc5" };
 
+pub const VERUS_DRIVER_VIA_CARGO: &str = "__VERUS_DRIVER_VIA_CARGO__";
+
 fn main() {
     match run() {
         Ok(exit_status) => {
@@ -67,6 +69,7 @@ fn run() -> Result<std::process::ExitStatus, String> {
     // If instructed, skip the rustup toolchain sanity check & trust the user to
     // have set up their environment to point to the correct toolchain.
     let use_rustup: bool = std::env::var("VERUS_USE_RUSTUP").map_or(true, |v| v != "0");
+    let via_cargo = std::env::var(VERUS_DRIVER_VIA_CARGO).as_deref() == Ok("1");
 
     #[allow(unused_variables)] // unpretty_arg is unused if --features record-history is disabled
     let (mut args, record, unpretty_arg) = {
@@ -101,7 +104,7 @@ fn run() -> Result<std::process::ExitStatus, String> {
     let parent = current_exe.and_then(|current| current.parent().map(std::path::PathBuf::from));
 
     let Some(verusroot_path) = parent.clone().and_then(|mut path| {
-        if path.join("verus-root").is_file() {
+        if via_cargo || path.join("verus-root").is_file() {
             if !path.is_absolute() {
                 path = std::env::current_dir().expect("working directory invalid").join(path);
             }
