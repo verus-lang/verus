@@ -172,7 +172,7 @@ jobs:
           . ../tools/activate
           vargo clean
           CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true vargo build --release
-          VERUS_Z3_PATH="$(pwd)/z3" cargo run -p cargo-verus -- build --release --manifest-path vstd/Cargo.toml --features nonzero_internals
+          VERUS_Z3_PATH="$(pwd)/z3" cargo run -p cargo-verus -- build --manifest-path vstd/Cargo.toml --features nonzero_internals --release
 
       - name: full tests
         working-directory: ./source
