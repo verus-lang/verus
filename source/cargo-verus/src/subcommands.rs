@@ -161,6 +161,11 @@ pub fn plan_cargo_run(cfg: VerusConfig) -> Result<CargoRunPlan> {
     let all_packages = metadata_index.get_transitive_closure(root_packages.clone());
     let dep_packages: Set<PackageId> = all_packages.difference(&root_packages).cloned().collect();
 
+    let is_building_vstd = root_packages.len() == 1
+        && root_packages
+            .iter()
+            .all(|package_id| metadata_index.get(package_id).verus_metadata.is_vstd);
+
     let packages_to_process = &all_packages;
     let packages_to_verify = if cfg.verify_deps { &all_packages } else { &root_packages };
 
@@ -237,6 +242,7 @@ pub fn plan_cargo_run(cfg: VerusConfig) -> Result<CargoRunPlan> {
     }
 
     let plan = make_cargo_plan(
+        is_building_vstd,
         cfg.current_dir,
         cfg.subcommand,
         cargo_args,
@@ -358,6 +364,7 @@ fn make_cargo_args(opts: &CargoOptions, for_cargo_metadata: bool, verbosity: u8)
 
 #[derive(Clone, Debug)]
 pub struct CargoRunPlan {
+    pub is_building_vstd: bool,
     pub current_dir: PathBuf,
     pub args: Vec<String>,
     pub env: Map<String, String>,
@@ -377,6 +384,7 @@ impl CargoRunPlan {
 }
 
 fn make_cargo_plan(
+    is_building_vstd: bool,
     current_dir: PathBuf,
     subcommand: &'static str,
     mut cargo_args: Vec<String>,
@@ -489,7 +497,7 @@ fn make_cargo_plan(
     let mut args = vec![subcommand.to_owned()];
     args.append(&mut cargo_args);
 
-    Ok(CargoRunPlan { current_dir, args, env: env_overrides, verified_something })
+    Ok(CargoRunPlan { is_building_vstd, current_dir, args, env: env_overrides, verified_something })
 }
 
 pub fn run_cargo(plan: &CargoRunPlan) -> Result<ExitCode> {
