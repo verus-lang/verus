@@ -96,7 +96,7 @@ impl fmt::Debug for CrateId {
 
 impl fmt::Debug for PathX {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Path({:?}, [", &self.krate)?;
+        write!(f, "Path({:?}, [", self.krate)?;
         for (i, s) in self.segments.iter().enumerate() {
             if i == 0 {
                 write!(f, "{:?}", s)?;
@@ -768,14 +768,14 @@ pub(crate) fn call_no_unwind(call_target: &CallTarget, funs: &HashMap<Fun, Funct
 pub fn get_variant<'a>(variants: &'a Variants, variant: &Ident) -> &'a Variant {
     match variants.iter().find(|v| v.name == *variant) {
         Some(variant) => variant,
-        None => panic!("internal error: missing variant {}", &variant),
+        None => panic!("internal error: missing variant {}", variant),
     }
 }
 
 pub fn get_field<'a, A: Clone>(variant: &'a Binders<A>, field: &Ident) -> &'a Binder<A> {
     match variant.iter().find(|f| f.name == *field) {
         Some(field) => field,
-        None => panic!("internal error: missing field {}", &field),
+        None => panic!("internal error: missing field {}", field),
     }
 }
 
@@ -974,12 +974,12 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
         TypX::Primitive(prim, typs) => match prim {
             crate::ast::Primitive::Array => format!(
                 "[{:}; {:}]",
-                &typ_to_diagnostic_str(&typs[0]),
-                &typ_to_diagnostic_str(&typs[1])
+                typ_to_diagnostic_str(&typs[0]),
+                typ_to_diagnostic_str(&typs[1])
             ),
-            crate::ast::Primitive::Slice => format!("[{:}]", &typ_to_diagnostic_str(&typs[0])),
+            crate::ast::Primitive::Slice => format!("[{:}]", typ_to_diagnostic_str(&typs[0])),
             crate::ast::Primitive::StrSlice => "StrSlice".to_owned(),
-            crate::ast::Primitive::Ptr => format!("*mut {:}", &typ_to_diagnostic_str(&typs[0])),
+            crate::ast::Primitive::Ptr => format!("*mut {:}", typ_to_diagnostic_str(&typs[0])),
             crate::ast::Primitive::Global => format!("Global"),
         },
         TypX::Datatype(Dt::Tuple(_arity), typs, _) => {

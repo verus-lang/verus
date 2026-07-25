@@ -1368,6 +1368,7 @@ fn shadow_place_rec<'tcx>(
         }
 
         ExprKind::PlaceUnwrapUnsafeBinder { .. }
+        | ExprKind::Reborrow { .. }
         | ExprKind::ValueUnwrapUnsafeBinder { .. }
         | ExprKind::WrapUnsafeBinder { .. } => {
             unimplemented!();

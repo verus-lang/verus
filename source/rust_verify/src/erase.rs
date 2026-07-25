@@ -357,13 +357,13 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
 
     let mut functions = HashMap::<Fun, Function>::new();
     for f in &erasure_hints.vir_crate.functions {
-        functions.insert(f.x.name.clone(), f.clone()).map(|_| panic!("{:?}", &f.x.name));
+        functions.insert(f.x.name.clone(), f.clone()).map(|_| panic!("{:?}", f.x.name));
     }
 
     let mut datatypes = HashMap::<Path, Datatype>::new();
     for d in &erasure_hints.vir_crate.datatypes {
         if let Dt::Path(path) = &d.x.name {
-            datatypes.insert(path.clone(), d.clone()).map(|_| panic!("{:?}", &path));
+            datatypes.insert(path.clone(), d.clone()).map(|_| panic!("{:?}", path));
         }
     }
 

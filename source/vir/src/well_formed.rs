@@ -835,7 +835,7 @@ fn check_one_expr<Emit: EmitError>(
                             &expr.span,
                             format!(
                                 "shr_ref_struct_wrap can only be applied when all other fields of the relevant variant are ghost-mode or of type Ghost (field `{:}` does not meet this requirement)",
-                                &field.name
+                                field.name
                             ),
                         ));
                     }
@@ -1834,7 +1834,7 @@ pub fn check_crate(
     let mut decreases_by_proof_to_spec: HashMap<Fun, Fun> = HashMap::new();
     for function in krate.functions.iter() {
         let Some(warn_config) = warning_ctx.fun_warn_configs.get(&function.x.name) else {
-            panic!("missing warn_config for function {:?}", &function.x.name);
+            panic!("missing warn_config for function {:?}", function.x.name);
         };
         if let Some(proof_fun) = &function.x.decrease_by {
             let proof_function = if let Some(proof_function) = funs.get(proof_fun) {
@@ -2069,7 +2069,7 @@ pub fn check_crate(
     // TODO remove once `uninterp` is enforced for uninterpreted functions
     for function in krate.functions.iter() {
         let Some(warn_config) = warning_ctx.fun_warn_configs.get(&function.x.name) else {
-            panic!("missing warn_config for function {:?}", &function.x.name);
+            panic!("missing warn_config for function {:?}", function.x.name);
         };
         if let Err(e) = check_function(&ctxt, function, &mut emit, warn_config, no_verify) {
             errors.push(e);
