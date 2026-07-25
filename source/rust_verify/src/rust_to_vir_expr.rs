@@ -844,7 +844,17 @@ pub(crate) fn pattern_to_vir_unadjusted<'tcx>(
             // see rustc_mir_build/src/thir/pattern/mod.rs
             unsupported_err!(pat.span, "ref patterns", pat);
         }
-        PatKind::Slice(..) => unsupported_err!(pat.span, "slice patterns", pat),
+        PatKind::Slice(pats, inner, suffix) => {
+            if inner.is_some() || suffix.len() > 0 {
+                unsupported_err!(pat.span, "slice patterns with '..'", pat);
+            }
+            let mut patterns = vec![];
+            for pat in pats.iter() {
+                let pattern = pattern_to_vir(bctx, pat)?;
+                patterns.push(pattern);
+            }
+            PatternX::Slice(Arc::new(patterns))
+        }
         PatKind::Never => unsupported_err!(pat.span, "never patterns", pat),
         PatKind::Deref(_) => unsupported_err!(pat.span, "deref patterns", pat),
         PatKind::Err(_) => unsupported_err!(pat.span, "err patterns", pat),
