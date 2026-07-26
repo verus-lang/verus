@@ -6,7 +6,7 @@ use std::process::{Command, ExitCode};
 
 use anyhow::{Context, Result, anyhow, bail};
 use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
-use cargo_metadata::{Metadata, PackageId};
+use cargo_metadata::{FeatureName, Metadata, PackageId};
 use clap::ValueEnum;
 use colored::Colorize;
 
@@ -582,6 +582,11 @@ fn make_vstd_build_plan(
     let verus_state_machines_macros_manifest =
         metadata_index.get(verus_state_machines_macros_id).package.manifest_path.clone();
 
+    // Resolve the features of `vstd` that are on.
+    let mut vstd_features: Set<String> =
+        vstd_metadata.features.iter().map(FeatureName::to_string).collect();
+    vstd_features.insert("nonzero_internals".into());
+
     // Sanitize Cargo options.
     let mut cargo_options = cargo_options.clone();
     cargo_options.manifest.manifest_path = None;
@@ -595,9 +600,6 @@ fn make_vstd_build_plan(
     if cargo_options.target_dir.is_none() {
         cargo_options.target_dir = None;
     }
-
-    let mut vstd_features: Set<String> = todo!("resolve enabled `vstd` features");
-    vstd_features.insert("nonzero_internals".into());
 
     Ok(VstdBuildPlan {
         current_dir: current_dir.to_owned(),
