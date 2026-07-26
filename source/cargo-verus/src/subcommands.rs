@@ -173,6 +173,7 @@ pub fn plan_cargo_run(cfg: VerusConfig) -> Result<ExecutionPlan> {
         // When the only primary package to build is `vstd`, switch to a specialized code path.
         let build_vstd_plan = make_vstd_build_plan(
             &cfg.current_dir,
+            &cfg.options.cargo_opts,
             &only_primary_vstd,
             &metadata,
             &metadata_index,
@@ -347,6 +348,10 @@ fn make_cargo_args(opts: &CargoOptions, for_cargo_metadata: bool, verbosity: u8)
     }
 
     if !for_cargo_metadata {
+        if opts.release {
+            args.push("--release".to_owned());
+        }
+
         if let Some(path) = &opts.target_dir {
             args.push("--target-dir".to_owned());
             args.push(path.to_string_lossy().into_owned());
@@ -533,6 +538,7 @@ pub fn run_cargo(plan: &CargoRunPlan) -> Result<ExitCode> {
 pub struct VstdBuildPlan {
     pub current_dir: PathBuf,
     pub target_dir: Utf8PathBuf,
+    pub cargo_options: CargoOptions,
     pub vstd_manifest: Utf8PathBuf,
     pub verus_builtin_manifest: Utf8PathBuf,
     pub verus_builtin_macros_manifest: Utf8PathBuf,
@@ -541,6 +547,7 @@ pub struct VstdBuildPlan {
 
 fn make_vstd_build_plan(
     current_dir: &Path,
+    cargo_options: &CargoOptions,
     vstd_id: &PackageId,
     metadata: &Metadata,
     metadata_index: &MetadataIndex,
@@ -574,9 +581,17 @@ fn make_vstd_build_plan(
     let verus_state_machines_macros_manifest =
         metadata_index.get(verus_state_machines_macros_id).package.manifest_path.clone();
 
+    // Sanitize Cargo options.
+    let mut cargo_options = cargo_options.clone();
+    cargo_options.manifest.manifest_path = None;
+    if cargo_options.target_dir.is_none() {
+        cargo_options.target_dir = None;
+    }
+
     Ok(VstdBuildPlan {
         current_dir: current_dir.to_owned(),
         target_dir: metadata.target_directory.clone(),
+        cargo_options,
         vstd_manifest,
         verus_builtin_manifest,
         verus_builtin_macros_manifest,
@@ -585,7 +600,7 @@ fn make_vstd_build_plan(
 }
 
 // Special code path for a build where the *only* primary package is `vstd` itself.
-pub fn build_vstd(plan: &VstdBuildPlan) -> Result<ExitCode> {
+pub fn build_vstd(_plan: &VstdBuildPlan) -> Result<ExitCode> {
     todo!()
 }
 
