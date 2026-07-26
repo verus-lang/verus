@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
 use anyhow::{Context, Result, anyhow, bail};
-use cargo_metadata::camino::Utf8PathBuf;
+use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
 use cargo_metadata::{Metadata, PackageId};
 use clap::ValueEnum;
 use colored::Colorize;
@@ -584,6 +584,13 @@ fn make_vstd_build_plan(
     // Sanitize Cargo options.
     let mut cargo_options = cargo_options.clone();
     cargo_options.manifest.manifest_path = None;
+    cargo_options.features.all_features = false;
+    cargo_options.features.no_default_features = false;
+    cargo_options.features.features.clear();
+    cargo_options.workspace.package.clear();
+    cargo_options.workspace.workspace = false;
+    cargo_options.workspace.all = false;
+    cargo_options.workspace.exclude.clear();
     if cargo_options.target_dir.is_none() {
         cargo_options.target_dir = None;
     }
@@ -600,8 +607,38 @@ fn make_vstd_build_plan(
 }
 
 // Special code path for a build where the *only* primary package is `vstd` itself.
-pub fn build_vstd(_plan: &VstdBuildPlan) -> Result<ExitCode> {
-    todo!()
+pub fn build_vstd(plan: &VstdBuildPlan) -> Result<ExitCode> {
+    let dependency_args = make_cargo_args(&plan.cargo_options, false, 0);
+    let cargo = env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
+
+    let dispatch_build_dep = |name: &str, manifest_path: &Utf8Path| -> Result<ExitCode> {
+        let mut build_command = Command::new(&cargo);
+        build_command
+            .current_dir(&plan.current_dir)
+            .arg("build")
+            .args(["--manifest-path", manifest_path.as_str()])
+            .args(&dependency_args);
+        let build_status = build_command
+            .spawn()
+            .with_context(|| format!("building `{name}`"))?
+            .wait()
+            .with_context(|| format!("waiting to build `{name}`"))?;
+        if !build_status.success() {
+            bail!("failed to build `{name}`");
+        };
+        match build_status.code() {
+            Some(code) => u8::try_from(code)
+                .map(From::from)
+                .map_err(|_| anyhow!("building `{name}` returned an odd exit code: {code}")),
+            None => bail!("building `{name}` was terminated by a signal: {build_status}"),
+        }
+    };
+
+    dispatch_build_dep("verus_builtin", &plan.verus_builtin_manifest)?;
+    dispatch_build_dep("verus_builtin_macros", &plan.verus_builtin_macros_manifest)?;
+    dispatch_build_dep("verus_state_machines_macros", &plan.verus_state_machines_macros_manifest)?;
+
+    Ok(ExitCode::SUCCESS)
 }
 
 fn pack_verus_driver_args_for_env(args: impl Iterator<Item = impl AsRef<str>>) -> String {
