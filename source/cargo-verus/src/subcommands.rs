@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap as Map, BTreeSet as Set};
 use std::env;
+use std::fs;
 use std::io::{BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Command, ExitCode, Stdio};
@@ -580,16 +581,26 @@ fn run_cargo_building_vstd(mut command: Command, vstd_id: &PackageId) -> Result<
     }
 
     let Some(vstd_rlib_path) = vstd_rlib else {
-        bail!("The `vstd` build did not produce a `vstd.rlib` artifact")
+        bail!("The `vstd` build did not produce a `*.rlib` artifact")
     };
 
     let Some(vstd_rmeta_path) = vstd_rmeta else {
-        bail!("The `vstd` build did not produce a `vstd.rmeta` artifact")
+        bail!("The `vstd` build did not produce a `*.rmeta` artifact")
     };
 
-    println!("vstd.rlib is at {}", vstd_rlib_path.display());
-    println!("vstd.rmeta is at {}", vstd_rmeta_path.display());
-    // TODO: Copy the `*.vir` sibling of `*.rmeta` to be `vstd.vir` next to `*.rlib`.
+    println!("vstd.rlib  path: {}", vstd_rlib_path.display());
+    println!("vstd.rmeta path: {}", vstd_rmeta_path.display());
+
+    let vstd_vir_src = vstd_rmeta_path.with_extension("vir");
+    let vstd_vir_dst = vstd_rlib_path.with_file_name("vstd.vir");
+    fs::copy(&vstd_vir_src, &vstd_vir_dst).with_context(|| {
+        format!(
+            "copying the `*.vir` artifact from {} to {}",
+            vstd_vir_src.display(),
+            vstd_vir_dst.display(),
+        )
+    })?;
+    println!("vstd.vir   path: {}", vstd_vir_dst.display());
 
     Ok(exit_code)
 }
