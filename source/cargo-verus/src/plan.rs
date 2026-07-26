@@ -13,7 +13,7 @@ pub enum ExecutionPlan {
     CreateNew(NewCreationPlan),
     ListToolchains,
     RunCargo(CargoRunPlan),
-    BuildVstd(VstdBuildPlan),
+    BuildVstd(Box<VstdBuildPlan>),
 }
 
 pub fn execute_plan(plan: &ExecutionPlan) -> Result<ExitCode> {

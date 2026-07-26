@@ -179,7 +179,7 @@ pub fn plan_cargo_run(cfg: VerusConfig) -> Result<ExecutionPlan> {
             &metadata_index,
             &cfg.options.verus_args,
         )?;
-        return Ok(ExecutionPlan::BuildVstd(build_vstd_plan));
+        return Ok(ExecutionPlan::BuildVstd(build_vstd_plan.into()));
     };
 
     let packages_to_process = &all_packages;
@@ -565,8 +565,10 @@ fn make_vstd_build_plan(
         deps: &BTreeMap<&'a PackageId, &'a NodeDep>,
         name: &str,
     ) -> &'a PackageId {
-        let (package_id, _): (&&PackageId, _) =
-            deps.iter().find(|(_, dep)| dep.name == name).expect(&format!("find dep `{name}`"));
+        let (package_id, _): (&&PackageId, _) = deps
+            .iter()
+            .find(|(_, dep)| dep.name == name)
+            .unwrap_or_else(|| panic!("find dep `{name}`"));
         package_id
     }
 
