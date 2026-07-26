@@ -1,16 +1,15 @@
 use std::collections::{BTreeMap as Map, BTreeSet as Set};
 use std::env;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Command, ExitCode};
 
 use anyhow::{Context, Result, anyhow, bail};
+use cargo_metadata::PackageId;
 use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
-use cargo_metadata::{FeatureName, Metadata, PackageId};
 use clap::ValueEnum;
 use colored::Colorize;
 
-use crate::ExecutionPlan;
 use crate::cli::{CargoOptions, VerifyCommand, VerusArgFwdSelector};
 use crate::metadata::{MetadataIndex, fetch_metadata, make_package_id};
 use crate::toolchains::{self, TOOLCHAINS, is_matching_known_and_used};
@@ -142,7 +141,7 @@ pub struct VerusConfig {
     pub warn_if_nothing_verified: bool,
 }
 
-pub fn plan_cargo_run(mut cfg: VerusConfig) -> Result<ExecutionPlan> {
+pub fn plan_cargo_run(mut cfg: VerusConfig) -> Result<CargoRunPlan> {
     let fwd_verus_args_to = cfg.options.fwd_verus_args_to.expect("fwd_verus_args_to must be set");
 
     //////////////////////////////////////////////////
@@ -261,7 +260,7 @@ pub fn plan_cargo_run(mut cfg: VerusConfig) -> Result<ExecutionPlan> {
         eprintln!("verbosity level = 1; keeping Verus non-verbose");
     }
 
-    let cargo_run_plan = make_cargo_plan(
+    let plan = make_cargo_plan(
         cfg.current_dir,
         build_only_vstd,
         cfg.subcommand,
@@ -275,7 +274,7 @@ pub fn plan_cargo_run(mut cfg: VerusConfig) -> Result<ExecutionPlan> {
     )?;
 
     if cfg.options.verbosity > 0 {
-        let command = cargo_run_plan.to_command();
+        let command = plan.to_command();
         eprintln!(
             "forwarding Verus args to crates: <{}>",
             fwd_verus_args_to.to_possible_value().expect("arg value").get_name(),
@@ -283,7 +282,7 @@ pub fn plan_cargo_run(mut cfg: VerusConfig) -> Result<ExecutionPlan> {
         eprintln!("running cargo command:\n{command:?}");
     }
 
-    if cfg.warn_if_nothing_verified && !cargo_run_plan.verified_something {
+    if cfg.warn_if_nothing_verified && !plan.verified_something {
         eprint!(
             "{}",
             "\
@@ -296,7 +295,7 @@ WARNING: You asked for verification, but cargo did not find any crates that opte
         );
     }
 
-    Ok(ExecutionPlan::RunCargo(cargo_run_plan))
+    Ok(plan)
 }
 
 fn make_cargo_args(opts: &CargoOptions, for_cargo_metadata: bool, verbosity: u8) -> Vec<String> {
@@ -535,7 +534,7 @@ pub fn run_cargo(plan: &CargoRunPlan) -> Result<ExitCode> {
     let mut command = plan.to_command();
 
     if let Some(vstd_build) = &plan.build_only_vstd {
-        return build_vstd_2(vstd_build, command);
+        return build_vstd(vstd_build, command);
     }
 
     let exit_status = command
@@ -552,7 +551,8 @@ pub fn run_cargo(plan: &CargoRunPlan) -> Result<ExitCode> {
     }
 }
 
-pub fn build_vstd_2(vstd_build: &VstdBuild, mut command: Command) -> Result<ExitCode> {
+/// Special code path for when `vstd` is the only primary package to build.
+pub fn build_vstd(vstd_build: &VstdBuild, mut command: Command) -> Result<ExitCode> {
     use std::env::consts::{DLL_EXTENSION, DLL_PREFIX};
 
     let mut artifacts = Map::<&str, cargo_metadata::Artifact>::new();
@@ -632,186 +632,6 @@ pub fn build_vstd_2(vstd_build: &VstdBuild, mut command: Command) -> Result<Exit
     )?;
 
     Ok(exit_code)
-}
-
-pub struct VstdBuildPlan {
-    pub current_dir: PathBuf,
-    pub target_dir: Utf8PathBuf,
-    pub cargo_options: CargoOptions,
-    pub vstd_manifest: Utf8PathBuf,
-    pub vstd_features: Set<String>,
-    pub verus_builtin_manifest: Utf8PathBuf,
-    pub verus_builtin_macros_manifest: Utf8PathBuf,
-    pub verus_state_machines_macros_manifest: Utf8PathBuf,
-}
-
-fn make_vstd_build_plan(
-    current_dir: &Path,
-    cargo_options: &CargoOptions,
-    vstd_id: &PackageId,
-    metadata: &Metadata,
-    metadata_index: &MetadataIndex,
-    // Args forwarded to Verus
-    _fwd_verus_args: &[String],
-) -> Result<VstdBuildPlan> {
-    use cargo_metadata::NodeDep;
-    use std::collections::BTreeMap;
-
-    let vstd_metadata = metadata_index.get(vstd_id);
-    let vstd_manifest = vstd_metadata.package.manifest_path.clone();
-
-    fn find_dep_by_name<'a>(
-        deps: &BTreeMap<&'a PackageId, &'a NodeDep>,
-        name: &str,
-    ) -> &'a PackageId {
-        let (package_id, _): (&&PackageId, _) = deps
-            .iter()
-            .find(|(_, dep)| dep.name == name)
-            .unwrap_or_else(|| panic!("find dep `{name}`"));
-        package_id
-    }
-
-    let verus_builtin_id = find_dep_by_name(&vstd_metadata.deps, "verus_builtin");
-    let verus_builtin_manifest = metadata_index.get(verus_builtin_id).package.manifest_path.clone();
-
-    let verus_builtin_macros_id = find_dep_by_name(&vstd_metadata.deps, "verus_builtin_macros");
-    let verus_builtin_macros_manifest =
-        metadata_index.get(verus_builtin_macros_id).package.manifest_path.clone();
-
-    let verus_state_machines_macros_id =
-        find_dep_by_name(&vstd_metadata.deps, "verus_state_machines_macros");
-    let verus_state_machines_macros_manifest =
-        metadata_index.get(verus_state_machines_macros_id).package.manifest_path.clone();
-
-    // Resolve the features of `vstd` that are on.
-    let mut vstd_features: Set<String> =
-        vstd_metadata.features.iter().map(FeatureName::to_string).collect();
-    vstd_features.insert("nonzero_internals".into());
-
-    // Sanitize Cargo options.
-    let mut cargo_options = cargo_options.clone();
-    cargo_options.manifest.manifest_path = None;
-    cargo_options.features.all_features = false;
-    cargo_options.features.no_default_features = false;
-    cargo_options.features.features.clear();
-    cargo_options.workspace.package.clear();
-    cargo_options.workspace.workspace = false;
-    cargo_options.workspace.all = false;
-    cargo_options.workspace.exclude.clear();
-    if cargo_options.target_dir.is_none() {
-        cargo_options.target_dir = None;
-    }
-
-    Ok(VstdBuildPlan {
-        current_dir: current_dir.to_owned(),
-        target_dir: metadata.target_directory.clone(),
-        cargo_options,
-        vstd_manifest,
-        vstd_features,
-        verus_builtin_manifest,
-        verus_builtin_macros_manifest,
-        verus_state_machines_macros_manifest,
-    })
-}
-
-// Special code path for a build where the *only* primary package is `vstd` itself.
-pub fn build_vstd(plan: &VstdBuildPlan) -> Result<ExitCode> {
-    let dependency_args = make_cargo_args(&plan.cargo_options, false, 0);
-    let cargo = env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
-
-    let dispatch_build_dep = |name: &str, manifest_path: &Utf8Path| -> Result<ExitCode> {
-        let mut build_command = Command::new(&cargo);
-        build_command
-            .current_dir(&plan.current_dir)
-            .arg("build")
-            .args(["--manifest-path", manifest_path.as_str()])
-            .args(&dependency_args);
-        let build_status = build_command
-            .spawn()
-            .with_context(|| format!("building `{name}`"))?
-            .wait()
-            .with_context(|| format!("waiting to build `{name}`"))?;
-        if !build_status.success() {
-            bail!("Command {build_command:?} failed");
-        };
-        match build_status.code() {
-            Some(code) => u8::try_from(code).map(From::from).map_err(|_| {
-                anyhow!("Command {build_command:?} returned an odd exit code: {code}")
-            }),
-            None => bail!("Command {build_command:?} was terminated by a signal: {build_status}"),
-        }
-    };
-
-    let profile = if plan.cargo_options.release { "release" } else { "debug" };
-    let output_dir = plan.target_dir.join(profile);
-
-    let mut externs = Map::<&str, PathBuf>::new();
-
-    dispatch_build_dep("verus_builtin", &plan.verus_builtin_manifest)?;
-    let verus_builtin_rlib = output_dir.join("libverus_builtin.rlib").into_std_path_buf();
-    externs.insert("verus_builtin", verus_builtin_rlib);
-
-    dispatch_build_dep("verus_builtin_macros", &plan.verus_builtin_macros_manifest)?;
-    let verus_builtin_macros_dylib = output_dir
-        .join(format!(
-            "{}verus_builtin_macros.{}",
-            std::env::consts::DLL_PREFIX,
-            std::env::consts::DLL_EXTENSION
-        ))
-        .into_std_path_buf();
-    externs.insert("verus_builtin_macros", verus_builtin_macros_dylib);
-
-    dispatch_build_dep("verus_state_machines_macros", &plan.verus_state_machines_macros_manifest)?;
-    let verus_state_machines_macros_dylib = output_dir
-        .join(format!(
-            "{}verus_state_machines_macros.{}",
-            std::env::consts::DLL_PREFIX,
-            std::env::consts::DLL_EXTENSION
-        ))
-        .into_std_path_buf();
-    externs.insert("verus_state_machines_macros", verus_state_machines_macros_dylib);
-
-    let vstd_source = plan.vstd_manifest.with_file_name("vstd.rs");
-    let cargo_verus_path =
-        env::current_exe().context("getting the current cargo-verus executable path")?;
-    let rust_verify_path = cargo_verus_path
-        .with_file_name("rust_verify")
-        .with_extension(std::env::consts::EXE_EXTENSION);
-
-    let mut build_command = Command::new(rust_verify_path);
-    build_command
-        .current_dir(&plan.current_dir)
-        .env("RUST_MIN_STACK", (10 * 1024 * 1024).to_string())
-        .env("VSTD_KIND", "IsVstd")
-        .args(["--internal-test-mode", "--crate-type=lib", "--is-vstd", "--compile"])
-        .args(["--multiple-errors", "2"])
-        .args(["--out-dir", output_dir.as_str()])
-        .args(["--export", output_dir.join("vstd.vir").as_str()]);
-    if plan.cargo_options.release {
-        build_command.args(["-C", "opt-level=3"]);
-    }
-    for (name, path) in externs {
-        build_command.args(["--extern", &format!("{name}={}", path.display())]);
-    }
-    for feature in &plan.vstd_features {
-        build_command.args(["--cfg", &format!("feature={feature:?}")]);
-    }
-    build_command.arg(vstd_source);
-
-    let build_status = build_command
-        .spawn()
-        .context("running `rust_verify` to build `vstd`")?
-        .wait()
-        .context("waiting for `rust_verify` to build `vstd`")?;
-    if !build_status.success() {
-        bail!("Command {build_command:?} failed");
-    };
-    match build_status.code() {
-        Some(code) => u8::try_from(code)
-            .map(ExitCode::from)
-            .map_err(|_| anyhow!("Command {build_command:?} returned an odd exit code: {code}")),
-        None => bail!("Command {build_command:?} was terminated by a signal: {build_status}"),
-    }
 }
 
 fn pack_verus_driver_args_for_env(args: impl Iterator<Item = impl AsRef<str>>) -> String {

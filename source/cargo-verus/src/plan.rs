@@ -6,14 +6,13 @@ use anyhow::Result;
 
 use crate::{
     cli::{CargoVerusCli, ToolchainSubcommand, VerusSubcommand},
-    subcommands::{self, CargoRunPlan, NewCreationPlan, VerusConfig, VstdBuildPlan},
+    subcommands::{self, CargoRunPlan, NewCreationPlan, VerusConfig},
 };
 
 pub enum ExecutionPlan {
     CreateNew(NewCreationPlan),
     ListToolchains,
     RunCargo(CargoRunPlan),
-    BuildVstd(Box<VstdBuildPlan>),
 }
 
 pub fn execute_plan(plan: &ExecutionPlan) -> Result<ExitCode> {
@@ -23,7 +22,6 @@ pub fn execute_plan(plan: &ExecutionPlan) -> Result<ExitCode> {
         CreateNew(creation_plan) => subcommands::create_new_project(creation_plan),
         ListToolchains => subcommands::list_toolchains(),
         RunCargo(cargo_run_plan) => subcommands::run_cargo(cargo_run_plan),
-        BuildVstd(vstd_build_plan) => subcommands::build_vstd(vstd_build_plan),
     }
 }
 
@@ -82,7 +80,7 @@ pub fn plan_execution<'a>(
         },
     };
 
-    let plan = subcommands::plan_cargo_run(cfg)?;
+    let cargo_run_plan = subcommands::plan_cargo_run(cfg)?;
 
-    Ok(plan)
+    Ok(ExecutionPlan::RunCargo(cargo_run_plan))
 }
