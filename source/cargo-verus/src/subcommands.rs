@@ -163,23 +163,20 @@ pub fn plan_cargo_run(cfg: VerusConfig) -> Result<ExecutionPlan> {
     let all_packages = metadata_index.get_transitive_closure(root_packages.clone());
     let dep_packages: Set<PackageId> = all_packages.difference(&root_packages).cloned().collect();
 
-    if cfg.subcommand == "build"
+    let build_only_vstd = if cfg.subcommand == "build"
         && root_packages.len() == 1
-        && let Some(only_primary_vstd) = root_packages
+        && let Some(vstd_id) = root_packages
             .iter()
             .find(|package_id| metadata_index.get(package_id).verus_metadata.is_vstd)
             .cloned()
     {
-        // When the only primary package to build is `vstd`, switch to a specialized code path.
-        let build_vstd_plan = make_vstd_build_plan(
-            &cfg.current_dir,
-            &cfg.options.cargo_opts,
-            &only_primary_vstd,
-            &metadata,
-            &metadata_index,
-            &cfg.options.verus_args,
-        )?;
-        return Ok(ExecutionPlan::BuildVstd(build_vstd_plan.into()));
+        // When the only primary package to build is `vstd`, special treatment of resulting artifacts is needed.
+        let vstd_metadata = metadata_index.get(&vstd_id);
+        let deps: Map<String, PackageId> =
+            vstd_metadata.deps.values().map(|node| (node.name.clone(), node.pkg.clone())).collect();
+        Some(VstdBuild { vstd_id, deps })
+    } else {
+        None
     };
 
     let packages_to_process = &all_packages;
@@ -259,6 +256,7 @@ pub fn plan_cargo_run(cfg: VerusConfig) -> Result<ExecutionPlan> {
 
     let cargo_run_plan = make_cargo_plan(
         cfg.current_dir,
+        build_only_vstd,
         cfg.subcommand,
         cargo_args,
         common_verus_driver_args,
@@ -384,9 +382,16 @@ fn make_cargo_args(opts: &CargoOptions, for_cargo_metadata: bool, verbosity: u8)
 #[derive(Clone, Debug)]
 pub struct CargoRunPlan {
     pub current_dir: PathBuf,
+    pub build_only_vstd: Option<VstdBuild>,
     pub args: Vec<String>,
     pub env: Map<String, String>,
     pub verified_something: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct VstdBuild {
+    pub vstd_id: PackageId,
+    pub deps: Map<String, PackageId>,
 }
 
 impl CargoRunPlan {
@@ -403,6 +408,7 @@ impl CargoRunPlan {
 
 fn make_cargo_plan(
     current_dir: PathBuf,
+    build_only_vstd: Option<VstdBuild>,
     subcommand: &'static str,
     mut cargo_args: Vec<String>,
     common_verus_driver_args: Vec<String>,
@@ -514,12 +520,16 @@ fn make_cargo_plan(
     let mut args = vec![subcommand.to_owned()];
     args.append(&mut cargo_args);
 
-    Ok(CargoRunPlan { current_dir, args, env: env_overrides, verified_something })
+    Ok(CargoRunPlan { build_only_vstd, current_dir, args, env: env_overrides, verified_something })
 }
 
 pub fn run_cargo(plan: &CargoRunPlan) -> Result<ExitCode> {
     // TODO: use the "+ ... toolchain" argument?
     let mut command = plan.to_command();
+
+    if let Some(vstd_build) = &plan.build_only_vstd {
+        return build_vstd_2(vstd_build, command);
+    }
 
     let exit_status = command
         .spawn()
@@ -533,6 +543,88 @@ pub fn run_cargo(plan: &CargoRunPlan) -> Result<ExitCode> {
             .map_err(|_| anyhow!("Command {command:?} terminated with an odd exit code: {code}")),
         None => bail!("Command {command:?} was terminated by a signal: {exit_status}"),
     }
+}
+
+pub fn build_vstd_2(vstd_build: &VstdBuild, mut command: Command) -> Result<ExitCode> {
+    use std::env::consts::{DLL_EXTENSION, DLL_PREFIX};
+
+    let mut artifacts = Map::<&str, cargo_metadata::Artifact>::new();
+
+    command
+        .arg("--message-format=json-render-diagnostics")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::inherit());
+    let mut child = command.spawn().context("failed to spawn cargo")?;
+    let stdout = child.stdout.take().expect("stdout was piped");
+    for message in cargo_metadata::Message::parse_stream(std::io::BufReader::new(stdout)) {
+        match message? {
+            cargo_metadata::Message::CompilerArtifact(artifact) => {
+                if artifact.package_id == vstd_build.vstd_id {
+                    artifacts.insert("vstd", artifact);
+                } else if let Some((name, _)) = vstd_build
+                    .deps
+                    .iter()
+                    .find(|(_, package_id)| artifact.package_id == **package_id)
+                {
+                    artifacts.insert(name, artifact);
+                }
+            }
+            cargo_metadata::Message::CompilerMessage(message) => {
+                if let Some(rendered) = message.message.rendered {
+                    eprint!("{rendered}");
+                }
+            }
+            cargo_metadata::Message::TextLine(line) => eprintln!("{line}"),
+            _ => {}
+        }
+    }
+
+    let exit_status = child.wait().context("failed to wait for cargo")?;
+    let Some(code) = exit_status.code() else {
+        bail!("Command {command:?} did not succeed: {exit_status}");
+    };
+    let exit_code = u8::try_from(code)
+        .map(From::from)
+        .with_context(|| format!("Command {command:?} returned an odd exit code: {code}"))?;
+    if exit_code != ExitCode::SUCCESS {
+        return Ok(exit_code);
+    }
+
+    let get_artifact_file = |name: &str, ext: &str| -> Result<&Utf8PathBuf> {
+        artifacts
+            .get(name)
+            .with_context(|| format!("no artifact named `{name}`"))?
+            .filenames
+            .iter()
+            .find(|path| path.extension() == Some(ext))
+            .with_context(|| format!("no artifact file with extension `.{ext}`"))
+    };
+
+    let vstd_rlib = get_artifact_file("vstd", "rlib")?;
+    let vstd_rmeta = get_artifact_file("vstd", "rmeta")?;
+    let verus_builtin_rlib = get_artifact_file("verus_builtin", "rlib")?;
+    let verus_builtin_macros_dylib = get_artifact_file("verus_builtin_macros", DLL_EXTENSION)?;
+    let verus_state_machines_macros_dylib =
+        get_artifact_file("verus_state_machines_macros", DLL_EXTENSION)?;
+
+    fn copy_file(src: &Utf8Path, dst: &Utf8Path) -> Result<u64> {
+        std::fs::copy(src.as_std_path(), dst.as_std_path())
+            .with_context(|| format!("copying {src} to {dst}"))
+    }
+
+    let _ = copy_file(&vstd_rmeta.with_extension("vir"), &vstd_rlib.with_file_name("vstd.vir"))?;
+    let _ = copy_file(verus_builtin_rlib, &vstd_rlib.with_file_name("libverus_builtin.rlib"))?;
+    let _ = copy_file(
+        verus_builtin_macros_dylib,
+        &vstd_rlib.with_file_name(format!("{DLL_PREFIX}verus_builtin_macros.{DLL_EXTENSION}")),
+    )?;
+    let _ = copy_file(
+        verus_state_machines_macros_dylib,
+        &vstd_rlib
+            .with_file_name(format!("{DLL_PREFIX}verus_state_machines_macros.{DLL_EXTENSION}")),
+    )?;
+
+    Ok(exit_code)
 }
 
 pub struct VstdBuildPlan {
