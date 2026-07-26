@@ -142,7 +142,7 @@ pub struct VerusConfig {
     pub warn_if_nothing_verified: bool,
 }
 
-pub fn plan_cargo_run(cfg: VerusConfig) -> Result<ExecutionPlan> {
+pub fn plan_cargo_run(mut cfg: VerusConfig) -> Result<ExecutionPlan> {
     let fwd_verus_args_to = cfg.options.fwd_verus_args_to.expect("fwd_verus_args_to must be set");
 
     //////////////////////////////////////////////////
@@ -174,6 +174,13 @@ pub fn plan_cargo_run(cfg: VerusConfig) -> Result<ExecutionPlan> {
         let vstd_metadata = metadata_index.get(&vstd_id);
         let deps: Map<String, PackageId> =
             vstd_metadata.deps.values().map(|node| (node.name.clone(), node.pkg.clone())).collect();
+
+        // Ensure that the `nonzero_internals` feature for `vstd` is on.
+        let nonzero_internals = "nonzero_internals".to_string();
+        if !cfg.options.cargo_opts.features.features.contains(&nonzero_internals) {
+            cfg.options.cargo_opts.features.features.push(nonzero_internals);
+        }
+
         Some(VstdBuild { vstd_id, deps })
     } else {
         None
