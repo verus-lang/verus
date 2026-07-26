@@ -654,13 +654,21 @@ pub fn build_vstd(plan: &VstdBuildPlan) -> Result<ExitCode> {
 
     dispatch_build_dep("verus_builtin_macros", &plan.verus_builtin_macros_manifest)?;
     let verus_builtin_macros_dylib = output_dir
-        .join(format!("libverus_builtin_macros.{}", std::env::consts::DLL_EXTENSION))
+        .join(format!(
+            "{}verus_builtin_macros.{}",
+            std::env::consts::DLL_PREFIX,
+            std::env::consts::DLL_EXTENSION
+        ))
         .into_std_path_buf();
     externs.insert("verus_builtin_macros", verus_builtin_macros_dylib);
 
     dispatch_build_dep("verus_state_machines_macros", &plan.verus_state_machines_macros_manifest)?;
     let verus_state_machines_macros_dylib = output_dir
-        .join(format!("libverus_state_machines_macros.{}", std::env::consts::DLL_EXTENSION))
+        .join(format!(
+            "{}verus_state_machines_macros.{}",
+            std::env::consts::DLL_PREFIX,
+            std::env::consts::DLL_EXTENSION
+        ))
         .into_std_path_buf();
     externs.insert("verus_state_machines_macros", verus_state_machines_macros_dylib);
 
