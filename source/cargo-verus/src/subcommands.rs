@@ -539,11 +539,18 @@ fn run_cargo_building_vstd(mut command: Command, vstd_id: &PackageId) -> Result<
     command.stdout(Stdio::piped()).stderr(Stdio::inherit());
     let mut child = command.spawn().context("spawning cargo")?;
     let stdout = child.stdout.take().expect("stdout was piped");
+    let mut vstd_rlib = None;
     let mut vstd_rmeta = None;
 
     for message in Message::parse_stream(BufReader::new(stdout)) {
         match message? {
             Message::CompilerArtifact(artifact) if artifact.package_id == *vstd_id => {
+                if let Some(rlib) =
+                    artifact.filenames.iter().find(|path| path.extension() == Some("rlib"))
+                {
+                    vstd_rlib = Some(rlib.as_std_path().to_path_buf());
+                }
+
                 if let Some(rmeta) =
                     artifact.filenames.iter().find(|path| path.extension() == Some("rmeta"))
                 {
@@ -572,11 +579,17 @@ fn run_cargo_building_vstd(mut command: Command, vstd_id: &PackageId) -> Result<
         bail!("Cargo command {command:?} failed")
     }
 
-    let Some(vstd_rmeta_path) = vstd_rmeta else {
-        bail!("Cargo command {command:?} did not produce a `vstd.rmeta` artifact")
+    let Some(vstd_rlib_path) = vstd_rlib else {
+        bail!("The `vstd` build did not produce a `vstd.rlib` artifact")
     };
 
+    let Some(vstd_rmeta_path) = vstd_rmeta else {
+        bail!("The `vstd` build did not produce a `vstd.rmeta` artifact")
+    };
+
+    println!("vstd.rlib is at {}", vstd_rlib_path.display());
     println!("vstd.rmeta is at {}", vstd_rmeta_path.display());
+    // TODO: Copy the `*.vir` sibling of `*.rmeta` to be `vstd.vir` next to `*.rlib`.
 
     Ok(exit_code)
 }
