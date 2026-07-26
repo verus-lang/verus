@@ -315,6 +315,7 @@ pub fn demote_external_traits(
                 )
             },
             &|_state, _, stmt| Ok(vec![stmt.clone()]),
+            &|_state, _, pattern| Ok(pattern.clone()),
             &|_state, typ| Ok(typ.clone()),
             &|_state, _, place| Ok(place.clone()),
         )?;
@@ -456,6 +457,7 @@ pub fn rewrite_external_function(
         &mut (),
         &|_, _, e| Ok(rewrite_one_external_expr(from_path, to_path, to_spec_path, e)),
         &|_, _, stmt| Ok(vec![stmt.clone()]),
+        &|_, _, place| Ok(place.clone()),
         &|_, t: &Typ| Ok(rewrite_one_external_typ(from_path, to_path, t)),
         &|_, _, p: &Place| Ok(p.clone()),
     )

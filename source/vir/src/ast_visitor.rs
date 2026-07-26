@@ -1869,20 +1869,22 @@ where
     }
 }
 
-struct MapExprStmtTypVisitor<'a, E, FE, FS, FT, FPL> {
+struct MapExprStmtTypVisitor<'a, E, FE, FS, FP, FT, FPL> {
     env: &'a mut E,
     fe: &'a FE,
     fs: &'a FS,
+    fp: &'a FP,
     ft: &'a FT,
     fpl: &'a FPL,
     map: &'a mut VisitorScopeMap,
 }
 
-impl<'a, E, FE, FS, FT, FPL> AstVisitor<Rewrite, VirErr, VisitorScopeMap>
-    for MapExprStmtTypVisitor<'a, E, FE, FS, FT, FPL>
+impl<'a, E, FE, FS, FP, FT, FPL> AstVisitor<Rewrite, VirErr, VisitorScopeMap>
+    for MapExprStmtTypVisitor<'a, E, FE, FS, FP, FT, FPL>
 where
     FE: Fn(&mut E, &mut VisitorScopeMap, &Expr) -> Result<Expr, VirErr>,
     FS: Fn(&mut E, &mut VisitorScopeMap, &Stmt) -> Result<Vec<Stmt>, VirErr>,
+    FP: Fn(&mut E, &mut VisitorScopeMap, &Pattern) -> Result<Pattern, VirErr>,
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
     FPL: Fn(&mut E, &mut VisitorScopeMap, &Place) -> Result<Place, VirErr>,
 {
@@ -1912,6 +1914,7 @@ where
 
     fn visit_pattern(&mut self, pattern: &Pattern) -> Result<Pattern, VirErr> {
         let pattern = self.visit_pattern_rec(pattern)?;
+        let pattern = (self.fp)(self.env, self.map, &pattern)?;
         Ok(pattern)
     }
 
@@ -1935,7 +1938,8 @@ where
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
     FPL: Fn(&mut E, &mut VisitorScopeMap, &Place) -> Result<Place, VirErr>,
 {
-    let mut vis = MapExprStmtTypVisitor { env, fe, fs, ft, fpl, map };
+    let fp = &|_: &mut E, _: &mut VisitorScopeMap, pat: &Pattern| Ok(pat.clone());
+    let mut vis = MapExprStmtTypVisitor { env, fe, fs, fp, ft, fpl, map };
     vis.visit_expr(expr)
 }
 
@@ -2012,22 +2016,24 @@ where
     Ok(Arc::new(vec_map_result(&**bounds, |b| map_generic_bound_visitor(b, env, ft))?))
 }
 
-pub(crate) fn map_function_visitor_env<E, FE, FS, FT, FPL>(
+pub(crate) fn map_function_visitor_env<E, FE, FS, FP, FT, FPL>(
     function: &Function,
     map: &mut VisitorScopeMap,
     env: &mut E,
     fe: &FE,
     fs: &FS,
+    fp: &FP,
     ft: &FT,
     fpl: &FPL,
 ) -> Result<Function, VirErr>
 where
     FE: Fn(&mut E, &mut VisitorScopeMap, &Expr) -> Result<Expr, VirErr>,
     FS: Fn(&mut E, &mut VisitorScopeMap, &Stmt) -> Result<Vec<Stmt>, VirErr>,
+    FP: Fn(&mut E, &mut VisitorScopeMap, &Pattern) -> Result<Pattern, VirErr>,
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
     FPL: Fn(&mut E, &mut VisitorScopeMap, &Place) -> Result<Place, VirErr>,
 {
-    let mut vis = MapExprStmtTypVisitor { env, fe, fs, ft, fpl, map };
+    let mut vis = MapExprStmtTypVisitor { env, fe, fs, fp, ft, fpl, map };
     vis.visit_function(function)
 }
 

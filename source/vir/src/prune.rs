@@ -6,9 +6,9 @@ use crate::ast::{
     ArrayKind, AssocTypeImpl, AssocTypeImplX, AutospecUsage, BinaryOp, BoundsCheck, CallTarget,
     CrateId, Datatype, Dt, Expr, ExprX, Fun, FunWithVis, Function, FunctionKind, Ident, Krate,
     KrateX, Mode, Module, ModuleX, OpaqueType, Path, Place, PlaceX, RevealGroup, Stmt, Trait,
-    TraitId, TraitX, Typ, TypX, UnaryOp, UnaryOpr,
+    TraitId, TraitX, Typ, TypX, UnaryOp, UnaryOpr, Pattern, PatternX,
 };
-use crate::ast_util::{is_body_visible_to, is_visible_to, is_visible_to_or_true};
+use crate::ast_util::{is_body_visible_to, is_visible_to, is_visible_to_or_true, array_kind_of_typ};
 use crate::ast_visitor::{VisitorControlFlow, VisitorScopeMap};
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::*;
@@ -555,7 +555,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                 Ok(e.clone())
             };
             let fs = |_: &mut State, _: &mut VisitorScopeMap, s: &Stmt| Ok(vec![s.clone()]);
-            let fp = |state: &mut State, _: &mut VisitorScopeMap, p: &Place| {
+            let fpl = |state: &mut State, _: &mut VisitorScopeMap, p: &Place| {
                 match &p.x {
                     PlaceX::Index(_, _, ArrayKind::Array, _) => {
                         reach_function(ctxt, state, &fn_array_update());
@@ -571,9 +571,26 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                 }
                 Ok(p.clone())
             };
+            let fp = |state: &mut State, _: &mut VisitorScopeMap, pat: &Pattern| {
+                match &pat.x {
+                    PatternX::Slice(..) => match array_kind_of_typ(&pat.typ).0 {
+                        ArrayKind::Array => {
+                            reach_function(ctxt, state, &fn_array_update());
+                        }
+                        ArrayKind::Slice => {
+                            reach_function(ctxt, state, &fn_slice_index());
+                            reach_function(ctxt, state, &fn_slice_update());
+                            reach_function(ctxt, state, &fn_slice_len());
+                        }
+                    }
+                    _ => {}
+                }
+                Ok(pat.clone())
+            };
             let mut map: VisitorScopeMap = ScopeMap::new();
+            // TODO: this clones the function unnecessarily
             crate::ast_visitor::map_function_visitor_env(
-                &function, &mut map, state, &fe, &fs, &ft, &fp,
+                &function, &mut map, state, &fe, &fs, &fp, &ft, &fpl,
             )
             .unwrap();
             let methods = reached_methods(

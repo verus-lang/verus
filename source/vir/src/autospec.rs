@@ -134,6 +134,7 @@ fn simplify_function(
         &mut (),
         &|_state, _, expr| simplify_one_expr(func_map, expr),
         &|_state, _, stmt| Ok(vec![stmt.clone()]),
+        &|_state, _, pat| Ok(pat.clone()),
         &|_state, typ| Ok(typ.clone()),
         &|_state, _, place| Ok(place.clone()),
     )

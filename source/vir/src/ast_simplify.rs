@@ -1247,6 +1247,7 @@ fn simplify_function(
         state,
         &|state, map, expr| simplify_one_expr(ctx, state, map, expr),
         &|state, _, stmt| simplify_one_stmt(ctx, state, stmt),
+        &|_, _, pat| Ok(pat.clone()),
         &|state, typ| simplify_one_typ(&local, state, typ),
         &|state, map, place| simplify_one_place(ctx, state, map, place),
     )?;
