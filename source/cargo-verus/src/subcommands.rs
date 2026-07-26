@@ -540,6 +540,7 @@ pub struct VstdBuildPlan {
     pub target_dir: Utf8PathBuf,
     pub cargo_options: CargoOptions,
     pub vstd_manifest: Utf8PathBuf,
+    pub vstd_features: Set<String>,
     pub verus_builtin_manifest: Utf8PathBuf,
     pub verus_builtin_macros_manifest: Utf8PathBuf,
     pub verus_state_machines_macros_manifest: Utf8PathBuf,
@@ -595,11 +596,15 @@ fn make_vstd_build_plan(
         cargo_options.target_dir = None;
     }
 
+    let mut vstd_features: Set<String> = todo!("resolve enabled `vstd` features");
+    vstd_features.insert("nonzero_internals".into());
+
     Ok(VstdBuildPlan {
         current_dir: current_dir.to_owned(),
         target_dir: metadata.target_directory.clone(),
         cargo_options,
         vstd_manifest,
+        vstd_features,
         verus_builtin_manifest,
         verus_builtin_macros_manifest,
         verus_state_machines_macros_manifest,
@@ -677,7 +682,9 @@ pub fn build_vstd(plan: &VstdBuildPlan) -> Result<ExitCode> {
     for (name, path) in externs {
         build_command.args(["--extern", &format!("{name}={}", path.display())]);
     }
-    build_command.args(["--cfg", &format!("feature={:?}", "nonzero_internals")]);
+    for feature in &plan.vstd_features {
+        build_command.args(["--cfg", &format!("feature={feature:?}")]);
+    }
     build_command.arg(vstd_source);
 
     let build_status = build_command
