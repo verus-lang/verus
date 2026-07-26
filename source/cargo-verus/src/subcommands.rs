@@ -1,15 +1,16 @@
 use std::collections::{BTreeMap as Map, BTreeSet as Set};
 use std::env;
-use std::fs;
-use std::io::{BufReader, Write};
-use std::path::PathBuf;
-use std::process::{Command, ExitCode, Stdio};
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::process::{Command, ExitCode};
 
 use anyhow::{Context, Result, anyhow, bail};
-use cargo_metadata::{Message, PackageId};
+use cargo_metadata::camino::Utf8PathBuf;
+use cargo_metadata::{Metadata, PackageId};
 use clap::ValueEnum;
 use colored::Colorize;
 
+use crate::ExecutionPlan;
 use crate::cli::{CargoOptions, VerifyCommand, VerusArgFwdSelector};
 use crate::metadata::{MetadataIndex, fetch_metadata, make_package_id};
 use crate::toolchains::{self, TOOLCHAINS, is_matching_known_and_used};
@@ -141,7 +142,7 @@ pub struct VerusConfig {
     pub warn_if_nothing_verified: bool,
 }
 
-pub fn plan_cargo_run(cfg: VerusConfig) -> Result<CargoRunPlan> {
+pub fn plan_cargo_run(cfg: VerusConfig) -> Result<ExecutionPlan> {
     let fwd_verus_args_to = cfg.options.fwd_verus_args_to.expect("fwd_verus_args_to must be set");
 
     //////////////////////////////////////////////////
@@ -162,13 +163,22 @@ pub fn plan_cargo_run(cfg: VerusConfig) -> Result<CargoRunPlan> {
     let all_packages = metadata_index.get_transitive_closure(root_packages.clone());
     let dep_packages: Set<PackageId> = all_packages.difference(&root_packages).cloned().collect();
 
-    let only_primary_vstd: Option<PackageId> = if root_packages.len() == 1 {
-        root_packages
+    if cfg.subcommand == "build"
+        && root_packages.len() == 1
+        && let Some(only_primary_vstd) = root_packages
             .iter()
             .find(|package_id| metadata_index.get(package_id).verus_metadata.is_vstd)
             .cloned()
-    } else {
-        None
+    {
+        // When the only primary package to build is `vstd`, switch to a specialized code path.
+        let build_vstd_plan = make_vstd_build_plan(
+            &cfg.current_dir,
+            &only_primary_vstd,
+            &metadata,
+            &metadata_index,
+            &cfg.options.verus_args,
+        )?;
+        return Ok(ExecutionPlan::BuildVstd(build_vstd_plan));
     };
 
     let packages_to_process = &all_packages;
@@ -246,8 +256,7 @@ pub fn plan_cargo_run(cfg: VerusConfig) -> Result<CargoRunPlan> {
         eprintln!("verbosity level = 1; keeping Verus non-verbose");
     }
 
-    let plan = make_cargo_plan(
-        only_primary_vstd,
+    let cargo_run_plan = make_cargo_plan(
         cfg.current_dir,
         cfg.subcommand,
         cargo_args,
@@ -260,7 +269,7 @@ pub fn plan_cargo_run(cfg: VerusConfig) -> Result<CargoRunPlan> {
     )?;
 
     if cfg.options.verbosity > 0 {
-        let command = plan.to_command();
+        let command = cargo_run_plan.to_command();
         eprintln!(
             "forwarding Verus args to crates: <{}>",
             fwd_verus_args_to.to_possible_value().expect("arg value").get_name(),
@@ -268,7 +277,7 @@ pub fn plan_cargo_run(cfg: VerusConfig) -> Result<CargoRunPlan> {
         eprintln!("running cargo command:\n{command:?}");
     }
 
-    if cfg.warn_if_nothing_verified && !plan.verified_something {
+    if cfg.warn_if_nothing_verified && !cargo_run_plan.verified_something {
         eprint!(
             "{}",
             "\
@@ -281,7 +290,7 @@ WARNING: You asked for verification, but cargo did not find any crates that opte
         );
     }
 
-    Ok(plan)
+    Ok(ExecutionPlan::RunCargo(cargo_run_plan))
 }
 
 fn make_cargo_args(opts: &CargoOptions, for_cargo_metadata: bool, verbosity: u8) -> Vec<String> {
@@ -369,8 +378,6 @@ fn make_cargo_args(opts: &CargoOptions, for_cargo_metadata: bool, verbosity: u8)
 
 #[derive(Clone, Debug)]
 pub struct CargoRunPlan {
-    /// Set when building `vstd` as the only primary package.
-    pub only_primary_vstd: Option<PackageId>,
     pub current_dir: PathBuf,
     pub args: Vec<String>,
     pub env: Map<String, String>,
@@ -390,7 +397,6 @@ impl CargoRunPlan {
 }
 
 fn make_cargo_plan(
-    only_primary_vstd: Option<PackageId>,
     current_dir: PathBuf,
     subcommand: &'static str,
     mut cargo_args: Vec<String>,
@@ -503,22 +509,12 @@ fn make_cargo_plan(
     let mut args = vec![subcommand.to_owned()];
     args.append(&mut cargo_args);
 
-    Ok(CargoRunPlan {
-        only_primary_vstd,
-        current_dir,
-        args,
-        env: env_overrides,
-        verified_something,
-    })
+    Ok(CargoRunPlan { current_dir, args, env: env_overrides, verified_something })
 }
 
 pub fn run_cargo(plan: &CargoRunPlan) -> Result<ExitCode> {
     // TODO: use the "+ ... toolchain" argument?
     let mut command = plan.to_command();
-
-    if let Some(vstd_id) = &plan.only_primary_vstd {
-        return run_cargo_building_vstd(command, vstd_id);
-    }
 
     let exit_status = command
         .spawn()
@@ -534,75 +530,63 @@ pub fn run_cargo(plan: &CargoRunPlan) -> Result<ExitCode> {
     }
 }
 
-// Used to perform a build where the *only* primary package is `vstd` itself.
-fn run_cargo_building_vstd(mut command: Command, vstd_id: &PackageId) -> Result<ExitCode> {
-    command.arg("--message-format=json-render-diagnostics");
-    command.stdout(Stdio::piped()).stderr(Stdio::inherit());
-    let mut child = command.spawn().context("spawning cargo")?;
-    let stdout = child.stdout.take().expect("stdout was piped");
-    let mut vstd_rlib = None;
-    let mut vstd_rmeta = None;
+pub struct VstdBuildPlan {
+    pub current_dir: PathBuf,
+    pub target_dir: Utf8PathBuf,
+    pub vstd_manifest: Utf8PathBuf,
+    pub verus_builtin_manifest: Utf8PathBuf,
+    pub verus_builtin_macros_manifest: Utf8PathBuf,
+    pub verus_state_machines_macros_manifest: Utf8PathBuf,
+}
 
-    for message in Message::parse_stream(BufReader::new(stdout)) {
-        match message? {
-            Message::CompilerArtifact(artifact) if artifact.package_id == *vstd_id => {
-                if let Some(rlib) =
-                    artifact.filenames.iter().find(|path| path.extension() == Some("rlib"))
-                {
-                    vstd_rlib = Some(rlib.as_std_path().to_path_buf());
-                }
+fn make_vstd_build_plan(
+    current_dir: &Path,
+    vstd_id: &PackageId,
+    metadata: &Metadata,
+    metadata_index: &MetadataIndex,
+    // Args forwarded to Verus
+    _fwd_verus_args: &[String],
+) -> Result<VstdBuildPlan> {
+    use cargo_metadata::NodeDep;
+    use std::collections::BTreeMap;
 
-                if let Some(rmeta) =
-                    artifact.filenames.iter().find(|path| path.extension() == Some("rmeta"))
-                {
-                    vstd_rmeta = Some(rmeta.as_std_path().to_path_buf());
-                }
-            }
-            Message::CompilerMessage(message) => {
-                if let Some(rendered) = message.message.rendered {
-                    eprint!("{rendered}");
-                }
-            }
-            Message::TextLine(line) => eprintln!("{line}"),
-            _ => {}
-        }
+    let vstd_metadata = metadata_index.get(vstd_id);
+    let vstd_manifest = vstd_metadata.package.manifest_path.clone();
+
+    fn find_dep_by_name<'a>(
+        deps: &BTreeMap<&'a PackageId, &'a NodeDep>,
+        name: &str,
+    ) -> &'a PackageId {
+        let (package_id, _): (&&PackageId, _) =
+            deps.iter().find(|(_, dep)| dep.name == name).expect(&format!("find dep `{name}`"));
+        package_id
     }
 
-    let exit_status = child.wait().context("Failed to wait for cargo")?;
-    let exit_code = match exit_status.code() {
-        Some(code) => u8::try_from(code).map(ExitCode::from).map_err(|_| {
-            anyhow!("Cargo command {command:?} terminated with an odd exit code: {code}")
-        })?,
-        None => bail!("Cargo command {command:?} was terminated by a signal: {exit_status}"),
-    };
+    let verus_builtin_id = find_dep_by_name(&vstd_metadata.deps, "verus_builtin");
+    let verus_builtin_manifest = metadata_index.get(verus_builtin_id).package.manifest_path.clone();
 
-    if exit_code != ExitCode::SUCCESS {
-        bail!("Cargo command {command:?} failed")
-    }
+    let verus_builtin_macros_id = find_dep_by_name(&vstd_metadata.deps, "verus_builtin_macros");
+    let verus_builtin_macros_manifest =
+        metadata_index.get(verus_builtin_macros_id).package.manifest_path.clone();
 
-    let Some(vstd_rlib_path) = vstd_rlib else {
-        bail!("The `vstd` build did not produce a `*.rlib` artifact")
-    };
+    let verus_state_machines_macros_id =
+        find_dep_by_name(&vstd_metadata.deps, "verus_state_machines_macros");
+    let verus_state_machines_macros_manifest =
+        metadata_index.get(verus_state_machines_macros_id).package.manifest_path.clone();
 
-    let Some(vstd_rmeta_path) = vstd_rmeta else {
-        bail!("The `vstd` build did not produce a `*.rmeta` artifact")
-    };
+    Ok(VstdBuildPlan {
+        current_dir: current_dir.to_owned(),
+        target_dir: metadata.target_directory.clone(),
+        vstd_manifest,
+        verus_builtin_manifest,
+        verus_builtin_macros_manifest,
+        verus_state_machines_macros_manifest,
+    })
+}
 
-    println!("vstd.rlib  path: {}", vstd_rlib_path.display());
-    println!("vstd.rmeta path: {}", vstd_rmeta_path.display());
-
-    let vstd_vir_src = vstd_rmeta_path.with_extension("vir");
-    let vstd_vir_dst = vstd_rlib_path.with_file_name("vstd.vir");
-    fs::copy(&vstd_vir_src, &vstd_vir_dst).with_context(|| {
-        format!(
-            "copying the `*.vir` artifact from {} to {}",
-            vstd_vir_src.display(),
-            vstd_vir_dst.display(),
-        )
-    })?;
-    println!("vstd.vir   path: {}", vstd_vir_dst.display());
-
-    Ok(exit_code)
+// Special code path for a build where the *only* primary package is `vstd` itself.
+pub fn build_vstd(plan: &VstdBuildPlan) -> Result<ExitCode> {
+    todo!()
 }
 
 fn pack_verus_driver_args_for_env(args: impl Iterator<Item = impl AsRef<str>>) -> String {
