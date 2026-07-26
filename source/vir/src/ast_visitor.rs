@@ -2111,7 +2111,7 @@ where
     Ok(Arc::new(vec_map_result(&**bounds, |b| map_generic_bound_visitor(b, env, ft))?))
 }
 
-pub(crate) fn map_function_visitor_env<E, FE, FS, FT, FPL>(
+pub(crate) fn map_function_visitor_env<E, FE, FS, FT, FPL, FP>(
     function: &Function,
     map: &mut VisitorScopeMap,
     env: &mut E,
@@ -2119,14 +2119,15 @@ pub(crate) fn map_function_visitor_env<E, FE, FS, FT, FPL>(
     fs: &FS,
     ft: &FT,
     fpl: &FPL,
+    fp: &FP,
 ) -> Result<Function, VirErr>
 where
     FE: Fn(&mut E, &mut VisitorScopeMap, &Expr) -> Result<Expr, VirErr>,
     FS: Fn(&mut E, &mut VisitorScopeMap, &Stmt) -> Result<Vec<Stmt>, VirErr>,
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
     FPL: Fn(&mut E, &mut VisitorScopeMap, &Place) -> Result<Place, VirErr>,
+    FP: Fn(&mut E, &mut VisitorScopeMap, &Pattern) -> Result<Pattern, VirErr>,
 {
-    let fp = |_: &mut E, _: &mut VisitorScopeMap, pattern: &Pattern| Ok(pattern.clone());
     let mut vis = MapExprStmtTypVisitor { env, fe, fs, ft, fpl, fp: &fp, map };
     vis.visit_function(function)
 }

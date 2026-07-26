@@ -136,6 +136,7 @@ fn simplify_function(
         &|_state, _, stmt| Ok(vec![stmt.clone()]),
         &|_state, typ| Ok(typ.clone()),
         &|_state, _, place| Ok(place.clone()),
+        &|_state, _, pat| Ok(pat.clone()),
     )
 }
 

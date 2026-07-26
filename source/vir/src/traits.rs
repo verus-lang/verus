@@ -295,6 +295,7 @@ pub fn demote_external_traits(
             &|_state, _, stmt| Ok(vec![stmt.clone()]),
             &|_state, typ| Ok(typ.clone()),
             &|_state, _, place| Ok(place.clone()),
+            &|_state, _, pattern| Ok(pattern.clone()),
         )?;
     }
 
@@ -436,6 +437,7 @@ pub fn rewrite_external_function(
         &|_, _, stmt| Ok(vec![stmt.clone()]),
         &|_, t: &Typ| Ok(rewrite_one_external_typ(from_path, to_path, t)),
         &|_, _, p: &Place| Ok(p.clone()),
+        &|_, _, place| Ok(place.clone()),
     )
     .expect("rewrite_external_function")
 }

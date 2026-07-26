@@ -1300,6 +1300,7 @@ fn simplify_function(
         &|state, _, stmt| simplify_one_stmt(ctx, state, stmt),
         &|state, typ| simplify_one_typ(&local, state, typ),
         &|state, map, place| simplify_one_place(ctx, state, map, place),
+        &|_, _, pat| Ok(pat.clone()),
     )?;
     let mut functionx = function.x.clone();
     assert!(functionx.params.len() == param_names.len());

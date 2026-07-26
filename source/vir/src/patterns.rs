@@ -297,24 +297,14 @@ pub(crate) fn pattern_has_or(pattern: &Pattern) -> bool {
         PatternX::Var(_binding) => false,
         PatternX::Binding { binding: _, sub_pat } => pattern_has_or(sub_pat),
         PatternX::Constructor(_path, _variant, patterns) => {
-            for binder in patterns.iter() {
-                if pattern_has_or(&binder.a) {
-                    return true;
-                }
-            }
-            false
+            patterns.iter().any(|p| pattern_has_or(&p.a))
         }
         PatternX::Or(_pat1, _pat2) => true,
         PatternX::Expr(_e) => false,
         PatternX::Range(_lower, _upper) => false,
         PatternX::ImmutRef(p) | PatternX::MutRef(p) => pattern_has_or(p),
         PatternX::Slice(patterns) => {
-            for p in patterns.iter() {
-                if pattern_has_or(p) {
-                    return true;
-                }
-            }
-            false
+            patterns.iter().any(|p| pattern_has_or(p))
         }
     }
 }
@@ -339,5 +329,8 @@ pub(crate) fn definitely_irrefutable(
         PatternX::Expr(_e) => false,
         PatternX::Range(_lower, _upper) => false,
         PatternX::ImmutRef(p) | PatternX::MutRef(p) => definitely_irrefutable(p, datatypes),
+        PatternX::Slice(patterns) => {
+            patterns.iter().all(|p| definitely_irrefutable(p, datatypes))
+        }
     }
 }
