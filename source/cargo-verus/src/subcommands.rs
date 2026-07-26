@@ -624,21 +624,76 @@ pub fn build_vstd(plan: &VstdBuildPlan) -> Result<ExitCode> {
             .wait()
             .with_context(|| format!("waiting to build `{name}`"))?;
         if !build_status.success() {
-            bail!("failed to build `{name}`");
+            bail!("Command {build_command:?} failed");
         };
         match build_status.code() {
-            Some(code) => u8::try_from(code)
-                .map(From::from)
-                .map_err(|_| anyhow!("building `{name}` returned an odd exit code: {code}")),
-            None => bail!("building `{name}` was terminated by a signal: {build_status}"),
+            Some(code) => u8::try_from(code).map(From::from).map_err(|_| {
+                anyhow!("Command {build_command:?} returned an odd exit code: {code}")
+            }),
+            None => bail!("Command {build_command:?} was terminated by a signal: {build_status}"),
         }
     };
 
-    dispatch_build_dep("verus_builtin", &plan.verus_builtin_manifest)?;
-    dispatch_build_dep("verus_builtin_macros", &plan.verus_builtin_macros_manifest)?;
-    dispatch_build_dep("verus_state_machines_macros", &plan.verus_state_machines_macros_manifest)?;
+    let profile = if plan.cargo_options.release { "release" } else { "debug" };
+    let output_dir = plan.target_dir.join(profile);
 
-    Ok(ExitCode::SUCCESS)
+    let mut externs = Map::<&str, PathBuf>::new();
+
+    dispatch_build_dep("verus_builtin", &plan.verus_builtin_manifest)?;
+    let verus_builtin_rlib = output_dir.join("libverus_builtin.rlib").into_std_path_buf();
+    externs.insert("verus_builtin", verus_builtin_rlib);
+
+    dispatch_build_dep("verus_builtin_macros", &plan.verus_builtin_macros_manifest)?;
+    let verus_builtin_macros_dylib = output_dir
+        .join(format!("libverus_builtin_macros.{}", std::env::consts::DLL_EXTENSION))
+        .into_std_path_buf();
+    externs.insert("verus_builtin_macros", verus_builtin_macros_dylib);
+
+    dispatch_build_dep("verus_state_machines_macros", &plan.verus_state_machines_macros_manifest)?;
+    let verus_state_machines_macros_dylib = output_dir
+        .join(format!("libverus_state_machines_macros.{}", std::env::consts::DLL_EXTENSION))
+        .into_std_path_buf();
+    externs.insert("verus_state_machines_macros", verus_state_machines_macros_dylib);
+
+    let vstd_source = plan.vstd_manifest.with_file_name("vstd.rs");
+    let cargo_verus_path =
+        env::current_exe().context("getting the current cargo-verus executable path")?;
+    let rust_verify_path = cargo_verus_path
+        .with_file_name("rust_verify")
+        .with_extension(std::env::consts::EXE_EXTENSION);
+
+    let mut build_command = Command::new(rust_verify_path);
+    build_command
+        .current_dir(&plan.current_dir)
+        .env("RUST_MIN_STACK", (10 * 1024 * 1024).to_string())
+        .env("VSTD_KIND", "IsVstd")
+        .args(["--internal-test-mode", "--crate-type=lib", "--is-vstd", "--compile"])
+        .args(["--multiple-errors", "2"])
+        .args(["--out-dir", output_dir.as_str()])
+        .args(["--export", output_dir.join("vstd.vir").as_str()]);
+    if plan.cargo_options.release {
+        build_command.args(["-C", "opt-level=3"]);
+    }
+    for (name, path) in externs {
+        build_command.args(["--extern", &format!("{name}={}", path.display())]);
+    }
+    build_command.args(["--cfg", &format!("feature={:?}", "nonzero_internals")]);
+    build_command.arg(vstd_source);
+
+    let build_status = build_command
+        .spawn()
+        .context("running `rust_verify` to build `vstd`")?
+        .wait()
+        .context("waiting for `rust_verify` to build `vstd`")?;
+    if !build_status.success() {
+        bail!("Command {build_command:?} failed");
+    };
+    match build_status.code() {
+        Some(code) => u8::try_from(code)
+            .map(ExitCode::from)
+            .map_err(|_| anyhow!("Command {build_command:?} returned an odd exit code: {code}")),
+        None => bail!("Command {build_command:?} was terminated by a signal: {build_status}"),
+    }
 }
 
 fn pack_verus_driver_args_for_env(args: impl Iterator<Item = impl AsRef<str>>) -> String {
