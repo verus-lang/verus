@@ -1879,3 +1879,33 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] shadowed_label verus_code! {
+        fn cond() -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[allow(unused_labels)]
+        fn test() {
+            let mut i = 0;
+            'a: while i < 10 {
+                'a: loop {
+                    break 'a;
+                }
+
+                i += 1;
+            }
+
+            // There is no 'break' statement for the outer loop, so the condition
+            // should always be false at this point.
+            assert(i >= 10);
+        }
+    } => Ok(err) => {
+        assert!(err.errors.len() == 0);
+        assert!(err.warnings.len() == 4);
+        assert!(err.warnings[0].message.contains("label name `'a` shadows a label name that is already in scope"));
+        assert!(err.warnings[1].message.contains("1 warning emitted"));
+        assert!(err.warnings[2].message.contains("label name `'a` shadows a label name that is already in scope"));
+        assert!(err.warnings[3].message.contains("1 warning emitted"));
+    }
+}

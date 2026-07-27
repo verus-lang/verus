@@ -3015,13 +3015,13 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             mk_expr(ExprX::Match(vir_place, Arc::new(vir_arms)))
         }
         ExprKind::Loop(block, label, LoopSource::Loop, header_span) => {
+            let label = bctx.fresh_label(expr.hir_id, label);
             let allow_complex_invariants = allow_complex_invariants();
             let bctx = &BodyCtxt { loop_isolation, ..bctx.clone() };
             let typ = typ_of_node_unadjusted(bctx, block.span, &block.hir_id)?;
             let mut body = block_to_vir(bctx, block, &expr.span, &typ)?;
             let mut header =
                 vir::headers::read_header(&mut body, &vir::headers::HeaderAllows::Loop)?;
-            let label = label.map(|l| l.ident.to_string());
             let allow_no_decreases = expr_vattrs.assume_termination
                 || crate::attributes::get_allow_exec_allows_no_decreases_clause_walk_parents(
                     bctx.ctxt.tcx,
@@ -3073,6 +3073,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             LoopSource::While,
             header_span,
         ) => {
+            let label = bctx.fresh_label(expr.hir_id, label);
             // rustc desugars a while loop of the form `while cond { body }`
             // to `loop { if cond { body } else { break; } }`
             // We want to "un-desugar" it to represent it as a while loop.
@@ -3118,7 +3119,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     let wildcard_body = bctx.spanned_typed_new(
                         cond.span,
                         &body_ty,
-                        ExprX::BreakOrContinue { label: None, is_break: true },
+                        ExprX::BreakOrContinue { label: label.clone(), is_break: true },
                     );
                     (
                         None,
@@ -3137,7 +3138,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 }
                 _ => (Some(expr_to_vir_consume(bctx, cond)?), body),
             };
-            let label = label.map(|l| l.ident.to_string());
             Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(
                 *header_span,
                 &expr_typ()?,
@@ -3163,11 +3163,11 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             mk_expr(ExprX::Return(expr))
         }
         ExprKind::Break(dest, None) => {
-            let label = dest.label.map(|l| l.ident.to_string());
+            let label = bctx.label_from_dest(expr.span, dest)?;
             mk_expr(ExprX::BreakOrContinue { label, is_break: true })
         }
         ExprKind::Continue(dest) => {
-            let label = dest.label.map(|l| l.ident.to_string());
+            let label = bctx.label_from_dest(expr.span, dest)?;
             mk_expr(ExprX::BreakOrContinue { label, is_break: false })
         }
         ExprKind::Struct(qpath, fields, struct_tail) => {

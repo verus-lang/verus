@@ -1,10 +1,10 @@
 use crate::ast::{
     ArithOp, AssertQueryMode, AtomicallyKind, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp,
     BoundsCheck, ByRef, CallTarget, ComputeMode, Constant, Div0Behavior, Dt, Expr, ExprX, FieldOpr,
-    Fun, Function, Ident, IntRange, InvAtomicity, LogicalOp, LoopInvariantKind, MaskSpec, Mode,
-    OverflowBehavior, PatternBinding, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX, Typ,
-    TypX, Typs, UnaryOp, UnaryOpr, UnwindSpec, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent,
-    VarIdentDisambiguate, VariantCheck, VirErr,
+    Fun, Function, Ident, IntRange, InvAtomicity, Label, LogicalOp, LoopInvariantKind, MaskSpec,
+    Mode, OverflowBehavior, PatternBinding, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX,
+    Typ, TypX, Typs, UnaryOp, UnaryOpr, UnwindSpec, VarAt, VarBinder, VarBinderX, VarBinders,
+    VarIdent, VarIdentDisambiguate, VariantCheck, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, CrateId, Exprs};
 use crate::ast_util::{QUANT_FORALL, bool_typ, types_equal, undecorate_typ, unit_typ};
@@ -620,26 +620,15 @@ pub(crate) fn assume_has_typ(x: &UniqueIdent, typ: &Typ, span: &Span) -> Stm {
     Spanned::new(span.clone(), StmX::Assume(has_typ))
 }
 
-fn loop_body_find_breaks(
-    loop_label: &Option<String>,
-    in_subloop: bool,
-    num_breaks: &mut usize,
-    body: &Expr,
-) {
+fn loop_body_find_breaks(loop_label: &Label, num_breaks: &mut usize, body: &Expr) {
     let mut f = |expr: &Expr| match &expr.x {
         ExprX::Loop { body, .. } => {
-            loop_body_find_breaks(loop_label, true, num_breaks, body);
+            loop_body_find_breaks(loop_label, num_breaks, body);
             VisitorControlFlow::Return
         }
         ExprX::BreakOrContinue { label: break_label, is_break: true } => {
-            if break_label.is_none() {
-                if !in_subloop {
-                    *num_breaks += 1;
-                }
-            } else {
-                if break_label == loop_label {
-                    *num_breaks += 1;
-                }
+            if break_label == loop_label {
+                *num_breaks += 1;
             }
             VisitorControlFlow::Recurse
         }
@@ -648,9 +637,9 @@ fn loop_body_find_breaks(
     crate::ast_visitor::expr_visitor_walk(body, &mut f);
 }
 
-fn loop_body_has_breaks(loop_label: &Option<String>, body: &Expr) -> usize {
+fn loop_body_has_breaks(loop_label: &Label, body: &Expr) -> usize {
     let mut num_breaks = 0;
-    loop_body_find_breaks(loop_label, false, &mut num_breaks, body);
+    loop_body_find_breaks(loop_label, &mut num_breaks, body);
     num_breaks
 }
 
@@ -2725,7 +2714,7 @@ pub(crate) fn expr_to_stm_opt(
                 if let Some((c_stm, c_exp)) = cnd {
                     // convert while into loop
                     let not_c = c_exp.new_x(ExpX::Unary(UnaryOp::Not, c_exp.clone()));
-                    let break_stmx = StmX::BreakOrContinue { label: None, is_break: true };
+                    let break_stmx = StmX::BreakOrContinue { label: label.clone(), is_break: true };
                     let break_stm = Spanned::new(c_exp.span.clone(), break_stmx);
                     let if_stm = Spanned::new(c_exp.span.clone(), StmX::If(not_c, break_stm, None));
                     body_stms.insert(0, c_stm);
