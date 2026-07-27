@@ -1,4 +1,4 @@
-name: ci-cargo
+name: ci
 
 on:
   workflow_dispatch:
@@ -40,7 +40,9 @@ jobs:
 
       - name: check rustfmt/verusfmt
         working-directory: ./source
-        run: cargo fmt -- --check
+        run: |
+          . ../tools/activate
+          vargo fmt -- --check
 
       - name: check cargo fmt for vargo
         working-directory: ./tools/vargo
@@ -61,7 +63,9 @@ jobs:
 
       - name: clippy check codebase
         working-directory: ./source
-        run: cargo clippy -- -D warnings
+        run: |
+          . ../tools/activate
+          vargo clippy -- -D warnings
 
       - name: clippy check vargo
         working-directory: ./tools/vargo
@@ -165,18 +169,22 @@ jobs:
       - name: build
         working-directory: ./source
         run: |
-          cargo clean
-          CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true cargo build --release
-          VERUS_Z3_PATH="$(pwd)/z3" cargo run --release -p cargo-verus -- build --release --manifest-path vstd/Cargo.toml
-          touch target-verus/release/verus-root
+          . ../tools/activate
+          vargo clean
+          RUSTFLAGS="-C debug-assertions" vargo build --release
 
       - name: full tests
         working-directory: ./source
         run: |
+          . ../tools/activate
+          RUSTFLAGS="-C debug-assertions" VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run --release -p air
+          RUSTFLAGS="-C debug-assertions" VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run --release -p rust_verify_test
           # check cvc5
-          VERUS_CVC5_PATH=./cvc5 cargo run --release -p rust_verify -- -V cvc5 ../examples/assorted_demo.rs
-          CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true VERUS_Z3_PATH="$(pwd)/z3" cargo nextest run --release -p air
-          CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true VERUS_Z3_PATH="$(pwd)/z3" cargo nextest run --release -p rust_verify_test
+          vargo run --release -p rust_verify -- -V cvc5 ../examples/assorted_demo.rs
+
+      - name: build line-count tool
+        working-directory: ./source/tools/line_count
+        run: cargo build
 
   # check if it builds and that basic tests pass on our main supported platforms
   basic-test:
@@ -215,21 +223,22 @@ jobs:
       - name: setup nextest
         uses: taiki-e/install-action@nextest
 
-      - name: build line-count tool
-        working-directory: ./source
-        run: cargo build -p line_count
-
       - name: build
         working-directory: ./source
         run: |
-          cargo clean
-          cargo build
-          VERUS_Z3_PATH="$(pwd)/z3" cargo run -p cargo-verus -- build --manifest-path vstd/Cargo.toml
+          . ../tools/activate
+          vargo clean
+          vargo build
 
       - name: basic tests
         working-directory: ./source
         run: |
-          VERUS_Z3_PATH="$(pwd)/z3" cargo nextest run -p rust_verify_test --test basic
+          . ../tools/activate
+          VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run -p rust_verify_test --test basic
+
+      - name: build line-count tool
+        working-directory: ./source/tools/line_count
+        run: cargo build
 
   # check if esoteric conficurations build
   smoke-test:
@@ -268,44 +277,45 @@ jobs:
       - name: build
         working-directory: ./source
         run: |
-          cargo clean
+          . ../tools/activate
+          vargo clean
 
           case "${{ matrix.features }}" in
             "singular")
               hdiutil attach ../Singular-4-3-2_M1.dmg
-              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" cargo build --features singular
-              VERUS_Z3_PATH="$PWD/z3" cargo run -p cargo-verus -- build --manifest-path vstd/Cargo.toml
+              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo build --features singular
               ;;
             "record-history")
-              cargo build --features record-history
-              VERUS_Z3_PATH="$PWD/z3" cargo run -p cargo-verus -- build --manifest-path vstd/Cargo.toml
+              vargo build --features record-history
               ;;
             "no-std")
-              cargo build
-              VERUS_Z3_PATH="$PWD/z3" cargo run -p cargo-verus -- build --manifest-path vstd/Cargo.toml --no-default-features --features alloc
-              cd ..
-              cargo build --manifest-path source/vstd/Cargo.toml --no-default-features --features alloc
+              vargo build --vstd-no-std
+              cd vstd
+              unset -f cargo
+              cargo build --no-default-features --features alloc
               ;;
             "no-alloc")
-              cargo build
-              VERUS_Z3_PATH="$PWD/z3" cargo run -p cargo-verus -- build --manifest-path vstd/Cargo.toml --no-default-features
-              cd ..
-              cargo build --manifest-path source/vstd/Cargo.toml --no-default-features
+              vargo build --vstd-no-std --vstd-no-alloc
+              cd vstd
+              unset -f cargo
+              cargo build --no-default-features
               ;;
           esac
 
       - name: smoke test
         working-directory: ./source
         run: |
+          . ../tools/activate
+
           case "${{ matrix.features }}" in
             "singular")
               hdiutil attach ../Singular-4-3-2_M1.dmg
-              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" cargo nextest run -p air --features singular
-              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" cargo nextest run -p rust_verify_test --features singular --test integer_ring
-              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" cargo nextest run -p rust_verify_test --features singular --test examples -- examples_integer_ring
+              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run -p air --features singular
+              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run -p rust_verify_test --features singular --test integer_ring
+              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run -p rust_verify_test --features singular --test examples -- examples_integer_ring
               ;;
             "record-history")
-              VERUS_Z3_PATH="$(pwd)/z3" cargo nextest run -p rust_verify_test --features record-history --test basic
+              VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run -p rust_verify_test --features record-history --test basic
               ;;
           esac
 
@@ -326,5 +336,6 @@ jobs:
       - name: build docs
         working-directory: ./source
         run: |
+          . ../tools/activate
           ./tools/get-z3.sh
           ./tools/docs.sh --strict # strict will complain if there are warnings
