@@ -6,13 +6,13 @@ use std::process::{Command, ExitCode};
 
 use anyhow::{Context, Result, anyhow, bail};
 use cargo_metadata::PackageId;
-use cargo_metadata::camino::{Utf8Path, Utf8PathBuf};
 use clap::ValueEnum;
 use colored::Colorize;
 
 use crate::cli::{CargoOptions, VerifyCommand, VerusArgFwdSelector};
 use crate::metadata::{MetadataIndex, fetch_metadata, make_package_id};
 use crate::toolchains::{self, TOOLCHAINS, is_matching_known_and_used};
+use crate::vstd_build::{VstdBuild, build_vstd};
 
 pub const CARGO_DEFAULT_LIB_METADATA: &str = "__CARGO_DEFAULT_LIB_METADATA";
 
@@ -394,12 +394,6 @@ pub struct CargoRunPlan {
     pub verified_something: bool,
 }
 
-#[derive(Clone, Debug)]
-pub struct VstdBuild {
-    pub vstd_id: PackageId,
-    pub deps: Map<String, PackageId>,
-}
-
 impl CargoRunPlan {
     fn to_command(&self) -> Command {
         let mut command = Command::new(env::var("CARGO").unwrap_or("cargo".into()));
@@ -549,89 +543,6 @@ pub fn run_cargo(plan: &CargoRunPlan) -> Result<ExitCode> {
             .map_err(|_| anyhow!("Command {command:?} terminated with an odd exit code: {code}")),
         None => bail!("Command {command:?} was terminated by a signal: {exit_status}"),
     }
-}
-
-/// Special code path for when `vstd` is the only primary package to build.
-pub fn build_vstd(vstd_build: &VstdBuild, mut command: Command) -> Result<ExitCode> {
-    use std::env::consts::{DLL_EXTENSION, DLL_PREFIX};
-
-    let mut artifacts = Map::<&str, cargo_metadata::Artifact>::new();
-
-    command
-        .arg("--message-format=json-render-diagnostics")
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::inherit());
-    let mut child = command.spawn().context("failed to spawn cargo")?;
-    let stdout = child.stdout.take().expect("stdout was piped");
-    for message in cargo_metadata::Message::parse_stream(std::io::BufReader::new(stdout)) {
-        match message? {
-            cargo_metadata::Message::CompilerArtifact(artifact) => {
-                if artifact.package_id == vstd_build.vstd_id {
-                    artifacts.insert("vstd", artifact);
-                } else if let Some((name, _)) = vstd_build
-                    .deps
-                    .iter()
-                    .find(|(_, package_id)| artifact.package_id == **package_id)
-                {
-                    artifacts.insert(name, artifact);
-                }
-            }
-            cargo_metadata::Message::CompilerMessage(message) => {
-                if let Some(rendered) = message.message.rendered {
-                    eprint!("{rendered}");
-                }
-            }
-            cargo_metadata::Message::TextLine(line) => eprintln!("{line}"),
-            _ => {}
-        }
-    }
-
-    let exit_status = child.wait().context("failed to wait for cargo")?;
-    let Some(code) = exit_status.code() else {
-        bail!("Command {command:?} did not succeed: {exit_status}");
-    };
-    let exit_code = u8::try_from(code)
-        .map(From::from)
-        .with_context(|| format!("Command {command:?} returned an odd exit code: {code}"))?;
-    if exit_code != ExitCode::SUCCESS {
-        return Ok(exit_code);
-    }
-
-    let get_artifact_file = |name: &str, ext: &str| -> Result<&Utf8PathBuf> {
-        artifacts
-            .get(name)
-            .with_context(|| format!("no artifact named `{name}`"))?
-            .filenames
-            .iter()
-            .find(|path| path.extension() == Some(ext))
-            .with_context(|| format!("no artifact file with extension `.{ext}`"))
-    };
-
-    let vstd_rlib = get_artifact_file("vstd", "rlib")?;
-    let vstd_rmeta = get_artifact_file("vstd", "rmeta")?;
-    let verus_builtin_rlib = get_artifact_file("verus_builtin", "rlib")?;
-    let verus_builtin_macros_dylib = get_artifact_file("verus_builtin_macros", DLL_EXTENSION)?;
-    let verus_state_machines_macros_dylib =
-        get_artifact_file("verus_state_machines_macros", DLL_EXTENSION)?;
-
-    fn copy_file(src: &Utf8Path, dst: &Utf8Path) -> Result<u64> {
-        std::fs::copy(src.as_std_path(), dst.as_std_path())
-            .with_context(|| format!("copying {src} to {dst}"))
-    }
-
-    let _ = copy_file(&vstd_rmeta.with_extension("vir"), &vstd_rlib.with_file_name("vstd.vir"))?;
-    let _ = copy_file(verus_builtin_rlib, &vstd_rlib.with_file_name("libverus_builtin.rlib"))?;
-    let _ = copy_file(
-        verus_builtin_macros_dylib,
-        &vstd_rlib.with_file_name(format!("{DLL_PREFIX}verus_builtin_macros.{DLL_EXTENSION}")),
-    )?;
-    let _ = copy_file(
-        verus_state_machines_macros_dylib,
-        &vstd_rlib
-            .with_file_name(format!("{DLL_PREFIX}verus_state_machines_macros.{DLL_EXTENSION}")),
-    )?;
-
-    Ok(exit_code)
 }
 
 fn pack_verus_driver_args_for_env(args: impl Iterator<Item = impl AsRef<str>>) -> String {
