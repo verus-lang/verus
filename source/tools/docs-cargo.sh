@@ -26,9 +26,8 @@ elif [ `uname` == "Linux" ]; then
     DYN_LIB_EXT=so
 fi
 
-. ../tools/activate
-vargo build -p verusdoc
-vargo build
+cargo build -p verusdoc
+cargo build
 
 echo "Running rustdoc..."
 RUSTC_BOOTSTRAP=1 eval ""VERUSDOC=1 VSTD_KIND=IsVstd VERUS_Z3_PATH="$(pwd)/z3"  rustdoc \
