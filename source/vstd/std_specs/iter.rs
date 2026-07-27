@@ -5,7 +5,7 @@ use super::super::seq::{
 
 use verus as verus_;
 
-use core::iter::{FromIterator, Iterator, Rev};
+use core::iter::{FilterMap, FromIterator, Iterator, Rev};
 
 verus_! {
 
@@ -93,6 +93,16 @@ pub trait ExIterator {
             self.will_return_none(),
             self.obeys_prophetic_iter_laws() && self.initial_value_relation(&self) ==>
                 FromIteratorSpec::from_iter_ensures(self.remaining(), collection),
+    ;
+
+    fn filter_map<B, F>(self, f: F) -> (r: FilterMap<Self, F>)
+        where
+            Self: Sized,
+            F: FnMut(Self::Item) -> Option<B>,
+        default_ensures
+            self.obeys_prophetic_iter_laws() && self.initial_value_relation(&self) ==>
+                r == into_filter_map_spec(self, f) && filter_map_post(self, f, r),
+            filter_map_mapped::<B, Self, F>(self, f).len() == self.remaining().len(),
     ;
 
     fn find<P>(&mut self, predicate: P) -> (r: Option<Self::Item>)
@@ -357,6 +367,82 @@ impl <I> DoubleEndedIteratorSpecImpl for Rev<I>
     }
 }
 
+/********************************************************************************
+ * Definitions for `filter_map()`
+ ********************************************************************************/
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::reject_recursive_types(I)]
+#[verifier::reject_recursive_types(F)]
+pub struct ExFilterMap<I, F>(FilterMap<I, F>);
+
+// Ghost accessors for the inner iterator and closure
+pub uninterp spec fn filter_map_iter<I, F>(fm: FilterMap<I, F>) -> I;
+pub uninterp spec fn filter_map_f_closure<I, F>(fm: FilterMap<I, F>) -> F;
+
+// Spec version of FilterMap::new
+pub uninterp spec fn into_filter_map_spec<I, F>(i: I, f: F) -> FilterMap<I, F>;
+
+// As with `rev_post`: a layer of indirection so the `filter_map` postcondition can be
+// stated without imposing the cyclic `FilterMap<Self, F>: Iterator` bound on the method.
+pub uninterp spec fn filter_map_post<I, F>(i: I, f: F, r: FilterMap<I, F>) -> bool;
+
+// The result of applying `f` to each of `i`'s remaining items, before `None`s are dropped
+pub uninterp spec fn filter_map_mapped<B, I, F>(i: I, f: F) -> Seq<Option<B>>;
+
+pub broadcast axiom fn filter_map_structure<I, F>(i: I, f: F)
+    ensures
+        filter_map_iter(#[trigger] into_filter_map_spec(i, f)) == i,
+        filter_map_f_closure(into_filter_map_spec(i, f)) == f,
+;
+
+// Unpacks `filter_map_post` into the result's `IteratorSpec` (cf. `rev_postcondition`).
+pub broadcast axiom fn filter_map_postcondition<B, I: Iterator, F: FnMut(I::Item) -> Option<B>>(i: I, f: F)
+    requires
+        i.obeys_prophetic_iter_laws(),
+        i.initial_value_relation(&i),
+        forall|k| 0 <= k < i.remaining().len() ==> call_requires(f, (#[trigger] i.remaining()[k],)),
+        filter_map_post(i, f, into_filter_map_spec(i, f)),
+    ensures
+        {
+            let r = into_filter_map_spec(i, f);
+            let outs = #[trigger] filter_map_mapped::<B, I, F>(i, f);
+            &&& IteratorSpec::remaining(&r) == outs.filter_map(|o: Option<B>| o)
+            &&& outs.len() == i.remaining().len()
+            &&& forall|k| 0 <= k < i.remaining().len() ==> call_ensures(f, (i.remaining()[k],), outs[k])
+            &&& filter_map_iter(r) == i
+            &&& filter_map_f_closure(r) == f
+            &&& IteratorSpec::decrease(&r) is Some == i.decrease() is Some
+            &&& IteratorSpec::initial_value_relation(&r, &r)
+        },
+;
+
+impl<B, I: Iterator, F> IteratorSpecImpl for FilterMap<I, F>
+    where F: FnMut(I::Item) -> Option<B>
+{
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        filter_map_iter(*self).obeys_prophetic_iter_laws()
+    }
+
+    uninterp spec fn remaining(&self) -> Seq<B>;
+
+    uninterp spec fn will_return_none(&self) -> bool;
+
+    #[verifier::prophetic]
+    open spec fn initial_value_relation(&self, init: &Self) -> bool {
+        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
+        &&& filter_map_iter(*self).initial_value_relation(&filter_map_iter(*init))
+    }
+
+    open spec fn decrease(&self) -> Option<nat> {
+        filter_map_iter(*self).decrease()
+    }
+
+    open spec fn peek(&self, index: int) -> Option<B> {
+        None
+    }
+}
+
 // Forwarding spec impl for the Rust-supplied blanket `impl<I> Iterator for &mut I`.
 // Without this, bare method-call syntax on a `i: &mut I` receiver (e.g. `i.remaining()`)
 // resolves to these (otherwise uninterpreted) functions on `&mut I` rather than on `I`,
@@ -535,6 +621,8 @@ pub trait ExIterStep: Clone + PartialOrd + Sized {
 
 pub broadcast group group_iter_axioms {
     rev_postcondition,
+    filter_map_structure,
+    filter_map_postcondition,
 }
 
 } // verus!
