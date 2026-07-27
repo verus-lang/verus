@@ -4,10 +4,10 @@ use super::pervasive::*;
 use super::prelude::*;
 use super::view::*;
 
-#[cfg(not(weak_memory))]
+#[cfg(not(feature = "weak-memory"))]
 pub use sc_atomic_types::*;
 
-#[cfg(not(weak_memory))]
+#[cfg(not(feature = "weak-memory"))]
 mod sc_atomic_types {
 
     use core::sync::atomic::{

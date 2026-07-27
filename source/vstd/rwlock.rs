@@ -2,14 +2,20 @@
 #![allow(unused_imports)]
 #![allow(non_shorthand_field_patterns)]
 
-use super::atomic_ghost::*;
-use super::cell::CellId;
-use super::cell::pcell_maybe_uninit as un;
-use super::invariant::InvariantPredicate;
-use super::modes::*;
-use super::multiset::*;
-use super::prelude::*;
-use super::set::*;
+#[cfg(not(feature = "weak-memory"))]
+pub use rwlock::*;
+
+#[cfg(not(feature = "weak-memory"))]
+mod rwlock {
+
+use super::super::atomic_ghost::*;
+use super::super::cell::CellId;
+use super::super::cell::pcell_maybe_uninit as un;
+use super::super::invariant::InvariantPredicate;
+use super::super::modes::*;
+use super::super::multiset::*;
+use super::super::prelude::*;
+use super::super::set::*;
 use core::marker::PhantomData;
 use verus_state_machines_macros::tokenized_state_machine_vstd;
 
@@ -709,3 +715,5 @@ impl<V, Pred: RwLockPredicate<V>> RwLock<V, Pred> {
 }
 
 } // verus!
+
+}

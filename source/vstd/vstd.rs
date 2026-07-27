@@ -22,7 +22,7 @@
 #![cfg_attr(verus_keep_ghost, feature(slice_index_methods))]
 #![cfg_attr(all(feature = "alloc", verus_keep_ghost), feature(liballoc_internals))]
 #![cfg_attr(verus_keep_ghost, feature(nonzero_internals))]
-#![feature(auto_traits)]
+#![cfg_attr(verus_keep_ghost, feature(auto_traits))]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;

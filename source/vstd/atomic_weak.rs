@@ -1,4 +1,8 @@
-#![allow(unused_imports)]
+#[cfg(feature = "weak-memory")]
+pub use weak_atomic_types::*;
+
+#[cfg(feature = "weak-memory")]
+mod weak_atomic_types {
 
 use core::sync::atomic::{
     AtomicBool, AtomicI8, AtomicI16, AtomicI32, AtomicIsize, AtomicPtr, AtomicU8, AtomicU16,
@@ -8,12 +12,11 @@ use core::sync::atomic::{
 #[cfg(target_has_atomic = "64")]
 use core::sync::atomic::{AtomicI64, AtomicU64};
 
-use super::cell::CellId;
-use super::prelude::*;
-use super::thread_view::*;
-use super::wrapping::*;
+use super::super::cell::CellId;
+use super::super::prelude::*;
+use super::super::thread_view::*;
+use super::super::wrapping::*;
 
-#[cfg(weak_memory)]
 verus! {
 
 broadcast use crate::group_vstd_default;
@@ -737,3 +740,5 @@ make_signed_integer_atomic!(PAtomicWeakIsize, AtomicIsize, isize, isize_specs);
 
 // TODO - AtomicPtr
 } // verus!
+
+}

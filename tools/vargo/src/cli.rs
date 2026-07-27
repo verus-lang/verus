@@ -66,6 +66,10 @@ pub struct BuildOptions {
     /// Turn expand errors on when building vstd
     #[arg(long)]
     pub vstd_expand_errors: bool,
+
+    /// Enable use of weak memory
+    #[arg(long)]
+    pub vstd_weak_memory: bool,
 }
 
 #[derive(Clone, Debug, Args, PartialEq, Eq)]

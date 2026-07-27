@@ -2,10 +2,16 @@
 //! See the [`atomic_with_ghost!`] documentation for more information.
 #![allow(unused_imports)]
 
-use super::atomic::*;
-use super::invariant::*;
-use super::modes::*;
-use super::prelude::*;
+#[cfg(not(feature = "weak-memory"))]
+pub use atomic_ghost::*;
+
+#[cfg(not(feature = "weak-memory"))]
+mod atomic_ghost {
+
+use super::super::atomic::*;
+use super::super::invariant::*;
+use super::super::modes::*;
+use super::super::prelude::*;
 
 verus! {
 
@@ -642,3 +648,4 @@ macro_rules! atomic_with_ghost_update_fetch_sub {
 }
 
 pub use atomic_with_ghost_update_fetch_sub;
+}
