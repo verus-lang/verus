@@ -464,7 +464,7 @@ impl<T> PointsTo<T> {
             ptr@.addr != 0,
             ptr@.provenance.is_some() ==> {
                 &&& ptr@.addr as int >= ptr@.provenance.data().start_addr()
-                &&& ptr@.addr + size_of::<T>() <= ptr@.provenance.data().start_addr()
+                &&& ptr@.addr <= ptr@.provenance.data().start_addr()
                     + ptr@.provenance.data().alloc_len()
             },
             ptr@.addr as nat % align_of::<T>() == 0,
@@ -779,6 +779,7 @@ impl<T> PointsToUnaligned<T> {
         ensures
             perm.ptr() == self.ptr(),
             perm.mem_contents() == self.mem_contents(),
+            perm.abstract_bytes() == self.abstract_bytes(),
     {
         broadcast use layout_of_sized;
 
@@ -798,6 +799,7 @@ impl<T> PointsToUnaligned<T> {
         ensures
             perm.ptr() == self.ptr(),
             perm.mem_contents() == self.mem_contents(),
+            perm.abstract_bytes() == self.abstract_bytes(),
     ;
 }
 
@@ -1182,8 +1184,13 @@ impl<T> PointsTo<[T]> {
             forall|i|
                 #![trigger s[i].mem_contents()]
                 #![trigger self.mem_contents_seq()[i as int]]
-                0 <= i < self.mem_contents_seq().len() ==> s[i].mem_contents()
-                    == self.mem_contents_seq()[i as int],
+                #![trigger s[i].ptr()@.provenance]
+                #![trigger s[i].ptr()@.addr]
+                0 <= i < self.mem_contents_seq().len() ==> {
+                    &&& s[i].mem_contents() == self.mem_contents_seq()[i as int]
+                    &&& s[i].ptr()@.provenance == s.ptr()@.provenance
+                    &&& s[i].ptr()@.addr == s.ptr()@.addr + i * layout::size_of::<T>()
+                },
             s.ptr() == self.ptr() as *mut T,
             s.len() == self.mem_contents_seq().len(),
             s.abstract_bytes() == self.abstract_bytes(),
@@ -1204,8 +1211,13 @@ impl<T> PointsTo<[T]> {
             forall|i|
                 #![trigger s[i].mem_contents()]
                 #![trigger self.mem_contents_seq()[i as int]]
-                0 <= i < self.mem_contents_seq().len() ==> s[i].mem_contents()
-                    == self.mem_contents_seq()[i as int],
+                #![trigger s[i].ptr()@.provenance]
+                #![trigger s[i].ptr()@.addr]
+                0 <= i < self.mem_contents_seq().len() ==> {
+                    &&& s[i].mem_contents() == self.mem_contents_seq()[i as int]
+                    &&& s[i].ptr()@.provenance == s.ptr()@.provenance
+                    &&& s[i].ptr()@.addr == s.ptr()@.addr + i * layout::size_of::<T>()
+                },
             s.ptr() == self.ptr() as *mut T,
             s.len() == self.mem_contents_seq().len(),
             s.abstract_bytes() == self.abstract_bytes(),
@@ -1218,37 +1230,6 @@ impl<T> PointsTo<[T]> {
         assert(spec_align_of_val::<[T]>(v) == align_of::<T>());
         use_type_invariant(self);
         self.inner.into_seq_pt_shared()
-    }
-
-    /// Same as `into_seq_pt`, but for `&mut PointsTo<[T]>`.
-    pub proof fn into_seq_pt_mut(tracked &mut self) -> (tracked s: &mut SeqPointsTo<T>)
-        ensures
-            forall|i|
-                #![trigger final(s)[i].mem_contents()]
-                #![trigger final(self).mem_contents_seq()[i as int]]
-                0 <= i < old(self).mem_contents_seq().len() ==> final(s)[i].mem_contents()
-                    == final(self).mem_contents_seq()[i as int],
-            final(s).abstract_bytes() == final(self).abstract_bytes(),
-            old(self).ptr() == final(self).ptr(),
-            old(self).mem_contents_seq().len() == final(self).mem_contents_seq().len(),
-            forall|i|
-                #![trigger s[i].mem_contents()]
-                #![trigger old(self).mem_contents_seq()[i as int]]
-                0 <= i < old(self).mem_contents_seq().len() ==> s[i].mem_contents() == old(
-                    self,
-                ).mem_contents_seq()[i as int],
-            s.ptr() == old(self).ptr() as *mut T,
-            s.len() == old(self).mem_contents_seq().len(),
-            s.abstract_bytes() == old(self).abstract_bytes(),
-            s.wf(),
-    {
-        broadcast use layout_of_sized;
-        broadcast use layout_of_slices;
-
-        let ghost v: &[T] = arbitrary();
-        assert(spec_align_of_val::<[T]>(v) == align_of::<T>());
-        use_type_invariant(&*self);
-        self.inner.into_seq_pt_mut()
     }
 
     pub axiom fn tracked_borrow(tracked &self) -> (tracked r: &[T])
@@ -1643,6 +1624,7 @@ impl<T> PointsToUnaligned<[T]> {
         ensures
             perm.ptr() == self.ptr(),
             perm.mem_contents_seq() == self.mem_contents_seq(),
+            perm.abstract_bytes() == self.abstract_bytes(),
     {
         broadcast use layout_of_sized;
         broadcast use layout_of_slices;
@@ -1663,6 +1645,7 @@ impl<T> PointsToUnaligned<[T]> {
         ensures
             perm.ptr() == self.ptr(),
             perm.mem_contents_seq() == self.mem_contents_seq(),
+            perm.abstract_bytes() == self.abstract_bytes(),
     ;
 
     /// Mutably borrow an unaligned `PointsToUnaligned<[\T\]>` as an aligned `PointsTo<[\T\]>`.
@@ -1675,8 +1658,10 @@ impl<T> PointsToUnaligned<[T]> {
         ensures
             perm.ptr() == old(self).ptr(),
             perm.mem_contents_seq() == old(self).mem_contents_seq(),
+            perm.abstract_bytes() == old(self).abstract_bytes(),
             final(perm).ptr() == final(self).ptr(),
             final(perm).mem_contents_seq() == final(self).mem_contents_seq(),
+            final(perm).abstract_bytes() == final(self).abstract_bytes(),
     ;
 
     // TODO - verify using as_untyped, as_typed axioms by reasoning about the encoding of integer types
@@ -1768,8 +1753,13 @@ impl<T> PointsToUnaligned<[T]> {
             forall|i|
                 #![trigger s[i].mem_contents()]
                 #![trigger self.mem_contents_seq()[i as int]]
-                0 <= i < self.mem_contents_seq().len() ==> s[i].mem_contents()
-                    == self.mem_contents_seq()[i as int],
+                #![trigger s[i].ptr()@.provenance]
+                #![trigger s[i].ptr()@.addr]
+                0 <= i < self.mem_contents_seq().len() ==> {
+                    &&& s[i].mem_contents() == self.mem_contents_seq()[i as int]
+                    &&& s[i].ptr()@.provenance == s.ptr()@.provenance
+                    &&& s[i].ptr()@.addr == s.ptr()@.addr + i * layout::size_of::<T>()
+                },
             s.ptr() == self.ptr() as *mut T,
             s.len() == self.mem_contents_seq().len(),
             s.abstract_bytes() == self.abstract_bytes(),
@@ -1784,36 +1774,16 @@ impl<T> PointsToUnaligned<[T]> {
             forall|i|
                 #![trigger s[i].mem_contents()]
                 #![trigger self.mem_contents_seq()[i as int]]
-                0 <= i < self.mem_contents_seq().len() ==> s[i].mem_contents()
-                    == self.mem_contents_seq()[i as int],
+                #![trigger s[i].ptr()@.provenance]
+                #![trigger s[i].ptr()@.addr]
+                0 <= i < self.mem_contents_seq().len() ==> {
+                    &&& s[i].mem_contents() == self.mem_contents_seq()[i as int]
+                    &&& s[i].ptr()@.provenance == s.ptr()@.provenance
+                    &&& s[i].ptr()@.addr == s.ptr()@.addr + i * layout::size_of::<T>()
+                },
             s.ptr() == self.ptr() as *mut T,
             s.len() == self.mem_contents_seq().len(),
             s.abstract_bytes() == self.abstract_bytes(),
-            s.wf(),
-    ;
-
-    /// Same as `into_seq_pt`, but for `&mut PointsToUnaligned<[T]>`.
-    pub axiom fn into_seq_pt_mut(tracked &mut self) -> (tracked s: &mut SeqPointsTo<T>)
-        requires
-            self.ptr()@.addr as int % align_of::<T>() as int == 0,
-        ensures
-            forall|i|
-                #![trigger final(s)[i].mem_contents()]
-                #![trigger final(self).mem_contents_seq()[i as int]]
-                0 <= i < old(self).mem_contents_seq().len() ==> final(s)[i].mem_contents()
-                    == final(self).mem_contents_seq()[i as int],
-            final(s).abstract_bytes() == final(self).abstract_bytes(),
-            old(self).ptr() == final(self).ptr(),
-            old(self).mem_contents_seq().len() == final(self).mem_contents_seq().len(),
-            forall|i|
-                #![trigger s[i].mem_contents()]
-                #![trigger old(self).mem_contents_seq()[i as int]]
-                0 <= i < old(self).mem_contents_seq().len() ==> s[i].mem_contents() == old(
-                    self,
-                ).mem_contents_seq()[i as int],
-            s.ptr() == old(self).ptr() as *mut T,
-            s.len() == old(self).mem_contents_seq().len(),
-            s.abstract_bytes() == old(self).abstract_bytes(),
             s.wf(),
     ;
 }
@@ -1827,14 +1797,13 @@ impl PointsToUnaligned<[u8]> {
             layout::size_of::<T>() == 0,
             ptr@.provenance.is_some() ==> {
                 &&& ptr@.addr as int >= ptr@.provenance.data().start_addr()
-                &&& ptr@.addr + size_of::<T>() <= ptr@.provenance.data().start_addr()
+                &&& ptr@.addr <= ptr@.provenance.data().start_addr()
                     + ptr@.provenance.data().alloc_len()
             },
         ensures
             perm.ptr()@.addr == ptr@.addr,
             perm.ptr()@.provenance == ptr@.provenance,
             perm.ptr()@.metadata == 0,
-            perm.is_fully_uninit(),
             perm.abstract_bytes().len() == layout::size_of::<T>(),
     ;
 }
@@ -1989,7 +1958,7 @@ pub axiom fn seq_into_slice_mut<T>(tracked spt: &mut SeqPointsTo<T>) -> (tracked
             0 <= i < pt.mem_contents_seq().len() ==> #[trigger] pt.mem_contents_seq()[i as int]
                 == old(spt)[i].mem_contents(),
         // Gurantees on final(spt) are conditional on the final(pt) having the same pointer and length
-        final(pt).ptr() == pt.ptr() ==> ({
+        final(pt).ptr() == pt.ptr() && final(pt).len() == pt.len() ==> ({
             &&& final(spt).wf()
             &&& (forall|i|
                 0 <= i < pt.mem_contents_seq().len()
@@ -2000,9 +1969,6 @@ pub axiom fn seq_into_slice_mut<T>(tracked spt: &mut SeqPointsTo<T>) -> (tracked
             &&& old(spt).len() == final(spt).len()
             &&& (forall|i|
                 0 <= i < final(spt).len() ==> #[trigger] final(spt)[i].ptr() == old(spt)[i].ptr())
-            &&& (forall|i|
-                0 <= i < pt.mem_contents_seq().len() ==> #[trigger] pt.mem_contents_seq()[i as int]
-                    == old(spt)[i].mem_contents())
         }),
 ;
 
@@ -2022,6 +1988,8 @@ impl<T> SeqPointsTo<T> {
             }
         &&& (self.len() != 0 && layout::size_of::<T>() != 0) ==> {
             &&& self.ptr()@.provenance.is_some()
+        }
+        &&& self.ptr()@.provenance.is_some() ==> {
             &&& self.ptr()@.provenance.data().start_addr() <= self.ptr()@.addr
             &&& self.ptr()@.addr + self.len() * layout::size_of::<T>()
                 <= self.ptr()@.provenance.data().start_addr()
@@ -2188,6 +2156,11 @@ impl<T> SeqPointsTo<T> {
         requires
             ptr@.addr != 0,
             ptr@.addr as nat % align_of::<T>() == 0,
+            ptr@.provenance.is_some() ==> {
+                &&& ptr@.addr as int >= ptr@.provenance.data().start_addr()
+                &&& ptr@.addr <= ptr@.provenance.data().start_addr()
+                    + ptr@.provenance.data().alloc_len()
+            },
         ensures
             spt.seq_perm() == Seq::<PointsTo<T>>::empty(),
             spt.ptr() == ptr,
@@ -2669,6 +2642,8 @@ impl<T> SeqPointsTo<T> {
                 },
             ),
             r.seq_perm() == old(self).seq_perm().subrange(i as int, j as int),
+            // Need to add requirement that decoding holds on every PointsTo<T>?
+            // Implicitly we expect that if wf holds, each PointsTo satisfies its axioms
             final(r).wf() && final(r).ptr() == r.ptr() && final(r).len() == r.len() ==> {
                 &&& final(self).wf()
                 &&& final(self).ptr() == old(self).ptr()
@@ -3069,6 +3044,7 @@ pub open spec fn spec_cast_slice_ptr_to_str_ptr<T>(ptr: *mut [T]) -> *mut str {
 
 /// Cast a slice pointer to a `str` pointer.
 /// Length is preserved even if the size of the elements changes.
+/// <https://doc.rust-lang.org/reference/expressions/operator-expr.html#r-expr.as.pointer.unsized.unchanged>
 ///
 /// Don't call this directly; use an `as`-cast instead.
 #[verifier::external_body]
@@ -3349,6 +3325,51 @@ impl Dealloc {
         ensures
             dealloc@.provenance == Provenance::None,
             dealloc@.size == 0,
+    ;
+
+    /// If the size is non-zero, then the pointer's provenance is non-null.
+    /// <https://doc.rust-lang.org/std/ptr/index.html#provenance>
+    pub axiom fn provenance_non_null(tracked &self)
+        requires
+            self@.size != 0,
+        ensures
+            self@.provenance != Provenance::None,
+    ;
+
+    /// If the provenance is `Some`,
+    /// the originally requested size must be at most the actually allocated size.
+    pub axiom fn in_bounds(tracked &self)
+        requires
+            self@.provenance != Provenance::None,
+        ensures
+            self@.size <= self@.provenance.data().alloc_len(),
+    ;
+
+    /// Guarantees that the memory ranges associated with two distinct, non-ZST permissions will not overlap,
+    /// since you cannot have two `Dealloc` permissions to the same allocation.
+    /// (`self` is an &mut reference to enforce distinctness,
+    /// so you cannot pass the same PointsTo as both arguments.)
+    /// Since both allocations are non-zero-sized, this implies the start addresses have distinct addresses.
+    ///
+    /// Note: If either allocation is zero-sized, we get disjointness "for free" without having to call this axiom,
+    /// since the empty memory range cannot possibly intersect with any other memory.
+    /// However, note that if one allocation is empty and the other is a non-empty,
+    /// the disjointness definition as stated here here does not hold,
+    /// since the ZST start address could be in the middle of the non-ZST's range.
+    pub axiom fn is_disjoint<S>(tracked &mut self, tracked other: &Self)
+        requires
+            self@.provenance != Provenance::None,
+            other@.provenance != Provenance::None,
+            self@.provenance.data().alloc_len() != 0,
+            other@.provenance.data().alloc_len() != 0,
+        ensures
+            *old(self) == *final(self),
+            final(self)@.provenance.data().start_addr() as int
+                + final(self)@.provenance.data().alloc_len()
+                <= other@.provenance.data().start_addr() as int
+                || other@.provenance.data().start_addr() as int
+                + other@.provenance.data().alloc_len()
+                <= final(self)@.provenance.data().start_addr() as int,
     ;
 }
 
