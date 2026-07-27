@@ -2179,6 +2179,7 @@ version = "0.1.0"
 dependencies = [
  "air",
  "bincode 1.3.3",
+ "cargo-verus-toolchains",
  "console",
  "getopts",
  "hex",

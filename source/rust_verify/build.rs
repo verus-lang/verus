@@ -1,7 +1,9 @@
 use std::process::Command;
 
+use cargo_verus_toolchains::versions::get_verus_version;
+
 fn main() {
-    let (default_version, default_sha) = get_version_info().expect("version info");
+    let (default_version, default_sha) = get_verus_version(true).expect("version info");
     let profile = std::env::var("VARGO_BUILD_PROFILE")
         .unwrap_or_else(|_| std::env::var("PROFILE").expect("build profile"));
     let version = std::env::var("VARGO_BUILD_VERSION").unwrap_or(default_version);
@@ -20,21 +22,6 @@ fn main() {
     println!("cargo::rustc-env=VARGO_BUILD_VERSION={version}");
     println!("cargo::rustc-env=VARGO_BUILD_SHA={sha}");
     println!("cargo::rustc-env=VARGO_TOOLCHAIN={toolchain}");
-}
-
-fn get_version_info() -> Option<(String, String)> {
-    let short_sha = run_command(&["git", "rev-parse", "--short=7", "HEAD"])?;
-    let sha = run_command(&["git", "rev-parse", "HEAD"])?;
-    let date = run_command(&["git", "show", "-s", "--format=%cs", "HEAD"])?;
-    let mut date = date.split('-');
-    let (Some(year), Some(month), Some(day), None) =
-        (date.next(), date.next(), date.next(), date.next())
-    else {
-        return None;
-    };
-    let dirty = run_command(&["git", "diff", "--exit-code", "HEAD"]).is_none();
-    let dirty_suffix = if dirty { ".dirty" } else { "" };
-    Some((format!("0.{year}.{month}.{day}.{short_sha}{dirty_suffix}"), sha))
 }
 
 fn run_command(program_and_args: &[&str]) -> Option<String> {

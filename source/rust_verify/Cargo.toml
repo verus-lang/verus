@@ -30,6 +30,9 @@ win32job = "1"
 [dev-dependencies]
 rust_verify_test_macros = { path = "../rust_verify_test_macros" }
 
+[build-dependencies]
+cargo-verus-toolchains = { workspace = true }
+
 [features]
 singular = ["vir/singular", "air/singular"]
 
