@@ -163,7 +163,7 @@ impl ReleaseViewSeen {
 }
 
 /// Resource representing the ``acquire view" in a thread's subjective view of memory, according to Rust's weak memory model.
-/// If a thread holds an [`AcquireViewSeen`], then that permission represents a view that would be held by a thread 
+/// If a thread holds an [`AcquireViewSeen`], then that permission represents a view that would be held by a thread
 /// if it were to perform an acquire fence in the future.
 #[derive(Clone, Copy)]
 #[verifier::external_body]
@@ -268,7 +268,7 @@ impl<T> ViewAt<T> {
     pub uninterp spec fn value(&self) -> T;
 
     /// Creates a new [`ViewAt`] from the given permission.
-    /// This permission will be safe to start using at an arbitrary view, 
+    /// This permission will be safe to start using at an arbitrary view,
     /// represented by the [`ViewSeen`] returned by this operation.
     pub axiom fn new(tracked t: T) -> (tracked (va, vs): (Self, ViewSeen))
         ensures
@@ -277,9 +277,12 @@ impl<T> ViewAt<T> {
     ;
 
     /// Creates a new [`ViewAt`] from the given permission and lower bound on the synchronizing view.
-    /// This permission will be safe to start using at some view that is larger than the given view `sn`, 
+    /// This permission will be safe to start using at some view that is larger than the given view `sn`,
     /// represented by the [`ViewSeen`] returned by this operation.
-    pub axiom fn new_incl(tracked t: T, tracked vs_0: ViewSeen) -> (tracked (va, vs): (Self, ViewSeen))
+    pub axiom fn new_incl(tracked t: T, tracked vs_0: ViewSeen) -> (tracked (va, vs): (
+        Self,
+        ViewSeen,
+    ))
         ensures
             va.value() == t,
             va.thread_view() == vs@,
@@ -287,9 +290,8 @@ impl<T> ViewAt<T> {
     ;
 
     // Weaker version of `join_tup`.
-    axiom fn join_tup_inner<U>(tracked v0: ViewAt<T>, tracked v1: ViewAt<U>) -> (tracked out: ViewAt<
-        (T, U),
-    >)
+    axiom fn join_tup_inner<U>(tracked v0: ViewAt<T>, tracked v1: ViewAt<U>) -> (tracked out:
+        ViewAt<(T, U)>)
         requires
             v0.thread_view() == v1.thread_view(),
         ensures
@@ -301,8 +303,9 @@ impl<T> ViewAt<T> {
     /// Given two [`ViewAt`] permissions, they can be joined into a single [`ViewAt`] permission,
     /// whose inner permission a tuple of the original inner permissions,
     /// and whose synchronizing view is the join of the original synchronizing views.
-    pub proof fn join_tup<U>(tracked v0: ViewAt<T>, tracked v1: ViewAt<U>) -> (tracked out:
-        ViewAt<(T, U)>)
+    pub proof fn join_tup<U>(tracked v0: ViewAt<T>, tracked v1: ViewAt<U>) -> (tracked out: ViewAt<
+        (T, U),
+    >)
         ensures
             out.thread_view() == v0.thread_view().join(v1.thread_view()),
             out.value().0 == v0.value(),

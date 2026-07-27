@@ -8,239 +8,239 @@ pub use rwlock::*;
 #[cfg(not(feature = "weak-memory"))]
 mod rwlock {
 
-use super::super::atomic_ghost::*;
-use super::super::cell::CellId;
-use super::super::cell::pcell_maybe_uninit as un;
-use super::super::invariant::InvariantPredicate;
-use super::super::modes::*;
-use super::super::multiset::*;
-use super::super::prelude::*;
-use super::super::set::*;
-use core::marker::PhantomData;
-use verus_state_machines_macros::tokenized_state_machine_vstd;
+    use super::super::atomic_ghost::*;
+    use super::super::cell::CellId;
+    use super::super::cell::pcell_maybe_uninit as un;
+    use super::super::invariant::InvariantPredicate;
+    use super::super::modes::*;
+    use super::super::multiset::*;
+    use super::super::prelude::*;
+    use super::super::set::*;
+    use core::marker::PhantomData;
+    use verus_state_machines_macros::tokenized_state_machine_vstd;
 
-tokenized_state_machine_vstd!(
-RwLockToks<K, V, Pred: InvariantPredicate<K, V>> {
-    fields {
-        #[sharding(constant)]
-        pub k: K,
+    tokenized_state_machine_vstd!(
+    RwLockToks<K, V, Pred: InvariantPredicate<K, V>> {
+        fields {
+            #[sharding(constant)]
+            pub k: K,
 
-        #[sharding(constant)]
-        pub pred: PhantomData<Pred>,
+            #[sharding(constant)]
+            pub pred: PhantomData<Pred>,
 
-        #[sharding(variable)]
-        pub flag_exc: bool,
+            #[sharding(variable)]
+            pub flag_exc: bool,
 
-        #[sharding(variable)]
-        pub flag_rc: nat,
+            #[sharding(variable)]
+            pub flag_rc: nat,
 
-        #[sharding(storage_option)]
-        pub storage: Option<V>,
+            #[sharding(storage_option)]
+            pub storage: Option<V>,
 
-        #[sharding(option)]
-        pub pending_writer: Option<()>,
+            #[sharding(option)]
+            pub pending_writer: Option<()>,
 
-        #[sharding(option)]
-        pub writer: Option<()>,
+            #[sharding(option)]
+            pub writer: Option<()>,
 
-        #[sharding(multiset)]
-        pub pending_reader: Multiset<()>,
+            #[sharding(multiset)]
+            pub pending_reader: Multiset<()>,
 
-        #[sharding(multiset)]
-        pub reader: Multiset<V>,
-    }
-
-    init!{
-        initialize_full(k: K, t: V) {
-            require Pred::inv(k, t);
-            init k = k;
-            init pred = PhantomData;
-            init flag_exc = false;
-            init flag_rc = 0;
-            init storage = Option::Some(t);
-            init pending_writer = Option::None;
-            init writer = Option::None;
-            init pending_reader = Multiset::empty();
-            init reader = Multiset::empty();
+            #[sharding(multiset)]
+            pub reader: Multiset<V>,
         }
-    }
 
-    #[inductive(initialize_full)]
-    fn initialize_full_inductive(post: Self, k: K, t: V) {
-        broadcast use group_multiset_axioms;
-    }
-
-    /// Increment the 'rc' counter, obtain a pending_reader
-    transition!{
-        acquire_read_start() {
-            update flag_rc = pre.flag_rc + 1;
-            add pending_reader += {()};
+        init!{
+            initialize_full(k: K, t: V) {
+                require Pred::inv(k, t);
+                init k = k;
+                init pred = PhantomData;
+                init flag_exc = false;
+                init flag_rc = 0;
+                init storage = Option::Some(t);
+                init pending_writer = Option::None;
+                init writer = Option::None;
+                init pending_reader = Multiset::empty();
+                init reader = Multiset::empty();
+            }
         }
-    }
 
-    /// Exchange the pending_reader for a reader by checking
-    /// that the 'exc' bit is 0
-    transition!{
-        acquire_read_end() {
-            require(pre.flag_exc == false);
-
-            remove pending_reader -= {()};
-
-            birds_eye let x: V = pre.storage->0;
-            add reader += {x};
-
-            assert Pred::inv(pre.k, x);
+        #[inductive(initialize_full)]
+        fn initialize_full_inductive(post: Self, k: K, t: V) {
+            broadcast use group_multiset_axioms;
         }
-    }
 
-    /// Decrement the 'rc' counter, abandon the attempt to gain
-    /// the 'read' lock.
-    transition!{
-        acquire_read_abandon() {
-            remove pending_reader -= {()};
-            assert(pre.flag_rc >= 1);
-            update flag_rc = (pre.flag_rc - 1) as nat;
+        /// Increment the 'rc' counter, obtain a pending_reader
+        transition!{
+            acquire_read_start() {
+                update flag_rc = pre.flag_rc + 1;
+                add pending_reader += {()};
+            }
         }
-    }
 
-    /// Atomically set 'exc' bit from 'false' to 'true'
-    /// Obtain a pending_writer
-    transition!{
-        acquire_exc_start() {
-            require(pre.flag_exc == false);
-            update flag_exc = true;
-            add pending_writer += Some(());
+        /// Exchange the pending_reader for a reader by checking
+        /// that the 'exc' bit is 0
+        transition!{
+            acquire_read_end() {
+                require(pre.flag_exc == false);
+
+                remove pending_reader -= {()};
+
+                birds_eye let x: V = pre.storage->0;
+                add reader += {x};
+
+                assert Pred::inv(pre.k, x);
+            }
         }
-    }
 
-    /// Finish obtaining the write lock by checking that 'rc' is 0.
-    /// Exchange the pending_writer for a writer and withdraw the
-    /// stored object.
-    transition!{
-        acquire_exc_end() {
-            require(pre.flag_rc == 0);
-
-            remove pending_writer -= Some(());
-
-            add writer += Some(());
-
-            birds_eye let x = pre.storage->0;
-            withdraw storage -= Some(x);
-
-            assert Pred::inv(pre.k, x);
+        /// Decrement the 'rc' counter, abandon the attempt to gain
+        /// the 'read' lock.
+        transition!{
+            acquire_read_abandon() {
+                remove pending_reader -= {()};
+                assert(pre.flag_rc >= 1);
+                update flag_rc = (pre.flag_rc - 1) as nat;
+            }
         }
-    }
 
-    /// Release the write-lock. Update the 'exc' bit back to 'false'.
-    /// Return the 'writer' and also deposit an object back into storage.
-    transition!{
-        release_exc(x: V) {
-            require Pred::inv(pre.k, x);
-            remove writer -= Some(());
-
-            update flag_exc = false;
-
-            deposit storage += Some(x);
+        /// Atomically set 'exc' bit from 'false' to 'true'
+        /// Obtain a pending_writer
+        transition!{
+            acquire_exc_start() {
+                require(pre.flag_exc == false);
+                update flag_exc = true;
+                add pending_writer += Some(());
+            }
         }
-    }
 
-    /// Check that the 'reader' is actually a guard for the given object.
-    property!{
-        read_guard(x: V) {
-            have reader >= {x};
-            guard storage >= Some(x);
+        /// Finish obtaining the write lock by checking that 'rc' is 0.
+        /// Exchange the pending_writer for a writer and withdraw the
+        /// stored object.
+        transition!{
+            acquire_exc_end() {
+                require(pre.flag_rc == 0);
+
+                remove pending_writer -= Some(());
+
+                add writer += Some(());
+
+                birds_eye let x = pre.storage->0;
+                withdraw storage -= Some(x);
+
+                assert Pred::inv(pre.k, x);
+            }
         }
-    }
 
-    property!{
-        read_match(x: V, y: V) {
-            have reader >= {x};
-            have reader >= {y};
-            assert(equal(x, y));
+        /// Release the write-lock. Update the 'exc' bit back to 'false'.
+        /// Return the 'writer' and also deposit an object back into storage.
+        transition!{
+            release_exc(x: V) {
+                require Pred::inv(pre.k, x);
+                remove writer -= Some(());
+
+                update flag_exc = false;
+
+                deposit storage += Some(x);
+            }
         }
-    }
 
-    /// Release the reader-lock. Decrement 'rc' and return the 'reader' object.
-    #[transition]
-    transition!{
-        release_shared(x: V) {
-            remove reader -= {x};
-
-            assert(pre.flag_rc >= 1) by {
-                //assert(pre.reader.count(x) >= 1);
-                assert(equal(pre.storage, Option::Some(x)));
-                //assert(equal(x, pre.storage->0));
-            };
-            update flag_rc = (pre.flag_rc - 1) as nat;
+        /// Check that the 'reader' is actually a guard for the given object.
+        property!{
+            read_guard(x: V) {
+                have reader >= {x};
+                guard storage >= Some(x);
+            }
         }
-    }
 
-    #[invariant]
-    pub fn exc_bit_matches(&self) -> bool {
-        (if self.flag_exc { 1 } else { 0 as int }) ==
-            (if self.pending_writer is Some { 1 } else { 0 as int }) as int
-            + (if self.writer is Some { 1 } else { 0 as int }) as int
-    }
+        property!{
+            read_match(x: V, y: V) {
+                have reader >= {x};
+                have reader >= {y};
+                assert(equal(x, y));
+            }
+        }
 
-    #[invariant]
-    pub fn count_matches(&self) -> bool {
-        self.flag_rc == self.pending_reader.count(())
-            + self.reader.count(self.storage->0)
-    }
+        /// Release the reader-lock. Decrement 'rc' and return the 'reader' object.
+        #[transition]
+        transition!{
+            release_shared(x: V) {
+                remove reader -= {x};
 
-    #[invariant]
-    pub fn reader_agrees_storage(&self) -> bool {
-        forall |t: V| imply(#[trigger] self.reader.count(t) > 0,
-            equal(self.storage, Option::Some(t)))
-    }
+                assert(pre.flag_rc >= 1) by {
+                    //assert(pre.reader.count(x) >= 1);
+                    assert(equal(pre.storage, Option::Some(x)));
+                    //assert(equal(x, pre.storage->0));
+                };
+                update flag_rc = (pre.flag_rc - 1) as nat;
+            }
+        }
 
-    #[invariant]
-    pub fn writer_agrees_storage(&self) -> bool {
-        imply(self.writer is Some, self.storage is None)
-    }
+        #[invariant]
+        pub fn exc_bit_matches(&self) -> bool {
+            (if self.flag_exc { 1 } else { 0 as int }) ==
+                (if self.pending_writer is Some { 1 } else { 0 as int }) as int
+                + (if self.writer is Some { 1 } else { 0 as int }) as int
+        }
 
-    #[invariant]
-    pub fn writer_agrees_storage_rev(&self) -> bool {
-        imply(self.storage is None, self.writer is Some)
-    }
+        #[invariant]
+        pub fn count_matches(&self) -> bool {
+            self.flag_rc == self.pending_reader.count(())
+                + self.reader.count(self.storage->0)
+        }
 
-    #[invariant]
-    pub fn sto_user_inv(&self) -> bool {
-        self.storage.is_some() ==> Pred::inv(self.k, self.storage.unwrap())
-    }
+        #[invariant]
+        pub fn reader_agrees_storage(&self) -> bool {
+            forall |t: V| imply(#[trigger] self.reader.count(t) > 0,
+                equal(self.storage, Option::Some(t)))
+        }
 
-    #[inductive(acquire_read_start)]
-    fn acquire_read_start_inductive(pre: Self, post: Self) {
-        broadcast use group_multiset_axioms;
-    }
+        #[invariant]
+        pub fn writer_agrees_storage(&self) -> bool {
+            imply(self.writer is Some, self.storage is None)
+        }
 
-    #[inductive(acquire_read_end)]
-    fn acquire_read_end_inductive(pre: Self, post: Self) {
-        broadcast use group_multiset_axioms;
-    }
+        #[invariant]
+        pub fn writer_agrees_storage_rev(&self) -> bool {
+            imply(self.storage is None, self.writer is Some)
+        }
 
-    #[inductive(acquire_read_abandon)]
-    fn acquire_read_abandon_inductive(pre: Self, post: Self) {
-        broadcast use group_multiset_axioms;
-    }
+        #[invariant]
+        pub fn sto_user_inv(&self) -> bool {
+            self.storage.is_some() ==> Pred::inv(self.k, self.storage.unwrap())
+        }
 
-    #[inductive(acquire_exc_start)]
-    fn acquire_exc_start_inductive(pre: Self, post: Self) { }
+        #[inductive(acquire_read_start)]
+        fn acquire_read_start_inductive(pre: Self, post: Self) {
+            broadcast use group_multiset_axioms;
+        }
 
-    #[inductive(acquire_exc_end)]
-    fn acquire_exc_end_inductive(pre: Self, post: Self) { }
+        #[inductive(acquire_read_end)]
+        fn acquire_read_end_inductive(pre: Self, post: Self) {
+            broadcast use group_multiset_axioms;
+        }
 
-    #[inductive(release_exc)]
-    fn release_exc_inductive(pre: Self, post: Self, x: V) { }
+        #[inductive(acquire_read_abandon)]
+        fn acquire_read_abandon_inductive(pre: Self, post: Self) {
+            broadcast use group_multiset_axioms;
+        }
 
-    #[inductive(release_shared)]
-    fn release_shared_inductive(pre: Self, post: Self, x: V) {
-        broadcast use group_multiset_axioms;
-        assert(equal(pre.storage, Option::Some(x)));
-    }
-});
+        #[inductive(acquire_exc_start)]
+        fn acquire_exc_start_inductive(pre: Self, post: Self) { }
 
-verus! {
+        #[inductive(acquire_exc_end)]
+        fn acquire_exc_end_inductive(pre: Self, post: Self) { }
+
+        #[inductive(release_exc)]
+        fn release_exc_inductive(pre: Self, post: Self, x: V) { }
+
+        #[inductive(release_shared)]
+        fn release_shared_inductive(pre: Self, post: Self, x: V) {
+            broadcast use group_multiset_axioms;
+            assert(equal(pre.storage, Option::Some(x)));
+        }
+    });
+
+    verus! {
 
 pub trait RwLockPredicate<V>: Sized {
     spec fn inv(self, v: V) -> bool;
@@ -715,5 +715,4 @@ impl<V, Pred: RwLockPredicate<V>> RwLock<V, Pred> {
 }
 
 } // verus!
-
 }

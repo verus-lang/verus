@@ -4,20 +4,20 @@ pub use weak_atomic_types::*;
 #[cfg(feature = "weak-memory")]
 mod weak_atomic_types {
 
-use core::sync::atomic::{
-    AtomicBool, AtomicI8, AtomicI16, AtomicI32, AtomicIsize, AtomicPtr, AtomicU8, AtomicU16,
-    AtomicU32, AtomicUsize, Ordering,
-};
+    use core::sync::atomic::{
+        AtomicBool, AtomicI8, AtomicI16, AtomicI32, AtomicIsize, AtomicPtr, AtomicU8, AtomicU16,
+        AtomicU32, AtomicUsize, Ordering,
+    };
 
-#[cfg(target_has_atomic = "64")]
-use core::sync::atomic::{AtomicI64, AtomicU64};
+    #[cfg(target_has_atomic = "64")]
+    use core::sync::atomic::{AtomicI64, AtomicU64};
 
-use super::super::cell::CellId;
-use super::super::prelude::*;
-use super::super::thread_view::*;
-use super::super::wrapping::*;
+    use super::super::cell::CellId;
+    use super::super::prelude::*;
+    use super::super::thread_view::*;
+    use super::super::wrapping::*;
 
-verus! {
+    verus! {
 
 broadcast use crate::group_vstd_default;
 
@@ -740,5 +740,4 @@ make_signed_integer_atomic!(PAtomicWeakIsize, AtomicIsize, isize, isize_specs);
 
 // TODO - AtomicPtr
 } // verus!
-
 }

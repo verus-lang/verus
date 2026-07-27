@@ -125,7 +125,6 @@ pub struct AtomicInvariant<K, V, Pred> {
     dummy1: super::prelude::AlwaysSyncSend<(K, Pred, *mut V)>,
 }
 
-
 // TODO - document
 // TODO - can we fold this into a single AtomicInvariant definition without the Objective trait bound?
 // Creusot only implements Sync on AtomicInvariant when T: Send + Objective
