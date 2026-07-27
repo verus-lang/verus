@@ -17,11 +17,9 @@ fn crate_optin_manifest() {
     let manifest_path = package_dir.join("Cargo.toml");
     let manifest_path = manifest_path.to_str().expect("manifest path to string");
 
+    let current_dir = tempfile::tempdir().expect("create temp dir");
     let args = [BIN_NAME, "focus", "--manifest-path", manifest_path];
-
-    let plan =
-        cargo_verus::plan_execution(std::env::current_dir().expect("current directory"), args)
-            .expect("plan");
+    let plan = cargo_verus::plan_execution(current_dir.path(), args).expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
         panic!("expected `ExecutionPlan::RunCargo`");
     };
@@ -67,11 +65,9 @@ fn workspace_manifest() {
     let manifest_path = workspace_dir.join("Cargo.toml");
     let manifest_path = manifest_path.to_str().expect("manifest path to string");
 
+    let current_dir = tempfile::tempdir().expect("create temp dir");
     let args = [BIN_NAME, "focus", "--manifest-path", manifest_path];
-
-    let plan =
-        cargo_verus::plan_execution(std::env::current_dir().expect("current directory"), args)
-            .expect("plan");
+    let plan = cargo_verus::plan_execution(current_dir.path(), args).expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
         panic!("expected `ExecutionPlan::RunCargo`");
     };
