@@ -19,7 +19,9 @@ fn crate_optin_manifest() {
 
     let args = [BIN_NAME, "focus", "--manifest-path", manifest_path];
 
-    let plan = cargo_verus::plan_execution(None, args).expect("plan");
+    let plan =
+        cargo_verus::plan_execution(std::env::current_dir().expect("current directory"), args)
+            .expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
         panic!("expected `ExecutionPlan::RunCargo`");
     };
@@ -67,7 +69,9 @@ fn workspace_manifest() {
 
     let args = [BIN_NAME, "focus", "--manifest-path", manifest_path];
 
-    let plan = cargo_verus::plan_execution(None, args).expect("plan");
+    let plan =
+        cargo_verus::plan_execution(std::env::current_dir().expect("current directory"), args)
+            .expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
         panic!("expected `ExecutionPlan::RunCargo`");
     };
@@ -126,7 +130,7 @@ fn workspace_package_hasdeps() {
 
     let args = [BIN_NAME, "focus", "--package", hasdeps];
 
-    let plan = cargo_verus::plan_execution(Some(workspace_dir.as_path()), args).expect("plan");
+    let plan = cargo_verus::plan_execution(workspace_dir.as_path(), args).expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
         panic!("expected `ExecutionPlan::RunCargo`");
     };
@@ -170,7 +174,7 @@ fn workspace_package_hasdeps_forwards_verus_args_only_to_roots() {
 
     let args = [BIN_NAME, "focus", "--package", hasdeps, "--", "--verify-module=bar"];
 
-    let plan = cargo_verus::plan_execution(Some(workspace_dir.as_path()), args).expect("plan");
+    let plan = cargo_verus::plan_execution(workspace_dir.as_path(), args).expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
         panic!("expected `ExecutionPlan::RunCargo`");
     };

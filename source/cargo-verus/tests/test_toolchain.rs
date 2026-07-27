@@ -6,7 +6,8 @@ use cargo_verus::{BIN_NAME, ExecutionPlan, execute_plan, plan_execution};
 fn toolchain_list_plans_and_executes() {
     let args = [BIN_NAME, "toolchain", "list"];
 
-    let plan = plan_execution(None, args).expect("plan");
+    let plan =
+        plan_execution(std::env::current_dir().expect("current directory"), args).expect("plan");
     let ExecutionPlan::ListToolchains = plan else {
         panic!("expected `ExecutionPlan::ListToolchains`");
     };
