@@ -1276,6 +1276,32 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] checked_next_multiple_of verus_code! {
+        use vstd::prelude::*;
+
+        fn test_u8_checked_next_multiple_of() {
+            let x = u8::checked_next_multiple_of(0, 0); assert(x == None);   // rhs == 0
+            let x = u8::checked_next_multiple_of(10, 0); assert(x == None);  // rhs == 0
+            let x = u8::checked_next_multiple_of(0, 5); assert(x == Some(0u8));
+            let x = u8::checked_next_multiple_of(10, 5); assert(x == Some(10u8));  // already a multiple
+            let x = u8::checked_next_multiple_of(10, 3); assert(x == Some(12u8));  // round up
+            let x = u8::checked_next_multiple_of(250, 7); assert(x == Some(252u8));
+            let x = u8::checked_next_multiple_of(255, 1); assert(x == Some(255u8));
+            let x = u8::checked_next_multiple_of(255, 2); assert(x == None);   // round up overflows
+            let x = u8::checked_next_multiple_of(200, 64); assert(x == None); // round up overflows
+        }
+
+        fn test_usize_checked_next_multiple_of() {
+            let x = usize::checked_next_multiple_of(0, 4); assert(x == Some(0usize));
+            let x = usize::checked_next_multiple_of(8, 4); assert(x == Some(8usize));  // already a multiple
+            let x = usize::checked_next_multiple_of(10, 4); assert(x == Some(12usize)); // round up
+            let x = usize::checked_next_multiple_of(100, 64); assert(x == Some(128usize));
+            let x = usize::checked_next_multiple_of(10, 0); assert(x == None);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] checked_rem_div_systematic_fails verus_code! {
         use vstd::prelude::*;
 

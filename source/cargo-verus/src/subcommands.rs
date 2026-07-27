@@ -75,7 +75,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-vstd = "=0.0.0-2026-07-12-0122"
+vstd = "=0.0.0-2026-07-27-0206"
 
 [package.metadata.verus]
 verify = true
@@ -327,6 +327,10 @@ fn make_cargo_args(opts: &CargoOptions, for_cargo_metadata: bool, verbosity: u8)
     }
 
     if !for_cargo_metadata {
+        if opts.release {
+            args.push("--release".to_owned());
+        }
+
         if let Some(path) = &opts.target_dir {
             args.push("--target-dir".to_owned());
             args.push(path.to_string_lossy().into_owned());

@@ -1799,3 +1799,23 @@ test_verify_one_file_with_options! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] closure_without_block_and_mut_ref_body_issue2691 code! {
+        use vstd::prelude::*;
+
+        #[verus_verify]
+        struct Item { marker: bool }
+
+        #[verus_verify(external_body)]
+        fn take(_x: Option<&mut Item>) -> u32 { unimplemented!() }
+
+        #[verus_verify]
+        fn caller(mut x: Option<&mut Item>, retry: bool) -> u32 {
+            let first = take(x.as_mut().map(|r| &mut **r));
+            if retry { take(x) } else { first }
+        }
+
+        fn main() {}
+    } => Ok(())
+}

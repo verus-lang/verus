@@ -2,7 +2,7 @@
 //! normal visitor, which just walks the entire body in one shot, the
 //! `ExprUseVisitor` determines how expressions are being used.
 //!
-//! In the compiler, this is only used for upvar inference, but there
+//! In the compiler, this is only used for upvar inference and diagnostics, but there
 //! are many uses within clippy.
 
 #![allow(unused_imports)]
@@ -673,7 +673,7 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
                         let field_place = self.cat_projection(
                             with_expr.hir_id,
                             with_place.clone(),
-                            with_field.ty(self.cx.tcx(), args),
+                            with_field.ty(self.cx.tcx(), args).skip_norm_wip(),
                             ProjectionKind::Field(f_index, FIRST_VARIANT),
                         );
                         self.consume_or_copy(&field_place, field_place.hir_id);
@@ -728,6 +728,15 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
 
                 adjustment::Adjust::Borrow(ref autoref) => {
                     self.walk_autoref(expr, &place_with_id, autoref);
+                }
+
+                adjustment::Adjust::GenericReborrow(_reborrow) => {
+                    // To build an expression as a place expression, it needs to be a field
+                    // projection or deref at the outmost layer. So it is field projection or deref
+                    // on an adjusted value. But this means that adjustment is applied on a
+                    // subexpression that is not the final operand/rvalue for function call or
+                    // assignment. This is a contradiction.
+                    unreachable!("Reborrow trait usage during adjustment walk");
                 }
             }
             place_with_id = self.cat_expr_adjusted(expr, place_with_id, adjustment)?;
@@ -1262,7 +1271,8 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
 
             adjustment::Adjust::NeverToAny
             | adjustment::Adjust::Pointer(_)
-            | adjustment::Adjust::Borrow(_) => {
+            | adjustment::Adjust::Borrow(_)
+            | adjustment::Adjust::GenericReborrow(..) => {
                 // Result is an rvalue.
                 Ok(self.cat_rvalue(expr.hir_id, target))
             }

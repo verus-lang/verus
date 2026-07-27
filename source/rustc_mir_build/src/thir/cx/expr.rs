@@ -226,6 +226,13 @@ impl<'tcx> ThirBuildCx<'tcx> {
                 debug!(?kind);
                 kind
             }
+            Adjust::GenericReborrow(mutability) => {
+                let expr = self.thir.exprs.push(expr);
+                let kind =
+                    ExprKind::Reborrow { source: expr, mutability, target: adjustment.target };
+
+                kind
+            }
         };
 
         let kind = crate::verus_expr::apply_adjustment_post(self, hir_expr, adjustment, kind);

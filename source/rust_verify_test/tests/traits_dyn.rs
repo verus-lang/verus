@@ -431,3 +431,35 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] test_dyn_owned_precond verus_code! {
+        use vstd::prelude::*;
+        verus! {
+            pub trait T {
+                spec fn t(&self) -> int;
+            }
+            struct Ty {}
+            impl T for Ty {
+                open spec fn t(&self) -> int { 0 }
+            }
+            fn borrowed<'a>(x: &'a Box<dyn T>)
+                requires
+                x.t() == 0,
+            {}
+            fn owned(x: Box<dyn T>)
+                requires
+                x.t() == 0,
+            {}
+            fn repro() {
+                let x: Box<dyn T> = Box::new(Ty {});
+                assert(x.t() == 0);
+                borrowed(&x);
+                // Exercises failure case of #2629: rustc emits a no-op unsize
+                // adjustment, which must not generate a spurious ToDyn, as that
+                // breaks carrying the precondition through:
+                owned(x);
+            }
+        }
+    } => Ok(())
+}

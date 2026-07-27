@@ -1115,13 +1115,14 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] two_phase_with_overloaded_compound_assignment_operator verus_code! {
         use vstd::seq::*;
+        use vstd::std_specs::ops::AddAssignSpec;
 
-        struct X {
+        pub struct X {
             u: u64,
         }
 
         impl X {
-            uninterp spec fn seq(&self) -> Seq<u64>;
+            pub uninterp spec fn seq(&self) -> Seq<u64>;
 
             #[verifier::external_body]
             fn len(&self) -> (l: u64)
@@ -1143,6 +1144,7 @@ test_verify_one_file! {
         fn test(x: X) {
             let mut x = x;
             let ghost x1 = x.seq();
+            assume(x.add_assign_req(x1.len() as u64));
             x += x.len();
             assert(x.seq() == x1.push(x1.len() as u64));
         }
@@ -1150,14 +1152,12 @@ test_verify_one_file! {
         fn test_fail(x: X) {
             let mut x = x;
             let ghost x1 = x.seq();
+            assume(x.add_assign_req(x1.len() as u64));
             x += x.len();
             assert(x.seq() == x1.push(x1.len() as u64));
             assert(false); // FAILS
         }
-    } => Err(err) => assert_vir_error_msgs(err, &[
-        "The verifier does not yet support the following Rust feature: overloaded op-assignment operator",
-        "The verifier does not yet support the following Rust feature: overloaded op-assignment operator"
-    ])
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
