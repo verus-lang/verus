@@ -1,6 +1,7 @@
 #[allow(unused_imports)]
 use super::pervasive::*;
 use super::prelude::*;
+#[cfg(verus_keep_ghost)]
 use super::thread_view::Objective;
 
 // TODO:

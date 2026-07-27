@@ -14,7 +14,7 @@ verus! {
 
 #[cfg(verus_keep_ghost)]
 #[verifier::external_trait_specification]
-pub trait ExObjective: std::marker::PointeeSized {
+pub trait ExObjective: core::marker::PointeeSized {
     type ExternalTraitSpecificationFor: Objective;
 }
 
@@ -244,7 +244,7 @@ unsafe impl<'a, P: Objective, Q: Objective, F: ProofFnOnce> Objective for proof_
 #[verifier::external_body]
 #[verifier::accept_recursive_types(T)]
 pub tracked struct ViewAt<T> {
-    _dummy: std::marker::PhantomData<T>,
+    _dummy: core::marker::PhantomData<T>,
 }
 
 impl<T: Clone> Clone for ViewAt<T> {
