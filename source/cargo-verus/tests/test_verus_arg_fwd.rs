@@ -1,5 +1,5 @@
 use cargo_verus::{
-    BIN_NAME, ExecutionPlan,
+    BIN_NAME, ExecutionPlan, plan_execution,
     test_utils::{MockDep, MockPackage, MockWorkspace, VERUS_DRIVER_ARGS, VERUS_DRIVER_ARGS_FOR},
 };
 
@@ -52,7 +52,7 @@ fn workspace_explicit_all() {
         "--verify-module=bar",
     ];
 
-    let plan = cargo_verus::plan_execution(workspace_dir.as_path(), args).expect("plan");
+    let plan = plan_execution(workspace_dir.as_path(), args).expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
         panic!("expected `ExecutionPlan::RunCargo`");
     };
@@ -103,7 +103,7 @@ fn workspace_explicit_roots() {
         "--verify-module=bar",
     ];
 
-    let plan = cargo_verus::plan_execution(workspace_dir.as_path(), args).expect("plan");
+    let plan = plan_execution(workspace_dir.as_path(), args).expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
         panic!("expected `ExecutionPlan::RunCargo`");
     };
@@ -154,7 +154,7 @@ fn workspace_explicit_deps() {
         "--verify-module=bar",
     ];
 
-    let plan = cargo_verus::plan_execution(workspace_dir.as_path(), args).expect("plan");
+    let plan = plan_execution(workspace_dir.as_path(), args).expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
         panic!("expected `ExecutionPlan::RunCargo`");
     };
@@ -203,7 +203,7 @@ fn workspace_default_for_verify_is_all() {
         "--verify-module=bar",
     ];
 
-    let plan = cargo_verus::plan_execution(workspace_dir.as_path(), args).expect("plan");
+    let plan = plan_execution(workspace_dir.as_path(), args).expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
         panic!("expected `ExecutionPlan::RunCargo`");
     };
@@ -252,7 +252,7 @@ fn workspace_default_for_build_is_all() {
         "--verify-module=bar",
     ];
 
-    let plan = cargo_verus::plan_execution(workspace_dir.as_path(), args).expect("plan");
+    let plan = plan_execution(workspace_dir.as_path(), args).expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
         panic!("expected `ExecutionPlan::RunCargo`");
     };
@@ -301,7 +301,7 @@ fn workspace_default_for_check_is_all() {
         "--verify-module=bar",
     ];
 
-    let plan = cargo_verus::plan_execution(workspace_dir.as_path(), args).expect("plan");
+    let plan = plan_execution(workspace_dir.as_path(), args).expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
         panic!("expected `ExecutionPlan::RunCargo`");
     };
@@ -350,7 +350,7 @@ fn workspace_default_for_focus_is_roots() {
         "--verify-module=bar",
     ];
 
-    let plan = cargo_verus::plan_execution(workspace_dir.as_path(), args).expect("plan");
+    let plan = plan_execution(workspace_dir.as_path(), args).expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
         panic!("expected `ExecutionPlan::RunCargo`");
     };
