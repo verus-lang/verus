@@ -27,7 +27,7 @@ elif [ `uname` == "Linux" ]; then
 fi
 
 cargo build -p verusdoc
-cargo build
+RUSTFLAGS="--cfg verus_keep_ghost" cargo build
 
 echo "Running rustdoc..."
 RUSTC_BOOTSTRAP=1 eval ""VERUSDOC=1 VSTD_KIND=IsVstd VERUS_Z3_PATH="$(pwd)/z3"  rustdoc \
