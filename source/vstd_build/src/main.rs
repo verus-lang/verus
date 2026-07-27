@@ -35,6 +35,7 @@ fn main() {
     let mut no_lifetime = false;
     let mut expand_errors = false;
     let mut no_solver_version_check = false;
+    let mut weak_memory = false;
     for arg in args {
         if arg == "--release" {
             release = true;
@@ -56,6 +57,8 @@ fn main() {
             expand_errors = true;
         } else if arg == "--no-solver-version-check" {
             no_solver_version_check = true;
+        } else if arg == "--weak-memory" {
+            weak_memory = true;
         } else {
             panic!("unexpected argument: {:}", arg)
         }
@@ -139,6 +142,10 @@ fn main() {
     if !no_alloc {
         child_args.push("--cfg".to_string());
         child_args.push("feature=\"alloc\"".to_string());
+    }
+    if weak_memory {
+        child_args.push("--cfg".to_string());
+        child_args.push("feature=\"weak-memory\"".to_string());
     }
     child_args.push("--cfg".to_string());
     child_args.push("feature=\"nonzero_internals\"".to_string());

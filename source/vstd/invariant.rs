@@ -1,7 +1,8 @@
 #[allow(unused_imports)]
 use super::pervasive::*;
-#[allow(unused_imports)]
 use super::prelude::*;
+#[cfg(verus_keep_ghost)]
+use super::thread_view::Objective;
 
 // TODO:
 //  * utility for conveniently creating unique namespaces
@@ -114,12 +115,27 @@ pub trait InvariantPredicate<K, V> {
 ///
 /// **Note:** Rather than using `AtomicInvariant` directly, we generally recommend
 /// using the [`atomic_ghost` APIs](crate::atomic_ghost).
+#[cfg(not(feature = "weak-memory"))]
 #[cfg_attr(verus_keep_ghost, verifier::proof)]
 #[cfg_attr(verus_keep_ghost, verifier::external_body)] /* vattr */
 #[cfg_attr(verus_keep_ghost, verifier::accept_recursive_types(K))]
 #[cfg_attr(verus_keep_ghost, verifier::accept_recursive_types(V))]
 #[cfg_attr(verus_keep_ghost, verifier::accept_recursive_types(Pred))]
 pub struct AtomicInvariant<K, V, Pred> {
+    dummy: super::prelude::SyncSendIfSend<V>,
+    dummy1: super::prelude::AlwaysSyncSend<(K, Pred, *mut V)>,
+}
+
+// TODO - document
+// TODO - can we fold this into a single AtomicInvariant definition without the Objective trait bound?
+// Creusot only implements Sync on AtomicInvariant when T: Send + Objective
+#[cfg(feature = "weak-memory")]
+#[cfg_attr(verus_keep_ghost, verifier::proof)]
+#[cfg_attr(verus_keep_ghost, verifier::external_body)] /* vattr */
+#[cfg_attr(verus_keep_ghost, verifier::accept_recursive_types(K))]
+#[cfg_attr(verus_keep_ghost, verifier::accept_recursive_types(V))]
+#[cfg_attr(verus_keep_ghost, verifier::accept_recursive_types(Pred))]
+pub struct AtomicInvariant<K, V: Objective, Pred> {
     dummy: super::prelude::SyncSendIfSend<V>,
     dummy1: super::prelude::AlwaysSyncSend<(K, Pred, *mut V)>,
 }
@@ -267,7 +283,109 @@ macro_rules! declare_invariant_impl {
     };
 }
 
+#[cfg(feature = "weak-memory")]
+macro_rules! declare_invariant_impl_objective {
+    ($invariant:ident => $selfid:ident => $($into_inner_clause:tt)*) => {
+        // note the path names of `inv` and `namespace` are harcoded into the VIR crate.
+
+        verus!{
+
+        impl<K, V: Objective, Pred> $invariant<K, V, Pred> {
+            /// The constant specified upon the initialization of this `
+            #[doc = stringify!($invariant)]
+            ///`.
+            pub uninterp spec fn constant(&self) -> K;
+
+            /// Namespace the invariant was declared in.
+            #[rustc_diagnostic_item = concat!("verus::vstd::invariant::", stringify!($invariant), "::namespace")]
+            pub uninterp spec fn namespace(&self) -> int;
+        }
+
+        impl<K, V: Objective, Pred: InvariantPredicate<K, V>> $invariant<K, V, Pred> {
+            /// Returns `true` if it is possible to store the value `v` into the `
+            #[doc = stringify!($invariant)]
+            ///`.
+            ///
+            /// This is equivalent to `Pred::inv(self.constant(), v)`.
+
+            #[rustc_diagnostic_item = concat!("verus::vstd::invariant::", stringify!($invariant), "::inv")]
+            pub open spec fn inv(&self, v: V) -> bool {
+                Pred::inv(self.constant(), v)
+            }
+
+            /// Initialize a new `
+            #[doc = stringify!($invariant)]
+            ///` with constant `k`. initial stored (tracked) value `v`,
+            /// and in the namespace `ns`.
+
+            pub axiom fn new(k: K, tracked v: V, ns: int) -> (tracked i: $invariant<K, V, Pred>)
+                requires
+                    Pred::inv(k, v),
+                ensures
+                    i.constant() == k,
+                    i.namespace() == ns;
+
+            // Q. Why does AtomicInvariant::into_inner have an opens_invariant clause
+            // while LocalInvariant::into_inner doesn't?
+            //
+            // A. It has to do with the way we prevent double-opening via into_inner,
+            // i.e., how we prevent the user from calling into_inner on an already-open
+            // invariant:
+            //
+            // open_{atomic|local}_invariant!(&inv => i => {
+            //     inv.into_inner(); // this should error
+            // }
+            //
+            // There are two broad approaches:
+            // 1. Use the mask-checking, treating into_inner the same as an invariant-open
+            // 2. Use lifetimes, ensuring the borrow used to open the block extends through
+            //    the entire block.
+            //
+            // Approach (1) is easier to use, but (1) is not sound for LocalInvariants.
+            // Thus, we use approach (1) for AtomicInvariants and (2) for LocalInvariants.
+            //
+            // Q. Why is approach (1) easier for AtomicInvariants?
+            //
+            // A. This makes it easier to perform an atomic operation that relinquishes
+            //    the permission to access the same atomic.
+            //
+            // Q. Why is approach (1) unsound for LocalInvariants?
+            //
+            // A. Because into_inner is not the only problem. We want to implement
+            // the bound `impl<T: Send> => LocalInvariant<T>: Send`.
+            // Furthermore, moving a local invariant to another thread basically means moving
+            // the invariant from one thread's invariant pool to another, which basically
+            // needs the same restrictions as `into_inner`.
+            //
+            // open_{atomic|local}_invariant!(&inv => i => {
+            //     send_to_another_thread(inv); // this must be disallowed, too
+            // }
+            //
+            // However, we cannot (easily) put a mask bound on the send operation.
+            //
+            // Q. How are the lifetime restrictions implemented for LocalInvariant?
+            // The short answer is that we use the lifetime argument of the InvariantBlockGuard
+            // and force it to remain alive for the duration of the open_local_invariant! block.
+            // However, this requires special support from Verus in the lifetime-erasure system.
+            // See rustc_mir_build_additional_files/verus_builder.rs for more information.
+
+            /// Destroys the `
+            #[doc = stringify!($invariant)]
+            ///`, returning the tracked value contained within.
+
+            pub axiom fn into_inner(tracked $selfid) -> (tracked v: V)
+                ensures $selfid.inv(v),
+                $($into_inner_clause)* ;
+        }
+
+        }
+    };
+}
+
+#[cfg(not(feature = "weak-memory"))]
 declare_invariant_impl!(AtomicInvariant => self => opens_invariants [ self.namespace() ] );
+#[cfg(feature = "weak-memory")]
+declare_invariant_impl_objective!(AtomicInvariant => self => opens_invariants [ self.namespace() ] );
 declare_invariant_impl!(LocalInvariant => self => );
 
 #[doc(hidden)]
@@ -365,11 +483,21 @@ pub fn spend_open_invariant_credit(
 // Why does this use the 'static type param for the InvariantBlockGuard? This is because
 // AtomicInvariant doesn't need the lifetime-checking like LocalInvariant does. See the explanation
 // over `into_inner`.
-#[cfg(verus_keep_ghost)]
+#[cfg(all(verus_keep_ghost, not(feature = "weak-memory")))]
 #[rustc_diagnostic_item = "verus::vstd::invariant::open_atomic_invariant_begin"]
 #[doc(hidden)]
 #[verifier::external] /* vattr */
 pub fn open_atomic_invariant_begin<'a, K, V, Pred: InvariantPredicate<K, V>>(
+    _inv: &'a AtomicInvariant<K, V, Pred>,
+) -> (InvariantBlockGuard<'static>, V) {
+    unimplemented!();
+}
+
+#[cfg(all(verus_keep_ghost, feature = "weak-memory"))]
+#[rustc_diagnostic_item = "verus::vstd::invariant::open_atomic_invariant_begin"]
+#[doc(hidden)]
+#[verifier::external] /* vattr */
+pub fn open_atomic_invariant_begin<'a, K, V: Objective, Pred: InvariantPredicate<K, V>>(
     _inv: &'a AtomicInvariant<K, V, Pred>,
 ) -> (InvariantBlockGuard<'static>, V) {
     unimplemented!();

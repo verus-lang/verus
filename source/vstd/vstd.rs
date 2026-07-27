@@ -22,6 +22,7 @@
 #![cfg_attr(verus_keep_ghost, feature(slice_index_methods))]
 #![cfg_attr(all(feature = "alloc", verus_keep_ghost), feature(liballoc_internals))]
 #![cfg_attr(verus_keep_ghost, feature(nonzero_internals))]
+#![cfg_attr(verus_keep_ghost, feature(auto_traits))]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
@@ -30,7 +31,7 @@ pub mod arithmetic;
 pub mod array;
 pub mod atomic;
 pub mod atomic_ghost;
-pub mod atomic_relaxed;
+pub mod atomic_weak;
 pub mod bits;
 pub mod bytes;
 pub mod calc_macro;
@@ -49,7 +50,6 @@ pub mod hash_set;
 pub mod imap;
 pub mod imap_lib;
 pub mod invariant;
-pub mod invariant_objective;
 pub mod iset;
 pub mod iset_lib;
 #[cfg(verus_keep_ghost)]
@@ -83,6 +83,7 @@ pub mod state_machine_internal;
 pub mod string;
 #[cfg(feature = "std")]
 pub mod thread;
+pub mod thread_view;
 pub mod tokens;
 pub mod utf8;
 pub mod view;

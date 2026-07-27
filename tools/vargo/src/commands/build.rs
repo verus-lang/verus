@@ -490,6 +490,9 @@ fn rebuild_vstd(
     if vargo_cmd.build_options.vstd_expand_errors {
         vstd_build.arg("--expand-errors");
     }
+    if vargo_cmd.build_options.vstd_weak_memory {
+        vstd_build.arg("--weak-memory");
+    }
     if options.vargo_verbose {
         vstd_build.arg("--verbose");
     }
