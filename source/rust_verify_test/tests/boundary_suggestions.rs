@@ -225,6 +225,31 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+// The impl header has an anonymous early-bound lifetime (`S<'_>`) that the
+// method inherits, and which also appears in the method's `Self: Bound`
+// where-clause. The RegionRenamer must rename that anonymous lifetime
+// consistently in *both* the fn signature and the where-clause predicates.
+// If the predicates are not folded, the fn signature reads `&crate::S<'a>`
+// but the where-clause reads `crate::S<'_>: crate::Bound`, producing an
+// inconsistent (uncompilable) suggestion.
+test_verify_one_file! {
+    #[test] test_assume_specification_anon_early_bound_in_where_suggestion_made code! {
+        use vstd::prelude::*;
+        pub trait Bound { }
+        pub struct S<'a> { pub x: &'a u8 }
+        impl Bound for S<'_> { }
+        impl S<'_> {
+            pub fn go(&self) where Self: Bound { }
+        }
+        verus! {
+            pub fn bar<'a>(s: S<'a>) {
+                s.go()
+            }
+        }
+    } => Err(e) => assert_help_error_msg(e, "(_0: &crate::S<'a>)
+           where
+           crate::S<'a>: crate::Bound,;")
+}
 
 // Tests for external_type_specification
 test_verify_one_file! {

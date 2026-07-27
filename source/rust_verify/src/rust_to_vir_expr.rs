@@ -512,6 +512,23 @@ pub(crate) fn patexpr_to_vir<'tcx>(
 
                     Ok(PatternX::Expr(expr))
                 }
+                Res::Def(DefKind::AssocConst { is_type_const: _ }, id) => {
+                    if let Some(vir_expr) =
+                        int_intrinsic_constant_to_vir(&bctx.ctxt, pat.span, &pat_typ, id)
+                    {
+                        Ok(PatternX::Expr(vir_expr))
+                    } else {
+                        let node_substs = bctx.types.node_args(pat_expr.hir_id);
+                        let x =
+                            const_var_to_vir(bctx, None, id, node_substs, &pat_expr.hir_id, span)?;
+                        let expr = bctx.spanned_typed_new(pat.span, &pat_typ, x.x.clone());
+
+                        let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+                        erasure_info.hir_vir_ids.push((pat_expr.hir_id, expr.span.id));
+
+                        Ok(PatternX::Expr(expr))
+                    }
+                }
                 Res::Err => err_span(span, format!("Couldn't resolve {qpath:#?}")),
                 _ => match resolve_ctor(bctx.ctxt.tcx, res) {
                     Some((ctor, CtorKind::Const)) => {
@@ -524,7 +541,7 @@ pub(crate) fn patexpr_to_vir<'tcx>(
                         ))
                     }
                     _ => {
-                        crate::internal_err!(pat.span, "expected const constructor")
+                        unsupported_err!(pat.span, "this pattern: {:?}", res)
                     }
                 },
             }
@@ -1603,6 +1620,9 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 .to_place(bctx, expr.span, get_inner_ty())?;
             Ok(ExprOrPlace::Expr(borrow_mut_vir(bctx, expr.span, &place, *allow_two_phase_borrow)))
         }
+        Adjust::GenericReborrow(_) => {
+            unsupported_err!(expr.span, "User-defined Reborrow implementations")
+        }
         Adjust::Borrow(AutoBorrow::RawPtr(_)) => {
             // Despite the name 'borrow', the docs seem to indicate this is a dereference
             unsupported_err!(
@@ -2680,6 +2700,16 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 }
             }
         },
+        ExprKind::Binary(Spanned { node: op @ (BinOpKind::And | BinOpKind::Or), .. }, lhs, rhs) => {
+            let vlhs = expr_to_vir_consume(bctx, lhs)?;
+            let vrhs = expr_to_vir_consume(bctx, rhs)?;
+            let vop = match op {
+                BinOpKind::And => vir::ast::LogicalOp::And,
+                BinOpKind::Or => vir::ast::LogicalOp::Or,
+                _ => unreachable!(),
+            };
+            mk_expr(ExprX::Logical(vop, vlhs, vrhs))
+        }
         ExprKind::Binary(op, lhs, rhs) => {
             let ret = binary_operator_overload_to_vir(bctx, expr)?;
             if let Some(r) = ret {
@@ -3206,7 +3236,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 true,
             )?))
         }
-        ExprKind::Closure(Closure { fn_decl: _, .. }) => {
+        ExprKind::Closure(Closure { .. }) => {
             Ok(ExprOrPlace::Expr(closure_to_vir(bctx, expr, expr_typ()?, false, None)?))
         }
         ExprKind::Index(tgt_expr, idx_expr, _span) => {
@@ -3357,7 +3387,29 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             //    to something that evaluates in the appropriate order.
 
             if bctx.types.is_method_call(expr) {
-                unsupported_err!(expr.span, "overloaded op-assignment operator");
+                let lhs_ty = bctx.types.expr_ty_adjusted(lhs);
+                let rhs_ty = bctx.types.expr_ty_adjusted(rhs);
+                let lhs_vir = expr_to_vir_consume(bctx, lhs)?;
+                let rhs_vir = expr_to_vir_consume(bctx, rhs)?;
+                let fn_def_id = bctx
+                    .types
+                    .type_dependent_def_id(expr.hir_id)
+                    .expect("cannot get the function definition id for AssignOp");
+                let TyKind::Ref(_, self_ty, _) = lhs_ty.kind() else {
+                    crate::internal_err!(expr.span, "AssignOp: expected ref")
+                };
+                let trait_args =
+                    bctx.ctxt.tcx.mk_args(&[GenericArg::from(*self_ty), GenericArg::from(rhs_ty)]);
+                let args = Arc::new(vec![lhs_vir, rhs_vir]);
+                let e = crate::fn_call_to_vir::call_overloaded_method(
+                    bctx,
+                    expr.span,
+                    vir::ast_util::unit_typ(),
+                    fn_def_id,
+                    args,
+                    trait_args,
+                )?;
+                return Ok(ExprOrPlace::Expr(e));
             }
 
             if matches!(op.node, AssignOpKind::DivAssign | AssignOpKind::RemAssign) {
@@ -3476,8 +3528,11 @@ fn binopkind_to_binaryop_inner<'tcx>(
     let d0b = if bctx.in_ghost { Div0Behavior::Allow } else { Div0Behavior::Error };
 
     let vop = match op {
-        BinOpKind::And => BinaryOp::And,
-        BinOpKind::Or => BinaryOp::Or,
+        BinOpKind::And | BinOpKind::Or => {
+            // And and Or aren't allowed for AssignOp, and for normal BinOps,
+            // these are handled separately.
+            unsupported_err!(lhs.span, "use of `&&` or `||` here");
+        }
         BinOpKind::Eq => BinaryOp::Eq(Mode::Exec),
         BinOpKind::Ne => BinaryOp::Ne,
         BinOpKind::Le => BinaryOp::Inequality(InequalityOp::Le),
@@ -3959,9 +4014,9 @@ pub(crate) fn closure_to_vir<'tcx>(
     proof_fn_modes: Option<(Arc<Vec<Mode>>, Mode)>,
 ) -> Result<vir::ast::Expr, VirErr> {
     if let ExprKind::Closure(Closure { fn_decl, body: body_id, def_id, .. }) = &closure_expr.kind {
-        unsupported_err_unless!(!fn_decl.c_variadic, closure_expr.span, "c_variadic");
+        unsupported_err_unless!(!fn_decl.c_variadic(), closure_expr.span, "c_variadic");
         unsupported_err_unless!(
-            matches!(fn_decl.implicit_self, rustc_hir::ImplicitSelfKind::None),
+            matches!(fn_decl.implicit_self(), rustc_hir::ImplicitSelfKind::None),
             closure_expr.span,
             "implicit_self in closure"
         );
@@ -4454,7 +4509,10 @@ fn ctor_tail_get_taken_fields<'tcx>(
         if fields.iter().any(|f| f.ident.name == field_def.name) {
             continue;
         }
-        let ty = field_def.ty(bctx.ctxt.tcx, args);
+        let ty = bctx.ctxt.tcx.normalize_erasing_regions(
+            TypingEnv::post_analysis(bctx.ctxt.tcx, bctx.fun_id),
+            field_def.ty(bctx.ctxt.tcx, args),
+        );
         let rk = if bctx.is_copy(ty) { vir::ast::ReadKind::Copy } else { vir::ast::ReadKind::Move };
         let rk = UnfinalizedReadKind { preliminary_kind: rk, id: bctx.ctxt.unique_read_kind_id() };
         let ident = field_ident_from_rust(field_def.name.as_str());

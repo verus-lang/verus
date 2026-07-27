@@ -1,12 +1,14 @@
-use std::{path::PathBuf, process::Command};
+use std::path::PathBuf;
 
 use anyhow::Context;
-use cargo_verus_toolchains::format_manifest;
+use cargo_verus_toolchains::{
+    format_manifest,
+    versions::{get_verus_version, get_vstd_version},
+};
 use clap::Parser;
 use serde::{Deserialize, Serialize};
 
 type Toolchain = cargo_verus_toolchains::Toolchain<String>;
-type Crate = cargo_verus_toolchains::Crate<String>;
 
 fn main() -> anyhow::Result<()> {
     use std::io::Write;
@@ -64,67 +66,4 @@ fn get_external_deps() -> anyhow::Result<ExternalDeps> {
     let contents = std::fs::read_to_string(PATH).context(format!("reading `{PATH}`"))?;
     let external_deps = toml::from_str(&contents).context(format!("parsing `{PATH}`"))?;
     Ok(external_deps)
-}
-
-fn get_verus_version() -> anyhow::Result<String> {
-    let rev = get_git_rev(Some(7))?;
-    let git_show_date = std::process::Command::new("git")
-        .args(["show", "-s", "--format=%cs", "HEAD"])
-        .output()
-        .context("running `git show`")?;
-    if !git_show_date.status.success() {
-        anyhow::bail!("failed to run `git show`");
-    }
-    let date_str =
-        String::from_utf8(git_show_date.stdout).context("commit date is invalid utf8")?;
-    let date_re =
-        regex::Regex::new(r"^(\d{4})-(\d{2})-(\d{2})$").context("regex is well formed")?;
-    let date_captures = date_re
-        .captures(date_str.trim())
-        .context(format!("unexpected date string {date_str:?}"))?;
-    let year = &date_captures[1];
-    let month = &date_captures[2];
-    let day = &date_captures[3];
-
-    Ok(format!("0.{year}.{month}.{day}.{rev}"))
-}
-
-fn get_vstd_version(is_rolling: bool) -> anyhow::Result<Crate> {
-    if is_rolling {
-        // For a rolling release, pin to the Git commit.
-        let rev = get_git_rev(None)?;
-        let git = "https://github.com/verus-lang/verus.git".into();
-        Ok(Crate::GitCommit { git, rev })
-    } else {
-        // For a stable release, use the latest published version.
-        const VSTD_CARGO_TOML: &str = "vstd/Cargo.toml";
-        let contents = std::fs::read_to_string(VSTD_CARGO_TOML)
-            .context(format!("reading `{VSTD_CARGO_TOML}`"))?;
-        let table: toml::Table =
-            contents.parse().context(format!("parsing `{VSTD_CARGO_TOML}`"))?;
-        let value = table
-            .get("package")
-            .context("looking up key `package`")?
-            .get("version")
-            .context("looking up key `version`")?;
-        let toml::Value::String(version) = value else {
-            anyhow::bail!("version is not a string");
-        };
-        Ok(Crate::Registry(version.into()))
-    }
-}
-
-fn get_git_rev(limit: Option<usize>) -> anyhow::Result<String> {
-    let short_flag =
-        if let Some(len) = limit { format!("--short={len}") } else { "--short".into() };
-    let git_rev_parse = Command::new("git")
-        .args(["rev-parse", "-q", &short_flag, "HEAD"])
-        .output()
-        .context("running `git rev-parse`")?;
-    if !git_rev_parse.status.success() {
-        anyhow::bail!("failed to run `git rev-parse`");
-    }
-    let raw_rev =
-        String::from_utf8(git_rev_parse.stdout).context("commit hash is invalid UTF-8")?;
-    Ok(raw_rev.trim().to_owned())
 }

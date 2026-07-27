@@ -1,4 +1,5 @@
 use crate::ast::{FieldOpr, Typ, TypX, UnaryOp, UnaryOpr, VarIdent};
+use crate::ast_util::undecorate_typ;
 use crate::def::Spanned;
 use crate::messages::Span;
 use crate::poly::typ_is_poly;
@@ -924,7 +925,8 @@ impl SublocationTree {
                     let mut f2 = loc2.clone();
                     let mut base_typ = &node.typ;
 
-                    if let TypX::Boxed(native_typ) = &*node.typ
+                    let undecorated_typ = undecorate_typ(&node.typ);
+                    if let TypX::Boxed(native_typ) = &*undecorated_typ
                         && !typ_is_poly(ctx, native_typ)
                     {
                         f1 = try_unbox(ctx, f1, native_typ).expect("try_unbox");

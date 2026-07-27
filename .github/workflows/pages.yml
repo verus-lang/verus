@@ -30,7 +30,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.96.0
+          toolchain: 1.97.1
 
       - name: build verusdoc
         working-directory: ./source
