@@ -1,11 +1,20 @@
 # Spec index operator []
 
-In spec expressions, the index operator is treated differently than
-in exec expressions, where it corresponds to the [usual Rust index operator](https://doc.rust-lang.org/std/ops/trait.Index.html).
+### Syntax
 
-Specifically, in a spec expression, the expression `expr[i]` is a shorthand for
-`expr.spec_index(i)`. This is a purely syntactic transformation, and there is no
-particular trait.
+```verus-grammar
+V@[spec_index_expr] ::= V@[spec_expr] [ V@[spec_expr] ]
+```
+
+### Desugaring
+
+In spec code, the expression `expr[i]` desguars to `expr.spec_index(i)`, which is resolved as normal via Rust's [method resolution](https://doc.rust-lang.org/reference/expressions/method-call-expr.html).
+
+> [!DIFF]
+> This is different than the index operator in executable code,
+> where it is either a [place expression](https://doc.rust-lang.org/reference/expressions.html#place-expressions-and-value-expressions) indexing into a slice or an array, or is overloaded via the [`Index`](https://doc.rust-lang.org/std/ops/trait.Index.html) or [`IndexMut`](https://doc.rust-lang.org/std/ops/trait.IndexMut.html) traits.
+
+### Use cases
 
 For example:
 

@@ -63,10 +63,9 @@ pub fn record_history_commit(
                     .iter()
                     .filter(|d| d.starts_with(&cur_path))
                     .map(|d| {
-                        (
-                            d.components().skip(cur_path_components).next().unwrap(),
-                            d.components().skip(cur_path_components).count() == 1,
-                        )
+                        let name = d.components().nth(cur_path_components).unwrap();
+                        let is_file = d.components().skip(cur_path_components).count() == 1;
+                        (name, is_file)
                     })
                     .collect();
                 for (name, is_file) in here.into_iter() {

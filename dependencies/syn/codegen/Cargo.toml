@@ -24,6 +24,6 @@ serde = "1.0.88"
 serde_json = "1.0.38"
 syn = { version = "2", features = ["derive", "full", "parsing", "printing"], default-features = false }
 syn-codegen = { path = "../json", default-features = false }
-toml = { version = "0.9", default-features = false, features = ["parse", "serde"] }
+toml = { version = "1", default-features = false, features = ["parse", "serde"] }
 
 [workspace]

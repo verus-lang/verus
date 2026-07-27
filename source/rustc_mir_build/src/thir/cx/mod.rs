@@ -13,14 +13,14 @@ use rustc_middle::thir::*;
 use rustc_middle::ty::{self, TyCtxt};
 
 /// Query implementation for [`TyCtxt::thir_body`].
-pub(crate) fn thir_body(
-    tcx: TyCtxt<'_>,
+pub(crate) fn thir_body<'tcx>(
+    tcx: TyCtxt<'tcx>,
     owner_def: LocalDefId,
-) -> Result<(&Steal<Thir<'_>>, ExprId), ErrorGuaranteed> {
+) -> Result<(&'tcx Steal<Thir<'tcx>>, ExprId), ErrorGuaranteed> {
     debug_assert!(!tcx.is_type_const(owner_def.to_def_id()), "thir_body queried for type_const");
 
     let body = tcx.hir_body_owned_by(owner_def);
-    let mut cx = ThirBuildCx::new(tcx, owner_def);
+    let mut cx: ThirBuildCx<'tcx> = ThirBuildCx::new(tcx, owner_def);
     if let Some(reported) = cx.typeck_results.tainted_by_errors {
         return Err(reported);
     }
@@ -32,11 +32,6 @@ pub(crate) fn thir_body(
     } else {
         cx.mirror_expr(body.value)
     };
-
-    //dbg!(cx.thir.exprs.iter().enumerate().collect::<Vec<_>>());
-    //dbg!(cx.thir.blocks.iter().enumerate().collect::<Vec<_>>());
-    //dbg!(cx.thir.stmts.iter().enumerate().collect::<Vec<_>>());
-    //dbg!(expr);
 
     // Lower the params before the body's expression so errors from params are shown first.
     let owner_id = tcx.local_def_id_to_hir_id(owner_def);
@@ -60,6 +55,13 @@ pub(crate) fn thir_body(
 
     // Note: this call requires cx.thir.params to be initialized
     let expr = crate::verus_time_travel_prevention::body_post(&mut cx, body.value, expr);
+
+    //dbg!(cx.thir.exprs.iter().enumerate().collect::<Vec<_>>());
+    //dbg!(cx.thir.blocks.iter().enumerate().collect::<Vec<_>>());
+    //dbg!(cx.thir.stmts.iter().enumerate().collect::<Vec<_>>());
+    //dbg!(expr);
+
+    cx.verus_ctxt.finish();
 
     Ok((tcx.alloc_steal_thir(cx.thir), expr))
 }
@@ -121,7 +123,7 @@ impl<'tcx> ThirBuildCx<'tcx> {
             typing_env: ty::TypingEnv::non_body_analysis(tcx, def),
             typeck_results,
             body_owner: def.to_def_id(),
-            apply_adjustments: !find_attr!(tcx.hir_attrs(hir_id), CustomMir(..) => ()).is_some(),
+            apply_adjustments: !find_attr!(tcx, hir_id, CustomMir(..)),
             verus_ctxt: crate::verus::VerusThirBuildCtxt::new(tcx, def),
         }
     }
@@ -135,16 +137,15 @@ impl<'tcx> ThirBuildCx<'tcx> {
         pat: &'tcx hir::Pat<'tcx>,
         let_stmt_type: Option<&hir::Ty<'tcx>>,
     ) -> Box<Pat<'tcx>> {
-        crate::verus::erase_pat(
+        let pat = crate::thir::pattern::pat_from_hir(
             self,
-            crate::thir::pattern::pat_from_hir(
-                self.tcx,
-                self.typing_env,
-                self.typeck_results,
-                pat,
-                let_stmt_type,
-            ),
-        )
+            self.tcx,
+            self.typing_env,
+            self.typeck_results,
+            pat,
+            let_stmt_type,
+        );
+        crate::verus::erase_pat(self, pat)
     }
 
     fn closure_env_param(&self, owner_def: LocalDefId, expr_id: HirId) -> Option<Param<'tcx>> {
@@ -204,25 +205,26 @@ impl<'tcx> ThirBuildCx<'tcx> {
                 // Make sure that inferred closure args have no type span
                 .and_then(|ty| if param.pat.span != ty.span { Some(ty.span) } else { None });
 
-            let self_kind = if index == 0 && fn_decl.implicit_self.has_implicit_self() {
-                Some(fn_decl.implicit_self)
+            let self_kind = if index == 0 && fn_decl.implicit_self().has_implicit_self() {
+                Some(fn_decl.implicit_self())
             } else {
                 None
             };
 
             // C-variadic fns also have a `VaList` input that's not listed in `fn_sig`
             // (as it's created inside the body itself, not passed in from outside).
-            let ty = if fn_decl.c_variadic && index == fn_decl.inputs.len() {
+            let ty = if fn_decl.c_variadic() && index == fn_decl.inputs.len() {
                 let va_list_did = self.tcx.require_lang_item(LangItem::VaList, param.span);
 
                 self.tcx
                     .type_of(va_list_did)
                     .instantiate(self.tcx, &[self.tcx.lifetimes.re_erased.into()])
+                    .skip_norm_wip()
             } else {
                 fn_sig.inputs()[index]
             };
 
-            let pat = self.pattern_from_hir(param.pat);
+            let pat: Box<Pat<'tcx>> = self.pattern_from_hir(param.pat);
             Param { pat: Some(pat), ty, ty_span, self_kind, hir_id: Some(param.hir_id) }
         })
     }

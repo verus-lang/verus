@@ -389,9 +389,9 @@ fn check_termination<'a>(
         caller_decreases_typs,
     };
     let stm = map_stm_visitor(body, &mut |s| match &s.x {
-        StmX::Call { fun, resolved_method, args, dest, .. }
-            if is_recursive_call(&ctxt, fun, resolved_method) =>
-        {
+        StmX::Call {
+            fun: crate::sst::CallTarget::Fun(fun), resolved_method, args, dest, ..
+        } if is_recursive_call(&ctxt, fun, resolved_method) => {
             let check =
                 check_decrease_call(&ctxt, diagnostics, &s.span, fun, resolved_method, args)?;
             let error = error(&s.span, "could not prove termination");
@@ -585,8 +585,13 @@ pub(crate) fn expand_call_graph(
     // (See, for example, test_default17 in rust_verify_test/tests/traits.rs.)
     let add_calls = &mut |expr: &crate::ast::Expr| {
         match &expr.x {
-            ExprX::Call(CallTarget::Fun(kind, x, ts, impl_paths, autospec, _), _, _) => {
-                assert!(*autospec == AutospecUsage::Final);
+            ExprX::Call {
+                target: CallTarget::Fun(kind, x, ts, impl_paths, attrs),
+                args: _,
+                post_args: _,
+                body: _,
+            } => {
+                assert!(attrs.autospec == AutospecUsage::Final);
                 let (callee, ts, impl_paths) = if let CallTargetKind::DynamicResolved {
                     resolved: x_resolved,
                     typs: ts_resolved,
@@ -630,7 +635,12 @@ pub(crate) fn expand_call_graph(
             ExprX::ConstVar(callee, _) => {
                 call_graph.add_edge(f_node.clone(), Node::Fun(callee.clone()))
             }
-            ExprX::Call(CallTarget::BuiltinSpecFun(_bsf, _typs, impl_paths), _, _) => {
+            ExprX::Call {
+                target: CallTarget::BuiltinSpecFun(_bsf, _typs, impl_paths),
+                args: _,
+                post_args: _,
+                body: _,
+            } => {
                 for impl_path in impl_paths.iter() {
                     call_graph.add_edge(f_node.clone(), Node::TraitImpl(impl_path.clone()));
                 }

@@ -10,11 +10,15 @@ use crate::meta::{self, ParseNestedMeta};
 use crate::parse::{Parse, ParseStream, Parser};
 use crate::path::Path;
 use crate::token;
+#[cfg(feature = "parsing")]
+use alloc::format;
+#[cfg(feature = "parsing")]
+use alloc::vec::Vec;
+#[cfg(feature = "printing")]
+use core::iter;
+#[cfg(feature = "printing")]
+use core::slice;
 use proc_macro2::TokenStream;
-#[cfg(feature = "printing")]
-use std::iter;
-#[cfg(feature = "printing")]
-use std::slice;
 
 ast_struct! {
     /// An attribute, like `#[repr(transparent)]`.
@@ -653,8 +657,9 @@ pub(crate) mod parsing {
     use crate::parse::{Parse, ParseStream};
     use crate::path::Path;
     use crate::{mac, token};
+    use alloc::vec::Vec;
+    use core::fmt::{self, Display};
     use proc_macro2::Ident;
-    use std::fmt::{self, Display};
 
     pub(crate) fn parse_inner(input: ParseStream, attrs: &mut Vec<Attribute>) -> Result<()> {
         while input.peek(Token![#]) && input.peek2(Token![!]) {
@@ -719,15 +724,14 @@ pub(crate) mod parsing {
     }
 
     pub(crate) fn parse_meta_after_path(path: Path, input: ParseStream) -> Result<Meta> {
-        if path
-            .get_ident()
-            .map_or(false, |x| x.to_string() == "trigger")
-        {
+        if path.get_ident().map_or(false, |x| {
+            alloc::string::ToString::to_string(x) == "trigger"
+        }) {
             return parse_meta_list_after_path(path, input).map(Meta::List);
         }
         if input.peek(token::Paren) || input.peek(token::Bracket) || input.peek(token::Brace) {
             parse_meta_list_after_path(path, input).map(Meta::List)
-        } else if input.peek(Token![=]) {
+        } else if input.peek(Token![=]) && !input.peek(Token![==]) && !input.peek(Token![=>]) {
             parse_meta_name_value_after_path(path, input).map(Meta::NameValue)
         } else {
             Ok(Meta::Path(path))
@@ -735,10 +739,9 @@ pub(crate) mod parsing {
     }
 
     fn parse_meta_list_after_path(path: Path, input: ParseStream) -> Result<MetaList> {
-        if path
-            .get_ident()
-            .map_or(false, |x| x.to_string() == "trigger")
-        {
+        if path.get_ident().map_or(false, |x| {
+            alloc::string::ToString::to_string(x) == "trigger"
+        }) {
             use crate::span::IntoSpans;
             use crate::spanned::Spanned;
             let paren = token::Paren {
@@ -843,11 +846,9 @@ mod printing {
     impl ToTokens for MetaList {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             path::printing::print_path(tokens, &self.path, PathStyle::Mod);
-            if self
-                .path
-                .get_ident()
-                .map_or(false, |x| x.to_string() == "trigger")
-            {
+            if self.path.get_ident().map_or(false, |x| {
+                alloc::string::ToString::to_string(x) == "trigger"
+            }) {
                 self.tokens.to_tokens(tokens);
                 return;
             }

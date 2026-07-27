@@ -1,9 +1,7 @@
 //! Construction of MIR from HIR.
 
 // tidy-alphabetical-start
-#![cfg_attr(bootstrap, feature(if_let_guard))]
-#![feature(assert_matches)]
-#![feature(box_patterns)]
+#![feature(deref_patterns)]
 #![feature(try_blocks)]
 #![feature(rustc_private)]
 #![feature(never_type)]

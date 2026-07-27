@@ -49,6 +49,14 @@ pub fn ensures<A>(_a: A) {
 
 // Can only appear at beginning of function body
 #[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::atomic_spec"]
+#[verifier::proof]
+pub fn atomic_spec<A>(_a: A) {
+    unimplemented!();
+}
+
+// Can only appear at beginning of function body
+#[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::returns"]
 #[verifier::proof]
 pub fn returns<A>(_a: A) {
@@ -76,6 +84,14 @@ pub fn invariant_except_break<A>(_a: A) {
 #[rustc_diagnostic_item = "verus::verus_builtin::invariant"]
 #[verifier::proof]
 pub fn invariant<A>(_a: A) {
+    unimplemented!();
+}
+
+// Can only appear at beginning of loop body
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::atomic_call_loop"]
+#[verifier::proof]
+pub fn atomic_call_loop() {
     unimplemented!();
 }
 
@@ -122,41 +138,9 @@ pub fn extra_dependency<F>(_f: F) {
 
 // Can only appear at beginning of function body
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::verus_builtin::opens_invariants_none"]
+#[rustc_diagnostic_item = "verus::verus_builtin::opens_invariant_mask"]
 #[verifier::proof]
-pub fn opens_invariants_none() {
-    unimplemented!();
-}
-
-// Can only appear at beginning of function body
-#[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::verus_builtin::opens_invariants_any"]
-#[verifier::proof]
-pub fn opens_invariants_any() {
-    unimplemented!();
-}
-
-// Can only appear at beginning of function body
-#[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::verus_builtin::opens_invariants"]
-#[verifier::proof]
-pub fn opens_invariants<A>(_a: A) {
-    unimplemented!();
-}
-
-// Can only appear at beginning of function body
-#[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::verus_builtin::opens_invariants_except"]
-#[verifier::proof]
-pub fn opens_invariants_except<A>(_a: A) {
-    unimplemented!();
-}
-
-// Can only appear at beginning of function body
-#[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::verus_builtin::opens_invariants_set"]
-#[verifier::proof]
-pub fn opens_invariants_set<A>(_a: A) {
+pub fn opens_invariant_mask(_inv_mask: ()) {
     unimplemented!();
 }
 
@@ -313,6 +297,41 @@ pub fn get_variant_field<Adt, Field>(_a: Adt, _variant: &str, _field: &str) -> F
 #[verifier::spec]
 pub fn get_union_field<Adt, Field>(_a: Adt, _field: &str) -> Field {
     unimplemented!();
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::inv_mask_none"]
+#[verifier::proof]
+pub fn inv_mask_none<A>() -> A {
+    unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::inv_mask_any"]
+#[verifier::proof]
+pub fn inv_mask_any<A>() -> A {
+    unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::inv_mask_list"]
+#[verifier::proof]
+pub fn inv_mask_list<A, E>(_e: E) -> A {
+    unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::inv_mask_list_compl"]
+#[verifier::proof]
+pub fn inv_mask_list_compl<A, E>(_e: E) -> A {
+    unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::inv_mask_set"]
+#[verifier::proof]
+pub fn inv_mask_set<A, E>(_e: E) -> A {
+    unimplemented!()
 }
 
 #[cfg(verus_keep_ghost)]
@@ -1120,10 +1139,86 @@ pub const fn spec_cast_float<From: Copy + IeeeFloatCast<To>, To: Decimal>(_from:
     To::CONST_DEFAULT
 }
 
+#[cfg_attr(verus_keep_ghost, verifier::sealed)]
+#[cfg_attr(verus_keep_ghost, verifier::internal_trait)]
+pub trait SpecEq<Rhs: ?Sized> {}
+
+#[cfg(verus_keep_ghost)]
+impl<A: ?Sized> SpecEq<A> for A {}
+
+#[cfg(verus_keep_ghost)]
+impl<A: ?Sized> SpecEq<&A> for A {}
+
+#[cfg(verus_keep_ghost)]
+impl<A: ?Sized> SpecEq<A> for &A {}
+
+// TODO: when new-mut-ref entirely replaces old &mut, this can be removed
+#[cfg(verus_keep_ghost)]
+impl<A: ?Sized> SpecEq<&mut A> for A {}
+
+// TODO: when new-mut-ref entirely replaces old &mut, this can be removed
+#[cfg(verus_keep_ghost)]
+impl<A: ?Sized> SpecEq<A> for &mut A {}
+
+#[cfg(verus_keep_ghost)]
+impl<A> SpecEq<Ghost<A>> for A {}
+
+#[cfg(verus_keep_ghost)]
+impl<A> SpecEq<A> for Ghost<A> {}
+
+#[cfg(verus_keep_ghost)]
+impl<A> SpecEq<Tracked<A>> for A {}
+
+#[cfg(verus_keep_ghost)]
+impl<A> SpecEq<A> for Tracked<A> {}
+
+#[cfg(verus_keep_ghost)]
+impl<A: ?Sized> SpecEq<*const A> for *mut A {}
+
+#[cfg(verus_keep_ghost)]
+impl<A: ?Sized> SpecEq<*mut A> for *const A {}
+
+macro_rules! impl_spec_eq {
+    ($lhs:ty, [$($rhs:ty)*]) => {
+        $(
+            #[cfg(verus_keep_ghost)]
+            impl SpecEq<$rhs> for $lhs {}
+
+            #[cfg(verus_keep_ghost)]
+            impl SpecEq<&$rhs> for $lhs {}
+
+            #[cfg(verus_keep_ghost)]
+            impl SpecEq<$rhs> for &$lhs {}
+
+            #[cfg(verus_keep_ghost)]
+            impl SpecEq<Ghost<$rhs>> for $lhs {}
+
+            #[cfg(verus_keep_ghost)]
+            impl SpecEq<$rhs> for Ghost<$lhs> {}
+        )*
+    }
+}
+
+impl_spec_eq!(int, [nat usize isize u8 i8 u16 i16 u32 i32 u64 i64 u128 i128 char]);
+impl_spec_eq!(nat, [int usize isize u8 i8 u16 i16 u32 i32 u64 i64 u128 i128 char]);
+impl_spec_eq!(usize, [int nat isize u8 i8 u16 i16 u32 i32 u64 i64 u128 i128 char]);
+impl_spec_eq!(isize, [int nat usize u8 i8 u16 i16 u32 i32 u64 i64 u128 i128 char]);
+impl_spec_eq!(u8, [int nat usize isize i8 u16 i16 u32 i32 u64 i64 u128 i128 char]);
+impl_spec_eq!(i8, [int nat usize isize u8 u16 i16 u32 i32 u64 i64 u128 i128 char]);
+impl_spec_eq!(u16, [int nat usize isize u8 i8 i16 u32 i32 u64 i64 u128 i128 char]);
+impl_spec_eq!(i16, [int nat usize isize u8 i8 u16 u32 i32 u64 i64 u128 i128 char]);
+impl_spec_eq!(u32, [int nat usize isize u8 i8 u16 i16 i32 u64 i64 u128 i128 char]);
+impl_spec_eq!(i32, [int nat usize isize u8 i8 u16 i16 u32 u64 i64 u128 i128 char]);
+impl_spec_eq!(u64, [int nat usize isize u8 i8 u16 i16 u32 i32 i64 u128 i128 char]);
+impl_spec_eq!(i64, [int nat usize isize u8 i8 u16 i16 u32 i32 u64 u128 i128 char]);
+impl_spec_eq!(u128, [int nat usize isize u8 i8 u16 i16 u32 i32 u64 i64 i128 char]);
+impl_spec_eq!(i128, [int nat usize isize u8 i8 u16 i16 u32 i32 u64 i64 u128 char]);
+impl_spec_eq!(char, [int nat usize isize u8 i8 u16 i16 u32 i32 u64 i64 u128 i128]);
+
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::spec_eq"]
 #[verifier::spec]
-pub fn spec_eq<Lhs, Rhs>(_lhs: Lhs, _rhs: Rhs) -> bool {
+pub fn spec_eq<Lhs: SpecEq<Rhs>, Rhs>(_lhs: Lhs, _rhs: Rhs) -> bool {
     unimplemented!()
 }
 
@@ -2353,6 +2448,15 @@ pub fn dummy_capture_consume<'a>(_dc: DummyCapture<'a>) {
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::mutable_reference_tie"]
 pub fn mutable_reference_tie<'a, T: ?Sized, U: ?Sized>(_a: &'a mut T, _b: &'a mut U) -> &'a mut T {
+    unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::two_phase_mutable_reference_tie"]
+pub fn two_phase_mutable_reference_tie<'a, T: ?Sized, U: ?Sized>(
+    _a: &'a mut T,
+    _b: &'a mut U,
+) -> &'a mut T {
     unimplemented!()
 }
 

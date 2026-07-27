@@ -157,24 +157,33 @@ impl<A: ToDebugSNode> ToDebugSNode for Option<A> {
     }
 }
 
-impl<A: ToDebugSNode, B: ToDebugSNode> ToDebugSNode for (A, B) {
-    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
-        let (a, b) = self;
-        Node::List(vec![Node::Atom("tuple".to_string()), a.to_node(opts), b.to_node(opts)])
-    }
+macro_rules! tuple_impls {
+    ($($typ:ident)+) => {
+        impl<$($typ: ToDebugSNode),+> ToDebugSNode for ($($typ,)+) {
+            fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
+                #[allow(non_snake_case)]
+                let ($($typ,)+) = self;
+
+                Node::List(vec![
+                    Node::Atom("tuple".to_string()),
+                    $($typ.to_node(opts),)+
+                ])
+            }
+        }
+    };
 }
 
-impl<A: ToDebugSNode, B: ToDebugSNode, C: ToDebugSNode> ToDebugSNode for (A, B, C) {
-    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
-        let (a, b, c) = self;
-        Node::List(vec![
-            Node::Atom("tuple".to_string()),
-            a.to_node(opts),
-            b.to_node(opts),
-            c.to_node(opts),
-        ])
-    }
-}
+tuple_impls! { A B }
+tuple_impls! { A B C }
+tuple_impls! { A B C D }
+tuple_impls! { A B C D E }
+tuple_impls! { A B C D E F }
+tuple_impls! { A B C D E F G }
+tuple_impls! { A B C D E F G H }
+tuple_impls! { A B C D E F G H I }
+tuple_impls! { A B C D E F G H I J }
+tuple_impls! { A B C D E F G H I J K }
+tuple_impls! { A B C D E F G H I J K L }
 
 impl ToDebugSNode for bool {
     fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
@@ -419,7 +428,7 @@ pub fn write_krate(mut write: impl std::io::Write, vir_crate: &Krate, opts: &ToD
     } = &**vir_crate;
     for datatype in datatypes.iter() {
         if opts.no_span {
-            writeln!(&mut write, ";; {}", &datatype.span.as_string)
+            writeln!(&mut write, ";; {}", datatype.span.as_string)
                 .expect("cannot write to vir write");
         }
         writeln!(&mut write, "{}\n", nw.node_to_string(&datatype.to_node(opts)))
@@ -427,7 +436,7 @@ pub fn write_krate(mut write: impl std::io::Write, vir_crate: &Krate, opts: &ToD
     }
     for function in functions.iter() {
         if opts.no_span {
-            writeln!(&mut write, ";; {}", &function.span.as_string)
+            writeln!(&mut write, ";; {}", function.span.as_string)
                 .expect("cannot write to vir write");
         }
         writeln!(&mut write, "{}\n", nw.node_to_string(&function.to_node(opts)))
@@ -448,8 +457,7 @@ pub fn write_krate(mut write: impl std::io::Write, vir_crate: &Krate, opts: &ToD
     }
     for assoc in assoc_type_impls.iter() {
         if opts.no_span {
-            writeln!(&mut write, ";; {}", &assoc.span.as_string)
-                .expect("cannot write to vir write");
+            writeln!(&mut write, ";; {}", assoc.span.as_string).expect("cannot write to vir write");
         }
         writeln!(&mut write, "{}\n", nw.node_to_string(&assoc.to_node(opts)))
             .expect("cannot write to vir write");
@@ -493,7 +501,7 @@ pub fn write_krate_sst(
 
     for datatype in datatypes.iter() {
         if opts.no_span {
-            writeln!(&mut write, ";; {}", &datatype.span.as_string)
+            writeln!(&mut write, ";; {}", datatype.span.as_string)
                 .expect("cannot write to vir write");
         }
         writeln!(&mut write, "{}\n", nw.node_to_string(&datatype.to_node(opts)))
@@ -501,7 +509,7 @@ pub fn write_krate_sst(
     }
     for function in functions.iter() {
         if opts.no_span {
-            writeln!(&mut write, ";; {}", &function.span.as_string)
+            writeln!(&mut write, ";; {}", function.span.as_string)
                 .expect("cannot write to vir write");
         }
         writeln!(&mut write, "{}\n", nw.node_to_string(&function.to_node(opts)))
@@ -509,7 +517,7 @@ pub fn write_krate_sst(
     }
     for trait_ in traits.iter() {
         if opts.no_span {
-            writeln!(&mut write, ";; {}", &trait_.span.as_string)
+            writeln!(&mut write, ";; {}", trait_.span.as_string)
                 .expect("cannot write to vir write");
         }
         let trait_node = Node::List(vec![Node::Atom("trait".to_owned()), trait_.to_node(opts)]);
@@ -519,7 +527,7 @@ pub fn write_krate_sst(
     writeln!(&mut write, ";; trait_impls").expect("cannot write to vir write");
     for trait_impl in trait_impls.iter() {
         if opts.no_span {
-            writeln!(&mut write, ";; {}", &trait_impl.span.as_string)
+            writeln!(&mut write, ";; {}", trait_impl.span.as_string)
                 .expect("cannot write to vir write");
         }
         let trait_impl = nodes!(trait_impl {trait_impl.to_node(opts)});
@@ -529,8 +537,7 @@ pub fn write_krate_sst(
     writeln!(&mut write, ";; assoc_type_impls").expect("cannot write to vir write");
     for assoc in assoc_type_impls.iter() {
         if opts.no_span {
-            writeln!(&mut write, ";; {}", &assoc.span.as_string)
-                .expect("cannot write to vir write");
+            writeln!(&mut write, ";; {}", assoc.span.as_string).expect("cannot write to vir write");
         }
         let assoc_type_impl = nodes!(assoc_type_impl {assoc.to_node(opts)});
         writeln!(&mut write, "{}\n", nw.node_to_string(&assoc_type_impl))

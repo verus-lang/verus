@@ -1,6 +1,9 @@
+#![allow(unused_macros)]
 use crate::EraseGhost;
 use crate::rustdoc::env_rustdoc;
 use crate::{VstdKind, vstd_kind};
+use convert_case::{Case, Casing};
+use proc_macro2::Group;
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use proc_macro2::TokenTree;
@@ -28,16 +31,17 @@ use verus_syn::visit_mut::{
     visit_item_union_mut, visit_local_mut, visit_specification_mut, visit_trait_item_fn_mut,
 };
 use verus_syn::{
-    AssumeSpecification, Attribute, BareFnArg, BinOp, Block, DataMode, Decreases, Ensures, Expr,
-    ExprBinary, ExprCall, ExprLit, ExprLoop, ExprMatches, ExprTuple, ExprUnary, ExprWhile, Field,
-    FnArg, FnArgKind, FnMode, Global, Ident, ImplItem, ImplItemFn, Invariant, InvariantEnsures,
-    InvariantExceptBreak, InvariantNameSet, InvariantNameSetList, InvariantNameSetSet, Item,
-    ItemBroadcastGroup, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemMod, ItemStatic, ItemStruct,
-    ItemTrait, ItemUnion, Lit, Local, MatchesOpExpr, MatchesOpToken, Meta, MetaList, ModeSpec,
-    ModeSpecChecked, Pat, PatIdent, PatType, Path, PathArguments, Publish, Recommends, Requires,
-    ReturnType, Returns, Signature, SignatureDecreases, SignatureInvariants, SignatureSpec,
-    SignatureSpecAttr, SignatureUnwind, Stmt, Token, TraitItem, TraitItemFn, Type, TypeFnProof,
-    TypeFnSpec, TypePath, UnOp, Visibility, braced, bracketed, parenthesized, parse_macro_input,
+    AssumeSpecification, AtomicSpec, AtomicallyBlock, Attribute, BareFnArg, BinOp, Block, DataMode,
+    Decreases, Ensures, Expr, ExprBinary, ExprCall, ExprLit, ExprLoop, ExprMatches, ExprMethodCall,
+    ExprTuple, ExprUnary, ExprWhile, Field, FnArg, FnArgKind, FnMode, GenericParam, Global, Ident,
+    ImplItem, ImplItemFn, Invariant, InvariantEnsures, InvariantExceptBreak, InvariantNameSet,
+    InvariantNameSetList, InvariantNameSetListCompl, InvariantNameSetSet, Item, ItemBroadcastGroup,
+    ItemConst, ItemEnum, ItemFn, ItemImpl, ItemMod, ItemStatic, ItemStruct, ItemTrait, ItemUnion,
+    Lit, Local, MatchesOpExpr, MatchesOpToken, Meta, MetaList, ModeSpec, ModeSpecChecked, Pat,
+    PatIdent, PatType, Path, PathArguments, Publish, Receiver, Recommends, Requires, ReturnType,
+    Returns, Signature, SignatureDecreases, SignatureInvariants, SignatureSpec, SignatureSpecAttr,
+    SignatureUnwind, Stmt, Token, TraitItem, TraitItemFn, Type, TypeFnProof, TypeFnSpec, TypePath,
+    TypeReference, UnOp, Visibility, braced, bracketed, parenthesized, parse_macro_input,
 };
 
 pub(crate) const VERUS_SPEC: &str = "VERUS_SPEC__";
@@ -96,9 +100,12 @@ pub(crate) struct Visitor {
     inside_arith: InsideArith,
     // assign_to == true means we're an expression being assigned to by Assign
     assign_to: bool,
-
     // Add extra verus signature information to the docstring
     pub(crate) rustdoc: bool,
+    // The current `Self` type taken from the surrounding impl block
+    inside_impl: Option<Box<(Generics, Box<Type>)>>,
+    // A place to put items that are emitted while visiting
+    additional_items: Vec<Item>,
 }
 
 // For exec "let pat = init" declarations, recursively find Tracked(x), Ghost(x), x in pat
@@ -236,6 +243,40 @@ macro_rules! quote_spanned_builtin_builtin_macros_vstd {
             let $m = crate::syntax::BuiltinMacros(sp);
             let $v = crate::syntax::Vstd(sp);
             ::quote::quote_spanned!{ sp => $($tt)* }
+        }
+    }
+}
+
+macro_rules! parse_quote_spanned_builtin_builtin_macros_vstd {
+    ($b:ident, $m:ident, $v:ident, $span:expr => $($tt:tt)*) => {
+        {
+            let sp = $span;
+            let $b = crate::syntax::Builtin(sp);
+            let $m = crate::syntax::BuiltinMacros(sp);
+            let $v = crate::syntax::Vstd(sp);
+            ::verus_syn::parse_quote_spanned!{ sp => $($tt)* }
+        }
+    }
+}
+
+macro_rules! quote_spanned_builtin_vstd {
+    ($b:ident, $v:ident, $span:expr => $($tt:tt)*) => {
+        {
+            let sp = $span;
+            let $b = crate::syntax::Builtin(sp);
+            let $v = crate::syntax::Vstd(sp);
+            ::quote::quote_spanned!{ sp => $($tt)* }
+        }
+    }
+}
+
+macro_rules! parse_quote_spanned_builtin_vstd {
+    ($b:ident, $v:ident, $span:expr => $($tt:tt)*) => {
+        {
+            let sp = $span;
+            let $b = crate::syntax::Builtin(sp);
+            let $v = crate::syntax::Vstd(sp);
+            ::verus_syn::parse_quote_spanned!{ sp => $($tt)* }
         }
     }
 }
@@ -527,6 +568,328 @@ impl Visitor {
         }
     }
 
+    fn resolve_receiver(&self, receiver: &Receiver, name: &Ident) -> PatType {
+        match &receiver.colon_token {
+            None => {
+                let Some((_, ty)) = self.inside_impl.as_deref() else {
+                    let span = receiver.span();
+                    let err = "cannot resolve type of `self` in function definition";
+                    return parse_quote_spanned!(span => _: compile_error!(#err));
+                };
+
+                let mut ty = ty.clone();
+                let mut rec_mut = receiver.mutability.clone();
+                if let Some((and_token, lifetime)) = receiver.reference.clone() {
+                    ty = Box::new(Type::Reference(TypeReference {
+                        and_token,
+                        lifetime,
+                        mutability: rec_mut.take(),
+                        elem: ty,
+                    }));
+                }
+
+                let pat_ident = verus_syn::PatIdent {
+                    attrs: Vec::new(),
+                    by_ref: None,
+                    mutability: rec_mut,
+                    ident: name.clone(),
+                    subpat: None,
+                };
+
+                PatType {
+                    attrs: receiver.attrs.clone(),
+                    pat: Box::new(Pat::Ident(pat_ident)),
+                    colon_token: parse_quote_spanned!(receiver.span() => :),
+                    ty,
+                }
+            }
+
+            Some(_colon) => todo!(),
+        }
+    }
+
+    fn inv_name_set_to_mask_expr(&mut self, set: InvariantNameSet) -> TokenStream {
+        match set {
+            InvariantNameSet::Any(any) => {
+                quote_spanned_builtin!(verus_builtin, any.span() =>
+                    #verus_builtin::inv_mask_any()
+                )
+            }
+
+            InvariantNameSet::None(none) => {
+                quote_spanned_builtin!(verus_builtin, none.span() =>
+                    #verus_builtin::inv_mask_none()
+                )
+            }
+
+            InvariantNameSet::List(InvariantNameSetList { bracket_token, mut exprs }) => {
+                for expr in exprs.iter_mut() {
+                    self.visit_expr_mut(expr);
+                }
+
+                quote_spanned_builtin!(verus_builtin, bracket_token.span.join() =>
+                    #verus_builtin::inv_mask_list([#exprs])
+                )
+            }
+
+            InvariantNameSet::ListCompl(InvariantNameSetListCompl {
+                bracket_token,
+                mut exprs,
+                ..
+            }) => {
+                for expr in exprs.iter_mut() {
+                    self.visit_expr_mut(expr);
+                }
+
+                quote_spanned_builtin!(verus_builtin, bracket_token.span.join() =>
+                    #verus_builtin::inv_mask_list_compl([#exprs])
+                )
+            }
+
+            InvariantNameSet::Set(InvariantNameSetSet { mut expr }) => {
+                self.visit_expr_mut(&mut expr);
+                let typ = quote_vstd! { vstd => #vstd::iset::ISet<int> };
+                quote_spanned_builtin!(verus_builtin, expr.span() =>
+                    #verus_builtin::inv_mask_set::<_, #typ>(#expr)
+                )
+            }
+        }
+    }
+
+    fn handle_atomic_spec(
+        &mut self,
+        sig: &mut Signature,
+        vis: Option<&Visibility>,
+        stmts: &mut Vec<Stmt>,
+    ) -> Option<(verus_syn::Ident, verus_syn::PermClause)> {
+        let Some(atomic_spec) = sig.spec.atomic_spec.take() else { return None };
+        let full_span = atomic_spec.span();
+
+        fn replace_self_with_ident(stream: TokenStream, ident: &Ident) -> TokenStream {
+            stream
+                .into_iter()
+                .map(|tt| match tt {
+                    TokenTree::Ident(curr) if curr == "self" => {
+                        let mut ident = ident.clone();
+                        ident.set_span(curr.span());
+                        TokenTree::Ident(ident)
+                    }
+
+                    TokenTree::Group(group) => {
+                        let inner = replace_self_with_ident(group.stream(), ident);
+                        let group = Group::new(group.delimiter(), inner);
+                        TokenTree::Group(group)
+                    }
+
+                    token => token,
+                })
+                .collect()
+        }
+
+        let AtomicSpec {
+            atomic_update,
+            type_clause,
+            perm_clause,
+            requires,
+            ensures,
+            outer_mask,
+            inner_mask,
+            ..
+        } = atomic_spec;
+
+        let mut old_ty = TokenStream::new();
+        let mut new_ty = TokenStream::new();
+        perm_clause.old_perms.to_type_tokens(&mut old_ty);
+        perm_clause.new_perms.to_type_tokens(&mut new_ty);
+
+        let pred_ident = match type_clause {
+            Some(clause) => clause.ident,
+            None => {
+                let mut pred_name = sig.ident.to_string().to_case(Case::Pascal);
+                pred_name.push_str("AtomicUpdatePredicate");
+                Ident::new(&pred_name, sig.ident.span())
+            }
+        };
+
+        let mut args_ty_tokens = TokenStream::new();
+        let mut args_pat_tokens = TokenStream::new();
+        let mut args_use_tokens = TokenStream::new();
+        let mut args_full_tokens = TokenStream::new();
+
+        let mut self_ident = None;
+        for pair in sig.inputs.pairs() {
+            let (fn_arg, comma) = pair.into_tuple();
+            match &fn_arg.kind {
+                FnArgKind::Typed(pat_type) => {
+                    pat_type.pat.to_tokens(&mut args_use_tokens);
+                    pat_type.pat.to_tokens(&mut args_pat_tokens);
+                    pat_type.pat.to_tokens(&mut args_full_tokens);
+
+                    pat_type.colon_token.to_tokens(&mut args_full_tokens);
+
+                    pat_type.ty.to_tokens(&mut args_ty_tokens);
+                    pat_type.ty.to_tokens(&mut args_full_tokens);
+                }
+
+                FnArgKind::Receiver(receiver) => {
+                    if self.inside_impl.is_none() {
+                        let err = "failed to resolve `self` type; \
+                            make sure the `verus!` macro is applied to \
+                            the entire impl block, not just this method";
+                        self.additional_items.push(parse_quote_spanned!(
+                            receiver.self_token.span() =>
+                                const _FAILED_TO_RESOLVE_SELF: () = compile_error!(#err);
+                        ));
+                        return None;
+                    }
+
+                    let ident = Ident::new("this", receiver.self_token.span());
+                    let pat_type = self.resolve_receiver(receiver, &ident);
+                    self_ident = Some(ident);
+
+                    receiver.self_token.to_tokens(&mut args_use_tokens);
+                    pat_type.pat.to_tokens(&mut args_pat_tokens);
+                    pat_type.pat.to_tokens(&mut args_full_tokens);
+
+                    pat_type.colon_token.to_tokens(&mut args_full_tokens);
+
+                    pat_type.ty.to_tokens(&mut args_ty_tokens);
+                    pat_type.ty.to_tokens(&mut args_full_tokens);
+                }
+            };
+
+            comma.to_tokens(&mut args_ty_tokens);
+            comma.to_tokens(&mut args_pat_tokens);
+            comma.to_tokens(&mut args_use_tokens);
+            comma.to_tokens(&mut args_full_tokens);
+        }
+
+        let mut generics = sig.generics.clone();
+        generics.params.retain(|val, _| match val {
+            GenericParam::Lifetime(..) => false,
+            GenericParam::Const(..) => true,
+            GenericParam::Type(..) => true,
+        });
+
+        let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+        let ty_generics_inner = {
+            let tokens = ty_generics.to_token_stream().into_iter().collect::<Vec<_>>();
+            let mut out = TokenStream::new();
+            if let [_, inner @ .., _] = &*tokens {
+                for tt in inner {
+                    tt.to_tokens(&mut out);
+                }
+            }
+
+            out
+        };
+
+        self.additional_items.push(parse_quote_spanned!(full_span =>
+            #vis struct #pred_ident #impl_generics #where_clause {
+                _marker: ::core::marker::PhantomData<( #ty_generics_inner )>,
+            }
+        ));
+
+        let update_arg: FnArg = parse_quote_spanned_vstd!(vstd, full_span =>
+            tracked #atomic_update: #vstd::atomic::AtomicUpdate
+                < #old_ty, #new_ty, #pred_ident #ty_generics >
+        );
+
+        let mut old_pat = TokenStream::new();
+        let mut new_pat = TokenStream::new();
+        perm_clause.old_perms.to_pattern_tokens(&mut old_pat);
+        perm_clause.new_perms.to_pattern_tokens(&mut new_pat);
+
+        let mut atomic_req = quote!(true);
+        let mut atomic_ens = quote!(true);
+
+        if let Some(requires) = &requires {
+            for req in &requires.exprs.exprs {
+                quote_spanned!(requires.token.span => && ( #req )).to_tokens(&mut atomic_req);
+            }
+        }
+
+        if let Some(ensures) = &ensures {
+            for ens in &ensures.exprs.exprs {
+                quote_spanned!(ensures.token.span => && ( #ens )).to_tokens(&mut atomic_ens);
+            }
+        }
+
+        if let Some(ident) = &self_ident {
+            args_pat_tokens = replace_self_with_ident(args_pat_tokens, ident);
+            args_full_tokens = replace_self_with_ident(args_full_tokens, ident);
+            atomic_req = replace_self_with_ident(atomic_req, ident);
+            atomic_ens = replace_self_with_ident(atomic_ens, ident);
+        }
+
+        self.additional_items.push(parse_quote_spanned_vstd!(vstd, full_span =>
+            impl #impl_generics #pred_ident #ty_generics #where_clause {
+                #[allow(private_interfaces)]
+                pub open spec fn args(self, #args_full_tokens ) -> bool {
+                    #vstd::atomic::pred_args::< Self, ( #args_ty_tokens ) >(self)
+                        == ( #args_pat_tokens )
+                }
+            }
+        ));
+
+        let mut impl_members = quote_spanned_vstd!(vstd, full_span =>
+            open spec fn req(self, #old_pat: #old_ty) -> bool {
+                let ( #args_pat_tokens ) = #vstd::atomic::pred_args::< #pred_ident #ty_generics , ( #args_ty_tokens ) >(self);
+                #atomic_req
+            }
+
+            open spec fn ens(self, #old_pat: #old_ty, #new_pat: #new_ty) -> bool {
+                let ( #args_pat_tokens ) = #vstd::atomic::pred_args::< #pred_ident #ty_generics , ( #args_ty_tokens ) >(self);
+                #atomic_ens
+            }
+        );
+
+        // The `outer_mask` and `inner_mask` functions have a default implementation,
+        // so we can select the default behavior by not generating anything
+
+        if let Some(outer_mask) = outer_mask {
+            let mask_expr = self.inv_name_set_to_mask_expr(outer_mask.set);
+            let fn_tokens = &quote_spanned_vstd!(vstd, outer_mask.token.span =>
+                open spec fn outer_mask(self) -> #vstd::iset::ISet<vstd::prelude::int> {
+                    let ( #args_pat_tokens ) = #vstd::atomic::pred_args::< #pred_ident #ty_generics , ( #args_ty_tokens ) >(self);
+                    #mask_expr
+                }
+            );
+
+            fn_tokens.to_tokens(&mut impl_members);
+        }
+
+        if let Some(inner_mask) = inner_mask {
+            let mask_expr = self.inv_name_set_to_mask_expr(inner_mask.set);
+            let fn_tokens = &quote_spanned_vstd!(vstd, inner_mask.token.span =>
+                open spec fn inner_mask(self) -> #vstd::iset::ISet<vstd::prelude::int> {
+                    let ( #args_pat_tokens ) = #vstd::atomic::pred_args::< #pred_ident #ty_generics , ( #args_ty_tokens ) >(self);
+                    #mask_expr
+                }
+            );
+
+            fn_tokens.to_tokens(&mut impl_members);
+        }
+
+        self.additional_items.push(parse_quote_spanned_vstd!(vstd, full_span =>
+            impl #impl_generics #vstd::atomic::UpdatePredicate<#old_ty, #new_ty>
+            for #pred_ident #ty_generics #where_clause { #impl_members }
+        ));
+
+        if self.erase_ghost == EraseGhost::Keep {
+            sig.inputs.push(update_arg);
+
+            stmts.push(Stmt::Expr(
+                Expr::Verbatim(quote_spanned_builtin!(builtin, full_span =>
+                    #builtin::atomic_spec( #atomic_update )
+                )),
+                Some(Semi { spans: [full_span] }),
+            ));
+        }
+
+        Some((atomic_update, perm_clause))
+    }
+
     fn take_sig_specs<TType: ToTokens>(
         &mut self,
         spec: &mut SignatureSpec,
@@ -542,6 +905,7 @@ impl Visitor {
         generics: Option<impl ToTokens>,
         inputs: (Option<impl ToTokens>, impl ToTokens), // optional self and args
         is_async_fn: bool,                              // is the function an async function
+        atomic_perm_clause: Option<(verus_syn::Ident, verus_syn::PermClause)>,
     ) -> Vec<Stmt> {
         let requires = self.take_ghost(&mut spec.requires);
         let recommends = self.take_ghost(&mut spec.recommends);
@@ -551,6 +915,7 @@ impl Visitor {
         let decreases = self.take_ghost(&mut spec.decreases);
         let opens_invariants = self.take_ghost(&mut spec.invariants);
         let unwind = self.take_ghost(&mut spec.unwind);
+        debug_assert!(spec.atomic_spec.is_none());
 
         let (self_token_op, args) = inputs;
 
@@ -646,11 +1011,8 @@ impl Visitor {
                     self.visit_expr_mut(expr);
                 }
                 let cont = match self.extract_quant_triggers(attrs, token.span) {
-                    Ok(
-                        found @ (ExtractQuantTriggersFound::Auto
-                        | ExtractQuantTriggersFound::AllTriggers
-                        | ExtractQuantTriggersFound::Triggers(..)),
-                    ) => {
+                    Ok(ExtractQuantTriggersFound::None) => true,
+                    Ok(found) => {
                         if exprs.exprs.len() == 0 {
                             let err =
                                 "when using #![trigger f(x)], at least one ensures is required";
@@ -682,13 +1044,32 @@ impl Visitor {
                             true
                         }
                     }
-                    Ok(ExtractQuantTriggersFound::None) => true,
                     Err(err_expr) => {
                         exprs.exprs[0] = *err_expr;
                         false
                     }
                 };
                 if cont {
+                    if let Some((au_ident, perm_clause)) = atomic_perm_clause {
+                        let colon: Token![:] = parse_quote_spanned!(perm_clause.span() => :);
+
+                        let mut old_pat = TokenStream::new();
+                        let mut new_pat = TokenStream::new();
+                        perm_clause.old_perms.to_value_tokens(&mut old_pat);
+                        perm_clause.new_perms.to_value_tokens(&mut new_pat);
+                        colon.to_tokens(&mut old_pat);
+                        colon.to_tokens(&mut new_pat);
+                        perm_clause.old_perms.to_type_tokens(&mut old_pat);
+                        perm_clause.new_perms.to_type_tokens(&mut new_pat);
+
+                        for expr in exprs.exprs.iter_mut() {
+                            *expr = Expr::Verbatim(quote_spanned_vstd!(vstd, token.span => {
+                                let #old_pat = #vstd::atomic::AtomicUpdate::input(#au_ident);
+                                let #new_pat = #vstd::atomic::AtomicUpdate::output(#au_ident);
+                                #expr
+                            }))
+                        }
+                    }
                     if let Some(ty) = ret_ty {
                         if is_closure {
                             // closures cannot return impl xxx so it's safe to
@@ -736,9 +1117,9 @@ impl Visitor {
                         }
                     } else {
                         spec_stmts.push(Stmt::Expr(
-                            Expr::Verbatim(
-                                quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::ensures([#exprs])),
-                            ),
+                            Expr::Verbatim(quote_spanned_builtin!(verus_builtin, token.span =>
+                                #verus_builtin::ensures([#exprs])
+                            )),
                             Some(Semi { spans: [token.span] }),
                         ));
                     }
@@ -793,45 +1174,15 @@ impl Visitor {
                 ));
             }
         }
-        if let Some(SignatureInvariants { token: _, set }) = opens_invariants {
-            match set {
-                InvariantNameSet::Any(any) => {
-                    spec_stmts.push(Stmt::Expr(
-                        Expr::Verbatim(
-                            quote_spanned_builtin!(verus_builtin, any.span() => #verus_builtin::opens_invariants_any()),
-                        ),
-                        Some(Semi { spans: [any.span()] }),
-                    ));
-                }
-                InvariantNameSet::None(none) => {
-                    spec_stmts.push(Stmt::Expr(
-                        Expr::Verbatim(
-                            quote_spanned_builtin!(verus_builtin, none.span() => #verus_builtin::opens_invariants_none()),
-                        ),
-                        Some(Semi { spans: [none.span()] }),
-                    ));
-                }
-                InvariantNameSet::List(InvariantNameSetList { bracket_token, mut exprs }) => {
-                    for expr in exprs.iter_mut() {
-                        self.visit_expr_mut(expr);
-                    }
-                    spec_stmts.push(Stmt::Expr(
-                        Expr::Verbatim(
-                            quote_spanned_builtin!(verus_builtin, bracket_token.span.join() => #verus_builtin::opens_invariants([#exprs])),
-                        ),
-                        Some(Semi { spans: [bracket_token.span.close()] }),
-                    ));
-                }
-                InvariantNameSet::Set(InvariantNameSetSet { mut expr }) => {
-                    self.visit_expr_mut(&mut expr);
-                    spec_stmts.push(Stmt::Expr(
-                        Expr::Verbatim(
-                            quote_spanned_builtin!(verus_builtin, expr.span() => #verus_builtin::opens_invariants_set(#expr)),
-                        ),
-                        Some(Semi { spans: [expr.span()] }),
-                    ));
-                }
-            }
+        if let Some(SignatureInvariants { set, .. }) = opens_invariants {
+            let full_span = set.span();
+            let mask_expr = self.inv_name_set_to_mask_expr(set);
+            spec_stmts.push(Stmt::Expr(
+                Expr::Verbatim(quote_spanned_builtin!(verus_builtin, full_span =>
+                    #verus_builtin::opens_invariant_mask(#mask_expr)
+                )),
+                Some(Semi { spans: [full_span] }),
+            ));
         }
 
         if let Some(SignatureUnwind { token, when }) = unwind {
@@ -869,6 +1220,7 @@ impl Visitor {
         let mut unwrap_ghost_tracked: Vec<Stmt> = Vec::new();
 
         let has_body = semi_token.is_none();
+        let atomic_perm_clause = self.handle_atomic_spec(sig, vis, &mut stmts);
 
         // attrs.push(mk_verus_attr(sig.fn_token.span, quote! { verus_macro }));
         if self.erase_ghost.keep() {
@@ -1067,6 +1419,7 @@ impl Visitor {
             verus_generic_to_tokens(&sig.generics),
             verus_inputs_to_tokens(&sig.inputs),
             sig.asyncness.is_some(),
+            atomic_perm_clause,
         );
         if !self.erase_ghost.erase() {
             if !(self.rustdoc && sig.constness.is_some()) {
@@ -1084,6 +1437,7 @@ impl Visitor {
         attrs.extend(prover_attr.into_iter());
         attrs.extend(ext_attrs);
         self.filter_attrs(attrs);
+
         // unwrap_ghost_tracked must go first so that unwrapped vars are in scope in other headers
         stmts.splice(0..0, unwrap_ghost_tracked);
         stmts.extend(unimpl);
@@ -1395,6 +1749,31 @@ impl Visitor {
         }
     }
 
+    fn rewrite_macro_call(&mut self, mac: &mut verus_syn::Macro) {
+        if self.inside_ghost > 0 {
+            if let Some(x) = mac.path.segments.first_mut() {
+                let mut ident = x.ident.to_string();
+                // NOTE: This is currently hardcoded for the macros
+                //  * `open_local_invariant`,
+                //  * `open_atomic_invariant`,
+                //  * `open_atomic_update`,
+                //  * `peek_atomic_update`, and
+                //  * `try_open_atomic_update`
+                // but this could be extended to rewrite other macro
+                // names depending on proof vs exec mode.
+                if let "open_local_invariant"
+                | "open_atomic_invariant"
+                | "open_atomic_update"
+                | "peek_atomic_update"
+                | "try_open_atomic_update" = ident.as_str()
+                {
+                    ident.push_str("_in_proof");
+                    x.ident = Ident::new(&ident, x.span());
+                }
+            }
+        };
+    }
+
     fn visit_stmt_extend(&mut self, stmt: &mut Stmt) -> (bool, Vec<Stmt>) {
         let span = stmt.span();
         match stmt {
@@ -1421,6 +1800,10 @@ impl Visitor {
                     );
                     (true, vec![block])
                 }
+            }
+            Stmt::Macro(macro_stmt) => {
+                self.rewrite_macro_call(&mut macro_stmt.mac);
+                (false, vec![])
             }
             _ => (false, vec![]),
         }
@@ -1746,6 +2129,7 @@ impl Visitor {
             output: output,
             spec: SignatureSpec {
                 prover: None,
+                atomic_spec: None,
                 requires: requires,
                 recommends: None,
                 ensures: ensures,
@@ -2151,7 +2535,7 @@ impl Visitor {
             Expr::Unary(u @ ExprUnary { op: UnOp::Forall(..), .. }) => u,
             Expr::Unary(u @ ExprUnary { op: UnOp::Exists(..), .. }) => u,
             Expr::Unary(u @ ExprUnary { op: UnOp::Choose(..), .. }) => u,
-            Expr::Call(ExprCall { attrs: _, func, paren_token: _, args: _ }) => {
+            Expr::Call(ExprCall { attrs: _, func, paren_token: _, args: _, atomically: _ }) => {
                 if let Expr::Path(verus_syn::ExprPath { path, qself: None, attrs: _ }) = &**func {
                     if path.segments.len() == 1
                         && ILLEGAL_CALLEES.contains(&path.segments[0].ident.to_string().as_str())
@@ -2577,7 +2961,8 @@ impl Visitor {
                 args.push(take_expr(&mut *binary.right));
                 args.push(take_expr(&mut *binary.left));
             }
-            *expr = Expr::Call(ExprCall { attrs, func, paren_token, args });
+            let atomically = None;
+            *expr = Expr::Call(ExprCall { attrs, func, paren_token, args, atomically });
         } else if verus_eq {
             let attrs = std::mem::take(&mut binary.attrs);
             let func = match binary.op {
@@ -2601,7 +2986,8 @@ impl Visitor {
             let mut args = Punctuated::new();
             args.push(take_expr(&mut *binary.left));
             args.push(take_expr(&mut *binary.right));
-            let call = Expr::Call(ExprCall { attrs, func, paren_token, args });
+            let atomically = None;
+            let call = Expr::Call(ExprCall { attrs, func, paren_token, args, atomically });
             if eq {
                 *expr = call;
             } else {
@@ -2814,6 +3200,14 @@ impl Visitor {
         let Expr::Assert(_) = expr else {
             return false;
         };
+
+        if self.rustdoc && self.inside_const {
+            let Expr::Assert(assert) = take_expr(expr) else { unreachable!() };
+            let span = assert.assert_token.span;
+            let attrs = assert.attrs;
+            *expr = quote_verbatim!(span, attrs => ());
+            return true;
+        }
 
         self.inside_ghost += 1;
         self.visit_expr_with_arith(expr, InsideArith::None);
@@ -3288,6 +3682,148 @@ impl Visitor {
         true
     }
 
+    fn handle_atomic_call(&mut self, expr: &mut Expr) {
+        let (Expr::Call(ExprCall { args, atomically, attrs, .. })
+        | Expr::MethodCall(ExprMethodCall { args, atomically, attrs, .. })) = expr
+        else {
+            return;
+        };
+
+        let Some(atomically) = atomically.take() else {
+            return;
+        };
+
+        if self.erase_ghost != EraseGhost::Keep {
+            return;
+        };
+
+        let span = atomically.span();
+        let AtomicallyBlock {
+            label,
+            update_fn_binder,
+            spec_au_binder,
+            loop_token,
+            mut body,
+            mut invariant_except_breaks,
+            mut invariants,
+            mut ensures,
+            ..
+        } = atomically;
+
+        attrs.push(parse_quote_spanned!(span =>
+            #[verifier::atomic_call]
+        ));
+
+        // handle loop invariants
+        let loop_header = if loop_token.is_some() {
+            self.inside_ghost += 1;
+            if let Some(it) = &mut invariant_except_breaks {
+                self.visit_invariant_except_break_mut(it);
+            }
+
+            if let Some(it) = &mut invariants {
+                self.visit_invariant_mut(it);
+            }
+
+            if let Some(it) = &mut ensures {
+                self.visit_ensures_mut(it);
+            }
+
+            self.visit_block_mut(&mut body);
+            self.inside_ghost -= 1;
+
+            let mut loop_header = quote_spanned_builtin!(builtin, span =>
+                #builtin::atomic_call_loop();
+            );
+
+            let mut stmts = Vec::new();
+            self.add_loop_specs(
+                &mut stmts,
+                invariant_except_breaks,
+                invariants,
+                None,
+                ensures,
+                None,
+            );
+
+            for stmt in stmts {
+                stmt.to_tokens(&mut loop_header)
+            }
+
+            loop_header
+        } else {
+            let s1 = invariant_except_breaks.map(|x| x.token.span.unwrap());
+            let s2 = invariants.map(|x| x.token.span.unwrap());
+            let s3 = ensures.map(|x| x.token.span.unwrap());
+
+            let spans = s1.into_iter().chain(s2).chain(s3).collect::<Vec<_>>();
+            if !spans.is_empty() {
+                #[cfg(verus_keep_ghost)]
+                proc_macro::Diagnostic::spanned(
+                    spans,
+                    proc_macro::Level::Error,
+                    "invariants are only effective \
+                        on `atomically loop` function calls",
+                )
+                .emit();
+            }
+
+            self.inside_ghost += 1;
+            self.visit_block_mut(&mut body);
+            self.inside_ghost -= 1;
+
+            TokenStream::new()
+        };
+
+        use verus_syn::ReturnPat as RP;
+        let mut au_eq_assume = TokenStream::new();
+        let au_binder = match spec_au_binder {
+            RP::Pat(_, _, pat, hint) => {
+                au_eq_assume = quote_spanned_builtin!(builtin, span =>
+                    #builtin::assume_(#builtin::spec_eq(
+                        (#pat),
+                        #builtin::Ghost::view(_verus_internal_ghost_atomic_update)
+                    ));
+                );
+
+                let (colon, ty) = hint.as_deref().map(|(a, b)| (a, b)).unzip();
+                quote_spanned!(span => (#pat) #colon #ty)
+            }
+            RP::Type(_, ty) => quote_spanned!(span => _ : #ty),
+            _ => quote_spanned!(span => _),
+        };
+
+        let inner = match loop_token {
+            Some(loop_token) => quote_spanned!(span =>
+                #[verus::internal(proof)]
+                #[verifier::assume_termination]
+                #label #loop_token {
+                    #loop_header
+                    #au_eq_assume
+                    #body
+                }
+            ),
+
+            None => quote_spanned!(span =>
+                #[verus::internal(proof)] { #body }
+            ),
+        };
+
+        let extra_arg = quote_spanned_builtin_builtin_macros_vstd!(builtin, _macros, vstd, span =>
+            #vstd::atomic::atomically({
+                let _verus_internal_identifier_for_closures = #vstd::prelude::dummy_capture_new();
+                |#update_fn_binder, _verus_internal_ghost_atomic_update| {
+                    #builtin::dummy_capture_consume(_verus_internal_identifier_for_closures);
+                    #[verus::internal(spec)]
+                    let #au_binder = #builtin::Ghost::view(_verus_internal_ghost_atomic_update);
+                    #inner
+                }
+            })
+        );
+
+        args.push(Expr::Verbatim(extra_arg));
+    }
+
     fn add_loop_specs(
         &mut self,
         stmts: &mut Vec<Stmt>,
@@ -3371,49 +3907,68 @@ impl Visitor {
         //  'label: for x in y: e invariant inv { body }
         // into:
         //  {
+        //       #[allow(non_snake_case)]
+        //       let VERUS_iter_init = e;
+        //       #[allow(non_snake_case)]
+        //       let VERUS_iter = VerusForLoopWrapper::new(
+        //          // Real iterator
+        //          ::core::iter::IntoIterator::into_iter(VERUS_iter_init),
+        //          // Spec-level iterator (relies on `when_used_as_spec` on into_iter)
+        //          Ghost(Some(&::core::iter::IntoIterator::into_iter(VERUS_iter_init))),
+        //      );
+        //      // Hold on to the initial value so that after the loop, we know it didn't change
         //      #[allow(non_snake_case)]
-        //      let VERUS_iter = e;
+        //      #[verus::internal(spec)]
+        //      let y = VERUS_OLD_y.snapshot.view();
         //      #[allow(non_snake_case)]
-        //      let VERUS_loop_result = match ::core::iter::IntoIterator::into_iter(VERUS_iter) {
-        //          #[allow(non_snake_case)]
-        //          mut VERUS_exec_iter => {
-        //              #[allow(non_snake_case)]
-        //              let ghost mut y = ::vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
-        //                  &VERUS_exec_iter);
-        //              'label: loop
+        //      let VERUS_loop_result = match VERUS_iter {
+        //         mut y => {
+        //             #[verifier::allow_complex_invariants]
+        //             'label: loop
+        //                  invariant_except_break
+        //                     #[verus::internal(auto_decreases)]
+        //                     y.iter.decrease().is_Some(),
         //                  invariant
-        //                      ::vstd::pervasive::ForLoopGhostIterator::exec_invariant(&y,
-        //                          &VERUS_exec_iter),
-        //                      ::vstd::pervasive::ForLoopGhostIterator::ghost_invariant(&y,
-        //                          verus_builtin::infer_spec_for_loop_iter(
-        //                              &::vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
-        //                                  &::core::iter::IntoIterator::into_iter(VERUS_iter)),
-        //                              &::vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
-        //                                  &::core::iter::IntoIterator::into_iter(e)),
-        //                          )),
-        //                      { let x =
-        //                          ::vstd::pervasive::ForLoopGhostIterator::ghost_peek_next(&y)
-        //                          .unwrap_or(vstd::pervasive::arbitrary());
-        //                        inv },
+        //                     // We track the continuity of the snapshot and the initial iterator-creation expression
+        //                     ::vstd::prelude::spec_eq(y.snapshot, VERUS_old_snap),
+        //                     match verus_builtin::infer_spec_for_loop_iter(
+        //                              &::core::iter::IntoIterator::into_iter(VERUS_iter_init),
+        //                              &::core::iter::IntoIterator::into_iter(e),
+        //                              print_hint,
+        //                          ) {
+        //                         Some(v) => ::vstd::prelude::spec_eq(y.init, Ghost(Some(v))),
+        //                         None => true,
+        //                     },
+        //                     y.wf(),
+        //                     ({
+        //                         // Grab the next val for (possible) use in the user-provided inv
+        //                         let x = y.snapshot.view().peek(y.index.view())
+        //                                  .unwrap_or(vstd::pervasive::arbitrary());
+        //                         inv
+        //                     }),
         //                  ensures
-        //                      ::vstd::pervasive::ForLoopGhostIterator::ghost_ensures(&y),
+        //                     #[verus::internal(auto_loop_ensures)]
+        //                     y.snapshot.view().will_return_none(),
+        //                     #[verus::internal(auto_loop_ensures)]
+        //                     y.index.view() == y.seq().len(),
         //                  decreases
-        //                      ::vstd::pervasive::ForLoopGhostIterator::ghost_decrease(&y)
+        //                     y.iter.decrease(),
         //                      .unwrap_or(vstd::pervasive::arbitrary()),
-        //
         //              {
-        //                  #[allow(non_snake_case)]
-        //                  let mut VERUS_loop_next;
-        //                  match ::core::iter::Iterator::next(&mut VERUS_exec_iter) {
-        //                      ::core::option::Option::Some(VERUS_loop_val) => {
-        //                          VERUS_loop_next = VERUS_loop_val;
-        //                      }
-        //                      ::core::option::Option::None => break,
-        //                  };
-        //                  let x = VERUS_loop_next;
-        //                  let () = { body };
-        //                  proof { y = ::vstd::pervasive::ForLoopGhostIterator::ghost_advance(
-        //                      &y, &VERUS_exec_iter); }
+        //                 let ghost VERUS_OLD_y = y;
+        //                 #[allow(non_snake_case)]
+        //                 let mut VERUS_loop_next;
+        //                 match y.next() {
+        //                     Some(VERUS_loop_val) => VERUS_loop_next = VERUS_loop_val,
+        //                     None => { break }
+        //                 }
+        //                 let x = VERUS_loop_next;
+        //                 // Make sure the SMT solver thinks about `peek`, even if it isn't used in the invariants
+        //                 assert(trigger_peek_implications(VERUS_OLD_y.snapshot@.peek(VERUS_OLD_y.index@));
+        //                 // We only let the user-provided body access an immutable ghost version of the iterator
+        //                 // We use the "old" version, so that the index lines up with the loop invariant
+        //                 let ghost y = VERUS_OLD_y;
+        //                 let () = { body };
         //              }
         //          }
         //      };
@@ -3427,11 +3982,13 @@ impl Visitor {
             mut attrs,
             label,
             for_token,
-            pat,
+            pat, // x
             in_token,
-            expr_name,
-            expr,
+            expr_name, // y
+            expr,      // e
+            invariant_except_break,
             invariant,
+            ensures,
             mut decreases,
             body,
         } = for_loop;
@@ -3455,7 +4012,6 @@ impl Visitor {
         if let Some(i) = no_auto_loop_invariant {
             attrs.remove(i);
         }
-
         if !self.erase_ghost.keep() || self.inside_external_code > 0 {
             return Expr::ForLoop(verus_syn::ExprForLoop {
                 attrs,
@@ -3465,18 +4021,26 @@ impl Visitor {
                 in_token,
                 expr_name: None,
                 expr,
+                invariant_except_break: None,
                 invariant: None,
+                ensures: None,
                 decreases: None,
                 body,
             });
         }
 
         attrs.push(mk_verus_attr(span, quote! { for_loop }));
-        let exec_inv_msg = "For-loop iterator invariant failed. \
-            This may indicate a bug in the definition of the ForLoopGhostIterator. \
+        let decrease_is_some_msg = "Failed to prove that the iterator always returns a decreases metric.
+            If you don't expect the iterator to provide such a metric, try adding #[verifier::exec_allows_no_decreases_clause].
+            You might also try using a `loop` instead of a `for`.";
+        let exec_wf_inv_msg = "For-loop iterator invariant failed to prove the VerusForLoopWrapper is well-formed. \
+            This may indicate a bug in the definition of the VerusForLoopWrapper. \
             You might try using a `loop` instead of a `for`.";
-        let ghost_inv_msg = "Automatically generated loop invariant failed. \
-            You can disable the automatic generation by adding \
+        let exec_snapshot_inv_msg = "For-loop iterator invariant failed to prove the VerusForLoopWrapper snapshot is unchanged. \
+            This may indicate a bug in the definition of the VerusForLoopWrapper. \
+            You might try using a `loop` instead of a `for`.";
+        let ghost_inv_msg = "Automatically generated loop invariant failed to track the iterator's initial value. \
+            You can disable the automatic invariant generation by adding \
             #[verifier::no_auto_loop_invariant] \
             to the loop. \
             You might also try storing the loop expression in a variable outside the loop \
@@ -3487,66 +4051,100 @@ impl Visitor {
             Expr::Verbatim(quote_spanned!(expr.span() => true))
         };
 
-        let x_exec_iter = Ident::new("VERUS_exec_iter", span);
-        let x_ghost_iter = if let Some(x_ghost_iter_box) = expr_name {
+        // Initial value of the expression (e)
+        let x_verus_iter_init = Ident::new("VERUS_iter_init", span);
+        // Name for the iterator (y)
+        let x_iter_name = if let Some(x_ghost_iter_box) = expr_name {
             let (x_ghost_iter, _) = *x_ghost_iter_box;
             x_ghost_iter
         } else {
             Ident::new("VERUS_ghost_iter", span)
         };
+        // Name for the exec iterator we create from `e`
+        let x_exec_iter = Ident::new("VERUS_iter", span);
+        // Name for the result of wrapping the original iterator in a VerusForLoopWrapper
+        let x_wrapped_iter = Ident::new("VERUS_iter", span);
+        // Name that "remembers" the initial snapshot
+        let x_snapshot = Ident::new("VERUS_old_snap", span);
+        // Name that "remembers" the initial iterator at the start of the loop body
+        let x_iter_body_old = Ident::new("VERUS_old_iter", span);
+
         let mut stmts: Vec<Stmt> = Vec::new();
         let expr_inv = expr.clone();
-        //              ::vstd::pervasive::ForLoopGhostIterator::exec_invariant(&y, &VERUS_exec_iter),
-        //              ::vstd::pervasive::ForLoopGhostIterator::ghost_invariant(&y,
-        //                  verus_builtin::infer_spec_for_loop_iter(
-        //                      &::vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
-        //                          &::core::iter::IntoIterator::into_iter(VERUS_iter)),
-        //                      &::vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
-        //                          &::core::iter::IntoIterator::into_iter(e)),
-        //                  )),
-        let exec_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
-            #[verifier::custom_err(#exec_inv_msg)]
-            #vstd::pervasive::ForLoopGhostIterator::exec_invariant(&#x_ghost_iter, &#x_exec_iter)
+        let init_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
+            #[verifier::custom_err(#exec_snapshot_inv_msg)]
+            #vstd::prelude::spec_eq(#x_iter_name.snapshot.view(), #x_snapshot)
+        ));
+        let wf_inv: Expr = Expr::Verbatim(quote_spanned!( expr.span() =>
+            #[verifier::custom_err(#exec_wf_inv_msg)]
+            #x_iter_name.wf()
         ));
         let ghost_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
             #[verifier::custom_err(#ghost_inv_msg)]
-            #vstd::pervasive::ForLoopGhostIterator::ghost_invariant(&#x_ghost_iter,
-                #vstd::prelude::infer_spec_for_loop_iter(
-                    &#vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
-                        &::core::iter::IntoIterator::into_iter(VERUS_iter)),
-                    &#vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
-                        &::core::iter::IntoIterator::into_iter(#expr_inv)),
-                    #print_hint,
-                ))
+            match #vstd::prelude::infer_spec_for_loop_iter(
+                &::core::iter::IntoIterator::into_iter(#x_verus_iter_init),
+                &::core::iter::IntoIterator::into_iter(#expr_inv),
+                #print_hint,
+            ) {
+                ::core::option::Option::Some(VERUS_tmp_infer) => #vstd::prelude::spec_eq(
+                    #x_iter_name.init,
+                    #vstd::prelude::Ghost::new(::core::option::Option::Some(VERUS_tmp_infer))
+                ),
+                ::core::option::Option::None => true,
+            }
+        ));
+        let some_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
+            #[verifier::custom_err(#decrease_is_some_msg)]
+            #[verus::internal(auto_decreases)]
+            #vstd::prelude::is_variant(#vstd::std_specs::iter::IteratorSpec::decrease(&#x_iter_name.iter), "Some")
         ));
         let invariant_for = if let Some(mut invariant) = invariant {
             for inv in &mut invariant.exprs.exprs {
                 *inv = Expr::Verbatim(quote_spanned_vstd!(vstd, inv.span() => {
-                    let #pat =
-                        #vstd::pervasive::ForLoopGhostIterator::ghost_peek_next(&#x_ghost_iter)
+                    let #pat = #vstd::std_specs::iter::IteratorSpec::peek(&#x_iter_name.snapshot.view(), #x_iter_name.index.view())
                         .unwrap_or(#vstd::pervasive::arbitrary());
                     #inv
                 }));
             }
             if no_loop_invariant.is_none() {
-                invariant.exprs.exprs.insert(0, exec_inv);
+                invariant.exprs.exprs.insert(0, init_inv);
+                invariant.exprs.exprs.insert(1, wf_inv);
                 if no_auto_loop_invariant.is_none() {
-                    invariant.exprs.exprs.insert(1, ghost_inv);
+                    invariant.exprs.exprs.insert(2, ghost_inv);
                 }
             }
             Some(Invariant { token: Token![invariant](span), exprs: invariant.exprs })
         } else if no_loop_invariant.is_none() && no_auto_loop_invariant.is_none() {
-            Some(parse_quote_spanned!(span => invariant #exec_inv, #ghost_inv,))
+            Some(parse_quote_spanned!(span => invariant #init_inv, #wf_inv, #ghost_inv,))
         } else if no_loop_invariant.is_none() && no_auto_loop_invariant.is_some() {
-            Some(parse_quote_spanned!(span => invariant #exec_inv,))
+            Some(parse_quote_spanned!(span => invariant #init_inv, #wf_inv,))
+        } else {
+            None
+        };
+        let inv_except_break = if let Some(mut invariant_except_break) = invariant_except_break {
+            for inv in &mut invariant_except_break.exprs.exprs {
+                *inv = Expr::Verbatim(quote_spanned_vstd!(vstd, inv.span() => {
+                    let #pat = #vstd::std_specs::iter::IteratorSpec::peek(&#x_iter_name.snapshot.view(), #x_iter_name.index.view())
+                        .unwrap_or(#vstd::pervasive::arbitrary());
+                    #inv
+                }));
+            }
+            if no_loop_invariant.is_none() {
+                invariant_except_break.exprs.exprs.insert(0, some_inv);
+            }
+            Some(InvariantExceptBreak {
+                token: Token![invariant_except_break](span),
+                exprs: invariant_except_break.exprs,
+            })
+        } else if no_loop_invariant.is_none() {
+            Some(parse_quote_spanned!(span => invariant_except_break #some_inv,))
         } else {
             None
         };
         if let Some(decreases) = &mut decreases {
             for expr in &mut decreases.exprs.exprs {
                 *expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() => {
-                    let #pat =
-                        #vstd::pervasive::ForLoopGhostIterator::ghost_peek_next(&#x_ghost_iter)
+                    let #pat = #vstd::std_specs::iter::IteratorSpec::peek(&#x_iter_name.snapshot.view(), #x_iter_name.index.view())
                         .unwrap_or(#vstd::pervasive::arbitrary());
                     #expr
                 }));
@@ -3555,76 +4153,107 @@ impl Visitor {
             attrs.push(mk_verus_attr(span, quote! { auto_decreases }));
             decreases = Some(parse_quote_spanned_vstd!(vstd, span =>
                 decreases
-                    #vstd::pervasive::ForLoopGhostIterator::ghost_decrease(&#x_ghost_iter)
+                    #vstd::std_specs::iter::IteratorSpec::decrease(&#x_iter_name.iter)
+                    //#x_iter_name.iter.decrease()
                     .unwrap_or(#vstd::pervasive::arbitrary()),
             ))
         }
         // REVIEW: we might also want no_auto_loop_invariant to suppress the ensures,
         // but at the moment, user-supplied ensures aren't supported, so this would be hard to use.
         let ensure = if no_loop_invariant.is_none() {
-            Some(parse_quote_spanned_vstd!(vstd, span =>
-                ensures #vstd::pervasive::ForLoopGhostIterator::ghost_ensures(&#x_ghost_iter),
-            ))
+            let mut auto_ensures: Ensures = parse_quote_spanned_vstd!(vstd, span =>
+                ensures
+                    #[verus::internal(auto_loop_ensures)]
+                    #vstd::std_specs::iter::IteratorSpec::will_return_none(&#x_iter_name.snapshot.view()),
+                    #[verus::internal(auto_loop_ensures)]
+                    #vstd::prelude::spec_eq(#x_iter_name.index.view(), #x_iter_name.seq().len()),
+                    true,
+            );
+            if let Some(user_ensures) = ensures {
+                for attr in user_ensures.attrs {
+                    auto_ensures.attrs.push(attr);
+                }
+                for expr in user_ensures.exprs.exprs {
+                    auto_ensures.exprs.exprs.insert(0, expr);
+                }
+            }
+            Some(auto_ensures)
         } else {
             None
         };
-        self.add_loop_specs(&mut stmts, None, invariant_for, None, ensure, decreases);
-        let body_exec = Expr::Verbatim(quote_spanned!(span => {
+        self.add_loop_specs(&mut stmts, inv_except_break, invariant_for, None, ensure, decreases);
+        let body_exec = Expr::Verbatim(quote_spanned_vstd!(vstd, span => {
+            #[verus::internal(spec)]
+            #[verus::internal(unwrapped_binding)]
+            let #x_iter_body_old;
+            #[verifier::proof_block]
+            {
+                #x_iter_body_old = #x_iter_name;
+            }
             #[allow(non_snake_case)]
             let mut VERUS_loop_next;
-            match ::core::iter::Iterator::next(&mut #x_exec_iter) {
+            match #vstd::std_specs::iter::VerusForLoopWrapper::next(&mut #x_iter_name) {
                 ::core::option::Option::Some(VERUS_loop_val) => {
                     VERUS_loop_next = VERUS_loop_val;
                 }
                 ::core::option::Option::None => break,
             };
             let #pat = VERUS_loop_next;
+            #[verifier::proof_block]
+            {
+                // This assertion helps add the results of the peek operation into Z3's context
+                #vstd::prelude::assert_(#vstd::std_specs::iter::trigger_peek_implications(
+                    #vstd::std_specs::iter::IteratorSpec::peek(&#x_iter_body_old.snapshot.view(), #x_iter_body_old.index.view())
+                ));
+            }
+            #[verus::internal(spec)]
+            #[verus::internal(unwrapped_binding)]
+            let #x_iter_name;
+            #[verifier::proof_block]
+            {
+                #x_iter_name = #x_iter_body_old;
+            }
             let () = #body;
         }));
-        let mut body: Block = if no_loop_invariant.is_none() {
-            let body_ghost = Expr::Verbatim(quote_spanned_vstd!(vstd, span =>
-                #[verifier::proof_block] {
-                    #x_ghost_iter = #vstd::pervasive::ForLoopGhostIterator::ghost_advance(
-                        &#x_ghost_iter, &#x_exec_iter);
-                }
-            ));
-            parse_quote_spanned!(span => {
-                #body_exec
-                #body_ghost
-            })
-        } else {
-            parse_quote_spanned!(span => {
-                #body_exec
-            })
-        };
+        let mut body: Block = parse_quote_spanned!(span => { #body_exec });
         body.stmts.splice(0..0, stmts);
+
         let mut loop_expr: ExprLoop = parse_quote_spanned!(span => loop #body);
         loop_expr.label = label;
         loop_expr.attrs = attrs;
-        let full_loop: Expr = if no_loop_invariant.is_none() {
-            Expr::Verbatim(quote_spanned_vstd!(vstd, span => {
-                #[allow(non_snake_case)]
-                #[verus::internal(spec)]
-                let mut #x_ghost_iter;
-                #[verifier::proof_block] {
-                    #x_ghost_iter =
-                        #vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(&#x_exec_iter);
-                }
-                #loop_expr
-            }))
-        } else {
-            Expr::Verbatim(quote_spanned!(span => { #loop_expr }))
-        };
-        Expr::Verbatim(quote_spanned!(span => {
+        let f = Expr::Verbatim(quote_spanned_vstd!(vstd, span => {
             #[allow(non_snake_case)]
-            let VERUS_iter = #expr;
+            let #x_verus_iter_init = #expr;
             #[allow(non_snake_case)]
-            let VERUS_loop_result = match ::core::iter::IntoIterator::into_iter(VERUS_iter) {
+            let #x_exec_iter = ::core::iter::IntoIterator::into_iter(#x_verus_iter_init);
+            #[allow(non_snake_case)]
+            let #x_wrapped_iter = #vstd::std_specs::iter::VerusForLoopWrapper::new(
+                // Real iterator
+                #x_exec_iter,
+                // Spec-level iterator (relies on `when_used_as_spec` on into_iter)
+                #[verifier::ghost_wrapper]
+                #vstd::prelude::ghost_exec(#[verifier::ghost_block_wrapped] Some(&#x_exec_iter)),
+            );
+            // Hold on to the initial snapshot value so that after the loop, we know it didn't change
+            #[allow(non_snake_case)]
+            #[verus::internal(spec)]
+            #[verus::internal(unwrapped_binding)]
+            let #x_snapshot;
+            #[verifier::proof_block]
+            {
+                #x_snapshot = #x_wrapped_iter.snapshot.view();
+            }
+            #[allow(non_snake_case)]
+            let VERUS_loop_result = match #x_wrapped_iter {
                 #[allow(non_snake_case)]
-                mut #x_exec_iter => #full_loop
+                mut #x_iter_name =>
+                    #[verifier::allow_complex_invariants]
+                    #loop_expr
             };
             VERUS_loop_result
-        }))
+        }));
+        //eprintln!("{}", verus_prettyplease::unparse_expr(&f));
+        f
     }
 
     fn extract_quant_triggers(
@@ -3748,6 +4377,7 @@ enum ExtractQuantTriggersFound {
 
 impl VisitMut for Visitor {
     fn visit_expr_mut(&mut self, expr: &mut Expr) {
+        self.handle_atomic_call(expr);
         self.normalize_expr_proof_note_attrs(expr);
 
         if self.chain_operators(expr)
@@ -3803,17 +4433,7 @@ impl VisitMut for Visitor {
         self.assign_to = is_assign_to;
 
         if let Expr::Macro(macro_expr) = expr {
-            macro_expr.mac.path.segments.first_mut().map(|x| {
-                let ident = x.ident.to_string();
-                // NOTE: this is currently hardcoded for
-                // open_*_invariant macros, but this could be extended
-                // to rewrite other macro names depending on proof vs exec mode.
-                if is_inside_ghost
-                    && (ident == "open_atomic_invariant" || ident == "open_local_invariant")
-                {
-                    x.ident = Ident::new((ident + "_in_proof").as_str(), x.span());
-                }
-            });
+            self.rewrite_macro_call(&mut macro_expr.mac);
         }
 
         let do_replace = match &expr {
@@ -4424,10 +5044,13 @@ impl VisitMut for Visitor {
     }
 
     fn visit_item_impl_mut(&mut self, imp: &mut ItemImpl) {
+        let impl_info = (imp.generics.clone(), imp.self_ty.clone());
+        let outer_impl = self.inside_impl.replace(Box::new(impl_info));
         imp.attrs.push(mk_verus_attr(imp.span(), quote! { verus_macro }));
         self.visit_impl_items_prefilter(&mut imp.items, imp.trait_.is_some());
         self.filter_attrs(&mut imp.attrs);
         verus_syn::visit_mut::visit_item_impl_mut(self, imp);
+        self.inside_impl = outer_impl;
     }
 
     fn visit_item_trait_mut(&mut self, tr: &mut ItemTrait) {
@@ -4480,6 +5103,8 @@ enum MacroElement {
     Semi(Token![;]),
     FatArrow(Token![=>]),
     Colon(Token![:]),
+    Mut(Token![mut]),
+    At(Token![@]),
     Expr(Box<Expr>),
 }
 
@@ -4536,6 +5161,10 @@ impl Parse for MacroElement {
             Ok(MacroElement::FatArrow(input.parse()?))
         } else if input.peek(Token![:]) {
             Ok(MacroElement::Colon(input.parse()?))
+        } else if input.peek(Token![mut]) {
+            Ok(MacroElement::Mut(input.parse()?))
+        } else if input.peek(Token![@]) {
+            Ok(MacroElement::At(input.parse()?))
         } else {
             Ok(MacroElement::Expr(input.parse()?))
         }
@@ -4638,6 +5267,8 @@ impl ToTokens for MacroElement {
             MacroElement::FatArrow(e) => e.to_tokens(tokens),
             MacroElement::Colon(e) => e.to_tokens(tokens),
             MacroElement::Expr(e) => e.to_tokens(tokens),
+            MacroElement::Mut(e) => e.to_tokens(tokens),
+            MacroElement::At(e) => e.to_tokens(tokens),
         }
     }
 }
@@ -4744,13 +5375,19 @@ pub(crate) fn rewrite_items_inner(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        inside_impl: None,
+        additional_items: Vec::new(),
     };
     visitor.visit_items_prefilter(items);
-    for mut item in &mut *items {
-        visitor.visit_item_mut(&mut item);
+    let mut index = 0;
+    while index < items.len() {
+        let item = &mut items[index];
+        visitor.visit_item_mut(item);
         visitor.inside_ghost = 0;
         visitor.inside_const = false;
         visitor.inside_arith = InsideArith::None;
+        items.append(&mut visitor.additional_items);
+        index += 1;
     }
     visitor.visit_items_post(items);
     let mut new_stream = TokenStream::new();
@@ -4779,6 +5416,8 @@ pub(crate) fn rewrite_impl_items(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        inside_impl: None,
+        additional_items: Vec::new(),
     };
     visitor.visit_impl_items_prefilter(&mut items.items, for_trait);
     for mut item in &mut items.items {
@@ -4812,6 +5451,8 @@ pub(crate) fn rewrite_expr(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        inside_impl: None,
+        additional_items: Vec::new(),
     };
     visitor.visit_expr_mut(&mut expr);
     expr.to_tokens(&mut new_stream);
@@ -4843,6 +5484,8 @@ pub(crate) fn rewrite_proof_decl(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        inside_impl: None,
+        additional_items: Vec::new(),
     };
     for mut ss in stmts {
         match ss {
@@ -4896,6 +5539,8 @@ pub(crate) fn rewrite_expr_node(erase_ghost: EraseGhost, inside_ghost: bool, exp
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        inside_impl: None,
+        additional_items: Vec::new(),
     };
     visitor.visit_expr_mut(expr);
 }
@@ -5085,6 +5730,8 @@ pub(crate) fn sig_specs_attr(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        inside_impl: None,
+        additional_items: Vec::new(),
     };
 
     if let Some(pat) = &ret_pat {
@@ -5105,6 +5752,7 @@ pub(crate) fn sig_specs_attr(
         generic_to_tokens(&sig.generics),
         inputs_to_tokens(&sig.inputs),
         sig.asyncness.is_some(),
+        None,
     ));
     spec_stmts
 }
@@ -5123,6 +5771,8 @@ pub(crate) fn while_loop_spec_attr(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        inside_impl: None,
+        additional_items: Vec::new(),
     };
     let mut spec_attr = spec_attr;
     visitor.visit_loop_spec(&mut spec_attr);
@@ -5155,10 +5805,19 @@ pub(crate) fn for_loop_spec_attr(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        inside_impl: None,
+        additional_items: Vec::new(),
     };
     let mut spec_attr = spec_attr;
     visitor.visit_loop_spec(&mut spec_attr);
-    let verus_syn::LoopSpec { iter_name, invariants: invariant, decreases, .. } = spec_attr;
+    let verus_syn::LoopSpec {
+        iter_name,
+        invariants: invariant,
+        invariant_except_breaks: invariant_except_break,
+        ensures,
+        decreases,
+        ..
+    } = spec_attr;
     let syn::ExprForLoop { attrs, label, for_token, pat, in_token, expr, body, .. } = forloop;
     let verus_forloop = ExprForLoop {
         attrs: attrs.into_iter().map(|a| parse_quote_spanned! {a.span() => #a}).collect(),
@@ -5171,7 +5830,9 @@ pub(crate) fn for_loop_spec_attr(
         in_token: Token![in](in_token.span),
         expr_name: iter_name.map(|(name, token)| Box::new((name, Token![:](token.span())))),
         expr: Box::new(Expr::Verbatim(quote_spanned! {expr.span() => #expr})),
+        invariant_except_break,
         invariant,
+        ensures,
         decreases,
         body: Block {
             brace_token: Brace(body.brace_token.span),
@@ -5204,6 +5865,8 @@ pub(crate) fn proof_block(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        inside_impl: None,
+        additional_items: Vec::new(),
     };
     visitor.visit_block_mut(&mut invoke);
     invoke.to_tokens(&mut new_stream);
@@ -5228,6 +5891,8 @@ pub(crate) fn proof_macro_exprs(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        inside_impl: None,
+        additional_items: Vec::new(),
     };
     for element in &mut invoke.elements.elements {
         match element {
@@ -5239,9 +5904,10 @@ pub(crate) fn proof_macro_exprs(
     proc_macro::TokenStream::from(new_stream)
 }
 
-pub(crate) fn inv_macro_exprs(
+pub(crate) fn inv_au_macro_exprs(
     erase_ghost: EraseGhost,
     treat_elements_as_ghost: bool,
+    ghost_override_index: usize,
     stream: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
     let stream = rejoin_tokens(stream);
@@ -5257,19 +5923,27 @@ pub(crate) fn inv_macro_exprs(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        inside_impl: None,
+        additional_items: Vec::new(),
     };
-    for (idx, element) in invoke.elements.elements.iter_mut().enumerate() {
-        match element {
-            MacroElement::Expr(expr) => {
-                // Always treat the third element ($eexpr) as ghost even if
-                // `treat_elements_as_ghost` is false.
-                visitor.inside_ghost =
-                    if treat_elements_as_ghost || idx == 2 { 1u32 } else { 0u32 };
-                visitor.visit_expr_mut(expr);
-            }
-            _ => {}
-        };
-    }
+
+    invoke
+        .elements
+        .elements
+        .iter_mut()
+        .filter_map(|elem| match elem {
+            MacroElement::Expr(expr) => Some(expr),
+            _ => None,
+        })
+        .enumerate()
+        .for_each(|(idx, expr)| {
+            // Always treat the element at `ghost_override_index` as ghost
+            // even if `treat_elements_as_ghost` is false.
+            let ghost = treat_elements_as_ghost || idx == ghost_override_index;
+            visitor.inside_ghost = u32::from(ghost);
+            visitor.visit_expr_mut(expr);
+        });
+
     invoke.to_tokens(&mut new_stream);
     proc_macro::TokenStream::from(new_stream)
 }
@@ -5292,6 +5966,8 @@ pub(crate) fn proof_macro_explicit_exprs(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        inside_impl: None,
+        additional_items: Vec::new(),
     };
     for element in &mut invoke.elements.elements {
         match element {

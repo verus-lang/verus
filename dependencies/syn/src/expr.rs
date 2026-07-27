@@ -24,18 +24,20 @@ use crate::token;
 use crate::ty::ReturnType;
 use crate::ty::Type;
 use crate::verus::{
-    Assert, AssertForall, Assume, BigAnd, BigOr, ClosureArg, Decreases, Ensures, ExprFinal,
-    ExprGetField, ExprHas, ExprHasNot, ExprIs, ExprIsNot, ExprMatches, FnProofOptions, Invariant,
-    InvariantEnsures, InvariantExceptBreak, Requires, RevealHide, View,
+    Assert, AssertForall, Assume, AtomicallyBlock, BigAnd, BigOr, ClosureArg, Decreases, Ensures,
+    ExprFinal, ExprGetField, ExprHas, ExprHasNot, ExprIs, ExprIsNot, ExprMatches, FnProofOptions,
+    Invariant, InvariantEnsures, InvariantExceptBreak, Requires, RevealHide, View,
 };
+use alloc::boxed::Box;
+use alloc::vec::Vec;
+#[cfg(feature = "printing")]
+use core::fmt::{self, Display};
+use core::hash::{Hash, Hasher};
+#[cfg(all(feature = "parsing", feature = "full"))]
+use core::mem;
 use proc_macro2::{Span, TokenStream};
 #[cfg(feature = "printing")]
 use quote::IdentFragment;
-#[cfg(feature = "printing")]
-use std::fmt::{self, Display};
-use std::hash::{Hash, Hasher};
-#[cfg(all(feature = "parsing", feature = "full"))]
-use std::mem;
 
 ast_enum_of_structs! {
     /// A Rust expression.
@@ -200,7 +202,7 @@ ast_enum_of_structs! {
         /// A parenthesized expression: `(a + b)`.
         Paren(ExprParen),
 
-        /// A path like `std::mem::replace` possibly containing generic
+        /// A path like `core::mem::replace` possibly containing generic
         /// parameters and a qualified self-type.
         ///
         /// A plain identifier like `x` is a path of length 1.
@@ -236,7 +238,7 @@ ast_enum_of_structs! {
         /// A tuple expression: `(a, b, c, d)`.
         Tuple(ExprTuple),
 
-        /// A unary operation: `!x`, `*x`.
+        /// A unary operation: `!x`, `*x`, `-x`.
         Unary(ExprUnary),
 
         /// An unsafe block: `unsafe { ... }`.
@@ -371,6 +373,7 @@ ast_struct! {
         pub func: Box<Expr>,
         pub paren_token: token::Paren,
         pub args: Punctuated<Expr, Token![,]>,
+        pub atomically: Option<AtomicallyBlock>,
     }
 }
 
@@ -451,7 +454,9 @@ ast_struct! {
         pub in_token: Token![in],
         pub expr_name: Option<Box<(Ident, Token![:])>>,
         pub expr: Box<Expr>,
+        pub invariant_except_break: Option<InvariantExceptBreak>,
         pub invariant: Option<Invariant>,
+        pub ensures: Option<Ensures>,
         pub decreases: Option<Decreases>,
         pub body: Block,
     }
@@ -576,6 +581,7 @@ ast_struct! {
         pub turbofish: Option<AngleBracketedGenericArguments>,
         pub paren_token: token::Paren,
         pub args: Punctuated<Expr, Token![,]>,
+        pub atomically: Option<AtomicallyBlock>,
     }
 }
 
@@ -590,7 +596,7 @@ ast_struct! {
 }
 
 ast_struct! {
-    /// A path like `std::mem::replace` possibly containing generic
+    /// A path like `core::mem::replace` possibly containing generic
     /// parameters and a qualified self-type.
     ///
     /// A plain identifier like `x` is a path of length 1.
@@ -706,7 +712,7 @@ ast_struct! {
 }
 
 ast_struct! {
-    /// A unary operation: `!x`, `*x`.
+    /// A unary operation: `!x`, `*x`, `-x`.
     #[cfg_attr(docsrs, doc(cfg(any(feature = "full", feature = "derive"))))]
     pub struct ExprUnary {
         pub attrs: Vec<Attribute>,
@@ -756,8 +762,8 @@ impl Expr {
     /// An unspecified invalid expression.
     ///
     /// ```
+    /// use core::mem;
     /// use quote::ToTokens;
-    /// use std::mem;
     /// use syn::{parse_quote, Expr};
     ///
     /// fn unparenthesize(e: &mut Expr) {
@@ -795,7 +801,7 @@ impl Expr {
     ///
     /// ```
     /// # struct S;
-    /// # impl std::ops::Deref for S {
+    /// # impl core::ops::Deref for S {
     /// #     type Target = bool;
     /// #     fn deref(&self) -> &Self::Target {
     /// #         &true
@@ -1270,9 +1276,13 @@ pub(crate) mod parsing {
         ClosureArg, Context, Decreases, Ensures, ExprGetField, ExprHas, ExprHasNot, ExprIs,
         ExprIsNot, Requires, View,
     };
+    use alloc::boxed::Box;
+    use alloc::format;
+    use alloc::string::ToString;
+    use alloc::vec::Vec;
+    use core::mem;
     #[cfg(feature = "full")]
     use proc_macro2::{Span, TokenStream};
-    use std::mem;
 
     // When we're parsing expressions which occur before blocks, like in an if
     // statement's condition, we cannot parse a struct literal.
@@ -1311,7 +1321,7 @@ pub(crate) mod parsing {
             let expr = parse_with_earlier_boundary_rule_inner(input, attrs)?;
             let expr = Box::new(expr);
             return Ok(Expr::Unary(ExprUnary {
-                attrs: vec![],
+                attrs: Vec::new(),
                 expr,
                 op,
             }));
@@ -1782,6 +1792,7 @@ pub(crate) mod parsing {
                     func: Box::new(e),
                     paren_token: parenthesized!(content in input),
                     args: content.parse_terminated(Expr::parse, Token![,])?,
+                    atomically: input.parse()?,
                 });
             } else if input.peek(Token![->]) {
                 let arrow_token: Token![->] = input.parse()?;
@@ -1838,7 +1849,9 @@ pub(crate) mod parsing {
                             turbofish,
                             paren_token: parenthesized!(content in input),
                             args: content.parse_terminated(Expr::parse, Token![,])?,
+                            atomically: input.parse()?,
                         });
+
                         continue;
                     }
                 }
@@ -1893,6 +1906,7 @@ pub(crate) mod parsing {
                     func: Box::new(e),
                     paren_token: parenthesized!(content in input),
                     args: content.parse_terminated(Expr::parse, Token![,])?,
+                    atomically: input.parse()?,
                 });
             } else if input.peek(Token![.])
                 && !input.peek(Token![..])
@@ -1928,6 +1942,7 @@ pub(crate) mod parsing {
                             turbofish,
                             paren_token: parenthesized!(content in input),
                             args: content.parse_terminated(Expr::parse, Token![,])?,
+                            atomically: input.parse()?,
                         });
                         continue;
                     }
@@ -2193,7 +2208,7 @@ pub(crate) mod parsing {
     // (i) without the diagnostic, syn's error message would otherwise be baffling
     //
     // (ii) this case is a little more relevant due to verus specifications in
-    //      function signatures, e.g., `requires x === Foo { a: 5 }` is not allowed
+    //      function signatures, e.g., `requires x == Foo { a: 5 }` is not allowed
     //      without additional parentheses.
     fn is_certainly_not_a_block(input: ParseStream) -> bool {
         let input = input.fork();
@@ -2539,7 +2554,9 @@ pub(crate) mod parsing {
                     None
                 };
             let expr: Expr = input.call(Expr::parse_without_eager_brace)?;
+            let invariant_except_break = input.parse()?;
             let invariant = input.parse()?;
+            let ensures = input.parse()?;
             let decreases = Decreases::parse_optional_in(Context::Expr, input)?;
 
             let content;
@@ -2555,7 +2572,9 @@ pub(crate) mod parsing {
                 in_token,
                 expr_name,
                 expr: Box::new(expr),
+                invariant_except_break,
                 invariant,
+                ensures,
                 decreases,
                 body: Block { brace_token, stmts },
             })
@@ -3806,6 +3825,8 @@ pub(crate) mod printing {
         e.paren_token.surround(tokens, |tokens| {
             e.args.to_tokens(tokens);
         });
+
+        e.atomically.to_tokens(tokens);
     }
 
     #[cfg_attr(docsrs, doc(cfg(feature = "printing")))]
@@ -3942,7 +3963,9 @@ pub(crate) mod printing {
                 colon.to_tokens(tokens);
             }
             print_expr(&self.expr, tokens, FixupContext::new_condition());
+            self.invariant_except_break.to_tokens(tokens);
             self.invariant.to_tokens(tokens);
+            self.ensures.to_tokens(tokens);
             self.decreases.to_tokens(tokens);
             self.body.brace_token.surround(tokens, |tokens| {
                 inner_attrs_to_tokens(&self.attrs, tokens);
@@ -4143,6 +4166,7 @@ pub(crate) mod printing {
         e.paren_token.surround(tokens, |tokens| {
             e.args.to_tokens(tokens);
         });
+        e.atomically.to_tokens(tokens);
     }
 
     #[cfg_attr(docsrs, doc(cfg(feature = "printing")))]

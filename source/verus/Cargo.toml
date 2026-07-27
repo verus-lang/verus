@@ -4,15 +4,16 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-toml = "0.7.4"
-zip = "0.6.6"
-chrono = "0.4.26"
-yansi = "0.5"
-serde_json = "1.0"
-regex = "1"
-git2 = { version = "0.18", optional = true, default-features = false, features = [] }
-is-terminal = { version = "0.4.9", optional = true }
-rand = { version = "0.8.0", optional = true }
+chrono = { workspace = true }
+regex = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+yansi = { workspace = true }
+zip = { workspace = true }
+
+git2 = { workspace = true, optional = true }
+is-terminal = { workspace = true, optional = true  }
+rand = { workspace = true, optional = true  }
 
 [features]
 default = []

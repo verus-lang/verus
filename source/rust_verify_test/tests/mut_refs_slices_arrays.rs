@@ -658,7 +658,7 @@ test_verify_one_file_with_options! {
                 }
             }
 
-            assert(x[0][0] === (20, 30));
+            assert(x[0][0] == (20, 30));
             assert(a == 23);
         }
 
@@ -673,7 +673,7 @@ test_verify_one_file_with_options! {
                 }
             }
 
-            assert(x[0][0] === (20, 30));
+            assert(x[0][0] == (20, 30));
             assert(a == 23);
             assert(false); // FAILS
         }
@@ -689,7 +689,7 @@ test_verify_one_file_with_options! {
                 }
             }
 
-            assert(x[0][0] === (0, 1));
+            assert(x[0][0] == (0, 1));
             assert(a == 123);
         }
 
@@ -704,7 +704,7 @@ test_verify_one_file_with_options! {
                 }
             }
 
-            assert(x[0][0] === (0, 1));
+            assert(x[0][0] == (0, 1));
             assert(a == 123);
             assert(false); // FAILS
         }
@@ -833,7 +833,7 @@ test_verify_one_file_with_options! {
                 }
             }
 
-            assert(x[0][0] === (0, 1));
+            assert(x[0][0] == (0, 1));
             assert(a == 123);
         }
 
@@ -848,7 +848,7 @@ test_verify_one_file_with_options! {
                 }
             }
 
-            assert(x[0][0] === (0, 1));
+            assert(x[0][0] == (0, 1));
             assert(a == 123);
             assert(false); // FAILS
         }
@@ -1253,31 +1253,31 @@ test_verify_one_file_with_options! {
         fn test_emp() {
             let v: Vec<u64> = vec![];
             let f = v.first();
-            assert(f === None);
+            assert(f == None);
             let l = v.last();
-            assert(l === None);
+            assert(l == None);
         }
 
         fn test_non_emp() {
             let v = vec![1, 2, 3];
             let f = v.first();
-            assert(f === Some(&1));
+            assert(f == Some(&1));
             let l = v.last();
-            assert(l === Some(&3));
+            assert(l == Some(&3));
         }
 
         fn test_emp_first_mut() {
             let mut v: Vec<u64> = vec![];
             let f = v.as_mut_slice().first_mut();
-            assert(f === None);
-            assert(v@ === seq![]);
+            assert(f == None);
+            assert(v@ == seq![]);
         }
 
         fn test_emp_last_mut() {
             let mut v: Vec<u64> = vec![];
             let f = v.as_mut_slice().last_mut();
-            assert(f === None);
-            assert(v@ === seq![]);
+            assert(f == None);
+            assert(v@ == seq![]);
         }
 
         fn test_non_emp_first_mut() {
@@ -1287,7 +1287,7 @@ test_verify_one_file_with_options! {
             let m = f.unwrap();
             assert(*m == 1);
             *m = 10;
-            assert(v@ === seq![10, 2, 3]);
+            assert(v@ == seq![10, 2, 3]);
         }
 
         fn test_non_emp_last_mut() {
@@ -1297,40 +1297,40 @@ test_verify_one_file_with_options! {
             let m = f.unwrap();
             assert(*m == 3);
             *m = 10;
-            assert(v@ === seq![1, 2, 10]);
+            assert(v@ == seq![1, 2, 10]);
         }
 
         fn fail_emp() {
             let v: Vec<u64> = vec![];
             let f = v.first();
-            assert(f === None);
+            assert(f == None);
             let l = v.last();
-            assert(l === None);
+            assert(l == None);
             assert(false); // FAILS
         }
 
         fn fail_non_emp() {
             let v = vec![1, 2, 3];
             let f = v.first();
-            assert(f === Some(&1));
+            assert(f == Some(&1));
             let l = v.last();
-            assert(l === Some(&3));
+            assert(l == Some(&3));
             assert(false); // FAILS
         }
 
         fn fail_emp_first_mut() {
             let mut v: Vec<u64> = vec![];
             let f = v.as_mut_slice().first_mut();
-            assert(f === None);
-            assert(v@ === seq![]);
+            assert(f == None);
+            assert(v@ == seq![]);
             assert(false); // FAILS
         }
 
         fn fail_emp_last_mut() {
             let mut v: Vec<u64> = vec![];
             let f = v.as_mut_slice().last_mut();
-            assert(f === None);
-            assert(v@ === seq![]);
+            assert(f == None);
+            assert(v@ == seq![]);
             assert(false); // FAILS
         }
 
@@ -1341,7 +1341,7 @@ test_verify_one_file_with_options! {
             let m = f.unwrap();
             assert(*m == 1);
             *m = 10;
-            assert(v@ === seq![10, 2, 3]);
+            assert(v@ == seq![10, 2, 3]);
             assert(false); // FAILS
         }
 
@@ -1352,7 +1352,7 @@ test_verify_one_file_with_options! {
             let m = f.unwrap();
             assert(*m == 3);
             *m = 10;
-            assert(v@ === seq![1, 2, 10]);
+            assert(v@ == seq![1, 2, 10]);
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 6)
@@ -1365,15 +1365,15 @@ test_verify_one_file_with_options! {
         fn test_split_at() {
             let v: Vec<u64> = vec![1, 2, 3];
             let (a, b) = v.split_at(2);
-            assert(a@ === seq![1, 2]);
-            assert(b@ === seq![3]);
+            assert(a@ == seq![1, 2]);
+            assert(b@ == seq![3]);
         }
 
         fn test_split_at_end() {
             let v: Vec<u64> = vec![1, 2, 3];
             let (a, b) = v.split_at(3);
-            assert(a@ === seq![1, 2, 3]);
-            assert(b@ === seq![]);
+            assert(a@ == seq![1, 2, 3]);
+            assert(b@ == seq![]);
         }
 
         fn test_split_at_out_of_bounds() {
@@ -1384,20 +1384,20 @@ test_verify_one_file_with_options! {
         fn test_split_at_mut() {
             let mut v: Vec<u64> = vec![1, 2, 3];
             let (a, b) = v.as_mut_slice().split_at_mut(2);
-            assert(a@ === seq![1, 2]);
-            assert(b@ === seq![3]);
+            assert(a@ == seq![1, 2]);
+            assert(b@ == seq![3]);
             a[1] = 20;
             b[0] = 30;
-            assert(v@ === seq![1, 20, 30]);
+            assert(v@ == seq![1, 20, 30]);
         }
 
         fn test_split_at_mut_end() {
             let mut v: Vec<u64> = vec![1, 2, 3];
             let (a, b) = v.as_mut_slice().split_at_mut(3);
-            assert(a@ === seq![1, 2, 3]);
-            assert(b@ === seq![]);
+            assert(a@ == seq![1, 2, 3]);
+            assert(b@ == seq![]);
             a[1] = 20;
-            assert(v@ === seq![1, 20, 3]);
+            assert(v@ == seq![1, 20, 3]);
         }
 
         fn test_split_at_mut_out_of_bounds() {
@@ -1408,37 +1408,37 @@ test_verify_one_file_with_options! {
         fn fail_split_at() {
             let v: Vec<u64> = vec![1, 2, 3];
             let (a, b) = v.split_at(2);
-            assert(a@ === seq![1, 2]);
-            assert(b@ === seq![3]);
+            assert(a@ == seq![1, 2]);
+            assert(b@ == seq![3]);
             assert(false); // FAILS
         }
 
         fn fail_split_at_end() {
             let v: Vec<u64> = vec![1, 2, 3];
             let (a, b) = v.split_at(3);
-            assert(a@ === seq![1, 2, 3]);
-            assert(b@ === seq![]);
+            assert(a@ == seq![1, 2, 3]);
+            assert(b@ == seq![]);
             assert(false); // FAILS
         }
 
         fn fail_split_at_mut() {
             let mut v: Vec<u64> = vec![1, 2, 3];
             let (a, b) = v.as_mut_slice().split_at_mut(2);
-            assert(a@ === seq![1, 2]);
-            assert(b@ === seq![3]);
+            assert(a@ == seq![1, 2]);
+            assert(b@ == seq![3]);
             a[1] = 20;
             b[0] = 30;
-            assert(v@ === seq![1, 20, 30]);
+            assert(v@ == seq![1, 20, 30]);
             assert(false); // FAILS
         }
 
         fn fail_split_at_mut_end() {
             let mut v: Vec<u64> = vec![1, 2, 3];
             let (a, b) = v.as_mut_slice().split_at_mut(3);
-            assert(a@ === seq![1, 2, 3]);
-            assert(b@ === seq![]);
+            assert(a@ == seq![1, 2, 3]);
+            assert(b@ == seq![]);
             a[1] = 20;
-            assert(v@ === seq![1, 20, 3]);
+            assert(v@ == seq![1, 20, 3]);
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 6)
@@ -1558,7 +1558,7 @@ test_verify_one_file_with_options! {
 
             a_ref2[1] = 19;
 
-            assert(a@ === seq![0, 19, 2]);
+            assert(a@ == seq![0, 19, 2]);
         }
 
         fn fails() {
@@ -1568,7 +1568,7 @@ test_verify_one_file_with_options! {
 
             a_ref2[1] = 19;
 
-            assert(a@ === seq![0, 19, 2]);
+            assert(a@ == seq![0, 19, 2]);
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 1)
@@ -1591,36 +1591,36 @@ test_verify_one_file_with_options! {
         }
 
         fn test_same_idx_diff_fields(s: &mut [(u64, u64)])
-            requires s.len() > 2, s[0] === (0, 1), s[1] === (2, 3),
+            requires s.len() > 2, s[0] == (0, 1), s[1] == (2, 3),
         {
             upd(&mut s[0].0, &mut s[0].1);
-            assert(s[0] === (100, 201));
-            assert(s[1] === (2, 3));
+            assert(s[0] == (100, 201));
+            assert(s[1] == (2, 3));
         }
 
         fn test_diff_idx_diff_fields(s: &mut [(u64, u64)])
-            requires s.len() > 2, s[0] === (0, 1), s[1] === (2, 3),
+            requires s.len() > 2, s[0] == (0, 1), s[1] == (2, 3),
         {
             upd(&mut s[0].0, &mut s[1].1);
-            assert(s[0] === (100, 1));
-            assert(s[1] === (2, 203));
+            assert(s[0] == (100, 1));
+            assert(s[1] == (2, 203));
         }
 
         fn fails_same_idx_diff_fields(s: &mut [(u64, u64)])
-            requires s.len() > 2, s[0] === (0, 1), s[1] === (2, 3),
+            requires s.len() > 2, s[0] == (0, 1), s[1] == (2, 3),
         {
             upd(&mut s[0].0, &mut s[0].1);
-            assert(s[0] === (100, 201));
-            assert(s[1] === (2, 3));
+            assert(s[0] == (100, 201));
+            assert(s[1] == (2, 3));
             assert(false); // FAILS
         }
 
         fn fails_diff_idx_diff_fields(s: &mut [(u64, u64)])
-            requires s.len() > 2, s[0] === (0, 1), s[1] === (2, 3),
+            requires s.len() > 2, s[0] == (0, 1), s[1] == (2, 3),
         {
             upd(&mut s[0].0, &mut s[1].1);
-            assert(s[0] === (100, 1));
-            assert(s[1] === (2, 203));
+            assert(s[0] == (100, 1));
+            assert(s[1] == (2, 203));
             assert(false); // FAILS
         }
 
@@ -1646,19 +1646,19 @@ test_verify_one_file_with_options! {
         }
 
         fn test_diff_idx_same_fields(s: &mut [(u64, u64)])
-            requires s.len() > 2, s[0] === (0, 1), s[1] === (2, 3),
+            requires s.len() > 2, s[0] == (0, 1), s[1] == (2, 3),
         {
             upd(&mut s[0].0, &mut s[1].0);
-            assert(s[0] === (100, 1));
-            assert(s[1] === (202, 3));
+            assert(s[0] == (100, 1));
+            assert(s[1] == (202, 3));
         }
 
         fn fails_diff_idx_same_fields(s: &mut [(u64, u64)])
-            requires s.len() > 2, s[0] === (0, 1), s[1] === (2, 3),
+            requires s.len() > 2, s[0] == (0, 1), s[1] == (2, 3),
         {
             upd(&mut s[0].0, &mut s[1].0);
-            assert(s[0] === (100, 1));
-            assert(s[1] === (202, 3));
+            assert(s[0] == (100, 1));
+            assert(s[1] == (202, 3));
             assert(false); // FAILS
         }
 
@@ -1672,7 +1672,7 @@ test_verify_one_file_with_options! {
         fn upd(a: &mut u64, b: &mut u64) { }
 
         fn test_same_idx_same_fields(s: &mut [(u64, u64)])
-            requires s.len() > 2, s[0] === (0, 1), s[1] === (2, 3),
+            requires s.len() > 2, s[0] == (0, 1), s[1] == (2, 3),
         {
             upd(&mut s[0].0, &mut s[0].0);
         }

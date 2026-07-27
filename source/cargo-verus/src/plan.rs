@@ -1,16 +1,16 @@
-use std::env;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use anyhow::Result;
 
 use crate::{
-    cli::{CargoVerusCli, VerusSubcommand},
+    cli::{CargoVerusCli, ToolchainSubcommand, VerusSubcommand},
     subcommands::{self, CargoRunPlan, NewCreationPlan, VerusConfig},
 };
 
 pub enum ExecutionPlan {
     CreateNew(NewCreationPlan),
+    ListToolchains,
     RunCargo(CargoRunPlan),
 }
 
@@ -19,18 +19,18 @@ pub fn execute_plan(plan: &ExecutionPlan) -> Result<ExitCode> {
 
     match plan {
         CreateNew(creation_plan) => subcommands::create_new_project(creation_plan),
+        ListToolchains => subcommands::list_toolchains(),
         RunCargo(cargo_run_plan) => subcommands::run_cargo(cargo_run_plan),
     }
 }
 
 pub fn plan_execution<'a>(
-    current_dir: Option<&Path>,
+    current_dir: impl AsRef<Path>,
     args: impl IntoIterator<Item = &'a str>,
 ) -> Result<ExecutionPlan> {
     let parsed_cli = CargoVerusCli::from_args(args.into_iter())?;
 
-    let current_dir =
-        if let Some(path) = current_dir { path.to_owned() } else { env::current_dir()? };
+    let current_dir: PathBuf = current_dir.as_ref().to_owned();
 
     let cfg = match parsed_cli.command {
         VerusSubcommand::New(new_cmd) => {
@@ -41,6 +41,9 @@ pub fn plan_execution<'a>(
             };
             return Ok(ExecutionPlan::CreateNew(creation_plan));
         }
+        VerusSubcommand::Toolchain(toolchain_cmd) => match toolchain_cmd.command {
+            ToolchainSubcommand::List => return Ok(ExecutionPlan::ListToolchains),
+        },
         VerusSubcommand::Verify(options) => VerusConfig {
             current_dir,
             subcommand: "check",

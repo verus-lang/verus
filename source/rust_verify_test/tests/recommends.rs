@@ -65,3 +65,35 @@ test_verify_one_file! {
         assert_one_fails(e);
     }
 }
+
+test_verify_one_file! {
+    #[test] no_orphaned_tmp_vars_issue2435 verus_code! {
+        use vstd::prelude::*;
+        mod opaque_mod {
+            use vstd::prelude::*;
+            pub tracked struct Opaque<T> {
+                t: T,
+            }
+            impl<T> Opaque<T> {
+                pub closed spec fn view(self) -> T { self.t }
+            }
+        }
+        use opaque_mod::Opaque;
+
+        pub trait Tr<T> : Sized {
+            proof fn f(s: Seq<Opaque<T>>, v: T)
+                requires s[0]@ == v;
+        }
+
+        pub struct S<T>(core::marker::PhantomData<T>);
+
+        impl<T> Tr<T> for S<T> {
+            proof fn f(s: Seq<Opaque<T>>, v: T) {
+                assert(false);  // FAILS
+            }
+        }
+
+    } => Err(e) => {
+        assert_one_fails(e);
+    }
+}

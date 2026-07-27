@@ -14,13 +14,15 @@ This information can be provided to Verus as needed using the `global` directive
 For a type `T`, and integer literals `n` or `m`, the `global` directive is a Verus item
 that takes the form:
 
-```rust
-global layout T is size == n, align == m;
+```verus-grammar
+V@[global_item] ::= global layout R@[T:type] is size == R@[n:int_literal], align == R@[m:int_literal]
+              | global layout R@[T:type] is size == R@[n:int_literal]
+              | global layout R@[T:type] is align == R@[m:int_literal]
 ```
 
-Either `size` or `align` may be omitted. The global directive both:
+The global directive both:
 
- * Exports the axioms `size_of::<T>() == n` and `align_of::<T> == m` for use in Verus proofs
+ * Exports one or both of the axioms `size_of::<T>() == n` and `align_of::<T> == m` for use in Verus proofs
  * Creates a "static" check ensuring the given values are actually correct when compiled.
 
 Note that the second check _only_ happens when codegen is run; an "ordinary" verification pass will

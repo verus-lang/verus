@@ -352,3 +352,61 @@ test_verify_one_file! {
         struct X<A, B, C> { a: A, b: B, c: C, d: bool }
     } => Err(err) => assert_vir_error_msg(err, "duplicate parameter attribute A")
 }
+
+test_verify_one_file! {
+    #[test] test_recursive_set_map_ok verus_code! {
+        use vstd::std_specs::alloc::*;
+        use vstd::prelude::Set;
+        use vstd::prelude::Map;
+
+        struct TreeNode {
+            value: int,
+            children: Set<TreeNode>,
+        }
+
+        enum RecursiveValue {
+            SingleValue { value: int },
+            MultipleValues { values: Set<RecursiveValue> },
+            SingleMapping { mapping: Map<RecursiveValue, RecursiveValue> },
+            MultipleMappings { mappings: Set<Map<RecursiveValue, RecursiveValue>> },
+        }
+
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_recursive_iset_bad verus_code! {
+        use vstd::std_specs::alloc::*;
+        use vstd::prelude::ISet;
+
+        enum RecursiveValue {
+            SingleValue { value: int },
+            MultipleValues { values: ISet<RecursiveValue> },
+        }
+    } => Err(err) => assert_vir_error_msg(err, "in a non-positive position")
+}
+
+test_verify_one_file! {
+    #[test] test_recursive_imap_bad verus_code! {
+        use vstd::std_specs::alloc::*;
+        use vstd::prelude::IMap;
+
+        enum RecursiveValue {
+            Value { value: int },
+            Mapping { mapping: IMap<RecursiveValue, int> },
+        }
+    } => Err(err) => assert_vir_error_msg(err, "in a non-positive position")
+}
+
+test_verify_one_file! {
+    #[test] test_recursive_set_imap_bad verus_code! {
+        use vstd::std_specs::alloc::*;
+        use vstd::prelude::Set;
+        use vstd::prelude::IMap;
+
+        enum RecursiveValue {
+            Value { value: int },
+            Mappings { mapping_set: Set<IMap<RecursiveValue, int>> },
+        }
+    } => Err(err) => assert_vir_error_msg(err, "in a non-positive position")
+}

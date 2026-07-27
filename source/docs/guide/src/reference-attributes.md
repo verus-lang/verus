@@ -17,6 +17,7 @@
  - [`memoize`](#verifiermemoize)
  - [`opaque`](#verifieropaque)
  - [`proof_note`](#verifierproof_notetext-and-verifierproof_notetext)
+ - [`prophetic`](#verifierprophetic)
  - `reject_recursive_types`
  - `reject_recursive_types_in_ground_variants`
  - [`rlimit`](#verifierrlimitn-and-verifierrlimitinfinity)
@@ -147,6 +148,79 @@ These attributes attach a string note to a `requires`/`ensures` clause or `assum
 When a proof obligation (`requires`/`ensures`/`assert`) fails, then the `"text"` of the note is included in the error message, as well as in the JSON output under the key `func-details`. An `assume` statement flagged by the `--no-cheating` mode is treated similarly. This can be useful for connecting informal spec requirements (say from a text description of desired properties) to obligations in the verified code.
 
 Cannot be used together with [`custom_err`](#verifiercustom_errtext-and-verifiercustom_errtext).
+
+## `#[verifier::prophetic]`
+
+This attribute is used to mark a value as _prophecy-dependent_, or _prophetic_, meaning that its value may depend
+on a value from the program's future, e.g., the `final` operator (used for [mutable references](./mutable-references.md)),
+or the [value of a prophecy variable](https://verus-lang.github.io/verus/verusdoc/vstd/proph/struct.ProphecyGhost.html#method.value).
+This attribute aids Verus in tracking which spec values are prophecy-dependent, which are restricted in certain contexts:
+
+ * Prophecy-dependent values cannot appear in [decreases clauses](./reference-decreases.md).
+ * Prophecy-dependent values cannot appear as an operand to `Ghost`.
+ * Prophecy-dependent values cannot influence the value of tracked-mode ghost state.
+
+The rationale for these restrictions [is explained here](https://verus-lang.github.io/verus/verusdoc/vstd/proph/index.html).
+
+The `#[verifier::prophetic]` attribute may appear on any spec function or any ghost-mode local variable.
+
+### On spec functions
+
+By default, every spec function is considered non-prophetic unless it is explicitly marked prophetic.
+Verus considers it ill-formed to have a function with a prophetic body that is not marked prophetic.
+
+Examples:
+
+```rust
+// Ill-formed: prophetic value not allowed for body of non-prophetic spec function
+spec fn future_value_of_mut_ref(a: &mut u64) -> u64 {
+    *final(a)
+}
+```
+
+```rust
+// Ok
+#[verifier::prophetic]
+spec fn future_value_of_mut_ref2(a: &mut u64) -> u64 {
+    *final(a)
+}
+```
+
+Furthermore, if a spec function in a trait implementation is marked `#[verifier::prophetic]`,
+then it must also be marked `#[verifier::prophetic]` in the trait declaration.
+The converse is not true: an implementation function may be non-prophetic even if the trait function is prophetic.
+
+### On local variables
+
+By default, Verus infers the propheticness of each local variable based on the propheticness of its initial value.
+A local variable can be explicitly marked prophetic regardless of its initial value.
+
+Examples:
+
+```rust
+proof fn test() {
+    let ghost mut local_var = 0;
+    let tracked proph_var = vstd::proph::ProphecyGhost::<u64>::new();
+    local_var = proph_var.value(); // Ill-formed: prophetic value not allowed for assignment to non-prophetic location
+}
+```
+
+```rust
+proof fn test() {
+    #[verifier::prophetic]
+    let ghost mut local_var = 0;
+    let tracked proph_var = vstd::proph::ProphecyGhost::<u64>::new();
+    local_var = proph_var.value(); // Ok, `local_var` was explicitly marked prophetic
+}
+```
+
+```rust
+proof fn test(tracked some_int: &mut u64) {
+    let ghost mut local_var = *final(some_int);
+    let tracked proph_var = vstd::proph::ProphecyGhost::<u64>::new();
+    local_var = proph_var.value(); // Ok, `local_var` was inferred as prophetic
+}
+```
 
 ## `#[verifier::custom_err("text")]` and `#![verifier::custom_err("text")]`
 

@@ -139,7 +139,7 @@ fn do_count(num_threads: u32) {
                     ret@.instance_id() == instance.id()
                     && ret@.count() == 1,
             (*global_arc).wf(),
-            (*global_arc).instance@ === instance,
+            (*global_arc).instance@ == instance,
     {
         let tracked unstamped_token;
         proof {
@@ -189,7 +189,7 @@ fn do_count(num_threads: u32) {
                         ret@.instance_id() == instance.id()
                         && ret@.count() == 1,
             (*global_arc).wf(),
-            (*global_arc).instance@ === instance,
+            (*global_arc).instance@ == instance,
     {
         let join_handle = join_handles.pop().unwrap();
         match join_handle.join() {

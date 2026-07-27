@@ -11,20 +11,21 @@ use crate::ast::{
     AssocTypeImpl, AutospecUsage, BinaryOp, Binder, BoundsCheck, BuiltinSpecFun, ByRef, CallTarget,
     ChainedOp, ClosureKind, Constant, CtorPrintStyle, CtorUpdateTail, Datatype,
     DatatypeTransparency, DatatypeX, Dt, Expr, ExprX, Exprs, Field, FieldOpr, Fun, Function,
-    FunctionKind, Ident, IntRange, ItemKind, Krate, KrateX, Mode, MultiOp, Path, Pattern,
-    PatternBinding, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX, TraitImpl, Typ, TypX,
-    UnaryOp, UnaryOpr, Variant, VariantCheck, VirErr, Visibility,
+    FunctionKind, Ident, IntRange, ItemKind, Krate, KrateX, LogicalOp, Mode, MultiOp, Path,
+    Pattern, PatternBinding, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX, TraitImpl, Typ,
+    TypX, UnaryOp, UnaryOpr, Variant, VariantCheck, VirErr, Visibility,
 };
 use crate::ast_util::{
-    conjoin, mk_eq, place_to_spec_expr, typ_args_for_datatype_typ, undecorate_typ, unit_typ,
-    wrap_in_trigger,
+    conjoin, mk_eq, mk_implies, place_to_spec_expr, typ_args_for_datatype_typ, undecorate_typ,
+    unit_typ, wrap_in_trigger,
 };
 use crate::ast_visitor::VisitorScopeMap;
 use crate::context::GlobalCtx;
 use crate::def::dummy_param_name;
 use crate::def::is_dummy_param_name;
 use crate::def::{
-    Spanned, positional_field_ident, prefix_tuple_param, prefix_tuple_variant, user_local_name,
+    Spanned, impl_fndef_path, positional_field_ident, prefix_tuple_param, prefix_tuple_variant,
+    user_local_name,
 };
 use crate::messages::Span;
 use crate::messages::{error, internal_error};
@@ -38,7 +39,6 @@ use std::sync::Arc;
 struct ClosureDatatype {
     enclosing_fun: Fun,
     args: Typs,
-    #[allow(dead_code)]
     output: Typ,
     kind: ClosureKind,
     path: Path,
@@ -321,7 +321,7 @@ fn simplify_one_expr(
     match &expr.x {
         ExprX::Var(x) => Ok(expr.new_x(ExprX::Var(rename_var(state, scope_map, x)))),
         ExprX::VarAt(x, at) => Ok(expr.new_x(ExprX::VarAt(rename_var(state, scope_map, x), *at))),
-        ExprX::AssignToPlace { place, .. }
+        ExprX::Assign { place, .. }
         | ExprX::BorrowMut(place)
         | ExprX::TwoPhaseBorrowMut(place)
         | ExprX::BorrowMutTracked(place) => {
@@ -360,26 +360,32 @@ fn simplify_one_expr(
             Ok(expr.clone())
         }
         ExprX::ConstVar(x, autospec) => {
-            let call = ExprX::Call(
-                CallTarget::Fun(
+            let call_target_attrs = crate::ast::CallTargetAttrs {
+                autospec: *autospec,
+                const_var: true,
+                assume_external_allowed: false,
+            };
+            let call = ExprX::Call {
+                target: CallTarget::Fun(
                     CallTargetKind::Static,
                     x.clone(),
                     Arc::new(vec![]),
                     Arc::new(vec![]),
-                    *autospec,
-                    true,
+                    call_target_attrs,
                 ),
-                Arc::new(vec![]),
-                None,
-            );
+                args: Arc::new(vec![]),
+                post_args: None,
+                body: None,
+            };
             Ok(SpannedTyped::new(&expr.span, &expr.typ, call))
         }
-        ExprX::Call(
-            CallTarget::Fun(kind, tgt, typs, impl_paths, autospec_usage, const_var),
+        ExprX::Call {
+            target: CallTarget::Fun(kind, tgt, typs, impl_paths, attrs),
             args,
             post_args,
-        ) => {
-            assert!(*autospec_usage == AutospecUsage::Final);
+            body,
+        } => {
+            assert!(attrs.autospec == AutospecUsage::Final);
 
             let is_trait_impl = match kind {
                 CallTargetKind::Static => false,
@@ -399,18 +405,18 @@ fn simplify_one_expr(
                 args.clone()
             };
 
-            let call = ExprX::Call(
-                CallTarget::Fun(
+            let call = ExprX::Call {
+                target: CallTarget::Fun(
                     kind.clone(),
                     tgt.clone(),
                     typs.clone(),
                     impl_paths.clone(),
-                    *autospec_usage,
-                    *const_var,
+                    attrs.clone(),
                 ),
                 args,
-                post_args.clone(),
-            );
+                post_args: post_args.clone(),
+                body: body.clone(),
+            };
             Ok(SpannedTyped::new(&expr.span, &expr.typ, call))
         }
         ExprX::Ctor(name, variant, partial_binders, Some(update)) => {
@@ -531,7 +537,7 @@ fn simplify_one_expr(
                 if i == 0 {
                     conjunction = binary;
                 } else {
-                    let exprx = ExprX::Binary(BinaryOp::And, conjunction, binary);
+                    let exprx = ExprX::Logical(LogicalOp::And, conjunction, binary);
                     conjunction = SpannedTyped::new(&span, &expr.typ, exprx);
                 }
             }
@@ -571,7 +577,7 @@ fn simplify_one_expr(
                         &guard.typ,
                         ExprX::MatchGuardFreeze(place.clone(), guard.clone()),
                     );
-                    let test_exp = ExprX::Binary(BinaryOp::And, test_pattern, guard);
+                    let test_exp = ExprX::Logical(LogicalOp::And, test_pattern, guard);
                     let test = SpannedTyped::new(&arm.x.pattern.span, &t_bool, test_exp);
                     let block = ExprX::Block(Arc::new(decls.clone()), Some(test));
                     SpannedTyped::new(&arm.x.pattern.span, &t_bool, block)
@@ -786,15 +792,16 @@ fn mk_closure_req_call(
     SpannedTyped::new(
         span,
         &bool_typ,
-        ExprX::Call(
-            CallTarget::BuiltinSpecFun(
+        ExprX::Call {
+            target: CallTarget::BuiltinSpecFun(
                 BuiltinSpecFun::ClosureReq,
                 closure_trait_call_typ_args(state, fn_val, params),
                 Arc::new(vec![]),
             ),
-            Arc::new(vec![fn_val.clone(), arg_tuple.clone()]),
-            None,
-        ),
+            args: Arc::new(vec![fn_val.clone(), arg_tuple.clone()]),
+            post_args: None,
+            body: None,
+        },
     )
 }
 
@@ -811,15 +818,16 @@ fn mk_closure_ens_call(
     SpannedTyped::new(
         span,
         &bool_typ,
-        ExprX::Call(
-            CallTarget::BuiltinSpecFun(
+        ExprX::Call {
+            target: CallTarget::BuiltinSpecFun(
                 builtin_spec_fun,
                 closure_trait_call_typ_args(state, fn_val, params),
                 Arc::new(vec![]),
             ),
-            Arc::new(vec![fn_val.clone(), arg_tuple.clone(), ret_arg.clone()]),
-            None,
-        ),
+            args: Arc::new(vec![fn_val.clone(), arg_tuple.clone(), ret_arg.clone()]),
+            post_args: None,
+            body: None,
+        },
     )
 }
 
@@ -884,11 +892,7 @@ fn exec_closure_spec_requires(
         wrap_in_trigger(&mk_closure_req_call(state, span, params, closure_var, &tuple_var));
 
     let bool_typ = Arc::new(TypX::Bool);
-    let req_quant_body = SpannedTyped::new(
-        span,
-        &bool_typ,
-        ExprX::Binary(BinaryOp::Implies, reqs_body, closure_req_call.clone()),
-    );
+    let req_quant_body = mk_implies(span, &reqs_body, &closure_req_call);
 
     let forall = Quant { quant: air::ast::Quant::Forall };
     let binders = Arc::new(vec![Arc::new(VarBinderX { name: tuple_ident, a: tuple_typ })]);
@@ -954,11 +958,7 @@ fn exec_closure_spec_ensures(
     ));
 
     let bool_typ = Arc::new(TypX::Bool);
-    let ens_quant_body = SpannedTyped::new(
-        span,
-        &bool_typ,
-        ExprX::Binary(BinaryOp::Implies, closure_ens_call.clone(), enss_body),
-    );
+    let ens_quant_body = mk_implies(span, &closure_ens_call, &enss_body);
 
     let forall = Quant { quant: air::ast::Quant::Forall };
     let binders =
@@ -1003,7 +1003,8 @@ fn add_fndef_axioms_to_function(
     _ctx: &GlobalCtx,
     state: &mut State,
     function: &Function,
-) -> Result<Function, VirErr> {
+    fn_once_trait_in_scope: bool,
+) -> Result<(Function, Vec<TraitImpl>, Option<AssocTypeImpl>), VirErr> {
     state.reset_for_function();
 
     let params: Vec<_> = function
@@ -1033,9 +1034,54 @@ fn add_fndef_axioms_to_function(
 
     let fndef_singleton = SpannedTyped::new(
         &function.span,
-        &Arc::new(TypX::FnDef(fun.clone(), typ_args, None)),
+        &Arc::new(TypX::FnDef(fun.clone(), typ_args.clone(), None)),
         ExprX::ExecFnByName(fun.clone()),
     );
+
+    // Emit `FnDef : {Fn, FnMut, FnOnce}<Args>` and `<FnDef as FnOnce<Args>>::Output = Ret`.
+    //
+    // We emit a TraitImpl for each of the three Fn-family traits (not just Fn), because
+    // code that mentions only one through an associated-type projection (e.g. `Map::Item = F::Output`)
+    // never creates a Fn term for the Fn-related axioms to trigger on.
+    let (trait_impls_out, assoc_type_impl) = if fn_once_trait_in_scope {
+        let self_typ = Arc::new(TypX::FnDef(fun.clone(), typ_args.clone(), None));
+        let arg_typs: Vec<Typ> = params.iter().map(|p| p.a.clone()).collect();
+        let tuple_dt = state.tuple_type_name(arg_typs.len());
+        let args_tuple_typ =
+            Arc::new(TypX::Datatype(tuple_dt, Arc::new(arg_typs), Arc::new(vec![])));
+        let trait_typ_args = Arc::new(vec![self_typ, args_tuple_typ]);
+
+        let mut trait_impls_out: Vec<TraitImpl> = Vec::new();
+        for kind in [ClosureKind::Fn, ClosureKind::FnMut, ClosureKind::FnOnce] {
+            let trait_implx = crate::ast::TraitImplX {
+                impl_path: impl_fndef_path(&function.x.name, kind),
+                typ_params: function.x.typ_params.clone(),
+                typ_bounds: function.x.typ_bounds.clone(),
+                trait_path: kind.trait_path(),
+                trait_typ_args: trait_typ_args.clone(),
+                trait_typ_arg_impls: Spanned::new(function.span.clone(), Arc::new(vec![])),
+                owning_module: None,
+                auto_imported: true,
+                external_trait_blanket: false,
+            };
+            trait_impls_out.push(Spanned::new(function.span.clone(), trait_implx));
+        }
+
+        let assoc_typ_implx = crate::ast::AssocTypeImplX {
+            name: Arc::new("Output".to_string()),
+            impl_path: impl_fndef_path(&function.x.name, ClosureKind::FnOnce),
+            typ_params: function.x.typ_params.clone(),
+            typ_bounds: function.x.typ_bounds.clone(),
+            trait_path: ClosureKind::FnOnce.trait_path(),
+            trait_typ_args,
+            typ: function.x.ret.x.typ.clone(),
+            impl_paths: Arc::new(vec![]),
+        };
+
+        (trait_impls_out, Some(Spanned::new(function.span.clone(), assoc_typ_implx)))
+    } else {
+        (Vec::new(), None)
+    };
 
     let mut fndef_axioms = vec![];
 
@@ -1089,7 +1135,7 @@ fn add_fndef_axioms_to_function(
     let mut functionx = function.x.clone();
     assert!(functionx.fndef_axioms.is_none());
     functionx.fndef_axioms = Some(Arc::new(fndef_axioms));
-    Ok(Spanned::new(function.span.clone(), functionx))
+    Ok((Spanned::new(function.span.clone(), functionx), trait_impls_out, assoc_type_impl))
 }
 
 fn simplify_function(
@@ -1348,16 +1394,27 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
     );
     let functions = vec_map_result(functions, |f| simplify_function(ctx, &mut state, f))?;
     let mut trait_impls = vec_map_result(&trait_impls, |t| simplify_trait_impl(&mut state, t))?;
-    let assoc_type_impls =
+    let mut assoc_type_impls =
         vec_map_result(&assoc_type_impls, |a| simplify_assoc_type_impl(&mut state, a))?;
 
-    let functions = vec_map_result(&functions, |f: &Function| {
+    let fn_once_trait_path = ClosureKind::FnOnce.trait_path();
+    let fn_once_trait_in_scope = traits.iter().any(|t| t.x.name == fn_once_trait_path);
+
+    let mut new_functions: Vec<Function> = Vec::with_capacity(functions.len());
+    for f in functions.iter() {
         if need_fndef_axiom(&state.fndef_typs, f) {
-            add_fndef_axioms_to_function(ctx, &mut state, f)
+            let (f2, tis, ai) =
+                add_fndef_axioms_to_function(ctx, &mut state, f, fn_once_trait_in_scope)?;
+            trait_impls.extend(tis);
+            if let Some(ai) = ai {
+                assoc_type_impls.push(ai);
+            }
+            new_functions.push(f2);
         } else {
-            Ok(f.clone())
+            new_functions.push(f.clone());
         }
-    })?;
+    }
+    let functions = new_functions;
 
     // Add a generic datatype to represent each tuple arity
     // Iterate in sorted order to get consistent output
@@ -1469,31 +1526,54 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         };
         datatypes.push(Spanned::new(ctx.no_span.clone(), datatypex));
 
-        // Add a trait bound, `ClosureType: {Fn, FnMut, FnOnce}`
-        // TODO: include Output associated type
+        // Add a trait bound, `ClosureType: {Fn, FnMut, FnOnce}`, and the corresponding
+        // `<ClosureType as FnOnce<Args>>::Output = ReturnType` associated-type impl.
 
         let typ_args: Typs = Arc::new(
             function.x.typ_params.iter().map(|tb| Arc::new(TypX::TypParam(tb.clone()))).collect(),
         );
-        let self_typ = Arc::new(TypX::Datatype(Dt::Path(closure.path), typ_args, Arc::new(vec![])));
-        let args_tuple_typ =
-            Arc::new(TypX::Datatype(Dt::Tuple(closure.args.len()), closure.args, Arc::new(vec![])));
+        let self_typ =
+            Arc::new(TypX::Datatype(Dt::Path(closure.path.clone()), typ_args, Arc::new(vec![])));
+        let args_tuple_typ = Arc::new(TypX::Datatype(
+            Dt::Tuple(closure.args.len()),
+            closure.args.clone(),
+            Arc::new(vec![]),
+        ));
         let impl_path = Arc::new(crate::ast::PathX {
             krate: CrateId::Internal,
             segments: Arc::new(vec![crate::def::impl_closure(closure.kind, id)]),
         });
+        let trait_typ_args = Arc::new(vec![self_typ.clone(), args_tuple_typ.clone()]);
         let trait_implx = crate::ast::TraitImplX {
-            impl_path,
+            impl_path: impl_path.clone(),
             typ_params: function.x.typ_params.clone(),
             typ_bounds: function.x.typ_bounds.clone(),
             trait_path: closure.kind.trait_path(),
-            trait_typ_args: Arc::new(vec![self_typ, args_tuple_typ]),
+            trait_typ_args: trait_typ_args.clone(),
             trait_typ_arg_impls: Spanned::new(ctx.no_span.clone(), Arc::new(vec![])),
             owning_module: None,
             auto_imported: true,
             external_trait_blanket: false,
         };
         trait_impls.push(Spanned::new(ctx.no_span.clone(), trait_implx));
+
+        // The `Output` associated type is defined on the `FnOnce` trait (and
+        // inherited by `Fn` and `FnMut`), so we always use the `FnOnce` trait
+        // path for the associated-type impl, regardless of the closure's kind.
+        let fn_once_trait_path = crate::ast::ClosureKind::FnOnce.trait_path();
+        if traits.iter().any(|t| &t.x.name == &fn_once_trait_path) {
+            let assoc_typ_implx = crate::ast::AssocTypeImplX {
+                name: Arc::new("Output".to_string()),
+                impl_path,
+                typ_params: function.x.typ_params.clone(),
+                typ_bounds: function.x.typ_bounds.clone(),
+                trait_path: fn_once_trait_path,
+                trait_typ_args,
+                typ: closure.output.clone(),
+                impl_paths: Arc::new(vec![]),
+            };
+            assoc_type_impls.push(Spanned::new(ctx.no_span.clone(), assoc_typ_implx));
+        }
     }
 
     let traits = traits.clone();
@@ -1521,6 +1601,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         ctx.rlimit,
         ctx.interpreter_log.clone(),
         ctx.func_call_graph_log.clone(),
+        ctx.warning_ctx.clone(),
         ctx.solver.clone(),
         true,
         ctx.check_api_safety,

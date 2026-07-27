@@ -12,7 +12,7 @@ test_verify_one_file_with_options! {
             let opt_ref_int = opt.as_mut();
             let ref_int = opt_ref_int.unwrap();
             *ref_int = 20;
-            assert(opt === Some(20));
+            assert(opt == Some(20));
         }
 
         fn test1_fails() {
@@ -20,22 +20,22 @@ test_verify_one_file_with_options! {
             let opt_ref_int = opt.as_mut();
             let ref_int = opt_ref_int.unwrap();
             *ref_int = 20;
-            assert(opt === Some(20));
+            assert(opt == Some(20));
             assert(false); // FAILS
         }
 
         fn test2() {
             let mut opt = None::<u64>;
             let opt_ref_int = opt.as_mut();
-            assert(opt_ref_int === None);
-            assert(opt === None);
+            assert(opt_ref_int == None);
+            assert(opt == None);
         }
 
         fn test2_fails() {
             let mut opt = None::<u64>;
             let opt_ref_int = opt.as_mut();
-            assert(opt_ref_int === None);
-            assert(opt === None);
+            assert(opt_ref_int == None);
+            assert(opt == None);
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 2)
@@ -346,48 +346,48 @@ test_verify_one_file_with_options! {
         fn test_as_slice_none() {
             let x: Option<u64> = None;
             let s = x.as_slice();
-            assert(s@ === seq![]);
+            assert(s@ == seq![]);
         }
 
         fn test_as_slice_some() {
             let x: Option<u64> = Some(20);
             let s = x.as_slice();
-            assert(s@ === seq![20]);
+            assert(s@ == seq![20]);
         }
 
         fn test_as_mut_slice_none() {
             let mut x: Option<u64> = None;
             let s = x.as_mut_slice();
-            assert(s@ === seq![]);
+            assert(s@ == seq![]);
             assert(x.is_none());
         }
 
         fn test_as_mut_slice_some() {
             let mut x: Option<u64> = Some(20);
             let s = x.as_mut_slice();
-            assert(s@ === seq![20]);
+            assert(s@ == seq![20]);
             s[0] = 30;
-            assert(x === Some(30));
+            assert(x == Some(30));
         }
 
         fn fail_as_slice_none() {
             let x: Option<u64> = None;
             let s = x.as_slice();
-            assert(s@ === seq![]);
+            assert(s@ == seq![]);
             assert(false); // FAILS
         }
 
         fn fail_as_slice_some() {
             let x: Option<u64> = Some(20);
             let s = x.as_slice();
-            assert(s@ === seq![20]);
+            assert(s@ == seq![20]);
             assert(false); // FAILS
         }
 
         fn fail_as_mut_slice_none() {
             let mut x: Option<u64> = None;
             let s = x.as_mut_slice();
-            assert(s@ === seq![]);
+            assert(s@ == seq![]);
             assert(x.is_none());
             assert(false); // FAILS
         }
@@ -395,9 +395,9 @@ test_verify_one_file_with_options! {
         fn fail_as_mut_slice_some() {
             let mut x: Option<u64> = Some(20);
             let s = x.as_mut_slice();
-            assert(s@ === seq![20]);
+            assert(s@ == seq![20]);
             s[0] = 30;
-            assert(x === Some(30));
+            assert(x == Some(30));
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 4)
@@ -412,7 +412,7 @@ test_verify_one_file_with_options! {
             let r = x.insert(20);
             assert(*r == 20);
             *r = 21;
-            assert(x === Some(21));
+            assert(x == Some(21));
         }
 
         fn test_insert_some() {
@@ -420,7 +420,7 @@ test_verify_one_file_with_options! {
             let r = x.insert(20);
             assert(*r == 20);
             *r = 21;
-            assert(x === Some(21));
+            assert(x == Some(21));
         }
 
         fn test_get_or_insert_none() {
@@ -428,7 +428,7 @@ test_verify_one_file_with_options! {
             let r = x.get_or_insert(20);
             assert(*r == 20);
             *r = 21;
-            assert(x === Some(21));
+            assert(x == Some(21));
         }
 
         fn test_get_or_insert_some() {
@@ -436,7 +436,7 @@ test_verify_one_file_with_options! {
             let r = x.get_or_insert(20);
             assert(*r == 5);
             *r = 21;
-            assert(x === Some(21));
+            assert(x == Some(21));
         }
 
         fn fail_insert_none() {
@@ -444,7 +444,7 @@ test_verify_one_file_with_options! {
             let r = x.insert(20);
             assert(*r == 20);
             *r = 21;
-            assert(x === Some(21));
+            assert(x == Some(21));
             assert(false); // FAILS
         }
 
@@ -453,7 +453,7 @@ test_verify_one_file_with_options! {
             let r = x.insert(20);
             assert(*r == 20);
             *r = 21;
-            assert(x === Some(21));
+            assert(x == Some(21));
             assert(false); // FAILS
         }
 
@@ -462,7 +462,7 @@ test_verify_one_file_with_options! {
             let r = x.get_or_insert(20);
             assert(*r == 20);
             *r = 21;
-            assert(x === Some(21));
+            assert(x == Some(21));
             assert(false); // FAILS
         }
 
@@ -471,7 +471,7 @@ test_verify_one_file_with_options! {
             let r = x.get_or_insert(20);
             assert(*r == 5);
             *r = 21;
-            assert(x === Some(21));
+            assert(x == Some(21));
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 4)

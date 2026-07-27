@@ -1,5 +1,6 @@
 pub mod auto_spec;
 pub mod exec_spec;
+pub mod hooks;
 pub mod set_build;
 pub mod spec_derive;
 
@@ -117,6 +118,9 @@ pub(crate) fn contrib_preprocess_impl_item(item: &mut ImplItem, new_items: &mut 
 }
 
 pub(crate) fn contrib_preprocess_items(items: &mut Vec<Item>) {
+    // Opt-in hooks run first (no-op with `contrib-hooks` off).
+    hooks::preprocess_items(items);
+
     let mut i = 0;
     while i < items.len() {
         let mut new_items: Vec<Item> = Vec::new();
@@ -128,6 +132,9 @@ pub(crate) fn contrib_preprocess_items(items: &mut Vec<Item>) {
 }
 
 pub(crate) fn contrib_preprocess_impl_items(items: &mut Vec<ImplItem>) {
+    // Opt-in hooks run first (no-op with `contrib-hooks` off).
+    hooks::preprocess_impl_items(items);
+
     let mut i = 0;
     while i < items.len() {
         let mut new_items: Vec<ImplItem> = Vec::new();

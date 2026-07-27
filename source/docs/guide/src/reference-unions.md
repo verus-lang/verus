@@ -10,7 +10,7 @@ i.e., it checks that `u` is the correct "variant".
 In spec-mode, you can use the built-in spec operators `is_variant` and `get_union_field`
 to reason about a union. Both operators refer to the field name via _string literals_.
 
- * `is_variant(u, "field_name")` returns true if `u` is in the `"field_name"` variant.
+ * `is_variant(u, "field_name")` returns true if `u` has a well-formed field `"field_name"`.
  * `get_union_field::<U, T>(u, "field_name")` returns a value of type `T`, where
     `T` is the type of `"field_name"`. (Verus will error if `T` does not match between
     the union and the generic parameter `T` of the operator.)

@@ -14,7 +14,7 @@ test_verify_one_file! {
             assert(s1.index(3) == 30);
             let s2 = Seq::<int>::empty().push(0).push(10).push(20).push(30).push(40);
             assert(s1 =~= s2);
-            assert(s1 === s2);
+            assert(s1 == s2);
             let s3 = s2.subrange(1, 4);
             assert(s3.len() == 3);
             let s4 = Seq::<int>::empty().push(10).push(20).push(30);
@@ -33,15 +33,9 @@ test_verify_one_file! {
             assert(s8[0] == 5);
             assert(s8.len() == 10);
 
-            assert(s1.to_set().finite()) by {
-                seq_to_set_is_finite(s1);
-            }
-            assert(s6.to_set().finite()) by {
-                seq_to_set_is_finite(s6);
-            }
-            assert(s7.to_set().finite()) by {
-                seq_to_set_is_finite(s7);
-            }
+            assert(s1.to_iset().finite());
+            assert(s6.to_iset().finite());
+            assert(s7.to_iset().finite());
         }
     } => Ok(())
 }
@@ -69,7 +63,7 @@ test_verify_one_file! {
             assert(s1.index(3) == 30);
             let s2 = Seq::<int>::empty().push(0).push(10).push(20).push(30).push(40);
             assert(s1 =~= s2);
-            assert(s1 === s2);
+            assert(s1 == s2);
             let s3 = s2.subrange(1, 4);
             assert(s3.len() == 3);
             let s4 = Seq::<int>::empty().push(10).push(20).push(30);

@@ -46,6 +46,9 @@ use crate::builder::expr::as_place::PlaceBuilder;
 use crate::builder::scope::{DropKind, LintLevel};
 use crate::errors;
 
+#[path = "../../../rustc_mir_build_additional_files/verus_builder.rs"]
+pub mod verus_builder;
+
 pub(crate) fn closure_saved_names_of_captured_variables<'tcx>(
     tcx: TyCtxt<'tcx>,
     def_id: LocalDefId,
@@ -68,11 +71,11 @@ pub(crate) fn closure_saved_names_of_captured_variables<'tcx>(
 /// be called by the query `mir_built`.
 pub fn build_mir_inner_impl<'tcx>(tcx: TyCtxt<'tcx>, def: LocalDefId) -> Body<'tcx> {
     tcx.ensure_done().thir_abstract_const(def);
-    if let Err(e) = tcx.ensure_ok().check_match(def) {
+    if let Err(e) = tcx.ensure_result().check_match(def) {
         return construct_error(tcx, def, e);
     }
 
-    if let Err(err) = tcx.ensure_ok().check_tail_calls(def) {
+    if let Err(err) = tcx.ensure_result().check_tail_calls(def) {
         return construct_error(tcx, def, err);
     }
 
@@ -233,6 +236,9 @@ struct Builder<'a, 'tcx> {
     /// Collects additional coverage information during MIR building.
     /// Only present if coverage is enabled and this function is eligible.
     coverage_info: Option<coverageinfo::CoverageInfoBuilder>,
+
+    verus_extra_thir: Option<std::sync::Arc<crate::verus::ExtraThir>>,
+    verus_mir_builder_ctxt: crate::builder::verus_builder::VerusMirBuilderCtxt,
 }
 
 type CaptureMap<'tcx> = SortedIndexMultiMap<usize, ItemLocalId, Capture<'tcx>>;
@@ -488,7 +494,7 @@ fn construct_fn<'tcx>(
         .output
         .span();
 
-    let mut abi = fn_sig.abi;
+    let mut abi = fn_sig.abi();
     if let DefKind::Closure = tcx.def_kind(fn_def) {
         // HACK(eddyb) Avoid having RustCall on closures,
         // as it adds unnecessary (and wrong) auto-tupling.
@@ -498,7 +504,7 @@ fn construct_fn<'tcx>(
     let arguments = &thir.params;
 
     let return_ty = fn_sig.output();
-    let coroutine = match tcx.type_of(fn_def).instantiate_identity().kind() {
+    let coroutine = match tcx.type_of(fn_def).instantiate_identity().skip_norm_wip().kind() {
         ty::Coroutine(_, args) => Some(Box::new(CoroutineInfo::initial(
             tcx.coroutine_kind(fn_def).unwrap(),
             args.as_coroutine().yield_ty(),
@@ -509,7 +515,7 @@ fn construct_fn<'tcx>(
     };
 
     if let Some((dialect, phase)) =
-        find_attr!(tcx.hir_attrs(fn_id), CustomMir(dialect, phase, _) => (dialect, phase))
+        find_attr!(tcx, fn_id, CustomMir(dialect, phase) => (dialect, phase))
     {
         return custom::build_custom_mir(
             tcx,
@@ -635,21 +641,23 @@ fn construct_error(tcx: TyCtxt<'_>, def_id: LocalDefId, guar: ErrorGuaranteed) -
     let hir_id = tcx.local_def_id_to_hir_id(def_id);
 
     let (inputs, output, coroutine) = match tcx.def_kind(def_id) {
-        DefKind::Const
-        | DefKind::AssocConst
+        DefKind::Const { .. }
+        | DefKind::AssocConst { .. }
         | DefKind::AnonConst
         | DefKind::InlineConst
         | DefKind::Static { .. }
-        | DefKind::GlobalAsm => (vec![], tcx.type_of(def_id).instantiate_identity(), None),
+        | DefKind::GlobalAsm => {
+            (vec![], tcx.type_of(def_id).instantiate_identity().skip_norm_wip(), None)
+        }
         DefKind::Ctor(..) | DefKind::Fn | DefKind::AssocFn => {
             let sig = tcx.liberate_late_bound_regions(
                 def_id.to_def_id(),
-                tcx.fn_sig(def_id).instantiate_identity(),
+                tcx.fn_sig(def_id).instantiate_identity().skip_norm_wip(),
             );
             (sig.inputs().to_vec(), sig.output(), None)
         }
         DefKind::Closure => {
-            let closure_ty = tcx.type_of(def_id).instantiate_identity();
+            let closure_ty = tcx.type_of(def_id).instantiate_identity().skip_norm_wip();
             match closure_ty.kind() {
                 ty::Closure(_, args) => {
                     let args = args.as_closure();
@@ -811,6 +819,8 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             var_debug_info: vec![],
             lint_level_roots_cache: GrowableBitSet::new_empty(),
             coverage_info: coverageinfo::CoverageInfoBuilder::new_if_enabled(tcx, def),
+            verus_extra_thir: crate::verus::get_extra_thir(def),
+            verus_mir_builder_ctxt: crate::builder::verus_builder::VerusMirBuilderCtxt::new(),
         };
 
         assert_eq!(builder.cfg.start_new_block(), START_BLOCK);
@@ -843,7 +853,9 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
     fn lint_and_remove_uninhabited(&mut self) {
         let mut lints = vec![];
 
-        for bbdata in self.cfg.basic_blocks.iter_mut() {
+        let mut basic_blocks_edited = vec![];
+
+        for (bbindex, bbdata) in self.cfg.basic_blocks.iter_mut().enumerate() {
             let term = bbdata.terminator_mut();
             let TerminatorKind::Call { ref func, ref mut target, destination, .. } = term.kind
             else {
@@ -851,7 +863,9 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             };
             let Some(target_bb) = *target else { continue };
 
-            if crate::verus::func_ty_skip_edge_deletion_for_uninhabited_ty(
+            if crate::builder::verus_builder::skip_edge_deletion_for_uninhabited_ty(
+                &self.verus_mir_builder_ctxt,
+                BasicBlock::from_usize(bbindex),
                 func.ty(&self.local_decls, self.tcx),
             ) {
                 continue;
@@ -880,9 +894,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 // https://github.com/rust-lang/rust/issues/149571
                     && self
                         .tcx
-                        .fn_sig(self.def_id)
-                        .instantiate_identity()
-                        .skip_binder()
+                        .fn_sig(self.def_id).instantiate_identity().skip_binder()
                         .output()
                         .is_inhabited_from(
                             self.tcx,
@@ -898,6 +910,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 // omit the return edge if a return type is visibly uninhabited to a module
                 // that makes the call.
                 *target = None;
+                basic_blocks_edited.push(bbindex);
             }
         }
 
@@ -910,7 +923,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             for stmt in &bb.statements {
                 match &stmt.kind {
                     // Ignore the implicit `()` return place assignment for unit functions/blocks
-                    StatementKind::Assign(box (_, Rvalue::Use(Operand::Constant(const_))))
+                    StatementKind::Assign((_, Rvalue::Use(Operand::Constant(const_), _)))
                         if const_.ty().is_unit() =>
                     {
                         continue;
@@ -958,6 +971,8 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 },
             );
         }
+
+        crate::builder::verus_builder::cfg_removal_fix_constraints(self, basic_blocks_edited);
     }
 
     fn finish(self) -> Body<'tcx> {
@@ -1093,7 +1108,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         // Bind the argument patterns
         for (index, param) in arguments.iter().enumerate() {
             // Function arguments always get the first Local indices after the return place
-            let local = Local::new(index + 1);
+            let local = Local::arg(index);
             let place = Place::from(local);
 
             // Make sure we drop (parts of) the argument even when not matched on.
@@ -1301,5 +1316,3 @@ mod expr;
 mod matches;
 mod misc;
 mod scope;
-
-pub(crate) use expr::category::Category as ExprCategory;

@@ -779,7 +779,7 @@ test_verify_one_file! {
 
             spec fn seq(&self) -> Seq<bool>;
 
-            spec fn initial_value_inv(&self) -> bool;
+            spec fn initial_value_relation(&self) -> bool;
         }
 
         impl T for bool {
@@ -790,7 +790,7 @@ test_verify_one_file! {
                 seq![true]
             }
 
-            spec fn initial_value_inv(&self) -> bool {
+            spec fn initial_value_relation(&self) -> bool {
                 TSpec::seq(self).len() > 1
             }
         }
@@ -827,6 +827,33 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_assoc_type_with_trait_bound verus_code! {
+        // Test that external_trait_specification works for traits with
+        // associated types that have trait bounds (ClauseKind::Projection)
+        // and lifetime bounds (ClauseKind::TypeOutlives).
+        #[verifier::external]
+        trait Bits: Sized + 'static {
+        }
+
+        #[verifier::external_trait_specification]
+        trait ExBits: Sized + 'static {
+            type ExternalTraitSpecificationFor: Bits;
+        }
+
+        #[verifier::external]
+        trait Flags: Sized + 'static {
+            type B: Bits;
+        }
+
+        #[verifier::external_trait_specification]
+        trait ExFlags: Sized + 'static {
+            type ExternalTraitSpecificationFor: Flags;
+            type B: Bits;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] unrecognized_assoc_type_issue1485 verus_code! {
         use std::borrow::Cow;
 
@@ -844,4 +871,29 @@ test_verify_one_file! {
         err,
         "Verus does not recognize associated type `Owned` of trait `alloc::borrow::ToOwned`"
     )
+}
+
+test_verify_one_file! {
+    #[test] external_trait_private_bound_local verus_code! {
+        trait U {}
+
+        #[verifier::external]
+        trait T: U {}
+
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_private_bound(test_crate::U)]
+        trait ExT {
+            type ExternalTraitSpecificationFor: T;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "not a private non-local bound")
+}
+
+test_verify_one_file! {
+    #[test] external_trait_private_bound_pub verus_code! {
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_private_bound(core::marker::Copy)]
+        pub trait ExInteger {
+            type ExternalTraitSpecificationFor: Integer;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "not a private non-local bound")
 }

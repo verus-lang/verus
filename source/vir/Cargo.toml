@@ -7,15 +7,15 @@ edition = "2024"
 
 # Note: do not add any dependencies on rustc -- VIR deliberately abstracts away from rustc's internals
 [dependencies]
-air = { path = "../air" }
-vir-macros = { path = "../vir_macros" }
-sise = "0.6.0"
-num-bigint = { version = "0.4.4", features = ["serde"] }
-num-traits= "0.2.16"
-im = "15.1.0"
-sha2 = "0.10.2"
-serde = { version = "1", features = ["derive", "rc"] }
-indexmap = { version = "1" }
+air = { workspace = true }
+im = { workspace = true }
+indexmap = { workspace = true }
+num-bigint = { workspace = true }
+num-traits = { workspace = true }
+serde = { workspace = true }
+sha2 = { workspace = true }
+sise = { workspace = true }
+vir-macros = { workspace = true }
 
 [features]
 singular = ["air/singular"]

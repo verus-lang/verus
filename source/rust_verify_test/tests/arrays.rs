@@ -103,21 +103,24 @@ test_verify_one_file! {
     #[test] test_array_set_assign_customized_op verus_code! {
         use vstd::prelude::*;
         use vstd::array::*;
+        use vstd::std_specs::ops::AddAssignSpec;
 
         #[derive(Clone, Copy)]
         struct A(u8);
 
         impl core::ops::AddAssign<u8> for A {
+            #[verifier::external_body]
             fn add_assign(&mut self, rhs: u8) {
             }
         }
 
         fn test(ar: &mut [A; 20])
         {
+            assume(ar[0].add_assign_req(1));
             ar[0] += 1;
         }
 
-    } => Err(e) => assert_vir_error_msg(e, "The verifier does not yet support the following Rust feature: overloaded op-assignment operator")
+    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -234,10 +237,10 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_recursion_checks_1 verus_code! {
         use vstd::array::*;
-        use vstd::map::*;
+        use vstd::imap::*;
 
         struct Foo {
-            field: [ Map<Foo, int> ; 20 ],
+            field: [ IMap<Foo, int> ; 20 ],
         }
 
     } => Err(err) => assert_vir_error_msg(err, "non-positive position")
@@ -483,5 +486,26 @@ test_verify_one_file! {
             assert(sl@.len() == N);
         }
 
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_array_for_loop verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let ar: [u32; 3] = [0u32, 2u32, 4u32];
+
+            let mut i: usize = 0;
+            for x in it: ar.iter()
+                invariant
+                    i == it.index(),
+                    it.seq().unref() == seq![0u32, 2u32, 4u32],
+            {
+                assert(x < 5);
+                assert(x % 2 == 0);
+                i = i + 1;
+            }
+        }
     } => Ok(())
 }

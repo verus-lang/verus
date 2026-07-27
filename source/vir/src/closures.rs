@@ -15,7 +15,7 @@ use crate::messages::error;
 pub fn check_closure_well_formed(expr: &Expr, is_proof_fn: bool) -> Result<(), VirErr> {
     expr_visitor_check(expr, &mut |scope_map, expr| {
         match &expr.x {
-            ExprX::AssignToPlace { place, .. } | ExprX::BorrowMut(place) => {
+            ExprX::Assign { place, .. } | ExprX::BorrowMut(place) => {
                 if let Some(local) = place_get_local(place) {
                     let PlaceX::Local(ident) = &local.x else { unreachable!() };
                     if !scope_map.contains_key(ident) {

@@ -1,0 +1,27 @@
+[package]
+publish = false
+name = "cargo-verus-toolchains"
+version = "0.1.0"
+edition = "2024"
+description = "Data types and utilities for bundling Verus toolchain info into cargo-verus."
+
+[[bin]]
+name = "create-manifest"
+path = "src/create_manifest.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true }
+itertools = { workspace = true }
+regex = { workspace = true }
+serde = { workspace = true }
+toml = { workspace = true }
+toml_edit = { workspace = true }
+
+[dev-dependencies]
+indoc = { workspace = true }
+pretty_assertions = "1.4.1"
+tempfile = "3"
+
+[lints]
+workspace = true

@@ -107,25 +107,6 @@ pub trait ExPtrPointee: PointeeSized {
 }
 
 #[verifier::external_trait_specification]
-pub trait ExIterator {
-    type ExternalTraitSpecificationFor: core::iter::Iterator;
-
-    type Item;
-
-    fn next(&mut self) -> Option<Self::Item>;
-}
-
-#[verifier::external_trait_specification]
-pub trait ExIntoIterator {
-    type ExternalTraitSpecificationFor: core::iter::IntoIterator;
-}
-
-#[verifier::external_trait_specification]
-pub trait ExIterStep: Clone + PartialOrd + Sized {
-    type ExternalTraitSpecificationFor: core::iter::Step;
-}
-
-#[verifier::external_trait_specification]
 pub trait ExBorrow<Borrowed> where Borrowed: ?Sized {
     type ExternalTraitSpecificationFor: core::borrow::Borrow<Borrowed>;
 }
@@ -168,16 +149,6 @@ pub struct ExOption<V>(core::option::Option<V>);
 #[verifier::accept_recursive_types(T)]
 #[verifier::reject_recursive_types_in_ground_variants(E)]
 pub struct ExResult<T, E>(core::result::Result<T, E>);
-
-pub open spec fn iter_into_iter_spec<I: Iterator>(i: I) -> I {
-    i
-}
-
-#[verifier::when_used_as_spec(iter_into_iter_spec)]
-pub assume_specification<I: Iterator>[ <I as IntoIterator>::into_iter ](i: I) -> (r: I)
-    ensures
-        r == i,
-;
 
 // I don't really expect this to be particularly useful;
 // this is mostly here because I wanted an easy way to test

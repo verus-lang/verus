@@ -169,7 +169,7 @@ impl<T> Instance<T> {
     proof fn new() -> (tracked res: (Instance<T>, MainCounter<T>))
         ensures
             res.1.instance_id() == res.0.id(),
-            res.1.value() === None
+            res.1.value() == None
     {
         let tracked (Tracked(inst), Tracked(c), Tracked(_r)) =
             CountingPermissions::Instance::new(None);
@@ -183,10 +183,10 @@ impl<T> Instance<T> {
     )
         requires
             old(counter).instance_id() == self.id(),
-            old(counter).value() === None,
+            old(counter).value() == None,
         ensures
             final(counter).instance_id() == self.id(),
-            final(counter).value() === Some((0, t)),
+            final(counter).value() == Some((0, t)),
     {
         self.instance.writeable_to_readable(t, t, &mut counter.token);
     }
@@ -203,7 +203,7 @@ impl<T> Instance<T> {
             }
         ensures
             final(counter).instance_id() == self.id(),
-            final(counter).value() === None,
+            final(counter).value() == None,
             t == old(counter).value().unwrap().1,
     {
         self.instance.readable_to_writeable(&mut counter.token)

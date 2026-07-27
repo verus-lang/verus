@@ -92,7 +92,7 @@ make it apparent this will be the empty map when `root` is `None`.
 Observe again that this specification does not refer to the tree internals at all,
 only that it is well-formed and that its abstract view is the empty map.
 
-### Implementing the `insert` operation
+### Implementing `insert`
 
 We can also implement `insert` using a recursive traversal. We search for the given node,
 using the well-formedness conditions to prove that we're doing the right thing.
@@ -111,7 +111,7 @@ Specifically, Verus doesn't yet support an easy way to get a
 Observe that the specification of `TreeMap::insert` is given in terms of
 [`Map::insert`](https://verus-lang.github.io/verus/verusdoc/vstd/map/struct.Map.html#method.remove).
 
-### Implementing the `delete` operation
+### Implementing `delete`
 
 Implementing `delete` is a little harder, because if we need to remove an interior node,
 we might have to reshape the tree a bit. However, since we aren't trying to follow
@@ -124,14 +124,46 @@ any particular balancing strategy, it's still not that bad:
 Observe that the specification of `TreeMap::delete` is given in terms of
 [`Map::remove`](https://verus-lang.github.io/verus/verusdoc/vstd/map/struct.Map.html#method.remove).
 
-### Implementing the `get` operation
+### Implementing `get`
 
-Finally, we implement and verify `TreeMap::get`.
-This function looks up a key and returns an `Option<&V>` (`None` if the key isn't in the
-`TreeMap`).
+Next, we implement `TreeMap::get`.
+This function looks up a key and returns an `Option<&V>` (`None` if the key isn't in the `TreeMap`).
+This is relatively straightforward since it doesn't update anything.
 
 ```rust
 {{#include ../../../../examples/guide/bst_map.rs:get}}
+```
+
+### Implementing `get_mut`
+
+Finally, we implement and verify `TreeMap::get_mut`:
+
+```rust
+fn get_mut(&mut self, key: u64) -> (ret: Option<&mut V>);
+```
+
+This looks a lot like `TreeMap::get`, except we pass around mutable references
+instead of shared references. Perhaps the most interesting aspect is the
+specifications.
+
+Recall [how functions returning mutable borrows are specified](./mutable-references.md#returning-mutable-borrows). In general, the following pattern works well:
+
+ * The initial value of the output reference (`*ret.unwrap()`) should be a function of
+   the initial value input reference (`*old(self)`).
+ * The final value of the input reference (`*final(self)`) should be a function of the
+   the final value of the output reference (`*final(ret.unwrap())`).
+
+Of course, `*ret.unwrap()` will just be an index into the map (like with `get`)
+while `*final(self)` will be a map update based on the new value.
+
+```rust
+{{#include ../../../../examples/guide/bst_map.rs:get_mut_signature}}
+```
+
+The subfunctions are all specified similarly. In full:
+
+```rust
+{{#include ../../../../examples/guide/bst_map.rs:get_mut}}
 ```
 
 ### Using the `TreeMap` as a client
