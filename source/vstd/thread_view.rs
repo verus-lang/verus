@@ -62,6 +62,13 @@ impl ThreadView {
             #[trigger] v1.contains(v3),
     ;
 
+    pub broadcast axiom fn contains_strict_contains(v1: Self, v2: Self)
+        requires
+            #[trigger] v1.contains_strict(v2),
+        ensures
+            v1.contains(v2),
+    ;
+
     /// Joining of views is associative.
     pub broadcast axiom fn join_assoc(v1: Self, v2: Self, v3: Self)
         ensures
@@ -91,6 +98,7 @@ pub broadcast group group_thread_view_axioms {
     ThreadView::contains_refl,
     ThreadView::contains_anti_sym,
     ThreadView::contains_trans,
+    ThreadView::contains_strict_contains,
     ThreadView::join_assoc,
     ThreadView::join_comm,
     ThreadView::join_identity,
