@@ -327,4 +327,4 @@ jobs:
         working-directory: ./source
         run: |
           ./tools/get-z3.sh
-          ./tools/docs.sh --strict # strict will complain if there are warnings
+          ./tools/docs-cargo.sh --strict # strict will complain if there are warnings
