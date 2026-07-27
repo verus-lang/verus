@@ -8,8 +8,6 @@ use cargo_verus_toolchains::{
 use clap::Parser;
 use serde::{Deserialize, Serialize};
 
-use cargo_verus_toolchains::versions::{get_verus_version, get_vstd_version};
-
 type Toolchain = cargo_verus_toolchains::Toolchain<String>;
 
 fn main() -> anyhow::Result<()> {
