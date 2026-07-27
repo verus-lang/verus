@@ -3043,11 +3043,11 @@ dependencies = [
 
 [[package]]
 name = "verus_builtin"
-version = "0.0.0-2026-05-17-0151"
+version = "0.0.0-2026-07-27-0206"
 
 [[package]]
 name = "verus_builtin_macros"
-version = "0.0.0-2026-07-12-0122"
+version = "0.0.0-2026-07-27-0206"
 dependencies = [
  "convert_case",
  "proc-macro2",
@@ -3060,7 +3060,7 @@ dependencies = [
 
 [[package]]
 name = "verus_prettyplease"
-version = "0.0.0-2026-05-31-0205"
+version = "0.0.0-2026-07-27-0206"
 dependencies = [
  "proc-macro2",
  "verus_syn",
@@ -3068,7 +3068,7 @@ dependencies = [
 
 [[package]]
 name = "verus_state_machines_macros"
-version = "0.0.0-2026-06-14-0213"
+version = "0.0.0-2026-07-27-0206"
 dependencies = [
  "indexmap 1.9.3",
  "proc-macro2",
@@ -3078,7 +3078,7 @@ dependencies = [
 
 [[package]]
 name = "verus_syn"
-version = "0.0.0-2026-05-31-0205"
+version = "0.0.0-2026-07-27-0206"
 dependencies = [
  "proc-macro2",
  "quote",
