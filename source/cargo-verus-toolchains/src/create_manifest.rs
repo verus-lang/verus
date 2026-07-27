@@ -1,7 +1,10 @@
 use std::path::PathBuf;
 
 use anyhow::Context;
-use cargo_verus_toolchains::format_manifest;
+use cargo_verus_toolchains::{
+    format_manifest,
+    versions::{get_verus_version, get_vstd_version},
+};
 use clap::Parser;
 use serde::{Deserialize, Serialize};
 
