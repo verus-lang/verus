@@ -89,19 +89,20 @@ pub fn build_vstd(vstd_build: &VstdBuild, mut command: Command) -> Result<ExitCo
     let verus_state_machines_macros_dylib =
         get_artifact_file("verus_state_machines_macros", DLL_EXTENSION)?;
 
-    fn copy_file(src: &Utf8Path, dst: &Utf8Path) -> Result<u64> {
-        std::fs::copy(src.as_std_path(), dst.as_std_path())
-            .with_context(|| format!("copying {src} to {dst}"))
+    fn copy_file(src: &Utf8Path, dst: &Utf8Path) -> Result<()> {
+        let _ = std::fs::copy(src.as_std_path(), dst.as_std_path())
+            .with_context(|| format!("copying {src} to {dst}"))?;
+        Ok(())
     }
 
     // Hoist files.
-    let _ = copy_file(&vstd_rmeta.with_extension("vir"), &vstd_rlib.with_file_name("vstd.vir"))?;
-    let _ = copy_file(verus_builtin_rlib, &vstd_rlib.with_file_name("libverus_builtin.rlib"))?;
-    let _ = copy_file(
+    copy_file(&vstd_rmeta.with_extension("vir"), &vstd_rlib.with_file_name("vstd.vir"))?;
+    copy_file(verus_builtin_rlib, &vstd_rlib.with_file_name("libverus_builtin.rlib"))?;
+    copy_file(
         verus_builtin_macros_dylib,
         &vstd_rlib.with_file_name(format!("{DLL_PREFIX}verus_builtin_macros.{DLL_EXTENSION}")),
     )?;
-    let _ = copy_file(
+    copy_file(
         verus_state_machines_macros_dylib,
         &vstd_rlib
             .with_file_name(format!("{DLL_PREFIX}verus_state_machines_macros.{DLL_EXTENSION}")),
