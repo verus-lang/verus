@@ -657,35 +657,35 @@ macro_rules! atomic_common_methods {
         // TODO - compare_exchange_weak, swap
 
         #[inline(always)]
-        #[verifier::external_body]
-        #[verifier::atomic]
-        // TODO make this proof so that it can be used inside an atomic invariant body
-        pub const fn truncate_history(&mut self, Tracked(pt): Tracked<&mut AtomicPointsTo<$value_ty>>) -> (ts: Ghost<nat>)
+        pub axiom fn truncate_history(tracked &mut self, tracked pt: &mut AtomicPointsTo<$value_ty>, tracked vs: &mut ViewSeen) -> (ts: nat)
             requires
                 old(self).loc() == old(pt).loc()
             ensures
                 *final(self) == *old(self),
                 final(pt).loc() == old(pt).loc(),
-                old(pt).hist().is_max_timestamp(ts@),
-                final(pt).hist().is_singleton(ts@, old(pt).hist().get(ts@).unwrap())
+                old(pt).hist().is_max_timestamp(ts),
+                final(pt).hist().is_singleton(ts, old(pt).hist().get(ts).unwrap()),
+                final(vs)@.contains(old(vs)@),
+                final(pt).get_timestamp(final(vs)@) == Some(ts),
+                forall |t| #[trigger] old(pt).hist().contains_timestamp(t) ==> final(vs)@.contains(old(pt).hist().thread_view(t))
+
             opens_invariants none
-            no_unwind
-        {
-            Ghost::assume_new()
-        }
+        ;
 
         #[inline(always)]
         #[verifier::external_body]
-        pub const fn into_inner(self, Tracked(pt): Tracked<AtomicPointsTo<$value_ty>>) -> ((val, ts): ($value_ty, Ghost<nat>))
+        pub const fn into_inner(self, Tracked(pt): Tracked<AtomicPointsTo<$value_ty>>) -> ((val, vs, ts): ($value_ty, Tracked<ViewSeen>, Ghost<nat>))
             requires
                 self.loc() == pt.loc(),
             ensures
                 pt.hist().is_max_timestamp(ts@),
-                val == pt.hist().value(ts@)
+                val == pt.hist().value(ts@),
+                pt.get_timestamp(vs@@) == Some(ts@),
+                forall |t| #[trigger] pt.hist().contains_timestamp(t) ==> vs@@.contains(pt.hist().thread_view(t))
             opens_invariants none
             no_unwind
         {
-            (self.ato.into_inner(), Ghost::assume_new())
+            (self.ato.into_inner(), Tracked::assume_new(), Ghost::assume_new())
         }
 
         }
