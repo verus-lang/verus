@@ -3475,6 +3475,7 @@ fn lit_to_vir<'tcx>(
             let c = vir::ast::Constant::Char(c);
             mk_expr(ExprX::Const(c))
         }
+        LitKind::Byte(b) => mk_lit_int(false, u128::from(b), typ),
         LitKind::Str(s, _str_style) => {
             let c = vir::ast::Constant::StrSlice(Arc::new(s.to_string()));
             mk_expr(ExprX::Const(c))
