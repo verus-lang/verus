@@ -8,8 +8,8 @@
 
 use crate::ast::{
     ArrayKind, AssertQueryMode, BitwiseOp, Constant, Dt, Fun, IeeeFloatBinaryOp, InequalityOp,
-    Mode, NullaryOpr, Path, Quant, RealArithOp, SpannedTyped, Typ, Typs, UnaryOp, UnaryOpr, VarAt,
-    VarBinders, VarIdent,
+    Label, Mode, NullaryOpr, Path, Quant, RealArithOp, SpannedTyped, Typ, Typs, UnaryOp, UnaryOpr,
+    VarAt, VarBinders, VarIdent,
 };
 use crate::def::Spanned;
 use crate::interpreter::InterpExp;
@@ -271,7 +271,7 @@ pub enum StmX {
         inside_body: bool,
     },
     /// Loop control flow to a labeled or innermost loop
-    BreakOrContinue { label: Option<String>, is_break: bool },
+    BreakOrContinue { label: Label, is_break: bool },
     /// Conditional statement (condition, then-branch, optional else-branch)
     If(Exp, Stm, Option<Stm>),
     /// Loop with invariants and termination measure.
@@ -286,7 +286,7 @@ pub enum StmX {
         is_for_loop: bool,
         /// Unique identifier for this loop instance
         id: u64,
-        label: Option<String>,
+        label: Label,
         /// For simple while loops: (condition setup statements, condition expression)
         cond: Option<(Stm, Exp)>,
         body: Stm,

@@ -525,6 +525,15 @@ pub struct ProofNoteLabel {
     pub is_custom_err: bool,
 }
 
+/// Label for a Loop that a break/continue may point to.
+#[derive(Clone, Debug, Serialize, Deserialize, Hash, ToDebugSNode, PartialEq, Eq)]
+pub struct Label {
+    /// Every loop in a given function body has a unique id
+    pub id: usize,
+    /// User-given name
+    pub name: Option<String>,
+}
+
 /// More complex unary operations (requires Clone rather than Copy)
 /// (Below, "boxed" refers to boxing types in the SMT encoding, not the Rust Box type)
 #[derive(Clone, Debug, Serialize, Deserialize, Hash, ToDebugSNode)]
@@ -1175,7 +1184,7 @@ pub enum ExprX {
         allow_complex_invariants: bool,
         is_for_loop: bool,
         assume_termination: bool,
-        label: Option<String>,
+        label: Label,
         cond: Option<Expr>,
         body: Expr,
         invs: LoopInvariants,
@@ -1197,7 +1206,7 @@ pub enum ExprX {
     /// Return from function
     Return(Option<Expr>),
     /// break or continue
-    BreakOrContinue { label: Option<String>, is_break: bool },
+    BreakOrContinue { label: Label, is_break: bool },
     /// Enter a Rust ghost block, which will be erased during compilation.
     /// In principle, this is not needed, because we can infer which code to erase using modes.
     /// However, we can't easily communicate the inferred modes back to rustc for erasure

@@ -313,6 +313,7 @@ fn mk_bctx<'tcx>(
         header_setting: HeaderSetting::Fn,
         unwrap_param_map: std::rc::Rc::new(std::cell::RefCell::new(HashMap::new())),
         external_opaque_type_map,
+        label_map: std::rc::Rc::new(std::cell::RefCell::new((HashMap::new(), 0))),
     }
 }
 
