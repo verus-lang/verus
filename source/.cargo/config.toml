@@ -12,3 +12,4 @@ RUSTC_BOOTSTRAP = "1"
 RUST_MIN_STACK = "20971520"
 VERUS_IN_VARGO = "1"
 VERUS_Z3_PATH = { value = "z3", relative = true }
+VERUS_CVC5_PATH = { value = "cvc5", relative = true }
