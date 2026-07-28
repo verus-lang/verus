@@ -272,12 +272,17 @@ fn update_workspace_dependencies(manifest: &Path, dependencies: &Vec<&Crate>) {
 fn publish(dir: &Path, dry_run: bool) {
     use std::process::Command;
 
+    let dir = dir.canonicalize().expect("make the crate dir absolute");
+
     let mut cmd = Command::new("cargo");
     cmd.arg("publish");
+    cmd.arg("--manifest-path").arg(dir.join("Cargo.toml"));
     if dry_run {
         cmd.arg("--dry-run");
     }
-    let status = cmd.current_dir(dir).status().expect("Failed to execute cargo publish");
+    let temp_dir = tempfile::tempdir().expect("create fresh workdir for cargo publish");
+    let status =
+        cmd.current_dir(temp_dir.path()).status().expect("Failed to execute cargo publish");
 
     if !status.success() {
         panic!(

@@ -229,6 +229,7 @@ dependencies = [
  "crates_io_api",
  "petgraph 0.8.3",
  "regex",
+ "tempfile",
  "toml_edit",
 ]
 
