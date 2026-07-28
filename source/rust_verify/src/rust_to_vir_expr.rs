@@ -3480,6 +3480,9 @@ fn lit_to_vir<'tcx>(
             let c = vir::ast::Constant::StrSlice(Arc::new(s.to_string()));
             mk_expr(ExprX::Const(c))
         }
+        // LitKind::ByteStr(bs, _str_style) => {
+
+        // }
         LitKind::Float(..) => {
             if let Some(ty) = ty {
                 use rustc_middle::ty::LitToConstInput;

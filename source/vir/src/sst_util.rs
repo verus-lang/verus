@@ -429,6 +429,10 @@ impl ExpX {
                 Constant::Int(i) => (format!("{}", i), 99),
                 Constant::Real(r) => (format!("{}", r), 99),
                 Constant::StrSlice(s) => (format!("\"{}\"", s), 99),
+                Constant::ByteStr(bytes) => {
+                    let escaped = bytes.iter().flat_map(|byte| std::ascii::escape_default(*byte)).map(char::from).collect::<String>();
+                    (format!("b\"{}\"", escaped), 99)
+                }
                 Constant::Char(c) => (format!("'{}'", c), 99),
                 Constant::Float32(c) => (format!("'{}'", c), 99),
                 Constant::Float64(c) => (format!("'{}'", c), 99),

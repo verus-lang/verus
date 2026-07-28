@@ -191,6 +191,12 @@ impl ToDebugSNode for bool {
     }
 }
 
+impl ToDebugSNode for u8 {
+    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
+        Node::Atom(self.to_string())
+    }
+}
+
 impl ToDebugSNode for u32 {
     fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
         Node::Atom(self.to_string())

@@ -768,6 +768,9 @@ pub(crate) fn constant_to_expr(ctx: &Ctx, constant: &crate::ast::Constant) -> Ex
         crate::ast::Constant::Int(i) => big_int_to_expr(i),
         crate::ast::Constant::Real(r) => air::ast_util::mk_real(r),
         crate::ast::Constant::StrSlice(s) => str_to_const_str(ctx, s.clone()),
+        crate::ast::Constant::ByteStr(_) => {
+            panic!("internal error: ByteStr should be lowered before SST-to-AIR")
+        }
         crate::ast::Constant::Char(c) => {
             Arc::new(ExprX::Const(Constant::Nat(Arc::new(char_to_unicode_repr(*c).to_string()))))
         }
