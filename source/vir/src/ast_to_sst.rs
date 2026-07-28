@@ -656,10 +656,6 @@ fn loop_body_has_breaks(loop_label: &Option<String>, body: &Expr) -> usize {
 
 /// Determine if it's possible for control flow to reach the statement after the loop exit.
 /// To be conservative, we need to answer 'yes' (true) if we can't tell.
-///
-/// Note: we originally used this to handle the case where the loop body returns
-/// the never type (!). However, that isn't actually important anymore since loops will
-/// be wrapped in the NeverToAny node. It's likely that this check can simply be removed.
 pub fn can_control_flow_reach_after_loop(expr: &Expr) -> bool {
     match &expr.x {
         ExprX::Loop { label, cond: None, body, .. } => loop_body_has_breaks(label, body) > 0,
@@ -2752,17 +2748,30 @@ pub(crate) fn expr_to_stm_opt(
                     body: stms_to_one_stm(&body.span, body_stms),
                     invs: Arc::new(invs1),
                     decrease: Arc::new(decrease1),
+                    au_branch_bool,
                     // These are filled in later, in sst_vars
                     typ_inv_vars: Arc::new(vec![]),
                     modified_vars: None,
-                    au_branch_bool,
                     pre_modified_params: None,
                 },
             );
+
             if can_control_flow_reach_after_loop(expr) {
                 let ret = Maybe::Some(Value::ImplicitUnit(expr.span.clone()));
                 Ok((vec![while_stm], ret))
             } else {
+                // If it's an infinite loop, add 'assume(false)' and return Never.
+                // Note: this is usually redundant with the NeverToAny node, which usually
+                // exists outside the loop. However, the NeverToAny node is not always
+                // in the optimal place. In the following:
+                //
+                // {
+                //     loop { };     // semi-colon is necessary for this example
+                //     assert(false)
+                // }
+                //
+                // the NeverToAny node goes outside the outer block, thus it would be applied
+                // after the assert. We prefer to return Never early, immediately after the loop.
                 let stms = vec![while_stm, assume_false(&expr.span)];
                 Ok((stms, Maybe::Never))
             }
