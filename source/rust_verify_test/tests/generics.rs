@@ -175,3 +175,19 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_one_fails(e)
 }
+
+test_verify_one_file! {
+    #[test] test_generic_trait_method_impl verus_code! {
+        trait T {
+            spec fn f<P>() -> bool;
+        }
+
+        struct S;
+
+        impl T for S {
+            spec fn f<P>() -> bool {
+                false
+            }
+        }
+    } => Ok(())
+}
