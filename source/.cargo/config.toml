@@ -2,8 +2,9 @@
 target-dir = "target-verus"
 rustflags = [
     "--cfg", "proc_macro_span",
-    "--cfg", "span_locations",
     "--cfg", "procmacro2_semver_exempt",
+    "--cfg", "span_locations",
+    "--cfg", "verus_keep_ghost",
 ]
 
 [env]

@@ -290,15 +290,15 @@ jobs:
               ;;
             "no-std")
               vargo build --vstd-no-std
-              cd vstd
+              cd .. # important to disable the source/.cargo/config.toml
               unset -f cargo
-              cargo build --no-default-features --features alloc
+              cargo build --manifest-path source/vstd/Cargo.toml --no-default-features --features alloc
               ;;
             "no-alloc")
               vargo build --vstd-no-std --vstd-no-alloc
-              cd vstd
+              cd .. # important to disable the source/.cargo/config.toml
               unset -f cargo
-              cargo build --no-default-features
+              cargo build --manifest-path source/vstd/Cargo.toml --no-default-features
               ;;
           esac
 

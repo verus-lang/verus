@@ -283,13 +283,13 @@ jobs:
             "no-std")
               cargo build
               VERUS_Z3_PATH="$PWD/z3" cargo run -p cargo-verus -- build --manifest-path vstd/Cargo.toml --no-default-features --features alloc
-              cd ..
+              cd .. # important to disable the source/.cargo/config.toml
               cargo build --manifest-path source/vstd/Cargo.toml --no-default-features --features alloc
               ;;
             "no-alloc")
               cargo build
               VERUS_Z3_PATH="$PWD/z3" cargo run -p cargo-verus -- build --manifest-path vstd/Cargo.toml --no-default-features
-              cd ..
+              cd .. # important to disable the source/.cargo/config.toml
               cargo build --manifest-path source/vstd/Cargo.toml --no-default-features
               ;;
           esac
