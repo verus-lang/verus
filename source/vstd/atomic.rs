@@ -11,6 +11,7 @@ use core::sync::atomic::{AtomicI64, AtomicU64};
 use super::modes::*;
 use super::pervasive::*;
 use super::prelude::*;
+use super::raw_ptr::PointsTo;
 use super::view::*;
 use super::wrapping::*;
 
@@ -506,6 +507,99 @@ macro_rules! atomic_bool_methods {
         }
     };
 }
+
+macro_rules! ptr_atomic_methods {
+    ($at_ty: ty, $rust_ty: ty, $value_ty: ty) => {
+        verus!{
+    impl $at_ty {
+        /// Store a value via a raw pointer using atomic store.
+        ///
+        /// This is useful if a user wants to implement lockless algorithm for a
+        /// struct where elements are linked through pointers. In that
+        /// case, PointsTo<$value_ty> might be stored in AtomicInvariant.
+        ///
+        /// The specification is similar to raw_ptr::ptr_mut_ref,
+        /// but the implementation is atomic and so we can mark it as verifier::atomic,
+        /// and so it can be used in open_atomic_invariant!.
+        ///
+        /// # Safety:
+        /// The caller must ensure that the pointer is valid and points to a
+        /// properly initialized value of type `$value_ty`, if the caller
+        /// is unverified. It is safe to call this function once it is verified.
+        ///
+        #[inline(always)]
+        #[verifier::atomic]
+        #[verifier::external_body]
+        pub unsafe fn from_ptr_store(ptr: *mut $value_ty, value: $value_ty, Tracked(perm): Tracked<&mut PointsTo<$value_ty>>)
+            requires
+                old(perm).ptr() == ptr,
+            ensures
+                value == final(perm).value(),
+                old(perm).ptr() == final(perm).ptr(),
+                final(perm).is_init(),
+            opens_invariants none
+            no_unwind
+        {
+            unsafe { core::sync::atomic::$rust_ty::from_ptr(ptr).store(value, core::sync::atomic::Ordering::SeqCst) }
+        }
+
+        /// Create a copy of the value via atomic load.
+        ///
+        /// # Safety: see comments for store_from_ptr.
+        #[inline(always)]
+        #[verifier::atomic]
+        #[verifier::external_body]
+        pub unsafe fn from_ptr_load(ptr: *mut $value_ty, perm: Tracked<&PointsTo<$value_ty>>) -> (ret: $value_ty)
+            requires
+                perm.ptr() == ptr,
+                perm.is_init(),
+            ensures
+                ret == perm.value(),
+            opens_invariants none
+            no_unwind
+        {
+            unsafe { core::sync::atomic::$rust_ty::from_ptr(ptr).load(core::sync::atomic::Ordering::SeqCst) }
+        }
+
+        /// Swap the value via atomic swap.
+        ///
+        /// # Safety: see comments for store_from_ptr.
+        #[inline(always)]
+        #[verifier::external_body] /* vattr */
+        #[verifier::atomic] /* vattr */
+        pub unsafe fn from_ptr_swap(ptr: *mut $value_ty, Tracked(perm): Tracked<&mut PointsTo<$value_ty>>, v: $value_ty) -> (ret: $value_ty)
+            requires
+                ptr == old(perm).ptr(),
+            ensures
+                final(perm).value() == v,
+                old(perm).value() == ret,
+                ptr == final(perm).ptr(),
+            opens_invariants none
+            no_unwind
+        {
+            unsafe {
+                core::sync::atomic::$rust_ty::from_ptr(ptr).swap(v, core::sync::atomic::Ordering::SeqCst)}
+        }
+    }
+}
+    };
+}
+
+#[cfg(target_has_atomic = "64")]
+ptr_atomic_methods!(PAtomicU64, AtomicU64, u64);
+
+ptr_atomic_methods!(PAtomicU32, AtomicU32, u32);
+ptr_atomic_methods!(PAtomicU16, AtomicU16, u16);
+ptr_atomic_methods!(PAtomicU8, AtomicU8, u8);
+ptr_atomic_methods!(PAtomicUsize, AtomicUsize, usize);
+
+#[cfg(target_has_atomic = "64")]
+ptr_atomic_methods!(PAtomicI64, AtomicI64, i64);
+
+ptr_atomic_methods!(PAtomicI32, AtomicI32, i32);
+ptr_atomic_methods!(PAtomicI16, AtomicI16, i16);
+ptr_atomic_methods!(PAtomicI8, AtomicI8, i8);
+ptr_atomic_methods!(PAtomicIsize, AtomicIsize, isize);
 
 make_bool_atomic!(PAtomicBool, PermissionBool, PermissionDataBool, AtomicBool, bool);
 
