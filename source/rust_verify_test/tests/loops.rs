@@ -1909,3 +1909,34 @@ test_verify_one_file! {
         assert!(err.warnings[3].message.contains("1 warning emitted"));
     }
 }
+
+test_verify_one_file! {
+    #[test] break_in_condition_issue2713 verus_code! {
+        fn cond() -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test() {
+            let mut i = 0;
+            'a: while ({ if cond() { break 'a; } i < 10 }) {
+                i += 1;
+            }
+            assert(i >= 10); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] break_in_condition_nested_issue2714 verus_code! {
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test() {
+            let mut i = 0;
+            'a: while i < 10
+            {
+                #[verifier::loop_isolation(false)]
+                while ({ break 'a; }) {
+                }
+            }
+            assert(i >= 10); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
