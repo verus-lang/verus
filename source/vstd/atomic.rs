@@ -521,16 +521,10 @@ macro_rules! ptr_atomic_methods {
         /// The specification is similar to raw_ptr::ptr_mut_ref,
         /// but the implementation is atomic and so we can mark it as verifier::atomic,
         /// and so it can be used in open_atomic_invariant!.
-        ///
-        /// # Safety:
-        /// The caller must ensure that the pointer is valid and points to a
-        /// properly initialized value of type `$value_ty`, if the caller
-        /// is unverified. It is safe to call this function once it is verified.
-        ///
         #[inline(always)]
         #[verifier::atomic]
         #[verifier::external_body]
-        pub unsafe fn from_ptr_store(ptr: *mut $value_ty, value: $value_ty, Tracked(perm): Tracked<&mut PointsTo<$value_ty>>)
+        pub fn from_ptr_store(ptr: *mut $value_ty, value: $value_ty, Tracked(perm): Tracked<&mut PointsTo<$value_ty>>)
             requires
                 old(perm).ptr() == ptr,
             ensures
@@ -540,16 +534,14 @@ macro_rules! ptr_atomic_methods {
             opens_invariants none
             no_unwind
         {
-            unsafe { core::sync::atomic::$rust_ty::from_ptr(ptr).store(value, core::sync::atomic::Ordering::SeqCst) }
+            unsafe { $rust_ty::from_ptr(ptr).store(value, Ordering::SeqCst) }
         }
 
         /// Create a copy of the value via atomic load.
-        ///
-        /// # Safety: see comments for store_from_ptr.
         #[inline(always)]
         #[verifier::atomic]
         #[verifier::external_body]
-        pub unsafe fn from_ptr_load(ptr: *mut $value_ty, perm: Tracked<&PointsTo<$value_ty>>) -> (ret: $value_ty)
+        pub fn from_ptr_load(ptr: *mut $value_ty, perm: Tracked<&PointsTo<$value_ty>>) -> (ret: $value_ty)
             requires
                 perm.ptr() == ptr,
                 perm.is_init(),
@@ -558,16 +550,14 @@ macro_rules! ptr_atomic_methods {
             opens_invariants none
             no_unwind
         {
-            unsafe { core::sync::atomic::$rust_ty::from_ptr(ptr).load(core::sync::atomic::Ordering::SeqCst) }
+            unsafe { $rust_ty::from_ptr(ptr).load(Ordering::SeqCst) }
         }
 
         /// Swap the value via atomic swap.
-        ///
-        /// # Safety: see comments for store_from_ptr.
         #[inline(always)]
         #[verifier::external_body] /* vattr */
         #[verifier::atomic] /* vattr */
-        pub unsafe fn from_ptr_swap(ptr: *mut $value_ty, Tracked(perm): Tracked<&mut PointsTo<$value_ty>>, v: $value_ty) -> (ret: $value_ty)
+        pub fn from_ptr_swap(ptr: *mut $value_ty, Tracked(perm): Tracked<&mut PointsTo<$value_ty>>, v: $value_ty) -> (ret: $value_ty)
             requires
                 ptr == old(perm).ptr(),
             ensures
@@ -578,7 +568,7 @@ macro_rules! ptr_atomic_methods {
             no_unwind
         {
             unsafe {
-                core::sync::atomic::$rust_ty::from_ptr(ptr).swap(v, core::sync::atomic::Ordering::SeqCst)}
+                $rust_ty::from_ptr(ptr).swap(v, Ordering::SeqCst)}
         }
     }
 }
