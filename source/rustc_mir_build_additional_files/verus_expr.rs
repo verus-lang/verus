@@ -250,6 +250,16 @@ pub(crate) fn scope_post<'tcx>(cx: &mut ThirBuildCx<'tcx>, expr_id: ExprId) -> E
         panic!("scope_post expected ExprKind::Scope");
     };
 
+    // Replace `Scope(two_phase_mutable_reference_tie(&mut a, &mut b))` with:
+    // two_phase_mutable_reference_tie(Scope(&mut a), &mut b)
+    //
+    // The reason to do this is that the mir_build code specifically looks for the following
+    // pattern: `func_call(..., two_phase_mutable_reference_tie(...), ...)`
+    // and having a Scope in between interferes with that.
+    //
+    // REVIEW: given the complexity of this transformation, it may be better to just handle
+    // Scopes in the mir building code so we can delete this step.
+
     match cx.thir.exprs[value].kind {
         thir::ExprKind::Call { ty, fun, ref args, from_hir_call, fn_span } => {
             let Some(erasure_ctxt) = cx.verus_ctxt.ctxt.clone() else {

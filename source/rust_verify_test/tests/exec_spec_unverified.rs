@@ -145,3 +145,178 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    /// Tests a basic inherent impl with a `&self` method in unverified mode.
+    #[test] test_exec_spec_unverified_impl_basic IMPORTS.to_string() + verus_code_str! {
+        exec_spec_unverified! {
+            struct Point {
+                x: u32,
+                y: u32,
+            }
+
+            impl Point {
+                spec fn get_x(&self) -> u32 {
+                    self.x
+                }
+
+                spec fn sum(&self) -> u32
+                    recommends self.x + self.y <= u32::MAX
+                {
+                    (self.x + self.y) as u32
+                }
+            }
+        }
+
+        fn sanity_check() {
+            let p = ExecPoint { x: 3, y: 4 };
+            let xv = p.exec_get_x();
+            assert(xv == 3);
+            let s = p.exec_sum();
+            if s == 7 {
+                assert(p.x + p.y == 7);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    /// Tests an impl on an enum with `&self` methods over multiple variants in unverified mode.
+    #[test] test_exec_spec_unverified_impl_enum IMPORTS.to_string() + verus_code_str! {
+        exec_spec_unverified! {
+            enum Shape {
+                Circle(u32),
+                Rect { w: u32, h: u32 },
+                Unit,
+            }
+
+            impl Shape {
+                spec fn is_unit(&self) -> bool {
+                    match self {
+                        Shape::Unit => true,
+                        _ => false,
+                    }
+                }
+
+                spec fn describe(&self) -> SpecString {
+                    match self {
+                        Shape::Circle(_) => "circle"@,
+                        Shape::Rect { .. } => "rect"@,
+                        Shape::Unit => "unit"@,
+                    }
+                }
+            }
+        }
+
+        fn sanity_check() {
+            let c = ExecShape::Circle(5);
+            let u = ExecShape::Unit;
+            let c_is = c.exec_is_unit();
+            let u_is = u.exec_is_unit();
+            assert(!c_is);
+            assert(u_is);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    /// Tests impl methods with additional parameters beyond the receiver in unverified mode.
+    #[test] test_exec_spec_unverified_impl_method_args IMPORTS.to_string() + verus_code_str! {
+        exec_spec_unverified! {
+            struct Counter {
+                count: u32,
+            }
+
+            impl Counter {
+                spec fn plus(&self, n: u32) -> u32
+                    recommends self.count + n <= u32::MAX
+                {
+                    (self.count + n) as u32
+                }
+
+                spec fn between(&self, lo: u32, hi: u32) -> bool {
+                    lo <= self.count && self.count <= hi
+                }
+            }
+        }
+
+        fn sanity_check() {
+            let c = ExecCounter { count: 10 };
+            let b = c.exec_between(0, 20);
+            if b {
+                assert(0 <= c.count && c.count <= 20);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    /// Tests impls used across both verified and unverified modules.
+    #[test] test_exec_spec_unverified_impl_mixed_modes IMPORTS.to_string() + verus_code_str! {
+        exec_spec_verified! {
+            struct Pair(u32, u32);
+
+            impl Pair {
+                spec fn ordered(&self) -> bool {
+                    self.0 <= self.1
+                }
+            }
+        }
+
+        exec_spec_unverified! {
+            spec fn pair_eq_ordered(p: Pair) -> bool {
+                p.ordered()
+            }
+        }
+
+        fn sanity_check() {
+            let p = ExecPair(2, 5);
+            let o = p.exec_ordered();
+            let r = exec_pair_eq_ordered(&p);
+            assert(o == r);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    /// Tests an unverified impl using a quantifier in the method body.
+    #[test] test_exec_spec_unverified_impl_quant IMPORTS.to_string() + verus_code_str! {
+        exec_spec_unverified! {
+            struct Bag {
+                items: Seq<u8>,
+            }
+
+            impl Bag {
+                spec fn all_nonzero(&self) -> bool {
+                    forall |i: usize| 0 <= i < self.items.len() ==> self.items[i as int] != 0
+                }
+            }
+        }
+
+        fn sanity_check() {
+            let b = ExecBag { items: vec![1, 2, 3] };
+            let _ = b.exec_all_nonzero();
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    /// Tests that trait impls are still rejected in unverified mode.
+    #[test] test_exec_spec_unverified_impl_trait_rejected IMPORTS.to_string() + verus_code_str! {
+        exec_spec_unverified! {
+            struct S {
+                x: u32,
+            }
+
+            trait T {
+                spec fn f(&self) -> u32;
+            }
+
+            impl T for S {
+                spec fn f(&self) -> u32 {
+                    self.x
+                }
+            }
+        }
+    } => Err(_)
+}

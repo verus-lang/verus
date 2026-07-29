@@ -28,6 +28,7 @@ verus! {
 /// operator `=~=`.
 #[verifier::ext_equal]
 #[verifier::reject_recursive_types(A)]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::iset::ISet")]
 pub struct ISet<A> {
     set: spec_fn(A) -> bool,
 }

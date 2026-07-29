@@ -474,7 +474,7 @@ pub broadcast proof fn lemma_vec_obeys_eq_spec<T: PartialEq>()
     ensures
         #[trigger] super::super::laws_eq::obeys_eq::<Vec<T>>(),
 {
-    broadcast use {axiom_spec_len, super::super::seq::group_seq_axioms};
+    broadcast use {axiom_spec_len, super::super::seq::group_seq_lemmas};
     reveal(super::super::laws_eq::obeys_eq_spec_properties);
 }
 
@@ -485,7 +485,7 @@ pub broadcast proof fn lemma_vec_obeys_view_eq<T: PartialEq + View>()
         #[trigger] super::super::laws_eq::obeys_view_eq::<Vec<T>>(),
 {
     use super::cmp::PartialEqSpec;
-    broadcast use {axiom_spec_len, super::super::seq::group_seq_axioms};
+    broadcast use {axiom_spec_len, super::super::seq::group_seq_lemmas};
     reveal(super::super::laws_eq::obeys_eq_spec_properties);
     reveal(super::super::laws_eq::obeys_concrete_eq);
     reveal(super::super::laws_eq::obeys_view_eq);
@@ -499,7 +499,7 @@ pub broadcast proof fn lemma_vec_obeys_deep_eq<T: PartialEq + DeepView>()
         #[trigger] super::super::laws_eq::obeys_deep_eq::<Vec<T>>(),
 {
     use super::cmp::PartialEqSpec;
-    broadcast use {axiom_spec_len, super::super::seq::group_seq_axioms};
+    broadcast use {axiom_spec_len, super::super::seq::group_seq_lemmas};
     reveal(super::super::laws_eq::obeys_eq_spec_properties);
     reveal(super::super::laws_eq::obeys_deep_eq);
     assert(forall|x: Vec<T>, y: Vec<T>| x.eq_spec(&y) ==> x.deep_view() == y.deep_view());

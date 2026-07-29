@@ -11,13 +11,13 @@ use crate::ast::{
     AssocTypeImpl, AutospecUsage, BinaryOp, Binder, BoundsCheck, BuiltinSpecFun, ByRef, CallTarget,
     ChainedOp, ClosureKind, Constant, CtorPrintStyle, CtorUpdateTail, Datatype,
     DatatypeTransparency, DatatypeX, Dt, Expr, ExprX, Exprs, Field, FieldOpr, Fun, Function,
-    FunctionKind, Ident, IntRange, ItemKind, Krate, KrateX, Mode, MultiOp, Path, Pattern,
-    PatternBinding, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX, TraitImpl, Typ, TypX,
-    UnaryOp, UnaryOpr, Variant, VariantCheck, VirErr, Visibility,
+    FunctionKind, Ident, IntRange, ItemKind, Krate, KrateX, LogicalOp, Mode, MultiOp, Path,
+    Pattern, PatternBinding, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX, TraitImpl, Typ,
+    TypX, UnaryOp, UnaryOpr, Variant, VariantCheck, VirErr, Visibility,
 };
 use crate::ast_util::{
-    conjoin, mk_eq, place_to_spec_expr, typ_args_for_datatype_typ, undecorate_typ, unit_typ,
-    wrap_in_trigger,
+    conjoin, mk_eq, mk_implies, place_to_spec_expr, typ_args_for_datatype_typ, undecorate_typ,
+    unit_typ, wrap_in_trigger,
 };
 use crate::ast_visitor::VisitorScopeMap;
 use crate::context::GlobalCtx;
@@ -321,7 +321,7 @@ fn simplify_one_expr(
     match &expr.x {
         ExprX::Var(x) => Ok(expr.new_x(ExprX::Var(rename_var(state, scope_map, x)))),
         ExprX::VarAt(x, at) => Ok(expr.new_x(ExprX::VarAt(rename_var(state, scope_map, x), *at))),
-        ExprX::AssignToPlace { place, .. }
+        ExprX::Assign { place, .. }
         | ExprX::BorrowMut(place)
         | ExprX::TwoPhaseBorrowMut(place)
         | ExprX::BorrowMutTracked(place) => {
@@ -365,20 +365,26 @@ fn simplify_one_expr(
                 const_var: true,
                 assume_external_allowed: false,
             };
-            let call = ExprX::Call(
-                CallTarget::Fun(
+            let call = ExprX::Call {
+                target: CallTarget::Fun(
                     CallTargetKind::Static,
                     x.clone(),
                     Arc::new(vec![]),
                     Arc::new(vec![]),
                     call_target_attrs,
                 ),
-                Arc::new(vec![]),
-                None,
-            );
+                args: Arc::new(vec![]),
+                post_args: None,
+                body: None,
+            };
             Ok(SpannedTyped::new(&expr.span, &expr.typ, call))
         }
-        ExprX::Call(CallTarget::Fun(kind, tgt, typs, impl_paths, attrs), args, post_args) => {
+        ExprX::Call {
+            target: CallTarget::Fun(kind, tgt, typs, impl_paths, attrs),
+            args,
+            post_args,
+            body,
+        } => {
             assert!(attrs.autospec == AutospecUsage::Final);
 
             let is_trait_impl = match kind {
@@ -399,8 +405,8 @@ fn simplify_one_expr(
                 args.clone()
             };
 
-            let call = ExprX::Call(
-                CallTarget::Fun(
+            let call = ExprX::Call {
+                target: CallTarget::Fun(
                     kind.clone(),
                     tgt.clone(),
                     typs.clone(),
@@ -408,8 +414,9 @@ fn simplify_one_expr(
                     attrs.clone(),
                 ),
                 args,
-                post_args.clone(),
-            );
+                post_args: post_args.clone(),
+                body: body.clone(),
+            };
             Ok(SpannedTyped::new(&expr.span, &expr.typ, call))
         }
         ExprX::Ctor(name, variant, partial_binders, Some(update)) => {
@@ -530,7 +537,7 @@ fn simplify_one_expr(
                 if i == 0 {
                     conjunction = binary;
                 } else {
-                    let exprx = ExprX::Binary(BinaryOp::And, conjunction, binary);
+                    let exprx = ExprX::Logical(LogicalOp::And, conjunction, binary);
                     conjunction = SpannedTyped::new(&span, &expr.typ, exprx);
                 }
             }
@@ -570,7 +577,7 @@ fn simplify_one_expr(
                         &guard.typ,
                         ExprX::MatchGuardFreeze(place.clone(), guard.clone()),
                     );
-                    let test_exp = ExprX::Binary(BinaryOp::And, test_pattern, guard);
+                    let test_exp = ExprX::Logical(LogicalOp::And, test_pattern, guard);
                     let test = SpannedTyped::new(&arm.x.pattern.span, &t_bool, test_exp);
                     let block = ExprX::Block(Arc::new(decls.clone()), Some(test));
                     SpannedTyped::new(&arm.x.pattern.span, &t_bool, block)
@@ -785,15 +792,16 @@ fn mk_closure_req_call(
     SpannedTyped::new(
         span,
         &bool_typ,
-        ExprX::Call(
-            CallTarget::BuiltinSpecFun(
+        ExprX::Call {
+            target: CallTarget::BuiltinSpecFun(
                 BuiltinSpecFun::ClosureReq,
                 closure_trait_call_typ_args(state, fn_val, params),
                 Arc::new(vec![]),
             ),
-            Arc::new(vec![fn_val.clone(), arg_tuple.clone()]),
-            None,
-        ),
+            args: Arc::new(vec![fn_val.clone(), arg_tuple.clone()]),
+            post_args: None,
+            body: None,
+        },
     )
 }
 
@@ -810,15 +818,16 @@ fn mk_closure_ens_call(
     SpannedTyped::new(
         span,
         &bool_typ,
-        ExprX::Call(
-            CallTarget::BuiltinSpecFun(
+        ExprX::Call {
+            target: CallTarget::BuiltinSpecFun(
                 builtin_spec_fun,
                 closure_trait_call_typ_args(state, fn_val, params),
                 Arc::new(vec![]),
             ),
-            Arc::new(vec![fn_val.clone(), arg_tuple.clone(), ret_arg.clone()]),
-            None,
-        ),
+            args: Arc::new(vec![fn_val.clone(), arg_tuple.clone(), ret_arg.clone()]),
+            post_args: None,
+            body: None,
+        },
     )
 }
 
@@ -883,11 +892,7 @@ fn exec_closure_spec_requires(
         wrap_in_trigger(&mk_closure_req_call(state, span, params, closure_var, &tuple_var));
 
     let bool_typ = Arc::new(TypX::Bool);
-    let req_quant_body = SpannedTyped::new(
-        span,
-        &bool_typ,
-        ExprX::Binary(BinaryOp::Implies, reqs_body, closure_req_call.clone()),
-    );
+    let req_quant_body = mk_implies(span, &reqs_body, &closure_req_call);
 
     let forall = Quant { quant: air::ast::Quant::Forall };
     let binders = Arc::new(vec![Arc::new(VarBinderX { name: tuple_ident, a: tuple_typ })]);
@@ -953,11 +958,7 @@ fn exec_closure_spec_ensures(
     ));
 
     let bool_typ = Arc::new(TypX::Bool);
-    let ens_quant_body = SpannedTyped::new(
-        span,
-        &bool_typ,
-        ExprX::Binary(BinaryOp::Implies, closure_ens_call.clone(), enss_body),
-    );
+    let ens_quant_body = mk_implies(span, &closure_ens_call, &enss_body);
 
     let forall = Quant { quant: air::ast::Quant::Forall };
     let binders =

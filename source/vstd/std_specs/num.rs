@@ -1,9 +1,26 @@
 #![allow(unused_imports)]
+use super::super::arithmetic::div_mod::{rust_div, rust_rem};
 use super::super::prelude::*;
 use super::super::wrapping::*;
 
 use core::cmp::Ordering;
 
+verus! {
+
+/// The smallest multiple of `y` that is `>= x` (for `y > 0`), matching the value
+/// std's `next_multiple_of` / `checked_next_multiple_of` compute.
+pub open spec fn next_multiple_of(x: int, y: int) -> int
+    recommends
+        y > 0,
+{
+    if x % y == 0 {
+        x
+    } else {
+        x + (y - x % y)
+    }
+}
+
+} // verus!
 macro_rules! num_specs {
     ($uN: ty, $iN: ty, $mod_u_tmp:ident, $mod_i_tmp:ident, $mod_u:ident, $mod_i:ident, $range:expr) => {
         verus! {
@@ -159,6 +176,19 @@ macro_rules! num_specs {
                         None
                     } else {
                         Some((x * y) as $uN)
+                    }
+                );
+
+            #[verifier::allow_in_spec]
+            #[cfg(not(verus_verify_core))]
+            pub assume_specification[<$uN>::checked_next_multiple_of](x: $uN, rhs: $uN) -> Option<$uN>
+                returns (
+                    if rhs == 0 {
+                        None
+                    } else if next_multiple_of(x as int, rhs as int) > <$uN>::MAX {
+                        None
+                    } else {
+                        Some(next_multiple_of(x as int, rhs as int) as $uN)
                     }
                 );
 
@@ -404,28 +434,10 @@ macro_rules! num_specs {
             #[cfg(not(verus_verify_core))]
             pub assume_specification[<$iN>::checked_div](lhs: $iN, rhs: $iN) -> Option<$iN>
                 returns (
-                    if rhs == 0 {
+                    if rhs == 0 || (lhs == <$iN>::MIN && rhs == -1) {
                         None
-                    }
-                    else {
-                        let x = lhs as int;
-                        let d = rhs as int;
-                        let output = if x == 0 {
-                            0
-                        } else if x > 0 && d > 0 {
-                            x / d
-                        } else if x < 0 && d < 0 {
-                            ((x * -1) / (d * -1))
-                        } else if x < 0 {
-                            ((x * -1) / d) * -1
-                        } else {  // d < 0
-                            (x / (d * -1)) * -1
-                        };
-                        if output < <$iN>::MIN || output > <$iN>::MAX {
-                            None
-                        } else {
-                            Some(output as $iN)
-                        }
+                    } else {
+                        Some(rust_div(lhs as int, rhs as int) as $iN)
                     }
                 );
 
@@ -433,14 +445,10 @@ macro_rules! num_specs {
             #[cfg(not(verus_verify_core))]
             pub assume_specification[<$iN>::checked_div_euclid](lhs: $iN, rhs: $iN) -> Option<$iN>
                 returns (
-                    if rhs == 0 {
+                    if rhs == 0 || (lhs == <$iN>::MIN && rhs == -1) {
                         None
-                    }
-                    else if <$iN>::MIN <= lhs / rhs <= <$iN>::MAX {
+                    } else {
                         Some((lhs / rhs) as $iN)
-                    }
-                    else {
-                        None
                     }
                 );
 
@@ -448,28 +456,10 @@ macro_rules! num_specs {
             #[cfg(not(verus_verify_core))]
             pub assume_specification[<$iN>::checked_rem](lhs: $iN, rhs: $iN) -> Option<$iN>
                 returns (
-                    if rhs == 0 {
+                    if rhs == 0 || (lhs == <$iN>::MIN && rhs == -1) {
                         None
-                    }
-                    else {
-                        let x = lhs as int;
-                        let d = rhs as int;
-                        let output = if x == 0 {
-                            0
-                        } else if x > 0 && d > 0 {
-                            x % d
-                        } else if x < 0 && d < 0 {
-                            ((x * -1) % (d * -1)) * -1
-                        } else if x < 0 {
-                            ((x * -1) % d) * -1
-                        } else {  // d < 0
-                            x % (d * -1)
-                        };
-                        if output < <$iN>::MIN || output > <$iN>::MAX {
-                            None
-                        } else {
-                            Some(output as $iN)
-                        }
+                    } else {
+                        Some(rust_rem(lhs as int, rhs as int) as $iN)
                     }
                 );
 
@@ -477,14 +467,10 @@ macro_rules! num_specs {
             #[cfg(not(verus_verify_core))]
             pub assume_specification[<$iN>::checked_rem_euclid](lhs: $iN, rhs: $iN) -> Option<$iN>
                 returns (
-                    if rhs == 0 {
+                    if rhs == 0 || (lhs == <$iN>::MIN && rhs == -1) {
                         None
-                    }
-                    else if <$iN>::MIN <= lhs % rhs <= <$iN>::MAX {
+                    } else {
                         Some((lhs % rhs) as $iN)
-                    }
-                    else {
-                        None
                     }
                 );
         }

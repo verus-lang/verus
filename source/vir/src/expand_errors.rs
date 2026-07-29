@@ -1,7 +1,7 @@
 use crate::ast::{
-    ArchWordBits, BinaryOp, BinaryOpr, Dt, FieldOpr, Fun, FunctionKind, Ident, IntRange, Quant,
-    SpannedTyped, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarBinders, VarIdent, VarIdentDisambiguate,
-    Variant, VariantCheck,
+    ArchWordBits, BinaryOpr, Dt, FieldOpr, Fun, FunctionKind, Ident, IntRange, Quant, SpannedTyped,
+    Typ, TypX, Typs, UnaryOp, UnaryOpr, VarBinders, VarIdent, VarIdentDisambiguate, Variant,
+    VariantCheck,
 };
 use crate::ast_to_sst::get_function_sst;
 use crate::ast_util::{is_transparent_to, type_is_bool, undecorate_typ};
@@ -10,7 +10,8 @@ use crate::def::Spanned;
 use crate::messages::Span;
 use crate::sst::PostConditionSst;
 use crate::sst::{
-    AssertId, BndX, CallFun, Exp, ExpX, Exps, LocalDecl, LocalDeclKind, LocalDeclX, Stm, StmX,
+    AssertId, BinaryOp, BndX, CallFun, Exp, ExpX, Exps, LocalDecl, LocalDeclKind, LocalDeclX, Stm,
+    StmX,
 };
 use crate::sst::{FuncCheckSst, FunctionSst};
 use crate::sst_util::{
@@ -99,10 +100,14 @@ pub fn get_expansion_ctx(stm: &Stm, assert_id: &AssertId) -> ExpansionContext {
 
 fn get_fuel_at_id(stm: &Stm, a_id: &AssertId, fuels: &mut HashMap<Fun, u32>) -> bool {
     match &stm.x {
-        StmX::Call { assert_id, .. }
-        | StmX::Assert(assert_id, ..)
-        | StmX::Return { assert_id, .. } => *assert_id == Some(a_id.clone()),
-        StmX::AssertBitVector { requires: _, ensures: _ }
+        StmX::Assert(assert_id, ..) | StmX::Return { assert_id, .. } => {
+            assert_id.as_ref() == Some(a_id)
+        }
+        StmX::Call { assert_id, body, .. } => {
+            assert_id.as_ref() == Some(a_id)
+                || body.as_ref().is_some_and(|stm| get_fuel_at_id(stm, a_id, fuels))
+        }
+        StmX::AssertBitVector { .. }
         | StmX::AssertCompute(..)
         | StmX::Assume(..)
         | StmX::Assign { .. }
@@ -477,14 +482,14 @@ fn expand_exp_rec(
                 )
             }
         }
-        ExpX::Binary(BinaryOp::Eq(_) | BinaryOp::Ne | BinaryOp::Xor, e1, e2)
+        ExpX::Binary(BinaryOp::Eq | BinaryOp::Ne | BinaryOp::Xor, e1, e2)
         | ExpX::BinaryOpr(BinaryOpr::ExtEq(..), e1, e2) => {
             if did_split_yet {
                 return leaf(state, CanExpandFurther::Yes);
             }
 
             let (is_neq, ext) = match &exp.x {
-                ExpX::Binary(BinaryOp::Eq(_), ..) => (false, None),
+                ExpX::Binary(BinaryOp::Eq, ..) => (false, None),
                 ExpX::Binary(BinaryOp::Ne | BinaryOp::Xor, ..) => (true, None),
                 ExpX::BinaryOpr(BinaryOpr::ExtEq(deep, _), ..) => (false, Some(*deep)),
                 _ => unreachable!(),

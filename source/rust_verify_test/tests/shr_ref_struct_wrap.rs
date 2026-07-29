@@ -117,7 +117,7 @@ test_verify_one_file! {
         {
             shr_ref_struct_wrap(y, &XWithInv { g: y.y, y: arbitrary() }, "", "y")
         }
-    } => Err(err) => assert_vir_error_msg(err, "type invariant function is not visible to this program point, which requires us to prove the invariant is preserved")
+    } => Err(err) => assert_vir_error_msg(err, "type invariant function `test_crate::m::inv` is not visible to this program point, which requires us to prove the invariant is preserved")
 }
 
 test_verify_one_file! {

@@ -140,6 +140,8 @@ fn main() {
         child_args.push("--cfg".to_string());
         child_args.push("feature=\"alloc\"".to_string());
     }
+    child_args.push("--cfg".to_string());
+    child_args.push("feature=\"nonzero_internals\"".to_string());
     child_args.push(VSTD_RS_PATH.to_string());
 
     let cmd = verus_target_path.join("rust_verify");

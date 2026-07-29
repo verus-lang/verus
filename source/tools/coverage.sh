@@ -50,7 +50,10 @@ trap 'rm -rf "${PROF_DIR}"' EXIT
 export VERUS_Z3_PATH="${VERUS_Z3_PATH:-${SOURCE_DIR}/z3}"
 
 # Rust flags to instrument for coverage.
-export RUSTFLAGS="-C instrument-coverage ${RUSTFLAGS:-}"
+#
+# Remap paths to be relative to source/ so the report isn't littered with
+# absolute paths.
+export RUSTFLAGS="-C instrument-coverage --remap-path-prefix=${SOURCE_DIR}/= ${RUSTFLAGS:-}"
 
 # Build the instrumented binary.
 #
@@ -80,17 +83,21 @@ GIT_VERSION="$(git describe --always --dirty)"
 
 # Generate the coverage report.
 #
-# Scoped to SOURCE_DIR; llvm-cov only reports files that have coverage maps in
-# the binary, so this keeps the verus crates and drops external deps
-# automatically.
+# Ignoring absolute paths scopes the report to the verus source tree.  After
+# path remapping in rustc, the verus crates have relative paths while external
+# dependencies are still absolute.
+IGNORE_REGEX="^/"
 mkdir -p "${OUT_DIR}"
 llvm-cov show -format=html -output-dir="${OUT_DIR}" \
 	--project-title="rust_verify_test coverage (${GIT_VERSION})" --show-created-time \
-	--instr-profile="${PROF_DATA}" "${BIN}" "${SOURCE_DIR}"
+	--ignore-filename-regex="${IGNORE_REGEX}" \
+	--instr-profile="${PROF_DATA}" "${BIN}"
 llvm-cov report \
-	--instr-profile="${PROF_DATA}" "${BIN}" "${SOURCE_DIR}" >"${OUT_DIR}/coverage.txt"
+	--ignore-filename-regex="${IGNORE_REGEX}" \
+	--instr-profile="${PROF_DATA}" "${BIN}" >"${OUT_DIR}/coverage.txt"
 llvm-cov export -format=lcov \
-	--instr-profile="${PROF_DATA}" "${BIN}" "${SOURCE_DIR}" >"${OUT_DIR}/coverage.lcov"
+	--ignore-filename-regex="${IGNORE_REGEX}" \
+	--instr-profile="${PROF_DATA}" "${BIN}" >"${OUT_DIR}/coverage.lcov"
 
 echo "report: ${OUT_DIR}/index.html"
 echo "text:   ${OUT_DIR}/coverage.txt"

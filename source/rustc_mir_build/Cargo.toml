@@ -5,8 +5,8 @@ edition = "2024"
 
 [dependencies]
 # tidy-alphabetical-start
-itertools = "0.12"
-tracing = "0.1"
+itertools = { workspace = true }
+tracing = { workspace = true }
 # tidy-alphabetical-end
 
 [lints.clippy]

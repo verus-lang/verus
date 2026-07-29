@@ -245,6 +245,19 @@ impl<T> Frac<T> {
         let (x, _) = self.r.validate();
     }
 
+    /// Allowed values for a token's quantity when there is another token.
+    pub proof fn bounded_with(tracked &mut self, tracked other: &Self)
+        requires
+            self.id() == other.id(),
+        ensures
+            0.0real < (old(self).frac() + other.frac()) <= 1.0real,
+            *old(self) == *final(self),
+    {
+        use_type_invariant(&*self);
+        use_type_invariant(other);
+        self.r.validate_with_shared(&other.r);
+    }
+
     /// Obtain shared access to the underlying resource.
     pub proof fn borrow(tracked &self) -> (tracked ret: &T)
         ensures

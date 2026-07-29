@@ -15,6 +15,10 @@ use toml_edit::DocumentMut;
 
 const LINE_COUNT_DIR: &str = "source/tools/line_count";
 
+// Manifest of the `source` workspace, which centralizes the versions of our internal
+// crates in its [workspace.dependencies] table
+const WORKSPACE_MANIFEST: &str = "source/Cargo.toml";
+
 /// This tool scans for modified crates in the Verus repository and updates the version numbers
 /// in their respective Cargo.toml files. In cases where one crate depends on another, we also
 /// update the version of the dependency in the dependent crate's Cargo.toml.  Finally, when vstd
@@ -78,7 +82,7 @@ fn compute_immediate_deps(crates: &Vec<Crate>) -> HashMap<Crate, Vec<Crate>> {
 
         // Read the Cargo.toml file
         let content = fs::read_to_string(&cargo_toml_path)
-            .expect(format!("Failed to read {}", cargo_toml_path.display()).as_str());
+            .unwrap_or_else(|e| panic!("Failed to read {}: {e:?}", cargo_toml_path.display()));
         let doc = content.parse::<DocumentMut>().expect("Failed to parse Cargo.toml");
 
         for maybe_dep in crates {
@@ -181,7 +185,7 @@ fn read_toml_version(dir: &Path) -> String {
 
     // Read the Cargo.toml file
     let content = fs::read_to_string(&cargo_toml_path)
-        .expect(format!("Failed to read {}", cargo_toml_path.display()).as_str());
+        .unwrap_or_else(|e| panic!("Failed to read {}: {e:?}", cargo_toml_path.display()));
     let doc = content.parse::<DocumentMut>().expect("Failed to parse Cargo.toml");
 
     doc["package"]["version"].as_str().expect("Version must be a string").to_string()
@@ -192,7 +196,7 @@ fn update_toml_version(dir: &Path) {
 
     // Read the Cargo.toml file
     let content = fs::read_to_string(&cargo_toml_path)
-        .expect(format!("Failed to read {}", cargo_toml_path.display()).as_str());
+        .unwrap_or_else(|e| panic!("Failed to read {}: {e:?}", cargo_toml_path.display()));
     let mut doc = content.parse::<DocumentMut>().expect("Failed to parse Cargo.toml");
 
     // Replace the version line
@@ -203,31 +207,66 @@ fn update_toml_version(dir: &Path) {
     fs::write(&cargo_toml_path, content).expect("Failed to write Cargo.toml");
 }
 
+// Reports whether a dependency entry is of the form `{ workspace = true }`, meaning it
+// inherits its version from the workspace's [workspace.dependencies] table.  Cargo ignores
+// a `version` key on such an entry, so we must update the workspace table instead.
+fn inherits_from_workspace(entry: &toml_edit::Item) -> bool {
+    entry.get("workspace").and_then(|w| w.as_bool()).unwrap_or(false)
+}
+
 fn update_toml_dependencies(dir: &Path, dependencies: &Vec<&Crate>) {
     let cargo_toml_path = dir.join("Cargo.toml");
 
     // Read the Cargo.toml file
     let content = fs::read_to_string(&cargo_toml_path)
-        .expect(format!("Failed to read {}", cargo_toml_path.display()).as_str());
+        .unwrap_or_else(|e| panic!("Failed to read {}: {e:?}", cargo_toml_path.display()));
     let mut doc = content.parse::<DocumentMut>().expect("Failed to parse Cargo.toml");
 
-    // Update dependencies with the new version
+    // Update dependencies with the new version, skipping any whose version the workspace dictates
     for krate in dependencies {
-        if doc.contains_key("dependencies") && doc["dependencies"].get(&krate.name).is_some() {
-            doc["dependencies"][&krate.name]["version"] =
-                toml_edit::value(format!("={}", *NEW_VERSION));
-        }
-        if doc.contains_key("dev-dependencies")
-            && doc["dev-dependencies"].get(&krate.name).is_some()
-        {
-            doc["dev-dependencies"][&krate.name]["version"] =
-                toml_edit::value(format!("={}", *NEW_VERSION));
+        for table in ["dependencies", "dev-dependencies"] {
+            if doc
+                .get(table)
+                .and_then(|t| t.get(&krate.name))
+                .is_some_and(|entry| !inherits_from_workspace(entry))
+            {
+                doc[table][&krate.name]["version"] = toml_edit::value(format!("={}", *NEW_VERSION));
+            }
         }
     }
 
     // Write the updated content back to Cargo.toml
     let content = doc.to_string();
     fs::write(&cargo_toml_path, content).expect("Failed to write Cargo.toml");
+}
+
+// Update the versions recorded in a workspace's [workspace.dependencies] table.  Members that
+// declare a dependency as `{ workspace = true }` inherit their version from this table, so it
+// is the only place those versions can be updated.  Note that this does not affect the crates
+// under dependencies/, since they are not members of this workspace and hence pin their
+// versions directly.
+fn update_workspace_dependencies(manifest: &Path, dependencies: &Vec<&Crate>) {
+    // Read the Cargo.toml file
+    let content = fs::read_to_string(manifest)
+        .unwrap_or_else(|e| panic!("Failed to read {}: {e:?}", manifest.display()));
+    let mut doc = content.parse::<DocumentMut>().expect("Failed to parse Cargo.toml");
+
+    for krate in dependencies {
+        if doc
+            .get("workspace")
+            .and_then(|w| w.get("dependencies"))
+            .and_then(|d| d.get(&krate.name))
+            .is_some()
+        {
+            doc["workspace"]["dependencies"][&krate.name]["version"] =
+                toml_edit::value(format!("={}", *NEW_VERSION));
+        }
+    }
+
+    // Write the updated content back to Cargo.toml
+    let content = doc.to_string();
+    fs::write(manifest, content)
+        .unwrap_or_else(|e| panic!("Failed to write {}: {e:?}", manifest.display()));
 }
 
 fn publish(dir: &Path, dry_run: bool) {
@@ -338,6 +377,9 @@ fn update_crates(crates: Vec<Crate>) {
                 update_cargo_verus_template();
             }
         }
+
+        // Update the versions that the workspace's members inherit
+        update_workspace_dependencies(Path::new(WORKSPACE_MANIFEST), &modified_crates);
 
         // Finally, update the line count tool's dependencies if needed
         update_toml_dependencies(Path::new(LINE_COUNT_DIR), &modified_crates);

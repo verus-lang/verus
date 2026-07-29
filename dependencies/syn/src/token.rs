@@ -794,6 +794,10 @@ define_keywords! {
     "broadcast"   pub struct Broadcast
     "group"       pub struct BroadcastGroup
     "assume_specification" pub struct AssumeSpecification
+    "atomically"  pub struct Atomically
+    "outer_mask"  pub struct OuterMask
+    "inner_mask"  pub struct InnerMask
+    "no_abort"    pub struct NoAbort
 }
 
 define_punctuation! {
@@ -1050,12 +1054,12 @@ macro_rules! Token {
     [default_ensures] => { $crate::token::DefaultEnsures };
     [returns]     => { $crate::token::Returns };
     [decreases]   => { $crate::token::Decreases };
-    [with]   => { $crate::token::With };
-    [opens_invariants]   => { $crate::token::OpensInvariants };
-    [invariant_except_break]   => { $crate::token::InvariantExceptBreak };
+    [with]        => { $crate::token::With };
+    [opens_invariants] => { $crate::token::OpensInvariants };
+    [invariant_except_break] => { $crate::token::InvariantExceptBreak };
     [no_unwind]   => { $crate::token::NoUnwind };
     [invariant]   => { $crate::token::Invariant };
-    [invariant_ensures]   => { $crate::token::InvariantEnsures };
+    [invariant_ensures] => { $crate::token::InvariantEnsures };
     [assert]      => { $crate::token::Assert };
     [assume]      => { $crate::token::Assume };
     [reveal]      => { $crate::token::Reveal };
@@ -1083,7 +1087,10 @@ macro_rules! Token {
     [FnSpec]      => { $crate::token::FnSpec };
     [SpecFn]      => { $crate::token::SpecFn };
     [proof_fn]    => { $crate::token::ProofFn };
-    [assume_specification]   => { $crate::token::AssumeSpecification };
+    [assume_specification] => { $crate::token::AssumeSpecification };
+    [atomically]  => { $crate::token::Atomically };
+    [outer_mask]  => { $crate::token::OuterMask };
+    [inner_mask]  => { $crate::token::InnerMask };
     [&&&]         => { $crate::token::BigAnd };
     [|||]         => { $crate::token::BigOr };
     [<==>]        => { $crate::token::Equiv };

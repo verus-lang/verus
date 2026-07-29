@@ -2374,7 +2374,7 @@ test_verify_one_file_with_options! {
                 }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "a 'mut ref' binding in a pattern is only allowed for exec mode")
+    } => Err(err) => assert_vir_error_msg(err, "a 'mut ref' binding in a pattern is not allowed in spec mode")
 }
 
 test_verify_one_file_with_options! {
@@ -2393,7 +2393,7 @@ test_verify_one_file_with_options! {
                 }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "a 'mut ref' binding in a pattern is only allowed for exec mode")
+    } => Err(err) => assert_vir_error_msg(err, "a 'mut ref' binding in a pattern is not allowed in spec mode")
 }
 
 test_verify_one_file_with_options! {
@@ -2402,13 +2402,13 @@ test_verify_one_file_with_options! {
             tracked a: u64
         }
 
-        proof fn test(tracked x: X) {
+        proof fn test(tracked mut x: X) {
             match x {
                 X { a: ref mut y } => {
                 }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "a 'mut ref' binding in a pattern is only allowed for exec mode")
+    } => Ok(())
 }
 
 test_verify_one_file_with_options! {
@@ -2421,13 +2421,13 @@ test_verify_one_file_with_options! {
             tracked x: X
         }
 
-        proof fn test(tracked y: Y) {
+        proof fn test(tracked mut y: Y) {
             match y {
                 Y { x: ref mut x0 @ X { a: _ } } => {
                 }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "a 'mut ref' binding in a pattern is only allowed for exec mode")
+    } => Ok(())
 }
 
 test_verify_one_file_with_options! {
@@ -2464,7 +2464,7 @@ test_verify_one_file_with_options! {
                 Opt::None => { }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "a 'mut ref' binding in a pattern is only allowed for exec mode")
+    } => Err(err) => assert_vir_error_msg(err, "a 'mut ref' binding in a pattern is not allowed in spec mode")
 }
 
 test_verify_one_file_with_options! {
@@ -3342,6 +3342,7 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test] not_support_let_pattern_mut_ref_binding_with_or_pat [] => verus_code! {
+        use vstd::prelude::*;
         fn test() {
             let x = Some((5, true));
             let Some((ref mut i, true | false)) = x;

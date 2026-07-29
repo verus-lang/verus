@@ -64,6 +64,10 @@ fn warning(msg: &str) {
 }
 
 fn run() -> Result<std::process::ExitStatus, String> {
+    // If instructed, skip the rustup toolchain sanity check & trust the user to
+    // have set up their environment to point to the correct toolchain.
+    let use_rustup: bool = std::env::var("VERUS_USE_RUSTUP").map_or(true, |v| v != "0");
+
     #[allow(unused_variables)] // unpretty_arg is unused if --features record-history is disabled
     let (mut args, record, unpretty_arg) = {
         let mut args = std::env::args().into_iter();
@@ -112,76 +116,87 @@ fn run() -> Result<std::process::ExitStatus, String> {
 
     let parent = parent.expect("parent must be Some if we found a verusroot");
 
-    match Command::new("rustup")
-        .arg("toolchain")
-        .arg("list")
-        .output()
-        .ok()
-        .and_then(|output| output.status.success().then(|| output))
-    {
-        Some(output) => {
-            use std::io::BufRead;
-            if output
-                .stdout
-                .lines()
-                .find(|l| l.as_ref().map(|l| l.contains(TOOLCHAIN)).unwrap_or(false))
-                .is_none()
-            {
-                eprintln!(
-                    "{}",
-                    yansi::Paint::red(format!(
-                        "verus: required rust toolchain {} not found",
-                        TOOLCHAIN
-                    ))
-                );
-                eprintln!(
-                    "{}",
-                    yansi::Paint::blue(
-                        "run the following command (in a bash-compatible shell) to install the necessary toolchain:"
-                    )
-                );
-                eprintln!("  {}", yansi::Paint::white(format!("rustup install {}", TOOLCHAIN)));
+    if use_rustup {
+        match Command::new("rustup")
+            .arg("toolchain")
+            .arg("list")
+            .output()
+            .ok()
+            .and_then(|output| output.status.success().then(|| output))
+        {
+            Some(output) => {
+                use std::io::BufRead;
+                if output
+                    .stdout
+                    .lines()
+                    .find(|l| l.as_ref().map(|l| l.contains(TOOLCHAIN)).unwrap_or(false))
+                    .is_none()
+                {
+                    eprintln!(
+                        "{}",
+                        yansi::Paint::red(format!(
+                            "verus: required rust toolchain {} not found",
+                            TOOLCHAIN
+                        ))
+                    );
+                    eprintln!(
+                        "{}",
+                        yansi::Paint::blue(
+                            "run the following command (in a bash-compatible shell) to install the necessary toolchain:"
+                        )
+                    );
+                    eprintln!("  {}", yansi::Paint::white(format!("rustup install {}", TOOLCHAIN)));
+                }
             }
-        }
-        None => {
-            eprintln!(
-                "{}",
-                yansi::Paint::red(format!("verus: rustup not found, or not executable"))
-            );
-            eprintln!("{}", yansi::Paint::yellow(format!("verus needs a rustup installation")));
-            #[cfg(any(target_os = "linux", target_os = "macos"))]
-            {
+            None => {
                 eprintln!(
                     "{}",
-                    yansi::Paint::blue(
-                        "run the following command (in a bash-compatible shell) to install rustup:"
-                    )
+                    yansi::Paint::red(format!("verus: rustup not found, or not executable"))
                 );
-                eprintln!(
-                    "  {}",
-                    yansi::Paint::white(format!(
-                        "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- --default-toolchain {}",
-                        TOOLCHAIN
-                    ))
-                );
-                eprintln!(
-                    "{}",
-                    yansi::Paint::blue("or visit https://rustup.rs/ for more information")
-                );
-            }
-            #[cfg(any(target_os = "windows"))]
-            {
-                eprintln!(
-                    "{}",
-                    yansi::Paint::blue(
-                        "visit https://rustup.rs/ for installation instructions for Windows"
-                    )
-                );
+                eprintln!("{}", yansi::Paint::yellow(format!("verus needs a rustup installation")));
+                #[cfg(any(target_os = "linux", target_os = "macos"))]
+                {
+                    eprintln!(
+                        "{}",
+                        yansi::Paint::blue(
+                            "run the following command (in a bash-compatible shell) to install rustup:"
+                        )
+                    );
+                    eprintln!(
+                        "  {}",
+                        yansi::Paint::white(format!(
+                            "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- --default-toolchain {}",
+                            TOOLCHAIN
+                        ))
+                    );
+                    eprintln!(
+                        "{}",
+                        yansi::Paint::blue("or visit https://rustup.rs/ for more information")
+                    );
+                }
+                #[cfg(any(target_os = "windows"))]
+                {
+                    eprintln!(
+                        "{}",
+                        yansi::Paint::blue(
+                            "visit https://rustup.rs/ for installation instructions for Windows"
+                        )
+                    );
+                }
             }
         }
     }
 
-    let mut cmd = Command::new("rustup");
+    let mut cmd = if use_rustup {
+        let mut cmd = Command::new("rustup");
+        cmd.arg("run");
+        cmd.arg(TOOLCHAIN);
+        cmd.arg("--");
+        cmd.arg(verusroot_path.join(RUST_VERIFY_FILE_NAME));
+        cmd
+    } else {
+        Command::new(verusroot_path.join(RUST_VERIFY_FILE_NAME))
+    };
 
     let vstd_kind = get_vstd_kind(&args);
     cmd.env("VSTD_KIND", vstd_kind);
@@ -299,12 +314,7 @@ fn run() -> Result<std::process::ExitStatus, String> {
         }
     }
 
-    cmd.arg("run")
-        .arg(TOOLCHAIN)
-        .arg("--")
-        .arg(verusroot_path.join(RUST_VERIFY_FILE_NAME))
-        .args(&args)
-        .stdin(std::process::Stdio::inherit());
+    cmd.args(&args).stdin(std::process::Stdio::inherit());
 
     // HOTFIX: On Windows, libraries are in the bin directory, not in the lib directory,
     // so we currently need the old behavior of rustup of adding the bin directory to the PATH.
