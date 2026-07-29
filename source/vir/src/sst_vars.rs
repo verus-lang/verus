@@ -73,6 +73,7 @@ pub(crate) fn stm_get_mutations_shallow(stm: &Stm, m: &mut HashMap<VarIdent, Spa
         | StmX::Assume(..)
         | StmX::Fuel(..)
         | StmX::RevealString(..)
+        | StmX::RevealByteString(..)
         | StmX::DeadEnd(..)
         | StmX::Return { .. }
         | StmX::BreakOrContinue { .. }
@@ -101,6 +102,7 @@ pub(crate) fn stm_get_assignment_shallow(stm: &Stm) -> Option<&Exp> {
         | StmX::Assume(..)
         | StmX::Fuel(..)
         | StmX::RevealString(..)
+        | StmX::RevealByteString(..)
         | StmX::DeadEnd(..)
         | StmX::Return { .. }
         | StmX::BreakOrContinue { .. }
@@ -344,6 +346,7 @@ fn stm_assign(
         | StmX::Assume(_)
         | StmX::Fuel(..)
         | StmX::RevealString(_)
+        | StmX::RevealByteString(..)
         | StmX::Return { .. }
         | StmX::Air(_) => stm.clone(),
         StmX::Assign { lhs: Dest { dest, is_init }, rhs: _ } => {
@@ -494,6 +497,7 @@ fn stm_mutations(param_typs: &[(VarIdent, Typ)], mutations: &mut HavocSet, stm: 
         | StmX::Assume(_)
         | StmX::Fuel(..)
         | StmX::RevealString(_)
+        | StmX::RevealByteString(_)
         | StmX::Return { .. }
         | StmX::BreakOrContinue { .. }
         | StmX::Air(_) => stm.clone(),

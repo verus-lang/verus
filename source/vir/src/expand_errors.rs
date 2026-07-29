@@ -112,6 +112,7 @@ fn get_fuel_at_id(stm: &Stm, a_id: &AssertId, fuels: &mut HashMap<Fun, u32>) -> 
         | StmX::Assume(..)
         | StmX::Assign { .. }
         | StmX::RevealString { .. }
+        | StmX::RevealByteString { .. }
         | StmX::Air { .. }
         | StmX::BreakOrContinue { .. } => false,
         StmX::Fuel(fun, fuel) => {

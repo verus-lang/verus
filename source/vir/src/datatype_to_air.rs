@@ -835,6 +835,19 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
         vec![]
     };
 
+    let bytestr_commands = if ctx.used_builtins.uses_array {
+        let nodes =
+            crate::prelude::bytestr_functions(&ctx.name_ctxt.prefix_box(&crate::def::array_type()));
+
+        let cmds = air::parser::Parser::new(Arc::new(crate::messages::VirMessageInterface {}))
+            .nodes_to_commands(&nodes)
+            .expect("internal error: malformed byte-string functions");
+
+        (*cmds).clone()
+    } else {
+        vec![]
+    };
+
     let ieee_float_commands = if ctx.used_builtins.uses_ieee_float {
         let nodes = crate::prelude::ieee_float_prelude();
         let cmds = air::parser::Parser::new(Arc::new(crate::messages::VirMessageInterface {}))
@@ -869,6 +882,7 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
     commands.append(&mut axiom_commands);
     commands.extend(array_commands);
     commands.extend(strslice_commands);
+    commands.extend(bytestr_commands);
     commands.extend(ieee_float_commands);
     commands.extend(resolve_axiom_commands);
     Arc::new(commands)

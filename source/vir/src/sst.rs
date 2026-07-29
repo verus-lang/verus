@@ -260,6 +260,8 @@ pub enum StmX {
     Fuel(Fun, u32),
     /// Make a string literal available for use in specifications (hidden by default for perf reasons)
     RevealString(Arc<String>),
+    /// Make a byte-string literal available in specifications.
+    RevealByteString(Arc<Vec<u8>>),
     /// Marks unreachable code; verification assumes this path is never taken
     DeadEnd(Stm),
     /// Function return: asserts postcondition holds, then exits function.

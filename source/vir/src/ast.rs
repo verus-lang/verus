@@ -1164,6 +1164,8 @@ pub enum ExprX {
     Fuel(Fun, u32, bool),
     /// Reveal a string
     RevealString(Arc<String>),
+    /// Reveal a byte-string
+    RevealByteString(Arc<Vec<u8>>),
     /// Header, which must appear at the beginning of a function or while loop.
     /// Note: this only appears temporarily during rust_to_vir construction, and should not
     /// appear in the final Expr produced by rust_to_vir (see vir::headers::read_header).
