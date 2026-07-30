@@ -4132,10 +4132,18 @@ fn remove_decoration_typs_for_unsizing<'tcx>(
             remove_decoration_typs_for_unsizing(tcx, *t1, *t2)
         }
         (TyKind::Adt(AdtDef(adt_def_data1), args1), TyKind::Adt(AdtDef(adt_def_data2), args2))
-            if verus_items::get_rust_item(tcx, adt_def_data1.did)
+            if (verus_items::get_rust_item(tcx, adt_def_data1.did)
                 == Some(verus_items::RustItem::Box)
                 && verus_items::get_rust_item(tcx, adt_def_data2.did)
-                    == Some(verus_items::RustItem::Box) =>
+                    == Some(verus_items::RustItem::Box))
+                || (verus_items::get_rust_item(tcx, adt_def_data1.did)
+                    == Some(verus_items::RustItem::Arc)
+                    && verus_items::get_rust_item(tcx, adt_def_data2.did)
+                        == Some(verus_items::RustItem::Arc))
+                || (verus_items::get_rust_item(tcx, adt_def_data1.did)
+                    == Some(verus_items::RustItem::Rc)
+                    && verus_items::get_rust_item(tcx, adt_def_data2.did)
+                        == Some(verus_items::RustItem::Rc)) =>
         {
             let Some(t1) = args1[0].as_type() else { panic!("unexpected type argument") };
             let Some(t2) = args2[0].as_type() else { panic!("unexpected type argument") };

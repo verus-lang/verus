@@ -5,6 +5,8 @@ use common::*;
 
 test_verify_one_file! {
     #[test] test_dyn verus_code! {
+        use std::rc::Rc;
+        use std::sync::Arc;
         use vstd::prelude::*;
         trait T {
             spec fn b(&self) -> u8 { 5 }
@@ -21,13 +23,15 @@ test_verify_one_file! {
         impl T for u32 {
             fn f(&self) -> (r: u8) { 4 }
         }
-        fn test_coerce() {
+        fn test_coerce_ref() {
             let u: u8 = 7;
             let d: &dyn T = &u; // ToDyn coercion
             let r = d.f();
             assert(d.b() == 7);
             assert(r <= 10);
+        }
 
+        fn test_coerce_box() {
             let x: u32 = 9;
             let d: Box<dyn T> = Box::new(x); // ToDyn coercion
             let r = d.f();
@@ -39,7 +43,33 @@ test_verify_one_file! {
             let r = d.f();
             assert(d.b() == 5); // FAILS
         }
-    } => Err(err) => assert_one_fails(err)
+
+        fn test_coerce_rc() {
+            let x: u32 = 9;
+            let d: Rc<dyn T> = Rc::new(x); // ToDyn coercion
+            let r = d.f();
+            assert(d.b() == 5);
+            assert(r <= 10);
+
+            let y: u16 = 8;
+            let d: Rc<dyn T> = Rc::new(y); // ToDyn coercion
+            let r = d.f();
+            assert(d.b() == 5); // FAILS
+        }
+
+        fn test_coerce_arc() {
+            let x: u32 = 9;
+            let d: Arc<dyn T> = Arc::new(x); // ToDyn coercion
+            let r = d.f();
+            assert(d.b() == 5);
+            assert(r <= 10);
+
+            let y: u16 = 8;
+            let d: Arc<dyn T> = Arc::new(y); // ToDyn coercion
+            let r = d.f();
+            assert(d.b() == 5); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
 }
 
 test_verify_one_file! {
