@@ -128,6 +128,11 @@ pub trait ExSliceIndex<T> where T: ?Sized {
         requires
             self.index_req(slice),
     ;
+
+    fn index_mut(self, slice: &mut T) -> &mut Self::Output
+        requires
+            self.index_req(slice),
+    ;
 }
 
 pub assume_specification<T, I>[ <[T]>::get::<I> ](slice: &[T], i: I) -> (b: Option<
