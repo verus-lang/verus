@@ -1,5 +1,5 @@
 use cargo_verus::{
-    BIN_NAME, ExecutionPlan,
+    BIN_NAME, ExecutionPlan, plan_execution,
     test_utils::{
         CARGO_DEFAULT_LIB_METADATA, MockDep, MockPackage, MockWorkspace, RUSTC_WRAPPER,
         VERUS_DRIVER_ARGS, VERUS_DRIVER_ARGS_FOR, VERUS_DRIVER_VERIFY, VERUS_DRIVER_VIA_CARGO,
@@ -17,9 +17,9 @@ fn crate_optin_manifest() {
     let manifest_path = package_dir.join("Cargo.toml");
     let manifest_path = manifest_path.to_str().expect("manifest path to string");
 
+    let temp_dir = tempfile::tempdir().expect("create temp dir");
     let args = [BIN_NAME, "focus", "--manifest-path", manifest_path];
-
-    let plan = cargo_verus::plan_execution(None, args).expect("plan");
+    let plan = plan_execution(temp_dir.path(), args).expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
         panic!("expected `ExecutionPlan::RunCargo`");
     };
@@ -65,9 +65,9 @@ fn workspace_manifest() {
     let manifest_path = workspace_dir.join("Cargo.toml");
     let manifest_path = manifest_path.to_str().expect("manifest path to string");
 
+    let temp_dir = tempfile::tempdir().expect("create temp dir");
     let args = [BIN_NAME, "focus", "--manifest-path", manifest_path];
-
-    let plan = cargo_verus::plan_execution(None, args).expect("plan");
+    let plan = plan_execution(temp_dir.path(), args).expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
         panic!("expected `ExecutionPlan::RunCargo`");
     };
@@ -126,7 +126,7 @@ fn workspace_package_hasdeps() {
 
     let args = [BIN_NAME, "focus", "--package", hasdeps];
 
-    let plan = cargo_verus::plan_execution(Some(workspace_dir.as_path()), args).expect("plan");
+    let plan = plan_execution(workspace_dir.as_path(), args).expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
         panic!("expected `ExecutionPlan::RunCargo`");
     };
@@ -170,7 +170,7 @@ fn workspace_package_hasdeps_forwards_verus_args_only_to_roots() {
 
     let args = [BIN_NAME, "focus", "--package", hasdeps, "--", "--verify-module=bar"];
 
-    let plan = cargo_verus::plan_execution(Some(workspace_dir.as_path()), args).expect("plan");
+    let plan = plan_execution(workspace_dir.as_path(), args).expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
         panic!("expected `ExecutionPlan::RunCargo`");
     };

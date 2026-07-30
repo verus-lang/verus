@@ -525,6 +525,15 @@ pub struct ProofNoteLabel {
     pub is_custom_err: bool,
 }
 
+/// Label for a Loop that a break/continue may point to.
+#[derive(Clone, Debug, Serialize, Deserialize, Hash, ToDebugSNode, PartialEq, Eq)]
+pub struct Label {
+    /// Every loop in a given function body has a unique id
+    pub id: usize,
+    /// User-given name
+    pub name: Option<String>,
+}
+
 /// More complex unary operations (requires Clone rather than Copy)
 /// (Below, "boxed" refers to boxing types in the SMT encoding, not the Rust Box type)
 #[derive(Clone, Debug, Serialize, Deserialize, Hash, ToDebugSNode)]
@@ -682,22 +691,28 @@ pub enum IeeeFloatBinaryOp {
     InEq(InequalityOp),
 }
 
+/// Logical op that allow short-circuiting
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum LogicalOp {
+    /// boolean and (short-circuiting: right side is evaluated only if left side is true)
+    And,
+    /// boolean or (short-circuiting: right side is evaluated only if left side is false)
+    Or,
+    /// boolean implies (short-circuiting: right side is evaluated only if left side is true)
+    Implies,
+}
+
 /// Primitive binary operations
-/// (not arbitrary user-defined functions -- these are represented by ExprX::Call)
+/// (not arbitrary user-defined functions -- these are represented by ExprX::Call).
+///
 /// Note that all integer operations are on mathematic integers (IntRange::Int),
 /// not on finite-width integer types or nat.
 /// Finite-width and nat operations are represented with a combination of IntRange::Int operations
 /// and UnaryOp::Clip.
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
 pub enum BinaryOp {
-    /// boolean and (short-circuiting: right side is evaluated only if left side is true)
-    And,
-    /// boolean or (short-circuiting: right side is evaluated only if left side is false)
-    Or,
     /// boolean xor (no short-circuiting)
     Xor,
-    /// boolean implies (short-circuiting: right side is evaluated only if left side is true)
-    Implies,
     /// the is_smaller_than verus_builtin, used for decreases (true for <, false for ==)
     HeightCompare { strictly_lt: bool, recursive_function_field: bool },
     /// SMT equality for any type -- two expressions are exactly the same value
@@ -872,13 +887,15 @@ pub enum PatternX {
     Constructor(Dt, Ident, Binders<Pattern>),
     Or(Pattern, Pattern),
     /// Matches something equal to the value of this expr
-    /// This only supports literals and consts, so we don't need to worry
-    /// about side-effects, binding order, etc.
+    /// This only supports literals, consts, and pure functions
+    /// so we don't need to worry about side-effects, binding order, etc.
+    /// See `check_expr_in_pattern` for the exact supported expressions.
     Expr(Expr),
     /// `e1 <= x <= e2` or `e1 <= x < e2`
     /// The start of the range is always inclusive (<=)
     /// The end of the range may be inclusive (<=) or exclusive (<),
     /// as given by the InequalityOp argument.
+    /// Same constraints on the `Expr` fields as in `PatternX::Expr`.
     Range(Option<Expr>, Option<(Expr, InequalityOp)>),
     /// References, which are often automatically inserted due to "match ergonomics".
     /// A typical case is like, you have `y: &mut Option<T>` and bind it against the pattern
@@ -1091,7 +1108,10 @@ pub enum ExprX {
     Unary(UnaryOp, Expr),
     /// Special unary operator
     UnaryOpr(UnaryOpr, Expr),
-    /// Primitive binary operation
+    /// Evaluate the first expression, then conditionally evaluate the second expression,
+    /// performing the given short-circuiting logical op.
+    Logical(LogicalOp, Expr, Expr),
+    /// Evaluate both expressions, then perform the given binary operation.
     Binary(BinaryOp, Expr, Expr),
     /// Special binary operation
     BinaryOpr(BinaryOpr, Expr, Expr),
@@ -1164,7 +1184,7 @@ pub enum ExprX {
         allow_complex_invariants: bool,
         is_for_loop: bool,
         assume_termination: bool,
-        label: Option<String>,
+        label: Label,
         cond: Option<Expr>,
         body: Expr,
         invs: LoopInvariants,
@@ -1186,7 +1206,7 @@ pub enum ExprX {
     /// Return from function
     Return(Option<Expr>),
     /// break or continue
-    BreakOrContinue { label: Option<String>, is_break: bool },
+    BreakOrContinue { label: Label, is_break: bool },
     /// Enter a Rust ghost block, which will be erased during compilation.
     /// In principle, this is not needed, because we can infer which code to erase using modes.
     /// However, we can't easily communicate the inferred modes back to rustc for erasure

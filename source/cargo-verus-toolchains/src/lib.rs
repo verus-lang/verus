@@ -7,6 +7,8 @@ use anyhow::Context;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
+pub mod versions;
+
 /// A list of toolchains.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToolchainList {

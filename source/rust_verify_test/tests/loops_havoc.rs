@@ -58,6 +58,36 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_field_havocing_box_with_allocator verus_code! {
+        use core::alloc::Allocator;
+
+        struct Pair {
+            preserved: u64,
+            modified: u64,
+        }
+
+        #[verifier::allow(undeclared_external_trait)]
+        fn test<A: Allocator>(b: &mut Box<Pair, A>)
+            requires
+                b.preserved == 7,
+            ensures
+                final(b).preserved == 7,
+        {
+            let mut i = 0;
+            while i < 1
+                invariant
+                    i <= 1,
+                decreases
+                    1 - i,
+            {
+                b.modified = 5;
+                i += 1;
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_field_havocing1 verus_code! {
         fn cond() -> bool { true }
 

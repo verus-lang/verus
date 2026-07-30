@@ -233,8 +233,8 @@ The analysis is pretty weak right now but could be improved.
 */
 
 use crate::ast::{
-    Arm, BinaryOp, ByRef, CtorUpdateTail, Datatype, Dt, Expr, ExprX, FieldOpr, Fun, FunWithVis,
-    Function, Ident, Mode, ModeWrapperMode, Params, Path, Pattern, PatternBinding, PatternX, Place,
+    Arm, ByRef, CtorUpdateTail, Datatype, Dt, Expr, ExprX, FieldOpr, Fun, FunWithVis, Function,
+    Ident, Label, Mode, ModeWrapperMode, Params, Path, Pattern, PatternBinding, PatternX, Place,
     PlaceX, ReadKind, SpannedTyped, Stmt, StmtX, Typ, TypDecoration, TypX, UnaryOpr,
     UnfinalizedReadKind, VarBinders, VarIdent, VarIdentDisambiguate, VariantCheck, VirErr,
 };
@@ -471,7 +471,7 @@ struct Builder<'a> {
 
 #[derive(Clone)]
 struct LoopEntry {
-    label: Option<String>,
+    label: Label,
     /// BB to jump to on 'break'
     break_bb: BBIndex,
     /// BB to jump to on 'continue'
@@ -703,21 +703,13 @@ impl<'a> Builder<'a> {
         }
     }
 
-    fn get_loop(&self, loop_label: &Option<String>) -> LoopEntry {
-        match loop_label {
-            None => self.loops[self.loops.len() - 1].clone(),
-            Some(label) => {
-                for l in self.loops.iter().rev() {
-                    match &l.label {
-                        Some(label2) if *label == **label2 => {
-                            return l.clone();
-                        }
-                        _ => {}
-                    }
-                }
-                panic!("Could not find label {:}", label);
+    fn get_loop(&self, loop_label: &Label) -> LoopEntry {
+        for l in self.loops.iter().rev() {
+            if &l.label == loop_label {
+                return l.clone();
             }
         }
+        panic!("Could not find label {:?}", loop_label);
     }
 
     /// Process the given expression for building the CFG. Return the basic block
@@ -873,7 +865,7 @@ impl<'a> Builder<'a> {
 
                 Maybe::Some(bb)
             }
-            ExprX::Binary(BinaryOp::And | BinaryOp::Or | BinaryOp::Implies, e1, e2) => {
+            ExprX::Logical(_op, e1, e2) => {
                 bb = unwrap!(self.build(e1, bb));
 
                 let snd_block = self.new_bb(AstPosition::Before(e2.span.id), false);
@@ -2962,7 +2954,7 @@ fn pretty_basic_blocks(
     for (i, bb) in cfg.basic_blocks.iter().enumerate() {
         v.push(format!("BasicBlock {:}:\n", i));
         v.push(format!("    is_entry = {:}\n", bb.is_entry));
-        v.push(format!("    Predecessors: {:?}\n", &pretty_bb_list(&bb.predecessors)));
+        v.push(format!("    Predecessors: {:?}\n", pretty_bb_list(&bb.predecessors)));
         v.push(format!(
             "    (always_add_resolution_at_start = {:?})\n",
             bb.always_add_resolution_at_start
@@ -2984,7 +2976,7 @@ fn pretty_basic_blocks(
             None => {}
         }
         v.push("    ----\n".to_string());
-        v.push(format!("    Successors: {:?}\n", &pretty_bb_list(&bb.successors)));
+        v.push(format!("    Successors: {:?}\n", pretty_bb_list(&bb.successors)));
         v.push(format!("    is_exit = {:}\n", bb.is_exit));
         v.push("\n".to_string());
     }
@@ -3476,7 +3468,7 @@ fn apply_resolutions(
                 id_map.get_mut(&expr.span.id)
             {
                 if *seen_yet {
-                    panic!("Verus internal error: duplicate AstId {:?}", &expr.span);
+                    panic!("Verus internal error: duplicate AstId {:?}", expr.span);
                 }
                 *seen_yet = true;
 

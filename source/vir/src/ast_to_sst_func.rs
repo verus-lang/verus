@@ -1,7 +1,7 @@
 use crate::ast::{
-    AutospecUsage, BinaryOp, CallTarget, CrateId, DeclProph, Expr, ExprX, Fun, Function,
-    FunctionKind, Ident, ItemKind, MaskSpec, Mode, Param, ParamX, Params, Path, PlaceX,
-    SpannedTyped, StmtX, Typ, TypX, UnaryOp, UnwindSpec, VarBinder, VarBinderX, VarIdent, VirErr,
+    AutospecUsage, CallTarget, CrateId, DeclProph, Expr, ExprX, Fun, Function, FunctionKind, Ident,
+    ItemKind, MaskSpec, Mode, Param, ParamX, Params, Path, PlaceX, SpannedTyped, StmtX, Typ, TypX,
+    UnaryOp, UnwindSpec, VarBinder, VarBinderX, VarIdent, VirErr,
 };
 use crate::ast_to_sst::{
     FinalState, PreLocalDeclKind, State, expr_to_bind_decls_exp_skip_checks,
@@ -387,11 +387,7 @@ fn rewrite_async_ens_vir(function: &Function, specs: &Vec<Expr>) -> Result<Vec<E
                 Some(e.clone()),
             ),
         );
-        let imply = SpannedTyped::new(
-            &e.span,
-            &Arc::new(TypX::Bool),
-            ExprX::Binary(BinaryOp::Implies, awaited_call, block),
-        );
+        let imply = crate::ast_util::mk_implies(&e.span, &awaited_call, &block);
         exprs.push(imply);
     }
 
