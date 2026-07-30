@@ -19,7 +19,7 @@ extra_verus_args = [
 [[project]]
 name = "ironkv"
 git_url = "https://github.com/verus-lang/verified-ironkv.git"
-refspec = "main"
+refspec = "origin/z3-4.16.0"
 cargo_verus = true
 crate_roots = ["ironsht"]
 
