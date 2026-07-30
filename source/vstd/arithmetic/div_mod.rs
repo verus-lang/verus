@@ -17,6 +17,7 @@ use super::super::prelude::*;
 
 verus! {
 
+#[verifier::inline]
 pub open spec fn rust_div(a: int, b: int) -> int
     recommends
         b != 0,
@@ -30,6 +31,7 @@ pub open spec fn rust_div(a: int, b: int) -> int
     }
 }
 
+#[verifier::inline]
 pub open spec fn rust_rem(a: int, b: int) -> int
     recommends
         b != 0,
