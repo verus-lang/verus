@@ -1218,9 +1218,6 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         CastToInteger => {
                             panic!("CastToInteger should have been removed by poly!")
                         }
-                        LoopIsolationBoundary => {
-                            panic!("LoopIsolationBoundary should have been removed by ast_to_sst")
-                        }
                     }
                 }
                 Const(Int(i)) => {
@@ -1350,8 +1347,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | MutRefCurrent
                         | MutRefFuture(_)
                         | MutRefFinal(_)
-                        | InferSpecForLoopIter { .. }
-                        | LoopIsolationBoundary => ok,
+                        | InferSpecForLoopIter { .. } => ok,
                     }
                 }
                 // !(!(e_inner)) == e_inner
@@ -1415,6 +1411,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 AutoLoopEnsures => Ok(e),
                 ProofNote(_) => Ok(e),
                 HasResolved(_) => Ok(e),
+                LoopIsolationBoundary(_) => Ok(e),
             }
         }
         Binary(op, e1, e2) => {

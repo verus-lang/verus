@@ -416,9 +416,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 UnaryOp::InferSpecForLoopIter { .. } => 1,
                 UnaryOp::StrLen => fail_on_strop(),
                 UnaryOp::MutRefFinal(_) => 1,
-                UnaryOp::MutRefCurrent
-                | UnaryOp::MutRefFuture(_)
-                | UnaryOp::LoopIsolationBoundary => unreachable!(),
+                UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_) => unreachable!(),
             };
             let (is_pure1, term1) = gather_terms(ctxt, ctx, e1, depth);
             match op {
@@ -468,6 +466,9 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                     Arc::new(vec![arg]),
                 )),
             )
+        }
+        ExpX::UnaryOpr(UnaryOpr::LoopIsolationBoundary(_), _e1) => {
+            panic!("unexpected LoopIsolationBoundary");
         }
         ExpX::Binary(op, e1, e2) => {
             use BinaryOp::*;

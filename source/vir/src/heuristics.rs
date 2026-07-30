@@ -59,7 +59,6 @@ fn insert_auto_ext_equal(ctx: &Ctx, exp: &Exp) -> Exp {
             UnaryOp::IeeeFloat(_) => exp.clone(),
             UnaryOp::StrLen | UnaryOp::Length(_) => exp.clone(),
             UnaryOp::InferSpecForLoopIter { .. } => exp.clone(),
-            UnaryOp::LoopIsolationBoundary => exp.clone(),
             UnaryOp::Trigger(_)
             | UnaryOp::CoerceMode { .. }
             | UnaryOp::MustBeFinalized
@@ -83,6 +82,7 @@ fn insert_auto_ext_equal(ctx: &Ctx, exp: &Exp) -> Exp {
                 exp.new_x(ExpX::UnaryOpr(op.clone(), insert_auto_ext_equal(ctx, e)))
             }
             UnaryOpr::HasResolved(..) => exp.clone(),
+            UnaryOpr::LoopIsolationBoundary(..) => exp.clone(),
         },
         ExpX::Binary(op, e1, e2) => match op {
             BinaryOp::Eq

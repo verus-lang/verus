@@ -1884,7 +1884,7 @@ pub(crate) fn expr_to_stm_opt(
         ExprX::NullaryOpr(op) => {
             Ok((vec![], Maybe::Some(Value::Exp(mk_exp(ExpX::NullaryOpr(op.clone()))))))
         }
-        ExprX::Unary(UnaryOp::LoopIsolationBoundary, e) => {
+        ExprX::UnaryOpr(UnaryOpr::LoopIsolationBoundary(_label), e) => {
             let (stms, exp) = expr_to_stm_opt(ctx, state, e)?;
 
             assert!(stms.len() == 1);

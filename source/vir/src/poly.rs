@@ -614,9 +614,6 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 UnaryOp::MutRefFinal(_) => {
                     panic!("internal error: MustBeFinalized in SST")
                 }
-                UnaryOp::LoopIsolationBoundary => {
-                    panic!("internal error: LoopIsolationBoundary in SST")
-                }
             }
         }
         ExpX::UnaryOpr(op, e1) => {
@@ -673,6 +670,9 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 UnaryOpr::HasResolved(_t) => {
                     let e = coerce_exp_to_poly(ctx, &e1);
                     mk_exp(ExpX::UnaryOpr(op.clone(), e.clone()))
+                }
+                UnaryOpr::LoopIsolationBoundary(..) => {
+                    panic!("internal error: LoopIsolationBoundary in SST")
                 }
             }
         }

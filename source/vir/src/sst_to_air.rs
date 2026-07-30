@@ -1154,9 +1154,6 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             UnaryOp::MutRefFinal(_) => {
                 panic!("internal error: MutRefFinal should have been removed before here")
             }
-            UnaryOp::LoopIsolationBoundary => {
-                panic!("internal error: LoopIsolationBoundary should have been removed before here")
-            }
             UnaryOp::Length(kind) => {
                 let typ = undecorate_typ(&e.typ);
                 let typ = match &*typ {
@@ -1263,6 +1260,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 }
                 args.push(exp_to_expr(ctx, e, expr_ctxt)?);
                 ident_apply(&ctx.name_ctxt.to_dyn(trait_path), &args)
+            }
+            UnaryOpr::LoopIsolationBoundary(..) => {
+                panic!("internal error: LoopIsolationBoundary should have been removed before here")
             }
         },
         ExpX::Binary(op, lhs, rhs) => {

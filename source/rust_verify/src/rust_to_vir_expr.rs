@@ -2149,9 +2149,9 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 } else if crate::attributes::is_loop_isolation_boundary(
                     bctx.ctxt.tcx.hir_attrs(expr.hir_id),
                 ) {
-                    let wrap = loop_isolation_boundary_check(expr.span, &block)?;
+                    let (wrap, label) = loop_isolation_boundary_check(expr.span, &block)?;
                     let block = if wrap {
-                        let x = ExprX::Unary(UnaryOp::LoopIsolationBoundary, block);
+                        let x = ExprX::UnaryOpr(UnaryOpr::LoopIsolationBoundary(label), block);
                         bctx.spanned_typed_new(expr.span, &expr_typ()?, x)
                     } else {
                         block
@@ -4691,15 +4691,18 @@ fn ty_is_float_or_ref_float<'tcx>(ty: rustc_middle::ty::Ty<'tcx>) -> bool {
 /// we just need to make sure that the loop we pick
 /// out is the last loop to appear in the block (since that's how ast_to_sst associates
 /// the loop_isolation_boundary block with the loop).
-fn loop_isolation_boundary_check(span: Span, block: &vir::ast::Expr) -> Result<bool, VirErr> {
+fn loop_isolation_boundary_check(
+    span: Span,
+    block: &vir::ast::Expr,
+) -> Result<(bool, vir::ast::Label), VirErr> {
     let err =
         || crate::internal_err!(span, "loop_isolation_boundary block not of the expected form");
 
     let ExprX::Block(stmts, Some(e)) = &block.x else {
         return err();
     };
-    if let ExprX::Loop { loop_isolation, .. } = &e.x {
-        return Ok(*loop_isolation);
+    if let ExprX::Loop { loop_isolation, label, .. } = &e.x {
+        return Ok((*loop_isolation, label.clone()));
     }
 
     // Check that this block has the form:
@@ -4738,8 +4741,8 @@ fn loop_isolation_boundary_check(span: Span, block: &vir::ast::Expr) -> Result<b
         return err();
     }
 
-    if let ExprX::Loop { loop_isolation, .. } = &arms[0].x.body.x {
-        return Ok(*loop_isolation);
+    if let ExprX::Loop { loop_isolation, label, .. } = &arms[0].x.body.x {
+        return Ok((*loop_isolation, label.clone()));
     }
 
     err()
