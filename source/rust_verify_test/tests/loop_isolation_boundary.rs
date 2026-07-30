@@ -154,3 +154,25 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 3)
 }
+
+test_verify_one_file! {
+    #[test] with_match verus_code! {
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test_nested_in_let_match() {
+            let mut i = 0;
+            let y = 5;
+
+            #[verifier::loop_isolation_boundary]
+            {
+                let x = 5;
+                let r = match y {
+                    z => while i < 10 {
+                        assert(x == 5);
+                        i = i + 1;
+                    }
+                };
+                r
+            }
+        }
+    } => Ok(())
+}

@@ -1884,55 +1884,31 @@ pub(crate) fn expr_to_stm_opt(
         ExprX::NullaryOpr(op) => {
             Ok((vec![], Maybe::Some(Value::Exp(mk_exp(ExpX::NullaryOpr(op.clone()))))))
         }
-        ExprX::UnaryOpr(UnaryOpr::LoopIsolationBoundary(_label), e) => {
+        ExprX::UnaryOpr(UnaryOpr::LoopIsolationBoundary(label), e) => {
             let (stms, exp) = expr_to_stm_opt(ctx, state, e)?;
-
-            assert!(stms.len() == 1);
-            let StmX::Block(stms) = &stms[0].x else { unreachable!() };
-
-            // If the loop we're looking for is inside yet another StmX::Block, flatten
-            // it out.
-            let mut stms = stms.clone();
-            if stms.len() >= 2
-                && matches!(stms[stms.len() - 1].x, StmX::Assign { .. })
-                && let StmX::Block(inner_stms) = &stms[stms.len() - 2].x
-            {
-                let mut s: Vec<Stm> = stms[..stms.len() - 2].to_vec();
-                s.extend((**inner_stms).clone());
-                s.push(stms[stms.len() - 1].clone());
-                stms = Arc::new(s);
+            match find_loop_in_stms(&stms, label) {
+                Some((prefix, the_loop, suffix)) => {
+                    let mut stm = Spanned::new(
+                        expr.span.clone(),
+                        StmX::LoopIsolationBoundary {
+                            pre_stms: Arc::new(prefix),
+                            loop_stm: the_loop,
+                            pre_modified_params: None,
+                        },
+                    );
+                    if suffix.len() > 0 {
+                        let mut v = vec![stm];
+                        v.extend(suffix);
+                        stm = Spanned::new(expr.span.clone(), StmX::Block(Arc::new(v)))
+                    }
+                    Ok((vec![stm], exp))
+                }
+                None => {
+                    // Unusual case; loop would have to be cut out by Never
+                    assert!(matches!(exp, Maybe::Never));
+                    return Ok((stms, exp));
+                }
             }
-
-            // The Loop should be last or second-to-last statement
-            let loop_idx = stms.iter().rposition(|s| matches!(s.x, StmX::Loop { .. })).unwrap();
-            assert!(
-                stms.len() - loop_idx == 1
-                    || (stms.len() - loop_idx == 2
-                        && matches!(
-                            stms[stms.len() - 1].x,
-                            StmX::Assume(..) | StmX::Assign { .. }
-                        ))
-                    || (stms.len() - loop_idx == 3
-                        && matches!(stms[stms.len() - 2].x, StmX::Assume(..))
-                        && matches!(stms[stms.len() - 1].x, StmX::Assign { .. }))
-            );
-
-            let mut stm = Spanned::new(
-                expr.span.clone(),
-                StmX::LoopIsolationBoundary {
-                    pre_stms: Arc::new(stms[0..loop_idx].to_vec()),
-                    loop_stm: stms[loop_idx].clone(),
-                    pre_modified_params: None,
-                },
-            );
-
-            if loop_idx + 1 < stms.len() {
-                let mut v = vec![stm];
-                v.extend(stms[loop_idx + 1..].to_vec());
-                stm = Spanned::new(expr.span.clone(), StmX::Block(Arc::new(v)))
-            }
-
-            Ok((vec![stm], exp))
         }
         ExprX::Unary(op @ UnaryOp::InferSpecForLoopIter { .. }, spec_expr) => {
             let spec_exp = expr_to_pure_exp_skip_checks(ctx, state, &spec_expr)?;
@@ -4698,4 +4674,25 @@ fn assert_assume_satisfies_user_defined_type_invariant(
         stms.push(Spanned::new(exp.span.clone(), StmX::Assume(exp)));
     }
     Ok(())
+}
+
+fn find_loop_in_stms(stms: &[Stm], label: &Label) -> Option<(Vec<Stm>, Stm, Vec<Stm>)> {
+    for i in 0..stms.len() {
+        if let Some((prefix, the_loop, suffix)) = find_loop_in_stm(&stms[i], label) {
+            let mut new_prefix = stms[..i].to_vec();
+            new_prefix.extend(prefix);
+            let mut new_suffix = suffix;
+            new_suffix.extend(stms[i + 1..].to_vec());
+            return Some((new_prefix, the_loop, new_suffix));
+        }
+    }
+    None
+}
+
+fn find_loop_in_stm(stm: &Stm, label: &Label) -> Option<(Vec<Stm>, Stm, Vec<Stm>)> {
+    match &stm.x {
+        StmX::Block(stms) => find_loop_in_stms(stms, label),
+        StmX::Loop { label: l, .. } if l == label => Some((vec![], stm.clone(), vec![])),
+        _ => None,
+    }
 }
