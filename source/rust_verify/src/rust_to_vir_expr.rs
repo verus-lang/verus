@@ -4685,12 +4685,13 @@ fn ty_is_float_or_ref_float<'tcx>(ty: rustc_middle::ty::Ty<'tcx>) -> bool {
 }
 
 /// Check that we can unambiguously identify a loop inside this loop_isolation_boundary block,
-/// and return the 'loop_isolation' parameter of that loop.
+/// and return the 'loop_isolation' parameter and Label of that loop.
 ///
 /// The exact form of the block isn't really important;
 /// we just need to make sure that the loop we pick
-/// out is the last loop to appear in the block (since that's how ast_to_sst associates
-/// the loop_isolation_boundary block with the loop).
+/// corresponds to the one that is intended for any source
+/// code that the syntax macro might emit.
+/// (After this point, we use the Label to identify the loop.)
 fn loop_isolation_boundary_check(
     span: Span,
     block: &vir::ast::Expr,
