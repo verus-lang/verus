@@ -2502,20 +2502,15 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             }
             stmts
         }
-        StmX::Loop { .. } => loop_to_stmts(ctx, state, stm, None)?,
-        StmX::LoopIsolationBoundary { pre_stms, loop_stm, pre_modified_params } => {
+        StmX::Loop { pre_stms, .. } => {
             let mut stmts: Vec<Stmt> = Vec::new();
             for s in pre_stms.iter() {
                 stmts.extend(stm_to_stmts(ctx, state, s)?);
             }
-
-            let boundary = LoopIsolationBoundaryInfo {
-                pre_modified_params: pre_modified_params.clone().unwrap(),
-                pre_stmts: stmts.iter().map(|s| air::remove_asserts::remove_asserts(s)).collect(),
-            };
-            let loop_stmts = loop_to_stmts(ctx, state, loop_stm, Some(boundary))?;
+            let assert_free_pre_stmts =
+                stmts.iter().map(|s| air::remove_asserts::remove_asserts(s)).collect();
+            let loop_stmts = loop_to_stmts(ctx, state, stm, assert_free_pre_stmts)?;
             stmts.extend(loop_stmts);
-
             stmts
         }
         StmX::OpenInvariant(body_stm) => {
@@ -2600,19 +2595,15 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
     Ok(result)
 }
 
-struct LoopIsolationBoundaryInfo {
-    pre_modified_params: Arc<crate::sst_vars::HavocSet>,
-    pre_stmts: Vec<Stmt>,
-}
-
 fn loop_to_stmts(
     ctx: &Ctx,
     state: &mut State,
     stm: &Stm,
-    boundary: Option<LoopIsolationBoundaryInfo>,
+    assert_free_pre_stmts: Vec<Stmt>,
 ) -> Result<Vec<Stmt>, VirErr> {
     let expr_ctxt = &ExprCtxt::new();
     let StmX::Loop {
+        pre_stms: _,
         loop_isolation,
         is_for_loop,
         id,
@@ -2624,7 +2615,8 @@ fn loop_to_stmts(
         typ_inv_vars,
         modified_vars,
         au_branch_bool,
-        pre_modified_params,
+        pre_modified_params_incl,
+        pre_modified_params_excl,
     } = &stm.x
     else {
         unreachable!()
@@ -2766,30 +2758,28 @@ fn loop_to_stmts(
             air_body.append(&mut stm_to_stmts(ctx, state, exp)?);
         }
 
-        match boundary {
-            None => {
-                // For any variable that might have been mutated from the beginning of the
-                // function to the beginning of some iteration,
-                // (i.e. anything mutated before or during the loop)
-                // we need to havoc it, in order to create a difference between
-                // the "current" value and the "pre-state" value.
-                let pre_modified_params = pre_modified_params.as_ref().unwrap();
-                pre_modified_params.emit_havocs(ctx, SNAPSHOT_PRE, &mut air_body);
-            }
-            Some(LoopIsolationBoundaryInfo { pre_modified_params, pre_stmts }) => {
-                // Similar, but this time accounting for isolation boundary
+        if assert_free_pre_stmts.len() == 0 {
+            // For any variable that might have been mutated from the beginning of the
+            // function to the beginning of some iteration,
+            // (i.e. anything mutated before or during the loop)
+            // we need to havoc it, in order to create a difference between
+            // the "current" value and the "pre-state" value.
+            let pre_modified_params_incl = pre_modified_params_incl.as_ref().unwrap();
+            pre_modified_params_incl.emit_havocs(ctx, SNAPSHOT_PRE, &mut air_body);
+        } else {
+            // Similar, but this time accounting for isolation boundary
 
-                // Havoc vars between beginning of the function and the start of
-                // the isolation_boundary
-                pre_modified_params.emit_havocs(ctx, SNAPSHOT_PRE, &mut air_body);
+            // Havoc vars between beginning of the function and the start of
+            // the isolation_boundary
+            let pre_modified_params_excl = pre_modified_params_excl.as_ref().unwrap();
+            pre_modified_params_excl.emit_havocs(ctx, SNAPSHOT_PRE, &mut air_body);
 
-                // Execute the code between the isolation boundary and the actual loop start
-                air_body.extend(pre_stmts);
+            // Execute the code between the isolation boundary and the actual loop start
+            air_body.extend(assert_free_pre_stmts);
 
-                // Havoc all vars that might be modified during the loop
-                air_body.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_BOUNDARY))));
-                modified_vars.emit_havocs(ctx, SNAPSHOT_BOUNDARY, &mut air_body);
-            }
+            // Havoc all vars that might be modified during the loop
+            air_body.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_BOUNDARY))));
+            modified_vars.emit_havocs(ctx, SNAPSHOT_BOUNDARY, &mut air_body);
         }
     }
 

@@ -995,6 +995,7 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
             mk_stm(StmX::If(e, s1, s2))
         }
         StmX::Loop {
+            pre_stms,
             loop_isolation,
             is_for_loop,
             id,
@@ -1006,8 +1007,10 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
             typ_inv_vars,
             modified_vars,
             au_branch_bool,
-            pre_modified_params,
+            pre_modified_params_excl,
+            pre_modified_params_incl,
         } => {
+            let pre_stms = visit_stms(ctx, state, pre_stms);
             let cond = cond
                 .as_ref()
                 .map(|(s, e)| (visit_stm(ctx, state, s), visit_exp_native(ctx, state, e)));
@@ -1020,6 +1023,7 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
             let decrease = visit_exps_native(ctx, state, decrease);
             let au_branch_bool = au_branch_bool.as_ref().map(|e| visit_exp_native(ctx, state, e));
             mk_stm(StmX::Loop {
+                pre_stms: pre_stms.clone(),
                 loop_isolation: *loop_isolation,
                 is_for_loop: *is_for_loop,
                 id: *id,
@@ -1031,7 +1035,8 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
                 typ_inv_vars: typ_inv_vars.clone(),
                 modified_vars: modified_vars.clone(),
                 au_branch_bool,
-                pre_modified_params: pre_modified_params.clone(),
+                pre_modified_params_excl: pre_modified_params_excl.clone(),
+                pre_modified_params_incl: pre_modified_params_incl.clone(),
             })
         }
         StmX::OpenInvariant(s) => {
@@ -1056,13 +1061,6 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
         }
         StmX::Air(_) => stm.clone(),
         StmX::Block(stms) => mk_stm(StmX::Block(visit_stms(ctx, state, stms))),
-        StmX::LoopIsolationBoundary { pre_stms, loop_stm, pre_modified_params } => {
-            mk_stm(StmX::LoopIsolationBoundary {
-                pre_stms: visit_stms(ctx, state, pre_stms),
-                loop_stm: visit_stm(ctx, state, loop_stm),
-                pre_modified_params: pre_modified_params.clone(),
-            })
-        }
     }
 }
 

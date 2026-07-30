@@ -216,7 +216,7 @@ pub enum CallTarget {
 
 pub type Stm = Arc<Spanned<StmX>>;
 pub type Stms = Arc<Vec<Stm>>;
-#[derive(Debug, ToDebugSNode)]
+#[derive(Debug, ToDebugSNode, Clone)]
 pub enum StmX {
     /// Call to exec/proof function (or spec function when checking preconditions).
     /// Unlike `ExpX::Call`, this has side effects and may modify state.
@@ -282,6 +282,9 @@ pub enum StmX {
     Loop {
         /// If true, loop body is verified in isolation (no outer context)
         loop_isolation: bool,
+        /// Statements to evalute before the loop which are part of the "isolation boundary".
+        /// Should only be non-empty when loop_isolation=true.
+        pre_stms: Stms,
         /// True if this was originally a for loop (affects error messages)
         is_for_loop: bool,
         /// Unique identifier for this loop instance
@@ -303,7 +306,13 @@ pub enum StmX {
         /// but *excluding* their initial assignments.
         /// This is the same set of variables for which we need to consider different values
         /// for the 'current' and 'pre-state' value of the variable at the beginning of the loop.
-        pre_modified_params: Option<Arc<crate::sst_vars::HavocSet>>,
+        ///
+        /// This is only used when pre_stms is empty.
+        pre_modified_params_incl: Option<Arc<crate::sst_vars::HavocSet>>,
+        /// Params (including closure params) that may be modified _before_ the pre_stms.
+        ///
+        /// This is only used when pre_stms is non-empty.
+        pre_modified_params_excl: Option<Arc<crate::sst_vars::HavocSet>>,
     },
     /// Atomic invariant opening for concurrent verification
     OpenInvariant(Stm),
@@ -313,15 +322,6 @@ pub enum StmX {
     Air(Arc<String>),
     /// Sequential composition of statements
     Block(Stms),
-    /// Wraps a Loop with statements whose effects should be visible from the inner query
-    LoopIsolationBoundary {
-        pre_stms: Stms,
-        /// This must be a Loop with loop_isolation=true
-        loop_stm: Stm,
-        /// Same as Loop's `pre_modified_params` but only vars modified
-        /// before this LoopIsolationBoundary statement evaluates.
-        pre_modified_params: Option<Arc<crate::sst_vars::HavocSet>>,
-    },
 }
 
 // poly.rs uses the specific kind of each local to decide on a poly/native type for the local

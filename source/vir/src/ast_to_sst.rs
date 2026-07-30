@@ -19,7 +19,7 @@ use crate::messages::{
 use crate::sst;
 use crate::sst::{
     Bnd, BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclKind, LocalDeclX,
-    ParPurpose, Pars, Stm, StmX, UniqueIdent,
+    ParPurpose, Pars, Stm, StmX, Stms, UniqueIdent,
 };
 use crate::sst_util::{
     exp_with_vars_at_pre_state, sst_bitwidth, sst_conjoin, sst_equal, sst_exp_get_proof_note,
@@ -1888,14 +1888,7 @@ pub(crate) fn expr_to_stm_opt(
             let (stms, exp) = expr_to_stm_opt(ctx, state, e)?;
             match find_loop_in_stms(&stms, label) {
                 Some((prefix, the_loop, suffix)) => {
-                    let mut stm = Spanned::new(
-                        expr.span.clone(),
-                        StmX::LoopIsolationBoundary {
-                            pre_stms: Arc::new(prefix),
-                            loop_stm: the_loop,
-                            pre_modified_params: None,
-                        },
-                    );
+                    let mut stm = loop_set_pre_stms(the_loop, Arc::new(prefix));
                     if suffix.len() > 0 {
                         let mut v = vec![stm];
                         v.extend(suffix);
@@ -2777,6 +2770,7 @@ pub(crate) fn expr_to_stm_opt(
             let while_stm = Spanned::new(
                 expr.span.clone(),
                 StmX::Loop {
+                    pre_stms: Arc::new(vec![]),
                     loop_isolation,
                     is_for_loop,
                     id,
@@ -2789,7 +2783,8 @@ pub(crate) fn expr_to_stm_opt(
                     // These are filled in later, in sst_vars
                     typ_inv_vars: Arc::new(vec![]),
                     modified_vars: None,
-                    pre_modified_params: None,
+                    pre_modified_params_incl: None,
+                    pre_modified_params_excl: None,
                 },
             );
 
@@ -4695,4 +4690,16 @@ fn find_loop_in_stm(stm: &Stm, label: &Label) -> Option<(Vec<Stm>, Stm, Vec<Stm>
         StmX::Loop { label: l, .. } if l == label => Some((vec![], stm.clone(), vec![])),
         _ => None,
     }
+}
+
+fn loop_set_pre_stms(the_loop: Stm, new_pre_stms: Stms) -> Stm {
+    let mut the_loop = the_loop;
+    match Arc::make_mut(&mut the_loop).x {
+        StmX::Loop { ref mut pre_stms, .. } => {
+            assert!(pre_stms.len() == 0);
+            *pre_stms = new_pre_stms;
+        }
+        _ => panic!("loop_set_pre_stms expects Loop"),
+    }
+    the_loop
 }
