@@ -45,6 +45,7 @@ html5ever = "0.26" # TODO: kuchikiki depends on 0.26
 im = "15.1.0"
 indexmap = "2"
 indicatif = "0.18"
+indoc = "2.0.7"
 is-terminal = "0.4.17"
 itertools = "0.15.0"
 # kuchikiki has a shakey maintainability story, would be great to remove
@@ -76,7 +77,7 @@ syn = { version = "2.0", features = ["full", "visit", "visit-mut", "extra-traits
 tabled = "0.21.0"
 tempfile = "3.27"
 toml = "1.1.2"
-toml_edit = "0.23.3"
+toml_edit = { version = "0.23.3", features = ["serde"] }
 walkdir = "2.5"
 yansi = "1"
 zip = "8.6"
@@ -87,8 +88,8 @@ cargo-verus-toolchains = { path = "cargo-verus-toolchains" }
 internals_interface = { path = "tools/internals_interface" }
 rustc_mir_build_verus = { path = "rustc_mir_build", package = "rustc_mir_build" }
 rust_verify_test_macros = { path = "rust_verify_test_macros" }
-verus_prettyplease = { version = "=0.0.0-2026-05-31-0205", path = "../dependencies/prettyplease" }
-verus_syn = { version = "=0.0.0-2026-05-31-0205", path = "../dependencies/syn", features = ["full", "visit", "visit-mut", "extra-traits"] }
+verus_prettyplease = { version = "=0.0.0-2026-07-27-0206", path = "../dependencies/prettyplease" }
+verus_syn = { version = "=0.0.0-2026-07-27-0206", path = "../dependencies/syn", features = ["full", "visit", "visit-mut", "extra-traits"] }
 vir-macros = { path = "vir_macros" }
 vir = { path = "vir" }
 

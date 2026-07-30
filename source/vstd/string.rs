@@ -17,7 +17,7 @@ use super::view::*;
 
 verus! {
 
-broadcast use {super::seq::group_seq_axioms, super::slice::group_slice_axioms};
+broadcast use {super::seq::group_seq_lemmas, super::slice::group_slice_axioms};
 
 #[cfg(not(verus_verify_core))]
 impl View for str {

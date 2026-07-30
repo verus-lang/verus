@@ -49,7 +49,7 @@ fn get_rust_toolchain(
         &std::fs::read_to_string(repo_root.as_ref().join("rust-toolchain.toml"))
             .context("could not read rust-toolchain.toml\nrun vargo in `source`")?,
     )
-    .context("could not parse Cargo.toml\nrun vargo in `source`")?;
+    .context("could not parse rust-toolchain.toml\nrun vargo in `source`")?;
     let rust_toolchain_channel_toml = rust_toolchain_toml
         .get("toolchain").and_then(|t| t.get("channel"))
                 .and_then(|t| if let toml::Value::String(s) = t { Some(s) } else { None })

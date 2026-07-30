@@ -322,8 +322,14 @@ fn func_body_to_air(
     let mut impl_def_reqs: Vec<Expr> = Vec::new();
     let (name, rec_name, typ_args) =
         if let FunctionKind::TraitMethodImpl { method, trait_typ_args, .. } = &function.x.kind {
-            let (trait_typ_args, holes) = crate::traits::hide_projections(trait_typ_args);
+            let (mut trait_typ_args, holes) = crate::traits::hide_projections(trait_typ_args);
             let (typ_params, eqs) = hide_projections_air(ctx, &typ_params, holes);
+            let n_inner_typ_params = ctx.func_map[method].x.typ_params.len() - trait_typ_args.len();
+            let inner_typ_params_lo = typ_params.len() - n_inner_typ_params;
+            let inner_typ_params = typ_params[inner_typ_params_lo..].to_vec();
+            for x in &inner_typ_params {
+                Arc::make_mut(&mut trait_typ_args).push(Arc::new(TypX::TypParam(x.clone())));
+            }
             impl_typ_params = typ_params;
             impl_def_reqs.extend(eqs);
             (method.clone(), function.x.name.clone(), trait_typ_args.clone())
@@ -376,8 +382,8 @@ fn func_body_to_air(
         let rec_f_def = ident_apply(&rec_f, &args_def);
         let eq_zero = mk_eq(&rec_f_fuel, &rec_f_zero);
         let eq_body = mk_eq(&rec_f_succ, &body_expr);
-        let name_zero = format!("{}_fuel_to_zero", &fun_to_air_ident(&ctx.name_ctxt, &name));
-        let name_body = format!("{}_fuel_to_body", &fun_to_air_ident(&ctx.name_ctxt, &name));
+        let name_zero = format!("{}_fuel_to_zero", fun_to_air_ident(&ctx.name_ctxt, &name));
+        let name_body = format!("{}_fuel_to_body", fun_to_air_ident(&ctx.name_ctxt, &name));
         let opts = Some(FuncBindOpts { add_fuel: true, add_default_ensures: false });
         let bind_zero = func_bind(ctx, name_zero, &typ_params, pars, &rec_f_fuel, opts);
         let bind_body = func_bind(ctx, name_body, &typ_params, pars, &rec_f_succ, opts);

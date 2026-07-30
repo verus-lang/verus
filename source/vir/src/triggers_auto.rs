@@ -1,11 +1,11 @@
 use crate::ast::{
-    BinaryOp, BitwiseOp, Constant, Dt, FieldOpr, Fun, Ident, Typ, TypX, UnaryOp, UnaryOpr, VarAt,
-    VarIdent, VirErr,
+    BitwiseOp, Constant, Dt, FieldOpr, Fun, Ident, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VarIdent,
+    VirErr,
 };
 use crate::ast_util::{dt_as_friendly_rust_name, path_as_friendly_rust_name};
 use crate::context::{ChosenTriggers, Ctx, FunctionCtx};
 use crate::messages::{Span, error};
-use crate::sst::{CallFun, Exp, ExpX, Trig, Trigs, UniqueIdent};
+use crate::sst::{BinaryOp, CallFun, Exp, ExpX, Trig, Trigs, UniqueIdent};
 use crate::util::vec_map;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -470,7 +470,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
         ExpX::Binary(op, e1, e2) => {
             use BinaryOp::*;
             let depth = match op {
-                And | Or | Xor | Implies | Eq(_) => 0,
+                And | Or | Xor | Implies | Eq => 0,
                 HeightCompare { .. } => 1,
                 Ne | Inequality(_) | Arith(..) | RealArith(..) | IeeeFloat(..) => 1,
                 Bitwise(..) => 1,
@@ -480,7 +480,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             let (is_pure1, term1) = gather_terms(ctxt, ctx, e1, depth);
             let (is_pure2, term2) = gather_terms(ctxt, ctx, e2, depth);
             match op {
-                Bitwise(bp, _) => {
+                Bitwise(bp) => {
                     let bop = match bp {
                         BitwiseOp::BitXor => BitOpName::BitXor,
                         BitwiseOp::BitAnd => BitOpName::BitAnd,

@@ -126,6 +126,9 @@ pub struct CargoOptions {
     pub offline: bool,
 
     #[arg(long)]
+    pub release: bool,
+
+    #[arg(long)]
     pub target_dir: Option<PathBuf>,
 
     #[arg(long, value_name = "CONFIG", action = ArgAction::Append)]
@@ -176,6 +179,7 @@ fn has_late_verus_arg(opts: &CargoOptions) -> bool {
             || arg == "--frozen"
             || arg == "--locked"
             || arg == "--offline"
+            || arg == "--release"
             || arg == "--target-dir"
             || arg.starts_with("--target-dir=")
             || arg == "--config"

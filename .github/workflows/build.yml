@@ -7,6 +7,10 @@ on:
         description: Git ref or SHA to build
         required: true
         type: string
+      is_rolling:
+        description: Whether this is a Rolling Release build
+        required: true
+        type: boolean
     outputs:
       version:
         description: Version derived from the built Linux artifact
@@ -57,7 +61,13 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.96.0
+          toolchain: 1.97.1
+
+      - name: create temporary toolchain manifest for a rolling release
+        if: inputs.is_rolling
+        working-directory: ./source
+        run: |
+          cargo run -p cargo-verus-toolchains --bin create-manifest -- --rolling --write-to-dir cargo-verus/toolchain-manifests
 
       - name: build
         working-directory: ./source

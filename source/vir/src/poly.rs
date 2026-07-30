@@ -85,16 +85,16 @@ We take advantage of this to support mixed function-arithmetic triggers with Pol
 */
 
 use crate::ast::{
-    AssocTypeImpl, BinaryOp, Datatype, DatatypeX, Dt, FieldOpr, FunctionKind, IntRange, Mode,
-    NullaryOpr, Primitive, SpannedTyped, Typ, TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr,
-    VarBinder, VarBinderX, VarBinders, VarIdent, Variant,
+    AssocTypeImpl, Datatype, DatatypeX, Dt, FieldOpr, FunctionKind, IntRange, Mode, NullaryOpr,
+    Primitive, SpannedTyped, Typ, TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr, VarBinder,
+    VarBinderX, VarBinders, VarIdent, Variant,
 };
 use crate::context::Ctx;
 use crate::def::Spanned;
 use crate::sst::{
-    BndX, CallFun, Dest, Exp, ExpX, Exps, FuncCheckSst, FuncDeclSst, FunctionSst, FunctionSstX,
-    InternalFun, KrateSst, KrateSstX, LocalDecl, LocalDeclKind, Par, ParX, Pars, PostConditionSst,
-    Stm, StmX, Stms, Trigs, UnwindSst,
+    BinaryOp, BndX, CallFun, Dest, Exp, ExpX, Exps, FuncCheckSst, FuncDeclSst, FunctionSst,
+    FunctionSstX, InternalFun, KrateSst, KrateSstX, LocalDecl, LocalDeclKind, Par, ParX, Pars,
+    PostConditionSst, Stm, StmX, Stms, Trigs, UnwindSst,
 };
 use crate::triggers::native_quant_vars;
 use crate::util::vec_map;
@@ -673,13 +673,13 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 }
             }
         }
-        ExpX::Binary(BinaryOp::Index(kind, bc), e1, e2) => {
+        ExpX::Binary(BinaryOp::Index(kind), e1, e2) => {
             let e1 = visit_exp(ctx, state, e1);
             let e2 = visit_exp(ctx, state, e2);
             let e1 = coerce_exp_to_native(ctx, &e1);
             let e2 = coerce_exp_to_poly(ctx, &e2);
             let typ = coerce_typ_to_poly(ctx, &exp.typ);
-            mk_exp_typ(&typ, ExpX::Binary(BinaryOp::Index(*kind, *bc), e1, e2))
+            mk_exp_typ(&typ, ExpX::Binary(BinaryOp::Index(*kind), e1, e2))
         }
         ExpX::Binary(op, e1, e2) => {
             let e1 = visit_exp(ctx, state, e1);
@@ -690,7 +690,7 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 BinaryOp::HeightCompare { .. } => (false, true),
                 BinaryOp::Arith(..) => (true, false),
                 BinaryOp::RealArith(..) => (true, false),
-                BinaryOp::Eq(_) | BinaryOp::Ne => (false, false),
+                BinaryOp::Eq | BinaryOp::Ne => (false, false),
                 BinaryOp::Bitwise(..) => (true, false),
                 BinaryOp::IeeeFloat(..) => (true, false),
                 BinaryOp::StrGetChar { .. } => (true, false),

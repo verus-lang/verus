@@ -1391,3 +1391,142 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_rust_error_msg(err, "refutable pattern in local binding")
 }
+
+test_verify_one_file! {
+    #[test] int_intrinsic_consts_in_patterns verus_code! {
+        fn example1(x: u64) {
+            let mut b = false;
+            match x {
+                u64::MIN => { b = true; },
+                _ => ()
+            }
+            assert(b <==> x == 0);
+        }
+
+        fn example2(x: u64) {
+            let mut b = false;
+            match x {
+                u64::MAX => { b = true; },
+                _ => ()
+            }
+            assert(b <==> x == 0xffff_ffff_ffff_ffff);
+        }
+
+        fn example3(x: i64) {
+            let mut b = false;
+            match x {
+                i64::MAX => { b = true; },
+                _ => ()
+            }
+            assert(b <==> x == 0x7fff_ffff_ffff_ffff);
+        }
+
+        fn example4(x: i64) {
+            let mut b = false;
+            match x {
+                i64::MIN => { b = true; },
+                _ => ()
+            }
+            assert(b <==> x == -0x8000_0000_0000_0000);
+        }
+
+        fn example5(x: usize) {
+            let mut b = false;
+            match x {
+                usize::MAX => { b = true; },
+                _ => ()
+            }
+            assert(usize::BITS == 64 ==> (b <==> x == 0xffff_ffff_ffff_ffff));
+            assert(usize::BITS == 32 ==> (b <==> x == 0xffff_ffff));
+        }
+
+        fn example6(x: usize) {
+            let mut b = false;
+            match x {
+                usize::MIN => { b = true; },
+                _ => ()
+            }
+            assert(b <==> x == 0);
+        }
+
+        fn example7(x: isize) {
+            let mut b = false;
+            match x {
+                isize::MAX => { b = true; },
+                _ => ()
+            }
+            assert(usize::BITS == 64 ==> (b <==> x == 0x7fff_ffff_ffff_ffff));
+            assert(usize::BITS == 32 ==> (b <==> x == 0x7fff_ffff));
+        }
+
+        fn example8(x: isize) {
+            let mut b = false;
+            match x {
+                isize::MIN => { b = true; },
+                _ => ()
+            }
+            assert(usize::BITS == 64 ==> (b <==> x == -0x8000_0000_0000_0000));
+            assert(usize::BITS == 32 ==> (b <==> x == -0x8000_0000));
+        }
+
+        fn example9(x: isize) {
+            let mut b = false;
+            match x {
+                isize::MIN .. isize::MAX => { b = true; },
+                _ => ()
+            }
+            assert(b <==> x != isize::MAX);
+        }
+
+        spec fn s1(x: isize) -> bool {
+            match x {
+                isize::MIN => true,
+                _ => false,
+            }
+        }
+
+        fn spec_example1(x: isize) {
+            assert(s1(x) <==> x == isize::MIN);
+        }
+
+        spec fn s2(x: isize) -> bool {
+            match x {
+                isize::MIN .. isize::MAX => true,
+                _ => false,
+            }
+        }
+
+        fn spec_example2(x: isize) {
+            assert(s2(x) <==> x != isize::MAX);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] assoc_consts_in_patterns verus_code! {
+        struct X { }
+        impl X {
+            const SOME_CONST: u64 = 13;
+        }
+
+        fn test(x: u64) {
+            let mut b = false;
+            match x {
+                X::SOME_CONST => { b = true; }
+                _ => { }
+            }
+            assert(b <==> x == 13);
+        }
+
+        spec fn s1(x: u64) -> bool {
+            match x {
+                X::SOME_CONST => true,
+                _ => false,
+            }
+        }
+
+        fn test2(x: u64) {
+            assert(s1(x) <==> x == 13);
+        }
+    } => Ok(())
+}

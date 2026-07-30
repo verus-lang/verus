@@ -67,18 +67,6 @@ pub(crate) struct UnsafeOpInUnsafeFnUseOfInlineAssemblyRequiresUnsafe {
 }
 
 #[derive(Diagnostic)]
-#[diag("initializing type with `rustc_layout_scalar_valid_range` attr is unsafe and requires unsafe block", code = E0133)]
-#[note(
-    "initializing a layout restricted type's field with a value outside the valid range is undefined behavior"
-)]
-pub(crate) struct UnsafeOpInUnsafeFnInitializingTypeWithRequiresUnsafe {
-    #[label("initializing type with `rustc_layout_scalar_valid_range` attr")]
-    pub(crate) span: Span,
-    #[subdiagnostic]
-    pub(crate) unsafe_not_inherited_note: Option<UnsafeNotInheritedLintNote>,
-}
-
-#[derive(Diagnostic)]
 #[diag("initializing type with an unsafe field is unsafe and requires unsafe block", code = E0133)]
 #[note("unsafe fields may carry library invariants")]
 pub(crate) struct UnsafeOpInUnsafeFnInitializingTypeWithUnsafeFieldRequiresUnsafe {
@@ -283,40 +271,11 @@ pub(crate) struct UseOfInlineAssemblyRequiresUnsafeUnsafeOpInUnsafeFnAllowed {
 }
 
 #[derive(Diagnostic)]
-#[diag("initializing type with `rustc_layout_scalar_valid_range` attr is unsafe and requires unsafe block", code = E0133)]
-#[note(
-    "initializing a layout restricted type's field with a value outside the valid range is undefined behavior"
-)]
-pub(crate) struct InitializingTypeWithRequiresUnsafe {
-    #[primary_span]
-    #[label("initializing type with `rustc_layout_scalar_valid_range` attr")]
-    pub(crate) span: Span,
-    #[subdiagnostic]
-    pub(crate) unsafe_not_inherited_note: Option<UnsafeNotInheritedNote>,
-}
-
-#[derive(Diagnostic)]
 #[diag("initializing type with an unsafe field is unsafe and requires unsafe block", code = E0133)]
 #[note("unsafe fields may carry library invariants")]
 pub(crate) struct InitializingTypeWithUnsafeFieldRequiresUnsafe {
     #[primary_span]
     #[label("initialization of struct with unsafe field")]
-    pub(crate) span: Span,
-    #[subdiagnostic]
-    pub(crate) unsafe_not_inherited_note: Option<UnsafeNotInheritedNote>,
-}
-
-#[derive(Diagnostic)]
-#[diag(
-    "initializing type with `rustc_layout_scalar_valid_range` attr is unsafe and requires unsafe function or block",
-    code = E0133
-)]
-#[note(
-    "initializing a layout restricted type's field with a value outside the valid range is undefined behavior"
-)]
-pub(crate) struct InitializingTypeWithRequiresUnsafeUnsafeOpInUnsafeFnAllowed {
-    #[primary_span]
-    #[label("initializing type with `rustc_layout_scalar_valid_range` attr")]
     pub(crate) span: Span,
     #[subdiagnostic]
     pub(crate) unsafe_not_inherited_note: Option<UnsafeNotInheritedNote>,
@@ -603,6 +562,16 @@ pub(crate) struct UnsafeBinderCastRequiresUnsafeUnsafeOpInUnsafeFnAllowed {
     pub(crate) unsafe_not_inherited_note: Option<UnsafeNotInheritedNote>,
 }
 
+#[derive(Diagnostic)]
+#[diag("call `{$function}` explicitly is unsafe and requires unsafe block", code = E0133)]
+pub(crate) struct CallDropExplicitlyRequiresUnsafe {
+    #[primary_span]
+    pub(crate) span: Span,
+    pub(crate) function: String,
+    #[subdiagnostic]
+    pub(crate) unsafe_not_inherited_note: Option<UnsafeNotInheritedNote>,
+}
+
 #[derive(Subdiagnostic)]
 #[label("items do not inherit unsafety from separate enclosing items")]
 pub(crate) struct UnsafeNotInheritedNote {
@@ -649,14 +618,14 @@ pub(crate) enum UnusedUnsafeEnclosing {
     },
 }
 
-pub(crate) struct NonExhaustivePatternsTypeNotEmpty<'p, 'tcx, 'm> {
-    pub(crate) cx: &'m RustcPatCtxt<'p, 'tcx>,
+pub(crate) struct NonExhaustivePatternsTypeNotEmpty<'a, 'tcx> {
+    pub(crate) cx: &'a RustcPatCtxt<'a, 'tcx>,
     pub(crate) scrut_span: Span,
     pub(crate) braces_span: Option<Span>,
     pub(crate) ty: Ty<'tcx>,
 }
 
-impl<'a, G: EmissionGuarantee> Diagnostic<'a, G> for NonExhaustivePatternsTypeNotEmpty<'_, '_, '_> {
+impl<'a, G: EmissionGuarantee> Diagnostic<'a, G> for NonExhaustivePatternsTypeNotEmpty<'_, '_> {
     fn into_diag(self, dcx: DiagCtxtHandle<'a>, level: Level) -> Diag<'a, G> {
         let mut diag =
             Diag::new(dcx, level, msg!("non-exhaustive patterns: type `{$ty}` is non-empty"));
@@ -924,22 +893,24 @@ pub(crate) struct IrrefutableLetPatternsIfLetGuard {
 }
 
 #[derive(Diagnostic)]
-#[diag(
-    "irrefutable `let...else` {$count ->
-    [one] pattern
-    *[other] patterns
-}"
-)]
-#[note(
-    "{$count ->
-    [one] this pattern always matches, so the else clause is unreachable
-    *[other] these patterns always match, so the else clause is unreachable
-}"
-)]
+#[diag("unreachable `else` clause")]
+#[note("this pattern always matches, so the else clause is unreachable")]
 pub(crate) struct IrrefutableLetPatternsLetElse {
-    pub(crate) count: usize,
-    #[help("remove this `else` block")]
-    pub(crate) else_span: Option<Span>,
+    #[subdiagnostic]
+    pub(crate) be_replaced: Option<LetElseReplacementSuggestion>,
+}
+
+#[derive(Subdiagnostic, Debug)]
+#[suggestion(
+    "consider using `let {$lhs} = {$rhs}` to match on a specific variant",
+    code = "let {lhs} = {rhs}",
+    applicability = "machine-applicable"
+)]
+pub(crate) struct LetElseReplacementSuggestion {
+    #[primary_span]
+    pub(crate) span: Span,
+    pub(crate) lhs: String,
+    pub(crate) rhs: String,
 }
 
 #[derive(Diagnostic)]

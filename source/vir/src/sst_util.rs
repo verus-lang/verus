@@ -1,8 +1,8 @@
 use crate::ast::{
-    ArithOp, BinaryOp, BinaryOpr, BitwiseOp, Constant, CtorPrintStyle, Dt, Fun, GenericBound,
-    GenericBoundX, GenericBounds, Ident, InequalityOp, IntRange, IntegerTypeBitwidth,
-    IntegerTypeBoundKind, Mode, ProofNoteLabel, Quant, SpannedTyped, Typ, TypX, Typs, UnaryOp,
-    UnaryOpr, VarAt, VarBinder, VarBinderX, VarBinders,
+    BinaryOpr, BitwiseOp, Constant, CtorPrintStyle, Dt, Fun, GenericBound, GenericBoundX,
+    GenericBounds, Ident, InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Mode,
+    ProofNoteLabel, Quant, SpannedTyped, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VarBinder,
+    VarBinderX, VarBinders,
 };
 use crate::ast_util::{get_variant, unit_typ};
 use crate::context::GlobalCtx;
@@ -10,8 +10,8 @@ use crate::def::{Spanned, unique_bound, user_local_name};
 use crate::interpreter::InterpExp;
 use crate::messages::Span;
 use crate::sst::{
-    BndX, CallFun, Exp, ExpX, Exps, FuncCheckSst, FunctionSst, InternalFun, LocalDeclKind, Stm,
-    StmX, Trig, Trigs, UniqueIdent,
+    ArithOp, BinaryOp, BndX, CallFun, Exp, ExpX, Exps, FuncCheckSst, FunctionSst, InternalFun,
+    LocalDeclKind, Stm, StmX, Trig, Trigs, UniqueIdent,
 };
 use crate::sst_visitor::{NoScoper, Visitor, Walk};
 use air::scope_map::ScopeMap;
@@ -389,17 +389,17 @@ impl BinaryOp {
             Xor => (22, 22, 23), // Rust doesn't have a logical XOR, so this is consistent with BitXor
             Implies => (3, 4, 3),
             HeightCompare { .. } => (90, 5, 5),
-            Eq(_) | Ne => (10, 11, 11),
+            Eq | Ne => (10, 11, 11),
             Inequality(_) => (10, 10, 10),
             Arith(o) => match o {
-                Add(_) | Sub(_) => (30, 30, 31),
-                Mul(_) | EuclideanDiv(_) | EuclideanMod(_) => (40, 40, 41),
+                Add | Sub => (30, 30, 31),
+                Mul | EuclideanDiv | EuclideanMod => (40, 40, 41),
             },
             RealArith(o) => match o {
                 crate::ast::RealArithOp::Add | crate::ast::RealArithOp::Sub => (30, 30, 31),
                 crate::ast::RealArithOp::Mul | crate::ast::RealArithOp::Div => (40, 40, 41),
             },
-            Bitwise(o, _) => match o {
+            Bitwise(o) => match o {
                 BitXor => (22, 22, 23),
                 BitAnd => (24, 24, 25),
                 BitOr => (20, 20, 21),
@@ -407,7 +407,7 @@ impl BinaryOp {
             },
             IeeeFloat(_) => (5, 90, 90),
             StrGetChar => (90, 90, 90),
-            Index(_, _) => (90, 90, 90),
+            Index(_) => (90, 90, 90),
         }
     }
 }
@@ -593,7 +593,7 @@ impl ExpX {
                     Xor => "^",
                     Implies => "==>",
                     HeightCompare { .. } => "",
-                    Eq(_) => "==",
+                    Eq => "==",
                     Ne => "!=",
                     Inequality(o) => match o {
                         Le => "<=",
@@ -602,11 +602,11 @@ impl ExpX {
                         Gt => ">",
                     },
                     Arith(o) => match o {
-                        Add(_) => "+",
-                        Sub(_) => "-",
-                        Mul(_) => "*",
-                        EuclideanDiv(_) => "/",
-                        EuclideanMod(_) => "%",
+                        Add => "+",
+                        Sub => "-",
+                        Mul => "*",
+                        EuclideanDiv => "/",
+                        EuclideanMod => "%",
                     },
                     RealArith(o) => match o {
                         crate::ast::RealArithOp::Add => "+",
@@ -614,7 +614,7 @@ impl ExpX {
                         crate::ast::RealArithOp::Mul => "*",
                         crate::ast::RealArithOp::Div => "/",
                     },
-                    Bitwise(o, _) => match o {
+                    Bitwise(o) => match o {
                         BitXor => "^",
                         BitAnd => "&",
                         BitOr => "|",
@@ -636,8 +636,7 @@ impl ExpX {
                 }
             }
             BinaryOpr(crate::ast::BinaryOpr::ExtEq(deep, _), e1, e2) => {
-                let (prec_exp, prec_left, prec_right) =
-                    BinaryOp::Eq(Mode::Spec).prec_of_binary_op();
+                let (prec_exp, prec_left, prec_right) = BinaryOp::Eq.prec_of_binary_op();
                 let left = e1.x.to_string_prec(global, prec_left);
                 let right = e2.x.to_string_prec(global, prec_right);
                 let op_str = if *deep { "=~~=" } else { "=~=" };
@@ -961,7 +960,7 @@ pub fn sst_le(span: &Span, e1: &Exp, e2: &Exp) -> Exp {
 }
 
 pub fn sst_equal(span: &Span, e1: &Exp, e2: &Exp) -> Exp {
-    let op = BinaryOp::Eq(Mode::Spec);
+    let op = BinaryOp::Eq;
     SpannedTyped::new(span, &Arc::new(TypX::Bool), ExpX::Binary(op, e1.clone(), e2.clone()))
 }
 

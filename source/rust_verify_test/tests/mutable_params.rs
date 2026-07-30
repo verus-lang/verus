@@ -587,3 +587,41 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_fails(err, 1)
 }
+
+// https://github.com/verus-lang/verus/issues/1933
+// An ident subpattern (`a @ b: T`) in parameter position used to silently
+// register only the outer name (`a`), leaving `b` unregistered - referencing
+// `b` in the body then panicked in mode-checking instead of being rejected
+// here with a clear error.
+test_verify_one_file_with_options! {
+    #[test] ident_subpattern_in_param_position_rejected_not_panicking [] => verus_code! {
+        fn double(a @ b: i32) -> i32 { a + b }
+    } => Err(err) => assert_vir_error_msg(err, "plain identifier pattern")
+}
+
+// A more useful shape than the plain identifier-alias repro above: the
+// subpattern here is a real destructure (`(a, b)`), not just another name -
+// this hits the same underlying bug (pat_to_mut_var silently drops the
+// subpattern regardless of what it is), so it must be rejected the same way
+// rather than only handling the trivial ident-only case from the issue.
+test_verify_one_file_with_options! {
+    #[test] tuple_destructure_at_pattern_in_param_position_rejected_not_panicking [] => verus_code! {
+        fn process(whole @ (a, b): (i32, i32)) -> i32 { a + b + whole.0 }
+    } => Err(err) => assert_vir_error_msg(err, "plain identifier pattern")
+}
+
+// Not just `@` patterns - the check is a positive allow-list (plain
+// identifier only), so ordinary destructuring/wildcard patterns in
+// parameter position are rejected the same way, with the same clear error,
+// rather than relying on pat_to_mut_var's own separate catch-all.
+test_verify_one_file_with_options! {
+    #[test] tuple_pattern_in_param_position_rejected [] => verus_code! {
+        fn add_pair((a, b): (i32, i32)) -> i32 { a + b }
+    } => Err(err) => assert_vir_error_msg(err, "plain identifier pattern")
+}
+
+test_verify_one_file_with_options! {
+    #[test] wildcard_pattern_in_param_position_rejected [] => verus_code! {
+        fn ignore_arg(_: i32) -> i32 { 0 }
+    } => Err(err) => assert_vir_error_msg(err, "plain identifier pattern")
+}

@@ -532,7 +532,7 @@ impl Context {
         let smt_data = self.smt_log.take_pipe_data();
         let smt_output = self.get_smt_process().send_commands(smt_data);
         if smt_output.len() != 1 {
-            panic!("unexpected output from SMT eval {:?}", &smt_output);
+            panic!("unexpected output from SMT eval {:?}", smt_output);
         }
         smt_output[0].clone()
     }

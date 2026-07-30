@@ -1,7 +1,7 @@
 use crate::ast::{
-    AutospecUsage, BinaryOp, CallTarget, CrateId, DeclProph, Expr, ExprX, Fun, Function,
-    FunctionKind, Ident, ItemKind, MaskSpec, Mode, Param, ParamX, Params, Path, PlaceX,
-    SpannedTyped, StmtX, Typ, TypX, UnaryOp, UnwindSpec, VarBinder, VarBinderX, VarIdent, VirErr,
+    AutospecUsage, CallTarget, CrateId, DeclProph, Expr, ExprX, Fun, Function, FunctionKind, Ident,
+    ItemKind, MaskSpec, Mode, Param, ParamX, Params, Path, PlaceX, SpannedTyped, StmtX, Typ, TypX,
+    UnaryOp, UnwindSpec, VarBinder, VarBinderX, VarIdent, VirErr,
 };
 use crate::ast_to_sst::{
     FinalState, PreLocalDeclKind, State, expr_to_bind_decls_exp_skip_checks,
@@ -21,7 +21,7 @@ use crate::sst::{
     FuncAxiomsSst, FuncCheckSst, FuncDeclSst, FuncSpecBodySst, FunctionSst, FunctionSstHas,
     FunctionSstX, PostConditionKind, PostConditionSst, UnwindSst,
 };
-use crate::sst_util::subst_exp;
+use crate::sst_util::{sst_equal, subst_exp};
 use crate::util::{vec_map, vec_map_result};
 use crate::{ast_visitor, fun};
 use std::collections::{HashMap, HashSet};
@@ -387,11 +387,7 @@ fn rewrite_async_ens_vir(function: &Function, specs: &Vec<Expr>) -> Result<Vec<E
                 Some(e.clone()),
             ),
         );
-        let imply = SpannedTyped::new(
-            &e.span,
-            &Arc::new(TypX::Bool),
-            ExprX::Binary(BinaryOp::Implies, awaited_call, block),
-        );
+        let imply = crate::ast_util::mk_implies(&e.span, &awaited_call, &block);
         exprs.push(imply);
     }
 
@@ -966,12 +962,7 @@ pub fn func_def_to_sst(
             ),
         );
 
-        let spec_eq = SpannedTyped::new(
-            &span,
-            &Arc::new(TypX::Bool),
-            ExpX::Binary(BinaryOp::Eq(Mode::Spec), call_pred_args, param_tuple),
-        );
-
+        let spec_eq = sst_equal(&span, &call_pred_args, &param_tuple);
         stms.push(Spanned::new(span, StmX::Assume(spec_eq)));
         state.au_var_exp_to_resolve = Some(au_exp);
         au_stms = stms;

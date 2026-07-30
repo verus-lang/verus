@@ -1,9 +1,10 @@
 use crate::ast::{
     AssertQueryMode, AutospecUsage, BinaryOp, ByRef, CallTarget, CallTargetKind, CtorUpdateTail,
     Datatype, DeclProph, Dt, Expr, ExprX, FieldOpr, Fun, Function, FunctionKind, InvAtomicity,
-    ItemKind, Krate, Mode, ModeCoercion, MultiOp, MutRefFutureSourceName, OverflowBehavior, Path,
-    Pattern, PatternBinding, PatternX, Place, PlaceX, ReadKind, SpannedTyped, Stmt, StmtX, Typ,
-    TypDecoration, TypX, UnaryOp, UnaryOpr, UnfinalizedReadKind, UnwindSpec, VarIdent, VirErr,
+    ItemKind, Krate, LogicalOp, Mode, ModeCoercion, MultiOp, MutRefFutureSourceName,
+    OverflowBehavior, Path, Pattern, PatternBinding, PatternX, Place, PlaceX, ReadKind,
+    SpannedTyped, Stmt, StmtX, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, UnfinalizedReadKind,
+    UnwindSpec, VarIdent, VirErr,
 };
 use crate::ast_util::{get_field, is_unit, path_as_vstd_name, typ_to_diagnostic_str};
 use crate::def::user_local_name;
@@ -246,6 +247,7 @@ fn outer_reason_by_expr_kind(e: &Expr) -> Option<OuterProphReason> {
             | ExprX::NullaryOpr(_)
             | ExprX::Unary(..)
             | ExprX::UnaryOpr(..)
+            | ExprX::Logical(..)
             | ExprX::Binary(..)
             | ExprX::BinaryOpr(..)
             | ExprX::Multi(..)
@@ -1026,12 +1028,11 @@ fn add_pattern_rec(
 
 fn check_binding(span: &Span, by_ref: &ByRef, mode: Mode) -> Result<(), VirErr> {
     match (by_ref, mode) {
-        (ByRef::MutRef, Mode::Spec | Mode::Proof) => {
-            // Supporting this for Mode::Proof would be nice but requires thought for how
-            // to implement.
-            Err(error(span, "a 'mut ref' binding in a pattern is only allowed for exec mode"))
+        (ByRef::MutRef, Mode::Spec) => {
+            Err(error(span, "a 'mut ref' binding in a pattern is not allowed in spec mode"))
         }
         (ByRef::No | ByRef::ImmutRef, _) => Ok(()),
+        (_, Mode::Proof) => Ok(()),
         (_, Mode::Exec) => Ok(()),
     }
 }
@@ -1048,6 +1049,7 @@ fn check_expr_in_pattern(expr: &Expr) -> Result<(), VirErr> {
             check_expr_in_pattern(expr1)?;
             check_expr_in_pattern(expr2)
         }
+        ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(..), expr1) => check_expr_in_pattern(expr1),
         _ => Err(error(&expr.span, "Verus Internal Error: bad PatternX::Expr")),
     }
 }
@@ -2117,7 +2119,7 @@ fn check_expr(
                         &expr.span,
                         format!(
                             "cannot perform operation with mode {}, {:?},\n{:?}",
-                            op_mode, &expr.x, &e1
+                            op_mode, expr.x, e1
                         ),
                     ));
                 }
@@ -2125,7 +2127,7 @@ fn check_expr(
             if !mode_le(outer_mode, *op_mode) {
                 return Err(error(
                     &expr.span,
-                    format!("cannot perform operation with mode {}, {:?}", op_mode, &expr.x),
+                    format!("cannot perform operation with mode {}, {:?}", op_mode, expr.x),
                 ));
             }
             let param_mode = mode_join(outer_mode, *from_mode);
@@ -2252,28 +2254,38 @@ fn check_expr(
                 check_expr_has_mode(ctxt, record, typing, Mode::Spec, e1, Mode::Spec, outer_proph)?;
             Ok((Mode::Spec, proph))
         }
+        ExprX::Logical(op, e1, e2) => {
+            let op_mode = match op {
+                LogicalOp::And | LogicalOp::Or => Mode::Exec,
+                LogicalOp::Implies => Mode::Spec,
+            };
+            let outer_mode = match op {
+                // because Implies isn't compiled, make it spec-only
+                LogicalOp::Implies => Mode::Spec,
+                _ => outer_mode,
+            };
+            let (mode1, proph1) =
+                check_expr(ctxt, record, typing, outer_mode, Expect(op_mode), e1, outer_proph)?;
+            // Join mode into the outer mode due to short-circuiting
+            let outer_proph2 = outer_proph.clone().join(proph1.clone());
+            let (mode2, proph2) =
+                check_expr(ctxt, record, typing, outer_mode, Expect(op_mode), e2, &outer_proph2)?;
+            Ok((mode_join(op_mode, mode_join(mode1, mode2)), proph1.join(proph2)))
+        }
         ExprX::Binary(op, e1, e2) => {
             let op_mode = match op {
                 BinaryOp::Eq(mode) => *mode,
                 BinaryOp::HeightCompare { .. } => Mode::Spec,
-                BinaryOp::Implies => Mode::Spec,
                 _ => Mode::Exec,
             };
             let outer_mode = match op {
-                // because Implies isn't compiled, make it spec-only
-                BinaryOp::Implies => Mode::Spec,
                 BinaryOp::HeightCompare { .. } => Mode::Spec,
                 _ => outer_mode,
             };
             let (mode1, proph1) =
                 check_expr(ctxt, record, typing, outer_mode, Expect(op_mode), e1, outer_proph)?;
-            let outer_proph2 = if op.short_circuits() {
-                outer_proph.clone().join(proph1.clone())
-            } else {
-                outer_proph.clone()
-            };
             let (mode2, proph2) =
-                check_expr(ctxt, record, typing, outer_mode, Expect(op_mode), e2, &outer_proph2)?;
+                check_expr(ctxt, record, typing, outer_mode, Expect(op_mode), e2, outer_proph)?;
             Ok((mode_join(op_mode, mode_join(mode1, mode2)), proph1.join(proph2)))
         }
         ExprX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(..), e1, e2) => {
