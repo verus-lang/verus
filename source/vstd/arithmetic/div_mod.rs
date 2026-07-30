@@ -745,6 +745,7 @@ pub broadcast proof fn lemma_div_multiples_vanish_quotient(x: int, a: int, d: in
 
 /// Proof that, since `a % d == 0` and `0 <= r < d`, we can conclude
 /// `a == d * (a + r) / d`.
+#[verifier::spinoff_prover]
 pub broadcast proof fn lemma_round_down(a: int, r: int, d: int)
     requires
         0 < d,
