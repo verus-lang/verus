@@ -1,10 +1,10 @@
 use crate::ast::{
     ArithOp, AssertQueryMode, AtomicallyKind, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp,
     BoundsCheck, ByRef, CallTarget, ComputeMode, Constant, Div0Behavior, Dt, Expr, ExprX, FieldOpr,
-    Fun, Function, Ident, IntRange, InvAtomicity, LogicalOp, LoopInvariantKind, MaskSpec, Mode,
-    OverflowBehavior, PatternBinding, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX, Typ,
-    TypX, Typs, UnaryOp, UnaryOpr, UnwindSpec, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent,
-    VarIdentDisambiguate, VariantCheck, VirErr,
+    Fun, Function, Ident, IntRange, InvAtomicity, Label, LogicalOp, LoopInvariantKind, MaskSpec,
+    Mode, OverflowBehavior, PatternBinding, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX,
+    Typ, TypX, Typs, UnaryOp, UnaryOpr, UnwindSpec, VarAt, VarBinder, VarBinderX, VarBinders,
+    VarIdent, VarIdentDisambiguate, VariantCheck, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, CrateId, Exprs};
 use crate::ast_util::{QUANT_FORALL, bool_typ, types_equal, undecorate_typ, unit_typ};
@@ -621,24 +621,22 @@ pub(crate) fn assume_has_typ(x: &UniqueIdent, typ: &Typ, span: &Span) -> Stm {
 }
 
 fn loop_body_find_breaks(
-    loop_label: &Option<String>,
-    in_subloop: bool,
+    loop_label: &Label,
     num_breaks: &mut usize,
+    num_isolated_breaks: &mut usize,
+    in_isolated: bool,
     body: &Expr,
 ) {
     let mut f = |expr: &Expr| match &expr.x {
-        ExprX::Loop { body, .. } => {
-            loop_body_find_breaks(loop_label, true, num_breaks, body);
+        ExprX::Loop { loop_isolation: true, .. } if !in_isolated => {
+            loop_body_find_breaks(loop_label, num_breaks, num_isolated_breaks, true, expr);
             VisitorControlFlow::Return
         }
         ExprX::BreakOrContinue { label: break_label, is_break: true } => {
-            if break_label.is_none() {
-                if !in_subloop {
-                    *num_breaks += 1;
-                }
-            } else {
-                if break_label == loop_label {
-                    *num_breaks += 1;
+            if break_label == loop_label {
+                *num_breaks += 1;
+                if in_isolated {
+                    *num_isolated_breaks += 1;
                 }
             }
             VisitorControlFlow::Recurse
@@ -648,17 +646,22 @@ fn loop_body_find_breaks(
     crate::ast_visitor::expr_visitor_walk(body, &mut f);
 }
 
-fn loop_body_has_breaks(loop_label: &Option<String>, body: &Expr) -> usize {
+/// Returns (num_breaks, num_isolated_breaks):
+///  * `num_breaks` = Total # of break statements of the given label
+///  * `num_isolated_breaks` = # of break statements of the given label
+///    that are within a loop_isolation=true loop
+fn loop_has_breaks(loop_label: &Label, expr: &Expr) -> (usize, usize) {
     let mut num_breaks = 0;
-    loop_body_find_breaks(loop_label, false, &mut num_breaks, body);
-    num_breaks
+    let mut num_isolated_breaks = 0;
+    loop_body_find_breaks(loop_label, &mut num_breaks, &mut num_isolated_breaks, false, expr);
+    (num_breaks, num_isolated_breaks)
 }
 
 /// Determine if it's possible for control flow to reach the statement after the loop exit.
 /// To be conservative, we need to answer 'yes' (true) if we can't tell.
 pub fn can_control_flow_reach_after_loop(expr: &Expr) -> bool {
     match &expr.x {
-        ExprX::Loop { label, cond: None, body, .. } => loop_body_has_breaks(label, body) > 0,
+        ExprX::Loop { label, cond: None, body, .. } => loop_has_breaks(label, body).0 > 0,
         ExprX::Loop { cond: Some(_), .. } => true,
         _ => {
             panic!("expected while loop");
@@ -2582,7 +2585,15 @@ pub(crate) fn expr_to_stm_opt(
             } else {
                 invs.clone()
             };
-            let num_breaks = loop_body_has_breaks(label, body);
+            let (num_breaks, num_iso_breaks) = loop_has_breaks(label, expr);
+            if !loop_isolation && num_iso_breaks > 0 {
+                // our encoding for loop_isolation=false requires all 'break' statements to be
+                // in the same query
+                return Err(error(
+                    &expr.span,
+                    "loop with loop_isolation=false contains 'break' statement inside a nested loop with loop_isolation=true",
+                ));
+            }
             let has_user_break = num_breaks > if is_for_loop { 1 } else { 0 };
             let invs = if is_for_loop && has_user_break {
                 // If the user added a break statement, then we need to remove the auto-generated ensures
@@ -2676,7 +2687,7 @@ pub(crate) fn expr_to_stm_opt(
             let mut check_recommends: Vec<Stm> = Vec::new();
             let mut invs1: Vec<crate::sst::LoopInv> = Vec::new();
             for inv in invs.iter() {
-                // Ensures clauses are unnecessary if loop_isolation is true,
+                // Ensures clauses are unnecessary if loop_isolation is false,
                 // since the weakest precondition already tracks all the paths through the breaks into the code after the loop
                 if !loop_isolation
                     && allow_complex_invariants
@@ -2721,7 +2732,7 @@ pub(crate) fn expr_to_stm_opt(
                 if let Some((c_stm, c_exp)) = cnd {
                     // convert while into loop
                     let not_c = c_exp.new_x(ExpX::Unary(UnaryOp::Not, c_exp.clone()));
-                    let break_stmx = StmX::BreakOrContinue { label: None, is_break: true };
+                    let break_stmx = StmX::BreakOrContinue { label: label.clone(), is_break: true };
                     let break_stm = Spanned::new(c_exp.span.clone(), break_stmx);
                     let if_stm = Spanned::new(c_exp.span.clone(), StmX::If(not_c, break_stm, None));
                     body_stms.insert(0, c_stm);

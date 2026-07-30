@@ -1,8 +1,8 @@
 use crate::ast::{
     ArrayKind, AssertQueryMode, BitwiseOp, CrateId, Dt, FieldOpr, Fun, GenericBoundX, Ident,
-    Idents, InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Mode, Path, PathX,
-    Primitive, ProofNoteLabel, SpannedTyped, Typ, TypDecoration, TypDecorationArg, TypX, Typs,
-    UnaryOp, UnaryOpr, UnwindSpec, VarAt, VarIdent, VirErr,
+    Idents, InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Label, Mode, Path,
+    PathX, Primitive, ProofNoteLabel, SpannedTyped, Typ, TypDecoration, TypDecorationArg, TypX,
+    Typs, UnaryOp, UnaryOpr, UnwindSpec, VarAt, VarIdent, VirErr,
 };
 use crate::ast_util::{
     LowerUniqueVar, fun_as_friendly_rust_name, get_field, get_variant, undecorate_typ,
@@ -1573,7 +1573,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
 struct LoopInfo {
     loop_isolation: bool,
     is_for_loop: bool,
-    label: Option<String>,
+    label: Label,
     loop_id: u64,
     air_break_label: Ident,
     some_cond: bool,
@@ -2372,15 +2372,11 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             vec![Arc::new(StmtX::DeadEnd(one_stmt(stm_to_stmts(ctx, state, s)?)))]
         }
         StmX::BreakOrContinue { label, is_break } => {
-            let loop_info = if label.is_some() {
-                state
-                    .loop_infos
-                    .iter()
-                    .rfind(|info| info.label == *label)
-                    .expect("missing loop label")
-            } else {
-                state.loop_infos.last().expect("inside loop")
-            };
+            let loop_info = state
+                .loop_infos
+                .iter()
+                .rfind(|info| info.label == *label)
+                .expect("missing loop label");
 
             let mut stmts: Vec<Stmt> = Vec::new();
             //if ctx.checking_spec_preconditions() {
