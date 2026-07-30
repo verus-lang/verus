@@ -148,8 +148,9 @@ fn check_trigger_expr_arg(state: &mut State, arg: &Exp) {
             UnaryOpr::IsVariant { .. }
             | UnaryOpr::Field { .. }
             | UnaryOpr::IntegerTypeBound(..)
-            | UnaryOpr::HasType(_) => {}
-            UnaryOpr::HasResolved(_) => {}
+            | UnaryOpr::HasType(_)
+            | UnaryOpr::HasResolved(_)
+            | UnaryOpr::LoopIsolationBoundary(_) => {}
         },
         _ => {}
     }
@@ -312,6 +313,9 @@ fn check_trigger_expr(
             UnaryOpr::HasResolved(_t) => {
                 check_trigger_expr_arg(state, arg);
                 Ok(())
+            }
+            UnaryOpr::LoopIsolationBoundary(..) => {
+                Err(error(&exp.span, "triggers cannot contain loop_isolation_boundary"))
             }
         },
         ExpX::Binary(op, arg1, arg2) => {

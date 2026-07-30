@@ -86,7 +86,7 @@ pub(crate) fn stm_get_mutations_shallow(stm: &Stm, m: &mut HashMap<VarIdent, Spa
 }
 
 /// If there's an assignment associated with this Stm (shallowly), return it.
-/// There can be at most one (in new-mut-ref, they no longer appear in calls)
+/// There can be at most one (in new-mut-ref, they no longer appear in call arguments)
 pub(crate) fn stm_get_assignment_shallow(stm: &Stm) -> Option<&Exp> {
     match &stm.x {
         StmX::Call { dest: Some(dest), .. } | StmX::Assign { lhs: dest, .. } => {
@@ -392,6 +392,7 @@ fn stm_assign(
             Spanned::new(stm.span.clone(), StmX::If(cond.clone(), lhs, rhs))
         }
         StmX::Loop {
+            pre_stms,
             loop_isolation,
             is_for_loop,
             id,
@@ -403,8 +404,11 @@ fn stm_assign(
             typ_inv_vars,
             modified_vars,
             au_branch_bool,
-            pre_modified_params,
+            pre_modified_params_incl,
+            pre_modified_params_excl,
         } => {
+            let pre_stms = stms_assign(assign_map, declared, assigned, modified, pre_stms);
+
             let mut inner_modified = HavocSet::new();
             let cond = if let Some((cond_stm, cond_exp)) = cond {
                 let cond_stm =
@@ -429,6 +433,7 @@ fn stm_assign(
                 typ_inv_vars.push((x.clone(), declared[x].clone()));
             }
             let loop_x = StmX::Loop {
+                pre_stms: pre_stms,
                 loop_isolation: *loop_isolation,
                 is_for_loop: *is_for_loop,
                 id: *id,
@@ -440,7 +445,8 @@ fn stm_assign(
                 typ_inv_vars: Arc::new(typ_inv_vars),
                 modified_vars: Some(Arc::new(inner_modified)),
                 au_branch_bool: au_branch_bool.clone(),
-                pre_modified_params: pre_modified_params.clone(),
+                pre_modified_params_incl: pre_modified_params_incl.clone(),
+                pre_modified_params_excl: pre_modified_params_excl.clone(),
             };
             Spanned::new(stm.span.clone(), loop_x)
         }
@@ -554,6 +560,7 @@ fn stm_mutations(param_typs: &[(VarIdent, Typ)], mutations: &mut HavocSet, stm: 
             stm.new_x(StmX::If(cond.clone(), thn, Some(els)))
         }
         StmX::Loop {
+            pre_stms,
             loop_isolation,
             is_for_loop,
             id,
@@ -564,10 +571,16 @@ fn stm_mutations(param_typs: &[(VarIdent, Typ)], mutations: &mut HavocSet, stm: 
             decrease,
             typ_inv_vars,
             modified_vars,
-            pre_modified_params,
+            pre_modified_params_incl,
+            pre_modified_params_excl,
             au_branch_bool,
         } => {
-            assert!(pre_modified_params.is_none());
+            assert!(pre_modified_params_incl.is_none());
+            assert!(pre_modified_params_excl.is_none());
+
+            let pre_modified_params_excl = mutations.filter_by_params(param_typs);
+
+            let pre_stms = stms_mutations(param_typs, mutations, pre_stms);
 
             mutations.merge_with(&modified_vars.as_ref().unwrap());
 
@@ -580,9 +593,10 @@ fn stm_mutations(param_typs: &[(VarIdent, Typ)], mutations: &mut HavocSet, stm: 
             };
             let body = stm_mutations(param_typs, mutations, body);
 
-            let pre_modified_params = mutations.filter_by_params(param_typs);
+            let pre_modified_params_incl = mutations.filter_by_params(param_typs);
 
             let loopx = StmX::Loop {
+                pre_stms,
                 loop_isolation: *loop_isolation,
                 is_for_loop: *is_for_loop,
                 id: *id,
@@ -593,7 +607,8 @@ fn stm_mutations(param_typs: &[(VarIdent, Typ)], mutations: &mut HavocSet, stm: 
                 decrease: decrease.clone(),
                 typ_inv_vars: typ_inv_vars.clone(),
                 modified_vars: modified_vars.clone(),
-                pre_modified_params: Some(Arc::new(pre_modified_params)),
+                pre_modified_params_incl: Some(Arc::new(pre_modified_params_incl)),
+                pre_modified_params_excl: Some(Arc::new(pre_modified_params_excl)),
                 au_branch_bool: au_branch_bool.clone(),
             };
             stm.new_x(loopx)
@@ -614,6 +629,14 @@ fn stm_mutations(param_typs: &[(VarIdent, Typ)], mutations: &mut HavocSet, stm: 
             stm.new_x(StmX::Block(Arc::new(v)))
         }
     }
+}
+
+fn stms_mutations(param_typs: &[(VarIdent, Typ)], mutations: &mut HavocSet, stms: &Stms) -> Stms {
+    let mut v = vec![];
+    for stm in stms.iter() {
+        v.push(stm_mutations(param_typs, mutations, stm));
+    }
+    Arc::new(v)
 }
 
 /// Represents a set of locations that need to be havoc'ed

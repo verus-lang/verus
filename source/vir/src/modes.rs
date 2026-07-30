@@ -2210,6 +2210,9 @@ fn check_expr(
         ExprX::Unary(_, e1) => {
             check_expr(ctxt, record, typing, outer_mode, expect, e1, outer_proph)
         }
+        ExprX::UnaryOpr(UnaryOpr::LoopIsolationBoundary(_), e1) => {
+            check_expr(ctxt, record, typing, outer_mode, expect, e1, outer_proph)
+        }
         ExprX::UnaryOpr(UnaryOpr::ToDyn(_), e1) => {
             check_expr(ctxt, record, typing, outer_mode, expect, e1, outer_proph)
         }
