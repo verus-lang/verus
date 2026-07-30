@@ -2146,6 +2146,17 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 let block = block_to_vir(bctx, body, &expr.span, &expr_typ()?)?;
                 if crate::attributes::is_proof_in_spec(bctx.ctxt.tcx.hir_attrs(expr.hir_id)) {
                     mk_expr(ExprX::ProofInSpec(block))
+                } else if crate::attributes::is_loop_isolation_boundary(
+                    bctx.ctxt.tcx.hir_attrs(expr.hir_id),
+                ) {
+                    let (wrap, label) = loop_isolation_boundary_check(expr.span, &block)?;
+                    let block = if wrap {
+                        let x = ExprX::UnaryOpr(UnaryOpr::LoopIsolationBoundary(label), block);
+                        bctx.spanned_typed_new(expr.span, &expr_typ()?, x)
+                    } else {
+                        block
+                    };
+                    Ok(ExprOrPlace::Expr(block))
                 } else {
                     Ok(ExprOrPlace::Expr(block))
                 }
@@ -4671,4 +4682,68 @@ fn ty_is_float_or_ref_float<'tcx>(ty: rustc_middle::ty::Ty<'tcx>) -> bool {
         _ => &ty,
     };
     t.is_floating_point()
+}
+
+/// Check that we can unambiguously identify a loop inside this loop_isolation_boundary block,
+/// and return the 'loop_isolation' parameter of that loop.
+///
+/// The exact form of the block isn't really important;
+/// we just need to make sure that the loop we pick
+/// out is the last loop to appear in the block (since that's how ast_to_sst associates
+/// the loop_isolation_boundary block with the loop).
+fn loop_isolation_boundary_check(
+    span: Span,
+    block: &vir::ast::Expr,
+) -> Result<(bool, vir::ast::Label), VirErr> {
+    let err =
+        || crate::internal_err!(span, "loop_isolation_boundary block not of the expected form");
+
+    let ExprX::Block(stmts, Some(e)) = &block.x else {
+        return err();
+    };
+    if let ExprX::Loop { loop_isolation, label, .. } = &e.x {
+        return Ok((*loop_isolation, label.clone()));
+    }
+
+    // Check that this block has the form:
+    // {
+    //   let x = match y { mut z => loop { } }; x
+    // }
+
+    let ExprX::ReadPlace(place, _) = &e.x else {
+        return err();
+    };
+    let PlaceX::Local(l) = &place.x else {
+        return err();
+    };
+
+    if stmts.len() == 0 {
+        return err();
+    }
+    let StmtX::Decl { pattern, mode: _, init: Some(init), els: None } = &stmts[stmts.len() - 1].x
+    else {
+        return err();
+    };
+    let PatternX::Var(pattern_binding) = &pattern.x else {
+        return err();
+    };
+    if &pattern_binding.name != l {
+        return err();
+    }
+
+    let PlaceX::Temporary(temp) = &init.x else {
+        return err();
+    };
+    let ExprX::Match(_, arms) = &temp.x else {
+        return err();
+    };
+    if arms.len() != 1 {
+        return err();
+    }
+
+    if let ExprX::Loop { loop_isolation, label, .. } = &arms[0].x.body.x {
+        return Ok((*loop_isolation, label.clone()));
+    }
+
+    err()
 }
