@@ -147,6 +147,8 @@ macro_rules! lemma_shl_is_mul {
             if shift == 0 {
                 assert(x << 0 == x) by (bit_vector);
                 assert(pow2(0) == 1) by (compute_only);
+                super::arithmetic::mul::lemma_mul_basics(x as int);
+                assert((x << shift) == x * pow2(shift as nat));
             } else {
                 assert(x << shift == mul(x << ((sub(shift, 1)) as $uN), 2)) by (bit_vector)
                     requires
@@ -177,6 +179,7 @@ macro_rules! lemma_shl_is_mul {
                         }
                     x * pow2(shift as nat);
                 }
+                assert((x << shift) == x * pow2(shift as nat));
             }
         }
         }

@@ -339,6 +339,7 @@ test_verify_one_file! {
             let x = (-128i8) / (-1i8); // FAILS
         }
 
+        #[verifier::spinoff_prover]
         fn test_signed_mod() {
             let x = 53i8 % 10i8;
             assert(x == 3);
