@@ -133,7 +133,13 @@ fn get_fuel_at_id(stm: &Stm, a_id: &AssertId, fuels: &mut HashMap<Fun, u32>) -> 
             }
             return false;
         }
-        StmX::Loop { body, cond, .. } => {
+        StmX::Loop { pre_stms, body, cond, .. } => {
+            for stm in pre_stms.iter() {
+                if get_fuel_at_id(stm, a_id, fuels) {
+                    return true;
+                }
+            }
+
             if let Some((cond_stm, _cond_exp)) = cond {
                 if get_fuel_at_id(cond_stm, a_id, fuels) {
                     return true;

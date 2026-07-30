@@ -573,6 +573,9 @@ pub enum UnaryOpr {
     HasResolved(Typ),
     /// Coerce from concrete type to `dyn T`. Typ arg is the Self type
     ToDyn(Typ),
+    /// Isolation boundary for the loop of the given label, which must be contained
+    /// in the boundary.
+    LoopIsolationBoundary(Label),
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
