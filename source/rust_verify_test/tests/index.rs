@@ -52,5 +52,17 @@ test_verify_one_file! {
         {
             x[0] += 1;
         }
+
+        fn test_assign_via_index_mut_function(a: &mut [u8; 5]) {
+            *a.index_mut(2) = 7;
+            assert(a[2] == 7);
+        }
+
+        fn test_slice_index_mut(a: &mut [u8; 5]) {
+            let r: &mut [u8] = &mut a[1..3];
+            r[1] = 7;
+            assert(r[1] == 7);
+            assert(a[2] == 7);
+        }
     } => Err(err) => assert_one_fails(err)
 }
