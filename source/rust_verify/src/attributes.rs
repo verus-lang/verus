@@ -520,9 +520,6 @@ pub(crate) fn parse_attrs(
                     v.push(Attr::GhostBlock(GhostBlockAttr::Wrapper))
                 }
                 AttrTree::Fun(_, arg, None) if arg == "proof_in_spec" => v.push(Attr::ProofInSpec),
-                AttrTree::Fun(_, arg, None) if arg == "loop_isolation_boundary" => {
-                    v.push(Attr::LoopIsolationBoundary)
-                }
                 // TODO: remove maybe_negative, strictly_positive
                 AttrTree::Fun(_, arg, None)
                     if arg == "maybe_negative" || arg == "reject_recursive_types" =>
@@ -919,6 +916,9 @@ pub(crate) fn parse_attrs(
                     }
                     AttrTree::Fun(_, arg, None) if arg == "structural_const_wrapper" => {
                         v.push(Attr::StructuralConstWrapper)
+                    }
+                    AttrTree::Fun(_, arg, None) if arg == "loop_isolation_boundary" => {
+                        v.push(Attr::LoopIsolationBoundary)
                     }
                     _ => {
                         return err_span(span, "unrecognized internal attribute");

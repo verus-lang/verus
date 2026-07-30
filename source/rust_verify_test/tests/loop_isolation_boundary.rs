@@ -10,7 +10,7 @@ test_verify_one_file! {
             let i = 0;
             let y = 5;
 
-            #[verifier::loop_isolation_boundary]
+            #[verus::internal(loop_isolation_boundary)]
             {
                 let x = 5;
                 while i < 10 {
@@ -25,7 +25,7 @@ test_verify_one_file! {
             let i = 0;
             let y = 5;
 
-            #[verifier::loop_isolation_boundary]
+            #[verus::internal(loop_isolation_boundary)]
             {
                 assert(y == 5);
                 while i < 10 {
@@ -38,7 +38,7 @@ test_verify_one_file! {
             let mut i = 0;
             let j = 0;
 
-            #[verifier::loop_isolation_boundary]
+            #[verus::internal(loop_isolation_boundary)]
             {
                 assert(i == j);
                 while i < 10 {
@@ -52,7 +52,7 @@ test_verify_one_file! {
         fn test_assert_fail_in_block(x: &mut u64) {
             let mut i = 0;
 
-            #[verifier::loop_isolation_boundary]
+            #[verus::internal(loop_isolation_boundary)]
             {
                 assert(false); // FAILS
                 while i < 10 {
@@ -70,7 +70,7 @@ test_verify_one_file! {
             let mut i = 0;
             *x = 2;
 
-            #[verifier::loop_isolation_boundary]
+            #[verus::internal(loop_isolation_boundary)]
             {
                 while i < 10 {
                     assert(*x == *old(x)); // FAILS
@@ -82,7 +82,7 @@ test_verify_one_file! {
         fn test_param_havoced2(x: &mut u64) {
             let mut i = 0;
 
-            #[verifier::loop_isolation_boundary]
+            #[verus::internal(loop_isolation_boundary)]
             {
                 *x = 2;
                 while i < 10 {
@@ -95,7 +95,7 @@ test_verify_one_file! {
         fn test_param_havoced3(x: &mut u64) {
             let mut i = 0;
 
-            #[verifier::loop_isolation_boundary]
+            #[verus::internal(loop_isolation_boundary)]
             {
                 while i < 10 {
                     assert(*x == *old(x)); // FAILS
@@ -114,7 +114,7 @@ test_verify_one_file! {
                 let mut i = 0;
                 *x = 2;
 
-                #[verifier::loop_isolation_boundary]
+                #[verus::internal(loop_isolation_boundary)]
                 {
                     while i < 10 {
                         assert(*x == *old(x)); // FAILS
@@ -128,7 +128,7 @@ test_verify_one_file! {
             let clos = |x: &mut u64| {
                 let mut i = 0;
 
-                #[verifier::loop_isolation_boundary]
+                #[verus::internal(loop_isolation_boundary)]
                 {
                     *x = 2;
                     while i < 10 {
@@ -143,7 +143,7 @@ test_verify_one_file! {
             let clos = |x: &mut u64| {
                 let mut i = 0;
 
-                #[verifier::loop_isolation_boundary]
+                #[verus::internal(loop_isolation_boundary)]
                 {
                     while i < 10 {
                         assert(*x == *old(x)); // FAILS
@@ -162,7 +162,7 @@ test_verify_one_file! {
             let mut i = 0;
             let y = 5;
 
-            #[verifier::loop_isolation_boundary]
+            #[verus::internal(loop_isolation_boundary)]
             {
                 let x = 5;
                 let r = match y {
