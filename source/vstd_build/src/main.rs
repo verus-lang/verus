@@ -1,5 +1,7 @@
 #![feature(rustc_private)]
 
+use yansi::Paint;
+
 extern crate rustc_driver;
 
 // For diagnostics when something goes wrong, try "cargo build -vv"
@@ -12,7 +14,7 @@ const VSTD_RS_PATH: &str = "vstd/vstd.rs";
 const VSTD_VIR: &str = "vstd.vir";
 
 fn log_command(cmd: &std::process::Command) {
-    eprintln!("{}", yansi::Paint::magenta(format!("vstd_build running: {:?}", cmd)));
+    eprintln!("{}", format!("vstd_build running: {:?}", cmd).magenta());
 }
 
 fn main() {

@@ -6,10 +6,10 @@ use crate::parser::Parser;
 #[allow(unused_imports)]
 use crate::printer::{macro_push_node, str_to_node};
 #[allow(unused_imports)]
-use sise::Node;
+use sise::TreeNode as Node;
 
 #[allow(dead_code)]
-fn run_nodes_as_test(should_typecheck: bool, should_be_valid: bool, nodes: &[Node]) {
+fn run_nodes_as_test(should_typecheck: bool, should_be_valid: bool, nodes: &[sise::TreeNode]) {
     let message_interface = std::sync::Arc::new(crate::messages::AirMessageInterface {});
     let reporter = Reporter {};
     // TODO: Support testing with cvc5 too
