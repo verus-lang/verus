@@ -467,6 +467,9 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 )),
             )
         }
+        ExpX::UnaryOpr(UnaryOpr::LoopIsolationBoundary(_), _e1) => {
+            panic!("unexpected LoopIsolationBoundary");
+        }
         ExpX::Binary(op, e1, e2) => {
             use BinaryOp::*;
             let depth = match op {

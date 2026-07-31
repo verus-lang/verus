@@ -494,6 +494,7 @@ impl<B: Base> EndianNat<B> {
         reveal(EndianNat::to_nat);
         if Self::from_nat(n, len).len() == 0 {
         } else {
+            B::base_min();
             let endian_nat = Self::from_nat(n, len);
             let least = endian_nat.least();
             let rest = endian_nat.drop_least();
@@ -969,11 +970,10 @@ impl<B: Base> EndianNat<B> {
                     Self::exp() > 0,
                     n.len() > 0,
             ;
-            assert(rest.len() % Self::exp() == 0) by (nonlinear_arith)
-                requires
-                    rest.len() == n.len() - Self::exp(),
-                    n.len() % Self::exp() == 0,
-            ;
+            // `rest.len() == n.len() - exp` and `n.len() % exp == 0`, so
+            // `rest.len() % exp == (-exp + n.len()) % exp == n.len() % exp == 0`.
+            lemma_mod_sub_multiples_vanish(n.len() as int, Self::exp() as int);
+            assert(rest.len() % Self::exp() == 0);
             Self::to_big_from_big(rest);
             let big = Self::to_big(n);
             assert(big =~= Self::to_big(rest).append_least(
@@ -1033,18 +1033,15 @@ impl<B: Base> EndianNat<B> {
             EndianNat::<B>::from_nat_to_nat(least, Self::exp());
 
             assert(small_rest =~= Self::from_big(rest));
-            assert(small_rest.len() % Self::exp() == 0) by (nonlinear_arith)
-                requires
-                    small_rest.len() == rest.len() * Self::exp(),
-                    Self::exp() > 0,
-            ;
+            // `(rest.len() * exp) % exp == 0`
+            lemma_mod_multiples_basic(rest.len() as int, Self::exp() as int);
+            assert(small_rest.len() % Self::exp() == 0);
 
             Self::from_big_properties(n);
-            assert(small.len() % Self::exp() == 0) by (nonlinear_arith)
-                requires
-                    small.len() == n.len() * Self::exp(),
-                    Self::exp() > 0,
-            ;
+            // `(n.len() * exp) % exp == 0`.  Use the dedicated lemma rather than
+            // a bare `nonlinear_arith`, which times out under Z3 >= 4.13.
+            lemma_mod_multiples_basic(n.len() as int, Self::exp() as int);
+            assert(small.len() % Self::exp() == 0);
         }
     }
 
@@ -1103,6 +1100,11 @@ impl<B: Base> EndianNat<B> {
         broadcast use EndianNat::exp_properties;
 
         reveal(EndianNat::to_big);
+        crate::vstd::arithmetic::div_mod::lemma_mod_self_0(Self::exp() as int);
+        crate::vstd::arithmetic::div_mod::lemma_small_mod(0, Self::exp());
+        assert(x.len() % Self::exp() == 0);
+        assert(x.skip_least(Self::exp()).len() == 0);
+        assert(x.skip_least(Self::exp()).len() % Self::exp() == 0);
         assert(x =~= x.take_least(Self::exp()));
         assert(Self::to_big(x) == Self::to_big(x.skip_least(Self::exp())).append_least(
             EndianNat::new(x.endian, seq![x.take_least(Self::exp()).to_nat() as int]),

@@ -82,6 +82,7 @@ fn insert_auto_ext_equal(ctx: &Ctx, exp: &Exp) -> Exp {
                 exp.new_x(ExpX::UnaryOpr(op.clone(), insert_auto_ext_equal(ctx, e)))
             }
             UnaryOpr::HasResolved(..) => exp.clone(),
+            UnaryOpr::LoopIsolationBoundary(..) => exp.clone(),
         },
         ExpX::Binary(op, e1, e2) => match op {
             BinaryOp::Eq

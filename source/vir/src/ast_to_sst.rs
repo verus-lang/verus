@@ -19,7 +19,7 @@ use crate::messages::{
 use crate::sst;
 use crate::sst::{
     Bnd, BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclKind, LocalDeclX,
-    ParPurpose, Pars, Stm, StmX, UniqueIdent,
+    ParPurpose, Pars, Stm, StmX, Stms, UniqueIdent,
 };
 use crate::sst_util::{
     exp_with_vars_at_pre_state, sst_bitwidth, sst_conjoin, sst_equal, sst_exp_get_proof_note,
@@ -1884,6 +1884,25 @@ pub(crate) fn expr_to_stm_opt(
         ExprX::NullaryOpr(op) => {
             Ok((vec![], Maybe::Some(Value::Exp(mk_exp(ExpX::NullaryOpr(op.clone()))))))
         }
+        ExprX::UnaryOpr(UnaryOpr::LoopIsolationBoundary(label), e) => {
+            let (stms, exp) = expr_to_stm_opt(ctx, state, e)?;
+            match find_loop_in_stms(&stms, label) {
+                Some((prefix, the_loop, suffix)) => {
+                    let mut stm = loop_set_pre_stms(the_loop, Arc::new(prefix));
+                    if suffix.len() > 0 {
+                        let mut v = vec![stm];
+                        v.extend(suffix);
+                        stm = Spanned::new(expr.span.clone(), StmX::Block(Arc::new(v)))
+                    }
+                    Ok((vec![stm], exp))
+                }
+                None => {
+                    // Unusual case; loop would have to be cut out by Never
+                    assert!(matches!(exp, Maybe::Never));
+                    return Ok((stms, exp));
+                }
+            }
+        }
         ExprX::Unary(op @ UnaryOp::InferSpecForLoopIter { .. }, spec_expr) => {
             let spec_exp = expr_to_pure_exp_skip_checks(ctx, state, &spec_expr)?;
             let infer_exp = mk_exp(ExpX::Unary(*op, spec_exp));
@@ -2751,6 +2770,7 @@ pub(crate) fn expr_to_stm_opt(
             let while_stm = Spanned::new(
                 expr.span.clone(),
                 StmX::Loop {
+                    pre_stms: Arc::new(vec![]),
                     loop_isolation,
                     is_for_loop,
                     id,
@@ -2763,7 +2783,8 @@ pub(crate) fn expr_to_stm_opt(
                     // These are filled in later, in sst_vars
                     typ_inv_vars: Arc::new(vec![]),
                     modified_vars: None,
-                    pre_modified_params: None,
+                    pre_modified_params_incl: None,
+                    pre_modified_params_excl: None,
                 },
             );
 
@@ -4648,4 +4669,37 @@ fn assert_assume_satisfies_user_defined_type_invariant(
         stms.push(Spanned::new(exp.span.clone(), StmX::Assume(exp)));
     }
     Ok(())
+}
+
+fn find_loop_in_stms(stms: &[Stm], label: &Label) -> Option<(Vec<Stm>, Stm, Vec<Stm>)> {
+    for i in 0..stms.len() {
+        if let Some((prefix, the_loop, suffix)) = find_loop_in_stm(&stms[i], label) {
+            let mut new_prefix = stms[..i].to_vec();
+            new_prefix.extend(prefix);
+            let mut new_suffix = suffix;
+            new_suffix.extend(stms[i + 1..].to_vec());
+            return Some((new_prefix, the_loop, new_suffix));
+        }
+    }
+    None
+}
+
+fn find_loop_in_stm(stm: &Stm, label: &Label) -> Option<(Vec<Stm>, Stm, Vec<Stm>)> {
+    match &stm.x {
+        StmX::Block(stms) => find_loop_in_stms(stms, label),
+        StmX::Loop { label: l, .. } if l == label => Some((vec![], stm.clone(), vec![])),
+        _ => None,
+    }
+}
+
+fn loop_set_pre_stms(the_loop: Stm, new_pre_stms: Stms) -> Stm {
+    let mut the_loop = the_loop;
+    match Arc::make_mut(&mut the_loop).x {
+        StmX::Loop { ref mut pre_stms, .. } => {
+            assert!(pre_stms.len() == 0);
+            *pre_stms = new_pre_stms;
+        }
+        _ => panic!("loop_set_pre_stms expects Loop"),
+    }
+    the_loop
 }

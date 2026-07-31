@@ -577,6 +577,10 @@ impl ExpX {
                     ProofNote(_label) => {
                         (format!("with_diagnostic({})", exp.x.to_user_string(global)), 99)
                     }
+                    LoopIsolationBoundary(..) => (
+                        format!("loop_isolation_boundary({})", exp.x.to_string_prec(global, 99)),
+                        0,
+                    ),
                 }
             }
             Binary(op, e1, e2) => {
