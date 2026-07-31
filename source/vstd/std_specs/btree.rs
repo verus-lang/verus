@@ -182,8 +182,13 @@ pub assume_specification<'a, Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, 
             &&& forall|i: int|
                 #![trigger m@.contains_key(*IteratorSpec::remaining(&iter)[i].0)]
                 #![trigger m@[*IteratorSpec::remaining(&iter)[i].0]]
-                0 <= i < IteratorSpec::remaining(&iter).len() ==> m@.contains_key(*IteratorSpec::remaining(&iter)[i].0) && m@[*IteratorSpec::remaining(&iter)[i].0] == *IteratorSpec::remaining(&iter)[i].1
-            &&& forall|k: Key| #[trigger] m@.contains_key(k) ==> IteratorSpec::remaining(&iter).contains((&k, &m@[k]))
+                0 <= i < IteratorSpec::remaining(&iter).len() ==> m@.contains_key(
+                    *IteratorSpec::remaining(&iter)[i].0,
+                ) && m@[*IteratorSpec::remaining(&iter)[i].0] == *IteratorSpec::remaining(
+                    &iter,
+                )[i].1
+            &&& forall|k: Key| #[trigger]
+                m@.contains_key(k) ==> IteratorSpec::remaining(&iter).contains((&k, &m@[k]))
             &&& IteratorSpec::remaining(&iter).unref().to_set() == m@.kv_pairs()
             &&& iter.remaining().no_duplicates()
             &&& IteratorSpec::decrease(&iter) is Some
