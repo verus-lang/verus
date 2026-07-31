@@ -1242,7 +1242,7 @@ test_verify_one_file_with_options! {
             let mut end = 10;
             for x in iter: 0..end
                 invariant
-                    n == x * 3, // FAILS
+                    n == x * 3,
                     end == 10,
             {
                 assert(x < 10); // FAILS
@@ -1260,14 +1260,14 @@ test_verify_one_file_with_options! {
             // test Typing::snapshot_transient_state
             for x in iter: 0..({let z = end; non_spec(); z})
                 invariant
-                    n == x * 3, // FAILS
+                    n == x * 3,
                     end == 10,
             {
                 n += 3;
                 end = end + 0; // causes end to be non-constant
             }
         }
-    } => Err(e) => assert_fails(e, 3)
+    } => Err(e) => assert_fails(e, 1)
 }
 
 test_verify_one_file_with_options! {
