@@ -1488,6 +1488,12 @@ pub(crate) mod parsing {
             } else if Precedence::HasIsMatches >= base && input.peek(Token![is]) {
                 let is_token: Token![is] = input.parse()?;
                 let variant_ident = input.parse()?;
+                if input.peek(Token![::]) || input.peek(token::Paren) {
+                    // A common mistake is to put a full pattern after 'is' rather than
+                    // a single identifier. Emit a more helpful error message for that case.
+                    // (There is no situation where a paren or '::' token would be allowed next.)
+                    return Err(input.error("unexpected token (note that the 'is' operator expects a single, unqualified identifier)"));
+                }
                 lhs = Expr::Is(ExprIs {
                     attrs: Vec::new(),
                     base: Box::new(lhs),
@@ -1497,6 +1503,9 @@ pub(crate) mod parsing {
             } else if Precedence::HasIsMatches >= base && input.peek(Token![isnt]) {
                 let is_not_token: Token![isnt] = input.parse()?;
                 let variant_ident = input.parse()?;
+                if input.peek(Token![::]) || input.peek(token::Paren) {
+                    return Err(input.error("unexpected token (note that the 'isnt' operator expects a single, unqualified identifier)"));
+                }
                 lhs = Expr::IsNot(ExprIsNot {
                     attrs: Vec::new(),
                     base: Box::new(lhs),
@@ -2694,10 +2703,19 @@ pub(crate) mod parsing {
         attrs: Vec<Attribute>,
         allow_struct: AllowStruct,
     ) -> Result<ExprUnary> {
+        let op = input.parse()?;
+
+        use crate::op::UnOp;
+        let expr = if matches!(op, UnOp::Forall(_) | UnOp::Exists(_) | UnOp::Choose(_)) {
+            Expr::Closure(expr_closure(input, allow_struct)?)
+        } else {
+            unary_expr(input, allow_struct)?
+        };
+
         Ok(ExprUnary {
             attrs,
-            op: input.parse()?,
-            expr: Box::new(unary_expr(input, allow_struct)?),
+            op,
+            expr: Box::new(expr),
         })
     }
 
