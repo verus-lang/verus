@@ -846,3 +846,12 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "assert_by_compute_only failed to simplify down to true")
 }
+
+test_verify_one_file! {
+    #[test] seq_new_len_overflow_issue2177 verus_code! {
+        use vstd::prelude::*;
+        proof fn test() {
+            assert(Seq::<int>::new(18446744073709551616nat, |i: int| 0int).len() == 0) by (compute_only);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Proof by computation included a closure literal that wasn't applied.  This is not yet supported.")
+}

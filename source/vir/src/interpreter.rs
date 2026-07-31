@@ -934,7 +934,10 @@ fn eval_seq(
                 Ok(exp_new(Call(fun.clone(), typs.clone(), new_args)))
             };
             let get_int = |e: &Exp| match &e.x {
-                Const(Constant::Int(index)) => Some(BigInt::to_usize(index).unwrap()),
+                Const(Constant::Int(index)) => match BigInt::to_usize(index) {
+                    Some(i) => Some(i),
+                    None => None,
+                },
                 _ => None,
             };
             use SeqFn::*;
