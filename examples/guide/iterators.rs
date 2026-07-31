@@ -29,20 +29,9 @@ impl <'a, T> VecIterator<'a, T> {
 // ANCHOR_END: iter_def
 
 // ANCHOR: iter_creation
-pub open spec fn vec_iter_spec<'a, T>(v: &'a Vec<T>) -> VecIterator<'a, T> {
-    VecIterator::new(v)
-}
-
-pub broadcast proof fn vec_iter_spec_properties<'a, T>(v: &'a Vec<T>)
-    ensures
-        #[trigger] vec_iter_spec(v).elts() == v@,
-{
-}
-
-#[verifier::when_used_as_spec(vec_iter_spec)]
 pub fn vec_iter<'a, T>(v: &'a Vec<T>) -> (iter: VecIterator<'a, T>)
     ensures 
-        iter == vec_iter_spec(v),
+        IteratorSpec::remaining(&iter) == v@.as_ref(),
         IteratorSpec::decrease(&iter) is Some,
 {
     let i = VecIterator { v: v, i: 0, j: v.len() };
@@ -77,7 +66,7 @@ impl<'a, T> IteratorSpecImpl for VecIterator<'a, T> {
     }
 
     closed spec fn remaining(&self) -> Seq<Self::Item> {
-        self.v@.subrange(self.i as int, self.j as int).map(|i, v| &v)
+        self.v@.subrange(self.i as int, self.j as int).as_ref()
     }
 
     closed spec fn will_return_none(&self) -> bool {
