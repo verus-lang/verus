@@ -173,40 +173,18 @@ impl<'a, K, V> super::iter::IteratorSpecImpl for btree_map::Iter<'a, K, V> {
     }
 }
 
-// To allow reasoning about the ghost iterator when the executable
-// function `iter()` is invoked in a `for` loop header (e.g., in
-// `for x in it: v.iter() { ... }`), we need to specify the behavior of
-// the iterator in spec mode. To do that, we add
-// `#[verifier::when_used_as_spec(spec_iter)]` to the specification for
-// the executable `iter` method and define that spec function here.
-pub uninterp spec fn spec_btree_map_iter<'a, Key, Value, A: Allocator + Clone>(
-    m: &'a BTreeMap<Key, Value, A>,
-) -> (r: btree_map::Iter<'a, Key, Value>);
-
-pub broadcast axiom fn axiom_spec_btree_map_iter<'a, Key, Value, A: Allocator + Clone>(
-    m: &'a BTreeMap<Key, Value, A>,
-)
-    ensures
-        ({
-            // REVIEW: I'm not sure whether this is the right set of facts/triggers
-            let v = #[trigger] spec_btree_map_iter(m).remaining();
-            &&& v.len() == m@.dom().len()
-            &&& forall|i: int|
-                #![trigger m@.contains_key(*v[i].0)]
-                #![trigger m@[*v[i].0]]
-                0 <= i < v.len() ==> m@.contains_key(*v[i].0) && m@[*v[i].0] == *v[i].1
-            &&& forall|k: Key| #[trigger] m@.contains_key(k) ==> v.contains((&k, &m@[k]))
-            &&& v.unref().to_set() == m@.kv_pairs()
-        }),
-;
-
-#[verifier::when_used_as_spec(spec_btree_map_iter)]
 pub assume_specification<'a, Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, Value, A>::iter ](
     m: &'a BTreeMap<Key, Value, A>,
 ) -> (iter: btree_map::Iter<'a, Key, Value>)
     ensures
         key_obeys_cmp_spec::<Key>() ==> {
-            &&& iter == spec_btree_map_iter(m)
+            &&& IteratorSpec::remaining(&iter).len() == m@.dom().len()
+            &&& forall|i: int|
+                #![trigger m@.contains_key(*IteratorSpec::remaining(&iter)[i].0)]
+                #![trigger m@[*IteratorSpec::remaining(&iter)[i].0]]
+                0 <= i < IteratorSpec::remaining(&iter).len() ==> m@.contains_key(*IteratorSpec::remaining(&iter)[i].0) && m@[*IteratorSpec::remaining(&iter)[i].0] == *IteratorSpec::remaining(&iter)[i].1
+            &&& forall|k: Key| #[trigger] m@.contains_key(k) ==> IteratorSpec::remaining(&iter).contains((&k, &m@[k]))
+            &&& IteratorSpec::remaining(&iter).unref().to_set() == m@.kv_pairs()
             &&& iter.remaining().no_duplicates()
             &&& IteratorSpec::decrease(&iter) is Some
             &&& IteratorSpec::initial_value_relation(&iter, &iter)
@@ -583,67 +561,27 @@ pub assume_specification<Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, Valu
         final(m)@ == Map::<Key, Value>::empty(),
 ;
 
-// To allow reasoning about the ghost Keys iterator when the executable
-// function `keys()` is invoked in a `for` loop header (e.g., in
-// `for x in it: m.keys() { ... }`), we need to specify the behavior of
-// the iterator in spec mode. To do that, we add
-// `#[verifier::when_used_as_spec(spec_iter)` to the specification for
-// the executable `iter` method and define that spec function here.
-pub uninterp spec fn spec_keys_iter<'a, Key, Value, A: Allocator + Clone>(
-    m: &'a BTreeMap<Key, Value, A>,
-) -> (keys: Keys<'a, Key, Value>);
-
-pub broadcast proof fn axiom_spec_keys_iter<'a, Key, Value, A: Allocator + Clone>(
-    m: &'a BTreeMap<Key, Value, A>,
-)
-    ensures
-        (#[trigger] spec_keys_iter(m).remaining()).unref().to_set() == m@.dom(),
-        spec_keys_iter(m).remaining().no_duplicates(),
-        spec_keys_iter(m).remaining().len() == m@.dom().len(),
-        increasing_seq(spec_keys_iter(m).remaining()),
-{
-    admit();
-}
-
-#[verifier::when_used_as_spec(spec_keys_iter)]
 pub assume_specification<'a, Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, Value, A>::keys ](
     m: &'a BTreeMap<Key, Value, A>,
 ) -> (keys: Keys<'a, Key, Value>)
     ensures
         key_obeys_cmp_spec::<Key>() ==> {
-            &&& keys == spec_keys_iter(m)
+            &&& IteratorSpec::remaining(&keys).unref().to_set() == m@.dom()
+            &&& IteratorSpec::remaining(&keys).no_duplicates()
+            &&& IteratorSpec::remaining(&keys).len() == m@.dom().len()
+            &&& increasing_seq(IteratorSpec::remaining(&keys))
             &&& IteratorSpec::decrease(&keys) is Some
             &&& IteratorSpec::initial_value_relation(&keys, &keys)
         },
 ;
 
-// To allow reasoning about the ghost Values iterator when the executable
-// function `value()` is invoked in a `for` loop header (e.g., in
-// `for x in it: m.keys() { ... }`), we need to specify the behavior of
-// the iterator in spec mode. To do that, we add
-// `#[verifier::when_used_as_spec(spec_iter)` to the specification for
-// the executable `iter` method and define that spec function here.
-pub uninterp spec fn spec_values_iter<'a, Key, Value, A: Allocator + Clone>(
-    m: &'a BTreeMap<Key, Value, A>,
-) -> (values: Values<'a, Key, Value>);
-
-pub broadcast proof fn axiom_spec_values_iter<'a, Key, Value, A: Allocator + Clone>(
-    m: &'a BTreeMap<Key, Value, A>,
-)
-    ensures
-        (#[trigger] spec_values_iter(m).remaining()).unref().to_set() == m@.values(),
-        spec_values_iter(m).remaining().len() == m@.dom().len(),
-{
-    admit();
-}
-
-#[verifier::when_used_as_spec(spec_values_iter)]
 pub assume_specification<'a, Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, Value, A>::values ](
     m: &'a BTreeMap<Key, Value, A>,
 ) -> (values: Values<'a, Key, Value>)
     ensures
         key_obeys_cmp_spec::<Key>() ==> {
-            &&& values == spec_values_iter(m)
+            &&& IteratorSpec::remaining(&values).unref().to_set() == m@.values()
+            &&& IteratorSpec::remaining(&values).len() == m@.dom().len()
             &&& IteratorSpec::decrease(&values) is Some
             &&& IteratorSpec::initial_value_relation(&values, &values)
             &&& exists|key_seq: Seq<Key>|
@@ -909,35 +847,15 @@ pub assume_specification<Key, A: Allocator + Clone>[ BTreeSet::<Key, A>::clear ]
         final(m)@ == Set::<Key>::empty(),
 ;
 
-// To allow reasoning about the ghost keys in the BtreeSet iterator when the executable
-// function `iter()` is invoked in a `for` loop header (e.g., in
-// `for x in it: m.keys() { ... }`), we need to specify the behavior of
-// the iterator in spec mode. To do that, we add
-// `#[verifier::when_used_as_spec(spec_iter)` to the specification for
-// the executable `iter` method and define that spec function here.
-pub uninterp spec fn spec_btree_keys_iter<'a, Key, A: Allocator + Clone>(
-    m: &'a BTreeSet<Key, A>,
-) -> (r: btree_set::Iter<'a, Key>);
-
-pub broadcast proof fn axiom_spec_btree_keys_iter<'a, Key, A: Allocator + Clone>(
-    m: &'a BTreeSet<Key, A>,
-)
-    ensures
-        (#[trigger] spec_btree_keys_iter(m).remaining()).unref().to_set() == m@,
-        spec_btree_keys_iter(m).remaining().no_duplicates(),
-        spec_btree_keys_iter(m).remaining().len() == m@.len(),
-        increasing_seq(spec_btree_keys_iter(m).remaining()),
-{
-    admit();
-}
-
-#[verifier::when_used_as_spec(spec_btree_keys_iter)]
 pub assume_specification<'a, Key, A: Allocator + Clone>[ BTreeSet::<Key, A>::iter ](
     m: &'a BTreeSet<Key, A>,
 ) -> (r: btree_set::Iter<'a, Key>)
     ensures
         key_obeys_cmp_spec::<Key>() ==> {
-            &&& r == spec_btree_keys_iter(m)
+            &&& IteratorSpec::remaining(&r).unref().to_set() == m@
+            &&& IteratorSpec::remaining(&r).no_duplicates()
+            &&& IteratorSpec::remaining(&r).len() == m@.len()
+            &&& increasing_seq(IteratorSpec::remaining(&r))
             &&& IteratorSpec::decrease(&r) is Some
             &&& IteratorSpec::initial_value_relation(&r, &r)
         },
@@ -966,10 +884,6 @@ pub broadcast group group_btree_axioms {
     axiom_set_deref_key_to_value,
     axiom_set_box_key_to_value,
     axiom_spec_btree_set_len,
-    axiom_spec_btree_keys_iter,
-    axiom_spec_btree_map_iter,
-    axiom_spec_keys_iter,
-    axiom_spec_values_iter,
     axiom_btree_map_decreases,
     axiom_btree_set_decreases,
 }
