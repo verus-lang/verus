@@ -2515,6 +2515,7 @@ impl Visitor {
             let ident = Ident::new(op, *span);
             toks = quote_spanned_builtin!(verus_builtin, *span => #verus_builtin::#ident(#toks, #right));
         }
+        let span = rights[0].2;
         toks =
             quote_spanned_builtin!(verus_builtin, span => #verus_builtin::spec_chained_cmp(#toks));
 
