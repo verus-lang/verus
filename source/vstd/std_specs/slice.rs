@@ -137,35 +137,17 @@ impl <'a, T: 'a> super::iter::IteratorSpecImpl for Iter<'a, T> {
     }
 }
 
-
-// To allow reasoning about the returned iterator when the executable
-// function `iter()` is invoked in a `for` loop header (e.g., in
-// `for x in it: s.iter() { ... }`), we need to specify the behavior of
-// the iterator in spec mode. To do that, we add
-// `#[verifier::when_used_as_spec(spec_slice_iter)` to the specification for
-// the executable `into_iter` method and define that spec function here.
-pub uninterp spec fn spec_slice_iter<'a, T>(s: &'a [T]) -> (iter: Iter<'a, T>);
-
-pub broadcast proof fn axiom_spec_slice_iter<'a, T>(s: &'a [T])
-    ensures
-        #[trigger] spec_slice_iter(s).remaining() == s@.as_ref(),
-{
-    admit();
-}
-
-#[verifier::when_used_as_spec(spec_slice_iter)]
 pub assume_specification<'a, T>[ <[T]>::iter ](s: &'a [T]) -> (iter: Iter<'a, T>)
     ensures
-        iter == spec_slice_iter(s),
+        IteratorSpec::remaining(&iter) == s@.as_ref(),
         IteratorSpec::decrease(&iter) is Some,
         IteratorSpec::initial_value_relation(&iter, &iter),
 ;
 
-#[verifier::when_used_as_spec(spec_slice_iter)]
 pub assume_specification<'a, T> [<&'a [T] as core::iter::IntoIterator>::into_iter] (s: &'a [T]) ->
     (iter: Iter<'a, T>)
     ensures
-        iter == spec_slice_iter(s),
+        IteratorSpec::remaining(&iter) == s@.as_ref(),
         IteratorSpec::decrease(&iter) is Some,
         IteratorSpec::initial_value_relation(&iter, &iter),
 ;
@@ -274,9 +256,5 @@ pub assume_specification<T: Copy, R: core::ops::RangeBounds<usize>>[ <[T]>::copy
             dest as int,
         ),
 ;
-
-pub broadcast group group_slice_axioms {
-    axiom_spec_slice_iter,
-}
 
 } // verus!

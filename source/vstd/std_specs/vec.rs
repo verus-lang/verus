@@ -397,53 +397,20 @@ pub assume_specification<T: Clone>[ alloc::vec::from_elem ](elem: T, n: usize) -
         v.len() == n,
         forall |i| 0 <= i < n ==> cloned(elem, #[trigger] v@[i]);
 
-// To allow reasoning about the returned iterator when the executable
-// function `into_iter()` is invoked in a `for` loop header (e.g., in
-// `for x in it: v.into_iter() { ... }`), we need to specify the behavior of
-// the iterator in spec mode. To do that, we add
-// `#[verifier::when_used_as_spec(spec_into_iter)` to the specification for
-// the executable `into_iter` method and define that spec function here.
-pub uninterp spec fn spec_into_iter<T, A: Allocator>(v: Vec<T, A>) -> (iter: <Vec<
-    T,
-    A,
-> as core::iter::IntoIterator>::IntoIter);
-
-pub uninterp spec fn spec_into_iter_borrowed<T, A: Allocator>(v: &Vec<T, A>) -> (iter: <&Vec<
-    T,
-    A,
-> as core::iter::IntoIterator>::IntoIter);
-
-
-pub broadcast proof fn axiom_spec_into_iter<T, A: Allocator>(v: Vec<T, A>)
-    ensures
-        #[trigger] spec_into_iter(v).remaining() == v@,
-{
-    admit();
-}
-
-pub broadcast proof fn axiom_spec_into_iter_borrowed<T, A: Allocator>(v: &Vec<T, A>)
-    ensures
-        #[trigger] spec_into_iter_borrowed(v).remaining() == v@.as_ref(),
-{
-    admit();
-}
-
-#[verifier::when_used_as_spec(spec_into_iter)]
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::into_iter ](vec: Vec<T, A>) -> (iter: <Vec<
     T,
     A,
 > as core::iter::IntoIterator>::IntoIter)
     ensures
-        iter == spec_into_iter(vec),
+        IteratorSpec::remaining(&iter) == vec@,
         IteratorSpec::decrease(&iter) is Some,
         IteratorSpec::initial_value_relation(&iter, &iter),
 ;
 
-#[verifier::when_used_as_spec(spec_into_iter_borrowed)]
 pub assume_specification<'a, T, A: Allocator> [<&'a Vec<T, A> as core::iter::IntoIterator>::into_iter] (vec: &'a Vec<T, A>) ->
     (iter: <&'a Vec<T, A> as core::iter::IntoIterator>::IntoIter)
     ensures
-        iter == spec_into_iter_borrowed(vec),
+        IteratorSpec::remaining(&iter) == vec@.as_ref(),
         IteratorSpec::decrease(&iter) is Some,
         IteratorSpec::initial_value_relation(&iter, &iter),
 ;
@@ -512,8 +479,6 @@ pub broadcast group group_vec_axioms {
     axiom_spec_len,
     axiom_vec_index_decreases,
     vec_clone_deep_view_proof,
-    axiom_spec_into_iter,
-    axiom_spec_into_iter_borrowed,
     axiom_vec_has_resolved,
     axiom_vec_decreases_to_view,
 }
