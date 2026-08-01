@@ -378,15 +378,14 @@ impl <I> IteratorSpecImpl for &mut I
  * for ergonomic for-loop support.
  ********************************************************************************/
 
-pub struct VerusForLoopWrapper<'a, I: Iterator> {
+pub struct VerusForLoopWrapper<I: Iterator> {
     pub index: Ghost<int>,
     pub snapshot: Ghost<I>,
-    pub init: Ghost<Option<&'a I>>,
     pub iter: I,
     pub history: Ghost<Seq<I::Item>>,
 }
 
-impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
+impl <I: Iterator> VerusForLoopWrapper<I> {
     #[verifier::prophetic]
     pub open spec fn seq(self) -> Seq<I::Item> {
         self.snapshot@.remaining()
@@ -421,13 +420,11 @@ impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
             }
     }
 
-// TODO: Do we still need an init?
     /// Bundle the real iterator with its ghost state and loop invariants
-    pub fn new(iter: I, init: Ghost<Option<&'a I>>) -> (s: Self)
+    pub fn new(iter: I) -> (s: Self)
         ensures
             s.index == 0,
             s.snapshot == iter,
-            s.init == init,
             s.iter == iter,
             s.history@ == Seq::<I::Item>::empty(),
             s.wf(),
@@ -436,7 +433,6 @@ impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
         VerusForLoopWrapper {
             index: Ghost(0),
             snapshot: Ghost(iter),
-            init: init,
             iter,
             history: Ghost(Seq::empty()),
         }
@@ -451,7 +447,6 @@ impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
             final(self).seq() == old(self).seq(),
             final(self).index() == old(self).index() + if ret is Some { 1int } else { 0 },
             final(self).snapshot == old(self).snapshot,
-            final(self).init == old(self).init,
             final(self).iter.obeys_prophetic_iter_laws() ==> final(self).wf(),
             final(self).iter.obeys_prophetic_iter_laws() && ret is None ==>
                 final(self).snapshot@.will_return_none() && final(self).index() == final(self).seq().len(),

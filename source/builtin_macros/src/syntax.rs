@@ -3912,10 +3912,7 @@ impl Visitor {
         //       let VERUS_iter_init = e;
         //       #[allow(non_snake_case)]
         //       let VERUS_iter = VerusForLoopWrapper::new(
-        //          // Real iterator
         //          ::core::iter::IntoIterator::into_iter(VERUS_iter_init),
-        //          // Spec-level iterator (relies on `when_used_as_spec` on into_iter)
-        //          Ghost(Some(&::core::iter::IntoIterator::into_iter(VERUS_iter_init))),
         //      );
         //      // Hold on to the initial value so that after the loop, we know it didn't change
         //      #[allow(non_snake_case)]
@@ -3930,16 +3927,8 @@ impl Visitor {
         //                     #[verus::internal(auto_decreases)]
         //                     y.iter.decrease().is_Some(),
         //                  invariant
-        //                     // We track the continuity of the snapshot and the initial iterator-creation expression
+        //                     // We track the continuity of the snapshot
         //                     ::vstd::prelude::spec_eq(y.snapshot, VERUS_old_snap),
-        //                     match verus_builtin::infer_spec_for_loop_iter(
-        //                              &::core::iter::IntoIterator::into_iter(VERUS_iter_init),
-        //                              &::core::iter::IntoIterator::into_iter(e),
-        //                              print_hint,
-        //                          ) {
-        //                         Some(v) => ::vstd::prelude::spec_eq(y.init, Ghost(Some(v))),
-        //                         None => true,
-        //                     },
         //                     y.wf(),
         //                     ({
         //                         // Grab the next val for (possible) use in the user-provided inv
@@ -4040,17 +4029,6 @@ impl Visitor {
         let exec_snapshot_inv_msg = "For-loop iterator invariant failed to prove the VerusForLoopWrapper snapshot is unchanged. \
             This may indicate a bug in the definition of the VerusForLoopWrapper. \
             You might try using a `loop` instead of a `for`.";
-        let ghost_inv_msg = "Automatically generated loop invariant failed to track the iterator's initial value. \
-            You can disable the automatic invariant generation by adding \
-            #[verifier::no_auto_loop_invariant] \
-            to the loop. \
-            You might also try storing the loop expression in a variable outside the loop \
-            (e.g. `let e = 0..10; for x in e { ... }`).";
-        let print_hint: Expr = if expr_name.is_some() {
-            Expr::Verbatim(quote_spanned!(expr.span() => false))
-        } else {
-            Expr::Verbatim(quote_spanned!(expr.span() => true))
-        };
 
         // Initial value of the expression (e)
         let x_verus_iter_init = Ident::new("VERUS_iter_init", span);
@@ -4071,7 +4049,6 @@ impl Visitor {
         let x_iter_body_old = Ident::new("VERUS_old_iter", span);
 
         let mut stmts: Vec<Stmt> = Vec::new();
-        let expr_inv = expr.clone();
         let init_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
             #[verifier::custom_err(#exec_snapshot_inv_msg)]
             #vstd::prelude::spec_eq(#x_iter_name.snapshot.view(), #x_snapshot)
@@ -4079,20 +4056,6 @@ impl Visitor {
         let wf_inv: Expr = Expr::Verbatim(quote_spanned!( expr.span() =>
             #[verifier::custom_err(#exec_wf_inv_msg)]
             #x_iter_name.wf()
-        ));
-        let ghost_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
-            #[verifier::custom_err(#ghost_inv_msg)]
-            match #vstd::prelude::infer_spec_for_loop_iter(
-                &::core::iter::IntoIterator::into_iter(#x_verus_iter_init),
-                &::core::iter::IntoIterator::into_iter(#expr_inv),
-                #print_hint,
-            ) {
-                ::core::option::Option::Some(VERUS_tmp_infer) => #vstd::prelude::spec_eq(
-                    #x_iter_name.init,
-                    #vstd::prelude::Ghost::new(::core::option::Option::Some(VERUS_tmp_infer))
-                ),
-                ::core::option::Option::None => true,
-            }
         ));
         let some_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
             #[verifier::custom_err(#decrease_is_some_msg)]
@@ -4110,14 +4073,9 @@ impl Visitor {
             if no_loop_invariant.is_none() {
                 invariant.exprs.exprs.insert(0, init_inv);
                 invariant.exprs.exprs.insert(1, wf_inv);
-                if no_auto_loop_invariant.is_none() {
-                    invariant.exprs.exprs.insert(2, ghost_inv);
-                }
             }
             Some(Invariant { token: Token![invariant](span), exprs: invariant.exprs })
-        } else if no_loop_invariant.is_none() && no_auto_loop_invariant.is_none() {
-            Some(parse_quote_spanned!(span => invariant #init_inv, #wf_inv, #ghost_inv,))
-        } else if no_loop_invariant.is_none() && no_auto_loop_invariant.is_some() {
+        } else if no_loop_invariant.is_none() {
             Some(parse_quote_spanned!(span => invariant #init_inv, #wf_inv,))
         } else {
             None
@@ -4229,11 +4187,7 @@ impl Visitor {
             let #x_exec_iter = ::core::iter::IntoIterator::into_iter(#x_verus_iter_init);
             #[allow(non_snake_case)]
             let #x_wrapped_iter = #vstd::std_specs::iter::VerusForLoopWrapper::new(
-                // Real iterator
                 #x_exec_iter,
-                // Spec-level iterator (relies on `when_used_as_spec` on into_iter)
-                #[verifier::ghost_wrapper]
-                #vstd::prelude::ghost_exec(#[verifier::ghost_block_wrapped] Some(&#x_exec_iter)),
             );
             // Hold on to the initial snapshot value so that after the loop, we know it didn't change
             #[allow(non_snake_case)]
