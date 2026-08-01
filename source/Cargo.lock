@@ -2320,7 +2320,6 @@ name = "rust_verify"
 version = "0.1.0"
 dependencies = [
  "air",
- "bincode 1.3.3",
  "bincode-next",
  "cargo-verus-toolchains",
  "console",
