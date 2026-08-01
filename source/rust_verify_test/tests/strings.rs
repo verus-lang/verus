@@ -846,3 +846,38 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_string_push_pop verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let mut s = String::new();
+            assert(s@ == Seq::<char>::empty());
+            s.push('a');
+            s.push('b');
+            assert(s@ == seq!['a', 'b']);
+            let popped = s.pop();
+            assert(popped == Some('b'));
+            assert(s@ == seq!['a']);
+            let popped2 = s.pop();
+            assert(popped2 == Some('a'));
+            assert(s@ == Seq::<char>::empty());
+            let popped3 = s.pop();
+            assert(popped3 is None);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_string_push_pop_fails verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let mut s = String::new();
+            s.push('a');
+            let popped = s.pop();
+            assert(popped == Some('b')); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}

@@ -359,6 +359,19 @@ pub assume_specification[ String::new ]() -> (res: String)
 ;
 
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]
+pub assume_specification[ String::push ](s: &mut String, c: char)
+    ensures
+        final(s)@ == old(s)@.push(c),
+;
+
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+pub assume_specification[ String::pop ](s: &mut String) -> (res: Option<char>)
+    ensures
+        old(s)@.len() == 0 ==> res is None && final(s)@ == old(s)@,
+        old(s)@.len() > 0 ==> res == Some(old(s)@.last()) && final(s)@ == old(s)@.drop_last(),
+;
+
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
 pub assume_specification[ <String as core::default::Default>::default ]() -> (r: String)
     ensures
         r@ == Seq::<char>::empty(),
