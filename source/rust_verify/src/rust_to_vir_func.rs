@@ -202,9 +202,18 @@ fn handle_autospec<'tcx>(
         );
 
         if functionx.proxy.is_some() {
-            // Naively, this_path may contain a mangled _verus_external_fn_specification_ name.
-            // Clean this up before sending it to autospec_return_clause_spec_fn_name:
-            this_path = this_path.pop_segment().push_segment(functionx.name.path.last_segment());
+            // Use the target's full path, not just its last segment, so two
+            // types' identically-named methods (e.g. str::is_empty and
+            // String::is_empty) don't collide on the same autospec name.
+            let joined_target_name = functionx
+                .name
+                .path
+                .segments
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .join("_");
+            this_path = this_path.pop_segment().push_segment(Arc::new(joined_target_name));
         }
         let new_func = ctxt.spanned_new(
             span,
