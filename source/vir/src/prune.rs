@@ -1079,7 +1079,9 @@ pub fn prune_krate_for_module_or_krate(
         let is_vis = is_visible_to(&f.x.visibility, &module);
         let is_open = is_body_visible_to(&f.x.body_visibility, &module);
         let is_non_opaque = f.x.opaqueness.get_default_fuel_for_module_path(module) != 0;
-        let is_revealed = is_non_opaque || revealed_functions.contains(&f.x.name);
+        // `by(compute)`/`by(compute_only)` ignores opaque/reveal fuel for every spec fn.
+        let is_revealed =
+            is_non_opaque || revealed_functions.contains(&f.x.name) || assert_by_compute;
         let is_spec = f.x.mode == Mode::Spec;
         if is_vis && is_open && is_revealed && is_spec {
             functions.push(f.clone());

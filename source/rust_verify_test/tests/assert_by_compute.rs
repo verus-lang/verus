@@ -357,6 +357,34 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
 }
 
+// https://github.com/verus-lang/verus/issues/944
+// An opaque, un-revealed spec fn's body must be usable by the interpreter
+// regardless of which module (pub-)defines it, not just the module being verified.
+test_verify_one_file! {
+    #[test] fn_calls_cross_module_opaque verus_code! {
+        mod definitions {
+            use vstd::prelude::*;
+
+            #[verifier::opaque]
+            pub open spec fn u64_leading_zeros(i: u64) -> int
+                decreases i
+            {
+                if i == 0 { 64 } else { u64_leading_zeros(i / 2) - 1 }
+            }
+        }
+
+        mod caller {
+            use vstd::prelude::*;
+            use crate::definitions::u64_leading_zeros;
+
+            proof fn test() {
+                assert(u64_leading_zeros(0) == 64) by (compute_only);
+                assert(u64_leading_zeros(1) == 63) by (compute_only);
+            }
+        }
+    } => Ok(())
+}
+
 test_verify_one_file! {
     #[test] sequences verus_code! {
         #[allow(unused_imports)]
