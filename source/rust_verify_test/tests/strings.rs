@@ -881,3 +881,34 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_one_fails(e)
 }
+
+test_verify_one_file! {
+    #[test] test_string_push_str verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let mut s = String::new();
+            s.push('a');
+            s.push_str("bc");
+            proof {
+                reveal_strlit("bc");
+            }
+            assert(s@ == seq!['a', 'b', 'c']);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_string_push_str_fails verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let mut s = String::new();
+            s.push_str("bc");
+            proof {
+                reveal_strlit("bc");
+            }
+            assert(s@ == seq!['b']); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
