@@ -912,3 +912,36 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_one_fails(e)
 }
+
+test_verify_one_file! {
+    #[test] test_string_is_empty_and_clear verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let mut s = String::new();
+            let empty0 = s.is_empty();
+            assert(empty0);
+            s.push('a');
+            let empty1 = s.is_empty();
+            assert(!empty1);
+            s.clear();
+            let empty2 = s.is_empty();
+            assert(empty2);
+            assert(s@ == Seq::<char>::empty());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_string_is_empty_and_clear_fails verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let mut s = String::new();
+            s.push('a');
+            s.clear();
+            let empty = s.is_empty();
+            assert(!empty); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
