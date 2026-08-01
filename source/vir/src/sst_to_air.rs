@@ -1043,9 +1043,6 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
         ExpX::NullaryOpr(crate::ast::NullaryOpr::ConstTypBound(t1, t2)) => {
             crate::traits::const_typ_bound_to_air(ctx, t1, t2)
         }
-        ExpX::NullaryOpr(crate::ast::NullaryOpr::NoInferSpecForLoopIter) => {
-            panic!("internal error: NoInferSpecForLoopIter")
-        }
         ExpX::Unary(op, e) => match op {
             UnaryOp::StrLen => Arc::new(ExprX::Apply(
                 str_ident(STRSLICE_LEN),
@@ -1131,11 +1128,6 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             }
             UnaryOp::MustBeFinalized | UnaryOp::MustBeElaborated => {
                 panic!("internal error: Exp not finalized: {:?}", e)
-            }
-            UnaryOp::InferSpecForLoopIter { .. } => {
-                // loop_inference failed to promote to Some, so demote to None
-                let e = crate::loop_inference::make_option_exp(None, &e.span, &e.typ);
-                exp_to_expr(ctx, &e, expr_ctxt)?
             }
             UnaryOp::CastToInteger => {
                 panic!("internal error: CastToInteger should have been removed before here")
@@ -2634,12 +2626,9 @@ fn loop_to_stmts(
     };
     let mut invs_entry: Vec<(Span, Expr, Option<Arc<String>>, bool)> = Vec::new();
     let mut invs_exit: Vec<(Span, Expr, Option<Arc<String>>, bool)> = Vec::new();
-    let mut hint_message = None;
     let modified_vars = modified_vars.as_ref().unwrap();
     for inv in invs.iter() {
-        let inv_exp =
-            crate::loop_inference::finalize_inv(&modified_vars, &inv.inv, &mut hint_message);
-        let expr = exp_to_expr(ctx, &inv_exp, expr_ctxt)?;
+        let expr = exp_to_expr(ctx, &inv.inv, expr_ctxt)?;
         if cond.is_some() {
             assert!(inv.at_entry);
             assert!(inv.at_exit);
@@ -2880,11 +2869,6 @@ fn loop_to_stmts(
             ProverChoice::DefaultProver,
             false,
         );
-        {
-            let mut guard =
-                loop_cmd_context.hint_upon_failure.lock().expect("we abort on poisoning");
-            *guard = hint_message;
-        }
         state.commands.push(loop_cmd_context);
     }
 
