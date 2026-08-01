@@ -101,11 +101,12 @@ impl<A: core::iter::Step> super::iter::IteratorSpecImpl for Range<A> {
 
     open spec fn remaining(&self) -> Seq<Self::Item> {
         let steps = self.start.spec_steps_between_int(self.end);
-        let len = if steps > 0 { steps } else { 0 };
-        Seq::new(
-            len as nat,
-            |i: int| self.start.spec_forward_checked_int(i).unwrap(),
-        )
+        let len = if steps > 0 {
+            steps
+        } else {
+            0
+        };
+        Seq::new(len as nat, |i: int| self.start.spec_forward_checked_int(i).unwrap())
     }
 
     uninterp spec fn will_return_none(&self) -> bool;

@@ -445,7 +445,9 @@ impl<'a> super::std_specs::iter::IteratorSpecImpl for Chars<'a> {
     }
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+
     uninterp spec fn will_return_none(&self) -> bool;
+
     uninterp spec fn decrease(&self) -> Option<nat>;
 
     open spec fn peek(&self, index: int) -> Option<Self::Item> {

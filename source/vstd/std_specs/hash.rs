@@ -288,7 +288,9 @@ impl<'a, K, V> super::iter::IteratorSpecImpl for Keys<'a, K, V> {
     }
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+
     uninterp spec fn will_return_none(&self) -> bool;
+
     uninterp spec fn decrease(&self) -> Option<nat>;
 
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
@@ -318,7 +320,9 @@ impl<'a, K, V> super::iter::IteratorSpecImpl for Values<'a, K, V> {
     }
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+
     uninterp spec fn will_return_none(&self) -> bool;
+
     uninterp spec fn decrease(&self) -> Option<nat>;
 
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
@@ -350,7 +354,9 @@ impl<'a, K, V> super::iter::IteratorSpecImpl for hash_map::Iter<'a, K, V> {
     }
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+
     uninterp spec fn will_return_none(&self) -> bool;
+
     uninterp spec fn decrease(&self) -> Option<nat>;
 
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
@@ -861,7 +867,9 @@ impl<'a, K> super::iter::IteratorSpecImpl for hash_set::Iter::<'a, K> {
     }
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+
     uninterp spec fn will_return_none(&self) -> bool;
+
     uninterp spec fn decrease(&self) -> Option<nat>;
 
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
