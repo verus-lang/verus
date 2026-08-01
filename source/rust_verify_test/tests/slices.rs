@@ -407,6 +407,111 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
+// Checks the mutable-indexing form (`&mut s[range]`) via the returned
+// sub-slice's own view, both before and after writing through it. Verus
+// currently can't relate a range-indexed sub-slice's mutation back to the
+// original slice's own view once the sub-slice reference is no longer live
+// (confirmed: real rustc accepts and correctly runs the equivalent
+// `let sub = &mut s[1..3]; sub[0] = 99; assert_eq!(s[1], 99);`, but Verus
+// can't currently prove `s@[1] == 99` there) - so these check what's
+// provable today, not the full mutation-then-observe-through-the-original
+// round trip.
+test_verify_one_file! {
+    #[test] test_slice_index_mut_ranges verus_code! {
+        use vstd::prelude::*;
+
+        fn range_index_mut(s: &mut [u8]) {
+            assume(s.len() == 5);
+            let sub = &mut s[1..3];
+            assert(sub@ == old(s)@.subrange(1, 3));
+            sub[0] = 99;
+            sub[1] = 88;
+            assert(sub@ == seq![99, 88]);
+        }
+
+        fn range_to_index_mut(s: &mut [u8]) {
+            assume(s.len() == 5);
+            let sub = &mut s[..3];
+            assert(sub@ == old(s)@.subrange(0, 3));
+            sub[0] = 99;
+            assert(sub@[0] == 99);
+        }
+
+        fn range_from_index_mut(s: &mut [u8]) {
+            assume(s.len() == 5);
+            let sub = &mut s[2..];
+            assert(sub@ == old(s)@.subrange(2, 5));
+            sub[0] = 99;
+            assert(sub@[0] == 99);
+        }
+
+        fn range_to_inclusive_index_mut(s: &mut [u8]) {
+            assume(s.len() == 5);
+            let sub = &mut s[..=3];
+            assert(sub@ == old(s)@.subrange(0, 4));
+            sub[3] = 99;
+            assert(sub@[3] == 99);
+        }
+
+        fn range_full_index_mut(s: &mut [u8]) {
+            assume(s.len() == 5);
+            let sub = &mut s[..];
+            assert(sub@ == old(s)@);
+            sub[4] = 99;
+            assert(sub@[4] == 99);
+        }
+
+        fn range_inclusive_index_mut(s: &mut [u8]) {
+            assume(s.len() == 5);
+            let sub = &mut s[1..=3];
+            assert(sub@ == old(s)@.subrange(1, 4));
+            sub[0] = 99;
+            assert(sub@[0] == 99);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_slice_index_mut_ranges_fails verus_code! {
+        use vstd::prelude::*;
+
+        fn range_index_mut_wrong(s: &mut [u8]) {
+            assume(s.len() == 5);
+            let sub = &mut s[1..3];
+            sub[0] = 99;
+            assert(sub@[0] == 5); // FAILS
+        }
+
+        fn range_index_mut_wrong_len(s: &mut [u8]) {
+            assume(s.len() == 5);
+            let sub = &mut s[1..3];
+            assert(sub@.len() == 3); // FAILS: 1..3 has length 2, not 3
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+// KNOWN LIMITATION, not a soundness issue: Verus can't currently relate a
+// write through a range-indexed mutable sub-slice reborrow back to the
+// *original* slice's own view, even after the reborrow's last use. Confirmed
+// this is purely a completeness gap, not a real borrow-checker violation -
+// the equivalent real Rust (`let sub = &mut s[1..3]; sub[0] = 99;
+// assert_eq!(s[1], 99);`) compiles and genuinely mutates `s` (checked
+// directly: real output `[0, 99, 2, 3, 4]`). If Verus's handling of this
+// improves, this test will start failing to produce the expected error,
+// flagging that the limitation was lifted.
+test_verify_one_file! {
+    #[test] test_slice_index_mut_range_writeback_not_yet_provable verus_code! {
+        use vstd::prelude::*;
+
+        fn range_index_mut_writeback(s: &mut [u8]) {
+            assume(s.len() == 5);
+            let sub = &mut s[1..3];
+            sub[0] = 99;
+            assert(s@[1] == 99); // FAILS (today) - see comment above
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
 test_verify_one_file! {
     #[test] test_array_index verus_code! {
         use std::ops::Index;
