@@ -749,7 +749,6 @@ impl Verifier {
         snap_map: &Vec<(vir::messages::Span, SnapPos)>,
         command: &Command,
         context: &CommandContext,
-        hint_upon_failure: &Option<Message>,
         prover_choice: vir::def::ProverChoice,
         default_prover_failed_assert_ids: &mut Vec<AssertId>,
     ) -> RunCommandQueriesResult {
@@ -909,9 +908,6 @@ impl Verifier {
                         self.count_errors += 1;
                         self.func_fails.insert(context.fun.clone());
                         invalidity = true;
-                        if let Some(hint) = hint_upon_failure.clone() {
-                            reporter.report_as(&hint.to_any(), MessageLevel::Note);
-                        }
                     }
                     if self.expand_flag {
                         invalidity = true;
@@ -1084,14 +1080,8 @@ impl Verifier {
             not_skipped: false,
             used_axioms: None,
         };
-        let CommandsWithContextX {
-            context,
-            commands,
-            prover_choice,
-            skip_recommends: _,
-            hint_upon_failure,
-        } = &*commands_with_context;
-        let hint_guard = hint_upon_failure.lock().expect("we abort on poisoning");
+        let CommandsWithContextX { context, commands, prover_choice, skip_recommends: _ } =
+            &*commands_with_context;
         let context = context.with_desc_prefix(desc_prefix);
         if commands.len() > 0 {
             air_context.blank_line();
@@ -1111,7 +1101,6 @@ impl Verifier {
                     snap_map,
                     &command,
                     &context,
-                    &hint_guard,
                     *prover_choice,
                     default_prover_failed_assert_ids,
                 );
@@ -2662,7 +2651,6 @@ impl Verifier {
             bodies: vec![],
             shadow_check: vec![],
             extra_erase_ast_ids: vec![],
-            extra_erase_hir_ids_including_adjustments: vec![],
             local_invariant_bodies: vec![],
         };
         let erasure_info = std::rc::Rc::new(std::cell::RefCell::new(erasure_info));
@@ -2884,8 +2872,6 @@ impl Verifier {
         let bodies = erasure_info.bodies.clone();
         let shadow_check = erasure_info.shadow_check.clone();
         let extra_erase_ast_ids = erasure_info.extra_erase_ast_ids.clone();
-        let extra_erase_hir_ids_including_adjustments =
-            erasure_info.extra_erase_hir_ids_including_adjustments.clone();
         let local_invariant_bodies = erasure_info.local_invariant_bodies.clone();
         let erasure_hints = crate::erase::ErasureHints {
             vir_crate: unpruned_crate,
@@ -2899,7 +2885,6 @@ impl Verifier {
             bodies,
             shadow_check,
             extra_erase_ast_ids,
-            extra_erase_hir_ids_including_adjustments,
             local_invariant_bodies,
         };
         self.erasure_hints = Some(erasure_hints);

@@ -29,8 +29,6 @@ pub struct ErasureInfo {
     /// Extra nodes to erase, use this when a VIR tree gets dropped without getting to
     /// mode-checking.
     pub(crate) extra_erase_ast_ids: Vec<vir::messages::Span>,
-    /// Extra nodes to erase, use this when an HIR tree gets dropped without becoming a VIR tree.
-    pub(crate) extra_erase_hir_ids_including_adjustments: Vec<HirId>,
     pub(crate) local_invariant_bodies: Vec<rustc_mir_build_verus::verus::LocalInvariantBody>,
 }
 
@@ -73,8 +71,6 @@ pub(crate) struct BodyCtxt<'tcx> {
     pub(crate) mode: Mode,
     pub(crate) external_body: bool,
     pub(crate) in_ghost: bool,
-    // loop_isolation for the nearest enclosing loop, false otherwise
-    pub(crate) loop_isolation: bool,
     pub(crate) atomically: Option<Arc<AtomicallyCtxt>>,
     pub(crate) migrate_postcondition_vars: Option<std::collections::HashSet<vir::ast::VarIdent>>,
     /// Context to interpret a header if we encounter one

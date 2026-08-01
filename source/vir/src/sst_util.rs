@@ -486,7 +486,6 @@ impl ExpX {
             NullaryOpr(crate::ast::NullaryOpr::TraitBound(..)) => ("".to_string(), 99),
             NullaryOpr(crate::ast::NullaryOpr::TypEqualityBound(..)) => ("".to_string(), 99),
             NullaryOpr(crate::ast::NullaryOpr::ConstTypBound(..)) => ("".to_string(), 99),
-            NullaryOpr(crate::ast::NullaryOpr::NoInferSpecForLoopIter) => ("no_in".to_string(), 99),
             Unary(op, exp) => match op {
                 UnaryOp::Not | UnaryOp::BitNot(_) => {
                     (format!("!{}", exp.x.to_string_prec(global, 99)), 90)
@@ -520,9 +519,6 @@ impl ExpX {
                 | UnaryOp::MustBeFinalized
                 | UnaryOp::MustBeElaborated => {
                     return exp.x.to_string_prec(global, precedence);
-                }
-                UnaryOp::InferSpecForLoopIter { .. } => {
-                    (format!("InferSpecForLoopIter({})", exp.x.to_string_prec(global, 99)), 0)
                 }
                 UnaryOp::CastToInteger => {
                     (format!("{} as int", exp.x.to_user_string(global)), precedence)
