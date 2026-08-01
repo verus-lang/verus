@@ -41,7 +41,7 @@ use vir::context::{FuncCallGraphLogFiles, GlobalCtx};
 use crate::buckets::{Bucket, BucketId};
 use crate::expand_errors_driver::ExpandErrorsResult;
 use vir::ast::{CrateId, Fun, Krate, VirErr};
-use vir::ast_util::{fun_as_friendly_rust_name, is_visible_to};
+use vir::ast_util::fun_as_friendly_rust_name;
 use vir::def::{CommandContext, CommandsWithContext, CommandsWithContextX, SnapPos};
 use vir::prelude::PreludeConfig;
 
@@ -1373,8 +1373,6 @@ impl Verifier {
             SmtSolver::Cvc5 => None,
         };
 
-        let module = &ctx.module_path();
-
         // Bucket context.
         //
         // Inserted into the main context, but also stored so the identical
@@ -1389,15 +1387,7 @@ impl Verifier {
             ),
             CommandBatch::new(
                 "Datatypes",
-                vir::datatype_to_air::datatypes_and_primitives_to_air(
-                    ctx,
-                    &krate
-                        .datatypes
-                        .iter()
-                        .filter(|d| is_visible_to(&d.x.visibility, module))
-                        .cloned()
-                        .collect(),
-                ),
+                vir::datatype_to_air::datatypes_and_primitives_to_air(ctx, &krate.datatypes),
             ),
             CommandBatch::new("Trait-Bounds", vir::traits::trait_bound_axioms(ctx, &krate.traits)),
             CommandBatch::new(

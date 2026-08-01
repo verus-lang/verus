@@ -158,9 +158,8 @@ fn record_datatype(ctxt: &Ctxt, state: &mut State, typ: &Typ, dt: &Dt) {
     };
     if let Some(mono_abstract_datatypes) = &mut state.mono_abstract_datatypes {
         if let Some(d) = ctxt.datatype_map.get(dt) {
-            let is_vis = is_visible_to(&d.x.visibility, module);
             let is_transparent = is_datatype_transparent(module, &d);
-            if is_vis && !is_transparent {
+            if !is_transparent {
                 if let Some(monotyp) = crate::poly::typ_as_mono(typ) {
                     mono_abstract_datatypes.insert(monotyp);
                 }
@@ -1099,14 +1098,15 @@ pub fn prune_krate_for_module_or_krate(
         let is_vis = is_visible_to_or_true(&d.x.visibility, &module);
         let is_transparent =
             if let Some(module) = &module { is_datatype_transparent(module, &d) } else { true };
-        if is_vis {
-            if is_transparent {
-                datatypes.push(d.clone());
-            } else {
-                let mut datatype = d.x.clone();
-                datatype.variants = Arc::new(vec![]);
-                datatypes.push(Spanned::new(d.span.clone(), datatype));
-            }
+        if is_vis && is_transparent {
+            datatypes.push(d.clone());
+        } else {
+            // A visible datatype may have a field whose type is not itself visible to this
+            // module. Keep a declaration for such types so datatype reachability remains closed,
+            // but erase their variants because they are opaque from this module.
+            let mut datatype = d.x.clone();
+            datatype.variants = Arc::new(vec![]);
+            datatypes.push(Spanned::new(d.span.clone(), datatype));
         }
     }
 
