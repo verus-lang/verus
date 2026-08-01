@@ -408,14 +408,7 @@ test_verify_one_file! {
 }
 
 // Checks the mutable-indexing form (`&mut s[range]`) via the returned
-// sub-slice's own view, both before and after writing through it. Verus
-// currently can't relate a range-indexed sub-slice's mutation back to the
-// original slice's own view once the sub-slice reference is no longer live
-// (confirmed: real rustc accepts and correctly runs the equivalent
-// `let sub = &mut s[1..3]; sub[0] = 99; assert_eq!(s[1], 99);`, but Verus
-// can't currently prove `s@[1] == 99` there) - so these check what's
-// provable today, not the full mutation-then-observe-through-the-original
-// round trip.
+// sub-slice's own view, both before and after writing through it.
 test_verify_one_file! {
     #[test] test_slice_index_mut_ranges verus_code! {
         use vstd::prelude::*;
@@ -490,24 +483,77 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 2)
 }
 
-// KNOWN LIMITATION, not a soundness issue: Verus can't currently relate a
-// write through a range-indexed mutable sub-slice reborrow back to the
-// *original* slice's own view, even after the reborrow's last use. Confirmed
-// this is purely a completeness gap, not a real borrow-checker violation -
-// the equivalent real Rust (`let sub = &mut s[1..3]; sub[0] = 99;
-// assert_eq!(s[1], 99);`) compiles and genuinely mutates `s` (checked
-// directly: real output `[0, 99, 2, 3, 4]`). If Verus's handling of this
-// improves, this test will start failing to produce the expected error,
-// flagging that the limitation was lifted.
+// Writing through a range-indexed mutable sub-slice reborrow, then observing
+// the *original* slice's own view after the reborrow's last use.
 test_verify_one_file! {
-    #[test] test_slice_index_mut_range_writeback_not_yet_provable verus_code! {
+    #[test] test_slice_index_mut_range_writeback verus_code! {
         use vstd::prelude::*;
 
-        fn range_index_mut_writeback(s: &mut [u8]) {
+        fn range_writeback(s: &mut [u8])
+            requires old(s)@.len() == 5,
+            ensures final(s)@ == old(s)@.update(1, 99).update(2, 88),
+        {
+            let sub = &mut s[1..3];
+            sub[0] = 99;
+            sub[1] = 88;
+        }
+
+        fn range_to_writeback(s: &mut [u8])
+            requires old(s)@.len() == 5,
+            ensures final(s)@ == old(s)@.update(0, 99).update(1, 88),
+        {
+            let sub = &mut s[..2];
+            sub[0] = 99;
+            sub[1] = 88;
+        }
+
+        fn range_from_writeback(s: &mut [u8])
+            requires old(s)@.len() == 5,
+            ensures final(s)@ == old(s)@.update(3, 99).update(4, 88),
+        {
+            let sub = &mut s[3..];
+            sub[0] = 99;
+            sub[1] = 88;
+        }
+
+        fn range_to_inclusive_writeback(s: &mut [u8])
+            requires old(s)@.len() == 5,
+            ensures final(s)@ == old(s)@.update(0, 99).update(1, 88),
+        {
+            let sub = &mut s[..=1];
+            sub[0] = 99;
+            sub[1] = 88;
+        }
+
+        fn range_full_writeback(s: &mut [u8])
+            requires old(s)@.len() == 5,
+            ensures final(s)@ == old(s)@.update(0, 99).update(4, 88),
+        {
+            let sub = &mut s[..];
+            sub[0] = 99;
+            sub[4] = 88;
+        }
+
+        fn range_inclusive_writeback(s: &mut [u8])
+            requires old(s)@.len() == 5,
+            ensures final(s)@ == old(s)@.update(1, 99).update(3, 88),
+        {
+            let sub = &mut s[1..=3];
+            sub[0] = 99;
+            sub[2] = 88;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_slice_index_mut_range_writeback_fails verus_code! {
+        use vstd::prelude::*;
+
+        fn range_writeback_wrong_value(s: &mut [u8]) {
             assume(s.len() == 5);
             let sub = &mut s[1..3];
             sub[0] = 99;
-            assert(s@[1] == 99); // FAILS (today) - see comment above
+            assert(s@[1] == 5); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
