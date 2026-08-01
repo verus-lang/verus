@@ -944,6 +944,46 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 1)
 }
 
+// Two `allow_in_spec` proxies in the same module, for different real targets
+// that happen to share a bare name (`foo`) - both should verify independently,
+// without colliding on the same autospec name.
+test_verify_one_file! {
+    #[test] test_allow_in_spec_same_target_name_different_targets_no_collision verus_code! {
+        mod ModA {
+            #[verifier::external]
+            pub fn foo(x: bool) -> bool { !x }
+        }
+
+        mod ModB {
+            #[verifier::external]
+            pub fn foo(x: bool) -> bool { x }
+        }
+
+        #[verifier::allow_in_spec]
+        #[verifier::external_fn_specification]
+        pub fn exec_foo_a(x: bool) -> (res: bool)
+            returns !x
+        {
+            ModA::foo(x)
+        }
+
+        #[verifier::allow_in_spec]
+        #[verifier::external_fn_specification]
+        pub fn exec_foo_b(x: bool) -> (res: bool)
+            returns x
+        {
+            ModB::foo(x)
+        }
+
+        fn test() {
+            let a = ModA::foo(true);
+            let b = ModB::foo(true);
+            assert(a == false);
+            assert(b == true);
+        }
+    } => Ok(())
+}
+
 // when_used_as_spec
 
 test_verify_one_file! {
