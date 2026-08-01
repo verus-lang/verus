@@ -287,14 +287,7 @@ impl<'a, T: 'a> super::iter::IteratorSpecImpl for Iter<'a, T> {
     }
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
-
     uninterp spec fn will_return_none(&self) -> bool;
-
-    #[verifier::prophetic]
-    open spec fn initial_value_relation(&self, init: &Self) -> bool {
-        true
-    }
-
     uninterp spec fn decrease(&self) -> Option<nat>;
 
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
@@ -323,7 +316,6 @@ pub assume_specification<'a, T, A: Allocator>[ VecDeque::<T, A>::iter ](
         IteratorSpec::remaining(&iter) == v@.as_ref(),
         into_iter_elts(iter) == IteratorSpec::remaining(&iter),
         IteratorSpec::decrease(&iter) is Some,
-        IteratorSpec::initial_value_relation(&iter, &iter),
 ;
 
 pub broadcast group group_vec_dequeue_axioms {

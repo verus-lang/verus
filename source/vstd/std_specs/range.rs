@@ -110,11 +110,6 @@ impl<A: core::iter::Step> super::iter::IteratorSpecImpl for Range<A> {
 
     uninterp spec fn will_return_none(&self) -> bool;
 
-    #[verifier::prophetic]
-    open spec fn initial_value_relation(&self, init: &Self) -> bool {
-        true
-    }
-
     open spec fn decrease(&self) -> Option<nat> {
         Some(self.start.spec_steps_between_int(self.end) as nat)
     }
@@ -142,11 +137,6 @@ impl<A: core::iter::Step> super::iter::IteratorSpecImpl for RangeInclusive<A> {
     }
 
     uninterp spec fn will_return_none(&self) -> bool;
-
-    #[verifier::prophetic]
-    open spec fn initial_value_relation(&self, init: &Self) -> bool {
-        true
-    }
 
     open spec fn decrease(&self) -> Option<nat> {
         Some((self@.start.spec_steps_between_int(self@.end) + 1) as nat)
@@ -575,34 +565,7 @@ step_specs!(isize, axiom_spec_range_next_isize);
 
 verus! {
 
-/// `Range::remaining` is defined in terms of `Seq::new`, so these facts follow from its
-/// definition.  We expose them as broadcast lemmas because clients (notably the desugaring
-/// of `for` loops, where the iterator is only known via the loop invariant) need them at
-/// terms Z3 will not otherwise unfold.
-pub broadcast proof fn lemma_range_remaining_len<A: core::iter::Step>(r: Range<A>)
-    ensures
-        (r.start.spec_steps_between_int(r.end) <= 0 && (#[trigger] IteratorSpec::remaining(&r)).len() == 0) 
-     || (r.start.spec_steps_between_int(r.end) == IteratorSpec::remaining(&r).len() as int),
-{
-    broadcast use super::super::seq::lemma_seq_new_len;
-}
-
-pub broadcast proof fn lemma_range_remaining_index<A: core::iter::Step>(r: Range<A>, i: int)
-    requires
-        0 <= i < IteratorSpec::remaining(&r).len(),
-    ensures
-        #[trigger] IteratorSpec::remaining(&r)[i] == r.start.spec_forward_checked_int(i).unwrap(),
-{
-    broadcast use {
-        super::super::seq::lemma_seq_new_len,
-        super::super::seq::lemma_seq_new_index,
-    };
-
-}
-
 pub broadcast group group_range_axioms {
-    //lemma_range_remaining_len,
-    //lemma_range_remaining_index,
     axiom_spec_range_next_u8,
     axiom_spec_range_next_u16,
     axiom_spec_range_next_u32,

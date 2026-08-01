@@ -63,13 +63,6 @@ pub trait ExIterator {
     /// and the user will have to provide an explicit decreases clause.
     spec fn decrease(&self) -> Option<nat>;
 
-    /// Invariant relating the iterator to the initial expression that created it
-    /// (e.g., `my_vec.iter()`).  This allows for more ergonomic/intuitive invariants.
-    /// When the analysis can infer a spec initial value (by discovering a `when_used_as_spec`
-    /// annotation), the analysis places the value in init.
-    #[verifier::prophetic]
-    spec fn initial_value_relation(&self, init: &Self) -> bool;
-
     // If we can make a useful guess as to what the i-th value will be, return it.
     // Otherwise, return None.
     spec fn peek(&self, index: int) -> Option<Self::Item>;
@@ -81,7 +74,7 @@ pub trait ExIterator {
     fn rev(self) -> (r: Rev<Self>)
         where Self: Sized,
         default_ensures
-            self.obeys_prophetic_iter_laws() && self.initial_value_relation(&self) ==>
+            self.obeys_prophetic_iter_laws() ==>
                 r == into_rev_spec(self) && rev_post(self, r),
     ;
 
@@ -91,7 +84,7 @@ pub trait ExIterator {
             Self: Sized,
         default_ensures
             self.will_return_none(),
-            self.obeys_prophetic_iter_laws() && self.initial_value_relation(&self) ==>
+            self.obeys_prophetic_iter_laws() ==>
                 FromIteratorSpec::from_iter_ensures(self.remaining(), collection),
     ;
 
@@ -293,6 +286,8 @@ pub struct ExRev<I>(Rev<I>);
 // Ghost accessor for the inner iterator
 pub uninterp spec fn rev_iter<I>(r: Rev<I>) -> I;
 
+// TODO: Do we still need this?
+
 // Spec version of Rev::new
 pub uninterp spec fn into_rev_spec<I>(i: I) -> Rev<I>;
 
@@ -306,7 +301,6 @@ pub uninterp spec fn rev_post<I>(i: I, r: Rev<I>) -> bool;
 pub broadcast axiom fn rev_postcondition<I: DoubleEndedIteratorSpec>(i: I)
     requires
         i.obeys_prophetic_iter_laws(),
-        i.initial_value_relation(&i),
         rev_post(i, into_rev_spec(i)),
     ensures
         {
@@ -314,7 +308,6 @@ pub broadcast axiom fn rev_postcondition<I: DoubleEndedIteratorSpec>(i: I)
             &&& IteratorSpec::remaining(&r) == IteratorSpec::remaining(&i).reverse()
             &&& IteratorSpec::will_return_none(&r) == i.will_return_none()
             &&& IteratorSpec::decrease(&r) is Some == i.decrease() is Some
-            &&& IteratorSpec::initial_value_relation(&r, &r)
         },
 ;
 
@@ -332,11 +325,6 @@ impl <I> IteratorSpecImpl for Rev<I>
     #[verifier::prophetic]
     closed spec fn will_return_none(&self) -> bool {
         rev_iter(*self).will_return_none()
-    }
-
-    #[verifier::prophetic]
-    open spec fn initial_value_relation(&self, init: &Self) -> bool {
-        true
     }
 
     closed spec fn decrease(&self) -> Option<nat> {
@@ -374,11 +362,6 @@ impl <I> IteratorSpecImpl for &mut I
     #[verifier::prophetic]
     open spec fn will_return_none(&self) -> bool {
         <I as IteratorSpec>::will_return_none(*self)
-    }
-
-    #[verifier::prophetic]
-    open spec fn initial_value_relation(&self, init: &Self) -> bool {
-        true
     }
 
     open spec fn decrease(&self) -> Option<nat> {
@@ -431,7 +414,6 @@ impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
     #[verifier::prophetic]
     pub open spec fn wf(self) -> bool {
         &&& 0 <= self.index() <= self.seq().len()
-        &&& self.init@ matches Some(init) ==> self.snapshot@.initial_value_relation(init)
         &&& self.wf_inner()
         &&& self.iter.obeys_prophetic_iter_laws() ==> {
                 &&& self.history@.len() == self.index()
@@ -439,10 +421,9 @@ impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
             }
     }
 
+// TODO: Do we still need an init?
     /// Bundle the real iterator with its ghost state and loop invariants
     pub fn new(iter: I, init: Ghost<Option<&'a I>>) -> (s: Self)
-        requires
-            init@ matches Some(i) ==> iter.initial_value_relation(i),
         ensures
             s.index == 0,
             s.snapshot == iter,
