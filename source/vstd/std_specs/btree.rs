@@ -77,12 +77,6 @@ impl<'a, K, V> super::iter::IteratorSpecImpl for Keys<'a, K, V> {
 
     uninterp spec fn will_return_none(&self) -> bool;
 
-    #[verifier::prophetic]
-    open spec fn initial_value_relation(&self, init: &Self) -> bool {
-        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-        &&& into_iter_keys(*self) == IteratorSpec::remaining(self).unref()
-    }
-
     uninterp spec fn decrease(&self) -> Option<nat>;
 
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
@@ -114,12 +108,6 @@ impl<'a, K, V> super::iter::IteratorSpecImpl for Values<'a, K, V> {
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
 
     uninterp spec fn will_return_none(&self) -> bool;
-
-    #[verifier::prophetic]
-    open spec fn initial_value_relation(&self, init: &Self) -> bool {
-        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-        &&& into_iter_values(*self) == IteratorSpec::remaining(self).unref()
-    }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
 
@@ -155,12 +143,6 @@ impl<'a, K, V> super::iter::IteratorSpecImpl for btree_map::Iter<'a, K, V> {
 
     uninterp spec fn will_return_none(&self) -> bool;
 
-    #[verifier::prophetic]
-    open spec fn initial_value_relation(&self, init: &Self) -> bool {
-        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-        &&& into_iter(*self) == IteratorSpec::remaining(self).unref()
-    }
-
     uninterp spec fn decrease(&self) -> Option<nat>;
 
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
@@ -191,8 +173,8 @@ pub assume_specification<'a, Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, 
                 m@.contains_key(k) ==> IteratorSpec::remaining(&iter).contains((&k, &m@[k]))
             &&& IteratorSpec::remaining(&iter).unref().to_set() == m@.kv_pairs()
             &&& iter.remaining().no_duplicates()
+            &&& into_iter(iter) == IteratorSpec::remaining(&iter).unref()
             &&& IteratorSpec::decrease(&iter) is Some
-            &&& IteratorSpec::initial_value_relation(&iter, &iter)
             &&& increasing_seq(iter.remaining().map_values(|kv: (&Key, &Value)| *kv.0))
         },
 ;
@@ -575,8 +557,8 @@ pub assume_specification<'a, Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, 
             &&& IteratorSpec::remaining(&keys).no_duplicates()
             &&& IteratorSpec::remaining(&keys).len() == m@.dom().len()
             &&& increasing_seq(IteratorSpec::remaining(&keys))
+            &&& into_iter_keys(keys) == IteratorSpec::remaining(&keys).unref()
             &&& IteratorSpec::decrease(&keys) is Some
-            &&& IteratorSpec::initial_value_relation(&keys, &keys)
         },
 ;
 
@@ -587,8 +569,8 @@ pub assume_specification<'a, Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, 
         key_obeys_cmp_spec::<Key>() ==> {
             &&& IteratorSpec::remaining(&values).unref().to_set() == m@.values()
             &&& IteratorSpec::remaining(&values).len() == m@.dom().len()
+            &&& into_iter_values(values) == IteratorSpec::remaining(&values).unref()
             &&& IteratorSpec::decrease(&values) is Some
-            &&& IteratorSpec::initial_value_relation(&values, &values)
             &&& exists|key_seq: Seq<Key>|
                 {
                     &&& increasing_seq(key_seq)
@@ -625,12 +607,6 @@ impl<'a, T> super::iter::IteratorSpecImpl for btree_set::Iter::<'a, T> {
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
 
     uninterp spec fn will_return_none(&self) -> bool;
-
-    #[verifier::prophetic]
-    open spec fn initial_value_relation(&self, init: &Self) -> bool {
-        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-        &&& into_iter_btree_keys(*self) == IteratorSpec::remaining(self).unref()
-    }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
 
@@ -861,8 +837,8 @@ pub assume_specification<'a, Key, A: Allocator + Clone>[ BTreeSet::<Key, A>::ite
             &&& IteratorSpec::remaining(&r).no_duplicates()
             &&& IteratorSpec::remaining(&r).len() == m@.len()
             &&& increasing_seq(IteratorSpec::remaining(&r))
+            &&& into_iter_btree_keys(r) == IteratorSpec::remaining(&r).unref()
             &&& IteratorSpec::decrease(&r) is Some
-            &&& IteratorSpec::initial_value_relation(&r, &r)
         },
 ;
 

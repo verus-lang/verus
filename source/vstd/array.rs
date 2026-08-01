@@ -105,7 +105,6 @@ pub assume_specification<
     ensures
         IteratorSpec::remaining(&iter) == s@.as_ref(),
         IteratorSpec::decrease(&iter) is Some,
-        IteratorSpec::initial_value_relation(&iter, &iter),
 ;
 
 // Referenced by Verus' internal encoding for array -> slice coercion

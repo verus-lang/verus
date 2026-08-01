@@ -362,13 +362,6 @@ impl <T, A: Allocator> super::iter::IteratorSpecImpl for IntoIter<T, A> {
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
     uninterp spec fn will_return_none(&self) -> bool;
-
-    #[verifier::prophetic]
-    open spec fn initial_value_relation(&self, init: &Self) -> bool {
-        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-        &&& into_iter_elts(*self) == IteratorSpec::remaining(self)
-    }
-
     uninterp spec fn decrease(&self) -> Option<nat>;
 
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
@@ -403,16 +396,16 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::into_iter ](vec: Vec<T, 
 > as core::iter::IntoIterator>::IntoIter)
     ensures
         IteratorSpec::remaining(&iter) == vec@,
+        into_iter_elts(iter) == IteratorSpec::remaining(&iter),
         IteratorSpec::decrease(&iter) is Some,
-        IteratorSpec::initial_value_relation(&iter, &iter),
 ;
 
 pub assume_specification<'a, T, A: Allocator> [<&'a Vec<T, A> as core::iter::IntoIterator>::into_iter] (vec: &'a Vec<T, A>) ->
     (iter: <&'a Vec<T, A> as core::iter::IntoIterator>::IntoIter)
     ensures
         IteratorSpec::remaining(&iter) == vec@.as_ref(),
+        super::slice::into_iter_elts(iter) == IteratorSpec::remaining(&iter).unref(),
         IteratorSpec::decrease(&iter) is Some,
-        IteratorSpec::initial_value_relation(&iter, &iter),
 ;
 
 impl<T>  FromIteratorSpecImpl<T> for Vec<T> {

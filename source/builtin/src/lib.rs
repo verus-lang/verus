@@ -2381,13 +2381,6 @@ pub use decreases_to;
 pub use decreases_to_internal;
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::verus_builtin::infer_spec_for_loop_iter"]
-#[verifier::spec]
-pub fn infer_spec_for_loop_iter<A>(_: A, _: A, _print_hint: bool) -> Option<A> {
-    unimplemented!()
-}
-
-#[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::global_size_of"]
 #[verifier::spec]
 pub const fn global_size_of<T>(_bytes: usize) {}

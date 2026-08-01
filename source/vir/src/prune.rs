@@ -519,10 +519,6 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                     ExprX::TryOpenAtomicUpdate(..) | ExprX::Atomically(..) => {
                         reach_atomic_update_ops(state, &ctxt);
                     }
-                    ExprX::Unary(crate::ast::UnaryOp::InferSpecForLoopIter { .. }, _) => {
-                        let t = ReachedType::Datatype(Dt::Path(crate::def::option_type_path()));
-                        reach_type(ctxt, state, &t);
-                    }
                     ExprX::Fuel(fueled_f, _, is_broadcast_use) if *is_broadcast_use => {
                         reach_function(ctxt, state, fueled_f);
                     }

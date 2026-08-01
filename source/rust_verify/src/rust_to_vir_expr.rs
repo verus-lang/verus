@@ -3036,7 +3036,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::Loop(block, label, LoopSource::Loop, header_span) => {
             let label = bctx.fresh_label(expr.hir_id, label);
             let allow_complex_invariants = allow_complex_invariants();
-            let bctx = &BodyCtxt { loop_isolation, ..bctx.clone() };
             let typ = typ_of_node_unadjusted(bctx, block.span, &block.hir_id)?;
             let mut body = block_to_vir(bctx, block, &expr.span, &typ)?;
             let mut header =

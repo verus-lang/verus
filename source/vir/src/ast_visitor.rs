@@ -257,7 +257,6 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let t2 = self.visit_typ(t2)?;
                 R::ret(|| NullaryOpr::ConstTypBound(R::get(t1), R::get(t2)))
             }
-            NullaryOpr::NoInferSpecForLoopIter => R::ret(|| nopr.clone()),
         }
     }
 
