@@ -387,39 +387,23 @@ impl<'a, K, V> super::iter::IteratorSpecImpl for hash_map::Iter<'a, K, V> {
     }
 }
 
-// To allow reasoning about the ghost iterator when the executable
-// function `iter()` is invoked in a `for` loop header (e.g., in
-// `for x in it: v.iter() { ... }`), we need to specify the behavior of
-// the iterator in spec mode. To do that, we add
-// `#[verifier::when_used_as_spec(spec_iter)]` to the specification for
-// the executable `iter` method and define that spec function here.
-pub uninterp spec fn spec_hash_map_iter<'a, Key, Value, S, A: Allocator>(
-    m: &'a HashMap<Key, Value, S, A>,
-) -> (r: hash_map::Iter<'a, Key, Value>);
-
-pub broadcast proof fn axiom_spec_hash_map_iter<'a, Key, Value, S>(m: &'a HashMap<Key, Value, S>)
-    ensures
-        ({
-            let v = #[trigger] spec_hash_map_iter(m).remaining();
-            &&& v.len() == m@.dom().len()
-            &&& forall|i: int|
-                #![trigger m@.contains_key(*v[i].0)]
-                #![trigger m@[*v[i].0]]
-                0 <= i < v.len() ==> m@.contains_key(*v[i].0) && m@[*v[i].0] == *v[i].1
-            &&& forall|k: Key| #[trigger] m@.contains_key(k) ==> v.contains((&k, &m@[k]))
-            &&& v.unref().to_set() == m@.kv_pairs()
-        }),
-{
-    admit();
-}
-
-#[verifier::when_used_as_spec(spec_hash_map_iter)]
 pub assume_specification<'a, Key, Value, S, A: Allocator>[ HashMap::<Key, Value, S, A>::iter ](
     m: &'a HashMap<Key, Value, S, A>,
 ) -> (iter: hash_map::Iter<'a, Key, Value>)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
-            &&& iter == spec_hash_map_iter(m)
+            &&& IteratorSpec::remaining(&iter).len() == m@.dom().len()
+            &&& forall|i: int|
+                #![trigger m@.contains_key(*IteratorSpec::remaining(&iter)[i].0)]
+                #![trigger m@[*IteratorSpec::remaining(&iter)[i].0]]
+                0 <= i < IteratorSpec::remaining(&iter).len() ==> m@.contains_key(
+                    *IteratorSpec::remaining(&iter)[i].0,
+                ) && m@[*IteratorSpec::remaining(&iter)[i].0] == *IteratorSpec::remaining(
+                    &iter,
+                )[i].1
+            &&& forall|k: Key| #[trigger]
+                m@.contains_key(k) ==> IteratorSpec::remaining(&iter).contains((&k, &m@[k]))
+            &&& IteratorSpec::remaining(&iter).unref().to_set() == m@.kv_pairs()
             &&& iter.remaining().no_duplicates()
             &&& IteratorSpec::decrease(&iter) is Some
             &&& IteratorSpec::initial_value_relation(&iter, &iter)
@@ -852,66 +836,26 @@ pub assume_specification<Key, Value, S, A: Allocator>[ HashMap::<Key, Value, S, 
         final(m)@ == Map::<Key, Value>::empty(),
 ;
 
-// To allow reasoning about the ghost Keys iterator when the executable
-// function `keys()` is invoked in a `for` loop header (e.g., in
-// `for x in it: m.keys() { ... }`), we need to specify the behavior of
-// the iterator in spec mode. To do that, we add
-// `#[verifier::when_used_as_spec(spec_iter)` to the specification for
-// the executable `iter` method and define that spec function here.
-pub uninterp spec fn spec_keys_iter<'a, Key, Value, S, A: Allocator>(
-    m: &'a HashMap<Key, Value, S, A>,
-) -> (keys: Keys<'a, Key, Value>);
-
-pub broadcast proof fn axiom_spec_keys_iter<'a, Key, Value, S, A: Allocator>(
-    m: &'a HashMap<Key, Value, S, A>,
-)
-    ensures
-        (#[trigger] spec_keys_iter(m).remaining()).unref().to_set() == m@.dom(),
-        spec_keys_iter(m).remaining().no_duplicates(),
-        spec_keys_iter(m).remaining().len() == m@.dom().len(),
-{
-    admit();
-}
-
-#[verifier::when_used_as_spec(spec_keys_iter)]
 pub assume_specification<'a, Key, Value, S, A: Allocator>[ HashMap::<Key, Value, S, A>::keys ](
     m: &'a HashMap<Key, Value, S, A>,
 ) -> (keys: Keys<'a, Key, Value>)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
-            &&& keys == spec_keys_iter(m)
+            &&& IteratorSpec::remaining(&keys).unref().to_set() == m@.dom()
+            &&& IteratorSpec::remaining(&keys).no_duplicates()
+            &&& IteratorSpec::remaining(&keys).len() == m@.dom().len()
             &&& IteratorSpec::decrease(&keys) is Some
             &&& IteratorSpec::initial_value_relation(&keys, &keys)
         },
 ;
 
-// To allow reasoning about the ghost Values iterator when the executable
-// function `value()` is invoked in a `for` loop header (e.g., in
-// `for x in it: m.keys() { ... }`), we need to specify the behavior of
-// the iterator in spec mode. To do that, we add
-// `#[verifier::when_used_as_spec(spec_iter)` to the specification for
-// the executable `iter` method and define that spec function here.
-pub uninterp spec fn spec_values_iter<'a, Key, Value, S, A: Allocator>(
-    m: &'a HashMap<Key, Value, S, A>,
-) -> (values: Values<'a, Key, Value>);
-
-pub broadcast proof fn axiom_spec_values_iter<'a, Key, Value, S, A: Allocator>(
-    m: &'a HashMap<Key, Value, S, A>,
-)
-    ensures
-        (#[trigger] spec_values_iter(m).remaining()).unref().to_set() == m@.values(),
-        spec_values_iter(m).remaining().len() == m@.dom().len(),
-{
-    admit();
-}
-
-#[verifier::when_used_as_spec(spec_values_iter)]
 pub assume_specification<'a, Key, Value, S, A: Allocator>[ HashMap::<Key, Value, S, A>::values ](
     m: &'a HashMap<Key, Value, S, A>,
 ) -> (values: Values<'a, Key, Value>)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
-            &&& values == spec_values_iter(m)
+            &&& IteratorSpec::remaining(&values).unref().to_set() == m@.values()
+            &&& IteratorSpec::remaining(&values).len() == m@.dom().len()
             &&& IteratorSpec::decrease(&values) is Some
             &&& IteratorSpec::initial_value_relation(&values, &values)
         },
@@ -1192,33 +1136,14 @@ pub assume_specification<Key, S, A: Allocator>[ HashSet::<Key, S, A>::clear ](
         final(m)@ == Set::<Key>::empty(),
 ;
 
-// To allow reasoning about the ghost keys in the HashSet iterator when the executable
-// function `iter()` is invoked in a `for` loop header (e.g., in
-// `for x in it: m.keys() { ... }`), we need to specify the behavior of
-// the iterator in spec mode. To do that, we add
-// `#[verifier::when_used_as_spec(spec_iter)` to the specification for
-// the executable `iter` method and define that spec function here.
-pub uninterp spec fn spec_hash_keys_iter<'a, Key, S, A: Allocator>(m: &'a HashSet<Key, S, A>) -> (r:
-    hash_set::Iter<'a, Key>);
-
-pub broadcast proof fn axiom_spec_hash_keys_iter<'a, Key, S, A: Allocator>(
-    m: &'a HashSet<Key, S, A>,
-)
-    ensures
-        (#[trigger] spec_hash_keys_iter(m).remaining()).unref().to_set() == m@,
-        spec_hash_keys_iter(m).remaining().no_duplicates(),
-        spec_hash_keys_iter(m).remaining().len() == m@.len(),
-{
-    admit();
-}
-
-#[verifier::when_used_as_spec(spec_hash_keys_iter)]
 pub assume_specification<'a, Key, S, A: Allocator>[ HashSet::<Key, S, A>::iter ](
     m: &'a HashSet<Key, S, A>,
 ) -> (hash_keys: hash_set::Iter<'a, Key>)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
-            &&& hash_keys == spec_hash_keys_iter(m)
+            &&& IteratorSpec::remaining(&hash_keys).unref().to_set() == m@
+            &&& IteratorSpec::remaining(&hash_keys).no_duplicates()
+            &&& IteratorSpec::remaining(&hash_keys).len() == m@.len()
             &&& IteratorSpec::decrease(&hash_keys) is Some
             &&& IteratorSpec::initial_value_relation(&hash_keys, &hash_keys)
         },
@@ -1539,10 +1464,6 @@ pub broadcast group group_hash_axioms {
     axiom_set_deref_key_to_value,
     axiom_set_box_key_to_value,
     axiom_spec_hash_set_len,
-    axiom_spec_hash_map_iter,
-    axiom_spec_hash_keys_iter,
-    axiom_spec_keys_iter,
-    axiom_spec_values_iter,
     axiom_hashmap_decreases,
     axiom_hashset_decreases,
     axiom_has_resolved_occupied_entry,
