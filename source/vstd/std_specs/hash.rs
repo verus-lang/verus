@@ -293,8 +293,7 @@ impl<'a, K, V> super::iter::IteratorSpecImpl for Keys<'a, K, V> {
 
     #[verifier::prophetic]
     open spec fn initial_value_relation(&self, init: &Self) -> bool {
-        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-        &&& into_iter_keys(*self) == IteratorSpec::remaining(self).unref()
+        true
     }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
@@ -331,8 +330,7 @@ impl<'a, K, V> super::iter::IteratorSpecImpl for Values<'a, K, V> {
 
     #[verifier::prophetic]
     open spec fn initial_value_relation(&self, init: &Self) -> bool {
-        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-        &&& into_iter_values(*self) == IteratorSpec::remaining(self).unref()
+        true
     }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
@@ -371,8 +369,7 @@ impl<'a, K, V> super::iter::IteratorSpecImpl for hash_map::Iter<'a, K, V> {
 
     #[verifier::prophetic]
     open spec fn initial_value_relation(&self, init: &Self) -> bool {
-        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-        &&& into_iter(*self) == IteratorSpec::remaining(self).unref()
+        true
     }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
@@ -405,6 +402,7 @@ pub assume_specification<'a, Key, Value, S, A: Allocator>[ HashMap::<Key, Value,
                 m@.contains_key(k) ==> IteratorSpec::remaining(&iter).contains((&k, &m@[k]))
             &&& IteratorSpec::remaining(&iter).unref().to_set() == m@.kv_pairs()
             &&& iter.remaining().no_duplicates()
+            &&& into_iter(iter) == IteratorSpec::remaining(&iter).unref()
             &&& IteratorSpec::decrease(&iter) is Some
             &&& IteratorSpec::initial_value_relation(&iter, &iter)
         },
@@ -844,6 +842,7 @@ pub assume_specification<'a, Key, Value, S, A: Allocator>[ HashMap::<Key, Value,
             &&& IteratorSpec::remaining(&keys).unref().to_set() == m@.dom()
             &&& IteratorSpec::remaining(&keys).no_duplicates()
             &&& IteratorSpec::remaining(&keys).len() == m@.dom().len()
+            &&& into_iter_keys(keys) == IteratorSpec::remaining(&keys).unref()
             &&& IteratorSpec::decrease(&keys) is Some
             &&& IteratorSpec::initial_value_relation(&keys, &keys)
         },
@@ -856,6 +855,7 @@ pub assume_specification<'a, Key, Value, S, A: Allocator>[ HashMap::<Key, Value,
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
             &&& IteratorSpec::remaining(&values).unref().to_set() == m@.values()
             &&& IteratorSpec::remaining(&values).len() == m@.dom().len()
+            &&& into_iter_values(values) == IteratorSpec::remaining(&values).unref()
             &&& IteratorSpec::decrease(&values) is Some
             &&& IteratorSpec::initial_value_relation(&values, &values)
         },
@@ -890,8 +890,7 @@ impl<'a, K> super::iter::IteratorSpecImpl for hash_set::Iter::<'a, K> {
 
     #[verifier::prophetic]
     open spec fn initial_value_relation(&self, init: &Self) -> bool {
-        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-        &&& into_iter_hash_keys(*self) == IteratorSpec::remaining(self).unref()
+        true
     }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
@@ -1144,6 +1143,7 @@ pub assume_specification<'a, Key, S, A: Allocator>[ HashSet::<Key, S, A>::iter ]
             &&& IteratorSpec::remaining(&hash_keys).unref().to_set() == m@
             &&& IteratorSpec::remaining(&hash_keys).no_duplicates()
             &&& IteratorSpec::remaining(&hash_keys).len() == m@.len()
+            &&& into_iter_hash_keys(hash_keys) == IteratorSpec::remaining(&hash_keys).unref()
             &&& IteratorSpec::decrease(&hash_keys) is Some
             &&& IteratorSpec::initial_value_relation(&hash_keys, &hash_keys)
         },

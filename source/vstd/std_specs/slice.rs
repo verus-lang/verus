@@ -122,8 +122,7 @@ impl <'a, T: 'a> super::iter::IteratorSpecImpl for Iter<'a, T> {
 
     #[verifier::prophetic]
     open spec fn initial_value_relation(&self, init: &Self) -> bool {
-        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-        &&& into_iter_elts(*self) == IteratorSpec::remaining(self).unref()
+        true
     }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
@@ -140,6 +139,7 @@ impl <'a, T: 'a> super::iter::IteratorSpecImpl for Iter<'a, T> {
 pub assume_specification<'a, T>[ <[T]>::iter ](s: &'a [T]) -> (iter: Iter<'a, T>)
     ensures
         IteratorSpec::remaining(&iter) == s@.as_ref(),
+        into_iter_elts(iter) == IteratorSpec::remaining(&iter).unref(),
         IteratorSpec::decrease(&iter) is Some,
         IteratorSpec::initial_value_relation(&iter, &iter),
 ;
@@ -148,6 +148,7 @@ pub assume_specification<'a, T> [<&'a [T] as core::iter::IntoIterator>::into_ite
     (iter: Iter<'a, T>)
     ensures
         IteratorSpec::remaining(&iter) == s@.as_ref(),
+        into_iter_elts(iter) == IteratorSpec::remaining(&iter).unref(),
         IteratorSpec::decrease(&iter) is Some,
         IteratorSpec::initial_value_relation(&iter, &iter),
 ;

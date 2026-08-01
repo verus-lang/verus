@@ -365,8 +365,7 @@ impl <T, A: Allocator> super::iter::IteratorSpecImpl for IntoIter<T, A> {
 
     #[verifier::prophetic]
     open spec fn initial_value_relation(&self, init: &Self) -> bool {
-        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-        &&& into_iter_elts(*self) == IteratorSpec::remaining(self)
+        true
     }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
@@ -403,6 +402,7 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::into_iter ](vec: Vec<T, 
 > as core::iter::IntoIterator>::IntoIter)
     ensures
         IteratorSpec::remaining(&iter) == vec@,
+        into_iter_elts(iter) == IteratorSpec::remaining(&iter),
         IteratorSpec::decrease(&iter) is Some,
         IteratorSpec::initial_value_relation(&iter, &iter),
 ;
@@ -411,6 +411,7 @@ pub assume_specification<'a, T, A: Allocator> [<&'a Vec<T, A> as core::iter::Int
     (iter: <&'a Vec<T, A> as core::iter::IntoIterator>::IntoIter)
     ensures
         IteratorSpec::remaining(&iter) == vec@.as_ref(),
+        super::slice::into_iter_elts(iter) == IteratorSpec::remaining(&iter).unref(),
         IteratorSpec::decrease(&iter) is Some,
         IteratorSpec::initial_value_relation(&iter, &iter),
 ;

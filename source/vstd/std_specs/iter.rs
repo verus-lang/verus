@@ -336,8 +336,7 @@ impl <I> IteratorSpecImpl for Rev<I>
 
     #[verifier::prophetic]
     open spec fn initial_value_relation(&self, init: &Self) -> bool {
-        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-        &&& rev_iter(*self).initial_value_relation(&rev_iter(*init))
+        true
     }
 
     closed spec fn decrease(&self) -> Option<nat> {
@@ -379,7 +378,7 @@ impl <I> IteratorSpecImpl for &mut I
 
     #[verifier::prophetic]
     open spec fn initial_value_relation(&self, init: &Self) -> bool {
-        <I as IteratorSpec>::initial_value_relation(*self, &**init)
+        true
     }
 
     open spec fn decrease(&self) -> Option<nat> {
