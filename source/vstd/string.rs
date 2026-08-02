@@ -132,6 +132,376 @@ pub assume_specification[ str::split_at ](s: &str, mid: usize) -> (res: (&str, &
         res.1.spec_bytes() =~= s.spec_bytes().subrange(mid as int, s.spec_bytes().len() as int),
 ;
 
+/// Whether `needle` occurs as a contiguous subsequence somewhere in `haystack`.
+#[cfg(not(verus_verify_core))]
+pub open spec fn spec_str_contains(haystack: Seq<char>, needle: Seq<char>) -> bool {
+    exists|i: int|
+        0 <= i && i + needle.len() <= haystack.len() && #[trigger] haystack.subrange(
+            i,
+            i + needle.len(),
+        ) =~= needle
+}
+
+#[cfg(not(verus_verify_core))]
+#[verifier::external_body]
+pub fn str_starts_with_str(s: &str, pat: &str) -> bool
+    returns
+        pat@.len() <= s@.len() && s@.subrange(0, pat@.len() as int) =~= pat@,
+{
+    s.starts_with(pat)
+}
+
+#[cfg(not(verus_verify_core))]
+#[verifier::external_body]
+pub fn str_ends_with_str(s: &str, pat: &str) -> bool
+    returns
+        pat@.len() <= s@.len() && s@.subrange(s@.len() - pat@.len(), s@.len() as int) =~= pat@,
+{
+    s.ends_with(pat)
+}
+
+#[cfg(not(verus_verify_core))]
+#[verifier::external_body]
+pub fn str_ends_with_char(s: &str, c: char) -> bool
+    returns
+        s@.len() > 0 && s@[s@.len() - 1] == c,
+{
+    s.ends_with(c)
+}
+
+#[cfg(not(verus_verify_core))]
+#[verifier::external_body]
+pub fn str_contains_str(s: &str, pat: &str) -> bool
+    returns
+        spec_str_contains(s@, pat@),
+{
+    s.contains(pat)
+}
+
+// `&[char]` matches by set membership of a single char, not by
+// sequence - e.g. `"hello".starts_with(&['h', 'x'])` is true because 'h' is
+// in the set.
+#[cfg(not(verus_verify_core))]
+#[verifier::external_body]
+pub fn str_starts_with_chars(s: &str, pat: &[char]) -> bool
+    returns
+        s@.len() > 0 && pat@.contains(s@[0]),
+{
+    s.starts_with(pat)
+}
+
+#[cfg(not(verus_verify_core))]
+#[verifier::external_body]
+pub fn str_ends_with_chars(s: &str, pat: &[char]) -> bool
+    returns
+        s@.len() > 0 && pat@.contains(s@[s@.len() - 1]),
+{
+    s.ends_with(pat)
+}
+
+#[cfg(not(verus_verify_core))]
+#[verifier::external_body]
+pub fn str_contains_chars(s: &str, pat: &[char]) -> bool
+    returns
+        exists|i: int| 0 <= i < s@.len() && pat@.contains(#[trigger] s@[i]),
+{
+    s.contains(pat)
+}
+
+#[cfg(not(verus_verify_core))]
+pub fn str_starts_with_pred<F: Fn(char) -> bool>(s: &str, pred: F) -> (res: bool)
+    requires
+        s@.len() > 0 ==> pred.requires((s@[0],)),
+    ensures
+        s@.len() == 0 ==> !res,
+        res ==> (s@.len() > 0 && pred.ensures((s@[0],), true)),
+        (s@.len() > 0 && !res) ==> pred.ensures((s@[0],), false),
+{
+    if s.unicode_len() == 0 {
+        false
+    } else {
+        let c = s.get_char(0);
+        pred(c)
+    }
+}
+
+#[cfg(not(verus_verify_core))]
+pub fn str_ends_with_pred<F: Fn(char) -> bool>(s: &str, pred: F) -> (res: bool)
+    requires
+        s@.len() > 0 ==> pred.requires((s@[s@.len() - 1],)),
+    ensures
+        s@.len() == 0 ==> !res,
+        res ==> (s@.len() > 0 && pred.ensures((s@[s@.len() - 1],), true)),
+        (s@.len() > 0 && !res) ==> pred.ensures((s@[s@.len() - 1],), false),
+{
+    let n = s.unicode_len();
+    if n == 0 {
+        false
+    } else {
+        let c = s.get_char(n - 1);
+        pred(c)
+    }
+}
+
+#[cfg(not(verus_verify_core))]
+pub fn str_contains_pred<F: Fn(char) -> bool>(s: &str, pred: F) -> (res: bool)
+    requires
+        forall|i: int| 0 <= i < s@.len() ==> pred.requires((#[trigger] s@[i],)),
+    ensures
+        res ==> exists|i: int| 0 <= i < s@.len() && pred.ensures((#[trigger] s@[i],), true),
+        !res ==> forall|i: int| 0 <= i < s@.len() ==> pred.ensures((#[trigger] s@[i],), false),
+{
+    let n = s.unicode_len();
+    let mut idx: usize = 0;
+    while idx < n
+        invariant
+            idx <= n,
+            n == s@.len(),
+            forall|i: int| 0 <= i < s@.len() ==> pred.requires((#[trigger] s@[i],)),
+            forall|i: int| 0 <= i < idx ==> pred.ensures((#[trigger] s@[i],), false),
+        decreases n - idx,
+    {
+        let c = s.get_char(idx);
+        if pred(c) {
+            return true;
+        }
+        idx += 1;
+    }
+    false
+}
+
+/// If `haystack`'s byte at `j` differs from `needle`'s first byte, `needle` can't match starting at `j`.
+pub proof fn lemma_first_byte_mismatch_not_a_match(haystack: Seq<u8>, needle: Seq<u8>, j: int)
+    requires
+        needle.len() > 0,
+        0 <= j,
+        j + needle.len() <= haystack.len(),
+        haystack[j] != needle[0],
+    ensures
+        !(haystack.subrange(j, j + needle.len()) =~= needle),
+{
+    assert(haystack.subrange(j, j + needle.len())[0] == haystack[j]);
+}
+
+#[cfg(not(verus_verify_core))]
+#[verifier::external_body]
+pub fn str_find_str(s: &str, pat: &str) -> (res: Option<usize>)
+    ensures
+        (res is Some) == exists|i: int|
+            0 <= i && i + pat.spec_bytes().len() <= s.spec_bytes().len()
+                && #[trigger] s.spec_bytes().subrange(i, i + pat.spec_bytes().len())
+                =~= pat.spec_bytes(),
+        res is Some ==> {
+            let i = res.unwrap() as int;
+            &&& 0 <= i && i + pat.spec_bytes().len() <= s.spec_bytes().len()
+            &&& s.spec_bytes().subrange(i, i + pat.spec_bytes().len()) =~= pat.spec_bytes()
+            &&& forall|j: int|
+                0 <= j < i ==> !(j + pat.spec_bytes().len() <= s.spec_bytes().len()
+                    && #[trigger] s.spec_bytes().subrange(j, j + pat.spec_bytes().len())
+                    =~= pat.spec_bytes())
+        },
+{
+    s.find(pat)
+}
+
+#[cfg(not(verus_verify_core))]
+#[verifier::external_body]
+pub fn str_rfind_str(s: &str, pat: &str) -> (res: Option<usize>)
+    ensures
+        (res is Some) == exists|i: int|
+            0 <= i && i + pat.spec_bytes().len() <= s.spec_bytes().len()
+                && #[trigger] s.spec_bytes().subrange(i, i + pat.spec_bytes().len())
+                =~= pat.spec_bytes(),
+        res is Some ==> {
+            let i = res.unwrap() as int;
+            &&& 0 <= i && i + pat.spec_bytes().len() <= s.spec_bytes().len()
+            &&& s.spec_bytes().subrange(i, i + pat.spec_bytes().len()) =~= pat.spec_bytes()
+            &&& forall|j: int|
+                i < j && j + pat.spec_bytes().len() <= s.spec_bytes().len() ==> !(
+                #[trigger] s.spec_bytes().subrange(j, j + pat.spec_bytes().len())
+                    =~= pat.spec_bytes())
+        },
+{
+    s.rfind(pat)
+}
+
+#[cfg(not(verus_verify_core))]
+#[verifier::external_body]
+pub fn str_find_char(s: &str, c: char) -> (res: Option<usize>)
+    ensures
+        (res is Some) == exists|i: int|
+            0 <= i && i + encode_scalar(c as u32).len() <= s.spec_bytes().len()
+                && #[trigger] s.spec_bytes().subrange(i, i + encode_scalar(c as u32).len())
+                =~= encode_scalar(c as u32),
+        res is Some ==> {
+            let i = res.unwrap() as int;
+            &&& 0 <= i && i + encode_scalar(c as u32).len() <= s.spec_bytes().len()
+            &&& s.spec_bytes().subrange(i, i + encode_scalar(c as u32).len()) =~= encode_scalar(
+                c as u32,
+            )
+            &&& forall|j: int|
+                0 <= j < i ==> !(j + encode_scalar(c as u32).len() <= s.spec_bytes().len()
+                    && #[trigger] s.spec_bytes().subrange(j, j + encode_scalar(c as u32).len())
+                    =~= encode_scalar(c as u32))
+        },
+{
+    s.find(c)
+}
+
+#[cfg(not(verus_verify_core))]
+#[verifier::external_body]
+pub fn str_rfind_char(s: &str, c: char) -> (res: Option<usize>)
+    ensures
+        (res is Some) == exists|i: int|
+            0 <= i && i + encode_scalar(c as u32).len() <= s.spec_bytes().len()
+                && #[trigger] s.spec_bytes().subrange(i, i + encode_scalar(c as u32).len())
+                =~= encode_scalar(c as u32),
+        res is Some ==> {
+            let i = res.unwrap() as int;
+            &&& 0 <= i && i + encode_scalar(c as u32).len() <= s.spec_bytes().len()
+            &&& s.spec_bytes().subrange(i, i + encode_scalar(c as u32).len()) =~= encode_scalar(
+                c as u32,
+            )
+            &&& forall|j: int|
+                i < j && j + encode_scalar(c as u32).len() <= s.spec_bytes().len() ==> !(
+                #[trigger] s.spec_bytes().subrange(j, j + encode_scalar(c as u32).len())
+                    =~= encode_scalar(c as u32))
+        },
+{
+    s.rfind(c)
+}
+
+#[cfg(not(verus_verify_core))]
+pub fn str_find_pred<F: Fn(char) -> bool>(s: &str, pred: F) -> (res: Option<usize>)
+    requires
+        forall|i: int| 0 <= i < s@.len() ==> pred.requires((#[trigger] s@[i],)),
+    ensures
+        res is None ==> forall|i: int|
+            0 <= i < s@.len() ==> pred.ensures((#[trigger] s@[i],), false),
+        res is Some ==> exists|i: int|
+            0 <= i < s@.len() && pred.ensures((#[trigger] s@[i],), true) && res.unwrap() as int
+                == encode_utf8(s@.subrange(0, i)).len() && forall|j: int|
+                0 <= j < i ==> pred.ensures((#[trigger] s@[j],), false),
+{
+    let bytes = s.as_bytes();
+    let total_bytes = bytes.len();
+    proof {
+        assert(total_bytes as nat == bytes@.len());
+        assert(bytes@ == s.spec_bytes());
+        assert(s.spec_bytes() =~= encode_utf8(s@));
+    }
+    let n = s.unicode_len();
+    let mut idx: usize = 0;
+    let mut byte_idx: usize = 0;
+    while idx < n
+        invariant
+            idx <= n,
+            n == s@.len(),
+            total_bytes as nat == s.spec_bytes().len(),
+            s.spec_bytes() =~= encode_utf8(s@),
+            byte_idx == encode_utf8(s@.subrange(0, idx as int)).len(),
+            forall|i: int| 0 <= i < s@.len() ==> pred.requires((#[trigger] s@[i],)),
+            forall|i: int| 0 <= i < idx ==> pred.ensures((#[trigger] s@[i],), false),
+        decreases n - idx,
+    {
+        let c = s.get_char(idx);
+        if pred(c) {
+            return Some(byte_idx);
+        }
+        let clen = c.len_utf8();
+        proof {
+            let prefix = s@.subrange(0, idx as int);
+            let new_prefix = s@.subrange(0, idx as int + 1);
+            let new_suffix = s@.subrange(idx as int + 1, n as int);
+            assert(prefix.push(c) =~= new_prefix);
+            encode_utf8_push(prefix, c);
+            assert(new_prefix + new_suffix == s@) by {
+                assert(new_prefix + new_suffix =~= s@);
+            }
+            encode_utf8_concat(new_prefix, new_suffix);
+            assert(byte_idx + clen == encode_utf8(new_prefix).len());
+            assert(encode_utf8(new_prefix).len() <= encode_utf8(s@).len());
+            assert((byte_idx + clen) as nat <= total_bytes as nat);
+        }
+        byte_idx = byte_idx + clen;
+        idx = idx + 1;
+    }
+    None
+}
+
+#[cfg(not(verus_verify_core))]
+pub fn str_rfind_pred<F: Fn(char) -> bool>(s: &str, pred: F) -> (res: Option<usize>)
+    requires
+        forall|i: int| 0 <= i < s@.len() ==> pred.requires((#[trigger] s@[i],)),
+    ensures
+        res is None ==> forall|i: int|
+            0 <= i < s@.len() ==> pred.ensures((#[trigger] s@[i],), false),
+        res is Some ==> exists|i: int|
+            0 <= i < s@.len() && pred.ensures((#[trigger] s@[i],), true) && res.unwrap() as int
+                == encode_utf8(s@.subrange(0, i)).len() && forall|j: int|
+                i < j < s@.len() ==> pred.ensures((#[trigger] s@[j],), false),
+{
+    let bytes = s.as_bytes();
+    let total_bytes = bytes.len();
+    proof {
+        assert(total_bytes as nat == bytes@.len());
+        assert(bytes@ == s.spec_bytes());
+        assert(s.spec_bytes() =~= encode_utf8(s@));
+    }
+    let n = s.unicode_len();
+    let mut idx: usize = 0;
+    let mut byte_idx: usize = 0;
+    let mut found: bool = false;
+    let mut found_idx: usize = 0;
+    let mut found_byte_idx: usize = 0;
+    while idx < n
+        invariant
+            idx <= n,
+            n == s@.len(),
+            total_bytes as nat == s.spec_bytes().len(),
+            s.spec_bytes() =~= encode_utf8(s@),
+            byte_idx == encode_utf8(s@.subrange(0, idx as int)).len(),
+            found ==> {
+                &&& 0 <= found_idx < idx
+                &&& pred.ensures((#[trigger] s@[found_idx as int],), true)
+                &&& found_byte_idx as int == encode_utf8(s@.subrange(0, found_idx as int)).len()
+                &&& forall|j: int| found_idx < j < idx ==> pred.ensures((#[trigger] s@[j],), false)
+            },
+            !found ==> forall|i: int| 0 <= i < idx ==> pred.ensures((#[trigger] s@[i],), false),
+            forall|i: int| 0 <= i < s@.len() ==> pred.requires((#[trigger] s@[i],)),
+        decreases n - idx,
+    {
+        let c = s.get_char(idx);
+        if pred(c) {
+            found = true;
+            found_idx = idx;
+            found_byte_idx = byte_idx;
+        }
+        let clen = c.len_utf8();
+        proof {
+            let prefix = s@.subrange(0, idx as int);
+            let new_prefix = s@.subrange(0, idx as int + 1);
+            let new_suffix = s@.subrange(idx as int + 1, n as int);
+            assert(prefix.push(c) =~= new_prefix);
+            encode_utf8_push(prefix, c);
+            assert(new_prefix + new_suffix == s@) by {
+                assert(new_prefix + new_suffix =~= s@);
+            }
+            encode_utf8_concat(new_prefix, new_suffix);
+            assert(byte_idx + clen == encode_utf8(new_prefix).len());
+            assert(encode_utf8(new_prefix).len() <= encode_utf8(s@).len());
+            assert((byte_idx + clen) as nat <= total_bytes as nat);
+        }
+        byte_idx = byte_idx + clen;
+        idx = idx + 1;
+    }
+    if found {
+        Some(found_byte_idx)
+    } else {
+        None
+    }
+}
+
 #[cfg(not(verus_verify_core))]
 pub assume_specification[ str::from_utf8_unchecked ](v: &[u8]) -> (res: &str)
     requires
