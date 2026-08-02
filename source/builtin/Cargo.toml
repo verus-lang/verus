@@ -1,6 +1,6 @@
 [package]
 name = "verus_builtin"
-version = "0.0.0-2026-07-27-0206"
+version = "0.0.0-2026-08-02-0125"
 edition = "2018"
 license = "MIT"
 description = "Verus Builtins: Rust definitions for core constructs in Verus"
