@@ -88,8 +88,8 @@ cargo-verus-toolchains = { path = "cargo-verus-toolchains" }
 internals_interface = { path = "tools/internals_interface" }
 rustc_mir_build_verus = { path = "rustc_mir_build", package = "rustc_mir_build" }
 rust_verify_test_macros = { path = "rust_verify_test_macros" }
-verus_prettyplease = { version = "=0.0.0-2026-07-27-0206", path = "../dependencies/prettyplease" }
-verus_syn = { version = "=0.0.0-2026-07-27-0206", path = "../dependencies/syn", features = ["full", "visit", "visit-mut", "extra-traits"] }
+verus_prettyplease = { version = "=0.0.0-2026-08-02-0125", path = "../dependencies/prettyplease" }
+verus_syn = { version = "=0.0.0-2026-08-02-0125", path = "../dependencies/syn", features = ["full", "visit", "visit-mut", "extra-traits"] }
 vir-macros = { path = "vir_macros" }
 vir = { path = "vir" }
 
