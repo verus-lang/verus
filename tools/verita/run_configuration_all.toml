@@ -7,7 +7,7 @@ verus_extra_args = ["--no-report-long-running"]
 [[project]]
 name = "vstd"
 git_url = "https://github.com/verus-lang/verus.git"
-refspec = "origin/z3-4.16.0"
+refspec = "origin/main"
 crate_roots = ["source/vstd/vstd.rs"]
 extra_verus_args = [
     "--crate-type=lib",
@@ -19,7 +19,7 @@ extra_verus_args = [
 [[project]]
 name = "ironkv"
 git_url = "https://github.com/verus-lang/verified-ironkv.git"
-refspec = "origin/z3-4.16.0"
+refspec = "main"
 cargo_verus = true
 crate_roots = ["ironsht"]
 
@@ -32,10 +32,8 @@ extra_verus_args = ["--crate-type=dylib"]
 
 [[project]]
 name = "verified-storage"
-git_url = "https://github.com/parno/verified-storage"
-refspec = "origin/z3-4.16.0"
-#git_url = "https://github.com/microsoft/verified-storage.git"
-#refspec = "main"
+git_url = "https://github.com/microsoft/verified-storage.git"
+refspec = "main"
 cargo_verus = true
 extra_cargo_args = ["--no-default-features"]
 crate_roots = ["capybaraKV/capybarakv", "multilog/multilog", "pmemlog"]
@@ -88,7 +86,7 @@ cargo install vest
 [[project]]
 name = "human-eval"
 git_url = "https://github.com/secure-foundations/human-eval-verus.git"
-refspec = "origin/z3-4.16.0"
+refspec = "origin/main"
 crate_roots = ["tasks/lib.rs"]
 extra_verus_args = ["--crate-type=lib"]
 
@@ -121,8 +119,8 @@ rustup target add x86_64-unknown-none --toolchain 1.97.1
 
 [[project]]
 name = "anvil"
-git_url = "https://github.com/parno/anvil"
-refspec = "origin/z3-4.16.0"
+git_url = "https://github.com/anvil-verifier/anvil"
+refspec = "main"
 cargo_verus = true
 crate_roots = ["."]
 extra_cargo_args = ["--lib"]
