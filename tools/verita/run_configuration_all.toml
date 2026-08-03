@@ -7,7 +7,7 @@ verus_extra_args = ["--no-report-long-running"]
 [[project]]
 name = "vstd"
 git_url = "https://github.com/verus-lang/verus.git"
-refspec = "origin/z3-4.16.0"
+refspec = "origin/main"
 crate_roots = ["source/vstd/vstd.rs"]
 extra_verus_args = [
     "--crate-type=lib",
@@ -19,7 +19,7 @@ extra_verus_args = [
 [[project]]
 name = "ironkv"
 git_url = "https://github.com/verus-lang/verified-ironkv.git"
-refspec = "origin/z3-4.16.0"
+refspec = "main"
 cargo_verus = true
 crate_roots = ["ironsht"]
 
@@ -88,7 +88,7 @@ cargo install vest
 [[project]]
 name = "human-eval"
 git_url = "https://github.com/secure-foundations/human-eval-verus.git"
-refspec = "origin/z3-4.16.0"
+refspec = "origin/main"
 crate_roots = ["tasks/lib.rs"]
 extra_verus_args = ["--crate-type=lib"]
 
