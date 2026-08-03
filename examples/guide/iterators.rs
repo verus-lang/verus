@@ -256,8 +256,6 @@ impl IteratorSpecImpl for IterCtr {
 
     open spec fn decrease(&self) -> Option<nat> { None }
 
-    open spec fn initial_value_relation(&self, init: &Self) -> bool { true }
-
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
         Some((index % (u64::MAX as int + 1)) as u64)
     }
@@ -353,8 +351,6 @@ impl IteratorSpecImpl for Iter42_43 {
     open spec fn will_return_none(&self) -> bool { false }
 
     open spec fn decrease(&self) -> Option<nat> { None }
-
-    open spec fn initial_value_relation(&self, init: &Self) -> bool { true }
 
     open spec fn peek(&self, index: int) -> Option<Self::Item> { Some(42) }
 }
