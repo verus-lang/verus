@@ -554,14 +554,19 @@ macro_rules! ptr_atomic_methods {
         }
 
         /// Swap the value via atomic swap.
+        ///
+        /// The swap reads the old value, so the memory must already be
+        /// initialized; it writes `v`, so it is initialized on return.
         #[inline(always)]
         #[verifier::external_body] /* vattr */
         #[verifier::atomic] /* vattr */
         pub fn from_ptr_swap(ptr: *mut $value_ty, Tracked(perm): Tracked<&mut PointsTo<$value_ty>>, v: $value_ty) -> (ret: $value_ty)
             requires
                 ptr == old(perm).ptr(),
+                old(perm).is_init(),
             ensures
                 final(perm).value() == v,
+                final(perm).is_init(),
                 old(perm).value() == ret,
                 ptr == final(perm).ptr(),
             opens_invariants none
