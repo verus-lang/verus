@@ -1045,3 +1045,96 @@ test_verify_one_file! {
       true,
     Some(8)) => Err(e) => assert_one_fails(e)
 }
+
+// Pointer-based atomics: PAtomicU64::{from_ptr_load, from_ptr_store, from_ptr_swap}.
+
+const PTR_ATOMIC_IMPORTS: &str = code_str! {
+    #[allow(unused_imports)] use vstd::prelude::*;
+    #[allow(unused_imports)] use vstd::atomic::*;
+    #[allow(unused_imports)] use vstd::layout::*;
+    #[allow(unused_imports)] use vstd::raw_ptr::*;
+};
+
+test_verify_one_file! {
+    #[test] test_from_ptr_round_trip PTR_ATOMIC_IMPORTS.to_string() + verus_code_str! {
+        global size_of usize == 8;
+
+        fn test(ptr: *mut u64, Tracked(perm): Tracked<&mut PointsTo<u64>>)
+            requires
+                old(perm).ptr() == ptr,
+                old(perm).is_init(),
+        {
+            PAtomicU64::from_ptr_store(ptr, 5, Tracked(perm));
+            assert(perm.is_init());
+            assert(perm.value() == 5);
+
+            let l = PAtomicU64::from_ptr_load(ptr, Tracked(&*perm));
+            assert(l == 5);
+
+            let prev = PAtomicU64::from_ptr_swap(ptr, Tracked(perm), 9);
+            assert(prev == 5);
+            assert(perm.is_init());
+            assert(perm.value() == 9);
+        }
+    } => Ok(())
+}
+
+// A store initializes the word, so a swap may follow one even if the memory
+// started out uninitialized.
+test_verify_one_file! {
+    #[test] test_from_ptr_store_then_swap PTR_ATOMIC_IMPORTS.to_string() + verus_code_str! {
+        global size_of usize == 8;
+
+        fn test(ptr: *mut u64, Tracked(perm): Tracked<&mut PointsTo<u64>>)
+            requires
+                old(perm).ptr() == ptr,
+                old(perm).is_uninit(),
+        {
+            PAtomicU64::from_ptr_store(ptr, 3, Tracked(perm));
+            let prev = PAtomicU64::from_ptr_swap(ptr, Tracked(perm), 4);
+            assert(prev == 3);
+        }
+    } => Ok(())
+}
+
+// A swap reads the old value, so it must not accept uninitialized memory.
+test_verify_one_file! {
+    #[test] test_from_ptr_swap_uninit PTR_ATOMIC_IMPORTS.to_string() + verus_code_str! {
+        global size_of usize == 8;
+
+        fn test(ptr: *mut u64, Tracked(perm): Tracked<&mut PointsTo<u64>>) -> (ret: u64)
+            requires
+                old(perm).ptr() == ptr,
+                old(perm).is_uninit(),
+        {
+            PAtomicU64::from_ptr_swap(ptr, Tracked(perm), 7) // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+// Without is_init() on the result of a swap, two swaps over uninitialized
+// memory would report the same unknown value and this would verify.
+test_verify_one_file! {
+    #[test] test_from_ptr_swap_uninit_agree PTR_ATOMIC_IMPORTS.to_string() + verus_code_str! {
+        global size_of usize == 8;
+
+        fn test(
+            p1: *mut u64,
+            Tracked(perm1): Tracked<&mut PointsTo<u64>>,
+            p2: *mut u64,
+            Tracked(perm2): Tracked<&mut PointsTo<u64>>,
+        ) -> (ret: (u64, u64))
+            requires
+                old(perm1).ptr() == p1,
+                old(perm2).ptr() == p2,
+                old(perm1).is_uninit(),
+                old(perm2).is_uninit(),
+            ensures
+                ret.0 == ret.1,
+        {
+            let a = PAtomicU64::from_ptr_swap(p1, Tracked(perm1), 7); // FAILS
+            let b = PAtomicU64::from_ptr_swap(p2, Tracked(perm2), 7); // FAILS
+            (a, b)
+        }
+    } => Err(e) => assert_fails(e, 2)
+}
