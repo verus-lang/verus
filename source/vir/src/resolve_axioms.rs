@@ -12,7 +12,7 @@ use air::ast::{Axiom, Command, CommandX, DeclX};
 use air::ast_util::str_ident;
 use air::node;
 use air::printer::{macro_push_node, str_to_node};
-use sise::Node;
+use sise::TreeNode as Node;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 

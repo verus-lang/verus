@@ -1,8 +1,8 @@
 use crate::ast::{
     ArrayKind, AssertQueryMode, BitwiseOp, CrateId, Dt, FieldOpr, Fun, GenericBoundX, Ident,
-    Idents, InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Mode, Path, PathX,
-    Primitive, ProofNoteLabel, SpannedTyped, Typ, TypDecoration, TypDecorationArg, TypX, Typs,
-    UnaryOp, UnaryOpr, UnwindSpec, VarAt, VarIdent, VirErr,
+    Idents, InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Label, Mode, Path,
+    PathX, Primitive, ProofNoteLabel, SpannedTyped, Typ, TypDecoration, TypDecorationArg, TypX,
+    Typs, UnaryOp, UnaryOpr, UnwindSpec, VarAt, VarIdent, VirErr,
 };
 use crate::ast_util::{
     LowerUniqueVar, fun_as_friendly_rust_name, get_field, get_variant, undecorate_typ,
@@ -12,7 +12,7 @@ use crate::context::Ctx;
 use crate::def::{
     ARCH_SIZE, CommandsWithContext, CommandsWithContextX, FUEL_BOOL, FUEL_BOOL_DEFAULT,
     FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, NameCtxt, POLY, ProverChoice,
-    SNAPSHOT_CALL, SNAPSHOT_LOOP, SNAPSHOT_PRE, STRSLICE_GET_CHAR, STRSLICE_LEN,
+    SNAPSHOT_BOUNDARY, SNAPSHOT_CALL, SNAPSHOT_LOOP, SNAPSHOT_PRE, STRSLICE_GET_CHAR, STRSLICE_LEN,
     STRSLICE_NEW_STRLIT, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN,
     SUFFIX_SNAP_WHILE_END, SnapPos, SpanKind, Spanned, U_HI, encode_dt_as_path, new_internal_qid,
     new_user_qid_name, prefix_ensures, prefix_fuel_id, prefix_no_unwind_when, prefix_open_inv,
@@ -1043,9 +1043,6 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
         ExpX::NullaryOpr(crate::ast::NullaryOpr::ConstTypBound(t1, t2)) => {
             crate::traits::const_typ_bound_to_air(ctx, t1, t2)
         }
-        ExpX::NullaryOpr(crate::ast::NullaryOpr::NoInferSpecForLoopIter) => {
-            panic!("internal error: NoInferSpecForLoopIter")
-        }
         ExpX::Unary(op, e) => match op {
             UnaryOp::StrLen => Arc::new(ExprX::Apply(
                 str_ident(STRSLICE_LEN),
@@ -1131,11 +1128,6 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             }
             UnaryOp::MustBeFinalized | UnaryOp::MustBeElaborated => {
                 panic!("internal error: Exp not finalized: {:?}", e)
-            }
-            UnaryOp::InferSpecForLoopIter { .. } => {
-                // loop_inference failed to promote to Some, so demote to None
-                let e = crate::loop_inference::make_option_exp(None, &e.span, &e.typ);
-                exp_to_expr(ctx, &e, expr_ctxt)?
             }
             UnaryOp::CastToInteger => {
                 panic!("internal error: CastToInteger should have been removed before here")
@@ -1260,6 +1252,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 }
                 args.push(exp_to_expr(ctx, e, expr_ctxt)?);
                 ident_apply(&ctx.name_ctxt.to_dyn(trait_path), &args)
+            }
+            UnaryOpr::LoopIsolationBoundary(..) => {
+                panic!("internal error: LoopIsolationBoundary should have been removed before here")
             }
         },
         ExpX::Binary(op, lhs, rhs) => {
@@ -1573,7 +1568,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
 struct LoopInfo {
     loop_isolation: bool,
     is_for_loop: bool,
-    label: Option<String>,
+    label: Label,
     loop_id: u64,
     air_break_label: Ident,
     some_cond: bool,
@@ -2372,15 +2367,11 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             vec![Arc::new(StmtX::DeadEnd(one_stmt(stm_to_stmts(ctx, state, s)?)))]
         }
         StmX::BreakOrContinue { label, is_break } => {
-            let loop_info = if label.is_some() {
-                state
-                    .loop_infos
-                    .iter()
-                    .rfind(|info| info.label == *label)
-                    .expect("missing loop label")
-            } else {
-                state.loop_infos.last().expect("inside loop")
-            };
+            let loop_info = state
+                .loop_infos
+                .iter()
+                .rfind(|info| info.label == *label)
+                .expect("missing loop label");
 
             let mut stmts: Vec<Stmt> = Vec::new();
             //if ctx.checking_spec_preconditions() {
@@ -2503,8 +2494,17 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             }
             stmts
         }
-        StmX::Loop { .. } => loop_to_stmts(ctx, state, stm)?,
-
+        StmX::Loop { pre_stms, .. } => {
+            let mut stmts: Vec<Stmt> = Vec::new();
+            for s in pre_stms.iter() {
+                stmts.extend(stm_to_stmts(ctx, state, s)?);
+            }
+            let assert_free_pre_stmts =
+                stmts.iter().map(|s| air::remove_asserts::remove_asserts(s)).collect();
+            let loop_stmts = loop_to_stmts(ctx, state, stm, assert_free_pre_stmts)?;
+            stmts.extend(loop_stmts);
+            stmts
+        }
         StmX::OpenInvariant(body_stm) => {
             let mut stmts = vec![];
 
@@ -2571,8 +2571,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             stmts
         }
         StmX::Air(s) => {
-            let mut parser = sise::Parser::new(s.as_bytes());
-            let node = sise::read_into_tree(&mut parser).unwrap();
+            let mut parser = sise::Parser::new(s);
+            let node = sise::parse_tree(&mut parser).unwrap();
 
             let stmt = air::parser::Parser::new(Arc::new(crate::messages::VirMessageInterface {}))
                 .node_to_stmt(&node);
@@ -2587,9 +2587,15 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
     Ok(result)
 }
 
-fn loop_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, VirErr> {
+fn loop_to_stmts(
+    ctx: &Ctx,
+    state: &mut State,
+    stm: &Stm,
+    assert_free_pre_stmts: Vec<Stmt>,
+) -> Result<Vec<Stmt>, VirErr> {
     let expr_ctxt = &ExprCtxt::new();
     let StmX::Loop {
+        pre_stms: _,
         loop_isolation,
         is_for_loop,
         id,
@@ -2601,7 +2607,8 @@ fn loop_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, V
         typ_inv_vars,
         modified_vars,
         au_branch_bool,
-        pre_modified_params,
+        pre_modified_params_incl,
+        pre_modified_params_excl,
     } = &stm.x
     else {
         unreachable!()
@@ -2619,12 +2626,9 @@ fn loop_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, V
     };
     let mut invs_entry: Vec<(Span, Expr, Option<Arc<String>>, bool)> = Vec::new();
     let mut invs_exit: Vec<(Span, Expr, Option<Arc<String>>, bool)> = Vec::new();
-    let mut hint_message = None;
     let modified_vars = modified_vars.as_ref().unwrap();
     for inv in invs.iter() {
-        let inv_exp =
-            crate::loop_inference::finalize_inv(&modified_vars, &inv.inv, &mut hint_message);
-        let expr = exp_to_expr(ctx, &inv_exp, expr_ctxt)?;
+        let expr = exp_to_expr(ctx, &inv.inv, expr_ctxt)?;
         if cond.is_some() {
             assert!(inv.at_entry);
             assert!(inv.at_exit);
@@ -2743,11 +2747,29 @@ fn loop_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, V
             air_body.append(&mut stm_to_stmts(ctx, state, exp)?);
         }
 
-        // For any variable that might have been mutated since the beginning of the
-        // function, we need to havoc it, in order to create a difference between
-        // the "current" value and the "pre-state" value.
-        let pre_modified_params = pre_modified_params.as_ref().unwrap();
-        pre_modified_params.emit_havocs(ctx, SNAPSHOT_PRE, &mut air_body);
+        if assert_free_pre_stmts.len() == 0 {
+            // For any variable that might have been mutated from the beginning of the
+            // function to the beginning of some iteration,
+            // (i.e. anything mutated before or during the loop)
+            // we need to havoc it, in order to create a difference between
+            // the "current" value and the "pre-state" value.
+            let pre_modified_params_incl = pre_modified_params_incl.as_ref().unwrap();
+            pre_modified_params_incl.emit_havocs(ctx, SNAPSHOT_PRE, &mut air_body);
+        } else {
+            // Similar, but this time accounting for isolation boundary
+
+            // Havoc vars between beginning of the function and the start of
+            // the isolation_boundary
+            let pre_modified_params_excl = pre_modified_params_excl.as_ref().unwrap();
+            pre_modified_params_excl.emit_havocs(ctx, SNAPSHOT_PRE, &mut air_body);
+
+            // Execute the code between the isolation boundary and the actual loop start
+            air_body.extend(assert_free_pre_stmts);
+
+            // Havoc all vars that might be modified during the loop
+            air_body.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_BOUNDARY))));
+            modified_vars.emit_havocs(ctx, SNAPSHOT_BOUNDARY, &mut air_body);
+        }
     }
 
     // Assume invariants for the beginning of the loop body.
@@ -2847,11 +2869,6 @@ fn loop_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, V
             ProverChoice::DefaultProver,
             false,
         );
-        {
-            let mut guard =
-                loop_cmd_context.hint_upon_failure.lock().expect("we abort on poisoning");
-            *guard = hint_message;
-        }
         state.commands.push(loop_cmd_context);
     }
 

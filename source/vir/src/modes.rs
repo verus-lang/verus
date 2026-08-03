@@ -423,8 +423,6 @@ pub struct ErasureModes {
     pub var_modes: Vec<(Span, (Mode, Mode))>,
     // Modes of calls and struct Ctors
     pub ctor_modes: Vec<(Span, Mode)>,
-    // Results for the InferSpecForLoopIter nodes
-    pub infer_spec_for_loop_iter_erase: Vec<(Span, bool)>,
 }
 
 impl Ghost {
@@ -502,8 +500,6 @@ pub type ReadKindFinals = HashMap<u64, ReadKind>;
 /// Accumulated data recorded during mode checking
 struct Record {
     pub(crate) erasure_modes: ErasureModes,
-    /// Modes of InferSpecForLoopIter
-    infer_spec_for_loop_iter_modes: Option<Vec<(Span, Mode)>>,
     type_inv_info: TypeInvInfo,
     read_kind_finals: ReadKindFinals,
     var_modes: HashMap<VarIdent, Mode>,
@@ -687,12 +683,6 @@ mod typing {
                     state.atomic_insts = atomic_insts;
                 })),
             }
-        }
-
-        // If we want to catch a VirErr, use this to make sure state is restored upon catching the error
-        #[must_use]
-        pub(super) fn push_restore_on_error<'a>(&'a mut self) -> Typing<'a> {
-            self.push_var_scope()
         }
 
         pub(super) fn assert_zero_scopes(&self) {
@@ -2108,9 +2098,6 @@ fn check_expr(
             Ok((Mode::Spec, Proph::No))
         }
         ExprX::NullaryOpr(crate::ast::NullaryOpr::ConstTypBound(..)) => Ok((Mode::Spec, Proph::No)),
-        ExprX::NullaryOpr(crate::ast::NullaryOpr::NoInferSpecForLoopIter) => {
-            Ok((Mode::Spec, Proph::No))
-        }
         ExprX::Unary(UnaryOp::CoerceMode { op_mode, from_mode, to_mode, kind }, e1) => {
             // same as a call to an op_mode function with parameter from_mode and return to_mode
             if ctxt.check_ghost_blocks {
@@ -2163,37 +2150,6 @@ fn check_expr(
         ExprX::Unary(UnaryOp::HeightTrigger, _) => {
             panic!("direct access to 'height' is not allowed")
         }
-        ExprX::Unary(UnaryOp::InferSpecForLoopIter { .. }, e1) => {
-            // InferSpecForLoopIter is a loop-invariant hint that always has mode spec.
-            // If the expression already has mode spec (e.g. because the function calls
-            // are all autospec), then keep the expression.
-            // Otherwise, make a note that the expression had mode exec,
-            // so that check_function can replace the expression with NoInferSpecForLoopIter.
-            let mut typing = typing.push_restore_on_error();
-            let mode_opt = check_expr(
-                ctxt,
-                record,
-                &mut typing,
-                outer_mode,
-                Expect(Mode::Spec),
-                e1,
-                outer_proph,
-            );
-            let (mode, proph) = mode_opt.unwrap_or((Mode::Exec, Proph::No));
-            if let Some(infer_spec) = record.infer_spec_for_loop_iter_modes.as_mut() {
-                record
-                    .erasure_modes
-                    .infer_spec_for_loop_iter_erase
-                    .push((expr.span.clone(), mode != Mode::Spec));
-                infer_spec.push((expr.span.clone(), mode));
-            } else {
-                return Err(error(
-                    &expr.span,
-                    "infer_spec_for_loop_iter is only allowed in function body",
-                ));
-            }
-            Ok((Mode::Spec, proph))
-        }
         ExprX::Unary(UnaryOp::MutRefFuture(source_name), e1) => {
             check_expr(ctxt, record, typing, Mode::Spec, Expect(Mode::Spec), e1, outer_proph)?;
             let proph = Proph::Yes(ProphReason {
@@ -2208,6 +2164,9 @@ fn check_expr(
             Ok((Mode::Spec, proph))
         }
         ExprX::Unary(_, e1) => {
+            check_expr(ctxt, record, typing, outer_mode, expect, e1, outer_proph)
+        }
+        ExprX::UnaryOpr(UnaryOpr::LoopIsolationBoundary(_), e1) => {
             check_expr(ctxt, record, typing, outer_mode, expect, e1, outer_proph)
         }
         ExprX::UnaryOpr(UnaryOpr::ToDyn(_), e1) => {
@@ -3871,8 +3830,7 @@ fn check_function(
         let mut body_typing = body_typing.push_block_ghostness(Ghost::of_mode(function.x.mode));
         let mut body_typing = body_typing.push_in_pure(pure_spec_fn);
 
-        assert!(record.infer_spec_for_loop_iter_modes.is_none());
-        record.infer_spec_for_loop_iter_modes = Some(Vec::new());
+        assert!(record.infer_spec_for_implicit_reborrows.is_none());
         record.infer_spec_for_implicit_reborrows = Some(HashMap::new());
 
         let proph = check_expr_has_mode(
@@ -3896,28 +3854,11 @@ fn check_function(
             )?;
         }
 
-        // Replace InferSpecForLoopIter None if it fails to have mode spec
-        // (if it's mode spec, leave as is to be processed by sst_to_air and loop_inference)
-        let loop_spec = record.infer_spec_for_loop_iter_modes.as_ref().expect("infer_spec");
         let borrow_spec = record.infer_spec_for_implicit_reborrows.as_ref().expect("borrow_spec");
-        if loop_spec.len() > 0 || borrow_spec.len() > 0 {
+        if borrow_spec.len() > 0 {
             let mut functionx = function.x.clone();
             functionx.body = Some(crate::ast_visitor::map_expr_visitor(body, &|expr: &Expr| {
                 match &expr.x {
-                    ExprX::Unary(op @ UnaryOp::InferSpecForLoopIter { .. }, e) => {
-                        let mode_opt = loop_spec.iter().find(|(span, _)| span.id == expr.span.id);
-                        if let Some((_, Mode::Spec)) = mode_opt {
-                            // InferSpecForLoopIter must be spec mode
-                            // to be usable for invariant inference
-                            Ok(expr.clone())
-                        } else {
-                            // Otherwise, abandon the expression and return NoInferSpecForLoopIter,
-                            // which will be converted to None in sst_to_air
-                            let no_infer = crate::ast::NullaryOpr::NoInferSpecForLoopIter;
-                            let e = e.new_x(ExprX::NullaryOpr(no_infer));
-                            Ok(expr.new_x(ExprX::Unary(*op, e)))
-                        }
-                    }
                     ExprX::ImplicitReborrowOrSpecRead(place, two_phase, inner_span) => {
                         let is_spec = *borrow_spec.get(&expr.span.id).unwrap();
                         if is_spec {
@@ -3970,7 +3911,6 @@ fn check_function(
             })?);
             *function = function.new_x(functionx);
         }
-        record.infer_spec_for_loop_iter_modes = None;
         record.infer_spec_for_implicit_reborrows = None;
 
         if function.x.mode != Mode::Spec || function.x.ret.x.mode != Mode::Spec {
@@ -4016,11 +3956,7 @@ pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes, ReadKindFinals
             }
         }
     }
-    let erasure_modes = ErasureModes {
-        var_modes: vec![],
-        ctor_modes: vec![],
-        infer_spec_for_loop_iter_erase: vec![],
-    };
+    let erasure_modes = ErasureModes { var_modes: vec![], ctor_modes: vec![] };
     let special_paths = SpecialPaths::new();
     let mut ctxt = Ctxt {
         funs,
@@ -4033,7 +3969,6 @@ pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes, ReadKindFinals
     let type_inv_info = TypeInvInfo { ctor_needs_check: HashMap::new() };
     let mut record = Record {
         erasure_modes,
-        infer_spec_for_loop_iter_modes: None,
         type_inv_info,
         read_kind_finals: HashMap::new(),
         var_modes: HashMap::new(),

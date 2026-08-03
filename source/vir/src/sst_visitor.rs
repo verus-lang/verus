@@ -287,9 +287,6 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                     exp_new(ExpX::NullaryOpr(NullaryOpr::ConstTypBound(R::get(t1), R::get(t2))))
                 })
             }
-            ExpX::NullaryOpr(NullaryOpr::NoInferSpecForLoopIter) => {
-                R::ret(|| exp_new(exp.x.clone()))
-            }
             ExpX::Unary(op, e1) => {
                 let e1 = self.visit_exp(e1)?;
                 R::ret(|| exp_new(ExpX::Unary(*op, R::get(e1))))
@@ -323,7 +320,8 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                     | UnaryOpr::CustomErr(..)
                     | UnaryOpr::AutoDecreases
                     | UnaryOpr::AutoLoopEnsures
-                    | UnaryOpr::ProofNote(..) => R::ret(|| op.clone()),
+                    | UnaryOpr::ProofNote(..)
+                    | UnaryOpr::LoopIsolationBoundary(_) => R::ret(|| op.clone()),
                 }?;
                 R::ret(|| exp_new(ExpX::UnaryOpr(R::get(op), R::get(e1))))
             }
@@ -502,6 +500,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                 R::ret(|| stm_new(StmX::If(R::get(exp), R::get(s1), R::get_opt(s2))))
             }
             StmX::Loop {
+                pre_stms,
                 loop_isolation,
                 is_for_loop,
                 id,
@@ -513,8 +512,10 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                 typ_inv_vars,
                 modified_vars,
                 au_branch_bool,
-                pre_modified_params,
+                pre_modified_params_incl,
+                pre_modified_params_excl,
             } => {
+                let pre_stms = self.visit_stms(pre_stms)?;
                 let cond = R::map_opt(cond, &mut |(cond_stm, cond_exp)| {
                     let cond_stm = self.visit_stm(cond_stm)?;
                     let cond_exp = self.visit_exp(cond_exp)?;
@@ -529,10 +530,14 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                 let decrease = self.visit_exps(decrease)?;
                 let typ_inv_vars = self.visit_typ_inv_vars(typ_inv_vars)?;
                 let modified_vars = self.visit_havoc_set_opt(modified_vars)?;
-                let pre_modified_params = self.visit_havoc_set_opt(pre_modified_params)?;
+                let pre_modified_params_incl =
+                    self.visit_havoc_set_opt(pre_modified_params_incl)?;
+                let pre_modified_params_excl =
+                    self.visit_havoc_set_opt(pre_modified_params_excl)?;
                 R::ret(|| {
                     stm_new(StmX::Loop {
                         loop_isolation: *loop_isolation,
+                        pre_stms: R::get_vec_a(pre_stms),
                         is_for_loop: *is_for_loop,
                         id: *id,
                         label: label.clone(),
@@ -543,7 +548,8 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                         typ_inv_vars: R::get_vec_a(typ_inv_vars),
                         modified_vars: R::get_opt(modified_vars),
                         au_branch_bool: R::get_opt(au_branch_bool),
-                        pre_modified_params: R::get_opt(pre_modified_params),
+                        pre_modified_params_incl: R::get_opt(pre_modified_params_incl),
+                        pre_modified_params_excl: R::get_opt(pre_modified_params_excl),
                     })
                 })
             }

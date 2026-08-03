@@ -17,6 +17,7 @@ use super::super::prelude::*;
 
 verus! {
 
+#[verifier::inline]
 pub open spec fn rust_div(a: int, b: int) -> int
     recommends
         b != 0,
@@ -30,6 +31,7 @@ pub open spec fn rust_div(a: int, b: int) -> int
     }
 }
 
+#[verifier::inline]
 pub open spec fn rust_rem(a: int, b: int) -> int
     recommends
         b != 0,
@@ -745,6 +747,7 @@ pub broadcast proof fn lemma_div_multiples_vanish_quotient(x: int, a: int, d: in
 
 /// Proof that, since `a % d == 0` and `0 <= r < d`, we can conclude
 /// `a == d * (a + r) / d`.
+#[verifier::spinoff_prover]
 pub broadcast proof fn lemma_round_down(a: int, r: int, d: int)
     requires
         0 < d,

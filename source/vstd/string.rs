@@ -297,7 +297,6 @@ pub broadcast group group_string_axioms {
     axiom_str_literal_len,
     axiom_str_literal_get_char,
     to_string_from_display_ensures_for_str,
-    axiom_spec_iter,
     is_ascii_spec_bytes,
     is_ascii_concat,
 }
@@ -431,29 +430,11 @@ pub struct ExChars<'a>(Chars<'a>);
 #[cfg(feature = "alloc")]
 pub uninterp spec fn into_iter_elts<'a>(i: Chars<'a>) -> Seq<char>;
 
-// To allow reasoning about the ghost iterator when the executable
-// function `iter()` is invoked in a `for` loop header (e.g., in
-// `for x in it: v.iter() { ... }`), we need to specify the behavior of
-// the iterator in spec mode. To do that, we add
-// `#[verifier::when_used_as_spec(spec_iter)` to the specification for
-// the executable `iter` method and define that spec function here.
-#[cfg(feature = "alloc")]
-pub uninterp spec fn spec_iter<'a>(s: &'a str) -> (r: Chars<'a>);
-
-#[cfg(feature = "alloc")]
-pub broadcast proof fn axiom_spec_iter<'a>(s: &'a str)
-    ensures
-        #[trigger] spec_iter(s).remaining() == s@,
-{
-    admit();
-}
-
 #[cfg(feature = "alloc")]
 pub assume_specification[ str::chars ](s: &str) -> (iter: Chars<'_>)
     ensures
-        iter == spec_iter(s),
+        IteratorSpec::remaining(&iter) == s@,
         IteratorSpec::decrease(&iter) is Some,
-        IteratorSpec::initial_value_relation(&iter, &iter),
 ;
 
 #[cfg(verus_keep_ghost)]
@@ -466,12 +447,6 @@ impl<'a> super::std_specs::iter::IteratorSpecImpl for Chars<'a> {
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
 
     uninterp spec fn will_return_none(&self) -> bool;
-
-    #[verifier::prophetic]
-    open spec fn initial_value_relation(&self, init: &Self) -> bool {
-        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-        &&& into_iter_elts(*self) == IteratorSpec::remaining(self)
-    }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
 

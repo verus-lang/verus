@@ -302,7 +302,6 @@ fn mk_bctx<'tcx>(
         mode,
         external_body,
         in_ghost: mode != Mode::Exec,
-        loop_isolation: false,
         atomically: None,
         migrate_postcondition_vars,
         in_fn_sig: false,
@@ -313,6 +312,7 @@ fn mk_bctx<'tcx>(
         header_setting: HeaderSetting::Fn,
         unwrap_param_map: std::rc::Rc::new(std::cell::RefCell::new(HashMap::new())),
         external_opaque_type_map,
+        label_map: std::rc::Rc::new(std::cell::RefCell::new((HashMap::new(), 0))),
     }
 }
 

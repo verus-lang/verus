@@ -78,8 +78,18 @@ test_verify_one_file! {
         fn test_set(x: &mut [u64])
             requires old(x).len() == 3
         {
-            x.set(0, 5);
-            x.set(1, 20);
+            x[0] = 5;
+            x[1] = 20;
+            assert(x[0] == 5);
+            assert(x[1] == 20);
+            assert(false); // FAILS
+        }
+
+        fn test_set_1(x: &mut [u64])
+            requires old(x).len() == 3
+        {
+            x[0] = 5;
+            x[1] = 20;
             assert(x[0] == 5);
             assert(x[1] == 20);
             assert(false); // FAILS
@@ -87,7 +97,7 @@ test_verify_one_file! {
 
         fn test_set3(x: &mut [u64])
         {
-            x.set(0, 5); // FAILS
+            x[0] = 5; // FAILS
         }
 
         fn test_is_empty<T>(x: &[T], y: &[T])
@@ -103,7 +113,7 @@ test_verify_one_file! {
             assert(!yb);
         }
 
-    } => Err(err) => assert_fails(err, 6)
+    } => Err(err) => assert_fails(err, 7)
 }
 
 test_verify_one_file! {

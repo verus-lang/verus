@@ -1277,23 +1277,6 @@ fn verus_item_to_vir<'tcx, 'a>(
             ExprItem::DefaultEnsures => {
                 return err_span(expr.span, "default_ensures not allowed here");
             }
-            ExprItem::InferSpecForLoopIter => {
-                assert!(args.len() == 3);
-                let arg = if bctx.loop_isolation {
-                    crate::erase::mark_adjusted_node_for_erasure(&bctx.ctxt, &args[0]);
-                    expr_to_vir_consume(bctx, &args[1])?
-                } else {
-                    crate::erase::mark_adjusted_node_for_erasure(&bctx.ctxt, &args[1]);
-                    expr_to_vir_consume(bctx, &args[0])?
-                };
-                let print_hint = matches!(
-                    &args[2],
-                    Expr { kind: ExprKind::Lit(Spanned { node: LitKind::Bool(true), .. }), .. }
-                );
-                let e = mk_expr(ExprX::Unary(UnaryOp::InferSpecForLoopIter { print_hint }, arg))?;
-                record_call(bctx, expr, ResolvedCall::InferSpecForLoopIter(e.span.id));
-                Ok(e)
-            }
             ExprItem::IsVariant => {
                 record_spec_fn(bctx, expr);
                 assert!(args.len() == 2);

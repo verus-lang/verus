@@ -372,8 +372,6 @@ pub enum NullaryOpr {
     TypEqualityBound(Path, Typs, Ident, Typ),
     /// predicate representing const type bound, e.g., `const X: usize`
     ConstTypBound(Typ, Typ),
-    /// A failed InferSpecForLoopIter subexpression
-    NoInferSpecForLoopIter,
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
@@ -456,17 +454,6 @@ pub enum UnaryOp {
     HeightTrigger,
     /// Used only for handling verus_builtin::strslice_len
     StrLen,
-    /// Given an exec/proof expression used to construct a loop iterator,
-    /// try to infer a pure specification for the loop iterator.
-    /// Evaluate to Some(spec) if successful, None otherwise.
-    /// (Note: this is just used as a hint for loop invariants;
-    /// regardless of whether it is Some(spec) or None, it should not affect soundness.)
-    /// For an exec/proof expression e, the spec s should be chosen so that the value v
-    /// that e evaluates to is immutable and v == s, where v may contain local variables.
-    /// For example, if v == (n..m), then n and m must be immutable local variables.
-    InferSpecForLoopIter {
-        print_hint: bool,
-    },
     /// May need coercion after casting a type argument
     CastToInteger,
     MutRefCurrent,
@@ -525,6 +512,15 @@ pub struct ProofNoteLabel {
     pub is_custom_err: bool,
 }
 
+/// Label for a Loop that a break/continue may point to.
+#[derive(Clone, Debug, Serialize, Deserialize, Hash, ToDebugSNode, PartialEq, Eq)]
+pub struct Label {
+    /// Every loop in a given function body has a unique id
+    pub id: usize,
+    /// User-given name
+    pub name: Option<String>,
+}
+
 /// More complex unary operations (requires Clone rather than Copy)
 /// (Below, "boxed" refers to boxing types in the SMT encoding, not the Rust Box type)
 #[derive(Clone, Debug, Serialize, Deserialize, Hash, ToDebugSNode)]
@@ -564,6 +560,9 @@ pub enum UnaryOpr {
     HasResolved(Typ),
     /// Coerce from concrete type to `dyn T`. Typ arg is the Self type
     ToDyn(Typ),
+    /// Isolation boundary for the loop of the given label, which must be contained
+    /// in the boundary.
+    LoopIsolationBoundary(Label),
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
@@ -1175,7 +1174,7 @@ pub enum ExprX {
         allow_complex_invariants: bool,
         is_for_loop: bool,
         assume_termination: bool,
-        label: Option<String>,
+        label: Label,
         cond: Option<Expr>,
         body: Expr,
         invs: LoopInvariants,
@@ -1197,7 +1196,7 @@ pub enum ExprX {
     /// Return from function
     Return(Option<Expr>),
     /// break or continue
-    BreakOrContinue { label: Option<String>, is_break: bool },
+    BreakOrContinue { label: Label, is_break: bool },
     /// Enter a Rust ghost block, which will be erased during compilation.
     /// In principle, this is not needed, because we can infer which code to erase using modes.
     /// However, we can't easily communicate the inferred modes back to rustc for erasure

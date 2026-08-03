@@ -3,6 +3,8 @@ use std::{
     process::Command,
 };
 
+use yansi::Paint;
+
 mod record;
 #[cfg(feature = "record-history")]
 mod record_history;
@@ -53,14 +55,14 @@ fn main() {
             }
         }
         Err(err) => {
-            eprintln!("{}", yansi::Paint::red(format!("error: {}", err)));
+            eprintln!("{}", format!("error: {}", err).red());
             std::process::exit(1);
         }
     }
 }
 
 fn warning(msg: &str) {
-    eprintln!("{}", yansi::Paint::yellow(format!("warning: {}", msg)));
+    eprintln!("{}", format!("warning: {}", msg).yellow());
 }
 
 fn run() -> Result<std::process::ExitStatus, String> {
@@ -134,26 +136,18 @@ fn run() -> Result<std::process::ExitStatus, String> {
                 {
                     eprintln!(
                         "{}",
-                        yansi::Paint::red(format!(
-                            "verus: required rust toolchain {} not found",
-                            TOOLCHAIN
-                        ))
+                        format!("verus: required rust toolchain {} not found", TOOLCHAIN).red()
                     );
                     eprintln!(
                         "{}",
-                        yansi::Paint::blue(
-                            "run the following command (in a bash-compatible shell) to install the necessary toolchain:"
-                        )
+                        "run the following command (in a bash-compatible shell) to install the necessary toolchain:".blue()
                     );
-                    eprintln!("  {}", yansi::Paint::white(format!("rustup install {}", TOOLCHAIN)));
+                    eprintln!("  {}", format!("rustup install {}", TOOLCHAIN).white());
                 }
             }
             None => {
-                eprintln!(
-                    "{}",
-                    yansi::Paint::red(format!("verus: rustup not found, or not executable"))
-                );
-                eprintln!("{}", yansi::Paint::yellow(format!("verus needs a rustup installation")));
+                eprintln!("{}", format!("verus: rustup not found, or not executable").red());
+                eprintln!("{}", format!("verus needs a rustup installation").yellow());
                 #[cfg(any(target_os = "linux", target_os = "macos"))]
                 {
                     eprintln!(
@@ -164,10 +158,10 @@ fn run() -> Result<std::process::ExitStatus, String> {
                     );
                     eprintln!(
                         "  {}",
-                        yansi::Paint::white(format!(
+                        format!(
                             "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- --default-toolchain {}",
                             TOOLCHAIN
-                        ))
+                        ).white()
                     );
                     eprintln!(
                         "{}",

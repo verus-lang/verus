@@ -1922,7 +1922,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] test_is_panic_regression_1380 verus_code! {
+    #[test] test_is_panic_regression_1380 verus_code! {
         use vstd::seq::*;
 
         enum Alternative {
@@ -1937,7 +1937,7 @@ test_verify_one_file! {
         spec fn is_test_minimal(s: Seq<Option<Alternative>>) -> bool {
             &&& forall|b:nat| s[b as int] is Some(Alternative::Yes)
         }
-    } => Err(_e) => todo!() //assert_rust_error_msg(e, todo!())
+    } => Err(err) => assert_vir_error_msg(err, "unexpected token (note that the 'is' operator expects a single, unqualified identifier)")
 }
 
 test_verify_one_file! {

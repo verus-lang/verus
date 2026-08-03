@@ -473,12 +473,6 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
                     "string slice length not supported in bit_vector assert",
                 ));
             }
-            UnaryOp::InferSpecForLoopIter { .. } => {
-                return Err(error(
-                    &exp.span,
-                    "loop-iterator inference hint not supported in bit_vector assert",
-                ));
-            }
             UnaryOp::CastToInteger => {
                 panic!("internal error: unexpected CastToInteger")
             }

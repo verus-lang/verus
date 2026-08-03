@@ -257,7 +257,6 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let t2 = self.visit_typ(t2)?;
                 R::ret(|| NullaryOpr::ConstTypBound(R::get(t1), R::get(t2)))
             }
-            NullaryOpr::NoInferSpecForLoopIter => R::ret(|| nopr.clone()),
         }
     }
 
@@ -289,7 +288,8 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             | UnaryOpr::CustomErr(..)
             | UnaryOpr::AutoDecreases
             | UnaryOpr::AutoLoopEnsures
-            | UnaryOpr::ProofNote(..) => R::ret(|| uopr.clone()),
+            | UnaryOpr::ProofNote(..)
+            | UnaryOpr::LoopIsolationBoundary(_) => R::ret(|| uopr.clone()),
         }
     }
 

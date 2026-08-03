@@ -1,39 +1,15 @@
 use super::super::prelude::*;
 use super::super::slice::SliceIndexSpec;
-use super::core::{IndexSetTrustedSpec, IndexSpec, TrustedSpecSealed};
+use super::core::IndexSpec;
 use super::iter::IteratorSpec;
 use super::range::{slice_range_end, slice_range_start, slice_range_valid};
 
-use core::ops::{Index, Range};
+use core::ops::{Index, IndexMut, Range};
 use core::slice::{Iter, SliceIndex};
 
 use verus as verus_;
 
 verus_! {
-
-impl<T, const N: usize> TrustedSpecSealed for [T; N] {}
-
-impl<T, const N: usize> IndexSetTrustedSpec<usize> for [T; N] {
-    open spec fn spec_index_set_requires(&self, index: usize) -> bool {
-        0 <= index < N
-    }
-
-    open spec fn spec_index_set_ensures(&self, new_container: &Self, index: usize, val: T) -> bool {
-        new_container@ == self@.update(index as int, val)
-    }
-}
-
-impl<T> TrustedSpecSealed for [T] {}
-
-impl<T> IndexSetTrustedSpec<usize> for [T] {
-    open spec fn spec_index_set_requires(&self, index: usize) -> bool {
-        0 <= index < self@.len()
-    }
-
-    open spec fn spec_index_set_ensures(&self, new_container: &Self, index: usize, val: T) -> bool {
-        new_container@ == self@.update(index as int, val)
-    }
-}
 
 impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for usize {
     open spec fn index_req(&self, slice: &[T]) -> bool {
@@ -44,6 +20,12 @@ impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for usize {
 pub assume_specification<T>[ <usize as SliceIndex<[T]>>::index ](i: usize, slice: &[T]) -> &T
     returns
         slice@[i as int],
+;
+
+pub assume_specification<T>[ <usize as SliceIndex<[T]>>::index_mut ](i: usize, slice: &mut [T]) -> (output: &mut T)
+    ensures
+        *output == old(slice)@[i as int],
+        final(slice)@ == old(slice)@.update(i as int, *final(output))
 ;
 
 impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for Range<usize> {
@@ -58,35 +40,60 @@ pub assume_specification<T>[ <Range<usize> as SliceIndex<[T]>>::index ](i: Range
         r@ == slice@.subrange(i.start as int, i.end as int),
 ;
 
+pub assume_specification<T>[ <Range<usize> as SliceIndex<[T]>>::index_mut ](i: Range<usize>, slice: &mut [T]) -> (r: &mut [T])
+    ensures
+        r@ == old(slice)@.subrange(i.start as int, i.end as int),
+        final(r)@ == final(slice)@.subrange(i.start as int, i.end as int),
+        forall|j: int| !(i.start <= j < i.end) ==> final(slice)@[j] == old(slice)@[j],
+;
+
 impl<T, I: SliceIndex<[T]>> super::core::IndexSpecImpl<I> for [T] {
     open spec fn index_req(&self, index: &I) -> bool {
         index.index_req(self)
     }
 }
 
+pub assume_specification<T, I: SliceIndex<[T]>>[ <[T] as Index<I>>::index ](
+    slice: &[T],
+    index: I,
+) -> (output: &<I as SliceIndex<[T]>>::Output)
+    ensures
+        call_ensures(<I as SliceIndex<[T]>>::index, (index, slice), output),
+;
+
+pub assume_specification<T, I: SliceIndex<[T]>>[ <[T] as IndexMut<I>>::index_mut ](
+    slice: &mut [T],
+    index: I,
+) -> (output: &mut <I as SliceIndex<[T]>>::Output)
+    ensures
+        call_ensures(<I as SliceIndex<[T]>>::index_mut, (index, slice), output),
+;
+
 impl<T, I, const N: usize> super::core::IndexSpecImpl<I> for [T; N]
-    where [T]: Index<I>
+where
+    [T]: Index<I>,
 {
     open spec fn index_req(&self, index: &I) -> bool {
         <[T] as IndexSpec<I>>::index_req(self, index)
     }
 }
 
-pub assume_specification<T, I: SliceIndex<[T]>> [<[T] as Index<I>>::index] (
-    slice: &[T],
-    index: I,
-) -> (output: &<I as core::slice::SliceIndex<[T]>>::Output)
+pub assume_specification<T, I, const N: usize>[ <[T; N]>::index ](array: &[T; N], index: I) -> (output: &<[T; N] as Index<I>>::Output)
+    where
+        [T]: Index<I>,
     ensures
-        call_ensures(<I as SliceIndex<[T]>>::index, (index, slice), output),
+        call_ensures(<[T]>::index, (array, index), output),
 ;
 
-pub assume_specification<T, I, const N: usize> [<[T; N] as Index<I>>::index] (
-    array: &[T; N],
-    index: I,
-) -> (output: &<[T; N] as core::ops::Index<I>>::Output)
-    where [T]: Index<I>,
+pub assume_specification<T, I, const N: usize>[ <[T; N]>::index_mut ](array: &mut [T; N], index: I) -> (output: &mut <[T; N] as Index<I>>::Output)
+    where
+        [T]: IndexMut<I>,
     ensures
-        call_ensures(<[T] as Index<I>>::index, (array, index), output),
+        exists|slice: &mut [T]| {
+            &&& #[trigger] slice@ == old(array)@
+            &&& final(slice)@ == final(array)@
+            &&& call_ensures(<[T]>::index_mut, (slice, index), output)
+        },
 ;
 
 pub assume_specification[ core::hint::unreachable_unchecked ]() -> !
@@ -112,13 +119,6 @@ impl <'a, T: 'a> super::iter::IteratorSpecImpl for Iter<'a, T> {
 
     uninterp spec fn remaining(&self) -> Seq<Self::Item>;
     uninterp spec fn will_return_none(&self) -> bool;
-
-    #[verifier::prophetic]
-    open spec fn initial_value_relation(&self, init: &Self) -> bool {
-        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-        &&& into_iter_elts(*self) == IteratorSpec::remaining(self).unref()
-    }
-
     uninterp spec fn decrease(&self) -> Option<nat>;
 
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
@@ -130,37 +130,19 @@ impl <'a, T: 'a> super::iter::IteratorSpecImpl for Iter<'a, T> {
     }
 }
 
-
-// To allow reasoning about the returned iterator when the executable
-// function `iter()` is invoked in a `for` loop header (e.g., in
-// `for x in it: s.iter() { ... }`), we need to specify the behavior of
-// the iterator in spec mode. To do that, we add
-// `#[verifier::when_used_as_spec(spec_slice_iter)` to the specification for
-// the executable `into_iter` method and define that spec function here.
-pub uninterp spec fn spec_slice_iter<'a, T>(s: &'a [T]) -> (iter: Iter<'a, T>);
-
-pub broadcast proof fn axiom_spec_slice_iter<'a, T>(s: &'a [T])
-    ensures
-        #[trigger] spec_slice_iter(s).remaining() == s@.as_ref(),
-{
-    admit();
-}
-
-#[verifier::when_used_as_spec(spec_slice_iter)]
 pub assume_specification<'a, T>[ <[T]>::iter ](s: &'a [T]) -> (iter: Iter<'a, T>)
     ensures
-        iter == spec_slice_iter(s),
+        IteratorSpec::remaining(&iter) == s@.as_ref(),
+        into_iter_elts(iter) == IteratorSpec::remaining(&iter).unref(),
         IteratorSpec::decrease(&iter) is Some,
-        IteratorSpec::initial_value_relation(&iter, &iter),
 ;
 
-#[verifier::when_used_as_spec(spec_slice_iter)]
 pub assume_specification<'a, T> [<&'a [T] as core::iter::IntoIterator>::into_iter] (s: &'a [T]) ->
     (iter: Iter<'a, T>)
     ensures
-        iter == spec_slice_iter(s),
+        IteratorSpec::remaining(&iter) == s@.as_ref(),
+        into_iter_elts(iter) == IteratorSpec::remaining(&iter).unref(),
         IteratorSpec::decrease(&iter) is Some,
-        IteratorSpec::initial_value_relation(&iter, &iter),
 ;
 
 pub assume_specification<T> [ <[T]>::first ](slice: &[T]) -> (res: Option<&T>)
@@ -267,9 +249,5 @@ pub assume_specification<T: Copy, R: core::ops::RangeBounds<usize>>[ <[T]>::copy
             dest as int,
         ),
 ;
-
-pub broadcast group group_slice_axioms {
-    axiom_spec_slice_iter,
-}
 
 } // verus!

@@ -234,9 +234,9 @@ The analysis is pretty weak right now but could be improved.
 
 use crate::ast::{
     Arm, ByRef, CtorUpdateTail, Datatype, Dt, Expr, ExprX, FieldOpr, Fun, FunWithVis, Function,
-    Ident, Mode, ModeWrapperMode, Params, Path, Pattern, PatternBinding, PatternX, Place, PlaceX,
-    ReadKind, SpannedTyped, Stmt, StmtX, Typ, TypDecoration, TypX, UnaryOpr, UnfinalizedReadKind,
-    VarBinders, VarIdent, VarIdentDisambiguate, VariantCheck, VirErr,
+    Ident, Label, Mode, ModeWrapperMode, Params, Path, Pattern, PatternBinding, PatternX, Place,
+    PlaceX, ReadKind, SpannedTyped, Stmt, StmtX, Typ, TypDecoration, TypX, UnaryOpr,
+    UnfinalizedReadKind, VarBinders, VarIdent, VarIdentDisambiguate, VariantCheck, VirErr,
 };
 use crate::ast_to_sst::Maybe;
 use crate::ast_util::{bool_typ, mk_bool, typ_to_diagnostic_str, undecorate_typ, unit_typ};
@@ -471,7 +471,7 @@ struct Builder<'a> {
 
 #[derive(Clone)]
 struct LoopEntry {
-    label: Option<String>,
+    label: Label,
     /// BB to jump to on 'break'
     break_bb: BBIndex,
     /// BB to jump to on 'continue'
@@ -703,21 +703,13 @@ impl<'a> Builder<'a> {
         }
     }
 
-    fn get_loop(&self, loop_label: &Option<String>) -> LoopEntry {
-        match loop_label {
-            None => self.loops[self.loops.len() - 1].clone(),
-            Some(label) => {
-                for l in self.loops.iter().rev() {
-                    match &l.label {
-                        Some(label2) if *label == **label2 => {
-                            return l.clone();
-                        }
-                        _ => {}
-                    }
-                }
-                panic!("Could not find label {:}", label);
+    fn get_loop(&self, loop_label: &Label) -> LoopEntry {
+        for l in self.loops.iter().rev() {
+            if &l.label == loop_label {
+                return l.clone();
             }
         }
+        panic!("Could not find label {:?}", loop_label);
     }
 
     /// Process the given expression for building the CFG. Return the basic block
