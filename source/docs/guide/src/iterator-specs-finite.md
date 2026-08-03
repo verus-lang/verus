@@ -89,7 +89,7 @@ to its prophecied sequence of yielded values.
 ### 5. Implementing `DoubleEndedIterator`
 
 If your iterator supports backward traversal, implement the standard Rust
-[`DoubleEndedIterator` trait]((https://doc.rust-lang.org/std/iter/trait.DoubleEndedIterator.html)), 
+[`DoubleEndedIterator` trait](https://doc.rust-lang.org/std/iter/trait.DoubleEndedIterator.html), 
 which adds a `next_back` method:
 
 ```rust
