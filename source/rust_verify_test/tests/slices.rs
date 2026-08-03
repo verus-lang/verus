@@ -237,8 +237,6 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 8)
 }
 
-// verus-lang/verus#2657: SliceIndex had no spec for RangeTo, so `s[..3]`
-// failed with a confusing precondition error even though `s[0..3]` worked.
 test_verify_one_file! {
     #[test] test_slice_index_range_to verus_code! {
         use std::ops::Index;
@@ -270,9 +268,6 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 4)
 }
 
-// The same gap existed for RangeFrom, RangeToInclusive, RangeFull, and
-// RangeInclusive - `s[5..]`, `s[..=3]`, `s[..]`, `s[1..=3]` all failed the
-// same way as `s[..3]` did before the RangeTo fix above.
 test_verify_one_file! {
     #[test] test_slice_index_range_from verus_code! {
         use vstd::prelude::*;
@@ -340,9 +335,6 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 2)
 }
 
-// The non-panicking `.get()` form went through `spec_slice_get`, which was
-// only ever given meaning for a `usize` index - for every range type, the
-// result was completely opaque, unprovable in either direction.
 test_verify_one_file! {
     #[test] test_slice_get_ranges verus_code! {
         use vstd::prelude::*;
