@@ -438,15 +438,6 @@ impl GlobalCtx {
             crate::recursive_types::add_trait_to_graph(&mut func_call_graph, t);
         }
         for f in &krate.functions {
-            // Heuristic: add all external_body functions first.
-            // This is currently needed because external_body broadcast_forall functions
-            // are currently implicitly imported.
-            // In the future, this might become less important; we could remove this heuristic.
-            if f.x.body.is_none() && f.x.extra_dependencies.len() == 0 {
-                func_call_graph.add_node(Node::Fun(f.x.name.clone()));
-            }
-        }
-        for f in &krate.functions {
             // HACK: put spec functions early, because the call graph is currently missing some
             // dependencies that should explicitly force these functions to appear early.
             // TODO: add these dependencies to the call graph.
