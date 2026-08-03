@@ -8,9 +8,12 @@ doesn't provide an iterator, so we're going to implement one for it.
 
 ### 1. The iterator struct
 
-`VecIterator` holds a reference to the underlying `Vec` plus indices `i` and `j`
+Our `VecIterator` struct holds a reference to the underlying `Vec` plus indices `i` and `j`
 marking the current and end positions. The type invariant enforces that `i <= j <=
-v.len()` at all times.
+v.len()` at all times.  Because we're using a type invariant, the fields of `VecIterator`
+need to remain private.  However, because we'll want to refer to the contents of `v` in
+some of our specs, we provide a closed spec fn (`elts()`) to allow us to reason about them
+abstractly.
 
 ```rust
 {{#include ../../../../examples/guide/iterators.rs:iter_def}}
@@ -19,7 +22,7 @@ v.len()` at all times.
 ### 2. The `next` method
 
 This is an ordinary Rust `Iterator` implementation with no Verus-specific annotations.
-It uses the type invariant to prove that it meets the Verus specification for `next()`.
+It uses the type invariant to prove that it meets the generic Verus specification for `Iterator::next()`.
 
 ```rust
 {{#include ../../../../examples/guide/iterators.rs:normal_iter}}
@@ -38,26 +41,30 @@ Here's a brief summary of the specification functions, with a focus
 on how we define them for our custom iterator.
 
 - **`obeys_prophetic_iter_laws`** — return `true` to assert that this iterator satisfies
-  the Verus specification for `next`.  Most iterator implementations should return `true` here,
-  and most iterator adaptors should return their inner iterator's value.  By returning `true`,
-  we're saying that the iterator will eventually return `None`, and after that point, continue 
-  to return `None`.  
-- **`remaining`** — a prophetic spec function returning the sequence of items that the iterator will
-  eventually produce. For `VecIterator`, this is the subrange `v[i..j]`.  Note that `remaining`
+  the Verus specification for `next`.  We include this spec function to avoid (unsoundly) assuming
+  that every unverified iterator implementation satisfies our specs (this is a [common pattern](external_trait_specifications.md#the-obeys_-pattern-in-vstd) for `vstd` trait specifications).
+
+  Verified iterator implementations should return `true` here,
+  and most iterator adaptors should return their inner iterator's value.  Developers can choose
+  to assume this is true for unverified iterators (e.g., those from unverified crates).
+  That entails assuming that the iterator (a) obeys the specifications in `IteratorSpec`,
+  and (b) always returns `Some`, or eventually returns `None`, and after that point, continues
+  to return `None`. 
+- **`remaining`** — a [prophetic](https://verus-lang.github.io/verus/verusdoc/vstd/proph) spec 
+  function returning the sequence of items that the iterator will
+  eventually produce for each call to `next()`. For `VecIterator`, this is the subrange `v[i..j]`.  Note that `remaining`
   returns a `Seq<Self::Item>`; as a result, because our `VecIterator`'s `Item` is `&T`, its
   `remaining` function will return `Seq<&T>`.  The sequence library in `vstd` provides the convenience
   function `as_ref` to convert `Seq<T>` to `Seq<&T>`, and `unref` for the reverse direction.
 - **`will_return_none`** — return `true` if the iterator will eventually return `None`.
   Infinite iterators or iterators driven by a non-terminating closure may return `false`.
-- **`decrease`** — a termination metric for Verus's decreases checker.  By default,
-  `for` loops expect this to return `Some(n)` where `n` decreases on every call to `next`. Here `j - i` works.
-- **`initial_value_relation`** — a prophetic invariant relating the iterator's initial state to
-  the exec expression used to initialize it. This is what lets loop invariants
-  refer to the original collection (e.g., `iter.seq() == v@`).
+- **`decrease`** — a termination metric for Verus's [decreases checker](recursion.md).  By default,
+  `for` loops expect this to return `Some(n)` where `n` decreases on every call to `next`. Here `j - i` works.  Infinite iterators should return `None`.
 - **`peek`** — optionally returns the item at a given look-ahead index. Providing this
-  helps Verus reason about the current element in the iteration.
+  helps Verus reason about the current element in the iteration.  Note that `peek` is **not** prophetic,
+  so we can't define it in terms of `remaining()`.  
 
-
+In summary, here's what our implementation of these specs looks like for `VecIterator`.
 ```rust
 {{#include ../../../../examples/guide/iterators.rs:iter_spec}}
 ```
@@ -66,12 +73,13 @@ on how we define them for our custom iterator.
 
 Most iterator types will need to be constructed from some other type.  In our example,
 our constructor `vec_iter` will take in a `&'a Vec<T>` and return a `VecIterator<'a, T>`.
-As shown below, you'll typically want (at least) the three postconditions shown below;
-the first one connects the iterator's prophetic sequence to the 
-values it was constructed from (in this case, the elements of the
-`Vec<T>`);
-the second enables a `for` loop to automatically prove termination;
-and the third connects the value used to construct the iterator
+As shown below, you'll typically want postconditions like those shown below.
+The first one connects the iterator's prophetic sequence to the 
+values it was constructed from (in this case, the elements of the `Vec<T>`).
+The second one connects the prophetic sequence to the iterator's abstract `elts()`;
+we need that connection, since peek is defined in terms of `elts()` (not `remaining()`).
+The third postcondition enables a `for` loop to automatically prove termination.
+The final postcondition  connects the value used to construct the iterator
 to its prophecied sequence of yielded values.
 
 ```rust
@@ -81,7 +89,8 @@ to its prophecied sequence of yielded values.
 ### 5. Implementing `DoubleEndedIterator`
 
 If your iterator supports backward traversal, implement the standard Rust
-`DoubleEndedIterator` trait, which adds a `next_back` method:
+[`DoubleEndedIterator` trait]((https://doc.rust-lang.org/std/iter/trait.DoubleEndedIterator.html)), 
+which adds a `next_back` method:
 
 ```rust
 {{#include ../../../../examples/guide/iterators.rs:double_iter_next_back}}

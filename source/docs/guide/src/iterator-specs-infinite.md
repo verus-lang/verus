@@ -1,5 +1,7 @@
 # Implementing Iterator Specifications for Infinite Iterators
 
+Somewhat surprisingly, we can also 
+
 Let's start with the most common class of iterators: those that eventually
 return `None` and then continue to return `None` on all subsequent calls to
 `next()`.  To illustrate the [steps needed to verify an iterator implementation](iterator-specs.md) 

@@ -12,10 +12,6 @@ pub struct VecIterator<'a, T> {
 }
 
 impl <'a, T> VecIterator<'a, T> {
-    pub closed spec fn new(v: &'a Vec<T>) -> Self {
-        VecIterator { v, i: 0, j: v.len() }
-    }
-
     pub closed spec fn elts(self) -> Seq<T> {
         self.v@
     }
@@ -32,11 +28,10 @@ impl <'a, T> VecIterator<'a, T> {
 pub fn vec_iter<'a, T>(v: &'a Vec<T>) -> (iter: VecIterator<'a, T>)
     ensures 
         IteratorSpec::remaining(&iter) == v@.as_ref(),
+        IteratorSpec::remaining(&iter).unref() == iter.elts(),
         IteratorSpec::decrease(&iter) is Some,
 {
-    let i = VecIterator { v: v, i: 0, j: v.len() };
-    assert(i.elts() == IteratorSpec::remaining(&i).unref());     // OBSERVE
-    i
+    VecIterator { v: v, i: 0, j: v.len() }
 }
 // ANCHOR_END: iter_creation
 
