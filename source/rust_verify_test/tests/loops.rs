@@ -1949,7 +1949,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     // A `for` loop produced by a `macro_rules!` expansion is not rewritten by the
-    // `verus!` macro, so it reaches rustc's native for-loop desugaring. 
+    // `verus!` macro, so it reaches rustc's native for-loop desugaring.
     #[test] macro_rules_for_loop_no_ice_issue2751 verus_code! {
         fn f() {
             macro_rules! m {
