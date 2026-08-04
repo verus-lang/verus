@@ -1946,3 +1946,16 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 1)
 }
+
+test_verify_one_file! {
+    // A `for` loop produced by a `macro_rules!` expansion is not rewritten by the
+    // `verus!` macro, so it reaches rustc's native for-loop desugaring. 
+    #[test] macro_rules_for_loop_no_ice_issue2751 verus_code! {
+        fn f() {
+            macro_rules! m {
+                () => { for _ in 0..1 {} };
+            }
+            m!();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "`for` loops produced by a macro expansion")
+}

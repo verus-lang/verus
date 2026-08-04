@@ -3384,6 +3384,17 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 Ok(ExprOrPlace::Place(p))
             }
         }
+        ExprKind::Loop(_, _, LoopSource::ForLoop, _) => {
+            // The `verus!` macro rewrites `for` loops internally before they
+            // reach rustc's native for-loop desugaring, so a `LoopSource::ForLoop`
+            // only shows up here when the `for` loop was not visited by `verus!`
+            unsupported_err!(
+                expr.span,
+                format!(
+                    "`for` loops produced by a macro expansion (wrap the loop in the macro body with `verus_exec_expr! {{ ... }}`)"
+                )
+            )
+        }
         ExprKind::Loop(..) => unsupported_err!(expr.span, format!("complex loop expressions")),
         ExprKind::Break(..) => unsupported_err!(expr.span, format!("complex break expressions")),
         ExprKind::AssignOp(op, lhs, rhs) => {
