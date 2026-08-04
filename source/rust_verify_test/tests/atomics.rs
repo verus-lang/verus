@@ -329,7 +329,7 @@ test_verify_one_file! {
         fn stuff() {
             stuff();
         }
-    } => Err(err) => assert_vir_error_msg(err, "'atomic' cannot be used on a recursive function")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
 }
 
 test_verify_one_file! {
@@ -343,7 +343,7 @@ test_verify_one_file! {
         fn stuff2() {
             stuff1();
         }
-    } => Err(err) => assert_vir_error_msg(err, "'atomic' cannot be used on a recursive function")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
 }
 
 test_verify_one_file! {

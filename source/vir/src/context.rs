@@ -6,7 +6,7 @@ use crate::ast::{
 use crate::ast_util::{dt_as_friendly_rust_name_raw, path_as_friendly_rust_name_raw};
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::{FUEL_ID, NameCtxt};
-use crate::messages::{Span, WarningAllow, error};
+use crate::messages::{Span, WarningAllow};
 use crate::poly::MonoTyp;
 use crate::recursion::Node;
 use crate::scc::Graph;
@@ -699,12 +699,6 @@ impl GlobalCtx {
                         }
                         return Err(error);
                     }
-                }
-            }
-            if f.x.attrs.atomic {
-                let fun_node = Node::Fun(f.x.name.clone());
-                if func_call_graph.node_is_in_cycle(&fun_node) {
-                    return Err(error(&f.span, "'atomic' cannot be used on a recursive function"));
                 }
             }
         }
