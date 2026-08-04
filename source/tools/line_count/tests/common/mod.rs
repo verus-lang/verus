@@ -43,8 +43,8 @@ pub fn run_line_count<P: AsRef<std::path::Path>>(path: P) -> Result<String, std:
     let path = path.as_ref();
 
     let mut cmd = Command::new(line_count_path);
-    cmd.arg("--one-file");
     cmd.arg(path);
+    eprintln!("cmd: {cmd:?}");
     let output = cmd.output()?;
     Ok(String::from_utf8(output.stdout).expect("line count returned non-utf8"))
 }
