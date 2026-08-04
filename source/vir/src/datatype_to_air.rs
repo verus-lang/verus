@@ -835,7 +835,7 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
         vec![]
     };
 
-    let bytestr_commands = if ctx.used_builtins.uses_array {
+    let bytestr_commands = if ctx.used_builtins.uses_bytestr {
         let nodes =
             crate::prelude::bytestr_functions(&ctx.name_ctxt.prefix_box(&crate::def::array_type()));
 

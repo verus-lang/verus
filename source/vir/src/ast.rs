@@ -823,7 +823,7 @@ pub enum Constant {
     Real(String),
     /// Hold generated string slices in here
     StrSlice(Arc<String>),
-    /// Hode byte-string literal here
+    /// Hold byte-string literal here
     ByteStr(Arc<Vec<u8>>),
     // Hold unicode values here
     Char(char),

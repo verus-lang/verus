@@ -108,6 +108,7 @@ struct State {
     spec_fn_types: HashSet<usize>,
     dyn_traits: HashSet<Path>,
     uses_array: bool,
+    uses_bytestr: bool,
     uses_pointee_metadata: bool,
     uses_ieee_float: bool,
     fndef_types: HashSet<Fun>,
@@ -546,6 +547,12 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                             reach_function(ctxt, state, &fn_slice_len());
                         }
                     }
+                    ExprX::Const(crate::ast::Constant::ByteStr(_)) => {
+                        state.uses_bytestr = true;
+                    }
+                    ExprX::RevealByteString(_) => {
+                        state.uses_bytestr = true;
+                    }
                     ExprX::Unary(UnaryOp::IeeeFloat(_), _)
                     | ExprX::Binary(BinaryOp::IeeeFloat(_), _, _) => {
                         state.uses_ieee_float = true;
@@ -854,6 +861,7 @@ fn collect_broadcast_triggers(f: &Function) -> Vec<(Vec<Fun>, Vec<ReachedType>)>
 #[derive(Debug)]
 pub struct UsedBuiltins {
     pub uses_array: bool,
+    pub uses_bytestr: bool,
     pub uses_pointee_metadata: bool,
     pub uses_ieee_float: bool,
 }
@@ -1355,6 +1363,7 @@ pub fn prune_krate_for_module_or_krate(
     };
     let used_builtins = UsedBuiltins {
         uses_array: state.uses_array,
+        uses_bytestr: state.uses_bytestr,
         uses_pointee_metadata: state.uses_pointee_metadata,
         uses_ieee_float: state.uses_ieee_float,
     };
