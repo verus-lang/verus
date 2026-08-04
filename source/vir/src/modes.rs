@@ -787,9 +787,11 @@ impl State {
 // Any non-atomic call at all is an error. It's also an error to have >= 2 atomic calls.
 //
 // We disallow loops entirely. (It would be OK to allow proof-only loops, but those
-// currently aren't supported at all.) We don't do anything fancy for branching statements.
-// In principle, we could do something fancy and allow 1 atomic instruction in each branch,
-// but for now we just error if there is more than 1 atomic call in the AST.
+// currently aren't supported at all.)
+//
+// Branches are counted per path, not summed: an `if` or a `match` performs as many atomic
+// operations as its heaviest arm, since only one arm runs. Non-atomic calls and loops are
+// errors on any path at all, so those just accumulate as usual.
 
 #[derive(Default, Clone)]
 struct AtomicInstCollector {
@@ -861,6 +863,43 @@ impl AtomicInstCollector {
         }
 
         Ok(())
+    }
+}
+
+/// Check one arm of a conditional on its own, so its atomic operations are not confused with
+/// its siblings'. Returns what the arm collected, which is nothing when there is no atomic
+/// context to account to.
+fn check_branch(
+    ctxt: &Ctxt,
+    record: &mut Record,
+    typing: &mut Typing,
+    outer_mode: Mode,
+    expect: Expect,
+    expr: &Expr,
+    outer_proph: &Proph,
+) -> Result<((Mode, Proph), AtomicInstCollector), VirErr> {
+    if typing.atomic_insts.is_none() {
+        let result = check_expr(ctxt, record, typing, outer_mode, expect, expr, outer_proph)?;
+        return Ok((result, AtomicInstCollector::new()));
+    }
+    let mut typing = typing.push_atomic_insts(Some(AtomicInstCollector::new()));
+    let result = check_expr(ctxt, record, &mut typing, outer_mode, expect, expr, outer_proph)?;
+    Ok((result, typing.atomic_insts.clone().expect("branch atomic_insts")))
+}
+
+/// Account a conditional's arms to the enclosing atomic context. Only one arm runs, so the
+/// atomic operations are the most any single arm performs rather than their total, while
+/// non-atomic calls and loops come in from every arm, being errors on any path at all. An arm
+/// that is bad on its own stays bad: it carries two or more spans, so it survives the max.
+fn record_branches(typing: &mut Typing, branches: Vec<AtomicInstCollector>) {
+    if let Some(collector) = typing.update_atomic_insts() {
+        for branch in branches.iter() {
+            collector.non_atomics.extend(branch.non_atomics.iter().cloned());
+            collector.loops.extend(branch.loops.iter().cloned());
+        }
+        if let Some(heaviest) = branches.into_iter().max_by_key(|b| b.atomics.len()) {
+            collector.atomics.extend(heaviest.atomics);
+        }
     }
 }
 
@@ -2684,12 +2723,15 @@ fn check_expr(
                 _ => outer_mode,
             };
             let outer_proph_branch = outer_proph.clone().join(cond_proph.clone());
-            let (mode2, proph2) =
-                check_expr(ctxt, record, typing, mode_branch, expect, e2, &outer_proph_branch)?;
+            let ((mode2, proph2), atomics2) =
+                check_branch(ctxt, record, typing, mode_branch, expect, e2, &outer_proph_branch)?;
             match e3 {
-                None => Ok((mode2, cond_proph.join(proph2))),
+                None => {
+                    record_branches(typing, vec![atomics2]);
+                    Ok((mode2, cond_proph.join(proph2)))
+                }
                 Some(e3) => {
-                    let (mode3, proph3) = check_expr(
+                    let ((mode3, proph3), atomics3) = check_branch(
                         ctxt,
                         record,
                         typing,
@@ -2698,6 +2740,7 @@ fn check_expr(
                         e3,
                         &outer_proph_branch,
                     )?;
+                    record_branches(typing, vec![atomics2, atomics3]);
                     Ok((mode_join(mode2, mode3), cond_proph.join(proph2).join(proph3)))
                 }
             }
@@ -2743,6 +2786,7 @@ fn check_expr(
                     ProphVar::Yes(ProphVarReason::Inferred(Rc::new(reason.clone())))
                 }
             };
+            let mut arm_atomics = vec![];
             for arm in arms.iter() {
                 let mut typing = typing.push_var_scope();
                 add_pattern(
@@ -2774,7 +2818,7 @@ fn check_expr(
                     (Mode::Exec, Mode::Spec | Mode::Proof) => Mode::Proof,
                     (m, _) => m,
                 };
-                let (arm_mode, arm_proph) = check_expr(
+                let ((arm_mode, arm_proph), atomics) = check_branch(
                     ctxt,
                     record,
                     &mut typing,
@@ -2783,9 +2827,11 @@ fn check_expr(
                     &arm.x.body,
                     &arm_outer_proph,
                 )?;
+                arm_atomics.push(atomics);
                 final_mode = mode_join(final_mode, arm_mode);
                 final_proph = final_proph.join(guard_proph).join(arm_proph);
             }
+            record_branches(typing, arm_atomics);
             Ok((final_mode, final_proph))
         }
         ExprX::Loop {
