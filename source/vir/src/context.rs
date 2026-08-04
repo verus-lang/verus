@@ -442,7 +442,10 @@ impl GlobalCtx {
             // This is currently needed because external_body broadcast_forall functions
             // are currently implicitly imported.
             // In the future, this might become less important; we could remove this heuristic.
-            if f.x.body.is_none() && f.x.extra_dependencies.len() == 0 {
+            use crate::ast::FunctionKind::TraitMethodImpl;
+            let inherit_default =
+                matches!(&f.x.kind, TraitMethodImpl { inherit_body_from: Some(_), .. });
+            if f.x.body.is_none() && f.x.extra_dependencies.len() == 0 && !inherit_default {
                 func_call_graph.add_node(Node::Fun(f.x.name.clone()));
             }
         }
@@ -508,6 +511,7 @@ impl GlobalCtx {
                 f,
             )?;
         }
+
         for group in &krate.reveal_groups {
             let group_node = Node::Fun(group.x.name.clone());
             func_call_graph.add_node(group_node.clone());

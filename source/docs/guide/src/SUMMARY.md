@@ -82,6 +82,8 @@
     - [Assertions about mutable references](assert-mut-ref.md)
 - [Traits](traits.md)
 - [Iterator Specifications](./iterator-specs.md)
+    - [Finite Iterators](./iterator-specs-finite.md)
+    - [Infinite Iterators](./iterator-specs-infinite.md)
 - [Higher-order executable functions](./higher-order-fns.md)
     - [Passing functions as values](./exec_funs_as_values.md)
     - [Closures](./exec_closures.md)
