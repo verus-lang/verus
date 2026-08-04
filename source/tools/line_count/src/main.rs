@@ -1,6 +1,7 @@
 use clap::Parser;
 use line_count_lib::attribution::CodeKind;
-use line_count_lib::config::{Config, RunMode};
+use line_count_lib::config::Config;
+use line_count_lib::config::RunMode;
 use line_count_lib::deps::get_dependencies;
 use line_count_lib::files::find_rust_files;
 use line_count_lib::stats::Summary;
@@ -24,16 +25,7 @@ fn run(config: Config, run_mode_paths: RunMode) -> Result<(), String> {
     let config = Rc::new(config);
     let (root_path, files) = match run_mode_paths {
         RunMode::DepsPath(path) => get_dependencies(&path)?,
-        RunMode::OneFile(path) => {
-            let pathd = path.display();
-            (
-                path.parent().ok_or_else(|| format!("invalid path {pathd}"))?.to_owned(),
-                vec![std::path::PathBuf::from(
-                    path.file_name().ok_or_else(|| format!("invalid path {pathd}"))?,
-                )],
-            )
-        }
-        RunMode::Dir(paths) => {
+        RunMode::Files(paths) => {
             find_rust_files(&paths).map_err(|e| format!("failed to find rust files: {e:?}"))?
         }
     };

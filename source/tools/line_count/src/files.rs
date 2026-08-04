@@ -6,7 +6,14 @@ use std::path::PathBuf;
 // ASSUMPTIONS:
 // - paths is not empty
 // - paths are all canonicalized
-fn find_common_root<'a>(mut paths: impl Iterator<Item = &'a Path>) -> PathBuf {
+fn find_common_root<'a>(paths: impl Iterator<Item = &'a Path>) -> PathBuf {
+    let mut paths = paths.map(|p| {
+        if p.is_dir() {
+            p
+        } else {
+            p.parent().expect("canonicalized paths that are not dirs have a parent")
+        }
+    });
     let mut root = paths.next().expect("paths is not empty").to_owned();
 
     for path in paths {

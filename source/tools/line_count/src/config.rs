@@ -23,6 +23,5 @@ pub struct Config {
 
 pub enum RunMode {
     DepsPath(std::path::PathBuf),
-    OneFile(std::path::PathBuf),
-    Dir(Vec<std::path::PathBuf>),
+    Files(Vec<std::path::PathBuf>),
 }
