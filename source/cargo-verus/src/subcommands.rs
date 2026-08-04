@@ -11,7 +11,7 @@ use colored::Colorize;
 
 use crate::cli::{CargoOptions, VerifyCommand, VerusArgFwdSelector};
 use crate::metadata::{MetadataIndex, fetch_metadata, make_package_id};
-use crate::toolchains::{self, TOOLCHAINS, is_matching_known_and_used};
+use crate::toolchains::{self, Crate, TOOLCHAINS, Toolchain, is_matching_known_and_used};
 
 pub const CARGO_DEFAULT_LIB_METADATA: &str = "__CARGO_DEFAULT_LIB_METADATA";
 
@@ -29,6 +29,37 @@ pub struct NewCreationPlan {
     pub current_dir: PathBuf,
     pub name: String,
     pub is_bin: bool,
+}
+
+/// The `vstd` dependency line used by `cargo verus new` when the running Verus version has no
+/// entry in [`TOOLCHAINS`].
+///
+/// `tools/bump_crate_versions` rewrites the line of this file matching `^vstd =` whenever `vstd`
+/// is republished, so this must remain the only such line and must remain a registry pin.
+const FALLBACK_VSTD_DEPENDENCY: &str = r#"
+vstd = "=0.0.0-2026-08-02-0125"
+"#;
+
+/// Render the `vstd` dependency line for a project scaffolded by `cargo verus new`.
+///
+/// The line is derived from the toolchain entry naming `verus_version`, so that the scaffolded
+/// project pairs `vstd` the way the running release does: an exact registry version requirement
+/// for a registry pairing, and a git dependency for a git-commit pairing. One variant is never
+/// rendered as the other.
+///
+/// Falls back to [`FALLBACK_VSTD_DEPENDENCY`] when the running Verus version is unknown or has no
+/// matching entry, so that project creation keeps working in those cases.
+fn render_vstd_dependency(toolchains: &[Toolchain], verus_version: Option<&str>) -> String {
+    let known_vstd = verus_version
+        .and_then(|version| toolchains.iter().find(|toolchain| toolchain.verus == version))
+        .map(|toolchain| &toolchain.vstd);
+
+    match known_vstd {
+        Some(Crate::Registry(version)) => format!("vstd = \"={version}\""),
+        Some(vstd @ Crate::GitCommit { .. }) => format!("vstd = {vstd}"),
+        // Fallback: either no running Verus version, or no entry naming it.
+        None => FALLBACK_VSTD_DEPENDENCY.trim().to_owned(),
+    }
 }
 
 pub fn create_new_project(creation_plan: &NewCreationPlan) -> Result<ExitCode> {
@@ -66,6 +97,10 @@ fn foo() {
         )
     };
 
+    // Best-effort: a missing or unusable adjacent `verus` binary must not fail project creation.
+    let vstd_dependency =
+        render_vstd_dependency(&TOOLCHAINS, get_verus_driver_version().ok().as_deref());
+
     let gitignore_data = "/target";
     let cargo_toml_data = format!(
         r#"
@@ -75,7 +110,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-vstd = "=0.0.0-2026-08-02-0125"
+{vstd_dependency}
 
 [package.metadata.verus]
 verify = true
@@ -555,4 +590,84 @@ fn get_verus_driver_version() -> Result<String> {
     stdout.lines().find_map(|line| line.strip_prefix("  Version: ").map(ToOwned::to_owned)).context(
         format!("Failed to parse version from `{}` output:\n{}", command.display(), stdout),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn toolchain(verus: &'static str, vstd: Crate) -> Toolchain {
+        Toolchain { verus, vstd, z3: "4.12.5", singular: "4.3.2" }
+    }
+
+    #[test]
+    fn render_vstd_dependency_pins_a_registry_pairing() {
+        let toolchains = [
+            toolchain("0.2026.06.07.cd03505", Crate::Registry("0.0.0-2026-05-31-0205")),
+            toolchain(
+                "0.2026.08.04.303bde1",
+                Crate::GitCommit { git: "https://github.com/verus-lang/verus.git", rev: "303bde1" },
+            ),
+        ];
+
+        assert_eq!(
+            render_vstd_dependency(&toolchains, Some("0.2026.06.07.cd03505")),
+            r#"vstd = "=0.0.0-2026-05-31-0205""#
+        );
+    }
+
+    #[test]
+    fn render_vstd_dependency_pins_a_git_commit_pairing() {
+        let toolchains = [
+            toolchain("0.2026.06.07.cd03505", Crate::Registry("0.0.0-2026-05-31-0205")),
+            toolchain(
+                "0.2026.08.04.303bde1",
+                Crate::GitCommit { git: "https://github.com/verus-lang/verus.git", rev: "303bde1" },
+            ),
+        ];
+
+        assert_eq!(
+            render_vstd_dependency(&toolchains, Some("0.2026.08.04.303bde1")),
+            r#"vstd = { git = "https://github.com/verus-lang/verus.git", rev = "303bde1" }"#
+        );
+    }
+
+    #[test]
+    fn render_vstd_dependency_falls_back_without_a_matching_toolchain() {
+        let toolchains =
+            [toolchain("0.2026.06.07.cd03505", Crate::Registry("0.0.0-2026-05-31-0205"))];
+
+        assert_eq!(
+            render_vstd_dependency(&toolchains, Some("0.2026.08.04.303bde1")),
+            FALLBACK_VSTD_DEPENDENCY.trim()
+        );
+    }
+
+    #[test]
+    fn render_vstd_dependency_falls_back_without_a_verus_version() {
+        let toolchains =
+            [toolchain("0.2026.06.07.cd03505", Crate::Registry("0.0.0-2026-05-31-0205"))];
+
+        assert_eq!(render_vstd_dependency(&toolchains, None), FALLBACK_VSTD_DEPENDENCY.trim());
+    }
+
+    #[test]
+    fn fallback_vstd_dependency_is_a_single_registry_pin_line() {
+        // `tools/bump_crate_versions` rewrites this literal, so assert its shape, not its version.
+        let fallback = FALLBACK_VSTD_DEPENDENCY.trim();
+        assert!(fallback.starts_with(r#"vstd = "="#), "{fallback}");
+        assert!(fallback.ends_with('"'), "{fallback}");
+        assert!(!fallback.contains('\n'), "{fallback}");
+    }
+
+    #[test]
+    fn only_the_fallback_matches_the_version_bumper_regex() {
+        // `tools/bump_crate_versions` rewrites every line of this file matching `(?m)^vstd =.*$`,
+        // and panics unless there is exactly one such line.
+        let matches = include_str!("subcommands.rs")
+            .lines()
+            .filter(|line| line.starts_with("vstd ="))
+            .count();
+        assert_eq!(matches, 1);
+    }
 }
