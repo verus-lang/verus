@@ -4,7 +4,7 @@
 Thanks for your contribution!
 
 Please note: 
-  - All code produced via agentic AI **must be disclosed in the PR**. 
+  - All code produced via agentic AI **must be disclosed in the PR**. Use: `Assisted-by: <tool>:<model>`.
   - **The PR description, along with subsequent PR discussion comments, must be human-written.**
 
 See our [guide on Verus contributions](https://github.com/verus-lang/verus/blob/main/CONTRIBUTING.md) for more details.

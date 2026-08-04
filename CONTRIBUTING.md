@@ -20,7 +20,6 @@ If you want to aid us in debugging (or are unable to share your full recording, 
 
 Verus is a verification tool, but it is not itself verified, so we use traditional software methods like testing and human review to ensure quality. Therefore, we have high standards for code changes.
 
-
 As a new contributor, you should expect at least one review from a core contributor (e.g., @tjhance, @Chris-Hawblitzel, or @parno). The first reviewer will also determine if additional reviews are necessary.
 
 In the PR description, please describe:
@@ -32,7 +31,7 @@ For *opinionated changes*, such as those that add a feature or dramatically modi
 
 ### Policy for AI-generated and AI-assisted code
 
-AI use is permitted, but all code produced via agentic AI must be disclosed in the PR.  Regardless of how the code is produced, we expect the human contributor to take responsibility for the quality of the code.
+AI use is permitted, but all code produced via agentic AI must be disclosed in the PR.  Regardless of how the code is produced, we expect the human contributor to take responsibility for the quality of the code.  As a consequence of this position, **do not** list any tool (AI or otherwise) as a co-author.  Instead, you can use `Assisted-by: <tool>:<model>`.
 
 AI-assisted coding, or "vibecoding," carries a number of risks. These risks include both damage to overall code quality and the risk of overburdening the reviewers, as code can be generated faster than it can be reviewed. We will close a PR if we feel those risks cannot be satisfactorily managed, or if our time is abused.
 
