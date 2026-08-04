@@ -95,7 +95,7 @@ automatically extract into HTML documentation.
 
 You can compile the current documentation by running (in the `source` directory)
 ```
-RUSTC_BOOTSTRAP=1 cargo doc 
+RUSTC_BOOTSTRAP=1 cargo doc
 ```
 which will produce documentation files, e.g., `./target/doc/rust_verify/index.html`
 
@@ -162,6 +162,15 @@ The tests run the verifier as a spawned subprocess, so the script instruments
 that `rust_verify` binary (not the test binary), and gathers coverage from those
 processes.
 
+### Line count tests
+
+Some of the tests for the `line_count` tool (located in `source/tools/line_count`) use [`cargo-insta`]( https://docs.jj-vcs.dev/latest/templates/#commit-keywords
+). This is a testing mechanism that makes it nice to test against snapshots of the output of a tool.
+
+`cargo-insta` is not needed to run the tests, but it provides a nice interface for accepting/rejecting new snapshots on test failure.
+This can be useful, for instance, if one of your changes changes the way `line_count` computes the line attribution split, making the snapshots change.
+If you find you need `cargo-insta`, it can be installed with `cargo install cargo-insta`.
+
 ## Contributing to the standard library (`vstd`)
 
 ### What to contribute
@@ -172,10 +181,10 @@ about them) to enable the larger Verus community to develop their own
 abstractions and proof techniques.  A particularly important use case for
 `vstd` is supporting the abstractions needed to provide specs for Rust's `std`,
 so that people developing with Verus can use standard Rust constructs without
-relying on external dependencies.   
+relying on external dependencies.
 
 If your contribution doesn't fall into this minimal subset, it may
-be better off as an independent package published on [crates.io](https://crates.io), 
+be better off as an independent package published on [crates.io](https://crates.io),
 which the community can then integrate via `cargo verus`.  See the
 [Best Practices](best-practices-for-publishing-verusverified-code-on-cratesio) below.
 
@@ -214,7 +223,7 @@ Inside `vstd`:
 
 ## Best practices for publishing Verus-verified code on crates.io
 
-[Publishing](https://doc.rust-lang.org/cargo/reference/publishing.html) 
+[Publishing](https://doc.rust-lang.org/cargo/reference/publishing.html)
 your Verus-verified crate on [crates.io](https://crates.io) is a great
 way to enable more people to build on your hard work.  If you do so, we encourage
 you to follow these best practices.
@@ -223,11 +232,11 @@ you to follow these best practices.
    file that appears on the crates.io landing page.  For example, you might say:
    "This crate contains formal specifications and proofs about Widgets,
    primarily for use with [Verus](https://github.com/verus-lang/verus), a tool
-   for verifying the correctness of Rust code." 
+   for verifying the correctness of Rust code."
 2. If your crate contains verified executable Rust code that could be used by both unverified
    and verified projects, you might instead say something like: "This crate
    implements Widgets with the following fun features: [Feature list].  The
-   code has been formally verified using [Verus](https://github.com/verus-lang/verus), 
+   code has been formally verified using [Verus](https://github.com/verus-lang/verus),
    which means [list of properties you proved, with suitable caveats for what
    properties have not been proven]."  It's important to convey the limitations
    of your proof (e.g., what you may have assumed about other libraries), so that
