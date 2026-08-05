@@ -1,4 +1,4 @@
-name: ci-cargo
+name: ci
 
 on:
   workflow_dispatch:
