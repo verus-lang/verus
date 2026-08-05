@@ -771,6 +771,7 @@ fn output_invariant(
                 stream.extend(quote_spanned_vstd! { vstd, predicate.span() =>
                     #pred_struct_decl
                     impl<#type_params> #vstd::invariant::InvariantPredicate<#k_type, #v_type> for #pred_self_ty #where_clause {
+                        #[verifier::prophetic]
                         #publish_kind spec fn inv(#tmp_k: #k_type, #tmp_v: #v_type) -> bool {
                             let #k_pat = #tmp_k;
                             let #v_pat = #tmp_v;

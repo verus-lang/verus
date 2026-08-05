@@ -57,6 +57,7 @@ macro_rules! declare_atomic_type {
 
             pub open spec fn well_formed(&self) -> bool {
                 self.atomic_inv@.constant().1 == self.patomic.id()
+                && self.atomic_inv@.namespace() == 0
             }
         }
 

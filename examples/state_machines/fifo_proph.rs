@@ -1,6 +1,7 @@
 // rust_verify/tests/example.rs expect-warnings
 #![cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
 #![allow(unused_imports)]
+#![allow(deprecated)]
 
 // port of single-producer single-consumer queue from LinearDafny
 // https://github.com/vmware-labs/verified-betrfs/tree/concurrency-experiments/concurrency/spsc-queue
@@ -14,6 +15,8 @@ use vstd::modes::*;
 use vstd::multiset::*;
 use vstd::prelude::*;
 use vstd::seq::*;
+use vstd::proph::*;
+use vstd::invariant::*;
 use vstd::{pervasive::*, prelude::*, *};
 
 verus! {
@@ -67,6 +70,17 @@ tokenized_state_machine!{FifoQueue<T> {
 
         #[sharding(variable)]
         pub consumer: ConsumerState,
+
+        // Fields for prophecy-based spec
+
+        #[sharding(variable)]
+        pub history: Seq<T>,
+
+        #[sharding(variable)]
+        pub producer_position: nat,
+
+        #[sharding(variable)]
+        pub consumer_position: nat,
     }
     // ANCHOR_END: fields
 
@@ -185,6 +199,32 @@ tokenized_state_machine!{FifoQueue<T> {
             self.valid_storage_at_idx(i)
     }
 
+    pub open spec fn cell_for_idx(&self, i: int) -> nat {
+        let x = self.head + (i - self.consumer_position) + (if self.consumer is Idle { 0int } else { 1int });
+        if x >= self.backing_cells.len() {
+            (x - self.backing_cells.len()) as nat
+        } else {
+            x as nat
+        }
+    }
+
+    #[invariant]
+    pub fn proph_inv(&self) -> bool {
+        &&& self.producer_position == self.history.len()
+        &&& self.consumer_position <= self.history.len()
+        &&& self.head <= self.tail ==>
+                self.producer_position - self.consumer_position == 
+                    self.tail - self.head - (if self.consumer is Idle { 0int } else { 1int })
+        &&& self.head > self.tail ==>
+                self.producer_position - self.consumer_position == 
+                    self.tail - self.head - (if self.consumer is Idle { 0int } else { 1int })
+                        + self.backing_cells.len()
+        &&& (forall |i| #![all_triggers]
+            self.consumer_position <= i < self.producer_position ==>
+                self.history[i] == self.storage[self.cell_for_idx(i)].value()
+        )
+    }
+
     init!{
         initialize(backing_cells: Seq<CellId>, storage: Map<nat, cell::PointsTo<T>>) {
             // Upon initialization, the user needs to deposit _all_ the relevant
@@ -205,6 +245,10 @@ tokenized_state_machine!{FifoQueue<T> {
             init tail = 0;
             init producer = ProducerState::Idle(0);
             init consumer = ConsumerState::Idle(0);
+
+            init history = Seq::empty();
+            init producer_position = 0;
+            init consumer_position = 0;
         }
     }
 
@@ -290,6 +334,10 @@ tokenized_state_machine!{FifoQueue<T> {
 
             // Check the permission back into the storage map.
             deposit storage += [tail => perm] by { assert(pre.valid_storage_at_idx(tail)); };
+
+            assert(pre.producer_position == pre.history.len());
+            update history = pre.history.push(perm.value());
+            update producer_position = pre.producer_position + 1;
         }
     }
     // ANCHOR_END: transition_produce_end
@@ -326,6 +374,10 @@ tokenized_state_machine!{FifoQueue<T> {
                 assert(pre.in_active_range(head));
                 assert(pre.valid_storage_at_idx(head));
             };
+
+            assert pre.consumer_position < pre.history.len();
+            assert perm.value() == pre.history[pre.consumer_position as int];
+            update consumer_position = pre.consumer_position + 1;
         }
     }
 
@@ -465,11 +517,15 @@ struct_with_invariants!{
         tail: AtomicU64<_, FifoQueue::tail<T>, _>,
 
         instance: Tracked<FifoQueue::Instance<T>>,
+
+        proph: Ghost<ProphecySeq<T>>,
+        history: Tracked<AtomicInvariant<_, (FifoQueue::history<T>, ProphecySeq<T>), _>>,
     }
 
     pub closed spec fn wf(&self) -> bool {
         predicate {
             // The Cell IDs in the instance protocol match the cell IDs in the actual vector:
+            &&& self.history.namespace() == 1
             &&& self.instance@.backing_cells().len() == self.buffer@.len()
             &&& forall|i: int| 0 <= i && i < self.buffer@.len() as int ==>
                 self.instance@.backing_cells().index(i) ==
@@ -485,6 +541,11 @@ struct_with_invariants!{
             &&& g.instance_id() == instance@.id()
             &&& g.value() == v as int
         }
+
+        invariant on history with (proph, instance) is (g: (FifoQueue::history<T>, ProphecySeq<T>)) {
+            &&& g.0.instance_id() == instance@.id()
+            &&& proph.seq() =~= g.0.value() + g.1.seq()
+        }
     }
 }
 // ANCHOR_END: impl_queue_struct
@@ -494,6 +555,7 @@ pub struct Producer<T> {
     queue: Arc<Queue<T>>,
     tail: usize,
     producer: Tracked<FifoQueue::producer<T>>,
+    producer_position: Tracked<FifoQueue::producer_position<T>>,
 }
 
 impl<T> Producer<T> {
@@ -502,6 +564,14 @@ impl<T> Producer<T> {
             && self.producer@.instance_id() == (*self.queue).instance@.id()
             && self.producer@.value() == ProducerState::Idle(self.tail as nat)
             && (self.tail as int) < (*self.queue).buffer@.len()
+            && self.producer_position@.instance_id() == (*self.queue).instance@.id()
+    }
+
+    #[verifier::prophetic]
+    pub closed spec fn proph_seq(&self) -> Seq<T> {
+        self.queue.proph.seq().subrange(
+            self.producer_position.value() as int,
+            self.queue.proph.seq().len() as int)
     }
 }
 // ANCHOR_END: impl_producer_struct
@@ -511,6 +581,7 @@ pub struct Consumer<T> {
     queue: Arc<Queue<T>>,
     head: usize,
     consumer: Tracked<FifoQueue::consumer<T>>,
+    consumer_position: Tracked<FifoQueue::consumer_position<T>>,
 }
 
 impl<T> Consumer<T> {
@@ -519,6 +590,14 @@ impl<T> Consumer<T> {
             && self.consumer@.instance_id() == (*self.queue).instance@.id()
             && self.consumer@.value() == ConsumerState::Idle(self.head as nat)
             && (self.head as int) < (*self.queue).buffer@.len()
+            && self.consumer_position@.instance_id() == (*self.queue).instance@.id()
+    }
+
+    #[verifier::prophetic]
+    pub closed spec fn proph_seq(&self) -> Seq<T> {
+        self.queue.proph.seq().subrange(
+            self.consumer_position.value() as int,
+            self.queue.proph.seq().len() as int)
     }
 }
 // ANCHOR_END: impl_consumer_struct
@@ -530,6 +609,7 @@ pub fn new_queue<T>(len: usize) -> (pc: (Producer<T>, Consumer<T>))
     ensures
         pc.0.wf(),
         pc.1.wf(),
+        pc.0.proph_seq() == pc.1.proph_seq(),
 {
     // Initialize the vector to store the cells
     let mut backing_cells_vec = Vec::<PCell<T>>::new();
@@ -569,17 +649,25 @@ pub fn new_queue<T>(len: usize) -> (pc: (Producer<T>, Consumer<T>))
         Tracked(tail_token),
         Tracked(producer_token),
         Tracked(consumer_token),
+        Tracked(history_token),
+        Tracked(producer_position_token),
+        Tracked(consumer_position_token),
     ) = FifoQueue::Instance::initialize(backing_cells_ids, perms, perms);
     // Initialize atomics
     let tracked_inst: Tracked<FifoQueue::Instance<T>> = Tracked(instance.clone());
     let head_atomic = AtomicU64::new(Ghost(tracked_inst), 0, Tracked(head_token));
     let tail_atomic = AtomicU64::new(Ghost(tracked_inst), 0, Tracked(tail_token));
+    let tracked proph_seq = ProphecySeq::<T>::new();
+    let tracked history_atomic =
+        AtomicInvariant::new((Ghost(proph_seq), tracked_inst), (history_token, proph_seq), 1);
     // Initialize the queue
     let queue = Queue::<T> {
         instance: Tracked(instance),
         head: head_atomic,
         tail: tail_atomic,
         buffer: backing_cells_vec,
+        proph: Ghost(proph_seq),
+        history: Tracked(history_atomic),
     };
     // Share the queue between the producer and consumer
     let queue_arc = Arc::new(queue);
@@ -587,8 +675,14 @@ pub fn new_queue<T>(len: usize) -> (pc: (Producer<T>, Consumer<T>))
         queue: queue_arc.clone(),
         tail: 0,
         producer: Tracked(producer_token),
+        producer_position: Tracked(producer_position_token),
     };
-    let cons = Consumer::<T> { queue: queue_arc, head: 0, consumer: Tracked(consumer_token) };
+    let cons = Consumer::<T> {
+        queue: queue_arc,
+        head: 0,
+        consumer: Tracked(consumer_token),
+        consumer_position: Tracked(consumer_position_token),
+    };
     (prod, cons)
 }
 // ANCHOR_END: impl_new_queue
@@ -600,11 +694,13 @@ impl<T> Producer<T> {
             old(self).wf(),
         ensures
             final(self).wf(),
+            old(self).proph_seq().len() >= 1,
+            t == old(self).proph_seq()[0],
+            final(self).proph_seq() =~= old(self).proph_seq().drop_first()
     {
         // Loop: if the queue is full, then block until it is not.
         loop
-            invariant
-                self.wf(),
+            invariant self.wf(), *self == *old(self)
         {
             let queue = &*self.queue;
             let len = queue.buffer.len();
@@ -650,9 +746,13 @@ impl<T> Producer<T> {
                 queue.buffer[self.tail].put(Tracked(&mut cell_perm), t);
                 // Store the updated tail to the shared `tail` atomic,
                 // while performing the `produce_end` transition.
+                let credit = create_open_invariant_credit();
                 atomic_with_ghost!(&queue.tail => store(next_tail as u64); ghost tail_token => {
-                    queue.instance.borrow().produce_end(cell_perm,
-                        cell_perm, &mut tail_token, self.producer.borrow_mut());
+                    open_atomic_invariant_in_proof!(credit.get() => &queue.history => history => {
+                        queue.instance.borrow().produce_end(cell_perm,
+                            cell_perm, &mut tail_token, self.producer.borrow_mut(), &mut history.0, self.producer_position.borrow_mut());
+                        history.1.resolve_cons(cell_perm.value());
+                    });
                 });
                 self.tail = next_tail;
                 return ;
@@ -669,10 +769,13 @@ impl<T> Consumer<T> {
             old(self).wf(),
         ensures
             final(self).wf(),
+            old(self).proph_seq().len() >= 1,
+            t == old(self).proph_seq()[0],
+            final(self).proph_seq() =~= old(self).proph_seq().drop_first()
     {
         loop
             invariant
-                self.wf(),
+                self.wf(), *self == *old(self),
         {
             let queue = &*self.queue;
             let len = queue.buffer.len();
@@ -683,12 +786,17 @@ impl<T> Consumer<T> {
                 self.head + 1
             };
             let tracked cell_perm: Option<cell::PointsTo<T>>;
+            let credit = create_open_invariant_credit();
             let tail =
                 atomic_with_ghost!(&queue.tail => load();
                 returning tail;
                 ghost tail_token => {
                     cell_perm = if self.head as u64 != tail {
-                        let tracked (_, Tracked(cp)) = queue.instance.borrow().consume_start(&tail_token, self.consumer.borrow_mut());
+                        let tracked cp;
+                        open_atomic_invariant_in_proof!(credit.get() => &queue.history => history => {
+                            let tracked (_, Tracked(_cp)) = queue.instance.borrow().consume_start(&tail_token, self.consumer.borrow_mut(), &history.0, self.consumer_position.borrow_mut());
+                            cp = _cp;
+                        });
                         Option::Some(cp)
                     } else {
                         Option::None
@@ -724,41 +832,13 @@ fn main() {
     producer.enqueue(6);
     producer.enqueue(7);
 
-    let x = consumer.dequeue();
-    print_u64(x);
+    let x0 = consumer.dequeue();
+    let x1 = consumer.dequeue();
+    let x2 = consumer.dequeue();
 
-    let x = consumer.dequeue();
-    print_u64(x);
-
-    let x = consumer.dequeue();
-    print_u64(x);
-
-    // Multi-threaded test:
-
-    let producer = producer;
-    let _join_handle = vstd::thread::spawn(
-        move ||
-            {
-                let mut producer = producer;
-                let mut i = 0;
-                while i < 100
-                    invariant
-                        producer.wf(),
-                {
-                    producer.enqueue(i);
-                    i = i + 1;
-                }
-            },
-    );
-    let mut i = 0;
-    while i < 100
-        invariant
-            consumer.wf(),
-    {
-        let x = consumer.dequeue();
-        print_u64(x);
-        i = i + 1;
-    }
+    assert(x0 == 5);
+    assert(x1 == 6);
+    assert(x2 == 7);
 }
 
 } // verus!
