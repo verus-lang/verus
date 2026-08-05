@@ -4,6 +4,7 @@ mod plan;
 mod subcommands;
 pub mod test_utils;
 mod toolchains;
+mod vstd_build;
 
 pub const BIN_NAME: &str = "cargo-verus";
 

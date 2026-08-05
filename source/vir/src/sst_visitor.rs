@@ -477,6 +477,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
             }
             StmX::Fuel(..) => R::ret(|| stm.clone()),
             StmX::RevealString(_) => R::ret(|| stm.clone()),
+            StmX::RevealByteString(_) => R::ret(|| stm.clone()),
             StmX::DeadEnd(stm) => {
                 let s = self.visit_stm(&stm)?;
                 R::ret(|| stm_new(StmX::DeadEnd(R::get(s))))

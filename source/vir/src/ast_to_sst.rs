@@ -2204,6 +2204,10 @@ pub(crate) fn expr_to_stm_opt(
             let stm = Spanned::new(expr.span.clone(), StmX::RevealString(path.clone()));
             Ok((vec![stm], Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
         }
+        ExprX::RevealByteString(bytes) => {
+            let stm = Spanned::new(expr.span.clone(), StmX::RevealByteString(bytes.clone()));
+            Ok((vec![stm], Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
+        }
         ExprX::Header(_) => {
             return Err(error(&expr.span, "header expression not allowed here"));
         }

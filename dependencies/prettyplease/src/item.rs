@@ -6,12 +6,13 @@ use crate::path::PathKind;
 use crate::INDENT;
 use proc_macro2::TokenStream;
 use verus_syn::{
-    Fields, FnArg, ForeignItem, ForeignItemFn, ForeignItemMacro, ForeignItemStatic,
-    ForeignItemType, ImplItem, ImplItemConst, ImplItemFn, ImplItemMacro, ImplItemType, Item,
-    ItemConst, ItemEnum, ItemExternCrate, ItemFn, ItemForeignMod, ItemImpl, ItemMacro, ItemMod,
-    ItemStatic, ItemStruct, ItemTrait, ItemTraitAlias, ItemType, ItemUnion, ItemUse, Receiver,
-    Signature, StaticMutability, TraitItem, TraitItemConst, TraitItemFn, TraitItemMacro,
-    TraitItemType, Type, UseGlob, UseGroup, UseName, UsePath, UseRename, UseTree, Variadic,
+    BroadcastUse, Fields, FnArg, ForeignItem, ForeignItemFn, ForeignItemMacro, ForeignItemStatic,
+    ForeignItemType, Global, GlobalInner, GlobalLayout, GlobalSizeOf, ImplItem, ImplItemConst,
+    ImplItemFn, ImplItemMacro, ImplItemType, Item, ItemBroadcastGroup, ItemConst, ItemEnum,
+    ItemExternCrate, ItemFn, ItemForeignMod, ItemImpl, ItemMacro, ItemMod, ItemStatic, ItemStruct,
+    ItemTrait, ItemTraitAlias, ItemType, ItemUnion, ItemUse, Receiver, Signature, StaticMutability,
+    TraitItem, TraitItemConst, TraitItemFn, TraitItemMacro, TraitItemType, Type, UseGlob, UseGroup,
+    UseName, UsePath, UseRename, UseTree, Variadic,
 };
 
 impl Printer {
@@ -34,6 +35,9 @@ impl Printer {
             Item::Union(item) => self.item_union(item),
             Item::Use(item) => self.item_use(item),
             Item::Verbatim(item) => self.item_verbatim(item),
+            Item::Global(item) => self.item_global(item),
+            Item::BroadcastUse(item) => self.item_broadcast_use(item),
+            Item::BroadcastGroup(item) => self.item_broadcast_group(item),
             _ => unimplemented!("unknown Item"),
         }
     }
@@ -365,6 +369,92 @@ impl Printer {
         }
         self.use_tree(&item.tree);
         self.word(";");
+        self.hardbreak();
+    }
+
+    fn item_global(&mut self, item: &Global) {
+        self.outer_attrs(&item.attrs);
+        self.cbox(INDENT);
+        self.word("global ");
+        match &item.inner {
+            GlobalInner::SizeOf(inner) => self.global_size_of(inner),
+            GlobalInner::Layout(inner) => self.global_layout(inner),
+        }
+        self.word(";");
+        self.end();
+        self.hardbreak();
+    }
+
+    fn global_size_of(&mut self, inner: &GlobalSizeOf) {
+        self.word("size_of ");
+        self.ty(&inner.type_);
+        self.word(" == ");
+        self.expr_lit(&inner.expr_lit);
+    }
+
+    fn global_layout(&mut self, inner: &GlobalLayout) {
+        self.word("layout ");
+        self.ty(&inner.type_);
+        self.word(" is ");
+        let (size_ident, _eq, size_lit) = &inner.size;
+        self.ident(size_ident);
+        self.word(" == ");
+        self.expr_lit(size_lit);
+        if let Some((_comma, align_ident, _eq, align_lit)) = &inner.align {
+            self.word(", ");
+            self.ident(align_ident);
+            self.word(" == ");
+            self.expr_lit(align_lit);
+        }
+    }
+
+    fn item_broadcast_use(&mut self, item: &BroadcastUse) {
+        self.outer_attrs(&item.attrs);
+        self.cbox(INDENT);
+        self.word("broadcast use");
+        if item.brace_token.is_some() {
+            self.word(" {");
+            self.hardbreak_if_nonempty();
+            for path in &item.paths {
+                self.expr_path(path);
+                self.word(",");
+                self.hardbreak();
+            }
+            self.offset(-INDENT);
+            self.word("}");
+        } else {
+            self.nbsp();
+            self.ibox(0);
+            for path in item.paths.iter().delimited() {
+                self.expr_path(&path);
+                if !path.is_last {
+                    self.word(",");
+                    self.space();
+                }
+            }
+            self.end();
+        }
+        self.word(";");
+        self.end();
+        self.hardbreak();
+    }
+
+    fn item_broadcast_group(&mut self, item: &ItemBroadcastGroup) {
+        self.outer_attrs(&item.attrs);
+        self.cbox(INDENT);
+        self.visibility(&item.vis);
+        self.word("broadcast group ");
+        self.ident(&item.ident);
+        self.word(" {");
+        self.hardbreak_if_nonempty();
+        for path in &item.paths {
+            self.expr_path(path);
+            self.word(",");
+            self.hardbreak();
+        }
+        self.offset(-INDENT);
+        self.end();
+        self.word("}");
         self.hardbreak();
     }
 
@@ -1153,6 +1243,7 @@ impl Printer {
             ImplItem::Type(item) => self.impl_item_type(item),
             ImplItem::Macro(item) => self.impl_item_macro(item),
             ImplItem::Verbatim(item) => self.impl_item_verbatim(item),
+            ImplItem::BroadcastGroup(item) => self.item_broadcast_group(item),
             _ => unimplemented!("unknown ImplItem"),
         }
     }

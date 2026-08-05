@@ -1130,6 +1130,39 @@ pub(crate) fn strslice_functions(strslice_name: &str) -> Vec<Node> {
     )
 }
 
+pub(crate) fn bytestr_functions(box_array: &str) -> Vec<Node> {
+    let new_bytelit = str_to_node(BYTESTR_NEW_BYTELIT);
+    let from_bytelit_hash = str_to_node(BYTESTR_FROM_BYTELIT_HASH);
+    let box_array = str_to_node(box_array);
+    let has_type = str_to_node(HAS_TYPE);
+    let type_id_array = str_to_node(TYPE_ID_ARRAY);
+    let type_id_uint = str_to_node(TYPE_ID_UINT);
+    let type_id_const_int = str_to_node(TYPE_ID_CONST_INT);
+
+    nodes_vec!(
+        //Byte Strings
+        (declare-fun [new_bytelit] (Int Int) Fun)
+        (declare-fun [from_bytelit_hash] (Fun) Int)
+
+        (axiom (forall ((h Int) (n Int)) (!
+            (= ([from_bytelit_hash] ([new_bytelit] h n)) h)
+            :pattern (([new_bytelit] h n))
+            :qid prelude_bytelit_hash
+            :skolemid skolem_prelude_bytelit_hash
+        )))
+
+        (axiom (forall ((h Int) (n Int)) (!
+            ([has_type]
+                ([box_array] ([new_bytelit] h n))
+                ([type_id_array] $ ([type_id_uint] 8) $ ([type_id_const_int] n))
+            )
+            :pattern (([new_bytelit] h n))
+            :qid prelude_bytelit_has_type
+            :skolemid skolem_prelude_bytelit_has_type
+        )))
+    )
+}
+
 pub(crate) fn pointee_metadata_prelude(name_ctxt: &NameCtxt) -> Vec<Node> {
     let typ = str_to_node(TYPE);
     let decoration = str_to_node(DECORATION);

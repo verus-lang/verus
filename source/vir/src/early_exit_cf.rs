@@ -100,6 +100,7 @@ fn expr_get_early_exits_rec(
             | ExprX::AssertAssumeUserDefinedTypeInvariant { .. }
             | ExprX::AssertBy { .. }
             | ExprX::RevealString(_)
+            | ExprX::RevealByteString(_)
             | ExprX::AirStmt(_) => VisitorControlFlow::Return,
             ExprX::AssertQuery { .. } => VisitorControlFlow::Return,
             ExprX::Loop { cond, body, .. } => {

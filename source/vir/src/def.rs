@@ -256,6 +256,9 @@ pub const STRSLICE_NEW_STRLIT: &str = "str%new_strlit";
 // only used to prove that new_strlit is injective
 pub const STRSLICE_FROM_STRLIT: &str = "str%from_strlit";
 
+pub const BYTESTR_NEW_BYTELIT: &str = "bytes%new_bytelit";
+pub const BYTESTR_FROM_BYTELIT_HASH: &str = "bytes%from_bytelit_hash";
+
 pub const IEEE_FLOAT_CAST: &str = "ieee_float_cast";
 pub const IEEE_FLOAT_NEG: &str = "ieee_float_neg";
 pub const IEEE_FLOAT_FLOOR: &str = "ieee_float_floor";

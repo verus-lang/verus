@@ -810,6 +810,8 @@ pub enum Constant {
     Real(String),
     /// Hold generated string slices in here
     StrSlice(Arc<String>),
+    /// Hold byte-string literal here
+    ByteStr(Arc<Vec<u8>>),
     // Hold unicode values here
     Char(char),
     /// Rust representation of f32 constant as u32 bits
@@ -1149,6 +1151,8 @@ pub enum ExprX {
     Fuel(Fun, u32, bool),
     /// Reveal a string
     RevealString(Arc<String>),
+    /// Reveal a byte-string
+    RevealByteString(Arc<Vec<u8>>),
     /// Header, which must appear at the beginning of a function or while loop.
     /// Note: this only appears temporarily during rust_to_vir construction, and should not
     /// appear in the final Expr produced by rust_to_vir (see vir::headers::read_header).

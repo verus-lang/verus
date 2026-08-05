@@ -731,6 +731,7 @@ impl<'a> Builder<'a> {
             | ExprX::WithTriggers { .. }
             | ExprX::Fuel(..)
             | ExprX::RevealString(_)
+            | ExprX::RevealByteString(_)
             | ExprX::Header(_)
             | ExprX::ProofInSpec(..)
             | ExprX::AirStmt(..)

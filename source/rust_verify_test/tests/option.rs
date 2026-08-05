@@ -124,3 +124,61 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_bool_then verus_code! {
+        use vstd::prelude::*;
+
+        fn test_then_true() {
+            let res: Option<u32> = true.then(|| -> (r: u32) ensures r == 7 { 7 });
+            assert(res is Some);
+            assert(res->Some_0 == 7);
+        }
+
+        fn test_then_false(x: u32) {
+            let res: Option<u32> = false.then(|| -> (r: u32)
+                requires x < 10
+                ensures r == x
+            { x });
+            assert(res is None);
+        }
+
+        fn test_then_conditional(b: bool, x: u32)
+            requires b ==> x < 10,
+        {
+            let res: Option<u32> = b.then(|| -> (r: u32)
+                requires x < 10
+                ensures r == x
+            { x });
+            assert(b ==> res is Some);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_bool_then_requires_not_satisfied verus_code! {
+        use vstd::prelude::*;
+
+        fn test(x: u32) {
+            let res: Option<u32> = true.then(|| -> (r: u32)
+                requires x < 10
+                ensures r == x
+            { x }); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] test_bool_then_vacuous_closure verus_code! {
+        use vstd::prelude::*;
+
+        fn exploit() {
+            let f = || -> (z: u8)
+                requires false,
+                ensures false,
+            { 0u8 };
+            let o: Option<u8> = true.then(f); // FAILS
+            assert(false);
+        }
+    } => Err(e) => assert_one_fails(e)
+}

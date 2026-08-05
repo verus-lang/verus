@@ -1980,6 +1980,13 @@ pub fn reveal_strlit<A>(_a: A) {
     unimplemented!()
 }
 
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::reveal_byteslit"]
+#[verifier::proof]
+pub fn reveal_byteslit<A>(_a: A) {
+    unimplemented!()
+}
+
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::verus_builtin::FnSpec")]
 pub struct FnSpec<Args, Output> {
     phantom: PhantomData<(Args, Output)>,

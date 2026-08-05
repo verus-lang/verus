@@ -400,6 +400,74 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_trait_extension_default_method_context_order verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::convert::*;
+
+        pub struct Foo;
+
+        impl From<Foo> for u16 {
+            #[verifier::spinoff_prover]
+            fn from(value: Foo) -> Self {
+                42u16
+            }
+        }
+
+        impl FromSpecImpl<Foo> for u16 {
+            open spec fn obeys_from_spec() -> bool {
+                true
+            }
+
+            open spec fn from_spec(value: Foo) -> u16 {
+                42u16
+            }
+        }
+
+        pub trait Bar {
+            fn push_record() {
+                let f = <u16 as From<Foo>>::from(Foo);
+                assert(f == 42);
+            }
+        }
+
+        impl Bar for Foo {}
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_trait_extension_default_method_body_context_order verus_code! {
+        #[verifier::external]
+        pub trait T {}
+
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(TSpec via TSpecImpl)]
+        pub trait ExT {
+            type ExternalTraitSpecificationFor: T;
+
+            spec fn s() -> u8;
+        }
+
+        pub struct Foo;
+
+        impl T for Foo {}
+
+        impl TSpecImpl for Foo {
+            open spec fn s() -> u8 {
+                42
+            }
+        }
+
+        trait Bar {
+            fn check() {
+                assert(<Foo as TSpec>::s() == 42);
+            }
+        }
+
+        impl Bar for Foo {}
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_trait_extension_cycle verus_code! {
         #[verifier::external]
         trait T<A> {
