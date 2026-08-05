@@ -51,10 +51,21 @@ pub fn get_vstd_version(is_rolling: bool) -> Result<Crate> {
     }
 }
 
-fn get_git_rev(limit: Option<usize>) -> Result<String> {
-    let short_flag =
-        if let Some(len) = limit { format!("--short={len}") } else { "--short".into() };
-    let raw_rev = run_command(&["git", "rev-parse", "-q", &short_flag, "HEAD"])?;
+/// Get the revision of `HEAD`.
+///
+/// With `abbreviate_to`, shorten the revision to that many hexadecimal digits.
+/// Without it, use the full commit hash, which is what Cargo reports for a Git
+/// dependency.
+fn get_git_rev(abbreviate_to: Option<usize>) -> Result<String> {
+    let short_flag = abbreviate_to.map(|len| format!("--short={len}"));
+
+    let mut args = vec!["git", "rev-parse", "-q"];
+    if let Some(short_flag) = &short_flag {
+        args.push(short_flag);
+    }
+    args.push("HEAD");
+
+    let raw_rev = run_command(&args)?;
     Ok(raw_rev.trim().to_owned())
 }
 
