@@ -260,6 +260,7 @@ fn outer_reason_by_expr_kind(e: &Expr) -> Option<OuterProphReason> {
             | ExprX::Assign { .. } // requires more complex checks
             | ExprX::Fuel(..)
             | ExprX::RevealString(..)
+            | ExprX::RevealByteString(..)
             | ExprX::Header(..)
             | ExprX::AssertAssume { .. }
             | ExprX::AssertAssumeUserDefinedTypeInvariant { .. }
@@ -2553,6 +2554,13 @@ fn check_expr(
             if typing.block_ghostness == Ghost::Exec {
                 return Err(error(&expr.span, "cannot use reveal_strlit in exec mode")
                     .help("wrap the reveal_strlit call in a `proof` block"));
+            }
+            Ok((outer_mode, Proph::No))
+        }
+        ExprX::RevealByteString(_) => {
+            if typing.block_ghostness == Ghost::Exec {
+                return Err(error(&expr.span, "cannot use reveal_byteslit in exec mode")
+                    .help("wrap the reveal_byteslit call in a `proof` block"));
             }
             Ok((outer_mode, Proph::No))
         }

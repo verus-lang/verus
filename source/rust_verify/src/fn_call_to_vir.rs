@@ -1062,6 +1062,26 @@ fn verus_item_to_vir<'tcx, 'a>(
                     err_span(args[0].span, "string literal expected".to_string())
                 }
             }
+            DirectiveItem::RevealByteslit => {
+                record_spec_fn_pure_args_only(bctx, expr);
+                unsupported_err_unless!(
+                    args_len == 1,
+                    expr.span,
+                    "reveal_byteslit expects one argument"
+                );
+                let bytes = if let ExprKind::Lit(lit) = &args[0].kind {
+                    match lit.node {
+                        rustc_ast::LitKind::ByteStr(bytes, _) => Some(bytes.as_byte_str().to_vec()),
+                        _ => None,
+                    }
+                } else {
+                    None
+                };
+                match bytes {
+                    Some(bytes) => mk_expr(ExprX::RevealByteString(Arc::new(bytes))),
+                    None => err_span(args[0].span, "byte-string literal expected"),
+                }
+            }
             DirectiveItem::InlineAirStmt => {
                 if bctx.ctxt.cmd_line_args.allow_inline_air {
                     record_spec_fn_pure_args_only(bctx, expr);

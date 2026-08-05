@@ -411,6 +411,7 @@ impl SyntacticEquality for Exp {
                     (Bool(l), Bool(r)) => Some(l == r),
                     (Int(l), Int(r)) => Some(l == r),
                     (StrSlice(l), StrSlice(r)) => Some(l == r),
+                    (ByteStr(l), ByteStr(r)) => Some(l == r),
                     (Char(l), Char(r)) => Some(l == r),
                     _ => None,
                 }
