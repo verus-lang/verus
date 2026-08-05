@@ -181,6 +181,8 @@ pub assume_specification[ core::intrinsics::unlikely ](b: bool) -> (c: bool)
 ;
 
 pub assume_specification<T, F: FnOnce() -> T>[ bool::then ](b: bool, f: F) -> (ret: Option<T>)
+    requires
+        b ==> f.requires(()),
     ensures
         if b {
             ret.is_some() && f.ensures((), ret.unwrap())
