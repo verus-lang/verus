@@ -231,6 +231,7 @@ dependencies = [
  "crates_io_api",
  "petgraph 0.8.3",
  "regex",
+ "tempfile",
  "toml_edit",
 ]
 
@@ -2320,6 +2321,7 @@ version = "0.1.0"
 dependencies = [
  "air",
  "bincode-next",
+ "cargo-verus-toolchains",
  "console",
  "getopts",
  "hex",

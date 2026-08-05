@@ -2,7 +2,7 @@
 publish = false
 name = "cargo-verus"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 description = "A Cargo subcommand that enables verification of Rust code as part of the normal Cargo workflow."
 
 [dependencies]

@@ -54,7 +54,7 @@ struct ExternalDeps {
 
 fn create_toolchain(is_rolling: bool) -> anyhow::Result<Toolchain> {
     let external_deps = get_external_deps()?;
-    let verus = get_verus_version()?;
+    let (verus, _) = get_verus_version(false)?;
     let vstd = get_vstd_version(is_rolling)?;
     let z3 = external_deps.z3;
     let singular = external_deps.singular;

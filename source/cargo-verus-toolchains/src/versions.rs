@@ -4,7 +4,8 @@ use anyhow::{Context, Result, bail};
 
 type Crate = crate::Crate<String>;
 
-pub fn get_verus_version() -> Result<String> {
+pub fn get_verus_version(mark_dirty: bool) -> Result<(String, String)> {
+    let rev_full = get_git_rev(None)?;
     let rev = get_git_rev(Some(7))?;
     let date_str = run_command(&["git", "show", "-s", "--format=%cs", "HEAD"])?;
     let date_re =
@@ -16,7 +17,13 @@ pub fn get_verus_version() -> Result<String> {
     let month = &date_captures[2];
     let day = &date_captures[3];
 
-    Ok(format!("0.{year}.{month}.{day}.{rev}"))
+    let dirty = if !mark_dirty || run_command(&["git", "diff", "--exit-code", "HEAD"]).is_ok() {
+        ""
+    } else {
+        ".dirty"
+    };
+
+    Ok((format!("0.{year}.{month}.{day}.{rev}{dirty}"), rev_full))
 }
 
 pub fn get_vstd_version(is_rolling: bool) -> Result<Crate> {
