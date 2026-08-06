@@ -255,8 +255,9 @@ fn with_json_func_details(err: &TestErr, func: &str, body: impl FnOnce(&FuncDeta
         .and_then(|v| v.as_object())
         .expect("`func-details` missing or not an object");
 
-    let details_json =
-        func_details.get(func).expect(&format!("func-details has no entry for `{func}`"));
+    let details_json = func_details
+        .get(func)
+        .unwrap_or_else(|| panic!("func-details has no entry for `{}`", func));
 
     let details =
         serde_json::from_value(details_json.clone()).expect("failed to deserialize FuncDetails");

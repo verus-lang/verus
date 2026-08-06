@@ -463,17 +463,9 @@ test_verify_one_file! {
                   && (forall |i: int| self.idx@ <= i < self.idx@ + self.iter.remaining().len() ==> self.prophs@.proph_elem(i).is_some())
             }
 
-            #[verifier::prophetic]
-            open spec fn initial_value_relation(&self, init: &Self) -> bool {
-                &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-                &&& self.inner().initial_value_relation(&init.inner())
-            }
-
-
             closed spec fn decrease(&self) -> Option<nat> {
                 self.inner().decrease()
             }
-
 
             open spec fn peek(&self, index: int) -> Option<Self::Item> {
                 match self.inner().peek(index) {

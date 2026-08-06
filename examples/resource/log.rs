@@ -238,7 +238,7 @@ impl<T> LogResource<T> {
         ensures
             final(self)@ is HalfAuthority,
             final(self).id() == old(self).id(),
-            final(other).id() == old(self).id(),
+            final(other).id() == old(other).id(),
             final(self)@.log() == old(self)@.log() + seq![v],
             final(other)@ == final(self)@,
     {

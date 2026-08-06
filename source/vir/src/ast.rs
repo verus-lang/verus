@@ -372,8 +372,6 @@ pub enum NullaryOpr {
     TypEqualityBound(Path, Typs, Ident, Typ),
     /// predicate representing const type bound, e.g., `const X: usize`
     ConstTypBound(Typ, Typ),
-    /// A failed InferSpecForLoopIter subexpression
-    NoInferSpecForLoopIter,
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
@@ -456,17 +454,6 @@ pub enum UnaryOp {
     HeightTrigger,
     /// Used only for handling verus_builtin::strslice_len
     StrLen,
-    /// Given an exec/proof expression used to construct a loop iterator,
-    /// try to infer a pure specification for the loop iterator.
-    /// Evaluate to Some(spec) if successful, None otherwise.
-    /// (Note: this is just used as a hint for loop invariants;
-    /// regardless of whether it is Some(spec) or None, it should not affect soundness.)
-    /// For an exec/proof expression e, the spec s should be chosen so that the value v
-    /// that e evaluates to is immutable and v == s, where v may contain local variables.
-    /// For example, if v == (n..m), then n and m must be immutable local variables.
-    InferSpecForLoopIter {
-        print_hint: bool,
-    },
     /// May need coercion after casting a type argument
     CastToInteger,
     MutRefCurrent,
@@ -525,6 +512,15 @@ pub struct ProofNoteLabel {
     pub is_custom_err: bool,
 }
 
+/// Label for a Loop that a break/continue may point to.
+#[derive(Clone, Debug, Serialize, Deserialize, Hash, ToDebugSNode, PartialEq, Eq)]
+pub struct Label {
+    /// Every loop in a given function body has a unique id
+    pub id: usize,
+    /// User-given name
+    pub name: Option<String>,
+}
+
 /// More complex unary operations (requires Clone rather than Copy)
 /// (Below, "boxed" refers to boxing types in the SMT encoding, not the Rust Box type)
 #[derive(Clone, Debug, Serialize, Deserialize, Hash, ToDebugSNode)]
@@ -564,6 +560,9 @@ pub enum UnaryOpr {
     HasResolved(Typ),
     /// Coerce from concrete type to `dyn T`. Typ arg is the Self type
     ToDyn(Typ),
+    /// Isolation boundary for the loop of the given label, which must be contained
+    /// in the boundary.
+    LoopIsolationBoundary(Label),
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
@@ -600,7 +599,7 @@ pub enum BitshiftBehavior {
     /// Allow any int value for the RHS. Bitshift for negative ints is undefined.
     Allow,
     /// Error if the right-hand side of the bit-shift is outside the allowed range
-    Error,
+    Error(IntegerTypeBitwidth),
 }
 
 /// Arithmetic operation that might fail (overflow or divide by zero)
@@ -638,17 +637,14 @@ pub enum IntegerTypeBitwidth {
     ArchWordSize,
 }
 
-/// Bitwise operation
+/// Bitwise operation. Note these are all specified as functions over unbounded integers,
+/// using infinite binary representations.
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
 pub enum BitwiseOp {
     BitXor,
     BitAnd,
     BitOr,
-    /// Shift right. The bitwidth argument is only needed to do a bounds-check
-    /// (see `BitshiftBehavior`). The actual result, when computed on unbounded integers,
-    /// is independent of the bitwidth.
-    /// TODO move the IntegerTypeBitwidth field to BitshiftBehavior enum
-    Shr(IntegerTypeBitwidth),
+    Shr,
     /// Shift left up to w bits, ignoring everything to the left of w.
     /// To interpret the result as an unbounded int,
     /// either zero-extend or sign-extend, depending on the bool argument.
@@ -685,22 +681,28 @@ pub enum IeeeFloatBinaryOp {
     InEq(InequalityOp),
 }
 
+/// Logical op that allow short-circuiting
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum LogicalOp {
+    /// boolean and (short-circuiting: right side is evaluated only if left side is true)
+    And,
+    /// boolean or (short-circuiting: right side is evaluated only if left side is false)
+    Or,
+    /// boolean implies (short-circuiting: right side is evaluated only if left side is true)
+    Implies,
+}
+
 /// Primitive binary operations
-/// (not arbitrary user-defined functions -- these are represented by ExprX::Call)
+/// (not arbitrary user-defined functions -- these are represented by ExprX::Call).
+///
 /// Note that all integer operations are on mathematic integers (IntRange::Int),
 /// not on finite-width integer types or nat.
 /// Finite-width and nat operations are represented with a combination of IntRange::Int operations
 /// and UnaryOp::Clip.
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
 pub enum BinaryOp {
-    /// boolean and (short-circuiting: right side is evaluated only if left side is true)
-    And,
-    /// boolean or (short-circuiting: right side is evaluated only if left side is false)
-    Or,
     /// boolean xor (no short-circuiting)
     Xor,
-    /// boolean implies (short-circuiting: right side is evaluated only if left side is true)
-    Implies,
     /// the is_smaller_than verus_builtin, used for decreases (true for <, false for ==)
     HeightCompare { strictly_lt: bool, recursive_function_field: bool },
     /// SMT equality for any type -- two expressions are exactly the same value
@@ -720,9 +722,8 @@ pub enum BinaryOp {
     IeeeFloat(IeeeFloatBinaryOp),
     /// Used only for handling verus_builtin::strslice_get_char
     StrGetChar,
-    /// Index into an array or slice, no bounds-checking.
+    /// Index into an array or slice with the given bounds-checking
     /// `verus_builtin::array_index` lowers to this.
-    /// In SST, this can also be used as a Loc.
     Index(ArrayKind, BoundsCheck),
 }
 
@@ -779,11 +780,11 @@ pub enum HeaderExprX {
     /// Proof function to prove termination for recursive functions
     DecreasesBy(Fun),
     /// The function might open the following invariants
-    InvariantOpens(Span, Exprs),
-    /// The function might open any BUT the following invariants
-    InvariantOpensExcept(Span, Exprs),
-    /// The function might open the following invariants, specified as a set
-    InvariantOpensSet(Expr),
+    OpensInvariantMask(MaskSpec),
+    /// Atomic update
+    AtomicSpec(Expr),
+    /// Atomic function call loop marker
+    AtomicCallLoop,
     /// Make a function f opaque (definition hidden) within the current function body.
     /// (The current function body can later reveal f in specific parts of the current function body if desired.)
     Hide(Fun),
@@ -809,6 +810,8 @@ pub enum Constant {
     Real(String),
     /// Hold generated string slices in here
     StrSlice(Arc<String>),
+    /// Hold byte-string literal here
+    ByteStr(Arc<Vec<u8>>),
     // Hold unicode values here
     Char(char),
     /// Rust representation of f32 constant as u32 bits
@@ -876,13 +879,15 @@ pub enum PatternX {
     Constructor(Dt, Ident, Binders<Pattern>),
     Or(Pattern, Pattern),
     /// Matches something equal to the value of this expr
-    /// This only supports literals and consts, so we don't need to worry
-    /// about side-effects, binding order, etc.
+    /// This only supports literals, consts, and pure functions
+    /// so we don't need to worry about side-effects, binding order, etc.
+    /// See `check_expr_in_pattern` for the exact supported expressions.
     Expr(Expr),
     /// `e1 <= x <= e2` or `e1 <= x < e2`
     /// The start of the range is always inclusive (<=)
     /// The end of the range may be inclusive (<=) or exclusive (<),
     /// as given by the InequalityOp argument.
+    /// Same constraints on the `Expr` fields as in `PatternX::Expr`.
     Range(Option<Expr>, Option<(Expr, InequalityOp)>),
     /// References, which are often automatically inserted due to "match ergonomics".
     /// A typical case is like, you have `y: &mut Option<T>` and bind it against the pattern
@@ -1045,6 +1050,12 @@ pub enum ClosureKind {
     FnOnce,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, ToDebugSNode, Hash, PartialEq, Eq)]
+pub enum AtomicallyKind {
+    Simple,
+    Loop,
+}
+
 /// Expression, similar to rustc_hir::Expr
 pub type Expr = Arc<SpannedTyped<ExprX>>;
 pub type Exprs = Arc<Vec<Expr>>;
@@ -1065,9 +1076,18 @@ pub enum ExprX {
     /// Use of a static variable.
     StaticVar(Fun),
     /// Call to a function passing some expression arguments
-    /// The optional expression is to be executed *after* the arguments but *before* the call.
-    /// This is used for two-phase borrows.
-    Call(CallTarget, Exprs, Option<Expr>),
+    Call {
+        target: CallTarget,
+        args: Exprs,
+        /// To be executed *after* the arguments but *before* the call.
+        ///
+        /// This is used for two-phase borrows.
+        post_args: Option<Expr>,
+        /// Executed *inside* the function call, between the pre- and postcondition.
+        ///
+        /// We use this for the `atomically |update| { ... }` block of the atomic function call.
+        body: Option<Expr>,
+    },
     /// Construct datatype value of type Path and variant Ident,
     /// with field initializers Binders<Expr> and an optional ".." update expression.
     /// For tuple-style variants, the fields are named "0", "1", etc.
@@ -1080,7 +1100,10 @@ pub enum ExprX {
     Unary(UnaryOp, Expr),
     /// Special unary operator
     UnaryOpr(UnaryOpr, Expr),
-    /// Primitive binary operation
+    /// Evaluate the first expression, then conditionally evaluate the second expression,
+    /// performing the given short-circuiting logical op.
+    Logical(LogicalOp, Expr, Expr),
+    /// Evaluate both expressions, then perform the given binary operation.
     Binary(BinaryOp, Expr, Expr),
     /// Special binary operation
     BinaryOpr(BinaryOpr, Expr, Expr),
@@ -1128,6 +1151,8 @@ pub enum ExprX {
     Fuel(Fun, u32, bool),
     /// Reveal a string
     RevealString(Arc<String>),
+    /// Reveal a byte-string
+    RevealByteString(Arc<Vec<u8>>),
     /// Header, which must appear at the beginning of a function or while loop.
     /// Note: this only appears temporarily during rust_to_vir construction, and should not
     /// appear in the final Expr produced by rust_to_vir (see vir::headers::read_header).
@@ -1152,18 +1177,30 @@ pub enum ExprX {
         loop_isolation: bool,
         allow_complex_invariants: bool,
         is_for_loop: bool,
-        label: Option<String>,
+        assume_termination: bool,
+        label: Label,
         cond: Option<Expr>,
         body: Expr,
         invs: LoopInvariants,
         decrease: Exprs,
+        atomic_call: bool,
     },
     /// Open invariant
     OpenInvariant(Expr, VarBinder<Typ>, Expr, InvAtomicity),
+    /// Open Atomic Update
+    TryOpenAtomicUpdate(Expr, VarBinder<Typ>, Expr),
+    /// Placeholder expression for the atomic update argument in the atomic function call
+    AtomicUpdateInitDummy,
+    /// Atomic function call
+    Atomically(AtomicallyKind, VarIdent, Expr),
+    /// Atomic function call update marker
+    Update(Expr),
+    /// Invariant mask (generated by `opens_invariants`, `outer_mask` and `inner_mask` annotations)
+    InvMask(MaskSpec),
     /// Return from function
     Return(Option<Expr>),
     /// break or continue
-    BreakOrContinue { label: Option<String>, is_break: bool },
+    BreakOrContinue { label: Label, is_break: bool },
     /// Enter a Rust ghost block, which will be erased during compilation.
     /// In principle, this is not needed, because we can infer which code to erase using modes.
     /// However, we can't easily communicate the inferred modes back to rustc for erasure
@@ -1645,6 +1682,9 @@ pub struct FunctionX {
     pub fndef_axioms: Option<Exprs>,
     /// MaskSpec that specifies what invariants the function is allowed to open
     pub mask_spec: Option<MaskSpec>,
+    /// The atomic update bound by the atomic spec,
+    /// to be properly initialized at the start of the function.
+    pub atomic_update: Option<Expr>,
     /// UnwindSpec that specifies if the function is allowed to unwind
     pub unwind_spec: Option<UnwindSpec>,
     /// Allows the item to be a const declaration or static

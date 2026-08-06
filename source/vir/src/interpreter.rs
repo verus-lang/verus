@@ -6,16 +6,17 @@
 //! https://github.com/secure-foundations/verus/discussions/120
 
 use crate::ast::{
-    ArchWordBits, ArithOp, ArrayKind, BinaryOp, BitwiseOp, ComputeMode, Constant, CrateId,
-    Div0Behavior, Dt, Fun, FunX, Ident, Idents, InequalityOp, IntRange, IntegerTypeBitwidth,
-    IntegerTypeBoundKind, OverflowBehavior, PathX, Primitive, SpannedTyped, Typ, TypX, UnaryOp,
-    VarBinders, VarIdent, VarIdentDisambiguate, VirErr,
+    ArchWordBits, ArrayKind, BitwiseOp, ComputeMode, Constant, CrateId, Dt, Fun, FunX, Ident,
+    Idents, InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, PathX, Primitive,
+    SpannedTyped, Typ, TypX, UnaryOp, VarBinders, VarIdent, VarIdentDisambiguate, VirErr,
 };
 use crate::ast_to_sst_func::SstMap;
 use crate::ast_util::{path_as_vstd_name, undecorate_typ};
 use crate::context::GlobalCtx;
 use crate::messages::{Message, Span, ToAny, WarningAllow, error};
-use crate::sst::{Bnd, BndX, CallFun, Exp, ExpX, Exps, FunctionSst, Trigs, UniqueIdent};
+use crate::sst::{
+    ArithOp, BinaryOp, Bnd, BndX, CallFun, Exp, ExpX, Exps, FunctionSst, Trigs, UniqueIdent,
+};
 use crate::sst_util::subst_exp;
 use crate::unicode::valid_unicode_scalar_bigint;
 use air::ast::{Binder, BinderX, Binders};
@@ -410,6 +411,7 @@ impl SyntacticEquality for Exp {
                     (Bool(l), Bool(r)) => Some(l == r),
                     (Int(l), Int(r)) => Some(l == r),
                     (StrSlice(l), StrSlice(r)) => Some(l == r),
+                    (ByteStr(l), ByteStr(r)) => Some(l == r),
                     (Char(l), Char(r)) => Some(l == r),
                     _ => None,
                 }
@@ -933,7 +935,10 @@ fn eval_seq(
                 Ok(exp_new(Call(fun.clone(), typs.clone(), new_args)))
             };
             let get_int = |e: &Exp| match &e.x {
-                Const(Constant::Int(index)) => Some(BigInt::to_usize(index).unwrap()),
+                Const(Constant::Int(index)) => match BigInt::to_usize(index) {
+                    Some(i) => Some(i),
+                    None => None,
+                },
                 _ => None,
             };
             use SeqFn::*;
@@ -1081,11 +1086,7 @@ fn eval_array_index(
     use InterpExp::*;
     let exp_new = |e: ExpX| SpannedTyped::new(&exp.span, &exp.typ, e);
     // If we can't make any progress at all, we return the partially simplified call
-    let ok = Ok(exp_new(Binary(
-        crate::ast::BinaryOp::Index(ArrayKind::Array, crate::ast::BoundsCheck::Allow),
-        arr.clone(),
-        index_exp.clone(),
-    )));
+    let ok = Ok(exp_new(Binary(BinaryOp::Index(ArrayKind::Array), arr.clone(), index_exp.clone())));
     // For now, the only possible function is array_index
     match &arr.x {
         Interp(Array(s)) => match &index_exp.x {
@@ -1213,8 +1214,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | Length(..)
                         | MutRefCurrent
                         | MutRefFuture(_)
-                        | MutRefFinal(_)
-                        | InferSpecForLoopIter { .. } => ok,
+                        | MutRefFinal(_) => ok,
                         MustBeFinalized | UnaryOp::MustBeElaborated => {
                             panic!("Found MustBeFinalized op {:?} after calling finalize_exp", exp)
                         }
@@ -1349,8 +1349,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | Length(..)
                         | MutRefCurrent
                         | MutRefFuture(_)
-                        | MutRefFinal(_)
-                        | InferSpecForLoopIter { .. } => ok,
+                        | MutRefFinal(_) => ok,
                     }
                 }
                 // !(!(e_inner)) == e_inner
@@ -1414,6 +1413,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 AutoLoopEnsures => Ok(e),
                 ProofNote(_) => Ok(e),
                 HasResolved(_) => Ok(e),
+                LoopIsolationBoundary(_) => Ok(e),
             }
         }
         Binary(op, e1, e2) => {
@@ -1485,7 +1485,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         }
                     }
                 }
-                Eq(_mode) => {
+                Eq => {
                     let e2 = eval_expr_internal(ctx, state, e2)?;
                     match e1.syntactic_eq(&e2) {
                         None => ok_e2(e2),
@@ -1523,89 +1523,58 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         (Const(Int(i1)), Const(Int(i2))) => {
                             use ArithOp::*;
                             match op {
-                                Add(OverflowBehavior::Allow) => int_new(i1 + i2),
-                                Sub(OverflowBehavior::Allow) => int_new(i1 - i2),
-                                Mul(OverflowBehavior::Allow) => int_new(i1 * i2),
-                                EuclideanDiv(Div0Behavior::Allow) => {
+                                Add => int_new(i1 + i2),
+                                Sub => int_new(i1 - i2),
+                                Mul => int_new(i1 * i2),
+                                EuclideanDiv => {
                                     if i2.is_zero() {
                                         ok_e2(e2) // Treat as symbolic instead of erroring
                                     } else {
                                         int_new(i1.div_euclid(i2))
                                     }
                                 }
-                                EuclideanMod(Div0Behavior::Allow) => {
+                                EuclideanMod => {
                                     if i2.is_zero() {
                                         ok_e2(e2) // Treat as symbolic instead of erroring
                                     } else {
                                         int_new(i1.rem_euclid(i2))
                                     }
                                 }
-                                Add(_) | Sub(_) | Mul(_) | EuclideanDiv(_) | EuclideanMod(_) => {
-                                    panic!("complex overflow behavior not expected in exps");
-                                }
                             }
                         }
                         // Special cases for certain concrete values
-                        (Const(Int(i1)), _)
-                            if i1.is_zero() && matches!(op, Add(OverflowBehavior::Allow)) =>
-                        {
-                            Ok(e2.clone())
-                        }
-                        (Const(Int(i1)), _)
-                            if i1.is_zero() && matches!(op, Mul(OverflowBehavior::Allow)) =>
-                        {
-                            zero
-                        }
-                        (Const(Int(i1)), _)
-                            if i1.is_one() && matches!(op, Mul(OverflowBehavior::Allow)) =>
-                        {
-                            Ok(e2.clone())
-                        }
+                        (Const(Int(i1)), _) if i1.is_zero() && matches!(op, Add) => Ok(e2.clone()),
+                        (Const(Int(i1)), _) if i1.is_zero() && matches!(op, Mul) => zero,
+                        (Const(Int(i1)), _) if i1.is_one() && matches!(op, Mul) => Ok(e2.clone()),
                         (_, Const(Int(i2))) if i2.is_zero() => {
                             use ArithOp::*;
                             match op {
-                                Add(OverflowBehavior::Allow) | Sub(OverflowBehavior::Allow) => {
-                                    Ok(e1.clone())
-                                }
-                                Mul(OverflowBehavior::Allow) => zero,
-                                EuclideanDiv(Div0Behavior::Allow) => {
+                                Add | Sub => Ok(e1.clone()),
+                                Mul => zero,
+                                EuclideanDiv => {
                                     ok_e2(e2) // Treat as symbolic instead of erroring
                                 }
-                                EuclideanMod(Div0Behavior::Allow) => {
+                                EuclideanMod => {
                                     ok_e2(e2) // Treat as symbolic instead of erroring
-                                }
-                                Add(_) | Sub(_) | Mul(_) | EuclideanDiv(_) | EuclideanMod(_) => {
-                                    panic!("complex overflow behavior not expected in exps");
                                 }
                             }
                         }
-                        (_, Const(Int(i2)))
-                            if i2.is_one() && matches!(op, EuclideanMod(Div0Behavior::Allow)) =>
-                        {
+                        (_, Const(Int(i2))) if i2.is_one() && matches!(op, EuclideanMod) => {
                             int_new(BigInt::zero())
                         }
-                        (_, Const(Int(i2)))
-                            if i2.is_one()
-                                && matches!(
-                                    op,
-                                    Mul(OverflowBehavior::Allow)
-                                        | EuclideanDiv(Div0Behavior::Allow)
-                                ) =>
-                        {
+                        (_, Const(Int(i2))) if i2.is_one() && matches!(op, Mul | EuclideanDiv) => {
                             Ok(e1.clone())
                         }
                         _ => {
                             match op {
                                 // X - X => 0
-                                ArithOp::Sub(OverflowBehavior::Allow) if e1.definitely_eq(&e2) => {
-                                    zero
-                                }
+                                ArithOp::Sub if e1.definitely_eq(&e2) => zero,
                                 _ => ok_e2(e2),
                             }
                         }
                     }
                 }
-                Bitwise(op, _) => {
+                Bitwise(op) => {
                     use BitwiseOp::*;
                     let e2 = eval_expr_internal(ctx, state, e2)?;
                     match (&e1.x, &e2.x) {
@@ -1614,7 +1583,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                             BitXor => int_new(i1 ^ i2),
                             BitAnd => int_new(i1 & i2),
                             BitOr => int_new(i1 | i2),
-                            Shr(_) => match i2.to_u128() {
+                            Shr => match i2.to_u128() {
                                 None => ok,
                                 Some(i2) => int_new(i1 >> i2),
                             },
@@ -1669,11 +1638,11 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         }
                     }
                 }
-                Index(ArrayKind::Array, _) => {
+                Index(ArrayKind::Array) => {
                     let e2 = eval_expr_internal(ctx, state, e2)?;
                     eval_array_index(ctx, state, exp, &e1, &e2)
                 }
-                Index(ArrayKind::Slice, _)
+                Index(ArrayKind::Slice)
                 | HeightCompare { .. }
                 | StrGetChar
                 | RealArith(..)
@@ -1975,7 +1944,7 @@ fn eval_expr_top(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Simplificati
     use BinaryOp::*;
     use ExpX::*;
     match &exp.x {
-        Binary(op @ (Eq(_) | Ne | Inequality(_)), e1, e2) => {
+        Binary(op @ (Eq | Ne | Inequality(_)), e1, e2) => {
             let e1 = eval_expr_internal(ctx, state, e1)?;
             let e2 = eval_expr_internal(ctx, state, e2)?;
 

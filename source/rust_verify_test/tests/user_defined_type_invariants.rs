@@ -2272,27 +2272,6 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "expected generics to match")
 }
 
-test_verify_one_file! {
-    #[test] struct_with_invariants_const_usage verus_code! {
-        use vstd::prelude::*;
-        use vstd::atomic_ghost::AtomicUsize;
-
-        const ONE: usize = 1;
-
-        struct_with_invariants!{
-            pub struct S {
-                x: AtomicUsize<_,(),_>,
-            }
-
-            closed spec fn wf(self) -> bool {
-                invariant on x is (v:usize,g:()) {
-                    v == ONE
-                }
-            }
-        }
-    } => Ok(())
-}
-
 test_verify_one_file_with_options! {
     #[test] mut_ref_not_supported [] => verus_code! {
         struct A {

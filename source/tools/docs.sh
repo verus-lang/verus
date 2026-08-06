@@ -1,4 +1,6 @@
 #! /bin/bash
+# TODO: Replace with `docs-cargo.sh` when `vargo` is removed.
+#   https://github.com/verus-lang/verus/pull/2686
 
 set -e
 

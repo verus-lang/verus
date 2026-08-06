@@ -1,5 +1,4 @@
-use std::env;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use anyhow::Result;
@@ -26,13 +25,12 @@ pub fn execute_plan(plan: &ExecutionPlan) -> Result<ExitCode> {
 }
 
 pub fn plan_execution<'a>(
-    current_dir: Option<&Path>,
+    current_dir: impl AsRef<Path>,
     args: impl IntoIterator<Item = &'a str>,
 ) -> Result<ExecutionPlan> {
     let parsed_cli = CargoVerusCli::from_args(args.into_iter())?;
 
-    let current_dir =
-        if let Some(path) = current_dir { path.to_owned() } else { env::current_dir()? };
+    let current_dir: PathBuf = current_dir.as_ref().to_owned();
 
     let cfg = match parsed_cli.command {
         VerusSubcommand::New(new_cmd) => {

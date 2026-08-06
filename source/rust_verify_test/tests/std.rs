@@ -1276,6 +1276,32 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] checked_next_multiple_of verus_code! {
+        use vstd::prelude::*;
+
+        fn test_u8_checked_next_multiple_of() {
+            let x = u8::checked_next_multiple_of(0, 0); assert(x == None);   // rhs == 0
+            let x = u8::checked_next_multiple_of(10, 0); assert(x == None);  // rhs == 0
+            let x = u8::checked_next_multiple_of(0, 5); assert(x == Some(0u8));
+            let x = u8::checked_next_multiple_of(10, 5); assert(x == Some(10u8));  // already a multiple
+            let x = u8::checked_next_multiple_of(10, 3); assert(x == Some(12u8));  // round up
+            let x = u8::checked_next_multiple_of(250, 7); assert(x == Some(252u8));
+            let x = u8::checked_next_multiple_of(255, 1); assert(x == Some(255u8));
+            let x = u8::checked_next_multiple_of(255, 2); assert(x == None);   // round up overflows
+            let x = u8::checked_next_multiple_of(200, 64); assert(x == None); // round up overflows
+        }
+
+        fn test_usize_checked_next_multiple_of() {
+            let x = usize::checked_next_multiple_of(0, 4); assert(x == Some(0usize));
+            let x = usize::checked_next_multiple_of(8, 4); assert(x == Some(8usize));  // already a multiple
+            let x = usize::checked_next_multiple_of(10, 4); assert(x == Some(12usize)); // round up
+            let x = usize::checked_next_multiple_of(100, 64); assert(x == Some(128usize));
+            let x = usize::checked_next_multiple_of(10, 0); assert(x == None);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] checked_rem_div_systematic_fails verus_code! {
         use vstd::prelude::*;
 
@@ -1603,4 +1629,190 @@ test_verify_one_file! {
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 20)
+}
+
+test_verify_one_file! {
+    #[test] nonzero verus_code! {
+
+        use vstd::prelude::*;
+        use vstd::std_specs::nonzero::*;
+        use std::num::{NonZeroU64, NonZeroI32};
+
+        fn test() {
+            let x = NonZeroI32::new(-20).unwrap();
+            assert(x@ == -20);
+
+            let x1 = x.clone();
+            assert(x1@ == -20);
+
+            let x2 = unsafe { NonZeroI32::new_unchecked(30)};
+            assert(x2@ == 30);
+
+            // assert(x1 < x2); SpecOrd is not supported.
+
+            let b = x1 < x2;
+            assert(b);
+
+            let x3 = x2.get();
+            assert(x3 == 30);
+        }
+
+        fn test_bitor() {
+            let x = NonZeroU64::new(0x1011).unwrap();
+            let y = NonZeroU64::new(0x100).unwrap();
+            let z = x | y;
+            assert(0x1011 | 0x100 == 0x1111) by (compute_only);
+            assert(z@ == 0x1111);
+
+            let z1 = x | 0x1000;
+            assert(0x1011 == 0x1011 | 0x1000) by (compute_only);
+            assert(z1@ == x@);
+            assert(z1 == x);
+        }
+
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] impl_not_issue2519 verus_code! {
+        use std::ops::*;
+        use vstd::prelude::*;
+        use vstd::std_specs::ops::*;
+
+        #[derive(Copy, Clone, PartialEq, Eq)]
+        pub enum B {
+            True,
+            False,
+        }
+
+        impl Not for B {
+            type Output = Self;
+
+            fn not(self) -> (res: Self)
+                ensures
+                    self is True ==> res is False,
+                    self is False ==> res is True,
+            {
+                match self {
+                    B::True => B::False,
+                    B::False => B::True,
+                }
+            }
+        }
+
+        impl NotSpecImpl for B {
+            open spec fn obeys_not_spec() -> bool {
+                true
+            }
+
+            open spec fn not_req(self) -> bool {
+                true
+            }
+
+            open spec fn not_spec(self) -> Self::Output {
+                match self {
+                    B::True => B::False,
+                    B::False => B::True,
+                }
+            }
+        }
+
+        fn main() {
+            let c1 = B::True.not();
+            assert(c1 == B::False);
+
+            let c2 = !B::True;
+            assert(c2 == B::False);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] impl_neg_issue2519 verus_code! {
+        use std::ops::*;
+        use vstd::prelude::*;
+        use vstd::std_specs::ops::*;
+
+        #[derive(Copy, Clone, PartialEq, Eq)]
+        pub enum B {
+            True,
+            False,
+        }
+
+        impl Neg for B {
+            type Output = Self;
+
+            fn neg(self) -> (res: Self)
+                ensures
+                    self is True ==> res is False,
+                    self is False ==> res is True,
+            {
+                match self {
+                    B::True => B::False,
+                    B::False => B::True,
+                }
+            }
+        }
+
+        impl NegSpecImpl for B {
+            open spec fn obeys_neg_spec() -> bool {
+                true
+            }
+
+            open spec fn neg_req(self) -> bool {
+                true
+            }
+
+            open spec fn neg_spec(self) -> Self::Output {
+                match self {
+                    B::True => B::False,
+                    B::False => B::True,
+                }
+            }
+        }
+
+        fn main() {
+            let c1 = B::True.neg();
+            assert(c1 == B::False);
+
+            let c2 = -B::True;
+            assert(c2 == B::False);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] unary_op_of_refs verus_code! {
+        fn test_not() {
+            let x = false;
+            let x_ref = &x;
+
+            let y1 = !x;
+            let y2 = !x_ref;
+            assert(y1 == true);
+            assert(y2 == true);
+        }
+
+        fn test_bitnot() {
+            let x: u8 = 0;
+            let x_ref = &x;
+
+            assert(!0u8 == 255) by(compute_only);
+
+            let y1 = !x;
+            let y2 = !x_ref;
+            assert(y1 == 255);
+            assert(y2 == 255);
+        }
+
+        fn test_neg() {
+            let x: i8 = 10;
+            let x_ref = &x;
+
+            let y1 = -x;
+            let y2 = -x_ref;
+            assert(y1 == -10);
+            assert(y2 == -10);
+        }
+    } => Ok(())
 }

@@ -9,6 +9,7 @@ use serde::Serialize;
 use tabled::settings::{
     Alignment, Modify, Style,
     object::{Columns, Rows},
+    style::On,
 };
 use verus_syn::{Attribute, File, Meta, MetaList, Signature, spanned::Spanned, visit::Visit};
 
@@ -216,6 +217,7 @@ impl FileStats {
         }
     }
 
+    #[allow(unused)]
     fn mark_with_additional_kind(
         &mut self,
         spanned: &impl Spanned,
@@ -273,6 +275,7 @@ impl<'f> Visitor<'f> {
         }
     }
 
+    #[allow(unused)]
     fn mark_with_additional_kind(
         &mut self,
         spanned: &impl Spanned,
@@ -385,11 +388,7 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
                     _ => None,
                 })
             {
-                self.mark_with_additional_kind(
-                    i,
-                    wrapper_code_kind,
-                    LineContent::GhostTracked(wrapper_code_kind),
-                );
+                self.mark(i, wrapper_code_kind, LineContent::GhostTracked(wrapper_code_kind));
                 return;
             }
         }
@@ -443,6 +442,8 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
         for it in &i.attrs {
             self.visit_attribute(it);
         }
+        self.visit_expr(&i.cond);
+        self.visit_block(&i.body);
         if let Some(decreases) = &i.decreases {
             self.mark(
                 decreases,
@@ -463,6 +464,9 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
                 self.mode_or_trusted(CodeKind::Proof),
                 LineContent::ProofDirective,
             );
+            for e in invariant.exprs.exprs.iter() {
+                self.mark(&e, self.mode_or_trusted(CodeKind::Proof), LineContent::ProofDirective);
+            }
         }
         if let Some(invariant_ensures) = &i.invariant_ensures {
             self.mark(
@@ -474,8 +478,6 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
         if let Some(ensures) = &i.ensures {
             self.mark(&ensures, self.mode_or_trusted(CodeKind::Proof), LineContent::ProofDirective);
         }
-        self.visit_expr(&i.cond);
-        self.visit_block(&i.body);
     }
 
     fn visit_expr_for_loop(&mut self, i: &'ast verus_syn::ExprForLoop) {
@@ -856,6 +858,7 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
             || outer_last_segment == Some("segment_get_mut_main".into())
             || outer_last_segment == Some("segment_get_mut_main2".into())
             || outer_last_segment == Some("segment_get_mut_local".into())
+            || outer_last_segment == Some("tld_get_mut".into())
         {
             for tok in i.tokens.clone().into_iter() {
                 match tok.clone() {
@@ -865,6 +868,30 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
                                 verus_syn::parse2(tok.into()).ok();
                             if let Some(content_as_block) = content_as_block {
                                 self.visit_block(&content_as_block);
+                            }
+                        }
+                    }
+                    _ => (),
+                }
+            }
+        } else if outer_last_segment == Some("open_atomic_invariant".into())
+            || outer_last_segment == Some("open_local_invariant".into())
+            || outer_last_segment == Some("open_atomic_update".into())
+            || outer_last_segment == Some("try_open_atomic_update".into())
+        {
+            for tok in i.tokens.clone().into_iter() {
+                self.mark(&tok.span(), CodeKind::Proof, LineContent::Atomic);
+            }
+            for tok in i.tokens.clone().into_iter() {
+                match tok.clone() {
+                    proc_macro2::TokenTree::Group(g) => {
+                        if g.delimiter() == proc_macro2::Delimiter::Brace {
+                            let content_as_block: Option<verus_syn::Block> =
+                                verus_syn::parse2(tok.into()).ok();
+                            if let Some(content_as_block) = content_as_block {
+                                for stmt in content_as_block.stmts.iter() {
+                                    self.visit_stmt(stmt);
+                                }
                             }
                         }
                     }
@@ -1093,8 +1120,13 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
                     }
                     match &*right.expr {
                         verus_syn::Expr::Call(call_expr) => {
-                            let verus_syn::ExprCall { attrs: _, func, paren_token: _, args: _ } =
-                                &*call_expr;
+                            let verus_syn::ExprCall {
+                                attrs: _,
+                                func,
+                                paren_token: _,
+                                args: _,
+                                atomically: _,
+                            } = call_expr;
                             if let verus_syn::Expr::Path(path) = &**func {
                                 if let Some(wrapper_code_kind) = (path.path.segments.len() == 1)
                                     .then(|| path.path.segments[0].ident.to_string())
@@ -1371,6 +1403,9 @@ impl<'f> Visitor<'f> {
                     LineContent::FunctionSpec,
                 );
             }
+            if let Some(ato) = &sig.spec.atomic_spec {
+                self.mark(ato, self.mode_or_trusted(CodeKind::Spec), LineContent::FunctionSpec);
+            }
         }
         for p in &sig.inputs {
             match &p.kind {
@@ -1446,7 +1481,7 @@ fn get_dependencies(
         let common = path_iters
             .iter_mut()
             .map(|x| x.next())
-            .reduce(|acc, x| acc.and_then(|a| if Some(a) == x { Some(a) } else { None }))
+            .reduce(|acc, x| acc.filter(|&a| Some(a) == x))
             .flatten();
         if common.is_some() {
             chomp_components += 1;
@@ -1847,7 +1882,7 @@ fn run(config: Config, run_mode_paths: RunMode<'_>) -> Result<(), String> {
             .with(Style::markdown())
             .with(Modify::new(Columns::new(1..=kinds.len() + 1)).with(Alignment::right()))
             .with(
-                Modify::new(Rows::last()).with(
+                Modify::new(Rows::last()).with::<tabled::settings::Border<On, On, On, On>>(
                     tabled::settings::Border::default()
                         .corner_top_left('|')
                         .corner_top_right('|')

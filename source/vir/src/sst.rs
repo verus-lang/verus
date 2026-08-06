@@ -7,8 +7,9 @@
 //! SST is designed to make the translation to AIR as straightforward as possible.
 
 use crate::ast::{
-    AssertQueryMode, BinaryOp, Constant, Dt, Fun, Mode, NullaryOpr, Path, Quant, SpannedTyped, Typ,
-    Typs, UnaryOp, UnaryOpr, VarAt, VarBinders, VarIdent,
+    ArrayKind, AssertQueryMode, BitwiseOp, Constant, Dt, Fun, IeeeFloatBinaryOp, InequalityOp,
+    Label, Mode, NullaryOpr, Path, Quant, RealArithOp, SpannedTyped, Typ, Typs, UnaryOp, UnaryOpr,
+    VarAt, VarBinders, VarIdent,
 };
 use crate::def::Spanned;
 use crate::interpreter::InterpExp;
@@ -61,6 +62,57 @@ pub enum CallFun {
     Fun(Fun, Option<(Fun, Typs)>),
     Recursive(Fun),
     InternalFun(InternalFun),
+}
+
+/// Arithmetic operation
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum ArithOp {
+    /// IntRange::Int +
+    Add,
+    /// IntRange::Int -
+    Sub,
+    /// IntRange::Int *
+    Mul,
+    /// IntRange::Int / defined as Euclidean (round towards -infinity, not round-towards zero)
+    EuclideanDiv,
+    /// IntRange::Int % defined as Euclidean (returns non-negative result even for negative divisor)
+    EuclideanMod,
+}
+
+/// Primitive binary operations, all are pure functions on 2 inputs
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum BinaryOp {
+    /// boolean and (short-circuiting: right side is evaluated only if left side is true)
+    And,
+    /// boolean or (short-circuiting: right side is evaluated only if left side is false)
+    Or,
+    /// boolean xor (no short-circuiting)
+    Xor,
+    /// boolean implies (short-circuiting: right side is evaluated only if left side is true)
+    Implies,
+    /// the is_smaller_than verus_builtin, used for decreases (true for <, false for ==)
+    HeightCompare { strictly_lt: bool, recursive_function_field: bool },
+    /// SMT equality for any type -- two expressions are exactly the same value
+    /// Some types support compilable equality (Mode == Exec); others only support spec equality (Mode == Spec)
+    Eq,
+    /// not Eq
+    Ne,
+    /// arithmetic inequality
+    Inequality(InequalityOp),
+    /// IntRange operations, all over int
+    Arith(ArithOp),
+    /// Spec-mode real number operations
+    RealArith(RealArithOp),
+    /// Bit Vector Operators
+    Bitwise(BitwiseOp),
+    /// IEEE floating point binary ops (rounding mode RNE)
+    IeeeFloat(IeeeFloatBinaryOp),
+    /// Used only for handling verus_builtin::strslice_get_char
+    StrGetChar,
+    /// Index into an array or slice, no bounds-checking.
+    /// `verus_builtin::array_index` lowers to this.
+    /// Can be used as a Loc
+    Index(ArrayKind),
 }
 
 pub type Exp = Arc<SpannedTyped<ExpX>>;
@@ -164,7 +216,7 @@ pub enum CallTarget {
 
 pub type Stm = Arc<Spanned<StmX>>;
 pub type Stms = Arc<Vec<Stm>>;
-#[derive(Debug, ToDebugSNode)]
+#[derive(Debug, ToDebugSNode, Clone)]
 pub enum StmX {
     /// Call to exec/proof function (or spec function when checking preconditions).
     /// Unlike `ExpX::Call`, this has side effects and may modify state.
@@ -181,6 +233,9 @@ pub enum StmX {
         split: Option<Message>,
         dest: Option<Dest>,
         assert_id: Option<AssertId>,
+        /// Code to be executed *inside* the function call,
+        /// i.e. emplaced between the pre- and postcondition
+        body: Option<Stm>,
     },
     /// Assertion to be verified by the SMT solver; reports Stm's span on failure plus optional extra info
     Assert(Option<AssertId>, Option<Message>, Exp),
@@ -205,6 +260,8 @@ pub enum StmX {
     Fuel(Fun, u32),
     /// Make a string literal available for use in specifications (hidden by default for perf reasons)
     RevealString(Arc<String>),
+    /// Make a byte-string literal available in specifications.
+    RevealByteString(Arc<Vec<u8>>),
     /// Marks unreachable code; verification assumes this path is never taken
     DeadEnd(Stm),
     /// Function return: asserts postcondition holds, then exits function.
@@ -216,7 +273,7 @@ pub enum StmX {
         inside_body: bool,
     },
     /// Loop control flow to a labeled or innermost loop
-    BreakOrContinue { label: Option<String>, is_break: bool },
+    BreakOrContinue { label: Label, is_break: bool },
     /// Conditional statement (condition, then-branch, optional else-branch)
     If(Exp, Stm, Option<Stm>),
     /// Loop with invariants and termination measure.
@@ -227,11 +284,14 @@ pub enum StmX {
     Loop {
         /// If true, loop body is verified in isolation (no outer context)
         loop_isolation: bool,
+        /// Statements to evalute before the loop which are part of the "isolation boundary".
+        /// Should only be non-empty when loop_isolation=true.
+        pre_stms: Stms,
         /// True if this was originally a for loop (affects error messages)
         is_for_loop: bool,
         /// Unique identifier for this loop instance
         id: u64,
-        label: Option<String>,
+        label: Label,
         /// For simple while loops: (condition setup statements, condition expression)
         cond: Option<(Stm, Exp)>,
         body: Stm,
@@ -243,11 +303,18 @@ pub enum StmX {
         typ_inv_vars: Arc<Vec<(UniqueIdent, Typ)>>,
         /// Variables potentially modified by the loop body
         modified_vars: Option<Arc<crate::sst_vars::HavocSet>>,
+        au_branch_bool: Option<Exp>,
         /// Params (including closure params) that may be modified _in or before_ this loop body
         /// but *excluding* their initial assignments.
         /// This is the same set of variables for which we need to consider different values
         /// for the 'current' and 'pre-state' value of the variable at the beginning of the loop.
-        pre_modified_params: Option<Arc<crate::sst_vars::HavocSet>>,
+        ///
+        /// This is only used when pre_stms is empty.
+        pre_modified_params_incl: Option<Arc<crate::sst_vars::HavocSet>>,
+        /// Params (including closure params) that may be modified _before_ the pre_stms.
+        ///
+        /// This is only used when pre_stms is non-empty.
+        pre_modified_params_excl: Option<Arc<crate::sst_vars::HavocSet>>,
     },
     /// Atomic invariant opening for concurrent verification
     OpenInvariant(Stm),

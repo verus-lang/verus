@@ -20,7 +20,7 @@ pub fn record_history_commit(
             let project_repo = Repository::discover(project_dir).ok();
             let project_head_shorthand = project_repo.as_ref().and_then(|pr| {
                 pr.head().ok().and_then(|h| {
-                    if h.is_branch() { h.shorthand().map(|x| x.to_owned()) } else { None }
+                    if h.is_branch() { h.shorthand().map(|x| x.to_owned()).ok() } else { None }
                 })
             });
             let project_head_hash = project_repo.as_ref().and_then(|pr| {
@@ -63,10 +63,9 @@ pub fn record_history_commit(
                     .iter()
                     .filter(|d| d.starts_with(&cur_path))
                     .map(|d| {
-                        (
-                            d.components().skip(cur_path_components).next().unwrap(),
-                            d.components().skip(cur_path_components).count() == 1,
-                        )
+                        let name = d.components().nth(cur_path_components).unwrap();
+                        let is_file = d.components().skip(cur_path_components).count() == 1;
+                        (name, is_file)
                     })
                     .collect();
                 for (name, is_file) in here.into_iter() {
@@ -231,14 +230,12 @@ pub struct FoundRecordHistoryRepo {
 }
 
 fn gernerate_recorder_id() -> String {
-    use rand::Rng;
-    let mut rng = rand::thread_rng();
     const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ\
                             abcdefghijklmnopqrstuvwxyz\
                             0123456789";
     (0..32)
         .map(|_| {
-            let idx = rng.gen_range(0..CHARSET.len());
+            let idx = rand::random_range(0..CHARSET.len());
             CHARSET[idx] as char
         })
         .collect()

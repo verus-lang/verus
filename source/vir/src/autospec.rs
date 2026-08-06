@@ -12,7 +12,12 @@ fn simplify_one_expr(functions: &HashMap<Fun, Function>, expr: &Expr) -> Result<
     // AssumeExternal
     let expr = match &expr.x {
         // TODO: ConstVar
-        ExprX::Call(CallTarget::Fun(kind, tgt, _typs, _impl_paths, attrs), args, post_args) => {
+        ExprX::Call {
+            target: CallTarget::Fun(kind, tgt, _typs, _impl_paths, attrs),
+            args,
+            post_args,
+            body,
+        } => {
             let mut found = functions.contains_key(tgt);
             match kind {
                 crate::ast::CallTargetKind::DynamicResolved { resolved, .. } => {
@@ -24,7 +29,12 @@ fn simplify_one_expr(functions: &HashMap<Fun, Function>, expr: &Expr) -> Result<
                 expr.clone()
             } else if attrs.assume_external_allowed {
                 let target = CallTarget::AssumeExternal;
-                expr.new_x(ExprX::Call(target, args.clone(), post_args.clone()))
+                expr.new_x(ExprX::Call {
+                    target,
+                    args: args.clone(),
+                    post_args: post_args.clone(),
+                    body: body.clone(),
+                })
             } else {
                 // should have been flagged by well_formed before reaching here
                 unreachable!("internal error: function {:?} not found", tgt)
@@ -47,7 +57,12 @@ fn simplify_one_expr(functions: &HashMap<Fun, Function>, expr: &Expr) -> Result<
             let var = ExprX::ConstVar(tgt, AutospecUsage::Final);
             Ok(SpannedTyped::new(&expr.span, &expr.typ, var))
         }
-        ExprX::Call(CallTarget::Fun(kind, tgt, typs, impl_paths, attrs), args, post_args) => {
+        ExprX::Call {
+            target: CallTarget::Fun(kind, tgt, typs, impl_paths, attrs),
+            args,
+            post_args,
+            body,
+        } => {
             use crate::ast::CallTargetKind;
             let autospec_usage = attrs.autospec;
             let (kind, tgt, typs, impl_paths) = match (kind, autospec_usage) {
@@ -96,11 +111,12 @@ fn simplify_one_expr(functions: &HashMap<Fun, Function>, expr: &Expr) -> Result<
                 const_var: attrs.const_var,
                 assume_external_allowed: false,
             };
-            let call = ExprX::Call(
-                CallTarget::Fun(kind, tgt, typs, impl_paths, attrs),
-                args.clone(),
-                post_args.clone(),
-            );
+            let call = ExprX::Call {
+                target: CallTarget::Fun(kind, tgt, typs, impl_paths, attrs),
+                args: args.clone(),
+                post_args: post_args.clone(),
+                body: body.clone(),
+            };
             Ok(SpannedTyped::new(&expr.span, &expr.typ, call))
         }
         _ => Ok(expr.clone()),

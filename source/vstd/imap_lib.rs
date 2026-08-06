@@ -600,7 +600,7 @@ impl<K, V> IMap<Seq<K>, V> {
             ).insert(k, v),
     {
         broadcast use group_imap_properties;
-        broadcast use super::seq::group_seq_axioms;
+        broadcast use super::seq::group_seq_lemmas;
         broadcast use super::seq_lib::group_seq_properties, super::seq_lib::lemma_seq_skip_of_skip;
         broadcast use Map::lemma_prefixed_entries_contains, Map::lemma_prefixed_entries_get;
 

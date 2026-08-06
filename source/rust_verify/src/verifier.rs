@@ -749,7 +749,6 @@ impl Verifier {
         snap_map: &Vec<(vir::messages::Span, SnapPos)>,
         command: &Command,
         context: &CommandContext,
-        hint_upon_failure: &Option<Message>,
         prover_choice: vir::def::ProverChoice,
         default_prover_failed_assert_ids: &mut Vec<AssertId>,
     ) -> RunCommandQueriesResult {
@@ -909,9 +908,6 @@ impl Verifier {
                         self.count_errors += 1;
                         self.func_fails.insert(context.fun.clone());
                         invalidity = true;
-                        if let Some(hint) = hint_upon_failure.clone() {
-                            reporter.report_as(&hint.to_any(), MessageLevel::Note);
-                        }
                     }
                     if self.expand_flag {
                         invalidity = true;
@@ -984,7 +980,7 @@ impl Verifier {
                 }
                 ValidityResult::UnexpectedOutput(err) => {
                     util::PANIC_ON_DROP_VEC.store(false, std::sync::atomic::Ordering::SeqCst);
-                    panic!("unexpected output from solver: {} {}", &context.span.as_string, err);
+                    panic!("unexpected output from solver: {} {}", context.span.as_string, err);
                 }
             }
         }
@@ -1084,14 +1080,8 @@ impl Verifier {
             not_skipped: false,
             used_axioms: None,
         };
-        let CommandsWithContextX {
-            context,
-            commands,
-            prover_choice,
-            skip_recommends: _,
-            hint_upon_failure,
-        } = &*commands_with_context;
-        let hint_guard = hint_upon_failure.lock().expect("we abort on poisoning");
+        let CommandsWithContextX { context, commands, prover_choice, skip_recommends: _ } =
+            &*commands_with_context;
         let context = context.with_desc_prefix(desc_prefix);
         if commands.len() > 0 {
             air_context.blank_line();
@@ -1111,7 +1101,6 @@ impl Verifier {
                     snap_map,
                     &command,
                     &context,
-                    &hint_guard,
                     *prover_choice,
                     default_prover_failed_assert_ids,
                 );
@@ -2662,7 +2651,6 @@ impl Verifier {
             bodies: vec![],
             shadow_check: vec![],
             extra_erase_ast_ids: vec![],
-            extra_erase_hir_ids_including_adjustments: vec![],
             local_invariant_bodies: vec![],
         };
         let erasure_info = std::rc::Rc::new(std::cell::RefCell::new(erasure_info));
@@ -2767,8 +2755,8 @@ impl Verifier {
                     "{}   ###   {}   ###   {}   ###   {}",
                     vir::ast_util::path_as_friendly_rust_name(&imp.x.impl_path),
                     vir::ast_util::path_as_friendly_rust_name(&imp.x.trait_path),
-                    &ts.join(", "),
-                    &imp.span.as_string,
+                    ts.join(", "),
+                    imp.span.as_string,
                 )
                 .map_err(|e| io_vir_err("log_impl_names".to_string(), e))
                 .map_err(map_err_diagnostics)?;
@@ -2814,60 +2802,49 @@ impl Verifier {
             &vir_crate,
             &unpruned_crate,
             &mut *ctxt.diagnostics.borrow_mut(),
+            &mut self.deferred_errors,
             &warning_ctx,
             self.args.no_verify,
             self.args.no_cheating,
         );
-        let mut first_error: Option<VirErr> = check_crate_result1.err();
-        match check_crate_result {
-            Ok(check_details) => {
-                for (func, failed_proof_notes) in check_details.func_failed_proof_notes {
-                    self.record_func_failed_proof_notes(
-                        func,
-                        failed_proof_notes.into_iter().collect(),
-                    );
-                }
-            }
-            Err(err) => {
-                if first_error.is_none() {
-                    first_error = Some(err);
-                }
-            }
-        }
-        for diag in ctxt.diagnostics.borrow_mut().drain(..) {
-            match diag {
-                vir::ast::VirErrAs::NonBlockingError(err, maybe_p) => {
-                    // This diagnostic message may be a verification boundary violation.
-                    // In that case, we want to try to construct a suggestion to deal with the problem.
 
-                    let err = match maybe_p {
-                        Some(p) => {
-                            // Try to build a DefId, then check if the corresponding Def is an Adt or Fun-like
-                            // let did = vir_path_to_def_id(tcx, &ctxt.verus_items, &p);
-                            let map = ctxt.name_def_id_map.borrow();
-                            let did = map.get(&p);
-                            match did {
-                                Some(did) => match build_boundary_suggestion(&ctxt, *did, &p) {
-                                    Ok(s) => err.help(format!(
-                                        "The following declaration may resolve this error:\n{}",
-                                        s
-                                    )),
-                                    Err(_) => err,
-                                },
-                                None => err,
-                            }
-                        }
-                        None => err,
-                    };
-                    if first_error.is_none() {
-                        first_error = Some(err.clone().into())
-                    } else {
-                        diagnostics.report_as(&err.to_any(), MessageLevel::Error)
+        let check_details = match &check_crate_result {
+            Ok(check_details) => check_details,
+            Err(e) => &e.check_details,
+        };
+        for (func, failed_proof_notes) in &check_details.func_failed_proof_notes {
+            self.record_func_failed_proof_notes(func.clone(), failed_proof_notes.clone());
+        }
+
+        // Process errors from well_formed checks
+        let mut all_wf_errors = vec![];
+        if let Err(e) = check_crate_result1 {
+            all_wf_errors.push(e);
+        }
+        if let Err(vir::well_formed::WFErr { errors, boundary_errors, check_details: _ }) =
+            check_crate_result
+        {
+            all_wf_errors.extend(errors);
+            for (path, mut err) in boundary_errors.into_iter() {
+                let map = ctxt.name_def_id_map.borrow();
+                let did = map.get(&path);
+                if let Some(did) = did {
+                    if let Ok(s) = build_boundary_suggestion(&ctxt, *did, &path) {
+                        err = err.help(format!(
+                            "The following declaration may resolve this error:\n{}",
+                            s
+                        ));
                     }
                 }
-                vir::ast::VirErrAs::NonFatalError(err, _) => {
-                    self.deferred_errors.push(err);
-                }
+                all_wf_errors.push(err);
+            }
+        }
+        if all_wf_errors.len() > 0 {
+            return Err((all_wf_errors, ctxt_diagnostics.borrow_mut().drain(..).collect()));
+        }
+
+        for diag in ctxt.diagnostics.borrow_mut().drain(..) {
+            match diag {
                 vir::ast::VirErrAs::Warning(err) => {
                     diagnostics.report_as(&err.to_any(), MessageLevel::Warning)
                 }
@@ -2876,14 +2853,11 @@ impl Verifier {
                 }
             }
         }
-        if let Some(first_error) = first_error {
-            return Err((vec![first_error], Vec::new()));
-        }
 
         let vir_crate =
             vir::autospec::resolve_autospec(&vir_crate).map_err(|e| (vec![e], Vec::new()))?;
-        let (vir_crate, erasure_modes, _read_kind_finals) =
-            vir::modes::check_crate(&vir_crate).map_err(|e| (vec![e], Vec::new()))?;
+        let (vir_crate, erasure_modes) =
+            vir::modes::check_crate(&vir_crate).map_err(|es| (es, Vec::new()))?;
 
         self.vir_crate = Some(vir_crate.clone());
         self.warning_ctx = Some(Arc::new(warning_ctx));
@@ -2898,8 +2872,6 @@ impl Verifier {
         let bodies = erasure_info.bodies.clone();
         let shadow_check = erasure_info.shadow_check.clone();
         let extra_erase_ast_ids = erasure_info.extra_erase_ast_ids.clone();
-        let extra_erase_hir_ids_including_adjustments =
-            erasure_info.extra_erase_hir_ids_including_adjustments.clone();
         let local_invariant_bodies = erasure_info.local_invariant_bodies.clone();
         let erasure_hints = crate::erase::ErasureHints {
             vir_crate: unpruned_crate,
@@ -2913,7 +2885,6 @@ impl Verifier {
             bodies,
             shadow_check,
             extra_erase_ast_ids,
-            extra_erase_hir_ids_including_adjustments,
             local_invariant_bodies,
         };
         self.erasure_hints = Some(erasure_hints);
@@ -3249,10 +3220,6 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                         }
                         vir::ast::VirErrAs::Note(err) => {
                             reporter.report_as(&err.to_any(), MessageLevel::Note)
-                        }
-                        vir::ast::VirErrAs::NonBlockingError(err, _)
-                        | vir::ast::VirErrAs::NonFatalError(err, _) => {
-                            reporter.report_as(&err.to_any(), MessageLevel::Error)
                         }
                     }
                 }

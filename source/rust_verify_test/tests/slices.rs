@@ -78,8 +78,18 @@ test_verify_one_file! {
         fn test_set(x: &mut [u64])
             requires old(x).len() == 3
         {
-            x.set(0, 5);
-            x.set(1, 20);
+            x[0] = 5;
+            x[1] = 20;
+            assert(x[0] == 5);
+            assert(x[1] == 20);
+            assert(false); // FAILS
+        }
+
+        fn test_set_1(x: &mut [u64])
+            requires old(x).len() == 3
+        {
+            x[0] = 5;
+            x[1] = 20;
             assert(x[0] == 5);
             assert(x[1] == 20);
             assert(false); // FAILS
@@ -87,7 +97,7 @@ test_verify_one_file! {
 
         fn test_set3(x: &mut [u64])
         {
-            x.set(0, 5); // FAILS
+            x[0] = 5; // FAILS
         }
 
         fn test_is_empty<T>(x: &[T], y: &[T])
@@ -103,7 +113,7 @@ test_verify_one_file! {
             assert(!yb);
         }
 
-    } => Err(err) => assert_fails(err, 6)
+    } => Err(err) => assert_fails(err, 7)
 }
 
 test_verify_one_file! {
@@ -568,4 +578,33 @@ test_verify_one_file! {
             assert(spec_bound(ub) == SpecBound::<&usize>::Excluded(&r.end));
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_split_at_checked verus_code! {
+        use vstd::prelude::*;
+
+        fn in_bounds(s: &[u8])
+            requires s@.len() == 5,
+        {
+            let r = s.split_at_checked(2);
+            assert(r matches Some((a, b))
+                && a@ == s@.subrange(0, 2)
+                && b@ == s@.subrange(2, 5));
+        }
+
+        fn out_of_bounds(s: &[u8])
+            requires s@.len() == 5,
+        {
+            let r = s.split_at_checked(6);
+            assert(r.is_none());
+        }
+
+        fn wrong_split(s: &[u8])
+            requires s@.len() == 5,
+        {
+            let r = s.split_at_checked(2);
+            assert(r matches Some((a, b)) && a@ == s@.subrange(0, 3)); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
 }

@@ -70,6 +70,10 @@ pub struct VerifyCommand {
     #[arg(short, long, action = ArgAction::Count)]
     pub verbosity: u8,
 
+    /// Check toolchain components, e.g. version compatibility of verus and vstd.
+    #[arg(long)]
+    pub check_toolchain: bool,
+
     /// Crates to receive forwarded Verus args
     #[arg(
         long,
@@ -122,6 +126,9 @@ pub struct CargoOptions {
     pub offline: bool,
 
     #[arg(long)]
+    pub release: bool,
+
+    #[arg(long)]
     pub target_dir: Option<PathBuf>,
 
     #[arg(long, value_name = "CONFIG", action = ArgAction::Append)]
@@ -172,6 +179,7 @@ fn has_late_verus_arg(opts: &CargoOptions) -> bool {
             || arg == "--frozen"
             || arg == "--locked"
             || arg == "--offline"
+            || arg == "--release"
             || arg == "--target-dir"
             || arg.starts_with("--target-dir=")
             || arg == "--config"

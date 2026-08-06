@@ -50,7 +50,7 @@ error: function body check: Resource limit (rlimit) exceeded
 
 note: Analyzing prover log for (profile rerun) trigger_loops::trigger_forever2 ...
 
-Z3 4.12.5
+Z3 4.16.0
 note: Log analysis complete for (profile rerun) trigger_loops::trigger_forever2
 
 note: Profile statistics for trigger_loops::trigger_forever2

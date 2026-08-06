@@ -1,7 +1,7 @@
 use crate::thir::cx::ThirBuildCx;
 use crate::verus::CallErasure;
 use crate::verus::{
-    erase_node, erase_node_unadjusted, erase_tree_kind, erased_ghost_value, handle_call,
+    erase_node, erase_node_unadjusted, erase_tree_kind, handle_call,
     is_node_with_single_arg_erased_or_shadow,
 };
 use crate::verus_time_travel_prevention::try_move_head_into_shadow;
@@ -11,26 +11,6 @@ use rustc_middle::thir;
 use rustc_middle::thir::{ExprId, LocalVarId, Pat, PatKind};
 use rustc_middle::ty::TyKind;
 use rustc_middle::ty::adjustment::{Adjust, Adjustment, AutoBorrow, DerefAdjustKind};
-
-pub(crate) fn mirror_expr_adjusted_pre<'tcx>(
-    cx: &mut ThirBuildCx<'tcx>,
-    expr: &'tcx Expr<'tcx>,
-) -> Option<rustc_middle::thir::ExprId> {
-    let Some(erasure_ctxt) = cx.verus_ctxt.ctxt.clone() else {
-        return None;
-    };
-    if erasure_ctxt.adjusted_node_erasure.contains(&expr.hir_id) {
-        Some(erased_ghost_value(
-            cx,
-            &erasure_ctxt,
-            expr.hir_id,
-            expr.span,
-            cx.typeck_results.expr_ty_adjusted(expr),
-        ))
-    } else {
-        None
-    }
-}
 
 // To avoid edits and conflicts in thir/cx/expr.rs, postprocess some of the work for expr.rs here
 pub(crate) fn apply_adjustment_post<'tcx>(
@@ -249,6 +229,16 @@ pub(crate) fn scope_post<'tcx>(cx: &mut ThirBuildCx<'tcx>, expr_id: ExprId) -> E
     let thir::ExprKind::Scope { region_scope, value, hir_id } = cx.thir[expr_id].kind else {
         panic!("scope_post expected ExprKind::Scope");
     };
+
+    // Replace `Scope(two_phase_mutable_reference_tie(&mut a, &mut b))` with:
+    // two_phase_mutable_reference_tie(Scope(&mut a), &mut b)
+    //
+    // The reason to do this is that the mir_build code specifically looks for the following
+    // pattern: `func_call(..., two_phase_mutable_reference_tie(...), ...)`
+    // and having a Scope in between interferes with that.
+    //
+    // REVIEW: given the complexity of this transformation, it may be better to just handle
+    // Scopes in the mir building code so we can delete this step.
 
     match cx.thir.exprs[value].kind {
         thir::ExprKind::Call { ty, fun, ref args, from_hir_call, fn_span } => {

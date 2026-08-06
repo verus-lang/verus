@@ -3,6 +3,8 @@ use std::{
     process::Command,
 };
 
+use yansi::Paint;
+
 mod record;
 #[cfg(feature = "record-history")]
 mod record_history;
@@ -45,6 +47,8 @@ const RUST_VERIFY_FILE_NAME: &str =
 const Z3_FILE_NAME: &str = if cfg!(target_os = "windows") { ".\\z3.exe" } else { "./z3" };
 const CVC5_FILE_NAME: &str = if cfg!(target_os = "windows") { ".\\cvc5.exe" } else { "./cvc5" };
 
+pub const VERUS_DRIVER_VIA_CARGO: &str = "__VERUS_DRIVER_VIA_CARGO__";
+
 fn main() {
     match run() {
         Ok(exit_status) => {
@@ -53,20 +57,21 @@ fn main() {
             }
         }
         Err(err) => {
-            eprintln!("{}", yansi::Paint::red(format!("error: {}", err)));
+            eprintln!("{}", format!("error: {}", err).red());
             std::process::exit(1);
         }
     }
 }
 
 fn warning(msg: &str) {
-    eprintln!("{}", yansi::Paint::yellow(format!("warning: {}", msg)));
+    eprintln!("{}", format!("warning: {}", msg).yellow());
 }
 
 fn run() -> Result<std::process::ExitStatus, String> {
     // If instructed, skip the rustup toolchain sanity check & trust the user to
     // have set up their environment to point to the correct toolchain.
     let use_rustup: bool = std::env::var("VERUS_USE_RUSTUP").map_or(true, |v| v != "0");
+    let via_cargo = std::env::var(VERUS_DRIVER_VIA_CARGO).as_deref() == Ok("1");
 
     #[allow(unused_variables)] // unpretty_arg is unused if --features record-history is disabled
     let (mut args, record, unpretty_arg) = {
@@ -101,7 +106,7 @@ fn run() -> Result<std::process::ExitStatus, String> {
     let parent = current_exe.and_then(|current| current.parent().map(std::path::PathBuf::from));
 
     let Some(verusroot_path) = parent.clone().and_then(|mut path| {
-        if path.join("verus-root").is_file() {
+        if via_cargo || path.join("verus-root").is_file() {
             if !path.is_absolute() {
                 path = std::env::current_dir().expect("working directory invalid").join(path);
             }
@@ -134,26 +139,18 @@ fn run() -> Result<std::process::ExitStatus, String> {
                 {
                     eprintln!(
                         "{}",
-                        yansi::Paint::red(format!(
-                            "verus: required rust toolchain {} not found",
-                            TOOLCHAIN
-                        ))
+                        format!("verus: required rust toolchain {} not found", TOOLCHAIN).red()
                     );
                     eprintln!(
                         "{}",
-                        yansi::Paint::blue(
-                            "run the following command (in a bash-compatible shell) to install the necessary toolchain:"
-                        )
+                        "run the following command (in a bash-compatible shell) to install the necessary toolchain:".blue()
                     );
-                    eprintln!("  {}", yansi::Paint::white(format!("rustup install {}", TOOLCHAIN)));
+                    eprintln!("  {}", format!("rustup install {}", TOOLCHAIN).white());
                 }
             }
             None => {
-                eprintln!(
-                    "{}",
-                    yansi::Paint::red(format!("verus: rustup not found, or not executable"))
-                );
-                eprintln!("{}", yansi::Paint::yellow(format!("verus needs a rustup installation")));
+                eprintln!("{}", format!("verus: rustup not found, or not executable").red());
+                eprintln!("{}", format!("verus needs a rustup installation").yellow());
                 #[cfg(any(target_os = "linux", target_os = "macos"))]
                 {
                     eprintln!(
@@ -164,10 +161,10 @@ fn run() -> Result<std::process::ExitStatus, String> {
                     );
                     eprintln!(
                         "  {}",
-                        yansi::Paint::white(format!(
+                        format!(
                             "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- --default-toolchain {}",
                             TOOLCHAIN
-                        ))
+                        ).white()
                     );
                     eprintln!(
                         "{}",

@@ -1,10 +1,10 @@
 use crate::ast::{
-    BinaryOp, SpannedTyped, TriggerAnnotation, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VarBinders,
-    VarIdent, VirErr,
+    SpannedTyped, TriggerAnnotation, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VarBinders, VarIdent,
+    VirErr,
 };
 use crate::context::Ctx;
 use crate::messages::{Span, error};
-use crate::sst::{Exp, ExpX, Exps, Trig, Trigs};
+use crate::sst::{BinaryOp, Exp, ExpX, Exps, Trig, Trigs};
 use crate::sst_visitor::{BndKind, ScopeEntry};
 use crate::triggers_auto::AutoType;
 use crate::util::vec_map;
@@ -132,8 +132,7 @@ fn check_trigger_expr_arg(state: &mut State, arg: &Exp) {
             | UnaryOp::MutRefCurrent
             | UnaryOp::MutRefFuture(_)
             | UnaryOp::MutRefFinal(_)
-            | UnaryOp::Length(_)
-            | UnaryOp::InferSpecForLoopIter { .. } => {}
+            | UnaryOp::Length(_) => {}
         },
         ExpX::UnaryOpr(op, arg) => match op {
             UnaryOpr::Box(_) | UnaryOpr::Unbox(_) => panic!("unexpected box"),
@@ -148,8 +147,9 @@ fn check_trigger_expr_arg(state: &mut State, arg: &Exp) {
             UnaryOpr::IsVariant { .. }
             | UnaryOpr::Field { .. }
             | UnaryOpr::IntegerTypeBound(..)
-            | UnaryOpr::HasType(_) => {}
-            UnaryOpr::HasResolved(_) => {}
+            | UnaryOpr::HasType(_)
+            | UnaryOpr::HasResolved(_)
+            | UnaryOpr::LoopIsolationBoundary(_) => {}
         },
         _ => {}
     }
@@ -200,7 +200,7 @@ fn check_trigger_expr(
         | ExpX::UnaryOpr(UnaryOpr::Field { .. }, _)
         | ExpX::UnaryOpr(UnaryOpr::IsVariant { .. }, _)
         | ExpX::Unary(UnaryOp::Trigger(_) | UnaryOp::HeightTrigger, _) => {}
-        ExpX::Binary(BinaryOp::Bitwise(_, _) | BinaryOp::Index(..), _, _) => {}
+        ExpX::Binary(BinaryOp::Bitwise(_) | BinaryOp::Index(_), _, _) => {}
         ExpX::Unary(UnaryOp::BitNot(_), _) => {}
         ExpX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(..), _, _) => {}
         ExpX::Unary(UnaryOp::Clip { .. }, _) | ExpX::Binary(BinaryOp::Arith(..), _, _) => {}
@@ -259,9 +259,6 @@ fn check_trigger_expr(
         ExpX::NullaryOpr(crate::ast::NullaryOpr::ConstTypBound(..)) => {
             Err(error(&exp.span, "triggers cannot contain const type bounds"))
         }
-        ExpX::NullaryOpr(crate::ast::NullaryOpr::NoInferSpecForLoopIter) => {
-            Err(error(&exp.span, "triggers cannot contain loop spec inference"))
-        }
         ExpX::Unary(op, arg) => match op {
             UnaryOp::StrLen
             | UnaryOp::BitNot(_)
@@ -285,9 +282,6 @@ fn check_trigger_expr(
             | UnaryOp::MustBeFinalized
             | UnaryOp::MustBeElaborated
             | UnaryOp::CastToInteger => Ok(()),
-            UnaryOp::InferSpecForLoopIter { .. } => {
-                Err(error(&exp.span, "triggers cannot contain loop spec inference"))
-            }
             UnaryOp::Not => Err(error(&exp.span, "triggers cannot contain boolean operators")),
             UnaryOp::Length(_) => {
                 Err(error(&exp.span, "triggers cannot contain builtin Length operator"))
@@ -313,11 +307,14 @@ fn check_trigger_expr(
                 check_trigger_expr_arg(state, arg);
                 Ok(())
             }
+            UnaryOpr::LoopIsolationBoundary(..) => {
+                Err(error(&exp.span, "triggers cannot contain loop_isolation_boundary"))
+            }
         },
         ExpX::Binary(op, arg1, arg2) => {
             use BinaryOp::*;
             match op {
-                And | Or | Xor | Implies | Eq(_) | Ne => {
+                And | Or | Xor | Implies | Eq | Ne => {
                     Err(error(&exp.span, "triggers cannot contain boolean operators"))
                 }
                 HeightCompare { .. } => Err(error(

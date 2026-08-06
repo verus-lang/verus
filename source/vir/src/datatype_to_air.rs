@@ -347,7 +347,7 @@ fn datatype_or_fun_to_air_commands(
                 }
                 let name = format!(
                     "{}_{}",
-                    &ctx.name_ctxt.variant_ident(&dt, &variant.name),
+                    ctx.name_ctxt.variant_ident(&dt, &variant.name),
                     QID_CONSTRUCTOR,
                 );
                 let bind = func_bind(ctx, name, tparams, &params, &has_ctor, None);
@@ -559,7 +559,7 @@ fn datatype_or_fun_to_air_commands(
         let has_y = expr_has_type(&y_var, &id);
         let eq_command = |s_name: &str, pre: &Vec<Expr>| {
             let params = Arc::new(vec![deep_param.clone(), x_param(&vpolytyp), y_param(&vpolytyp)]);
-            let name = format!("{}_{}", &s_name, QID_EXT_EQUAL);
+            let name = format!("{}_{}", s_name, QID_EXT_EQUAL);
             let mut args = vec![deep_var.clone()];
             args.push(id.clone());
             args.push(x_var.clone());
@@ -835,6 +835,19 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
         vec![]
     };
 
+    let bytestr_commands = if ctx.used_builtins.uses_bytestr {
+        let nodes =
+            crate::prelude::bytestr_functions(&ctx.name_ctxt.prefix_box(&crate::def::array_type()));
+
+        let cmds = air::parser::Parser::new(Arc::new(crate::messages::VirMessageInterface {}))
+            .nodes_to_commands(&nodes)
+            .expect("internal error: malformed byte-string functions");
+
+        (*cmds).clone()
+    } else {
+        vec![]
+    };
+
     let ieee_float_commands = if ctx.used_builtins.uses_ieee_float {
         let nodes = crate::prelude::ieee_float_prelude();
         let cmds = air::parser::Parser::new(Arc::new(crate::messages::VirMessageInterface {}))
@@ -869,6 +882,7 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
     commands.append(&mut axiom_commands);
     commands.extend(array_commands);
     commands.extend(strslice_commands);
+    commands.extend(bytestr_commands);
     commands.extend(ieee_float_commands);
     commands.extend(resolve_axiom_commands);
     Arc::new(commands)
