@@ -182,19 +182,13 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         fn double_it() {
-            let f = |x: &u32| -> (y: u32) requires *x < 10, ensures y == x * 2 { *x * 2 };
             let v = vec![1u32, 2, 3, 4];
             let mut w = Vec::new();
-            for x in iter: v.iter().map(f)
+            for x in iter: v.iter().map(|x: &u32| -> (y: u32) requires *x < 10, ensures y == x * 2 { *x * 2 })
                 invariant
                     w.len() == iter.index(),
-                    forall |i| 0 <= i < w.len() ==> w[i] == iter.seq()[i],
-                    // TODO: We'd like this work
-                    //forall |i| 0 <= i < w.len() ==> w[i] == v[i] * 2,
+                    forall |i| 0 <= i < w.len() ==> w[i] == v[i] * 2,
             {
-                assert(x == iter.seq()[iter.index()]);
-                // TODO: We'd like this work
-                //assert(x == v[iter.index()] * 2);
                 w.push(x);
             }
             assert(w@ == seq![2u32, 4, 6, 8]);
