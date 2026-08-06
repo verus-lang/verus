@@ -484,7 +484,10 @@ test_verify_one_file! {
             }
             assert(e);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot mutate through a spec-mode mutable reference")
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "cannot mutate through a spec-mode mutable reference",
+        "mutable borrow is not allowed in spec context",
+    ])
 }
 
 test_verify_one_file! {
