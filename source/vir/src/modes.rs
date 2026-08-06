@@ -3974,7 +3974,7 @@ fn check_function(
     Ok(())
 }
 
-pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes, ReadKindFinals), Vec<VirErr>> {
+pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes), Vec<VirErr>> {
     let mut funs: HashMap<Fun, Function> = HashMap::new();
     let mut datatypes: HashMap<Path, Datatype> = HashMap::new();
     for function in krate.functions.iter() {
@@ -4034,9 +4034,5 @@ pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes, ReadKindFinals
             errors.push(err);
         }
     }
-    if errors.len() > 0 {
-        Err(errors)
-    } else {
-        Ok((Arc::new(kratex), record.erasure_modes, record.read_kind_finals))
-    }
+    if errors.len() > 0 { Err(errors) } else { Ok((Arc::new(kratex), record.erasure_modes)) }
 }
