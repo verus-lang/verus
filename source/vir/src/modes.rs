@@ -3630,11 +3630,24 @@ fn check_function(
     function: &mut Function,
     rtypes: &ResolutionTypes,
 ) -> Result<(), VirErr> {
-    // Reset this, we only need it per-function
-    record.type_inv_info = TypeInvInfo { ctor_needs_check: HashMap::new() };
-    record.var_modes = HashMap::new();
-    record.temporary_modes = HashMap::new();
-    record.mut_bor_place_modes = HashMap::new();
+    let Record {
+        // Global fields
+        erasure_modes: _,
+        // Per-function fields
+        type_inv_info,
+        read_kind_finals,
+        var_modes,
+        temporary_modes,
+        infer_spec_for_implicit_reborrows,
+        mut_bor_place_modes,
+    } = record;
+    // Reset the fields that are per-function
+    *type_inv_info = TypeInvInfo { ctor_needs_check: HashMap::new() };
+    *read_kind_finals = HashMap::new();
+    *var_modes = HashMap::new();
+    *temporary_modes = HashMap::new();
+    *infer_spec_for_implicit_reborrows = None;
+    *mut_bor_place_modes = HashMap::new();
 
     let mut fun_typing = typing.push_var_scope();
 
@@ -3837,6 +3850,11 @@ fn check_function(
         let mut body_typing = fun_typing.push_ret_mode(ret_mode);
         let mut body_typing = body_typing.push_block_ghostness(Ghost::of_mode(function.x.mode));
         let mut body_typing = body_typing.push_in_pure(pure_spec_fn);
+        let mut body_typing = if function.x.attrs.atomic {
+            body_typing.push_atomic_insts(Some(AtomicInstCollector::new()))
+        } else {
+            body_typing
+        };
 
         assert!(record.infer_spec_for_implicit_reborrows.is_none());
         record.infer_spec_for_implicit_reborrows = Some(HashMap::new());
@@ -3860,6 +3878,14 @@ fn check_function(
                     NoProphReason::Return
                 },
             )?;
+        }
+
+        if function.x.attrs.atomic {
+            body_typing
+                .atomic_insts
+                .as_ref()
+                .expect("atomic_insts")
+                .validate(&function.span, ValidateCtx::AtomicFunction)?;
         }
 
         let borrow_spec = record.infer_spec_for_implicit_reborrows.as_ref().expect("borrow_spec");
@@ -3948,7 +3974,7 @@ fn check_function(
     Ok(())
 }
 
-pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes, ReadKindFinals), VirErr> {
+pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes, ReadKindFinals), Vec<VirErr>> {
     let mut funs: HashMap<Fun, Function> = HashMap::new();
     let mut datatypes: HashMap<Path, Datatype> = HashMap::new();
     for function in krate.functions.iter() {
@@ -3984,33 +4010,33 @@ pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes, ReadKindFinals
         infer_spec_for_implicit_reborrows: None,
         mut_bor_place_modes: HashMap::new(),
     };
-    let mut state = State {
-        vars: ScopeMap::new(),
-        in_forall_stmt: false,
-        in_proof_in_spec: false,
-        block_ghostness: Ghost::Exec,
-        ret_mode: None,
-        atomic_insts: None,
-        in_pure: false,
-        in_assert_query: None,
-    };
-    let mut typing = Typing::new(&mut state);
+
     let mut kratex = (**krate).clone();
     let rtypes = ResolutionTypes::new(&ctxt.datatypes);
+    let mut errors = vec![];
     for function in kratex.functions.iter_mut() {
         ctxt.check_ghost_blocks = function.x.attrs.uses_ghost_blocks;
         ctxt.fun_mode = function.x.mode;
-        if function.x.attrs.atomic {
-            let mut typing = typing.push_atomic_insts(Some(AtomicInstCollector::new()));
-            check_function(&ctxt, &mut record, &mut typing, function, &rtypes)?;
-            typing
-                .atomic_insts
-                .as_ref()
-                .expect("atomic_insts")
-                .validate(&function.span, ValidateCtx::AtomicFunction)?;
-        } else {
-            check_function(&ctxt, &mut record, &mut typing, function, &rtypes)?;
+
+        let mut state = State {
+            vars: ScopeMap::new(),
+            in_forall_stmt: false,
+            in_proof_in_spec: false,
+            block_ghostness: Ghost::Exec,
+            ret_mode: None,
+            atomic_insts: None,
+            in_pure: false,
+            in_assert_query: None,
+        };
+        let mut typing = Typing::new(&mut state);
+
+        if let Err(err) = check_function(&ctxt, &mut record, &mut typing, function, &rtypes) {
+            errors.push(err);
         }
     }
-    Ok((Arc::new(kratex), record.erasure_modes, record.read_kind_finals))
+    if errors.len() > 0 {
+        Err(errors)
+    } else {
+        Ok((Arc::new(kratex), record.erasure_modes, record.read_kind_finals))
+    }
 }

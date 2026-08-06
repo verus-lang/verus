@@ -1897,7 +1897,10 @@ test_verify_one_file_with_options! {
             }
             assert(u.u == 20);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot mutate exec-mode place in proof-code")
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "cannot mutate exec-mode place in proof-code",
+        "cannot mutate exec-mode place in proof-code",
+    ])
 }
 
 test_verify_one_file_with_options! {
