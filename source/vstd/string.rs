@@ -15,6 +15,10 @@ use super::std_specs::iter::IteratorSpec;
 use super::utf8::*;
 use super::view::*;
 
+#[cfg(verus_keep_ghost)]
+#[cfg(not(verus_verify_core))]
+use super::std_specs::cmp::PartialEqSpecImpl;
+
 verus! {
 
 broadcast use {super::seq::group_seq_lemmas, super::slice::group_slice_axioms};
@@ -32,6 +36,17 @@ impl DeepView for str {
 
     open spec fn deep_view(&self) -> Seq<char> {
         self.view()
+    }
+}
+
+#[cfg(not(verus_verify_core))]
+impl PartialEqSpecImpl for str {
+    open spec fn obeys_eq_spec() -> bool {
+        true
+    }
+
+    open spec fn eq_spec(&self, other: &str) -> bool {
+        self@ == other@
     }
 }
 
