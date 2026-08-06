@@ -21,6 +21,7 @@ impl<T> View for [T] {
 
 pub assume_specification<T: PartialEq<U>, U>[ <[T] as PartialEq<[U]>>::eq ](left: &[T], right: &[U]) -> bool;
 
+#[cfg(verus_keep_ghost)]
 impl<T, U> PartialEqSpecImpl<[U]> for [T]
     where T: PartialEq<U> + PartialEqSpec<U>,
 {
