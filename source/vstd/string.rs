@@ -39,6 +39,7 @@ impl DeepView for str {
     }
 }
 
+#[cfg(verus_keep_ghost)]
 #[cfg(not(verus_verify_core))]
 impl PartialEqSpecImpl for str {
     open spec fn obeys_eq_spec() -> bool {
