@@ -571,7 +571,6 @@ test_verify_one_file! {
                     IteratorSpec::obeys_prophetic_iter_laws(&s),
                     IteratorSpec::will_return_none(&s),
                     IteratorSpec::decrease(&s) is Some,
-                    IteratorSpec::initial_value_relation(&s, &s),
             {
                 let slice = v.as_mut_slice();
                 let refs = split_all(slice);
@@ -602,10 +601,6 @@ test_verify_one_file! {
                 true
             }
 
-            #[verifier::prophetic]
-            open spec fn initial_value_relation(&self, init: &Self) -> bool {
-                IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-            }
 
             closed spec fn decrease(&self) -> Option<nat> {
                 Some(self.refs@.len() as nat)
