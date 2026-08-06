@@ -87,7 +87,8 @@ use rustc_middle::ty::adjustment::{
     PatAdjust, PatAdjustment, PointerCoercion,
 };
 use rustc_middle::ty::{
-    AdtDef, ClauseKind, GenericArg, TraitPredicate, TraitRef, TyCtxt, TyKind, TypingEnv, Upcast,
+    AdtDef, ClauseKind, GenericArg, IntTy, TraitPredicate, TraitRef, TyCtxt, TyKind, TypingEnv,
+    UintTy, Upcast,
 };
 use rustc_mir_build_verus::verus::BodyErasure;
 use rustc_span::Span;
@@ -1985,8 +1986,45 @@ pub(crate) fn expr_cast_enum_int_to_vir<'tcx>(
     };
     let mut vir_arms: Vec<vir::ast::Arm> = Vec::new();
     for (idx, vdef) in adt.variants().iter_enumerated() {
-        let val = adt.discriminant_for_variant(tcx, idx).val;
-        let cast_to = mk_expr(ExprX::Const(vir::ast_util::const_int_from_u128(val)))?;
+        let rustc_middle::ty::util::Discr { val, ty } = adt.discriminant_for_variant(tcx, idx);
+        let val = match ty.kind() {
+            TyKind::Uint(uint_ty) => match uint_ty {
+                UintTy::U8 | UintTy::U16 | UintTy::U32 | UintTy::U64 | UintTy::U128 => {
+                    vir::ast_util::const_int_from_u128(val)
+                }
+                UintTy::Usize => {
+                    if val > u32::MAX as u128 {
+                        unsupported_err!(
+                            expr.span,
+                            "discriminant does not fit in 32-bits when usize is used"
+                        )
+                    }
+                    vir::ast_util::const_int_from_u128(val)
+                }
+            },
+            TyKind::Int(int_ty) => match int_ty {
+                IntTy::I8 => vir::ast_util::const_int_from_i128(val as i8 as i128),
+                IntTy::I16 => vir::ast_util::const_int_from_i128(val as i16 as i128),
+                IntTy::I32 => vir::ast_util::const_int_from_i128(val as i32 as i128),
+                IntTy::I64 => vir::ast_util::const_int_from_i128(val as i64 as i128),
+                IntTy::I128 => vir::ast_util::const_int_from_i128(val as i128),
+                IntTy::Isize => {
+                    let v = val as isize as i128;
+                    if !(v >= i32::MIN as i128 && v <= i32::MAX as i128) {
+                        unsupported_err!(
+                            expr.span,
+                            "discriminant does not fit in 32-bits when isize is used"
+                        )
+                    }
+                    vir::ast_util::const_int_from_i128(v)
+                }
+            },
+            _ => unsupported_err!(
+                expr.span,
+                format!("discriminant of enum when enum has type {:?}", ty)
+            ),
+        };
+        let cast_to = mk_expr(ExprX::Const(val))?;
         unsupported_err_unless!(
             vdef.fields.len() == 0,
             expr.span,

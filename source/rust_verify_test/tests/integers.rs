@@ -614,3 +614,116 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_enums_with_signed_representations_issue2767 verus_code! {
+        #[derive(Copy, Clone)] #[repr(i8)] enum E8 { A = -1, B = 0, C = 1 }
+        #[derive(Copy, Clone)] #[repr(i16)] enum E16 { A = -1, B = 0, C = 1 }
+        #[derive(Copy, Clone)] #[repr(i32)] enum E32 { A = -1, B = 0, C = 1 }
+        #[derive(Copy, Clone)] #[repr(i64)] enum E64 { A = -1, B = 0, C = 1 }
+        #[derive(Copy, Clone)] #[repr(i128)] enum E128 { A = -1, B = 0, C = 1 }
+        #[derive(Copy, Clone)] #[repr(isize)] enum ESized { A = -1, B = 0, C = 1 }
+
+        fn test() {
+            assert(E8::A as int == -1);
+            assert(E8::B as int == 0);
+            assert(E8::C as int == 1);
+
+            assert(E16::A as int == -1);
+            assert(E16::B as int == 0);
+            assert(E16::C as int == 1);
+
+            assert(E32::A as int == -1);
+            assert(E32::B as int == 0);
+            assert(E32::C as int == 1);
+
+            assert(E64::A as int == -1);
+            assert(E64::B as int == 0);
+            assert(E64::C as int == 1);
+
+            assert(E128::A as int == -1);
+            assert(E128::B as int == 0);
+            assert(E128::C as int == 1);
+
+            assert(ESized::A as int == -1);
+            assert(ESized::B as int == 0);
+            assert(ESized::C as int == 1);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_enums_with_unsigned_representations verus_code! {
+        #[derive(Copy, Clone)] #[repr(u8)] enum E8 { A = 0xff, B = 0, C = 1 }
+        #[derive(Copy, Clone)] #[repr(u16)] enum E16 { A = 0xffff, B = 0, C = 1 }
+        #[derive(Copy, Clone)] #[repr(u32)] enum E32 { A = 0xffff_ffff, B = 0, C = 1 }
+        #[derive(Copy, Clone)] #[repr(u64)] enum E64 { A = 0xffff_ffff_ffff_ffff, B = 0, C = 1 }
+        #[derive(Copy, Clone)] #[repr(u128)] enum E128 { A = 0xffff_ffff_ffff_ffff_ffff_ffff_ffff_ffff,  B = 0, C = 1 }
+        #[derive(Copy, Clone)] #[repr(usize)] enum ESized { A = 0xffff_ffff, B = 0, C = 1 }
+
+        fn test() {
+            assert(E8::A as int == 0xff);
+            assert(E8::B as int == 0);
+            assert(E8::C as int == 1);
+
+            assert(E16::A as int == 0xffff);
+            assert(E16::B as int == 0);
+            assert(E16::C as int == 1);
+
+            assert(E32::A as int == 0xffff_ffff);
+            assert(E32::B as int == 0);
+            assert(E32::C as int == 1);
+
+            assert(E64::A as int == 0xffff_ffff_ffff_ffff);
+            assert(E64::B as int == 0);
+            assert(E64::C as int == 1);
+
+            assert(E128::A as int == 0xffff_ffff_ffff_ffff_ffff_ffff_ffff_ffff);
+            assert(E128::B as int == 0);
+            assert(E128::C as int == 1);
+
+            assert(ESized::A as int == 0xffff_ffff);
+            assert(ESized::B as int == 0);
+            assert(ESized::C as int == 1);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_enums_with_overflow verus_code! {
+        #[allow(overflowing_literals)]
+        #[derive(Copy, Clone)] #[repr(i8)] enum Ei8 { A = 255, B = 0 }
+
+        #[allow(overflowing_literals)]
+        #[derive(Copy, Clone)] #[repr(i8)] enum Eu8 { A = 300, B = 0 }
+
+        fn test() {
+            assert(Ei8::A as int == -1);
+            assert(Eu8::A as int == 44);
+        }
+
+        fn test_fails() {
+            assert(Ei8::A as int == -1);
+            assert(Eu8::A as int == 44);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] test_enums_with_arch_dependent verus_code! {
+        #[derive(Copy, Clone)] #[repr(isize)] enum Eisize { A = 0x8000_0000, B = 0 }
+        #[derive(Copy, Clone)] #[repr(usize)] enum Eusize { A = 0x1_0000_0000, B = 0 }
+
+        fn test() {
+            assert(Eisize::A as int == 0x8000_0000);
+        }
+
+        fn test2() {
+            assert(Eusize::A as int == 0x1_000_0000);
+        }
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "discriminant does not fit in 32-bits when isize is used",
+        "discriminant does not fit in 32-bits when usize is used",
+    ])
+}
