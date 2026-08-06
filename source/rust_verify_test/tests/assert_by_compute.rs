@@ -882,7 +882,7 @@ test_verify_one_file! {
             assert(f::<u8, bool>(n) == f::<u8, bool>(n)) by (compute_only);
             assert(f::<&u8, bool>(n) == f::<&u8, bool>(n)) by (compute_only);
         }
-        
+
         struct S<A> { a: A, b: nat }
 
         proof fn test_ctro(x: S<u8>) {
