@@ -10,17 +10,20 @@ pub open spec fn incl<RA: ResourceAlgebra>(a: RA, b: RA) -> bool {
     exists|c| RA::op(a, c) == b
 }
 
+#[verifier::prophetic]
 pub open spec fn conjunct_shared<RA: ResourceAlgebra>(a: RA, b: RA, c: RA) -> bool {
     forall|p: RA| p.valid() && incl(a, p) && incl(b, p) ==> #[trigger] incl(c, p)
 }
 
 /// A frame preserving update is an update of a value from `a --> b` such that every value `c`
 /// that could compose with `a` (also called the frame) can still compose with `b`.
+#[verifier::prophetic]
 pub open spec fn frame_preserving_update<P: PCM>(a: P, b: P) -> bool {
     forall|c| #![trigger P::op(a, c), P::op(b, c)] P::op(a, c).valid() ==> P::op(b, c).valid()
 }
 
 /// A nondeterministic version of a [`frame_preserving_update`].
+#[verifier::prophetic]
 pub open spec fn frame_preserving_update_nondeterministic<P: PCM>(a: P, bs: ISet<P>) -> bool {
     forall|c|
         #![trigger P::op(a, c)]
@@ -31,6 +34,7 @@ pub open spec fn frame_preserving_update_nondeterministic<P: PCM>(a: P, bs: ISet
 /// See [`frame_preserving_update`] for more details.
 /// The difference lies in the fact that for [`PCM`]s there is always a unit
 ///
+#[verifier::prophetic]
 pub open spec fn frame_preserving_update_opt<RA: ResourceAlgebra>(a: RA, b: RA) -> bool {
     forall|c|
         #![trigger Option::<RA>::op(Some(a), c), Option::<RA>::op(Some(b), c)]
@@ -38,6 +42,7 @@ pub open spec fn frame_preserving_update_opt<RA: ResourceAlgebra>(a: RA, b: RA) 
 }
 
 /// A nondeterministic version of a [`frame_preserving_update_opt`].
+#[verifier::prophetic]
 pub open spec fn frame_preserving_update_nondeterministic_opt<RA: ResourceAlgebra>(
     a: RA,
     bs: ISet<RA>,
