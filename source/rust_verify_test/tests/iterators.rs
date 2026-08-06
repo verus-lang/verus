@@ -100,7 +100,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-<<<<<<< HEAD
     #[test] find_works verus_code! {
         use vstd::prelude::*;
         use vstd::std_specs::iter::IteratorSpec;
@@ -190,11 +189,11 @@ test_verify_one_file! {
                 invariant
                     w.len() == iter.index(),
                     forall |i| 0 <= i < w.len() ==> w[i] == iter.seq()[i],
-                    // TODO: Fails b/c we can't have a when_used_as_spec version of `map`
+                    // TODO: We'd like this work
                     //forall |i| 0 <= i < w.len() ==> w[i] == v[i] * 2,
             {
                 assert(x == iter.seq()[iter.index()]);
-                // TODO: Fails b/c we can't have a when_used_as_spec version of `map`
+                // TODO: We'd like this work
                 //assert(x == v[iter.index()] * 2);
                 w.push(x);
             }

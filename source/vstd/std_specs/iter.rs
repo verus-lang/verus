@@ -78,7 +78,6 @@ pub trait ExIterator {
                 r == into_rev_spec(self) && rev_post(self, r),
     ;
     
-    //#[verifier::when_used_as_spec(into_map_spec)]
     fn map<B, F>(self, f: F) -> (r: core::iter::Map<Self, F>)
         where
             Self: Sized,
@@ -86,10 +85,8 @@ pub trait ExIterator {
         requires
             self.obeys_prophetic_iter_laws(),
             forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(f, (self.remaining()[k], )),
-            self.initial_value_relation(&self),
         default_ensures
-            self.obeys_prophetic_iter_laws() && self.initial_value_relation(&self) ==>
-                r == into_map_spec::<Self, F>(self, f) && map_post(self, f, r),
+            self.obeys_prophetic_iter_laws() ==> map_post(self, f, r),
     ;
 
     fn collect<B>(self) -> (collection: B)
@@ -403,9 +400,6 @@ pub uninterp spec fn map_iter<I, F>(r: core::iter::Map<I, F>) -> I;
 // Ghost accessor for the inner function
 pub uninterp spec fn map_fun<I, F>(r: core::iter::Map<I, F>) -> F;
 
-// Spec version of Map::new()
-pub uninterp spec fn into_map_spec<I, F>(i: I, f: F) -> core::iter::Map<I, F>;
-
 // Ideally, we would write this postcondition directly on the definition of
 // Iterator::map above.  However, to do so, we would need to impose a trait
 // bound of `Self: IteratorSpec`.  However, this introduces a cyclic
@@ -413,27 +407,20 @@ pub uninterp spec fn into_map_spec<I, F>(i: I, f: F) -> core::iter::Map<I, F>;
 // we introduce a layer of indirection via this uninterp spec function.
 pub uninterp spec fn map_post<I, F>(i: I, f: F, r: core::iter::Map<I, F>) -> bool;
 
-pub broadcast axiom fn map_postcondition<I, F>(i: I, f: F)
+pub broadcast axiom fn map_postcondition<I, F>(i: I, f: F, r: core::iter::Map<I, F>)
     where
         I: IteratorSpec,
         F: FnMut<(I::Item,)>,
     requires
         i.obeys_prophetic_iter_laws(),
-        i.initial_value_relation(&i),
-        map_post(i, f, into_map_spec(i, f)),
+        #[trigger] map_post(i, f, r),
     ensures
-        {
-            let r = #[trigger] into_map_spec(i, f);
-            {
-            &&& IteratorSpec::remaining(&r).len() <= i.remaining().len()
-            &&& forall |k| #![auto] 0 <= k < IteratorSpec::remaining(&r).len() ==> call_ensures(f, (i.remaining()[k],), IteratorSpec::remaining(&r)[k])
-            &&& IteratorSpec::will_return_none(&r) ==> i.will_return_none() && IteratorSpec::remaining(&r).len() == i.remaining().len()
-            &&& IteratorSpec::decrease(&r) is Some == i.decrease() is Some
-            &&& IteratorSpec::initial_value_relation(&r, &r)
-            &&& map_iter(r) == i
-            &&& map_fun(r) == f
-            }
-       },
+        IteratorSpec::remaining(&r).len() <= i.remaining().len(),
+        forall |k| #![auto] 0 <= k < IteratorSpec::remaining(&r).len() ==> call_ensures(f, (i.remaining()[k],), IteratorSpec::remaining(&r)[k]),
+        IteratorSpec::will_return_none(&r) ==> i.will_return_none() && IteratorSpec::remaining(&r).len() == i.remaining().len(),
+        IteratorSpec::decrease(&r) is Some == i.decrease() is Some,
+        map_iter(r) == i,
+        map_fun(r) == f,
 ;
 
 // See rust_verify_test/tests/iterators.rs for how this Map
@@ -454,12 +441,6 @@ impl <B, I, F> IteratorSpecImpl for core::iter::Map<I, F>
 
     #[verifier::prophetic]
     uninterp spec fn will_return_none(&self) -> bool;
-
-    #[verifier::prophetic]
-    open spec fn initial_value_relation(&self, init: &Self) -> bool {
-        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-        &&& map_iter(*self).initial_value_relation(&map_iter(*init))
-    }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
 
