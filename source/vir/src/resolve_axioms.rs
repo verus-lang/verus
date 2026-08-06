@@ -207,8 +207,8 @@ pub fn resolve_decoration_axiom(dec: &TypDecoration) -> Node {
                         ([resolved] d t x)
                     )
                     :pattern (([resolved] ([decorate_box] d1 t1 d) t x))
-                    :qid prelude_resolved_tracked_decoration
-                    :skolemid skolem_prelude_resolved_tracked_decoration
+                    :qid prelude_resolved_box_decoration
+                    :skolemid skolem_prelude_resolved_box_decoration
                 )))
             )
         }
