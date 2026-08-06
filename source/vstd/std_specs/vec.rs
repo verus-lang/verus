@@ -12,7 +12,7 @@ use core::marker::PhantomData;
 use core::ops::Index;
 use core::option::Option;
 use core::option::Option::None;
-use core::slice::{IterMut, SliceIndex};
+use core::slice::{SliceIndex};
 
 use verus as verus_;
 verus_! {
@@ -413,60 +413,6 @@ impl<T>  FromIteratorSpecImpl<T> for Vec<T> {
         remaining == s@
     }
 }
-
-
-/***********************************************************************************************
- * Definitions for `slice::IterMut` (the iterator behind `<[T]>::iter_mut` and `Vec::iter_mut`)
- ***********************************************************************************************/
-#[verifier::external_type_specification]
-#[verifier::external_body]
-#[verifier::accept_recursive_types(T)]
-pub struct ExIterMut<'a, T: 'a>(IterMut<'a, T>);
-
-// See rust_verify_test/tests/iterators.rs for a verified implementation of this interface.
-// Any changes here should first be verified over there.
-impl<'a, T: 'a> super::iter::IteratorSpecImpl for IterMut<'a, T> {
-    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
-        true
-    }
-
-    #[verifier::prophetic]
-    uninterp spec fn remaining(&self) -> Seq<Self::Item>;
-
-    open spec fn will_return_none(&self) -> bool { true }
-
-    uninterp spec fn decrease(&self) -> Option<nat>;
-
-    open spec fn peek(&self, index: int) -> Option<Self::Item> { None }
-}
-
-// Common postcondition shared by `<[T]>::iter_mut` and `Vec::iter_mut`, relating
-// the freshly-created iterator `iter` to the borrowed-from sequence.  `cur` is the
-// borrowed-from contents at the start (`old(..)@`) and `fut` is its prophesied
-// final contents (`final(..)@`).
-#[verifier::prophetic]
-pub open spec fn iter_mut_ensures<'a, T>(
-    iter: &IterMut<'a, T>,
-    cur: Seq<T>,
-    fut: Seq<T>,
-) -> bool {
-    &&& IteratorSpec::remaining(iter).len() == cur.len() == fut.len()
-    // Each yielded reference initially points at the corresponding element...
-    &&& forall|i: int| #![trigger IteratorSpec::remaining(iter)[i]]
-        0 <= i < cur.len() ==> *(IteratorSpec::remaining(iter)[i]) == cur[i]
-    // ...and its eventual value flows back to the corresponding element.
-    &&& forall|i: int| #![trigger IteratorSpec::remaining(iter)[i]]
-        0 <= i < cur.len() ==> *final(IteratorSpec::remaining(iter)[i]) == fut[i]
-    &&& IteratorSpec::obeys_prophetic_iter_laws(iter)
-    &&& IteratorSpec::will_return_none(iter)
-    &&& IteratorSpec::decrease(iter) is Some
-}
-
-// Also covers `vec.iter_mut(), which reaches this slice fn through `Vec`'s `DerefMut`
-pub assume_specification<'a, T>[ <[T]>::iter_mut ](slice: &'a mut [T]) -> (iter: IterMut<'a, T>)
-    ensures
-        iter_mut_ensures(&iter, old(slice)@, final(slice)@),
-;
 
 pub broadcast proof fn lemma_vec_obeys_eq_spec<T: PartialEq>()
     requires
