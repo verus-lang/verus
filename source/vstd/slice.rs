@@ -19,28 +19,32 @@ impl<T> View for [T] {
     uninterp spec fn view(&self) -> Seq<T>;
 }
 
-pub assume_specification<T: PartialEq<U>, U>[ <[T] as PartialEq<[U]>>::eq ](left: &[T], right: &[U]) -> bool;
-
-#[cfg(verus_keep_ghost)]
-impl<T, U> PartialEqSpecImpl<[U]> for [T]
-    where T: PartialEq<U> + PartialEqSpec<U>,
-{
-    open spec fn obeys_eq_spec() -> bool {
-        <T as PartialEqSpec<U>>::obeys_eq_spec()
-    }
-
-    open spec fn eq_spec(&self, other: &[U]) -> bool {
-        &&& self@.len() == other@.len()
-        &&& forall |i: int| #![auto] 0 <= i < self@.len() ==> <T as PartialEqSpec<U>>::eq_spec(&self@[i], &other@[i])
-    }
-}
-
 impl<T: DeepView> DeepView for [T] {
     type V = Seq<T::V>;
 
     open spec fn deep_view(&self) -> Seq<T::V> {
         let v = self.view();
         Seq::new(v.len(), |i: int| v[i].deep_view())
+    }
+}
+
+pub assume_specification<T: PartialEq<U>, U>[ <[T] as PartialEq<[U]>>::eq ](
+    left: &[T],
+    right: &[U],
+) -> bool
+;
+
+#[cfg(verus_keep_ghost)]
+impl<T, U> PartialEqSpecImpl<[U]> for [T] where T: PartialEq<U> + PartialEqSpec<U> {
+    open spec fn obeys_eq_spec() -> bool {
+        <T as PartialEqSpec<U>>::obeys_eq_spec()
+    }
+
+    open spec fn eq_spec(&self, other: &[U]) -> bool {
+        &&& self@.len() == other@.len()
+        &&& forall|i: int|
+            #![auto]
+            0 <= i < self@.len() ==> <T as PartialEqSpec<U>>::eq_spec(&self@[i], &other@[i])
     }
 }
 

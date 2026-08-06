@@ -6,6 +6,9 @@ use super::slice::SliceAdditionalSpecFns;
 use super::std_specs::iter::IteratorSpec;
 use super::view::*;
 
+#[cfg(verus_keep_ghost)]
+use super::std_specs::cmp::{PartialEqSpec, PartialEqSpecImpl};
+
 verus! {
 
 pub open spec fn array_view<T, const N: usize>(a: [T; N]) -> Seq<T> {
@@ -26,6 +29,70 @@ impl<T: DeepView, const N: usize> DeepView for [T; N] {
     open spec fn deep_view(&self) -> Seq<T::V> {
         let v = self.view();
         Seq::new(v.len(), |i: int| v[i].deep_view())
+    }
+}
+
+pub assume_specification<T: PartialEq<U>, U, const N: usize>[ <[T; N] as PartialEq<[U; N]>>::eq ](
+    left: &[T; N],
+    right: &[U; N],
+) -> bool
+;
+
+#[cfg(verus_keep_ghost)]
+impl<T, U, const N: usize> PartialEqSpecImpl<[U; N]> for [T; N] where
+    T: PartialEq<U> + PartialEqSpec<U>,
+ {
+    open spec fn obeys_eq_spec() -> bool {
+        <T as PartialEqSpec<U>>::obeys_eq_spec()
+    }
+
+    open spec fn eq_spec(&self, other: &[U; N]) -> bool {
+        forall|i: int|
+            #![auto]
+            0 <= i < N ==> <T as PartialEqSpec<U>>::eq_spec(&self@[i], &other@[i])
+    }
+}
+
+pub assume_specification<'a, T: PartialEq<U>, U, const N: usize>[ <&'a [T] as PartialEq<
+    [U; N],
+>>::eq ](left: &&'a [T], right: &[U; N]) -> bool
+;
+
+#[cfg(verus_keep_ghost)]
+impl<'a, T, U, const N: usize> PartialEqSpecImpl<[U; N]> for &'a [T] where
+    T: PartialEq<U> + PartialEqSpec<U>,
+ {
+    open spec fn obeys_eq_spec() -> bool {
+        <T as PartialEqSpec<U>>::obeys_eq_spec()
+    }
+
+    open spec fn eq_spec(&self, other: &[U; N]) -> bool {
+        &&& (*self)@.len() == other@.len()
+        &&& forall|i: int|
+            #![auto]
+            0 <= i < (*self)@.len() ==> <T as PartialEqSpec<U>>::eq_spec(&(*self)@[i], &other@[i])
+    }
+}
+
+pub assume_specification<'a, T: PartialEq<U>, U, const N: usize>[ <[T; N] as PartialEq<&[U]>>::eq ](
+    left: &[T; N],
+    right: &&[U],
+) -> bool
+;
+
+#[cfg(verus_keep_ghost)]
+impl<'a, T, U, const N: usize> PartialEqSpecImpl<&'a [U]> for [T; N] where
+    T: PartialEq<U> + PartialEqSpec<U>,
+ {
+    open spec fn obeys_eq_spec() -> bool {
+        <T as PartialEqSpec<U>>::obeys_eq_spec()
+    }
+
+    open spec fn eq_spec(&self, other: &&'a [U]) -> bool {
+        &&& self@.len() == (*other)@.len()
+        &&& forall|i: int|
+            #![auto]
+            0 <= i < self@.len() ==> <T as PartialEqSpec<U>>::eq_spec(&self@[i], &(*other)@[i])
     }
 }
 
