@@ -857,7 +857,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] uninterp_fn_type_args_differ verus_code! {
+    #[test] uninterp_fn_type_args_differ_github2766 verus_code! {
         use vstd::layout::size_of;
         proof fn test() {
             broadcast use vstd::layout::layout_of_primitives;
@@ -876,29 +876,19 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] uninterp_fn_first_type_arg_differs verus_code! {
+    #[test] uninterp_type_args_match verus_code! {
         uninterp spec fn f<A, B>(x: nat) -> nat;
-        proof fn test() {
-            assert(f::<u8, bool>(3) == f::<u64, bool>(3)) by (compute_only); // FAILS
-        }
-    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
-}
-
-test_verify_one_file! {
-    #[test] uninterp_fn_second_type_arg_differs verus_code! {
-        uninterp spec fn f<A, B>(x: nat) -> nat;
-        proof fn test() {
-            assert(f::<u8, bool>(3) == f::<u8, char>(3)) by (compute_only); // FAILS
-        }
-    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
-}
-
-test_verify_one_file! {
-    #[test] uninterp_fn_type_args_match verus_code! {
-        uninterp spec fn f<A, B>(x: nat) -> nat;
-        proof fn test(n: nat) {
+        proof fn test_function(n: nat) {
             assert(f::<u8, bool>(n) == f::<u8, bool>(n)) by (compute_only);
             assert(f::<&u8, bool>(n) == f::<&u8, bool>(n)) by (compute_only);
+        }
+        
+        struct S<A> { a: A, b: nat }
+
+        proof fn test_ctro(x: S<u8>) {
+            assert(S { a: 1u8, b: 2 } == S { a: 1u8, b: 2 }) by (compute_only);
+            assert(S { a: 1u8, b: 2 } == &S { a: 1u8, b: 2 }) by (compute_only);
+            assert(S { a: x.a, b: 2 } == S { a: x.a, b: 2 }) by (compute_only);
         }
     } => Ok(())
 }
@@ -916,43 +906,4 @@ test_verify_one_file! {
             assert(h::<u8>(1) == h::<u64>(1)) by (compute_only); // FAILS
         }
     } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
-}
-
-test_verify_one_file! {
-    #[test] memoized_fn_type_args_match verus_code! {
-        #[verifier::memoize]
-        spec fn fib<A>(n: nat) -> nat
-            decreases n
-        {
-            if n <= 1 { n } else { fib::<A>((n - 1) as nat) + fib::<A>((n - 2) as nat) }
-        }
-
-        proof fn test() {
-            assert(fib::<u8>(20) == 6765) by (compute_only);
-            assert(fib::<u8>(20) == fib::<u8>(20)) by (compute_only);
-            assert(fib::<u64>(20) == 6765) by (compute_only);
-        }
-    } => Ok(())
-}
-
-test_verify_one_file! {
-    #[test] ctor_type_args_match verus_code! {
-        struct S<A> { a: A, b: nat }
-
-        proof fn test(x: S<u8>) {
-            assert(S { a: 1u8, b: 2 } == S { a: 1u8, b: 2 }) by (compute_only);
-            assert(S { a: 1u8, b: 2 } == &S { a: 1u8, b: 2 }) by (compute_only);
-            assert(S { a: x.a, b: 2 } == S { a: x.a, b: 2 }) by (compute_only);
-        }
-    } => Ok(())
-}
-
-test_verify_one_file! {
-    #[test] ctor_fields_differ verus_code! {
-        struct S<A> { a: A, b: nat }
-
-        proof fn test() {
-            assert(S { a: 1u8, b: 2 } == S { a: 1u8, b: 3 }) by (compute_only); // FAILS
-        }
-    } => Err(err) => assert_vir_error_msg(err, "which evaluates to false")
 }

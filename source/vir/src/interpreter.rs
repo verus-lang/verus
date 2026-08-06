@@ -56,24 +56,21 @@ type TypeEnv = ScopeMap<Ident, Typ>;
 /// as a key when caching the call's result.  Intended to never leave this module.
 struct CallKey {
     typs: Typs,
-    e: Exps,
+    args: Exps,
 }
 
 impl Hash for CallKey {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        // We deliberately hash only the value arguments.  Two `typs` that `n_types_equal`
-        // considers equal may still differ structurally (e.g., in their `ImplPaths`), and
-        // hashing those differences would cost us cache hits.  Hashing less is always safe;
-        // `PartialEq` below is what decides whether two keys actually match.
-        hash_exps(state, &self.e);
+        // We hash only the value arguments to improve caching (hashing less is always safe)
+        hash_exps(state, &self.args);
     }
 }
 
 impl PartialEq for CallKey {
     fn eq(&self, other: &Self) -> bool {
-        // The type arguments are part of the key: a polymorphic function may return
-        // different results at different instantiations
-        n_types_equal(&self.typs, &other.typs) && self.e.definitely_eq(&other.e)
+        // Include the type arguments, since a polymorphic function may return
+        // different results for different types
+        n_types_equal(&self.typs, &other.typs) && self.args.definitely_eq(&other.args)
     }
 }
 
@@ -81,7 +78,7 @@ impl Eq for CallKey {}
 
 impl From<(&Typs, &Exps)> for CallKey {
     fn from((typs, e): (&Typs, &Exps)) -> Self {
-        Self { typs: typs.clone(), e: e.clone() }
+        Self { typs: typs.clone(), args: e.clone() }
     }
 }
 
@@ -443,19 +440,12 @@ impl SyntacticEquality for Exp {
                 Call(CallFun::Fun(f_l, resolved_l), typs_l, exps_l),
                 Call(CallFun::Fun(f_r, resolved_r), typs_r, exps_r),
             ) => {
-                // Resolve first, so that we compare the functions that actually get called,
-                // just as `eval_expr_internal` does
+                // Resolve first, so that we compare the functions that actually get called
                 let (f_l, typs_l) = resolve_call(f_l, resolved_l, typs_l);
                 let (f_r, typs_r) = resolve_call(f_r, resolved_r, typs_r);
-                // The type arguments are part of the call: two instantiations of the same
-                // polymorphic function (e.g., `size_of::<u8>()` and `size_of::<u64>()`)
-                // may well produce different values.  Note that we cannot conclude that
-                // differing type arguments imply differing results, so we return `None`.
                 if f_l == f_r && n_types_equal(typs_l, typs_r) && exps_l.len() == exps_r.len() {
                     def_eq(exps_l.syntactic_eq(exps_r)?)
                 } else {
-                    // We don't know if a function call on symbolic values
-                    // will return the same or different values
                     None
                 }
             }
