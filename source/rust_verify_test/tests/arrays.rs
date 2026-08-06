@@ -506,3 +506,17 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test]
+    slice_ref_equals_array_ref_uses_view verus_code! {
+        use vstd::prelude::*;
+
+        fn check(left: &[u8], right: &[u8; 11]) -> (result: bool)
+            ensures
+                result == (left@ =~= right@),
+        {
+            left == right
+        }
+    } => Ok(())
+}

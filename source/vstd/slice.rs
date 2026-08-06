@@ -28,6 +28,7 @@ impl<T: DeepView> DeepView for [T] {
     }
 }
 
+// slice == slice
 pub assume_specification<T: PartialEq<U>, U>[ <[T] as PartialEq<[U]>>::eq ](
     left: &[T],
     right: &[U],

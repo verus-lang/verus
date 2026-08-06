@@ -32,6 +32,7 @@ impl<T: DeepView, const N: usize> DeepView for [T; N] {
     }
 }
 
+// array == array
 pub assume_specification<T: PartialEq<U>, U, const N: usize>[ <[T; N] as PartialEq<[U; N]>>::eq ](
     left: &[T; N],
     right: &[U; N],
@@ -53,6 +54,7 @@ impl<T, U, const N: usize> PartialEqSpecImpl<[U; N]> for [T; N] where
     }
 }
 
+// slice ref == array
 pub assume_specification<'a, T: PartialEq<U>, U, const N: usize>[ <&'a [T] as PartialEq<
     [U; N],
 >>::eq ](left: &&'a [T], right: &[U; N]) -> bool
@@ -74,6 +76,7 @@ impl<'a, T, U, const N: usize> PartialEqSpecImpl<[U; N]> for &'a [T] where
     }
 }
 
+// array == slice ref
 pub assume_specification<'a, T: PartialEq<U>, U, const N: usize>[ <[T; N] as PartialEq<&[U]>>::eq ](
     left: &[T; N],
     right: &&[U],
@@ -93,6 +96,29 @@ impl<'a, T, U, const N: usize> PartialEqSpecImpl<&'a [U]> for [T; N] where
         &&& forall|i: int|
             #![auto]
             0 <= i < self@.len() ==> <T as PartialEqSpec<U>>::eq_spec(&self@[i], &(*other)@[i])
+    }
+}
+
+// slice ref == array ref
+pub assume_specification<T: PartialEq<U>, U, const N: usize>[ <[T] as PartialEq<[U; N]>>::eq ](
+    left: &[T],
+    right: &[U; N],
+) -> bool
+;
+
+#[cfg(verus_keep_ghost)]
+impl<T, U, const N: usize> PartialEqSpecImpl<[U; N]> for [T] where
+    T: PartialEq<U> + PartialEqSpec<U>,
+ {
+    open spec fn obeys_eq_spec() -> bool {
+        <T as PartialEqSpec<U>>::obeys_eq_spec()
+    }
+
+    open spec fn eq_spec(&self, other: &[U; N]) -> bool {
+        &&& self@.len() == other@.len()
+        &&& forall|i: int|
+            #![auto]
+            0 <= i < self@.len() ==> <T as PartialEqSpec<U>>::eq_spec(&self@[i], &other@[i])
     }
 }
 
