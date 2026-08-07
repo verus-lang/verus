@@ -12,7 +12,7 @@ use core::marker::PhantomData;
 use core::ops::Index;
 use core::option::Option;
 use core::option::Option::None;
-use core::slice::SliceIndex;
+use core::slice::{SliceIndex};
 
 use verus as verus_;
 verus_! {
