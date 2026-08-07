@@ -47,6 +47,7 @@ indexmap = "2"
 indicatif = "0.18"
 indoc = "2.0.7"
 is-terminal = "0.4.17"
+insta = "1.48"
 itertools = "0.15.0"
 # kuchikiki has a shakey maintainability story, would be great to remove
 # it is transitively using an old version of html5ever and of rand (which has as security advisory)
@@ -217,3 +218,8 @@ type_complexity = "allow"
 unit_arg = "allow"
 useless_conversion = "allow"
 useless_format = "allow"
+
+# Insta advises to compile with opt-level 3, even in debug
+[profile.dev.package]
+insta.opt-level = 3
+similar.opt-level = 3
