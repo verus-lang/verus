@@ -1535,6 +1535,11 @@ pub struct FunctionAttrsX {
     pub is_external_body: bool,
     /// Is the function marked unsafe (i.e., with the Rust keyword 'unsafe')
     pub is_unsafe: bool,
+    /// Does the exec trait function disallow impls from extending the ensures clause
+    /// (this makes it safe to remove a termination check from the exec function,
+    /// thereby indirectly allowing the exec function to express nontermination)
+    /// See https://github.com/verus-lang/verus/discussions/2661 .
+    pub impls_cannot_extend_spec: bool,
     /// Whether to assume that this function terminates
     pub exec_assume_termination: bool,
     /// Whether to allow this function to not terminate
