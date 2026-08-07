@@ -507,11 +507,6 @@ test_verify_one_file! {
                 self.iter.obeys_prophetic_iter_laws()
             }
 
-            closed spec fn my_take_new(iter: I, n: usize) -> (t: MyTake<I>) {
-                MyTake { iter, count_remaining: n }
-            }
-
-            #[verifier::when_used_as_spec(my_take_new)]
             fn new(iter: I, n: usize) -> (t: MyTake<I>)
                 requires
                     iter.obeys_prophetic_iter_laws(),
@@ -519,10 +514,7 @@ test_verify_one_file! {
                     t.remaining() == (if iter.remaining().len() < n { iter.remaining() } else { iter.remaining().take(n as int) }),
                     t.will_return_none() <==> iter.will_return_none() || iter.remaining().len() >= n,
                     t.obeys_prophetic_iter_laws(),
-                    // t.iter() == iter,
-                    // t.count() == n,
                     t.decrease() is Some,
-                    t == Self::my_take_new(iter, n),
             {
                 MyTake { iter, count_remaining: n }
             }
@@ -559,14 +551,6 @@ test_verify_one_file! {
             #[verifier::prophetic]
             closed spec fn will_return_none(&self) -> bool {
                 self.iter.will_return_none() || self.iter.remaining().len() >= self.count_remaining
-            }
-
-            #[verifier::prophetic]
-            open spec fn initial_value_relation(&self, init: &Self) -> bool {
-                &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-                &&& self.iter() == init.iter()
-                &&& self.iter().initial_value_relation(&init.iter())
-                &&& IteratorSpec::remaining(self) == if self.iter().remaining().len() < self.count() { self.iter().remaining() } else { self.iter().remaining().take(self.count() as int) }
             }
 
             closed spec fn decrease(&self) -> Option<nat> {
@@ -627,20 +611,16 @@ test_verify_one_file! {
                 self.iter.obeys_prophetic_iter_laws()
             }
 
-            spec fn my_skip_new(iter: I, n: usize) -> (t: MySkip<I>) {
-                MySkip { iter, n, init_n: n }
-            }
-
-            #[verifier::when_used_as_spec(my_skip_new)]
             fn new(iter: I, n: usize) -> (s: MySkip<I>)
                 requires
                     iter.obeys_prophetic_iter_laws(),
                 ensures
+                    s.init_n() == n,
+                    s.iter() == iter,
                     s.remaining() == (if iter.remaining().len() < n { seq![] } else { iter.remaining().skip(n as int) }),
                     s.will_return_none() <==> iter.will_return_none(),
                     s.obeys_prophetic_iter_laws(),
                     s.decrease() is Some == iter.decrease() is Some,
-                    s == Self::my_skip_new(iter, n),
             {
                 let s = MySkip { iter, n, init_n: n };
                 assert(s.skip_inv());
@@ -700,14 +680,6 @@ test_verify_one_file! {
                 self.iter.will_return_none()
             }
 
-            #[verifier::prophetic]
-            open spec fn initial_value_relation(&self, init: &Self) -> bool {
-                &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-                &&& self.iter() == init.iter()
-                &&& self.init_n() == init.init_n()
-                &&& self.iter().initial_value_relation(&init.iter())
-            }
-
             closed spec fn decrease(&self) -> Option<nat> {
                 self.iter().decrease()
             }
@@ -715,7 +687,6 @@ test_verify_one_file! {
             open spec fn peek(&self, index: int) -> Option<Self::Item> {
                 self.iter().peek(self.init_n() + index)
             }
-
         }
 
         fn skip_works() {
