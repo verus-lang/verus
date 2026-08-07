@@ -549,7 +549,7 @@ struct State {
     pub(crate) block_ghostness: Ghost,
     pub(crate) ret_mode: Option<Mode>,
     pub(crate) atomic_insts: Option<AtomicInstCollector>,
-    pub(crate) higher_order_ghost: Option<(UnboundedGhostContext, Span)>,
+    pub(crate) unbounded_ghost_context: Option<(UnboundedGhostContext, Span)>,
 }
 
 mod typing {
@@ -615,14 +615,19 @@ mod typing {
         }
 
         #[must_use]
-        pub(super) fn push_unbounded_ghost_kind<'a>(&'a mut self, kind: UnboundedGhostKind) -> Typing<'a> {
-            if self.unbounded_ghost_kind.is_none() {
-                self.unbounded_ghost_kind = Some(kind);
+        pub(super) fn push_unbounded_ghost_context<'a>(&'a mut self, kind: UnboundedGhostContext, span: &Span) -> Typing<'a> {
+            if self.unbounded_ghost_context.is_none() {
+                self.internal_state.unbounded_ghost_context = Some((kind, span.clone()));
                 Typing {
                     internal_state: self.internal_state,
                     internal_undo: Some(Box::new(move |state| {
-                        state.unbounded_ghost_kind = None;
+                        state.unbounded_ghost_context = None;
                     })),
+                }
+            } else {
+                Typing {
+                    internal_state: self.internal_state,
+                    internal_undo: Some(Box::new(move |_| { })),
                 }
             }
         }
@@ -2400,10 +2405,15 @@ fn check_expr(
                 }
             }
 
+            let mut body_typing = if is_proof {
+                typing.push_unbounded_ghost_context(UnboundedGhostContext::Closure, &expr.span)
+            } else {
+                typing
+            };
             let p = check_expr_has_mode(
                 ctxt,
                 record,
-                &mut typing,
+                &mut body_typing,
                 outer_mode,
                 body,
                 ret_mode,
@@ -3226,16 +3236,20 @@ fn check_expr(
             };
 
             if let ExprX::Loop { body, invs, .. } = &e.x {
-                let mut typing = typing.push_block_ghostness(Ghost::Ghost);
-                check_expr_has_mode(
-                    ctxt,
-                    record,
-                    &mut typing,
-                    Mode::Proof,
-                    body,
-                    Mode::Proof,
-                    outer_proph,
-                )?;
+                {
+                    let mut typing = typing.push_block_ghostness(Ghost::Ghost);
+                    let mut typing = typing
+                        .push_unbounded_ghost_context(UnboundedGhostContext::AtomicallyLoop, &e.span);
+                    check_expr_has_mode(
+                        ctxt,
+                        record,
+                        &mut typing,
+                        Mode::Proof,
+                        body,
+                        Mode::Proof,
+                        outer_proph,
+                    )?;
+                }
 
                 for inv in invs.iter() {
                     let mut typing = typing.push_block_ghostness(Ghost::Ghost);
@@ -3890,6 +3904,11 @@ fn check_function(
         } else {
             body_typing
         };
+        let mut body_typing = if function.x.mode == Mode::Proof {
+            body_typing.push_unbounded_ghost_context(UnboundedGhostContext::ProofFn, &function.span)
+        } else {
+            body_typing
+        };
 
         assert!(record.infer_spec_for_implicit_reborrows.is_none());
         record.infer_spec_for_implicit_reborrows = Some(HashMap::new());
@@ -4062,6 +4081,7 @@ pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes), Vec<VirErr>> 
             atomic_insts: None,
             in_pure: false,
             in_assert_query: None,
+            unbounded_ghost_context: None,
         };
         let mut typing = Typing::new(&mut state);
 
