@@ -263,6 +263,7 @@ fn handle_autospec<'tcx>(
                     exec_allows_no_decreases_clause: false,
                     tracked_swap: false,
                     tracked_take_option: false,
+                    create_open_invariant_credit: false,
                     is_async: false,
                 }),
                 body: Some(ret_clause.clone()),
@@ -1417,6 +1418,7 @@ fn make_attributes<'tcx>(
         },
         tracked_swap: vattrs.tracked_swap,
         tracked_take_option: vattrs.tracked_take_option,
+        create_open_invariant_credit: vattrs.create_open_invariant_credit,
         is_async: is_async,
     };
     Ok(Arc::new(fattrs))

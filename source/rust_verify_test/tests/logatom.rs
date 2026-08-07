@@ -691,3 +691,44 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] atomic_call_create_credit
+    ATOMIC_FUNCTION.to_owned() + verus_code_str! {
+        use vstd::invariant::*;
+        fn test() {
+            atomic_function() atomically loop |update| {
+                // not ok because of the atomically loop
+                let tracked x = create_open_invariant_credit();
+
+                let tracked res: Result<Token, Token> = update(Token::new());
+                if cond(res) {
+                    assume(res.branch() == UpdateControlFlow::Commit);
+                    break;
+                } else {
+                    assume(res.branch() == UpdateControlFlow::Abort);
+                    continue;
+                }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "creating an invariant credit in potentially-unbounded ghost code")
+}
+
+test_verify_one_file! {
+    #[test] atomic_call_create_credit_ok
+    ATOMIC_FUNCTION.to_owned() + verus_code_str! {
+        use vstd::invariant::*;
+        fn test() {
+            fn atomic_function_call() {
+                // this is fine because it's not a loop
+                let tracked x = create_open_invariant_credit();
+
+                let tracked mut token = Token::new();
+                atomic_function() atomically |update| {
+                    update(token);
+                    assume(false);
+                }
+            }
+        }
+    } => Ok(())
+}
