@@ -2854,7 +2854,6 @@ pub(crate) fn expr_to_stm_opt(
             //   assert(inv_tmp.inv(inner));
             // });
 
-        
             let (mut stms0, credit_exp) = expr_to_stm_opt(ctx, state, credit)?;
             let _credit_exp = to_exp_or_return_never!(credit_exp, stms0);
 

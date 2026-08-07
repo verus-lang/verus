@@ -68,8 +68,8 @@ use crate::rust_to_vir_base::{
 use crate::rust_to_vir_ctor::{resolve_braces_ctor, resolve_ctor};
 use crate::util::{err_span, slice_vec_map_result, vec_map_result};
 use crate::verus_items::{
-    self, CompilableOprItem, DummyCaptureItem, OpenAtomicUpdateItem,
-    OpenInvariantBlockItem, RustItem, SpecGhostTrackedItem, UnaryOpItem, VerusItem,
+    self, CompilableOprItem, DummyCaptureItem, OpenAtomicUpdateItem, OpenInvariantBlockItem,
+    RustItem, SpecGhostTrackedItem, UnaryOpItem, VerusItem,
 };
 use crate::{unsupported_err, unsupported_err_unless};
 use air::ast::Binder;
@@ -921,7 +921,14 @@ fn malformed_inv_block_err<'tcx, X>(expr: &Expr<'tcx>) -> Result<X, VirErr> {
 pub(crate) fn invariant_block_open<'a>(
     verus_items: &verus_items::VerusItems,
     open_stmt: &'a Stmt,
-) -> Option<(HirId, HirId, &'a rustc_hir::Pat<'a>, &'a rustc_hir::Expr<'a>, &'a rustc_hir::Expr<'a>, InvAtomicity)> {
+) -> Option<(
+    HirId,
+    HirId,
+    &'a rustc_hir::Pat<'a>,
+    &'a rustc_hir::Expr<'a>,
+    &'a rustc_hir::Expr<'a>,
+    InvAtomicity,
+)> {
     match open_stmt.kind {
         StmtKind::Let(LetStmt {
             pat:
