@@ -1031,3 +1031,66 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] credit_ok verus_code!{
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+        fn test() {
+            let tracked x = create_open_invariant_credit();
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] credit_bad_proof_fn verus_code!{
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+        proof fn test_proof_fn() {
+            let tracked x = create_open_invariant_credit();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "creating an invariant credit in potentially-unbounded ghost code")
+}
+
+test_verify_one_file! {
+    #[test] credit_bad_proof_closure verus_code!{
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+        fn test_proof_closure() {
+            let tracked x = proof_fn|| {
+                let tracked x = create_open_invariant_credit();
+            };
+        }
+    } => Err(err) => assert_vir_error_msg(err, "creating an invariant credit in potentially-unbounded ghost code")
+}
+
+test_verify_one_file! {
+    #[test] credit_bad_proof_closure_in_proof_fn verus_code!{
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+        proof fn test_proof_closure_in_proof_fn() {
+            let tracked x = proof_fn|| {
+                let tracked x = create_open_invariant_credit();
+            };
+        }
+    } => Err(err) => assert_vir_error_msg(err, "creating an invariant credit in potentially-unbounded ghost code")
+}
+
+test_verify_one_file! {
+    #[test] credit_bad_proof_loop verus_code!{
+        use vstd::prelude::*;
+        use vstd::invariant::*;
+        fn test_proof_loop() {
+            proof {
+                let mut i: int = 0;
+                while i < 10
+                    decreases 10 - i,
+                {
+                    let tracked x = create_open_invariant_credit();
+                    i = i + 1;
+                }
+            };
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot use while in proof or spec mode")
+    //} => Err(err) => assert_vir_error_msg(err, "creating an invariant credit in potentially-unbounded ghost code")
+}

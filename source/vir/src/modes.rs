@@ -520,14 +520,6 @@ enum VarMode {
     Mode(Mode, ProphVar),
 }
 
-/// Describes a body of ghost code that could run an unbounded number of times
-/// in between executable statements.
-enum UnboundedGhostContext {
-    Closure,
-    AtomicallyLoop,
-    ProofFn,
-}
-
 // Temporary state pushed and popped during mode checking
 struct State {
     // for each variable: (is_mutable, mode)
@@ -890,6 +882,26 @@ impl AtomicInstCollector {
 
         Ok(())
     }
+}
+
+/// Describes a body of ghost code that could run an unbounded number of times
+/// in between executable statements.
+#[derive(Clone, Copy)]
+enum UnboundedGhostContext {
+    Closure,
+    AtomicallyLoop,
+    ProofFn,
+}
+
+fn err_create_credit(c: UnboundedGhostContext, span: &Span, expr_span: &Span) -> VirErr {
+    error(
+        expr_span,
+        format!("creating an invariant credit in potentially-unbounded ghost code"),
+    ).secondary_label(span, match c {
+        UnboundedGhostContext::Closure => "in this proof closure",
+        UnboundedGhostContext::AtomicallyLoop => "in this `atomically` block with a loop",
+        UnboundedGhostContext::ProofFn => "in this non-exec-mode function",
+    })
 }
 
 fn add_pattern(
@@ -1943,6 +1955,11 @@ fn check_expr(
                     return Err(error(&expr.span, mode_error_msg()));
                 }
                 check_tracked_swap(ctxt, record, &expr, function.x.attrs.tracked_take_option)?;
+            }
+            if function.x.attrs.create_open_invariant_credit {
+                if let Some((c, span)) = &typing.unbounded_ghost_context {
+                    return Err(err_create_credit(*c, span, &expr.span));
+                }
             }
 
             if let Some(expr) = body {
