@@ -81,8 +81,11 @@ pub(crate) struct Visitor {
     pub(crate) erase_ghost: EraseGhost,
     // TODO: this should always be true
     use_spec_traits: bool,
-    // inside_ghost > 0 means we're currently visiting ghost code
+    // inside_ghost > 0 means we're currently visiting ghost code (spec or proof)
     inside_ghost: u32,
+    // inside_spec > 0 means we're currently visiting spec code (not proof)
+    // This is used to distinguish spec fn from proof fn for proof block handling
+    inside_spec: u32,
     // inside_type > 0 means we're currently visiting a type
     inside_type: u32,
     // inside_external_code > 0 means we're currently visiting an external or external_body body
@@ -1373,10 +1376,15 @@ impl Visitor {
             _ => (vec![], vec![]),
         };
 
-        let (inside_ghost, mode_attrs): (u32, Vec<Attribute>) = match &sig.mode {
-            FnMode::Default => (0, vec![]),
-            FnMode::Spec(token) => (1, vec![mk_verus_attr(token.spec_token.span, quote! { spec })]),
+        // inside_ghost: 1 for spec/proof functions (ghost code)
+        // inside_spec: 1 for spec functions only (needed for proof block handling)
+        let (inside_ghost, inside_spec, mode_attrs): (u32, u32, Vec<Attribute>) = match &sig.mode {
+            FnMode::Default => (0, 0, vec![]),
+            FnMode::Spec(token) => {
+                (1, 1, vec![mk_verus_attr(token.spec_token.span, quote! { spec })])
+            }
             FnMode::SpecChecked(token) => (
+                1,
                 1,
                 vec![mk_verus_attr(
                     token.spec_token.span,
@@ -1384,14 +1392,17 @@ impl Visitor {
                 )],
             ),
             FnMode::Proof(token) => {
-                (1, vec![mk_verus_attr(token.proof_token.span, quote! { proof })])
+                (1, 0, vec![mk_verus_attr(token.proof_token.span, quote! { proof })])
             }
             FnMode::ProofAxiom(token) => {
-                (1, vec![mk_verus_attr(token.axiom_token.span, quote! { proof })])
+                (1, 0, vec![mk_verus_attr(token.axiom_token.span, quote! { proof })])
             }
-            FnMode::Exec(token) => (0, vec![mk_verus_attr(token.exec_token.span, quote! { exec })]),
+            FnMode::Exec(token) => {
+                (0, 0, vec![mk_verus_attr(token.exec_token.span, quote! { exec })])
+            }
         };
         self.inside_ghost = inside_ghost;
+        self.inside_spec = inside_spec;
 
         let prover = self.take_ghost(&mut sig.spec.prover);
         let prover_attr = prover.as_ref().map(|verus_syn::Prover { id: prover_ident, .. }| {
@@ -3465,6 +3476,7 @@ impl Visitor {
         self.inside_ghost -= 1;
 
         let is_inside_ghost = self.inside_ghost > 0;
+        let is_inside_spec = self.inside_spec > 0;
 
         if let Expr::Call(call) = expr {
             let (_, is_tracked) = mode_block;
@@ -3496,7 +3508,10 @@ impl Visitor {
                 ((false, _), Expr::Block(..)) => {
                     // proof { ... }
                     let inner = take_expr(&mut *unary.expr);
-                    let e = if is_inside_ghost {
+                    // Use is_inside_spec (not is_inside_ghost) to distinguish spec fn from proof fn.
+                    // In spec fn, proof blocks are used for termination checking (proof_in_spec).
+                    // In proof fn or exec fn, proof blocks are treated as regular proof_block.
+                    let e = if is_inside_spec {
                         quote_spanned!(span => #[verifier::proof_in_spec] /* vattr */ #inner)
                     } else {
                         quote_spanned!(span => #[verifier::proof_block] /* vattr */ #inner)
@@ -5329,6 +5344,7 @@ pub(crate) fn rewrite_items_inner(
         erase_ghost,
         use_spec_traits,
         inside_ghost: 0,
+        inside_spec: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
@@ -5344,6 +5360,7 @@ pub(crate) fn rewrite_items_inner(
         let item = &mut items[index];
         visitor.visit_item_mut(item);
         visitor.inside_ghost = 0;
+        visitor.inside_spec = 0;
         visitor.inside_const = false;
         visitor.inside_arith = InsideArith::None;
         items.append(&mut visitor.additional_items);
@@ -5370,6 +5387,7 @@ pub(crate) fn rewrite_impl_items(
         erase_ghost,
         use_spec_traits,
         inside_ghost: 0,
+        inside_spec: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
@@ -5383,6 +5401,7 @@ pub(crate) fn rewrite_impl_items(
     for mut item in &mut items.items {
         visitor.visit_impl_item_mut(&mut item);
         visitor.inside_ghost = 0;
+        visitor.inside_spec = 0;
         visitor.inside_const = false;
         visitor.inside_arith = InsideArith::None;
     }
@@ -5405,6 +5424,7 @@ pub(crate) fn rewrite_expr(
         erase_ghost,
         use_spec_traits: true,
         inside_ghost: if inside_ghost { 1 } else { 0 },
+        inside_spec: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
@@ -5438,6 +5458,7 @@ pub(crate) fn rewrite_proof_decl(
         erase_ghost,
         use_spec_traits: true,
         inside_ghost: 0,
+        inside_spec: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
@@ -5493,6 +5514,7 @@ pub(crate) fn rewrite_expr_node(erase_ghost: EraseGhost, inside_ghost: bool, exp
         erase_ghost,
         use_spec_traits: true,
         inside_ghost: if inside_ghost { 1 } else { 0 },
+        inside_spec: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
@@ -5684,6 +5706,7 @@ pub(crate) fn sig_specs_attr(
         erase_ghost,
         use_spec_traits: true,
         inside_ghost: 1,
+        inside_spec: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
@@ -5725,6 +5748,7 @@ pub(crate) fn while_loop_spec_attr(
         erase_ghost,
         use_spec_traits: true,
         inside_ghost: 1,
+        inside_spec: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
@@ -5759,6 +5783,7 @@ pub(crate) fn for_loop_spec_attr(
         erase_ghost,
         use_spec_traits: true,
         inside_ghost: 1,
+        inside_spec: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
@@ -5819,6 +5844,7 @@ pub(crate) fn proof_block(
         erase_ghost,
         use_spec_traits: true,
         inside_ghost: 1,
+        inside_spec: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
@@ -5845,6 +5871,7 @@ pub(crate) fn proof_macro_exprs(
         erase_ghost,
         use_spec_traits: true,
         inside_ghost: if inside_ghost { 1 } else { 0 },
+        inside_spec: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
@@ -5877,6 +5904,7 @@ pub(crate) fn inv_au_macro_exprs(
         erase_ghost,
         use_spec_traits: true,
         inside_ghost: 0,
+        inside_spec: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
@@ -5920,6 +5948,7 @@ pub(crate) fn proof_macro_explicit_exprs(
         erase_ghost,
         use_spec_traits: true,
         inside_ghost: if inside_ghost { 1 } else { 0 },
+        inside_spec: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
