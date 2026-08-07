@@ -125,3 +125,10 @@ extra_cargo_args = ["--lib"]
 extra_verus_args = [
     "--verify-module", "vdeployment_controller", # To run full verification on all controllers, comment this line, need ~30mins.
 ]
+
+[[project]]
+name = "verismo"
+git_url = "https://github.com/microsoft/verismo.git"
+refspec = "main"
+cargo_verus = true
+crate_roots = ["source/bitflags_verus", "source/verismo_tspec", "source/verismo"]
