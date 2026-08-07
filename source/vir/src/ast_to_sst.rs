@@ -2842,7 +2842,8 @@ pub(crate) fn expr_to_stm_opt(
                 Ok((stms, Maybe::Never))
             }
         }
-        ExprX::OpenInvariant(inv, binder, body, atomicity) => {
+        ExprX::OpenInvariant(credit, inv, binder, body, atomicity) => {
+            // credit;
             // let inv_tmp = inv;
             // OpenInvariantBlock(inv_tmp.namespace(), {
             //   let mut inner = inner_tmp;
@@ -2853,8 +2854,13 @@ pub(crate) fn expr_to_stm_opt(
             //   assert(inv_tmp.inv(inner));
             // });
 
+        
+            let (mut stms0, credit_exp) = expr_to_stm_opt(ctx, state, credit)?;
+            let _credit_exp = to_exp_or_return_never!(credit_exp, stms0);
+
             // Evaluate `inv`
-            let (mut stms0, big_inv_exp) = expr_to_stm_opt(ctx, state, inv)?;
+            let (stms_inv, big_inv_exp) = expr_to_stm_opt(ctx, state, inv)?;
+            stms0.extend(stms_inv);
             let big_inv_exp = to_exp_or_return_never!(big_inv_exp, stms0);
 
             // Assign it to a constant tmp variable to ensure it is constant
