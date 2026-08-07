@@ -1636,6 +1636,8 @@ pub struct FunctionAttrsX {
     pub tracked_swap: bool,
     /// Is this function `Option::tracked_take`, which requires special handling
     pub tracked_take_option: bool,
+    /// Is this function `create_open_invariant_credit`, which requires special handling
+    pub create_open_invariant_credit: bool,
     /// Whether the function is an async function
     pub is_async: bool,
     /// Is this a types's drop implementation
