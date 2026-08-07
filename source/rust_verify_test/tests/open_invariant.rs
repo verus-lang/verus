@@ -167,7 +167,7 @@ test_both! {
           open_atomic_invariant_in_proof!(credit => &i => inner => {
           });
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function `vstd::invariant::spend_open_invariant_credit_in_proof` with mode proof")
+    } => Err(err) => assert_vir_error_msg(err, "Cannot open invariant in Spec mode")
 }
 
 test_both! {

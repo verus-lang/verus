@@ -405,6 +405,7 @@ pub(crate) enum Attr {
     MigratePostconditionsWithMutRefs(bool),
     TrackedSwap,
     TrackedTakeOption,
+    CreateOpenInvariantCredit,
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -767,6 +768,9 @@ pub(crate) fn parse_attrs(
                 }
                 AttrTree::Fun(_, arg, None) if arg == "tracked_take_option_primitive" => {
                     v.push(Attr::TrackedTakeOption)
+                }
+                AttrTree::Fun(_, arg, None) if arg == "create_open_invariant_credit" => {
+                    v.push(Attr::CreateOpenInvariantCredit)
                 }
                 _ => return err_span(span, "unrecognized verifier attribute"),
             },
@@ -1298,6 +1302,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) structural_const_wrapper: bool,
     pub(crate) tracked_swap: bool,
     pub(crate) tracked_take_option: bool,
+    pub(crate) create_open_invariant_credit: bool,
 }
 
 // Check for the `get_field_many_variants` attribute
@@ -1492,6 +1497,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
         structural_const_wrapper: false,
         tracked_swap: false,
         tracked_take_option: false,
+        create_open_invariant_credit: false,
     };
     let mut unsupported_rustc_attr: Option<(String, Span)> = None;
     for attr in parse_attrs(attrs, diagnostics)? {
@@ -1579,6 +1585,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             Attr::UsesUnerasedProxy => {}
             Attr::TrackedSwap => vs.tracked_swap = true,
             Attr::TrackedTakeOption => vs.tracked_take_option = true,
+            Attr::CreateOpenInvariantCredit => vs.create_open_invariant_credit = true,
             _ => {}
         }
     }
