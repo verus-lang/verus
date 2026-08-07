@@ -132,3 +132,10 @@ git_url = "https://github.com/stonysystems/tla-rs.git"
 refspec = "main"
 crate_roots = ["src/lib.rs"]
 extra_verus_args = ["--crate-type=dylib"]
+
+[[project]]
+name = "verismo"
+git_url = "https://github.com/microsoft/verismo.git"
+refspec = "main"
+cargo_verus = true
+crate_roots = ["source/bitflags_verus/src", "source/verismo_tspec/src", "source/verismo/src"]
