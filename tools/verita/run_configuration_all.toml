@@ -125,3 +125,10 @@ extra_cargo_args = ["--lib"]
 extra_verus_args = [
     "--verify-module", "vdeployment_controller", # To run full verification on all controllers, comment this line, need ~30mins.
 ]
+
+[[project]]
+name = "tla-rs"
+git_url = "https://github.com/stonysystems/tla-rs.git"
+refspec = "main"
+crate_roots = ["src/lib.rs"]
+extra_verus_args = ["--crate-type=dylib"]
