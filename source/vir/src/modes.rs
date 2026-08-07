@@ -629,7 +629,11 @@ mod typing {
         }
 
         #[must_use]
-        pub(super) fn push_unbounded_ghost_context<'a>(&'a mut self, kind: UnboundedGhostContext, span: &Span) -> Typing<'a> {
+        pub(super) fn push_unbounded_ghost_context<'a>(
+            &'a mut self,
+            kind: UnboundedGhostContext,
+            span: &Span,
+        ) -> Typing<'a> {
             if self.unbounded_ghost_context.is_none() {
                 self.internal_state.unbounded_ghost_context = Some((kind, span.clone()));
                 Typing {
@@ -641,7 +645,7 @@ mod typing {
             } else {
                 Typing {
                     internal_state: self.internal_state,
-                    internal_undo: Some(Box::new(move |_| { })),
+                    internal_undo: Some(Box::new(move |_| {})),
                 }
             }
         }
@@ -932,14 +936,15 @@ enum UnboundedGhostContext {
 }
 
 fn err_create_credit(c: UnboundedGhostContext, span: &Span, expr_span: &Span) -> VirErr {
-    error(
-        expr_span,
-        format!("creating an invariant credit in potentially-unbounded ghost code"),
-    ).secondary_label(span, match c {
-        UnboundedGhostContext::Closure => "in this proof closure",
-        UnboundedGhostContext::AtomicallyLoop => "in this `atomically` block with a loop",
-        UnboundedGhostContext::ProofFn => "in this non-exec-mode function",
-    })
+    error(expr_span, format!("creating an invariant credit in potentially-unbounded ghost code"))
+        .secondary_label(
+            span,
+            match c {
+                UnboundedGhostContext::Closure => "in this proof closure",
+                UnboundedGhostContext::AtomicallyLoop => "in this `atomically` block with a loop",
+                UnboundedGhostContext::ProofFn => "in this non-exec-mode function",
+            },
+        )
 }
 
 fn add_pattern(
@@ -3503,8 +3508,10 @@ fn check_expr(
 
                 {
                     let mut typing = typing.push_block_ghostness(Ghost::Ghost);
-                    let mut typing = typing
-                        .push_unbounded_ghost_context(UnboundedGhostContext::AtomicallyLoop, &e.span);
+                    let mut typing = typing.push_unbounded_ghost_context(
+                        UnboundedGhostContext::AtomicallyLoop,
+                        &e.span,
+                    );
                     check_expr_has_mode(
                         ctxt,
                         record,
