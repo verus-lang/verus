@@ -24,6 +24,9 @@ sha2 = { workspace = true }
 sise = { workspace = true }
 vir = { workspace = true }
 
+[target.'cfg(unix)'.dependencies]
+tikv-jemallocator = { version = "0.6", features = ["unprefixed_malloc_on_supported_platforms"] }
+
 [target.'cfg(windows)'.dependencies]
 win32job = "1"
 
