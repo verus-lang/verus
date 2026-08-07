@@ -541,6 +541,14 @@ struct Loop {
     ghost_loop: bool,
 }
 
+/// Describes a body of ghost code that could run an unbounded number of times
+/// in between executable statements.
+enum UnboundedGhostContext {
+    Closure,
+    AtomicallyLoop,
+    ProofFn,
+}
+
 // Temporary state pushed and popped during mode checking
 struct State {
     // for each variable: (is_mutable, mode)
@@ -563,6 +571,7 @@ struct State {
     pub(crate) ret_mode: Option<Mode>,
     pub(crate) atomic_insts: Option<AtomicInstCollector>,
     pub(crate) loops: HashMap<Label, Loop>,
+    pub(crate) higher_order_ghost: Option<(UnboundedGhostContext, Span)>,
 }
 
 mod typing {
@@ -624,6 +633,19 @@ mod typing {
                 internal_undo: Some(Box::new(move |state| {
                     state.in_pure = in_pure;
                 })),
+            }
+        }
+
+        #[must_use]
+        pub(super) fn push_unbounded_ghost_kind<'a>(&'a mut self, kind: UnboundedGhostKind) -> Typing<'a> {
+            if self.unbounded_ghost_kind.is_none() {
+                self.unbounded_ghost_kind = Some(kind);
+                Typing {
+                    internal_state: self.internal_state,
+                    internal_undo: Some(Box::new(move |state| {
+                        state.unbounded_ghost_kind = None;
+                    })),
+                }
             }
         }
 
@@ -3280,7 +3302,7 @@ fn check_expr(
             };
             Ok(mode)
         }
-        ExprX::OpenInvariant(inv, binder, body, atomicity) => {
+        ExprX::OpenInvariant(credit, inv, binder, body, atomicity) => {
             if outer_mode == Mode::Spec {
                 return Err(error(&expr.span, "cannot open invariant in spec mode"));
             }
@@ -3288,6 +3310,16 @@ fn check_expr(
             record.var_modes.insert(binder.name.clone(), Mode::Proof);
 
             let mut ghost_typing = typing.push_block_ghostness(Ghost::Ghost);
+            let (mode0, proph0) = check_expr(
+                ctxt,
+                record,
+                &mut ghost_typing,
+                outer_mode,
+                Expect(Mode::Proof),
+                credit,
+                outer_proph,
+            )?;
+            proph0.check(&expr.span, NoProphReason::OpenInvariantArg)?;
             let (mode1, proph1) = check_expr(
                 ctxt,
                 record,
@@ -3300,6 +3332,9 @@ fn check_expr(
             proph1.check(&expr.span, NoProphReason::OpenInvariantArg)?;
             drop(ghost_typing);
 
+            if mode0 != Mode::Proof {
+                return Err(error(&credit.span, "Credit must be Proof mode."));
+            }
             if mode1 != Mode::Proof {
                 return Err(error(&inv.span, "invariant must be proof mode"));
             }

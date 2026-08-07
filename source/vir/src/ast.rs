@@ -1265,7 +1265,7 @@ pub enum ExprX {
         source: LoopSource,
     },
     /// Open invariant
-    OpenInvariant(Expr, VarBinder<Typ>, Expr, InvAtomicity),
+    OpenInvariant(Expr, Expr, VarBinder<Typ>, Expr, InvAtomicity),
     /// Open Atomic Update
     TryOpenAtomicUpdate(Expr, VarBinder<Typ>, Expr),
     /// Placeholder expression for the atomic update argument in the atomic function call
