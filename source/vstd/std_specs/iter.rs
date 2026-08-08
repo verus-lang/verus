@@ -77,27 +77,21 @@ pub trait ExIterator {
                 r == into_rev_spec(self) && rev_post(self, r),
     ;
 
-    // See below for why we can't use this at present
-    // fn zip<U>(self, other: U) -> (r: Zip<Self, <U as IntoIterator>::IntoIter>>)
-    // where
-    //     Self: Sized,
-    //     U: IntoIterator,
-    //     default_ensures
-    //         self.obeys_prophetic_iter_laws() && self.initial_value_relation(&self)
-    //         other.obeys_prophetic_iter_laws() && other.initial_value_relation(&other)
-    //         ==> {
-    //           &&& zip_iter_fst(r) == a
-    //           &&& zip_iter_snd(r) == b
-    //           &&& IteratorSpec::remaining(&r) == a.remaining().zip_truncate(b.remaining())
-    //           &&& IteratorSpec::will_return_none(&r) ==> a.will_return_none() && b.will_return_none()
-    //           &&& IteratorSpec::decrease(&r) is Some == (a.decrease() is Some || b.decrease() is Some)
-    //           &&& IteratorSpec::initial_value_relation(&r, &r)
-    //         }
-    // //         self.obeys_prophetic_iter_laws() && self.initial_value_relation(&self)
-    // //         other.obeys_prophetic_iter_laws() && other.initial_value_relation(&other)
-    // //         ==>
-    // //             z == into_zip_spec(self) && zip_post(self, r),
-    // // ;
+    #[verifier::impls_cannot_extend_spec]
+    fn zip<U>(self, other: U) -> (r: Zip<Self, <U as IntoIterator>::IntoIter>)
+        where
+            Self: Sized,
+            U: IntoIterator,
+        default_ensures
+            self.obeys_prophetic_iter_laws() && other.obeys_prophetic_iter_laws()
+            ==> {
+              &&& zip_iter_fst(r) == self
+              &&& zip_iter_snd(r) == other
+              &&& IteratorSpec::remaining(&r) == self.remaining().zip_truncate(other.remaining())
+              &&& IteratorSpec::will_return_none(&r) ==> self.will_return_none() && other.will_return_none()
+              &&& IteratorSpec::decrease(&r) is Some == (self.decrease() is Some || other.decrease() is Some)
+            }
+    ;
 
     fn collect<B>(self) -> (collection: B)
         where
@@ -409,26 +403,6 @@ pub uninterp spec fn zip_iter_fst<A, B>(z: Zip<A, B>) -> A;
 // Ghost accessor for the second inner iterator
 pub uninterp spec fn zip_iter_snd<A, B>(z: Zip<A, B>) -> B;
 
-/// Wrapper for `Iterator::zip`, since the actual function takes an `IntoIter`,
-/// which creates a cylic dependency cycle.
-#[verifier::external_body]
-pub fn zip_iterators<A: Iterator, B: Iterator>(a: A, b: B) -> (r: Zip<A, B>)
-    requires
-        a.obeys_prophetic_iter_laws(),
-        a.initial_value_relation(&a),
-        b.obeys_prophetic_iter_laws(),
-        b.initial_value_relation(&b),
-    ensures
-        zip_iter_fst(r) == a,
-        zip_iter_snd(r) == b,
-        IteratorSpec::remaining(&r) == a.remaining().zip_truncate(b.remaining()),
-        IteratorSpec::will_return_none(&r) ==> a.will_return_none() && b.will_return_none(),
-        IteratorSpec::decrease(&r) is Some == (a.decrease() is Some || b.decrease() is Some),
-        IteratorSpec::initial_value_relation(&r, &r),
-{
-    a.zip(b)
-}
-
 impl<A, B> IteratorSpecImpl for Zip<A, B>
     where A: Iterator + IteratorSpec, B: Iterator + IteratorSpec
 {
@@ -445,13 +419,6 @@ impl<A, B> IteratorSpecImpl for Zip<A, B>
     #[verifier::prophetic]
     closed spec fn will_return_none(&self) -> bool {
         zip_iter_fst(*self).will_return_none() || zip_iter_snd(*self).will_return_none()
-    }
-
-    #[verifier::prophetic]
-    open spec fn initial_value_relation(&self, init: &Self) -> bool {
-        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-        &&& zip_iter_fst(*self).initial_value_relation(&zip_iter_fst(*init))
-        &&& zip_iter_snd(*self).initial_value_relation(&zip_iter_snd(*init))
     }
 
     closed spec fn decrease(&self) -> Option<nat> {
