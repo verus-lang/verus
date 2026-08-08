@@ -103,6 +103,7 @@ macro_rules! def_fmt_trait {
                         self.fmt_req(f);
             }
 
+            #[doc(hidden)]
             pub assume_specification<'a, 'b, T: $trait>[ rt::Argument::<'a>::$new ](x: &'b T) -> rt::Argument<'b>
                 requires
                     forall|f: &Formatter<'a>| x.fmt_req(f),
@@ -129,6 +130,7 @@ def_fmt_trait!(core::fmt::UpperExp, ExUpperExp, UpperExpSpec, UpperExpSpecImpl, 
 
 def_fmt_trait!(core::fmt::UpperHex, ExUpperHex, UpperHexSpec, UpperHexSpecImpl, new_upper_hex);
 
+#[doc(hidden)]
 pub assume_specification<'a, 'b, T: core::fmt::Debug>[ rt::Argument::<'a>::new_debug_noop ](
     x: &'b T,
 ) -> rt::Argument<'b>
@@ -212,7 +214,7 @@ def_type_axiom!(char, axiom_fmt_req_all_char);
 def_type_axiom!(&str, axiom_fmt_req_all_str);
 
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]
-def_type_axiom!(String, axiom_fmt_req_all_string);
+def_type_axiom!(alloc::string::String, axiom_fmt_req_all_string);
 
 pub broadcast axiom fn axiom_fmt_req_all_ref<A>()
     requires
