@@ -2395,6 +2395,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             .help("you can implicitly dereference this type using `*`"));
         }
         VerusItem::Vstd(_, _)
+        | VerusItem::RustPrivate(_)
         | VerusItem::Marker(_)
         | VerusItem::BuiltinType(_)
         | VerusItem::BuiltinTrait(_)
