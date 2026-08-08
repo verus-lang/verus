@@ -632,6 +632,7 @@ pub const FEATURE_PRELUDE: &str = crate::common::code_str! {
     #![feature(ptr_metadata)]
     #![feature(sized_hierarchy)]
     #![feature(const_destruct)]
+    #![feature(print_internals)]
 };
 
 pub const USE_PRELUDE: &str = crate::common::code_str! {

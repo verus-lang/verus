@@ -24,6 +24,9 @@ test_verify_one_file_with_options! {
         #![cfg_attr(verus_keep_ghost, feature(sized_hierarchy))]
         #![cfg_attr(verus_keep_ghost, feature(const_destruct))]
         #![cfg_attr(verus_keep_ghost, feature(derive_eq_internals))]
+        #![feature(hint_must_use)]
+        #![cfg_attr(verus_keep_ghost, feature(fmt_internals))]
+        #![cfg_attr(verus_keep_ghost, feature(fmt_arguments_from_str))]
         #![cfg_attr(
             verus_keep_ghost,
             feature(fn_traits),
