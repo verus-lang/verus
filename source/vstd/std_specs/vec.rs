@@ -252,6 +252,12 @@ pub assume_specification<T, A: Allocator>[ <Vec<T, A> as core::ops::Deref>::dere
         slice@ == vec@,
 ;
 
+impl<T, A: Allocator> super::core::DerefSpecImpl for Vec<T, A> {
+    open spec fn deref_req(&self) -> bool {
+        true
+    }
+}
+
 pub assume_specification<T, A: Allocator>[ <Vec<T, A> as core::ops::DerefMut>::deref_mut ](
     vec: &mut Vec<T, A>,
 ) -> (slice: &mut [T])
@@ -259,6 +265,12 @@ pub assume_specification<T, A: Allocator>[ <Vec<T, A> as core::ops::DerefMut>::d
         slice@ == old(vec)@,
         final(slice)@ == final(vec)@,
 ;
+
+impl<T, A: Allocator> super::core::DerefMutSpecImpl for Vec<T, A> {
+    open spec fn deref_mut_req(&self) -> bool {
+        true
+    }
+}
 
 pub assume_specification<T, A: Allocator + core::clone::Clone>[ Vec::<T, A>::split_off ](
     vec: &mut Vec<T, A>,
