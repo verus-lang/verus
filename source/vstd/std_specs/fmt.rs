@@ -138,6 +138,7 @@ pub assume_specification<'a, 'b, T: core::fmt::Debug>[ rt::Argument::<'a>::new_d
         forall|f: &Formatter<'a>| x.fmt_req(f),
 ;
 
+#[doc(hidden)]
 pub assume_specification<'a, 'b>[ rt::Argument::<'a>::from_usize ](x: &'b usize) -> rt::Argument<'b>
 ;
 
@@ -150,6 +151,7 @@ pub assume_specification<'a>[ Arguments::<'a>::from_str_nonconst ](s: &'static s
 // Specially handled stand-in for Arguments::new (because it uses the private Argument type)
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::std_specs::fmt::Arguments::new")]
 #[verifier::external]
+#[doc(hidden)]
 pub fn arguments_new<'a, const N: usize, const M: usize>(
     template: &'a [u8; N],
     args: &'a [rt::Argument<'a>; M],
@@ -157,6 +159,7 @@ pub fn arguments_new<'a, const N: usize, const M: usize>(
     unimplemented!()
 }
 
+#[doc(hidden)]
 pub assume_specification<'a, const N: usize, const M: usize>[ arguments_new ](
     template: &'a [u8; N],
     args: &'a [rt::Argument<'a>; M],
