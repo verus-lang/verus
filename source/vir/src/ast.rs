@@ -482,7 +482,7 @@ pub enum VariantCheck {
     /// Check is required because the given field is from a union
     Union,
     /// Check is recommended (not required for soundness) because this is a
-    /// `get_variant`/`is_variant` enum accessor (#408)
+    /// `get_variant`/`is_variant` enum accessor
     Recommends,
 }
 

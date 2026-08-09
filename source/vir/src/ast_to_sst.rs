@@ -1563,6 +1563,32 @@ fn if_to_stm(
     }
 }
 
+/// Emits the Stms for a field-access check: `is_hard_requirement` (e.g. union access)
+/// asserts except while checking recommends, plus an assume for both passes; otherwise
+/// (e.g. get_variant access) it only asserts while checking recommends, with no assume,
+/// since it's not a soundness fact.
+fn field_check_stms(
+    state: &mut State,
+    ctx: &Ctx,
+    span: &Span,
+    condition: Exp,
+    msg: Message,
+    is_hard_requirement: bool,
+) -> Vec<Stm> {
+    let mut stms = vec![];
+    if is_hard_requirement {
+        if !state.checking_recommends(ctx) {
+            let assert = StmX::Assert(state.next_assert_id(), Some(msg), condition.clone());
+            stms.push(Spanned::new(span.clone(), assert));
+        }
+        stms.push(Spanned::new(span.clone(), StmX::Assume(condition)));
+    } else if state.checking_recommends(ctx) {
+        let assert = StmX::Assert(state.next_assert_id(), Some(msg), condition);
+        stms.push(Spanned::new(span.clone(), assert));
+    }
+    stms
+}
+
 /// Convert a VIR Expr to a SST (Vec<Stm>, Maybe<Value>), i.e., instructions of the form,
 /// "run these statements, then return this side-effect-free expression".
 ///
@@ -1948,21 +1974,14 @@ pub(crate) fn expr_to_stm_opt(
                 _ => (None, op.clone()),
             };
             if let Some((condition, msg, is_hard_requirement)) = check {
-                if is_hard_requirement {
-                    if !state.checking_recommends(ctx) {
-                        let assert =
-                            StmX::Assert(state.next_assert_id(), Some(msg), condition.clone());
-                        let assert = Spanned::new(expr.span.clone(), assert);
-                        stms.push(assert);
-                    }
-                    let assume = StmX::Assume(condition);
-                    let assume = Spanned::new(expr.span.clone(), assume);
-                    stms.push(assume);
-                } else if state.checking_recommends(ctx) {
-                    let assert = StmX::Assert(state.next_assert_id(), Some(msg), condition);
-                    let assert = Spanned::new(expr.span.clone(), assert);
-                    stms.push(assert);
-                }
+                stms.extend(field_check_stms(
+                    state,
+                    ctx,
+                    &expr.span,
+                    condition,
+                    msg,
+                    is_hard_requirement,
+                ));
             }
             Ok((stms, Maybe::Some(Value::Exp(mk_exp(ExpX::UnaryOpr(op, exp))))))
         }
@@ -4235,21 +4254,14 @@ fn place_to_exp_pair_rec(
                 VariantCheck::None => None,
             };
             if let Some((condition, msg, is_hard_requirement)) = check {
-                if is_hard_requirement {
-                    if !state.checking_recommends(ctx) {
-                        let assert =
-                            StmX::Assert(state.next_assert_id(), Some(msg), condition.clone());
-                        let assert = Spanned::new(place.span.clone(), assert);
-                        wf.push(assert);
-                    }
-                    let assume = StmX::Assume(condition);
-                    let assume = Spanned::new(place.span.clone(), assume);
-                    wf.push(assume);
-                } else if state.checking_recommends(ctx) {
-                    let assert = StmX::Assert(state.next_assert_id(), Some(msg), condition);
-                    let assert = Spanned::new(place.span.clone(), assert);
-                    wf.push(assert);
-                }
+                wf.extend(field_check_stms(
+                    state,
+                    ctx,
+                    &place.span,
+                    condition,
+                    msg,
+                    is_hard_requirement,
+                ));
             }
 
             let field_opr = FieldOpr { check: VariantCheck::None, ..field_opr.clone() };

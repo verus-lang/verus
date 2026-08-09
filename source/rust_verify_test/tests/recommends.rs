@@ -116,9 +116,7 @@ test_verify_one_file! {
     } => Err(e) => assert_has_recommends_failure(e)
 }
 
-// Same as above, but via the named `get_A_0()` accessor rather than `->` - these compile
-// to different call shapes (a synthesized #[verifier::inline] fn with its own
-// `recommends` clause, vs. a raw field access), so both need their own coverage.
+// Same as above, but via the named `get_A_0()` accessor rather than `->`.
 test_verify_one_file! {
     #[test] get_variant_field_method_call_recommends_issue408 verus_code! {
         #[is_variant]

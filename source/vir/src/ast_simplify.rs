@@ -243,14 +243,10 @@ fn place_to_pure_place_rec(state: &mut State, place: &Place) -> (Vec<Stmt>, Plac
                         crate::place_preconditions::field_check(&place.span, &p1_expr, field_opr);
                     wf.push(assert_stmt);
                 }
-                // Left as-is here (not turned into a `wf` obligation): the recommends-vs-hard
-                // timing this needs (assert only while checking recommends) has no AST-level
-                // encoding - `ExprX::AssertAssume` is checked in the opposite pass. Handled
-                // later, once this place reaches SST lowering.
+                // Handled later, at SST lowering - no AST-level encoding for this timing.
                 VariantCheck::Recommends => {}
             }
-            // Preserve Recommends (still needed downstream); Union is already fully
-            // discharged above, so it collapses to None like everything else.
+            // Preserve Recommends for that later pass; Union is already discharged above.
             let check = if field_opr.check == VariantCheck::Recommends {
                 VariantCheck::Recommends
             } else {
