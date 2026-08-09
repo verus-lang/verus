@@ -1935,12 +1935,13 @@ pub(crate) fn expr_to_stm_opt(
                         (Some((condition, msg, true)), UnaryOpr::Field(field_opr))
                     }
                     // `get_variant` accessors are total - just give a recommends-only hint.
-                    VariantCheck::None if field_opr.get_variant => {
+                    VariantCheck::Recommends => {
                         let (condition, msg) =
                             crate::place_preconditions::sst_field_recommends_check(
                                 &expr.span, &exp, field_opr,
                             );
-                        (Some((condition, msg, false)), op.clone())
+                        let field_opr = FieldOpr { check: VariantCheck::None, ..field_opr.clone() };
+                        (Some((condition, msg, false)), UnaryOpr::Field(field_opr))
                     }
                     VariantCheck::None => (None, op.clone()),
                 },
@@ -4220,19 +4221,35 @@ fn place_to_exp_pair_rec(
                 VariantCheck::Union => {
                     let (condition, msg) =
                         crate::place_preconditions::sst_field_check(&place.span, &e2, field_opr);
-                    Some((condition, msg))
+                    Some((condition, msg, true))
+                }
+                // `get_variant` accessors are total - just give a recommends-only hint.
+                VariantCheck::Recommends => {
+                    let (condition, msg) = crate::place_preconditions::sst_field_recommends_check(
+                        &place.span,
+                        &e2,
+                        field_opr,
+                    );
+                    Some((condition, msg, false))
                 }
                 VariantCheck::None => None,
             };
-            if let Some((condition, msg)) = check {
-                if !state.checking_recommends(ctx) {
-                    let assert = StmX::Assert(state.next_assert_id(), Some(msg), condition.clone());
+            if let Some((condition, msg, is_hard_requirement)) = check {
+                if is_hard_requirement {
+                    if !state.checking_recommends(ctx) {
+                        let assert =
+                            StmX::Assert(state.next_assert_id(), Some(msg), condition.clone());
+                        let assert = Spanned::new(place.span.clone(), assert);
+                        wf.push(assert);
+                    }
+                    let assume = StmX::Assume(condition);
+                    let assume = Spanned::new(place.span.clone(), assume);
+                    wf.push(assume);
+                } else if state.checking_recommends(ctx) {
+                    let assert = StmX::Assert(state.next_assert_id(), Some(msg), condition);
                     let assert = Spanned::new(place.span.clone(), assert);
                     wf.push(assert);
                 }
-                let assume = StmX::Assume(condition);
-                let assume = Spanned::new(place.span.clone(), assume);
-                wf.push(assume);
             }
 
             let field_opr = FieldOpr { check: VariantCheck::None, ..field_opr.clone() };
