@@ -22,8 +22,7 @@ struct State<'a> {
     triggers: BTreeMap<Option<u64>, Vec<Exp>>,
     // trigger_vars covered by each trigger
     coverage: HashMap<Option<u64>, HashSet<VarIdent>>,
-    // maps an expression's identity to the #[verifier::inline] function it was inlined
-    // from, so a bad trigger caused by inlining can get a more helpful error (see #248)
+    // expr identity -> the #[verifier::inline] fn it was inlined from, for trigger errors (#248)
     inlined_calls: &'a HashMap<usize, Fun>,
     // a variable cannot be both native and poly, so these should not intersect:
 }
@@ -217,11 +216,9 @@ fn check_trigger_expr(
                     &exp.span,
                     format!(
                         "trigger must be a function call, a field access, or arithmetic \
-                         operator; this expression is the call `{name}`, but `{name}` is \
-                         marked `#[verifier::inline]`, so it is replaced by its definition \
-                         before trigger selection, and the resulting expression cannot be \
-                         used as a trigger; try triggering on a sub-expression of `{name}`'s \
-                         body instead, or remove `#[verifier::inline]` from `{name}`",
+                         operator; `{name}` is marked `#[verifier::inline]`, so this call is \
+                         replaced by its body before trigger selection - trigger on part of \
+                         `{name}`'s body instead, or remove `#[verifier::inline]`",
                     ),
                 ));
             }
