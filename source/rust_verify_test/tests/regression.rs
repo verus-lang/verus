@@ -1556,3 +1556,45 @@ test_verify_one_file_with_options! {
         }
     } => Err(e) => assert_one_fails(e)
 }
+
+// `by(nonlinear_arith)` and `by(bit_vector)` blocks spin off their own separate query and
+// used to hard-panic under `-V debug` (`unimplemented!`) the same way plain reassignment did.
+test_verify_one_file_with_options! {
+    #[test] debugger_mode_supports_nonlinear_arith ["-V debug"] => verus_code! {
+        fn mul_check(a: u32, b: u32)
+            requires a < 100, b < 100,
+        {
+            assert(a * b < 10000) by(nonlinear_arith)
+                requires a < 100, b < 100
+            {}
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] debugger_mode_reports_failure_in_nonlinear_arith ["-V debug"] => verus_code! {
+        fn mul_check_wrong(a: u32, b: u32)
+            requires a < 100, b < 100,
+        {
+            assert(a * b < 100) by(nonlinear_arith) // FAILS: not generally true
+                requires a < 100, b < 100
+            {}
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file_with_options! {
+    #[test] debugger_mode_supports_bit_vector ["-V debug"] => verus_code! {
+        fn bv_check(a: u32) {
+            assert(a & a == a) by(bit_vector);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] debugger_mode_reports_failure_in_bit_vector ["-V debug"] => verus_code! {
+        fn bv_check_wrong(a: u32) {
+            assert(a & a == a + 1) by(bit_vector); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
