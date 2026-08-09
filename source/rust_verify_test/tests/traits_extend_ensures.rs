@@ -907,6 +907,15 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_impls_cannot_extend_spec_no_default_ensures verus_code! {
+        trait T {
+            #[verifier::impls_cannot_extend_spec]
+            fn f() default_ensures true {}
+        }
+    } => Err(err) => assert_vir_error_msg(err, "impls_cannot_extend_spec functions cannot use default_ensures")
+}
+
+test_verify_one_file! {
     #[test] test_impls_cannot_extend_spec_allow_self_bound verus_code! {
         trait T {
             #[verifier::impls_cannot_extend_spec]

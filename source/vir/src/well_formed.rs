@@ -1012,6 +1012,12 @@ fn check_function<Emit: EmitError>(
                 "only exec trait functions can be marked impls_cannot_extend_spec",
             ));
         }
+        if function.x.ensure.1.len() > 0 {
+            return Err(error(
+                &function.span,
+                "impls_cannot_extend_spec functions cannot use default_ensures",
+            ));
+        }
     }
     if let FunctionKind::TraitMethodDecl { has_default: false, .. } = &function.x.kind {
         if function.x.attrs.exec_allows_no_decreases_clause {
