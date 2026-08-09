@@ -115,8 +115,7 @@ fn field_msg(span: &Span) -> Message {
     )
 }
 
-/// Unlike `sst_field_check`, not a soundness check - `get_variant` accessors are total,
-/// this is just a recommends-only nudge for a likely mistake.
+/// `get_variant` accessors are total - just a recommends-only nudge for a likely mistake.
 pub(crate) fn sst_field_recommends_check(
     span: &Span,
     e1: &Exp,
