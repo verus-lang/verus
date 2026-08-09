@@ -1934,10 +1934,8 @@ pub(crate) fn expr_to_stm_opt(
                         let field_opr = FieldOpr { check: VariantCheck::None, ..field_opr.clone() };
                         (Some((condition, msg, true)), UnaryOpr::Field(field_opr))
                     }
-                    // `get_variant` enum accessors (e.g. `get_Foo_0()`, `->Foo_0`) aren't a
-                    // soundness hazard like union field access -- the accessor is a total
-                    // function -- but calling one when the value might not be the given
-                    // variant is usually a mistake, so give a recommends-only hint.
+                    // `get_variant` accessors are total, not a soundness hazard like union
+                    // field access - just give a recommends-only hint.
                     VariantCheck::None if field_opr.get_variant => {
                         let (condition, msg) =
                             crate::place_preconditions::sst_field_recommends_check(

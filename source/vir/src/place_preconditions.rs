@@ -115,10 +115,8 @@ fn field_msg(span: &Span) -> Message {
     )
 }
 
-/// Unlike `sst_field_check`, this is not a soundness requirement: a `get_variant` field
-/// accessor for an enum (e.g. `get_Foo_0()` or `->Foo_0`) is a total function, so reading
-/// it when the value isn't actually the given variant is well-defined (just underspecified).
-/// It's usually a mistake though, so we surface it as a recommends-only check.
+/// Unlike `sst_field_check`, not a soundness check - `get_variant` accessors are total,
+/// this is just a recommends-only nudge for a likely mistake.
 pub(crate) fn sst_field_recommends_check(
     span: &Span,
     e1: &Exp,
