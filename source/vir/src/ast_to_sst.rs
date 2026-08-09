@@ -1937,7 +1937,7 @@ pub(crate) fn expr_to_stm_opt(
                     // `get_variant` enum accessors (e.g. `get_Foo_0()`, `->Foo_0`) aren't a
                     // soundness hazard like union field access -- the accessor is a total
                     // function -- but calling one when the value might not be the given
-                    // variant is usually a mistake, so give a recommends-only hint (#408).
+                    // variant is usually a mistake, so give a recommends-only hint.
                     VariantCheck::None if field_opr.get_variant => {
                         let (condition, msg) =
                             crate::place_preconditions::sst_field_recommends_check(
