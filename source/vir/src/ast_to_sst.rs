@@ -1932,21 +1932,39 @@ pub(crate) fn expr_to_stm_opt(
                             &expr.span, &exp, field_opr,
                         );
                         let field_opr = FieldOpr { check: VariantCheck::None, ..field_opr.clone() };
-                        (Some((condition, msg)), UnaryOpr::Field(field_opr))
+                        (Some((condition, msg, true)), UnaryOpr::Field(field_opr))
+                    }
+                    // `get_variant` enum accessors (e.g. `get_Foo_0()`, `->Foo_0`) aren't a
+                    // soundness hazard like union field access -- the accessor is a total
+                    // function -- but calling one when the value might not be the given
+                    // variant is usually a mistake, so give a recommends-only hint (#408).
+                    VariantCheck::None if field_opr.get_variant => {
+                        let (condition, msg) =
+                            crate::place_preconditions::sst_field_recommends_check(
+                                &expr.span, &exp, field_opr,
+                            );
+                        (Some((condition, msg, false)), op.clone())
                     }
                     VariantCheck::None => (None, op.clone()),
                 },
                 _ => (None, op.clone()),
             };
-            if let Some((condition, msg)) = check {
-                if !state.checking_recommends(ctx) {
-                    let assert = StmX::Assert(state.next_assert_id(), Some(msg), condition.clone());
+            if let Some((condition, msg, is_hard_requirement)) = check {
+                if is_hard_requirement {
+                    if !state.checking_recommends(ctx) {
+                        let assert =
+                            StmX::Assert(state.next_assert_id(), Some(msg), condition.clone());
+                        let assert = Spanned::new(expr.span.clone(), assert);
+                        stms.push(assert);
+                    }
+                    let assume = StmX::Assume(condition);
+                    let assume = Spanned::new(expr.span.clone(), assume);
+                    stms.push(assume);
+                } else if state.checking_recommends(ctx) {
+                    let assert = StmX::Assert(state.next_assert_id(), Some(msg), condition);
                     let assert = Spanned::new(expr.span.clone(), assert);
                     stms.push(assert);
                 }
-                let assume = StmX::Assume(condition);
-                let assume = Spanned::new(expr.span.clone(), assume);
-                stms.push(assume);
             }
             Ok((stms, Maybe::Some(Value::Exp(mk_exp(ExpX::UnaryOpr(op, exp))))))
         }

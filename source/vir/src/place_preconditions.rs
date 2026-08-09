@@ -115,6 +115,31 @@ fn field_msg(span: &Span) -> Message {
     )
 }
 
+/// Unlike `sst_field_check`, this is not a soundness requirement: a `get_variant` field
+/// accessor for an enum (e.g. `get_Foo_0()` or `->Foo_0`) is a total function, so reading
+/// it when the value isn't actually the given variant is well-defined (just underspecified).
+/// It's usually a mistake though, so we surface it as a recommends-only check (issue #408).
+pub(crate) fn sst_field_recommends_check(
+    span: &Span,
+    e1: &Exp,
+    field_opr: &FieldOpr,
+) -> (Exp, Message) {
+    let FieldOpr { datatype, variant, field: _, get_variant: _, check: _ } = field_opr;
+    let unary = UnaryOpr::IsVariant { datatype: datatype.clone(), variant: variant.clone() };
+    let condition = ExpX::UnaryOpr(unary, e1.clone());
+    let condition = SpannedTyped::new(&e1.span, &Arc::new(TypX::Bool), condition);
+    (condition, field_recommends_msg(span, variant))
+}
+
+fn field_recommends_msg(span: &Span, variant: &Ident) -> Message {
+    crate::messages::error(
+        span,
+        format!(
+            "recommendation not met: cannot show that this value is variant `{variant}` before accessing this field"
+        ),
+    )
+}
+
 impl ArrayKind {
     pub(crate) fn getting_len_requires_read(&self) -> bool {
         match self {
