@@ -856,6 +856,8 @@ impl_structural! {
 
 unsafe impl<T: Structural> Structural for Option<T> {}
 
+unsafe impl<T: Structural, E: Structural> Structural for core::result::Result<T, E> {}
+
 pub struct NoCopy {}
 #[cfg(verus_keep_ghost)]
 impl !Copy for NoCopy {}
