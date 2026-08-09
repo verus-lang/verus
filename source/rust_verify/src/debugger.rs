@@ -122,13 +122,8 @@ impl Debugger {
         self.air_model.translate_variable(sid, &name)
     }
 
-    /// The concrete value of a plain variable at the current line, read
-    /// directly off the already-parsed counterexample model - no live Z3
-    /// round-trip. This is the only sound way to get this: a fresh
-    /// `Context::eval_expr` call issued after the model was obtained can
-    /// fail with `(error "model is not available")`, since a "disable this
-    /// label" assert is already queued ahead of it (see `air::model::Model`'s
-    /// `raw_values` doc comment).
+    /// A plain variable's value at the current line, read off the model directly
+    /// (no live Z3 round-trip - see `air::model::Model::raw_values`).
     fn variable_value(&self, name: &Ident) -> Option<String> {
         let incarnated = self.translate_variable(name)?;
         self.air_model.raw_value(&Arc::new(incarnated)).map(|v| v.to_string())
@@ -159,15 +154,9 @@ impl Debugger {
         }
     }
 
-    /// Evaluates `expr` at the current line. A bare variable name is
-    /// resolved straight from the counterexample model (always sound, no
-    /// solver round-trip). Anything more than that (a function application
-    /// like `(add_one x)`) genuinely needs Z3 itself to evaluate, so it
-    /// falls back to a live `Context::eval_expr` call - which can fail with
-    /// `(error "model is not available")` for the reason explained on
-    /// `variable_value`; there's no way to avoid that for a real compound
-    /// expression short of interpreting model function definitions
-    /// ourselves, which isn't done here.
+    /// Evaluates `expr` at the current line. A bare variable name reads straight from
+    /// the model; a compound expression (e.g. `(add_one x)`) falls back to a live
+    /// `Context::eval_expr` call, which can hit "model is not available".
     fn eval_expr(&self, context: &mut air::context::Context, expr: &str) {
         if let Some(value) = self.variable_value(&Arc::new(expr.to_string())) {
             println!("{}", value);
@@ -180,10 +169,8 @@ impl Debugger {
         println!("{}", result);
     }
 
-    /// Real REPL: `line <N>` moves to a line, anything else is evaluated as an
-    /// expression at the current line (a plain variable name reads straight from the
-    /// counterexample model; a compound expression like `(add_one x)` needs a live Z3
-    /// query - see `eval_expr`'s doc comment). `quit`/`exit`, or EOF, ends the session.
+    /// `line <N>` moves to a line, anything else is evaluated there. `quit`/`exit`,
+    /// or EOF, ends the session.
     pub fn start_shell(&mut self, context: &mut air::context::Context) {
         println!("welcome to verus debugger shell");
         println!("{}", self);

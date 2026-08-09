@@ -2379,8 +2379,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             }
 
             if ctx.debug {
-                // Add a snapshot after we modify the destination, so a later query at
-                // this line resolves to the just-written incarnation, not a stale one.
+                // Add a snapshot after we modify the destination
                 let sid = state.update_current_sid(SUFFIX_SNAP_MUT);
                 state.map_span(&stm, SpanKind::Full);
                 stmts.push(Arc::new(StmtX::Snapshot(sid)));

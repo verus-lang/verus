@@ -28,22 +28,10 @@ pub struct Model {
     id_snapshots: Snapshots,
     /// The list of paramters of the function
     parameters: HashSet<Ident>,
-    /// Every zero-parameter `(define-fun name () type body)` from Z3's raw
-    /// `(get-model)` dump - i.e. plain constants, exactly what an
-    /// already-incarnated variable (`x@3`) is. Populated once, at the same
-    /// point the model is originally parsed (`smt_verify::smt_get_model`).
-    ///
-    /// This exists so a caller can read a variable's concrete value
-    /// directly off the returned `Model`, instead of issuing a *separate*
-    /// `Context::eval_expr` call afterward - which is unsound here: getting
-    /// a model triggers a "disable this label" `(assert ...)` to be queued
-    /// for the *next* batch of commands sent to the solver (so a later
-    /// `check-sat` finds additional errors), and that queued assert reaches
-    /// Z3 before any subsequent `eval_expr` call's own command does,
-    /// invalidating the model Z3 just produced (`(error "model is not
-    /// available")`) - confirmed by hitting exactly this in practice, not
-    /// guessed. Reading straight from `raw_values` (captured before that
-    /// assert is ever queued) sidesteps the ordering hazard entirely.
+    /// Every zero-parameter constant from Z3's raw model dump, captured once at parse
+    /// time. Read this instead of a later `Context::eval_expr` call: obtaining a model
+    /// queues a command that invalidates it before any follow-up query reaches Z3
+    /// (`(error "model is not available")`, confirmed in practice).
     raw_values: HashMap<Ident, ModelExpr>,
 }
 
@@ -84,10 +72,7 @@ impl Model {
         None
     }
 
-    /// Populates `raw_values` from every zero-parameter model definition -
-    /// called once, right where the model is parsed from Z3's raw output
-    /// (see the field's doc comment for why this can't be done lazily via a
-    /// later `eval_expr` call instead).
+    /// Populates `raw_values` from every zero-parameter model definition.
     pub fn set_raw_values(&mut self, defs: &[ModelDef]) {
         for def in defs {
             if def.params.is_empty() {
@@ -96,8 +81,7 @@ impl Model {
         }
     }
 
-    /// The concrete value Z3 assigned a plain constant (e.g. an
-    /// already-incarnated variable like `x@3`), if this model has one.
+    /// The concrete value Z3 assigned a plain constant, if any.
     pub fn raw_value(&self, name: &Ident) -> Option<&str> {
         self.raw_values.get(name).map(|v| v.as_str())
     }

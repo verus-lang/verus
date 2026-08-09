@@ -441,9 +441,7 @@ fn smt_get_model(
 
     let model =
         crate::parser::Parser::new(context.message_interface.clone()).lines_to_model(&smt_output);
-    // Captured now, before the "disable this label" assert queued below gets
-    // sent - see `Model::raw_values`'s doc comment for why that ordering
-    // matters (a later separate `eval_expr` call would be too late).
+    // Captured now, before the disable-label assert queued below invalidates the model.
     air_model.set_raw_values(&model);
     let mut model_defs: HashMap<Ident, ModelDef> = HashMap::new();
     for def in model.iter() {
