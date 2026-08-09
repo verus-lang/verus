@@ -273,6 +273,8 @@ pub(crate) fn smt_check_assertion<'ctx>(
 
     let unsat = unsat.expect("expected sat/unsat/unknown from SMT solver");
 
+    // Model::raw_defs pushed ValidityResult past clippy's size threshold.
+    #[allow(clippy::large_enum_variant)]
     enum ResultDetermination<T> {
         Determined(ValidityResult),
         Undetermined(T),
@@ -374,9 +376,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
     }
 }
 
-// `Model` grew a new field (`raw_values`) for the debugger, pushing `ValidityResult`
-// over clippy's size threshold - boxing it would ripple across every ValidityResult
-// call site, so this is a localized allow rather than that broader change.
+// Model::raw_values pushed ValidityResult past clippy's size threshold.
 #[allow(clippy::result_large_err)]
 pub(crate) fn smt_get_rlimit_count(context: &mut Context) -> Result<u64, ValidityResult> {
     assert!(matches!(context.solver, SmtSolver::Z3)); // the CVC5 output format for statistics is different
@@ -445,8 +445,7 @@ fn smt_get_model(
 
     let model =
         crate::parser::Parser::new(context.message_interface.clone()).lines_to_model(&smt_output);
-    // Captured now, before the disable-label assert queued below invalidates the model.
-    air_model.set_raw_values(&model);
+    air_model.set_raw_values(&model); // before the disable-label assert below invalidates it
     let mut model_defs: HashMap<Ident, ModelDef> = HashMap::new();
     for def in model.iter() {
         model_defs.insert(def.name.clone(), def.clone());

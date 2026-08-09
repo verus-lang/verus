@@ -31,6 +31,8 @@ pub struct Model {
     /// Every zero-parameter constant from Z3's raw model dump. Read this instead of a
     /// later `eval_expr` call, which can invalidate the model first.
     raw_values: HashMap<Ident, ModelExpr>,
+    /// Every function definition from the same dump, parameterized or not.
+    raw_defs: HashMap<Ident, ModelDef>,
 }
 
 impl Model {
@@ -54,7 +56,12 @@ impl Model {
             }
         }
 
-        Model { id_snapshots: snapshots, parameters, raw_values: HashMap::new() }
+        Model {
+            id_snapshots: snapshots,
+            parameters,
+            raw_values: HashMap::new(),
+            raw_defs: HashMap::new(),
+        }
     }
 
     pub fn translate_variable(&self, sid: &Ident, name: &Ident) -> Option<String> {
@@ -70,17 +77,25 @@ impl Model {
         None
     }
 
-    /// Populates `raw_values` from every zero-parameter model definition.
+    /// Populates `raw_values`/`raw_defs` from Z3's raw model dump.
     pub fn set_raw_values(&mut self, defs: &[ModelDef]) {
         for def in defs {
             if def.params.is_empty() {
                 self.raw_values.insert(def.name.clone(), def.body.clone());
             }
+            self.raw_defs.insert(def.name.clone(), def.clone());
         }
     }
 
     /// The concrete value Z3 assigned a plain constant, if any.
     pub fn raw_value(&self, name: &Ident) -> Option<&str> {
         self.raw_values.get(name).map(|v| v.as_str())
+    }
+
+    /// A function's model definition, found by matching the tail of its AIR name (e.g.
+    /// `"add_one.?"`) rather than requiring the caller to know the full, crate-qualified
+    /// name (`"my_crate!add_one.?"`).
+    pub fn find_def_by_suffix(&self, suffix: &str) -> Option<&ModelDefX> {
+        self.raw_defs.iter().find(|(name, _)| name.ends_with(suffix)).map(|(_, def)| &**def)
     }
 }

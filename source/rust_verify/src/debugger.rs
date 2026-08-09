@@ -129,52 +129,42 @@ impl Debugger {
         self.air_model.raw_value(&Arc::new(incarnated)).map(|v| v.to_string())
     }
 
-    fn rewrite_eval_expr(&self, expr: &Node) -> Option<Node> {
+    /// Evaluates a parsed expression node purely from the captured model - no live Z3
+    /// round-trip (see `variable_value`'s doc comment for why that's unsound here). A
+    /// function application looks up its model definition by name suffix (avoids
+    /// needing the caller to know the full crate-qualified AIR name) and returns its
+    /// body only if the model recorded one flat answer for it - the common case when a
+    /// counterexample only ever needed that function at one point. A body with
+    /// case-split structure (multiple points needed) can't be evaluated this way.
+    fn eval_node(&self, expr: &Node) -> Option<String> {
         match expr {
-            Node::Atom(var) => {
-                let name = self.translate_variable(&Arc::new(String::from(var)))?;
-                Some(Node::Atom(name))
-            }
+            Node::Atom(var) => self.variable_value(&Arc::new(var.clone())),
             Node::List(app) => {
-                if let Node::Atom(var) = &app[0] {
-                    // TODO: should use suffix_global_id + path_to_air_ident?
-                    let mut func_name = var.clone();
-                    func_name.push('.');
-                    func_name.push('?');
-                    let mut items = vec![Node::Atom(func_name)];
-                    for name in app.iter().skip(1) {
-                        let name = self.rewrite_eval_expr(name)?;
-                        items.push(name);
-                    }
-                    Some(Node::List(items))
-                } else {
-                    None
+                let Node::Atom(func_name) = &app[0] else { return None };
+                for arg in app.iter().skip(1) {
+                    self.eval_node(arg)?; // just check every arg is itself resolvable
                 }
+                let def = self.air_model.find_def_by_suffix(&format!("{func_name}.?"))?;
+                if def.body.trim_start().starts_with('(') {
+                    return None; // case-split body, not attempted
+                }
+                Some(def.body.to_string())
             }
         }
     }
 
-    /// Evaluates `expr` at the current line. A bare variable name reads straight from
-    /// the model; a compound expression (e.g. `(add_one x)`) falls back to a live
-    /// `Context::eval_expr` call - confirmed to reliably fail with "model is not
-    /// available" (the disable-label assert from the original check-sat is already
-    /// queued by the time the shell starts), a real, pre-existing limitation this
-    /// doesn't fix.
-    fn eval_expr(&self, context: &mut air::context::Context, expr: &str) {
-        if let Some(value) = self.variable_value(&Arc::new(expr.to_string())) {
-            println!("{}", value);
-            return;
-        }
+    fn eval_expr(&self, expr: &str) {
         let mut parser = sise::Parser::new(expr);
         let node = sise::parse_tree(&mut parser).unwrap();
-        let expr = self.rewrite_eval_expr(&node).unwrap();
-        let result = context.eval_expr(expr);
-        println!("{}", result);
+        match self.eval_node(&node) {
+            Some(value) => println!("{}", value),
+            None => println!("cannot evaluate '{}' from the captured model", expr),
+        }
     }
 
     /// `line <N>` moves to a line, anything else is evaluated there. `quit`/`exit`,
     /// or EOF, ends the session.
-    pub fn start_shell(&mut self, context: &mut air::context::Context) {
+    pub fn start_shell(&mut self) {
         println!("welcome to verus debugger shell");
         println!("{}", self);
 
@@ -201,7 +191,7 @@ impl Debugger {
                 }
                 continue;
             }
-            self.eval_expr(context, cmd);
+            self.eval_expr(cmd);
         }
     }
 }
