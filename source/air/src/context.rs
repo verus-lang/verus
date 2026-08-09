@@ -51,7 +51,6 @@ pub enum ValidityResult {
     UnexpectedOutput(String),
 }
 
-// Model::raw_defs pushed this past clippy's size threshold.
 #[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug)]
 pub(crate) enum ContextState {

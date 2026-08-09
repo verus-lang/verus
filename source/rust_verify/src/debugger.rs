@@ -129,13 +129,8 @@ impl Debugger {
         self.air_model.raw_value(&Arc::new(incarnated)).map(|v| v.to_string())
     }
 
-    /// Evaluates a parsed expression node purely from the captured model - no live Z3
-    /// round-trip (see `variable_value`'s doc comment for why that's unsound here). A
-    /// function application looks up its model definition by name suffix (avoids
-    /// needing the caller to know the full crate-qualified AIR name) and returns its
-    /// body only if the model recorded one flat answer for it - the common case when a
-    /// counterexample only ever needed that function at one point. A body with
-    /// case-split structure (multiple points needed) can't be evaluated this way.
+    /// Evaluates purely from the captured model (no live round-trip, see
+    /// `variable_value`). Only a flat (non-case-split) function body can be returned.
     fn eval_node(&self, expr: &Node) -> Option<String> {
         match expr {
             Node::Atom(var) => self.variable_value(&Arc::new(var.clone())),

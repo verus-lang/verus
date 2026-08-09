@@ -93,9 +93,16 @@ impl Model {
     }
 
     /// A function's model definition, found by matching the tail of its AIR name (e.g.
-    /// `"add_one.?"`) rather than requiring the caller to know the full, crate-qualified
-    /// name (`"my_crate!add_one.?"`).
+    /// `"add_one.?"` for `"my_crate!add_one.?"`) rather than requiring the caller to
+    /// know the full, crate-qualified name. Requires a `.`/`!` boundary right before the
+    /// match (so `"add_one.?"` can't match a name like `"xadd_one.?"`), and returns
+    /// `None` rather than an arbitrary pick if more than one name matches.
     pub fn find_def_by_suffix(&self, suffix: &str) -> Option<&ModelDefX> {
-        self.raw_defs.iter().find(|(name, _)| name.ends_with(suffix)).map(|(_, def)| &**def)
+        let mut matches = self.raw_defs.iter().filter(|(name, _)| {
+            name.strip_suffix(suffix)
+                .is_some_and(|prefix| prefix.is_empty() || prefix.ends_with(['.', '!']))
+        });
+        let (_, def) = matches.next()?;
+        if matches.next().is_some() { None } else { Some(&**def) }
     }
 }

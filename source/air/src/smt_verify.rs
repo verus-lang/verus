@@ -273,7 +273,6 @@ pub(crate) fn smt_check_assertion<'ctx>(
 
     let unsat = unsat.expect("expected sat/unsat/unknown from SMT solver");
 
-    // Model::raw_defs pushed ValidityResult past clippy's size threshold.
     #[allow(clippy::large_enum_variant)]
     enum ResultDetermination<T> {
         Determined(ValidityResult),
