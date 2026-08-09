@@ -51,7 +51,7 @@ fn elaborate_one_exp<D: Diagnostics + ?Sized>(
                 // keep the original outer span for better trigger messages
                 // keep the original type so that poly.rs can perform the proper box/unbox on e
                 let e = SpannedTyped::new(&exp.span, &exp.typ, e.x.clone());
-                // record that `e` came from inlining `fun`, for better trigger errors (#248)
+                // record that `e` came from inlining `fun`, for better trigger errors
                 inlined_calls.insert(Arc::as_ptr(&e) as usize, fun.clone());
                 return Ok(e);
             }

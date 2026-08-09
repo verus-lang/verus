@@ -22,7 +22,7 @@ struct State<'a> {
     triggers: BTreeMap<Option<u64>, Vec<Exp>>,
     // trigger_vars covered by each trigger
     coverage: HashMap<Option<u64>, HashSet<VarIdent>>,
-    // expr identity -> the #[verifier::inline] fn it was inlined from, for trigger errors (#248)
+    // expr identity -> the #[verifier::inline] fn it was inlined from, for trigger errors
     inlined_calls: &'a HashMap<usize, Fun>,
     // a variable cannot be both native and poly, so these should not intersect:
 }
