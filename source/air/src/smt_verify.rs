@@ -374,6 +374,10 @@ pub(crate) fn smt_check_assertion<'ctx>(
     }
 }
 
+// `Model` grew a new field (`raw_values`) for the debugger, pushing `ValidityResult`
+// over clippy's size threshold - boxing it would ripple across every ValidityResult
+// call site, so this is a localized allow rather than that broader change.
+#[allow(clippy::result_large_err)]
 pub(crate) fn smt_get_rlimit_count(context: &mut Context) -> Result<u64, ValidityResult> {
     assert!(matches!(context.solver, SmtSolver::Z3)); // the CVC5 output format for statistics is different
 

@@ -156,7 +156,10 @@ impl Debugger {
 
     /// Evaluates `expr` at the current line. A bare variable name reads straight from
     /// the model; a compound expression (e.g. `(add_one x)`) falls back to a live
-    /// `Context::eval_expr` call, which can hit "model is not available".
+    /// `Context::eval_expr` call - confirmed to reliably fail with "model is not
+    /// available" (the disable-label assert from the original check-sat is already
+    /// queued by the time the shell starts), a real, pre-existing limitation this
+    /// doesn't fix.
     fn eval_expr(&self, context: &mut air::context::Context, expr: &str) {
         if let Some(value) = self.variable_value(&Arc::new(expr.to_string())) {
             println!("{}", value);
