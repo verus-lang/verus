@@ -28,10 +28,8 @@ pub struct Model {
     id_snapshots: Snapshots,
     /// The list of paramters of the function
     parameters: HashSet<Ident>,
-    /// Every zero-parameter constant from Z3's raw model dump, captured once at parse
-    /// time. Read this instead of a later `Context::eval_expr` call: obtaining a model
-    /// queues a command that invalidates it before any follow-up query reaches Z3
-    /// (`(error "model is not available")`, confirmed in practice).
+    /// Every zero-parameter constant from Z3's raw model dump. Read this instead of a
+    /// later `eval_expr` call, which can invalidate the model first.
     raw_values: HashMap<Ident, ModelExpr>,
 }
 

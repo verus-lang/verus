@@ -1533,8 +1533,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-// Reassigning a mutable variable used to hard-panic under `-V debug` (`unimplemented!`,
-// crashing the worker thread) instead of just verifying normally.
+// Reassigning a variable used to hard-panic under `-V debug`.
 test_verify_one_file_with_options! {
     #[test] debugger_mode_supports_variable_reassignment ["-V debug"] => verus_code! {
         fn reassign_local() {
@@ -1545,8 +1544,6 @@ test_verify_one_file_with_options! {
     } => Ok(())
 }
 
-// A real failure after a reassignment should still be reported normally under `-V debug`,
-// not swallowed or misreported.
 test_verify_one_file_with_options! {
     #[test] debugger_mode_reports_failure_after_reassignment ["-V debug"] => verus_code! {
         fn reassign_wrong() {
@@ -1557,8 +1554,7 @@ test_verify_one_file_with_options! {
     } => Err(e) => assert_one_fails(e)
 }
 
-// `by(nonlinear_arith)` and `by(bit_vector)` blocks spin off their own separate query and
-// used to hard-panic under `-V debug` (`unimplemented!`) the same way plain reassignment did.
+// `by(nonlinear_arith)`/`by(bit_vector)` hit the same panic.
 test_verify_one_file_with_options! {
     #[test] debugger_mode_supports_nonlinear_arith ["-V debug"] => verus_code! {
         fn mul_check(a: u32, b: u32)
