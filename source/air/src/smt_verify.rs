@@ -375,7 +375,6 @@ pub(crate) fn smt_check_assertion<'ctx>(
     }
 }
 
-// Model::raw_values pushed ValidityResult past clippy's size threshold.
 #[allow(clippy::result_large_err)]
 pub(crate) fn smt_get_rlimit_count(context: &mut Context) -> Result<u64, ValidityResult> {
     assert!(matches!(context.solver, SmtSolver::Z3)); // the CVC5 output format for statistics is different
