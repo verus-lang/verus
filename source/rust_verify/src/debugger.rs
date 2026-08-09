@@ -7,6 +7,7 @@ use sise::TreeNode as Node;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
+use std::io::{self, BufRead, Write};
 use std::sync::Arc;
 use vir::def::{SnapPos, SpanKind, suffix_local_stmt_id};
 use vir::messages::Span as ASpan;
@@ -121,6 +122,18 @@ impl Debugger {
         self.air_model.translate_variable(sid, &name)
     }
 
+    /// The concrete value of a plain variable at the current line, read
+    /// directly off the already-parsed counterexample model - no live Z3
+    /// round-trip. This is the only sound way to get this: a fresh
+    /// `Context::eval_expr` call issued after the model was obtained can
+    /// fail with `(error "model is not available")`, since a "disable this
+    /// label" assert is already queued ahead of it (see `air::model::Model`'s
+    /// `raw_values` doc comment).
+    fn variable_value(&self, name: &Ident) -> Option<String> {
+        let incarnated = self.translate_variable(name)?;
+        self.air_model.raw_value(&Arc::new(incarnated)).map(|v| v.to_string())
+    }
+
     fn rewrite_eval_expr(&self, expr: &Node) -> Option<Node> {
         match expr {
             Node::Atom(var) => {
@@ -146,7 +159,20 @@ impl Debugger {
         }
     }
 
+    /// Evaluates `expr` at the current line. A bare variable name is
+    /// resolved straight from the counterexample model (always sound, no
+    /// solver round-trip). Anything more than that (a function application
+    /// like `(add_one x)`) genuinely needs Z3 itself to evaluate, so it
+    /// falls back to a live `Context::eval_expr` call - which can fail with
+    /// `(error "model is not available")` for the reason explained on
+    /// `variable_value`; there's no way to avoid that for a real compound
+    /// expression short of interpreting model function definitions
+    /// ourselves, which isn't done here.
     fn eval_expr(&self, context: &mut air::context::Context, expr: &str) {
+        if let Some(value) = self.variable_value(&Arc::new(expr.to_string())) {
+            println!("{}", value);
+            return;
+        }
         let mut parser = sise::Parser::new(expr);
         let node = sise::parse_tree(&mut parser).unwrap();
         let expr = self.rewrite_eval_expr(&node).unwrap();
@@ -154,15 +180,39 @@ impl Debugger {
         println!("{}", result);
     }
 
+    /// Real REPL: `line <N>` moves to a line, anything else is evaluated as an
+    /// expression at the current line (a plain variable name reads straight from the
+    /// counterexample model; a compound expression like `(add_one x)` needs a live Z3
+    /// query - see `eval_expr`'s doc comment). `quit`/`exit`, or EOF, ends the session.
     pub fn start_shell(&mut self, context: &mut air::context::Context) {
         println!("welcome to verus debugger shell");
+        println!("{}", self);
 
-        self.set_line(26);
+        let stdin = io::stdin();
+        loop {
+            print!("verus-debug> ");
+            io::stdout().flush().ok();
 
-        self.eval_expr(context, "x");
-        // self.eval_expr(context, "y");
-        self.eval_expr(context, "(add_one x)");
-        // self.eval_expr(context, "(add_one (add_one x))");
+            let mut line = String::new();
+            if stdin.lock().read_line(&mut line).unwrap_or(0) == 0 {
+                break; // EOF
+            }
+            let cmd = line.trim();
+            if cmd.is_empty() {
+                continue;
+            }
+            if cmd == "quit" || cmd == "exit" {
+                break;
+            }
+            if let Some(rest) = cmd.strip_prefix("line ") {
+                match rest.trim().parse::<usize>() {
+                    Ok(n) => self.set_line(n),
+                    Err(_) => println!("expected a line number, got '{}'", rest.trim()),
+                }
+                continue;
+            }
+            self.eval_expr(context, cmd);
+        }
     }
 }
 

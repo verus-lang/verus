@@ -1532,3 +1532,27 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+// Reassigning a mutable variable used to hard-panic under `-V debug` (`unimplemented!`,
+// crashing the worker thread) instead of just verifying normally.
+test_verify_one_file_with_options! {
+    #[test] debugger_mode_supports_variable_reassignment ["-V debug"] => verus_code! {
+        fn reassign_local() {
+            let mut x: u32 = 5;
+            x = 10;
+            assert(x == 10);
+        }
+    } => Ok(())
+}
+
+// A real failure after a reassignment should still be reported normally under `-V debug`,
+// not swallowed or misreported.
+test_verify_one_file_with_options! {
+    #[test] debugger_mode_reports_failure_after_reassignment ["-V debug"] => verus_code! {
+        fn reassign_wrong() {
+            let mut x: u32 = 5;
+            x = 10;
+            assert(x == 999); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}

@@ -2309,9 +2309,6 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
         }
         StmX::Assign { lhs: Dest { dest, is_init: false }, rhs } => {
             let mut stmts: Vec<Stmt> = Vec::new();
-            if ctx.debug {
-                unimplemented!("assignments are unsupported in debugger mode");
-            }
 
             let mut value = exp_to_expr(ctx, &rhs, expr_ctxt)?;
             let mut value_typ = rhs.typ.clone();
@@ -2387,6 +2384,14 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 if let Some(expr) = typ_inv {
                     stmts.push(Arc::new(StmtX::Assume(expr)));
                 }
+            }
+
+            if ctx.debug {
+                // Add a snapshot after we modify the destination, so a later query at
+                // this line resolves to the just-written incarnation, not a stale one.
+                let sid = state.update_current_sid(SUFFIX_SNAP_MUT);
+                state.map_span(&stm, SpanKind::Full);
+                stmts.push(Arc::new(StmtX::Snapshot(sid)));
             }
 
             stmts

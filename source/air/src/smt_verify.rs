@@ -422,7 +422,7 @@ pub(crate) fn smt_get_rlimit_count(context: &mut Context) -> Result<u64, Validit
 fn smt_get_model(
     context: &mut Context,
     mut infos: Vec<AssertionInfo>,
-    air_model: Model,
+    mut air_model: Model,
 ) -> ValidityResult {
     let mut discovered_error: Option<AssertionInfo> = None;
     let mut discovered_assert_id: Option<Option<Arc<Vec<u64>>>> = None;
@@ -441,6 +441,10 @@ fn smt_get_model(
 
     let model =
         crate::parser::Parser::new(context.message_interface.clone()).lines_to_model(&smt_output);
+    // Captured now, before the "disable this label" assert queued below gets
+    // sent - see `Model::raw_values`'s doc comment for why that ordering
+    // matters (a later separate `eval_expr` call would be too late).
+    air_model.set_raw_values(&model);
     let mut model_defs: HashMap<Ident, ModelDef> = HashMap::new();
     for def in model.iter() {
         model_defs.insert(def.name.clone(), def.clone());

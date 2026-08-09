@@ -2,7 +2,7 @@
 //! when it reaches a SAT conclusion
 
 use crate::ast::{Binders, Decl, DeclX, Ident, Snapshots, Typ};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 /// For now, expressions are just strings, but we can later change this to a more detailed enum
@@ -28,6 +28,23 @@ pub struct Model {
     id_snapshots: Snapshots,
     /// The list of paramters of the function
     parameters: HashSet<Ident>,
+    /// Every zero-parameter `(define-fun name () type body)` from Z3's raw
+    /// `(get-model)` dump - i.e. plain constants, exactly what an
+    /// already-incarnated variable (`x@3`) is. Populated once, at the same
+    /// point the model is originally parsed (`smt_verify::smt_get_model`).
+    ///
+    /// This exists so a caller can read a variable's concrete value
+    /// directly off the returned `Model`, instead of issuing a *separate*
+    /// `Context::eval_expr` call afterward - which is unsound here: getting
+    /// a model triggers a "disable this label" `(assert ...)` to be queued
+    /// for the *next* batch of commands sent to the solver (so a later
+    /// `check-sat` finds additional errors), and that queued assert reaches
+    /// Z3 before any subsequent `eval_expr` call's own command does,
+    /// invalidating the model Z3 just produced (`(error "model is not
+    /// available")`) - confirmed by hitting exactly this in practice, not
+    /// guessed. Reading straight from `raw_values` (captured before that
+    /// assert is ever queued) sidesteps the ordering hazard entirely.
+    raw_values: HashMap<Ident, ModelExpr>,
 }
 
 impl Model {
@@ -51,7 +68,7 @@ impl Model {
             }
         }
 
-        Model { id_snapshots: snapshots, parameters }
+        Model { id_snapshots: snapshots, parameters, raw_values: HashMap::new() }
     }
 
     pub fn translate_variable(&self, sid: &Ident, name: &Ident) -> Option<String> {
@@ -65,5 +82,23 @@ impl Model {
             return Some((**name).clone());
         }
         None
+    }
+
+    /// Populates `raw_values` from every zero-parameter model definition -
+    /// called once, right where the model is parsed from Z3's raw output
+    /// (see the field's doc comment for why this can't be done lazily via a
+    /// later `eval_expr` call instead).
+    pub fn set_raw_values(&mut self, defs: &[ModelDef]) {
+        for def in defs {
+            if def.params.is_empty() {
+                self.raw_values.insert(def.name.clone(), def.body.clone());
+            }
+        }
+    }
+
+    /// The concrete value Z3 assigned a plain constant (e.g. an
+    /// already-incarnated variable like `x@3`), if this model has one.
+    pub fn raw_value(&self, name: &Ident) -> Option<&str> {
+        self.raw_values.get(name).map(|v| v.as_str())
     }
 }
