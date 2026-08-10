@@ -84,6 +84,22 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_trait_dupe_imported_trait verus_code! {
+        use vstd::prelude::*;
+
+        pub struct X;
+
+        pub assume_specification[<X as core::convert::From<i16>>::from](value: i16) -> X;
+
+        impl core::convert::From<i16> for X {
+            fn from(_value: i16) -> X {
+                X
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "duplicate specification for this trait implementation")
+}
+
+test_verify_one_file! {
     #[test] test_trait_ok verus_code! {
         trait Tr {
             fn foo();
