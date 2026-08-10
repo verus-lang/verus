@@ -92,7 +92,6 @@ const SUBST_RENAME_SEPARATOR: &str = "$$";
 const EXPAND_ERRORS_DECL_SEPARATOR: &str = "$$$";
 const RES_INF_TEMP_SEPARATOR: &str = "$$$$tempplace";
 const BITVEC_TMP_DECL_SEPARATOR: &str = "$$$$bitvectmp";
-const USER_DEF_TYPE_INV_TMP_DECL_SEPARATOR: &str = "$$$$userdeftypeinvpass";
 const KRATE_SEPARATOR: &str = "!";
 const KRATE_RENAME_SEPARATOR: &str = "!!";
 const PATH_SEPARATOR: &str = ".";
@@ -1270,10 +1269,6 @@ pub fn unique_var_name(
         }
         VarIdentDisambiguate::BitVectorToAirDecl(id) => {
             out.push_str(BITVEC_TMP_DECL_SEPARATOR);
-            write!(&mut out, "{}", id).unwrap();
-        }
-        VarIdentDisambiguate::UserDefinedTypeInvariantPass(id) => {
-            out.push_str(USER_DEF_TYPE_INV_TMP_DECL_SEPARATOR);
             write!(&mut out, "{}", id).unwrap();
         }
         VarIdentDisambiguate::ResInfTemp(id) => {
