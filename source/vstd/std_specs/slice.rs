@@ -153,62 +153,44 @@ pub assume_specification<T>[ <RangeInclusive<usize> as SliceIndex<[T]>>::index_m
 
 pub broadcast axiom fn axiom_slice_get_range<T>(v: &[T], i: Range<usize>)
     ensures
-        slice_range_valid(&i, v@.len()) ==> {
+        i.start <= i.end <= v@.len() ==> {
             &&& (#[trigger] spec_slice_get(v, i)).is_some()
-            &&& spec_slice_get(v, i).unwrap()@ == v@.subrange(
-                slice_range_start(&i),
-                slice_range_end(&i, v@.len()),
-            )
+            &&& spec_slice_get(v, i).unwrap()@ == v@.subrange(i.start as int, i.end as int)
         },
-        !slice_range_valid(&i, v@.len()) ==> spec_slice_get(v, i).is_none(),
+        !(i.start <= i.end <= v@.len()) ==> spec_slice_get(v, i).is_none(),
 ;
 
 pub broadcast axiom fn axiom_slice_get_range_to<T>(v: &[T], i: RangeTo<usize>)
     ensures
-        slice_range_valid(&i, v@.len()) ==> {
+        i.end <= v@.len() ==> {
             &&& (#[trigger] spec_slice_get(v, i)).is_some()
-            &&& spec_slice_get(v, i).unwrap()@ == v@.subrange(
-                slice_range_start(&i),
-                slice_range_end(&i, v@.len()),
-            )
+            &&& spec_slice_get(v, i).unwrap()@ == v@.subrange(0, i.end as int)
         },
-        !slice_range_valid(&i, v@.len()) ==> spec_slice_get(v, i).is_none(),
+        !(i.end <= v@.len()) ==> spec_slice_get(v, i).is_none(),
 ;
 
 pub broadcast axiom fn axiom_slice_get_range_from<T>(v: &[T], i: RangeFrom<usize>)
     ensures
-        slice_range_valid(&i, v@.len()) ==> {
+        i.start <= v@.len() ==> {
             &&& (#[trigger] spec_slice_get(v, i)).is_some()
-            &&& spec_slice_get(v, i).unwrap()@ == v@.subrange(
-                slice_range_start(&i),
-                slice_range_end(&i, v@.len()),
-            )
+            &&& spec_slice_get(v, i).unwrap()@ == v@.subrange(i.start as int, v@.len() as int)
         },
-        !slice_range_valid(&i, v@.len()) ==> spec_slice_get(v, i).is_none(),
+        !(i.start <= v@.len()) ==> spec_slice_get(v, i).is_none(),
 ;
 
 pub broadcast axiom fn axiom_slice_get_range_to_inclusive<T>(v: &[T], i: RangeToInclusive<usize>)
     ensures
-        slice_range_valid(&i, v@.len()) ==> {
+        i.end < v@.len() ==> {
             &&& (#[trigger] spec_slice_get(v, i)).is_some()
-            &&& spec_slice_get(v, i).unwrap()@ == v@.subrange(
-                slice_range_start(&i),
-                slice_range_end(&i, v@.len()),
-            )
+            &&& spec_slice_get(v, i).unwrap()@ == v@.subrange(0, i.end as int + 1)
         },
-        !slice_range_valid(&i, v@.len()) ==> spec_slice_get(v, i).is_none(),
+        !(i.end < v@.len()) ==> spec_slice_get(v, i).is_none(),
 ;
 
 pub broadcast axiom fn axiom_slice_get_range_full<T>(v: &[T], i: RangeFull)
     ensures
-        slice_range_valid(&i, v@.len()) ==> {
-            &&& (#[trigger] spec_slice_get(v, i)).is_some()
-            &&& spec_slice_get(v, i).unwrap()@ == v@.subrange(
-                slice_range_start(&i),
-                slice_range_end(&i, v@.len()),
-            )
-        },
-        !slice_range_valid(&i, v@.len()) ==> spec_slice_get(v, i).is_none(),
+        (#[trigger] spec_slice_get(v, i)).is_some(),
+        spec_slice_get(v, i).unwrap()@ == v@,
 ;
 
 pub broadcast axiom fn axiom_slice_get_range_inclusive<T>(v: &[T], i: RangeInclusive<usize>)
