@@ -96,7 +96,7 @@ test_verify_one_file! {
                 X
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "duplicate specification for this trait implementation")
+    } => Err(err) => assert_vir_error_msg(err, "duplicate specification for this trait method implementation")
 }
 
 test_verify_one_file! {

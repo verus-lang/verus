@@ -788,17 +788,14 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
     }
 
     for (impl_path, (impl_def_id, funs)) in new_trait_impls.iter() {
-        let span = funs[0].1;
-        if external_info.internal_trait_impls.contains(impl_def_id) {
-            return err_span(span, "duplicate specification for this trait implementation");
-        }
-
         let trait_ref = tcx.impl_trait_ref(*impl_def_id);
         let trait_did = trait_ref.skip_binder().def_id;
         let trait_path = ctxt.def_id_to_vir_path(trait_did);
         let Some(traitt) = trait_map.get(&trait_path) else {
             continue;
         };
+
+        let span = funs[0].1;
 
         let mut methods_we_have = IndexSet::<vir::ast::Ident>::new();
         for (fun_def_id, fun_span) in funs.iter() {
