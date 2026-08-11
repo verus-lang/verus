@@ -172,7 +172,6 @@ jobs:
           cargo clean
           CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true cargo build --release
           cargo run --release -p cargo-verus -- build --release --manifest-path vstd/Cargo.toml
-          touch target-verus/release/verus-root
 
       - name: full tests
         working-directory: ./source
