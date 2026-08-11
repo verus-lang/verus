@@ -324,8 +324,9 @@ pub struct Verifier {
 
     pub via_cargo_args: Option<CargoVerusArgs>,
     // Some(DepTracker) if via_cargo_args.is_some(), None otherwise
-    // In both cases, is set to None when VerifierCallbacksEraseMacro.config finishes with it
+    // Set to None when VerifierCallbacksEraseMacro.config finishes with it
     dep_tracker: Option<crate::cargo_verus_dep_tracker::DepTracker>,
+    pub(crate) compile_dep_tracker: Option<crate::cargo_verus_dep_tracker::DepTracker>,
     import_virs_via_cargo: Option<Vec<(String, String)>>,
     export_vir_path_via_cargo: Option<std::path::PathBuf>,
     pub(crate) compile: bool,
@@ -517,6 +518,7 @@ impl Verifier {
             deferred_errors: Vec::new(),
 
             dep_tracker: if via_cargo_args.is_some() { Some(dep_tracker) } else { None },
+            compile_dep_tracker: None,
             via_cargo_args,
             import_virs_via_cargo: None,
             export_vir_path_via_cargo: None,
@@ -567,6 +569,7 @@ impl Verifier {
 
             via_cargo_args: self.via_cargo_args.clone(),
             dep_tracker: None,
+            compile_dep_tracker: None,
             import_virs_via_cargo: self.import_virs_via_cargo.clone(),
             export_vir_path_via_cargo: self.export_vir_path_via_cargo.clone(),
             compile: self.compile,
@@ -3067,6 +3070,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 }
             }
             self.unresolved_import_deps = import_deps_if_present;
+            self.verifier.compile_dep_tracker = Some(dep_tracker.clone());
             dep_tracker.config_install(config);
         }
 
@@ -3159,7 +3163,14 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             // up in the consumer's `.d` file, mirroring `dep_tracker.mark_file`
             // for direct externs.
             match crate::cargo_verus::handle_transitive_imports(tcx, &self.unresolved_import_deps) {
-                Ok(extra) => import_virs_via_cargo.extend(extra),
+                Ok(extra) => {
+                    if let Some(dep_tracker) = &mut self.verifier.compile_dep_tracker {
+                        for (_, vir_path) in &extra {
+                            dep_tracker.mark_file(vir_path.into());
+                        }
+                    }
+                    import_virs_via_cargo.extend(extra);
+                }
                 Err(err) => {
                     eprintln!("Error: {}", err);
                     std::process::exit(1);

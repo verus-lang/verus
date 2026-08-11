@@ -157,6 +157,99 @@ fn cargo_new_builds() {
     assert!(run.status.success());
 }
 
+#[test]
+fn cargo_partial_verification_is_not_reused_as_full_verification() {
+    let temp_dir = tempdir().expect("Failed to create temporary directory");
+    let run = run_cargo_verus(&["new", "--bin", "partial_verification"], temp_dir.path());
+    assert!(
+        run.status.success(),
+        "cargo verus new failed:\n{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+
+    let project_dir = temp_dir.path().join("partial_verification");
+    adjust_version(project_dir.clone());
+    let source_dir = project_dir.join("src");
+    fs::write(
+        source_dir.join("main.rs"),
+        r#"use vstd::prelude::*;
+
+mod b;
+
+verus! {
+
+fn check_value() {
+    assert(b::value() == 1);
+}
+
+}
+
+fn main() {}
+"#,
+    )
+    .expect("write main.rs");
+    let b_path = source_dir.join("b.rs");
+    fs::write(
+        &b_path,
+        r#"use vstd::prelude::*;
+
+verus! {
+
+pub open spec fn value() -> int {
+    1
+}
+
+}
+"#,
+    )
+    .expect("write b.rs");
+
+    let target_dir = temp_dir.path().join("target");
+    let run = run_cargo_verus_with_target(&["verify"], &project_dir, &target_dir);
+    assert!(
+        run.status.success(),
+        "initial verification failed:\n{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+
+    fs::write(
+        b_path,
+        r#"use vstd::prelude::*;
+
+verus! {
+
+pub open spec fn value() -> int {
+    2
+}
+
+}
+"#,
+    )
+    .expect("update b.rs");
+
+    let run = run_cargo_verus_with_target(
+        &["verify", "--fwd-verus-args-to", "roots", "--", "--verify-module", "b"],
+        &project_dir,
+        &target_dir,
+    );
+    assert!(
+        run.status.success(),
+        "partial verification failed:\n{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+
+    let run = run_cargo_verus_with_target(&["verify"], &project_dir, &target_dir);
+    assert!(
+        !run.status.success(),
+        "full verification improperly reused the partial verification result"
+    );
+    assert!(
+        String::from_utf8_lossy(&run.stderr).contains("assertion failed"),
+        "full verification failed unexpectedly:\n{}",
+        String::from_utf8_lossy(&run.stderr),
+    );
+}
+
 // Tests that run `cargo verus {verify, build}` on each crate in the cargo-tests/verified directory
 cargo_examples!(true);
 

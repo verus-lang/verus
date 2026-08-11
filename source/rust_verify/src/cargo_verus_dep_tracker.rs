@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use rustc_span::symbol::Symbol;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct DepTracker {
     env: BTreeMap<String, Option<String>>,
     files: BTreeSet<PathBuf>,
