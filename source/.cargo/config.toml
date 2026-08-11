@@ -1,5 +1,6 @@
 [build]
 target-dir = "target-verus"
+build-dir = "target-verus"
 rustflags = [
     "--cfg", "proc_macro_span",
     "--cfg", "procmacro2_semver_exempt",
