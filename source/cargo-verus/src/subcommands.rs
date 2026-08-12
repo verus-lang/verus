@@ -15,8 +15,10 @@ use crate::toolchains::{self, TOOLCHAINS, is_matching_known_and_used};
 use crate::vstd_build::{VstdBuild, build_vstd};
 
 pub const CARGO_DEFAULT_LIB_METADATA: &str = "__CARGO_DEFAULT_LIB_METADATA";
+pub const CARGO_UNSTABLE_CHECKSUM_FRESHNESS: &str = "CARGO_UNSTABLE_CHECKSUM_FRESHNESS";
 
 pub const RUSTC_WRAPPER: &str = "RUSTC_WRAPPER";
+pub const RUSTC_BOOTSTRAP: &str = "RUSTC_BOOTSTRAP";
 
 pub const VERUS_DRIVER_ARGS: &str = " __VERUS_DRIVER_ARGS__";
 pub const VERUS_DRIVER_ARGS_FOR: &str = " __VERUS_DRIVER_ARGS_FOR_";
@@ -76,7 +78,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-vstd = "=0.0.0-2026-08-02-0125"
+vstd = "=0.0.0-2026-08-09-0044"
 
 [package.metadata.verus]
 verify = true
@@ -426,6 +428,8 @@ fn make_cargo_plan(
     env_overrides.insert(VERUS_DRIVER_VIA_CARGO.to_owned(), "1".to_owned());
     // See https://github.com/rust-lang/cargo/blob/94aa7fb1321545bbe922a87cb11f5f4559e3be63/src/cargo/core/compiler/fingerprint/mod.rs#L71
     env_overrides.insert(CARGO_DEFAULT_LIB_METADATA.to_owned(), "verus".to_owned());
+    env_overrides.insert(CARGO_UNSTABLE_CHECKSUM_FRESHNESS.to_owned(), "true".to_owned());
+    env_overrides.insert(RUSTC_BOOTSTRAP.to_owned(), "1".to_owned());
 
     let common_verus_driver_args = pack_verus_driver_args_for_env(common_verus_driver_args.iter());
 

@@ -1,6 +1,6 @@
 [package]
 name = "verus_prettyplease"
-version = "0.0.0-2026-08-02-0125"
+version = "0.0.0-2026-08-09-0044"
 authors = ["David Tolnay <dtolnay@gmail.com>", "The Verus Contributors"]
 autoexamples = false
 categories = ["development-tools"]
