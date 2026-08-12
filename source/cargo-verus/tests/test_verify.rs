@@ -1,8 +1,9 @@
 use cargo_verus::{
     BIN_NAME, ExecutionPlan, plan_execution,
     test_utils::{
-        CARGO_DEFAULT_LIB_METADATA, MockDep, MockPackage, MockWorkspace, RUSTC_WRAPPER,
-        VERUS_DRIVER_ARGS, VERUS_DRIVER_ARGS_FOR, VERUS_DRIVER_VERIFY, VERUS_DRIVER_VIA_CARGO,
+        CARGO_DEFAULT_LIB_METADATA, CARGO_UNSTABLE_CHECKSUM_FRESHNESS, MockDep, MockPackage,
+        MockWorkspace, RUSTC_BOOTSTRAP, RUSTC_WRAPPER, VERUS_DRIVER_ARGS, VERUS_DRIVER_ARGS_FOR,
+        VERUS_DRIVER_VERIFY, VERUS_DRIVER_VIA_CARGO,
     },
 };
 
@@ -23,6 +24,8 @@ fn crate_optin_workdir() {
 
     cargo_plan.assert_env_has(RUSTC_WRAPPER);
     cargo_plan.assert_env_sets(CARGO_DEFAULT_LIB_METADATA, "verus");
+    cargo_plan.assert_env_sets(CARGO_UNSTABLE_CHECKSUM_FRESHNESS, "true");
+    cargo_plan.assert_env_sets(RUSTC_BOOTSTRAP, "1");
     cargo_plan.assert_env_sets(VERUS_DRIVER_VIA_CARGO, "1");
     cargo_plan.assert_env_sets_key_prefix(&verify_crate_prefix, "1");
 }
