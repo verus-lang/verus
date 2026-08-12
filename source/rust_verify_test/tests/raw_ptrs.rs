@@ -362,7 +362,7 @@ test_verify_one_file! {
     #[test] raw_borrow_outside_verified_code code! {
         use vstd::prelude::*;
 
-        fn crash(n: &u64) -> impl Sized {
+        fn raw_borrow(n: &u64) -> impl Sized {
             let _x = &raw const n;
             42
         }
@@ -374,7 +374,7 @@ test_verify_one_file! {
     #[test] raw_borrow_not_supported_in_verified_code verus_code! {
         use vstd::prelude::*;
 
-        fn crash(n: &u64) -> impl Sized {
+        fn raw_borrow(n: &u64) -> impl Sized {
             let _x = &raw const n;
             42
         }
