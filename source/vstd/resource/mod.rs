@@ -31,4 +31,16 @@ verus! {
 #[derive(Eq, PartialEq)]
 pub struct Loc(int);
 
+impl Loc {
+    pub closed spec fn to_int(&self) -> int {
+        self.0
+    }
+
+    pub proof fn lemma_to_int_injective(&self, other: Loc)
+        ensures
+            (self.to_int() == other.to_int()) <==> (self == other),
+    {
+    }
+}
+
 } // verus!
