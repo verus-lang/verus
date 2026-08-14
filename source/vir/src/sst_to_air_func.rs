@@ -115,6 +115,7 @@ pub(crate) fn func_def_args(ctx: &Ctx, typ_params: &Idents, params: &Pars) -> Ve
 fn func_def_quant(
     ctx: &Ctx,
     name: &Ident,
+    qid_name: &Ident,
     is_trait_default_ensures: bool,
     typ_params: &Idents,
     typ_args: &Typs,
@@ -144,7 +145,7 @@ fn func_def_quant(
         trigs.push(crate::sst_to_air::typ_to_id(ctx, extra_trigger_term));
     }
     Ok(mk_bind_expr(
-        &func_bind_trig(ctx, name.to_string(), typ_params, params, &trigs, opts),
+        &func_bind_trig(ctx, qid_name.to_string(), typ_params, params, &trigs, opts),
         &f_imply,
     ))
 }
@@ -382,8 +383,8 @@ fn func_body_to_air(
         let rec_f_def = ident_apply(&rec_f, &args_def);
         let eq_zero = mk_eq(&rec_f_fuel, &rec_f_zero);
         let eq_body = mk_eq(&rec_f_succ, &body_expr);
-        let name_zero = format!("{}_fuel_to_zero", fun_to_air_ident(&ctx.name_ctxt, &name));
-        let name_body = format!("{}_fuel_to_body", fun_to_air_ident(&ctx.name_ctxt, &name));
+        let name_zero = format!("{}_fuel_to_zero", fun_to_air_ident(&ctx.name_ctxt, &rec_name));
+        let name_body = format!("{}_fuel_to_body", fun_to_air_ident(&ctx.name_ctxt, &rec_name));
         let opts = Some(FuncBindOpts { add_fuel: true, add_default_ensures: false });
         let bind_zero = func_bind(ctx, name_zero, &typ_params, pars, &rec_f_fuel, opts);
         let bind_body = func_bind(ctx, name_body, &typ_params, pars, &rec_f_succ, opts);
@@ -403,6 +404,7 @@ fn func_body_to_air(
     let e_forall = func_def_quant(
         ctx,
         &suffix_global_id(&fun_to_air_ident(&ctx.name_ctxt, &name)),
+        &suffix_global_id(&fun_to_air_ident(&ctx.name_ctxt, &rec_name)),
         false,
         &impl_typ_params,
         &typ_args,
@@ -518,6 +520,7 @@ fn req_ens_to_air(
         let body = mk_and(&exprs);
         let e_forall = func_def_quant(
             ctx,
+            &name,
             &name,
             is_trait_default_ensures,
             &typ_params,
@@ -873,6 +876,7 @@ pub fn func_axioms_to_air(
                     let e_forall = func_def_quant(
                         ctx,
                         &suffix_global_id(&fun_to_air_ident(&ctx.name_ctxt, &f_trait)),
+                        &suffix_global_id(&fun_to_air_ident(&ctx.name_ctxt, &function.x.name)),
                         false,
                         &typ_params,
                         &trait_typ_args,

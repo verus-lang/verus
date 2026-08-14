@@ -133,6 +133,26 @@ jobs:
         working-directory: ./source
         run: cargo test -p cargo-verus
 
+  # run line_count tests
+  line-count-test:
+    needs: [fmt, clippy]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: checkout
+        uses: actions/checkout@v6
+
+      - name: setup rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.97.1
+
+      - name: setup nextest
+        uses: taiki-e/install-action@nextest
+
+      - name: line_count tests
+        working-directory: ./source/tools/line_count
+        run: cargo nextest run
+
   # check if it builds and runs on macos, running the full test suite
   # (in release mode because it makes a huge difference)
   full-test:
@@ -217,10 +237,6 @@ jobs:
 
       - name: setup nextest
         uses: taiki-e/install-action@nextest
-
-      - name: build line-count tool
-        working-directory: ./source
-        run: cargo build -p line_count
 
       - name: build
         working-directory: ./source
