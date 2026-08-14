@@ -7,6 +7,7 @@ use anyhow::Context;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
+pub mod installed;
 pub mod versions;
 
 /// A list of toolchains.
