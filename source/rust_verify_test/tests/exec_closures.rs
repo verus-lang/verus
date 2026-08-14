@@ -1881,3 +1881,65 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] closure_local_const verus_code! {
+        use vstd::prelude::*;
+
+        fn foo() {
+            let x = || -> (z: u64)
+                ensures z == 42
+            {
+                const Z: u64 = 42;
+                Z
+            };
+            let z = x();
+            assert(z == 42);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] closure_local_fn verus_code! {
+        use vstd::prelude::*;
+
+        fn foo() {
+            let x = || -> (z: u64)
+                ensures z == 42
+            {
+                fn f() -> (z: u64)
+                    ensures z == 42
+                {
+                    42
+                }
+
+                let z = f();
+                assert(z == 42);
+                z
+            };
+            let z = x();
+            assert(z == 42);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] closure_local_struct verus_code! {
+        use vstd::prelude::*;
+
+        fn foo() {
+            let x = || -> (z: u64)
+                ensures z == 42
+            {
+                struct S {
+                    x: u64,
+                }
+
+                let s = S { x: 42 };
+                s.x
+            };
+            let z = x();
+            assert(z == 42);
+        }
+    } => Ok(())
+}
