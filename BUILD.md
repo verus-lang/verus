@@ -93,13 +93,12 @@ environment. Run:
 ```
 cargo build --release
 cargo run --release -p cargo-verus -- build --release --manifest-path vstd/Cargo.toml
-touch target-verus/release/verus-root
 ```
 
 The first command builds Verus and its supporting libraries. The second builds and verifies
 `vstd`, and places its required artifacts in `target-verus/release` alongside the other Verus
 artifacts. Omit `--release` from both commands for a debug build, which uses `target-verus/debug`
-instead; in that case, create the marker with `touch target-verus/debug/verus-root`.
+instead.
 
 # Running the Verifier
 
