@@ -262,6 +262,8 @@ pub fn plan_cargo_run(mut cfg: VerusConfig) -> Result<CargoRunPlan> {
         eprintln!("verbosity level = 1; keeping Verus non-verbose");
     }
 
+    let building_only_vstd = build_only_vstd.is_some();
+
     let plan = make_cargo_plan(
         cfg.current_dir,
         build_only_vstd,
@@ -284,7 +286,7 @@ pub fn plan_cargo_run(mut cfg: VerusConfig) -> Result<CargoRunPlan> {
         eprintln!("running cargo command:\n{command:?}");
     }
 
-    if cfg.warn_if_nothing_verified && !plan.verified_something {
+    if !building_only_vstd && cfg.warn_if_nothing_verified && !plan.verified_something {
         eprint!(
             "{}",
             "\
