@@ -968,25 +968,14 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_spec_range_inclusive_is_empty_matches_real_behavior verus_code! {
+    #[test] test_spec_range_inclusive_is_empty_inverted_range verus_code! {
         use std::ops::RangeInclusive;
         use vstd::prelude::*;
         use vstd::std_specs::range::{spec_range_inclusive_is_empty, RangeInclusiveView};
 
-        proof fn test_fresh(r: RangeInclusive<u8>)
-            requires
-                r@ == (RangeInclusiveView { start: 1u8, end: 5u8, exhausted: false }),
-        {
-            assert(!spec_range_inclusive_is_empty(&r));
-        }
-
-        proof fn test_exhausted(r: RangeInclusive<u8>)
-            requires
-                r@ == (RangeInclusiveView { start: 1u8, end: 1u8, exhausted: true }),
-        {
-            assert(spec_range_inclusive_is_empty(&r));
-        }
-
+        // start > end (never valid, never exhausted) is empty too - not
+        // exercised by test_range_inclusive_is_empty above, which only
+        // reaches emptiness via a real .next() call.
         proof fn test_inverted(r: RangeInclusive<u8>)
             requires
                 r@ == (RangeInclusiveView { start: 5u8, end: 1u8, exhausted: false }),
