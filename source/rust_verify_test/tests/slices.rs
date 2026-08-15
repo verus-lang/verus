@@ -893,13 +893,14 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-// verus-lang/verus#2674: a fresh range's end bound is still Included.
+// verus-lang/verus#2674: a fresh range's end bound is still Included, but an
+// exhausted one is not - both directions in one file (one expected failure).
 test_verify_one_file! {
-    #[test] test_range_inclusive_fresh_end_bound_is_included verus_code! {
+    #[test] test_range_inclusive_end_bound_exhausted verus_code! {
         use vstd::prelude::*;
         use std::ops::{Bound, RangeBounds};
 
-        fn test() {
+        fn fresh() {
             let r = 1u8..=5u8;
             let end_is_included = match r.end_bound() {
                 Bound::Included(_) => true,
@@ -907,15 +908,8 @@ test_verify_one_file! {
             };
             assert(end_is_included);
         }
-    } => Ok(())
-}
 
-test_verify_one_file! {
-    #[test] test_range_inclusive_exhausted_end_bound_is_not_always_included verus_code! {
-        use vstd::prelude::*;
-        use std::ops::{Bound, RangeBounds};
-
-        fn test() {
+        fn exhausted() {
             let mut r = 1u8..=1u8;
             let _ = r.next();
             let end_is_included = match r.end_bound() {
@@ -927,28 +921,22 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
+// Same fact one level down: `slice_range_end` (used by `copy_within`) treats
+// an exhausted range's end as excluded, not included.
 test_verify_one_file! {
     #[test] test_slice_range_end_treats_exhausted_range_as_excluded verus_code! {
         use std::ops::RangeInclusive;
         use vstd::prelude::*;
         use vstd::std_specs::range::{slice_range_end, RangeInclusiveView};
 
-        proof fn test(r: RangeInclusive<usize>)
+        proof fn correct(r: RangeInclusive<usize>)
             requires
                 r@ == (RangeInclusiveView { start: 2, end: 2, exhausted: true }),
         {
             assert(slice_range_end(&r, 5) == 2);
         }
-    } => Ok(())
-}
 
-test_verify_one_file! {
-    #[test] test_slice_range_end_treats_exhausted_range_rejects_included verus_code! {
-        use std::ops::RangeInclusive;
-        use vstd::prelude::*;
-        use vstd::std_specs::range::{slice_range_end, RangeInclusiveView};
-
-        proof fn test(r: RangeInclusive<usize>)
+        proof fn rejects_included(r: RangeInclusive<usize>)
             requires
                 r@ == (RangeInclusiveView { start: 2, end: 2, exhausted: true }),
         {
@@ -957,39 +945,23 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
+// `is_empty()`: not empty fresh, empty once exhausted - even though
+// `start <= end` alone (1 <= 1) would wrongly say otherwise.
 test_verify_one_file! {
-    #[test] test_range_inclusive_is_empty_fresh_range_is_not_empty verus_code! {
+    #[test] test_range_inclusive_is_empty verus_code! {
         use vstd::prelude::*;
 
-        fn test() {
+        fn fresh_is_not_empty() {
             let r = 1u8..=5u8;
             let empty = r.is_empty();
             assert(!empty);
         }
-    } => Ok(())
-}
 
-test_verify_one_file! {
-    #[test] test_range_inclusive_is_empty_after_exhausted verus_code! {
-        use vstd::prelude::*;
-
-        fn test() {
+        fn exhausted_is_empty() {
             let mut r = 1u8..=1u8;
             let _ = r.next();
             let empty = r.is_empty();
             assert(empty);
-        }
-    } => Ok(())
-}
-
-test_verify_one_file! {
-    #[test] test_range_inclusive_is_empty_start_le_end_is_not_sufficient verus_code! {
-        use vstd::prelude::*;
-
-        fn test() {
-            let mut r = 1u8..=1u8;
-            let _ = r.next();
-            let empty = r.is_empty();
             assert(!empty); // FAILS: exhausted despite start <= end
         }
     } => Err(err) => assert_one_fails(err)

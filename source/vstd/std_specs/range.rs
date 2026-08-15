@@ -286,14 +286,22 @@ pub assume_specification<'s, T>[ <RangeInclusive<T> as RangeBounds<T>>::start_bo
         spec_bound(result) == SpecBound::Included(&range@.start),
 ;
 
-// `end_bound()` returns `Included` while the range is not exhausted and
-// returns `Excluded` after it is exhausted.
+// Shared with `RangeBoundsSpecImpl::spec_end_bound` below, so the two can't
+// drift apart: `end_bound()` returns `Included` while the range is not
+// exhausted and `Excluded` after it is exhausted.
+pub open spec fn spec_range_inclusive_end_bound<T>(r: &RangeInclusive<T>) -> SpecBound<&T> {
+    if r@.exhausted {
+        SpecBound::Excluded(&r@.end)
+    } else {
+        SpecBound::Included(&r@.end)
+    }
+}
+
 pub assume_specification<'s, T>[ <RangeInclusive<T> as RangeBounds<T>>::end_bound ](
     range: &'s RangeInclusive<T>,
 ) -> (result: Bound<&'s T>)
     ensures
-        range@.exhausted ==> spec_bound(result) == SpecBound::Excluded(&range@.end),
-        !range@.exhausted ==> spec_bound(result) == SpecBound::Included(&range@.end),
+        spec_bound(result) == spec_range_inclusive_end_bound(range),
 ;
 
 pub assume_specification<'s, T>[ <RangeToInclusive<T> as RangeBounds<T>>::start_bound ](
@@ -390,11 +398,7 @@ impl<T> RangeBoundsSpecImpl<T> for RangeInclusive<T> {
     }
 
     open spec fn spec_end_bound(&self) -> SpecBound<&T> {
-        if self@.exhausted {
-            SpecBound::Excluded(&self@.end)
-        } else {
-            SpecBound::Included(&self@.end)
-        }
+        spec_range_inclusive_end_bound(self)
     }
 }
 
