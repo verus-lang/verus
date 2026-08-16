@@ -1693,10 +1693,8 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore]
     #[test] map_iter verus_code! {
         use vstd::prelude::*;
-        use vstd::std_specs::iter::to_map;
 
         #[verifier::loop_isolation(false)]
         fn test() {
@@ -1711,7 +1709,7 @@ test_verify_one_file! {
 
             let mut w = vec![];
 
-            for x in it: to_map(v.iter(), f)
+            for x in it: v.iter().map(f)
                 invariant
                     w.len() == it.index(),
                     forall |i| 0 <= i < w.len() ==> #[trigger] w[i] == v[i] + 1,
