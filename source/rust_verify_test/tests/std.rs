@@ -1833,3 +1833,64 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] format_ok verus_code! {
+        use vstd::*;
+        fn test() {
+            let x = format!("ok");
+            let x = format!("ok {}!", 2);
+            let x = format!("ok {}!", &(2 + 2));
+            let x = format!("ok {:?}!", &(2 + 2));
+            let x = format!("ok {:04}!", &(2 + 2));
+            let u = 5usize + 5usize;
+            let x = format!("ok {} then {} then {} and {}", &(2 + 2), true, x, u);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] format_fail verus_code! {
+        use vstd::*;
+        use core::fmt::{Display, Error, Formatter};
+        struct S;
+        fn bad() requires false {}
+        impl core::fmt::Display for S {
+            fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+                assert(false);
+                bad();
+                Ok(())
+            }
+        }
+        impl vstd::std_specs::fmt::DisplaySpecImpl for S {
+            open spec fn fmt_req(&self, f: &Formatter<'_>) -> bool {
+                false
+            }
+        }
+        fn test() {
+            let s = S;
+            let x = format!("{}", s); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] print_ok verus_code! {
+        use vstd::*;
+
+        // TODO: add std::io::* specs in general to vstd
+        // For now, users can add their own (e.g. with "requires true"):
+        pub assume_specification [std::io::_print] (_0: std::fmt::Arguments<'_>);
+
+        fn test() {
+            println!("ok");
+            println!("ok {}!", 2);
+            println!("ok {}!", &(2 + 2));
+            println!("ok {:?}!", &(2 + 2));
+            println!("ok {:04}!", &(2 + 2));
+            let u = 5usize + 5usize;
+            let x = "hello";
+            println!("ok {} then {} then {} and {}", &(2 + 2), true, x, u);
+        }
+    } => Ok(())
+}
