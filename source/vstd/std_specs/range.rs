@@ -88,6 +88,22 @@ pub assume_specification<Idx: PartialOrd<Idx>, U>[ RangeInclusive::<Idx>::contai
             == r.contains_spec(i),
 ;
 
+// A range is empty once its iterator is exhausted, or if it was never valid
+// to begin with (start > end).
+pub open spec fn spec_range_inclusive_is_empty<Idx: PartialOrd<Idx>>(
+    r: &RangeInclusive<Idx>,
+) -> bool {
+    !r@.start.is_le(&r@.end) || r@.exhausted
+}
+
+pub assume_specification<Idx: PartialOrd<Idx>>[ RangeInclusive::<Idx>::is_empty ](
+    r: &RangeInclusive<Idx>,
+) -> (res: bool) where Idx: PartialOrd<Idx>
+    ensures
+        <Idx as PartialOrdSpec<Idx>>::obeys_partial_cmp_spec() ==> res
+            == spec_range_inclusive_is_empty(r),
+;
+
 pub assume_specification<Idx>[ RangeInclusive::<Idx>::new ](start: Idx, end: Idx) -> (ret:
     core::ops::RangeInclusive<Idx>)
     ensures
@@ -251,12 +267,22 @@ pub assume_specification<'s, T>[ <RangeInclusive<T> as RangeBounds<T>>::start_bo
         result == Bound::Included(&range@.start),
 ;
 
+// Shared with `RangeBoundsSpecImpl::spec_end_bound` below, so the two can't
+// drift apart: `end_bound()` returns `Included` while the range is not
+// exhausted and `Excluded` after it is exhausted.
+pub open spec fn spec_range_inclusive_end_bound<T>(r: &RangeInclusive<T>) -> Bound<&T> {
+    if r@.exhausted {
+        Bound::Excluded(&r@.end)
+    } else {
+        Bound::Included(&r@.end)
+    }
+}
+
 pub assume_specification<'s, T>[ <RangeInclusive<T> as RangeBounds<T>>::end_bound ](
     range: &'s RangeInclusive<T>,
 ) -> (result: Bound<&'s T>)
     ensures
-        range@.exhausted ==> result == Bound::Excluded(&range@.end),
-        !range@.exhausted ==> result == Bound::Included(&range@.end),
+        result == spec_range_inclusive_end_bound(range),
 ;
 
 pub assume_specification<'s, T>[ <RangeToInclusive<T> as RangeBounds<T>>::start_bound ](
@@ -353,11 +379,7 @@ impl<T> RangeBoundsSpecImpl<T> for RangeInclusive<T> {
     }
 
     open spec fn spec_end_bound(&self) -> Bound<&T> {
-        if self@.exhausted {
-            Bound::Excluded(&self@.end)
-        } else {
-            Bound::Included(&self@.end)
-        }
+        spec_range_inclusive_end_bound(self)
     }
 }
 

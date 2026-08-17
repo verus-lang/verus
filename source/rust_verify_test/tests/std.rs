@@ -183,6 +183,23 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] unsigned_saturating_mul verus_code! {
+        use vstd::*;
+
+        fn test() {
+            let i = 10u64.saturating_mul(20);
+            assert(i == 200);
+
+            let i = 0u64.saturating_mul(u64::MAX);
+            assert(i == 0);
+
+            let i = u64::MAX.saturating_mul(2);
+            assert(i == u64::MAX);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] signed_wrapping_mul verus_code! {
         use vstd::*;
 
