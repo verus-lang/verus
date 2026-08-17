@@ -243,8 +243,16 @@ fn place_to_pure_place_rec(state: &mut State, place: &Place) -> (Vec<Stmt>, Plac
                         crate::place_preconditions::field_check(&place.span, &p1_expr, field_opr);
                     wf.push(assert_stmt);
                 }
+                // Handled later, at SST lowering - no AST-level encoding for this timing.
+                VariantCheck::Recommends => {}
             }
-            let field_opr = FieldOpr { check: VariantCheck::None, ..field_opr.clone() };
+            // Preserve Recommends for that later pass; Union is already discharged above.
+            let check = if field_opr.check == VariantCheck::Recommends {
+                VariantCheck::Recommends
+            } else {
+                VariantCheck::None
+            };
+            let field_opr = FieldOpr { check, ..field_opr.clone() };
             let p2 =
                 SpannedTyped::new(&place.span, &place.typ, PlaceX::Field(field_opr.clone(), p1));
             (stmts, p2, wf)
