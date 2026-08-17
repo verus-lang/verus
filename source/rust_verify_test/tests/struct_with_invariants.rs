@@ -48,3 +48,52 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] struct_with_invariants_const_generics verus_code! {
+        use vstd::atomic_ghost::AtomicBool;
+        use vstd::cell::pcell_maybe_uninit::PCell;
+        use vstd::prelude::*;
+
+        struct_with_invariants! {
+            struct S<const N: usize, T> {
+                data: [PCell<T>; N],
+                locked: AtomicBool<_, Option<()>, _>,
+            }
+
+            closed spec fn inv(&self) -> bool {
+                invariant on locked with ()
+                    is (b: bool, maybe_perms: Option<()>)
+                {
+                    true
+                }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] struct_with_invariants_user_type_with_const_generics verus_code! {
+        use vstd::atomic_ghost::AtomicBool;
+        use vstd::prelude::*;
+
+        struct ConstGenericField<const N: usize> {
+            data: [u8; N],
+        }
+
+        struct_with_invariants! {
+            struct S<const N: usize> {
+                data: ConstGenericField<N>,
+                locked: AtomicBool<_, (), _>,
+            }
+
+            closed spec fn inv(&self) -> bool {
+                invariant on locked with (data)
+                    is (b: bool, g: ())
+                {
+                    true
+                }
+            }
+        }
+    } => Ok(())
+}

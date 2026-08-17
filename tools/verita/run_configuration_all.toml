@@ -101,10 +101,8 @@ extra_verus_args = ["--crate-type=lib", "--rlimit", "100", "--cfg", "feature=\"i
 
 [[project]]
 name = "svsm"
-git_url = "https://github.com/parno/svsm.git"
-refspec = "origin/z3-4.16.0"
-#git_url = "https://github.com/ziqiaozhou/svsm.git"
-#refspec = "origin/verita"
+git_url = "https://github.com/ziqiaozhou/svsm.git"
+refspec = "origin/verita"
 cargo_verus = true
 extra_cargo_args = ["--features", "verus"]
 crate_roots = ["kernel"]
@@ -127,3 +125,17 @@ extra_cargo_args = ["--lib"]
 extra_verus_args = [
     "--verify-module", "vdeployment_controller", # To run full verification on all controllers, comment this line, need ~30mins.
 ]
+
+[[project]]
+name = "tla-rs"
+git_url = "https://github.com/stonysystems/tla-rs.git"
+refspec = "main"
+crate_roots = ["src/lib.rs"]
+extra_verus_args = ["--crate-type=dylib"]
+
+[[project]]
+name = "verismo"
+git_url = "https://github.com/microsoft/verismo.git"
+refspec = "main"
+cargo_verus = true
+crate_roots = ["source/bitflags_verus/src", "source/verismo_tspec/src", "source/verismo/src"]

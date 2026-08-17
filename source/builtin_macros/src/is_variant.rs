@@ -92,6 +92,7 @@ fn attribute_is_variant_internal(
                             #[verifier::inline]
                             #publish
                             #vis fn #get_ident(self) -> #field_ty {
+                                #verus_builtin::recommends([#verus_builtin::is_variant(&self, #variant_ident_str)]);
                                 #verus_builtin::get_variant_field(self, #variant_ident_str, #field_str)
                             }
                         }
@@ -115,6 +116,7 @@ fn attribute_is_variant_internal(
                             #[verifier::inline]
                             #publish
                             #vis fn #get_ident(self) -> #field_ty {
+                                #verus_builtin::recommends([#verus_builtin::is_variant(&self, #variant_ident_str)]);
                                 #verus_builtin::get_variant_field(self, #variant_ident_str, #field_lit)
                             }
                         }

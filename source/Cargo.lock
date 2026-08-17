@@ -1054,9 +1054,9 @@ checksum = "6dbf3de79e51f3d586ab4cb9d5c3e2c14aa28ed23d180cf89b4df0454a69cc87"
 
 [[package]]
 name = "hybrid-array"
-version = "0.4.13"
+version = "0.4.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "818356c5132c1fede50f837ca96afbe78ff42413047f4abb886217845e1b6c8c"
+checksum = "707114b52a152fa7bdb290cd7cd5912d9467273b6d74e21b8d81aca1f8533f6b"
 dependencies = [
  "typenum",
 ]
@@ -1313,6 +1313,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "insta"
+version = "1.48.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "86f0f8fee8c926415c58d6ae43a08523a26faccb2323f5e6b644fe7dd4ef6b82"
+dependencies = [
+ "console",
+ "once_cell",
+ "similar",
+ "tempfile",
+]
+
+[[package]]
 name = "instant"
 version = "0.1.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1465,7 +1477,9 @@ dependencies = [
 name = "line_count"
 version = "0.1.0"
 dependencies = [
+ "clap",
  "getopts",
+ "insta",
  "proc-macro2",
  "regex",
  "serde",
@@ -2620,6 +2634,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3a219298ac11a56ea9a6d2120044824d6f01aeb034955e7af7bc16858527deea"
 
 [[package]]
+name = "similar"
+version = "2.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbbb5d9659141646ae647b42fe094daf6c6192d1620870b449d9557f748b2daa"
+
+[[package]]
 name = "siphasher"
 version = "0.3.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3213,6 +3233,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 name = "verus"
 version = "0.1.0"
 dependencies = [
+ "cargo-verus-toolchains",
  "chrono",
  "git2",
  "is-terminal",
@@ -3227,11 +3248,11 @@ dependencies = [
 
 [[package]]
 name = "verus_builtin"
-version = "0.0.0-2026-08-02-0125"
+version = "0.0.0-2026-08-09-0044"
 
 [[package]]
 name = "verus_builtin_macros"
-version = "0.0.0-2026-08-02-0125"
+version = "0.0.0-2026-08-09-0044"
 dependencies = [
  "convert_case",
  "proc-macro2",
@@ -3244,7 +3265,7 @@ dependencies = [
 
 [[package]]
 name = "verus_prettyplease"
-version = "0.0.0-2026-08-02-0125"
+version = "0.0.0-2026-08-09-0044"
 dependencies = [
  "proc-macro2",
  "verus_syn",

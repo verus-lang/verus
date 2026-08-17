@@ -134,20 +134,6 @@ impl<A> Set<A> {
         Self::new_from_iset(ISet::new(f))
     }
 
-    /// Set whose membership is determined by the given boolean predicate,
-    /// assuming the predicate produces a finite set.
-    ///
-    /// Usage Examples:
-    /// ```rust
-    /// let set_a = Set::new_assuming_finite(|x : nat| x < 42);
-    /// let set_b = Set::<A>::new_assuming_finite(|x| some_predicate(x));
-    /// assert(forall|x| some_predicate(x) <==> set_b.contains(x));
-    /// ```
-    #[deprecated(note = "Set::new_assuming_finite is helpful for incremental porting of existing code to the new version of Verus supporting finite sets. But it's dangerous since it assumes the given function describes a finite set.")]
-    pub closed spec fn new_assuming_finite(f: spec_fn(A) -> bool) -> Set<A> {
-        Self::make_set(ISet::new(f))
-    }
-
     /// The "full" set, i.e., set containing every element of type `A`.
     /// Note that if `A` is infinite, then this produces None.
     #[rustc_diagnostic_item = "verus::vstd::set::Set::full"]
@@ -343,18 +329,6 @@ pub broadcast proof fn lemma_set_new_some<A>(f: spec_fn(A) -> bool)
 {
     broadcast use Set::axiom_make_set;
 
-}
-
-/// Shows that `Set::<A>::new_assuming_finite(f)` contains `a`
-/// if and only if `f(a)` is true.
-#[allow(deprecated)]
-pub broadcast proof fn lemma_set_new_assuming_finite<A>(f: spec_fn(A) -> bool, a: A)
-    ensures
-        #[trigger] Set::<A>::new_assuming_finite(f).contains(a) == f(a),
-{
-    broadcast use Set::axiom_make_set;
-
-    assume(ISet::new(f).finite());  // This is the assumption
 }
 
 /// If an iset `s` is finite, then `Set::new_from_iset(s)` has the same
@@ -595,7 +569,6 @@ pub broadcast group group_set_lemmas {
     axiom_set_ext_equal_deep,
     lemma_set_empty,
     lemma_set_new,
-    lemma_set_new_assuming_finite,
     lemma_set_new_from_iset,
     lemma_set_new_some,
     lemma_set_insert_same,
