@@ -881,14 +881,13 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_range_start_end_bound verus_code! {
         use vstd::prelude::*;
-        use vstd::std_specs::range::*;
-        use std::ops::RangeBounds;
+        use std::ops::{Bound, RangeBounds};
 
         fn test(r: &core::ops::Range<usize>) {
             let lb = r.start_bound();
             let ub = r.end_bound();
-            assert(spec_bound(lb) == SpecBound::<&usize>::Included(&r.start));
-            assert(spec_bound(ub) == SpecBound::<&usize>::Excluded(&r.end));
+            assert(lb == Bound::<&usize>::Included(&r.start));
+            assert(ub == Bound::<&usize>::Excluded(&r.end));
         }
     } => Ok(())
 }
@@ -983,6 +982,20 @@ test_verify_one_file! {
             assert(spec_range_inclusive_is_empty(&r));
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_range_inclusive_start_end_bound verus_code! {
+        use vstd::prelude::*;
+        use std::ops::{Bound, RangeBounds, RangeInclusive};
+
+        fn test() {
+            let mut r: RangeInclusive<u8> = 255..=255;
+            let _ = r.next();
+            let ub = r.end_bound();
+            assert(matches!(ub, Bound::Included(_))); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
