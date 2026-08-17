@@ -65,6 +65,11 @@ pub(crate) fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -
                     vir::def::RUST_OPAQUE_TYPE.to_string() + &d.disambiguator.to_string(),
                 ));
             }
+            DefPathData::Closure => {
+                segments.push(Arc::new(
+                    vir::def::RUST_DEF_CLOSURE.to_string() + &d.disambiguator.to_string(),
+                ));
+            }
             _ => return None,
         }
     }

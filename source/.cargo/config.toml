@@ -1,5 +1,6 @@
 [build]
 target-dir = "target-verus"
+build-dir = "target-verus"
 rustflags = [
     "--cfg", "proc_macro_span",
     "--cfg", "procmacro2_semver_exempt",
@@ -8,6 +9,7 @@ rustflags = [
 ]
 
 [env]
+CARGO_UNSTABLE_CHECKSUM_FRESHNESS = "true"
 RUSTC_BOOTSTRAP = "1"
 RUST_MIN_STACK = "20971520"
 VERUS_IN_VARGO = "1"

@@ -130,6 +130,7 @@ pub broadcast group group_vstd_default {
     // core std_specs
     //
     std_specs::range::group_range_axioms,
+    std_specs::slice::group_slice_axioms,
     std_specs::bits::group_bits_axioms,
     std_specs::control_flow::group_control_flow_axioms,
     std_specs::fmt::group_fmt_axioms,
