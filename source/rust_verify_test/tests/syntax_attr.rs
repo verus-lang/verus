@@ -1337,6 +1337,35 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    // Several extra outputs make the function return the tuple `(ret, (y, z))`,
+    // which the tuple a `|=` clause supplies and the tuple pattern a `=>`
+    // clause binds match directly.
+    #[test] test_verus_spec_with_multiple_extra_outputs code!{
+        use vstd::prelude::*;
+
+        #[verus_spec(ret =>
+            with -> y: Ghost<u8>, z: Ghost<u32>
+            ensures ret == 1u64, y@ == 3u8, z@ == 2u32,
+        )]
+        fn test() -> u64 {
+            proof_with!{|= (Ghost(3u8), Ghost(2u32))}
+            1
+        }
+
+        #[verus_spec]
+        fn call_test() {
+            proof_with!{=> (Ghost(y), Ghost(z))}
+            let r = test();
+            proof!{
+                assert(r == 1);
+                assert(y == 3);
+                assert(z == 2);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_verus_verify_external_type_specification code!{
         #[verus_verify(external)]
         struct MyExtStruct<T> { t: T }
