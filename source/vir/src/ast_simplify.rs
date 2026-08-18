@@ -680,6 +680,10 @@ fn tuple_get_field_expr(
     field_expr
 }
 
+fn irrefut_failure_msg(pattern_span: &Span) -> crate::messages::Message {
+    error(pattern_span, "unable to prove this pattern will successfully match")
+}
+
 fn simplify_one_stmt(ctx: &GlobalCtx, state: &mut State, stmt: &Stmt) -> Result<Vec<Stmt>, VirErr> {
     match &stmt.x {
         StmtX::Decl { pattern, mode: _, init: None, els: None, assert_irrefutable } => {
@@ -733,6 +737,19 @@ fn simplify_one_stmt(ctx: &GlobalCtx, state: &mut State, stmt: &Stmt) -> Result<
                 let ifstmtx = StmtX::Expr(ife);
                 let ifstmt = Spanned::new(stmt.span.clone(), ifstmtx);
                 stmts.push(ifstmt);
+            } else if *assert_irrefutable {
+                stmts.push(Spanned::new(
+                    stmt.span.clone(),
+                    StmtX::Expr(SpannedTyped::new(
+                        &stmt.span,
+                        &unit_typ(),
+                        ExprX::AssertAssume {
+                            is_assume: false,
+                            expr: pattern_check,
+                            msg: Some(irrefut_failure_msg(&pattern.span)),
+                        },
+                    )),
+                ));
             }
             stmts.extend(stmts2);
             Ok(stmts)

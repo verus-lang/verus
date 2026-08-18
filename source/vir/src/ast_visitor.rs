@@ -1954,6 +1954,22 @@ where
     )
 }
 
+pub fn map_expr_stmt_visitor<FE, FS>(expr: &Expr, fe: &FE, fs: &FS) -> Result<Expr, VirErr>
+where
+    FE: Fn(&Expr) -> Result<Expr, VirErr>,
+    FS: Fn(&Stmt) -> Result<Stmt, VirErr>,
+{
+    map_expr_visitor_env(
+        expr,
+        &mut air::scope_map::ScopeMap::new(),
+        &mut (),
+        &|_state, _, expr| fe(expr),
+        &|_state, _, stmt| Ok(vec![fs(stmt)?]),
+        &|_state, typ| Ok(typ.clone()),
+        &|_state, _, place| Ok(place.clone()),
+    )
+}
+
 pub fn map_expr_place_visitor<FE, FPL>(expr: &Expr, fe: &FE, fpl: &FPL) -> Result<Expr, VirErr>
 where
     FE: Fn(&Expr) -> Result<Expr, VirErr>,
