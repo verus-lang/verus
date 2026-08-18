@@ -2713,6 +2713,10 @@ fn check_expr(
             }
         }
         ExprX::Match(e1, arms, _assert_irrefutable) => {
+            if matches!(typing.block_ghostness, Ghost::Ghost) && !typing.in_pure {
+                record.assert_irrefutable.insert(expr.span.id);
+            }
+
             let scrutinee_expect = Expect::none();
             let guard_condition_expect = match typing.block_ghostness {
                 Ghost::Exec => Expect(Mode::Exec),
@@ -3960,6 +3964,15 @@ fn check_function(
                                     }
                                 }
                             }
+                        }
+                        ExprX::Match(scrutinee, arms, _)
+                            if record.assert_irrefutable.contains(&expr.span.id) =>
+                        {
+                            Ok(SpannedTyped::new(
+                                &expr.span,
+                                &expr.typ,
+                                ExprX::Match(scrutinee.clone(), arms.clone(), true),
+                            ))
                         }
                         _ => Ok(expr.clone()),
                     }

@@ -599,6 +599,31 @@ fn simplify_one_expr(
                     // if pattern && guard then body else prev
                     let ifx = ExprX::If(test.clone(), body, Some(prev));
                     if_expr = Some(SpannedTyped::new(&test.span, &expr.typ.clone(), ifx));
+                } else if *assert_irrefutable {
+                    if has_guard {
+                        return Err(error(&arm.x.guard.span, "if-guard on final match arm"));
+                    }
+                    let assertion = SpannedTyped::new(
+                        &arm.x.pattern.span,
+                        &unit_typ(),
+                        ExprX::AssertAssume {
+                            is_assume: false,
+                            expr: test,
+                            msg: Some(irrefut_failure_msg(&arm.x.pattern.span)),
+                        },
+                    );
+                    let block = SpannedTyped::new(
+                        &body.span,
+                        &body.typ,
+                        ExprX::Block(
+                            Arc::new(vec![Spanned::new(
+                                assertion.span.clone(),
+                                StmtX::Expr(assertion.clone()),
+                            )]),
+                            Some(body.clone()),
+                        ),
+                    );
+                    if_expr = Some(block);
                 } else {
                     // last arm is unconditional
                     if_expr = Some(body);
