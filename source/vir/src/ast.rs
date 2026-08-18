@@ -1392,6 +1392,7 @@ pub enum StmtX {
         mode: Option<(Mode, DeclProph)>,
         init: Option<Place>,
         els: Option<Expr>,
+        assert_irrefutable: bool,
     },
 }
 

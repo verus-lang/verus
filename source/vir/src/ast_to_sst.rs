@@ -4377,7 +4377,7 @@ fn stmt_to_stm(
             let (stms, exp) = expr_to_stm_opt(ctx, state, expr)?;
             Ok((stms, exp, None))
         }
-        StmtX::Decl { pattern, mode: _, init, els } => {
+        StmtX::Decl { pattern, mode: _, init, els, assert_irrefutable: _ } => {
             if els.is_some() {
                 panic!("let-else should be simplified in ast_simpllify {:?}.", stmt)
             }

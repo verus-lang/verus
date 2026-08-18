@@ -39,7 +39,13 @@ pub fn pattern_to_exprs(
 
         let pattern = PatternX::simple_var(name, &place.span, &place.typ);
         // Mode doesn't matter at this stage; arbitrarily set it to None
-        let decl = StmtX::Decl { pattern, mode: None, init: Some(place.clone()), els: None };
+        let decl = StmtX::Decl {
+            pattern,
+            mode: None,
+            init: Some(place.clone()),
+            els: None,
+            assert_irrefutable: false,
+        };
         decls.push(Spanned::new(place.span.clone(), decl));
     }
 

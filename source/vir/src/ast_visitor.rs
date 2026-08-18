@@ -683,7 +683,13 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                     for stmt in R::get_vec_or_slice(&stmts, std::array::from_ref(s)).iter() {
                         match &stmt.x {
                             StmtX::Expr(_) => {}
-                            StmtX::Decl { pattern, mode: _, init, els: _ } => {
+                            StmtX::Decl {
+                                pattern,
+                                mode: _,
+                                init,
+                                els: _,
+                                assert_irrefutable: _,
+                            } => {
                                 self.push_scope();
                                 self.insert_pattern_bindings(pattern, init.is_some());
                                 scope_count += 1;
@@ -814,7 +820,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let e = self.visit_expr(e)?;
                 R::ret(|| stmt_new(StmtX::Expr(R::get(e))))
             }
-            StmtX::Decl { pattern, mode, init, els } => {
+            StmtX::Decl { pattern, mode, init, els, assert_irrefutable } => {
                 let pattern = self.visit_pattern(pattern)?;
                 let init = self.visit_opt_place(init)?;
                 let els = self.visit_opt_expr(els)?;
@@ -824,6 +830,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                         mode: *mode,
                         init: R::get_opt(init),
                         els: R::get_opt(els),
+                        assert_irrefutable: *assert_irrefutable,
                     })
                 })
             }

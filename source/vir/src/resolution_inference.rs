@@ -1247,7 +1247,7 @@ impl<'a> Builder<'a> {
     fn build_stmt(&mut self, stmt: &Stmt, bb: BBIndex) -> Maybe<BBIndex> {
         match &stmt.x {
             StmtX::Expr(e) => self.build(e, bb),
-            StmtX::Decl { pattern, mode: _, init: None, els: None } => {
+            StmtX::Decl { pattern, mode: _, init: None, els: None, assert_irrefutable: _ } => {
                 self.push_scope();
                 self.scope_insert_pattern(pattern);
 
@@ -1262,7 +1262,7 @@ impl<'a> Builder<'a> {
 
                 Maybe::Some(bb)
             }
-            StmtX::Decl { pattern, mode: _, init: Some(init), els } => {
+            StmtX::Decl { pattern, mode: _, init: Some(init), els, assert_irrefutable: _ } => {
                 let tinv = if pattern_has_mut(pattern) { TypInv::PatternError } else { TypInv::No };
                 let (cpt, bb) = unwrap!(self.build_place_typed(init, bb, tinv));
 
@@ -1308,7 +1308,7 @@ impl<'a> Builder<'a> {
                 }
                 Maybe::Some(next_bb)
             }
-            StmtX::Decl { pattern: _, mode: _, init: None, els: Some(_) } => {
+            StmtX::Decl { pattern: _, mode: _, init: None, els: Some(_), .. } => {
                 panic!("Unexpected let-else without an initializer");
             }
         }
@@ -3528,7 +3528,7 @@ fn apply_resolutions(
                 scope_map.push_scope(true);
                 match &stmt.x {
                     StmtX::Expr(_) => {}
-                    StmtX::Decl { pattern, mode: _, init, els: _ } => {
+                    StmtX::Decl { pattern, mode: _, init, els: _, assert_irrefutable: _ } => {
                         use crate::ast_visitor::Scoper;
                         scope_map.insert_pattern_bindings(pattern, init.is_some());
                     }
@@ -3870,6 +3870,7 @@ fn add_decls_for_temps(
                         mode: None, // doesn't matter
                         init: None,
                         els: None,
+                        assert_irrefutable: false,
                     },
                 ));
             }

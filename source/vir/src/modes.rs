@@ -3529,7 +3529,7 @@ fn check_stmt(
             let _ = check_expr(ctxt, record, typing, outer_mode, expect, e, outer_proph)?;
             Ok(())
         }
-        StmtX::Decl { pattern, mode: None, init, els: _ } => {
+        StmtX::Decl { pattern, mode: None, init, els: _, assert_irrefutable: _ } => {
             // Special case mode inference just for our encoding of "let tracked pat = ..."
             // in Rust as "let xl; ... { let pat ... xl = xr; }".
             match (&pattern.x, init) {
@@ -3549,7 +3549,13 @@ fn check_stmt(
             }
             Ok(())
         }
-        StmtX::Decl { pattern, mode: Some((mode, proph_marker)), init, els } => {
+        StmtX::Decl {
+            pattern,
+            mode: Some((mode, proph_marker)),
+            init,
+            els,
+            assert_irrefutable: _,
+        } => {
             match proph_marker {
                 DeclProph::Default => {}
                 DeclProph::Prophetic | DeclProph::DelayedInfer => {

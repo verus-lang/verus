@@ -135,6 +135,7 @@ fn temp_var(state: &mut State, expr: &Expr) -> (Stmt, VarIdent) {
         mode: None,
         init: Some(PlaceX::spec_temporary(expr.clone())),
         els: None,
+        assert_irrefutable: false,
     };
     let temp_decl = Spanned::new(expr.span.clone(), decl);
     (temp_decl, temp)
@@ -173,6 +174,7 @@ fn pattern_to_decls_with_no_initializer(pattern: &Pattern, stmts: &mut Vec<Stmt>
                     mode: None, // mode doesn't matter anymore
                     init: None,
                     els: None,
+                    assert_irrefutable: false,
                 },
             ));
 
@@ -680,25 +682,28 @@ fn tuple_get_field_expr(
 
 fn simplify_one_stmt(ctx: &GlobalCtx, state: &mut State, stmt: &Stmt) -> Result<Vec<Stmt>, VirErr> {
     match &stmt.x {
-        StmtX::Decl { pattern, mode: _, init: None, els: None } => match &pattern.x {
-            PatternX::Var(PatternBinding {
-                by_ref: ByRef::No,
-                name: _,
-                user_mut: _,
-                typ: _,
-                copy: _,
-            }) => Ok(vec![stmt.clone()]),
-            _ => {
-                let mut stmts: Vec<Stmt> = Vec::new();
-                pattern_to_decls_with_no_initializer(pattern, &mut stmts);
-                Ok(stmts)
+        StmtX::Decl { pattern, mode: _, init: None, els: None, assert_irrefutable } => {
+            assert!(!assert_irrefutable);
+            match &pattern.x {
+                PatternX::Var(PatternBinding {
+                    by_ref: ByRef::No,
+                    name: _,
+                    user_mut: _,
+                    typ: _,
+                    copy: _,
+                }) => Ok(vec![stmt.clone()]),
+                _ => {
+                    let mut stmts: Vec<Stmt> = Vec::new();
+                    pattern_to_decls_with_no_initializer(pattern, &mut stmts);
+                    Ok(stmts)
+                }
             }
-        },
-        StmtX::Decl { pattern, mode: _, init: None, els: Some(_) } => Err(error(
+        }
+        StmtX::Decl { pattern, mode: _, init: None, els: Some(_), .. } => Err(error(
             &pattern.span,
             "Verus Internal Error: Decl with else-block but no initializer",
         )),
-        StmtX::Decl { pattern, mode: _, init: Some(_init), els: None }
+        StmtX::Decl { pattern, mode: _, init: Some(_init), els: None, assert_irrefutable: _ }
             if matches!(
                 pattern.x,
                 PatternX::Var(PatternBinding {
@@ -712,12 +717,13 @@ fn simplify_one_stmt(ctx: &GlobalCtx, state: &mut State, stmt: &Stmt) -> Result<
         {
             Ok(vec![stmt.clone()])
         }
-        StmtX::Decl { pattern, mode: _, init: Some(init), els } => {
+        StmtX::Decl { pattern, mode: _, init: Some(init), els, assert_irrefutable } => {
             let (mut stmts, place) = place_to_pure_place(state, init);
             let mut stmts2: Vec<Stmt> = vec![];
             let pattern_check =
                 crate::patterns::pattern_to_exprs(ctx, &place, pattern, false, &mut stmts2)?;
             if let Some(els) = &els {
+                assert!(!assert_irrefutable);
                 let checkx = ExprX::Unary(UnaryOp::Not, pattern_check.clone());
                 let check = SpannedTyped::new(&pattern_check.span, &pattern_check.typ, checkx);
                 let neverx = ExprX::NeverToAny(els.clone());
@@ -889,6 +895,7 @@ fn exec_closure_spec_requires(
             mode: None,
             init: Some(PlaceX::spec_temporary(tuple_field)),
             els: None,
+            assert_irrefutable: false,
         };
         decls.push(Spanned::new(span.clone(), decl));
     }
@@ -948,6 +955,7 @@ fn exec_closure_spec_ensures(
             mode: None,
             init: Some(PlaceX::spec_temporary(tuple_field)),
             els: None,
+            assert_irrefutable: false,
         };
         decls.push(Spanned::new(span.clone(), decl));
     }
