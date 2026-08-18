@@ -1171,7 +1171,7 @@ pub enum ExprX {
     /// If-else
     If(Expr, Expr, Option<Expr>),
     /// Match (Note: ast_simplify replaces Match with other expressions)
-    Match(Place, Arms),
+    Match(Place, Arms, bool),
     /// Loop (either "while", cond = Some(...), or "loop", cond = None), with invariants
     Loop {
         loop_isolation: bool,

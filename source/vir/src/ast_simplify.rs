@@ -558,7 +558,7 @@ fn simplify_one_expr(
                 Ok(SpannedTyped::new(&expr.span, &expr.typ, block))
             }
         }
-        ExprX::Match(place, arms1) => {
+        ExprX::Match(place, arms1, assert_irrefutable) => {
             let (temp_decl, place) = place_to_pure_place(state, place);
 
             // Translate into If expression

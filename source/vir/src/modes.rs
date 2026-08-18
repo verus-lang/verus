@@ -2712,7 +2712,7 @@ fn check_expr(
                 }
             }
         }
-        ExprX::Match(e1, arms) => {
+        ExprX::Match(e1, arms, _assert_irrefutable) => {
             let scrutinee_expect = Expect::none();
             let guard_condition_expect = match typing.block_ghostness {
                 Ghost::Exec => Expect(Mode::Exec),

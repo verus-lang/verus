@@ -1610,7 +1610,7 @@ impl<'a> Builder<'a> {
         // TODO(new_mut_ref): (blocking) need more tests for guards
         // TODO(new_mut_ref): (blocking) need more tests for or-patterns
 
-        let ExprX::Match(place, arms) = &expr.x else {
+        let ExprX::Match(place, arms, _assert_irrefutable) = &expr.x else {
             unreachable!();
         };
 

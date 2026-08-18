@@ -721,7 +721,7 @@ fn check_one_expr<Emit: EmitError>(
                 },
             ));
         }
-        ExprX::Match(_place, arms) => {
+        ExprX::Match(_place, arms, _assert_irrefutable) => {
             for (i, arm) in arms.iter().enumerate() {
                 // Error if the arm contains more than 1 of these 3 nontrivial features:
                 let has_guard = !matches!(&arm.x.guard.x, ExprX::Const(Constant::Bool(true)));
