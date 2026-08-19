@@ -291,8 +291,7 @@ impl CargoVerusCli {
     }
 }
 
-fn is_partial_verification_selector(arg: impl AsRef<str>) -> bool {
-    let arg = arg.as_ref();
+fn is_partial_verification_selector(arg: &str) -> bool {
     matches!(
         arg.as_ref(),
         "--verify-function" | "--verify-module" | "--verify-only-module" | "--verify-root"
