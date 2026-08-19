@@ -1,4 +1,4 @@
-use std::process::Command;
+use std::{path::PathBuf, process::Command};
 
 use anyhow::{Context, Result, bail};
 
@@ -67,6 +67,33 @@ fn get_git_rev(abbreviate_to: Option<usize>) -> Result<String> {
 
     let raw_rev = run_command(&args)?;
     Ok(raw_rev.trim().to_owned())
+}
+
+/// Get the existing Git files that determine the current `HEAD` commit.
+///
+/// This works for ordinary repositories, linked worktrees, both symbolic and detached `HEAD`s,
+/// and packed refs.
+pub fn git_head_paths() -> Result<Vec<PathBuf>> {
+    let mut paths = vec![git_path("HEAD")?.context("Git HEAD is missing")?];
+
+    if let Ok(head_ref) = run_command(&["git", "symbolic-ref", "--quiet", "HEAD"])
+        && let Some(path) = git_path(head_ref.trim())?
+    {
+        paths.push(path);
+    }
+
+    if let Some(path) = git_path("packed-refs")? {
+        paths.push(path);
+    }
+
+    Ok(paths)
+}
+
+/// Get the absolute path to a Git file when it exists.
+fn git_path(path: &str) -> Result<Option<PathBuf>> {
+    let path = run_command(&["git", "rev-parse", "--path-format=absolute", "--git-path", path])?;
+    let path = PathBuf::from(path.trim());
+    Ok(path.exists().then_some(path))
 }
 
 fn run_command(program_and_args: &[&str]) -> Result<String> {

@@ -1,6 +1,6 @@
 use std::process::Command;
 
-use cargo_verus_toolchains::versions::get_verus_version;
+use cargo_verus_toolchains::versions::{get_verus_version, git_head_paths};
 
 fn main() {
     let (default_version, default_sha) = get_verus_version(true).expect("version info");
@@ -12,7 +12,9 @@ fn main() {
         run_command(&["rustup", "show", "active-toolchain"]).expect("active toolchain")
     });
 
-    println!("cargo::rerun-if-changed=../.git/HEAD");
+    for path in git_head_paths().expect("Git HEAD paths") {
+        println!("cargo::rerun-if-changed={}", path.display());
+    }
     println!("cargo::rerun-if-env-changed=VARGO_BUILD_PROFILE");
     println!("cargo::rerun-if-env-changed=VARGO_BUILD_VERSION");
     println!("cargo::rerun-if-env-changed=VARGO_BUILD_SHA");
