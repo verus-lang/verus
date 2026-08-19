@@ -1748,11 +1748,9 @@ pub(crate) mod parsing {
         }
     }
 
-    // `assert`/`assume`/`reveal`/`hide`/`reveal_with_fuel` aren't reserved words in
-    // Verus's grammar, so a bare call to a real function of the same name (legal
-    // inside `#[verifier::external]`/`external_body` code, where plain Rust rules
-    // apply) parses as the Verus builtin instead. Avoid the ambiguity entirely for
-    // such bodies by not structurally parsing them at all - see verus-lang/verus#657.
+    // By default, an `external`/`external_body` function's body is plain Rust, not
+    // Verus syntax, so it's skipped and copied through verbatim rather than
+    // structurally parsed - see verus-lang/verus#657.
     fn has_external_body_attr(attrs: &[Attribute]) -> bool {
         attrs.iter().any(|attr| {
             attr.path().segments.len() == 2
