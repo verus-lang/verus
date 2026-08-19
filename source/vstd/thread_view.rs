@@ -287,7 +287,7 @@ impl<T> ViewAt<T> {
     /// Creates a new [`ViewAt`] from the given permission and lower bound on the synchronizing view.
     /// This permission will be safe to start using at some view that is larger than the given view `sn`,
     /// represented by the [`ViewSeen`] returned by this operation.
-    pub axiom fn new_incl(tracked t: T, tracked vs_0: ViewSeen) -> (tracked (va, vs): (
+    pub proof fn new_incl(tracked t: T, tracked vs_0: ViewSeen) -> (tracked (va, vs): (
         Self,
         ViewSeen,
     ))
@@ -295,7 +295,14 @@ impl<T> ViewAt<T> {
             va.value() == t,
             va.thread_view() == vs@,
             va.thread_view().contains(vs_0@),
-    ;
+    {
+        broadcast use group_thread_view_axioms;
+        
+        let tracked (va, vs) = ViewAt::new(t);
+        let tracked vs = vs.join(vs_0);
+        let tracked va = va.weaken(vs@);
+        (va, vs)
+    }
 
     // Weaker version of `join_tup`.
     axiom fn join_tup_inner<U>(tracked v0: ViewAt<T>, tracked v1: ViewAt<U>) -> (tracked out:
