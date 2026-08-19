@@ -714,31 +714,35 @@ macro_rules! atomic_integer_methods {
                 self.loc() == old(pt).loc(),
                 order matches Ordering::AcqRel || order matches Ordering::Acquire || order matches Ordering::Release || order matches Ordering::Relaxed,
             ensures
-                *old(pt) == v,
                 up@.store_message_view.contains_strict(up@.load_message_view),
                 match order {
                     Ordering::AcqRel => {
-                        &&& load_acquire(*old(pt), old(vs)@, up@.intermediate_thread_view, *old(pt), up@.load_timestamp, up@.load_message_view)
-                        &&& store_release(*old(pt), *final(pt), up@.intermediate_thread_view, final(vs)@, modname::wrapping_add(val), up@.load_timestamp + 1, up@.store_message_view)
+                        &&& load_acquire(*old(pt), old(vs)@, up@.intermediate_thread_view, v, up@.load_timestamp, up@.load_message_view)
+                        &&& store_release(*old(pt), *final(pt), up@.intermediate_thread_view, final(vs)@, $modname::wrapping_add(v, val), up@.load_timestamp + 1, up@.store_message_view)
                     },
                     Ordering::Acquire => {
-                        &&& load_acquire(*old(pt), old(vs)@, up@.intermediate_thread_view, *old(pt), up@.load_timestamp, up@.load_message_view)
-                        &&& store_relaxed(*old(pt), *final(pt), up@.intermediate_thread_view, final(vs)@, rel_vs@, modname::wrapping_add(val), up@.load_timestamp + 1, up@.store_message_view)
+                        &&& load_acquire(*old(pt), old(vs)@, up@.intermediate_thread_view, v, up@.load_timestamp, up@.load_message_view)
+                        &&& store_relaxed(*old(pt), *final(pt), up@.intermediate_thread_view, final(vs)@, rel_vs@, $modname::wrapping_add(v, val), up@.load_timestamp + 1, up@.store_message_view)
                     },
                     Ordering::Release => {
                         &&& load_relaxed(*old(pt), old(vs)@, up@.intermediate_thread_view, acq_vs@@, v, up@.load_timestamp, up@.load_message_view)
-                        &&& store_release(*old(pt), *final(pt), up@.intermediate_thread_view, final(vs)@, modname::wrapping_add(val), up@.load_timestamp + 1, up@.store_message_view)
+                        &&& store_release(*old(pt), *final(pt), up@.intermediate_thread_view, final(vs)@, $modname::wrapping_add(v, val), up@.load_timestamp + 1, up@.store_message_view)
                     },
                     Ordering::Relaxed => {
                         &&& load_relaxed(*old(pt), old(vs)@, up@.intermediate_thread_view, acq_vs@@, v, up@.load_timestamp, up@.load_message_view)
-                        &&& store_relaxed(*old(pt), *final(pt), up@.intermediate_thread_view, final(vs)@, rel_vs@, modname::wrapping_add(val), up@.load_timestamp + 1, up@.store_message_view)
+                        &&& store_relaxed(*old(pt), *final(pt), up@.intermediate_thread_view, final(vs)@, rel_vs@, $modname::wrapping_add(v, val), up@.load_timestamp + 1, up@.store_message_view)
                     }
                 },
             opens_invariants none
             no_unwind
         {
-            // return (self.ato.compare_exchange(current, new, success, failure), Tracked::assume_new(), Ghost::assume_new());
+            return (self.ato.fetch_add(val, order), Tracked::assume_new(), Ghost::assume_new());
         }
+
+        // NOTE: specifying fetch_add in the weak setting is difficult since the precondition
+        // must be stated in terms of the current value, and there are several possible current values.
+        // Since there is no equivalent function in Rust and we think prohibiting wrapping can be done using an invariant,
+        // we defer `fetch_add` and the other non-wrapping arithmetic specs.
 
         }
     };
