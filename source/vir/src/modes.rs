@@ -3530,7 +3530,7 @@ fn check_stmt(
         && !typing.in_pure
         && let StmtX::Decl { pattern, mode: _, init: Some(_), els: None, assert_irrefutable: _ } =
             &stmt.x
-        && !matches!(&pattern.x, PatternX::Var(_))
+        && !crate::patterns::definitely_irrefutable(pattern, &ctxt.datatypes)
     {
         record.assert_irrefutable.insert(stmt.span.id);
     }
