@@ -1750,7 +1750,7 @@ pub(crate) mod parsing {
 
     // By default, an `external`/`external_body` function's body is plain Rust, not
     // Verus syntax, so it's skipped and copied through verbatim rather than
-    // structurally parsed - see verus-lang/verus#657.
+    // structurally parsed - see verus-lang/verus#2792.
     fn has_external_body_attr(attrs: &[Attribute]) -> bool {
         attrs.iter().any(|attr| {
             attr.path().segments.len() == 2
