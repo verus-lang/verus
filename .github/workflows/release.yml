@@ -33,6 +33,8 @@ jobs:
       checkout_ref: ${{ needs.get-release-info.outputs.release_tag }}
       is_rolling: false
 
+  # The artifacts created by the `build` job already contain the new manifest information.
+  # The only responsibility of this job is to commit the new manifest file to the repo.
   commit-toolchain-manifest:
     needs: [get-release-info, build]
     runs-on: ubuntu-24.04
