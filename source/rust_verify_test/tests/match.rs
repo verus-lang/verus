@@ -1530,3 +1530,64 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] let_decl_with_uninhabited_ghost_field_issue1764 verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::external_body]
+        tracked struct False {
+        }
+
+        axiom fn false_from_False(tracked f: False)
+            ensures false;
+
+        tracked enum Enum {
+            GhostNvr { ghost ghost_never: std::convert::Infallible },
+            TrackedNvr { tracked tracked_never: False },
+        }
+
+        proof fn test()
+            ensures false
+        {
+            let tracked e = Enum::GhostNvr { ghost_never: arbitrary() };
+            let tracked Enum::TrackedNvr { tracked_never } = e; // FAILS
+            false_from_False(tracked_never);
+        }
+    } => Err(err) => {
+        assert!(err.errors[0].message.contains("unable to prove this pattern will successfully match"));
+        assert_fails(err, 1);
+    }
+}
+
+test_verify_one_file! {
+    #[test] match_with_uninhabited_ghost_field_issue1764 verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::external_body]
+        tracked struct False {
+        }
+
+        axiom fn false_from_False(tracked f: False)
+            ensures false;
+
+        tracked enum Enum {
+            GhostNvr { ghost ghost_never: std::convert::Infallible },
+            TrackedNvr { tracked tracked_never: False },
+        }
+
+        proof fn test2()
+            ensures false
+        {
+            let tracked e = Enum::GhostNvr { ghost_never: arbitrary() };
+            match e {
+                Enum::TrackedNvr { tracked_never } => { // FAILS
+                    false_from_False(tracked_never);
+                }
+            }
+        }
+} => Err(err) => {
+        assert!(err.errors[0].message.contains("unable to prove this pattern will successfully match"));
+        assert_fails(err, 1);
+    }
+}
