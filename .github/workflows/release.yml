@@ -2,11 +2,12 @@ name: release
 
 on:
   schedule:
-    - cron: '0 0 * * 1'  # Runs on main by default every Monday
+    - cron: "0 0 * * 1" # Runs on main by default every Monday
   workflow_dispatch:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   get-release-info:
@@ -31,6 +32,62 @@ jobs:
     with:
       checkout_ref: ${{ needs.get-release-info.outputs.release_tag }}
       is_rolling: false
+
+  commit-toolchain-manifest:
+    needs: [get-release-info, build]
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout release source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.get-release-info.outputs.release_tag }}
+          fetch-depth: 0
+          token: ${{ secrets.CRATES_UPDATE_TOKEN }}
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.97.1
+
+      - name: Configure git
+        run: |
+          git config --global user.name 'Release Toolchain Manifest Bot'
+          git config --global user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          BRANCH="bot/release-toolchain-manifest-$(date +%Y%m%d)-${{ github.run_number }}"
+          echo "BRANCH=$BRANCH" >> $GITHUB_ENV
+          git checkout -b "$BRANCH"
+
+      - name: Create toolchain manifest for the release
+        working-directory: ./source
+        run: |
+          cargo run -p cargo-verus-toolchains --bin create-manifest -- --write-to-dir cargo-verus/toolchain-manifests
+
+      - name: Commit toolchain manifest
+        run: |
+          git add source/cargo-verus/toolchain-manifests
+          if ! git diff --cached --quiet; then
+            git commit -m "Add stable toolchain manifest"
+            echo "CHANGED=true" >> $GITHUB_ENV
+          else
+            echo "No toolchain manifest was added"
+          fi
+
+      - name: Push branch and open PR
+        if: env.CHANGED == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.CRATES_UPDATE_TOKEN }}
+          version: ${{ needs.build.outputs.version }}
+          PR_BODY: |-
+            Automated toolchain manifest update for the latest stable release.
+            CI run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          git push origin "$BRANCH"
+          gh pr create \
+            --title "Add toolchain manifest for Release ${version}" \
+            --body "$PR_BODY" \
+            --base main
+          gh pr merge --auto --merge
 
   copy-release:
     needs: [build]
