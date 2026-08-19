@@ -117,9 +117,9 @@ pub struct Visibility {
 
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode, PartialEq, Eq)]
 pub enum BodyVisibility {
+    /// Function is declared uninterpreted (i.e., "visible nowhere")
     Uninterpreted,
-    /// None for pub
-    /// Some(path) means visible to path and path's descendents
+    /// Body is visible at the given visibility.
     Visibility(Visibility),
 }
 
@@ -190,12 +190,12 @@ pub enum IntRange {
 /// In some places, the decoration of a Typ cannot be considered meaningful due to these
 /// implicit 'identity' coercions:
 ///   - `expr.typ`
-///   - `place.typ`
 ///   - `pattern.typ`
 ///   - `exp.typ` (SST nodes)
 /// But in other places, types must be exactly correct, *including* decoration:
 ///   - type arguments for a Call
 ///   - `pattern_binding.typ` (type of a local variable declaration)
+///   - `place.typ` (See docs for `Place`)
 ///   - Most places where `Typ` is given as an explicit field of a node
 #[derive(
     Debug,
@@ -249,8 +249,6 @@ pub enum TypDecoration {
 pub enum Primitive {
     Array,
     Slice,
-    /// StrSlice type. Currently the vstd StrSlice struct is "seen" as this type
-    /// despite the fact that it is in fact a datatype
     StrSlice,
     Ptr, // Mut ptr, unless Const decoration is applied
     Global,
@@ -353,7 +351,8 @@ pub enum ModeCoercion {
     /// This operation behaves like a datatype constructor with a mode annotation
     /// `from_mode` on its field.
     /// (e.g., Tracked(...) is proof -> exec, Ghost(...) is spec -> exec.
-    /// Like with ordinary constructors, the input can be spec and if so, the whole thing is spec.
+    /// Note that `Tracked` behaves like an exec datatype with a proof-mode field, meaning
+    /// if the input is 'spec', then the whole thing is 'spec'.
     Constructor,
     /// This behaves like a field-getter,
     /// returning the contents of the Tracked or Ghost value.
@@ -482,6 +481,9 @@ pub enum VariantCheck {
     None,
     /// Check is required because the given field is from a union
     Union,
+    /// Check is recommended (not required for soundness) because this is a
+    /// `get_variant`/`is_variant` enum accessor
+    Recommends,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord, ToDebugSNode)]
@@ -574,18 +576,17 @@ pub enum BoundsCheck {
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
 pub enum OverflowBehavior {
-    /// Return an int. This is the only value allowed in SST.
+    /// Return an unbounded int, the exact value of the arithmetic expression.
     Allow,
-    /// Truncate to the given range
+    /// Truncate to the given range.
     Truncate(IntRange),
-    /// Error if the result is outside the given range
+    /// Error if the result is outside the given range.
     Error(IntRange),
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
 pub enum Div0Behavior {
     /// Return the (unspecified) result of divide- or mod-by-0.
-    /// This is the only value allowed in SST.
     Allow,
     /// Error if the dividend is 0.
     Error,
@@ -1534,6 +1535,11 @@ pub struct FunctionAttrsX {
     pub is_external_body: bool,
     /// Is the function marked unsafe (i.e., with the Rust keyword 'unsafe')
     pub is_unsafe: bool,
+    /// Does the exec trait function disallow impls from extending the ensures clause
+    /// (this makes it safe to remove a termination check from the exec function,
+    /// thereby indirectly allowing the exec function to express nontermination)
+    /// See https://github.com/verus-lang/verus/discussions/2661 .
+    pub impls_cannot_extend_spec: bool,
     /// Whether to assume that this function terminates
     pub exec_assume_termination: bool,
     /// Whether to allow this function to not terminate

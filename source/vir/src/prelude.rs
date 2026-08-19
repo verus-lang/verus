@@ -262,8 +262,8 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
                 (has_type ([mut_ref_future] m) t)
             )
             :pattern ((has_type m (MUTREF d t)) ([mut_ref_future] m))
-            :qid prelude_mut_ref_current_has_type
-            :skolemid skolem_prelude_mut_ref_current_has_type
+            :qid prelude_mut_ref_future_has_type
+            :skolemid skolem_prelude_mut_ref_future_has_type
         )))
         (axiom (forall ((m [Poly]) (d [decoration]) (t [typ]) (arg [Poly])) (!
             (=>
@@ -475,8 +475,8 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
                 (= x ([box_int] ([unbox_int] x)))
             )
             :pattern (([has_type] x ([type_id_float] bits)))
-            :qid prelude_box_unbox_sint
-            :skolemid skolem_prelude_box_unbox_sint
+            :qid prelude_box_unbox_float
+            :skolemid skolem_prelude_box_unbox_float
         )))
         (axiom (forall ((x [Poly])) (!
             (=>
@@ -680,8 +680,8 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
                 ([has_type] ([box_int] x) ([type_id_float] bits))
             )
             :pattern (([has_type] ([box_int] x) ([type_id_float] bits)))
-            :qid prelude_has_type_sint
-            :skolemid skolem_prelude_has_type_sint
+            :qid prelude_has_type_float
+            :skolemid skolem_prelude_has_type_float
         )))
         (axiom (forall ((x Int)) (!
             (=>
@@ -743,8 +743,8 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
                 ([u_inv] bits ([unbox_int] x))
             )
             :pattern (([has_type] x ([type_id_float] bits)))
-            :qid prelude_unbox_sint
-            :skolemid skolem_prelude_unbox_sint
+            :qid prelude_unbox_float
+            :skolemid skolem_prelude_unbox_float
         )))
 
         // With smt.arith.nl=false, Z3 sometimes fails to prove obvious formulas

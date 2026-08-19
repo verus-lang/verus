@@ -3,6 +3,7 @@ use regex::Regex;
 use rustc_middle::ty::{TyCtxt, TyKind};
 use rustc_span::def_id::DefId;
 use std::{collections::HashMap, sync::Arc};
+use vir::ast::CrateId;
 
 // The names returned by this are intended exclusively for matching in `get_rust_item`
 fn ty_to_stable_string_partial<'tcx>(
@@ -442,6 +443,13 @@ pub(crate) enum ExternalItem {
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash)]
+pub(crate) enum RustPrivate {
+    Path(vir::ast::Path),
+    FormatArgumentFn(Ident),
+    FormatArgumentsFn(Ident),
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Hash)]
 pub(crate) enum VerusItem {
     Spec(SpecItem),
     Quant(QuantItem),
@@ -457,6 +465,7 @@ pub(crate) enum VerusItem {
     OpenInvariantBlock(OpenInvariantBlockItem),
     OpenAtomicUpdate(OpenAtomicUpdateItem),
     Vstd(VstdItem, Option<Ident>),
+    RustPrivate(RustPrivate),
     Marker(MarkerItem),
     BuiltinType(BuiltinTypeItem),
     BuiltinTrait(BuiltinTraitItem),
@@ -737,6 +746,20 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::float::float_cast", VerusItem::Vstd(VstdItem::FloatCast, Some(Arc::new("float::float_cast".to_owned())))),
             // SeqFn(vir::interpreter::SeqFn::Last    ))),
 
+        ("verus::vstd::std_specs::fmt::rt::Argument", VerusItem::RustPrivate(RustPrivate::Path(vir::path!(CrateId::Core => "fmt", "rt", "Argument")))),
+        ("verus::vstd::std_specs::fmt::rt::Argument::new_binary", VerusItem::RustPrivate(RustPrivate::FormatArgumentFn(Arc::new("new_binary".to_owned())))),
+        ("verus::vstd::std_specs::fmt::rt::Argument::new_debug", VerusItem::RustPrivate(RustPrivate::FormatArgumentFn(Arc::new("new_debug".to_owned())))),
+        ("verus::vstd::std_specs::fmt::rt::Argument::new_debug_noop", VerusItem::RustPrivate(RustPrivate::FormatArgumentFn(Arc::new("new_debug_noop".to_owned())))),
+        ("verus::vstd::std_specs::fmt::rt::Argument::new_display", VerusItem::RustPrivate(RustPrivate::FormatArgumentFn(Arc::new("new_display".to_owned())))),
+        ("verus::vstd::std_specs::fmt::rt::Argument::new_lower_exp", VerusItem::RustPrivate(RustPrivate::FormatArgumentFn(Arc::new("new_lower_exp".to_owned())))),
+        ("verus::vstd::std_specs::fmt::rt::Argument::new_lower_hex", VerusItem::RustPrivate(RustPrivate::FormatArgumentFn(Arc::new("new_lower_hex".to_owned())))),
+        ("verus::vstd::std_specs::fmt::rt::Argument::new_octal", VerusItem::RustPrivate(RustPrivate::FormatArgumentFn(Arc::new("new_octal".to_owned())))),
+        ("verus::vstd::std_specs::fmt::rt::Argument::new_pointer", VerusItem::RustPrivate(RustPrivate::FormatArgumentFn(Arc::new("new_pointer".to_owned())))),
+        ("verus::vstd::std_specs::fmt::rt::Argument::new_upper_exp", VerusItem::RustPrivate(RustPrivate::FormatArgumentFn(Arc::new("new_upper_exp".to_owned())))),
+        ("verus::vstd::std_specs::fmt::rt::Argument::new_upper_hex", VerusItem::RustPrivate(RustPrivate::FormatArgumentFn(Arc::new("new_upper_hex".to_owned())))),
+        ("verus::vstd::std_specs::fmt::rt::Argument::from_usize", VerusItem::RustPrivate(RustPrivate::FormatArgumentFn(Arc::new("from_usize".to_owned())))),
+        ("verus::vstd::std_specs::fmt::Arguments::new", VerusItem::RustPrivate(RustPrivate::FormatArgumentsFn(Arc::new("new".to_owned())))),
+
         ("verus::verus_builtin::Structural",              VerusItem::Marker(MarkerItem::Structural)),
 
         ("verus::verus_builtin::int",                     VerusItem::BuiltinType(BuiltinTypeItem::Int)),
@@ -779,27 +802,52 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
 pub(crate) struct VerusItems {
     pub(crate) id_to_name: HashMap<DefId, VerusItem>,
     pub(crate) name_to_id: HashMap<VerusItem, DefId>,
+    // RustPrivate items also map to an underlying Rust DefId (in addition to the Verus DefId):
+    pub(crate) name_to_rust_private_id: HashMap<VerusItem, DefId>,
 }
 
-pub(crate) fn from_diagnostic_items(
-    diagnostic_items: &rustc_hir::diagnostic_items::DiagnosticItems,
-) -> VerusItems {
+pub(crate) fn from_diagnostic_items(tcx: TyCtxt) -> VerusItems {
+    let diagnostic_items = &tcx.all_diagnostic_items(());
     let verus_item_map: HashMap<&str, VerusItem> = verus_items_map().into_iter().collect();
     let diagnostic_name_to_id = &diagnostic_items.name_to_id;
     let mut id_to_name: HashMap<DefId, VerusItem> = HashMap::new();
     let mut name_to_id: HashMap<VerusItem, DefId> = HashMap::new();
+    let mut name_to_rust_private_id: HashMap<VerusItem, DefId> = HashMap::new();
     for (name, id) in diagnostic_name_to_id {
         let name = name.as_str();
         if name.starts_with("verus::verus_builtin") || name.starts_with("verus::vstd") {
-            if let Some(item) = verus_item_map.get(name) {
-                id_to_name.insert(id.clone(), item.clone());
-                name_to_id.insert(item.clone(), id.clone());
-            } else {
+            let Some(item) = verus_item_map.get(name) else {
                 panic!("unexpected verus diagnostic item {}", name);
+            };
+            id_to_name.insert(id.clone(), item.clone());
+            name_to_id.insert(item.clone(), id.clone());
+            let lang_item_name = match item {
+                VerusItem::RustPrivate(RustPrivate::FormatArgumentFn(name)) => {
+                    Some((rustc_hir::LangItem::FormatArgument, name.clone()))
+                }
+                VerusItem::RustPrivate(RustPrivate::FormatArgumentsFn(name)) => {
+                    Some((rustc_hir::LangItem::FormatArguments, name.clone()))
+                }
+                _ => None,
+            };
+            if let Some((lang_item, name)) = lang_item_name {
+                let lang_id = tcx.require_lang_item(lang_item, rustc_span::DUMMY_SP);
+                let mut fn_id = None;
+                for imp in tcx.inherent_impls(lang_id) {
+                    let symbol = rustc_span::Symbol::intern(&*name);
+                    for item in tcx.associated_items(*imp).filter_by_name_unhygienic(symbol) {
+                        assert!(fn_id.is_none());
+                        fn_id = Some(item.def_id);
+                    }
+                }
+                let Some(fn_id) = fn_id else {
+                    panic!("could find Rust library function {:?} {}", lang_id, name);
+                };
+                name_to_rust_private_id.insert(item.clone(), fn_id);
             }
         }
     }
-    VerusItems { id_to_name, name_to_id }
+    VerusItems { id_to_name, name_to_id, name_to_rust_private_id }
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
