@@ -293,7 +293,7 @@ impl CargoVerusCli {
 
 fn is_partial_verification_selector(arg: &str) -> bool {
     matches!(
-        arg.as_ref(),
+        arg,
         "--verify-function" | "--verify-module" | "--verify-only-module" | "--verify-root"
     ) || arg.starts_with("--verify-function=")
         || arg.starts_with("--verify-module=")
