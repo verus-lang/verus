@@ -73,16 +73,16 @@ fn get_git_rev(abbreviate_to: Option<usize>) -> Result<String> {
 ///
 /// This works for ordinary repositories, linked worktrees, both symbolic and detached `HEAD`s,
 /// and packed refs.
-pub fn git_head_paths() -> Result<Vec<PathBuf>> {
-    let mut paths = vec![git_path("HEAD")?.context("Git HEAD is missing")?];
+pub fn get_git_head_paths() -> Result<Vec<PathBuf>> {
+    let mut paths = vec![get_git_path("HEAD")?.context("Git HEAD is missing")?];
 
     if let Ok(head_ref) = run_command(&["git", "symbolic-ref", "--quiet", "HEAD"])
-        && let Some(path) = git_path(head_ref.trim())?
+        && let Some(path) = get_git_path(head_ref.trim())?
     {
         paths.push(path);
     }
 
-    if let Some(path) = git_path("packed-refs")? {
+    if let Some(path) = get_git_path("packed-refs")? {
         paths.push(path);
     }
 
@@ -90,7 +90,7 @@ pub fn git_head_paths() -> Result<Vec<PathBuf>> {
 }
 
 /// Get the absolute path to a Git file when it exists.
-fn git_path(path: &str) -> Result<Option<PathBuf>> {
+fn get_git_path(path: &str) -> Result<Option<PathBuf>> {
     let path = run_command(&["git", "rev-parse", "--path-format=absolute", "--git-path", path])?;
     let path = PathBuf::from(path.trim());
     Ok(path.exists().then_some(path))
