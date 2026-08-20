@@ -35,6 +35,12 @@ impl DeepView for str {
     }
 }
 
+// Executable `&str == &str` goes through `<&str as PartialEq<&str>>`, which uses
+// `PartialEqSpecImpl<&B> for &A` and therefore needs `PartialEqSpecImpl` on `str`
+// (same pattern as `bool` / integers). `eq_spec` is view equality: Rust compares
+// `str` by Unicode scalar values, which is exactly `Seq<char>` via `View`.
+// `ne` is not listed here — it is a provided trait method; `ExPartialEq` already
+// gives `ne` from `!eq_spec` when `obeys_eq_spec` holds.
 #[cfg(not(verus_verify_core))]
 impl super::std_specs::cmp::PartialEqSpecImpl for str {
     open spec fn obeys_eq_spec() -> bool {
