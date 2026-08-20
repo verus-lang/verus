@@ -231,17 +231,19 @@ impl<Key, Value> CursorMutModel<Key, Value> {
 }
 
 /// Abstract and prophetic state for mutable B-tree cursors.
-pub trait CursorMutSpecFns<Key, Value>: Sized {
-    spec fn view(&self) -> CursorMutModel<Key, Value>;
-
+pub trait CursorMutSpecFns<Key, Value>: View<V = CursorMutModel<Key, Value>> + Sized {
     /// The contents of the borrowed map when this cursor's borrow is resolved.
     #[verifier::prophetic]
     spec fn final_map(self) -> Map<Key, Value>;
 }
 
-impl<'a, Key, Value, A> CursorMutSpecFns<Key, Value> for CursorMut<'a, Key, Value, A> {
-    uninterp spec fn view(&self) -> CursorMutModel<Key, Value>;
+impl<'a, Key, Value, A> View for CursorMut<'a, Key, Value, A> {
+    type V = CursorMutModel<Key, Value>;
 
+    uninterp spec fn view(&self) -> CursorMutModel<Key, Value>;
+}
+
+impl<'a, Key, Value, A> CursorMutSpecFns<Key, Value> for CursorMut<'a, Key, Value, A> {
     #[verifier::prophetic]
     uninterp spec fn final_map(self) -> Map<Key, Value>;
 }
