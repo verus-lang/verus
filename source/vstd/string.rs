@@ -411,11 +411,8 @@ impl PartialEqSpecImpl<&str> for String {
     }
 }
 
-#[cfg(verus_keep_ghost)]
-#[cfg(all(feature = "alloc", not(verus_verify_core)))]
-pub assume_specification<'_0>[ <String as PartialEq<&str>>::eq ](s: &String, other: &&str) -> bool
-;
-
+// assume_specification for String↔&str lives in std_specs/string.rs (verus_!) —
+// verusfmt cannot parse `'_0` lifetime binders inside `verus!` (see cmp.rs).
 #[cfg(verus_keep_ghost)]
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]
 impl<'a> PartialEqSpecImpl<String> for &'a str {
@@ -427,14 +424,6 @@ impl<'a> PartialEqSpecImpl<String> for &'a str {
         (**self)@ == other@
     }
 }
-
-#[cfg(verus_keep_ghost)]
-#[cfg(all(feature = "alloc", not(verus_verify_core)))]
-pub assume_specification<'_0>[ <&'_0 str as PartialEq<String>>::eq ](
-    s: &&'_0 str,
-    other: &String,
-) -> bool
-;
 
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]
 #[verifier::external_type_specification]
