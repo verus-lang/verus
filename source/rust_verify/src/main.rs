@@ -1,5 +1,9 @@
 #![feature(rustc_private)]
 
+#[cfg(target_family = "unix")]
+#[global_allocator]
+static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
 use rust_verify::util::{VerusBuildProfile, verus_build_info};
 
 extern crate rustc_driver;
