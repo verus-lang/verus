@@ -631,6 +631,7 @@ pub const FEATURE_PRELUDE: &str = crate::common::code_str! {
     #![feature(core_intrinsics)]
     #![feature(ptr_metadata)]
     #![feature(sized_hierarchy)]
+    #![feature(btree_cursors)]
     #![feature(const_destruct)]
     #![feature(print_internals)]
 };
