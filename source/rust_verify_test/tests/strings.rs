@@ -1013,6 +1013,66 @@ test_verify_one_file! {
         {
             a.eq(b)
         }
+
+        // C12: String ↔ &str / str (Rust alloc::string::impl_eq!)
+        fn string_eq_str_lit() -> (b: bool)
+            ensures
+                b,
+        {
+            let s = String::from_str("hi");
+            s == "hi"
+        }
+
+        fn str_lit_eq_string() -> (b: bool)
+            ensures
+                b,
+        {
+            let s = String::from_str("hi");
+            "hi" == s
+        }
+
+        fn string_eq_str_from_views(s: String, t: &str) -> (b: bool)
+            requires
+                s@ == t@,
+            ensures
+                b,
+        {
+            s == t
+        }
+
+        fn str_eq_string_from_views(t: &str, s: String) -> (b: bool)
+            requires
+                t@ == s@,
+            ensures
+                b,
+        {
+            t == s
+        }
+
+        fn string_ne_str_from_views(s: String, t: &str) -> (b: bool)
+            requires
+                s@ != t@,
+            ensures
+                b,
+        {
+            s != t
+        }
+
+        fn cross_empty() -> (b: bool)
+            ensures
+                b,
+        {
+            let s = String::from_str("");
+            s == ""
+        }
+
+        fn cross_unicode() -> (b: bool)
+            ensures
+                b,
+        {
+            let s = String::from_str("café");
+            s == "café"
+        }
     } => Ok(())
 }
 
@@ -1025,6 +1085,19 @@ test_verify_one_file! {
                 a@ != b@,
         {
             assert(a == b); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] test_string_str_cross_partial_eq_fail verus_code! {
+        use vstd::prelude::*;
+
+        fn bad(s: String, t: &str)
+            requires
+                s@ != t@,
+        {
+            assert(s == t); // FAILS
         }
     } => Err(e) => assert_one_fails(e)
 }
