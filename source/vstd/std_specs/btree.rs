@@ -194,6 +194,18 @@ pub assume_specification<'a, Key, Value, A: Allocator + Clone>[ BTreeMap::<Key, 
 #[verifier::reject_recursive_types(A)]
 pub struct ExBTreeMap<Key, Value, A: Allocator + Clone>(BTreeMap<Key, Value, A>);
 
+/// Whether a borrowed key type's ordering agrees with the ordering of stored keys.
+///
+/// This is the semantic requirement imposed on `Key: Borrow<Q>` by the standard library's
+/// borrowed-key `BTreeMap` operations.
+pub uninterp spec fn borrowed_key_ordering_matches<Key: Borrow<Q> + Ord, Q: Ord + ?Sized>() -> bool;
+
+/// A key type has the same ordering as itself.
+pub broadcast axiom fn axiom_deref_key_ordering_matches<Key: Ord>()
+    ensures
+        #[trigger] borrowed_key_ordering_matches::<Key, Key>(),
+;
+
 pub trait BTreeMapAdditionalSpecFns<Key, Value>: View<V = Map<Key, Value>> {
     spec fn spec_index(&self, k: Key) -> Value
         recommends
@@ -475,6 +487,8 @@ pub assume_specification<
 >[ BTreeMap::<Key, Value, A>::get::<Q> ](m: &'a BTreeMap<Key, Value, A>, k: &Q) -> (result: Option<
     &'a Value,
 >)
+    requires
+        borrowed_key_ordering_matches::<Key, Q>(),
     ensures
         obeys_cmp::<Key>() ==> match result {
             Some(v) => maps_borrowed_key_to_value(m@, k, *v),
@@ -867,6 +881,7 @@ pub broadcast group group_btree_axioms {
     axiom_spec_btree_set_len,
     axiom_btree_map_decreases,
     axiom_btree_set_decreases,
+    axiom_deref_key_ordering_matches,
 }
 
 } // verus!
