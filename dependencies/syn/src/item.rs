@@ -1001,12 +1001,13 @@ pub(crate) mod parsing {
     use crate::path::Path;
     use crate::punctuated::Punctuated;
     use crate::restriction::Visibility;
-    use crate::stmt::Block;
+    use crate::stmt::{Block, Stmt};
     use crate::token;
     use crate::ty::{Abi, ReturnType, Type, TypePath, TypeReference};
     use crate::verbatim;
     use crate::verus::{Context, DataMode, Ensures, FnMode, Publish};
     use alloc::boxed::Box;
+    use alloc::string::ToString;
     use alloc::vec::Vec;
     use proc_macro2::TokenStream;
 
@@ -1039,7 +1040,8 @@ pub(crate) mod parsing {
         } else if lookahead.peek(Token![fn]) || peek_signature(&ahead, allow_safe) {
             let vis: Visibility = input.parse()?;
             let sig: Signature = input.parse()?;
-            parse_rest_of_fn(input, Vec::new(), vis, sig).map(Item::Fn)
+            let verbatim_body = has_external_body_attr(&attrs);
+            parse_rest_of_fn(input, Vec::new(), vis, sig, Some(verbatim_body)).map(Item::Fn)
         } else if lookahead.peek(Token![extern]) {
             ahead.parse::<Token![extern]>()?;
             let lookahead = ahead.lookahead1();
@@ -1742,16 +1744,46 @@ pub(crate) mod parsing {
             let outer_attrs = input.call(Attribute::parse_outer)?;
             let vis: Visibility = input.parse()?;
             let sig: Signature = input.parse()?;
-            parse_rest_of_fn(input, outer_attrs, vis, sig)
+            parse_rest_of_fn(input, outer_attrs, vis, sig, None)
         }
     }
 
+    // By default, an `external`/`external_body` function's body is plain Rust, not
+    // Verus syntax, so it's skipped and copied through verbatim rather than
+    // structurally parsed - see verus-lang/verus#2792.
+    fn has_external_body_attr(attrs: &[Attribute]) -> bool {
+        attrs.iter().any(|attr| {
+            attr.path().segments.len() == 2
+                && attr.path().segments[0].ident == "verifier"
+                && (attr.path().segments[1].ident == "external"
+                    || attr.path().segments[1].ident == "external_body")
+                || attr.path().segments.len() == 1
+                    && matches!(
+                        attr.path().segments[0].ident.to_string().as_str(),
+                        "verifier" | "verus_verify"
+                    )
+                    && match &attr.meta {
+                        attr::Meta::List(list) => {
+                            matches!(list.tokens.to_string().as_str(), "external" | "external_body")
+                        }
+                        _ => false,
+                    }
+        })
+    }
+
+    // `known_external_body`, when `Some`, is the already-computed answer from a
+    // caller that parsed the real outer attrs before dispatching here (this
+    // function's own `attrs` param is `Vec::new()` in that case - the caller
+    // reattaches the real ones afterward). `None` means `attrs` here already is
+    // the real, freshly-parsed set (a direct standalone `ItemFn::parse` call).
     fn parse_rest_of_fn(
         input: ParseStream,
         mut attrs: Vec<Attribute>,
         vis: Visibility,
         sig: Signature,
+        known_external_body: Option<bool>,
     ) -> Result<ItemFn> {
+        let verbatim_body = known_external_body.unwrap_or_else(|| has_external_body_attr(&attrs));
         let (brace_token, stmts, semi_token) = if input.peek(Token![;]) {
             let semi_token: Token![;] = input.parse()?;
             (token::Brace(semi_token.span), Vec::new(), Some(semi_token))
@@ -1759,7 +1791,11 @@ pub(crate) mod parsing {
             let content;
             let brace_token = braced!(content in input);
             attr::parsing::parse_inner(&content, &mut attrs)?;
-            let stmts = content.call(Block::parse_within)?;
+            let stmts = if verbatim_body {
+                Vec::from([Stmt::Expr(Expr::Verbatim(content.parse()?), None)])
+            } else {
+                content.call(Block::parse_within)?
+            };
             (brace_token, stmts, None)
         };
 
@@ -2578,7 +2614,10 @@ pub(crate) mod parsing {
             let lookahead = ahead.lookahead1();
             let allow_safe = false;
             let mut item = if lookahead.peek(Token![fn]) || peek_signature(&ahead, allow_safe) {
-                input.parse().map(TraitItem::Fn)
+                let sig: Signature = input.parse()?;
+                let verbatim_body = has_external_body_attr(&attrs);
+                parse_rest_of_trait_item_fn(input, Vec::new(), sig, Some(verbatim_body))
+                    .map(TraitItem::Fn)
             } else if lookahead.peek(Token![const]) {
                 let publish = input.parse()?;
                 let mode = input.parse()?;
@@ -2619,7 +2658,10 @@ pub(crate) mod parsing {
                     || lookahead.peek(Token![extern])
                     || lookahead.peek(Token![fn])
                 {
-                    input.parse().map(TraitItem::Fn)
+                    let sig: Signature = input.parse()?;
+                    let verbatim_body = has_external_body_attr(&attrs);
+                    parse_rest_of_trait_item_fn(input, Vec::new(), sig, Some(verbatim_body))
+                        .map(TraitItem::Fn)
                 } else {
                     Err(lookahead.error())
                 }
@@ -2700,30 +2742,44 @@ pub(crate) mod parsing {
     #[cfg_attr(docsrs, doc(cfg(feature = "parsing")))]
     impl Parse for TraitItemFn {
         fn parse(input: ParseStream) -> Result<Self> {
-            let mut attrs = input.call(Attribute::parse_outer)?;
+            let attrs = input.call(Attribute::parse_outer)?;
             let sig: Signature = input.parse()?;
-
-            let lookahead = input.lookahead1();
-            let (brace_token, stmts, semi_token) = if lookahead.peek(token::Brace) {
-                let content;
-                let brace_token = braced!(content in input);
-                attr::parsing::parse_inner(&content, &mut attrs)?;
-                let stmts = content.call(Block::parse_within)?;
-                (Some(brace_token), stmts, None)
-            } else if lookahead.peek(Token![;]) {
-                let semi_token: Token![;] = input.parse()?;
-                (None, Vec::new(), Some(semi_token))
-            } else {
-                return Err(lookahead.error());
-            };
-
-            Ok(TraitItemFn {
-                attrs,
-                sig,
-                default: brace_token.map(|brace_token| Block { brace_token, stmts }),
-                semi_token,
-            })
+            parse_rest_of_trait_item_fn(input, attrs, sig, None)
         }
+    }
+
+    // See the `known_external_body` doc comment on `parse_rest_of_fn`.
+    fn parse_rest_of_trait_item_fn(
+        input: ParseStream,
+        mut attrs: Vec<Attribute>,
+        sig: Signature,
+        known_external_body: Option<bool>,
+    ) -> Result<TraitItemFn> {
+        let verbatim_body = known_external_body.unwrap_or_else(|| has_external_body_attr(&attrs));
+        let lookahead = input.lookahead1();
+        let (brace_token, stmts, semi_token) = if lookahead.peek(token::Brace) {
+            let content;
+            let brace_token = braced!(content in input);
+            attr::parsing::parse_inner(&content, &mut attrs)?;
+            let stmts = if verbatim_body {
+                Vec::from([Stmt::Expr(Expr::Verbatim(content.parse()?), None)])
+            } else {
+                content.call(Block::parse_within)?
+            };
+            (Some(brace_token), stmts, None)
+        } else if lookahead.peek(Token![;]) {
+            let semi_token: Token![;] = input.parse()?;
+            (None, Vec::new(), Some(semi_token))
+        } else {
+            return Err(lookahead.error());
+        };
+
+        Ok(TraitItemFn {
+            attrs,
+            sig,
+            default: brace_token.map(|brace_token| Block { brace_token, stmts }),
+            semi_token,
+        })
     }
 
     #[cfg_attr(docsrs, doc(cfg(feature = "parsing")))]
@@ -2928,7 +2984,8 @@ pub(crate) mod parsing {
             let mut item = if lookahead.peek(Token![broadcast]) && ahead.peek2(Token![group]) {
                 input.parse().map(ImplItem::BroadcastGroup)
             } else if lookahead.peek(Token![fn]) || peek_signature(&ahead, allow_safe) {
-                Ok(ImplItem::Fn(parse_impl_item_fn(input)?))
+                let verbatim_body = has_external_body_attr(&attrs);
+                Ok(ImplItem::Fn(parse_impl_item_fn(input, Some(verbatim_body))?))
             } else if lookahead.peek(Token![const]) {
                 let vis: Visibility = input.parse()?;
                 let publish = input.parse()?;
@@ -3074,15 +3131,20 @@ pub(crate) mod parsing {
     #[cfg_attr(docsrs, doc(cfg(feature = "parsing")))]
     impl Parse for ImplItemFn {
         fn parse(input: ParseStream) -> Result<Self> {
-            parse_impl_item_fn(input)
+            parse_impl_item_fn(input, None)
         }
     }
 
-    fn parse_impl_item_fn(input: ParseStream) -> Result<ImplItemFn> {
+    // See the `known_external_body` doc comment on `parse_rest_of_fn`.
+    fn parse_impl_item_fn(
+        input: ParseStream,
+        known_external_body: Option<bool>,
+    ) -> Result<ImplItemFn> {
         let mut attrs = input.call(Attribute::parse_outer)?;
         let vis: Visibility = input.parse()?;
         let defaultness: Option<Token![default]> = input.parse()?;
         let sig: Signature = input.parse()?;
+        let verbatim_body = known_external_body.unwrap_or_else(|| has_external_body_attr(&attrs));
 
         let (block, semi_token) = if let Some(semi) = input.parse::<Option<Token![;]>>()? {
             // Accept methods without a body in an impl block because
@@ -3101,7 +3163,11 @@ pub(crate) mod parsing {
             attrs.extend(content.call(Attribute::parse_inner)?);
             let block = Block {
                 brace_token,
-                stmts: content.call(Block::parse_within)?,
+                stmts: if verbatim_body {
+                    Vec::from([Stmt::Expr(Expr::Verbatim(content.parse()?), None)])
+                } else {
+                    content.call(Block::parse_within)?
+                },
             };
             (block, None)
         };
