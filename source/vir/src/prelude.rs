@@ -73,11 +73,27 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
             :skolemid skolem_prelude_height_lt
             )))),
         SmtSolver::Cvc5 => nodes_vec!(
-                    (declare-fun partial-order (Height Height) Bool)
-                    (axiom (forall ((x Height)) (partial-order x x)))
-                    (axiom (forall ((x Height) (y Height)) (=> (and (partial-order x y) (partial-order y x)) (= x y))))
-                    (axiom (forall ((x Height) (y Height) (z Height)) (=> (and (partial-order x y) (partial-order y z)) (partial-order x z))))
-                    (axiom (forall ((x Height) (y Height)) (= (height_lt x y) (and (partial-order x y) (not (= x y))))))),
+                    (declare-fun partial-order ([Height] [Height]) Bool)
+                    (axiom (forall ((x [Height])) (!
+                        (partial-order x x)
+                        :pattern ((partial-order x x))
+                        :qid prelude_partial_order_reflexive
+                        :skolemid skolem_prelude_partial_order_reflexive)))
+                    (axiom (forall ((x [Height]) (y [Height])) (!
+                        (=> (and (partial-order x y) (partial-order y x)) (= x y))
+                        :pattern ((partial-order x y) (partial-order y x))
+                        :qid prelude_partial_order_antisymmetric
+                        :skolemid skolem_prelude_partial_order_antisymmetric)))
+                    (axiom (forall ((x [Height]) (y [Height]) (z [Height])) (!
+                        (=> (and (partial-order x y) (partial-order y z)) (partial-order x z))
+                        :pattern ((partial-order x y) (partial-order y z))
+                        :qid prelude_partial_order_transitive
+                        :skolemid skolem_prelude_partial_order_transitive)))
+                    (axiom (forall ((x [Height]) (y [Height])) (!
+                        (= ([height_lt] x y) (and (partial-order x y) (not (= x y))))
+                        :pattern (([height_lt] x y))
+                        :qid prelude_height_lt
+                        :skolemid skolem_prelude_height_lt)))),
     };
     let box_int = str_to_node(BOX_INT);
     let box_bool = str_to_node(BOX_BOOL);
