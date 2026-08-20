@@ -945,3 +945,354 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_one_fails(e)
 }
+
+test_verify_one_file! {
+    #[test] test_str_pattern_wrappers_pass verus_code! {
+        use vstd::string::*;
+        use vstd::seq::*;
+
+        fn test_pattern_wrappers_concrete() {
+            proof {
+                reveal_strlit("hello world");
+                reveal_strlit("hello");
+                reveal_strlit("world");
+                reveal_strlit("lo wo");
+                reveal_strlit("xyz");
+                assert("hello world"@ =~= seq!['h', 'e', 'l', 'l', 'o', ' ', 'w', 'o', 'r', 'l', 'd']);
+                assert("hello"@ =~= seq!['h', 'e', 'l', 'l', 'o']);
+                assert("world"@ =~= seq!['w', 'o', 'r', 'l', 'd']);
+                assert("xyz"@ =~= seq!['x', 'y', 'z']);
+                assert("hello world"@.subrange(0, 5) =~= seq!['h', 'e', 'l', 'l', 'o']);
+                assert("hello world"@.subrange(6, 11) =~= seq!['w', 'o', 'r', 'l', 'd']);
+                assert("hello world"@.subrange(3, 3 + "lo wo"@.len() as int) =~= "lo wo"@);
+            }
+            let r1 = str_starts_with_str("hello world", "hello");
+            assert(r1);
+            let r2 = str_starts_with_str("hello world", "xyz");
+            assert(!r2);
+            let r3 = str_ends_with_str("hello world", "world");
+            assert(r3);
+            let r4 = str_ends_with_str("hello world", "xyz");
+            assert(!r4);
+            let r5 = str_ends_with_char("hello world", 'd');
+            assert(r5);
+            let r6 = str_ends_with_char("hello world", 'x');
+            assert(!r6);
+            let r7 = str_contains_str("hello world", "lo wo");
+            assert(r7);
+            let r8 = str_contains_str("hello world", "xyz");
+            assert(!r8);
+        }
+
+        // `&[char]` matches by set membership of a single char, not by
+        // sequence - e.g. `['h', 'x']` matches because 'h' is in the set,
+        // same as `['e', 'h']` would.
+        fn test_chars_pattern_wrappers_concrete() {
+            proof {
+                reveal_strlit("hello world");
+                assert("hello world"@[2] == 'l');
+            }
+            let starts_pat: [char; 2] = ['h', 'x'];
+            let r9 = str_starts_with_chars("hello world", &starts_pat);
+            assert(r9);
+            let no_match_pat: [char; 2] = ['x', 'y'];
+            let r10 = str_starts_with_chars("hello world", &no_match_pat);
+            assert(!r10);
+            let ends_pat: [char; 2] = ['d', 'x'];
+            let r11 = str_ends_with_chars("hello world", &ends_pat);
+            assert(r11);
+            let contains_pat: [char; 2] = ['z', 'l'];
+            let r12 = str_contains_chars("hello world", &contains_pat);
+            assert(r12);
+            let r13 = str_contains_chars("hello world", &no_match_pat);
+            assert(!r13);
+        }
+
+        // A closure Pattern - the predicate is given as an ordinary Verus
+        // closure with an explicit `ensures`, which is what lets Verus
+        // reason precisely about its result at the call site.
+        fn test_pred_pattern_wrappers_concrete() {
+            proof {
+                reveal_strlit("hello world");
+                assert("hello world"@[2] == 'l');
+            }
+            let r18 = str_contains_pred(
+                "hello world",
+                |c: char| -> (b: bool) ensures b == (c == 'l') { c == 'l' },
+            );
+            assert(r18);
+            let r19 = str_contains_pred(
+                "hello world",
+                |c: char| -> (b: bool) ensures b == (c == 'z') { c == 'z' },
+            );
+            assert(!r19);
+            let r14 = str_starts_with_pred(
+                "hello world",
+                |c: char| -> (b: bool) ensures b == (c == 'h') { c == 'h' },
+            );
+            assert(r14);
+            let r15 = str_starts_with_pred(
+                "hello world",
+                |c: char| -> (b: bool) ensures b == (c == 'x') { c == 'x' },
+            );
+            assert(!r15);
+            let r16 = str_ends_with_pred(
+                "hello world",
+                |c: char| -> (b: bool) ensures b == (c == 'd') { c == 'd' },
+            );
+            assert(r16);
+            let r17 = str_ends_with_pred(
+                "hello world",
+                |c: char| -> (b: bool) ensures b == (c == 'x') { c == 'x' },
+            );
+            assert(!r17);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_str_pattern_wrappers_fail verus_code! {
+        use vstd::string::*;
+        use vstd::seq::*;
+
+        fn test_pattern_wrappers_wrong() {
+            proof {
+                reveal_strlit("hello world");
+                reveal_strlit("hello");
+                assert("hello world"@.subrange(0, 5) =~= seq!['h', 'e', 'l', 'l', 'o']);
+            }
+            let r = str_starts_with_str("hello world", "hello");
+            assert(!r); // FAILS
+        }
+
+        fn test_chars_pattern_wrapper_wrong() {
+            proof {
+                reveal_strlit("hello world");
+            }
+            let pat: [char; 2] = ['h', 'x'];
+            let r = str_starts_with_chars("hello world", &pat);
+            assert(!r); // FAILS
+        }
+
+        fn test_pred_pattern_wrapper_wrong() {
+            proof {
+                reveal_strlit("hello world");
+            }
+            let r = str_starts_with_pred(
+                "hello world",
+                |c: char| -> (b: bool) ensures b == (c == 'h') { c == 'h' },
+            );
+            assert(!r); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] test_str_find_wrappers_pass verus_code! {
+        use vstd::string::*;
+        use vstd::seq::*;
+        use vstd::utf8::{encode_scalar, encode_utf8};
+        use vstd::pervasive::FnWithRequiresEnsures;
+
+        proof fn lemma_bitand_7f(v: u32)
+            requires v <= 0x7F,
+            ensures (v & 0x7F) as u8 == v as u8,
+        {
+            assert((v & 0x7F) as u8 == v as u8) by (bit_vector)
+                requires v <= 0x7F;
+        }
+
+        proof fn lemma_ascii_char_encode_scalar(c: char)
+            requires
+                c as u32 <= 0x7F,
+            ensures
+                encode_scalar(c as u32).len() == 1,
+                encode_scalar(c as u32)[0] == c as u8,
+        {
+            let v = c as u32;
+            lemma_bitand_7f(v);
+            assert(v as u8 == c as u8);
+        }
+
+        fn test_find_str() {
+            proof {
+                reveal_strlit("hello world");
+                reveal_strlit("world");
+                reveal_strlit("xyz");
+            }
+            let r1 = str_find_str("hello world", "world");
+            assert(r1 is Some) by {
+                broadcast use vstd::string::is_ascii_spec_bytes;
+                assert("hello world".is_ascii());
+                assert("world".is_ascii());
+                assert("hello world"@ =~= seq!['h', 'e', 'l', 'l', 'o', ' ', 'w', 'o', 'r', 'l', 'd']);
+                assert("world"@ =~= seq!['w', 'o', 'r', 'l', 'd']);
+                assert("hello world".spec_bytes() =~= Seq::new(11, |i| "hello world"@.index(i) as u8));
+                assert("world".spec_bytes() =~= Seq::new(5, |i| "world"@.index(i) as u8));
+                assert("hello world".spec_bytes().subrange(6, 6 + "world".spec_bytes().len() as int) =~= "world".spec_bytes());
+            };
+            // The wrapper's own postcondition already ties the returned offset back
+            // to a real match - no need to independently re-derive its exact value.
+            assert("hello world".spec_bytes().subrange(
+                r1.unwrap() as int,
+                r1.unwrap() as int + "world".spec_bytes().len() as int,
+            ) =~= "world".spec_bytes());
+
+            let r2 = str_find_str("hello world", "xyz");
+            assert(r2 is None) by {
+                broadcast use vstd::string::is_ascii_spec_bytes;
+                assert("hello world".is_ascii());
+                assert("xyz".is_ascii());
+                let haystack = "hello world".spec_bytes();
+                let needle = "xyz".spec_bytes();
+                assert("hello world"@ =~= seq!['h', 'e', 'l', 'l', 'o', ' ', 'w', 'o', 'r', 'l', 'd']);
+                assert("xyz"@ =~= seq!['x', 'y', 'z']);
+                assert(haystack =~= Seq::new(11, |i| "hello world"@.index(i) as u8));
+                assert(needle =~= Seq::new(3, |i| "xyz"@.index(i) as u8));
+                assert forall|j: int| 0 <= j <= 8 implies !(#[trigger] haystack.subrange(j, j + 3) =~= needle) by {
+                    assert(haystack[j] != needle[0]) by { assert("hello world"@.index(j) != 'x'); }
+                    lemma_first_byte_mismatch_not_a_match(haystack, needle, j);
+                }
+            };
+        }
+
+        fn test_rfind_str() {
+            proof {
+                reveal_strlit("hello world hello");
+                reveal_strlit("hello");
+            }
+            let r = str_rfind_str("hello world hello", "hello");
+            assert(r is Some) by {
+                broadcast use vstd::string::is_ascii_spec_bytes;
+                assert("hello world hello".is_ascii());
+                assert("hello".is_ascii());
+                assert("hello world hello"@ =~= seq!['h','e','l','l','o',' ','w','o','r','l','d',' ','h','e','l','l','o']);
+                assert("hello"@ =~= seq!['h', 'e', 'l', 'l', 'o']);
+                assert("hello world hello".spec_bytes() =~= Seq::new(17, |i| "hello world hello"@.index(i) as u8));
+                assert("hello".spec_bytes() =~= Seq::new(5, |i| "hello"@.index(i) as u8));
+                assert("hello world hello".spec_bytes().subrange(12, 12 + "hello".spec_bytes().len() as int) =~= "hello".spec_bytes());
+            };
+            // The wrapper's own postcondition already ties the returned offset back
+            // to a real match - no need to independently re-derive its exact value.
+            assert("hello world hello".spec_bytes().subrange(
+                r.unwrap() as int,
+                r.unwrap() as int + "hello".spec_bytes().len() as int,
+            ) =~= "hello".spec_bytes());
+        }
+
+        fn test_find_char() {
+            proof {
+                reveal_strlit("hello world");
+                lemma_ascii_char_encode_scalar('o');
+            }
+            let r1 = str_find_char("hello world", 'o');
+            assert(r1 is Some) by {
+                broadcast use vstd::string::is_ascii_spec_bytes;
+                lemma_ascii_char_encode_scalar('o');
+                assert("hello world".is_ascii());
+                assert("hello world"@ =~= seq!['h', 'e', 'l', 'l', 'o', ' ', 'w', 'o', 'r', 'l', 'd']);
+                assert("hello world".spec_bytes() =~= Seq::new(11, |i| "hello world"@.index(i) as u8));
+                assert("hello world".spec_bytes().subrange(4, 4 + encode_scalar('o' as u32).len() as int)
+                    =~= encode_scalar('o' as u32));
+            };
+            // The wrapper's own postcondition already ties the returned offset back
+            // to a real match - no need to independently re-derive its exact value.
+            assert("hello world".spec_bytes().subrange(
+                r1.unwrap() as int,
+                r1.unwrap() as int + encode_scalar('o' as u32).len() as int,
+            ) =~= encode_scalar('o' as u32));
+        }
+
+        fn test_rfind_char() {
+            proof {
+                reveal_strlit("hello world");
+                lemma_ascii_char_encode_scalar('o');
+            }
+            let r1 = str_rfind_char("hello world", 'o');
+            assert(r1 is Some) by {
+                broadcast use vstd::string::is_ascii_spec_bytes;
+                lemma_ascii_char_encode_scalar('o');
+                assert("hello world".is_ascii());
+                assert("hello world"@ =~= seq!['h', 'e', 'l', 'l', 'o', ' ', 'w', 'o', 'r', 'l', 'd']);
+                assert("hello world".spec_bytes() =~= Seq::new(11, |i| "hello world"@.index(i) as u8));
+                assert("hello world".spec_bytes().subrange(7, 7 + encode_scalar('o' as u32).len() as int)
+                    =~= encode_scalar('o' as u32));
+            };
+            // The wrapper's own postcondition already ties the returned offset back
+            // to a real match - no need to independently re-derive its exact value.
+            assert("hello world".spec_bytes().subrange(
+                r1.unwrap() as int,
+                r1.unwrap() as int + encode_scalar('o' as u32).len() as int,
+            ) =~= encode_scalar('o' as u32));
+        }
+
+        fn test_find_pred() {
+            proof {
+                reveal_strlit("hello world");
+                assert("hello world"@[4] == 'o');
+            }
+            let pred = |c: char| -> (b: bool) ensures b == (c == 'o') { c == 'o' };
+            let r1 = str_find_pred("hello world", pred);
+            assert(r1 is Some);
+            // The postcondition's own witness already ties the returned offset back
+            // to a real matching character - no need to pin down its exact value.
+            assert(exists|i: int|
+                0 <= i < 11 && pred.ensures((#[trigger] "hello world"@[i],), true)
+                    && r1.unwrap() as int == encode_utf8("hello world"@.subrange(0, i)).len());
+
+            let r2 = str_find_pred(
+                "hello world",
+                |c: char| -> (b: bool) ensures b == (c == 'z') { c == 'z' },
+            );
+            assert(r2 is None);
+        }
+
+        fn test_rfind_pred() {
+            proof {
+                reveal_strlit("hello world");
+                assert("hello world"@[4] == 'o');
+                assert("hello world"@[7] == 'o');
+            }
+            let pred = |c: char| -> (b: bool) ensures b == (c == 'o') { c == 'o' };
+            let r1 = str_rfind_pred("hello world", pred);
+            assert(r1 is Some);
+            // The postcondition's own witness already ties the returned offset back
+            // to a real matching character - no need to pin down its exact value.
+            assert(exists|i: int|
+                0 <= i < 11 && pred.ensures((#[trigger] "hello world"@[i],), true)
+                    && r1.unwrap() as int == encode_utf8("hello world"@.subrange(0, i)).len());
+
+            let r2 = str_rfind_pred(
+                "hello world",
+                |c: char| -> (b: bool) ensures b == (c == 'z') { c == 'z' },
+            );
+            assert(r2 is None);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_str_find_wrappers_fail verus_code! {
+        use vstd::string::*;
+
+        fn test_find_str_wrong() {
+            proof {
+                reveal_strlit("hello world");
+                reveal_strlit("world");
+            }
+            let r = str_find_str("hello world", "world");
+            assert(r is None); // FAILS
+        }
+
+        fn test_find_pred_wrong() {
+            proof {
+                reveal_strlit("hello world");
+            }
+            let r = str_find_pred(
+                "hello world",
+                |c: char| -> (b: bool) ensures b == (c == 'o') { c == 'o' },
+            );
+            assert(r is None); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
