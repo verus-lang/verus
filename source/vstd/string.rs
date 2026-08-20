@@ -36,6 +36,21 @@ impl DeepView for str {
 }
 
 #[cfg(not(verus_verify_core))]
+impl super::std_specs::cmp::PartialEqSpecImpl for str {
+    open spec fn obeys_eq_spec() -> bool {
+        true
+    }
+
+    open spec fn eq_spec(&self, other: &str) -> bool {
+        self@ == other@
+    }
+}
+
+#[cfg(not(verus_verify_core))]
+pub assume_specification[ <str as PartialEq>::eq ](s: &str, other: &str) -> bool
+;
+
+#[cfg(not(verus_verify_core))]
 pub trait StringSliceAdditionalSpecFns {
     spec fn spec_bytes(&self) -> Seq<u8>;
 }
