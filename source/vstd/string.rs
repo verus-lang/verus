@@ -41,6 +41,9 @@ impl DeepView for str {
 // `str` by Unicode scalar values, which is exactly `Seq<char>` via `View`.
 // `ne` is not listed here — it is a provided trait method; `ExPartialEq` already
 // gives `ne` from `!eq_spec` when `obeys_eq_spec` holds.
+// Gated on `verus_keep_ghost` like other `*SpecImpl`s that reference `std_specs`
+// (see `IteratorSpecImpl for Chars` below); without that cfg, `std_specs` is absent.
+#[cfg(verus_keep_ghost)]
 #[cfg(not(verus_verify_core))]
 impl super::std_specs::cmp::PartialEqSpecImpl for str {
     open spec fn obeys_eq_spec() -> bool {
@@ -52,6 +55,7 @@ impl super::std_specs::cmp::PartialEqSpecImpl for str {
     }
 }
 
+#[cfg(verus_keep_ghost)]
 #[cfg(not(verus_verify_core))]
 pub assume_specification[ <str as PartialEq>::eq ](s: &str, other: &str) -> bool
 ;
