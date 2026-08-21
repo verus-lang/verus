@@ -334,8 +334,6 @@ pub(crate) enum InvariantItem {
     LocalInvariantNamespace,
     LocalInvariantInv,
     CreateOpenInvariantCredit,
-    SpendOpenInvariantCredit,
-    SpendOpenInvariantCreditInProof,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash)]
@@ -708,8 +706,6 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::invariant::LocalInvariant::namespace",            VerusItem::Vstd(VstdItem::Invariant(InvariantItem::LocalInvariantNamespace        ), Some(Arc::new("invariant::LocalInvariant::namespace"           .to_owned())))),
         ("verus::vstd::invariant::LocalInvariant::inv",                  VerusItem::Vstd(VstdItem::Invariant(InvariantItem::LocalInvariantInv              ), Some(Arc::new("invariant::LocalInvariant::inv"                 .to_owned())))),
         ("verus::vstd::invariant::create_open_invariant_credit",         VerusItem::Vstd(VstdItem::Invariant(InvariantItem::CreateOpenInvariantCredit      ), Some(Arc::new("invariant::create_open_invariant_credit"        .to_owned())))),
-        ("verus::vstd::invariant::spend_open_invariant_credit",          VerusItem::Vstd(VstdItem::Invariant(InvariantItem::SpendOpenInvariantCredit       ), Some(Arc::new("invariant::spend_open_invariant_credit"         .to_owned())))),
-        ("verus::vstd::invariant::spend_open_invariant_credit_in_proof", VerusItem::Vstd(VstdItem::Invariant(InvariantItem::SpendOpenInvariantCreditInProof), Some(Arc::new("invariant::spend_open_invariant_credit_in_proof".to_owned())))),
         ("verus::vstd::vstd::exec_nonstatic_call", VerusItem::Vstd(VstdItem::ExecNonstaticCall, Some(Arc::new("pervasive::exec_nonstatic_call".to_owned())))),
         ("verus::vstd::vstd::proof_nonstatic_call", VerusItem::Vstd(VstdItem::ProofNonstaticCall, Some(Arc::new("pervasive::proof_nonstatic_call".to_owned())))),
 
