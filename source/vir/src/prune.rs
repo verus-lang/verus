@@ -868,6 +868,53 @@ pub struct UsedBuiltins {
 //  - collect_monotyps: if true, return a Vec<MonoTyp>; otherwise, return None
 //    this should only be done post-simplification
 
+// Functions directly called (or fueled) by `e` - what the interpreter might need
+// bodies for if it evaluates `e` itself.
+fn direct_calls(e: &Expr, out: &mut HashSet<Fun>) {
+    crate::ast_visitor::expr_visitor_check::<(), _>(e, &mut |_scope_map, e: &Expr| {
+        match &e.x {
+            ExprX::Call { target: CallTarget::Fun(kind, name, ..), .. } => {
+                out.insert(name.clone());
+                if let crate::ast::CallTargetKind::DynamicResolved { resolved, .. } = kind {
+                    out.insert(resolved.clone());
+                }
+            }
+            ExprX::Fuel(fueled_f, fuel, _) if *fuel > 0 => {
+                out.insert(fueled_f.clone());
+            }
+            _ => {}
+        }
+        Ok(())
+    })
+    .expect("expr_visitor_check failed unexpectedly");
+}
+
+// The interpreter ignores opaqueness entirely, so `assert(e) by (compute)` needs the
+// body of every function transitively called from `e`, regardless of reveal/fuel -
+// not the bodies of every spec fn in the module (see issue #944's PR discussion).
+fn functions_reachable_for_compute(
+    function_by_name: &HashMap<Fun, Function>,
+    e: &Expr,
+) -> HashSet<Fun> {
+    let mut reached: HashSet<Fun> = HashSet::new();
+    let mut worklist: Vec<Fun> = Vec::new();
+    let mut seed: HashSet<Fun> = HashSet::new();
+    direct_calls(e, &mut seed);
+    worklist.extend(seed);
+    while let Some(f) = worklist.pop() {
+        if reached.insert(f.clone()) {
+            if let Some(function) = function_by_name.get(&f) {
+                if let Some(body) = &function.x.body {
+                    let mut callees: HashSet<Fun> = HashSet::new();
+                    direct_calls(body, &mut callees);
+                    worklist.extend(callees);
+                }
+            }
+        }
+    }
+    reached
+}
+
 pub struct PruneInfo {
     pub mono_abstract_datatypes: Option<Vec<MonoTyp>>,
     pub spec_fn_types: Vec<usize>,
@@ -978,6 +1025,9 @@ pub fn prune_krate_for_module_or_krate(
         }
     }
 
+    let function_by_name: HashMap<Fun, Function> =
+        krate.functions.iter().map(|f| (f.x.name.clone(), f.clone())).collect();
+
     // Collect all functions that our module reveals:
     let mut revealed_functions: HashSet<Fun> = HashSet::new();
     let mut assert_by_compute = false;
@@ -991,8 +1041,12 @@ pub fn prune_krate_for_module_or_krate(
                             ExprX::Fuel(path, fuel, _is_broadcast_use) if *fuel > 0 => {
                                 revealed_functions.insert(path.clone());
                             }
-                            ExprX::AssertCompute(..) => {
+                            ExprX::AssertCompute(computed, _) => {
                                 assert_by_compute = true;
+                                revealed_functions.extend(functions_reachable_for_compute(
+                                    &function_by_name,
+                                    computed,
+                                ));
                             }
                             _ => {}
                         }

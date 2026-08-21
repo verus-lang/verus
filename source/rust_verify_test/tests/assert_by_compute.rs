@@ -357,6 +357,133 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
 }
 
+// https://github.com/verus-lang/verus/issues/944
+// An opaque, un-revealed spec fn's body must be usable by the interpreter
+// regardless of which module (pub-)defines it, not just the module being verified.
+test_verify_one_file! {
+    #[test] fn_calls_cross_module_opaque verus_code! {
+        mod definitions {
+            use vstd::prelude::*;
+
+            #[verifier::opaque]
+            pub open spec fn u64_leading_zeros(i: u64) -> int
+                decreases i
+            {
+                if i == 0 { 64 } else { u64_leading_zeros(i / 2) - 1 }
+            }
+        }
+
+        mod caller {
+            use vstd::prelude::*;
+            use crate::definitions::u64_leading_zeros;
+
+            proof fn test() {
+                assert(u64_leading_zeros(0) == 64) by (compute_only);
+                assert(u64_leading_zeros(1) == 63) by (compute_only);
+            }
+        }
+    } => Ok(())
+}
+
+// A `by (compute_only)` assertion should only force-reveal the functions it actually
+// calls, not every spec fn in the module - an unrelated opaque fn stays opaque.
+test_verify_one_file! {
+    #[test] fn_calls_cross_module_opaque_does_not_reveal_unrelated_fn verus_code! {
+        mod definitions {
+            use vstd::prelude::*;
+
+            #[verifier::opaque]
+            pub open spec fn u64_leading_zeros(i: u64) -> int
+                decreases i
+            {
+                if i == 0 { 64 } else { u64_leading_zeros(i / 2) - 1 }
+            }
+
+            #[verifier::opaque]
+            pub open spec fn unrelated(i: u64) -> int {
+                i as int + 1
+            }
+        }
+
+        mod caller {
+            use vstd::prelude::*;
+            use crate::definitions::{u64_leading_zeros, unrelated};
+
+            proof fn test_compute() {
+                assert(u64_leading_zeros(0) == 64) by (compute_only);
+            }
+
+            proof fn test_unrelated_still_opaque(i: u64) {
+                assert(unrelated(i) == i as int + 1); // FAILS: still opaque
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+// Reachability must follow multi-hop transitive calls, not just the directly named fn.
+test_verify_one_file! {
+    #[test] fn_calls_cross_module_opaque_transitive_chain verus_code! {
+        mod definitions {
+            use vstd::prelude::*;
+
+            #[verifier::opaque]
+            pub open spec fn d(i: u64) -> int { i as int }
+
+            #[verifier::opaque]
+            pub open spec fn c(i: u64) -> int { d(i) + 1 }
+
+            #[verifier::opaque]
+            pub open spec fn b(i: u64) -> int { c(i) + 1 }
+
+            #[verifier::opaque]
+            pub open spec fn a(i: u64) -> int { b(i) + 1 }
+        }
+
+        mod caller {
+            use vstd::prelude::*;
+            use crate::definitions::a;
+
+            proof fn test() {
+                assert(a(0) == 3) by (compute_only);
+            }
+        }
+    } => Ok(())
+}
+
+// Reachability must resolve calls made through dynamic trait dispatch.
+test_verify_one_file! {
+    #[test] fn_calls_cross_module_opaque_trait_dispatch verus_code! {
+        mod definitions {
+            use vstd::prelude::*;
+
+            pub trait Doubler {
+                spec fn double(&self, i: u64) -> int;
+            }
+
+            pub struct Impl {}
+
+            #[verifier::opaque]
+            pub open spec fn opaque_double(i: u64) -> int { 2 * i as int }
+
+            impl Doubler for Impl {
+                open spec fn double(&self, i: u64) -> int {
+                    opaque_double(i)
+                }
+            }
+        }
+
+        mod caller {
+            use vstd::prelude::*;
+            use crate::definitions::{Doubler, Impl};
+
+            proof fn test() {
+                let x = Impl {};
+                assert(x.double(3) == 6) by (compute_only);
+            }
+        }
+    } => Ok(())
+}
+
 test_verify_one_file! {
     #[test] sequences verus_code! {
         #[allow(unused_imports)]
