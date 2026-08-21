@@ -1532,3 +1532,65 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+// Reassigning a variable used to hard-panic under `-V debug`.
+test_verify_one_file_with_options! {
+    #[test] debugger_mode_supports_variable_reassignment ["-V debug"] => verus_code! {
+        fn reassign_local() {
+            let mut x: u32 = 5;
+            x = 10;
+            assert(x == 10);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] debugger_mode_reports_failure_after_reassignment ["-V debug"] => verus_code! {
+        fn reassign_wrong() {
+            let mut x: u32 = 5;
+            x = 10;
+            assert(x == 999); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+// `by(nonlinear_arith)`/`by(bit_vector)` hit the same panic.
+test_verify_one_file_with_options! {
+    #[test] debugger_mode_supports_nonlinear_arith ["-V debug"] => verus_code! {
+        fn mul_check(a: u32, b: u32)
+            requires a < 100, b < 100,
+        {
+            assert(a * b < 10000) by(nonlinear_arith)
+                requires a < 100, b < 100
+            {}
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] debugger_mode_reports_failure_in_nonlinear_arith ["-V debug"] => verus_code! {
+        fn mul_check_wrong(a: u32, b: u32)
+            requires a < 100, b < 100,
+        {
+            assert(a * b < 100) by(nonlinear_arith) // FAILS: not generally true
+                requires a < 100, b < 100
+            {}
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file_with_options! {
+    #[test] debugger_mode_supports_bit_vector ["-V debug"] => verus_code! {
+        fn bv_check(a: u32) {
+            assert(a & a == a) by(bit_vector);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] debugger_mode_reports_failure_in_bit_vector ["-V debug"] => verus_code! {
+        fn bv_check_wrong(a: u32) {
+            assert(a & a == a + 1) by(bit_vector); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}

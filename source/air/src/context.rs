@@ -51,6 +51,7 @@ pub enum ValidityResult {
     UnexpectedOutput(String),
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug)]
 pub(crate) enum ContextState {
     NotStarted,

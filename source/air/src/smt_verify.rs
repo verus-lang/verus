@@ -273,6 +273,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
 
     let unsat = unsat.expect("expected sat/unsat/unknown from SMT solver");
 
+    #[allow(clippy::large_enum_variant)]
     enum ResultDetermination<T> {
         Determined(ValidityResult),
         Undetermined(T),
@@ -374,6 +375,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
     }
 }
 
+#[allow(clippy::result_large_err)]
 pub(crate) fn smt_get_rlimit_count(context: &mut Context) -> Result<u64, ValidityResult> {
     assert!(matches!(context.solver, SmtSolver::Z3)); // the CVC5 output format for statistics is different
 
@@ -422,7 +424,7 @@ pub(crate) fn smt_get_rlimit_count(context: &mut Context) -> Result<u64, Validit
 fn smt_get_model(
     context: &mut Context,
     mut infos: Vec<AssertionInfo>,
-    air_model: Model,
+    mut air_model: Model,
 ) -> ValidityResult {
     let mut discovered_error: Option<AssertionInfo> = None;
     let mut discovered_assert_id: Option<Option<Arc<Vec<u64>>>> = None;
@@ -441,6 +443,7 @@ fn smt_get_model(
 
     let model =
         crate::parser::Parser::new(context.message_interface.clone()).lines_to_model(&smt_output);
+    air_model.set_raw_values(&model); // before the disable-label assert below invalidates it
     let mut model_defs: HashMap<Ident, ModelDef> = HashMap::new();
     for def in model.iter() {
         model_defs.insert(def.name.clone(), def.clone());
