@@ -2620,6 +2620,38 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
     Ok(result)
 }
 
+// assert bare-ensures loop clauses hold wherever `cond` is false
+fn assert_bare_ensures_if_cond_false(
+    ctx: &Ctx,
+    state: &mut State,
+    expr_ctxt: &ExprCtxt,
+    cond: &Option<(Stm, Exp)>,
+    bare_ensures: &[(Span, Expr, Option<Arc<String>>)],
+    msg: &str,
+    out: &mut Vec<Stmt>,
+) -> Result<(), VirErr> {
+    if bare_ensures.is_empty() {
+        return Ok(());
+    }
+    let Some((c_stm, c_exp)) = cond else {
+        return Ok(());
+    };
+    out.extend(stm_to_stmts(ctx, state, c_stm)?);
+    let pos_cond = exp_to_expr(ctx, c_exp, expr_ctxt)?;
+    let neg_cond = Arc::new(ExprX::Unary(air::ast::UnaryOp::Not, pos_cond));
+    for (span, inv, m) in bare_ensures.iter() {
+        let mut error = error(span, msg);
+        if let Some(m) = m {
+            error = error.secondary_label(span, &**m);
+        }
+        let implication =
+            Arc::new(ExprX::Binary(air::ast::BinaryOp::Implies, neg_cond.clone(), inv.clone()));
+        let inv_stmt = StmtX::Assert(None, error, None, implication);
+        out.push(Arc::new(inv_stmt));
+    }
+    Ok(())
+}
+
 fn loop_to_stmts(
     ctx: &Ctx,
     state: &mut State,
@@ -2662,9 +2694,9 @@ fn loop_to_stmts(
     let modified_vars = modified_vars.as_ref().unwrap();
     for inv in invs.iter() {
         let expr = exp_to_expr(ctx, &inv.inv, expr_ctxt)?;
+        // bare Ensures (at_exit only) can now also keep cond.is_some()
         if cond.is_some() {
-            assert!(inv.at_entry);
-            assert!(inv.at_exit);
+            assert!(inv.at_entry || inv.at_exit);
         }
         let both = inv.at_entry && inv.at_exit;
         if inv.at_entry {
@@ -2676,6 +2708,12 @@ fn loop_to_stmts(
     }
     let invs_entry = Arc::new(invs_entry);
     let invs_exit = Arc::new(invs_exit);
+    // bare `ensures` clauses (at_exit but not at_entry - "both" is false)
+    let bare_ensures: Vec<(Span, Expr, Option<Arc<String>>)> = invs_exit
+        .iter()
+        .filter(|(_, _, _, both)| !both)
+        .map(|(span, expr, msg, _)| (span.clone(), expr.clone(), msg.clone()))
+        .collect();
 
     let (_, decrease_init) =
         crate::recursion::mk_decreases_at_entry(ctx, &stm.span, Some(*id), &decrease)?;
@@ -2861,6 +2899,16 @@ fn loop_to_stmts(
             let inv_stmt = StmtX::Assert(None, error, None, inv.clone());
             air_body.push(Arc::new(inv_stmt));
         }
+        // inductive step, covers the loop running >=1 times
+        assert_bare_ensures_if_cond_false(
+            ctx,
+            state,
+            expr_ctxt,
+            cond,
+            &bare_ensures,
+            crate::def::ENSURES_FAIL_LOOP_EXIT,
+            &mut air_body,
+        )?;
         if decrease.len() > 0 {
             let dec_exp = crate::recursion::check_decrease(
                 ctx,
@@ -2916,6 +2964,16 @@ fn loop_to_stmts(
             let inv_stmt = StmtX::Assert(None, error, None, inv.clone());
             stmts.push(Arc::new(inv_stmt));
         }
+        // zero-iteration base case, before havoc, with full pre-loop context
+        assert_bare_ensures_if_cond_false(
+            ctx,
+            state,
+            expr_ctxt,
+            cond,
+            &bare_ensures,
+            crate::def::ENSURES_FAIL_LOOP_ZERO_ITERS,
+            &mut stmts,
+        )?;
     }
     if !loop_isolation {
         let break_label = air_break_label.clone();

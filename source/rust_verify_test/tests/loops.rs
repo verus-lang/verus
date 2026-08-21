@@ -666,15 +666,16 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
+    // bare `ensures`, no `break`: keeps `cond` in the outer query
     #[test] while_to_loop_ensures ["exec_allows_no_decreases_clause"] => verus_code! {
         fn test(b: bool) {
             while b
                 ensures true
             {
             }
-            assert(!b); // FAILS (while converted to loop due to ensures)
+            assert(!b);
         }
-    } => Err(e) => assert_one_fails(e)
+    } => Ok(())
 }
 
 test_verify_one_file_with_options! {

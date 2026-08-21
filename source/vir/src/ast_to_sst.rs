@@ -2674,7 +2674,14 @@ pub(crate) fn expr_to_stm_opt(
             };
             let simple_invs =
                 invs.iter().all(|inv| inv.kind == LoopInvariantKind::InvariantAndEnsures);
-            let simple_while = !has_user_break && simple_invs && cond.is_some() && loop_isolation;
+            // bare-ensures-only loops also keep `cond` outer; see loop_to_stmts
+            let simple_ensures_only = !is_for_loop
+                && !*atomic_call
+                && invs.iter().all(|inv| inv.kind == LoopInvariantKind::Ensures);
+            let simple_while = !has_user_break
+                && (simple_invs || simple_ensures_only)
+                && cond.is_some()
+                && loop_isolation;
 
             if allow_complex_invariants && loop_isolation && !is_for_loop {
                 return Err(error(
