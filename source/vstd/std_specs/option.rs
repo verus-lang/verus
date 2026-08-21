@@ -215,6 +215,18 @@ pub assume_specification<T, U, F: FnOnce(T) -> U>[ Option::<T>::map ](a: Option<
         ret.is_some() ==> f.ensures((a.unwrap(),), ret.unwrap()),
 ;
 
+// or_else
+pub assume_specification<T, F: FnOnce() -> Option<T>>[ Option::<T>::or_else ](
+    a: Option<T>,
+    f: F,
+) -> (ret: Option<T>)
+    requires
+        a.is_none() ==> f.requires(()),
+    ensures
+        a.is_some() ==> ret == a,
+        a.is_none() ==> f.ensures((), ret),
+;
+
 // cloned
 pub assume_specification<'a, T: Clone>[ Option::<&'a T>::cloned ](opt: Option<&'a T>) -> (res:
     Option<T>)

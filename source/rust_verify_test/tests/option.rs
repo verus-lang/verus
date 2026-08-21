@@ -182,3 +182,43 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_one_fails(e)
 }
+
+test_verify_one_file! {
+    #[test] test_or_else verus_code! {
+        use vstd::prelude::*;
+
+        fn test_or_else_some() {
+            let opt: Option<u32> = Some(42);
+            let res = opt.or_else(|| -> (r: Option<u32>){ Some(31) });
+            assert(res == Some(42u32));
+        }
+
+        fn test_or_else_none_some() {
+            let opt: Option<u32> = None;
+
+            let res = opt.or_else(|| -> (r: Option<u32>)
+                    ensures r == Some(99u32),
+                { Some(99) },
+            );
+            assert(res == Some(99u32));
+        }
+
+        fn test_or_else_chain() {
+            let res = None::<u32>
+                .or_else(|| -> (r: Option<u32>)
+                        ensures r.is_none(),
+                    { None },
+                )
+                .or_else(|| -> (r: Option<u32>)
+                        ensures r == Some(10u32),
+                    { Some(10) },
+                )
+                .or_else(|| -> (r: Option<u32>)
+                        requires false,
+                        ensures false,
+                    { None },
+                );
+            assert(res == Some(10u32));
+        }
+    } => Ok(())
+}
