@@ -430,7 +430,7 @@ fn instantiate_pred_clauses<'tcx>(
             // we need but doesn't track the relation between the uninstantiated and
             // instantiated clauses.
             let inst =
-                rustc_middle::ty::EarlyBinder::bind(*clause).instantiate(tcx, args).skip_norm_wip();
+                rustc_middle::ty::EarlyBinder::bind(tcx, *clause).instantiate(tcx, args).skip_norm_wip();
             let is_self_trait_bound = *span == rustc_span::DUMMY_SP;
             if is_self_trait_bound {
                 if let ClauseKind::Trait(TraitPredicate { trait_ref, .. }) =

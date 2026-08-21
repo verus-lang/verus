@@ -252,7 +252,6 @@ pub(crate) fn translate_trait<'tcx>(
             kind,
             span,
             defaultness: _,
-            has_delayed_lints: _,
         } = trait_item;
         let (item_generics_params, item_typ_bounds) = check_generics_bounds_with_polarity(
             tcx,
@@ -375,7 +374,7 @@ pub(crate) fn translate_trait<'tcx>(
                     method_names.push(fun);
                 }
             }
-            TraitItemKind::Const(_ty, body_opt, _is_type_const) => {
+            TraitItemKind::Const(_ty, body_opt) => {
                 let param_names = vec![];
                 let (body_id, has_default) = match body_opt {
                     Some(_) if ex_trait_id_for.is_some() && !is_verus_spec => {
