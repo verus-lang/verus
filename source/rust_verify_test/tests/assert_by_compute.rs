@@ -385,6 +385,41 @@ test_verify_one_file! {
     } => Ok(())
 }
 
+// A `by (compute_only)` assertion should only force-reveal the functions it actually
+// calls, not every spec fn in the module - an unrelated opaque fn stays opaque.
+test_verify_one_file! {
+    #[test] fn_calls_cross_module_opaque_does_not_reveal_unrelated_fn verus_code! {
+        mod definitions {
+            use vstd::prelude::*;
+
+            #[verifier::opaque]
+            pub open spec fn u64_leading_zeros(i: u64) -> int
+                decreases i
+            {
+                if i == 0 { 64 } else { u64_leading_zeros(i / 2) - 1 }
+            }
+
+            #[verifier::opaque]
+            pub open spec fn unrelated(i: u64) -> int {
+                i as int + 1
+            }
+        }
+
+        mod caller {
+            use vstd::prelude::*;
+            use crate::definitions::{u64_leading_zeros, unrelated};
+
+            proof fn test_compute() {
+                assert(u64_leading_zeros(0) == 64) by (compute_only);
+            }
+
+            proof fn test_unrelated_still_opaque(i: u64) {
+                assert(unrelated(i) == i as int + 1); // FAILS: still opaque
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
 test_verify_one_file! {
     #[test] sequences verus_code! {
         #[allow(unused_imports)]
