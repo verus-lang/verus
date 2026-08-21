@@ -1171,7 +1171,7 @@ pub enum ExprX {
     /// If-else
     If(Expr, Expr, Option<Expr>),
     /// Match (Note: ast_simplify replaces Match with other expressions)
-    Match(Place, Arms),
+    Match(Place, Arms, bool),
     /// Loop (either "while", cond = Some(...), or "loop", cond = None), with invariants
     Loop {
         loop_isolation: bool,
@@ -1392,6 +1392,7 @@ pub enum StmtX {
         mode: Option<(Mode, DeclProph)>,
         init: Option<Place>,
         els: Option<Expr>,
+        assert_irrefutable: bool,
     },
 }
 
@@ -1535,6 +1536,11 @@ pub struct FunctionAttrsX {
     pub is_external_body: bool,
     /// Is the function marked unsafe (i.e., with the Rust keyword 'unsafe')
     pub is_unsafe: bool,
+    /// Does the exec trait function disallow impls from extending the ensures clause
+    /// (this makes it safe to remove a termination check from the exec function,
+    /// thereby indirectly allowing the exec function to express nontermination)
+    /// See https://github.com/verus-lang/verus/discussions/2661 .
+    pub impls_cannot_extend_spec: bool,
     /// Whether to assume that this function terminates
     pub exec_assume_termination: bool,
     /// Whether to allow this function to not terminate

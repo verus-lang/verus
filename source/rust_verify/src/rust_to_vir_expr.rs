@@ -2048,7 +2048,7 @@ pub(crate) fn expr_cast_enum_int_to_vir<'tcx>(
         vir_arms.push(vir_arm);
     }
     unsupported_err_unless!(vir_arms.len() > 0, expr.span, "Zero-sized empty Enum expr");
-    return Ok(mk_expr(ExprX::Match(place_vir, Arc::new(vir_arms)))?);
+    return Ok(mk_expr(ExprX::Match(place_vir, Arc::new(vir_arms), false))?);
 }
 
 pub(crate) fn expr_to_vir_innermost<'tcx>(
@@ -2107,7 +2107,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let vir_arm = ArmX { pattern, guard, body: rhs_body };
             vir_arms.push(bctx.spanned_new(rhs_span, vir_arm));
         }
-        Ok(ExprX::Match(vir_place, Arc::new(vir_arms)))
+        Ok(ExprX::Match(vir_place, Arc::new(vir_arms), false))
     };
 
     let expr_attrs = bctx.ctxt.tcx.hir_attrs(expr.hir_id);
@@ -3069,7 +3069,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 let vir_arm = ArmX { pattern, guard, body };
                 vir_arms.push(bctx.spanned_new(arm.span, vir_arm));
             }
-            mk_expr(ExprX::Match(vir_place, Arc::new(vir_arms)))
+            mk_expr(ExprX::Match(vir_place, Arc::new(vir_arms), false))
         }
         ExprKind::Loop(block, label, LoopSource::Loop, header_span) => {
             let label = bctx.fresh_label(expr.hir_id, label);
@@ -3799,7 +3799,10 @@ pub(crate) fn let_stmt_to_vir<'tcx>(
 
     let vir_pattern = pattern_to_vir(bctx, pattern)?;
     let mode = if infer_mode { None } else { Some((mode, proph_mode)) };
-    Ok(vec![bctx.spanned_new(pattern.span, StmtX::Decl { pattern: vir_pattern, mode, init, els })])
+    Ok(vec![bctx.spanned_new(
+        pattern.span,
+        StmtX::Decl { pattern: vir_pattern, mode, init, els, assert_irrefutable: false },
+    )])
 }
 
 fn unwrap_parameter_to_vir<'tcx>(
@@ -4755,7 +4758,8 @@ fn loop_isolation_boundary_check(
     if stmts.len() == 0 {
         return err();
     }
-    let StmtX::Decl { pattern, mode: _, init: Some(init), els: None } = &stmts[stmts.len() - 1].x
+    let StmtX::Decl { pattern, mode: _, init: Some(init), els: None, assert_irrefutable: false } =
+        &stmts[stmts.len() - 1].x
     else {
         return err();
     };
@@ -4769,7 +4773,7 @@ fn loop_isolation_boundary_check(
     let PlaceX::Temporary(temp) = &init.x else {
         return err();
     };
-    let ExprX::Match(_, arms) = &temp.x else {
+    let ExprX::Match(_, arms, false) = &temp.x else {
         return err();
     };
     if arms.len() != 1 {
