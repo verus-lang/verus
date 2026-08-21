@@ -61,7 +61,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.97.1
+          toolchain: 1.98.0
 
       - name: create temporary toolchain manifest for a rolling release
         if: inputs.is_rolling
