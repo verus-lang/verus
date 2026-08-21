@@ -435,10 +435,7 @@ fn check_fn_decl<'tcx>(
     }
 }
 
-pub(crate) fn find_body_krate<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    body_id: &BodyId,
-) -> &'tcx Body<'tcx> {
+pub(crate) fn find_body_krate<'tcx>(tcx: TyCtxt<'tcx>, body_id: &BodyId) -> &'tcx Body<'tcx> {
     // let owner = krate.owner(tcx, body_id.hir_id.owner.def_id);
     // if let MaybeOwner::Owner(owner) = owner {
     //     if let Some(body) = owner.nodes.bodies.get(&body_id.hir_id.local_id) {

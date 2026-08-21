@@ -1528,7 +1528,14 @@ fn mk_closure_magic_coercion_fn<'tcx, 'a>(
     let fnty = tcx.mk_ty_from_kind(TyKind::FnPtr(
         Binder::bind_with_vars(rustc_middle::ty::FnSigTys { inputs_and_output }, bound_var_kinds),
         rustc_middle::ty::FnHeader {
-            fn_sig_kind: FnSigKind::new(rustc_abi::ExternAbi::Rust, rustc_hir::Safety::Safe, false, None, input_tys.len()).expect("valid signature"),
+            fn_sig_kind: FnSigKind::new(
+                rustc_abi::ExternAbi::Rust,
+                rustc_hir::Safety::Safe,
+                false,
+                None,
+                input_tys.len(),
+            )
+            .expect("valid signature"),
         },
     ));
 

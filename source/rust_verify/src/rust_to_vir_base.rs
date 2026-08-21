@@ -429,8 +429,9 @@ fn instantiate_pred_clauses<'tcx>(
             // This is based on GenericPredicates.instantiate_into, which is close to what
             // we need but doesn't track the relation between the uninstantiated and
             // instantiated clauses.
-            let inst =
-                rustc_middle::ty::EarlyBinder::bind(tcx, *clause).instantiate(tcx, args).skip_norm_wip();
+            let inst = rustc_middle::ty::EarlyBinder::bind(tcx, *clause)
+                .instantiate(tcx, args)
+                .skip_norm_wip();
             let is_self_trait_bound = *span == rustc_span::DUMMY_SP;
             if is_self_trait_bound {
                 if let ClauseKind::Trait(TraitPredicate { trait_ref, .. }) =
@@ -1362,12 +1363,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                             def_path
                         }
                     } else {
-                        def_id_to_vir_path(
-                            tcx,
-                            verus_items,
-                            def_id,
-                            None::<&mut HashMap<_, _>>,
-                        )
+                        def_id_to_vir_path(tcx, verus_items, def_id, None::<&mut HashMap<_, _>>)
                     };
                     (Arc::new(TypX::Opaque { def_path: def_path, args: Arc::new(args) }), false)
                 }
@@ -2424,41 +2420,40 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
 
             // If the opaque type is defined by assume specification, recursively reveal the
             // bounds of the assume_specification opaque type too.
-            let assume_specification_ty_instantiated_bounds =
-                if let Some(assume_specification_ty) = assume_specification_ty {
-                    if let rustc_middle::ty::TyKind::Alias(_, assume_specification_al_ty) =
-                        assume_specification_ty.kind()
-                        && matches!(
-                            assume_specification_al_ty.kind,
-                            rustc_middle::ty::AliasTyKind::Opaque { .. }
-                        )
-                    {
-                        let assume_specification_alias_def_id = assume_specification_al_ty
-                            .kind
-                            .try_to_opaque()
-                            .expect("alias kind was checked to be opaque");
-                        let assume_specification_span =
-                            ctxt.tcx.def_span(assume_specification_alias_def_id);
+            let assume_specification_ty_instantiated_bounds = if let Some(assume_specification_ty) =
+                assume_specification_ty
+            {
+                if let rustc_middle::ty::TyKind::Alias(_, assume_specification_al_ty) =
+                    assume_specification_ty.kind()
+                    && matches!(
+                        assume_specification_al_ty.kind,
+                        rustc_middle::ty::AliasTyKind::Opaque { .. }
+                    )
+                {
+                    let assume_specification_alias_def_id = assume_specification_al_ty
+                        .kind
+                        .try_to_opaque()
+                        .expect("alias kind was checked to be opaque");
+                    let assume_specification_span =
+                        ctxt.tcx.def_span(assume_specification_alias_def_id);
 
-                        let assume_specification_typing_env = TypingEnv::non_body_analysis(
-                            ctxt.tcx,
-                            assume_specification_alias_def_id,
-                        );
-                        Some((
-                            ctxt.tcx.normalize_erasing_regions(
-                                assume_specification_typing_env,
-                                ctxt.tcx
-                                    .item_bounds(assume_specification_alias_def_id)
-                                    .instantiate(ctxt.tcx, assume_specification_al_ty.args),
-                            ),
-                            assume_specification_span,
-                        ))
-                    } else {
-                        return unmatch_err();
-                    }
+                    let assume_specification_typing_env =
+                        TypingEnv::non_body_analysis(ctxt.tcx, assume_specification_alias_def_id);
+                    Some((
+                        ctxt.tcx.normalize_erasing_regions(
+                            assume_specification_typing_env,
+                            ctxt.tcx
+                                .item_bounds(assume_specification_alias_def_id)
+                                .instantiate(ctxt.tcx, assume_specification_al_ty.args),
+                        ),
+                        assume_specification_span,
+                    ))
                 } else {
-                    None
-                };
+                    return unmatch_err();
+                }
+            } else {
+                None
+            };
 
             for i in 0..instantiated_bounds.len() {
                 match instantiated_bounds[i].kind().skip_binder() {
@@ -2496,10 +2491,9 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                             if let ClauseKind::Projection(assume_specification_pred) =
                                 assume_specification_ty_instantiated_bounds[i].kind().skip_binder()
                             {
-                                let assume_specification_item_def_id =
-                                    assume_specification_pred
-                                        .projection_term
-                                        .expect_projection_def_id();
+                                let assume_specification_item_def_id = assume_specification_pred
+                                    .projection_term
+                                    .expect_projection_def_id();
 
                                 if Some(assume_specification_item_def_id)
                                     == ctxt.tcx.lang_items().fn_once_output()

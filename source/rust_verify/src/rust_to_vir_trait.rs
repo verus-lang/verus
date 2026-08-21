@@ -245,14 +245,8 @@ pub(crate) fn translate_trait<'tcx>(
 
     for trait_item_id in trait_items {
         let trait_item = tcx.hir_trait_item(*trait_item_id);
-        let TraitItem {
-            ident,
-            owner_id,
-            generics: item_generics,
-            kind,
-            span,
-            defaultness: _,
-        } = trait_item;
+        let TraitItem { ident, owner_id, generics: item_generics, kind, span, defaultness: _ } =
+            trait_item;
         let (item_generics_params, item_typ_bounds) = check_generics_bounds_with_polarity(
             tcx,
             &ctxt.verus_items,
