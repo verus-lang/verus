@@ -420,6 +420,70 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
+// Reachability must follow multi-hop transitive calls, not just the directly named fn.
+test_verify_one_file! {
+    #[test] fn_calls_cross_module_opaque_transitive_chain verus_code! {
+        mod definitions {
+            use vstd::prelude::*;
+
+            #[verifier::opaque]
+            pub open spec fn d(i: u64) -> int { i as int }
+
+            #[verifier::opaque]
+            pub open spec fn c(i: u64) -> int { d(i) + 1 }
+
+            #[verifier::opaque]
+            pub open spec fn b(i: u64) -> int { c(i) + 1 }
+
+            #[verifier::opaque]
+            pub open spec fn a(i: u64) -> int { b(i) + 1 }
+        }
+
+        mod caller {
+            use vstd::prelude::*;
+            use crate::definitions::a;
+
+            proof fn test() {
+                assert(a(0) == 3) by (compute_only);
+            }
+        }
+    } => Ok(())
+}
+
+// Reachability must resolve calls made through dynamic trait dispatch.
+test_verify_one_file! {
+    #[test] fn_calls_cross_module_opaque_trait_dispatch verus_code! {
+        mod definitions {
+            use vstd::prelude::*;
+
+            pub trait Doubler {
+                spec fn double(&self, i: u64) -> int;
+            }
+
+            pub struct Impl {}
+
+            #[verifier::opaque]
+            pub open spec fn opaque_double(i: u64) -> int { 2 * i as int }
+
+            impl Doubler for Impl {
+                open spec fn double(&self, i: u64) -> int {
+                    opaque_double(i)
+                }
+            }
+        }
+
+        mod caller {
+            use vstd::prelude::*;
+            use crate::definitions::{Doubler, Impl};
+
+            proof fn test() {
+                let x = Impl {};
+                assert(x.double(3) == 6) by (compute_only);
+            }
+        }
+    } => Ok(())
+}
+
 test_verify_one_file! {
     #[test] sequences verus_code! {
         #[allow(unused_imports)]
