@@ -1026,3 +1026,71 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_bv_file! {
+    #[test] test_slice_starts_with verus_code! {
+        use vstd::prelude::*;
+
+        fn test_slice_starts_with(data: &[u8]) {
+            let result = data.starts_with(&[0xFFu8, 0xFEu8]);
+
+            assert(
+                result <==>
+                    data@.len() >= 2
+                    && data@[0] == 0xFF
+                    && data@[1] == 0xFE
+            );
+        }
+
+        fn test_overlong_prefix(data: &[u8])
+            requires
+                data@.len() < 3,
+        {
+            assert(!data.starts_with(&[1u8, 2u8, 3u8]));
+        }
+
+        fn test_empty_prefix(data: &[u8]) {
+            assert(data.starts_with(&[]));
+        }
+
+        fn test_empty_slice_starts_with_empty() {
+            let v: &[u8] = &[];
+            assert(v.starts_with(&[]));
+        }
+
+    } => Ok(())
+}
+
+test_verify_one_bv_file! {
+    #[test] test_slice_ends_with verus_code! {
+        use vstd::prelude::*;
+
+        fn test_slice_ends_with(data: &[u8]) {
+            let result = data.ends_with(&[0xFFu8, 0xFEu8]);
+
+            assert(
+                result <==>
+                    data@.len() >= 2
+                    && data@[data@.len() - 2] == 0xFF
+                    && data@[data@.len() - 1] == 0xFE
+            );
+        }
+
+        fn test_overlong_suffix(data: &[u8])
+            requires
+                data@.len() < 3,
+        {
+            assert(!data.ends_with(&[1u8, 2u8, 3u8]));
+        }
+
+        fn test_empty_suffix(data: &[u8]) {
+            assert(data.ends_with(&[]));
+        }
+
+        fn test_empty_slice_ends_with_empty() {
+            let v: &[u8] = &[];
+            assert(v.ends_with(&[]));
+        }
+
+    } => Ok(())
+}
