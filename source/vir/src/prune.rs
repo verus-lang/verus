@@ -892,7 +892,10 @@ fn direct_calls(e: &Expr, out: &mut HashSet<Fun>) {
 // The interpreter ignores opaqueness entirely, so `assert(e) by (compute)` needs the
 // body of every function transitively called from `e`, regardless of reveal/fuel -
 // not the bodies of every spec fn in the module (see issue #944's PR discussion).
-fn functions_reachable_for_compute(function_by_name: &HashMap<Fun, Function>, e: &Expr) -> HashSet<Fun> {
+fn functions_reachable_for_compute(
+    function_by_name: &HashMap<Fun, Function>,
+    e: &Expr,
+) -> HashSet<Fun> {
     let mut reached: HashSet<Fun> = HashSet::new();
     let mut worklist: Vec<Fun> = Vec::new();
     let mut seed: HashSet<Fun> = HashSet::new();
