@@ -725,6 +725,44 @@ pub mod parsing {
     use super::*;
     use crate::parse::{Parse, ParseStream, Result};
 
+    // By default, an `external`/`external_body` function's body is plain Rust, not
+    // Verus syntax, so it's skipped and copied through verbatim rather than
+    // structurally parsed - see verus-lang/verus#2792.
+    pub(crate) fn is_external_body(attrs: &[Attribute]) -> bool {
+        attrs.iter().any(|attr| {
+            attr.path().segments.len() == 2
+                && attr.path().segments[0].ident == "verifier"
+                && (attr.path().segments[1].ident == "external"
+                    || attr.path().segments[1].ident == "external_body")
+                || attr.path().segments.len() == 1
+                    && matches!(
+                        attr.path().segments[0].ident.to_string().as_str(),
+                        "verifier" | "verus_verify"
+                    )
+                    && match &attr.meta {
+                        attr::Meta::List(list) => {
+                            matches!(
+                                list.tokens.to_string().as_str(),
+                                "external" | "external_body",
+                            )
+                        }
+                        _ => false,
+                    }
+        })
+    }
+
+    pub(crate) fn parse_fn_body_block(
+        input: ParseStream,
+        verbatim_body: bool,
+    ) -> Result<Vec<Stmt>> {
+        if verbatim_body {
+            let expr = Expr::Verbatim(input.parse()?);
+            Ok(Vec::from([Stmt::Expr(expr, None)]))
+        } else {
+            input.call(Block::parse_within)
+        }
+    }
+
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for Publish {
         fn parse(input: ParseStream) -> Result<Self> {
