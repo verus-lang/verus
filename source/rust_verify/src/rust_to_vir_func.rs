@@ -18,7 +18,7 @@ use rustc_hir::{
 };
 use rustc_middle::ty::{
     AdtDef, BoundRegion, BoundRegionKind, BoundVar, Clause, ClauseKind, ConstKind, GenericArg,
-    GenericArgKind, GenericArgsRef, Region, RegionKind, TyCtxt, TyKind, TypingEnv, ValTreeKind,
+    GenericArgKind, GenericArgsRef, IsRigid, Region, RegionKind, TyCtxt, TyKind, TypingEnv, ValTreeKind,
     Value,
 };
 use rustc_mir_build_verus::verus::BodyErasure;
@@ -505,9 +505,12 @@ fn compare_external_ty_or_true<'tcx>(
         (TyKind::RawPtr(t1, m1), TyKind::RawPtr(t2, m2)) => m1 == m2 && check_t(t1, t2),
         (TyKind::Array(t1, len1), TyKind::Array(t2, len2)) => len1 == len2 && check_t(t1, t2),
         (TyKind::Adt(a1, args1), TyKind::Adt(a2, args2)) => a1 == a2 && check_args(args1, args2),
-        (TyKind::Alias(t1), TyKind::Alias(t2)) => {
+        (TyKind::Alias(rigid1, t1), TyKind::Alias(rigid2, t2)) => {
             let k1 = t1.kind;
             let k2 = t2.kind;
+            if rigid1 != rigid2 {
+                return false;
+            }
             if std::mem::discriminant(&k1) != std::mem::discriminant(&k2) {
                 return false;
             }
@@ -661,10 +664,15 @@ fn compare_external_ty<'tcx>(
     // we recursively reach all the nested opaque types.
     else {
         match (ty1.kind(), ty2.kind()) {
-            (rustc_middle::ty::TyKind::Alias(al_ty1), rustc_middle::ty::TyKind::Alias(al_ty2))
+            (rustc_middle::ty::TyKind::Alias(is_rigid1, al_ty1), rustc_middle::ty::TyKind::Alias(is_rigid2, al_ty2))
                 if matches!(al_ty1.kind, rustc_middle::ty::AliasTyKind::Opaque { .. })
                     && matches!(al_ty2.kind, rustc_middle::ty::AliasTyKind::Opaque { .. }) =>
             {
+                assert!(
+                    matches!(is_rigid1, IsRigid::No) &&
+                    matches!(is_rigid2, IsRigid::No),
+                    "IsRigid should always be `No` with old trait solver"
+                );
                 // two opaque types. We compare their trait bounds
                 let ty1_bounds = tcx.normalize_erasing_regions(
                     TypingEnv::non_body_analysis(tcx, al_ty1.kind.def_id()),
@@ -2496,7 +2504,7 @@ pub(crate) fn remove_ignored_trait_bounds_from_predicates<'tcx>(
                         {
                             false
                         }
-                        ty::TyKind::Alias(_) if Some(tp.trait_ref.args[0]) == ex_trait_assoc => {
+                        ty::TyKind::Alias(_, _) if Some(tp.trait_ref.args[0]) == ex_trait_assoc => {
                             false
                         }
                         _ => true,

@@ -901,7 +901,7 @@ pub(crate) fn mid_ty_filter_for_external_impls<'tcx>(
         // The "impl<T> From<!> for T" causes a real conflict with "impl<T> From<T> for T",
         // so don't auto-import ! for now.
         TyKind::Never => false,
-        TyKind::Alias(t) => match t.kind {
+        TyKind::Alias(_, t) => match t.kind {
             AliasTyKind::Opaque { .. } | AliasTyKind::Free { .. } => false,
             AliasTyKind::Projection { .. } | AliasTyKind::Inherent { .. } => {
                 let trait_def = ctxt.tcx.generics_of(t.kind.def_id()).parent;
@@ -1240,7 +1240,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
 
             (Arc::new(TypX::AnonymousClosure(args, ret, kind, id)), false)
         }
-        TyKind::Alias(al_ty) => {
+        TyKind::Alias(_, al_ty) => {
             match al_ty.kind {
                 rustc_middle::ty::AliasTyKind::Projection { def_id: _ }
                 | rustc_middle::ty::AliasTyKind::Inherent { def_id: _ } => {
@@ -1251,7 +1251,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                     use crate::rustc_trait_selection::traits::NormalizeExt;
                     let param_env = tcx.param_env(param_env_src);
                     let infcx = tcx.infer_ctxt().ignoring_regions().build(
-                        rustc_type_ir::TypingMode::Analysis {
+                        rustc_type_ir::TypingMode::Typeck {
                             defining_opaque_types_and_generators: Default::default(),
                         },
                     );
@@ -2376,7 +2376,7 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
         ty.kind(),
         assume_specification_ty.map(|assume_specification_ty| assume_specification_ty.kind()),
     ) {
-        (rustc_middle::ty::TyKind::Alias(al_ty), _)
+        (rustc_middle::ty::TyKind::Alias(_, al_ty), _)
             if matches!(al_ty.kind, rustc_middle::ty::AliasTyKind::Opaque { .. }) =>
         {
             let span = ctxt.tcx.def_span(al_ty.kind.def_id());
@@ -2423,7 +2423,7 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
             // bounds of the assume_specification opaque type too.
             let assume_specification_ty_instantiated_bounds =
                 if let Some(assume_specification_ty) = assume_specification_ty {
-                    if let rustc_middle::ty::TyKind::Alias(assume_specification_al_ty) =
+                    if let rustc_middle::ty::TyKind::Alias(_, assume_specification_al_ty) =
                         assume_specification_ty.kind()
                         && matches!(
                             assume_specification_al_ty.kind,
