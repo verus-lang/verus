@@ -368,15 +368,8 @@ pub(crate) fn no_builtin_err(span: &vir::messages::Span) -> VirErr {
     .help("For getting started with Verus, see: https://verus-lang.github.io/verus/guide/getting_started.html")
 }
 
-/// Iterate over all owners in the crate without introducing an `analysis` query dependency.
-pub(crate) fn iter_crate_owners<'tcx>(
+pub(crate) fn iter_crate_free_items<'tcx>(
     tcx: rustc_middle::ty::TyCtxt<'tcx>,
-) -> impl Iterator<Item = rustc_hir::MaybeOwner<'tcx>> {
-    let num_defs = tcx.definitions_untracked().num_definitions();
-    (0..num_defs).map(move |i| {
-        let def_id = rustc_hir::def_id::LocalDefId {
-            local_def_index: rustc_span::def_id::DefIndex::from_usize(i),
-        };
-        tcx.lower_to_hir(def_id)
-    })
+) -> impl Iterator<Item = &'tcx rustc_hir::Item<'tcx>> {
+    tcx.hir_crate_items(()).free_items().map(move |item_id| tcx.hir_item(item_id))
 }

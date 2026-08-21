@@ -23,7 +23,7 @@ use std::rc::Rc;
 use rustc_ast::IsAuto;
 use rustc_hir::{
     ConstItemRhs, ForeignItem, ForeignItemId, ForeignItemKind, ImplItemKind, Item, ItemId,
-    ItemKind, MaybeOwner, Mutability, OwnerNode,
+    ItemKind, Mutability,
 };
 
 use std::collections::HashMap;
@@ -436,20 +436,13 @@ pub fn crate_to_vir<'a, 'tcx>(
     let mut errors = vec![];
 
     let mut typs_sizes_set: HashMap<TypIgnoreImplPaths, u128> = HashMap::new();
-    for owner_opt in crate::util::iter_crate_owners(tcx) {
-        if let MaybeOwner::Owner(owner) = owner_opt {
-            match owner.node() {
-                OwnerNode::Item(item) => {
-                    if let Err(err) = crate::rust_to_vir_global::process_const_early(
-                        &mut ctxtx,
-                        &mut typs_sizes_set,
-                        item,
-                    ) {
-                        errors.push(err);
-                    }
-                }
-                _ => (),
-            }
+    for item in crate::util::iter_crate_free_items(tcx) {
+        if let Err(err) = crate::rust_to_vir_global::process_const_early(
+            &mut ctxtx,
+            &mut typs_sizes_set,
+            item,
+        ) {
+            errors.push(err);
         }
     }
 
@@ -486,27 +479,20 @@ pub fn crate_to_vir<'a, 'tcx>(
             vir::ast::ModuleX { path: root_module_path.clone(), reveals: None },
         ));
     }
-    for owner_opt in crate::util::iter_crate_owners(tcx) {
-        if let MaybeOwner::Owner(owner) = owner_opt {
-            match owner.node() {
-                OwnerNode::Item(
-                    item @ Item { kind: ItemKind::Mod(_ident, _module), owner_id, .. },
-                ) => {
-                    let path = def_id_to_vir_path_option(
-                        ctxt.tcx,
-                        Some(&ctxt.verus_items),
-                        owner_id.to_def_id(),
-                    );
-                    if let Some(path) = path {
-                        if used_modules.contains(&path) {
-                            vir.modules.push(ctxt.spanned_new(
-                                item.span,
-                                vir::ast::ModuleX { path: path.clone(), reveals: None },
-                            ));
-                        }
-                    }
+    for item in crate::util::iter_crate_free_items(tcx) {
+        if let Item { kind: ItemKind::Mod(_ident, _module), owner_id, .. } = item {
+            let path = def_id_to_vir_path_option(
+                ctxt.tcx,
+                Some(&ctxt.verus_items),
+                owner_id.to_def_id(),
+            );
+            if let Some(path) = path {
+                if used_modules.contains(&path) {
+                    vir.modules.push(ctxt.spanned_new(
+                        item.span,
+                        vir::ast::ModuleX { path: path.clone(), reveals: None },
+                    ));
                 }
-                _ => {}
             }
         }
     }

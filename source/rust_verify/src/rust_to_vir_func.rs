@@ -17,9 +17,9 @@ use rustc_hir::{
     HirId, Param, Safety,
 };
 use rustc_middle::ty::{
-    AdtDef, BoundRegion, BoundRegionKind, BoundVar, Clause, ClauseKind, ConstKind, GenericArg,
-    GenericArgKind, GenericArgsRef, IsRigid, Region, RegionKind, TyCtxt, TyKind, TypingEnv, ValTreeKind,
-    Value,
+    AdtDef, AliasTyKind, BoundRegion, BoundRegionKind, BoundVar, Clause, ClauseKind, ConstKind,
+    GenericArg, GenericArgKind, GenericArgsRef, IsRigid, Region, RegionKind, TyCtxt, TyKind,
+    TypingEnv, ValTreeKind, Value,
 };
 use rustc_mir_build_verus::verus::BodyErasure;
 use rustc_span::Span;
@@ -511,17 +511,32 @@ fn compare_external_ty_or_true<'tcx>(
             if rigid1 != rigid2 {
                 return false;
             }
-            if std::mem::discriminant(&k1) != std::mem::discriminant(&k2) {
-                return false;
-            }
-            if tcx.associated_item(k1.def_id()).name() != tcx.associated_item(k2.def_id()).name() {
+            let (def_id1, def_id2) = match (k1, k2) {
+                (
+                    AliasTyKind::Projection { def_id: def_id1 },
+                    AliasTyKind::Projection { def_id: def_id2 },
+                )
+                | (
+                    AliasTyKind::Inherent { def_id: def_id1 },
+                    AliasTyKind::Inherent { def_id: def_id2 },
+                )
+                | (
+                    AliasTyKind::Opaque { def_id: def_id1 },
+                    AliasTyKind::Opaque { def_id: def_id2 },
+                )
+                | (AliasTyKind::Free { def_id: def_id1 }, AliasTyKind::Free { def_id: def_id2 }) => {
+                    (def_id1, def_id2)
+                }
+                _ => return false,
+            };
+            if tcx.associated_item(def_id1).name() != tcx.associated_item(def_id2).name() {
                 return false;
             }
             if !check_args(&t1.args, &t2.args) {
                 return false;
             }
-            let trait_def1 = tcx.generics_of(k1.def_id()).parent;
-            let trait_def2 = tcx.generics_of(k2.def_id()).parent;
+            let trait_def1 = tcx.generics_of(def_id1).parent;
+            let trait_def2 = tcx.generics_of(def_id2).parent;
             match (trait_def1, trait_def2) {
                 (None, None) => true,
                 (Some(trait_def1), Some(trait_def2)) => {
@@ -579,8 +594,8 @@ fn compare_clause_kind<'tcx>(
             rustc_middle::ty::ClauseKind::Projection(pred1),
             rustc_middle::ty::ClauseKind::Projection(pred2),
         ) => {
-            let projection_term_eq =
-                pred1.projection_term.def_id() == pred2.projection_term.def_id();
+            let projection_term_eq = pred1.projection_term.expect_projection_def_id()
+                == pred2.projection_term.expect_projection_def_id();
             let term_eq =
                 if let (rustc_middle::ty::TermKind::Ty(ty1), rustc_middle::ty::TermKind::Ty(ty2)) =
                     (pred1.term.kind(), pred2.term.kind())
@@ -664,23 +679,28 @@ fn compare_external_ty<'tcx>(
     // we recursively reach all the nested opaque types.
     else {
         match (ty1.kind(), ty2.kind()) {
-            (rustc_middle::ty::TyKind::Alias(is_rigid1, al_ty1), rustc_middle::ty::TyKind::Alias(is_rigid2, al_ty2))
-                if matches!(al_ty1.kind, rustc_middle::ty::AliasTyKind::Opaque { .. })
-                    && matches!(al_ty2.kind, rustc_middle::ty::AliasTyKind::Opaque { .. }) =>
+            (
+                rustc_middle::ty::TyKind::Alias(is_rigid1, al_ty1),
+                rustc_middle::ty::TyKind::Alias(is_rigid2, al_ty2),
+            ) if matches!(al_ty1.kind, rustc_middle::ty::AliasTyKind::Opaque { .. })
+                && matches!(al_ty2.kind, rustc_middle::ty::AliasTyKind::Opaque { .. }) =>
             {
                 assert!(
-                    matches!(is_rigid1, IsRigid::No) &&
-                    matches!(is_rigid2, IsRigid::No),
+                    matches!(is_rigid1, IsRigid::No) && matches!(is_rigid2, IsRigid::No),
                     "IsRigid should always be `No` with old trait solver"
                 );
                 // two opaque types. We compare their trait bounds
+                let def_id1 =
+                    al_ty1.kind.try_to_opaque().expect("alias kind was checked to be opaque");
+                let def_id2 =
+                    al_ty2.kind.try_to_opaque().expect("alias kind was checked to be opaque");
                 let ty1_bounds = tcx.normalize_erasing_regions(
-                    TypingEnv::non_body_analysis(tcx, al_ty1.kind.def_id()),
-                    tcx.item_bounds(al_ty1.kind.def_id()).instantiate(tcx, al_ty1.args),
+                    TypingEnv::non_body_analysis(tcx, def_id1),
+                    tcx.item_bounds(def_id1).instantiate(tcx, al_ty1.args),
                 );
                 let ty2_bounds = tcx.normalize_erasing_regions(
-                    TypingEnv::non_body_analysis(tcx, al_ty2.kind.def_id()),
-                    tcx.item_bounds(al_ty2.kind.def_id()).instantiate(tcx, al_ty2.args),
+                    TypingEnv::non_body_analysis(tcx, def_id2),
+                    tcx.item_bounds(def_id2).instantiate(tcx, al_ty2.args),
                 );
                 if ty1_bounds.len() != ty2_bounds.len() {
                     return false;
