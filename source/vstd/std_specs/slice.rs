@@ -413,7 +413,7 @@ pub assume_specification<T: Copy, R: core::ops::RangeBounds<usize>>[ <[T]>::copy
 #[verifier::external_type_specification]
 #[verifier::external_body]
 #[verifier::accept_recursive_types(T)]
-pub struct ExChunks<'a, T: 'a>(std::slice::Chunks<'a, T>);
+pub struct ExChunks<'a, T: 'a>(Chunks<'a, T>);
 
 // To allow reasoning about the "chunks" of the slice iterator, without using
 // a prophecy, we need a function that gives us the the sequence of chunk slices
