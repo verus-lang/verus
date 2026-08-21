@@ -14,9 +14,8 @@ use crate::verus_items::{BuiltinTypeItem, VerusItem};
 use crate::{unsupported_err, unsupported_err_unless};
 use rustc_hir::{
     Attribute, Body, BodyId, Expr, ExprKind, FnDecl, FnHeader, FnSig, Generics, HeaderSafety,
-    HirId, MaybeOwner, Param, Safety,
+    HirId, Param, Safety,
 };
-use rustc_middle::hir::Crate;
 use rustc_middle::ty::{
     AdtDef, BoundRegion, BoundRegionKind, BoundVar, Clause, ClauseKind, ConstKind, GenericArg,
     GenericArgKind, GenericArgsRef, Region, RegionKind, TyCtxt, TyKind, TypingEnv, ValTreeKind,
@@ -437,21 +436,21 @@ fn check_fn_decl<'tcx>(
 }
 
 pub(crate) fn find_body_krate<'tcx>(
-    krate: &'tcx Crate<'tcx>,
     tcx: TyCtxt<'tcx>,
     body_id: &BodyId,
 ) -> &'tcx Body<'tcx> {
-    let owner = krate.owner(tcx, body_id.hir_id.owner.def_id);
-    if let MaybeOwner::Owner(owner) = owner {
-        if let Some(body) = owner.nodes.bodies.get(&body_id.hir_id.local_id) {
-            return body;
-        }
-    }
-    panic!("Body not found");
+    // let owner = krate.owner(tcx, body_id.hir_id.owner.def_id);
+    // if let MaybeOwner::Owner(owner) = owner {
+    //     if let Some(body) = owner.nodes.bodies.get(&body_id.hir_id.local_id) {
+    //         return body;
+    //     }
+    // }
+    // panic!("Body not found");
+    tcx.hir_body(*body_id)
 }
 
 pub(crate) fn find_body<'tcx>(ctxt: &ContextX<'tcx>, body_id: &BodyId) -> &'tcx Body<'tcx> {
-    find_body_krate(ctxt.krate, ctxt.tcx, body_id)
+    find_body_krate(ctxt.tcx, body_id)
 }
 
 // Check for any obvious type mismatches
