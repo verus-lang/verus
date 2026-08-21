@@ -903,7 +903,14 @@ impl Dealloc {
 /// Allocate with the global allocator.
 /// The precondition should be consistent with the [documented safety conditions on `alloc`](https://doc.rust-lang.org/alloc/alloc/trait.GlobalAlloc.html#tymethod.alloc).
 /// Returns a pointer with a corresponding [`PointsToRaw`] and [`Dealloc`] permissions.
-#[cfg(feature = "std")]
+///
+/// # Panics
+///
+/// This function invokes [`alloc::alloc::handle_alloc_error`] when the
+/// allocation request cannot be served. Depending on the platform, this
+/// function may abort the process or unwind. It does so before minting any
+/// capability to access the (failed) allocation.
+#[cfg(feature = "alloc")]
 #[verifier::external_body]
 pub fn allocate(size: usize, align: usize) -> (pt: (
     *mut u8,
@@ -931,7 +938,7 @@ pub fn allocate(size: usize, align: usize) -> (pt: (
     // SAFETY: size != 0
     let p = unsafe { ::alloc::alloc::alloc(layout) };
     if p == core::ptr::null_mut() {
-        std::process::abort();
+        alloc::alloc::handle_alloc_error(layout);
     }
     (p, Tracked::assume_new(), Tracked::assume_new())
 }
