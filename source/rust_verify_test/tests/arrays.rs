@@ -464,3 +464,59 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test]
+    array_equality_uses_view verus_code! {
+        use vstd::prelude::*;
+
+        fn check<const N: usize>(left: [u8; N], right: [u8; N]) -> (result: bool)
+            ensures
+                result == (left@ =~= right@),
+        {
+            left == right
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test]
+    slice_ref_equals_array verus_code! {
+        use vstd::prelude::*;
+
+        fn check<const N: usize>(left: &[u8], right: [u8; N]) -> (result: bool)
+            ensures
+                result == (left@ =~= right@),
+        {
+            left == right
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test]
+    array_equals_slice_ref verus_code! {
+        use vstd::prelude::*;
+
+        fn check<const N: usize>(left: [u8; N], right: &[u8]) -> (result: bool)
+            ensures
+                result == (left@ =~= right@),
+        {
+            left == right
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test]
+    slice_ref_equals_array_ref_uses_view verus_code! {
+        use vstd::prelude::*;
+
+        fn check(left: &[u8], right: &[u8; 11]) -> (result: bool)
+            ensures
+                result == (left@ =~= right@),
+        {
+            left == right
+        }
+    } => Ok(())
+}
