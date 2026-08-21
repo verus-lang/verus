@@ -2605,9 +2605,8 @@ impl Verifier {
         }
 
         self.air_no_span = {
-            let hir_crate = tcx.hir_crate(());
+            let crate_owner = tcx.lower_to_hir(rustc_span::def_id::CRATE_DEF_ID);
             let no_span = {
-                let crate_owner = hir_crate.owner(tcx, rustc_span::def_id::CRATE_DEF_ID);
                 let owner_info = crate_owner.as_owner().expect("OwnerNode::Crate missing");
                 let OwnerNode::Crate(c) = owner_info.node() else {
                     panic!("OwnerNode::Crate missing");
@@ -3036,9 +3035,12 @@ pub(crate) static BODY_HIR_ID_TO_REVEAL_PATH_RES: std::sync::RwLock<
     >,
 > = std::sync::RwLock::new(None);
 
-fn hir_crate<'tcx>(tcx: TyCtxt<'tcx>, _: ()) -> rustc_middle::hir::Crate<'tcx> {
-    let crate_ = (rustc_interface::DEFAULT_QUERY_PROVIDERS.queries.hir_crate)(tcx, ());
-    crate::hir_hide_reveal_rewrite::hir_hide_reveal_rewrite(crate_, tcx)
+fn lower_to_hir<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    def_id: rustc_hir::def_id::LocalDefId,
+) -> rustc_hir::MaybeOwner<'tcx> {
+    let owner = (rustc_interface::DEFAULT_QUERY_PROVIDERS.queries.lower_to_hir)(tcx, def_id);
+    crate::hir_hide_reveal_rewrite::hir_hide_reveal_rewrite(owner, tcx)
 }
 
 impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
@@ -3072,7 +3074,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
 
         if self.verifier.args.no_lifetime {
             config.override_queries = Some(|_session, providers| {
-                providers.queries.hir_crate = hir_crate;
+                providers.queries.lower_to_hir = lower_to_hir;
                 providers.queries.mir_const_qualif =
                     |_, _| rustc_middle::mir::ConstQualifs::default();
                 providers.queries.lint_mod = |_, _| {};
@@ -3093,7 +3095,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             });
         } else {
             config.override_queries = Some(|_session, providers| {
-                providers.queries.hir_crate = hir_crate;
+                providers.queries.lower_to_hir = lower_to_hir;
                 providers.queries.mir_const_qualif =
                     |_, _| rustc_middle::mir::ConstQualifs::default();
                 providers.queries.lint_mod = |_, _| {};
