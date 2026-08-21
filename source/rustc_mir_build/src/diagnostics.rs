@@ -1435,3 +1435,15 @@ pub(crate) struct ConstContinueUnknownJumpTarget {
     #[primary_span]
     pub span: Span,
 }
+
+#[derive(Diagnostic)]
+#[diag("unreachable {$descr}")]
+pub(crate) struct UnreachableDueToUninhabited<'desc, 'tcx> {
+    pub descr: &'desc str,
+    #[label("unreachable {$descr}")]
+    pub expr: Span,
+    #[label("any code following this expression is unreachable")]
+    #[note("this expression has type `{$ty}`, which is uninhabited")]
+    pub orig: Span,
+    pub ty: Ty<'tcx>,
+}
