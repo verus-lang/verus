@@ -416,7 +416,7 @@ pub assume_specification<T: Copy, R: core::ops::RangeBounds<usize>>[ <[T]>::copy
 pub struct ExChunks<'a, T: 'a>(std::slice::Chunks<'a, T>);
 
 // To allow reasoning about the "chunks" of the slice iterator, without using
-// a prophecy, we need a function that gives us the the sequence of chunk slices 
+// a prophecy, we need a function that gives us the the sequence of chunk slices
 // remaining in the iterator.
 pub uninterp spec fn after_chunks_elts<'a, T: 'a>(i: Chunks<'a, T>) -> Seq<&'a [T]>;
 
