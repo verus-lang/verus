@@ -15,6 +15,10 @@ use super::std_specs::iter::IteratorSpec;
 use super::utf8::*;
 use super::view::*;
 
+#[cfg(verus_keep_ghost)]
+#[cfg(not(verus_verify_core))]
+use super::std_specs::cmp::PartialEqSpecImpl;
+
 verus! {
 
 broadcast use {super::seq::group_seq_lemmas, super::slice::group_slice_axioms};
@@ -34,6 +38,30 @@ impl DeepView for str {
         self.view()
     }
 }
+
+// PartialEq for str / String: SpecImpl + bare assume_specification (same pattern as
+// bool/integers and open PRs #2773/#2776). eq_spec is Seq<char> view equality —
+// matching Rust (Unicode scalars). `ne` comes from ExPartialEq. `verus_keep_ghost`
+// required because PartialEqSpecImpl lives under std_specs.
+//
+// Rust also provides String↔str and String↔&str (alloc::string::impl_eq!); those
+// cross-type SpecImpls are included so `"a" == some_string` verifies (issue #2765 / C12).
+#[cfg(verus_keep_ghost)]
+#[cfg(not(verus_verify_core))]
+impl PartialEqSpecImpl for str {
+    open spec fn obeys_eq_spec() -> bool {
+        true
+    }
+
+    open spec fn eq_spec(&self, other: &str) -> bool {
+        self@ == other@
+    }
+}
+
+#[cfg(verus_keep_ghost)]
+#[cfg(not(verus_verify_core))]
+pub assume_specification[ <str as PartialEq>::eq ](s: &str, other: &str) -> bool
+;
 
 #[cfg(not(verus_verify_core))]
 pub trait StringSliceAdditionalSpecFns {
@@ -317,6 +345,86 @@ impl DeepView for String {
     }
 }
 
+// String == String (replaces older ensures-only assume_specification; same SpecImpl style as str)
+#[cfg(verus_keep_ghost)]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+impl PartialEqSpecImpl for String {
+    open spec fn obeys_eq_spec() -> bool {
+        true
+    }
+
+    open spec fn eq_spec(&self, other: &String) -> bool {
+        self@ == other@
+    }
+}
+
+#[cfg(verus_keep_ghost)]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+pub assume_specification[ <String as PartialEq>::eq ](s: &String, other: &String) -> bool
+;
+
+// String == str  /  str == String
+#[cfg(verus_keep_ghost)]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+impl PartialEqSpecImpl<str> for String {
+    open spec fn obeys_eq_spec() -> bool {
+        true
+    }
+
+    open spec fn eq_spec(&self, other: &str) -> bool {
+        self@ == other@
+    }
+}
+
+#[cfg(verus_keep_ghost)]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+pub assume_specification[ <String as PartialEq<str>>::eq ](s: &String, other: &str) -> bool
+;
+
+#[cfg(verus_keep_ghost)]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+impl PartialEqSpecImpl<String> for str {
+    open spec fn obeys_eq_spec() -> bool {
+        true
+    }
+
+    open spec fn eq_spec(&self, other: &String) -> bool {
+        self@ == other@
+    }
+}
+
+#[cfg(verus_keep_ghost)]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+pub assume_specification[ <str as PartialEq<String>>::eq ](s: &str, other: &String) -> bool
+;
+
+// String == &str  /  &str == String  (typical `"lit" == s` / `s == "lit"`)
+#[cfg(verus_keep_ghost)]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+impl PartialEqSpecImpl<&str> for String {
+    open spec fn obeys_eq_spec() -> bool {
+        true
+    }
+
+    open spec fn eq_spec(&self, other: &&str) -> bool {
+        self@ == (*other)@
+    }
+}
+
+// assume_specification for String↔&str lives in std_specs/string.rs (verus_!) —
+// verusfmt cannot parse `'_0` lifetime binders inside `verus!` (see cmp.rs).
+#[cfg(verus_keep_ghost)]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+impl<'a> PartialEqSpecImpl<String> for &'a str {
+    open spec fn obeys_eq_spec() -> bool {
+        true
+    }
+
+    open spec fn eq_spec(&self, other: &String) -> bool {
+        (**self)@ == other@
+    }
+}
+
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]
 #[verifier::external_type_specification]
 #[verifier::external_body]
@@ -344,12 +452,6 @@ pub assume_specification<'a>[ <String as core::ops::Deref>::deref ](s: &'a Strin
 pub assume_specification[ <String as Clone>::clone ](s: &String) -> (res: String)
     ensures
         res == s,
-;
-
-#[cfg(all(feature = "alloc", not(verus_verify_core)))]
-pub assume_specification[ <String as PartialEq>::eq ](s: &String, other: &String) -> (res: bool)
-    ensures
-        res == (s@ == other@),
 ;
 
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]

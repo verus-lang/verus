@@ -945,3 +945,159 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_one_fails(e)
 }
+
+// Regression for https://github.com/verus-lang/verus/issues/2765 —
+// executable &str equality must connect to Seq<char> view equality.
+test_verify_one_file! {
+    #[test] test_str_partial_eq_view_issue_2765 verus_code! {
+        use vstd::prelude::*;
+
+        struct TextSource;
+
+        uninterp spec fn modeled_text(source: &TextSource) -> Seq<char>;
+
+        #[verifier::external_body]
+        fn get_text<'a>(source: &'a TextSource) -> (result: &'a str)
+            ensures
+                result@ == modeled_text(source),
+        {
+            "hello world"
+        }
+
+        spec fn is_hello(source: &TextSource) -> bool {
+            modeled_text(source) == "hello world"@
+        }
+
+        fn check(source: &TextSource) -> (result: bool)
+            ensures
+                result == is_hello(source),
+        {
+            get_text(source) == "hello world"
+        }
+
+        fn empty_eq() {
+            assert("" == "");
+        }
+
+        fn empty_ne() {
+            assert("" != "x");
+        }
+
+        uninterp spec fn modeled_unicode() -> Seq<char>;
+
+        #[verifier::external_body]
+        fn get_unicode() -> (result: &'static str)
+            ensures
+                result@ == modeled_unicode(),
+        {
+            "café"
+        }
+
+        fn check_unicode() -> (result: bool)
+            ensures
+                result == (modeled_unicode() == "café"@),
+        {
+            get_unicode() == "café"
+        }
+
+        fn ne_from_views(a: &str, b: &str)
+            requires
+                a@ != b@,
+        {
+            assert(a != b);
+        }
+
+        fn eq_method(a: &str, b: &str) -> (r: bool)
+            ensures
+                r == (a@ == b@),
+        {
+            a.eq(b)
+        }
+
+        // C12: String ↔ &str / str (Rust alloc::string::impl_eq!)
+        fn string_eq_str_lit() -> (b: bool)
+            ensures
+                b,
+        {
+            let s = String::from_str("hi");
+            s == "hi"
+        }
+
+        fn str_lit_eq_string() -> (b: bool)
+            ensures
+                b,
+        {
+            let s = String::from_str("hi");
+            "hi" == s
+        }
+
+        fn string_eq_str_from_views(s: String, t: &str) -> (b: bool)
+            requires
+                s@ == t@,
+            ensures
+                b,
+        {
+            s == t
+        }
+
+        fn str_eq_string_from_views(t: &str, s: String) -> (b: bool)
+            requires
+                t@ == s@,
+            ensures
+                b,
+        {
+            t == s
+        }
+
+        fn string_ne_str_from_views(s: String, t: &str) -> (b: bool)
+            requires
+                s@ != t@,
+            ensures
+                b,
+        {
+            s != t
+        }
+
+        fn cross_empty() -> (b: bool)
+            ensures
+                b,
+        {
+            let s = String::from_str("");
+            s == ""
+        }
+
+        fn cross_unicode() -> (b: bool)
+            ensures
+                b,
+        {
+            let s = String::from_str("café");
+            s == "café"
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_str_partial_eq_view_issue_2765_fail verus_code! {
+        use vstd::prelude::*;
+
+        fn bad(a: &str, b: &str)
+            requires
+                a@ != b@,
+        {
+            assert(a == b); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] test_string_str_cross_partial_eq_fail verus_code! {
+        use vstd::prelude::*;
+
+        fn bad(s: String, t: &str)
+            requires
+                s@ != t@,
+        {
+            assert(s == t); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
