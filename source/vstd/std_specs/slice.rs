@@ -5,8 +5,7 @@ use super::iter::IteratorSpec;
 use super::range::{slice_range_end, slice_range_start, slice_range_valid};
 
 use core::ops::{
-    FnMut, Index, IndexMut, OneSidedRange, Range, RangeFrom, RangeFull, RangeInclusive, RangeTo,
-    RangeToInclusive,
+    FnMut, Index, IndexMut, Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive,
 };
 use core::slice::{
     Iter, RSplit, RSplitMut, RSplitN, RSplitNMut, SliceIndex, Split, SplitInclusive,
@@ -524,14 +523,6 @@ pub open spec fn slice_predicate_split_view<I, F, T>(
                 || !fnmut_predicate_observed(pred, source[i]))
 }
 
-pub open spec fn slice_split_off_partition<T>(
-    source: Seq<T>,
-    remaining: Seq<T>,
-    removed: Seq<T>,
-) -> bool {
-    removed + remaining == source || remaining + removed == source
-}
-
 pub open spec fn slice_split_off_first_result<T>(
     source: Seq<T>,
     remaining: Seq<T>,
@@ -695,35 +686,6 @@ pub assume_specification<'a, T, F: FnMut(&T) -> bool>[ <[T]>::rsplitn_mut::<F> ]
     ensures
         slice_predicate_split_view::<RSplitNMut<'a, T, F>, F, T>(
             iter, old(slice)@, pred, false, true, n as int,
-        ),
-;
-
-#[verifier::allow(undeclared_external_trait)]
-pub assume_specification<'a, T, R: OneSidedRange<usize>>[ <[T]>::split_off::<R> ](
-    slice_ref: &mut &'a [T],
-    range: R,
-) -> (ret: Option<&'a [T]>)
-    ensures
-        ret.is_none() ==> (*final(slice_ref))@ == (*old(slice_ref))@,
-        ret.is_some() ==> slice_split_off_partition::<T>(
-            (*old(slice_ref))@, (*final(slice_ref))@, ret.unwrap()@,
-        ),
-;
-
-#[verifier::allow(undeclared_external_trait)]
-pub assume_specification<'a, T, R: OneSidedRange<usize>>[
-    <[T]>::split_off_mut::<R>
-](
-    slice_ref: &mut &'a mut [T],
-    range: R,
-) -> (ret: Option<&'a mut [T]>)
-    ensures
-        ret.is_none() ==> (*final(slice_ref))@ == (*old(slice_ref))@,
-        ret.is_some() ==> slice_split_off_partition::<T>(
-            (*old(slice_ref))@, (*final(slice_ref))@, ret.unwrap()@,
-        ),
-        ret.is_some() ==> slice_split_off_partition::<T>(
-            (*old(slice_ref))@, (*final(slice_ref))@, final(ret.unwrap())@,
         ),
 ;
 
