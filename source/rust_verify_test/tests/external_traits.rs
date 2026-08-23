@@ -54,7 +54,7 @@ test_verify_one_file! {
         }
 
         assume_specification [<X as Tr>::foo](x: &X) -> (r: usize)
-            ensures r > 3;
+            ensures r > 3,
         ;
 
         fn test(x: &X) {
