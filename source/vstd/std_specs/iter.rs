@@ -5,11 +5,7 @@ use super::super::seq::{
 
 use verus as verus_;
 
-<<<<<<< HEAD
-use core::iter::{FromIterator, Iterator, Rev};
-=======
-use core::iter::{Filter, Iterator, Rev};
->>>>>>> 1d5328159 (Apply proven specs to the Rust version.)
+use core::iter::{Filter, FromIterator, Iterator, Rev};
 
 verus_! {
 
@@ -190,22 +186,19 @@ pub trait ExIterator {
                         f.ensures((#[trigger] old(self).remaining()[i],), false)
                 }
             };
-    //#[verifier::when_used_as_spec(into_filter_spec)]
+
     fn filter<P>(self, predicate: P) -> (r: core::iter::Filter<Self, P>)
         where
             Self: Sized,
             P: FnMut(&Self::Item) -> bool,
         requires
             self.obeys_prophetic_iter_laws(),
-            // `filter`'s implementation loops over the inner iterator until the
-            // predicate accepts an element, so it needs a decreases metric to
-            // prove termination.
+            // `filter`'s implementation loops over the inner iterator until the predicate accepts an element, 
+            // so it needs a decreases metric to prove termination.
             self.decrease() is Some,
             forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(predicate, (&self.remaining()[k], )),
-            self.initial_value_relation(&self),
         default_ensures
-            self.obeys_prophetic_iter_laws() && self.initial_value_relation(&self) ==>
-                r == into_filter_spec::<Self, P>(self, predicate) && filter_post(self, predicate, r),
+            self.obeys_prophetic_iter_laws() ==> filter_post(self, predicate, r),
     ;
 
 }
@@ -415,9 +408,6 @@ pub uninterp spec fn filter_fun<I, F>(r: Filter<I, F>) -> F;
 // inner iterator's elements
 pub uninterp spec fn filter_keep<I, F>(r: Filter<I, F>) -> Seq<bool>;
 
-// Spec version of Filter::new()
-pub uninterp spec fn into_filter_spec<I, F>(i: I, f: F) -> Filter<I, F>;
-
 // Ideally, we would write this postcondition directly on the definition of
 // Iterator::filter above.  However, to do so, we would need to impose a trait
 // bound of `Self: IteratorSpec`.  However, this introduces a cyclic
@@ -425,19 +415,17 @@ pub uninterp spec fn into_filter_spec<I, F>(i: I, f: F) -> Filter<I, F>;
 // we introduce a layer of indirection via this uninterp spec function.
 pub uninterp spec fn filter_post<I, F>(i: I, f: F, r: Filter<I, F>) -> bool;
 
-pub broadcast axiom fn filter_postcondition<I, F>(i: I, f: F)
+pub broadcast axiom fn filter_postcondition<I, F>(i: I, f: F, r: core::iter::Filter<I, F>)
     where
         I: IteratorSpec,
         F: FnMut(&I::Item) -> bool,
     requires
         i.obeys_prophetic_iter_laws(),
         i.decrease() is Some,
-        i.initial_value_relation(&i),
         forall |k| #![auto] 0 <= k < i.remaining().len() ==> call_requires(f, (&i.remaining()[k], )),
-        filter_post(i, f, into_filter_spec(i, f)),
+        #[trigger] filter_post(i, f, r),
     ensures
         {
-            let r = #[trigger] into_filter_spec(i, f);
             let keep = filter_keep(r);
             {
             // `keep` records, for each inspected inner element, the predicate's decision
@@ -453,7 +441,6 @@ pub broadcast axiom fn filter_postcondition<I, F>(i: I, f: F)
                         && call_ensures(f, (&i.remaining()[j],), true)
             &&& IteratorSpec::will_return_none(&r) ==> i.will_return_none() && keep.len() == i.remaining().len()
             &&& IteratorSpec::decrease(&r) is Some == i.decrease() is Some
-            &&& IteratorSpec::initial_value_relation(&r, &r)
             &&& filter_iter(r) == i
             &&& filter_fun(r) == f
             }
@@ -477,12 +464,6 @@ impl <I, P> IteratorSpecImpl for core::iter::Filter<I, P>
 
     #[verifier::prophetic]
     uninterp spec fn will_return_none(&self) -> bool;
-
-    #[verifier::prophetic]
-    open spec fn initial_value_relation(&self, init: &Self) -> bool {
-        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-        &&& filter_iter(*self).initial_value_relation(&filter_iter(*init))
-    }
 
     uninterp spec fn decrease(&self) -> Option<nat>;
 
