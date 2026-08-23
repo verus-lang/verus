@@ -82,7 +82,7 @@ pub trait ExIterator {
         where
             Self: Sized,
             U: IntoIterator,
-        default_ensures
+        ensures
             self.obeys_prophetic_iter_laws() ==> zip_post(self, other, r),
     ;
 
