@@ -122,6 +122,30 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test]
+    position_works verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        fn test(v: Vec<u32>) {
+            let v_result = v.into_iter().position(
+                |i| -> (ret: bool)
+                ensures ret == (i < 10),
+                {i < 10},
+            );
+            if let Some(index) = v_result {
+                assert(index < v.len());
+                assert(v@.contains(v[index as int]));
+                assert(v[index as int] < 10);
+                assert(forall |i: int| 0 <= i < index as int ==> v[i] >= 10);
+            } else {
+                assert(forall |i: int| 0 <= i < v.len() ==> v[i] >= 10);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] all_works verus_code! {
         use vstd::prelude::*;
         use vstd::std_specs::iter::IteratorSpec;
@@ -479,5 +503,44 @@ test_verify_one_file! {
             }
         }
 
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test]
+    position_and_then_bound verus_code! {
+        use vstd::prelude::*;
+        use vstd::seq::group_seq_lemmas;
+        use vstd::std_specs::slice::group_slice_axioms;
+
+        fn test(
+            data: &[u8],
+            end: usize,
+        ) -> Option<usize>
+            requires
+                end <= data.len(),
+        {
+            broadcast use group_seq_lemmas;
+            broadcast use group_slice_axioms;
+
+            data[..end]
+                .iter()
+                .position(
+                    |x: &u8| -> (r: bool)
+                        ensures r == (*x != 0),
+                    {
+                        *x != 0
+                    },
+                )
+                .and_then(
+                    |start: usize| -> (r: Option<usize>)
+                        requires
+                            (start as int) < end as int,
+                    {
+                        assert(start < end);
+                        Some(start)
+                    },
+                )
+        }
     } => Ok(())
 }
