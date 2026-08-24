@@ -74,9 +74,9 @@ jobs:
       - name: build
         working-directory: ./source
         run: |
-          . ../tools/activate
-          vargo clean
-          vargo build --release
+          cargo clean
+          cargo build --release
+          cargo run --release -p cargo-verus -- build --release --manifest-path vstd/Cargo.toml
 
       - name: create archive
         working-directory: ./source
