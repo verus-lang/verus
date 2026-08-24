@@ -63,11 +63,13 @@ jobs:
         with:
           toolchain: 1.98.0
 
-      - name: create temporary toolchain manifest for a rolling release
-        if: inputs.is_rolling
+      - name: create temporary toolchain manifest
         working-directory: ./source
+        # Note that the purpose of creating a manifest file here is to include it in the build.
+        # This flow is *not* responsible for committing the new manifest file.
         run: |
-          cargo run -p cargo-verus-toolchains --bin create-manifest -- --rolling --write-to-dir cargo-verus/toolchain-manifests
+          MAYBE_ROLLING_FLAG="${{ inputs.is_rolling && '--rolling' || '' }}"
+          cargo run -p cargo-verus-toolchains --bin create-manifest -- $MAYBE_ROLLING_FLAG --write-to-dir cargo-verus/toolchain-manifests
 
       - name: build
         working-directory: ./source
