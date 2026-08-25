@@ -420,26 +420,6 @@ pub struct ExChunks<'a, T: 'a>(Chunks<'a, T>);
 // remaining in the iterator.
 pub uninterp spec fn after_chunks_elts<'a, T: 'a>(i: Chunks<'a, T>) -> Seq<&'a [T]>;
 
-pub open spec fn _check_chunks_result<'a, T: 'a>(
-    source: Seq<T>,
-    chunk_size: nat,
-    chunks: Seq<&'a [T]>,
-) -> bool {
-    &&& chunk_size > 0
-    &&& chunks.len() == (source.len() + chunk_size - 1) / (chunk_size as int)
-    &&& forall|i: int|
-        #![trigger chunks[i]]
-        0 <= i < chunks.len() ==> {
-            let start = i * (chunk_size as int);
-            let end = if start + (chunk_size as int) <= source.len() {
-                start + (chunk_size as int)
-            } else {
-                source.len() as int
-            };
-            chunks[i]@ == source.subrange(start, end)
-        }
-}
-
 impl<'a, T: 'a> super::iter::IteratorSpecImpl for Chunks<'a, T> {
     open spec fn obeys_prophetic_iter_laws(&self) -> bool {
         true
@@ -460,12 +440,28 @@ impl<'a, T: 'a> super::iter::IteratorSpecImpl for Chunks<'a, T> {
     }
 }
 
-pub assume_specification<'a, T> [ <[T]>::chunks ] (s: &'a [T], chunk_size: usize) -> (iter: Chunks<'a, T>)
+pub assume_specification<'a, T>[ <[T]>::chunks ](s: &'a [T], chunk_size: usize) -> (iter: Chunks<
+    'a,
+    T,
+>)
     requires
         chunk_size > 0,
     ensures
         IteratorSpec::remaining(&iter) == after_chunks_elts(iter),
-        _check_chunks_result(s@, chunk_size as nat, after_chunks_elts(iter)),
+        IteratorSpec::remaining(&iter).len() == (s@.len() + chunk_size as int - 1) / (
+        chunk_size as int),
+        forall|i: int|
+            #![trigger IteratorSpec::remaining(&iter)[i]]
+            0 <= i < IteratorSpec::remaining(&iter).len() ==> {
+                let start = i * chunk_size as int;
+                let end = if start + chunk_size as int <= s@.len() {
+                    start + chunk_size as int
+                } else {
+                    s@.len() as int
+                };
+
+                IteratorSpec::remaining(&iter)[i]@ == s@.subrange(start, end)
+            },
         IteratorSpec::decrease(&iter) is Some,
 ;
 
