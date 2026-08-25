@@ -12,6 +12,7 @@ use super::slice::*;
 #[cfg(verus_keep_ghost)]
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]
 use super::std_specs::iter::IteratorSpec;
+use super::std_specs::range::{ExRange, RangeBoundsSpec, slice_range_end, slice_range_start, slice_range_valid};
 use super::utf8::*;
 use super::view::*;
 
@@ -487,6 +488,69 @@ impl<'a> super::std_specs::iter::IteratorSpecImpl for Chars<'a> {
         } else {
             None
         }
+    }
+}
+
+// There are various types you can use to index into a `str` to get a
+// slice, i.e., to implement `SliceIndex<str>`. Here we indicate, for
+// each such type (e.g., `Range<usize>`), whether an index of that
+// type is valid when applied to a given `&str`.
+
+pub open spec fn str_slice_index_req<R: RangeBoundsSpec<usize>>(range: &R, s: &str) -> bool {
+    &&& slice_range_valid(range, s.spec_bytes().len() as nat)
+    &&& is_char_boundary(s.spec_bytes(), slice_range_start(range))
+    &&& is_char_boundary(s.spec_bytes(), slice_range_end(range, s.spec_bytes().len() as nat))
+}
+
+impl super::slice::SliceIndexSpecImpl<str> for (core::ops::Bound<usize>, core::ops::Bound<usize>) {
+    open spec fn index_req(&self, s: &str) -> bool {
+        str_slice_index_req(self, s)
+    }
+}
+
+impl super::slice::SliceIndexSpecImpl<str> for core::ops::Range<usize> {
+    open spec fn index_req(&self, s: &str) -> bool {
+        str_slice_index_req(self, s)
+    }
+}
+
+impl super::slice::SliceIndexSpecImpl<str> for core::ops::RangeFrom<usize> {
+    open spec fn index_req(&self, s: &str) -> bool {
+        str_slice_index_req(self, s)
+    }
+}
+
+impl super::slice::SliceIndexSpecImpl<str> for core::ops::RangeFull {
+    open spec fn index_req(&self, s: &str) -> bool {
+        str_slice_index_req(self, s)
+    }
+}
+
+impl super::slice::SliceIndexSpecImpl<str> for core::ops::RangeInclusive<usize> {
+    open spec fn index_req(&self, s: &str) -> bool {
+        str_slice_index_req(self, s)
+    }
+}
+
+impl super::slice::SliceIndexSpecImpl<str> for core::ops::RangeTo<usize> {
+    open spec fn index_req(&self, s: &str) -> bool {
+        str_slice_index_req(self, s)
+    }
+}
+
+impl super::slice::SliceIndexSpecImpl<str> for core::ops::RangeToInclusive<usize> {
+    open spec fn index_req(&self, s: &str) -> bool {
+        str_slice_index_req(self, s)
+    }
+}
+
+// `<str as ops::Index<I>>::index(&self, index: I)` just invokes
+// `index.index(self)`. So we likewise delegate determining the meaning
+// of the string-index operation to that of the index type.
+impl<I: SliceIndexSpec<str>> super::std_specs::core::IndexSpecImpl<I> for str
+{
+    open spec fn index_req(&self, index: &I) -> bool {
+        index.index_req(self)
     }
 }
 

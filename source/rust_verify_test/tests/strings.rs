@@ -133,6 +133,204 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_str_index_ranges verus_code! {
+        use core::ops::{Bound, Index};
+        use vstd::prelude::*;
+        use vstd::string::StringSliceAdditionalSpecFns;
+        use vstd::utf8::*;
+
+        fn bound_pair(s: &str)
+            requires
+                valid_utf8(s.spec_bytes()),
+                s.len() == 5,
+                s.is_char_boundary(2),
+                s.is_char_boundary(4),
+        {
+            broadcast use group_utf8_lib;
+            let _: &str = &s[(Bound::Excluded(1), Bound::Included(3))];
+            let _: &str = &s[(Bound::Unbounded, Bound::Unbounded)];
+        }
+
+        fn range(s: &str)
+            requires
+                valid_utf8(s.spec_bytes()),
+                s.len() == 5,
+                s.is_char_boundary(1),
+                s.is_char_boundary(3),
+        {
+            let _: &str = &s[1..3];
+            let _: &str = s.index(1..3);
+        }
+
+        fn range_from(s: &str)
+            requires
+                valid_utf8(s.spec_bytes()),
+                s.len() == 5,
+                s.is_char_boundary(2),
+        {
+            broadcast use group_utf8_lib;
+            let _: &str = &s[2..];
+        }
+
+        fn range_full(s: &str)
+            requires
+                valid_utf8(s.spec_bytes()),
+        {
+            broadcast use group_utf8_lib;
+            let _: &str = &s[..];
+        }
+
+        fn range_inclusive(s: &str)
+            requires
+                valid_utf8(s.spec_bytes()),
+                s.len() == 5,
+                s.is_char_boundary(1),
+                s.is_char_boundary(4),
+        {
+            let _: &str = &s[1..=3];
+        }
+
+        fn range_to(s: &str)
+            requires
+                valid_utf8(s.spec_bytes()),
+                s.len() == 5,
+                s.is_char_boundary(4),
+        {
+            broadcast use group_utf8_lib;
+            let _: &str = &s[..4];
+        }
+
+        fn range_to_inclusive(s: &str)
+            requires
+                valid_utf8(s.spec_bytes()),
+                s.len() == 5,
+                s.is_char_boundary(4),
+        {
+            broadcast use group_utf8_lib;
+            let _: &str = &s[..=3];
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_str_index_ranges_fail verus_code! {
+        use core::ops::Bound;
+        use vstd::prelude::*;
+
+        fn bound_pair_end_out_of_bounds(s: &str)
+            requires
+                s.len() == 5,
+        {
+            let _ = &s[(Bound::Unbounded, Bound::Included(5))]; // FAILS
+        }
+
+        fn bound_pair_start_not_char_boundary(s: &str)
+            requires
+                s.len() == 5,
+                !s.is_char_boundary(2),
+                s.is_char_boundary(4),
+        {
+            let _ = &s[(Bound::Excluded(1), Bound::Included(3))]; // FAILS
+        }
+
+        fn range_start_after_end(s: &str)
+            requires
+                s.len() == 5,
+                s.is_char_boundary(1),
+                s.is_char_boundary(3),
+        {
+            let _ = &s[3..1]; // FAILS
+        }
+
+        fn range_end_out_of_bounds(s: &str)
+            requires
+                s.len() == 5,
+        {
+            let _ = &s[3..7]; // FAILS
+        }
+
+        fn range_start_not_char_boundary(s: &str)
+            requires
+                s.len() == 5,
+                !s.is_char_boundary(1),
+                s.is_char_boundary(3),
+        {
+            let _ = &s[1..3]; // FAILS
+        }
+
+        fn range_end_not_char_boundary(s: &str)
+            requires
+                s.len() == 5,
+                s.is_char_boundary(1),
+                !s.is_char_boundary(3),
+        {
+            let _ = &s[1..3]; // FAILS
+        }
+
+        fn range_from_out_of_bounds(s: &str)
+            requires
+                s.len() == 5,
+        {
+            let _ = &s[7..]; // FAILS
+        }
+
+        fn range_from_not_char_boundary(s: &str)
+            requires
+                s.len() == 5,
+                !s.is_char_boundary(2),
+        {
+            let _ = &s[2..]; // FAILS
+        }
+
+        fn range_inclusive_end_out_of_bounds(s: &str)
+            requires
+                s.len() == 5,
+        {
+            let _ = &s[1..=5]; // FAILS
+        }
+
+        fn range_inclusive_end_not_char_boundary(s: &str)
+            requires
+                s.len() == 5,
+                s.is_char_boundary(1),
+                !s.is_char_boundary(4),
+        {
+            let _ = &s[1..=3]; // FAILS
+        }
+
+        fn range_to_out_of_bounds(s: &str)
+            requires
+                s.len() == 5,
+        {
+            let _ = &s[..7]; // FAILS
+        }
+
+        fn range_to_not_char_boundary(s: &str)
+            requires
+                s.len() == 5,
+                !s.is_char_boundary(4),
+        {
+            let _ = &s[..4]; // FAILS
+        }
+
+        fn range_to_inclusive_out_of_bounds(s: &str)
+            requires
+                s.len() == 5,
+        {
+            let _ = &s[..=5]; // FAILS
+        }
+
+        fn range_to_inclusive_not_char_boundary(s: &str)
+            requires
+                s.len() == 5,
+                !s.is_char_boundary(4),
+        {
+            let _ = &s[..=3]; // FAILS
+        }
+    } => Err(err) => assert_fails(err, 14)
+}
+
+test_verify_one_file! {
     #[test] test_passes_multi verus_code! {
         use vstd::string::*;
 
