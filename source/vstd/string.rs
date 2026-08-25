@@ -498,56 +498,56 @@ impl<'a> super::std_specs::iter::IteratorSpecImpl for Chars<'a> {
 // slice, i.e., to implement `SliceIndex<str>`. Here we indicate, for
 // each such type (e.g., `Range<usize>`), whether an index of that
 // type is valid when applied to a given `&str`.
-#[cfg(not(verus_verify_core))]
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 pub open spec fn str_slice_index_req<R: RangeBoundsSpec<usize>>(range: &R, s: &str) -> bool {
     &&& slice_range_valid(range, s.spec_bytes().len())
     &&& is_char_boundary(s.spec_bytes(), slice_range_start(range))
     &&& is_char_boundary(s.spec_bytes(), slice_range_end(range, s.spec_bytes().len()))
 }
 
-#[cfg(not(verus_verify_core))]
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 impl super::slice::SliceIndexSpecImpl<str> for (core::ops::Bound<usize>, core::ops::Bound<usize>) {
     open spec fn index_req(&self, s: &str) -> bool {
         str_slice_index_req(self, s)
     }
 }
 
-#[cfg(not(verus_verify_core))]
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 impl super::slice::SliceIndexSpecImpl<str> for core::ops::Range<usize> {
     open spec fn index_req(&self, s: &str) -> bool {
         str_slice_index_req(self, s)
     }
 }
 
-#[cfg(not(verus_verify_core))]
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 impl super::slice::SliceIndexSpecImpl<str> for core::ops::RangeFrom<usize> {
     open spec fn index_req(&self, s: &str) -> bool {
         str_slice_index_req(self, s)
     }
 }
 
-#[cfg(not(verus_verify_core))]
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 impl super::slice::SliceIndexSpecImpl<str> for core::ops::RangeFull {
     open spec fn index_req(&self, s: &str) -> bool {
         str_slice_index_req(self, s)
     }
 }
 
-#[cfg(not(verus_verify_core))]
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 impl super::slice::SliceIndexSpecImpl<str> for core::ops::RangeInclusive<usize> {
     open spec fn index_req(&self, s: &str) -> bool {
         str_slice_index_req(self, s)
     }
 }
 
-#[cfg(not(verus_verify_core))]
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 impl super::slice::SliceIndexSpecImpl<str> for core::ops::RangeTo<usize> {
     open spec fn index_req(&self, s: &str) -> bool {
         str_slice_index_req(self, s)
     }
 }
 
-#[cfg(not(verus_verify_core))]
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 impl super::slice::SliceIndexSpecImpl<str> for core::ops::RangeToInclusive<usize> {
     open spec fn index_req(&self, s: &str) -> bool {
         str_slice_index_req(self, s)
@@ -557,8 +557,7 @@ impl super::slice::SliceIndexSpecImpl<str> for core::ops::RangeToInclusive<usize
 // `<str as ops::Index<I>>::index(&self, index: I)` just invokes
 // `index.index(self)`. So we likewise delegate determining the meaning
 // of the string-index operation to that of the index type.
-#[cfg(verus_keep_ghost)]
-#[cfg(not(verus_verify_core))]
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 impl<I: SliceIndexSpec<str>> super::std_specs::core::IndexSpecImpl<I> for str {
     open spec fn index_req(&self, index: &I) -> bool {
         index.index_req(self)
