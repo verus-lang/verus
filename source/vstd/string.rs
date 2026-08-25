@@ -12,7 +12,9 @@ use super::slice::*;
 #[cfg(verus_keep_ghost)]
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]
 use super::std_specs::iter::IteratorSpec;
-use super::std_specs::range::{ExRange, RangeBoundsSpec, slice_range_end, slice_range_start, slice_range_valid};
+use super::std_specs::range::{
+    ExRange, RangeBoundsSpec, slice_range_end, slice_range_start, slice_range_valid,
+};
 use super::utf8::*;
 use super::view::*;
 
@@ -495,7 +497,6 @@ impl<'a> super::std_specs::iter::IteratorSpecImpl for Chars<'a> {
 // slice, i.e., to implement `SliceIndex<str>`. Here we indicate, for
 // each such type (e.g., `Range<usize>`), whether an index of that
 // type is valid when applied to a given `&str`.
-
 #[cfg(not(verus_verify_core))]
 pub open spec fn str_slice_index_req<R: RangeBoundsSpec<usize>>(range: &R, s: &str) -> bool {
     &&& slice_range_valid(range, s.spec_bytes().len())
@@ -555,8 +556,7 @@ impl super::slice::SliceIndexSpecImpl<str> for core::ops::RangeToInclusive<usize
 // `<str as ops::Index<I>>::index(&self, index: I)` just invokes
 // `index.index(self)`. So we likewise delegate determining the meaning
 // of the string-index operation to that of the index type.
-impl<I: SliceIndexSpec<str>> super::std_specs::core::IndexSpecImpl<I> for str
-{
+impl<I: SliceIndexSpec<str>> super::std_specs::core::IndexSpecImpl<I> for str {
     open spec fn index_req(&self, index: &I) -> bool {
         index.index_req(self)
     }
