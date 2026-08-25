@@ -345,6 +345,9 @@ test_verify_one_file_with_options! {
         #[verifier::external_trait_specification]
         pub trait ExIntoIterator {
             type ExternalTraitSpecificationFor: core::iter::IntoIterator;
+
+            type Item;
+            type IntoIter: core::iter::Iterator<Item = Self::Item>;
         }
 
         #[verifier::external_type_specification]
@@ -357,6 +360,7 @@ test_verify_one_file_with_options! {
             type ExternalTraitSpecificationFor: core::iter::Iterator;
             type Item;
             fn count(self) -> usize where Self: Sized;
+            #[verifier::impls_cannot_extend_spec]
             fn cmp<I>(self, other: I) -> core::cmp::Ordering where Self: core::iter::Iterator, I: core::iter::IntoIterator<Item = <Self as core::iter::Iterator>::Item>, <Self as core::iter::Iterator>::Item: Ord, Self: Sized;
         }
 
