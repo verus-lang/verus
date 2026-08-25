@@ -139,6 +139,8 @@ test_verify_one_file! {
         use vstd::string::StringSliceAdditionalSpecFns;
         use vstd::utf8::*;
 
+        broadcast use group_utf8_lib;
+
         fn bound_pair(s: &str)
             requires
                 valid_utf8(s.spec_bytes()),
@@ -146,14 +148,12 @@ test_verify_one_file! {
                 s.is_char_boundary(2),
                 s.is_char_boundary(4),
         {
-            broadcast use group_utf8_lib;
             let _: &str = &s[(Bound::Excluded(1), Bound::Included(3))];
             let _: &str = &s[(Bound::Unbounded, Bound::Unbounded)];
         }
 
         fn range(s: &str)
             requires
-                valid_utf8(s.spec_bytes()),
                 s.len() == 5,
                 s.is_char_boundary(1),
                 s.is_char_boundary(3),
@@ -168,7 +168,6 @@ test_verify_one_file! {
                 s.len() == 5,
                 s.is_char_boundary(2),
         {
-            broadcast use group_utf8_lib;
             let _: &str = &s[2..];
         }
 
@@ -176,13 +175,11 @@ test_verify_one_file! {
             requires
                 valid_utf8(s.spec_bytes()),
         {
-            broadcast use group_utf8_lib;
             let _: &str = &s[..];
         }
 
         fn range_inclusive(s: &str)
             requires
-                valid_utf8(s.spec_bytes()),
                 s.len() == 5,
                 s.is_char_boundary(1),
                 s.is_char_boundary(4),
@@ -196,7 +193,6 @@ test_verify_one_file! {
                 s.len() == 5,
                 s.is_char_boundary(4),
         {
-            broadcast use group_utf8_lib;
             let _: &str = &s[..4];
         }
 
@@ -206,7 +202,6 @@ test_verify_one_file! {
                 s.len() == 5,
                 s.is_char_boundary(4),
         {
-            broadcast use group_utf8_lib;
             let _: &str = &s[..=3];
         }
     } => Ok(())
@@ -216,9 +211,14 @@ test_verify_one_file! {
     #[test] test_str_index_ranges_fail verus_code! {
         use core::ops::Bound;
         use vstd::prelude::*;
+        use vstd::string::StringSliceAdditionalSpecFns;
+        use vstd::utf8::*;
+
+        broadcast use group_utf8_lib;
 
         fn bound_pair_end_out_of_bounds(s: &str)
             requires
+                valid_utf8(s.spec_bytes()),
                 s.len() == 5,
         {
             let _ = &s[(Bound::Unbounded, Bound::Included(5))]; // FAILS
@@ -226,6 +226,7 @@ test_verify_one_file! {
 
         fn bound_pair_start_not_char_boundary(s: &str)
             requires
+                valid_utf8(s.spec_bytes()),
                 s.len() == 5,
                 !s.is_char_boundary(2),
                 s.is_char_boundary(4),
@@ -235,6 +236,7 @@ test_verify_one_file! {
 
         fn range_start_after_end(s: &str)
             requires
+                valid_utf8(s.spec_bytes()),
                 s.len() == 5,
                 s.is_char_boundary(1),
                 s.is_char_boundary(3),
@@ -244,6 +246,7 @@ test_verify_one_file! {
 
         fn range_end_out_of_bounds(s: &str)
             requires
+                valid_utf8(s.spec_bytes()),
                 s.len() == 5,
         {
             let _ = &s[3..7]; // FAILS
@@ -251,6 +254,7 @@ test_verify_one_file! {
 
         fn range_start_not_char_boundary(s: &str)
             requires
+                valid_utf8(s.spec_bytes()),
                 s.len() == 5,
                 !s.is_char_boundary(1),
                 s.is_char_boundary(3),
@@ -260,6 +264,7 @@ test_verify_one_file! {
 
         fn range_end_not_char_boundary(s: &str)
             requires
+                valid_utf8(s.spec_bytes()),
                 s.len() == 5,
                 s.is_char_boundary(1),
                 !s.is_char_boundary(3),
@@ -269,6 +274,7 @@ test_verify_one_file! {
 
         fn range_from_out_of_bounds(s: &str)
             requires
+                valid_utf8(s.spec_bytes()),
                 s.len() == 5,
         {
             let _ = &s[7..]; // FAILS
@@ -276,6 +282,7 @@ test_verify_one_file! {
 
         fn range_from_not_char_boundary(s: &str)
             requires
+                valid_utf8(s.spec_bytes()),
                 s.len() == 5,
                 !s.is_char_boundary(2),
         {
@@ -284,6 +291,7 @@ test_verify_one_file! {
 
         fn range_inclusive_end_out_of_bounds(s: &str)
             requires
+                valid_utf8(s.spec_bytes()),
                 s.len() == 5,
         {
             let _ = &s[1..=5]; // FAILS
@@ -291,6 +299,7 @@ test_verify_one_file! {
 
         fn range_inclusive_end_not_char_boundary(s: &str)
             requires
+                valid_utf8(s.spec_bytes()),
                 s.len() == 5,
                 s.is_char_boundary(1),
                 !s.is_char_boundary(4),
@@ -300,6 +309,7 @@ test_verify_one_file! {
 
         fn range_to_out_of_bounds(s: &str)
             requires
+                valid_utf8(s.spec_bytes()),
                 s.len() == 5,
         {
             let _ = &s[..7]; // FAILS
@@ -307,6 +317,7 @@ test_verify_one_file! {
 
         fn range_to_not_char_boundary(s: &str)
             requires
+                valid_utf8(s.spec_bytes()),
                 s.len() == 5,
                 !s.is_char_boundary(4),
         {
@@ -315,6 +326,7 @@ test_verify_one_file! {
 
         fn range_to_inclusive_out_of_bounds(s: &str)
             requires
+                valid_utf8(s.spec_bytes()),
                 s.len() == 5,
         {
             let _ = &s[..=5]; // FAILS
@@ -322,6 +334,7 @@ test_verify_one_file! {
 
         fn range_to_inclusive_not_char_boundary(s: &str)
             requires
+                valid_utf8(s.spec_bytes()),
                 s.len() == 5,
                 !s.is_char_boundary(4),
         {
