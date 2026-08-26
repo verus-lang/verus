@@ -632,3 +632,66 @@ test_verify_one_file! {
         assert!(err.errors[0].message.contains("Could not automatically infer triggers for this quantifier"));
     }
 }
+
+// https://github.com/verus-lang/verus/issues/740: an automatically-chosen trigger that
+// references a let-bound variable whose value is an if/else becomes an invalid Z3 pattern
+// once Z3 inlines the let (Z3 rejects `if` in patterns and silently drops the trigger).
+test_verify_one_file! {
+    #[test] issue740_auto_trigger_through_if_let verus_code! {
+        use vstd::prelude::*;
+
+        pub struct Foo {
+            pub field1: Vec<u64>,
+            pub field2: Vec<u64>,
+        }
+
+        pub open spec fn example(field_num: int, foo: Foo) -> bool {
+            let field = if field_num == 1 {
+                foo.field1
+            } else {
+                foo.field2
+            };
+            forall |i: int| 0 <= i < field.len() ==> field@[i] == 5
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Z3 does not allow `if` inside a trigger pattern")
+}
+
+// unlike test_trigger_block_regression_121_1 (where the `let` is nested *inside* the
+// quantifier), a manual trigger referencing a variable let-bound *outside* the quantifier
+// isn't caught by the "let variables in triggers not supported" check, so it hits the same
+// if/else-after-inlining check as the automatic case above
+test_verify_one_file! {
+    #[test] issue740_manual_trigger_through_if_let verus_code! {
+        use vstd::prelude::*;
+
+        pub struct Foo {
+            pub field1: Vec<u64>,
+            pub field2: Vec<u64>,
+        }
+
+        pub open spec fn example(field_num: int, foo: Foo) -> bool {
+            let field = if field_num == 1 {
+                foo.field1
+            } else {
+                foo.field2
+            };
+            forall |i: int| 0 <= i < field.len() ==> #[trigger] field@[i] == 5
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Z3 does not allow `if` inside a trigger pattern")
+}
+
+// same shape, but the let-bound value has no if/else, so it should still verify fine
+test_verify_one_file! {
+    #[test] issue740_auto_trigger_through_plain_let_ok verus_code! {
+        use vstd::prelude::*;
+
+        pub struct Foo {
+            pub field1: Vec<u64>,
+        }
+
+        pub open spec fn example(foo: Foo) -> bool {
+            let field = foo.field1;
+            forall |i: int| 0 <= i < field.len() ==> field@[i] == 5
+        }
+    } => Ok(())
+}
