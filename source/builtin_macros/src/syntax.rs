@@ -5027,7 +5027,10 @@ impl VisitMut for Visitor {
 
     fn visit_item_trait_mut(&mut self, tr: &mut ItemTrait) {
         tr.attrs.push(mk_verus_attr(tr.span(), quote! { verus_macro }));
-        self.visit_trait_items_prefilter(&mut tr.items);
+        // External traits aren't verified, so there's no need for VERUS_SPEC__ splitting.
+        if !is_external(&tr.attrs) {
+            self.visit_trait_items_prefilter(&mut tr.items);
+        }
         self.filter_attrs(&mut tr.attrs);
         verus_syn::visit_mut::visit_item_trait_mut(self, tr);
     }
