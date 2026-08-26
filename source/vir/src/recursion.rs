@@ -355,6 +355,28 @@ pub(crate) fn rewrite_rec_call_with_fuel_const(body: &Exp, fuel: usize) -> Exp {
     })
 }
 
+// Spans of the calls inside spec closures. A spec closure is a function over its whole domain,
+// so a recursive call in its body must decrease for every input, not just the ones it's applied to.
+fn closure_call_spans(function: &Function) -> Vec<Span> {
+    let mut spans = Vec::new();
+    if let Some(body) = &function.x.body {
+        crate::ast_visitor::expr_visitor_walk(body, &mut |expr| {
+            if let ExprX::Closure(_, body) = &expr.x {
+                crate::ast_visitor::expr_visitor_walk(body, &mut |e| {
+                    if matches!(e.x, ExprX::Call { .. }) && e.span.id != 0 {
+                        spans.push(e.span.clone());
+                    }
+                    crate::visitor::VisitorControlFlow::Recurse
+                });
+                // the walk above already covered any nested closures
+                return crate::visitor::VisitorControlFlow::Return;
+            }
+            crate::visitor::VisitorControlFlow::Recurse
+        });
+    }
+    spans
+}
+
 fn check_termination<'a>(
     ctx: &'a Ctx,
     diagnostics: &impl Diagnostics,
@@ -388,13 +410,19 @@ fn check_termination<'a>(
         ctx,
         caller_decreases_typs,
     };
+    let closure_call_spans = closure_call_spans(function);
     let stm = map_stm_visitor(body, &mut |s| match &s.x {
         StmX::Call {
             fun: crate::sst::CallTarget::Fun(fun), resolved_method, args, dest, ..
         } if is_recursive_call(&ctxt, fun, resolved_method) => {
             let check =
                 check_decrease_call(&ctxt, diagnostics, &s.span, fun, resolved_method, args)?;
-            let error = error(&s.span, "could not prove termination");
+            let mut error = error(&s.span, "could not prove termination");
+            if closure_call_spans.iter().any(|c| c.id == s.span.id) {
+                error = error.help(
+                    "this call is inside a closure, so it must decrease for every closure argument, not just the ones the closure is applied to; if needed, guard it, e.g. `if 0 <= i < len { ... } else { arbitrary() }`",
+                );
+            }
             let stm_assert = Spanned::new(s.span.clone(), StmX::Assert(None, Some(error), check));
 
             let mut stms = vec![stm_assert, s.clone()];
