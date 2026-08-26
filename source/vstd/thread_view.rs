@@ -297,7 +297,7 @@ impl<T> ViewAt<T> {
             va.thread_view().contains(vs_0@),
     {
         broadcast use group_thread_view_axioms;
-        
+
         let tracked (va, vs) = ViewAt::new(t);
         let tracked vs = vs.join(vs_0);
         let tracked va = va.weaken(vs@);

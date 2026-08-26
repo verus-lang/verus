@@ -168,6 +168,9 @@ pub broadcast group group_view_history {
     history_insert_contains_inserted_timestamp,
     history_insert_contains_timestamp_cases,
     history_get_contains_timestamp,
+    history_singleton_dom_singleton,
+    AtomicPointsTo::get_timestamp_monotonic,
+    AtomicPointsTo::get_timestamp_loc
 }
 
 #[verifier::external_body]
@@ -188,14 +191,23 @@ impl<T> AtomicPointsTo<T> {
 
     pub uninterp spec fn get_timestamp(&self, view: ThreadView) -> Option<nat>;
 
-    pub axiom fn get_timestamp_monotonic(tracked &self, v1: ThreadView, v2: ThreadView)
+    pub broadcast axiom fn get_timestamp_monotonic(&self, v1: ThreadView, v2: ThreadView)
         requires
             v1.contains(v2),
         ensures
+            #![trigger self.get_timestamp(v2), v1.contains(v2)]
+            #![trigger self.get_timestamp(v1), v1.contains(v2)]
             self.get_timestamp(v2).is_some() ==> {
                 &&& self.get_timestamp(v1).is_some()
                 &&& self.get_timestamp(v2).unwrap() <= self.get_timestamp(v1).unwrap()
             },
+    ;
+
+    pub broadcast axiom fn get_timestamp_loc(&self, other: Self, v: ThreadView)
+        requires
+            self.loc() == other.loc()
+        ensures
+            #[trigger] self.get_timestamp(v) == #[trigger] other.get_timestamp(v)
     ;
 
     pub axiom fn disjoint(tracked &mut self, tracked other: &Self)
