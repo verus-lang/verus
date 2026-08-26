@@ -1136,7 +1136,9 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_str_find_wrappers_pass verus_code! {
-        use vstd::string::*;
+        use vstd::string::{
+            str_find_pred, str_rfind_pred, PatternSpec, StringSliceAdditionalSpecFns, View,
+        };
         use vstd::seq::*;
         use vstd::utf8::{encode_scalar, encode_utf8};
         use vstd::pervasive::FnWithRequiresEnsures;
@@ -1167,8 +1169,7 @@ test_verify_one_file! {
                 reveal_strlit("world");
                 reveal_strlit("xyz");
             }
-            let r1 = str_find_str("hello world", "world");
-            assert(r1 is Some) by {
+            assert("world".matches_at_bytes("hello world".spec_bytes(), 6, 11)) by {
                 broadcast use vstd::string::is_ascii_spec_bytes;
                 assert("hello world".is_ascii());
                 assert("world".is_ascii());
@@ -1176,29 +1177,30 @@ test_verify_one_file! {
                 assert("world"@ =~= seq!['w', 'o', 'r', 'l', 'd']);
                 assert("hello world".spec_bytes() =~= Seq::new(11, |i| "hello world"@.index(i) as u8));
                 assert("world".spec_bytes() =~= Seq::new(5, |i| "world"@.index(i) as u8));
-                assert("hello world".spec_bytes().subrange(6, 6 + "world".spec_bytes().len() as int) =~= "world".spec_bytes());
             };
-            // The wrapper's own postcondition already ties the returned offset back
-            // to a real match - no need to independently re-derive its exact value.
-            assert("hello world".spec_bytes().subrange(
-                r1.unwrap() as int,
-                r1.unwrap() as int + "world".spec_bytes().len() as int,
-            ) =~= "world".spec_bytes());
+            let r1 = "hello world".find("world");
+            assert(r1 is Some);
 
-            let r2 = str_find_str("hello world", "xyz");
+            let r2 = "hello world".find("xyz");
             assert(r2 is None) by {
                 broadcast use vstd::string::is_ascii_spec_bytes;
                 assert("hello world".is_ascii());
                 assert("xyz".is_ascii());
-                let haystack = "hello world".spec_bytes();
-                let needle = "xyz".spec_bytes();
                 assert("hello world"@ =~= seq!['h', 'e', 'l', 'l', 'o', ' ', 'w', 'o', 'r', 'l', 'd']);
                 assert("xyz"@ =~= seq!['x', 'y', 'z']);
-                assert(haystack =~= Seq::new(11, |i| "hello world"@.index(i) as u8));
-                assert(needle =~= Seq::new(3, |i| "xyz"@.index(i) as u8));
-                assert forall|j: int| 0 <= j <= 8 implies !(#[trigger] haystack.subrange(j, j + 3) =~= needle) by {
-                    assert(haystack[j] != needle[0]) by { assert("hello world"@.index(j) != 'x'); }
-                    lemma_first_byte_mismatch_not_a_match(haystack, needle, j);
+                assert("hello world".spec_bytes() =~= Seq::new(11, |i| "hello world"@.index(i) as u8));
+                assert("xyz".spec_bytes() =~= Seq::new(3, |i| "xyz"@.index(i) as u8));
+                assert forall|k: int, j: int|
+                    0 <= k <= j <= 11 implies !"xyz".matches_at_bytes(
+                        "hello world".spec_bytes(),
+                        k,
+                        j,
+                    ) by {
+                    if j == k + 3 && 0 <= k <= 8 {
+                        assert("hello world".spec_bytes().subrange(k, j)[0]
+                            == "hello world".spec_bytes()[k]);
+                        assert("hello world"@.index(k) != 'x');
+                    }
                 }
             };
         }
@@ -1208,8 +1210,7 @@ test_verify_one_file! {
                 reveal_strlit("hello world hello");
                 reveal_strlit("hello");
             }
-            let r = str_rfind_str("hello world hello", "hello");
-            assert(r is Some) by {
+            assert("hello".matches_at_bytes("hello world hello".spec_bytes(), 12, 17)) by {
                 broadcast use vstd::string::is_ascii_spec_bytes;
                 assert("hello world hello".is_ascii());
                 assert("hello".is_ascii());
@@ -1217,14 +1218,9 @@ test_verify_one_file! {
                 assert("hello"@ =~= seq!['h', 'e', 'l', 'l', 'o']);
                 assert("hello world hello".spec_bytes() =~= Seq::new(17, |i| "hello world hello"@.index(i) as u8));
                 assert("hello".spec_bytes() =~= Seq::new(5, |i| "hello"@.index(i) as u8));
-                assert("hello world hello".spec_bytes().subrange(12, 12 + "hello".spec_bytes().len() as int) =~= "hello".spec_bytes());
             };
-            // The wrapper's own postcondition already ties the returned offset back
-            // to a real match - no need to independently re-derive its exact value.
-            assert("hello world hello".spec_bytes().subrange(
-                r.unwrap() as int,
-                r.unwrap() as int + "hello".spec_bytes().len() as int,
-            ) =~= "hello".spec_bytes());
+            let r = "hello world hello".rfind("hello");
+            assert(r is Some);
         }
 
         fn test_find_char() {
@@ -1232,22 +1228,14 @@ test_verify_one_file! {
                 reveal_strlit("hello world");
                 lemma_ascii_char_encode_scalar('o');
             }
-            let r1 = str_find_char("hello world", 'o');
-            assert(r1 is Some) by {
+            assert('o'.matches_at_bytes("hello world".spec_bytes(), 4, 5)) by {
                 broadcast use vstd::string::is_ascii_spec_bytes;
-                lemma_ascii_char_encode_scalar('o');
                 assert("hello world".is_ascii());
                 assert("hello world"@ =~= seq!['h', 'e', 'l', 'l', 'o', ' ', 'w', 'o', 'r', 'l', 'd']);
                 assert("hello world".spec_bytes() =~= Seq::new(11, |i| "hello world"@.index(i) as u8));
-                assert("hello world".spec_bytes().subrange(4, 4 + encode_scalar('o' as u32).len() as int)
-                    =~= encode_scalar('o' as u32));
             };
-            // The wrapper's own postcondition already ties the returned offset back
-            // to a real match - no need to independently re-derive its exact value.
-            assert("hello world".spec_bytes().subrange(
-                r1.unwrap() as int,
-                r1.unwrap() as int + encode_scalar('o' as u32).len() as int,
-            ) =~= encode_scalar('o' as u32));
+            let r1 = "hello world".find('o');
+            assert(r1 is Some);
         }
 
         fn test_rfind_char() {
@@ -1255,22 +1243,14 @@ test_verify_one_file! {
                 reveal_strlit("hello world");
                 lemma_ascii_char_encode_scalar('o');
             }
-            let r1 = str_rfind_char("hello world", 'o');
-            assert(r1 is Some) by {
+            assert('o'.matches_at_bytes("hello world".spec_bytes(), 7, 8)) by {
                 broadcast use vstd::string::is_ascii_spec_bytes;
-                lemma_ascii_char_encode_scalar('o');
                 assert("hello world".is_ascii());
                 assert("hello world"@ =~= seq!['h', 'e', 'l', 'l', 'o', ' ', 'w', 'o', 'r', 'l', 'd']);
                 assert("hello world".spec_bytes() =~= Seq::new(11, |i| "hello world"@.index(i) as u8));
-                assert("hello world".spec_bytes().subrange(7, 7 + encode_scalar('o' as u32).len() as int)
-                    =~= encode_scalar('o' as u32));
             };
-            // The wrapper's own postcondition already ties the returned offset back
-            // to a real match - no need to independently re-derive its exact value.
-            assert("hello world".spec_bytes().subrange(
-                r1.unwrap() as int,
-                r1.unwrap() as int + encode_scalar('o' as u32).len() as int,
-            ) =~= encode_scalar('o' as u32));
+            let r1 = "hello world".rfind('o');
+            assert(r1 is Some);
         }
 
         fn test_find_pred() {
@@ -1320,14 +1300,14 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_str_find_wrappers_fail verus_code! {
-        use vstd::string::*;
+        use vstd::string::str_find_pred;
 
         fn test_find_str_wrong() {
             proof {
                 reveal_strlit("hello world");
                 reveal_strlit("world");
             }
-            let r = str_find_str("hello world", "world");
+            let r = "hello world".find("world");
             assert(r is None); // FAILS
         }
 
@@ -1343,5 +1323,3 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 2)
 }
-
-
