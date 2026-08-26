@@ -141,9 +141,11 @@ pub assume_specification[ str::split_at ](s: &str, mid: usize) -> (res: (&str, &
 /// never sees the internal call. Predicates keep the hand-written
 /// `str_*_pred` wrappers below, whose bodies call the predicate directly.
 ///
-/// The trait declaration is unconditional (not `verus_verify_core`-gated):
-/// verifying core needs it registered even though the spec body below
-/// (needs `str`'s View/Seq<char>) is excluded there.
+/// Unconditional (not `verus_verify_core`-gated): `#[cfg(...)]` isn't
+/// reliably respected on a trait combining external_trait_specification
+/// with external_trait_extension, and verifying core needs this registered
+/// regardless. `vstd.rs`'s `#![feature(pattern)]` is unconditional too, for
+/// the same reason.
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(PatternSpec via PatternSpecImpl)]
 pub trait ExPattern: Sized {
@@ -159,7 +161,7 @@ pub trait ExPattern: Sized {
     spec fn matches_at_bytes(&self, haystack: Seq<u8>, start: int, end: int) -> bool;
 }
 
-#[cfg(not(verus_verify_core))]
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 impl PatternSpecImpl for char {
     open spec fn obeys_pattern_spec(&self) -> bool {
         true
@@ -176,7 +178,7 @@ impl PatternSpecImpl for char {
     }
 }
 
-#[cfg(not(verus_verify_core))]
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 impl<'b> PatternSpecImpl for &'b str {
     open spec fn obeys_pattern_spec(&self) -> bool {
         true
@@ -191,7 +193,7 @@ impl<'b> PatternSpecImpl for &'b str {
     }
 }
 
-#[cfg(not(verus_verify_core))]
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 impl<'b> PatternSpecImpl for &'b [char] {
     open spec fn obeys_pattern_spec(&self) -> bool {
         true
@@ -209,7 +211,7 @@ impl<'b> PatternSpecImpl for &'b [char] {
     }
 }
 
-#[cfg(not(verus_verify_core))]
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 pub assume_specification<P: core::str::pattern::Pattern>[ str::starts_with::<P> ](
     s: &str,
     pat: P,
@@ -219,7 +221,7 @@ pub assume_specification<P: core::str::pattern::Pattern>[ str::starts_with::<P> 
             0 <= len <= s@.len() && pat.matches_at(s@, 0, len),
 ;
 
-#[cfg(not(verus_verify_core))]
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 pub assume_specification<P: core::str::pattern::Pattern>[ str::contains::<P> ](
     s: &str,
     pat: P,
@@ -229,7 +231,7 @@ pub assume_specification<P: core::str::pattern::Pattern>[ str::contains::<P> ](
             0 <= i <= j <= s@.len() && pat.matches_at(s@, i, j),
 ;
 
-#[cfg(not(verus_verify_core))]
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 #[verifier::allow(undeclared_external_trait)]
 pub assume_specification<P: core::str::pattern::Pattern>[ str::ends_with::<P> ](
     s: &str,
@@ -240,7 +242,7 @@ pub assume_specification<P: core::str::pattern::Pattern>[ str::ends_with::<P> ](
             0 <= start <= s@.len() as int && pat.matches_at(s@, start, s@.len() as int),
 ;
 
-#[cfg(not(verus_verify_core))]
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 pub assume_specification<P: core::str::pattern::Pattern>[ str::find::<P> ](s: &str, pat: P) -> (res:
     Option<usize>)
     ensures
@@ -269,7 +271,7 @@ pub assume_specification<P: core::str::pattern::Pattern>[ str::find::<P> ](s: &s
         },
 ;
 
-#[cfg(not(verus_verify_core))]
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 #[verifier::allow(undeclared_external_trait)]
 pub assume_specification<P: core::str::pattern::Pattern>[ str::rfind::<P> ](
     s: &str,
