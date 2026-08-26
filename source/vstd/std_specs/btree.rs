@@ -19,7 +19,7 @@ use super::super::map::assert_maps_equal;
 use alloc::alloc::Allocator;
 use alloc::boxed::Box;
 use alloc::collections::btree_map;
-use alloc::collections::btree_map::{CursorMut, Keys, Values};
+use alloc::collections::btree_map::{CursorMut, Keys, UnorderedKeyError, Values};
 use alloc::collections::btree_set;
 use alloc::collections::{BTreeMap, BTreeSet};
 use core::borrow::Borrow;
@@ -207,6 +207,11 @@ pub struct ExBTreeMap<Key, Value, A: Allocator + Clone>(BTreeMap<Key, Value, A>)
 #[verifier::reject_recursive_types(A)]
 pub struct ExCursorMut<'a, Key: 'a, Value: 'a, A>(CursorMut<'a, Key, Value, A>);
 
+/// Verus declaration for the error returned when a cursor insertion would break key ordering.
+#[verifier::external_type_specification]
+#[verifier::external_body]
+pub struct ExUnorderedKeyError(UnorderedKeyError);
+
 /// The abstract state of a mutable B-tree cursor.
 ///
 /// A cursor points at the gap immediately before `keys[position]`. Therefore, `peek_next`
@@ -311,6 +316,15 @@ pub open spec fn positioned_at_upper_bound<Key, Value, Q: ?Sized>(
     &&& forall|i: int|
         #![trigger before_upper_bound(model.keys[i], bound)]
         model.position <= i < model.keys.len() ==> !before_upper_bound(model.keys[i], bound)
+}
+
+/// Whether a key can be inserted at the cursor's current gap without breaking key order.
+pub open spec fn key_fits_at_position<Key: Ord, Value>(
+    model: CursorMutModel<Key, Value>,
+    key: Key,
+) -> bool {
+    &&& (model.position == 0 || model.keys[model.position - 1].cmp_spec(&key) is Less)
+    &&& (model.position == model.keys.len() || key.cmp_spec(&model.keys[model.position]) is Less)
 }
 
 /// Once the cursor has been dropped, its prophesied map is its current map.
@@ -800,6 +814,60 @@ pub assume_specification<
         },
 ;
 
+/// Specification for [`CursorMut::next`].
+pub assume_specification<'a, 'b, Key, Value, A>[ CursorMut::<'a, Key, Value, A>::next ](
+    cursor: &'b mut CursorMut<'a, Key, Value, A>,
+) -> (result: Option<(&'b Key, &'b mut Value)>)
+    requires
+        old(cursor)@.wf(),
+    ensures
+        final(cursor).final_map() == old(cursor).final_map(),
+        final(cursor)@.wf(),
+        match result {
+            Some((key, value)) => {
+                let old_model = old(cursor)@;
+                let new_model = final(cursor)@;
+                &&& old_model.position < old_model.keys.len()
+                &&& *key == old_model.keys[old_model.position]
+                &&& *value == old_model.map[*key]
+                &&& new_model.keys == old_model.keys
+                &&& new_model.position == old_model.position + 1
+                &&& new_model.map == old_model.map.insert(*key, *final(value))
+            },
+            None => {
+                &&& old(cursor)@.position == old(cursor)@.keys.len()
+                &&& final(cursor)@ == old(cursor)@
+            },
+        },
+;
+
+/// Specification for [`CursorMut::prev`].
+pub assume_specification<'a, 'b, Key, Value, A>[ CursorMut::<'a, Key, Value, A>::prev ](
+    cursor: &'b mut CursorMut<'a, Key, Value, A>,
+) -> (result: Option<(&'b Key, &'b mut Value)>)
+    requires
+        old(cursor)@.wf(),
+    ensures
+        final(cursor).final_map() == old(cursor).final_map(),
+        final(cursor)@.wf(),
+        match result {
+            Some((key, value)) => {
+                let old_model = old(cursor)@;
+                let new_model = final(cursor)@;
+                &&& old_model.position > 0
+                &&& *key == old_model.keys[old_model.position - 1]
+                &&& *value == old_model.map[*key]
+                &&& new_model.keys == old_model.keys
+                &&& new_model.position == old_model.position - 1
+                &&& new_model.map == old_model.map.insert(*key, *final(value))
+            },
+            None => {
+                &&& old(cursor)@.position == 0
+                &&& final(cursor)@ == old(cursor)@
+            },
+        },
+;
+
 /// Specification for [`CursorMut::peek_prev`].
 pub assume_specification<'a, 'b, Key, Value, A>[ CursorMut::<'a, Key, Value, A>::peek_prev ](
     cursor: &'b mut CursorMut<'a, Key, Value, A>,
@@ -846,6 +914,67 @@ pub assume_specification<'a, 'b, Key, Value, A>[ CursorMut::<'a, Key, Value, A>:
                 &&& new_model.keys == old_model.keys
                 &&& new_model.position == old_model.position
                 &&& new_model.map == old_model.map.insert(*key, *final(value))
+            },
+            None => {
+                &&& old(cursor)@.position == old(cursor)@.keys.len()
+                &&& final(cursor)@ == old(cursor)@
+            },
+        },
+;
+
+/// Specification for [`CursorMut::insert_after`].
+pub assume_specification<'a, Key: Ord, Value, A: Allocator + Clone>[ CursorMut::<
+    'a,
+    Key,
+    Value,
+    A,
+>::insert_after ](cursor: &mut CursorMut<'a, Key, Value, A>, key: Key, value: Value) -> (result:
+    Result<(), UnorderedKeyError>)
+    requires
+        old(cursor)@.wf(),
+    ensures
+        final(cursor).final_map() == old(cursor).final_map(),
+        obeys_cmp::<Key>() ==> {
+            &&& final(cursor)@.wf()
+            &&& match result {
+                Ok(()) => {
+                    let old_model = old(cursor)@;
+                    let new_model = final(cursor)@;
+                    &&& key_fits_at_position(old_model, key)
+                    &&& new_model.keys == old_model.keys.insert(old_model.position, key)
+                    &&& new_model.position == old_model.position
+                    &&& new_model.map == old_model.map.insert(key, value)
+                },
+                Err(_) => {
+                    &&& !key_fits_at_position(old(cursor)@, key)
+                    &&& final(cursor)@ == old(cursor)@
+                },
+            }
+        },
+;
+
+/// Specification for [`CursorMut::remove_next`].
+pub assume_specification<'a, Key: Ord, Value, A: Allocator + Clone>[ CursorMut::<
+    'a,
+    Key,
+    Value,
+    A,
+>::remove_next ](cursor: &mut CursorMut<'a, Key, Value, A>) -> (result: Option<(Key, Value)>)
+    requires
+        old(cursor)@.wf(),
+    ensures
+        final(cursor).final_map() == old(cursor).final_map(),
+        final(cursor)@.wf(),
+        match result {
+            Some((key, value)) => {
+                let old_model = old(cursor)@;
+                let new_model = final(cursor)@;
+                &&& old_model.position < old_model.keys.len()
+                &&& key == old_model.keys[old_model.position]
+                &&& value == old_model.map[key]
+                &&& new_model.keys == old_model.keys.remove(old_model.position)
+                &&& new_model.position == old_model.position
+                &&& new_model.map == old_model.map.remove(key)
             },
             None => {
                 &&& old(cursor)@.position == old(cursor)@.keys.len()
