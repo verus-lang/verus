@@ -143,7 +143,7 @@ pub assume_specification[ str::split_at ](s: &str, mid: usize) -> (res: (&str, &
 ///
 /// Gated on `verus_keep_ghost` (not `verus_verify_core`): verifying core
 /// needs this registered too, even though the spec body below (needs
-/// `str`'s View/Seq<char>) is excluded there - only a plain, real cargo
+/// `str`'s View/`Seq<char>`) is excluded there - only a plain, real cargo
 /// build of vstd (verus_keep_ghost off) needs it gone entirely, since that
 /// can't reference `Pattern` at all without nightly's `pattern` feature.
 #[cfg(verus_keep_ghost)]
