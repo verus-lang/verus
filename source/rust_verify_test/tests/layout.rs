@@ -418,6 +418,39 @@ test_verify_one_file_with_options! {
     } => Ok(())
 }
 
+// https://github.com/verus-lang/verus/issues/1114: `global size_of`/`global layout` facts
+// must be usable outside the module where they're declared.
+test_verify_one_file_with_options! {
+    #[test] issue_1114_size_of_cross_module ["vstd", "--compile"] => verus_code! {
+        #[repr(C)]
+        struct S { v: u64 }
+
+        global size_of S == 8;
+
+        mod m {
+            fn test() {
+                assert(core::mem::size_of::<crate::S>() == 8);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] issue_1114_layout_cross_module ["vstd", "--compile"] => verus_code! {
+        #[repr(C)]
+        struct S { v: u64 }
+
+        global layout S is size == 8, align == 8;
+
+        mod m {
+            fn test() {
+                assert(core::mem::size_of::<crate::S>() == 8);
+                assert(core::mem::align_of::<crate::S>() == 8);
+            }
+        }
+    } => Ok(())
+}
+
 test_verify_one_file_with_options! {
     #[test] test_layouts_for_primitives ["vstd"] => verus_code! {
         proof fn test() {

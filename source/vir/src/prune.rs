@@ -978,6 +978,14 @@ pub fn prune_krate_for_module_or_krate(
         }
     }
 
+    // `global size_of`/`global layout` broadcast lemmas are a crate-wide fact by design
+    // (the size can only be set once per crate), so reach them regardless of module.
+    for f in &krate.functions {
+        if f.x.attrs.size_of_broadcast_proof {
+            reach(&mut state.reached_functions, &mut state.worklist_functions, &f.x.name);
+        }
+    }
+
     // Collect all functions that our module reveals:
     let mut revealed_functions: HashSet<Fun> = HashSet::new();
     let mut assert_by_compute = false;
