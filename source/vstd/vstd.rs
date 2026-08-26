@@ -26,12 +26,7 @@
 #![cfg_attr(verus_keep_ghost, feature(fmt_internals))]
 #![cfg_attr(verus_keep_ghost, feature(fmt_arguments_from_str))]
 #![cfg_attr(verus_keep_ghost, feature(panic_internals))]
-// Unconditional (not `cfg_attr(verus_keep_ghost, ...)` like the others): the
-// `Pattern` external_trait_specification below is combined with
-// `external_trait_extension`, and Verus's own macro doesn't reliably respect
-// `#[cfg(...)]` on that combination (confirmed - it's the only such combo in
-// vstd), so the declaration itself can't be conditionally excluded either.
-#![feature(pattern)]
+#![cfg_attr(verus_keep_ghost, feature(pattern))]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;

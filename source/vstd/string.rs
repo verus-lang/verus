@@ -141,11 +141,12 @@ pub assume_specification[ str::split_at ](s: &str, mid: usize) -> (res: (&str, &
 /// never sees the internal call. Predicates keep the hand-written
 /// `str_*_pred` wrappers below, whose bodies call the predicate directly.
 ///
-/// Unconditional (not `verus_verify_core`-gated): `#[cfg(...)]` isn't
-/// reliably respected on a trait combining external_trait_specification
-/// with external_trait_extension, and verifying core needs this registered
-/// regardless. `vstd.rs`'s `#![feature(pattern)]` is unconditional too, for
-/// the same reason.
+/// Gated on `verus_keep_ghost` (not `verus_verify_core`): verifying core
+/// needs this registered too, even though the spec body below (needs
+/// `str`'s View/Seq<char>) is excluded there - only a plain, real cargo
+/// build of vstd (verus_keep_ghost off) needs it gone entirely, since that
+/// can't reference `Pattern` at all without nightly's `pattern` feature.
+#[cfg(verus_keep_ghost)]
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(PatternSpec via PatternSpecImpl)]
 pub trait ExPattern: Sized {
