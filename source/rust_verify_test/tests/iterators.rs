@@ -146,6 +146,43 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] find_map_works verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        fn test(v: Vec<u32>)
+        {
+            let mut it = v.into_iter();
+            let ghost g = it;
+            let v_result = it.find_map(
+                |x| -> (ret: Option<u32>)
+                    ensures ret == if x % 4 == 0 { Some(x / 4) } else { None },
+                {
+                    if x % 4 == 0 { Some(x / 4) } else { None }
+                }
+            );
+            match v_result {
+                Some(r) => {
+                    // If `find_map` returned Some, it must have stopped at a valid element.
+                    let ghost idx = g.remaining().len() - it.remaining().len() - 1;
+                    // find_map stopped at a valid element.
+                    assert(0 <= idx < v.len());
+                    // That element produced the returned Some value.
+                    assert(v[idx] % 4 == 0);
+                    assert(r == v[idx] / 4);
+                    // Every previous element produced None.
+                    assert(forall |j| 0 <= j < idx ==> v[j] % 4 != 0);
+                }
+                None => {
+                    // If `find_map` returned None, every element mapped to None.
+                    assert(forall |j| 0 <= j < v.len() ==> v[j] % 4 != 0);
+                }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] all_works verus_code! {
         use vstd::prelude::*;
         use vstd::std_specs::iter::IteratorSpec;
