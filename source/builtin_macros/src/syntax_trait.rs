@@ -7,9 +7,22 @@ use verus_syn::{
 };
 use verus_syn::{TraitBound, parse_quote_spanned};
 
+/// `#[cfg(...)]` (and `#[cfg_attr(...)]`) attributes are how items opt out of
+/// being compiled in a given build; since the trait/impl items generated
+/// below are new items, not just re-emissions of the original trait, real
+/// rustc's own cfg-stripping never sees the original trait's gate applied to
+/// them unless we copy it over ourselves.
+fn cfg_attrs(attrs: &[verus_syn::Attribute]) -> Vec<verus_syn::Attribute> {
+    attrs
+        .iter()
+        .filter(|attr| attr.path().is_ident("cfg") || attr.path().is_ident("cfg_attr"))
+        .cloned()
+        .collect()
+}
+
 fn new_trait_from(tr: &ItemTrait, ident: Ident) -> ItemTrait {
     ItemTrait {
-        attrs: Vec::new(),
+        attrs: cfg_attrs(&tr.attrs),
         vis: tr.vis.clone(),
         unsafety: None,
         auto_token: None,
@@ -44,7 +57,7 @@ fn new_impl_for_trait(tr: &ItemTrait, tr_spec: &Path, self_ty: Box<Type>) -> Ite
         }
     }
     ItemImpl {
-        attrs: Vec::new(),
+        attrs: cfg_attrs(&tr.attrs),
         defaultness: None,
         unsafety: None,
         constness: None,
