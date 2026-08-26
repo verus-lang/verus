@@ -132,81 +132,107 @@ pub assume_specification[ str::split_at ](s: &str, mid: usize) -> (res: (&str, &
         res.1.spec_bytes() =~= s.spec_bytes().subrange(mid as int, s.spec_bytes().len() as int),
 ;
 
-/// Whether `needle` occurs as a contiguous subsequence somewhere in `haystack`.
-#[cfg(not(verus_verify_core))]
-pub open spec fn spec_str_contains(haystack: Seq<char>, needle: Seq<char>) -> bool {
-    exists|i: int|
-        0 <= i && i + needle.len() <= haystack.len() && #[trigger] haystack.subrange(
-            i,
-            i + needle.len(),
-        ) =~= needle
+/// A specification for the standard library's `Pattern` trait, covering
+/// `str::starts_with`/`ends_with`/`contains`. Every `Pattern` implementor gets
+/// its own `matches_at` describing which spans of a haystack it matches - a
+/// `&str`/`char` needle matches by equality, `&[char]` by set membership of a
+/// single char.
+///
+/// This deliberately does NOT cover the `FnMut(char) -> bool` (predicate)
+/// Pattern impl: Verus can only prove facts about a closure's `ensures()` from
+/// an actual traced call in verified code, and `str::starts_with`'s real body
+/// is external (assumed, not modeled) - it calls the predicate internally, but
+/// Verus never sees that call happen. Predicates keep using the hand-written
+/// `str_starts_with_pred`/`str_ends_with_pred`/`str_contains_pred` below, whose
+/// exec bodies call the predicate directly, giving Verus a real trace to reason
+/// from.
+///
+/// Like vstd's other external trait specs (see `PartialEqSpec`), the ensures
+/// clauses are gated on `obeys_pattern_spec()` so an un-vouched-for external
+/// `Pattern` impl gets no (unsound) guarantee - only the impls below do.
+// The trait declaration itself is NOT gated on `verus_verify_core`: when
+// verifying core, Verus's own internal processing of the real `str` methods
+// that use `Pattern` needs this trait registered regardless. Only the
+// spec body below (which needs `str`'s View/Seq<char>, unavailable when
+// verifying core) is gated.
+#[verifier::external_trait_specification]
+#[verifier::external_trait_extension(PatternSpec via PatternSpecImpl)]
+pub trait ExPattern: Sized {
+    type ExternalTraitSpecificationFor: core::str::pattern::Pattern;
+
+    spec fn obeys_pattern_spec(&self) -> bool;
+
+    /// True iff this pattern instance matches exactly haystack[start..end).
+    spec fn matches_at(&self, haystack: Seq<char>, start: int, end: int) -> bool;
 }
 
 #[cfg(not(verus_verify_core))]
-#[verifier::external_body]
-pub fn str_starts_with_str(s: &str, pat: &str) -> bool
-    returns
-        pat@.len() <= s@.len() && s@.subrange(0, pat@.len() as int) =~= pat@,
-{
-    s.starts_with(pat)
+impl PatternSpecImpl for char {
+    open spec fn obeys_pattern_spec(&self) -> bool {
+        true
+    }
+
+    open spec fn matches_at(&self, haystack: Seq<char>, start: int, end: int) -> bool {
+        0 <= start && end == start + 1 && end <= haystack.len() && haystack[start] == *self
+    }
 }
 
 #[cfg(not(verus_verify_core))]
-#[verifier::external_body]
-pub fn str_ends_with_str(s: &str, pat: &str) -> bool
-    returns
-        pat@.len() <= s@.len() && s@.subrange(s@.len() - pat@.len(), s@.len() as int) =~= pat@,
-{
-    s.ends_with(pat)
+impl<'b> PatternSpecImpl for &'b str {
+    open spec fn obeys_pattern_spec(&self) -> bool {
+        true
+    }
+
+    open spec fn matches_at(&self, haystack: Seq<char>, start: int, end: int) -> bool {
+        0 <= start <= end <= haystack.len() && haystack.subrange(start, end) =~= self@
+    }
 }
 
 #[cfg(not(verus_verify_core))]
-#[verifier::external_body]
-pub fn str_ends_with_char(s: &str, c: char) -> bool
-    returns
-        s@.len() > 0 && s@[s@.len() - 1] == c,
-{
-    s.ends_with(c)
+impl<'b> PatternSpecImpl for &'b [char] {
+    open spec fn obeys_pattern_spec(&self) -> bool {
+        true
+    }
+
+    // `&[char]` matches by set membership of a single char, not by sequence -
+    // e.g. `"hello".starts_with(&['h', 'x'])` is true because 'h' is in the set.
+    open spec fn matches_at(&self, haystack: Seq<char>, start: int, end: int) -> bool {
+        0 <= start < haystack.len() && end == start + 1 && self@.contains(haystack[start])
+    }
 }
 
 #[cfg(not(verus_verify_core))]
-#[verifier::external_body]
-pub fn str_contains_str(s: &str, pat: &str) -> bool
-    returns
-        spec_str_contains(s@, pat@),
-{
-    s.contains(pat)
-}
-
-// `&[char]` matches by set membership of a single char, not by
-// sequence - e.g. `"hello".starts_with(&['h', 'x'])` is true because 'h' is
-// in the set.
-#[cfg(not(verus_verify_core))]
-#[verifier::external_body]
-pub fn str_starts_with_chars(s: &str, pat: &[char]) -> bool
-    returns
-        s@.len() > 0 && pat@.contains(s@[0]),
-{
-    s.starts_with(pat)
-}
+pub assume_specification<P: core::str::pattern::Pattern>[ str::starts_with::<P> ](
+    s: &str,
+    pat: P,
+) -> (r: bool)
+    ensures
+        pat.obeys_pattern_spec() ==> r == exists|len: int|
+            0 <= len <= s@.len() && pat.matches_at(s@, 0, len),
+;
 
 #[cfg(not(verus_verify_core))]
-#[verifier::external_body]
-pub fn str_ends_with_chars(s: &str, pat: &[char]) -> bool
-    returns
-        s@.len() > 0 && pat@.contains(s@[s@.len() - 1]),
-{
-    s.ends_with(pat)
-}
+pub assume_specification<P: core::str::pattern::Pattern>[ str::contains::<P> ](
+    s: &str,
+    pat: P,
+) -> (r: bool)
+    ensures
+        pat.obeys_pattern_spec() ==> r == exists|i: int, j: int|
+            0 <= i <= j <= s@.len() && pat.matches_at(s@, i, j),
+;
 
 #[cfg(not(verus_verify_core))]
-#[verifier::external_body]
-pub fn str_contains_chars(s: &str, pat: &[char]) -> bool
-    returns
-        exists|i: int| 0 <= i < s@.len() && pat@.contains(#[trigger] s@[i]),
-{
-    s.contains(pat)
-}
+#[verifier::allow(undeclared_external_trait)]
+pub assume_specification<P: core::str::pattern::Pattern>[ str::ends_with::<P> ](
+    s: &str,
+    pat: P,
+) -> (r: bool)
+    where
+        for<'a> P::Searcher<'a>: core::str::pattern::ReverseSearcher<'a>,
+    ensures
+        pat.obeys_pattern_spec() ==> r == exists|start: int|
+            0 <= start <= s@.len() as int && pat.matches_at(s@, start, s@.len() as int),
+;
 
 #[cfg(not(verus_verify_core))]
 pub fn str_starts_with_pred<F: Fn(char) -> bool>(s: &str, pred: F) -> (res: bool)

@@ -947,70 +947,118 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_str_pattern_wrappers_pass verus_code! {
-        use vstd::string::*;
+    #[test] test_str_pattern_trait_spec_pass verus_code! {
+        use vstd::string::{
+            str_contains_pred, str_ends_with_pred, str_starts_with_pred, PatternSpec, View,
+        };
         use vstd::seq::*;
 
-        fn test_pattern_wrappers_concrete() {
+        // `str`/`char` Pattern impls - real `.starts_with()`/`.ends_with()`/
+        // `.contains()` calls, specced generically via the `Pattern` trait spec.
+        // Proving a positive match needs an explicit witness for the
+        // `matches_at` existential in the postcondition (same as any other
+        // Verus spec using `exists`) - proving a non-match doesn't, since
+        // that's a universal Z3 can search directly.
+        fn test_str_and_char_patterns() {
             proof {
                 reveal_strlit("hello world");
                 reveal_strlit("hello");
                 reveal_strlit("world");
                 reveal_strlit("lo wo");
                 reveal_strlit("xyz");
-                assert("hello world"@ =~= seq!['h', 'e', 'l', 'l', 'o', ' ', 'w', 'o', 'r', 'l', 'd']);
-                assert("hello"@ =~= seq!['h', 'e', 'l', 'l', 'o']);
-                assert("world"@ =~= seq!['w', 'o', 'r', 'l', 'd']);
-                assert("xyz"@ =~= seq!['x', 'y', 'z']);
-                assert("hello world"@.subrange(0, 5) =~= seq!['h', 'e', 'l', 'l', 'o']);
-                assert("hello world"@.subrange(6, 11) =~= seq!['w', 'o', 'r', 'l', 'd']);
-                assert("hello world"@.subrange(3, 3 + "lo wo"@.len() as int) =~= "lo wo"@);
+                assert("hello world"@.subrange(0, 5) =~= "hello"@);
+                assert("hello world"@.subrange(6, 11) =~= "world"@);
+                assert("hello world"@.subrange(3, 8) =~= "lo wo"@);
             }
-            let r1 = str_starts_with_str("hello world", "hello");
+            assert("hello".matches_at("hello world"@, 0, 5));
+            let r1 = "hello world".starts_with("hello");
             assert(r1);
-            let r2 = str_starts_with_str("hello world", "xyz");
-            assert(!r2);
-            let r3 = str_ends_with_str("hello world", "world");
+            let r2 = "hello world".starts_with("xyz");
+            assert(!r2) by {
+                assert forall|len: int| 0 <= len <= 11 implies !"xyz".matches_at(
+                    "hello world"@,
+                    0,
+                    len,
+                ) by {
+                    if len == 3 {
+                        assert("hello world"@.subrange(0, 3)[0] == 'h');
+                    }
+                }
+            }
+
+            assert("world".matches_at("hello world"@, 6, 11));
+            let r3 = "hello world".ends_with("world");
             assert(r3);
-            let r4 = str_ends_with_str("hello world", "xyz");
-            assert(!r4);
-            let r5 = str_ends_with_char("hello world", 'd');
+            let r4 = "hello world".ends_with("xyz");
+            assert(!r4) by {
+                assert forall|start: int| 0 <= start <= 11 implies !"xyz".matches_at(
+                    "hello world"@,
+                    start,
+                    11,
+                ) by {
+                    if start == 8 {
+                        assert("hello world"@.subrange(8, 11)[0] == 'r');
+                    }
+                }
+            }
+
+            assert('d'.matches_at("hello world"@, 10, 11));
+            let r5 = "hello world".ends_with('d');
             assert(r5);
-            let r6 = str_ends_with_char("hello world", 'x');
+            let r6 = "hello world".ends_with('x');
             assert(!r6);
-            let r7 = str_contains_str("hello world", "lo wo");
+
+            assert("lo wo".matches_at("hello world"@, 3, 8));
+            let r7 = "hello world".contains("lo wo");
             assert(r7);
-            let r8 = str_contains_str("hello world", "xyz");
-            assert(!r8);
+            let r8 = "hello world".contains("xyz");
+            assert(!r8) by {
+                assert(forall|k: int| 0 <= k < 11 ==> "hello world"@[k] != 'x');
+                assert forall|i: int, j: int| 0 <= i <= j <= 11 implies !"xyz".matches_at(
+                    "hello world"@,
+                    i,
+                    j,
+                ) by {
+                    if j == i + 3 && 0 <= i <= 8 {
+                        assert("hello world"@.subrange(i, j)[0] == "hello world"@[i]);
+                    }
+                }
+            }
         }
 
         // `&[char]` matches by set membership of a single char, not by
         // sequence - e.g. `['h', 'x']` matches because 'h' is in the set,
         // same as `['e', 'h']` would.
-        fn test_chars_pattern_wrappers_concrete() {
+        fn test_chars_pattern() {
             proof {
                 reveal_strlit("hello world");
-                assert("hello world"@[2] == 'l');
             }
-            let starts_pat: [char; 2] = ['h', 'x'];
-            let r9 = str_starts_with_chars("hello world", &starts_pat);
+            let starts_pat: &[char] = &['h', 'x'];
+            assert(starts_pat.matches_at("hello world"@, 0, 1));
+            let r9 = "hello world".starts_with(starts_pat);
             assert(r9);
-            let no_match_pat: [char; 2] = ['x', 'y'];
-            let r10 = str_starts_with_chars("hello world", &no_match_pat);
+            let no_match_pat: &[char] = &['x', 'y'];
+            let r10 = "hello world".starts_with(no_match_pat);
             assert(!r10);
-            let ends_pat: [char; 2] = ['d', 'x'];
-            let r11 = str_ends_with_chars("hello world", &ends_pat);
+
+            let ends_pat: &[char] = &['d', 'x'];
+            assert(ends_pat.matches_at("hello world"@, 10, 11));
+            let r11 = "hello world".ends_with(ends_pat);
             assert(r11);
-            let contains_pat: [char; 2] = ['z', 'l'];
-            let r12 = str_contains_chars("hello world", &contains_pat);
+
+            let contains_pat: &[char] = &['z', 'l'];
+            assert(contains_pat.matches_at("hello world"@, 2, 3));
+            let r12 = "hello world".contains(contains_pat);
             assert(r12);
-            let r13 = str_contains_chars("hello world", &no_match_pat);
+            let r13 = "hello world".contains(no_match_pat);
             assert(!r13);
         }
 
         // A closure Pattern - the predicate is given as an ordinary Verus
-        // closure with an explicit `ensures`, which is what lets Verus
-        // reason precisely about its result at the call site.
+        // closure with an explicit `ensures`. Real `.starts_with(pred)` calls
+        // can't be reasoned about generically (see the `Pattern` trait spec's
+        // doc comment), so predicates go through these dedicated wrappers,
+        // which have a real exec body that calls the predicate directly.
         fn test_pred_pattern_wrappers_concrete() {
             proof {
                 reveal_strlit("hello world");
@@ -1051,26 +1099,25 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_str_pattern_wrappers_fail verus_code! {
-        use vstd::string::*;
+    #[test] test_str_pattern_trait_spec_fail verus_code! {
+        use vstd::string::str_starts_with_pred;
         use vstd::seq::*;
 
-        fn test_pattern_wrappers_wrong() {
+        fn test_str_pattern_wrong() {
             proof {
                 reveal_strlit("hello world");
                 reveal_strlit("hello");
-                assert("hello world"@.subrange(0, 5) =~= seq!['h', 'e', 'l', 'l', 'o']);
             }
-            let r = str_starts_with_str("hello world", "hello");
+            let r = "hello world".starts_with("hello");
             assert(!r); // FAILS
         }
 
-        fn test_chars_pattern_wrapper_wrong() {
+        fn test_chars_pattern_wrong() {
             proof {
                 reveal_strlit("hello world");
             }
-            let pat: [char; 2] = ['h', 'x'];
-            let r = str_starts_with_chars("hello world", &pat);
+            let pat: &[char] = &['h', 'x'];
+            let r = "hello world".starts_with(pat);
             assert(!r); // FAILS
         }
 
@@ -1296,3 +1343,5 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 2)
 }
+
+
