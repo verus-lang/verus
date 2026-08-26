@@ -889,9 +889,8 @@ fn direct_calls(e: &Expr, out: &mut HashSet<Fun>) {
     .expect("expr_visitor_check failed unexpectedly");
 }
 
-// The interpreter ignores opaqueness entirely, so `assert(e) by (compute)` needs the
-// body of every function transitively called from `e`, regardless of reveal/fuel -
-// not the bodies of every spec fn in the module (see issue #944's PR discussion).
+// The interpreter ignores opaqueness entirely, so `assert(e) by (compute)` needs
+// the body of every function transitively called from `e`, regardless of reveal/fuel.
 fn functions_reachable_for_compute(
     function_by_name: &HashMap<Fun, Function>,
     e: &Expr,
@@ -913,6 +912,20 @@ fn functions_reachable_for_compute(
         }
     }
     reached
+}
+
+/// True if `body` contains an `assert(..) by (compute)`/`by (compute_only)`
+/// anywhere, even nested - see buckets::needs_own_bucket.
+pub fn contains_assert_by_compute(body: &Expr) -> bool {
+    let mut found = false;
+    crate::ast_visitor::expr_visitor_check::<(), _>(body, &mut |_scope_map, e: &Expr| {
+        if let ExprX::AssertCompute(..) = &e.x {
+            found = true;
+        }
+        Ok(())
+    })
+    .expect("expr_visitor_check failed unexpectedly");
+    found
 }
 
 pub struct PruneInfo {

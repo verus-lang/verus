@@ -484,6 +484,55 @@ test_verify_one_file! {
     } => Ok(())
 }
 
+// Reachability must handle real mutual recursion (an SCC, not just a linear chain)
+// among compute-only functions, and neither of them - nor an unrelated opaque fn in
+// the same module - should be revealed for any other, unrelated proof (the forced
+// reveal is confined to this one function's own bucket).
+test_verify_one_file! {
+    #[test] fn_calls_cross_module_opaque_mutual_recursion verus_code! {
+        mod definitions {
+            use vstd::prelude::*;
+
+            #[verifier::opaque]
+            pub open spec fn is_even(n: nat) -> bool
+                decreases n
+            {
+                if n == 0 { true } else { is_odd((n - 1) as nat) }
+            }
+
+            #[verifier::opaque]
+            pub open spec fn is_odd(n: nat) -> bool
+                decreases n
+            {
+                if n == 0 { false } else { is_even((n - 1) as nat) }
+            }
+
+            #[verifier::opaque]
+            pub open spec fn unrelated(i: u64) -> int { i as int + 1000 }
+        }
+
+        mod caller {
+            use vstd::prelude::*;
+            use crate::definitions::{is_even, is_odd, unrelated};
+
+            #[verifier::exec_allows_no_decreases_clause]
+            proof fn test_mutual_recursion_compute() {
+                assert(is_even(4)) by (compute_only);
+                assert(is_odd(7)) by (compute_only);
+                assert(!is_even(7)) by (compute_only);
+            }
+
+            proof fn unrelated_still_opaque(i: u64) {
+                assert(unrelated(i) == i as int + 1000); // FAILS: still opaque
+            }
+
+            proof fn is_even_still_opaque() {
+                assert(is_even(0)); // FAILS: still opaque, even though true
+            }
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
 test_verify_one_file! {
     #[test] sequences verus_code! {
         #[allow(unused_imports)]
