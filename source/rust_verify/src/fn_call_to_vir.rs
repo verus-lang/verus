@@ -2852,6 +2852,14 @@ pub(crate) fn fix_node_substs<'tcx, 'a>(
             let generic_arg1 = GenericArg::from(types.expr_ty_adjusted(&args[0]));
             tcx.mk_args(&[generic_arg0, generic_arg1])
         }
+        Some(RustItem::IntoIterFn) if node_substs.is_empty() => {
+            // A `for` loop produced by a `macro_rules!` expansion is not rewritten
+            // by the `verus!` macro, so it reaches rustc's native for-loop
+            // desugaring, which emits an `IntoIterator::into_iter` call whose
+            // node_substs is empty instead of carrying the Self type argument.
+            let generic_arg = GenericArg::from(types.expr_ty_adjusted(&args[0]));
+            tcx.mk_args(&[generic_arg])
+        }
         _ => node_substs,
     }
 }
