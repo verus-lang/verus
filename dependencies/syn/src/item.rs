@@ -1039,8 +1039,7 @@ pub(crate) mod parsing {
         } else if lookahead.peek(Token![fn]) || peek_signature(&ahead, allow_safe) {
             let vis: Visibility = input.parse()?;
             let sig: Signature = input.parse()?;
-            let verbatim_body = crate::verus::parsing::is_external_body(&attrs);
-            parse_rest_of_fn(input, Vec::new(), vis, sig, verbatim_body).map(Item::Fn)
+            parse_rest_of_fn(input, Vec::new(), vis, sig).map(Item::Fn)
         } else if lookahead.peek(Token![extern]) {
             ahead.parse::<Token![extern]>()?;
             let lookahead = ahead.lookahead1();
@@ -1743,7 +1742,7 @@ pub(crate) mod parsing {
             let outer_attrs = input.call(Attribute::parse_outer)?;
             let vis: Visibility = input.parse()?;
             let sig: Signature = input.parse()?;
-            parse_rest_of_fn(input, outer_attrs, vis, sig, false)
+            parse_rest_of_fn(input, outer_attrs, vis, sig)
         }
     }
 
@@ -1752,7 +1751,6 @@ pub(crate) mod parsing {
         mut attrs: Vec<Attribute>,
         vis: Visibility,
         sig: Signature,
-        verbatim_body: bool,
     ) -> Result<ItemFn> {
         let (brace_token, stmts, semi_token) = if input.peek(Token![;]) {
             let semi_token: Token![;] = input.parse()?;
@@ -1761,7 +1759,7 @@ pub(crate) mod parsing {
             let content;
             let brace_token = braced!(content in input);
             attr::parsing::parse_inner(&content, &mut attrs)?;
-            let stmts = crate::verus::parsing::parse_fn_body_block(&content, verbatim_body)?;
+            let stmts = content.call(Block::parse_within)?;
             (brace_token, stmts, None)
         };
 
@@ -2703,7 +2701,6 @@ pub(crate) mod parsing {
     impl Parse for TraitItemFn {
         fn parse(input: ParseStream) -> Result<Self> {
             let mut attrs = input.call(Attribute::parse_outer)?;
-            let verbatim_body = crate::verus::parsing::is_external_body(&attrs);
             let sig: Signature = input.parse()?;
 
             let lookahead = input.lookahead1();
@@ -2711,7 +2708,7 @@ pub(crate) mod parsing {
                 let content;
                 let brace_token = braced!(content in input);
                 attr::parsing::parse_inner(&content, &mut attrs)?;
-                let stmts = crate::verus::parsing::parse_fn_body_block(&content, verbatim_body)?;
+                let stmts = content.call(Block::parse_within)?;
                 (Some(brace_token), stmts, None)
             } else if lookahead.peek(Token![;]) {
                 let semi_token: Token![;] = input.parse()?;
@@ -2931,8 +2928,7 @@ pub(crate) mod parsing {
             let mut item = if lookahead.peek(Token![broadcast]) && ahead.peek2(Token![group]) {
                 input.parse().map(ImplItem::BroadcastGroup)
             } else if lookahead.peek(Token![fn]) || peek_signature(&ahead, allow_safe) {
-                let verbatim_body = crate::verus::parsing::is_external_body(&attrs);
-                Ok(ImplItem::Fn(parse_impl_item_fn(input, verbatim_body)?))
+                Ok(ImplItem::Fn(parse_impl_item_fn(input)?))
             } else if lookahead.peek(Token![const]) {
                 let vis: Visibility = input.parse()?;
                 let publish = input.parse()?;
@@ -3078,13 +3074,12 @@ pub(crate) mod parsing {
     #[cfg_attr(docsrs, doc(cfg(feature = "parsing")))]
     impl Parse for ImplItemFn {
         fn parse(input: ParseStream) -> Result<Self> {
-            parse_impl_item_fn(input, false)
+            parse_impl_item_fn(input)
         }
     }
 
-    fn parse_impl_item_fn(input: ParseStream, verbatim_body: bool) -> Result<ImplItemFn> {
+    fn parse_impl_item_fn(input: ParseStream) -> Result<ImplItemFn> {
         let mut attrs = input.call(Attribute::parse_outer)?;
-        let verbatim_body = verbatim_body || crate::verus::parsing::is_external_body(&attrs);
         let vis: Visibility = input.parse()?;
         let defaultness: Option<Token![default]> = input.parse()?;
         let sig: Signature = input.parse()?;
@@ -3106,7 +3101,7 @@ pub(crate) mod parsing {
             attrs.extend(content.call(Attribute::parse_inner)?);
             let block = Block {
                 brace_token,
-                stmts: crate::verus::parsing::parse_fn_body_block(&content, verbatim_body)?,
+                stmts: content.call(Block::parse_within)?,
             };
             (block, None)
         };
