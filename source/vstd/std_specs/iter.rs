@@ -77,7 +77,7 @@ pub trait ExIterator {
             self.obeys_prophetic_iter_laws() ==>
                 r == into_rev_spec(self) && rev_post(self, r),
     ;
-    
+
     fn map<B, F>(self, f: F) -> (r: core::iter::Map<Self, F>)
         where
             Self: Sized,
