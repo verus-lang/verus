@@ -9,22 +9,22 @@ verus! {
 
 ////// Add is_variant-style spec functions
 pub trait ResultAdditionalSpecFns<T, E> {
-    #[deprecated(note = "is_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
+    #[cfg_attr(not(verus_verify_core), deprecated = "is_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
     #[allow(non_snake_case)]
     spec fn is_Ok(&self) -> bool;
 
-    #[deprecated(note = "get_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
+    #[cfg_attr(not(verus_verify_core), deprecated = "get_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
     #[allow(non_snake_case)]
     spec fn get_Ok_0(&self) -> T;
 
     #[allow(non_snake_case)]
     spec fn arrow_Ok_0(&self) -> T;
 
-    #[deprecated(note = "is_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
+    #[cfg_attr(not(verus_verify_core), deprecated = "is_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
     #[allow(non_snake_case)]
     spec fn is_Err(&self) -> bool;
 
-    #[deprecated(note = "get_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
+    #[cfg_attr(not(verus_verify_core), deprecated = "get_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
     #[allow(non_snake_case)]
     spec fn get_Err_0(&self) -> E;
 
@@ -135,6 +135,7 @@ pub open spec fn is_ok<T, E>(result: &Result<T, E>) -> bool {
 pub assume_specification<T, E>[ Result::<T, E>::is_ok ](r: &Result<T, E>) -> (b: bool)
     ensures
         b == is_ok(r),
+    no_unwind
 ;
 
 // is_err
@@ -147,6 +148,7 @@ pub open spec fn is_err<T, E>(result: &Result<T, E>) -> bool {
 pub assume_specification<T, E>[ Result::<T, E>::is_err ](r: &Result<T, E>) -> (b: bool)
     ensures
         b == is_err(r),
+    no_unwind
 ;
 
 // as_ref
@@ -159,6 +161,7 @@ pub assume_specification<T, E>[ Result::<T, E>::as_ref ](result: &Result<T, E>) 
         r is Ok ==> result->Ok_0 == r->Ok_0,
         r is Err <==> result is Err,
         r is Err ==> result->Err_0 == r->Err_0,
+    no_unwind
 ;
 
 // unwrap
@@ -259,6 +262,7 @@ pub open spec fn ok<T, E>(result: Result<T, E>) -> Option<T> {
 pub assume_specification<T, E>[ Result::<T, E>::ok ](result: Result<T, E>) -> (opt: Option<T>)
     ensures
         opt == ok(result),
+    no_unwind
 ;
 
 // err
@@ -274,6 +278,7 @@ pub open spec fn err<T, E>(result: Result<T, E>) -> Option<E> {
 pub assume_specification<T, E>[ Result::<T, E>::err ](result: Result<T, E>) -> (opt: Option<E>)
     ensures
         opt == err(result),
+    no_unwind
 ;
 
 } // verus!

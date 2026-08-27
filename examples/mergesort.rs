@@ -12,7 +12,7 @@ fn extend_from_idx(r: &mut Vec<u64>, v: &Vec<u64>, start: usize)
     requires
         start < v.len(),
     ensures
-        r@ == old(r)@ + v@.subrange(start as int, v.len() as int),
+        final(r)@ == old(r)@ + v@.subrange(start as int, v.len() as int),
 {
     for i in start..v.len()
         invariant

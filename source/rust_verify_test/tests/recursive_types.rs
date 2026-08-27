@@ -5,6 +5,7 @@ use common::*;
 
 test_verify_one_file! {
     #[test] test1 verus_code! {
+        use vstd::std_specs::alloc::*;
         enum E1 {
             N(),
             E(Box<E1>),
@@ -14,6 +15,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test2 verus_code! {
+        use vstd::std_specs::alloc::*;
         enum E1 {
             N(),
             E(Box<E2>),
@@ -28,6 +30,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test3 verus_code! {
+        use vstd::std_specs::alloc::*;
         struct List<A> {
             a: A,
         }
@@ -46,6 +49,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test4 verus_code! {
+        use vstd::std_specs::alloc::*;
         struct List<A> {
             a: A,
         }
@@ -64,6 +68,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test1_ok verus_code! {
+        use vstd::std_specs::alloc::*;
         struct List<A> {
             a: A,
         }
@@ -78,6 +83,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test1_fails verus_code! {
+        use vstd::std_specs::alloc::*;
         #[verifier::reject_recursive_types(A)]
         struct List<A> {
             a: A,
@@ -93,6 +99,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test2_ok verus_code! {
+        use vstd::std_specs::alloc::*;
         struct List<A> {
             a: A,
         }
@@ -112,6 +119,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test2_fails verus_code! {
+        use vstd::std_specs::alloc::*;
         #[verifier::reject_recursive_types(A)]
         struct List<A> {
             a: A,
@@ -132,6 +140,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test3_ok verus_code! {
+        use vstd::std_specs::alloc::*;
         struct List<A> {
             a: A,
         }
@@ -151,6 +160,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test3_fails verus_code! {
+        use vstd::std_specs::alloc::*;
         #[verifier::reject_recursive_types(A)]
         struct List<A> {
             a: A,
@@ -211,7 +221,7 @@ test_verify_one_file! {
             a: Map<A, int>,
             b: Map<int, B>,
         }
-    } => Err(err) => assert_vir_error_msg(err, "Type parameter A of crate::D must be declared #[verifier::reject_recursive_types] to be used in a non-positive position")
+    } => Err(err) => assert_vir_error_msg(err, "Type parameter A of test_crate::D must be declared #[verifier::reject_recursive_types] to be used in a non-positive position")
 }
 
 test_verify_one_file! {
@@ -259,7 +269,7 @@ test_verify_one_file! {
         struct X<A>(A);
         struct Y<A>(Set<X<A>>);
         struct Z(Y<Z>);
-    } => Err(err) => assert_vir_error_msg(err, "Type parameter A of crate::Y must be declared #[verifier::reject_recursive_types] to be used in a non-positive position")
+    } => Err(err) => assert_vir_error_msg(err, "Type parameter A of test_crate::Y must be declared #[verifier::reject_recursive_types] to be used in a non-positive position")
 }
 
 test_verify_one_file! {
@@ -271,6 +281,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] no_ground_variant2 verus_code! {
+        use vstd::std_specs::alloc::*;
         enum UngroundedList<A> {
             // error: no ground variant; the only variant is Cons, which recursively uses UngroundedList
             Cons(A, Box<UngroundedList<A>>),
@@ -280,6 +291,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] no_ground_variant_via_generics1 verus_code! {
+        use vstd::std_specs::alloc::*;
         // from https://github.com/verus-lang/verus/issues/538
         struct I<A>(A);
         struct R(Box<I<R>>);
@@ -303,6 +315,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] no_ground_variant_via_generics2 verus_code! {
+        use vstd::std_specs::alloc::*;
         // from https://github.com/verus-lang/verus/issues/538
         #[verifier::accept_recursive_types(A)]
         struct I<A>(A);
@@ -338,4 +351,62 @@ test_verify_one_file! {
         #[verifier::reject_recursive_types(A)]
         struct X<A, B, C> { a: A, b: B, c: C, d: bool }
     } => Err(err) => assert_vir_error_msg(err, "duplicate parameter attribute A")
+}
+
+test_verify_one_file! {
+    #[test] test_recursive_set_map_ok verus_code! {
+        use vstd::std_specs::alloc::*;
+        use vstd::prelude::Set;
+        use vstd::prelude::Map;
+
+        struct TreeNode {
+            value: int,
+            children: Set<TreeNode>,
+        }
+
+        enum RecursiveValue {
+            SingleValue { value: int },
+            MultipleValues { values: Set<RecursiveValue> },
+            SingleMapping { mapping: Map<RecursiveValue, RecursiveValue> },
+            MultipleMappings { mappings: Set<Map<RecursiveValue, RecursiveValue>> },
+        }
+
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_recursive_iset_bad verus_code! {
+        use vstd::std_specs::alloc::*;
+        use vstd::prelude::ISet;
+
+        enum RecursiveValue {
+            SingleValue { value: int },
+            MultipleValues { values: ISet<RecursiveValue> },
+        }
+    } => Err(err) => assert_vir_error_msg(err, "in a non-positive position")
+}
+
+test_verify_one_file! {
+    #[test] test_recursive_imap_bad verus_code! {
+        use vstd::std_specs::alloc::*;
+        use vstd::prelude::IMap;
+
+        enum RecursiveValue {
+            Value { value: int },
+            Mapping { mapping: IMap<RecursiveValue, int> },
+        }
+    } => Err(err) => assert_vir_error_msg(err, "in a non-positive position")
+}
+
+test_verify_one_file! {
+    #[test] test_recursive_set_imap_bad verus_code! {
+        use vstd::std_specs::alloc::*;
+        use vstd::prelude::Set;
+        use vstd::prelude::IMap;
+
+        enum RecursiveValue {
+            Value { value: int },
+            Mappings { mapping_set: Set<IMap<RecursiveValue, int>> },
+        }
+    } => Err(err) => assert_vir_error_msg(err, "in a non-positive position")
 }

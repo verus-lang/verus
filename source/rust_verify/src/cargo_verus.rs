@@ -54,12 +54,25 @@ pub fn extend_args_and_check_is_direct_rustc_call(
     } else {
         false
     };
+    // What cfg features are allowed
+    // For verifying vstd, we don't allow verus_only
+    // For verifying client crates, we allow verus_only
+    //
+    // NOTE: right now this code is unused while verifying verus because we verify via vargo,
+    // which calls rust_verify directly. If we support building verus with cargo-verus, then
+    // this would be "solved"
     if verus_crate {
+        const VERUS_CFGS: [&str; 4] =
+            ["verus_keep_ghost", "verus_keep_ghost_body", "verus_verify_core", "verus_no_vstd"];
+        // verus_crate ==> package_name is Some
+        let cfgs: Vec<&str> = if get_package_name(dep_tracker).unwrap() == "vstd" {
+            VERUS_CFGS.to_vec()
+        } else {
+            VERUS_CFGS.iter().copied().chain(std::iter::once("verus_only")).collect()
+        };
+
         rustc_args.push("--check-cfg".to_owned());
-        rustc_args.push(
-            "cfg(verus_keep_ghost, verus_keep_ghost_body, verus_verify_core, verus_no_vstd)"
-                .to_owned(),
-        );
+        rustc_args.push(format!("cfg({})", cfgs.join(", ")));
     }
     if !verus_crate {
         let mut is_span_crate = false;
@@ -103,7 +116,7 @@ pub fn is_compile(cargo_args: &CargoVerusArgs, dep_tracker: &mut DepTracker) -> 
 
 pub(crate) fn handle_externs(
     externs: &rustc_session::config::Externs,
-    mut import_deps_if_present: HashSet<String>,
+    import_deps_if_present: &mut HashSet<String>,
     dep_tracker: &mut DepTracker,
 ) -> Result<Vec<(String, String)>, String> {
     let mut extern_map = BTreeMap::<String, Vec<PathBuf>>::new();
@@ -134,6 +147,42 @@ pub(crate) fn handle_externs(
         }
     }
     Ok(imports)
+}
+
+/// Resolve transitive imports: for each name in `import_deps_if_present` that
+/// did not match an explicit `--extern`, locate the .vir alongside the actual
+/// crate source rustc loaded via the dep search path. Each resolved .vir is
+/// also registered in `psess.file_depinfo` so cargo invalidates the consumer
+/// when the dep's .vir changes (mirroring `dep_tracker.mark_file` for direct
+/// externs in `handle_externs`).
+pub(crate) fn handle_transitive_imports<'tcx>(
+    tcx: rustc_middle::ty::TyCtxt<'tcx>,
+    import_deps_if_present: &HashSet<String>,
+) -> Result<Vec<(String, String)>, String> {
+    let mut imports = Vec::new();
+    for cnum in tcx.crates(()) {
+        let name = tcx.crate_name(*cnum).to_string();
+        if !import_deps_if_present.contains(&name) {
+            continue;
+        }
+        let source = tcx.used_crate_source(*cnum);
+        let artifact_path =
+            source.rlib.as_ref().or(source.rmeta.as_ref()).or(source.dylib.as_ref());
+        let Some(artifact_path) = artifact_path else { continue };
+        let vir_path = artifact_path.with_extension("vir");
+        if !vir_path.exists() {
+            return Err(format!("could not find .vir file for '{name}'"));
+        }
+        let vir_path_str =
+            vir_path.to_str().unwrap_or_else(|| panic!("path {:?} is not valid unicode", vir_path));
+        tcx.sess.file_depinfo.lock().insert(rustc_span::Symbol::intern(vir_path_str));
+        imports.push((name, vir_path_str.to_owned()));
+    }
+    Ok(imports)
+}
+
+fn get_package_name(dep_tracker: &mut DepTracker) -> Option<String> {
+    dep_tracker.get_env("CARGO_PKG_NAME")
 }
 
 fn get_package_id_from_env(dep_tracker: &mut DepTracker) -> Option<String> {
@@ -169,9 +218,10 @@ fn unpack_verus_driver_args_for_env(val: &str) -> Vec<String> {
 }
 
 fn extend_rustc_args_for_builtin_and_builtin_macros(args: &mut Vec<String>) {
-    args.extend(["--cfg", "verus_keep_ghost"].map(ToOwned::to_owned));
+    args.extend(["--cfg", "verus_only", "--cfg", "verus_keep_ghost"].map(ToOwned::to_owned));
 }
 
 fn set_rustc_bootstrap() {
-    env::set_var("RUSTC_BOOTSTRAP", "1");
+    // TODO: Audit that the environment access only happens in single-threaded code.
+    unsafe { env::set_var("RUSTC_BOOTSTRAP", "1") };
 }

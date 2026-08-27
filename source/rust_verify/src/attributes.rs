@@ -1,29 +1,29 @@
 use crate::util::{err_span, vir_err_span_str};
-use rustc_ast::token::{Token, TokenKind};
+use rustc_ast::token::{LitKind, TokenKind};
 use rustc_ast::tokenstream::{TokenStream, TokenTree};
 use rustc_hir::{AttrArgs, Attribute};
 use rustc_span::Span;
 use vir::ast::{AcceptRecursiveType, Mode, TriggerAnnotation, VirErr, VirErrAs};
+use vir::messages::WarningAllow;
 
+/// The syntax tree of an attribute.
+///
+/// For example, `#[trigger(42)]` would be encoded as follows:
+/// `Fun(span, "trigger", [Lit(LitKind::Integer, "42")])`
 #[derive(Debug)]
-pub(crate) enum AttrTree {
+enum AttrTree {
+    /// Similar to a function call, e.g. `trigger(42)`
     Fun(Span, String, Option<Box<[AttrTree]>>),
+    /// A literal, e.g. `42`, `42.0`, `"forty-two"`, etc.
+    Lit(LitKind, String),
+    /// A path with at least one "::" (Vec length is always >= 2)
+    /// (Usually, any attribute accepting PathSegments should also accept Fun(_, segment, None)
+    /// for the case of a path with only one segment, unless the path must be >= 2 segments)
+    PathSegments(Vec<String>),
     //Eq(Span, String, String), // TODO(main_new)
 }
 
-pub(crate) fn token_to_string(token: &Token) -> Result<Option<String>, ()> {
-    match token.kind {
-        TokenKind::Literal(lit) => Ok(Some(lit.symbol.as_str().to_string())),
-        TokenKind::Ident(symbol, _) => Ok(Some(symbol.as_str().to_string())),
-        TokenKind::Comma => Ok(None),
-        _ => Err(()),
-    }
-}
-
-pub(crate) fn token_stream_to_trees(
-    span: Span,
-    stream: &TokenStream,
-) -> Result<Box<[AttrTree]>, ()> {
+fn token_stream_to_trees(span: Span, stream: &TokenStream) -> Result<Box<[AttrTree]>, ()> {
     let mut token_trees: Vec<&TokenTree> = Vec::new();
     for x in stream.iter() {
         // TODO(1.83) trees?
@@ -32,25 +32,57 @@ pub(crate) fn token_stream_to_trees(
     let mut i = 0;
     let mut trees: Vec<AttrTree> = Vec::new();
     while i < token_trees.len() {
-        match &token_trees[i] {
-            TokenTree::Token(token, _spacing) => {
-                if let Some(name) = token_to_string(token)? {
-                    let fargs = if i + 1 < token_trees.len() {
-                        if let TokenTree::Delimited(_, _, _, token_stream) = &token_trees[i + 1] {
-                            i += 1;
-                            Some(token_stream_to_trees(span, token_stream)?)
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    };
-                    trees.push(AttrTree::Fun(span, name, fargs));
-                }
-                i += 1;
+        let TokenTree::Token(token, _spacing) = &token_trees[i] else {
+            return Err(());
+        };
+        match token.kind {
+            TokenKind::Literal(lit) => {
+                let text = lit.symbol.as_str().to_string();
+                trees.push(AttrTree::Lit(lit.kind, text));
             }
+            TokenKind::Ident(symbol, _) => {
+                let name = symbol.as_str().to_string();
+                match &token_trees.get(i + 1) {
+                    Some(TokenTree::Delimited(_, _, _, token_stream)) => {
+                        i += 1;
+                        let fargs = Some(token_stream_to_trees(span, token_stream)?);
+                        trees.push(AttrTree::Fun(span, name, fargs));
+                    }
+                    Some(TokenTree::Token(token, _spacing)) if token.kind == TokenKind::PathSep => {
+                        let mut segments: Vec<String> = vec![name];
+                        loop {
+                            match &token_trees.get(i + 1) {
+                                Some(TokenTree::Token(token, _spacing))
+                                    if token.kind == TokenKind::PathSep =>
+                                {
+                                    match &token_trees.get(i + 2) {
+                                        Some(TokenTree::Token(token, _spacing)) => match token.kind
+                                        {
+                                            TokenKind::Ident(symbol, _) => {
+                                                i += 2;
+                                                segments.push(symbol.as_str().to_string());
+                                            }
+                                            _ => return Err(()),
+                                        },
+                                        _ => return Err(()),
+                                    }
+                                }
+                                _ => {
+                                    trees.push(AttrTree::PathSegments(segments));
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    _ => {
+                        trees.push(AttrTree::Fun(span, name, None));
+                    }
+                }
+            }
+            TokenKind::Comma => {}
             _ => return Err(()),
         }
+        i += 1;
     }
     Ok(trees.into_boxed_slice())
 }
@@ -207,6 +239,8 @@ pub(crate) enum Attr {
     Mode(Mode),
     // special case in modes.rs
     InferMode,
+    // special case in modes.rs
+    InferProph,
     // function return mode (spec, proof, exec)
     ReturnMode(Mode),
     // generated by verus! macro
@@ -231,6 +265,8 @@ pub(crate) enum Attr {
     GhostBlock(GhostBlockAttr),
     // proof block inside spec-mode code
     ProofInSpec,
+    // use for loop_isolation_boundary, should be in a block surrounding a loop
+    LoopIsolationBoundary,
     // Header to unwrap Tracked<T> and Ghost<T> parameters
     UnwrapParameter,
     // type parameter is not necessarily used in strictly positive positions
@@ -258,22 +294,30 @@ pub(crate) enum Attr {
     AllowInSpec,
     // specify list of places where == is promoted to =~=
     AutoExtEqual(vir::ast::AutoExtEqual),
+    /// Label for a proof obligation, i.e. `#[verifier::proof_note("label")]` or `#[verifier::custom_err("label")]`
+    ProofNote {
+        span: Span,
+        text: String,
+        is_custom_err: bool,
+    },
     // add manual trigger to expression inside quantifier
     Trigger(Option<Vec<u64>>),
-    // custom error string to report for precondition failures
-    CustomReqErr(String),
-    // Add custom error message for expanded diagnostics (split expressions)
-    CustomErr(String),
     // verify using bitvector theory
     BitVector,
     // for 'atomic' operations (e.g., CAS)
     Atomic,
     // specifies an invariant block
     InvariantBlock,
+    // specifies an open atomic update block
+    AtomicUpdateBlock,
+    // for function calls with an `atomically` block
+    AtomicCall,
     // mark that a loop was desugared from a for-loop in the syntax macro
     ForLoop,
     // mark the syntax macro inserted a synthetic decreases into a desugared for-loop
     AutoDecreases,
+    // mark that the syntax macro inserted a synthetic ensures clause into a desugared for-loop
+    AutoLoopEnsures,
     // this proof function is a termination proof
     DecreasesBy,
     // in a spec function, check the body for violations of recommends
@@ -286,10 +330,14 @@ pub(crate) enum Attr {
     SpinoffProver,
     // Use a new dedicated Z3 process for loops
     LoopIsolation(bool),
+    // Allow complex invariants (invariant_except_break, ensures) with loop_isolation(false)
+    AllowComplexInvariants,
     // Memoize function call results during interpretation
     Memoize,
     // Override default rlimit
     RLimit(f32),
+    // suppress warning
+    Allow(WarningAllow),
     // Suppress the recommends check for narrowing casts that may truncate
     Truncate,
     // In order to apply a specification to a method externally
@@ -301,6 +349,10 @@ pub(crate) enum Attr {
     ExternalTraitSpecification(String),
     // A trait or impl of a trait that extends an external_type_specification trait with ghost items
     ExternalTraitExtension(String, String),
+    // Declare a bound of an external trait as being a private bound, which Verus will ignore
+    // (in practice, this is for the Rust sealed trait idiom)
+    // The private bound is a path (a Vec of segments)
+    ExternalTraitPrivateBound(Vec<String>),
     // Mark the blanket trait impl for the external_type_specification trait
     // (needed so that trait_conflicts.rs knows to ignore it.)
     ExternalTraitBlanket,
@@ -325,8 +377,10 @@ pub(crate) enum Attr {
     // Marks a trait as "sealed", i.e. not implementable in Verus code
     // requires it to also be marked `unsafe`
     Sealed,
+    // Marks a trait as "internal_trait", i.e. not usable in Verus code
+    InternalTrait,
     // Marks spec functions that depend on resolved prophecies
-    ProphecyDependent,
+    Prophetic,
     // Unrecognized attribute that starts with 'rustc_', internal to the stdlib
     UnsupportedRustcAttr(String, Span),
     // Broadcast proof for size_of global
@@ -337,6 +391,10 @@ pub(crate) enum Attr {
     OpenVisibilityQualifier,
     // Allow the function to not have decreases clauses
     ExecAllowNoDecreasesClause,
+    // Assume that external items can be used without a Verus declaration (unsound)
+    ExternalsAvailableWithoutDeclaration(bool),
+    // Prohibit impls from adding ensures clauses (to enable exec nontermination)
+    ImplsCannotExtendSpec,
     // Assume that the function terminates
     AssumeTermination,
     // Proxy containing unerased code
@@ -346,20 +404,36 @@ pub(crate) enum Attr {
     EncodedStatic,
     // The "const _: () = { ... }" generated by synstructure for #[derive(Structural)]
     StructuralConstWrapper,
-    IgnoreOutsideNewMutRefExperiment,
+    MigratePostconditionsWithMutRefs(bool),
+    TrackedSwap,
+    TrackedTakeOption,
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
-    let i = match attr_tree {
-        AttrTree::Fun(_, name, None) => match name.parse::<u64>() {
-            Ok(i) => Some(i),
-            _ => None,
-        },
-        _ => None,
+    let err_fn = || err_span(span, format!("expected integer constant, found {:?}", attr_tree));
+    match attr_tree {
+        AttrTree::Lit(LitKind::Integer, digits) => digits.parse::<u64>().or_else(|_e| err_fn()),
+        _ => err_fn(),
+    }
+}
+
+/// Get the `"label"` part out of an attribute like `#[verifier::proof_note("label")]`
+fn get_proof_note_label(span: Span, attrs: &Option<Box<[AttrTree]>>) -> Result<&String, VirErr> {
+    let Some([AttrTree::Lit(LitKind::Str, label)]) = attrs.as_deref() else {
+        return err_span(span, "expected exactly one argument, a string literal");
     };
-    match i {
-        Some(i) => Ok(i),
-        None => err_span(span, format!("expected integer constant, found {:?}", &attr_tree)),
+    Ok(label)
+}
+
+/// Get the `42` part out of an attribute like `#[rlimit(42)]`
+fn get_rlimit_arg(span: Span, attrs: &Option<Box<[AttrTree]>>) -> Result<f32, VirErr> {
+    let err_fn = || err_span(span, "expected number, or `infinity` for rlimit");
+    match attrs.as_deref() {
+        Some([AttrTree::Lit(LitKind::Float | LitKind::Integer, text)]) => {
+            text.parse::<f32>().or_else(|_| err_fn())
+        }
+        Some([AttrTree::Fun(_, text, None)]) if text == "infinity" => Ok(f32::INFINITY),
+        _ => err_fn(),
     }
 }
 
@@ -390,6 +464,22 @@ pub(crate) fn parse_attrs(
                 }
                 AttrTree::Fun(_, name, None) if name == "proof" => v.push(Attr::Mode(Mode::Proof)),
                 AttrTree::Fun(_, name, None) if name == "exec" => v.push(Attr::Mode(Mode::Exec)),
+                AttrTree::Fun(span, name, attrs) if name == "proof_note" => {
+                    let label = get_proof_note_label(*span, attrs)?;
+                    v.push(Attr::ProofNote {
+                        span: *span,
+                        text: label.clone(),
+                        is_custom_err: false,
+                    })
+                }
+                AttrTree::Fun(span, name, attrs) if name == "custom_err" => {
+                    let label = get_proof_note_label(*span, attrs)?;
+                    v.push(Attr::ProofNote {
+                        span: *span,
+                        text: label.clone(),
+                        is_custom_err: true,
+                    })
+                }
                 AttrTree::Fun(_, name, None) if name == "trigger" => v.push(Attr::Trigger(None)),
                 AttrTree::Fun(span, name, Some(args)) if name == "trigger" => {
                     let mut groups: Vec<u64> = Vec::new();
@@ -488,16 +578,10 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, arg, None) if arg == "invariant_block" => {
                     v.push(Attr::InvariantBlock)
                 }
-                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, msg, None)]))
-                    if arg == "custom_req_err" =>
-                {
-                    v.push(Attr::CustomReqErr(msg.clone()))
+                AttrTree::Fun(_, arg, None) if arg == "open_au_block" => {
+                    v.push(Attr::AtomicUpdateBlock)
                 }
-                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, msg, None)]))
-                    if arg == "custom_err" =>
-                {
-                    v.push(Attr::CustomErr(msg.clone()))
-                }
+                AttrTree::Fun(_, arg, None) if arg == "atomic_call" => v.push(Attr::AtomicCall),
                 AttrTree::Fun(_, arg, None) if arg == "bit_vector" => v.push(Attr::BitVector),
                 AttrTree::Fun(_, arg, None) if arg == "decreases_by" || arg == "recommends_by" => {
                     v.push(Attr::DecreasesBy)
@@ -534,6 +618,22 @@ pub(crate) fn parse_attrs(
                     if arg == "loop_isolation" && r == "false" =>
                 {
                     v.push(Attr::LoopIsolation(false))
+                }
+                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, r, None)]))
+                    if arg == "deprecated_postcondition_mut_ref_style" && r == "true" =>
+                {
+                    v.push(Attr::MigratePostconditionsWithMutRefs(true))
+                }
+                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, r, None)]))
+                    if arg == "deprecated_postcondition_mut_ref_style" && r == "false" =>
+                {
+                    v.push(Attr::MigratePostconditionsWithMutRefs(false))
+                }
+                AttrTree::Fun(_, arg, _) if arg == "deprecated_postcondition_mut_ref_style" => {
+                    v.push(Attr::MigratePostconditionsWithMutRefs(true))
+                }
+                AttrTree::Fun(_, arg, None) if arg == "allow_complex_invariants" => {
+                    v.push(Attr::AllowComplexInvariants)
                 }
                 AttrTree::Fun(span, arg, Some(places)) if arg == "auto_ext_equal" => {
                     let mut auto_ext_equal = vir::ast::AutoExtEqual {
@@ -572,17 +672,21 @@ pub(crate) fn parse_attrs(
                     v.push(Attr::AutoExtEqual(auto_ext_equal))
                 }
                 AttrTree::Fun(_, arg, None) if arg == "memoize" => v.push(Attr::Memoize),
-                AttrTree::Fun(span, name, Some(box [AttrTree::Fun(_, r, None)]))
-                    if name == "rlimit" =>
+                AttrTree::Fun(span, name, attrs) if name == "rlimit" => {
+                    let number = get_rlimit_arg(*span, attrs)?;
+                    v.push(Attr::RLimit(number));
+                }
+                AttrTree::Fun(span, arg, Some(box [AttrTree::Fun(_, s, None)]))
+                    if arg == "allow" =>
                 {
-                    let Some(rlimit) = r
-                        .parse::<f32>()
-                        .ok()
-                        .or_else(|| if r == "infinity" { Some(f32::INFINITY) } else { None })
-                    else {
-                        return err_span(*span, "expected number, or `infinity` for rlimit");
-                    };
-                    v.push(Attr::RLimit(rlimit));
+                    if let Some(allow) = WarningAllow::from_str(s) {
+                        v.push(Attr::Allow(allow));
+                    } else {
+                        return err_span(
+                            *span,
+                            format!("unrecognized warning name for allow attribute: {s}"),
+                        );
+                    }
                 }
                 AttrTree::Fun(_, arg, None) if arg == "truncate" => v.push(Attr::Truncate),
                 AttrTree::Fun(_, arg, None) if arg == "external_fn_specification" => {
@@ -622,13 +726,19 @@ pub(crate) fn parse_attrs(
                 ) if arg == "external_trait_extension" && via == "via" => {
                     v.push(Attr::ExternalTraitExtension(s.clone(), i.clone()))
                 }
+                AttrTree::Fun(_, arg, Some(box [AttrTree::PathSegments(segments)]))
+                    if arg == "external_trait_private_bound" =>
+                {
+                    // The path must include the crate name,
+                    // and so must be at least two segments,
+                    // so we don't have to cover the one-segment case with AttrTree::Fun
+                    v.push(Attr::ExternalTraitPrivateBound(segments.clone()))
+                }
                 AttrTree::Fun(_, arg, None) if arg == "sealed" => v.push(Attr::Sealed),
-                AttrTree::Fun(_, arg, None) if arg == "prophetic" => {
-                    v.push(Attr::ProphecyDependent)
+                AttrTree::Fun(_, arg, None) if arg == "internal_trait" => {
+                    v.push(Attr::InternalTrait)
                 }
-                AttrTree::Fun(_, arg, None) if arg == "ignore_outside_new_mut_ref_experiment" => {
-                    v.push(Attr::IgnoreOutsideNewMutRefExperiment)
-                }
+                AttrTree::Fun(_, arg, None) if arg == "prophetic" => v.push(Attr::Prophetic),
                 AttrTree::Fun(_, arg, None) if arg == "type_invariant" => {
                     v.push(Attr::TypeInvariantFn)
                 }
@@ -638,11 +748,30 @@ pub(crate) fn parse_attrs(
                         "invalid trigger attribute: to provide a trigger expression, use the #![trigger <expr>] attribute",
                     );
                 }
+                AttrTree::Fun(_, arg, None) if arg == "impls_cannot_extend_spec" => {
+                    v.push(Attr::ImplsCannotExtendSpec);
+                }
                 AttrTree::Fun(_, arg, None) if arg == "assume_termination" => {
                     v.push(Attr::AssumeTermination);
                 }
                 AttrTree::Fun(_, arg, None) if arg == "exec_allows_no_decreases_clause" => {
                     v.push(Attr::ExecAllowNoDecreasesClause);
+                }
+                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, r, None)]))
+                    if arg == "assume" && r == "externals_available_without_declaration" =>
+                {
+                    v.push(Attr::ExternalsAvailableWithoutDeclaration(true))
+                }
+                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, r, None)]))
+                    if arg == "deny" && r == "externals_available_without_declaration" =>
+                {
+                    v.push(Attr::ExternalsAvailableWithoutDeclaration(false))
+                }
+                AttrTree::Fun(_, arg, None) if arg == "tracked_swap_primitive" => {
+                    v.push(Attr::TrackedSwap)
+                }
+                AttrTree::Fun(_, arg, None) if arg == "tracked_take_option_primitive" => {
+                    v.push(Attr::TrackedTakeOption)
                 }
                 _ => return err_span(span, "unrecognized verifier attribute"),
             },
@@ -664,6 +793,9 @@ pub(crate) fn parse_attrs(
                         v.push(Attr::Mode(Mode::Exec))
                     }
                     AttrTree::Fun(_, name, None) if name == "infer_mode" => v.push(Attr::InferMode),
+                    AttrTree::Fun(_, name, None) if name == "infer_proph" => {
+                        v.push(Attr::InferProph)
+                    }
                     AttrTree::Fun(_, name, None) if name == "trigger" => {
                         v.push(Attr::Trigger(None))
                     }
@@ -742,6 +874,9 @@ pub(crate) fn parse_attrs(
                     AttrTree::Fun(_, arg, None) if arg == "auto_decreases" => {
                         v.push(Attr::AutoDecreases)
                     }
+                    AttrTree::Fun(_, arg, None) if arg == "auto_loop_ensures" => {
+                        v.push(Attr::AutoLoopEnsures)
+                    }
                     AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, ident, None)]))
                         if arg == "prover" =>
                     {
@@ -787,6 +922,9 @@ pub(crate) fn parse_attrs(
                     AttrTree::Fun(_, arg, None) if arg == "structural_const_wrapper" => {
                         v.push(Attr::StructuralConstWrapper)
                     }
+                    AttrTree::Fun(_, arg, None) if arg == "loop_isolation_boundary" => {
+                        v.push(Attr::LoopIsolationBoundary)
+                    }
                     _ => {
                         return err_span(span, "unrecognized internal attribute");
                     }
@@ -799,8 +937,9 @@ pub(crate) fn parse_attrs(
                 },
             },
             AttrPrefix::Rustc => {
-                let AttrTree::Fun(span, name, _) = &attr;
-                v.push(Attr::UnsupportedRustcAttr(name.clone(), *span));
+                if let AttrTree::Fun(span, name, _) = &attr {
+                    v.push(Attr::UnsupportedRustcAttr(name.clone(), *span));
+                }
             }
         }
     }
@@ -836,6 +975,60 @@ pub(crate) fn parse_attrs_walk_parents<'tcx>(
     }
 }
 
+fn is_allow_walk_parents<'tcx>(
+    tcx: rustc_middle::ty::TyCtxt<'tcx>,
+    def_id: rustc_span::def_id::DefId,
+    allow: &WarningAllow,
+) -> bool {
+    for attr in parse_attrs_walk_parents(tcx, def_id) {
+        if let Attr::Allow(a) = &attr {
+            if a == allow {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+struct WarningDefId<'tcx>(rustc_middle::ty::TyCtxt<'tcx>, rustc_span::def_id::DefId);
+
+impl<'tcx> vir::messages::CheckAllowForWarning for WarningDefId<'tcx> {
+    fn allowed(&self, allow: &WarningAllow) -> bool {
+        let WarningDefId(tcx, def_id) = *self;
+        is_allow_walk_parents(tcx, def_id, allow)
+    }
+}
+
+pub(crate) fn warning_maybe<'tcx, S: Into<String>>(
+    tcx: rustc_middle::ty::TyCtxt<'tcx>,
+    def_id: rustc_span::def_id::DefId,
+    span: Span,
+    allow: &WarningAllow,
+    note: impl FnOnce() -> S,
+    emit: impl FnOnce(vir::messages::Message) -> (),
+) {
+    vir::messages::warning_maybe(
+        &WarningDefId(tcx, def_id),
+        &crate::spans::err_air_span(span),
+        allow,
+        note,
+        emit,
+    );
+}
+
+pub(crate) fn warning_config_walk_parents<'tcx>(
+    tcx: rustc_middle::ty::TyCtxt<'tcx>,
+    def_id: rustc_span::def_id::DefId,
+) -> vir::context::WarningConfig {
+    let mut allows = Vec::new();
+    for attr in parse_attrs_walk_parents(tcx, def_id) {
+        if let Attr::Allow(allow) = attr {
+            allows.push(allow.clone());
+        }
+    }
+    vir::context::WarningConfig(allows)
+}
+
 pub(crate) fn get_loop_isolation_walk_parents<'tcx>(
     tcx: rustc_middle::ty::TyCtxt<'tcx>,
     def_id: rustc_span::def_id::DefId,
@@ -843,6 +1036,30 @@ pub(crate) fn get_loop_isolation_walk_parents<'tcx>(
     for attr in parse_attrs_walk_parents(tcx, def_id) {
         if let Attr::LoopIsolation(flag) = attr {
             return Some(flag);
+        }
+    }
+    None
+}
+
+pub(crate) fn migrate_postconditions_walk_parents<'tcx>(
+    tcx: rustc_middle::ty::TyCtxt<'tcx>,
+    def_id: rustc_span::def_id::DefId,
+) -> Option<bool> {
+    for attr in parse_attrs_walk_parents(tcx, def_id) {
+        if let Attr::MigratePostconditionsWithMutRefs(flag) = attr {
+            return Some(flag);
+        }
+    }
+    None
+}
+
+pub(crate) fn get_allow_complex_invariants_walk_parents<'tcx>(
+    tcx: rustc_middle::ty::TyCtxt<'tcx>,
+    def_id: rustc_span::def_id::DefId,
+) -> Option<bool> {
+    for attr in parse_attrs_walk_parents(tcx, def_id) {
+        if let Attr::AllowComplexInvariants = attr {
+            return Some(true);
         }
     }
     None
@@ -872,6 +1089,18 @@ pub(crate) fn get_allow_exec_allows_no_decreases_clause_walk_parents<'tcx>(
     false
 }
 
+pub(crate) fn get_externals_available_without_declaration_walk_parents<'tcx>(
+    tcx: rustc_middle::ty::TyCtxt<'tcx>,
+    def_id: rustc_span::def_id::DefId,
+) -> bool {
+    for attr in parse_attrs_walk_parents(tcx, def_id) {
+        if let Attr::ExternalsAvailableWithoutDeclaration(flag) = attr {
+            return flag;
+        }
+    }
+    false
+}
+
 pub(crate) fn get_ghost_block_opt(attrs: &[Attribute]) -> Option<GhostBlockAttr> {
     for attr in parse_attrs_opt(attrs, None) {
         match attr {
@@ -886,6 +1115,16 @@ pub(crate) fn is_proof_in_spec(attrs: &[Attribute]) -> bool {
     for attr in parse_attrs_opt(attrs, None) {
         match attr {
             Attr::ProofInSpec => return true,
+            _ => {}
+        }
+    }
+    false
+}
+
+pub(crate) fn is_loop_isolation_boundary(attrs: &[Attribute]) -> bool {
+    for attr in parse_attrs_opt(attrs, None) {
+        match attr {
+            Attr::LoopIsolationBoundary => return true,
             _ => {}
         }
     }
@@ -938,15 +1177,37 @@ pub(crate) fn get_trigger(attrs: &[Attribute]) -> Result<Vec<TriggerAnnotation>,
     Ok(groups)
 }
 
-pub(crate) fn get_custom_err_annotations(attrs: &[Attribute]) -> Result<Vec<String>, VirErr> {
-    let mut v = Vec::new();
-    for attr in parse_attrs(attrs, None)? {
-        match attr {
-            Attr::CustomErr(s) => v.push(s),
-            _ => {}
+pub(crate) fn has_auto_decreases_attr(attrs: &[Attribute]) -> bool {
+    for attr in parse_attrs_opt(attrs, None) {
+        if let Attr::AutoDecreases = attr {
+            return true;
         }
     }
-    Ok(v)
+    false
+}
+
+pub(crate) fn has_auto_loop_ensures_attr(attrs: &[Attribute]) -> bool {
+    for attr in parse_attrs_opt(attrs, None) {
+        if let Attr::AutoLoopEnsures = attr {
+            return true;
+        }
+    }
+    false
+}
+
+pub(crate) fn get_proof_note_annotation(
+    attrs: &[Attribute],
+) -> Result<Option<(String, bool)>, VirErr> {
+    let mut label = None;
+    for attr in parse_attrs(attrs, None)? {
+        if let Attr::ProofNote { span, text, is_custom_err } = attr {
+            if label.is_some() {
+                return err_span(span, "at most one `proof_note` attribute is allowed");
+            }
+            label = Some((text, is_custom_err));
+        }
+    }
+    Ok(label)
 }
 
 #[derive(Debug, Clone)]
@@ -998,10 +1259,10 @@ pub(crate) struct VerifierAttrs {
     pub(crate) no_auto_trigger: bool,
     pub(crate) autospec: Option<String>,
     pub(crate) allow_in_spec: bool,
-    pub(crate) custom_req_err: Option<String>,
     pub(crate) bit_vector: bool,
     pub(crate) for_loop: bool,
     pub(crate) auto_decreases: bool,
+    pub(crate) auto_loop_ensures: bool,
     pub(crate) atomic: bool,
     pub(crate) integer_ring: bool,
     pub(crate) decreases_by: bool,
@@ -1009,14 +1270,17 @@ pub(crate) struct VerifierAttrs {
     pub(crate) nonlinear: bool,
     pub(crate) spinoff_prover: bool,
     pub(crate) loop_isolation: Option<bool>,
+    pub(crate) allow_complex_invariants: bool,
     pub(crate) memoize: bool,
     pub(crate) rlimit: Option<f32>,
+    pub(crate) allow_list: Vec<WarningAllow>,
     pub(crate) truncate: bool,
     pub(crate) external_fn_specification: bool,
     pub(crate) external_type_specification: bool,
     pub(crate) external_trait_specification: Option<String>,
     pub(crate) external_trait_extension: Option<(String, String)>,
     pub(crate) external_trait_blanket: bool,
+    pub(crate) external_trait_private_bounds: Vec<Vec<String>>,
     pub(crate) unwrapped_binding: bool,
     pub(crate) sets_mode: bool,
     pub(crate) internal_reveal_fn: bool,
@@ -1025,19 +1289,21 @@ pub(crate) struct VerifierAttrs {
     pub(crate) trusted: bool,
     pub(crate) internal_get_field_many_variants: bool,
     pub(crate) size_of_global: bool,
-    pub(crate) sealed: bool,
     pub(crate) prophecy_dependent: bool,
     pub(crate) item_broadcast_use: bool,
     pub(crate) size_of_broadcast_proof: bool,
     pub(crate) type_invariant_fn: bool,
     pub(crate) open_visibility_qualifier: bool,
+    pub(crate) impls_cannot_extend_spec: bool,
     pub(crate) assume_termination: bool,
     pub(crate) exec_allows_no_decreases_clause: bool,
+    pub(crate) externals_available_without_declaration: Option<bool>,
     pub(crate) unerased_proxy: bool,
     pub(crate) encoded_const: bool,
     pub(crate) encoded_static: bool,
     pub(crate) structural_const_wrapper: bool,
-    pub(crate) ignore_outside_new_mut_ref_experiment: bool,
+    pub(crate) tracked_swap: bool,
+    pub(crate) tracked_take_option: bool,
 }
 
 // Check for the `get_field_many_variants` attribute
@@ -1068,6 +1334,24 @@ pub(crate) fn is_sealed(
     for attr in parse_attrs(attrs, diagnostics)? {
         match attr {
             Attr::Sealed => {
+                return Ok(true);
+            }
+            _ => {}
+        }
+    }
+    Ok(false)
+}
+
+// Check for the `internal_trait` attribute
+// Skips additional checks that are meant to be applied only during the 'main' processing
+// of an item.
+pub(crate) fn is_internal_trait(
+    attrs: &[Attribute],
+    diagnostics: Option<&mut Vec<VirErrAs>>,
+) -> Result<bool, VirErr> {
+    for attr in parse_attrs(attrs, diagnostics)? {
+        match attr {
+            Attr::InternalTrait => {
                 return Ok(true);
             }
             _ => {}
@@ -1122,6 +1406,7 @@ pub(crate) fn get_external_attrs(
             }
             Attr::UsesUnerasedProxy => es.uses_unerased_proxy = true,
             Attr::StructuralConstWrapper => es.structural_const_wrapper = true,
+            Attr::MigratePostconditionsWithMutRefs(_) => {}
             Attr::UnsupportedRustcAttr(..) => {}
             _ => {
                 es.any_other_verus_specific_attribute = true;
@@ -1169,10 +1454,10 @@ pub(crate) fn get_verifier_attrs_maybe_check(
         no_auto_trigger: false,
         autospec: None,
         allow_in_spec: false,
-        custom_req_err: None,
         bit_vector: false,
         for_loop: false,
         auto_decreases: false,
+        auto_loop_ensures: false,
         atomic: false,
         integer_ring: false,
         decreases_by: false,
@@ -1180,14 +1465,17 @@ pub(crate) fn get_verifier_attrs_maybe_check(
         nonlinear: false,
         spinoff_prover: false,
         loop_isolation: None,
+        allow_complex_invariants: false,
         memoize: false,
         rlimit: None,
+        allow_list: vec![],
         truncate: false,
         external_fn_specification: false,
         external_type_specification: false,
         external_trait_specification: None,
         external_trait_extension: None,
         external_trait_blanket: false,
+        external_trait_private_bounds: vec![],
         unwrapped_binding: false,
         sets_mode: false,
         internal_reveal_fn: false,
@@ -1196,19 +1484,21 @@ pub(crate) fn get_verifier_attrs_maybe_check(
         trusted: false,
         size_of_global: false,
         internal_get_field_many_variants: false,
-        sealed: false,
         prophecy_dependent: false,
         item_broadcast_use: false,
         size_of_broadcast_proof: false,
         type_invariant_fn: false,
         open_visibility_qualifier: false,
+        impls_cannot_extend_spec: false,
         assume_termination: false,
         exec_allows_no_decreases_clause: false,
+        externals_available_without_declaration: None,
         unerased_proxy: false,
         encoded_const: false,
         encoded_static: false,
         structural_const_wrapper: false,
-        ignore_outside_new_mut_ref_experiment: false,
+        tracked_swap: false,
+        tracked_take_option: false,
     };
     let mut unsupported_rustc_attr: Option<(String, Span)> = None;
     for attr in parse_attrs(attrs, diagnostics)? {
@@ -1222,6 +1512,9 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             }
             Attr::ExternalTraitExtension(s, i) => vs.external_trait_extension = Some((s, i)),
             Attr::ExternalTraitBlanket => vs.external_trait_blanket = true,
+            Attr::ExternalTraitPrivateBound(bound) => {
+                vs.external_trait_private_bounds.push(bound.clone());
+            }
             Attr::Opaque => vs.opaque = true,
             Attr::Publish(open) => vs.publish = Some(open),
             Attr::OpaqueOutsideModule => vs.opaque_outside_module = true,
@@ -1249,10 +1542,10 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             Attr::NoAutoTrigger => vs.no_auto_trigger = true,
             Attr::Autospec(method_ident) => vs.autospec = Some(method_ident),
             Attr::AllowInSpec => vs.allow_in_spec = true,
-            Attr::CustomReqErr(s) => vs.custom_req_err = Some(s.clone()),
             Attr::BitVector => vs.bit_vector = true,
             Attr::ForLoop => vs.for_loop = true,
             Attr::AutoDecreases => vs.auto_decreases = true,
+            Attr::AutoLoopEnsures => vs.auto_loop_ensures = true,
             Attr::Atomic => vs.atomic = true,
             Attr::IntegerRing => vs.integer_ring = true,
             Attr::DecreasesBy => vs.decreases_by = true,
@@ -1260,9 +1553,11 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             Attr::NonLinear => vs.nonlinear = true,
             Attr::SpinoffProver => vs.spinoff_prover = true,
             Attr::LoopIsolation(flag) => vs.loop_isolation = Some(flag),
+            Attr::AllowComplexInvariants => vs.allow_complex_invariants = true,
             Attr::Memoize => vs.memoize = true,
             Attr::RLimit(rlimit) => vs.rlimit = Some(rlimit),
             Attr::Truncate => vs.truncate = true,
+            Attr::Allow(name) => vs.allow_list.push(name.clone()),
             Attr::UnwrappedBinding => vs.unwrapped_binding = true,
             Attr::Mode(_) => vs.sets_mode = true,
             Attr::InternalRevealFn => vs.internal_reveal_fn = true,
@@ -1272,24 +1567,26 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             Attr::SizeOfGlobal => vs.size_of_global = true,
             Attr::ItemBroadcastUse => vs.item_broadcast_use = true,
             Attr::InternalGetFieldManyVariants => vs.internal_get_field_many_variants = true,
-            Attr::Sealed => vs.sealed = true,
-            Attr::ProphecyDependent => vs.prophecy_dependent = true,
+            Attr::Prophetic => vs.prophecy_dependent = true,
             Attr::UnsupportedRustcAttr(name, span) => {
                 unsupported_rustc_attr = Some((name.clone(), span))
             }
             Attr::SizeOfBroadcastProof => vs.size_of_broadcast_proof = true,
             Attr::TypeInvariantFn => vs.type_invariant_fn = true,
             Attr::OpenVisibilityQualifier => vs.open_visibility_qualifier = true,
+            Attr::ImplsCannotExtendSpec => vs.impls_cannot_extend_spec = true,
             Attr::AssumeTermination => vs.assume_termination = true,
             Attr::ExecAllowNoDecreasesClause => vs.exec_allows_no_decreases_clause = true,
+            Attr::ExternalsAvailableWithoutDeclaration(flag) => {
+                vs.externals_available_without_declaration = Some(flag)
+            }
             Attr::UnerasedProxy => vs.unerased_proxy = true,
             Attr::EncodedConst => vs.encoded_const = true,
             Attr::EncodedStatic => vs.encoded_static = true,
             Attr::StructuralConstWrapper => vs.structural_const_wrapper = true,
             Attr::UsesUnerasedProxy => {}
-            Attr::IgnoreOutsideNewMutRefExperiment => {
-                vs.ignore_outside_new_mut_ref_experiment = true
-            }
+            Attr::TrackedSwap => vs.tracked_swap = true,
+            Attr::TrackedTakeOption => vs.tracked_take_option = true,
             _ => {}
         }
     }

@@ -85,17 +85,16 @@ use std::mem;
 
 use interpret::ErrorHandled;
 use rustc_data_structures::fx::FxHashMap;
-use rustc_hir::{self as hir, HirId};
+use rustc_hir::HirId;
 use rustc_index::{IndexSlice, IndexVec};
 use rustc_middle::middle::region;
 use rustc_middle::mir::{self, *};
-use rustc_middle::thir::{AdtExpr, AdtExprBase, ArmId, ExprId, ExprKind, LintLevel};
+use rustc_middle::thir::{AdtExpr, AdtExprBase, ArmId, ExprId, ExprKind};
 use rustc_middle::ty::{self, Ty, TyCtxt, TypeVisitableExt, ValTree};
 use rustc_middle::{bug, span_bug};
 use rustc_pattern_analysis::rustc::RustcPatCtxt;
 use rustc_session::lint::Level;
-use rustc_span::source_map::Spanned;
-use rustc_span::{DUMMY_SP, Span};
+use rustc_span::{DUMMY_SP, Span, Spanned};
 use tracing::{debug, instrument};
 
 use super::matches::BuiltMatchTree;
@@ -166,7 +165,7 @@ struct DropData {
 pub(crate) enum DropKind {
     Value,
     Storage,
-    ForLint(BackwardIncompatibleDropReason),
+    ForLint,
 }
 
 #[derive(Debug)]
@@ -268,7 +267,7 @@ impl Scope {
     /// use of optimizations in the MIR coroutine transform.
     fn needs_cleanup(&self) -> bool {
         self.drops.iter().any(|drop| match drop.kind {
-            DropKind::Value | DropKind::ForLint(_) => true,
+            DropKind::Value | DropKind::ForLint => true,
             DropKind::Storage => false,
         })
     }
@@ -432,12 +431,12 @@ impl DropTree {
                     };
                     cfg.terminate(block, drop_node.data.source_info, terminator);
                 }
-                DropKind::ForLint(reason) => {
+                DropKind::ForLint => {
                     let stmt = Statement::new(
                         drop_node.data.source_info,
                         StatementKind::BackwardIncompatibleDropHint {
                             place: Box::new(drop_node.data.local.into()),
-                            reason,
+                            reason: BackwardIncompatibleDropReason::Edition2024,
                         },
                     );
                     cfg.push(block, stmt);
@@ -520,6 +519,14 @@ impl<'tcx> Scopes<'tcx> {
     fn topmost(&self) -> region::Scope {
         self.scopes.last().expect("topmost_scope: no scopes present").region_scope
     }
+}
+
+/// Used by [`Builder::in_scope`] to create source scopes mapping from MIR back to HIR at points
+/// where lint levels change.
+#[derive(Copy, Clone, Debug)]
+pub(crate) enum LintLevel {
+    Inherited,
+    Explicit(HirId),
 }
 
 impl<'a, 'tcx> Builder<'a, 'tcx> {
@@ -885,7 +892,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
 
         let expr = &self.thir[value];
         let constant = match &expr.kind {
-            ExprKind::Adt(box AdtExpr { variant_index, fields, base, .. }) => {
+            ExprKind::Adt(AdtExpr { variant_index, fields, base, .. }) => {
                 assert!(matches!(base, AdtExprBase::None));
                 assert!(fields.is_empty());
                 ConstOperand {
@@ -897,7 +904,14 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                             self.tcx,
                             ValTree::from_branches(
                                 self.tcx,
-                                [ValTree::from_scalar_int(self.tcx, variant_index.as_u32().into())],
+                                [ty::Const::new_value(
+                                    self.tcx,
+                                    ValTree::from_scalar_int(
+                                        self.tcx,
+                                        variant_index.as_u32().into(),
+                                    ),
+                                    self.tcx.types.u32,
+                                )],
                             ),
                             self.thir[value].ty,
                         ),
@@ -943,7 +957,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 (state_ty.discriminant_ty(self.tcx), Rvalue::Discriminant(scope.state_place))
             }
             ty::Uint(_) | ty::Int(_) | ty::Float(_) | ty::Bool | ty::Char => {
-                (state_ty, Rvalue::Use(Operand::Copy(scope.state_place)))
+                (state_ty, Rvalue::Use(Operand::Copy(scope.state_place), WithRetag::Yes))
             }
             _ => span_bug!(state_decl.source_info.span, "unsupported #[loop_match] state"),
         };
@@ -1099,7 +1113,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
 
                     Some(DropData { source_info, local, kind: DropKind::Value })
                 }
-                Operand::Constant(_) => None,
+                Operand::Constant(_) | Operand::RuntimeChecks(_) => None,
             })
             .collect();
 
@@ -1161,14 +1175,14 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                         );
                         block = next;
                     }
-                    DropKind::ForLint(reason) => {
+                    DropKind::ForLint => {
                         self.cfg.push(
                             block,
                             Statement::new(
                                 source_info,
                                 StatementKind::BackwardIncompatibleDropHint {
                                     place: Box::new(local.into()),
-                                    reason,
+                                    reason: BackwardIncompatibleDropReason::Edition2024,
                                 },
                             ),
                         );
@@ -1284,7 +1298,12 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 break;
             }
 
-            if self.tcx.hir_attrs(id).iter().any(|attr| Level::from_attr(attr).is_some()) {
+            if self
+                .tcx
+                .hir_attrs(id)
+                .iter()
+                .any(|attr| Level::from_opt_symbol(attr.name()).is_some())
+            {
                 // This is a rare case. It's for a node path that doesn't reach the root due to an
                 // intervening lint level attribute. This result doesn't get cached.
                 return id;
@@ -1395,7 +1414,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         drop_kind: DropKind,
     ) {
         let needs_drop = match drop_kind {
-            DropKind::Value | DropKind::ForLint(_) => {
+            DropKind::Value | DropKind::ForLint => {
                 if !self.local_decls[local].ty.needs_drop(self.tcx, self.typing_env()) {
                     return;
                 }
@@ -1492,7 +1511,6 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         span: Span,
         region_scope: region::Scope,
         local: Local,
-        reason: BackwardIncompatibleDropReason,
     ) {
         // Note that we are *not* gating BIDs here on whether they have significant destructor.
         // We need to know all of them so that we can capture potential borrow-checking errors.
@@ -1500,24 +1518,13 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             // Since we are inserting linting MIR statement, we have to invalidate the caches
             scope.invalidate_cache();
             if scope.region_scope == region_scope {
-                // We'll be using this span in diagnostics, so let's make sure it points to the end
-                // end of the block, not just the end of the tail expression.
-                let region_scope_span = if reason
-                    == BackwardIncompatibleDropReason::MacroExtendedScope
-                    && let Some(scope_hir_id) = region_scope.hir_id(self.region_scope_tree)
-                    && let hir::Node::Expr(expr) = self.tcx.hir_node(scope_hir_id)
-                    && let hir::Node::Block(blk) = self.tcx.parent_hir_node(expr.hir_id)
-                {
-                    blk.span
-                } else {
-                    region_scope.span(self.tcx, self.region_scope_tree)
-                };
+                let region_scope_span = region_scope.span(self.tcx, self.region_scope_tree);
                 let scope_end = self.tcx.sess.source_map().end_point(region_scope_span);
 
                 scope.drops.push(DropData {
                     source_info: SourceInfo { span: scope_end, scope: scope.source_scope },
                     local,
-                    kind: DropKind::ForLint(reason),
+                    kind: DropKind::ForLint,
                 });
 
                 return;
@@ -1575,7 +1582,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
 
         // look for moves of a local variable, like `MOVE(_X)`
         let locals_moved = operands.iter().flat_map(|operand| match operand.node {
-            Operand::Copy(_) | Operand::Constant(_) => None,
+            Operand::Copy(_) | Operand::Constant(_) | Operand::RuntimeChecks(_) => None,
             Operand::Move(place) => place.as_local(),
         });
 
@@ -1914,7 +1921,7 @@ where
                 );
                 block = next;
             }
-            DropKind::ForLint(reason) => {
+            DropKind::ForLint => {
                 // As in the `DropKind::Storage` case below:
                 // normally lint-related drops are not emitted for unwind,
                 // so we can just leave `unwind_to` unmodified, but in some
@@ -1943,7 +1950,7 @@ where
                         source_info,
                         StatementKind::BackwardIncompatibleDropHint {
                             place: Box::new(local.into()),
-                            reason,
+                            reason: BackwardIncompatibleDropReason::Edition2024,
                         },
                     ),
                 );
@@ -1997,7 +2004,7 @@ impl<'a, 'tcx: 'a> Builder<'a, 'tcx> {
             let mut unwind_indices = IndexVec::from_elem_n(unwind_target, 1);
             for (drop_idx, drop_node) in drops.drop_nodes.iter_enumerated().skip(1) {
                 match drop_node.data.kind {
-                    DropKind::Storage | DropKind::ForLint(_) => {
+                    DropKind::Storage | DropKind::ForLint => {
                         if is_coroutine {
                             let unwind_drop = self
                                 .scopes
@@ -2036,7 +2043,7 @@ impl<'a, 'tcx: 'a> Builder<'a, 'tcx> {
                     .coroutine_drops
                     .add_drop(drop_data.data, dropline_indices[drop_data.next]);
                 match drop_data.data.kind {
-                    DropKind::Storage | DropKind::ForLint(_) => {}
+                    DropKind::Storage | DropKind::ForLint => {}
                     DropKind::Value => {
                         if self.is_async_drop(drop_data.data.local) {
                             self.scopes.coroutine_drops.add_entry_point(

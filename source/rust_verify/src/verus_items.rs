@@ -3,6 +3,7 @@ use regex::Regex;
 use rustc_middle::ty::{TyCtxt, TyKind};
 use rustc_span::def_id::DefId;
 use std::{collections::HashMap, sync::Arc};
+use vir::ast::CrateId;
 
 // The names returned by this are intended exclusively for matching in `get_rust_item`
 fn ty_to_stable_string_partial<'tcx>(
@@ -15,7 +16,7 @@ fn ty_to_stable_string_partial<'tcx>(
         TyKind::Int(t) => format!("{}", t.name_str()),
         TyKind::Uint(t) => format!("{}", t.name_str()),
         TyKind::Float(t) => format!("{}", t.name_str()),
-        TyKind::RawPtr(ref ty, ref tm) => format!(
+        TyKind::RawPtr(ty, tm) => format!(
             "*{} {}",
             match tm {
                 rustc_ast::Mutability::Mut => "mut",
@@ -32,14 +33,14 @@ fn ty_to_stable_string_partial<'tcx>(
             ty_to_stable_string_partial(tcx, ty)?,
         ),
         TyKind::Never => format!("!"),
-        TyKind::Tuple(ref tys) => format!(
+        TyKind::Tuple(tys) => format!(
             "({})",
             tys.iter()
                 .map(|ty| ty_to_stable_string_partial(tcx, &ty))
                 .collect::<Option<Vec<_>>>()?
                 .join(",")
         ),
-        TyKind::Param(ref param_ty) => format!("{}", param_ty.name.as_str()),
+        TyKind::Param(param_ty) => format!("{}", param_ty.name.as_str()),
         TyKind::Adt(def, _substs) => {
             return Some(def_id_to_stable_rust_path(tcx, def.did())?);
         }
@@ -97,15 +98,19 @@ pub(crate) enum SpecItem {
     Returns,
     InvariantExceptBreak,
     Invariant,
+    AtomicSpec,
+    AtomicCallLoop,
     Decreases,
     DecreasesWhen,
     DecreasesBy,
     RecommendsBy,
-    OpensInvariantsNone,
-    OpensInvariantsAny,
-    OpensInvariants,
-    OpensInvariantsExcept,
-    OpensInvariantsSet,
+    OpensInvariantMask,
+    InvMaskNone,
+    InvMaskAny,
+    InvMaskList,
+    InvMaskListCompl,
+    InvMaskSet,
+    Atomically,
     NoUnwind,
     NoUnwindWhen,
 }
@@ -122,6 +127,7 @@ pub(crate) enum DirectiveItem {
     RevealHide,
     RevealHideInternalPath,
     RevealStrlit,
+    RevealByteslit,
     InlineAirStmt,
 }
 
@@ -138,7 +144,6 @@ pub(crate) enum ExprItem {
     F64ToBits,
     StrSliceLen,
     StrSliceGetChar,
-    StrSliceIsAscii,
     ArchWordBits,
     ClosureToFnSpec,
     ClosureToFnProof,
@@ -149,7 +154,7 @@ pub(crate) enum ExprItem {
     IsSmallerThanLexicographic,
     IsSmallerThanRecursiveFunctionField,
     DefaultEnsures,
-    InferSpecForLoopIter,
+    ShrRefStructWrap,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -166,6 +171,14 @@ pub(crate) enum CompilableOprItem {
     TrackedBorrowMut,
     // GhostSplitTuple,
     // TrackedSplitTuple,
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
+pub(crate) enum BuiltinDerefItem {
+    TrackedDeref,
+    TrackedDerefMut,
+    GhostDeref,
+    GhostDerefMut,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -210,12 +223,44 @@ pub(crate) enum SpecBitwiseItem {
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
+pub(crate) enum IeeeFloatUnaryItem {
+    Cast,
+    Neg,
+    Floor,
+    Ceil,
+    Round,
+    RoundTiesEven,
+    Trunc,
+    IsNormal,
+    IsSubnormal,
+    IsZero,
+    IsInfinite,
+    IsNaN,
+    IsNegative,
+    IsPositive,
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
+pub(crate) enum IeeeFloatBinaryItem {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Eq,
+    Le,
+    Ge,
+    Lt,
+    Gt,
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
 pub(crate) enum BinaryOpItem {
     Arith(ArithItem),
     Equality(EqualityItem),
     SpecOrd(SpecOrdItem),
     SpecArith(SpecArithItem),
     SpecBitwise(SpecBitwiseItem),
+    IeeeFloat(IeeeFloatBinaryItem),
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -263,7 +308,10 @@ pub(crate) enum UnaryOpItem {
     SpecNeg,
     SpecCastInteger,
     SpecCastReal,
+    SpecCastFloat,
+    RealFloor,
     SpecGhostTracked(SpecGhostTrackedItem),
+    IeeeFloat(IeeeFloatUnaryItem),
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -271,6 +319,12 @@ pub(crate) enum OpenInvariantBlockItem {
     OpenLocalInvariantBegin,
     OpenAtomicInvariantBegin,
     OpenInvariantEnd,
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
+pub(crate) enum OpenAtomicUpdateItem {
+    TryOpenAtomicUpdateBegin,
+    TryOpenAtomicUpdateEnd,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash)]
@@ -285,7 +339,20 @@ pub(crate) enum InvariantItem {
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash)]
+pub(crate) enum AtomicUpdateItem {
+    AtomicUpdateReq,
+    AtomicUpdateEns,
+    AtomicUpdatePred,
+    AtomicUpdateResolves,
+    AtomicUpdateInput,
+    AtomicUpdateOutput,
+    AtomicUpdateOuterMask,
+    AtomicUpdateInnerMask,
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Hash)]
 pub(crate) enum SetItem {
+    Type,
     Empty,
     Full,
     Contains,
@@ -297,8 +364,12 @@ pub(crate) enum SetItem {
 #[derive(PartialEq, Eq, Debug, Clone, Hash)]
 pub(crate) enum VstdItem {
     SeqFn(vir::interpreter::SeqFn),
-    SetFn(SetItem),
+    SetItem(SetItem),
+    ISetItem(SetItem),
     Invariant(InvariantItem),
+    AtomicUpdate(AtomicUpdateItem),
+    PredArgs,
+    BranchBool,
     ExecNonstaticCall,
     ProofNonstaticCall,
     ArrayIndexGet,
@@ -311,9 +382,15 @@ pub(crate) enum VstdItem {
     SpecSliceIndex,
     CastPtrToThinPtr,
     CastArrayPtrToSlicePtr,
+    CastSlicePtrToSlicePtr,
+    CastSlicePtrToStrPtr,
+    CastStrPtrToSlicePtr,
     CastPtrToUsize,
+    FloatCast,
+    RefMutArrayUnsizingCoercion,
     VecIndex,
     VecIndexMut,
+    SharedReference,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -334,6 +411,7 @@ pub(crate) enum BuiltinTypeItem {
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
 pub(crate) enum BuiltinTraitItem {
     Integer,
+    Chainable,
     Sealed,
 }
 
@@ -342,6 +420,7 @@ pub(crate) enum BuiltinFunctionItem {
     CallRequires,
     CallEnsures,
     ConstrainType,
+    GetFutureOutputType,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -364,6 +443,13 @@ pub(crate) enum ExternalItem {
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash)]
+pub(crate) enum RustPrivate {
+    Path(vir::ast::Path),
+    FormatArgumentFn(Ident),
+    FormatArgumentsFn(Ident),
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Hash)]
 pub(crate) enum VerusItem {
     Spec(SpecItem),
     Quant(QuantItem),
@@ -377,11 +463,14 @@ pub(crate) enum VerusItem {
     UseTypeInvariant,
     WithTriggers,
     OpenInvariantBlock(OpenInvariantBlockItem),
+    OpenAtomicUpdate(OpenAtomicUpdateItem),
     Vstd(VstdItem, Option<Ident>),
+    RustPrivate(RustPrivate),
     Marker(MarkerItem),
     BuiltinType(BuiltinTypeItem),
     BuiltinTrait(BuiltinTraitItem),
     BuiltinFunction(BuiltinFunctionItem),
+    BuiltinDeref(BuiltinDerefItem),
     Global(GlobalItem),
     External(ExternalItem),
     HasResolved,
@@ -389,8 +478,14 @@ pub(crate) enum VerusItem {
     MutRefCurrent,
     MutRefFuture,
     Final,
+    AfterBorrow,
     ErasedGhostValue,
+    ShadowGhostValue,
+    MutableReferenceTie,
+    TwoPhaseMutableReferenceTie,
+    GetFirst,
     DummyCapture(DummyCaptureItem),
+    MutRefTracked,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash)]
@@ -412,15 +507,20 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::returns",                 VerusItem::Spec(SpecItem::Returns)),
         ("verus::verus_builtin::invariant_except_break",  VerusItem::Spec(SpecItem::InvariantExceptBreak)),
         ("verus::verus_builtin::invariant",               VerusItem::Spec(SpecItem::Invariant)),
+        ("verus::verus_builtin::atomic_spec",             VerusItem::Spec(SpecItem::AtomicSpec)),
+        ("verus::verus_builtin::atomic_call_loop",        VerusItem::Spec(SpecItem::AtomicCallLoop)),
         ("verus::verus_builtin::decreases",               VerusItem::Spec(SpecItem::Decreases)),
         ("verus::verus_builtin::decreases_when",          VerusItem::Spec(SpecItem::DecreasesWhen)),
         ("verus::verus_builtin::decreases_by",            VerusItem::Spec(SpecItem::DecreasesBy)),
         ("verus::verus_builtin::recommends_by",           VerusItem::Spec(SpecItem::RecommendsBy)),
-        ("verus::verus_builtin::opens_invariants_none",   VerusItem::Spec(SpecItem::OpensInvariantsNone)),
-        ("verus::verus_builtin::opens_invariants_any",    VerusItem::Spec(SpecItem::OpensInvariantsAny)),
-        ("verus::verus_builtin::opens_invariants",        VerusItem::Spec(SpecItem::OpensInvariants)),
-        ("verus::verus_builtin::opens_invariants_except", VerusItem::Spec(SpecItem::OpensInvariantsExcept)),
-        ("verus::verus_builtin::opens_invariants_set",    VerusItem::Spec(SpecItem::OpensInvariantsSet)),
+
+        ("verus::verus_builtin::opens_invariant_mask",   VerusItem::Spec(SpecItem::OpensInvariantMask)),
+
+        ("verus::verus_builtin::inv_mask_none",           VerusItem::Spec(SpecItem::InvMaskNone)),
+        ("verus::verus_builtin::inv_mask_any",            VerusItem::Spec(SpecItem::InvMaskAny)),
+        ("verus::verus_builtin::inv_mask_list",           VerusItem::Spec(SpecItem::InvMaskList)),
+        ("verus::verus_builtin::inv_mask_list_compl",     VerusItem::Spec(SpecItem::InvMaskListCompl)),
+        ("verus::verus_builtin::inv_mask_set",            VerusItem::Spec(SpecItem::InvMaskSet)),
 
         ("verus::verus_builtin::no_unwind",               VerusItem::Spec(SpecItem::NoUnwind)),
         ("verus::verus_builtin::no_unwind_when",          VerusItem::Spec(SpecItem::NoUnwindWhen)),
@@ -432,6 +532,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::reveal_hide",             VerusItem::Directive(DirectiveItem::RevealHide)),
         ("verus::verus_builtin::reveal_hide_internal_path", VerusItem::Directive(DirectiveItem::RevealHideInternalPath)),
         ("verus::verus_builtin::reveal_strlit",           VerusItem::Directive(DirectiveItem::RevealStrlit)),
+        ("verus::verus_builtin::reveal_byteslit",         VerusItem::Directive(DirectiveItem::RevealByteslit)),
         ("verus::verus_builtin::inline_air_stmt",         VerusItem::Directive(DirectiveItem::InlineAirStmt)),
 
         ("verus::verus_builtin::choose",                  VerusItem::Expr(ExprItem::Choose)),
@@ -445,7 +546,6 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::f64_to_bits",             VerusItem::Expr(ExprItem::F64ToBits)),
         ("verus::verus_builtin::strslice_len",            VerusItem::Expr(ExprItem::StrSliceLen)),
         ("verus::verus_builtin::strslice_get_char",       VerusItem::Expr(ExprItem::StrSliceGetChar)),
-        ("verus::verus_builtin::strslice_is_ascii",       VerusItem::Expr(ExprItem::StrSliceIsAscii)),
         ("verus::verus_builtin::arch_word_bits",          VerusItem::Expr(ExprItem::ArchWordBits)),
         ("verus::verus_builtin::closure_to_fn_spec",      VerusItem::Expr(ExprItem::ClosureToFnSpec)),
         ("verus::verus_builtin::closure_to_fn_proof",     VerusItem::Expr(ExprItem::ClosureToFnProof)),
@@ -456,7 +556,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::is_smaller_than_lexicographic", VerusItem::Expr(ExprItem::IsSmallerThanLexicographic)),
         ("verus::verus_builtin::is_smaller_than_recursive_function_field", VerusItem::Expr(ExprItem::IsSmallerThanRecursiveFunctionField)),
         ("verus::verus_builtin::default_ensures",         VerusItem::Expr(ExprItem::DefaultEnsures)),
-        ("verus::verus_builtin::infer_spec_for_loop_iter", VerusItem::Expr(ExprItem::InferSpecForLoopIter)),
+        ("verus::verus_builtin::shr_ref_struct_wrap",     VerusItem::Expr(ExprItem::ShrRefStructWrap)),
 
         ("verus::verus_builtin::imply",                   VerusItem::CompilableOpr(CompilableOprItem::Implies)),
         // TODO ("verus::verus_builtin::smartptr_new",    VerusItem::CompilableOpr(CompilableOprItem::SmartPtrNew)),
@@ -468,6 +568,11 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::Tracked::get",            VerusItem::CompilableOpr(CompilableOprItem::TrackedGet)),
         ("verus::verus_builtin::Tracked::borrow",         VerusItem::CompilableOpr(CompilableOprItem::TrackedBorrow)),
         ("verus::verus_builtin::Tracked::borrow_mut",     VerusItem::CompilableOpr(CompilableOprItem::TrackedBorrowMut)),
+
+        ("verus::verus_builtin::Tracked::deref",          VerusItem::BuiltinDeref(BuiltinDerefItem::TrackedDeref)),
+        ("verus::verus_builtin::Tracked::deref_mut",      VerusItem::BuiltinDeref(BuiltinDerefItem::TrackedDerefMut)),
+        ("verus::verus_builtin::Ghost::deref",            VerusItem::BuiltinDeref(BuiltinDerefItem::GhostDeref)),
+        ("verus::verus_builtin::Ghost::deref_mut",        VerusItem::BuiltinDeref(BuiltinDerefItem::GhostDerefMut)),
 
         ("verus::verus_builtin::add",                     VerusItem::BinaryOp(BinaryOpItem::Arith(ArithItem::BuiltinAdd))),
         ("verus::verus_builtin::sub",                     VerusItem::BinaryOp(BinaryOpItem::Arith(ArithItem::BuiltinSub))),
@@ -495,6 +600,16 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::SpecShl::spec_shl",       VerusItem::BinaryOp(BinaryOpItem::SpecBitwise(SpecBitwiseItem::Shl))),
         ("verus::verus_builtin::SpecShr::spec_shr",       VerusItem::BinaryOp(BinaryOpItem::SpecBitwise(SpecBitwiseItem::Shr))),
 
+        ("verus::verus_builtin::IeeeFloat::ieee_add",     VerusItem::BinaryOp(BinaryOpItem::IeeeFloat(IeeeFloatBinaryItem::Add))),
+        ("verus::verus_builtin::IeeeFloat::ieee_sub",     VerusItem::BinaryOp(BinaryOpItem::IeeeFloat(IeeeFloatBinaryItem::Sub))),
+        ("verus::verus_builtin::IeeeFloat::ieee_mul",     VerusItem::BinaryOp(BinaryOpItem::IeeeFloat(IeeeFloatBinaryItem::Mul))),
+        ("verus::verus_builtin::IeeeFloat::ieee_div",     VerusItem::BinaryOp(BinaryOpItem::IeeeFloat(IeeeFloatBinaryItem::Div))),
+        ("verus::verus_builtin::IeeeFloat::ieee_eq",      VerusItem::BinaryOp(BinaryOpItem::IeeeFloat(IeeeFloatBinaryItem::Eq))),
+        ("verus::verus_builtin::IeeeFloat::ieee_le",      VerusItem::BinaryOp(BinaryOpItem::IeeeFloat(IeeeFloatBinaryItem::Le))),
+        ("verus::verus_builtin::IeeeFloat::ieee_ge",      VerusItem::BinaryOp(BinaryOpItem::IeeeFloat(IeeeFloatBinaryItem::Ge))),
+        ("verus::verus_builtin::IeeeFloat::ieee_lt",      VerusItem::BinaryOp(BinaryOpItem::IeeeFloat(IeeeFloatBinaryItem::Lt))),
+        ("verus::verus_builtin::IeeeFloat::ieee_gt",      VerusItem::BinaryOp(BinaryOpItem::IeeeFloat(IeeeFloatBinaryItem::Gt))),
+
         ("verus::verus_builtin::spec_chained_value",      VerusItem::Chained(ChainedItem::Value)),
         ("verus::verus_builtin::spec_chained_le",         VerusItem::Chained(ChainedItem::Le)),
         ("verus::verus_builtin::spec_chained_lt",         VerusItem::Chained(ChainedItem::Lt)),
@@ -521,13 +636,35 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::spec_literal_decimal",    VerusItem::UnaryOp(UnaryOpItem::SpecLiteral(SpecLiteralItem::Decimal))),
         ("verus::verus_builtin::SpecNeg::spec_neg",       VerusItem::UnaryOp(UnaryOpItem::SpecNeg)),
         ("verus::verus_builtin::spec_cast_integer",       VerusItem::UnaryOp(UnaryOpItem::SpecCastInteger)),
-        ("verus::verus_builtin::spec_cast_real"   ,       VerusItem::UnaryOp(UnaryOpItem::SpecCastReal)),
+        ("verus::verus_builtin::spec_cast_real",          VerusItem::UnaryOp(UnaryOpItem::SpecCastReal)),
+        ("verus::verus_builtin::spec_cast_float",         VerusItem::UnaryOp(UnaryOpItem::SpecCastFloat)),
+        ("verus::verus_builtin::real::floor",             VerusItem::UnaryOp(UnaryOpItem::RealFloor)),
         ("verus::verus_builtin::Ghost::view",             VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(SpecGhostTrackedItem::GhostView))),
         ("verus::verus_builtin::Ghost::borrow",           VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(SpecGhostTrackedItem::GhostBorrow))),
         ("verus::verus_builtin::Ghost::borrow_mut",       VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(SpecGhostTrackedItem::GhostBorrowMut))),
         ("verus::verus_builtin::Tracked::view",           VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(SpecGhostTrackedItem::TrackedView))),
 
+        ("verus::verus_builtin::IeeeFloat::ieee_neg",     VerusItem::UnaryOp(UnaryOpItem::IeeeFloat(IeeeFloatUnaryItem::Neg))),
+        ("verus::verus_builtin::IeeeFloat::ieee_floor",   VerusItem::UnaryOp(UnaryOpItem::IeeeFloat(IeeeFloatUnaryItem::Floor))),
+        ("verus::verus_builtin::IeeeFloat::ieee_ceil",    VerusItem::UnaryOp(UnaryOpItem::IeeeFloat(IeeeFloatUnaryItem::Ceil))),
+        ("verus::verus_builtin::IeeeFloat::ieee_round",   VerusItem::UnaryOp(UnaryOpItem::IeeeFloat(IeeeFloatUnaryItem::Round))),
+        ("verus::verus_builtin::IeeeFloat::ieee_round_ties_even", VerusItem::UnaryOp(UnaryOpItem::IeeeFloat(IeeeFloatUnaryItem::RoundTiesEven))),
+        ("verus::verus_builtin::IeeeFloat::ieee_trunc",           VerusItem::UnaryOp(UnaryOpItem::IeeeFloat(IeeeFloatUnaryItem::Trunc))),
+        ("verus::verus_builtin::IeeeFloat::ieee_is_normal",    VerusItem::UnaryOp(UnaryOpItem::IeeeFloat(IeeeFloatUnaryItem::IsNormal))),
+        ("verus::verus_builtin::IeeeFloat::ieee_is_subnormal", VerusItem::UnaryOp(UnaryOpItem::IeeeFloat(IeeeFloatUnaryItem::IsSubnormal))),
+        ("verus::verus_builtin::IeeeFloat::ieee_is_zero",      VerusItem::UnaryOp(UnaryOpItem::IeeeFloat(IeeeFloatUnaryItem::IsZero))),
+        ("verus::verus_builtin::IeeeFloat::ieee_is_infinite",  VerusItem::UnaryOp(UnaryOpItem::IeeeFloat(IeeeFloatUnaryItem::IsInfinite))),
+        ("verus::verus_builtin::IeeeFloat::ieee_is_nan",       VerusItem::UnaryOp(UnaryOpItem::IeeeFloat(IeeeFloatUnaryItem::IsNaN))),
+        ("verus::verus_builtin::IeeeFloat::ieee_is_negative",  VerusItem::UnaryOp(UnaryOpItem::IeeeFloat(IeeeFloatUnaryItem::IsNegative))),
+        ("verus::verus_builtin::IeeeFloat::ieee_is_positive",  VerusItem::UnaryOp(UnaryOpItem::IeeeFloat(IeeeFloatUnaryItem::IsPositive))),
+        ("verus::verus_builtin::IeeeFloat::ieee_is_positive",  VerusItem::UnaryOp(UnaryOpItem::IeeeFloat(IeeeFloatUnaryItem::IsPositive))),
+        ("verus::verus_builtin::IeeeFloatCast::ieee_cast",     VerusItem::UnaryOp(UnaryOpItem::IeeeFloat(IeeeFloatUnaryItem::Cast))),
+
         ("verus::verus_builtin::erased_ghost_value",      VerusItem::ErasedGhostValue),
+        ("verus::verus_builtin::shadow_ghost_value",      VerusItem::ShadowGhostValue),
+        ("verus::verus_builtin::mutable_reference_tie",   VerusItem::MutableReferenceTie),
+        ("verus::verus_builtin::two_phase_mutable_reference_tie",   VerusItem::TwoPhaseMutableReferenceTie),
+        ("verus::verus_builtin::verus_erasure_get_first", VerusItem::GetFirst),
         ("verus::verus_builtin::DummyCapture",            VerusItem::DummyCapture(DummyCaptureItem::Struct)),
         ("verus::verus_builtin::dummy_capture_new",       VerusItem::DummyCapture(DummyCaptureItem::New)),
         ("verus::verus_builtin::dummy_capture_consume",   VerusItem::DummyCapture(DummyCaptureItem::Consume)),
@@ -535,6 +672,9 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::invariant::open_atomic_invariant_begin", VerusItem::OpenInvariantBlock(OpenInvariantBlockItem::OpenAtomicInvariantBegin)),
         ("verus::vstd::invariant::open_local_invariant_begin",  VerusItem::OpenInvariantBlock(OpenInvariantBlockItem::OpenLocalInvariantBegin)),
         ("verus::vstd::invariant::open_invariant_end",          VerusItem::OpenInvariantBlock(OpenInvariantBlockItem::OpenInvariantEnd)),
+
+        ("verus::vstd::atomic::try_open_atomic_update_begin",   VerusItem::OpenAtomicUpdate(OpenAtomicUpdateItem::TryOpenAtomicUpdateBegin)),
+        ("verus::vstd::atomic::try_open_atomic_update_end",     VerusItem::OpenAtomicUpdate(OpenAtomicUpdateItem::TryOpenAtomicUpdateEnd)),
 
         ("verus::vstd::seq::Seq::empty",       VerusItem::Vstd(VstdItem::SeqFn(vir::interpreter::SeqFn::Empty   ), Some(Arc::new("seq::Seq::empty"      .to_owned())))),
         ("verus::vstd::seq::Seq::new",         VerusItem::Vstd(VstdItem::SeqFn(vir::interpreter::SeqFn::New     ), Some(Arc::new("seq::Seq::new"        .to_owned())))),
@@ -547,12 +687,21 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::seq::Seq::ext_equal",   VerusItem::Vstd(VstdItem::SeqFn(vir::interpreter::SeqFn::ExtEqual), Some(Arc::new("seq::Seq::ext_equal"  .to_owned())))),
         ("verus::vstd::seq::Seq::last",        VerusItem::Vstd(VstdItem::SeqFn(vir::interpreter::SeqFn::Last    ), Some(Arc::new("seq::Seq::last"       .to_owned())))),
 
-        ("verus::vstd::set::Set::empty",     VerusItem::Vstd(VstdItem::SetFn(SetItem::Empty),    Some(Arc::new("set::Set::empty".to_owned())))),
-        ("verus::vstd::set::Set::full",      VerusItem::Vstd(VstdItem::SetFn(SetItem::Full),     Some(Arc::new("set::Set::full".to_owned())))),
-        ("verus::vstd::set::Set::contains",  VerusItem::Vstd(VstdItem::SetFn(SetItem::Contains), Some(Arc::new("set::Set::contains".to_owned())))),
-        ("verus::vstd::set::Set::subset_of", VerusItem::Vstd(VstdItem::SetFn(SetItem::SubsetOf), Some(Arc::new("set::Set::subset_of".to_owned())))),
-        ("verus::vstd::set::Set::insert",    VerusItem::Vstd(VstdItem::SetFn(SetItem::Insert),   Some(Arc::new("set::Set::insert".to_owned())))),
-        ("verus::vstd::set::Set::remove",    VerusItem::Vstd(VstdItem::SetFn(SetItem::Remove),   Some(Arc::new("set::Set::remove".to_owned())))),
+        ("verus::vstd::set::Set",              VerusItem::Vstd(VstdItem::SetItem(SetItem::Type),      Some(Arc::new("set::Set".to_owned())))),
+        ("verus::vstd::set::Set::empty",       VerusItem::Vstd(VstdItem::SetItem(SetItem::Empty),     Some(Arc::new("set::Set::empty".to_owned())))),
+        ("verus::vstd::set::Set::full",        VerusItem::Vstd(VstdItem::SetItem(SetItem::Full),      Some(Arc::new("set::Set::full".to_owned())))),
+        ("verus::vstd::set::Set::contains",    VerusItem::Vstd(VstdItem::SetItem(SetItem::Contains),  Some(Arc::new("set::Set::contains".to_owned())))),
+        ("verus::vstd::set::Set::subset_of",   VerusItem::Vstd(VstdItem::SetItem(SetItem::SubsetOf),  Some(Arc::new("set::Set::subset_of".to_owned())))),
+        ("verus::vstd::set::Set::insert",      VerusItem::Vstd(VstdItem::SetItem(SetItem::Insert),    Some(Arc::new("set::Set::insert".to_owned())))),
+        ("verus::vstd::set::Set::remove",      VerusItem::Vstd(VstdItem::SetItem(SetItem::Remove),    Some(Arc::new("set::Set::remove".to_owned())))),
+
+        ("verus::vstd::iset::ISet",            VerusItem::Vstd(VstdItem::ISetItem(SetItem::Type),     Some(Arc::new("iset::ISet".to_owned())))),
+        ("verus::vstd::iset::ISet::empty",     VerusItem::Vstd(VstdItem::ISetItem(SetItem::Empty),    Some(Arc::new("iset::ISet::empty".to_owned())))),
+        ("verus::vstd::iset::ISet::full",      VerusItem::Vstd(VstdItem::ISetItem(SetItem::Full),     Some(Arc::new("iset::ISet::full".to_owned())))),
+        ("verus::vstd::iset::ISet::contains",  VerusItem::Vstd(VstdItem::ISetItem(SetItem::Contains), Some(Arc::new("iset::ISet::contains".to_owned())))),
+        ("verus::vstd::iset::ISet::subset_of", VerusItem::Vstd(VstdItem::ISetItem(SetItem::SubsetOf), Some(Arc::new("iset::ISet::subset_of".to_owned())))),
+        ("verus::vstd::iset::ISet::insert",    VerusItem::Vstd(VstdItem::ISetItem(SetItem::Insert),   Some(Arc::new("iset::ISet::insert".to_owned())))),
+        ("verus::vstd::iset::ISet::remove",    VerusItem::Vstd(VstdItem::ISetItem(SetItem::Remove),   Some(Arc::new("iset::ISet::remove".to_owned())))),
 
         ("verus::vstd::invariant::AtomicInvariant::namespace",           VerusItem::Vstd(VstdItem::Invariant(InvariantItem::AtomicInvariantNamespace       ), Some(Arc::new("invariant::AtomicInvariant::namespace"          .to_owned())))),
         ("verus::vstd::invariant::AtomicInvariant::inv",                 VerusItem::Vstd(VstdItem::Invariant(InvariantItem::AtomicInvariantInv             ), Some(Arc::new("invariant::AtomicInvariant::inv"                .to_owned())))),
@@ -564,11 +713,24 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::vstd::exec_nonstatic_call", VerusItem::Vstd(VstdItem::ExecNonstaticCall, Some(Arc::new("pervasive::exec_nonstatic_call".to_owned())))),
         ("verus::vstd::vstd::proof_nonstatic_call", VerusItem::Vstd(VstdItem::ProofNonstaticCall, Some(Arc::new("pervasive::proof_nonstatic_call".to_owned())))),
 
+        ("verus::vstd::atomic::atomically",               VerusItem::Spec(SpecItem::Atomically)),
+        ("verus::vstd::atomic::pred_args",                VerusItem::Vstd(VstdItem::PredArgs,                                              Some(Arc::new("atomic::pred_args".to_owned())))),
+        ("verus::vstd::atomic::branch_bool",              VerusItem::Vstd(VstdItem::BranchBool,                                            Some(Arc::new("atomic::branch_bool".to_owned())))),
+        ("verus::vstd::atomic::AtomicUpdate::req",        VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateReq),       Some(Arc::new("atomic::AtomicUpdate::req".to_owned())))),
+        ("verus::vstd::atomic::AtomicUpdate::ens",        VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateEns),       Some(Arc::new("atomic::AtomicUpdate::ens".to_owned())))),
+        ("verus::vstd::atomic::AtomicUpdate::pred",       VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdatePred),      Some(Arc::new("atomic::AtomicUpdate::pred".to_owned())))),
+        ("verus::vstd::atomic::AtomicUpdate::resolves",   VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateResolves),  Some(Arc::new("atomic::AtomicUpdate::resolves".to_owned())))),
+        ("verus::vstd::atomic::AtomicUpdate::input",      VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateInput),     Some(Arc::new("atomic::AtomicUpdate::input".to_owned())))),
+        ("verus::vstd::atomic::AtomicUpdate::output",     VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateOutput),    Some(Arc::new("atomic::AtomicUpdate::output".to_owned())))),
+        ("verus::vstd::atomic::AtomicUpdate::outer_mask", VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateOuterMask), Some(Arc::new("atomic::AtomicUpdate::outer_mask".to_owned())))),
+        ("verus::vstd::atomic::AtomicUpdate::inner_mask", VerusItem::Vstd(VstdItem::AtomicUpdate(AtomicUpdateItem::AtomicUpdateInnerMask), Some(Arc::new("atomic::AtomicUpdate::inner_mask".to_owned())))),
+
         ("verus::vstd::std_specs::vec::vec_index", VerusItem::Vstd(VstdItem::VecIndex, Some(Arc::new("std_specs::vec::vec_index".to_owned())))),
         ("verus::vstd::std_specs::vec::vec_index_mut", VerusItem::Vstd(VstdItem::VecIndexMut, Some(Arc::new("std_specs::vec::vec_index_mut".to_owned())))),
         ("verus::vstd::array::array_index_get", VerusItem::Vstd(VstdItem::ArrayIndexGet, Some(Arc::new("array::array_index_get".to_owned())))),
         ("verus::vstd::array::array_as_slice", VerusItem::Vstd(VstdItem::ArrayAsSlice, Some(Arc::new("array::array_as_slice".to_owned())))),
         ("verus::vstd::array::array_fill_for_copy_types", VerusItem::Vstd(VstdItem::ArrayFillForCopyTypes, Some(Arc::new("array::array_fill_for_copy_types".to_owned())))),
+        ("verus::vstd::array::ref_mut_array_unsizing_coercion", VerusItem::Vstd(VstdItem::RefMutArrayUnsizingCoercion, Some(Arc::new("array::ref_mut_array_unsizing_coercion".to_owned())))),
         ("verus::vstd::array::spec_array_update", VerusItem::Vstd(VstdItem::SpecArrayUpdate, Some(Arc::new("array::spec_array_update".to_owned())))),
         ("verus::vstd::slice::slice_index_get", VerusItem::Vstd(VstdItem::SliceIndexGet, Some(Arc::new("slice::slice_index_get".to_owned())))),
         ("verus::vstd::slice::spec_slice_update", VerusItem::Vstd(VstdItem::SpecSliceUpdate, Some(Arc::new("slice::spec_slice_update".to_owned())))),
@@ -576,8 +738,27 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::slice::spec_slice_index", VerusItem::Vstd(VstdItem::SpecSliceIndex, Some(Arc::new("slice::spec_slice_index".to_owned())))),
         ("verus::vstd::raw_ptr::cast_ptr_to_thin_ptr", VerusItem::Vstd(VstdItem::CastPtrToThinPtr, Some(Arc::new("raw_ptr::cast_ptr_to_thin_ptr".to_owned())))),
         ("verus::vstd::raw_ptr::cast_array_ptr_to_slice_ptr", VerusItem::Vstd(VstdItem::CastArrayPtrToSlicePtr, Some(Arc::new("raw_ptr::cast_array_ptr_to_slice_ptr".to_owned())))),
+        ("verus::vstd::raw_ptr::cast_slice_ptr_to_slice_ptr", VerusItem::Vstd(VstdItem::CastSlicePtrToSlicePtr, Some(Arc::new("raw_ptr::cast_slice_ptr_to_slice_ptr".to_owned())))),
+        ("verus::vstd::raw_ptr::cast_slice_ptr_to_str_ptr", VerusItem::Vstd(VstdItem::CastSlicePtrToStrPtr, Some(Arc::new("raw_ptr::cast_slice_ptr_to_str_ptr".to_owned())))),
+        ("verus::vstd::raw_ptr::cast_str_ptr_to_slice_ptr", VerusItem::Vstd(VstdItem::CastStrPtrToSlicePtr, Some(Arc::new("raw_ptr::cast_str_ptr_to_slice_ptr".to_owned())))),
         ("verus::vstd::raw_ptr::cast_ptr_to_usize", VerusItem::Vstd(VstdItem::CastPtrToUsize, Some(Arc::new("raw_ptr::cast_ptr_to_usize".to_owned())))),
+        ("verus::vstd::raw_ptr::SharedReference", VerusItem::Vstd(VstdItem::SharedReference, Some(Arc::new("raw_ptr::SharedReference".to_owned())))),
+        ("verus::vstd::float::float_cast", VerusItem::Vstd(VstdItem::FloatCast, Some(Arc::new("float::float_cast".to_owned())))),
             // SeqFn(vir::interpreter::SeqFn::Last    ))),
+
+        ("verus::vstd::std_specs::fmt::rt::Argument", VerusItem::RustPrivate(RustPrivate::Path(vir::path!(CrateId::Core => "fmt", "rt", "Argument")))),
+        ("verus::vstd::std_specs::fmt::rt::Argument::new_binary", VerusItem::RustPrivate(RustPrivate::FormatArgumentFn(Arc::new("new_binary".to_owned())))),
+        ("verus::vstd::std_specs::fmt::rt::Argument::new_debug", VerusItem::RustPrivate(RustPrivate::FormatArgumentFn(Arc::new("new_debug".to_owned())))),
+        ("verus::vstd::std_specs::fmt::rt::Argument::new_debug_noop", VerusItem::RustPrivate(RustPrivate::FormatArgumentFn(Arc::new("new_debug_noop".to_owned())))),
+        ("verus::vstd::std_specs::fmt::rt::Argument::new_display", VerusItem::RustPrivate(RustPrivate::FormatArgumentFn(Arc::new("new_display".to_owned())))),
+        ("verus::vstd::std_specs::fmt::rt::Argument::new_lower_exp", VerusItem::RustPrivate(RustPrivate::FormatArgumentFn(Arc::new("new_lower_exp".to_owned())))),
+        ("verus::vstd::std_specs::fmt::rt::Argument::new_lower_hex", VerusItem::RustPrivate(RustPrivate::FormatArgumentFn(Arc::new("new_lower_hex".to_owned())))),
+        ("verus::vstd::std_specs::fmt::rt::Argument::new_octal", VerusItem::RustPrivate(RustPrivate::FormatArgumentFn(Arc::new("new_octal".to_owned())))),
+        ("verus::vstd::std_specs::fmt::rt::Argument::new_pointer", VerusItem::RustPrivate(RustPrivate::FormatArgumentFn(Arc::new("new_pointer".to_owned())))),
+        ("verus::vstd::std_specs::fmt::rt::Argument::new_upper_exp", VerusItem::RustPrivate(RustPrivate::FormatArgumentFn(Arc::new("new_upper_exp".to_owned())))),
+        ("verus::vstd::std_specs::fmt::rt::Argument::new_upper_hex", VerusItem::RustPrivate(RustPrivate::FormatArgumentFn(Arc::new("new_upper_hex".to_owned())))),
+        ("verus::vstd::std_specs::fmt::rt::Argument::from_usize", VerusItem::RustPrivate(RustPrivate::FormatArgumentFn(Arc::new("from_usize".to_owned())))),
+        ("verus::vstd::std_specs::fmt::Arguments::new", VerusItem::RustPrivate(RustPrivate::FormatArgumentsFn(Arc::new("new".to_owned())))),
 
         ("verus::verus_builtin::Structural",              VerusItem::Marker(MarkerItem::Structural)),
 
@@ -589,12 +770,14 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::Tracked",                 VerusItem::BuiltinType(BuiltinTypeItem::Tracked)),
 
         ("verus::verus_builtin::Integer",                 VerusItem::BuiltinTrait(BuiltinTraitItem::Integer)),
+        ("verus::verus_builtin::Chainable",               VerusItem::BuiltinTrait(BuiltinTraitItem::Chainable)),
         ("verus::verus_builtin::private::Sealed",         VerusItem::BuiltinTrait(BuiltinTraitItem::Sealed)),
 
         ("verus::verus_builtin::call_requires", VerusItem::BuiltinFunction(BuiltinFunctionItem::CallRequires)),
         ("verus::verus_builtin::call_ensures",  VerusItem::BuiltinFunction(BuiltinFunctionItem::CallEnsures)),
         ("verus::verus_builtin::constrain_type",          VerusItem::BuiltinFunction(BuiltinFunctionItem::ConstrainType)),
-        
+        ("verus::verus_builtin::get_future_output_type",          VerusItem::BuiltinFunction(BuiltinFunctionItem::GetFutureOutputType)),
+
         ("verus::verus_builtin::global_size_of", VerusItem::Global(GlobalItem::SizeOf)),
 
         ("verus::verus_builtin::FnProof",          VerusItem::External(ExternalItem::FnProof)),
@@ -610,35 +793,61 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::has_resolved_unsized",     VerusItem::HasResolvedUnsized),
         ("verus::verus_builtin::mut_ref_current",  VerusItem::MutRefCurrent),
         ("verus::verus_builtin::mut_ref_future",   VerusItem::MutRefFuture),
-        ("verus::verus_builtin::fin",              VerusItem::Final),
+        ("verus::verus_builtin::final_",           VerusItem::Final),
+        ("verus::verus_builtin::after_borrow",     VerusItem::AfterBorrow),
+        ("verus::verus_builtin::mut_ref_tracked",  VerusItem::MutRefTracked),
     ]
 }
 
 pub(crate) struct VerusItems {
     pub(crate) id_to_name: HashMap<DefId, VerusItem>,
     pub(crate) name_to_id: HashMap<VerusItem, DefId>,
+    // RustPrivate items also map to an underlying Rust DefId (in addition to the Verus DefId):
+    pub(crate) name_to_rust_private_id: HashMap<VerusItem, DefId>,
 }
 
-pub(crate) fn from_diagnostic_items(
-    diagnostic_items: &rustc_hir::diagnostic_items::DiagnosticItems,
-) -> VerusItems {
-    let verus_item_map: HashMap<&str, VerusItem> =
-        verus_items_map().iter().map(|(k, v)| (*k, v.clone())).collect();
+pub(crate) fn from_diagnostic_items(tcx: TyCtxt) -> VerusItems {
+    let diagnostic_items = &tcx.all_diagnostic_items(());
+    let verus_item_map: HashMap<&str, VerusItem> = verus_items_map().into_iter().collect();
     let diagnostic_name_to_id = &diagnostic_items.name_to_id;
     let mut id_to_name: HashMap<DefId, VerusItem> = HashMap::new();
     let mut name_to_id: HashMap<VerusItem, DefId> = HashMap::new();
+    let mut name_to_rust_private_id: HashMap<VerusItem, DefId> = HashMap::new();
     for (name, id) in diagnostic_name_to_id {
         let name = name.as_str();
         if name.starts_with("verus::verus_builtin") || name.starts_with("verus::vstd") {
-            if let Some(item) = verus_item_map.get(name) {
-                id_to_name.insert(id.clone(), item.clone());
-                name_to_id.insert(item.clone(), id.clone());
-            } else {
+            let Some(item) = verus_item_map.get(name) else {
                 panic!("unexpected verus diagnostic item {}", name);
+            };
+            id_to_name.insert(id.clone(), item.clone());
+            name_to_id.insert(item.clone(), id.clone());
+            let lang_item_name = match item {
+                VerusItem::RustPrivate(RustPrivate::FormatArgumentFn(name)) => {
+                    Some((rustc_hir::LangItem::FormatArgument, name.clone()))
+                }
+                VerusItem::RustPrivate(RustPrivate::FormatArgumentsFn(name)) => {
+                    Some((rustc_hir::LangItem::FormatArguments, name.clone()))
+                }
+                _ => None,
+            };
+            if let Some((lang_item, name)) = lang_item_name {
+                let lang_id = tcx.require_lang_item(lang_item, rustc_span::DUMMY_SP);
+                let mut fn_id = None;
+                for imp in tcx.inherent_impls(lang_id) {
+                    let symbol = rustc_span::Symbol::intern(&*name);
+                    for item in tcx.associated_items(*imp).filter_by_name_unhygienic(symbol) {
+                        assert!(fn_id.is_none());
+                        fn_id = Some(item.def_id);
+                    }
+                }
+                let Some(fn_id) = fn_id else {
+                    panic!("could find Rust library function {:?} {}", lang_id, name);
+                };
+                name_to_rust_private_id.insert(item.clone(), fn_id);
             }
         }
     }
-    VerusItems { id_to_name, name_to_id }
+    VerusItems { id_to_name, name_to_id, name_to_rust_private_id }
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
@@ -680,6 +889,7 @@ pub(crate) enum RustItem {
     Copy,
     Send,
     Sync,
+    Any,
     Clone,
     StructuralPartialEq,
     Eq,
@@ -697,8 +907,6 @@ pub(crate) enum RustItem {
     CloneClone,
     CloneFrom,
     IntIntrinsic(RustIntIntrinsicItem),
-    AllocGlobal,
-    Allocator,
     TryTraitBranch,
     ResidualTraitFromResidual,
     IntoIterFn,
@@ -707,6 +915,7 @@ pub(crate) enum RustItem {
     Destruct,
     SliceSealed,
     Vec,
+    Thin,
 }
 
 pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<RustItem> {
@@ -811,12 +1020,6 @@ pub(crate) fn get_rust_item_str(rust_path: Option<&str>) -> Option<RustItem> {
         return Some(RustItem::CloneFrom);
     }
 
-    if rust_path == Some("alloc::alloc::Global") {
-        return Some(RustItem::AllocGlobal);
-    }
-    if rust_path == Some("core::alloc::Allocator") {
-        return Some(RustItem::Allocator);
-    }
     if rust_path == Some("core::slice::index::private_slice_index::Sealed") {
         return Some(RustItem::SliceSealed);
     }
@@ -834,6 +1037,12 @@ pub(crate) fn get_rust_item_str(rust_path: Option<&str>) -> Option<RustItem> {
     }
     if rust_path == Some("alloc::vec::Vec") {
         return Some(RustItem::Vec);
+    }
+    if rust_path == Some("core::ptr::metadata::Thin") {
+        return Some(RustItem::Thin);
+    }
+    if rust_path == Some("core::any::Any") {
+        return Some(RustItem::Any);
     }
 
     if let Some(rust_path) = rust_path {

@@ -6,6 +6,8 @@ edition = "2021"
 [dependencies]
 vstd = { path = "../../../../../vstd" }
 spec_def = { path = "../spec_def" }
+# Test using two crates with the same name (both named "spec_def")
+spec_def2 = { path = "../spec_def2", package = "spec_def" }
 
 [package.metadata.verus]
 verify = true

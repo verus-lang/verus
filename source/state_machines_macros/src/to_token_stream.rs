@@ -67,6 +67,7 @@ pub fn output_token_stream(bundle: SMBundle, concurrent: bool) -> parse::Result<
     }
 
     let final_code = quote! {
+        #[cfg_attr(verus_keep_ghost, verifier::deprecated_postcondition_mut_ref_style(true))]
         #[allow(unused_parens)]
         pub mod #sm_name {
             use super::*;
@@ -1052,10 +1053,18 @@ pub fn shardable_type_to_type(span: Span, stype: &ShardableType) -> Type {
         ShardableType::Set(ty) | ShardableType::PersistentSet(ty) => {
             Type::Verbatim(quote_spanned_vstd! { vstd, span => #vstd::set::Set<#ty> })
         }
+        ShardableType::ISet(ty) | ShardableType::PersistentISet(ty) => {
+            Type::Verbatim(quote_spanned_vstd! { vstd, span => #vstd::iset::ISet<#ty> })
+        }
         ShardableType::Map(key, val)
         | ShardableType::PersistentMap(key, val)
         | ShardableType::StorageMap(key, val) => {
             Type::Verbatim(quote_spanned_vstd! { vstd, span => #vstd::map::Map<#key, #val> })
+        }
+        ShardableType::IMap(key, val)
+        | ShardableType::PersistentIMap(key, val)
+        | ShardableType::StorageIMap(key, val) => {
+            Type::Verbatim(quote_spanned_vstd! { vstd, span => #vstd::imap::IMap<#key, #val> })
         }
         ShardableType::Multiset(ty) => {
             Type::Verbatim(quote_spanned_vstd! { vstd, span => #vstd::multiset::Multiset<#ty> })
@@ -1111,12 +1120,14 @@ fn output_other_fns(
         let self_ty = get_self_ty(&bundle.sm);
         impl_stream.extend(quote_vstd! { vstd =>
             #[cfg(verus_keep_ghost_body)]
-            #[verifier::custom_req_err(#error_msg)] /* vattr */
             #[verifier::external_body] /* vattr */
             #[verus::internal(verus_macro)]
             #[verifier::proof]
             fn #lemma_msg_ident(s: #self_ty) {
-                #vstd::prelude::requires(s.#inv_ident());
+                #vstd::prelude::requires(
+                    #[verifier::custom_err(#error_msg)] /* vattr */
+                    s.#inv_ident(),
+                );
                 #vstd::prelude::ensures(s.#inv_ident());
             }
         });
@@ -1165,7 +1176,6 @@ fn left_of_colon<'a>(fn_arg: &'a FnArg) -> &'a Pat {
 ///
 /// For 'readonly' transitions, there is no need to prove inductiveness.
 /// We should have already ruled out the existence of such lemmas.
-
 fn lemma_update_body(bundle: &SMBundle, l: &Lemma, func: &mut ImplItemFn) {
     let trans = get_transition(&bundle.sm.transitions, &l.purpose.transition.to_string())
         .expect("transition");

@@ -2,7 +2,7 @@
 // It is not intended for manual editing.
 
 #![allow(unknown_lints, non_local_definitions)]
-use std::fmt::{self, Debug};
+use core::fmt::{self, Debug};
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Debug for crate::Abi {
@@ -132,6 +132,43 @@ impl Debug for crate::AssumeSpecification {
         formatter.field("invariants", &self.invariants);
         formatter.field("unwind", &self.unwind);
         formatter.field("semi", &self.semi);
+        formatter.finish()
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::AtomicSpec {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("AtomicSpec");
+        formatter.field("atomically_token", &self.atomically_token);
+        formatter.field("paren_token", &self.paren_token);
+        formatter.field("atomic_update", &self.atomic_update);
+        formatter.field("block_token", &self.block_token);
+        formatter.field("type_clause", &self.type_clause);
+        formatter.field("perm_clause", &self.perm_clause);
+        formatter.field("requires", &self.requires);
+        formatter.field("ensures", &self.ensures);
+        formatter.field("outer_mask", &self.outer_mask);
+        formatter.field("inner_mask", &self.inner_mask);
+        formatter.field("comma_token", &self.comma_token);
+        formatter.finish()
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::AtomicallyBlock {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("AtomicallyBlock");
+        formatter.field("label", &self.label);
+        formatter.field("atomically_token", &self.atomically_token);
+        formatter.field("loop_token", &self.loop_token);
+        formatter.field("or1_token", &self.or1_token);
+        formatter.field("update_fn_binder", &self.update_fn_binder);
+        formatter.field("comma_token", &self.comma_token);
+        formatter.field("or2_token", &self.or2_token);
+        formatter.field("spec_au_binder", &self.spec_au_binder);
+        formatter.field("invariant_except_breaks", &self.invariant_except_breaks);
+        formatter.field("invariants", &self.invariants);
+        formatter.field("ensures", &self.ensures);
+        formatter.field("body", &self.body);
         formatter.finish()
     }
 }
@@ -754,6 +791,7 @@ impl Debug for crate::Expr {
             crate::Expr::HasNot(v0) => v0.debug(formatter, "HasNot"),
             crate::Expr::Matches(v0) => v0.debug(formatter, "Matches"),
             crate::Expr::GetField(v0) => v0.debug(formatter, "GetField"),
+            crate::Expr::Final(v0) => v0.debug(formatter, "Final"),
             #[cfg(not(feature = "full"))]
             _ => unreachable!(),
         }
@@ -898,6 +936,7 @@ impl crate::ExprCall {
         formatter.field("func", &self.func);
         formatter.field("paren_token", &self.paren_token);
         formatter.field("args", &self.args);
+        formatter.field("atomically", &self.atomically);
         formatter.finish()
     }
 }
@@ -1001,6 +1040,22 @@ impl crate::ExprField {
         formatter.finish()
     }
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::ExprFinal {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        self.debug(formatter, "ExprFinal")
+    }
+}
+impl crate::ExprFinal {
+    fn debug(&self, formatter: &mut fmt::Formatter, name: &str) -> fmt::Result {
+        let mut formatter = formatter.debug_struct(name);
+        formatter.field("attrs", &self.attrs);
+        formatter.field("final_token", &self.final_token);
+        formatter.field("paren_token", &self.paren_token);
+        formatter.field("arg", &self.arg);
+        formatter.finish()
+    }
+}
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Debug for crate::ExprForLoop {
@@ -1019,7 +1074,9 @@ impl crate::ExprForLoop {
         formatter.field("in_token", &self.in_token);
         formatter.field("expr_name", &self.expr_name);
         formatter.field("expr", &self.expr);
+        formatter.field("invariant_except_break", &self.invariant_except_break);
         formatter.field("invariant", &self.invariant);
+        formatter.field("ensures", &self.ensures);
         formatter.field("decreases", &self.decreases);
         formatter.field("body", &self.body);
         formatter.finish()
@@ -1303,6 +1360,7 @@ impl crate::ExprMethodCall {
         formatter.field("turbofish", &self.turbofish);
         formatter.field("paren_token", &self.paren_token);
         formatter.field("args", &self.args);
+        formatter.field("atomically", &self.atomically);
         formatter.finish()
     }
 }
@@ -2115,6 +2173,16 @@ impl Debug for crate::Index {
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::InnerMask {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("InnerMask");
+        formatter.field("token", &self.token);
+        formatter.field("set", &self.set);
+        formatter.field("comma_token", &self.comma_token);
+        formatter.finish()
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Debug for crate::Invariant {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("Invariant");
@@ -2149,6 +2217,7 @@ impl Debug for crate::InvariantNameSet {
             crate::InvariantNameSet::Any(v0) => v0.debug(formatter, "Any"),
             crate::InvariantNameSet::None(v0) => v0.debug(formatter, "None"),
             crate::InvariantNameSet::List(v0) => v0.debug(formatter, "List"),
+            crate::InvariantNameSet::ListCompl(v0) => v0.debug(formatter, "ListCompl"),
             crate::InvariantNameSet::Set(v0) => v0.debug(formatter, "Set"),
         }
     }
@@ -2175,6 +2244,22 @@ impl Debug for crate::InvariantNameSetList {
 impl crate::InvariantNameSetList {
     fn debug(&self, formatter: &mut fmt::Formatter, name: &str) -> fmt::Result {
         let mut formatter = formatter.debug_struct(name);
+        formatter.field("bracket_token", &self.bracket_token);
+        formatter.field("exprs", &self.exprs);
+        formatter.finish()
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::InvariantNameSetListCompl {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        self.debug(formatter, "InvariantNameSetListCompl")
+    }
+}
+impl crate::InvariantNameSetListCompl {
+    fn debug(&self, formatter: &mut fmt::Formatter, name: &str) -> fmt::Result {
+        let mut formatter = formatter.debug_struct(name);
+        formatter.field("any_token", &self.any_token);
+        formatter.field("op_token", &self.op_token);
         formatter.field("bracket_token", &self.bracket_token);
         formatter.field("exprs", &self.exprs);
         formatter.finish()
@@ -2392,6 +2477,7 @@ impl crate::ItemImpl {
         formatter.field("attrs", &self.attrs);
         formatter.field("defaultness", &self.defaultness);
         formatter.field("unsafety", &self.unsafety);
+        formatter.field("constness", &self.constness);
         formatter.field("impl_token", &self.impl_token);
         formatter.field("generics", &self.generics);
         formatter.field("trait_", &self.trait_);
@@ -2503,6 +2589,7 @@ impl crate::ItemTrait {
         let mut formatter = formatter.debug_struct(name);
         formatter.field("attrs", &self.attrs);
         formatter.field("vis", &self.vis);
+        formatter.field("constness", &self.constness);
         formatter.field("unsafety", &self.unsafety);
         formatter.field("auto_token", &self.auto_token);
         formatter.field("restriction", &self.restriction);
@@ -2934,6 +3021,16 @@ impl Debug for crate::OpenRestricted {
         formatter.finish()
     }
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::OuterMask {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("OuterMask");
+        formatter.field("token", &self.token);
+        formatter.field("set", &self.set);
+        formatter.field("comma_token", &self.comma_token);
+        formatter.finish()
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Debug for crate::ParenthesizedGenericArguments {
@@ -3217,6 +3314,36 @@ impl Debug for crate::PathSegment {
         formatter.finish()
     }
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::PermClause {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("PermClause");
+        formatter.field("old_perms", &self.old_perms);
+        formatter.field("arrow_token", &self.arrow_token);
+        formatter.field("new_perms", &self.new_perms);
+        formatter.field("comma_token", &self.comma_token);
+        formatter.finish()
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::PermTuple {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("PermTuple");
+        formatter.field("paren_token", &self.paren_token);
+        formatter.field("fields", &self.fields);
+        formatter.finish()
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::PermTupleField {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("PermTupleField");
+        formatter.field("ident", &self.ident);
+        formatter.field("colon_token", &self.colon_token);
+        formatter.field("ty", &self.ty);
+        formatter.finish()
+    }
+}
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Debug for crate::PointerMutability {
@@ -3245,6 +3372,16 @@ impl Debug for crate::PreciseCapture {
         formatter.field("lt_token", &self.lt_token);
         formatter.field("params", &self.params);
         formatter.field("gt_token", &self.gt_token);
+        formatter.finish()
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::PredTypeClause {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("PredTypeClause");
+        formatter.field("type_token", &self.type_token);
+        formatter.field("ident", &self.ident);
+        formatter.field("comma_token", &self.comma_token);
         formatter.finish()
     }
 }
@@ -3375,6 +3512,29 @@ impl Debug for crate::Requires {
         formatter.finish()
     }
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::ReturnPat {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("ReturnPat::")?;
+        match self {
+            crate::ReturnPat::Default => formatter.write_str("Default"),
+            crate::ReturnPat::Pat(v0, v1, v2, v3) => {
+                let mut formatter = formatter.debug_tuple("Pat");
+                formatter.field(v0);
+                formatter.field(v1);
+                formatter.field(v2);
+                formatter.field(v3);
+                formatter.finish()
+            }
+            crate::ReturnPat::Type(v0, v1) => {
+                let mut formatter = formatter.debug_tuple("Type");
+                formatter.field(v0);
+                formatter.field(v1);
+                formatter.finish()
+            }
+        }
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Debug for crate::ReturnType {
@@ -3391,6 +3551,15 @@ impl Debug for crate::ReturnType {
                 formatter.finish()
             }
         }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::ReturnValue {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("ReturnValue");
+        formatter.field("token", &self.token);
+        formatter.field("pat", &self.pat);
+        formatter.finish()
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
@@ -3455,6 +3624,7 @@ impl Debug for crate::SignatureInvariants {
         let mut formatter = formatter.debug_struct("SignatureInvariants");
         formatter.field("token", &self.token);
         formatter.field("set", &self.set);
+        formatter.field("comma", &self.comma);
         formatter.finish()
     }
 }
@@ -3463,6 +3633,7 @@ impl Debug for crate::SignatureSpec {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("SignatureSpec");
         formatter.field("prover", &self.prover);
+        formatter.field("atomic_spec", &self.atomic_spec);
         formatter.field("requires", &self.requires);
         formatter.field("recommends", &self.recommends);
         formatter.field("ensures", &self.ensures);
@@ -4262,6 +4433,7 @@ impl Debug for crate::WithSpecOnExpr {
         formatter.field("inputs", &self.inputs);
         formatter.field("outputs", &self.outputs);
         formatter.field("follows", &self.follows);
+        formatter.field("erased_fields", &self.erased_fields);
         formatter.finish()
     }
 }

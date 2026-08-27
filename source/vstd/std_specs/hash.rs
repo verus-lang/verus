@@ -1,36 +1,40 @@
-/// This code adds specifications for the standard-library types
-/// `std::collections::HashMap` and `std::collections::HashSet`.
-///
-/// Most of the specification only applies if you use `HashMap<Key,
-/// Value>` or `HashSet<Key>`. If you use some custom build hasher,
-/// e.g., with`HashMap<Key, Value, CustomBuildHasher>`, the
-/// specification won't specify much.
-///
-/// Likewise, the specification is only meaningful when the `Key`
-/// obeys our hash table model, i.e., (1) `Key::hash` is
-/// deterministic, (2) any two `Key`s are identical if and only if the
-/// executable `==` operator considers them equal, and (3)
-/// `Key::clone` produces a result equal to its input. We have an
-/// axiom that all primitive types and `Box`es thereof obey this
-/// model. But if you want to use some other key type `MyKey`, you
-/// need to explicitly state your assumption that it does so with
-/// `assume(vstd::std_specs::hash::obeys_key_model::<MyKey>());`. In
-/// the future, we plan to devise a way for you to prove that it does
-/// so, so that you don't have to make such an assumption.
-///
-/// By default, the Verus standard library brings useful axioms
-/// about the behavior of `HashMap` and `HashSet` into the ambient
-/// reasoning context by broadcasting the group
-/// `vstd::std_specs::hash::group_hash_axioms`.
+//! This code adds specifications for the standard-library types
+//! `std::collections::HashMap` and `std::collections::HashSet`.
+//!
+//! Most of the specification only applies if you use `HashMap<Key,
+//! Value>` or `HashSet<Key>`. If you use some custom build hasher,
+//! e.g., with`HashMap<Key, Value, CustomBuildHasher>`, the
+//! specification won't specify much.
+//!
+//! Likewise, the specification is only meaningful when the `Key`
+//! obeys our hash table model, i.e., (1) `Key::hash` is
+//! deterministic, (2) any two `Key`s are identical if and only if the
+//! executable `==` operator considers them equal, and (3)
+//! `Key::clone` produces a result equal to its input. We have an
+//! axiom that all primitive types and `Box`es thereof obey this
+//! model. But if you want to use some other key type `MyKey`, you
+//! need to explicitly state your assumption that it does so with
+//! `assume(vstd::std_specs::hash::obeys_key_model::<MyKey>());`. In
+//! the future, we plan to devise a way for you to prove that it does
+//! so, so that you don't have to make such an assumption.
+//!
+//! By default, the Verus standard library brings useful axioms
+//! about the behavior of `HashMap` and `HashSet` into the ambient
+//! reasoning context by broadcasting the group
+//! `vstd::std_specs::hash::group_hash_axioms`.
 use super::super::prelude::*;
+use super::iter::IteratorSpec;
 
+use core::alloc::Allocator;
 use core::borrow::Borrow;
 use core::hash::{BuildHasher, Hash, Hasher};
 use core::marker::PhantomData;
 use core::option::Option;
 use core::option::Option::None;
 use std::collections::hash_map;
-use std::collections::hash_map::{DefaultHasher, Keys, RandomState, Values};
+use std::collections::hash_map::{
+    DefaultHasher, Entry, Keys, OccupiedEntry, RandomState, VacantEntry, Values,
+};
 use std::collections::hash_set;
 use std::collections::{HashMap, HashSet};
 
@@ -73,7 +77,7 @@ pub assume_specification[ DefaultHasher::new ]() -> (result: DefaultHasher)
 // This is the specification of behavior for `DefaultHasher::write(&[u8])`.
 pub assume_specification[ DefaultHasher::write ](state: &mut DefaultHasher, bytes: &[u8])
     ensures
-        state@ == old(state)@.push(bytes@),
+        final(state)@ == old(state)@.push(bytes@),
 ;
 
 // This is the specification of behavior for `DefaultHasher::finish()`.
@@ -176,7 +180,7 @@ pub broadcast proof fn axiom_i32_obeys_hash_table_key_model()
     admit();
 }
 
-pub broadcast proof fn axiom_i164_obeys_hash_table_key_model()
+pub broadcast proof fn axiom_i64_obeys_hash_table_key_model()
     ensures
         #[trigger] obeys_key_model::<i64>(),
 {
@@ -274,104 +278,27 @@ pub broadcast proof fn axiom_random_state_builds_valid_hashers()
 #[verifier::accept_recursive_types(Value)]
 pub struct ExKeys<'a, Key: 'a, Value: 'a>(Keys<'a, Key, Value>);
 
-pub trait KeysAdditionalSpecFns<'a, Key: 'a, Value: 'a> {
-    spec fn view(self: &Self) -> (int, Seq<Key>);
-}
+// To allow reasoning about the "contents" of the Keys iterator, without using
+// a prophecy, we need a function that gives us the underlying sequence of the original keys.
+pub uninterp spec fn into_iter_keys<'a, Key, Value>(i: Keys<'a, Key, Value>) -> Seq<Key>;
 
-impl<'a, Key: 'a, Value: 'a> KeysAdditionalSpecFns<'a, Key, Value> for Keys<'a, Key, Value> {
-    uninterp spec fn view(self: &Keys<'a, Key, Value>) -> (int, Seq<Key>);
-}
-
-pub assume_specification<'a, Key, Value>[ Keys::<'a, Key, Value>::next ](
-    keys: &mut Keys<'a, Key, Value>,
-) -> (r: Option<&'a Key>)
-    ensures
-        ({
-            let (old_index, old_seq) = old(keys)@;
-            match r {
-                None => {
-                    &&& keys@ == old(keys)@
-                    &&& old_index >= old_seq.len()
-                },
-                Some(k) => {
-                    let (new_index, new_seq) = keys@;
-                    &&& 0 <= old_index < old_seq.len()
-                    &&& new_seq == old_seq
-                    &&& new_index == old_index + 1
-                    &&& k == old_seq[old_index]
-                },
-            }
-        }),
-;
-
-pub struct KeysGhostIterator<'a, Key, Value> {
-    pub pos: int,
-    pub keys: Seq<Key>,
-    pub phantom: Option<&'a Value>,
-}
-
-impl<'a, Key, Value> super::super::pervasive::ForLoopGhostIteratorNew for Keys<'a, Key, Value> {
-    type GhostIter = KeysGhostIterator<'a, Key, Value>;
-
-    open spec fn ghost_iter(&self) -> KeysGhostIterator<'a, Key, Value> {
-        KeysGhostIterator { pos: self@.0, keys: self@.1, phantom: None }
-    }
-}
-
-impl<'a, Key: 'a, Value: 'a> super::super::pervasive::ForLoopGhostIterator for KeysGhostIterator<
-    'a,
-    Key,
-    Value,
-> {
-    type ExecIter = Keys<'a, Key, Value>;
-
-    type Item = Key;
-
-    type Decrease = int;
-
-    open spec fn exec_invariant(&self, exec_iter: &Keys<'a, Key, Value>) -> bool {
-        &&& self.pos == exec_iter@.0
-        &&& self.keys == exec_iter@.1
+impl<'a, K, V> super::iter::IteratorSpecImpl for Keys<'a, K, V> {
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        true
     }
 
-    open spec fn ghost_invariant(&self, init: Option<&Self>) -> bool {
-        init matches Some(init) ==> {
-            &&& init.pos == 0
-            &&& init.keys == self.keys
-            &&& 0 <= self.pos <= self.keys.len()
-        }
-    }
+    uninterp spec fn remaining(&self) -> Seq<Self::Item>;
 
-    open spec fn ghost_ensures(&self) -> bool {
-        self.pos == self.keys.len()
-    }
+    uninterp spec fn will_return_none(&self) -> bool;
 
-    open spec fn ghost_decrease(&self) -> Option<int> {
-        Some(self.keys.len() - self.pos)
-    }
+    uninterp spec fn decrease(&self) -> Option<nat>;
 
-    open spec fn ghost_peek_next(&self) -> Option<Key> {
-        if 0 <= self.pos < self.keys.len() {
-            Some(self.keys[self.pos])
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        if 0 <= index < into_iter_keys(*self).len() {
+            Some(&into_iter_keys(*self)[index])
         } else {
             None
         }
-    }
-
-    open spec fn ghost_advance(&self, _exec_iter: &Keys<'a, Key, Value>) -> KeysGhostIterator<
-        'a,
-        Key,
-        Value,
-    > {
-        Self { pos: self.pos + 1, ..*self }
-    }
-}
-
-impl<'a, Key, Value> View for KeysGhostIterator<'a, Key, Value> {
-    type V = Seq<Key>;
-
-    open spec fn view(&self) -> Seq<Key> {
-        self.keys.take(self.pos)
     }
 }
 
@@ -383,104 +310,27 @@ impl<'a, Key, Value> View for KeysGhostIterator<'a, Key, Value> {
 #[verifier::accept_recursive_types(Value)]
 pub struct ExValues<'a, Key: 'a, Value: 'a>(Values<'a, Key, Value>);
 
-pub trait ValuesAdditionalSpecFns<'a, Key: 'a, Value: 'a> {
-    spec fn view(self: &Self) -> (int, Seq<Value>);
-}
+// To allow reasoning about the "contents" of the Values iterator, without using
+// a prophecy, we need a function that gives us the underlying sequence of the original values.
+pub uninterp spec fn into_iter_values<'a, Key, Value>(i: Values<'a, Key, Value>) -> Seq<Value>;
 
-impl<'a, Key: 'a, Value: 'a> ValuesAdditionalSpecFns<'a, Key, Value> for Values<'a, Key, Value> {
-    uninterp spec fn view(self: &Values<'a, Key, Value>) -> (int, Seq<Value>);
-}
-
-pub assume_specification<'a, Key, Value>[ Values::<'a, Key, Value>::next ](
-    values: &mut Values<'a, Key, Value>,
-) -> (r: Option<&'a Value>)
-    ensures
-        ({
-            let (old_index, old_seq) = old(values)@;
-            match r {
-                None => {
-                    &&& values@ == old(values)@
-                    &&& old_index >= old_seq.len()
-                },
-                Some(v) => {
-                    let (new_index, new_seq) = values@;
-                    &&& 0 <= old_index < old_seq.len()
-                    &&& new_seq == old_seq
-                    &&& new_index == old_index + 1
-                    &&& v == old_seq[old_index]
-                },
-            }
-        }),
-;
-
-pub struct ValuesGhostIterator<'a, Key, Value> {
-    pub pos: int,
-    pub values: Seq<Value>,
-    pub phantom: Option<&'a Key>,
-}
-
-impl<'a, Key, Value> super::super::pervasive::ForLoopGhostIteratorNew for Values<'a, Key, Value> {
-    type GhostIter = ValuesGhostIterator<'a, Key, Value>;
-
-    open spec fn ghost_iter(&self) -> ValuesGhostIterator<'a, Key, Value> {
-        ValuesGhostIterator { pos: self@.0, values: self@.1, phantom: None }
-    }
-}
-
-impl<'a, Key: 'a, Value: 'a> super::super::pervasive::ForLoopGhostIterator for ValuesGhostIterator<
-    'a,
-    Key,
-    Value,
-> {
-    type ExecIter = Values<'a, Key, Value>;
-
-    type Item = Value;
-
-    type Decrease = int;
-
-    open spec fn exec_invariant(&self, exec_iter: &Values<'a, Key, Value>) -> bool {
-        &&& self.pos == exec_iter@.0
-        &&& self.values == exec_iter@.1
+impl<'a, K, V> super::iter::IteratorSpecImpl for Values<'a, K, V> {
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        true
     }
 
-    open spec fn ghost_invariant(&self, init: Option<&Self>) -> bool {
-        init matches Some(init) ==> {
-            &&& init.pos == 0
-            &&& init.values == self.values
-            &&& 0 <= self.pos <= self.values.len()
-        }
-    }
+    uninterp spec fn remaining(&self) -> Seq<Self::Item>;
 
-    open spec fn ghost_ensures(&self) -> bool {
-        self.pos == self.values.len()
-    }
+    uninterp spec fn will_return_none(&self) -> bool;
 
-    open spec fn ghost_decrease(&self) -> Option<int> {
-        Some(self.values.len() - self.pos)
-    }
+    uninterp spec fn decrease(&self) -> Option<nat>;
 
-    open spec fn ghost_peek_next(&self) -> Option<Value> {
-        if 0 <= self.pos < self.values.len() {
-            Some(self.values[self.pos])
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        if 0 <= index < into_iter_values(*self).len() {
+            Some(&into_iter_values(*self)[index])
         } else {
             None
         }
-    }
-
-    open spec fn ghost_advance(&self, _exec_iter: &Values<'a, Key, Value>) -> ValuesGhostIterator<
-        'a,
-        Key,
-        Value,
-    > {
-        Self { pos: self.pos + 1, ..*self }
-    }
-}
-
-impl<'a, Key, Value> View for ValuesGhostIterator<'a, Key, Value> {
-    type V = Seq<Value>;
-
-    open spec fn view(&self) -> Seq<Value> {
-        self.values.take(self.pos)
     }
 }
 
@@ -492,147 +342,53 @@ impl<'a, Key, Value> View for ValuesGhostIterator<'a, Key, Value> {
 #[verifier::accept_recursive_types(Value)]
 pub struct ExMapIter<'a, Key: 'a, Value: 'a>(hash_map::Iter<'a, Key, Value>);
 
-pub trait MapIterAdditionalSpecFns<'a, Key: 'a, Value: 'a> {
-    spec fn view(self: &Self) -> (int, Seq<(Key, Value)>);
-}
+// To allow reasoning about the "contents" of the Iter iterator, without using
+// a prophecy, we need a function that gives us the underlying sequence of the original map.
+pub uninterp spec fn into_iter<'a, Key, Value>(i: hash_map::Iter<'a, Key, Value>) -> Seq<
+    (Key, Value),
+>;
 
-impl<'a, Key: 'a, Value: 'a> MapIterAdditionalSpecFns<'a, Key, Value> for hash_map::Iter<
-    'a,
-    Key,
-    Value,
-> {
-    uninterp spec fn view(self: &hash_map::Iter<'a, Key, Value>) -> (int, Seq<(Key, Value)>);
-}
-
-pub assume_specification<'a, Key, Value>[ hash_map::Iter::<'a, Key, Value>::next ](
-    iter: &mut hash_map::Iter<'a, Key, Value>,
-) -> (r: Option<(&'a Key, &'a Value)>)
-    ensures
-        ({
-            let (old_index, old_seq) = old(iter)@;
-            match r {
-                None => {
-                    &&& iter@ == old(iter)@
-                    &&& old_index >= old_seq.len()
-                },
-                Some((k, v)) => {
-                    let (new_index, new_seq) = iter@;
-                    let (old_k, old_v) = old_seq[old_index];
-                    &&& 0 <= old_index < old_seq.len()
-                    &&& new_seq == old_seq
-                    &&& new_index == old_index + 1
-                    &&& k == old_k
-                    &&& v == old_v
-                    &&& old_seq.to_set().contains((*k, *v))
-                },
-            }
-        }),
-;
-
-pub struct MapIterGhostIterator<'a, Key, Value> {
-    pub pos: int,
-    pub kv_pairs: Seq<(Key, Value)>,
-    pub _marker: PhantomData<&'a Key>,
-}
-
-impl<'a, Key, Value> super::super::pervasive::ForLoopGhostIteratorNew for hash_map::Iter<
-    'a,
-    Key,
-    Value,
-> {
-    type GhostIter = MapIterGhostIterator<'a, Key, Value>;
-
-    open spec fn ghost_iter(&self) -> MapIterGhostIterator<'a, Key, Value> {
-        MapIterGhostIterator { pos: self@.0, kv_pairs: self@.1, _marker: PhantomData }
-    }
-}
-
-impl<'a, Key: 'a, Value: 'a> super::super::pervasive::ForLoopGhostIterator for MapIterGhostIterator<
-    'a,
-    Key,
-    Value,
-> {
-    type ExecIter = hash_map::Iter<'a, Key, Value>;
-
-    type Item = (Key, Value);
-
-    type Decrease = int;
-
-    open spec fn exec_invariant(&self, exec_iter: &hash_map::Iter<'a, Key, Value>) -> bool {
-        &&& self.pos == exec_iter@.0
-        &&& self.kv_pairs == exec_iter@.1
+impl<'a, K, V> super::iter::IteratorSpecImpl for hash_map::Iter<'a, K, V> {
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        true
     }
 
-    open spec fn ghost_invariant(&self, init: Option<&Self>) -> bool {
-        init matches Some(init) ==> {
-            &&& init.pos == 0
-            &&& init.kv_pairs == self.kv_pairs
-            &&& 0 <= self.pos <= self.kv_pairs.len()
-        }
-    }
+    uninterp spec fn remaining(&self) -> Seq<Self::Item>;
 
-    open spec fn ghost_ensures(&self) -> bool {
-        self.pos == self.kv_pairs.len()
-    }
+    uninterp spec fn will_return_none(&self) -> bool;
 
-    open spec fn ghost_decrease(&self) -> Option<int> {
-        Some(self.kv_pairs.len() - self.pos)
-    }
+    uninterp spec fn decrease(&self) -> Option<nat>;
 
-    open spec fn ghost_peek_next(&self) -> Option<(Key, Value)> {
-        if 0 <= self.pos < self.kv_pairs.len() {
-            Some(self.kv_pairs[self.pos])
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        if 0 <= index < into_iter(*self).len() {
+            let (k, v) = into_iter(*self)[index];
+            Some((&k, &v))
         } else {
             None
         }
     }
-
-    open spec fn ghost_advance(
-        &self,
-        _exec_iter: &hash_map::Iter<'a, Key, Value>,
-    ) -> MapIterGhostIterator<'a, Key, Value> {
-        Self { pos: self.pos + 1, ..*self }
-    }
 }
 
-impl<'a, Key, Value> View for MapIterGhostIterator<'a, Key, Value> {
-    type V = Seq<(Key, Value)>;
-
-    open spec fn view(&self) -> Seq<(Key, Value)> {
-        self.kv_pairs.take(self.pos)
-    }
-}
-
-// To allow reasoning about the ghost iterator when the executable
-// function `iter()` is invoked in a `for` loop header (e.g., in
-// `for x in it: v.iter() { ... }`), we need to specify the behavior of
-// the iterator in spec mode. To do that, we add
-// `#[verifier::when_used_as_spec(spec_iter)` to the specification for
-// the executable `iter` method and define that spec function here.
-pub uninterp spec fn spec_hash_map_iter<'a, Key, Value, S>(m: &'a HashMap<Key, Value, S>) -> (r:
-    hash_map::Iter<'a, Key, Value>);
-
-pub broadcast proof fn axiom_spec_hash_map_iter<'a, Key, Value, S>(m: &'a HashMap<Key, Value, S>)
-    ensures
-        ({
-            let (pos, v) = #[trigger] spec_hash_map_iter(m)@;
-            &&& pos == 0int
-            &&& forall|i: int| 0 <= i < v.len() ==> #[trigger] m@[v[i].0] == v[i].1
-        }),
-{
-    admit();
-}
-
-#[verifier::when_used_as_spec(spec_hash_map_iter)]
-pub assume_specification<'a, Key, Value, S>[ HashMap::<Key, Value, S>::iter ](
-    m: &'a HashMap<Key, Value, S>,
+pub assume_specification<'a, Key, Value, S, A: Allocator>[ HashMap::<Key, Value, S, A>::iter ](
+    m: &'a HashMap<Key, Value, S, A>,
 ) -> (iter: hash_map::Iter<'a, Key, Value>)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
-            let (index, s) = iter@;
-            &&& index == 0
-            &&& s.to_set() == m@.kv_pairs()
-            &&& s.no_duplicates()
+            &&& IteratorSpec::remaining(&iter).len() == m@.dom().len()
+            &&& forall|i: int|
+                #![trigger m@.contains_key(*IteratorSpec::remaining(&iter)[i].0)]
+                #![trigger m@[*IteratorSpec::remaining(&iter)[i].0]]
+                0 <= i < IteratorSpec::remaining(&iter).len() ==> m@.contains_key(
+                    *IteratorSpec::remaining(&iter)[i].0,
+                ) && m@[*IteratorSpec::remaining(&iter)[i].0] == *IteratorSpec::remaining(
+                    &iter,
+                )[i].1
+            &&& forall|k: Key| #[trigger]
+                m@.contains_key(k) ==> IteratorSpec::remaining(&iter).contains((&k, &m@[k]))
+            &&& IteratorSpec::remaining(&iter).unref().to_set() == m@.kv_pairs()
+            &&& iter.remaining().no_duplicates()
+            &&& into_iter(iter) == IteratorSpec::remaining(&iter).unref()
+            &&& IteratorSpec::decrease(&iter) is Some
         },
 ;
 
@@ -652,7 +408,8 @@ pub assume_specification<'a, Key, Value, S>[ HashMap::<Key, Value, S>::iter ](
 #[verifier::accept_recursive_types(Key)]
 #[verifier::accept_recursive_types(Value)]
 #[verifier::reject_recursive_types(S)]
-pub struct ExHashMap<Key, Value, S>(HashMap<Key, Value, S>);
+#[verifier::reject_recursive_types(A)]
+pub struct ExHashMap<Key, Value, S, A: Allocator>(HashMap<Key, Value, S, A>);
 
 pub trait HashMapAdditionalSpecFns<Key, Value>: View<V = Map<Key, Value>> {
     spec fn spec_index(&self, k: Key) -> Value
@@ -661,24 +418,15 @@ pub trait HashMapAdditionalSpecFns<Key, Value>: View<V = Map<Key, Value>> {
     ;
 }
 
-impl<Key, Value, S> HashMapAdditionalSpecFns<Key, Value> for HashMap<Key, Value, S> {
+impl<Key, Value, S, A: Allocator> HashMapAdditionalSpecFns<Key, Value> for HashMap<
+    Key,
+    Value,
+    S,
+    A,
+> {
     #[verifier::inline]
     open spec fn spec_index(&self, k: Key) -> Value {
         self@.index(k)
-    }
-}
-
-impl<Key, Value, S> View for HashMap<Key, Value, S> {
-    type V = Map<Key, Value>;
-
-    uninterp spec fn view(&self) -> Map<Key, Value>;
-}
-
-impl<Key: DeepView, Value: DeepView, S> DeepView for HashMap<Key, Value, S> {
-    type V = Map<Key::V, Value::V>;
-
-    open spec fn deep_view(&self) -> Map<Key::V, Value::V> {
-        hash_map_deep_view_impl(*self)
     }
 }
 
@@ -688,12 +436,14 @@ impl<Key: DeepView, Value: DeepView, S> DeepView for HashMap<Key, Value, S> {
 /// method is not supported. In most cases, it's easier to use one of the lemmas below instead
 /// of revealing this function directly.
 #[verifier::opaque]
-pub open spec fn hash_map_deep_view_impl<Key: DeepView, Value: DeepView, S>(
-    m: HashMap<Key, Value, S>,
-) -> Map<Key::V, Value::V> {
+pub open spec fn hash_map_deep_view_impl<
+    Key: DeepView,
+    Value: DeepView,
+    S,
+    A: core::alloc::Allocator,
+>(m: HashMap<Key, Value, S, A>) -> Map<Key::V, Value::V> {
     Map::new(
-        |k: Key::V|
-            exists|orig_k: Key| #[trigger] m@.contains_key(orig_k) && k == orig_k.deep_view(),
+        m@.dom().map(|k: Key| k.deep_view()),
         |dk: Key::V|
             {
                 let k = choose|k: Key| m@.contains_key(k) && #[trigger] k.deep_view() == dk;
@@ -731,16 +481,29 @@ pub broadcast proof fn lemma_hashmap_deepview_properties<K: DeepView, V: DeepVie
     broadcast use group_hash_axioms;
     broadcast use crate::vstd::group_vstd_default;
 
+    lemma_hashmap_deepview_dom(m);
     assert(m.deep_view().dom() == m@.dom().map(|k: K| k.deep_view()));
     assert forall|k: K| #[trigger] m@.contains_key(k) implies m.deep_view().contains_key(
         k.deep_view(),
     ) && m.deep_view()[k.deep_view()] == m@[k].deep_view() by {
+        assert(m@.dom().contains(k));
+        assert(m@.dom().map(|k: K| k.deep_view()).contains(k.deep_view()));
+        assert(m.deep_view().dom().contains(k.deep_view()));
+        let k2 = choose|k2: K| m@.contains_key(k2) && #[trigger] k2.deep_view() == k.deep_view();
         assert forall|k1: K, k2: K| #[trigger]
             k1.deep_view() == #[trigger] k2.deep_view() implies k1 == k2 by {
             let ghost k_deepview = |k: K| k.deep_view();
             assert(crate::relations::injective(k_deepview));
             assert(k_deepview(k1) == k_deepview(k2));
         }
+        assert(k2 == k);
+    }
+    assert forall|dk: K::V| #[trigger] m.deep_view().contains_key(dk) implies exists|k: K|
+        k.deep_view() == dk && #[trigger] m@.contains_key(k) by {
+        assert(m.deep_view().dom().contains(dk));
+        assert(m@.dom().map(|k: K| k.deep_view()).contains(dk));
+        let k = choose|k: K| #[trigger] m@.dom().contains(k) && k.deep_view() == dk;
+        assert(m@.contains_key(k));
     }
 }
 
@@ -783,17 +546,13 @@ pub broadcast proof fn axiom_hashmap_deepview_borrow<
     admit();
 }
 
-/// A `Map` constructed from a `HashMap` is always finite.
-pub broadcast proof fn axiom_hashmap_view_finite_dom<K, V>(m: HashMap<K, V>)
-    ensures
-        #[trigger] m@.dom().finite(),
-{
-    admit();
-}
+pub uninterp spec fn spec_hash_map_len<Key, Value, S, A: Allocator>(
+    m: &HashMap<Key, Value, S, A>,
+) -> usize;
 
-pub uninterp spec fn spec_hash_map_len<Key, Value, S>(m: &HashMap<Key, Value, S>) -> usize;
-
-pub broadcast proof fn axiom_spec_hash_map_len<Key, Value, S>(m: &HashMap<Key, Value, S>)
+pub broadcast proof fn axiom_spec_hash_map_len<Key, Value, S, A: Allocator>(
+    m: &HashMap<Key, Value, S, A>,
+)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> #[trigger] spec_hash_map_len(m)
             == m@.len(),
@@ -802,25 +561,31 @@ pub broadcast proof fn axiom_spec_hash_map_len<Key, Value, S>(m: &HashMap<Key, V
 }
 
 #[verifier::when_used_as_spec(spec_hash_map_len)]
-pub assume_specification<Key, Value, S>[ HashMap::<Key, Value, S>::len ](
-    m: &HashMap<Key, Value, S>,
+pub assume_specification<Key, Value, S, A: Allocator>[ HashMap::<Key, Value, S, A>::len ](
+    m: &HashMap<Key, Value, S, A>,
 ) -> (len: usize)
     ensures
         len == spec_hash_map_len(m),
 ;
 
-pub assume_specification<Key, Value, S>[ HashMap::<Key, Value, S>::is_empty ](
-    m: &HashMap<Key, Value, S>,
+pub assume_specification<Key, Value, S, A: Allocator>[ HashMap::<Key, Value, S, A>::is_empty ](
+    m: &HashMap<Key, Value, S, A>,
 ) -> (res: bool)
     ensures
         res == m@.is_empty(),
 ;
 
-pub assume_specification<K: Clone, V: Clone, S: Clone>[ <HashMap::<K, V, S> as Clone>::clone ](
-    this: &HashMap<K, V, S>,
-) -> (other: HashMap<K, V, S>)
+pub assume_specification<K: Clone, V: Clone, S: Clone, A: Allocator + Clone>[ <HashMap::<
+    K,
+    V,
+    S,
+    A,
+> as Clone>::clone ](this: &HashMap<K, V, S, A>) -> (other: HashMap<K, V, S, A>)
     ensures
-        other@ == this@,
+        other@.dom() == this@.dom(),
+        forall|key|
+            #![trigger other@.dom().contains(key)]
+            other@.dom().contains(key) ==> cloned(this@[key], #[trigger] other@[key]),
 ;
 
 pub assume_specification<Key, Value>[ HashMap::<Key, Value>::new ]() -> (m: HashMap<
@@ -832,29 +597,40 @@ pub assume_specification<Key, Value>[ HashMap::<Key, Value>::new ]() -> (m: Hash
         m@ == Map::<Key, Value>::empty(),
 ;
 
+pub assume_specification<K, V, S: core::default::Default>[ <HashMap<
+    K,
+    V,
+    S,
+> as core::default::Default>::default ]() -> (m: HashMap<K, V, S>)
+    ensures
+        m@ == Map::<K, V>::empty(),
+;
+
 pub assume_specification<Key, Value>[ HashMap::<Key, Value>::with_capacity ](capacity: usize) -> (m:
     HashMap<Key, Value, RandomState>)
     ensures
         m@ == Map::<Key, Value>::empty(),
 ;
 
-pub assume_specification<Key: Eq + Hash, Value, S: BuildHasher>[ HashMap::<
+pub assume_specification<Key: Eq + Hash, Value, S: BuildHasher, A: Allocator>[ HashMap::<
     Key,
     Value,
     S,
->::reserve ](m: &mut HashMap<Key, Value, S>, additional: usize)
+    A,
+>::reserve ](m: &mut HashMap<Key, Value, S, A>, additional: usize)
     ensures
-        m@ == old(m)@,
+        final(m)@ == old(m)@,
 ;
 
-pub assume_specification<Key: Eq + Hash, Value, S: BuildHasher>[ HashMap::<Key, Value, S>::insert ](
-    m: &mut HashMap<Key, Value, S>,
-    k: Key,
-    v: Value,
-) -> (result: Option<Value>)
+pub assume_specification<Key: Eq + Hash, Value, S: BuildHasher, A: Allocator>[ HashMap::<
+    Key,
+    Value,
+    S,
+    A,
+>::insert ](m: &mut HashMap<Key, Value, S, A>, k: Key, v: Value) -> (result: Option<Value>)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
-            &&& m@ == old(m)@.insert(k, v)
+            &&& final(m)@ == old(m)@.insert(k, v)
             &&& match result {
                 Some(v) => old(m)@.contains_key(k) && v == old(m)[k],
                 None => !old(m)@.contains_key(k),
@@ -901,9 +677,12 @@ pub assume_specification<
     Key: Borrow<Q> + Hash + Eq,
     Value,
     S: BuildHasher,
+    A: Allocator,
     Q: Hash + Eq + ?Sized,
->[ HashMap::<Key, Value, S>::contains_key::<Q> ](m: &HashMap<Key, Value, S>, k: &Q) -> (result:
-    bool)
+>[ HashMap::<Key, Value, S, A>::contains_key::<Q> ](
+    m: &HashMap<Key, Value, S, A>,
+    k: &Q,
+) -> (result: bool)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> result == contains_borrowed_key(
             m@,
@@ -957,10 +736,10 @@ pub assume_specification<
     Key: Borrow<Q> + Hash + Eq,
     Value,
     S: BuildHasher,
+    A: Allocator,
     Q: Hash + Eq + ?Sized,
->[ HashMap::<Key, Value, S>::get::<Q> ](m: &'a HashMap<Key, Value, S>, k: &Q) -> (result: Option<
-    &'a Value,
->)
+>[ HashMap::<Key, Value, S, A>::get::<Q> ](m: &'a HashMap<Key, Value, S, A>, k: &Q) -> (result:
+    Option<&'a Value>)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> match result {
             Some(v) => maps_borrowed_key_to_value(m@, k, *v),
@@ -1018,12 +797,13 @@ pub assume_specification<
     Key: Borrow<Q> + Hash + Eq,
     Value,
     S: BuildHasher,
+    A: Allocator,
     Q: Hash + Eq + ?Sized,
->[ HashMap::<Key, Value, S>::remove::<Q> ](m: &mut HashMap<Key, Value, S>, k: &Q) -> (result:
+>[ HashMap::<Key, Value, S, A>::remove::<Q> ](m: &mut HashMap<Key, Value, S, A>, k: &Q) -> (result:
     Option<Value>)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
-            &&& borrowed_key_removed(old(m)@, m@, k)
+            &&& borrowed_key_removed(old(m)@, final(m)@, k)
             &&& match result {
                 Some(v) => maps_borrowed_key_to_value(old(m)@, k, v),
                 None => !contains_borrowed_key(old(m)@, k),
@@ -1031,33 +811,35 @@ pub assume_specification<
         },
 ;
 
-pub assume_specification<Key, Value, S>[ HashMap::<Key, Value, S>::clear ](
-    m: &mut HashMap<Key, Value, S>,
+pub assume_specification<Key, Value, S, A: Allocator>[ HashMap::<Key, Value, S, A>::clear ](
+    m: &mut HashMap<Key, Value, S, A>,
 )
     ensures
-        m@ == Map::<Key, Value>::empty(),
+        final(m)@ == Map::<Key, Value>::empty(),
 ;
 
-pub assume_specification<'a, Key, Value, S>[ HashMap::<Key, Value, S>::keys ](
-    m: &'a HashMap<Key, Value, S>,
+pub assume_specification<'a, Key, Value, S, A: Allocator>[ HashMap::<Key, Value, S, A>::keys ](
+    m: &'a HashMap<Key, Value, S, A>,
 ) -> (keys: Keys<'a, Key, Value>)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
-            let (index, s) = keys@;
-            &&& index == 0
-            &&& s.to_set() == m@.dom()
-            &&& s.no_duplicates()
+            &&& IteratorSpec::remaining(&keys).unref().to_set() == m@.dom()
+            &&& IteratorSpec::remaining(&keys).no_duplicates()
+            &&& IteratorSpec::remaining(&keys).len() == m@.dom().len()
+            &&& into_iter_keys(keys) == IteratorSpec::remaining(&keys).unref()
+            &&& IteratorSpec::decrease(&keys) is Some
         },
 ;
 
-pub assume_specification<'a, Key, Value, S>[ HashMap::<Key, Value, S>::values ](
-    m: &'a HashMap<Key, Value, S>,
+pub assume_specification<'a, Key, Value, S, A: Allocator>[ HashMap::<Key, Value, S, A>::values ](
+    m: &'a HashMap<Key, Value, S, A>,
 ) -> (values: Values<'a, Key, Value>)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
-            let (index, s) = values@;
-            &&& index == 0
-            &&& s.to_set() == m@.values()
+            &&& IteratorSpec::remaining(&values).unref().to_set() == m@.values()
+            &&& IteratorSpec::remaining(&values).len() == m@.dom().len()
+            &&& into_iter_values(values) == IteratorSpec::remaining(&values).unref()
+            &&& IteratorSpec::decrease(&values) is Some
         },
 ;
 
@@ -1075,99 +857,27 @@ pub broadcast proof fn axiom_hashmap_decreases<Key, Value, S>(m: HashMap<Key, Va
 #[verifier::accept_recursive_types(Key)]
 pub struct ExSetIter<'a, Key: 'a>(hash_set::Iter<'a, Key>);
 
-pub trait SetIterAdditionalSpecFns<'a, Key: 'a> {
-    spec fn view(self: &Self) -> (int, Seq<Key>);
-}
+// To allow reasoning about the "contents" of the HashSet iterator, without using
+// a prophecy, we need a function that gives us the underlying sequence of the original keys.
+pub uninterp spec fn into_iter_hash_keys<'a, Key>(i: hash_set::Iter::<'a, Key>) -> Seq<Key>;
 
-impl<'a, Key: 'a> SetIterAdditionalSpecFns<'a, Key> for hash_set::Iter<'a, Key> {
-    uninterp spec fn view(self: &hash_set::Iter<'a, Key>) -> (int, Seq<Key>);
-}
-
-pub assume_specification<'a, Key>[ hash_set::Iter::<'a, Key>::next ](
-    elements: &mut hash_set::Iter<'a, Key>,
-) -> (r: Option<&'a Key>)
-    ensures
-        ({
-            let (old_index, old_seq) = old(elements)@;
-            match r {
-                None => {
-                    &&& elements@ == old(elements)@
-                    &&& old_index >= old_seq.len()
-                },
-                Some(element) => {
-                    let (new_index, new_seq) = elements@;
-                    &&& 0 <= old_index < old_seq.len()
-                    &&& new_seq == old_seq
-                    &&& new_index == old_index + 1
-                    &&& element == old_seq[old_index]
-                },
-            }
-        }),
-;
-
-pub struct SetIterGhostIterator<'a, Key> {
-    pub pos: int,
-    pub elements: Seq<Key>,
-    pub phantom: Option<&'a Key>,
-}
-
-impl<'a, Key> super::super::pervasive::ForLoopGhostIteratorNew for hash_set::Iter<'a, Key> {
-    type GhostIter = SetIterGhostIterator<'a, Key>;
-
-    open spec fn ghost_iter(&self) -> SetIterGhostIterator<'a, Key> {
-        SetIterGhostIterator { pos: self@.0, elements: self@.1, phantom: None }
-    }
-}
-
-impl<'a, Key: 'a> super::super::pervasive::ForLoopGhostIterator for SetIterGhostIterator<'a, Key> {
-    type ExecIter = hash_set::Iter<'a, Key>;
-
-    type Item = Key;
-
-    type Decrease = int;
-
-    open spec fn exec_invariant(&self, exec_iter: &hash_set::Iter<'a, Key>) -> bool {
-        &&& self.pos == exec_iter@.0
-        &&& self.elements == exec_iter@.1
+impl<'a, K> super::iter::IteratorSpecImpl for hash_set::Iter::<'a, K> {
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        true
     }
 
-    open spec fn ghost_invariant(&self, init: Option<&Self>) -> bool {
-        init matches Some(init) ==> {
-            &&& init.pos == 0
-            &&& init.elements == self.elements
-            &&& 0 <= self.pos <= self.elements.len()
-        }
-    }
+    uninterp spec fn remaining(&self) -> Seq<Self::Item>;
 
-    open spec fn ghost_ensures(&self) -> bool {
-        self.pos == self.elements.len()
-    }
+    uninterp spec fn will_return_none(&self) -> bool;
 
-    open spec fn ghost_decrease(&self) -> Option<int> {
-        Some(self.elements.len() - self.pos)
-    }
+    uninterp spec fn decrease(&self) -> Option<nat>;
 
-    open spec fn ghost_peek_next(&self) -> Option<Key> {
-        if 0 <= self.pos < self.elements.len() {
-            Some(self.elements[self.pos])
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        if 0 <= index < into_iter_hash_keys(*self).len() {
+            Some(&into_iter_hash_keys(*self)[index])
         } else {
             None
         }
-    }
-
-    open spec fn ghost_advance(&self, _exec_iter: &hash_set::Iter<'a, Key>) -> SetIterGhostIterator<
-        'a,
-        Key,
-    > {
-        Self { pos: self.pos + 1, ..*self }
-    }
-}
-
-impl<'a, Key> View for SetIterGhostIterator<'a, Key> {
-    type V = Seq<Key>;
-
-    open spec fn view(&self) -> Seq<Key> {
-        self.elements.take(self.pos)
     }
 }
 
@@ -1186,25 +896,12 @@ impl<'a, Key> View for SetIterGhostIterator<'a, Key> {
 #[verifier::external_body]
 #[verifier::accept_recursive_types(Key)]
 #[verifier::reject_recursive_types(S)]
-pub struct ExHashSet<Key, S>(HashSet<Key, S>);
+#[verifier::reject_recursive_types(A)]
+pub struct ExHashSet<Key, S, A: Allocator>(HashSet<Key, S, A>);
 
-impl<Key, S> View for HashSet<Key, S> {
-    type V = Set<Key>;
+pub uninterp spec fn spec_hash_set_len<Key, S, A: Allocator>(m: &HashSet<Key, S, A>) -> usize;
 
-    uninterp spec fn view(&self) -> Set<Key>;
-}
-
-impl<Key: DeepView, S> DeepView for HashSet<Key, S> {
-    type V = Set<Key::V>;
-
-    open spec fn deep_view(&self) -> Set<Key::V> {
-        self@.map(|x: Key| x.deep_view())
-    }
-}
-
-pub uninterp spec fn spec_hash_set_len<Key, S>(m: &HashSet<Key, S>) -> usize;
-
-pub broadcast proof fn axiom_spec_hash_set_len<Key, S>(m: &HashSet<Key, S>)
+pub broadcast proof fn axiom_spec_hash_set_len<Key, S, A: Allocator>(m: &HashSet<Key, S, A>)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> #[trigger] spec_hash_set_len(m)
             == m@.len(),
@@ -1213,12 +910,16 @@ pub broadcast proof fn axiom_spec_hash_set_len<Key, S>(m: &HashSet<Key, S>)
 }
 
 #[verifier::when_used_as_spec(spec_hash_set_len)]
-pub assume_specification<Key, S>[ HashSet::<Key, S>::len ](m: &HashSet<Key, S>) -> (len: usize)
+pub assume_specification<Key, S, A: Allocator>[ HashSet::<Key, S, A>::len ](
+    m: &HashSet<Key, S, A>,
+) -> (len: usize)
     ensures
         len == spec_hash_set_len(m),
 ;
 
-pub assume_specification<Key, S>[ HashSet::<Key, S>::is_empty ](m: &HashSet<Key, S>) -> (res: bool)
+pub assume_specification<Key, S, A: Allocator>[ HashSet::<Key, S, A>::is_empty ](
+    m: &HashSet<Key, S, A>,
+) -> (res: bool)
     ensures
         res == m@.is_empty(),
 ;
@@ -1226,6 +927,14 @@ pub assume_specification<Key, S>[ HashSet::<Key, S>::is_empty ](m: &HashSet<Key,
 pub assume_specification<Key>[ HashSet::<Key>::new ]() -> (m: HashSet<Key, RandomState>)
     ensures
         m@ == Set::<Key>::empty(),
+;
+
+pub assume_specification<T, S: core::default::Default>[ <HashSet<
+    T,
+    S,
+> as core::default::Default>::default ]() -> (m: HashSet<T, S>)
+    ensures
+        m@ == Set::<T>::empty(),
 ;
 
 pub assume_specification<Key>[ HashSet::<Key>::with_capacity ](capacity: usize) -> (m: HashSet<
@@ -1236,21 +945,23 @@ pub assume_specification<Key>[ HashSet::<Key>::with_capacity ](capacity: usize) 
         m@ == Set::<Key>::empty(),
 ;
 
-pub assume_specification<Key: Eq + Hash, S: BuildHasher>[ HashSet::<Key, S>::reserve ](
-    m: &mut HashSet<Key, S>,
-    additional: usize,
-)
+pub assume_specification<Key: Eq + Hash, S: BuildHasher, A: Allocator>[ HashSet::<
+    Key,
+    S,
+    A,
+>::reserve ](m: &mut HashSet<Key, S, A>, additional: usize)
     ensures
-        m@ == old(m)@,
+        final(m)@ == old(m)@,
 ;
 
-pub assume_specification<Key: Eq + Hash, S: BuildHasher>[ HashSet::<Key, S>::insert ](
-    m: &mut HashSet<Key, S>,
-    k: Key,
-) -> (result: bool)
+pub assume_specification<Key: Eq + Hash, S: BuildHasher, A: Allocator>[ HashSet::<
+    Key,
+    S,
+    A,
+>::insert ](m: &mut HashSet<Key, S, A>, k: Key) -> (result: bool)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
-            &&& m@ == old(m)@.insert(k)
+            &&& final(m)@ == old(m)@.insert(k)
             &&& result == !old(m)@.contains(k)
         },
 ;
@@ -1288,8 +999,9 @@ pub broadcast proof fn axiom_set_contains_box<Q>(m: Set<Box<Q>>, k: &Q)
 pub assume_specification<
     Key: Borrow<Q> + Hash + Eq,
     S: BuildHasher,
+    A: Allocator,
     Q: Hash + Eq + ?Sized,
->[ HashSet::<Key, S>::contains ](m: &HashSet<Key, S>, k: &Q) -> (result: bool)
+>[ HashSet::<Key, S, A>::contains ](m: &HashSet<Key, S, A>, k: &Q) -> (result: bool)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> result
             == set_contains_borrowed_key(m@, k),
@@ -1333,8 +1045,9 @@ pub assume_specification<
     'a,
     Key: Borrow<Q> + Hash + Eq,
     S: BuildHasher,
+    A: Allocator,
     Q: Hash + Eq + ?Sized,
->[ HashSet::<Key, S>::get::<Q> ](m: &'a HashSet<Key, S>, k: &Q) -> (result: Option<&'a Key>)
+>[ HashSet::<Key, S, A>::get::<Q> ](m: &'a HashSet<Key, S, A>, k: &Q) -> (result: Option<&'a Key>)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> match result {
             Some(v) => sets_borrowed_key_to_key(m@, k, v),
@@ -1382,37 +1095,318 @@ pub broadcast proof fn axiom_set_box_key_removed<Q>(old_m: Set<Box<Q>>, new_m: S
 pub assume_specification<
     Key: Borrow<Q> + Hash + Eq,
     S: BuildHasher,
+    A: Allocator,
     Q: Hash + Eq + ?Sized,
->[ HashSet::<Key, S>::remove::<Q> ](m: &mut HashSet<Key, S>, k: &Q) -> (result: bool)
+>[ HashSet::<Key, S, A>::remove::<Q> ](m: &mut HashSet<Key, S, A>, k: &Q) -> (result: bool)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
-            &&& sets_differ_by_borrowed_key(old(m)@, m@, k)
+            &&& sets_differ_by_borrowed_key(old(m)@, final(m)@, k)
             &&& result == set_contains_borrowed_key(old(m)@, k)
         },
 ;
 
-pub assume_specification<Key, S>[ HashSet::<Key, S>::clear ](m: &mut HashSet<Key, S>)
+pub assume_specification<Key, S, A: Allocator>[ HashSet::<Key, S, A>::clear ](
+    m: &mut HashSet<Key, S, A>,
+)
     ensures
-        m@ == Set::<Key>::empty(),
+        final(m)@ == Set::<Key>::empty(),
 ;
 
-pub assume_specification<'a, Key, S>[ HashSet::<Key, S>::iter ](m: &'a HashSet<Key, S>) -> (r:
-    hash_set::Iter<'a, Key>)
+pub assume_specification<'a, Key, S, A: Allocator>[ HashSet::<Key, S, A>::iter ](
+    m: &'a HashSet<Key, S, A>,
+) -> (hash_keys: hash_set::Iter<'a, Key>)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
-            let (index, s) = r@;
-            &&& index == 0
-            &&& s.to_set() == m@
-            &&& s.no_duplicates()
+            &&& IteratorSpec::remaining(&hash_keys).unref().to_set() == m@
+            &&& IteratorSpec::remaining(&hash_keys).no_duplicates()
+            &&& IteratorSpec::remaining(&hash_keys).len() == m@.len()
+            &&& into_iter_hash_keys(hash_keys) == IteratorSpec::remaining(&hash_keys).unref()
+            &&& IteratorSpec::decrease(&hash_keys) is Some
         },
 ;
 
-pub broadcast proof fn axiom_hashset_decreases<Key, S>(m: HashSet<Key, S>)
+pub broadcast proof fn axiom_hashset_decreases<Key, S, A: Allocator>(m: HashSet<Key, S, A>)
     ensures
         #[trigger] (decreases_to!(m => m@)),
 {
     admit();
 }
+
+//////// Entry API
+// Specs for OccupiedEntry, VacantEntry, and the Entry enum
+// OccupiedEntry and VacantEntry are both opaque;
+// Entry is just an enum wrapper around the other 2, so we leave it transparent.
+#[verifier::reject_recursive_types_in_ground_variants(K)]
+#[verifier::reject_recursive_types_in_ground_variants(V)]
+#[verifier::reject_recursive_types(A)]
+#[verifier::external_body]
+#[verifier::external_type_specification]
+pub struct ExOccupiedEntry<'a, K: 'a, V: 'a, A: Allocator>(OccupiedEntry<'a, K, V, A>);
+
+#[verifier::reject_recursive_types_in_ground_variants(K)]
+#[verifier::accept_recursive_types(V)]
+#[verifier::reject_recursive_types(A)]
+#[verifier::external_body]
+#[verifier::external_type_specification]
+pub struct ExVacantEntry<'a, K: 'a, V: 'a, A: Allocator>(VacantEntry<'a, K, V, A>);
+
+#[verifier::external_type_specification]
+#[verifier::reject_recursive_types(A)]
+pub struct ExEntry<'a, K: 'a, V: 'a, A: Allocator>(Entry<'a, K, V, A>);
+
+/// Specification for an [`OccupiedEntry`].
+/// Contains the current key and value in the entry,
+/// and prophesies the final value after this instantiation of the entry API is complete.
+/// The final value is optional, since the user might choose to remove the entry.
+pub trait OccupiedEntrySpecFns<K, V, A>: Sized {
+    spec fn spec_key(self) -> K;
+
+    spec fn value(self) -> V;
+
+    #[verifier::prophetic]
+    spec fn final_value(self) -> Option<V>;
+}
+
+impl<'a, K, V, A: Allocator> OccupiedEntrySpecFns<K, V, A> for OccupiedEntry<'a, K, V, A> {
+    uninterp spec fn spec_key(self) -> K;
+
+    uninterp spec fn value(self) -> V;
+
+    #[verifier::prophetic]
+    uninterp spec fn final_value(self) -> Option<V>;
+}
+
+/// Specification for a [`VacantEntry`].
+/// Contains the current key for the entry,
+/// and prophesies the final value after this instantiation of the entry API is complete.
+/// The final value is optional, since the user may or may not choose to insert a value.
+pub trait VacantEntrySpecFns<K, V, A>: Sized {
+    spec fn spec_key(self) -> K;
+
+    #[verifier::prophetic]
+    spec fn final_value(self) -> Option<V>;
+}
+
+impl<'a, K, V, A: Allocator> VacantEntrySpecFns<K, V, A> for VacantEntry<'a, K, V, A> {
+    uninterp spec fn spec_key(self) -> K;
+
+    #[verifier::prophetic]
+    uninterp spec fn final_value(self) -> Option<V>;
+}
+
+/// Specification for an [`Entry`].
+/// Contains the current key for the entry,
+/// and prophesies the final value after this instantiation of the entry API is complete.
+pub trait EntrySpecFns<K, V, A>: Sized {
+    spec fn spec_key(self) -> K;
+
+    spec fn value(self) -> Option<V>;
+
+    #[verifier::prophetic]
+    spec fn final_value(self) -> Option<V>;
+}
+
+impl<'a, K, V, A: Allocator> EntrySpecFns<K, V, A> for Entry<'a, K, V, A> {
+    open spec fn spec_key(self) -> K {
+        match self {
+            Entry::Occupied(occupied_entry) => occupied_entry.spec_key(),
+            Entry::Vacant(vacant_entry) => vacant_entry.spec_key(),
+        }
+    }
+
+    open spec fn value(self) -> Option<V> {
+        match self {
+            Entry::Occupied(occupied_entry) => Some(occupied_entry.value()),
+            Entry::Vacant(vacant_entry) => None,
+        }
+    }
+
+    #[verifier::prophetic]
+    open spec fn final_value(self) -> Option<V> {
+        match self {
+            Entry::Occupied(occupied_entry) => occupied_entry.final_value(),
+            Entry::Vacant(vacant_entry) => vacant_entry.final_value(),
+        }
+    }
+}
+
+pub broadcast axiom fn axiom_has_resolved_occupied_entry<K, V, A: Allocator>(
+    entry: OccupiedEntry<K, V, A>,
+)
+    ensures
+        #[trigger] has_resolved(entry) ==> entry.final_value() == Some(entry.value()),
+;
+
+pub broadcast axiom fn axiom_has_resolved_vacant_entry<K, V, A: Allocator>(
+    entry: VacantEntry<K, V, A>,
+)
+    ensures
+        #[trigger] has_resolved(entry) ==> entry.final_value() == None::<V>,
+;
+
+pub broadcast proof fn axiom_has_resolved_entry<K, V, A: Allocator>(entry: Entry<K, V, A>)
+    ensures
+        #[trigger] has_resolved(entry) ==> entry.final_value() == entry.value(),
+{
+    broadcast use axiom_has_resolved_occupied_entry;
+    broadcast use axiom_has_resolved_vacant_entry;
+
+}
+
+pub assume_specification<'a, Key: Hash + Eq, Value, S: BuildHasher, A: Allocator>[ HashMap::<
+    Key,
+    Value,
+    S,
+    A,
+>::entry ](m: &'a mut HashMap<Key, Value, S, A>, key: Key) -> (entry: Entry<'a, Key, Value, A>)
+    ensures
+        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> (entry.key() == key
+            && entry.value() == old(m)@.get(key) && final(m)@ == (match entry.final_value() {
+            Some(value) => old(m)@.insert(key, value),
+            None => old(m)@.remove(key),
+        })),
+;
+
+//// Entry
+#[verifier::allow_in_spec]
+pub assume_specification<'a, 'b, K, V, A: Allocator>[ Entry::key ](
+    entry: &'b Entry::<'a, K, V, A>,
+) -> (key: &'b K)
+    returns
+        &entry.spec_key(),
+;
+
+pub assume_specification<'a, K, V, A: Allocator>[ Entry::or_insert ](
+    entry: Entry::<'a, K, V, A>,
+    default: V,
+) -> (value: &'a mut V)
+    ensures
+        *value == (match entry.value() {
+            Some(v) => v,
+            None => default,
+        }),
+        entry.final_value() == Some(*final(value)),
+;
+
+pub assume_specification<'a, K, V, A: Allocator>[ Entry::insert_entry ](
+    entry: Entry::<'a, K, V, A>,
+    value: V,
+) -> (occ_entry: OccupiedEntry<'a, K, V, A>)
+    ensures
+        occ_entry.key() == entry.key(),
+        occ_entry.value() == value,
+        entry.final_value() == occ_entry.final_value(),
+;
+
+//// OccupiedEntry
+// This module works around a bug with `allow_in_spec` that creates duplicate spec fn names
+mod m_occ {
+    use super::*;
+
+    #[verifier::allow_in_spec]
+    pub assume_specification<'a, 'b, K, V, A: Allocator>[ OccupiedEntry::key ](
+        entry: &'b OccupiedEntry::<'a, K, V, A>,
+    ) -> (key: &'b K)
+        returns
+            &entry.spec_key(),
+    ;
+
+}
+
+pub assume_specification<'a, K, V, A: Allocator>[ OccupiedEntry::remove_entry ](
+    entry: OccupiedEntry::<'a, K, V, A>,
+) -> (kv: (K, V))
+    ensures
+        entry.final_value() == None,
+    returns
+        (*entry.key(), entry.value()),
+;
+
+pub assume_specification<'a, 'b, K, V, A: Allocator>[ OccupiedEntry::get ](
+    entry: &'b OccupiedEntry::<'a, K, V, A>,
+) -> (value: &'b V)
+    ensures
+        *value == entry.value(),
+;
+
+pub assume_specification<'a, 'b, K, V, A: Allocator>[ OccupiedEntry::get_mut ](
+    entry: &'b mut OccupiedEntry::<'a, K, V, A>,
+) -> (value: &'b mut V)
+    ensures
+        *value == old(entry).value(),
+        final(entry).key() == old(entry).key(),
+        final(entry).value() == *final(value),
+        final(entry).final_value() == old(entry).final_value(),
+;
+
+pub assume_specification<'a, K, V, A: Allocator>[ OccupiedEntry::into_mut ](
+    entry: OccupiedEntry::<'a, K, V, A>,
+) -> (value: &mut V)
+    ensures
+        *value == entry.value(),
+        entry.final_value() == Some(*final(value)),
+;
+
+pub assume_specification<'a, K, V, A: Allocator>[ OccupiedEntry::insert ](
+    entry: &mut OccupiedEntry::<'a, K, V, A>,
+    value: V,
+) -> (old_value: V)
+    ensures
+        old_value == old(entry).value(),
+        final(entry).key() == old(entry).key(),
+        final(entry).value() == value,
+        final(entry).final_value() == old(entry).final_value(),
+;
+
+pub assume_specification<'a, K, V, A: Allocator>[ OccupiedEntry::remove ](
+    entry: OccupiedEntry::<'a, K, V, A>,
+) -> (value: V)
+    ensures
+        value == entry.value(),
+        entry.final_value() == None,
+;
+
+//// VacantEntry
+// This module works around a bug with `allow_in_spec` that creates duplicate spec fn names
+mod m_vac {
+    use super::*;
+
+    #[verifier::allow_in_spec]
+    pub assume_specification<'a, 'b, K: 'a, V: 'a, A: Allocator>[ VacantEntry::key ](
+        entry: &'b VacantEntry::<'a, K, V, A>,
+    ) -> (key: &'b K)
+        returns
+            &entry.spec_key(),
+    ;
+
+}
+
+pub assume_specification<'a, K: 'a, V: 'a, A: Allocator>[ VacantEntry::into_key ](
+    entry: VacantEntry::<'a, K, V, A>,
+) -> (key: K)
+    ensures
+        key == entry.key(),
+        entry.final_value() == None,
+;
+
+pub assume_specification<'a, K: 'a, V: 'a, A: Allocator>[ VacantEntry::insert ](
+    entry: VacantEntry::<'a, K, V, A>,
+    value: V,
+) -> (value_ref: &mut V)
+    ensures
+        *value_ref == value,
+        entry.final_value() == Some(*final(value_ref)),
+;
+
+pub assume_specification<'a, K: 'a, V: 'a, A: Allocator>[ VacantEntry::insert_entry ](
+    entry: VacantEntry::<'a, K, V, A>,
+    value: V,
+) -> (occ_entry: OccupiedEntry::<'a, K, V, A>)
+    ensures
+        occ_entry.key() == entry.key(),
+        occ_entry.value() == value,
+        entry.final_value() == occ_entry.final_value(),
+;
 
 pub broadcast group group_hash_axioms {
     axiom_box_key_removed,
@@ -1422,7 +1416,6 @@ pub broadcast group group_hash_axioms {
     axiom_maps_deref_key_to_value,
     axiom_maps_box_key_to_value,
     axiom_hashmap_deepview_borrow,
-    axiom_hashmap_view_finite_dom,
     axiom_bool_obeys_hash_table_key_model,
     axiom_u8_obeys_hash_table_key_model,
     axiom_u16_obeys_hash_table_key_model,
@@ -1433,7 +1426,7 @@ pub broadcast group group_hash_axioms {
     axiom_i8_obeys_hash_table_key_model,
     axiom_i16_obeys_hash_table_key_model,
     axiom_i32_obeys_hash_table_key_model,
-    axiom_i164_obeys_hash_table_key_model,
+    axiom_i64_obeys_hash_table_key_model,
     axiom_i128_obeys_hash_table_key_model,
     axiom_isize_obeys_hash_table_key_model,
     axiom_box_bool_obeys_hash_table_key_model,
@@ -1447,9 +1440,11 @@ pub broadcast group group_hash_axioms {
     axiom_set_deref_key_to_value,
     axiom_set_box_key_to_value,
     axiom_spec_hash_set_len,
-    axiom_spec_hash_map_iter,
     axiom_hashmap_decreases,
     axiom_hashset_decreases,
+    axiom_has_resolved_occupied_entry,
+    axiom_has_resolved_vacant_entry,
+    axiom_has_resolved_entry,
 }
 
 } // verus!

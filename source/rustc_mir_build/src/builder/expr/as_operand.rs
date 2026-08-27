@@ -1,10 +1,12 @@
 //! See docs in build/expr/mod.rs
 
+use rustc_middle::middle::region::TempLifetime;
 use rustc_middle::mir::*;
 use rustc_middle::thir::*;
 use tracing::{debug, instrument};
 
 use crate::builder::expr::category::Category;
+use crate::builder::scope::LintLevel;
 use crate::builder::{BlockAnd, BlockAndExtension, Builder, NeedsTemporary};
 
 impl<'a, 'tcx> Builder<'a, 'tcx> {
@@ -118,13 +120,13 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         local_info: LocalInfo<'tcx>,
         needs_temporary: NeedsTemporary,
     ) -> BlockAnd<Operand<'tcx>> {
-        let this = self;
+        let this = self; // See "LET_THIS_SELF".
 
         let expr = &this.thir[expr_id];
-        if let ExprKind::Scope { region_scope, lint_level, value } = expr.kind {
+        if let ExprKind::Scope { region_scope, hir_id, value } = expr.kind {
             let source_info = this.source_info(expr.span);
             let region_scope = (region_scope, source_info);
-            return this.in_scope(region_scope, lint_level, |this| {
+            return this.in_scope(region_scope, LintLevel::Explicit(hir_id), |this| {
                 this.as_operand(block, scope, value, local_info, needs_temporary)
             });
         }
@@ -160,14 +162,14 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         scope: TempLifetime,
         expr_id: ExprId,
     ) -> BlockAnd<Operand<'tcx>> {
-        let this = self;
+        let this = self; // See "LET_THIS_SELF".
         let expr = &this.thir[expr_id];
         debug!("as_call_operand(block={:?}, expr={:?})", block, expr);
 
-        if let ExprKind::Scope { region_scope, lint_level, value } = expr.kind {
+        if let ExprKind::Scope { region_scope, hir_id, value } = expr.kind {
             let source_info = this.source_info(expr.span);
             let region_scope = (region_scope, source_info);
-            return this.in_scope(region_scope, lint_level, |this| {
+            return this.in_scope(region_scope, LintLevel::Explicit(hir_id), |this| {
                 this.as_call_operand(block, scope, value)
             });
         }

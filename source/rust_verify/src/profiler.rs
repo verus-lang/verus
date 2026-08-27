@@ -75,7 +75,8 @@ pub fn write_instantiation_graph(
         graph: Graph(graph),
     };
     let file_name = profile_file_name.with_extension("graph");
-    let f = File::create(&file_name)
-        .expect(&format!("failed to open instantiation graph file {}", file_name.display()));
+    let f = File::create(&file_name).unwrap_or_else(|e| {
+        panic!("failed to open instantiation graph file {}: {}", file_name.display(), e)
+    });
     instantiation_graph.serialize(f).expect("failed to write instantiation graph");
 }

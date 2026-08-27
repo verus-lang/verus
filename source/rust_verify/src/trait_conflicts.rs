@@ -30,8 +30,8 @@ use crate::trait_check_generate::*;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use vir::ast::{
-    AssocTypeImpl, Dt, GenericBoundX, GenericBounds, Ident, Path, Primitive, Sizedness, TraitId,
-    TypDecoration, TypDecorationArg,
+    AssocTypeImpl, CrateId, Dt, GenericBoundX, GenericBounds, Ident, Path, Primitive, Sizedness,
+    TraitId, TypDecoration, TypDecorationArg,
 };
 
 // General purpose type to represent various types, where N comes from the TypNum enum:
@@ -136,7 +136,6 @@ fn gen_typ(state: &mut State, typ: &vir::ast::Typ) -> Typ {
         vir::ast::TypX::Decorate(d, targ, t) => {
             let n = match d {
                 TypDecoration::Ref => TypNum::Ref,
-                TypDecoration::MutRef => TypNum::MutRef,
                 TypDecoration::Box => TypNum::Box,
                 TypDecoration::Rc => TypNum::Rc,
                 TypDecoration::Arc => TypNum::Arc,
@@ -205,6 +204,10 @@ fn gen_generics(
     let mut generic_params: Vec<GenericParam> = Vec::new();
     let mut generic_bounds: Vec<GenericBound> = Vec::new();
     let mut const_typs: HashMap<String, Typ> = HashMap::new();
+    let tuple_trait_path = vir::ast::PathX {
+        krate: CrateId::Core,
+        segments: Arc::new(vec![Arc::new("marker".to_string()), Arc::new("Tuple".to_string())]),
+    };
     for b in typ_bounds.iter() {
         match &**b {
             GenericBoundX::Trait(TraitId::Path(path), typs) => {
@@ -212,7 +215,9 @@ fn gen_generics(
                 if is_option_clone_destruct_bound(is_impl, path) {
                     continue;
                 }
-                let bound = {
+                let bound = if &**path == &tuple_trait_path {
+                    Bound::Tuple
+                } else {
                     let args = gen_typ_slice(state, &typs[1..]);
                     let trait_path = state.trait_name(&path);
                     Bound::Trait { trait_path, args, equality: None }
@@ -274,21 +279,21 @@ fn is_option_clone_destruct_bound(
             // complicating surrounding code by passing TyCtx
             // to here.
             let option_path = vir::ast::PathX {
-                krate: Some(Arc::new("core".to_string())),
+                krate: CrateId::Core,
                 segments: Arc::new(vec![
                     Arc::new("option".to_string()),
                     Arc::new("Option".to_string()),
                 ]),
             };
             let clone_path = vir::ast::PathX {
-                krate: Some(Arc::new("core".to_string())),
+                krate: CrateId::Core,
                 segments: Arc::new(vec![
                     Arc::new("clone".to_string()),
                     Arc::new("Clone".to_string()),
                 ]),
             };
             let destruct_path = vir::ast::PathX {
-                krate: Some(Arc::new("core".to_string())),
+                krate: CrateId::Core,
                 segments: Arc::new(vec![
                     Arc::new("marker".to_string()),
                     Arc::new("Destruct".to_string()),

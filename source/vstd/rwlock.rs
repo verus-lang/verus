@@ -3,7 +3,8 @@
 #![allow(non_shorthand_field_patterns)]
 
 use super::atomic_ghost::*;
-use super::cell::{CellId, PCell, PointsTo};
+use super::cell::CellId;
+use super::cell::pcell_maybe_uninit as un;
 use super::invariant::InvariantPredicate;
 use super::modes::*;
 use super::multiset::*;
@@ -250,11 +251,11 @@ ghost struct InternalPred<V, Pred> {
     pred: Pred,
 }
 
-impl<V, Pred: RwLockPredicate<V>> InvariantPredicate<(Pred, CellId), PointsTo<V>> for InternalPred<
-    V,
-    Pred,
-> {
-    closed spec fn inv(k: (Pred, CellId), v: PointsTo<V>) -> bool {
+impl<V, Pred: RwLockPredicate<V>> InvariantPredicate<
+    (Pred, CellId),
+    un::PointsTo<V>,
+> for InternalPred<V, Pred> {
+    closed spec fn inv(k: (Pred, CellId), v: un::PointsTo<V>) -> bool {
         v.id() == k.1 && v.is_init() && k.0.inv(v.value())
     }
 }
@@ -335,22 +336,22 @@ struct_with_invariants!{
     */
 
     pub struct RwLock<V, Pred: RwLockPredicate<V>> {
-        cell: PCell<V>,
-        exc: AtomicBool<_, RwLockToks::flag_exc<(Pred, CellId), PointsTo<V>, InternalPred<V, Pred>>, _>,
-        rc: AtomicUsize<_, RwLockToks::flag_rc<(Pred, CellId), PointsTo<V>, InternalPred<V, Pred>>, _>,
+        cell: un::PCell<V>,
+        exc: AtomicBool<_, RwLockToks::flag_exc<(Pred, CellId), un::PointsTo<V>, InternalPred<V, Pred>>, _>,
+        rc: AtomicUsize<_, RwLockToks::flag_rc<(Pred, CellId), un::PointsTo<V>, InternalPred<V, Pred>>, _>,
 
-        inst: Tracked<RwLockToks::Instance<(Pred, CellId), PointsTo<V>, InternalPred<V, Pred>>>,
+        inst: Tracked<RwLockToks::Instance<(Pred, CellId), un::PointsTo<V>, InternalPred<V, Pred>>>,
         pred: Ghost<Pred>,
     }
 
     #[verifier::type_invariant]
     spec fn wf(&self) -> bool {
-        invariant on exc with (inst) is (v: bool, g: RwLockToks::flag_exc<(Pred, CellId), PointsTo<V>, InternalPred<V, Pred>>) {
+        invariant on exc with (inst) is (v: bool, g: RwLockToks::flag_exc<(Pred, CellId), un::PointsTo<V>, InternalPred<V, Pred>>) {
             g.instance_id() == inst@.id()
                 && g.value() == v
         }
 
-        invariant on rc with (inst) is (v: usize, g: RwLockToks::flag_rc<(Pred, CellId), PointsTo<V>, InternalPred<V, Pred>>) {
+        invariant on rc with (inst) is (v: usize, g: RwLockToks::flag_rc<(Pred, CellId), un::PointsTo<V>, InternalPred<V, Pred>>) {
             g.instance_id() == inst@.id()
                 && g.value() == v
         }
@@ -371,8 +372,8 @@ struct_with_invariants!{
 /// is dropped. You must call [`release_write`](WriteHandle::release_write).
 /// Verus does not check that lock is released.
 pub struct WriteHandle<'a, V, Pred: RwLockPredicate<V>> {
-    handle: Tracked<RwLockToks::writer<(Pred, CellId), PointsTo<V>, InternalPred<V, Pred>>>,
-    perm: Tracked<PointsTo<V>>,
+    handle: Tracked<RwLockToks::writer<(Pred, CellId), un::PointsTo<V>, InternalPred<V, Pred>>>,
+    perm: Tracked<un::PointsTo<V>>,
     rwlock: &'a RwLock<V, Pred>,
 }
 
@@ -382,7 +383,7 @@ pub struct WriteHandle<'a, V, Pred: RwLockPredicate<V>> {
 /// is dropped. You must call [`release_read`](ReadHandle::release_read).
 /// Verus does not check that lock is released.
 pub struct ReadHandle<'a, V, Pred: RwLockPredicate<V>> {
-    handle: Tracked<RwLockToks::reader<(Pred, CellId), PointsTo<V>, InternalPred<V, Pred>>>,
+    handle: Tracked<RwLockToks::reader<(Pred, CellId), un::PointsTo<V>, InternalPred<V, Pred>>>,
     rwlock: &'a RwLock<V, Pred>,
 }
 
@@ -504,12 +505,12 @@ impl<V, Pred: RwLockPredicate<V>> RwLock<V, Pred> {
         ensures
             s.pred() == pred,
     {
-        let (cell, Tracked(perm)) = PCell::<V>::new(val);
+        let (cell, Tracked(perm)) = un::PCell::<V>::new(val);
 
         let tracked (Tracked(inst), Tracked(flag_exc), Tracked(flag_rc), _, _, _, _) =
             RwLockToks::Instance::<
             (Pred, CellId),
-            PointsTo<V>,
+            un::PointsTo<V>,
             InternalPred<V, Pred>,
         >::initialize_full((pred, cell.id()), perm, Option::Some(perm));
         let inst = Tracked(inst);
@@ -540,7 +541,7 @@ impl<V, Pred: RwLockPredicate<V>> RwLock<V, Pred> {
         }
         let mut done = false;
         let tracked mut token: Option<
-            RwLockToks::pending_writer<(Pred, CellId), PointsTo<V>, InternalPred<V, Pred>>,
+            RwLockToks::pending_writer<(Pred, CellId), un::PointsTo<V>, InternalPred<V, Pred>>,
         > = Option::None;
         while !done
             invariant
@@ -569,9 +570,9 @@ impl<V, Pred: RwLockPredicate<V>> RwLock<V, Pred> {
                 token is Some && equal(token->0.instance_id(), self.inst@.id()),
                 self.wf(),
         {
-            let tracked mut perm_opt: Option<PointsTo<V>> = None;
+            let tracked mut perm_opt: Option<un::PointsTo<V>> = None;
             let tracked mut handle_opt: Option<
-                RwLockToks::writer<(Pred, CellId), PointsTo<V>, InternalPred<V, Pred>>,
+                RwLockToks::writer<(Pred, CellId), un::PointsTo<V>, InternalPred<V, Pred>>,
             > = None;
 
             let result =
@@ -631,7 +632,7 @@ impl<V, Pred: RwLockPredicate<V>> RwLock<V, Pred> {
             let val = atomic_with_ghost!(&self.rc => load(); ghost g => { });
 
             let tracked mut token: Option<
-                RwLockToks::pending_reader<(Pred, CellId), PointsTo<V>, InternalPred<V, Pred>>,
+                RwLockToks::pending_reader<(Pred, CellId), un::PointsTo<V>, InternalPred<V, Pred>>,
             > = Option::None;
 
             if val < usize::MAX {
@@ -649,7 +650,11 @@ impl<V, Pred: RwLockPredicate<V>> RwLock<V, Pred> {
                 match result {
                     Result::Ok(_) => {
                         let tracked mut handle_opt: Option<
-                            RwLockToks::reader<(Pred, CellId), PointsTo<V>, InternalPred<V, Pred>>,
+                            RwLockToks::reader<
+                                (Pred, CellId),
+                                un::PointsTo<V>,
+                                InternalPred<V, Pred>,
+                            >,
                         > = None;
 
                         let result =

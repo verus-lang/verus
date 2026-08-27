@@ -51,6 +51,7 @@ pub(crate) fn visit_item_enum_synthesize(
     enum_.attrs.retain(|attr| {
         if let verus_syn::AttrStyle::Outer = attr.style {
             match &attr.path().segments.iter().map(|x| &x.ident).collect::<Vec<_>>()[..] {
+                #[allow(clippy::cmp_owned)] // There is no other way to compare an Ident
                 [attr_name] if attr_name.to_string() == "allow" => match &attr.meta {
                     verus_syn::Meta::List(list)
                         if list.tokens.to_string() == "inconsistent_fields" =>
@@ -143,7 +144,7 @@ pub(crate) fn visit_item_enum_synthesize(
     if !erase_ghost.erase() && !allow_inconsistent_fields {
         for invalid_field in invalid_fields {
             proc_macro::Diagnostic::spanned(enum_.span().unwrap(), proc_macro::Level::Warning, {
-                format!("field `{}` has inconsistent type or visibility in different variants\n->{} syntax will not be available for this field\nuse #[allow(inconsistent_fields)] on the struct to silence the warnign", &invalid_field, &invalid_field)
+                format!("field `{}` has inconsistent type or visibility in different variants\n->{} syntax will not be available for this field\nuse #[allow(inconsistent_fields)] on the struct to silence the warnign", invalid_field, invalid_field)
             }).emit();
         }
     }
@@ -186,6 +187,7 @@ pub(crate) fn visit_item_enum_synthesize(
                         #[verifier::inline]
                         #publish
                         #vis fn #method_ident(self) -> #ty_ {
+                            #verus_builtin::recommends([#verus_builtin::is_variant(&self, #variant_ident)]);
                             #verus_builtin::get_variant_field(self, #variant_ident, #field_str)
                         }
                     }
@@ -241,6 +243,7 @@ pub(crate) fn visit_item_enum_synthesize(
                     #[verifier::inline]
                     #publish
                     #vis fn #method_ident(self) -> #ty_ {
+                        #verus_builtin::recommends([#verus_builtin::is_variant(&self, #variant_ident)]);
                         #verus_builtin::get_variant_field(self, #variant_ident, #field_str)
                     }
                 }

@@ -92,8 +92,8 @@ test_verify_one_file! {
                 }
             }
         }
-        fn f(x: X) -> (ret: (usize, bool))
-        ensures check_x_b(x, ret.0, ret.1)
+        fn f(x: X) -> ((val1, val2): (usize, bool))
+        ensures check_x_b(x, val1, val2)
         no_unwind when is_a(x)
         {
             let X::A(A {x, ..}, .., b) = x else {

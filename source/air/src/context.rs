@@ -12,7 +12,7 @@ use crate::scope_map::ScopeMap;
 use crate::smt_process::SmtProcess;
 use crate::smt_verify::ReportLongRunning;
 use crate::typecheck::Typing;
-use sise::Node;
+use sise::TreeNode as Node;
 use std::any::Any;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -107,11 +107,11 @@ pub struct Context {
     pub(crate) smt_transcript_log: Option<Box<dyn std::io::Write>>,
     pub(crate) time_smt_init: Duration,
     pub(crate) time_smt_run: Duration,
-    pub(crate) rlimit_count: Option<u64>,
+    pub(crate) rlimit_count: Option<(u64, u64)>,
     pub(crate) state: ContextState,
     pub(crate) expected_solver_version: Option<String>,
     pub(crate) profile_logfile_name: Option<String>,
-    pub(crate) disable_incremental_solving: bool,
+    pub(crate) single_check_query: bool,
     pub(crate) usage_info_enabled: bool,
     pub(crate) check_valid_used: bool,
     pub(crate) solver: SmtSolver,
@@ -172,13 +172,13 @@ impl Context {
             time_smt_init: Duration::new(0, 0),
             time_smt_run: Duration::new(0, 0),
             rlimit_count: match solver {
-                SmtSolver::Z3 => Some(0),
+                SmtSolver::Z3 => Some((0, 0)),
                 SmtSolver::Cvc5 => None,
             },
             state: ContextState::NotStarted,
             expected_solver_version: None,
             profile_logfile_name: None,
-            disable_incremental_solving: false,
+            single_check_query: false,
             usage_info_enabled: false,
             check_valid_used: false,
             solver,
@@ -246,7 +246,7 @@ impl Context {
         (self.time_smt_init, self.time_smt_run)
     }
 
-    pub fn get_rlimit_count(&self) -> Option<u64> {
+    pub fn get_rlimit_count(&self) -> Option<(u64, u64)> {
         self.rlimit_count
     }
 
@@ -268,11 +268,11 @@ impl Context {
         }
     }
 
-    pub fn disable_incremental_solving(&mut self) {
-        self.disable_incremental_solving = true;
-        self.air_initial_log.log_set_option("disable_incremental_solving", "true");
-        self.air_middle_log.log_set_option("disable_incremental_solving", "true");
-        self.air_final_log.log_set_option("disable_incremental_solving", "true");
+    pub fn set_single_check_query(&mut self) {
+        self.single_check_query = true;
+        self.air_initial_log.log_set_option("single_check_query", "true");
+        self.air_middle_log.log_set_option("single_check_query", "true");
+        self.air_final_log.log_set_option("single_check_query", "true");
     }
 
     pub fn enable_usage_info(&mut self) {
@@ -323,10 +323,10 @@ impl Context {
                     self.set_z3_param_bool("incremental", true, true);
                 }
             }
-        } else if option == "disable_incremental_solving" && value {
-            self.disable_incremental_solving = true;
+        } else if option == "single_check_query" && value {
+            self.single_check_query = true;
             if write_to_logs {
-                self.disable_incremental_solving();
+                self.set_single_check_query();
             }
         } else {
             if write_to_logs {
@@ -357,7 +357,7 @@ impl Context {
 
     pub(crate) fn set_z3_param_str(&mut self, option: &str, value: &str, write_to_logs: bool) {
         if write_to_logs {
-            self.log_set_z3_param(option, &value.to_string());
+            self.log_set_z3_param(option, value);
         }
     }
 
@@ -464,12 +464,6 @@ impl Context {
     ) -> ValidityResult {
         self.ensure_started();
 
-        if matches!(self.solver, SmtSolver::Z3) {
-            if let Err(e) = crate::smt_verify::smt_update_statistics(self) {
-                return e;
-            }
-        }
-
         self.air_initial_log.log_query(query);
         let query = match crate::typecheck::check_query(self, query) {
             Ok(query) => query,
@@ -524,7 +518,7 @@ impl Context {
     }
 
     pub fn finish_query(&mut self) {
-        if self.disable_incremental_solving {
+        if self.single_check_query {
             self.state = ContextState::NoMoreQueriesAllowed;
         } else {
             self.pop_name_scope();
@@ -533,12 +527,12 @@ impl Context {
         }
     }
 
-    pub fn eval_expr(&mut self, expr: sise::Node) -> String {
+    pub fn eval_expr(&mut self, expr: sise::TreeNode) -> String {
         self.smt_log.log_eval(expr);
         let smt_data = self.smt_log.take_pipe_data();
         let smt_output = self.get_smt_process().send_commands(smt_data);
         if smt_output.len() != 1 {
-            panic!("unexpected output from SMT eval {:?}", &smt_output);
+            panic!("unexpected output from SMT eval {:?}", smt_output);
         }
         smt_output[0].clone()
     }

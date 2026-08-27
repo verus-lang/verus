@@ -1,4 +1,4 @@
-use std::assert_matches::assert_matches;
+use std::assert_matches;
 
 use rustc_hir as hir;
 use rustc_hir::def::DefKind;

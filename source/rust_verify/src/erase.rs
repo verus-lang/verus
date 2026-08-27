@@ -9,8 +9,9 @@ use vir::modes::ErasureModes;
 use crate::verus_items::{DummyCaptureItem, VerusItem, VerusItems};
 use rustc_hir::def_id::LocalDefId;
 use rustc_mir_build_verus::verus::{
-    BodyErasure, CallErasure, ExpectSpec, ExpectSpecArgs, NodeErase, VarErasure, VerusErasureCtxt,
-    set_verus_aware_def_ids, set_verus_erasure_ctxt,
+    BodyErasure, CallErasure, LocalInvariantBody, LoopErasure, LoopSpecEvaluationLocation,
+    NodeErase, TreeErase, VarErasure, VerusErasureCtxt, set_verus_aware_def_ids,
+    set_verus_erasure_ctxt,
 };
 use rustc_span::Span;
 use std::collections::HashMap;
@@ -18,6 +19,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use vir::ast::VirErr;
 
+// TODO: CompilableOperator is an outdated name; many of these aren't compilable
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum CompilableOperator {
     IntIntrinsic,
@@ -35,19 +37,22 @@ pub enum CompilableOperator {
     TrackedBorrowMut,
     UseTypeInvariant,
     ClosureToFnProof(Mode),
+    GhostBorrowMut,
+    MutRefTracked,
+    ShrRefStructWrap,
 }
 
 /// Information about each call in the AST (each ExprKind::Call).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ResolvedCall {
     /// The call is to a spec or proof function, and should be erased
-    Spec,
+    SpecPure,
     /// The call is to a spec or proof function, but may have proof-mode arguments
     SpecAllowProofArgs,
     /// The call is to an operator like == or + that should be compiled.
     CompilableOperator(CompilableOperator),
     /// The call is to a function, and we record the name of the function here
-    /// (both unresolved and resolved), as well as an in_ghost flag.
+    /// (both unresolved and resolved), as well as the 'assume_external' flag.
     /// This is replaced by CallModes as soon as the modes are available.
     Call(Fun, Fun, bool),
     /// Path and variant of datatype constructor
@@ -58,6 +63,45 @@ pub enum ResolvedCall {
     NonStaticExec,
     /// The call is to a dynamically computed function, and is proof
     NonStaticProof(Arc<Vec<Mode>>),
+    /// Erase the node and all subtrees completely. Suitable for ad hoc directives
+    /// like `constraint_type`.
+    MiscEraseAbsolutely,
+    /// Loop spec (invariant, decreases, etc.). HirId is the HirId of the loop body.
+    LoopSpec(HirId, LoopSpecKind),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LoopSpecKind {
+    Invariant,
+    Decreases,
+    Ensures,
+    InvariantExceptBreak,
+}
+
+impl LoopSpecKind {
+    /// For the given loop spec kind, at which program points is that expression "evaluated"?
+    ///
+    /// This is needed for the analysis to correctly determine whether the given expressions
+    /// are prophetic, since propheticness depends on the locations of the expressions relative
+    /// to borrows.
+    ///
+    /// For Invariant, our answer is an overapproximation, as the specifics of where
+    /// an 'invariant' is evaluated depend on fiddly variables like loop_isolation level
+    /// and whether the loop has a 'break' statement. However, the distinction only ever matters
+    /// for rare cases when the condition has side-effects, so it doesn't matter very much.
+    ///
+    /// For soundness purposes, the only one that really matters is the 'Decreases' case
+    /// (since it's the only clause which is restricted to be non-prophetic).
+    /// For the other cases, they only matter for the sake of matching the documented behavior
+    /// of requiring prophetic uses to be marked with 'after_borrow'.
+    fn loop_spec_evaluation_location(&self) -> LoopSpecEvaluationLocation {
+        match self {
+            LoopSpecKind::Invariant => LoopSpecEvaluationLocation::BodyStartAndPostLoop,
+            LoopSpecKind::Decreases => LoopSpecEvaluationLocation::BodyStart,
+            LoopSpecKind::Ensures => LoopSpecEvaluationLocation::PostLoop,
+            LoopSpecKind::InvariantExceptBreak => LoopSpecEvaluationLocation::BodyStart,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -66,8 +110,11 @@ pub struct ErasureHints {
     pub vir_crate: Krate,
     /// Connect expression and pattern HirId to corresponding vir AstId
     pub hir_vir_ids: Vec<(HirId, AstId)>,
-    /// Details of each call in the first run's HIR
-    pub resolved_calls: Vec<(HirId, SpanData, ResolvedCall)>,
+    /// Details of each call in the first run's HIR.
+    /// The last bool is "in ghost block?".
+    /// (This is false for "boundary" calls like Ghost/Tracked
+    /// though that shouldn't matter right now).
+    pub resolved_calls: Vec<(HirId, SpanData, ResolvedCall, bool)>,
     /// Details of some patterns in first run's HIR
     pub resolved_pats: Vec<(SpanData, Pattern)>,
     /// Results of mode (spec/proof/exec) inference from first run's VIR
@@ -80,11 +127,31 @@ pub struct ErasureHints {
     /// List of function spans ignored by the verifier. These should not be erased
     pub ignored_functions: Vec<(rustc_span::def_id::DefId, SpanData)>,
     pub(crate) bodies: Vec<(LocalDefId, BodyErasure)>,
+    pub(crate) shadow_check: Vec<HirId>,
+    pub(crate) extra_erase_ast_ids: Vec<vir::messages::Span>,
+    pub(crate) local_invariant_bodies: Vec<LocalInvariantBody>,
 }
 
-fn mode_to_var_erase(mode: Mode) -> VarErasure {
+/// How to erase the given var usage
+///  - var_mode: mode of the variable (as declared at its binding)
+///  - mode: mode of this particular usage
+///  - shadow_check: could this possibly need a shadow check?
+///
+/// Generally speaking, if the mode is spec, it should be erased.
+/// However, spec uses of a non-spec variable may still need a shadow var.
+/// (If the variable itself is spec, we don't generate any shadow var for it at all.)
+///
+/// The shadow_check is used to exclude cases like vars used in `old` (always non-prophetic)
+/// or `after_borrow` (always prophetic, and thus its propheticness is accounted for by modes.rs).
+fn mode_to_var_erase(var_mode: Mode, mode: Mode, shadow_check: bool) -> VarErasure {
     match mode {
-        Mode::Spec => VarErasure::Erase,
+        Mode::Spec => {
+            if shadow_check && var_mode != Mode::Spec {
+                VarErasure::Shadow
+            } else {
+                VarErasure::Erase
+            }
+        }
         Mode::Exec | Mode::Proof => VarErasure::Keep,
     }
 }
@@ -96,111 +163,50 @@ fn mode_to_var_erase(mode: Mode) -> VarErasure {
 fn resolved_call_to_call_erase(
     _span: Span,
     functions: &HashMap<Fun, Function>,
-    datatypes: &HashMap<Path, Datatype>,
+    _datatypes: &HashMap<Path, Datatype>,
     resolved_call: &ResolvedCall,
-) -> Result<CallErasure, VirErr> {
-    Ok(match resolved_call {
-        ResolvedCall::Spec => CallErasure::EraseTree,
-        ResolvedCall::SpecAllowProofArgs => {
-            CallErasure::Call(NodeErase::Erase, ExpectSpecArgs::AllPropagate)
-        }
-        ResolvedCall::Call(ufun, rfun, in_ghost) => {
+    ctor_mode: Option<Mode>,
+    in_ghost: bool,
+) -> Result<(CallErasure, bool), VirErr> {
+    let mut call_returning_never = false;
+    let call_erasure = match resolved_call {
+        ResolvedCall::SpecPure => CallErasure::EraseTree(TreeErase::IncludeBasicChecks),
+        ResolvedCall::SpecAllowProofArgs => CallErasure::Call(NodeErase::Erase),
+        ResolvedCall::Call(ufun, rfun, assume_external) => {
             // Note: in principle, the unresolved function ufun should always be present,
             // but we currently allow external declarations of resolved trait functions
             // without a corresponding external trait declaration.
             let Some(f) = functions.get(ufun).or_else(|| functions.get(rfun)) else {
+                if *assume_external {
+                    let erase = CallErasure::Call(NodeErase::Keep);
+                    let force_treat_as_inhabited = false;
+                    return Ok((erase, force_treat_as_inhabited));
+                }
                 dbg!(ufun, rfun);
                 panic!("internal Verus error: could not find mode declarations for function")
             };
-            if *in_ghost && f.x.mode == Mode::Exec {
+            if f.x.ret.x.mode != Mode::Spec && vir::ast_util::is_never(&f.x.ret.x.typ) {
+                call_returning_never = true;
+            }
+            if in_ghost && f.x.mode == Mode::Exec {
                 // This must be an autospec, so change exec -> spec
-                CallErasure::Call(NodeErase::Erase, ExpectSpecArgs::AllYes)
+                CallErasure::Call(NodeErase::Erase)
             } else if f.x.mode == Mode::Spec {
-                CallErasure::Call(NodeErase::Erase, ExpectSpecArgs::AllYes)
+                CallErasure::Call(NodeErase::Erase)
             } else {
-                let args =
-                    f.x.params
-                        .iter()
-                        .map(|p| match p.x.mode {
-                            Mode::Spec => ExpectSpec::Yes,
-                            Mode::Proof | Mode::Exec => ExpectSpec::No,
-                        })
-                        .collect::<Vec<_>>();
-                CallErasure::Call(NodeErase::Keep, ExpectSpecArgs::PerArg(Arc::new(args)))
+                CallErasure::Call(NodeErase::Keep)
             }
         }
-        ResolvedCall::Ctor(path, variant_name) => {
-            let datatype = &datatypes[path];
-            match &datatype.x.mode {
-                Mode::Spec => {
-                    CallErasure::Call(NodeErase::WhenExpectingSpec, ExpectSpecArgs::AllYes)
-                }
-                Mode::Proof | Mode::Exec => {
-                    let variant = datatype.x.get_variant(variant_name);
-                    let args = variant
-                        .fields
-                        .iter()
-                        .map(|field| {
-                            let (_, field_mode, _) = &field.a;
-                            match field_mode {
-                                Mode::Spec => ExpectSpec::Yes,
-                                Mode::Proof | Mode::Exec => ExpectSpec::Propagate,
-                            }
-                        })
-                        .collect::<Vec<_>>();
-                    CallErasure::Call(
-                        NodeErase::WhenExpectingSpec,
-                        ExpectSpecArgs::PerArg(Arc::new(args)),
-                    )
-                }
-            }
-        }
-        ResolvedCall::BracesCtor(path, variant_name, fields, has_tail) => {
-            let datatype = &datatypes[path];
-            match &datatype.x.mode {
-                Mode::Spec => {
-                    CallErasure::Call(NodeErase::WhenExpectingSpec, ExpectSpecArgs::AllYes)
-                }
-                Mode::Proof | Mode::Exec => {
-                    let variant = datatype.x.get_variant(variant_name);
-                    let mut args = fields
-                        .iter()
-                        .map(|field_name| {
-                            let field = vir::ast_util::get_field(&variant.fields, field_name);
-                            let (_, field_mode, _) = &field.a;
-                            match field_mode {
-                                Mode::Spec => ExpectSpec::Yes,
-                                Mode::Proof | Mode::Exec => ExpectSpec::Propagate,
-                            }
-                        })
-                        .collect::<Vec<_>>();
-                    if *has_tail {
-                        args.push(ExpectSpec::Propagate);
-                    }
-                    CallErasure::Call(
-                        NodeErase::WhenExpectingSpec,
-                        ExpectSpecArgs::PerArg(Arc::new(args)),
-                    )
-                }
-            }
-        }
+        ResolvedCall::Ctor(..) | ResolvedCall::BracesCtor(..) => match ctor_mode {
+            Some(Mode::Spec) => CallErasure::Call(NodeErase::Erase),
+            Some(_) | None => CallErasure::Call(NodeErase::Keep),
+        },
         ResolvedCall::NonStaticExec => CallErasure::keep_all(),
-        ResolvedCall::NonStaticProof(modes) => {
-            let args = modes
-                .iter()
-                .map(|mode| match mode {
-                    Mode::Spec => ExpectSpec::Yes,
-                    Mode::Proof | Mode::Exec => ExpectSpec::No,
-                })
-                .collect::<Vec<_>>();
-            CallErasure::Call(NodeErase::Keep, ExpectSpecArgs::PerArg(Arc::new(args)))
-        }
+        ResolvedCall::NonStaticProof(_modes) => CallErasure::Call(NodeErase::Keep),
         ResolvedCall::CompilableOperator(co) => match co {
-            CompilableOperator::IntIntrinsic => {
-                CallErasure::Call(NodeErase::Erase, ExpectSpecArgs::AllPropagate)
-            }
+            CompilableOperator::IntIntrinsic => CallErasure::Call(NodeErase::Erase),
 
-            CompilableOperator::GhostExec => CallErasure::EraseTree,
+            CompilableOperator::GhostExec => CallErasure::Call(NodeErase::Keep),
 
             CompilableOperator::Implies
             | CompilableOperator::RcNew
@@ -208,21 +214,59 @@ fn resolved_call_to_call_erase(
             | CompilableOperator::BoxNew
             | CompilableOperator::SmartPtrClone { .. }
             | CompilableOperator::TrackedNew
-            | CompilableOperator::TrackedExec => {
-                CallErasure::Call(NodeErase::WhenExpectingSpec, ExpectSpecArgs::AllPropagate)
-            }
+            | CompilableOperator::TrackedExec => CallErasure::keep_all(),
 
             CompilableOperator::ClosureToFnProof(_)
             | CompilableOperator::TrackedExecBorrow
             | CompilableOperator::TrackedGet
             | CompilableOperator::TrackedBorrow
             | CompilableOperator::TrackedBorrowMut
+            | CompilableOperator::GhostBorrowMut
+            | CompilableOperator::MutRefTracked
+            | CompilableOperator::ShrRefStructWrap
             | CompilableOperator::UseTypeInvariant => CallErasure::keep_all(),
         },
-    })
+        ResolvedCall::MiscEraseAbsolutely => CallErasure::EraseTree(TreeErase::EraseAbsolutely),
+        // LoopSpecs get special handling, so they are marked EraseAbsolutely to avoid
+        // double-handling.
+        ResolvedCall::LoopSpec(..) => CallErasure::EraseTree(TreeErase::EraseAbsolutely),
+    };
+
+    // Rust prunes the CFG when a call returns an uninhabited type. However, there are
+    // a few ways that ghost calls might inadvertently cheat this.
+    // Specifically, by returning spec-mode never, or returning a tracked struct
+    // with a ghost field never.
+    // In most cases, we force rust to treat the type as inhabited anyway.
+    // The only exception is if: the function returns non-spec-mode never type.
+    // This is overly conservative, as there could be other valid, tracked, actually-uninhabited
+    // types. Note though that the user is always free to match on an uninhabited
+    // type to prove false, rather than relying on CFG pruning.
+    let force_treat_as_inhabited = in_ghost && !call_returning_never;
+
+    Ok((call_erasure, force_treat_as_inhabited))
 }
 
-pub(crate) fn setup_verus_ctxt_for_thir_erasure(
+fn get_binder_hir_id<'tcx>(
+    tcx: rustc_middle::ty::TyCtxt<'tcx>,
+    hir_id: HirId,
+) -> Option<(Span, rustc_span::Ident, HirId)> {
+    let rustc_hir::Node::Expr(expr) = tcx.hir_node(hir_id) else {
+        return None;
+    };
+    let rustc_hir::ExprKind::Path(qpath) = &expr.kind else {
+        return None;
+    };
+    let rustc_hir::QPath::Resolved(_, path) = &qpath else {
+        return None;
+    };
+    let rustc_hir::def::Res::Local(id) = path.res else {
+        return None;
+    };
+    Some((path.span, path.segments[0].ident, id))
+}
+
+pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
+    tcx: rustc_middle::ty::TyCtxt<'tcx>,
     verus_items: &VerusItems,
     erasure_hints: &ErasureHints,
 ) -> Result<(), VirErr> {
@@ -235,38 +279,106 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure(
     }
 
     let mut vars = HashMap::<HirId, VarErasure>::new();
-    for (span, mode) in erasure_hints.erasure_modes.var_modes.iter() {
+    for (span, (var_mode, mode)) in erasure_hints.erasure_modes.var_modes.iter() {
         if crate::spans::from_raw_span(&span.raw_span).is_none() {
             continue;
         }
         if !id_to_hir.contains_key(&span.id) {
             dbg!(span);
             dbg!(mode);
+            return Err(vir::messages::error(
+                span,
+                "Verus Internal Error: setup_verus_ctxt_for_thir_erasure failed, var lookup failed",
+            ));
         }
         for hir_id in &id_to_hir[&span.id] {
-            vars.insert(*hir_id, mode_to_var_erase(*mode));
+            vars.insert(
+                *hir_id,
+                mode_to_var_erase(*var_mode, *mode, erasure_hints.shadow_check.contains(hir_id)),
+            );
+        }
+    }
+    for span in erasure_hints.extra_erase_ast_ids.iter() {
+        if crate::spans::from_raw_span(&span.raw_span).is_none() {
+            continue;
+        }
+        if !id_to_hir.contains_key(&span.id) {
+            continue;
+        }
+        for hir_id in &id_to_hir[&span.id] {
+            vars.insert(*hir_id, VarErasure::Erase);
+        }
+    }
+
+    for (hir_id, mode) in vars.iter() {
+        if let Some((span, name, binder_hir_id)) = get_binder_hir_id(tcx, *hir_id) {
+            if let Some(binder_mode) = vars.get(&binder_hir_id) {
+                if matches!(binder_mode, VarErasure::Erase) && !matches!(mode, VarErasure::Erase) {
+                    return crate::util::err_span(
+                        span,
+                        format!(
+                            "Verus Internal Error: inconsistent erasure modes: var `{:}` is {mode:?} but the binder is Erase",
+                            name.as_str()
+                        ),
+                    );
+                }
+            }
+        }
+    }
+
+    let mut ctor_modes = HashMap::<HirId, Mode>::new();
+    for (span, mode) in erasure_hints.erasure_modes.ctor_modes.iter() {
+        if crate::spans::from_raw_span(&span.raw_span).is_none() {
+            continue;
+        }
+        if !id_to_hir.contains_key(&span.id) {
+            dbg!(span);
+            dbg!(mode);
+            return Err(vir::messages::error(
+                span,
+                "Verus Internal Error: setup_verus_ctxt_for_thir_erasure failed, ctor lookup failed",
+            ));
+        }
+        for hir_id in &id_to_hir[&span.id] {
+            ctor_modes.insert(*hir_id, *mode);
         }
     }
 
     let mut functions = HashMap::<Fun, Function>::new();
     for f in &erasure_hints.vir_crate.functions {
-        functions.insert(f.x.name.clone(), f.clone()).map(|_| panic!("{:?}", &f.x.name));
+        functions.insert(f.x.name.clone(), f.clone()).map(|_| panic!("{:?}", f.x.name));
     }
 
     let mut datatypes = HashMap::<Path, Datatype>::new();
     for d in &erasure_hints.vir_crate.datatypes {
         if let Dt::Path(path) = &d.x.name {
-            datatypes.insert(path.clone(), d.clone()).map(|_| panic!("{:?}", &path));
+            datatypes.insert(path.clone(), d.clone()).map(|_| panic!("{:?}", path));
         }
     }
 
-    let mut calls = HashMap::<HirId, CallErasure>::new();
-    for (hir_id, span_data, resolved_call) in &erasure_hints.resolved_calls {
+    let mut calls = HashMap::<HirId, (CallErasure, bool)>::new();
+    let mut loop_erasure = HashMap::<HirId, LoopErasure>::new();
+    for (hir_id, span_data, resolved_call, in_ghost) in &erasure_hints.resolved_calls {
         let span = span_data.span();
-        calls.insert(
-            *hir_id,
-            resolved_call_to_call_erase(span, &functions, &datatypes, resolved_call)?,
-        );
+        let ctor_mode = ctor_modes.get(hir_id).cloned();
+        let (call_erasure, force_treat_as_inhabited) = resolved_call_to_call_erase(
+            span,
+            &functions,
+            &datatypes,
+            resolved_call,
+            ctor_mode,
+            *in_ghost,
+        )?;
+        let _found = calls.insert(*hir_id, (call_erasure, force_treat_as_inhabited));
+        // REVIEW: we should check that that there aren't conflicting entries, but right now,
+        // there are some redundant traversals
+        //assert!(found.is_none());
+
+        if let ResolvedCall::LoopSpec(loop_hir_id, loop_spec_kind) = resolved_call {
+            let l =
+                loop_erasure.entry(*loop_hir_id).or_insert_with(|| LoopErasure { specs: vec![] });
+            l.specs.push((*hir_id, loop_spec_kind.loop_spec_evaluation_location()));
+        }
     }
 
     let mut bodies = HashMap::<LocalDefId, BodyErasure>::new();
@@ -274,46 +386,74 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure(
         bodies.insert(*hir_id, *c);
     }
 
-    let mut condition_spec = HashMap::<HirId, bool>::new();
-    for (span, mode) in &erasure_hints.erasure_modes.condition_modes {
-        let spec = matches!(mode, Mode::Spec);
-        if crate::spans::from_raw_span(&span.raw_span).is_none() {
-            continue;
-        }
-        if !id_to_hir.contains_key(&span.id) {
-            dbg!(span, span.id);
-            panic!("missing id_to_hir");
-        }
-        for hir_id in &id_to_hir[&span.id] {
-            if condition_spec.contains_key(hir_id) {
-                if condition_spec[hir_id] != spec {
-                    panic!("inconsistent condition_modes: {:?}", span);
-                }
-            } else {
-                condition_spec.insert(*hir_id, spec);
-            }
-        }
+    let mut local_invariant_bodies = HashMap::new();
+    for l in erasure_hints.local_invariant_bodies.iter() {
+        let found = local_invariant_bodies.insert(l.inner_block_hir_id, l.clone());
+        assert!(found.is_none());
     }
 
     let verus_erasure_ctxt = VerusErasureCtxt {
         vars,
         calls,
         bodies,
-
-        condition_spec,
+        loop_erasure,
+        local_invariant_bodies,
 
         erased_ghost_value_fn_def_id: *verus_items
             .name_to_id
             .get(&VerusItem::ErasedGhostValue)
             .unwrap(),
+        shadow_ghost_value_fn_def_id: *verus_items
+            .name_to_id
+            .get(&VerusItem::ShadowGhostValue)
+            .unwrap(),
         dummy_capture_struct_def_id: *verus_items
             .name_to_id
             .get(&VerusItem::DummyCapture(DummyCaptureItem::Struct))
             .unwrap(),
+        mutable_reference_tie_fn_def_id: *verus_items
+            .name_to_id
+            .get(&VerusItem::MutableReferenceTie)
+            .unwrap(),
+        two_phase_mutable_reference_tie_fn_def_id: *verus_items
+            .name_to_id
+            .get(&VerusItem::TwoPhaseMutableReferenceTie)
+            .unwrap(),
+        get_first_fn_def_id: *verus_items.name_to_id.get(&VerusItem::GetFirst).unwrap(),
     };
     set_verus_erasure_ctxt(Arc::new(verus_erasure_ctxt));
 
     Ok(())
+}
+
+/// Set all IDs in this tree to VarErasure::Erase. Useful if a VIR node gets dropped
+/// before it reaches mode-checking.
+pub(crate) fn mark_tree_for_erasure<'tcx>(
+    context: &crate::context::Context<'tcx>,
+    expr: &vir::ast::Expr,
+) {
+    vir::ast_visitor::ast_visitor_check::<(), _, _, _, _, _, _>(
+        expr,
+        &mut (),
+        &mut |_, _scope_map, expr: &vir::ast::Expr| {
+            context.erasure_info.borrow_mut().extra_erase_ast_ids.push(expr.span.clone());
+            Ok(())
+        },
+        &mut |_, _scope_map, stmt| {
+            context.erasure_info.borrow_mut().extra_erase_ast_ids.push(stmt.span.clone());
+            Ok(())
+        },
+        &mut |_, _scope_map, pattern: &vir::ast::Pattern| {
+            context.erasure_info.borrow_mut().extra_erase_ast_ids.push(pattern.span.clone());
+            Ok(())
+        },
+        &mut |_, _scope_map, _typ, _span| Ok(()),
+        &mut |_, _scope_map, place| {
+            context.erasure_info.borrow_mut().extra_erase_ast_ids.push(place.span.clone());
+            Ok(())
+        },
+    )
+    .unwrap();
 }
 
 pub(crate) fn setup_verus_aware_ids(crate_items: &crate::external::CrateItems) {
@@ -328,9 +468,14 @@ pub(crate) fn setup_verus_aware_ids(crate_items: &crate::external::CrateItems) {
 
     let mut s = HashSet::<LocalDefId>::new();
     for item in crate_items.items.iter() {
-        match &item.verif {
-            crate::external::VerifOrExternal::VerusAware { const_directive, .. } => {
-                if !*const_directive {
+        match item.verif {
+            crate::external::VerifOrExternal::VerusAware {
+                const_directive,
+                external_body,
+                external_fn_specification,
+                ..
+            } => {
+                if !const_directive && !external_body && !external_fn_specification {
                     s.insert(item.id.owner_id().def_id);
                 }
             }

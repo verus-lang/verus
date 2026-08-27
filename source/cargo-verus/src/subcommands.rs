@@ -1,12 +1,24 @@
+use std::collections::{BTreeMap as Map, BTreeSet as Set};
 use std::env;
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, ExitCode};
 
 use anyhow::{Context, Result, anyhow, bail};
+use cargo_metadata::PackageId;
+use clap::ValueEnum;
 use colored::Colorize;
 
-use crate::cli::CargoOptions;
+use crate::cli::{CargoOptions, VerifyCommand, VerusArgFwdSelector};
 use crate::metadata::{MetadataIndex, fetch_metadata, make_package_id};
+use crate::toolchains::{self, TOOLCHAINS, is_matching_known_and_used};
+use crate::vstd_build::{VstdBuild, build_vstd};
+
+pub const CARGO_DEFAULT_LIB_METADATA: &str = "__CARGO_DEFAULT_LIB_METADATA";
+pub const CARGO_UNSTABLE_CHECKSUM_FRESHNESS: &str = "CARGO_UNSTABLE_CHECKSUM_FRESHNESS";
+
+pub const RUSTC_WRAPPER: &str = "RUSTC_WRAPPER";
+pub const RUSTC_BOOTSTRAP: &str = "RUSTC_BOOTSTRAP";
 
 pub const VERUS_DRIVER_ARGS: &str = " __VERUS_DRIVER_ARGS__";
 pub const VERUS_DRIVER_ARGS_FOR: &str = " __VERUS_DRIVER_ARGS_FOR_";
@@ -16,8 +28,16 @@ pub const VERUS_DRIVER_IS_BUILTIN_MACROS: &str = " __VERUS_DRIVER_IS_BUILTIN_MAC
 pub const VERUS_DRIVER_VERIFY: &str = "__VERUS_DRIVER_VERIFY_";
 pub const VERUS_DRIVER_VIA_CARGO: &str = "__VERUS_DRIVER_VIA_CARGO__";
 
-pub fn create_new_project(name: &str, is_bin: bool) -> Result<()> {
-    let (src_rs, src_rs_data) = if is_bin {
+pub struct NewCreationPlan {
+    pub current_dir: PathBuf,
+    pub name: String,
+    pub is_bin: bool,
+}
+
+pub fn create_new_project(creation_plan: &NewCreationPlan) -> Result<ExitCode> {
+    let NewCreationPlan { current_dir, name, is_bin } = creation_plan;
+
+    let (src_rs, src_rs_data) = if *is_bin {
         (
             "main.rs",
             r#"
@@ -58,14 +78,29 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-vstd = "=0.0.0-2026-01-04-0057"
+vstd = "=0.0.0-2026-08-23-0033"
 
 [package.metadata.verus]
 verify = true
-"#
+
+[lints.rust]
+# Verus supports ghost code, code that is used for proofs but erased during compilation.
+# This means that ghost items that are imported via `use` will not exist during a normal
+# `cargo build`, leading to compilation errors. These errors can be prevented by guarding the
+# use statements with the feature flag `verus_only`, which Verus turns on during
+# verification.
+#
+# WARNING: this flag should only be used on import statements and setting config attributes,
+# see the documentation (https://verus-lang.github.io/verus/guide/erasure.html) for more details.
+#
+# This lint suppression prevents cargo from complaining about the
+# `verus_only` feature flag being undeclared.
+unexpected_cfgs = {{ level = "warn", check-cfg = [
+  'cfg(verus_only)',
+] }}"#
     );
 
-    let project_dir = PathBuf::from(name);
+    let project_dir = current_dir.join(name);
     if project_dir.exists() {
         bail!("Directory `{}` already exists", name);
     }
@@ -84,40 +119,174 @@ verify = true
 
     println!("Created new Verus project at {name}");
 
-    Ok(())
+    Ok(ExitCode::SUCCESS)
 }
 
-pub fn run_cargo(
-    subcommand: &str,
-    cargo_options: &CargoOptions,
-    verus_args: &[String],
-    warn_if_nothing_verified: bool,
-) -> Result<ExitCode> {
-    let cargo_args = make_cargo_args(cargo_options, false);
+pub fn list_toolchains() -> Result<ExitCode> {
+    let stdout = std::io::stdout();
+    let mut out = stdout.lock();
+    for toolchain in TOOLCHAINS.iter() {
+        writeln!(&mut out, "verus = {:?}", toolchain.verus)?;
+        writeln!(&mut out, "vstd = {}", toolchain.vstd)?;
+        writeln!(&mut out, "z3 = {:?}", toolchain.z3)?;
+        writeln!(&mut out)?;
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
+pub struct VerusConfig {
+    pub current_dir: PathBuf,
+    pub subcommand: &'static str,
+    pub options: VerifyCommand,
+    pub compile_primary: bool,
+    pub verify_deps: bool,
+    pub warn_if_nothing_verified: bool,
+}
+
+pub fn plan_cargo_run(mut cfg: VerusConfig) -> Result<CargoRunPlan> {
+    let fwd_verus_args_to = cfg.options.fwd_verus_args_to.expect("fwd_verus_args_to must be set");
+
+    //////////////////////////////////////////////////
+    // Phase 1: fetch metadata via `cargo metadata` //
+    //////////////////////////////////////////////////
+    let metadata_args = {
+        let for_cargo_metadata = true;
+        make_cargo_args(&cfg.options.cargo_opts, for_cargo_metadata, cfg.options.verbosity)
+    };
+    let metadata = fetch_metadata(metadata_args, cfg.current_dir.clone())?;
+    let metadata_index = MetadataIndex::new(&metadata)?;
+
+    let (included_packages, _excluded_packages) =
+        cfg.options.cargo_opts.workspace.partition_packages(&metadata);
+
+    let root_packages: Set<PackageId> =
+        included_packages.iter().map(|package| package.id.clone()).collect();
+    let all_packages = metadata_index.get_transitive_closure(root_packages.clone());
+    let dep_packages: Set<PackageId> = all_packages.difference(&root_packages).cloned().collect();
+
+    let build_only_vstd = if cfg.subcommand == "build"
+        && root_packages.len() == 1
+        && let Some(vstd_id) = root_packages
+            .iter()
+            .find(|package_id| metadata_index.get(package_id).verus_metadata.is_vstd)
+            .cloned()
+    {
+        // When the only primary package to build is `vstd`, special treatment of resulting artifacts is needed.
+        let vstd_metadata = metadata_index.get(&vstd_id);
+        let deps: Map<String, PackageId> =
+            vstd_metadata.deps.values().map(|node| (node.name.clone(), node.pkg.clone())).collect();
+
+        // Ensure that the `nonzero_internals` feature for `vstd` is on.
+        let nonzero_internals = "nonzero_internals".to_string();
+        if !cfg.options.cargo_opts.features.features.contains(&nonzero_internals) {
+            cfg.options.cargo_opts.features.features.push(nonzero_internals);
+        }
+
+        Some(VstdBuild { vstd_id, deps })
+    } else {
+        None
+    };
+
+    let packages_to_process = &all_packages;
+    let packages_to_verify = if cfg.verify_deps { &all_packages } else { &root_packages };
+
+    let fwd_verus_args_packages = match fwd_verus_args_to {
+        VerusArgFwdSelector::All => &all_packages,
+        VerusArgFwdSelector::Roots => &root_packages,
+        VerusArgFwdSelector::Deps => &dep_packages,
+    };
+
+    if cfg.options.check_toolchain {
+        if cfg.options.verbosity > 0 {
+            println!("Checking toolchain components...");
+        }
+
+        let vstd_metadata = metadata_index.collect_vstd_metadata(packages_to_verify);
+        let verus_version = get_verus_driver_version()?;
+
+        if cfg.options.verbosity > 0 {
+            println!("verus version: {verus_version:?}");
+            println!("`vstd` instances:");
+            for vstd in &vstd_metadata {
+                println!("version = {:?}", vstd.version.to_string());
+                println!("source = {:?}", vstd.source);
+                println!();
+            }
+        }
+
+        for used_vstd in &vstd_metadata {
+            let is_compatible = toolchains::TOOLCHAINS.iter().any(|toolchain| {
+                toolchain.verus == verus_version
+                    && is_matching_known_and_used(&toolchain.vstd, used_vstd)
+            });
+            if !is_compatible {
+                bail!(
+                    "Components are incompatible:\n\
+                    * verus = {verus_version}\n\
+                    * vstd = {used_vstd:?}\n"
+                );
+            }
+        }
+    }
+
+    /////////////////////////////////////////////////////////
+    // Phase 2: plan to run Verus via `cargo {subcommand}` //
+    /////////////////////////////////////////////////////////
+
+    let cargo_args = {
+        let mut options = cfg.options.cargo_opts;
+        if !cfg.verify_deps {
+            // Ensure that partially verified artifacts are separated from complete results
+            let target_dir =
+                options.target_dir.unwrap_or(metadata.target_directory.clone().into_std_path_buf());
+            options.target_dir = Some(target_dir.join("verus-partial"));
+        }
+
+        let for_cargo_metadata = false;
+        make_cargo_args(&options, for_cargo_metadata, cfg.options.verbosity)
+    };
+
     let mut common_verus_driver_args: Vec<String> =
         vec!["--VIA-CARGO".to_owned(), "compile-when-not-primary-package".to_owned()];
 
-    if !warn_if_nothing_verified {
+    if cfg.compile_primary {
         common_verus_driver_args.extend_from_slice(&[
             "--VIA-CARGO".to_owned(),
             "compile-when-primary-package".to_owned(),
         ]);
     }
+    if cfg.options.verbosity >= 2 {
+        common_verus_driver_args.push("-v".to_owned());
+        eprintln!("verbosity level >= 2; forwarding 1 `-v` to Verus");
+    } else if cfg.options.verbosity > 0 {
+        eprintln!("verbosity level = 1; keeping Verus non-verbose");
+    }
 
-    let metadata_args = make_cargo_args(cargo_options, true);
-    let metadata = fetch_metadata(&metadata_args)?;
+    let building_only_vstd = build_only_vstd.is_some();
 
-    common_verus_driver_args.extend(verus_args.iter().cloned());
-    let (mut command, verified_something) =
-        make_cargo_command(subcommand, &cargo_args, common_verus_driver_args, &metadata)?;
+    let plan = make_cargo_plan(
+        cfg.current_dir,
+        build_only_vstd,
+        cfg.subcommand,
+        cargo_args,
+        common_verus_driver_args,
+        &metadata_index,
+        packages_to_process,
+        packages_to_verify,
+        &cfg.options.verus_args,
+        fwd_verus_args_packages,
+    )?;
 
-    let exit_status = command
-        .spawn()
-        .context("Failed to spawn cargo")?
-        .wait()
-        .context("Failed to wait for cargo")?;
+    if cfg.options.verbosity > 0 {
+        let command = plan.to_command();
+        eprintln!(
+            "forwarding Verus args to crates: <{}>",
+            fwd_verus_args_to.to_possible_value().expect("arg value").get_name(),
+        );
+        eprintln!("running cargo command:\n{command:?}");
+    }
 
-    if warn_if_nothing_verified && !verified_something {
+    if !building_only_vstd && cfg.warn_if_nothing_verified && !plan.verified_something {
         eprint!(
             "{}",
             "\
@@ -130,16 +299,21 @@ WARNING: You asked for verification, but cargo did not find any crates that opte
         );
     }
 
-    match exit_status.code() {
-        Some(code) => u8::try_from(code)
-            .map(From::from)
-            .map_err(|_| anyhow!("Command {command:?} terminated with an odd exit code: {code}")),
-        None => bail!("Command {command:?} was terminated by a signal: {exit_status}"),
-    }
+    Ok(plan)
 }
 
-fn make_cargo_args(opts: &CargoOptions, for_cargo_metadata: bool) -> Vec<String> {
+fn make_cargo_args(opts: &CargoOptions, for_cargo_metadata: bool, verbosity: u8) -> Vec<String> {
     let mut args = vec![];
+
+    for _ in 1..verbosity {
+        args.push("-v".to_owned());
+    }
+    if verbosity > 0 {
+        eprintln!(
+            "verbosity level = {verbosity}; forwarding {} `-v` arg(s) to Cargo",
+            verbosity - 1,
+        );
+    }
 
     if opts.frozen {
         args.push("--frozen".to_owned());
@@ -168,7 +342,29 @@ fn make_cargo_args(opts: &CargoOptions, for_cargo_metadata: bool) -> Vec<String>
         args.push(path.to_string_lossy().into_owned());
     }
 
+    if opts.features.all_features {
+        args.push("--all-features".to_owned());
+    }
+
+    if opts.features.no_default_features {
+        args.push("--no-default-features".to_owned());
+    }
+
+    if !opts.features.features.is_empty() {
+        args.push("--features".to_owned());
+        args.push(opts.features.features.join(" "));
+    }
+
     if !for_cargo_metadata {
+        if opts.release {
+            args.push("--release".to_owned());
+        }
+
+        if let Some(path) = &opts.target_dir {
+            args.push("--target-dir".to_owned());
+            args.push(path.to_string_lossy().into_owned());
+        }
+
         for pkg in &opts.workspace.package {
             args.push("--package".to_owned());
             args.push(pkg.clone());
@@ -187,59 +383,74 @@ fn make_cargo_args(opts: &CargoOptions, for_cargo_metadata: bool) -> Vec<String>
             args.push(exclude.clone());
         }
 
-        if opts.features.all_features {
-            args.push("--all-features".to_owned());
-        }
-
-        if opts.features.no_default_features {
-            args.push("--no-default-features".to_owned());
-        }
-
-        if !opts.features.features.is_empty() {
-            args.push("--features".to_owned());
-            args.push(opts.features.features.join(" "));
-        }
-
         args.extend(opts.cargo_args.iter().cloned());
     }
 
     args
 }
 
-fn make_cargo_command(
-    subcommand: &str,
-    cargo_args: &[String],
+#[derive(Clone, Debug)]
+pub struct CargoRunPlan {
+    pub current_dir: PathBuf,
+    pub build_only_vstd: Option<VstdBuild>,
+    pub args: Vec<String>,
+    pub env: Map<String, String>,
+    pub verified_something: bool,
+}
+
+impl CargoRunPlan {
+    fn to_command(&self) -> Command {
+        let mut command = Command::new(env::var("CARGO").unwrap_or("cargo".into()));
+        command.current_dir(&self.current_dir);
+        command.args(&self.args);
+        for (key, value) in &self.env {
+            command.env(key, value);
+        }
+        command
+    }
+}
+
+fn make_cargo_plan(
+    current_dir: PathBuf,
+    build_only_vstd: Option<VstdBuild>,
+    subcommand: &'static str,
+    mut cargo_args: Vec<String>,
     common_verus_driver_args: Vec<String>,
-    metadata: &cargo_metadata::Metadata,
-) -> Result<(Command, bool)> {
-    // TODO: use the "+ ... toolchain" argument?
-    let mut cmd = Command::new(env::var("CARGO").unwrap_or("cargo".into()));
-
-    cmd.arg(subcommand.to_owned()).args(cargo_args);
-
-    cmd.env("RUSTC_WRAPPER", get_verus_driver_path());
-
-    cmd.env(VERUS_DRIVER_VIA_CARGO, "1");
-
+    metadata_index: &MetadataIndex,
+    packages_to_process: &Set<PackageId>,
+    packages_to_verify: &Set<PackageId>,
+    // Args forwarded to Verus
+    fwd_verus_args: &[String],
+    // Packages to receive forwarded Verus args
+    fwd_verus_args_packages: &Set<PackageId>,
+) -> Result<CargoRunPlan> {
+    let mut env_overrides = Map::new();
+    env_overrides
+        .insert(RUSTC_WRAPPER.to_owned(), get_verus_driver_path().to_string_lossy().into_owned());
+    env_overrides.insert(VERUS_DRIVER_VIA_CARGO.to_owned(), "1".to_owned());
     // See https://github.com/rust-lang/cargo/blob/94aa7fb1321545bbe922a87cb11f5f4559e3be63/src/cargo/core/compiler/fingerprint/mod.rs#L71
-    cmd.env("__CARGO_DEFAULT_LIB_METADATA", "verus");
+    env_overrides.insert(CARGO_DEFAULT_LIB_METADATA.to_owned(), "verus".to_owned());
+    env_overrides.insert(CARGO_UNSTABLE_CHECKSUM_FRESHNESS.to_owned(), "true".to_owned());
+    env_overrides.insert(RUSTC_BOOTSTRAP.to_owned(), "1".to_owned());
 
     let common_verus_driver_args = pack_verus_driver_args_for_env(common_verus_driver_args.iter());
 
     if !common_verus_driver_args.is_empty() {
-        cmd.env(VERUS_DRIVER_ARGS, common_verus_driver_args);
+        env_overrides.insert(VERUS_DRIVER_ARGS.to_owned(), common_verus_driver_args);
     }
 
-    let metadata_index = MetadataIndex::new(metadata)?;
-
     let mut verified_something = false;
-    for entry in metadata_index.entries() {
-        let package = entry.package();
+    for pkg_id in packages_to_process {
+        let no_verify = !packages_to_verify.contains(&pkg_id);
+        let receives_fwd_verus_args = fwd_verus_args_packages.contains(&pkg_id);
+
+        let entry = metadata_index.get(pkg_id);
+        let package = entry.package;
 
         let package_id =
             make_package_id(&package.name, package.version.to_string(), &package.manifest_path);
 
-        let verus_metadata = entry.verus_metadata();
+        let verus_metadata = &entry.verus_metadata;
 
         // The is_builtin, is_builtin_macro, and verify fields are passed as env vars as they
         // are relevant for crates which are skipped by Verus. In such cases, the driver avoids
@@ -247,19 +458,20 @@ fn make_cargo_command(
         // changes.
 
         if verus_metadata.is_builtin {
-            cmd.env(format!("{VERUS_DRIVER_IS_BUILTIN}{package_id}"), "1");
+            env_overrides.insert(format!("{VERUS_DRIVER_IS_BUILTIN}{package_id}"), "1".to_owned());
         }
 
         if verus_metadata.is_builtin_macros {
-            cmd.env(format!("{VERUS_DRIVER_IS_BUILTIN_MACROS}{package_id}"), "1");
+            env_overrides
+                .insert(format!("{VERUS_DRIVER_IS_BUILTIN_MACROS}{package_id}"), "1".to_owned());
         }
 
         if verus_metadata.verify {
             // Any project using Verus may pull in vstd, which has a Cargo.toml file verify=true
-            if !verus_metadata.is_vstd {
+            if !verus_metadata.is_vstd && !no_verify {
                 verified_something = true;
             }
-            cmd.env(format!("{VERUS_DRIVER_VERIFY}{package_id}"), "1");
+            env_overrides.insert(format!("{VERUS_DRIVER_VERIFY}{package_id}"), "1".to_owned());
 
             let mut verus_driver_args_for_package = vec![];
 
@@ -275,17 +487,35 @@ fn make_cargo_command(
                 verus_driver_args_for_package.push("--no-vstd".to_owned());
             }
 
-            for dep in entry.deps() {
-                if metadata_index.get(&dep.pkg).verus_metadata().verify {
+            if no_verify {
+                verus_driver_args_for_package.push("--no-verify".to_owned());
+            }
+
+            for import_name in metadata_index.transitive_verified_import_names(pkg_id) {
+                verus_driver_args_for_package.extend_from_slice(&[
+                    "--VIA-CARGO".to_owned(),
+                    format!("import-dep-if-present={import_name}"),
+                ]);
+            }
+
+            // If the package has a lib target *and* a non-lib target, like a test or example,
+            // add the lib as a dependency so the auxiliary target can see it. This adds the lib
+            // as a dep to itself, but it will not be present in the externs, so will be ignored.
+            if let Some(lib_target) = package.targets.iter().find(|t| t.is_lib()) {
+                if package.targets.iter().any(|t| !t.is_lib()) {
                     verus_driver_args_for_package.extend_from_slice(&[
                         "--VIA-CARGO".to_owned(),
-                        format!("import-dep-if-present={}", dep.name),
-                    ]);
+                        format!("import-dep-if-present={}", lib_target.name),
+                    ])
                 }
             }
 
+            if receives_fwd_verus_args {
+                verus_driver_args_for_package.extend(fwd_verus_args.iter().cloned());
+            }
+
             if !verus_driver_args_for_package.is_empty() {
-                cmd.env(
+                env_overrides.insert(
                     format!("{VERUS_DRIVER_ARGS_FOR}{package_id}"),
                     pack_verus_driver_args_for_env(verus_driver_args_for_package.iter()),
                 );
@@ -293,11 +523,36 @@ fn make_cargo_command(
         }
     }
 
-    Ok((cmd, verified_something))
+    let mut args = vec![subcommand.to_owned()];
+    args.append(&mut cargo_args);
+
+    Ok(CargoRunPlan { build_only_vstd, current_dir, args, env: env_overrides, verified_something })
+}
+
+pub fn run_cargo(plan: &CargoRunPlan) -> Result<ExitCode> {
+    // TODO: use the "+ ... toolchain" argument?
+    let mut command = plan.to_command();
+
+    if let Some(vstd_build) = &plan.build_only_vstd {
+        return build_vstd(vstd_build, command);
+    }
+
+    let exit_status = command
+        .spawn()
+        .context("Failed to spawn cargo")?
+        .wait()
+        .context("Failed to wait for cargo")?;
+
+    match exit_status.code() {
+        Some(code) => u8::try_from(code)
+            .map(From::from)
+            .map_err(|_| anyhow!("Command {command:?} terminated with an odd exit code: {code}")),
+        None => bail!("Command {command:?} was terminated by a signal: {exit_status}"),
+    }
 }
 
 fn pack_verus_driver_args_for_env(args: impl Iterator<Item = impl AsRef<str>>) -> String {
-    args.map(|arg| [VERUS_DRIVER_ARGS_SEP.to_owned(), arg.as_ref().to_owned()]).flatten().collect()
+    args.flat_map(|arg| [VERUS_DRIVER_ARGS_SEP.to_owned(), arg.as_ref().to_owned()]).collect()
 }
 
 fn get_verus_driver_path() -> PathBuf {
@@ -309,4 +564,32 @@ fn get_verus_driver_path() -> PathBuf {
     }
 
     path
+}
+
+/// Run `verus --version` and capture its output.
+fn get_verus_driver_version() -> Result<String> {
+    let command = get_verus_driver_path();
+    let output = Command::new(&command)
+        .arg("--version")
+        .output()
+        .context(format!("running `{} --version`", command.display()))?;
+
+    if !output.status.success() {
+        bail!(
+            "`{} --version` failed with status {}.\n\
+            stdout:\n{}\n\
+            stderr:\n{}",
+            command.display(),
+            output.status,
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr),
+        );
+    }
+
+    let stdout = String::from_utf8(output.stdout)
+        .context(format!("`{} --version` produced non-UTF-8 stdout", command.display()))?;
+
+    stdout.lines().find_map(|line| line.strip_prefix("  Version: ").map(ToOwned::to_owned)).context(
+        format!("Failed to parse version from `{}` output:\n{}", command.display(), stdout),
+    )
 }

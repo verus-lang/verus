@@ -53,7 +53,7 @@ pub(crate) fn handle_reveal_hide<'ctxt>(
                     // implementation of the function for the type
                     let trait_ = tcx.trait_of_assoc(res.def_id()).expect("trait of function");
                     let ty_ = match ty_res {
-                        Res::Def(_, def_id) => tcx.type_of(def_id).skip_binder(),
+                        Res::Def(_, def_id) => tcx.type_of(*def_id).skip_binder(),
                         Res::PrimTy(prim_ty) => crate::util::hir_prim_ty_to_mir_ty(tcx, prim_ty),
                         _ => {
                             unsupported_err!(expr.span, "type {:?} not supported in reveal", ty_res)
@@ -82,7 +82,7 @@ pub(crate) fn handle_reveal_hide<'ctxt>(
                         .filter_map(|impl_def_id| {
                             let ident = rustc_span::symbol::Ident::from_str(sym.as_str());
                             let found =
-                                tcx.associated_items(impl_def_id).find_by_ident_and_namespace(
+                                tcx.associated_items(*impl_def_id).find_by_ident_and_namespace(
                                     tcx,
                                     ident,
                                     rustc_hir::def::Namespace::ValueNS,

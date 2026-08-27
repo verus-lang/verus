@@ -6,18 +6,25 @@ use core::marker;
 use core::{mem, mem::MaybeUninit};
 
 use super::invariant::*;
+use super::iset::*;
 use super::modes::*;
 use super::pervasive::*;
 use super::prelude::*;
 pub use super::raw_ptr::MemContents;
-use super::set::*;
 use super::*;
+
+pub mod invcell;
+pub mod pcell;
+pub mod pcell_maybe_uninit;
+
+// note that almost everything in this module is now deprecated and will be deleted
 
 verus! {
 
-broadcast use {super::map::group_map_axioms, super::set::group_set_axioms};
-// TODO implement: borrow_mut; figure out Drop, see if we can avoid leaking?
+broadcast use {super::imap::group_imap_lemmas, super::iset::group_iset_lemmas};
 
+/// **Now deprecated** See [`pcell::PCell`] or [`pcell_maybe_uninit::PCell`] instead
+///
 /// `PCell<V>` (which stands for "permissioned call") is the primitive Verus `Cell` type.
 ///
 /// Technically, it is a wrapper around
@@ -52,8 +59,7 @@ broadcast use {super::map::group_map_axioms, super::set::group_set_axioms};
 /// Also note that the `PCell` might be dropped before the `PointsTo` token is dropped,
 /// although in that case it will no longer be possible to use the `PointsTo` in `exec` code
 /// to extract data from the cell.
-///
-/// ### Example (TODO)
+#[cfg_attr(not(verus_verify_core), deprecated = "use `vstd::cell::pcell::PCell` or `vstd::cell::pcell_maybe_uninit::PCell` instead")]
 #[verifier::external_body]
 #[verifier::accept_recursive_types(V)]
 pub struct PCell<V> {
@@ -151,6 +157,7 @@ impl<V> PointsTo<V> {
     }
 }
 
+#[cfg_attr(not(verus_verify_core), deprecated = "use `vstd::cell::pcell::PCell` or `vstd::cell::pcell_maybe_uninit::PCell` instead")]
 impl<V> PCell<V> {
     /// A unique ID for the cell.
     pub uninterp spec fn id(&self) -> CellId;
@@ -160,7 +167,7 @@ impl<V> PCell<V> {
     #[verifier::external_body]
     pub const fn empty() -> (pt: (PCell<V>, Tracked<PointsTo<V>>))
         ensures
-            pt.1@@ === pcell_points![ pt.0.id() => MemContents::Uninit ],
+            pt.1@@ == pcell_points![ pt.0.id() => MemContents::Uninit ],
     {
         let p = PCell { ucell: UnsafeCell::new(MaybeUninit::uninit()) };
         (p, Tracked::assume_new())
@@ -170,7 +177,7 @@ impl<V> PCell<V> {
     #[verifier::external_body]
     pub const fn new(v: V) -> (pt: (PCell<V>, Tracked<PointsTo<V>>))
         ensures
-            pt.1@@ === pcell_points! [ pt.0.id() => MemContents::Init(v) ],
+            pt.1@@ == pcell_points! [ pt.0.id() => MemContents::Init(v) ],
     {
         let p = PCell { ucell: UnsafeCell::new(MaybeUninit::new(v)) };
         (p, Tracked::assume_new())
@@ -180,9 +187,9 @@ impl<V> PCell<V> {
     #[verifier::external_body]
     pub fn put(&self, Tracked(perm): Tracked<&mut PointsTo<V>>, v: V)
         requires
-            old(perm)@ === pcell_points![ self.id() => MemContents::Uninit ],
+            old(perm)@ == pcell_points![ self.id() => MemContents::Uninit ],
         ensures
-            perm@ === pcell_points![ self.id() => MemContents::Init(v) ],
+            final(perm)@ == pcell_points![ self.id() => MemContents::Init(v) ],
         opens_invariants none
         no_unwind
     {
@@ -195,12 +202,12 @@ impl<V> PCell<V> {
     #[verifier::external_body]
     pub fn take(&self, Tracked(perm): Tracked<&mut PointsTo<V>>) -> (v: V)
         requires
-            self.id() === old(perm)@.pcell,
+            self.id() == old(perm)@.pcell,
             old(perm).is_init(),
         ensures
-            perm.id() === old(perm)@.pcell,
-            perm.mem_contents() === MemContents::Uninit,
-            v === old(perm).value(),
+            final(perm).id() == old(perm)@.pcell,
+            final(perm).mem_contents() == MemContents::Uninit,
+            v == old(perm).value(),
         opens_invariants none
         no_unwind
     {
@@ -215,12 +222,12 @@ impl<V> PCell<V> {
     #[verifier::external_body]
     pub fn replace(&self, Tracked(perm): Tracked<&mut PointsTo<V>>, in_v: V) -> (out_v: V)
         requires
-            self.id() === old(perm)@.pcell,
+            self.id() == old(perm)@.pcell,
             old(perm).is_init(),
         ensures
-            perm.id() === old(perm)@.pcell,
-            perm.mem_contents() === MemContents::Init(in_v),
-            out_v === old(perm).value(),
+            final(perm).id() == old(perm)@.pcell,
+            final(perm).mem_contents() == MemContents::Init(in_v),
+            out_v == old(perm).value(),
         opens_invariants none
         no_unwind
     {
@@ -238,10 +245,10 @@ impl<V> PCell<V> {
     #[verifier::external_body]
     pub fn borrow<'a>(&'a self, Tracked(perm): Tracked<&'a PointsTo<V>>) -> (v: &'a V)
         requires
-            self.id() === perm@.pcell,
+            self.id() == perm@.pcell,
             perm.is_init(),
         ensures
-            *v === perm.value(),
+            *v == perm.value(),
         opens_invariants none
         no_unwind
     {
@@ -253,39 +260,47 @@ impl<V> PCell<V> {
     #[inline(always)]
     pub fn into_inner(self, Tracked(perm): Tracked<PointsTo<V>>) -> (v: V)
         requires
-            self.id() === perm@.pcell,
+            self.id() == perm@.pcell,
             perm.is_init(),
         ensures
-            v === perm.value(),
+            v == perm.value(),
         opens_invariants none
         no_unwind
     {
         let tracked mut perm = perm;
         self.take(Tracked(&mut perm))
     }
-    // TODO this should replace the external_body implementation of `new` above;
-    // however it requires unstable features: const_mut_refs and const_refs_to_cell
-    //#[inline(always)]
-    //pub const fn new(v: V) -> (pt: (PCell<V>, Tracked<PointsTo<V>>))
-    //    ensures (pt.1@@ === PointsToData{ pcell: pt.0.id(), value: MemContents::Init(v) }),
-    //{
-    //    let (p, Tracked(mut t)) = Self::empty();
-    //    p.put(Tracked(&mut t), v);
-    //    (p, Tracked(t))
-    //}
 
+    #[doc(hidden)]
+    #[inline(always)]
+    #[verifier::external_body]
+    pub fn borrow_mut<'a>(&'a self, Tracked(perm): Tracked<&'a mut PointsTo<V>>) -> (v: &'a mut V)
+        requires
+            self.id() == perm@.pcell,
+            perm.is_init(),
+        ensures
+            *v == old(perm).value(),
+            final(perm).id() == old(perm).id(),
+            final(perm).is_init(),
+            final(perm).value() == *final(v),
+        opens_invariants none
+        no_unwind
+    {
+        unsafe { (*self.ucell.get()).assume_init_mut() }
+    }
 }
 
+#[cfg_attr(not(verus_verify_core), deprecated = "use `vstd::cell::pcell::PCell` or `vstd::cell::pcell_maybe_uninit::PCell` instead")]
 impl<V: Copy> PCell<V> {
     #[inline(always)]
     #[verifier::external_body]
     pub fn write(&self, Tracked(perm): Tracked<&mut PointsTo<V>>, in_v: V)
         requires
-            self.id() === old(perm)@.pcell,
+            self.id() == old(perm)@.pcell,
             old(perm).is_init(),
         ensures
-            perm.id() === old(perm)@.pcell,
-            perm.mem_contents() === MemContents::Init(in_v),
+            final(perm).id() == old(perm)@.pcell,
+            final(perm).mem_contents() == MemContents::Init(in_v),
         opens_invariants none
         no_unwind
     {
@@ -295,28 +310,31 @@ impl<V: Copy> PCell<V> {
 
 struct InvCellPred {}
 
-impl<T> InvariantPredicate<(Set<T>, PCell<T>), PointsTo<T>> for InvCellPred {
-    closed spec fn inv(k: (Set<T>, PCell<T>), perm: PointsTo<T>) -> bool {
+impl<T> InvariantPredicate<(ISet<T>, PCell<T>), PointsTo<T>> for InvCellPred {
+    closed spec fn inv(k: (ISet<T>, PCell<T>), perm: PointsTo<T>) -> bool {
         let (possible_values, pcell) = k;
         {
             &&& perm.is_init()
             &&& possible_values.contains(perm.value())
-            &&& pcell.id() === perm@.pcell
+            &&& pcell.id() == perm@.pcell
         }
     }
 }
 
+/// **Now deprecated** See [`invcell::InvCell`] instead
+#[cfg_attr(not(verus_verify_core), deprecated = "use `vstd::cell::invcell::InvCell` instead")]
 #[verifier::reject_recursive_types(T)]
 pub struct InvCell<T> {
-    possible_values: Ghost<Set<T>>,
+    possible_values: Ghost<ISet<T>>,
     pcell: PCell<T>,
-    perm_inv: Tracked<LocalInvariant<(Set<T>, PCell<T>), PointsTo<T>, InvCellPred>>,
+    perm_inv: Tracked<LocalInvariant<(ISet<T>, PCell<T>), PointsTo<T>, InvCellPred>>,
 }
 
+#[cfg_attr(not(verus_verify_core), deprecated = "use `vstd::cell::invcell::InvCell` instead")]
 impl<T> InvCell<T> {
     #[verifier::type_invariant]
     closed spec fn wf(&self) -> bool {
-        &&& self.perm_inv@.constant() === (self.possible_values@, self.pcell)
+        &&& self.perm_inv@.constant() == (self.possible_values@, self.pcell)
     }
 
     pub closed spec fn inv(&self, val: T) -> bool {
@@ -330,12 +348,13 @@ impl<T> InvCell<T> {
             forall|v| f(v) <==> cell.inv(v),
     {
         let (pcell, Tracked(perm)) = PCell::new(val);
-        let ghost possible_values = Set::new(f);
+        let ghost possible_values = ISet::new(f);
         let tracked perm_inv = LocalInvariant::new((possible_values, pcell), perm, 0);
         InvCell { possible_values: Ghost(possible_values), pcell, perm_inv: Tracked(perm_inv) }
     }
 }
 
+#[cfg_attr(not(verus_verify_core), deprecated = "use `vstd::cell::invcell::InvCell` instead")]
 impl<T> InvCell<T> {
     pub fn replace(&self, val: T) -> (old_val: T)
         requires
@@ -354,6 +373,7 @@ impl<T> InvCell<T> {
     }
 }
 
+#[cfg_attr(not(verus_verify_core), deprecated = "use `vstd::cell::invcell::InvCell` instead")]
 impl<T: Copy> InvCell<T> {
     pub fn get(&self) -> (val: T)
         ensures

@@ -100,6 +100,13 @@ use crate::lifetime::Lifetime;
 #[cfg(feature = "parsing")]
 use crate::parse::{Parse, ParseStream};
 use crate::span::IntoSpans;
+#[cfg(feature = "extra-traits")]
+use core::cmp;
+#[cfg(feature = "extra-traits")]
+use core::fmt::{self, Debug};
+#[cfg(feature = "extra-traits")]
+use core::hash::{Hash, Hasher};
+use core::ops::{Deref, DerefMut};
 use proc_macro2::extra::DelimSpan;
 use proc_macro2::Span;
 #[cfg(feature = "printing")]
@@ -110,13 +117,6 @@ use proc_macro2::{Delimiter, Ident};
 use proc_macro2::{Literal, Punct, TokenTree};
 #[cfg(feature = "printing")]
 use quote::{ToTokens, TokenStreamExt as _};
-#[cfg(feature = "extra-traits")]
-use std::cmp;
-#[cfg(feature = "extra-traits")]
-use std::fmt::{self, Debug};
-#[cfg(feature = "extra-traits")]
-use std::hash::{Hash, Hasher};
-use std::ops::{Deref, DerefMut};
 
 /// Marker trait for types that represent single tokens.
 ///
@@ -219,7 +219,7 @@ macro_rules! define_keywords {
                 }
             }
 
-            impl std::default::Default for $name {
+            impl core::default::Default for $name {
                 fn default() -> Self {
                     $name {
                         span: Span::call_site(),
@@ -346,7 +346,7 @@ macro_rules! define_punctuation_structs {
                 }
             }
 
-            impl std::default::Default for $name {
+            impl core::default::Default for $name {
                 fn default() -> Self {
                     $name {
                         spans: [Span::call_site(); $len],
@@ -455,7 +455,7 @@ macro_rules! define_delimiters {
                 }
             }
 
-            impl std::default::Default for $name {
+            impl core::default::Default for $name {
                 fn default() -> Self {
                     $name(Span::call_site())
                 }
@@ -583,7 +583,7 @@ pub fn Group<S: IntoSpans<Span>>(span: S) -> Group {
     }
 }
 
-impl std::default::Default for Group {
+impl core::default::Default for Group {
     fn default() -> Self {
         Group {
             span: Span::call_site(),
@@ -794,6 +794,10 @@ define_keywords! {
     "broadcast"   pub struct Broadcast
     "group"       pub struct BroadcastGroup
     "assume_specification" pub struct AssumeSpecification
+    "atomically"  pub struct Atomically
+    "outer_mask"  pub struct OuterMask
+    "inner_mask"  pub struct InnerMask
+    "no_abort"    pub struct NoAbort
 }
 
 define_punctuation! {
@@ -1050,12 +1054,12 @@ macro_rules! Token {
     [default_ensures] => { $crate::token::DefaultEnsures };
     [returns]     => { $crate::token::Returns };
     [decreases]   => { $crate::token::Decreases };
-    [with]   => { $crate::token::With };
-    [opens_invariants]   => { $crate::token::OpensInvariants };
-    [invariant_except_break]   => { $crate::token::InvariantExceptBreak };
+    [with]        => { $crate::token::With };
+    [opens_invariants] => { $crate::token::OpensInvariants };
+    [invariant_except_break] => { $crate::token::InvariantExceptBreak };
     [no_unwind]   => { $crate::token::NoUnwind };
     [invariant]   => { $crate::token::Invariant };
-    [invariant_ensures]   => { $crate::token::InvariantEnsures };
+    [invariant_ensures] => { $crate::token::InvariantEnsures };
     [assert]      => { $crate::token::Assert };
     [assume]      => { $crate::token::Assume };
     [reveal]      => { $crate::token::Reveal };
@@ -1083,7 +1087,10 @@ macro_rules! Token {
     [FnSpec]      => { $crate::token::FnSpec };
     [SpecFn]      => { $crate::token::SpecFn };
     [proof_fn]    => { $crate::token::ProofFn };
-    [assume_specification]   => { $crate::token::AssumeSpecification };
+    [assume_specification] => { $crate::token::AssumeSpecification };
+    [atomically]  => { $crate::token::Atomically };
+    [outer_mask]  => { $crate::token::OuterMask };
+    [inner_mask]  => { $crate::token::InnerMask };
     [&&&]         => { $crate::token::BigAnd };
     [|||]         => { $crate::token::BigOr };
     [<==>]        => { $crate::token::Equiv };
@@ -1104,6 +1111,7 @@ pub(crate) mod parsing {
     use crate::buffer::Cursor;
     use crate::error::{Error, Result};
     use crate::parse::ParseStream;
+    use alloc::format;
     use proc_macro2::{Spacing, Span};
 
     pub(crate) fn keyword(input: ParseStream, token: &str) -> Result<Span> {

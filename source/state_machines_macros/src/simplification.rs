@@ -17,7 +17,6 @@ use verus_syn::{Expr, Ident, Pat, Type};
 /// Note: for 'readonly' stuff, there's less to do because we don't need to handle
 /// updates. However, we still need to handle 'guard' and 'have' statements, which will
 /// be translated into 'asserts'.
-
 // Implementation:
 //
 // The simplification process has 3 primary passes here:
@@ -85,7 +84,6 @@ use verus_syn::{Expr, Ident, Pat, Type};
 //
 // Thus the purpose of this phase is to find these ideal positions for the
 // PostCondition statements.
-
 pub fn simplify_ops(sm: &SM, ts: &TransitionStmt, kind: TransitionKind) -> Vec<SimplStmt> {
     // Phase 1: translate the update, init, and special ops into SimplStmts
     let sops = simplify_ops_with_pre(&ts, &sm, kind);
@@ -236,12 +234,7 @@ fn postcondition_stmt(span: Span, f: Ident, pcrf: PostConditionReasonField) -> S
 }
 
 fn contains_ident(v: &Vec<Ident>, id: &Ident) -> bool {
-    for id0 in v {
-        if id0.to_string() == id.to_string() {
-            return true;
-        }
-    }
-    return false;
+    v.iter().any(|id0| id0 == id)
 }
 
 fn get_cur(field_name: &Ident) -> Expr {
@@ -258,11 +251,8 @@ fn get_cur_ident(field_name: &Ident) -> Ident {
 
 fn field_name_from_tmp(tmp_name: &Ident) -> Option<Ident> {
     let s = tmp_name.to_string();
-    if s.starts_with(UPDATE_TMP_PREFIX) {
-        Some(Ident::new(&s[UPDATE_TMP_PREFIX.len()..], tmp_name.span()))
-    } else {
-        None
-    }
+    let ident_str = s.strip_prefix(UPDATE_TMP_PREFIX)?;
+    Some(Ident::new(ident_str, tmp_name.span()))
 }
 
 // Phase 1. Give meaning to all the update, init, and special op statements.
@@ -290,7 +280,7 @@ fn simplify_ops_with_pre(ts: &TransitionStmt, sm: &SM, kind: TransitionKind) -> 
                 SimplStmt::Assign(
                     *ts.get_span(),
                     get_cur_ident(f_ident),
-                    f.get_type(),
+                    Box::new(f.get_type()),
                     Expr::Verbatim(quote! {pre.#f_ident}),
                     true,
                 )
@@ -311,7 +301,7 @@ fn simplify_ops_rec(ts: &TransitionStmt, sm: &SM) -> Vec<SimplStmt> {
             }
             res
         }
-        TransitionStmt::Split(span, split_kind, es) => match split_kind {
+        TransitionStmt::Split(span, split_kind, es) => match &**split_kind {
             SplitKind::If(..) | SplitKind::Match(..) => {
                 let mut new_es: Vec<(Span, Vec<SimplStmt>)> = Vec::new();
                 for e in es {
@@ -357,7 +347,7 @@ fn simplify_ops_rec(ts: &TransitionStmt, sm: &SM) -> Vec<SimplStmt> {
                         if let Some((pat1, init1)) = opt {
                             res.push(SimplStmt::Let(
                                 *span,
-                                pat1,
+                                Box::new(pat1),
                                 None,
                                 init1,
                                 all_children,
@@ -384,14 +374,20 @@ fn simplify_ops_rec(ts: &TransitionStmt, sm: &SM) -> Vec<SimplStmt> {
 
         TransitionStmt::Initialize(span, f, e) | TransitionStmt::Update(span, f, e) => {
             let field = get_field(&sm.fields, f);
-            vec![SimplStmt::Assign(*span, get_cur_ident(f), field.get_type(), e.clone(), false)]
+            vec![SimplStmt::Assign(
+                *span,
+                get_cur_ident(f),
+                Box::new(field.get_type()),
+                e.clone(),
+                false,
+            )]
         }
         TransitionStmt::SubUpdate(span, f, subs, e) => {
             let field = get_field(&sm.fields, f);
             vec![SimplStmt::Assign(
                 *span,
                 get_cur_ident(f),
-                field.get_type(),
+                Box::new(field.get_type()),
                 update_sub_expr(&get_cur(f), subs, 0, e),
                 false,
             )]
@@ -403,7 +399,7 @@ fn simplify_special_op(
     span: Span,
     field: &Field,
     op: &SpecialOp,
-    pat_opt: &Option<Pat>,
+    pat_opt: &Option<Box<Pat>>,
     proof: &AssertProof,
 ) -> (Vec<SimplStmt>, Vec<SimplStmt>) {
     match op {
@@ -425,7 +421,7 @@ fn simplify_special_op(
                 vec![SimplStmt::Assign(
                     span,
                     get_cur_ident(&field.name),
-                    field.get_type(),
+                    Box::new(field.get_type()),
                     new_val,
                     false,
                 )],
@@ -441,7 +437,7 @@ fn simplify_special_op(
                 vec![SimplStmt::Assign(
                     span,
                     get_cur_ident(&field.name),
-                    field.get_type(),
+                    Box::new(field.get_type()),
                     new_val,
                     false,
                 )],
@@ -466,7 +462,7 @@ fn simplify_special_op(
                 vec![SimplStmt::Assign(
                     span,
                     get_cur_ident(&field.name),
-                    field.get_type(),
+                    Box::new(field.get_type()),
                     new_val,
                     false,
                 )],
@@ -482,7 +478,7 @@ fn simplify_special_op(
                 vec![SimplStmt::Assign(
                     span,
                     get_cur_ident(&field.name),
-                    field.get_type(),
+                    Box::new(field.get_type()),
                     new_val,
                     false,
                 )],
@@ -556,9 +552,13 @@ fn expr_can_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Option<Ex
             MonoidElt::True => None,
             MonoidElt::General(e) => match stype {
                 ShardableType::PersistentSet(_) => None,
+                ShardableType::PersistentISet(_) => None,
                 ShardableType::PersistentCount => None,
                 ShardableType::PersistentBool => None,
                 ShardableType::PersistentMap(_, _) => Some(Expr::Verbatim(quote! {
+                    (#cur).agrees(#e)
+                })),
+                ShardableType::PersistentIMap(_, _) => Some(Expr::Verbatim(quote! {
                     (#cur).agrees(#e)
                 })),
                 ShardableType::PersistentOption(_) => {
@@ -568,7 +568,7 @@ fn expr_can_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Option<Ex
                     }))
                 }
                 _ => {
-                    panic!("expr_can_add invalid case");
+                    panic!("expr_can_add invalid case {:?}", stype);
                 }
             },
         }
@@ -590,18 +590,19 @@ fn expr_can_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Option<Ex
                     }))
                 }
 
-                ShardableType::Map(_, _) | ShardableType::StorageMap(_, _) => {
-                    Some(Expr::Verbatim(quote! {
-                        (#cur).dom().disjoint((#e).dom())
-                    }))
-                }
+                ShardableType::Map(_, _)
+                | ShardableType::StorageMap(_, _)
+                | ShardableType::IMap(_, _)
+                | ShardableType::StorageIMap(_, _) => Some(Expr::Verbatim(quote! {
+                    (#cur).dom().disjoint((#e).dom())
+                })),
 
                 ShardableType::Multiset(_) => None,
                 ShardableType::Count => None,
                 ShardableType::Bool => Some(Expr::Verbatim(quote! {
                     (!(#cur) || !(#e))
                 })),
-                ShardableType::Set(_) => Some(Expr::Verbatim(quote! {
+                ShardableType::Set(_) | ShardableType::ISet(_) => Some(Expr::Verbatim(quote! {
                     (#cur).disjoint(#e)
                 })),
 
@@ -636,7 +637,7 @@ fn expr_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
             }),
             MonoidElt::True => Expr::Verbatim(quote! { true }),
             MonoidElt::General(e) => match stype {
-                ShardableType::PersistentMap(_, _) => {
+                ShardableType::PersistentMap(_, _) | ShardableType::PersistentIMap(_, _) => {
                     Expr::Verbatim(quote! { (#cur).union_prefer_right(#e) })
                 }
                 ShardableType::PersistentOption(_) => {
@@ -645,9 +646,11 @@ fn expr_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
                         #vstd::state_machine_internal::opt_add::<#ty>(#cur, #e)
                     })
                 }
-                ShardableType::PersistentSet(_) => Expr::Verbatim(quote! {
-                    ((#cur).union(#e))
-                }),
+                ShardableType::PersistentSet(_) | ShardableType::PersistentISet(_) => {
+                    Expr::Verbatim(quote! {
+                        ((#cur).union(#e))
+                    })
+                }
                 ShardableType::PersistentCount => Expr::Verbatim(quote_vstd! { vstd =>
                     #vstd::state_machine_internal::nat_max(#cur, #e)
                 }),
@@ -655,7 +658,7 @@ fn expr_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
                     ((#cur) || (#e))
                 }),
                 _ => {
-                    panic!("expr_can_add invalid case");
+                    panic!("expr_can_add invalid case {:?}", stype);
                 }
             },
         }
@@ -693,17 +696,18 @@ fn expr_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
                     })
                 }
 
-                ShardableType::Map(_, _) | ShardableType::StorageMap(_, _) => {
-                    Expr::Verbatim(quote! {
-                        (#cur).union_prefer_right(#e)
-                    })
-                }
+                ShardableType::Map(_, _)
+                | ShardableType::StorageMap(_, _)
+                | ShardableType::IMap(_, _)
+                | ShardableType::StorageIMap(_, _) => Expr::Verbatim(quote! {
+                    (#cur).union_prefer_right(#e)
+                }),
 
                 ShardableType::Multiset(_) => Expr::Verbatim(quote! {
                     (#cur).add(#e)
                 }),
 
-                ShardableType::Set(_) => Expr::Verbatim(quote! {
+                ShardableType::Set(_) | ShardableType::ISet(_) => Expr::Verbatim(quote! {
                     ((#cur).union(#e))
                 }),
 
@@ -716,7 +720,7 @@ fn expr_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
                 }),
 
                 _ => {
-                    panic!("expected option/map/multiset");
+                    panic!("expected option/map/multiset (case 1)");
                 }
             },
         }
@@ -732,7 +736,7 @@ fn expr_matches(e: &Expr, pat: &Pat) -> Expr {
     })
 }
 
-fn expr_ge(stype: &ShardableType, cur: &Expr, elt: &MonoidElt, pat_opt: &Option<Pat>) -> Expr {
+fn expr_ge(stype: &ShardableType, cur: &Expr, elt: &MonoidElt, pat_opt: &Option<Box<Pat>>) -> Expr {
     // note: persistent case should always be the same as the normal case
 
     match elt {
@@ -791,7 +795,10 @@ fn expr_ge(stype: &ShardableType, cur: &Expr, elt: &MonoidElt, pat_opt: &Option<
 
             ShardableType::Map(_, _)
             | ShardableType::PersistentMap(_, _)
-            | ShardableType::StorageMap(_, _) => Expr::Verbatim(quote! {
+            | ShardableType::IMap(_, _)
+            | ShardableType::PersistentIMap(_, _)
+            | ShardableType::StorageMap(_, _)
+            | ShardableType::StorageIMap(_, _) => Expr::Verbatim(quote! {
                 (#e).submap_of(#cur)
             }),
 
@@ -799,7 +806,10 @@ fn expr_ge(stype: &ShardableType, cur: &Expr, elt: &MonoidElt, pat_opt: &Option<
                 (#e).subset_of(#cur)
             }),
 
-            ShardableType::Set(_) | ShardableType::PersistentSet(_) => Expr::Verbatim(quote! {
+            ShardableType::Set(_)
+            | ShardableType::PersistentSet(_)
+            | ShardableType::ISet(_)
+            | ShardableType::PersistentISet(_) => Expr::Verbatim(quote! {
                 (#e).subset_of(#cur)
             }),
 
@@ -814,7 +824,7 @@ fn expr_ge(stype: &ShardableType, cur: &Expr, elt: &MonoidElt, pat_opt: &Option<
             }
 
             _ => {
-                panic!("expected option/map/multiset");
+                panic!("expected option/map/multiset (case 2)");
             }
         },
     }
@@ -849,7 +859,10 @@ fn expr_remove(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
                 })
             }
 
-            ShardableType::Map(_, _) | ShardableType::StorageMap(_, _) => Expr::Verbatim(quote! {
+            ShardableType::Map(_, _)
+            | ShardableType::StorageMap(_, _)
+            | ShardableType::IMap(_, _)
+            | ShardableType::StorageIMap(_, _) => Expr::Verbatim(quote! {
                 (#cur).remove_keys(#e.dom())
             }),
 
@@ -857,7 +870,7 @@ fn expr_remove(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
                 (#cur).sub(#e)
             }),
 
-            ShardableType::Set(_) => Expr::Verbatim(quote! {
+            ShardableType::Set(_) | ShardableType::ISet(_) => Expr::Verbatim(quote! {
                 (#cur).difference(#e)
             }),
 
@@ -870,7 +883,7 @@ fn expr_remove(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
             }),
 
             _ => {
-                panic!("expected option/map/multiset");
+                panic!("expected option/map/multiset (case 3)");
             }
         },
     }

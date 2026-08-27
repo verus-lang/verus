@@ -32,8 +32,8 @@ fn binary_search(v: &Vec<u64>, k: u64) -> (r: usize)
 
 fn reverse(v: &mut Vec<u64>)
     ensures
-        v.len() == old(v).len(),
-        forall|i: int| 0 <= i < old(v).len() ==> v[i] == old(v)[old(v).len() - i - 1],
+        final(v).len() == old(v).len(),
+        forall|i: int| 0 <= i < old(v).len() ==> final(v)[i] == old(v)[old(v).len() - i - 1],
 {
     let length = v.len();
     let ghost v1 = v@;
@@ -83,8 +83,8 @@ fn binary_search_no_spinoff(v: &Vec<u64>, k: u64) -> (r: usize)
 #[verifier::loop_isolation(false)]
 fn reverse_no_spinoff(v: &mut Vec<u64>)
     ensures
-        v.len() == old(v).len(),
-        forall|i: int| 0 <= i < old(v).len() ==> v[i] == old(v)[old(v).len() - i - 1],
+        final(v).len() == old(v).len(),
+        forall|i: int| 0 <= i < old(v).len() ==> final(v)[i] == old(v)[old(v).len() - i - 1],
 {
     let length = v.len();
     let ghost v1 = v@;

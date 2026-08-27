@@ -205,7 +205,7 @@ fn attr_is_any_mode(attr: &Attribute) -> bool {
         Meta::Path(path) => {
             let segments = path.segments.iter().collect::<Vec<_>>();
             match &segments[..] {
-                [prefix_segment, segment] if prefix_segment.ident.to_string() == "verifier" => {
+                [prefix_segment, segment] if prefix_segment.ident == "verifier" => {
                     let name = segment.ident.to_string();
                     name == "spec" || name == "proof" || name == "exec"
                 }
@@ -371,26 +371,30 @@ enum ShardingType {
 
     Option,
     Map,
+    IMap,
     Set,
+    ISet,
     Multiset,
     Count,
     Bool,
 
     PersistentOption,
     PersistentMap,
+    PersistentIMap,
     PersistentSet,
+    PersistentISet,
     PersistentCount,
     PersistentBool,
 
     StorageOption,
     StorageMap,
+    StorageIMap,
 }
 
 /// Get the sharding type from the attributes of the field.
 /// In a tokenized state machine, we require this for each field.
 /// In a 'normal' state machine, we error if we find such an attribute
 /// (but internally we represent the field as having the 'variable' strategy).
-
 fn get_sharding_type(
     field_span: Span,
     attrs: &[Attribute],
@@ -427,15 +431,20 @@ fn get_sharding_type(
                                 "constant" => ShardingType::Constant,
                                 "multiset" => ShardingType::Multiset,
                                 "set" => ShardingType::Set,
+                                "iset" => ShardingType::ISet,
                                 "bool" => ShardingType::Bool,
                                 "count" => ShardingType::Count,
                                 "option" => ShardingType::Option,
                                 "map" => ShardingType::Map,
+                                "imap" => ShardingType::IMap,
                                 "storage_option" => ShardingType::StorageOption,
                                 "storage_map" => ShardingType::StorageMap,
+                                "storage_imap" => ShardingType::StorageIMap,
                                 "persistent_option" => ShardingType::PersistentOption,
                                 "persistent_map" => ShardingType::PersistentMap,
+                                "persistent_imap" => ShardingType::PersistentIMap,
                                 "persistent_set" => ShardingType::PersistentSet,
+                                "persistent_iset" => ShardingType::PersistentISet,
                                 "persistent_count" => ShardingType::PersistentCount,
                                 "persistent_bool" => ShardingType::PersistentBool,
                                 "not_tokenized" => ShardingType::NotTokenized,
@@ -492,7 +501,7 @@ fn check_untemplated_type(ty: &Type, strategy: &str, type_name: &str) -> parse::
     match ty {
         Type::Path(TypePath { qself: None, path }) if path.segments.len() == 1 => {
             let path_segment = &path.segments[0];
-            if path_segment.ident.to_string() == type_name {
+            if path_segment.ident == type_name {
                 match &path_segment.arguments {
                     PathArguments::None => {
                         return Ok(());
@@ -524,7 +533,7 @@ fn extract_template_params(
     match ty {
         Type::Path(TypePath { qself: None, path }) if path.segments.len() == 1 => {
             let path_segment = &path.segments[0];
-            if path_segment.ident.to_string() == type_name {
+            if path_segment.ident == type_name {
                 match &path_segment.arguments {
                     PathArguments::AngleBracketed(args) => {
                         if args.args.len() == num_expected_args {
@@ -622,9 +631,17 @@ fn to_fields(
                 let v = extract_template_params(&field.ty, "map", "Map", 2)?;
                 ShardableType::Map(v[0].clone(), v[1].clone())
             }
+            ShardingType::IMap => {
+                let v = extract_template_params(&field.ty, "imap", "IMap", 2)?;
+                ShardableType::IMap(v[0].clone(), v[1].clone())
+            }
             ShardingType::Set => {
                 let v = extract_template_params(&field.ty, "set", "Set", 1)?;
                 ShardableType::Set(v[0].clone())
+            }
+            ShardingType::ISet => {
+                let v = extract_template_params(&field.ty, "iset", "ISet", 1)?;
+                ShardableType::ISet(v[0].clone())
             }
             ShardingType::StorageOption => {
                 let v = extract_template_params(&field.ty, "storage_option", "Option", 1)?;
@@ -634,6 +651,10 @@ fn to_fields(
                 let v = extract_template_params(&field.ty, "storage_map", "Map", 2)?;
                 ShardableType::StorageMap(v[0].clone(), v[1].clone())
             }
+            ShardingType::StorageIMap => {
+                let v = extract_template_params(&field.ty, "storage_imap", "IMap", 2)?;
+                ShardableType::StorageIMap(v[0].clone(), v[1].clone())
+            }
             ShardingType::PersistentOption => {
                 let v = extract_template_params(&field.ty, "persistent_option", "Option", 1)?;
                 ShardableType::PersistentOption(v[0].clone())
@@ -642,9 +663,17 @@ fn to_fields(
                 let v = extract_template_params(&field.ty, "persistent_map", "Map", 2)?;
                 ShardableType::PersistentMap(v[0].clone(), v[1].clone())
             }
+            ShardingType::PersistentIMap => {
+                let v = extract_template_params(&field.ty, "persistent_imap", "IMap", 2)?;
+                ShardableType::PersistentIMap(v[0].clone(), v[1].clone())
+            }
             ShardingType::PersistentSet => {
                 let v = extract_template_params(&field.ty, "persistent_set", "Set", 1)?;
                 ShardableType::PersistentSet(v[0].clone())
+            }
+            ShardingType::PersistentISet => {
+                let v = extract_template_params(&field.ty, "persistent_iset", "ISet", 1)?;
+                ShardableType::PersistentISet(v[0].clone())
             }
         };
 
@@ -663,9 +692,9 @@ fn impl_item_method_from_item_fn(item_fn: ItemFn) -> ImplItemFn {
 }
 
 fn item_type_check_name(ident: &Ident) -> parse::Result<bool> {
-    if ident.to_string() == TRANSITION_LABEL_TYPE_NAME {
+    if ident == TRANSITION_LABEL_TYPE_NAME {
         Ok(false)
-    } else if ident.to_string() == INIT_LABEL_TYPE_NAME {
+    } else if ident == INIT_LABEL_TYPE_NAME {
         Ok(true)
     } else {
         Err(Error::new(
@@ -678,14 +707,13 @@ fn item_type_check_name(ident: &Ident) -> parse::Result<bool> {
 }
 
 fn is_okay_label_generic_ident(ident: &Ident, main_generics: &Option<Generics>) -> bool {
-    let s = ident.to_string();
     match main_generics {
         None => false,
         Some(main_generics) => {
             for p in &main_generics.params {
                 match p {
                     GenericParam::Type(TypeParam { ident: i, .. }) => {
-                        if i.to_string() == s {
+                        if i == ident {
                             return true;
                         }
                     }

@@ -1,5 +1,15 @@
 # `reveal`, `reveal_with_fuel`, `hide`
 
+### Syntax
+
+```verus-grammar
+V@[reveal_stmt]           ::= reveal ( R@[path] ) ;
+V@[reveal_with_fuel_stmt] ::= reveal_with_fuel ( R@[path] , R@[int_literal] ) ;
+V@[hide_stmt]             ::= hide ( R@[path] ) ;
+```
+
+### Proof operation
+
 These attributes control whether and how Verus will unfold the definition of a spec function
 while solving. For a spec function `f`:
 

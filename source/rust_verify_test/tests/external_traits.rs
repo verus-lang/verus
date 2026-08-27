@@ -26,6 +26,49 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_trait_provided_method_not_required verus_code! {
+        #[verifier::external]
+        trait Tr {
+            fn foo(&self) -> usize;
+            fn bar(&self) -> usize { 7 }
+        }
+
+        #[verifier::external_trait_specification]
+        trait ExTr {
+            type ExternalTraitSpecificationFor: Tr;
+
+            fn foo(&self) -> (r: usize)
+                ensures r > 3,
+            ;
+
+            fn bar(&self) -> (r: usize)
+                ensures r > 5,
+            ;
+        }
+
+        struct X { }
+
+        #[verifier::external]
+        impl Tr for X {
+            fn foo(&self) -> usize { 4 }
+        }
+
+        assume_specification [<X as Tr>::foo](x: &X) -> (r: usize)
+            ensures r > 3,
+        ;
+
+        fn test(x: &X) {
+            let a = x.foo();
+            assert(a > 3);
+            // `bar` is inherited from the trait's default body, so the caller gets
+            // the trait declaration's ensures.
+            let b = x.bar();
+            assert(b > 5);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_trait_dupe verus_code! {
         trait Tr {
             fn foo();
@@ -81,6 +124,22 @@ test_verify_one_file! {
             X::bar()
         }
     } => Err(err) => assert_vir_error_msg(err, "duplicate specification for this trait implementation")
+}
+
+test_verify_one_file! {
+    #[test] test_trait_dupe_imported_trait verus_code! {
+        use vstd::prelude::*;
+
+        pub struct X;
+
+        pub assume_specification[<X as core::convert::From<i16>>::from](value: i16) -> X;
+
+        impl core::convert::From<i16> for X {
+            fn from(_value: i16) -> X {
+                X
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "duplicate specification for this trait method implementation")
 }
 
 test_verify_one_file! {
@@ -400,6 +459,74 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_trait_extension_default_method_context_order verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::convert::*;
+
+        pub struct Foo;
+
+        impl From<Foo> for u16 {
+            #[verifier::spinoff_prover]
+            fn from(value: Foo) -> Self {
+                42u16
+            }
+        }
+
+        impl FromSpecImpl<Foo> for u16 {
+            open spec fn obeys_from_spec() -> bool {
+                true
+            }
+
+            open spec fn from_spec(value: Foo) -> u16 {
+                42u16
+            }
+        }
+
+        pub trait Bar {
+            fn push_record() {
+                let f = <u16 as From<Foo>>::from(Foo);
+                assert(f == 42);
+            }
+        }
+
+        impl Bar for Foo {}
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_trait_extension_default_method_body_context_order verus_code! {
+        #[verifier::external]
+        pub trait T {}
+
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(TSpec via TSpecImpl)]
+        pub trait ExT {
+            type ExternalTraitSpecificationFor: T;
+
+            spec fn s() -> u8;
+        }
+
+        pub struct Foo;
+
+        impl T for Foo {}
+
+        impl TSpecImpl for Foo {
+            open spec fn s() -> u8 {
+                42
+            }
+        }
+
+        trait Bar {
+            fn check() {
+                assert(<Foo as TSpec>::s() == 42);
+            }
+        }
+
+        impl Bar for Foo {}
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_trait_extension_cycle verus_code! {
         #[verifier::external]
         trait T<A> {
@@ -431,7 +558,7 @@ test_verify_one_file! {
                 !TSpec::<u8>::s(self, q, a, b, x)
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
 }
 
 test_verify_one_file! {
@@ -466,6 +593,29 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference")
+}
+
+test_verify_one_file! {
+    #[test] test_trait_extension_cycle3 verus_code! {
+        #[verifier::external]
+        trait T {}
+
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(TSpec via TSpecImpl)]
+        trait Ex {
+        type ExternalTraitSpecificationFor: T;
+            spec fn s1() -> bool;
+            spec fn s2() -> bool;
+        }
+
+        impl T for u32 {
+        }
+
+        impl TSpecImpl for u32 {
+            spec fn s1() -> bool { <u32 as TSpec>::s2() }
+            spec fn s2() -> bool { !<u32 as TSpec>::s1() }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
 }
 
 test_verify_one_file! {
@@ -630,6 +780,39 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_trait_auto_import_special_types verus_code! {
+        #[verifier::external]
+        trait T<A> {}
+
+        #[verifier::external]
+        impl<A> T<A> for A {}
+
+        #[verifier::external]
+        impl<A> T<A> for Ghost<A> {}
+
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(TSpec via TSpecImpl)]
+        trait ExT<A> {
+            type ExternalTraitSpecificationFor: T<A>;
+
+            spec fn s(&self) -> bool;
+        }
+
+        impl<A> TSpecImpl<A> for A {
+            spec fn s(&self) -> bool {
+                false
+            }
+        }
+
+        impl<A> TSpecImpl<A> for Ghost<A> {
+            spec fn s(&self) -> bool {
+                false
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_trait_defaults verus_code! {
         #[verifier::external]
         trait T {
@@ -706,4 +889,138 @@ test_verify_one_file! {
         }
 
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_external_trait_impl_issue2047 verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::external]
+        trait T {
+        }
+
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(TSpec via TSpecImpl)]
+        trait Ex {
+            type ExternalTraitSpecificationFor: T;
+
+            spec fn seq(&self) -> Seq<bool>;
+
+            spec fn initial_value_relation(&self) -> bool;
+        }
+
+        impl T for bool {
+        }
+
+        impl TSpecImpl for bool {
+            closed spec fn seq(&self) -> Seq<bool> {
+                seq![true]
+            }
+
+            spec fn initial_value_relation(&self) -> bool {
+                TSpec::seq(self).len() > 1
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_impl_trait_direct_use_error verus_code! {
+        #[verifier::external]
+        trait T1 {}
+
+        #[verifier::external]
+        impl T1 for u8 {}
+
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(T1Spec via T1SpecImpl)]
+        trait ExT1 {
+            type ExternalTraitSpecificationFor: T1;
+
+            spec fn f() -> bool;
+        }
+
+        impl T1SpecImpl for u8 {
+            spec fn f() -> bool { true }
+        }
+
+        spec fn g() -> bool {
+            <u8 as T1SpecImpl>::f() // should error: cannot use T1SpecImpl directly
+        }
+    } => Err(err) => assert_vir_error_msg(
+        err,
+        "cannot use trait `test_crate::T1SpecImpl` directly; use `test_crate::T1Spec` instead"
+    )
+}
+
+test_verify_one_file! {
+    #[test] test_assoc_type_with_trait_bound verus_code! {
+        // Test that external_trait_specification works for traits with
+        // associated types that have trait bounds (ClauseKind::Projection)
+        // and lifetime bounds (ClauseKind::TypeOutlives).
+        #[verifier::external]
+        trait Bits: Sized + 'static {
+        }
+
+        #[verifier::external_trait_specification]
+        trait ExBits: Sized + 'static {
+            type ExternalTraitSpecificationFor: Bits;
+        }
+
+        #[verifier::external]
+        trait Flags: Sized + 'static {
+            type B: Bits;
+        }
+
+        #[verifier::external_trait_specification]
+        trait ExFlags: Sized + 'static {
+            type ExternalTraitSpecificationFor: Flags;
+            type B: Bits;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] unrecognized_assoc_type_issue1485 verus_code! {
+        use std::borrow::Cow;
+
+        #[verifier::external_trait_specification]
+        pub trait ExToOwned {
+            type ExternalTraitSpecificationFor: ToOwned;
+        }
+
+        #[verifier::external_type_specification]
+        #[verifier::reject_recursive_types(B)]
+        pub struct ExCow<'a, B: 'a + ?Sized + ToOwned>(Cow<'a, B>);
+
+        fn test() { }
+    } => Err(err) => assert_vir_error_msg(
+        err,
+        "Verus does not recognize associated type `Owned` of trait `alloc::borrow::ToOwned`"
+    )
+}
+
+test_verify_one_file! {
+    #[test] external_trait_private_bound_local verus_code! {
+        trait U {}
+
+        #[verifier::external]
+        trait T: U {}
+
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_private_bound(test_crate::U)]
+        trait ExT {
+            type ExternalTraitSpecificationFor: T;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "not a private non-local bound")
+}
+
+test_verify_one_file! {
+    #[test] external_trait_private_bound_pub verus_code! {
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_private_bound(core::marker::Copy)]
+        pub trait ExInteger {
+            type ExternalTraitSpecificationFor: Integer;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "not a private non-local bound")
 }

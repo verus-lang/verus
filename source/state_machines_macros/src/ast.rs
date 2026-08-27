@@ -65,19 +65,24 @@ pub enum ShardableType {
 
     Option(Type),
     Map(Type, Type),
+    IMap(Type, Type),
     Multiset(Type),
     Set(Type),
+    ISet(Type),
     Count,
     Bool,
 
     PersistentMap(Type, Type),
+    PersistentIMap(Type, Type),
     PersistentOption(Type),
     PersistentSet(Type),
+    PersistentISet(Type),
     PersistentCount,
     PersistentBool,
 
     StorageOption(Type),
     StorageMap(Type, Type),
+    StorageIMap(Type, Type),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Copy)]
@@ -147,7 +152,7 @@ pub enum MonoidElt {
     /// Represents the element Some(e)
     OptionSome(Option<Expr>),
     /// Represents the singleton map [k => v]
-    SingletonKV(Expr, Option<Expr>),
+    SingletonKV(Expr, Option<Box<Expr>>),
     /// Represents the singleton multiset {e}
     SingletonMultiset(Expr),
     /// Represents the set multiset {e}
@@ -237,21 +242,21 @@ pub struct Arm {
 pub enum SplitKind {
     If(Expr),
     Match(Expr, Vec<Arm>),
-    Let(Pat, Option<Type>, LetKind, Expr),
+    Let(Box<Pat>, Option<Box<Type>>, LetKind, Expr),
     /// concurrent-state-machine-specific stuff
-    Special(Ident, SpecialOp, AssertProof, Option<Pat>),
+    Special(Ident, SpecialOp, AssertProof, Option<Box<Pat>>),
 }
 
 #[derive(Clone, Debug)]
 pub enum SubIdx {
     Field(Ident),
-    Idx(Expr),
+    Idx(Box<Expr>),
 }
 
 #[derive(Clone, Debug)]
 pub enum TransitionStmt {
     Block(Span, Vec<TransitionStmt>),
-    Split(Span, SplitKind, Vec<TransitionStmt>),
+    Split(Span, Box<SplitKind>, Vec<TransitionStmt>),
     Require(Span, Expr),
     Assert(Span, Expr, AssertProof),
     Update(Span, Ident, Expr),
@@ -279,13 +284,13 @@ pub enum PostConditionReason {
 pub enum SimplStmt {
     // The Vec<Ident> are variables assigned inside the block that are used later
     // (This is filled in and used internally in to_relation.rs)
-    Let(Span, Pat, Option<Type>, Expr, Vec<SimplStmt>, Vec<Ident>),
-    Split(Span, SplitKind, Vec<(Span, Vec<SimplStmt>)>, Vec<Ident>), // only for If, Match
+    Let(Span, Box<Pat>, Option<Box<Type>>, Expr, Vec<SimplStmt>, Vec<Ident>),
+    Split(Span, Box<SplitKind>, Vec<(Span, Vec<SimplStmt>)>, Vec<Ident>), // only for If, Match
 
     Require(Span, Expr),
     PostCondition(Span, Expr, PostConditionReason),
     Assert(Span, Expr, AssertProof),
-    Assign(Span, Ident, Type, Expr, bool),
+    Assign(Span, Ident, Box<Type>, Expr, bool),
 }
 
 impl SpecialOp {
@@ -392,10 +397,12 @@ impl TransitionStmt {
     pub fn statement_name(&self) -> &'static str {
         match self {
             TransitionStmt::Block(..) => "block",
-            TransitionStmt::Split(_, SplitKind::Let(..), _) => "let",
-            TransitionStmt::Split(_, SplitKind::If(..), _) => "if",
-            TransitionStmt::Split(_, SplitKind::Match(..), _) => "match",
-            TransitionStmt::Split(_, SplitKind::Special(_, op, _, _), _) => op.stmt.name(),
+            TransitionStmt::Split(_, split_kind, _) => match &**split_kind {
+                SplitKind::Let(..) => "let",
+                SplitKind::If(..) => "if",
+                SplitKind::Match(..) => "match",
+                SplitKind::Special(_, op, _, _) => op.stmt.name(),
+            },
             TransitionStmt::Require(..) => "require",
             TransitionStmt::Assert(..) => "assert",
             TransitionStmt::Update(..) => "update",
@@ -445,19 +452,24 @@ impl ShardableType {
 
             ShardableType::Option(_) => "option",
             ShardableType::Map(_, _) => "map",
+            ShardableType::IMap(_, _) => "imap",
             ShardableType::Multiset(_) => "multiset",
             ShardableType::Set(_) => "set",
+            ShardableType::ISet(_) => "iset",
             ShardableType::Count => "count",
             ShardableType::Bool => "bool",
 
             ShardableType::PersistentMap(_, _) => "persistent_map",
+            ShardableType::PersistentIMap(_, _) => "persistent_imap",
             ShardableType::PersistentOption(_) => "persistent_option",
             ShardableType::PersistentSet(_) => "persistent_set",
+            ShardableType::PersistentISet(_) => "persistent_iset",
             ShardableType::PersistentCount => "persistent_count",
             ShardableType::PersistentBool => "persistent_bool",
 
             ShardableType::StorageOption(_) => "storage_option",
             ShardableType::StorageMap(_, _) => "storage_map",
+            ShardableType::StorageIMap(_, _) => "storage_imap",
         }
     }
 
@@ -471,7 +483,9 @@ impl ShardableType {
 
     pub fn is_storage(&self) -> bool {
         match self {
-            ShardableType::StorageOption(_) | ShardableType::StorageMap(_, _) => true,
+            ShardableType::StorageOption(_)
+            | ShardableType::StorageMap(_, _)
+            | ShardableType::StorageIMap(_, _) => true,
 
             ShardableType::Variable(_)
             | ShardableType::Constant(_)
@@ -479,22 +493,28 @@ impl ShardableType {
             | ShardableType::Multiset(_)
             | ShardableType::Option(_)
             | ShardableType::Map(_, _)
+            | ShardableType::IMap(_, _)
             | ShardableType::PersistentMap(_, _)
+            | ShardableType::PersistentIMap(_, _)
             | ShardableType::PersistentOption(_)
             | ShardableType::PersistentSet(_)
+            | ShardableType::PersistentISet(_)
             | ShardableType::PersistentCount
             | ShardableType::PersistentBool
             | ShardableType::Count
             | ShardableType::Bool
-            | ShardableType::Set(_) => false,
+            | ShardableType::Set(_)
+            | ShardableType::ISet(_) => false,
         }
     }
 
     pub fn is_persistent(&self) -> bool {
         match self {
             ShardableType::PersistentMap(_, _)
+            | ShardableType::PersistentIMap(_, _)
             | ShardableType::PersistentOption(_)
             | ShardableType::PersistentSet(_)
+            | ShardableType::PersistentISet(_)
             | ShardableType::PersistentCount
             | ShardableType::PersistentBool => true,
 
@@ -504,9 +524,12 @@ impl ShardableType {
             | ShardableType::Multiset(_)
             | ShardableType::Option(_)
             | ShardableType::Set(_)
+            | ShardableType::ISet(_)
             | ShardableType::Map(_, _)
+            | ShardableType::IMap(_, _)
             | ShardableType::StorageOption(_)
             | ShardableType::StorageMap(_, _)
+            | ShardableType::StorageIMap(_, _)
             | ShardableType::Bool
             | ShardableType::Count => false,
         }
@@ -533,7 +556,9 @@ impl ShardableType {
     pub fn get_map_key_type(&self) -> Type {
         match self {
             ShardableType::Map(key, _val) => key.clone(),
+            ShardableType::IMap(key, _val) => key.clone(),
             ShardableType::StorageMap(key, _val) => key.clone(),
+            ShardableType::StorageIMap(key, _val) => key.clone(),
             _ => panic!("get_map_key_type expected map"),
         }
     }
@@ -542,7 +567,9 @@ impl ShardableType {
     pub fn get_map_value_type(&self) -> Type {
         match self {
             ShardableType::Map(_key, val) => val.clone(),
+            ShardableType::IMap(_key, val) => val.clone(),
             ShardableType::StorageMap(_key, val) => val.clone(),
+            ShardableType::StorageIMap(_key, val) => val.clone(),
             _ => panic!("get_map_value_type expected map"),
         }
     }

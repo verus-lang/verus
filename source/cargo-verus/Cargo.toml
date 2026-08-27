@@ -1,32 +1,27 @@
 [package]
+publish = false
 name = "cargo-verus"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 description = "A Cargo subcommand that enables verification of Rust code as part of the normal Cargo workflow."
 
-[features]
-integration-tests = []
-
 [dependencies]
-cargo_metadata = "0.18.1"
-clap = { version = "4.5.53", features = ["derive"] }
-clap-cargo = "0.18.3"
-rustc_tools_util = "0.3.0"
-anyhow = "1.0"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-sha2 = "0.10.2"
-hex = "0.4.3"
-colored = "3.0.0"
+anyhow = { workspace = true }
+cargo_metadata = { workspace = true }
+cargo-verus-toolchains = { workspace = true }
+clap-cargo = { workspace = true }
+clap = { workspace = true }
+colored = { workspace = true }
+hex = { workspace = true }
+rustc_tools_util = { workspace = true }
+serde_json = { workspace = true }
+serde = { workspace = true }
+sha2 = { workspace = true }
+tempfile = { workspace = true }
 
 [build-dependencies]
-rustc_tools_util = "0.3.0"
+cargo-verus-toolchains = { workspace = true }
+rustc_tools_util = { workspace = true }
 
-[dev-dependencies]
-assert_cmd = "2.0"
-tempfile = "3"
-
-[[bin]]
-name = "fake-cargo"
-path = "tests/src/fake_cargo.rs"
-required-features = ["integration-tests"]
+[lints]
+workspace = true

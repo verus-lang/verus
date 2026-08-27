@@ -41,7 +41,7 @@ test_verify_one_file! {
             }
             assert(x@.len() == 11);
             let val = x.get_char(0);
-            assert('h' === val);
+            assert('h' == val);
         }
     } => Ok(())
 }
@@ -52,7 +52,7 @@ test_verify_one_file! {
         fn get_char_fails() {
             let x = ("hello world");
             let val = x.get_char(0); // FAILS
-            assert(val === 'h'); // FAILS
+            assert(val == 'h'); // FAILS
         }
     } => Err(err) => assert_fails(err, 2)
 }
@@ -66,7 +66,7 @@ test_verify_one_file! {
             proof {
                 reveal_strlit("abcdef");
             }
-            assert(x@.len() === 6);
+            assert(x@.len() == 6);
         }
     } => Ok(())
 }
@@ -159,17 +159,17 @@ test_verify_one_file! {
             let b0 = a.get_char(0);
             let c0 = a.get_char(0);
 
-            assert(a !== b);
-            assert(b !== c);
-            assert(a === a);
-            assert(a0_clone === a0);
+            assert(a != b);
+            assert(b != c);
+            assert(a == a);
+            assert(a0_clone == a0);
 
             assert(a@ =~= abc@.subrange(0,1));
             assert(b@ =~= abc@.subrange(1,2));
             assert(c@ =~= abc@.subrange(2,3));
 
-            assert(cba !== abc);
-            assert(abc === abc_clone);
+            assert(cba != abc);
+            assert(abc == abc_clone);
         }
     } => Ok(())
 }
@@ -182,15 +182,15 @@ test_verify_one_file! {
         const z: &'static str = "Insert string here";
 
         fn test_multi_fails1() {
-            assert(x@.len() === 11); // FAILS
+            assert(x@.len() == 11); // FAILS
         }
 
         fn test_multi_fails2() {
-            assert(x@.len() !== 11) // FAILS
+            assert(x@.len() != 11) // FAILS
         }
 
         fn test_multi_fails3() {
-            assert(x === y); // FAILS
+            assert(x == y); // FAILS
         }
     } => Err(err) => assert_fails(err, 3)
 }
@@ -225,7 +225,7 @@ test_verify_one_file! {
             proof {
                 reveal_strlit("A");
             }
-            assert(a@ === ("A")@);
+            assert(a@ == ("A")@);
             assert(a.is_ascii());
         }
     } => Ok(())
@@ -239,7 +239,7 @@ test_verify_one_file! {
             proof {
                 reveal_strlit("A");
             }
-            assert(a@ === ("B")@); // FAILS
+            assert(a@ == ("B")@); // FAILS
         }
     } => Err(e) => assert_one_fails(e)
 }
@@ -250,7 +250,7 @@ test_verify_one_file! {
         const x: &'static str = "Hello World";
         const y: &'static str = "Gello World";
         fn test() {
-            assert(x !== y);
+            assert(x != y);
         }
     } => Ok(())
 }
@@ -261,7 +261,7 @@ test_verify_one_file! {
         const x: &'static str = "Hello World";
         const y: &'static str = "Gello World";
         fn test() {
-            assert(x !== y);
+            assert(x != y);
             assert(false); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
@@ -371,7 +371,7 @@ test_verify_one_file! {
         proof fn test() {
             let a = ("è ❤️");
             reveal_strlit("è ❤️");
-            assert(a@[0] === 'è');
+            assert(a@[0] == 'è');
         }
     } => Ok(())
 }
@@ -407,7 +407,7 @@ test_verify_one_file! {
                 reveal_strlit("C");
             }
             assert(b@ =~= ("C")@);
-            assert(b@ === ("B")@); // FAILS
+            assert(b@ == ("B")@); // FAILS
         }
     } => Err(e) => assert_one_fails(e)
 }
@@ -440,7 +440,7 @@ test_verify_one_file! {
             let x = ("Hello World");
 
             let x0 = x.get_ascii(0);
-            assert(x0 === 72);
+            assert(x0 == 72);
         }
     } => Ok(())
 }
@@ -467,7 +467,7 @@ test_verify_one_file! {
             let c = 'c';
             let d = c as u8;
             // ascii value
-            assert(d === 99);
+            assert(d == 99);
         }
     } => Ok(())
 }
@@ -550,7 +550,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         fn foo() -> (ret: String)
-            ensures ret@ === ("hello world")@
+            ensures ret@ == ("hello world")@
         {
             proof {
                 reveal_strlit("hello world");
@@ -574,7 +574,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         fn foo() -> (ret: String)
-            ensures ret@ !== ("hello worlds")@
+            ensures ret@ != ("hello worlds")@
         {
             proof {
                 reveal_strlit("hello worlds");
@@ -598,7 +598,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         fn foo() -> (ret: String)
-            ensures ret@ === ("hello world")@
+            ensures ret@ == ("hello world")@
         {
             proof {
                 reveal_strlit("hello world");
@@ -622,7 +622,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         fn foo() -> (ret: String)
-            ensures ret@ !== ("hello worlds")@
+            ensures ret@ != ("hello worlds")@
         {
             proof {
                 reveal_strlit("hello worlds");
@@ -812,11 +812,11 @@ test_verify_one_file! {
             let mut num_as = 0usize;
             let ghost is_a = |c: char| c == 'a';
             for c in it: chars_it
-                invariant num_as == it@.filter(is_a).len()
+                invariant num_as == it.seq().take(it.index()).filter(is_a).len()
             {
                 reveal(Seq::filter);
-                let ghost prev_chars = it.chars.take(it.pos);
-                let ghost next_chars = it.chars.take(it.pos + 1);
+                let ghost prev_chars = it.seq().take(it.index());
+                let ghost next_chars = it.seq().take(it.index() + 1);
                 assert(next_chars =~= prev_chars + seq![c]);
                 if c == 'a' {
                     assert(seq![c].filter(is_a) =~= seq![c]);
@@ -827,4 +827,121 @@ test_verify_one_file! {
             }
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_string_deref verus_code! {
+        use vstd::prelude::*;
+        use vstd::string::*;
+
+        fn test_string_deref() {
+            let s: String = String::from_str("hello");
+            proof {
+                reveal_strlit("hello");
+            }
+
+            let slice: &str = &s;
+            assert(slice@ == s@);
+            assert(slice.is_ascii() == s.is_ascii());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_string_push_pop verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let mut s = String::new();
+            assert(s@ == Seq::<char>::empty());
+            s.push('a');
+            s.push('b');
+            assert(s@ == seq!['a', 'b']);
+            let popped = s.pop();
+            assert(popped == Some('b'));
+            assert(s@ == seq!['a']);
+            let popped2 = s.pop();
+            assert(popped2 == Some('a'));
+            assert(s@ == Seq::<char>::empty());
+            let popped3 = s.pop();
+            assert(popped3 is None);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_string_push_pop_fails verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let mut s = String::new();
+            s.push('a');
+            let popped = s.pop();
+            assert(popped == Some('b')); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] test_string_push_str verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let mut s = String::new();
+            s.push('a');
+            s.push_str("bc");
+            proof {
+                reveal_strlit("bc");
+            }
+            assert(s@ == seq!['a', 'b', 'c']);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_string_push_str_fails verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let mut s = String::new();
+            s.push_str("bc");
+            proof {
+                reveal_strlit("bc");
+            }
+            assert(s@ == seq!['b']); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] test_string_is_empty_and_clear verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let mut s = String::new();
+            let empty0 = s.is_empty();
+            assert(empty0);
+            s.push('a');
+            let empty1 = s.is_empty();
+            assert(!empty1);
+            s.clear();
+            let empty2 = s.is_empty();
+            assert(empty2);
+            assert(s@ == Seq::<char>::empty());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_string_is_empty_and_clear_fails verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let mut s = String::new();
+            s.push('a');
+            s.clear();
+            let empty = s.is_empty();
+            assert(!empty); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
 }

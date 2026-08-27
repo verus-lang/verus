@@ -41,14 +41,7 @@ In nearly all situations, there is no need to reason about the pointer address.
 
 ### Mutable borrows
 
-Currently, Verus only supports the use of mutable references as arguments to a function, such as in the following example.
-
-```rust
-{{#include ../../../../examples/guide/references.rs:mut}}
-```
-
-In the subsequent chapters, we'll discuss more how to verify code with mutable references,
-e.g., how to write specifications on functions that take mutable arguments.
+Mutable borrows are a bit more complicated—see the [next chapter](./mutable-references.md) for details.
 
 ### Lifetime variables
 

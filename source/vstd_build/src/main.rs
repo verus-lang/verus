@@ -1,5 +1,7 @@
 #![feature(rustc_private)]
 
+use yansi::Paint;
+
 extern crate rustc_driver;
 
 // For diagnostics when something goes wrong, try "cargo build -vv"
@@ -12,7 +14,7 @@ const VSTD_RS_PATH: &str = "vstd/vstd.rs";
 const VSTD_VIR: &str = "vstd.vir";
 
 fn log_command(cmd: &std::process::Command) {
-    eprintln!("{}", yansi::Paint::magenta(format!("vstd_build running: {:?}", cmd)));
+    eprintln!("{}", format!("vstd_build running: {:?}", cmd).magenta());
 }
 
 fn main() {
@@ -32,6 +34,8 @@ fn main() {
     let mut verbose = false;
     let mut trace = false;
     let mut log_all = false;
+    let mut no_lifetime = false;
+    let mut expand_errors = false;
     let mut no_solver_version_check = false;
     for arg in args {
         if arg == "--release" {
@@ -48,6 +52,10 @@ fn main() {
             trace = true;
         } else if arg == "--log-all" {
             log_all = true;
+        } else if arg == "--no-lifetime" {
+            no_lifetime = true;
+        } else if arg == "--expand-errors" {
+            expand_errors = true;
         } else if arg == "--no-solver-version-check" {
             no_solver_version_check = true;
         } else {
@@ -112,6 +120,12 @@ fn main() {
     if log_all {
         child_args.push("--log-all".to_string());
     }
+    if no_lifetime {
+        child_args.push("--no-lifetime".to_string());
+    }
+    if expand_errors {
+        child_args.push("--expand-errors".to_string());
+    }
     if no_solver_version_check {
         child_args.push("-V".to_string());
         child_args.push("no-solver-version-check".to_string());
@@ -128,6 +142,8 @@ fn main() {
         child_args.push("--cfg".to_string());
         child_args.push("feature=\"alloc\"".to_string());
     }
+    child_args.push("--cfg".to_string());
+    child_args.push("feature=\"nonzero_internals\"".to_string());
     child_args.push(VSTD_RS_PATH.to_string());
 
     let cmd = verus_target_path.join("rust_verify");

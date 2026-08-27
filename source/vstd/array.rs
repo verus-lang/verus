@@ -2,6 +2,8 @@
 use super::prelude::*;
 use super::seq::*;
 use super::slice::SliceAdditionalSpecFns;
+#[cfg(verus_keep_ghost)]
+use super::std_specs::iter::IteratorSpec;
 use super::view::*;
 
 verus! {
@@ -36,6 +38,7 @@ pub trait ArrayAdditionalSpecFns<T>: View<V = Seq<T>> {
 
 #[verifier::external]
 pub trait ArrayAdditionalExecFns<T> {
+    #[cfg_attr(not(verus_verify_core), deprecated = "use `array[i] = value` instead")]
     fn set(&mut self, idx: usize, t: T);
 }
 
@@ -62,7 +65,7 @@ impl<T, const N: usize> ArrayAdditionalExecFns<T> for [T; N] {
         requires
             0 <= idx < N,
         ensures
-            self@ == old(self)@.update(idx as int, t),
+            final(self)@ == old(self)@.update(idx as int, t),
     {
         self[idx] = t;
     }
@@ -91,6 +94,19 @@ pub broadcast axiom fn axiom_spec_array_as_slice<T, const N: usize>(ar: &[T; N])
         (#[trigger] spec_array_as_slice(ar))@ == ar@,
 ;
 
+pub assume_specification<
+    'a,
+    T,
+    const N: usize,
+>[ <&'a [T; N] as core::iter::IntoIterator>::into_iter ](s: &'a [T; N]) -> (iter: core::slice::Iter<
+    'a,
+    T,
+>)
+    ensures
+        IteratorSpec::remaining(&iter) == s@.as_ref(),
+        IteratorSpec::decrease(&iter) is Some,
+;
+
 // Referenced by Verus' internal encoding for array -> slice coercion
 #[doc(hidden)]
 #[verifier::external_body]
@@ -98,6 +114,7 @@ pub broadcast axiom fn axiom_spec_array_as_slice<T, const N: usize>(ar: &[T; N])
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::array::array_as_slice")]
 pub fn array_as_slice<T, const N: usize>(ar: &[T; N]) -> (out: &[T])
     ensures
+        out == spec_array_as_slice(ar),
         ar@ == out@,
 {
     ar
@@ -151,6 +168,19 @@ pub broadcast axiom fn axiom_array_has_resolved<T, const N: usize>(array: [T; N]
             #[trigger] array@[i],
         ),
 ;
+
+#[doc(hidden)]
+#[verifier::external_body]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::array::ref_mut_array_unsizing_coercion")]
+pub fn ref_mut_array_unsizing_coercion<T, const N: usize>(r: &mut [T; N]) -> (out: &mut [T])
+    ensures
+        out.view() == old(r).view(),
+        final(out).view() == final(r).view(),
+    opens_invariants none
+    no_unwind
+{
+    r
+}
 
 pub broadcast group group_array_axioms {
     array_len_matches_n,

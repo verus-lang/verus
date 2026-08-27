@@ -3,7 +3,7 @@
 //!
 //!  * The Instance type
 //!  * All the Token types for shardable fields
-//!  * #[cfg_attr(verus_keep_ghost, verifier::proof)] methods for each transition (including init and readonly transitions)
+//!  * Proof methods for each transition (including init and readonly transitions)
 
 use crate::ast::{
     Arm, Field, Lemma, LetKind, MonoidElt, MonoidStmtType, SM, ShardableType, SpecialOp, SplitKind,
@@ -57,19 +57,23 @@ fn nondeterministic_read_spec_out_name(field: &Field) -> Ident {
 fn stored_object_type(field: &Field) -> Type {
     match &field.stype {
         ShardableType::StorageOption(ty) => ty.clone(),
-        ShardableType::StorageMap(_key, ty) => ty.clone(),
+        ShardableType::StorageMap(_key, ty) | ShardableType::StorageIMap(_key, ty) => ty.clone(),
         ShardableType::Variable(_)
         | ShardableType::Constant(_)
         | ShardableType::NotTokenized(_)
         | ShardableType::Option(_)
         | ShardableType::Map(_, _)
+        | ShardableType::IMap(_, _)
         | ShardableType::PersistentOption(_)
         | ShardableType::PersistentMap(_, _)
+        | ShardableType::PersistentIMap(_, _)
         | ShardableType::PersistentSet(_)
+        | ShardableType::PersistentISet(_)
         | ShardableType::PersistentCount
         | ShardableType::PersistentBool
         | ShardableType::Multiset(_)
         | ShardableType::Set(_)
+        | ShardableType::ISet(_)
         | ShardableType::Bool
         | ShardableType::Count => {
             panic!("stored_object_type");
@@ -110,10 +114,8 @@ fn transition_arg_name(field: &Field) -> Ident {
 /// to the other thread) or arbitrary guards (thus 'syncing' the storage objects to the
 /// other thread). Due to the flexibility of the guard protocol, this could theoretically
 /// happen regardless of whether the instance/tokens are synced or sent to the other thread.
-///
-/// TODO make sure that the Instance/tokens don't inherit !Sync or !Send negative-instances
-/// from the other fields where it doesn't matter. (Completeness issue)
-
+// TODO make sure that the Instance/tokens don't inherit !Sync or !Send negative-instances
+// from the other fields where it doesn't matter. (Completeness issue)
 fn instance_struct_stream(sm: &SM) -> TokenStream {
     let insttype = inst_type_name(&sm.name);
     let self_ty = get_self_ty(sm);
@@ -218,7 +220,6 @@ fn trusted_copy(self_ty: &Type, generics: &Option<Generics>) -> TokenStream {
 /// is basically a Map<V, nat>. So the V is treated as a 'key' here
 /// and if you have multiple elements of the same value, that's represented
 /// by having a higher counter.
-
 fn token_struct_stream(sm: &SM, field: &Field) -> TokenStream {
     let tokenname = field_token_type_name(field);
     let insttype = inst_type(sm);
@@ -244,7 +245,7 @@ fn token_struct_stream(sm: &SM, field: &Field) -> TokenStream {
 
     let type_alias_stream = match &field.stype {
         ShardableType::Map(key, val) | ShardableType::PersistentMap(key, val) => {
-            let name = Ident::new(&format!("{:}_map", field.name.to_string()), field.name.span());
+            let name = Ident::new(&format!("{}_map", field.name), field.name.span());
             let (gen1, genwhere) = generics_for_decl(&sm.generics);
             let tok = field_token_type(sm, field);
             quote_vstd! { vstd =>
@@ -253,8 +254,18 @@ fn token_struct_stream(sm: &SM, field: &Field) -> TokenStream {
                 pub type #name#gen1 #genwhere = #vstd::tokens::MapToken<#key, #val, #tok>;
             }
         }
+        ShardableType::IMap(key, val) | ShardableType::PersistentIMap(key, val) => {
+            let name = Ident::new(&format!("{:}_map", field.name), field.name.span());
+            let (gen1, genwhere) = generics_for_decl(&sm.generics);
+            let tok = field_token_type(sm, field);
+            quote_vstd! { vstd =>
+                #[allow(type_alias_bounds)]
+                #[allow(non_camel_case_types)]
+                pub type #name#gen1 #genwhere = #vstd::tokens::IMapToken<#key, #val, #tok>;
+            }
+        }
         ShardableType::Set(elem) | ShardableType::PersistentSet(elem) => {
-            let name = Ident::new(&format!("{:}_set", field.name.to_string()), field.name.span());
+            let name = Ident::new(&format!("{}_set", field.name), field.name.span());
             let (gen1, genwhere) = generics_for_decl(&sm.generics);
             let tok = field_token_type(sm, field);
             quote_vstd! { vstd =>
@@ -263,9 +274,18 @@ fn token_struct_stream(sm: &SM, field: &Field) -> TokenStream {
                 pub type #name#gen1 #genwhere = #vstd::tokens::SetToken<#elem, #tok>;
             }
         }
+        ShardableType::ISet(elem) | ShardableType::PersistentISet(elem) => {
+            let name = Ident::new(&format!("{:}_set", field.name), field.name.span());
+            let (gen1, genwhere) = generics_for_decl(&sm.generics);
+            let tok = field_token_type(sm, field);
+            quote_vstd! { vstd =>
+                #[allow(type_alias_bounds)]
+                #[allow(non_camel_case_types)]
+                pub type #name#gen1 #genwhere = #vstd::tokens::ISetToken<#elem, #tok>;
+            }
+        }
         ShardableType::Multiset(elem) => {
-            let name =
-                Ident::new(&format!("{:}_multiset", field.name.to_string()), field.name.span());
+            let name = Ident::new(&format!("{}_multiset", field.name), field.name.span());
             let (gen1, genwhere) = generics_for_decl(&sm.generics);
             let tok = field_token_type(sm, field);
             quote_vstd! { vstd =>
@@ -305,7 +325,6 @@ fn token_struct_stream(sm: &SM, field: &Field) -> TokenStream {
 /// For a given sharding(constant) field, add that constant
 /// as a #[verifier::spec] fn on the Instance type. (The field is constant
 /// for the entire instance.)
-
 fn const_fn_stream(field: &Field) -> TokenStream {
     let fieldname = &field.name;
     let fieldtype = match &field.stype {
@@ -350,7 +369,9 @@ pub fn output_token_types_and_fns(
             ShardableType::NotTokenized(_) => {
                 // don't need to add a struct in this case
             }
-            ShardableType::StorageOption(_) | ShardableType::StorageMap(_, _) => {
+            ShardableType::StorageOption(_)
+            | ShardableType::StorageMap(_, _)
+            | ShardableType::StorageIMap(_, _) => {
                 // storage types don't have tokens; the 'token type' is just the
                 // the type of the field
             }
@@ -358,10 +379,14 @@ pub fn output_token_types_and_fns(
             | ShardableType::Option(_)
             | ShardableType::PersistentOption(_)
             | ShardableType::Map(..)
+            | ShardableType::IMap(..)
             | ShardableType::PersistentMap(..)
+            | ShardableType::PersistentIMap(..)
             | ShardableType::Multiset(_)
             | ShardableType::Set(_)
+            | ShardableType::ISet(_)
             | ShardableType::PersistentSet(_)
+            | ShardableType::PersistentISet(_)
             | ShardableType::Count
             | ShardableType::PersistentCount
             | ShardableType::Bool
@@ -424,7 +449,6 @@ struct TokenParam {
 
 /// Context object for the complex task of translating a single
 /// transition into a token-exchange method.
-
 struct Ctxt {
     // fields written in some normal 'update' or 'init' statements
     // (not including special ops)
@@ -459,7 +483,7 @@ impl Ctxt {
     pub fn get_numbered_token_ident(&mut self, base_id: &Ident) -> Ident {
         let i = self.fresh_num_counter;
         self.fresh_num_counter += 1;
-        Ident::new(&format!("param_token_{}_{}", i, base_id.to_string()), base_id.span())
+        Ident::new(&format!("param_token_{i}_{base_id}"), base_id.span())
     }
 
     /// Determines if we need to add an explicit lifetime parameter
@@ -496,7 +520,6 @@ enum Mode {
 ///
 /// When possible, we use &mut arguments (i.e., if a given token is
 /// both an input and an output).
-
 pub fn exchange_stream(
     bundle: &SMBundle,
     tr: &Transition,
@@ -519,16 +542,21 @@ pub fn exchange_stream(
                 ShardableType::Multiset(_)
                 | ShardableType::Option(_)
                 | ShardableType::Map(_, _)
+                | ShardableType::IMap(_, _)
                 | ShardableType::PersistentOption(_)
                 | ShardableType::PersistentMap(_, _)
+                | ShardableType::PersistentIMap(_, _)
                 | ShardableType::Count
                 | ShardableType::PersistentCount
                 | ShardableType::Bool
                 | ShardableType::PersistentBool
                 | ShardableType::Set(_)
+                | ShardableType::ISet(_)
                 | ShardableType::PersistentSet(_)
+                | ShardableType::PersistentISet(_)
                 | ShardableType::StorageOption(_)
-                | ShardableType::StorageMap(_, _) => {
+                | ShardableType::StorageMap(_, _)
+                | ShardableType::StorageIMap(_, _) => {
                     params.insert(field.name.to_string(), Vec::new());
                 }
                 ShardableType::Variable(_)
@@ -863,17 +891,22 @@ pub fn exchange_stream(
                 }
                 ShardableType::Option(_)
                 | ShardableType::Map(_, _)
+                | ShardableType::IMap(_, _)
                 | ShardableType::Set(_)
+                | ShardableType::ISet(_)
                 | ShardableType::Multiset(_)
                 | ShardableType::Count
                 | ShardableType::Bool
                 | ShardableType::PersistentOption(_)
                 | ShardableType::PersistentSet(_)
+                | ShardableType::PersistentISet(_)
                 | ShardableType::PersistentMap(_, _)
+                | ShardableType::PersistentIMap(_, _)
                 | ShardableType::PersistentCount
                 | ShardableType::PersistentBool
                 | ShardableType::StorageOption(_)
-                | ShardableType::StorageMap(_, _) => {
+                | ShardableType::StorageMap(_, _)
+                | ShardableType::StorageIMap(_, _) => {
                     // These sharding types all use the SpecialOps. The earlier translation
                     // phase has already processed those and established all the necessary
                     // pre-conditions and post-conditions, and it has also established
@@ -1042,12 +1075,16 @@ fn get_init_param_input_type(_sm: &SM, field: &Field) -> Option<Type> {
         ShardableType::NotTokenized(_) => None,
         ShardableType::Multiset(_) => None,
         ShardableType::Set(_) => None,
+        ShardableType::ISet(_) => None,
         ShardableType::Bool => None,
         ShardableType::Option(_) => None,
         ShardableType::Map(_, _) => None,
+        ShardableType::IMap(_, _) => None,
         ShardableType::PersistentOption(_) => None,
         ShardableType::PersistentSet(_) => None,
+        ShardableType::PersistentISet(_) => None,
         ShardableType::PersistentMap(_, _) => None,
+        ShardableType::PersistentIMap(_, _) => None,
         ShardableType::PersistentCount => None,
         ShardableType::PersistentBool => None,
         ShardableType::Count => None,
@@ -1056,6 +1093,9 @@ fn get_init_param_input_type(_sm: &SM, field: &Field) -> Option<Type> {
         })),
         ShardableType::StorageMap(key, val) => Some(Type::Verbatim(quote_vstd! { vstd =>
             #vstd::map::Map<#key, #val>
+        })),
+        ShardableType::StorageIMap(key, val) => Some(Type::Verbatim(quote_vstd! { vstd =>
+            #vstd::imap::IMap<#key, #val>
         })),
     }
 }
@@ -1067,7 +1107,9 @@ fn add_initialization_input_conditions(
     param_value: Expr,
 ) {
     match &field.stype {
-        ShardableType::StorageOption(_) | ShardableType::StorageMap(_, _) => {
+        ShardableType::StorageOption(_)
+        | ShardableType::StorageMap(_, _)
+        | ShardableType::StorageIMap(_, _) => {
             requires.push(mk_eq(param_value.span(), &param_value, &init_value));
         }
         _ => {
@@ -1088,12 +1130,17 @@ fn get_init_param_output_type(sm: &SM, field: &Field) -> Option<Type> {
         | ShardableType::Bool
         | ShardableType::PersistentBool
         | ShardableType::Set(_)
+        | ShardableType::ISet(_)
         | ShardableType::PersistentSet(_)
+        | ShardableType::PersistentISet(_)
         | ShardableType::Map(..)
-        | ShardableType::PersistentMap(..) => Some(field_token_collection_type(sm, field)),
+        | ShardableType::IMap(..)
+        | ShardableType::PersistentMap(..)
+        | ShardableType::PersistentIMap(..) => Some(field_token_collection_type(sm, field)),
 
         ShardableType::StorageOption(_) => None, // no output tokens for storage
         ShardableType::StorageMap(_, _) => None,
+        ShardableType::StorageIMap(_, _) => None,
     }
 }
 
@@ -1128,9 +1175,13 @@ fn add_initialization_output_conditions(
         | ShardableType::Bool
         | ShardableType::PersistentBool
         | ShardableType::Set(_)
+        | ShardableType::ISet(_)
         | ShardableType::PersistentSet(_)
+        | ShardableType::PersistentISet(_)
         | ShardableType::Map(_, _)
+        | ShardableType::IMap(_, _)
         | ShardableType::PersistentMap(_, _)
+        | ShardableType::PersistentIMap(_, _)
         | ShardableType::Multiset(_) => {
             ensures.push(relation_for_collection_of_internal_tokens(
                 sm,
@@ -1193,11 +1244,33 @@ fn relation_for_collection_of_internal_tokens(
                   && #vstd::prelude::equal((#param_value).instance_id(), #inst_value)
             })
         }
+        ShardableType::ISet(_) | ShardableType::PersistentISet(_) => {
+            let fncall = if strict {
+                quote_spanned_vstd! { vstd, span => #vstd::prelude::equal }
+            } else {
+                quote_spanned_vstd! { vstd, span => #vstd::iset::ISet::spec_le }
+            };
+            Expr::Verbatim(quote_spanned_vstd! { vstd, span =>
+                #fncall(#given_value, (#param_value).set())
+                  && #vstd::prelude::equal((#param_value).instance_id(), #inst_value)
+            })
+        }
         ShardableType::Map(_, _) | ShardableType::PersistentMap(_, _) => {
             let fncall = if strict {
                 quote_spanned_vstd! { vstd, span => #vstd::prelude::equal }
             } else {
                 quote_spanned_vstd! { vstd, span => #vstd::map::Map::spec_le }
+            };
+            Expr::Verbatim(quote_spanned_vstd! { vstd, span =>
+                #fncall(#given_value, (#param_value).map())
+                  && #vstd::prelude::equal((#param_value).instance_id(), #inst_value)
+            })
+        }
+        ShardableType::IMap(_, _) | ShardableType::PersistentIMap(_, _) => {
+            let fncall = if strict {
+                quote_spanned_vstd! { vstd, span => #vstd::prelude::equal }
+            } else {
+                quote_spanned_vstd! { vstd, span => #vstd::imap::IMap::spec_le }
             };
             Expr::Verbatim(quote_spanned_vstd! { vstd, span =>
                 #fncall(#given_value, (#param_value).map())
@@ -1245,6 +1318,15 @@ fn traits_stream(sm: &SM, field: &Field) -> TokenStream {
                 matches!(&field.stype, ShardableType::Set(_)),
             )
         }
+        ShardableType::ISet(ty) | ShardableType::PersistentISet(ty) => {
+            let token_ty = field_token_type(sm, field);
+            token_trait_impls(
+                &token_ty,
+                &sm.generics,
+                MainTrait::Element(ty),
+                matches!(&field.stype, ShardableType::ISet(_)),
+            )
+        }
         ShardableType::Bool | ShardableType::PersistentBool => {
             let token_ty = field_token_type(sm, field);
             token_trait_impls(
@@ -1261,6 +1343,15 @@ fn traits_stream(sm: &SM, field: &Field) -> TokenStream {
                 &sm.generics,
                 MainTrait::KeyValue(key, val),
                 matches!(&field.stype, ShardableType::Map(_, _)),
+            )
+        }
+        ShardableType::IMap(key, val) | ShardableType::PersistentIMap(key, val) => {
+            let token_ty = field_token_type(sm, field);
+            token_trait_impls(
+                &token_ty,
+                &sm.generics,
+                MainTrait::KeyValue(key, val),
+                matches!(&field.stype, ShardableType::IMap(_, _)),
             )
         }
         ShardableType::Multiset(ty) => {
@@ -1591,13 +1682,7 @@ fn get_main_lemma_for_transition_opt<'a>(
     lemmas: &'a Vec<Lemma>,
     trans_name: &Ident,
 ) -> Option<&'a Lemma> {
-    for l in lemmas {
-        if l.purpose.transition.to_string() == trans_name.to_string() {
-            return Some(l);
-        }
-    }
-
-    None
+    lemmas.iter().find(|l| l.purpose.transition == *trans_name)
 }
 
 // Find things that updated
@@ -1673,7 +1758,6 @@ fn determine_outputs(ctxt: &mut Ctxt, ts: &TransitionStmt) -> parse::Result<()> 
 /// Further, we do not create new 'Assert' statements here at all. If the user wants
 /// the exchange postcondition to contain any additional predicates, they can always
 /// add an 'assert' explicitly.
-
 fn translate_transition(
     ctxt: &mut Ctxt,
     ts: &mut TransitionStmt,
@@ -1687,7 +1771,7 @@ fn translate_transition(
             return Ok(());
         }
         TransitionStmt::Split(span, split_kind, splits) => {
-            match split_kind {
+            match &**split_kind {
                 SplitKind::Special(id, op, _proof, pat_opt) => {
                     let field = ctxt.get_field_or_panic(id);
                     let condition_ts_opt =
@@ -1721,8 +1805,9 @@ fn translate_transition(
 
                             let pat = pat_opt.as_ref().expect("expected pat");
                             if let Some((pat1, init1)) = assign_pat_or_arbitrary(pat, &assign_e) {
-                                let kind = SplitKind::Let(pat1, None, LetKind::Normal, init1);
-                                Some(TransitionStmt::Split(*span, kind, splits.clone()))
+                                let kind =
+                                    SplitKind::Let(Box::new(pat1), None, LetKind::Normal, init1);
+                                Some(TransitionStmt::Split(*span, Box::new(kind), splits.clone()))
                             } else {
                                 Some(splits[0].clone())
                             }
@@ -1795,8 +1880,7 @@ fn translate_split_kind(ctxt: &mut Ctxt, sk: &mut SplitKind, errors: &mut Vec<Er
                 match &mut arm.guard {
                     None => {}
                     Some((_, g)) => {
-                        let e = translate_expr(ctxt, g, false, errors);
-                        *g = Box::new(e);
+                        **g = translate_expr(ctxt, g, false, errors);
                     }
                 }
             }
@@ -1818,9 +1902,15 @@ fn field_token_collection_type(sm: &SM, field: &Field) -> Type {
         ShardableType::Map(key, val) | ShardableType::PersistentMap(key, val) => {
             Type::Verbatim(quote_vstd! { vstd => #vstd::tokens::MapToken<#key, #val, #tok> })
         }
+        ShardableType::IMap(key, val) | ShardableType::PersistentIMap(key, val) => {
+            Type::Verbatim(quote_vstd! { vstd => #vstd::tokens::IMapToken<#key, #val, #tok> })
+        }
 
         ShardableType::Set(t) | ShardableType::PersistentSet(t) => {
             Type::Verbatim(quote_vstd! { vstd => #vstd::tokens::SetToken<#t, #tok> })
+        }
+        ShardableType::ISet(t) | ShardableType::PersistentISet(t) => {
+            Type::Verbatim(quote_vstd! { vstd => #vstd::tokens::ISetToken<#t, #tok> })
         }
 
         ShardableType::Multiset(t) => {
@@ -1871,7 +1961,7 @@ fn token_matches_elt(
     token_is_ref: bool,
     token_name: &Ident,
     elt: &MonoidElt,
-    pat_opt: &Option<Pat>,
+    pat_opt: &Option<Box<Pat>>,
     ctxt: &Ctxt,
     field: &Field,
     output: bool,
@@ -1954,7 +2044,7 @@ fn translate_special_condition(
     span: Span,
     field: &Field,
     op: &SpecialOp,
-    pat_opt: &Option<Pat>,
+    pat_opt: &Option<Box<Pat>>,
     errors: &mut Vec<Error>,
 ) -> Option<TransitionStmt> {
     match op {
@@ -2169,7 +2259,7 @@ fn translate_elt(
         MonoidElt::SingletonKV(e1, Some(e2)) => {
             let e1 = translate_expr(ctxt, e1, birds_eye, errors);
             let e2 = translate_expr(ctxt, e2, birds_eye, errors);
-            MonoidElt::SingletonKV(e1, Some(e2))
+            MonoidElt::SingletonKV(e1, Some(Box::new(e2)))
         }
         MonoidElt::True => MonoidElt::True,
         MonoidElt::General(e) => {
@@ -2193,8 +2283,8 @@ fn translate_value_expr(
         MonoidElt::OptionSome(Some(e))
         | MonoidElt::General(e)
         | MonoidElt::SingletonMultiset(e)
-        | MonoidElt::SingletonSet(e)
-        | MonoidElt::SingletonKV(_, Some(e)) => Some(translate_expr(ctxt, e, birds_eye, errors)),
+        | MonoidElt::SingletonSet(e) => Some(translate_expr(ctxt, e, birds_eye, errors)),
+        MonoidElt::SingletonKV(_, Some(e)) => Some(translate_expr(ctxt, e, birds_eye, errors)),
         MonoidElt::OptionSome(None) | MonoidElt::SingletonKV(_, None) => None,
         MonoidElt::True => {
             // bool is not supported for storage types.
@@ -2219,7 +2309,6 @@ fn translate_value_expr(
 ///    _out_ parameters. Previous well-formedness checks (`check_birds_eye`) should ensure
 ///    that this will only happen in contexts that will ultimately appears in the
 ///    post-conditions, never pre-conditions.
-
 #[must_use]
 fn translate_expr(ctxt: &Ctxt, expr: &Expr, birds_eye: bool, errors: &mut Vec<Error>) -> Expr {
     let mut expr = expr.clone();
@@ -2337,7 +2426,7 @@ fn get_new_field_value(field: &Field) -> Expr {
 enum PrequelElement {
     AssertCondition(Expr),
     Condition(Expr),
-    Let(Pat, Option<Type>, Expr),
+    Let(Box<Pat>, Option<Box<Type>>, Expr),
     Match(Expr, Vec<Arm>, usize),
 }
 
@@ -2355,57 +2444,59 @@ fn exchange_collect(
             }
             Ok(p)
         }
-        TransitionStmt::Split(_span, SplitKind::Let(pat, ty, _lk, init_e), es) => {
-            assert!(es.len() == 1);
-            let child = &es[0];
+        TransitionStmt::Split(_span, split_kind, es) => match &**split_kind {
+            SplitKind::Let(pat, ty, _lk, init_e) => {
+                assert!(es.len() == 1);
+                let child = &es[0];
 
-            let mut p = prequel.clone();
-            p.push(PrequelElement::Let(pat.clone(), ty.clone(), init_e.clone()));
-            let _ = exchange_collect(ctxt, child, p);
+                let mut p = prequel.clone();
+                p.push(PrequelElement::Let(pat.clone(), ty.clone(), init_e.clone()));
+                let _ = exchange_collect(ctxt, child, p);
 
-            let mut prequel = prequel;
-            if let Some(e) = asserts_to_single_predicate(ts) {
-                prequel.push(PrequelElement::AssertCondition(Expr::Verbatim(e)));
+                let mut prequel = prequel;
+                if let Some(e) = asserts_to_single_predicate(ts) {
+                    prequel.push(PrequelElement::AssertCondition(Expr::Verbatim(e)));
+                }
+                Ok(prequel)
             }
-            Ok(prequel)
-        }
-        TransitionStmt::Split(_span, SplitKind::If(cond_e), es) => {
-            assert!(es.len() == 2);
+            SplitKind::If(cond_e) => {
+                assert!(es.len() == 2);
 
-            let cond = PrequelElement::Condition(cond_e.clone());
-            let not_cond = PrequelElement::Condition(bool_not_expr(cond_e));
+                let cond = PrequelElement::Condition(cond_e.clone());
+                let not_cond = PrequelElement::Condition(bool_not_expr(cond_e));
 
-            let mut p1 = prequel.clone();
-            p1.push(cond);
-            let _ = exchange_collect(ctxt, &es[0], p1)?;
-
-            let mut p2 = prequel.clone();
-            p2.push(not_cond);
-            let _ = exchange_collect(ctxt, &es[1], p2)?;
-
-            let mut prequel = prequel;
-            if let Some(e) = asserts_to_single_predicate(ts) {
-                prequel.push(PrequelElement::AssertCondition(Expr::Verbatim(e)));
-            }
-            Ok(prequel)
-        }
-        TransitionStmt::Split(_span, SplitKind::Match(match_e, arms), es) => {
-            assert!(arms.len() == es.len());
-            for i in 0..arms.len() {
-                let elem = PrequelElement::Match(match_e.clone(), arms.clone(), i);
                 let mut p1 = prequel.clone();
-                p1.push(elem);
-                let _ = exchange_collect(ctxt, &es[i], p1)?;
+                p1.push(cond);
+                let _ = exchange_collect(ctxt, &es[0], p1)?;
+
+                let mut p2 = prequel.clone();
+                p2.push(not_cond);
+                let _ = exchange_collect(ctxt, &es[1], p2)?;
+
+                let mut prequel = prequel;
+                if let Some(e) = asserts_to_single_predicate(ts) {
+                    prequel.push(PrequelElement::AssertCondition(Expr::Verbatim(e)));
+                }
+                Ok(prequel)
             }
-            let mut prequel = prequel;
-            if let Some(e) = asserts_to_single_predicate(ts) {
-                prequel.push(PrequelElement::AssertCondition(Expr::Verbatim(e)));
+            SplitKind::Match(match_e, arms) => {
+                assert!(arms.len() == es.len());
+                for i in 0..arms.len() {
+                    let elem = PrequelElement::Match(match_e.clone(), arms.clone(), i);
+                    let mut p1 = prequel.clone();
+                    p1.push(elem);
+                    let _ = exchange_collect(ctxt, &es[i], p1)?;
+                }
+                let mut prequel = prequel;
+                if let Some(e) = asserts_to_single_predicate(ts) {
+                    prequel.push(PrequelElement::AssertCondition(Expr::Verbatim(e)));
+                }
+                Ok(prequel)
             }
-            Ok(prequel)
-        }
-        TransitionStmt::Split(_span, SplitKind::Special(..), _) => {
-            panic!("should have been removed in preprocessing");
-        }
+            SplitKind::Special(..) => {
+                panic!("should have been removed in preprocessing");
+            }
+        },
         TransitionStmt::Require(_span, req_e) => {
             ctxt.requires.push(with_prequel(&prequel, true, req_e.clone()));
             Ok(prequel)
@@ -2479,7 +2570,6 @@ fn with_prequel(pre: &Vec<PrequelElement>, include_assert_conditions: bool, e: E
 /// it doesn't matter. Updates to a NotTokenized field aren't observed by the exchange method.
 /// (Also, if there's just any dead code for any other reason, that will also get pruned
 /// as a byproduct.)
-
 fn prune_irrelevant_ops(ctxt: &Ctxt, ts: TransitionStmt) -> TransitionStmt {
     let span = ts.get_span().clone();
     match prune_irrelevant_ops_rec(ctxt, ts) {
@@ -2499,13 +2589,8 @@ fn prune_irrelevant_ops_rec(ctxt: &Ctxt, ts: TransitionStmt) -> Option<Transitio
             let pruned_splits: Vec<Option<TransitionStmt>> =
                 splits.into_iter().map(|split| prune_irrelevant_ops_rec(ctxt, split)).collect();
 
-            let mut is_nontrivial = pruned_splits.iter().any(|s| s.is_some());
-            match split_kind {
-                SplitKind::Special(..) => {
-                    is_nontrivial = true;
-                }
-                SplitKind::Let(..) | SplitKind::If(..) | SplitKind::Match(..) => {}
-            }
+            let is_nontrivial = matches!(*split_kind, SplitKind::Special(..))
+                || pruned_splits.iter().any(|s| s.is_some());
 
             if !is_nontrivial {
                 None
@@ -2561,7 +2646,6 @@ fn prune_irrelevant_ops_rec(ctxt: &Ctxt, ts: TransitionStmt) -> Option<Transitio
 /// so it can be used for initialization as well.
 ///
 /// Ignores all special ops.
-
 fn get_post_value_for_variable(ctxt: &Ctxt, ts: &TransitionStmt, field: &Field) -> Option<Expr> {
     match ts {
         TransitionStmt::Block(_span, v) => {
@@ -2588,7 +2672,7 @@ fn get_post_value_for_variable(ctxt: &Ctxt, ts: &TransitionStmt, field: &Field) 
                         Some(e) => e,
                     })
                     .collect();
-                match split_kind {
+                match &**split_kind {
                     SplitKind::If(cond_e) => {
                         assert!(cases.len() == 2);
                         let e1 = &cases[0];
@@ -2623,7 +2707,7 @@ fn get_post_value_for_variable(ctxt: &Ctxt, ts: &TransitionStmt, field: &Field) 
             panic!("sub-update not supported here");
         }
         TransitionStmt::Initialize(_span, id, e) | TransitionStmt::Update(_span, id, e) => {
-            if *id.to_string() == *field.name.to_string() { Some(e.clone()) } else { None }
+            if *id == *field.name.to_string() { Some(e.clone()) } else { None }
         }
         TransitionStmt::Require(..)
         | TransitionStmt::Assert(..)
@@ -2640,48 +2724,52 @@ fn asserts_to_single_predicate(ts: &TransitionStmt) -> Option<TokenStream> {
             }
             o
         }
-        TransitionStmt::Split(_span, SplitKind::Let(pat, ty, _, e), es) => {
-            let ty_tokens = match ty {
-                None => TokenStream::new(),
-                Some(ty) => quote! { : #ty },
-            };
-            assert!(es.len() == 1);
-            let child = &es[0];
-            match asserts_to_single_predicate(child) {
-                None => None,
-                Some(r) => Some(quote! { { let #pat #ty_tokens = #e; #r } }),
-            }
-        }
-        TransitionStmt::Split(_span, SplitKind::If(cond), es) => {
-            assert!(es.len() == 2);
-            let x1 = asserts_to_single_predicate(&es[0]);
-            let x2 = asserts_to_single_predicate(&es[1]);
-            match (x1, x2) {
-                (None, None) => None,
-                (Some(e1), None) => Some(quote_vstd! { vstd => #vstd::prelude::imply(#cond, #e1) }),
-                (None, Some(e2)) => {
-                    Some(quote_vstd! { vstd => #vstd::prelude::imply(!(#cond), #e2) })
+        TransitionStmt::Split(span, split_kind, es) => match &**split_kind {
+            SplitKind::Let(pat, ty, _, e) => {
+                let ty_tokens = match ty {
+                    None => TokenStream::new(),
+                    Some(ty) => quote! { : #ty },
+                };
+                assert!(es.len() == 1);
+                let child = &es[0];
+                match asserts_to_single_predicate(child) {
+                    None => None,
+                    Some(r) => Some(quote! { { let #pat #ty_tokens = #e; #r } }),
                 }
-                (Some(e1), Some(e2)) => Some(quote! { if #cond { #e1 } else { #e2 } }),
             }
-        }
-        TransitionStmt::Split(span, SplitKind::Match(match_e, arms), es) => {
-            let opts: Vec<Option<TokenStream>> =
-                es.iter().map(|e| asserts_to_single_predicate(e)).collect();
-            if opts.iter().any(|o| o.is_some()) {
-                let cases = opts
-                    .into_iter()
-                    .map(|opt_t| Expr::Verbatim(opt_t.unwrap_or(quote! {true})))
-                    .collect();
-                let m = emit_match(*span, match_e, arms, &cases);
-                Some(quote! {#m})
-            } else {
-                None
+            SplitKind::If(cond) => {
+                assert!(es.len() == 2);
+                let x1 = asserts_to_single_predicate(&es[0]);
+                let x2 = asserts_to_single_predicate(&es[1]);
+                match (x1, x2) {
+                    (None, None) => None,
+                    (Some(e1), None) => {
+                        Some(quote_vstd! { vstd => #vstd::prelude::imply(#cond, #e1) })
+                    }
+                    (None, Some(e2)) => {
+                        Some(quote_vstd! { vstd => #vstd::prelude::imply(!(#cond), #e2) })
+                    }
+                    (Some(e1), Some(e2)) => Some(quote! { if #cond { #e1 } else { #e2 } }),
+                }
             }
-        }
-        TransitionStmt::Split(_span, SplitKind::Special(..), _es) => {
-            panic!("Special should have been translated out");
-        }
+            SplitKind::Match(match_e, arms) => {
+                let opts: Vec<Option<TokenStream>> =
+                    es.iter().map(|e| asserts_to_single_predicate(e)).collect();
+                if opts.iter().any(|o| o.is_some()) {
+                    let cases = opts
+                        .into_iter()
+                        .map(|opt_t| Expr::Verbatim(opt_t.unwrap_or(quote! {true})))
+                        .collect();
+                    let m = emit_match(*span, match_e, arms, &cases);
+                    Some(quote! {#m})
+                } else {
+                    None
+                }
+            }
+            SplitKind::Special(..) => {
+                panic!("Special should have been translated out");
+            }
+        },
         TransitionStmt::Assert(_span, e, _) => Some(quote_spanned! { e.span() => (#e) }),
         TransitionStmt::PostCondition(..)
         | TransitionStmt::Require(..)

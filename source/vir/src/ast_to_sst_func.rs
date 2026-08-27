@@ -1,26 +1,29 @@
 use crate::ast::{
-    Expr, ExprX, Fun, Function, FunctionKind, Ident, ItemKind, MaskSpec, Mode, Param, ParamX,
-    Params, Path, PlaceX, SpannedTyped, Typ, TypX, UnaryOp, UnwindSpec, VarBinder, VarBinderX,
-    VarIdent, VirErr,
+    AutospecUsage, CallTarget, CrateId, DeclProph, Expr, ExprX, Fun, Function, FunctionKind, Ident,
+    ItemKind, MaskSpec, Mode, Param, ParamX, Params, Path, PlaceX, SpannedTyped, StmtX, Typ, TypX,
+    UnaryOp, UnwindSpec, VarBinder, VarBinderX, VarIdent, VirErr,
 };
 use crate::ast_to_sst::{
-    FinalState, State, expr_to_bind_decls_exp_skip_checks, expr_to_exp_skip_checks,
-    expr_to_one_stm_with_post, expr_to_pure_exp_check, expr_to_pure_exp_check_with_typ_substs,
-    expr_to_pure_exp_skip_checks, expr_to_stm_opt, expr_to_stm_or_error, stms_to_one_stm,
+    FinalState, PreLocalDeclKind, State, expr_to_bind_decls_exp_skip_checks,
+    expr_to_exp_skip_checks, expr_to_one_stm_with_post, expr_to_pure_exp_check,
+    expr_to_pure_exp_check_with_typ_substs, expr_to_pure_exp_skip_checks, expr_to_stm_opt,
+    expr_to_stm_or_error, stms_to_one_stm,
 };
 use crate::ast_util::{is_body_visible_to, unit_typ};
-use crate::ast_visitor;
 use crate::context::{Ctx, FunctionCtx};
 use crate::def::{Spanned, unique_local};
 use crate::inv_masks::MaskSet;
 use crate::messages::{Message, error};
-use crate::sst::{BndX, Exp, ExpX, Exps, LocalDeclKind, Par, ParPurpose, ParX, Pars, Stm, StmX};
+use crate::sst::{
+    BndX, CallFun, Exp, ExpX, Exps, LocalDeclKind, Par, ParPurpose, ParX, Pars, Stm, StmX,
+};
 use crate::sst::{
     FuncAxiomsSst, FuncCheckSst, FuncDeclSst, FuncSpecBodySst, FunctionSst, FunctionSstHas,
     FunctionSstX, PostConditionKind, PostConditionSst, UnwindSst,
 };
-use crate::sst_util::subst_exp;
-use crate::util::vec_map;
+use crate::sst_util::{sst_equal, subst_exp};
+use crate::util::{vec_map, vec_map_result};
+use crate::{ast_visitor, fun};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -93,55 +96,28 @@ pub fn mk_fun_ctx<F: FunctionCommon>(
     mk_fun_ctx_dec(f, checking_spec_preconditions, false)
 }
 
-pub(crate) fn param_to_par(param: &Param, allow_is_mut: bool) -> Par {
+pub(crate) fn param_to_par(param: &Param) -> Par {
     param.map_x(|p| {
-        let ParamX { name, typ, mode, is_mut, unwrapped_info: _ } = p;
-        if *is_mut && !allow_is_mut {
-            panic!("mut unexpected here");
-        }
-        ParX {
-            name: name.clone(),
-            typ: typ.clone(),
-            mode: *mode,
-            is_mut: *is_mut,
-            purpose: ParPurpose::Regular,
-        }
+        let ParamX { name, typ, mode, user_mut: _, unwrapped_info: _ } = p;
+        ParX { name: name.clone(), typ: typ.clone(), mode: *mode, purpose: ParPurpose::Regular }
     })
 }
 
-pub(crate) fn params_to_pars(params: &Params, allow_is_mut: bool) -> Pars {
-    Arc::new(vec_map(params, |p| param_to_par(p, allow_is_mut)))
+pub(crate) fn params_to_pars(params: &Params) -> Pars {
+    Arc::new(vec_map(params, |p| param_to_par(p)))
 }
 
-pub(crate) fn params_to_pre_post_pars(params: &Params, pre: bool) -> Pars {
+pub(crate) fn params_to_pre_post_pars(params: &Params) -> Pars {
     Arc::new(
         params
             .iter()
-            .flat_map(|param| {
-                let mut res = Vec::new();
-                if param.x.is_mut {
-                    res.push(param.map_x(|p| ParX {
-                        name: p.name.clone(),
-                        typ: p.typ.clone(),
-                        mode: p.mode,
-                        is_mut: p.is_mut,
-                        purpose: ParPurpose::MutPre,
-                    }));
-                }
-                if !(param.x.is_mut && pre) {
-                    res.push(param.map_x(|p| ParX {
-                        name: p.name.clone(),
-                        typ: p.typ.clone(),
-                        mode: p.mode,
-                        is_mut: p.is_mut,
-                        purpose: if param.x.is_mut {
-                            ParPurpose::MutPost
-                        } else {
-                            ParPurpose::Regular
-                        },
-                    }));
-                }
-                res
+            .map(|param| {
+                param.map_x(|p| ParX {
+                    name: p.name.clone(),
+                    typ: p.typ.clone(),
+                    mode: p.mode,
+                    purpose: ParPurpose::Regular,
+                })
             })
             .collect::<Vec<_>>(),
     )
@@ -154,7 +130,7 @@ fn func_body_to_sst(
     body: &Expr,
     verifying_owning_bucket: bool,
 ) -> Result<FuncSpecBodySst, VirErr> {
-    let pars = params_to_pars(&function.x.params, false);
+    let pars = params_to_pars(&function.x.params);
 
     // ast --> sst
     let mut state = State::new(diagnostics);
@@ -164,7 +140,7 @@ fn func_body_to_sst(
     // because spec precondition checking is performed as a separate query
     let body_exp = expr_to_pure_exp_skip_checks(&ctx, &mut state, &body)?;
     let body_exp = state.finalize_exp(ctx, &body_exp)?;
-    state.finalize();
+    state.finalize()?;
 
     // Check termination and/or recommends
     let scc_rep = ctx
@@ -222,12 +198,12 @@ fn func_body_to_sst(
     let mut proof_body_stms: Vec<Stm> = Vec::new();
     for expr in proof_body {
         let (mut stms, exp) = expr_to_stm_opt(ctx, &mut check_state, &expr)?;
-        assert!(!matches!(exp, crate::ast_to_sst::ReturnValue::Never));
+        assert!(!matches!(exp, crate::ast_to_sst::Maybe::Never));
         proof_body_stms.append(&mut stms);
     }
     let proof_body_stm = stms_to_one_stm(&body.span, proof_body_stms);
     let proof_body_stm = check_state.finalize_stm(ctx, &proof_body_stm)?;
-    let FinalState { local_decls, statics: _ } = check_state.finalize();
+    let FinalState { local_decls, statics: _ } = check_state.finalize()?;
 
     let is_recursive = crate::recursion::fun_is_recursive(ctx, function);
     let termination_check = if is_recursive && verifying_owning_bucket {
@@ -276,6 +252,149 @@ fn func_body_to_sst(
     Ok(FuncSpecBodySst { decrease_when, termination_check, body_exp })
 }
 
+fn rewrite_async_ens_vir(function: &Function, specs: &Vec<Expr>) -> Result<Vec<Expr>, VirErr> {
+    let mut exprs: Vec<Expr> = Vec::new();
+
+    for e in specs {
+        let call_target_attrs = crate::ast::CallTargetAttrs {
+            autospec: AutospecUsage::Final,
+            const_var: false,
+            assume_external_allowed: false,
+        };
+        let awaited_call = SpannedTyped::new(
+            &e.span,
+            &Arc::new(TypX::Bool),
+            ExprX::Call {
+                target: CallTarget::Fun(
+                    crate::ast::CallTargetKind::Dynamic,
+                    fun!(CrateId::Vstd => "future", "FutureAdditionalSpecFns", "awaited"),
+                    Arc::new(vec![
+                        function
+                            .x
+                            .async_ret
+                            .as_ref()
+                            .expect("async function has no return type")
+                            .x
+                            .typ
+                            .clone(),
+                        function.x.ret.x.typ.clone(),
+                    ]),
+                    Arc::new(vec![crate::ast::ImplPath::TraitImplPath(
+                        crate::def::prefix_spec_fn_type(0),
+                    )]),
+                    call_target_attrs.clone(),
+                ),
+                args: Arc::new(vec![SpannedTyped::new(
+                    &e.span,
+                    &function
+                        .x
+                        .async_ret
+                        .as_ref()
+                        .expect("async function has no return type")
+                        .x
+                        .typ
+                        .clone(),
+                    ExprX::Var(
+                        function
+                            .x
+                            .async_ret
+                            .as_ref()
+                            .expect("async function has no return type")
+                            .x
+                            .name
+                            .clone(),
+                    ),
+                )]),
+                post_args: None,
+                body: None,
+            },
+        );
+        let view_call = SpannedTyped::new(
+            &e.span,
+            &function.x.ret.x.typ,
+            PlaceX::Temporary(SpannedTyped::new(
+                &e.span,
+                &function.x.ret.x.typ,
+                ExprX::Call {
+                    target: CallTarget::Fun(
+                        crate::ast::CallTargetKind::Dynamic,
+                        fun!(CrateId::Vstd => "future", "FutureAdditionalSpecFns", "view"),
+                        Arc::new(vec![
+                            function
+                                .x
+                                .async_ret
+                                .as_ref()
+                                .expect("async function has no return type")
+                                .x
+                                .typ
+                                .clone(),
+                            function.x.ret.x.typ.clone(),
+                        ]),
+                        Arc::new(vec![crate::ast::ImplPath::TraitImplPath(
+                            crate::def::prefix_spec_fn_type(0),
+                        )]),
+                        call_target_attrs,
+                    ),
+                    args: Arc::new(vec![SpannedTyped::new(
+                        &e.span,
+                        &function
+                            .x
+                            .async_ret
+                            .as_ref()
+                            .expect("async function has no return type")
+                            .x
+                            .typ
+                            .clone(),
+                        ExprX::Var(
+                            function
+                                .x
+                                .async_ret
+                                .as_ref()
+                                .expect("async function has no return type")
+                                .x
+                                .name
+                                .clone(),
+                        ),
+                    )]),
+                    post_args: None,
+                    body: None,
+                },
+            )),
+        );
+        let block = SpannedTyped::new(
+            &e.span,
+            &e.typ,
+            ExprX::Block(
+                Arc::new(vec![Spanned::new(
+                    e.span.clone(),
+                    StmtX::Decl {
+                        pattern: SpannedTyped::new(
+                            &e.span,
+                            &function.x.ret.x.typ,
+                            crate::ast::PatternX::Var(crate::ast::PatternBinding {
+                                name: function.x.ret.x.name.clone(),
+                                by_ref: crate::ast::ByRef::No,
+                                typ: function.x.ret.x.typ.clone(),
+                                user_mut: None,
+                                copy: false,
+                            }),
+                        ),
+                        mode: Some((Mode::Exec, DeclProph::Default)),
+                        init: Some(view_call),
+                        els: None,
+                        assert_irrefutable: false,
+                    },
+                )]),
+                Some(e.clone()),
+            ),
+        );
+        let imply = crate::ast_util::mk_implies(&e.span, &awaited_call, &block);
+        exprs.push(imply);
+    }
+
+    Ok(exprs)
+}
+
 fn req_ens_to_sst(
     ctx: &Ctx,
     diagnostics: &impl air::messages::Diagnostics,
@@ -283,15 +402,28 @@ fn req_ens_to_sst(
     specs: &Vec<Expr>,
     pre: bool,
 ) -> Result<(Pars, Vec<Exp>), VirErr> {
-    let mut pars = params_to_pre_post_pars(&function.x.params, pre);
+    let mut pars = params_to_pre_post_pars(&function.x.params);
     let pars_mut = Arc::make_mut(&mut pars);
     if !pre && matches!(function.x.mode, Mode::Exec | Mode::Proof) && function.x.ens_has_return {
-        pars_mut.push(param_to_par(&function.x.ret, false));
+        if !function.x.attrs.is_async {
+            pars_mut.push(param_to_par(&function.x.ret));
+        } else {
+            pars_mut.push(param_to_par(
+                &function.x.async_ret.as_ref().expect("Async function has no return type"),
+            ));
+        }
     }
     let mut exps: Vec<Exp> = Vec::new();
+
+    let specs = if function.x.attrs.is_async && !pre {
+        &rewrite_async_ens_vir(function, specs)?
+    } else {
+        specs
+    };
+
     for e in specs.iter() {
         // Use expr_to_exp_skip_checks because we check req/ens in body
-        let exp = expr_to_exp_skip_checks(ctx, diagnostics, &pars, e)?;
+        let exp = expr_to_exp_skip_checks(ctx, diagnostics, &pars, &e)?;
         exps.push(exp);
     }
     Ok((pars, exps))
@@ -346,7 +478,7 @@ pub fn func_decl_to_sst(
             let mut state = State::new(diagnostics);
             let exp = expr_to_pure_exp_skip_checks(ctx, &mut state, fndef_axiom)?;
             let exp = state.finalize_exp(ctx, &exp)?;
-            state.finalize();
+            state.finalize()?;
 
             // Add forall-binders for each type param
             // The fndef_axiom should already be a 'forall' statement
@@ -441,7 +573,7 @@ pub fn func_axioms_to_sst(
                 assert!(function.x.ensure.1.len() == 0);
                 let ens = crate::ast_util::conjoin(span, &*function.x.ensure.0);
                 let req_ens = crate::ast_util::mk_implies(span, &req, &ens);
-                let params = params_to_pre_post_pars(&function.x.params, false);
+                let params = params_to_pre_post_pars(&function.x.params);
                 // Use expr_to_bind_decls_exp_skip_checks, skipping checks on req_ens,
                 // because the requires/ensures are checked when the function itself is checked
                 let exp = expr_to_bind_decls_exp_skip_checks(ctx, diagnostics, &params, &req_ens)?;
@@ -465,9 +597,6 @@ pub(crate) fn map_expr_rename_vars(
         &|expr| {
             Ok(match &expr.x {
                 ExprX::Var(i) => expr.new_x(ExprX::Var(param_renames.get(i).unwrap_or(i).clone())),
-                ExprX::VarLoc(i) => {
-                    expr.new_x(ExprX::VarLoc(param_renames.get(i).unwrap_or(i).clone()))
-                }
                 ExprX::VarAt(i, at) => {
                     expr.new_x(ExprX::VarAt(param_renames.get(i).unwrap_or(i).clone(), *at))
                 }
@@ -632,17 +761,11 @@ impl MaskSpec {
     ) -> Result<MaskSet, VirErr> {
         let mask_set = match self {
             MaskSpec::InvariantOpens(span, exprs) => {
-                let mut exps = vec![];
-                for expr in exprs.iter() {
-                    exps.push(f(expr)?);
-                }
+                let exps = vec_map_result(&exprs, f)?;
                 MaskSet::from_list(&exps, &span)
             }
             MaskSpec::InvariantOpensExcept(span, exprs) => {
-                let mut exps = vec![];
-                for expr in exprs.iter() {
-                    exps.push(f(expr)?);
-                }
+                let exps = vec_map_result(&exprs, f)?;
                 MaskSet::from_list_complement(&exps, &span)
             }
             MaskSpec::InvariantOpensSet(expr) => {
@@ -702,22 +825,49 @@ pub fn func_def_to_sst(
     let dest = if function.x.ens_has_return {
         let ParamX { name, typ, .. } = &function.x.ret.x;
         ens_params.push(function.x.ret.clone());
-        state.declare_var_stm(name, typ, LocalDeclKind::Return, false);
+        state.declare_imm_var_stm(name, typ, LocalDeclKind::Return, false);
         Some(unique_local(name))
     } else {
         None
     };
     let ens_params = Arc::new(ens_params);
-    let ens_pars = params_to_pars(&ens_params, true);
+    let ens_pars = params_to_pars(&ens_params);
 
     for param in function.x.params.iter() {
-        state.declare_var_stm(
-            &param.x.name,
-            &param.x.typ,
-            LocalDeclKind::Param { mutable: param.x.is_mut },
-            false,
-        );
+        state.declare_var_stm(&param.x.name, &param.x.typ, PreLocalDeclKind::Param, false);
     }
+
+    // When emitting an expression that refers to input variables, but which is embedded
+    // in the body of the function, we need to redirect to the pre-snapshot version of the variable.
+    // Specifically, we need to do this for any variable that isn't an old-style mut ref param.
+    // Collect all such vars here.
+    let mut params_to_use_pre = HashSet::<VarIdent>::new();
+    for param in function.x.params.iter() {
+        params_to_use_pre.insert(param.x.name.clone());
+    }
+    // We need to perform this translation on:
+    //  - Postcondition
+    //  - Unwind specs
+    //  - Mask specs
+    // Note: Requires only appear at the beginning
+    // Note: Decreases are handled by a different mechanism
+    //
+    // We also skip for bitvector, since the bitvector code doesn't handle VarAt.
+    // This is ok since bitvector functions don't have bodies so they can't have assignments.
+    let exp_pre = |exp: &Exp| {
+        if function.x.attrs.bit_vector {
+            exp.clone()
+        } else {
+            crate::sst_util::exp_with_vars_at_pre_state(exp, &params_to_use_pre)
+        }
+    };
+    let stm_pre = |stm: &Stm| {
+        if function.x.attrs.bit_vector {
+            stm.clone()
+        } else {
+            crate::sst_util::stm_with_vars_at_pre_state(stm, &params_to_use_pre)
+        }
+    };
 
     // This is used for lowering expressions from the function
     let lo_current = Lowerer::current(&function, &ens_pars, diagnostics);
@@ -754,9 +904,70 @@ pub fn func_def_to_sst(
 
     // Inv mask: take from trait method if it exists
     let mask_ast = specs_function.x.mask_spec_or_default(&specs_function.span);
-    let mask_sst = mask_ast
-        .map_to_sst(&mut |expr| lo_specs.lower_pure(ctx, &mut state, expr, &mut req_stms))?;
+    let mask_sst = mask_ast.map_to_sst(&mut |expr| {
+        Ok(exp_pre(&lo_specs.lower_pure(ctx, &mut state, expr, &mut req_stms)?))
+    })?;
     state.mask = Some(mask_sst);
+
+    // Atomic spec
+    let mut au_stms = Vec::new();
+    if let Some(au_expr) = &function.x.atomic_update {
+        let (mut stms, au_ret_val) = expr_to_stm_opt(ctx, &mut state, au_expr)?;
+        let au_exp: Exp = au_ret_val.expect_exp();
+        let span = au_exp.span.clone();
+
+        let param_exps = function
+            .x
+            .params
+            .split_last()
+            .map(|(_, s)| s)
+            .unwrap_or_default()
+            .iter()
+            .map(|param| {
+                let var = ExpX::Var(param.x.name.clone());
+                let exp = SpannedTyped::new(&span, &param.x.typ, var);
+                exp_pre(&exp)
+            })
+            .collect::<Vec<Exp>>();
+
+        let param_tuple = match param_exps.len() {
+            1 => param_exps.into_iter().next().unwrap(),
+            _ => crate::sst_util::sst_tuple(&span, &Arc::new(param_exps)),
+        };
+
+        let TypX::Datatype(_, au_typ_args, _) = au_exp.typ.as_ref() else {
+            panic!("atomic update should be a datatype")
+        };
+
+        let [.., pred_typ] = au_typ_args.as_slice() else {
+            panic!("atomic update should have type arguments")
+        };
+
+        let call_pred = SpannedTyped::new(
+            &span,
+            &pred_typ,
+            ExpX::Call(
+                CallFun::Fun(crate::def::fn_au_pred(), None),
+                au_typ_args.clone(),
+                Arc::new(vec![au_exp.clone()]),
+            ),
+        );
+
+        let call_pred_args = SpannedTyped::new(
+            &span,
+            &param_tuple.typ,
+            ExpX::Call(
+                CallFun::Fun(crate::def::fn_pred_args(), None),
+                Arc::new(vec![pred_typ.clone(), param_tuple.typ.clone()]),
+                Arc::new(vec![call_pred]),
+            ),
+        );
+
+        let spec_eq = sst_equal(&span, &call_pred_args, &param_tuple);
+        stms.push(Spanned::new(span, StmX::Assume(spec_eq)));
+        state.au_var_exp_to_resolve = Some(au_exp);
+        au_stms = stms;
+    }
 
     // Unwind spec: take from trait method if it exists
     let unwind_ast = specs_function.x.unwind_spec_or_default();
@@ -783,7 +994,7 @@ pub fn func_def_to_sst(
             )?;
             if !ctx.checking_spec_preconditions() {
                 let exp = crate::heuristics::maybe_insert_auto_ext_equal(ctx, &exp, |x| x.ensures);
-                enss.push(exp);
+                enss.push(exp_pre(&exp));
             }
         }
     }
@@ -791,7 +1002,7 @@ pub fn func_def_to_sst(
         let exp = lo_current.lower_pure(ctx, &mut state, expr, &mut ens_spec_precondition_stms)?;
         if !ctx.checking_spec_preconditions() {
             let exp = crate::heuristics::maybe_insert_auto_ext_equal(ctx, &exp, |x| x.ensures);
-            enss.push(exp);
+            enss.push(exp_pre(&exp));
         }
     }
 
@@ -801,7 +1012,11 @@ pub fn func_def_to_sst(
     }
 
     // AST --> SST
-    let mut stm = expr_to_one_stm_with_post(&ctx, &mut state, &body, &function.span)?;
+    let mut stm = expr_to_one_stm_with_post(ctx, &mut state, &body, &function.span)?;
+
+    // Add atomic spec related statements
+    au_stms.push(stm);
+    stm = stms_to_one_stm(&body.span, au_stms);
 
     // TODO handle via the Lowerer
     if ctx.checking_spec_preconditions() && !inherit {
@@ -814,15 +1029,19 @@ pub fn func_def_to_sst(
             )?;
             req_stms.extend(body_stms);
         }
+    }
+    if ctx.checking_spec_preconditions() {
         req_stms.push(stm);
         stm = stms_to_one_stm(&body.span, req_stms);
     }
 
     let stm = state.finalize_stm(&ctx, &stm)?;
-    let ens_spec_precondition_stms: Result<Vec<_>, _> =
-        ens_spec_precondition_stms.iter().map(|s| state.finalize_stm(&ctx, &s)).collect();
+    let ens_spec_precondition_stms: Result<Vec<_>, VirErr> = ens_spec_precondition_stms
+        .iter()
+        .map(|s| Ok(stm_pre(&state.finalize_stm(&ctx, &s)?)))
+        .collect();
     let ens_spec_precondition_stms = ens_spec_precondition_stms?;
-    let unwind_sst = unwind_sst.map(&|e| state.finalize_exp(&ctx, e))?;
+    let unwind_sst = unwind_sst.map(&|e| Ok(exp_pre(&state.finalize_exp(&ctx, e)?)))?;
 
     // Check termination
     let exec_with_no_termination_check = function.x.mode == Mode::Exec
@@ -843,7 +1062,7 @@ pub fn func_def_to_sst(
             )?
         };
 
-    let FinalState { mut local_decls, statics } = state.finalize();
+    let FinalState { mut local_decls, statics } = state.finalize()?;
 
     // SST --> AIR
     for decl in decls {
@@ -894,8 +1113,8 @@ pub fn function_to_sst(
     )?;
     ctx.fun = None;
 
-    let exec_proof_check = match (function.x.mode, function.x.body.is_some(), function.x.item_kind)
-    {
+    let has_body = function.x.body.is_some();
+    let exec_proof_check = match (function.x.mode, has_body, function.x.item_kind) {
         (Mode::Exec | Mode::Proof, true, _) | (Mode::Spec, true, ItemKind::Const) => {
             ctx.fun = mk_fun_ctx(&function, false);
             let def = crate::ast_to_sst_func::func_def_to_sst(ctx, diagnostics, function, false)?;
@@ -908,7 +1127,7 @@ pub fn function_to_sst(
     let recommends_check = match function.x.mode {
         Mode::Spec if !verifying_owning_bucket => None,
         Mode::Spec if !is_recursive && !function.x.attrs.check_recommends => None,
-        _ if function.x.body.is_some() => {
+        _ if has_body => {
             // We eagerly generate SST for recommends_check even if we might not use it.
             // Experiments with veritas indicate that this generally causes < 1% overhead.
             ctx.fun = mk_fun_ctx(&function, true);
@@ -929,7 +1148,7 @@ pub fn function_to_sst(
     };
 
     let has = FunctionSstHas {
-        has_body: function.x.body.is_some(),
+        has_body,
         has_requires: function.x.require.len() > 0,
         has_ensures: function.x.ensure.0.len() + function.x.ensure.1.len() > 0,
         has_decrease: function.x.decrease.len() > 0,
@@ -947,8 +1166,8 @@ pub fn function_to_sst(
         opaqueness: function.x.opaqueness.clone(),
         typ_params: function.x.typ_params.clone(),
         typ_bounds: function.x.typ_bounds.clone(),
-        pars: params_to_pars(&function.x.params, true),
-        ret: param_to_par(&function.x.ret, true),
+        pars: params_to_pars(&function.x.params),
+        ret: param_to_par(&function.x.ret),
         ens_has_return: function.x.ens_has_return,
         item_kind: function.x.item_kind,
         attrs: function.x.attrs.clone(),
@@ -958,6 +1177,10 @@ pub fn function_to_sst(
         exec_proof_check,
         recommends_check,
         safe_api_check,
+        async_ret: match &function.x.async_ret {
+            Some(async_ret) => Some(param_to_par(async_ret)),
+            None => None,
+        },
     };
     Ok(function.new_x(functionx))
 }

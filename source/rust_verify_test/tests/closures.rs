@@ -44,7 +44,7 @@ test_verify_one_file! {
 
         proof fn testfun<A>(a: A, b: bool) {
             let aa = polytestfun(a, |x: A, y: A| (if b { x } else { y }));
-            assert(a === aa);
+            assert(a == aa);
         }
 
         spec fn specf(x: u32, f: spec_fn(u32) -> u32) -> u32 {
@@ -157,4 +157,12 @@ test_verify_one_file! {
             assert(y == 6);
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] return_in_closure verus_code! {
+        proof fn p(){
+            let _f = |x:int| -> int { return x; };
+        }
+    } => Err(err) => assert_vir_error_msg(err, "return is not allowed in pure context")
 }

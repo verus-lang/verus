@@ -243,6 +243,7 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test] any_returned ["-V check-api-safety"] => verus_code! {
+        use vstd::prelude::*;
         fn foo(y: u32)
             requires y > 0
         {
@@ -290,7 +291,7 @@ test_verify_one_file_with_options! {
             }
 
             fn exec_fn(t: &mut u64) -> (r: u8)
-                ensures Self::foo(*t, r) ==> *t == 8 && r == 20,
+                ensures Self::foo(*final(t), r) ==> *final(t) == 8 && r == 20,
             {
                 *t = 8;
                 20
@@ -307,7 +308,7 @@ test_verify_one_file_with_options! {
             }
 
             fn exec_fn(t: &mut u64) -> (r: u8)
-                ensures Self::foo(*t, r) ==> *t == 8 && r == 20,
+                ensures Self::foo(*final(t), r) ==> *final(t) == 8 && r == 20,
             {
                 *t = 8;
                 20
@@ -324,7 +325,7 @@ test_verify_one_file_with_options! {
             }
 
             fn exec_fn(t: &mut u64) -> (r: u8)
-                ensures Self::foo(*t, r) ==> *t == 8 && r == 20;
+                ensures Self::foo(*final(t), r) ==> *final(t) == 8 && r == 20;
         }
     } => Err(err) => assert_vir_error_msg(err, "Safe API violation: 'ensures' clause is nontrivial")
 }
@@ -337,7 +338,7 @@ test_verify_one_file_with_options! {
             }
 
             fn exec_fn(t: &mut u64) -> (r: u8)
-                ensures Self::foo(*t, r) ==> *t == 8 && r == 20;
+                ensures Self::foo(*final(t), r) ==> *final(t) == 8 && r == 20;
         }
     } => Ok(())
 }
@@ -345,12 +346,12 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] fancy_proof_fun_with_body_ok ["-V check-api-safety"] => verus_code! {
         pub trait Tr {
-            open spec fn foo(t: u64, r: u8) -> bool {
+            open spec fn foo(t: int, r: u8) -> bool {
                 false
             }
 
-            proof fn proof_fn(t: &mut u64) -> (r: u8)
-                ensures Self::foo(*t, r) ==> *t == 8 && r == 20,
+            proof fn proof_fn(tracked t: &mut int) -> (r: u8)
+                ensures Self::foo(*final(t), r) ==> *final(t) == 8 && r == 20,
             {
                 *t = 8;
                 20
@@ -362,12 +363,12 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] fancy_proof_fun_with_body_ok2 ["-V check-api-safety"] => verus_code! {
         pub trait Tr {
-            open spec fn foo(t: u64, r: u8) -> bool {
+            open spec fn foo(t: int, r: u8) -> bool {
                 t == 8 && r == 20
             }
 
-            proof fn proof_fn(t: &mut u64) -> (r: u8)
-                ensures Self::foo(*t, r) ==> *t == 8 && r == 20,
+            proof fn proof_fn(tracked t: &mut int) -> (r: u8)
+                ensures Self::foo(*final(t), r) ==> *final(t) == 8 && r == 20,
             {
                 *t = 8;
                 20
@@ -381,12 +382,12 @@ test_verify_one_file_with_options! {
         // The exec version of this fails, but it's okay for proof functions
 
         pub trait Tr {
-            open spec fn foo(t: u64, r: u8) -> bool {
+            open spec fn foo(t: int, r: u8) -> bool {
                 true
             }
 
-            proof fn proof_fn(t: &mut u64) -> (r: u8)
-                ensures Self::foo(*t, r) ==> *t == 8 && r == 20,
+            proof fn proof_fn(tracked t: &mut int) -> (r: u8)
+                ensures Self::foo(*final(t), r) ==> *final(t) == 8 && r == 20,
             {
                 *t = 8;
                 20
@@ -401,12 +402,12 @@ test_verify_one_file_with_options! {
         // for check-api-safety reasons.
 
         pub trait Tr {
-            open spec fn foo(t: u64, r: u8) -> bool {
+            open spec fn foo(t: int, r: u8) -> bool {
                 true
             }
 
-            proof fn proof_fn(t: &mut u64) -> (r: u8)
-                ensures Self::foo(*t, r) ==> *t == 8 && r == 20,
+            proof fn proof_fn(tracked t: &mut int) -> (r: u8)
+                ensures Self::foo(*final(t), r) ==> *final(t) == 8 && r == 20,
             {
                 *t = 8;
                 return 21; // FAILS
@@ -418,12 +419,12 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] fancy_proof_fun_without_body_fail ["-V check-api-safety"] => verus_code! {
         pub trait Tr {
-            open spec fn foo(t: u64, r: u8) -> bool {
+            open spec fn foo(t: int, r: u8) -> bool {
                 true
             }
 
-            proof fn proof_fn(t: &mut u64) -> (r: u8)
-                ensures Self::foo(*t, r) ==> *t == 8 && r == 20;
+            proof fn proof_fn(tracked t: &mut int) -> (r: u8)
+                ensures Self::foo(*final(t), r) ==> *final(t) == 8 && r == 20;
         }
     } => Err(err) => assert_vir_error_msg(err, "Safe API violation: 'ensures' clause is nontrivial")
 }
@@ -431,12 +432,12 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] fancy_proof_fun_without_body_ok ["-V check-api-safety"] => verus_code! {
         pub trait Tr {
-            open spec fn foo(t: u64, r: u8) -> bool {
+            open spec fn foo(t: int, r: u8) -> bool {
                 false
             }
 
-            proof fn proof_fn(t: &mut u64) -> (r: u8)
-                ensures Self::foo(*t, r) ==> *t == 8 && r == 20;
+            proof fn proof_fn(tracked t: &mut int) -> (r: u8)
+                ensures Self::foo(*final(t), r) ==> *final(t) == 8 && r == 20;
         }
     } => Ok(())
 }

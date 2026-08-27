@@ -1,14 +1,23 @@
 name: ci
 
 on:
-  push:
-    branches:
-      - 'main'
-
   workflow_dispatch:
+
+  merge_group:
 
   pull_request:
     types: [opened, synchronize, reopened]
+
+# Cancel a workflow iff the branch for the pull request got updated
+#
+# How:
+#   - This creates a concurrency group for workflow runs;
+#   - When the workflow runs, it cancels in-progress runs if the concurrency group is the same
+#   - The group names are ci-refs/pull/<PR #>/merge (in the case of PRs) and
+#     ci-refs/heads/gh-readonly-queue/main/pr-<N>-<sha> for merge queue executions
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: write
@@ -16,15 +25,15 @@ permissions:
 jobs:
   # check if formatting is correct
   fmt:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.91.0
+          toolchain: 1.97.1
 
       - name: setup verusfmt
         run: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/verus-lang/verusfmt/releases/latest/download/verusfmt-installer.sh | sh
@@ -32,17 +41,122 @@ jobs:
       - name: check rustfmt/verusfmt
         working-directory: ./source
         run: |
-          . ../tools/activate
-          vargo fmt -- --check
+          cargo fmt -- --check
+          # TODO: Should use `cargo verus fmt` when it's implemented:
+          #   https://github.com/verus-lang/verus/issues/2758
+          find ./vstd -name '*.rs' -type f -exec verusfmt --check {} +
 
       - name: check cargo fmt for vargo
         working-directory: ./tools/vargo
         run: cargo fmt -- --check
 
+  # run linter (clippy)
+  clippy:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: checkout
+        uses: actions/checkout@v6
+
+      - name: setup rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.97.1
+          components: clippy
+
+      - name: clippy check codebase
+        working-directory: ./source
+        run: cargo clippy -- -D warnings
+
+      - name: clippy check vargo
+        working-directory: ./tools/vargo
+        run: cargo clippy -- -D warnings
+
+  # smoke test toolchain manifest creation
+  create-manifest-smoke-test:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: checkout
+        uses: actions/checkout@v6
+
+      - name: setup rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.96.0
+
+      - name: smoke test create-manifest
+        working-directory: ./source
+        run: |
+          cargo run -p cargo-verus-toolchains --bin create-manifest -- --write-to-dir cargo-verus/toolchain-manifests
+          cargo run -p cargo-verus-toolchains --bin create-manifest -- --rolling --write-to-dir cargo-verus/toolchain-manifests
+
+  # detect whether subprojects (e.g. cargo-verus) changed
+  change_filter:
+    runs-on: ubuntu-24.04
+    outputs:
+      cargo_verus: ${{ steps.filter.outputs.cargo_verus }}
+    steps:
+      - name: checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: detect changed paths
+        id: filter
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            cargo_verus:
+              - 'source/cargo-verus/**'
+              - 'source/cargo-verus-toolchains/**'
+
+  # run cargo-verus tests
+  cargo-verus-test:
+    needs: [fmt, clippy, change_filter]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: check for cargo-verus changes
+        if: needs.change_filter.outputs.cargo_verus != 'true'
+        run: echo "No source/cargo-verus changes detected; skipping cargo-verus tests."
+
+      - name: checkout
+        if: needs.change_filter.outputs.cargo_verus == 'true'
+        uses: actions/checkout@v6
+
+      - name: setup rust
+        if: needs.change_filter.outputs.cargo_verus == 'true'
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.97.1
+
+      - name: cargo-verus tests
+        if: needs.change_filter.outputs.cargo_verus == 'true'
+        working-directory: ./source
+        run: cargo test -p cargo-verus
+
+  # run line_count tests
+  line-count-test:
+    needs: [fmt, clippy]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: checkout
+        uses: actions/checkout@v6
+
+      - name: setup rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.97.1
+
+      - name: setup nextest
+        uses: taiki-e/install-action@nextest
+
+      - name: line_count tests
+        working-directory: ./source/tools/line_count
+        run: cargo nextest run
+
   # check if it builds and runs on macos, running the full test suite
   # (in release mode because it makes a huge difference)
   full-test:
-    runs-on: macos-latest
+    runs-on: macos-14
 
     defaults:
       run:
@@ -50,7 +164,7 @@ jobs:
 
     steps:
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: get z3
         working-directory: ./source
@@ -67,7 +181,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.91.0
+          toolchain: 1.97.1
 
       - name: setup nextest
         uses: taiki-e/install-action@nextest
@@ -75,22 +189,17 @@ jobs:
       - name: build
         working-directory: ./source
         run: |
-          . ../tools/activate
-          vargo clean
-          RUSTFLAGS="-C debug-assertions" vargo build --release
+          cargo clean
+          CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true cargo build --release
+          cargo run --release -p cargo-verus -- build --release --manifest-path vstd/Cargo.toml
 
       - name: full tests
         working-directory: ./source
         run: |
-          . ../tools/activate
-          RUSTFLAGS="-C debug-assertions" VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run --release -p air
-          RUSTFLAGS="-C debug-assertions" VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run --release -p rust_verify_test
           # check cvc5
-          vargo run --release -p rust_verify -- -V cvc5 ../examples/assorted_demo.rs
-
-      - name: build line-count tool
-        working-directory: ./source/tools/line_count
-        run: cargo build
+          cargo run --release -p rust_verify -- -V cvc5 ../examples/assorted_demo.rs
+          CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true cargo nextest run --release -p air
+          CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true cargo nextest run --release -p rust_verify_test
 
   # check if it builds and that basic tests pass on our main supported platforms
   basic-test:
@@ -101,9 +210,9 @@ jobs:
           - build: macos-x86_64
             os: macos-15-intel
           - build: linux
-            os: ubuntu-22.04
+            os: ubuntu-24.04
           - build: windows
-            os: windows-latest
+            os: windows-2022
 
     runs-on: ${{ matrix.os }}
 
@@ -113,7 +222,7 @@ jobs:
 
     steps:
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: get z3
         working-directory: ./source
@@ -124,7 +233,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.91.0
+          toolchain: 1.97.1
 
       - name: setup nextest
         uses: taiki-e/install-action@nextest
@@ -132,19 +241,14 @@ jobs:
       - name: build
         working-directory: ./source
         run: |
-          . ../tools/activate
-          vargo clean
-          vargo build
+          cargo clean
+          cargo build
+          cargo run -p cargo-verus -- build --manifest-path vstd/Cargo.toml
 
       - name: basic tests
         working-directory: ./source
         run: |
-          . ../tools/activate
-          VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run -p rust_verify_test --test basic
-
-      - name: build line-count tool
-        working-directory: ./source/tools/line_count
-        run: cargo build
+          cargo nextest run -p rust_verify_test --test basic
 
   # check if esoteric conficurations build
   smoke-test:
@@ -152,7 +256,7 @@ jobs:
       matrix:
         features: [record-history, no-std, no-alloc, singular]
 
-    runs-on: macos-latest
+    runs-on: macos-14
 
     defaults:
       run:
@@ -160,7 +264,7 @@ jobs:
 
     steps:
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: get z3
         working-directory: ./source
@@ -171,235 +275,75 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.91.0
+          toolchain: 1.97.1
 
       - name: setup nextest
         uses: taiki-e/install-action@nextest
 
       - name: download singular
         if: matrix.features == 'singular'
-        run: curl -LO https://www.singular.uni-kl.de/ftp/pub/Math/Singular/UNIX/Singular-4-3-2_M1.dmg
+        run: curl -fLO https://github.com/verus-lang/verus/releases/download/dependency/singular-4.3.2/Singular-4-3-2_M1.dmg
 
       - name: build
         working-directory: ./source
         run: |
-          . ../tools/activate
-          vargo clean
+          cargo clean
 
           case "${{ matrix.features }}" in
             "singular")
               hdiutil attach ../Singular-4-3-2_M1.dmg
-              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo build --features singular
+              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular cargo build --features singular
+              cargo run -p cargo-verus -- build --manifest-path vstd/Cargo.toml
               ;;
             "record-history")
-              vargo build --features record-history
+              cargo build --features record-history
+              cargo run -p cargo-verus -- build --manifest-path vstd/Cargo.toml
               ;;
             "no-std")
-              vargo build --vstd-no-std
-              cd vstd
-              unset -f cargo
-              cargo build --no-default-features --features alloc
+              cargo build
+              cargo run -p cargo-verus -- build --manifest-path vstd/Cargo.toml --no-default-features --features alloc
+              cd .. # important to disable the source/.cargo/config.toml
+              cargo build --manifest-path source/vstd/Cargo.toml --no-default-features --features alloc
               ;;
             "no-alloc")
-              vargo build --vstd-no-std --vstd-no-alloc
-              cd vstd
-              unset -f cargo
-              cargo build --no-default-features
+              cargo build
+              cargo run -p cargo-verus -- build --manifest-path vstd/Cargo.toml --no-default-features
+              cd .. # important to disable the source/.cargo/config.toml
+              cargo build --manifest-path source/vstd/Cargo.toml --no-default-features
               ;;
           esac
 
       - name: smoke test
         working-directory: ./source
         run: |
-          . ../tools/activate
-
           case "${{ matrix.features }}" in
             "singular")
               hdiutil attach ../Singular-4-3-2_M1.dmg
-              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run -p air --features singular
-              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run -p rust_verify_test --features singular --test integer_ring
-              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run -p rust_verify_test --features singular --test examples -- examples_integer_ring
+              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular cargo nextest run -p air --features singular
+              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular cargo nextest run -p rust_verify_test --features singular --test integer_ring
+              DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:/Volumes/Singular4.3.2/Singular.app/Contents/lib VERUS_SINGULAR_PATH=/Volumes/Singular4.3.2/Singular.app/Contents/bin/Singular cargo nextest run -p rust_verify_test --features singular --test examples -- examples_integer_ring
               ;;
             "record-history")
-              VERUS_Z3_PATH="$(pwd)/z3" vargo nextest run -p rust_verify_test --features record-history --test basic
+              cargo nextest run -p rust_verify_test --features record-history --test basic
               ;;
           esac
 
   # build the documentation
   # will complain if there are warnings
   build-docs:
-    needs: [fmt]
-    runs-on: ubuntu-22.04
+    needs: [fmt, clippy]
+    runs-on: ubuntu-24.04
     steps:
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.91.0
+          toolchain: 1.97.1
 
       - name: build docs
         working-directory: ./source
         run: |
-          . ../tools/activate
           ./tools/get-z3.sh
-          ./tools/docs.sh --strict # strict will complain if there are warnings
-
-      - name: upload verusdoc artifact
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'verus-lang/verus'
-        uses: actions/upload-artifact@v4
-        with:
-          name: verusdoc
-          path: source/doc
-
-  # build the release artifacts
-  build-release:
-    needs: [basic-test, smoke-test]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'verus-lang/verus'
-
-    strategy:
-      matrix:
-        build: [macos, macos-x86_64, linux, windows]
-        include:
-          - build: macos
-            os: macos-latest
-            release_name: verus-arm64-macos
-          - build: macos-x86_64
-            os: macos-15-intel
-            release_name: verus-x86-macos
-          - build: linux
-            os: ubuntu-22.04
-            release_name: verus-x86-linux
-          - build: windows
-            os: windows-latest
-            release_name: verus-x86-win
-
-    runs-on: ${{ matrix.os }}
-
-    defaults:
-      run:
-        shell: bash
-
-    steps:
-      - name: checkout
-        uses: actions/checkout@v4
-
-      - name: get z3
-        working-directory: ./source
-        run: |
-          ./tools/get-z3.sh
-          echo z3 version `./z3 --version`
-
-      - name: setup rust
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: 1.91.0
-
-      - name: build
-        working-directory: ./source
-        run: |
-          . ../tools/activate
-          vargo clean
-          vargo build --release
-
-      - name: create archive
-        working-directory: ./source
-        run: |
-          ./target-verus/release/verus --version --output-json > ./target-verus/release/version.json
-          cp -R ./target-verus/release ../${{ matrix.release_name }}
-          cd ..;
-          if [ ${{ matrix.os }} == "windows-latest" ]; then
-            7z a ${{ matrix.release_name }}.zip ./${{ matrix.release_name }}
-          else
-            zip -r ${{ matrix.release_name }}.zip ./${{ matrix.release_name }}
-          fi
-
-      - name: upload release artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.release_name }}
-          path: ${{ matrix.release_name }}.zip
-
-  # upload the release artifacts
-  release:
-    needs: [build-docs, build-release, full-test]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'verus-lang/verus'
-    runs-on: ubuntu-22.04
-    steps:
-      - name: download all artifacts
-        uses: actions/download-artifact@v4
-
-      - name: create release tag
-        shell: bash
-        run: |
-          cd verus-x86-linux; unzip verus-x86-linux.zip; cd ..
-          echo "TAG_NAME=release/rolling/$(cat ./verus-x86-linux/verus-x86-linux/version.txt)" >> $GITHUB_ENV
-          echo "RELEASE_NAME=$(cat ./verus-x86-linux/verus-x86-linux/version.txt)" >> $GITHUB_ENV
-          echo $RELEASE_NAME $TAG_NAME
-
-      - name: list artifacts
-        run: ls -Al .
-
-      - name: update release
-        id: update_release
-        uses: verus-lang/action-update-release@v0.2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          id: 163437062
-          new_name: Rolling Release ${{ env.RELEASE_NAME }}
-          new_body: |
-            Rolling release from Continuous Integration
-          delete_tags_prefix: release/rolling/
-          delete_assets: true
-          new_draft_status: true
-
-      - name: upload release for x86-linux
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.update_release.outputs.upload_url }}
-          asset_path: ./verus-x86-linux/verus-x86-linux.zip
-          asset_name: verus-${{ env.RELEASE_NAME }}-x86-linux.zip
-          asset_content_type: application/zip
-
-      - name: upload release for arm64-macos
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.update_release.outputs.upload_url }}
-          asset_path: ./verus-arm64-macos/verus-arm64-macos.zip
-          asset_name: verus-${{ env.RELEASE_NAME }}-arm64-macos.zip
-          asset_content_type: application/zip
-
-      - name: upload release for x86-macos
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.update_release.outputs.upload_url }}
-          asset_path: ./verus-x86-macos/verus-x86-macos.zip
-          asset_name: verus-${{ env.RELEASE_NAME }}-x86-macos.zip
-          asset_content_type: application/zip
-
-      - name: upload release for x86-win
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.update_release.outputs.upload_url }}
-          asset_path: ./verus-x86-win/verus-x86-win.zip
-          asset_name: verus-${{ env.RELEASE_NAME }}-x86-win.zip
-          asset_content_type: application/zip
-
-      - name: publish release
-        uses: verus-lang/action-update-release@v0.2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          id: 163437062
-          new_tag: ${{ env.TAG_NAME }}
-          new_draft_status: false
+          ./tools/docs-cargo.sh --strict # strict will complain if there are warnings

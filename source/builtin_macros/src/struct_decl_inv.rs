@@ -20,9 +20,9 @@ use verus_syn::visit::Visit;
 use verus_syn::visit_mut;
 use verus_syn::visit_mut::VisitMut;
 use verus_syn::{
-    Attribute, Block, Error, Expr, Field, Fields, FnArg, FnArgKind, FnMode, GenericArgument,
-    GenericParam, Ident, Index, ItemStruct, Lifetime, Member, Pat, PatIdent, PatType,
-    PathArguments, Receiver, Signature, Type, TypePath, Visibility, braced, parenthesized,
+    Attribute, Block, Error, Expr, ExprPath, Field, Fields, FnArg, FnArgKind, FnMode,
+    GenericArgument, GenericParam, Ident, Index, ItemStruct, Lifetime, Member, Pat, PatIdent,
+    PatType, PathArguments, Receiver, Signature, Type, TypePath, Visibility, braced, parenthesized,
 };
 
 pub fn struct_decl_inv(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
@@ -52,6 +52,8 @@ fn struct_decl_inv_main(sdi: SDI) -> parse::Result<TokenStream> {
     sdi.item_struct.to_tokens(&mut stream);
 
     let fields_filled_in = get_fields(&sdi.item_struct.fields)?;
+    let all_struct_params: HashSet<String> =
+        sdi.item_struct.generics.params.iter().map(generic_param_to_string).collect();
     for field in fields_filled_in.iter() {
         output_field_type_alias(
             &main_name,
@@ -59,6 +61,8 @@ fn struct_decl_inv_main(sdi: SDI) -> parse::Result<TokenStream> {
             &mut stream,
             field,
             &used_type_params,
+            &all_struct_params,
+            &sdi.item_struct.generics.where_clause,
         );
     }
 
@@ -97,8 +101,8 @@ enum InvariantDecl {
         field_name: Ident,
         depends_on: Vec<Ident>,
         quants: Vec<PatType>,
-        condition: Option<Expr>,
-        specifically: Option<Expr>,
+        condition: Option<Box<Expr>>,
+        specifically: Option<Box<Expr>>,
         params: Vec<FnArg>,
         params_span: Span,
         predicate: Block,
@@ -183,7 +187,7 @@ impl Parse for InvariantDecl {
                 let paren_content;
                 let _ = parenthesized!(paren_content in input);
                 let expr: Expr = paren_content.parse()?;
-                Some(expr)
+                Some(Box::new(expr))
             } else {
                 None
             };
@@ -193,7 +197,7 @@ impl Parse for InvariantDecl {
                 let paren_content;
                 let _ = parenthesized!(paren_content in input);
                 let expr: Expr = paren_content.parse()?;
-                Some(expr)
+                Some(Box::new(expr))
             } else {
                 None
             };
@@ -488,8 +492,8 @@ fn check_invdecl_params_match(
                     return Err(Error::new(
                         ty1.span(),
                         format!(
-                            "struct_with_invariants: this type is expected to be {:}",
-                            ty2.to_token_stream().to_string()
+                            "struct_with_invariants: this type is expected to be {}",
+                            ty2.to_token_stream()
                         ),
                     ));
                 }
@@ -571,6 +575,9 @@ fn field_used_type_params(
             get_params_used_in_type(&sdi.item_struct.generics.params, &field.ty);
 
         let invariant_decls = get_invariant_decls_by_name(&sdi.invariant_decls, &field_name);
+        if !invariant_decls.is_empty() {
+            used_params.extend(sdi.item_struct.generics.params.iter().map(generic_param_to_string));
+        }
         for invariant_decl in invariant_decls.iter() {
             if let InvariantDecl::Invariant { depends_on, .. } = invariant_decl {
                 for dep in depends_on {
@@ -604,12 +611,19 @@ fn fill_in_item_struct(
     invariant_decls: &Vec<InvariantDecl>,
     used_type_params: &HashMap<String, Vec<GenericParam>>,
 ) {
+    let struct_type_params = item_struct.generics.params.clone();
     match &mut item_struct.fields {
         Fields::Named(fields_named) => {
             for field in fields_named.named.iter_mut() {
                 let name = field.ident.as_ref().unwrap().to_string();
                 let invdecls = get_invariant_decls_by_name(invariant_decls, &name);
-                field.ty = fill_in_type(&field.ty, main_name, invdecls, used_type_params);
+                field.ty = fill_in_type(
+                    &field.ty,
+                    main_name,
+                    invdecls,
+                    used_type_params,
+                    &struct_type_params,
+                );
             }
         }
         _ => {
@@ -682,6 +696,41 @@ fn output_invariant(
             let where_clause = &sdi.item_struct.generics.where_clause;
             let vis = &sdi.item_struct.vis;
 
+            // Build the predicate struct as carrying a `PhantomData` over each
+            // struct generic param so the auto-impl can constrain those params.
+            let (pred_struct_decl, pred_self_ty) = if type_params.is_empty() {
+                (quote! { #vis struct #predname { } }, quote! { #predname })
+            } else {
+                let type_args = remove_bounds(type_params);
+                let phantom_tys: Vec<TokenStream> = type_params
+                    .iter()
+                    .map(|gp| match gp {
+                        GenericParam::Type(tp) => {
+                            let id = &tp.ident;
+                            quote! { #id }
+                        }
+                        GenericParam::Lifetime(ld) => {
+                            let lt = &ld.lifetime;
+                            quote! { & #lt () }
+                        }
+                        GenericParam::Const(cp) => {
+                            // Const generics can't appear in PhantomData
+                            // directly; reference them via `[(); N]`.
+                            let id = &cp.ident;
+                            quote! { [(); #id] }
+                        }
+                    })
+                    .collect();
+                (
+                    quote! {
+                        #vis struct #predname<#type_params> #where_clause {
+                            _phantom: ::core::marker::PhantomData<(#(#phantom_tys,)*)>,
+                        }
+                    },
+                    quote! { #predname<#type_args> },
+                )
+            };
+
             let span = field_name.span();
 
             let mut e_stream_conjuncts = vec![];
@@ -692,18 +741,21 @@ fn output_invariant(
                 quote_spanned! { field_name.span() => self.#field_name }
             };
 
+            let publish_kind = match &sdi.wf_sig.publish {
+                verus_syn::Publish::Default => quote! { open },
+                other => quote! { #other },
+            };
+
             if partial_type.is_atomic_ghost {
                 let v_type = &partial_type.concrete_args[0];
                 let g_type = &partial_type.concrete_args[1];
                 let v_pat = &v_pats[0];
                 let g_pat = &v_pats[1];
 
-                // TODO make it possible to configure open-ness?
-
                 stream.extend(quote_spanned_vstd! { vstd, predicate.span() =>
-                    #vis struct #predname { }
-                    impl<#type_params> #vstd::atomic_ghost::AtomicInvariantPredicate<#k_type, #v_type, #g_type> for #predname #where_clause {
-                        open spec fn atomic_inv(#tmp_k: #k_type, #tmp_v: #v_type, #tmp_g: #g_type) -> bool {
+                    #pred_struct_decl
+                    impl<#type_params> #vstd::atomic_ghost::AtomicInvariantPredicate<#k_type, #v_type, #g_type> for #pred_self_ty #where_clause {
+                        #publish_kind spec fn atomic_inv(#tmp_k: #k_type, #tmp_v: #v_type, #tmp_g: #g_type) -> bool {
                             let #k_pat = #tmp_k;
                             let #v_pat = #tmp_v;
                             let #g_pat = #tmp_g;
@@ -718,10 +770,11 @@ fn output_invariant(
             } else {
                 let v_type = maybe_tuple(&partial_type.concrete_args);
                 let v_pat = maybe_tuple(&v_pats);
+
                 stream.extend(quote_spanned_vstd! { vstd, predicate.span() =>
-                    #vis struct #predname { }
-                    impl<#type_params> #vstd::invariant::InvariantPredicate<#k_type, #v_type> for #predname #where_clause {
-                        open spec fn inv(#tmp_k: #k_type, #tmp_v: #v_type) -> bool {
+                    #pred_struct_decl
+                    impl<#type_params> #vstd::invariant::InvariantPredicate<#k_type, #v_type> for #pred_self_ty #where_clause {
+                        #publish_kind spec fn inv(#tmp_k: #k_type, #tmp_v: #v_type) -> bool {
                             let #k_pat = #tmp_k;
                             let #v_pat = #tmp_v;
                             #predicate
@@ -817,23 +870,99 @@ fn output_field_type_alias(
     stream: &mut TokenStream,
     field: &Field,
     used_type_params: &HashMap<String, Vec<GenericParam>>,
+    all_struct_params: &HashSet<String>,
+    where_clause: &Option<verus_syn::WhereClause>,
 ) {
     let field_ident = field.ident.as_ref().unwrap();
-    let alias = get_type_alias(main_name, field_ident, used_type_params);
+    let ident = Ident::new(&format!("FieldType_{main_name}_{field_ident}"), Span::call_site());
+    let utp = used_type_params.get(&field_ident.to_string()).unwrap();
     let field_ty = &field.ty;
 
-    stream.extend(quote! {
-        #vis type #alias = #field_ty;
+    // Restrict the struct's where clause to predicates that only reference
+    // generic params that are present on this alias.
+    let used_param_names: HashSet<String> = utp.iter().map(generic_param_to_string).collect();
+    // Strip from each kept param any bounds that reference params not in scope.
+    let utp_restricted: Vec<GenericParam> = utp
+        .iter()
+        .map(|gp| restrict_param_bounds(gp, &used_param_names, all_struct_params))
+        .collect();
+    let filtered_where = where_clause.as_ref().and_then(|wc| {
+        let preds: Punctuated<verus_syn::WherePredicate, Comma> = wc
+            .predicates
+            .iter()
+            .filter(|p| where_predicate_only_uses(p, &used_param_names, all_struct_params))
+            .cloned()
+            .collect();
+        if preds.is_empty() {
+            None
+        } else {
+            Some(verus_syn::WhereClause { where_token: wc.where_token, predicates: preds })
+        }
     });
+
+    let generics_tokens = if utp_restricted.is_empty() {
+        quote! {}
+    } else {
+        quote! { <#(#utp_restricted),*> }
+    };
+    stream.extend(quote! {
+        #[allow(type_alias_bounds)]
+        #vis type #ident #generics_tokens #filtered_where = #field_ty;
+    });
+}
+
+fn where_predicate_only_uses(
+    pred: &verus_syn::WherePredicate,
+    allowed: &HashSet<String>,
+    all_struct_params: &HashSet<String>,
+) -> bool {
+    let mut params = HashSet::new();
+    let mut visitor = CollectIdentsVisitor { result: &mut params };
+    visit::visit_where_predicate(&mut visitor, pred);
+    params.iter().all(|p| !all_struct_params.contains(p) || allowed.contains(p))
+}
+
+struct CollectIdentsVisitor<'a> {
+    result: &'a mut HashSet<String>,
+}
+
+impl<'ast, 'a> Visit<'ast> for CollectIdentsVisitor<'a> {
+    fn visit_type_path(&mut self, type_path: &TypePath) {
+        let TypePath { qself, path } = type_path;
+        if qself.is_none()
+            && path.leading_colon.is_none()
+            && !path.segments.is_empty()
+            && path.segments[0].arguments == PathArguments::None
+        {
+            self.result.insert(path.segments[0].ident.to_string());
+        }
+        visit::visit_type_path(self, type_path);
+    }
+
+    fn visit_expr_path(&mut self, expr_path: &ExprPath) {
+        let ExprPath { qself, path, .. } = expr_path;
+        // Only the first segment of an unqualified relative path is resolved in the
+        // current scope. Later segments name module or associated items, so collecting
+        // them could mistake `module::N` for a generic parameter named `N`.
+        if qself.is_none()
+            && path.leading_colon.is_none()
+            && !path.segments.is_empty()
+            && path.segments[0].arguments == PathArguments::None
+        {
+            self.result.insert(path.segments[0].ident.to_string());
+        }
+        visit::visit_expr_path(self, expr_path);
+    }
+
+    fn visit_lifetime(&mut self, lt: &Lifetime) {
+        self.result.insert("'".to_string() + &lt.ident.to_string());
+    }
 }
 
 // Defs
 
 fn get_pred_typename(main_name: &str, field_name: &Ident) -> Ident {
-    Ident::new(
-        &format!("InvariantPredicate_auto_{:}_{:}", main_name, field_name.to_string()),
-        Span::call_site(),
-    )
+    Ident::new(&format!("InvariantPredicate_auto_{main_name}_{field_name}"), Span::call_site())
 }
 
 fn get_type_alias(
@@ -841,10 +970,7 @@ fn get_type_alias(
     field_ident: &Ident,
     used_type_params: &HashMap<String, Vec<GenericParam>>,
 ) -> TokenStream {
-    let ident = Ident::new(
-        &format!("FieldType_{:}_{:}", main_name, field_ident.to_string()),
-        Span::call_site(),
-    );
+    let ident = Ident::new(&format!("FieldType_{main_name}_{field_ident}"), Span::call_site());
     let utp = used_type_params.get(&field_ident.to_string()).unwrap();
     if utp.len() == 0 {
         quote! { #ident }
@@ -992,6 +1118,7 @@ fn fill_in_type(
     main_name: &str,
     inv_decls: Vec<&InvariantDecl>,
     used_type_params: &HashMap<String, Vec<GenericParam>>,
+    struct_type_params: &Punctuated<GenericParam, Comma>,
 ) -> Type {
     let mut typs = vec![];
 
@@ -1005,8 +1132,14 @@ fn fill_in_type(
             }
         };
         let pred = get_pred_typename(main_name, field_name);
+        let pred_ty = if struct_type_params.is_empty() {
+            quote! { #pred }
+        } else {
+            let type_args = remove_bounds(struct_type_params);
+            quote! { #pred<#type_args> }
+        };
         typs.push(get_constant_type(main_name, depends_on, quants, used_type_params));
-        typs.push(Type::Verbatim(quote! { #pred }));
+        typs.push(Type::Verbatim(pred_ty));
     }
 
     fill_in_infers(ty, typs)
@@ -1018,21 +1151,13 @@ fn get_partial_field_by_name<'a>(
     partial_fields: &'a Vec<PartialField>,
     name: &str,
 ) -> Option<&'a PartialField> {
-    for pf in partial_fields.iter() {
-        if pf.name.to_string() == name {
-            return Some(pf);
-        }
-    }
-    None
+    #[allow(clippy::cmp_owned)] // There is no other way to compare an Ident
+    partial_fields.iter().find(|pf| pf.name.to_string() == name)
 }
 
 fn get_field_by_name<'a>(fields: &'a Vec<Field>, name: &str) -> Option<&'a Field> {
-    for f in fields.iter() {
-        if f.ident.as_ref().unwrap().to_string() == name {
-            return Some(f);
-        }
-    }
-    None
+    #[allow(clippy::cmp_owned)] // There is no other way to compare an Ident
+    fields.iter().find(|f| f.ident.as_ref().unwrap().to_string() == name)
 }
 
 fn get_invariant_decls_by_name<'a>(
@@ -1042,6 +1167,7 @@ fn get_invariant_decls_by_name<'a>(
     let mut res = Vec::new();
     for invdecl in invariant_decls.iter() {
         if let InvariantDecl::Invariant { field_name, .. } = invdecl {
+            #[allow(clippy::cmp_owned)] // There is no other way to compare an Ident
             if field_name.to_string() == name {
                 res.push(invdecl);
             }
@@ -1105,12 +1231,8 @@ impl VisitMut for FillInferVisitor {
 }
 
 fn fields_contains(fields: &Vec<Field>, name: &str) -> bool {
-    for field in fields.iter() {
-        if field.ident.as_ref().unwrap().to_string() == name {
-            return true;
-        }
-    }
-    false
+    #[allow(clippy::cmp_owned)] // There is no other way to compare an Ident
+    fields.iter().any(|field| field.ident.as_ref().unwrap().to_string() == name)
 }
 
 fn get_self_type(item_struct: &ItemStruct) -> Type {
@@ -1213,6 +1335,48 @@ fn get_params_used_in_type(params: &Punctuated<GenericParam, Comma>, ty: &Type) 
     upv.result
 }
 
+fn restrict_param_bounds(
+    gp: &GenericParam,
+    allowed: &HashSet<String>,
+    all_struct_params: &HashSet<String>,
+) -> GenericParam {
+    let mut gp = gp.clone();
+    match &mut gp {
+        GenericParam::Type(tp) => {
+            tp.bounds = tp
+                .bounds
+                .iter()
+                .filter(|b| {
+                    let mut found = HashSet::new();
+                    let mut visitor = CollectIdentsVisitor { result: &mut found };
+                    visit::visit_type_param_bound(&mut visitor, *b);
+                    found.iter().all(|n| !all_struct_params.contains(n) || allowed.contains(n))
+                })
+                .cloned()
+                .collect();
+            if tp.bounds.is_empty() {
+                tp.colon_token = None;
+            }
+        }
+        GenericParam::Lifetime(ld) => {
+            ld.bounds = ld
+                .bounds
+                .iter()
+                .filter(|lt| {
+                    let n = "'".to_string() + &lt.ident.to_string();
+                    !all_struct_params.contains(&n) || allowed.contains(&n)
+                })
+                .cloned()
+                .collect();
+            if ld.bounds.is_empty() {
+                ld.colon_token = None;
+            }
+        }
+        GenericParam::Const(_) => {}
+    }
+    gp
+}
+
 struct UsedParamsVisitor {
     params: HashSet<String>,
     result: HashSet<String>,
@@ -1223,7 +1387,7 @@ impl<'ast> Visit<'ast> for UsedParamsVisitor {
         let TypePath { qself, path } = type_path;
         if qself.is_none()
             && path.leading_colon.is_none()
-            && path.segments.len() == 1
+            && !path.segments.is_empty()
             && path.segments[0].arguments == PathArguments::None
         {
             let id = path.segments[0].ident.to_string();
@@ -1233,6 +1397,25 @@ impl<'ast> Visit<'ast> for UsedParamsVisitor {
         }
 
         visit::visit_type_path(self, type_path);
+    }
+
+    fn visit_expr_path(&mut self, expr_path: &ExprPath) {
+        let ExprPath { qself, path, .. } = expr_path;
+        // Only the first segment of an unqualified relative path is resolved in the
+        // current scope. Later segments name module or associated items, so collecting
+        // them could mistake `module::N` for a generic parameter named `N`.
+        if qself.is_none()
+            && path.leading_colon.is_none()
+            && !path.segments.is_empty()
+            && path.segments[0].arguments == PathArguments::None
+        {
+            let id = path.segments[0].ident.to_string();
+            if self.params.contains(&id) {
+                self.result.insert(id);
+            }
+        }
+
+        visit::visit_expr_path(self, expr_path);
     }
 
     fn visit_lifetime(&mut self, lt: &Lifetime) {

@@ -150,7 +150,7 @@ macro_rules! check_covariant {
             struct J { }
             impl<'a> J {
                 fn check_covariance$tparams(x: $WITH_STATIC) -> $WITH_A {
-                    x   
+                    x
                 }
             }
             ".replace("$tparams", $tparams)
@@ -163,7 +163,7 @@ macro_rules! check_covariant {
             struct J { }
             impl<'a> J {
                 fn check_contravariance$tparams(x: $WITH_A) -> $WITH_STATIC {
-                    x   
+                    x
                 }
             }
             ".replace("$tparams", $tparams)
@@ -171,7 +171,7 @@ macro_rules! check_covariant {
             .replace("$WITH_A", &($t).replace("$P", "&'a u8"))
             => Err(err) => assert_vir_error_msg(err, "lifetime may not live long enough")
         }
-    }
+    };
 }
 
 #[macro_export]
@@ -182,7 +182,7 @@ macro_rules! check_invariant {
             struct J { }
             impl<'a> J {
                 fn check_covariance$tparams(x: $WITH_STATIC) -> $WITH_A {
-                    x   
+                    x
                 }
             }
             ".replace("$tparams", $tparams)
@@ -195,7 +195,7 @@ macro_rules! check_invariant {
             struct J { }
             impl<'a> J {
                 fn check_contravariance$tparams(x: $WITH_A) -> $WITH_STATIC {
-                    x   
+                    x
                 }
             }
             ".replace("$tparams", $tparams)
@@ -203,7 +203,7 @@ macro_rules! check_invariant {
             .replace("$WITH_A", &($t).replace("$P", "&'a u8"))
             => Err(err) => assert_vir_error_msg(err, "lifetime may not live long enough")
         }
-    }
+    };
 }
 
 // raw ptrs
@@ -244,7 +244,7 @@ check_send!(cell_points_to_send, cell_points_to_send2, "<T: Send>", "vstd::cell:
 check_sync!(cell_points_to_sync, cell_points_to_sync2, "<T: Sync>", "vstd::cell::PointsTo<T>");
 check_none!(cell_points_none, cell_points_none2, "<T>", "vstd::cell::PointsTo<T>");
 
-check_send_sync!(pcell, "<T: Send + Sync>", "vstd::cell::PCell<T>");
+check_send_sync!(pcell, "<T: Send + Sync>", "vstd::cell::pcell::PCell<T>");
 
 check_covariant!(
     cell_points_to_covariant,
@@ -328,3 +328,48 @@ check_not_copy!(
     "<T: Copy>",
     "vstd::invariant::AtomicInvariant<(), T, Pred<(), T>>"
 );
+
+// AtomicUpdate
+
+check_send_sync!(
+    au_send_sync_of_send_sync,
+    "<X: Send + Sync, Y: Send + Sync, P>",
+    "vstd::atomic::AtomicUpdate<X, Y, P>"
+);
+check_send_sync!(
+    au_send_sync_of_send,
+    "<X: Send, Y: Send, P>",
+    "vstd::atomic::AtomicUpdate<X, Y, P>"
+);
+check_sync!(
+    au_sync_of_sync,
+    au_not_send_of_sync,
+    "<X: Sync, Y: Sync, P>",
+    "vstd::atomic::AtomicUpdate<X, Y, P>"
+);
+check_sync!(
+    au_sync_of_none,
+    au_not_send_of_none,
+    "<X, Y, P>",
+    "vstd::atomic::AtomicUpdate<X, Y, P>"
+);
+check_not_copy!(
+    au_not_copy,
+    au_still_not_copy,
+    "<X: Copy, Y: Copy, P: Copy>",
+    "vstd::atomic::AtomicUpdate<X, Y, P>"
+);
+
+// Ghost and Tracked
+
+check_send_sync!(trk_send_sync, "<T: Send + Sync>", "vstd::prelude::Tracked<T>");
+check_send!(trk_send, trk_send2, "<T: Send>", "vstd::prelude::Tracked<T>");
+check_sync!(trk_sync, trk_sync2, "<T: Sync>", "vstd::prelude::Tracked<T>");
+check_none!(trk_none, trk_none2, "<T>", "vstd::prelude::Tracked<T>");
+check_not_copy!(trk_not_copy, trk_not_copy_2, "<T>", "vstd::prelude::Tracked<T>");
+
+check_send_sync!(gho, "<T>", "vstd::prelude::Ghost<T>");
+
+check_covariant!(trk_covariant, trk_covariant2, "", "vstd::prelude::Tracked<$P>");
+
+check_covariant!(gho_covariant, gho_covariant2, "", "vstd::prelude::Ghost<$P>");

@@ -4,8 +4,7 @@ use rustc_middle::mir::*;
 use rustc_middle::thir::*;
 use rustc_middle::ty;
 use rustc_middle::ty::cast::mir_cast_kind;
-use rustc_span::Span;
-use rustc_span::source_map::Spanned;
+use rustc_span::{Span, Spanned};
 
 use super::{PResult, ParseCtxt, parse_by_kind};
 use crate::builder::custom::ParseError;
@@ -23,12 +22,6 @@ impl<'a, 'tcx> ParseCtxt<'a, 'tcx> {
             @call(mir_assume, args) => {
                 let op = self.parse_operand(args[0])?;
                 Ok(StatementKind::Intrinsic(Box::new(NonDivergingIntrinsic::Assume(op))))
-            },
-            @call(mir_deinit, args) => {
-                Ok(StatementKind::Deinit(Box::new(self.parse_place(args[0])?)))
-            },
-            @call(mir_retag, args) => {
-                Ok(StatementKind::Retag(RetagKind::Default, Box::new(self.parse_place(args[0])?)))
             },
             @call(mir_set_discriminant, args) => {
                 let place = self.parse_place(args[0])?;
@@ -147,11 +140,6 @@ impl<'a, 'tcx> ParseCtxt<'a, 'tcx> {
             let arm = &self.thir[*arm];
             let value = match arm.pattern.kind {
                 PatKind::Constant { value } => value,
-                PatKind::ExpandedConstant { ref subpattern, def_id: _ }
-                    if let PatKind::Constant { value } = subpattern.kind =>
-                {
-                    value
-                }
                 _ => {
                     return Err(ParseError {
                         span: arm.pattern.span,
@@ -160,7 +148,7 @@ impl<'a, 'tcx> ParseCtxt<'a, 'tcx> {
                     });
                 }
             };
-            values.push(value.valtree.unwrap_leaf().to_bits_unchecked());
+            values.push(value.to_leaf().to_bits_unchecked());
             targets.push(self.parse_block(arm.body)?);
         }
 
@@ -229,6 +217,11 @@ impl<'a, 'tcx> ParseCtxt<'a, 'tcx> {
                 let source = self.parse_operand(args[0])?;
                 Ok(Rvalue::Cast(CastKind::PtrToPtr, source, expr.ty))
             },
+            @call(mir_cast_unsize, args) => {
+                let source = self.parse_operand(args[0])?;
+                let kind = CastKind::PointerCoercion(ty::adjustment::PointerCoercion::Unsize, CoercionSource::AsCast);
+                Ok(Rvalue::Cast(kind, source, expr.ty))
+            },
             @call(mir_checked, args) => {
                 parse_by_kind!(self, args[0], _, "binary op",
                     ExprKind::Binary { op, lhs, rhs } => {
@@ -247,9 +240,7 @@ impl<'a, 'tcx> ParseCtxt<'a, 'tcx> {
                 let offset = self.parse_operand(args[1])?;
                 Ok(Rvalue::BinaryOp(BinOp::Offset, Box::new((ptr, offset))))
             },
-            @call(mir_len, args) => Ok(Rvalue::Len(self.parse_place(args[0])?)),
             @call(mir_ptr_metadata, args) => Ok(Rvalue::UnaryOp(UnOp::PtrMetadata, self.parse_operand(args[0])?)),
-            @call(mir_copy_for_deref, args) => Ok(Rvalue::CopyForDeref(self.parse_place(args[0])?)),
             ExprKind::Borrow { borrow_kind, arg } => Ok(
                 Rvalue::Ref(self.tcx.lifetimes.re_erased, *borrow_kind, self.parse_place(*arg)?)
             ),
@@ -284,7 +275,7 @@ impl<'a, 'tcx> ParseCtxt<'a, 'tcx> {
                     fields.iter().map(|e| self.parse_operand(*e)).collect::<Result<_, _>>()?
                 ))
             },
-            ExprKind::Adt(box AdtExpr { adt_def, variant_index, args, fields, .. }) => {
+            ExprKind::Adt(AdtExpr { adt_def, variant_index, args, fields, .. }) => {
                 let is_union = adt_def.is_union();
                 let active_field_index = is_union.then(|| fields[0].name);
 
@@ -293,7 +284,7 @@ impl<'a, 'tcx> ParseCtxt<'a, 'tcx> {
                     fields.iter().map(|f| self.parse_operand(f.expr)).collect::<Result<_, _>>()?
                 ))
             },
-            _ => self.parse_operand(expr_id).map(Rvalue::Use),
+            _ => self.parse_operand(expr_id).map(|op| Rvalue::Use(op, WithRetag::Yes)),
         )
     }
 
@@ -325,7 +316,8 @@ impl<'a, 'tcx> ParseCtxt<'a, 'tcx> {
             @call(mir_field, args) => {
                 let (parent, place_ty) = self.parse_place_inner(args[0])?;
                 let field = FieldIdx::from_u32(self.parse_integer_literal(args[1])? as u32);
-                let field_ty = PlaceTy::field_ty(self.tcx, place_ty.ty, place_ty.variant_index, field);
+                let field_ty = PlaceTy::field_ty(self.tcx, place_ty.ty, place_ty.variant_index, field)
+                    .skip_norm_wip();
                 let proj = PlaceElem::Field(field, field_ty);
                 let place = parent.project_deeper(&[proj], self.tcx);
                 return Ok((place, PlaceTy::from_ty(field_ty)));

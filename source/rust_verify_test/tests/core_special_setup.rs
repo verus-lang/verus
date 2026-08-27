@@ -11,13 +11,22 @@ test_verify_one_file_with_options! {
         #![allow(unused_attributes)]
         #![allow(unused_variables)]
 
+        #![cfg_attr(verus_keep_ghost, feature(atomic_internals))]
+        #![cfg_attr(verus_keep_ghost, feature(generic_atomic))]
         #![cfg_attr(verus_keep_ghost, feature(core_intrinsics))]
         #![cfg_attr(verus_keep_ghost, feature(allocator_api))]
         #![cfg_attr(verus_keep_ghost, feature(step_trait))]
         #![cfg_attr(verus_keep_ghost, feature(ptr_metadata))]
-        #![cfg_attr(verus_keep_ghost, feature(strict_provenance_atomic_ptr))]
-        #![cfg_attr(verus_keep_ghost, feature(derive_clone_copy))]
+
+        #![cfg_attr(verus_keep_ghost, feature(derive_clone_copy_internals))]
+        #![cfg_attr(verus_keep_ghost, feature(slice_index_methods))]
         #![cfg_attr(verus_keep_ghost, feature(freeze))]
+        #![cfg_attr(verus_keep_ghost, feature(sized_hierarchy))]
+        #![cfg_attr(verus_keep_ghost, feature(const_destruct))]
+        #![cfg_attr(verus_keep_ghost, feature(derive_eq_internals))]
+        #![feature(hint_must_use)]
+        #![cfg_attr(verus_keep_ghost, feature(fmt_internals))]
+        #![cfg_attr(verus_keep_ghost, feature(fmt_arguments_from_str))]
         #![cfg_attr(
             verus_keep_ghost,
             feature(fn_traits),
@@ -59,6 +68,8 @@ test_verify_one_file_with_options! {
                 crate::vstd::multiset::assert_multisets_equal!(a, b);
                 crate::vstd::multiset::assert_multisets_equal!(a == b);
             }
+
+            broadcast use crate::vstd::slice::group_slice_axioms;
 
             fn test_slice_index(x: &[u8]) -> u8
                 requires x@.len() > 0

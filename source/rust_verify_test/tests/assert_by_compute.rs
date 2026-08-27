@@ -441,7 +441,7 @@ test_verify_one_file! {
 
         fn test(a: &mut u64)
             requires *old(a) < 1000,
-            ensures *a == *old(a) + 30,
+            ensures *final(a) == *old(a) + 30,
         {
             let ghost old_a = *a;
             *a = *a + 5 * 6;
@@ -819,4 +819,91 @@ test_verify_one_file! {
             assert(count_down(50) == 0) by(compute);
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_implies verus_code! {
+        fn test_implies (u : i8) {
+            assert(u < 100 ==> true) by (compute);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_distinguishes_old_compute verus_code! {
+        fn test(a: &mut u64) {
+            *a = 5;
+            assert(*old(a) == *a) by(compute);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "assertion failed")
+}
+
+test_verify_one_file! {
+    #[test] test_distinguishes_old_compute_only verus_code! {
+        fn test(a: &mut u64) {
+            *a = 5;
+            assert(*old(a) == *a) by(compute_only);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "assert_by_compute_only failed to simplify down to true")
+}
+
+test_verify_one_file! {
+    #[test] seq_new_len_overflow_issue2177 verus_code! {
+        use vstd::prelude::*;
+        proof fn test() {
+            assert(Seq::<int>::new(18446744073709551616nat, |i: int| 0int).len() == 0) by (compute_only);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Proof by computation included a closure literal that wasn't applied.  This is not yet supported.")
+}
+
+test_verify_one_file! {
+    #[test] uninterp_fn_type_args_differ_github2766 verus_code! {
+        use vstd::layout::size_of;
+        proof fn test() {
+            broadcast use vstd::layout::layout_of_primitives;
+            assert(size_of::<u8>() == size_of::<u64>()) by (compute_only); // FAILS
+        }
+    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
+}
+
+test_verify_one_file! {
+    #[test] uninterp_fn_type_args_differ_by_decoration verus_code! {
+        use vstd::layout::size_of;
+        proof fn test() {
+            assert(size_of::<&u8>() == size_of::<u8>()) by (compute_only); // FAILS
+        }
+    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
+}
+
+test_verify_one_file! {
+    #[test] uninterp_type_args_match verus_code! {
+        uninterp spec fn f<A, B>(x: nat) -> nat;
+        proof fn test_function(n: nat) {
+            assert(f::<u8, bool>(n) == f::<u8, bool>(n)) by (compute_only);
+            assert(f::<&u8, bool>(n) == f::<&u8, bool>(n)) by (compute_only);
+        }
+
+        struct S<A> { a: A, b: nat }
+
+        proof fn test_ctro(x: S<u8>) {
+            assert(S { a: 1u8, b: 2 } == S { a: 1u8, b: 2 }) by (compute_only);
+            assert(S { a: 1u8, b: 2 } == &S { a: 1u8, b: 2 }) by (compute_only);
+            assert(S { a: x.a, b: 2 } == S { a: x.a, b: 2 }) by (compute_only);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] memoized_fn_type_args_differ verus_code! {
+        uninterp spec fn g<A>() -> nat;
+
+        // The interpreter caches the results of memoized calls, so the cache's key
+        // must account for the type arguments, not just the value arguments
+        #[verifier::memoize]
+        spec fn h<A>(x: nat) -> nat { g::<A>() + x }
+
+        proof fn test() {
+            assert(h::<u8>(1) == h::<u64>(1)) by (compute_only); // FAILS
+        }
+    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
 }

@@ -1,11 +1,12 @@
 use crate::ast::{
     Expr, ExprX, Exprs, Fun, Function, FunctionX, HeaderExprX, LoopInvariant, LoopInvariantKind,
-    LoopInvariants, MaskSpec, Sizedness, Stmt, StmtX, Typ, UnwindSpec, UnwrapParameter, VarIdent,
-    VirErr, Visibility,
+    LoopInvariants, MaskSpec, PlaceX, Sizedness, Stmt, StmtX, Typ, UnwindSpec, UnwrapParameter,
+    VarIdent, VirErr, Visibility,
 };
 use crate::ast_util::{air_unique_var, params_equal_opt};
 use crate::def::VERUS_SPEC;
 use crate::messages::error;
+use crate::messages::multiple_errors;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -75,6 +76,8 @@ pub struct Header {
     pub decrease_when: Option<Expr>,
     pub decrease_by: Option<Fun>,
     pub invariant_mask: Option<MaskSpec>,
+    pub atomic_update: Option<Expr>,
+    pub atomic_call_loop: bool,
     pub unwind_spec: Option<UnwindSpec>,
     pub extra_dependencies: Vec<Fun>,
     pub open_visibility_qualifier: Option<Visibility>,
@@ -85,7 +88,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
     let mut hidden: Vec<Fun> = Vec::new();
     let mut extra_dependencies: Vec<Fun> = Vec::new();
     let mut require: Option<Exprs> = None;
-    let mut ensure: Option<(Option<(VarIdent, Option<Typ>)>, (Exprs, Exprs))> = None;
+    let mut ensure = None;
     let mut returns: Option<Expr> = None;
     let mut recommend: Option<Exprs> = None;
     let mut invariant_except_break: Option<Exprs> = None;
@@ -94,6 +97,8 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
     let mut decrease_when: Option<Expr> = None;
     let mut decrease_by: Option<Fun> = None;
     let mut invariant_mask: Option<MaskSpec> = None;
+    let mut atomic_update: Option<Expr> = None;
+    let mut atomic_call_loop = false;
     let mut unwind_spec: Option<UnwindSpec> = None;
     let mut open_visibility_qualifier: Option<Visibility> = None;
     let mut n = 0;
@@ -210,42 +215,21 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                     HeaderExprX::ExtraDependency(x) => {
                         extra_dependencies.push(x.clone());
                     }
-                    HeaderExprX::InvariantOpens(span, es) => {
-                        match invariant_mask {
-                            None => {}
-                            _ => {
-                                return Err(error(
-                                    &stmt.span,
-                                    "only one invariant mask spec allowed",
-                                ));
-                            }
+                    HeaderExprX::OpensInvariantMask(mask_spec) => {
+                        if invariant_mask.is_some() {
+                            return Err(error(&stmt.span, "only one invariant mask spec allowed"));
                         }
-                        invariant_mask = Some(MaskSpec::InvariantOpens(span.clone(), es.clone()));
+                        invariant_mask = Some(mask_spec.clone());
                     }
-                    HeaderExprX::InvariantOpensExcept(span, es) => {
-                        match invariant_mask {
-                            None => {}
-                            _ => {
-                                return Err(error(
-                                    &stmt.span,
-                                    "only one invariant mask spec allowed",
-                                ));
-                            }
+                    HeaderExprX::AtomicSpec(e) => {
+                        if atomic_update.is_some() {
+                            return Err(error(&stmt.span, "only one atomic spec allowed"));
                         }
-                        invariant_mask =
-                            Some(MaskSpec::InvariantOpensExcept(span.clone(), es.clone()));
+                        atomic_update = Some(e.clone());
                     }
-                    HeaderExprX::InvariantOpensSet(e) => {
-                        match invariant_mask {
-                            None => {}
-                            _ => {
-                                return Err(error(
-                                    &stmt.span,
-                                    "only one invariant mask spec allowed",
-                                ));
-                            }
-                        }
-                        invariant_mask = Some(MaskSpec::InvariantOpensSet(e.clone()));
+                    HeaderExprX::AtomicCallLoop => {
+                        atomic_call_loop = true;
+                        allowed = allows.loops();
                     }
                     HeaderExprX::NoUnwind | HeaderExprX::NoUnwindWhen(_) => {
                         match unwind_spec {
@@ -312,6 +296,8 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
         decrease_when,
         decrease_by,
         invariant_mask,
+        atomic_update,
+        atomic_call_loop,
         unwind_spec,
         extra_dependencies,
         open_visibility_qualifier,
@@ -478,11 +464,13 @@ fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function
         decrease_by,
         fndef_axioms: _,
         mask_spec,
+        atomic_update: _,
         unwind_spec,
         item_kind: _,
         attrs: _,
         body: _,
         extra_dependencies,
+        async_ret: _,
     } = spec_method.x.clone();
     let mut methodx = method.x.clone();
     while typ_bounds.len() > methodx.typ_bounds.len() {
@@ -597,10 +585,17 @@ pub fn make_trait_decls(methods: Vec<Function>) -> Result<Vec<Function>, VirErr>
             *method = make_trait_decl(method, &spec_method)?;
         }
     }
-    for (_, extra_spec) in specs.iter() {
-        return Err(error(&extra_spec.span, "no matching method found for method specification"));
+    if specs.is_empty() {
+        Ok(decls)
+    } else {
+        Err(multiple_errors(
+            specs.values().map(|spec| &spec.span),
+            format!(
+                "no matching method found for method specification{}",
+                if specs.len() > 1 { "s" } else { "" },
+            ),
+        ))
     }
-    Ok(decls)
 }
 
 fn peel(expr: &Expr) -> &Expr {
@@ -610,12 +605,27 @@ fn peel(expr: &Expr) -> &Expr {
     }
 }
 
+/// Skip past nodes that can result from implicit adjustments
 fn peel_mut(expr: &mut Expr) -> &mut Expr {
     match &expr.x {
-        ExprX::NeverToAny(_) => match &mut Arc::make_mut(expr).x {
-            ExprX::NeverToAny(e) => e,
-            _ => unreachable!(),
-        },
+        ExprX::NeverToAny(_) => {
+            let ExprX::NeverToAny(e) = &mut Arc::make_mut(expr).x else { unreachable!() };
+            peel_mut(e)
+        }
+        ExprX::ReadPlace(place, _) if matches!(place.x, PlaceX::Temporary(_)) => {
+            let ExprX::ReadPlace(place, _) = &mut Arc::make_mut(expr).x else { unreachable!() };
+            let PlaceX::Temporary(e) = &mut Arc::make_mut(place).x else { unreachable!() };
+            peel_mut(e)
+        }
+        ExprX::ImplicitReborrowOrSpecRead(place, _, _)
+            if matches!(place.x, PlaceX::Temporary(_)) =>
+        {
+            let ExprX::ImplicitReborrowOrSpecRead(place, _, _) = &mut Arc::make_mut(expr).x else {
+                unreachable!()
+            };
+            let PlaceX::Temporary(e) = &mut Arc::make_mut(place).x else { unreachable!() };
+            peel_mut(e)
+        }
         _ => expr,
     }
 }

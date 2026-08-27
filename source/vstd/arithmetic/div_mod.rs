@@ -17,6 +17,34 @@ use super::super::prelude::*;
 
 verus! {
 
+#[verifier::inline]
+pub open spec fn rust_div(a: int, b: int) -> int
+    recommends
+        b != 0,
+{
+    if a == 0 {
+        0
+    } else if a > 0 {
+        a / b
+    } else {
+        -((-a) / b)
+    }
+}
+
+#[verifier::inline]
+pub open spec fn rust_rem(a: int, b: int) -> int
+    recommends
+        b != 0,
+{
+    if a == 0 {
+        0
+    } else if a > 0 {
+        a % b
+    } else {
+        -((-a) % b)
+    }
+}
+
 #[allow(unused_imports)]
 #[cfg(verus_keep_ghost)]
 use super::super::arithmetic::internals::div_internals::{
@@ -593,6 +621,7 @@ pub broadcast proof fn lemma_div_denominator(x: int, c: int, d: int)
     assert(c * d != 0) by {
         assert(0 < c * d);
     }
+    assert(c * d != 0);  // work around https://github.com/Z3Prover/z3/issues/8057
 }
 
 /// Proof that multiplying an integer by a fraction is equivalent to
@@ -718,6 +747,7 @@ pub broadcast proof fn lemma_div_multiples_vanish_quotient(x: int, a: int, d: in
 
 /// Proof that, since `a % d == 0` and `0 <= r < d`, we can conclude
 /// `a == d * (a + r) / d`.
+#[verifier::spinoff_prover]
 pub broadcast proof fn lemma_round_down(a: int, r: int, d: int)
     requires
         0 < d,

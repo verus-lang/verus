@@ -36,13 +36,14 @@
 /// - Refer to `examples/syntax_attr.rs`.
 use proc_macro2::TokenStream;
 use quote::{ToTokens, quote, quote_spanned};
+use syn::parse::Parser;
 use syn::visit_mut::VisitMut;
 use syn::{Expr, Item, ItemConst, parse2, spanned::Spanned};
 
 use crate::{
     EraseGhost,
     attr_block_trait::{AnyAttrBlock, AnyFnOrLoop},
-    syntax::{self, mk_verifier_attr_syn, mk_verus_attr_syn},
+    syntax::{self, has_external_code_syn, mk_verifier_attr_syn, mk_verus_attr_syn},
     syntax_trait,
     unerased_proxies::VERUS_UNERASED_PROXY,
 };
@@ -71,6 +72,7 @@ enum VerusSpecTarget {
     IOTarget(VerusIOTarget),
     FnOrLoop(AnyFnOrLoop),
     ItemConst(ItemConst),
+    ItemStatic(syn::ItemStatic),
 }
 
 impl syn::parse::Parse for VerusSpecTarget {
@@ -92,6 +94,11 @@ impl syn::parse::Parse for VerusSpecTarget {
         if let Ok(item_const) = fork.parse::<ItemConst>() {
             input.advance_to(&fork);
             return Ok(VerusSpecTarget::ItemConst(item_const));
+        }
+        let fork = input.fork();
+        if let Ok(item_static) = fork.parse::<syn::ItemStatic>() {
+            input.advance_to(&fork);
+            return Ok(VerusSpecTarget::ItemStatic(item_static));
         }
 
         let expr: Expr = input.parse()?;
@@ -115,9 +122,17 @@ pub(crate) fn rewrite_verus_attribute(
     let mut contains_non_external = false;
     let mut contains_external = false;
     let mut spec_fun = None;
-    const VERIFY_ATTRS: [&str; 3] = ["rlimit", "spinoff_prover", "external_derive"];
+    const VERIFY_ATTRS: [&str; 4] = ["rlimit", "spinoff_prover", "external_derive", "ext_equal"];
     const DUAL_ATTR: &str = "dual_spec";
-    const IGNORE_VERIFY_ATTRS: [&str; 2] = ["external", "external_body"];
+    const IGNORE_VERIFY_ATTRS: [&str; 3] =
+        ["external", "external_body", "external_type_specification"];
+    // Modifier attrs are compatible with both external and non-external attrs.
+    // They neither set contains_external nor contains_non_external.
+    const MODIFIER_ATTRS: [&str; 3] = [
+        "reject_recursive_types",
+        "reject_recursive_types_in_ground_variants",
+        "accept_recursive_types",
+    ];
 
     for arg in &args {
         let path = arg.path().get_ident().expect("Invalid verus verifier attribute");
@@ -126,6 +141,8 @@ pub(crate) fn rewrite_verus_attribute(
             attributes.push(quote_spanned!(arg.span() => #[verifier::#arg]));
         } else if VERIFY_ATTRS.contains(&path.to_string().as_str()) {
             contains_non_external = true;
+            attributes.push(quote_spanned!(arg.span() => #[verifier::#arg]));
+        } else if MODIFIER_ATTRS.contains(&path.to_string().as_str()) {
             attributes.push(quote_spanned!(arg.span() => #[verifier::#arg]));
         } else if DUAL_ATTR == path.to_string().as_str() {
             // This is a macro-level hack to support dual mode.
@@ -141,14 +158,14 @@ pub(crate) fn rewrite_verus_attribute(
                         .expect("unsupported tokens in verus_verify(dual_spec(...))")
                 } else {
                     syn::Ident::new(
-                        &format!("{DUAL_SPEC_PREFIX}_{}", f.sig.ident.to_string()),
+                        &format!("{DUAL_SPEC_PREFIX}_{}", f.sig.ident),
                         f.sig.ident.span(),
                     )
                 };
                 spec_f.sig.ident = ident.clone();
                 spec_f.attrs = vec![mk_verus_attr_syn(f.span(), quote! { spec })];
                 // remove proof-related macros
-                replace_block(EraseGhost::Erase, spec_f.block_mut().unwrap());
+                replace_block(EraseGhost::Erase, spec_f.block_mut().unwrap(), false);
                 spec_fun = Some(spec_f);
 
                 attributes
@@ -170,10 +187,8 @@ pub(crate) fn rewrite_verus_attribute(
         attributes.push(quote_spanned!(item.span() => #[verifier::verify]));
     }
 
-    // Special handling for impl blocks, add marker attribute to each method for `#[verus_spec]`.
-    let mut impl_item_replacer = ImplItemReplacer { verify_const: true };
-    impl_item_replacer.visit_item_mut(&mut item);
-
+    // Inject #[verus_spec] where missing and stamp impl methods with the sentinel marker.
+    prepare_items_for_verus_spec(args.span(), &mut item);
     let mut new_stream = quote_spanned! {item.span()=>
         #(#attributes)*
         #item
@@ -184,6 +199,7 @@ pub(crate) fn rewrite_verus_attribute(
 
 struct ExecReplacer {
     erase: EraseGhost,
+    inside_external_code: bool,
 }
 
 impl VisitMut for ExecReplacer {
@@ -192,7 +208,7 @@ impl VisitMut for ExecReplacer {
     fn visit_macro_mut(&mut self, mac: &mut syn::Macro) {
         syn::visit_mut::visit_macro_mut(self, mac);
         // Only replace in verification mode
-        if !self.erase.keep() {
+        if !self.erase.keep() || self.inside_external_code {
             return;
         }
         if let Some(x) = mac.path.segments.first_mut() {
@@ -230,8 +246,27 @@ impl VisitMut for ExecReplacer {
     /// In order to apply `with` to expr/stmt without using unstable feature.
     /// proof_with!(Tracked(x), Ghost(y);
     /// f(a);
+    /// Also supports struct constructors with ghost/tracked fields:
+    /// proof_with!{ p: Tracked(p) }
+    /// STest { u }
     fn visit_block_mut(&mut self, block: &mut syn::Block) {
-        syn::visit_mut::visit_block_mut(self, block);
+        // Don't call visit_block_mut to recurse on the whole block --
+        // skip statements that will be processed by their own #[verus_spec] attribute.
+        // syn::visit_mut::visit_block_mut(self, block);
+        for stmt in &mut block.stmts {
+            // Don't recurse here into Fn and Const.
+            // Instead, let a subsequent expansion of #[verus_spec] handle the visit
+            let span = stmt.span();
+            match stmt {
+                syn::Stmt::Item(Item::Fn(item)) => {
+                    add_verus_spec_if_needed(&mut item.attrs, span);
+                }
+                syn::Stmt::Item(Item::Const(item)) => {
+                    add_verus_spec_if_needed(&mut item.attrs, span);
+                }
+                _ => self.visit_stmt_mut(stmt),
+            }
+        }
 
         // If we are in non-verification mode, we erase all proof-related statements.
         if !self.erase.keep() {
@@ -257,8 +292,9 @@ impl VisitMut for ExecReplacer {
                     with_args = TokenStream::new();
                 }
                 syn::Stmt::Expr(expr, _) if !with_args.is_empty() => {
-                    let call_with_spec = verus_syn::parse2(with_args.clone())
-                        .expect(format!("Failed to parse proof_with {:?}", with_args).as_str());
+                    let call_with_spec = verus_syn::parse2(with_args.clone()).unwrap_or_else(|e| {
+                        panic!("Failed to parse proof_with {:?}: {:?}", with_args, e)
+                    });
                     rewrite_with_expr(self.erase.clone(), expr, call_with_spec);
                     with_args = TokenStream::new();
                 }
@@ -266,44 +302,155 @@ impl VisitMut for ExecReplacer {
                     // do nothing
                 }
                 _ => {
-                    panic!("Expected a function call after proof_with! macro");
+                    panic!(
+                        "Expected a function call or struct constructor after proof_with! macro"
+                    );
                 }
             };
         }
     }
-}
 
-struct ImplItemReplacer {
-    verify_const: bool,
-}
+    fn visit_expr_for_loop_mut(&mut self, for_loop: &mut syn::ExprForLoop) {
+        syn::visit_mut::visit_expr_for_loop_mut(self, for_loop);
 
-fn get_verus_spec(attrs: &[syn::Attribute]) -> Option<&syn::Attribute> {
-    attrs.iter().find(|attr| attr.path().get_ident().map_or(false, |ident| ident == VERUS_SPEC))
-}
-
-impl VisitMut for ImplItemReplacer {
-    fn visit_impl_item_fn_mut(&mut self, method: &mut syn::ImplItemFn) {
-        syn::visit_mut::visit_impl_item_fn_mut(self, method);
-        // Help verus_spec be aware that it is in impl function.
-        if let Some(verus_spec) = get_verus_spec(&method.attrs) {
-            let span = verus_spec.span();
-            method.attrs.push(crate::syntax::mk_rust_attr_syn(
-                span,
-                "allow",
-                quote_spanned! { span => (unused, verus_impl_method_marker)},
-            ));
-        }
-    }
-
-    fn visit_impl_item_const_mut(&mut self, i: &mut syn::ImplItemConst) {
-        syn::visit_mut::visit_impl_item_const_mut(self, i);
-        if !self.verify_const {
+        if !self.erase.keep() || self.inside_external_code {
             return;
         }
-        // Add verus_spec if not exists
-        if get_verus_spec(&i.attrs).is_none() {
-            i.attrs.push(crate::syntax::mk_rust_attr_syn(i.span(), VERUS_SPEC, TokenStream::new()));
+
+        // In verification mode, even without verus spec on the loop, we still
+        // need to desugar the for loop.
+        // So, if there's no `verus_spec` attribute, we need to add an empty one.
+        let span = for_loop.span();
+        add_verus_spec_if_needed(&mut for_loop.attrs, span);
+    }
+}
+
+/// Check for misuse of `#[verus_spec]` and `#[verus_verify]`.
+/// Returns `true` if a verus_macro has already been applied.
+///
+/// 1. Reject duplicate `#[verus_spec]` attributes.
+///    Duplicate `#[verus_spec]` attributes introduce unnecessary complexity
+///    and extra rewriting overhead.
+///
+/// 2. Reject `#[verus_verify]` applied after `#[verus_spec]`.
+///    `#[verus_verify]` invokes `prepare_verus_spec`, which inserts
+///    `#[verus_spec]` when needed. Applying it after an existing
+///    `#[verus_spec]` may accidentally introduce duplicate attributes.
+///
+/// 3. Warn when `#[verus_spec]` is used inside a `verus!` block.
+///    Using `#[verus_spec]` inside a `verus!` block may lead to problems since they are
+///    not designed to work together. If allow_verus_macro is false, we reject such usage.
+fn check_misuse_verus_spec(
+    attrs: &[syn::Attribute],
+    allow_verus_macro: bool,
+) -> Result<bool, proc_macro::TokenStream> {
+    let attr_span = proc_macro::Span::call_site();
+    let mut verus_macro_applied = false;
+    for attr in attrs {
+        if let Some(ident) = attr.path().get_ident() {
+            if ident == VERUS_SPEC {
+                return Err(quote_spanned! { attr_span.into() => compile_error!(
+                    "Multiple #[verus_spec] attributes are not allowed.
+                    This may be caused by incorrect usage or a bug in builtin_macros");
+                }
+                .into());
+            } else if ident == "verus_verify" {
+                return Err(quote_spanned! { attr_span.into() => compile_error!(
+                    "#[verus_verify] attributes should be applied before #[verus_spec].");
+                }
+                .into());
+            }
         }
+        if is_verus_macro_applied(&attr) {
+            verus_macro_applied = true;
+            if !allow_verus_macro {
+                return Err(quote_spanned! { attr_span.into() => compile_error!(
+                    "verus! macro is already applied.");
+                }
+                .into());
+            }
+        }
+    }
+    if verus_macro_applied {
+        // Leave a warning when user mistakenly mixed them.
+        #[cfg(verus_keep_ghost)]
+        proc_macro::Diagnostic::spanned(
+            attr_span,
+            proc_macro::Level::Warning,
+            "#[verus_spec] is likely used inside a verus! block.
+            Consider move it out of verus! or remove #[verus_spec].",
+        )
+        .emit();
+    }
+    Ok(verus_macro_applied)
+}
+
+/// Check whether a Verus macro might have already been applied.
+///
+/// Both `#[verus_spec]` and `verus!` may be the source of the `#[verus::internal(...)]`.
+/// The source of #[verus_spec] is ruled out if it is applied in `verus_spec`
+/// rewriting and after `check_misuse_verus_spec` has been executed.
+fn is_verus_macro_applied(attrs: &syn::Attribute) -> bool {
+    attrs.path().segments.len() == 2
+        && attrs.path().segments[0].ident == "verus"
+        && attrs.path().segments[1].ident == "internal"
+}
+
+/// Adds a `#[verus_spec]` attribute to the given attributes if it's not already present.
+/// #[verus_spec] may be applied earlier or later than the current attribute.
+/// If it's applied earlier, we can infer it via verus::internal(xxx).
+/// If it's applied later, we can find it directly.
+fn add_verus_spec_if_needed(attrs: &mut Vec<syn::Attribute>, span: proc_macro2::Span) {
+    if attrs.iter().any(|attr| attr.path().get_ident().map_or(false, |ident| ident == VERUS_SPEC)) {
+        return;
+    }
+    attrs.push(crate::syntax::mk_rust_attr_syn(span, VERUS_SPEC, TokenStream::new()));
+}
+
+/// Prepares items under `#[verus_verify]` for subsequent `#[verus_spec]` expansion.
+///
+/// This function performs two tasks:
+///
+/// 1. **Inject `#[verus_spec]` where missing.** Items and impl items that carry
+///    `#[verus_verify]` but no `#[verus_spec]` would otherwise be marked as
+///    verifier-aware without receiving the necessary rewrites (loop desugaring,
+///    const/static proxy generation, etc.), resulting in confusing error messages.
+///    An empty `#[verus_spec]` is added so the rewriter has something to act on.
+///
+/// 2. **Mark impl methods with a sentinel attribute.** Each impl method that has
+///    (or just received) a `#[verus_spec]` attribute is tagged with an internal
+///    `#[allow(unused, verus_impl_method_marker)]` attribute. This signals to the
+///    `#[verus_spec]` expansion that the method lives inside an impl block,
+///    enabling it to apply impl-specific rewrites.
+///
+/// Recursion into nested items is intentionally skipped here; `#[verus_spec]`
+/// handles that during its own expansion pass.
+fn prepare_items_for_verus_spec(span: proc_macro2::Span, i: &mut syn::Item) {
+    match i {
+        syn::Item::Const(syn::ItemConst { attrs, .. })
+        | syn::Item::Static(syn::ItemStatic { attrs, .. })
+        | syn::Item::Fn(syn::ItemFn { attrs, .. }) => {
+            add_verus_spec_if_needed(attrs, span);
+        }
+        syn::Item::Impl(i) => {
+            for item in &mut i.items {
+                match item {
+                    syn::ImplItem::Const(syn::ImplItemConst { attrs, .. }) => {
+                        add_verus_spec_if_needed(attrs, span);
+                    }
+                    syn::ImplItem::Fn(syn::ImplItemFn { attrs, .. }) => {
+                        add_verus_spec_if_needed(attrs, span);
+                        attrs.push(crate::syntax::mk_rust_attr_syn(
+                            span,
+                            "allow",
+                            quote_spanned! { span => (unused, verus_impl_method_marker)},
+                        ));
+                    }
+                    _ => {}
+                }
+            }
+        }
+        _ => {}
     }
 }
 
@@ -324,13 +471,17 @@ fn is_verus_proof_stmt(stmt: &syn::Stmt) -> bool {
 // TODO: when tracked/ghost is supported, we need to clear verus-related
 // attributes for expression so that unverfied `cargo build` does not need to
 // enable unstable feature for macro.
-pub(crate) fn replace_block(erase: EraseGhost, fblock: &mut syn::Block) {
-    let mut replacer = ExecReplacer { erase };
+pub(crate) fn replace_block(
+    erase: EraseGhost,
+    fblock: &mut syn::Block,
+    inside_external_code: bool,
+) {
+    let mut replacer = ExecReplacer { erase, inside_external_code };
     replacer.visit_block_mut(fblock);
 }
 
 pub(crate) fn replace_expr(erase: EraseGhost, expr: &mut syn::Expr) {
-    let mut replacer = ExecReplacer { erase };
+    let mut replacer = ExecReplacer { erase, inside_external_code: false };
     replacer.visit_expr_mut(expr);
 }
 
@@ -368,7 +519,16 @@ pub(crate) fn rewrite_verus_spec(
             rewrite_verus_spec_on_fun_or_loop(erase, outer_attr_tokens, f)
         }
         VerusSpecTarget::ItemConst(i) => {
+            if let Err(error_tokens) = check_misuse_verus_spec(&i.attrs, true) {
+                return error_tokens;
+            }
             rewrite_verus_spec_on_item_const(erase, outer_attr_tokens, i)
+        }
+        VerusSpecTarget::ItemStatic(i) => {
+            if let Err(error_tokens) = check_misuse_verus_spec(&i.attrs, true) {
+                return error_tokens;
+            }
+            rewrite_verus_spec_on_item_static(erase, outer_attr_tokens, i)
         }
         VerusSpecTarget::IOTarget(i) => {
             rewrite_verus_spec_on_expr_local(erase, outer_attr_tokens, i)
@@ -449,7 +609,40 @@ pub(crate) fn rewrite_verus_spec_on_item_const(
         verus_item_const.expr = None;
         verus_item_const.semi_token = None;
     }
-    crate::syntax::rewrite_items(verus_item_const.to_token_stream().into(), erase_ghost, true)
+    let mut items = vec![verus_syn::Item::Const(verus_item_const)];
+    crate::syntax::rewrite_items_inner(&mut items, erase_ghost, true)
+}
+
+pub(crate) fn rewrite_verus_spec_on_item_static(
+    erase_ghost: EraseGhost,
+    outer_attr_tokens: proc_macro::TokenStream,
+    item_static: syn::ItemStatic,
+) -> proc_macro::TokenStream {
+    if erase_ghost.erase() {
+        return item_static.to_token_stream().into();
+    }
+    let spec_attr =
+        verus_syn::parse_macro_input!(outer_attr_tokens as verus_syn::SignatureSpecAttr);
+    let mut verus_item_static = syn_to_verus_syn::<verus_syn::ItemStatic>(item_static);
+    let span = verus_item_static.span();
+    // Must add exec mode to static explicitly
+    verus_item_static.mode =
+        verus_syn::FnMode::Exec(verus_syn::ModeExec { exec_token: verus_syn::Token![exec](span) });
+    if spec_attr.spec.ensures.is_some() {
+        verus_item_static.ensures = spec_attr.spec.ensures;
+        verus_item_static.block = Some(Box::new(verus_syn::Block {
+            brace_token: verus_syn::token::Brace::default(),
+            stmts: vec![verus_syn::Stmt::Expr(
+                verus_syn::Expr::Verbatim(verus_item_static.expr.to_token_stream()),
+                None,
+            )],
+        }));
+        verus_item_static.eq_token = None;
+        verus_item_static.expr = None;
+        verus_item_static.semi_token = None;
+    }
+    let mut items = vec![verus_syn::Item::Static(verus_item_static)];
+    crate::syntax::rewrite_items_inner(&mut items, erase_ghost, true)
 }
 
 pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
@@ -459,6 +652,11 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
 ) -> proc_macro::TokenStream {
     match f {
         AnyFnOrLoop::Fn(mut fun) => {
+            let verus_applied = match check_misuse_verus_spec(&fun.attrs, true) {
+                Ok(verus_applied) => verus_applied,
+                Err(error_tokens) => return error_tokens,
+            };
+
             // Note: trait default methods appear in this case,
             // since they look syntactically like non-trait functions
             let spec_attr =
@@ -481,14 +679,92 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
             fun.attrs.retain(|attr| !is_hidden_impl_marker(attr));
 
             let mut new_stream = TokenStream::new();
+            let mut rustdoc_attrs: Vec<syn::Attribute> = vec![];
+            if crate::rustdoc::env_rustdoc() {
+                let mut verus_fun: verus_syn::ItemFn = syn_to_verus_syn(fun.clone());
+                verus_fun.sig.spec = spec_attr.spec.clone();
+
+                // Set return variable name
+                if let Some((verus_syn::Pat::Ident(pat_ident), _)) = &spec_attr.ret_pat {
+                    if let verus_syn::ReturnType::Type(_, _, opt_name, _) =
+                        &mut verus_fun.sig.output
+                    {
+                        *opt_name = Some(Box::new((
+                            verus_syn::token::Paren::default(),
+                            verus_syn::Pat::Ident(pat_ident.clone()),
+                            verus_syn::Token![:](pat_ident.span()),
+                        )));
+                    }
+                }
+
+                crate::rustdoc::process_item_fn(&mut verus_fun);
+
+                for attr in &verus_fun.attrs {
+                    if attr.path().is_ident("doc")
+                        && attr.to_token_stream().to_string().contains("verusdoc_special_attr")
+                    {
+                        if let Ok(doc_attrs) =
+                            syn::Attribute::parse_outer.parse(attr.to_token_stream().into())
+                        {
+                            rustdoc_attrs.extend(doc_attrs);
+                        }
+                    }
+                }
+            }
 
             // Create a copy of unverified function.
             // To avoid misuse of the unverified function,
             // we add `requires false` and thus prevent verified function to use it.
             // Allow unverified code to use the function without changing in/output.
             if let Some(with) = &spec_attr.spec.with {
-                let extra_funs = rewrite_unverified_func(&mut fun, with.with.span(), erase);
+                let mut extra_funs = rewrite_unverified_func(&mut fun, with.with.span(), erase);
+
+                if crate::rustdoc::env_rustdoc() {
+                    if let Some(unverified_fun) = extra_funs.last_mut() {
+                        unverified_fun.attrs.extend(rustdoc_attrs.clone());
+                    }
+                    fun.attrs.push(crate::syntax::mk_rust_attr_syn(
+                        with.with.span(),
+                        "doc",
+                        quote! {hidden},
+                    ));
+                }
                 extra_funs.iter().for_each(|f| f.to_tokens(&mut new_stream));
+            } else if crate::rustdoc::env_rustdoc() {
+                fun.attrs.extend(rustdoc_attrs);
+            }
+
+            // Inject doc attribute in rustdoc mode
+            if crate::rustdoc::env_rustdoc() {
+                let mut verus_fun: verus_syn::ItemFn = syn_to_verus_syn(fun.clone());
+                verus_fun.sig.spec = spec_attr.spec.clone();
+
+                // Set return variable name
+                if let Some((verus_syn::Pat::Ident(pat_ident), _)) = &spec_attr.ret_pat {
+                    if let verus_syn::ReturnType::Type(_, _, opt_name, _) =
+                        &mut verus_fun.sig.output
+                    {
+                        *opt_name = Some(Box::new((
+                            verus_syn::token::Paren::default(),
+                            verus_syn::Pat::Ident(pat_ident.clone()),
+                            verus_syn::Token![:](pat_ident.span()),
+                        )));
+                    }
+                }
+
+                crate::rustdoc::process_item_fn(&mut verus_fun);
+
+                for attr in &verus_fun.attrs {
+                    if attr.path().is_ident("doc")
+                        && attr.to_token_stream().to_string().contains("verusdoc_special_attr")
+                    {
+                        if let Ok(doc_attrs) =
+                            syn::Attribute::parse_outer.parse(attr.to_token_stream().into())
+                        {
+                            fun.attrs.extend(doc_attrs);
+                        }
+                    }
+                }
             }
 
             // Update function signature based on verus_spec.
@@ -502,7 +778,8 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
                 return proc_macro::TokenStream::from(new_stream);
             }
             // Create const proxy function if it is a const function.
-            if fun.sig.constness.is_some() {
+            // Skip it if it is already inside verus!
+            if fun.sig.constness.is_some() && !verus_applied {
                 let proxy = rewrite_const_ret_proxy(&mut fun);
                 fun.to_tokens(&mut new_stream);
                 fun = proxy; // Add proof and spec on proxy func.
@@ -513,7 +790,8 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
             let _ = fun.block_mut().unwrap().stmts.splice(0..0, new_stmts);
 
             // Parse and replace proof_xxx!() inside function and replace panic.
-            replace_block(erase, fun.block_mut().unwrap());
+            let inside_external_code = has_external_code_syn(&fun.attrs);
+            replace_block(erase, fun.block_mut().unwrap(), inside_external_code);
             fun.to_tokens(&mut new_stream);
             proc_macro::TokenStream::from(new_stream)
         }
@@ -545,11 +823,14 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
                 #(#spec_stmts)*
                 {#body}
             );
-            closure.body = Box::new(Expr::Verbatim(new_body));
+            *closure.body = Expr::Verbatim(new_body);
             closure.to_token_stream().into()
         }
         AnyFnOrLoop::TraitMethod(mut method) => {
             // Note: default trait methods appear in the AnyFnOrLoop::Fn case, not here
+            if let Err(error_tokens) = check_misuse_verus_spec(&method.attrs, true) {
+                return error_tokens;
+            }
             let spec_attr =
                 verus_syn::parse_macro_input!(outer_attr_tokens as verus_syn::SignatureSpecAttr);
             let mut new_stream = TokenStream::new();
@@ -668,6 +949,9 @@ fn rewrite_verus_spec_on_expr_local(
     let call_with_spec = verus_syn::parse_macro_input!(attr_input as verus_syn::WithSpecOnExpr);
     let tokens = match io_target {
         VerusIOTarget::Local(mut local) => {
+            if let Err(error_tokens) = check_misuse_verus_spec(&local.attrs, true) {
+                return error_tokens;
+            }
             let syn::Local { init, .. } = &mut local;
             if let Some(syn::LocalInit { expr, .. }) = init {
                 let x_declares = rewrite_with_expr(erase, expr, call_with_spec);
@@ -689,6 +973,71 @@ fn rewrite_verus_spec_on_expr_local(
     tokens.into()
 }
 
+/// Wrap an expression with a `|=` follow clause, producing a tuple `(expr, follow)`.
+/// Used by both struct-constructor and function-call proof_with! handling.
+fn apply_follows(erase: &EraseGhost, expr: &mut Expr, follow_tokens: TokenStream) {
+    let follow: TokenStream =
+        syntax::rewrite_expr(erase.clone(), false, follow_tokens.into()).into();
+    *expr = Expr::Verbatim(quote_spanned!(expr.span() => (#expr, #follow)));
+}
+
+fn is_tracked_ghost_expr(expr: &verus_syn::Expr) -> bool {
+    // check expr is of the form Tracked(...) or Ghost(...)
+    if let verus_syn::Expr::Call(verus_syn::ExprCall { func, .. }) = expr {
+        if let verus_syn::Expr::Path(path) = func.as_ref() {
+            if let Some(ident) = path.path.get_ident() {
+                return ident == "Tracked" || ident == "Ghost";
+            }
+        }
+    }
+    false
+}
+
+/// Apply ghost/tracked fields in `with` clause to a struct constructor expression.
+/// Return Err if the ghost/tracked fields are not valid.
+fn apply_erased_fields<'a>(
+    erase: EraseGhost,
+    expr: &mut Expr,
+    erased_fields: impl Iterator<Item = &'a verus_syn::FieldValue>,
+) -> Result<(), ()> {
+    let syn::Expr::Struct(expr_struct) = expr else {
+        // If there's no struct constructor, we cannot apply ghost/tracked fields.
+        if let Some(field) = erased_fields.last() {
+            *expr = syn::Expr::Verbatim(quote_spanned! {field.span() =>
+                compile_error!("Ghost/tracked fields can only be applied to struct constructors.")
+            });
+            return Err(());
+        }
+        // No ghost/tracked fields, just return.
+        return Ok(());
+    };
+    for field in erased_fields {
+        let rewritten =
+            syntax::rewrite_expr(erase.clone(), false, field.expr.to_token_stream().into());
+        let verus_syn::Member::Named(field_name) = &field.member else {
+            *expr = syn::Expr::Verbatim(quote_spanned! {field.member.span() =>
+                compile_error!("A ghost/tracked field must be a named field.")
+            });
+            return Err(());
+        };
+        if !is_tracked_ghost_expr(&field.expr) {
+            *expr = syn::Expr::Verbatim(quote_spanned! {field.expr.span() =>
+                compile_error!("A ghost/tracked field must be a tracked/ghost expression. If you want to add ghost/tracked fields to a struct constructor, you should use $ident: Tracked/Ghost($ident).")
+            });
+            return Err(());
+        }
+        assert!(field.attrs.is_empty()); // guarded by verus_syn::WithSpecOnExpr parsing
+        let extra_field = syn::FieldValue {
+            attrs: vec![],
+            member: syn::Member::Named(field_name.clone()),
+            colon_token: field.colon_token.and_then(|c| Some(syn::Token![:](c.span()))),
+            expr: syn::Expr::Verbatim(rewritten.into()),
+        };
+        expr_struct.fields.push(extra_field);
+    }
+    return Ok(());
+}
+
 // Expand `with extra_in => extra_out` on a method call expr.
 // Return some pre-statements that needs to be declared before the expr.
 fn rewrite_with_expr(
@@ -696,7 +1045,8 @@ fn rewrite_with_expr(
     expr: &mut Expr,
     call_with_spec: verus_syn::WithSpecOnExpr,
 ) -> Vec<verus_syn::Stmt> {
-    let verus_syn::WithSpecOnExpr { inputs, outputs, follows, .. } = call_with_spec;
+    let verus_syn::WithSpecOnExpr { inputs, outputs, follows, erased_fields, .. } = call_with_spec;
+
     if outputs.is_some() || inputs.len() > 0 {
         match expr {
             syn::Expr::Call(syn::ExprCall { func, .. }) => {
@@ -711,8 +1061,13 @@ fn rewrite_with_expr(
                 *method = syn::Ident::new(&format!("{VERIFIED}_{x}"), x.span());
             }
             syn::Expr::Try(syn::ExprTry { expr, .. }) => {
-                let call_with_spec =
-                    verus_syn::WithSpecOnExpr { inputs, outputs, follows, ..call_with_spec };
+                let call_with_spec = verus_syn::WithSpecOnExpr {
+                    inputs,
+                    outputs,
+                    follows,
+                    erased_fields,
+                    ..call_with_spec
+                };
                 return rewrite_with_expr(erase, expr, call_with_spec);
             }
             _ => {
@@ -724,6 +1079,9 @@ fn rewrite_with_expr(
         }
     }
 
+    if apply_erased_fields(erase.clone(), expr, erased_fields.iter()).is_err() {
+        return vec![];
+    }
     match expr {
         syn::Expr::Call(syn::ExprCall { args, .. })
         | syn::Expr::MethodCall(syn::ExprMethodCall { args, .. }) => {
@@ -763,9 +1121,7 @@ fn rewrite_with_expr(
         vec![]
     };
     if let Some((_, follow)) = follows {
-        let follow: TokenStream =
-            syntax::rewrite_expr(erase.clone(), false, follow.into_token_stream().into()).into();
-        *expr = Expr::Verbatim(quote_spanned!(expr.span() => (#expr, #follow)));
+        apply_follows(&erase, expr, follow.into_token_stream());
     }
     x_declares
 }
@@ -778,7 +1134,8 @@ fn rewrite_const_ret_proxy(const_fun: &mut syn::ItemFn) -> syn::ItemFn {
     // But just do it to be safe and consistent with verus macro.
     let span = const_fun.sig.constness.unwrap().span();
     let mut proxy_fun = const_fun.clone();
-    replace_block(EraseGhost::Erase, const_fun.block_mut().unwrap());
+    let inside_external_code = has_external_code_syn(&const_fun.attrs);
+    replace_block(EraseGhost::Erase, const_fun.block_mut().unwrap(), inside_external_code);
     const_fun.attrs.push(mk_verifier_attr_syn(span, quote! { external }));
     const_fun.attrs.push(mk_verus_attr_syn(span, quote! { uses_unerased_proxy }));
     const_fun.attrs.push(mk_verus_attr_syn(span, quote! { encoded_const }));
@@ -819,6 +1176,13 @@ fn rewrite_unverified_func(
         Some(syn::token::Semi { spans: [span] }),
     );
     unverified_fun.attrs_mut().push(mk_verus_attr_syn(span, quote! { external_body }));
+    if !crate::rustdoc::env_rustdoc() {
+        unverified_fun.attrs_mut().push(crate::syntax::mk_rust_attr_syn(
+            span,
+            "doc",
+            quote! {hidden},
+        ));
+    }
     if let Some(block) = unverified_fun.block_mut() {
         // For an unverified function, if it is in keep mode,
         // we erase the function body to avoid using

@@ -58,7 +58,7 @@ test_verify_one_file! {
     #[test] test1_fails2 verus_code! {
         const C: u64 = S;
         const S: u64 = C;
-    } => Err(err) => assert_rust_error_msg(err, "cycle detected when simplifying constant for the type system `C`")
+    } => Err(err) => assert_rust_error_msg(err, "cycle detected when checking if `C` is a trivial const")
 }
 
 test_verify_one_file! {
@@ -89,7 +89,7 @@ test_verify_one_file! {
     #[test] test1_fails5 verus_code! {
         const fn f() -> u64 { 1 }
         const S: u64 = 1 + f();
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function `crate::f` with mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `test_crate::f` with mode exec")
 }
 
 test_verify_one_file! {
@@ -261,7 +261,10 @@ test_verify_one_file! {
             proof { let x = E; }
             0
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot read static with mode exec")
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "cannot read static with mode exec",
+        "cannot read static with mode exec",
+    ])
 }
 
 test_verify_one_file! {
@@ -275,7 +278,10 @@ test_verify_one_file! {
             proof { let x = E; }
             0
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode exec")
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "cannot read const with mode exec",
+        "cannot read const with mode exec",
+    ])
 }
 
 test_verify_one_file! {
@@ -342,6 +348,23 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         const MyArray: [u32; 3] = [1, 2, 3];
+
+        proof fn test() {
+            assert(MyArray[2] == 3);
+        }
+
+        fn exec_test() {
+            let x = MyArray[1];
+            assert(x == 2);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] arrays_reference [] => verus_code! {
+        use vstd::prelude::*;
+
+        const MyArray: &'static [u32; 3] = &[1, 2, 3];
 
         proof fn test() {
             assert(MyArray[2] == 3);
@@ -540,6 +563,110 @@ test_verify_one_file! {
 
         fn main() {
             if FOO == 1 {}
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] const_with_ensures_issue2175 verus_code! {
+        #[verus_spec(ensures true)]
+        pub const C: char = 'x';
+    } => Err(err) => assert_vir_error_msg(err, "const cannot have `ensures` unless it is `exec const`")
+}
+
+test_verify_one_file! {
+    // https://github.com/verus-lang/verus/issues/2659
+    // A type parameter from the surrounding `impl` block should be usable in an
+    // associated const's type.
+    #[test] assoc_const_impl_type_param_issue2659 verus_code! {
+        enum Maybe<T> { Nothing, Just(T) }
+
+        struct WrappedU64<T> {
+            val: u64,
+            t: Maybe<T>,
+        }
+
+        struct MyStruct<T> { t: T }
+
+        impl<T> MyStruct<T> {
+            const X: WrappedU64<T> = WrappedU64 {
+                val: 42,
+                t: Maybe::Nothing,
+            };
+        }
+
+        fn test() {
+            let w = MyStruct::<bool>::X;
+            assert(w.val == 42);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // Referencing the value of a generic associated const should still verify facts
+    // about the value, so a false assertion must fail.
+    #[test] assoc_const_impl_type_param_fails_issue2659 verus_code! {
+        enum Maybe<T> { Nothing, Just(T) }
+
+        struct WrappedU64<T> {
+            val: u64,
+            t: Maybe<T>,
+        }
+
+        struct MyStruct<T> { t: T }
+
+        impl<T> MyStruct<T> {
+            const X: WrappedU64<T> = WrappedU64 {
+                val: 42,
+                t: Maybe::Nothing,
+            };
+        }
+
+        fn test() {
+            let w = MyStruct::<bool>::X;
+            assert(w.val == 43); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    // A generic associated const whose type does not mention the type parameter,
+    // used from a generic function with a trait bound.
+    #[test] assoc_const_impl_type_param_bounded_issue2659 verus_code! {
+        trait Tr { spec fn v() -> u64; }
+
+        struct S<T> { t: T }
+
+        impl<T: Tr> S<T> {
+            const C: u64 = 7;
+        }
+
+        fn test<T: Tr>() {
+            let c = S::<T>::C;
+            assert(c == 7);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // A generic associated const whose type refers to an associated type of a trait
+    // bound on the impl's type parameter (`T::Assoc` where `T: Tr`).
+    #[test] assoc_const_impl_type_param_assoc_type_issue2659 verus_code! {
+        trait Tr {
+            type Assoc;
+        }
+
+        enum Wrapper<A> { Empty, Full(A) }
+
+        struct MyStruct<T> { t: T }
+
+        impl<T: Tr> MyStruct<T> {
+            const X: Wrapper<T::Assoc> = Wrapper::Empty;
+        }
+
+        fn test<T: Tr>() {
+            let w = MyStruct::<T>::X;
+            assert(w is Empty);
         }
     } => Ok(())
 }

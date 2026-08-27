@@ -217,13 +217,17 @@ impl rustc_span::source_map::FileLoader for TCFileLoader {
     }
 
     fn read_file(&self, path: &std::path::Path) -> Result<String, std::io::Error> {
-        assert!(path.display().to_string() == Self::FILENAME.to_string());
+        assert!(path.display().to_string() == Self::FILENAME);
         Ok(self.rust_code.clone())
     }
 
     fn read_binary_file(&self, path: &std::path::Path) -> Result<Arc<[u8]>, std::io::Error> {
-        assert!(path.display().to_string() == Self::FILENAME.to_string());
+        assert!(path.display().to_string() == Self::FILENAME);
         Ok(self.rust_code.as_bytes().into())
+    }
+
+    fn current_directory(&self) -> Result<std::path::PathBuf, std::io::Error> {
+        std::env::current_dir()
     }
 }
 
@@ -263,9 +267,9 @@ pub(crate) fn check_trait_conflicts<'tcx>(
         rust_code.push('\n');
     }
     if let Some(mut file) = tc_log_file {
-        write!(file, "{}", &rust_code).expect("error writing to trait-conflict log file");
+        write!(file, "{}", rust_code).expect("error writing to trait-conflict log file");
     }
-    let rustc_args = vec![TC_DRIVER_ARG, TCFileLoader::FILENAME, "--error-format=json"];
+    let rustc_args = [TC_DRIVER_ARG, TCFileLoader::FILENAME, "--error-format=json"];
 
     let mut child = std::process::Command::new(std::env::current_exe().unwrap())
         // avoid warning about jobserver fd
@@ -277,7 +281,9 @@ pub(crate) fn check_trait_conflicts<'tcx>(
         .spawn()
         .expect("could not execute trait-conflict rustc process");
     let mut child_stdin = child.stdin.take().expect("take stdin");
-    child_stdin.write(rust_code.as_bytes()).expect("failed to send code to trait-conflict rustc");
+    child_stdin
+        .write_all(rust_code.as_bytes())
+        .expect("failed to send code to trait-conflict rustc");
     std::mem::drop(child_stdin);
     let run = child.wait_with_output().expect("trait-conflict rustc wait failed");
     let rust_output = std::str::from_utf8(&run.stderr[..]).unwrap().trim();
@@ -334,14 +340,14 @@ pub(crate) fn check_trait_conflicts<'tcx>(
                         }
                         if !missing_span_line_seqs.contains(&(l1, l2)) {
                             for i in l1..=l2 {
-                                eprintln!("{}", &emit_state.lines[i].text);
+                                eprintln!("{}", emit_state.lines[i].text);
                             }
                             missing_span_line_seqs.insert((l1, l2));
                         }
                     }
                 }
                 if missing_span {
-                    eprintln!("{}", &diag.rendered.unwrap());
+                    eprintln!("{}", diag.rendered.unwrap());
                 }
                 msgs.push(msg);
             }

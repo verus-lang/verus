@@ -19,7 +19,7 @@ test_verify_one_file! {
 
         /// prove a rule for simplifying drop(drop(f, ...))
         proof fn test_use_fun_ext2<A>(f: spec_fn(int) -> A, k1: nat, k2: nat)
-            ensures drop(drop(f, k1), k2) === drop(f, k1 + k2)
+            ensures drop(drop(f, k1), k2) == drop(f, k1 + k2)
         {
             assert(drop(drop(f, k1), k2) =~= drop(f, k1 + k2));
         }

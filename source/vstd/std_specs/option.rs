@@ -7,15 +7,15 @@ verus! {
 
 ////// Add is_variant-style spec functions
 pub trait OptionAdditionalFns<T>: Sized {
-    #[deprecated(note = "is_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
+    #[cfg_attr(not(verus_verify_core), deprecated = "is_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
     #[allow(non_snake_case)]
     spec fn is_Some(&self) -> bool;
 
-    #[deprecated(note = "is_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
+    #[cfg_attr(not(verus_verify_core), deprecated = "get_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
     #[allow(non_snake_case)]
     spec fn get_Some_0(&self) -> T;
 
-    #[deprecated(note = "is_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
+    #[cfg_attr(not(verus_verify_core), deprecated = "is_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
     #[allow(non_snake_case)]
     spec fn is_None(&self) -> bool;
 
@@ -50,12 +50,13 @@ pub trait OptionAdditionalFns<T>: Sized {
     ;
 
     #[allow(deprecated)]
+    #[verifier::tracked_take_option_primitive]
     proof fn tracked_take(tracked &mut self) -> (tracked t: T)
         requires
             old(self).is_Some(),
         ensures
             t == old(self)->0,
-            self.is_None(),
+            final(self).is_None(),
     ;
 }
 
@@ -107,11 +108,8 @@ impl<T> OptionAdditionalFns<T> for Option<T> {
     }
 
     /// Similar to `Option::take`
-    proof fn tracked_take(tracked &mut self) -> (tracked t: T) {
-        let tracked mut x = None::<T>;
-        super::super::modes::tracked_swap(self, &mut x);
-        x.tracked_unwrap()
-    }
+    #[verifier::tracked_take_option_primitive]
+    axiom fn tracked_take(tracked &mut self) -> (tracked t: T);
 }
 
 ////// Specs for std methods
@@ -125,6 +123,7 @@ pub open spec fn is_some<T>(option: &Option<T>) -> bool {
 pub assume_specification<T>[ Option::<T>::is_some ](option: &Option<T>) -> (b: bool)
     ensures
         b == is_some(option),
+    no_unwind
 ;
 
 // is_none
@@ -137,6 +136,7 @@ pub open spec fn is_none<T>(option: &Option<T>) -> bool {
 pub assume_specification<T>[ Option::<T>::is_none ](option: &Option<T>) -> (b: bool)
     ensures
         b == is_none(option),
+    no_unwind
 ;
 
 // as_ref
@@ -144,6 +144,7 @@ pub assume_specification<T>[ Option::<T>::as_ref ](option: &Option<T>) -> (a: Op
     ensures
         a is Some <==> option is Some,
         a is Some ==> option->0 == a->0,
+    no_unwind
 ;
 
 // unwrap
@@ -176,6 +177,7 @@ pub open spec fn spec_unwrap_or<T>(option: Option<T>, default: T) -> T {
 pub assume_specification<T>[ Option::<T>::unwrap_or ](option: Option<T>, default: T) -> (t: T)
     ensures
         t == spec_unwrap_or(option, default),
+    no_unwind
 ;
 
 // expect
@@ -199,7 +201,8 @@ pub assume_specification<T>[ Option::<T>::expect ](option: Option<T>, msg: &str)
 pub assume_specification<T>[ Option::<T>::take ](option: &mut Option<T>) -> (t: Option<T>)
     ensures
         t == *old(option),
-        *option is None,
+        *final(option) is None,
+    no_unwind
 ;
 
 // map
@@ -212,6 +215,62 @@ pub assume_specification<T, U, F: FnOnce(T) -> U>[ Option::<T>::map ](a: Option<
         ret.is_some() ==> f.ensures((a.unwrap(),), ret.unwrap()),
 ;
 
+// cloned
+pub assume_specification<'a, T: Clone>[ Option::<&'a T>::cloned ](opt: Option<&'a T>) -> (res:
+    Option<T>)
+    ensures
+        opt.is_none() ==> res.is_none(),
+        opt.is_some() ==> res.is_some() && cloned::<T>(*opt.unwrap(), res.unwrap()),
+;
+
+// and_then
+pub assume_specification<T, U, F: FnOnce(T) -> Option<U>>[ Option::<T>::and_then ](
+    option: Option<T>,
+    f: F,
+) -> (res: Option<U>)
+    requires
+        option.is_some() ==> f.requires((option.unwrap(),)),
+    ensures
+        option.is_none() ==> res.is_none(),
+        option.is_some() ==> f.ensures((option.unwrap(),), res),
+;
+
+// ok_or_else
+pub assume_specification<T, E, F: FnOnce() -> E>[ Option::<T>::ok_or_else ](
+    option: Option<T>,
+    err: F,
+) -> (res: Result<T, E>)
+    requires
+        option.is_none() ==> err.requires(()),
+    ensures
+        option.is_some() ==> res == Ok::<T, E>(option.unwrap()),
+        option.is_none() ==> {
+            &&& res.is_err()
+            &&& err.ensures((), res->Err_0)
+        },
+;
+
+// unwrap_or_default
+pub assume_specification<T: core::default::Default>[ Option::<T>::unwrap_or_default ](
+    option: Option<T>,
+) -> (res: T)
+    ensures
+        option.is_some() ==> res == option.unwrap(),
+        option.is_none() ==> T::default.ensures((), res),
+;
+
+// unwrap_or_else
+pub assume_specification<T, F: FnOnce() -> T>[ Option::<T>::unwrap_or_else ](
+    option: Option<T>,
+    f: F,
+) -> (res: T)
+    requires
+        option.is_none() ==> f.requires(()),
+    ensures
+        option.is_some() ==> res == option.unwrap(),
+        option.is_none() ==> f.ensures((), res),
+;
+
 // clone
 pub assume_specification<T: Clone>[ <Option<T> as Clone>::clone ](opt: &Option<T>) -> (res: Option<
     T,
@@ -221,6 +280,7 @@ pub assume_specification<T: Clone>[ <Option<T> as Clone>::clone ](opt: &Option<T
         opt.is_some() ==> res.is_some() && cloned::<T>(opt.unwrap(), res.unwrap()),
 ;
 
+// PartialEq and Eq
 impl<T: super::cmp::PartialEqSpec> super::cmp::PartialEqSpecImpl for Option<T> {
     open spec fn obeys_eq_spec() -> bool {
         T::obeys_eq_spec()
@@ -241,6 +301,7 @@ pub assume_specification<T: PartialEq>[ <Option<T> as PartialEq>::eq ](
 ) -> bool
 ;
 
+// PartialOrd and Ord
 impl<T: super::cmp::PartialOrdSpec> super::cmp::PartialOrdSpecImpl for Option<T> {
     open spec fn obeys_partial_cmp_spec() -> bool {
         T::obeys_partial_cmp_spec()
@@ -299,14 +360,12 @@ pub assume_specification<T, E>[ Option::ok_or ](option: Option<T>, err: E) -> (r
 ;
 
 #[doc(hidden)]
-#[verifier::ignore_outside_new_mut_ref_experiment]
 pub assume_specification<T>[ Option::as_mut ](option: &mut Option<T>) -> (res: Option<&mut T>)
     ensures
-        (match *option {
-            None => fin(option).is_none() && res.is_none(),
-            Some(r) => fin(option).is_some() && res.is_some() && *res.unwrap() === r && *fin(
-                res.unwrap(),
-            ) === fin(option).unwrap(),
+        (match *old(option) {
+            None => final(option).is_none() && res.is_none(),
+            Some(r) => final(option).is_some() && res.is_some() && *res.unwrap() == r
+                && *final(res.unwrap()) == final(option).unwrap(),
         }),
 ;
 
@@ -319,38 +378,35 @@ pub assume_specification<T>[ Option::as_slice ](option: &Option<T>) -> (res: &[T
 ;
 
 #[doc(hidden)]
-#[verifier::ignore_outside_new_mut_ref_experiment]
 pub assume_specification<T>[ Option::as_mut_slice ](option: &mut Option<T>) -> (res: &mut [T])
     ensures
-        res@ == (match *option {
+        res@ == (match *old(option) {
             Some(x) => seq![x],
             None => seq![],
         }),
-        fin(res)@.len() == res@.len(),  // TODO this should be broadcast for all `&mut [T]`
-        fin(option)@ == (match *option {
-            Some(_) => Some(fin(res)@[0]),
+        final(res)@.len() == res@.len(),  // TODO this should be broadcast for all `&mut [T]`
+        final(option)@ == (match *old(option) {
+            Some(_) => Some(final(res)@[0]),
             None => None,
         }),
 ;
 
 #[doc(hidden)]
-#[verifier::ignore_outside_new_mut_ref_experiment]
 pub assume_specification<T>[ Option::insert ](option: &mut Option<T>, value: T) -> (res: &mut T)
     ensures
         *res == value,
-        *fin(option) == Some(*fin(res)),
+        *final(option) == Some(*final(res)),
 ;
 
 #[doc(hidden)]
-#[verifier::ignore_outside_new_mut_ref_experiment]
 pub assume_specification<T>[ Option::get_or_insert ](option: &mut Option<T>, value: T) -> (res:
     &mut T)
     ensures
-        *res == (match *option {
+        *res == (match *old(option) {
             Some(x) => x,
             None => value,
         }),
-        *fin(option) == Some(*fin(res)),
+        *final(option) == Some(*final(res)),
 ;
 
 } // verus!

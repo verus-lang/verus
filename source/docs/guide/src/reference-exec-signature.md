@@ -2,37 +2,38 @@
 
 The general form of an `exec` function signature takes the form:
 
-<pre>
-<code class="hljs">fn <span style="color: #800000; font-style: italic">function_name</span> <span style="color: #800000; font-style: italic">generics</span><sup>?</sup>(<span style="color: #800000; font-style: italic">args...</span>) -&gt; <span style="color: #800000; font-style: italic">return_type_and_name</span><sup>?</sup>
-    <span style="color: #800000; font-style: italic">where_clause</span><sup>?</sup>
-    <span style="color: #000080; font-style: italic">requires_clause</span><sup>?</sup>
-    <span style="color: #000080; font-style: italic">ensures_clause</span><sup>?</sup>
-    <span style="color: #000080; font-style: italic">returns_clause</span><sup>?</sup>
-    <span style="color: #000080; font-style: italic">invariants_clause</span><sup>?</sup>
-    <span style="color: #000080; font-style: italic">unwind_clause</span><sup>?</sup>
-</code>
-</pre>
+```verus-grammar
+V@[exec_fn_item] ::=
+    R@[visibility]? exec? fn R@[function_name] R@[generics]?(R@[args...]) ( -> V@[exec_return_type] )?
+        R@[where_clause]?
+        V@[requires_clause]?
+        V@[ensures_clause]?
+        V@[returns_clause]?
+        V@[invariants_clause]?
+        V@[unwind_clause]?
+
+V@[exec_return_type]       ::= V@[exec_return_type_named] | V@[exec_return_type_anon]
+V@[exec_return_type_named] ::= ( R@[pattern] : R@[type] )
+V@[exec_return_type_anon]  ::= R@[type]
+```
 
 ## Function specification
 
 The elements of the function specification are given by the signature clauses.
 
 **The precondition.**
-The <code class="hljs"><span style="color: #000080; font-style: italic">requires_clause</span></code> is the precondition.
+The V@[requires_clause] is the precondition.
 
 **The postcondition.**
-The <code class="hljs"><span style="color: #000080; font-style: italic">ensures_clause</span></code>
-and the
-<code class="hljs"><span style="color: #000080; font-style: italic">returns_clause</span></code>
-together form the postcondition.
+The V@[ensures_clause] and the V@[returns_clause] together form the postcondition.
 
 **The invariants.**
-The <code class="hljs"><span style="color: #000080; font-style: italic">invariants_clause</span></code> specifies what invariants can be opened by the function.
+The V@[invariants_clause] specifies what invariants can be opened by the function.
 For exec functions, the default is `open_invariants any`.
 See [this page](./reference-opens-invariants.md) for more details.
 
 **Unwinding.**
-The <code class="hljs"><span style="color: #000080; font-style: italic">unwind_clause</span></code> specifies whether the function might exit "abnormally" by unwinding,
+The V@[unwind_clause] specifies whether the function might exit "abnormally" by unwinding,
 and under what conditions that can happen.
 See [this page](./reference-unwind-sig.md) for more details.
 

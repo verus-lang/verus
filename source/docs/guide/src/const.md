@@ -68,7 +68,7 @@ It doesn't handle using something like `::<usize>` to coerce a function to a dif
 
 ## Trouble-shooting overflow errors
 Verus may have difficulty proving that a `const` declaration does not overflow; 
-using `[verifier::when_used_as_const(SPEC_DEF)]` 
+using `[verifier::when_used_as_spec(SPEC_DEF)]` 
 or `[verifier::non_linear]` may help. 
 
 For example, here `[verifier::non_linear]` is added to prevent the error 

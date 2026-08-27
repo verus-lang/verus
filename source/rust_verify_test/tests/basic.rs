@@ -119,6 +119,7 @@ const TEST_REQUIRES1: &str = verus_code_str! {
     proof fn test_requires1(a: int, b: int, c: int)
         requires
             a <= b,
+            #![verifier::proof_note("Test label #1")]
             b <= c,
     {
         assert(a <= c);
@@ -133,14 +134,17 @@ test_verify_one_file! {
             test_requires1(a + a, b + b, c + c);
             test_requires1(a + a, b + b, a + c); // FAILS
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Err(err) => assert_help_error_msg(err, "note: Test label #1")
 }
 
 test_verify_one_file! {
     #[test] test_requires3 TEST_REQUIRES1.to_string() + verus_code_str! {
         fn test_requires3(a: int, b: int, c: int) {
             assume(a <= b);
-            assume(b <= c);
+            assume(
+                #[verifier::proof_note("Test label #2")]
+                (b <= c)
+            );
             proof {
                 test_requires1(a + a, b + b, c + c);
                 test_requires1(a + c, b + b, c + c); // FAILS
@@ -154,6 +158,7 @@ const TEST_RET: &str = verus_code_str! {
         requires
             a <= b,
         ensures
+            #![verifier::proof_note("Test label #3")]
             ret <= a + b,
             ret <= a + a, // FAILS
             ret <= b + b,
@@ -164,6 +169,162 @@ const TEST_RET: &str = verus_code_str! {
 
 test_verify_one_file! {
     #[test] test_ret TEST_RET.to_string() => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_proof_note_on_requires verus_code! {
+        fn example(x: u64, y: u64) -> (z: u64)
+            requires
+                #![verifier::proof_note("Property 732")]
+                x == y,
+        {
+            x + y
+        }
+
+        fn caller() {
+            let _ = example(1, 2); // precondition fails
+        }
+    } => Err(err) => assert_help_error_msg(err, "note: Property 732")
+}
+
+test_verify_one_file! {
+    #[test] test_multiple_proof_notes_on_requires verus_code! {
+        fn example(x: u64, y: u64) -> (z: u64)
+            requires
+                #![verifier::proof_note("Property 732")]
+                #![verifier::proof_note("Property 451")]
+                x == y,
+        {
+            x + y
+        }
+    } => Err(err) => assert_vir_error_msg(err, "at most one `proof_note` attribute is allowed")
+}
+
+test_verify_one_file! {
+    #[test] test_proof_note_on_ensures verus_code! {
+        fn example(x: u64, y: u64) -> (z: u64)
+            ensures
+                #![verifier::proof_note("Property 732")]
+                z == x + y,
+        {
+            x
+        }
+
+        fn caller() {
+            let _ = example(1, 2); // postcondition fails
+        }
+    } => Err(err) => assert_help_error_msg(err, "note: Property 732")
+}
+
+test_verify_one_file! {
+    #[test] test_multiple_proof_notes_on_ensures verus_code! {
+        fn example(x: u64, y: u64) -> (z: u64)
+            ensures
+                #![verifier::proof_note("Property 732")]
+                #![verifier::proof_note("Property 451")]
+                z == x + y,
+        {
+            x
+        }
+    } => Err(err) => assert_vir_error_msg(err, "at most one `proof_note` attribute is allowed")
+}
+
+test_verify_one_file! {
+    #[test] test_proof_note_on_assert verus_code! {
+        fn caller() {
+            #[verifier::proof_note("Statement known to be false")]
+            assert(1 > 2); // assertion fails
+        }
+    } => Err(err) => assert_help_error_msg(err, "note: Statement known to be false")
+}
+
+test_verify_one_file! {
+    #[test] test_multiple_proof_notes_on_assert verus_code! {
+        fn caller() {
+            #[verifier::proof_note("Statement known to be false")]
+            #[verifier::proof_note("This is another proof label")]
+            assert(1 > 2); // assertion fails
+        }
+    } => Err(err) => assert_vir_error_msg(err, "at most one `proof_note` attribute is allowed")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_proof_note_on_assume_with_no_cheating ["--no-cheating"] => verus_code! {
+        fn caller() {
+            #[verifier::proof_note("Statement known to be false")]
+            assume(1 > 2); // assumption fails
+        }
+    } => Err(err) => assert_help_error_msg(err, "note: Statement known to be false")
+}
+
+test_verify_one_file! {
+    #[test] test_multiple_proof_notes_on_assume verus_code! {
+        fn caller() {
+            #[verifier::proof_note("Statement known to be false")]
+            #[verifier::proof_note("This is another proof label")]
+            assume(1 > 2); // assumption fails
+        }
+    } => Err(err) => assert_vir_error_msg(err, "at most one `proof_note` attribute is allowed")
+}
+
+test_verify_one_file! {
+    #[test] test_custom_err_on_assert verus_code! {
+        fn caller() {
+            #[verifier::custom_err("Custom assert error")]
+            assert(1 > 2);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Custom assert error")
+}
+
+test_verify_one_file! {
+    #[test] test_multiple_custom_errs_on_assert verus_code! {
+        fn caller() {
+            #[verifier::custom_err("Custom assert error")]
+            #[verifier::custom_err("Another custom error")]
+            assert(1 > 2);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "at most one `proof_note` attribute is allowed")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_custom_err_on_assume_with_no_cheating ["--no-cheating"] => verus_code! {
+        fn caller() {
+            #[verifier::custom_err("Custom assume error")]
+            assume(1 > 2);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Custom assume error")
+}
+
+test_verify_one_file! {
+    #[test] test_custom_err_on_requires verus_code! {
+        fn example(x: u64, y: u64) -> (z: u64)
+            requires
+                #![verifier::custom_err("Custom requires error")]
+                x == y,
+        {
+            x
+        }
+
+        fn caller() {
+            let _ = example(1, 2);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Custom requires error")
+}
+
+test_verify_one_file! {
+    #[test] test_custom_err_on_ensures verus_code! {
+        fn example(x: u64, y: u64) -> (z: u64)
+            ensures
+                #![verifier::custom_err("Custom ensures error")]
+                z == x + y,
+        {
+            x
+        }
+
+        fn caller() {
+            let _ = example(1, 2);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Custom ensures error")
 }
 
 test_verify_one_file! {
@@ -201,6 +362,17 @@ test_verify_one_file! {
             f(x)
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_ensures_ret_val_collision verus_code! {
+        fn f(k: u32, n: u32) -> ((_, n): (u32, u32))
+            ensures
+                n <= k,
+        {
+            (42, k / 2)
+        }
+    } => Err(err) => assert_vir_error_msg(err, "return value name collides with a parameter name")
 }
 
 test_verify_one_file! {
@@ -284,7 +456,7 @@ test_verify_one_file! {
         {
             x > 10
         }
-    } => Err(err) => assert_vir_error_msg(err, "parameter name cannot be the same as the return value name")
+    } => Err(err) => assert_vir_error_msg(err, "return value name collides with a parameter name")
 }
 
 test_verify_one_file! {
@@ -369,7 +541,7 @@ test_verify_one_file! {
         proof fn test1(x: u64) {
             x = 5;
         }
-    } => Err(e) => assert_vir_error_msg(e, "cannot assign to non-mut parameter")
+    } => Err(e) => assert_vir_error_msg(e, "variable `x` is not marked mutable")
 }
 
 test_verify_one_file! {
@@ -377,7 +549,7 @@ test_verify_one_file! {
         spec fn test1(x: u64) {
             x = 5;
         }
-    } => Err(e) => assert_vir_error_msg(e, "cannot assign to non-mut parameter")
+    } => Err(e) => assert_vir_error_msg(e, "assignment is not allowed inside pure context")
 }
 
 test_verify_one_file! {
@@ -494,35 +666,25 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 4)
 }
 
-fn assert_spec_eq_type_err(err: TestErr, typ1: &str, typ2: &str) {
-    assert_eq!(err.errors.len(), 1);
-    let err0 = &err.errors[0];
-    assert!(err0.code.is_none());
-    assert!(err0.message.contains("mismatched types; types must be compatible to use == or !="));
-    assert!(err0.spans.len() == 2 || err0.spans.len() == 3);
-    assert_spans_contain(err0, typ1);
-    assert_spans_contain(err0, typ2);
-}
-
 test_verify_one_file! {
     #[test] test_spec_eq_type_error_1 verus_code! {
         fn test(a: u64, b: Option<u64>)
             requires a == b { }
-    } => Err(err) => assert_spec_eq_type_err(err, "u64", "::Option<u64>")
+    } => Err(err) => assert_rust_error_msg(err, "the trait bound")
 }
 
 test_verify_one_file! {
     #[test] test_spec_eq_type_error_2 verus_code! {
         fn test(a: u64, b: std::sync::Arc<Option<u64>>)
             requires a == b { }
-    } => Err(err) => assert_spec_eq_type_err(err, "u64", "::Option<u64>")
+    } => Err(err) => assert_rust_error_msg(err, "the trait bound")
 }
 
 test_verify_one_file! {
     #[test] test_spec_eq_type_error_3 verus_code! {
         fn test(a: u64, b: spec_fn(u64)->nat)
             requires a == b { }
-    } => Err(err) => assert_spec_eq_type_err(err, "u64", "spec_fn(u64) -> nat")
+    } => Err(err) => assert_rust_error_msg(err, "the trait bound")
 }
 
 test_verify_one_file! {
@@ -533,7 +695,7 @@ test_verify_one_file! {
 
         fn test<X: A>(a: (u64, nat), b: <X as A>::AT)
             requires a == b { }
-    } => Err(err) => assert_spec_eq_type_err(err, "(u64, nat)", "<X as crate::A>::AT")
+    } => Err(err) => assert_rust_error_msg(err, "the trait bound")
 }
 
 test_verify_one_file! {
@@ -542,7 +704,13 @@ test_verify_one_file! {
             let a = |x: i32| x + 3;
             assert(a == 5);
         }
-    } => Err(err) => assert_spec_eq_type_err(err, "nat", "AnonymousClosure(i32) -> i32")
+    } => Err(err) => assert_rust_error_msg(err, "the trait bound")
+}
+
+test_verify_one_file! {
+    #[test] test_spec_eq_trait_error verus_code! {
+        fn f<A: SpecEq<A>>() {}
+    } => Err(err) => assert_vir_error_msg(err, "cannot use trait marked `verifier::internal_trait`")
 }
 
 test_verify_one_file! {
@@ -650,4 +818,14 @@ test_verify_one_file! {
             (a, b) = (1, 2);
         }
     } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: destructuring assignment")
+}
+
+test_verify_one_file! {
+    #[test] ensures_clause_no_named_ret_value verus_code! {
+        fn test() -> u8
+            ensures 0 == 1 // FAILS
+        {
+            1
+        }
+    } => Err(err) => assert_fails(err, 1)
 }

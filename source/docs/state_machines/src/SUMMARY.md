@@ -27,8 +27,7 @@
         - [Verified Source](./examples/src-rc.md)
         - [Exercises](./examples/rc-exercises.md)
 
-    - [Guide TODO](tutorial-by-example.md)
-
+    - [Guide (TODO)](tutorial-again.md)
       - [Counting to _n_ (again) (TODO)](./examples/counting-to-n-again.md)
       - [Hash table (TODO)](./examples/hash-table.md)
       - [Reader-writer lock (TODO)](./examples/rwlock.md)

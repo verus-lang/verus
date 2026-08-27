@@ -1,9 +1,11 @@
-# Integration Tests for `cargo verus`
+# Package-Level Tests for `cargo verus`
 
-These tests are meant to confirm integration between `cargo-verus` and `cargo` itself, without actually running any of the heavy machinery. This is where the helper `fake-cargo` binary comes in: it allows capturing the args and env vars that `cargo-verus` passes to `cargo`, but without actually running `cargo` or `verus` in any serious capacity. It only ever invokes `cargo metadata` which does not need network access, because the test fixtures are set up to be entirely local using `path` deps, etc.
+The tests in this directory validate `cargo-verus` command planning directly.
+They use `MockPackage`/`MockWorkspace` fixtures and assert against the
+`ExecutionPlan::RunCargo` output: CLI args and environment variable bindings.
 
 ## How to Run
 
-```
-cargo test -p cargo-verus --features integration-tests
+```bash
+cargo test -p cargo-verus
 ```

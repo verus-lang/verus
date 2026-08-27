@@ -231,6 +231,54 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] pointer_cast_slice_and_str verus_code! {
+        use vstd::prelude::*;
+
+        fn test1(a: *mut [u8]) {
+            let b = a as *mut [u16];
+            assert(a@.addr == b@.addr);
+            assert(a@.provenance == b@.provenance);
+            assert(a@.metadata == b@.metadata);
+        }
+
+        fn test2(a: *const [u8]) {
+            let b = a as *const [u16];
+            assert(a@.addr == b@.addr);
+            assert(a@.provenance == b@.provenance);
+            assert(a@.metadata == b@.metadata);
+        }
+
+        fn test3(a: *const [u8]) {
+            let b = a as *const str;
+            assert(a@.addr == b@.addr);
+            assert(a@.provenance == b@.provenance);
+            assert(a@.metadata == b@.metadata);
+        }
+
+        fn test4(a: *const str) {
+            let b = a as *const [u8];
+            assert(a@.addr == b@.addr);
+            assert(a@.provenance == b@.provenance);
+            assert(a@.metadata == b@.metadata);
+        }
+
+        fn test5(a: *const [u16]) {
+            let b = a as *const str;
+            assert(a@.addr == b@.addr);
+            assert(a@.provenance == b@.provenance);
+            assert(a@.metadata == b@.metadata);
+        }
+
+        fn test6(a: *const str) {
+            let b = a as *const [u16];
+            assert(a@.addr == b@.addr);
+            assert(a@.provenance == b@.provenance);
+            assert(a@.metadata == b@.metadata);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] pointer_exec_eq_is_not_spec_eq verus_code! {
         use vstd::prelude::*;
         fn test_const_eq(x: *const u8, y: *const u8) {
@@ -283,11 +331,54 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] compare_const_mut_pointers verus_code! {
+        use vstd::prelude::*;
+
+        pub assume_specification<T: core::marker::PointeeSized>[ <*const T as core::cmp::PartialOrd>::lt ] (
+            p: &*const T,
+            q: &*const T,
+        ) -> (result: bool)
+        ensures
+            result == ((*p as usize) < (*q as usize)),
+        ;
+
+        fn compare_pointers(p1: *const u32, p2: *mut u32) -> (result: bool)
+            ensures result == ((p1 as usize) < (p2 as *const u32 as usize)),
+        {
+            p1 < p2
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] not_supported_int_to_ptr_cast verus_code! {
         fn test(x: usize) {
             let y = x as *mut u8;
         }
     } => Err(err) => assert_vir_error_msg(err, "Verus does not support this cast")
+}
+
+test_verify_one_file! {
+    #[test] raw_borrow_outside_verified_code code! {
+        use vstd::prelude::*;
+
+        fn raw_borrow(n: &u64) -> impl Sized {
+            let _x = &raw const n;
+            42
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // Ensure that diagnostic is emitted rather than an internal error
+    #[test] raw_borrow_not_supported_in_verified_code verus_code! {
+        use vstd::prelude::*;
+
+        fn raw_borrow(n: &u64) -> impl Sized {
+            let _x = &raw const n;
+            42
+        }
+    } => Err(err) => assert_vir_error_msg(err, "raw borrows")
 }
 
 test_verify_one_file! {
@@ -314,7 +405,7 @@ test_verify_one_file! {
             let b1_ptr = block_ptr as *mut u32;
             let b2_ptr = block_ptr.with_addr(block_ptr.addr() + 4) as *mut u32;
 
-            let tracked (token1, token2) = token.split(Set::new(|x: int| block_ptr.addr() <= x < block_ptr.addr() + 4));
+            let tracked (token1, token2) = token.split(Set::range(block_ptr.addr() as int, (block_ptr.addr() + 4) as int));
             let tracked mut token1 = token1.into_typed::<u32>(b1_ptr as usize);
             let tracked mut token2 = token2.into_typed::<u32>(b2_ptr as usize);
 

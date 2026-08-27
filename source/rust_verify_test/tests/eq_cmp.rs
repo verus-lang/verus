@@ -12,7 +12,7 @@ test_verify_one_file! {
 
         fn test_eq<T: Ord>(x: &T, y: &T) -> (r: bool)
             requires
-                obeys_cmp_spec::<T>(),
+                obeys_cmp::<T>(),
             ensures
                 r <==> x.eq_spec(y),
         {
@@ -30,7 +30,7 @@ test_verify_one_file! {
 
         fn test_eq_wrong<T: Ord>(x: &T, y: &T) -> (r: bool)
             requires
-                obeys_cmp_spec::<T>(),
+                obeys_cmp::<T>(),
             ensures
                 r <==> x.eq_spec(y),
         {
@@ -78,7 +78,7 @@ test_verify_one_file! {
 
         broadcast proof fn lemma_s_obeys_eq_spec()
             ensures
-                #[trigger] obeys_eq_spec::<P>(),
+                #[trigger] obeys_eq::<P>(),
         {
             reveal(obeys_eq_spec_properties);
         }

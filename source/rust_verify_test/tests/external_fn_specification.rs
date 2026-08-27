@@ -36,6 +36,17 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 2)
 }
 
+test_verify_one_file! {
+    #[test] no_old_or_final_in_postcondition_error verus_code! {
+        #[verifier(external_fn_specification)]
+        pub fn swap_requires_ensures<T>(a: &mut T, b: &mut T)
+            ensures *a == *old(b), *b == *old(a),
+        {
+            std::mem::swap(a, b)
+        }
+    } => Err(err) => assert_vir_error_msg(err, "to dereference a mutable reference parameter in a postcondition, disambiguate by wrapping it in either `old` or `final`")
+}
+
 // Apply external_fn_specification on a function from an external crate
 // don't import vstd for this test (it would cause overlap)
 
@@ -43,7 +54,7 @@ test_verify_one_file! {
     #[test] test_apply_spec_to_external verus_code! {
         #[verifier(external_fn_specification)]
         pub fn swap_requires_ensures<T>(a: &mut T, b: &mut T)
-            ensures *a == *old(b), *b == *old(a),
+            ensures *final(a) == *old(b), *final(b) == *old(a),
         {
             std::mem::swap(a, b)
         }
@@ -110,21 +121,21 @@ test_verify_one_file! {
         {
             negate_bool(b, x)
         }
-    } => Err(err) => assert_vir_error_msg(err, "duplicate specification for `crate::negate_bool`")
+    } => Err(err) => assert_vir_error_msg(err, "duplicate specification for `test_crate::negate_bool`")
 }
 
 test_verify_one_file! {
     #[test] test_overlap2 verus_code! {
         #[verifier(external_fn_specification)]
         pub fn swap_requires_ensures<T>(a: &mut T, b: &mut T)
-            ensures *a == *old(b), *b == *old(a),
+            ensures *final(a) == *old(b), *final(b) == *old(a),
         {
             std::mem::swap(a, b)
         }
 
         #[verifier(external_fn_specification)]
         pub fn swap_requires_ensures2<T>(a: &mut T, b: &mut T)
-            ensures *a == *old(b), *b == *old(a),
+            ensures *final(a) == *old(b), *final(b) == *old(a),
         {
             std::mem::swap(a, b)
         }
@@ -138,7 +149,7 @@ test_verify_one_file! {
         // This will conflict with the mem::swap specification declared in vstd
         #[verifier(external_fn_specification)]
         pub fn swap_requires_ensures<T>(a: &mut T, b: &mut T)
-            ensures *a == *old(b), *b == *old(a),
+            ensures *final(a) == *old(b), *final(b) == *old(a),
         {
             std::mem::swap(a, b)
         }
@@ -165,7 +176,7 @@ test_verify_one_file! {
         fn test() {
             negate_bool_requires_ensures(false, 1);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function `crate::negate_bool_requires_ensures` which is an artificial function for `assume_specification`; call `crate::negate_bool` instead")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `test_crate::negate_bool_requires_ensures` which is an artificial function for `assume_specification`; call `test_crate::negate_bool` instead")
 }
 
 test_verify_one_file! {
@@ -176,7 +187,7 @@ test_verify_one_file! {
         fn test() {
             some_external_fn();
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use function `crate::some_external_fn` which is ignored")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `test_crate::some_external_fn` which is ignored")
 }
 
 test_verify_one_file! {
@@ -189,7 +200,7 @@ test_verify_one_file! {
         fn test() {
             stuff();
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use function `crate::stuff` which is ignored")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `test_crate::stuff` which is ignored")
 }
 
 // If you wrongly try to apply a mode
@@ -652,7 +663,7 @@ test_verify_one_file! {
             let mut a = x;
             core::mem::swap(&mut a, &mut a);
         }
-    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `a` as mutable more than once at a time")
+    } => Err(err) => assert_rust_error_msg_skip_spec_msgs(err, "cannot borrow `a` as mutable more than once at a time")
 }
 
 test_verify_one_file! {
@@ -1011,7 +1022,7 @@ test_verify_one_file! {
             let a = exec_foo(true);
             assert(a == false);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function `crate::exec_foo` which is an artificial function for `assume_specification`; call `crate::foo` instead")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `test_crate::exec_foo` which is an artificial function for `assume_specification`; call `test_crate::foo` instead")
 }
 
 test_verify_one_file! {
@@ -1084,7 +1095,7 @@ test_verify_one_file! {
         {
             X::f(t)
         }
-    } => Err(err) => assert_vir_error_msg(err, "duplicate specification for `crate::X::f`")
+    } => Err(err) => assert_vir_error_msg(err, "duplicate specification for `test_crate::X::f`")
 }
 
 test_verify_one_file! {
@@ -1347,7 +1358,7 @@ test_verify_one_file! {
         impl Tr for X {
             fn foo(&self) { }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use function `crate::X::foo` which is ignored")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `test_crate::X::foo` which is ignored")
 }
 
 test_verify_one_file! {

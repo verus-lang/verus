@@ -5,6 +5,8 @@ use common::*;
 
 test_verify_one_file! {
     #[test] test_dyn verus_code! {
+        use std::rc::Rc;
+        use std::sync::Arc;
         use vstd::prelude::*;
         trait T {
             spec fn b(&self) -> u8 { 5 }
@@ -21,13 +23,15 @@ test_verify_one_file! {
         impl T for u32 {
             fn f(&self) -> (r: u8) { 4 }
         }
-        fn test_coerce() {
+        fn test_coerce_ref() {
             let u: u8 = 7;
             let d: &dyn T = &u; // ToDyn coercion
             let r = d.f();
             assert(d.b() == 7);
             assert(r <= 10);
+        }
 
+        fn test_coerce_box() {
             let x: u32 = 9;
             let d: Box<dyn T> = Box::new(x); // ToDyn coercion
             let r = d.f();
@@ -39,7 +43,33 @@ test_verify_one_file! {
             let r = d.f();
             assert(d.b() == 5); // FAILS
         }
-    } => Err(err) => assert_one_fails(err)
+
+        fn test_coerce_rc() {
+            let x: u32 = 9;
+            let d: Rc<dyn T> = Rc::new(x); // ToDyn coercion
+            let r = d.f();
+            assert(d.b() == 5);
+            assert(r <= 10);
+
+            let y: u16 = 8;
+            let d: Rc<dyn T> = Rc::new(y); // ToDyn coercion
+            let r = d.f();
+            assert(d.b() == 5); // FAILS
+        }
+
+        fn test_coerce_arc() {
+            let x: u32 = 9;
+            let d: Arc<dyn T> = Arc::new(x); // ToDyn coercion
+            let r = d.f();
+            assert(d.b() == 5);
+            assert(r <= 10);
+
+            let y: u16 = 8;
+            let d: Arc<dyn T> = Arc::new(y); // ToDyn coercion
+            let r = d.f();
+            assert(d.b() == 5); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
 }
 
 test_verify_one_file! {
@@ -337,6 +367,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] dyn_cycle3 verus_code! {
+        use vstd::std_specs::alloc::*;
         trait T {
             spec fn f(&self, d: &S) -> int;
         }
@@ -408,4 +439,57 @@ test_verify_one_file! {
         fn test(d: &dyn Fn() -> ()) {
         }
     } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: dyn with more that one trait")
+}
+
+test_verify_one_file! {
+    #[test] test_dyn2 verus_code! {
+        use vstd::prelude::*;
+        trait T {
+            spec fn f(&self) -> int;
+        }
+        impl T for u32 {
+            spec fn f(&self) -> int { 3 }
+        }
+        impl T for Box<u32> {
+            spec fn f(&self) -> int { 4 }
+        }
+        fn test_coerce() {
+            let x: Box<u32> = Box::new(9);
+            let d: Box<dyn T> = Box::new(x); // ToDyn coercion
+            assert(d.f() == 4);
+            assert(d.f() == 3); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_dyn_owned_precond verus_code! {
+        use vstd::prelude::*;
+        verus! {
+            pub trait T {
+                spec fn t(&self) -> int;
+            }
+            struct Ty {}
+            impl T for Ty {
+                open spec fn t(&self) -> int { 0 }
+            }
+            fn borrowed<'a>(x: &'a Box<dyn T>)
+                requires
+                x.t() == 0,
+            {}
+            fn owned(x: Box<dyn T>)
+                requires
+                x.t() == 0,
+            {}
+            fn repro() {
+                let x: Box<dyn T> = Box::new(Ty {});
+                assert(x.t() == 0);
+                borrowed(&x);
+                // Exercises failure case of #2629: rustc emits a no-op unsize
+                // adjustment, which must not generate a spurious ToDyn, as that
+                // breaks carrying the precondition through:
+                owned(x);
+            }
+        }
+    } => Ok(())
 }

@@ -13,6 +13,7 @@ fn new_trait_from(tr: &ItemTrait, ident: Ident) -> ItemTrait {
         vis: tr.vis.clone(),
         unsafety: None,
         auto_token: None,
+        constness: None,
         restriction: None,
         trait_token: tr.trait_token,
         ident,
@@ -46,6 +47,7 @@ fn new_impl_for_trait(tr: &ItemTrait, tr_spec: &Path, self_ty: Box<Type>) -> Ite
         attrs: Vec::new(),
         defaultness: None,
         unsafety: None,
+        constness: None,
         impl_token: Token![impl](span),
         generics,
         trait_: Some((None, parse_quote_spanned!(span => #tr_spec), Token![for](span))),
@@ -125,6 +127,14 @@ fn expand_extension_trait<'tcx>(
                 f_tspec.default = None;
                 f_tspec_impl.default = None;
                 f_tspec_impl.sig.mode = FnMode::Default;
+                // Remove #[verifier::prophetic] from the TSpecImpl methods.
+                // The TSpecImpl trait is marked #[verifier::external], so any Verus-specific
+                // attributes cause a spurious warning about having no effect.
+                f_tspec_impl.attrs.retain(|attr| {
+                    !(attr.path().segments.len() == 2
+                        && attr.path().segments[0].ident == "verifier"
+                        && attr.path().segments[1].ident == "prophetic")
+                });
                 f_blanket.sig.mode = FnMode::Default;
                 tspec_items.push(TraitItem::Fn(f_tspec));
                 tspec_impl_items.push(TraitItem::Fn(f_tspec_impl));
@@ -169,12 +179,12 @@ fn expand_extension_trait<'tcx>(
         quote_spanned!(span => non_camel_case_types),
     ));
     let blanket_bound: TypeParamBound = {
-        tr.supertraits.iter().filter(|tpb| is_sizedness_bound(tpb)).cloned().next().unwrap_or_else(
-            || {
-                let span = tr.generics.span();
-                parse_quote_spanned!(span => core::marker::MetaSized)
-            },
-        )
+        tr.supertraits.iter().find(|tpb| is_sizedness_bound(tpb)).cloned().unwrap_or_else(|| {
+            let span = tr.generics.span();
+            // eventually TODO? MetaSized currently breaks stable rust when compiling to executable code
+            // parse_quote_spanned!(span => core::marker::MetaSized)
+            parse_quote_spanned!(span => ?Sized)
+        })
     };
     blanket_impl.generics.params.push(parse_quote_spanned!(span => #self_x: #t + #blanket_bound));
     blanket_impl.items = blanket_impl_items;
@@ -216,6 +226,7 @@ pub(crate) fn expand_extension_traits(erase_all: bool, items: &mut Vec<Item>) {
                 }
             }
             for attr in &tr.attrs {
+                #[allow(clippy::cmp_owned)] // There is no other way to compare an Ident
                 let is_external_trait_extension = attr.path().segments.len() == 2
                     && attr.path().segments[0].ident.to_string() == "verifier"
                     && attr.path().segments[1].ident.to_string() == "external_trait_extension";
@@ -224,6 +235,7 @@ pub(crate) fn expand_extension_traits(erase_all: bool, items: &mut Vec<Item>) {
                         let tokens: Vec<_> = list.tokens.clone().into_iter().collect();
                         use proc_macro2::TokenTree;
                         match (&t, tokens.as_slice()) {
+                            #[allow(clippy::cmp_owned)] // There is no other way to compare an Ident
                             (
                                 Some(t),
                                 [TokenTree::Ident(s), TokenTree::Ident(via), TokenTree::Ident(i)],

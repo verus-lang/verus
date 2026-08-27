@@ -18,7 +18,7 @@
 //     $ATTR_VALUE
 //     ```
 //
-// The ATTR_NAME can be requires, ensures, recommends or modes.
+// The ATTR_NAME can be requires, ensures, returns, recommends or modes.
 //
 // The reason we use a codeblock here is that so rustdoc will perform syntax highlighting
 // on the value which is applicable if it's an expression. For example, if it's a
@@ -29,26 +29,27 @@
 // some data explaining the function mode, param modes, and return mode.
 
 use proc_macro2::Span;
+use quote::ToTokens;
 use std::iter::FromIterator;
 use verus_syn::punctuated::Punctuated;
 use verus_syn::spanned::Spanned;
 use verus_syn::token;
 use verus_syn::{
-    AssumeSpecification, AttrStyle, Attribute, Block, Expr, ExprBlock, ExprPath, FnMode, Ident,
-    ImplItemFn, ItemFn, Pat, PatIdent, Path, PathArguments, PathSegment, Publish, QSelf,
+    AssumeSpecification, AttrStyle, Attribute, Block, Expr, ExprBlock, ExprPath, FnArg, FnMode,
+    Ident, ImplItemFn, ItemFn, Pat, PatIdent, Path, PathArguments, PathSegment, Publish, QSelf,
     ReturnType, Signature, TraitItemFn, Type, TypeGroup, TypePath,
 };
 
 /// Check if VERUSDOC=1.
-
 #[cfg(verus_keep_ghost)]
 pub fn env_rustdoc() -> bool {
-    match proc_macro::tracked_env::var("VERUSDOC") {
+    match proc_macro::tracked::env_var("VERUSDOC") {
         Err(_) => false, // VERUSDOC key not present in environment
         Ok(s) => s == "1",
     }
 }
 
+/// Check if VERUSDOC=1.
 #[cfg(not(verus_keep_ghost))]
 pub fn env_rustdoc() -> bool {
     false
@@ -94,7 +95,6 @@ pub fn process_trait_item_method(item: &mut TraitItemFn) {
 /// Process a signature to get all the information, apply the codeblock
 /// formatting tricks, and then package it all up into a #[doc = "..."] attribute
 /// (as a verus_syn::Attribute object) that we can apply to the item.
-
 fn attr_for_sig(
     sig: &Signature,
     block: Option<&Block>,
@@ -103,6 +103,10 @@ fn attr_for_sig(
     let mut v = vec![];
 
     v.push(encoded_sig_info(sig));
+
+    if let Some(with_spec) = &sig.spec.with {
+        v.push(encoded_str("with", &format_with_spec(with_spec)));
+    }
 
     match &sig.spec.requires {
         Some(es) => {
@@ -124,6 +128,14 @@ fn attr_for_sig(
         Some(es) => {
             for expr in es.exprs.exprs.iter() {
                 v.push(encoded_expr("ensures", expr));
+            }
+        }
+        None => {}
+    }
+    match &sig.spec.returns {
+        Some(rs) => {
+            for expr in rs.exprs.exprs.iter() {
+                v.push(encoded_expr("returns", expr));
             }
         }
         None => {}
@@ -172,7 +184,6 @@ fn is_spec(sig: &Signature) -> bool {
 
 /// Do we want to show the body for the given spec function?
 /// If it's 'open', then yes
-
 fn show_body(sig: &Signature) -> bool {
     matches!(sig.publish, Publish::Open(_))
 }
@@ -185,7 +196,7 @@ fn fn_mode_to_string(mode: &FnMode, publish: &Publish) -> String {
             Publish::OpenRestricted(res) => {
                 "open(".to_string() + &module_path_to_string(&res.path) + ") spec"
             }
-            Publish::Uninterp(_) => "uninterp".to_string(),
+            Publish::Uninterp(_) => "uninterp spec".to_string(),
             Publish::Default => "spec".to_string(),
         },
         FnMode::Proof(_) | FnMode::ProofAxiom(_) => "proof".to_string(),
@@ -330,6 +341,66 @@ fn encoded_body(kind: &str, code: &Expr) -> String {
 /// into the format that the postprocessor will recognize.
 fn encoded_str(kind: &str, data: &str) -> String {
     "```rust\n// verusdoc_special_attr ".to_string() + kind + "\n" + data + "\n```"
+}
+
+fn format_with_spec(with_spec: &verus_syn::WithSpecOnFn) -> String {
+    let mut lines: Vec<String> = vec![];
+
+    let inputs = format_fn_args(&with_spec.inputs);
+    for input in inputs {
+        let input = normalize_ws(input.trim());
+        lines.push(format!("{input},"));
+    }
+
+    if let Some((_, outputs)) = &with_spec.outputs {
+        lines.push("->".to_string());
+        let outputs = format_pat_types(outputs);
+        for output in outputs {
+            let output = normalize_ws(output.trim());
+            lines.push(format!("{output},"));
+        }
+    }
+
+    lines.join("\n")
+}
+
+fn format_pat_types(outputs: &Punctuated<verus_syn::PatType, verus_syn::Token![,]>) -> Vec<String> {
+    if outputs.is_empty() {
+        return vec![];
+    }
+
+    outputs.iter().map(format_pat_type).collect()
+}
+
+fn format_fn_args(inputs: &Punctuated<FnArg, verus_syn::Token![,]>) -> Vec<String> {
+    if inputs.is_empty() {
+        return vec![];
+    }
+    inputs.iter().map(format_fn_arg).collect()
+}
+
+fn format_fn_arg(arg: &FnArg) -> String {
+    let tracked = if arg.tracked.is_some() { "tracked " } else { "" };
+    match &arg.kind {
+        verus_syn::FnArgKind::Receiver(receiver) => {
+            let s = normalize_ws(&receiver.to_token_stream().to_string());
+            format!("{tracked}{s}")
+        }
+        verus_syn::FnArgKind::Typed(pt) => {
+            let s = format_pat_type(pt);
+            format!("{tracked}{s}")
+        }
+    }
+}
+
+fn format_pat_type(pt: &verus_syn::PatType) -> String {
+    let pat = normalize_ws(&verus_prettyplease::unparse_pat(&pt.pat));
+    let ty = normalize_ws(&verus_prettyplease::unparse_ty(&pt.ty));
+    format!("{pat}: {ty}")
+}
+
+fn normalize_ws(s: &str) -> String {
+    s.split_whitespace().collect::<Vec<&str>>().join(" ")
 }
 
 /// Create an attr that looks like #[doc = "doc_str"]

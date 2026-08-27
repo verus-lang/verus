@@ -287,11 +287,7 @@ mod parsing {
 
     fn peek_tag(input: ParseStream, tag: &str) -> bool {
         let ahead = input.fork();
-        ahead.parse::<Token![#]>().is_ok()
-            && ahead
-                .parse::<Ident>()
-                .map(|ident| ident == tag)
-                .unwrap_or(false)
+        ahead.parse::<Token![#]>().is_ok() && ahead.parse::<Ident>().is_ok_and(|ident| ident == tag)
     }
 
     // Parses #full - returns #[cfg(feature = "full")] if it is present, and

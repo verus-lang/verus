@@ -47,7 +47,7 @@ test_verify_one_file! {
         struct Other { }
 
         impl std::cmp::PartialEq for Other {
-            fn eq(&self, _: &Self) -> bool { todo!() }
+            fn eq(&self, other: &Self) -> bool { false }
         }
 
         fn test_not_structural(passengers: u64) {

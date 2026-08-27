@@ -1,4 +1,4 @@
-#![allow(dead_code)]
+#![allow(dead_code, clippy::result_large_err)]
 
 extern crate rustc_driver;
 extern crate rustc_errors;
@@ -51,9 +51,9 @@ pub struct TestErr {
     pub warnings: Vec<Diagnostic>,
     pub notes: Vec<Diagnostic>,
     pub expand_errors_notes: Vec<Diagnostic>, // produced by the `--expand-errors` flag
+    pub json_output: Option<serde_json::Value>, // captured when `--output-json` is used
 }
 
-#[allow(dead_code)]
 pub fn verify_files(
     name: &str,
     files: impl IntoIterator<Item = (String, String)>,
@@ -65,10 +65,9 @@ pub fn verify_files(
 
 use std::{cell::RefCell, path};
 thread_local! {
-    pub static THREAD_LOCAL_TEST_NAME: RefCell<Option<String>> = RefCell::new(None);
+    pub static THREAD_LOCAL_TEST_NAME: RefCell<Option<String>> = const { RefCell::new(None) };
 }
 
-#[allow(dead_code)]
 pub fn verify_files_vstd(
     name: &str,
     files: impl IntoIterator<Item = (String, String)>,
@@ -79,7 +78,6 @@ pub fn verify_files_vstd(
     verify_files_vstd_all_diags(name, files, entry_file, import_vstd, options).map(|_| ())
 }
 
-#[allow(dead_code)]
 pub fn verify_files_vstd_all_diags(
     name: &str,
     files: impl IntoIterator<Item = (String, String)>,
@@ -143,6 +141,12 @@ pub fn verify_files_vstd_all_diags(
     let run =
         run_verus(options, &test_input_dir, &test_input_dir.join(&entry_file), import_vstd, true);
     let rust_output = std::str::from_utf8(&run.stderr[..]).unwrap().trim();
+    let json_output = if options.contains(&"--output-json") {
+        let stdout_str = std::str::from_utf8(&run.stdout[..]).unwrap_or("").trim();
+        serde_json::from_str(stdout_str).ok()
+    } else {
+        None
+    };
 
     let mut errors = Vec::new();
     let mut expand_errors_notes = Vec::new();
@@ -174,9 +178,9 @@ pub fn verify_files_vstd_all_diags(
     }
 
     if is_failure {
-        Err(TestErr { errors, warnings, notes, expand_errors_notes })
+        Err(TestErr { errors, warnings, notes, expand_errors_notes, json_output })
     } else {
-        Ok(TestErr { errors, warnings, notes, expand_errors_notes })
+        Ok(TestErr { errors, warnings, notes, expand_errors_notes, json_output })
     }
 }
 
@@ -295,16 +299,20 @@ pub fn run_verus(
             verus_args.push("2".to_string());
         } else if *option == "--compile" {
             verus_args.push("--compile".to_string());
-            verus_args.push("-o".to_string());
-            verus_args.push(test_dir.join("libtest.rlib").to_str().expect("valid path").to_owned());
         } else if *option == "--no-external-by-default" {
             no_external_by_default = true;
         } else if *option == "--no-lifetime" {
             verus_args.push("--no-lifetime".to_string());
+        } else if *option == "--no-erasure-check" {
+            verus_args.push("--no-erasure-check".to_string());
+        } else if *option == "--no-verify" {
+            verus_args.push("--no-verify".to_string());
         } else if *option == "--no-report-long-running" {
             verus_args.push("--no-report-long-running".to_string());
         } else if *option == "--no-cheating" {
             verus_args.push("--no-cheating".to_string());
+        } else if *option == "--output-json" {
+            verus_args.push("--output-json".to_string());
         } else if *option == "vstd" {
             // ignore
         } else if *option == "-V allow-inline-air" {
@@ -313,17 +321,20 @@ pub fn run_verus(
         } else if *option == "-V check-api-safety" {
             verus_args.push("-V".to_string());
             verus_args.push("check-api-safety".to_string());
+        } else if *option == "-V spinoff-all" {
+            verus_args.push("-V".to_string());
+            verus_args.push("spinoff-all".to_string());
         } else if *option == "--is-core" {
             verus_args.push("--is-core".to_string());
             is_core = true;
         } else if *option == "--disable-internal-test-mode" {
             use_internal_test_mode = false;
-        } else if *option == "new-mut-ref" {
-            verus_args.push("-V".to_string());
-            verus_args.push("new-mut-ref".to_string());
         } else if *option == "no-bv-simplify" {
             verus_args.push("-V".to_string());
             verus_args.push("no-bv-simplify".to_string());
+        } else if *option == "--edition 2024" {
+            verus_args.push("--edition".to_string());
+            verus_args.push("2024".to_string());
         } else {
             panic!("option '{}' not recognized by test harness", option);
         }
@@ -360,9 +371,24 @@ pub fn run_verus(
             // suppress Rust's generation of long-type files
             "-Z".to_string(),
             "write_long_types_to_disk=no".to_string(),
+            // suppress common warnings in examples and tests
+            "-A".to_string(),
+            "non_snake_case".to_string(),
+            "-A".to_string(),
+            "deprecated".to_string(),
         ]
         .into_iter(),
     );
+
+    let compile = options.contains(&"--compile");
+    verus_args.push("-o".to_string());
+    if compile {
+        verus_args.push(test_dir.join("libtest.rlib").to_str().expect("valid path").to_owned());
+    } else {
+        verus_args
+            .push(test_dir.join("libtest_crate.rmeta").to_str().expect("valid path").to_owned());
+        verus_args.push("--emit=metadata".to_string());
+    }
 
     if json_errors {
         verus_args.push("--error-format=json".to_string());
@@ -417,7 +443,59 @@ pub fn run_verus(
     run
 }
 
+pub fn run_verus_raw(args: &[&str], dir: &std::path::Path) -> std::process::Output {
+    if std::env::var("VERUS_IN_VARGO").is_err() {
+        panic!("not running in vargo, read the README for instructions");
+    }
+    let exe = if cfg!(target_os = "windows") { ".exe" } else { "" };
+
+    let current_exe = std::env::current_exe().unwrap();
+    let deps_path = current_exe.parent().unwrap();
+    let target_path = deps_path.parent().unwrap();
+    let profile = target_path.file_name().unwrap().to_str().unwrap();
+    let verus_target_path = target_path
+        .ancestors()
+        .nth(2)
+        .expect("expected path to have at least two parents")
+        .join("target-verus")
+        .join(profile);
+    let bin = verus_target_path.join(format!("rust_verify{exe}"));
+
+    let z3 = std::env::var("VERUS_Z3_PATH")
+        .map(|p| {
+            let p = std::path::PathBuf::from(p);
+            if p.is_relative() { std::path::PathBuf::from("..").join(p) } else { p }
+        })
+        .unwrap_or({
+            if cfg!(target_os = "windows") {
+                std::path::PathBuf::from("..\\z3.exe")
+            } else {
+                std::path::PathBuf::from("../z3")
+            }
+        });
+    let z3 = path::absolute(z3).expect("Failed to find absolute path for Z3 executable");
+
+    std::process::Command::new(bin)
+        .current_dir(dir)
+        .env("VERUS_Z3_PATH", z3)
+        .args(args)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("could not execute verus")
+        .wait_with_output()
+        .expect("raw verus wait failed")
+}
+
 pub fn run_cargo_verus(args: &[&str], dir: &std::path::Path) -> std::process::Output {
+    run_cargo_verus_with_target(args, dir, &dir.join("target"))
+}
+
+pub fn run_cargo_verus_with_target(
+    args: &[&str],
+    dir: &std::path::Path,
+    target_dir: &std::path::Path,
+) -> std::process::Output {
     if std::env::var("VERUS_IN_VARGO").is_err() {
         panic!("not running in vargo, read the README for instructions");
     }
@@ -444,7 +522,16 @@ pub fn run_cargo_verus(args: &[&str], dir: &std::path::Path) -> std::process::Ou
     let bin = verus_target_path.join(format!("cargo-verus{exe}"));
 
     let mut child = std::process::Command::new(bin);
-    child.current_dir(dir);
+    let invocation_dir = tempfile::tempdir().expect("temporary cargo invocation directory");
+    let manifest_path = dir.join("Cargo.toml");
+    if args.first() == Some(&"new") {
+        child.current_dir(dir);
+    } else {
+        child.current_dir(invocation_dir.path());
+    }
+    child.env("CARGO_TARGET_DIR", target_dir);
+    child.env("CARGO_BUILD_TARGET_DIR", target_dir);
+    child.env("CARGO_BUILD_BUILD_DIR", target_dir);
 
     let z3 = std::env::var("VERUS_Z3_PATH")
         .map(|p| {
@@ -462,8 +549,16 @@ pub fn run_cargo_verus(args: &[&str], dir: &std::path::Path) -> std::process::Ou
     let z3 = path::absolute(z3).expect("Failed to find absolute path for Z3 executable");
     child.env("VERUS_Z3_PATH", z3);
 
+    let mut cargo_verus_args = Vec::new();
+    cargo_verus_args.push(args[0]);
+    if args.first() != Some(&"new") {
+        cargo_verus_args
+            .extend(["--manifest-path", manifest_path.to_str().expect("valid manifest path")]);
+    }
+    cargo_verus_args.extend(&args[1..]);
+
     let child = child
-        .args(&args[..])
+        .args(cargo_verus_args)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -478,18 +573,32 @@ pub fn run_cargo_verus(args: &[&str], dir: &std::path::Path) -> std::process::Ou
 
 // Assumes normal `cargo` is in the caller's path
 pub fn run_cargo(args: &[&str], dir: &std::path::Path) -> std::process::Output {
+    run_cargo_with_target(args, dir, &dir.join("target"))
+}
+
+pub fn run_cargo_with_target(
+    args: &[&str],
+    dir: &std::path::Path,
+    target_dir: &std::path::Path,
+) -> std::process::Output {
     // if std::env::var("VERUS_IN_VARGO").is_err() {
     //     panic!("not running in vargo, read the README for instructions");
     // }
+    let invocation_dir = tempfile::tempdir().expect("temporary cargo invocation directory");
+    let manifest_path = dir.join("Cargo.toml");
     let mut child = std::process::Command::new("cargo");
-    child.current_dir(dir);
+    child.current_dir(invocation_dir.path());
 
     // Remove Verus-specific RUSTFLAGS that are set by vargo, as they cause
     // verus_builtin and vstd to require unstable features not available on stable Rust
     child.env_remove("RUSTFLAGS");
+    child.env("CARGO_TARGET_DIR", target_dir);
+    child.env("CARGO_BUILD_TARGET_DIR", target_dir);
+    child.env("CARGO_BUILD_BUILD_DIR", target_dir);
 
     let child = child
-        .args(&args[..])
+        .args(args)
+        .args(["--manifest-path", manifest_path.to_str().expect("valid manifest path")])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -502,29 +611,35 @@ pub fn run_cargo(args: &[&str], dir: &std::path::Path) -> std::process::Output {
     run
 }
 
-#[allow(dead_code)]
 pub const FEATURE_PRELUDE: &str = crate::common::code_str! {
     // If we're using the pre-macro-expanded vstd lib, then it might have
     // some macro-internal stuff in it, and rustc needs this option in order to accept it.
     #![feature(fmt_internals)]
 
     #![allow(unused_imports)]
+    #![allow(unused_features)]
     #![allow(unused_macros)]
     #![allow(deprecated)]
+    #![allow(non_snake_case)]
+    #![allow(non_camel_case_types)]
+    #![allow(non_upper_case_globals)]
+    #![allow(unused_comparisons)]
+    #![allow(noop_method_call)]
     #![feature(allocator_api)]
     #![feature(proc_macro_hygiene)]
     #![feature(never_type)]
     #![feature(core_intrinsics)]
     #![feature(ptr_metadata)]
+    #![feature(sized_hierarchy)]
+    #![feature(const_destruct)]
+    #![feature(print_internals)]
 };
 
-#[allow(dead_code)]
 pub const USE_PRELUDE: &str = crate::common::code_str! {
     use verus_builtin::*;
     use verus_builtin_macros::*;
 };
 
-#[allow(dead_code)]
 pub fn verify_one_file(name: &str, code: String, options: &[&str]) -> Result<TestErr, TestErr> {
     let mut options: Vec<_> = options.into_iter().map(|x| *x).collect();
     let mut no_prelude = false;
@@ -688,14 +803,10 @@ pub fn relevant_error_span(err: &Vec<DiagnosticSpan>) -> &DiagnosticSpan {
     }) {
         return e;
     }
-    err.iter()
-        .filter(|e| e.label != Some(vir::def::THIS_PRE_FAILED.to_string()))
-        .next()
-        .expect("span")
+    err.iter().find(|e| e.label != Some(vir::def::THIS_PRE_FAILED.to_string())).expect("span")
 }
 
 /// Assert that one verification failure happened on source lines containing the string "FAILS".
-#[allow(dead_code)]
 pub fn assert_one_fails(err: TestErr) {
     assert_eq!(err.errors.len(), 1);
     assert!(
@@ -709,7 +820,6 @@ pub fn assert_one_fails(err: TestErr) {
 
 /// When this testcase has ONE verification failure,
 /// assert that all spans are properly reported (All spans are respoinsible to the verification failure)
-#[allow(dead_code)]
 pub fn assert_expand_fails(err: TestErr, span_count: usize) {
     assert_fails(err.clone(), 1);
 
@@ -722,7 +832,6 @@ pub fn assert_expand_fails(err: TestErr, span_count: usize) {
 }
 
 /// Assert that `count` verification failures happened on source lines containin the string "FAILS".
-#[allow(dead_code)]
 pub fn assert_fails(err: TestErr, count: usize) {
     assert_eq!(err.errors.len(), count);
     for c in 0..count {
@@ -736,20 +845,17 @@ pub fn assert_fails(err: TestErr, count: usize) {
     }
 }
 
-#[allow(dead_code)]
 pub fn assert_vir_error_msg(err: TestErr, expected_msg: &str) {
     assert_eq!(err.errors.len(), 1);
     assert!(err.errors[0].code.is_none()); // thus likely a VIR error
     assert!(err.errors[0].message.contains(expected_msg));
 }
 
-#[allow(dead_code)]
 pub fn assert_any_vir_error_msg(err: TestErr, expected_msg: &str) {
     assert!(err.errors.iter().all(|x| x.code.is_none())); // thus likely a VIR error
     assert!(err.errors.iter().any(|x| x.message.contains(expected_msg)));
 }
 
-#[allow(dead_code)]
 pub fn assert_vir_error_msgs(err: TestErr, expected_msgs: &[&str]) {
     assert!(err.errors.len() == expected_msgs.len());
     assert!(err.errors.iter().all(|x| x.code.is_none())); // thus likely a VIR error
@@ -758,7 +864,6 @@ pub fn assert_vir_error_msgs(err: TestErr, expected_msgs: &[&str]) {
     }
 }
 
-#[allow(dead_code)]
 pub fn assert_custom_attr_error_msg(err: TestErr, expected_msg: &str) {
     assert!(
         err.errors.iter().any(|x| x.message.contains("custom attribute panicked")
@@ -766,12 +871,10 @@ pub fn assert_custom_attr_error_msg(err: TestErr, expected_msg: &str) {
     );
 }
 
-#[allow(dead_code)]
 pub fn assert_help_error_msg(err: TestErr, expected_msg: &str) {
     assert!(err.errors.iter().any(|x| x.rendered.contains(expected_msg)));
 }
 
-#[allow(dead_code)]
 pub fn assert_help_error_msgs(err: TestErr, expected_msgs: &[&str]) {
     assert!(
         expected_msgs
@@ -780,7 +883,6 @@ pub fn assert_help_error_msgs(err: TestErr, expected_msgs: &[&str]) {
     );
 }
 
-#[allow(dead_code)]
 pub fn assert_rust_error_msg(err: TestErr, expected_msg: &str) {
     assert_eq!(err.errors.len(), 1);
     let error_re = regex::Regex::new(r"^E[0-9]{4}$").unwrap();
@@ -793,7 +895,11 @@ pub fn assert_rust_error_msg(err: TestErr, expected_msg: &str) {
     assert!(err.errors[0].message.contains(expected_msg));
 }
 
-#[allow(dead_code)]
+pub fn assert_rust_error_msg_skip_spec_msgs(mut err: TestErr, expected_msg: &str) {
+    err.errors.retain(|e| !e.message.contains("(Verus spec"));
+    assert_rust_error_msg(err, expected_msg)
+}
+
 pub fn assert_rust_error_msgs(err: TestErr, expected_msgs: &[&str]) {
     assert_eq!(err.errors.len(), expected_msgs.len());
     let error_re = regex::Regex::new(r"^E[0-9]{4}$").unwrap();
@@ -808,7 +914,6 @@ pub fn assert_rust_error_msgs(err: TestErr, expected_msgs: &[&str]) {
     }
 }
 
-#[allow(dead_code)]
 pub fn assert_rust_error_msg_all(err: TestErr, expected_msg: &str) {
     assert!(err.errors.len() >= 1);
     let error_re = regex::Regex::new(r"^E[0-9]{4}$").unwrap();
@@ -818,7 +923,6 @@ pub fn assert_rust_error_msg_all(err: TestErr, expected_msg: &str) {
     }
 }
 
-#[allow(dead_code)]
 pub fn assert_rust_error_msg_any(err: TestErr, expected_msg: &str) {
     assert!(err.errors.len() >= 1);
     let error_re = regex::Regex::new(r"^E[0-9]{4}$").unwrap();
@@ -832,7 +936,6 @@ pub fn assert_rust_error_msg_any(err: TestErr, expected_msg: &str) {
     assert!(found);
 }
 
-#[allow(dead_code)]
 pub fn assert_spans_contain(err: &Diagnostic, needle: &str) {
     assert!(
         err.spans
@@ -842,7 +945,6 @@ pub fn assert_spans_contain(err: &Diagnostic, needle: &str) {
     );
 }
 
-#[allow(dead_code)]
 pub fn assert_fails_bv(err: TestErr, fail32: bool, fail64: bool) {
     assert_eq!(err.errors.len(), (if fail32 { 1 } else { 0 }) + (if fail64 { 1 } else { 0 }));
     if fail32 {
@@ -854,29 +956,34 @@ pub fn assert_fails_bv(err: TestErr, fail32: bool, fail64: bool) {
     }
 }
 
-#[allow(dead_code)]
 pub fn assert_fails_bv_32bit(err: TestErr) {
     assert_fails_bv(err, true, false);
 }
 
-#[allow(dead_code)]
 pub fn assert_fails_bv_64bit(err: TestErr) {
     assert_fails_bv(err, false, true);
 }
 
-#[allow(dead_code)]
 pub fn assert_fails_bv_32bit_64bit(err: TestErr) {
     assert_fails_bv(err, true, true);
 }
 
 pub fn typ_inv_relevant_error_span(err: &Vec<DiagnosticSpan>) -> &DiagnosticSpan {
-    err.iter()
-        .filter(|e| e.label != Some("type invariant declared here".to_string()))
-        .next()
-        .expect("span")
+    err.iter().find(|e| e.label != Some("type invariant declared here".to_string())).expect("span")
 }
 
-#[allow(dead_code)]
+pub fn assert_has_recommends_failure(err: TestErr) {
+    assert!(err.errors.len() > 0);
+    let mut found_rec_failure = false;
+    for note in err.notes.iter() {
+        if note.message.contains("recommendation not met") {
+            found_rec_failure = true;
+            break;
+        }
+    }
+    assert!(found_rec_failure);
+}
+
 pub fn assert_fails_type_invariant_error(err: TestErr, count: usize) {
     assert_eq!(err.errors.len(), count);
     for c in 0..count {

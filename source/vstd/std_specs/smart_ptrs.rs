@@ -16,17 +16,38 @@ pub assume_specification<T, A: Allocator>[ <[T]>::into_vec ](b: Box<[T], A>) -> 
 
 pub assume_specification<T>[ Box::<T>::new ](t: T) -> (v: Box<T>)
     ensures
-        v == t,
+        *v == t,
+;
+
+pub assume_specification<T: core::default::Default>[ <Box<
+    T,
+> as core::default::Default>::default ]() -> (res: Box<T>)
+    ensures
+        T::default.ensures((), *res),
 ;
 
 pub assume_specification<T>[ Rc::<T>::new ](t: T) -> (v: Rc<T>)
     ensures
-        v == t,
+        *v == t,
+;
+
+pub assume_specification<T: core::default::Default>[ <Rc<
+    T,
+> as core::default::Default>::default ]() -> (res: Rc<T>)
+    ensures
+        T::default.ensures((), *res),
 ;
 
 pub assume_specification<T>[ Arc::<T>::new ](t: T) -> (v: Arc<T>)
     ensures
-        v == t,
+        *v == t,
+;
+
+pub assume_specification<T: core::default::Default>[ <Arc<
+    T,
+> as core::default::Default>::default ]() -> (res: Arc<T>)
+    ensures
+        T::default.ensures((), *res),
 ;
 
 pub assume_specification<T: Clone, A: Allocator + Clone>[ <Box<T, A> as Clone>::clone ](
@@ -42,7 +63,7 @@ pub assume_specification<T, A: Allocator>[ Rc::<T, A>::try_unwrap ](v: Rc<T, A>)
 >)
     ensures
         match result {
-            Ok(t) => t == v,
+            Ok(t) => t == *v,
             Err(e) => e == v,
         },
 ;
@@ -51,7 +72,7 @@ pub assume_specification<T, A: Allocator>[ Rc::<T, A>::into_inner ](v: Rc<T, A>)
     T,
 >)
     ensures
-        result matches Some(t) ==> t == v,
+        result matches Some(t) ==> t == *v,
 ;
 
 } // verus!

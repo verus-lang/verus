@@ -6,7 +6,7 @@ use air::messages::Diagnostics;
 use air::printer::Printer;
 use air::singular_manager::SingularManager;
 use indexmap::IndexSet;
-use sise::Node;
+use sise::TreeNode as Node;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -501,9 +501,7 @@ fn encode_singular_queries(
     queries: &mut Vec<(String, vir::messages::Message)>,
     diagnostics: &impl Diagnostics,
 ) -> Result<(), ValidityResult> {
-    let CommandX::CheckSingular(ref query) = &**command else {
-        panic!("internal error: integer_ring")
-    };
+    let CommandX::CheckSingular(query) = &**command else { panic!("internal error: integer_ring") };
 
     let SingularQueryX { requires: reqs, ensures: enss, local: _local } = &**query;
 

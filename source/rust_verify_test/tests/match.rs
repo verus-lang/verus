@@ -71,6 +71,7 @@ test_verify_one_file! {
 
 test_verify_one_file_with_options! {
     #[test] test2 ["exec_allows_no_decreases_clause"] => verus_code! {
+        use vstd::std_specs::alloc::*;
         enum List<A> {
             Nil,
             Cons(A, Box<List<A>>),
@@ -120,6 +121,7 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test] test2_struct ["exec_allows_no_decreases_clause"] => verus_code! {
+        use vstd::std_specs::alloc::*;
         enum List<A> {
             Nil,
             Cons { hd: A, tl: Box<List<A>> },
@@ -169,6 +171,7 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test] test2_fails ["exec_allows_no_decreases_clause"] => verus_code! {
+        use vstd::std_specs::alloc::*;
         enum List<A> {
             Nil,
             Cons(A, Box<List<A>>),
@@ -575,6 +578,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_or_patterns verus_code! {
+        use vstd::std_specs::alloc::*;
         #[is_variant]
         enum Foo {
             Bar(u64),
@@ -591,11 +595,11 @@ test_verify_one_file! {
 
         proof fn test_match_spec(foo: Foo) {
             assert(foo.is_Bar() ==>
-                match_spec(foo) === foo.get_Bar_0() as int + 1);
+                match_spec(foo) == foo.get_Bar_0() as int + 1);
             assert(foo.is_Qux() ==>
-                match_spec(foo) === foo.get_Qux_0() as int + 1);
+                match_spec(foo) == foo.get_Qux_0() as int + 1);
             assert(foo.is_Duck() ==>
-                match_spec(foo) === foo.get_Duck_0() as int);
+                match_spec(foo) == foo.get_Duck_0() as int);
         }
 
         proof fn test_match_statements(foo: Foo) {
@@ -664,9 +668,9 @@ test_verify_one_file! {
                 Path::Left(box q) | q | Path::Right(box q) => {
                     // If 'p' matches multiple, then it should be the first
                     if p.is_Left() {
-                        assert(q === *p.get_Left_0());
+                        assert(q == *p.get_Left_0());
                     } else {
-                        assert(q === p);
+                        assert(q == p);
                     }
                 }
                 _ => {
@@ -681,11 +685,11 @@ test_verify_one_file! {
                 Path::Left(box q) | Path::Right(box q) | q => {
                     // If 'p' matches multiple, then it should be the first
                     if p.is_Left() {
-                        assert(q === *p.get_Left_0());
+                        assert(q == *p.get_Left_0());
                     } else if p.is_Right() {
-                        assert(q === *p.get_Right_0());
+                        assert(q == *p.get_Right_0());
                     } else {
-                        assert(q === p);
+                        assert(q == p);
                     }
                 }
                 _ => {
@@ -699,7 +703,7 @@ test_verify_one_file! {
             match p {
                 Path::Left(box q) | q | Path::Right(box q) => {
                     if p.is_Left() {
-                        assert(p === q); // FAILS
+                        assert(p == q); // FAILS
                     }
                 }
             }
@@ -876,15 +880,15 @@ test_verify_one_file! {
         }
 
         fn test4() {
-            assert(some_fn(Some(Some(4))) === (4, Some(4)));
-            assert(some_fn(Some(None)) === (0, None));
-            assert(some_fn(None) === (1, None));
+            assert(some_fn(Some(Some(4))) == (4, Some(4)));
+            assert(some_fn(Some(None)) == (0, None));
+            assert(some_fn(None) == (1, None));
         }
 
         fn test5() {
-            assert(some_fn(Some(Some(4))) === (4, Some(4)));
-            assert(some_fn(Some(None)) === (0, None));
-            assert(some_fn(None) === (1, None));
+            assert(some_fn(Some(Some(4))) == (4, Some(4)));
+            assert(some_fn(Some(None)) == (0, None));
+            assert(some_fn(None) == (1, None));
             assert(false); // FAILS
         }
 
@@ -1052,7 +1056,7 @@ test_verify_one_file! {
                 _ => { }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use function `crate::X` which is ignored")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `test_crate::X` which is ignored")
 }
 
 test_verify_one_file! {
@@ -1187,7 +1191,7 @@ test_verify_one_file! {
                 _ => false,
             }
         }
-    } => Err(err) => assert_rust_error_msg(err, "lower range bound must be less than or equal to upper")
+    } => Err(err) => assert_rust_error_msg(err, "lower bound for range pattern must be less than or equal to upper")
 }
 
 test_verify_one_file! {
@@ -1198,7 +1202,7 @@ test_verify_one_file! {
                 _ => false,
             }
         }
-    } => Err(err) => assert_rust_error_msg(err, "lower range bound must be less than or equal to upper")
+    } => Err(err) => assert_rust_error_msg(err, "lower bound for range pattern must be less than or equal to upper")
 }
 
 test_verify_one_file! {
@@ -1227,7 +1231,7 @@ test_verify_one_file! {
             };
         }
     //} => Err(err) => assert_one_fails(err)
-    } => Err(err) => assert_vir_error_msg(err, "Not supported: pattern containing both an or-pattern (|) and an if-guard")
+    } => Err(err) => assert_vir_error_msg(err, "Not supported: match arm containing both an or-pattern (|) and a match-guard")
 }
 
 test_verify_one_file! {
@@ -1386,4 +1390,204 @@ test_verify_one_file! {
             true
         }
     } => Err(err) => assert_rust_error_msg(err, "refutable pattern in local binding")
+}
+
+test_verify_one_file! {
+    #[test] int_intrinsic_consts_in_patterns verus_code! {
+        fn example1(x: u64) {
+            let mut b = false;
+            match x {
+                u64::MIN => { b = true; },
+                _ => ()
+            }
+            assert(b <==> x == 0);
+        }
+
+        fn example2(x: u64) {
+            let mut b = false;
+            match x {
+                u64::MAX => { b = true; },
+                _ => ()
+            }
+            assert(b <==> x == 0xffff_ffff_ffff_ffff);
+        }
+
+        fn example3(x: i64) {
+            let mut b = false;
+            match x {
+                i64::MAX => { b = true; },
+                _ => ()
+            }
+            assert(b <==> x == 0x7fff_ffff_ffff_ffff);
+        }
+
+        fn example4(x: i64) {
+            let mut b = false;
+            match x {
+                i64::MIN => { b = true; },
+                _ => ()
+            }
+            assert(b <==> x == -0x8000_0000_0000_0000);
+        }
+
+        fn example5(x: usize) {
+            let mut b = false;
+            match x {
+                usize::MAX => { b = true; },
+                _ => ()
+            }
+            assert(usize::BITS == 64 ==> (b <==> x == 0xffff_ffff_ffff_ffff));
+            assert(usize::BITS == 32 ==> (b <==> x == 0xffff_ffff));
+        }
+
+        fn example6(x: usize) {
+            let mut b = false;
+            match x {
+                usize::MIN => { b = true; },
+                _ => ()
+            }
+            assert(b <==> x == 0);
+        }
+
+        fn example7(x: isize) {
+            let mut b = false;
+            match x {
+                isize::MAX => { b = true; },
+                _ => ()
+            }
+            assert(usize::BITS == 64 ==> (b <==> x == 0x7fff_ffff_ffff_ffff));
+            assert(usize::BITS == 32 ==> (b <==> x == 0x7fff_ffff));
+        }
+
+        fn example8(x: isize) {
+            let mut b = false;
+            match x {
+                isize::MIN => { b = true; },
+                _ => ()
+            }
+            assert(usize::BITS == 64 ==> (b <==> x == -0x8000_0000_0000_0000));
+            assert(usize::BITS == 32 ==> (b <==> x == -0x8000_0000));
+        }
+
+        fn example9(x: isize) {
+            let mut b = false;
+            match x {
+                isize::MIN .. isize::MAX => { b = true; },
+                _ => ()
+            }
+            assert(b <==> x != isize::MAX);
+        }
+
+        spec fn s1(x: isize) -> bool {
+            match x {
+                isize::MIN => true,
+                _ => false,
+            }
+        }
+
+        fn spec_example1(x: isize) {
+            assert(s1(x) <==> x == isize::MIN);
+        }
+
+        spec fn s2(x: isize) -> bool {
+            match x {
+                isize::MIN .. isize::MAX => true,
+                _ => false,
+            }
+        }
+
+        fn spec_example2(x: isize) {
+            assert(s2(x) <==> x != isize::MAX);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] assoc_consts_in_patterns verus_code! {
+        struct X { }
+        impl X {
+            const SOME_CONST: u64 = 13;
+        }
+
+        fn test(x: u64) {
+            let mut b = false;
+            match x {
+                X::SOME_CONST => { b = true; }
+                _ => { }
+            }
+            assert(b <==> x == 13);
+        }
+
+        spec fn s1(x: u64) -> bool {
+            match x {
+                X::SOME_CONST => true,
+                _ => false,
+            }
+        }
+
+        fn test2(x: u64) {
+            assert(s1(x) <==> x == 13);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] let_decl_with_uninhabited_ghost_field_issue1764 verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::external_body]
+        tracked struct False {
+        }
+
+        axiom fn false_from_False(tracked f: False)
+            ensures false;
+
+        tracked enum Enum {
+            GhostNvr { ghost ghost_never: std::convert::Infallible },
+            TrackedNvr { tracked tracked_never: False },
+        }
+
+        proof fn test()
+            ensures false
+        {
+            let tracked e = Enum::GhostNvr { ghost_never: arbitrary() };
+            let tracked Enum::TrackedNvr { tracked_never } = e; // FAILS
+            false_from_False(tracked_never);
+        }
+    } => Err(err) => {
+        assert!(err.errors[0].message.contains("unable to prove this pattern will successfully match"));
+        assert_fails(err, 1);
+    }
+}
+
+test_verify_one_file! {
+    #[test] match_with_uninhabited_ghost_field_issue1764 verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::external_body]
+        tracked struct False {
+        }
+
+        axiom fn false_from_False(tracked f: False)
+            ensures false;
+
+        tracked enum Enum {
+            GhostNvr { ghost ghost_never: std::convert::Infallible },
+            TrackedNvr { tracked tracked_never: False },
+        }
+
+        proof fn test2()
+            ensures false
+        {
+            let tracked e = Enum::GhostNvr { ghost_never: arbitrary() };
+            match e {
+                Enum::TrackedNvr { tracked_never } => { // FAILS
+                    false_from_False(tracked_never);
+                }
+            }
+        }
+} => Err(err) => {
+        assert!(err.errors[0].message.contains("unable to prove this pattern will successfully match"));
+        assert_fails(err, 1);
+    }
 }

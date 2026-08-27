@@ -11,7 +11,6 @@ use verus_syn::{Expr, Ident, Pat, Path, PathSegment, Type};
 /// If the user ever uses 'Self' in a transition, then change it out for the explicit
 /// self type so that it's safe to use these expressions and types in other places
 /// outside the generated `State` impl.
-
 pub fn replace_self_sm(sm: &mut SM) {
     let path = get_self_ty_turbofish_path(&*sm);
     for trans in sm.transitions.iter_mut() {
@@ -46,17 +45,17 @@ fn replace_self_shardable_type(stype: &mut ShardableType, path: &Path) {
         ShardableType::PersistentOption(ty) => {
             replace_self_type(ty, path);
         }
-        ShardableType::Set(ty) => {
+        ShardableType::Set(ty) | ShardableType::ISet(ty) => {
             replace_self_type(ty, path);
         }
-        ShardableType::PersistentSet(ty) => {
+        ShardableType::PersistentSet(ty) | ShardableType::PersistentISet(ty) => {
             replace_self_type(ty, path);
         }
-        ShardableType::Map(key, val) => {
+        ShardableType::Map(key, val) | ShardableType::IMap(key, val) => {
             replace_self_type(key, path);
             replace_self_type(val, path);
         }
-        ShardableType::PersistentMap(key, val) => {
+        ShardableType::PersistentMap(key, val) | ShardableType::PersistentIMap(key, val) => {
             replace_self_type(key, path);
             replace_self_type(val, path);
         }
@@ -66,7 +65,7 @@ fn replace_self_shardable_type(stype: &mut ShardableType, path: &Path) {
         ShardableType::StorageOption(ty) => {
             replace_self_type(ty, path);
         }
-        ShardableType::StorageMap(key, val) => {
+        ShardableType::StorageMap(key, val) | ShardableType::StorageIMap(key, val) => {
             replace_self_type(key, path);
             replace_self_type(val, path);
         }
@@ -85,7 +84,7 @@ fn replace_self_ts(ts: &mut TransitionStmt, path: &Path) {
             }
         }
         TransitionStmt::Split(_, split_kind, es) => {
-            match split_kind {
+            match &mut **split_kind {
                 SplitKind::Let(pat, ty, _lk, e) => {
                     replace_self_pat(pat, path);
                     match ty {
@@ -188,7 +187,7 @@ struct SelfVisitor<'a> {
 
 impl<'a> VisitMut for SelfVisitor<'a> {
     fn visit_path_mut(&mut self, path: &mut Path) {
-        if path.leading_colon.is_none() && path.segments[0].ident.to_string() == "Self" {
+        if path.leading_colon.is_none() && path.segments[0].ident == "Self" {
             let orig_span = path.segments[0].ident.span();
             let mut segments = Punctuated::<PathSegment, token::PathSep>::new();
             for seg in self.subst_path.segments.iter() {

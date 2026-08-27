@@ -11,24 +11,22 @@ use super::relations::*;
 #[allow(unused_imports)]
 use super::seq::*;
 #[allow(unused_imports)]
-use super::set::Set;
+use super::set::*;
 
 verus! {
 
-broadcast use group_seq_axioms;
+broadcast use group_seq_lemmas;
 
 impl<A> Seq<A> {
     /// Applies the function `f` to each element of the sequence, and returns
     /// the resulting sequence.
     /// The `int` parameter of `f` is the index of the element being mapped.
-    // TODO(verus): rename to map_entries, for consistency with Map::map
     pub open spec fn map<B>(self, f: spec_fn(int, A) -> B) -> Seq<B> {
         Seq::new(self.len(), |i: int| f(i, self[i]))
     }
 
     /// Applies the function `f` to each element of the sequence, and returns
     /// the resulting sequence.
-    // TODO(verus): rename to map, because this is what everybody wants.
     pub open spec fn map_values<B>(self, f: spec_fn(A) -> B) -> Seq<B> {
         Seq::new(self.len(), |i: int| f(self[i]))
     }
@@ -48,6 +46,11 @@ impl<A> Seq<A> {
     /// ``
     pub open spec fn flat_map<B>(self, f: spec_fn(A) -> Seq<B>) -> Seq<B> {
         self.map_values(f).flatten()
+    }
+
+    /// Add a reference (&) to each element of the sequence
+    pub open spec fn as_ref(&self) -> Seq<&A> {
+        Seq::new(self.len(), |i: int| &self[i])
     }
 
     /// Is true if the calling sequence is a prefix of the given sequence 'other'.
@@ -246,7 +249,7 @@ impl<A> Seq<A> {
     }
 
     // deprecated since the triggers inside of 2 of the conjuncts are blocked
-    #[deprecated = "Use `broadcast use group_filter_ensures` instead" ]
+    #[cfg_attr(not(verus_verify_core), deprecated = "Use `broadcast use group_filter_ensures` instead" )]
     pub proof fn filter_lemma(self, pred: spec_fn(A) -> bool)
         ensures
     // we don't keep anything bad
@@ -523,8 +526,45 @@ impl<A> Seq<A> {
     }
 
     /// Converts a sequence into a set
-    pub open spec fn to_set(self) -> Set<A> {
-        Set::new(|a: A| self.contains(a))
+    pub closed spec fn to_set(self) -> Set<A> {
+        Set::range(0, self.len() as int).map(|i| self.index(i))
+    }
+
+    pub broadcast proof fn to_set_ensures(self)
+        ensures
+            #![trigger(self.to_set())]
+            // to_set works for all indices
+            forall|i|
+                0 <= i < self.len() ==> #[trigger] self.to_set().contains(self[i]),
+            // to_set finds everything .contains finds
+            forall|a| #[trigger] self.to_set().contains(a) <==> self.contains(a),
+    {
+        broadcast use super::set::group_set_lemmas;
+        broadcast use super::set_lib::range_set_properties;
+
+        assert forall|i| 0 <= i < self.len() implies #[trigger] self.to_set().contains(self[i]) by {
+            Set::range(0, self.len() as int).lemma_map_contains(|i: int| self.index(i), self[i]);
+            assert(Set::range(0, self.len() as int).contains(i));
+            assert(self.to_set().contains(self[i]));
+        }
+        assert forall|a| #[trigger] self.to_set().contains(a) <==> self.contains(a) by {
+            Set::range(0, self.len() as int).lemma_map_contains(|i: int| self.index(i), a);
+            if self.to_set().contains(a) {
+                let i = choose|i: int| #[trigger]
+                    Set::range(0, self.len() as int).contains(i) && self.index(i) == a;
+                assert(0 <= i < self.len());
+                assert(self.contains(a));
+            }
+            if self.contains(a) {
+                let i = choose|i: int| 0 <= i < self.len() && self[i] == a;
+                assert(self.to_set().contains(self[i]));
+                assert(a == self[i]);
+            }
+        }
+    }
+
+    pub open spec fn to_iset(self) -> ISet<A> {
+        self.to_set().to_iset()
     }
 
     /// Converts a sequence into a multiset
@@ -1039,7 +1079,7 @@ impl<A> Seq<A> {
             self.len() == self.to_set().len(),
         decreases self.len(),
     {
-        broadcast use super::set::group_set_axioms;
+        broadcast use super::set::group_set_lemmas;
 
         seq_to_set_equal_rec::<A>(self);
         if self.len() == 0 {
@@ -1047,8 +1087,10 @@ impl<A> Seq<A> {
             let rest = self.drop_last();
             rest.unique_seq_to_set();
             seq_to_set_equal_rec::<A>(rest);
-            seq_to_set_rec_is_finite::<A>(rest);
-            assert(!seq_to_set_rec(rest).contains(self.last()));
+            assert(!rest.contains(self.last()));
+            assert(!seq_to_set_rec(rest).contains(self.last())) by {
+                seq_to_set_rec_contains::<A>(rest);
+            }
             assert(seq_to_set_rec(rest).insert(self.last()).len() == seq_to_set_rec(rest).len()
                 + 1);
         }
@@ -1059,17 +1101,14 @@ impl<A> Seq<A> {
     pub proof fn lemma_cardinality_of_set(self)
         ensures
             self.to_set().len() <= self.len(),
-        decreases self.len(),
     {
-        broadcast use {super::set::group_set_axioms, seq_to_set_is_finite};
-        broadcast use group_seq_properties;
-        broadcast use super::set_lib::group_set_properties;
+        broadcast use super::set_lib::range_set_properties;
 
-        if self.len() == 0 {
-        } else {
-            assert(self.drop_last().to_set().insert(self.last()) =~= self.to_set());
-            self.drop_last().lemma_cardinality_of_set();
-        }
+        super::set_lib::lemma_map_size_bound::<int, A>(
+            Set::range(0, self.len() as int),
+            self.to_set(),
+            |i: int| self.index(i),
+        );
     }
 
     /// A sequence is of length 0 if and only if its conversion to
@@ -1078,7 +1117,9 @@ impl<A> Seq<A> {
         ensures
             self.to_set().len() == 0 <==> self.len() == 0,
     {
-        broadcast use {super::set::group_set_axioms, seq_to_set_is_finite};
+        broadcast use super::set::group_set_lemmas;
+
+        self.to_set_ensures();
 
         assert(self.len() == 0 ==> self.to_set().len() == 0) by { self.lemma_cardinality_of_set() }
         assert(!(self.len() == 0) ==> !(self.to_set().len() == 0)) by {
@@ -1098,7 +1139,10 @@ impl<A> Seq<A> {
             self.no_duplicates(),
         decreases self.len(),
     {
-        broadcast use {super::set::group_set_axioms, seq_to_set_is_finite};
+        broadcast use super::set::group_set_lemmas;
+
+        self.to_set_ensures();
+        self.drop_first().to_set_ensures();
 
         if self.len() == 0 {
         } else {
@@ -1142,10 +1186,35 @@ impl<A> Seq<A> {
         };
     }
 
-    /// Appending an element to a sequence and converting to set, is equal
-    /// to converting to set and inserting it.
+    /// Mapping a function over a sequence and converting to an ISet is the same
+    /// as mapping it over the sequence converted to an ISet.
+    pub broadcast proof fn lemma_to_iset_map_commutes<B>(self, f: spec_fn(A) -> B)
+        ensures
+            #[trigger] self.to_iset().map(f) =~= self.map_values(f).to_iset(),
+    {
+        broadcast use crate::vstd::group_vstd_default;
+
+        assert forall|elem: B|
+            self.to_iset().map(f).contains(elem) <==> self.map_values(f).to_iset().contains(
+                elem,
+            ) by {
+            if self.to_iset().map(f).contains(elem) {
+                let x = choose|x: A| self.to_iset().contains(x) && f(x) == elem;
+                let i = choose|i: int| 0 <= i < self.len() && self[i] == x;
+                assert(self.map_values(f)[i] == elem);
+            }
+            if self.map_values(f).to_iset().contains(elem) {
+                let i = choose|i: int|
+                    0 <= i < self.map_values(f).len() && self.map_values(f)[i] == elem;
+                let x = self[i];
+                assert(self.to_iset().contains(x));
+            }
+        };
+    }
+
+    /// Appending an element to a sequence and converting to a Set is equal
+    /// to converting to a Set and inserting the element.
     pub broadcast proof fn lemma_to_set_insert_commutes(sq: Seq<A>, elt: A)
-        requires
         ensures
             #[trigger] (sq + seq![elt]).to_set() =~= sq.to_set().insert(elt),
     {
@@ -1153,7 +1222,22 @@ impl<A> Seq<A> {
         broadcast use lemma_seq_concat_contains_all_elements;
         broadcast use lemma_seq_empty_contains_nothing;
         broadcast use lemma_seq_contains_after_push;
-        broadcast use super::seq::group_seq_axioms;
+        broadcast use super::seq::group_seq_lemmas;
+        broadcast use super::set_lib::group_set_properties;
+
+    }
+
+    /// Appending an element to a sequence and converting to an ISet is equal
+    /// to converting to an ISet and inserting the element.
+    pub broadcast proof fn lemma_to_iset_insert_commutes(sq: Seq<A>, elt: A)
+        ensures
+            #[trigger] (sq + seq![elt]).to_iset() =~= sq.to_iset().insert(elt),
+    {
+        broadcast use crate::vstd::group_vstd_default;
+        broadcast use lemma_seq_concat_contains_all_elements;
+        broadcast use lemma_seq_empty_contains_nothing;
+        broadcast use lemma_seq_contains_after_push;
+        broadcast use super::seq::group_seq_lemmas;
         broadcast use super::set_lib::group_set_properties;
 
     }
@@ -1923,19 +2007,12 @@ impl<A> Seq<A> {
         ensures
             #[trigger] self.push(elem).to_set() =~= self.to_set().insert(elem),
     {
-        broadcast use group_seq_properties;
-        broadcast use super::set::group_set_axioms;
+        broadcast use {group_seq_properties, super::set::group_set_lemmas, Seq::to_set_ensures};
 
         let lhs = self.push(elem).to_set();
         let rhs = self.to_set().insert(elem);
-
-        assert(lhs.subset_of(rhs));
         assert forall|x: A| rhs.contains(x) implies lhs.contains(x) by {
             lemma_seq_contains_after_push(self, elem, x);
-            if x == elem {
-            } else {
-                lemma_seq_contains_after_push(self, elem, x);
-            }
         }
     }
 
@@ -2274,6 +2351,20 @@ impl<A> Seq<A> {
         Seq::<_>::lemma_prefix_chain_contains,
         Seq::<_>::lemma_prefix_append_unique,
         Seq::<_>::lemma_all_push,
+    }
+}
+
+impl<A> Seq<&A> {
+    /// Dereference each element of the sequence
+    pub open spec fn unref(self) -> Seq<A> {
+        Seq::new(self.len(), |i: int| *self[i])
+    }
+}
+
+impl<A, B> Seq<(&A, &B)> {
+    /// Dereference each element of each tuple in the sequence
+    pub open spec fn unref(self) -> Seq<(A, B)> {
+        Seq::new(self.len(), |i: int| (*self[i].0, *self[i].1))
     }
 }
 
@@ -2993,29 +3084,13 @@ spec fn seq_to_set_rec<A>(seq: Seq<A>) -> Set<A>
     }
 }
 
-// Helper function showing that the recursive definition of set_to_seq produces a finite set
-proof fn seq_to_set_rec_is_finite<A>(seq: Seq<A>)
-    ensures
-        seq_to_set_rec(seq).finite(),
-    decreases seq.len(),
-{
-    broadcast use super::set::group_set_axioms;
-
-    if seq.len() > 0 {
-        let sub_seq = seq.drop_last();
-        assert(seq_to_set_rec(sub_seq).finite()) by {
-            seq_to_set_rec_is_finite(sub_seq);
-        }
-    }
-}
-
 // Helper function showing that the resulting set contains all elements of the sequence
 proof fn seq_to_set_rec_contains<A>(seq: Seq<A>)
     ensures
         forall|a| #[trigger] seq.contains(a) <==> seq_to_set_rec(seq).contains(a),
     decreases seq.len(),
 {
-    broadcast use super::set::group_set_axioms;
+    broadcast use super::set::group_set_lemmas;
 
     if seq.len() > 0 {
         assert(forall|a| #[trigger]
@@ -3040,27 +3115,15 @@ proof fn seq_to_set_rec_contains<A>(seq: Seq<A>)
 proof fn seq_to_set_equal_rec<A>(seq: Seq<A>)
     ensures
         seq.to_set() == seq_to_set_rec(seq),
+    decreases seq.len(),
 {
-    broadcast use super::set::group_set_axioms;
+    broadcast use super::set::group_set_lemmas;
 
-    assert(forall|n| #[trigger] seq.contains(n) <==> seq_to_set_rec(seq).contains(n)) by {
+    seq.to_set_ensures();
+    assert(forall|n| seq.contains(n) <==> #[trigger] seq_to_set_rec(seq).contains(n)) by {
         seq_to_set_rec_contains(seq);
     }
-    assert(forall|n| #[trigger] seq.contains(n) <==> seq.to_set().contains(n));
     assert(seq.to_set() =~= seq_to_set_rec(seq));
-}
-
-/// The set obtained from a sequence is finite
-pub broadcast proof fn seq_to_set_is_finite<A>(seq: Seq<A>)
-    ensures
-        #[trigger] seq.to_set().finite(),
-{
-    broadcast use super::set::group_set_axioms;
-
-    assert(seq.to_set().finite()) by {
-        seq_to_set_equal_rec(seq);
-        seq_to_set_rec_is_finite(seq);
-    }
 }
 
 pub proof fn seq_to_set_distributes_over_add<T>(s1: Seq<T>, s2: Seq<T>)
@@ -3537,64 +3600,6 @@ pub broadcast proof fn lemma_seq_skip_of_skip<A>(s: Seq<A>, m: int, n: int)
 {
 }
 
-/// Properties of sequences from the Dafny prelude (which were axioms in Dafny, but proven here in Verus)
-#[deprecated = "Use `broadcast use group_seq_properties` instead"]
-pub proof fn lemma_seq_properties<A>()
-    ensures
-        forall|s: Seq<A>, x: A|
-            s.contains(x) <==> exists|i: int| 0 <= i < s.len() && #[trigger] s[i] == x,  //from lemma_seq_contains(s, x),
-        forall|x: A| !(#[trigger] Seq::<A>::empty().contains(x)),  //from lemma_seq_empty_contains_nothing(x),
-        forall|s: Seq<A>| #[trigger] s.len() == 0 ==> s =~= Seq::<A>::empty(),  //from lemma_seq_empty_equality(s),
-        forall|x: Seq<A>, y: Seq<A>, elt: A| #[trigger]
-            (x + y).contains(elt) <==> x.contains(elt) || y.contains(elt),  //from lemma_seq_concat_contains_all_elements(x, y, elt),
-        forall|s: Seq<A>, v: A, x: A| #[trigger] s.push(v).contains(x) <==> v == x || s.contains(x),  //from lemma_seq_contains_after_push(s, v, x)
-        forall|s: Seq<A>, start: int, stop: int, x: A|
-            (0 <= start <= stop <= s.len() && #[trigger] s.subrange(start, stop).contains(x)) <==> (
-            exists|i: int| 0 <= start <= i < stop <= s.len() && #[trigger] s[i] == x),  //from lemma_seq_subrange_elements(s, start, stop, x),
-        forall|s: Seq<A>, n: int| 0 <= n <= s.len() ==> #[trigger] s.take(n).len() == n,  //from lemma_seq_take_len(s, n)
-        forall|s: Seq<A>, n: int, x: A|
-            (#[trigger] s.take(n).contains(x) && 0 <= n <= s.len()) <==> (exists|i: int|
-                0 <= i < n <= s.len() && #[trigger] s[i] == x),  //from lemma_seq_take_contains(s, n, x),
-        forall|s: Seq<A>, n: int, j: int| 0 <= j < n <= s.len() ==> #[trigger] s.take(n)[j] == s[j],  //from lemma_seq_take_index(s, n, j),
-        forall|s: Seq<A>, n: int| 0 <= n <= s.len() ==> #[trigger] s.skip(n).len() == s.len() - n,  //from lemma_seq_skip_len(s, n),
-        forall|s: Seq<A>, n: int, x: A|
-            (#[trigger] s.skip(n).contains(x) && 0 <= n <= s.len()) <==> (exists|i: int|
-                0 <= n <= i < s.len() && #[trigger] s[i] == x),  //from lemma_seq_skip_contains(s, n, x),
-        forall|s: Seq<A>, n: int, j: int|
-            0 <= n && 0 <= j < (s.len() - n) ==> #[trigger] s.skip(n)[j] == s[j + n],  //from lemma_seq_skip_index(s, n, j),
-        forall|a: Seq<A>, b: Seq<A>, n: int|
-            #![trigger (a+b).take(n)]
-            #![trigger (a+b).skip(n)]
-            n == a.len() ==> ((a + b).take(n) =~= a && (a + b).skip(n) =~= b),  //from lemma_seq_append_take_skip(a, b, n),
-        forall|s: Seq<A>, i: int, v: A, n: int|
-            0 <= i < n <= s.len() ==> #[trigger] s.update(i, v).take(n) == s.take(n).update(i, v),  //from lemma_seq_take_update_commut1(s, i, v, n),
-        forall|s: Seq<A>, i: int, v: A, n: int|
-            0 <= n <= i < s.len() ==> #[trigger] s.update(i, v).take(n) == s.take(n),  //from lemma_seq_take_update_commut2(s, i, v, n),
-        forall|s: Seq<A>, i: int, v: A, n: int|
-            0 <= n <= i < s.len() ==> #[trigger] s.update(i, v).skip(n) == s.skip(n).update(
-                i - n,
-                v,
-            ),  //from lemma_seq_skip_update_commut1(s, i, v, n),
-        forall|s: Seq<A>, i: int, v: A, n: int|
-            0 <= i < n <= s.len() ==> #[trigger] s.update(i, v).skip(n) == s.skip(n),  //from lemma_seq_skip_update_commut2(s, i, v, n),
-        forall|s: Seq<A>, v: A, n: int|
-            0 <= n <= s.len() ==> #[trigger] s.push(v).skip(n) == s.skip(n).push(v),  //from lemma_seq_skip_build_commut(s, v, n),
-        forall|s: Seq<A>, n: int| n == 0 ==> #[trigger] s.skip(n) == s,  //from lemma_seq_skip_nothing(s, n),
-        forall|s: Seq<A>, n: int| n == 0 ==> #[trigger] s.take(n) == Seq::<A>::empty(),  //from lemma_seq_take_nothing(s, n),
-        forall|s: Seq<A>, m: int, n: int|
-            (0 <= m && 0 <= n && m + n <= s.len()) ==> #[trigger] s.skip(m).skip(n) == s.skip(
-                m + n,
-            ),  //from lemma_seq_skip_of_skip(s, m, n),
-        forall|s: Seq<A>, a: A| #[trigger] (s.push(a).to_multiset()) =~= s.to_multiset().insert(a),  //from o_multiset_properties
-        forall|s: Seq<A>| s.len() == #[trigger] s.to_multiset().len(),  //from to_multiset_ensures
-        forall|s: Seq<A>, a: A|
-            s.contains(a) <==> #[trigger] s.to_multiset().count(a)
-                > 0,  //from to_multiset_ensures
-{
-    broadcast use {group_seq_properties, lemma_seq_skip_of_skip};
-
-}
-
 #[doc(hidden)]
 #[verifier::inline]
 pub open spec fn check_argument_is_seq<A>(s: Seq<A>) -> Seq<A> {
@@ -3701,12 +3706,12 @@ pub broadcast group group_filter_ensures {
 }
 
 pub broadcast group group_seq_lib_default {
+    Seq::to_set_ensures,
     group_filter_ensures,
     Seq::add_empty_left,
     Seq::add_empty_right,
     Seq::push_distributes_over_add,
     Seq::filter_distributes_over_add,
-    seq_to_set_is_finite,
     Seq::lemma_fold_right_split,
     Seq::lemma_fold_left_split,
 }

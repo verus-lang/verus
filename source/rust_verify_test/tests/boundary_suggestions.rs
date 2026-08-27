@@ -17,7 +17,7 @@ test_verify_one_file! {
                 bar();
             }
         }
-    } => Err(err) => assert_vir_error_msgs(err, &["bar", "foo"])
+    } => Err(err) => assert_vir_error_msgs(err, &["foo", "bar"])
 }
 test_verify_one_file! {
     #[test] test_assume_specification_simple_suggestion_made code! {
@@ -125,78 +125,36 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_assume_specification_foreign_suggestion_made code! {
-        use vstd::prelude::verus;
+        use vstd::prelude::*;
 
         verus! {
-
-            pub fn bar<T>(o: Option<T>)-> Option<bool> {
-                o.and_then(|x| Some(false))
+            pub fn bar<T>(o: Option<T>)-> Option<T> {
+                o.inspect(|_x: &T| {})
             }
         }
-    } => Err(err) => assert_help_error_msg(err, "pub assume_specification<T, U, F> [std::option::Option::<T>::and_then] (_0: std::option::Option<T>, _1: F) -> std::option::Option<U>
-           where
-           F: std::ops::FnOnce(T,) -> std::option::Option<U> + std::marker::Destruct,;")
+    } => Err(err) => assert_help_error_msg(err, "pub assume_specification<T, F> [std::option::Option::<T>::inspect] (_0: std::option::Option<T>, _1: F) -> std::option::Option<T>")
 }
 test_verify_one_file! {
     #[test] test_assume_specification_foreign_suggestion_correct code! {
-        use vstd::prelude::verus;
+        use vstd::prelude::*;
 
         verus! {
-            pub assume_specification<T, U, F> [std::option::Option::<T>::and_then] (_0: std::option::Option<T>, _1: F) -> std::option::Option<U>
-            where
-            F: std::ops::FnOnce(T,) -> std::option::Option<U>,;
+            #[verifier::external_trait_specification]
+            pub trait ExDestruct : core::marker::PointeeSized {
+                type ExternalTraitSpecificationFor: core::marker::Destruct;
+            }
 
-            pub fn bar<T>(o: Option<T>)-> Option<bool> {
-                o.and_then(|x| Some(false))
+            pub assume_specification<T, F> [std::option::Option::<T>::inspect] (_0: std::option::Option<T>, _1: F) -> std::option::Option<T>
+            where
+            F: std::ops::FnOnce(&T,) -> () + core::marker::Destruct,;
+
+            pub fn bar<T>(o: Option<T>)-> Option<T> {
+                o.inspect(|_x: &T| {})
             }
         }
     } => Ok(())
 }
-test_verify_one_file! {
-    #[test] test_assume_specification_str_eq_suggestion_made code! {
-        use vstd::prelude::*;
 
-        verus! {
-            fn foo(x: &str, y: &str) -> (res: bool)
-            {
-                x == y
-            }
-        }
-    } => Err(err) => assert_help_error_msg(err, "pub assume_specification<'a, 'b, A, B> [<&'b A as std::cmp::PartialEq<&B>>::eq] (_0: &&'b A, _1: &&B) -> bool
-           where
-           A: std::cmp::PartialEq<B> + ?Sized,
-           B: ?Sized,;")
-}
-test_verify_one_file! {
-    #[test] test_assume_specification_str_eq_suggestion_correct code! {
-        use vstd::prelude::*;
-
-        verus! {
-            pub assume_specification<'a, 'b, A, B> [<&'b A as std::cmp::PartialEq<&B>>::eq] (_0: &&'b A, _1: &&B) -> bool
-            where
-            A: std::cmp::PartialEq<B> + core::marker::PointeeSized,
-            B: core::marker::PointeeSized,;
-
-
-            fn foo(x: &str, y: &str) -> (res: bool)
-            {
-                x == y
-            }
-        }
-    } => Ok(())
-}
-test_verify_one_file! {
-    #[test] test_assume_specification_format_visibility code! {
-        use vstd::prelude::*;
-
-        verus! {
-            fn foo(x: &str, y: &str) -> (res: String)
-            {
-                format!("{}_{}", x, y)
-            }
-        }
-    } => Err(err) => assert_help_error_msgs(err, &["assume_specification", "assume_specification"])
-}
 test_verify_one_file! {
     #[test] test_assume_specification_const_generics_suggestion_made code! {
         use vstd::prelude::*;
@@ -255,6 +213,31 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+// The impl header has an anonymous early-bound lifetime (`S<'_>`) that the
+// method inherits, and which also appears in the method's `Self: Bound`
+// where-clause. The RegionRenamer must rename that anonymous lifetime
+// consistently in *both* the fn signature and the where-clause predicates.
+// If the predicates are not folded, the fn signature reads `&crate::S<'a>`
+// but the where-clause reads `crate::S<'_>: crate::Bound`, producing an
+// inconsistent (uncompilable) suggestion.
+test_verify_one_file! {
+    #[test] test_assume_specification_anon_early_bound_in_where_suggestion_made code! {
+        use vstd::prelude::*;
+        pub trait Bound { }
+        pub struct S<'a> { pub x: &'a u8 }
+        impl Bound for S<'_> { }
+        impl S<'_> {
+            pub fn go(&self) where Self: Bound { }
+        }
+        verus! {
+            pub fn bar<'a>(s: S<'a>) {
+                s.go()
+            }
+        }
+    } => Err(e) => assert_help_error_msg(e, "(_0: &crate::S<'a>)
+           where
+           crate::S<'a>: crate::Bound,;")
+}
 
 // Tests for external_type_specification
 test_verify_one_file! {
@@ -269,7 +252,7 @@ test_verify_one_file! {
         fn stuff(y: Y) -> X {
             panic!()
         }
-    } => Err(err) => assert_help_error_msgs(err, &["cannot use type `crate::X` which is ignored", "cannot use type `crate::Y` which is ignored"])
+    } => Err(err) => assert_help_error_msgs(err, &["cannot use type `test_crate::X` which is ignored", "cannot use type `test_crate::Y` which is ignored"])
 }
 
 // These two together form a 'smoke test' that the suggestions provided are correct.

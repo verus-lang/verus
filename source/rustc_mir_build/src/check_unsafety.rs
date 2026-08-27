@@ -1,26 +1,21 @@
 use std::borrow::Cow;
 use std::mem;
-use std::ops::Bound;
 
 use rustc_ast::AsmMacro;
 use rustc_data_structures::stack::ensure_sufficient_stack;
 use rustc_errors::DiagArgValue;
-use rustc_hir::attrs::AttributeKind;
 use rustc_hir::def::DefKind;
 use rustc_hir::{self as hir, BindingMode, ByRef, HirId, Mutability, find_attr};
 use rustc_middle::middle::codegen_fn_attrs::{TargetFeature, TargetFeatureKind};
-use rustc_middle::mir::BorrowKind;
 use rustc_middle::span_bug;
 use rustc_middle::thir::visit::Visitor;
 use rustc_middle::thir::*;
 use rustc_middle::ty::print::with_no_trimmed_paths;
 use rustc_middle::ty::{self, Ty, TyCtxt};
-use rustc_session::lint::Level;
 use rustc_session::lint::builtin::{DEPRECATED_SAFE_2024, UNSAFE_OP_IN_UNSAFE_FN, UNUSED_UNSAFE};
 use rustc_span::def_id::{DefId, LocalDefId};
-use rustc_span::{Span, Symbol, sym};
+use rustc_span::{Span, Symbol};
 
-use crate::builder::ExprCategory;
 use crate::errors::*;
 
 struct UnsafetyVisitor<'a, 'tcx> {
@@ -98,30 +93,13 @@ impl<'tcx> UnsafetyVisitor<'_, 'tcx> {
             // from an edition before 2024.
             &UnsafeOpKind::CallToUnsafeFunction(Some(id))
                 if !span.at_least_rust_2024()
-                    && let Some(attr) = self.tcx.get_attr(id, sym::rustc_deprecated_safe_2024) =>
+                    && let Some(suggestion) = find_attr!(self.tcx, id, RustcDeprecatedSafe2024{suggestion} => suggestion) =>
             {
-                let suggestion = attr
-                    .meta_item_list()
-                    .unwrap_or_default()
-                    .into_iter()
-                    .find(|item| item.has_name(sym::audit_that))
-                    .map(|item| {
-                        item.value_str().expect(
-                            "`#[rustc_deprecated_safe_2024(audit_that)]` must have a string value",
-                        )
-                    });
-
                 let sm = self.tcx.sess.source_map();
-                let guarantee = suggestion
-                    .as_ref()
-                    .map(|suggestion| format!("that {}", suggestion))
-                    .unwrap_or_else(|| String::from("its unsafe preconditions"));
-                let suggestion = suggestion
-                    .and_then(|suggestion| {
-                        sm.indentation_before(span).map(|indent| {
-                            format!("{}// TODO: Audit that {}.\n", indent, suggestion) // ignore-tidy-todo
-                        })
-                    })
+                let guarantee = format!("that {}", suggestion);
+                let suggestion = sm
+                    .indentation_before(span)
+                    .map(|indent| format!("{}// FIXME: Audit that {}.\n", indent, suggestion))
                     .unwrap_or_default();
 
                 self.tcx.emit_node_span_lint(
@@ -131,12 +109,12 @@ impl<'tcx> UnsafetyVisitor<'_, 'tcx> {
                     CallToDeprecatedSafeFnRequiresUnsafe {
                         span,
                         function: with_no_trimmed_paths!(self.tcx.def_path_str(id)),
-                        guarantee,
                         sub: CallToDeprecatedSafeFnRequiresUnsafeSub {
                             start_of_line_suggestion: suggestion,
                             start_of_line: sm.span_extend_to_line(span).shrink_to_lo(),
                             left: span.shrink_to_lo(),
                             right: span.shrink_to_hi(),
+                            guarantee,
                         },
                     },
                 );
@@ -196,7 +174,7 @@ impl<'tcx> UnsafetyVisitor<'_, 'tcx> {
 
     /// Whether the `unsafe_op_in_unsafe_fn` lint is `allow`ed at the current HIR node.
     fn unsafe_op_in_unsafe_fn_allowed(&self) -> bool {
-        self.tcx.lint_level_at_node(UNSAFE_OP_IN_UNSAFE_FN, self.hir_context).level == Level::Allow
+        self.tcx.lint_level_spec_at_node(UNSAFE_OP_IN_UNSAFE_FN, self.hir_context).is_allow()
     }
 
     /// Handle closures/coroutines/inline-consts, which is unsafecked with their parent body.
@@ -239,50 +217,6 @@ impl<'tcx> UnsafetyVisitor<'_, 'tcx> {
     }
 }
 
-// Searches for accesses to layout constrained fields.
-struct LayoutConstrainedPlaceVisitor<'a, 'tcx> {
-    found: bool,
-    thir: &'a Thir<'tcx>,
-    tcx: TyCtxt<'tcx>,
-}
-
-impl<'a, 'tcx> LayoutConstrainedPlaceVisitor<'a, 'tcx> {
-    fn new(thir: &'a Thir<'tcx>, tcx: TyCtxt<'tcx>) -> Self {
-        Self { found: false, thir, tcx }
-    }
-}
-
-impl<'a, 'tcx> Visitor<'a, 'tcx> for LayoutConstrainedPlaceVisitor<'a, 'tcx> {
-    fn thir(&self) -> &'a Thir<'tcx> {
-        self.thir
-    }
-
-    fn visit_expr(&mut self, expr: &'a Expr<'tcx>) {
-        match expr.kind {
-            ExprKind::Field { lhs, .. } => {
-                if let ty::Adt(adt_def, _) = self.thir[lhs].ty.kind() {
-                    if (Bound::Unbounded, Bound::Unbounded)
-                        != self.tcx.layout_scalar_valid_range(adt_def.did())
-                    {
-                        self.found = true;
-                    }
-                }
-                visit::walk_expr(self, expr);
-            }
-
-            // Keep walking through the expression as long as we stay in the same
-            // place, i.e. the expression is a place expression and not a dereference
-            // (since dereferencing something leads us to a different place).
-            ExprKind::Deref { .. } => {}
-            ref kind if ExprCategory::of(kind).is_none_or(|cat| cat == ExprCategory::Place) => {
-                visit::walk_expr(self, expr);
-            }
-
-            _ => {}
-        }
-    }
-}
-
 impl<'a, 'tcx> Visitor<'a, 'tcx> for UnsafetyVisitor<'a, 'tcx> {
     fn thir(&self) -> &'a Thir<'tcx> {
         self.thir
@@ -298,10 +232,7 @@ impl<'a, 'tcx> Visitor<'a, 'tcx> for UnsafetyVisitor<'a, 'tcx> {
                 });
             }
             BlockSafety::ExplicitUnsafe(hir_id) => {
-                let used = matches!(
-                    self.tcx.lint_level_at_node(UNUSED_UNSAFE, hir_id).level,
-                    Level::Allow
-                );
+                let used = self.tcx.lint_level_spec_at_node(UNUSED_UNSAFE, hir_id).is_allow();
                 self.in_safety_context(
                     SafetyContext::UnsafeBlock {
                         span: block.span,
@@ -333,6 +264,7 @@ impl<'a, 'tcx> Visitor<'a, 'tcx> for UnsafetyVisitor<'a, 'tcx> {
                 | PatKind::Range { .. }
                 | PatKind::Slice { .. }
                 | PatKind::Array { .. }
+                | PatKind::Guard { .. }
                 // Never constitutes a witness of uninhabitedness.
                 | PatKind::Never => {
                     self.requires_unsafe(pat.span, AccessToUnionField);
@@ -342,8 +274,6 @@ impl<'a, 'tcx> Visitor<'a, 'tcx> for UnsafetyVisitor<'a, 'tcx> {
                 PatKind::Wild |
                 // these just wrap other patterns, which we recurse on below.
                 PatKind::Or { .. } |
-                PatKind::ExpandedConstant { .. } |
-                PatKind::AscribeUserType { .. } |
                 PatKind::Error(_) => {}
             }
         };
@@ -361,12 +291,6 @@ impl<'a, 'tcx> Visitor<'a, 'tcx> for UnsafetyVisitor<'a, 'tcx> {
                             std::mem::replace(&mut self.in_union_destructure, true);
                         visit::walk_pat(self, pat);
                         self.in_union_destructure = old_in_union_destructure;
-                    } else if (Bound::Unbounded, Bound::Unbounded)
-                        != self.tcx.layout_scalar_valid_range(adt_def.did())
-                    {
-                        let old_inside_adt = std::mem::replace(&mut self.inside_adt, true);
-                        visit::walk_pat(self, pat);
-                        self.inside_adt = old_inside_adt;
                     } else {
                         visit::walk_pat(self, pat);
                     }
@@ -383,7 +307,7 @@ impl<'a, 'tcx> Visitor<'a, 'tcx> for UnsafetyVisitor<'a, 'tcx> {
                 }
                 visit::walk_pat(self, pat);
             }
-            PatKind::Binding { mode: BindingMode(ByRef::Yes(rm), _), ty, .. } => {
+            PatKind::Binding { mode: BindingMode(ByRef::Yes(_, rm), _), ty, .. } => {
                 if self.inside_adt {
                     let ty::Ref(_, ty, _) = ty.kind() else {
                         span_bug!(
@@ -409,14 +333,6 @@ impl<'a, 'tcx> Visitor<'a, 'tcx> for UnsafetyVisitor<'a, 'tcx> {
                 let old_inside_adt = std::mem::replace(&mut self.inside_adt, false);
                 visit::walk_pat(self, pat);
                 self.inside_adt = old_inside_adt;
-            }
-            PatKind::ExpandedConstant { def_id, .. } => {
-                if let Some(def) = def_id.as_local()
-                    && matches!(self.tcx.def_kind(def_id), DefKind::InlineConst)
-                {
-                    self.visit_inner_body(def);
-                }
-                visit::walk_pat(self, pat);
             }
             _ => {
                 visit::walk_pat(self, pat);
@@ -474,12 +390,11 @@ impl<'a, 'tcx> Visitor<'a, 'tcx> for UnsafetyVisitor<'a, 'tcx> {
             | ExprKind::LoopMatch { .. }
             | ExprKind::Let { .. }
             | ExprKind::Match { .. }
-            | ExprKind::Box { .. }
             | ExprKind::If { .. }
             | ExprKind::InlineAsm { .. }
-            | ExprKind::OffsetOf { .. }
             | ExprKind::LogicalOp { .. }
-            | ExprKind::Use { .. } => {
+            | ExprKind::Use { .. }
+            | ExprKind::Reborrow { .. } => {
                 // We don't need to save the old value and restore it
                 // because all the place expressions can't have more
                 // than one child.
@@ -487,7 +402,7 @@ impl<'a, 'tcx> Visitor<'a, 'tcx> for UnsafetyVisitor<'a, 'tcx> {
             }
         };
         match expr.kind {
-            ExprKind::Scope { value, lint_level: LintLevel::Explicit(hir_id), region_scope: _ } => {
+            ExprKind::Scope { value, hir_id, region_scope: _ } => {
                 let prev_id = self.hir_context;
                 self.hir_context = hir_id;
                 ensure_sufficient_stack(|| {
@@ -499,7 +414,7 @@ impl<'a, 'tcx> Visitor<'a, 'tcx> for UnsafetyVisitor<'a, 'tcx> {
             ExprKind::Call { fun, ty: _, args: _, from_hir_call: _, fn_span: _ } => {
                 let fn_ty = self.thir[fun].ty;
                 let sig = fn_ty.fn_sig(self.tcx);
-                let (callee_features, safe_target_features): (&[_], _) = match fn_ty.kind() {
+                let (callee_features, safe_target_features): (&[_], _) = match *fn_ty.kind() {
                     ty::FnDef(func_id, ..) => {
                         let cg_attrs = self.tcx.codegen_fn_attrs(func_id);
                         (&cg_attrs.target_features, cg_attrs.safe_target_features)
@@ -543,6 +458,11 @@ impl<'a, 'tcx> Visitor<'a, 'tcx> for UnsafetyVisitor<'a, 'tcx> {
                             CallToFunctionWith { function: func_did, missing, build_enabled },
                         );
                     }
+                    if let Some(trait_did) = self.tcx.trait_of_assoc(func_did)
+                        && self.tcx.is_lang_item(trait_did, hir::LangItem::Drop)
+                    {
+                        self.requires_unsafe(expr.span, CallDropExplicitly(func_did));
+                    }
                 }
             }
             ExprKind::RawBorrow { arg, .. } => {
@@ -554,6 +474,21 @@ impl<'a, 'tcx> Visitor<'a, 'tcx> for UnsafetyVisitor<'a, 'tcx> {
                     visit::walk_expr(self, &self.thir[arg]);
                     return;
                 }
+
+                // Secondly, we allow raw borrows of union field accesses. Peel
+                // any of those off, and recurse normally on the LHS, which should
+                // reject any unsafe operations within.
+                let mut peeled = arg;
+                while let ExprKind::Scope { value: arg, .. } = self.thir[peeled].kind
+                    && let ExprKind::Field { lhs, name: _, variant_index: _ } = self.thir[arg].kind
+                    && let ty::Adt(def, _) = &self.thir[lhs].ty.kind()
+                    && def.is_union()
+                {
+                    peeled = lhs;
+                }
+                visit::walk_expr(self, &self.thir[peeled]);
+                // And return so we don't recurse directly onto the union field access(es).
+                return;
             }
             ExprKind::Deref { arg } => {
                 if let ExprKind::StaticRef { def_id, .. } | ExprKind::ThreadLocalRef(def_id) =
@@ -571,7 +506,7 @@ impl<'a, 'tcx> Visitor<'a, 'tcx> for UnsafetyVisitor<'a, 'tcx> {
                     self.requires_unsafe(expr.span, DerefOfRawPointer);
                 }
             }
-            ExprKind::InlineAsm(box InlineAsmExpr {
+            ExprKind::InlineAsm(InlineAsmExpr {
                 asm_macro: asm_macro @ (AsmMacro::Asm | AsmMacro::NakedAsm),
                 ref operands,
                 template: _,
@@ -615,7 +550,7 @@ impl<'a, 'tcx> Visitor<'a, 'tcx> for UnsafetyVisitor<'a, 'tcx> {
                 }
                 return;
             }
-            ExprKind::Adt(box AdtExpr {
+            ExprKind::Adt(AdtExpr {
                 adt_def,
                 variant_index,
                 args: _,
@@ -626,12 +561,8 @@ impl<'a, 'tcx> Visitor<'a, 'tcx> for UnsafetyVisitor<'a, 'tcx> {
                 if adt_def.variant(variant_index).has_unsafe_fields() {
                     self.requires_unsafe(expr.span, InitializingTypeWithUnsafeField)
                 }
-                match self.tcx.layout_scalar_valid_range(adt_def.did()) {
-                    (Bound::Unbounded, Bound::Unbounded) => {}
-                    _ => self.requires_unsafe(expr.span, InitializingTypeWith),
-                }
             }
-            ExprKind::Closure(box ClosureExpr {
+            ExprKind::Closure(ClosureExpr {
                 closure_id,
                 args: _,
                 upvars: _,
@@ -667,14 +598,8 @@ impl<'a, 'tcx> Visitor<'a, 'tcx> for UnsafetyVisitor<'a, 'tcx> {
             }
             ExprKind::Assign { lhs, rhs } | ExprKind::AssignOp { lhs, rhs, .. } => {
                 let lhs = &self.thir[lhs];
-                // First, check whether we are mutating a layout constrained field
-                let mut visitor = LayoutConstrainedPlaceVisitor::new(self.thir, self.tcx);
-                visit::walk_expr(&mut visitor, lhs);
-                if visitor.found {
-                    self.requires_unsafe(expr.span, MutationOfLayoutConstrainedField);
-                }
 
-                // Second, check for accesses to union fields. Don't have any
+                // Check for accesses to union fields. Don't have any
                 // special handling for AssignOp since it causes a read *and*
                 // write to lhs.
                 if matches!(expr.kind, ExprKind::Assign { .. }) {
@@ -683,23 +608,6 @@ impl<'a, 'tcx> Visitor<'a, 'tcx> for UnsafetyVisitor<'a, 'tcx> {
                     self.assignment_info = None;
                     visit::walk_expr(self, &self.thir()[rhs]);
                     return; // We have already visited everything by now.
-                }
-            }
-            ExprKind::Borrow { borrow_kind, arg } => {
-                let mut visitor = LayoutConstrainedPlaceVisitor::new(self.thir, self.tcx);
-                visit::walk_expr(&mut visitor, expr);
-                if visitor.found {
-                    match borrow_kind {
-                        BorrowKind::Fake(_) | BorrowKind::Shared
-                            if !self.thir[arg].ty.is_freeze(self.tcx, self.typing_env) =>
-                        {
-                            self.requires_unsafe(expr.span, BorrowOfLayoutConstrainedField)
-                        }
-                        BorrowKind::Mut { .. } => {
-                            self.requires_unsafe(expr.span, MutationOfLayoutConstrainedField)
-                        }
-                        BorrowKind::Fake(_) | BorrowKind::Shared => {}
-                    }
                 }
             }
             ExprKind::PlaceUnwrapUnsafeBinder { .. }
@@ -737,7 +645,6 @@ struct UnusedUnsafeWarning {
 enum UnsafeOpKind {
     CallToUnsafeFunction(Option<DefId>),
     UseOfInlineAssembly,
-    InitializingTypeWith,
     InitializingTypeWithUnsafeField,
     UseOfMutableStatic,
     UseOfExternStatic,
@@ -756,6 +663,8 @@ enum UnsafeOpKind {
         build_enabled: Vec<Symbol>,
     },
     UnsafeBinderCast,
+    /// Calling `Drop::drop` or `Drop::pin_drop` explicitly.
+    CallDropExplicitly(DefId),
 }
 
 use UnsafeOpKind::*;
@@ -817,15 +726,6 @@ impl UnsafeOpKind {
                 hir_id,
                 span,
                 UnsafeOpInUnsafeFnUseOfInlineAssemblyRequiresUnsafe {
-                    span,
-                    unsafe_not_inherited_note,
-                },
-            ),
-            InitializingTypeWith => tcx.emit_node_span_lint(
-                UNSAFE_OP_IN_UNSAFE_FN,
-                hir_id,
-                span,
-                UnsafeOpInUnsafeFnInitializingTypeWithRequiresUnsafe {
                     span,
                     unsafe_not_inherited_note,
                 },
@@ -933,6 +833,9 @@ impl UnsafeOpKind {
                     unsafe_not_inherited_note,
                 },
             ),
+            CallDropExplicitly(_) => {
+                span_bug!(span, "`Drop::drop` or `Drop::pin_drop` should not be called explicitly")
+            }
         }
     }
 
@@ -1001,18 +904,6 @@ impl UnsafeOpKind {
             }
             UseOfInlineAssembly => {
                 dcx.emit_err(UseOfInlineAssemblyRequiresUnsafe { span, unsafe_not_inherited_note });
-            }
-            InitializingTypeWith if unsafe_op_in_unsafe_fn_allowed => {
-                dcx.emit_err(InitializingTypeWithRequiresUnsafeUnsafeOpInUnsafeFnAllowed {
-                    span,
-                    unsafe_not_inherited_note,
-                });
-            }
-            InitializingTypeWith => {
-                dcx.emit_err(InitializingTypeWithRequiresUnsafe {
-                    span,
-                    unsafe_not_inherited_note,
-                });
             }
             InitializingTypeWithUnsafeField if unsafe_op_in_unsafe_fn_allowed => {
                 dcx.emit_err(
@@ -1150,6 +1041,13 @@ impl UnsafeOpKind {
             UnsafeBinderCast => {
                 dcx.emit_err(UnsafeBinderCastRequiresUnsafe { span, unsafe_not_inherited_note });
             }
+            CallDropExplicitly(did) => {
+                dcx.emit_err(CallDropExplicitlyRequiresUnsafe {
+                    span,
+                    unsafe_not_inherited_note,
+                    function: tcx.def_path_str(*did),
+                });
+            }
         }
     }
 }
@@ -1158,7 +1056,7 @@ pub(crate) fn check_unsafety(tcx: TyCtxt<'_>, def: LocalDefId) {
     // Closures and inline consts are handled by their owner, if it has a body
     assert!(!tcx.is_typeck_child(def.to_def_id()));
     // Also, don't safety check custom MIR
-    if find_attr!(tcx.get_all_attrs(def), AttributeKind::CustomMir(..) => ()).is_some() {
+    if find_attr!(tcx, def, CustomMir(..) => ()).is_some() {
         return;
     }
 

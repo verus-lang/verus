@@ -1,7 +1,7 @@
 use crate::ast::{
-    ArchWordBits, BinaryOp, BinaryOpr, Dt, FieldOpr, Fun, FunctionKind, Ident, IntRange, Quant,
-    SpannedTyped, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarBinders, VarIdent, VarIdentDisambiguate,
-    Variant, VariantCheck,
+    ArchWordBits, BinaryOpr, Dt, FieldOpr, Fun, FunctionKind, Ident, IntRange, Quant, SpannedTyped,
+    Typ, TypX, Typs, UnaryOp, UnaryOpr, VarBinders, VarIdent, VarIdentDisambiguate, Variant,
+    VariantCheck,
 };
 use crate::ast_to_sst::get_function_sst;
 use crate::ast_util::{is_transparent_to, type_is_bool, undecorate_typ};
@@ -10,7 +10,8 @@ use crate::def::Spanned;
 use crate::messages::Span;
 use crate::sst::PostConditionSst;
 use crate::sst::{
-    AssertId, BndX, CallFun, Exp, ExpX, Exps, LocalDecl, LocalDeclKind, LocalDeclX, Stm, StmX,
+    AssertId, BinaryOp, BndX, CallFun, Exp, ExpX, Exps, LocalDecl, LocalDeclKind, LocalDeclX, Stm,
+    StmX,
 };
 use crate::sst::{FuncCheckSst, FunctionSst};
 use crate::sst_util::{
@@ -99,14 +100,19 @@ pub fn get_expansion_ctx(stm: &Stm, assert_id: &AssertId) -> ExpansionContext {
 
 fn get_fuel_at_id(stm: &Stm, a_id: &AssertId, fuels: &mut HashMap<Fun, u32>) -> bool {
     match &stm.x {
-        StmX::Call { assert_id, .. }
-        | StmX::Assert(assert_id, ..)
-        | StmX::Return { assert_id, .. } => *assert_id == Some(a_id.clone()),
-        StmX::AssertBitVector { requires: _, ensures: _ }
+        StmX::Assert(assert_id, ..) | StmX::Return { assert_id, .. } => {
+            assert_id.as_ref() == Some(a_id)
+        }
+        StmX::Call { assert_id, body, .. } => {
+            assert_id.as_ref() == Some(a_id)
+                || body.as_ref().is_some_and(|stm| get_fuel_at_id(stm, a_id, fuels))
+        }
+        StmX::AssertBitVector { .. }
         | StmX::AssertCompute(..)
         | StmX::Assume(..)
         | StmX::Assign { .. }
         | StmX::RevealString { .. }
+        | StmX::RevealByteString { .. }
         | StmX::Air { .. }
         | StmX::BreakOrContinue { .. } => false,
         StmX::Fuel(fun, fuel) => {
@@ -128,7 +134,13 @@ fn get_fuel_at_id(stm: &Stm, a_id: &AssertId, fuels: &mut HashMap<Fun, u32>) -> 
             }
             return false;
         }
-        StmX::Loop { body, cond, .. } => {
+        StmX::Loop { pre_stms, body, cond, .. } => {
+            for stm in pre_stms.iter() {
+                if get_fuel_at_id(stm, a_id, fuels) {
+                    return true;
+                }
+            }
+
             if let Some((cond_stm, _cond_exp)) = cond {
                 if get_fuel_at_id(cond_stm, a_id, fuels) {
                     return true;
@@ -176,7 +188,6 @@ fn get_fuel_at_id(stm: &Stm, a_id: &AssertId, fuels: &mut HashMap<Fun, u32>) -> 
 ///
 /// The second argument, the 'expansion tree' describes the transformations that were
 /// performed to do the expansion.
-
 pub fn do_expansion(
     ctx: &Ctx,
     ectx: &ExpansionContext,
@@ -275,7 +286,13 @@ fn do_expansion_if_assert_id_matches(
 
             Some(expand_exp(ctx, ectx, assert_id, the_exp, local_decls))
         }
-        StmX::Call { assert_id: Some(a_id), fun, typ_args, args, .. } if a_id == assert_id => {
+        StmX::Call {
+            assert_id: Some(a_id),
+            fun: crate::sst::CallTarget::Fun(fun),
+            typ_args,
+            args,
+            ..
+        } if a_id == assert_id => {
             let preconditions = split_precondition(ctx, &stm.span, fun, typ_args, args);
             // There might be multiple preconditions, there might be some preconditions
             // with multiple conjuncts ... we want to handle these all the same way,
@@ -472,14 +489,14 @@ fn expand_exp_rec(
                 )
             }
         }
-        ExpX::Binary(BinaryOp::Eq(_) | BinaryOp::Ne | BinaryOp::Xor, e1, e2)
+        ExpX::Binary(BinaryOp::Eq | BinaryOp::Ne | BinaryOp::Xor, e1, e2)
         | ExpX::BinaryOpr(BinaryOpr::ExtEq(..), e1, e2) => {
             if did_split_yet {
                 return leaf(state, CanExpandFurther::Yes);
             }
 
             let (is_neq, ext) = match &exp.x {
-                ExpX::Binary(BinaryOp::Eq(_), ..) => (false, None),
+                ExpX::Binary(BinaryOp::Eq, ..) => (false, None),
                 ExpX::Binary(BinaryOp::Ne | BinaryOp::Xor, ..) => (true, None),
                 ExpX::BinaryOpr(BinaryOpr::ExtEq(deep, _), ..) => (false, Some(*deep)),
                 _ => unreachable!(),
@@ -1029,7 +1046,7 @@ fn split_precondition(ctx: &Ctx, span: &Span, name: &Fun, typs: &Typs, args: &Ex
     // so we are also splitting pervasive::assert here.
     let params = &fun.x.pars;
     let typ_params = &fun.x.typ_params;
-    for exp in fun.x.decl.reqs.iter().cloned() {
+    for exp in fun.x.decl.reqs.iter() {
         // In requires, old(x) is really just x:
         let mut f_var_at = |e: &Exp| match &e.x {
             ExpX::VarAt(x, crate::ast::VarAt::Pre) => e.new_x(ExpX::Var(x.clone())),

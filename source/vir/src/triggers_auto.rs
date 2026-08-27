@@ -1,11 +1,11 @@
 use crate::ast::{
-    BinaryOp, BitwiseOp, Constant, Dt, FieldOpr, Fun, Ident, Typ, TypX, UnaryOp, UnaryOpr, VarAt,
-    VarIdent, VirErr,
+    BitwiseOp, Constant, Dt, FieldOpr, Fun, Ident, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VarIdent,
+    VirErr,
 };
 use crate::ast_util::{dt_as_friendly_rust_name, path_as_friendly_rust_name};
 use crate::context::{ChosenTriggers, Ctx, FunctionCtx};
 use crate::messages::{Span, error};
-use crate::sst::{CallFun, Exp, ExpX, Trig, Trigs, UniqueIdent};
+use crate::sst::{BinaryOp, CallFun, Exp, ExpX, Trig, Trigs, UniqueIdent};
 use crate::util::vec_map;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -40,6 +40,8 @@ pub enum AutoType {
 enum App {
     Const(Constant),
     Field(Dt, Ident, Ident),
+    MutRefCurrent,
+    MutRefFuture,
     Call(Fun),
     // datatype constructor: (Path, Variant)
     Ctor(Dt, Ident),
@@ -78,6 +80,8 @@ impl std::fmt::Debug for TermX {
             TermX::Var(x) => write!(f, "{}", x),
             TermX::App(App::Const(c), _) => write!(f, "{:?}", c),
             TermX::App(App::Field(_, x, y), es) => write!(f, "{:?}.{}/{}", es[0], x, y),
+            TermX::App(App::MutRefCurrent, es) => write!(f, "mut_ref_current({:?})", es[0]),
+            TermX::App(App::MutRefFuture, es) => write!(f, "mut_ref_future({:?})", es[0]),
             TermX::App(c @ (App::Call(_) | App::Ctor(_, _)), es) => {
                 match c {
                     App::Call(x) => write!(f, "{}(", path_as_friendly_rust_name(&x.path))?,
@@ -351,9 +355,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                     InternalFun::ClosureReq | InternalFun::ClosureEns | InternalFun::DefaultEns,
                 ) => (is_pure, Arc::new(TermX::App(App::ClosureSpec, Arc::new(all_terms)))),
                 CallFun::InternalFun(
-                    InternalFun::CheckDecreaseInt
-                    | InternalFun::CheckDecreaseHeight
-                    | InternalFun::OpenInvariantMask(..),
+                    InternalFun::CheckDecreaseHeight | InternalFun::OpenInvariantMask(..),
                 ) => (is_pure, Arc::new(TermX::App(ctxt.other(), Arc::new(all_terms)))),
             }
         }
@@ -388,6 +390,15 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
         ExpX::Unary(UnaryOp::CastToInteger, _) => {
             panic!("internal error: CastToInteger should have been removed before here")
         }
+        ExpX::Unary(op @ (UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_)), e1) => {
+            let (is_pure, arg) = gather_terms(ctxt, ctx, e1, depth + 1);
+            let app = match op {
+                UnaryOp::MutRefCurrent => App::MutRefCurrent,
+                UnaryOp::MutRefFuture(_) => App::MutRefFuture,
+                _ => unreachable!(),
+            };
+            (is_pure, Arc::new(TermX::App(app, Arc::new(vec![arg]))))
+        }
         ExpX::Unary(op, e1) => {
             let depth = match op {
                 UnaryOp::Not
@@ -397,13 +408,14 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 | UnaryOp::CastToInteger
                 | UnaryOp::Length(_) => 0,
                 UnaryOp::HeightTrigger => 1,
-                UnaryOp::ToDyn => 1,
                 UnaryOp::Trigger(_) | UnaryOp::Clip { .. } | UnaryOp::BitNot(_) => 1,
-                UnaryOp::FloatToBits => 1,
                 UnaryOp::IntToReal => 1,
-                UnaryOp::InferSpecForLoopIter { .. } => 1,
-                UnaryOp::StrIsAscii | UnaryOp::StrLen => fail_on_strop(),
-                UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_) | UnaryOp::MutRefFinal => 1,
+                UnaryOp::RealToInt => 1,
+                UnaryOp::FloatToBits => 1,
+                UnaryOp::IeeeFloat(_) => 1,
+                UnaryOp::StrLen => fail_on_strop(),
+                UnaryOp::MutRefFinal(_) => 1,
+                UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_) => unreachable!(),
             };
             let (is_pure1, term1) = gather_terms(ctxt, ctx, e1, depth);
             match op {
@@ -416,7 +428,13 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
         }
         ExpX::UnaryOpr(UnaryOpr::Box(_), _) => panic!("unexpected box"),
         ExpX::UnaryOpr(UnaryOpr::Unbox(_), _) => panic!("unexpected box"),
-        ExpX::UnaryOpr(UnaryOpr::CustomErr(_), e1) => gather_terms(ctxt, ctx, e1, depth),
+        ExpX::UnaryOpr(
+            UnaryOpr::CustomErr(_)
+            | UnaryOpr::ProofNote(_)
+            | UnaryOpr::AutoDecreases
+            | UnaryOpr::AutoLoopEnsures,
+            e1,
+        ) => gather_terms(ctxt, ctx, e1, depth),
         ExpX::UnaryOpr(UnaryOpr::HasType(_), _) => {
             (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![]))))
         }
@@ -431,6 +449,10 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             let (is_pure, term1) = gather_terms(ctxt, ctx, e1, depth + 1);
             (is_pure, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![term1]))))
         }
+        ExpX::UnaryOpr(UnaryOpr::ToDyn(_), e1) => {
+            let (_is_pure, term1) = gather_terms(ctxt, ctx, e1, 1);
+            (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![term1]))))
+        }
         ExpX::UnaryOpr(
             UnaryOpr::Field(FieldOpr { datatype, variant, field, get_variant: _, check: _ }),
             lhs,
@@ -444,12 +466,15 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 )),
             )
         }
+        ExpX::UnaryOpr(UnaryOpr::LoopIsolationBoundary(_), _e1) => {
+            panic!("unexpected LoopIsolationBoundary");
+        }
         ExpX::Binary(op, e1, e2) => {
             use BinaryOp::*;
             let depth = match op {
-                And | Or | Xor | Implies | Eq(_) => 0,
+                And | Or | Xor | Implies | Eq => 0,
                 HeightCompare { .. } => 1,
-                Ne | Inequality(_) | Arith(..) | RealArith(..) => 1,
+                Ne | Inequality(_) | Arith(..) | RealArith(..) | IeeeFloat(..) => 1,
                 Bitwise(..) => 1,
                 StrGetChar => fail_on_strop(),
                 Index(..) => 1,
@@ -457,11 +482,11 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             let (is_pure1, term1) = gather_terms(ctxt, ctx, e1, depth);
             let (is_pure2, term2) = gather_terms(ctxt, ctx, e2, depth);
             match op {
-                Bitwise(bp, _) => {
+                Bitwise(bp) => {
                     let bop = match bp {
                         BitwiseOp::BitXor => BitOpName::BitXor,
                         BitwiseOp::BitAnd => BitOpName::BitAnd,
-                        BitwiseOp::Shr(..) => BitOpName::Shr,
+                        BitwiseOp::Shr => BitOpName::Shr,
                         BitwiseOp::Shl(..) => BitOpName::Shl,
                         BitwiseOp::BitOr => BitOpName::BitOr,
                     };
@@ -514,6 +539,9 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
     if let TermX::Var(..) = *term {
         return (is_pure, term);
     }
+    if let TermX::App(App::VarAt(..), _) = *term {
+        return (is_pure, term);
+    }
     if let TermX::App(App::Tuple, _) = *term {
         return (is_pure, term);
     }
@@ -546,7 +574,11 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
 // Second bool: is the instantiation potentially bigger than the original template?
 fn structure_matches(ctxt: &Ctxt, template: &Term, term: &Term) -> (bool, bool) {
     match (&**template, &**term) {
-        (TermX::Var(x1), TermX::App(_, _)) if ctxt.trigger_vars.contains(x1) => (true, true),
+        (TermX::Var(x1), TermX::App(app, _))
+            if ctxt.trigger_vars.contains(x1) && !matches!(app, App::VarAt(..)) =>
+        {
+            (true, true)
+        }
         (TermX::Var(x1), _) if ctxt.trigger_vars.contains(x1) => (true, false),
         (TermX::Var(x1), TermX::Var(x2)) => (x1 == x2, false),
         (TermX::App(a1, args1), TermX::App(a2, args2))
@@ -570,7 +602,9 @@ fn remove_obvious_potential_loops(ctxt: &mut Ctxt, timer: &mut Timer) -> Result<
     // REVIEW: we could attempt more sophisticated cycle detection
     let mut remove: Vec<Term> = Vec::new();
     for pure in ctxt.pure_terms.keys() {
-        if let TermX::App(app, _) = &**pure {
+        if let TermX::App(app, _) = &**pure
+            && !matches!(app, App::VarAt(..))
+        {
             if ctxt.all_terms_by_app.contains_key(app) {
                 for term in ctxt.all_terms_by_app[app].keys() {
                     check_timeout(timer)?;

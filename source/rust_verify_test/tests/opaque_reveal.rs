@@ -437,7 +437,7 @@ test_verify_one_file! {
             reveal(m::foo);
             assert(m::foo(0) == 0);
         }
-    } => Err(err) => assert_vir_error_msg(err, "reveal/fuel statement is not allowed here because the function `crate::m::foo` is marked 'closed' and thus its body is not visible here")
+    } => Err(err) => assert_vir_error_msg(err, "reveal/fuel statement is not allowed here because the function `test_crate::m::foo` is marked 'closed' and thus its body is not visible here")
 }
 
 test_verify_one_file! {

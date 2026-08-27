@@ -32,10 +32,74 @@ impl std::fmt::Debug for Span {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WarningAllow {
+    UndeclaredExternalTrait,
+    AssertForallImplication,
+    DecreasesWhenExecAllowsNoDecreasesClause,
+    BroadcastWithoutTrigger,
+    TriggerOnSpecFn,
+    DeadReveal,
+    AssertComputeUnsimplified,
+    OldStyleAcceptRejectRecursiveTypes,
+    UnknownAutomaticDerive,
+    AutoderiveCloneWithoutSpec,
+    NonExecGhostTrackedWrappers,
+}
+
+impl WarningAllow {
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            WarningAllow::UndeclaredExternalTrait => "undeclared_external_trait",
+            WarningAllow::AssertForallImplication => "assert_forall_implication",
+            WarningAllow::DecreasesWhenExecAllowsNoDecreasesClause => {
+                "decreases_when_exec_allows_no_decreases_clause"
+            }
+            WarningAllow::BroadcastWithoutTrigger => "broadcast_without_trigger",
+            WarningAllow::TriggerOnSpecFn => "trigger_on_spec_fn",
+            WarningAllow::DeadReveal => "dead_reveal",
+            WarningAllow::AssertComputeUnsimplified => "assert_compute_unsimplified",
+            WarningAllow::OldStyleAcceptRejectRecursiveTypes => {
+                "old_style_accept_reject_recursive_types"
+            }
+            WarningAllow::UnknownAutomaticDerive => "unknown_automatic_derive",
+            WarningAllow::AutoderiveCloneWithoutSpec => "autoderive_clone_without_spec",
+            WarningAllow::NonExecGhostTrackedWrappers => "non_exec_ghost_tracked_wrappers",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Option<WarningAllow> {
+        match s {
+            "undeclared_external_trait" => Some(WarningAllow::UndeclaredExternalTrait),
+            "assert_forall_implication" => Some(WarningAllow::AssertForallImplication),
+            "decreases_when_exec_allows_no_decreases_clause" => {
+                Some(WarningAllow::DecreasesWhenExecAllowsNoDecreasesClause)
+            }
+            "broadcast_without_trigger" => Some(WarningAllow::BroadcastWithoutTrigger),
+            "trigger_on_spec_fn" => Some(WarningAllow::TriggerOnSpecFn),
+            "dead_reveal" => Some(WarningAllow::DeadReveal),
+            "assert_compute_unsimplified" => Some(WarningAllow::AssertComputeUnsimplified),
+            "old_style_accept_reject_recursive_types" => {
+                Some(WarningAllow::OldStyleAcceptRejectRecursiveTypes)
+            }
+            "unknown_automatic_derive" => Some(WarningAllow::UnknownAutomaticDerive),
+            "autoderive_clone_without_spec" => Some(WarningAllow::AutoderiveCloneWithoutSpec),
+            "non_exec_ghost_tracked_wrappers" => Some(WarningAllow::NonExecGhostTrackedWrappers),
+            _ => None,
+        }
+    }
+}
+
+pub trait CheckAllowForWarning {
+    fn allowed(&self, allow: &WarningAllow) -> bool;
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, ToDebugSNode)]
 pub struct MessageLabel {
     pub span: Span,
     pub note: String,
+    pub is_proof_note: bool,
+    pub is_custom_err: bool,
 }
 
 /// If you just want to build a simple message, see the builders below.
@@ -171,6 +235,8 @@ impl air::messages::MessageInterface for VirMessageInterface {
                 as_string: air_span.to_owned(),
             },
             note: note.to_owned(),
+            is_proof_note: false,
+            is_custom_err: false,
         })
     }
 
@@ -178,7 +244,7 @@ impl air::messages::MessageInterface for VirMessageInterface {
         if labels.len() == 0 {
             self.empty()
         } else {
-            let MessageLabel { span, note } =
+            let MessageLabel { span, note, .. } =
                 labels[0].downcast_ref::<MessageLabel>().unwrap().clone();
             Arc::new(MessageX {
                 level: MessageLevel::Error,
@@ -235,7 +301,12 @@ pub fn message_with_label<S: Into<String>, T: Into<String>>(
         level,
         note: note.into(),
         spans: vec![span.clone()],
-        labels: vec![MessageLabel { span: span.clone(), note: label.into() }],
+        labels: vec![MessageLabel {
+            span: span.clone(),
+            note: label.into(),
+            is_proof_note: false,
+            is_custom_err: false,
+        }],
         help: None,
         fancy_note: None,
     })
@@ -251,7 +322,28 @@ pub fn message_with_secondary_label<S: Into<String>, T: Into<String>>(
         level,
         note: note.into(),
         spans: vec![],
-        labels: vec![MessageLabel { span: span.clone(), note: label.into() }],
+        labels: vec![MessageLabel {
+            span: span.clone(),
+            note: label.into(),
+            is_proof_note: false,
+            is_custom_err: false,
+        }],
+        help: None,
+        fancy_note: None,
+    })
+}
+
+/// Multiple basic message, each with a note and a single span to be highlighted with ^^^^^^
+pub fn multiple_message<'a, S: Into<String>>(
+    level: MessageLevel,
+    note: S,
+    spans: impl Iterator<Item = &'a Span>,
+) -> Message {
+    Arc::new(MessageX {
+        level,
+        note: note.into(),
+        spans: spans.cloned().collect(),
+        labels: Vec::new(),
         help: None,
         fancy_note: None,
     })
@@ -279,6 +371,43 @@ pub fn warning<S: Into<String>>(span: &Span, note: S) -> Message {
     message(MessageLevel::Warning, note, span)
 }
 
+/// Basic warning, possibly suppressed by verifier::allow
+pub fn warning_maybe<S: Into<String>>(
+    check_allow: &(impl CheckAllowForWarning + ?Sized),
+    span: &Span,
+    allow: &WarningAllow,
+    note: impl FnOnce() -> S,
+    emit: impl FnOnce(Message) -> (),
+) {
+    if !check_allow.allowed(allow) {
+        let s = allow.to_str();
+        let msg = warning(span, note());
+        let msg = msg.help(
+            format!(
+                "to suppress this warning, use `#[verifier::allow({s})]` on the surrounding function, datatype, or module or `#![verifier::allow({s})]` in the module or crate"
+            ));
+        emit(msg);
+    }
+}
+
+/// Basic warning, possibly suppressed by verifier::allow,
+/// and possibly also suppressed by check_allow = None (which means a check for another crate's item)
+/// REVIEW: at some point, we should probably just stop checking imported items
+pub fn warning_maybe_if_in_local_crate<S: Into<String>>(
+    check_allow: &Option<crate::context::WarningConfig>,
+    span: &Span,
+    allow: &WarningAllow,
+    note: impl FnOnce() -> S,
+    emit: impl FnOnce(Message) -> (),
+) {
+    if let Some(check_allow) = check_allow {
+        // The item being checked is local to our crate, so continue with warning:
+        warning_maybe(check_allow, span, allow, note, emit);
+    }
+    // Otherwise, don't warn (it's an item from another crate,
+    // and the warning was already displayed when that crate was checked)
+}
+
 /// Bare error without any spans; use the builders below to add spans and labels
 pub fn error_bare<S: Into<String>>(note: S) -> Message {
     message_bare(MessageLevel::Error, note)
@@ -287,6 +416,14 @@ pub fn error_bare<S: Into<String>>(note: S) -> Message {
 /// Basic error, with a message and a single span to be highlighted with ^^^^^^
 pub fn error<S: Into<String>>(span: &Span, note: S) -> Message {
     message(MessageLevel::Error, note, span)
+}
+
+/// Multiple basic errors, each with a message and a single span to be highlighted with ^^^^^^
+pub fn multiple_errors<'a, S: Into<String>>(
+    spans: impl Iterator<Item = &'a Span>,
+    note: S,
+) -> Message {
+    multiple_message(MessageLevel::Error, note, spans)
 }
 
 /// Prepend the error with "Verus Internal Error"
@@ -327,21 +464,53 @@ impl MessageX {
     pub fn primary_label<S: Into<String>>(&self, span: &Span, label: S) -> Message {
         let mut e = self.clone();
         e.spans.push(span.clone());
-        e.labels.push(MessageLabel { span: span.clone(), note: label.into() });
+        e.labels.push(MessageLabel {
+            span: span.clone(),
+            note: label.into(),
+            is_proof_note: false,
+            is_custom_err: false,
+        });
         Arc::new(e)
     }
 
     /// Add a secondary_span to be highlighted, with no label (rendered with ------)
     pub fn secondary_span(&self, span: &Span) -> Message {
         let mut e = self.clone();
-        e.labels.push(MessageLabel { span: span.clone(), note: "".to_string() });
+        e.labels.push(MessageLabel {
+            span: span.clone(),
+            note: "".to_string(),
+            is_proof_note: false,
+            is_custom_err: false,
+        });
         Arc::new(e)
     }
 
     /// Add a secondary_span to be highlighted, with a label (rendered with ------)
     pub fn secondary_label<S: Into<String>>(&self, span: &Span, label: S) -> Message {
         let mut e = self.clone();
-        e.labels.push(MessageLabel { span: span.clone(), note: label.into() });
+        e.labels.push(MessageLabel {
+            span: span.clone(),
+            note: label.into(),
+            is_proof_note: false,
+            is_custom_err: false,
+        });
+        Arc::new(e)
+    }
+
+    /// Add a `proof_note` label
+    pub fn proof_note_label<S: Into<String>>(
+        &self,
+        span: &Span,
+        label: S,
+        is_custom_err: bool,
+    ) -> Message {
+        let mut e = self.clone();
+        e.labels.push(MessageLabel {
+            span: span.clone(),
+            note: label.into(),
+            is_proof_note: true,
+            is_custom_err,
+        });
         Arc::new(e)
     }
 
@@ -379,40 +548,14 @@ impl MessageX {
 }
 
 pub enum MessageAs {
-    NonBlockingError(Message, Option<crate::ast::Path>),
     Warning(Message),
     Note(Message),
 }
 
-impl MessageAs {
-    /// Given a primary diagnostic message and an additional message,
+impl MessageX {
+    /// Given a primary error message and an additional error message,
     /// fold the spans of the additional message into a new message copied from the original.
-    pub fn merge(&self, other: &MessageAs) -> MessageAs {
-        let added_msg = match other {
-            MessageAs::NonBlockingError(message_x, _)
-            | MessageAs::Warning(message_x)
-            | MessageAs::Note(message_x) => message_x,
-        };
-        let new_msg_builder = |msg: &Message| {
-            added_msg.spans.iter().fold(msg.clone(), |acc, v| acc.secondary_span(v))
-        };
-        match (self, other) {
-            (MessageAs::NonBlockingError(orig_msg, p), _) => {
-                MessageAs::NonBlockingError(new_msg_builder(orig_msg), p.clone())
-            }
-            (MessageAs::Warning(orig_msg), MessageAs::NonBlockingError(_, p)) => {
-                MessageAs::NonBlockingError(new_msg_builder(orig_msg), p.clone())
-            }
-            (MessageAs::Warning(orig_msg), _) => MessageAs::Warning(new_msg_builder(orig_msg)),
-            (MessageAs::Note(orig_msg), MessageAs::NonBlockingError(_, p)) => {
-                MessageAs::NonBlockingError(new_msg_builder(orig_msg), p.clone())
-            }
-            (MessageAs::Note(orig_msg), MessageAs::Warning(..)) => {
-                MessageAs::Warning(new_msg_builder(orig_msg))
-            }
-            (MessageAs::Note(orig_msg), MessageAs::Note(..)) => {
-                MessageAs::Note(new_msg_builder(orig_msg))
-            }
-        }
+    pub fn merge(self: &Arc<Self>, added_msg: &Message) -> Message {
+        added_msg.spans.iter().fold(self.clone(), |acc, v| acc.secondary_span(v))
     }
 }

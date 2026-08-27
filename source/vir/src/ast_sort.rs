@@ -40,7 +40,7 @@ pub fn sort_krate(krate: &Krate) -> Krate {
     let external_types = external_types.clone();
 
     // Stable sort to move children before parents, but otherwise leave children in order
-    modules.sort_by(|p1, p2| p2.x.path.segments.len().cmp(&p1.x.path.segments.len()));
+    modules.sort_by_key(|p| std::cmp::Reverse(p.x.path.segments.len()));
 
     // Remember the module order:
     let mut module_order: HashMap<Option<Path>, usize> = HashMap::new();

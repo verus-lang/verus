@@ -4,7 +4,7 @@ use air::context::{Context, SmtSolver, ValidityResult};
 use air::messages::{AirMessage, AirMessageLabel, Reporter};
 use air::profiler::{PROVER_LOG_FILE, Profiler};
 use getopts::Options;
-use sise::Node;
+use sise::TreeNode as Node;
 use std::fs::File;
 use std::io::Read;
 
@@ -72,7 +72,7 @@ pub fn main() {
             }
         }
         Err(f) => {
-            eprintln!("Error: {}", f.to_string());
+            eprintln!("Error: {f}");
             print_usage();
             std::process::exit(-1);
         }
@@ -82,18 +82,18 @@ pub fn main() {
 
     // Open input file
     let in_filename = &matches.free[0];
-    let mut in_bytes: Vec<u8> = Vec::new();
-    in_bytes.push('(' as u8);
+    let mut in_string = String::new();
+    in_string.push('(');
     {
         File::open(in_filename)
-            .and_then(|mut file| file.read_to_end(&mut in_bytes))
-            .expect(&format!("could not read file {}", in_filename));
+            .and_then(|mut file| file.read_to_string(&mut in_string))
+            .unwrap_or_else(|e| panic!("could not read file {}: {:?}", in_filename, e));
     }
-    in_bytes.push(')' as u8);
+    in_string.push(')');
 
     // Parse input file to vector of Node
-    let mut parser = sise::Parser::new(&in_bytes);
-    let node = sise::read_into_tree(&mut parser).unwrap();
+    let mut parser = sise::Parser::new(in_string.as_str());
+    let node = sise::parse_tree(&mut parser).unwrap();
     let nodes = match node {
         Node::Atom(_) => panic!("internal error: nodes"),
         Node::List(nodes) => nodes,
@@ -118,22 +118,22 @@ pub fn main() {
     // Start logging
     if let Some(filename) = matches.opt_str("log-air-middle") {
         let file =
-            File::create(&filename).unwrap_or_else(|_| panic!("could not open file {}", &filename));
+            File::create(&filename).unwrap_or_else(|_| panic!("could not open file {}", filename));
         air_context.set_air_middle_log(Box::new(file));
     }
     if let Some(filename) = matches.opt_str("log-air-final") {
         let file =
-            File::create(&filename).unwrap_or_else(|_| panic!("could not open file {}", &filename));
+            File::create(&filename).unwrap_or_else(|_| panic!("could not open file {}", filename));
         air_context.set_air_final_log(Box::new(file));
     }
     if let Some(filename) = matches.opt_str("log-smt") {
         let file =
-            File::create(&filename).unwrap_or_else(|_| panic!("could not open file {}", &filename));
+            File::create(&filename).unwrap_or_else(|_| panic!("could not open file {}", filename));
         air_context.set_smt_log(Box::new(file));
     }
     if let Some(filename) = matches.opt_str("log-smt-transcript") {
         let file =
-            File::create(&filename).unwrap_or_else(|_| panic!("could not open file {}", &filename));
+            File::create(&filename).unwrap_or_else(|_| panic!("could not open file {}", filename));
         air_context.set_smt_transcript_log(Box::new(file));
     }
 
@@ -200,9 +200,7 @@ pub fn main() {
             message_interface.clone(),
             std::path::Path::new(PROVER_LOG_FILE),
             None,
-            true,
             &reporter,
-            false,
         ) {
             Ok(profiler) => profiler.print_raw_stats(&reporter),
             Err(err) => eprintln!("profile: failed to parse z3 trace: {}", err),

@@ -1,3 +1,5 @@
+use yansi::Paint;
+
 use crate::context::SmtSolver;
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, ChildStdout};
@@ -121,10 +123,11 @@ impl SmtProcess {
             Err(err) => {
                 eprintln!(
                     "{}",
-                    yansi::Paint::red(format!(
+                    format!(
                         "error: could not execute {} process ({})",
                         solver_info.executable_name, err
-                    ))
+                    )
+                    .red()
                 );
                 eprintln!(
                     "help: {name} needs to be in the PATH, or the environment variable {var} must be set to the path of the {name} executable",
@@ -167,7 +170,7 @@ impl SmtProcess {
         // Send request to writer thread
         if let Some(writer) = &mut self.transcript_log {
             writeln!(writer, ";;;>>> QUERY").unwrap();
-            writer.write(&commands).unwrap();
+            writer.write_all(&commands).unwrap();
             writeln!(writer, ";;;<<<").unwrap();
             writer.flush().unwrap();
         }

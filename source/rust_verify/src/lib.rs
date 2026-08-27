@@ -1,7 +1,5 @@
 #![feature(rustc_private)]
-#![feature(internal_output_capture)]
 #![feature(box_patterns)]
-#![feature(exit_status_error)]
 
 // not using this as a dependency, only necessary to make the rlib for the compiler crates
 // available to cargo
@@ -22,13 +20,11 @@ extern crate rustc_lint;
 extern crate rustc_macros;
 extern crate rustc_middle;
 extern crate rustc_mir_build;
-extern crate rustc_query_system;
 extern crate rustc_resolve;
 extern crate rustc_session;
 extern crate rustc_span;
 extern crate rustc_trait_selection;
 extern crate rustc_type_ir;
-extern crate smallvec;
 
 mod attributes;
 mod buckets;

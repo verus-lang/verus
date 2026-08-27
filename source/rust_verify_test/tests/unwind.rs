@@ -417,7 +417,7 @@ test_verify_one_file! {
             no_unwind when some_exec_fn(j)
         {
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function `crate::some_exec_fn` with mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `test_crate::some_exec_fn` with mode exec")
 }
 
 test_verify_one_file! {

@@ -4,7 +4,7 @@ use crate::ast::{
 use crate::ast_to_sst_func::SstMap;
 use crate::context::Ctx;
 use crate::def::{Spanned, unique_local};
-use crate::messages::{ToAny, error_with_label, warning};
+use crate::messages::{ToAny, WarningAllow, error_with_label};
 use crate::sst::{BndX, CallFun, Exp, ExpX, FuncCheckSst, FunctionSst, Stm, StmX, UniqueIdent};
 use crate::sst_visitor::{NoScoper, Rewrite, Visitor};
 use crate::triggers::build_triggers;
@@ -25,33 +25,32 @@ fn elaborate_one_exp<D: Diagnostics + ?Sized>(
         ExpX::Call(CallFun::Fun(fun, resolved_method), typs, args) => {
             let (fun, typs) =
                 if let Some((f, ts)) = resolved_method { (f, ts) } else { (fun, typs) };
-            if let Some(func) = fun_ssts.get(fun) {
-                if func.x.attrs.inline
-                    && func.x.axioms.spec_axioms.is_some()
-                    && func.x.kind.inline_okay()
-                {
-                    let typ_params = &func.x.typ_params;
-                    let pars = &func.x.pars;
-                    let body = &func.x.axioms.spec_axioms.as_ref().unwrap().body_exp;
-                    let mut typ_substs: HashMap<Ident, Typ> = HashMap::new();
-                    let mut substs: HashMap<UniqueIdent, Exp> = HashMap::new();
-                    assert!(typ_params.len() == typs.len());
-                    for (name, typ) in typ_params.iter().zip(typs.iter()) {
-                        assert!(!typ_substs.contains_key(name));
-                        typ_substs.insert(name.clone(), typ.clone());
-                    }
-                    assert!(pars.len() == args.len());
-                    for (par, arg) in pars.iter().zip(args.iter()) {
-                        let unique = unique_local(&par.x.name);
-                        assert!(!substs.contains_key(&unique));
-                        substs.insert(unique, arg.clone());
-                    }
-                    let e = crate::sst_util::subst_exp(&typ_substs, &substs, body);
-                    // keep the original outer span for better trigger messages
-                    // keep the original type so that poly.rs can perform the proper box/unbox on e
-                    let e = SpannedTyped::new(&exp.span, &exp.typ, e.x.clone());
-                    return Ok(e);
+            if let Some(func) = fun_ssts.get(fun)
+                && let Some(spec_axioms) = func.x.axioms.spec_axioms.as_ref()
+                && func.x.attrs.inline
+                && func.x.kind.inline_okay()
+            {
+                let typ_params = &func.x.typ_params;
+                let pars = &func.x.pars;
+                let body = &spec_axioms.body_exp;
+                let mut typ_substs: HashMap<Ident, Typ> = HashMap::new();
+                let mut substs: HashMap<UniqueIdent, Exp> = HashMap::new();
+                assert!(typ_params.len() == typs.len());
+                for (name, typ) in typ_params.iter().zip(typs.iter()) {
+                    assert!(!typ_substs.contains_key(name));
+                    typ_substs.insert(name.clone(), typ.clone());
                 }
+                assert!(pars.len() == args.len());
+                for (par, arg) in pars.iter().zip(args.iter()) {
+                    let unique = unique_local(&par.x.name);
+                    assert!(!substs.contains_key(&unique));
+                    substs.insert(unique, arg.clone());
+                }
+                let e = crate::sst_util::subst_exp(&typ_substs, &substs, body);
+                // keep the original outer span for better trigger messages
+                // keep the original type so that poly.rs can perform the proper box/unbox on e
+                let e = SpannedTyped::new(&exp.span, &exp.typ, e.x.clone());
+                return Ok(e);
             }
             Ok(exp.clone())
         }
@@ -101,7 +100,12 @@ fn elaborate_one_exp<D: Diagnostics + ?Sized>(
                         If you think you need additional triggers, see the discussion in \
                         https://github.com/verus-lang/verus/pull/331 \
                         for alternatives.";
-                    diagnostics.report(&warning(&exp.span, msg).to_any());
+                    ctx.warning_maybe_if_in_local_crate(
+                        &exp.span,
+                        &WarningAllow::TriggerOnSpecFn,
+                        || msg,
+                        |msg| diagnostics.report(&msg.to_any()),
+                    );
                 }
                 let bnd = Spanned::new(bnd.span.clone(), BndX::Lambda(bs.clone(), trigs));
                 Ok(SpannedTyped::new(&exp.span, &exp.typ, ExpX::Bind(bnd, body.clone())))
@@ -123,7 +127,7 @@ fn elaborate_one_stm<D: Diagnostics + ?Sized>(
     match &stm.x {
         StmX::AssertCompute(id, exp, compute) => {
             let interp_exp = crate::interpreter::eval_expr(
-                &ctx.global,
+                ctx,
                 exp,
                 Some(diagnostics),
                 fun_ssts.clone(),
@@ -148,7 +152,7 @@ fn elaborate_one_stm<D: Diagnostics + ?Sized>(
             }
             let reqs = vec_map_result(requires, |e| {
                 crate::interpreter::eval_expr(
-                    &ctx.global,
+                    ctx,
                     e,
                     None::<&air::messages::Reporter>, // Don't print (internal) diagnostics
                     fun_ssts.clone(),
@@ -160,7 +164,7 @@ fn elaborate_one_stm<D: Diagnostics + ?Sized>(
             })?;
             let ens = vec_map_result(ensures, |e| {
                 crate::interpreter::eval_expr(
-                    &ctx.global,
+                    ctx,
                     e,
                     None::<&air::messages::Reporter>, // Don't print (internal) diagnostics
                     fun_ssts.clone(),
@@ -306,7 +310,7 @@ pub(crate) fn elaborate_function_rewrite_recursive<'a, 'b, D: Diagnostics>(
 fn expand<'a>(ctx: &'a Ctx, fun_ssts: &SstMap, exps: Vec<Exp>) -> Result<Vec<Exp>, VirErr> {
     vec_map_result(&exps, |e| {
         crate::interpreter::eval_expr(
-            &ctx.global,
+            ctx,
             e,
             None::<&air::messages::Reporter>,
             fun_ssts.clone(),

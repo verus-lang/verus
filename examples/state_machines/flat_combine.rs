@@ -46,20 +46,20 @@ tokenized_state_machine! {
             #[sharding(constant)]
             pub num_clients: nat,
 
-            #[sharding(map)]
-            pub clients: Map<nat, Client>,
+            #[sharding(imap)]
+            pub clients: IMap<nat, Client>,
 
-            #[sharding(map)]
-            pub slots: Map<nat, bool>,
+            #[sharding(imap)]
+            pub slots: IMap<nat, bool>,
 
             #[sharding(variable)]
             pub combiner: Combiner,
 
-            #[sharding(storage_map)]
-            pub requests: Map<nat, Request>,
+            #[sharding(storage_imap)]
+            pub requests: IMap<nat, Request>,
 
-            #[sharding(storage_map)]
-            pub responses: Map<nat, Response>,
+            #[sharding(storage_imap)]
+            pub responses: IMap<nat, Response>,
         }
 
         pub open spec fn valid_idx(self, i: nat) -> bool {
@@ -169,15 +169,15 @@ tokenized_state_machine! {
         init!{
             initialize(num_clients: nat) {
                 init num_clients = num_clients;
-                init clients = Map::new(
+                init clients = IMap::new(
                     |i: nat| 0 <= i && i < num_clients,
                     |i: nat| Client::Idle);
-                init slots = Map::new(
+                init slots = IMap::new(
                     |i: nat| 0 <= i && i < num_clients,
                     |i: nat| false);
                 init combiner = Combiner::Collecting { elems: Seq::empty() };
-                init requests = Map::empty();
-                init responses = Map::empty();
+                init requests = IMap::empty();
+                init responses = IMap::empty();
             }
         }
 
@@ -359,7 +359,7 @@ tokenized_state_machine! {
                 let response_opt = pre.combiner.get_Responding_elems().index(j as int);
 
                 // The response we return has to have the right request ID
-                require(response_opt === Option::Some(response.rid));
+                require(response_opt == Option::Some(response.rid));
 
                 // Set the slot back to false
                 remove slots -= [j => cur_slot];

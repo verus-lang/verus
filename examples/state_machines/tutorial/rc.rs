@@ -4,7 +4,7 @@
 use verus_builtin::*;
 use verus_builtin_macros::*;
 use verus_state_machines_macros::tokenized_state_machine;
-use vstd::cell::*;
+use vstd::cell::pcell_maybe_uninit as cell;
 use vstd::invariant::*;
 use vstd::modes::*;
 use vstd::multiset::*;
@@ -126,7 +126,7 @@ tokenized_state_machine!(RefCounter<Perm> {
 });
 
 pub struct InnerRc<S> {
-    pub rc_cell: PCell<u64>,
+    pub rc_cell: cell::PCell<u64>,
     pub s: S,
 }
 
@@ -138,8 +138,8 @@ pub tracked struct GhostStuff<S> {
 }
 
 impl<S> GhostStuff<S> {
-    pub open spec fn wf(self, inst: RefCounter::Instance<MemPerms<S>>, cell: PCell<u64>) -> bool {
-        &&& self.rc_perm@.pcell == cell.id()
+    pub open spec fn wf(self, inst: RefCounter::Instance<MemPerms<S>>, cell: cell::PCell<u64>) -> bool {
+        &&& self.rc_perm.id() == cell.id()
         &&& self.rc_token.instance_id() == inst.id()
         &&& self.rc_perm.is_init()
         &&& self.rc_perm.value() as nat == self.rc_token.value()
@@ -147,7 +147,7 @@ impl<S> GhostStuff<S> {
 }
 
 impl<S> InnerRc<S> {
-    spec fn wf(self, cell: PCell<u64>) -> bool {
+    spec fn wf(self, cell: cell::PCell<u64>) -> bool {
         self.rc_cell == cell
     }
 }
@@ -160,7 +160,7 @@ struct_with_invariants!{
 
         pub ptr: PPtr<InnerRc<S>>,
 
-        pub rc_cell: Ghost< PCell<u64> >,
+        pub rc_cell: Ghost< cell::PCell<u64> >,
     }
 
     spec fn wf(self) -> bool {
@@ -191,7 +191,7 @@ impl<S> MyRc<S> {
             rc.wf(),
             rc@ == s,
     {
-        let (rc_cell, Tracked(rc_perm)) = PCell::new(1);
+        let (rc_cell, Tracked(rc_perm)) = cell::PCell::new(1);
         let inner_rc = InnerRc::<S> { rc_cell, s };
         let (ptr, Tracked(ptr_perm)) = PPtr::new(inner_rc);
         let tracked (Tracked(inst), Tracked(mut rc_token), _) =
