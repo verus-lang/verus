@@ -107,9 +107,6 @@ test_verify_one_file! {
             let mut v: Vec<u32> = vec![1, 2, 3, 4];
             for x in it: v.iter_mut()
                 invariant
-                    // TODO: Ideally we shouldn't need these first two invariants
-                    after_borrow(v)@.len() == it.seq().len(),
-                    forall |i: int| #![auto] 0 <= i < it.seq().len() ==> *final(it.seq()[i]) == after_borrow(v)@[i],
                     forall |i: int| #![auto] 0 <= i < it.index() ==> *final(it.seq()[i]) == 0,
             {
                 *x = 0;
@@ -503,4 +500,3 @@ test_verify_one_file! {
 
     } => Ok(())
 }
-

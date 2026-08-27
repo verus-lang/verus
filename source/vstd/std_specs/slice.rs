@@ -336,7 +336,9 @@ pub assume_specification<'a, T>[ <[T]>::iter_mut ](slice: &'a mut [T]) -> (iter:
         forall|i: int| #![trigger IteratorSpec::remaining(&iter)[i]]
             0 <= i < old(slice)@.len() ==> *(IteratorSpec::remaining(&iter)[i]) == old(slice)@[i],
         // ...and its eventual value flows back to the corresponding element.
-        forall|i: int| #![trigger IteratorSpec::remaining(&iter)[i]]
+        forall|i: int|
+            #![trigger IteratorSpec::remaining(&iter)[i]]
+            #![trigger final(slice)@[i]]
             0 <= i < old(slice)@.len() ==> *final(IteratorSpec::remaining(&iter)[i]) == final(slice)@[i],
         IteratorSpec::obeys_prophetic_iter_laws(&iter),
         IteratorSpec::will_return_none(&iter),
