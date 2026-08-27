@@ -29,8 +29,9 @@ pub(crate) fn bv_to_queries(
     reqs: &Vec<Exp>,
     enss: &Vec<Exp>,
 ) -> Result<Vec<(Query, String)>, VirErr> {
-    let reqs = vec_map_result(reqs, |e| bv_maybe_split(ctx, e))?;
-    let enss = vec_map_result(enss, |e| bv_maybe_split(ctx, e))?;
+    let mut id_idx = 0;
+    let reqs = vec_map_result(reqs, |e| bv_maybe_split(ctx, &mut id_idx, e))?;
+    let enss = vec_map_result(enss, |e| bv_maybe_split(ctx, &mut id_idx, e))?;
 
     let needs_specialization = reqs.iter().chain(enss.iter()).any(|v| v.len() > 1);
 
@@ -122,7 +123,7 @@ fn make_query(
     (query, error)
 }
 
-fn bv_maybe_split(ctx: &Ctx, exp: &Exp) -> Result<Vec<BvSpecialized>, VirErr> {
+fn bv_maybe_split(ctx: &Ctx, id_idx: &mut u64, exp: &Exp) -> Result<Vec<BvSpecialized>, VirErr> {
     // If the expression depends on the arch size *and* the arch size isn't specified,
     // then we run translation twice, once for 32-bit and once for 64-bit.
     // The way this works is that, if 'arch' is set to Either32Or64, then
@@ -131,9 +132,10 @@ fn bv_maybe_split(ctx: &Ctx, exp: &Exp) -> Result<Vec<BvSpecialized>, VirErr> {
     // we perform the second run.
 
     let mut state =
-        State { arch: ctx.global.arch, decls: vec![], scope_map: ScopeMap::new(), id_idx: 0 };
+        State { arch: ctx.global.arch, decls: vec![], scope_map: ScopeMap::new(), id_idx: *id_idx };
     let BvExpr { expr: expr1, bv_typ } = bv_exp_to_expr(ctx, &mut state, exp)?;
     bv_typ.expect_bool(&exp.span)?;
+    *id_idx = state.id_idx;
     let mut bv_sp1 = BvSpecialized {
         expr: expr1,
         decls: state.decls,
@@ -149,10 +151,11 @@ fn bv_maybe_split(ctx: &Ctx, exp: &Exp) -> Result<Vec<BvSpecialized>, VirErr> {
             arch: ArchWordBits::Exactly(64),
             decls: vec![],
             scope_map: ScopeMap::new(),
-            id_idx: 0,
+            id_idx: *id_idx,
         };
         let BvExpr { expr: expr2, bv_typ } = bv_exp_to_expr(ctx, &mut state, exp)?;
         bv_typ.expect_bool(&exp.span)?;
+        *id_idx = state.id_idx;
 
         let bv_sp2 = BvSpecialized {
             expr: expr2,

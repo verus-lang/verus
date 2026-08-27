@@ -11,6 +11,7 @@ pub mod control_flow;
 pub mod convert;
 pub mod core;
 pub mod default;
+pub mod fmt;
 pub mod iter;
 pub mod manually_drop;
 pub mod maybe_uninit;

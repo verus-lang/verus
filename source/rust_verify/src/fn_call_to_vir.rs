@@ -1332,7 +1332,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                         variant: str_ident(&variant_name),
                         field: variant_field.unwrap(),
                         get_variant: true,
-                        check: VariantCheck::None,
+                        check: VariantCheck::Recommends,
                     }),
                     adt_arg,
                 ))
@@ -2395,6 +2395,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             .help("you can implicitly dereference this type using `*`"));
         }
         VerusItem::Vstd(_, _)
+        | VerusItem::RustPrivate(_)
         | VerusItem::Marker(_)
         | VerusItem::BuiltinType(_)
         | VerusItem::BuiltinTrait(_)
@@ -2850,6 +2851,14 @@ pub(crate) fn fix_node_substs<'tcx, 'a>(
             let generic_arg0 = GenericArg::from(types.expr_ty(expr));
             let generic_arg1 = GenericArg::from(types.expr_ty_adjusted(&args[0]));
             tcx.mk_args(&[generic_arg0, generic_arg1])
+        }
+        Some(RustItem::IntoIterFn) if node_substs.is_empty() => {
+            // A `for` loop produced by a `macro_rules!` expansion is not rewritten
+            // by the `verus!` macro, so it reaches rustc's native for-loop
+            // desugaring, which emits an `IntoIterator::into_iter` call whose
+            // node_substs is empty instead of carrying the Self type argument.
+            let generic_arg = GenericArg::from(types.expr_ty_adjusted(&args[0]));
+            tcx.mk_args(&[generic_arg])
         }
         _ => node_substs,
     }

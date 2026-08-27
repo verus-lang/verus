@@ -156,18 +156,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_assume_specification_format_visibility code! {
-        use vstd::prelude::*;
-
-        verus! {
-            fn foo(x: &str, y: &str) -> (res: String)
-            {
-                format!("{}_{}", x, y)
-            }
-        }
-    } => Err(err) => assert_help_error_msgs(err, &["assume_specification", "assume_specification"])
-}
-test_verify_one_file! {
     #[test] test_assume_specification_const_generics_suggestion_made code! {
         use vstd::prelude::*;
         fn foo<A, const N: usize, const M: usize>(inputs: &[A; N]) -> [A; M] {

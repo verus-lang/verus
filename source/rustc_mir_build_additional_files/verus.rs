@@ -605,6 +605,7 @@ pub(crate) fn is_node_with_single_arg_erased_or_shadow<'tcx>(
             is_erased_or_shadow(cx, erasure_ctxt, &cx.thir.exprs[args[0]].kind)
         }
         ExprKind::Borrow { borrow_kind: _, arg }
+        | ExprKind::RawBorrow { mutability: _, arg }
         | ExprKind::Deref { arg }
         | ExprKind::NeverToAny { source: arg }
         | ExprKind::Field { lhs: arg, .. } => {

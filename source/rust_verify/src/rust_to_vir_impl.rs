@@ -805,9 +805,24 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
             }
         }
 
+        // Methods for which the trait itself supplies a body don't need their own
+        // assume_specification: calls to them are redirected to the trait declaration's spec.
+        let trait_provided_methods: IndexSet<String> = tcx
+            .associated_items(trait_did)
+            .in_definition_order()
+            .filter(|assoc_item| {
+                matches!(assoc_item.kind, AssocKind::Fn { .. })
+                    && assoc_item.defaultness(tcx).has_value()
+            })
+            .map(|assoc_item| assoc_item.ident(tcx).to_string())
+            .collect();
+
         for method in traitt.x.methods.iter() {
             let f = &func_map[method];
             if matches!(&f.x.kind, FunctionKind::TraitMethodDecl { has_default: true, .. }) {
+                continue;
+            }
+            if trait_provided_methods.contains(&*method.path.last_segment()) {
                 continue;
             }
             if !methods_we_have.contains::<vir::ast::Ident>(&method.path.last_segment()) {
