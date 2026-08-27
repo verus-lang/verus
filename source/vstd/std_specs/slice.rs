@@ -311,7 +311,7 @@ pub assume_specification<'a, T> [<&'a [T] as core::iter::IntoIterator>::into_ite
 #[verifier::accept_recursive_types(T)]
 pub struct ExIterMut<'a, T: 'a>(IterMut<'a, T>);
 
-// See rust_verify_test/tests/iterators.rs for a verified implementation of this interface.
+// See exampes/iterators.rs for a verified implementation of this interface.
 // Any changes here should first be verified over there.
 impl<'a, T: 'a> super::iter::IteratorSpecImpl for IterMut<'a, T> {
     open spec fn obeys_prophetic_iter_laws(&self) -> bool {
