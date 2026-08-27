@@ -4,10 +4,10 @@ use super::core::IndexSpec;
 use super::iter::IteratorSpec;
 use super::range::{slice_range_end, slice_range_start, slice_range_valid};
 
-use core::slice::{Iter, IterMut, SliceIndex};
 use core::ops::{
     Index, IndexMut, Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive,
 };
+use core::slice::{Iter, IterMut, SliceIndex};
 
 use verus as verus_;
 
