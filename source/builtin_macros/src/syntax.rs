@@ -28,7 +28,8 @@ use verus_syn::visit_mut::{
     VisitMut, visit_block_mut, visit_expr_loop_mut, visit_expr_mut, visit_expr_while_mut,
     visit_field_mut, visit_impl_item_const_mut, visit_impl_item_fn_mut, visit_item_const_mut,
     visit_item_enum_mut, visit_item_fn_mut, visit_item_static_mut, visit_item_struct_mut,
-    visit_item_union_mut, visit_local_mut, visit_specification_mut, visit_trait_item_fn_mut,
+    visit_item_union_mut, visit_local_mut, visit_pat_mut, visit_specification_mut,
+    visit_trait_item_fn_mut,
 };
 use verus_syn::{
     AssumeSpecification, AtomicSpec, AtomicallyBlock, Attribute, BareFnArg, BinOp, Block, DataMode,
@@ -4408,6 +4409,29 @@ impl VisitMut for Visitor {
                 _ => panic!("expected to replace expression"),
             }
         }
+    }
+
+    fn visit_pat_mut(&mut self, pat: &mut Pat) {
+        // Pat::Range aliases ExprRange; visit its bounds like Pat::Lit/Path/Const,
+        // not via visit_expr_mut, to avoid ghost-mode expression rewrites.
+        fn visit_range_bound(this: &mut Visitor, bound: &mut Option<Box<Expr>>) {
+            if let Some(bound) = bound {
+                match &mut **bound {
+                    Expr::Lit(lit) => this.visit_expr_lit_mut(lit),
+                    Expr::Path(path) => this.visit_expr_path_mut(path),
+                    Expr::Const(cons) => this.visit_expr_const_mut(cons),
+                    _ => {}
+                }
+            }
+        }
+        if let Pat::Range(range) = pat {
+            self.visit_attributes_mut(&mut range.attrs);
+            visit_range_bound(self, &mut range.start);
+            visit_range_bound(self, &mut range.end);
+            self.visit_range_limits_mut(&mut range.limits);
+            return;
+        }
+        visit_pat_mut(self, pat);
     }
 
     fn visit_attribute_mut(&mut self, attr: &mut Attribute) {
