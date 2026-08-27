@@ -382,6 +382,7 @@ fn rewrite_async_ens_vir(function: &Function, specs: &Vec<Expr>) -> Result<Vec<E
                         mode: Some((Mode::Exec, DeclProph::Default)),
                         init: Some(view_call),
                         els: None,
+                        assert_irrefutable: false,
                     },
                 )]),
                 Some(e.clone()),

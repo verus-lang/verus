@@ -5,6 +5,7 @@ use crate::ast_util::{
 use crate::context::GlobalCtx;
 use crate::def::Spanned;
 use crate::messages::{Span, error};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 pub fn pattern_to_exprs(
@@ -39,7 +40,13 @@ pub fn pattern_to_exprs(
 
         let pattern = PatternX::simple_var(name, &place.span, &place.typ);
         // Mode doesn't matter at this stage; arbitrarily set it to None
-        let decl = StmtX::Decl { pattern, mode: None, init: Some(place.clone()), els: None };
+        let decl = StmtX::Decl {
+            pattern,
+            mode: None,
+            init: Some(place.clone()),
+            els: None,
+            assert_irrefutable: false,
+        };
         decls.push(Spanned::new(place.span.clone(), decl));
     }
 
@@ -263,5 +270,28 @@ pub(crate) fn pattern_has_or(pattern: &Pattern) -> bool {
         PatternX::Expr(_e) => false,
         PatternX::Range(_lower, _upper) => false,
         PatternX::ImmutRef(p) | PatternX::MutRef(p) => pattern_has_or(p),
+    }
+}
+
+/// Returns true ==> the pattern is irrefutable
+pub(crate) fn definitely_irrefutable(
+    pattern: &Pattern,
+    datatypes: &HashMap<Path, Datatype>,
+) -> bool {
+    match &pattern.x {
+        PatternX::Wildcard(_) => true,
+        PatternX::Var(_binding) => true,
+        PatternX::Binding { binding: _, sub_pat } => definitely_irrefutable(sub_pat, datatypes),
+        PatternX::Constructor(dt, _variant, patterns) => {
+            let one_variant = match dt {
+                Dt::Path(p) => datatypes[p].x.variants.len() == 1,
+                Dt::Tuple(_) => true,
+            };
+            one_variant && patterns.iter().all(|p| definitely_irrefutable(&p.a, datatypes))
+        }
+        PatternX::Or(_pat1, _pat2) => false,
+        PatternX::Expr(_e) => false,
+        PatternX::Range(_lower, _upper) => false,
+        PatternX::ImmutRef(p) | PatternX::MutRef(p) => definitely_irrefutable(p, datatypes),
     }
 }
