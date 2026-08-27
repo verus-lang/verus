@@ -492,9 +492,16 @@ pub(crate) fn expand_call_graph(
 
     // Add T --> f if T declares method f
     if let FunctionKind::TraitMethodDecl { trait_path, has_default: _ } = &function.x.kind {
-        // T --> f
-        call_graph.add_edge(Node::Trait(trait_path.clone()), f_node.clone());
-        // T --> ...typs...
+        if function.x.mode == crate::ast::Mode::Exec && function.x.attrs.impls_cannot_extend_spec {
+            // We allow a particular form of nontermination of exec functions
+            // by omitting the T --> f edge.
+            // This is only safe for impls_cannot_extend_spec;
+            // otherwise, call_ensures could be used to create an ill-founded spec expression..
+        } else {
+            // T --> f
+            call_graph.add_edge(Node::Trait(trait_path.clone()), f_node.clone());
+            // T --> ...typs...
+        }
     }
 
     // Add D: T --> f and f --> T where f is one of D's methods that implements T

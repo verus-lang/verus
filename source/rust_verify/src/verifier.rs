@@ -3184,8 +3184,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             };
         let time_import1 = Instant::now();
         self.verifier.time_import = time_import1 - time_import0;
-        let verus_items =
-            Arc::new(crate::verus_items::from_diagnostic_items(&tcx.all_diagnostic_items(())));
+        let verus_items = Arc::new(crate::verus_items::from_diagnostic_items(tcx));
         self.verifier.verus_items = Some(verus_items.clone());
         let spans = SpanContextX::new(
             tcx,

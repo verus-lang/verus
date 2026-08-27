@@ -102,7 +102,7 @@ In order to resolve the field of an enum (e.g., `opt->Some_0` for a varible `opt
 the resolution needs to be conditional on the variant:
 
 ```
-assume(opt is Some ==> has_resolved(opt->Some_0)
+assume(opt is Some ==> has_resolved(opt->Some_0))
 ```
 
 Since resolution is explicitly conditional, we don't need to account for variants
@@ -253,7 +253,8 @@ use air::scope_map::ScopeMap;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
-/// Updates the given function body to include AssumeResolved nodes at the appropriate places.
+/// Updates the given function body to include assume(has_resolved(...)) nodes
+/// at the appropriate places.
 /// On the side, also handles some work related to user_defined_type_invariants.
 ///
 /// This relies on the AstIds of the given Expr being unique, but it also destroys this property
@@ -1246,7 +1247,7 @@ impl<'a> Builder<'a> {
     fn build_stmt(&mut self, stmt: &Stmt, bb: BBIndex) -> Maybe<BBIndex> {
         match &stmt.x {
             StmtX::Expr(e) => self.build(e, bb),
-            StmtX::Decl { pattern, mode: _, init: None, els: None } => {
+            StmtX::Decl { pattern, mode: _, init: None, els: None, assert_irrefutable: _ } => {
                 self.push_scope();
                 self.scope_insert_pattern(pattern);
 
@@ -1261,7 +1262,7 @@ impl<'a> Builder<'a> {
 
                 Maybe::Some(bb)
             }
-            StmtX::Decl { pattern, mode: _, init: Some(init), els } => {
+            StmtX::Decl { pattern, mode: _, init: Some(init), els, assert_irrefutable: _ } => {
                 let tinv = if pattern_has_mut(pattern) { TypInv::PatternError } else { TypInv::No };
                 let (cpt, bb) = unwrap!(self.build_place_typed(init, bb, tinv));
 
@@ -1307,7 +1308,7 @@ impl<'a> Builder<'a> {
                 }
                 Maybe::Some(next_bb)
             }
-            StmtX::Decl { pattern: _, mode: _, init: None, els: Some(_) } => {
+            StmtX::Decl { pattern: _, mode: _, init: None, els: Some(_), .. } => {
                 panic!("Unexpected let-else without an initializer");
             }
         }
@@ -1329,7 +1330,6 @@ impl<'a> Builder<'a> {
         }
     }
 
-    /// Returns Err(()) if the place expression never returns (can happen if it's a temporary)
     fn build_place_typed(
         &mut self,
         place: &Place,
@@ -1572,6 +1572,17 @@ impl<'a> Builder<'a> {
         }
     }
 
+    /// Get all moves and mutations for the given pattern, using `ByRef::No` for moves
+    /// and `ByRef::MutRef` for mutations.
+    ///
+    /// Example:
+    ///
+    /// ```
+    /// let (a, _, ref mut b) = x.1;
+    /// ```
+    ///
+    /// Returns `[(x.1.0, ByRef::No), (x.1.2, ByRef::MutRef)]` if `x.1.0` is a non-Copy type.
+    /// Otherwise just returns `[(x.1.2, ByRef::MutRef)]`.
     fn moves_and_muts_for_place_being_matched(
         &mut self,
         pattern: &Pattern,
@@ -1599,7 +1610,7 @@ impl<'a> Builder<'a> {
         // TODO(new_mut_ref): (blocking) need more tests for guards
         // TODO(new_mut_ref): (blocking) need more tests for or-patterns
 
-        let ExprX::Match(place, arms) = &expr.x else {
+        let ExprX::Match(place, arms, _assert_irrefutable) = &expr.x else {
             unreachable!();
         };
 
@@ -1970,7 +1981,7 @@ pub struct BoundVar {
     pub typ: Typ,
 }
 
-/// Same as above, but takes a Pattern as input
+/// Get all non-spec vars bound by the pattern.
 pub fn pattern_all_bound_vars_with_ownership(
     pattern: &Pattern,
     modes: &HashMap<VarIdent, Mode>,
@@ -2017,6 +2028,7 @@ pub fn pattern_all_bound_vars_with_ownership(
     v
 }
 
+/// See `moves_and_muts_for_place_being_matched`
 fn moves_and_muts_for_pattern(
     pattern: &Pattern,
     datatypes: &HashMap<Path, Datatype>,
@@ -3516,7 +3528,7 @@ fn apply_resolutions(
                 scope_map.push_scope(true);
                 match &stmt.x {
                     StmtX::Expr(_) => {}
-                    StmtX::Decl { pattern, mode: _, init, els: _ } => {
+                    StmtX::Decl { pattern, mode: _, init, els: _, assert_irrefutable: _ } => {
                         use crate::ast_visitor::Scoper;
                         scope_map.insert_pattern_bindings(pattern, init.is_some());
                     }
@@ -3845,8 +3857,6 @@ fn add_decls_for_temps(
     // Declare all temp vars at the beginning of the function body
     // (There doesn't seem to be any point in minimizing the scope of such variables,
     // but maybe we should restrict them to individual loops?)
-    // We mark them all mut, though in principle, some of them don't need to be mut,
-    // e.g., the ones that are only here so we can call `assume(HasResolved(...))`.
     let mut stmts = vec![];
     for local in cfg.locals.locals.iter() {
         if let LocalName::Temporary(ast_id, temp_id) = &local.name {
@@ -3860,6 +3870,7 @@ fn add_decls_for_temps(
                         mode: None, // doesn't matter
                         init: None,
                         els: None,
+                        assert_irrefutable: false,
                     },
                 ));
             }

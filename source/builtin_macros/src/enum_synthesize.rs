@@ -187,6 +187,7 @@ pub(crate) fn visit_item_enum_synthesize(
                         #[verifier::inline]
                         #publish
                         #vis fn #method_ident(self) -> #ty_ {
+                            #verus_builtin::recommends([#verus_builtin::is_variant(&self, #variant_ident)]);
                             #verus_builtin::get_variant_field(self, #variant_ident, #field_str)
                         }
                     }
@@ -242,6 +243,7 @@ pub(crate) fn visit_item_enum_synthesize(
                     #[verifier::inline]
                     #publish
                     #vis fn #method_ident(self) -> #ty_ {
+                        #verus_builtin::recommends([#verus_builtin::is_variant(&self, #variant_ident)]);
                         #verus_builtin::get_variant_field(self, #variant_ident, #field_str)
                     }
                 }

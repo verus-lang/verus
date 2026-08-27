@@ -1362,6 +1362,29 @@ test_verify_one_bv_file! {
 }
 
 test_verify_one_bv_file! {
+    #[test] issue_2778_unique_temporary_ids verus_code! {
+        proof fn lemma_bv_crash(v: i32) {
+            let lsb: i32 = if v % 2 == 1 { 1i32 } else { 0i32 };
+            let mut v_shifted: i32 = (v / 2) as i32;
+
+            if v < 0 {
+                v_shifted = (v + 1) as i32;
+                v_shifted = (-v_shifted) as i32;
+                v_shifted = (v_shifted / 2) as i32;
+                v_shifted = (v_shifted + 1) as i32;
+                v_shifted = (-v_shifted) as i32;
+            }
+
+            assert(true) by (bit_vector)
+                requires
+                    v_shifted == if v >= 0 { v / 2 } else { -((-v - 1) / 2) - 1 },
+                    lsb == if v % 2 == 1 { 1i32 } else { 0i32 },
+                ;
+        }
+    } => Ok(())
+}
+
+test_verify_one_bv_file! {
     #[test] test_normal_solver verus_code! {
         fn test_unsigned(x: u16, y: u16) {
             assert((x | y) == (x as u32) | (y as u32));
