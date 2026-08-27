@@ -88,6 +88,22 @@ pub assume_specification<Idx: PartialOrd<Idx>, U>[ RangeInclusive::<Idx>::contai
             == r.contains_spec(i),
 ;
 
+// A range is empty once its iterator is exhausted, or if it was never valid
+// to begin with (start > end).
+pub open spec fn spec_range_inclusive_is_empty<Idx: PartialOrd<Idx>>(
+    r: &RangeInclusive<Idx>,
+) -> bool {
+    !r@.start.is_le(&r@.end) || r@.exhausted
+}
+
+pub assume_specification<Idx: PartialOrd<Idx>>[ RangeInclusive::<Idx>::is_empty ](
+    r: &RangeInclusive<Idx>,
+) -> (res: bool) where Idx: PartialOrd<Idx>
+    ensures
+        <Idx as PartialOrdSpec<Idx>>::obeys_partial_cmp_spec() ==> res
+            == spec_range_inclusive_is_empty(r),
+;
+
 pub assume_specification<Idx>[ RangeInclusive::<Idx>::new ](start: Idx, end: Idx) -> (ret:
     core::ops::RangeInclusive<Idx>)
     ensures
@@ -159,33 +175,6 @@ pub assume_specification<A: core::iter::Step>[ <Range<A> as Iterator>::next ](
         (*final(range), r) == spec_range_next(*old(range)),
 ;
 
-/// Spec model of [`core::ops::Bound`], used by [`RangeBoundsSpec`] to describe
-/// the start and end bounds of a range. See [`spec_bound`] for the connection
-/// to `Bound` values.
-pub enum SpecBound<T> {
-    Included(T),
-    Excluded(T),
-    Unbounded,
-}
-
-/// Spec model of a [`core::ops::Bound`] value as a [`SpecBound`].
-pub open spec fn spec_bound<T>(bound: Bound<T>) -> SpecBound<T> {
-    match bound {
-        Bound::Included(value) => SpecBound::Included(value),
-        Bound::Excluded(value) => SpecBound::Excluded(value),
-        Bound::Unbounded => SpecBound::Unbounded,
-    }
-}
-
-/// Spec model of a borrowed [`core::ops::Bound`] value as a [`SpecBound`].
-pub open spec fn spec_bound_ref<'a, T>(bound: &'a Bound<T>) -> SpecBound<&'a T> {
-    match bound {
-        Bound::Included(value) => SpecBound::Included(value),
-        Bound::Excluded(value) => SpecBound::Excluded(value),
-        Bound::Unbounded => SpecBound::Unbounded,
-    }
-}
-
 #[verifier::external_type_specification]
 pub struct ExBound<T>(Bound<T>);
 
@@ -204,6 +193,14 @@ pub struct ExRangeTo<Idx>(RangeTo<Idx>);
 #[verifier::reject_recursive_types(Idx)]
 pub struct ExRangeToInclusive<Idx>(RangeToInclusive<Idx>);
 
+pub open spec fn bound_as_ref<T>(b: &Bound<T>) -> Bound<&T> {
+    match b {
+        Bound::Included(start) => Bound::Included(start),
+        Bound::Excluded(start) => Bound::Excluded(start),
+        Bound::Unbounded => Bound::Unbounded,
+    }
+}
+
 // Per-type specifications for `RangeBounds::start_bound`/`end_bound`, so these
 // methods can also be called directly in exec code (not just via the spec-mode
 // models above). Each spec agrees with the corresponding `RangeBoundsSpecImpl`.
@@ -211,98 +208,109 @@ pub assume_specification<'s, T>[ <Range<T> as RangeBounds<T>>::start_bound ](
     range: &'s Range<T>,
 ) -> (result: Bound<&'s T>)
     ensures
-        spec_bound(result) == SpecBound::Included(&range.start),
+        result == Bound::Included(&range.start),
 ;
 
 pub assume_specification<'s, T>[ <Range<T> as RangeBounds<T>>::end_bound ](
     range: &'s Range<T>,
 ) -> (result: Bound<&'s T>)
     ensures
-        spec_bound(result) == SpecBound::Excluded(&range.end),
+        result == Bound::Excluded(&range.end),
 ;
 
 pub assume_specification<'s, T: ?Sized>[ <RangeFull as RangeBounds<T>>::start_bound ](
     range: &'s RangeFull,
 ) -> (result: Bound<&'s T>)
     ensures
-        spec_bound(result) == SpecBound::Unbounded,
+        result == Bound::Unbounded,
 ;
 
 pub assume_specification<'s, T: ?Sized>[ <RangeFull as RangeBounds<T>>::end_bound ](
     range: &'s RangeFull,
 ) -> (result: Bound<&'s T>)
     ensures
-        spec_bound(result) == SpecBound::Unbounded,
+        result == Bound::Unbounded,
 ;
 
 pub assume_specification<'s, T>[ <RangeFrom<T> as RangeBounds<T>>::start_bound ](
     range: &'s RangeFrom<T>,
 ) -> (result: Bound<&'s T>)
     ensures
-        spec_bound(result) == SpecBound::Included(&range.start),
+        result == Bound::Included(&range.start),
 ;
 
 pub assume_specification<'s, T>[ <RangeFrom<T> as RangeBounds<T>>::end_bound ](
     range: &'s RangeFrom<T>,
 ) -> (result: Bound<&'s T>)
     ensures
-        spec_bound(result) == SpecBound::Unbounded,
+        result == Bound::Unbounded,
 ;
 
 pub assume_specification<'s, T>[ <RangeTo<T> as RangeBounds<T>>::start_bound ](
     range: &'s RangeTo<T>,
 ) -> (result: Bound<&'s T>)
     ensures
-        spec_bound(result) == SpecBound::Unbounded,
+        result == Bound::Unbounded,
 ;
 
 pub assume_specification<'s, T>[ <RangeTo<T> as RangeBounds<T>>::end_bound ](
     range: &'s RangeTo<T>,
 ) -> (result: Bound<&'s T>)
     ensures
-        spec_bound(result) == SpecBound::Excluded(&range.end),
+        result == Bound::Excluded(&range.end),
 ;
 
 pub assume_specification<'s, T>[ <RangeInclusive<T> as RangeBounds<T>>::start_bound ](
     range: &'s RangeInclusive<T>,
 ) -> (result: Bound<&'s T>)
     ensures
-        spec_bound(result) == SpecBound::Included(&range@.start),
+        result == Bound::Included(&range@.start),
 ;
+
+// Shared with `RangeBoundsSpecImpl::spec_end_bound` below, so the two can't
+// drift apart: `end_bound()` returns `Included` while the range is not
+// exhausted and `Excluded` after it is exhausted.
+pub open spec fn spec_range_inclusive_end_bound<T>(r: &RangeInclusive<T>) -> Bound<&T> {
+    if r@.exhausted {
+        Bound::Excluded(&r@.end)
+    } else {
+        Bound::Included(&r@.end)
+    }
+}
 
 pub assume_specification<'s, T>[ <RangeInclusive<T> as RangeBounds<T>>::end_bound ](
     range: &'s RangeInclusive<T>,
 ) -> (result: Bound<&'s T>)
     ensures
-        spec_bound(result) == SpecBound::Included(&range@.end),
+        result == spec_range_inclusive_end_bound(range),
 ;
 
 pub assume_specification<'s, T>[ <RangeToInclusive<T> as RangeBounds<T>>::start_bound ](
     range: &'s RangeToInclusive<T>,
 ) -> (result: Bound<&'s T>)
     ensures
-        spec_bound(result) == SpecBound::Unbounded,
+        result == Bound::Unbounded,
 ;
 
 pub assume_specification<'s, T>[ <RangeToInclusive<T> as RangeBounds<T>>::end_bound ](
     range: &'s RangeToInclusive<T>,
 ) -> (result: Bound<&'s T>)
     ensures
-        spec_bound(result) == SpecBound::Included(&range.end),
+        result == Bound::Included(&range.end),
 ;
 
 pub assume_specification<'s, T>[ <(Bound<T>, Bound<T>) as RangeBounds<T>>::start_bound ](
     range: &'s (Bound<T>, Bound<T>),
 ) -> (result: Bound<&'s T>)
     ensures
-        spec_bound(result) == spec_bound_ref(&range.0),
+        result == bound_as_ref(&range.0),
 ;
 
 pub assume_specification<'s, T>[ <(Bound<T>, Bound<T>) as RangeBounds<T>>::end_bound ](
     range: &'s (Bound<T>, Bound<T>),
 ) -> (result: Bound<&'s T>)
     ensures
-        spec_bound(result) == spec_bound_ref(&range.1),
+        result == bound_as_ref(&range.1),
 ;
 
 /// Specification for [`core::ops::RangeBounds`], exposing spec-mode models
@@ -316,9 +324,9 @@ pub assume_specification<'s, T>[ <(Bound<T>, Bound<T>) as RangeBounds<T>>::end_b
 pub trait ExRangeBounds<T: ?Sized> {
     type ExternalTraitSpecificationFor: RangeBounds<T>;
 
-    spec fn spec_start_bound(&self) -> SpecBound<&T>;
+    spec fn spec_start_bound(&self) -> Bound<&T>;
 
-    spec fn spec_end_bound(&self) -> SpecBound<&T>;
+    spec fn spec_end_bound(&self) -> Bound<&T>;
 
     fn start_bound(&self) -> Bound<&T>;
 
@@ -326,140 +334,135 @@ pub trait ExRangeBounds<T: ?Sized> {
 }
 
 impl<T> RangeBoundsSpecImpl<T> for Range<T> {
-    open spec fn spec_start_bound(&self) -> SpecBound<&T> {
-        SpecBound::Included(&self.start)
+    open spec fn spec_start_bound(&self) -> Bound<&T> {
+        Bound::Included(&self.start)
     }
 
-    open spec fn spec_end_bound(&self) -> SpecBound<&T> {
-        SpecBound::Excluded(&self.end)
+    open spec fn spec_end_bound(&self) -> Bound<&T> {
+        Bound::Excluded(&self.end)
     }
 }
 
 impl<T: ?Sized> RangeBoundsSpecImpl<T> for RangeFull {
-    open spec fn spec_start_bound(&self) -> SpecBound<&T> {
-        SpecBound::Unbounded
+    open spec fn spec_start_bound(&self) -> Bound<&T> {
+        Bound::Unbounded
     }
 
-    open spec fn spec_end_bound(&self) -> SpecBound<&T> {
-        SpecBound::Unbounded
+    open spec fn spec_end_bound(&self) -> Bound<&T> {
+        Bound::Unbounded
     }
 }
 
 impl<T> RangeBoundsSpecImpl<T> for RangeFrom<T> {
-    open spec fn spec_start_bound(&self) -> SpecBound<&T> {
-        SpecBound::Included(&self.start)
+    open spec fn spec_start_bound(&self) -> Bound<&T> {
+        Bound::Included(&self.start)
     }
 
-    open spec fn spec_end_bound(&self) -> SpecBound<&T> {
-        SpecBound::Unbounded
+    open spec fn spec_end_bound(&self) -> Bound<&T> {
+        Bound::Unbounded
     }
 }
 
 impl<T> RangeBoundsSpecImpl<T> for RangeTo<T> {
-    open spec fn spec_start_bound(&self) -> SpecBound<&T> {
-        SpecBound::Unbounded
+    open spec fn spec_start_bound(&self) -> Bound<&T> {
+        Bound::Unbounded
     }
 
-    open spec fn spec_end_bound(&self) -> SpecBound<&T> {
-        SpecBound::Excluded(&self.end)
+    open spec fn spec_end_bound(&self) -> Bound<&T> {
+        Bound::Excluded(&self.end)
     }
 }
 
 impl<T> RangeBoundsSpecImpl<T> for RangeInclusive<T> {
-    open spec fn spec_start_bound(&self) -> SpecBound<&T> {
-        SpecBound::Included(&self@.start)
+    open spec fn spec_start_bound(&self) -> Bound<&T> {
+        Bound::Included(&self@.start)
     }
 
-    open spec fn spec_end_bound(&self) -> SpecBound<&T> {
-        SpecBound::Included(&self@.end)
+    open spec fn spec_end_bound(&self) -> Bound<&T> {
+        spec_range_inclusive_end_bound(self)
     }
 }
 
 impl<T> RangeBoundsSpecImpl<T> for RangeToInclusive<T> {
-    open spec fn spec_start_bound(&self) -> SpecBound<&T> {
-        SpecBound::Unbounded
+    open spec fn spec_start_bound(&self) -> Bound<&T> {
+        Bound::Unbounded
     }
 
-    open spec fn spec_end_bound(&self) -> SpecBound<&T> {
-        SpecBound::Included(&self.end)
+    open spec fn spec_end_bound(&self) -> Bound<&T> {
+        Bound::Included(&self.end)
     }
 }
 
 impl<T> RangeBoundsSpecImpl<T> for (Bound<T>, Bound<T>) {
-    open spec fn spec_start_bound(&self) -> SpecBound<&T> {
-        spec_bound_ref(&self.0)
+    open spec fn spec_start_bound(&self) -> Bound<&T> {
+        bound_as_ref(&self.0)
     }
 
-    open spec fn spec_end_bound(&self) -> SpecBound<&T> {
-        spec_bound_ref(&self.1)
+    open spec fn spec_end_bound(&self) -> Bound<&T> {
+        bound_as_ref(&self.1)
     }
 }
 
 impl<'a, T: ?Sized + 'a> RangeBoundsSpecImpl<T> for (Bound<&'a T>, Bound<&'a T>) {
-    open spec fn spec_start_bound(&self) -> SpecBound<&T> {
-        match self.0 {
-            Bound::Included(start) => SpecBound::Included(start),
-            Bound::Excluded(start) => SpecBound::Excluded(start),
-            Bound::Unbounded => SpecBound::Unbounded,
-        }
+    open spec fn spec_start_bound(&self) -> Bound<&T> {
+        self.0
     }
 
-    open spec fn spec_end_bound(&self) -> SpecBound<&T> {
-        match self.1 {
-            Bound::Included(end) => SpecBound::Included(end),
-            Bound::Excluded(end) => SpecBound::Excluded(end),
-            Bound::Unbounded => SpecBound::Unbounded,
-        }
+    open spec fn spec_end_bound(&self) -> Bound<&T> {
+        self.1
     }
 }
 
 impl<T> RangeBoundsSpecImpl<T> for RangeFrom<&T> {
-    open spec fn spec_start_bound(&self) -> SpecBound<&T> {
-        SpecBound::Included(self.start)
+    open spec fn spec_start_bound(&self) -> Bound<&T> {
+        Bound::Included(self.start)
     }
 
-    open spec fn spec_end_bound(&self) -> SpecBound<&T> {
-        SpecBound::Unbounded
+    open spec fn spec_end_bound(&self) -> Bound<&T> {
+        Bound::Unbounded
     }
 }
 
 impl<T> RangeBoundsSpecImpl<T> for RangeTo<&T> {
-    open spec fn spec_start_bound(&self) -> SpecBound<&T> {
-        SpecBound::Unbounded
+    open spec fn spec_start_bound(&self) -> Bound<&T> {
+        Bound::Unbounded
     }
 
-    open spec fn spec_end_bound(&self) -> SpecBound<&T> {
-        SpecBound::Excluded(self.end)
+    open spec fn spec_end_bound(&self) -> Bound<&T> {
+        Bound::Excluded(self.end)
     }
 }
 
 impl<T> RangeBoundsSpecImpl<T> for Range<&T> {
-    open spec fn spec_start_bound(&self) -> SpecBound<&T> {
-        SpecBound::Included(self.start)
+    open spec fn spec_start_bound(&self) -> Bound<&T> {
+        Bound::Included(self.start)
     }
 
-    open spec fn spec_end_bound(&self) -> SpecBound<&T> {
-        SpecBound::Excluded(self.end)
+    open spec fn spec_end_bound(&self) -> Bound<&T> {
+        Bound::Excluded(self.end)
     }
 }
 
 impl<T> RangeBoundsSpecImpl<T> for RangeInclusive<&T> {
-    open spec fn spec_start_bound(&self) -> SpecBound<&T> {
-        SpecBound::Included(self@.start)
+    open spec fn spec_start_bound(&self) -> Bound<&T> {
+        Bound::Included(self@.start)
     }
 
-    open spec fn spec_end_bound(&self) -> SpecBound<&T> {
-        SpecBound::Included(self@.end)
+    open spec fn spec_end_bound(&self) -> Bound<&T> {
+        // In contrast to RangeBounds<T> for RangeInclusive<T>,
+        // Rust's RangeBounds<T> for RangeInclusive<&T> always returns Included,
+        // regardless of exhausted.
+        Bound::Included(self@.end)
     }
 }
 
 impl<T> RangeBoundsSpecImpl<T> for RangeToInclusive<&T> {
-    open spec fn spec_start_bound(&self) -> SpecBound<&T> {
-        SpecBound::Unbounded
+    open spec fn spec_start_bound(&self) -> Bound<&T> {
+        Bound::Unbounded
     }
 
-    open spec fn spec_end_bound(&self) -> SpecBound<&T> {
-        SpecBound::Included(self.end)
+    open spec fn spec_end_bound(&self) -> Bound<&T> {
+        Bound::Included(self.end)
     }
 }
 
@@ -468,9 +471,9 @@ impl<T> RangeBoundsSpecImpl<T> for RangeToInclusive<&T> {
 /// `i` becomes `i + 1`, and an unbounded start is `0`.
 pub open spec fn slice_range_start<R: RangeBoundsSpec<usize>>(range: &R) -> int {
     match range.spec_start_bound() {
-        SpecBound::Included(i) => *i as int,
-        SpecBound::Excluded(i) => (*i as int) + 1,
-        SpecBound::Unbounded => 0,
+        Bound::Included(i) => *i as int,
+        Bound::Excluded(i) => (*i as int) + 1,
+        Bound::Unbounded => 0,
     }
 }
 
@@ -479,9 +482,9 @@ pub open spec fn slice_range_start<R: RangeBoundsSpec<usize>>(range: &R) -> int 
 /// an exclusive bound `i` stays `i`, and an unbounded end is `len`.
 pub open spec fn slice_range_end<R: RangeBoundsSpec<usize>>(range: &R, len: nat) -> int {
     match range.spec_end_bound() {
-        SpecBound::Included(i) => (*i as int) + 1,
-        SpecBound::Excluded(i) => *i as int,
-        SpecBound::Unbounded => len as int,
+        Bound::Included(i) => (*i as int) + 1,
+        Bound::Excluded(i) => *i as int,
+        Bound::Unbounded => len as int,
     }
 }
 

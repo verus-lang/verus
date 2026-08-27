@@ -393,6 +393,8 @@ pub(crate) enum Attr {
     ExecAllowNoDecreasesClause,
     // Assume that external items can be used without a Verus declaration (unsound)
     ExternalsAvailableWithoutDeclaration(bool),
+    // Prohibit impls from adding ensures clauses (to enable exec nontermination)
+    ImplsCannotExtendSpec,
     // Assume that the function terminates
     AssumeTermination,
     // Proxy containing unerased code
@@ -745,6 +747,9 @@ pub(crate) fn parse_attrs(
                         span,
                         "invalid trigger attribute: to provide a trigger expression, use the #![trigger <expr>] attribute",
                     );
+                }
+                AttrTree::Fun(_, arg, None) if arg == "impls_cannot_extend_spec" => {
+                    v.push(Attr::ImplsCannotExtendSpec);
                 }
                 AttrTree::Fun(_, arg, None) if arg == "assume_termination" => {
                     v.push(Attr::AssumeTermination);
@@ -1289,6 +1294,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) size_of_broadcast_proof: bool,
     pub(crate) type_invariant_fn: bool,
     pub(crate) open_visibility_qualifier: bool,
+    pub(crate) impls_cannot_extend_spec: bool,
     pub(crate) assume_termination: bool,
     pub(crate) exec_allows_no_decreases_clause: bool,
     pub(crate) externals_available_without_declaration: Option<bool>,
@@ -1483,6 +1489,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
         size_of_broadcast_proof: false,
         type_invariant_fn: false,
         open_visibility_qualifier: false,
+        impls_cannot_extend_spec: false,
         assume_termination: false,
         exec_allows_no_decreases_clause: false,
         externals_available_without_declaration: None,
@@ -1567,6 +1574,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             Attr::SizeOfBroadcastProof => vs.size_of_broadcast_proof = true,
             Attr::TypeInvariantFn => vs.type_invariant_fn = true,
             Attr::OpenVisibilityQualifier => vs.open_visibility_qualifier = true,
+            Attr::ImplsCannotExtendSpec => vs.impls_cannot_extend_spec = true,
             Attr::AssumeTermination => vs.assume_termination = true,
             Attr::ExecAllowNoDecreasesClause => vs.exec_allows_no_decreases_clause = true,
             Attr::ExternalsAvailableWithoutDeclaration(flag) => {

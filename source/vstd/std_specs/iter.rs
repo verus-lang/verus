@@ -73,7 +73,7 @@ pub trait ExIterator {
     //#[verifier::when_used_as_spec(into_rev_spec)]
     fn rev(self) -> (r: Rev<Self>)
         where Self: Sized,
-        default_ensures
+        ensures
             self.obeys_prophetic_iter_laws() ==>
                 r == into_rev_spec(self) && rev_post(self, r),
     ;
@@ -85,7 +85,7 @@ pub trait ExIterator {
         requires
             self.obeys_prophetic_iter_laws(),
             forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(f, (self.remaining()[k], )),
-        default_ensures
+        ensures
             self.obeys_prophetic_iter_laws() ==> map_post(self, f, r),
     ;
 
@@ -93,16 +93,16 @@ pub trait ExIterator {
         where
             B: FromIterator<Self::Item>,
             Self: Sized,
-        default_ensures
-            self.will_return_none(),
+        ensures
             self.obeys_prophetic_iter_laws() ==>
+                self.will_return_none() &&
                 FromIteratorSpec::from_iter_ensures(self.remaining(), collection),
     ;
 
     fn find<P>(&mut self, predicate: P) -> (r: Option<Self::Item>)
         where Self: Sized,
             P: FnMut(&Self::Item) -> bool
-        default_ensures
+        ensures
             // The iterator consistently obeys, completes, and decreases throughout its lifetime
             final(self).obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
             final(self).obeys_prophetic_iter_laws() ==> final(self).will_return_none() == old(self).will_return_none(),
@@ -139,7 +139,7 @@ pub trait ExIterator {
     fn all<F>(&mut self, f: F) -> (r: bool)
         where Self: Sized,
             F: FnMut(Self::Item) -> bool
-        default_ensures
+        ensures
             // The iterator consistently obeys, completes, and decreases throughout its lifetime
             final(self).obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
             final(self).obeys_prophetic_iter_laws() ==> final(self).will_return_none() == old(self).will_return_none(),
@@ -170,7 +170,7 @@ pub trait ExIterator {
     fn any<F>(&mut self, f: F) -> (r: bool)
         where Self: Sized,
             F: FnMut(Self::Item) -> bool
-        default_ensures
+        ensures
             // The iterator consistently obeys, completes, and decreases throughout its lifetime
             final(self).obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
             final(self).obeys_prophetic_iter_laws() ==> final(self).will_return_none() == old(self).will_return_none(),

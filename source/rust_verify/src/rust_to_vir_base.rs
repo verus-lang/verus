@@ -65,6 +65,11 @@ pub(crate) fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -
                     vir::def::RUST_OPAQUE_TYPE.to_string() + &d.disambiguator.to_string(),
                 ));
             }
+            DefPathData::Closure => {
+                segments.push(Arc::new(
+                    vir::def::RUST_DEF_CLOSURE.to_string() + &d.disambiguator.to_string(),
+                ));
+            }
             _ => return None,
         }
     }
@@ -152,12 +157,21 @@ pub(crate) fn def_id_to_vir_path_option<'tcx>(
     def_id: DefId,
 ) -> Option<Path> {
     if let Some(verus_items) = verus_items {
+        use crate::verus_items::RustPrivate;
         let verus_item = verus_items.id_to_name.get(&def_id);
         if let Some(VerusItem::Vstd(_, Some(fn_name))) = verus_item {
             // interpreter.rs and def.rs refer directly to some impl methods,
             // so make sure we use the fn_name names from `verus_items`
             let segments = fn_name.split("::").map(|x| Arc::new(x.to_string())).collect();
             return Some(Arc::new(PathX { krate: CrateId::Vstd, segments: Arc::new(segments) }));
+        }
+        if let Some(VerusItem::RustPrivate(RustPrivate::Path(path))) = verus_item {
+            return Some(path.clone());
+        }
+        if let Some(v @ VerusItem::RustPrivate(_)) = verus_item {
+            if let Some(id) = verus_items.name_to_rust_private_id.get(v) {
+                return def_id_to_vir_path_option(tcx, Some(verus_items), *id);
+            }
         }
     }
     let path = def_path_to_vir_path(tcx, tcx.def_path(def_id));
