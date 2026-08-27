@@ -1184,6 +1184,41 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] pattern_ranges_unsuffixed_literals_issue2850 verus_code! {
+        spec fn m_range(x: u8) -> u8 {
+            match x {
+                0 ..= 128 => 0,
+                _ => 1,
+            }
+        }
+
+        spec fn m_range_half_open(x: u8) -> bool {
+            match x {
+                0 .. 128 => true,
+                _ => false,
+            }
+        }
+
+        proof fn test(x: u8) {
+            assert(m_range(0) == 0);
+            assert(m_range(128) == 0);
+            assert(m_range(129) == 1);
+            assert(m_range_half_open(127) == true);
+            assert(m_range_half_open(128) == false);
+        }
+
+        fn test_exec(x: u8) -> (r: u8)
+            ensures r == m_range(x)
+        {
+            match x {
+                0 ..= 128 => 0,
+                _ => 1,
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] pattern_ranges_bad_range verus_code! {
         spec fn m_range6(x: u64) -> bool {
             match x {
