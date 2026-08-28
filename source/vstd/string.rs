@@ -5,6 +5,10 @@
 use alloc::str::Chars;
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]
 use alloc::string::{self, String, ToString};
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
+use core::ops::{Bound, Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive};
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
+use core::slice::SliceIndex;
 
 use super::prelude::*;
 use super::seq::Seq;
@@ -496,7 +500,7 @@ impl<'a> super::std_specs::iter::IteratorSpecImpl for Chars<'a> {
 
 // There are various types you can use to index into a `str` to get a
 // slice, i.e., to implement `SliceIndex<str>`. Here we indicate, for
-// each such type (e.g., `Range<usize>`), whether an index of that
+// any such type (e.g., `Range<usize>`), whether an index of that
 // type is valid when applied to a given `&str`.
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 pub open spec fn str_slice_index_req<R: RangeBoundsSpec<usize>>(range: &R, s: &str) -> bool {
@@ -505,54 +509,231 @@ pub open spec fn str_slice_index_req<R: RangeBoundsSpec<usize>>(range: &R, s: &s
     &&& is_char_boundary(s.spec_bytes(), slice_range_end(range, s.spec_bytes().len()))
 }
 
+// There are various types you can use to index into a `str` to get a
+// slice, i.e., to implement `SliceIndex<str>`. Here we indicate, for
+// any such type (e.g., `Range<usize>`), the semantics of immutably
+// indexing a string.
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
-impl super::slice::SliceIndexSpecImpl<str> for (core::ops::Bound<usize>, core::ops::Bound<usize>) {
+pub open spec fn str_slice_index_postcondition<R: RangeBoundsSpec<usize>>(
+    range: &R,
+    s: Seq<u8>,
+    r: Seq<u8>,
+) -> bool {
+    r == s.subrange(slice_range_start(range), slice_range_end(range, s.len()))
+}
+
+// There are various types you can use to index into a `str` to get a
+// slice, i.e., to implement `SliceIndex<str>`. Here we indicate, for
+// any such type (e.g., `Range<usize>`), the semantics of mutably
+// indexing a string.
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
+pub open spec fn str_slice_index_mut_postcondition<R: RangeBoundsSpec<usize>>(
+    range: &R,
+    old_s: Seq<u8>,
+    final_s: Seq<u8>,
+    r: Seq<u8>,
+    final_r: Seq<u8>,
+) -> bool {
+    let start = slice_range_start(range);
+    let end = slice_range_end(range, old_s.len());
+    &&& r == old_s.subrange(start, end)
+    &&& final_s.len() == old_s.len()
+    &&& final_s.len() == old_s.len()
+    &&& final_s.subrange(0, start) == old_s.subrange(0, start)
+    &&& final_s.subrange(start, end) == final_r
+    &&& final_s.subrange(end, old_s.len() as int) == old_s.subrange(end, old_s.len() as int)
+}
+
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
+impl super::slice::SliceIndexSpecImpl<str> for (Bound<usize>, Bound<usize>) {
     open spec fn index_req(&self, s: &str) -> bool {
         str_slice_index_req(self, s)
     }
 }
 
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
-impl super::slice::SliceIndexSpecImpl<str> for core::ops::Range<usize> {
+impl super::slice::SliceIndexSpecImpl<str> for Range<usize> {
     open spec fn index_req(&self, s: &str) -> bool {
         str_slice_index_req(self, s)
     }
 }
 
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
-impl super::slice::SliceIndexSpecImpl<str> for core::ops::RangeFrom<usize> {
+pub assume_specification[ <Range<usize> as SliceIndex<str>>::index ](
+    i: Range<usize>,
+    s: &str,
+) -> (r: &<Range<usize> as SliceIndex<str>>::Output)
+    ensures
+        str_slice_index_postcondition(&i, s.spec_bytes(), r.spec_bytes()),
+;
+
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
+pub assume_specification[ <Range<usize> as SliceIndex<str>>::index_mut ](
+    i: Range<usize>,
+    s: &mut str,
+) -> (r: &mut <Range<usize> as SliceIndex<str>>::Output)
+    ensures
+        str_slice_index_mut_postcondition(
+            &i,
+            old(s).spec_bytes(),
+            final(s).spec_bytes(),
+            r.spec_bytes(),
+            final(r).spec_bytes(),
+        ),
+;
+
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
+impl super::slice::SliceIndexSpecImpl<str> for RangeFrom<usize> {
     open spec fn index_req(&self, s: &str) -> bool {
         str_slice_index_req(self, s)
     }
 }
 
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
-impl super::slice::SliceIndexSpecImpl<str> for core::ops::RangeFull {
+pub assume_specification[ <RangeFrom<usize> as SliceIndex<str>>::index ](
+    i: RangeFrom<usize>,
+    s: &str,
+) -> (r: &<RangeFrom<usize> as SliceIndex<str>>::Output)
+    ensures
+        str_slice_index_postcondition(&i, s.spec_bytes(), r.spec_bytes()),
+;
+
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
+pub assume_specification[ <RangeFrom<usize> as SliceIndex<str>>::index_mut ](
+    i: RangeFrom<usize>,
+    s: &mut str,
+) -> (r: &mut <RangeFrom<usize> as SliceIndex<str>>::Output)
+    ensures
+        str_slice_index_mut_postcondition(
+            &i,
+            old(s).spec_bytes(),
+            final(s).spec_bytes(),
+            r.spec_bytes(),
+            final(r).spec_bytes(),
+        ),
+;
+
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
+impl super::slice::SliceIndexSpecImpl<str> for RangeFull {
     open spec fn index_req(&self, s: &str) -> bool {
         str_slice_index_req(self, s)
     }
 }
 
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
-impl super::slice::SliceIndexSpecImpl<str> for core::ops::RangeInclusive<usize> {
+pub assume_specification[ <RangeFull as SliceIndex<str>>::index ](i: RangeFull, s: &str) -> (r:
+    &<RangeFull as SliceIndex<str>>::Output)
+    ensures
+        str_slice_index_postcondition(&i, s.spec_bytes(), r.spec_bytes()),
+;
+
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
+pub assume_specification[ <RangeFull as SliceIndex<str>>::index_mut ](
+    i: RangeFull,
+    s: &mut str,
+) -> (r: &mut <RangeFull as SliceIndex<str>>::Output)
+    ensures
+        str_slice_index_mut_postcondition(
+            &i,
+            old(s).spec_bytes(),
+            final(s).spec_bytes(),
+            r.spec_bytes(),
+            final(r).spec_bytes(),
+        ),
+;
+
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
+impl super::slice::SliceIndexSpecImpl<str> for RangeInclusive<usize> {
     open spec fn index_req(&self, s: &str) -> bool {
         str_slice_index_req(self, s)
     }
 }
 
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
-impl super::slice::SliceIndexSpecImpl<str> for core::ops::RangeTo<usize> {
+pub assume_specification[ <RangeInclusive<usize> as SliceIndex<str>>::index ](
+    i: RangeInclusive<usize>,
+    s: &str,
+) -> (r: &<RangeInclusive<usize> as SliceIndex<str>>::Output)
+    ensures
+        str_slice_index_postcondition(&i, s.spec_bytes(), r.spec_bytes()),
+;
+
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
+pub assume_specification[ <RangeInclusive<usize> as SliceIndex<str>>::index_mut ](
+    i: RangeInclusive<usize>,
+    s: &mut str,
+) -> (r: &mut <RangeInclusive<usize> as SliceIndex<str>>::Output)
+    ensures
+        str_slice_index_mut_postcondition(
+            &i,
+            old(s).spec_bytes(),
+            final(s).spec_bytes(),
+            r.spec_bytes(),
+            final(r).spec_bytes(),
+        ),
+;
+
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
+impl super::slice::SliceIndexSpecImpl<str> for RangeTo<usize> {
     open spec fn index_req(&self, s: &str) -> bool {
         str_slice_index_req(self, s)
     }
 }
 
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
-impl super::slice::SliceIndexSpecImpl<str> for core::ops::RangeToInclusive<usize> {
+pub assume_specification[ <RangeTo<usize> as SliceIndex<str>>::index ](
+    i: RangeTo<usize>,
+    s: &str,
+) -> (r: &<RangeTo<usize> as SliceIndex<str>>::Output)
+    ensures
+        str_slice_index_postcondition(&i, s.spec_bytes(), r.spec_bytes()),
+;
+
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
+pub assume_specification[ <RangeTo<usize> as SliceIndex<str>>::index_mut ](
+    i: RangeTo<usize>,
+    s: &mut str,
+) -> (r: &mut <RangeTo<usize> as SliceIndex<str>>::Output)
+    ensures
+        str_slice_index_mut_postcondition(
+            &i,
+            old(s).spec_bytes(),
+            final(s).spec_bytes(),
+            r.spec_bytes(),
+            final(r).spec_bytes(),
+        ),
+;
+
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
+impl super::slice::SliceIndexSpecImpl<str> for RangeToInclusive<usize> {
     open spec fn index_req(&self, s: &str) -> bool {
         str_slice_index_req(self, s)
     }
 }
+
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
+pub assume_specification[ <RangeToInclusive<usize> as SliceIndex<str>>::index ](
+    i: RangeToInclusive<usize>,
+    s: &str,
+) -> (r: &<RangeToInclusive<usize> as SliceIndex<str>>::Output)
+    ensures
+        str_slice_index_postcondition(&i, s.spec_bytes(), r.spec_bytes()),
+;
+
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
+pub assume_specification[ <RangeToInclusive<usize> as SliceIndex<str>>::index_mut ](
+    i: RangeToInclusive<usize>,
+    s: &mut str,
+) -> (r: &mut <RangeToInclusive<usize> as SliceIndex<str>>::Output)
+    ensures
+        str_slice_index_mut_postcondition(
+            &i,
+            old(s).spec_bytes(),
+            final(s).spec_bytes(),
+            r.spec_bytes(),
+            final(r).spec_bytes(),
+        ),
+;
 
 // `<str as ops::Index<I>>::index(&self, index: I)` just invokes
 // `index.index(self)`. So we likewise delegate determining the meaning

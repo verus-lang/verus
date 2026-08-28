@@ -132,14 +132,86 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
-    #[test] test_str_index_ranges verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test_str_index_ranges ["no-auto-import-verus_builtin"] => code! {
+        #![cfg_attr(verus_keep_ghost, feature(slice_index_methods))]
+
+        use verus_builtin::*;
+        use verus_builtin_macros::*;
+
+        verus! {
         use core::ops::{Bound, Index};
+        use core::slice::SliceIndex;
         use vstd::prelude::*;
+        use vstd::seq::lemma_seq_subrange_len;
         use vstd::string::StringSliceAdditionalSpecFns;
         use vstd::utf8::*;
 
         broadcast use group_utf8_lib;
+
+        pub assume_specification[ str::as_bytes_mut ](s: &mut str) -> (b: &mut [u8])
+            ensures
+                b@ == old(s).spec_bytes(),
+                final(b)@ == final(s).spec_bytes(),
+        ;
+
+        fn overwrite_2(s: &mut str)
+            requires
+                s.spec_bytes().len() == 2,
+            ensures
+                final(s).spec_bytes() == seq![b'x', b'y'],
+        {
+            unsafe {
+                let bytes = s.as_bytes_mut();
+                bytes[0] = b'x';
+                bytes[1] = b'y';
+            }
+        }
+
+        fn overwrite_3(s: &mut str)
+            requires
+                s.spec_bytes().len() == 3,
+            ensures
+                final(s).spec_bytes() == seq![b'x', b'y', b'z'],
+        {
+            unsafe {
+                let bytes = s.as_bytes_mut();
+                bytes[0] = b'x';
+                bytes[1] = b'y';
+                bytes[2] = b'z';
+            }
+        }
+
+        fn overwrite_4(s: &mut str)
+            requires
+                s.spec_bytes().len() == 4,
+            ensures
+                final(s).spec_bytes() == seq![b'w', b'x', b'y', b'z'],
+        {
+            unsafe {
+                let bytes = s.as_bytes_mut();
+                bytes[0] = b'w';
+                bytes[1] = b'x';
+                bytes[2] = b'y';
+                bytes[3] = b'z';
+            }
+        }
+
+        fn overwrite_5(s: &mut str)
+            requires
+                s.spec_bytes().len() == 5,
+            ensures
+                final(s).spec_bytes() == seq![b'v', b'w', b'x', b'y', b'z'],
+        {
+            unsafe {
+                let bytes = s.as_bytes_mut();
+                bytes[0] = b'v';
+                bytes[1] = b'w';
+                bytes[2] = b'x';
+                bytes[3] = b'y';
+                bytes[4] = b'z';
+            }
+        }
 
         fn bound_pair(s: &str)
             requires
@@ -152,7 +224,7 @@ test_verify_one_file! {
             let _: &str = &s[(Bound::Unbounded, Bound::Unbounded)];
         }
 
-        fn range(s: &str)
+        fn range(s: &mut str)
             requires
                 s.len() == 5,
                 s.is_char_boundary(1),
@@ -160,49 +232,112 @@ test_verify_one_file! {
         {
             let _: &str = &s[1..3];
             let _: &str = s.index(1..3);
+            let r: &str = (1..3).index(s);
+            assert(r.spec_bytes() == s.spec_bytes().subrange(1, 3));
+
+            let ghost old_s = s.spec_bytes();
+            let r: &mut str = (1..3).index_mut(s);
+            assert(r.spec_bytes() == old_s.subrange(1, 3));
+            overwrite_2(r);
+            assert(s.spec_bytes().subrange(0, 1) == old_s.subrange(0, 1));
+            assert(s.spec_bytes().subrange(1, 3) == seq![b'x', b'y']);
+            assert(s.spec_bytes().subrange(3, 5) == old_s.subrange(3, 5));
         }
 
-        fn range_from(s: &str)
+        fn range_from(s: &mut str)
             requires
                 valid_utf8(s.spec_bytes()),
                 s.len() == 5,
                 s.is_char_boundary(2),
         {
             let _: &str = &s[2..];
+            let r: &str = (2..).index(s);
+            assert(r.spec_bytes() == s.spec_bytes().subrange(2, s.spec_bytes().len() as int));
+
+            let ghost old_s = s.spec_bytes();
+            let r: &mut str = (2..).index_mut(s);
+            assert(r.spec_bytes() == old_s.subrange(2, old_s.len() as int));
+            proof {
+                lemma_seq_subrange_len(old_s, 2, old_s.len() as int);
+            }
+            assert(r.spec_bytes().len() == 3);
+            overwrite_3(r);
+            assert(s.spec_bytes().subrange(0, 2) == old_s.subrange(0, 2));
+            assert(s.spec_bytes().subrange(2, 5) == seq![b'x', b'y', b'z']);
         }
 
-        fn range_full(s: &str)
+        fn range_full(s: &mut str)
             requires
                 valid_utf8(s.spec_bytes()),
+                s.len() == 5,
+                s.spec_bytes().len() == 5,
         {
             let _: &str = &s[..];
+            let r: &str = (..).index(s);
+            assert(r.spec_bytes() == s.spec_bytes());
+
+            let ghost old_s = s.spec_bytes();
+            let r: &mut str = (..).index_mut(s);
+            assert(r.spec_bytes() == old_s);
+            assert(r.spec_bytes().len() == 5);
+            overwrite_5(r);
+            assert(s.spec_bytes() == seq![b'v', b'w', b'x', b'y', b'z']);
         }
 
-        fn range_inclusive(s: &str)
+        fn range_inclusive(s: &mut str)
             requires
                 s.len() == 5,
                 s.is_char_boundary(1),
                 s.is_char_boundary(4),
         {
             let _: &str = &s[1..=3];
+            let r: &str = (1..=3).index(s);
+            assert(r.spec_bytes() == s.spec_bytes().subrange(1, 4));
+
+            let ghost old_s = s.spec_bytes();
+            let r: &mut str = (1..=3).index_mut(s);
+            assert(r.spec_bytes() == old_s.subrange(1, 4));
+            overwrite_3(r);
+            assert(s.spec_bytes().subrange(0, 1) == old_s.subrange(0, 1));
+            assert(s.spec_bytes().subrange(1, 4) == seq![b'x', b'y', b'z']);
+            assert(s.spec_bytes().subrange(4, 5) == old_s.subrange(4, 5));
         }
 
-        fn range_to(s: &str)
+        fn range_to(s: &mut str)
             requires
                 valid_utf8(s.spec_bytes()),
                 s.len() == 5,
                 s.is_char_boundary(4),
         {
             let _: &str = &s[..4];
+            let r: &str = (..4).index(s);
+            assert(r.spec_bytes() == s.spec_bytes().subrange(0, 4));
+
+            let ghost old_s = s.spec_bytes();
+            let r: &mut str = (..4).index_mut(s);
+            assert(r.spec_bytes() == old_s.subrange(0, 4));
+            overwrite_4(r);
+            assert(s.spec_bytes().subrange(0, 4) == seq![b'w', b'x', b'y', b'z']);
+            assert(s.spec_bytes().subrange(4, 5) == old_s.subrange(4, 5));
         }
 
-        fn range_to_inclusive(s: &str)
+        fn range_to_inclusive(s: &mut str)
             requires
                 valid_utf8(s.spec_bytes()),
                 s.len() == 5,
                 s.is_char_boundary(4),
         {
             let _: &str = &s[..=3];
+            let r: &str = (..=3).index(s);
+            assert(r.spec_bytes() == s.spec_bytes().subrange(0, 4));
+
+            let ghost old_s = s.spec_bytes();
+            let r: &mut str = (..=3).index_mut(s);
+            assert(r.spec_bytes() == old_s.subrange(0, 4));
+            overwrite_4(r);
+            assert(s.spec_bytes().subrange(0, 4) == seq![b'w', b'x', b'y', b'z']);
+            assert(s.spec_bytes().subrange(4, 5) == old_s.subrange(4, 5));
+        }
         }
     } => Ok(())
 }

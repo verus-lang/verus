@@ -45,11 +45,11 @@ pub assume_specification<T>[ <Range<usize> as SliceIndex<[T]>>::index ](i: Range
 pub assume_specification<T>[ <Range<usize> as SliceIndex<[T]>>::index_mut ](i: Range<usize>, slice: &mut [T]) -> (r: &mut [T])
     ensures
         r@ == old(slice)@.subrange(i.start as int, i.end as int),
-        final(r)@ == final(slice)@.subrange(i.start as int, i.end as int),
-        final(slice)@ == old(slice)@.subrange(0, i.start as int) + final(r)@ + old(slice)@.subrange(
-            i.end as int,
-            old(slice)@.len() as int,
-        ),
+        final(slice)@.len() == old(slice)@.len(),
+        final(slice)@.subrange(0, i.start as int) == old(slice)@.subrange(0, i.start as int),
+        final(slice)@.subrange(i.start as int, i.end as int) == final(r)@,
+        final(slice)@.subrange(i.end as int, old(slice)@.len() as int) ==
+            old(slice)@.subrange(i.end as int, old(slice)@.len() as int),
 ;
 
 impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for RangeTo<usize> {
