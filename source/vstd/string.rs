@@ -538,7 +538,6 @@ pub open spec fn str_slice_index_mut_postcondition<R: RangeBoundsSpec<usize>>(
     let end = slice_range_end(range, old_s.len());
     &&& r == old_s.subrange(start, end)
     &&& final_s.len() == old_s.len()
-    &&& final_s.len() == old_s.len()
     &&& final_s.subrange(0, start) == old_s.subrange(0, start)
     &&& final_s.subrange(start, end) == final_r
     &&& final_s.subrange(end, old_s.len() as int) == old_s.subrange(end, old_s.len() as int)
