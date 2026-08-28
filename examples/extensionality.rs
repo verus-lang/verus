@@ -2,7 +2,7 @@
 
 use verus_builtin::*;
 use verus_builtin_macros::*;
-use vstd::{map::*, seq::*, seq_lib::*, set::*, set_lib::*};
+use vstd::{imap::*, imap_lib::*, iset::*, iset_lib::*, map::*, seq::*, seq_lib::*, set::*, set_lib::*};
 
 verus! {
 
@@ -84,9 +84,9 @@ proof fn assert_maps_equal_with_proof(m: Map<int, int>, q: Map<int, int>)
 }
 
 proof fn assert_maps_equal_with_proof2() {
-    let m = Map::<u64, u64>::total(|t: u64| t & 184);
-    let q = Map::<u64, u64>::new(|t: u64| t ^ t == 0, |t: u64| 184 & t);
-    assert_maps_equal!(m, q, t => {
+    let m = IMap::<u64, u64>::total(|t: u64| t & 184);
+    let q = IMap::<u64, u64>::new(|t: u64| t ^ t == 0, |t: u64| 184 & t);
+    assert_imaps_equal!(m, q, t => {
         // show that the `q` map is total:
         assert_bit_vector(t ^ t == 0);
 
@@ -106,9 +106,9 @@ proof fn test_set(s: Set<int>, t: Set<int>) {
 }
 
 proof fn assert_sets_equal_with_proof() {
-    let s = Set::<u64>::new(|i: u64| i ^ 25 < 100);
-    let t = Set::<u64>::new(|i: u64| 25 ^ i < 100);
-    assert_sets_equal!(s, t, i => {
+    let s = ISet::<u64>::new(|i: u64| i ^ 25 < 100);
+    let t = ISet::<u64>::new(|i: u64| 25 ^ i < 100);
+    assert_isets_equal!(s, t, i => {
         assert_bit_vector(i ^ 25 == 25 ^ i);
     });
     assert(s == t);

@@ -60,7 +60,7 @@ test_verify_one_file! {
             assert(f2(33, 44) == 121);
             assert(f3(33, 44) == 121);
             assert({let za = 44; f4(33, za) == 121});
-            assert(fg(10u8, true) === (true, 10u8));
+            assert(fg(10u8, true) == (true, 10u8));
             assert(fx(7));
             assert(fy(6));
             assert(fpx(7u8));

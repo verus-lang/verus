@@ -473,7 +473,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] allow_in_spec_mut_ref ["new-mut-ref"] => verus_code! {
+    #[test] allow_in_spec_mut_ref [] => verus_code! {
         #[verifier::allow_in_spec]
         fn test(x: &mut bool) -> bool
             returns *x

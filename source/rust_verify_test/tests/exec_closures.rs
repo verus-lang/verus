@@ -1002,12 +1002,12 @@ test_verify_one_file_with_options! {
 
         fn test() {
             let f = |x: u64| -> (res: ())
-                ensures res === ()
+                ensures res == ()
             {
             };
 
             let f1 = |x: u64| -> (res: ())
-                ensures res === ()
+                ensures res == ()
             {
                 ()
             };
@@ -1132,7 +1132,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] disallowed_mut_capture5 ["vstd", "new-mut-ref"] => verus_code! {
+    #[test] disallowed_mut_capture5 ["vstd"] => verus_code! {
         use vstd::prelude::*;
 
         fn test1() {
@@ -1145,7 +1145,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] disallowed_mut_capture6 ["vstd", "new-mut-ref"] => verus_code! {
+    #[test] disallowed_mut_capture6 ["vstd"] => verus_code! {
         use vstd::prelude::*;
 
         fn test1() {
@@ -1160,7 +1160,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] disallowed_mut_capture7 ["vstd", "new-mut-ref"] => verus_code! {
+    #[test] disallowed_mut_capture7 ["vstd"] => verus_code! {
         use vstd::prelude::*;
 
         fn test1() {
@@ -1174,7 +1174,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] disallowed_mut_capture8 ["vstd", "new-mut-ref"] => verus_code! {
+    #[test] disallowed_mut_capture8 ["vstd"] => verus_code! {
         use vstd::prelude::*;
 
         fn test1() {
@@ -1878,6 +1878,68 @@ test_verify_one_file! {
                     return;
                 }
             };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] closure_local_const verus_code! {
+        use vstd::prelude::*;
+
+        fn foo() {
+            let x = || -> (z: u64)
+                ensures z == 42
+            {
+                const Z: u64 = 42;
+                Z
+            };
+            let z = x();
+            assert(z == 42);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] closure_local_fn verus_code! {
+        use vstd::prelude::*;
+
+        fn foo() {
+            let x = || -> (z: u64)
+                ensures z == 42
+            {
+                fn f() -> (z: u64)
+                    ensures z == 42
+                {
+                    42
+                }
+
+                let z = f();
+                assert(z == 42);
+                z
+            };
+            let z = x();
+            assert(z == 42);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] closure_local_struct verus_code! {
+        use vstd::prelude::*;
+
+        fn foo() {
+            let x = || -> (z: u64)
+                ensures z == 42
+            {
+                struct S {
+                    x: u64,
+                }
+
+                let s = S { x: 42 };
+                s.x
+            };
+            let z = x();
+            assert(z == 42);
         }
     } => Ok(())
 }

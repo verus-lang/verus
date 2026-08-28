@@ -1544,13 +1544,33 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] decrease_through_my_map verus_code! {
+    #[test] decrease_through_my_map_map verus_code! {
         // Err on the side of caution; see https://github.com/FStarLang/FStar/pull/2954
         use vstd::prelude::*;
 
         #[verifier::reject_recursive_types(A)]
         #[verifier::accept_recursive_types(B)]
         struct MyMap<A, B>(Map<A, B>);
+        struct S {
+            x: MyMap<int, Box<S>>,
+        }
+
+        spec fn f(s: S) -> int
+            decreases s
+        {
+            if s.x.0.dom().contains(3) { f(*s.x.0[3]) } else { 0 }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] decrease_through_my_map_imap verus_code! {
+        // Err on the side of caution; see https://github.com/FStarLang/FStar/pull/2954
+        use vstd::prelude::*;
+
+        #[verifier::reject_recursive_types(A)]
+        #[verifier::accept_recursive_types(B)]
+        struct MyMap<A, B>(IMap<A, B>);
         struct S {
             x: MyMap<int, Box<S>>,
         }
@@ -1790,7 +1810,7 @@ test_verify_one_file! {
         }
 
         pub struct Directory {
-            pub entries: Seq<Entry>,
+            pub entries: Ghost<Seq<Entry>>,
         }
 
         #[verifier(external_body)]
@@ -1801,7 +1821,7 @@ test_verify_one_file! {
             pub open spec fn fn_one(self, layer: nat) -> Directory
                 decreases NUM_LAYERS - layer, NUM_ENTRIES, 2nat
             {
-                Directory { entries: self.fn_three(layer, seq![]) }
+                Directory { entries: Ghost(self.fn_three(layer, seq![])) }
             }
 
             pub open spec fn fn_two(self, layer: nat, idx: nat) -> Entry
@@ -2050,16 +2070,16 @@ test_verify_one_file! {
         }
 
         struct X {
-            y: Seq<X>,
+            y: Ghost<Seq<X>>,
         }
 
         proof fn bad() {
-            let x0 = X { y: seq![] };
-            let t = seq![X { y: seq![ x0, x0 ] }];
+            let x0 = X { y: Ghost(seq![]) };
+            let t = seq![X { y: Ghost(seq![ x0, x0 ]) }];
             assert(decreases_to!(t => t[0]));
             assert(decreases_to!(t[0] => t[0].y));
 
-            vstd::seq::axiom_seq_len_decreases(t[0].y, t); // FAILS
+            vstd::seq::axiom_seq_len_decreases(t[0].y@, t); // FAILS
             assert(decreases_to!(t[0].y => t));
         }
     } => Err(e) => assert_fails(e, 3)
@@ -2292,4 +2312,46 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition, which may result in nontermination")
+}
+
+test_verify_one_file! {
+    #[test] recursive_through_struct_with_invariants_ok verus_code!{
+        use vstd::prelude::*;
+        use vstd::atomic_ghost::*;
+        use vstd::cell::pcell as cell;
+        use vstd::cell::pcell::PCell;
+
+        pub struct Node {
+            pub data: u32,
+            pub next_node: Option<Box<LockedNode>>,
+        }
+
+        struct_with_invariants!{
+            pub struct LockedNode {
+                pub atomic: AtomicBool<_, Option<cell::PointsTo<Node>>, _>,
+                pub cell: PCell<Node>,
+                pub node_id: u32,
+            }
+
+            pub open spec fn wf(&self) -> bool {
+                invariant on atomic with (cell, node_id) is (v: bool, g: Option<cell::PointsTo<Node>>) {
+                    match g {
+                        None => v == true,
+                        Some(points_to) => {
+                            v == false &&
+                            points_to.id() == cell.id() &&
+
+                            (node_id == 0 ==> points_to.value().next_node.is_none()) &&
+
+                            (points_to.value().next_node.is_some() ==>
+                                points_to.value().next_node.unwrap().node_id < node_id) &&
+
+                            (points_to.value().next_node.is_some() ==>
+                                points_to.value().next_node.unwrap().wf())
+                        }
+                    }
+                }
+            }
+        }
+    } => Ok(())
 }

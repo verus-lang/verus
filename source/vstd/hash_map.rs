@@ -72,7 +72,7 @@ impl<Key, Value> HashMapWithView<Key, Value> where Key: View + Eq + Hash {
     #[verifier::external_body]
     pub fn reserve(&mut self, additional: usize)
         ensures
-            self@ == old(self)@,
+            final(self)@ == old(self)@,
     {
         self.m.reserve(additional);
     }
@@ -105,7 +105,7 @@ impl<Key, Value> HashMapWithView<Key, Value> where Key: View + Eq + Hash {
     #[verifier::external_body]
     pub fn insert(&mut self, k: Key, v: Value)
         ensures
-            self@ == old(self)@.insert(k@, v),
+            final(self)@ == old(self)@.insert(k@, v),
     {
         self.m.insert(k, v);
     }
@@ -118,10 +118,9 @@ impl<Key, Value> HashMapWithView<Key, Value> where Key: View + Eq + Hash {
     pub fn remove(&mut self, k: &Key) -> (out: Option<Value>)
         ensures
             match out {
-                Some(v) => old(self)@.contains_key(k@) && v == old(self)@[k@] && self@ == old(
-                    self,
-                )@.remove(k@),
-                None => !old(self)@.contains_key(k@) && self@ == old(self)@,
+                Some(v) => old(self)@.contains_key(k@) && v == old(self)@[k@] && final(self)@
+                    == old(self)@.remove(k@),
+                None => !old(self)@.contains_key(k@) && final(self)@ == old(self)@,
             },
     {
         self.m.remove(k)
@@ -158,7 +157,7 @@ impl<Key, Value> HashMapWithView<Key, Value> where Key: View + Eq + Hash {
     #[verifier::external_body]
     pub fn clear(&mut self)
         ensures
-            self@ == Map::<<Key as View>::V, Value>::empty(),
+            final(self)@ == Map::<<Key as View>::V, Value>::empty(),
     {
         self.m.clear()
     }
@@ -167,7 +166,7 @@ impl<Key, Value> HashMapWithView<Key, Value> where Key: View + Eq + Hash {
     #[verifier::external_body]
     pub fn union_prefer_right(&mut self, other: Self)
         ensures
-            self@ == old(self)@.union_prefer_right(other@),
+            final(self)@ == old(self)@.union_prefer_right(other@),
     {
         self.m.extend(other.m)
     }
@@ -231,7 +230,7 @@ impl<Value> StringHashMap<Value> {
     #[verifier::external_body]
     pub fn reserve(&mut self, additional: usize)
         ensures
-            self@ == old(self)@,
+            final(self)@ == old(self)@,
     {
         self.m.reserve(additional);
     }
@@ -264,7 +263,7 @@ impl<Value> StringHashMap<Value> {
     #[verifier::external_body]
     pub fn insert(&mut self, k: String, v: Value)
         ensures
-            self@ == old(self)@.insert(k@, v),
+            final(self)@ == old(self)@.insert(k@, v),
     {
         self.m.insert(k, v);
     }
@@ -275,7 +274,7 @@ impl<Value> StringHashMap<Value> {
     #[verifier::external_body]
     pub fn remove(&mut self, k: &str)
         ensures
-            self@ == old(self)@.remove(k@),
+            final(self)@ == old(self)@.remove(k@),
     {
         self.m.remove(k);
     }
@@ -311,7 +310,7 @@ impl<Value> StringHashMap<Value> {
     #[verifier::external_body]
     pub fn clear(&mut self)
         ensures
-            self@ == Map::<Seq<char>, Value>::empty(),
+            final(self)@ == Map::<Seq<char>, Value>::empty(),
     {
         self.m.clear()
     }
@@ -320,7 +319,7 @@ impl<Value> StringHashMap<Value> {
     #[verifier::external_body]
     pub fn union_prefer_right(&mut self, other: Self)
         ensures
-            self@ == old(self)@.union_prefer_right(other@),
+            final(self)@ == old(self)@.union_prefer_right(other@),
     {
         self.m.extend(other.m)
     }

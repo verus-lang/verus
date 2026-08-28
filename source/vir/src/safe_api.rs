@@ -1,6 +1,6 @@
 use crate::ast::{
     Expr, ExprX, Fun, Function, FunctionKind, Krate, MaskSpec, Mode, Path, Quant, SpannedTyped,
-    StmtX, Trait, TypX, UnwindSpec, VarBinderX, VirErr,
+    Trait, TypX, UnwindSpec, VarBinderX, VirErr,
 };
 use crate::ast_util::fun_as_friendly_rust_name;
 use crate::context::Ctx;
@@ -162,36 +162,11 @@ pub fn body_that_havocs_all_outputs(function: &Function) -> Expr {
     //  *arg = tmp;
 
     let span = &function.span;
-    let mut stmts = vec![];
-    for param in function.x.params.iter() {
-        if param.x.is_mut {
-            stmts.push(Spanned::new(
-                span.clone(),
-                StmtX::Expr(SpannedTyped::new(
-                    span,
-                    &crate::ast_util::unit_typ(),
-                    ExprX::Assign {
-                        lhs: SpannedTyped::new(
-                            span,
-                            &param.x.typ,
-                            ExprX::Loc(SpannedTyped::new(
-                                span,
-                                &param.x.typ,
-                                ExprX::VarLoc(param.x.name.clone()),
-                            )),
-                        ),
-                        rhs: SpannedTyped::new(span, &param.x.typ, ExprX::Nondeterministic),
-                        op: None,
-                    },
-                )),
-            ));
-        }
-    }
 
     let ret = &function.x.ret;
     let ret_expr = SpannedTyped::new(span, &ret.x.typ, ExprX::Nondeterministic);
 
-    SpannedTyped::new(span, &ret.x.typ, ExprX::Block(Arc::new(stmts), Some(ret_expr)))
+    SpannedTyped::new(span, &ret.x.typ, ExprX::Block(Arc::new(vec![]), Some(ret_expr)))
 }
 
 /// When emitting a proof obligation, we need axioms that the trait spec fns are given

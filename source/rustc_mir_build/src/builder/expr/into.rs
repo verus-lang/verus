@@ -10,8 +10,7 @@ use rustc_middle::mir::*;
 use rustc_middle::span_bug;
 use rustc_middle::thir::*;
 use rustc_middle::ty::{self, CanonicalUserTypeAnnotation, Ty};
-use rustc_span::source_map::Spanned;
-use rustc_span::{DUMMY_SP, sym};
+use rustc_span::{DUMMY_SP, Spanned, sym};
 use rustc_trait_selection::infer::InferCtxtExt;
 use tracing::{debug, instrument};
 
@@ -238,6 +237,9 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                     // introduce a unit temporary as the destination for the loop body.
                     let tmp = this.get_unit_temp();
                     // Execute the body, branching back to the test.
+                    crate::builder::verus_builder::emit_extra_constraints(
+                        this, body_block, expr_id,
+                    );
                     let body_block_end = this.expr_into_dest(tmp, body_block, body).into_block();
                     this.cfg.goto(body_block_end, source_info, loop_block);
 
@@ -248,7 +250,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             ExprKind::LoopMatch {
                 state,
                 region_scope,
-                match_data: box LoopMatchMatchData { box ref arms, span: match_span, scrutinee },
+                match_data: LoopMatchMatchData { ref arms, span: match_span, scrutinee },
             } => {
                 // Intuitively, this is a combination of a loop containing a labeled block
                 // containing a match.
@@ -294,6 +296,10 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                     );
                     this.diverge_from(loop_block);
 
+                    crate::builder::verus_builder::emit_extra_constraints(
+                        this, body_block, expr_id,
+                    );
+
                     // Logic for `match`.
                     let scrutinee_span = this.thir.exprs[scrutinee].span;
                     let scrutinee_place_builder = unpack!(
@@ -327,36 +333,62 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                     );
 
                     let state_place = scrutinee_place_builder.to_place(this);
+                    let state_result = this.temp(state_ty, expr_span);
+                    let state_result_place = Place::from(state_result);
 
                     // This is logic for the labeled block: a block is a drop scope, hence
                     // `in_scope`, and a labeled block can be broken out of with a `break 'label`,
                     // hence the `in_breakable_scope`.
                     //
+                    // The state update is still modeled like `state = 'blk: { ... }`: normal
+                    // match arm results and ordinary breaks to the block are first written to
+                    // `state_result_place`, then written back to `state_place`. This avoids
+                    // building an overlapping assignment like `state = state`.
+                    //
                     // Then `in_const_continuable_scope` stores information for the lowering of
-                    // `#[const_continue]`, and finally the match is lowered in the standard way.
+                    // `#[const_continue]`, which still updates the actual `state_place` directly
+                    // so it can jump to the statically known next match branch.
                     unpack!(
                         body_block = this.in_scope(
                             (region_scope, source_info),
                             LintLevel::Inherited,
                             move |this| {
-                                this.in_breakable_scope(None, state_place, expr_span, |this| {
-                                    Some(this.in_const_continuable_scope(
-                                        Box::from(arms),
-                                        built_tree.clone(),
-                                        state_place,
-                                        expr_span,
-                                        |this| {
-                                            this.lower_match_arms(
-                                                state_place,
-                                                scrutinee_place_builder,
-                                                scrutinee_span,
-                                                arms,
-                                                built_tree,
-                                                this.source_info(match_span),
+                                this.in_const_continuable_scope(
+                                    arms.clone(),
+                                    built_tree.clone(),
+                                    state_place,
+                                    expr_span,
+                                    |this| {
+                                        let block = this
+                                            .in_breakable_scope(
+                                                None,
+                                                state_result_place,
+                                                expr_span,
+                                                |this| {
+                                                    Some(this.lower_match_arms(
+                                                        state_result_place,
+                                                        scrutinee_place_builder,
+                                                        scrutinee_span,
+                                                        arms,
+                                                        built_tree,
+                                                        this.source_info(match_span),
+                                                    ))
+                                                },
                                             )
-                                        },
-                                    ))
-                                })
+                                            .into_block();
+
+                                        this.cfg.push_assign(
+                                            block,
+                                            source_info,
+                                            state_place,
+                                            Rvalue::Use(
+                                                this.consume_by_copy_or_move(state_result_place),
+                                                WithRetag::Yes,
+                                            ),
+                                        );
+                                        block.unit()
+                                    },
+                                )
                             }
                         )
                     );
@@ -441,7 +473,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                             source_info,
                             destination,
                             // Move from `b` so that does not get dropped any more.
-                            Rvalue::Use(Operand::Move(b)),
+                            Rvalue::Use(Operand::Move(b), WithRetag::Yes),
                         );
                         block.unit()
                     }
@@ -449,13 +481,76 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 }
             }
             ExprKind::Call { ty: _, fun, ref args, from_hir_call, fn_span } => {
+                let fun_expr_id = fun;
+
+                // VERUS: If any argument is to the function `two_phase_mutable_reference_tie`
+                // we need to reorder things, see the explanation in verus_time_travel_prevention.rs
+                // For `foo(two_phase_mutable_reference_tie(e1, e2), e3)` the evaluation order is:
+                // 1. e1
+                // 2. e2
+                // 3. e3
+                // 4. two_phase_mutable_reference_tie(_, _)
+                // 5. foo(_, _, _)
                 let fun = unpack!(block = this.as_local_operand(block, fun));
                 let args: Box<[_]> = args
                     .into_iter()
                     .copied()
-                    .map(|arg| Spanned {
-                        node: unpack!(block = this.as_local_call_operand(block, arg)),
-                        span: this.thir.exprs[arg].span,
+                    .map(|arg| {
+                        if let Some((fun, arg0, arg1, ty)) =
+                            crate::verus_time_travel_prevention::is_two_phase_mutable_reference_tie(
+                                &this.thir, arg,
+                            )
+                        {
+                            let fun = unpack!(block = this.as_local_operand(block, fun));
+                            let a0 = Spanned {
+                                node: unpack!(block = this.as_local_call_operand(block, arg0)),
+                                span: this.thir.exprs[arg].span,
+                            };
+                            let a1 = Spanned {
+                                node: unpack!(block = this.as_local_call_operand(block, arg1)),
+                                span: this.thir.exprs[arg].span,
+                            };
+                            (a0, Some((a1, fun, ty)))
+                        } else {
+                            // Normal arg
+                            let a = Spanned {
+                                node: unpack!(block = this.as_local_call_operand(block, arg)),
+                                span: this.thir.exprs[arg].span,
+                            };
+                            (a, None)
+                        }
+                    })
+                    .collect();
+
+                let args: Box<[_]> = args
+                    .into_iter()
+                    .map(|(arg0, arg1)| {
+                        if let Some((arg1, fun, ty)) = arg1 {
+                            // emit the call to `two_phase_mutable_reference_tie`
+                            let span = arg0.span;
+                            let success = this.cfg.start_new_block();
+                            let args = Box::new([arg0, arg1]);
+                            let temp_destination = this.temp(ty, span);
+                            this.record_operands_moved(&*args);
+                            this.cfg.terminate(
+                                block,
+                                source_info,
+                                TerminatorKind::Call {
+                                    func: fun,
+                                    args,
+                                    unwind: UnwindAction::Unreachable,
+                                    destination: temp_destination,
+                                    target: Some(success),
+                                    call_source: CallSource::Normal,
+                                    fn_span,
+                                },
+                            );
+                            this.diverge_from(block);
+                            block = success;
+                            Spanned { node: Operand::Move(temp_destination), span: span }
+                        } else {
+                            arg0
+                        }
                     })
                     .collect();
 
@@ -464,6 +559,14 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 this.record_operands_moved(&args);
 
                 debug!("expr_into_dest: fn_span={:?}", fn_span);
+
+                crate::builder::verus_builder::emit_extra_constraints(this, block, expr_id);
+                crate::builder::verus_builder::record_call_inhabitedness(
+                    this,
+                    block,
+                    expr_id,
+                    fun_expr_id,
+                );
 
                 this.cfg.terminate(
                     block,
@@ -483,6 +586,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                     },
                 );
                 this.diverge_from(block);
+                crate::builder::verus_builder::emit_extra_constraints(this, success, expr_id);
                 success.unit()
             }
             ExprKind::ByUse { expr, span } => {
@@ -494,7 +598,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                         block,
                         source_info,
                         destination,
-                        Rvalue::Use(Operand::Copy(place)),
+                        Rvalue::Use(Operand::Copy(place), WithRetag::Yes),
                     );
                     block.unit()
                 } else if this.infcx.type_is_use_cloned_modulo_regions(this.param_env, ty) {
@@ -531,7 +635,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                         block,
                         source_info,
                         destination,
-                        Rvalue::Use(Operand::Move(place)),
+                        Rvalue::Use(Operand::Move(place), WithRetag::Yes),
                     );
                     block.unit()
                 }
@@ -562,7 +666,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 this.cfg.push_assign(block, source_info, destination, address_of);
                 block.unit()
             }
-            ExprKind::Adt(box AdtExpr {
+            ExprKind::Adt(AdtExpr {
                 adt_def,
                 variant_index,
                 args,
@@ -570,6 +674,9 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 ref fields,
                 ref base,
             }) => {
+                // VERUS: If any argument is to the function `two_phase_mutable_reference_tie`
+                // we need to reorder things, see the explanation in verus_time_travel_prevention.rs
+
                 // See the notes for `ExprKind::Array` in `as_rvalue` and for
                 // `ExprKind::Borrow` above.
                 let is_union = adt_def.is_union();
@@ -579,21 +686,77 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
 
                 // first process the set of fields that were provided
                 // (evaluating them in order given by user)
-                let fields_map: FxHashMap<_, _> = fields
+                let fields0: Box<[_]> = fields
                     .into_iter()
                     .map(|f| {
                         (
                             f.name,
-                            unpack!(
-                                block = this.as_operand(
-                                    block,
-                                    scope,
-                                    f.expr,
-                                    LocalInfo::AggregateTemp,
-                                    NeedsTemporary::Maybe,
-                                )
-                            ),
+                            if let Some((fun, arg0, arg1, ty)) = crate::verus_time_travel_prevention::is_two_phase_mutable_reference_tie(&this.thir, f.expr) {
+                                let fun = unpack!(block = this.as_local_operand(block, fun));
+                                let a0 = unpack!(block = this.as_operand(
+                                        block,
+                                        scope,
+                                        arg0,
+                                        LocalInfo::AggregateTemp,
+                                        NeedsTemporary::Maybe,
+                                    ));
+                                let a1 = unpack!(block = this.as_operand(
+                                        block,
+                                        scope,
+                                        arg1,
+                                        LocalInfo::AggregateTemp,
+                                        NeedsTemporary::Maybe,
+                                    ));
+                                let span = this.thir[f.expr].span;
+                                (a0, Some((a1, fun, ty, span)))
+                            } else {
+                                let a = unpack!(
+                                    block = this.as_operand(
+                                        block,
+                                        scope,
+                                        f.expr,
+                                        LocalInfo::AggregateTemp,
+                                        NeedsTemporary::Maybe,
+                                    )
+                                );
+                                (a, None)
+                            },
                         )
+                    })
+                    .collect();
+
+                let fields_map: FxHashMap<_, _> = fields0
+                    .into_iter()
+                    .map(|(field_name, (arg0, arg1))| {
+                        let arg = if let Some((arg1, fun, ty, span)) = arg1 {
+                            // emit the call to `two_phase_mutable_reference_tie`
+                            let success = this.cfg.start_new_block();
+                            let args = Box::new([
+                                Spanned { node: arg0, span: span },
+                                Spanned { node: arg1, span: span },
+                            ]);
+                            let temp_destination = this.temp(ty, span);
+                            this.record_operands_moved(&*args);
+                            this.cfg.terminate(
+                                block,
+                                source_info,
+                                TerminatorKind::Call {
+                                    func: fun,
+                                    args,
+                                    unwind: UnwindAction::Unreachable,
+                                    destination: temp_destination,
+                                    target: Some(success),
+                                    call_source: CallSource::Normal,
+                                    fn_span: span,
+                                },
+                            );
+                            this.diverge_from(block);
+                            block = success;
+                            Operand::Move(temp_destination)
+                        } else {
+                            arg0
+                        };
+                        (field_name, arg)
                     })
                     .collect();
 
@@ -673,7 +836,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 );
                 block.unit()
             }
-            ExprKind::InlineAsm(box InlineAsmExpr {
+            ExprKind::InlineAsm(InlineAsmExpr {
                 asm_macro,
                 template,
                 ref operands,
@@ -813,7 +976,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 debug_assert!(Category::of(&expr.kind) == Some(Category::Place));
 
                 let place = unpack!(block = this.as_place(block, expr_id));
-                let rvalue = Rvalue::Use(this.consume_by_copy_or_move(place));
+                let rvalue = Rvalue::Use(this.consume_by_copy_or_move(place), WithRetag::Yes);
                 this.cfg.push_assign(block, source_info, destination, rvalue);
                 block.unit()
             }
@@ -828,7 +991,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 }
 
                 let place = unpack!(block = this.as_place(block, expr_id));
-                let rvalue = Rvalue::Use(this.consume_by_copy_or_move(place));
+                let rvalue = Rvalue::Use(this.consume_by_copy_or_move(place), WithRetag::Yes);
                 this.cfg.push_assign(block, source_info, destination, rvalue);
                 block.unit()
             }
@@ -881,6 +1044,16 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
 
                 let rvalue = unpack!(block = this.as_local_rvalue(block, expr_id));
                 this.cfg.push_assign(block, source_info, destination, rvalue);
+                block.unit()
+            }
+            ExprKind::Reborrow { source, mutability, target } => {
+                let place = unpack!(block = this.as_place(block, source));
+                this.cfg.push_assign(
+                    block,
+                    source_info,
+                    destination,
+                    Rvalue::Reborrow(target, mutability, place.into()),
+                );
                 block.unit()
             }
         };

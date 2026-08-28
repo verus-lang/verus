@@ -7,13 +7,13 @@ edition = "2018"
 
 # Note: do not add any dependencies on rustc -- AIR deliberately abstracts away from rustc's internals
 [dependencies]
-sise = "0.6.0"
-getopts = { git = "https://github.com/utaal/getopts.git", branch = "parse-partial" }
-smt-scope = { version = "0.1.7", features = ["analysis"] }
-petgraph = "0.6"
-serde = { version = "1", features = ["derive", "rc"] }
-indexmap = { version = "1" }
-yansi = "0.5"
+sise = { workspace = true }
+getopts = { workspace = true }
+smt-scope = { workspace = true }
+petgraph = { workspace = true }
+serde = { workspace = true }
+indexmap = { workspace = true }
+yansi = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 win32job = "1"

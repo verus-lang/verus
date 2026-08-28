@@ -1,6 +1,7 @@
 target/
 /z3
 /cvc5
-/.verus-log/
+.verus-log/
 doc/
+/coverage/
 /target-verus/

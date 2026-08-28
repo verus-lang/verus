@@ -82,7 +82,7 @@ test_verify_one_file_with_options! {
             let mut v: Vec<u32> = Vec::new();
             #[verus_spec(iter =>
                 invariant
-                    v@ =~= Seq::new(iter.cur as nat, |k| 0u32),
+                    v@ =~= Seq::new(iter.index() as nat, |k| 0u32),
             )]
             for _ in 0..n
             {
@@ -367,20 +367,20 @@ test_verify_one_file! {
     #[test] test_with code!{
         #[verus_spec(ret =>
             with
-                Tracked(y): Tracked<&mut u32>,
+                Tracked(y): Tracked<&mut int>,
                 Ghost(w): Ghost<u32>,
                 -> z: Ghost<u32>
             requires
                 x < 100,
                 *old(y) < 100,
             ensures
-                *y == x,
+                *final(y) == x,
                 ret == x,
                 z@ == x,
         )]
         fn test_mut_tracked(x: u32) -> u32 {
             proof!{
-                *y = x;
+                *y = x as int;
             }
             #[verus_spec(with |= Ghost(x))]
             x
@@ -389,7 +389,7 @@ test_verify_one_file! {
         #[verus_spec]
         fn test_call_mut_tracked(x: u32) {
             proof_decl!{
-                let tracked mut y = 0u32;
+                let tracked mut y = 0;
             }
             {#[verus_spec(with Tracked(&mut y), Ghost(0) => _)]
             test_mut_tracked(1);
@@ -428,13 +428,13 @@ test_verify_one_file! {
     #[test] test_unverified_code_signature code!{
         #[verus_spec(ret =>
             with
-                Tracked(y): Tracked<&mut u32>,
+                Tracked(y): Tracked<&mut int>,
                 Ghost(w): Ghost<u32>,
                 -> z: Ghost<u32>
         )]
         fn test_mut_tracked(x: u32) -> u32 {
             proof!{
-                *y = x;
+                *y = x as int;
             }
             #[verus_spec(with |= Ghost(x))]
             x
@@ -457,13 +457,13 @@ test_verify_one_file! {
     #[test] test_verified_call_unverified_signature code!{
         #[verus_spec(ret =>
             with
-                Tracked(y): Tracked<&mut u32>,
+                Tracked(y): Tracked<&mut int>,
                 Ghost(w): Ghost<u32>,
                 -> z: Ghost<u32>
         )]
         fn test_mut_tracked(x: u32) -> u32 {
             proof!{
-                *y = x;
+                *y = x as int;
             }
             #[verus_spec(with |= Ghost(x))]
             x
@@ -483,20 +483,20 @@ test_verify_one_file! {
     #[test] test_with2 code!{
         #[verus_spec(ret =>
             with
-                Tracked(y): Tracked<&mut u32>,
+                Tracked(y): Tracked<&mut int>,
                 Ghost(w): Ghost<u32>,
                 ->  z: Ghost<u32>
             requires
                 x < 100,
                 *old(y) < 100,
             ensures
-                *y == x,
+                *final(y) == x,
                 ret == x,
                 z@ == x,
         )]
         fn test_mut_tracked(x: u32) -> u32 {
             proof!{
-                *y = x;
+                *y = x as int;
             }
             #[verus_spec(with |= Ghost(x))]
             x
@@ -506,7 +506,7 @@ test_verify_one_file! {
         fn test_cal_mut_tracked(x: u32) {
             proof_decl!{
                 let ghost mut z = 0u32;
-                let tracked mut y = 0u32;
+                let tracked mut y = 0;
             }
             if #[verus_spec(with Tracked(&mut y), Ghost(0) => Ghost(z))] test_mut_tracked(1) == 0 {
                 proof!{
@@ -526,20 +526,20 @@ test_verify_one_file! {
     #[test] test_proof_with code!{
         #[verus_spec(ret =>
             with
-                Tracked(y): Tracked<&mut u32>,
+                Tracked(y): Tracked<&mut int>,
                 Ghost(w): Ghost<u32>,
                 ->  z: Ghost<u32>
             requires
                 x < 100,
                 *old(y) < 100,
             ensures
-                *y == x,
+                *final(y) == x,
                 ret == x,
                 z@ == x,
         )]
         fn test_mut_tracked(x: u32) -> u32 {
             proof!{
-                *y = x;
+                *y = x as int;
             }
             proof_with!{|= Ghost(x)}
             x
@@ -549,7 +549,7 @@ test_verify_one_file! {
         fn test_cal_mut_tracked(x: u32) {
             proof_decl!{
                 let ghost mut z = 0u32;
-                let tracked mut y = 0u32;
+                let tracked mut y = 0;
             }
             if {
                 proof_with!{Tracked(&mut y), Ghost(0) => Ghost(z)} test_mut_tracked(1)
@@ -685,7 +685,7 @@ test_verify_one_file! {
             *x = *x + y;
             *x
         }
-    } => Err(e) => assert_vir_error_msg(e, "&mut parameter not allowed for spec functions")
+    } => Err(e) => assert_vir_error_msg(e, "when_used_as_spec not supported for function with &mut param")
 }
 
 test_verify_one_file! {
@@ -811,6 +811,61 @@ test_verify_one_file! {
 
         pub const X: u64 = const_fn(1);
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_const_fn_with_verus_spec_and_then_verus_verify code!{
+        use vstd::prelude::*;
+        #[verus_spec(ret =>
+            ensures ret == x
+        )]
+        #[verus_verify(rlimit(1))]
+        pub const fn const_fn(x: u64) -> u64 {
+            proof!{
+                assert(true);
+            }
+            {
+                proof!{assert(true);}
+            }
+            x
+        }
+    } => Err(e) => assert_any_vir_error_msg(e, "#[verus_verify] attributes should be applied before #[verus_spec].")
+}
+
+test_verify_one_file! {
+    /// A bad style to mix verus and verus_spec
+    /// This is not recommanded, but we allow it for this test
+    /// to avoid confusing error messages.
+    /// But we will raise a warning message saying #[verus_spec] is used inside verus!
+    #[test] test_const_fn_inside_verus_macro_with_warning code!{
+        use vstd::prelude::*;
+        verus!{
+        #[verus_spec(ensures false)]
+        pub const fn const_fn(x: u64) -> u64
+        {
+            x
+        }
+
+        #[verus_spec]
+        const C: u8 = 8;
+        }
+    } => Err(e) => assert!(e.warnings.iter().any(|x| x.message.contains("#[verus_spec] is likely used inside a verus! block.")))
+}
+
+test_verify_one_file! {
+    #[test] test_duplicated_verus_spec code!{
+        use vstd::prelude::*;
+        verus!{
+        #[verus_spec(ret =>
+            ensures ret == x
+        )]
+        #[verus_spec]
+        pub fn const_fn(x: u64) -> u64
+        {
+            x
+        }
+        }
+    } => Err(e) => assert_any_vir_error_msg(e, "Multiple #[verus_spec] attributes are not allowed.")
 }
 
 test_verify_one_file! {
@@ -1296,6 +1351,20 @@ test_verify_one_file! {
     } => Ok(())
 }
 
+// test forloop without verus_spec on either function or loop
+test_verify_one_file! {
+    #[test] test_verus_verify_on_func_for_loop code!{
+        use vstd::prelude::*;
+        #[verus_verify]
+        fn test_for_loop()
+        {
+            for i in 0..10
+            {
+            }
+        }
+    } => Ok(())
+}
+
 test_verify_one_file! {
     #[test] test_skip_desugar_loop_with_external_body code!{
         use vstd::prelude::*;
@@ -1550,4 +1619,62 @@ test_verify_one_file! {
             }
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_verus_verify_on_static code! {
+        #[verus_verify]
+        static MY_STATIC1: u64 = 1u64;
+
+        #[verus_verify]
+        #[verus_spec]
+        static MY_STATIC3: u64 = 0;
+
+        #[verus_verify]
+        #[cfg_attr(not(customized_cfg), verus_spec(
+            ensures MY_STATIC4 == 0
+        ))]
+        static MY_STATIC4: u64 = 0;
+
+        #[verus_spec]
+        fn test_use_static() {
+            let x = MY_STATIC1;
+            let y = MY_STATIC3;
+            let z = MY_STATIC4;
+            proof!{
+                assert(u64::MIN <= x <= u64::MAX);
+                assert(u64::MIN <= y <= u64::MAX);
+                assert(z == 0);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_verus_verify_on_static_failed code! {
+        #[verus_spec]
+        static MY_STATIC1: u64 = 0;
+
+        #[verus_spec(ensures
+            MY_STATIC2 == 1 // FAILS
+        )]
+        static MY_STATIC2: u64 = 0;
+
+        #[verus_spec]
+        fn test_use_static_failed() {
+            let x = MY_STATIC1;
+            proof!{
+                assert(x == 0); // FAILS
+            }
+        }
+
+
+    } => Err(e) => assert_fails(e, 2)
+}
+
+test_verify_one_file! {
+    #[test] test_verus_verify_on_static_with_external_body code! {
+        #[verus_verify(external_body)]
+        static MY_STATIC2: u64 = 0;
+    } => Err(e) => assert_any_vir_error_msg(e, "#[verifier::external_body] doesn't make sense for this item type -- it is only applicable to functions and datatype declarations" )
 }

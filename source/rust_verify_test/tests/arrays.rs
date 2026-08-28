@@ -4,51 +4,6 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
-    #[test] test_unable_to_add_set_spec verus_code! {
-        use vstd::prelude::*;
-        use vstd::array::*;
-
-        struct A([u8; 4]);
-
-        impl core::ops::Index<u8> for A {
-            type Output = u8;
-            fn index(&self, idx: u8) -> &u8 {
-                &self.0[0]
-            }
-        }
-
-        impl core::ops::IndexMut<u8> for A {
-            fn index_mut(&mut self, idx: u8) -> &mut u8 {
-                &mut self.0[0]
-            }
-        }
-
-        impl vstd::std_specs::core::IndexSetTrustedSpec<u8> for A {
-            open spec fn spec_index_set_requires(&self, index: u8) -> bool {
-                true
-            }
-
-            open spec fn spec_index_set_ensures(&self, new_container: &Self, index: u8, val: u8) -> bool {
-                new_container.0@ == self.0@.update(index as int, val)
-            }
-        }
-
-        fn test(ar: &mut [u8; 20])
-        requires
-            old(ar)[0] == 2
-        ensures
-            ar[0] == 3,
-        {
-            ar[0] += 1;
-        }
-
-    } => Err(e) => {
-        assert!(e.errors[0].rendered.contains("`IndexSetTrustedSpec` is a \"sealed trait\""));
-        assert_rust_error_msg(e, "the trait bound `A: vstd::std_specs::core::TrustedSpecSealed` is not satisfied");
-    }
-}
-
-test_verify_one_file! {
     #[test] test_array_set_assign_op verus_code! {
         use vstd::prelude::*;
         use vstd::array::*;
@@ -58,8 +13,8 @@ test_verify_one_file! {
             old(ar)[0] == 1,
             old(ar)[2] == 2,
         ensures
-            ar[0] == 2,
-            ar[2] == 3,
+            final(ar)[0] == 2,
+            final(ar)[2] == 3,
         {
             ar[0] += 1;
             ar[ar[0]] += 1;
@@ -77,7 +32,7 @@ test_verify_one_file! {
             *old(i) < 10,
         ensures
             ret == *old(i),
-            *i == *old(i) + 1,
+            *final(i) == *old(i) + 1,
         {
             let oldi = *i;
             *i = *i + 1;
@@ -88,36 +43,39 @@ test_verify_one_file! {
         requires
             old(ar)[0] < 10,
         ensures
-            ar[0] == old(ar)[0] + 1,
-            ar[1] == 1,
+            final(ar)[0] == old(ar)[0] + 1,
+            final(ar)[1] == 1,
         {
             let mut i = 0usize;
             ar[potential_side_effect(&mut i)] += 1;
             ar[potential_side_effect(&mut i)] = 1;
+            assert(i == 2);
         }
-
-    } => Err(e) => assert_vir_error_msg(e, "The verifier does not yet support the following Rust feature: assign op to index_mut with tgt/idx that could have side effects")
+    } => Ok(())
 }
 
 test_verify_one_file! {
     #[test] test_array_set_assign_customized_op verus_code! {
         use vstd::prelude::*;
         use vstd::array::*;
+        use vstd::std_specs::ops::AddAssignSpec;
 
         #[derive(Clone, Copy)]
         struct A(u8);
 
         impl core::ops::AddAssign<u8> for A {
+            #[verifier::external_body]
             fn add_assign(&mut self, rhs: u8) {
             }
         }
 
         fn test(ar: &mut [A; 20])
         {
+            assume(ar[0].add_assign_req(1));
             ar[0] += 1;
         }
 
-    } => Err(e) => assert_vir_error_msg(e, "The verifier does not yet support the following Rust feature: overloaded op-assignment operator")
+    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -138,7 +96,7 @@ test_verify_one_file! {
 
         fn test(ar: &mut [u8; 20])
         ensures
-            ar[0] == 1,
+            final(ar)[0] == 1,
         {
             ar[0] = 1;
         }
@@ -234,10 +192,10 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_recursion_checks_1 verus_code! {
         use vstd::array::*;
-        use vstd::map::*;
+        use vstd::imap::*;
 
         struct Foo {
-            field: [ Map<Foo, int> ; 20 ],
+            field: [ IMap<Foo, int> ; 20 ],
         }
 
     } => Err(err) => assert_vir_error_msg(err, "non-positive position")
@@ -483,5 +441,26 @@ test_verify_one_file! {
             assert(sl@.len() == N);
         }
 
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_array_for_loop verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let ar: [u32; 3] = [0u32, 2u32, 4u32];
+
+            let mut i: usize = 0;
+            for x in it: ar.iter()
+                invariant
+                    i == it.index(),
+                    it.seq().unref() == seq![0u32, 2u32, 4u32],
+            {
+                assert(x < 5);
+                assert(x % 2 == 0);
+                i = i + 1;
+            }
+        }
     } => Ok(())
 }

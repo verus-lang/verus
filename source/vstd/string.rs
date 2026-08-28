@@ -6,17 +6,18 @@ use alloc::str::Chars;
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]
 use alloc::string::{self, String, ToString};
 
-#[cfg(all(feature = "alloc", not(verus_verify_core)))]
-use super::pervasive::{ForLoopGhostIterator, ForLoopGhostIteratorNew};
 use super::prelude::*;
 use super::seq::Seq;
 use super::slice::*;
+#[cfg(verus_keep_ghost)]
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+use super::std_specs::iter::IteratorSpec;
 use super::utf8::*;
 use super::view::*;
 
 verus! {
 
-broadcast use {super::seq::group_seq_axioms, super::slice::group_slice_axioms};
+broadcast use {super::seq::group_seq_lemmas, super::slice::group_slice_axioms};
 
 #[cfg(not(verus_verify_core))]
 impl View for str {
@@ -234,13 +235,13 @@ impl StrSliceExecFns for str {
             }
             if char_pos == to {
                 byte_end = Some(byte_pos);
-                break ;
+                break;
             }
             if let Some(c) = it.next() {
                 char_pos += 1;
                 byte_pos += c.len_utf8();
             } else {
-                break ;
+                break;
             }
         }
         let byte_start = byte_start.unwrap();
@@ -358,6 +359,37 @@ pub assume_specification[ String::new ]() -> (res: String)
 ;
 
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]
+pub assume_specification[ String::push ](s: &mut String, c: char)
+    ensures
+        final(s)@ == old(s)@.push(c),
+;
+
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+pub assume_specification[ String::pop ](s: &mut String) -> (res: Option<char>)
+    ensures
+        old(s)@.len() == 0 ==> res is None && final(s)@ == old(s)@,
+        old(s)@.len() > 0 ==> res == Some(old(s)@.last()) && final(s)@ == old(s)@.drop_last(),
+;
+
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+pub assume_specification[ String::push_str ](s: &mut String, other: &str)
+    ensures
+        final(s)@ == old(s)@ + other@,
+;
+
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+pub assume_specification[ String::is_empty ](s: &String) -> (res: bool)
+    ensures
+        res == (s@.len() == 0),
+;
+
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+pub assume_specification[ String::clear ](s: &mut String)
+    ensures
+        final(s)@ == Seq::<char>::empty(),
+;
+
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
 pub assume_specification[ <String as core::default::Default>::default ]() -> (r: String)
     ensures
         r@ == Seq::<char>::empty(),
@@ -403,7 +435,7 @@ impl StringExecFns for String {
     #[verifier::external_body]
     fn append<'a, 'b>(&'a mut self, other: &'b str)
         ensures
-            self@ == old(self)@ + other@,
+            final(self)@ == old(self)@ + other@,
     {
         *self += other;
     }
@@ -417,16 +449,6 @@ impl StringExecFns for String {
     }
 }
 
-#[cfg(all(feature = "alloc", not(verus_verify_core)))]
-pub assume_specification[ str::chars ](s: &str) -> (chars: Chars<'_>)
-    ensures
-        ({
-            let (index, c) = chars@;
-            &&& index == 0
-            &&& c == s@
-        }),
-;
-
 // The `chars` method of a `str` returns an iterator of type `Chars`,
 // so we specify that type here.
 #[verifier::external_type_specification]
@@ -434,116 +456,37 @@ pub assume_specification[ str::chars ](s: &str) -> (chars: Chars<'_>)
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]
 pub struct ExChars<'a>(Chars<'a>);
 
-#[cfg(all(feature = "alloc", not(verus_verify_core)))]
-impl<'a> View for Chars<'a> {
-    type V = (int, Seq<char>);
+// To allow reasoning about the "contents" of the string iterator, without using
+// a prophecy, we need a function that gives us the underlying sequence of the original string.
+#[cfg(feature = "alloc")]
+pub uninterp spec fn into_iter_elts<'a>(i: Chars<'a>) -> Seq<char>;
 
-    uninterp spec fn view(&self) -> (int, Seq<char>);
-}
-
-#[cfg(all(feature = "alloc", not(verus_verify_core)))]
-impl<'a> DeepView for Chars<'a> {
-    type V = <Self as View>::V;
-
-    open spec fn deep_view(&self) -> Self::V {
-        self@
-    }
-}
-
-#[cfg(all(feature = "alloc", not(verus_verify_core)))]
-pub assume_specification<'a>[ Chars::<'a>::next ](chars: &mut Chars<'a>) -> (r: Option<char>)
+#[cfg(feature = "alloc")]
+pub assume_specification[ str::chars ](s: &str) -> (iter: Chars<'_>)
     ensures
-        ({
-            let (old_index, old_seq) = old(chars)@;
-            match r {
-                None => {
-                    &&& chars@ == old(chars)@
-                    &&& old_index >= old_seq.len()
-                },
-                Some(k) => {
-                    let (new_index, new_seq) = chars@;
-                    &&& 0 <= old_index < old_seq.len()
-                    &&& new_seq == old_seq
-                    &&& new_index == old_index + 1
-                    &&& k == old_seq[old_index]
-                },
-            }
-        }),
+        IteratorSpec::remaining(&iter) == s@,
+        IteratorSpec::decrease(&iter) is Some,
 ;
 
-#[cfg(all(feature = "alloc", not(verus_verify_core)))]
-pub struct CharsGhostIterator<'a> {
-    pub pos: int,
-    pub chars: Seq<char>,
-    pub phantom: Option<&'a char>,
-}
-
-#[cfg(all(feature = "alloc", not(verus_verify_core)))]
-impl<'a> ForLoopGhostIteratorNew for Chars<'a> {
-    type GhostIter = CharsGhostIterator<'a>;
-
-    open spec fn ghost_iter(&self) -> CharsGhostIterator<'a> {
-        CharsGhostIterator { pos: self@.0, chars: self@.1, phantom: None }
-    }
-}
-
-#[cfg(all(feature = "alloc", not(verus_verify_core)))]
-impl<'a> ForLoopGhostIterator for CharsGhostIterator<'a> {
-    type ExecIter = Chars<'a>;
-
-    type Item = char;
-
-    type Decrease = int;
-
-    open spec fn exec_invariant(&self, exec_iter: &Chars<'a>) -> bool {
-        &&& self.pos == exec_iter@.0
-        &&& self.chars == exec_iter@.1
+#[cfg(verus_keep_ghost)]
+#[cfg(feature = "alloc")]
+impl<'a> super::std_specs::iter::IteratorSpecImpl for Chars<'a> {
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        true
     }
 
-    open spec fn ghost_invariant(&self, init: Option<&Self>) -> bool {
-        init matches Some(init) ==> {
-            &&& init.pos == 0
-            &&& init.chars == self.chars
-            &&& 0 <= self.pos <= self.chars.len()
-        }
-    }
+    uninterp spec fn remaining(&self) -> Seq<Self::Item>;
 
-    open spec fn ghost_ensures(&self) -> bool {
-        self.pos == self.chars.len()
-    }
+    uninterp spec fn will_return_none(&self) -> bool;
 
-    open spec fn ghost_decrease(&self) -> Option<int> {
-        Some(self.chars.len() - self.pos)
-    }
+    uninterp spec fn decrease(&self) -> Option<nat>;
 
-    open spec fn ghost_peek_next(&self) -> Option<char> {
-        if 0 <= self.pos < self.chars.len() {
-            Some(self.chars[self.pos])
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        if 0 <= index < into_iter_elts(*self).len() {
+            Some(into_iter_elts(*self)[index])
         } else {
             None
         }
-    }
-
-    open spec fn ghost_advance(&self, _exec_iter: &Chars<'a>) -> CharsGhostIterator<'a> {
-        Self { pos: self.pos + 1, ..*self }
-    }
-}
-
-#[cfg(all(feature = "alloc", not(verus_verify_core)))]
-impl<'a> View for CharsGhostIterator<'a> {
-    type V = Seq<char>;
-
-    open spec fn view(&self) -> Seq<char> {
-        self.chars.take(self.pos)
-    }
-}
-
-#[cfg(all(feature = "alloc", not(verus_verify_core)))]
-impl<'a> DeepView for CharsGhostIterator<'a> {
-    type V = Seq<char>;
-
-    open spec fn deep_view(&self) -> Seq<char> {
-        self.view()
     }
 }
 

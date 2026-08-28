@@ -450,3 +450,78 @@ pub assume_specification<'a, A: PointeeSized + Ord>[ <&'a A as Ord>::cmp ](
 ;
 
 } // verus!
+
+macro_rules! tuple_cmp_impl {
+    ($($idx:tt $T:ident, )+) => {
+        verus! {
+        impl<$($T: PartialEq + PartialEqSpec),+> PartialEqSpecImpl for ($($T,)+)
+        {
+            open spec fn obeys_eq_spec() -> bool {
+                $(&&& $T::obeys_eq_spec())+
+            }
+
+            open spec fn eq_spec(&self, other: &($($T,)+)) -> bool {
+                $(&&& $T::eq_spec(&self.$idx, &other.$idx ))+
+            }
+        }
+
+        impl<$($T: PartialOrd + PartialOrdSpec),+> PartialOrdSpecImpl for ($($T,)+)
+        {
+            open spec fn obeys_partial_cmp_spec() -> bool {
+                $(&&& $T::obeys_partial_cmp_spec())+
+            }
+
+            open spec fn partial_cmp_spec(&self, other: &($($T,)+)) -> Option<core::cmp::Ordering> {
+                lexical_partial_cmp_spec!($( self.$idx, other.$idx ),+)
+            }
+        }
+
+        impl<$($T: Ord + OrdSpec),+> OrdSpecImpl for ($($T,)+)
+        {
+            open spec fn obeys_cmp_spec() -> bool {
+                $(&&& $T::obeys_cmp_spec())+
+            }
+
+            open spec fn cmp_spec(&self, other: &($($T,)+)) -> core::cmp::Ordering {
+                lexical_cmp_spec!($( self.$idx, other.$idx ),+)
+            }
+        }
+
+        }
+    };
+}
+
+#[allow(unused)]
+macro_rules! lexical_partial_cmp_spec {
+    ($a:expr, $b:expr, $($rest_a:expr, $rest_b:expr),+) => {
+        match ($a).partial_cmp_spec(&$b) {
+            Some(core::cmp::Ordering::Equal) => lexical_partial_cmp_spec!($($rest_a, $rest_b),+),
+            ordering => ordering
+        }
+    };
+    ($a:expr, $b:expr) => { ($a).partial_cmp_spec(&$b) };
+}
+
+#[allow(unused)]
+macro_rules! lexical_cmp_spec {
+    ($a:expr, $b:expr, $($rest_a:expr, $rest_b:expr),+) => {
+        match ($a).cmp_spec(&$b) {
+            core::cmp::Ordering::Equal => lexical_cmp_spec!($($rest_a, $rest_b),+),
+            ordering => ordering
+        }
+    };
+    ($a:expr, $b:expr) => { ($a).cmp_spec(&$b) };
+}
+
+tuple_cmp_impl!(0 T, );
+tuple_cmp_impl!(0 U, 1 T, );
+tuple_cmp_impl!(0 V, 1 U, 2 T, );
+tuple_cmp_impl!(0 W, 1 V, 2 U, 3 T, );
+tuple_cmp_impl!(0 X, 1 W, 2 V, 3 U, 4 T, );
+tuple_cmp_impl!(0 Y, 1 X, 2 W, 3 V, 4 U, 5 T, );
+tuple_cmp_impl!(0 Z, 1 Y, 2 X, 3 W, 4 V, 5 U, 6 T, );
+tuple_cmp_impl!(0 A, 1 Z, 2 Y, 3 X, 4 W, 5 V, 6 U, 7 T, );
+tuple_cmp_impl!(0 B, 1 A, 2 Z, 3 Y, 4 X, 5 W, 6 V, 7 U, 8 T, );
+tuple_cmp_impl!(0 C, 1 B, 2 A, 3 Z, 4 Y, 5 X, 6 W, 7 V, 8 U, 9 T, );
+tuple_cmp_impl!(0 D, 1 C, 2 B, 3 A, 4 Z, 5 Y, 6 X, 7 W, 8 V, 9 U, 10 T, );
+tuple_cmp_impl!(0 E, 1 D, 2 C, 3 B, 4 A, 5 Z, 6 Y, 7 X, 8 W, 9 V, 10 U, 11 T, );

@@ -317,7 +317,6 @@ macro_rules! declare_tuple_view {
     }
 }
 
-// REVIEW: we can declare more, but let's check the vstd size and overhead first
 declare_tuple_view!([0], [A0]);
 
 declare_tuple_view!([0 1], [A0 A1]);
@@ -325,5 +324,21 @@ declare_tuple_view!([0 1], [A0 A1]);
 declare_tuple_view!([0 1 2], [A0 A1 A2]);
 
 declare_tuple_view!([0 1 2 3], [A0 A1 A2 A3]);
+
+declare_tuple_view!([0 1 2 3 4], [A0 A1 A2 A3 A4]);
+
+declare_tuple_view!([0 1 2 3 4 5], [A0 A1 A2 A3 A4 A5]);
+
+declare_tuple_view!([0 1 2 3 4 5 6], [A0 A1 A2 A3 A4 A5 A6]);
+
+declare_tuple_view!([0 1 2 3 4 5 6 7], [A0 A1 A2 A3 A4 A5 A6 A7]);
+
+declare_tuple_view!([0 1 2 3 4 5 6 7 8], [A0 A1 A2 A3 A4 A5 A6 A7 A8]);
+
+declare_tuple_view!([0 1 2 3 4 5 6 7 8 9], [A0 A1 A2 A3 A4 A5 A6 A7 A8 A9]);
+
+declare_tuple_view!([0 1 2 3 4 5 6 7 8 9 10], [A0 A1 A2 A3 A4 A5 A6 A7 A8 A9 A10]);
+
+declare_tuple_view!([0 1 2 3 4 5 6 7 8 9 10 11], [A0 A1 A2 A3 A4 A5 A6 A7 A8 A9 A10 A11]);
 
 } // verus!

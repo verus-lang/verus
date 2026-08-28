@@ -13,7 +13,7 @@ fn add1(a: &mut u32)
     requires
         *old(a) < 10,
     ensures
-        *a == *old(a) + 1,
+        *final(a) == *old(a) + 1,
 {
     *a = *a + 1;
 }

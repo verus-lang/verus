@@ -1,7 +1,10 @@
 Below, you can find instructions for:
-  * [Building Verus](./INSTALL.md#building-the-project)
-  * [Running Verus on the command line](./INSTALL.md#running-the-verifier)
-  * [Using Verus in an IDE](./INSTALL.md#ide-support)
+
+- [Building Verus](#building-the-project)
+  - [Using Vargo](#build-with-vargo)
+  - [Using Cargo](#build-with-cargo)
+- [Running Verus on the command line](#running-the-verifier)
+- [Using Verus in an IDE](#ide-support)
 
 # Building the Project
 
@@ -11,7 +14,7 @@ The main project source is in `source`.
 building a `cargo` wrapper that ensures artifacts are built correctly with
 our custom build process.
 
-See [`source/CODE.md`](source/CODE.md) for more details about files in `source`.  See the
+See [`source/CODE.md`](source/CODE.md) for more details about files in `source`. See the
 [official docs](https://rustc-dev-guide.rust-lang.org/) for more about the
 normal Rust compiler.
 
@@ -22,7 +25,7 @@ Change directory to `source`: `cd source`
 ### On Windows: Get Z3 and set the `VERUS_Z3_PATH` environment variable
 
 Download the [Z3 binaries](https://github.com/Z3Prover/z3/releases).
-Make sure you get Z3 4.12.5.
+Make sure you get Z3 4.16.0.
 The Z3 `bin` folder contain the executable `z3.exe`.
 Set the `VERUS_Z3_PATH` environment variable to the path of the Z3 executable file.
 
@@ -52,6 +55,7 @@ source ../tools/activate.fish  # for fish
 ```
 
 If you do not have the necessary rust toolchain installed, you will get a message like:
+
 ```
 error: toolchain '1.82.0-aarch64-unknown-linux-gnu' is not installed
 help: run `rustup toolchain install 1.82.0-aarch64-unknown-linux-gnu` to install it
@@ -63,6 +67,8 @@ Run `rustup toolchain install` so that rustup installs the toolchain according t
 
 This command builds (or re-builds) `vargo`, our cargo wrapper, and adds it to the `PATH` for the current shell.
 
+### Build with Vargo
+
 Now, simply run,
 
 ```
@@ -72,13 +78,29 @@ vargo build --release
 (Omit `--release` for a debug build.)
 
 This will build everything you need to use Verus:
+
 - The `rust_verify` binary, which verifies Verus code.
 - Additional libraries that Verus code will need to include (`builtin`, `builtin_macros`, and `state_machines_macros`).
 - The [Verus standard library, `vstd`](https://verus-lang.github.io/verus/verusdoc/vstd/), which is written in Verus. Our build system builds **and verifies** the `vstd` crate.
 
 If everything is successful, you should see output indicating that various modules in `vstd` are being verified.
 
-# Running the Verifier 
+### Build with Cargo
+
+Alternatively, you can build Verus directly with Cargo, without activating the Vargo development
+environment. Run:
+
+```
+cargo build --release
+cargo run --release -p cargo-verus -- build --release --manifest-path vstd/Cargo.toml
+```
+
+The first command builds Verus and its supporting libraries. The second builds and verifies
+`vstd`, and places its required artifacts in `target-verus/release` alongside the other Verus
+artifacts. Omit `--release` from both commands for a debug build, which uses `target-verus/debug`
+instead.
+
+# Running the Verifier
 
 After running the build steps above, you can verify an example file.
 From the `source` directory, run:
@@ -94,7 +116,7 @@ You can also run the verifier directly (skipping the up-to-date check) with:
 on Linux and macOS:
 
 ```
-./target-verus/release/verus ./examples/vectors.rs
+./target-verus/release/verus ../examples/vectors.rs
 ```
 
 on Windows:
@@ -124,6 +146,7 @@ on Windows:
 .\target-verus\release\verus.exe ..\examples\doubly_linked_xor.rs --compile
 .\doubly_linked_xor.exe
 ```
+
 To verify an entire crate, simply point Verus at your `src/main.rs` file for an executable project, or `src/lib.rs` for a library project. You'll need to add `--crate-type=lib` for the latter.
 
 Now you're ready to write some Verus! Check out [our guide](https://verus-lang.github.io/verus/guide/getting_started.html) if you haven't yet.
@@ -134,6 +157,6 @@ directory, which is useful when verifying and compiling a project elsewhere on y
 # IDE Support
 
 Once you have built Verus, you can use it in IDE clients (such as Visual Studio
-Code, Emacs, or Vim) that support the LSP protocol.  Follow [these instructions](https://verus-lang.github.io/verus/guide/ide_support.html).
+Code, Emacs, or Vim) that support the LSP protocol. Follow [these instructions](https://verus-lang.github.io/verus/guide/ide_support.html).
 
 [^1]: If you are a [direnv](https://direnv.net/) user this activation is performed automatically, i.e. you don't need to `source ../tools/activate`; instead, `vargo` will automatically be in your `PATH` as long as you are in the `source` subdirectory.

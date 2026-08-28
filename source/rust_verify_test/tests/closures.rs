@@ -44,7 +44,7 @@ test_verify_one_file! {
 
         proof fn testfun<A>(a: A, b: bool) {
             let aa = polytestfun(a, |x: A, y: A| (if b { x } else { y }));
-            assert(a === aa);
+            assert(a == aa);
         }
 
         spec fn specf(x: u32, f: spec_fn(u32) -> u32) -> u32 {

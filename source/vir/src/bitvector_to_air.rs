@@ -1,7 +1,6 @@
 use crate::ast::{
-    ArchWordBits, ArithOp, BinaryOp, BitwiseOp, InequalityOp, IntRange, IntegerTypeBitwidth,
-    IntegerTypeBoundKind, SpannedTyped, Typ, TypX, UnaryOp, UnaryOpr, VarIdent,
-    VarIdentDisambiguate, VirErr,
+    ArchWordBits, BitwiseOp, InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind,
+    SpannedTyped, Typ, TypX, UnaryOp, UnaryOpr, VarIdent, VarIdentDisambiguate, VirErr,
 };
 use crate::ast_util::{
     LowerUniqueVar, allowed_bitvector_type, bitwidth_from_int_range, bitwidth_from_type,
@@ -10,7 +9,7 @@ use crate::ast_util::{
 use crate::context::Ctx;
 use crate::def::suffix_local_unique_id;
 use crate::messages::{Span, error};
-use crate::sst::{BndX, Exp, ExpX};
+use crate::sst::{ArithOp, BinaryOp, BndX, Exp, ExpX};
 use crate::util::vec_map_result;
 use air::ast::{Binder, BinderX, Constant, Decl, DeclX, Expr, ExprX, Ident, Query, QueryX};
 use air::ast_util::{
@@ -30,8 +29,9 @@ pub(crate) fn bv_to_queries(
     reqs: &Vec<Exp>,
     enss: &Vec<Exp>,
 ) -> Result<Vec<(Query, String)>, VirErr> {
-    let reqs = vec_map_result(reqs, |e| bv_maybe_split(ctx, e))?;
-    let enss = vec_map_result(enss, |e| bv_maybe_split(ctx, e))?;
+    let mut id_idx = 0;
+    let reqs = vec_map_result(reqs, |e| bv_maybe_split(ctx, &mut id_idx, e))?;
+    let enss = vec_map_result(enss, |e| bv_maybe_split(ctx, &mut id_idx, e))?;
 
     let needs_specialization = reqs.iter().chain(enss.iter()).any(|v| v.len() > 1);
 
@@ -123,7 +123,7 @@ fn make_query(
     (query, error)
 }
 
-fn bv_maybe_split(ctx: &Ctx, exp: &Exp) -> Result<Vec<BvSpecialized>, VirErr> {
+fn bv_maybe_split(ctx: &Ctx, id_idx: &mut u64, exp: &Exp) -> Result<Vec<BvSpecialized>, VirErr> {
     // If the expression depends on the arch size *and* the arch size isn't specified,
     // then we run translation twice, once for 32-bit and once for 64-bit.
     // The way this works is that, if 'arch' is set to Either32Or64, then
@@ -132,9 +132,10 @@ fn bv_maybe_split(ctx: &Ctx, exp: &Exp) -> Result<Vec<BvSpecialized>, VirErr> {
     // we perform the second run.
 
     let mut state =
-        State { arch: ctx.global.arch, decls: vec![], scope_map: ScopeMap::new(), id_idx: 0 };
+        State { arch: ctx.global.arch, decls: vec![], scope_map: ScopeMap::new(), id_idx: *id_idx };
     let BvExpr { expr: expr1, bv_typ } = bv_exp_to_expr(ctx, &mut state, exp)?;
     bv_typ.expect_bool(&exp.span)?;
+    *id_idx = state.id_idx;
     let mut bv_sp1 = BvSpecialized {
         expr: expr1,
         decls: state.decls,
@@ -150,10 +151,11 @@ fn bv_maybe_split(ctx: &Ctx, exp: &Exp) -> Result<Vec<BvSpecialized>, VirErr> {
             arch: ArchWordBits::Exactly(64),
             decls: vec![],
             scope_map: ScopeMap::new(),
-            id_idx: 0,
+            id_idx: *id_idx,
         };
         let BvExpr { expr: expr2, bv_typ } = bv_exp_to_expr(ctx, &mut state, exp)?;
         bv_typ.expect_bool(&exp.span)?;
+        *id_idx = state.id_idx;
 
         let bv_sp2 = BvSpecialized {
             expr: expr2,
@@ -442,9 +444,24 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
                 let bv_typ = if is_bool { BvTyp::Bool } else { bv_typ };
                 Ok(BvExpr { expr: Arc::new(ExprX::Unary(op, expr)), bv_typ })
             }
-            UnaryOp::IntToReal => panic!("internal error: unexpected int to real coercion"),
-            UnaryOp::RealToInt => panic!("internal error: unexpected real to int coercion"),
-            UnaryOp::FloatToBits => panic!("internal error: unexpected float to bits coercion"),
+            UnaryOp::IntToReal => {
+                return Err(error(
+                    &exp.span,
+                    "int-to-real coercion not supported in bit_vector assert",
+                ));
+            }
+            UnaryOp::RealToInt => {
+                return Err(error(
+                    &exp.span,
+                    "real-to-int coercion not supported in bit_vector assert",
+                ));
+            }
+            UnaryOp::FloatToBits => {
+                return Err(error(
+                    &exp.span,
+                    "float-to-bits coercion not supported in bit_vector assert",
+                ));
+            }
             UnaryOp::HeightTrigger => panic!("internal error: unexpected HeightTrigger"),
             UnaryOp::Trigger(_) => bv_exp_to_expr(ctx, state, arg),
             UnaryOp::CoerceMode { .. } => {
@@ -453,11 +470,11 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
             UnaryOp::MustBeFinalized | UnaryOp::MustBeElaborated => {
                 panic!("internal error: Exp not finalized: {:?}", arg)
             }
-            UnaryOp::StrLen => panic!(
-                "internal error: matching for bit vector ops on this match should be impossible"
-            ),
-            UnaryOp::InferSpecForLoopIter { .. } => {
-                panic!("internal error: unexpected Option type (from InferSpecForLoopIter)")
+            UnaryOp::StrLen => {
+                return Err(error(
+                    &exp.span,
+                    "string slice length not supported in bit_vector assert",
+                ));
             }
             UnaryOp::CastToInteger => {
                 panic!("internal error: unexpected CastToInteger")
@@ -500,7 +517,7 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
                 bv_typ: BvTyp::Bool,
             })
         }
-        ExpX::Binary(op @ (BinaryOp::Eq(_) | BinaryOp::Ne), lhs, rhs) => {
+        ExpX::Binary(op @ (BinaryOp::Eq | BinaryOp::Ne), lhs, rhs) => {
             let lhs = bv_exp_to_expr(ctx, state, lhs)?;
             let rhs = bv_exp_to_expr(ctx, state, rhs)?;
 
@@ -534,7 +551,7 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
             Ok(BvExpr { expr: res, bv_typ: BvTyp::Bool })
         }
         ExpX::Binary(
-            BinaryOp::Bitwise(op @ (BitwiseOp::BitXor | BitwiseOp::BitAnd | BitwiseOp::BitOr), _),
+            BinaryOp::Bitwise(op @ (BitwiseOp::BitXor | BitwiseOp::BitAnd | BitwiseOp::BitOr)),
             lhs,
             rhs,
         ) => {
@@ -553,7 +570,7 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
 
             Ok(BvExpr { expr: Arc::new(ExprX::Binary(op, lhs.expr, rhs.expr)), bv_typ: lhs.bv_typ })
         }
-        ExpX::Binary(BinaryOp::Bitwise(BitwiseOp::Shr(_), _), lhs, rhs) => {
+        ExpX::Binary(BinaryOp::Bitwise(BitwiseOp::Shr), lhs, rhs) => {
             let lhs = bv_exp_to_expr(ctx, state, lhs)?;
             let rhs = bv_exp_to_expr(ctx, state, rhs)?;
 
@@ -593,7 +610,7 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
 
             Ok(BvExpr { expr, bv_typ: lhs.bv_typ })
         }
-        ExpX::Binary(BinaryOp::Bitwise(BitwiseOp::Shl(w, signed), _), lhs, rhs) => {
+        ExpX::Binary(BinaryOp::Bitwise(BitwiseOp::Shl(w, signed)), lhs, rhs) => {
             let w = bitwidth_exact(state, *w);
 
             let lhs = bv_exp_to_expr(ctx, state, lhs)?;
@@ -788,7 +805,7 @@ fn vir_typ_to_air(state: &mut State, span: &Span, typ: &Typ) -> Result<air::ast:
         TypX::Bool => Ok(bool_typ()),
         TypX::Decorate(_, _, t) => vir_typ_to_air(state, span, t),
         TypX::Boxed(t) => vir_typ_to_air(state, span, t),
-        _ => Err(error(span, format!("unsupported type in bitvector {:?}", &typ))),
+        _ => Err(error(span, format!("unsupported type in bitvector {:?}", typ))),
     }
 }
 
@@ -1048,7 +1065,7 @@ fn do_arith_then_clip(
     if int_range == Some(IntRange::Nat) {
         if lhs_extend == Extend::Zero
             && rhs_extend == Extend::Zero
-            && matches!(arith_op, ArithOp::Add(_) | ArithOp::Mul(_))
+            && matches!(arith_op, ArithOp::Add | ArithOp::Mul)
         {
             int_range = None;
         } else {
@@ -1056,17 +1073,17 @@ fn do_arith_then_clip(
         }
     }
 
-    if matches!(arith_op, ArithOp::Add(_) | ArithOp::Mul(_) | ArithOp::Sub(_)) {
+    if matches!(arith_op, ArithOp::Add | ArithOp::Mul | ArithOp::Sub) {
         let op = match arith_op {
-            ArithOp::Add(_) => air::ast::BinaryOp::BitAdd,
-            ArithOp::Sub(_) => air::ast::BinaryOp::BitSub,
-            ArithOp::Mul(_) => air::ast::BinaryOp::BitMul,
-            ArithOp::EuclideanDiv(_) | ArithOp::EuclideanMod(_) => unreachable!(),
+            ArithOp::Add => air::ast::BinaryOp::BitAdd,
+            ArithOp::Sub => air::ast::BinaryOp::BitSub,
+            ArithOp::Mul => air::ast::BinaryOp::BitMul,
+            ArithOp::EuclideanDiv | ArithOp::EuclideanMod => unreachable!(),
         };
 
         // How can we represent the result losslessly?
         let (lossless_w, lossless_extend) = match arith_op {
-            ArithOp::Add(_) => {
+            ArithOp::Add => {
                 match (lhs_extend, rhs_extend) {
                     (Extend::Zero, Extend::Zero) => {
                         // If X and Y fit in N bits, unsigned,
@@ -1101,7 +1118,7 @@ fn do_arith_then_clip(
                     }
                 }
             }
-            ArithOp::Sub(_) => {
+            ArithOp::Sub => {
                 let w = match (lhs_extend, rhs_extend) {
                     (Extend::Zero, Extend::Zero) => {
                         // max: 2^a - 1
@@ -1128,7 +1145,7 @@ fn do_arith_then_clip(
                 };
                 (w, Extend::Sign)
             }
-            ArithOp::Mul(_) => match (lhs_extend, rhs_extend) {
+            ArithOp::Mul => match (lhs_extend, rhs_extend) {
                 (Extend::Zero, Extend::Zero) => (lhs_w + rhs_w, Extend::Zero),
                 (Extend::Zero, Extend::Sign) | (Extend::Sign, Extend::Zero) => {
                     (lhs_w + rhs_w, Extend::Sign)
@@ -1209,12 +1226,12 @@ fn do_div_or_mod_then_clip(
     let rhs_expr = bv_rhs.expr.clone();
 
     let bv_expr = match (arith_op, extend) {
-        (ArithOp::EuclideanDiv(_) | ArithOp::EuclideanMod(_), Extend::Zero) => {
+        (ArithOp::EuclideanDiv | ArithOp::EuclideanMod, Extend::Zero) => {
             // Nothing fancy, do the operation losslessly, then clip.
 
             let op = match arith_op {
-                ArithOp::EuclideanDiv(_) => air::ast::BinaryOp::BitUDiv,
-                ArithOp::EuclideanMod(_) => air::ast::BinaryOp::BitURem,
+                ArithOp::EuclideanDiv => air::ast::BinaryOp::BitUDiv,
+                ArithOp::EuclideanMod => air::ast::BinaryOp::BitURem,
                 _ => unreachable!(),
             };
 
@@ -1225,7 +1242,7 @@ fn do_div_or_mod_then_clip(
             let expr = Arc::new(ExprX::Binary(op, lhs_expr, rhs_expr));
             BvExpr { expr: expr, bv_typ: BvTyp::Bv(w, Extend::Zero) }
         }
-        (ArithOp::EuclideanDiv(_), Extend::Sign) => {
+        (ArithOp::EuclideanDiv, Extend::Sign) => {
             // Euclidean division for signed integers in the theory of bit-vectors.
             //
             // See: https://www.microsoft.com/en-us/research/publication/division-and-modulus-for-computer-scientists/
@@ -1270,7 +1287,7 @@ fn do_div_or_mod_then_clip(
 
             BvExpr { expr: expr, bv_typ: BvTyp::Bv(w + 1, Extend::Sign) }
         }
-        (ArithOp::EuclideanMod(_), Extend::Sign) => {
+        (ArithOp::EuclideanMod, Extend::Sign) => {
             // Euclidean modulus for signed integers in the theory of bit-vectors.
             //
             // See: https://www.microsoft.com/en-us/research/publication/division-and-modulus-for-computer-scientists/

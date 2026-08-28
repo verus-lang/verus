@@ -246,6 +246,32 @@ test_verify_one_bv_file! {
 }
 
 test_verify_one_bv_file! {
+    #[test] strslice_len_not_supported_in_by_bit_vector verus_code! {
+        proof fn test() {
+            use verus_builtin::*;
+            assert(strslice_len::<u64>(7u64) == 0int) by(bit_vector);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "string slice length not supported in bit_vector assert")
+}
+
+test_verify_one_bv_file! {
+    #[test] float_to_bits_not_supported_in_by_bit_vector verus_code! {
+        proof fn test() {
+            use verus_builtin::*;
+            assert(f32_to_bits(0.0f32) == 0u32) by(bit_vector);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "float-to-bits coercion not supported in bit_vector assert")
+}
+
+test_verify_one_bv_file! {
+    #[test] real_to_int_not_supported_in_by_bit_vector verus_code! {
+        proof fn test() {
+            assert(1.0real.floor() == 1int) by(bit_vector);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "real-to-int coercion not supported in bit_vector assert")
+}
+
+test_verify_one_bv_file! {
     #[test] usize_cast_in_by_bit_vector verus_code! {
         proof fn test_usize(x: u64) {
             assert((x as usize) == (x as usize)) by (bit_vector);
@@ -1336,6 +1362,29 @@ test_verify_one_bv_file! {
 }
 
 test_verify_one_bv_file! {
+    #[test] issue_2778_unique_temporary_ids verus_code! {
+        proof fn lemma_bv_crash(v: i32) {
+            let lsb: i32 = if v % 2 == 1 { 1i32 } else { 0i32 };
+            let mut v_shifted: i32 = (v / 2) as i32;
+
+            if v < 0 {
+                v_shifted = (v + 1) as i32;
+                v_shifted = (-v_shifted) as i32;
+                v_shifted = (v_shifted / 2) as i32;
+                v_shifted = (v_shifted + 1) as i32;
+                v_shifted = (-v_shifted) as i32;
+            }
+
+            assert(true) by (bit_vector)
+                requires
+                    v_shifted == if v >= 0 { v / 2 } else { -((-v - 1) / 2) - 1 },
+                    lsb == if v % 2 == 1 { 1i32 } else { 0i32 },
+                ;
+        }
+    } => Ok(())
+}
+
+test_verify_one_bv_file! {
     #[test] test_normal_solver verus_code! {
         fn test_unsigned(x: u16, y: u16) {
             assert((x | y) == (x as u32) | (y as u32));
@@ -1518,7 +1567,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_dereference_mut_ref_2 ["new-mut-ref"] => verus_code! {
+    #[test] test_dereference_mut_ref_2 [] => verus_code! {
         fn nonlinear_test(x: &mut u64, y: &mut u64)
         {
             assert(*x == *y ==> x == y) by(bit_vector)
@@ -1527,7 +1576,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_dereference_mut_ref_final_not_supported ["new-mut-ref"] => verus_code! {
+    #[test] test_dereference_mut_ref_final_not_supported [] => verus_code! {
         fn nonlinear_test(x: &mut u64)
         {
             assert(*final(x) == *x) by(bit_vector)
@@ -1536,7 +1585,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_old_not_supported ["new-mut-ref"] => verus_code! {
+    #[test] test_old_not_supported [] => verus_code! {
         fn nonlinear(x: &mut u64)
             requires *x == 0,
         {

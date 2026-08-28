@@ -123,7 +123,7 @@ fn mut_triangle(n: u32, sum: &mut u32)
     requires
         triangle(n as nat) <= u32::MAX,
     ensures
-        *sum == triangle(n as nat),
+        *final(sum) == triangle(n as nat),
     decreases n,
 {
     if n == 0 {
@@ -199,7 +199,7 @@ fn tail_triangle(n: u32, idx: u32, sum: &mut u32)
         *old(sum) == triangle(idx as nat),
         triangle(n as nat) <= u32::MAX,
     ensures
-        *sum == triangle(n as nat),
+        *final(sum) == triangle(n as nat),
     decreases n - idx,
 {
     if idx < n {
@@ -304,7 +304,7 @@ fn for_loop_triangle(n: u32) -> (sum: u32)
 {
     let mut sum: u32 = 0;
 
-    for idx in iter: 0..n
+    for idx in 0..n
         invariant
             sum == triangle(idx as nat),
             triangle(n as nat) <= u32::MAX,

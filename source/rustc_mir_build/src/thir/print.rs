@@ -600,6 +600,13 @@ impl<'a, 'tcx> ThirPrinter<'a, 'tcx> {
                 self.print_expr(*value, depth_lvl + 2);
                 print_indented!(self, "}", depth_lvl);
             }
+            ExprKind::Reborrow { source: _, mutability: _, target: _ } => {
+                print_indented!(self, "Reborrow {", depth_lvl);
+                print_indented!(self, "source:", depth_lvl + 1);
+                print_indented!(self, "mutability:", depth_lvl + 1);
+                print_indented!(self, "ty:", depth_lvl + 1);
+                print_indented!(self, "}", depth_lvl);
+            }
         }
     }
 
@@ -842,6 +849,14 @@ impl<'a, 'tcx> ThirPrinter<'a, 'tcx> {
                     self.print_pat(pat, depth_lvl + 3);
                 }
                 print_indented!(self, "]", depth_lvl + 2);
+                print_indented!(self, "}", depth_lvl + 1);
+            }
+            PatKind::Guard { subpattern, condition } => {
+                print_indented!(self, "Guard pattern: {", depth_lvl + 1);
+                print_indented!(self, "subpattern: ", depth_lvl + 2);
+                self.print_pat(subpattern, depth_lvl + 3);
+                print_indented!(self, "guard: ", depth_lvl + 2);
+                self.print_expr(*condition, depth_lvl + 3);
                 print_indented!(self, "}", depth_lvl + 1);
             }
             PatKind::Error(_) => {

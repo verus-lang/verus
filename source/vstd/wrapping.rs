@@ -8,7 +8,7 @@
 use super::prelude::*;
 
 macro_rules! wrapping_specs {
-    ([$(($uN: ty, $iN: ty, $modname_u:ident, $modname_i:ident, $range:expr),)*]) => {
+    ([$(($uN: ty, $iN: ty, $modname_u:ident, $modname_i:ident, $range:expr, $bits:expr),)*]) => {
         $(
             verus! {
 
@@ -44,8 +44,15 @@ macro_rules! wrapping_specs {
                 pub open spec fn wrapping_mul(x: $uN, y: $uN) -> $uN {
                     ((x as nat * y as nat) % $range as nat) as $uN
                 }
-            }
 
+                pub open spec fn wrapping_shl(x: $uN, shift: u32) -> $uN {
+                    x << (shift % $bits)
+                }
+                pub open spec fn wrapping_shr(x: $uN, shift: u32) -> $uN {
+                    x >> (shift % $bits)
+                }
+
+            }
             pub mod $modname_i {
                 use super::*;
 
@@ -88,19 +95,24 @@ macro_rules! wrapping_specs {
                 pub open spec fn wrapping_mul(x: $iN, y: $iN) -> $iN {
                     signed_crop(x * y)
                 }
-            }
+
+                pub open spec fn wrapping_shl(x: $iN, shift: u32) -> $iN {
+                    x << (shift % $bits)
+                }
+                pub open spec fn wrapping_shr(x: $iN, shift: u32) -> $iN {
+                    x >> (shift % $bits)
+                }
 
             }
+        }
             )*
-
     }
 }
-
 wrapping_specs!([
-    (u8, i8, u8_specs, i8_specs, 0x100),
-    (u16, i16, u16_specs, i16_specs, 0x1_0000),
-    (u32, i32, u32_specs, i32_specs, 0x1_0000_0000),
-    (u64, i64, u64_specs, i64_specs, 0x1_0000_0000_0000_0000),
-    (u128, i128, u128_specs, i128_specs, 0x1_0000_0000_0000_0000_0000_0000_0000_0000),
-    (usize, isize, usize_specs, isize_specs, (usize::MAX - usize::MIN + 1)),
+    (u8, i8, u8_specs, i8_specs, 0x100, 8u32),
+    (u16, i16, u16_specs, i16_specs, 0x1_0000, 16u32),
+    (u32, i32, u32_specs, i32_specs, 0x1_0000_0000, 32u32),
+    (u64, i64, u64_specs, i64_specs, 0x1_0000_0000_0000_0000, 64u32),
+    (u128, i128, u128_specs, i128_specs, 0x1_0000_0000_0000_0000_0000_0000_0000_0000, 128u32),
+    (usize, isize, usize_specs, isize_specs, (usize::MAX - usize::MIN + 1), usize::BITS),
 ]);

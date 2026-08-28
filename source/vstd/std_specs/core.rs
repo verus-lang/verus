@@ -37,22 +37,37 @@ pub trait ExDeref: PointeeSized {
 }
 
 #[verifier::external_trait_specification]
+pub trait ExDerefMut: core::ops::Deref + PointeeSized {
+    type ExternalTraitSpecificationFor: core::ops::DerefMut;
+
+    fn deref_mut(&mut self) -> &mut Self::Target;
+}
+
+#[verifier::external_trait_specification]
 #[verifier::external_trait_extension(IndexSpec via IndexSpecImpl)]
 pub trait ExIndex<Idx> where Idx: ?Sized {
     type ExternalTraitSpecificationFor: core::ops::Index<Idx>;
 
     type Output: ?Sized;
 
+    // NOTE: this used as a precondition for both `Index` and `IndexMut`,
+    // since both share the same `s[i]` syntax.
     spec fn index_req(&self, index: &Idx) -> bool;
 
     fn index(&self, index: Idx) -> (output: &Self::Output) where Idx: Sized
         requires
-            self.index_req(&index);
+            self.index_req(&index),
+    ;
 }
 
 #[verifier::external_trait_specification]
 pub trait ExIndexMut<Idx>: core::ops::Index<Idx> where Idx: ?Sized {
     type ExternalTraitSpecificationFor: core::ops::IndexMut<Idx>;
+
+    fn index_mut(&mut self, index: Idx) -> (output: &mut Self::Output) where Idx: Sized
+        requires
+            self.index_req(&index),
+    ;
 }
 
 #[verifier::external_trait_specification]
@@ -77,16 +92,6 @@ pub trait ExFreeze: PointeeSized {
 }
 
 #[verifier::external_trait_specification]
-pub trait ExDebug: PointeeSized {
-    type ExternalTraitSpecificationFor: core::fmt::Debug;
-}
-
-#[verifier::external_trait_specification]
-pub trait ExDisplay: PointeeSized {
-    type ExternalTraitSpecificationFor: core::fmt::Display;
-}
-
-#[verifier::external_trait_specification]
 pub trait ExHash: PointeeSized {
     type ExternalTraitSpecificationFor: core::hash::Hash;
 }
@@ -97,25 +102,6 @@ pub trait ExPtrPointee: PointeeSized {
 
     type Metadata:
         Copy + Send + Sync + Ord + core::hash::Hash + Unpin + core::fmt::Debug + Sized + core::marker::Freeze;
-}
-
-#[verifier::external_trait_specification]
-pub trait ExIterator {
-    type ExternalTraitSpecificationFor: core::iter::Iterator;
-
-    type Item;
-
-    fn next(&mut self) -> Option<Self::Item>;
-}
-
-#[verifier::external_trait_specification]
-pub trait ExIntoIterator {
-    type ExternalTraitSpecificationFor: core::iter::IntoIterator;
-}
-
-#[verifier::external_trait_specification]
-pub trait ExIterStep: Clone + PartialOrd + Sized {
-    type ExternalTraitSpecificationFor: core::iter::Step;
 }
 
 #[verifier::external_trait_specification]
@@ -143,8 +129,8 @@ pub trait ExMetaSized {
 
 pub assume_specification<T>[ core::mem::swap::<T> ](a: &mut T, b: &mut T)
     ensures
-        *a == *old(b),
-        *b == *old(a),
+        *final(a) == *old(b),
+        *final(b) == *old(a),
     opens_invariants none
     no_unwind
 ;
@@ -161,16 +147,6 @@ pub struct ExOption<V>(core::option::Option<V>);
 #[verifier::accept_recursive_types(T)]
 #[verifier::reject_recursive_types_in_ground_variants(E)]
 pub struct ExResult<T, E>(core::result::Result<T, E>);
-
-pub open spec fn iter_into_iter_spec<I: Iterator>(i: I) -> I {
-    i
-}
-
-#[verifier::when_used_as_spec(iter_into_iter_spec)]
-pub assume_specification<I: Iterator>[ <I as IntoIterator>::into_iter ](i: I) -> (r: I)
-    ensures
-        r == i,
-;
 
 // I don't really expect this to be particularly useful;
 // this is mostly here because I wanted an easy way to test
@@ -195,6 +171,8 @@ pub assume_specification[ core::intrinsics::unlikely ](b: bool) -> (c: bool)
 ;
 
 pub assume_specification<T, F: FnOnce() -> T>[ bool::then ](b: bool, f: F) -> (ret: Option<T>)
+    requires
+        b ==> f.requires(()),
     ensures
         if b {
             ret.is_some() && f.ensures((), ret.unwrap())
@@ -203,40 +181,10 @@ pub assume_specification<T, F: FnOnce() -> T>[ bool::then ](b: bool, f: F) -> (r
         },
 ;
 
-// A private seal trait to prevent a trait from being implemented outside of vstd.
-pub(crate) trait TrustedSpecSealed {}
-
-#[allow(private_bounds)]
-pub trait IndexSetTrustedSpec<Idx>: core::ops::IndexMut<Idx> + TrustedSpecSealed {
-    spec fn spec_index_set_requires(&self, index: Idx) -> bool;
-
-    spec fn spec_index_set_ensures(
-        &self,
-        new_container: &Self,
-        index: Idx,
-        val: Self::Output,
-    ) -> bool where Self::Output: Sized;
-}
-
-// TODO(uutaal): Do not need index_set once mutable reference support lands.
-// Use index_set to replace IndexMut in assign-operator.
-// Users must provide IndexSetTrustedSpec to use it.
-// It could be replaced after mutable reference is fully supported
-// Avoid call it explicitly.
-#[verifier(external_body)]
-pub fn index_set<T, Idx, E>(container: &mut T, index: Idx, val: E) where
-    T: ?Sized + core::ops::IndexMut<Idx> + core::ops::Index<Idx, Output = E> + IndexSetTrustedSpec<
-        Idx,
-    >,
-
-    requires
-        old(container).spec_index_set_requires(index),
+pub assume_specification<T> [core::hint::must_use] (value: T) -> (ret: T)
     ensures
-        old(container).spec_index_set_ensures(container, index, val),
-    no_unwind
-{
-    container[index] = val;
-}
+        ret == value,
+;
 
 } // verus!
 

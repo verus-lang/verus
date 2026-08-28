@@ -96,7 +96,7 @@ impl fmt::Debug for CrateId {
 
 impl fmt::Debug for PathX {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Path({:?}, [", &self.krate)?;
+        write!(f, "Path({:?}, [", self.krate)?;
         for (i, s) in self.segments.iter().enumerate() {
             if i == 0 {
                 write!(f, "{:?}", s)?;
@@ -254,26 +254,9 @@ pub fn params_equal_opt(
     // the publicly visible parameters.
     // 'user_mut' also isn't important at this level since it is only used to determine
     // if mutation is allowed within the function
-    let ParamX {
-        name: name1,
-        typ: typ1,
-        mode: mode1,
-        is_mut: is_mut1,
-        unwrapped_info: _,
-        user_mut: _,
-    } = &param1.x;
-    let ParamX {
-        name: name2,
-        typ: typ2,
-        mode: mode2,
-        is_mut: is_mut2,
-        unwrapped_info: _,
-        user_mut: _,
-    } = &param2.x;
-    (!check_names || name1 == name2)
-        && types_equal(typ1, typ2)
-        && (!check_modes || mode1 == mode2)
-        && is_mut1 == is_mut2
+    let ParamX { name: name1, typ: typ1, mode: mode1, unwrapped_info: _, user_mut: _ } = &param1.x;
+    let ParamX { name: name2, typ: typ2, mode: mode2, unwrapped_info: _, user_mut: _ } = &param2.x;
+    (!check_names || name1 == name2) && types_equal(typ1, typ2) && (!check_modes || mode1 == mode2)
 }
 
 pub fn params_equal(param1: &Param, param2: &Param) -> bool {
@@ -593,6 +576,13 @@ pub fn is_unit(t: &Typ) -> bool {
     matches!(&**t, TypX::Datatype(Dt::Tuple(0), ..))
 }
 
+pub fn is_never(t: &Typ) -> bool {
+    match &**t {
+        TypX::Decorate(TypDecoration::Never, None, t) => is_unit(t),
+        _ => false,
+    }
+}
+
 pub fn mk_bool(span: &Span, b: bool) -> Expr {
     SpannedTyped::new(span, &Arc::new(TypX::Bool), ExprX::Const(Constant::Bool(b)))
 }
@@ -601,7 +591,7 @@ pub fn mk_implies(span: &Span, e1: &Expr, e2: &Expr) -> Expr {
     SpannedTyped::new(
         span,
         &Arc::new(TypX::Bool),
-        ExprX::Binary(BinaryOp::Implies, e1.clone(), e2.clone()),
+        ExprX::Logical(LogicalOp::Implies, e1.clone(), e2.clone()),
     )
 }
 
@@ -621,14 +611,14 @@ pub fn mk_ineq(span: &Span, e1: &Expr, e2: &Expr, op: InequalityOp) -> Expr {
     )
 }
 
-pub fn chain_binary(span: &Span, op: BinaryOp, init: &Expr, exprs: &Vec<Expr>) -> Expr {
+pub fn chain_logical(span: &Span, op: LogicalOp, init: &Expr, exprs: &Vec<Expr>) -> Expr {
     if exprs.len() == 0 {
         return init.clone();
     }
 
     let mut expr = exprs[0].clone();
     for e in exprs.iter().skip(1) {
-        expr = SpannedTyped::new(span, &init.typ, ExprX::Binary(op, expr, e.clone()));
+        expr = SpannedTyped::new(span, &init.typ, ExprX::Logical(op, expr, e.clone()));
     }
     expr
 }
@@ -654,11 +644,11 @@ pub fn const_int_from_string(s: String) -> Constant {
 }
 
 pub fn conjoin(span: &Span, exprs: &Vec<Expr>) -> Expr {
-    chain_binary(span, BinaryOp::And, &mk_bool(span, true), exprs)
+    chain_logical(span, LogicalOp::And, &mk_bool(span, true), exprs)
 }
 
 pub fn disjoin(span: &Span, exprs: &Vec<Expr>) -> Expr {
-    chain_binary(span, BinaryOp::Or, &mk_bool(span, false), exprs)
+    chain_logical(span, LogicalOp::Or, &mk_bool(span, false), exprs)
 }
 
 pub fn mk_block(span: &Span, stmts: Vec<Stmt>, expr: Option<Expr>) -> Expr {
@@ -760,7 +750,8 @@ impl FunctionX {
 pub(crate) fn call_no_unwind(call_target: &CallTarget, funs: &HashMap<Fun, Function>) -> bool {
     match call_target {
         CallTarget::FnSpec(_) | CallTarget::BuiltinSpecFun(..) => true,
-        CallTarget::Fun(kind, fun, _, _, _, _) => match kind {
+        CallTarget::AssumeExternal => true,
+        CallTarget::Fun(kind, fun, _, _, _) => match kind {
             CallTargetKind::ProofFn(..) => true,
             CallTargetKind::Static
             | CallTargetKind::Dynamic
@@ -777,14 +768,36 @@ pub(crate) fn call_no_unwind(call_target: &CallTarget, funs: &HashMap<Fun, Funct
 pub fn get_variant<'a>(variants: &'a Variants, variant: &Ident) -> &'a Variant {
     match variants.iter().find(|v| v.name == *variant) {
         Some(variant) => variant,
-        None => panic!("internal error: missing variant {}", &variant),
+        None => panic!("internal error: missing variant {}", variant),
     }
 }
 
 pub fn get_field<'a, A: Clone>(variant: &'a Binders<A>, field: &Ident) -> &'a Binder<A> {
     match variant.iter().find(|f| f.name == *field) {
         Some(field) => field,
-        None => panic!("internal error: missing field {}", &field),
+        None => panic!("internal error: missing field {}", field),
+    }
+}
+
+pub fn get_variant_or_err<'a>(
+    span: &Span,
+    variants: &'a Variants,
+    variant: &Ident,
+) -> Result<&'a Variant, VirErr> {
+    match variants.iter().find(|v| v.name == *variant) {
+        Some(variant) => Ok(variant),
+        None => Err(crate::messages::error(span, format!("no variant named `{:}`", variant))),
+    }
+}
+
+pub fn get_field_or_err<'a, A: Clone>(
+    span: &Span,
+    variant: &'a Binders<A>,
+    field: &Ident,
+) -> Result<&'a Binder<A>, VirErr> {
+    match variant.iter().find(|f| f.name == *field) {
+        Some(field) => Ok(field),
+        None => Err(crate::messages::error(span, format!("no field named `{:}`", field))),
     }
 }
 
@@ -817,7 +830,7 @@ pub(crate) fn referenced_vars_expr(exp: &Expr) -> HashSet<VarIdent> {
         &mut (),
         &mut |_, _, e| {
             match &e.x {
-                ExprX::Var(x) | ExprX::VarLoc(x) => {
+                ExprX::Var(x) => {
                     vars.borrow_mut().insert(x.clone());
                 }
                 _ => (),
@@ -961,12 +974,12 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
         TypX::Primitive(prim, typs) => match prim {
             crate::ast::Primitive::Array => format!(
                 "[{:}; {:}]",
-                &typ_to_diagnostic_str(&typs[0]),
-                &typ_to_diagnostic_str(&typs[1])
+                typ_to_diagnostic_str(&typs[0]),
+                typ_to_diagnostic_str(&typs[1])
             ),
-            crate::ast::Primitive::Slice => format!("[{:}]", &typ_to_diagnostic_str(&typs[0])),
+            crate::ast::Primitive::Slice => format!("[{:}]", typ_to_diagnostic_str(&typs[0])),
             crate::ast::Primitive::StrSlice => "StrSlice".to_owned(),
-            crate::ast::Primitive::Ptr => format!("*mut {:}", &typ_to_diagnostic_str(&typs[0])),
+            crate::ast::Primitive::Ptr => format!("*mut {:}", typ_to_diagnostic_str(&typs[0])),
             crate::ast::Primitive::Global => format!("Global"),
         },
         TypX::Datatype(Dt::Tuple(_arity), typs, _) => {
@@ -995,9 +1008,6 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
         ),
         TypX::Decorate(TypDecoration::Ref, _, typ) => {
             format!("&{}", typ_to_diagnostic_str(typ))
-        }
-        TypX::Decorate(TypDecoration::MutRef, _, typ) => {
-            format!("&mut {}", typ_to_diagnostic_str(typ))
         }
         TypX::Decorate(TypDecoration::ConstPtr, _, typ) => match &**typ {
             TypX::Primitive(crate::ast::Primitive::Ptr, typs) => {
@@ -1279,18 +1289,17 @@ impl HeaderExprX {
             | HeaderExprX::Recommends(_)
             | HeaderExprX::DecreasesWhen(_)
             | HeaderExprX::DecreasesBy(_)
-            | HeaderExprX::InvariantOpens(_, _)
-            | HeaderExprX::InvariantOpensExcept(_, _)
-            | HeaderExprX::InvariantOpensSet(_)
+            | HeaderExprX::OpensInvariantMask(_)
+            | HeaderExprX::AtomicSpec(_)
             | HeaderExprX::Hide(_)
             | HeaderExprX::ExtraDependency(_)
             | HeaderExprX::OpenVisibilityQualifier(_)
             | HeaderExprX::NoUnwind
             | HeaderExprX::NoUnwindWhen(_) => "beginning of the function body",
 
-            HeaderExprX::InvariantExceptBreak(_) | HeaderExprX::Invariant(_) => {
-                "beginning of a loop body"
-            }
+            HeaderExprX::InvariantExceptBreak(_)
+            | HeaderExprX::Invariant(_)
+            | HeaderExprX::AtomicCallLoop => "beginning of a loop body",
 
             HeaderExprX::Ensures(..) | HeaderExprX::Decreases(_) => {
                 "beginning of the function body or a loop body"
@@ -1461,25 +1470,6 @@ impl MutRefFutureSourceName {
 impl ArmX {
     pub(crate) fn has_guard(&self) -> bool {
         !matches!(&self.guard.x, ExprX::Const(Constant::Bool(true)))
-    }
-}
-
-impl BinaryOp {
-    pub fn short_circuits(&self) -> bool {
-        match self {
-            BinaryOp::And | BinaryOp::Or | BinaryOp::Implies => true,
-            BinaryOp::Xor
-            | BinaryOp::HeightCompare { .. }
-            | BinaryOp::Eq(_)
-            | BinaryOp::Ne
-            | BinaryOp::Inequality(_)
-            | BinaryOp::Arith(_)
-            | BinaryOp::RealArith(_)
-            | BinaryOp::Bitwise(..)
-            | BinaryOp::IeeeFloat(_)
-            | BinaryOp::StrGetChar
-            | BinaryOp::Index(..) => false,
-        }
     }
 }
 

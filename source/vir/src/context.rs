@@ -6,7 +6,7 @@ use crate::ast::{
 use crate::ast_util::{dt_as_friendly_rust_name_raw, path_as_friendly_rust_name_raw};
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::{FUEL_ID, NameCtxt};
-use crate::messages::{Span, error};
+use crate::messages::{Span, WarningAllow, error};
 use crate::poly::MonoTyp;
 use crate::recursion::Node;
 use crate::scc::Graph;
@@ -35,6 +35,23 @@ pub struct ChosenTriggers {
     pub manual: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct WarningConfig(pub Vec<WarningAllow>);
+
+impl crate::messages::CheckAllowForWarning for WarningConfig {
+    fn allowed(&self, allow: &WarningAllow) -> bool {
+        self.0.iter().any(|a| a == allow)
+    }
+}
+
+#[derive(Debug)]
+pub struct WarningCtx {
+    // Map names of FunctionX in this crate (not imported from other crates)
+    // to Some CheckAllowForWarning to be used to check that fun,
+    // map names from other crates to None
+    pub fun_warn_configs: HashMap<Fun, Option<WarningConfig>>,
+}
+
 /// Context for across all modules
 pub struct GlobalCtx {
     pub(crate) chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>>, // diagnostics
@@ -50,6 +67,7 @@ pub struct GlobalCtx {
     pub trait_impl_to_extensions: HashMap<Path, Vec<Path>>,
     /// Map TSpec to T
     pub(crate) extension_to_trait: HashMap<Path, Path>,
+    pub(crate) warning_ctx: Arc<WarningCtx>,
     /// Connects quantifier identifiers to the original expression
     pub qid_map: RefCell<HashMap<String, BndInfo>>,
     pub(crate) rlimit: f32,
@@ -60,7 +78,6 @@ pub struct GlobalCtx {
     pub solver: SmtSolver,
     pub check_api_safety: bool,
     pub axiom_usage_info: bool,
-    pub new_mut_ref: bool,
     pub no_bv_simplify: bool,
     pub report_long_running: bool,
 }
@@ -116,6 +133,7 @@ pub struct Ctx {
     // Of course it can be argued that accounting for sha512 collisions
     // is overkill, perhaps this should be revisited.
     pub(crate) string_hashes: RefCell<HashMap<BigUint, Arc<String>>>,
+    pub(crate) byte_string_hashes: RefCell<HashMap<BigUint, Arc<Vec<u8>>>>,
     // proof debug purposes
     pub debug: bool,
     pub arch_word_bits: ArchWordBits,
@@ -148,6 +166,23 @@ impl Ctx {
             Some(FunctionCtx { checking_spec_preconditions: true, .. }) => true,
             Some(FunctionCtx { checking_spec_decreases: true, .. }) => true,
             _ => false,
+        }
+    }
+
+    pub(crate) fn warning_maybe_if_in_local_crate<S: Into<String>>(
+        &self,
+        span: &Span,
+        allow: &WarningAllow,
+        note: impl FnOnce() -> S,
+        emit: impl FnOnce(crate::messages::Message) -> (),
+    ) {
+        if let Some(function_ctx) = &self.fun {
+            let check_allow = &self.global.warning_ctx.fun_warn_configs[&function_ctx.current_fun];
+            crate::messages::warning_maybe_if_in_local_crate(check_allow, span, allow, note, emit);
+        } else {
+            // TODO: if we ever support verifier::allow on expressions,
+            // we can make this warning configurable:
+            emit(crate::messages::warning(span, note()));
         }
     }
 }
@@ -281,11 +316,11 @@ impl GlobalCtx {
         rlimit: f32,
         interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
         func_call_graph_log: Arc<std::sync::Mutex<Option<FuncCallGraphLogFiles>>>,
+        warning_ctx: Arc<WarningCtx>,
         solver: SmtSolver,
         after_simplify: bool,
         check_api_safety: bool,
         axiom_usage_info: bool,
-        new_mut_ref: bool,
         no_bv_simplify: bool,
         report_long_running: bool,
     ) -> Result<Self, VirErr> {
@@ -408,7 +443,10 @@ impl GlobalCtx {
             // This is currently needed because external_body broadcast_forall functions
             // are currently implicitly imported.
             // In the future, this might become less important; we could remove this heuristic.
-            if f.x.body.is_none() && f.x.extra_dependencies.len() == 0 {
+            use crate::ast::FunctionKind::TraitMethodImpl;
+            let inherit_default =
+                matches!(&f.x.kind, TraitMethodImpl { inherit_body_from: Some(_), .. });
+            if f.x.body.is_none() && f.x.extra_dependencies.len() == 0 && !inherit_default {
                 func_call_graph.add_node(Node::Fun(f.x.name.clone()));
             }
         }
@@ -474,6 +512,7 @@ impl GlobalCtx {
                 f,
             )?;
         }
+
         for group in &krate.reveal_groups {
             let group_node = Node::Fun(group.x.name.clone());
             func_call_graph.add_node(group_node.clone());
@@ -690,6 +729,7 @@ impl GlobalCtx {
             datatype_graph_span_infos: span_infos,
             extension_to_trait,
             trait_impl_to_extensions,
+            warning_ctx,
             qid_map,
             rlimit,
             interpreter_log,
@@ -699,7 +739,6 @@ impl GlobalCtx {
             solver,
             check_api_safety,
             axiom_usage_info,
-            new_mut_ref,
             no_bv_simplify,
             report_long_running,
         })
@@ -722,6 +761,7 @@ impl GlobalCtx {
             func_call_sccs: self.func_call_sccs.clone(),
             extension_to_trait: self.extension_to_trait.clone(),
             trait_impl_to_extensions: self.trait_impl_to_extensions.clone(),
+            warning_ctx: self.warning_ctx.clone(),
             qid_map,
             rlimit: self.rlimit,
             interpreter_log,
@@ -731,7 +771,6 @@ impl GlobalCtx {
             solver: self.solver.clone(),
             check_api_safety: self.check_api_safety,
             axiom_usage_info: self.axiom_usage_info,
-            new_mut_ref: self.new_mut_ref,
             no_bv_simplify: self.no_bv_simplify,
             report_long_running: self.report_long_running,
         }
@@ -804,6 +843,7 @@ impl Ctx {
             .extend(reveal_group_set.iter().map(|g| (fun_to_air_ident(&name_ctxt, &g), g.clone())));
         let quantifier_count = Cell::new(0);
         let string_hashes = RefCell::new(HashMap::new());
+        let byte_string_hashes = RefCell::new(HashMap::new());
 
         let mut fndef_type_set = HashSet::new();
         for fndef_type in fndef_types.iter() {
@@ -840,6 +880,7 @@ impl Ctx {
             fun: None,
             global,
             string_hashes,
+            byte_string_hashes,
             debug,
             arch_word_bits: krate.arch.word_bits,
             opaque_type_map,

@@ -4,13 +4,15 @@ mod common;
 use common::*;
 
 test_verify_one_file_with_options! {
-    #[test] test_is_core ["--is-core", "no-auto-import-verus_builtin", "new-mut-ref"] => code! {
+    #[test] test_is_core ["--is-core", "no-auto-import-verus_builtin"] => code! {
         #![allow(unused_parens)]
         #![allow(unused_imports)]
         #![allow(dead_code)]
         #![allow(unused_attributes)]
         #![allow(unused_variables)]
 
+        #![cfg_attr(verus_keep_ghost, feature(atomic_internals))]
+        #![cfg_attr(verus_keep_ghost, feature(generic_atomic))]
         #![cfg_attr(verus_keep_ghost, feature(core_intrinsics))]
         #![cfg_attr(verus_keep_ghost, feature(allocator_api))]
         #![cfg_attr(verus_keep_ghost, feature(step_trait))]
@@ -22,12 +24,14 @@ test_verify_one_file_with_options! {
         #![cfg_attr(verus_keep_ghost, feature(sized_hierarchy))]
         #![cfg_attr(verus_keep_ghost, feature(const_destruct))]
         #![cfg_attr(verus_keep_ghost, feature(derive_eq_internals))]
+        #![feature(hint_must_use)]
+        #![cfg_attr(verus_keep_ghost, feature(fmt_internals))]
+        #![cfg_attr(verus_keep_ghost, feature(fmt_arguments_from_str))]
         #![cfg_attr(
             verus_keep_ghost,
             feature(fn_traits),
         )]
         #![cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
-        #![cfg_attr(verus_keep_ghost, verifier::deprecated_postcondition_mut_ref_style(true))]
 
         #[verifier::external]
         #[path="../../../../builtin/src/lib.rs"]

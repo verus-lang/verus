@@ -5,7 +5,7 @@ use air::ast::Ident;
 use air::context::SmtSolver;
 use air::printer::{macro_push_node, str_to_node};
 use air::{node, nodes, nodes_vec};
-use sise::Node;
+use sise::TreeNode as Node;
 
 pub struct PreludeConfig {
     pub arch_word_bits: crate::ast::ArchWordBits,
@@ -73,11 +73,27 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
             :skolemid skolem_prelude_height_lt
             )))),
         SmtSolver::Cvc5 => nodes_vec!(
-                    (declare-fun partial-order (Height Height) Bool)
-                    (axiom (forall ((x Height)) (partial-order x x)))
-                    (axiom (forall ((x Height) (y Height)) (=> (and (partial-order x y) (partial-order y x)) (= x y))))
-                    (axiom (forall ((x Height) (y Height) (z Height)) (=> (and (partial-order x y) (partial-order y z)) (partial-order x z))))
-                    (axiom (forall ((x Height) (y Height)) (= (height_lt x y) (and (partial-order x y) (not (= x y))))))),
+                    (declare-fun partial-order ([Height] [Height]) Bool)
+                    (axiom (forall ((x [Height])) (!
+                        (partial-order x x)
+                        :pattern ((partial-order x x))
+                        :qid prelude_partial_order_reflexive
+                        :skolemid skolem_prelude_partial_order_reflexive)))
+                    (axiom (forall ((x [Height]) (y [Height])) (!
+                        (=> (and (partial-order x y) (partial-order y x)) (= x y))
+                        :pattern ((partial-order x y) (partial-order y x))
+                        :qid prelude_partial_order_antisymmetric
+                        :skolemid skolem_prelude_partial_order_antisymmetric)))
+                    (axiom (forall ((x [Height]) (y [Height]) (z [Height])) (!
+                        (=> (and (partial-order x y) (partial-order y z)) (partial-order x z))
+                        :pattern ((partial-order x y) (partial-order y z))
+                        :qid prelude_partial_order_transitive
+                        :skolemid skolem_prelude_partial_order_transitive)))
+                    (axiom (forall ((x [Height]) (y [Height])) (!
+                        (= ([height_lt] x y) (and (partial-order x y) (not (= x y))))
+                        :pattern (([height_lt] x y))
+                        :qid prelude_height_lt
+                        :skolemid skolem_prelude_height_lt)))),
     };
     let box_int = str_to_node(BOX_INT);
     let box_bool = str_to_node(BOX_BOOL);
@@ -117,7 +133,6 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
     let decorate_nil_slice = str_to_node(DECORATE_NIL_SLICE);
     let decorate_nil_dyn = str_to_node(DECORATE_NIL_DYN);
     let decorate_ref = str_to_node(DECORATE_REF);
-    let decorate_mut_ref = str_to_node(DECORATE_MUT_REF);
     let decorate_box = str_to_node(DECORATE_BOX);
     let decorate_rc = str_to_node(DECORATE_RC);
     let decorate_arc = str_to_node(DECORATE_ARC);
@@ -207,7 +222,6 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
         (declare-const [decorate_nil_dyn] [decoration])
         (declare-fun [decorate_dst_inherit] ([decoration]) [decoration])
         (declare-fun [decorate_ref] ([decoration]) [decoration])
-        (declare-fun [decorate_mut_ref] ([decoration]) [decoration])
         (declare-fun [decorate_box] ([decoration] [typ] [decoration]) [decoration])
         (declare-fun [decorate_rc] ([decoration] [typ] [decoration]) [decoration])
         (declare-fun [decorate_arc] ([decoration] [typ] [decoration]) [decoration])
@@ -264,8 +278,8 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
                 (has_type ([mut_ref_future] m) t)
             )
             :pattern ((has_type m (MUTREF d t)) ([mut_ref_future] m))
-            :qid prelude_mut_ref_current_has_type
-            :skolemid skolem_prelude_mut_ref_current_has_type
+            :qid prelude_mut_ref_future_has_type
+            :skolemid skolem_prelude_mut_ref_future_has_type
         )))
         (axiom (forall ((m [Poly]) (d [decoration]) (t [typ]) (arg [Poly])) (!
             (=>
@@ -303,12 +317,6 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
             :pattern (([sized] ([decorate_ref] d)))
             :qid prelude_sized_decorate_ref
             :skolemid skolem_prelude_sized_decorate_ref
-        )))
-        (axiom (forall ((d [decoration])) (!
-            ([sized] ([decorate_mut_ref] d))
-            :pattern (([sized] ([decorate_mut_ref] d)))
-            :qid prelude_sized_decorate_mut_ref
-            :skolemid skolem_prelude_sized_decorate_mut_ref
         )))
         (axiom (forall ((d [decoration]) (t [typ]) (d2 [decoration])) (!
             ([sized] ([decorate_box] d t d2))
@@ -483,8 +491,8 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
                 (= x ([box_int] ([unbox_int] x)))
             )
             :pattern (([has_type] x ([type_id_float] bits)))
-            :qid prelude_box_unbox_sint
-            :skolemid skolem_prelude_box_unbox_sint
+            :qid prelude_box_unbox_float
+            :skolemid skolem_prelude_box_unbox_float
         )))
         (axiom (forall ((x [Poly])) (!
             (=>
@@ -688,8 +696,8 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
                 ([has_type] ([box_int] x) ([type_id_float] bits))
             )
             :pattern (([has_type] ([box_int] x) ([type_id_float] bits)))
-            :qid prelude_has_type_sint
-            :skolemid skolem_prelude_has_type_sint
+            :qid prelude_has_type_float
+            :skolemid skolem_prelude_has_type_float
         )))
         (axiom (forall ((x Int)) (!
             (=>
@@ -751,8 +759,8 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
                 ([u_inv] bits ([unbox_int] x))
             )
             :pattern (([has_type] x ([type_id_float] bits)))
-            :qid prelude_unbox_sint
-            :skolemid skolem_prelude_unbox_sint
+            :qid prelude_unbox_float
+            :skolemid skolem_prelude_unbox_float
         )))
 
         // With smt.arith.nl=false, Z3 sometimes fails to prove obvious formulas
@@ -1134,6 +1142,39 @@ pub(crate) fn strslice_functions(strslice_name: &str) -> Vec<Node> {
             :pattern (([new_strlit] x))
             :qid prelude_strlit_injective
             :skolemid skolem_prelude_strlit_injective
+        )))
+    )
+}
+
+pub(crate) fn bytestr_functions(box_array: &str) -> Vec<Node> {
+    let new_bytelit = str_to_node(BYTESTR_NEW_BYTELIT);
+    let from_bytelit_hash = str_to_node(BYTESTR_FROM_BYTELIT_HASH);
+    let box_array = str_to_node(box_array);
+    let has_type = str_to_node(HAS_TYPE);
+    let type_id_array = str_to_node(TYPE_ID_ARRAY);
+    let type_id_uint = str_to_node(TYPE_ID_UINT);
+    let type_id_const_int = str_to_node(TYPE_ID_CONST_INT);
+
+    nodes_vec!(
+        //Byte Strings
+        (declare-fun [new_bytelit] (Int Int) Fun)
+        (declare-fun [from_bytelit_hash] (Fun) Int)
+
+        (axiom (forall ((h Int) (n Int)) (!
+            (= ([from_bytelit_hash] ([new_bytelit] h n)) h)
+            :pattern (([new_bytelit] h n))
+            :qid prelude_bytelit_hash
+            :skolemid skolem_prelude_bytelit_hash
+        )))
+
+        (axiom (forall ((h Int) (n Int)) (!
+            ([has_type]
+                ([box_array] ([new_bytelit] h n))
+                ([type_id_array] $ ([type_id_uint] 8) $ ([type_id_const_int] n))
+            )
+            :pattern (([new_bytelit] h n))
+            :qid prelude_bytelit_has_type
+            :skolemid skolem_prelude_bytelit_has_type
         )))
     )
 }

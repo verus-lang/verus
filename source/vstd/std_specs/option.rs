@@ -56,7 +56,7 @@ pub trait OptionAdditionalFns<T>: Sized {
             old(self).is_Some(),
         ensures
             t == old(self)->0,
-            self.is_None(),
+            final(self).is_None(),
     ;
 }
 
@@ -123,6 +123,7 @@ pub open spec fn is_some<T>(option: &Option<T>) -> bool {
 pub assume_specification<T>[ Option::<T>::is_some ](option: &Option<T>) -> (b: bool)
     ensures
         b == is_some(option),
+    no_unwind
 ;
 
 // is_none
@@ -135,6 +136,7 @@ pub open spec fn is_none<T>(option: &Option<T>) -> bool {
 pub assume_specification<T>[ Option::<T>::is_none ](option: &Option<T>) -> (b: bool)
     ensures
         b == is_none(option),
+    no_unwind
 ;
 
 // as_ref
@@ -142,6 +144,7 @@ pub assume_specification<T>[ Option::<T>::as_ref ](option: &Option<T>) -> (a: Op
     ensures
         a is Some <==> option is Some,
         a is Some ==> option->0 == a->0,
+    no_unwind
 ;
 
 // unwrap
@@ -174,6 +177,7 @@ pub open spec fn spec_unwrap_or<T>(option: Option<T>, default: T) -> T {
 pub assume_specification<T>[ Option::<T>::unwrap_or ](option: Option<T>, default: T) -> (t: T)
     ensures
         t == spec_unwrap_or(option, default),
+    no_unwind
 ;
 
 // expect
@@ -197,7 +201,8 @@ pub assume_specification<T>[ Option::<T>::expect ](option: Option<T>, msg: &str)
 pub assume_specification<T>[ Option::<T>::take ](option: &mut Option<T>) -> (t: Option<T>)
     ensures
         t == *old(option),
-        *option is None,
+        *final(option) is None,
+    no_unwind
 ;
 
 // map
@@ -355,13 +360,12 @@ pub assume_specification<T, E>[ Option::ok_or ](option: Option<T>, err: E) -> (r
 ;
 
 #[doc(hidden)]
-#[verifier::ignore_outside_new_mut_ref_experiment]
 pub assume_specification<T>[ Option::as_mut ](option: &mut Option<T>) -> (res: Option<&mut T>)
     ensures
         (match *old(option) {
             None => final(option).is_none() && res.is_none(),
-            Some(r) => final(option).is_some() && res.is_some() && *res.unwrap() === r
-                && *final(res.unwrap()) === final(option).unwrap(),
+            Some(r) => final(option).is_some() && res.is_some() && *res.unwrap() == r
+                && *final(res.unwrap()) == final(option).unwrap(),
         }),
 ;
 
@@ -374,7 +378,6 @@ pub assume_specification<T>[ Option::as_slice ](option: &Option<T>) -> (res: &[T
 ;
 
 #[doc(hidden)]
-#[verifier::ignore_outside_new_mut_ref_experiment]
 pub assume_specification<T>[ Option::as_mut_slice ](option: &mut Option<T>) -> (res: &mut [T])
     ensures
         res@ == (match *old(option) {
@@ -389,7 +392,6 @@ pub assume_specification<T>[ Option::as_mut_slice ](option: &mut Option<T>) -> (
 ;
 
 #[doc(hidden)]
-#[verifier::ignore_outside_new_mut_ref_experiment]
 pub assume_specification<T>[ Option::insert ](option: &mut Option<T>, value: T) -> (res: &mut T)
     ensures
         *res == value,
@@ -397,7 +399,6 @@ pub assume_specification<T>[ Option::insert ](option: &mut Option<T>, value: T) 
 ;
 
 #[doc(hidden)]
-#[verifier::ignore_outside_new_mut_ref_experiment]
 pub assume_specification<T>[ Option::get_or_insert ](option: &mut Option<T>, value: T) -> (res:
     &mut T)
     ensures

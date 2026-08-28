@@ -1,12 +1,13 @@
 /// This code adds specifications for the standard-library type
 /// `std::collections::VecDeque`.
 use super::super::prelude::*;
+use super::iter::IteratorSpec;
 
 use alloc::collections::vec_deque::Iter;
 use alloc::collections::vec_deque::VecDeque;
 use core::alloc::Allocator;
 use core::clone::Clone;
-use core::ops::Index;
+use core::ops::{Index, IndexMut};
 use core::option::Option;
 use core::option::Option::None;
 
@@ -61,16 +62,25 @@ pub broadcast proof fn axiom_spec_len<T, A: Allocator>(v: &VecDeque<T, A>)
 
 impl<T, A: Allocator> super::core::IndexSpecImpl<usize> for VecDeque<T, A> {
     open spec fn index_req(&self, index: &usize) -> bool {
-        index < self.len()
+        *index < self.len()
     }
 }
 
 pub assume_specification<T, A: Allocator>[ VecDeque::<T, A>::index ](
     v: &VecDeque<T, A>,
     i: usize,
-) -> (result: &T)
+) -> (output: &T)
     ensures
-        result == v.spec_index(i as int),
+        output == v.spec_index(i as int),
+;
+
+pub assume_specification<T, A: Allocator>[ VecDeque::<T, A>::index_mut ](
+    v: &mut VecDeque<T, A>,
+    i: usize,
+) -> (output: &mut T)
+    ensures
+        *output == old(v).spec_index(i as int),
+        final(v)@ == old(v)@.update(i as int, *final(output)),
 ;
 
 #[verifier::when_used_as_spec(spec_vec_dequeue_len)]
@@ -102,7 +112,7 @@ pub assume_specification<T, A: Allocator>[ VecDeque::<T, A>::reserve ](
     additional: usize,
 )
     ensures
-        v@ == old(v)@,
+        final(v)@ == old(v)@,
 ;
 
 pub assume_specification<T, A: Allocator>[ VecDeque::<T, A>::push_back ](
@@ -110,7 +120,7 @@ pub assume_specification<T, A: Allocator>[ VecDeque::<T, A>::push_back ](
     value: T,
 )
     ensures
-        v@ == old(v)@.push(value),
+        final(v)@ == old(v)@.push(value),
 ;
 
 pub assume_specification<T, A: Allocator>[ VecDeque::<T, A>::push_front ](
@@ -118,7 +128,7 @@ pub assume_specification<T, A: Allocator>[ VecDeque::<T, A>::push_front ](
     value: T,
 )
     ensures
-        v@ == seq![value] + old(v)@,
+        final(v)@ == seq![value] + old(v)@,
 ;
 
 pub assume_specification<T, A: Allocator>[ VecDeque::<T, A>::pop_back ](
@@ -129,11 +139,11 @@ pub assume_specification<T, A: Allocator>[ VecDeque::<T, A>::pop_back ](
             Some(x) => {
                 &&& old(v)@.len() > 0
                 &&& x == old(v)@[old(v)@.len() - 1]
-                &&& v@ == old(v)@.subrange(0, old(v)@.len() as int - 1)
+                &&& final(v)@ == old(v)@.subrange(0, old(v)@.len() as int - 1)
             },
             None => {
                 &&& old(v)@.len() == 0
-                &&& v@ == old(v)@
+                &&& final(v)@ == old(v)@
             },
         },
 ;
@@ -146,11 +156,11 @@ pub assume_specification<T, A: Allocator>[ VecDeque::<T, A>::pop_front ](
             Some(x) => {
                 &&& old(v)@.len() > 0
                 &&& x == old(v)@[0]
-                &&& v@ == old(v)@.subrange(1, old(v)@.len() as int)
+                &&& final(v)@ == old(v)@.subrange(1, old(v)@.len() as int)
             },
             None => {
                 &&& old(v)@.len() == 0
-                &&& v@ == old(v)@
+                &&& final(v)@ == old(v)@
             },
         },
 ;
@@ -160,8 +170,8 @@ pub assume_specification<T, A: Allocator>[ VecDeque::<T, A>::append ](
     other: &mut VecDeque<T, A>,
 )
     ensures
-        v@ == old(v)@ + old(other)@,
-        other@ == Seq::<T>::empty(),
+        final(v)@ == old(v)@ + old(other)@,
+        final(other)@ == Seq::<T>::empty(),
 ;
 
 pub assume_specification<T, A: Allocator>[ VecDeque::<T, A>::insert ](
@@ -172,7 +182,7 @@ pub assume_specification<T, A: Allocator>[ VecDeque::<T, A>::insert ](
     requires
         i <= old(v).len(),
     ensures
-        v@ == old(v)@.insert(i as int, element),
+        final(v)@ == old(v)@.insert(i as int, element),
 ;
 
 pub assume_specification<T, A: Allocator>[ VecDeque::<T, A>::remove ](
@@ -184,18 +194,18 @@ pub assume_specification<T, A: Allocator>[ VecDeque::<T, A>::remove ](
             Some(x) => {
                 &&& i < old(v)@.len()
                 &&& x == old(v)@[i as int]
-                &&& v@ == old(v)@.remove(i as int)
+                &&& final(v)@ == old(v)@.remove(i as int)
             },
             None => {
                 &&& old(v)@.len() <= i
-                &&& v@ == old(v)@
+                &&& final(v)@ == old(v)@
             },
         },
 ;
 
 pub assume_specification<T, A: Allocator>[ VecDeque::<T, A>::clear ](v: &mut VecDeque<T, A>)
     ensures
-        v.view() == Seq::<T>::empty(),
+        final(v).view() == Seq::<T>::empty(),
 ;
 
 pub assume_specification<T, A: Allocator + core::clone::Clone>[ VecDeque::<T, A>::split_off ](
@@ -205,7 +215,7 @@ pub assume_specification<T, A: Allocator + core::clone::Clone>[ VecDeque::<T, A>
     requires
         at <= old(v)@.len(),
     ensures
-        v@ == old(v)@.subrange(0, at as int),
+        final(v)@ == old(v)@.subrange(0, at as int),
         return_value@ == old(v)@.subrange(at as int, old(v)@.len() as int),
 ;
 
@@ -231,8 +241,8 @@ pub assume_specification<T, A: Allocator>[ VecDeque::<T, A>::truncate ](
     len: usize,
 )
     ensures
-        len <= old(v).len() ==> v@ == old(v)@.subrange(0, len as int),
-        len > old(v).len() ==> v@ == old(v)@,
+        len <= old(v).len() ==> final(v)@ == old(v)@.subrange(0, len as int),
+        len > old(v).len() ==> final(v)@ == old(v)@,
 ;
 
 pub assume_specification<T: Clone, A: Allocator>[ VecDeque::<T, A>::resize ](
@@ -241,11 +251,13 @@ pub assume_specification<T: Clone, A: Allocator>[ VecDeque::<T, A>::resize ](
     value: T,
 )
     ensures
-        len <= old(v).len() ==> v@ == old(v)@.subrange(0, len as int),
+        len <= old(v).len() ==> final(v)@ == old(v)@.subrange(0, len as int),
         len > old(v).len() ==> {
-            &&& v@.len() == len
-            &&& v@.subrange(0, old(v).len() as int) == old(v)@
-            &&& forall|i| #![all_triggers] old(v).len() <= i < len ==> cloned::<T>(value, v@[i])
+            &&& final(v)@.len() == len
+            &&& final(v)@.subrange(0, old(v).len() as int) == old(v)@
+            &&& forall|i|
+                #![all_triggers]
+                old(v).len() <= i < len ==> cloned::<T>(value, final(v)@[i])
         },
 ;
 
@@ -265,124 +277,52 @@ pub broadcast proof fn axiom_vec_dequeue_index_decreases<A>(v: VecDeque<A>, i: i
 #[verifier::accept_recursive_types(T)]
 pub struct ExIter<'a, T: 'a>(Iter<'a, T>);
 
-impl<'a, T: 'a> View for Iter<'a, T> {
-    type V = (int, Seq<T>);
+// To allow reasoning about the "contents" of the VecDeque iterator, without using
+// a prophecy, we need a function that gives us the underlying sequence of the original vec.
+pub uninterp spec fn into_iter_elts<'a, T: 'a>(i: Iter<'a, T>) -> Seq<&'a T>;
 
-    uninterp spec fn view(self: &Iter<'a, T>) -> (int, Seq<T>);
-}
-
-pub assume_specification<'a, T>[ Iter::<'a, T>::next ](elements: &mut Iter<'a, T>) -> (r: Option<
-    &'a T,
->)
-    ensures
-        ({
-            let (old_index, old_seq) = old(elements)@;
-            match r {
-                None => {
-                    &&& elements@ == old(elements)@
-                    &&& old_index >= old_seq.len()
-                },
-                Some(element) => {
-                    let (new_index, new_seq) = elements@;
-                    &&& 0 <= old_index < old_seq.len()
-                    &&& new_seq == old_seq
-                    &&& new_index == old_index + 1
-                    &&& element == old_seq[old_index]
-                },
-            }
-        }),
-;
-
-pub struct IterGhostIterator<'a, T> {
-    pub pos: int,
-    pub elements: Seq<T>,
-    pub phantom: Option<&'a T>,
-}
-
-impl<'a, T> super::super::pervasive::ForLoopGhostIteratorNew for Iter<'a, T> {
-    type GhostIter = IterGhostIterator<'a, T>;
-
-    open spec fn ghost_iter(&self) -> IterGhostIterator<'a, T> {
-        IterGhostIterator { pos: self@.0, elements: self@.1, phantom: None }
-    }
-}
-
-impl<'a, T: 'a> super::super::pervasive::ForLoopGhostIterator for IterGhostIterator<'a, T> {
-    type ExecIter = Iter<'a, T>;
-
-    type Item = T;
-
-    type Decrease = int;
-
-    open spec fn exec_invariant(&self, exec_iter: &Iter<'a, T>) -> bool {
-        &&& self.pos == exec_iter@.0
-        &&& self.elements == exec_iter@.1
+impl<'a, T: 'a> super::iter::IteratorSpecImpl for Iter<'a, T> {
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        true
     }
 
-    open spec fn ghost_invariant(&self, init: Option<&Self>) -> bool {
-        init matches Some(init) ==> {
-            &&& init.pos == 0
-            &&& init.elements == self.elements
-            &&& 0 <= self.pos <= self.elements.len()
-        }
-    }
+    uninterp spec fn remaining(&self) -> Seq<Self::Item>;
 
-    open spec fn ghost_ensures(&self) -> bool {
-        self.pos == self.elements.len()
-    }
+    uninterp spec fn will_return_none(&self) -> bool;
 
-    open spec fn ghost_decrease(&self) -> Option<int> {
-        Some(self.elements.len() - self.pos)
-    }
+    uninterp spec fn decrease(&self) -> Option<nat>;
 
-    open spec fn ghost_peek_next(&self) -> Option<T> {
-        if 0 <= self.pos < self.elements.len() {
-            Some(self.elements[self.pos])
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        if 0 <= index < into_iter_elts(*self).len() {
+            Some(&into_iter_elts(*self)[index])
         } else {
             None
         }
     }
+}
 
-    open spec fn ghost_advance(&self, _exec_iter: &Iter<'a, T>) -> IterGhostIterator<'a, T> {
-        Self { pos: self.pos + 1, ..*self }
+impl<'a, T: 'a> super::iter::DoubleEndedIteratorSpecImpl for Iter<'a, T> {
+    open spec fn peek_back(&self, index: int) -> Option<Self::Item> {
+        if 0 <= index < into_iter_elts(*self).len() {
+            Some(&into_iter_elts(*self)[into_iter_elts(*self).len() - index - 1])
+        } else {
+            None
+        }
     }
 }
 
-impl<'a, T> View for IterGhostIterator<'a, T> {
-    type V = Seq<T>;
-
-    open spec fn view(&self) -> Seq<T> {
-        self.elements.take(self.pos)
-    }
-}
-
-// To allow reasoning about the ghost iterator when the executable
-// function `iter()` is invoked in a `for` loop header (e.g., in
-// `for x in it: v.iter() { ... }`), we need to specify the behavior of
-// the iterator in spec mode. To do that, we add
-// `#[verifier::when_used_as_spec(spec_iter)` to the specification for
-// the executable `iter` method and define that spec function here.
-pub uninterp spec fn spec_iter<'a, T, A: Allocator>(v: &'a VecDeque<T, A>) -> (r: Iter<'a, T>);
-
-pub broadcast proof fn axiom_spec_iter<'a, T, A: Allocator>(v: &'a VecDeque<T, A>)
-    ensures
-        (#[trigger] spec_iter(v))@ == (0int, v@),
-{
-    admit();
-}
-
-#[verifier::when_used_as_spec(spec_iter)]
 pub assume_specification<'a, T, A: Allocator>[ VecDeque::<T, A>::iter ](
     v: &'a VecDeque<T, A>,
-) -> (r: Iter<'a, T>)
+) -> (iter: Iter<'a, T>)
     ensures
-        r@ == (0int, v@),
+        IteratorSpec::remaining(&iter) == v@.as_ref(),
+        into_iter_elts(iter) == IteratorSpec::remaining(&iter),
+        IteratorSpec::decrease(&iter) is Some,
 ;
 
 pub broadcast group group_vec_dequeue_axioms {
     axiom_spec_len,
     axiom_vec_dequeue_index_decreases,
-    axiom_spec_iter,
 }
 
 } // verus!

@@ -4,6 +4,8 @@ use crate::item::Item;
 use crate::mac::Macro;
 use crate::pat::Pat;
 use crate::token;
+use alloc::boxed::Box;
+use alloc::vec::Vec;
 
 ast_struct! {
     /// A braced block containing Rust statements.
@@ -95,6 +97,8 @@ pub(crate) mod parsing {
     use crate::stmt::{Block, Local, LocalInit, Stmt, StmtMacro};
     use crate::token;
     use crate::ty::Type;
+    use alloc::boxed::Box;
+    use alloc::vec::Vec;
     use proc_macro2::TokenStream;
 
     struct AllowNoSemi(bool);
@@ -257,6 +261,15 @@ pub(crate) mod parsing {
             || input.peek(Token![impl])
             || input.peek(Token![macro])
             || input.peek(Token![broadcast]) && input.peek2(Token![use])
+            || input.peek(Token![broadcast])
+                && input.peek2(Token![proof])
+                && input.peek3(Token![fn])
+            || (input.peek(Token![spec]) || input.peek(Token![proof])) && input.peek2(Token![fn])
+            || (input.peek(Token![spec]) || input.peek(Token![exec])) && input.peek2(Token![const])
+            || (input.peek(Token![ghost]) || input.peek(Token![tracked]))
+                && input.peek2(Token![struct])
+            || (input.peek(Token![ghost]) || input.peek(Token![tracked]))
+                && input.peek2(Token![enum])
             || is_item_macro
         {
             let item = item::parsing::parse_rest_of_item(begin, attrs, input)?;

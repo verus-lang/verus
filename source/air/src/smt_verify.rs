@@ -117,10 +117,15 @@ pub(crate) fn smt_add_decl<'ctx>(context: &mut Context, decl: &Decl) {
 }
 
 impl SmtSolver {
-    pub fn reason_unknown_canceled_str(&self) -> &str {
+    /// The `(get-info :reason-unknown)` responses that mean "the solver hit its
+    /// resource/time budget".  These vary across Z3 versions.
+    pub fn reason_unknown_canceled_strs(&self) -> &'static [&'static str] {
         match self {
-            SmtSolver::Z3 => "(:reason-unknown \"canceled\")",
-            SmtSolver::Cvc5 => "(:reason-unknown resourceout)",
+            SmtSolver::Z3 => &[
+                "(:reason-unknown \"canceled\")",
+                "(:reason-unknown \"max. resource limit exceeded\")",
+            ],
+            SmtSolver::Cvc5 => &["(:reason-unknown resourceout)"],
         }
     }
 
@@ -290,7 +295,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
 
             let mut reason = None;
             for line in smt_output {
-                if line == context.solver.reason_unknown_canceled_str() {
+                if context.solver.reason_unknown_canceled_strs().iter().any(|s| line == *s) {
                     assert!(reason == None);
                     reason = Some(SmtReasonUnknown::Canceled);
                 } else if line == "(:reason-unknown \"unknown\")" {
@@ -357,7 +362,15 @@ pub(crate) fn smt_check_assertion<'ctx>(
 
             ValidityResult::Valid(usage_info)
         }
-        ResultDetermination::Undetermined(false) => smt_get_model(context, infos, air_model),
+        ResultDetermination::Undetermined(false) => {
+            if context.single_check_query {
+                // one obligation: nothing to localize, report it at the query level
+                context.state = ContextState::FoundInvalid(infos, None);
+                ValidityResult::Invalid(None, None, None)
+            } else {
+                smt_get_model(context, infos, air_model)
+            }
+        }
     }
 }
 
@@ -390,10 +403,18 @@ pub(crate) fn smt_get_rlimit_count(context: &mut Context) -> Result<u64, Validit
             Ok((key, value))
         })
         .collect::<Result<HashMap<&str, &str>, ValidityResult>>()?;
-    let Some(rlimit_count) = stats_map["rlimit-count"].parse().ok() else {
-        return Err(ValidityResult::UnexpectedOutput(format!(
-            "expected rlimit-count in smt statistics"
-        )));
+    // `rlimit-count` may be absent (e.g. a prelude-free bit_vector query with nothing yet to count);
+    // treat it as zero. This is resource accounting only, never the verification result.
+    let rlimit_count = match stats_map.get("rlimit-count") {
+        None => 0,
+        Some(value) => {
+            let Some(count) = value.parse().ok() else {
+                return Err(ValidityResult::UnexpectedOutput(format!(
+                    "expected rlimit-count in smt statistics"
+                )));
+            };
+            count
+        }
     };
     Ok(rlimit_count)
 }
@@ -456,7 +477,7 @@ fn smt_get_model(
     }
 
     if context.debug {
-        println!("Z3 model: {:?}", &model);
+        println!("Z3 model: {:?}", model);
     }
 
     // Attach the additional info to the error
@@ -479,7 +500,7 @@ pub(crate) fn smt_check_query<'ctx>(
     air_model: Model,
     report_long_running: Option<&mut ReportLongRunning>,
 ) -> ValidityResult {
-    if !context.disable_incremental_solving {
+    if !context.single_check_query {
         context.smt_log.log_push();
         context.push_name_scope();
     }

@@ -4,7 +4,7 @@ mod common;
 use common::*;
 
 test_verify_one_file_with_options! {
-    #[test] mut_param_with_loops ["new-mut-ref"] => verus_code! {
+    #[test] mut_param_with_loops [] => verus_code! {
         fn cond() -> bool { true }
 
         fn test(mut x: u64) -> (y: u64)
@@ -85,7 +85,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] mut_param_on_closure_with_loops ["new-mut-ref"] => verus_code! {
+    #[test] mut_param_on_closure_with_loops [] => verus_code! {
         fn cond() -> bool { true }
 
         fn test() {
@@ -180,7 +180,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] no_confusion_invariants_spec ["new-mut-ref"] => verus_code! {
+    #[test] no_confusion_invariants_spec [] => verus_code! {
         use vstd::prelude::*;
 
         struct X { }
@@ -197,11 +197,11 @@ test_verify_one_file_with_options! {
             vstd::invariant::open_atomic_invariant!(t => i => {
             });
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot show invariant namespace is in the mask given by the function signature")
+    } => Err(err) => assert_vir_error_msg(err, "cannot show invariant namespace is in the mask given by the scope")
 }
 
 test_verify_one_file_with_options! {
-    #[test] no_confusion_unwind_spec ["new-mut-ref"] => verus_code! {
+    #[test] no_confusion_unwind_spec [] => verus_code! {
         fn panic() { }
 
         fn open(mut x: u64)
@@ -214,7 +214,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] no_confusion_ensures_recommend_check ["new-mut-ref"] => verus_code! {
+    #[test] no_confusion_ensures_recommend_check [] => verus_code! {
         spec fn rec(x: int) -> bool
             recommends x == 2
         {
@@ -230,7 +230,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] no_confusion_ensures_recommend_check_closure ["new-mut-ref"] => verus_code! {
+    #[test] no_confusion_ensures_recommend_check_closure [] => verus_code! {
         spec fn rec(x: u64) -> bool
             recommends x == 2
         {
@@ -248,7 +248,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] no_confusion_decreases_clause ["new-mut-ref"] => verus_code! {
+    #[test] no_confusion_decreases_clause [] => verus_code! {
         #[allow(unconditional_recursion)]
         fn test(mut x: u64)
             decreases x
@@ -260,7 +260,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] mut_param_with_loops_iso_false ["new-mut-ref"] => verus_code! {
+    #[test] mut_param_with_loops_iso_false [] => verus_code! {
         fn cond() -> bool { true }
 
         fn test(mut x: u64) -> (y: u64)
@@ -341,7 +341,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] mut_param_on_closure_with_loops_iso_false ["new-mut-ref"] => verus_code! {
+    #[test] mut_param_on_closure_with_loops_iso_false [] => verus_code! {
         fn cond() -> bool { true }
 
         fn test() {
@@ -436,7 +436,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] mutation_conditional_cases ["new-mut-ref"] => verus_code! {
+    #[test] mutation_conditional_cases [] => verus_code! {
         fn cond() -> bool { true }
 
         #[verifier::loop_isolation(true)]
@@ -562,7 +562,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] mutation_nested_loop ["new-mut-ref"] => verus_code! {
+    #[test] mutation_nested_loop [] => verus_code! {
         fn cond() -> bool { true }
 
         #[verifier::loop_isolation(true)]
@@ -586,4 +586,42 @@ test_verify_one_file_with_options! {
             }
         }
     } => Err(err) => assert_fails(err, 1)
+}
+
+// https://github.com/verus-lang/verus/issues/1933
+// An ident subpattern (`a @ b: T`) in parameter position used to silently
+// register only the outer name (`a`), leaving `b` unregistered - referencing
+// `b` in the body then panicked in mode-checking instead of being rejected
+// here with a clear error.
+test_verify_one_file_with_options! {
+    #[test] ident_subpattern_in_param_position_rejected_not_panicking [] => verus_code! {
+        fn double(a @ b: i32) -> i32 { a + b }
+    } => Err(err) => assert_vir_error_msg(err, "plain identifier pattern")
+}
+
+// A more useful shape than the plain identifier-alias repro above: the
+// subpattern here is a real destructure (`(a, b)`), not just another name -
+// this hits the same underlying bug (pat_to_mut_var silently drops the
+// subpattern regardless of what it is), so it must be rejected the same way
+// rather than only handling the trivial ident-only case from the issue.
+test_verify_one_file_with_options! {
+    #[test] tuple_destructure_at_pattern_in_param_position_rejected_not_panicking [] => verus_code! {
+        fn process(whole @ (a, b): (i32, i32)) -> i32 { a + b + whole.0 }
+    } => Err(err) => assert_vir_error_msg(err, "plain identifier pattern")
+}
+
+// Not just `@` patterns - the check is a positive allow-list (plain
+// identifier only), so ordinary destructuring/wildcard patterns in
+// parameter position are rejected the same way, with the same clear error,
+// rather than relying on pat_to_mut_var's own separate catch-all.
+test_verify_one_file_with_options! {
+    #[test] tuple_pattern_in_param_position_rejected [] => verus_code! {
+        fn add_pair((a, b): (i32, i32)) -> i32 { a + b }
+    } => Err(err) => assert_vir_error_msg(err, "plain identifier pattern")
+}
+
+test_verify_one_file_with_options! {
+    #[test] wildcard_pattern_in_param_position_rejected [] => verus_code! {
+        fn ignore_arg(_: i32) -> i32 { 0 }
+    } => Err(err) => assert_vir_error_msg(err, "plain identifier pattern")
 }

@@ -15,7 +15,7 @@ struct_with_invariants!{
 
     spec fn well_formed(&self) -> bool {
         invariant on field with () is (b: bool, t: Option<T>) {
-            b === t is Some
+            b == t is Some
         }
     }
 }

@@ -9,6 +9,5 @@ transitive2 = { path = "../transitive2" }
 
 [package.metadata.verus]
 verify = true
-test_ignore = true
 
 [workspace]

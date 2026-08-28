@@ -29,7 +29,7 @@ impl<T> View for ManuallyDrop<T> {
 
 pub assume_specification<T>[ ManuallyDrop::<T>::new ](value: T) -> (res: ManuallyDrop<T>)
     ensures
-        res@ === value,
+        res@ == value,
 ;
 
 pub assume_specification<T>[ ManuallyDrop::<T>::into_inner ](m: ManuallyDrop<T>) -> T

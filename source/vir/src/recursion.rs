@@ -198,7 +198,7 @@ fn check_decrease_call(
         let decreases_exp = expr_to_exp_skip_checks(
             ctxt.ctx,
             diagnostics,
-            &params_to_pars(&function.x.params, true),
+            &params_to_pars(&function.x.params),
             expr,
         )?;
         let dec_exp = exp_rename_vars(&decreases_exp, &renames);
@@ -376,7 +376,7 @@ fn check_termination<'a>(
 
     // use expr_to_exp_skip_checks here because checks in decreases done by func_def_to_air
     let decreases_exps = vec_map_result(&function.x.decrease, |e| {
-        expr_to_exp_skip_checks(ctx, diagnostics, &params_to_pars(&function.x.params, true), e)
+        expr_to_exp_skip_checks(ctx, diagnostics, &params_to_pars(&function.x.params), e)
     })?;
     let scc_rep = ctx.global.func_call_graph.get_scc_rep(&Node::Fun(function.x.name.clone()));
     let caller_decreases_typs: Vec<Typ> =
@@ -389,9 +389,9 @@ fn check_termination<'a>(
         caller_decreases_typs,
     };
     let stm = map_stm_visitor(body, &mut |s| match &s.x {
-        StmX::Call { fun, resolved_method, args, dest, .. }
-            if is_recursive_call(&ctxt, fun, resolved_method) =>
-        {
+        StmX::Call {
+            fun: crate::sst::CallTarget::Fun(fun), resolved_method, args, dest, ..
+        } if is_recursive_call(&ctxt, fun, resolved_method) => {
             let check =
                 check_decrease_call(&ctxt, diagnostics, &s.span, fun, resolved_method, args)?;
             let error = error(&s.span, "could not prove termination");
@@ -492,9 +492,16 @@ pub(crate) fn expand_call_graph(
 
     // Add T --> f if T declares method f
     if let FunctionKind::TraitMethodDecl { trait_path, has_default: _ } = &function.x.kind {
-        // T --> f
-        call_graph.add_edge(Node::Trait(trait_path.clone()), f_node.clone());
-        // T --> ...typs...
+        if function.x.mode == crate::ast::Mode::Exec && function.x.attrs.impls_cannot_extend_spec {
+            // We allow a particular form of nontermination of exec functions
+            // by omitting the T --> f edge.
+            // This is only safe for impls_cannot_extend_spec;
+            // otherwise, call_ensures could be used to create an ill-founded spec expression..
+        } else {
+            // T --> f
+            call_graph.add_edge(Node::Trait(trait_path.clone()), f_node.clone());
+            // T --> ...typs...
+        }
     }
 
     // Add D: T --> f and f --> T where f is one of D's methods that implements T
@@ -585,8 +592,13 @@ pub(crate) fn expand_call_graph(
     // (See, for example, test_default17 in rust_verify_test/tests/traits.rs.)
     let add_calls = &mut |expr: &crate::ast::Expr| {
         match &expr.x {
-            ExprX::Call(CallTarget::Fun(kind, x, ts, impl_paths, autospec, _), _, _) => {
-                assert!(*autospec == AutospecUsage::Final);
+            ExprX::Call {
+                target: CallTarget::Fun(kind, x, ts, impl_paths, attrs),
+                args: _,
+                post_args: _,
+                body: _,
+            } => {
+                assert!(attrs.autospec == AutospecUsage::Final);
                 let (callee, ts, impl_paths) = if let CallTargetKind::DynamicResolved {
                     resolved: x_resolved,
                     typs: ts_resolved,
@@ -630,7 +642,12 @@ pub(crate) fn expand_call_graph(
             ExprX::ConstVar(callee, _) => {
                 call_graph.add_edge(f_node.clone(), Node::Fun(callee.clone()))
             }
-            ExprX::Call(CallTarget::BuiltinSpecFun(_bsf, _typs, impl_paths), _, _) => {
+            ExprX::Call {
+                target: CallTarget::BuiltinSpecFun(_bsf, _typs, impl_paths),
+                args: _,
+                post_args: _,
+                body: _,
+            } => {
                 for impl_path in impl_paths.iter() {
                     call_graph.add_edge(f_node.clone(), Node::TraitImpl(impl_path.clone()));
                 }

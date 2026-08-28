@@ -154,7 +154,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
         pub async fn bar(x: &mut usize) -> (ret: ())
             ensures
-                *x == 2333,
+                *final(x) == 2333,
         {
             *x = 2333;
         }
@@ -164,6 +164,17 @@ test_verify_one_file! {
             let future = bar(&mut x);
             future.await;
             assert(x == 2333);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] unit_return_value_issue2321 verus_code! {
+        use vstd::prelude::*;
+        async fn set_zero(x: &mut usize)
+            ensures *final(x) == 0,
+        {
+            *x = 0;
         }
     } => Ok(())
 }

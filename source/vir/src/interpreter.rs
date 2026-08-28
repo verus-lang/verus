@@ -6,16 +6,17 @@
 //! https://github.com/secure-foundations/verus/discussions/120
 
 use crate::ast::{
-    ArchWordBits, ArithOp, ArrayKind, BinaryOp, BitwiseOp, ComputeMode, Constant, CrateId,
-    Div0Behavior, Dt, Fun, FunX, Ident, Idents, InequalityOp, IntRange, IntegerTypeBitwidth,
-    IntegerTypeBoundKind, OverflowBehavior, PathX, Primitive, SpannedTyped, Typ, TypX, UnaryOp,
-    VarBinders, VarIdent, VarIdentDisambiguate, VirErr,
+    ArchWordBits, ArrayKind, BitwiseOp, ComputeMode, Constant, CrateId, Dt, Fun, FunX, Ident,
+    Idents, InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, PathX, Primitive,
+    SpannedTyped, Typ, TypX, Typs, UnaryOp, VarBinders, VarIdent, VarIdentDisambiguate, VirErr,
 };
 use crate::ast_to_sst_func::SstMap;
-use crate::ast_util::{path_as_vstd_name, undecorate_typ};
+use crate::ast_util::{n_types_equal, path_as_vstd_name, types_equal, undecorate_typ};
 use crate::context::GlobalCtx;
-use crate::messages::{Message, Span, ToAny, error, warning};
-use crate::sst::{Bnd, BndX, CallFun, Exp, ExpX, Exps, FunctionSst, Trigs, UniqueIdent};
+use crate::messages::{Message, Span, ToAny, WarningAllow, error};
+use crate::sst::{
+    ArithOp, BinaryOp, Bnd, BndX, CallFun, Exp, ExpX, Exps, FunctionSst, Trigs, UniqueIdent,
+};
 use crate::sst_util::subst_exp;
 use crate::unicode::valid_unicode_scalar_bigint;
 use air::ast::{Binder, BinderX, Binders};
@@ -51,33 +52,33 @@ const WARNING_INTERVAL_SECS: u64 = 2;
 type Env = ScopeMap<UniqueIdent, Exp>;
 type TypeEnv = ScopeMap<Ident, Typ>;
 
-/// `Exps` that support `Hash` and `Eq`. Intended to never leave this module.
-struct ExpsKey {
-    e: Exps,
+/// A call's type and value arguments, supporting `Hash` and `Eq`, so that we can use them
+/// as a key when caching the call's result.  Intended to never leave this module.
+struct CallKey {
+    typs: Typs,
+    args: Exps,
 }
 
-impl Hash for ExpsKey {
+impl Hash for CallKey {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        hash_exps(state, &self.e);
+        // We hash only the value arguments to improve caching (hashing less is always safe)
+        hash_exps(state, &self.args);
     }
 }
 
-impl PartialEq for ExpsKey {
+impl PartialEq for CallKey {
     fn eq(&self, other: &Self) -> bool {
-        self.e.definitely_eq(&other.e)
+        // Include the type arguments, since a polymorphic function may return
+        // different results for different types
+        n_types_equal(&self.typs, &other.typs) && self.args.definitely_eq(&other.args)
     }
 }
 
-impl Eq for ExpsKey {}
+impl Eq for CallKey {}
 
-impl From<Exps> for ExpsKey {
-    fn from(e: Exps) -> Self {
-        Self { e }
-    }
-}
-impl From<&Exps> for ExpsKey {
-    fn from(e: &Exps) -> Self {
-        Self { e: e.clone() }
+impl From<(&Typs, &Exps)> for CallKey {
+    fn from((typs, e): (&Typs, &Exps)) -> Self {
+        Self { typs: typs.clone(), args: e.clone() }
     }
 }
 
@@ -124,9 +125,9 @@ struct State {
     msgs: Vec<Message>,
     /// Collect and display performance data
     perf: bool,
-    /// Cache function invocations, based on their arguments, so we can directly return the
-    /// previously computed result.  Necessary for examples like Fibonacci.
-    cache: HashMap<Fun, HashMap<ExpsKey, Exp>>,
+    /// Cache function invocations, based on their type and value arguments, so we can
+    /// directly return the previously computed result.  Necessary for examples like Fibonacci.
+    cache: HashMap<Fun, HashMap<CallKey, Exp>>,
     enable_cache: bool,
     /// Cache of expressions we have already simplified
     simplified: PtrSet<SpannedTyped<ExpX>>,
@@ -147,9 +148,9 @@ struct State {
 
 // Define the function-call cache's API
 impl State {
-    fn insert_call(&mut self, f: &Fun, args: &Exps, result: &Exp, memoize: bool) {
+    fn insert_call(&mut self, f: &Fun, typs: &Typs, args: &Exps, result: &Exp, memoize: bool) {
         if self.enable_cache && memoize {
-            self.cache.entry(f.clone()).or_default().insert(args.into(), result.clone());
+            self.cache.entry(f.clone()).or_default().insert((typs, args).into(), result.clone());
         }
     }
 
@@ -172,13 +173,13 @@ impl State {
         }
     }
 
-    fn lookup_call(&mut self, f: &Fun, args: &Exps, memoize: bool) -> Option<Exp> {
+    fn lookup_call(&mut self, f: &Fun, typs: &Typs, args: &Exps, memoize: bool) -> Option<Exp> {
         if self.enable_cache && memoize {
             if self.perf {
                 let count = self.fun_calls.entry(f.clone()).or_default();
                 *count += 1;
             }
-            self.cache.get(f)?.get(&args.into()).cloned()
+            self.cache.get(f)?.get(&(typs, args).into()).cloned()
         } else {
             None
         }
@@ -201,7 +202,25 @@ struct Ctx<'a> {
     max_depth: usize,
     arch: ArchWordBits,
     global: &'a GlobalCtx,
+    current_fun: Option<Fun>,
     report_long_running: bool,
+}
+
+impl<'a> Ctx<'a> {
+    pub(crate) fn warning<S: Into<String>>(
+        &self,
+        span: &Span,
+        allow: &WarningAllow,
+        note: impl FnOnce() -> S,
+        emit: impl FnOnce(crate::messages::Message) -> (),
+    ) {
+        if let Some(current_fun) = &self.current_fun {
+            let check_allow = &self.global.warning_ctx.fun_warn_configs[current_fun];
+            crate::messages::warning_maybe_if_in_local_crate(check_allow, span, allow, note, emit);
+        } else {
+            emit(crate::messages::warning(span, note()));
+        }
+    }
 }
 
 /// Interpreter-internal expressions
@@ -221,6 +240,19 @@ pub enum InterpExp {
 /*****************************************************************
  * Functionality needed to compute equality between expressions  *
  *****************************************************************/
+
+/// A call to a trait method may resolve to a specific implementation, in which case the
+/// resolved function and its type arguments are the ones that determine the call's meaning.
+fn resolve_call<'a>(
+    fun: &'a Fun,
+    resolved: &'a Option<(Fun, Typs)>,
+    typs: &'a Typs,
+) -> (&'a Fun, &'a Typs) {
+    match resolved {
+        None => (fun, typs),
+        Some((f, ts)) => (f, ts),
+    }
+}
 
 /// Trait to compute syntactic equality of two objects.
 trait SyntacticEquality {
@@ -392,6 +424,7 @@ impl SyntacticEquality for Exp {
                     (Bool(l), Bool(r)) => Some(l == r),
                     (Int(l), Int(r)) => Some(l == r),
                     (StrSlice(l), StrSlice(r)) => Some(l == r),
+                    (ByteStr(l), ByteStr(r)) => Some(l == r),
                     (Char(l), Char(r)) => Some(l == r),
                     _ => None,
                 }
@@ -403,12 +436,16 @@ impl SyntacticEquality for Exp {
             (Old(id_l, unique_id_l), Old(id_r, unique_id_r)) => {
                 def_eq(id_l == id_r && unique_id_l == unique_id_r)
             }
-            (Call(CallFun::Fun(f_l, _), _, exps_l), Call(CallFun::Fun(f_r, _), _, exps_r)) => {
-                if f_l == f_r && exps_l.len() == exps_r.len() {
+            (
+                Call(CallFun::Fun(f_l, resolved_l), typs_l, exps_l),
+                Call(CallFun::Fun(f_r, resolved_r), typs_r, exps_r),
+            ) => {
+                // Resolve first, so that we compare the functions that actually get called
+                let (f_l, typs_l) = resolve_call(f_l, resolved_l, typs_l);
+                let (f_r, typs_r) = resolve_call(f_r, resolved_r, typs_r);
+                if f_l == f_r && n_types_equal(typs_l, typs_r) && exps_l.len() == exps_r.len() {
                     def_eq(exps_l.syntactic_eq(exps_r)?)
                 } else {
-                    // We don't know if a function call on symbolic values
-                    // will return the same or different values
                     None
                 }
             }
@@ -421,8 +458,14 @@ impl SyntacticEquality for Exp {
                     // These are definitely different datatypes or different
                     // constructors of the same datatype
                     Some(false)
+                } else if bnds_l.syntactic_eq(bnds_r)? {
+                    // Matching fields only make the values equal if the datatypes are
+                    // instantiated at the same type arguments.  We ignore decorations
+                    // (e.g., `&T` vs. `T`), since they don't change a datatype's value,
+                    // and `==` permits them to differ (see `builtin::SpecEq`).
+                    def_eq(types_equal(&undecorate_typ(&self.typ), &undecorate_typ(&other.typ)))
                 } else {
-                    bnds_l.syntactic_eq(bnds_r)
+                    Some(false)
                 }
             }
             (Unary(op_l, e_l), Unary(op_r, e_r)) => def_eq(op_l == op_r && e_l.syntactic_eq(e_r)?),
@@ -915,7 +958,10 @@ fn eval_seq(
                 Ok(exp_new(Call(fun.clone(), typs.clone(), new_args)))
             };
             let get_int = |e: &Exp| match &e.x {
-                Const(Constant::Int(index)) => Some(BigInt::to_usize(index).unwrap()),
+                Const(Constant::Int(index)) => match BigInt::to_usize(index) {
+                    Some(i) => Some(i),
+                    None => None,
+                },
                 _ => None,
             };
             use SeqFn::*;
@@ -990,17 +1036,24 @@ fn eval_seq(
                     Interp(Seq(s)) => match &args[1].x {
                         Const(Constant::Int(index)) => match BigInt::to_usize(index) {
                             None => {
-                                let msg = "Computation tried to index into a sequence using a value that does not fit into usize";
-                                state.msgs.push(warning(&exp.span, msg));
+                                ctx.warning(
+                                    &exp.span,
+                                    &WarningAllow::AssertComputeUnsimplified,
+                                    || "Computation tried to index into a sequence using a value that does not fit into usize",
+                                    |msg| state.msgs.push(msg),
+                                );
                                 ok_seq(&args[0], &s, &args[1..])
                             }
                             Some(index) => {
                                 if index < s.len() {
                                     Ok(s[index].clone())
                                 } else {
-                                    let msg =
-                                        "Computation tried to index past the length of a sequence";
-                                    state.msgs.push(warning(&exp.span, msg));
+                                    ctx.warning(
+                                        &exp.span,
+                                        &WarningAllow::AssertComputeUnsimplified,
+                                        || "Computation tried to index past the length of a sequence",
+                                        |msg| state.msgs.push(msg),
+                                    );
                                     ok_seq(&args[0], &s, &args[1..])
                                 }
                             }
@@ -1046,6 +1099,7 @@ fn eval_seq(
 
 /// Custom interpretation for array_index
 fn eval_array_index(
+    ctx: &Ctx,
     state: &mut State,
     exp: &Exp,
     arr: &Exp,
@@ -1055,26 +1109,30 @@ fn eval_array_index(
     use InterpExp::*;
     let exp_new = |e: ExpX| SpannedTyped::new(&exp.span, &exp.typ, e);
     // If we can't make any progress at all, we return the partially simplified call
-    let ok = Ok(exp_new(Binary(
-        crate::ast::BinaryOp::Index(ArrayKind::Array, crate::ast::BoundsCheck::Allow),
-        arr.clone(),
-        index_exp.clone(),
-    )));
+    let ok = Ok(exp_new(Binary(BinaryOp::Index(ArrayKind::Array), arr.clone(), index_exp.clone())));
     // For now, the only possible function is array_index
     match &arr.x {
         Interp(Array(s)) => match &index_exp.x {
             Const(Constant::Int(i)) => match BigInt::to_usize(i) {
                 None => {
-                    let msg = "Computation tried to index into an array using a value that does not fit into usize";
-                    state.msgs.push(warning(&exp.span, msg));
+                    ctx.warning(
+                        &exp.span,
+                        &WarningAllow::AssertComputeUnsimplified,
+                        || "Computation tried to index into an array using a value that does not fit into usize",
+                        |msg| state.msgs.push(msg),
+                    );
                     ok
                 }
                 Some(index) => {
                     if index < s.len() {
                         Ok(s[index].clone())
                     } else {
-                        let msg = "Computation tried to index past the length of an array";
-                        state.msgs.push(warning(&exp.span, msg));
+                        ctx.warning(
+                            &exp.span,
+                            &WarningAllow::AssertComputeUnsimplified,
+                            || "Computation tried to index past the length of an array",
+                            |msg| state.msgs.push(msg),
+                        );
                         ok
                     }
                 }
@@ -1179,8 +1237,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | Length(..)
                         | MutRefCurrent
                         | MutRefFuture(_)
-                        | MutRefFinal(_)
-                        | InferSpecForLoopIter { .. } => ok,
+                        | MutRefFinal(_) => ok,
                         MustBeFinalized | UnaryOp::MustBeElaborated => {
                             panic!("Found MustBeFinalized op {:?} after calling finalize_exp", exp)
                         }
@@ -1208,9 +1265,12 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                 |lower: BigInt, upper: BigInt| !(i < &lower || i > &upper);
                             let mut apply_range = |lower: BigInt, upper: BigInt| {
                                 if !in_range(lower, upper) {
-                                    let msg =
-                                        "Computation clipped an integer that was out of range";
-                                    state.msgs.push(warning(&exp.span, msg));
+                                    ctx.warning(
+                                        &exp.span,
+                                        &WarningAllow::AssertComputeUnsimplified,
+                                        || "Computation clipped an integer that was out of range",
+                                        |msg| state.msgs.push(msg),
+                                    );
                                     ok.clone()
                                 } else {
                                     // Use the type of clip, not the inner expression,
@@ -1220,9 +1280,12 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                             };
                             let apply_unicode_scalar_range = |state: &mut State| {
                                 if !valid_unicode_scalar_bigint(i) {
-                                    let msg =
-                                        "Computation clipped an integer that was out of range";
-                                    state.msgs.push(warning(&exp.span, msg));
+                                    ctx.warning(
+                                        &exp.span,
+                                        &WarningAllow::AssertComputeUnsimplified,
+                                        || "Computation clipped an integer that was out of range",
+                                        |msg| state.msgs.push(msg),
+                                    );
                                     ok.clone()
                                 } else {
                                     // Use the type of clip, not the inner expression,
@@ -1255,7 +1318,12 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                                 apply_range(lower, upper(32))
                                             } else {
                                                 // may or may not be in range of 64, we must conservatively give up.
-                                                state.msgs.push(warning(&exp.span, "Computation clipped an arch-dependent integer that was out of range"));
+                                                ctx.warning(
+                                                    &exp.span,
+                                                    &WarningAllow::AssertComputeUnsimplified,
+                                                    || "Computation clipped an arch-dependent integer that was out of range",
+                                                    |msg| state.msgs.push(msg),
+                                                );
                                                 ok.clone()
                                             }
                                         }
@@ -1272,7 +1340,12 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                                 apply_range(lower(32), upper(32))
                                             } else {
                                                 // may or may not be in range of 64, we must conservatively give up.
-                                                state.msgs.push(warning(&exp.span, "Computation clipped an arch-dependent integer that was out of range"));
+                                                ctx.warning(
+                                                    &exp.span,
+                                                    &WarningAllow::AssertComputeUnsimplified,
+                                                    || "Computation clipped an arch-dependent integer that was out of range",
+                                                    |msg| state.msgs.push(msg),
+                                                );
                                                 ok.clone()
                                             }
                                         }
@@ -1299,8 +1372,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | Length(..)
                         | MutRefCurrent
                         | MutRefFuture(_)
-                        | MutRefFinal(_)
-                        | InferSpecForLoopIter { .. } => ok,
+                        | MutRefFinal(_) => ok,
                     }
                 }
                 // !(!(e_inner)) == e_inner
@@ -1359,8 +1431,12 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                     }
                 }
                 ToDyn(_) => Ok(e),
+                CustomErr(_) => Ok(e),
+                AutoDecreases => Ok(e),
+                AutoLoopEnsures => Ok(e),
                 ProofNote(_) => Ok(e),
                 HasResolved(_) => Ok(e),
+                LoopIsolationBoundary(_) => Ok(e),
             }
         }
         Binary(op, e1, e2) => {
@@ -1432,7 +1508,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         }
                     }
                 }
-                Eq(_mode) => {
+                Eq => {
                     let e2 = eval_expr_internal(ctx, state, e2)?;
                     match e1.syntactic_eq(&e2) {
                         None => ok_e2(e2),
@@ -1470,89 +1546,58 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         (Const(Int(i1)), Const(Int(i2))) => {
                             use ArithOp::*;
                             match op {
-                                Add(OverflowBehavior::Allow) => int_new(i1 + i2),
-                                Sub(OverflowBehavior::Allow) => int_new(i1 - i2),
-                                Mul(OverflowBehavior::Allow) => int_new(i1 * i2),
-                                EuclideanDiv(Div0Behavior::Allow) => {
+                                Add => int_new(i1 + i2),
+                                Sub => int_new(i1 - i2),
+                                Mul => int_new(i1 * i2),
+                                EuclideanDiv => {
                                     if i2.is_zero() {
                                         ok_e2(e2) // Treat as symbolic instead of erroring
                                     } else {
                                         int_new(i1.div_euclid(i2))
                                     }
                                 }
-                                EuclideanMod(Div0Behavior::Allow) => {
+                                EuclideanMod => {
                                     if i2.is_zero() {
                                         ok_e2(e2) // Treat as symbolic instead of erroring
                                     } else {
                                         int_new(i1.rem_euclid(i2))
                                     }
                                 }
-                                Add(_) | Sub(_) | Mul(_) | EuclideanDiv(_) | EuclideanMod(_) => {
-                                    panic!("complex overflow behavior not expected in exps");
-                                }
                             }
                         }
                         // Special cases for certain concrete values
-                        (Const(Int(i1)), _)
-                            if i1.is_zero() && matches!(op, Add(OverflowBehavior::Allow)) =>
-                        {
-                            Ok(e2.clone())
-                        }
-                        (Const(Int(i1)), _)
-                            if i1.is_zero() && matches!(op, Mul(OverflowBehavior::Allow)) =>
-                        {
-                            zero
-                        }
-                        (Const(Int(i1)), _)
-                            if i1.is_one() && matches!(op, Mul(OverflowBehavior::Allow)) =>
-                        {
-                            Ok(e2.clone())
-                        }
+                        (Const(Int(i1)), _) if i1.is_zero() && matches!(op, Add) => Ok(e2.clone()),
+                        (Const(Int(i1)), _) if i1.is_zero() && matches!(op, Mul) => zero,
+                        (Const(Int(i1)), _) if i1.is_one() && matches!(op, Mul) => Ok(e2.clone()),
                         (_, Const(Int(i2))) if i2.is_zero() => {
                             use ArithOp::*;
                             match op {
-                                Add(OverflowBehavior::Allow) | Sub(OverflowBehavior::Allow) => {
-                                    Ok(e1.clone())
-                                }
-                                Mul(OverflowBehavior::Allow) => zero,
-                                EuclideanDiv(Div0Behavior::Allow) => {
+                                Add | Sub => Ok(e1.clone()),
+                                Mul => zero,
+                                EuclideanDiv => {
                                     ok_e2(e2) // Treat as symbolic instead of erroring
                                 }
-                                EuclideanMod(Div0Behavior::Allow) => {
+                                EuclideanMod => {
                                     ok_e2(e2) // Treat as symbolic instead of erroring
-                                }
-                                Add(_) | Sub(_) | Mul(_) | EuclideanDiv(_) | EuclideanMod(_) => {
-                                    panic!("complex overflow behavior not expected in exps");
                                 }
                             }
                         }
-                        (_, Const(Int(i2)))
-                            if i2.is_one() && matches!(op, EuclideanMod(Div0Behavior::Allow)) =>
-                        {
+                        (_, Const(Int(i2))) if i2.is_one() && matches!(op, EuclideanMod) => {
                             int_new(BigInt::zero())
                         }
-                        (_, Const(Int(i2)))
-                            if i2.is_one()
-                                && matches!(
-                                    op,
-                                    Mul(OverflowBehavior::Allow)
-                                        | EuclideanDiv(Div0Behavior::Allow)
-                                ) =>
-                        {
+                        (_, Const(Int(i2))) if i2.is_one() && matches!(op, Mul | EuclideanDiv) => {
                             Ok(e1.clone())
                         }
                         _ => {
                             match op {
                                 // X - X => 0
-                                ArithOp::Sub(OverflowBehavior::Allow) if e1.definitely_eq(&e2) => {
-                                    zero
-                                }
+                                ArithOp::Sub if e1.definitely_eq(&e2) => zero,
                                 _ => ok_e2(e2),
                             }
                         }
                     }
                 }
-                Bitwise(op, _) => {
+                Bitwise(op) => {
                     use BitwiseOp::*;
                     let e2 = eval_expr_internal(ctx, state, e2)?;
                     match (&e1.x, &e2.x) {
@@ -1561,7 +1606,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                             BitXor => int_new(i1 ^ i2),
                             BitAnd => int_new(i1 & i2),
                             BitOr => int_new(i1 | i2),
-                            Shr(_) => match i2.to_u128() {
+                            Shr => match i2.to_u128() {
                                 None => ok,
                                 Some(i2) => int_new(i1 >> i2),
                             },
@@ -1616,11 +1661,11 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         }
                     }
                 }
-                Index(ArrayKind::Array, _) => {
+                Index(ArrayKind::Array) => {
                     let e2 = eval_expr_internal(ctx, state, e2)?;
-                    eval_array_index(state, exp, &e1, &e2)
+                    eval_array_index(ctx, state, exp, &e1, &e2)
                 }
-                Index(ArrayKind::Slice, _)
+                Index(ArrayKind::Slice)
                 | HeightCompare { .. }
                 | StrGetChar
                 | RealArith(..)
@@ -1656,10 +1701,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             }
         }
         Call(CallFun::Fun(fun, resolved_method), typs, args) => {
-            let (fun, typs) = match resolved_method {
-                None => (fun, typs),
-                Some((f, ts)) => (f, ts),
-            };
+            let (fun, typs) = resolve_call(fun, resolved_method, typs);
             if state.perf {
                 // Record the call for later performance analysis
                 match state.fun_calls.get_mut(fun) {
@@ -1686,7 +1728,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         if func.x.axioms.spec_axioms.is_some() && func.x.kind.inline_okay() =>
                     {
                         let memoize = func.x.attrs.memoize;
-                        match state.lookup_call(&fun, &new_args, memoize) {
+                        match state.lookup_call(&fun, &typs, &new_args, memoize) {
                             Some(prev_result) => {
                                 state.cache_hits += 1;
                                 Ok(prev_result)
@@ -1726,7 +1768,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                 let result = eval_expr_internal(ctx, state, &body);
                                 state.env.pop_scope();
                                 state.type_env.pop_scope();
-                                state.insert_call(fun, &new_args, &result.clone()?, memoize);
+                                state.insert_call(fun, &typs, &new_args, &result.clone()?, memoize);
                                 result
                             }
                         }
@@ -1922,7 +1964,7 @@ fn eval_expr_top(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Simplificati
     use BinaryOp::*;
     use ExpX::*;
     match &exp.x {
-        Binary(op @ (Eq(_) | Ne | Inequality(_)), e1, e2) => {
+        Binary(op @ (Eq | Ne | Inequality(_)), e1, e2) => {
             let e1 = eval_expr_internal(ctx, state, e1)?;
             let e2 = eval_expr_internal(ctx, state, e2)?;
 
@@ -1959,6 +2001,7 @@ fn eval_expr_top(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Simplificati
 /// We run the interpreter on a separate thread, so that we can give it a larger-than-default stack
 fn eval_expr_launch(
     global: &GlobalCtx,
+    current_fun: Option<Fun>,
     exp: Exp,
     fun_ssts: &HashMap<Fun, FunctionSst>,
     rlimit: f32,
@@ -2003,6 +2046,7 @@ fn eval_expr_launch(
         max_depth,
         arch,
         global,
+        current_fun,
         report_long_running: global.report_long_running,
     };
     let result = eval_expr_top(&ctx, &mut state, &exp)?;
@@ -2041,11 +2085,17 @@ fn eval_expr_launch(
                 let res = cleanup_exp(&res)?;
                 // Send partial result to Z3
                 if exp.definitely_eq(&res) {
-                    let msg = format!(
-                        "Failed to simplify expression <<{}>> before sending to Z3",
-                        exp.x.to_user_string(&ctx.global)
+                    ctx.warning(
+                        &exp.span,
+                        &WarningAllow::AssertComputeUnsimplified,
+                        || {
+                            format!(
+                                "Failed to simplify expression <<{}>> before sending to Z3",
+                                exp.x.to_user_string(&ctx.global),
+                            )
+                        },
+                        |msg| state.msgs.push(msg),
                     );
-                    state.msgs.push(warning(&exp.span, msg));
                 }
                 Ok((res, state.msgs))
             }
@@ -2067,7 +2117,7 @@ fn eval_expr_launch(
 
 /// Symbolically evaluate an expression, simplifying it as much as possible
 pub fn eval_expr<D>(
-    global: &GlobalCtx,
+    ctx: &crate::context::Ctx,
     exp: &Exp,
     diagnostics: Option<&D>,
     fun_ssts: SstMap,
@@ -2080,7 +2130,8 @@ where
     D: air::messages::Diagnostics + ?Sized,
 {
     // Make a new global so we can move it into the new thread
-    let global = global.from_self_with_log(global.interpreter_log.clone());
+    let global = ctx.global.from_self_with_log(ctx.global.interpreter_log.clone());
+    let current_fun = ctx.fun.as_ref().map(|f| f.current_fun.clone());
 
     let builder =
         thread::Builder::new().name("interpreter".to_string()).stack_size(1024 * 1024 * 1024); // 1 GB
@@ -2094,6 +2145,7 @@ where
                 .spawn(move || {
                     let res = eval_expr_launch(
                         &global,
+                        current_fun,
                         exp,
                         &*fun_ssts,
                         rlimit,

@@ -166,18 +166,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] index_vec_mut_error verus_code! {
-        use vstd::*;
-
-        fn foo(t: &mut u8) { }
-
-        fn stuff(v: Vec<u8>) {
-            foo(&mut v[0]);
-        }
-    } => Err(err) => assert_vir_error_msg(err, "index for &mut not supported")
-}
-
-test_verify_one_file! {
     #[test] unsigned_wrapping_mul verus_code! {
         use vstd::*;
 
@@ -190,6 +178,23 @@ test_verify_one_file! {
 
             let i = 257u16.wrapping_mul(259);
             assert(i == 1027);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] unsigned_saturating_mul verus_code! {
+        use vstd::*;
+
+        fn test() {
+            let i = 10u64.saturating_mul(20);
+            assert(i == 200);
+
+            let i = 0u64.saturating_mul(u64::MAX);
+            assert(i == 0);
+
+            let i = u64::MAX.saturating_mul(2);
+            assert(i == u64::MAX);
         }
     } => Ok(())
 }
@@ -217,6 +222,26 @@ test_verify_one_file! {
             assert(false); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] wrapping_shift verus_code! {
+        use vstd::wrapping::{u32_specs, i32_specs, u16_specs, i8_specs};
+        proof fn test() by (bit_vector)
+            ensures
+                u16_specs::wrapping_shr(u16::MAX, 1) == 0x7fffu16,
+                u16_specs::wrapping_shr(42u16, 16) == 42u16,
+                u16_specs::wrapping_shr(u16_specs::wrapping_shr(42u16, 1), 15) == 0u16,
+                u16_specs::wrapping_shr(10u16, 1025) == 5u16,
+                i32_specs::wrapping_shr(-1i32, 5) == -1i32,
+                i32_specs::wrapping_shl(1i32, 31) == i32::MIN,
+                i8_specs::wrapping_shl(i8::MIN, 1) == 0i8,
+                i8_specs::wrapping_shl(-1i8, 7) == i8::MIN,
+                forall|x: u32, k: u32| #[trigger] u32_specs::wrapping_shl(x, k) == u32_specs::wrapping_shl(x, k % 32),
+                forall|x: u32| #[trigger] u32_specs::wrapping_shl(x, 0) == x,
+                forall|k: u32| #[trigger] i32_specs::wrapping_shr(-1i32, k) == -1i32,
+        {}
+    } => Ok(())
 }
 
 test_verify_one_file_with_options! {
@@ -269,7 +294,7 @@ test_verify_one_file_with_options! {
         use vstd::*;
 
         fn test() -> (res: Result<u32, bool>)
-            ensures res === Err(false),
+            ensures res == Err(false),
         {
             let x: Result<u8, bool> = Err(false);
             let y = x?;
@@ -445,7 +470,7 @@ test_verify_one_file! {
         }
 
         proof fn test<A: Allocator>(b: Box<u8, A>, c: Box<u8>)
-            requires b == c
+            requires *b == *c
         {
             assert(some_int(b) == some_int(c)); // FAILS
         }
@@ -511,7 +536,7 @@ test_verify_one_file! {
 
         fn test5(a: Box<X>) {
             let b = a.clone();
-            assert(b == X { i: 5 } || b == a);
+            assert(*b == X { i: 5 } || b == a);
         }
     } => Err(err) => assert_fails(err, 3)
 }
@@ -707,4 +732,1165 @@ test_verify_one_file! {
             assert(y@.u == 20); // FAILS
         }
     } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] vec_deref_mut verus_code! {
+        use vstd::prelude::*;
+
+        fn test_implicit_via_adjustment() {
+            let mut a = vec![1, 2];
+            let b: &mut [u64] = &mut a;
+            b[0] = 10;
+            assert(a@ == seq![10, 2]);
+        }
+
+        fn test_overloaded_star_operator() {
+            let mut a = vec![1, 2];
+            let b: &mut [u64] = &mut *a;
+            b[0] = 10;
+            assert(a@ == seq![10, 2]);
+        }
+
+        fn test_overloaded_star_operator2() {
+            let mut a = vec![1, 2];
+            (*a)[1] = 20;
+            assert(a@ == seq![1, 20]);
+        }
+
+        fn fails_implicit_via_adjustment() {
+            let mut a = vec![1, 2];
+            let b: &mut [u64] = &mut a;
+            b[0] = 10;
+            assert(a@ == seq![10, 2]);
+            assert(false); // FAILS
+        }
+
+        fn fails_overloaded_star_operator() {
+            let mut a = vec![1, 2];
+            let b: &mut [u64] = &mut *a;
+            b[0] = 10;
+            assert(a@ == seq![10, 2]);
+            assert(false); // FAILS
+        }
+
+        fn fails_overloaded_star_operator2() {
+            let mut a = vec![1, 2];
+            (*a)[1] = 20;
+            assert(a@ == seq![1, 20]);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] hash_map_entry_api verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::hash::*;
+        use std::collections::hash_map::*;
+        use std::hash::*;
+
+        fn test1() {
+            let mut m = HashMap::<u64, u64>::new();
+
+            // Use entry API to insert to the map
+
+            let entry = m.entry(5);
+            assert(entry.key() == 5 && entry.value() == None);
+
+            let value_ref = entry.or_insert(20);
+            assert(*value_ref == 20);
+
+            *value_ref = 40;
+
+            assert(m@.dom().contains(5) && m@[5] == 40);
+
+            // Use entry API to remove from the map
+
+            let entry = m.entry(5);
+            match entry {
+                Entry::Occupied(occupied_entry) => {
+                    let (k, v) = occupied_entry.remove_entry();
+                    assert(k == 5);
+                    assert(v == 40);
+                }
+                Entry::Vacant(_) => {
+                    assert(false);
+                }
+            }
+
+            assert(!m@.dom().contains(5));
+
+            assert(false); // FAILS
+        }
+
+        fn test_occupied_entry() {
+            let mut m = HashMap::<u64, u64>::new();
+            let entry = m.entry(5);
+            let mut occ_entry = entry.insert_entry(20);
+
+            assert(occ_entry.key() == 5);
+            assert(occ_entry.value() == 20);
+
+            let x = occ_entry.get();
+            assert(*x == 20);
+
+            let x = occ_entry.get_mut();
+            assert(*x == 20);
+            *x = 30;
+
+            assert(occ_entry.key() == 5);
+            assert(occ_entry.value() == 30);
+
+            let x = occ_entry.into_mut();
+            assert(*x == 30);
+            *x = 40;
+
+            assert(m@.dom().contains(5));
+            assert(m@[5] == 40);
+
+            // Now let's remove it
+
+            let entry = m.entry(5);
+            let mut occ_entry = entry.insert_entry(60);
+
+            let (removed_key, removed_value) = occ_entry.remove_entry();
+            assert(removed_key == 5);
+            assert(removed_value == 60);
+
+            assert(m@ =~= Map::empty());
+
+            assert(false); // FAILS
+        }
+
+        fn test_occupied_entry2() {
+            let mut m = HashMap::<u64, u64>::new();
+            let entry = m.entry(5);
+            let mut occ_entry = entry.insert_entry(20);
+
+            let old_value = occ_entry.insert(17);
+            assert(old_value == 20);
+
+            assert(m@.dom().contains(5));
+            assert(m@[5] == 17);
+
+            let entry = m.entry(5);
+            let mut occ_entry = entry.insert_entry(20);
+            let mut old_value = occ_entry.remove();
+            assert(old_value == 20);
+
+            assert(m@ =~= Map::empty());
+
+            assert(false); // FAILS
+        }
+
+        fn test_vacant_entry() {
+            let mut m = HashMap::<u64, u64>::new();
+            let entry = m.entry(5);
+
+            let Entry::Vacant(vac_entry) = entry else { assert(false); return; };
+
+            let k = vac_entry.into_key();
+            assert(k == 5);
+
+            assert(m@ =~= Map::empty());
+
+            assert(false); // FAILS
+        }
+
+        fn test_vacant_entry2() {
+            let mut m = HashMap::<u64, u64>::new();
+            let entry = m.entry(5);
+
+            let Entry::Vacant(vac_entry) = entry else { assert(false); return; };
+
+            // do nothing
+
+            assert(m@ =~= Map::empty());
+
+            assert(false); // FAILS
+        }
+
+        fn test_vacant_entry3() {
+            let mut m = HashMap::<u64, u64>::new();
+            let entry = m.entry(5);
+
+            let Entry::Vacant(vac_entry) = entry else { assert(false); return; };
+
+            let r = vac_entry.insert(20);
+            assert(*r == 20);
+            *r = 30;
+
+            assert(m@.dom().contains(5) && m[5] == 30);
+
+            assert(false); // FAILS
+        }
+
+        fn test_vacant_entry4() {
+            let mut m = HashMap::<u64, u64>::new();
+            let entry = m.entry(5);
+
+            let Entry::Vacant(vac_entry) = entry else { assert(false); return; };
+
+            let mut occ_entry = vac_entry.insert_entry(20);
+            let r = occ_entry.get_mut();
+            assert(*r == 20);
+            *r = 30;
+
+            assert(m@.dom().contains(5) && m[5] == 30);
+
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 7)
+}
+
+test_verify_one_file! {
+    #[test] hash_map_clone_issue1835 verus_code! {
+        use vstd::prelude::*;
+        use std::collections::HashMap;
+
+        pub struct WeirdPair {
+            pub x: u64,
+            pub y: u64,
+        }
+
+        impl Clone for WeirdPair {
+            fn clone(&self) -> (ret: Self)
+                ensures ret == (Self { x: self.x, y: 0 })
+            {
+                Self { x: self.x, y: 0 }
+            }
+        }
+
+        fn test() {
+            let mut h = HashMap::<u64, WeirdPair>::new();
+            h.insert(0, WeirdPair { x: 1, y: 2 });
+            let h2 = h.clone();
+            assert(h2@.dom() == h@.dom());
+            assert(h2@[0] == WeirdPair { x: 1, y: 0 } || h@[0] == h2@[0]);
+        }
+
+        fn test_fails() {
+            let mut h = HashMap::<u64, WeirdPair>::new();
+            h.insert(0, WeirdPair { x: 1, y: 2 });
+            let h2 = h.clone();
+            assert(h2@.dom() == h@.dom());
+            assert(h2@[0] == WeirdPair { x: 1, y: 2 }); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] checked_rem_div_systematic verus_code! {
+        use vstd::prelude::*;
+
+        // These are all generated from actual rustc runs
+
+        fn test_u8_checked_div() {
+            let x = u8::checked_div(0, 0); assert(x == None);
+            let x = u8::checked_div(0, 5); assert(x == Some(0u8));
+            let x = u8::checked_div(0, 255); assert(x == Some(0u8));
+            let x = u8::checked_div(10, 0); assert(x == None);
+            let x = u8::checked_div(10, 5); assert(x == Some(2u8));
+            let x = u8::checked_div(10, 255); assert(x == Some(0u8));
+            let x = u8::checked_div(7, 0); assert(x == None);
+            let x = u8::checked_div(7, 5); assert(x == Some(1u8));
+            let x = u8::checked_div(7, 255); assert(x == Some(0u8));
+            let x = u8::checked_div(255, 0); assert(x == None);
+            let x = u8::checked_div(255, 5); assert(x == Some(51u8));
+            let x = u8::checked_div(255, 255); assert(x == Some(1u8));
+        }
+
+        fn test_u8_checked_div_euclid() {
+            let x = u8::checked_div_euclid(0, 0); assert(x == None);
+            let x = u8::checked_div_euclid(0, 5); assert(x == Some(0u8));
+            let x = u8::checked_div_euclid(0, 255); assert(x == Some(0u8));
+            let x = u8::checked_div_euclid(10, 0); assert(x == None);
+            let x = u8::checked_div_euclid(10, 5); assert(x == Some(2u8));
+            let x = u8::checked_div_euclid(10, 255); assert(x == Some(0u8));
+            let x = u8::checked_div_euclid(7, 0); assert(x == None);
+            let x = u8::checked_div_euclid(7, 5); assert(x == Some(1u8));
+            let x = u8::checked_div_euclid(7, 255); assert(x == Some(0u8));
+            let x = u8::checked_div_euclid(255, 0); assert(x == None);
+            let x = u8::checked_div_euclid(255, 5); assert(x == Some(51u8));
+            let x = u8::checked_div_euclid(255, 255); assert(x == Some(1u8));
+        }
+
+        fn test_u8_checked_rem() {
+            let x = u8::checked_rem(0, 0); assert(x == None);
+            let x = u8::checked_rem(0, 5); assert(x == Some(0u8));
+            let x = u8::checked_rem(0, 255); assert(x == Some(0u8));
+            let x = u8::checked_rem(10, 0); assert(x == None);
+            let x = u8::checked_rem(10, 5); assert(x == Some(0u8));
+            let x = u8::checked_rem(10, 255); assert(x == Some(10u8));
+            let x = u8::checked_rem(7, 0); assert(x == None);
+            let x = u8::checked_rem(7, 5); assert(x == Some(2u8));
+            let x = u8::checked_rem(7, 255); assert(x == Some(7u8));
+            let x = u8::checked_rem(255, 0); assert(x == None);
+            let x = u8::checked_rem(255, 5); assert(x == Some(0u8));
+            let x = u8::checked_rem(255, 255); assert(x == Some(0u8));
+        }
+
+        fn test_u8_checked_rem_euclid() {
+            let x = u8::checked_rem_euclid(0, 0); assert(x == None);
+            let x = u8::checked_rem_euclid(0, 5); assert(x == Some(0u8));
+            let x = u8::checked_rem_euclid(0, 255); assert(x == Some(0u8));
+            let x = u8::checked_rem_euclid(10, 0); assert(x == None);
+            let x = u8::checked_rem_euclid(10, 5); assert(x == Some(0u8));
+            let x = u8::checked_rem_euclid(10, 255); assert(x == Some(10u8));
+            let x = u8::checked_rem_euclid(7, 0); assert(x == None);
+            let x = u8::checked_rem_euclid(7, 5); assert(x == Some(2u8));
+            let x = u8::checked_rem_euclid(7, 255); assert(x == Some(7u8));
+            let x = u8::checked_rem_euclid(255, 0); assert(x == None);
+            let x = u8::checked_rem_euclid(255, 5); assert(x == Some(0u8));
+            let x = u8::checked_rem_euclid(255, 255); assert(x == Some(0u8));
+        }
+
+        fn test_i8_checked_div() {
+            let x = i8::checked_div(-128, -128); assert(x == Some(1i8));
+            let x = i8::checked_div(-128, -5); assert(x == Some(25i8));
+            let x = i8::checked_div(-128, 0); assert(x == None);
+            let x = i8::checked_div(-128, 5); assert(x == Some(-25i8));
+            let x = i8::checked_div(-128, 127); assert(x == Some(-1i8));
+            let x = i8::checked_div(-128, -1); assert(x == None);
+            let x = i8::checked_div(-128, 1); assert(x == Some(-128i8));
+            let x = i8::checked_div(-10, -128); assert(x == Some(0i8));
+            let x = i8::checked_div(-10, -5); assert(x == Some(2i8));
+            let x = i8::checked_div(-10, 0); assert(x == None);
+            let x = i8::checked_div(-10, 5); assert(x == Some(-2i8));
+            let x = i8::checked_div(-10, 127); assert(x == Some(0i8));
+            let x = i8::checked_div(-10, -1); assert(x == Some(10i8));
+        }
+
+        fn test_i8_checked_div_2() {
+            let x = i8::checked_div(-10, 1); assert(x == Some(-10i8));
+            let x = i8::checked_div(-7, -128); assert(x == Some(0i8));
+            let x = i8::checked_div(-7, -5); assert(x == Some(1i8));
+            let x = i8::checked_div(-7, 0); assert(x == None);
+            let x = i8::checked_div(-7, 5); assert(x == Some(-1i8));
+            let x = i8::checked_div(-7, 127); assert(x == Some(0i8));
+            let x = i8::checked_div(-7, -1); assert(x == Some(7i8));
+            let x = i8::checked_div(-7, 1); assert(x == Some(-7i8));
+            let x = i8::checked_div(0, -128); assert(x == Some(0i8));
+            let x = i8::checked_div(0, -5); assert(x == Some(0i8));
+            let x = i8::checked_div(0, 0); assert(x == None);
+            let x = i8::checked_div(0, 5); assert(x == Some(0i8));
+            let x = i8::checked_div(0, 127); assert(x == Some(0i8));
+        }
+
+        fn test_i8_checked_div_3() {
+            let x = i8::checked_div(0, -1); assert(x == Some(0i8));
+            let x = i8::checked_div(0, 1); assert(x == Some(0i8));
+            let x = i8::checked_div(7, -128); assert(x == Some(0i8));
+            let x = i8::checked_div(7, -5); assert(x == Some(-1i8));
+            let x = i8::checked_div(7, 0); assert(x == None);
+            let x = i8::checked_div(7, 5); assert(x == Some(1i8));
+            let x = i8::checked_div(7, 127); assert(x == Some(0i8));
+            let x = i8::checked_div(7, -1); assert(x == Some(-7i8));
+            let x = i8::checked_div(7, 1); assert(x == Some(7i8));
+            let x = i8::checked_div(10, -128); assert(x == Some(0i8));
+            let x = i8::checked_div(10, -5); assert(x == Some(-2i8));
+            let x = i8::checked_div(10, 0); assert(x == None);
+            let x = i8::checked_div(10, 5); assert(x == Some(2i8));
+        }
+
+        fn test_i8_checked_div_4() {
+            let x = i8::checked_div(10, 127); assert(x == Some(0i8));
+            let x = i8::checked_div(10, -1); assert(x == Some(-10i8));
+            let x = i8::checked_div(10, 1); assert(x == Some(10i8));
+            let x = i8::checked_div(127, -128); assert(x == Some(0i8));
+            let x = i8::checked_div(127, -5); assert(x == Some(-25i8));
+            let x = i8::checked_div(127, 0); assert(x == None);
+            let x = i8::checked_div(127, 5); assert(x == Some(25i8));
+            let x = i8::checked_div(127, 127); assert(x == Some(1i8));
+            let x = i8::checked_div(127, -1); assert(x == Some(-127i8));
+            let x = i8::checked_div(127, 1); assert(x == Some(127i8));
+        }
+
+        fn test_i8_checked_div_euclid() {
+            let x = i8::checked_div_euclid(-128, -128); assert(x == Some(1i8));
+            let x = i8::checked_div_euclid(-128, -5); assert(x == Some(26i8));
+            let x = i8::checked_div_euclid(-128, 0); assert(x == None);
+            let x = i8::checked_div_euclid(-128, 5); assert(x == Some(-26i8));
+            let x = i8::checked_div_euclid(-128, 127); assert(x == Some(-2i8));
+            let x = i8::checked_div_euclid(-128, -1); assert(x == None);
+            let x = i8::checked_div_euclid(-128, 1); assert(x == Some(-128i8));
+            let x = i8::checked_div_euclid(-10, -128); assert(x == Some(1i8));
+            let x = i8::checked_div_euclid(-10, -5); assert(x == Some(2i8));
+            let x = i8::checked_div_euclid(-10, 0); assert(x == None);
+            let x = i8::checked_div_euclid(-10, 5); assert(x == Some(-2i8));
+            let x = i8::checked_div_euclid(-10, 127); assert(x == Some(-1i8));
+            let x = i8::checked_div_euclid(-10, -1); assert(x == Some(10i8));
+        }
+
+        fn test_i8_checked_div_euclid_2() {
+            let x = i8::checked_div_euclid(-10, 1); assert(x == Some(-10i8));
+            let x = i8::checked_div_euclid(-7, -128); assert(x == Some(1i8));
+            let x = i8::checked_div_euclid(-7, -5); assert(x == Some(2i8));
+            let x = i8::checked_div_euclid(-7, 0); assert(x == None);
+            let x = i8::checked_div_euclid(-7, 5); assert(x == Some(-2i8));
+            let x = i8::checked_div_euclid(-7, 127); assert(x == Some(-1i8));
+            let x = i8::checked_div_euclid(-7, -1); assert(x == Some(7i8));
+            let x = i8::checked_div_euclid(-7, 1); assert(x == Some(-7i8));
+            let x = i8::checked_div_euclid(0, -128); assert(x == Some(0i8));
+            let x = i8::checked_div_euclid(0, -5); assert(x == Some(0i8));
+            let x = i8::checked_div_euclid(0, 0); assert(x == None);
+            let x = i8::checked_div_euclid(0, 5); assert(x == Some(0i8));
+            let x = i8::checked_div_euclid(0, 127); assert(x == Some(0i8));
+        }
+
+        fn test_i8_checked_div_euclid_3() {
+            let x = i8::checked_div_euclid(0, -1); assert(x == Some(0i8));
+            let x = i8::checked_div_euclid(0, 1); assert(x == Some(0i8));
+            let x = i8::checked_div_euclid(7, -128); assert(x == Some(0i8));
+            let x = i8::checked_div_euclid(7, -5); assert(x == Some(-1i8));
+            let x = i8::checked_div_euclid(7, 0); assert(x == None);
+            let x = i8::checked_div_euclid(7, 5); assert(x == Some(1i8));
+            let x = i8::checked_div_euclid(7, 127); assert(x == Some(0i8));
+            let x = i8::checked_div_euclid(7, -1); assert(x == Some(-7i8));
+            let x = i8::checked_div_euclid(7, 1); assert(x == Some(7i8));
+            let x = i8::checked_div_euclid(10, -128); assert(x == Some(0i8));
+            let x = i8::checked_div_euclid(10, -5); assert(x == Some(-2i8));
+            let x = i8::checked_div_euclid(10, 0); assert(x == None);
+            let x = i8::checked_div_euclid(10, 5); assert(x == Some(2i8));
+        }
+
+        fn test_i8_checked_div_euclid_4() {
+            let x = i8::checked_div_euclid(10, 127); assert(x == Some(0i8));
+            let x = i8::checked_div_euclid(10, -1); assert(x == Some(-10i8));
+            let x = i8::checked_div_euclid(10, 1); assert(x == Some(10i8));
+            let x = i8::checked_div_euclid(127, -128); assert(x == Some(0i8));
+            let x = i8::checked_div_euclid(127, -5); assert(x == Some(-25i8));
+            let x = i8::checked_div_euclid(127, 0); assert(x == None);
+            let x = i8::checked_div_euclid(127, 5); assert(x == Some(25i8));
+            let x = i8::checked_div_euclid(127, 127); assert(x == Some(1i8));
+            let x = i8::checked_div_euclid(127, -1); assert(x == Some(-127i8));
+            let x = i8::checked_div_euclid(127, 1); assert(x == Some(127i8));
+        }
+
+        fn test_i8_checked_rem() {
+            let x = i8::checked_rem(-128, -128); assert(x == Some(0i8));
+            let x = i8::checked_rem(-128, -5); assert(x == Some(-3i8));
+            let x = i8::checked_rem(-128, 0); assert(x == None);
+            let x = i8::checked_rem(-128, 5); assert(x == Some(-3i8));
+            let x = i8::checked_rem(-128, 127); assert(x == Some(-1i8));
+            let x = i8::checked_rem(-128, -1); assert(x == None);
+            let x = i8::checked_rem(-128, 1); assert(x == Some(0i8));
+            let x = i8::checked_rem(-10, -128); assert(x == Some(-10i8));
+            let x = i8::checked_rem(-10, -5); assert(x == Some(0i8));
+            let x = i8::checked_rem(-10, 0); assert(x == None);
+            let x = i8::checked_rem(-10, 5); assert(x == Some(0i8));
+            let x = i8::checked_rem(-10, 127); assert(x == Some(-10i8));
+            let x = i8::checked_rem(-10, -1); assert(x == Some(0i8));
+        }
+
+        fn test_i8_checked_rem_2() {
+            let x = i8::checked_rem(-10, 1); assert(x == Some(0i8));
+            let x = i8::checked_rem(-7, -128); assert(x == Some(-7i8));
+            let x = i8::checked_rem(-7, -5); assert(x == Some(-2i8));
+            let x = i8::checked_rem(-7, 0); assert(x == None);
+            let x = i8::checked_rem(-7, 5); assert(x == Some(-2i8));
+            let x = i8::checked_rem(-7, 127); assert(x == Some(-7i8));
+            let x = i8::checked_rem(-7, -1); assert(x == Some(0i8));
+            let x = i8::checked_rem(-7, 1); assert(x == Some(0i8));
+            let x = i8::checked_rem(0, -128); assert(x == Some(0i8));
+            let x = i8::checked_rem(0, -5); assert(x == Some(0i8));
+            let x = i8::checked_rem(0, 0); assert(x == None);
+            let x = i8::checked_rem(0, 5); assert(x == Some(0i8));
+            let x = i8::checked_rem(0, 127); assert(x == Some(0i8));
+        }
+
+        fn test_i8_checked_rem_3() {
+            let x = i8::checked_rem(0, -1); assert(x == Some(0i8));
+            let x = i8::checked_rem(0, 1); assert(x == Some(0i8));
+            let x = i8::checked_rem(7, -128); assert(x == Some(7i8));
+            let x = i8::checked_rem(7, -5); assert(x == Some(2i8));
+            let x = i8::checked_rem(7, 0); assert(x == None);
+            let x = i8::checked_rem(7, 5); assert(x == Some(2i8));
+            let x = i8::checked_rem(7, 127); assert(x == Some(7i8));
+            let x = i8::checked_rem(7, -1); assert(x == Some(0i8));
+            let x = i8::checked_rem(7, 1); assert(x == Some(0i8));
+            let x = i8::checked_rem(10, -128); assert(x == Some(10i8));
+            let x = i8::checked_rem(10, -5); assert(x == Some(0i8));
+            let x = i8::checked_rem(10, 0); assert(x == None);
+            let x = i8::checked_rem(10, 5); assert(x == Some(0i8));
+        }
+
+        fn test_i8_checked_rem_4() {
+            let x = i8::checked_rem(10, 127); assert(x == Some(10i8));
+            let x = i8::checked_rem(10, -1); assert(x == Some(0i8));
+            let x = i8::checked_rem(10, 1); assert(x == Some(0i8));
+            let x = i8::checked_rem(127, -128); assert(x == Some(127i8));
+            let x = i8::checked_rem(127, -5); assert(x == Some(2i8));
+            let x = i8::checked_rem(127, 0); assert(x == None);
+            let x = i8::checked_rem(127, 5); assert(x == Some(2i8));
+            let x = i8::checked_rem(127, 127); assert(x == Some(0i8));
+            let x = i8::checked_rem(127, -1); assert(x == Some(0i8));
+            let x = i8::checked_rem(127, 1); assert(x == Some(0i8));
+        }
+
+        fn test_i8_checked_rem_euclid() {
+            let x = i8::checked_rem_euclid(-128, -128); assert(x == Some(0i8));
+            let x = i8::checked_rem_euclid(-128, -5); assert(x == Some(2i8));
+            let x = i8::checked_rem_euclid(-128, 0); assert(x == None);
+            let x = i8::checked_rem_euclid(-128, 5); assert(x == Some(2i8));
+            let x = i8::checked_rem_euclid(-128, 127); assert(x == Some(126i8));
+            let x = i8::checked_rem_euclid(-128, -1); assert(x == None);
+            let x = i8::checked_rem_euclid(-128, 1); assert(x == Some(0i8));
+            let x = i8::checked_rem_euclid(-10, -128); assert(x == Some(118i8));
+            let x = i8::checked_rem_euclid(-10, -5); assert(x == Some(0i8));
+            let x = i8::checked_rem_euclid(-10, 0); assert(x == None);
+            let x = i8::checked_rem_euclid(-10, 5); assert(x == Some(0i8));
+            let x = i8::checked_rem_euclid(-10, 127); assert(x == Some(117i8));
+            let x = i8::checked_rem_euclid(-10, -1); assert(x == Some(0i8));
+        }
+
+        fn test_i8_checked_rem_euclid_2() {
+            let x = i8::checked_rem_euclid(-10, 1); assert(x == Some(0i8));
+            let x = i8::checked_rem_euclid(-7, -128); assert(x == Some(121i8));
+            let x = i8::checked_rem_euclid(-7, -5); assert(x == Some(3i8));
+            let x = i8::checked_rem_euclid(-7, 0); assert(x == None);
+            let x = i8::checked_rem_euclid(-7, 5); assert(x == Some(3i8));
+            let x = i8::checked_rem_euclid(-7, 127); assert(x == Some(120i8));
+            let x = i8::checked_rem_euclid(-7, -1); assert(x == Some(0i8));
+            let x = i8::checked_rem_euclid(-7, 1); assert(x == Some(0i8));
+            let x = i8::checked_rem_euclid(0, -128); assert(x == Some(0i8));
+            let x = i8::checked_rem_euclid(0, -5); assert(x == Some(0i8));
+            let x = i8::checked_rem_euclid(0, 0); assert(x == None);
+            let x = i8::checked_rem_euclid(0, 5); assert(x == Some(0i8));
+            let x = i8::checked_rem_euclid(0, 127); assert(x == Some(0i8));
+        }
+
+        fn test_i8_checked_rem_euclid_3() {
+            let x = i8::checked_rem_euclid(0, -1); assert(x == Some(0i8));
+            let x = i8::checked_rem_euclid(0, 1); assert(x == Some(0i8));
+            let x = i8::checked_rem_euclid(7, -128); assert(x == Some(7i8));
+            let x = i8::checked_rem_euclid(7, -5); assert(x == Some(2i8));
+            let x = i8::checked_rem_euclid(7, 0); assert(x == None);
+            let x = i8::checked_rem_euclid(7, 5); assert(x == Some(2i8));
+            let x = i8::checked_rem_euclid(7, 127); assert(x == Some(7i8));
+            let x = i8::checked_rem_euclid(7, -1); assert(x == Some(0i8));
+            let x = i8::checked_rem_euclid(7, 1); assert(x == Some(0i8));
+            let x = i8::checked_rem_euclid(10, -128); assert(x == Some(10i8));
+            let x = i8::checked_rem_euclid(10, -5); assert(x == Some(0i8));
+            let x = i8::checked_rem_euclid(10, 0); assert(x == None);
+            let x = i8::checked_rem_euclid(10, 5); assert(x == Some(0i8));
+        }
+
+        fn test_i8_checked_rem_euclid_4() {
+            let x = i8::checked_rem_euclid(10, 127); assert(x == Some(10i8));
+            let x = i8::checked_rem_euclid(10, -1); assert(x == Some(0i8));
+            let x = i8::checked_rem_euclid(10, 1); assert(x == Some(0i8));
+            let x = i8::checked_rem_euclid(127, -128); assert(x == Some(127i8));
+            let x = i8::checked_rem_euclid(127, -5); assert(x == Some(2i8));
+            let x = i8::checked_rem_euclid(127, 0); assert(x == None);
+            let x = i8::checked_rem_euclid(127, 5); assert(x == Some(2i8));
+            let x = i8::checked_rem_euclid(127, 127); assert(x == Some(0i8));
+            let x = i8::checked_rem_euclid(127, -1); assert(x == Some(0i8));
+            let x = i8::checked_rem_euclid(127, 1); assert(x == Some(0i8));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] checked_next_multiple_of verus_code! {
+        use vstd::prelude::*;
+
+        fn test_u8_checked_next_multiple_of() {
+            let x = u8::checked_next_multiple_of(0, 0); assert(x == None);   // rhs == 0
+            let x = u8::checked_next_multiple_of(10, 0); assert(x == None);  // rhs == 0
+            let x = u8::checked_next_multiple_of(0, 5); assert(x == Some(0u8));
+            let x = u8::checked_next_multiple_of(10, 5); assert(x == Some(10u8));  // already a multiple
+            let x = u8::checked_next_multiple_of(10, 3); assert(x == Some(12u8));  // round up
+            let x = u8::checked_next_multiple_of(250, 7); assert(x == Some(252u8));
+            let x = u8::checked_next_multiple_of(255, 1); assert(x == Some(255u8));
+            let x = u8::checked_next_multiple_of(255, 2); assert(x == None);   // round up overflows
+            let x = u8::checked_next_multiple_of(200, 64); assert(x == None); // round up overflows
+        }
+
+        fn test_usize_checked_next_multiple_of() {
+            let x = usize::checked_next_multiple_of(0, 4); assert(x == Some(0usize));
+            let x = usize::checked_next_multiple_of(8, 4); assert(x == Some(8usize));  // already a multiple
+            let x = usize::checked_next_multiple_of(10, 4); assert(x == Some(12usize)); // round up
+            let x = usize::checked_next_multiple_of(100, 64); assert(x == Some(128usize));
+            let x = usize::checked_next_multiple_of(10, 0); assert(x == None);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] checked_rem_div_systematic_fails verus_code! {
+        use vstd::prelude::*;
+
+        fn fails_u8_checked_div() {
+            let x = u8::checked_div(0, 0); assert(x == None);
+            let x = u8::checked_div(0, 5); assert(x == Some(0u8));
+            let x = u8::checked_div(0, 255); assert(x == Some(0u8));
+            let x = u8::checked_div(10, 0); assert(x == None);
+            let x = u8::checked_div(10, 5); assert(x == Some(2u8));
+            let x = u8::checked_div(10, 255); assert(x == Some(0u8));
+            let x = u8::checked_div(7, 0); assert(x == None);
+            let x = u8::checked_div(7, 5); assert(x == Some(1u8));
+            let x = u8::checked_div(7, 255); assert(x == Some(0u8));
+            let x = u8::checked_div(255, 0); assert(x == None);
+            let x = u8::checked_div(255, 5); assert(x == Some(51u8));
+            let x = u8::checked_div(255, 255); assert(x == Some(1u8));
+            assert(false); // FAILS
+        }
+
+        fn fails_u8_checked_div_euclid() {
+            let x = u8::checked_div_euclid(0, 0); assert(x == None);
+            let x = u8::checked_div_euclid(0, 5); assert(x == Some(0u8));
+            let x = u8::checked_div_euclid(0, 255); assert(x == Some(0u8));
+            let x = u8::checked_div_euclid(10, 0); assert(x == None);
+            let x = u8::checked_div_euclid(10, 5); assert(x == Some(2u8));
+            let x = u8::checked_div_euclid(10, 255); assert(x == Some(0u8));
+            let x = u8::checked_div_euclid(7, 0); assert(x == None);
+            let x = u8::checked_div_euclid(7, 5); assert(x == Some(1u8));
+            let x = u8::checked_div_euclid(7, 255); assert(x == Some(0u8));
+            let x = u8::checked_div_euclid(255, 0); assert(x == None);
+            let x = u8::checked_div_euclid(255, 5); assert(x == Some(51u8));
+            let x = u8::checked_div_euclid(255, 255); assert(x == Some(1u8));
+            assert(false); // FAILS
+        }
+
+        fn fails_u8_checked_rem() {
+            let x = u8::checked_rem(0, 0); assert(x == None);
+            let x = u8::checked_rem(0, 5); assert(x == Some(0u8));
+            let x = u8::checked_rem(0, 255); assert(x == Some(0u8));
+            let x = u8::checked_rem(10, 0); assert(x == None);
+            let x = u8::checked_rem(10, 5); assert(x == Some(0u8));
+            let x = u8::checked_rem(10, 255); assert(x == Some(10u8));
+            let x = u8::checked_rem(7, 0); assert(x == None);
+            let x = u8::checked_rem(7, 5); assert(x == Some(2u8));
+            let x = u8::checked_rem(7, 255); assert(x == Some(7u8));
+            let x = u8::checked_rem(255, 0); assert(x == None);
+            let x = u8::checked_rem(255, 5); assert(x == Some(0u8));
+            let x = u8::checked_rem(255, 255); assert(x == Some(0u8));
+            assert(false); // FAILS
+        }
+
+        fn fails_u8_checked_rem_euclid() {
+            let x = u8::checked_rem_euclid(0, 0); assert(x == None);
+            let x = u8::checked_rem_euclid(0, 5); assert(x == Some(0u8));
+            let x = u8::checked_rem_euclid(0, 255); assert(x == Some(0u8));
+            let x = u8::checked_rem_euclid(10, 0); assert(x == None);
+            let x = u8::checked_rem_euclid(10, 5); assert(x == Some(0u8));
+            let x = u8::checked_rem_euclid(10, 255); assert(x == Some(10u8));
+            let x = u8::checked_rem_euclid(7, 0); assert(x == None);
+            let x = u8::checked_rem_euclid(7, 5); assert(x == Some(2u8));
+            let x = u8::checked_rem_euclid(7, 255); assert(x == Some(7u8));
+            let x = u8::checked_rem_euclid(255, 0); assert(x == None);
+            let x = u8::checked_rem_euclid(255, 5); assert(x == Some(0u8));
+            let x = u8::checked_rem_euclid(255, 255); assert(x == Some(0u8));
+            assert(false); // FAILS
+        }
+
+        fn fails_i8_checked_div() {
+            let x = i8::checked_div(-128, -128); assert(x == Some(1i8));
+            let x = i8::checked_div(-128, -5); assert(x == Some(25i8));
+            let x = i8::checked_div(-128, 0); assert(x == None);
+            let x = i8::checked_div(-128, 5); assert(x == Some(-25i8));
+            let x = i8::checked_div(-128, 127); assert(x == Some(-1i8));
+            let x = i8::checked_div(-128, -1); assert(x == None);
+            let x = i8::checked_div(-128, 1); assert(x == Some(-128i8));
+            let x = i8::checked_div(-10, -128); assert(x == Some(0i8));
+            let x = i8::checked_div(-10, -5); assert(x == Some(2i8));
+            let x = i8::checked_div(-10, 0); assert(x == None);
+            let x = i8::checked_div(-10, 5); assert(x == Some(-2i8));
+            let x = i8::checked_div(-10, 127); assert(x == Some(0i8));
+            let x = i8::checked_div(-10, -1); assert(x == Some(10i8));
+            assert(false); // FAILS
+        }
+
+        fn fails_i8_checked_div_2() {
+            let x = i8::checked_div(-10, 1); assert(x == Some(-10i8));
+            let x = i8::checked_div(-7, -128); assert(x == Some(0i8));
+            let x = i8::checked_div(-7, -5); assert(x == Some(1i8));
+            let x = i8::checked_div(-7, 0); assert(x == None);
+            let x = i8::checked_div(-7, 5); assert(x == Some(-1i8));
+            let x = i8::checked_div(-7, 127); assert(x == Some(0i8));
+            let x = i8::checked_div(-7, -1); assert(x == Some(7i8));
+            let x = i8::checked_div(-7, 1); assert(x == Some(-7i8));
+            let x = i8::checked_div(0, -128); assert(x == Some(0i8));
+            let x = i8::checked_div(0, -5); assert(x == Some(0i8));
+            let x = i8::checked_div(0, 0); assert(x == None);
+            let x = i8::checked_div(0, 5); assert(x == Some(0i8));
+            let x = i8::checked_div(0, 127); assert(x == Some(0i8));
+            assert(false); // FAILS
+        }
+
+        fn fails_i8_checked_div_3() {
+            let x = i8::checked_div(0, -1); assert(x == Some(0i8));
+            let x = i8::checked_div(0, 1); assert(x == Some(0i8));
+            let x = i8::checked_div(7, -128); assert(x == Some(0i8));
+            let x = i8::checked_div(7, -5); assert(x == Some(-1i8));
+            let x = i8::checked_div(7, 0); assert(x == None);
+            let x = i8::checked_div(7, 5); assert(x == Some(1i8));
+            let x = i8::checked_div(7, 127); assert(x == Some(0i8));
+            let x = i8::checked_div(7, -1); assert(x == Some(-7i8));
+            let x = i8::checked_div(7, 1); assert(x == Some(7i8));
+            let x = i8::checked_div(10, -128); assert(x == Some(0i8));
+            let x = i8::checked_div(10, -5); assert(x == Some(-2i8));
+            let x = i8::checked_div(10, 0); assert(x == None);
+            let x = i8::checked_div(10, 5); assert(x == Some(2i8));
+            assert(false); // FAILS
+        }
+
+        fn fails_i8_checked_div_4() {
+            let x = i8::checked_div(10, 127); assert(x == Some(0i8));
+            let x = i8::checked_div(10, -1); assert(x == Some(-10i8));
+            let x = i8::checked_div(10, 1); assert(x == Some(10i8));
+            let x = i8::checked_div(127, -128); assert(x == Some(0i8));
+            let x = i8::checked_div(127, -5); assert(x == Some(-25i8));
+            let x = i8::checked_div(127, 0); assert(x == None);
+            let x = i8::checked_div(127, 5); assert(x == Some(25i8));
+            let x = i8::checked_div(127, 127); assert(x == Some(1i8));
+            let x = i8::checked_div(127, -1); assert(x == Some(-127i8));
+            let x = i8::checked_div(127, 1); assert(x == Some(127i8));
+            assert(false); // FAILS
+        }
+
+        fn fails_i8_checked_div_euclid() {
+            let x = i8::checked_div_euclid(-128, -128); assert(x == Some(1i8));
+            let x = i8::checked_div_euclid(-128, -5); assert(x == Some(26i8));
+            let x = i8::checked_div_euclid(-128, 0); assert(x == None);
+            let x = i8::checked_div_euclid(-128, 5); assert(x == Some(-26i8));
+            let x = i8::checked_div_euclid(-128, 127); assert(x == Some(-2i8));
+            let x = i8::checked_div_euclid(-128, -1); assert(x == None);
+            let x = i8::checked_div_euclid(-128, 1); assert(x == Some(-128i8));
+            let x = i8::checked_div_euclid(-10, -128); assert(x == Some(1i8));
+            let x = i8::checked_div_euclid(-10, -5); assert(x == Some(2i8));
+            let x = i8::checked_div_euclid(-10, 0); assert(x == None);
+            let x = i8::checked_div_euclid(-10, 5); assert(x == Some(-2i8));
+            let x = i8::checked_div_euclid(-10, 127); assert(x == Some(-1i8));
+            let x = i8::checked_div_euclid(-10, -1); assert(x == Some(10i8));
+            assert(false); // FAILS
+        }
+
+        fn fails_i8_checked_div_euclid_2() {
+            let x = i8::checked_div_euclid(-10, 1); assert(x == Some(-10i8));
+            let x = i8::checked_div_euclid(-7, -128); assert(x == Some(1i8));
+            let x = i8::checked_div_euclid(-7, -5); assert(x == Some(2i8));
+            let x = i8::checked_div_euclid(-7, 0); assert(x == None);
+            let x = i8::checked_div_euclid(-7, 5); assert(x == Some(-2i8));
+            let x = i8::checked_div_euclid(-7, 127); assert(x == Some(-1i8));
+            let x = i8::checked_div_euclid(-7, -1); assert(x == Some(7i8));
+            let x = i8::checked_div_euclid(-7, 1); assert(x == Some(-7i8));
+            let x = i8::checked_div_euclid(0, -128); assert(x == Some(0i8));
+            let x = i8::checked_div_euclid(0, -5); assert(x == Some(0i8));
+            let x = i8::checked_div_euclid(0, 0); assert(x == None);
+            let x = i8::checked_div_euclid(0, 5); assert(x == Some(0i8));
+            let x = i8::checked_div_euclid(0, 127); assert(x == Some(0i8));
+            assert(false); // FAILS
+        }
+
+        fn fails_i8_checked_div_euclid_3() {
+            let x = i8::checked_div_euclid(0, -1); assert(x == Some(0i8));
+            let x = i8::checked_div_euclid(0, 1); assert(x == Some(0i8));
+            let x = i8::checked_div_euclid(7, -128); assert(x == Some(0i8));
+            let x = i8::checked_div_euclid(7, -5); assert(x == Some(-1i8));
+            let x = i8::checked_div_euclid(7, 0); assert(x == None);
+            let x = i8::checked_div_euclid(7, 5); assert(x == Some(1i8));
+            let x = i8::checked_div_euclid(7, 127); assert(x == Some(0i8));
+            let x = i8::checked_div_euclid(7, -1); assert(x == Some(-7i8));
+            let x = i8::checked_div_euclid(7, 1); assert(x == Some(7i8));
+            let x = i8::checked_div_euclid(10, -128); assert(x == Some(0i8));
+            let x = i8::checked_div_euclid(10, -5); assert(x == Some(-2i8));
+            let x = i8::checked_div_euclid(10, 0); assert(x == None);
+            let x = i8::checked_div_euclid(10, 5); assert(x == Some(2i8));
+            assert(false); // FAILS
+        }
+
+        fn fails_i8_checked_div_euclid_4() {
+            let x = i8::checked_div_euclid(10, 127); assert(x == Some(0i8));
+            let x = i8::checked_div_euclid(10, -1); assert(x == Some(-10i8));
+            let x = i8::checked_div_euclid(10, 1); assert(x == Some(10i8));
+            let x = i8::checked_div_euclid(127, -128); assert(x == Some(0i8));
+            let x = i8::checked_div_euclid(127, -5); assert(x == Some(-25i8));
+            let x = i8::checked_div_euclid(127, 0); assert(x == None);
+            let x = i8::checked_div_euclid(127, 5); assert(x == Some(25i8));
+            let x = i8::checked_div_euclid(127, 127); assert(x == Some(1i8));
+            let x = i8::checked_div_euclid(127, -1); assert(x == Some(-127i8));
+            let x = i8::checked_div_euclid(127, 1); assert(x == Some(127i8));
+            assert(false); // FAILS
+        }
+
+        fn fails_i8_checked_rem() {
+            let x = i8::checked_rem(-128, -128); assert(x == Some(0i8));
+            let x = i8::checked_rem(-128, -5); assert(x == Some(-3i8));
+            let x = i8::checked_rem(-128, 0); assert(x == None);
+            let x = i8::checked_rem(-128, 5); assert(x == Some(-3i8));
+            let x = i8::checked_rem(-128, 127); assert(x == Some(-1i8));
+            let x = i8::checked_rem(-128, -1); assert(x == None);
+            let x = i8::checked_rem(-128, 1); assert(x == Some(0i8));
+            let x = i8::checked_rem(-10, -128); assert(x == Some(-10i8));
+            let x = i8::checked_rem(-10, -5); assert(x == Some(0i8));
+            let x = i8::checked_rem(-10, 0); assert(x == None);
+            let x = i8::checked_rem(-10, 5); assert(x == Some(0i8));
+            let x = i8::checked_rem(-10, 127); assert(x == Some(-10i8));
+            let x = i8::checked_rem(-10, -1); assert(x == Some(0i8));
+            assert(false); // FAILS
+        }
+
+        fn fails_i8_checked_rem_2() {
+            let x = i8::checked_rem(-10, 1); assert(x == Some(0i8));
+            let x = i8::checked_rem(-7, -128); assert(x == Some(-7i8));
+            let x = i8::checked_rem(-7, -5); assert(x == Some(-2i8));
+            let x = i8::checked_rem(-7, 0); assert(x == None);
+            let x = i8::checked_rem(-7, 5); assert(x == Some(-2i8));
+            let x = i8::checked_rem(-7, 127); assert(x == Some(-7i8));
+            let x = i8::checked_rem(-7, -1); assert(x == Some(0i8));
+            let x = i8::checked_rem(-7, 1); assert(x == Some(0i8));
+            let x = i8::checked_rem(0, -128); assert(x == Some(0i8));
+            let x = i8::checked_rem(0, -5); assert(x == Some(0i8));
+            let x = i8::checked_rem(0, 0); assert(x == None);
+            let x = i8::checked_rem(0, 5); assert(x == Some(0i8));
+            let x = i8::checked_rem(0, 127); assert(x == Some(0i8));
+            assert(false); // FAILS
+        }
+
+        fn fails_i8_checked_rem_3() {
+            let x = i8::checked_rem(0, -1); assert(x == Some(0i8));
+            let x = i8::checked_rem(0, 1); assert(x == Some(0i8));
+            let x = i8::checked_rem(7, -128); assert(x == Some(7i8));
+            let x = i8::checked_rem(7, -5); assert(x == Some(2i8));
+            let x = i8::checked_rem(7, 0); assert(x == None);
+            let x = i8::checked_rem(7, 5); assert(x == Some(2i8));
+            let x = i8::checked_rem(7, 127); assert(x == Some(7i8));
+            let x = i8::checked_rem(7, -1); assert(x == Some(0i8));
+            let x = i8::checked_rem(7, 1); assert(x == Some(0i8));
+            let x = i8::checked_rem(10, -128); assert(x == Some(10i8));
+            let x = i8::checked_rem(10, -5); assert(x == Some(0i8));
+            let x = i8::checked_rem(10, 0); assert(x == None);
+            let x = i8::checked_rem(10, 5); assert(x == Some(0i8));
+            assert(false); // FAILS
+        }
+
+        fn fails_i8_checked_rem_4() {
+            let x = i8::checked_rem(10, 127); assert(x == Some(10i8));
+            let x = i8::checked_rem(10, -1); assert(x == Some(0i8));
+            let x = i8::checked_rem(10, 1); assert(x == Some(0i8));
+            let x = i8::checked_rem(127, -128); assert(x == Some(127i8));
+            let x = i8::checked_rem(127, -5); assert(x == Some(2i8));
+            let x = i8::checked_rem(127, 0); assert(x == None);
+            let x = i8::checked_rem(127, 5); assert(x == Some(2i8));
+            let x = i8::checked_rem(127, 127); assert(x == Some(0i8));
+            let x = i8::checked_rem(127, -1); assert(x == Some(0i8));
+            let x = i8::checked_rem(127, 1); assert(x == Some(0i8));
+            assert(false); // FAILS
+        }
+
+        fn fails_i8_checked_rem_euclid() {
+            let x = i8::checked_rem_euclid(-128, -128); assert(x == Some(0i8));
+            let x = i8::checked_rem_euclid(-128, -5); assert(x == Some(2i8));
+            let x = i8::checked_rem_euclid(-128, 0); assert(x == None);
+            let x = i8::checked_rem_euclid(-128, 5); assert(x == Some(2i8));
+            let x = i8::checked_rem_euclid(-128, 127); assert(x == Some(126i8));
+            let x = i8::checked_rem_euclid(-128, -1); assert(x == None);
+            let x = i8::checked_rem_euclid(-128, 1); assert(x == Some(0i8));
+            let x = i8::checked_rem_euclid(-10, -128); assert(x == Some(118i8));
+            let x = i8::checked_rem_euclid(-10, -5); assert(x == Some(0i8));
+            let x = i8::checked_rem_euclid(-10, 0); assert(x == None);
+            let x = i8::checked_rem_euclid(-10, 5); assert(x == Some(0i8));
+            let x = i8::checked_rem_euclid(-10, 127); assert(x == Some(117i8));
+            let x = i8::checked_rem_euclid(-10, -1); assert(x == Some(0i8));
+            assert(false); // FAILS
+        }
+
+        fn fails_i8_checked_rem_euclid_2() {
+            let x = i8::checked_rem_euclid(-10, 1); assert(x == Some(0i8));
+            let x = i8::checked_rem_euclid(-7, -128); assert(x == Some(121i8));
+            let x = i8::checked_rem_euclid(-7, -5); assert(x == Some(3i8));
+            let x = i8::checked_rem_euclid(-7, 0); assert(x == None);
+            let x = i8::checked_rem_euclid(-7, 5); assert(x == Some(3i8));
+            let x = i8::checked_rem_euclid(-7, 127); assert(x == Some(120i8));
+            let x = i8::checked_rem_euclid(-7, -1); assert(x == Some(0i8));
+            let x = i8::checked_rem_euclid(-7, 1); assert(x == Some(0i8));
+            let x = i8::checked_rem_euclid(0, -128); assert(x == Some(0i8));
+            let x = i8::checked_rem_euclid(0, -5); assert(x == Some(0i8));
+            let x = i8::checked_rem_euclid(0, 0); assert(x == None);
+            let x = i8::checked_rem_euclid(0, 5); assert(x == Some(0i8));
+            let x = i8::checked_rem_euclid(0, 127); assert(x == Some(0i8));
+            assert(false); // FAILS
+        }
+
+        fn fails_i8_checked_rem_euclid_3() {
+            let x = i8::checked_rem_euclid(0, -1); assert(x == Some(0i8));
+            let x = i8::checked_rem_euclid(0, 1); assert(x == Some(0i8));
+            let x = i8::checked_rem_euclid(7, -128); assert(x == Some(7i8));
+            let x = i8::checked_rem_euclid(7, -5); assert(x == Some(2i8));
+            let x = i8::checked_rem_euclid(7, 0); assert(x == None);
+            let x = i8::checked_rem_euclid(7, 5); assert(x == Some(2i8));
+            let x = i8::checked_rem_euclid(7, 127); assert(x == Some(7i8));
+            let x = i8::checked_rem_euclid(7, -1); assert(x == Some(0i8));
+            let x = i8::checked_rem_euclid(7, 1); assert(x == Some(0i8));
+            let x = i8::checked_rem_euclid(10, -128); assert(x == Some(10i8));
+            let x = i8::checked_rem_euclid(10, -5); assert(x == Some(0i8));
+            let x = i8::checked_rem_euclid(10, 0); assert(x == None);
+            let x = i8::checked_rem_euclid(10, 5); assert(x == Some(0i8));
+            assert(false); // FAILS
+        }
+
+        fn fails_i8_checked_rem_euclid_4() {
+            let x = i8::checked_rem_euclid(10, 127); assert(x == Some(10i8));
+            let x = i8::checked_rem_euclid(10, -1); assert(x == Some(0i8));
+            let x = i8::checked_rem_euclid(10, 1); assert(x == Some(0i8));
+            let x = i8::checked_rem_euclid(127, -128); assert(x == Some(127i8));
+            let x = i8::checked_rem_euclid(127, -5); assert(x == Some(2i8));
+            let x = i8::checked_rem_euclid(127, 0); assert(x == None);
+            let x = i8::checked_rem_euclid(127, 5); assert(x == Some(2i8));
+            let x = i8::checked_rem_euclid(127, 127); assert(x == Some(0i8));
+            let x = i8::checked_rem_euclid(127, -1); assert(x == Some(0i8));
+            let x = i8::checked_rem_euclid(127, 1); assert(x == Some(0i8));
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 20)
+}
+
+test_verify_one_file! {
+    #[test] nonzero verus_code! {
+
+        use vstd::prelude::*;
+        use vstd::std_specs::nonzero::*;
+        use std::num::{NonZeroU64, NonZeroI32};
+
+        fn test() {
+            let x = NonZeroI32::new(-20).unwrap();
+            assert(x@ == -20);
+
+            let x1 = x.clone();
+            assert(x1@ == -20);
+
+            let x2 = unsafe { NonZeroI32::new_unchecked(30)};
+            assert(x2@ == 30);
+
+            // assert(x1 < x2); SpecOrd is not supported.
+
+            let b = x1 < x2;
+            assert(b);
+
+            let x3 = x2.get();
+            assert(x3 == 30);
+        }
+
+        fn test_bitor() {
+            let x = NonZeroU64::new(0x1011).unwrap();
+            let y = NonZeroU64::new(0x100).unwrap();
+            let z = x | y;
+            assert(0x1011 | 0x100 == 0x1111) by (compute_only);
+            assert(z@ == 0x1111);
+
+            let z1 = x | 0x1000;
+            assert(0x1011 == 0x1011 | 0x1000) by (compute_only);
+            assert(z1@ == x@);
+            assert(z1 == x);
+        }
+
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] impl_not_issue2519 verus_code! {
+        use std::ops::*;
+        use vstd::prelude::*;
+        use vstd::std_specs::ops::*;
+
+        #[derive(Copy, Clone, PartialEq, Eq)]
+        pub enum B {
+            True,
+            False,
+        }
+
+        impl Not for B {
+            type Output = Self;
+
+            fn not(self) -> (res: Self)
+                ensures
+                    self is True ==> res is False,
+                    self is False ==> res is True,
+            {
+                match self {
+                    B::True => B::False,
+                    B::False => B::True,
+                }
+            }
+        }
+
+        impl NotSpecImpl for B {
+            open spec fn obeys_not_spec() -> bool {
+                true
+            }
+
+            open spec fn not_req(self) -> bool {
+                true
+            }
+
+            open spec fn not_spec(self) -> Self::Output {
+                match self {
+                    B::True => B::False,
+                    B::False => B::True,
+                }
+            }
+        }
+
+        fn main() {
+            let c1 = B::True.not();
+            assert(c1 == B::False);
+
+            let c2 = !B::True;
+            assert(c2 == B::False);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] impl_neg_issue2519 verus_code! {
+        use std::ops::*;
+        use vstd::prelude::*;
+        use vstd::std_specs::ops::*;
+
+        #[derive(Copy, Clone, PartialEq, Eq)]
+        pub enum B {
+            True,
+            False,
+        }
+
+        impl Neg for B {
+            type Output = Self;
+
+            fn neg(self) -> (res: Self)
+                ensures
+                    self is True ==> res is False,
+                    self is False ==> res is True,
+            {
+                match self {
+                    B::True => B::False,
+                    B::False => B::True,
+                }
+            }
+        }
+
+        impl NegSpecImpl for B {
+            open spec fn obeys_neg_spec() -> bool {
+                true
+            }
+
+            open spec fn neg_req(self) -> bool {
+                true
+            }
+
+            open spec fn neg_spec(self) -> Self::Output {
+                match self {
+                    B::True => B::False,
+                    B::False => B::True,
+                }
+            }
+        }
+
+        fn main() {
+            let c1 = B::True.neg();
+            assert(c1 == B::False);
+
+            let c2 = -B::True;
+            assert(c2 == B::False);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] unary_op_of_refs verus_code! {
+        fn test_not() {
+            let x = false;
+            let x_ref = &x;
+
+            let y1 = !x;
+            let y2 = !x_ref;
+            assert(y1 == true);
+            assert(y2 == true);
+        }
+
+        fn test_bitnot() {
+            let x: u8 = 0;
+            let x_ref = &x;
+
+            assert(!0u8 == 255) by(compute_only);
+
+            let y1 = !x;
+            let y2 = !x_ref;
+            assert(y1 == 255);
+            assert(y2 == 255);
+        }
+
+        fn test_neg() {
+            let x: i8 = 10;
+            let x_ref = &x;
+
+            let y1 = -x;
+            let y2 = -x_ref;
+            assert(y1 == -10);
+            assert(y2 == -10);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] format_ok verus_code! {
+        use vstd::*;
+        fn test() {
+            let x = format!("ok");
+            let x = format!("ok {}!", 2);
+            let x = format!("ok {}!", &(2 + 2));
+            let x = format!("ok {:?}!", &(2 + 2));
+            let x = format!("ok {:04}!", &(2 + 2));
+            let u = 5usize + 5usize;
+            let x = format!("ok {} then {} then {} and {}", &(2 + 2), true, x, u);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] format_fail verus_code! {
+        use vstd::*;
+        use core::fmt::{Display, Error, Formatter};
+        struct S;
+        fn bad() requires false {}
+        impl core::fmt::Display for S {
+            fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+                assert(false);
+                bad();
+                Ok(())
+            }
+        }
+        impl vstd::std_specs::fmt::DisplaySpecImpl for S {
+            open spec fn fmt_req(&self, f: &Formatter<'_>) -> bool {
+                false
+            }
+        }
+        fn test() {
+            let s = S;
+            let x = format!("{}", s); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] print_ok verus_code! {
+        use vstd::*;
+
+        // TODO: add std::io::* specs in general to vstd
+        // For now, users can add their own (e.g. with "requires true"):
+        pub assume_specification [std::io::_print] (_0: std::fmt::Arguments<'_>);
+
+        fn test() {
+            println!("ok");
+            println!("ok {}!", 2);
+            println!("ok {}!", &(2 + 2));
+            println!("ok {:?}!", &(2 + 2));
+            println!("ok {:04}!", &(2 + 2));
+            let u = 5usize + 5usize;
+            let x = "hello";
+            println!("ok {} then {} then {} and {}", &(2 + 2), true, x, u);
+        }
+    } => Ok(())
 }

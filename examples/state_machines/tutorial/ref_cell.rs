@@ -365,9 +365,9 @@ impl<'a, S> RefMut<'a, S> {
         requires
             old(self).wf(),
         ensures
-            self.wf(),
+            final(self).wf(),
             out_s == old(self).value(),
-            in_s == self.value(),
+            in_s == final(self).value(),
     {
         self.ref_cell.value_cell.replace(Tracked(self.perm.borrow_mut()), in_s)
     }

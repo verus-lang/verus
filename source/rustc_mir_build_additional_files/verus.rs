@@ -17,7 +17,7 @@ use rustc_middle::thir::{
 use rustc_middle::ty;
 use rustc_middle::ty::{
     Binder, BoundRegion, BoundRegionKind, BoundVar, BoundVarIndexKind, BoundVariableKind,
-    CapturedPlace, GenericArg, Mutability, PolyFnSig, Ty, TyCtxt, TyKind, TypeSuperFoldable,
+    CapturedPlace, FnSigKind, GenericArg, Mutability, Ty, TyCtxt, TyKind, TypeSuperFoldable,
     UpvarCapture, adjustment::DerefAdjustKind,
 };
 use rustc_middle::ty::{TypeFoldable, TypeFolder, UpvarArgs};
@@ -58,7 +58,7 @@ pub enum TreeErase {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum CallErasure {
     /// Erase the call and ALL subexpressions. This can only be used when the node is guaranteed
-    /// to have no proof code in the subtree (outer_mode = spec in modes.rs)
+    /// to have no proof code in the subtree (e.g., consired 'pure' by modes.rs)
     EraseTree(TreeErase),
     Call(NodeErase),
 }
@@ -68,6 +68,30 @@ pub enum CallErasure {
 pub struct BodyErasure {
     pub erase_body: bool,
     pub ret_spec: bool,
+}
+
+/// Set of program locations relative to a Loop expressions.
+/// For a loop, if we mark the two points A and B: `loop { A; body }; B`
+/// then: A = BodyStart and B = PostLoop
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum LoopSpecEvaluationLocation {
+    BodyStart,
+    PostLoop,
+    BodyStartAndPostLoop,
+}
+
+/// Information for a loop.
+#[derive(Debug, Clone)]
+pub struct LoopErasure {
+    pub specs: Vec<(HirId, LoopSpecEvaluationLocation)>,
+}
+
+/// Information about a LocalInvariant open block
+#[derive(Debug, Clone)]
+pub struct LocalInvariantBody {
+    pub inner_block_hir_id: HirId,
+    pub span: rustc_span::Span,
+    pub guard_var: LocalVarId,
 }
 
 /// Global context with all information across the krate.
@@ -82,21 +106,25 @@ pub struct VerusErasureCtxt {
     /// This includes struct constructors as well. The "args" go in source order,
     /// i.e., same order as the fields on the Struct node.
     /// If there's a '..struct_tail' in the ctor, it's the last argument.
-    pub calls: HashMap<HirId, CallErasure>,
+    /// The bool indicates if we should force the return type to be treated as inhabited.
+    pub calls: HashMap<HirId, (CallErasure, bool)>,
 
-    /// Node that should be erased (absolutely), including its adjustments.
-    /// Useful, e.g., to erase a single argument of some call.
-    pub adjusted_node_erasure: HashSet<HirId>,
+    /// Loop headers require special handling. This maps every loop expression to
+    /// a list of all its headers. (Note: the headers themselves should be marked
+    /// EraseAbsolutely so they don't end up being double-handled.)
+    pub loop_erasure: HashMap<HirId, LoopErasure>,
 
     pub bodies: HashMap<LocalDefId, BodyErasure>,
+
+    pub local_invariant_bodies: HashMap<HirId, LocalInvariantBody>,
 
     /// Some DefIds from builtin that we'll need to handle directly
     pub erased_ghost_value_fn_def_id: DefId,
     pub shadow_ghost_value_fn_def_id: DefId,
     pub dummy_capture_struct_def_id: DefId,
     pub mutable_reference_tie_fn_def_id: DefId,
-
-    pub new_mut_ref: bool,
+    pub two_phase_mutable_reference_tie_fn_def_id: DefId,
+    pub get_first_fn_def_id: DefId,
 }
 
 /// Used to communicate the set of LocalDefIds that may require erasure.
@@ -104,6 +132,9 @@ static VERUS_AWARE_DEF_IDS: RwLock<Option<Arc<HashSet<LocalDefId>>>> = RwLock::n
 
 /// Used to communicate the VerusErasureCtxt
 static VERUS_ERASURE_CTXT: RwLock<Option<Arc<VerusErasureCtxt>>> = RwLock::new(None);
+
+/// Used to store the ExtraThir so MIR lowering can pick it up
+static EXTRA_THIR: RwLock<Option<HashMap<LocalDefId, Arc<ExtraThir>>>> = RwLock::new(None);
 
 pub fn set_verus_aware_def_ids(ids: Arc<HashSet<LocalDefId>>) {
     let v: &mut Option<Arc<HashSet<LocalDefId>>> = &mut VERUS_AWARE_DEF_IDS.write().unwrap();
@@ -132,6 +163,14 @@ fn get_verus_erasure_ctxt() -> Arc<VerusErasureCtxt> {
 
 pub(crate) fn get_verus_erasure_ctxt_option() -> Option<Arc<VerusErasureCtxt>> {
     VERUS_ERASURE_CTXT.read().unwrap().clone()
+}
+
+pub(crate) fn get_extra_thir(local_def_id: LocalDefId) -> Option<Arc<ExtraThir>> {
+    let opt_map: &Option<HashMap<LocalDefId, Arc<ExtraThir>>> = &EXTRA_THIR.read().unwrap();
+    match opt_map {
+        Some(map) => map.get(&local_def_id).cloned(),
+        None => None,
+    }
 }
 
 /// Our erasure scheme will fail if this query runs too early, before we initialize the
@@ -169,12 +208,23 @@ pub(crate) fn check_this_query_isnt_running_early(local_def_id: LocalDefId) {
     }
 }
 
+/// Extra information we'd like to add to THIR so that the MIR builder also has access to it
+pub(crate) struct ExtraThir {
+    /// Maps ExprId (Call node or a Loop) -> LocalInvariant bodies it is contained in
+    pub local_invs_for_node: HashMap<ExprId, Vec<LocalInvariantBody>>,
+    /// Treat this call as having an inhabited return type (i.e., don't prune the CFG)
+    pub force_treat_inhabited: HashSet<ExprId>,
+}
+
 /// Per-body context (i.e., one for each function or closure).
 pub(crate) struct VerusThirBuildCtxt {
     pub(crate) ctxt: Option<Arc<VerusErasureCtxt>>,
     closure_overrides: HashMap<LocalDefId, ClosureOverrides>,
     pub(crate) do_time_travel_prevention: bool,
     pub(crate) guard_pattern_vars: Vec<Vec<LocalVarId>>,
+    pub(crate) local_invariants: Vec<usize>,
+    pub(crate) extra_thir: ExtraThir,
+    pub(crate) local_def_id: LocalDefId,
 }
 
 impl VerusThirBuildCtxt {
@@ -184,14 +234,19 @@ impl VerusThirBuildCtxt {
             VERUS_AWARE_DEF_IDS.read().unwrap().clone().unwrap().contains(&fn_local_def_id);
         let ctxt = get_verus_erasure_ctxt_option();
 
-        let do_time_travel_prevention =
-            verus_aware && ctxt.is_some() && ctxt.as_ref().unwrap().new_mut_ref;
+        let do_time_travel_prevention = verus_aware && ctxt.is_some();
 
         VerusThirBuildCtxt {
             ctxt: get_verus_erasure_ctxt_option(),
             closure_overrides: HashMap::new(),
             do_time_travel_prevention,
             guard_pattern_vars: vec![],
+            local_invariants: vec![],
+            extra_thir: ExtraThir {
+                local_invs_for_node: HashMap::new(),
+                force_treat_inhabited: HashSet::new(),
+            },
+            local_def_id: local_def_id,
         }
     }
 
@@ -203,6 +258,14 @@ impl VerusThirBuildCtxt {
                 None => false,
             },
         }
+    }
+
+    pub(crate) fn finish(self) {
+        let opt_map: &mut Option<HashMap<LocalDefId, Arc<ExtraThir>>> =
+            &mut EXTRA_THIR.write().unwrap();
+        let map = opt_map.get_or_insert_with(|| HashMap::new());
+        let found = map.insert(self.local_def_id, Arc::new(self.extra_thir));
+        assert!(found.is_none());
     }
 }
 
@@ -244,13 +307,13 @@ impl CallErasure {
 pub(crate) fn handle_call<'tcx>(
     verus_ctxt: &VerusThirBuildCtxt,
     expr: &'tcx hir::Expr<'tcx>,
-) -> CallErasure {
+) -> (CallErasure, bool) {
     let Some(erasure_ctxt) = verus_ctxt.ctxt.clone() else {
-        return CallErasure::keep_all();
+        return (CallErasure::keep_all(), false);
     };
 
     match erasure_ctxt.calls.get(&expr.hir_id) {
-        None => CallErasure::keep_all(),
+        None => (CallErasure::keep_all(), false),
         Some(call_erasure) => call_erasure.clone(),
     }
 }
@@ -303,7 +366,7 @@ pub(crate) fn erase_tree<'tcx>(
     hir_expr: &'tcx hir::Expr<'tcx>,
     t: TreeErase,
 ) -> ExprId {
-    let kind = erase_tree_kind(cx, hir_expr, t);
+    let kind = erase_tree_kind(cx, hir_expr, hir_expr.hir_id, t);
     let ty = cx.typeck_results.expr_ty(hir_expr);
 
     let expr = Expr { temp_scope_id: hir_expr.hir_id.local_id, ty, span: hir_expr.span, kind };
@@ -326,6 +389,7 @@ pub(crate) fn erase_tree<'tcx>(
 pub(crate) fn erase_tree_kind<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     expr: &'tcx hir::Expr<'tcx>,
+    root_hir_id: HirId,
     t: TreeErase,
 ) -> ExprKind<'tcx> {
     let Some(erasure_ctxt) = cx.verus_ctxt.ctxt.clone() else {
@@ -336,7 +400,7 @@ pub(crate) fn erase_tree_kind<'tcx>(
         TreeErase::IncludeBasicChecks => {
             // We have to preserve all match statements
             let (mut exprs, local_uses) =
-                get_all_stmts_with_pattern_checking(cx, &erasure_ctxt, expr);
+                get_all_stmts_with_pattern_checking(cx, &erasure_ctxt, expr, root_hir_id);
             if cx.verus_ctxt.do_time_travel_prevention {
                 exprs.append(&mut crate::verus_time_travel_prevention::shadow_var_uses(
                     cx,
@@ -541,6 +605,7 @@ pub(crate) fn is_node_with_single_arg_erased_or_shadow<'tcx>(
             is_erased_or_shadow(cx, erasure_ctxt, &cx.thir.exprs[args[0]].kind)
         }
         ExprKind::Borrow { borrow_kind: _, arg }
+        | ExprKind::RawBorrow { mutability: _, arg }
         | ExprKind::Deref { arg }
         | ExprKind::NeverToAny { source: arg }
         | ExprKind::Field { lhs: arg, .. } => {
@@ -574,20 +639,6 @@ fn erased_ghost_value_kind<'tcx>(
     ty: Ty<'tcx>,
 ) -> ExprKind<'tcx> {
     erased_ghost_value_kind_with_args(cx, erasure_ctxt, hir_id, span, ty, vec![])
-}
-
-/// Produce an expression `builtin::erased_ghost_value::<T>((args...))`
-/// The args are packaged as a tuple.
-fn erased_ghost_value_with_args<'tcx>(
-    cx: &mut ThirBuildCx<'tcx>,
-    erasure_ctxt: &VerusErasureCtxt,
-    hir_id: HirId,
-    span: Span,
-    ty: Ty<'tcx>,
-    expr_args: Vec<ExprId>,
-) -> ExprId {
-    let kind = erased_ghost_value_kind_with_args(cx, erasure_ctxt, hir_id, span, ty, expr_args);
-    expr_id_from_kind(cx, kind, hir_id, span, ty)
 }
 
 fn some_ghost_value_with_args<'tcx>(
@@ -784,6 +835,7 @@ fn erase_pat_rec<'tcx>(emode: &PatBindingEraserMode, p: &mut Pat<'tcx>) {
                 erase_pat_rec(emode, p);
             }
         }
+        PatKind::Guard { subpattern, condition: _ } => erase_pat_rec(emode, subpattern),
         PatKind::Never => {}
         PatKind::Error(_error_guaranteed) => {}
     }
@@ -813,12 +865,12 @@ fn get_all_stmts_with_pattern_checking<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     erasure_ctxt: &VerusErasureCtxt,
     expr: &'tcx hir::Expr<'tcx>,
+    root_hir_id: HirId,
 ) -> (Vec<ExprId>, Vec<LocalUse<'tcx>>) {
     use crate::rustc_hir::intravisit::Visitor;
 
     // We use two visitors, one that visits closure bodies and one that doesn't.
 
-    let root_hir_id = expr.hir_id;
     let mut vis = VisitTreeForPats { cx, erasure_ctxt, root_hir_id, output_exprs: vec![] };
     vis.visit_expr(expr);
     let output_exprs = vis.output_exprs;
@@ -842,14 +894,11 @@ impl<'a, 'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitTreeForPats<'a, 'tc
     type NestedFilter = rustc_hir::intravisit::nested_filter::None;
 
     fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
-        if self.erasure_ctxt.adjusted_node_erasure.contains(&expr.hir_id) {
-            return;
-        }
         match &expr.kind {
             hir::ExprKind::Call(..) | hir::ExprKind::MethodCall(..) => {
                 if matches!(
                     self.erasure_ctxt.calls.get(&expr.hir_id),
-                    Some(CallErasure::EraseTree(TreeErase::EraseAbsolutely))
+                    Some((CallErasure::EraseTree(TreeErase::EraseAbsolutely), _))
                 ) {
                     return;
                 }
@@ -895,14 +944,11 @@ impl<'a, 'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitTreeForLocalUses<'a
     }
 
     fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
-        if self.erasure_ctxt.adjusted_node_erasure.contains(&expr.hir_id) {
-            return;
-        }
         match &expr.kind {
             hir::ExprKind::Call(..) | hir::ExprKind::MethodCall(..) => {
                 if matches!(
                     self.erasure_ctxt.calls.get(&expr.hir_id),
-                    Some(CallErasure::EraseTree(TreeErase::EraseAbsolutely))
+                    Some((CallErasure::EraseTree(TreeErase::EraseAbsolutely), _))
                 ) {
                     return;
                 }
@@ -1037,7 +1083,7 @@ fn erase_let_for_pattern_checking<'tcx>(
 
     let pattern = erase_pat_all_binders(cx.pattern_from_hir(pat));
 
-    let init_ty = cx.typeck_results.node_type(pat.hir_id);
+    let init_ty = pattern.ty;
     let init =
         init.map(|init| erased_ghost_value(cx, erasure_ctxt, root_hir_id, init.span, init_ty));
 
@@ -1109,26 +1155,6 @@ fn erase_arm_for_pattern_checking<'tcx>(
         span: arm.span,
     };
     cx.thir.arms.push(arm)
-}
-
-/// This is used to inject logic in the MIR-builder code.
-///
-/// Typically, Rust removes part of the CFG if a function returns an uninhabited type.
-/// However, we might have erased code with uninhabited types, e.g.,
-/// `erased_ghost_value::<!>()`.
-/// To prevent such calls from influencing the CFG, we check if any call is to
-/// `erased_ghost_value`, and if so, skip the CFG trimming logic.
-pub(crate) fn func_ty_skip_edge_deletion_for_uninhabited_ty<'tcx>(ty: Ty<'tcx>) -> bool {
-    match ty.kind() {
-        TyKind::FnDef(fn_def_id, _) => {
-            let Some(erasure_ctxt) = get_verus_erasure_ctxt_option() else {
-                return false;
-            };
-            *fn_def_id == erasure_ctxt.erased_ghost_value_fn_def_id
-                || *fn_def_id == erasure_ctxt.shadow_ghost_value_fn_def_id
-        }
-        _ => false,
-    }
 }
 
 /*////// Closures
@@ -1319,75 +1345,6 @@ pub(crate) fn get_override_closure_kind<'tcx>(
 
 // Utilities to replace Region::ReErased with bound regions
 
-/// Based on fn_sig but we replace erased regions with named regions in the early binders
-/// e.g., suppose the function is `f<T>(t: T) -> T` and we instantiate T with `&mut U`.
-/// We ultimately want to get out a signature like `for<'a> &'a U -> &'a U`.
-/// To do this, we first have to name the erased regions in `&mut U` -> `&'a mut U`.
-pub(crate) fn fn_sig_with_region_vars<'tcx>(tcx: TyCtxt<'tcx>, ty: Ty<'tcx>) -> PolyFnSig<'tcx> {
-    match ty.kind() {
-        TyKind::FnPtr(..) => ty.fn_sig(tcx),
-        TyKind::FnDef(def_id, args) => {
-            let mut replacer = ReErasedReplacer::new(tcx);
-            let args = args.fold_with(&mut replacer);
-            let f = tcx.fn_sig(*def_id).instantiate(tcx, args);
-
-            // suppose the new vars we introduced are e_1, e_2, ..., e_n
-            // while our late binders are l_1, ..., l_m
-            // Right now, f is a sig that look like `for<l_1, ..., l_m> fn(...)`
-            // where the e_i vars are bound freely (debruijn innermost).
-            // We want to transform this to:
-            // for<l_1, ..., l_m, e_1, ..., e_n> fn(...)
-
-            let late_len = f.bound_vars().len();
-            let f2 =
-                rustc_middle::ty::fold_regions(tcx, f.skip_binder(), |region, current_index| {
-                    match region.kind() {
-                        rustc_middle::ty::ReBound(
-                            BoundVarIndexKind::Bound(debruijn),
-                            bound_region,
-                        ) => {
-                            if debruijn == current_index {
-                                // l_i var; leave it as is
-                                region
-                            } else if debruijn == current_index.shifted_in(1) {
-                                // e_i var; bump it down an index and move it to
-                                // the correct location in the new var list
-                                let new_bound_region = BoundRegion {
-                                    var: BoundVar::from_usize(
-                                        bound_region.var.as_usize() + late_len,
-                                    ),
-                                    kind: bound_region.kind,
-                                };
-                                rustc_middle::ty::Region::new_bound(
-                                    tcx,
-                                    current_index,
-                                    new_bound_region,
-                                )
-                            } else {
-                                panic!("fn_sig_with_region_vars failed");
-                            }
-                        }
-                        _ => region,
-                    }
-                });
-
-            let mut bound_variable_kinds = vec![];
-            for kind in f.bound_vars().iter() {
-                bound_variable_kinds.push(kind.clone());
-            }
-            for _i in 0..replacer.current_var {
-                bound_variable_kinds.push(BoundVariableKind::Region(BoundRegionKind::Anon));
-            }
-            let binders2 = tcx.mk_bound_variable_kinds(&bound_variable_kinds);
-
-            Binder::bind_with_vars(f2, binders2)
-        }
-        _ => {
-            panic!("fn_sig_with_region_vars doesn't know how to handle this TyKind")
-        }
-    }
-}
-
 struct ReErasedReplacer<'tcx> {
     tcx: TyCtxt<'tcx>,
     current_index: rustc_middle::ty::DebruijnIndex,
@@ -1571,9 +1528,7 @@ fn mk_closure_magic_coercion_fn<'tcx, 'a>(
     let fnty = tcx.mk_ty_from_kind(TyKind::FnPtr(
         Binder::bind_with_vars(rustc_middle::ty::FnSigTys { inputs_and_output }, bound_var_kinds),
         rustc_middle::ty::FnHeader {
-            c_variadic: false,
-            safety: rustc_hir::Safety::Safe,
-            abi: rustc_abi::ExternAbi::Rust,
+            fn_sig_kind: FnSigKind::new(rustc_abi::ExternAbi::Rust, rustc_hir::Safety::Safe, false),
         },
     ));
 
@@ -1597,7 +1552,11 @@ pub(crate) fn apply_projection<'tcx>(
         },
         ProjectionKind::Field(field_idx, variant_idx) => match ty.kind() {
             TyKind::Tuple(tys) => tys[field_idx.as_usize()],
-            TyKind::Adt(adt, args) => adt.variant(*variant_idx).fields[*field_idx].ty(tcx, args),
+            TyKind::Adt(adt, args) =>
+            // TODO(1.97.1): do we need to normalize here?
+            {
+                adt.variant(*variant_idx).fields[*field_idx].ty(tcx, args).skip_normalization()
+            }
             _ => {
                 panic!("apply_projection: unexpected type");
             }
@@ -1813,6 +1772,17 @@ pub(crate) fn possibly_handle_complex_closure_block<'tcx>(
 }
 
 pub(crate) fn get_closure_expr<'tcx>(e: &'tcx hir::Expr<'tcx>) -> &'tcx hir::Expr<'tcx> {
+    // NOTE: We expect every closuse to have exactly this form:
+    //
+    // {
+    //     let _verus_internal_dummy_capture = ::builtin::dummy_capture_new();
+    //     || { ... }
+    // }
+    //
+    // This function is invoked when we detect the capture dummy, and tries
+    // to find the corresponding closure expression. If there are any other
+    // statements in the block, this function will fail.
+
     match &e.kind {
         hir::ExprKind::Closure(_) => e,
         hir::ExprKind::Call(_f, args) => get_closure_expr(&args[0]),
@@ -1844,26 +1814,6 @@ pub(crate) fn make_fake_call_kind<'tcx>(
     args: Vec<ExprId>,
 ) -> ExprKind<'tcx> {
     let f = erased_ghost_value(cx, erasure_ctxt, hir_id, span, fn_ty);
-
-    ExprKind::Call {
-        ty: fn_ty,
-        fun: f,
-        args: args.into_boxed_slice(),
-        from_hir_call: false,
-        fn_span: span,
-    }
-}
-
-pub(crate) fn make_fake_call_kind_with_original_fn<'tcx>(
-    cx: &mut ThirBuildCx<'tcx>,
-    erasure_ctxt: &VerusErasureCtxt,
-    hir_id: HirId,
-    span: Span,
-    fn_ty: Ty<'tcx>,
-    original_fn: ExprId,
-    args: Vec<ExprId>,
-) -> ExprKind<'tcx> {
-    let f = erased_ghost_value_with_args(cx, erasure_ctxt, hir_id, span, fn_ty, vec![original_fn]);
 
     ExprKind::Call {
         ty: fn_ty,

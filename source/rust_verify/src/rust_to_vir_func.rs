@@ -1,22 +1,22 @@
 use crate::attributes::{AttrPublish, VerifierAttrs, get_mode, get_ret_mode, get_var_mode};
 use crate::automatic_derive::AutomaticDeriveAction;
-use crate::config::Vstd;
 use crate::context::{BodyCtxt, Context, ContextX, HeaderSetting};
 use crate::resolve_traits::{ResolutionResult, ResolvedItem};
+use crate::rust_to_vir::State;
 use crate::rust_to_vir_base::{
     check_fn_opaque_ty, check_generics_bounds_no_polarity, def_id_to_vir_path, local_to_var,
     no_body_param_to_var,
 };
 use crate::rust_to_vir_base::{mk_visibility, qpath_to_ident};
-use crate::rust_to_vir_expr::{ExprModifier, expr_to_vir_consume, pat_to_mut_var};
-use crate::rust_to_vir_impl::ExternalInfo;
+use crate::rust_to_vir_expr::{expr_to_vir_consume, pat_to_mut_var};
 use crate::util::{err_span, err_span_bare};
 use crate::verus_items::{BuiltinTypeItem, VerusItem};
 use crate::{unsupported_err, unsupported_err_unless};
 use rustc_hir::{
-    Attribute, Body, BodyId, Crate, Expr, ExprKind, FnDecl, FnHeader, FnSig, Generics,
-    HeaderSafety, HirId, MaybeOwner, Param, Safety,
+    Attribute, Body, BodyId, Expr, ExprKind, FnDecl, FnHeader, FnSig, Generics, HeaderSafety,
+    HirId, MaybeOwner, Param, Safety,
 };
+use rustc_middle::hir::Crate;
 use rustc_middle::ty::{
     AdtDef, BoundRegion, BoundRegionKind, BoundVar, Clause, ClauseKind, ConstKind, GenericArg,
     GenericArgKind, GenericArgsRef, Region, RegionKind, TyCtxt, TyKind, TypingEnv, ValTreeKind,
@@ -170,12 +170,6 @@ fn handle_autospec<'tcx>(
 
         let mut spec_params = vec![];
         for p in functionx.params.iter() {
-            if p.x.is_mut {
-                return err_span(
-                    span,
-                    format!("allow_in_spec not supported for function with &mut param"),
-                );
-            }
             if p.x.unwrapped_info.is_some() {
                 return err_span(
                     span,
@@ -190,7 +184,6 @@ fn handle_autospec<'tcx>(
                     name: p.x.name.clone(),
                     typ: p.x.typ.clone(),
                     mode: Mode::Spec,
-                    is_mut: false,
                     unwrapped_info: None,
                     user_mut: false,
                 },
@@ -203,7 +196,6 @@ fn handle_autospec<'tcx>(
                 name: air_unique_var(RETURN_VALUE),
                 typ: ret_param.x.typ.clone(),
                 mode: Mode::Spec,
-                is_mut: false,
                 unwrapped_info: None,
                 user_mut: false,
             },
@@ -238,6 +230,7 @@ fn handle_autospec<'tcx>(
                 decrease_by: None,
                 fndef_axioms: None,
                 mask_spec: None,
+                atomic_update: None,
                 unwind_spec: None,
                 item_kind: ItemKind::Function,
                 attrs: Arc::new(FunctionAttrsX {
@@ -265,9 +258,9 @@ fn handle_autospec<'tcx>(
                     is_type_invariant_fn: false,
                     is_external_body: false,
                     is_unsafe: false,
+                    impls_cannot_extend_spec: false,
                     exec_assume_termination: false,
                     exec_allows_no_decreases_clause: false,
-                    ignore_outside_new_mut_ref: functionx.attrs.ignore_outside_new_mut_ref,
                     tracked_swap: false,
                     tracked_take_option: false,
                     is_async: false,
@@ -298,7 +291,6 @@ fn mk_bctx<'tcx>(
     mode: Mode,
     external_body: bool,
     external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path, Option<vir::ast::Path>)>,
-    new_mut_ref: bool,
     migrate_postcondition_vars: Option<HashSet<VarIdent>>,
     param_names: Vec<VarIdent>,
     external_opaque_type_map: Option<HashMap<Path, Path>>,
@@ -311,8 +303,7 @@ fn mk_bctx<'tcx>(
         mode,
         external_body,
         in_ghost: mode != Mode::Exec,
-        loop_isolation: false,
-        new_mut_ref,
+        atomically: None,
         migrate_postcondition_vars,
         in_fn_sig: false,
         in_postcondition: false,
@@ -322,6 +313,7 @@ fn mk_bctx<'tcx>(
         header_setting: HeaderSetting::Fn,
         unwrap_param_map: std::rc::Rc::new(std::cell::RefCell::new(HashMap::new())),
         external_opaque_type_map,
+        label_map: std::rc::Rc::new(std::cell::RefCell::new((HashMap::new(), 0))),
     }
 }
 
@@ -333,7 +325,6 @@ fn body_to_vir<'tcx>(
     mode: Mode,
     external_body: bool,
     external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path, Option<vir::ast::Path>)>,
-    new_mut_ref: bool,
     migrate_postcondition_vars: Option<HashSet<VarIdent>>,
     param_names: Vec<VarIdent>,
     external_opaque_type_map: Option<HashMap<Path, Path>>,
@@ -346,14 +337,13 @@ fn body_to_vir<'tcx>(
         mode,
         external_body,
         external_trait_from_to,
-        new_mut_ref,
         migrate_postcondition_vars,
         param_names,
         external_opaque_type_map,
     );
     let body_expr =
         if is_async { extract_desugared_async_body(&bctx.ctxt, body)? } else { &body.value };
-    let e = expr_to_vir_consume(&bctx, body_expr, ExprModifier::REGULAR)?;
+    let e = expr_to_vir_consume(&bctx, body_expr)?;
 
     if external_body {
         match &e.x {
@@ -387,7 +377,7 @@ pub(crate) fn extract_desugared_async_body<'tcx>(
                             return err_span(
                                 body.value.span,
                                 format!(
-                                    "internal error: async function desugered closure expression is not `DropTemps`"
+                                    "internal error: async function desugared closure expression is not `DropTemps`"
                                 ),
                             );
                         }
@@ -397,7 +387,7 @@ pub(crate) fn extract_desugared_async_body<'tcx>(
                     return err_span(
                         body.value.span,
                         format!(
-                            "internal error: async function desugered closure doesn't have a block"
+                            "internal error: async function desugared closure doesn't have a block"
                         ),
                     );
                 }
@@ -406,7 +396,7 @@ pub(crate) fn extract_desugared_async_body<'tcx>(
         _ => {
             return err_span(
                 body.value.span,
-                format!("internal error: async function desugered body is not a closure"),
+                format!("internal error: async function desugared body is not a closure"),
             );
         }
     };
@@ -424,9 +414,9 @@ fn check_fn_decl<'tcx>(
     output_ty: rustc_middle::ty::Ty<'tcx>,
     assume_specification_opaque_type_map: Option<&HashMap<Path, Path>>,
 ) -> Result<Option<(Typ, Mode)>, VirErr> {
-    let FnDecl { inputs: _, output, c_variadic, implicit_self, lifetime_elision_allowed: _ } = decl;
-    unsupported_err_unless!(!c_variadic, span, "c_variadic functions");
-    match implicit_self {
+    let FnDecl { inputs: _, output, fn_decl_kind } = decl;
+    unsupported_err_unless!(!fn_decl_kind.c_variadic(), span, "c_variadic functions");
+    match fn_decl_kind.implicit_self() {
         rustc_hir::ImplicitSelfKind::None => {}
         rustc_hir::ImplicitSelfKind::Imm => {}
         rustc_hir::ImplicitSelfKind::RefImm => {}
@@ -439,13 +429,8 @@ fn check_fn_decl<'tcx>(
         // so we always return the default mode.
         // The current workaround is to return a struct if the default doesn't work.
         rustc_hir::FnRetTy::Return(_ty) => {
-            let typ = ctxt.mid_ty_to_vir(
-                id,
-                span,
-                &output_ty,
-                false,
-                assume_specification_opaque_type_map,
-            )?;
+            let typ =
+                ctxt.mid_ty_to_vir(id, span, &output_ty, assume_specification_opaque_type_map)?;
             Ok(Some((typ, get_ret_mode(mode, attrs))))
         }
     }
@@ -453,9 +438,10 @@ fn check_fn_decl<'tcx>(
 
 pub(crate) fn find_body_krate<'tcx>(
     krate: &'tcx Crate<'tcx>,
+    tcx: TyCtxt<'tcx>,
     body_id: &BodyId,
 ) -> &'tcx Body<'tcx> {
-    let owner = krate.owners[body_id.hir_id.owner.def_id];
+    let owner = krate.owner(tcx, body_id.hir_id.owner.def_id);
     if let MaybeOwner::Owner(owner) = owner {
         if let Some(body) = owner.nodes.bodies.get(&body_id.hir_id.local_id) {
             return body;
@@ -465,7 +451,7 @@ pub(crate) fn find_body_krate<'tcx>(
 }
 
 pub(crate) fn find_body<'tcx>(ctxt: &ContextX<'tcx>, body_id: &BodyId) -> &'tcx Body<'tcx> {
-    find_body_krate(ctxt.krate, body_id)
+    find_body_krate(ctxt.krate, ctxt.tcx, body_id)
 }
 
 // Check for any obvious type mismatches
@@ -520,18 +506,20 @@ fn compare_external_ty_or_true<'tcx>(
         (TyKind::RawPtr(t1, m1), TyKind::RawPtr(t2, m2)) => m1 == m2 && check_t(t1, t2),
         (TyKind::Array(t1, len1), TyKind::Array(t2, len2)) => len1 == len2 && check_t(t1, t2),
         (TyKind::Adt(a1, args1), TyKind::Adt(a2, args2)) => a1 == a2 && check_args(args1, args2),
-        (TyKind::Alias(k1, t1), TyKind::Alias(k2, t2)) => {
-            if k1 != k2 {
+        (TyKind::Alias(t1), TyKind::Alias(t2)) => {
+            let k1 = t1.kind;
+            let k2 = t2.kind;
+            if std::mem::discriminant(&k1) != std::mem::discriminant(&k2) {
                 return false;
             }
-            if tcx.associated_item(t1.def_id).name() != tcx.associated_item(t2.def_id).name() {
+            if tcx.associated_item(k1.def_id()).name() != tcx.associated_item(k2.def_id()).name() {
                 return false;
             }
             if !check_args(&t1.args, &t2.args) {
                 return false;
             }
-            let trait_def1 = tcx.generics_of(t1.def_id).parent;
-            let trait_def2 = tcx.generics_of(t2.def_id).parent;
+            let trait_def1 = tcx.generics_of(k1.def_id()).parent;
+            let trait_def2 = tcx.generics_of(k2.def_id()).parent;
             match (trait_def1, trait_def2) {
                 (None, None) => true,
                 (Some(trait_def1), Some(trait_def2)) => {
@@ -589,7 +577,8 @@ fn compare_clause_kind<'tcx>(
             rustc_middle::ty::ClauseKind::Projection(pred1),
             rustc_middle::ty::ClauseKind::Projection(pred2),
         ) => {
-            let projection_term_eq = pred1.projection_term.def_id == pred2.projection_term.def_id;
+            let projection_term_eq =
+                pred1.projection_term.def_id() == pred2.projection_term.def_id();
             let term_eq =
                 if let (rustc_middle::ty::TermKind::Ty(ty1), rustc_middle::ty::TermKind::Ty(ty2)) =
                     (pred1.term.kind(), pred2.term.kind())
@@ -673,13 +662,19 @@ fn compare_external_ty<'tcx>(
     // we recursively reach all the nested opaque types.
     else {
         match (ty1.kind(), ty2.kind()) {
-            (
-                rustc_middle::ty::TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque, al_ty1),
-                rustc_middle::ty::TyKind::Alias(rustc_middle::ty::AliasTyKind::Opaque, al_ty2),
-            ) => {
+            (rustc_middle::ty::TyKind::Alias(al_ty1), rustc_middle::ty::TyKind::Alias(al_ty2))
+                if matches!(al_ty1.kind, rustc_middle::ty::AliasTyKind::Opaque { .. })
+                    && matches!(al_ty2.kind, rustc_middle::ty::AliasTyKind::Opaque { .. }) =>
+            {
                 // two opaque types. We compare their trait bounds
-                let ty1_bounds = tcx.item_bounds(al_ty1.def_id).instantiate(tcx, al_ty1.args);
-                let ty2_bounds = tcx.item_bounds(al_ty2.def_id).instantiate(tcx, al_ty2.args);
+                let ty1_bounds = tcx.normalize_erasing_regions(
+                    TypingEnv::non_body_analysis(tcx, al_ty1.kind.def_id()),
+                    tcx.item_bounds(al_ty1.kind.def_id()).instantiate(tcx, al_ty1.args),
+                );
+                let ty2_bounds = tcx.normalize_erasing_regions(
+                    TypingEnv::non_body_analysis(tcx, al_ty2.kind.def_id()),
+                    tcx.item_bounds(al_ty2.kind.def_id()).instantiate(tcx, al_ty2.args),
+                );
                 if ty1_bounds.len() != ty2_bounds.len() {
                     return false;
                 }
@@ -821,8 +816,10 @@ fn compare_external_sig<'tcx>(
     use rustc_middle::ty::FnSig;
     // Ignore abi and safety for the sake of comparison
     // Useful for rust-intrinsics
-    let FnSig { inputs_and_output: io1, c_variadic: c1, safety: _, abi: _ } = sig1;
-    let FnSig { inputs_and_output: io2, c_variadic: c2, safety: _, abi: _ } = sig2;
+    let FnSig { inputs_and_output: io1, fn_sig_kind: fn_sig_kind1 } = sig1;
+    let FnSig { inputs_and_output: io2, fn_sig_kind: fn_sig_kind2 } = sig2;
+    let c1 = fn_sig_kind1.c_variadic();
+    let c2 = fn_sig_kind2.c_variadic();
     if io1.len() != io2.len() {
         return Ok(false);
     }
@@ -837,6 +834,7 @@ fn compare_external_sig<'tcx>(
 
 fn handle_external_fn<'tcx>(
     ctxt: &Context<'tcx>,
+    state: &mut State,
     id: DefId,
     kind: FunctionKind,
     visibility: vir::ast::Visibility,
@@ -848,7 +846,6 @@ fn handle_external_fn<'tcx>(
     vattrs: &VerifierAttrs,
     external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path, Option<vir::ast::Path>)>,
     external_fn_specification_via_external_trait: Option<DefId>,
-    external_info: &mut ExternalInfo,
     // This function is the proxy, and we need to look up the actual path.
 ) -> Result<
     (vir::ast::Path, vir::ast::Visibility, FunctionKind, bool, Safety, bool, DefId, bool),
@@ -949,7 +946,7 @@ fn handle_external_fn<'tcx>(
         }
         let sig1 = poly_sig1x.skip_binder();
         use rustc_middle::ty::FnSig;
-        let FnSig { inputs_and_output: io1, c_variadic: _, safety: _, abi: _ } = &sig1;
+        let FnSig { inputs_and_output: io1, fn_sig_kind: _ } = &sig1;
         if io1.len() != 1 {
             return err_span(sig.span, "external specification for const must have 0 parameters");
         }
@@ -997,11 +994,11 @@ fn handle_external_fn<'tcx>(
             mismatch_type_error_user_str_early(ctxt, substs2_early, poly_sig2),
         );
     };
-    let poly_sig1x = poly_sig1.instantiate(ctxt.tcx, substs1_early);
+    let poly_sig1x = poly_sig1.instantiate(ctxt.tcx, substs1_early).skip_norm_wip();
     let poly_sig1x =
         ctxt.tcx.instantiate_bound_regions(poly_sig1x, |br| substs1_late[usize::from(br.var)]).0;
 
-    let poly_sig2x = poly_sig2.instantiate(ctxt.tcx, substs2_early);
+    let poly_sig2x = poly_sig2.instantiate(ctxt.tcx, substs2_early).skip_norm_wip();
     let poly_sig2x =
         ctxt.tcx.instantiate_bound_regions(poly_sig2x, |br| substs2_late[usize::from(br.var)]).0;
 
@@ -1029,6 +1026,7 @@ fn handle_external_fn<'tcx>(
     remove_ignored_trait_bounds_from_predicates(
         ctxt,
         in_trait,
+        None,
         &[ctxt.tcx.parent(external_id), ctxt.tcx.parent(id)],
         None,
         &mut proxy_preds,
@@ -1036,6 +1034,7 @@ fn handle_external_fn<'tcx>(
     remove_ignored_trait_bounds_from_predicates(
         ctxt,
         in_trait,
+        None,
         &[ctxt.tcx.parent(external_id)],
         None,
         &mut external_preds,
@@ -1065,7 +1064,10 @@ fn handle_external_fn<'tcx>(
     let has_self_parameter = has_self_parameter(ctxt, external_id);
 
     if matches!(kind, FunctionKind::ForeignTraitMethodImpl { .. }) {
-        external_info.external_fn_specification_trait_method_impls.push((external_id, sig.span));
+        state
+            .external_info
+            .external_fn_specification_trait_method_impls
+            .push((external_id, sig.span));
     }
 
     let safety = ctxt.tcx.fn_sig(external_id).skip_binder().safety();
@@ -1228,13 +1230,13 @@ fn mismatch_type_error_user_str_early<'tcx>(
 
     let early_binder_str = substs_to_string(&substs);
 
-    let poly_sig = poly_sig.instantiate(ctxt.tcx, substs);
+    let poly_sig = poly_sig.instantiate(ctxt.tcx, substs).skip_norm_wip();
     use rustc_middle::ty::FnSig;
 
     let binder_str = binders_to_string(ctxt.tcx, &poly_sig.bound_vars());
 
     let mut args: Vec<String> = vec![];
-    let FnSig { inputs_and_output: io, c_variadic: _, safety: _, abi: _ } = poly_sig.skip_binder();
+    let FnSig { inputs_and_output: io, fn_sig_kind: _ } = poly_sig.skip_binder();
     for t in io.iter() {
         args.push(format!("{:}", t));
     }
@@ -1369,7 +1371,6 @@ fn make_attributes<'tcx>(
     is_async: bool,
     span: Span,
     is_trait_decl_no_default: bool,
-    ignore_outside_new_mut_ref: bool,
 ) -> Result<vir::ast::FunctionAttrs, VirErr> {
     if vattrs.nonlinear && vattrs.spinoff_prover {
         return err_span(
@@ -1405,6 +1406,7 @@ fn make_attributes<'tcx>(
             Safety::Safe => false,
             Safety::Unsafe => true,
         },
+        impls_cannot_extend_spec: vattrs.impls_cannot_extend_spec,
         exec_assume_termination: vattrs.assume_termination,
         exec_allows_no_decreases_clause: if !is_trait_decl_no_default {
             crate::attributes::get_allow_exec_allows_no_decreases_clause_walk_parents(
@@ -1413,7 +1415,6 @@ fn make_attributes<'tcx>(
         } else {
             vattrs.exec_allows_no_decreases_clause
         },
-        ignore_outside_new_mut_ref,
         tracked_swap: vattrs.tracked_swap,
         tracked_take_option: vattrs.tracked_take_option,
         is_async: is_async,
@@ -1435,25 +1436,9 @@ pub(crate) fn fixup_unerased_proxy_path(
     }
 }
 
-/// Yes this is extremely hackish, but it's only temporary for the new_mut_ref transition
-struct NewMutRefFixGlobal {
-    old: bool,
-}
-impl NewMutRefFixGlobal {
-    fn new(v: bool) -> Self {
-        let old = crate::config::new_mut_ref();
-        crate::config::NEW_MUT_REF.store(v, std::sync::atomic::Ordering::SeqCst);
-        Self { old }
-    }
-}
-impl Drop for NewMutRefFixGlobal {
-    fn drop(&mut self) {
-        crate::config::NEW_MUT_REF.store(self.old, std::sync::atomic::Ordering::SeqCst);
-    }
-}
-
 pub(crate) fn check_item_fn<'tcx>(
     ctxt: &Context<'tcx>,
+    state: &mut State,
     functions: &mut Vec<vir::ast::Function>,
     reveal_groups: Option<&mut Vec<vir::ast::RevealGroup>>,
     id: DefId,
@@ -1469,7 +1454,6 @@ pub(crate) fn check_item_fn<'tcx>(
     // (target ExternalTraitSpecificationFor name, target external_trait_extension spec trait name)
     external_trait: Option<(DefId, Option<String>)>,
     external_fn_specification_via_external_trait: Option<DefId>,
-    external_info: &mut ExternalInfo,
     autoderive_action: Option<&AutomaticDeriveAction>,
     opaque_types: &mut OpaqueTypes,
 ) -> Result<Option<Fun>, VirErr> {
@@ -1483,24 +1467,10 @@ pub(crate) fn check_item_fn<'tcx>(
         FnOrConstSigEnum::ConstVar(..) => get_mode(Mode::Spec, attrs),
     };
 
-    let do_migration = if ctxt.cmd_line_args.new_mut_ref {
-        if vattrs.ignore_outside_new_mut_ref_experiment {
-            false
-        } else {
-            let migration_attr =
-                crate::attributes::migrate_postconditions_walk_parents(ctxt.tcx, id);
-            migration_attr == Some(true)
-        }
-    } else {
-        false
+    let do_migration = {
+        let migration_attr = crate::attributes::migrate_postconditions_walk_parents(ctxt.tcx, id);
+        migration_attr == Some(true)
     };
-
-    let new_mut_ref = vattrs.ignore_outside_new_mut_ref_experiment;
-    if new_mut_ref && !matches!(ctxt.cmd_line_args.vstd, Vstd::IsVstd | Vstd::IsCore) {
-        return err_span(sig.span, "ignore_outside_new_mut_ref_experiment is only for vstd");
-    }
-    let new_mut_ref = new_mut_ref || ctxt.cmd_line_args.new_mut_ref;
-    let _new_mut_ref_fix_global = NewMutRefFixGlobal::new(new_mut_ref);
 
     if vattrs.encoded_const || vattrs.encoded_static {
         let fn_sig = ctxt.tcx.fn_sig(id).skip_binder();
@@ -1516,10 +1486,11 @@ pub(crate) fn check_item_fn<'tcx>(
         };
 
         let ty = fn_sig.output().skip_binder();
-        let typ = ctxt.mid_ty_to_vir(id, sig.span, &ty, false, None)?;
+        let typ = ctxt.mid_ty_to_vir(id, sig.span, &ty, None)?;
 
         let fun = check_item_const_or_static(
             ctxt,
+            state,
             functions,
             sig.span,
             id,
@@ -1529,7 +1500,7 @@ pub(crate) fn check_item_fn<'tcx>(
             &typ,
             body_id,
             vattrs.encoded_static,
-            new_mut_ref,
+            self_generics,
         )?;
         return Ok(Some(fun));
     }
@@ -1583,6 +1554,7 @@ pub(crate) fn check_item_fn<'tcx>(
             is_async,
         ) = handle_external_fn(
             ctxt,
+            state,
             id,
             kind,
             visibility,
@@ -1593,7 +1565,6 @@ pub(crate) fn check_item_fn<'tcx>(
             &vattrs,
             &external_trait_from_to,
             external_fn_specification_via_external_trait,
-            external_info,
         )?;
 
         let proxy = Some((*ctxt.spanned_new(sig.span, this_path.clone())).clone());
@@ -1691,6 +1662,15 @@ pub(crate) fn check_item_fn<'tcx>(
             let Body { params, value: _ } = body;
             let mut ps = Vec::new();
             for Param { hir_id, pat, ty_span: _, span } in params.iter() {
+                // Check the parameter's pattern is a plain identifier (e.g., `x: T`).
+                // VIR expects each param to be associated with exactly one identifier so complex params
+                // (e.g., `(x, y): T` or `_: T` or `a @ b: T`) are unsupported
+                if !matches!(pat.kind, rustc_hir::PatKind::Binding(_, _, _, None)) {
+                    return err_span(
+                        *span,
+                        "function parameters must be a plain identifier pattern (e.g. `x: T` or `mut x: T`)",
+                    );
+                }
                 let (is_mut_var, name) = pat_to_mut_var(pat)?;
                 // is_mut_var: means a parameter is like `mut x: X`
                 // is_mut: means a parameter is like `x: &mut X` or `x: Tracked<&mut X>`
@@ -1704,7 +1684,7 @@ pub(crate) fn check_item_fn<'tcx>(
     };
 
     let mut migrate_postcondition_vars: HashSet<VarIdent> = HashSet::new();
-    let mut vir_params: Vec<(vir::ast::Param, Option<Mode>)> = Vec::new();
+    let mut vir_params: Vec<vir::ast::Param> = Vec::new();
     assert!(params.len() == inputs.len());
     for ((name, span, hir_id, is_mut_var), input) in params.into_iter().zip(inputs.iter()) {
         let param_mode = if let Some(hir_id) = hir_id {
@@ -1722,28 +1702,7 @@ pub(crate) fn check_item_fn<'tcx>(
             }
         }
 
-        let is_ref_mut = if new_mut_ref { None } else { is_mut_ty(ctxt, *input) };
-        if is_ref_mut.is_some() && mode == Mode::Spec {
-            return err_span(span, format!("&mut parameter not allowed for spec functions"));
-        }
-
-        let typ = {
-            let typ = ctxt.mid_ty_to_vir(
-                id,
-                span,
-                is_ref_mut.map(|(t, _)| t).unwrap_or(input),
-                false,
-                None,
-            )?;
-            if let Some((_, decoration)) = is_ref_mut.and_then(|(_, w)| w) {
-                Arc::new(TypX::Decorate(decoration, None, typ))
-            } else {
-                typ
-            }
-        };
-
-        // is_mut: means a parameter is like `x: &mut X` or `x: Tracked<&mut X>`
-        let is_mut = is_ref_mut.is_some();
+        let typ = ctxt.mid_ty_to_vir(id, span, input, None)?;
 
         if matches!(&*typ, TypX::MutRef(_)) {
             if vattrs.allow_in_spec {
@@ -1766,9 +1725,8 @@ pub(crate) fn check_item_fn<'tcx>(
                 name: name.clone(),
                 typ: typ.clone(),
                 mode: param_mode,
-                is_mut,
                 unwrapped_info: None,
-                user_mut: is_mut_var || is_mut,
+                user_mut: is_mut_var,
             },
         );
 
@@ -1776,17 +1734,15 @@ pub(crate) fn check_item_fn<'tcx>(
             if mode == Mode::Spec {
                 return err_span(span, format!("mut argument not allowed for spec functions"));
             }
-            if is_mut {
-                // REVIEW
-                // For all mut params, we introduce a new variable that shadows the original mut
-                // param and assign the value of the param to the new variable. This does not
-                // work properly when the type of the param is a mutable reference because
-                // declaring and assigning to a variable of type `&mut T` is not implemented yet.
-                unsupported_err!(span, "mut parameters of &mut types")
-            }
         }
 
-        vir_params.push((vir_param, is_ref_mut.and_then(|(_, m)| m).map(|(mode, _)| mode)));
+        vir_params.push(vir_param);
+    }
+
+    if is_async {
+        if let CheckItemFnEither::BodyId(body_id) = body_id {
+            vir_params = param_names_for_async_func(ctxt, find_body(ctxt, body_id), &vir_params)?;
+        }
     }
 
     let migrate_postcondition_vars =
@@ -1802,7 +1758,7 @@ pub(crate) fn check_item_fn<'tcx>(
             };
             let body = find_body(ctxt, body_id);
             let external_body = vattrs.external_body || vattrs.external_fn_specification;
-            let param_names = vir_params.iter().map(|p| p.0.x.name.clone()).collect::<Vec<_>>();
+            let param_names = vir_params.iter().map(|p| p.x.name.clone()).collect::<Vec<_>>();
             let mut vir_body = body_to_vir(
                 ctxt,
                 id,
@@ -1811,7 +1767,6 @@ pub(crate) fn check_item_fn<'tcx>(
                 mode,
                 external_body,
                 &external_trait_from_to,
-                new_mut_ref,
                 migrate_postcondition_vars.clone(),
                 param_names,
                 assume_specification_opaque_type_map.clone(),
@@ -1879,18 +1834,16 @@ pub(crate) fn check_item_fn<'tcx>(
     if mode != Mode::Spec && header.recommend.len() > 0 {
         return err_span(sig.span, "non-spec functions cannot have recommends");
     }
+    if mode != Mode::Exec && header.atomic_update.is_some() {
+        return err_span(sig.span, "non-exec function cannot have atomic specification");
+    }
     if mode != Mode::Exec && vattrs.external_fn_specification {
         return err_span(sig.span, "assume_specification should be 'exec'");
     }
     if header.ensure.0.len() + header.ensure.1.len() > 0 {
         match (is_async, &header.ensure_id_typ, ret_typ_mode.as_ref()) {
             (_, None, None) => {}
-            (_, None, Some(_)) => {
-                return err_span(
-                    sig.span,
-                    "the return value must be named in a function with an ensures clause",
-                );
-            }
+            (_, None, Some(_)) => {}
             (_, Some(_), None) => {
                 return err_span(
                     sig.span,
@@ -1901,10 +1854,7 @@ pub(crate) fn check_item_fn<'tcx>(
                 if !vir::ast_util::types_equal(&typ, &ret_typ) {
                     return err_span(
                         sig.span,
-                        format!(
-                            "return type is {:?}, but ensures expects type {:?}",
-                            &ret_typ, &typ
-                        ),
+                        format!("return type is {:?}, but ensures expects type {:?}", ret_typ, typ),
                     );
                 }
             }
@@ -1914,7 +1864,7 @@ pub(crate) fn check_item_fn<'tcx>(
                         sig.span,
                         format!(
                             "async function must return opaque type (impl Future) {:?}",
-                            &ret_typ,
+                            ret_typ,
                         ),
                     );
                 }
@@ -1931,7 +1881,7 @@ pub(crate) fn check_item_fn<'tcx>(
         all_param_names.push(unwrap.inner_name.clone());
         unwrap_param_map.insert(unwrap.outer_name.clone(), unwrap.clone());
     }
-    for (param, unwrap_mut) in vir_params.iter_mut() {
+    for param in vir_params.iter_mut() {
         all_param_names.push(param.x.name.clone());
         if let Some(unwrap) = unwrap_param_map.get(&param.x.name) {
             if mode != Mode::Exec {
@@ -1944,16 +1894,6 @@ pub(crate) fn check_item_fn<'tcx>(
             paramx.name = unwrap.inner_name.clone();
             paramx.unwrapped_info = Some((unwrap.mode, unwrap.outer_name.clone()));
             *param = vir::def::Spanned::new(param.span.clone(), paramx);
-        } else if vir_body.is_some() && unwrap_mut.is_some() {
-            let param_user_name = vir::def::user_local_name(&param.x.name);
-            return Err(vir::messages::error(
-                &param.span,
-                format!("parameter {} must be unwrapped", param_user_name),
-            )
-            .help(format!(
-                "use Tracked({}): Tracked<&mut T> to unwrap the tracked argument",
-                param_user_name
-            )));
         }
     }
     for name in all_param_names.iter() {
@@ -1962,8 +1902,7 @@ pub(crate) fn check_item_fn<'tcx>(
         }
         all_param_name_set.insert(name.clone());
     }
-    let params: vir::ast::Params =
-        Arc::new(vir_params.clone().into_iter().map(|(p, _)| p).collect());
+    let params: vir::ast::Params = Arc::new(vir_params);
 
     let (ret_name, ret_typ, ret_mode) = match (header.ensure_id_typ, ret_typ_mode.clone()) {
         (None, None) => (air_unique_var(RETURN_VALUE), unit_typ(), mode),
@@ -1978,7 +1917,6 @@ pub(crate) fn check_item_fn<'tcx>(
             name: ret_name.clone(),
             typ: ret_typ,
             mode: ret_mode,
-            is_mut: false,
             user_mut: false,
             unwrapped_info: None,
         },
@@ -1995,7 +1933,6 @@ pub(crate) fn check_item_fn<'tcx>(
                         .0
                         .clone(),
                     mode: ret_mode,
-                    is_mut: false,
                     unwrapped_info: None,
                     user_mut: false,
                 },
@@ -2086,7 +2023,6 @@ pub(crate) fn check_item_fn<'tcx>(
         is_async,
         sig.span,
         matches!(kind, FunctionKind::TraitMethodDecl { has_default: false, .. }),
-        new_mut_ref,
     )?;
 
     let mut recommend: Vec<vir::ast::Expr> = (*header.recommend).clone();
@@ -2185,6 +2121,7 @@ pub(crate) fn check_item_fn<'tcx>(
         decrease_by: header.decrease_by,
         fndef_axioms: None,
         mask_spec: header.invariant_mask,
+        atomic_update: header.atomic_update,
         unwind_spec: header.unwind_spec,
         item_kind,
         attrs: fattrs,
@@ -2197,29 +2134,12 @@ pub(crate) fn check_item_fn<'tcx>(
         func = fix_external_fn_specification_trait_method_decl_typs(sig.span, func)?;
     }
 
-    if func.attrs.is_async {
-        if let CheckItemFnEither::BodyId(body_id) = body_id {
-            let param_names = vir_params.iter().map(|p| p.0.x.name.clone()).collect::<Vec<_>>();
-            func = handle_async_func(
-                ctxt,
-                id,
-                body_id,
-                find_body(ctxt, body_id),
-                Mode::Exec,
-                func,
-                &external_trait_from_to,
-                new_mut_ref,
-                migrate_postcondition_vars.clone(),
-                param_names,
-                assume_specification_opaque_type_map,
-            )?;
-        }
-    }
-
     if let Some(action) = autoderive_action {
         if let Some(body_hir_id) = body_hir_id {
             crate::automatic_derive::modify_derived_item(
                 ctxt,
+                id,
+                &inputs,
                 sig.span,
                 body_hir_id,
                 action,
@@ -2241,9 +2161,11 @@ pub(crate) fn check_item_fn<'tcx>(
             autospec.redirect_to.clone();
     }
 
+    state.insert_fun_warn_config(ctxt, &function.x.name, id);
     functions.push(function);
 
     if let Some(f) = &autospec.new_func {
+        state.insert_fun_warn_config(ctxt, &f.x.name, id);
         functions.push(f.clone());
     }
 
@@ -2289,6 +2211,7 @@ fn fix_external_fn_specification_trait_method_decl_typs(
             decrease_by,
             fndef_axioms,
             mask_spec,
+            atomic_update,
             unwind_spec,
             item_kind,
             attrs,
@@ -2312,19 +2235,11 @@ fn fix_external_fn_specification_trait_method_decl_typs(
 
         //params = params.iter().map(|p| p.new_x(p.x.new_a(subst_typ(&typ_substs, &p.a)))).collect();
         //ret = ret.new_x(ret.x.new_a(&typ_substs, &ret.a));
-        params = Arc::new(
-            params
-                .iter()
-                .map(|p| {
-                    p.new_x(vir::ast::ParamX {
-                        typ: subst_typ(&typ_substs, &p.x.typ),
-                        ..p.x.clone()
-                    })
-                })
-                .collect(),
-        );
-        ret = ret
-            .new_x(vir::ast::ParamX { typ: subst_typ(&typ_substs, &ret.x.typ), ..ret.x.clone() });
+        params = Arc::new(crate::util::vec_map(&params, |p| {
+            p.new_x(ParamX { typ: subst_typ(&typ_substs, &p.x.typ), ..p.x.clone() })
+        }));
+
+        ret = ret.new_x(ParamX { typ: subst_typ(&typ_substs, &ret.x.typ), ..ret.x.clone() });
 
         unsupported_err_unless!(require.len() == 0, span, "requires clauses");
         unsupported_err_unless!(ensure.0.len() + ensure.1.len() == 0, span, "ensures clauses");
@@ -2359,6 +2274,7 @@ fn fix_external_fn_specification_trait_method_decl_typs(
             decrease_by,
             fndef_axioms,
             mask_spec,
+            atomic_update,
             unwind_spec,
             item_kind,
             attrs,
@@ -2371,32 +2287,11 @@ fn fix_external_fn_specification_trait_method_decl_typs(
     }
 }
 
-fn handle_async_func<'tcx>(
+fn param_names_for_async_func<'tcx>(
     ctxt: &Context<'tcx>,
-    fun_id: DefId,
-    body_id: &BodyId,
     body_hir: &Body<'tcx>,
-    mode: Mode,
-    func: FunctionX,
-    external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path, Option<vir::ast::Path>)>,
-    new_mut_ref: bool,
-    migrate_postcondition_vars: Option<HashSet<VarIdent>>,
-    param_names: Vec<VarIdent>,
-    assume_specification_opaque_type_map: Option<HashMap<Path, Path>>,
-) -> Result<FunctionX, VirErr> {
-    let bctx = mk_bctx(
-        ctxt,
-        fun_id,
-        body_id,
-        mode,
-        false,
-        external_trait_from_to,
-        new_mut_ref,
-        migrate_postcondition_vars,
-        param_names,
-        assume_specification_opaque_type_map,
-    );
-
+    params: &[vir::ast::Param],
+) -> Result<Vec<vir::ast::Param>, VirErr> {
     // Each async function body is desugared into a closure.
     // At the beginning of the async function
     // each paramter is re-bound. We need to find thes rebindings and resolve them.
@@ -2437,7 +2332,7 @@ fn handle_async_func<'tcx>(
                 ..
             }) => {
                 let pat = local_to_var(ident, id.local_id);
-                let init = qpath_to_ident(bctx.ctxt.tcx, &qpath)
+                let init = qpath_to_ident(ctxt.tcx, &qpath)
                     .expect("internal error, async closure rebindings has no init value");
                 async_body_modes.insert(init.clone(), pat.clone());
             }
@@ -2446,22 +2341,19 @@ fn handle_async_func<'tcx>(
     }
 
     let mut rewitten_params = vec![];
-    for param in func.params.iter() {
+    for param in params.iter() {
         rewitten_params.push(Spanned::new(
             param.span.clone(),
             ParamX {
                 name: async_body_modes[&param.x.name].clone(),
                 typ: param.x.typ.clone(),
                 mode: param.x.mode,
-                is_mut: param.x.is_mut,
                 unwrapped_info: param.x.unwrapped_info.clone(),
                 user_mut: param.x.user_mut,
             },
         ));
     }
-    let params = Arc::new(rewitten_params);
-
-    Ok(FunctionX { params, ..func })
+    Ok(rewitten_params)
 }
 
 fn check_generics_for_invariant_fn<'tcx>(
@@ -2506,6 +2398,8 @@ fn check_generics_for_invariant_fn<'tcx>(
 
             let datatype_predicates = adt_def.predicates(tcx);
             let func_predicates = tcx.predicates_of(id);
+            let datatype_typing_env = TypingEnv::post_analysis(tcx, adt_def.did());
+            let func_typing_env = TypingEnv::post_analysis(tcx, id);
             let preds1 = datatype_predicates.instantiate(tcx, substs).predicates;
             let preds2 = func_predicates.instantiate(tcx, substs).predicates;
             // The 'outlives' predicates don't always line up; I don't know why.
@@ -2518,6 +2412,7 @@ fn check_generics_for_invariant_fn<'tcx>(
                         ClauseKind::RegionOutlives(..) | ClauseKind::TypeOutlives(..)
                     )
                 })
+                .map(|clause| tcx.normalize_erasing_regions(datatype_typing_env, clause))
                 .collect();
             let preds2 = preds2
                 .into_iter()
@@ -2527,6 +2422,7 @@ fn check_generics_for_invariant_fn<'tcx>(
                         ClauseKind::RegionOutlives(..) | ClauseKind::TypeOutlives(..)
                     )
                 })
+                .map(|clause| tcx.normalize_erasing_regions(func_typing_env, clause))
                 .collect();
             let preds_match = crate::rust_to_vir_func::predicates_match(tcx, &preds1, &preds2);
             if !preds_match {
@@ -2546,10 +2442,6 @@ fn check_generics_for_invariant_fn<'tcx>(
     }
 }
 
-// &mut T => Some(T, None)
-// Ghost<&mut T> => Some(T, Some(Spec))
-// Tracked<&mut T> => Some(T, Some(Proof))
-// _ => None
 fn is_mut_ty<'tcx>(
     ctxt: &Context<'tcx>,
     ty: rustc_middle::ty::Ty<'tcx>,
@@ -2585,6 +2477,7 @@ fn is_mut_ty<'tcx>(
 pub(crate) fn remove_ignored_trait_bounds_from_predicates<'tcx>(
     ctxt: &Context<'tcx>,
     in_trait: bool,
+    mut external_trait_private_bounds: Option<&mut Vec<Vec<String>>>,
     trait_ids: &[DefId],
     ex_trait_assoc: Option<rustc_middle::ty::GenericArg<'tcx>>,
     preds: &mut Vec<Clause<'tcx>>,
@@ -2604,7 +2497,7 @@ pub(crate) fn remove_ignored_trait_bounds_from_predicates<'tcx>(
                         {
                             false
                         }
-                        ty::TyKind::Alias(_, _) if Some(tp.trait_ref.args[0]) == ex_trait_assoc => {
+                        ty::TyKind::Alias(_) if Some(tp.trait_ref.args[0]) == ex_trait_assoc => {
                             false
                         }
                         _ => true,
@@ -2613,16 +2506,48 @@ pub(crate) fn remove_ignored_trait_bounds_from_predicates<'tcx>(
                     true
                 }
             } else {
-                use crate::verus_items::{BuiltinTraitItem, RustItem, VerusItem};
-                let rust_item = crate::verus_items::get_rust_item(tcx, tp.trait_ref.def_id);
-                let verus_item = ctxt.verus_items.id_to_name.get(&tp.trait_ref.def_id);
+                use crate::rust_to_vir_base::def_path_to_vir_path;
+                use crate::verus_items::RustItem;
+                use vir::def::krate_to_string_ignore_stable_id;
+                let id = tp.trait_ref.def_id;
+                let rust_item = crate::verus_items::get_rust_item(tcx, id);
+                let is_local = id.is_local();
+                let mut is_external_trait_private_bound = false;
+                let is_match = |ignore: &Vec<String>| -> bool {
+                    if let Some(path) = def_path_to_vir_path(tcx, tcx.def_path(id)) {
+                        ignore.len() == path.segments.len() + 1
+                            && ignore[0] == krate_to_string_ignore_stable_id(&path.krate)
+                            && (0..path.segments.len())
+                                .into_iter()
+                                .all(|i| ignore[i + 1] == path.segments[i].to_string())
+                    } else {
+                        false
+                    }
+                };
+                if let Some(external_trait_private_bounds) = &mut external_trait_private_bounds {
+                    if let Some(i) = external_trait_private_bounds.iter().position(is_match) {
+                        // external_trait_private_bound should be for non-public bounds only.
+                        // It's hard to check whether id is really "effectively" non-public,
+                        // because of re-exports, but we can easily do a minimal sanity check to
+                        // see that it's not obviously public:
+                        let mut is_public = true;
+                        let mut ancestor = Some(id);
+                        while let Some(a) = ancestor {
+                            is_public = is_public && tcx.visibility(a).is_public();
+                            ancestor = tcx.opt_parent(a);
+                        }
+
+                        if !is_public && !is_local {
+                            external_trait_private_bounds.remove(i);
+                            is_external_trait_private_bound = true;
+                        }
+                    }
+                }
+
                 match rust_item {
                     Some(RustItem::Destruct) => false, // https://github.com/verus-lang/verus/pull/726
-                    Some(RustItem::SliceSealed) => false, // https://github.com/verus-lang/verus/pull/1434
-                    _ => match verus_item {
-                        Some(VerusItem::BuiltinTrait(BuiltinTraitItem::Sealed)) => false,
-                        _ => true,
-                    },
+                    _ if is_external_trait_private_bound => false,
+                    _ => true,
                 }
             }
         }
@@ -2699,16 +2624,26 @@ fn all_predicates<'tcx>(
                 rustc_middle::ty::ClauseKind::<'tcx>::Trait(tp) => {
                     if tcx.trait_is_alias(tp.trait_ref.def_id) {
                         let preds = tcx.predicates_of(tp.trait_ref.def_id);
-                        trait_alias_clauses
-                            .extend(preds.instantiate(tcx, substs).into_iter().map(|(p, _)| p));
+                        let alias_typing_env = TypingEnv::post_analysis(tcx, tp.trait_ref.def_id);
+                        trait_alias_clauses.extend(
+                            preds
+                                .instantiate(tcx, substs)
+                                .into_iter()
+                                .map(|(p, _)| tcx.normalize_erasing_regions(alias_typing_env, p)),
+                        );
                     }
                 }
                 _ => {}
             }
         }
     }
+    let typing_env = TypingEnv::post_analysis(tcx, id);
     let preds = preds.instantiate(tcx, substs);
-    let mut clauses = preds.predicates;
+    let mut clauses: Vec<Clause<'tcx>> = preds
+        .predicates
+        .into_iter()
+        .map(|clause| tcx.normalize_erasing_regions(typing_env, clause))
+        .collect();
     if preliminarily_try_to_process_and_eliminate_trait_aliases {
         clauses.retain(|clause| match clause.kind().skip_binder() {
             rustc_middle::ty::ClauseKind::<'tcx>::Trait(tp) => {
@@ -2819,9 +2754,9 @@ fn get_external_def_id<'tcx>(
         ExprKind::Path(qpath) => {
             use rustc_hir::def::{DefKind, Res};
             let res = types.qpath_res(&qpath, expr.hir_id);
-            if let Res::Def(DefKind::Const, def_id) = res {
+            if let Res::Def(DefKind::Const { .. }, def_id) = res {
                 (def_id, expr.hir_id, true)
-            } else if let Res::Def(DefKind::AssocConst, def_id) = res {
+            } else if let Res::Def(DefKind::AssocConst { .. }, def_id) = res {
                 (def_id, expr.hir_id, true)
             } else {
                 return err();
@@ -2873,9 +2808,13 @@ fn get_external_def_id<'tcx>(
                 let mut types: Vec<Typ> = vec![];
 
                 let trait_ref = tcx.impl_trait_ref(impl_def_id);
+                let trait_ref = tcx.normalize_erasing_regions(
+                    TypingEnv::post_analysis(tcx, impl_item_id),
+                    trait_ref.instantiate(tcx, impl_args),
+                );
 
-                for ty in trait_ref.instantiate(tcx, impl_args).args.types() {
-                    types.push(ctxt.mid_ty_to_vir(impl_item_id, sig.span, &ty, false, None)?);
+                for ty in trait_ref.args.types() {
+                    types.push(ctxt.mid_ty_to_vir(impl_item_id, sig.span, &ty, None)?);
                 }
 
                 let kind = FunctionKind::ForeignTraitMethodImpl {
@@ -2894,6 +2833,7 @@ fn get_external_def_id<'tcx>(
 
 pub(crate) fn check_item_const_or_static<'tcx>(
     ctxt: &Context<'tcx>,
+    state: &mut State,
     functions: &mut Vec<vir::ast::Function>,
     span: Span,
     id: DefId,
@@ -2903,7 +2843,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
     typ: &Typ,
     body_id: &BodyId,
     is_static: bool,
-    new_mut_ref: bool,
+    self_generics: Option<(&'tcx Generics, DefId)>,
 ) -> Result<Fun, VirErr> {
     let mut path = ctxt.def_id_to_vir_path(id);
 
@@ -2957,7 +2897,6 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         body_mode,
         vattrs.external_body,
         &None,
-        new_mut_ref,
         None,
         vec![],
         None,
@@ -2986,7 +2925,6 @@ pub(crate) fn check_item_const_or_static<'tcx>(
             name: ret_name,
             typ: typ.clone(),
             mode: ret_mode,
-            is_mut: false,
             user_mut: false,
             unwrapped_info: None,
         },
@@ -3003,7 +2941,6 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         is_async,
         span,
         false,
-        new_mut_ref,
     )?;
 
     let (ensure, ens_has_return) =
@@ -3026,6 +2963,21 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         BodyErasure { erase_body: body_mode == Mode::Spec, ret_spec: ret_mode == Mode::Spec },
     );
 
+    // An associated const declared in an `impl<T> ...` block may refer to the impl's
+    // type parameters in its type or body, so include them here.
+    let (typ_params, typ_bounds) = if let Some((cg, impl_def_id)) = self_generics {
+        check_generics_bounds_no_polarity(
+            ctxt.tcx,
+            &ctxt.verus_items,
+            cg.span,
+            Some(cg),
+            impl_def_id,
+            Some(&mut *ctxt.diagnostics.borrow_mut()),
+        )?
+    } else {
+        (Arc::new(vec![]), Arc::new(vec![]))
+    };
+
     let mut functionx = FunctionX {
         name: name.clone(),
         proxy: None,
@@ -3035,8 +2987,8 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         opaqueness,
         owning_module: Some(module_path.clone()),
         mode: func_mode,
-        typ_params: Arc::new(vec![]),
-        typ_bounds: Arc::new(vec![]),
+        typ_params,
+        typ_bounds,
         params: Arc::new(vec![]),
         ret,
         ens_has_return,
@@ -3048,6 +3000,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         decrease_by: None,
         fndef_axioms: None,
         mask_spec: None,
+        atomic_update: None,
         unwind_spec: None,
         item_kind: if is_static { ItemKind::Static } else { ItemKind::Const },
         attrs: fattrs,
@@ -3062,9 +3015,11 @@ pub(crate) fn check_item_const_or_static<'tcx>(
     }
 
     let function = ctxt.spanned_new(span, functionx);
+    state.insert_fun_warn_config(ctxt, &function.x.name, id);
     functions.push(function);
 
     if let Some(f) = &autospec.new_func {
+        state.insert_fun_warn_config(ctxt, &f.x.name, id);
         functions.push(f.clone());
     }
 
@@ -3073,6 +3028,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
 
 pub(crate) fn check_foreign_item_fn<'tcx>(
     ctxt: &Context<'tcx>,
+    state: &mut State,
     vir: &mut KrateX,
     id: DefId,
     span: Span,
@@ -3113,25 +3069,11 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     assert!(idents.len() == inputs.len());
     for (param, input) in idents.iter().zip(inputs.iter()) {
         let name = no_body_param_to_var(param);
-        let is_mut = is_mut_ty(ctxt, *input);
-        let typ = ctxt.mid_ty_to_vir(
-            id,
-            param.span,
-            is_mut.map(|(t, _)| t).unwrap_or(input),
-            false,
-            None,
-        )?;
+        let typ = ctxt.mid_ty_to_vir(id, param.span, input, None)?;
         // REVIEW: the parameters don't have attributes, so we use the overall mode
         let vir_param = ctxt.spanned_new(
             param.span,
-            ParamX {
-                name,
-                typ,
-                mode,
-                is_mut: is_mut.is_some(),
-                unwrapped_info: None,
-                user_mut: false,
-            },
+            ParamX { name, typ, mode, unwrapped_info: None, user_mut: false },
         );
         vir_params.push(vir_param);
     }
@@ -3144,7 +3086,6 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         name: air_unique_var(RETURN_VALUE),
         typ: ret_typ,
         mode: ret_mode,
-        is_mut: false,
         user_mut: false,
         unwrapped_info: None,
     };
@@ -3176,6 +3117,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         decrease_by: None,
         fndef_axioms: None,
         mask_spec: None,
+        atomic_update: None,
         unwind_spec: None,
         item_kind: ItemKind::Function,
         attrs: Default::default(),
@@ -3184,6 +3126,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         async_ret: None,
     };
     let function = ctxt.spanned_new(span, func);
+    state.insert_fun_warn_config(ctxt, &function.x.name, id);
     vir.functions.push(function);
     Ok(())
 }
