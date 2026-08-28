@@ -149,6 +149,14 @@ test_verify_one_file_with_options! {
 
         broadcast use group_utf8_lib;
 
+        // @zero-to-nat points out: This `assume_specification` is for
+        // testing purposes only; we shouldn't use it in real code. We
+        // can't have a verified `str::as_bytes_mut` because we don't
+        // have a way of ensuring the UTF8 invariant is enforced on
+        // final(b), so uses of this function could easily create a
+        // str which violates the invariant. In vstd, we assume that
+        // the UTF8 invariant always holds, because the View of a str
+        // is Seq<char> instead of Seq<u8>.
         pub assume_specification[ str::as_bytes_mut ](s: &mut str) -> (b: &mut [u8])
             ensures
                 b@ == old(s).spec_bytes(),
