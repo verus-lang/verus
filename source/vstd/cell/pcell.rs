@@ -186,6 +186,20 @@ impl<T: ?Sized> PCell<T> {
         ManuallyDrop::into_inner(self.ucell).into_inner()
     }
 
+    /// Same as [`PCell::into_inner()`], except that the calling thread does not need to give up ownership of the [`PointsTo`] permission.
+    /// The type system guarantees that no threads can access this [`PCell`] after this function is invoked, meaning that it is safe to return the inner `T` value.
+    /// However, unlike on [`PCell::into_inner()`], we cannot learning anything about the contents of this value.
+    #[inline(always)]
+    #[verifier::external_body]
+    pub fn into_inner_weak(self) -> (v: T)
+        where T: Sized
+        opens_invariants none
+        no_unwind
+    {
+        // SAFETY: For an UnsafeCell, into_inner is a safe operation.
+        ManuallyDrop::into_inner(self.ucell).into_inner()
+    }
+
     ////// Trusted core ends here
 
     #[inline(always)]
