@@ -278,7 +278,12 @@ pub(crate) fn translate_impl<'tcx>(
                 // ?
                 let def_id = match impll.self_ty.kind {
                     rustc_hir::TyKind::Path(QPath::Resolved(None, path)) => path.res.def_id(),
-                    _ => panic!("self type of impl is not resolved: {:?}", impll.self_ty.kind),
+                    _ => {
+                        return err_span_vec(
+                            item.span,
+                            "`Structural` can only be implemented for struct or enum types",
+                        )
+                    }
                 };
                 ctxt.tcx.type_of(def_id).skip_binder()
             };
@@ -295,7 +300,10 @@ pub(crate) fn translate_impl<'tcx>(
                     })),
                 )
             } else {
-                panic!("Structural impl for non-adt type");
+                return err_span_vec(
+                    item.span,
+                    "`Structural` can only be implemented for struct or enum types",
+                );
             };
             let ty_applied_never = ctxt.tcx.mk_ty_from_kind(ty_kind_applied_never);
             if !ty_applied_never.is_structural_eq_shallow(ctxt.tcx) {
