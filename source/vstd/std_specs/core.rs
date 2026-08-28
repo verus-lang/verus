@@ -191,7 +191,7 @@ pub assume_specification [core::panicking::panic] (s: &'static str) -> !
         false,
 ;
 
-pub assume_specification [core::panicking::panic_fmt] (s: std::fmt::Arguments<'_>) -> !
+pub assume_specification [core::panicking::panic_fmt] (s: core::fmt::Arguments<'_>) -> !
     requires
         false,
 ;
