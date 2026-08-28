@@ -43,6 +43,7 @@ pub fn fence_acquire(Tracked(acq_vs): Tracked<AcquireViewSeen>) -> (vs: Tracked<
     Tracked::assume_new()
 }
 
+#[verifier::ext_equal]
 pub ghost struct AtomicHistory<T>(pub Map<nat, (T, ThreadView)>);
 
 impl<T> AtomicHistory<T> {
@@ -53,7 +54,7 @@ impl<T> AtomicHistory<T> {
     pub open spec fn contains_timestamp(&self, timestamp: nat) -> bool {
         self.0.dom().contains(timestamp)
     }
-
+ 
     pub open spec fn index(&self, timestamp: nat) -> (T, ThreadView)
         recommends
             self.contains_timestamp(timestamp),
@@ -65,14 +66,14 @@ impl<T> AtomicHistory<T> {
         recommends
             self.contains_timestamp(timestamp),
     {
-        self.0.index(timestamp).0
+        self.index(timestamp).0
     }
 
     pub open spec fn thread_view(&self, timestamp: nat) -> ThreadView
         recommends
             self.contains_timestamp(timestamp),
     {
-        self.0.index(timestamp).1
+        self.index(timestamp).1
     }
 
     pub open spec fn get(&self, timestamp: nat) -> Option<(T, ThreadView)> {
@@ -100,9 +101,19 @@ impl<T> AtomicHistory<T> {
         AtomicHistory(self.0.insert(timestamp, (val, view)))
     }
 
+    pub broadcast proof fn insert_def(&self, timestamp: nat, val: T, view: ThreadView)
+        ensures
+            #[trigger] self.insert(timestamp, val, view).0 == self.0.insert(timestamp, (val, view))
+    {}
+
     pub open spec fn remove(&self, timestamp: nat) -> Self {
         AtomicHistory(self.0.remove(timestamp))
     }
+
+    pub broadcast proof fn remove_def(&self, timestamp: nat)
+        ensures
+            #[trigger] self.remove(timestamp).0 == self.0.remove(timestamp)
+    {}
 
     pub open spec fn is_singleton(&self, timestamp: nat, val: (T, ThreadView)) -> bool {
         &&& self.contains_timestamp(timestamp)
@@ -169,6 +180,8 @@ pub broadcast group group_view_history {
     history_insert_contains_timestamp_cases,
     history_get_contains_timestamp,
     history_singleton_dom_singleton,
+    AtomicHistory::insert_def,
+    AtomicHistory::remove_def,
     AtomicPointsTo::get_timestamp_monotonic,
     AtomicPointsTo::get_timestamp_loc
 }
