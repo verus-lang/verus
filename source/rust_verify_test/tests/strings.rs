@@ -255,7 +255,7 @@ test_verify_one_file_with_options! {
         fn range_from(s: &mut str)
             requires
                 valid_utf8(s.spec_bytes()),
-                s.len() == 5,
+                s.spec_bytes().len() == 5,
                 s.is_char_boundary(2),
         {
             let _: &str = &s[2..];
