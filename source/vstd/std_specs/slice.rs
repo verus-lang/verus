@@ -46,10 +46,11 @@ pub assume_specification<T>[ <Range<usize> as SliceIndex<[T]>>::index_mut ](i: R
     ensures
         r@ == old(slice)@.subrange(i.start as int, i.end as int),
         final(slice)@.len() == old(slice)@.len(),
-        final(slice)@.subrange(0, i.start as int) == old(slice)@.subrange(0, i.start as int),
-        final(slice)@.subrange(i.start as int, i.end as int) == final(r)@,
-        final(slice)@.subrange(i.end as int, old(slice)@.len() as int) ==
-            old(slice)@.subrange(i.end as int, old(slice)@.len() as int),
+        final(r)@ == final(slice)@.subrange(i.start as int, i.end as int),
+        final(slice)@ == old(slice)@.subrange(0, i.start as int) + final(r)@ + old(slice)@.subrange(
+            i.end as int,
+            old(slice)@.len() as int,
+        ),
 ;
 
 impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for RangeTo<usize> {
@@ -66,6 +67,7 @@ pub assume_specification<T>[ <RangeTo<usize> as SliceIndex<[T]>>::index ](i: Ran
 pub assume_specification<T>[ <RangeTo<usize> as SliceIndex<[T]>>::index_mut ](i: RangeTo<usize>, slice: &mut [T]) -> (r: &mut [T])
     ensures
         r@ == old(slice)@.subrange(0, i.end as int),
+        final(slice)@.len() == old(slice)@.len(),
         final(r)@ == final(slice)@.subrange(0, i.end as int),
         final(slice)@ == final(r)@ + old(slice)@.subrange(i.end as int, old(slice)@.len() as int),
 ;
@@ -84,6 +86,7 @@ pub assume_specification<T>[ <RangeFrom<usize> as SliceIndex<[T]>>::index ](i: R
 pub assume_specification<T>[ <RangeFrom<usize> as SliceIndex<[T]>>::index_mut ](i: RangeFrom<usize>, slice: &mut [T]) -> (r: &mut [T])
     ensures
         r@ == old(slice)@.subrange(i.start as int, old(slice)@.len() as int),
+        final(slice)@.len() == old(slice)@.len(),
         final(r)@ == final(slice)@.subrange(i.start as int, old(slice)@.len() as int),
         final(slice)@ == old(slice)@.subrange(0, i.start as int) + final(r)@,
 ;
@@ -102,6 +105,7 @@ pub assume_specification<T>[ <RangeToInclusive<usize> as SliceIndex<[T]>>::index
 pub assume_specification<T>[ <RangeToInclusive<usize> as SliceIndex<[T]>>::index_mut ](i: RangeToInclusive<usize>, slice: &mut [T]) -> (r: &mut [T])
     ensures
         r@ == old(slice)@.subrange(0, i.end as int + 1),
+        final(slice)@.len() == old(slice)@.len(),
         final(r)@ == final(slice)@.subrange(0, i.end as int + 1),
         final(slice)@ == final(r)@ + old(slice)@.subrange(i.end as int + 1, old(slice)@.len() as int),
 ;
@@ -120,6 +124,7 @@ pub assume_specification<T>[ <RangeFull as SliceIndex<[T]>>::index ](i: RangeFul
 pub assume_specification<T>[ <RangeFull as SliceIndex<[T]>>::index_mut ](i: RangeFull, slice: &mut [T]) -> (r: &mut [T])
     ensures
         r@ == old(slice)@,
+        final(slice)@.len() == old(slice)@.len(),
         final(slice)@ == final(r)@,
 ;
 
@@ -140,6 +145,7 @@ pub assume_specification<T>[ <RangeInclusive<usize> as SliceIndex<[T]>>::index_m
             slice_range_start(&i),
             slice_range_end(&i, old(slice)@.len() as nat),
         ),
+        final(slice)@.len() == old(slice)@.len(),
         final(r)@ == final(slice)@.subrange(
             slice_range_start(&i),
             slice_range_end(&i, old(slice)@.len() as nat),
