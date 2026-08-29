@@ -451,6 +451,34 @@ test_verify_one_file_with_options! {
     } => Ok(())
 }
 
+// A `global size_of`/`global layout` declaration on a struct that's private to its
+// declaring module must still reach every other module's query without crashing -
+// the broadcast axiom's own dependency (the struct's datatype declaration) is pulled
+// in through the same reachability walk as any ordinary cross-module function call
+// into code that uses a private type, regardless of the type's own visibility.
+test_verify_one_file_with_options! {
+    #[test] issue_1114_size_of_cross_module_private_struct ["vstd", "--compile"] => verus_code! {
+        mod m1 {
+            #[repr(C)]
+            struct S { v: u64 }
+
+            global size_of S == 8;
+        }
+
+        mod m2 {
+            use vstd::prelude::*;
+
+            fn test() -> (r: u32)
+                ensures r == 5,
+            {
+                let x: u32 = 5;
+                assert(x == 5);
+                x
+            }
+        }
+    } => Ok(())
+}
+
 test_verify_one_file_with_options! {
     #[test] test_layouts_for_primitives ["vstd"] => verus_code! {
         proof fn test() {
