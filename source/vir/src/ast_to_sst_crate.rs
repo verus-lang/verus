@@ -18,7 +18,12 @@ pub fn ast_to_sst_krate(
     for function in krate.functions.iter() {
         let vis = function.x.visibility.clone();
         let module = ctx.module_path();
-        if !crate::ast_util::is_visible_to(&vis, &module) || function.x.attrs.is_decrease_by {
+        // size_of/layout lemmas are crate-wide facts, exempt from visibility here too
+        // (prune.rs and sst_to_air_func.rs already bypass their own gates for this).
+        if (!crate::ast_util::is_visible_to(&vis, &module)
+            && !function.x.attrs.size_of_broadcast_proof)
+            || function.x.attrs.is_decrease_by
+        {
             continue;
         }
 

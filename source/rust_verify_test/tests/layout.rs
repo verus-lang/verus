@@ -451,11 +451,10 @@ test_verify_one_file_with_options! {
     } => Ok(())
 }
 
-// A `global size_of`/`global layout` declaration on a struct that's private to its
-// declaring module must still reach every other module's query without crashing -
-// the broadcast axiom's own dependency (the struct's datatype declaration) is pulled
-// in through the same reachability walk as any ordinary cross-module function call
-// into code that uses a private type, regardless of the type's own visibility.
+// A private, unused struct's `global size_of` must not break other modules' queries -
+// its lemma is correctly omitted there rather than crashing. The `int` usage below
+// isn't incidental: an earlier version of this fix reached the lemma whenever anything
+// reached `nat` (size_of's own return type), and this was enough to trigger that.
 test_verify_one_file_with_options! {
     #[test] issue_1114_size_of_cross_module_private_struct ["vstd", "--compile"] => verus_code! {
         mod m1 {
@@ -473,7 +472,32 @@ test_verify_one_file_with_options! {
             {
                 let x: u32 = 5;
                 assert(x == 5);
+                proof {
+                    let y: int = 3;
+                    assert(y == 3);
+                }
                 x
+            }
+        }
+    } => Ok(())
+}
+
+// The case #1114 was actually filed about: `global size_of` declared in one non-root
+// module, used from a sibling module (neither an ancestor nor descendant of it).
+test_verify_one_file_with_options! {
+    #[test] issue_1114_sibling_module_size_of ["vstd", "--compile"] => verus_code! {
+        mod m1 {
+            #[repr(C)]
+            pub struct S { pub v: u64 }
+
+            global size_of S == 8;
+        }
+
+        mod m2 {
+            use vstd::prelude::*;
+
+            fn test() {
+                assert(core::mem::size_of::<crate::m1::S>() == 8);
             }
         }
     } => Ok(())
