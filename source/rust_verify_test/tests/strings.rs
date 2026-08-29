@@ -1056,7 +1056,10 @@ test_verify_one_file! {
         // closure with an explicit `ensures`. The real `.starts_with(pred)`/
         // `.ends_with(pred)`/`.contains(pred)` calls are specced generically
         // via the `Pattern` trait, same as the `str`/`char`/`&[char]` cases
-        // above.
+        // above. Proving a positive match needs one real call to the closure
+        // first (e.g. `pred_l('l')`) - Verus can only learn `pred.ensures(...)`
+        // holds for a specific value from an actual traced call, not from the
+        // closure's declared `ensures` alone.
         fn test_pred_pattern_concrete() {
             proof {
                 reveal_strlit("hello world");

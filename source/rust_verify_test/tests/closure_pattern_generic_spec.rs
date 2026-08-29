@@ -3,10 +3,10 @@
 mod common;
 use common::*;
 
-// Demonstrates that str_starts_with_pred/str_ends_with_pred/str_contains_pred/
-// str_find_pred/str_rfind_pred's exact guarantees are all recoverable through
-// the generic Pattern trait spec once PatternSpecImpl covers FnMut(char) ->
-// bool closures too - see PR #2741's discussion with @parno.
+// Generic regression tests for the closure `PatternSpecImpl` (see
+// vstd/string.rs) - each wraps a `Pattern` function to prove the same
+// pre/postconditions a hand-written per-call wrapper would, but for any
+// `FnMut(char) -> bool` predicate. See PR #2741's discussion with @parno.
 test_verify_one_file_with_options! {
     #[test] generic_starts_with_matches_wrapper ["vstd"] => verus_code! {
         use vstd::prelude::*;
