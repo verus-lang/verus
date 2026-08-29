@@ -948,9 +948,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_str_pattern_trait_spec_pass verus_code! {
-        use vstd::string::{
-            str_contains_pred, str_ends_with_pred, str_starts_with_pred, PatternSpec, View,
-        };
+        use vstd::string::{PatternSpec, View};
         use vstd::seq::*;
 
         // `str`/`char` Pattern impls - real `.starts_with()`/`.ends_with()`/
@@ -1055,42 +1053,44 @@ test_verify_one_file! {
         }
 
         // A closure Pattern - the predicate is given as an ordinary Verus
-        // closure with an explicit `ensures`. Real `.starts_with(pred)` calls
-        // can't be reasoned about generically (see the `Pattern` trait spec's
-        // doc comment), so predicates go through these dedicated wrappers,
-        // which have a real exec body that calls the predicate directly.
-        fn test_pred_pattern_wrappers_concrete() {
+        // closure with an explicit `ensures`. The real `.starts_with(pred)`/
+        // `.ends_with(pred)`/`.contains(pred)` calls are specced generically
+        // via the `Pattern` trait, same as the `str`/`char`/`&[char]` cases
+        // above.
+        fn test_pred_pattern_concrete() {
             proof {
                 reveal_strlit("hello world");
+                assert("hello world"@[0] == 'h');
                 assert("hello world"@[2] == 'l');
+                assert("hello world"@[10] == 'd');
             }
-            let r18 = str_contains_pred(
-                "hello world",
-                |c: char| -> (b: bool) ensures b == (c == 'l') { c == 'l' },
-            );
+            let mut pred_l = |c: char| -> (b: bool) ensures b == (c == 'l') { c == 'l' };
+            let l_matched = pred_l('l');
+            assert(l_matched);
+            assert(pred_l.matches_at("hello world"@, 2, 3));
+            let r18 = "hello world".contains(pred_l);
             assert(r18);
-            let r19 = str_contains_pred(
-                "hello world",
+            let r19 = "hello world".contains(
                 |c: char| -> (b: bool) ensures b == (c == 'z') { c == 'z' },
             );
             assert(!r19);
-            let r14 = str_starts_with_pred(
-                "hello world",
-                |c: char| -> (b: bool) ensures b == (c == 'h') { c == 'h' },
-            );
+            let mut pred_h = |c: char| -> (b: bool) ensures b == (c == 'h') { c == 'h' };
+            let h_matched = pred_h('h');
+            assert(h_matched);
+            assert(pred_h.matches_at("hello world"@, 0, 1));
+            let r14 = "hello world".starts_with(pred_h);
             assert(r14);
-            let r15 = str_starts_with_pred(
-                "hello world",
+            let r15 = "hello world".starts_with(
                 |c: char| -> (b: bool) ensures b == (c == 'x') { c == 'x' },
             );
             assert(!r15);
-            let r16 = str_ends_with_pred(
-                "hello world",
-                |c: char| -> (b: bool) ensures b == (c == 'd') { c == 'd' },
-            );
+            let mut pred_d = |c: char| -> (b: bool) ensures b == (c == 'd') { c == 'd' };
+            let d_matched = pred_d('d');
+            assert(d_matched);
+            assert(pred_d.matches_at("hello world"@, 10, 11));
+            let r16 = "hello world".ends_with(pred_d);
             assert(r16);
-            let r17 = str_ends_with_pred(
-                "hello world",
+            let r17 = "hello world".ends_with(
                 |c: char| -> (b: bool) ensures b == (c == 'x') { c == 'x' },
             );
             assert(!r17);
@@ -1100,7 +1100,6 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_str_pattern_trait_spec_fail verus_code! {
-        use vstd::string::str_starts_with_pred;
         use vstd::seq::*;
 
         fn test_str_pattern_wrong() {
@@ -1121,12 +1120,11 @@ test_verify_one_file! {
             assert(!r); // FAILS
         }
 
-        fn test_pred_pattern_wrapper_wrong() {
+        fn test_pred_pattern_wrong() {
             proof {
                 reveal_strlit("hello world");
             }
-            let r = str_starts_with_pred(
-                "hello world",
+            let r = "hello world".starts_with(
                 |c: char| -> (b: bool) ensures b == (c == 'h') { c == 'h' },
             );
             assert(!r); // FAILS
@@ -1135,10 +1133,8 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_str_find_wrappers_pass verus_code! {
-        use vstd::string::{
-            str_find_pred, str_rfind_pred, PatternSpec, StringSliceAdditionalSpecFns, View,
-        };
+    #[test] test_str_find_pass verus_code! {
+        use vstd::string::{PatternSpec, StringSliceAdditionalSpecFns, View};
         use vstd::seq::*;
         use vstd::utf8::{encode_scalar, encode_utf8};
         use vstd::pervasive::FnWithRequiresEnsures;
@@ -1257,21 +1253,44 @@ test_verify_one_file! {
             proof {
                 reveal_strlit("hello world");
                 assert("hello world"@[4] == 'o');
+                lemma_ascii_char_encode_scalar('o');
+                lemma_ascii_char_encode_scalar('z');
             }
-            let pred = |c: char| -> (b: bool) ensures b == (c == 'o') { c == 'o' };
-            let r1 = str_find_pred("hello world", pred);
+            let mut pred = |c: char| -> (b: bool) ensures b == (c == 'o') { c == 'o' };
+            let matched = pred('o');
+            assert(matched);
+            assert(pred.matches_at_bytes("hello world".spec_bytes(), 4, 5)) by {
+                broadcast use vstd::string::is_ascii_spec_bytes;
+                assert("hello world".is_ascii());
+                assert("hello world"@ =~= seq!['h', 'e', 'l', 'l', 'o', ' ', 'w', 'o', 'r', 'l', 'd']);
+                assert("hello world".spec_bytes() =~= Seq::new(11, |i| "hello world"@.index(i) as u8));
+            };
+            let r1 = "hello world".find(pred);
             assert(r1 is Some);
-            // The postcondition's own witness already ties the returned offset back
-            // to a real matching character - no need to pin down its exact value.
-            assert(exists|i: int|
-                0 <= i < 11 && pred.ensures((#[trigger] "hello world"@[i],), true)
-                    && r1.unwrap() as int == encode_utf8("hello world"@.subrange(0, i)).len());
 
-            let r2 = str_find_pred(
-                "hello world",
-                |c: char| -> (b: bool) ensures b == (c == 'z') { c == 'z' },
-            );
-            assert(r2 is None);
+            let pred2 = |c: char| -> (b: bool) ensures b == (c == 'z') { c == 'z' };
+            let r2 = "hello world".find(pred2);
+            assert(r2 is None) by {
+                broadcast use vstd::string::is_ascii_spec_bytes;
+                assert("hello world".is_ascii());
+                assert("hello world"@ =~= seq!['h', 'e', 'l', 'l', 'o', ' ', 'w', 'o', 'r', 'l', 'd']);
+                assert("hello world".spec_bytes() =~= Seq::new(11, |i| "hello world"@.index(i) as u8));
+                assert forall|k: int, j: int|
+                    0 <= k <= j <= 11 implies !pred2.matches_at_bytes(
+                        "hello world".spec_bytes(),
+                        k,
+                        j,
+                    ) by {
+                    assert forall|c: char|
+                        "hello world".spec_bytes().subrange(k, j) =~= encode_scalar(
+                            c as u32,
+                        ) implies !pred2.ensures((c,), true) by {
+                        if j == k + 1 && 0 <= k < 11 {
+                            assert("hello world"@.index(k) != 'z');
+                        }
+                    }
+                }
+            };
         }
 
         fn test_rfind_pred() {
@@ -1279,29 +1298,50 @@ test_verify_one_file! {
                 reveal_strlit("hello world");
                 assert("hello world"@[4] == 'o');
                 assert("hello world"@[7] == 'o');
+                lemma_ascii_char_encode_scalar('o');
+                lemma_ascii_char_encode_scalar('z');
             }
-            let pred = |c: char| -> (b: bool) ensures b == (c == 'o') { c == 'o' };
-            let r1 = str_rfind_pred("hello world", pred);
+            let mut pred = |c: char| -> (b: bool) ensures b == (c == 'o') { c == 'o' };
+            let matched = pred('o');
+            assert(matched);
+            assert(pred.matches_at_bytes("hello world".spec_bytes(), 7, 8)) by {
+                broadcast use vstd::string::is_ascii_spec_bytes;
+                assert("hello world".is_ascii());
+                assert("hello world"@ =~= seq!['h', 'e', 'l', 'l', 'o', ' ', 'w', 'o', 'r', 'l', 'd']);
+                assert("hello world".spec_bytes() =~= Seq::new(11, |i| "hello world"@.index(i) as u8));
+            };
+            let r1 = "hello world".rfind(pred);
             assert(r1 is Some);
-            // The postcondition's own witness already ties the returned offset back
-            // to a real matching character - no need to pin down its exact value.
-            assert(exists|i: int|
-                0 <= i < 11 && pred.ensures((#[trigger] "hello world"@[i],), true)
-                    && r1.unwrap() as int == encode_utf8("hello world"@.subrange(0, i)).len());
 
-            let r2 = str_rfind_pred(
-                "hello world",
-                |c: char| -> (b: bool) ensures b == (c == 'z') { c == 'z' },
-            );
-            assert(r2 is None);
+            let pred2 = |c: char| -> (b: bool) ensures b == (c == 'z') { c == 'z' };
+            let r2 = "hello world".rfind(pred2);
+            assert(r2 is None) by {
+                broadcast use vstd::string::is_ascii_spec_bytes;
+                assert("hello world".is_ascii());
+                assert("hello world"@ =~= seq!['h', 'e', 'l', 'l', 'o', ' ', 'w', 'o', 'r', 'l', 'd']);
+                assert("hello world".spec_bytes() =~= Seq::new(11, |i| "hello world"@.index(i) as u8));
+                assert forall|k: int, j: int|
+                    0 <= k <= j <= 11 implies !pred2.matches_at_bytes(
+                        "hello world".spec_bytes(),
+                        k,
+                        j,
+                    ) by {
+                    assert forall|c: char|
+                        "hello world".spec_bytes().subrange(k, j) =~= encode_scalar(
+                            c as u32,
+                        ) implies !pred2.ensures((c,), true) by {
+                        if j == k + 1 && 0 <= k < 11 {
+                            assert("hello world"@.index(k) != 'z');
+                        }
+                    }
+                }
+            };
         }
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] test_str_find_wrappers_fail verus_code! {
-        use vstd::string::str_find_pred;
-
+test_verify_one_file_with_options! {
+    #[test] test_str_find_fail ["vstd"] => verus_code! {
         fn test_find_str_wrong() {
             proof {
                 reveal_strlit("hello world");
@@ -1315,8 +1355,7 @@ test_verify_one_file! {
             proof {
                 reveal_strlit("hello world");
             }
-            let r = str_find_pred(
-                "hello world",
+            let r = "hello world".find(
                 |c: char| -> (b: bool) ensures b == (c == 'o') { c == 'o' },
             );
             assert(r is None); // FAILS
