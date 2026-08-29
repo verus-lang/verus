@@ -1137,10 +1137,9 @@ pub proof fn encode_scalar_widths_disjoint(a: u32, b: u32)
     ensures
         encode_scalar(a).len() == encode_scalar(b).len(),
 {
-    let wa = scalar_leading_byte_class(a);
-    let wb = scalar_leading_byte_class(b);
+    scalar_leading_byte_class(a);
+    scalar_leading_byte_class(b);
     leading_byte_widths_disjoint(encode_scalar(a)[0]);
-    assert(wa == wb);
 }
 
 /// Given a valid char-boundary byte position inside `encode_utf8(chars)`,
@@ -1156,7 +1155,6 @@ pub proof fn char_index_at_byte_boundary(chars: Seq<char>, byte_pos: int) -> (ch
 {
     encode_utf8_valid_utf8(chars);
     if byte_pos == 0 {
-        assert(chars.subrange(0, 0) =~= Seq::<char>::empty());
         0
     } else {
         reveal_with_fuel(is_char_boundary, 2);
@@ -1164,13 +1162,6 @@ pub proof fn char_index_at_byte_boundary(chars: Seq<char>, byte_pos: int) -> (ch
         encode_utf8_first_scalar(chars);
         assert(pop_first_scalar(encode_utf8(chars)) =~= encode_utf8(chars.drop_first()));
         encode_utf8_valid_utf8(chars.drop_first());
-        assert(encode_utf8(chars).len() == encode_scalar(chars[0] as u32).len() + encode_utf8(
-            chars.drop_first(),
-        ).len());
-        assert(is_char_boundary(
-            encode_utf8(chars.drop_first()),
-            byte_pos - length_of_first_scalar(encode_utf8(chars)),
-        ));
         let rest_i = char_index_at_byte_boundary(
             chars.drop_first(),
             byte_pos - length_of_first_scalar(encode_utf8(chars)),
@@ -1178,7 +1169,6 @@ pub proof fn char_index_at_byte_boundary(chars: Seq<char>, byte_pos: int) -> (ch
         assert(chars.drop_first().subrange(0, rest_i) =~= chars.subrange(1, rest_i + 1));
         assert(chars.subrange(0, rest_i + 1) =~= seq![chars[0]] + chars.subrange(1, rest_i + 1));
         encode_utf8_concat(seq![chars[0]], chars.subrange(1, rest_i + 1));
-        assert(seq![chars[0]].drop_first() =~= Seq::<char>::empty());
         rest_i + 1
     }
 }
@@ -1198,11 +1188,6 @@ pub proof fn char_at_byte_offset(chars: Seq<char>, byte_i: int, byte_j: int, c: 
 {
     encode_utf8_valid_utf8(chars);
     scalar_leading_byte_class(c as u32);
-    assert(is_leading_byte_width_1(encode_scalar(c as u32)[0]) || is_leading_byte_width_2(
-        encode_scalar(c as u32)[0],
-    ) || is_leading_byte_width_3(encode_scalar(c as u32)[0]) || is_leading_byte_width_4(
-        encode_scalar(c as u32)[0],
-    ));
     assert(encode_utf8(chars)[byte_i] == encode_scalar(c as u32)[0]);
     is_char_boundary_iff_is_leading_byte(encode_utf8(chars), byte_i);
 
@@ -1226,16 +1211,10 @@ pub proof fn char_at_byte_offset(chars: Seq<char>, byte_i: int, byte_j: int, c: 
     assert(k == byte_i);
     char_is_scalar(chars[char_i]);
     encode_scalar_widths_disjoint(chars[char_i] as u32, c as u32);
-    assert(encode_scalar(chars[char_i] as u32) =~= encode_scalar(c as u32));
 
     reveal_with_fuel(encode_utf8, 2);
-    assert(seq![chars[char_i]].drop_first() =~= Seq::<char>::empty());
-    assert(seq![c].drop_first() =~= Seq::<char>::empty());
-    assert(encode_utf8(seq![chars[char_i]]) =~= encode_scalar(chars[char_i] as u32));
-    assert(encode_utf8(seq![c]) =~= encode_scalar(c as u32));
     encode_utf8_first_scalar(seq![chars[char_i]]);
     encode_utf8_first_scalar(seq![c]);
-    assert(chars[char_i] as u32 == c as u32);
     char_u32_cast(chars[char_i], chars[char_i] as u32);
     char_u32_cast(c, c as u32);
     char_i
