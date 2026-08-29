@@ -30,7 +30,7 @@ pub fn increment_bad(var: &PAtomicU64, Tracked(perm): Tracked<&mut PermissionU64
 ////////////////////////////////////////////////////////////////////////////////
 
 fn call_increment_bad() {
-    let (var, Tracked(perm)) = PAtomicU64::new(6);
+    let (var, Tracked(mut perm)) = PAtomicU64::new(6);
     increment_bad(&var, Tracked(&mut perm));
 }
 
