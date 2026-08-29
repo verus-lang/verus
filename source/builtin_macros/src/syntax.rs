@@ -1573,13 +1573,10 @@ impl VisitMut for ExecGhostPatVisitor {
                     let mut x = id.clone();
                     x.mutability = None;
                     let span = id.span();
+                    let mutability = id.mutability;
                     let decl = if path_is_ident(&pts.path, "Tracked") {
                         if self.inside_ghost == 0 {
-                            if id.mutability.is_some() {
-                                parse_quote_spanned!(span => #[verus::internal(proof)] let mut #x;)
-                            } else {
-                                parse_quote_spanned!(span => #[verus::internal(proof)] let #x;)
-                            }
+                            parse_quote_spanned!(span => #[verus::internal(proof)] let #mutability #x;)
                         } else if id.mutability.is_some() {
                             parse_quote_spanned!(span => #[verus::internal(proof)] let mut #x = #tmp_x.get();)
                         } else {
@@ -1587,11 +1584,7 @@ impl VisitMut for ExecGhostPatVisitor {
                         }
                     } else {
                         if self.inside_ghost == 0 {
-                            if id.mutability.is_some() {
-                                parse_quote_spanned!(span => #[verus::internal(spec)] #[verus::internal(infer_proph)] let mut #x;)
-                            } else {
-                                parse_quote_spanned!(span => #[verus::internal(spec)] #[verus::internal(infer_proph)] let #x;)
-                            }
+                            parse_quote_spanned!(span => #[verus::internal(spec)] #[verus::internal(infer_proph)] let #mutability #x;)
                         } else if id.mutability.is_some() {
                             parse_quote_spanned!(span => #[verus::internal(spec)] let mut #x = #tmp_x.view();)
                         } else {
@@ -1637,21 +1630,13 @@ impl VisitMut for ExecGhostPatVisitor {
                 }
                 let tmp_x = mk_ident_tmp(&id.ident);
                 let mut x = id.clone();
-                let is_mut = x.mutability.is_some();
+                let mutability = x.mutability;
                 x.mutability = None;
                 let span = id.span();
                 let decl = if self.ghost.is_some() {
-                    if is_mut {
-                        parse_quote_spanned!(span => #[verus::internal(spec)] #[verus::internal(infer_proph)] let mut #x;)
-                    } else {
-                        parse_quote_spanned!(span => #[verus::internal(spec)] #[verus::internal(infer_proph)] let #x;)
-                    }
+                    parse_quote_spanned!(span => #[verus::internal(spec)] #[verus::internal(infer_proph)] let #mutability #x;)
                 } else {
-                    if is_mut {
-                        parse_quote_spanned!(span => #[verus::internal(infer_mode)] let mut #x;)
-                    } else {
-                        parse_quote_spanned!(span => #[verus::internal(infer_mode)] let #x;)
-                    }
+                    parse_quote_spanned!(span => #[verus::internal(infer_mode)] let #mutability #x;)
                 };
                 let assign = quote_spanned!(span => #x = #tmp_x);
                 id.ident = tmp_x;
