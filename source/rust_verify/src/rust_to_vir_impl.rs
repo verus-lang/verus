@@ -290,7 +290,7 @@ pub(crate) fn translate_impl<'tcx>(
                         return err_span_vec(
                             item.span,
                             "`Structural` can only be implemented for struct or enum types",
-                        )
+                        );
                     }
                 };
                 ctxt.tcx.type_of(def_id).skip_binder()
