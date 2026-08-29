@@ -19,7 +19,7 @@ use crate::ast_util::{
     conjoin, mk_eq, mk_implies, place_to_spec_expr, typ_args_for_datatype_typ, undecorate_typ,
     unit_typ, wrap_in_trigger,
 };
-use crate::ast_visitor::VisitorScopeMap;
+use crate::ast_visitor::{AstVisitor, VisitorScopeMap};
 use crate::context::GlobalCtx;
 use crate::def::dummy_param_name;
 use crate::def::is_dummy_param_name;
@@ -31,6 +31,7 @@ use crate::messages::Span;
 use crate::messages::{error, internal_error};
 use crate::sst_util::subst_typ_for_datatype;
 use crate::util::vec_map_result;
+use crate::visitor::Walk;
 use air::ast_util::ident_binder;
 use air::scope_map::ScopeMap;
 use std::collections::{HashMap, HashSet};
@@ -1196,11 +1197,120 @@ fn add_fndef_axioms_to_function(
     Ok((Spanned::new(function.span.clone(), functionx), trait_impls_out, assoc_type_impl))
 }
 
+/// Catches a real reassignment of a no-initializer ghost/tracked declaration
+/// (`let ghost x;`/`let tracked x;`, how exec-top-level bindings desugar - see
+/// #2865) that simplify_one_expr's check can't see, since it only tracks a static
+/// "declaration had an initializer" flag, not how many times the variable's
+/// actually been assigned. Runs as its own walk (not part of simplify_one_expr) so
+/// it can be control-flow aware - see the `if`/`match`/`loop` cases below.
+struct DelayedInitChecker {
+    scope_map: VisitorScopeMap,
+    assigned: HashSet<VarIdent>,
+}
+
+impl DelayedInitChecker {
+    fn check_assign_target(&mut self, expr: &Expr, place: &Place) -> Result<(), VirErr> {
+        if !crate::ast_util::place_has_deref_mut(place)
+            && let Some(local) = crate::ast_util::place_get_local(place)
+            && let PlaceX::Local(x) = &local.x
+            && let Some(entry) = self.scope_map.get(x)
+            && entry.user_mut == Some(false)
+            && !entry.init
+            && !self.assigned.insert(x.clone())
+        {
+            let name = user_local_name(x);
+            return Err(error(&expr.span, format!("variable `{name:}` is not marked mutable")));
+        }
+        Ok(())
+    }
+}
+
+impl AstVisitor<Walk, VirErr, VisitorScopeMap> for DelayedInitChecker {
+    fn scoper(&mut self) -> Option<&mut VisitorScopeMap> {
+        Some(&mut self.scope_map)
+    }
+
+    fn visit_typ(&mut self, _typ: &Typ) -> Result<(), VirErr> {
+        Ok(())
+    }
+
+    fn visit_stmt(&mut self, stmt: &Stmt) -> Result<(), VirErr> {
+        self.visit_stmt_rec(stmt)
+    }
+
+    fn visit_place(&mut self, place: &Place) -> Result<(), VirErr> {
+        self.visit_place_rec(place)
+    }
+
+    fn visit_pattern(&mut self, pattern: &Pattern) -> Result<(), VirErr> {
+        self.visit_pattern_rec(pattern)
+    }
+
+    fn visit_expr(&mut self, expr: &Expr) -> Result<(), VirErr> {
+        match &expr.x {
+            ExprX::Assign { place, .. }
+            | ExprX::BorrowMut(place)
+            | ExprX::TwoPhaseBorrowMut(place)
+            | ExprX::BorrowMutTracked(place) => {
+                self.check_assign_target(expr, place)?;
+                self.visit_expr_rec(expr)
+            }
+            // Each branch gets a fresh, empty set, not a copy of the pre-conditional
+            // state: branches are alternatives, so assigning once per branch (e.g.
+            // resolving a prophecy variable) is fine even if an earlier assignment on
+            // the path into the conditional already used up the free slot.
+            ExprX::If(cond, thn, els) => {
+                self.visit_expr(cond)?;
+                let saved = std::mem::take(&mut self.assigned);
+                self.visit_expr(thn)?;
+                self.assigned = HashSet::new();
+                if let Some(els) = els {
+                    self.visit_expr(els)?;
+                }
+                self.assigned = saved;
+                Ok(())
+            }
+            ExprX::Match(place, arms, _) => {
+                self.visit_place(place)?;
+                let saved = std::mem::take(&mut self.assigned);
+                for arm in arms.iter() {
+                    self.assigned = HashSet::new();
+                    self.visit_arm(arm)?;
+                }
+                self.assigned = saved;
+                Ok(())
+            }
+            ExprX::Loop { cond, body, invs, decrease, .. } => {
+                if let Some(cond) = cond {
+                    self.visit_expr(cond)?;
+                }
+                let saved = std::mem::take(&mut self.assigned);
+                self.visit_expr(body)?;
+                self.assigned = saved;
+                self.visit_loop_invariants(invs)?;
+                for e in decrease.iter() {
+                    self.visit_expr(e)?;
+                }
+                Ok(())
+            }
+            _ => self.visit_expr_rec(expr),
+        }
+    }
+}
+
+fn check_delayed_init_reassignment(function: &Function) -> Result<(), VirErr> {
+    let mut checker = DelayedInitChecker { scope_map: ScopeMap::new(), assigned: HashSet::new() };
+    checker.visit_function(function)?;
+    Ok(())
+}
+
 fn simplify_function(
     ctx: &GlobalCtx,
     state: &mut State,
     function: &Function,
 ) -> Result<Function, VirErr> {
+    check_delayed_init_reassignment(function)?;
+
     state.reset_for_function();
     let mut functionx = function.x.clone();
 

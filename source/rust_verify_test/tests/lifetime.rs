@@ -552,15 +552,15 @@ test_verify_one_file! {
 
 test_verify_one_file_with_options! {
     #[test] assign_twice_no_lifetime ["--no-lifetime"] => verus_code! {
-        // It's fine to accept this because --no-lifetime means we don't
-        // have any real guarantees. It would also be fine to error here.
+        // With --no-lifetime, real rustc borrowck doesn't run, so this now relies
+        // on the same internal check as test_no_lifetime_mut_check above.
         fn test() {
             let x: u8;
             x = 5;
             x = 7;
-            assert(false); // FAILS
+            assert(false);
         }
-    } => Err(err) => assert_fails(err, 1)
+    } => Err(err) => assert_vir_error_msg(err, "variable `x` is not marked mutable")
 }
 
 test_verify_one_file! {
