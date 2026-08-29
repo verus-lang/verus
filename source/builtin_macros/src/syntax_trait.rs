@@ -7,11 +7,7 @@ use verus_syn::{
 };
 use verus_syn::{TraitBound, parse_quote_spanned};
 
-/// `#[cfg(...)]` (and `#[cfg_attr(...)]`) attributes are how items opt out of
-/// being compiled in a given build; since the trait/impl items generated
-/// below are new items, not just re-emissions of the original trait, real
-/// rustc's own cfg-stripping never sees the original trait's gate applied to
-/// them unless we copy it over ourselves.
+/// Generated items don't automatically inherit the original trait's `#[cfg(...)]`.
 fn cfg_attrs(attrs: &[verus_syn::Attribute]) -> Vec<verus_syn::Attribute> {
     attrs
         .iter()

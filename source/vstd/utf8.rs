@@ -1101,8 +1101,7 @@ proof fn leading_byte_widths_disjoint(byte: u8)
 {
 }
 
-/// Which of the 4 UTF-8 widths a scalar's encoding uses, and confirmation
-/// that its first byte is a genuine leading byte of that width.
+/// Which UTF-8 width a scalar's encoding uses, with proof its first byte matches.
 proof fn scalar_leading_byte_class(x: u32) -> (w: int)
     requires
         is_scalar(x),
@@ -1129,8 +1128,7 @@ proof fn scalar_leading_byte_class(x: u32) -> (w: int)
     }
 }
 
-/// Two scalars whose encodings share a first byte have the same width -
-/// each width's leading byte occupies its own disjoint numeric range.
+/// Same first byte implies same width - each width's leading byte range is disjoint.
 pub proof fn encode_scalar_widths_disjoint(a: u32, b: u32)
     requires
         is_scalar(a),
@@ -1185,10 +1183,7 @@ pub proof fn char_index_at_byte_boundary(chars: Seq<char>, byte_pos: int) -> (ch
     }
 }
 
-/// Given a byte range within `encode_utf8(chars)` that's exactly one
-/// character's encoding, recovers that character's index and identity.
-/// Useful for connecting a byte-offset result (e.g. `str::find`) back to
-/// the specific character it found.
+/// Recovers a char's index and identity from a byte range matching its encoding.
 pub proof fn char_at_byte_offset(chars: Seq<char>, byte_i: int, byte_j: int, c: char) -> (char_i:
     int)
     requires

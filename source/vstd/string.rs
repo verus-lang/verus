@@ -133,19 +133,12 @@ pub assume_specification[ str::split_at ](s: &str, mid: usize) -> (res: (&str, &
 ;
 
 /// Specifies `Pattern` for `str::starts_with`/`ends_with`/`contains`/`find`/`rfind`.
-/// `matches_at`/`matches_at_bytes` describe which spans a pattern matches;
-/// ensures are gated on `obeys_pattern_spec()`, same as `PartialEqSpec`.
+/// `matches_at`/`matches_at_bytes` describe which spans match; ensures are
+/// gated on `obeys_pattern_spec()`, same as `PartialEqSpec`.
 ///
-/// Excludes `FnMut(char) -> bool`: Verus only learns a closure's `ensures()`
-/// from an actual traced call, and `str`'s real methods are external, so it
-/// never sees the internal call. Predicates keep the hand-written
-/// `str_*_pred` wrappers below, whose bodies call the predicate directly.
-///
-/// Gated on `verus_keep_ghost` (not `verus_verify_core`): verifying core
-/// needs this registered too, even though the spec body below (needs
-/// `str`'s View/`Seq<char>`) is excluded there - only a plain, real cargo
-/// build of vstd (verus_keep_ghost off) needs it gone entirely, since that
-/// can't reference `Pattern` at all without nightly's `pattern` feature.
+/// Gated on `verus_keep_ghost` (not `verus_verify_core`): a plain cargo build
+/// can't reference `Pattern` without nightly's `pattern` feature, but
+/// `--is-core` still needs the trait registered.
 #[cfg(verus_keep_ghost)]
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(PatternSpec via PatternSpecImpl)]
@@ -161,9 +154,8 @@ pub trait ExPattern: Sized {
     /// offsets, not char positions.
     spec fn matches_at_bytes(&self, haystack: Seq<u8>, start: int, end: int) -> bool;
 
-    /// Licenses the "did not match at this exact 1-char span" direction,
-    /// needed alongside `matches_at` for pattern kinds (closures) whose
-    /// matched/didn't-match facts aren't simple negations of each other.
+    /// Licenses the "didn't match" direction, separate from `matches_at` since
+    /// they aren't simple negations of each other for closures.
     spec fn not_matches_at_hint(&self, haystack: Seq<char>, start: int) -> bool;
 
     /// Byte-offset sibling of `not_matches_at_hint`.
