@@ -34,9 +34,14 @@ pub fn plan_execution<'a>(
 
     let cfg = match parsed_cli.command {
         VerusSubcommand::New(new_cmd) => {
+            let vstd_dependency = subcommands::plan_new_project_vstd_dependency()?;
             let creation_plan = match (new_cmd.bin, new_cmd.lib) {
-                (Some(name), None) => NewCreationPlan { current_dir, name, is_bin: true },
-                (None, Some(name)) => NewCreationPlan { current_dir, name, is_bin: false },
+                (Some(name), None) => {
+                    NewCreationPlan { current_dir, name, is_bin: true, vstd_dependency }
+                }
+                (None, Some(name)) => {
+                    NewCreationPlan { current_dir, name, is_bin: false, vstd_dependency }
+                }
                 _ => unreachable!("clap enforces exactly one of --bin/--lib"),
             };
             return Ok(ExecutionPlan::CreateNew(creation_plan));

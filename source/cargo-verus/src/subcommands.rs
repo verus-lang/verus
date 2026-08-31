@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap as Map, BTreeSet as Set};
 use std::env;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
 use anyhow::{Context, Result, anyhow, bail};
@@ -32,10 +32,21 @@ pub struct NewCreationPlan {
     pub current_dir: PathBuf,
     pub name: String,
     pub is_bin: bool,
+    pub vstd_dependency: String,
+}
+
+/// Resolve the `vstd` dependency for a project created with `cargo verus new`.
+pub fn plan_new_project_vstd_dependency() -> Result<String> {
+    let verus_version = get_verus_driver_version()?;
+    let vstd_source_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("cargo-verus manifest directory should have a parent")
+        .join("vstd");
+    toolchains::infer_vstd_dependency(&verus_version, &vstd_source_dir)
 }
 
 pub fn create_new_project(creation_plan: &NewCreationPlan) -> Result<ExitCode> {
-    let NewCreationPlan { current_dir, name, is_bin } = creation_plan;
+    let NewCreationPlan { current_dir, name, is_bin, vstd_dependency } = creation_plan;
 
     let (src_rs, src_rs_data) = if *is_bin {
         (
@@ -78,7 +89,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-vstd = "=0.0.0-2026-08-23-0033"
+vstd = {vstd_dependency}
 
 [package.metadata.verus]
 verify = true
