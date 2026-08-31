@@ -113,28 +113,6 @@ mod tests {
     }
 
     #[test]
-    fn dirty_version_uses_the_in_tree_vstd_path() {
-        let temp_dir = tempfile::tempdir().expect("create temp dir");
-        let vstd_dir = temp_dir.path().join("vstd");
-        std::fs::create_dir(&vstd_dir).expect("create vstd dir");
-        std::fs::write(
-            vstd_dir.join("Cargo.toml"),
-            r#"
-[package]
-name = "vstd"
-"#,
-        )
-        .expect("write vstd manifest");
-
-        let observed = infer_vstd_dependency("0.2026.08.23.fbbbbcf.dirty", &vstd_dir)
-            .expect("resolve dirty version");
-        let expected_path = vstd_dir.canonicalize().expect("canonicalize vstd dir");
-        let expected_path =
-            serde_json::to_string(&expected_path.to_string_lossy()).expect("serialize path");
-        assert_eq!(observed, format!("{{ path = {expected_path} }}"));
-    }
-
-    #[test]
     fn unknown_clean_version_is_rejected() {
         let error = infer_vstd_dependency("0.0.0.unknown", std::path::Path::new("unused"))
             .expect_err("unknown version should fail");

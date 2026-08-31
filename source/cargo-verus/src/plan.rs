@@ -28,13 +28,15 @@ pub fn plan_execution<'a>(
     current_dir: impl AsRef<Path>,
     args: impl IntoIterator<Item = &'a str>,
 ) -> Result<ExecutionPlan> {
-    let parsed_cli = CargoVerusCli::from_args(args.into_iter())?;
+    let CargoVerusCli { override_verus_version, command } =
+        CargoVerusCli::from_args(args.into_iter())?;
 
     let current_dir: PathBuf = current_dir.as_ref().to_owned();
 
-    let cfg = match parsed_cli.command {
+    let cfg = match command {
         VerusSubcommand::New(new_cmd) => {
-            let vstd_dependency = subcommands::plan_new_project_vstd_dependency()?;
+            let vstd_dependency =
+                subcommands::plan_new_project_vstd_dependency(override_verus_version.as_deref())?;
             let creation_plan = match (new_cmd.bin, new_cmd.lib) {
                 (Some(name), None) => {
                     NewCreationPlan { current_dir, name, is_bin: true, vstd_dependency }
@@ -53,6 +55,7 @@ pub fn plan_execution<'a>(
             current_dir,
             subcommand: "check",
             options,
+            override_verus_version,
             compile_primary: false,
             verify_deps: true,
             warn_if_nothing_verified: true,
@@ -61,6 +64,7 @@ pub fn plan_execution<'a>(
             current_dir,
             subcommand: "check",
             options,
+            override_verus_version,
             compile_primary: false,
             verify_deps: false,
             warn_if_nothing_verified: true,
@@ -69,6 +73,7 @@ pub fn plan_execution<'a>(
             current_dir,
             subcommand: "build",
             options,
+            override_verus_version,
             compile_primary: true,
             verify_deps: true,
             warn_if_nothing_verified: false,
@@ -77,6 +82,7 @@ pub fn plan_execution<'a>(
             current_dir,
             subcommand: "check",
             options,
+            override_verus_version,
             compile_primary: false,
             verify_deps: true,
             warn_if_nothing_verified: true,

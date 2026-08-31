@@ -36,8 +36,11 @@ pub struct NewCreationPlan {
 }
 
 /// Resolve the `vstd` dependency for a project created with `cargo verus new`.
-pub fn plan_new_project_vstd_dependency() -> Result<String> {
-    let verus_version = get_verus_driver_version()?;
+pub fn plan_new_project_vstd_dependency(override_verus_version: Option<&str>) -> Result<String> {
+    let verus_version = match override_verus_version {
+        Some(version) => version.to_owned(),
+        None => get_verus_driver_version()?,
+    };
     let vstd_source_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("cargo-verus manifest directory should have a parent")
@@ -149,6 +152,7 @@ pub struct VerusConfig {
     pub current_dir: PathBuf,
     pub subcommand: &'static str,
     pub options: VerifyCommand,
+    pub override_verus_version: Option<String>,
     pub compile_primary: bool,
     pub verify_deps: bool,
     pub warn_if_nothing_verified: bool,
@@ -213,7 +217,10 @@ pub fn plan_cargo_run(mut cfg: VerusConfig) -> Result<CargoRunPlan> {
         }
 
         let vstd_metadata = metadata_index.collect_vstd_metadata(packages_to_verify);
-        let verus_version = get_verus_driver_version()?;
+        let verus_version = match cfg.override_verus_version {
+            Some(version) => version,
+            None => get_verus_driver_version()?,
+        };
 
         if cfg.options.verbosity > 0 {
             println!("verus version: {verus_version:?}");
