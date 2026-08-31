@@ -222,3 +222,30 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_is_some_and verus_code! {
+        use vstd::prelude::*;
+
+        fn test_some(x: u32)
+            requires x < 100,
+        {
+            let result = Some(x).is_some_and(|value: u32| -> (r: bool)
+                    requires value < 100,
+                    ensures r == (value == 42),
+                { value == 42 },
+            );
+            assert(result == (x == 42));
+        }
+
+        fn test_none() {
+            let option: Option<u32> = None;
+            let result = option.is_some_and(|_value: u32| -> (r: bool)
+                    requires false,
+                    ensures r,
+                { true },
+            );
+            assert(!result);
+        }
+    } => Ok(())
+}

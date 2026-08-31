@@ -126,6 +126,23 @@ pub assume_specification<T>[ Option::<T>::is_some ](option: &Option<T>) -> (b: b
     no_unwind
 ;
 
+// is_some_and
+pub assume_specification<T, F: FnOnce(T) -> bool>[ Option::<T>::is_some_and ](
+    option: Option<T>,
+    f: F,
+) -> (result: bool)
+    requires
+        match option {
+            Some(value) => f.requires((value,)),
+            None => true,
+        },
+    ensures
+        match option {
+            Some(value) => f.ensures((value,), result),
+            None => !result,
+        },
+;
+
 // is_none
 #[verifier::inline]
 pub open spec fn is_none<T>(option: &Option<T>) -> bool {
