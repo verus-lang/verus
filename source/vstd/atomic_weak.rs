@@ -781,7 +781,7 @@ macro_rules! atomic_integer_methods {
             opens_invariants none
             no_unwind
         {
-            return (self.ato.fetch_add(val, order), Tracked::assume_new(), Ghost::assume_new());
+            return (self.ato.fetch_sub(val, order), Tracked::assume_new(), Ghost::assume_new());
         }
 
         }
