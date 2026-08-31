@@ -280,15 +280,9 @@ test_verify_one_file! {
             if x == 0 { 0 } else { 1 + sum((x - 1) as nat) }
         }
 
-        #[verifier(external_body)]
-        spec fn f_no_body(x: nat) -> nat {
-            0
-        }
+        uninterp spec fn f_no_body(x: nat) -> nat;
 
-        #[verifier(external_body)]
-        spec fn g_no_body(x: nat) -> nat {
-            0
-        }
+        uninterp spec fn g_no_body(x: nat) -> nat;
 
         fn test() {
             assert(sum(20) == 20) by (compute_only);
@@ -306,15 +300,9 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] fn_calls_bad1 verus_code! {
-        #[verifier(external_body)]
-        spec fn f_no_body(x: nat) -> nat {
-            0
-        }
+        uninterp spec fn f_no_body(x: nat) -> nat;
 
-        #[verifier(external_body)]
-        spec fn g_no_body(x: nat) -> nat {
-            0
-        }
+        uninterp spec fn g_no_body(x: nat) -> nat;
 
         fn test() {
             assert(f_no_body(5) != f_no_body(6)) by (compute_only); // FAILS
@@ -324,15 +312,9 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] fn_calls_bad2 verus_code! {
-        #[verifier(external_body)]
-        spec fn f_no_body(x: nat) -> nat {
-            0
-        }
+        uninterp spec fn f_no_body(x: nat) -> nat;
 
-        #[verifier(external_body)]
-        spec fn g_no_body(x: nat) -> nat {
-            0
-        }
+        uninterp spec fn g_no_body(x: nat) -> nat;
 
         fn test() {
             assert(f_no_body(5) == g_no_body(5)) by (compute_only); // FAILS
