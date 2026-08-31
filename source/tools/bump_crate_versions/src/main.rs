@@ -290,7 +290,6 @@ fn update_crates(
     crates: Vec<Crate>,
     workspace_manifest: &AbsolutePath,
     line_count_dir: &AbsolutePath,
-    cargo_verus_template: &AbsolutePath,
 ) {
     // Compute directly modified crates
     println!("\nScanning for crates with modified source code...");
@@ -401,7 +400,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let workspace_manifest = AbsolutePath::new(WORKSPACE_MANIFEST)?;
     let line_count_dir = AbsolutePath::new(LINE_COUNT_DIR)?;
-    let cargo_verus_template = AbsolutePath::new(CARGO_VERUS_TEMPLATE_FILE)?;
 
     let crates = vec![
         Crate { name: "vstd".to_string(), path: "source/vstd".try_into()? },
@@ -422,9 +420,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
 
     match &args.command {
-        Command::Update => {
-            update_crates(crates, &workspace_manifest, &line_count_dir, &cargo_verus_template)
-        }
+        Command::Update => update_crates(crates, &workspace_manifest, &line_count_dir),
         Command::Publish { dry_run } => {
             let dep_map = compute_immediate_deps(&crates);
             let graph = dep_map_to_graph(&dep_map);
