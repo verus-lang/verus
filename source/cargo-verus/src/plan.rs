@@ -35,17 +35,8 @@ pub fn plan_execution<'a>(
 
     let cfg = match command {
         VerusSubcommand::New(new_cmd) => {
-            let vstd_dependency =
-                subcommands::plan_new_project_vstd_dependency(override_verus_version.as_deref())?;
-            let creation_plan = match (new_cmd.bin, new_cmd.lib) {
-                (Some(name), None) => {
-                    NewCreationPlan { current_dir, name, is_bin: true, vstd_dependency }
-                }
-                (None, Some(name)) => {
-                    NewCreationPlan { current_dir, name, is_bin: false, vstd_dependency }
-                }
-                _ => unreachable!("clap enforces exactly one of --bin/--lib"),
-            };
+            let creation_plan =
+                subcommands::plan_new_project(current_dir, new_cmd, override_verus_version)?;
             return Ok(ExecutionPlan::CreateNew(creation_plan));
         }
         VerusSubcommand::Toolchain(toolchain_cmd) => match toolchain_cmd.command {

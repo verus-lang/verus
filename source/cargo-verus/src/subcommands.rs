@@ -9,7 +9,7 @@ use cargo_metadata::PackageId;
 use clap::ValueEnum;
 use colored::Colorize;
 
-use crate::cli::{CargoOptions, VerifyCommand, VerusArgFwdSelector};
+use crate::cli::{CargoOptions, NewCommand, VerifyCommand, VerusArgFwdSelector};
 use crate::metadata::{MetadataIndex, fetch_metadata, make_package_id};
 use crate::toolchains::{self, TOOLCHAINS, is_matching_known_and_used};
 use crate::vstd_build::{VstdBuild, build_vstd};
@@ -35,17 +35,28 @@ pub struct NewCreationPlan {
     pub vstd_dependency: String,
 }
 
-/// Resolve the `vstd` dependency for a project created with `cargo verus new`.
-pub fn plan_new_project_vstd_dependency(override_verus_version: Option<&str>) -> Result<String> {
-    let verus_version = match override_verus_version {
-        Some(version) => version.to_owned(),
+/// Plan the creation of a project with `cargo verus new`.
+pub fn plan_new_project(
+    current_dir: PathBuf,
+    command: NewCommand,
+    verus_version_override: Option<String>,
+) -> Result<NewCreationPlan> {
+    let verus_version = match verus_version_override {
+        Some(version) => version,
         None => get_verus_driver_version()?,
     };
     let vstd_source_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("cargo-verus manifest directory should have a parent")
         .join("vstd");
-    toolchains::infer_vstd_dependency(&verus_version, &vstd_source_dir)
+    let vstd_dependency = toolchains::infer_vstd_dependency(&verus_version, &vstd_source_dir)?;
+    let (name, is_bin) = match (command.bin, command.lib) {
+        (Some(name), None) => (name, true),
+        (None, Some(name)) => (name, false),
+        _ => unreachable!("clap enforces exactly one of --bin/--lib"),
+    };
+
+    Ok(NewCreationPlan { current_dir, name, is_bin, vstd_dependency })
 }
 
 pub fn create_new_project(creation_plan: &NewCreationPlan) -> Result<ExitCode> {

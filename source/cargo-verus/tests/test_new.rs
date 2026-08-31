@@ -1,6 +1,6 @@
-use std::{env, fs, path::Path, process::ExitCode};
+use std::{env, path::Path};
 
-use cargo_verus::{BIN_NAME, ExecutionPlan, execute_plan, plan_execution, test_utils::MockPackage};
+use cargo_verus::{BIN_NAME, ExecutionPlan, plan_execution};
 
 #[test]
 fn known_verus_version_uses_matching_vstd_dep() {
@@ -12,14 +12,17 @@ fn known_verus_version_uses_matching_vstd_dep() {
         "0.2026.08.23.fbbbbcf",
         "new",
         "--lib",
-        "new-project",
+        "test-project",
     ];
     let temp_dir = tempfile::tempdir().expect("create temporary dir");
-    let plan = plan_execution(temp_dir, args).expect("plan");
+    let plan = plan_execution(&temp_dir, args).expect("plan");
     let ExecutionPlan::CreateNew(creation_plan) = &plan else {
         panic!("expected new-project plan");
     };
 
+    assert_eq!(creation_plan.current_dir, temp_dir.path());
+    assert_eq!(creation_plan.name, "test-project");
+    assert_eq!(creation_plan.is_bin, false);
     assert_eq!(creation_plan.vstd_dependency, expected_vstd_dep);
 }
 
@@ -38,14 +41,17 @@ fn dirty_verus_version_uses_path_vstd_dep() {
         "--override-verus-version",
         "0.2026.08.23.fbbbbcf.dirty",
         "new",
-        "--lib",
-        "new-project",
+        "--bin",
+        "test-project",
     ];
     let temp_dir = tempfile::tempdir().expect("create temporary dir");
-    let plan = plan_execution(temp_dir, args).expect("plan");
+    let plan = plan_execution(&temp_dir, args).expect("plan");
     let ExecutionPlan::CreateNew(creation_plan) = &plan else {
         panic!("expected new-project plan");
     };
 
+    assert_eq!(creation_plan.current_dir, temp_dir.path());
+    assert_eq!(creation_plan.name, "test-project");
+    assert_eq!(creation_plan.is_bin, true);
     assert_eq!(creation_plan.vstd_dependency, expected_vstd_dep);
 }
