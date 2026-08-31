@@ -109,6 +109,8 @@ pub(crate) struct State<'a> {
     statics: IndexSet<Fun>,
     pub assert_id_counter: u64,
     loop_id_counter: u64,
+    loop_result_dests: HashMap<Label, VarIdent>,
+    result_flow_labels: HashSet<Label>,
 
     pub mask: Option<MaskSet>,
 
@@ -255,6 +257,8 @@ impl<'a> State<'a> {
             statics: IndexSet::new(),
             assert_id_counter: 0,
             loop_id_counter: 0,
+            loop_result_dests: HashMap::new(),
+            result_flow_labels: HashSet::new(),
             mask: None,
             au_pred_args: Vec::new(),
             au_var_exp_to_resolve: None,
@@ -632,7 +636,7 @@ fn loop_body_find_breaks(
             loop_body_find_breaks(loop_label, num_breaks, num_isolated_breaks, true, expr);
             VisitorControlFlow::Return
         }
-        ExprX::BreakOrContinue { label: break_label, is_break: true } => {
+        ExprX::BreakOrContinue { label: break_label, is_break: true, .. } => {
             if break_label == loop_label {
                 *num_breaks += 1;
                 if in_isolated {
@@ -655,6 +659,18 @@ fn loop_has_breaks(loop_label: &Label, expr: &Expr) -> (usize, usize) {
     let mut num_isolated_breaks = 0;
     loop_body_find_breaks(loop_label, &mut num_breaks, &mut num_isolated_breaks, false, expr);
     (num_breaks, num_isolated_breaks)
+}
+
+fn has_break_to_any_label(labels: &HashSet<Label>, body: &Expr) -> bool {
+    let mut found = false;
+    let mut f = |expr: &Expr| {
+        if let ExprX::BreakOrContinue { label, is_break: true, .. } = &expr.x {
+            found |= labels.contains(label);
+        }
+        VisitorControlFlow::Recurse
+    };
+    crate::ast_visitor::expr_visitor_walk(body, &mut f);
+    found
 }
 
 /// Determine if it's possible for control flow to reach the statement after the loop exit.
@@ -2617,7 +2633,12 @@ pub(crate) fn expr_to_stm_opt(
             atomic_call,
         } => {
             let is_for_loop = *is_for_loop;
-            let loop_isolation = *loop_isolation;
+            let produces_value =
+                !crate::ast_util::is_unit(&expr.typ) && !crate::ast_util::is_never(&expr.typ);
+            let carries_outer_result = has_break_to_any_label(&state.result_flow_labels, expr);
+            let requires_result_flow = produces_value || carries_outer_result;
+            // Keep the result assignment and every intervening labeled break in one AIR query.
+            let loop_isolation = *loop_isolation && !requires_result_flow;
             let allow_complex_invariants = *allow_complex_invariants;
             let id = state.loop_id_counter;
             state.loop_id_counter += 1;
@@ -2639,7 +2660,7 @@ pub(crate) fn expr_to_stm_opt(
                 invs.clone()
             };
             let (num_breaks, num_iso_breaks) = loop_has_breaks(label, expr);
-            if !loop_isolation && num_iso_breaks > 0 {
+            if !loop_isolation && num_iso_breaks > 0 && !requires_result_flow {
                 // our encoding for loop_isolation=false requires all 'break' statements to be
                 // in the same query
                 return Err(error(
@@ -2690,6 +2711,10 @@ pub(crate) fn expr_to_stm_opt(
                         or ensures, unless #[verifier::allow_complex_invariants] is used",
                 ));
             }
+            if requires_result_flow {
+                let inserted = state.result_flow_labels.insert(label.clone());
+                assert!(inserted);
+            }
             let mut cnd = if let Some(cond) = cond {
                 let (stms0, e0) = expr_to_stm_opt(ctx, state, cond)?;
                 let e0 = match e0 {
@@ -2734,7 +2759,24 @@ pub(crate) fn expr_to_stm_opt(
                 state.branch_bool_var = Some((var_id, var_exp));
             }
 
+            let loop_result = if !produces_value {
+                None
+            } else {
+                let (dest, result) = state.declare_temp_assign(&expr.span, &expr.typ);
+                let previous = state.loop_result_dests.insert(label.clone(), dest);
+                assert!(previous.is_none());
+                Some(result)
+            };
+
             let (mut body_stms, _val) = expr_to_stm_opt(ctx, state, body)?;
+            if requires_result_flow {
+                let removed = state.result_flow_labels.remove(label);
+                assert!(removed);
+            }
+            if loop_result.is_some() {
+                let removed = state.loop_result_dests.remove(label);
+                assert!(removed.is_some());
+            }
             state.branch_bool_var = None;
 
             let mut check_recommends: Vec<Stm> = Vec::new();
@@ -2823,7 +2865,10 @@ pub(crate) fn expr_to_stm_opt(
             );
 
             if can_control_flow_reach_after_loop(expr) {
-                let ret = Maybe::Some(Value::ImplicitUnit(expr.span.clone()));
+                let ret = Maybe::Some(match loop_result {
+                    Some(result) => Value::Exp(result),
+                    None => Value::ImplicitUnit(expr.span.clone()),
+                });
                 Ok((vec![while_stm], ret))
             } else {
                 // If it's an infinite loop, add 'assume(false)' and return Never.
@@ -3580,10 +3625,24 @@ pub(crate) fn expr_to_stm_opt(
             stms.push(assume_false(&expr.span));
             Ok((stms, Maybe::Never))
         }
-        ExprX::BreakOrContinue { label, is_break } => {
+        ExprX::BreakOrContinue { label, is_break, value } => {
+            let mut stms = Vec::new();
+            if let Some(value) = value {
+                assert!(*is_break);
+                let (mut value_stms, value) = expr_to_stm_opt(ctx, state, value)?;
+                stms.append(&mut value_stms);
+                let value = match value {
+                    Maybe::Some(value) => value.to_exp(),
+                    Maybe::Never => return Ok((stms, Maybe::Never)),
+                };
+                if let Some(dest) = state.loop_result_dests.get(label) {
+                    stms.push(init_var(&expr.span, dest, &value));
+                }
+            }
             let stmx = StmX::BreakOrContinue { label: label.clone(), is_break: *is_break };
             let stm = Spanned::new(expr.span.clone(), stmx);
-            Ok((vec![stm], Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
+            stms.push(stm);
+            Ok((stms, Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
         }
         ExprX::NeverToAny(e) => {
             let (mut stms, _e) = expr_to_stm_opt(ctx, state, e)?;
