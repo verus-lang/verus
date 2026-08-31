@@ -162,6 +162,7 @@ pub assume_specification<T>[ Option::<T>::unwrap ](option: Option<T>) -> (t: T)
         option is Some,
     ensures
         t == spec_unwrap(option),
+    opens_invariants none
 ;
 
 // unwrap_or
