@@ -744,6 +744,46 @@ macro_rules! atomic_integer_methods {
         // Since there is no equivalent function in Rust and we think prohibiting wrapping can be done using an invariant,
         // we defer `fetch_add` and the other non-wrapping arithmetic specs.
 
+        #[inline(always)]
+        #[verifier::external_body]
+        #[verifier::atomic]
+        pub fn fetch_sub_wrapping(
+            &self,
+            val: $value_ty,
+            order: Ordering,
+            Tracked(vs): Tracked<&mut ViewSeen>,
+            Tracked(rel_vs): Tracked<ReleaseViewSeen>,
+            Tracked(pt): Tracked<&mut AtomicPointsTo<$value_ty>>,
+        ) -> ((v, acq_vs, up): ($value_ty, Tracked<AcquireViewSeen>, Ghost<UpdateData>))
+            requires
+                self.loc() == old(pt).loc(),
+                order matches Ordering::AcqRel || order matches Ordering::Acquire || order matches Ordering::Release || order matches Ordering::Relaxed,
+            ensures
+                up@.store_message_view.contains_strict(up@.load_message_view),
+                match order {
+                    Ordering::AcqRel => {
+                        &&& load_acquire(*old(pt), old(vs)@, up@.intermediate_thread_view, v, up@.load_timestamp, up@.load_message_view)
+                        &&& store_release(*old(pt), *final(pt), up@.intermediate_thread_view, final(vs)@, $modname::wrapping_sub(v, val), up@.load_timestamp + 1, up@.store_message_view)
+                    },
+                    Ordering::Acquire => {
+                        &&& load_acquire(*old(pt), old(vs)@, up@.intermediate_thread_view, v, up@.load_timestamp, up@.load_message_view)
+                        &&& store_relaxed(*old(pt), *final(pt), up@.intermediate_thread_view, final(vs)@, rel_vs@, $modname::wrapping_sub(v, val), up@.load_timestamp + 1, up@.store_message_view)
+                    },
+                    Ordering::Release => {
+                        &&& load_relaxed(*old(pt), old(vs)@, up@.intermediate_thread_view, acq_vs@@, v, up@.load_timestamp, up@.load_message_view)
+                        &&& store_release(*old(pt), *final(pt), up@.intermediate_thread_view, final(vs)@, $modname::wrapping_sub(v, val), up@.load_timestamp + 1, up@.store_message_view)
+                    },
+                    Ordering::Relaxed => {
+                        &&& load_relaxed(*old(pt), old(vs)@, up@.intermediate_thread_view, acq_vs@@, v, up@.load_timestamp, up@.load_message_view)
+                        &&& store_relaxed(*old(pt), *final(pt), up@.intermediate_thread_view, final(vs)@, rel_vs@, $modname::wrapping_sub(v, val), up@.load_timestamp + 1, up@.store_message_view)
+                    }
+                },
+            opens_invariants none
+            no_unwind
+        {
+            return (self.ato.fetch_add(val, order), Tracked::assume_new(), Ghost::assume_new());
+        }
+
         }
     };
 }
