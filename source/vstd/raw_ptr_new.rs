@@ -101,29 +101,30 @@ impl ProvenanceData {
     pub uninterp spec fn orig_size(&self) -> nat;
 }
 
-pub ghost enum Provenance {
-    /// Represents no memory allocation.
-    None,
-    /// Represents a memory allocation with the given `ProvenanceData`.
-    Some(ProvenanceData),
-}
+pub type Provenance = Option<ProvenanceData>;
+// pub ghost enum Provenance {
+//     /// Represents no memory allocation.
+//     None,
+//     /// Represents a memory allocation with the given `ProvenanceData`.
+//     Some(ProvenanceData),
+// }
 
-impl Provenance {
-    pub open spec fn is_none(self) -> bool {
-        self is None
-    }
+// impl Provenance {
+//     pub open spec fn is_none(self) -> bool {
+//         self is None
+//     }
 
-    pub open spec fn is_some(self) -> bool {
-        self is Some
-    }
+//     pub open spec fn is_some(self) -> bool {
+//         self is Some
+//     }
 
-    pub closed spec fn data(self) -> ProvenanceData
-        recommends
-            self is Some,
-    {
-        self->0
-    }
-}
+//     pub closed spec fn data(self) -> ProvenanceData
+//         recommends
+//             self is Some,
+//     {
+//         self->0
+//     }
+// }
 
 /// Allocations do not "wrap around" the address space.
 /// From: <https://doc.rust-lang.org/std/ptr/index.html#allocation>:
