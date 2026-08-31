@@ -1,3 +1,5 @@
+use super::group_vstd_default;
+use super::layout::{self, *};
 use super::prelude::*;
 use super::raw_ptr;
 use super::raw_ptr::*;
@@ -7,11 +9,14 @@ use super::type_representation::*;
 
 verus! {
 
+broadcast use group_vstd_default;
+
 #[verifier::external_body]
 pub tracked struct PointsToSingleton {
     no_copy: NoCopy,
 }
 
+// TODO: impl View for PointsToSingleton?
 impl PointsToSingleton {
     /// The byte pointer that this permission is associated with.
     pub uninterp spec fn ptr(&self) -> *mut u8;
@@ -51,17 +56,22 @@ impl PointsToSingleton {
     /// (`self` is an &mut reference to enforce distinctness,
     /// so you cannot pass the same PointsTo as both arguments.)
     /// Since `u8` is not a ZST, this implies the pointers have distinct addresses.
-    pub axiom fn is_disjoint(tracked &mut self, tracked other: &PointsToSingleton)
+    pub axiom fn is_disjoint(tracked &mut self, tracked other: &Self)
         ensures
             *old(self) == *final(self),
             final(self).ptr() as int + size_of::<u8>() <= other.ptr() as int || other.ptr() as int
                 + size_of::<u8>() <= final(self).ptr() as int,
     ;
-    // TODO: prove alignment?
 
+    pub proof fn is_aligned(tracked &self)
+        ensures
+            self.ptr()@.addr as int % layout::align_of::<u8>() as int == 0,
+    {
+        broadcast use align_of_u8;
+
+    }
 }
 
-// TODO: impl View for PointsToSingleton?
 pub tracked struct PointsToUntyped {
     seq_perm: Tracked<Seq<PointsToSingleton>>,
     ptr: Ghost<*mut [u8]>,
@@ -81,13 +91,25 @@ impl PointsToUntyped {
     }
 
     pub open spec fn wf(self) -> bool {
+        // Defining the provenance and address for the individual PointsToSingletons
         &&& forall|i|
+            #![trigger self[i].ptr()@.provenance]
+            #![trigger self[i].ptr()@.addr]
             0 <= i < self.len() ==> {
                 &&& self[i].ptr()@.provenance == self.ptr()@.provenance
                 &&& self[i].ptr()@.addr == self.ptr()@.addr + i
             }
+            // Defining the metadata of the ptr
         &&& self.ptr()@.metadata == self.len()
-        &&& self.ptr()@.addr != 0
+        // The ptr is non-null
+        &&& self.ptr()@.addr
+            != 0
+        // If ptr's provenance is Some, the address is in bounds of the provenance
+        &&& self.ptr()@.provenance.is_some() ==> {
+            &&& self.ptr()@.provenance.data().start_addr() <= self.ptr()@.addr
+            &&& self.ptr()@.addr <= self.ptr()@.provenance.data().start_addr()
+                + self.ptr()@.provenance.data().alloc_len()
+        }
     }
 
     /// The length of the sequence of `PointsToUntyped`.
@@ -104,8 +126,49 @@ impl PointsToUntyped {
     {
         self.seq_perm()[index]
     }
-    // TODO: prove provenance is some, in bounds, alignment, disjointness
 
+    pub proof fn provenance_non_null(tracked &self)
+        requires
+            self.len() != 0,
+            self.wf(),
+        ensures
+            self.ptr()@.provenance != raw_ptr::Provenance::None,
+    {
+        self.seq_perm.tracked_borrow(0).provenance_non_null();
+    }
+
+    pub proof fn ptr_bounds(tracked &self)
+        requires
+            self.ptr()@.provenance.is_some(),
+            self.wf(),
+        ensures
+            self.ptr()@.addr as int >= self.ptr()@.provenance.data().start_addr(),
+            self.ptr()@.addr + self.len() <= self.ptr()@.provenance.data().start_addr()
+                + self.ptr()@.provenance.data().alloc_len(),
+    {
+        if self.len() > 0 {
+            self.seq_perm.tracked_borrow(0).ptr_bounds();
+            self.seq_perm.tracked_borrow(self.len() - 1).ptr_bounds();
+        }
+    }
+
+    pub proof fn is_aligned(tracked &self)
+        ensures
+            self.ptr()@.addr as int % layout::align_of::<u8>() as int == 0,
+    {
+        broadcast use align_of_u8;
+
+    }
+
+    // TODO: prove (recursively?)
+    pub proof fn is_disjoint(tracked &mut self, tracked other: &PointsToUntyped)
+        ensures
+            *old(self) == *final(self),
+            final(self).ptr() as int + final(self).len() <= other.ptr() as int || other.ptr() as int
+                + other.len() <= final(self).ptr() as int,
+    {
+        assume(false);
+    }
 }
 
 /// Represents (typed) contents of memory.
@@ -121,20 +184,22 @@ pub tracked enum TypedValue<T: ?Sized> {
     Valid(Box<T>),
 }
 
-impl<T> TypedValue<T> {
-    /// Returns `true` if it is a [`MemContents::Init`] value.
+impl<T: ?Sized> TypedValue<T> {
+    /// Returns `true` if it is a [`TypedValue::Valid`] value.
     #[verifier::inline]
     pub open spec fn is_valid(&self) -> bool {
         self is Valid
     }
 
-    /// Returns `true` if it is a [`MemContents::Uninit`] value.
+    /// Returns `true` if it is a [`TypedValue::Empty`] value.
     #[verifier::inline]
     pub open spec fn is_empty(&self) -> bool {
         self is Empty
     }
+}
 
-    /// If it is a [`MemContents::Init`] value, returns the value.
+impl<T> TypedValue<T> {
+    /// If it is a [`TypedValue::Valid`] value, returns the value.
     /// Otherwise, the return value is meaningless.
     #[verifier::inline]
     pub open spec fn value(&self) -> T
@@ -145,27 +210,35 @@ impl<T> TypedValue<T> {
     }
 }
 
-#[verifier::accept_recursive_types(T)]
+impl<T> TypedValue<[T]> {
+    /// If it is a [`TypedValue::Valid`] value, returns the value.
+    /// Otherwise, the return value is meaningless.
+    #[verifier::inline]
+    pub open spec fn value(&self) -> &[T]
+        recommends
+            self is Valid,
+    {
+        &*self->0
+    }
+}
+
 pub tracked struct PointsToUnaligned<T: ?Sized> {
     val: TypedValue<T>,
     perm: Tracked<PointsToUntyped>,
 }
 
-impl<T> PointsToUnaligned<T> {
+impl<T: ?Sized> PointsToUnaligned<T> {
+    pub closed spec fn typed_value(self) -> TypedValue<T> {
+        self.val
+    }
+
     pub closed spec fn perm(self) -> PointsToUntyped {
         self.perm@
     }
 
-    pub open spec fn ptr(self) -> *mut T {
-        self.perm().ptr() as *mut T
-    }
-
+    #[verifier::inline]
     pub open spec fn bytes(self) -> Seq<AbstractByte> {
         self.perm().bytes()
-    }
-
-    pub closed spec fn typed_value(self) -> TypedValue<T> {
-        self.val
     }
 
     /// Returns `true` if the permission's associated memory is initialized.
@@ -180,6 +253,26 @@ impl<T> PointsToUnaligned<T> {
         self.typed_value().is_empty()
     }
 
+    /// Returns the size of the pointed-to region, in bytes.
+    #[verifier::inline]
+    pub open spec fn size(self) -> nat {
+        self.perm().len()
+    }
+
+    /// Returns a tracked reference to the underlying `PointsToUntyped` permission.
+    pub proof fn tracked_perm(tracked &self) -> tracked &PointsToUntyped
+        returns
+            self.perm(),
+    {
+        &self.perm
+    }
+}
+
+impl<T> PointsToUnaligned<T> {
+    pub open spec fn ptr(self) -> *mut T {
+        self.perm().ptr() as *mut T
+    }
+
     /// If the permission's associated memory is initialized,
     /// returns the value that the pointer points to.
     /// Otherwise, the result is meaningless.
@@ -192,13 +285,277 @@ impl<T> PointsToUnaligned<T> {
     }
 
     /// Invariant: The abstract bytes must decode into the value in memory.
-    pub axiom fn abstract_bytes_decode(&self)
+    pub open spec fn wf(&self) -> bool {
+        &&& self.bytes().len() == size_of::<T>()
+        &&& self.is_valid() ==> #[trigger] abs_decode::<T>(self.bytes(), &self.value())
+        &&& self.perm().wf()
+    }
+
+    pub proof fn is_non_null(tracked &self)
+        requires
+            self.wf(),
         ensures
-            self.is_valid() ==> #[trigger] abs_decode::<T>(self.bytes(), &self.value()),
-            self.is_empty() ==> self.bytes().len() == size_of::<T>(),
-    ;
+            self.ptr()@.addr != 0,
+    {
+    }
+
+    pub proof fn provenance_non_null(tracked &self)
+        requires
+            size_of::<T>() != 0,
+            self.wf(),
+        ensures
+            self.ptr()@.provenance != raw_ptr::Provenance::None,
+    {
+        self.perm.provenance_non_null();
+    }
+
+    pub proof fn ptr_bounds(tracked &self)
+        requires
+            self.ptr()@.provenance.is_some(),
+            self.wf(),
+        ensures
+            self.ptr()@.addr as int >= self.ptr()@.provenance.data().start_addr(),
+            self.ptr()@.addr + size_of::<T>() <= self.ptr()@.provenance.data().start_addr()
+                + self.ptr()@.provenance.data().alloc_len(),
+    {
+        self.perm.ptr_bounds();
+    }
+
+    pub proof fn is_disjoint<S>(tracked &mut self, tracked other: &PointsToUnaligned<S>)
+        ensures
+            *old(self) == *final(self),
+            final(self).ptr() as int + size_of::<T>() <= other.ptr() as int || other.ptr() as int
+                + size_of::<S>() <= final(self).ptr() as int,
+    {
+        assume(false);
+        self.perm.is_disjoint(other.tracked_perm());
+    }
+}
+
+impl<T> PointsToUnaligned<[T]> {
+    pub open spec fn ptr(self) -> *mut [T] {
+        ptr_mut_from_data::<[T]>(
+            PtrData {
+                addr: self.perm().ptr()@.addr,
+                provenance: self.perm().ptr()@.provenance,
+                // if the size is 0 the metadata could still be nonzero, even if the byte length is 0
+                // but we have no way of knowing what it should be if the memory is not valid
+                // maybe create a test program with 0 memory to see what the pointer is?
+                metadata: if size_of::<T>() == 0 {
+                    self.value().len()
+                } else {
+                    (self.perm().len() / size_of::<T>()) as usize
+                },
+            },
+        )
+    }
+
+    pub open spec fn len(self) -> nat {
+        self.ptr()@.metadata as nat
+    }
+
+    /// If the permission's associated memory is initialized,
+    /// returns the value that the pointer points to.
+    /// Otherwise, the result is meaningless.
+    #[verifier::inline]
+    pub open spec fn value(&self) -> &[T]
+        recommends
+            self.is_valid(),
+    {
+        self.typed_value().value()
+    }
+
+    /// Invariant: The abstract bytes must decode into the value in memory.
+    pub open spec fn wf(&self) -> bool {
+        &&& self.bytes().len() == size_of::<T>()
+            * self.len()
+        // &&& self.bytes().len() % size_of::<T>() == 0
+        &&& self.is_valid() ==> #[trigger] abs_decode::<[T]>(self.bytes(), self.value())
+        &&& self.perm().wf()
+    }
+
+    // pub proof fn len_val(tracked &self)
+    //     requires
+    //         self.wf(),
+    //     ensures
+    //         self.bytes().len() == size_of::<T>() * self.len(),
+    // {
+    //     if size_of::<T>() != 0 {
+    //         assert(self.bytes().len() == size_of::<T>() * (self.bytes().len() / size_of::<T>())) by (nonlinear_arith)
+    //             requires
+    //                 self.bytes().len() % size_of::<T>() == 0,
+    //                 size_of::<T>() != 0,
+    //         ;
+    //     } else {
+    //         assume(false);
+    //     }
+    // }
+    pub proof fn is_non_null(tracked &self)
+        requires
+            self.wf(),
+        ensures
+            self.ptr()@.addr != 0,
+    {
+    }
+
+    pub proof fn provenance_non_null(tracked &self)
+        requires
+            size_of::<T>() * self.len() != 0,
+            self.wf(),
+        ensures
+            self.ptr()@.provenance != raw_ptr::Provenance::None,
+    {
+        self.perm.provenance_non_null();
+    }
+
+    pub proof fn ptr_bounds(tracked &self)
+        requires
+            self.ptr()@.provenance.is_some(),
+            self.wf(),
+        ensures
+            self.ptr()@.addr as int >= self.ptr()@.provenance.data().start_addr(),
+            self.ptr()@.addr + size_of::<T>() * self.len()
+                <= self.ptr()@.provenance.data().start_addr()
+                + self.ptr()@.provenance.data().alloc_len(),
+    {
+        // self.len_val();
+        self.perm.ptr_bounds();
+    }
+
+    pub proof fn is_disjoint<S>(tracked &mut self, tracked other: &PointsToUnaligned<[S]>)
+        ensures
+            *old(self) == *final(self),
+            final(self).ptr() as int + size_of::<T>() * final(self).len() <= other.ptr() as int
+                || other.ptr() as int + size_of::<S>() * other.len() <= final(self).ptr() as int,
+    {
+        assume(false);
+        self.perm.is_disjoint(other.tracked_perm());
+    }
+}
+
+pub tracked struct PointsTo<T: ?Sized> {
+    inner: Tracked<PointsToUnaligned<T>>,
+}
+
+impl<T: ?Sized> PointsTo<T> {
+    pub closed spec fn inner(self) -> PointsToUnaligned<T> {
+        self.inner@
+    }
+
+    pub open spec fn typed_value(self) -> TypedValue<T> {
+        self.inner().typed_value()
+    }
+
+    pub open spec fn perm(self) -> PointsToUntyped {
+        self.inner().perm()
+    }
+
+    pub open spec fn bytes(self) -> Seq<AbstractByte> {
+        self.inner().bytes()
+    }
+
+    /// Returns `true` if the permission's associated memory is initialized.
+    #[verifier::inline]
+    pub open spec fn is_valid(&self) -> bool {
+        self.typed_value().is_valid()
+    }
+
+    /// Returns `true` if the permission's associated memory is uninitialized.
+    #[verifier::inline]
+    pub open spec fn is_empty(&self) -> bool {
+        self.typed_value().is_empty()
+    }
+
+    /// Returns the size of the pointed-to region, in bytes.
+    #[verifier::inline]
+    pub open spec fn size(self) -> nat {
+        self.inner().size()
+    }
+
+    /// Returns a tracked reference to the underlying `PointsToUntyped` permission.
+    pub proof fn tracked_perm(tracked &self) -> tracked &PointsToUntyped
+        returns
+            self.perm(),
+    {
+        &self.inner.tracked_perm()
+    }
+}
+
+impl<T> PointsTo<T> {
+    pub open spec fn ptr(self) -> *mut T {
+        self.inner().ptr()
+    }
+
+    /// If the permission's associated memory is initialized,
+    /// returns the value that the pointer points to.
+    /// Otherwise, the result is meaningless.
+    #[verifier::inline]
+    pub open spec fn value(&self) -> T
+        recommends
+            self.is_valid(),
+    {
+        self.typed_value().value()
+    }
+
+    /// Invariant: The abstract bytes must decode into the value in memory.
+    // TODO: move as much as possible into unsized impl?
+    pub open spec fn wf(&self) -> bool {
+        &&& self.ptr()@.addr as nat % align_of::<T>() == 0
+        &&& self.bytes().len() == size_of::<T>()
+        &&& self.is_valid() ==> #[trigger] abs_decode::<T>(self.bytes(), &self.value())
+        &&& self.perm().wf()
+    }
+
+    pub proof fn is_aligned(tracked &self)
+        requires
+            self.wf(),
+        ensures
+            self.ptr()@.addr as nat % align_of::<T>() == 0,
+    {
+    }
+
+    pub proof fn is_non_null(tracked &self)
+        requires
+            self.wf(),
+        ensures
+            self.ptr()@.addr != 0,
+    {
+    }
+
+    pub proof fn provenance_non_null(tracked &self)
+        requires
+            size_of::<T>() != 0,
+            self.wf(),
+        ensures
+            self.ptr()@.provenance != raw_ptr::Provenance::None,
+    {
+        self.tracked_perm().provenance_non_null();
+    }
+
+    pub proof fn ptr_bounds(tracked &self)
+        requires
+            self.ptr()@.provenance.is_some(),
+            self.wf(),
+        ensures
+            self.ptr()@.addr as int >= self.ptr()@.provenance.data().start_addr(),
+            self.ptr()@.addr + size_of::<T>() <= self.ptr()@.provenance.data().start_addr()
+                + self.ptr()@.provenance.data().alloc_len(),
+    {
+        self.tracked_perm().ptr_bounds();
+    }
+
+    pub proof fn is_disjoint<S>(tracked &mut self, tracked other: &PointsTo<S>)
+        ensures
+            *old(self) == *final(self),
+            final(self).ptr() as int + size_of::<T>() <= other.ptr() as int || other.ptr() as int
+                + size_of::<S>() <= final(self).ptr() as int,
+    {
+        assume(false);
+        self.inner.perm.is_disjoint(other.tracked_perm());
+    }
 }
 
 // PointsToData
 // impl View for PointsTo
+// TODO: is_disjoint, PointsTo, metadata for [T] pointer
 } // verus!
