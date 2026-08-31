@@ -2,7 +2,6 @@ use clap::Parser as ClapParser;
 use crates_io_api::SyncClient;
 use petgraph::algo::toposort;
 use petgraph::graph::DiGraph;
-use regex::Regex;
 use std::{
     collections::{HashMap, HashSet},
     fs,
@@ -21,8 +20,7 @@ const WORKSPACE_MANIFEST: &str = "source/Cargo.toml";
 
 /// This tool scans for modified crates in the Verus repository and updates the version numbers
 /// in their respective Cargo.toml files. In cases where one crate depends on another, we also
-/// update the version of the dependency in the dependent crate's Cargo.toml.  Finally, when vstd
-/// is modified, we also update the version in the cargo-verus template.  The code is optimized
+/// update the version of the dependency in the dependent crate's Cargo.toml. The code is optimized
 /// for readability and maintainability, rather than performance.
 ///
 /// Usage: Run this tool from the root of the Verus repository.
@@ -45,10 +43,6 @@ struct Args {
     #[command(subcommand)]
     command: Command,
 }
-
-// Path to cargo-verus's main file, where we have a static string
-// indicating which version of vstd to use
-const CARGO_VERUS_TEMPLATE_FILE: &str = "source/cargo-verus/src/subcommands.rs";
 
 // Generates a fresh version string of the form "0.0.0-year-month-day-time",
 // which we'll assign to any updated crate.  Using a const + LazyLock ensures
@@ -293,27 +287,6 @@ fn publish(dir: &Path, dry_run: bool) {
     }
 }
 
-fn update_cargo_verus_template() {
-    let main = Path::new(CARGO_VERUS_TEMPLATE_FILE);
-    let content = fs::read_to_string(main).expect("Failed to read cargo-verus main.rs");
-
-    // Replace the version in the template
-    let re = Regex::new("(?m)^vstd =.*$").expect("Failed to create regex");
-    let count = re.find_iter(&content).count();
-    if count != 1 {
-        panic!(
-            "Expected to find exactly one occurence of 'vstd = ' in {}.  Found {}.",
-            CARGO_VERUS_TEMPLATE_FILE, count
-        );
-    }
-    let updated_content = re.replace(&content, format!("vstd = \"={}\"", *NEW_VERSION).as_str());
-    //println!("Updated cargo-verus main.rs:\n{}", updated_content);
-    println!("Updated cargo-verus main.rs\n");
-
-    // Write the updated content back to the file
-    fs::write(main, updated_content.to_string()).expect("Failed to write cargo-verus main.rs");
-}
-
 fn update_crates(crates: Vec<Crate>) {
     // Compute directly modified crates
     println!("\nScanning for crates with modified source code...");
@@ -377,10 +350,6 @@ fn update_crates(crates: Vec<Crate>) {
             println!("\t{}", krate.name);
             update_toml_version(&Path::new(&krate.path));
             update_toml_dependencies(&Path::new(&krate.path), &modified_crates);
-
-            if krate.name == "vstd" {
-                update_cargo_verus_template();
-            }
         }
 
         // Update the versions that the workspace's members inherit
