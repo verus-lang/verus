@@ -215,10 +215,8 @@ pub fn plan_cargo_run(mut cfg: VerusConfig) -> Result<CargoRunPlan> {
         }
 
         for used_vstd in &vstd_metadata {
-            let is_compatible = toolchains::TOOLCHAINS.iter().any(|toolchain| {
-                toolchain.verus == verus_version
-                    && is_matching_known_and_used(&toolchain.vstd, used_vstd)
-            });
+            let is_compatible = toolchains::find_toolchain(&verus_version)
+                .is_some_and(|toolchain| is_matching_known_and_used(&toolchain.vstd, used_vstd));
             if !is_compatible {
                 bail!(
                     "Components are incompatible:\n\
