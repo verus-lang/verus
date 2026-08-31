@@ -2203,11 +2203,10 @@ fn check_expr(
             let mode_read = Mode::Spec;
             Ok((mode_read, proph))
         }
-        ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(_kind, min_mode), e1) => {
-            let joined_mode = mode_join(outer_mode, *min_mode);
+        ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(_kind), e1) => {
             let (mode, proph) =
-                check_expr(ctxt, record, typing, joined_mode, Expect(*min_mode), e1, outer_proph)?;
-            Ok((mode_join(*min_mode, mode), proph))
+                check_expr(ctxt, record, typing, outer_mode, expect, e1, outer_proph)?;
+            Ok((mode, proph))
         }
         ExprX::UnaryOpr(UnaryOpr::CustomErr(_), e1)
         | ExprX::UnaryOpr(UnaryOpr::ProofNote(_), e1)
