@@ -513,7 +513,7 @@ test_verify_one_file_with_options! {
         fn foo() {
             let t = closure_to_fn_spec(|x: u64| x);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use spec_fn closure in 'exec' mode")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use `verus_builtin::closure_to_fn_spec` in executable context")
 }
 
 test_verify_one_file_with_options! {
@@ -535,7 +535,7 @@ test_verify_one_file_with_options! {
 
             let m = call_requires(f, (5, ));
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call spec function from exec mode")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use `verus_builtin::call_requires` in executable context")
 }
 
 test_verify_one_file_with_options! {
@@ -547,7 +547,7 @@ test_verify_one_file_with_options! {
 
             let m = call_ensures(f, (5, ), 7);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call spec function from exec mode")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use `verus_builtin::call_ensures` in executable context")
 }
 
 test_verify_one_file_with_options! {

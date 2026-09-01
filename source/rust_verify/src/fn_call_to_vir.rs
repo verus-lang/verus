@@ -519,6 +519,20 @@ fn verus_item_to_vir<'tcx, 'a>(
     let f_name = tcx.def_path_str(f);
     let args_len = args.len();
 
+    if !bctx.in_ghost && uncompilable_verus_fn(verus_item) {
+        return err_span(
+            expr.span,
+            format!(
+                "cannot use `{f_name}`{:} in executable context",
+                match verus_item {
+                    VerusItem::Expr(ExprItem::IsSmallerThanLexicographic) =>
+                        " (of the `decreases_to!` macro)",
+                    _ => "",
+                }
+            ),
+        );
+    }
+
     let mk_expr = |x: ExprX| Ok(bctx.spanned_typed_new(expr.span, &expr_typ()?, x));
     let mk_expr_span = |span: Span, x: ExprX| Ok(bctx.spanned_typed_new(span, &expr_typ()?, x));
     match verus_item {
@@ -939,7 +953,6 @@ fn verus_item_to_vir<'tcx, 'a>(
                     }
 
                     assert!(bctx.atomically.is_none());
-                    let bctx = BodyCtxt { mode: Mode::Proof, ..bctx.clone() };
 
                     let [
                         Expr {
@@ -977,7 +990,8 @@ fn verus_item_to_vir<'tcx, 'a>(
                     });
 
                     let atomically = Some(actx.clone());
-                    let bctx_inner = BodyCtxt { atomically, mode: Mode::Proof, ..bctx.clone() };
+                    let bctx_inner = BodyCtxt { atomically, in_ghost: true, ..bctx.clone() };
+
                     let value = expr_to_vir_consume(&bctx_inner, body.value)?;
 
                     let update_span = update_param.span.clone();
@@ -1217,7 +1231,7 @@ fn verus_item_to_vir<'tcx, 'a>(
 
                 let kind = IntegerTypeBoundKind::ArchWordBits;
 
-                mk_expr(ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(kind, Mode::Spec), arg))
+                mk_expr(ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(kind), arg))
             }
             ExprItem::ClosureToFnSpec | ExprItem::ClosureToFnProof => {
                 unsupported_err_unless!(args_len == 1, expr.span, "expected closure_to_fn", &args);
@@ -1266,7 +1280,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     ExprItem::UnsignedMax => IntegerTypeBoundKind::UnsignedMax,
                     _ => unreachable!(),
                 };
-                mk_expr(ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(kind, Mode::Spec), arg))
+                mk_expr(ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(kind), arg))
             }
             ExprItem::IsSmallerThan
             | ExprItem::IsSmallerThanLexicographic
@@ -2332,9 +2346,6 @@ fn verus_item_to_vir<'tcx, 'a>(
             }
 
             record_spec_fn(bctx, expr);
-            if !bctx.in_ghost {
-                return err_span(expr.span, format!("{name} must be in a 'proof' block"));
-            }
             let exp = expr_to_vir_consume(bctx, &args[0])?;
             let op = match verus_item {
                 VerusItem::MutRefCurrent => UnaryOp::MutRefCurrent,
@@ -2348,9 +2359,6 @@ fn verus_item_to_vir<'tcx, 'a>(
         }
         VerusItem::AfterBorrow => {
             record_spec_fn(bctx, expr);
-            if !bctx.in_ghost {
-                return err_span(expr.span, "`after_borrow` must be in a 'proof' block");
-            }
             let bctx = BodyCtxt { in_explicit_prophecy_node: true, ..bctx.clone() };
             let p = expr_to_vir_place(&bctx, &args[0])?;
             if !is_place_ok_for_spec_after_borrow(&p) {
@@ -2369,9 +2377,6 @@ fn verus_item_to_vir<'tcx, 'a>(
         }
         VerusItem::MutRefTracked => {
             record_compilable_operator(bctx, expr, CompilableOperator::MutRefTracked);
-            if !bctx.in_ghost {
-                return err_span(expr.span, "`mut_ref_tracked` must be in a 'proof' block");
-            }
             let p = expr_to_vir_place(&bctx, &args[0])?;
             let p = crate::rust_to_vir_expr::deref_mut(bctx, expr.span, &p)?;
             let p = crate::rust_to_vir_expr::simplify_place_by_cancelling(&p);
@@ -2403,6 +2408,71 @@ fn verus_item_to_vir<'tcx, 'a>(
         | VerusItem::Global(_)
         | VerusItem::BuiltinFunction(BuiltinFunctionItem::ConstrainType)
         | VerusItem::BuiltinFunction(BuiltinFunctionItem::GetFutureOutputType) => unreachable!(),
+    }
+}
+
+fn uncompilable_verus_fn(verus_item: &VerusItem) -> bool {
+    match verus_item {
+        // Disallowed, but handled in modes
+        VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(
+            SpecGhostTrackedItem::GhostView
+            | SpecGhostTrackedItem::GhostBorrow
+            | SpecGhostTrackedItem::GhostBorrowMut
+            | SpecGhostTrackedItem::TrackedView,
+        )) => false,
+        VerusItem::Quant(_) => false,
+        VerusItem::Assert(_) => false,
+        VerusItem::Expr(
+            ExprItem::Choose
+            | ExprItem::ChooseTuple
+            | ExprItem::Old
+            | ExprItem::GetVariantField
+            | ExprItem::GetUnionField
+            | ExprItem::IsVariant
+            | ExprItem::ShrRefStructWrap,
+        ) => false,
+
+        // Disallowed, error here
+        VerusItem::Expr(_)
+        | VerusItem::UnaryOp(_)
+        | VerusItem::BinaryOp(_)
+        | VerusItem::Chained(_)
+        | VerusItem::UseTypeInvariant
+        | VerusItem::WithTriggers
+        | VerusItem::OpenInvariantBlock(_)
+        | VerusItem::OpenAtomicUpdate(_)
+        | VerusItem::BuiltinFunction(_)
+        | VerusItem::HasResolved
+        | VerusItem::HasResolvedUnsized
+        | VerusItem::MutRefCurrent
+        | VerusItem::MutRefFuture
+        | VerusItem::Final
+        | VerusItem::AfterBorrow
+        | VerusItem::ErasedGhostValue
+        | VerusItem::ShadowGhostValue
+        | VerusItem::MutableReferenceTie
+        | VerusItem::TwoPhaseMutableReferenceTie
+        | VerusItem::GetFirst
+        | VerusItem::DummyCapture(_)
+        | VerusItem::MutRefTracked => true,
+
+        VerusItem::CompilableOpr(_) => false,
+        VerusItem::RustPrivate(_) => false,
+
+        // Handled properly by mode-checking
+        VerusItem::BuiltinDeref(_) => false,
+        VerusItem::Vstd(_, _) => false,
+
+        // Handled properly by erasure
+        VerusItem::Spec(_) => false,
+        VerusItem::Directive(_) => false,
+
+        // Not functions
+        VerusItem::Marker(_) => false,
+        VerusItem::BuiltinType(_) => false,
+        VerusItem::BuiltinTrait(_) => false,
+        VerusItem::Global(_) => false,
+        VerusItem::External(_) => false,
     }
 }
 

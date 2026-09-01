@@ -543,8 +543,7 @@ pub enum UnaryOpr {
     /// The 'ArchWordBits' gives the word size in bits (ignore the argument).
     /// This can return any integer type, but that integer type needs to be large enough
     /// to hold the result.
-    /// Mode is the minimum allowed mode (e.g., Spec for spec-only, Exec if allowed in exec).
-    IntegerTypeBound(IntegerTypeBoundKind, Mode),
+    IntegerTypeBound(IntegerTypeBoundKind),
     /// Custom diagnostic message
     CustomErr(Arc<String>),
     /// Marker for expressions with #[verus::internal(auto_decreases)] attribute
