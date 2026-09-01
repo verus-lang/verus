@@ -278,7 +278,7 @@ pub broadcast proof fn axiom_set_ext_equal_deep<A>(s1: Set<A>, s2: Set<A>)
 /// A member of a `Set` is less than that `Set`.
 pub broadcast axiom fn axiom_set_decreases_to_member<A>(s: Set<A>, a: A)
     requires
-        s.contains(a),
+        #[trigger] s.contains(a),
     ensures
         #[trigger] (decreases_to!(s => a)),
 ;

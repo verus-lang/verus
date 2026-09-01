@@ -639,7 +639,7 @@ pub mod fold {
 /// A member of an `ISet` is less than that `ISet`.
 pub broadcast axiom fn axiom_iset_decreases_to_member<A>(s: ISet<A>, a: A)
     requires
-        s.contains(a),
+        #[trigger] s.contains(a),
     ensures
         #[trigger] (decreases_to!(s => a)),
 ;
