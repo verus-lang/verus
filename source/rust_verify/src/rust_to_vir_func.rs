@@ -436,13 +436,6 @@ fn check_fn_decl<'tcx>(
 }
 
 pub(crate) fn find_body_krate<'tcx>(tcx: TyCtxt<'tcx>, body_id: &BodyId) -> &'tcx Body<'tcx> {
-    // let owner = krate.owner(tcx, body_id.hir_id.owner.def_id);
-    // if let MaybeOwner::Owner(owner) = owner {
-    //     if let Some(body) = owner.nodes.bodies.get(&body_id.hir_id.local_id) {
-    //         return body;
-    //     }
-    // }
-    // panic!("Body not found");
     tcx.hir_body(*body_id)
 }
 
@@ -524,7 +517,10 @@ fn compare_external_ty_or_true<'tcx>(
                 | (AliasTyKind::Free { def_id: def_id1 }, AliasTyKind::Free { def_id: def_id2 }) => {
                     (def_id1, def_id2)
                 }
-                _ => return false,
+                (AliasTyKind::Projection { .. }, _)
+                | (AliasTyKind::Inherent { .. }, _)
+                | (AliasTyKind::Opaque { .. }, _)
+                | (AliasTyKind::Free { .. }, _) => return false,
             };
             if tcx.associated_item(def_id1).name() != tcx.associated_item(def_id2).name() {
                 return false;
