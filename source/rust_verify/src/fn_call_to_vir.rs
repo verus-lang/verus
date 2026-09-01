@@ -94,14 +94,6 @@ pub(crate) fn fn_call_to_vir<'tcx>(
             record_compilable_operator(bctx, expr, CompilableOperator::ArcNew);
             return mk_one_vir_arg(bctx, expr.span, &args);
         }
-        Some(RustItem::Panic) => {
-            return err_span(
-                expr.span,
-                format!(
-                    "panic is not supported (if you used Rust's `assert!` macro, you may have meant to use Verus's `assert` function)"
-                ),
-            );
-        }
         Some(RustItem::CloneClone) => {
             // Special case `clone` for standard Rc and Arc types
             // (Could also handle it for other types where cloning is the identity

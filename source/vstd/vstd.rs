@@ -25,6 +25,7 @@
 #![cfg_attr(verus_keep_ghost, feature(hint_must_use))]
 #![cfg_attr(verus_keep_ghost, feature(fmt_internals))]
 #![cfg_attr(verus_keep_ghost, feature(fmt_arguments_from_str))]
+#![cfg_attr(verus_keep_ghost, feature(panic_internals))]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
