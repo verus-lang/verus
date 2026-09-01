@@ -636,6 +636,14 @@ pub mod fold {
 }
 
 // Axioms
+/// A member of an `ISet` is less than that `ISet`.
+pub broadcast axiom fn axiom_iset_decreases_to_member<A>(s: ISet<A>, a: A)
+    requires
+        s.contains(a),
+    ensures
+        #[trigger] (decreases_to!(s => a)),
+;
+
 /// The empty set contains no elements
 pub broadcast proof fn lemma_iset_empty<A>(a: A)
     ensures
@@ -1029,6 +1037,7 @@ pub proof fn lemma_iset_finite_if_subset_of_seq<A>(i: ISet<A>, s: Seq<A>)
 }
 
 pub broadcast group group_iset_lemmas {
+    axiom_iset_decreases_to_member,
     lemma_iset_empty,
     lemma_iset_new,
     lemma_iset_insert_same,

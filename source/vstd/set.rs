@@ -275,6 +275,14 @@ pub broadcast proof fn axiom_set_ext_equal_deep<A>(s1: Set<A>, s2: Set<A>)
     admit();
 }
 
+/// A member of a `Set` is less than that `Set`.
+pub broadcast axiom fn axiom_set_decreases_to_member<A>(s: Set<A>, a: A)
+    requires
+        s.contains(a),
+    ensures
+        #[trigger] (decreases_to!(s => a)),
+;
+
 broadcast use super::iset::group_iset_lemmas;
 
 pub mod fold {
@@ -567,6 +575,7 @@ pub broadcast proof fn lemma_to_iset_len<A>(s: Set<A>)
 pub broadcast group group_set_lemmas {
     axiom_set_ext_equal,
     axiom_set_ext_equal_deep,
+    axiom_set_decreases_to_member,
     lemma_set_empty,
     lemma_set_new,
     lemma_set_new_from_iset,
