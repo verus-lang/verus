@@ -114,6 +114,6 @@ jobs:
         run: |
           cd verus-x86-linux
           unzip verus-x86-linux.zip
-          version="$(cat ./verus-x86-linux/version.txt)"
+          version="$(jq -er '.verus.version' ./verus-x86-linux/version.json)"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "${version}"
