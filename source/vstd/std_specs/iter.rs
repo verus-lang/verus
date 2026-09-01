@@ -92,6 +92,8 @@ pub trait ExIterator {
         where
             Self: Sized,
             P: FnMut(Self::Item) -> bool,
+        requires
+            forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(predicate, (self.remaining()[k], )),
         ensures
             // The iterator consistently obeys, completes, and decreases throughout its lifetime
             final(self).obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
@@ -160,6 +162,8 @@ pub trait ExIterator {
     fn find_map<B, F>(&mut self, f: F) -> (r: Option<B>)
         where Self: Sized,
             F: FnMut(Self::Item) -> Option<B>
+        requires
+            forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(f, (self.remaining()[k], )),
         ensures
             // The iterator consistently obeys, completes, and decreases throughout its lifetime
             final(self).obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
