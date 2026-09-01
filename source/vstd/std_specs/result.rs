@@ -135,7 +135,8 @@ pub open spec fn is_ok<T, E>(result: &Result<T, E>) -> bool {
 pub assume_specification<T, E>[ Result::<T, E>::is_ok ](r: &Result<T, E>) -> (b: bool)
     ensures
         b == is_ok(r),
-    no_unwind
+    opens_invariants none
+    no_unwind   
 ;
 
 // is_err
