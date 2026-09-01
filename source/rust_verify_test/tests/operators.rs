@@ -321,10 +321,20 @@ test_verify_one_file! {
             let _ = u.shl(16u16); // FAILS
         }
 
+        fn test_shl_negative(u: i16) {
+            use core::ops::Shl;
+            let _ = u.shl(-1i16); // FAILS
+        }
+
         fn test_shr(u: i16) {
             use core::ops::Shr;
             let _ = u.shr(15i16);
             let _ = u.shr(16i16); // FAILS
+        }
+
+        fn test_shr_negative(u: i16) {
+            use core::ops::Shr;
+            let _ = u.shr(-1i16); // FAILS
         }
 
         fn test_signed_div() {
@@ -339,6 +349,7 @@ test_verify_one_file! {
             let x = (-128i8) / (-1i8); // FAILS
         }
 
+        #[verifier::spinoff_prover]
         fn test_signed_mod() {
             let x = 53i8 % 10i8;
             assert(x == 3);
@@ -350,7 +361,7 @@ test_verify_one_file! {
             assert(x == -3);
             let x = (-128i8) % (-1i8); // FAILS
         }
-    } => Err(e) => assert_fails(e, 4)
+    } => Err(e) => assert_fails(e, 6)
 }
 
 test_verify_one_file! {
@@ -395,6 +406,12 @@ test_verify_one_file! {
             u2 <<= 16i16; // FAILS
         }
 
+        fn test_shl_negative() {
+            use core::ops::ShlAssign;
+            let mut u1 = 1i16;
+            u1.shl_assign(-1i16); // FAILS
+        }
+
         fn test_shr(u: i16) {
             use core::ops::Shr;
             let mut u1 = u;
@@ -403,6 +420,13 @@ test_verify_one_file! {
             u2 >>= 16i16; // FAILS
         }
 
+        fn test_shr_negative() {
+            use core::ops::ShrAssign;
+            let mut u1 = 1i16;
+            u1.shr_assign(-1i16); // FAILS
+        }
+
+        #[verifier::spinoff_prover]
         fn test_signed_div() {
             let mut x = 53i8;
             x.div_assign(10i8);
@@ -420,6 +444,7 @@ test_verify_one_file! {
             x.div_assign((-1i8)); // FAILS
         }
 
+        #[verifier::spinoff_prover]
         fn test_signed_mod() {
             let mut x = 53i8;
             x.rem_assign(10i8);
@@ -436,7 +461,7 @@ test_verify_one_file! {
             let mut x = (-128i8);
             x.rem_assign((-1i8)); // FAILS
         }
-    } => Err(e) => assert_fails(e, 6)
+    } => Err(e) => assert_fails(e, 8)
 }
 
 test_verify_one_file! {

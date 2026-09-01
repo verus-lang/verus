@@ -1,6 +1,6 @@
 [package]
 name = "verus_state_machines_macros"
-version = "0.0.0-2026-07-27-0206"
+version = "0.0.0-2026-08-02-0125"
 edition = "2018"
 license = "MIT"
 description = "Verus State-Machine Macros: Various macros used by Verus to define and reason about atomic and sharded state machines"

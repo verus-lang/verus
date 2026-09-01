@@ -203,7 +203,6 @@ impl<T: ?Sized> PCell<T> {
     ////// Trusted core ends here
 
     #[inline(always)]
-    #[verifier::external_body]
     pub fn replace(&self, Tracked(perm): Tracked<&mut PointsTo<T>>, in_v: T) -> (out_v: T)
         where T: Sized
         requires

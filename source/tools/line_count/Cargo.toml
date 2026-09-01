@@ -6,6 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+clap = { workspace = true }
 getopts = { workspace = true }
 proc-macro2 = { workspace = true }
 regex = { workspace = true }
@@ -16,5 +17,18 @@ toml = { workspace = true }
 verus_prettyplease = { workspace = true }
 verus_syn = { workspace = true }
 
+[dev-dependencies]
+insta = { workspace = true }
+
+[lib]
+name = "line_count_lib"
+path = "src/lib.rs"
+
+[[bin]]
+name = "line_count"
+path = "src/main.rs"
+
+
 [lints]
 workspace = true
+

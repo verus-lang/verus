@@ -94,25 +94,6 @@ pub broadcast axiom fn axiom_spec_array_as_slice<T, const N: usize>(ar: &[T; N])
         (#[trigger] spec_array_as_slice(ar))@ == ar@,
 ;
 
-// To allow reasoning about the returned iterator when the executable
-// function `iter()` is invoked in a `for` loop header (e.g., in
-// `for x in it: a.iter() { ... }`), we need to specify the behavior of
-// the iterator in spec mode. To do that, we add
-// `#[verifier::when_used_as_spec(spec_array_iter)` to the specification for
-// the executable `into_iter` method and define that spec function here.
-pub uninterp spec fn spec_array_iter<T, const N: usize>(s: &[T; N]) -> (iter: core::slice::Iter<
-    '_,
-    T,
->);
-
-pub broadcast proof fn axiom_spec_array_iter<T, const N: usize>(s: &[T; N])
-    ensures
-        #[trigger] spec_array_iter(s).remaining() == s@.as_ref(),
-{
-    admit();
-}
-
-#[verifier::when_used_as_spec(spec_array_iter)]
 pub assume_specification<
     'a,
     T,
@@ -122,9 +103,8 @@ pub assume_specification<
     T,
 >)
     ensures
-        iter == spec_array_iter(s),
+        IteratorSpec::remaining(&iter) == s@.as_ref(),
         IteratorSpec::decrease(&iter) is Some,
-        IteratorSpec::initial_value_relation(&iter, &iter),
 ;
 
 // Referenced by Verus' internal encoding for array -> slice coercion
@@ -208,7 +188,6 @@ pub broadcast group group_array_axioms {
     axiom_spec_array_as_slice,
     axiom_spec_array_fill_for_copy_type,
     axiom_array_ext_equal,
-    axiom_spec_array_iter,
     axiom_spec_array_update,
     axiom_array_has_resolved,
 }

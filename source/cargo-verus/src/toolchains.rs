@@ -10,7 +10,7 @@ pub fn is_matching_known_and_used(known: &Crate, used: &PackageMetadata) -> bool
         }
         (
             Crate::GitCommit { git: known_url, rev: known_rev },
-            PackageSource::Git { url: ref used_url, rev: Some(ref used_rev) },
+            PackageSource::Git { url: used_url, rev: Some(used_rev) },
         ) => known_url == used_url && known_rev == used_rev,
         _ => false,
     }

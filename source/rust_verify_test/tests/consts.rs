@@ -261,7 +261,10 @@ test_verify_one_file! {
             proof { let x = E; }
             0
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot read static with mode exec")
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "cannot read static with mode exec",
+        "cannot read static with mode exec",
+    ])
 }
 
 test_verify_one_file! {
@@ -275,7 +278,10 @@ test_verify_one_file! {
             proof { let x = E; }
             0
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode exec")
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "cannot read const with mode exec",
+        "cannot read const with mode exec",
+    ])
 }
 
 test_verify_one_file! {

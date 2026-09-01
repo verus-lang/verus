@@ -8,10 +8,10 @@
 use crate::ast::{
     ArchWordBits, ArrayKind, BitwiseOp, ComputeMode, Constant, CrateId, Dt, Fun, FunX, Ident,
     Idents, InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, PathX, Primitive,
-    SpannedTyped, Typ, TypX, UnaryOp, VarBinders, VarIdent, VarIdentDisambiguate, VirErr,
+    SpannedTyped, Typ, TypX, Typs, UnaryOp, VarBinders, VarIdent, VarIdentDisambiguate, VirErr,
 };
 use crate::ast_to_sst_func::SstMap;
-use crate::ast_util::{path_as_vstd_name, undecorate_typ};
+use crate::ast_util::{n_types_equal, path_as_vstd_name, types_equal, undecorate_typ};
 use crate::context::GlobalCtx;
 use crate::messages::{Message, Span, ToAny, WarningAllow, error};
 use crate::sst::{
@@ -52,33 +52,33 @@ const WARNING_INTERVAL_SECS: u64 = 2;
 type Env = ScopeMap<UniqueIdent, Exp>;
 type TypeEnv = ScopeMap<Ident, Typ>;
 
-/// `Exps` that support `Hash` and `Eq`. Intended to never leave this module.
-struct ExpsKey {
-    e: Exps,
+/// A call's type and value arguments, supporting `Hash` and `Eq`, so that we can use them
+/// as a key when caching the call's result.  Intended to never leave this module.
+struct CallKey {
+    typs: Typs,
+    args: Exps,
 }
 
-impl Hash for ExpsKey {
+impl Hash for CallKey {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        hash_exps(state, &self.e);
+        // We hash only the value arguments to improve caching (hashing less is always safe)
+        hash_exps(state, &self.args);
     }
 }
 
-impl PartialEq for ExpsKey {
+impl PartialEq for CallKey {
     fn eq(&self, other: &Self) -> bool {
-        self.e.definitely_eq(&other.e)
+        // Include the type arguments, since a polymorphic function may return
+        // different results for different types
+        n_types_equal(&self.typs, &other.typs) && self.args.definitely_eq(&other.args)
     }
 }
 
-impl Eq for ExpsKey {}
+impl Eq for CallKey {}
 
-impl From<Exps> for ExpsKey {
-    fn from(e: Exps) -> Self {
-        Self { e }
-    }
-}
-impl From<&Exps> for ExpsKey {
-    fn from(e: &Exps) -> Self {
-        Self { e: e.clone() }
+impl From<(&Typs, &Exps)> for CallKey {
+    fn from((typs, e): (&Typs, &Exps)) -> Self {
+        Self { typs: typs.clone(), args: e.clone() }
     }
 }
 
@@ -125,9 +125,9 @@ struct State {
     msgs: Vec<Message>,
     /// Collect and display performance data
     perf: bool,
-    /// Cache function invocations, based on their arguments, so we can directly return the
-    /// previously computed result.  Necessary for examples like Fibonacci.
-    cache: HashMap<Fun, HashMap<ExpsKey, Exp>>,
+    /// Cache function invocations, based on their type and value arguments, so we can
+    /// directly return the previously computed result.  Necessary for examples like Fibonacci.
+    cache: HashMap<Fun, HashMap<CallKey, Exp>>,
     enable_cache: bool,
     /// Cache of expressions we have already simplified
     simplified: PtrSet<SpannedTyped<ExpX>>,
@@ -148,9 +148,9 @@ struct State {
 
 // Define the function-call cache's API
 impl State {
-    fn insert_call(&mut self, f: &Fun, args: &Exps, result: &Exp, memoize: bool) {
+    fn insert_call(&mut self, f: &Fun, typs: &Typs, args: &Exps, result: &Exp, memoize: bool) {
         if self.enable_cache && memoize {
-            self.cache.entry(f.clone()).or_default().insert(args.into(), result.clone());
+            self.cache.entry(f.clone()).or_default().insert((typs, args).into(), result.clone());
         }
     }
 
@@ -173,13 +173,13 @@ impl State {
         }
     }
 
-    fn lookup_call(&mut self, f: &Fun, args: &Exps, memoize: bool) -> Option<Exp> {
+    fn lookup_call(&mut self, f: &Fun, typs: &Typs, args: &Exps, memoize: bool) -> Option<Exp> {
         if self.enable_cache && memoize {
             if self.perf {
                 let count = self.fun_calls.entry(f.clone()).or_default();
                 *count += 1;
             }
-            self.cache.get(f)?.get(&args.into()).cloned()
+            self.cache.get(f)?.get(&(typs, args).into()).cloned()
         } else {
             None
         }
@@ -240,6 +240,19 @@ pub enum InterpExp {
 /*****************************************************************
  * Functionality needed to compute equality between expressions  *
  *****************************************************************/
+
+/// A call to a trait method may resolve to a specific implementation, in which case the
+/// resolved function and its type arguments are the ones that determine the call's meaning.
+fn resolve_call<'a>(
+    fun: &'a Fun,
+    resolved: &'a Option<(Fun, Typs)>,
+    typs: &'a Typs,
+) -> (&'a Fun, &'a Typs) {
+    match resolved {
+        None => (fun, typs),
+        Some((f, ts)) => (f, ts),
+    }
+}
 
 /// Trait to compute syntactic equality of two objects.
 trait SyntacticEquality {
@@ -411,6 +424,7 @@ impl SyntacticEquality for Exp {
                     (Bool(l), Bool(r)) => Some(l == r),
                     (Int(l), Int(r)) => Some(l == r),
                     (StrSlice(l), StrSlice(r)) => Some(l == r),
+                    (ByteStr(l), ByteStr(r)) => Some(l == r),
                     (Char(l), Char(r)) => Some(l == r),
                     _ => None,
                 }
@@ -422,12 +436,16 @@ impl SyntacticEquality for Exp {
             (Old(id_l, unique_id_l), Old(id_r, unique_id_r)) => {
                 def_eq(id_l == id_r && unique_id_l == unique_id_r)
             }
-            (Call(CallFun::Fun(f_l, _), _, exps_l), Call(CallFun::Fun(f_r, _), _, exps_r)) => {
-                if f_l == f_r && exps_l.len() == exps_r.len() {
+            (
+                Call(CallFun::Fun(f_l, resolved_l), typs_l, exps_l),
+                Call(CallFun::Fun(f_r, resolved_r), typs_r, exps_r),
+            ) => {
+                // Resolve first, so that we compare the functions that actually get called
+                let (f_l, typs_l) = resolve_call(f_l, resolved_l, typs_l);
+                let (f_r, typs_r) = resolve_call(f_r, resolved_r, typs_r);
+                if f_l == f_r && n_types_equal(typs_l, typs_r) && exps_l.len() == exps_r.len() {
                     def_eq(exps_l.syntactic_eq(exps_r)?)
                 } else {
-                    // We don't know if a function call on symbolic values
-                    // will return the same or different values
                     None
                 }
             }
@@ -440,8 +458,14 @@ impl SyntacticEquality for Exp {
                     // These are definitely different datatypes or different
                     // constructors of the same datatype
                     Some(false)
+                } else if bnds_l.syntactic_eq(bnds_r)? {
+                    // Matching fields only make the values equal if the datatypes are
+                    // instantiated at the same type arguments.  We ignore decorations
+                    // (e.g., `&T` vs. `T`), since they don't change a datatype's value,
+                    // and `==` permits them to differ (see `builtin::SpecEq`).
+                    def_eq(types_equal(&undecorate_typ(&self.typ), &undecorate_typ(&other.typ)))
                 } else {
-                    bnds_l.syntactic_eq(bnds_r)
+                    Some(false)
                 }
             }
             (Unary(op_l, e_l), Unary(op_r, e_r)) => def_eq(op_l == op_r && e_l.syntactic_eq(e_r)?),
@@ -934,7 +958,10 @@ fn eval_seq(
                 Ok(exp_new(Call(fun.clone(), typs.clone(), new_args)))
             };
             let get_int = |e: &Exp| match &e.x {
-                Const(Constant::Int(index)) => Some(BigInt::to_usize(index).unwrap()),
+                Const(Constant::Int(index)) => match BigInt::to_usize(index) {
+                    Some(i) => Some(i),
+                    None => None,
+                },
                 _ => None,
             };
             use SeqFn::*;
@@ -1210,8 +1237,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | Length(..)
                         | MutRefCurrent
                         | MutRefFuture(_)
-                        | MutRefFinal(_)
-                        | InferSpecForLoopIter { .. } => ok,
+                        | MutRefFinal(_) => ok,
                         MustBeFinalized | UnaryOp::MustBeElaborated => {
                             panic!("Found MustBeFinalized op {:?} after calling finalize_exp", exp)
                         }
@@ -1346,8 +1372,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | Length(..)
                         | MutRefCurrent
                         | MutRefFuture(_)
-                        | MutRefFinal(_)
-                        | InferSpecForLoopIter { .. } => ok,
+                        | MutRefFinal(_) => ok,
                     }
                 }
                 // !(!(e_inner)) == e_inner
@@ -1377,7 +1402,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                     }
                     _ => ok,
                 },
-                IntegerTypeBound(kind, _) => {
+                IntegerTypeBound(kind) => {
                     // We're about to take an exponent, so bound this
                     // by something reasonable.
                     match &e.x {
@@ -1411,6 +1436,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 AutoLoopEnsures => Ok(e),
                 ProofNote(_) => Ok(e),
                 HasResolved(_) => Ok(e),
+                LoopIsolationBoundary(_) => Ok(e),
             }
         }
         Binary(op, e1, e2) => {
@@ -1675,10 +1701,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             }
         }
         Call(CallFun::Fun(fun, resolved_method), typs, args) => {
-            let (fun, typs) = match resolved_method {
-                None => (fun, typs),
-                Some((f, ts)) => (f, ts),
-            };
+            let (fun, typs) = resolve_call(fun, resolved_method, typs);
             if state.perf {
                 // Record the call for later performance analysis
                 match state.fun_calls.get_mut(fun) {
@@ -1705,7 +1728,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         if func.x.axioms.spec_axioms.is_some() && func.x.kind.inline_okay() =>
                     {
                         let memoize = func.x.attrs.memoize;
-                        match state.lookup_call(&fun, &new_args, memoize) {
+                        match state.lookup_call(&fun, &typs, &new_args, memoize) {
                             Some(prev_result) => {
                                 state.cache_hits += 1;
                                 Ok(prev_result)
@@ -1745,7 +1768,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                 let result = eval_expr_internal(ctx, state, &body);
                                 state.env.pop_scope();
                                 state.type_env.pop_scope();
-                                state.insert_call(fun, &new_args, &result.clone()?, memoize);
+                                state.insert_call(fun, &typs, &new_args, &result.clone()?, memoize);
                                 result
                             }
                         }

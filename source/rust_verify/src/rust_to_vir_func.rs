@@ -258,6 +258,7 @@ fn handle_autospec<'tcx>(
                     is_type_invariant_fn: false,
                     is_external_body: false,
                     is_unsafe: false,
+                    impls_cannot_extend_spec: false,
                     exec_assume_termination: false,
                     exec_allows_no_decreases_clause: false,
                     tracked_swap: false,
@@ -302,7 +303,6 @@ fn mk_bctx<'tcx>(
         mode,
         external_body,
         in_ghost: mode != Mode::Exec,
-        loop_isolation: false,
         atomically: None,
         migrate_postcondition_vars,
         in_fn_sig: false,
@@ -313,6 +313,7 @@ fn mk_bctx<'tcx>(
         header_setting: HeaderSetting::Fn,
         unwrap_param_map: std::rc::Rc::new(std::cell::RefCell::new(HashMap::new())),
         external_opaque_type_map,
+        label_map: std::rc::Rc::new(std::cell::RefCell::new((HashMap::new(), 0))),
     }
 }
 
@@ -1405,6 +1406,7 @@ fn make_attributes<'tcx>(
             Safety::Safe => false,
             Safety::Unsafe => true,
         },
+        impls_cannot_extend_spec: vattrs.impls_cannot_extend_spec,
         exec_assume_termination: vattrs.assume_termination,
         exec_allows_no_decreases_clause: if !is_trait_decl_no_default {
             crate::attributes::get_allow_exec_allows_no_decreases_clause_walk_parents(
