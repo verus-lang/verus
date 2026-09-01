@@ -1960,6 +1960,9 @@ impl Verifier {
                 &self.args.log_args.vir_log_option,
             );
         }
+        if self.args.no_verify {
+            return Ok(ctx.free());
+        }
         let krate_sst = vir::poly::poly_krate_for_module(&mut ctx, &krate_sst);
 
         let VerifyBucketOut { time_smt_init, time_smt_run, rlimit_count } =
@@ -2081,12 +2084,16 @@ impl Verifier {
 
         let source_map = compiler.sess.source_map();
 
-        self.num_threads = std::cmp::min(self.args.num_threads, bucket_ids.len());
+        self.num_threads = if self.args.no_verify {
+            1
+        } else {
+            std::cmp::min(self.args.num_threads, bucket_ids.len())
+        };
         if self.args.num_threads != 1 && self.num_threads >= 1 {
             // create the multiple producers, single consumer queue
             let (sender, receiver) = std::sync::mpsc::channel();
 
-            // collect the buckets and create the task queueu
+            // collect the buckets and create the task queue
             let mut tasks = VecDeque::with_capacity(bucket_ids.len());
             let mut messages: Vec<(bool, Vec<(Message, MessageLevel)>)> = Vec::new();
             for (i, bucket_id) in bucket_ids.iter().enumerate() {
@@ -2504,6 +2511,10 @@ impl Verifier {
             }
         }
 
+        if self.args.no_verify {
+            return Ok(());
+        }
+
         if self.args.profile && self.count_errors == 0 {
             let msg = note_bare(
                 "--profile reports prover performance data only when rlimts are exceeded, use --profile-all to always report profiler results",
@@ -2583,8 +2594,11 @@ impl Verifier {
         // Verify crate
         let time_verify_crate_start = Instant::now();
 
-        let result =
-            if !self.args.no_verify { self.verify_crate_inner(&compiler, spans) } else { Ok(()) };
+        let result = if !self.args.no_verify || self.args.build_sst {
+            self.verify_crate_inner(&compiler, spans)
+        } else {
+            Ok(())
+        };
 
         let time_verify_crate_end = Instant::now();
         self.time_verify_crate = time_verify_crate_end - time_verify_crate_start;
