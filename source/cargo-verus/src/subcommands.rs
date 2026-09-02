@@ -153,10 +153,17 @@ pub struct FormattingPlan {
 
 /// Plan formatting Verus and Rust packages based on `cargo metadata`.
 pub fn plan_formatting(current_dir: PathBuf, command: FmtCommand) -> Result<FormattingPlan> {
-    let metadata_args = make_cargo_args(&command.cargo_opts, true, command.verbosity);
+    let metadata_args = if let Some(manifest_path) = &command.manifest.manifest_path {
+        vec!["--manifest-path".to_owned(), manifest_path.to_string_lossy().into_owned()]
+    } else {
+        vec![]
+    };
     let metadata = fetch_metadata(metadata_args, current_dir)?;
     let metadata_index = MetadataIndex::new(&metadata)?;
-    let (included_packages, _) = command.cargo_opts.workspace.partition_packages(&metadata);
+    let mut workspace = clap_cargo::Workspace::default();
+    workspace.package = command.package;
+    workspace.all = command.all;
+    let (included_packages, _) = workspace.partition_packages(&metadata);
 
     let mut cargo_targets = Vec::new();
     let mut verus_targets = Vec::new();

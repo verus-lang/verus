@@ -31,3 +31,22 @@ fn detects_cargo_vs_verus() {
         [manifest("verus/Cargo.toml"), manifest("verus_without_verification/Cargo.toml")]
     );
 }
+
+#[test]
+fn package_selector_narrows_formatting_targets() {
+    let workspace = MockWorkspace::new()
+        .members([MockPackage::new("ordinary").lib(), MockPackage::new("verus").lib().verify(true)])
+        .materialize();
+
+    let args = [BIN_NAME, "fmt", "--package", "verus"];
+    let plan = plan_execution(workspace.path(), args).expect("plan");
+    let ExecutionPlan::FormatSources(formatting_plan) = plan else {
+        panic!("expected formatting plan");
+    };
+
+    assert!(formatting_plan.cargo_targets.is_empty());
+    assert_eq!(
+        formatting_plan.verus_targets,
+        [workspace.path().join("verus/Cargo.toml").canonicalize().expect("canonicalize")]
+    );
+}

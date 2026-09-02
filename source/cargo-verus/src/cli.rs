@@ -86,7 +86,15 @@ pub struct FmtCommand {
     pub verbosity: u8,
 
     #[command(flatten)]
-    pub cargo_opts: CargoOptions,
+    pub manifest: clap_cargo::Manifest,
+
+    /// Specify packages to format
+    #[arg(short, long, value_name = "PACKAGE")]
+    pub package: Vec<String>,
+
+    /// Format all workspace packages
+    #[arg(long)]
+    pub all: bool,
 
     #[arg(last = true, num_args = 0.., allow_hyphen_values = true)]
     pub verusfmt_args: Vec<String>,
