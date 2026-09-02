@@ -1,7 +1,6 @@
 use super::super::prelude::*;
 
-use verus as verus_;
-verus_! {
+verus! {
 
 // array == array
 pub assume_specification<T: PartialEq<U>, U, const N: usize>[ <[T; N] as PartialEq<[U; N]>>::eq ](
@@ -41,7 +40,10 @@ impl<'a, T, U, const N: usize> super::cmp::PartialEqSpecImpl<[U; N]> for &'a [T]
         &&& (*self)@.len() == other@.len()
         &&& forall|i: int|
             #![auto]
-            0 <= i < (*self)@.len() ==> <T as super::cmp::PartialEqSpec<U>>::eq_spec(&(*self)@[i], &other@[i])
+            0 <= i < (*self)@.len() ==> <T as super::cmp::PartialEqSpec<U>>::eq_spec(
+                &(*self)@[i],
+                &other@[i],
+            )
     }
 }
 
@@ -63,11 +65,14 @@ impl<'a, T, U, const N: usize> super::cmp::PartialEqSpecImpl<&'a [U]> for [T; N]
         &&& self@.len() == (*other)@.len()
         &&& forall|i: int|
             #![auto]
-            0 <= i < self@.len() ==> <T as super::cmp::PartialEqSpec<U>>::eq_spec(&self@[i], &(*other)@[i])
+            0 <= i < self@.len() ==> <T as super::cmp::PartialEqSpec<U>>::eq_spec(
+                &self@[i],
+                &(*other)@[i],
+            )
     }
 }
 
-// slice ref == array ref
+// slice == array
 pub assume_specification<T: PartialEq<U>, U, const N: usize>[ <[T] as PartialEq<[U; N]>>::eq ](
     left: &[T],
     right: &[U; N],
@@ -85,7 +90,35 @@ impl<T, U, const N: usize> super::cmp::PartialEqSpecImpl<[U; N]> for [T] where
         &&& self@.len() == other@.len()
         &&& forall|i: int|
             #![auto]
-            0 <= i < self@.len() ==> <T as super::cmp::PartialEqSpec<U>>::eq_spec(&self@[i], &other@[i])
+            0 <= i < self@.len() ==> <T as super::cmp::PartialEqSpec<U>>::eq_spec(
+                &self@[i],
+                &other@[i],
+            )
+    }
+}
+
+// array == slice
+pub assume_specification<T: PartialEq<U>, U, const N: usize>[ <[T; N] as PartialEq<[U]>>::eq ](
+    left: &[T; N],
+    right: &[U],
+) -> bool
+;
+
+impl<T, U, const N: usize> super::cmp::PartialEqSpecImpl<[U]> for [T; N] where
+    T: PartialEq<U> + super::cmp::PartialEqSpec<U>,
+ {
+    open spec fn obeys_eq_spec() -> bool {
+        <T as super::cmp::PartialEqSpec<U>>::obeys_eq_spec()
+    }
+
+    open spec fn eq_spec(&self, other: &[U]) -> bool {
+        &&& self@.len() == other@.len()
+        &&& forall|i: int|
+            #![auto]
+            0 <= i < self@.len() ==> <T as super::cmp::PartialEqSpec<U>>::eq_spec(
+                &self@[i],
+                &other@[i],
+            )
     }
 }
 
