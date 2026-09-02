@@ -31,6 +31,8 @@ use tracing::{debug, instrument};
 use super::potentially_plural_count;
 use crate::diagnostics::{LifetimesOrBoundsMismatchOnTrait, MethodShouldReturnFuture};
 
+use rustc_data_structures::smallvec;
+
 pub(super) mod refine;
 
 /// Call the query `tcx.compare_impl_item()` directly instead.
