@@ -270,8 +270,8 @@ impl MockPackage {
         self
     }
 
-    pub fn fmt_as_rust(mut self) -> Self {
-        self.verus_fmt_as_rust = true;
+    pub fn fmt_as_rust(mut self, setting: bool) -> Self {
+        self.verus_fmt_as_rust = setting;
         self
     }
 

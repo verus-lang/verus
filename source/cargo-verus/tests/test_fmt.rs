@@ -10,7 +10,7 @@ fn detects_cargo_vs_verus() {
             MockPackage::new("ordinary").lib(),
             MockPackage::new("verus").lib().verify(true),
             MockPackage::new("verus_without_verification").lib().verify(false),
-            MockPackage::new("verus_formatted_as_rust").lib().verify(true).fmt_as_rust(),
+            MockPackage::new("verus_formatted_as_rust").lib().verify(true).fmt_as_rust(true),
         ])
         .materialize();
 
