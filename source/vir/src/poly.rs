@@ -569,7 +569,6 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
         ExpX::NullaryOpr(NullaryOpr::TraitBound(..)) => exp.clone(),
         ExpX::NullaryOpr(NullaryOpr::TypEqualityBound(..)) => exp.clone(),
         ExpX::NullaryOpr(NullaryOpr::ConstTypBound(..)) => exp.clone(),
-        ExpX::NullaryOpr(NullaryOpr::NoInferSpecForLoopIter) => exp.clone(),
         ExpX::Unary(op, e1) => {
             let e1 = visit_exp(ctx, state, e1);
             match op {
@@ -586,11 +585,6 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 | UnaryOp::BitNot(_)
                 | UnaryOp::StrLen => {
                     let e1 = coerce_exp_to_native(ctx, &e1);
-                    mk_exp(ExpX::Unary(*op, e1))
-                }
-                UnaryOp::InferSpecForLoopIter { .. } => {
-                    // e1 will be the argument to spec Option::Some(...)
-                    let e1 = coerce_exp_to_poly(ctx, &e1);
                     mk_exp(ExpX::Unary(*op, e1))
                 }
                 UnaryOp::HeightTrigger | UnaryOp::Length(_) => {
@@ -670,6 +664,9 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 UnaryOpr::HasResolved(_t) => {
                     let e = coerce_exp_to_poly(ctx, &e1);
                     mk_exp(ExpX::UnaryOpr(op.clone(), e.clone()))
+                }
+                UnaryOpr::LoopIsolationBoundary(..) => {
+                    panic!("internal error: LoopIsolationBoundary in SST")
                 }
             }
         }
@@ -955,6 +952,7 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
         }
         StmX::Fuel(_, _) => stm.clone(),
         StmX::RevealString(_) => stm.clone(),
+        StmX::RevealByteString(_) => stm.clone(),
         StmX::DeadEnd(stm) => {
             let stm = visit_stm(ctx, state, stm);
             mk_stm(StmX::DeadEnd(stm))
@@ -992,6 +990,7 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
             mk_stm(StmX::If(e, s1, s2))
         }
         StmX::Loop {
+            pre_stms,
             loop_isolation,
             is_for_loop,
             id,
@@ -1003,8 +1002,10 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
             typ_inv_vars,
             modified_vars,
             au_branch_bool,
-            pre_modified_params,
+            pre_modified_params_excl,
+            pre_modified_params_incl,
         } => {
+            let pre_stms = visit_stms(ctx, state, pre_stms);
             let cond = cond
                 .as_ref()
                 .map(|(s, e)| (visit_stm(ctx, state, s), visit_exp_native(ctx, state, e)));
@@ -1017,6 +1018,7 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
             let decrease = visit_exps_native(ctx, state, decrease);
             let au_branch_bool = au_branch_bool.as_ref().map(|e| visit_exp_native(ctx, state, e));
             mk_stm(StmX::Loop {
+                pre_stms: pre_stms.clone(),
                 loop_isolation: *loop_isolation,
                 is_for_loop: *is_for_loop,
                 id: *id,
@@ -1028,7 +1030,8 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
                 typ_inv_vars: typ_inv_vars.clone(),
                 modified_vars: modified_vars.clone(),
                 au_branch_bool,
-                pre_modified_params: pre_modified_params.clone(),
+                pre_modified_params_excl: pre_modified_params_excl.clone(),
+                pre_modified_params_incl: pre_modified_params_incl.clone(),
             })
         }
         StmX::OpenInvariant(s) => {

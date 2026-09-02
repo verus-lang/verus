@@ -1,10 +1,11 @@
-use std::process::Command;
+use std::{path::PathBuf, process::Command};
 
 use anyhow::{Context, Result, bail};
 
 type Crate = crate::Crate<String>;
 
-pub fn get_verus_version() -> Result<String> {
+pub fn get_verus_version(mark_dirty: bool) -> Result<(String, String)> {
+    let rev_full = get_git_rev(None)?;
     let rev = get_git_rev(Some(7))?;
     let date_str = run_command(&["git", "show", "-s", "--format=%cs", "HEAD"])?;
     let date_re =
@@ -16,7 +17,13 @@ pub fn get_verus_version() -> Result<String> {
     let month = &date_captures[2];
     let day = &date_captures[3];
 
-    Ok(format!("0.{year}.{month}.{day}.{rev}"))
+    let dirty = if !mark_dirty || run_command(&["git", "diff", "--exit-code", "HEAD"]).is_ok() {
+        ""
+    } else {
+        ".dirty"
+    };
+
+    Ok((format!("0.{year}.{month}.{day}.{rev}{dirty}"), rev_full))
 }
 
 pub fn get_vstd_version(is_rolling: bool) -> Result<Crate> {
@@ -44,11 +51,49 @@ pub fn get_vstd_version(is_rolling: bool) -> Result<Crate> {
     }
 }
 
-fn get_git_rev(limit: Option<usize>) -> Result<String> {
-    let short_flag =
-        if let Some(len) = limit { format!("--short={len}") } else { "--short".into() };
-    let raw_rev = run_command(&["git", "rev-parse", "-q", &short_flag, "HEAD"])?;
+/// Get the revision of `HEAD`.
+///
+/// With `abbreviate_to`, shorten the revision to that many hexadecimal digits.
+/// Without it, use the full commit hash, which is what Cargo reports for a Git
+/// dependency.
+fn get_git_rev(abbreviate_to: Option<usize>) -> Result<String> {
+    let short_flag = abbreviate_to.map(|len| format!("--short={len}"));
+
+    let mut args = vec!["git", "rev-parse", "-q"];
+    if let Some(short_flag) = &short_flag {
+        args.push(short_flag);
+    }
+    args.push("HEAD");
+
+    let raw_rev = run_command(&args)?;
     Ok(raw_rev.trim().to_owned())
+}
+
+/// Get the existing Git files that determine the current `HEAD` commit.
+///
+/// This works for ordinary repositories, linked worktrees, both symbolic and detached `HEAD`s,
+/// and packed refs.
+pub fn get_git_head_paths() -> Result<Vec<PathBuf>> {
+    let mut paths = vec![get_git_path("HEAD")?.context("Git HEAD is missing")?];
+
+    if let Ok(head_ref) = run_command(&["git", "symbolic-ref", "--quiet", "HEAD"])
+        && let Some(path) = get_git_path(head_ref.trim())?
+    {
+        paths.push(path);
+    }
+
+    if let Some(path) = get_git_path("packed-refs")? {
+        paths.push(path);
+    }
+
+    Ok(paths)
+}
+
+/// Get the absolute path to a Git file when it exists.
+fn get_git_path(path: &str) -> Result<Option<PathBuf>> {
+    let path = run_command(&["git", "rev-parse", "--path-format=absolute", "--git-path", path])?;
+    let path = PathBuf::from(path.trim());
+    Ok(path.exists().then_some(path))
 }
 
 fn run_command(program_and_args: &[&str]) -> Result<String> {

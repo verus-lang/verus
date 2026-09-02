@@ -66,7 +66,7 @@ use crate::rust_to_vir_base::{
     typ_of_expr_adjusted, typ_of_node_unadjusted,
 };
 use crate::rust_to_vir_ctor::{resolve_braces_ctor, resolve_ctor};
-use crate::util::{err_span, err_span_bare, slice_vec_map_result, vec_map_result};
+use crate::util::{err_span, slice_vec_map_result, vec_map_result};
 use crate::verus_items::{
     self, CompilableOprItem, DummyCaptureItem, InvariantItem, OpenAtomicUpdateItem,
     OpenInvariantBlockItem, RustItem, SpecGhostTrackedItem, UnaryOpItem, VerusItem, VstdItem,
@@ -87,7 +87,8 @@ use rustc_middle::ty::adjustment::{
     PatAdjust, PatAdjustment, PointerCoercion,
 };
 use rustc_middle::ty::{
-    AdtDef, ClauseKind, GenericArg, TraitPredicate, TraitRef, TyCtxt, TyKind, TypingEnv, Upcast,
+    AdtDef, ClauseKind, GenericArg, IntTy, TraitPredicate, TraitRef, TyCtxt, TyKind, TypingEnv,
+    UintTy, Upcast,
 };
 use rustc_mir_build_verus::verus::BodyErasure;
 use rustc_span::Span;
@@ -1636,6 +1637,14 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
 
             let arg = expr_to_vir_with_adjustments(bctx, expr, adjustments, adjustment_idx - 1)?;
 
+            // rustc can emit no-op Pointer(Unsize) adjustments. If this is
+            // lowered into a visible `ToDyn`, facts about the original value
+            // are not propagated through the coercion, as in #2629.
+            // Don't emit anything for no-op coercions.
+            if ty1 == ty2 {
+                return Ok(ExprOrPlace::Expr(arg.consume(bctx, ty1)));
+            }
+
             let (tyr1, tyr2) = remove_decoration_typs_for_unsizing(bctx.ctxt.tcx, ty1, ty2);
             let op = match (tyr1.kind(), tyr2.kind()) {
                 (_, TyKind::Dynamic(_, _)) => {
@@ -1977,8 +1986,45 @@ pub(crate) fn expr_cast_enum_int_to_vir<'tcx>(
     };
     let mut vir_arms: Vec<vir::ast::Arm> = Vec::new();
     for (idx, vdef) in adt.variants().iter_enumerated() {
-        let val = adt.discriminant_for_variant(tcx, idx).val;
-        let cast_to = mk_expr(ExprX::Const(vir::ast_util::const_int_from_u128(val)))?;
+        let rustc_middle::ty::util::Discr { val, ty } = adt.discriminant_for_variant(tcx, idx);
+        let val = match ty.kind() {
+            TyKind::Uint(uint_ty) => match uint_ty {
+                UintTy::U8 | UintTy::U16 | UintTy::U32 | UintTy::U64 | UintTy::U128 => {
+                    vir::ast_util::const_int_from_u128(val)
+                }
+                UintTy::Usize => {
+                    if val > u32::MAX as u128 {
+                        unsupported_err!(
+                            expr.span,
+                            "discriminant does not fit in 32-bits when usize is used"
+                        )
+                    }
+                    vir::ast_util::const_int_from_u128(val)
+                }
+            },
+            TyKind::Int(int_ty) => match int_ty {
+                IntTy::I8 => vir::ast_util::const_int_from_i128(val as i8 as i128),
+                IntTy::I16 => vir::ast_util::const_int_from_i128(val as i16 as i128),
+                IntTy::I32 => vir::ast_util::const_int_from_i128(val as i32 as i128),
+                IntTy::I64 => vir::ast_util::const_int_from_i128(val as i64 as i128),
+                IntTy::I128 => vir::ast_util::const_int_from_i128(val as i128),
+                IntTy::Isize => {
+                    let v = val as isize as i128;
+                    if !(v >= i32::MIN as i128 && v <= i32::MAX as i128) {
+                        unsupported_err!(
+                            expr.span,
+                            "discriminant does not fit in 32-bits when isize is used"
+                        )
+                    }
+                    vir::ast_util::const_int_from_i128(v)
+                }
+            },
+            _ => unsupported_err!(
+                expr.span,
+                format!("discriminant of enum when enum has type {:?}", ty)
+            ),
+        };
+        let cast_to = mk_expr(ExprX::Const(val))?;
         unsupported_err_unless!(
             vdef.fields.len() == 0,
             expr.span,
@@ -2002,7 +2048,7 @@ pub(crate) fn expr_cast_enum_int_to_vir<'tcx>(
         vir_arms.push(vir_arm);
     }
     unsupported_err_unless!(vir_arms.len() > 0, expr.span, "Zero-sized empty Enum expr");
-    return Ok(mk_expr(ExprX::Match(place_vir, Arc::new(vir_arms)))?);
+    return Ok(mk_expr(ExprX::Match(place_vir, Arc::new(vir_arms), false))?);
 }
 
 pub(crate) fn expr_to_vir_innermost<'tcx>(
@@ -2061,7 +2107,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let vir_arm = ArmX { pattern, guard, body: rhs_body };
             vir_arms.push(bctx.spanned_new(rhs_span, vir_arm));
         }
-        Ok(ExprX::Match(vir_place, Arc::new(vir_arms)))
+        Ok(ExprX::Match(vir_place, Arc::new(vir_arms), false))
     };
 
     let expr_attrs = bctx.ctxt.tcx.hir_attrs(expr.hir_id);
@@ -2138,6 +2184,17 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 let block = block_to_vir(bctx, body, &expr.span, &expr_typ()?)?;
                 if crate::attributes::is_proof_in_spec(bctx.ctxt.tcx.hir_attrs(expr.hir_id)) {
                     mk_expr(ExprX::ProofInSpec(block))
+                } else if crate::attributes::is_loop_isolation_boundary(
+                    bctx.ctxt.tcx.hir_attrs(expr.hir_id),
+                ) {
+                    let (wrap, label) = loop_isolation_boundary_check(expr.span, &block)?;
+                    let block = if wrap {
+                        let x = ExprX::UnaryOpr(UnaryOpr::LoopIsolationBoundary(label), block);
+                        bctx.spanned_typed_new(expr.span, &expr_typ()?, x)
+                    } else {
+                        block
+                    };
+                    Ok(ExprOrPlace::Expr(block))
                 } else {
                     Ok(ExprOrPlace::Expr(block))
                 }
@@ -3012,16 +3069,15 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 let vir_arm = ArmX { pattern, guard, body };
                 vir_arms.push(bctx.spanned_new(arm.span, vir_arm));
             }
-            mk_expr(ExprX::Match(vir_place, Arc::new(vir_arms)))
+            mk_expr(ExprX::Match(vir_place, Arc::new(vir_arms), false))
         }
         ExprKind::Loop(block, label, LoopSource::Loop, header_span) => {
+            let label = bctx.fresh_label(expr.hir_id, label);
             let allow_complex_invariants = allow_complex_invariants();
-            let bctx = &BodyCtxt { loop_isolation, ..bctx.clone() };
             let typ = typ_of_node_unadjusted(bctx, block.span, &block.hir_id)?;
             let mut body = block_to_vir(bctx, block, &expr.span, &typ)?;
             let mut header =
                 vir::headers::read_header(&mut body, &vir::headers::HeaderAllows::Loop)?;
-            let label = label.map(|l| l.ident.to_string());
             let allow_no_decreases = expr_vattrs.assume_termination
                 || crate::attributes::get_allow_exec_allows_no_decreases_clause_walk_parents(
                     bctx.ctxt.tcx,
@@ -3073,6 +3129,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             LoopSource::While,
             header_span,
         ) => {
+            let label = bctx.fresh_label(expr.hir_id, label);
             // rustc desugars a while loop of the form `while cond { body }`
             // to `loop { if cond { body } else { break; } }`
             // We want to "un-desugar" it to represent it as a while loop.
@@ -3118,7 +3175,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     let wildcard_body = bctx.spanned_typed_new(
                         cond.span,
                         &body_ty,
-                        ExprX::BreakOrContinue { label: None, is_break: true },
+                        ExprX::BreakOrContinue { label: label.clone(), is_break: true },
                     );
                     (
                         None,
@@ -3137,7 +3194,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 }
                 _ => (Some(expr_to_vir_consume(bctx, cond)?), body),
             };
-            let label = label.map(|l| l.ident.to_string());
             Ok(ExprOrPlace::Expr(bctx.spanned_typed_new(
                 *header_span,
                 &expr_typ()?,
@@ -3163,11 +3219,11 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             mk_expr(ExprX::Return(expr))
         }
         ExprKind::Break(dest, None) => {
-            let label = dest.label.map(|l| l.ident.to_string());
+            let label = bctx.label_from_dest(expr.span, dest)?;
             mk_expr(ExprX::BreakOrContinue { label, is_break: true })
         }
         ExprKind::Continue(dest) => {
-            let label = dest.label.map(|l| l.ident.to_string());
+            let label = bctx.label_from_dest(expr.span, dest)?;
             mk_expr(ExprX::BreakOrContinue { label, is_break: false })
         }
         ExprKind::Struct(qpath, fields, struct_tail) => {
@@ -3303,14 +3359,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         ),
                     };
                     Some((fun, typ_args))
-                } else if mutbl {
-                    return Err(err_span_bare(
-                        expr.span,
-                        format!("IndexMut operator not supported for ({:}, {:})", tgt_ty, idx_ty),
-                    )
-                    .help(
-                        "At present, the IndexMut operator is only supported for (Vec<_>, usize)",
-                    ));
                 } else {
                     None
                 };
@@ -3373,6 +3421,17 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 }
                 Ok(ExprOrPlace::Place(p))
             }
+        }
+        ExprKind::Loop(_, _, LoopSource::ForLoop, _) => {
+            // The `verus!` macro rewrites `for` loops internally before they
+            // reach rustc's native for-loop desugaring, so a `LoopSource::ForLoop`
+            // only shows up here when the `for` loop was not visited by `verus!`
+            unsupported_err!(
+                expr.span,
+                format!(
+                    "`for` loops produced by a macro expansion (wrap the loop in the macro body with `verus_exec_expr! {{ ... }}`)"
+                )
+            )
         }
         ExprKind::Loop(..) => unsupported_err!(expr.span, format!("complex loop expressions")),
         ExprKind::Break(..) => unsupported_err!(expr.span, format!("complex break expressions")),
@@ -3464,8 +3523,13 @@ fn lit_to_vir<'tcx>(
             let c = vir::ast::Constant::Char(c);
             mk_expr(ExprX::Const(c))
         }
+        LitKind::Byte(b) => mk_lit_int(false, u128::from(b), typ),
         LitKind::Str(s, _str_style) => {
             let c = vir::ast::Constant::StrSlice(Arc::new(s.to_string()));
+            mk_expr(ExprX::Const(c))
+        }
+        LitKind::ByteStr(bs, _str_style) => {
+            let c = Constant::ByteStr(Arc::new(bs.as_byte_str().to_vec()));
             mk_expr(ExprX::Const(c))
         }
         LitKind::Float(..) => {
@@ -3746,7 +3810,10 @@ pub(crate) fn let_stmt_to_vir<'tcx>(
 
     let vir_pattern = pattern_to_vir(bctx, pattern)?;
     let mode = if infer_mode { None } else { Some((mode, proph_mode)) };
-    Ok(vec![bctx.spanned_new(pattern.span, StmtX::Decl { pattern: vir_pattern, mode, init, els })])
+    Ok(vec![bctx.spanned_new(
+        pattern.span,
+        StmtX::Decl { pattern: vir_pattern, mode, init, els, assert_irrefutable: false },
+    )])
 }
 
 fn unwrap_parameter_to_vir<'tcx>(
@@ -4124,10 +4191,18 @@ fn remove_decoration_typs_for_unsizing<'tcx>(
             remove_decoration_typs_for_unsizing(tcx, *t1, *t2)
         }
         (TyKind::Adt(AdtDef(adt_def_data1), args1), TyKind::Adt(AdtDef(adt_def_data2), args2))
-            if verus_items::get_rust_item(tcx, adt_def_data1.did)
+            if (verus_items::get_rust_item(tcx, adt_def_data1.did)
                 == Some(verus_items::RustItem::Box)
                 && verus_items::get_rust_item(tcx, adt_def_data2.did)
-                    == Some(verus_items::RustItem::Box) =>
+                    == Some(verus_items::RustItem::Box))
+                || (verus_items::get_rust_item(tcx, adt_def_data1.did)
+                    == Some(verus_items::RustItem::Arc)
+                    && verus_items::get_rust_item(tcx, adt_def_data2.did)
+                        == Some(verus_items::RustItem::Arc))
+                || (verus_items::get_rust_item(tcx, adt_def_data1.did)
+                    == Some(verus_items::RustItem::Rc)
+                    && verus_items::get_rust_item(tcx, adt_def_data2.did)
+                        == Some(verus_items::RustItem::Rc)) =>
         {
             let Some(t1) = args1[0].as_type() else { panic!("unexpected type argument") };
             let Some(t2) = args2[0].as_type() else { panic!("unexpected type argument") };
@@ -4655,4 +4730,70 @@ fn ty_is_float_or_ref_float<'tcx>(ty: rustc_middle::ty::Ty<'tcx>) -> bool {
         _ => &ty,
     };
     t.is_floating_point()
+}
+
+/// Check that we can unambiguously identify a loop inside this loop_isolation_boundary block,
+/// and return the 'loop_isolation' parameter and Label of that loop.
+///
+/// The exact form of the block isn't really important;
+/// we just need to make sure that the loop we pick
+/// corresponds to the one that is intended for any source
+/// code that the syntax macro might emit.
+/// (After this point, we use the Label to identify the loop.)
+fn loop_isolation_boundary_check(
+    span: Span,
+    block: &vir::ast::Expr,
+) -> Result<(bool, vir::ast::Label), VirErr> {
+    let err =
+        || crate::internal_err!(span, "loop_isolation_boundary block not of the expected form");
+
+    let ExprX::Block(stmts, Some(e)) = &block.x else {
+        return err();
+    };
+    if let ExprX::Loop { loop_isolation, label, .. } = &e.x {
+        return Ok((*loop_isolation, label.clone()));
+    }
+
+    // Check that this block has the form:
+    // {
+    //   let x = match y { mut z => loop { } }; x
+    // }
+
+    let ExprX::ReadPlace(place, _) = &e.x else {
+        return err();
+    };
+    let PlaceX::Local(l) = &place.x else {
+        return err();
+    };
+
+    if stmts.len() == 0 {
+        return err();
+    }
+    let StmtX::Decl { pattern, mode: _, init: Some(init), els: None, assert_irrefutable: false } =
+        &stmts[stmts.len() - 1].x
+    else {
+        return err();
+    };
+    let PatternX::Var(pattern_binding) = &pattern.x else {
+        return err();
+    };
+    if &pattern_binding.name != l {
+        return err();
+    }
+
+    let PlaceX::Temporary(temp) = &init.x else {
+        return err();
+    };
+    let ExprX::Match(_, arms, false) = &temp.x else {
+        return err();
+    };
+    if arms.len() != 1 {
+        return err();
+    }
+
+    if let ExprX::Loop { loop_isolation, label, .. } = &arms[0].x.body.x {
+        return Ok((*loop_isolation, label.clone()));
+    }
+
+    err()
 }

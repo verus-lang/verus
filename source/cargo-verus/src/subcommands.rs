@@ -12,10 +12,13 @@ use colored::Colorize;
 use crate::cli::{CargoOptions, VerifyCommand, VerusArgFwdSelector};
 use crate::metadata::{MetadataIndex, fetch_metadata, make_package_id};
 use crate::toolchains::{self, TOOLCHAINS, is_matching_known_and_used};
+use crate::vstd_build::{VstdBuild, build_vstd};
 
 pub const CARGO_DEFAULT_LIB_METADATA: &str = "__CARGO_DEFAULT_LIB_METADATA";
+pub const CARGO_UNSTABLE_CHECKSUM_FRESHNESS: &str = "CARGO_UNSTABLE_CHECKSUM_FRESHNESS";
 
 pub const RUSTC_WRAPPER: &str = "RUSTC_WRAPPER";
+pub const RUSTC_BOOTSTRAP: &str = "RUSTC_BOOTSTRAP";
 
 pub const VERUS_DRIVER_ARGS: &str = " __VERUS_DRIVER_ARGS__";
 pub const VERUS_DRIVER_ARGS_FOR: &str = " __VERUS_DRIVER_ARGS_FOR_";
@@ -75,7 +78,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-vstd = "=0.0.0-2026-07-27-0206"
+vstd = "=0.0.0-2026-08-30-0159"
 
 [package.metadata.verus]
 verify = true
@@ -140,7 +143,7 @@ pub struct VerusConfig {
     pub warn_if_nothing_verified: bool,
 }
 
-pub fn plan_cargo_run(cfg: VerusConfig) -> Result<CargoRunPlan> {
+pub fn plan_cargo_run(mut cfg: VerusConfig) -> Result<CargoRunPlan> {
     let fwd_verus_args_to = cfg.options.fwd_verus_args_to.expect("fwd_verus_args_to must be set");
 
     //////////////////////////////////////////////////
@@ -160,6 +163,29 @@ pub fn plan_cargo_run(cfg: VerusConfig) -> Result<CargoRunPlan> {
         included_packages.iter().map(|package| package.id.clone()).collect();
     let all_packages = metadata_index.get_transitive_closure(root_packages.clone());
     let dep_packages: Set<PackageId> = all_packages.difference(&root_packages).cloned().collect();
+
+    let build_only_vstd = if cfg.subcommand == "build"
+        && root_packages.len() == 1
+        && let Some(vstd_id) = root_packages
+            .iter()
+            .find(|package_id| metadata_index.get(package_id).verus_metadata.is_vstd)
+            .cloned()
+    {
+        // When the only primary package to build is `vstd`, special treatment of resulting artifacts is needed.
+        let vstd_metadata = metadata_index.get(&vstd_id);
+        let deps: Map<String, PackageId> =
+            vstd_metadata.deps.values().map(|node| (node.name.clone(), node.pkg.clone())).collect();
+
+        // Ensure that the `nonzero_internals` feature for `vstd` is on.
+        let nonzero_internals = "nonzero_internals".to_string();
+        if !cfg.options.cargo_opts.features.features.contains(&nonzero_internals) {
+            cfg.options.cargo_opts.features.features.push(nonzero_internals);
+        }
+
+        Some(VstdBuild { vstd_id, deps })
+    } else {
+        None
+    };
 
     let packages_to_process = &all_packages;
     let packages_to_verify = if cfg.verify_deps { &all_packages } else { &root_packages };
@@ -236,8 +262,11 @@ pub fn plan_cargo_run(cfg: VerusConfig) -> Result<CargoRunPlan> {
         eprintln!("verbosity level = 1; keeping Verus non-verbose");
     }
 
+    let building_only_vstd = build_only_vstd.is_some();
+
     let plan = make_cargo_plan(
         cfg.current_dir,
+        build_only_vstd,
         cfg.subcommand,
         cargo_args,
         common_verus_driver_args,
@@ -257,7 +286,7 @@ pub fn plan_cargo_run(cfg: VerusConfig) -> Result<CargoRunPlan> {
         eprintln!("running cargo command:\n{command:?}");
     }
 
-    if cfg.warn_if_nothing_verified && !plan.verified_something {
+    if !building_only_vstd && cfg.warn_if_nothing_verified && !plan.verified_something {
         eprint!(
             "{}",
             "\
@@ -363,6 +392,7 @@ fn make_cargo_args(opts: &CargoOptions, for_cargo_metadata: bool, verbosity: u8)
 #[derive(Clone, Debug)]
 pub struct CargoRunPlan {
     pub current_dir: PathBuf,
+    pub build_only_vstd: Option<VstdBuild>,
     pub args: Vec<String>,
     pub env: Map<String, String>,
     pub verified_something: bool,
@@ -382,6 +412,7 @@ impl CargoRunPlan {
 
 fn make_cargo_plan(
     current_dir: PathBuf,
+    build_only_vstd: Option<VstdBuild>,
     subcommand: &'static str,
     mut cargo_args: Vec<String>,
     common_verus_driver_args: Vec<String>,
@@ -399,6 +430,8 @@ fn make_cargo_plan(
     env_overrides.insert(VERUS_DRIVER_VIA_CARGO.to_owned(), "1".to_owned());
     // See https://github.com/rust-lang/cargo/blob/94aa7fb1321545bbe922a87cb11f5f4559e3be63/src/cargo/core/compiler/fingerprint/mod.rs#L71
     env_overrides.insert(CARGO_DEFAULT_LIB_METADATA.to_owned(), "verus".to_owned());
+    env_overrides.insert(CARGO_UNSTABLE_CHECKSUM_FRESHNESS.to_owned(), "true".to_owned());
+    env_overrides.insert(RUSTC_BOOTSTRAP.to_owned(), "1".to_owned());
 
     let common_verus_driver_args = pack_verus_driver_args_for_env(common_verus_driver_args.iter());
 
@@ -493,12 +526,16 @@ fn make_cargo_plan(
     let mut args = vec![subcommand.to_owned()];
     args.append(&mut cargo_args);
 
-    Ok(CargoRunPlan { current_dir, args, env: env_overrides, verified_something })
+    Ok(CargoRunPlan { build_only_vstd, current_dir, args, env: env_overrides, verified_something })
 }
 
 pub fn run_cargo(plan: &CargoRunPlan) -> Result<ExitCode> {
     // TODO: use the "+ ... toolchain" argument?
     let mut command = plan.to_command();
+
+    if let Some(vstd_build) = &plan.build_only_vstd {
+        return build_vstd(vstd_build, command);
+    }
 
     let exit_status = command
         .spawn()

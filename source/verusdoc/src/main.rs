@@ -3,8 +3,8 @@
 // which has more high-level details.
 
 use html5ever::{QualName, local_name, namespace_url, ns};
-use kuchiki::NodeRef;
-use kuchiki::traits::TendrilSink;
+use kuchikiki::NodeRef;
+use kuchikiki::traits::TendrilSink;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::path::Path;
@@ -59,7 +59,7 @@ fn process_file(path: &Path) {
         return;
     }
 
-    let document = kuchiki::parse_html().one(html);
+    let document = kuchikiki::parse_html().one(html);
 
     let opt_trait_info = get_opt_trait_info(path, &document);
 
@@ -409,8 +409,14 @@ fn do_splices_for_info(node: &NodeRef, full_text: &str, fn_idx: usize, info: &Up
 
                 arg_idx = next_comma_or_rparen(&full_text, arg_idx);
 
-                // skip of the comma and space
-                arg_idx += 2;
+                // Check if we hit a comma (middle arg) or paren (last arg)
+                if arg_idx < full_text.len() && full_text.as_bytes()[arg_idx] == b',' {
+                    // skip comma and space
+                    arg_idx += 2;
+                } else {
+                    // closing paren, just skip it
+                    arg_idx += 1;
+                }
             }
 
             let needs_return_annotation =
@@ -811,7 +817,7 @@ mod tests {
 
     fn run_sig_update(input_sig: &str, info: DocSigInfo) -> String {
         let html = format!(r#"<h4 class="code-header">{}</h4>"#, input_sig);
-        let document = kuchiki::parse_html().one(html);
+        let document = kuchikiki::parse_html().one(html);
         let node = document.select_first("h4").unwrap().as_node().clone();
 
         let full_text = node.text_contents();

@@ -133,6 +133,7 @@ pub struct Ctx {
     // Of course it can be argued that accounting for sha512 collisions
     // is overkill, perhaps this should be revisited.
     pub(crate) string_hashes: RefCell<HashMap<BigUint, Arc<String>>>,
+    pub(crate) byte_string_hashes: RefCell<HashMap<BigUint, Arc<Vec<u8>>>>,
     // proof debug purposes
     pub debug: bool,
     pub arch_word_bits: ArchWordBits,
@@ -442,7 +443,10 @@ impl GlobalCtx {
             // This is currently needed because external_body broadcast_forall functions
             // are currently implicitly imported.
             // In the future, this might become less important; we could remove this heuristic.
-            if f.x.body.is_none() && f.x.extra_dependencies.len() == 0 {
+            use crate::ast::FunctionKind::TraitMethodImpl;
+            let inherit_default =
+                matches!(&f.x.kind, TraitMethodImpl { inherit_body_from: Some(_), .. });
+            if f.x.body.is_none() && f.x.extra_dependencies.len() == 0 && !inherit_default {
                 func_call_graph.add_node(Node::Fun(f.x.name.clone()));
             }
         }
@@ -508,6 +512,7 @@ impl GlobalCtx {
                 f,
             )?;
         }
+
         for group in &krate.reveal_groups {
             let group_node = Node::Fun(group.x.name.clone());
             func_call_graph.add_node(group_node.clone());
@@ -838,6 +843,7 @@ impl Ctx {
             .extend(reveal_group_set.iter().map(|g| (fun_to_air_ident(&name_ctxt, &g), g.clone())));
         let quantifier_count = Cell::new(0);
         let string_hashes = RefCell::new(HashMap::new());
+        let byte_string_hashes = RefCell::new(HashMap::new());
 
         let mut fndef_type_set = HashSet::new();
         for fndef_type in fndef_types.iter() {
@@ -874,6 +880,7 @@ impl Ctx {
             fun: None,
             global,
             string_hashes,
+            byte_string_hashes,
             debug,
             arch_word_bits: krate.arch.word_bits,
             opaque_type_map,

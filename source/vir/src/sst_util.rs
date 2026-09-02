@@ -1,6 +1,6 @@
 use crate::ast::{
     BinaryOpr, BitwiseOp, Constant, CtorPrintStyle, Dt, Fun, GenericBound, GenericBoundX,
-    GenericBounds, Ident, InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Mode,
+    GenericBounds, Ident, InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind,
     ProofNoteLabel, Quant, SpannedTyped, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VarBinder,
     VarBinderX, VarBinders,
 };
@@ -429,6 +429,14 @@ impl ExpX {
                 Constant::Int(i) => (format!("{}", i), 99),
                 Constant::Real(r) => (format!("{}", r), 99),
                 Constant::StrSlice(s) => (format!("\"{}\"", s), 99),
+                Constant::ByteStr(bytes) => {
+                    let escaped = bytes
+                        .iter()
+                        .flat_map(|byte| std::ascii::escape_default(*byte))
+                        .map(char::from)
+                        .collect::<String>();
+                    (format!("b\"{}\"", escaped), 99)
+                }
                 Constant::Char(c) => (format!("'{}'", c), 99),
                 Constant::Float32(c) => (format!("'{}'", c), 99),
                 Constant::Float64(c) => (format!("'{}'", c), 99),
@@ -486,7 +494,6 @@ impl ExpX {
             NullaryOpr(crate::ast::NullaryOpr::TraitBound(..)) => ("".to_string(), 99),
             NullaryOpr(crate::ast::NullaryOpr::TypEqualityBound(..)) => ("".to_string(), 99),
             NullaryOpr(crate::ast::NullaryOpr::ConstTypBound(..)) => ("".to_string(), 99),
-            NullaryOpr(crate::ast::NullaryOpr::NoInferSpecForLoopIter) => ("no_in".to_string(), 99),
             Unary(op, exp) => match op {
                 UnaryOp::Not | UnaryOp::BitNot(_) => {
                     (format!("!{}", exp.x.to_string_prec(global, 99)), 90)
@@ -521,9 +528,6 @@ impl ExpX {
                 | UnaryOp::MustBeElaborated => {
                     return exp.x.to_string_prec(global, precedence);
                 }
-                UnaryOp::InferSpecForLoopIter { .. } => {
-                    (format!("InferSpecForLoopIter({})", exp.x.to_string_prec(global, 99)), 0)
-                }
                 UnaryOp::CastToInteger => {
                     (format!("{} as int", exp.x.to_user_string(global)), precedence)
                 }
@@ -552,11 +556,11 @@ impl ExpX {
                     HasResolved(t) => {
                         (format!("has_resolved::<{:?}>({})", t, exp.x.to_user_string(global)), 99)
                     }
-                    IntegerTypeBound(IntegerTypeBoundKind::ArchWordBits, _mode) => {
+                    IntegerTypeBound(IntegerTypeBoundKind::ArchWordBits) => {
                         (format!("usize::BITS"), 99)
                     }
-                    IntegerTypeBound(kind, mode) => {
-                        (format!("{:?}.{:?}({})", kind, mode, exp.x.to_user_string(global)), 99)
+                    IntegerTypeBound(kind) => {
+                        (format!("{:?}({})", kind, exp.x.to_user_string(global)), 99)
                     }
                     IsVariant { datatype: _, variant } => {
                         let (prec_exp, prec_left, _prec_right) = prec_of_in();
@@ -577,6 +581,10 @@ impl ExpX {
                     ProofNote(_label) => {
                         (format!("with_diagnostic({})", exp.x.to_user_string(global)), 99)
                     }
+                    LoopIsolationBoundary(..) => (
+                        format!("loop_isolation_boundary({})", exp.x.to_string_prec(global, 99)),
+                        0,
+                    ),
                 }
             }
             Binary(op, e1, e2) => {
@@ -900,10 +908,7 @@ pub fn sst_arch_word_bits(span: &Span) -> Exp {
         span,
         &Arc::new(TypX::Int(IntRange::Int)),
         ExpX::UnaryOpr(
-            UnaryOpr::IntegerTypeBound(
-                IntegerTypeBoundKind::ArchWordBits,
-                Mode::Spec, // mode doesn't matter
-            ),
+            UnaryOpr::IntegerTypeBound(IntegerTypeBoundKind::ArchWordBits),
             sst_int_literal(span, 0),
         ),
     )

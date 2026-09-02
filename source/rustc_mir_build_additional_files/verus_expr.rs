@@ -1,7 +1,7 @@
 use crate::thir::cx::ThirBuildCx;
 use crate::verus::CallErasure;
 use crate::verus::{
-    erase_node, erase_node_unadjusted, erase_tree_kind, erased_ghost_value, handle_call,
+    erase_node, erase_node_unadjusted, erase_tree_kind, handle_call,
     is_node_with_single_arg_erased_or_shadow,
 };
 use crate::verus_time_travel_prevention::try_move_head_into_shadow;
@@ -11,26 +11,6 @@ use rustc_middle::thir;
 use rustc_middle::thir::{ExprId, LocalVarId, Pat, PatKind};
 use rustc_middle::ty::TyKind;
 use rustc_middle::ty::adjustment::{Adjust, Adjustment, AutoBorrow, DerefAdjustKind};
-
-pub(crate) fn mirror_expr_adjusted_pre<'tcx>(
-    cx: &mut ThirBuildCx<'tcx>,
-    expr: &'tcx Expr<'tcx>,
-) -> Option<rustc_middle::thir::ExprId> {
-    let Some(erasure_ctxt) = cx.verus_ctxt.ctxt.clone() else {
-        return None;
-    };
-    if erasure_ctxt.adjusted_node_erasure.contains(&expr.hir_id) {
-        Some(erased_ghost_value(
-            cx,
-            &erasure_ctxt,
-            expr.hir_id,
-            expr.span,
-            cx.typeck_results.expr_ty_adjusted(expr),
-        ))
-    } else {
-        None
-    }
-}
 
 // To avoid edits and conflicts in thir/cx/expr.rs, postprocess some of the work for expr.rs here
 pub(crate) fn apply_adjustment_post<'tcx>(

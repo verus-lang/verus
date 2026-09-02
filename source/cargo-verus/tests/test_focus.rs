@@ -197,3 +197,42 @@ fn workspace_package_hasdeps_forwards_verus_args_only_to_roots() {
         dep_driver_args
     );
 }
+
+#[test]
+fn partial_verification_selectors_require_focus() {
+    let package_dir = MockPackage::new("foo").lib().verify(true).materialize();
+
+    for command in ["verify", "build", "check"] {
+        for arg in [
+            "--verify-root",
+            "--verify-module",
+            "--verify-module=foo",
+            "--verify-only-module",
+            "--verify-only-module=foo",
+            "--verify-function",
+            "--verify-function=foo",
+        ] {
+            let args = [BIN_NAME, command, "--", arg];
+            let plan = plan_execution(package_dir.path(), args);
+            assert!(plan.is_err_and(|err| {
+                err.to_string().contains("Partial verification must use `cargo verus focus`")
+            }));
+        }
+    }
+}
+
+#[test]
+fn focus_accepts_partial_verification_selectors() {
+    let package_dir = MockPackage::new("foo").lib().verify(true).materialize();
+
+    for arg in [
+        "--verify-root",
+        "--verify-module=foo",
+        "--verify-only-module=foo",
+        "--verify-function=foo",
+    ] {
+        let args = [BIN_NAME, "focus", "--", arg];
+        let plan = plan_execution(package_dir.path(), args);
+        assert!(plan.is_ok());
+    }
+}

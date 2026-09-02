@@ -1,4 +1,4 @@
-use crate::ast::{CallTarget, Expr, ExprX, VirErr};
+use crate::ast::{CallTarget, Expr, ExprX, Label, VirErr};
 use crate::ast_visitor::{VisitorControlFlow, VisitorScopeMap, expr_visitor_dfs};
 use crate::messages::Span;
 use crate::messages::error;
@@ -7,7 +7,7 @@ use air::scope_map::ScopeMap;
 #[derive(Clone, Debug)]
 enum StatementType {
     Return,
-    BreakOrContinue { _label: Option<String> },
+    BreakOrContinue { _label: Label },
 }
 
 #[derive(Clone, Debug)]
@@ -100,6 +100,7 @@ fn expr_get_early_exits_rec(
             | ExprX::AssertAssumeUserDefinedTypeInvariant { .. }
             | ExprX::AssertBy { .. }
             | ExprX::RevealString(_)
+            | ExprX::RevealByteString(_)
             | ExprX::AirStmt(_) => VisitorControlFlow::Return,
             ExprX::AssertQuery { .. } => VisitorControlFlow::Return,
             ExprX::Loop { cond, body, .. } => {

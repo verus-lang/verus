@@ -109,10 +109,6 @@ pub struct VerusErasureCtxt {
     /// The bool indicates if we should force the return type to be treated as inhabited.
     pub calls: HashMap<HirId, (CallErasure, bool)>,
 
-    /// Node that should be erased (absolutely), including its adjustments.
-    /// Useful, e.g., to erase a single argument of some call.
-    pub adjusted_node_erasure: HashSet<HirId>,
-
     /// Loop headers require special handling. This maps every loop expression to
     /// a list of all its headers. (Note: the headers themselves should be marked
     /// EraseAbsolutely so they don't end up being double-handled.)
@@ -609,6 +605,7 @@ pub(crate) fn is_node_with_single_arg_erased_or_shadow<'tcx>(
             is_erased_or_shadow(cx, erasure_ctxt, &cx.thir.exprs[args[0]].kind)
         }
         ExprKind::Borrow { borrow_kind: _, arg }
+        | ExprKind::RawBorrow { mutability: _, arg }
         | ExprKind::Deref { arg }
         | ExprKind::NeverToAny { source: arg }
         | ExprKind::Field { lhs: arg, .. } => {
@@ -897,9 +894,6 @@ impl<'a, 'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitTreeForPats<'a, 'tc
     type NestedFilter = rustc_hir::intravisit::nested_filter::None;
 
     fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
-        if self.erasure_ctxt.adjusted_node_erasure.contains(&expr.hir_id) {
-            return;
-        }
         match &expr.kind {
             hir::ExprKind::Call(..) | hir::ExprKind::MethodCall(..) => {
                 if matches!(
@@ -950,9 +944,6 @@ impl<'a, 'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitTreeForLocalUses<'a
     }
 
     fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
-        if self.erasure_ctxt.adjusted_node_erasure.contains(&expr.hir_id) {
-            return;
-        }
         match &expr.kind {
             hir::ExprKind::Call(..) | hir::ExprKind::MethodCall(..) => {
                 if matches!(

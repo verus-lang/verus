@@ -6,7 +6,7 @@ use crate::ast::{
 use crate::context::SmtSolver;
 use crate::def::mk_skolem_id;
 use crate::util::vec_map;
-use sise::{Node, Writer};
+use sise::TreeNode as Node;
 use std::sync::Arc;
 
 pub fn str_to_node(s: &str) -> Node {
@@ -580,23 +580,22 @@ impl NodeWriter {
 
     pub fn write_node(
         &mut self,
-        writer: &mut sise::SpacedStringWriter,
+        serializer: &mut sise::Serializer,
         node: &Node,
         break_len: usize,
         brk: bool,
     ) {
-        let opts =
-            sise::SpacedStringWriterNodeOptions { break_line_len: if brk { 0 } else { break_len } };
+        let break_line_at = if brk { 0 } else { break_len };
         match node {
             Node::Atom(a) => {
-                writer.write_atom(a, opts).unwrap();
+                serializer.put_atom(a, break_line_at);
             }
             Node::List(l) => {
-                writer.begin_list(opts).unwrap();
+                serializer.begin_list(break_line_at);
                 let mut brk = false;
                 let mut was_pattern = false;
                 for n in l {
-                    self.write_node(writer, n, break_len + 1, brk && !was_pattern);
+                    self.write_node(serializer, n, break_len + 1, brk && !was_pattern);
                     was_pattern = false;
                     match n {
                         Node::Atom(a)
@@ -621,21 +620,19 @@ impl NodeWriter {
                         _ => {}
                     }
                 }
-                writer.end_list(()).unwrap();
+                serializer.end_list();
             }
         }
     }
 
     pub fn node_to_string_indent(&mut self, indent: &String, node: &Node) -> String {
         let indentation = " ";
-        let style = sise::SpacedStringWriterStyle {
-            line_break: &("\n".to_string() + &indent),
-            indentation,
-        };
+        let style =
+            sise::SerializerStyle { line_break: &("\n".to_string() + &indent), indentation };
         let mut result = String::new();
-        let mut string_writer = sise::SpacedStringWriter::new(style, &mut result);
-        self.write_node(&mut string_writer, &node, 80, false);
-        string_writer.finish(()).unwrap();
+        let mut serializer = sise::Serializer::new(style, &mut result);
+        self.write_node(&mut serializer, &node, 80, false);
+        serializer.finish(false);
         // Clean up result:
         clean_up_lines(result, indentation)
     }

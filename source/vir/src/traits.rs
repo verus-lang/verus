@@ -583,7 +583,12 @@ pub fn inherit_default_bodies(
         }
         if let FunctionKind::TraitMethodImpl { impl_path, method, .. } = &f.x.kind {
             let p = (impl_path, method);
-            assert!(!method_impls.contains(&p));
+            if method_impls.contains(&p) {
+                return Err(error(
+                    &f.span,
+                    "duplicate specification for this trait method implementation",
+                ));
+            }
             method_impls.insert(p);
         }
     }

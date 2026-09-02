@@ -20,9 +20,9 @@ use verus_syn::visit::Visit;
 use verus_syn::visit_mut;
 use verus_syn::visit_mut::VisitMut;
 use verus_syn::{
-    Attribute, Block, Error, Expr, Field, Fields, FnArg, FnArgKind, FnMode, GenericArgument,
-    GenericParam, Ident, Index, ItemStruct, Lifetime, Member, Pat, PatIdent, PatType,
-    PathArguments, Receiver, Signature, Type, TypePath, Visibility, braced, parenthesized,
+    Attribute, Block, Error, Expr, ExprPath, Field, Fields, FnArg, FnArgKind, FnMode,
+    GenericArgument, GenericParam, Ident, Index, ItemStruct, Lifetime, Member, Pat, PatIdent,
+    PatType, PathArguments, Receiver, Signature, Type, TypePath, Visibility, braced, parenthesized,
 };
 
 pub fn struct_decl_inv(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
@@ -575,6 +575,9 @@ fn field_used_type_params(
             get_params_used_in_type(&sdi.item_struct.generics.params, &field.ty);
 
         let invariant_decls = get_invariant_decls_by_name(&sdi.invariant_decls, &field_name);
+        if !invariant_decls.is_empty() {
+            used_params.extend(sdi.item_struct.generics.params.iter().map(generic_param_to_string));
+        }
         for invariant_decl in invariant_decls.iter() {
             if let InvariantDecl::Invariant { depends_on, .. } = invariant_decl {
                 for dep in depends_on {
@@ -934,6 +937,21 @@ impl<'ast, 'a> Visit<'ast> for CollectIdentsVisitor<'a> {
             self.result.insert(path.segments[0].ident.to_string());
         }
         visit::visit_type_path(self, type_path);
+    }
+
+    fn visit_expr_path(&mut self, expr_path: &ExprPath) {
+        let ExprPath { qself, path, .. } = expr_path;
+        // Only the first segment of an unqualified relative path is resolved in the
+        // current scope. Later segments name module or associated items, so collecting
+        // them could mistake `module::N` for a generic parameter named `N`.
+        if qself.is_none()
+            && path.leading_colon.is_none()
+            && !path.segments.is_empty()
+            && path.segments[0].arguments == PathArguments::None
+        {
+            self.result.insert(path.segments[0].ident.to_string());
+        }
+        visit::visit_expr_path(self, expr_path);
     }
 
     fn visit_lifetime(&mut self, lt: &Lifetime) {
@@ -1379,6 +1397,25 @@ impl<'ast> Visit<'ast> for UsedParamsVisitor {
         }
 
         visit::visit_type_path(self, type_path);
+    }
+
+    fn visit_expr_path(&mut self, expr_path: &ExprPath) {
+        let ExprPath { qself, path, .. } = expr_path;
+        // Only the first segment of an unqualified relative path is resolved in the
+        // current scope. Later segments name module or associated items, so collecting
+        // them could mistake `module::N` for a generic parameter named `N`.
+        if qself.is_none()
+            && path.leading_colon.is_none()
+            && !path.segments.is_empty()
+            && path.segments[0].arguments == PathArguments::None
+        {
+            let id = path.segments[0].ident.to_string();
+            if self.params.contains(&id) {
+                self.result.insert(id);
+            }
+        }
+
+        visit::visit_expr_path(self, expr_path);
     }
 
     fn visit_lifetime(&mut self, lt: &Lifetime) {

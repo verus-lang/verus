@@ -374,7 +374,10 @@ test_verify_one_file_with_options! {
             assert(*x == 0 && *old(x) == 5) by(nonlinear_arith)
               requires *x == 0 && *old(x) == 5;
         }
-    } => Err(err) => assert_vir_error_msg(err, "`old` is not supported in `nonlinear_arith` assert")
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "`old` is not supported in `nonlinear_arith` assert",
+        "`old` is not supported in `nonlinear_arith` assert",
+    ])
 }
 
 test_verify_one_file_with_options! {

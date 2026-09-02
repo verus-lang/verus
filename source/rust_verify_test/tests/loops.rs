@@ -1242,7 +1242,7 @@ test_verify_one_file_with_options! {
             let mut end = 10;
             for x in iter: 0..end
                 invariant
-                    n == x * 3, // FAILS
+                    n == x * 3,
                     end == 10,
             {
                 assert(x < 10); // FAILS
@@ -1260,14 +1260,14 @@ test_verify_one_file_with_options! {
             // test Typing::snapshot_transient_state
             for x in iter: 0..({let z = end; non_spec(); z})
                 invariant
-                    n == x * 3, // FAILS
+                    n == x * 3,
                     end == 10,
             {
                 n += 3;
                 end = end + 0; // causes end to be non-constant
             }
         }
-    } => Err(e) => assert_fails(e, 3)
+    } => Err(e) => assert_fails(e, 1)
 }
 
 test_verify_one_file_with_options! {
@@ -1351,6 +1351,12 @@ test_verify_one_file_with_options! {
                 if result as u64 * result as u64 > n as u64 {
                     break;
                 }
+                assert(n != 1 ==> 1 <= result < n) by (nonlinear_arith)
+                    requires
+                        1 <= result,
+                        result as u64 * result as u64 <= n as u64,
+                        1 <= n,
+                { }
             }
             result - 1
         }
@@ -1878,4 +1884,78 @@ test_verify_one_file! {
             }
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] shadowed_label verus_code! {
+        fn cond() -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        #[allow(unused_labels)]
+        fn test() {
+            let mut i = 0;
+            'a: while i < 10 {
+                'a: loop {
+                    break 'a;
+                }
+
+                i += 1;
+            }
+
+            // There is no 'break' statement for the outer loop, so the condition
+            // should always be false at this point.
+            assert(i >= 10);
+        }
+    } => Ok(err) => {
+        assert!(err.errors.len() == 0);
+        assert!(err.warnings.len() == 4);
+        assert!(err.warnings[0].message.contains("label name `'a` shadows a label name that is already in scope"));
+        assert!(err.warnings[1].message.contains("1 warning emitted"));
+        assert!(err.warnings[2].message.contains("label name `'a` shadows a label name that is already in scope"));
+        assert!(err.warnings[3].message.contains("1 warning emitted"));
+    }
+}
+
+test_verify_one_file! {
+    #[test] break_in_condition_issue2713 verus_code! {
+        fn cond() -> bool { true }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test() {
+            let mut i = 0;
+            'a: while ({ if cond() { break 'a; } i < 10 }) {
+                i += 1;
+            }
+            assert(i >= 10); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] break_in_condition_nested_issue2714 verus_code! {
+        #[verifier::exec_allows_no_decreases_clause]
+        fn test() {
+            let mut i = 0;
+            'a: while i < 10
+            {
+                #[verifier::loop_isolation(false)]
+                while ({ break 'a; }) {
+                }
+            }
+            assert(i >= 10); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    // A `for` loop produced by a `macro_rules!` expansion is not rewritten by the
+    // `verus!` macro, so it reaches rustc's native for-loop desugaring.
+    #[test] macro_rules_for_loop_no_ice_issue2751 verus_code! {
+        fn f() {
+            macro_rules! m {
+                () => { for _ in 0..1 {} };
+            }
+            m!();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "`for` loops produced by a macro expansion")
 }

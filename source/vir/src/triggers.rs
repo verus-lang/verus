@@ -132,8 +132,7 @@ fn check_trigger_expr_arg(state: &mut State, arg: &Exp) {
             | UnaryOp::MutRefCurrent
             | UnaryOp::MutRefFuture(_)
             | UnaryOp::MutRefFinal(_)
-            | UnaryOp::Length(_)
-            | UnaryOp::InferSpecForLoopIter { .. } => {}
+            | UnaryOp::Length(_) => {}
         },
         ExpX::UnaryOpr(op, arg) => match op {
             UnaryOpr::Box(_) | UnaryOpr::Unbox(_) => panic!("unexpected box"),
@@ -148,8 +147,9 @@ fn check_trigger_expr_arg(state: &mut State, arg: &Exp) {
             UnaryOpr::IsVariant { .. }
             | UnaryOpr::Field { .. }
             | UnaryOpr::IntegerTypeBound(..)
-            | UnaryOpr::HasType(_) => {}
-            UnaryOpr::HasResolved(_) => {}
+            | UnaryOpr::HasType(_)
+            | UnaryOpr::HasResolved(_)
+            | UnaryOpr::LoopIsolationBoundary(_) => {}
         },
         _ => {}
     }
@@ -259,9 +259,6 @@ fn check_trigger_expr(
         ExpX::NullaryOpr(crate::ast::NullaryOpr::ConstTypBound(..)) => {
             Err(error(&exp.span, "triggers cannot contain const type bounds"))
         }
-        ExpX::NullaryOpr(crate::ast::NullaryOpr::NoInferSpecForLoopIter) => {
-            Err(error(&exp.span, "triggers cannot contain loop spec inference"))
-        }
         ExpX::Unary(op, arg) => match op {
             UnaryOp::StrLen
             | UnaryOp::BitNot(_)
@@ -285,9 +282,6 @@ fn check_trigger_expr(
             | UnaryOp::MustBeFinalized
             | UnaryOp::MustBeElaborated
             | UnaryOp::CastToInteger => Ok(()),
-            UnaryOp::InferSpecForLoopIter { .. } => {
-                Err(error(&exp.span, "triggers cannot contain loop spec inference"))
-            }
             UnaryOp::Not => Err(error(&exp.span, "triggers cannot contain boolean operators")),
             UnaryOp::Length(_) => {
                 Err(error(&exp.span, "triggers cannot contain builtin Length operator"))
@@ -312,6 +306,9 @@ fn check_trigger_expr(
             UnaryOpr::HasResolved(_t) => {
                 check_trigger_expr_arg(state, arg);
                 Ok(())
+            }
+            UnaryOpr::LoopIsolationBoundary(..) => {
+                Err(error(&exp.span, "triggers cannot contain loop_isolation_boundary"))
             }
         },
         ExpX::Binary(op, arg1, arg2) => {
