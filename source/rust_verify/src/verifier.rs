@@ -21,7 +21,8 @@ use rustc_interface::interface::Compiler;
 use rustc_session::config::ErrorOutputType;
 
 use vir::messages::{
-    Message, MessageLabel, MessageLevel, MessageX, ToAny, message, note, note_bare, warning_bare,
+    Message, MessageLabel, MessageLevel, MessageX, ToAny, message, note, note_bare, warning,
+    warning_bare,
 };
 
 use num_format::{Locale, ToFormattedString};
@@ -45,7 +46,8 @@ use vir::ast_util::{fun_as_friendly_rust_name, is_visible_to};
 use vir::def::{CommandContext, CommandsWithContext, CommandsWithContextX, SnapPos};
 use vir::prelude::PreludeConfig;
 
-const RLIMIT_PER_SECOND: f32 = 3000000f32;
+const RLIMIT_PER_SECOND_Z3: f32 = 3000000f32;
+const RLIMIT_PER_SECOND_CVC5: f32 = 333333f32; // ~= 5s
 
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub(crate) struct ProgressBarId(String);
@@ -1126,10 +1128,14 @@ impl Verifier {
     }
 
     fn set_rlimit(air_context: &mut air::context::Context, rlimit: f32) {
+        let per_second = match air_context.get_solver() {
+            air::context::SmtSolver::Z3 => RLIMIT_PER_SECOND_Z3,
+            air::context::SmtSolver::Cvc5 => RLIMIT_PER_SECOND_CVC5,
+        };
         air_context.set_rlimit(if rlimit == f32::INFINITY {
-            0 // z3 interprets a zero rlimit as infinity
+            0 // both solvers interpret a zero rlimit as infinity
         } else {
-            (rlimit * RLIMIT_PER_SECOND).min(u32::MAX as f32) as u32
+            (rlimit * per_second).min(u32::MAX as f32) as u32
         });
     }
 
@@ -1590,7 +1596,18 @@ impl Verifier {
                             let iter_curr_smt_rlimit_count =
                                 query_air_context.get_rlimit_count().map(|x| x.1);
                             if let Some(rlimit) = function.x.attrs.rlimit {
-                                Self::set_rlimit(&mut query_air_context, rlimit);
+                                if query_air_context.rlimit_is_mutable() {
+                                    Self::set_rlimit(&mut query_air_context, rlimit);
+                                } else {
+                                    reporter.report(
+                                        &warning(
+                                            &cmds.context.span,
+                                            "#[verifier::rlimit] is not supported with your current solver; \
+                                             the global --rlimit applies instead",
+                                        )
+                                        .to_any(),
+                                    );
+                                }
                             }
                             let RunCommandQueriesResult {
                                 invalidity: command_invalidity,
