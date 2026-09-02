@@ -16,8 +16,15 @@ pub enum ExecutionPlan {
 }
 
 pub struct FormattingPlan {
-    pub target_paths: Vec<PathBuf>,
+    pub targets: Vec<FmtTarget>,
     pub verusfmt_args: Vec<String>,
+}
+
+pub enum FmtTarget {
+    /// To be formatted using `cargo fmt`.
+    Cargo(PathBuf),
+    /// To be formatted using `verusfmt`.
+    Verus(PathBuf),
 }
 
 pub fn execute_plan(plan: &ExecutionPlan) -> Result<ExitCode> {
