@@ -1,9 +1,9 @@
 use rustc_data_structures::fx::FxIndexMap;
+use rustc_data_structures::smallvec::smallvec;
 use rustc_middle::ty::outlives::{Component, push_outlives_components};
 use rustc_middle::ty::{self, GenericArg, GenericArgKind, Region, Ty, TyCtxt};
 use rustc_middle::{bug, span_bug};
 use rustc_span::Span;
-use smallvec::smallvec;
 
 /// Tracks the `T: 'a` or `'a: 'a` predicates that we have inferred
 /// must be added to the struct header.
