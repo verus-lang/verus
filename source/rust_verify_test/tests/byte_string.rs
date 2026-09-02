@@ -241,3 +241,33 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test]
+    byte_string_equality_uses_view verus_code! {
+        use vstd::prelude::*;
+
+        struct ByteSource;
+
+        uninterp spec fn modeled_bytes(source: &ByteSource) -> Seq<u8>;
+
+        #[verifier::external_body]
+        fn get_bytes<'a>(source: &'a ByteSource) -> (result: &'a [u8])
+            ensures
+                result@ == modeled_bytes(source),
+        {
+            b"hello world"
+        }
+
+        spec fn is_hello(source: &ByteSource) -> bool {
+            modeled_bytes(source) =~= b"hello world"@
+        }
+
+        fn check(source: &ByteSource) -> (result: bool)
+            ensures
+                result == is_hello(source),
+        {
+            get_bytes(source) == b"hello world"
+        }
+    } => Ok(())
+}
