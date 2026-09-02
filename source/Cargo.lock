@@ -2345,6 +2345,7 @@ dependencies = [
  "num-format",
  "regex",
  "rust_verify_test_macros",
+ "rustc_hir_analysis",
  "rustc_mir_build",
  "serde",
  "serde_json",
@@ -2376,6 +2377,14 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "rustc_hir_analysis"
+version = "0.0.0"
+dependencies = [
+ "itertools 0.12.1",
+ "tracing",
 ]
 
 [[package]]

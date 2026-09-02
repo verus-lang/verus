@@ -63,7 +63,26 @@ This API is completely unstable and subject to change.
 #![feature(slice_partition_dedup)]
 #![feature(try_blocks)]
 #![feature(unwrap_infallible)]
+#![feature(rustc_private)]
 // tidy-alphabetical-end
+
+extern crate rustc_abi;
+extern crate rustc_arena;
+extern crate rustc_ast;
+extern crate rustc_data_structures;
+extern crate rustc_errors;
+extern crate rustc_feature;
+extern crate rustc_hir;
+extern crate rustc_index;
+extern crate rustc_infer;
+extern crate rustc_lint_defs;
+extern crate rustc_macros;
+extern crate rustc_middle;
+extern crate rustc_session;
+extern crate rustc_span;
+extern crate rustc_target;
+extern crate rustc_trait_selection;
+extern crate smallvec;
 
 // These are used by Clippy.
 pub mod check;
