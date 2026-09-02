@@ -154,13 +154,9 @@ pub fn plan_formatting(current_dir: PathBuf, command: FmtCommand) -> Result<Form
     let metadata_args = make_cargo_args(&command.cargo_opts, true, command.verbosity);
     let metadata = fetch_metadata(metadata_args, current_dir)?;
     let (included_packages, _) = command.cargo_opts.workspace.partition_packages(&metadata);
-    let included_package_ids: Set<_> =
-        included_packages.iter().map(|package| &package.id).collect();
 
     let mut target_paths = Vec::new();
-    for package in
-        metadata.packages.iter().filter(|package| included_package_ids.contains(&package.id))
-    {
+    for package in included_packages {
         let package_root = package
             .manifest_path
             .parent()
