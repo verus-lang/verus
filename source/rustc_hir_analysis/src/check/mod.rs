@@ -63,7 +63,7 @@ a type parameter).
 */
 
 pub mod always_applicable;
-mod check;
+pub mod check;
 mod compare_eii;
 mod compare_impl_item;
 mod entry;
