@@ -327,12 +327,14 @@ pub assume_specification<T> [ <[T]>::first ](slice: &[T]) -> (res: Option<&T>)
     ensures
         slice.len() == 0 ==> res.is_none(),
         slice.len() != 0 ==> res.is_some() && res.unwrap() == slice[0]
+    no_unwind
 ;
 
 pub assume_specification<T> [ <[T]>::last ](slice: &[T]) -> (res: Option<&T>)
     ensures
         slice.len() == 0 ==> res.is_none(),
         slice.len() != 0 ==> res.is_some() && res.unwrap() == slice@.last()
+    no_unwind
 ;
 
 #[doc(hidden)]
@@ -341,6 +343,7 @@ pub assume_specification<T> [ <[T]>::first_mut ](slice: &mut [T]) -> (res: Optio
         old(slice).len() == 0 ==> res.is_none() && final(slice)@ == seq![],
         old(slice).len() != 0 ==> res.is_some() && *res.unwrap() == old(slice)[0]
             && final(slice)@ == old(slice)@.update(0, *final(res.unwrap()))
+    no_unwind
 ;
 
 #[doc(hidden)]
@@ -349,6 +352,7 @@ pub assume_specification<T> [ <[T]>::last_mut ](slice: &mut [T]) -> (res: Option
         old(slice).len() == 0 ==> res.is_none() && final(slice)@ == seq![],
         old(slice).len() != 0 ==> res.is_some() && *res.unwrap() == old(slice)@.last()
             && final(slice)@ == old(slice)@.update(old(slice).len() - 1, *final(res.unwrap()))
+    no_unwind
 ;
 
 pub assume_specification<T> [ <[T]>::split_at ](slice: &[T], mid: usize) -> (ret: (&[T], &[T]))
@@ -357,6 +361,7 @@ pub assume_specification<T> [ <[T]>::split_at ](slice: &[T], mid: usize) -> (ret
     ensures
         ret.0@ == slice@.subrange(0, mid as int),
         ret.1@ == slice@.subrange(mid as int, slice@.len() as int),
+    no_unwind
 ;
 
 #[doc(hidden)]
@@ -367,6 +372,7 @@ pub assume_specification<T> [ <[T]>::split_at_mut ](slice: &mut [T], mid: usize)
         ret.0@ == old(slice)@.subrange(0, mid as int),
         ret.1@ == old(slice)@.subrange(mid as int, old(slice)@.len() as int),
         final(slice)@ == final(ret.0)@ + final(ret.1)@,
+    no_unwind
 ;
 
 // The non-panicking (`Option`-returning) form of `split_at`: `Some((a, b))` split at `mid`
@@ -377,6 +383,26 @@ pub assume_specification<T> [ <[T]>::split_at_checked ](slice: &[T], mid: usize)
             && a@ == slice@.subrange(0, mid as int)
             && b@ == slice@.subrange(mid as int, slice@.len() as int)),
         mid > slice.len() ==> ret is None,
+    no_unwind
+;
+
+pub assume_specification<T> [ <[T]>::split_first ](slice: &[T]) -> (ret: Option<(&T, &[T])>)
+    ensures
+        slice.len() == 0 ==> ret.is_none(),
+        slice.len() > 0 ==> (ret matches Some((a, b)) && a == slice[0] && b@ == slice@.subrange(1, slice@.len() as int))
+    no_unwind
+;
+
+pub assume_specification<T> [ <[T]>::split_first_mut ](slice: &mut [T]) -> (ret: Option<(&mut T, &mut [T])>)
+    ensures
+        old(slice).len() == 0 ==> ret.is_none() && final(slice)@ == seq![],
+        old(slice).len() > 0 ==> (ret matches Some((a, b))
+            && *a == old(slice)[0]
+            && b@ == old(slice)@.subrange(1, old(slice)@.len() as int)
+            && b@.len() == final(b)@.len()
+            && final(slice)@ == seq![*final(a)] + final(b)@
+        )
+    no_unwind
 ;
 
 /// Copy the contents of `src` into `dst`, which must have the same length.

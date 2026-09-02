@@ -183,6 +183,11 @@ pub broadcast axiom fn axiom_slice_has_resolved<T>(slice: &[T], i: int)
             ==> has_resolved(#[trigger] slice@[i]),
 ;
 
+pub axiom fn mut_ref_slice_len_eq<T>(tracked slice: &&mut [T])
+    ensures
+        old(*slice).len() == final(*slice).len(),
+;
+
 pub broadcast group group_slice_axioms {
     axiom_spec_len,
     axiom_slice_get_usize,
