@@ -4,7 +4,7 @@ use cargo_verus::{
 };
 
 #[test]
-fn formatting_uses_verusfmt_when_verus_metadata_is_present() {
+fn detects_cargo_vs_verus() {
     let workspace = MockWorkspace::new()
         .members([
             MockPackage::new("ordinary").lib(),
