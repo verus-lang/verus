@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use anyhow::Result;
+use anyhow::{Result, bail};
 
 use crate::{
     cli::{CargoVerusCli, ToolchainSubcommand, VerusSubcommand},
@@ -12,6 +12,11 @@ pub enum ExecutionPlan {
     CreateNew(NewCreationPlan),
     ListToolchains,
     RunCargo(CargoRunPlan),
+}
+
+pub struct FmtPlan {
+    pub target_files: Vec<PathBuf>,
+    pub verusfmt_args: Vec<String>,
 }
 
 pub fn execute_plan(plan: &ExecutionPlan) -> Result<ExitCode> {
@@ -39,6 +44,7 @@ pub fn plan_execution<'a>(
                 subcommands::plan_new_project(current_dir, new_cmd, override_verus_version)?;
             return Ok(ExecutionPlan::CreateNew(creation_plan));
         }
+        VerusSubcommand::Fmt(_) => bail!("`cargo verus fmt` is not implemented yet"),
         VerusSubcommand::Toolchain(toolchain_cmd) => match toolchain_cmd.command {
             ToolchainSubcommand::List => return Ok(ExecutionPlan::ListToolchains),
         },

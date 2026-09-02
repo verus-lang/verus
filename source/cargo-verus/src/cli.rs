@@ -25,6 +25,9 @@ pub enum VerusSubcommand {
     /// Create a new Verus project
     New(NewCommand),
 
+    /// Format Verus source files
+    Fmt(FmtCommand),
+
     /// Manage Verus toolchains
     Toolchain(ToolchainCommand),
 
@@ -63,6 +66,12 @@ pub struct NewCommand {
     /// Create a library
     #[arg(short, long)]
     pub lib: Option<String>,
+}
+
+#[derive(Clone, Debug, Args)]
+pub struct FmtCommand {
+    #[arg(last = true, num_args = 0.., allow_hyphen_values = true)]
+    pub verusfmt_args: Vec<String>,
 }
 
 #[derive(Clone, Debug, Args)]
@@ -228,7 +237,7 @@ impl CargoVerusCli {
 
     fn set_fwd_verus_args_to_default(&mut self) {
         match &mut self.command {
-            VerusSubcommand::New(_) | VerusSubcommand::Toolchain(_) => {}
+            VerusSubcommand::New(_) | VerusSubcommand::Fmt(_) | VerusSubcommand::Toolchain(_) => {}
             VerusSubcommand::Verify(cmd)
             | VerusSubcommand::Build(cmd)
             | VerusSubcommand::Check(cmd) => {
@@ -280,7 +289,9 @@ impl CargoVerusCli {
             | VerusSubcommand::Focus(cmd)
             | VerusSubcommand::Build(cmd)
             | VerusSubcommand::Check(cmd) => Some(cmd),
-            VerusSubcommand::New(_) | VerusSubcommand::Toolchain(_) => None,
+            VerusSubcommand::New(_) | VerusSubcommand::Fmt(_) | VerusSubcommand::Toolchain(_) => {
+                None
+            }
         }
     }
 
@@ -290,7 +301,9 @@ impl CargoVerusCli {
             | VerusSubcommand::Focus(cmd)
             | VerusSubcommand::Build(cmd)
             | VerusSubcommand::Check(cmd) => Some(cmd),
-            VerusSubcommand::New(_) | VerusSubcommand::Toolchain(_) => None,
+            VerusSubcommand::New(_) | VerusSubcommand::Fmt(_) | VerusSubcommand::Toolchain(_) => {
+                None
+            }
         }
     }
 }
