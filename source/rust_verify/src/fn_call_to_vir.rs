@@ -935,7 +935,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                                 .into(),
                             spans: call_spans,
                             labels: Vec::new(),
-                            help: None,
+                            help: Vec::new(),
                             fancy_note: None,
                         })),
                     }
