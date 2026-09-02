@@ -25,14 +25,14 @@ pub struct VerusMetadata {
 }
 
 impl VerusMetadata {
-    pub fn parse_from_package(package: &cargo_metadata::Package) -> Result<VerusMetadata> {
+    pub fn parse_from_package(package: &cargo_metadata::Package) -> Result<Option<VerusMetadata>> {
         match package.metadata.as_object().and_then(|obj| obj.get("verus")) {
-            Some(value) => {
-                serde_json::from_value::<VerusMetadata>(value.clone()).with_context(|| {
+            Some(value) => serde_json::from_value::<VerusMetadata>(value.clone())
+                .map(Some)
+                .with_context(|| {
                     format!("Failed to parse {}-{}.metadata.verus", package.name, package.version)
-                })
-            }
-            None => Ok(Default::default()),
+                }),
+            None => Ok(None),
         }
     }
 }
@@ -43,7 +43,7 @@ pub struct MetadataIndex<'a> {
 
 pub struct MetadataIndexEntry<'a> {
     pub package: &'a Package,
-    pub verus_metadata: VerusMetadata,
+    pub verus_metadata: Option<VerusMetadata>,
     pub deps: BTreeMap<&'a PackageId, &'a cargo_metadata::NodeDep>,
 }
 
@@ -122,7 +122,7 @@ impl<'a> MetadataIndex<'a> {
                 continue;
             }
             let entry = self.get(pkg_id);
-            if entry.verus_metadata.verify {
+            if entry.verus_metadata.as_ref().is_some_and(|metadata| metadata.verify) {
                 let import_name = name_override.or_else(|| {
                     entry.package.targets.iter().find(|t| t.is_lib()).map(|t| t.name.clone())
                 });
@@ -146,7 +146,12 @@ impl<'a> MetadataIndex<'a> {
         let packages_will_verify = Set::from_iter(
             packages_to_verify
                 .iter()
-                .filter(|package_id| self.get(package_id).verus_metadata.verify)
+                .filter(|package_id| {
+                    self.get(package_id)
+                        .verus_metadata
+                        .as_ref()
+                        .is_some_and(|metadata| metadata.verify)
+                })
                 .cloned(),
         );
         // Transitive closure of packages that verification will run on.
@@ -157,7 +162,7 @@ impl<'a> MetadataIndex<'a> {
             .iter()
             .flat_map(|package_id| {
                 let entry = self.get(package_id);
-                if entry.verus_metadata.is_vstd {
+                if entry.verus_metadata.as_ref().is_some_and(|metadata| metadata.is_vstd) {
                     Some(PackageMetadata::from(entry.package))
                 } else {
                     None

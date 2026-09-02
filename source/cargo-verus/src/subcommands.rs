@@ -11,7 +11,7 @@ use colored::Colorize;
 use walkdir::WalkDir;
 
 use crate::cli::{CargoOptions, FmtCommand, NewCommand, VerifyCommand, VerusArgFwdSelector};
-use crate::metadata::{MetadataIndex, fetch_metadata, make_package_id};
+use crate::metadata::{MetadataIndex, VerusMetadata, fetch_metadata, make_package_id};
 use crate::plan::FormattingPlan;
 use crate::toolchains::{self, TOOLCHAINS, is_matching_known_and_used};
 use crate::vstd_build::{VstdBuild, build_vstd};
@@ -248,7 +248,13 @@ pub fn plan_cargo_run(mut cfg: VerusConfig) -> Result<CargoRunPlan> {
         && root_packages.len() == 1
         && let Some(vstd_id) = root_packages
             .iter()
-            .find(|package_id| metadata_index.get(package_id).verus_metadata.is_vstd)
+            .find(|package_id| {
+                metadata_index
+                    .get(package_id)
+                    .verus_metadata
+                    .as_ref()
+                    .is_some_and(|metadata| metadata.is_vstd)
+            })
             .cloned()
     {
         // When the only primary package to build is `vstd`, special treatment of resulting artifacts is needed.
@@ -531,7 +537,8 @@ fn make_cargo_plan(
         let package_id =
             make_package_id(&package.name, package.version.to_string(), &package.manifest_path);
 
-        let verus_metadata = &entry.verus_metadata;
+        let default_verus_metadata = VerusMetadata::default();
+        let verus_metadata = entry.verus_metadata.as_ref().unwrap_or(&default_verus_metadata);
 
         // The is_builtin, is_builtin_macro, and verify fields are passed as env vars as they
         // are relevant for crates which are skipped by Verus. In such cases, the driver avoids
