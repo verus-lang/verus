@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use anyhow::{Result, bail};
+use anyhow::Result;
 
 use crate::{
     cli::{CargoVerusCli, ToolchainSubcommand, VerusSubcommand},
@@ -10,12 +10,12 @@ use crate::{
 
 pub enum ExecutionPlan {
     CreateNew(NewCreationPlan),
-    Fmt(FmtPlan),
+    Fmt(FormattingPlan),
     ListToolchains,
     RunCargo(CargoRunPlan),
 }
 
-pub struct FmtPlan {
+pub struct FormattingPlan {
     pub target_paths: Vec<PathBuf>,
     pub verusfmt_args: Vec<String>,
 }
@@ -25,7 +25,7 @@ pub fn execute_plan(plan: &ExecutionPlan) -> Result<ExitCode> {
 
     match plan {
         CreateNew(creation_plan) => subcommands::create_new_project(creation_plan),
-        Fmt(_) => bail!("`cargo verus fmt` is not implemented yet"),
+        Fmt(formatting_plan) => subcommands::run_verusfmt(formatting_plan),
         ListToolchains => subcommands::list_toolchains(),
         RunCargo(cargo_run_plan) => subcommands::run_cargo(cargo_run_plan),
     }
@@ -47,7 +47,7 @@ pub fn plan_execution<'a>(
             return Ok(ExecutionPlan::CreateNew(creation_plan));
         }
         VerusSubcommand::Fmt(fmt_cmd) => {
-            let formatting_plan = subcommands::plan_fmt(current_dir, fmt_cmd)?;
+            let formatting_plan = subcommands::plan_formatting(current_dir, fmt_cmd)?;
             return Ok(ExecutionPlan::Fmt(formatting_plan));
         }
         VerusSubcommand::Toolchain(toolchain_cmd) => match toolchain_cmd.command {
