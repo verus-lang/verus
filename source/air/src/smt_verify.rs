@@ -186,14 +186,15 @@ pub(crate) fn smt_check_assertion<'ctx>(
                 let value: &str = &line[GET_VERSION_RESPONSE_PREFIX.len()..line.len() - 1];
                 let version = value.trim_matches(&[' ', '"'][..]);
                 if version != expected_version.as_str() {
-                    diagnostics.report(
-                        &context
-                            .message_interface
-                            .unexpected_z3_version(&expected_version, version),
-                    );
+                    let solver = context.solver.name();
+                    diagnostics.report(&context.message_interface.unexpected_solver_version(
+                        solver,
+                        &expected_version,
+                        version,
+                    ));
                     panic!(
-                        "The verifier expects z3 version \"{}\", found version \"{}\"",
-                        expected_version, version
+                        "The verifier expects {} version \"{}\", found version \"{}\"",
+                        solver, expected_version, version
                     );
                 }
             }
