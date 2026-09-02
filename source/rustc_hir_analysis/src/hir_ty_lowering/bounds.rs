@@ -1,6 +1,7 @@
 use std::ops::ControlFlow;
 
 use rustc_data_structures::fx::{FxIndexMap, FxIndexSet};
+use rustc_data_structures::smallvec::SmallVec;
 use rustc_errors::codes::*;
 use rustc_errors::struct_span_code_err;
 use rustc_hir as hir;
@@ -14,7 +15,6 @@ use rustc_middle::ty::{
 };
 use rustc_span::{ErrorGuaranteed, Ident, Span, kw};
 use rustc_trait_selection::traits;
-use smallvec::SmallVec;
 use tracing::{debug, instrument};
 
 use crate::errors;

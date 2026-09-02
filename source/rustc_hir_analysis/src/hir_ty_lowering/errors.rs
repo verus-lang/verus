@@ -1,4 +1,5 @@
 use rustc_data_structures::fx::{FxIndexMap, FxIndexSet};
+use rustc_data_structures::smallvec::SmallVec;
 use rustc_data_structures::sorted_map::SortedMap;
 use rustc_data_structures::unord::UnordMap;
 use rustc_errors::codes::*;
@@ -23,7 +24,6 @@ use rustc_trait_selection::error_reporting::traits::report_dyn_incompatibility;
 use rustc_trait_selection::traits::{
     FulfillmentError, dyn_compatibility_violations_for_assoc_item,
 };
-use smallvec::SmallVec;
 use tracing::debug;
 
 use super::InherentAssocCandidate;

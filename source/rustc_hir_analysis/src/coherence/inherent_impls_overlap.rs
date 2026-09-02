@@ -1,4 +1,5 @@
 use rustc_data_structures::fx::{FxIndexMap, FxIndexSet, IndexEntry};
+use rustc_data_structures::smallvec::SmallVec;
 use rustc_errors::codes::*;
 use rustc_errors::struct_span_code_err;
 use rustc_hir as hir;
@@ -9,7 +10,6 @@ use rustc_middle::traits::specialization_graph::OverlapMode;
 use rustc_middle::ty::{self, TyCtxt};
 use rustc_span::{ErrorGuaranteed, Symbol};
 use rustc_trait_selection::traits::{self, SkipLeakCheck};
-use smallvec::SmallVec;
 use tracing::debug;
 
 pub(crate) fn crate_inherent_impls_overlap_check(

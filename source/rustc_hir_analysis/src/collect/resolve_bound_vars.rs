@@ -32,6 +32,7 @@ use tracing::{debug, debug_span, instrument};
 
 use crate::errors;
 use crate::hir::definitions::PerParentDisambiguatorState;
+use rustc_data_structures::smallvec;
 
 #[extension(trait RegionExt)]
 impl ResolvedArg {

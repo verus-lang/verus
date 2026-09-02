@@ -1,4 +1,5 @@
 use rustc_ast::ast::ParamKindOrd;
+use rustc_data_structures::smallvec::SmallVec;
 use rustc_errors::codes::*;
 use rustc_errors::{
     Applicability, Diag, DiagCtxtHandle, Diagnostic, ErrorGuaranteed, Level, MultiSpan,
@@ -13,7 +14,6 @@ use rustc_middle::ty::{
 use rustc_session::lint::builtin::LATE_BOUND_LIFETIME_ARGUMENTS;
 use rustc_span::kw;
 use rustc_trait_selection::traits;
-use smallvec::SmallVec;
 use tracing::{debug, instrument};
 
 use super::{HirTyLowerer, IsMethodCall};

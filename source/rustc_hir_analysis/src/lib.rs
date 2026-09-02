@@ -82,7 +82,6 @@ extern crate rustc_session;
 extern crate rustc_span;
 extern crate rustc_target;
 extern crate rustc_trait_selection;
-extern crate smallvec;
 
 // These are used by Clippy.
 pub mod check;
