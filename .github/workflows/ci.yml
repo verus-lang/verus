@@ -41,8 +41,8 @@ jobs:
       - name: check rustfmt/verusfmt
         working-directory: ./source
         run: |
-          cargo run -p cargo verus -- fmt --check
-          cargo run -p cargo verus -- fmt --check --manifest-path vstd/Cargo.toml
+          cargo run -p cargo-verus -- fmt --check
+          cargo run -p cargo-verus -- fmt --check --manifest-path vstd/Cargo.toml
 
       - name: check cargo fmt for vargo
         working-directory: ./tools/vargo
