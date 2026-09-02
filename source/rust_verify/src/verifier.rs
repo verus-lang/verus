@@ -38,6 +38,7 @@ use std::io::Write;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use vir::context::{FuncCallGraphLogFiles, GlobalCtx};
+use rustc_hir::def::DefKind;
 
 use crate::buckets::{Bucket, BucketId};
 use crate::expand_errors_driver::ExpandErrorsResult;
@@ -2698,7 +2699,7 @@ impl Verifier {
 
         let time_hir0 = Instant::now();
 
-        rustc_hir_analysis::check_crate(tcx);
+        rustc_hir_analysis_verus::check_crate(tcx);
         if tcx.dcx().err_count() != 0 {
             return Ok(false);
         }
@@ -3130,20 +3131,6 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                     //pass.run_pass(tcx, &mut body);
                     tcx.alloc_steal_mir(body)
                 };
-
-                // check_well_formed when called on an OpaqueTy will trigger mir_borrowck to run.
-                // This happens earlier than we'd like, so we disable it.
-                // TODO: when we support opaque types we should run this check later
-                providers.queries.check_well_formed =
-                    |tcx: TyCtxt<'_>, def_id: rustc_hir::def_id::LocalDefId| {
-                        let node = tcx.hir_node_by_def_id(def_id);
-                        if matches!(node, rustc_hir::Node::OpaqueTy(_)) {
-                            return Ok(());
-                        }
-                        (rustc_interface::DEFAULT_QUERY_PROVIDERS.queries.check_well_formed)(
-                            tcx, def_id,
-                        )
-                    };
             });
         }
     }
@@ -3328,6 +3315,26 @@ impl VerifierCallbacksEraseMacro {
     fn run_lifetime_checks_on_verus_aware_items<'tcx>(&mut self, tcx: TyCtxt<'tcx>) {
         let crate_items = self.verifier.crate_items.as_ref().unwrap().clone();
         tcx.par_hir_body_owners(|def_id| {
+            match tcx.def_kind(def_id) {
+                DefKind::OpaqueTy => {
+                    let origin = tcx.local_opaque_ty_origin(def_id);
+                    if let rustc_hir::OpaqueTyOrigin::FnReturn { parent: fn_def_id, .. }
+                    | rustc_hir::OpaqueTyOrigin::AsyncFn { parent: fn_def_id, .. } = origin
+                        && let rustc_hir::Node::TraitItem(trait_item) = tcx.hir_node_by_def_id(fn_def_id)
+                        && let (_, rustc_hir::TraitFn::Required(..)) = trait_item.expect_fn()
+                    {
+                        // Skip opaques from RPIT in traits with no default body.
+                    } else {
+                        rustc_hir_analysis_verus::check::check::check_opaque(tcx, def_id);
+                    }
+                }
+                DefKind::Impl { of_trait: true } => {
+                    let impl_trait_header = tcx.impl_trait_header(def_id);
+                    rustc_hir_analysis_verus::check::check::check_impl_items_against_trait(tcx, def_id, impl_trait_header);
+                }
+                _ => {}
+            }
+
             if !tcx.is_typeck_child(def_id.to_def_id()) {
                 let owner_id = rustc_hir::OwnerId { def_id: def_id };
                 let crate_item = crate_items.map.get(&owner_id);
