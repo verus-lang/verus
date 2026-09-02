@@ -7,7 +7,7 @@ use crate::ast::{
     UnwindSpec, VarIdent, VirErr,
 };
 use crate::ast_util::{get_field, is_unit, path_as_vstd_name, typ_to_diagnostic_str};
-use crate::def::user_local_name;
+use crate::def::{Spanned, user_local_name};
 use crate::messages::{Span, error, internal_error};
 use crate::messages::{error_bare, error_with_label};
 use crate::resolution_types::ResolutionTypes;
@@ -510,6 +510,8 @@ struct Record {
     infer_spec_for_implicit_reborrows: Option<HashMap<crate::messages::AstId, bool>>,
     /// Modes inferred for the places of mutable borrows
     mut_bor_place_modes: HashMap<crate::messages::AstId, (Mode, Option<ProofModeMutRefNote>)>,
+    /// Nodes to set the 'assert_irrefutable' flag
+    assert_irrefutable: HashSet<crate::messages::AstId>,
 }
 
 #[derive(Debug)]
@@ -2201,11 +2203,10 @@ fn check_expr(
             let mode_read = Mode::Spec;
             Ok((mode_read, proph))
         }
-        ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(_kind, min_mode), e1) => {
-            let joined_mode = mode_join(outer_mode, *min_mode);
+        ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(_kind), e1) => {
             let (mode, proph) =
-                check_expr(ctxt, record, typing, joined_mode, Expect(*min_mode), e1, outer_proph)?;
-            Ok((mode_join(*min_mode, mode), proph))
+                check_expr(ctxt, record, typing, outer_mode, expect, e1, outer_proph)?;
+            Ok((mode, proph))
         }
         ExprX::UnaryOpr(UnaryOpr::CustomErr(_), e1)
         | ExprX::UnaryOpr(UnaryOpr::ProofNote(_), e1)
@@ -2710,7 +2711,11 @@ fn check_expr(
                 }
             }
         }
-        ExprX::Match(e1, arms) => {
+        ExprX::Match(e1, arms, _assert_irrefutable) => {
+            if matches!(typing.block_ghostness, Ghost::Ghost) && !typing.in_pure {
+                record.assert_irrefutable.insert(expr.span.id);
+            }
+
             let scrutinee_expect = Expect::none();
             let guard_condition_expect = match typing.block_ghostness {
                 Ghost::Exec => Expect(Mode::Exec),
@@ -3520,6 +3525,15 @@ fn check_stmt(
     stmt: &Stmt,
     outer_proph: &Proph,
 ) -> Result<(), VirErr> {
+    if matches!(typing.block_ghostness, Ghost::Ghost)
+        && !typing.in_pure
+        && let StmtX::Decl { pattern, mode: _, init: Some(_), els: None, assert_irrefutable: _ } =
+            &stmt.x
+        && !crate::patterns::definitely_irrefutable(pattern, &ctxt.datatypes)
+    {
+        record.assert_irrefutable.insert(stmt.span.id);
+    }
+
     match &stmt.x {
         StmtX::Expr(e) => {
             let expect = match typing.block_ghostness {
@@ -3529,7 +3543,7 @@ fn check_stmt(
             let _ = check_expr(ctxt, record, typing, outer_mode, expect, e, outer_proph)?;
             Ok(())
         }
-        StmtX::Decl { pattern, mode: None, init, els: _ } => {
+        StmtX::Decl { pattern, mode: None, init, els: _, assert_irrefutable: _ } => {
             // Special case mode inference just for our encoding of "let tracked pat = ..."
             // in Rust as "let xl; ... { let pat ... xl = xr; }".
             match (&pattern.x, init) {
@@ -3549,7 +3563,13 @@ fn check_stmt(
             }
             Ok(())
         }
-        StmtX::Decl { pattern, mode: Some((mode, proph_marker)), init, els } => {
+        StmtX::Decl {
+            pattern,
+            mode: Some((mode, proph_marker)),
+            init,
+            els,
+            assert_irrefutable: _,
+        } => {
             match proph_marker {
                 DeclProph::Default => {}
                 DeclProph::Prophetic | DeclProph::DelayedInfer => {
@@ -3640,6 +3660,7 @@ fn check_function(
         temporary_modes,
         infer_spec_for_implicit_reborrows,
         mut_bor_place_modes,
+        assert_irrefutable,
     } = record;
     // Reset the fields that are per-function
     *type_inv_info = TypeInvInfo { ctor_needs_check: HashMap::new() };
@@ -3648,6 +3669,7 @@ fn check_function(
     *temporary_modes = HashMap::new();
     *infer_spec_for_implicit_reborrows = None;
     *mut_bor_place_modes = HashMap::new();
+    *assert_irrefutable = HashSet::new();
 
     let mut fun_typing = typing.push_var_scope();
 
@@ -3889,60 +3911,92 @@ fn check_function(
         }
 
         let borrow_spec = record.infer_spec_for_implicit_reborrows.as_ref().expect("borrow_spec");
-        if borrow_spec.len() > 0 {
+        if borrow_spec.len() > 0 || !record.assert_irrefutable.is_empty() {
             let mut functionx = function.x.clone();
-            functionx.body = Some(crate::ast_visitor::map_expr_visitor(body, &|expr: &Expr| {
-                match &expr.x {
-                    ExprX::ImplicitReborrowOrSpecRead(place, two_phase, inner_span) => {
-                        let is_spec = *borrow_spec.get(&expr.span.id).unwrap();
-                        if is_spec {
-                            Ok(expr.new_x(ExprX::ReadPlace(
-                                place.clone(),
-                                UnfinalizedReadKind {
-                                    preliminary_kind: ReadKind::Spec,
-                                    id: u64::MAX,
-                                },
-                            )))
-                        } else {
-                            match &place.x {
-                                PlaceX::Temporary(e) if !*two_phase => {
-                                    // &mut * Temporary(e) simplifies to e
-                                    Ok(e.clone())
-                                }
-                                _ => {
-                                    let dtyp = match &*place.typ {
-                                        TypX::MutRef(t) => t,
-                                        _ => panic!("expected MutRef type"),
-                                    };
-                                    let deref_e = match &place.x {
-                                        PlaceX::Temporary(e)
-                                            if matches!(&e.x, ExprX::BorrowMut(_)) =>
-                                        {
-                                            // * &mut P simplifies to P
-                                            let ExprX::BorrowMut(inner) = &e.x else {
-                                                unreachable!();
-                                            };
-                                            inner.clone()
-                                        }
-                                        _ => SpannedTyped::new(
-                                            &inner_span,
-                                            dtyp,
-                                            PlaceX::DerefMut(place.clone()),
-                                        ),
-                                    };
-                                    let borrowx = if *two_phase {
-                                        ExprX::TwoPhaseBorrowMut(deref_e)
-                                    } else {
-                                        ExprX::BorrowMut(deref_e)
-                                    };
-                                    Ok(expr.new_x(borrowx))
+            functionx.body = Some(crate::ast_visitor::map_expr_stmt_visitor(
+                body,
+                &|expr: &Expr| {
+                    match &expr.x {
+                        ExprX::ImplicitReborrowOrSpecRead(place, two_phase, inner_span) => {
+                            let is_spec = *borrow_spec.get(&expr.span.id).unwrap();
+                            if is_spec {
+                                Ok(expr.new_x(ExprX::ReadPlace(
+                                    place.clone(),
+                                    UnfinalizedReadKind {
+                                        preliminary_kind: ReadKind::Spec,
+                                        id: u64::MAX,
+                                    },
+                                )))
+                            } else {
+                                match &place.x {
+                                    PlaceX::Temporary(e) if !*two_phase => {
+                                        // &mut * Temporary(e) simplifies to e
+                                        Ok(e.clone())
+                                    }
+                                    _ => {
+                                        let dtyp = match &*place.typ {
+                                            TypX::MutRef(t) => t,
+                                            _ => panic!("expected MutRef type"),
+                                        };
+                                        let deref_e = match &place.x {
+                                            PlaceX::Temporary(e)
+                                                if matches!(&e.x, ExprX::BorrowMut(_)) =>
+                                            {
+                                                // * &mut P simplifies to P
+                                                let ExprX::BorrowMut(inner) = &e.x else {
+                                                    unreachable!();
+                                                };
+                                                inner.clone()
+                                            }
+                                            _ => SpannedTyped::new(
+                                                &inner_span,
+                                                dtyp,
+                                                PlaceX::DerefMut(place.clone()),
+                                            ),
+                                        };
+                                        let borrowx = if *two_phase {
+                                            ExprX::TwoPhaseBorrowMut(deref_e)
+                                        } else {
+                                            ExprX::BorrowMut(deref_e)
+                                        };
+                                        Ok(expr.new_x(borrowx))
+                                    }
                                 }
                             }
                         }
+                        ExprX::Match(scrutinee, arms, _)
+                            if record.assert_irrefutable.contains(&expr.span.id) =>
+                        {
+                            Ok(SpannedTyped::new(
+                                &expr.span,
+                                &expr.typ,
+                                ExprX::Match(scrutinee.clone(), arms.clone(), true),
+                            ))
+                        }
+                        _ => Ok(expr.clone()),
                     }
-                    _ => Ok(expr.clone()),
-                }
-            })?);
+                },
+                &|stmt: &Stmt| {
+                    match &stmt.x {
+                        StmtX::Decl { pattern, mode, init, els, assert_irrefutable: _ } => {
+                            if record.assert_irrefutable.contains(&stmt.span.id) {
+                                return Ok(Spanned::new(
+                                    stmt.span.clone(),
+                                    StmtX::Decl {
+                                        pattern: pattern.clone(),
+                                        mode: *mode,
+                                        init: init.clone(),
+                                        els: els.clone(),
+                                        assert_irrefutable: true,
+                                    },
+                                ));
+                            }
+                        }
+                        _ => {}
+                    }
+                    Ok(stmt.clone())
+                },
+            )?);
             *function = function.new_x(functionx);
         }
         record.infer_spec_for_implicit_reborrows = None;
@@ -4009,6 +4063,7 @@ pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes), Vec<VirErr>> 
         temporary_modes: HashMap::new(),
         infer_spec_for_implicit_reborrows: None,
         mut_bor_place_modes: HashMap::new(),
+        assert_irrefutable: HashSet::new(),
     };
 
     let mut kratex = (**krate).clone();

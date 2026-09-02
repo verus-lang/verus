@@ -598,10 +598,6 @@ fn scc_error(krate: &Krate, span_infos: &Vec<Span>, nodes: &Vec<Node>) -> VirErr
         assert!(nodes.len() == len);
     }
 
-    // Message can't accumulate span-less "help" strings, so we accumulate them here and stuff them
-    // into the help field at the end of the loop.
-    let help_accum = &mut String::new();
-
     for (i, node) in nodes.iter().enumerate() {
         let mut push = |span: Option<Span>, text: &str| {
             let msg = format!(
@@ -618,10 +614,12 @@ fn scc_error(krate: &Krate, span_infos: &Vec<Span>, nodes: &Vec<Node>) -> VirErr
                     err = err.secondary_label(&span, msg);
                 }
                 None => {
-                    *help_accum += &format!(
-                        "{} (note: line number info is missing, maybe due to a Verus bug)\n",
+                    // We have no span for this node, so emit the text as a "help" string instead.
+                    // (These are probably internal errors that should get fixed.)
+                    err = err.help(format!(
+                        "{} (note: line number info is missing, maybe due to a Verus bug)",
                         msg,
-                    );
+                    ));
                 }
             }
         };
@@ -693,12 +691,6 @@ fn scc_error(krate: &Krate, span_infos: &Vec<Span>, nodes: &Vec<Node>) -> VirErr
     // If node 0 happens to not have a span, promote one of the other spans
     // to primary; otherwise most of the Message output gets entirely omitted.
     err = err.ensure_primary_label();
-
-    // Emit the extra text for objects we had no span info for. (These
-    // are probably internal errors that should get fixed.)
-    if help_accum.len() > 0 {
-        err = err.help(&*help_accum);
-    }
 
     err
 }

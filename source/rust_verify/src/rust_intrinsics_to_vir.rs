@@ -5,7 +5,7 @@ use crate::{
 use rustc_span::Span;
 use rustc_span::def_id::DefId;
 use std::sync::Arc;
-use vir::ast::{Expr, ExprX, IntRange, IntegerTypeBoundKind, Mode, Typ, TypX, UnaryOpr};
+use vir::ast::{Expr, ExprX, IntRange, IntegerTypeBoundKind, Typ, TypX, UnaryOpr};
 
 pub(crate) fn int_intrinsic_constant_to_vir(
     ctxt: &Context,
@@ -28,14 +28,11 @@ pub(crate) fn int_intrinsic_constant_to_vir(
 
         let kind = IntegerTypeBoundKind::ArchWordBits;
 
-        return mk_expr(ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(kind, Mode::Exec), arg));
+        return mk_expr(ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(kind), arg));
     };
 
     let arch_bound = |kind| {
-        return Some(mk_expr(ExprX::UnaryOpr(
-            UnaryOpr::IntegerTypeBound(kind, Mode::Exec),
-            arch_bits(),
-        )));
+        return Some(mk_expr(ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(kind), arch_bits())));
     };
 
     let rust_item = verus_items::get_rust_item(ctxt.tcx, id);

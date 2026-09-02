@@ -261,10 +261,24 @@ impl Context {
 
     pub fn set_rlimit(&mut self, rlimit: u32) {
         self.rlimit = rlimit;
-        if matches!(self.solver, SmtSolver::Z3) {
-            self.air_initial_log.log_set_option("rlimit", &rlimit.to_string());
-            self.air_middle_log.log_set_option("rlimit", &rlimit.to_string());
-            self.air_final_log.log_set_option("rlimit", &rlimit.to_string());
+        self.air_initial_log.log_set_option("rlimit", &rlimit.to_string());
+        self.air_middle_log.log_set_option("rlimit", &rlimit.to_string());
+        self.air_final_log.log_set_option("rlimit", &rlimit.to_string());
+        if matches!(self.solver, SmtSolver::Cvc5) {
+            if matches!(self.state, ContextState::NotStarted) {
+                // cvc5 only allows a single upfront rlimit declaration;
+                // Using rlimit-per configures a fixed budget for each check-sat query,
+                // rather than for the entire session's worth of queries.
+                self.smt_log.log_set_option("rlimit-per", &rlimit.to_string());
+            }
+        }
+    }
+
+    /// Can the rlimit be adjusted for each check-sat query?
+    pub fn rlimit_is_mutable(&self) -> bool {
+        match self.solver {
+            SmtSolver::Z3 => true,
+            SmtSolver::Cvc5 => matches!(self.state, ContextState::NotStarted),
         }
     }
 
