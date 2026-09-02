@@ -12,10 +12,6 @@ use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
     styles = clap_cargo::style::CLAP_STYLING,
 )]
 pub struct CargoVerusCli {
-    /// Override the version reported by `verus --version`.
-    #[arg(long, global = true)]
-    pub override_verus_version: Option<String>,
-
     #[command(subcommand)]
     pub command: VerusSubcommand,
 }
@@ -57,8 +53,19 @@ pub enum ToolchainSubcommand {
 }
 
 #[derive(Clone, Debug, Args)]
-#[group(required = true, multiple = false)]
+#[group(skip)]
 pub struct NewCommand {
+    #[command(flatten)]
+    pub project_kind: NewProjectKind,
+
+    /// Override the version reported by `verus --version`
+    #[arg(long)]
+    pub override_verus_version: Option<String>,
+}
+
+#[derive(Clone, Debug, Args)]
+#[group(required = true, multiple = false)]
+pub struct NewProjectKind {
     /// Create a binary
     #[arg(short, long)]
     pub bin: Option<String>,
@@ -93,6 +100,10 @@ pub struct VerifyCommand {
     /// Increase verbosity (use -vv for more output)
     #[arg(short, long, action = ArgAction::Count)]
     pub verbosity: u8,
+
+    /// Override the version reported by `verus --version`
+    #[arg(long)]
+    pub override_verus_version: Option<String>,
 
     /// Check toolchain components, e.g. version compatibility of verus and vstd.
     #[arg(long)]

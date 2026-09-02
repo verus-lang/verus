@@ -30,15 +30,13 @@ pub fn plan_execution<'a>(
     current_dir: impl AsRef<Path>,
     args: impl IntoIterator<Item = &'a str>,
 ) -> Result<ExecutionPlan> {
-    let CargoVerusCli { override_verus_version, command } =
-        CargoVerusCli::from_args(args.into_iter())?;
+    let cli = CargoVerusCli::from_args(args.into_iter())?;
 
     let current_dir: PathBuf = current_dir.as_ref().to_owned();
 
-    let cfg = match command {
+    let cfg = match cli.command {
         VerusSubcommand::New(new_cmd) => {
-            let creation_plan =
-                subcommands::plan_new_project(current_dir, new_cmd, override_verus_version)?;
+            let creation_plan = subcommands::plan_new_project(current_dir, new_cmd)?;
             return Ok(ExecutionPlan::CreateNew(creation_plan));
         }
         VerusSubcommand::Fmt(fmt_cmd) => {
@@ -52,7 +50,6 @@ pub fn plan_execution<'a>(
             current_dir,
             subcommand: "check",
             options,
-            override_verus_version,
             compile_primary: false,
             verify_deps: true,
             warn_if_nothing_verified: true,
@@ -61,7 +58,6 @@ pub fn plan_execution<'a>(
             current_dir,
             subcommand: "check",
             options,
-            override_verus_version,
             compile_primary: false,
             verify_deps: false,
             warn_if_nothing_verified: true,
@@ -70,7 +66,6 @@ pub fn plan_execution<'a>(
             current_dir,
             subcommand: "build",
             options,
-            override_verus_version,
             compile_primary: true,
             verify_deps: true,
             warn_if_nothing_verified: false,
@@ -79,7 +74,6 @@ pub fn plan_execution<'a>(
             current_dir,
             subcommand: "check",
             options,
-            override_verus_version,
             compile_primary: false,
             verify_deps: true,
             warn_if_nothing_verified: true,

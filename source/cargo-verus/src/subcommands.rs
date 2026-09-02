@@ -37,12 +37,8 @@ pub struct NewCreationPlan {
 }
 
 /// Plan the creation of a project with `cargo verus new`.
-pub fn plan_new_project(
-    current_dir: PathBuf,
-    command: NewCommand,
-    verus_version_override: Option<String>,
-) -> Result<NewCreationPlan> {
-    let verus_version = match verus_version_override {
+pub fn plan_new_project(current_dir: PathBuf, command: NewCommand) -> Result<NewCreationPlan> {
+    let verus_version = match command.override_verus_version {
         Some(version) => version,
         None => get_verus_driver_version()?,
     };
@@ -51,7 +47,7 @@ pub fn plan_new_project(
         .expect("cargo-verus manifest directory should have a parent")
         .join("vstd");
     let vstd_dependency = toolchains::infer_vstd_dependency(&verus_version, &vstd_source_dir)?;
-    let (name, is_bin) = match (command.bin, command.lib) {
+    let (name, is_bin) = match (command.project_kind.bin, command.project_kind.lib) {
         (Some(name), None) => (name, true),
         (None, Some(name)) => (name, false),
         _ => unreachable!("clap enforces exactly one of --bin/--lib"),
@@ -281,7 +277,6 @@ pub struct VerusConfig {
     pub current_dir: PathBuf,
     pub subcommand: &'static str,
     pub options: VerifyCommand,
-    pub override_verus_version: Option<String>,
     pub compile_primary: bool,
     pub verify_deps: bool,
     pub warn_if_nothing_verified: bool,
@@ -352,8 +347,8 @@ pub fn plan_cargo_run(mut cfg: VerusConfig) -> Result<CargoRunPlan> {
         }
 
         let vstd_metadata = metadata_index.collect_vstd_metadata(packages_to_verify);
-        let verus_version = match cfg.override_verus_version {
-            Some(version) => version,
+        let verus_version = match &cfg.options.override_verus_version {
+            Some(version) => version.clone(),
             None => get_verus_driver_version()?,
         };
 
