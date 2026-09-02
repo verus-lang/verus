@@ -16,15 +16,9 @@ pub enum ExecutionPlan {
 }
 
 pub struct FormattingPlan {
-    pub targets: Vec<FmtTarget>,
+    pub cargo_targets: Vec<PathBuf>,
+    pub verus_targets: Vec<PathBuf>,
     pub verusfmt_args: Vec<String>,
-}
-
-pub enum FmtTarget {
-    /// To be formatted using `cargo fmt`.
-    Cargo(PathBuf),
-    /// To be formatted using `verusfmt`.
-    Verus(PathBuf),
 }
 
 pub fn execute_plan(plan: &ExecutionPlan) -> Result<ExitCode> {
@@ -32,7 +26,7 @@ pub fn execute_plan(plan: &ExecutionPlan) -> Result<ExitCode> {
 
     match plan {
         CreateNew(creation_plan) => subcommands::create_new_project(creation_plan),
-        Fmt(formatting_plan) => subcommands::run_verusfmt(formatting_plan),
+        Fmt(formatting_plan) => subcommands::run_formatting(formatting_plan),
         ListToolchains => subcommands::list_toolchains(),
         RunCargo(cargo_run_plan) => subcommands::run_cargo(cargo_run_plan),
     }
