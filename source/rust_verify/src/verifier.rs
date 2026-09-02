@@ -114,10 +114,10 @@ impl air::messages::Diagnostics for Reporter<'_> {
         fn emit_with_diagnostic_details<'a, G: EmissionGuarantee>(
             mut diag: Diag<'a, G>,
             multispan: MultiSpan,
-            help: &Option<String>,
+            help: &[String],
         ) {
             diag.span = multispan;
-            if let Some(help) = help {
+            for help in help {
                 diag.help(help.clone());
             }
             diag.emit();
