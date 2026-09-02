@@ -3096,6 +3096,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 providers.queries.check_liveness = |_, _| DenseBitSet::new_empty(0);
                 providers.queries.check_mod_deathness = |_, _| {};
 
+                rustc_hir_analysis_verus::provide(&mut providers.queries);
                 providers.queries.mir_borrowck =
                     |tcx, _local_def_id| Ok(tcx.arena.alloc(Default::default()));
 
@@ -3117,6 +3118,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 providers.queries.check_liveness = |_, _| DenseBitSet::new_empty(0);
                 providers.queries.check_mod_deathness = |_, _| {};
 
+                rustc_hir_analysis_verus::provide(&mut providers.queries);
                 rustc_mir_build_verus::verus_provide(providers);
                 providers.queries.mir_built = |tcx, def| {
                     // We need to override this to call our verus of build_mir.
