@@ -8,4 +8,5 @@ mod vstd_build;
 
 pub const BIN_NAME: &str = "cargo-verus";
 
-pub use plan::{ExecutionPlan, FormattingPlan, execute_plan, plan_execution};
+pub use plan::{ExecutionPlan, execute_plan, plan_execution};
+pub use subcommands::FormattingPlan;

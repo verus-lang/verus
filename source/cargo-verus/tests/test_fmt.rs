@@ -15,7 +15,7 @@ fn formatting_uses_verusfmt_when_verus_metadata_is_present() {
 
     let args = [BIN_NAME, "fmt"];
     let plan = plan_execution(workspace.path(), args).expect("plan");
-    let ExecutionPlan::Fmt(formatting_plan) = plan else {
+    let ExecutionPlan::FormatSources(formatting_plan) = plan else {
         panic!("expected formatting plan");
     };
     let manifest = |package| workspace.path().join(package).canonicalize().expect("canonicalize");

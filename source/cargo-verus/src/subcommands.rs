@@ -12,7 +12,6 @@ use walkdir::WalkDir;
 
 use crate::cli::{CargoOptions, FmtCommand, NewCommand, VerifyCommand, VerusArgFwdSelector};
 use crate::metadata::{MetadataIndex, VerusMetadata, fetch_metadata, make_package_id};
-use crate::plan::FormattingPlan;
 use crate::toolchains::{self, TOOLCHAINS, is_matching_known_and_used};
 use crate::vstd_build::{VstdBuild, build_vstd};
 
@@ -147,6 +146,12 @@ unexpected_cfgs = {{ level = "warn", check-cfg = [
     println!("Created new Verus project at {name}");
 
     Ok(ExitCode::SUCCESS)
+}
+
+pub struct FormattingPlan {
+    pub cargo_targets: Vec<PathBuf>,
+    pub verus_targets: Vec<PathBuf>,
+    pub verusfmt_args: Vec<String>,
 }
 
 /// Plan formatting Verus and Rust packages based on `cargo metadata`.
