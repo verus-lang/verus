@@ -10,12 +10,13 @@ use crate::{
 
 pub enum ExecutionPlan {
     CreateNew(NewCreationPlan),
+    Fmt(FmtPlan),
     ListToolchains,
     RunCargo(CargoRunPlan),
 }
 
 pub struct FmtPlan {
-    pub target_files: Vec<PathBuf>,
+    pub target_paths: Vec<PathBuf>,
     pub verusfmt_args: Vec<String>,
 }
 
@@ -24,6 +25,7 @@ pub fn execute_plan(plan: &ExecutionPlan) -> Result<ExitCode> {
 
     match plan {
         CreateNew(creation_plan) => subcommands::create_new_project(creation_plan),
+        Fmt(_) => bail!("`cargo verus fmt` is not implemented yet"),
         ListToolchains => subcommands::list_toolchains(),
         RunCargo(cargo_run_plan) => subcommands::run_cargo(cargo_run_plan),
     }
@@ -44,7 +46,10 @@ pub fn plan_execution<'a>(
                 subcommands::plan_new_project(current_dir, new_cmd, override_verus_version)?;
             return Ok(ExecutionPlan::CreateNew(creation_plan));
         }
-        VerusSubcommand::Fmt(_) => bail!("`cargo verus fmt` is not implemented yet"),
+        VerusSubcommand::Fmt(fmt_cmd) => {
+            let formatting_plan = subcommands::plan_fmt(current_dir, fmt_cmd)?;
+            return Ok(ExecutionPlan::Fmt(formatting_plan));
+        }
         VerusSubcommand::Toolchain(toolchain_cmd) => match toolchain_cmd.command {
             ToolchainSubcommand::List => return Ok(ExecutionPlan::ListToolchains),
         },

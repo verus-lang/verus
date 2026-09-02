@@ -70,6 +70,13 @@ pub struct NewCommand {
 
 #[derive(Clone, Debug, Args)]
 pub struct FmtCommand {
+    #[command(flatten)]
+    pub cargo_opts: CargoOptions,
+
+    /// Increase verbosity (use -vv for more output)
+    #[arg(short, long, action = ArgAction::Count)]
+    pub verbosity: u8,
+
     #[arg(last = true, num_args = 0.., allow_hyphen_values = true)]
     pub verusfmt_args: Vec<String>,
 }

@@ -8,9 +8,11 @@ use anyhow::{Context, Result, anyhow, bail};
 use cargo_metadata::PackageId;
 use clap::ValueEnum;
 use colored::Colorize;
+use walkdir::WalkDir;
 
-use crate::cli::{CargoOptions, NewCommand, VerifyCommand, VerusArgFwdSelector};
+use crate::cli::{CargoOptions, FmtCommand, NewCommand, VerifyCommand, VerusArgFwdSelector};
 use crate::metadata::{MetadataIndex, fetch_metadata, make_package_id};
+use crate::plan::FmtPlan;
 use crate::toolchains::{self, TOOLCHAINS, is_matching_known_and_used};
 use crate::vstd_build::{VstdBuild, build_vstd};
 
@@ -57,6 +59,44 @@ pub fn plan_new_project(
     };
 
     Ok(NewCreationPlan { current_dir, name, is_bin, vstd_dependency })
+}
+
+/// Plan formatting Verus source files based on `cargo metadata`.
+pub fn plan_fmt(current_dir: PathBuf, command: FmtCommand) -> Result<FmtPlan> {
+    let metadata_args = make_cargo_args(&command.cargo_opts, true, command.verbosity);
+    let metadata = fetch_metadata(metadata_args, current_dir)?;
+    let (included_packages, _) = command.cargo_opts.workspace.partition_packages(&metadata);
+    let included_package_ids: Set<_> =
+        included_packages.iter().map(|package| &package.id).collect();
+
+    let mut target_paths = Vec::new();
+    for package in
+        metadata.packages.iter().filter(|package| included_package_ids.contains(&package.id))
+    {
+        let package_root = package
+            .manifest_path
+            .parent()
+            .context(format!("package `{}` has no manifest parent directory", package.name))?;
+
+        for entry in WalkDir::new(package_root.as_std_path()).follow_links(true) {
+            let entry = entry?;
+            if entry.file_type().is_file()
+                && entry.path().extension().is_some_and(|extension| extension == "rs")
+            {
+                target_paths.push(entry.into_path());
+            }
+        }
+    }
+    target_paths.sort();
+
+    if command.verbosity > 0 {
+        println!("Paths to format using `verusfmt`:");
+        for target_path in &target_paths {
+            println!("  {}", target_path.display());
+        }
+    }
+
+    Ok(FmtPlan { target_paths, verusfmt_args: command.verusfmt_args })
 }
 
 pub fn create_new_project(creation_plan: &NewCreationPlan) -> Result<ExitCode> {
