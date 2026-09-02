@@ -73,6 +73,10 @@ pub struct FmtCommand {
     #[command(flatten)]
     pub cargo_opts: CargoOptions,
 
+    /// Check whether formatting is needed without modifying files
+    #[arg(long)]
+    pub check: bool,
+
     /// Increase verbosity (use -vv for more output)
     #[arg(short, long, action = ArgAction::Count)]
     pub verbosity: u8,

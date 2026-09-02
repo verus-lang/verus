@@ -149,6 +149,7 @@ unexpected_cfgs = {{ level = "warn", check-cfg = [
 }
 
 pub struct FormattingPlan {
+    pub is_check: bool,
     pub cargo_targets: Vec<PathBuf>,
     pub verus_targets: Vec<PathBuf>,
     pub verusfmt_args: Vec<String>,
@@ -185,14 +186,22 @@ pub fn plan_formatting(current_dir: PathBuf, command: FmtCommand) -> Result<Form
         }
     }
 
-    Ok(FormattingPlan { cargo_targets, verus_targets, verusfmt_args: command.verusfmt_args })
+    Ok(FormattingPlan {
+        is_check: command.check,
+        cargo_targets,
+        verus_targets,
+        verusfmt_args: command.verusfmt_args,
+    })
 }
 
 pub fn run_formatting(plan: &FormattingPlan) -> Result<ExitCode> {
     for manifest_path in &plan.cargo_targets {
-        let exit_status = Command::new(env::var("CARGO").unwrap_or("cargo".into()))
-            .args(["fmt", "--manifest-path"])
-            .arg(manifest_path)
+        let mut command = Command::new(env::var("CARGO").unwrap_or("cargo".into()));
+        command.args(["fmt", "--manifest-path"]).arg(manifest_path);
+        if plan.is_check {
+            command.arg("--check");
+        }
+        let exit_status = command
             .spawn()
             .context("Failed to spawn `cargo fmt`")?
             .wait()
@@ -225,7 +234,11 @@ pub fn run_formatting(plan: &FormattingPlan) -> Result<ExitCode> {
             .collect::<Result<Vec<_>>>()?;
         target_paths.sort();
 
-        let exit_status = Command::new(&verusfmt)
+        let mut command = Command::new(&verusfmt);
+        if plan.is_check {
+            command.arg("--check");
+        }
+        let exit_status = command
             .args(&plan.verusfmt_args)
             .args(target_paths)
             .spawn()
