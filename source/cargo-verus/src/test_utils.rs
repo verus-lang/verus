@@ -24,6 +24,7 @@ pub struct MockPackage {
     deps: Vec<(DepKind, Option<String>, MockDep)>,
     features: Vec<String>,
     verus_verify: Option<bool>,
+    verus_fmt_as_rust: bool,
     is_vstd: bool,
 }
 
@@ -209,6 +210,7 @@ impl MockPackage {
             deps: vec![],
             features: vec![],
             verus_verify: None,
+            verus_fmt_as_rust: false,
             is_vstd: false,
         }
     }
@@ -265,6 +267,11 @@ impl MockPackage {
 
     pub fn verify(mut self, setting: bool) -> Self {
         self.verus_verify = Some(setting);
+        self
+    }
+
+    pub fn fmt_as_rust(mut self) -> Self {
+        self.verus_fmt_as_rust = true;
         self
     }
 
@@ -380,6 +387,9 @@ impl MockPackage {
         let mut verus_metadata_lines = vec![];
         if let Some(verus_verify) = self.verus_verify {
             verus_metadata_lines.push(format!("verify = {verus_verify}"));
+        }
+        if self.verus_fmt_as_rust {
+            verus_metadata_lines.push("fmt-as-rust = true".to_owned());
         }
         if self.is_vstd {
             verus_metadata_lines.push(format!("is-vstd = true"));

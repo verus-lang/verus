@@ -162,7 +162,12 @@ pub fn plan_formatting(current_dir: PathBuf, command: FmtCommand) -> Result<Form
     let mut verus_targets = Vec::new();
     for package in included_packages {
         let manifest_path = package.manifest_path.clone().into_std_path_buf();
-        if metadata_index.get(&package.id).verus_metadata.is_some() {
+        if metadata_index
+            .get(&package.id)
+            .verus_metadata
+            .as_ref()
+            .is_some_and(|metadata| !metadata.fmt_as_rust)
+        {
             verus_targets.push(manifest_path);
         } else {
             cargo_targets.push(manifest_path);

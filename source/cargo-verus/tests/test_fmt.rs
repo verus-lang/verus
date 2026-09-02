@@ -10,6 +10,7 @@ fn detects_cargo_vs_verus() {
             MockPackage::new("ordinary").lib(),
             MockPackage::new("verus").lib().verify(true),
             MockPackage::new("verus_without_verification").lib().verify(false),
+            MockPackage::new("verus_formatted_as_rust").lib().verify(true).fmt_as_rust(),
         ])
         .materialize();
 
@@ -20,7 +21,10 @@ fn detects_cargo_vs_verus() {
     };
     let manifest = |package| workspace.path().join(package).canonicalize().expect("canonicalize");
 
-    assert_eq!(formatting_plan.cargo_targets, [manifest("ordinary/Cargo.toml")]);
+    assert_eq!(
+        formatting_plan.cargo_targets,
+        [manifest("ordinary/Cargo.toml"), manifest("verus_formatted_as_rust/Cargo.toml")]
+    );
     assert!(formatting_plan.is_check);
     assert_eq!(
         formatting_plan.verus_targets,
