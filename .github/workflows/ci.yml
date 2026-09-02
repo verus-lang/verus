@@ -190,6 +190,7 @@ jobs:
         working-directory: ./source
         run: |
           cargo clean
+          cargo run --release -p cargo-verus-toolchains --bin create-manifest -- --rolling --write-to-dir cargo-verus/toolchain-manifests
           CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true cargo build --release
           cargo run --release -p cargo-verus -- build --release --manifest-path vstd/Cargo.toml
 
