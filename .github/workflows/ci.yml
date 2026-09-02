@@ -41,10 +41,8 @@ jobs:
       - name: check rustfmt/verusfmt
         working-directory: ./source
         run: |
-          cargo fmt -- --check
-          # TODO: Should use `cargo verus fmt` when it's implemented:
-          #   https://github.com/verus-lang/verus/issues/2758
-          find ./vstd -name '*.rs' -type f -exec verusfmt --check {} +
+          cargo run -p cargo verus -- fmt --check
+          cargo run -p cargo verus -- fmt --check --manifest-path vstd/Cargo.toml
 
       - name: check cargo fmt for vargo
         working-directory: ./tools/vargo
