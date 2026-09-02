@@ -1,6 +1,6 @@
 use crate::ast::{
     BinaryOpr, BitwiseOp, Constant, CtorPrintStyle, Dt, Fun, GenericBound, GenericBoundX,
-    GenericBounds, Ident, InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Mode,
+    GenericBounds, Ident, InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind,
     ProofNoteLabel, Quant, SpannedTyped, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VarBinder,
     VarBinderX, VarBinders,
 };
@@ -556,11 +556,11 @@ impl ExpX {
                     HasResolved(t) => {
                         (format!("has_resolved::<{:?}>({})", t, exp.x.to_user_string(global)), 99)
                     }
-                    IntegerTypeBound(IntegerTypeBoundKind::ArchWordBits, _mode) => {
+                    IntegerTypeBound(IntegerTypeBoundKind::ArchWordBits) => {
                         (format!("usize::BITS"), 99)
                     }
-                    IntegerTypeBound(kind, mode) => {
-                        (format!("{:?}.{:?}({})", kind, mode, exp.x.to_user_string(global)), 99)
+                    IntegerTypeBound(kind) => {
+                        (format!("{:?}({})", kind, exp.x.to_user_string(global)), 99)
                     }
                     IsVariant { datatype: _, variant } => {
                         let (prec_exp, prec_left, _prec_right) = prec_of_in();
@@ -908,10 +908,7 @@ pub fn sst_arch_word_bits(span: &Span) -> Exp {
         span,
         &Arc::new(TypX::Int(IntRange::Int)),
         ExpX::UnaryOpr(
-            UnaryOpr::IntegerTypeBound(
-                IntegerTypeBoundKind::ArchWordBits,
-                Mode::Spec, // mode doesn't matter
-            ),
+            UnaryOpr::IntegerTypeBound(IntegerTypeBoundKind::ArchWordBits),
             sst_int_literal(span, 0),
         ),
     )

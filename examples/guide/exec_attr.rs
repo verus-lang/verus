@@ -93,14 +93,14 @@ fn exec_external_test(x: u32) -> u32 {
 // ANCHOR_END: proof_with
 
 // ANCHOR: dual_spec
-#[verus_verify(dual_spec)]
+#[verus_verify(dual_spec, closed)]
 #[verus_spec(
     requires
         x < 100,
         y < 100,
     returns f(x, y)
 )]
-fn f(x: u32, y: u32) -> u32 {
+pub fn f(x: u32, y: u32) -> u32 {
     proof!{
         assert(true);
     }
@@ -110,7 +110,7 @@ fn f(x: u32, y: u32) -> u32 {
     }
 }
 
-#[verus_verify(dual_spec)]
+#[verus_verify(dual_spec, open)]
 #[verus_spec(
     requires
         x < 100,
