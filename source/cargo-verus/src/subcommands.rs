@@ -203,6 +203,7 @@ pub fn run_formatting(plan: &FormattingPlan) -> Result<ExitCode> {
         }
     }
 
+    let verusfmt = env::var("VERUSFMT").unwrap_or_else(|_| "verusfmt".to_owned());
     for manifest_path in &plan.verus_targets {
         let package_root = manifest_path.parent().context(format!(
             "package manifest `{}` has no parent directory",
@@ -224,7 +225,7 @@ pub fn run_formatting(plan: &FormattingPlan) -> Result<ExitCode> {
             .collect::<Result<Vec<_>>>()?;
         target_paths.sort();
 
-        let exit_status = Command::new("verusfmt")
+        let exit_status = Command::new(&verusfmt)
             .args(&plan.verusfmt_args)
             .args(target_paths)
             .spawn()
