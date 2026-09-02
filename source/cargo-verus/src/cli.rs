@@ -25,7 +25,7 @@ pub enum VerusSubcommand {
     /// Create a new Verus project
     New(NewCommand),
 
-    /// Format Verus source files
+    /// Format Verus and Rust source files
     Fmt(FmtCommand),
 
     /// Manage Verus toolchains
