@@ -242,7 +242,7 @@ fn check_static_inhabited(tcx: TyCtxt<'_>, def_id: LocalDefId) {
 
 /// Checks that an opaque type does not contain cycles and does not use `Self` or `T::Foo`
 /// projections that would result in "inheriting lifetimes".
-pub fn check_opaque(tcx: TyCtxt<'_>, def_id: LocalDefId) {
+fn check_opaque(tcx: TyCtxt<'_>, def_id: LocalDefId) {
     let hir::OpaqueTy { origin, .. } = *tcx.hir_expect_opaque_ty(def_id);
 
     // HACK(jynelson): trying to infer the type of `impl trait` breaks documenting
@@ -759,6 +759,14 @@ fn check_static_linkage(tcx: TyCtxt<'_>, def_id: LocalDefId) {
 }
 
 pub(crate) fn check_item_type(tcx: TyCtxt<'_>, def_id: LocalDefId) -> Result<(), ErrorGuaranteed> {
+    check_item_type_inner(tcx, def_id, false)
+}
+
+pub fn check_item_type_inner(
+    tcx: TyCtxt<'_>,
+    def_id: LocalDefId,
+    verus_full: bool,
+) -> Result<(), ErrorGuaranteed> {
     let mut res = Ok(());
     let generics = tcx.generics_of(def_id);
 
@@ -835,12 +843,14 @@ pub(crate) fn check_item_type(tcx: TyCtxt<'_>, def_id: LocalDefId) -> Result<(),
                     impl_trait_header.trait_ref.instantiate_identity().skip_norm_wip().def_id,
                 ));
 
-                /*if res.is_ok() {
+                if res.is_ok() {
                     // Checking this only makes sense if the all trait impls satisfy basic
                     // requirements (see `coherent_trait` query), otherwise
                     // we run into infinite recursions a lot.
-                    check_impl_items_against_trait(tcx, def_id, impl_trait_header);
-                }*/
+                    if verus_full {
+                        check_impl_items_against_trait(tcx, def_id, impl_trait_header);
+                    }
+                }
             }
         }
         DefKind::Trait => {
@@ -905,7 +915,9 @@ pub(crate) fn check_item_type(tcx: TyCtxt<'_>, def_id: LocalDefId) -> Result<(),
             {
                 // Skip opaques from RPIT in traits with no default body.
             } else {
-                //check_opaque(tcx, def_id);
+                if verus_full {
+                    check_opaque(tcx, def_id);
+                }
             }
 
             tcx.ensure_ok().predicates_of(def_id);
@@ -1242,7 +1254,7 @@ fn check_overriding_final_trait_item<'tcx>(
     }
 }
 
-pub fn check_impl_items_against_trait<'tcx>(
+fn check_impl_items_against_trait<'tcx>(
     tcx: TyCtxt<'tcx>,
     impl_id: LocalDefId,
     impl_trait_header: ty::ImplTraitHeader<'tcx>,

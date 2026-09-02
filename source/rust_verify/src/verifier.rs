@@ -27,6 +27,7 @@ use vir::messages::{
 
 use num_format::{Locale, ToFormattedString};
 use rustc_error_messages::MultiSpan;
+use rustc_hir::def::DefKind;
 use rustc_index::bit_set::DenseBitSet;
 use rustc_middle::ty::TyCtxt;
 use rustc_span::Span;
@@ -38,7 +39,6 @@ use std::io::Write;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use vir::context::{FuncCallGraphLogFiles, GlobalCtx};
-use rustc_hir::def::DefKind;
 
 use crate::buckets::{Bucket, BucketId};
 use crate::expand_errors_driver::ExpandErrorsResult;
@@ -3315,24 +3315,11 @@ impl VerifierCallbacksEraseMacro {
     fn run_lifetime_checks_on_verus_aware_items<'tcx>(&mut self, tcx: TyCtxt<'tcx>) {
         let crate_items = self.verifier.crate_items.as_ref().unwrap().clone();
         tcx.par_hir_body_owners(|def_id| {
-            match tcx.def_kind(def_id) {
-                DefKind::OpaqueTy => {
-                    let origin = tcx.local_opaque_ty_origin(def_id);
-                    if let rustc_hir::OpaqueTyOrigin::FnReturn { parent: fn_def_id, .. }
-                    | rustc_hir::OpaqueTyOrigin::AsyncFn { parent: fn_def_id, .. } = origin
-                        && let rustc_hir::Node::TraitItem(trait_item) = tcx.hir_node_by_def_id(fn_def_id)
-                        && let (_, rustc_hir::TraitFn::Required(..)) = trait_item.expect_fn()
-                    {
-                        // Skip opaques from RPIT in traits with no default body.
-                    } else {
-                        rustc_hir_analysis_verus::check::check::check_opaque(tcx, def_id);
-                    }
-                }
-                DefKind::Impl { of_trait: true } => {
-                    let impl_trait_header = tcx.impl_trait_header(def_id);
-                    rustc_hir_analysis_verus::check::check::check_impl_items_against_trait(tcx, def_id, impl_trait_header);
-                }
-                _ => {}
+            if matches!(tcx.def_kind(def_id), DefKind::OpaqueTy | DefKind::Impl { of_trait: true })
+            {
+                let _ = rustc_hir_analysis_verus::check::check::check_item_type_inner(
+                    tcx, def_id, true,
+                );
             }
 
             if !tcx.is_typeck_child(def_id.to_def_id()) {
