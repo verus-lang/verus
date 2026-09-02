@@ -12,6 +12,10 @@ use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
     styles = clap_cargo::style::CLAP_STYLING,
 )]
 pub struct CargoVerusCli {
+    /// Override the version reported by `verus --version`.
+    #[arg(long, global = true)]
+    pub override_verus_version: Option<String>,
+
     #[command(subcommand)]
     pub command: VerusSubcommand,
 }
@@ -126,6 +130,9 @@ pub struct CargoOptions {
     pub offline: bool,
 
     #[arg(long)]
+    pub release: bool,
+
+    #[arg(long)]
     pub target_dir: Option<PathBuf>,
 
     #[arg(long, value_name = "CONFIG", action = ArgAction::Append)]
@@ -176,6 +183,7 @@ fn has_late_verus_arg(opts: &CargoOptions) -> bool {
             || arg == "--frozen"
             || arg == "--locked"
             || arg == "--offline"
+            || arg == "--release"
             || arg == "--target-dir"
             || arg.starts_with("--target-dir=")
             || arg == "--config"
@@ -203,6 +211,16 @@ impl CargoVerusCli {
             return Err(anyhow!("Args forwarded to Cargo must precede args forwarded to Verus"));
         }
 
+        if let partial_selectors = parsed_cli.filter_partial_verification_selectors()
+            && !partial_selectors.is_empty()
+            && !matches!(parsed_cli.command, VerusSubcommand::Focus(_))
+        {
+            for arg in partial_selectors {
+                eprintln!("partial verification selector: `{arg}`");
+            }
+            return Err(anyhow!("Partial verification must use `cargo verus focus`"));
+        }
+
         parsed_cli.set_fwd_verus_args_to_default();
 
         Ok(parsed_cli)
@@ -228,36 +246,62 @@ impl CargoVerusCli {
 
     fn clap_trailing_args_hotfix(mut self) -> Self {
         // NOTE: For context see this issue: https://github.com/clap-rs/clap/issues/6200
-        match &mut self.command {
-            VerusSubcommand::Verify(cmd)
-            | VerusSubcommand::Focus(cmd)
-            | VerusSubcommand::Build(cmd)
-            | VerusSubcommand::Check(cmd) => {
-                let arg_split_pos = cmd.cargo_opts.cargo_args.iter().position(|arg| arg == "--");
-                if let Some(index) = arg_split_pos {
-                    let (cargo_args, verus_args) = cmd.cargo_opts.cargo_args.split_at(index);
-                    let cargo_args = cargo_args.to_owned();
-                    let verus_args = verus_args[1..].to_owned();
-                    cmd.cargo_opts.cargo_args = cargo_args;
-                    cmd.verus_args = verus_args;
-                }
-            }
-            VerusSubcommand::New(_) | VerusSubcommand::Toolchain(_) => {}
+        let Some(cmd) = self.get_verify_cmd_mut() else { return self };
+        let arg_split_pos = cmd.cargo_opts.cargo_args.iter().position(|arg| arg == "--");
+        if let Some(index) = arg_split_pos {
+            let (cargo_args, verus_args) = cmd.cargo_opts.cargo_args.split_at(index);
+            let cargo_args = cargo_args.to_owned();
+            let verus_args = verus_args[1..].to_owned();
+            cmd.cargo_opts.cargo_args = cargo_args;
+            cmd.verus_args = verus_args;
         }
         self
     }
 
     fn has_inadvisable_verus_arg(&self) -> bool {
+        let Some(cmd) = self.get_verify_cmd() else { return false };
+        has_flag_arg_without_space(&cmd.cargo_opts) || has_late_verus_arg(&cmd.cargo_opts)
+    }
+
+    fn filter_partial_verification_selectors(&self) -> Vec<&str> {
+        let Some(cmd) = self.get_verify_cmd() else {
+            return vec![];
+        };
+        cmd.verus_args
+            .iter()
+            .map(String::as_str)
+            .filter(|arg| is_partial_verification_selector(arg))
+            .collect()
+    }
+
+    fn get_verify_cmd(&self) -> Option<&VerifyCommand> {
         match &self.command {
             VerusSubcommand::Verify(cmd)
             | VerusSubcommand::Focus(cmd)
             | VerusSubcommand::Build(cmd)
-            | VerusSubcommand::Check(cmd) => {
-                has_flag_arg_without_space(&cmd.cargo_opts) || has_late_verus_arg(&cmd.cargo_opts)
-            }
-            VerusSubcommand::New(_) | VerusSubcommand::Toolchain(_) => false,
+            | VerusSubcommand::Check(cmd) => Some(cmd),
+            VerusSubcommand::New(_) | VerusSubcommand::Toolchain(_) => None,
         }
     }
+
+    fn get_verify_cmd_mut(&mut self) -> Option<&mut VerifyCommand> {
+        match &mut self.command {
+            VerusSubcommand::Verify(cmd)
+            | VerusSubcommand::Focus(cmd)
+            | VerusSubcommand::Build(cmd)
+            | VerusSubcommand::Check(cmd) => Some(cmd),
+            VerusSubcommand::New(_) | VerusSubcommand::Toolchain(_) => None,
+        }
+    }
+}
+
+fn is_partial_verification_selector(arg: &str) -> bool {
+    matches!(
+        arg,
+        "--verify-function" | "--verify-module" | "--verify-only-module" | "--verify-root"
+    ) || arg.starts_with("--verify-function=")
+        || arg.starts_with("--verify-module=")
+        || arg.starts_with("--verify-only-module=")
 }
 
 fn normalize_args<'a>(args: impl Iterator<Item = &'a str>) -> impl Iterator<Item = &'a str> {

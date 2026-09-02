@@ -19,6 +19,7 @@ jobs:
     uses: ./.github/workflows/build.yml
     with:
       checkout_ref: ${{ github.sha }}
+      is_rolling: true
 
   # publish the release artifacts to the rolling pre-release
   publish:

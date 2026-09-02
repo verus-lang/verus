@@ -83,6 +83,8 @@ pub(crate) struct Visitor {
     use_spec_traits: bool,
     // inside_ghost > 0 means we're currently visiting ghost code
     inside_ghost: u32,
+    // inside_pat > 0 means we're currently visiting a pattern
+    inside_pat: u32,
     // inside_type > 0 means we're currently visiting a type
     inside_type: u32,
     // inside_external_code > 0 means we're currently visiting an external or external_body body
@@ -2464,6 +2466,10 @@ fn chain_count(expr: &Expr) -> u32 {
 const ILLEGAL_CALLEES: &[&str] = &["forall", "exists", "choose"];
 
 impl Visitor {
+    fn inside_pat_or_type(&self) -> bool {
+        self.inside_pat + self.inside_type > 0
+    }
+
     fn chain_operators(&mut self, expr: &mut Expr) -> bool {
         let count = chain_count(expr);
         if count < 2 {
@@ -2515,6 +2521,7 @@ impl Visitor {
             let ident = Ident::new(op, *span);
             toks = quote_spanned_builtin!(verus_builtin, *span => #verus_builtin::#ident(#toks, #right));
         }
+        let span = rights[0].2;
         toks =
             quote_spanned_builtin!(verus_builtin, span => #verus_builtin::spec_chained_cmp(#toks));
 
@@ -3115,7 +3122,7 @@ impl Visitor {
             return false;
         };
 
-        if self.use_spec_traits && self.inside_ghost > 0 && self.inside_type == 0 {
+        if self.use_spec_traits && self.inside_ghost > 0 && !self.inside_pat_or_type() {
             let span = lit.span();
             let n = lit.base10_digits().to_string();
             if lit.suffix() == "" {
@@ -3159,7 +3166,7 @@ impl Visitor {
         let Expr::Lit(ExprLit { lit: Lit::Float(lit), attrs }) = expr else {
             return false;
         };
-        if self.use_spec_traits && self.inside_ghost > 0 && self.inside_type == 0 {
+        if self.use_spec_traits && self.inside_ghost > 0 && !self.inside_pat_or_type() {
             let span = lit.span();
             let n = lit.base10_digits().to_string();
             if lit.suffix() == "" {
@@ -3200,6 +3207,14 @@ impl Visitor {
         let Expr::Assert(_) = expr else {
             return false;
         };
+
+        if self.rustdoc && self.inside_const {
+            let Expr::Assert(assert) = take_expr(expr) else { unreachable!() };
+            let span = assert.assert_token.span;
+            let attrs = assert.attrs;
+            *expr = quote_verbatim!(span, attrs => ());
+            return true;
+        }
 
         self.inside_ghost += 1;
         self.visit_expr_with_arith(expr, InsideArith::None);
@@ -3748,7 +3763,7 @@ impl Visitor {
             let s2 = invariants.map(|x| x.token.span.unwrap());
             let s3 = ensures.map(|x| x.token.span.unwrap());
 
-            let spans = std::iter::chain(s1, s2).chain(s3).collect::<Vec<_>>();
+            let spans = s1.into_iter().chain(s2).chain(s3).collect::<Vec<_>>();
             if !spans.is_empty() {
                 #[cfg(verus_keep_ghost)]
                 proc_macro::Diagnostic::spanned(
@@ -3827,6 +3842,7 @@ impl Visitor {
     ) {
         // TODO: wrap specs inside ghost blocks
         self.inside_ghost += 1;
+        #[allow(clippy::needless_bool)]
         let old_style = if invariant_ensures.is_some() {
             #[cfg(verus_keep_ghost)]
             proc_macro::Diagnostic::spanned(
@@ -3903,10 +3919,7 @@ impl Visitor {
         //       let VERUS_iter_init = e;
         //       #[allow(non_snake_case)]
         //       let VERUS_iter = VerusForLoopWrapper::new(
-        //          // Real iterator
         //          ::core::iter::IntoIterator::into_iter(VERUS_iter_init),
-        //          // Spec-level iterator (relies on `when_used_as_spec` on into_iter)
-        //          Ghost(Some(&::core::iter::IntoIterator::into_iter(VERUS_iter_init))),
         //      );
         //      // Hold on to the initial value so that after the loop, we know it didn't change
         //      #[allow(non_snake_case)]
@@ -3921,16 +3934,8 @@ impl Visitor {
         //                     #[verus::internal(auto_decreases)]
         //                     y.iter.decrease().is_Some(),
         //                  invariant
-        //                     // We track the continuity of the snapshot and the initial iterator-creation expression
+        //                     // We track the continuity of the snapshot
         //                     ::vstd::prelude::spec_eq(y.snapshot, VERUS_old_snap),
-        //                     match verus_builtin::infer_spec_for_loop_iter(
-        //                              &::core::iter::IntoIterator::into_iter(VERUS_iter_init),
-        //                              &::core::iter::IntoIterator::into_iter(e),
-        //                              print_hint,
-        //                          ) {
-        //                         Some(v) => ::vstd::prelude::spec_eq(y.init, Ghost(Some(v))),
-        //                         None => true,
-        //                     },
         //                     y.wf(),
         //                     ({
         //                         // Grab the next val for (possible) use in the user-provided inv
@@ -4031,17 +4036,6 @@ impl Visitor {
         let exec_snapshot_inv_msg = "For-loop iterator invariant failed to prove the VerusForLoopWrapper snapshot is unchanged. \
             This may indicate a bug in the definition of the VerusForLoopWrapper. \
             You might try using a `loop` instead of a `for`.";
-        let ghost_inv_msg = "Automatically generated loop invariant failed to track the iterator's initial value. \
-            You can disable the automatic invariant generation by adding \
-            #[verifier::no_auto_loop_invariant] \
-            to the loop. \
-            You might also try storing the loop expression in a variable outside the loop \
-            (e.g. `let e = 0..10; for x in e { ... }`).";
-        let print_hint: Expr = if expr_name.is_some() {
-            Expr::Verbatim(quote_spanned!(expr.span() => false))
-        } else {
-            Expr::Verbatim(quote_spanned!(expr.span() => true))
-        };
 
         // Initial value of the expression (e)
         let x_verus_iter_init = Ident::new("VERUS_iter_init", span);
@@ -4062,7 +4056,6 @@ impl Visitor {
         let x_iter_body_old = Ident::new("VERUS_old_iter", span);
 
         let mut stmts: Vec<Stmt> = Vec::new();
-        let expr_inv = expr.clone();
         let init_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
             #[verifier::custom_err(#exec_snapshot_inv_msg)]
             #vstd::prelude::spec_eq(#x_iter_name.snapshot.view(), #x_snapshot)
@@ -4070,20 +4063,6 @@ impl Visitor {
         let wf_inv: Expr = Expr::Verbatim(quote_spanned!( expr.span() =>
             #[verifier::custom_err(#exec_wf_inv_msg)]
             #x_iter_name.wf()
-        ));
-        let ghost_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
-            #[verifier::custom_err(#ghost_inv_msg)]
-            match #vstd::prelude::infer_spec_for_loop_iter(
-                &::core::iter::IntoIterator::into_iter(#x_verus_iter_init),
-                &::core::iter::IntoIterator::into_iter(#expr_inv),
-                #print_hint,
-            ) {
-                ::core::option::Option::Some(VERUS_tmp_infer) => #vstd::prelude::spec_eq(
-                    #x_iter_name.init,
-                    #vstd::prelude::Ghost::new(::core::option::Option::Some(VERUS_tmp_infer))
-                ),
-                ::core::option::Option::None => true,
-            }
         ));
         let some_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
             #[verifier::custom_err(#decrease_is_some_msg)]
@@ -4101,14 +4080,9 @@ impl Visitor {
             if no_loop_invariant.is_none() {
                 invariant.exprs.exprs.insert(0, init_inv);
                 invariant.exprs.exprs.insert(1, wf_inv);
-                if no_auto_loop_invariant.is_none() {
-                    invariant.exprs.exprs.insert(2, ghost_inv);
-                }
             }
             Some(Invariant { token: Token![invariant](span), exprs: invariant.exprs })
-        } else if no_loop_invariant.is_none() && no_auto_loop_invariant.is_none() {
-            Some(parse_quote_spanned!(span => invariant #init_inv, #wf_inv, #ghost_inv,))
-        } else if no_loop_invariant.is_none() && no_auto_loop_invariant.is_some() {
+        } else if no_loop_invariant.is_none() {
             Some(parse_quote_spanned!(span => invariant #init_inv, #wf_inv,))
         } else {
             None
@@ -4220,11 +4194,7 @@ impl Visitor {
             let #x_exec_iter = ::core::iter::IntoIterator::into_iter(#x_verus_iter_init);
             #[allow(non_snake_case)]
             let #x_wrapped_iter = #vstd::std_specs::iter::VerusForLoopWrapper::new(
-                // Real iterator
                 #x_exec_iter,
-                // Spec-level iterator (relies on `when_used_as_spec` on into_iter)
-                #[verifier::ghost_wrapper]
-                #vstd::prelude::ghost_exec(#[verifier::ghost_block_wrapped] Some(&#x_exec_iter)),
             );
             // Hold on to the initial snapshot value so that after the loop, we know it didn't change
             #[allow(non_snake_case)]
@@ -4243,6 +4213,10 @@ impl Visitor {
                     #loop_expr
             };
             VERUS_loop_result
+        }));
+        let f = Expr::Verbatim(quote_spanned!(span => {
+            #[verus::internal(loop_isolation_boundary)]
+            #f
         }));
         //eprintln!("{}", verus_prettyplease::unparse_expr(&f));
         f
@@ -4432,7 +4406,7 @@ impl VisitMut for Visitor {
             Expr::ForLoop(..) => true,
             _ => false,
         };
-        if do_replace && self.inside_type == 0 {
+        if do_replace && !self.inside_pat_or_type() {
             match take_expr(expr) {
                 Expr::ForLoop(for_loop) => {
                     *expr = self.desugar_for_loop(for_loop);
@@ -4440,6 +4414,12 @@ impl VisitMut for Visitor {
                 _ => panic!("expected to replace expression"),
             }
         }
+    }
+
+    fn visit_pat_mut(&mut self, pat: &mut Pat) {
+        self.inside_pat += 1;
+        verus_syn::visit_mut::visit_pat_mut(self, pat);
+        self.inside_pat -= 1;
     }
 
     fn visit_attribute_mut(&mut self, attr: &mut Attribute) {
@@ -5361,6 +5341,7 @@ pub(crate) fn rewrite_items_inner(
         erase_ghost,
         use_spec_traits,
         inside_ghost: 0,
+        inside_pat: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
@@ -5402,6 +5383,7 @@ pub(crate) fn rewrite_impl_items(
         erase_ghost,
         use_spec_traits,
         inside_ghost: 0,
+        inside_pat: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
@@ -5437,6 +5419,7 @@ pub(crate) fn rewrite_expr(
         erase_ghost,
         use_spec_traits: true,
         inside_ghost: if inside_ghost { 1 } else { 0 },
+        inside_pat: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
@@ -5470,6 +5453,7 @@ pub(crate) fn rewrite_proof_decl(
         erase_ghost,
         use_spec_traits: true,
         inside_ghost: 0,
+        inside_pat: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
@@ -5525,6 +5509,7 @@ pub(crate) fn rewrite_expr_node(erase_ghost: EraseGhost, inside_ghost: bool, exp
         erase_ghost,
         use_spec_traits: true,
         inside_ghost: if inside_ghost { 1 } else { 0 },
+        inside_pat: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
@@ -5716,6 +5701,7 @@ pub(crate) fn sig_specs_attr(
         erase_ghost,
         use_spec_traits: true,
         inside_ghost: 1,
+        inside_pat: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
@@ -5757,6 +5743,7 @@ pub(crate) fn while_loop_spec_attr(
         erase_ghost,
         use_spec_traits: true,
         inside_ghost: 1,
+        inside_pat: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
@@ -5791,6 +5778,7 @@ pub(crate) fn for_loop_spec_attr(
         erase_ghost,
         use_spec_traits: true,
         inside_ghost: 1,
+        inside_pat: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
@@ -5851,6 +5839,7 @@ pub(crate) fn proof_block(
         erase_ghost,
         use_spec_traits: true,
         inside_ghost: 1,
+        inside_pat: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
@@ -5877,6 +5866,7 @@ pub(crate) fn proof_macro_exprs(
         erase_ghost,
         use_spec_traits: true,
         inside_ghost: if inside_ghost { 1 } else { 0 },
+        inside_pat: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
@@ -5909,6 +5899,7 @@ pub(crate) fn inv_au_macro_exprs(
         erase_ghost,
         use_spec_traits: true,
         inside_ghost: 0,
+        inside_pat: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
@@ -5952,6 +5943,7 @@ pub(crate) fn proof_macro_explicit_exprs(
         erase_ghost,
         use_spec_traits: true,
         inside_ghost: if inside_ghost { 1 } else { 0 },
+        inside_pat: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,

@@ -46,11 +46,14 @@ pub struct InstantiationGraph {
 }
 
 impl InstantiationGraph {
-    pub fn serialize(&self, w: impl std::io::Write) -> Result<(), String> {
-        bincode::serialize_into(w, self).map_err(|x| x.to_string())
+    pub fn serialize(&self, mut w: impl std::io::Write) -> Result<(), String> {
+        bincode_next::serde::encode_into_std_write(self, &mut w, bincode_next::config::legacy())
+            .map_err(|x| x.to_string())
+            .map(|_| ())
     }
 
-    pub fn deserialize(r: impl std::io::Read) -> Result<Self, String> {
-        bincode::deserialize_from(r).map_err(|x| x.to_string())
+    pub fn deserialize(mut r: impl std::io::Read) -> Result<Self, String> {
+        bincode_next::serde::decode_from_std_read(&mut r, bincode_next::config::legacy())
+            .map_err(|x| x.to_string())
     }
 }

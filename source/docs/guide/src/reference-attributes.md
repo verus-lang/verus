@@ -89,12 +89,26 @@ reference the given item.
 
 This can have nontrivial implications for the TCB of a verified crate; see [here](./tcb.md).
 
+This attribute does not affect how the item is parsed:
+if the item is inside the `verus!` macro, then the item will still be parsed
+using `verus!` syntax, not bare Rust syntax.
+If you want bare Rust syntax, then you can simply define the item outside the `verus!` macro,
+and the item will be treated as external to Verus automatically,
+without needing to use `#[verifier::external]` at all.
+
 ## `#[verifier::external_body]`
 
 Tells Verus to only consider the function definition but not the function body, trusting that
 it correctly satisfies its specification.
 
 This can have nontrivial implications for the TCB of a verified crate; see [here](./tcb.md).
+
+This attribute does not affect how the function body is parsed:
+if the function is inside the `verus!` macro, then the function body will still be parsed
+using `verus!` syntax, not bare Rust syntax.
+If you want bare Rust syntax, then you can define the function outside the `verus!` macro,
+using `#[verus_spec]` [attribute syntax](./exec_attr.md) with `#[verifier::external_body]`,
+instead of `verus!` with `#[verifier::external_body]`.
 
 ## `#[verifier::ext_equal]`
 

@@ -1,5 +1,4 @@
-use std::env;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use anyhow::Result;
@@ -26,21 +25,18 @@ pub fn execute_plan(plan: &ExecutionPlan) -> Result<ExitCode> {
 }
 
 pub fn plan_execution<'a>(
-    current_dir: Option<&Path>,
+    current_dir: impl AsRef<Path>,
     args: impl IntoIterator<Item = &'a str>,
 ) -> Result<ExecutionPlan> {
-    let parsed_cli = CargoVerusCli::from_args(args.into_iter())?;
+    let CargoVerusCli { override_verus_version, command } =
+        CargoVerusCli::from_args(args.into_iter())?;
 
-    let current_dir =
-        if let Some(path) = current_dir { path.to_owned() } else { env::current_dir()? };
+    let current_dir: PathBuf = current_dir.as_ref().to_owned();
 
-    let cfg = match parsed_cli.command {
+    let cfg = match command {
         VerusSubcommand::New(new_cmd) => {
-            let creation_plan = match (new_cmd.bin, new_cmd.lib) {
-                (Some(name), None) => NewCreationPlan { current_dir, name, is_bin: true },
-                (None, Some(name)) => NewCreationPlan { current_dir, name, is_bin: false },
-                _ => unreachable!("clap enforces exactly one of --bin/--lib"),
-            };
+            let creation_plan =
+                subcommands::plan_new_project(current_dir, new_cmd, override_verus_version)?;
             return Ok(ExecutionPlan::CreateNew(creation_plan));
         }
         VerusSubcommand::Toolchain(toolchain_cmd) => match toolchain_cmd.command {
@@ -50,6 +46,7 @@ pub fn plan_execution<'a>(
             current_dir,
             subcommand: "check",
             options,
+            override_verus_version,
             compile_primary: false,
             verify_deps: true,
             warn_if_nothing_verified: true,
@@ -58,6 +55,7 @@ pub fn plan_execution<'a>(
             current_dir,
             subcommand: "check",
             options,
+            override_verus_version,
             compile_primary: false,
             verify_deps: false,
             warn_if_nothing_verified: true,
@@ -66,6 +64,7 @@ pub fn plan_execution<'a>(
             current_dir,
             subcommand: "build",
             options,
+            override_verus_version,
             compile_primary: true,
             verify_deps: true,
             warn_if_nothing_verified: false,
@@ -74,6 +73,7 @@ pub fn plan_execution<'a>(
             current_dir,
             subcommand: "check",
             options,
+            override_verus_version,
             compile_primary: false,
             verify_deps: true,
             warn_if_nothing_verified: true,

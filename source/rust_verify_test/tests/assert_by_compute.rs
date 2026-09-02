@@ -280,15 +280,9 @@ test_verify_one_file! {
             if x == 0 { 0 } else { 1 + sum((x - 1) as nat) }
         }
 
-        #[verifier(external_body)]
-        spec fn f_no_body(x: nat) -> nat {
-            0
-        }
+        uninterp spec fn f_no_body(x: nat) -> nat;
 
-        #[verifier(external_body)]
-        spec fn g_no_body(x: nat) -> nat {
-            0
-        }
+        uninterp spec fn g_no_body(x: nat) -> nat;
 
         fn test() {
             assert(sum(20) == 20) by (compute_only);
@@ -306,15 +300,9 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] fn_calls_bad1 verus_code! {
-        #[verifier(external_body)]
-        spec fn f_no_body(x: nat) -> nat {
-            0
-        }
+        uninterp spec fn f_no_body(x: nat) -> nat;
 
-        #[verifier(external_body)]
-        spec fn g_no_body(x: nat) -> nat {
-            0
-        }
+        uninterp spec fn g_no_body(x: nat) -> nat;
 
         fn test() {
             assert(f_no_body(5) != f_no_body(6)) by (compute_only); // FAILS
@@ -324,15 +312,9 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] fn_calls_bad2 verus_code! {
-        #[verifier(external_body)]
-        spec fn f_no_body(x: nat) -> nat {
-            0
-        }
+        uninterp spec fn f_no_body(x: nat) -> nat;
 
-        #[verifier(external_body)]
-        spec fn g_no_body(x: nat) -> nat {
-            0
-        }
+        uninterp spec fn g_no_body(x: nat) -> nat;
 
         fn test() {
             assert(f_no_body(5) == g_no_body(5)) by (compute_only); // FAILS
@@ -845,4 +827,65 @@ test_verify_one_file! {
             assert(*old(a) == *a) by(compute_only);
         }
     } => Err(err) => assert_vir_error_msg(err, "assert_by_compute_only failed to simplify down to true")
+}
+
+test_verify_one_file! {
+    #[test] seq_new_len_overflow_issue2177 verus_code! {
+        use vstd::prelude::*;
+        proof fn test() {
+            assert(Seq::<int>::new(18446744073709551616nat, |i: int| 0int).len() == 0) by (compute_only);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Proof by computation included a closure literal that wasn't applied.  This is not yet supported.")
+}
+
+test_verify_one_file! {
+    #[test] uninterp_fn_type_args_differ_github2766 verus_code! {
+        use vstd::layout::size_of;
+        proof fn test() {
+            broadcast use vstd::layout::layout_of_primitives;
+            assert(size_of::<u8>() == size_of::<u64>()) by (compute_only); // FAILS
+        }
+    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
+}
+
+test_verify_one_file! {
+    #[test] uninterp_fn_type_args_differ_by_decoration verus_code! {
+        use vstd::layout::size_of;
+        proof fn test() {
+            assert(size_of::<&u8>() == size_of::<u8>()) by (compute_only); // FAILS
+        }
+    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
+}
+
+test_verify_one_file! {
+    #[test] uninterp_type_args_match verus_code! {
+        uninterp spec fn f<A, B>(x: nat) -> nat;
+        proof fn test_function(n: nat) {
+            assert(f::<u8, bool>(n) == f::<u8, bool>(n)) by (compute_only);
+            assert(f::<&u8, bool>(n) == f::<&u8, bool>(n)) by (compute_only);
+        }
+
+        struct S<A> { a: A, b: nat }
+
+        proof fn test_ctro(x: S<u8>) {
+            assert(S { a: 1u8, b: 2 } == S { a: 1u8, b: 2 }) by (compute_only);
+            assert(S { a: 1u8, b: 2 } == &S { a: 1u8, b: 2 }) by (compute_only);
+            assert(S { a: x.a, b: 2 } == S { a: x.a, b: 2 }) by (compute_only);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] memoized_fn_type_args_differ verus_code! {
+        uninterp spec fn g<A>() -> nat;
+
+        // The interpreter caches the results of memoized calls, so the cache's key
+        // must account for the type arguments, not just the value arguments
+        #[verifier::memoize]
+        spec fn h<A>(x: nat) -> nat { g::<A>() + x }
+
+        proof fn test() {
+            assert(h::<u8>(1) == h::<u64>(1)) by (compute_only); // FAILS
+        }
+    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
 }

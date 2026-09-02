@@ -22,6 +22,10 @@
 #![cfg_attr(verus_keep_ghost, feature(slice_index_methods))]
 #![cfg_attr(all(feature = "alloc", verus_keep_ghost), feature(liballoc_internals))]
 #![cfg_attr(verus_keep_ghost, feature(nonzero_internals))]
+#![cfg_attr(verus_keep_ghost, feature(hint_must_use))]
+#![cfg_attr(verus_keep_ghost, feature(fmt_internals))]
+#![cfg_attr(verus_keep_ghost, feature(fmt_arguments_from_str))]
+#![cfg_attr(verus_keep_ghost, feature(panic_internals))]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
@@ -102,7 +106,7 @@ pub broadcast group group_vstd_default {
     //
     // basic Verus math, types, and features
     //
-    seq::group_seq_axioms,
+    seq::group_seq_lemmas,
     seq_lib::group_seq_lib_default,
     map::group_map_lemmas,
     set::group_set_lemmas,
@@ -127,9 +131,10 @@ pub broadcast group group_vstd_default {
     // core std_specs
     //
     std_specs::range::group_range_axioms,
+    std_specs::slice::group_slice_axioms,
     std_specs::bits::group_bits_axioms,
     std_specs::control_flow::group_control_flow_axioms,
-    std_specs::slice::group_slice_axioms,
+    std_specs::fmt::group_fmt_axioms,
     std_specs::manually_drop::group_manually_drop_axioms,
     std_specs::iter::group_iter_axioms,
     //

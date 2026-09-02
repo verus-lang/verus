@@ -359,6 +359,29 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] raw_borrow_outside_verified_code code! {
+        use vstd::prelude::*;
+
+        fn raw_borrow(n: &u64) -> impl Sized {
+            let _x = &raw const n;
+            42
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // Ensure that diagnostic is emitted rather than an internal error
+    #[test] raw_borrow_not_supported_in_verified_code verus_code! {
+        use vstd::prelude::*;
+
+        fn raw_borrow(n: &u64) -> impl Sized {
+            let _x = &raw const n;
+            42
+        }
+    } => Err(err) => assert_vir_error_msg(err, "raw borrows")
+}
+
+test_verify_one_file! {
     #[test] not_supported_deref_ptr verus_code! {
         pub fn run(x: *mut u8) {
             unsafe { let y = *x; }

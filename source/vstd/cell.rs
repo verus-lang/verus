@@ -293,7 +293,6 @@ impl<V> PCell<V> {
 #[cfg_attr(not(verus_verify_core), deprecated = "use `vstd::cell::pcell::PCell` or `vstd::cell::pcell_maybe_uninit::PCell` instead")]
 impl<V: Copy> PCell<V> {
     #[inline(always)]
-    #[verifier::external_body]
     pub fn write(&self, Tracked(perm): Tracked<&mut PointsTo<V>>, in_v: V)
         requires
             self.id() == old(perm)@.pcell,

@@ -1,10 +1,16 @@
-use crate::ast::{BinaryOp, FieldOpr, Typ, UnaryOp, UnaryOpr, VarIdent};
+use crate::ast::{FieldOpr, Typ, TypX, UnaryOp, UnaryOpr, VarIdent};
+use crate::ast_util::undecorate_typ;
 use crate::def::Spanned;
 use crate::messages::Span;
-use crate::sst::{Dest, Exp, ExpX, LocalDecl, LocalDeclKind, Pars, Stm, StmX, Stms, UniqueIdent};
+use crate::poly::typ_is_poly;
+use crate::sst::{
+    BinaryOp, Dest, Exp, ExpX, LocalDecl, LocalDeclKind, Pars, Stm, StmX, Stms, UniqueIdent,
+};
+use crate::sst_to_air::{apply_field, try_unbox};
 use crate::sst_visitor::exp_visitor_check;
-use air::ast::{ExprX, StmtX};
+use air::ast::{ExprX, Ident, StmtX};
 use air::scope_map::ScopeMap;
+use indexmap::map::Entry;
 use indexmap::{IndexMap, IndexSet};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -31,21 +37,6 @@ pub(crate) fn get_loc_var(exp: &Exp) -> UniqueIdent {
         ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), x) => get_loc_var(x),
         ExpX::Binary(BinaryOp::Index(..), x, _idx) => get_loc_var(x),
         ExpX::VarLoc(x) => x.clone(),
-        _ => panic!("lhs {:?} unsupported", exp),
-    }
-}
-
-pub(crate) fn get_loc_var_typ(exp: &Exp) -> (UniqueIdent, Typ, bool) {
-    match &exp.x {
-        ExpX::Unary(UnaryOp::MutRefCurrent, inner) => match &inner.x {
-            ExpX::VarLoc(x) => (x.clone(), inner.typ.clone(), true),
-            _ => get_loc_var_typ(inner),
-        },
-        ExpX::Loc(x) => get_loc_var_typ(x),
-        ExpX::UnaryOpr(UnaryOpr::Field { .. }, x) => get_loc_var_typ(x),
-        ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), x) => get_loc_var_typ(x),
-        ExpX::Binary(BinaryOp::Index(..), x, _idx) => get_loc_var_typ(x),
-        ExpX::VarLoc(x) => (x.clone(), exp.typ.clone(), false),
         _ => panic!("lhs {:?} unsupported", exp),
     }
 }
@@ -82,6 +73,7 @@ pub(crate) fn stm_get_mutations_shallow(stm: &Stm, m: &mut HashMap<VarIdent, Spa
         | StmX::Assume(..)
         | StmX::Fuel(..)
         | StmX::RevealString(..)
+        | StmX::RevealByteString(..)
         | StmX::DeadEnd(..)
         | StmX::Return { .. }
         | StmX::BreakOrContinue { .. }
@@ -95,7 +87,7 @@ pub(crate) fn stm_get_mutations_shallow(stm: &Stm, m: &mut HashMap<VarIdent, Spa
 }
 
 /// If there's an assignment associated with this Stm (shallowly), return it.
-/// There can be at most one (in new-mut-ref, they no longer appear in calls)
+/// There can be at most one (in new-mut-ref, they no longer appear in call arguments)
 pub(crate) fn stm_get_assignment_shallow(stm: &Stm) -> Option<&Exp> {
     match &stm.x {
         StmX::Call { dest: Some(dest), .. } | StmX::Assign { lhs: dest, .. } => {
@@ -110,6 +102,7 @@ pub(crate) fn stm_get_assignment_shallow(stm: &Stm) -> Option<&Exp> {
         | StmX::Assume(..)
         | StmX::Fuel(..)
         | StmX::RevealString(..)
+        | StmX::RevealByteString(..)
         | StmX::DeadEnd(..)
         | StmX::Return { .. }
         | StmX::BreakOrContinue { .. }
@@ -353,6 +346,7 @@ fn stm_assign(
         | StmX::Assume(_)
         | StmX::Fuel(..)
         | StmX::RevealString(_)
+        | StmX::RevealByteString(..)
         | StmX::Return { .. }
         | StmX::Air(_) => stm.clone(),
         StmX::Assign { lhs: Dest { dest, is_init }, rhs: _ } => {
@@ -401,6 +395,7 @@ fn stm_assign(
             Spanned::new(stm.span.clone(), StmX::If(cond.clone(), lhs, rhs))
         }
         StmX::Loop {
+            pre_stms,
             loop_isolation,
             is_for_loop,
             id,
@@ -412,8 +407,11 @@ fn stm_assign(
             typ_inv_vars,
             modified_vars,
             au_branch_bool,
-            pre_modified_params,
+            pre_modified_params_incl,
+            pre_modified_params_excl,
         } => {
+            let pre_stms = stms_assign(assign_map, declared, assigned, modified, pre_stms);
+
             let mut inner_modified = HavocSet::new();
             let cond = if let Some((cond_stm, cond_exp)) = cond {
                 let cond_stm =
@@ -438,6 +436,7 @@ fn stm_assign(
                 typ_inv_vars.push((x.clone(), declared[x].clone()));
             }
             let loop_x = StmX::Loop {
+                pre_stms: pre_stms,
                 loop_isolation: *loop_isolation,
                 is_for_loop: *is_for_loop,
                 id: *id,
@@ -449,7 +448,8 @@ fn stm_assign(
                 typ_inv_vars: Arc::new(typ_inv_vars),
                 modified_vars: Some(Arc::new(inner_modified)),
                 au_branch_bool: au_branch_bool.clone(),
-                pre_modified_params: pre_modified_params.clone(),
+                pre_modified_params_incl: pre_modified_params_incl.clone(),
+                pre_modified_params_excl: pre_modified_params_excl.clone(),
             };
             Spanned::new(stm.span.clone(), loop_x)
         }
@@ -497,6 +497,7 @@ fn stm_mutations(param_typs: &[(VarIdent, Typ)], mutations: &mut HavocSet, stm: 
         | StmX::Assume(_)
         | StmX::Fuel(..)
         | StmX::RevealString(_)
+        | StmX::RevealByteString(_)
         | StmX::Return { .. }
         | StmX::BreakOrContinue { .. }
         | StmX::Air(_) => stm.clone(),
@@ -563,6 +564,7 @@ fn stm_mutations(param_typs: &[(VarIdent, Typ)], mutations: &mut HavocSet, stm: 
             stm.new_x(StmX::If(cond.clone(), thn, Some(els)))
         }
         StmX::Loop {
+            pre_stms,
             loop_isolation,
             is_for_loop,
             id,
@@ -573,10 +575,16 @@ fn stm_mutations(param_typs: &[(VarIdent, Typ)], mutations: &mut HavocSet, stm: 
             decrease,
             typ_inv_vars,
             modified_vars,
-            pre_modified_params,
+            pre_modified_params_incl,
+            pre_modified_params_excl,
             au_branch_bool,
         } => {
-            assert!(pre_modified_params.is_none());
+            assert!(pre_modified_params_incl.is_none());
+            assert!(pre_modified_params_excl.is_none());
+
+            let pre_modified_params_excl = mutations.filter_by_params(param_typs);
+
+            let pre_stms = stms_mutations(param_typs, mutations, pre_stms);
 
             mutations.merge_with(&modified_vars.as_ref().unwrap());
 
@@ -589,9 +597,10 @@ fn stm_mutations(param_typs: &[(VarIdent, Typ)], mutations: &mut HavocSet, stm: 
             };
             let body = stm_mutations(param_typs, mutations, body);
 
-            let pre_modified_params = mutations.filter_by_params(param_typs);
+            let pre_modified_params_incl = mutations.filter_by_params(param_typs);
 
             let loopx = StmX::Loop {
+                pre_stms,
                 loop_isolation: *loop_isolation,
                 is_for_loop: *is_for_loop,
                 id: *id,
@@ -602,7 +611,8 @@ fn stm_mutations(param_typs: &[(VarIdent, Typ)], mutations: &mut HavocSet, stm: 
                 decrease: decrease.clone(),
                 typ_inv_vars: typ_inv_vars.clone(),
                 modified_vars: modified_vars.clone(),
-                pre_modified_params: Some(Arc::new(pre_modified_params)),
+                pre_modified_params_incl: Some(Arc::new(pre_modified_params_incl)),
+                pre_modified_params_excl: Some(Arc::new(pre_modified_params_excl)),
                 au_branch_bool: au_branch_bool.clone(),
             };
             stm.new_x(loopx)
@@ -625,20 +635,52 @@ fn stm_mutations(param_typs: &[(VarIdent, Typ)], mutations: &mut HavocSet, stm: 
     }
 }
 
+fn stms_mutations(param_typs: &[(VarIdent, Typ)], mutations: &mut HavocSet, stms: &Stms) -> Stms {
+    let mut v = vec![];
+    for stm in stms.iter() {
+        v.push(stm_mutations(param_typs, mutations, stm));
+    }
+    Arc::new(v)
+}
+
 /// Represents a set of locations that need to be havoc'ed
 #[derive(Clone, Debug, ToDebugSNode)]
 pub struct HavocSet {
-    pub vars: IndexMap<VarIdent, (Typ, HavocVar)>,
+    pub vars: IndexMap<VarIdent, SublocationTree>,
 }
 
 /// Represents, for a given local, the set of sublocations that need havocing
-/// At present, the granularity is only
-/// "all" or "just the 'current' field of a mutable reference",
-/// but in principle we could track individual fields of a tuple/struct.
-#[derive(Clone, Debug, ToDebugSNode, Copy)]
-pub enum HavocVar {
-    All,
-    Current,
+#[derive(Clone, Debug, ToDebugSNode)]
+pub struct SublocationTree {
+    local: VarIdent,
+    root: SublocationNode,
+}
+
+#[derive(Clone, Debug, ToDebugSNode)]
+pub struct SublocationNode {
+    typ: Typ,
+    /// None means havoc this entire location
+    children: Option<Vec<(ProjectionKind, SublocationNode)>>,
+}
+
+/// A single sublocation
+#[derive(Clone, Debug)]
+pub struct Sublocation {
+    local: VarIdent,
+    local_typ: Typ,
+    projections: Vec<Projection>,
+}
+
+#[derive(Clone, Debug, ToDebugSNode)]
+struct Projection {
+    typ: Typ,
+    kind: ProjectionKind,
+}
+
+#[derive(Clone, Debug, ToDebugSNode)]
+enum ProjectionKind {
+    MutRefCurrent,
+    Field(FieldOpr),
 }
 
 impl HavocSet {
@@ -647,29 +689,27 @@ impl HavocSet {
     }
 
     fn insert(&mut self, loc: &Exp) {
-        let (ident, typ, mut_ref_cur) = get_loc_var_typ(loc);
+        let subloc = loc_to_subloc(loc).0;
 
-        let hvar = if mut_ref_cur { HavocVar::Current } else { HavocVar::All };
-
-        match self.vars.get(&ident) {
-            Some((typ, h2)) => {
-                self.vars.insert(ident, (typ.clone(), h2.join(&hvar)));
+        match self.vars.entry(subloc.local.clone()) {
+            Entry::Occupied(mut entry) => {
+                entry.get_mut().merge_subloc(&subloc);
             }
-            None => {
-                self.vars.insert(ident, (typ, hvar));
+            Entry::Vacant(entry) => {
+                entry.insert(SublocationTree::from_subloc(&subloc));
             }
         }
     }
 
     /// Merge other into self
     fn merge_with(&mut self, other: &Self) {
-        for (ident, (typ, hvar)) in other.vars.iter() {
-            match self.vars.get(ident) {
-                Some((typ, h2)) => {
-                    self.vars.insert(ident.clone(), (typ.clone(), h2.join(hvar)));
+        for (ident, other_tree) in other.vars.iter() {
+            match self.vars.entry(ident.clone()) {
+                Entry::Occupied(mut entry) => {
+                    entry.get_mut().merge_tree(other_tree);
                 }
-                None => {
-                    self.vars.insert(ident.clone(), (typ.clone(), hvar.clone()));
+                Entry::Vacant(entry) => {
+                    entry.insert(other_tree.clone());
                 }
             }
         }
@@ -701,48 +741,255 @@ impl HavocSet {
         snapshot_name: &str,
         stmts: &mut Vec<air::ast::Stmt>,
     ) {
-        for (var, (typ, havoc_var)) in self.vars.iter() {
-            havoc_var.emit_havoc(ctx, var, typ, snapshot_name, stmts);
+        for (_var, tree) in self.vars.iter() {
+            tree.emit_havoc(ctx, snapshot_name, stmts);
         }
     }
 }
 
-impl HavocVar {
-    fn join(&self, other: &Self) -> Self {
-        match (self, other) {
-            (HavocVar::Current, HavocVar::Current) => HavocVar::Current,
-            _ => HavocVar::All,
+fn loc_to_subloc(exp: &Exp) -> (Sublocation, bool) {
+    match &exp.x {
+        ExpX::Loc(e) => loc_to_subloc(e),
+        ExpX::VarLoc(x) => (
+            Sublocation { local: x.clone(), local_typ: exp.typ.clone(), projections: vec![] },
+            false,
+        ),
+        ExpX::Unary(UnaryOp::MutRefCurrent, e) => {
+            let (mut subloc, done) = loc_to_subloc(e);
+            if !done {
+                subloc
+                    .projections
+                    .push(Projection { typ: exp.typ.clone(), kind: ProjectionKind::MutRefCurrent });
+            }
+            (subloc, done)
+        }
+        ExpX::UnaryOpr(UnaryOpr::Field(field_opr), e) => {
+            let (mut subloc, done) = loc_to_subloc(e);
+            if !done {
+                subloc.projections.push(Projection {
+                    typ: exp.typ.clone(),
+                    kind: ProjectionKind::Field(field_opr.clone()),
+                });
+            }
+            (subloc, done)
+        }
+        ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), e) => loc_to_subloc(e),
+        ExpX::Binary(BinaryOp::Index(..), e, _idx) => {
+            let (subloc, _) = loc_to_subloc(e);
+            (subloc, true)
+        }
+        _ => {
+            panic!("loc_to_subloc got unexpected exp: {:?}", exp);
+        }
+    }
+}
+
+fn equiv_proj_kind(a: &ProjectionKind, b: &ProjectionKind) -> bool {
+    match (a, b) {
+        (ProjectionKind::MutRefCurrent, ProjectionKind::MutRefCurrent) => true,
+        (ProjectionKind::Field(f1), ProjectionKind::Field(f2)) => {
+            f1.variant == f2.variant && f1.field == f2.field
+        }
+
+        (ProjectionKind::MutRefCurrent, _) | (ProjectionKind::Field(_), _) => false,
+    }
+}
+
+impl ProjectionKind {
+    fn is_field(&self, variant: &Ident, field: &Ident) -> bool {
+        match self {
+            ProjectionKind::MutRefCurrent => false,
+            ProjectionKind::Field(opr) => &opr.variant == variant && &opr.field == field,
+        }
+    }
+}
+
+impl SublocationTree {
+    fn from_subloc(subloc: &Sublocation) -> SublocationTree {
+        let mut tree = SublocationTree {
+            local: subloc.local.clone(),
+            root: SublocationNode { typ: subloc.local_typ.clone(), children: None },
+        };
+        let mut children_ref = &mut tree.root.children;
+        for p in subloc.projections.iter() {
+            *children_ref = Some(vec![(
+                p.kind.clone(),
+                SublocationNode { typ: p.typ.clone(), children: None },
+            )]);
+            children_ref = &mut children_ref.as_mut().unwrap()[0].1.children;
+        }
+        tree
+    }
+
+    fn merge_subloc(&mut self, subloc: &Sublocation) {
+        let mut children_ref = &mut self.root.children;
+        let mut fresh_path = false;
+        for p in subloc.projections.iter() {
+            match children_ref {
+                Some(children_vec_ref) => {
+                    let idx = children_vec_ref
+                        .iter()
+                        .position(|(kind, _)| equiv_proj_kind(&p.kind, kind));
+                    match idx {
+                        Some(idx) => {
+                            children_ref = &mut children_vec_ref[idx].1.children;
+                        }
+                        None => {
+                            let r = children_vec_ref.push_mut((
+                                p.kind.clone(),
+                                SublocationNode { typ: p.typ.clone(), children: None },
+                            ));
+                            children_ref = &mut r.1.children;
+                            fresh_path = true;
+                        }
+                    }
+                }
+                None => {
+                    if fresh_path {
+                        *children_ref = Some(vec![(
+                            p.kind.clone(),
+                            SublocationNode { typ: p.typ.clone(), children: None },
+                        )]);
+                        children_ref = &mut children_ref.as_mut().unwrap()[0].1.children;
+                    } else {
+                        return;
+                    }
+                }
+            }
+        }
+        *children_ref = None;
+    }
+
+    fn merge_tree(&mut self, other: &Self) {
+        Self::merge_children_lists(&mut self.root.children, &other.root.children);
+    }
+
+    fn merge_children_lists(
+        a: &mut Option<Vec<(ProjectionKind, SublocationNode)>>,
+        b: &Option<Vec<(ProjectionKind, SublocationNode)>>,
+    ) {
+        let Some(children1) = a else {
+            return;
+        };
+        let Some(children2) = b else {
+            *a = None;
+            return;
+        };
+
+        for (b_kind, b_node) in children2.iter() {
+            let idx = children1.iter().position(|(kind, _)| equiv_proj_kind(&b_kind, kind));
+            match idx {
+                Some(idx) => {
+                    Self::merge_children_lists(&mut children1[idx].1.children, &b_node.children);
+                }
+                None => {
+                    children1.push((b_kind.clone(), b_node.clone()));
+                }
+            }
         }
     }
 
     fn emit_havoc(
         &self,
         ctx: &crate::context::Ctx,
-        var: &VarIdent,
-        typ: &Typ,
         snapshot_name: &str,
         stmts: &mut Vec<air::ast::Stmt>,
     ) {
-        let uid = crate::def::suffix_local_unique_id(&var);
+        let uid = crate::def::suffix_local_unique_id(&self.local);
         stmts.push(Arc::new(StmtX::Havoc(uid.clone())));
 
+        let typ = &self.root.typ;
         let typ_inv = crate::sst_to_air::typ_invariant(ctx, typ, &air::ast_util::ident_var(&uid));
         if let Some(expr) = typ_inv {
             stmts.push(Arc::new(StmtX::Assume(expr)));
         }
 
-        match self {
-            HavocVar::All => {}
-            HavocVar::Current => {
-                // If only the 'current' is havoc'ed, we need to preserve the future:
-                let old_var =
-                    Arc::new(ExprX::Old(crate::def::snapshot_ident(snapshot_name), uid.clone()));
-                let new_var = air::ast_util::string_var(&uid);
+        let old_var = Arc::new(ExprX::Old(crate::def::snapshot_ident(snapshot_name), uid.clone()));
+        let new_var = air::ast_util::string_var(&uid);
+        let mut equalities = vec![];
+        Self::gather_preserved_locations(ctx, &self.root, &old_var, &new_var, &mut equalities);
+        for (e1, e2) in equalities.into_iter() {
+            let eq = Arc::new(ExprX::Binary(air::ast::BinaryOp::Eq, e1, e2));
+            stmts.push(Arc::new(StmtX::Assume(eq)));
+        }
+    }
+
+    fn gather_preserved_locations(
+        ctx: &crate::context::Ctx,
+        node: &SublocationNode,
+        loc1: &air::ast::Expr,
+        loc2: &air::ast::Expr,
+        out: &mut Vec<(air::ast::Expr, air::ast::Expr)>,
+    ) {
+        let Some(children) = &node.children else {
+            // everything is havoc'ed; nothing to preserve
+            return;
+        };
+
+        match &children[0].0 {
+            ProjectionKind::MutRefCurrent => {
+                assert!(children.len() == 1);
                 let future = Arc::new(crate::def::MUT_REF_FUTURE.to_string());
-                let old_future = Arc::new(ExprX::Apply(future.clone(), Arc::new(vec![old_var])));
-                let new_future = Arc::new(ExprX::Apply(future, Arc::new(vec![new_var])));
-                let eq = Arc::new(ExprX::Binary(air::ast::BinaryOp::Eq, old_future, new_future));
-                stmts.push(Arc::new(StmtX::Assume(eq)));
+                let f1 = Arc::new(ExprX::Apply(future.clone(), Arc::new(vec![loc1.clone()])));
+                let f2 = Arc::new(ExprX::Apply(future.clone(), Arc::new(vec![loc2.clone()])));
+                out.push((f1, f2));
+
+                let current = Arc::new(crate::def::MUT_REF_CURRENT.to_string());
+                let c1 = Arc::new(ExprX::Apply(current.clone(), Arc::new(vec![loc1.clone()])));
+                let c2 = Arc::new(ExprX::Apply(current.clone(), Arc::new(vec![loc2.clone()])));
+
+                Self::gather_preserved_locations(ctx, &children[0].1, &c1, &c2, out);
+            }
+            ProjectionKind::Field(first_field_opr) => {
+                let datatype = &ctx.datatype_map[&first_field_opr.datatype];
+                if datatype.x.variants.len() > 1 {
+                    // TODO: should handle enums too
+                    return;
+                }
+                let variant = &datatype.x.variants[0];
+                for field in variant.fields.iter() {
+                    let mut f1 = loc1.clone();
+                    let mut f2 = loc2.clone();
+                    let mut base_typ = &node.typ;
+
+                    let undecorated_typ = undecorate_typ(&node.typ);
+                    if let TypX::Boxed(native_typ) = &*undecorated_typ
+                        && !typ_is_poly(ctx, native_typ)
+                    {
+                        f1 = try_unbox(ctx, f1, native_typ).expect("try_unbox");
+                        f2 = try_unbox(ctx, f2, native_typ).expect("try_unbox");
+                        base_typ = native_typ;
+                    }
+
+                    let f1 = apply_field(
+                        ctx,
+                        f1,
+                        base_typ,
+                        &datatype.x.name,
+                        &variant.name,
+                        &field.name,
+                    );
+                    let f2 = apply_field(
+                        ctx,
+                        f2,
+                        base_typ,
+                        &datatype.x.name,
+                        &variant.name,
+                        &field.name,
+                    );
+
+                    match children
+                        .iter()
+                        .position(|(kind, _)| kind.is_field(&variant.name, &field.name))
+                    {
+                        Some(idx) => {
+                            Self::gather_preserved_locations(ctx, &children[idx].1, &f1, &f2, out);
+                        }
+                        None => {
+                            out.push((f1, f2));
+                        }
+                    }
+                }
             }
         }
     }

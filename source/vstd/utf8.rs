@@ -30,7 +30,7 @@ use super::seq::*;
 
 verus! {
 
-broadcast use super::seq::group_seq_axioms;
+broadcast use super::seq::group_seq_lemmas;
 /* Decoding UTF-8 to chars */
 
 /// True when the given byte conforms to the bit pattern for the first byte of a 1-byte UTF-8 encoding of a single codepoint.
@@ -256,7 +256,7 @@ proof fn lemma_pop_first_scalar_decreases(bytes: Seq<u8>)
 {
     assert(length_of_first_scalar(bytes) <= bytes.len() as int);
     assert(pop_first_scalar(bytes).len() == bytes.len() as int - length_of_first_scalar(bytes)) by {
-        axiom_seq_subrange_len(bytes, length_of_first_scalar(bytes), bytes.len() as int)
+        lemma_seq_subrange_len(bytes, length_of_first_scalar(bytes), bytes.len() as int)
     };
 }
 
@@ -458,6 +458,49 @@ pub open spec fn encode_utf8(chars: Seq<char>) -> Seq<u8>
     } else {
         encode_scalar(chars[0] as u32) + encode_utf8(chars.drop_first())
     }
+}
+
+// See `vstd::std_specs::char` for the `char::len_utf8`/`char::is_whitespace`
+// `assume_specification`s that relate this module's model to those real
+// std-library methods.
+/// [`encode_utf8`] distributes over sequence concatenation.
+pub broadcast proof fn encode_utf8_concat(a: Seq<char>, b: Seq<char>)
+    ensures
+        #[trigger] encode_utf8(a + b) == encode_utf8(a) + encode_utf8(b),
+    decreases a.len(),
+{
+    if a.len() == 0 {
+        assert(a + b =~= b);
+    } else {
+        assert((a + b).drop_first() =~= a.drop_first() + b);
+        encode_utf8_concat(a.drop_first(), b);
+        assert(encode_scalar(a[0] as u32) + (encode_utf8(a.drop_first()) + encode_utf8(b)) =~= (
+        encode_scalar(a[0] as u32) + encode_utf8(a.drop_first())) + encode_utf8(b));
+    }
+}
+
+/// Specialization of [`encode_utf8_concat`] for appending one `char`.
+pub broadcast proof fn encode_utf8_push(chars: Seq<char>, c: char)
+    ensures
+        #[trigger] encode_utf8(chars.push(c)) == encode_utf8(chars) + encode_scalar(c as u32),
+{
+    assert(chars.push(c) =~= chars + seq![c]);
+    encode_utf8_concat(chars, seq![c]);
+    assert(seq![c].drop_first() =~= Seq::<char>::empty());
+    assert(encode_utf8(seq![c]) =~= encode_scalar(c as u32) + encode_utf8(Seq::<char>::empty()));
+}
+
+/// Growing a prefix by at least one `char` strictly increases its encoded
+/// byte length.
+pub proof fn lemma_encode_utf8_len_strictly_monotonic(s: Seq<char>, i: int, j: int)
+    requires
+        0 <= i < j <= s.len(),
+    ensures
+        encode_utf8(s.subrange(0, i)).len() < encode_utf8(s.subrange(0, j)).len(),
+{
+    assert(s.subrange(0, i) + s.subrange(i, j) =~= s.subrange(0, j));
+    encode_utf8_concat(s.subrange(0, i), s.subrange(i, j));
+    assert(s.subrange(i, j).len() == j - i);
 }
 
 /* Correspondence between encode_utf8 and decode_utf8 definitions */
@@ -880,7 +923,7 @@ pub broadcast proof fn valid_utf8_split(bytes: Seq<u8>, index: int)
     if index == 0 {
         assert(bytes =~= bytes.subrange(index, bytes.len() as int));
     } else {
-        broadcast use axiom_seq_subrange_len;
+        broadcast use lemma_seq_subrange_len;
 
         let s1 = bytes.subrange(0, index);
         let s2 = bytes.subrange(index, bytes.len() as int);
@@ -1124,6 +1167,8 @@ pub broadcast group group_utf8_lib {
     is_ascii_chars_encode_utf8,
     is_ascii_chars_nat_bound,
     is_ascii_chars_concat,
+    encode_utf8_concat,
+    encode_utf8_push,
 }
 
 } // verus!

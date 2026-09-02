@@ -1,6 +1,6 @@
 use super::super::prelude::*;
 use super::super::seq::{
-    axiom_seq_empty, axiom_seq_subrange_index, axiom_seq_subrange_len, group_seq_axioms,
+    group_seq_lemmas, lemma_seq_empty, lemma_seq_subrange_index, lemma_seq_subrange_len,
 };
 
 use verus as verus_;
@@ -63,13 +63,6 @@ pub trait ExIterator {
     /// and the user will have to provide an explicit decreases clause.
     spec fn decrease(&self) -> Option<nat>;
 
-    /// Invariant relating the iterator to the initial expression that created it
-    /// (e.g., `my_vec.iter()`).  This allows for more ergonomic/intuitive invariants.
-    /// When the analysis can infer a spec initial value (by discovering a `when_used_as_spec`
-    /// annotation), the analysis places the value in init.
-    #[verifier::prophetic]
-    spec fn initial_value_relation(&self, init: &Self) -> bool;
-
     // If we can make a useful guess as to what the i-th value will be, return it.
     // Otherwise, return None.
     spec fn peek(&self, index: int) -> Option<Self::Item>;
@@ -80,8 +73,8 @@ pub trait ExIterator {
     //#[verifier::when_used_as_spec(into_rev_spec)]
     fn rev(self) -> (r: Rev<Self>)
         where Self: Sized,
-        default_ensures
-            self.obeys_prophetic_iter_laws() && self.initial_value_relation(&self) ==>
+        ensures
+            self.obeys_prophetic_iter_laws() ==>
                 r == into_rev_spec(self) && rev_post(self, r),
     ;
 
@@ -89,16 +82,18 @@ pub trait ExIterator {
         where
             B: FromIterator<Self::Item>,
             Self: Sized,
-        default_ensures
-            self.will_return_none(),
-            self.obeys_prophetic_iter_laws() && self.initial_value_relation(&self) ==>
+        ensures
+            self.obeys_prophetic_iter_laws() ==>
+                self.will_return_none() &&
                 FromIteratorSpec::from_iter_ensures(self.remaining(), collection),
     ;
 
     fn find<P>(&mut self, predicate: P) -> (r: Option<Self::Item>)
         where Self: Sized,
             P: FnMut(&Self::Item) -> bool
-        default_ensures
+        requires
+            forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(predicate, (&self.remaining()[k], )),
+        ensures
             // The iterator consistently obeys, completes, and decreases throughout its lifetime
             final(self).obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
             final(self).obeys_prophetic_iter_laws() ==> final(self).will_return_none() == old(self).will_return_none(),
@@ -135,7 +130,9 @@ pub trait ExIterator {
     fn all<F>(&mut self, f: F) -> (r: bool)
         where Self: Sized,
             F: FnMut(Self::Item) -> bool
-        default_ensures
+        requires
+            forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(f, (self.remaining()[k], )),
+        ensures
             // The iterator consistently obeys, completes, and decreases throughout its lifetime
             final(self).obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
             final(self).obeys_prophetic_iter_laws() ==> final(self).will_return_none() == old(self).will_return_none(),
@@ -166,7 +163,9 @@ pub trait ExIterator {
     fn any<F>(&mut self, f: F) -> (r: bool)
         where Self: Sized,
             F: FnMut(Self::Item) -> bool
-        default_ensures
+        requires
+            forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(f, (self.remaining()[k], )),
+        ensures
             // The iterator consistently obeys, completes, and decreases throughout its lifetime
             final(self).obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
             final(self).obeys_prophetic_iter_laws() ==> final(self).will_return_none() == old(self).will_return_none(),
@@ -293,6 +292,8 @@ pub struct ExRev<I>(Rev<I>);
 // Ghost accessor for the inner iterator
 pub uninterp spec fn rev_iter<I>(r: Rev<I>) -> I;
 
+// TODO: Do we still need this?
+
 // Spec version of Rev::new
 pub uninterp spec fn into_rev_spec<I>(i: I) -> Rev<I>;
 
@@ -306,7 +307,6 @@ pub uninterp spec fn rev_post<I>(i: I, r: Rev<I>) -> bool;
 pub broadcast axiom fn rev_postcondition<I: DoubleEndedIteratorSpec>(i: I)
     requires
         i.obeys_prophetic_iter_laws(),
-        i.initial_value_relation(&i),
         rev_post(i, into_rev_spec(i)),
     ensures
         {
@@ -314,7 +314,6 @@ pub broadcast axiom fn rev_postcondition<I: DoubleEndedIteratorSpec>(i: I)
             &&& IteratorSpec::remaining(&r) == IteratorSpec::remaining(&i).reverse()
             &&& IteratorSpec::will_return_none(&r) == i.will_return_none()
             &&& IteratorSpec::decrease(&r) is Some == i.decrease() is Some
-            &&& IteratorSpec::initial_value_relation(&r, &r)
         },
 ;
 
@@ -332,12 +331,6 @@ impl <I> IteratorSpecImpl for Rev<I>
     #[verifier::prophetic]
     closed spec fn will_return_none(&self) -> bool {
         rev_iter(*self).will_return_none()
-    }
-
-    #[verifier::prophetic]
-    open spec fn initial_value_relation(&self, init: &Self) -> bool {
-        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-        &&& rev_iter(*self).initial_value_relation(&rev_iter(*init))
     }
 
     closed spec fn decrease(&self) -> Option<nat> {
@@ -377,11 +370,6 @@ impl <I> IteratorSpecImpl for &mut I
         <I as IteratorSpec>::will_return_none(*self)
     }
 
-    #[verifier::prophetic]
-    open spec fn initial_value_relation(&self, init: &Self) -> bool {
-        <I as IteratorSpec>::initial_value_relation(*self, &**init)
-    }
-
     open spec fn decrease(&self) -> Option<nat> {
         <I as IteratorSpec>::decrease(*self)
     }
@@ -396,15 +384,14 @@ impl <I> IteratorSpecImpl for &mut I
  * for ergonomic for-loop support.
  ********************************************************************************/
 
-pub struct VerusForLoopWrapper<'a, I: Iterator> {
+pub struct VerusForLoopWrapper<I: Iterator> {
     pub index: Ghost<int>,
     pub snapshot: Ghost<I>,
-    pub init: Ghost<Option<&'a I>>,
     pub iter: I,
     pub history: Ghost<Seq<I::Item>>,
 }
 
-impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
+impl <I: Iterator> VerusForLoopWrapper<I> {
     #[verifier::prophetic]
     pub open spec fn seq(self) -> Seq<I::Item> {
         self.snapshot@.remaining()
@@ -432,7 +419,6 @@ impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
     #[verifier::prophetic]
     pub open spec fn wf(self) -> bool {
         &&& 0 <= self.index() <= self.seq().len()
-        &&& self.init@ matches Some(init) ==> self.snapshot@.initial_value_relation(init)
         &&& self.wf_inner()
         &&& self.iter.obeys_prophetic_iter_laws() ==> {
                 &&& self.history@.len() == self.index()
@@ -441,22 +427,18 @@ impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
     }
 
     /// Bundle the real iterator with its ghost state and loop invariants
-    pub fn new(iter: I, init: Ghost<Option<&'a I>>) -> (s: Self)
-        requires
-            init@ matches Some(i) ==> iter.initial_value_relation(i),
+    pub fn new(iter: I) -> (s: Self)
         ensures
             s.index == 0,
             s.snapshot == iter,
-            s.init == init,
             s.iter == iter,
             s.history@ == Seq::<I::Item>::empty(),
             s.wf(),
     {
-        broadcast use axiom_seq_empty;
+        broadcast use lemma_seq_empty;
         VerusForLoopWrapper {
             index: Ghost(0),
             snapshot: Ghost(iter),
-            init: init,
             iter,
             history: Ghost(Seq::empty()),
         }
@@ -471,7 +453,6 @@ impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
             final(self).seq() == old(self).seq(),
             final(self).index() == old(self).index() + if ret is Some { 1int } else { 0 },
             final(self).snapshot == old(self).snapshot,
-            final(self).init == old(self).init,
             final(self).iter.obeys_prophetic_iter_laws() ==> final(self).wf(),
             final(self).iter.obeys_prophetic_iter_laws() && ret is None ==>
                 final(self).snapshot@.will_return_none() && final(self).index() == final(self).seq().len(),
@@ -489,7 +470,7 @@ impl <'a, I: Iterator> VerusForLoopWrapper<'a, I> {
             self.history = Ghost(old_history.push(ret->0));
         }
         proof {
-            broadcast use group_seq_axioms;
+            broadcast use group_seq_lemmas;
             if ret.is_some() {
                 self.index@ = self.index@ + 1;
             }

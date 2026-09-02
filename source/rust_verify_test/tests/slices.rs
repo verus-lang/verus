@@ -78,8 +78,18 @@ test_verify_one_file! {
         fn test_set(x: &mut [u64])
             requires old(x).len() == 3
         {
-            x.set(0, 5);
-            x.set(1, 20);
+            x[0] = 5;
+            x[1] = 20;
+            assert(x[0] == 5);
+            assert(x[1] == 20);
+            assert(false); // FAILS
+        }
+
+        fn test_set_1(x: &mut [u64])
+            requires old(x).len() == 3
+        {
+            x[0] = 5;
+            x[1] = 20;
             assert(x[0] == 5);
             assert(x[1] == 20);
             assert(false); // FAILS
@@ -87,7 +97,7 @@ test_verify_one_file! {
 
         fn test_set3(x: &mut [u64])
         {
-            x.set(0, 5); // FAILS
+            x[0] = 5; // FAILS
         }
 
         fn test_is_empty<T>(x: &[T], y: &[T])
@@ -103,7 +113,7 @@ test_verify_one_file! {
             assert(!yb);
         }
 
-    } => Err(err) => assert_fails(err, 6)
+    } => Err(err) => assert_fails(err, 7)
 }
 
 test_verify_one_file! {
@@ -225,6 +235,319 @@ test_verify_one_file! {
             let x = s.index(3..7); // FAILS
         }
     } => Err(err) => assert_fails(err, 8)
+}
+
+test_verify_one_file! {
+    #[test] test_slice_index_range_to verus_code! {
+        use std::ops::Index;
+        use vstd::prelude::*;
+
+        fn range_to(s: &[u8]) {
+            assume(s.len() == 5);
+            let x = &s[..3];
+            assert(x@ == s@.subrange(0, 3));
+            assert(x@ == s@.subrange(0, 4)); // FAILS
+        }
+
+        fn range_to_bounds(s: &[u8]) {
+            assume(s.len() == 5);
+            let x = &s[..7]; // FAILS
+        }
+
+        fn range_to_index(s: &[u8]) {
+            assume(s.len() == 5);
+            let x = s.index(..3);
+            assert(x@ == s@.subrange(0, 3));
+            assert(x@ == s@.subrange(0, 4)); // FAILS
+        }
+
+        fn range_to_index_bounds(s: &[u8]) {
+            assume(s.len() == 5);
+            let x = s.index(..7); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 4)
+}
+
+test_verify_one_file! {
+    #[test] test_slice_index_range_from verus_code! {
+        use vstd::prelude::*;
+
+        fn range_from(s: &[u8]) {
+            assume(s.len() == 5);
+            let x = &s[2..];
+            assert(x@ == s@.subrange(2, 5));
+            assert(x@ == s@.subrange(1, 5)); // FAILS
+        }
+
+        fn range_from_bounds(s: &[u8]) {
+            assume(s.len() == 5);
+            let x = &s[7..]; // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] test_slice_index_range_to_inclusive verus_code! {
+        use vstd::prelude::*;
+
+        fn range_to_inclusive(s: &[u8]) {
+            assume(s.len() == 5);
+            let x = &s[..=3];
+            assert(x@ == s@.subrange(0, 4));
+            assert(x@ == s@.subrange(0, 3)); // FAILS
+        }
+
+        fn range_to_inclusive_bounds(s: &[u8]) {
+            assume(s.len() == 5);
+            let x = &s[..=5]; // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] test_slice_index_range_full verus_code! {
+        use vstd::prelude::*;
+
+        fn range_full(s: &[u8]) {
+            assume(s.len() == 5);
+            let x = &s[..];
+            assert(x@ == s@);
+            assert(x@.len() == 4); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_slice_index_range_inclusive verus_code! {
+        use vstd::prelude::*;
+
+        fn range_inclusive(s: &[u8]) {
+            assume(s.len() == 5);
+            let x = &s[1..=3];
+            assert(x@ == s@.subrange(1, 4));
+            assert(x@ == s@.subrange(1, 3)); // FAILS
+        }
+
+        fn range_inclusive_bounds(s: &[u8]) {
+            assume(s.len() == 5);
+            let x = &s[1..=5]; // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] test_slice_get_ranges verus_code! {
+        use vstd::prelude::*;
+
+        fn range_get(s: &[u8]) {
+            assume(s.len() == 5);
+            let some = s.get(1..3);
+            assert(some.is_some());
+            assert(some.unwrap()@ == s@.subrange(1, 3));
+            let none = s.get(1..7);
+            assert(none.is_none());
+        }
+
+        fn range_to_get(s: &[u8]) {
+            assume(s.len() == 5);
+            let some = s.get(..3);
+            assert(some.is_some());
+            assert(some.unwrap()@ == s@.subrange(0, 3));
+            let none = s.get(..7);
+            assert(none.is_none());
+        }
+
+        fn range_from_get(s: &[u8]) {
+            assume(s.len() == 5);
+            let some = s.get(2..);
+            assert(some.is_some());
+            assert(some.unwrap()@ == s@.subrange(2, 5));
+            let none = s.get(7..);
+            assert(none.is_none());
+        }
+
+        fn range_to_inclusive_get(s: &[u8]) {
+            assume(s.len() == 5);
+            let some = s.get(..=3);
+            assert(some.is_some());
+            assert(some.unwrap()@ == s@.subrange(0, 4));
+            let none = s.get(..=7);
+            assert(none.is_none());
+        }
+
+        fn range_full_get(s: &[u8]) {
+            assume(s.len() == 5);
+            let some = s.get(..);
+            assert(some.is_some());
+            assert(some.unwrap()@ == s@);
+        }
+
+        fn range_inclusive_get(s: &[u8]) {
+            assume(s.len() == 5);
+            let some = s.get(1..=3);
+            assert(some.is_some());
+            assert(some.unwrap()@ == s@.subrange(1, 4));
+            let none = s.get(1..=7);
+            assert(none.is_none());
+        }
+
+        fn range_get_wrong_fails(s: &[u8]) {
+            assume(s.len() == 5);
+            let some = s.get(1..3);
+            assert(some.unwrap()@ == s@.subrange(1, 4)); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+// Checks the mutable-indexing form (`&mut s[range]`) via the returned
+// sub-slice's own view, both before and after writing through it.
+test_verify_one_file! {
+    #[test] test_slice_index_mut_ranges verus_code! {
+        use vstd::prelude::*;
+
+        fn range_index_mut(s: &mut [u8]) {
+            assume(s.len() == 5);
+            let sub = &mut s[1..3];
+            assert(sub@ == old(s)@.subrange(1, 3));
+            sub[0] = 99;
+            sub[1] = 88;
+            assert(sub@ == seq![99, 88]);
+        }
+
+        fn range_to_index_mut(s: &mut [u8]) {
+            assume(s.len() == 5);
+            let sub = &mut s[..3];
+            assert(sub@ == old(s)@.subrange(0, 3));
+            sub[0] = 99;
+            assert(sub@[0] == 99);
+        }
+
+        fn range_from_index_mut(s: &mut [u8]) {
+            assume(s.len() == 5);
+            let sub = &mut s[2..];
+            assert(sub@ == old(s)@.subrange(2, 5));
+            sub[0] = 99;
+            assert(sub@[0] == 99);
+        }
+
+        fn range_to_inclusive_index_mut(s: &mut [u8]) {
+            assume(s.len() == 5);
+            let sub = &mut s[..=3];
+            assert(sub@ == old(s)@.subrange(0, 4));
+            sub[3] = 99;
+            assert(sub@[3] == 99);
+        }
+
+        fn range_full_index_mut(s: &mut [u8]) {
+            assume(s.len() == 5);
+            let sub = &mut s[..];
+            assert(sub@ == old(s)@);
+            sub[4] = 99;
+            assert(sub@[4] == 99);
+        }
+
+        fn range_inclusive_index_mut(s: &mut [u8]) {
+            assume(s.len() == 5);
+            let sub = &mut s[1..=3];
+            assert(sub@ == old(s)@.subrange(1, 4));
+            sub[0] = 99;
+            assert(sub@[0] == 99);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_slice_index_mut_ranges_fails verus_code! {
+        use vstd::prelude::*;
+
+        fn range_index_mut_wrong(s: &mut [u8]) {
+            assume(s.len() == 5);
+            let sub = &mut s[1..3];
+            sub[0] = 99;
+            assert(sub@[0] == 5); // FAILS
+        }
+
+        fn range_index_mut_wrong_len(s: &mut [u8]) {
+            assume(s.len() == 5);
+            let sub = &mut s[1..3];
+            assert(sub@.len() == 3); // FAILS: 1..3 has length 2, not 3
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+// Writing through a range-indexed mutable sub-slice reborrow, then observing
+// the *original* slice's own view after the reborrow's last use.
+test_verify_one_file! {
+    #[test] test_slice_index_mut_range_writeback verus_code! {
+        use vstd::prelude::*;
+
+        fn range_writeback(s: &mut [u8])
+            requires old(s)@.len() == 5,
+            ensures final(s)@ == old(s)@.update(1, 99).update(2, 88),
+        {
+            let sub = &mut s[1..3];
+            sub[0] = 99;
+            sub[1] = 88;
+        }
+
+        fn range_to_writeback(s: &mut [u8])
+            requires old(s)@.len() == 5,
+            ensures final(s)@ == old(s)@.update(0, 99).update(1, 88),
+        {
+            let sub = &mut s[..2];
+            sub[0] = 99;
+            sub[1] = 88;
+        }
+
+        fn range_from_writeback(s: &mut [u8])
+            requires old(s)@.len() == 5,
+            ensures final(s)@ == old(s)@.update(3, 99).update(4, 88),
+        {
+            let sub = &mut s[3..];
+            sub[0] = 99;
+            sub[1] = 88;
+        }
+
+        fn range_to_inclusive_writeback(s: &mut [u8])
+            requires old(s)@.len() == 5,
+            ensures final(s)@ == old(s)@.update(0, 99).update(1, 88),
+        {
+            let sub = &mut s[..=1];
+            sub[0] = 99;
+            sub[1] = 88;
+        }
+
+        fn range_full_writeback(s: &mut [u8])
+            requires old(s)@.len() == 5,
+            ensures final(s)@ == old(s)@.update(0, 99).update(4, 88),
+        {
+            let sub = &mut s[..];
+            sub[0] = 99;
+            sub[4] = 88;
+        }
+
+        fn range_inclusive_writeback(s: &mut [u8])
+            requires old(s)@.len() == 5,
+            ensures final(s)@ == old(s)@.update(1, 99).update(3, 88),
+        {
+            let sub = &mut s[1..=3];
+            sub[0] = 99;
+            sub[2] = 88;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_slice_index_mut_range_writeback_fails verus_code! {
+        use vstd::prelude::*;
+
+        fn range_writeback_wrong_value(s: &mut [u8]) {
+            assume(s.len() == 5);
+            let sub = &mut s[1..3];
+            sub[0] = 99;
+            assert(s@[1] == 5); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
@@ -558,14 +881,148 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_range_start_end_bound verus_code! {
         use vstd::prelude::*;
-        use vstd::std_specs::range::*;
-        use std::ops::RangeBounds;
+        use std::ops::{Bound, RangeBounds};
 
         fn test(r: &core::ops::Range<usize>) {
             let lb = r.start_bound();
             let ub = r.end_bound();
-            assert(spec_bound(lb) == SpecBound::<&usize>::Included(&r.start));
-            assert(spec_bound(ub) == SpecBound::<&usize>::Excluded(&r.end));
+            assert(lb == Bound::<&usize>::Included(&r.start));
+            assert(ub == Bound::<&usize>::Excluded(&r.end));
         }
     } => Ok(())
+}
+
+// verus-lang/verus#2674: a fresh range's end bound is still Included, but an
+// exhausted one is not - both directions in one file (one expected failure).
+test_verify_one_file! {
+    #[test] test_range_inclusive_end_bound_exhausted verus_code! {
+        use vstd::prelude::*;
+        use std::ops::{Bound, RangeBounds};
+
+        fn fresh() {
+            let r = 1u8..=5u8;
+            let end_is_included = match r.end_bound() {
+                Bound::Included(_) => true,
+                _ => false,
+            };
+            assert(end_is_included);
+        }
+
+        fn exhausted() {
+            let mut r = 1u8..=1u8;
+            let _ = r.next();
+            let end_is_included = match r.end_bound() {
+                Bound::Included(_) => true,
+                _ => false,
+            };
+            assert(end_is_included); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+// Same fact one level down: `slice_range_end` (used by `copy_within`) treats
+// an exhausted range's end as excluded, not included.
+test_verify_one_file! {
+    #[test] test_slice_range_end_treats_exhausted_range_as_excluded verus_code! {
+        use std::ops::RangeInclusive;
+        use vstd::prelude::*;
+        use vstd::std_specs::range::{slice_range_end, RangeInclusiveView};
+
+        proof fn correct(r: RangeInclusive<usize>)
+            requires
+                r@ == (RangeInclusiveView { start: 2, end: 2, exhausted: true }),
+        {
+            assert(slice_range_end(&r, 5) == 2);
+        }
+
+        proof fn rejects_included(r: RangeInclusive<usize>)
+            requires
+                r@ == (RangeInclusiveView { start: 2, end: 2, exhausted: true }),
+        {
+            assert(slice_range_end(&r, 5) == 3); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+// `is_empty()`: not empty fresh, empty once exhausted - even though
+// `start <= end` alone (1 <= 1) would wrongly say otherwise.
+test_verify_one_file! {
+    #[test] test_range_inclusive_is_empty verus_code! {
+        use vstd::prelude::*;
+
+        fn fresh_is_not_empty() {
+            let r = 1u8..=5u8;
+            let empty = r.is_empty();
+            assert(!empty);
+        }
+
+        fn exhausted_is_empty() {
+            let mut r = 1u8..=1u8;
+            let _ = r.next();
+            let empty = r.is_empty();
+            assert(empty);
+            assert(!empty); // FAILS: exhausted despite start <= end
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_spec_range_inclusive_is_empty_inverted_range verus_code! {
+        use std::ops::RangeInclusive;
+        use vstd::prelude::*;
+        use vstd::std_specs::range::{spec_range_inclusive_is_empty, RangeInclusiveView};
+
+        // start > end (never valid, never exhausted) is empty too - not
+        // exercised by test_range_inclusive_is_empty above, which only
+        // reaches emptiness via a real .next() call.
+        proof fn test_inverted(r: RangeInclusive<u8>)
+            requires
+                r@ == (RangeInclusiveView { start: 5u8, end: 1u8, exhausted: false }),
+        {
+            assert(spec_range_inclusive_is_empty(&r));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_range_inclusive_start_end_bound verus_code! {
+        use vstd::prelude::*;
+        use std::ops::{Bound, RangeBounds, RangeInclusive};
+
+        fn test() {
+            let mut r: RangeInclusive<u8> = 255..=255;
+            let _ = r.next();
+            let ub = r.end_bound();
+            assert(matches!(ub, Bound::Included(_))); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_split_at_checked verus_code! {
+        use vstd::prelude::*;
+
+        fn in_bounds(s: &[u8])
+            requires s@.len() == 5,
+        {
+            let r = s.split_at_checked(2);
+            assert(r matches Some((a, b))
+                && a@ == s@.subrange(0, 2)
+                && b@ == s@.subrange(2, 5));
+        }
+
+        fn out_of_bounds(s: &[u8])
+            requires s@.len() == 5,
+        {
+            let r = s.split_at_checked(6);
+            assert(r.is_none());
+        }
+
+        fn wrong_split(s: &[u8])
+            requires s@.len() == 5,
+        {
+            let r = s.split_at_checked(2);
+            assert(r matches Some((a, b)) && a@ == s@.subrange(0, 3)); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
 }

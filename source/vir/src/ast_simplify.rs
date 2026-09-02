@@ -11,13 +11,13 @@ use crate::ast::{
     AssocTypeImpl, AutospecUsage, BinaryOp, Binder, BoundsCheck, BuiltinSpecFun, ByRef, CallTarget,
     ChainedOp, ClosureKind, Constant, CtorPrintStyle, CtorUpdateTail, Datatype,
     DatatypeTransparency, DatatypeX, Dt, Expr, ExprX, Exprs, Field, FieldOpr, Fun, Function,
-    FunctionKind, Ident, IntRange, ItemKind, Krate, KrateX, Mode, MultiOp, Path, Pattern,
-    PatternBinding, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX, TraitImpl, Typ, TypX,
-    UnaryOp, UnaryOpr, Variant, VariantCheck, VirErr, Visibility,
+    FunctionKind, Ident, IntRange, ItemKind, Krate, KrateX, LogicalOp, Mode, MultiOp, Path,
+    Pattern, PatternBinding, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX, TraitImpl, Typ,
+    TypX, UnaryOp, UnaryOpr, Variant, VariantCheck, VirErr, Visibility,
 };
 use crate::ast_util::{
-    conjoin, mk_eq, place_to_spec_expr, typ_args_for_datatype_typ, undecorate_typ, unit_typ,
-    wrap_in_trigger,
+    conjoin, mk_eq, mk_implies, place_to_spec_expr, typ_args_for_datatype_typ, undecorate_typ,
+    unit_typ, wrap_in_trigger,
 };
 use crate::ast_visitor::VisitorScopeMap;
 use crate::context::GlobalCtx;
@@ -135,6 +135,7 @@ fn temp_var(state: &mut State, expr: &Expr) -> (Stmt, VarIdent) {
         mode: None,
         init: Some(PlaceX::spec_temporary(expr.clone())),
         els: None,
+        assert_irrefutable: false,
     };
     let temp_decl = Spanned::new(expr.span.clone(), decl);
     (temp_decl, temp)
@@ -173,6 +174,7 @@ fn pattern_to_decls_with_no_initializer(pattern: &Pattern, stmts: &mut Vec<Stmt>
                     mode: None, // mode doesn't matter anymore
                     init: None,
                     els: None,
+                    assert_irrefutable: false,
                 },
             ));
 
@@ -243,8 +245,16 @@ fn place_to_pure_place_rec(state: &mut State, place: &Place) -> (Vec<Stmt>, Plac
                         crate::place_preconditions::field_check(&place.span, &p1_expr, field_opr);
                     wf.push(assert_stmt);
                 }
+                // Handled later, at SST lowering - no AST-level encoding for this timing.
+                VariantCheck::Recommends => {}
             }
-            let field_opr = FieldOpr { check: VariantCheck::None, ..field_opr.clone() };
+            // Preserve Recommends for that later pass; Union is already discharged above.
+            let check = if field_opr.check == VariantCheck::Recommends {
+                VariantCheck::Recommends
+            } else {
+                VariantCheck::None
+            };
+            let field_opr = FieldOpr { check, ..field_opr.clone() };
             let p2 =
                 SpannedTyped::new(&place.span, &place.typ, PlaceX::Field(field_opr.clone(), p1));
             (stmts, p2, wf)
@@ -537,7 +547,7 @@ fn simplify_one_expr(
                 if i == 0 {
                     conjunction = binary;
                 } else {
-                    let exprx = ExprX::Binary(BinaryOp::And, conjunction, binary);
+                    let exprx = ExprX::Logical(LogicalOp::And, conjunction, binary);
                     conjunction = SpannedTyped::new(&span, &expr.typ, exprx);
                 }
             }
@@ -548,7 +558,7 @@ fn simplify_one_expr(
                 Ok(SpannedTyped::new(&expr.span, &expr.typ, block))
             }
         }
-        ExprX::Match(place, arms1) => {
+        ExprX::Match(place, arms1, assert_irrefutable) => {
             let (temp_decl, place) = place_to_pure_place(state, place);
 
             // Translate into If expression
@@ -577,7 +587,7 @@ fn simplify_one_expr(
                         &guard.typ,
                         ExprX::MatchGuardFreeze(place.clone(), guard.clone()),
                     );
-                    let test_exp = ExprX::Binary(BinaryOp::And, test_pattern, guard);
+                    let test_exp = ExprX::Logical(LogicalOp::And, test_pattern, guard);
                     let test = SpannedTyped::new(&arm.x.pattern.span, &t_bool, test_exp);
                     let block = ExprX::Block(Arc::new(decls.clone()), Some(test));
                     SpannedTyped::new(&arm.x.pattern.span, &t_bool, block)
@@ -589,6 +599,31 @@ fn simplify_one_expr(
                     // if pattern && guard then body else prev
                     let ifx = ExprX::If(test.clone(), body, Some(prev));
                     if_expr = Some(SpannedTyped::new(&test.span, &expr.typ.clone(), ifx));
+                } else if *assert_irrefutable {
+                    if has_guard {
+                        return Err(error(&arm.x.guard.span, "if-guard on final match arm"));
+                    }
+                    let assertion = SpannedTyped::new(
+                        &arm.x.pattern.span,
+                        &unit_typ(),
+                        ExprX::AssertAssume {
+                            is_assume: false,
+                            expr: test,
+                            msg: Some(irrefut_failure_msg(&arm.x.pattern.span)),
+                        },
+                    );
+                    let block = SpannedTyped::new(
+                        &body.span,
+                        &body.typ,
+                        ExprX::Block(
+                            Arc::new(vec![Spanned::new(
+                                assertion.span.clone(),
+                                StmtX::Expr(assertion.clone()),
+                            )]),
+                            Some(body.clone()),
+                        ),
+                    );
+                    if_expr = Some(block);
                 } else {
                     // last arm is unconditional
                     if_expr = Some(body);
@@ -670,27 +705,34 @@ fn tuple_get_field_expr(
     field_expr
 }
 
+fn irrefut_failure_msg(pattern_span: &Span) -> crate::messages::Message {
+    error(pattern_span, "unable to prove this pattern will successfully match")
+}
+
 fn simplify_one_stmt(ctx: &GlobalCtx, state: &mut State, stmt: &Stmt) -> Result<Vec<Stmt>, VirErr> {
     match &stmt.x {
-        StmtX::Decl { pattern, mode: _, init: None, els: None } => match &pattern.x {
-            PatternX::Var(PatternBinding {
-                by_ref: ByRef::No,
-                name: _,
-                user_mut: _,
-                typ: _,
-                copy: _,
-            }) => Ok(vec![stmt.clone()]),
-            _ => {
-                let mut stmts: Vec<Stmt> = Vec::new();
-                pattern_to_decls_with_no_initializer(pattern, &mut stmts);
-                Ok(stmts)
+        StmtX::Decl { pattern, mode: _, init: None, els: None, assert_irrefutable } => {
+            assert!(!assert_irrefutable);
+            match &pattern.x {
+                PatternX::Var(PatternBinding {
+                    by_ref: ByRef::No,
+                    name: _,
+                    user_mut: _,
+                    typ: _,
+                    copy: _,
+                }) => Ok(vec![stmt.clone()]),
+                _ => {
+                    let mut stmts: Vec<Stmt> = Vec::new();
+                    pattern_to_decls_with_no_initializer(pattern, &mut stmts);
+                    Ok(stmts)
+                }
             }
-        },
-        StmtX::Decl { pattern, mode: _, init: None, els: Some(_) } => Err(error(
+        }
+        StmtX::Decl { pattern, mode: _, init: None, els: Some(_), .. } => Err(error(
             &pattern.span,
             "Verus Internal Error: Decl with else-block but no initializer",
         )),
-        StmtX::Decl { pattern, mode: _, init: Some(_init), els: None }
+        StmtX::Decl { pattern, mode: _, init: Some(_init), els: None, assert_irrefutable: _ }
             if matches!(
                 pattern.x,
                 PatternX::Var(PatternBinding {
@@ -704,12 +746,13 @@ fn simplify_one_stmt(ctx: &GlobalCtx, state: &mut State, stmt: &Stmt) -> Result<
         {
             Ok(vec![stmt.clone()])
         }
-        StmtX::Decl { pattern, mode: _, init: Some(init), els } => {
+        StmtX::Decl { pattern, mode: _, init: Some(init), els, assert_irrefutable } => {
             let (mut stmts, place) = place_to_pure_place(state, init);
             let mut stmts2: Vec<Stmt> = vec![];
             let pattern_check =
                 crate::patterns::pattern_to_exprs(ctx, &place, pattern, false, &mut stmts2)?;
             if let Some(els) = &els {
+                assert!(!assert_irrefutable);
                 let checkx = ExprX::Unary(UnaryOp::Not, pattern_check.clone());
                 let check = SpannedTyped::new(&pattern_check.span, &pattern_check.typ, checkx);
                 let neverx = ExprX::NeverToAny(els.clone());
@@ -719,6 +762,19 @@ fn simplify_one_stmt(ctx: &GlobalCtx, state: &mut State, stmt: &Stmt) -> Result<
                 let ifstmtx = StmtX::Expr(ife);
                 let ifstmt = Spanned::new(stmt.span.clone(), ifstmtx);
                 stmts.push(ifstmt);
+            } else if *assert_irrefutable {
+                stmts.push(Spanned::new(
+                    stmt.span.clone(),
+                    StmtX::Expr(SpannedTyped::new(
+                        &stmt.span,
+                        &unit_typ(),
+                        ExprX::AssertAssume {
+                            is_assume: false,
+                            expr: pattern_check,
+                            msg: Some(irrefut_failure_msg(&pattern.span)),
+                        },
+                    )),
+                ));
             }
             stmts.extend(stmts2);
             Ok(stmts)
@@ -881,6 +937,7 @@ fn exec_closure_spec_requires(
             mode: None,
             init: Some(PlaceX::spec_temporary(tuple_field)),
             els: None,
+            assert_irrefutable: false,
         };
         decls.push(Spanned::new(span.clone(), decl));
     }
@@ -892,11 +949,7 @@ fn exec_closure_spec_requires(
         wrap_in_trigger(&mk_closure_req_call(state, span, params, closure_var, &tuple_var));
 
     let bool_typ = Arc::new(TypX::Bool);
-    let req_quant_body = SpannedTyped::new(
-        span,
-        &bool_typ,
-        ExprX::Binary(BinaryOp::Implies, reqs_body, closure_req_call.clone()),
-    );
+    let req_quant_body = mk_implies(span, &reqs_body, &closure_req_call);
 
     let forall = Quant { quant: air::ast::Quant::Forall };
     let binders = Arc::new(vec![Arc::new(VarBinderX { name: tuple_ident, a: tuple_typ })]);
@@ -944,6 +997,7 @@ fn exec_closure_spec_ensures(
             mode: None,
             init: Some(PlaceX::spec_temporary(tuple_field)),
             els: None,
+            assert_irrefutable: false,
         };
         decls.push(Spanned::new(span.clone(), decl));
     }
@@ -962,11 +1016,7 @@ fn exec_closure_spec_ensures(
     ));
 
     let bool_typ = Arc::new(TypX::Bool);
-    let ens_quant_body = SpannedTyped::new(
-        span,
-        &bool_typ,
-        ExprX::Binary(BinaryOp::Implies, closure_ens_call.clone(), enss_body),
-    );
+    let ens_quant_body = mk_implies(span, &closure_ens_call, &enss_body);
 
     let forall = Quant { quant: air::ast::Quant::Forall };
     let binders =

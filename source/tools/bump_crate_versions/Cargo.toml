@@ -9,7 +9,7 @@ clap = { workspace = true }
 crates_io_api = { workspace = true }
 # petgraph 0.6.0 is a transient dependency of smt-scope, which has outdated dependencies
 petgraph = "0.8.0"
-regex = { workspace = true }
+tempfile = { workspace = true }
 toml_edit = { workspace = true }
 
 [lints]

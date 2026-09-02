@@ -185,8 +185,15 @@ fn translate_assoc_type<'tcx>(
     let assoc_def_id = ai.trait_item_def_id().unwrap();
     let bounds = ctxt.tcx.item_bounds(assoc_def_id);
     let assoc_generics = ctxt.tcx.generics_of(assoc_def_id);
-    let mut assoc_args: Vec<rustc_middle::ty::GenericArg> =
-        trait_ref.instantiate_identity().args.into_iter().collect();
+    let mut assoc_args: Vec<rustc_middle::ty::GenericArg> = ctxt
+        .tcx
+        .normalize_erasing_regions(
+            TypingEnv::post_analysis(ctxt.tcx, impl_item_id),
+            trait_ref.instantiate_identity(),
+        )
+        .args
+        .into_iter()
+        .collect();
     for p in &assoc_generics.own_params {
         let e = rustc_middle::ty::EarlyParamRegion {
             //def_id: p.def_id,
@@ -279,7 +286,12 @@ pub(crate) fn translate_impl<'tcx>(
                 // ?
                 let def_id = match impll.self_ty.kind {
                     rustc_hir::TyKind::Path(QPath::Resolved(None, path)) => path.res.def_id(),
-                    _ => panic!("self type of impl is not resolved: {:?}", impll.self_ty.kind),
+                    _ => {
+                        return err_span_vec(
+                            item.span,
+                            "`Structural` can only be implemented for struct or enum types",
+                        );
+                    }
                 };
                 ctxt.tcx.type_of(def_id).skip_binder()
             };
@@ -296,7 +308,10 @@ pub(crate) fn translate_impl<'tcx>(
                     })),
                 )
             } else {
-                panic!("Structural impl for non-adt type");
+                return err_span_vec(
+                    item.span,
+                    "`Structural` can only be implemented for struct or enum types",
+                );
             };
             let ty_applied_never = ctxt.tcx.mk_ty_from_kind(ty_kind_applied_never);
             if !ty_applied_never.is_structural_eq_shallow(ctxt.tcx) {
@@ -542,6 +557,7 @@ pub(crate) fn translate_impl_item<'tcx>(
                         &vir_ty,
                         &body_id,
                         false,
+                        Some((&impll.generics, impl_def_id)),
                     )?;
                 } else {
                     let kind = mk_trait_function_kind();
@@ -797,9 +813,24 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
             }
         }
 
+        // Methods for which the trait itself supplies a body don't need their own
+        // assume_specification: calls to them are redirected to the trait declaration's spec.
+        let trait_provided_methods: IndexSet<String> = tcx
+            .associated_items(trait_did)
+            .in_definition_order()
+            .filter(|assoc_item| {
+                matches!(assoc_item.kind, AssocKind::Fn { .. })
+                    && assoc_item.defaultness(tcx).has_value()
+            })
+            .map(|assoc_item| assoc_item.ident(tcx).to_string())
+            .collect();
+
         for method in traitt.x.methods.iter() {
             let f = &func_map[method];
             if matches!(&f.x.kind, FunctionKind::TraitMethodDecl { has_default: true, .. }) {
+                continue;
+            }
+            if trait_provided_methods.contains(&*method.path.last_segment()) {
                 continue;
             }
             if !methods_we_have.contains::<vir::ast::Ident>(&method.path.last_segment()) {

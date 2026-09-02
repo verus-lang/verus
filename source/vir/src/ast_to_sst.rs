@@ -1,10 +1,10 @@
 use crate::ast::{
     ArithOp, AssertQueryMode, AtomicallyKind, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp,
     BoundsCheck, ByRef, CallTarget, ComputeMode, Constant, Div0Behavior, Dt, Expr, ExprX, FieldOpr,
-    Fun, Function, Ident, IntRange, InvAtomicity, LoopInvariantKind, MaskSpec, Mode,
-    OverflowBehavior, PatternBinding, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX, Typ,
-    TypX, Typs, UnaryOp, UnaryOpr, UnwindSpec, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent,
-    VarIdentDisambiguate, VariantCheck, VirErr,
+    Fun, Function, Ident, IntRange, InvAtomicity, Label, LogicalOp, LoopInvariantKind, MaskSpec,
+    Mode, OverflowBehavior, PatternBinding, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX,
+    Typ, TypX, Typs, UnaryOp, UnaryOpr, UnwindSpec, VarAt, VarBinder, VarBinderX, VarBinders,
+    VarIdent, VarIdentDisambiguate, VariantCheck, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, CrateId, Exprs};
 use crate::ast_util::{QUANT_FORALL, bool_typ, types_equal, undecorate_typ, unit_typ};
@@ -16,9 +16,10 @@ use crate::messages::{
     Message, Span, ToAny, WarningAllow, error, error_with_label, error_with_secondary_label,
     internal_error,
 };
+use crate::sst;
 use crate::sst::{
     Bnd, BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclKind, LocalDeclX,
-    ParPurpose, Pars, Stm, StmX, UniqueIdent,
+    ParPurpose, Pars, Stm, StmX, Stms, UniqueIdent,
 };
 use crate::sst_util::{
     exp_with_vars_at_pre_state, sst_bitwidth, sst_conjoin, sst_equal, sst_exp_get_proof_note,
@@ -573,7 +574,7 @@ pub(crate) fn init_var(span: &Span, x: &UniqueIdent, exp: &Exp) -> Stm {
 
 pub(crate) fn get_function(ctx: &Ctx, span: &Span, name: &Fun) -> Result<Function, VirErr> {
     match ctx.func_map.get(name) {
-        None => Err(error(span, format!("could not find function {:?}", &name))),
+        None => Err(error(span, format!("could not find function {:?}", name))),
         Some(func) => Ok(func.clone()),
     }
 }
@@ -584,7 +585,7 @@ pub(crate) fn get_function_sst(
     name: &Fun,
 ) -> Result<crate::sst::FunctionSst, VirErr> {
     match ctx.func_sst_map.get(name) {
-        None => Err(error(span, format!("could not find function {:?}", &name))),
+        None => Err(error(span, format!("could not find function {:?}", name))),
         Some(func) => Ok(func.clone()),
     }
 }
@@ -620,24 +621,22 @@ pub(crate) fn assume_has_typ(x: &UniqueIdent, typ: &Typ, span: &Span) -> Stm {
 }
 
 fn loop_body_find_breaks(
-    loop_label: &Option<String>,
-    in_subloop: bool,
+    loop_label: &Label,
     num_breaks: &mut usize,
+    num_isolated_breaks: &mut usize,
+    in_isolated: bool,
     body: &Expr,
 ) {
     let mut f = |expr: &Expr| match &expr.x {
-        ExprX::Loop { body, .. } => {
-            loop_body_find_breaks(loop_label, true, num_breaks, body);
+        ExprX::Loop { loop_isolation: true, .. } if !in_isolated => {
+            loop_body_find_breaks(loop_label, num_breaks, num_isolated_breaks, true, expr);
             VisitorControlFlow::Return
         }
         ExprX::BreakOrContinue { label: break_label, is_break: true } => {
-            if break_label.is_none() {
-                if !in_subloop {
-                    *num_breaks += 1;
-                }
-            } else {
-                if break_label == loop_label {
-                    *num_breaks += 1;
+            if break_label == loop_label {
+                *num_breaks += 1;
+                if in_isolated {
+                    *num_isolated_breaks += 1;
                 }
             }
             VisitorControlFlow::Recurse
@@ -647,21 +646,22 @@ fn loop_body_find_breaks(
     crate::ast_visitor::expr_visitor_walk(body, &mut f);
 }
 
-fn loop_body_has_breaks(loop_label: &Option<String>, body: &Expr) -> usize {
+/// Returns (num_breaks, num_isolated_breaks):
+///  * `num_breaks` = Total # of break statements of the given label
+///  * `num_isolated_breaks` = # of break statements of the given label
+///    that are within a loop_isolation=true loop
+fn loop_has_breaks(loop_label: &Label, expr: &Expr) -> (usize, usize) {
     let mut num_breaks = 0;
-    loop_body_find_breaks(loop_label, false, &mut num_breaks, body);
-    num_breaks
+    let mut num_isolated_breaks = 0;
+    loop_body_find_breaks(loop_label, &mut num_breaks, &mut num_isolated_breaks, false, expr);
+    (num_breaks, num_isolated_breaks)
 }
 
 /// Determine if it's possible for control flow to reach the statement after the loop exit.
 /// To be conservative, we need to answer 'yes' (true) if we can't tell.
-///
-/// Note: we originally used this to handle the case where the loop body returns
-/// the never type (!). However, that isn't actually important anymore since loops will
-/// be wrapped in the NeverToAny node. It's likely that this check can simply be removed.
 pub fn can_control_flow_reach_after_loop(expr: &Expr) -> bool {
     match &expr.x {
-        ExprX::Loop { label, cond: None, body, .. } => loop_body_has_breaks(label, body) > 0,
+        ExprX::Loop { label, cond: None, body, .. } => loop_has_breaks(label, body).0 > 0,
         ExprX::Loop { cond: Some(_), .. } => true,
         _ => {
             panic!("expected while loop");
@@ -1563,6 +1563,32 @@ fn if_to_stm(
     }
 }
 
+/// Emits the Stms for a field-access check: `is_hard_requirement` (e.g. union access)
+/// asserts except while checking recommends, plus an assume for both passes; otherwise
+/// (e.g. get_variant access) it only asserts while checking recommends, with no assume,
+/// since it's not a soundness fact.
+fn field_check_stms(
+    state: &mut State,
+    ctx: &Ctx,
+    span: &Span,
+    condition: Exp,
+    msg: Message,
+    is_hard_requirement: bool,
+) -> Vec<Stm> {
+    let mut stms = vec![];
+    if is_hard_requirement {
+        if !state.checking_recommends(ctx) {
+            let assert = StmX::Assert(state.next_assert_id(), Some(msg), condition.clone());
+            stms.push(Spanned::new(span.clone(), assert));
+        }
+        stms.push(Spanned::new(span.clone(), StmX::Assume(condition)));
+    } else if state.checking_recommends(ctx) {
+        let assert = StmX::Assert(state.next_assert_id(), Some(msg), condition);
+        stms.push(Spanned::new(span.clone(), assert));
+    }
+    stms
+}
+
 /// Convert a VIR Expr to a SST (Vec<Stm>, Maybe<Value>), i.e., instructions of the form,
 /// "run these statements, then return this side-effect-free expression".
 ///
@@ -1606,9 +1632,6 @@ pub(crate) fn expr_to_stm_opt(
         ExprX::ConstVar(..) => panic!("ConstVar should already be removed"),
         ExprX::Assign { place, rhs, op: Some(binary_op), resolve, typ: _ } => {
             assert!(!resolve);
-
-            // No support for short-circuit ops here
-            assert!(!matches!(binary_op, BinaryOp::And | BinaryOp::Or | BinaryOp::Implies));
 
             let (stms_r, e_r) = expr_to_stm_opt(ctx, state, rhs)?;
             let e_r = to_exp_or_return_never!(e_r, stms_r);
@@ -1887,10 +1910,24 @@ pub(crate) fn expr_to_stm_opt(
         ExprX::NullaryOpr(op) => {
             Ok((vec![], Maybe::Some(Value::Exp(mk_exp(ExpX::NullaryOpr(op.clone()))))))
         }
-        ExprX::Unary(op @ UnaryOp::InferSpecForLoopIter { .. }, spec_expr) => {
-            let spec_exp = expr_to_pure_exp_skip_checks(ctx, state, &spec_expr)?;
-            let infer_exp = mk_exp(ExpX::Unary(*op, spec_exp));
-            Ok((vec![], Maybe::Some(Value::Exp(infer_exp))))
+        ExprX::UnaryOpr(UnaryOpr::LoopIsolationBoundary(label), e) => {
+            let (stms, exp) = expr_to_stm_opt(ctx, state, e)?;
+            match find_loop_in_stms(&stms, label) {
+                Some((prefix, the_loop, suffix)) => {
+                    let mut stm = loop_set_pre_stms(the_loop, Arc::new(prefix));
+                    if suffix.len() > 0 {
+                        let mut v = vec![stm];
+                        v.extend(suffix);
+                        stm = Spanned::new(expr.span.clone(), StmX::Block(Arc::new(v)))
+                    }
+                    Ok((vec![stm], exp))
+                }
+                None => {
+                    // Unusual case; loop would have to be cut out by Never
+                    assert!(matches!(exp, Maybe::Never));
+                    return Ok((stms, exp));
+                }
+            }
         }
         ExprX::Unary(op, exprr) => {
             let (mut stms, exp) = expr_to_stm_opt(ctx, state, exprr)?;
@@ -1921,78 +1958,93 @@ pub(crate) fn expr_to_stm_opt(
                             &expr.span, &exp, field_opr,
                         );
                         let field_opr = FieldOpr { check: VariantCheck::None, ..field_opr.clone() };
-                        (Some((condition, msg)), UnaryOpr::Field(field_opr))
+                        (Some((condition, msg, true)), UnaryOpr::Field(field_opr))
+                    }
+                    // `get_variant` accessors are total - just give a recommends-only hint.
+                    VariantCheck::Recommends => {
+                        let (condition, msg) =
+                            crate::place_preconditions::sst_field_recommends_check(
+                                &expr.span, &exp, field_opr,
+                            );
+                        let field_opr = FieldOpr { check: VariantCheck::None, ..field_opr.clone() };
+                        (Some((condition, msg, false)), UnaryOpr::Field(field_opr))
                     }
                     VariantCheck::None => (None, op.clone()),
                 },
                 _ => (None, op.clone()),
             };
-            if let Some((condition, msg)) = check {
-                if !state.checking_recommends(ctx) {
-                    let assert = StmX::Assert(state.next_assert_id(), Some(msg), condition.clone());
-                    let assert = Spanned::new(expr.span.clone(), assert);
-                    stms.push(assert);
-                }
-                let assume = StmX::Assume(condition);
-                let assume = Spanned::new(expr.span.clone(), assume);
-                stms.push(assume);
+            if let Some((condition, msg, is_hard_requirement)) = check {
+                stms.extend(field_check_stms(
+                    state,
+                    ctx,
+                    &expr.span,
+                    condition,
+                    msg,
+                    is_hard_requirement,
+                ));
             }
             Ok((stms, Maybe::Some(Value::Exp(mk_exp(ExpX::UnaryOpr(op, exp))))))
         }
-        ExprX::Binary(op, e1, e2) => {
-            // Handle short-circuiting, when applicable.
-            // The pair (proceed_on, other) means:
-            // If e1 evaluates to `proceed_on`, then evaluate and
-            // return e2; otherwise, return the value `other`
-            // (without evaluating `e2`).
-            // Also note: if `e2` is a pure expression, we don't need to do the
-            // special handling.
-            let short_circuit = match op {
-                BinaryOp::And => Some((true, false)),
-                BinaryOp::Implies => Some((true, true)),
-                BinaryOp::Or => Some((false, true)),
-                _ => None,
-            };
+        ExprX::Logical(op, e1, e2) => {
             let (stms1, e1) = expr_to_stm_opt(ctx, state, e1)?;
+            let exp1 = to_exp_or_return_never!(e1.clone(), stms1);
+
             let (stms2, e2) = expr_to_stm_opt(ctx, state, e2)?;
-            match (short_circuit, stms2.len()) {
-                (Some((proceed_on, other)), n) if n > 0 => {
-                    // and:
-                    //   if e1 { stmts2; e2 } else { false }
-                    // implies:
-                    //   if e1 { stmts2; e2 } else { true }
-                    // or:
-                    //   if e1 { true } else { stmts2; e2 }
-                    let bx = ExpX::Const(Constant::Bool(other));
-                    let b = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), bx);
-                    let b = Maybe::Some(Value::Exp(b));
-                    if proceed_on {
-                        Ok(if_to_stm(state, expr, stms1, &e1, stms2, &e2, vec![], &b))
-                    } else {
-                        Ok(if_to_stm(state, expr, stms1, &e1, vec![], &b, stms2, &e2))
-                    }
-                }
-                _ => {
-                    let mut sequr = Sequencer::new();
-                    push_or_return_never!(sequr.push(
-                        stms1,
-                        e1,
-                        Immutable(LocalDeclKind::TempViaAssign)
-                    ));
-                    push_or_return_never!(sequr.push(
-                        stms2,
-                        e2,
-                        Immutable(LocalDeclKind::TempViaAssign)
-                    ));
-                    let (mut stms, e1, e2) = sequr.into_stms_exps_expect_2(state)?;
 
-                    let (mut stms3, bin) =
-                        binary_op_exp(ctx, state, &expr.span, &expr.typ, *op, &e1, &e2);
-                    stms.append(&mut stms3);
+            if stms2.len() == 0
+                && let Maybe::Some(exp2) = e2.clone().to_maybe_exp()
+            {
+                // If e2 is pure, we can lower the logical op to an ordinary, pure Exp
+                let sst_op = match op {
+                    LogicalOp::And => sst::BinaryOp::And,
+                    LogicalOp::Implies => sst::BinaryOp::Implies,
+                    LogicalOp::Or => sst::BinaryOp::Or,
+                };
+                let binx = ExpX::Binary(sst_op, exp1.clone(), exp2.clone());
+                let bin = SpannedTyped::new(&expr.span, &bool_typ(), binx);
+                Ok((stms1, Maybe::Some(Value::Exp(bin))))
+            } else {
+                // Handle short-circuiting.
+                // The pair (proceed_on, other) means:
+                // If e1 evaluates to `proceed_on`, then evaluate and
+                // return e2; otherwise, return the value `other`
+                // (without evaluating `e2`).
+                let (proceed_on, other) = match op {
+                    LogicalOp::And => (true, false),
+                    LogicalOp::Implies => (true, true),
+                    LogicalOp::Or => (false, true),
+                };
 
-                    Ok((stms, Maybe::Some(Value::Exp(bin))))
+                // and:
+                //   if e1 { stmts2; e2 } else { false }
+                // implies:
+                //   if e1 { stmts2; e2 } else { true }
+                // or:
+                //   if e1 { true } else { stmts2; e2 }
+                let bx = ExpX::Const(Constant::Bool(other));
+                let b = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), bx);
+                let b = Maybe::Some(Value::Exp(b));
+                if proceed_on {
+                    Ok(if_to_stm(state, expr, stms1, &e1, stms2, &e2, vec![], &b))
+                } else {
+                    Ok(if_to_stm(state, expr, stms1, &e1, vec![], &b, stms2, &e2))
                 }
             }
+        }
+        ExprX::Binary(op, e1, e2) => {
+            let mut sequr = Sequencer::new();
+
+            let (stms1, e1) = expr_to_stm_opt(ctx, state, e1)?;
+            push_or_return_never!(sequr.push(stms1, e1, Immutable(LocalDeclKind::TempViaAssign)));
+
+            let (stms2, e2) = expr_to_stm_opt(ctx, state, e2)?;
+            push_or_return_never!(sequr.push(stms2, e2, Immutable(LocalDeclKind::TempViaAssign)));
+            let (mut stms, e1, e2) = sequr.into_stms_exps_expect_2(state)?;
+
+            let (mut stms3, bin) = binary_op_exp(ctx, state, &expr.span, &expr.typ, *op, &e1, &e2);
+            stms.append(&mut stms3);
+
+            Ok((stms, Maybe::Some(Value::Exp(bin))))
         }
         ExprX::BinaryOpr(op, e1, e2) => {
             let (stms1, e1) = expr_to_stm_opt(ctx, state, e1)?;
@@ -2187,6 +2239,10 @@ pub(crate) fn expr_to_stm_opt(
             let stm = Spanned::new(expr.span.clone(), StmX::RevealString(path.clone()));
             Ok((vec![stm], Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
         }
+        ExprX::RevealByteString(bytes) => {
+            let stm = Spanned::new(expr.span.clone(), StmX::RevealByteString(bytes.clone()));
+            Ok((vec![stm], Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
+        }
         ExprX::Header(_) => {
             return Err(error(&expr.span, "header expression not allowed here"));
         }
@@ -2310,7 +2366,7 @@ pub(crate) fn expr_to_stm_opt(
             state.pop_scope();
 
             // Translate ensure into an assume
-            let implyx = ExprX::Binary(BinaryOp::Implies, require.clone(), ensure.clone());
+            let implyx = ExprX::Logical(LogicalOp::Implies, require.clone(), ensure.clone());
             let imply = SpannedTyped::new(&ensure.span, &Arc::new(TypX::Bool), implyx);
             state.push_scope();
             let vars = state.rename_binders_exp(vars);
@@ -2582,7 +2638,15 @@ pub(crate) fn expr_to_stm_opt(
             } else {
                 invs.clone()
             };
-            let num_breaks = loop_body_has_breaks(label, body);
+            let (num_breaks, num_iso_breaks) = loop_has_breaks(label, expr);
+            if !loop_isolation && num_iso_breaks > 0 {
+                // our encoding for loop_isolation=false requires all 'break' statements to be
+                // in the same query
+                return Err(error(
+                    &expr.span,
+                    "loop with loop_isolation=false contains 'break' statement inside a nested loop with loop_isolation=true",
+                ));
+            }
             let has_user_break = num_breaks > if is_for_loop { 1 } else { 0 };
             let invs = if is_for_loop && has_user_break {
                 // If the user added a break statement, then we need to remove the auto-generated ensures
@@ -2676,7 +2740,7 @@ pub(crate) fn expr_to_stm_opt(
             let mut check_recommends: Vec<Stm> = Vec::new();
             let mut invs1: Vec<crate::sst::LoopInv> = Vec::new();
             for inv in invs.iter() {
-                // Ensures clauses are unnecessary if loop_isolation is true,
+                // Ensures clauses are unnecessary if loop_isolation is false,
                 // since the weakest precondition already tracks all the paths through the breaks into the code after the loop
                 if !loop_isolation
                     && allow_complex_invariants
@@ -2721,7 +2785,7 @@ pub(crate) fn expr_to_stm_opt(
                 if let Some((c_stm, c_exp)) = cnd {
                     // convert while into loop
                     let not_c = c_exp.new_x(ExpX::Unary(UnaryOp::Not, c_exp.clone()));
-                    let break_stmx = StmX::BreakOrContinue { label: None, is_break: true };
+                    let break_stmx = StmX::BreakOrContinue { label: label.clone(), is_break: true };
                     let break_stm = Spanned::new(c_exp.span.clone(), break_stmx);
                     let if_stm = Spanned::new(c_exp.span.clone(), StmX::If(not_c, break_stm, None));
                     body_stms.insert(0, c_stm);
@@ -2740,6 +2804,7 @@ pub(crate) fn expr_to_stm_opt(
             let while_stm = Spanned::new(
                 expr.span.clone(),
                 StmX::Loop {
+                    pre_stms: Arc::new(vec![]),
                     loop_isolation,
                     is_for_loop,
                     id,
@@ -2748,17 +2813,31 @@ pub(crate) fn expr_to_stm_opt(
                     body: stms_to_one_stm(&body.span, body_stms),
                     invs: Arc::new(invs1),
                     decrease: Arc::new(decrease1),
+                    au_branch_bool,
                     // These are filled in later, in sst_vars
                     typ_inv_vars: Arc::new(vec![]),
                     modified_vars: None,
-                    au_branch_bool,
-                    pre_modified_params: None,
+                    pre_modified_params_incl: None,
+                    pre_modified_params_excl: None,
                 },
             );
+
             if can_control_flow_reach_after_loop(expr) {
                 let ret = Maybe::Some(Value::ImplicitUnit(expr.span.clone()));
                 Ok((vec![while_stm], ret))
             } else {
+                // If it's an infinite loop, add 'assume(false)' and return Never.
+                // Note: this is usually redundant with the NeverToAny node, which usually
+                // exists outside the loop. However, the NeverToAny node is not always
+                // in the optimal place. In the following:
+                //
+                // {
+                //     loop { };     // semi-colon is necessary for this example
+                //     assert(false)
+                // }
+                //
+                // the NeverToAny node goes outside the outer block, thus it would be applied
+                // after the assert. We prefer to return Never early, immediately after the loop.
                 let stms = vec![while_stm, assume_false(&expr.span)];
                 Ok((stms, Maybe::Never))
             }
@@ -3137,11 +3216,7 @@ pub(crate) fn expr_to_stm_opt(
 
             stms.push(Spanned::new(
                 expr.span.clone(),
-                StmX::Assume(SpannedTyped::new(
-                    &expr.span,
-                    &Arc::new(TypX::Bool),
-                    ExpX::Binary(BinaryOp::Eq(Mode::Spec), call_pred_args, args_exp),
-                )),
+                StmX::Assume(sst_equal(&expr.span, &call_pred_args, &args_exp)),
             ));
 
             // construct atomic update
@@ -3161,11 +3236,7 @@ pub(crate) fn expr_to_stm_opt(
 
             stms.push(Spanned::new(
                 expr.span.clone(),
-                StmX::Assume(SpannedTyped::new(
-                    &expr.span,
-                    &Arc::new(TypX::Bool),
-                    ExpX::Binary(BinaryOp::Eq(Mode::Spec), call_au_pred, pred_var_exp),
-                )),
+                StmX::Assume(sst_equal(&expr.span, &call_au_pred, &pred_var_exp)),
             ));
 
             state.au_var_exp = Some(au_var_exp.clone());
@@ -3772,11 +3843,7 @@ fn atomic_update_bind_and_resolve(
 
         stms.push(Spanned::new(
             expr.span.clone(),
-            StmX::Assume(SpannedTyped::new(
-                &expr.span,
-                &Arc::new(TypX::Bool),
-                ExpX::Binary(BinaryOp::Eq(Mode::Spec), call_exp, var_exp.clone()),
-            )),
+            StmX::Assume(sst_equal(&expr.span, &call_exp, var_exp)),
         ));
     }
 
@@ -3806,17 +3873,30 @@ fn binary_op_exp(
     e2: &Exp,
 ) -> (Vec<Stm>, Exp) {
     let pure_op = match op {
-        BinaryOp::Arith(ArithOp::Add(_)) => BinaryOp::Arith(ArithOp::Add(OverflowBehavior::Allow)),
-        BinaryOp::Arith(ArithOp::Sub(_)) => BinaryOp::Arith(ArithOp::Sub(OverflowBehavior::Allow)),
-        BinaryOp::Arith(ArithOp::Mul(_)) => BinaryOp::Arith(ArithOp::Mul(OverflowBehavior::Allow)),
+        // Ops with side-effects are turned into sst ops without side-effects
+        BinaryOp::Arith(ArithOp::Add(_)) => sst::BinaryOp::Arith(sst::ArithOp::Add),
+        BinaryOp::Arith(ArithOp::Sub(_)) => sst::BinaryOp::Arith(sst::ArithOp::Sub),
+        BinaryOp::Arith(ArithOp::Mul(_)) => sst::BinaryOp::Arith(sst::ArithOp::Mul),
         BinaryOp::Arith(ArithOp::EuclideanDiv(_)) => {
-            BinaryOp::Arith(ArithOp::EuclideanDiv(Div0Behavior::Allow))
+            sst::BinaryOp::Arith(sst::ArithOp::EuclideanDiv)
         }
         BinaryOp::Arith(ArithOp::EuclideanMod(_)) => {
-            BinaryOp::Arith(ArithOp::EuclideanMod(Div0Behavior::Allow))
+            sst::BinaryOp::Arith(sst::ArithOp::EuclideanMod)
         }
-        BinaryOp::Index(kind, _) => BinaryOp::Index(kind, BoundsCheck::Allow),
-        op => op,
+        BinaryOp::Bitwise(op, _) => sst::BinaryOp::Bitwise(op),
+        BinaryOp::Index(kind, _) => sst::BinaryOp::Index(kind),
+
+        // Pure ops
+        BinaryOp::Xor => sst::BinaryOp::Xor,
+        BinaryOp::HeightCompare { strictly_lt, recursive_function_field } => {
+            sst::BinaryOp::HeightCompare { strictly_lt, recursive_function_field }
+        }
+        BinaryOp::Eq(_) => sst::BinaryOp::Eq,
+        BinaryOp::Ne => sst::BinaryOp::Ne,
+        BinaryOp::Inequality(op) => sst::BinaryOp::Inequality(op),
+        BinaryOp::RealArith(op) => sst::BinaryOp::RealArith(op),
+        BinaryOp::IeeeFloat(op) => sst::BinaryOp::IeeeFloat(op),
+        BinaryOp::StrGetChar => sst::BinaryOp::StrGetChar,
     };
     let bin = SpannedTyped::new(span, typ, ExpX::Binary(pure_op, e1.clone(), e2.clone()));
 
@@ -3838,7 +3918,7 @@ fn binary_op_exp(
                 Div0Behavior::Allow => None,
                 Div0Behavior::Error => {
                     let zero = ExpX::Const(Constant::Int(BigInt::zero()));
-                    let ne = ExpX::Binary(BinaryOp::Ne, e2.clone(), e2.new_x(zero));
+                    let ne = ExpX::Binary(sst::BinaryOp::Ne, e2.clone(), e2.new_x(zero));
                     let ne = SpannedTyped::new(span, &Arc::new(TypX::Bool), ne);
                     Some((ne, error(span, "possible division by zero")))
                 }
@@ -4104,7 +4184,7 @@ fn place_to_exp_simple(
             let (stms, e) = place_to_exp_simple(ctx, state, p)?;
             let e = unwrap_or_return_never!(e, stms);
             let i = expr_to_pure_exp_skip_checks(ctx, state, i)?;
-            let op = BinaryOp::Index(*kind, BoundsCheck::Allow);
+            let op = sst::BinaryOp::Index(*kind);
             let e = mk_exp(ExpX::Binary(op, e, i));
             Ok((stms, Maybe::Some(e)))
         }
@@ -4160,19 +4240,28 @@ fn place_to_exp_pair_rec(
                 VariantCheck::Union => {
                     let (condition, msg) =
                         crate::place_preconditions::sst_field_check(&place.span, &e2, field_opr);
-                    Some((condition, msg))
+                    Some((condition, msg, true))
+                }
+                // `get_variant` accessors are total - just give a recommends-only hint.
+                VariantCheck::Recommends => {
+                    let (condition, msg) = crate::place_preconditions::sst_field_recommends_check(
+                        &place.span,
+                        &e2,
+                        field_opr,
+                    );
+                    Some((condition, msg, false))
                 }
                 VariantCheck::None => None,
             };
-            if let Some((condition, msg)) = check {
-                if !state.checking_recommends(ctx) {
-                    let assert = StmX::Assert(state.next_assert_id(), Some(msg), condition.clone());
-                    let assert = Spanned::new(place.span.clone(), assert);
-                    wf.push(assert);
-                }
-                let assume = StmX::Assume(condition);
-                let assume = Spanned::new(place.span.clone(), assume);
-                wf.push(assume);
+            if let Some((condition, msg, is_hard_requirement)) = check {
+                wf.extend(field_check_stms(
+                    state,
+                    ctx,
+                    &place.span,
+                    condition,
+                    msg,
+                    is_hard_requirement,
+                ));
             }
 
             let field_opr = FieldOpr { check: VariantCheck::None, ..field_opr.clone() };
@@ -4252,7 +4341,7 @@ fn place_to_exp_pair_rec(
                 }
             }
 
-            let op = BinaryOp::Index(*kind, BoundsCheck::Allow);
+            let op = sst::BinaryOp::Index(*kind);
             let e_l = mk_exp(ExpX::Binary(op, e1, idx_exp.clone()));
             let e_r = mk_exp(ExpX::Binary(op, e2, idx_exp));
 
@@ -4288,7 +4377,7 @@ fn stmt_to_stm(
             let (stms, exp) = expr_to_stm_opt(ctx, state, expr)?;
             Ok((stms, exp, None))
         }
-        StmtX::Decl { pattern, mode: _, init, els } => {
+        StmtX::Decl { pattern, mode: _, init, els, assert_irrefutable: _ } => {
             if els.is_some() {
                 panic!("let-else should be simplified in ast_simpllify {:?}.", stmt)
             }
@@ -4623,4 +4712,37 @@ fn assert_assume_satisfies_user_defined_type_invariant(
         stms.push(Spanned::new(exp.span.clone(), StmX::Assume(exp)));
     }
     Ok(())
+}
+
+fn find_loop_in_stms(stms: &[Stm], label: &Label) -> Option<(Vec<Stm>, Stm, Vec<Stm>)> {
+    for i in 0..stms.len() {
+        if let Some((prefix, the_loop, suffix)) = find_loop_in_stm(&stms[i], label) {
+            let mut new_prefix = stms[..i].to_vec();
+            new_prefix.extend(prefix);
+            let mut new_suffix = suffix;
+            new_suffix.extend(stms[i + 1..].to_vec());
+            return Some((new_prefix, the_loop, new_suffix));
+        }
+    }
+    None
+}
+
+fn find_loop_in_stm(stm: &Stm, label: &Label) -> Option<(Vec<Stm>, Stm, Vec<Stm>)> {
+    match &stm.x {
+        StmX::Block(stms) => find_loop_in_stms(stms, label),
+        StmX::Loop { label: l, .. } if l == label => Some((vec![], stm.clone(), vec![])),
+        _ => None,
+    }
+}
+
+fn loop_set_pre_stms(the_loop: Stm, new_pre_stms: Stms) -> Stm {
+    let mut the_loop = the_loop;
+    match Arc::make_mut(&mut the_loop).x {
+        StmX::Loop { ref mut pre_stms, .. } => {
+            assert!(pre_stms.len() == 0);
+            *pre_stms = new_pre_stms;
+        }
+        _ => panic!("loop_set_pre_stms expects Loop"),
+    }
+    the_loop
 }

@@ -749,7 +749,6 @@ impl Verifier {
         snap_map: &Vec<(vir::messages::Span, SnapPos)>,
         command: &Command,
         context: &CommandContext,
-        hint_upon_failure: &Option<Message>,
         prover_choice: vir::def::ProverChoice,
         default_prover_failed_assert_ids: &mut Vec<AssertId>,
     ) -> RunCommandQueriesResult {
@@ -909,9 +908,6 @@ impl Verifier {
                         self.count_errors += 1;
                         self.func_fails.insert(context.fun.clone());
                         invalidity = true;
-                        if let Some(hint) = hint_upon_failure.clone() {
-                            reporter.report_as(&hint.to_any(), MessageLevel::Note);
-                        }
                     }
                     if self.expand_flag {
                         invalidity = true;
@@ -984,7 +980,7 @@ impl Verifier {
                 }
                 ValidityResult::UnexpectedOutput(err) => {
                     util::PANIC_ON_DROP_VEC.store(false, std::sync::atomic::Ordering::SeqCst);
-                    panic!("unexpected output from solver: {} {}", &context.span.as_string, err);
+                    panic!("unexpected output from solver: {} {}", context.span.as_string, err);
                 }
             }
         }
@@ -1084,14 +1080,8 @@ impl Verifier {
             not_skipped: false,
             used_axioms: None,
         };
-        let CommandsWithContextX {
-            context,
-            commands,
-            prover_choice,
-            skip_recommends: _,
-            hint_upon_failure,
-        } = &*commands_with_context;
-        let hint_guard = hint_upon_failure.lock().expect("we abort on poisoning");
+        let CommandsWithContextX { context, commands, prover_choice, skip_recommends: _ } =
+            &*commands_with_context;
         let context = context.with_desc_prefix(desc_prefix);
         if commands.len() > 0 {
             air_context.blank_line();
@@ -1111,7 +1101,6 @@ impl Verifier {
                     snap_map,
                     &command,
                     &context,
-                    &hint_guard,
                     *prover_choice,
                     default_prover_failed_assert_ids,
                 );
@@ -2662,7 +2651,6 @@ impl Verifier {
             bodies: vec![],
             shadow_check: vec![],
             extra_erase_ast_ids: vec![],
-            extra_erase_hir_ids_including_adjustments: vec![],
             local_invariant_bodies: vec![],
         };
         let erasure_info = std::rc::Rc::new(std::cell::RefCell::new(erasure_info));
@@ -2767,8 +2755,8 @@ impl Verifier {
                     "{}   ###   {}   ###   {}   ###   {}",
                     vir::ast_util::path_as_friendly_rust_name(&imp.x.impl_path),
                     vir::ast_util::path_as_friendly_rust_name(&imp.x.trait_path),
-                    &ts.join(", "),
-                    &imp.span.as_string,
+                    ts.join(", "),
+                    imp.span.as_string,
                 )
                 .map_err(|e| io_vir_err("log_impl_names".to_string(), e))
                 .map_err(map_err_diagnostics)?;
@@ -2868,8 +2856,8 @@ impl Verifier {
 
         let vir_crate =
             vir::autospec::resolve_autospec(&vir_crate).map_err(|e| (vec![e], Vec::new()))?;
-        let (vir_crate, erasure_modes, _read_kind_finals) =
-            vir::modes::check_crate(&vir_crate).map_err(|e| (vec![e], Vec::new()))?;
+        let (vir_crate, erasure_modes) =
+            vir::modes::check_crate(&vir_crate).map_err(|es| (es, Vec::new()))?;
 
         self.vir_crate = Some(vir_crate.clone());
         self.warning_ctx = Some(Arc::new(warning_ctx));
@@ -2884,8 +2872,6 @@ impl Verifier {
         let bodies = erasure_info.bodies.clone();
         let shadow_check = erasure_info.shadow_check.clone();
         let extra_erase_ast_ids = erasure_info.extra_erase_ast_ids.clone();
-        let extra_erase_hir_ids_including_adjustments =
-            erasure_info.extra_erase_hir_ids_including_adjustments.clone();
         let local_invariant_bodies = erasure_info.local_invariant_bodies.clone();
         let erasure_hints = crate::erase::ErasureHints {
             vir_crate: unpruned_crate,
@@ -2899,7 +2885,6 @@ impl Verifier {
             bodies,
             shadow_check,
             extra_erase_ast_ids,
-            extra_erase_hir_ids_including_adjustments,
             local_invariant_bodies,
         };
         self.erasure_hints = Some(erasure_hints);
@@ -3199,8 +3184,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             };
         let time_import1 = Instant::now();
         self.verifier.time_import = time_import1 - time_import0;
-        let verus_items =
-            Arc::new(crate::verus_items::from_diagnostic_items(&tcx.all_diagnostic_items(())));
+        let verus_items = Arc::new(crate::verus_items::from_diagnostic_items(tcx));
         self.verifier.verus_items = Some(verus_items.clone());
         let spans = SpanContextX::new(
             tcx,

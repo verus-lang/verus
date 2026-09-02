@@ -7,6 +7,10 @@ on:
         description: Git ref or SHA to build
         required: true
         type: string
+      is_rolling:
+        description: Whether this is a Rolling Release build
+        required: true
+        type: boolean
     outputs:
       version:
         description: Version derived from the built Linux artifact
@@ -57,14 +61,22 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.96.0
+          toolchain: 1.97.1
+
+      - name: create temporary toolchain manifest
+        working-directory: ./source
+        # Note that the purpose of creating a manifest file here is to include it in the build.
+        # This flow is *not* responsible for committing the new manifest file.
+        run: |
+          MAYBE_ROLLING_FLAG="${{ inputs.is_rolling && '--rolling' || '' }}"
+          cargo run -p cargo-verus-toolchains --bin create-manifest -- $MAYBE_ROLLING_FLAG --write-to-dir cargo-verus/toolchain-manifests
 
       - name: build
         working-directory: ./source
         run: |
-          . ../tools/activate
-          vargo clean
-          vargo build --release
+          cargo clean
+          cargo build --release
+          cargo run --release -p cargo-verus -- build --release --manifest-path vstd/Cargo.toml
 
       - name: create archive
         working-directory: ./source
@@ -102,6 +114,6 @@ jobs:
         run: |
           cd verus-x86-linux
           unzip verus-x86-linux.zip
-          version="$(cat ./verus-x86-linux/version.txt)"
+          version="$(jq -er '.verus.version' ./verus-x86-linux/version.json)"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "${version}"

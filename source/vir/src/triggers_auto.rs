@@ -1,11 +1,11 @@
 use crate::ast::{
-    BinaryOp, BitwiseOp, Constant, Dt, FieldOpr, Fun, Ident, Typ, TypX, UnaryOp, UnaryOpr, VarAt,
-    VarIdent, VirErr,
+    BitwiseOp, Constant, Dt, FieldOpr, Fun, Ident, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VarIdent,
+    VirErr,
 };
 use crate::ast_util::{dt_as_friendly_rust_name, path_as_friendly_rust_name};
 use crate::context::{ChosenTriggers, Ctx, FunctionCtx};
 use crate::messages::{Span, error};
-use crate::sst::{CallFun, Exp, ExpX, Trig, Trigs, UniqueIdent};
+use crate::sst::{BinaryOp, CallFun, Exp, ExpX, Trig, Trigs, UniqueIdent};
 use crate::util::vec_map;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -301,12 +301,6 @@ fn make_score(term: &Term, depth: u64) -> Score {
 }
 
 fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Term) {
-    let fail_on_strop = || {
-        unreachable!(
-            "internal error: doesn't make sense to reach `gather_terms` for string operations defined for verus_builtin, these are only used to tie verus_builtin and vstd together and do not make sense in user programs"
-        )
-    };
-
     fn append_typ_params_as_terms(typ: &Typ, all_terms: &mut Vec<Term>) {
         let ft = |all_terms: &mut Vec<Term>, t: &Typ| match &**t {
             TypX::TypParam(x) => {
@@ -387,9 +381,6 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
         ExpX::Unary(UnaryOp::MustBeFinalized | UnaryOp::MustBeElaborated, e1) => {
             gather_terms(ctxt, ctx, e1, depth)
         }
-        ExpX::Unary(UnaryOp::CastToInteger, _) => {
-            panic!("internal error: CastToInteger should have been removed before here")
-        }
         ExpX::Unary(op @ (UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_)), e1) => {
             let (is_pure, arg) = gather_terms(ctxt, ctx, e1, depth + 1);
             let app = match op {
@@ -405,7 +396,6 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 | UnaryOp::CoerceMode { .. }
                 | UnaryOp::MustBeFinalized
                 | UnaryOp::MustBeElaborated
-                | UnaryOp::CastToInteger
                 | UnaryOp::Length(_) => 0,
                 UnaryOp::HeightTrigger => 1,
                 UnaryOp::Trigger(_) | UnaryOp::Clip { .. } | UnaryOp::BitNot(_) => 1,
@@ -413,8 +403,8 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 UnaryOp::RealToInt => 1,
                 UnaryOp::FloatToBits => 1,
                 UnaryOp::IeeeFloat(_) => 1,
-                UnaryOp::InferSpecForLoopIter { .. } => 1,
-                UnaryOp::StrLen => fail_on_strop(),
+                UnaryOp::StrLen => 1,
+                UnaryOp::CastToInteger => 1,
                 UnaryOp::MutRefFinal(_) => 1,
                 UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_) => unreachable!(),
             };
@@ -439,7 +429,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
         ExpX::UnaryOpr(UnaryOpr::HasType(_), _) => {
             (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![]))))
         }
-        ExpX::UnaryOpr(UnaryOpr::IntegerTypeBound(_, _), e1) => gather_terms(ctxt, ctx, e1, depth),
+        ExpX::UnaryOpr(UnaryOpr::IntegerTypeBound(_), e1) => gather_terms(ctxt, ctx, e1, depth),
         ExpX::UnaryOpr(UnaryOpr::IsVariant { .. }, e1) => {
             // We currently don't auto-trigger on IsVariant
             // Even if we did, it might be best not to trigger on IsVariants generated from Match
@@ -467,20 +457,23 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 )),
             )
         }
+        ExpX::UnaryOpr(UnaryOpr::LoopIsolationBoundary(_), _e1) => {
+            panic!("unexpected LoopIsolationBoundary");
+        }
         ExpX::Binary(op, e1, e2) => {
             use BinaryOp::*;
             let depth = match op {
-                And | Or | Xor | Implies | Eq(_) => 0,
+                And | Or | Xor | Implies | Eq => 0,
                 HeightCompare { .. } => 1,
                 Ne | Inequality(_) | Arith(..) | RealArith(..) | IeeeFloat(..) => 1,
                 Bitwise(..) => 1,
-                StrGetChar => fail_on_strop(),
+                StrGetChar => 1,
                 Index(..) => 1,
             };
             let (is_pure1, term1) = gather_terms(ctxt, ctx, e1, depth);
             let (is_pure2, term2) = gather_terms(ctxt, ctx, e2, depth);
             match op {
-                Bitwise(bp, _) => {
+                Bitwise(bp) => {
                     let bop = match bp {
                         BitwiseOp::BitXor => BitOpName::BitXor,
                         BitwiseOp::BitAnd => BitOpName::BitAnd,

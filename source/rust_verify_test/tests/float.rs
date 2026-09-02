@@ -225,3 +225,15 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 8)
 }
+
+test_verify_one_file! {
+    #[test] f32_neg verus_code! {
+        fn test() {
+            let x: f32 = 1.0;
+            let y = -x;
+
+            let x2 = &x;
+            let y = -x2;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: unary op negation of floating point")
+}

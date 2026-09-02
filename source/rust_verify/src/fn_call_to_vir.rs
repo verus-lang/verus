@@ -32,9 +32,9 @@ use vir::ast::{
     ArithOp, ArrayKind, AssertQueryMode, AtomicallyKind, AutospecUsage, BinaryOp, BitshiftBehavior,
     BitwiseOp, BoundsCheck, BuiltinSpecFun, CallTarget, ChainedOp, ComputeMode, Constant, CrateId,
     Div0Behavior, ExprX, FieldOpr, FunX, HeaderExpr, HeaderExprX, InequalityOp, IntRange,
-    IntegerTypeBoundKind, MaskSpec, Mode, ModeCoercion, ModeWrapperMode, MultiOp, OverflowBehavior,
-    Place, PlaceX, Quant, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, VarBinder, VarBinderX,
-    VarIdent, VariantCheck, VirErr,
+    IntegerTypeBoundKind, LogicalOp, MaskSpec, Mode, ModeCoercion, ModeWrapperMode, MultiOp,
+    OverflowBehavior, Place, PlaceX, Quant, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, VarBinder,
+    VarBinderX, VarIdent, VariantCheck, VirErr,
 };
 use vir::ast_util::{
     const_int_from_string, mk_tuple_typ, mk_tuple_x, typ_to_diagnostic_str, types_equal,
@@ -93,14 +93,6 @@ pub(crate) fn fn_call_to_vir<'tcx>(
         Some(RustItem::ArcNew) if bctx.in_ghost => {
             record_compilable_operator(bctx, expr, CompilableOperator::ArcNew);
             return mk_one_vir_arg(bctx, expr.span, &args);
-        }
-        Some(RustItem::Panic) => {
-            return err_span(
-                expr.span,
-                format!(
-                    "panic is not supported (if you used Rust's `assert!` macro, you may have meant to use Verus's `assert` function)"
-                ),
-            );
         }
         Some(RustItem::CloneClone) => {
             // Special case `clone` for standard Rc and Arc types
@@ -266,7 +258,7 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
 
                 let Some(vir::ast::ImplPath::TraitImplPath(impl_path)) = self_trait_impl_path
                 else {
-                    panic!("{} {:?}", "could not resolve call to trait default method", &expr.span);
+                    panic!("{} {:?}", "could not resolve call to trait default method", expr.span);
                 };
 
                 let f = Arc::new(FunX { path: bctx.ctxt.def_id_to_vir_path(did) });
@@ -379,7 +371,13 @@ pub(crate) fn const_var_to_vir<'tcx>(
     hir_id: &rustc_hir::HirId,
     span: Span,
 ) -> Result<vir::ast::Expr, VirErr> {
-    if bctx.ctxt.tcx.trait_of_assoc(id).is_some() {
+    // A trait associated const, or an inherent-impl associated const that has type
+    // parameters (e.g. `impl<T> S<T> { const C: ... = ...; }`), is encoded as a
+    // function taking those type parameters, so it must be lowered to ExprX::Call
+    // (which supplies the type arguments) rather than ExprX::ConstVar.
+    let is_generic_assoc_const =
+        bctx.ctxt.tcx.trait_of_assoc(id).is_some() || bctx.ctxt.tcx.generics_of(id).count() > 0;
+    if is_generic_assoc_const {
         // associated const --> ExprX::Call rather than ExprX::ConstVar
         let Some(expr) = expr else {
             unsupported_err!(span, "associated constant in pattern");
@@ -393,27 +391,78 @@ pub(crate) fn const_var_to_vir<'tcx>(
     Ok(bctx.spanned_typed_new(span, &typ, ExprX::ConstVar(Arc::new(fun), autospec_usage)))
 }
 
-pub(crate) fn deref_to_vir<'tcx>(
+/// Emit a call to deref or deref_mut
+pub(crate) fn call_deref<'tcx>(
     bctx: &BodyCtxt<'tcx>,
+    span: Span,
+    expr_typ: Typ,
     trait_fun_id: DefId,
     arg: vir::ast::Expr,
-    expr_typ: Typ,
     arg_ty: rustc_middle::ty::Ty<'tcx>,
+) -> Result<vir::ast::Expr, VirErr> {
+    // deref has arg &Self
+    // deref_mut has arg &mut Self
+    // In either case, strip off the reference to get the Self type for the trait
+    let TyKind::Ref(_, self_ty, _) = arg_ty.kind() else {
+        crate::internal_err!(span, "deref_to_vir: expected ref")
+    };
+    let trait_args = bctx.ctxt.tcx.mk_args(&[GenericArg::from(*self_ty)]);
+    let args = Arc::new(vec![arg]);
+    call_overloaded_method(bctx, span, expr_typ, trait_fun_id, args, trait_args)
+}
+
+/// Emit a call to index or index_mut
+pub(crate) fn call_index<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
     span: Span,
+    expr_typ: Typ,
+    trait_fun_id: DefId,
+    arg: vir::ast::Expr,
+    arg_ty: rustc_middle::ty::Ty<'tcx>,
+    idx: vir::ast::Expr,
+    idx_ty: rustc_middle::ty::Ty<'tcx>,
+) -> Result<vir::ast::Expr, VirErr> {
+    // index has arg &Self
+    // index_mut has arg &mut Self
+    // In either case, strip off the reference to get the Self type for the trait
+    let TyKind::Ref(_, self_ty, _) = arg_ty.kind() else {
+        crate::internal_err!(span, "deref_to_vir: expected ref")
+    };
+    let trait_args = bctx.ctxt.tcx.mk_args(&[GenericArg::from(*self_ty), GenericArg::from(idx_ty)]);
+    let args = Arc::new(vec![arg, idx]);
+    call_overloaded_method(bctx, span, expr_typ, trait_fun_id, args, trait_args)
+}
+
+/// Emit a call to unary method call (Neg or Not)
+pub(crate) fn call_unary_method<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    span: Span,
+    expr_typ: Typ,
+    trait_fun_id: DefId,
+    arg: vir::ast::Expr,
+    arg_ty: rustc_middle::ty::Ty<'tcx>,
+) -> Result<vir::ast::Expr, VirErr> {
+    let self_ty = arg_ty;
+    let trait_args = bctx.ctxt.tcx.mk_args(&[GenericArg::from(self_ty)]);
+    let args = Arc::new(vec![arg]);
+    call_overloaded_method(bctx, span, expr_typ, trait_fun_id, args, trait_args)
+}
+
+/// Common logic for all the overloaded methods
+pub(crate) fn call_overloaded_method<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    span: Span,
+    expr_typ: Typ,
+    trait_fun_id: DefId,
+    args: vir::ast::Exprs,
+    trait_args: &'tcx rustc_middle::ty::GenericArgs<'tcx>,
 ) -> Result<vir::ast::Expr, VirErr> {
     let tcx = bctx.ctxt.tcx;
     let typing_env = TypingEnv::non_body_analysis(tcx, bctx.fun_id);
-    // The `arg_ty`, if `&T`, should be Rust automatically adding the `&`
-    // reference for calling `deref`. We strip it for trait resolution.
-    //
-    // Otherwise, it may be `deref` coercion. Leave it as-is.
-    let arg_ty =
-        if let TyKind::Ref(_, arg_ty, _) = arg_ty.kind() { arg_ty.clone() } else { arg_ty };
-    let node_substs = tcx.mk_args(&[GenericArg::from(arg_ty)]);
 
     let trait_fun = Arc::new(FunX { path: bctx.ctxt.def_id_to_vir_path(trait_fun_id) });
 
-    let res = resolve_trait_item(span, tcx, typing_env, trait_fun_id, node_substs)?;
+    let res = resolve_trait_item(span, tcx, typing_env, trait_fun_id, trait_args)?;
     let target_kind = match res {
         ResolutionResult::Resolved { resolved_item: ResolvedItem::FromImpl(did, args), .. } => {
             let typs = mk_typ_args(bctx, args, did, span)?;
@@ -433,8 +482,8 @@ pub(crate) fn deref_to_vir<'tcx>(
 
     let autospec_usage = if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
 
-    let typ_args = mk_typ_args(bctx, node_substs, trait_fun_id, span)?;
-    let impl_paths = get_impl_paths(bctx, trait_fun_id, node_substs, None, false, span)?;
+    let typ_args = mk_typ_args(bctx, trait_args, trait_fun_id, span)?;
+    let impl_paths = get_impl_paths(bctx, trait_fun_id, trait_args, None, false, span)?;
     let call_target_attrs = vir::ast::CallTargetAttrs {
         autospec: autospec_usage,
         assume_external_allowed: false,
@@ -442,7 +491,6 @@ pub(crate) fn deref_to_vir<'tcx>(
     };
     let call_target =
         CallTarget::Fun(target_kind, trait_fun, typ_args, impl_paths, call_target_attrs);
-    let args = Arc::new(vec![arg.clone()]);
     let x = ExprX::Call { target: call_target, args, post_args: None, body: None };
 
     Ok(bctx.spanned_typed_new(span, &expr_typ, x))
@@ -462,6 +510,20 @@ fn verus_item_to_vir<'tcx, 'a>(
     // use `crate::verus_item::get_rust_item` instead
     let f_name = tcx.def_path_str(f);
     let args_len = args.len();
+
+    if !bctx.in_ghost && uncompilable_verus_fn(verus_item) {
+        return err_span(
+            expr.span,
+            format!(
+                "cannot use `{f_name}`{:} in executable context",
+                match verus_item {
+                    VerusItem::Expr(ExprItem::IsSmallerThanLexicographic) =>
+                        " (of the `decreases_to!` macro)",
+                    _ => "",
+                }
+            ),
+        );
+    }
 
     let mk_expr = |x: ExprX| Ok(bctx.spanned_typed_new(expr.span, &expr_typ()?, x));
     let mk_expr_span = |span: Span, x: ExprX| Ok(bctx.spanned_typed_new(span, &expr_typ()?, x));
@@ -883,7 +945,6 @@ fn verus_item_to_vir<'tcx, 'a>(
                     }
 
                     assert!(bctx.atomically.is_none());
-                    let bctx = BodyCtxt { mode: Mode::Proof, ..bctx.clone() };
 
                     let [
                         Expr {
@@ -921,7 +982,8 @@ fn verus_item_to_vir<'tcx, 'a>(
                     });
 
                     let atomically = Some(actx.clone());
-                    let bctx_inner = BodyCtxt { atomically, mode: Mode::Proof, ..bctx.clone() };
+                    let bctx_inner = BodyCtxt { atomically, in_ghost: true, ..bctx.clone() };
+
                     let value = expr_to_vir_consume(&bctx_inner, body.value)?;
 
                     let update_span = update_param.span.clone();
@@ -1004,6 +1066,26 @@ fn verus_item_to_vir<'tcx, 'a>(
                     mk_expr(ExprX::RevealString(Arc::new(s.to_string())))
                 } else {
                     err_span(args[0].span, "string literal expected".to_string())
+                }
+            }
+            DirectiveItem::RevealByteslit => {
+                record_spec_fn_pure_args_only(bctx, expr);
+                unsupported_err_unless!(
+                    args_len == 1,
+                    expr.span,
+                    "reveal_byteslit expects one argument"
+                );
+                let bytes = if let ExprKind::Lit(lit) = &args[0].kind {
+                    match lit.node {
+                        rustc_ast::LitKind::ByteStr(bytes, _) => Some(bytes.as_byte_str().to_vec()),
+                        _ => None,
+                    }
+                } else {
+                    None
+                };
+                match bytes {
+                    Some(bytes) => mk_expr(ExprX::RevealByteString(Arc::new(bytes))),
+                    None => err_span(args[0].span, "byte-string literal expected"),
                 }
             }
             DirectiveItem::InlineAirStmt => {
@@ -1141,7 +1223,7 @@ fn verus_item_to_vir<'tcx, 'a>(
 
                 let kind = IntegerTypeBoundKind::ArchWordBits;
 
-                mk_expr(ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(kind, Mode::Spec), arg))
+                mk_expr(ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(kind), arg))
             }
             ExprItem::ClosureToFnSpec | ExprItem::ClosureToFnProof => {
                 unsupported_err_unless!(args_len == 1, expr.span, "expected closure_to_fn", &args);
@@ -1190,7 +1272,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     ExprItem::UnsignedMax => IntegerTypeBoundKind::UnsignedMax,
                     _ => unreachable!(),
                 };
-                mk_expr(ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(kind, Mode::Spec), arg))
+                mk_expr(ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(kind), arg))
             }
             ExprItem::IsSmallerThan
             | ExprItem::IsSmallerThanLexicographic
@@ -1220,23 +1302,6 @@ fn verus_item_to_vir<'tcx, 'a>(
             }
             ExprItem::DefaultEnsures => {
                 return err_span(expr.span, "default_ensures not allowed here");
-            }
-            ExprItem::InferSpecForLoopIter => {
-                assert!(args.len() == 3);
-                let arg = if bctx.loop_isolation {
-                    crate::erase::mark_adjusted_node_for_erasure(&bctx.ctxt, &args[0]);
-                    expr_to_vir_consume(bctx, &args[1])?
-                } else {
-                    crate::erase::mark_adjusted_node_for_erasure(&bctx.ctxt, &args[1]);
-                    expr_to_vir_consume(bctx, &args[0])?
-                };
-                let print_hint = matches!(
-                    &args[2],
-                    Expr { kind: ExprKind::Lit(Spanned { node: LitKind::Bool(true), .. }), .. }
-                );
-                let e = mk_expr(ExprX::Unary(UnaryOp::InferSpecForLoopIter { print_hint }, arg))?;
-                record_call(bctx, expr, ResolvedCall::InferSpecForLoopIter(e.span.id));
-                Ok(e)
             }
             ExprItem::IsVariant => {
                 record_spec_fn(bctx, expr);
@@ -1273,7 +1338,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                         variant: str_ident(&variant_name),
                         field: variant_field.unwrap(),
                         get_variant: true,
-                        check: VariantCheck::None,
+                        check: VariantCheck::Recommends,
                     }),
                     adt_arg,
                 ))
@@ -1977,8 +2042,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             record_compilable_operator(bctx, expr, CompilableOperator::Implies);
 
             let (lhs, rhs) = mk_two_vir_args(bctx, expr.span, &args)?;
-            let vop = BinaryOp::Implies;
-            mk_expr(ExprX::Binary(vop, lhs, rhs))
+            mk_expr(ExprX::Logical(LogicalOp::Implies, lhs, rhs))
         }
         VerusItem::UnaryOp(UnaryOpItem::IeeeFloat(fop)) => {
             use crate::verus_items::IeeeFloatUnaryItem;
@@ -2274,9 +2338,6 @@ fn verus_item_to_vir<'tcx, 'a>(
             }
 
             record_spec_fn(bctx, expr);
-            if !bctx.in_ghost {
-                return err_span(expr.span, format!("{name} must be in a 'proof' block"));
-            }
             let exp = expr_to_vir_consume(bctx, &args[0])?;
             let op = match verus_item {
                 VerusItem::MutRefCurrent => UnaryOp::MutRefCurrent,
@@ -2290,9 +2351,6 @@ fn verus_item_to_vir<'tcx, 'a>(
         }
         VerusItem::AfterBorrow => {
             record_spec_fn(bctx, expr);
-            if !bctx.in_ghost {
-                return err_span(expr.span, "`after_borrow` must be in a 'proof' block");
-            }
             let bctx = BodyCtxt { in_explicit_prophecy_node: true, ..bctx.clone() };
             let p = expr_to_vir_place(&bctx, &args[0])?;
             if !is_place_ok_for_spec_after_borrow(&p) {
@@ -2311,9 +2369,6 @@ fn verus_item_to_vir<'tcx, 'a>(
         }
         VerusItem::MutRefTracked => {
             record_compilable_operator(bctx, expr, CompilableOperator::MutRefTracked);
-            if !bctx.in_ghost {
-                return err_span(expr.span, "`mut_ref_tracked` must be in a 'proof' block");
-            }
             let p = expr_to_vir_place(&bctx, &args[0])?;
             let p = crate::rust_to_vir_expr::deref_mut(bctx, expr.span, &p)?;
             let p = crate::rust_to_vir_expr::simplify_place_by_cancelling(&p);
@@ -2337,6 +2392,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             .help("you can implicitly dereference this type using `*`"));
         }
         VerusItem::Vstd(_, _)
+        | VerusItem::RustPrivate(_)
         | VerusItem::Marker(_)
         | VerusItem::BuiltinType(_)
         | VerusItem::BuiltinTrait(_)
@@ -2344,6 +2400,71 @@ fn verus_item_to_vir<'tcx, 'a>(
         | VerusItem::Global(_)
         | VerusItem::BuiltinFunction(BuiltinFunctionItem::ConstrainType)
         | VerusItem::BuiltinFunction(BuiltinFunctionItem::GetFutureOutputType) => unreachable!(),
+    }
+}
+
+fn uncompilable_verus_fn(verus_item: &VerusItem) -> bool {
+    match verus_item {
+        // Disallowed, but handled in modes
+        VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(
+            SpecGhostTrackedItem::GhostView
+            | SpecGhostTrackedItem::GhostBorrow
+            | SpecGhostTrackedItem::GhostBorrowMut
+            | SpecGhostTrackedItem::TrackedView,
+        )) => false,
+        VerusItem::Quant(_) => false,
+        VerusItem::Assert(_) => false,
+        VerusItem::Expr(
+            ExprItem::Choose
+            | ExprItem::ChooseTuple
+            | ExprItem::Old
+            | ExprItem::GetVariantField
+            | ExprItem::GetUnionField
+            | ExprItem::IsVariant
+            | ExprItem::ShrRefStructWrap,
+        ) => false,
+
+        // Disallowed, error here
+        VerusItem::Expr(_)
+        | VerusItem::UnaryOp(_)
+        | VerusItem::BinaryOp(_)
+        | VerusItem::Chained(_)
+        | VerusItem::UseTypeInvariant
+        | VerusItem::WithTriggers
+        | VerusItem::OpenInvariantBlock(_)
+        | VerusItem::OpenAtomicUpdate(_)
+        | VerusItem::BuiltinFunction(_)
+        | VerusItem::HasResolved
+        | VerusItem::HasResolvedUnsized
+        | VerusItem::MutRefCurrent
+        | VerusItem::MutRefFuture
+        | VerusItem::Final
+        | VerusItem::AfterBorrow
+        | VerusItem::ErasedGhostValue
+        | VerusItem::ShadowGhostValue
+        | VerusItem::MutableReferenceTie
+        | VerusItem::TwoPhaseMutableReferenceTie
+        | VerusItem::GetFirst
+        | VerusItem::DummyCapture(_)
+        | VerusItem::MutRefTracked => true,
+
+        VerusItem::CompilableOpr(_) => false,
+        VerusItem::RustPrivate(_) => false,
+
+        // Handled properly by mode-checking
+        VerusItem::BuiltinDeref(_) => false,
+        VerusItem::Vstd(_, _) => false,
+
+        // Handled properly by erasure
+        VerusItem::Spec(_) => false,
+        VerusItem::Directive(_) => false,
+
+        // Not functions
+        VerusItem::Marker(_) => false,
+        VerusItem::BuiltinType(_) => false,
+        VerusItem::BuiltinTrait(_) => false,
+        VerusItem::Global(_) => false,
+        VerusItem::External(_) => false,
     }
 }
 
@@ -2726,6 +2847,9 @@ fn mk_is_smaller_than<'tcx>(
         let mk_bop = |op: BinaryOp, e1: vir::ast::Expr, e2: vir::ast::Expr| {
             bctx.spanned_typed_new(span, &tbool, ExprX::Binary(op, e1, e2))
         };
+        let mk_lop = |op: LogicalOp, e1: vir::ast::Expr, e2: vir::ast::Expr| {
+            bctx.spanned_typed_new(span, &tbool, ExprX::Logical(op, e1, e2))
+        };
         let mk_cmp = |lt: bool| -> Result<vir::ast::Expr, VirErr> {
             let e0 = expr_to_vir_consume(bctx, exp0)?;
             let e1 = expr_to_vir_consume(bctx, exp1)?;
@@ -2739,7 +2863,7 @@ fn mk_is_smaller_than<'tcx>(
                     let op1 = BinaryOp::Inequality(InequalityOp::Lt);
                     let e0 = expr_to_vir_consume(bctx, exp0)?;
                     let cmp1 = mk_bop(op1, e0, e1);
-                    Ok(mk_bop(BinaryOp::And, cmp0, cmp1))
+                    Ok(mk_lop(LogicalOp::And, cmp0, cmp1))
                 } else {
                     Ok(mk_bop(BinaryOp::Eq(Mode::Spec), e0, e1))
                 }
@@ -2753,15 +2877,15 @@ fn mk_is_smaller_than<'tcx>(
             if args1.len() < args0.len() {
                 // if z0 == z1, we can ignore the extra args0:
                 // z0 < z1 || z0 == z1
-                dec_exp = mk_bop(BinaryOp::Or, mk_cmp(true)?, mk_cmp(false)?);
+                dec_exp = mk_lop(LogicalOp::Or, mk_cmp(true)?, mk_cmp(false)?);
             } else {
                 // z0 < z1
                 dec_exp = mk_cmp(true)?;
             }
         } else {
             // x0 < x1 || (x0 == x1 && dec_exp)
-            let and = mk_bop(BinaryOp::And, mk_cmp(false)?, dec_exp);
-            dec_exp = mk_bop(BinaryOp::Or, mk_cmp(true)?, and);
+            let and = mk_lop(LogicalOp::And, mk_cmp(false)?, dec_exp);
+            dec_exp = mk_lop(LogicalOp::Or, mk_cmp(true)?, and);
         }
     }
     return Ok(dec_exp);
@@ -2789,6 +2913,14 @@ pub(crate) fn fix_node_substs<'tcx, 'a>(
             let generic_arg0 = GenericArg::from(types.expr_ty(expr));
             let generic_arg1 = GenericArg::from(types.expr_ty_adjusted(&args[0]));
             tcx.mk_args(&[generic_arg0, generic_arg1])
+        }
+        Some(RustItem::IntoIterFn) if node_substs.is_empty() => {
+            // A `for` loop produced by a `macro_rules!` expansion is not rewritten
+            // by the `verus!` macro, so it reaches rustc's native for-loop
+            // desugaring, which emits an `IntoIterator::into_iter` call whose
+            // node_substs is empty instead of carrying the Self type argument.
+            let generic_arg = GenericArg::from(types.expr_ty_adjusted(&args[0]));
+            tcx.mk_args(&[generic_arg])
         }
         _ => node_substs,
     }
@@ -2924,7 +3056,8 @@ pub(crate) fn check_variant_field<'tcx>(
                 return err_span(span, format!("no field `{field_name:}` for this variant"));
             };
 
-            let field_ty = field.ty(tcx, substs);
+            let typing_env = TypingEnv::post_analysis(tcx, bctx.fun_id);
+            let field_ty = tcx.normalize_erasing_regions(typing_env, field.ty(tcx, substs));
             let vir_field_ty = bctx.mid_ty_to_vir(span, &field_ty)?;
             let vir_expected_field_ty = bctx.mid_ty_to_vir(span, &expected_field_typ)?;
             if !types_equal(&vir_field_ty, &vir_expected_field_ty) {
@@ -2970,7 +3103,8 @@ fn check_union_field<'tcx>(
         return err_span(span, format!("no field `{field_name:}` for this union"));
     };
 
-    let field_ty = field.ty(tcx, substs);
+    let typing_env = TypingEnv::post_analysis(tcx, bctx.fun_id);
+    let field_ty = tcx.normalize_erasing_regions(typing_env, field.ty(tcx, substs));
     let vir_field_ty = bctx.mid_ty_to_vir(span, &field_ty)?;
     let vir_expected_field_ty = bctx.mid_ty_to_vir(span, &expected_field_typ)?;
     if !types_equal(&vir_field_ty, &vir_expected_field_ty) {

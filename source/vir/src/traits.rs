@@ -225,7 +225,7 @@ pub fn demote_external_traits(
             let our_trait = traits.contains(trait_path);
             if !our_trait {
                 let Some(warn_config) = warning_ctx.fun_warn_configs.get(&function.x.name) else {
-                    panic!("missing warn_config for function {:?}", &function.x.name);
+                    panic!("missing warn_config for function {:?}", function.x.name);
                 };
                 crate::messages::warning_maybe_if_in_local_crate(
                     warn_config,
@@ -583,7 +583,12 @@ pub fn inherit_default_bodies(
         }
         if let FunctionKind::TraitMethodImpl { impl_path, method, .. } = &f.x.kind {
             let p = (impl_path, method);
-            assert!(!method_impls.contains(&p));
+            if method_impls.contains(&p) {
+                return Err(error(
+                    &f.span,
+                    "duplicate specification for this trait method implementation",
+                ));
+            }
             method_impls.insert(p);
         }
     }

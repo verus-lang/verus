@@ -3,7 +3,7 @@ name: nightly-verita
 on:
   schedule:
     # 1 AM EST = 5 AM UTC
-    - cron: '0 8 * * *'
+    - cron: "0 8 * * *"
   workflow_dispatch:
 
 permissions:
@@ -23,12 +23,12 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.96.0
+          toolchain: 1.97.1
 
       - name: setup python
         uses: actions/setup-python@v6
         with:
-          python-version: '3.x'
+          python-version: "3.x"
 
       - name: get z3
         working-directory: ./source
@@ -45,9 +45,9 @@ jobs:
       - name: build verus with singular support
         working-directory: ./source
         run: |
-          . ../tools/activate
-          vargo clean
-          VERUS_SINGULAR_PATH="$(which Singular)" VERUS_Z3_PATH="$(pwd)/z3" vargo build --release --features singular
+          cargo clean
+          VERUS_SINGULAR_PATH="$(which Singular)" VERUS_Z3_PATH="$(pwd)/z3" cargo build --release --features singular
+          cargo run --release -p cargo-verus -- build --release --manifest-path vstd/Cargo.toml
 
       - name: build verita
         working-directory: ./tools/verita
@@ -63,7 +63,7 @@ jobs:
           path: ${{ github.workspace }}/tools/verita/previous-results
           search_artifacts: true
           if_no_artifact_found: warn
-          workflow_conclusion: ''
+          workflow_conclusion: ""
 
       - name: run verita
         working-directory: ./tools/verita

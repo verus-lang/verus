@@ -892,7 +892,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
 
         let expr = &self.thir[value];
         let constant = match &expr.kind {
-            ExprKind::Adt(box AdtExpr { variant_index, fields, base, .. }) => {
+            ExprKind::Adt(AdtExpr { variant_index, fields, base, .. }) => {
                 assert!(matches!(base, AdtExprBase::None));
                 assert!(fields.is_empty());
                 ConstOperand {
@@ -957,7 +957,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 (state_ty.discriminant_ty(self.tcx), Rvalue::Discriminant(scope.state_place))
             }
             ty::Uint(_) | ty::Int(_) | ty::Float(_) | ty::Bool | ty::Char => {
-                (state_ty, Rvalue::Use(Operand::Copy(scope.state_place)))
+                (state_ty, Rvalue::Use(Operand::Copy(scope.state_place), WithRetag::Yes))
             }
             _ => span_bug!(state_decl.source_info.span, "unsupported #[loop_match] state"),
         };
@@ -1298,7 +1298,12 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 break;
             }
 
-            if self.tcx.hir_attrs(id).iter().any(|attr| Level::from_attr(attr).is_some()) {
+            if self
+                .tcx
+                .hir_attrs(id)
+                .iter()
+                .any(|attr| Level::from_opt_symbol(attr.name()).is_some())
+            {
                 // This is a rare case. It's for a node path that doesn't reach the root due to an
                 // intervening lint level attribute. This result doesn't get cached.
                 return id;

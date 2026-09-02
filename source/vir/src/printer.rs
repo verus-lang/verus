@@ -1,7 +1,7 @@
 use crate::ast::*;
 use air::printer::macro_push_node;
 use air::{node, nodes};
-use sise::Node;
+use sise::TreeNode as Node;
 
 const VIR_BREAK_ON: &[&str] = &["Function"];
 const VIR_BREAK_AFTER: &[&str] =
@@ -23,26 +23,24 @@ impl<'a> NodeWriter<'a> {
 
     pub fn write_node(
         &mut self,
-        writer: &mut sise::SpacedStringWriter,
+        serializer: &mut sise::Serializer,
         node: &Node,
         break_len: usize,
         brk: bool,
         brk_next: bool,
     ) {
-        use sise::Writer;
-        let opts =
-            sise::SpacedStringWriterNodeOptions { break_line_len: if brk { 0 } else { break_len } };
+        let break_line_at = if brk { 0 } else { break_len };
         match node {
             Node::Atom(a) => {
-                writer.write_atom(a, opts).unwrap();
+                serializer.put_atom(a, break_line_at);
             }
             Node::List(l) => {
-                writer.begin_list(opts).unwrap();
+                serializer.begin_list(break_line_at);
                 let mut brk = false;
                 let brk_from_next = brk_next;
                 let mut brk_next = false;
                 for n in l {
-                    self.write_node(writer, n, break_len + 1, brk || brk_from_next, brk_next);
+                    self.write_node(serializer, n, break_len + 1, brk || brk_from_next, brk_next);
                     brk_next = false;
                     brk = false;
                     if let Node::Atom(a) = n {
@@ -54,7 +52,7 @@ impl<'a> NodeWriter<'a> {
                         }
                     }
                 }
-                writer.end_list(()).unwrap();
+                serializer.end_list();
             }
         }
     }
@@ -79,13 +77,12 @@ impl<'a> NodeWriter<'a> {
     }
 
     pub fn node_to_string(&mut self, node: &Node) -> String {
-        use sise::Writer;
         let indentation = " ";
-        let style = sise::SpacedStringWriterStyle { line_break: "\n", indentation };
+        let style = sise::SerializerStyle { line_break: "\n", indentation };
         let mut result = String::new();
-        let mut string_writer = sise::SpacedStringWriter::new(style, &mut result);
+        let mut string_writer = sise::Serializer::new(style, &mut result);
         self.write_node(&mut string_writer, &node, 120, false, false);
-        string_writer.finish(()).unwrap();
+        string_writer.finish(false);
         // Clean up result:
         Self::clean_up_lines(result, indentation)
     }
@@ -188,6 +185,12 @@ tuple_impls! { A B C D E F G H I J K L }
 impl ToDebugSNode for bool {
     fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
         Node::Atom(format!("{:?}", self))
+    }
+}
+
+impl ToDebugSNode for u8 {
+    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
+        Node::Atom(self.to_string())
     }
 }
 
@@ -428,7 +431,7 @@ pub fn write_krate(mut write: impl std::io::Write, vir_crate: &Krate, opts: &ToD
     } = &**vir_crate;
     for datatype in datatypes.iter() {
         if opts.no_span {
-            writeln!(&mut write, ";; {}", &datatype.span.as_string)
+            writeln!(&mut write, ";; {}", datatype.span.as_string)
                 .expect("cannot write to vir write");
         }
         writeln!(&mut write, "{}\n", nw.node_to_string(&datatype.to_node(opts)))
@@ -436,7 +439,7 @@ pub fn write_krate(mut write: impl std::io::Write, vir_crate: &Krate, opts: &ToD
     }
     for function in functions.iter() {
         if opts.no_span {
-            writeln!(&mut write, ";; {}", &function.span.as_string)
+            writeln!(&mut write, ";; {}", function.span.as_string)
                 .expect("cannot write to vir write");
         }
         writeln!(&mut write, "{}\n", nw.node_to_string(&function.to_node(opts)))
@@ -457,8 +460,7 @@ pub fn write_krate(mut write: impl std::io::Write, vir_crate: &Krate, opts: &ToD
     }
     for assoc in assoc_type_impls.iter() {
         if opts.no_span {
-            writeln!(&mut write, ";; {}", &assoc.span.as_string)
-                .expect("cannot write to vir write");
+            writeln!(&mut write, ";; {}", assoc.span.as_string).expect("cannot write to vir write");
         }
         writeln!(&mut write, "{}\n", nw.node_to_string(&assoc.to_node(opts)))
             .expect("cannot write to vir write");
@@ -502,7 +504,7 @@ pub fn write_krate_sst(
 
     for datatype in datatypes.iter() {
         if opts.no_span {
-            writeln!(&mut write, ";; {}", &datatype.span.as_string)
+            writeln!(&mut write, ";; {}", datatype.span.as_string)
                 .expect("cannot write to vir write");
         }
         writeln!(&mut write, "{}\n", nw.node_to_string(&datatype.to_node(opts)))
@@ -510,7 +512,7 @@ pub fn write_krate_sst(
     }
     for function in functions.iter() {
         if opts.no_span {
-            writeln!(&mut write, ";; {}", &function.span.as_string)
+            writeln!(&mut write, ";; {}", function.span.as_string)
                 .expect("cannot write to vir write");
         }
         writeln!(&mut write, "{}\n", nw.node_to_string(&function.to_node(opts)))
@@ -518,7 +520,7 @@ pub fn write_krate_sst(
     }
     for trait_ in traits.iter() {
         if opts.no_span {
-            writeln!(&mut write, ";; {}", &trait_.span.as_string)
+            writeln!(&mut write, ";; {}", trait_.span.as_string)
                 .expect("cannot write to vir write");
         }
         let trait_node = Node::List(vec![Node::Atom("trait".to_owned()), trait_.to_node(opts)]);
@@ -528,7 +530,7 @@ pub fn write_krate_sst(
     writeln!(&mut write, ";; trait_impls").expect("cannot write to vir write");
     for trait_impl in trait_impls.iter() {
         if opts.no_span {
-            writeln!(&mut write, ";; {}", &trait_impl.span.as_string)
+            writeln!(&mut write, ";; {}", trait_impl.span.as_string)
                 .expect("cannot write to vir write");
         }
         let trait_impl = nodes!(trait_impl {trait_impl.to_node(opts)});
@@ -538,8 +540,7 @@ pub fn write_krate_sst(
     writeln!(&mut write, ";; assoc_type_impls").expect("cannot write to vir write");
     for assoc in assoc_type_impls.iter() {
         if opts.no_span {
-            writeln!(&mut write, ";; {}", &assoc.span.as_string)
-                .expect("cannot write to vir write");
+            writeln!(&mut write, ";; {}", assoc.span.as_string).expect("cannot write to vir write");
         }
         let assoc_type_impl = nodes!(assoc_type_impl {assoc.to_node(opts)});
         writeln!(&mut write, "{}\n", nw.node_to_string(&assoc_type_impl))
