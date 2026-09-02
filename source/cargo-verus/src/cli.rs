@@ -70,9 +70,6 @@ pub struct NewCommand {
 
 #[derive(Clone, Debug, Args)]
 pub struct FmtCommand {
-    #[command(flatten)]
-    pub cargo_opts: CargoOptions,
-
     /// Check whether formatting is needed without modifying files
     #[arg(long)]
     pub check: bool,
@@ -80,6 +77,9 @@ pub struct FmtCommand {
     /// Increase verbosity (use -vv for more output)
     #[arg(short, long, action = ArgAction::Count)]
     pub verbosity: u8,
+
+    #[command(flatten)]
+    pub cargo_opts: CargoOptions,
 
     #[arg(last = true, num_args = 0.., allow_hyphen_values = true)]
     pub verusfmt_args: Vec<String>,
