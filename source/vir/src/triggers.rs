@@ -1,6 +1,6 @@
 use crate::ast::{
-    SpannedTyped, TriggerAnnotation, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VarBinders, VarIdent,
-    VirErr,
+    Fun, SpannedTyped, TriggerAnnotation, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VarBinders,
+    VarIdent, VirErr,
 };
 use crate::context::Ctx;
 use crate::messages::{Span, error};
@@ -13,7 +13,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
 // Manual triggers
-struct State {
+struct State<'a> {
     // use results from triggers_auto, no questions asked
     auto_trigger: AutoType,
     // variables the triggers must cover
@@ -22,6 +22,8 @@ struct State {
     triggers: BTreeMap<Option<u64>, Vec<Exp>>,
     // trigger_vars covered by each trigger
     coverage: HashMap<Option<u64>, HashSet<VarIdent>>,
+    // expr identity -> the #[verifier::inline] fn it was inlined from, for trigger errors
+    inlined_calls: &'a HashMap<usize, Fun>,
     // a variable cannot be both native and poly, so these should not intersect:
 }
 
@@ -208,6 +210,18 @@ fn check_trigger_expr(
         ExpX::UnaryOpr(UnaryOpr::HasResolved(_), _) => {}
         ExpX::UnaryOpr(UnaryOpr::AutoDecreases | UnaryOpr::AutoLoopEnsures, _) => {}
         _ => {
+            if let Some(fun) = state.inlined_calls.get(&(Arc::as_ptr(exp) as usize)) {
+                let name = fun.path.segments.last().expect("function name");
+                return Err(error(
+                    &exp.span,
+                    format!(
+                        "trigger must be a function call, a field access, or arithmetic \
+                         operator; `{name}` is marked `#[verifier::inline]`, so this call is \
+                         replaced by its body before trigger selection - trigger on part of \
+                         `{name}`'s body instead, or remove `#[verifier::inline]`",
+                    ),
+                ));
+            }
             return Err(error(
                 &exp.span,
                 "trigger must be a function call, a field access, or arithmetic operator",
@@ -480,12 +494,14 @@ pub(crate) fn build_triggers(
     vars: &Vec<VarIdent>,
     exp: &Exp,
     allow_empty: bool,
+    inlined_calls: &HashMap<usize, Fun>,
 ) -> Result<Trigs, VirErr> {
     let mut state = State {
         auto_trigger: AutoType::None,
         trigger_vars: vars.iter().cloned().collect(),
         triggers: BTreeMap::new(),
         coverage: HashMap::new(),
+        inlined_calls,
     };
     get_manual_triggers(&mut state, exp)?;
     if state.triggers.len() > 0 || allow_empty {
