@@ -252,6 +252,7 @@ pub enum Primitive {
     StrSlice,
     Ptr, // Mut ptr, unless Const decoration is applied
     Global,
+    TypeTag,
 }
 
 #[derive(Debug, Serialize, Deserialize, Hash, ToDebugSNode, Clone)]
@@ -370,6 +371,8 @@ pub enum NullaryOpr {
     TypEqualityBound(Path, Typs, Ident, Typ),
     /// predicate representing const type bound, e.g., `const X: usize`
     ConstTypBound(Typ, Typ),
+    /// identity of a type, as in `type_id::<T>()`; carries the type it identifies
+    TypeTag(Typ),
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]

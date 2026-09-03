@@ -145,6 +145,7 @@ pub(crate) enum ExprItem {
     StrSliceLen,
     StrSliceGetChar,
     ArchWordBits,
+    TypeId,
     ClosureToFnSpec,
     ClosureToFnProof,
     SignedMin,
@@ -547,6 +548,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::strslice_len",            VerusItem::Expr(ExprItem::StrSliceLen)),
         ("verus::verus_builtin::strslice_get_char",       VerusItem::Expr(ExprItem::StrSliceGetChar)),
         ("verus::verus_builtin::arch_word_bits",          VerusItem::Expr(ExprItem::ArchWordBits)),
+        ("verus::verus_builtin::type_id",                 VerusItem::Expr(ExprItem::TypeId)),
         ("verus::verus_builtin::closure_to_fn_spec",      VerusItem::Expr(ExprItem::ClosureToFnSpec)),
         ("verus::verus_builtin::closure_to_fn_proof",     VerusItem::Expr(ExprItem::ClosureToFnProof)),
         ("verus::verus_builtin::signed_min",              VerusItem::Expr(ExprItem::SignedMin)),
@@ -915,6 +917,7 @@ pub(crate) enum RustItem {
     SliceSealed,
     Vec,
     Thin,
+    TypeId,
 }
 
 pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<RustItem> {
@@ -1035,6 +1038,9 @@ pub(crate) fn get_rust_item_str(rust_path: Option<&str>) -> Option<RustItem> {
     }
     if rust_path == Some("core::ptr::metadata::Thin") {
         return Some(RustItem::Thin);
+    }
+    if rust_path == Some("core::any::TypeId") {
+        return Some(RustItem::TypeId);
     }
     if rust_path == Some("core::any::Any") {
         return Some(RustItem::Any);

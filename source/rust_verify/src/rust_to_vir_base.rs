@@ -1146,6 +1146,13 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             } else {
                 let rust_item = verus_items::get_rust_item(tcx, did);
 
+                if rust_item == Some(verus_items::RustItem::TypeId) {
+                    return Ok((
+                        Arc::new(TypX::Primitive(Primitive::TypeTag, Arc::new(vec![]))),
+                        false,
+                    ));
+                }
+
                 let typ_args = mk_typ_args(&args)?;
                 if Some(did) == tcx.lang_items().owned_box() && typ_args.len() == 2 {
                     let (t0, ghost) = &typ_args[0];

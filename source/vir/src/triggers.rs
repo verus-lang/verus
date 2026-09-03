@@ -250,6 +250,7 @@ fn check_trigger_expr(
         ExpX::VarAt(_, VarAt::Pre) => Ok(()),
         ExpX::Old(_, _) => panic!("internal error: Old"),
         ExpX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(_typ)) => Ok(()),
+        ExpX::NullaryOpr(crate::ast::NullaryOpr::TypeTag(_typ)) => Ok(()),
         ExpX::NullaryOpr(crate::ast::NullaryOpr::TraitBound(..)) => {
             Err(error(&exp.span, "triggers cannot contain trait bounds"))
         }

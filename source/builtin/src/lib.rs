@@ -2347,6 +2347,12 @@ pub fn arch_word_bits() -> nat {
 }
 
 #[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::type_id"]
+pub fn type_id<T: ?Sized>() -> core::any::TypeId {
+    unimplemented!();
+}
+
+#[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::is_smaller_than"]
 pub fn is_smaller_than<A, B>(_: A, _: B) -> bool {
     unimplemented!();

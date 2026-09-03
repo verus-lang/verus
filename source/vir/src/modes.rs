@@ -2101,6 +2101,7 @@ fn check_expr(
             Ok((Mode::Spec, Proph::No))
         }
         ExprX::NullaryOpr(crate::ast::NullaryOpr::ConstTypBound(..)) => Ok((Mode::Spec, Proph::No)),
+        ExprX::NullaryOpr(crate::ast::NullaryOpr::TypeTag(..)) => Ok((Mode::Spec, Proph::No)),
         ExprX::Unary(UnaryOp::CoerceMode { op_mode, from_mode, to_mode, kind }, e1) => {
             // same as a call to an op_mode function with parameter from_mode and return to_mode
             if ctxt.check_ghost_blocks {

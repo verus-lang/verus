@@ -69,7 +69,10 @@ impl ResolvedTypeCollection {
                 self.append(ResolvableType::Array);
                 self.visit_type(&args[0]);
             }
-            TypX::Primitive(Primitive::StrSlice | Primitive::Ptr | Primitive::Global, _) => {
+            TypX::Primitive(
+                Primitive::StrSlice | Primitive::Ptr | Primitive::Global | Primitive::TypeTag,
+                _,
+            ) => {
                 // trivial resolve
             }
             TypX::Decorate(dec, _, t) => {
