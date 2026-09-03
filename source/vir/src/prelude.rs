@@ -228,7 +228,7 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
         (declare-fun [type_id_float] (Int) [typ])
         (declare-fun [type_id_const_int] (Int) [typ])
         (declare-fun [type_id_const_bool] (Bool) [typ])
-        
+
         // Type identity: a structural tag over type ids. A curried spine, so a
         // single sort with two constructors covers any constructor arity:
         //   Foo<a, b>  ~>  (tag%app (tag%app (tag%mk k) (tag a)) (tag b))

@@ -1589,7 +1589,7 @@ fn is_unsized_blanket_impl(ti: &TraitImpl) -> bool {
 /// If it doesn't, no need to emit the extra axioms.
 pub fn krate_uses_type_id(krate: &Krate) -> bool {
     use crate::ast::{ExprX, NullaryOpr};
-    use crate::ast_visitor::{AstVisitor, Walk, NoScoper};
+    use crate::ast_visitor::{AstVisitor, NoScoper, Walk};
 
     struct FindTypeTag(bool);
     impl AstVisitor<Walk, crate::ast::VirErr, NoScoper> for FindTypeTag {
