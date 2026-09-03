@@ -100,17 +100,18 @@ pub(crate) fn try_broadcasts<'a, R: Diagnostics + 'a>(
     bucket_id: &BucketId,
     gctx: GlobalCtx,
 ) -> Result<(Option<Krate>, GlobalCtx), VirErr> {
-    let Some(mut sh) = TryBroadcasts::<'a, R>::new(verifier, reporter, krate, source_map, bucket_id)
+    let Some(mut try_bc) =
+        TryBroadcasts::<'a, R>::new(verifier, reporter, krate, source_map, bucket_id)
     else {
-        // TODO: report error here
+        // Return None when no broadcast attribute is present
         return Ok((None, gctx));
     };
-    match sh.find_proof(gctx) {
+    match try_bc.find_proof(gctx) {
         Ok((result, new_ctx)) => Ok((result.map(|result| result.1), new_ctx)),
         Err(TryBroadcastsErr::VirErr(err)) => Err(err),
         Err(TryBroadcastsErr::InternalError { msg, global_ctx }) => {
             reporter.report(
-                &warning(&global_ctx.no_span, format!("Sledgehammer internal error: {}", msg))
+                &warning(&global_ctx.no_span, format!("try_broadcasts internal error: {}", msg))
                     .to_any(),
             );
             Ok((None, global_ctx))
@@ -228,12 +229,27 @@ impl<'a, R: Diagnostics> TryBroadcasts<'a, R> {
         while let Some(mut guess) = guesses.pop_front() {
             match self.try_guess(&guess, gctx)? {
                 (GuessOutcome::Success { .. }, mut new_ctx) => {
+                    let report_not_needed = |try_bc: &Self| {
+                        try_bc.reporter.report(
+                            &note(
+                                &try_bc.span(),
+                                format!(
+                                    "existing proof succeeds, try_broadcasts is no longer needed",
+                                ),
+                            )
+                            .to_any()
+                        );
+                    };
+                    if guess.broadcasts.is_empty() {
+                        report_not_needed(&self);
+                        return Ok((Some((guess, self.krate.clone())), new_ctx));
+                    }
                     if self.do_minimize {
                         self.reporter.report(
                             &note(
                                 &self.span(),
                                 format!(
-                                    "try_broadcasts found proof with {}, minimizing..",
+                                    "try_broadcasts found a proof with {}, minimizing..",
                                     guess.lemmas_msg(),
                                 ),
                             )
@@ -241,13 +257,17 @@ impl<'a, R: Diagnostics> TryBroadcasts<'a, R> {
                         );
                         let (min_guess, ctx) = self.minimize(guess, new_ctx)?;
                         guess = min_guess;
+                        if guess.broadcasts.is_empty() {
+                            report_not_needed(&self);
+                            return Ok((Some((guess, self.krate.clone())), ctx));
+                        }
                         new_ctx = ctx;
                     }
                     self.reporter.report(
                         &note(
                             &self.span(),
                             format!(
-                                "try_broadcasts found proof with {}: \n{}",
+                                "try_broadcasts found a proof with {}: \n{}",
                                 guess.lemmas_msg(),
                                 guess.pretty_print(&self.target_func.x.owning_module)
                             ),
@@ -336,6 +356,8 @@ impl<'a, R: Diagnostics> TryBroadcasts<'a, R> {
         global_ctx: GlobalCtx,
     ) -> Result<(Guess, GlobalCtx), TryBroadcastsErr> {
         let mut min_state = MinimizeState::from(&guess);
+        // 2 indicates that splitting should start by splitting in halves, then smaller
+        // portions otherwise.
         self.minimize_outer(guess, 2, &mut min_state, global_ctx)
     }
 
@@ -709,11 +731,7 @@ impl Guess {
 
     fn lemmas_msg(&self) -> String {
         let num_lemmas = self.broadcasts.len();
-        if num_lemmas == 1 {
-            "1 lemma".to_string()
-        } else {
-            format!("{num_lemmas} lemmas")
-        }
+        if num_lemmas == 1 { "1 lemma".to_string() } else { format!("{num_lemmas} lemmas") }
     }
 }
 

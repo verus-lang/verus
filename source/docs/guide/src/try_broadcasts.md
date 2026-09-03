@@ -12,7 +12,7 @@ tool](https://isabelle.in.tum.de/doc/sledgehammer.pdf) provided by the
 [Isabelle](https://isabelle.in.tum.de/) theorem prover.
 
 `try_broadcasts` is an *experimental* feature that attempts to automatically complete
-a proof attempt by automatically using relevant lemmas using the
+a proof attempt by using relevant lemmas using the
 [broadcast](broadcast_proof.md) mechanism. For example, consider the following
 example:
 
@@ -27,14 +27,14 @@ that elsewhere in the project, someone already proved a helpful lemma:
 {{#include ../../../../examples/guide/try_broadcasts.rs:set_example_lemma}}
 ```
 
-The proof of `union_three_sets` automatically succeeds when adding `broadcast
-use union_len;` to its body. However, this requires identifying both knowing the
-name of this lemma, and enabling it via `broadcast use`.
+The proof of `union_three_sets` automatically succeeds when `broadcast use
+union_len;` is added to its body. However, this requires both knowing the name
+of this lemma, and enabling it via `broadcast use`.
 
-To simplifying finding relevant lemmas, Verus provides the
-`#[verifier::try_broadcasts]` annotation to search for existing `broadcast` lemmas
-that would complete a proof. The feature can be used to identify the missing
-lemma as follows:
+To simplify finding relevant lemmas, Verus provides the
+`#[verifier::try_broadcasts]` annotation to search for existing `broadcast`
+lemmas that would complete a proof. The feature can be used to identify the
+missing lemma as follows:
 
 ```rust
 {{#include ../../../../examples/guide/try_broadcasts.rs:set_example_try_broadcasts}}
@@ -43,13 +43,13 @@ lemma as follows:
 Running Verus on this example now prints the following message:
 
 ```
-note: try_broadcasts found proof with 5 lemmas, minimizing..
+note: try_broadcasts found a proof with 5 lemmas, minimizing..
   --> ../examples/guide/try_broadcasts.rs:26:7
    |
 26 | proof fn union_three_sets<A>(xs: Set<A>, ys: Set<A>, zs: Set<A>)
    |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-note: try_broadcasts found proof with 1 lemma:
+note: try_broadcasts found a proof with 1 lemma:
       broadcast use union_len;
   --> ../examples/guide/try_broadcasts.rs:26:7
    |

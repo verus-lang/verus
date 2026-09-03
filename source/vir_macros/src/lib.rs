@@ -91,7 +91,7 @@ fn to_node_inner(
                 let field_name = field_name.to_string();
                 stmts.push(quote!(nodes.push(::sise::Node::Atom(format!(":{}", #field_name.to_string())));));
             }
-            stmts.push(quote!(nodes.push(crate::printer::ToDebugSNode::to_node(#bi, opts.clone()));));
+            stmts.push(quote!(nodes.push(crate::printer::ToDebugSNode::to_node(#bi, opts));));
         }
         stmts.into_iter().collect::<proc_macro2::TokenStream>()
     });

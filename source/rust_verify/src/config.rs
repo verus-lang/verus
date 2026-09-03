@@ -41,7 +41,7 @@ pub const CALL_GRAPH_FILE_SUFFIX_FULL_SIMPLIFIED: &str = "-call-graph-full-simpl
 pub const CALL_GRAPH_FILE_SUFFIX_NOSTD_INITIAL: &str = "-call-graph-nostd-initial.dot";
 pub const CALL_GRAPH_FILE_SUFFIX_NOSTD_SIMPLIFIED: &str = "-call-graph-nostd-simplified.dot";
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct LogArgs {
     pub log_vir: bool,
     pub log_vir_simple: bool,
@@ -57,33 +57,6 @@ pub struct LogArgs {
     pub log_triggers: bool,
     pub log_impl_names: bool,
     pub log_call_graph: bool,
-}
-
-impl Clone for LogArgs {
-    fn clone(&self) -> Self {
-        let vlog = &self.vir_log_option;
-        Self {
-            log_vir: self.log_vir,
-            log_vir_simple: self.log_vir_simple,
-            log_vir_poly: self.log_vir_poly,
-            log_vir_sst: self.log_vir_sst,
-            log_trait_conflicts: self.log_trait_conflicts,
-            vir_log_option: VirLogOption {
-                no_span: vlog.no_span,
-                no_type: vlog.no_type,
-                no_fn_details: vlog.no_fn_details,
-                no_encoding: vlog.no_encoding,
-            },
-            log_interpreter: self.log_interpreter,
-            log_air_initial: self.log_air_initial,
-            log_air_final: self.log_air_final,
-            log_smt: self.log_smt,
-            log_smt_transcript: self.log_smt_transcript,
-            log_triggers: self.log_triggers,
-            log_call_graph: self.log_call_graph,
-            log_impl_names: self.log_impl_names,
-        }
-    }
 }
 
 /// Describes the relationship between this crate and vstd.
