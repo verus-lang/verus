@@ -54,7 +54,7 @@ impl<T> AtomicHistory<T> {
     pub open spec fn contains_timestamp(&self, timestamp: nat) -> bool {
         self.0.dom().contains(timestamp)
     }
- 
+
     pub open spec fn index(&self, timestamp: nat) -> (T, ThreadView)
         recommends
             self.contains_timestamp(timestamp),
@@ -103,8 +103,9 @@ impl<T> AtomicHistory<T> {
 
     pub broadcast proof fn insert_def(&self, timestamp: nat, val: T, view: ThreadView)
         ensures
-            #[trigger] self.insert(timestamp, val, view).0 == self.0.insert(timestamp, (val, view))
-    {}
+            #[trigger] self.insert(timestamp, val, view).0 == self.0.insert(timestamp, (val, view)),
+    {
+    }
 
     pub open spec fn remove(&self, timestamp: nat) -> Self {
         AtomicHistory(self.0.remove(timestamp))
@@ -112,8 +113,9 @@ impl<T> AtomicHistory<T> {
 
     pub broadcast proof fn remove_def(&self, timestamp: nat)
         ensures
-            #[trigger] self.remove(timestamp).0 == self.0.remove(timestamp)
-    {}
+            #[trigger] self.remove(timestamp).0 == self.0.remove(timestamp),
+    {
+    }
 
     pub open spec fn is_singleton(&self, timestamp: nat, val: (T, ThreadView)) -> bool {
         &&& self.contains_timestamp(timestamp)
@@ -183,7 +185,7 @@ pub broadcast group group_view_history {
     AtomicHistory::insert_def,
     AtomicHistory::remove_def,
     AtomicPointsTo::get_timestamp_monotonic,
-    AtomicPointsTo::get_timestamp_loc
+    AtomicPointsTo::get_timestamp_loc,
 }
 
 #[verifier::external_body]
@@ -218,9 +220,9 @@ impl<T> AtomicPointsTo<T> {
 
     pub broadcast axiom fn get_timestamp_loc(&self, other: Self, v: ThreadView)
         requires
-            self.loc() == other.loc()
+            self.loc() == other.loc(),
         ensures
-            #[trigger] self.get_timestamp(v) == #[trigger] other.get_timestamp(v)
+            #[trigger] self.get_timestamp(v) == #[trigger] other.get_timestamp(v),
     ;
 
     pub axiom fn disjoint(tracked &mut self, tracked other: &Self)
@@ -442,6 +444,139 @@ pub open spec fn store_mut_relaxed<T>(
     &&& new_view.contains(message_view)
 }
 
+/// A successful update is modeled as a load followed by a store, using the specified ordering.
+pub open spec fn update_success<T>(
+    old_pt: AtomicPointsTo<T>,
+    new_pt: AtomicPointsTo<T>,
+    old_view: ThreadView,
+    new_view: ThreadView,
+    release_view: ThreadView,
+    acquire_view: ThreadView,
+    load_val: T,
+    store_val: T,
+    order: Ordering,
+    up: UpdateData,
+) -> bool {
+    &&& up.store_message_view.contains_strict(up.load_message_view)
+    &&& match order {
+        Ordering::AcqRel => {
+            &&& load_acquire(
+                old_pt,
+                old_view,
+                up.intermediate_thread_view,
+                load_val,
+                up.load_timestamp,
+                up.load_message_view,
+            )
+            &&& store_release(
+                old_pt,
+                new_pt,
+                up.intermediate_thread_view,
+                new_view,
+                store_val,
+                up.load_timestamp + 1,
+                up.store_message_view,
+            )
+        },
+        Ordering::Acquire => {
+            &&& load_acquire(
+                old_pt,
+                old_view,
+                up.intermediate_thread_view,
+                load_val,
+                up.load_timestamp,
+                up.load_message_view,
+            )
+            &&& store_relaxed(
+                old_pt,
+                new_pt,
+                up.intermediate_thread_view,
+                new_view,
+                release_view,
+                store_val,
+                up.load_timestamp + 1,
+                up.store_message_view,
+            )
+        },
+        Ordering::Release => {
+            &&& load_relaxed(
+                old_pt,
+                old_view,
+                up.intermediate_thread_view,
+                acquire_view,
+                load_val,
+                up.load_timestamp,
+                up.load_message_view,
+            )
+            &&& store_release(
+                old_pt,
+                new_pt,
+                up.intermediate_thread_view,
+                new_view,
+                store_val,
+                up.load_timestamp + 1,
+                up.store_message_view,
+            )
+        },
+        Ordering::Relaxed => {
+            &&& load_relaxed(
+                old_pt,
+                old_view,
+                up.intermediate_thread_view,
+                acquire_view,
+                load_val,
+                up.load_timestamp,
+                up.load_message_view,
+            )
+            &&& store_relaxed(
+                old_pt,
+                new_pt,
+                up.intermediate_thread_view,
+                new_view,
+                release_view,
+                store_val,
+                up.load_timestamp + 1,
+                up.store_message_view,
+            )
+        },
+        _ => true,
+    }
+}
+
+/// A failed update (e.g. failed compare_exchange) is modeled as a load under the specified ordering.
+pub open spec fn update_fail<T>(
+    old_pt: AtomicPointsTo<T>,
+    new_pt: AtomicPointsTo<T>,
+    old_view: ThreadView,
+    new_view: ThreadView,
+    acquire_view: ThreadView,
+    load_val: T,
+    order: Ordering,
+    up: UpdateData,
+) -> bool {
+    &&& new_pt == old_pt
+    &&& match order {
+        Ordering::Acquire => load_acquire(
+            old_pt,
+            old_view,
+            new_view,
+            load_val,
+            up.load_timestamp,
+            up.load_message_view,
+        ),
+        Ordering::Relaxed => load_relaxed(
+            old_pt,
+            old_view,
+            new_view,
+            acquire_view,
+            load_val,
+            up.load_timestamp,
+            up.load_message_view,
+        ),
+        _ => true,
+    }
+}
+
 pub ghost struct LoadData {
     pub timestamp: nat,
     pub message_view: ThreadView,
@@ -644,33 +779,11 @@ macro_rules! atomic_common_methods {
                 match res {
                     Ok(v) => {
                         &&& current == v
-                        &&& up@.store_message_view.contains_strict(up@.load_message_view)
-                        &&& match success {
-                            Ordering::AcqRel => {
-                                &&& load_acquire(*old(pt), old(vs)@, up@.intermediate_thread_view, current, up@.load_timestamp, up@.load_message_view)
-                                &&& store_release(*old(pt), *final(pt), up@.intermediate_thread_view, final(vs)@, new, up@.load_timestamp + 1, up@.store_message_view)
-                            },
-                            Ordering::Acquire => {
-                                &&& load_acquire(*old(pt), old(vs)@, up@.intermediate_thread_view, current, up@.load_timestamp, up@.load_message_view)
-                                &&& store_relaxed(*old(pt), *final(pt), up@.intermediate_thread_view, final(vs)@, rel_vs@, new, up@.load_timestamp + 1, up@.store_message_view)
-                            },
-                            Ordering::Release => {
-                                &&& load_relaxed(*old(pt), old(vs)@, up@.intermediate_thread_view, acq_vs@@, v, up@.load_timestamp, up@.load_message_view)
-                                &&& store_release(*old(pt), *final(pt), up@.intermediate_thread_view, final(vs)@, new, up@.load_timestamp + 1, up@.store_message_view)
-                            },
-                            Ordering::Relaxed => {
-                                &&& load_relaxed(*old(pt), old(vs)@, up@.intermediate_thread_view, acq_vs@@, v, up@.load_timestamp, up@.load_message_view)
-                                &&& store_relaxed(*old(pt), *final(pt), up@.intermediate_thread_view, final(vs)@, rel_vs@, new, up@.load_timestamp + 1, up@.store_message_view)
-                            }
-                        }
+                        &&& update_success(*old(pt), *final(pt), old(vs)@, final(vs)@, rel_vs@, acq_vs@@, current, new, success, up@)
                     },
                     Err(v) => {
                         &&& current != v
-                        &&& *final(pt) == *old(pt)
-                        &&& match failure {
-                            Ordering::Acquire => load_acquire(*old(pt), old(vs)@, final(vs)@, v, up@.load_timestamp, up@.load_message_view),
-                            Ordering::Relaxed => load_relaxed(*old(pt), old(vs)@, final(vs)@, acq_vs@@, v, up@.load_timestamp, up@.load_message_view)
-                        }
+                        &&& update_fail(*old(pt), *final(pt), old(vs)@, final(vs)@, acq_vs@@, current, failure, up@)
                     }
                 }
             opens_invariants none
@@ -679,7 +792,60 @@ macro_rules! atomic_common_methods {
             return (self.ato.compare_exchange(current, new, success, failure), Tracked::assume_new(), Ghost::assume_new());
         }
 
-        // TODO - compare_exchange_weak, swap
+        #[inline(always)]
+        #[verifier::external_body]
+        #[verifier::atomic]
+        pub fn compare_exchange_weak(
+            &self,
+            current: $value_ty,
+            new: $value_ty,
+            success: Ordering,
+            failure: Ordering,
+            Tracked(vs): Tracked<&mut ViewSeen>,
+            Tracked(rel_vs): Tracked<ReleaseViewSeen>,
+            Tracked(pt): Tracked<&mut AtomicPointsTo<$value_ty>>,
+        ) -> ((res, acq_vs, up): (Result<$value_ty, $value_ty>, Tracked<AcquireViewSeen>, Ghost<UpdateData>))
+            requires
+                self.loc() == old(pt).loc(),
+                success matches Ordering::AcqRel || success matches Ordering::Acquire || success matches Ordering::Release || success matches Ordering::Relaxed,
+                failure matches Ordering::Acquire || failure matches Ordering::Relaxed
+            ensures
+                match res {
+                    Ok(v) => {
+                        &&& current == v
+                        &&& update_success(*old(pt), *final(pt), old(vs)@, final(vs)@, rel_vs@, acq_vs@@, current, new, success, up@)
+                    },
+                    Err(v) => {
+                        &&& update_fail(*old(pt), *final(pt), old(vs)@, final(vs)@, acq_vs@@, current, failure, up@)
+                    }
+                }
+            opens_invariants none
+            no_unwind
+        {
+            return (self.ato.compare_exchange_weak(current, new, success, failure), Tracked::assume_new(), Ghost::assume_new());
+        }
+
+        #[inline(always)]
+        #[verifier::external_body]
+        #[verifier::atomic]
+        pub fn swap(
+            &self,
+            v: $value_ty,
+            order: Ordering,
+            Tracked(vs): Tracked<&mut ViewSeen>,
+            Tracked(rel_vs): Tracked<ReleaseViewSeen>,
+            Tracked(pt): Tracked<&mut AtomicPointsTo<$value_ty>>,
+        ) -> ((res, acq_vs, up): ($value_ty, Tracked<AcquireViewSeen>, Ghost<UpdateData>))
+            requires
+                self.loc() == old(pt).loc(),
+                order matches Ordering::AcqRel || order matches Ordering::Acquire || order matches Ordering::Release || order matches Ordering::Relaxed,
+            ensures
+                update_success(*old(pt), *final(pt), old(vs)@, final(vs)@, rel_vs@, acq_vs@@, res, v, order, up@)
+            opens_invariants none
+            no_unwind
+        {
+            return (self.ato.swap(v, order), Tracked::assume_new(), Ghost::assume_new());
+        }
 
         #[inline(always)]
         pub axiom fn truncate_history(tracked &mut self, tracked pt: &mut AtomicPointsTo<$value_ty>, tracked vs: &mut ViewSeen) -> (ts: nat)
@@ -721,8 +887,186 @@ macro_rules! atomic_integer_methods {
     ($at_ident:ident, $rust_ty: ty, $value_ty: ty, $modname:ident) => {
         verus_impl!{
 
-        // this macro is currently a stub for the functions we plan to implement:
-        // TODO - fetch_add_wrapping, fetch_sub_wrapping, fetch_add, fetch_sub, fetch_and, fetch_or, fetch_xor, fetch_nand, fetch_max, fetch_min
+        #[inline(always)]
+        #[verifier::external_body]
+        #[verifier::atomic]
+        pub fn fetch_add_wrapping(
+            &self,
+            n: $value_ty,
+            order: Ordering,
+            Tracked(vs): Tracked<&mut ViewSeen>,
+            Tracked(rel_vs): Tracked<ReleaseViewSeen>,
+            Tracked(pt): Tracked<&mut AtomicPointsTo<$value_ty>>,
+        ) -> ((v, acq_vs, up): ($value_ty, Tracked<AcquireViewSeen>, Ghost<UpdateData>))
+            requires
+                self.loc() == old(pt).loc(),
+                order matches Ordering::AcqRel || order matches Ordering::Acquire || order matches Ordering::Release || order matches Ordering::Relaxed,
+            ensures
+                update_success(*old(pt), *final(pt), old(vs)@, final(vs)@, rel_vs@, acq_vs@@, v, $modname::wrapping_add(v, n), order, up@)
+            opens_invariants none
+            no_unwind
+        {
+            return (self.ato.fetch_add(n, order), Tracked::assume_new(), Ghost::assume_new());
+        }
+
+        // NOTE: specifying fetch_add in the weak setting is difficult since the precondition
+        // must be stated in terms of the current value, and there are several possible current values.
+        // Since there is no equivalent function in Rust and we think prohibiting wrapping can be done using an invariant,
+        // we defer `fetch_add` and the other non-wrapping arithmetic specs.
+
+        #[inline(always)]
+        #[verifier::external_body]
+        #[verifier::atomic]
+        pub fn fetch_sub_wrapping(
+            &self,
+            n: $value_ty,
+            order: Ordering,
+            Tracked(vs): Tracked<&mut ViewSeen>,
+            Tracked(rel_vs): Tracked<ReleaseViewSeen>,
+            Tracked(pt): Tracked<&mut AtomicPointsTo<$value_ty>>,
+        ) -> ((v, acq_vs, up): ($value_ty, Tracked<AcquireViewSeen>, Ghost<UpdateData>))
+            requires
+                self.loc() == old(pt).loc(),
+                order matches Ordering::AcqRel || order matches Ordering::Acquire || order matches Ordering::Release || order matches Ordering::Relaxed,
+            ensures
+                update_success(*old(pt), *final(pt), old(vs)@, final(vs)@, rel_vs@, acq_vs@@, v, $modname::wrapping_sub(v, n), order, up@)
+            opens_invariants none
+            no_unwind
+        {
+            return (self.ato.fetch_sub(n, order), Tracked::assume_new(), Ghost::assume_new());
+        }
+
+        #[inline(always)]
+        #[verifier::external_body]
+        #[verifier::atomic]
+        pub fn fetch_and(
+            &self,
+            n: $value_ty,
+            order: Ordering,
+            Tracked(vs): Tracked<&mut ViewSeen>,
+            Tracked(rel_vs): Tracked<ReleaseViewSeen>,
+            Tracked(pt): Tracked<&mut AtomicPointsTo<$value_ty>>,
+        ) -> ((v, acq_vs, up): ($value_ty, Tracked<AcquireViewSeen>, Ghost<UpdateData>))
+            requires
+                self.loc() == old(pt).loc(),
+                order matches Ordering::AcqRel || order matches Ordering::Acquire || order matches Ordering::Release || order matches Ordering::Relaxed,
+            ensures
+                update_success(*old(pt), *final(pt), old(vs)@, final(vs)@, rel_vs@, acq_vs@@, v, v & n, order, up@)
+            opens_invariants none
+            no_unwind
+        {
+            return (self.ato.fetch_and(n, order), Tracked::assume_new(), Ghost::assume_new());
+        }
+
+        #[inline(always)]
+        #[verifier::external_body]
+        #[verifier::atomic]
+        pub fn fetch_or(
+            &self,
+            n: $value_ty,
+            order: Ordering,
+            Tracked(vs): Tracked<&mut ViewSeen>,
+            Tracked(rel_vs): Tracked<ReleaseViewSeen>,
+            Tracked(pt): Tracked<&mut AtomicPointsTo<$value_ty>>,
+        ) -> ((v, acq_vs, up): ($value_ty, Tracked<AcquireViewSeen>, Ghost<UpdateData>))
+            requires
+                self.loc() == old(pt).loc(),
+                order matches Ordering::AcqRel || order matches Ordering::Acquire || order matches Ordering::Release || order matches Ordering::Relaxed,
+            ensures
+                update_success(*old(pt), *final(pt), old(vs)@, final(vs)@, rel_vs@, acq_vs@@, v, v | n, order, up@)
+            opens_invariants none
+            no_unwind
+        {
+            return (self.ato.fetch_or(n, order), Tracked::assume_new(), Ghost::assume_new());
+        }
+
+        #[inline(always)]
+        #[verifier::external_body]
+        #[verifier::atomic]
+        pub fn fetch_xor(
+            &self,
+            n: $value_ty,
+            order: Ordering,
+            Tracked(vs): Tracked<&mut ViewSeen>,
+            Tracked(rel_vs): Tracked<ReleaseViewSeen>,
+            Tracked(pt): Tracked<&mut AtomicPointsTo<$value_ty>>,
+        ) -> ((v, acq_vs, up): ($value_ty, Tracked<AcquireViewSeen>, Ghost<UpdateData>))
+            requires
+                self.loc() == old(pt).loc(),
+                order matches Ordering::AcqRel || order matches Ordering::Acquire || order matches Ordering::Release || order matches Ordering::Relaxed,
+            ensures
+                update_success(*old(pt), *final(pt), old(vs)@, final(vs)@, rel_vs@, acq_vs@@, v, v ^ n, order, up@)
+            opens_invariants none
+            no_unwind
+        {
+            return (self.ato.fetch_xor(n, order), Tracked::assume_new(), Ghost::assume_new());
+        }
+
+        #[inline(always)]
+        #[verifier::external_body]
+        #[verifier::atomic]
+        pub fn fetch_nand(
+            &self,
+            n: $value_ty,
+            order: Ordering,
+            Tracked(vs): Tracked<&mut ViewSeen>,
+            Tracked(rel_vs): Tracked<ReleaseViewSeen>,
+            Tracked(pt): Tracked<&mut AtomicPointsTo<$value_ty>>,
+        ) -> ((v, acq_vs, up): ($value_ty, Tracked<AcquireViewSeen>, Ghost<UpdateData>))
+            requires
+                self.loc() == old(pt).loc(),
+                order matches Ordering::AcqRel || order matches Ordering::Acquire || order matches Ordering::Release || order matches Ordering::Relaxed,
+            ensures
+                update_success(*old(pt), *final(pt), old(vs)@, final(vs)@, rel_vs@, acq_vs@@, v, !(v & n), order, up@)
+            opens_invariants none
+            no_unwind
+        {
+            return (self.ato.fetch_nand(n, order), Tracked::assume_new(), Ghost::assume_new());
+        }
+
+        #[inline(always)]
+        #[verifier::external_body]
+        #[verifier::atomic]
+        pub fn fetch_max(
+            &self,
+            n: $value_ty,
+            order: Ordering,
+            Tracked(vs): Tracked<&mut ViewSeen>,
+            Tracked(rel_vs): Tracked<ReleaseViewSeen>,
+            Tracked(pt): Tracked<&mut AtomicPointsTo<$value_ty>>,
+        ) -> ((v, acq_vs, up): ($value_ty, Tracked<AcquireViewSeen>, Ghost<UpdateData>))
+            requires
+                self.loc() == old(pt).loc(),
+                order matches Ordering::AcqRel || order matches Ordering::Acquire || order matches Ordering::Release || order matches Ordering::Relaxed,
+            ensures
+                update_success(*old(pt), *final(pt), old(vs)@, final(vs)@, rel_vs@, acq_vs@@, v, if v > n { v } else { n }, order, up@)
+            opens_invariants none
+            no_unwind
+        {
+            return (self.ato.fetch_max(n, order), Tracked::assume_new(), Ghost::assume_new());
+        }
+
+        #[inline(always)]
+        #[verifier::external_body]
+        #[verifier::atomic]
+        pub fn fetch_min(
+            &self,
+            n: $value_ty,
+            order: Ordering,
+            Tracked(vs): Tracked<&mut ViewSeen>,
+            Tracked(rel_vs): Tracked<ReleaseViewSeen>,
+            Tracked(pt): Tracked<&mut AtomicPointsTo<$value_ty>>,
+        ) -> ((v, acq_vs, up): ($value_ty, Tracked<AcquireViewSeen>, Ghost<UpdateData>))
+            requires
+                self.loc() == old(pt).loc(),
+                order matches Ordering::AcqRel || order matches Ordering::Acquire || order matches Ordering::Release || order matches Ordering::Relaxed,
+            ensures
+                update_success(*old(pt), *final(pt), old(vs)@, final(vs)@, rel_vs@, acq_vs@@, v, if v < n { v } else { n }, order, up@)
+            opens_invariants none
+            no_unwind
+        {
+            return (self.ato.fetch_min(n, order), Tracked::assume_new(), Ghost::assume_new());
+        }
 
         }
     };
@@ -732,8 +1076,93 @@ macro_rules! atomic_bool_methods {
     ($at_ident:ident, $rust_ty: ty, $value_ty: ty) => {
         verus!{
 
-        // this macro is currently a stub for the functions we plan to implement:
-        // TODO - fetch_and, fetch_or, fetch_xor, fetch_nand
+        #[inline(always)]
+        #[verifier::external_body]
+        #[verifier::atomic]
+        pub fn fetch_and(
+            &self,
+            n: $value_ty,
+            order: Ordering,
+            Tracked(vs): Tracked<&mut ViewSeen>,
+            Tracked(rel_vs): Tracked<ReleaseViewSeen>,
+            Tracked(pt): Tracked<&mut AtomicPointsTo<$value_ty>>,
+        ) -> ((v, acq_vs, up): ($value_ty, Tracked<AcquireViewSeen>, Ghost<UpdateData>))
+            requires
+                self.loc() == old(pt).loc(),
+                order matches Ordering::AcqRel || order matches Ordering::Acquire || order matches Ordering::Release || order matches Ordering::Relaxed,
+            ensures
+                update_success(*old(pt), *final(pt), old(vs)@, final(vs)@, rel_vs@, acq_vs@@, v, v && n, order, up@)
+            opens_invariants none
+            no_unwind
+        {
+            return (self.ato.fetch_and(n, order), Tracked::assume_new(), Ghost::assume_new());
+        }
+
+        #[inline(always)]
+        #[verifier::external_body]
+        #[verifier::atomic]
+        pub fn fetch_or(
+            &self,
+            n: $value_ty,
+            order: Ordering,
+            Tracked(vs): Tracked<&mut ViewSeen>,
+            Tracked(rel_vs): Tracked<ReleaseViewSeen>,
+            Tracked(pt): Tracked<&mut AtomicPointsTo<$value_ty>>,
+        ) -> ((v, acq_vs, up): ($value_ty, Tracked<AcquireViewSeen>, Ghost<UpdateData>))
+            requires
+                self.loc() == old(pt).loc(),
+                order matches Ordering::AcqRel || order matches Ordering::Acquire || order matches Ordering::Release || order matches Ordering::Relaxed,
+            ensures
+                update_success(*old(pt), *final(pt), old(vs)@, final(vs)@, rel_vs@, acq_vs@@, v, v || n, order, up@)
+            opens_invariants none
+            no_unwind
+        {
+            return (self.ato.fetch_or(n, order), Tracked::assume_new(), Ghost::assume_new());
+        }
+
+        #[inline(always)]
+        #[verifier::external_body]
+        #[verifier::atomic]
+        pub fn fetch_xor(
+            &self,
+            n: $value_ty,
+            order: Ordering,
+            Tracked(vs): Tracked<&mut ViewSeen>,
+            Tracked(rel_vs): Tracked<ReleaseViewSeen>,
+            Tracked(pt): Tracked<&mut AtomicPointsTo<$value_ty>>,
+        ) -> ((v, acq_vs, up): ($value_ty, Tracked<AcquireViewSeen>, Ghost<UpdateData>))
+            requires
+                self.loc() == old(pt).loc(),
+                order matches Ordering::AcqRel || order matches Ordering::Acquire || order matches Ordering::Release || order matches Ordering::Relaxed,
+            ensures
+                update_success(*old(pt), *final(pt), old(vs)@, final(vs)@, rel_vs@, acq_vs@@, v, (v && !n) || (!v && n), order, up@)
+            opens_invariants none
+            no_unwind
+        {
+            return (self.ato.fetch_xor(n, order), Tracked::assume_new(), Ghost::assume_new());
+        }
+
+        #[inline(always)]
+        #[verifier::external_body]
+        #[verifier::atomic]
+        pub fn fetch_nand(
+            &self,
+            n: $value_ty,
+            order: Ordering,
+            Tracked(vs): Tracked<&mut ViewSeen>,
+            Tracked(rel_vs): Tracked<ReleaseViewSeen>,
+            Tracked(pt): Tracked<&mut AtomicPointsTo<$value_ty>>,
+        ) -> ((v, acq_vs, up): ($value_ty, Tracked<AcquireViewSeen>, Ghost<UpdateData>))
+            requires
+                self.loc() == old(pt).loc(),
+                order matches Ordering::AcqRel || order matches Ordering::Acquire || order matches Ordering::Release || order matches Ordering::Relaxed,
+            ensures
+                update_success(*old(pt), *final(pt), old(vs)@, final(vs)@, rel_vs@, acq_vs@@, v, !(v && n), order, up@)
+            opens_invariants none
+            no_unwind
+        {
+            return (self.ato.fetch_nand(n, order), Tracked::assume_new(), Ghost::assume_new());
+        }
 
         }
     };
