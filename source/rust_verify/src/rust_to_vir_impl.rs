@@ -687,6 +687,8 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
     }
 
     // Process only the new implementations that could be visible to Verus:
+    let auto_import_impl_paths: HashSet<Path> =
+        auto_import_impls.iter().map(|impl_def_id| ctxt.def_id_to_vir_path(*impl_def_id)).collect();
     'impls: for impl_def_id in auto_import_impls {
         let trait_ref = tcx.impl_trait_ref(impl_def_id);
         for arg in trait_ref.skip_binder().args.iter() {
@@ -769,6 +771,39 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
             // TODO: add a mode for rust_verify_test that fails if this is reached.
         }
     }
+
+    // An imported subtrait impl is unusable if one of its required impls could not be represented.
+    let mut unavailable_impl_paths = auto_import_impl_paths;
+    for impl_def_id in &collected_impls {
+        unavailable_impl_paths.remove(&ctxt.def_id_to_vir_path(*impl_def_id));
+    }
+    loop {
+        let newly_unavailable: Vec<Path> = krate
+            .trait_impls
+            .iter()
+            .filter(|trait_impl| {
+                trait_impl.x.auto_imported
+                    && !unavailable_impl_paths.contains(&trait_impl.x.impl_path)
+                    && trait_impl.x.trait_typ_arg_impls.x.iter().any(|impl_path| {
+                        matches!(impl_path, ImplPath::TraitImplPath(path) if unavailable_impl_paths.contains(path))
+                    })
+            })
+            .map(|trait_impl| trait_impl.x.impl_path.clone())
+            .collect();
+        if newly_unavailable.is_empty() {
+            break;
+        }
+        unavailable_impl_paths.extend(newly_unavailable);
+    }
+    krate
+        .trait_impls
+        .retain(|trait_impl| !unavailable_impl_paths.contains(&trait_impl.x.impl_path));
+    krate
+        .assoc_type_impls
+        .retain(|assoc_type_impl| !unavailable_impl_paths.contains(&assoc_type_impl.x.impl_path));
+    collected_impls.retain(|impl_def_id| {
+        !unavailable_impl_paths.contains(&ctxt.def_id_to_vir_path(*impl_def_id))
+    });
 
     let mut func_map = HashMap::<Fun, Function>::new();
     for function in krate.functions.iter() {

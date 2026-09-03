@@ -150,11 +150,7 @@ pub assume_specification<T, I: SliceIndex<[T]>>[ <[T]>::get_mut::<I> ](
         match result {
             Some(output) => {
                 &&& index.index_req(old(slice))
-                &&& call_ensures(
-                    <I as SliceIndex<[T]>>::index_mut,
-                    (index, slice),
-                    output,
-                )
+                &&& call_ensures(<I as SliceIndex<[T]>>::index_mut, (index, slice), output)
             },
             None => {
                 &&& !index.index_req(old(slice))
