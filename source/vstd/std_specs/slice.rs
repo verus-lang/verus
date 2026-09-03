@@ -5,9 +5,12 @@ use super::iter::IteratorSpec;
 use super::range::{slice_range_end, slice_range_start, slice_range_valid};
 
 use core::ops::{
-    Index, IndexMut, Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive,
+    FnMut, Index, IndexMut, Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive,
 };
-use core::slice::{Iter, SliceIndex};
+use core::slice::{
+    Iter, RSplit, RSplitMut, RSplitN, RSplitNMut, SliceIndex, Split, SplitInclusive,
+    SplitInclusiveMut, SplitMut, SplitN, SplitNMut,
+};
 
 use verus as verus_;
 
@@ -426,6 +429,336 @@ pub assume_specification<T: Copy, R: core::ops::RangeBounds<usize>>[ <[T]>::copy
             slice_range_end(&src, old(slice)@.len()),
             dest as int,
         ),
+;
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::reject_recursive_types(T)]
+#[verifier::reject_recursive_types(P)]
+pub struct ExSplit<'a, T: 'a, P: FnMut(&T) -> bool>(Split<'a, T, P>);
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::reject_recursive_types(T)]
+#[verifier::reject_recursive_types(P)]
+pub struct ExSplitMut<'a, T: 'a, P: FnMut(&T) -> bool>(SplitMut<'a, T, P>);
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::reject_recursive_types(T)]
+#[verifier::reject_recursive_types(P)]
+pub struct ExSplitInclusive<'a, T: 'a, P: FnMut(&T) -> bool>(SplitInclusive<'a, T, P>);
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::reject_recursive_types(T)]
+#[verifier::reject_recursive_types(P)]
+pub struct ExSplitInclusiveMut<'a, T: 'a, P: FnMut(&T) -> bool>(
+    SplitInclusiveMut<'a, T, P>,
+);
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::reject_recursive_types(T)]
+#[verifier::reject_recursive_types(P)]
+pub struct ExSplitN<'a, T: 'a, P: FnMut(&T) -> bool>(SplitN<'a, T, P>);
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::reject_recursive_types(T)]
+#[verifier::reject_recursive_types(P)]
+pub struct ExSplitNMut<'a, T: 'a, P: FnMut(&T) -> bool>(SplitNMut<'a, T, P>);
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::reject_recursive_types(T)]
+#[verifier::reject_recursive_types(P)]
+pub struct ExRSplit<'a, T: 'a, P: FnMut(&T) -> bool>(RSplit<'a, T, P>);
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::reject_recursive_types(T)]
+#[verifier::reject_recursive_types(P)]
+pub struct ExRSplitMut<'a, T: 'a, P: FnMut(&T) -> bool>(RSplitMut<'a, T, P>);
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::reject_recursive_types(T)]
+#[verifier::reject_recursive_types(P)]
+pub struct ExRSplitN<'a, T: 'a, P: FnMut(&T) -> bool>(RSplitN<'a, T, P>);
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::reject_recursive_types(T)]
+#[verifier::reject_recursive_types(P)]
+pub struct ExRSplitNMut<'a, T: 'a, P: FnMut(&T) -> bool>(RSplitNMut<'a, T, P>);
+
+pub ghost struct SliceIteratorView<T> {
+    pub source: Seq<T>,
+    pub remaining: Seq<T>,
+    pub yielded_prefix: Seq<T>,
+    pub remainder: Seq<T>,
+    pub chunk_size: int,
+    pub reverse: bool,
+}
+
+pub uninterp spec fn slice_iterator_view<I, T>(iter: I) -> SliceIteratorView<T>;
+
+pub open spec fn slice_iterator_well_formed<T>(view: SliceIteratorView<T>) -> bool {
+    0 <= view.chunk_size && view.remainder.len() <= view.source.len()
+}
+
+pub broadcast axiom fn axiom_slice_iterator_view_well_formed<I, T>(iter: I)
+    ensures
+        slice_iterator_well_formed(#[trigger] slice_iterator_view::<I, T>(iter)),
+;
+
+pub uninterp spec fn fnmut_predicate_observed<F, T>(pred: F, value: T) -> bool;
+
+pub open spec fn slice_predicate_split_view<I, F, T>(
+    iter: I,
+    source: Seq<T>,
+    pred: F,
+    inclusive: bool,
+    reverse: bool,
+    limit: int,
+) -> bool {
+    let view = slice_iterator_view::<I, T>(iter);
+    slice_iterator_well_formed(view)
+        && view.source == source
+        && view.remaining == source
+        && view.yielded_prefix == Seq::empty()
+        && view.remainder == Seq::empty()
+        && view.reverse == reverse
+        && view.chunk_size == limit
+        && limit >= 0
+        && (if reverse {
+            view.remaining + view.yielded_prefix == source
+        } else {
+            view.yielded_prefix + view.remaining == source
+        })
+        && forall|i: int| #![trigger fnmut_predicate_observed(pred, source[i])]
+            0 <= i < source.len()
+            ==> (fnmut_predicate_observed(pred, source[i])
+                || !fnmut_predicate_observed(pred, source[i]))
+}
+
+pub open spec fn slice_split_off_first_result<T>(
+    source: Seq<T>,
+    remaining: Seq<T>,
+    value: T,
+) -> bool {
+    source.len() != 0 && value == source[0] && remaining == source.subrange(1, source.len() as int)
+}
+
+pub open spec fn slice_split_off_last_result<T>(
+    source: Seq<T>,
+    remaining: Seq<T>,
+    value: T,
+) -> bool {
+    source.len() != 0
+        && value == source[source.len() - 1]
+        && remaining == source.subrange(0, source.len() - 1)
+}
+
+pub assume_specification<T>[ <[T]>::split_first ](
+    slice: &[T],
+) -> (ret: Option<(&T, &[T])>)
+    ensures
+        slice@.len() == 0 ==> ret.is_none(),
+        slice@.len() != 0 ==> ret.is_some()
+            && *ret.unwrap().0 == slice@[0]
+            && ret.unwrap().1@ == slice@.subrange(1, slice@.len() as int),
+;
+
+pub assume_specification<T>[ <[T]>::split_last ](
+    slice: &[T],
+) -> (ret: Option<(&T, &[T])>)
+    ensures
+        slice@.len() == 0 ==> ret.is_none(),
+        slice@.len() != 0 ==> ret.is_some()
+            && *ret.unwrap().0 == slice@[slice@.len() - 1]
+            && ret.unwrap().1@ == slice@.subrange(0, slice@.len() - 1),
+;
+
+pub assume_specification<T>[ <[T]>::split_first_mut ](
+    slice: &mut [T],
+) -> (ret: Option<(&mut T, &mut [T])>)
+    ensures
+        old(slice)@.len() == 0 ==> ret.is_none() && final(slice)@ == old(slice)@,
+        old(slice)@.len() != 0 ==> ret.is_some()
+            && *ret.unwrap().0 == old(slice)@[0]
+            && ret.unwrap().1@ == old(slice)@.subrange(1, old(slice)@.len() as int)
+            && final(slice)@ == seq![*final(ret.unwrap().0)] + final(ret.unwrap().1)@,
+;
+
+pub assume_specification<T>[ <[T]>::split_last_mut ](
+    slice: &mut [T],
+) -> (ret: Option<(&mut T, &mut [T])>)
+    ensures
+        old(slice)@.len() == 0 ==> ret.is_none() && final(slice)@ == old(slice)@,
+        old(slice)@.len() != 0 ==> ret.is_some()
+            && *ret.unwrap().0 == old(slice)@[old(slice)@.len() - 1]
+            && ret.unwrap().1@ == old(slice)@.subrange(0, old(slice)@.len() - 1)
+            && final(slice)@ == final(ret.unwrap().1)@ + seq![*final(ret.unwrap().0)],
+;
+
+pub assume_specification<'a, T, F: FnMut(&T) -> bool>[ <[T]>::split::<F> ](
+    slice: &'a [T],
+    pred: F,
+) -> (iter: Split<'a, T, F>)
+    ensures
+        slice_predicate_split_view::<Split<'a, T, F>, F, T>(
+            iter, slice@, pred, false, false, 0,
+        ),
+;
+
+pub assume_specification<'a, T, F: FnMut(&T) -> bool>[ <[T]>::split_mut::<F> ](
+    slice: &'a mut [T],
+    pred: F,
+) -> (iter: SplitMut<'a, T, F>)
+    ensures
+        slice_predicate_split_view::<SplitMut<'a, T, F>, F, T>(
+            iter, old(slice)@, pred, false, false, 0,
+        ),
+;
+
+pub assume_specification<'a, T, F: FnMut(&T) -> bool>[ <[T]>::split_inclusive::<F> ](
+    slice: &'a [T],
+    pred: F,
+) -> (iter: SplitInclusive<'a, T, F>)
+    ensures
+        slice_predicate_split_view::<SplitInclusive<'a, T, F>, F, T>(
+            iter, slice@, pred, true, false, 0,
+        ),
+;
+
+pub assume_specification<'a, T, F: FnMut(&T) -> bool>[
+    <[T]>::split_inclusive_mut::<F>
+](
+    slice: &'a mut [T],
+    pred: F,
+) -> (iter: SplitInclusiveMut<'a, T, F>)
+    ensures
+        slice_predicate_split_view::<SplitInclusiveMut<'a, T, F>, F, T>(
+            iter, old(slice)@, pred, true, false, 0,
+        ),
+;
+
+pub assume_specification<'a, T, F: FnMut(&T) -> bool>[ <[T]>::splitn::<F> ](
+    slice: &'a [T],
+    n: usize,
+    pred: F,
+) -> (iter: SplitN<'a, T, F>)
+    ensures
+        slice_predicate_split_view::<SplitN<'a, T, F>, F, T>(
+            iter, slice@, pred, false, false, n as int,
+        ),
+;
+
+pub assume_specification<'a, T, F: FnMut(&T) -> bool>[ <[T]>::splitn_mut::<F> ](
+    slice: &'a mut [T],
+    n: usize,
+    pred: F,
+) -> (iter: SplitNMut<'a, T, F>)
+    ensures
+        slice_predicate_split_view::<SplitNMut<'a, T, F>, F, T>(
+            iter, old(slice)@, pred, false, false, n as int,
+        ),
+;
+
+pub assume_specification<'a, T, F: FnMut(&T) -> bool>[ <[T]>::rsplit::<F> ](
+    slice: &'a [T],
+    pred: F,
+) -> (iter: RSplit<'a, T, F>)
+    ensures
+        slice_predicate_split_view::<RSplit<'a, T, F>, F, T>(
+            iter, slice@, pred, false, true, 0,
+        ),
+;
+
+pub assume_specification<'a, T, F: FnMut(&T) -> bool>[ <[T]>::rsplit_mut::<F> ](
+    slice: &'a mut [T],
+    pred: F,
+) -> (iter: RSplitMut<'a, T, F>)
+    ensures
+        slice_predicate_split_view::<RSplitMut<'a, T, F>, F, T>(
+            iter, old(slice)@, pred, false, true, 0,
+        ),
+;
+
+pub assume_specification<'a, T, F: FnMut(&T) -> bool>[ <[T]>::rsplitn::<F> ](
+    slice: &'a [T],
+    n: usize,
+    pred: F,
+) -> (iter: RSplitN<'a, T, F>)
+    ensures
+        slice_predicate_split_view::<RSplitN<'a, T, F>, F, T>(
+            iter, slice@, pred, false, true, n as int,
+        ),
+;
+
+pub assume_specification<'a, T, F: FnMut(&T) -> bool>[ <[T]>::rsplitn_mut::<F> ](
+    slice: &'a mut [T],
+    n: usize,
+    pred: F,
+) -> (iter: RSplitNMut<'a, T, F>)
+    ensures
+        slice_predicate_split_view::<RSplitNMut<'a, T, F>, F, T>(
+            iter, old(slice)@, pred, false, true, n as int,
+        ),
+;
+
+pub assume_specification<'a, T>[ <[T]>::split_off_first ](
+    slice_ref: &mut &'a [T],
+) -> (ret: Option<&'a T>)
+    ensures
+        (*old(slice_ref))@.len() == 0 ==> ret.is_none()
+            && (*final(slice_ref))@ == (*old(slice_ref))@,
+        (*old(slice_ref))@.len() != 0 ==> ret.is_some()
+            && slice_split_off_first_result::<T>(
+                (*old(slice_ref))@, (*final(slice_ref))@, *ret.unwrap(),
+            ),
+;
+
+pub assume_specification<'a, T>[ <[T]>::split_off_first_mut ](
+    slice_ref: &mut &'a mut [T],
+) -> (ret: Option<&'a mut T>)
+    ensures
+        (*old(slice_ref))@.len() == 0 ==> ret.is_none()
+            && (*final(slice_ref))@ == (*old(slice_ref))@,
+        (*old(slice_ref))@.len() != 0 ==> ret.is_some()
+            && slice_split_off_first_result::<T>(
+                (*old(slice_ref))@, (*final(slice_ref))@, *ret.unwrap(),
+            )
+            && (seq![*final(ret.unwrap())] + (*final(slice_ref))@).len()
+                == (*old(slice_ref))@.len(),
+;
+
+pub assume_specification<'a, T>[ <[T]>::split_off_last ](
+    slice_ref: &mut &'a [T],
+) -> (ret: Option<&'a T>)
+    ensures
+        (*old(slice_ref))@.len() == 0 ==> ret.is_none()
+            && (*final(slice_ref))@ == (*old(slice_ref))@,
+        (*old(slice_ref))@.len() != 0 ==> ret.is_some()
+            && slice_split_off_last_result::<T>(
+                (*old(slice_ref))@, (*final(slice_ref))@, *ret.unwrap(),
+            ),
+;
+
+pub assume_specification<'a, T>[ <[T]>::split_off_last_mut ](
+    slice_ref: &mut &'a mut [T],
+) -> (ret: Option<&'a mut T>)
+    ensures
+        (*old(slice_ref))@.len() == 0 ==> ret.is_none()
+            && (*final(slice_ref))@ == (*old(slice_ref))@,
+        (*old(slice_ref))@.len() != 0 ==> ret.is_some()
+            && slice_split_off_last_result::<T>(
+                (*old(slice_ref))@, (*final(slice_ref))@, *ret.unwrap(),
+            )
+            && ((*final(slice_ref))@ + seq![*final(ret.unwrap())]).len()
+                == (*old(slice_ref))@.len(),
 ;
 
 pub broadcast group group_slice_axioms {
