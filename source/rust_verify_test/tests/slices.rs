@@ -551,6 +551,35 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_slice_get_mut verus_code! {
+        use vstd::prelude::*;
+
+        fn get_some(s: &mut [u8])
+            requires old(s)@.len() == 3,
+            ensures final(s)@ == old(s)@.update(1, 99),
+        {
+            match s.get_mut(1) {
+                Some(value) => {
+                    assert(*value == old(s)@[1]);
+                    *value = 99;
+                },
+                None => assert(false),
+            }
+        }
+
+        fn get_none(s: &mut [u8])
+            requires old(s)@.len() == 3,
+            ensures final(s)@ == old(s)@,
+        {
+            match s.get_mut(3) {
+                Some(_) => assert(false),
+                None => {},
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_array_index verus_code! {
         use std::ops::Index;
         use vstd::prelude::*;
