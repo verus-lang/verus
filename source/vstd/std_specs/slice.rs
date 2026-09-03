@@ -88,6 +88,54 @@ pub assume_specification<T>[ <RangeFrom<usize> as SliceIndex<[T]>>::index_mut ](
         final(slice)@ == old(slice)@.subrange(0, i.start as int) + final(r)@,
 ;
 
+// starts_with
+pub open spec fn spec_slice_starts_with<T: PartialEq>(slice: &[T], needle: &[T]) -> bool {
+    &&& needle@.len() <= slice@.len()
+    &&& forall|i: int| #![auto]
+        0 <= i < needle@.len() ==>
+            <T as super::cmp::PartialEqSpec<T>>::eq_spec(
+                &slice@[i],
+                &needle@[i],
+            )
+}
+
+#[verifier::when_used_as_spec(spec_slice_starts_with)]
+pub assume_specification<T: PartialEq>[ <[T]>::starts_with ](
+    slice: &[T],
+    needle: &[T],
+) -> (result: bool)
+    ensures
+        needle@.len() > slice@.len() ==> !result,
+        <T as super::cmp::PartialEqSpec<T>>::obeys_eq_spec() ==> (result == spec_slice_starts_with(
+            slice,
+            needle,
+        )),
+;
+
+// ends_with
+pub open spec fn spec_slice_ends_with<T: PartialEq>(slice: &[T], needle: &[T]) -> bool {
+    &&& needle@.len() <= slice@.len()
+    &&& forall|i: int| #![auto]
+        0 <= i < needle@.len() ==>
+            <T as super::cmp::PartialEqSpec<T>>::eq_spec(
+                &slice@[slice@.len() - needle@.len() + i],
+                &needle@[i],
+            )
+}
+
+#[verifier::when_used_as_spec(spec_slice_ends_with)]
+pub assume_specification<T: PartialEq>[ <[T]>::ends_with ](
+    slice: &[T],
+    needle: &[T],
+) -> (result: bool)
+    ensures
+        needle@.len() > slice@.len() ==> !result,
+        <T as super::cmp::PartialEqSpec<T>>::obeys_eq_spec() ==> (result == spec_slice_ends_with(
+            slice,
+            needle,
+        )),
+;
+
 impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for RangeToInclusive<usize> {
     open spec fn index_req(&self, slice: &[T]) -> bool {
         self.end < slice@.len()
