@@ -5,9 +5,12 @@ use super::iter::IteratorSpec;
 use super::range::{slice_range_end, slice_range_start, slice_range_valid};
 
 use core::ops::{
-    Index, IndexMut, Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive,
+    FnMut, Index, IndexMut, Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive,
 };
-use core::slice::{Iter, SliceIndex};
+use core::slice::{
+    ArrayWindows, ChunkBy, ChunkByMut, Chunks, ChunksExact, ChunksExactMut, ChunksMut, Iter,
+    RChunks, RChunksExact, RChunksExactMut, RChunksMut, SliceIndex,
+};
 
 use verus as verus_;
 
@@ -428,6 +431,312 @@ pub assume_specification<T: Copy, R: core::ops::RangeBounds<usize>>[ <[T]>::copy
         ),
 ;
 
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::reject_recursive_types(T)]
+pub struct ExChunks<'a, T: 'a>(Chunks<'a, T>);
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::reject_recursive_types(T)]
+pub struct ExChunksExact<'a, T: 'a>(ChunksExact<'a, T>);
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::reject_recursive_types(T)]
+pub struct ExChunksMut<'a, T: 'a>(ChunksMut<'a, T>);
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::reject_recursive_types(T)]
+pub struct ExChunksExactMut<'a, T: 'a>(ChunksExactMut<'a, T>);
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::reject_recursive_types(T)]
+pub struct ExRChunks<'a, T: 'a>(RChunks<'a, T>);
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::reject_recursive_types(T)]
+pub struct ExRChunksExact<'a, T: 'a>(RChunksExact<'a, T>);
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::reject_recursive_types(T)]
+pub struct ExRChunksMut<'a, T: 'a>(RChunksMut<'a, T>);
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::reject_recursive_types(T)]
+pub struct ExRChunksExactMut<'a, T: 'a>(RChunksExactMut<'a, T>);
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::reject_recursive_types(T)]
+pub struct ExArrayWindows<'a, T: 'a, const N: usize>(ArrayWindows<'a, T, N>);
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::reject_recursive_types(T)]
+#[verifier::reject_recursive_types(P)]
+pub struct ExChunkBy<'a, T: 'a, P>(ChunkBy<'a, T, P>);
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::reject_recursive_types(T)]
+#[verifier::reject_recursive_types(P)]
+pub struct ExChunkByMut<'a, T: 'a, P>(ChunkByMut<'a, T, P>);
+
+pub ghost struct SliceIteratorView<T> {
+    pub source: Seq<T>,
+    pub remaining: Seq<T>,
+    pub yielded_prefix: Seq<T>,
+    pub remainder: Seq<T>,
+    pub chunk_size: int,
+    pub reverse: bool,
+}
+
+pub uninterp spec fn slice_iterator_view<I, T>(iter: I) -> SliceIteratorView<T>;
+
+pub open spec fn slice_iterator_well_formed<T>(view: SliceIteratorView<T>) -> bool {
+    0 <= view.chunk_size && view.remainder.len() <= view.source.len()
+}
+
+pub broadcast axiom fn axiom_slice_iterator_view_well_formed<I, T>(iter: I)
+    ensures
+        slice_iterator_well_formed(#[trigger] slice_iterator_view::<I, T>(iter)),
+;
+
+pub open spec fn slice_chunk_partition<T>(view: SliceIteratorView<T>) -> bool {
+    slice_iterator_well_formed(view)
+        && view.chunk_size > 0
+        && (view.remainder.len() as int) < view.chunk_size
+        && (view.remaining.len() as int) % view.chunk_size == 0
+        && (view.yielded_prefix.len() as int) % view.chunk_size == 0
+        && if view.reverse {
+            view.remainder + view.remaining + view.yielded_prefix == view.source
+        } else {
+            view.yielded_prefix + view.remaining + view.remainder == view.source
+        }
+}
+
+pub uninterp spec fn fnmut_adjacent_predicate_observed<F, T>(
+    pred: F,
+    left: T,
+    right: T,
+) -> bool;
+
+pub open spec fn slice_adjacent_chunk_view<I, F, T>(
+    iter: I,
+    source: Seq<T>,
+    pred: F,
+) -> bool {
+    let view = slice_iterator_view::<I, T>(iter);
+    slice_iterator_well_formed(view)
+        && view.source == source
+        && view.remaining == source
+        && view.yielded_prefix == Seq::empty()
+        && view.remainder == Seq::empty()
+        && view.chunk_size == 0
+        && !view.reverse
+        && view.yielded_prefix + view.remaining == source
+        && forall|i: int| 0 <= i + 1 < source.len()
+            ==> (#[trigger] fnmut_adjacent_predicate_observed(pred, source[i], source[i + 1])
+                || !fnmut_adjacent_predicate_observed(pred, source[i], source[i + 1]))
+}
+
+pub uninterp spec fn slice_start_ptr<T>(seq: Seq<T>, ptr: *const T) -> bool;
+
+pub uninterp spec fn slice_start_mut_ptr<T>(seq: Seq<T>, ptr: *mut T) -> bool;
+
+pub uninterp spec fn slice_index_in_range<T, I: SliceIndex<[T]>>(
+    seq: Seq<T>,
+    index: I,
+) -> bool;
+
+pub uninterp spec fn slice_index_mut_frame<T, I: SliceIndex<[T]>>(
+    old_seq: Seq<T>,
+    index: I,
+    final_seq: Seq<T>,
+) -> bool;
+
+pub assume_specification<'a, T>[ <[T]>::chunks ](
+    slice: &'a [T],
+    chunk_size: usize,
+) -> (iter: Chunks<'a, T>)
+    requires
+        chunk_size != 0,
+    ensures
+        slice_iterator_view::<Chunks<'a, T>, T>(iter).source == slice@,
+        slice_iterator_view::<Chunks<'a, T>, T>(iter).remaining == slice@,
+        slice_iterator_view::<Chunks<'a, T>, T>(iter).yielded_prefix == Seq::empty(),
+        slice_iterator_view::<Chunks<'a, T>, T>(iter).remainder == Seq::empty(),
+        slice_iterator_view::<Chunks<'a, T>, T>(iter).chunk_size == chunk_size as int,
+        !slice_iterator_view::<Chunks<'a, T>, T>(iter).reverse,
+;
+
+pub assume_specification<'a, T>[ <[T]>::chunks_exact ](
+    slice: &'a [T],
+    chunk_size: usize,
+) -> (iter: ChunksExact<'a, T>)
+    requires
+        chunk_size != 0,
+    ensures
+        slice_iterator_view::<ChunksExact<'a, T>, T>(iter).source == slice@,
+        slice_iterator_view::<ChunksExact<'a, T>, T>(iter).yielded_prefix == Seq::empty(),
+        slice_iterator_view::<ChunksExact<'a, T>, T>(iter).chunk_size == chunk_size as int,
+        !slice_iterator_view::<ChunksExact<'a, T>, T>(iter).reverse,
+        slice_chunk_partition::<T>(slice_iterator_view::<ChunksExact<'a, T>, T>(iter)),
+;
+
+pub assume_specification<'a, T>[ <[T]>::rchunks ](
+    slice: &'a [T],
+    chunk_size: usize,
+) -> (iter: RChunks<'a, T>)
+    requires
+        chunk_size != 0,
+    ensures
+        slice_iterator_view::<RChunks<'a, T>, T>(iter).source == slice@,
+        slice_iterator_view::<RChunks<'a, T>, T>(iter).remaining == slice@,
+        slice_iterator_view::<RChunks<'a, T>, T>(iter).yielded_prefix == Seq::empty(),
+        slice_iterator_view::<RChunks<'a, T>, T>(iter).remainder == Seq::empty(),
+        slice_iterator_view::<RChunks<'a, T>, T>(iter).chunk_size == chunk_size as int,
+        slice_iterator_view::<RChunks<'a, T>, T>(iter).reverse,
+;
+
+pub assume_specification<'a, T>[ <[T]>::rchunks_exact ](
+    slice: &'a [T],
+    chunk_size: usize,
+) -> (iter: RChunksExact<'a, T>)
+    requires
+        chunk_size != 0,
+    ensures
+        slice_iterator_view::<RChunksExact<'a, T>, T>(iter).source == slice@,
+        slice_iterator_view::<RChunksExact<'a, T>, T>(iter).yielded_prefix == Seq::empty(),
+        slice_iterator_view::<RChunksExact<'a, T>, T>(iter).chunk_size == chunk_size as int,
+        slice_iterator_view::<RChunksExact<'a, T>, T>(iter).reverse,
+        slice_chunk_partition::<T>(slice_iterator_view::<RChunksExact<'a, T>, T>(iter)),
+;
+
+pub assume_specification<'a, T, const N: usize>[ <[T]>::array_windows::<N> ](
+    slice: &'a [T],
+) -> (iter: ArrayWindows<'a, T, N>)
+    requires
+        N != 0,
+    ensures
+        slice_iterator_view::<ArrayWindows<'a, T, N>, T>(iter).source == slice@,
+        slice_iterator_view::<ArrayWindows<'a, T, N>, T>(iter).remaining == slice@,
+        slice_iterator_view::<ArrayWindows<'a, T, N>, T>(iter).yielded_prefix == Seq::empty(),
+        slice_iterator_view::<ArrayWindows<'a, T, N>, T>(iter).remainder == Seq::empty(),
+        slice_iterator_view::<ArrayWindows<'a, T, N>, T>(iter).chunk_size == N as int,
+        !slice_iterator_view::<ArrayWindows<'a, T, N>, T>(iter).reverse,
+;
+
+pub assume_specification<'a, T>[ <[T]>::chunks_mut ](
+    slice: &'a mut [T],
+    chunk_size: usize,
+) -> (iter: ChunksMut<'a, T>)
+    requires
+        chunk_size != 0,
+    ensures
+        slice_iterator_view::<ChunksMut<'a, T>, T>(iter).source == old(slice)@,
+        slice_iterator_view::<ChunksMut<'a, T>, T>(iter).remaining == old(slice)@,
+        slice_iterator_view::<ChunksMut<'a, T>, T>(iter).yielded_prefix == Seq::empty(),
+        slice_iterator_view::<ChunksMut<'a, T>, T>(iter).remainder == Seq::empty(),
+        slice_iterator_view::<ChunksMut<'a, T>, T>(iter).chunk_size == chunk_size as int,
+        !slice_iterator_view::<ChunksMut<'a, T>, T>(iter).reverse,
+;
+
+pub assume_specification<'a, T>[ <[T]>::chunks_exact_mut ](
+    slice: &'a mut [T],
+    chunk_size: usize,
+) -> (iter: ChunksExactMut<'a, T>)
+    requires
+        chunk_size != 0,
+    ensures
+        slice_iterator_view::<ChunksExactMut<'a, T>, T>(iter).source == old(slice)@,
+        slice_iterator_view::<ChunksExactMut<'a, T>, T>(iter).yielded_prefix == Seq::empty(),
+        slice_iterator_view::<ChunksExactMut<'a, T>, T>(iter).chunk_size == chunk_size as int,
+        !slice_iterator_view::<ChunksExactMut<'a, T>, T>(iter).reverse,
+        slice_chunk_partition::<T>(slice_iterator_view::<ChunksExactMut<'a, T>, T>(iter)),
+;
+
+pub assume_specification<'a, T>[ <[T]>::rchunks_mut ](
+    slice: &'a mut [T],
+    chunk_size: usize,
+) -> (iter: RChunksMut<'a, T>)
+    requires
+        chunk_size != 0,
+    ensures
+        slice_iterator_view::<RChunksMut<'a, T>, T>(iter).source == old(slice)@,
+        slice_iterator_view::<RChunksMut<'a, T>, T>(iter).remaining == old(slice)@,
+        slice_iterator_view::<RChunksMut<'a, T>, T>(iter).yielded_prefix == Seq::empty(),
+        slice_iterator_view::<RChunksMut<'a, T>, T>(iter).remainder == Seq::empty(),
+        slice_iterator_view::<RChunksMut<'a, T>, T>(iter).chunk_size == chunk_size as int,
+        slice_iterator_view::<RChunksMut<'a, T>, T>(iter).reverse,
+;
+
+pub assume_specification<'a, T>[ <[T]>::rchunks_exact_mut ](
+    slice: &'a mut [T],
+    chunk_size: usize,
+) -> (iter: RChunksExactMut<'a, T>)
+    requires
+        chunk_size != 0,
+    ensures
+        slice_iterator_view::<RChunksExactMut<'a, T>, T>(iter).source == old(slice)@,
+        slice_iterator_view::<RChunksExactMut<'a, T>, T>(iter).yielded_prefix == Seq::empty(),
+        slice_iterator_view::<RChunksExactMut<'a, T>, T>(iter).chunk_size == chunk_size as int,
+        slice_iterator_view::<RChunksExactMut<'a, T>, T>(iter).reverse,
+        slice_chunk_partition::<T>(slice_iterator_view::<RChunksExactMut<'a, T>, T>(iter)),
+;
+
+pub assume_specification<'a, T, F: FnMut(&T, &T) -> bool>[ <[T]>::chunk_by::<F> ](
+    slice: &'a [T],
+    pred: F,
+) -> (iter: ChunkBy<'a, T, F>)
+    ensures
+        slice_adjacent_chunk_view::<ChunkBy<'a, T, F>, F, T>(iter, slice@, pred),
+;
+
+pub assume_specification<'a, T, F: FnMut(&T, &T) -> bool>[ <[T]>::chunk_by_mut::<F> ](
+    slice: &'a mut [T],
+    pred: F,
+) -> (iter: ChunkByMut<'a, T, F>)
+    ensures
+        slice_adjacent_chunk_view::<ChunkByMut<'a, T, F>, F, T>(
+            iter, old(slice)@, pred,
+        ),
+;
+
+pub assume_specification<T>[ <[T]>::as_mut_ptr ](
+    slice: &mut [T],
+) -> (ptr: *mut T)
+    ensures
+        slice_start_mut_ptr(old(slice)@, ptr),
+        final(slice)@ == old(slice)@,
+;
+
+pub assume_specification<T>[ <[T]>::as_ptr ](
+    slice: &[T],
+) -> (ptr: *const T)
+    ensures
+        slice_start_ptr(slice@, ptr),
+;
+
+#[verifier::allow(undeclared_external_trait)]
+pub assume_specification<T, I>[ <[T]>::get_mut::<I> ](
+    slice: &mut [T],
+    index: I,
+) -> (ret: Option<&mut <I as SliceIndex<[T]>>::Output>)
+    where I: SliceIndex<[T]>
+    ensures
+        ret.is_some() ==> slice_index_in_range(old(slice)@, index)
+            && slice_index_mut_frame(old(slice)@, index, final(slice)@),
+        ret.is_none() ==> !slice_index_in_range(old(slice)@, index)
+            && final(slice)@ == old(slice)@,
+;
+
 pub broadcast group group_slice_axioms {
     axiom_slice_get_range,
     axiom_slice_get_range_to,
@@ -435,6 +744,7 @@ pub broadcast group group_slice_axioms {
     axiom_slice_get_range_to_inclusive,
     axiom_slice_get_range_full,
     axiom_slice_get_range_inclusive,
+    axiom_slice_iterator_view_well_formed,
 }
 
 } // verus!
