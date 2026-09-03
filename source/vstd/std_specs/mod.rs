@@ -1,6 +1,7 @@
 #[cfg(feature = "alloc")]
 pub mod alloc;
 
+pub mod array;
 pub mod atomic;
 pub mod bits;
 pub mod borrow;
@@ -11,6 +12,7 @@ pub mod control_flow;
 pub mod convert;
 pub mod core;
 pub mod default;
+pub mod fmt;
 pub mod iter;
 pub mod manually_drop;
 pub mod maybe_uninit;

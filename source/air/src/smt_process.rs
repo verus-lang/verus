@@ -111,8 +111,6 @@ impl SmtProcess {
                     "--quant-dsplit=none", // Recommended by Andrew Reynolds (@ajreynol)
                     "--no-cbqi",           // Recommended by Andrew Reynolds (@ajreynol)
                     "--user-pat=strict",   // Recommended by Andrew Reynolds (@ajreynol)
-                    "--rlimit",
-                    "1666666", // ~= 5s
                 ],
             })
             .stdin(std::process::Stdio::piped())

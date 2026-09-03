@@ -635,7 +635,7 @@ pub mod fold {
 
 }
 
-// Axioms
+// Lemmas
 /// The empty set contains no elements
 pub broadcast proof fn lemma_iset_empty<A>(a: A)
     ensures

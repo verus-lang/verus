@@ -1,8 +1,18 @@
+use std::path::Path;
+
+use anyhow::{Context, Result, bail};
+
 use crate::metadata::{PackageMetadata, PackageSource};
 
 pub type Toolchain = cargo_verus_toolchains::Toolchain<&'static str>;
 pub type Crate = cargo_verus_toolchains::Crate<&'static str>;
 
+/// Find the known toolchain for a Verus version reported by `verus --version`.
+pub fn find_toolchain(verus_version: &str) -> Option<&'static Toolchain> {
+    TOOLCHAINS.iter().find(|toolchain| toolchain.verus == verus_version)
+}
+
+/// Check whether a known toolchain component (e.g. `vstd`) matches a dependency used by Cargo.
 pub fn is_matching_known_and_used(known: &Crate, used: &PackageMetadata) -> bool {
     match (known, &used.source) {
         (Crate::Registry(known_version), PackageSource::Registry { .. }) => {
@@ -13,6 +23,43 @@ pub fn is_matching_known_and_used(known: &Crate, used: &PackageMetadata) -> bool
             PackageSource::Git { url: used_url, rev: Some(used_rev) },
         ) => known_url == used_url && known_rev == used_rev,
         _ => false,
+    }
+}
+
+/// Resolve the `vstd` dependency to use based on the Verus version.
+pub fn infer_vstd_dependency(verus_version: &str, vstd_source_dir: &Path) -> Result<String> {
+    if verus_version.strip_suffix(".dirty").is_some() {
+        let vstd_source_dir = vstd_source_dir.canonicalize().context(format!(
+            "resolving in-tree vstd source directory `{}` for dirty Verus version {verus_version}",
+            vstd_source_dir.display()
+        ))?;
+        let manifest = vstd_source_dir.join("Cargo.toml");
+        if !manifest.is_file() {
+            bail!(
+                "in-tree vstd source directory `{}` for dirty Verus version {verus_version} has no Cargo.toml",
+                vstd_source_dir.display()
+            );
+        }
+        let path = serde_json::to_string(&vstd_source_dir.to_string_lossy())?;
+        return Ok(format!("{{ path = {path} }}"));
+    }
+
+    let toolchain = find_toolchain(verus_version).context(format!(
+        "no known toolchain manifest for Verus version {verus_version}; cannot determine the vstd dependency"
+    ))?;
+    Ok(format_known_dependency(&toolchain.vstd))
+}
+
+fn format_known_dependency(vstd: &Crate) -> String {
+    match vstd {
+        Crate::Registry(version) => {
+            serde_json::to_string(&format!("={version}")).expect("serializing a string")
+        }
+        Crate::GitCommit { git, rev } => {
+            let git = serde_json::to_string(git).expect("serializing a string");
+            let rev = serde_json::to_string(rev).expect("serializing a string");
+            format!("{{ git = {git}, rev = {rev} }}")
+        }
     }
 }
 

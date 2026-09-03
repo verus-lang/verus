@@ -2,16 +2,16 @@ use clap::Parser as ClapParser;
 use crates_io_api::SyncClient;
 use petgraph::algo::toposort;
 use petgraph::graph::DiGraph;
-use regex::Regex;
 use std::{
     collections::{HashMap, HashSet},
     fs,
-    path::Path,
     process::Stdio,
     sync::LazyLock,
 };
 use toml_edit::DocumentMut;
 //use petgraph::dot::{Dot, Config}; // Used for debugging graphs
+
+use absolute_path::AbsolutePath;
 
 const LINE_COUNT_DIR: &str = "source/tools/line_count";
 
@@ -21,8 +21,7 @@ const WORKSPACE_MANIFEST: &str = "source/Cargo.toml";
 
 /// This tool scans for modified crates in the Verus repository and updates the version numbers
 /// in their respective Cargo.toml files. In cases where one crate depends on another, we also
-/// update the version of the dependency in the dependent crate's Cargo.toml.  Finally, when vstd
-/// is modified, we also update the version in the cargo-verus template.  The code is optimized
+/// update the version of the dependency in the dependent crate's Cargo.toml. The code is optimized
 /// for readability and maintainability, rather than performance.
 ///
 /// Usage: Run this tool from the root of the Verus repository.
@@ -46,10 +45,6 @@ struct Args {
     command: Command,
 }
 
-// Path to cargo-verus's main file, where we have a static string
-// indicating which version of vstd to use
-const CARGO_VERUS_TEMPLATE_FILE: &str = "source/cargo-verus/src/subcommands.rs";
-
 // Generates a fresh version string of the form "0.0.0-year-month-day-time",
 // which we'll assign to any updated crate.  Using a const + LazyLock ensures
 // we only compute this once and then use it consistently throughout.
@@ -70,15 +65,15 @@ static NEW_VERSION: LazyLock<String> = LazyLock::new(|| {
 struct Crate {
     // Crate's official name
     name: String,
-    // Path to the crate's directory, relative to the repository root
-    path: String,
+    // Absolute path to the crate's directory
+    path: AbsolutePath,
 }
 
 // For each crate, identify the other crates (in `crates`) that depend on it
 fn compute_immediate_deps(crates: &Vec<Crate>) -> HashMap<Crate, Vec<Crate>> {
     let mut dep_map: HashMap<Crate, Vec<Crate>> = HashMap::new();
     for krate in crates {
-        let cargo_toml_path = Path::new(&krate.path).join("Cargo.toml");
+        let cargo_toml_path = krate.path.join("Cargo.toml");
 
         // Read the Cargo.toml file
         let content = fs::read_to_string(&cargo_toml_path)
@@ -140,7 +135,7 @@ fn dep_map_to_graph(dep_map: &HashMap<Crate, Vec<Crate>>) -> DiGraph<Crate, ()> 
 }
 
 // Given a path to a directory, run git to check for the most recent change to the Cargo.toml file
-fn last_commit(dir: &Path) -> Option<String> {
+fn last_commit(dir: &AbsolutePath) -> Option<String> {
     use std::process::Command;
 
     let output = Command::new("git")
@@ -161,7 +156,7 @@ fn last_commit(dir: &Path) -> Option<String> {
 }
 
 // Given the most recent commit hash, run git to check if the src directory has been modified
-fn src_modified(dir: &Path, commit: &str) -> bool {
+fn src_modified(dir: &AbsolutePath, commit: &str) -> bool {
     use std::process::Command;
 
     let status = Command::new("git")
@@ -180,7 +175,7 @@ fn src_modified(dir: &Path, commit: &str) -> bool {
     !status.success() // A successful exit code of 0 means no changes
 }
 
-fn read_toml_version(dir: &Path) -> String {
+fn read_toml_version(dir: &AbsolutePath) -> String {
     let cargo_toml_path = dir.join("Cargo.toml");
 
     // Read the Cargo.toml file
@@ -191,7 +186,7 @@ fn read_toml_version(dir: &Path) -> String {
     doc["package"]["version"].as_str().expect("Version must be a string").to_string()
 }
 
-fn update_toml_version(dir: &Path) {
+fn update_toml_version(dir: &AbsolutePath) {
     let cargo_toml_path = dir.join("Cargo.toml");
 
     // Read the Cargo.toml file
@@ -214,7 +209,7 @@ fn inherits_from_workspace(entry: &toml_edit::Item) -> bool {
     entry.get("workspace").and_then(|w| w.as_bool()).unwrap_or(false)
 }
 
-fn update_toml_dependencies(dir: &Path, dependencies: &Vec<&Crate>) {
+fn update_toml_dependencies(dir: &AbsolutePath, dependencies: &Vec<&Crate>) {
     let cargo_toml_path = dir.join("Cargo.toml");
 
     // Read the Cargo.toml file
@@ -245,7 +240,7 @@ fn update_toml_dependencies(dir: &Path, dependencies: &Vec<&Crate>) {
 // is the only place those versions can be updated.  Note that this does not affect the crates
 // under dependencies/, since they are not members of this workspace and hence pin their
 // versions directly.
-fn update_workspace_dependencies(manifest: &Path, dependencies: &Vec<&Crate>) {
+fn update_workspace_dependencies(manifest: &AbsolutePath, dependencies: &Vec<&Crate>) {
     // Read the Cargo.toml file
     let content = fs::read_to_string(manifest)
         .unwrap_or_else(|e| panic!("Failed to read {}: {e:?}", manifest.display()));
@@ -269,10 +264,8 @@ fn update_workspace_dependencies(manifest: &Path, dependencies: &Vec<&Crate>) {
         .unwrap_or_else(|e| panic!("Failed to write {}: {e:?}", manifest.display()));
 }
 
-fn publish(dir: &Path, dry_run: bool) {
+fn publish(dir: &AbsolutePath, dry_run: bool) {
     use std::process::Command;
-
-    let dir = dir.canonicalize().expect("make the crate dir absolute");
 
     let mut cmd = Command::new("cargo");
     cmd.arg("publish");
@@ -293,34 +286,17 @@ fn publish(dir: &Path, dry_run: bool) {
     }
 }
 
-fn update_cargo_verus_template() {
-    let main = Path::new(CARGO_VERUS_TEMPLATE_FILE);
-    let content = fs::read_to_string(main).expect("Failed to read cargo-verus main.rs");
-
-    // Replace the version in the template
-    let re = Regex::new("(?m)^vstd =.*$").expect("Failed to create regex");
-    let count = re.find_iter(&content).count();
-    if count != 1 {
-        panic!(
-            "Expected to find exactly one occurence of 'vstd = ' in {}.  Found {}.",
-            CARGO_VERUS_TEMPLATE_FILE, count
-        );
-    }
-    let updated_content = re.replace(&content, format!("vstd = \"={}\"", *NEW_VERSION).as_str());
-    //println!("Updated cargo-verus main.rs:\n{}", updated_content);
-    println!("Updated cargo-verus main.rs\n");
-
-    // Write the updated content back to the file
-    fs::write(main, updated_content.to_string()).expect("Failed to write cargo-verus main.rs");
-}
-
-fn update_crates(crates: Vec<Crate>) {
+fn update_crates(
+    crates: Vec<Crate>,
+    workspace_manifest: &AbsolutePath,
+    line_count_dir: &AbsolutePath,
+) {
     // Compute directly modified crates
     println!("\nScanning for crates with modified source code...");
     let mut modified_crates: HashSet<&Crate> = HashSet::new();
     for krate in &crates {
-        if let Some(commit) = last_commit(&Path::new(&krate.path)) {
-            if src_modified(&Path::new(&krate.path), &commit) {
+        if let Some(commit) = last_commit(&krate.path) {
+            if src_modified(&krate.path, &commit) {
                 println!("\t{}:\n\t\tHAS been modified since commit {}.\n", krate.name, commit);
                 modified_crates.insert(&krate);
             } else {
@@ -330,7 +306,7 @@ fn update_crates(crates: Vec<Crate>) {
                 );
             }
         } else {
-            println!("{}: Could not find last commit for {}", krate.name, krate.path);
+            println!("{}: Could not find last commit for {}", krate.name, krate.path.display());
         }
     }
 
@@ -375,19 +351,15 @@ fn update_crates(crates: Vec<Crate>) {
         modified_crates.sort();
         for krate in &modified_crates {
             println!("\t{}", krate.name);
-            update_toml_version(&Path::new(&krate.path));
-            update_toml_dependencies(&Path::new(&krate.path), &modified_crates);
-
-            if krate.name == "vstd" {
-                update_cargo_verus_template();
-            }
+            update_toml_version(&krate.path);
+            update_toml_dependencies(&krate.path, &modified_crates);
         }
 
         // Update the versions that the workspace's members inherit
-        update_workspace_dependencies(Path::new(WORKSPACE_MANIFEST), &modified_crates);
+        update_workspace_dependencies(workspace_manifest, &modified_crates);
 
         // Finally, update the line count tool's dependencies if needed
-        update_toml_dependencies(Path::new(LINE_COUNT_DIR), &modified_crates);
+        update_toml_dependencies(line_count_dir, &modified_crates);
     }
 }
 
@@ -402,7 +374,7 @@ fn publish_crates(
     for node_index in sorted_nodes {
         let krate = &crate_graph[node_index];
         // Before publishing, check if this version already exists on crates.io
-        let crate_version = read_toml_version(&Path::new(&krate.path));
+        let crate_version = read_toml_version(&krate.path);
         let metadata = crates_io_client.get_crate(&krate.name)?;
         let version_exists = metadata.versions.iter().any(|v| v.num == crate_version && !v.yanked);
         if version_exists {
@@ -418,7 +390,7 @@ fn publish_crates(
         } else {
             println!("Publishing crate {}", krate.name);
         }
-        publish(&Path::new(&krate.path), dry_run);
+        publish(&krate.path, dry_run);
     }
     Ok(())
 }
@@ -426,31 +398,29 @@ fn publish_crates(
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
+    let workspace_manifest = AbsolutePath::new(WORKSPACE_MANIFEST)?;
+    let line_count_dir = AbsolutePath::new(LINE_COUNT_DIR)?;
+
     let crates = vec![
-        Crate { name: "vstd".to_string(), path: "source/vstd".to_string() },
-        Crate { name: "verus_builtin".to_string(), path: "source/builtin".to_string() },
+        Crate { name: "vstd".to_string(), path: "source/vstd".try_into()? },
+        Crate { name: "verus_builtin".to_string(), path: "source/builtin".try_into()? },
         Crate {
             name: "verus_builtin_macros".to_string(),
-            path: "source/builtin_macros".to_string(),
+            path: "source/builtin_macros".try_into()?,
         },
         Crate {
             name: "verus_state_machines_macros".to_string(),
-            path: "source/state_machines_macros".to_string(),
+            path: "source/state_machines_macros".try_into()?,
         },
         Crate {
             name: "verus_prettyplease".to_string(),
-            path: "dependencies/prettyplease".to_string(),
+            path: "dependencies/prettyplease".try_into()?,
         },
-        Crate { name: "verus_syn".to_string(), path: "dependencies/syn".to_string() },
+        Crate { name: "verus_syn".to_string(), path: "dependencies/syn".try_into()? },
     ];
 
-    let test_path = Path::new(&crates[0].path);
-    if !Path::exists(test_path) {
-        return Err(format!("Failed to find path: {}.  Hint: This tool expects to run in the root of the Verus repo", test_path.display()).into());
-    }
-
     match &args.command {
-        Command::Update => update_crates(crates),
+        Command::Update => update_crates(crates, &workspace_manifest, &line_count_dir),
         Command::Publish { dry_run } => {
             let dep_map = compute_immediate_deps(&crates);
             let graph = dep_map_to_graph(&dep_map);
@@ -460,4 +430,49 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+
+mod absolute_path {
+    use std::{
+        ffi::OsStr,
+        ops::Deref,
+        path::{Path, PathBuf},
+    };
+
+    #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+    pub(super) struct AbsolutePath(PathBuf);
+
+    impl AbsolutePath {
+        pub(super) fn new(path: impl AsRef<Path>) -> std::io::Result<Self> {
+            Ok(Self(path.as_ref().canonicalize()?))
+        }
+    }
+
+    impl TryFrom<&str> for AbsolutePath {
+        type Error = std::io::Error;
+
+        fn try_from(path: &str) -> Result<Self, Self::Error> {
+            Self::new(path)
+        }
+    }
+
+    impl AsRef<Path> for AbsolutePath {
+        fn as_ref(&self) -> &Path {
+            &self.0
+        }
+    }
+
+    impl AsRef<OsStr> for AbsolutePath {
+        fn as_ref(&self) -> &OsStr {
+            self.0.as_os_str()
+        }
+    }
+
+    impl Deref for AbsolutePath {
+        type Target = Path;
+
+        fn deref(&self) -> &Self::Target {
+            &self.0
+        }
+    }
 }
