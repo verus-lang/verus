@@ -537,8 +537,8 @@ pub open spec fn slice_split_off_last_result<T>(
     value: T,
 ) -> bool {
     source.len() != 0
-        && value == source[(source.len() - 1) as int]
-        && remaining == source.subrange(0, (source.len() - 1) as int)
+        && value == source[source.len() - 1]
+        && remaining == source.subrange(0, source.len() - 1)
 }
 
 pub assume_specification<T>[ <[T]>::split_first ](
@@ -557,8 +557,8 @@ pub assume_specification<T>[ <[T]>::split_last ](
     ensures
         slice@.len() == 0 ==> ret.is_none(),
         slice@.len() != 0 ==> ret.is_some()
-            && *ret.unwrap().0 == slice@[(slice@.len() - 1) as int]
-            && ret.unwrap().1@ == slice@.subrange(0, (slice@.len() - 1) as int),
+            && *ret.unwrap().0 == slice@[slice@.len() - 1]
+            && ret.unwrap().1@ == slice@.subrange(0, slice@.len() - 1),
 ;
 
 pub assume_specification<T>[ <[T]>::split_first_mut ](
@@ -578,8 +578,8 @@ pub assume_specification<T>[ <[T]>::split_last_mut ](
     ensures
         old(slice)@.len() == 0 ==> ret.is_none() && final(slice)@ == old(slice)@,
         old(slice)@.len() != 0 ==> ret.is_some()
-            && *ret.unwrap().0 == old(slice)@[(old(slice)@.len() - 1) as int]
-            && ret.unwrap().1@ == old(slice)@.subrange(0, (old(slice)@.len() - 1) as int)
+            && *ret.unwrap().0 == old(slice)@[old(slice)@.len() - 1]
+            && ret.unwrap().1@ == old(slice)@.subrange(0, old(slice)@.len() - 1)
             && final(slice)@ == final(ret.unwrap().1)@ + seq![*final(ret.unwrap().0)],
 ;
 
