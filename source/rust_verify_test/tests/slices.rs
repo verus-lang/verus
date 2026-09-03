@@ -682,6 +682,72 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_vec_get verus_code! {
+        use vstd::prelude::*;
+
+        fn get(v: &Vec<u8>) {
+            assume(v@.len() == 3);
+            let some = v.get(1usize);
+            assert(some == Some(&v@[1]));
+            let none = v.get(3usize);
+            assert(none.is_none());
+        }
+
+        fn get_mut(v: &mut Vec<u8>)
+            requires old(v)@.len() == 3,
+            ensures final(v)@ == old(v)@.update(1, 99),
+        {
+            match v.get_mut(1usize) {
+                Some(value) => *value = 99,
+                None => assert(false),
+            }
+        }
+
+        fn owned_get_mut(mut v: Vec<u8>) {
+            assume(v@.len() == 3);
+            let result = v.get_mut(1usize);
+            assert(result.is_some());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_vec_get_mut_deref_method_resolution code! {
+        use vstd::prelude::*;
+
+        pub struct Error(
+            Box<dyn std::error::Error + Send + Sync + 'static>,
+        );
+
+        impl core::ops::Deref for Error {
+            type Target = dyn std::error::Error + Send + Sync + 'static;
+
+            fn deref(&self) -> &Self::Target {
+                &*self.0
+            }
+        }
+
+        impl core::ops::DerefMut for Error {
+            fn deref_mut(&mut self) -> &mut Self::Target {
+                &mut *self.0
+            }
+        }
+
+        verus! {
+
+        #[verifier::external_type_specification]
+        #[verifier::external_body]
+        pub struct ExError(Error);
+
+        fn vec_get_mut(values: &mut Vec<u8>, index: usize) -> Option<&mut u8> {
+            values.get_mut(index)
+        }
+
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_other_index verus_code! {
         use std::ops::Index;
         use vstd::prelude::*;

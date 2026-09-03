@@ -142,6 +142,27 @@ pub assume_specification<T, I>[ <[T]>::get::<I> ](slice: &[T], i: I) -> (b: Opti
         spec_slice_get(slice, i),
 ;
 
+pub assume_specification<T, I: SliceIndex<[T]>>[ <[T]>::get_mut::<I> ](
+    slice: &mut [T],
+    index: I,
+) -> (result: Option<&mut <I as SliceIndex<[T]>>::Output>)
+    ensures
+        match result {
+            Some(output) => {
+                &&& index.index_req(old(slice))
+                &&& call_ensures(
+                    <I as SliceIndex<[T]>>::index_mut,
+                    (index, slice),
+                    output,
+                )
+            },
+            None => {
+                &&& !index.index_req(old(slice))
+                &&& final(slice)@ == old(slice)@
+            },
+        },
+;
+
 pub uninterp spec fn spec_slice_get<T: ?Sized, I: SliceIndex<T>>(val: &T, idx: I) -> Option<
     &<I as SliceIndex<T>>::Output,
 >;

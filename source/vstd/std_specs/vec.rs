@@ -30,10 +30,51 @@ pub trait VecAdditionalSpecFns<T>: View<V = Seq<T>> {
     ;
 }
 
+pub trait VecAdditionalGetFns<T>: View<V = Seq<T>> {
+    exec fn get<I: SliceIndex<[T]>>(
+        &self,
+        index: I,
+    ) -> (result: Option<&<I as SliceIndex<[T]>>::Output>)
+        ensures
+            exists|slice: &[T]| {
+                &&& #[trigger] slice@ == self@
+                &&& call_ensures(<[T]>::get::<I>, (slice, index), result)
+            },
+    ;
+
+    exec fn get_mut<I: SliceIndex<[T]>>(
+        &mut self,
+        index: I,
+    ) -> (result: Option<&mut <I as SliceIndex<[T]>>::Output>)
+        ensures
+            exists|slice: &mut [T]| {
+                &&& #[trigger] slice@ == old(self)@
+                &&& final(slice)@ == final(self)@
+                &&& call_ensures(<[T]>::get_mut::<I>, (slice, index), result)
+            },
+    ;
+}
+
 impl<T, A: Allocator> VecAdditionalSpecFns<T> for Vec<T, A> {
     #[verifier::inline]
     open spec fn spec_index(&self, i: int) -> T {
         self.view().index(i)
+    }
+}
+
+impl<T, A: Allocator> VecAdditionalGetFns<T> for Vec<T, A> {
+    exec fn get<I: SliceIndex<[T]>>(
+        &self,
+        index: I,
+    ) -> Option<&<I as SliceIndex<[T]>>::Output> {
+        self.as_slice().get(index)
+    }
+
+    exec fn get_mut<I: SliceIndex<[T]>>(
+        &mut self,
+        index: I,
+    ) -> Option<&mut <I as SliceIndex<[T]>>::Output> {
+        self.as_mut_slice().get_mut(index)
     }
 }
 

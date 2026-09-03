@@ -275,27 +275,6 @@ pub assume_specification<T, I: SliceIndex<[T]>>[ <[T] as IndexMut<I>>::index_mut
         call_ensures(<I as SliceIndex<[T]>>::index_mut, (index, slice), output),
 ;
 
-pub assume_specification<T, I: SliceIndex<[T]>>[ <[T]>::get_mut::<I> ](
-    slice: &mut [T],
-    index: I,
-) -> (result: Option<&mut <I as SliceIndex<[T]>>::Output>)
-    ensures
-        match result {
-            Some(output) => {
-                &&& index.index_req(old(slice))
-                &&& call_ensures(
-                    <I as SliceIndex<[T]>>::index_mut,
-                    (index, slice),
-                    output,
-                )
-            },
-            None => {
-                &&& !index.index_req(old(slice))
-                &&& final(slice)@ == old(slice)@
-            },
-        },
-;
-
 impl<T, I, const N: usize> super::core::IndexSpecImpl<I> for [T; N]
 where
     [T]: Index<I>,
