@@ -2,7 +2,9 @@ use super::super::prelude::*;
 use super::super::slice::SliceIndexSpec;
 use super::core::IndexSpec;
 use super::iter::IteratorSpec;
-use super::range::{slice_range_end, slice_range_start, slice_range_valid};
+use super::range::{
+    ExRange, RangeBoundsSpec, slice_range_end, slice_range_start, slice_range_valid,
+};
 
 use core::ops::{
     Index, IndexMut, Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive,
@@ -17,91 +19,247 @@ impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for usize {
     open spec fn in_bounds(&self, slice: &[T]) -> bool {
         *self < slice@.len()
     }
+
+    open spec fn index_postcondition(&self, slice: &[T], r: &T) -> bool {
+        r == slice@[self as int]
+    }
+
+    open spec fn index_mut_postcondition(
+        &self,
+        old_slice: &[T],
+        final_slice: &[T],
+        immediate_output: &T,
+        final_output: &T,
+    ) -> bool {
+        &&& *immediate_output == old_slice@[*self as int]
+        &&& final_slice@ == old_slice@.update(*self as int, *final_output)
+    }
 }
 
 pub assume_specification<T>[ <usize as SliceIndex<[T]>>::get ](i: usize, slice: &[T]) -> Option<&T>;
 
 pub assume_specification<T>[ <usize as SliceIndex<[T]>>::index ](i: usize, slice: &[T]) -> &T
-    returns
-        slice@[i as int],
 ;
 
 pub assume_specification<T>[ <usize as SliceIndex<[T]>>::get_mut ](i: usize, slice: &mut [T]) -> Option<&mut T>;
 
 pub assume_specification<T>[ <usize as SliceIndex<[T]>>::index_mut ](i: usize, slice: &mut [T]) -> (output: &mut T)
-    ensures
-        *output == old(slice)@[i as int],
-        final(slice)@ == old(slice)@.update(i as int, *final(output))
 ;
+
+pub open spec fn generic_slice_in_bounds<R: RangeBoundsSpec<usize>, T>(
+    range: &R,
+    s: Seq<T>
+) -> bool {
+    slice_range_valid(range, s.len())
+}
+
+pub open spec fn generic_slice_index_postcondition<R: RangeBoundsSpec<usize>, T>(
+    range: &R,
+    slice: Seq<T>,
+    r: Seq<T>,
+) -> bool {
+    r == slice.subrange(slice_range_start(range), slice_range_end(range, slice.len()))
+}
+
+pub open spec fn generic_slice_index_mut_postcondition<R: RangeBoundsSpec<usize>, T>(
+    range: &R,
+    old_slice: Seq<T>,
+    final_slice: Seq<T>,
+    immediate_output: Seq<T>,
+    final_output: Seq<T>,
+) -> bool {
+    &&& immediate_output == old_slice.subrange(slice_range_start(range), slice_range_end(range, old_slice.len()))
+    &&& final_slice.len() == old_slice.len()
+    &&& final_slice.subrange(0, slice_range_start(range)) == old_slice.subrange(0, slice_range_start(range))
+    &&& final_slice.subrange(slice_range_start(range), slice_range_end(range, old_slice.len())) == final_output
+    &&& final_slice.subrange(slice_range_end(range, old_slice.len()), old_slice.len() as int) ==
+        old_slice.subrange(slice_range_end(range, old_slice.len()), old_slice.len() as int)
+    // The following conjunct can be derived from the above four, but
+    // it's useful to include anyway.
+    &&& final_slice == old_slice.subrange(0, slice_range_start(range)) + final_output + old_slice.subrange(
+           slice_range_end(range, old_slice.len()),
+           old_slice.len() as int,
+       )
+}
 
 impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for Range<usize> {
     open spec fn in_bounds(&self, slice: &[T]) -> bool {
-        &&& self.start <= self.end
-        &&& self.end <= slice@.len()
+        generic_slice_in_bounds(self, slice@)
+    }
+
+    open spec fn index_postcondition(&self, slice: &[T], r: &[T]) -> bool {
+        generic_slice_index_postcondition(self, slice@, r@)
+    }
+
+    open spec fn index_mut_postcondition(
+        &self,
+        old_slice: &[T],
+        final_slice: &[T],
+        immediate_output: &[T],
+        final_output: &[T]
+    ) -> bool {
+        generic_slice_index_mut_postcondition(self, old_slice@, final_slice@, immediate_output@, final_output@)
     }
 }
 
 pub assume_specification<T>[ <Range<usize> as SliceIndex<[T]>>::get ](i: Range<usize>, slice: &[T]) -> Option<&[T]>;
 
 pub assume_specification<T>[ <Range<usize> as SliceIndex<[T]>>::index ](i: Range<usize>, slice: &[T]) -> (r: &[T])
-    ensures
-        r@ == slice@.subrange(i.start as int, i.end as int),
 ;
 
 pub assume_specification<T>[ <Range<usize> as SliceIndex<[T]>>::get_mut ](i: Range<usize>, slice: &mut [T]) -> Option<&mut [T]>;
 
 pub assume_specification<T>[ <Range<usize> as SliceIndex<[T]>>::index_mut ](i: Range<usize>, slice: &mut [T]) -> (r: &mut [T])
-    ensures
-        r@ == old(slice)@.subrange(i.start as int, i.end as int),
-        final(r)@ == final(slice)@.subrange(i.start as int, i.end as int),
-        final(slice)@ == old(slice)@.subrange(0, i.start as int) + final(r)@ + old(slice)@.subrange(
-            i.end as int,
-            old(slice)@.len() as int,
-        ),
 ;
 
 impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for RangeTo<usize> {
     open spec fn in_bounds(&self, slice: &[T]) -> bool {
-        self.end <= slice@.len()
+        generic_slice_in_bounds(self, slice@)
+    }
+
+    open spec fn index_postcondition(&self, slice: &[T], r: &[T]) -> bool {
+        generic_slice_index_postcondition(self, slice@, r@)
+    }
+
+    open spec fn index_mut_postcondition(
+        &self,
+        old_slice: &[T],
+        final_slice: &[T],
+        immediate_output: &[T],
+        final_output: &[T]
+    ) -> bool {
+        generic_slice_index_mut_postcondition(self, old_slice@, final_slice@, immediate_output@, final_output@)
     }
 }
 
 pub assume_specification<T>[ <RangeTo<usize> as SliceIndex<[T]>>::get ](i: RangeTo<usize>, slice: &[T]) -> Option<&[T]>;
 
 pub assume_specification<T>[ <RangeTo<usize> as SliceIndex<[T]>>::index ](i: RangeTo<usize>, slice: &[T]) -> (r: &[T])
-    ensures
-        r@ == slice@.subrange(0, i.end as int),
 ;
 
 pub assume_specification<T>[ <RangeTo<usize> as SliceIndex<[T]>>::get_mut ](i: RangeTo<usize>, slice: &mut [T]) -> Option<&mut [T]>;
 
 pub assume_specification<T>[ <RangeTo<usize> as SliceIndex<[T]>>::index_mut ](i: RangeTo<usize>, slice: &mut [T]) -> (r: &mut [T])
-    ensures
-        r@ == old(slice)@.subrange(0, i.end as int),
-        final(r)@ == final(slice)@.subrange(0, i.end as int),
-        final(slice)@ == final(r)@ + old(slice)@.subrange(i.end as int, old(slice)@.len() as int),
 ;
 
 impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for RangeFrom<usize> {
     open spec fn in_bounds(&self, slice: &[T]) -> bool {
-        self.start <= slice@.len()
+        generic_slice_in_bounds(self, slice@)
+    }
+
+    open spec fn index_postcondition(&self, slice: &[T], r: &[T]) -> bool {
+        generic_slice_index_postcondition(self, slice@, r@)
+    }
+
+    open spec fn index_mut_postcondition(
+        &self,
+        old_slice: &[T],
+        final_slice: &[T],
+        immediate_output: &[T],
+        final_output: &[T]
+    ) -> bool {
+        generic_slice_index_mut_postcondition(self, old_slice@, final_slice@, immediate_output@, final_output@)
     }
 }
 
 pub assume_specification<T>[ <RangeFrom<usize> as SliceIndex<[T]>>::get ](i: RangeFrom<usize>, slice: &[T]) -> Option<&[T]>;
 
 pub assume_specification<T>[ <RangeFrom<usize> as SliceIndex<[T]>>::index ](i: RangeFrom<usize>, slice: &[T]) -> (r: &[T])
-    ensures
-        r@ == slice@.subrange(i.start as int, slice@.len() as int),
 ;
 
 pub assume_specification<T>[ <RangeFrom<usize> as SliceIndex<[T]>>::get_mut ](i: RangeFrom<usize>, slice: &mut [T]) -> Option<&mut [T]>;
 
 pub assume_specification<T>[ <RangeFrom<usize> as SliceIndex<[T]>>::index_mut ](i: RangeFrom<usize>, slice: &mut [T]) -> (r: &mut [T])
-    ensures
-        r@ == old(slice)@.subrange(i.start as int, old(slice)@.len() as int),
-        final(r)@ == final(slice)@.subrange(i.start as int, old(slice)@.len() as int),
-        final(slice)@ == old(slice)@.subrange(0, i.start as int) + final(r)@,
+;
+
+impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for RangeToInclusive<usize> {
+    open spec fn in_bounds(&self, slice: &[T]) -> bool {
+        generic_slice_in_bounds(self, slice@)
+    }
+
+    open spec fn index_postcondition(&self, slice: &[T], r: &[T]) -> bool {
+        generic_slice_index_postcondition(self, slice@, r@)
+    }
+
+    open spec fn index_mut_postcondition(
+        &self,
+        old_slice: &[T],
+        final_slice: &[T],
+        immediate_output: &[T],
+        final_output: &[T]
+    ) -> bool {
+        generic_slice_index_mut_postcondition(self, old_slice@, final_slice@, immediate_output@, final_output@)
+    }
+}
+
+pub assume_specification<T>[ <RangeToInclusive<usize> as SliceIndex<[T]>>::get ](i: RangeToInclusive<usize>, slice: &[T]) -> Option<&[T]>;
+
+pub assume_specification<T>[ <RangeToInclusive<usize> as SliceIndex<[T]>>::index ](i: RangeToInclusive<usize>, slice: &[T]) -> (r: &[T])
+;
+
+pub assume_specification<T>[ <RangeToInclusive<usize> as SliceIndex<[T]>>::get_mut ](i: RangeToInclusive<usize>, slice: &mut [T]) -> Option<&mut [T]>;
+
+pub assume_specification<T>[ <RangeToInclusive<usize> as SliceIndex<[T]>>::index_mut ](i: RangeToInclusive<usize>, slice: &mut [T]) -> (r: &mut [T])
+;
+
+impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for RangeFull {
+    open spec fn in_bounds(&self, slice: &[T]) -> bool {
+        generic_slice_in_bounds(self, slice@)
+    }
+
+    open spec fn index_postcondition(&self, slice: &[T], r: &[T]) -> bool {
+        generic_slice_index_postcondition(self, slice@, r@)
+    }
+
+    open spec fn index_mut_postcondition(
+        &self,
+        old_slice: &[T],
+        final_slice: &[T],
+        immediate_output: &[T],
+        final_output: &[T]
+    ) -> bool {
+        generic_slice_index_mut_postcondition(self, old_slice@, final_slice@, immediate_output@, final_output@)
+    }
+}
+
+pub assume_specification<T>[ <RangeFull as SliceIndex<[T]>>::get ](i: RangeFull, slice: &[T]) -> Option<&[T]>;
+
+pub assume_specification<T>[ <RangeFull as SliceIndex<[T]>>::index ](i: RangeFull, slice: &[T]) -> (r: &[T])
+;
+
+pub assume_specification<T>[ <RangeFull as SliceIndex<[T]>>::get_mut ](i: RangeFull, slice: &mut [T]) -> Option<&mut [T]>;
+
+pub assume_specification<T>[ <RangeFull as SliceIndex<[T]>>::index_mut ](i: RangeFull, slice: &mut [T]) -> (r: &mut [T])
+;
+
+impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for RangeInclusive<usize> {
+    open spec fn in_bounds(&self, slice: &[T]) -> bool {
+        generic_slice_in_bounds(self, slice@)
+    }
+
+    open spec fn index_postcondition(&self, slice: &[T], r: &[T]) -> bool {
+        generic_slice_index_postcondition(self, slice@, r@)
+    }
+
+    open spec fn index_mut_postcondition(
+        &self,
+        old_slice: &[T],
+        final_slice: &[T],
+        immediate_output: &[T],
+        final_output: &[T]
+    ) -> bool {
+        generic_slice_index_mut_postcondition(self, old_slice@, final_slice@, immediate_output@, final_output@)
+    }
+}
+
+pub assume_specification<T>[ <RangeInclusive<usize> as SliceIndex<[T]>>::get ](i: RangeInclusive<usize>, slice: &[T]) -> Option<&[T]>;
+
+pub assume_specification<T>[ <RangeInclusive<usize> as SliceIndex<[T]>>::index ](i: RangeInclusive<usize>, slice: &[T]) -> (r: &[T])
+;
+
+pub assume_specification<T>[ <RangeInclusive<usize> as SliceIndex<[T]>>::get_mut ](i: RangeInclusive<usize>, slice: &mut [T]) -> Option<&mut [T]>;
+
+pub assume_specification<T>[ <RangeInclusive<usize> as SliceIndex<[T]>>::index_mut ](i: RangeInclusive<usize>, slice: &mut [T]) -> (r: &mut [T])
 ;
 
 // starts_with
@@ -150,81 +308,6 @@ pub assume_specification<T: PartialEq>[ <[T]>::ends_with ](
             slice,
             needle,
         )),
-;
-
-impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for RangeToInclusive<usize> {
-    open spec fn in_bounds(&self, slice: &[T]) -> bool {
-        self.end < slice@.len()
-    }
-}
-
-pub assume_specification<T>[ <RangeToInclusive<usize> as SliceIndex<[T]>>::get ](i: RangeToInclusive<usize>, slice: &[T]) -> Option<&[T]>;
-
-pub assume_specification<T>[ <RangeToInclusive<usize> as SliceIndex<[T]>>::index ](i: RangeToInclusive<usize>, slice: &[T]) -> (r: &[T])
-    ensures
-        r@ == slice@.subrange(0, i.end as int + 1),
-;
-
-pub assume_specification<T>[ <RangeToInclusive<usize> as SliceIndex<[T]>>::get_mut ](i: RangeToInclusive<usize>, slice: &mut [T]) -> Option<&mut [T]>;
-
-pub assume_specification<T>[ <RangeToInclusive<usize> as SliceIndex<[T]>>::index_mut ](i: RangeToInclusive<usize>, slice: &mut [T]) -> (r: &mut [T])
-    ensures
-        r@ == old(slice)@.subrange(0, i.end as int + 1),
-        final(r)@ == final(slice)@.subrange(0, i.end as int + 1),
-        final(slice)@ == final(r)@ + old(slice)@.subrange(i.end as int + 1, old(slice)@.len() as int),
-;
-
-impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for RangeFull {
-    open spec fn in_bounds(&self, slice: &[T]) -> bool {
-        true
-    }
-}
-
-pub assume_specification<T>[ <RangeFull as SliceIndex<[T]>>::get ](i: RangeFull, slice: &[T]) -> Option<&[T]>;
-
-pub assume_specification<T>[ <RangeFull as SliceIndex<[T]>>::index ](i: RangeFull, slice: &[T]) -> (r: &[T])
-    ensures
-        r@ == slice@,
-;
-
-pub assume_specification<T>[ <RangeFull as SliceIndex<[T]>>::get_mut ](i: RangeFull, slice: &mut [T]) -> Option<&mut [T]>;
-
-pub assume_specification<T>[ <RangeFull as SliceIndex<[T]>>::index_mut ](i: RangeFull, slice: &mut [T]) -> (r: &mut [T])
-    ensures
-        r@ == old(slice)@,
-        final(slice)@ == final(r)@,
-;
-
-impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for RangeInclusive<usize> {
-    open spec fn in_bounds(&self, slice: &[T]) -> bool {
-        slice_range_valid(self, slice@.len())
-    }
-}
-
-pub assume_specification<T>[ <RangeInclusive<usize> as SliceIndex<[T]>>::get ](i: RangeInclusive<usize>, slice: &[T]) -> Option<&[T]>;
-
-pub assume_specification<T>[ <RangeInclusive<usize> as SliceIndex<[T]>>::index ](i: RangeInclusive<usize>, slice: &[T]) -> (r: &[T])
-    ensures
-        r@ == slice@.subrange(slice_range_start(&i), slice_range_end(&i, slice@.len() as nat)),
-;
-
-pub assume_specification<T>[ <RangeInclusive<usize> as SliceIndex<[T]>>::get_mut ](i: RangeInclusive<usize>, slice: &mut [T]) -> Option<&mut [T]>;
-
-pub assume_specification<T>[ <RangeInclusive<usize> as SliceIndex<[T]>>::index_mut ](i: RangeInclusive<usize>, slice: &mut [T]) -> (r: &mut [T])
-    ensures
-        r@ == old(slice)@.subrange(
-            slice_range_start(&i),
-            slice_range_end(&i, old(slice)@.len() as nat),
-        ),
-        final(r)@ == final(slice)@.subrange(
-            slice_range_start(&i),
-            slice_range_end(&i, old(slice)@.len() as nat),
-        ),
-        final(slice)@ == old(slice)@.subrange(0, slice_range_start(&i)) + final(r)@
-            + old(slice)@.subrange(
-                slice_range_end(&i, old(slice)@.len() as nat),
-                old(slice)@.len() as int,
-            ),
 ;
 
 impl<T, I: SliceIndex<[T]>> super::core::IndexSpecImpl<I> for [T] {
