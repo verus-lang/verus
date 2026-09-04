@@ -1921,18 +1921,21 @@ impl Verifier {
         })
     }
 
-    fn verify_bucket_outer(
+    /// Verifies the given bucket but does not emit logs or update timers.
+    /// TODO: Find a better name for this
+    pub(crate) fn verify_bucket_middle(
         &mut self,
         reporter: &impl Diagnostics,
         krate: &Krate,
         source_map: Option<&SourceMap>,
         bucket_id: &BucketId,
-        mut global_ctx: vir::context::GlobalCtx,
-    ) -> Result<vir::context::GlobalCtx, VirErr> {
-        let time_verify_start = Instant::now();
-
-        self.bucket_stats.insert(bucket_id.clone(), Default::default());
-
+        global_ctx: vir::context::GlobalCtx,
+        outcome: Option<&mut try_broadcasts::VerificationOutcome>,
+        // Passed in separately despite existing in `self.args` to
+        // suppress these in try_broadcasts
+        log_vir_sst: bool,
+        log_vir_poly: bool,
+    ) -> Result<(vir::context::GlobalCtx, VerifyBucketOut), VirErr> {
         let bucket_name = bucket_id.friendly_name();
         let user_filter = self.user_filter.as_ref().unwrap();
         if self.args.trace || !user_filter.is_everything() {
@@ -1941,10 +1944,6 @@ impl Verifier {
             reporter
                 .report_now(&note_bare(format!("verifying {bucket_name}{functions_msg}")).to_any());
         }
-        let (sh_result, new_ctx) =
-            try_broadcasts(self, reporter, krate, source_map, bucket_id, global_ctx)?;
-        let krate = sh_result.as_ref().unwrap_or(krate);
-        global_ctx = new_ctx;
         let (pruned_krate, prune_info) = vir::prune::prune_krate_for_module_or_krate(
             &krate,
             self.crate_id.as_ref().expect("crate_id"),
@@ -1981,7 +1980,7 @@ impl Verifier {
             resolved_typs.unwrap(),
             self.args.debugger,
         )?;
-        if self.args.log_all || self.args.log_args.log_vir_poly {
+        if log_vir_poly {
             let mut file =
                 self.create_log_file(Some(&bucket_id), crate::config::VIR_POLY_FILE_SUFFIX)?;
             vir::printer::write_krate(&mut file, &pruned_krate, &self.args.log_args.vir_log_option);
@@ -1993,7 +1992,7 @@ impl Verifier {
             &self.get_bucket(bucket_id).funs,
             &pruned_krate,
         )?;
-        if self.args.log_all || self.args.log_args.log_vir_sst {
+        if log_vir_sst {
             let mut file =
                 self.create_log_file(Some(&bucket_id), crate::config::VIR_SST_FILE_SUFFIX)?;
             vir::printer::write_krate_sst(
@@ -2004,10 +2003,40 @@ impl Verifier {
         }
         let krate_sst = vir::poly::poly_krate_for_module(&mut ctx, &krate_sst);
 
-        let VerifyBucketOut { time_smt_init, time_smt_run, rlimit_count } =
-            self.verify_bucket(reporter, &krate_sst, source_map, bucket_id, &mut ctx, None)?;
+        let verify_out =
+            self.verify_bucket(reporter, &krate_sst, source_map, bucket_id, &mut ctx, outcome)?;
 
-        global_ctx = ctx.free();
+        Ok((ctx.free(), verify_out))
+    }
+
+    pub(crate) fn verify_bucket_outer(
+        &mut self,
+        reporter: &impl Diagnostics,
+        krate: &Krate,
+        source_map: Option<&SourceMap>,
+        bucket_id: &BucketId,
+        mut global_ctx: vir::context::GlobalCtx,
+    ) -> Result<vir::context::GlobalCtx, VirErr> {
+        let time_verify_start = Instant::now();
+
+        self.bucket_stats.insert(bucket_id.clone(), Default::default());
+
+        let (try_broadcasts_result, new_ctx) =
+            try_broadcasts(self, reporter, krate, source_map, bucket_id, global_ctx)?;
+        let krate = try_broadcasts_result.as_ref().unwrap_or(krate);
+        global_ctx = new_ctx;
+
+        let (new_ctx, VerifyBucketOut { time_smt_init, time_smt_run, rlimit_count }) = self
+            .verify_bucket_middle(
+                reporter,
+                krate,
+                source_map,
+                bucket_id,
+                global_ctx,
+                None,
+                self.args.log_all || self.args.log_args.log_vir_poly,
+                self.args.log_all || self.args.log_args.log_vir_sst,
+            )?;
 
         let time_verify_end = Instant::now();
 
@@ -2023,7 +2052,7 @@ impl Verifier {
             );
         }
 
-        Ok(global_ctx)
+        Ok(new_ctx)
     }
 
     // Verify one or more modules in a crate

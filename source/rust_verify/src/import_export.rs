@@ -43,17 +43,18 @@ pub(crate) fn import_crates(
                 ));
             }
         });
-        let CrateWithMetadata { krate, metadata, friendly_name_map } = match bincode_next::serde::decode_from_std_read(
-            &mut file,
-            bincode_next::config::legacy(),
-        ) {
-            Ok(crate_with_metadata) => crate_with_metadata,
-            Err(_e) => {
-                return Err(crate::util::error(format!(
-                    "failed to deserialize imported library file `{file_path}` - it may need to be rebuilt by Verus"
-                )));
-            }
-        };
+        let CrateWithMetadata { krate, metadata, friendly_name_map } =
+            match bincode_next::serde::decode_from_std_read(
+                &mut file,
+                bincode_next::config::legacy(),
+            ) {
+                Ok(crate_with_metadata) => crate_with_metadata,
+                Err(_e) => {
+                    return Err(crate::util::error(format!(
+                        "failed to deserialize imported library file `{file_path}` - it may need to be rebuilt by Verus"
+                    )));
+                }
+            };
         if let Some(map) = &friendly_name_map {
             ast_util::merge_friendly_name_map(map);
         }
@@ -98,7 +99,8 @@ pub(crate) fn export_crate(
             }
         });
         let friendly_name_map = ast_util::get_friendly_name_map();
-        let krate_with_metadata = CrateWithMetadata { krate: vir_crate, metadata: vir_metadata, friendly_name_map };
+        let krate_with_metadata =
+            CrateWithMetadata { krate: vir_crate, metadata: vir_metadata, friendly_name_map };
         bincode_next::serde::encode_into_std_write(
             &krate_with_metadata,
             &mut file,

@@ -237,7 +237,7 @@ impl<'a, R: Diagnostics> TryBroadcasts<'a, R> {
                                     "existing proof succeeds, try_broadcasts is no longer needed",
                                 ),
                             )
-                            .to_any()
+                            .to_any(),
                         );
                     };
                     if guess.broadcasts.is_empty() {
@@ -679,7 +679,7 @@ impl<'a, R: Diagnostics> TryBroadcasts<'a, R> {
         exprs.push_back(expr);
         while let Some(e) = exprs.pop_front() {
             ast_visitor::expr_visitor_check(e, &mut |_, e: &Expr| match &e.x {
-                ExprX::Call(CallTarget::Fun(_, fun, ..), ..) => {
+                ExprX::Call { target: CallTarget::Fun(_, fun, ..), .. } => {
                     match self.fun_to_function.get(fun) {
                         Some(function) if function.x.mode == Mode::Spec => {
                             funcs.insert(fun.clone());
@@ -766,78 +766,12 @@ impl Verifier {
     ) -> Result<GlobalCtx, VirErr> {
         let prev_errors = self.count_errors;
         let prev_verified = self.count_verified;
-        // TODO: the following is copied from verify_bucket_outer; it would be nicer
-        // to avoid duplicating that logic here:
-        // copied from Verifier::verify_bucket_outer
-        let (pruned_krate, prune_info) = vir::prune::prune_krate_for_module_or_krate(
-            &krate,
-            self.crate_id.as_ref().expect("crate_id"),
-            None,
-            Some(bucket_id.module().clone()),
-            bucket_id.function(),
-            true,
-            true,
-        );
-        let vir::prune::PruneInfo {
-            mono_abstract_datatypes,
-            spec_fn_types,
-            used_builtins,
-            fndef_types,
-            resolved_typs,
-            dyn_traits,
-        } = prune_info;
-        let mono_abstract_datatypes = mono_abstract_datatypes.unwrap();
-        let module = pruned_krate
-            .modules
-            .iter()
-            .find(|m| &m.x.path == bucket_id.module())
-            .expect("module in krate")
-            .clone();
-        let mut ctx = vir::context::Ctx::new(
-            &pruned_krate,
-            global_ctx,
-            module,
-            mono_abstract_datatypes,
-            spec_fn_types,
-            dyn_traits,
-            used_builtins,
-            fndef_types,
-            resolved_typs.unwrap(),
-            self.args.debugger,
+        let (global_ctx, _) = self.verify_bucket_middle(
+            reporter, krate, source_map, bucket_id, global_ctx, outcome, false, false,
         )?;
-        if self.args.log_all || self.args.log_args.log_vir_poly {
-            let mut file = self.create_log_file(
-                Some(&bucket_id),
-                &format!("sledgehammer{}", crate::config::VIR_POLY_FILE_SUFFIX),
-            )?;
-            vir::printer::write_krate(&mut file, &pruned_krate, &self.args.log_args.vir_log_option);
-        }
-
-        let krate_sst = vir::ast_to_sst_crate::ast_to_sst_krate(
-            &mut ctx,
-            reporter,
-            &self.get_bucket(bucket_id).funs,
-            &pruned_krate,
-        )?;
-        if self.args.log_all || self.args.log_args.log_vir_sst {
-            let mut file = self.create_log_file(
-                Some(&bucket_id),
-                &format!("sledgehammer-{}", crate::config::VIR_SST_FILE_SUFFIX),
-            )?;
-            vir::printer::write_krate_sst(
-                &mut file,
-                &krate_sst,
-                &self.args.log_args.vir_log_option,
-            );
-        }
-        let krate_sst = vir::poly::poly_krate_for_module(&mut ctx, &krate_sst);
-
-        let result =
-            self.verify_bucket(reporter, &krate_sst, source_map, bucket_id, &mut ctx, outcome);
         self.count_errors = prev_errors;
         self.count_verified = prev_verified;
-        result?;
 
-        Ok(ctx.free())
+        Ok(global_ctx)
     }
 }
