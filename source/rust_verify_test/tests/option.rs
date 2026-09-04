@@ -224,6 +224,68 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_xor verus_code! {
+        use vstd::prelude::*;
+
+        fn test_some_none() {
+            let a = Some(10u32);
+            let b = None::<u32>;
+            assert(a.xor(b) == Some(10u32));
+        }
+
+        fn test_none_some() {
+            let a = None::<u32>;
+            let b = Some(20u32);
+            assert(a.xor(b) == Some(20u32));
+        }
+
+        fn test_some_some() {
+            let a = Some(10u32);
+            let b = Some(20u32);
+            assert(a.xor(b) == None::<u32>);
+        }
+
+        fn test_none_none() {
+            let a = None::<u32>;
+            let b = None::<u32>;
+            assert(a.xor(b) == None::<u32>);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_option_zip verus_code! {
+        use vstd::prelude::*;
+
+        fn test_exec() {
+            let a = Some(10u8);
+            let b = Some(20u16);
+            assert(a.zip(b) == Some((10u8, 20u16)));
+
+            let a = Some(10u8);
+            let b = None::<u16>;
+            assert(a.zip(b) == None::<(u8, u16)>);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] option_unzip verus_code! {
+        use vstd::prelude::*;
+
+        fn test_some() {
+            let x = Some((10u8, 20u16));
+            assert(x.unzip() == (Some(10u8), Some(20u16)));
+        }
+
+        fn test_none() {
+            let x = None::<(u8, u16)>;
+            assert(x.unzip() == (None::<u8>, None::<u16>));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_is_some_and verus_code! {
         use vstd::prelude::*;
 

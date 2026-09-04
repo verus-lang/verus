@@ -244,6 +244,60 @@ pub assume_specification<T, F: FnOnce() -> Option<T>>[ Option::<T>::or_else ](
         a.is_none() ==> f.ensures((), ret),
 ;
 
+// xor
+#[verifier::inline]
+pub open spec fn spec_xor<T>(a: Option<T>, b: Option<T>) -> Option<T> {
+    match (a, b) {
+        (Some(x), None) => Some(x),
+        (None, Some(y)) => Some(y),
+        _ => None,
+    }
+}
+
+#[verifier::when_used_as_spec(spec_xor)]
+pub assume_specification<T>[ Option::<T>::xor ](a: Option<T>, b: Option<T>) -> (ret: Option<T>)
+    ensures
+        ret == spec_xor(a, b),
+    no_unwind
+;
+
+// zip
+#[verifier::inline]
+pub open spec fn spec_zip<T, U>(option: Option<T>, other: Option<U>) -> Option<(T, U)> {
+    match (option, other) {
+        (Some(a), Some(b)) => Some((a, b)),
+        _ => None,
+    }
+}
+
+#[verifier::when_used_as_spec(spec_zip)]
+pub assume_specification<T, U>[ Option::<T>::zip ](option: Option<T>, other: Option<U>) -> (res:
+    Option<(T, U)>)
+    ensures
+        res == spec_zip(option, other),
+    no_unwind
+;
+
+// unzip
+#[verifier::inline]
+pub open spec fn spec_unzip<T, U>(
+    option: Option<(T, U)>,
+) -> (Option<T>, Option<U>) {
+    match option {
+        Some((a, b)) => (Some(a), Some(b)),
+        None => (None, None),
+    }
+}
+
+#[verifier::when_used_as_spec(spec_unzip)]
+pub assume_specification<T, U>[ Option::<(T, U)>::unzip ](
+    option: Option<(T, U)>,
+) -> (res: (Option<T>, Option<U>))
+    ensures
+        res == spec_unzip(option),
+    no_unwind
+;
+
 // cloned
 pub assume_specification<'a, T: Clone>[ Option::<&'a T>::cloned ](opt: Option<&'a T>) -> (res:
     Option<T>)
