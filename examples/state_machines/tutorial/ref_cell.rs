@@ -240,7 +240,7 @@ impl<S> RefCell<S> {
     {
         let (rc_cell, Tracked(rc_perm)) = cell::PCell::new(0);
         let (value_cell, Tracked(value_perm)) = cell::PCell::new(s);
-        let tracked (Tracked(inst), Tracked(flag), _, Tracked(writer)) = RefCounter::Instance::<
+        let tracked (Tracked(inst), Tracked(mut flag), _, Tracked(writer)) = RefCounter::Instance::<
             S,
         >::initialize_empty(value_cell.id(), None);
         proof {
