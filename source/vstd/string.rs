@@ -548,6 +548,26 @@ impl super::slice::SliceIndexSpecImpl<str> for (Bound<usize>, Bound<usize>) {
     open spec fn in_bounds(&self, s: &str) -> bool {
         str_slice_in_bounds(self, s)
     }
+
+    open spec fn index_postcondition(&self, s: &str, r: &str) -> bool {
+        str_slice_index_postcondition(self, s.spec_bytes(), r.spec_bytes())
+    }
+
+    open spec fn index_mut_postcondition(
+        &self,
+        old_slice: &str,
+        final_slice: &str,
+        immediate_output: &str,
+        final_output: &str,
+    ) -> bool {
+        str_slice_index_mut_postcondition(
+            self,
+            old_slice.spec_bytes(),
+            final_slice.spec_bytes(),
+            immediate_output.spec_bytes(),
+            final_output.spec_bytes(),
+        )
+    }
 }
 
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
@@ -562,8 +582,6 @@ pub assume_specification[ <(Bound<usize>, Bound<usize>) as SliceIndex<str>>::ind
     i: (Bound<usize>, Bound<usize>),
     s: &str,
 ) -> (r: &str)
-    ensures
-        str_slice_index_postcondition(&i, s.spec_bytes(), r.spec_bytes()),
 ;
 
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
@@ -578,20 +596,32 @@ pub assume_specification[ <(Bound<usize>, Bound<usize>) as SliceIndex<str>>::ind
     i: (Bound<usize>, Bound<usize>),
     s: &mut str,
 ) -> (r: &mut str)
-    ensures
-        str_slice_index_mut_postcondition(
-            &i,
-            old(s).spec_bytes(),
-            final(s).spec_bytes(),
-            r.spec_bytes(),
-            final(r).spec_bytes(),
-        ),
 ;
 
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 impl super::slice::SliceIndexSpecImpl<str> for Range<usize> {
     open spec fn in_bounds(&self, s: &str) -> bool {
         str_slice_in_bounds(self, s)
+    }
+
+    open spec fn index_postcondition(&self, s: &str, r: &str) -> bool {
+        str_slice_index_postcondition(self, s.spec_bytes(), r.spec_bytes())
+    }
+
+    open spec fn index_mut_postcondition(
+        &self,
+        old_slice: &str,
+        final_slice: &str,
+        immediate_output: &str,
+        final_output: &str,
+    ) -> bool {
+        str_slice_index_mut_postcondition(
+            self,
+            old_slice.spec_bytes(),
+            final_slice.spec_bytes(),
+            immediate_output.spec_bytes(),
+            final_output.spec_bytes(),
+        )
     }
 }
 
@@ -605,8 +635,6 @@ pub assume_specification[ <Range<usize> as SliceIndex<str>>::index ](
     i: Range<usize>,
     s: &str,
 ) -> (r: &<Range<usize> as SliceIndex<str>>::Output)
-    ensures
-        str_slice_index_postcondition(&i, s.spec_bytes(), r.spec_bytes()),
 ;
 
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
@@ -621,20 +649,32 @@ pub assume_specification[ <Range<usize> as SliceIndex<str>>::index_mut ](
     i: Range<usize>,
     s: &mut str,
 ) -> (r: &mut <Range<usize> as SliceIndex<str>>::Output)
-    ensures
-        str_slice_index_mut_postcondition(
-            &i,
-            old(s).spec_bytes(),
-            final(s).spec_bytes(),
-            r.spec_bytes(),
-            final(r).spec_bytes(),
-        ),
 ;
 
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 impl super::slice::SliceIndexSpecImpl<str> for RangeFrom<usize> {
     open spec fn in_bounds(&self, s: &str) -> bool {
         str_slice_in_bounds(self, s)
+    }
+
+    open spec fn index_postcondition(&self, s: &str, r: &str) -> bool {
+        str_slice_index_postcondition(self, s.spec_bytes(), r.spec_bytes())
+    }
+
+    open spec fn index_mut_postcondition(
+        &self,
+        old_slice: &str,
+        final_slice: &str,
+        immediate_output: &str,
+        final_output: &str,
+    ) -> bool {
+        str_slice_index_mut_postcondition(
+            self,
+            old_slice.spec_bytes(),
+            final_slice.spec_bytes(),
+            immediate_output.spec_bytes(),
+            final_output.spec_bytes(),
+        )
     }
 }
 
@@ -650,8 +690,6 @@ pub assume_specification[ <RangeFrom<usize> as SliceIndex<str>>::index ](
     i: RangeFrom<usize>,
     s: &str,
 ) -> (r: &<RangeFrom<usize> as SliceIndex<str>>::Output)
-    ensures
-        str_slice_index_postcondition(&i, s.spec_bytes(), r.spec_bytes()),
 ;
 
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
@@ -666,20 +704,32 @@ pub assume_specification[ <RangeFrom<usize> as SliceIndex<str>>::index_mut ](
     i: RangeFrom<usize>,
     s: &mut str,
 ) -> (r: &mut <RangeFrom<usize> as SliceIndex<str>>::Output)
-    ensures
-        str_slice_index_mut_postcondition(
-            &i,
-            old(s).spec_bytes(),
-            final(s).spec_bytes(),
-            r.spec_bytes(),
-            final(r).spec_bytes(),
-        ),
 ;
 
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 impl super::slice::SliceIndexSpecImpl<str> for RangeFull {
     open spec fn in_bounds(&self, s: &str) -> bool {
         str_slice_in_bounds(self, s)
+    }
+
+    open spec fn index_postcondition(&self, s: &str, r: &str) -> bool {
+        str_slice_index_postcondition(self, s.spec_bytes(), r.spec_bytes())
+    }
+
+    open spec fn index_mut_postcondition(
+        &self,
+        old_slice: &str,
+        final_slice: &str,
+        immediate_output: &str,
+        final_output: &str,
+    ) -> bool {
+        str_slice_index_mut_postcondition(
+            self,
+            old_slice.spec_bytes(),
+            final_slice.spec_bytes(),
+            immediate_output.spec_bytes(),
+            final_output.spec_bytes(),
+        )
     }
 }
 
@@ -691,8 +741,6 @@ pub assume_specification[ <RangeFull as SliceIndex<str>>::get ](i: RangeFull, s:
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 pub assume_specification[ <RangeFull as SliceIndex<str>>::index ](i: RangeFull, s: &str) -> (r:
     &<RangeFull as SliceIndex<str>>::Output)
-    ensures
-        str_slice_index_postcondition(&i, s.spec_bytes(), r.spec_bytes()),
 ;
 
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
@@ -707,20 +755,32 @@ pub assume_specification[ <RangeFull as SliceIndex<str>>::index_mut ](
     i: RangeFull,
     s: &mut str,
 ) -> (r: &mut <RangeFull as SliceIndex<str>>::Output)
-    ensures
-        str_slice_index_mut_postcondition(
-            &i,
-            old(s).spec_bytes(),
-            final(s).spec_bytes(),
-            r.spec_bytes(),
-            final(r).spec_bytes(),
-        ),
 ;
 
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 impl super::slice::SliceIndexSpecImpl<str> for RangeInclusive<usize> {
     open spec fn in_bounds(&self, s: &str) -> bool {
         str_slice_in_bounds(self, s)
+    }
+
+    open spec fn index_postcondition(&self, s: &str, r: &str) -> bool {
+        str_slice_index_postcondition(self, s.spec_bytes(), r.spec_bytes())
+    }
+
+    open spec fn index_mut_postcondition(
+        &self,
+        old_slice: &str,
+        final_slice: &str,
+        immediate_output: &str,
+        final_output: &str,
+    ) -> bool {
+        str_slice_index_mut_postcondition(
+            self,
+            old_slice.spec_bytes(),
+            final_slice.spec_bytes(),
+            immediate_output.spec_bytes(),
+            final_output.spec_bytes(),
+        )
     }
 }
 
@@ -736,8 +796,6 @@ pub assume_specification[ <RangeInclusive<usize> as SliceIndex<str>>::index ](
     i: RangeInclusive<usize>,
     s: &str,
 ) -> (r: &<RangeInclusive<usize> as SliceIndex<str>>::Output)
-    ensures
-        str_slice_index_postcondition(&i, s.spec_bytes(), r.spec_bytes()),
 ;
 
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
@@ -752,20 +810,32 @@ pub assume_specification[ <RangeInclusive<usize> as SliceIndex<str>>::index_mut 
     i: RangeInclusive<usize>,
     s: &mut str,
 ) -> (r: &mut <RangeInclusive<usize> as SliceIndex<str>>::Output)
-    ensures
-        str_slice_index_mut_postcondition(
-            &i,
-            old(s).spec_bytes(),
-            final(s).spec_bytes(),
-            r.spec_bytes(),
-            final(r).spec_bytes(),
-        ),
 ;
 
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 impl super::slice::SliceIndexSpecImpl<str> for RangeTo<usize> {
     open spec fn in_bounds(&self, s: &str) -> bool {
         str_slice_in_bounds(self, s)
+    }
+
+    open spec fn index_postcondition(&self, s: &str, r: &str) -> bool {
+        str_slice_index_postcondition(self, s.spec_bytes(), r.spec_bytes())
+    }
+
+    open spec fn index_mut_postcondition(
+        &self,
+        old_slice: &str,
+        final_slice: &str,
+        immediate_output: &str,
+        final_output: &str,
+    ) -> bool {
+        str_slice_index_mut_postcondition(
+            self,
+            old_slice.spec_bytes(),
+            final_slice.spec_bytes(),
+            immediate_output.spec_bytes(),
+            final_output.spec_bytes(),
+        )
     }
 }
 
@@ -781,8 +851,6 @@ pub assume_specification[ <RangeTo<usize> as SliceIndex<str>>::index ](
     i: RangeTo<usize>,
     s: &str,
 ) -> (r: &<RangeTo<usize> as SliceIndex<str>>::Output)
-    ensures
-        str_slice_index_postcondition(&i, s.spec_bytes(), r.spec_bytes()),
 ;
 
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
@@ -797,20 +865,32 @@ pub assume_specification[ <RangeTo<usize> as SliceIndex<str>>::index_mut ](
     i: RangeTo<usize>,
     s: &mut str,
 ) -> (r: &mut <RangeTo<usize> as SliceIndex<str>>::Output)
-    ensures
-        str_slice_index_mut_postcondition(
-            &i,
-            old(s).spec_bytes(),
-            final(s).spec_bytes(),
-            r.spec_bytes(),
-            final(r).spec_bytes(),
-        ),
 ;
 
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 impl super::slice::SliceIndexSpecImpl<str> for RangeToInclusive<usize> {
     open spec fn in_bounds(&self, s: &str) -> bool {
         str_slice_in_bounds(self, s)
+    }
+
+    open spec fn index_postcondition(&self, s: &str, r: &str) -> bool {
+        str_slice_index_postcondition(self, s.spec_bytes(), r.spec_bytes())
+    }
+
+    open spec fn index_mut_postcondition(
+        &self,
+        old_slice: &str,
+        final_slice: &str,
+        immediate_output: &str,
+        final_output: &str,
+    ) -> bool {
+        str_slice_index_mut_postcondition(
+            self,
+            old_slice.spec_bytes(),
+            final_slice.spec_bytes(),
+            immediate_output.spec_bytes(),
+            final_output.spec_bytes(),
+        )
     }
 }
 
@@ -826,8 +906,6 @@ pub assume_specification[ <RangeToInclusive<usize> as SliceIndex<str>>::index ](
     i: RangeToInclusive<usize>,
     s: &str,
 ) -> (r: &<RangeToInclusive<usize> as SliceIndex<str>>::Output)
-    ensures
-        str_slice_index_postcondition(&i, s.spec_bytes(), r.spec_bytes()),
 ;
 
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
@@ -842,14 +920,6 @@ pub assume_specification[ <RangeToInclusive<usize> as SliceIndex<str>>::index_mu
     i: RangeToInclusive<usize>,
     s: &mut str,
 ) -> (r: &mut <RangeToInclusive<usize> as SliceIndex<str>>::Output)
-    ensures
-        str_slice_index_mut_postcondition(
-            &i,
-            old(s).spec_bytes(),
-            final(s).spec_bytes(),
-            r.spec_bytes(),
-            final(r).spec_bytes(),
-        ),
 ;
 
 // `<str as ops::Index<I>>::index(&self, index: I)` just invokes
