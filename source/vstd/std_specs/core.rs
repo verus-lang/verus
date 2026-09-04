@@ -186,6 +186,16 @@ pub assume_specification<T> [core::hint::must_use] (value: T) -> (ret: T)
         ret == value,
 ;
 
+pub assume_specification [core::panicking::panic] (s: &'static str) -> !
+    requires
+        false,
+;
+
+pub assume_specification [core::panicking::panic_fmt] (s: core::fmt::Arguments<'_>) -> !
+    requires
+        false,
+;
+
 } // verus!
 
 #[verifier::external_type_specification]

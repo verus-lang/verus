@@ -75,7 +75,7 @@ the commit via `ci.yml`.
 
 2. **`publish`** (linux)
    - Downloads all platform artifacts
-   - Extracts version information from `version.txt`
+   - Extracts version information from `version.json`
    - Updates the existing **Rolling Release** (GitHub release ID: 163437062)
    - Tags release as `release/rolling/<version>`
    - Names release as `Rolling Release <version>`

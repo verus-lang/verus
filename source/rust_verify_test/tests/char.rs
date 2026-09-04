@@ -676,3 +676,23 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] typ_invariant_issue2876 verus_code! {
+        fn foo(c: &mut char)
+            ensures
+                *final(c) as u32 == 'A' as u32,
+        {
+            *c = 'A';
+        }
+
+        fn test_foo() {
+            let mut c = 'a';
+            foo(&mut c);
+
+            assert(0 <= c as int);
+            assert(c <= 0x10ffff);
+            assert(c <= 0xD7FF || c >= 0xE000);
+        }
+    } => Ok(())
+}
