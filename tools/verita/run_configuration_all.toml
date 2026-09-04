@@ -74,14 +74,7 @@ name = "vest"
 git_url = "https://github.com/secure-foundations/vest.git"
 refspec = "main"
 cargo_verus = true
-crate_roots = ["vest", "vest-examples/tls_dsl"]
-# The examples all use a build.rs file to run the Vest executable before verification can begin
-prepare_script = """
-cargo install vest
-"""
-prepare_script_windows = """
-cargo install vest
-"""
+crate_roots = ["vest_lib", "vest_tests"]
 
 [[project]]
 name = "human-eval"
