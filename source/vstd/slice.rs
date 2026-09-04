@@ -183,6 +183,23 @@ pub broadcast axiom fn axiom_slice_has_resolved<T>(slice: &[T], i: int)
             ==> has_resolved(#[trigger] slice@[i]),
 ;
 
+/// We axiomatize that a slice can decrease to its corresponding sequence.
+pub broadcast axiom fn axiom_slice_decreases_to_seq<T>(s: &[T])
+    ensures
+        #[trigger] (decreases_to!(s => s@)),
+;
+
+/// A slice can decrease to any of its elements, obtained by indexing.
+pub broadcast proof fn lemma_slice_index_decreases<T>(s: &[T], i: int)
+    requires
+        0 <= i < s@.len(),
+    ensures
+        #[trigger] (decreases_to!(s => s@[i])),
+{
+    axiom_slice_decreases_to_seq(s);
+    lemma_seq_index_decreases(s@, i);
+}
+
 pub broadcast group group_slice_axioms {
     axiom_spec_len,
     axiom_slice_get_usize,
@@ -190,6 +207,8 @@ pub broadcast group group_slice_axioms {
     axiom_spec_slice_update,
     axiom_spec_slice_index,
     axiom_slice_has_resolved,
+    axiom_slice_decreases_to_seq,
+    lemma_slice_index_decreases,
 }
 
 } // verus!

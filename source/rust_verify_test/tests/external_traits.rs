@@ -26,6 +26,49 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_trait_provided_method_not_required verus_code! {
+        #[verifier::external]
+        trait Tr {
+            fn foo(&self) -> usize;
+            fn bar(&self) -> usize { 7 }
+        }
+
+        #[verifier::external_trait_specification]
+        trait ExTr {
+            type ExternalTraitSpecificationFor: Tr;
+
+            fn foo(&self) -> (r: usize)
+                ensures r > 3,
+            ;
+
+            fn bar(&self) -> (r: usize)
+                ensures r > 5,
+            ;
+        }
+
+        struct X { }
+
+        #[verifier::external]
+        impl Tr for X {
+            fn foo(&self) -> usize { 4 }
+        }
+
+        assume_specification [<X as Tr>::foo](x: &X) -> (r: usize)
+            ensures r > 3,
+        ;
+
+        fn test(x: &X) {
+            let a = x.foo();
+            assert(a > 3);
+            // `bar` is inherited from the trait's default body, so the caller gets
+            // the trait declaration's ensures.
+            let b = x.bar();
+            assert(b > 5);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_trait_dupe verus_code! {
         trait Tr {
             fn foo();

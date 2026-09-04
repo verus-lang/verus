@@ -258,6 +258,7 @@ fn handle_autospec<'tcx>(
                     is_type_invariant_fn: false,
                     is_external_body: false,
                     is_unsafe: false,
+                    impls_cannot_extend_spec: false,
                     exec_assume_termination: false,
                     exec_allows_no_decreases_clause: false,
                     tracked_swap: false,
@@ -1405,6 +1406,7 @@ fn make_attributes<'tcx>(
             Safety::Safe => false,
             Safety::Unsafe => true,
         },
+        impls_cannot_extend_spec: vattrs.impls_cannot_extend_spec,
         exec_assume_termination: vattrs.assume_termination,
         exec_allows_no_decreases_clause: if !is_trait_decl_no_default {
             crate::attributes::get_allow_exec_allows_no_decreases_clause_walk_parents(

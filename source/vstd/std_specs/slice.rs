@@ -88,6 +88,54 @@ pub assume_specification<T>[ <RangeFrom<usize> as SliceIndex<[T]>>::index_mut ](
         final(slice)@ == old(slice)@.subrange(0, i.start as int) + final(r)@,
 ;
 
+// starts_with
+pub open spec fn spec_slice_starts_with<T: PartialEq>(slice: &[T], needle: &[T]) -> bool {
+    &&& needle@.len() <= slice@.len()
+    &&& forall|i: int| #![auto]
+        0 <= i < needle@.len() ==>
+            <T as super::cmp::PartialEqSpec<T>>::eq_spec(
+                &slice@[i],
+                &needle@[i],
+            )
+}
+
+#[verifier::when_used_as_spec(spec_slice_starts_with)]
+pub assume_specification<T: PartialEq>[ <[T]>::starts_with ](
+    slice: &[T],
+    needle: &[T],
+) -> (result: bool)
+    ensures
+        needle@.len() > slice@.len() ==> !result,
+        <T as super::cmp::PartialEqSpec<T>>::obeys_eq_spec() ==> (result == spec_slice_starts_with(
+            slice,
+            needle,
+        )),
+;
+
+// ends_with
+pub open spec fn spec_slice_ends_with<T: PartialEq>(slice: &[T], needle: &[T]) -> bool {
+    &&& needle@.len() <= slice@.len()
+    &&& forall|i: int| #![auto]
+        0 <= i < needle@.len() ==>
+            <T as super::cmp::PartialEqSpec<T>>::eq_spec(
+                &slice@[slice@.len() - needle@.len() + i],
+                &needle@[i],
+            )
+}
+
+#[verifier::when_used_as_spec(spec_slice_ends_with)]
+pub assume_specification<T: PartialEq>[ <[T]>::ends_with ](
+    slice: &[T],
+    needle: &[T],
+) -> (result: bool)
+    ensures
+        needle@.len() > slice@.len() ==> !result,
+        <T as super::cmp::PartialEqSpec<T>>::obeys_eq_spec() ==> (result == spec_slice_ends_with(
+            slice,
+            needle,
+        )),
+;
+
 impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for RangeToInclusive<usize> {
     open spec fn index_req(&self, slice: &[T]) -> bool {
         self.end < slice@.len()
@@ -258,6 +306,26 @@ pub assume_specification[ core::hint::unreachable_unchecked ]() -> !
     requires
         false,
 ;
+
+// slice == slice
+pub assume_specification<T: PartialEq<U>, U>[ <[T] as PartialEq<[U]>>::eq ](
+    left: &[T],
+    right: &[U],
+) -> bool
+;
+
+impl<T, U> super::cmp::PartialEqSpecImpl<[U]> for [T] where T: PartialEq<U> + super::cmp::PartialEqSpec<U> {
+    open spec fn obeys_eq_spec() -> bool {
+        <T as super::cmp::PartialEqSpec<U>>::obeys_eq_spec()
+    }
+
+    open spec fn eq_spec(&self, other: &[U]) -> bool {
+        &&& self@.len() == other@.len()
+        &&& forall|i: int|
+            #![auto]
+            0 <= i < self@.len() ==> <T as super::cmp::PartialEqSpec<U>>::eq_spec(&self@[i], &other@[i])
+    }
+}
 
 // The `iter` method of a `<T>` returns an iterator of type `Iter<'_, T>`,
 // so we specify that type here.

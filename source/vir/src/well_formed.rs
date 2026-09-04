@@ -721,7 +721,7 @@ fn check_one_expr<Emit: EmitError>(
                 },
             ));
         }
-        ExprX::Match(_place, arms) => {
+        ExprX::Match(_place, arms, _assert_irrefutable) => {
             for (i, arm) in arms.iter().enumerate() {
                 // Error if the arm contains more than 1 of these 3 nontrivial features:
                 let has_guard = !matches!(&arm.x.guard.x, ExprX::Const(Constant::Bool(true)));
@@ -992,7 +992,32 @@ fn check_function<Emit: EmitError>(
             )
             .secondary_span(&orig_decl.span));
         }
+
+        if orig_decl.x.attrs.impls_cannot_extend_spec {
+            if function.x.ensure.0.len() + function.x.ensure.1.len() > 0 {
+                return Err(error(
+                    &function.span,
+                    "trait method implementation cannot declare ensures clauses because the trait declaration is marked impls_cannot_extend_spec",
+                ));
+            }
+        }
     } else {
+    }
+    if function.x.attrs.impls_cannot_extend_spec {
+        if !matches!(&function.x.kind, FunctionKind::TraitMethodDecl { .. })
+            || function.x.mode != Mode::Exec
+        {
+            return Err(error(
+                &function.span,
+                "only exec trait functions can be marked impls_cannot_extend_spec",
+            ));
+        }
+        if function.x.ensure.1.len() > 0 {
+            return Err(error(
+                &function.span,
+                "impls_cannot_extend_spec functions cannot use default_ensures",
+            ));
+        }
     }
     if let FunctionKind::TraitMethodDecl { has_default: false, .. } = &function.x.kind {
         if function.x.attrs.exec_allows_no_decreases_clause {
