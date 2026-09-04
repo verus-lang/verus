@@ -7,7 +7,7 @@ use crate::external::VerifOrExternal;
 use crate::externs::VerusExterns;
 use crate::rust_to_vir_base::mk_crate_id;
 use crate::spans::{SpanContext, SpanContextX, from_raw_span};
-use crate::try_broadcasts::{self, try_broadcasts};
+use crate::try_broadcasts::try_broadcasts;
 use crate::user_filter::UserFilter;
 use crate::util::{HashMapAbsorbWith, error};
 use crate::verus_items::{VerusItem, VerusItems};
@@ -458,10 +458,51 @@ impl std::ops::Add for RunCommandQueriesResult {
     }
 }
 
+#[derive(Clone, Debug)]
+pub(crate) struct VerificationOutcome {
+    pub(crate) any_invalid: bool,
+    pub(crate) any_timeout: bool,
+    pub(crate) used_axioms: Option<Vec<air::ast::Ident>>,
+    // The naming context used while verifying. Needed to map `Fun`s back to the
+    // AIR identifiers recorded in `used_axioms`, since names are disambiguated
+    // per-`NameCtxt` (e.g. when multiple crates share a name).
+    pub(crate) name_ctxt: Option<vir::def::NameCtxt>,
+}
+
+impl VerificationOutcome {
+    fn new() -> Self {
+        VerificationOutcome {
+            any_invalid: false,
+            any_timeout: false,
+            used_axioms: None,
+            name_ctxt: None,
+        }
+    }
+
+    #[allow(dead_code)]
+    fn success(&self) -> bool {
+        !self.any_invalid && !self.any_timeout
+    }
+
+    fn merge_axioms(&mut self, new_axioms: &Option<Vec<air::ast::Ident>>) {
+        match self.used_axioms.as_mut() {
+            Option::None => {
+                self.used_axioms = new_axioms.clone();
+            }
+            Some(axioms) => {
+                if let Some(new_axioms) = new_axioms {
+                    axioms.extend(new_axioms.clone());
+                }
+            }
+        }
+    }
+}
+
 pub(crate) struct VerifyBucketOut {
     time_smt_init: Duration,
     time_smt_run: Duration,
     rlimit_count: Option<(u64, u64)>,
+    pub(crate) verification_outcome: VerificationOutcome,
 }
 pub(crate) enum VerifyErr {
     Vir(VirErr),
@@ -1320,18 +1361,13 @@ impl Verifier {
         source_map: Option<&SourceMap>,
         bucket_id: &BucketId,
         ctx: &mut vir::context::Ctx,
-        // If `outcome` is Some, populate with information on whether
-        // verification succeeded and what axioms were used if axiom-usage-info
-        // is enabled.
-        mut outcome: Option<&mut try_broadcasts::VerificationOutcome>,
     ) -> Result<VerifyBucketOut, VirErr> {
         let message_interface = Arc::new(vir::messages::VirMessageInterface {});
 
         // Record the naming context used for this bucket so that Sledgehammer can map the
         // `used_axioms` AIR identifiers back to the corresponding `Fun`s.
-        if let Some(outcome) = outcome.as_deref_mut() {
-            outcome.name_ctxt = Some(ctx.name_ctxt.clone());
-        }
+        let mut verification_outcome = VerificationOutcome::new();
+        verification_outcome.name_ctxt = Some(ctx.name_ctxt.clone());
 
         assert!(!(self.args.profile && self.args.profile_all));
         assert!(!(self.args.profile && self.args.capture_profiles));
@@ -1670,16 +1706,9 @@ impl Verifier {
 
                             any_invalid |= command_invalidity;
                             any_timed_out |= command_timed_out;
-                            match outcome {
-                                Some(ref mut outcome) => {
-                                    outcome.any_invalid |= any_invalid;
-                                    outcome.any_timeout |= any_timed_out;
-                                }
-                                _ => {}
-                            }
-                            outcome
-                                .iter_mut()
-                                .for_each(|outcome| outcome.merge_axioms(&command_used_axioms));
+                            verification_outcome.any_invalid |= any_invalid;
+                            verification_outcome.any_timeout |= any_timed_out;
+                            verification_outcome.merge_axioms(&command_used_axioms);
 
                             if let Some(used_axioms) = command_used_axioms {
                                 if used_axioms.len() > 0 {
@@ -1918,6 +1947,7 @@ impl Verifier {
                     spunoff_rlimit_count.expect("spunoff rlimit count should be present");
                 (rlimit_count.0 + spunoff_rlimit_count.0, rlimit_count.1 + spunoff_rlimit_count.1)
             }),
+            verification_outcome,
         })
     }
 
@@ -1930,7 +1960,6 @@ impl Verifier {
         source_map: Option<&SourceMap>,
         bucket_id: &BucketId,
         global_ctx: vir::context::GlobalCtx,
-        outcome: Option<&mut try_broadcasts::VerificationOutcome>,
         // Passed in separately despite existing in `self.args` to
         // suppress these in try_broadcasts
         log_vir_sst: bool,
@@ -2004,7 +2033,7 @@ impl Verifier {
         let krate_sst = vir::poly::poly_krate_for_module(&mut ctx, &krate_sst);
 
         let verify_out =
-            self.verify_bucket(reporter, &krate_sst, source_map, bucket_id, &mut ctx, outcome)?;
+            self.verify_bucket(reporter, &krate_sst, source_map, bucket_id, &mut ctx)?;
 
         Ok((ctx.free(), verify_out))
     }
@@ -2026,14 +2055,13 @@ impl Verifier {
         let krate = try_broadcasts_result.as_ref().unwrap_or(krate);
         global_ctx = new_ctx;
 
-        let (new_ctx, VerifyBucketOut { time_smt_init, time_smt_run, rlimit_count }) = self
+        let (new_ctx, VerifyBucketOut { time_smt_init, time_smt_run, rlimit_count, .. }) = self
             .verify_bucket_middle(
                 reporter,
                 krate,
                 source_map,
                 bucket_id,
                 global_ctx,
-                None,
                 self.args.log_all || self.args.log_args.log_vir_poly,
                 self.args.log_all || self.args.log_args.log_vir_sst,
             )?;

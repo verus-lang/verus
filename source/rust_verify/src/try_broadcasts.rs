@@ -1,7 +1,10 @@
 //! This module implements a heuristic proof search strategy by using potentially-relevant broadcast lemmas,
 //! inspired by Isabelle/HOL's Sledgehammer tool. If a proof is found, the proof is then optionally minimized
 //! and displayed to the user.
-use crate::{config::ArgsX, verifier::Diagnostics};
+use crate::{
+    config::ArgsX,
+    verifier::{Diagnostics, VerificationOutcome},
+};
 use rustc_span::source_map::SourceMap;
 use std::collections::VecDeque;
 use std::collections::{HashMap, HashSet};
@@ -38,46 +41,6 @@ impl TryBroadcastsErr {
 impl From<VirErr> for TryBroadcastsErr {
     fn from(err: VirErr) -> Self {
         TryBroadcastsErr::VirErr(err)
-    }
-}
-
-#[derive(Clone, Debug)]
-pub(crate) struct VerificationOutcome {
-    pub(crate) any_invalid: bool,
-    pub(crate) any_timeout: bool,
-    pub(crate) used_axioms: Option<Vec<air::ast::Ident>>,
-    // The naming context used while verifying. Needed to map `Fun`s back to the
-    // AIR identifiers recorded in `used_axioms`, since names are disambiguated
-    // per-`NameCtxt` (e.g. when multiple crates share a name).
-    pub(crate) name_ctxt: Option<vir::def::NameCtxt>,
-}
-
-impl VerificationOutcome {
-    fn new() -> Self {
-        VerificationOutcome {
-            any_invalid: false,
-            any_timeout: false,
-            used_axioms: None,
-            name_ctxt: None,
-        }
-    }
-
-    #[allow(dead_code)]
-    fn success(&self) -> bool {
-        !self.any_invalid && !self.any_timeout
-    }
-
-    pub(crate) fn merge_axioms(&mut self, new_axioms: &Option<Vec<air::ast::Ident>>) {
-        match self.used_axioms.as_mut() {
-            Option::None => {
-                self.used_axioms = new_axioms.clone();
-            }
-            Some(axioms) => {
-                if let Some(new_axioms) = new_axioms {
-                    axioms.extend(new_axioms.clone());
-                }
-            }
-        }
     }
 }
 
@@ -492,18 +455,9 @@ impl<'a, R: Diagnostics> TryBroadcasts<'a, R> {
         &mut self,
         krate: &Krate,
         reporter: &impl Diagnostics,
-        mut global_ctx: GlobalCtx,
+        global_ctx: GlobalCtx,
     ) -> Result<(VerificationOutcome, GlobalCtx), VirErr> {
-        let mut outcome = VerificationOutcome::new();
-        global_ctx = self.verifier.try_verify(
-            reporter,
-            krate,
-            self.source_map,
-            &self.bucket_id,
-            global_ctx,
-            Some(&mut outcome),
-        )?;
-        Ok((outcome, global_ctx))
+        self.verifier.try_verify(reporter, krate, self.source_map, &self.bucket_id, global_ctx)
     }
 
     fn krate_for_guess(
@@ -762,16 +716,15 @@ impl Verifier {
         source_map: Option<&SourceMap>,
         bucket_id: &BucketId,
         global_ctx: GlobalCtx,
-        outcome: Option<&mut VerificationOutcome>,
-    ) -> Result<GlobalCtx, VirErr> {
+    ) -> Result<(VerificationOutcome, GlobalCtx), VirErr> {
         let prev_errors = self.count_errors;
         let prev_verified = self.count_verified;
-        let (global_ctx, _) = self.verify_bucket_middle(
-            reporter, krate, source_map, bucket_id, global_ctx, outcome, false, false,
+        let (global_ctx, verify_out) = self.verify_bucket_middle(
+            reporter, krate, source_map, bucket_id, global_ctx, false, false,
         )?;
         self.count_errors = prev_errors;
         self.count_verified = prev_verified;
 
-        Ok(global_ctx)
+        Ok((verify_out.verification_outcome, global_ctx))
     }
 }
