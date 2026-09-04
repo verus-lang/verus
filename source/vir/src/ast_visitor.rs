@@ -1388,6 +1388,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             owning_module,
             auto_imported,
             external_trait_blanket,
+            skip_trait_conflict_check,
         } = &imp.x;
         let type_bounds = self.visit_generic_bounds(typ_bounds)?;
         let trait_typ_args = self.visit_typs(trait_typ_args)?;
@@ -1402,6 +1403,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 owning_module: owning_module.clone(),
                 auto_imported: *auto_imported,
                 external_trait_blanket: *external_trait_blanket,
+                skip_trait_conflict_check: *skip_trait_conflict_check,
             })
         })
     }

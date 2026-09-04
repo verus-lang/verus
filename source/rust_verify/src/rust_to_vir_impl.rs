@@ -152,6 +152,7 @@ fn trait_impl_to_vir<'tcx>(
         owning_module: Some(module_path),
         auto_imported,
         external_trait_blanket,
+        skip_trait_conflict_check: false,
     };
     let trait_impl = ctxt.spanned_new(span, trait_impl);
     Ok(Some((trait_path, types, trait_impl)))
@@ -772,7 +773,6 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
         }
     }
 
-    // An imported subtrait impl is unusable if one of its required impls could not be represented.
     let mut unavailable_impl_paths = auto_import_impl_paths;
     for impl_def_id in &collected_impls {
         unavailable_impl_paths.remove(&ctxt.def_id_to_vir_path(*impl_def_id));
@@ -795,15 +795,11 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
         }
         unavailable_impl_paths.extend(newly_unavailable);
     }
-    krate
-        .trait_impls
-        .retain(|trait_impl| !unavailable_impl_paths.contains(&trait_impl.x.impl_path));
-    krate
-        .assoc_type_impls
-        .retain(|assoc_type_impl| !unavailable_impl_paths.contains(&assoc_type_impl.x.impl_path));
-    collected_impls.retain(|impl_def_id| {
-        !unavailable_impl_paths.contains(&ctxt.def_id_to_vir_path(*impl_def_id))
-    });
+    for trait_impl in &mut krate.trait_impls {
+        if unavailable_impl_paths.contains(&trait_impl.x.impl_path) {
+            Arc::make_mut(trait_impl).x.skip_trait_conflict_check = true;
+        }
+    }
 
     let mut func_map = HashMap::<Fun, Function>::new();
     for function in krate.functions.iter() {
