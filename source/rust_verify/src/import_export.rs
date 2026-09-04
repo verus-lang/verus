@@ -34,7 +34,7 @@ pub(crate) fn import_crates(
     let mut metadatas = Vec::new();
     let mut vir_crates = Vec::new();
     for (_, file_path) in args.import.iter().chain(import_virs_via_cargo.iter()) {
-        let file = std::io::BufReader::new(match std::fs::File::open(file_path) {
+        let mut file = std::io::BufReader::new(match std::fs::File::open(file_path) {
             Ok(file) => file,
             Err(err) => {
                 return Err(io_vir_err(
@@ -43,15 +43,17 @@ pub(crate) fn import_crates(
                 ));
             }
         });
-        let CrateWithMetadata { krate, metadata, friendly_name_map } =
-            match bincode::deserialize_from(file) {
-                Ok(crate_with_metadata) => crate_with_metadata,
-                Err(_e) => {
-                    return Err(crate::util::error(format!(
-                        "failed to deserialize imported library file `{file_path}` - it may need to be rebuilt by Verus"
-                    )));
-                }
-            };
+        let CrateWithMetadata { krate, metadata, friendly_name_map } = match bincode_next::serde::decode_from_std_read(
+            &mut file,
+            bincode_next::config::legacy(),
+        ) {
+            Ok(crate_with_metadata) => crate_with_metadata,
+            Err(_e) => {
+                return Err(crate::util::error(format!(
+                    "failed to deserialize imported library file `{file_path}` - it may need to be rebuilt by Verus"
+                )));
+            }
+        };
         if let Some(map) = &friendly_name_map {
             ast_util::merge_friendly_name_map(map);
         }
@@ -86,7 +88,7 @@ pub(crate) fn export_crate(
         }
         let vir_crate = Arc::new(kratex);
 
-        let file = std::io::BufWriter::new(match std::fs::File::create(file_path) {
+        let mut file = std::io::BufWriter::new(match std::fs::File::create(file_path) {
             Ok(file) => file,
             Err(err) => {
                 return Err(io_vir_err(
@@ -96,9 +98,13 @@ pub(crate) fn export_crate(
             }
         });
         let friendly_name_map = ast_util::get_friendly_name_map();
-        let krate_with_metadata =
-            CrateWithMetadata { krate: vir_crate, metadata: vir_metadata, friendly_name_map };
-        bincode::serialize_into(file, &krate_with_metadata).expect("write crate to file");
+        let krate_with_metadata = CrateWithMetadata { krate: vir_crate, metadata: vir_metadata, friendly_name_map };
+        bincode_next::serde::encode_into_std_write(
+            &krate_with_metadata,
+            &mut file,
+            bincode_next::config::legacy(),
+        )
+        .expect("write crate to file");
         //serde_json::to_writer(file, &vir_crate).expect("write crate to file");
         //serde_json::to_writer_pretty(file, &vir_crate).expect("write crate to file");
     }

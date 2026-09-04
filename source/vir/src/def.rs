@@ -2,11 +2,12 @@ use crate::ast::{ClosureKind, CrateId, Dt, Fun, FunX, InvAtomicity, Path, PathX,
 use crate::ast_util::air_unique_var;
 use crate::messages::Span;
 use crate::util::vec_map;
+use crate::{fun, path};
 use air::ast::{Commands, Ident};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 /*
 In SMT-LIB format (used by Z3), symbols are built of letters, digits, and:
@@ -91,7 +92,6 @@ const SUBST_RENAME_SEPARATOR: &str = "$$";
 const EXPAND_ERRORS_DECL_SEPARATOR: &str = "$$$";
 const RES_INF_TEMP_SEPARATOR: &str = "$$$$tempplace";
 const BITVEC_TMP_DECL_SEPARATOR: &str = "$$$$bitvectmp";
-const USER_DEF_TYPE_INV_TMP_DECL_SEPARATOR: &str = "$$$$userdeftypeinvpass";
 const KRATE_SEPARATOR: &str = "!";
 const KRATE_RENAME_SEPARATOR: &str = "!!";
 const PATH_SEPARATOR: &str = ".";
@@ -160,6 +160,7 @@ pub const SNAPSHOT_CALL: &str = "CALL";
 pub const SNAPSHOT_PRE: &str = "PRE";
 pub const SNAPSHOT_ASSIGN: &str = "ASSIGN";
 pub const SNAPSHOT_LOOP: &str = "LOOP";
+pub const SNAPSHOT_BOUNDARY: &str = "BOUNDARY";
 pub const T_HEIGHT: &str = "Height";
 pub const POLY: &str = "Poly";
 pub const BOX_INT: &str = "I";
@@ -254,6 +255,9 @@ pub const STRSLICE_NEW_STRLIT: &str = "str%new_strlit";
 // only used to prove that new_strlit is injective
 pub const STRSLICE_FROM_STRLIT: &str = "str%from_strlit";
 
+pub const BYTESTR_NEW_BYTELIT: &str = "bytes%new_bytelit";
+pub const BYTESTR_FROM_BYTELIT_HASH: &str = "bytes%from_bytelit_hash";
+
 pub const IEEE_FLOAT_CAST: &str = "ieee_float_cast";
 pub const IEEE_FLOAT_NEG: &str = "ieee_float_neg";
 pub const IEEE_FLOAT_FLOOR: &str = "ieee_float_floor";
@@ -282,6 +286,7 @@ pub const VERUSLIB_PREFIX: &str = "vstd::";
 pub const PERVASIVE_PREFIX: &str = "pervasive::";
 
 pub const RUST_DEF_CTOR: &str = "ctor%";
+pub const RUST_DEF_CLOSURE: &str = "closure%";
 
 pub const RUST_OPAQUE_TYPE: &str = "opaque";
 
@@ -980,13 +985,12 @@ impl CommandContext {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CommandsWithContextX {
     pub context: CommandContext,
     pub commands: Commands,
     pub prover_choice: ProverChoice,
     pub skip_recommends: bool,
-    pub hint_upon_failure: Mutex<Option<crate::messages::Message>>,
 }
 
 impl CommandsWithContextX {
@@ -1003,22 +1007,7 @@ impl CommandsWithContextX {
             commands,
             prover_choice,
             skip_recommends,
-            hint_upon_failure: Mutex::new(None),
         })
-    }
-}
-
-impl Clone for CommandsWithContextX {
-    fn clone(&self) -> Self {
-        CommandsWithContextX {
-            context: self.context.clone(),
-            commands: self.commands.clone(),
-            prover_choice: self.prover_choice.clone(),
-            skip_recommends: self.skip_recommends.clone(),
-            hint_upon_failure: Mutex::new(
-                self.hint_upon_failure.lock().expect("we abort on poisoning").clone(),
-            ),
-        }
     }
 }
 
@@ -1162,6 +1151,54 @@ pub fn fn_iset_contains_name() -> Fun {
     })
 }
 
+pub fn au_type_path() -> Path {
+    path!(CrateId::Vstd => "atomic", "AtomicUpdate")
+}
+
+pub fn fn_au_pred() -> Fun {
+    fun!(CrateId::Vstd => "atomic", "AtomicUpdate", "pred")
+}
+
+pub fn fn_au_resolves() -> Fun {
+    fun!(CrateId::Vstd => "atomic", "AtomicUpdate", "resolves")
+}
+
+pub fn fn_au_input() -> Fun {
+    fun!(CrateId::Vstd => "atomic", "AtomicUpdate", "input")
+}
+
+pub fn fn_au_output() -> Fun {
+    fun!(CrateId::Vstd => "atomic", "AtomicUpdate", "output")
+}
+
+pub fn fn_au_req() -> Fun {
+    fun!(CrateId::Vstd => "atomic", "AtomicUpdate", "req")
+}
+
+pub fn fn_au_ens() -> Fun {
+    fun!(CrateId::Vstd => "atomic", "AtomicUpdate", "ens")
+}
+
+pub fn fn_au_outer_mask() -> Fun {
+    fun!(CrateId::Vstd => "atomic", "AtomicUpdate", "outer_mask")
+}
+
+pub fn fn_au_inner_mask() -> Fun {
+    fun!(CrateId::Vstd => "atomic", "AtomicUpdate", "inner_mask")
+}
+
+pub fn fn_pred_args() -> Fun {
+    fun!(CrateId::Vstd => "atomic", "pred_args")
+}
+
+pub fn fn_branch_bool() -> Fun {
+    fun!(CrateId::Vstd => "atomic", "branch_bool")
+}
+
+pub fn result_type_path() -> Path {
+    path!(CrateId::Core => "result", "Result")
+}
+
 pub fn strslice_module_path() -> Path {
     Arc::new(PathX {
         krate: CrateId::Vstd,
@@ -1237,10 +1274,6 @@ pub fn unique_var_name(
             out.push_str(BITVEC_TMP_DECL_SEPARATOR);
             write!(&mut out, "{}", id).unwrap();
         }
-        VarIdentDisambiguate::UserDefinedTypeInvariantPass(id) => {
-            out.push_str(USER_DEF_TYPE_INV_TMP_DECL_SEPARATOR);
-            write!(&mut out, "{}", id).unwrap();
-        }
         VarIdentDisambiguate::ResInfTemp(id) => {
             out.push_str(RES_INF_TEMP_SEPARATOR);
             write!(&mut out, "{}", id).unwrap();
@@ -1285,13 +1318,6 @@ pub fn array_new_path() -> Path {
     Arc::new(PathX {
         krate: CrateId::Vstd,
         segments: Arc::new(vec![Arc::new("array".to_string()), Arc::new("array_new".to_string())]),
-    })
-}
-
-pub(crate) fn option_type_path() -> Path {
-    Arc::new(PathX {
-        krate: CrateId::Core,
-        segments: Arc::new(vec![Arc::new("option".to_string()), Arc::new("Option".to_string())]),
     })
 }
 

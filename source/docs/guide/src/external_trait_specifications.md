@@ -9,14 +9,21 @@ for this purpose:
 
 ## Soundness warning
 
-**Be cautious when adding specifications to external traits.** All implementations
-of the trait — including those in unverified code, even code that hasn't been written yet — are
-assumed to uphold the specification. For example, if you verify a crate with
-`pub fn test<A: Formatter>(...)`, Verus assumes that whatever type instantiates `A` will
-satisfy the `Formatter` specification, even if that type comes from an unverified crate.
-This is a contract on both current and future unverified code.
-
-[See below](#the-obeys_-pattern-in-vstd) for a useful pattern (employed by `vstd`) for mitigating this soundness risk.
+> [!CAUTION]
+> Since the `assume_specification` statement is unchecked, it can easily be used to subvert
+> Verus's guarantees.
+>
+> Further, specifying traits correctly is often even more difficult than specifying ordinary
+> functions.
+>
+> All implementations
+> of the trait — including those in unverified code, even code that hasn't been written yet — are
+> assumed to uphold the specification. For example, if you verify a crate with
+> `pub fn test<A: Formatter>(...)`, Verus assumes that whatever type instantiates `A` will
+> satisfy the `Formatter` specification, even if that type comes from an unverified crate.
+> This is a contract on both current and future unverified code.
+>
+> [See below](#the-obeys_-pattern-in-vstd) for a useful pattern (employed by `vstd`) for mitigating this soundness risk.
 
 ## Basic external trait specification
 

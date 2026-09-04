@@ -33,20 +33,46 @@ This creates a new directory with a correctly-configured `Cargo.toml`, an initia
 
 ## Updating an existing Rust project to support Verus
 
-To enable verification for one or more of the crates in your project,
-add the following to each of their `Cargo.toml` files:
+To enable verification for one or more of the crates in your project, add `vstd` as a
+dependency as follows:
+
+```sh
+cargo add vstd
+```
+
+Then import the Verus prelude in each root module (e.g. `lib.rs` or `main.rs`):
+
+```rust
+use vstd::prelude::*;
+```
+
+To opt a crate into verification, include the following in its `Cargo.toml`:
 
 ```toml
 [package.metadata.verus]
 verify = true
+```
 
+If the crate is not in a workspace, also add the following to suppress warnings
+about `cfg(verus_only)`:
+
+```toml
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(verus_only)'] }
 ```
+
 See below for more details.
 
 Note that you can still use normal `cargo` commands (e.g., `cargo build`) on
 crates and projects that include Verus annotations.
+
+## The Verus prelude
+
+Each verified crate needs to import the Verus prelude as follows:
+
+```rust
+use vstd::prelude::*;
+```
 
 ## Cargo.toml configuration
 
@@ -71,6 +97,21 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(verus_only)'] }
 
 `cargo verus new` adds this automatically. See [Ghost Erasure](./erasure.md) for a full
 explanation of `verus_only` and when to use it.
+
+In a Cargo workspace, you should instead include the following in the root `Cargo.toml`:
+
+```toml
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(verus_only)'] }
+```
+
+Then ensure that each member crate's `Cargo.toml` has the following (which e.g. `cargo new` adds
+automatically):
+
+```toml
+[lints.rust]
+workspace = true
+```
 
 ## Subcommands
 
@@ -124,7 +165,7 @@ Note that Verus-annotated code can also be built with a normal `cargo build` com
 
 Arguments are split around `--`:
 
-- **Before `--`**: forwarded to `cargo` 
+- **Before `--`**: forwarded to `cargo`
 - **After `--`**: forwarded to every `verus` invocation
 
 ```bash

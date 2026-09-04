@@ -1,8 +1,7 @@
 //! Construction of MIR from HIR.
 
 // tidy-alphabetical-start
-#![cfg_attr(bootstrap, feature(assert_matches))]
-#![feature(box_patterns)]
+#![feature(deref_patterns)]
 #![feature(try_blocks)]
 #![feature(rustc_private)]
 #![feature(never_type)]
@@ -32,7 +31,7 @@ extern crate rustc_trait_selection;
 pub mod builder;
 mod check_tail_calls;
 mod check_unsafety;
-mod errors;
+mod diagnostics;
 pub mod thir;
 
 #[path = "../../rustc_mir_build_additional_files/verus.rs"]

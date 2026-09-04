@@ -1,5 +1,5 @@
 use cargo_verus::{
-    BIN_NAME, ExecutionPlan,
+    BIN_NAME, ExecutionPlan, plan_execution,
     test_utils::{MockDep, MockPackage, MockWorkspace, VERUS_DRIVER_ARGS, VERUS_DRIVER_ARGS_FOR},
 };
 
@@ -49,31 +49,31 @@ fn workspace_explicit_all() {
         "--fwd-verus-args-to",
         "all",
         "--",
-        "--verify-module=bar",
+        "--rlimit=10",
     ];
 
-    let plan = cargo_verus::plan_execution(Some(workspace_dir.as_path()), args).expect("plan");
+    let plan = plan_execution(workspace_dir.as_path(), args).expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
         panic!("expected `ExecutionPlan::RunCargo`");
     };
 
     let driver_args = cargo_plan.parse_driver_args(VERUS_DRIVER_ARGS);
     assert!(
-        !driver_args.contains(&"--verify-module=bar"),
+        !driver_args.contains(&"--rlimit=10"),
         "forwarded Verus args should not be in {VERUS_DRIVER_ARGS}"
     );
 
     let hasdeps_driver_args = cargo_plan
         .parse_driver_args_for_key_prefix(&format!("{VERUS_DRIVER_ARGS_FOR}{hasdeps}-0.1.0-"));
-    assert!(hasdeps_driver_args.contains(&"--verify-module=bar"));
+    assert!(hasdeps_driver_args.contains(&"--rlimit=10"));
 
     let optin_driver_args = cargo_plan
         .parse_driver_args_for_key_prefix(&format!("{VERUS_DRIVER_ARGS_FOR}{optin}-0.1.0-"));
-    assert!(optin_driver_args.contains(&"--verify-module=bar"));
+    assert!(optin_driver_args.contains(&"--rlimit=10"));
 
     let sibling_driver_args = cargo_plan
         .parse_driver_args_for_key_prefix(&format!("{VERUS_DRIVER_ARGS_FOR}{sibling}-0.1.0-"));
-    assert!(sibling_driver_args.contains(&"--verify-module=bar"));
+    assert!(sibling_driver_args.contains(&"--rlimit=10"));
 
     cargo_plan.assert_env_has_no_key_prefix(&format!("{VERUS_DRIVER_ARGS_FOR}{optout}-0.1.0-"));
     cargo_plan.assert_env_has_no_key_prefix(&format!("{VERUS_DRIVER_ARGS_FOR}{unset}-0.1.0-"));
@@ -100,31 +100,31 @@ fn workspace_explicit_roots() {
         "--fwd-verus-args-to",
         "roots",
         "--",
-        "--verify-module=bar",
+        "--rlimit=10",
     ];
 
-    let plan = cargo_verus::plan_execution(Some(workspace_dir.as_path()), args).expect("plan");
+    let plan = plan_execution(workspace_dir.as_path(), args).expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
         panic!("expected `ExecutionPlan::RunCargo`");
     };
 
     let driver_args = cargo_plan.parse_driver_args(VERUS_DRIVER_ARGS);
     assert!(
-        !driver_args.contains(&"--verify-module=bar"),
+        !driver_args.contains(&"--rlimit=10"),
         "forwarded Verus args should not be in {VERUS_DRIVER_ARGS}"
     );
 
     let hasdeps_driver_args = cargo_plan
         .parse_driver_args_for_key_prefix(&format!("{VERUS_DRIVER_ARGS_FOR}{hasdeps}-0.1.0-"));
-    assert!(hasdeps_driver_args.contains(&"--verify-module=bar"));
+    assert!(hasdeps_driver_args.contains(&"--rlimit=10"));
 
     let optin_driver_args = cargo_plan
         .parse_driver_args_for_key_prefix(&format!("{VERUS_DRIVER_ARGS_FOR}{optin}-0.1.0-"));
-    assert!(!optin_driver_args.contains(&"--verify-module=bar"));
+    assert!(!optin_driver_args.contains(&"--rlimit=10"));
 
     let sibling_driver_args = cargo_plan
         .parse_driver_args_for_key_prefix(&format!("{VERUS_DRIVER_ARGS_FOR}{sibling}-0.1.0-"));
-    assert!(sibling_driver_args.contains(&"--verify-module=bar"));
+    assert!(sibling_driver_args.contains(&"--rlimit=10"));
 
     cargo_plan.assert_env_has_no_key_prefix(&format!("{VERUS_DRIVER_ARGS_FOR}{optout}-0.1.0-"));
     cargo_plan.assert_env_has_no_key_prefix(&format!("{VERUS_DRIVER_ARGS_FOR}{unset}-0.1.0-"));
@@ -151,31 +151,31 @@ fn workspace_explicit_deps() {
         "--fwd-verus-args-to",
         "deps",
         "--",
-        "--verify-module=bar",
+        "--rlimit=10",
     ];
 
-    let plan = cargo_verus::plan_execution(Some(workspace_dir.as_path()), args).expect("plan");
+    let plan = plan_execution(workspace_dir.as_path(), args).expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
         panic!("expected `ExecutionPlan::RunCargo`");
     };
 
     let driver_args = cargo_plan.parse_driver_args(VERUS_DRIVER_ARGS);
     assert!(
-        !driver_args.contains(&"--verify-module=bar"),
+        !driver_args.contains(&"--rlimit=10"),
         "forwarded Verus args should not be in {VERUS_DRIVER_ARGS}"
     );
 
     let hasdeps_driver_args = cargo_plan
         .parse_driver_args_for_key_prefix(&format!("{VERUS_DRIVER_ARGS_FOR}{hasdeps}-0.1.0-"));
-    assert!(!hasdeps_driver_args.contains(&"--verify-module=bar"));
+    assert!(!hasdeps_driver_args.contains(&"--rlimit=10"));
 
     let optin_driver_args = cargo_plan
         .parse_driver_args_for_key_prefix(&format!("{VERUS_DRIVER_ARGS_FOR}{optin}-0.1.0-"));
-    assert!(optin_driver_args.contains(&"--verify-module=bar"));
+    assert!(optin_driver_args.contains(&"--rlimit=10"));
 
     let sibling_driver_args = cargo_plan
         .parse_driver_args_for_key_prefix(&format!("{VERUS_DRIVER_ARGS_FOR}{sibling}-0.1.0-"));
-    assert!(!sibling_driver_args.contains(&"--verify-module=bar"));
+    assert!(!sibling_driver_args.contains(&"--rlimit=10"));
 
     cargo_plan.assert_env_has_no_key_prefix(&format!("{VERUS_DRIVER_ARGS_FOR}{optout}-0.1.0-"));
     cargo_plan.assert_env_has_no_key_prefix(&format!("{VERUS_DRIVER_ARGS_FOR}{unset}-0.1.0-"));
@@ -192,39 +192,31 @@ fn workspace_default_for_verify_is_all() {
     let workspace_dir = setup_workspace();
     let workspace_dir = workspace_dir.path().canonicalize().expect("canonical path");
 
-    let args = [
-        BIN_NAME,
-        "verify",
-        "--package",
-        hasdeps,
-        "--package",
-        sibling,
-        "--",
-        "--verify-module=bar",
-    ];
+    let args =
+        [BIN_NAME, "verify", "--package", hasdeps, "--package", sibling, "--", "--rlimit=10"];
 
-    let plan = cargo_verus::plan_execution(Some(workspace_dir.as_path()), args).expect("plan");
+    let plan = plan_execution(workspace_dir.as_path(), args).expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
         panic!("expected `ExecutionPlan::RunCargo`");
     };
 
     let driver_args = cargo_plan.parse_driver_args(VERUS_DRIVER_ARGS);
     assert!(
-        !driver_args.contains(&"--verify-module=bar"),
+        !driver_args.contains(&"--rlimit=10"),
         "forwarded Verus args should not be in {VERUS_DRIVER_ARGS}"
     );
 
     let hasdeps_driver_args = cargo_plan
         .parse_driver_args_for_key_prefix(&format!("{VERUS_DRIVER_ARGS_FOR}{hasdeps}-0.1.0-"));
-    assert!(hasdeps_driver_args.contains(&"--verify-module=bar"));
+    assert!(hasdeps_driver_args.contains(&"--rlimit=10"));
 
     let optin_driver_args = cargo_plan
         .parse_driver_args_for_key_prefix(&format!("{VERUS_DRIVER_ARGS_FOR}{optin}-0.1.0-"));
-    assert!(optin_driver_args.contains(&"--verify-module=bar"));
+    assert!(optin_driver_args.contains(&"--rlimit=10"));
 
     let sibling_driver_args = cargo_plan
         .parse_driver_args_for_key_prefix(&format!("{VERUS_DRIVER_ARGS_FOR}{sibling}-0.1.0-"));
-    assert!(sibling_driver_args.contains(&"--verify-module=bar"));
+    assert!(sibling_driver_args.contains(&"--rlimit=10"));
 
     cargo_plan.assert_env_has_no_key_prefix(&format!("{VERUS_DRIVER_ARGS_FOR}{optout}-0.1.0-"));
     cargo_plan.assert_env_has_no_key_prefix(&format!("{VERUS_DRIVER_ARGS_FOR}{unset}-0.1.0-"));
@@ -241,39 +233,30 @@ fn workspace_default_for_build_is_all() {
     let workspace_dir = setup_workspace();
     let workspace_dir = workspace_dir.path().canonicalize().expect("canonical path");
 
-    let args = [
-        BIN_NAME,
-        "build",
-        "--package",
-        hasdeps,
-        "--package",
-        sibling,
-        "--",
-        "--verify-module=bar",
-    ];
+    let args = [BIN_NAME, "build", "--package", hasdeps, "--package", sibling, "--", "--rlimit=10"];
 
-    let plan = cargo_verus::plan_execution(Some(workspace_dir.as_path()), args).expect("plan");
+    let plan = plan_execution(workspace_dir.as_path(), args).expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
         panic!("expected `ExecutionPlan::RunCargo`");
     };
 
     let driver_args = cargo_plan.parse_driver_args(VERUS_DRIVER_ARGS);
     assert!(
-        !driver_args.contains(&"--verify-module=bar"),
+        !driver_args.contains(&"--rlimit=10"),
         "forwarded Verus args should not be in {VERUS_DRIVER_ARGS}"
     );
 
     let hasdeps_driver_args = cargo_plan
         .parse_driver_args_for_key_prefix(&format!("{VERUS_DRIVER_ARGS_FOR}{hasdeps}-0.1.0-"));
-    assert!(hasdeps_driver_args.contains(&"--verify-module=bar"));
+    assert!(hasdeps_driver_args.contains(&"--rlimit=10"));
 
     let optin_driver_args = cargo_plan
         .parse_driver_args_for_key_prefix(&format!("{VERUS_DRIVER_ARGS_FOR}{optin}-0.1.0-"));
-    assert!(optin_driver_args.contains(&"--verify-module=bar"));
+    assert!(optin_driver_args.contains(&"--rlimit=10"));
 
     let sibling_driver_args = cargo_plan
         .parse_driver_args_for_key_prefix(&format!("{VERUS_DRIVER_ARGS_FOR}{sibling}-0.1.0-"));
-    assert!(sibling_driver_args.contains(&"--verify-module=bar"));
+    assert!(sibling_driver_args.contains(&"--rlimit=10"));
 
     cargo_plan.assert_env_has_no_key_prefix(&format!("{VERUS_DRIVER_ARGS_FOR}{optout}-0.1.0-"));
     cargo_plan.assert_env_has_no_key_prefix(&format!("{VERUS_DRIVER_ARGS_FOR}{unset}-0.1.0-"));
@@ -290,39 +273,30 @@ fn workspace_default_for_check_is_all() {
     let workspace_dir = setup_workspace();
     let workspace_dir = workspace_dir.path().canonicalize().expect("canonical path");
 
-    let args = [
-        BIN_NAME,
-        "check",
-        "--package",
-        hasdeps,
-        "--package",
-        sibling,
-        "--",
-        "--verify-module=bar",
-    ];
+    let args = [BIN_NAME, "check", "--package", hasdeps, "--package", sibling, "--", "--rlimit=10"];
 
-    let plan = cargo_verus::plan_execution(Some(workspace_dir.as_path()), args).expect("plan");
+    let plan = plan_execution(workspace_dir.as_path(), args).expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
         panic!("expected `ExecutionPlan::RunCargo`");
     };
 
     let driver_args = cargo_plan.parse_driver_args(VERUS_DRIVER_ARGS);
     assert!(
-        !driver_args.contains(&"--verify-module=bar"),
+        !driver_args.contains(&"--rlimit=10"),
         "forwarded Verus args should not be in {VERUS_DRIVER_ARGS}"
     );
 
     let hasdeps_driver_args = cargo_plan
         .parse_driver_args_for_key_prefix(&format!("{VERUS_DRIVER_ARGS_FOR}{hasdeps}-0.1.0-"));
-    assert!(hasdeps_driver_args.contains(&"--verify-module=bar"));
+    assert!(hasdeps_driver_args.contains(&"--rlimit=10"));
 
     let optin_driver_args = cargo_plan
         .parse_driver_args_for_key_prefix(&format!("{VERUS_DRIVER_ARGS_FOR}{optin}-0.1.0-"));
-    assert!(optin_driver_args.contains(&"--verify-module=bar"));
+    assert!(optin_driver_args.contains(&"--rlimit=10"));
 
     let sibling_driver_args = cargo_plan
         .parse_driver_args_for_key_prefix(&format!("{VERUS_DRIVER_ARGS_FOR}{sibling}-0.1.0-"));
-    assert!(sibling_driver_args.contains(&"--verify-module=bar"));
+    assert!(sibling_driver_args.contains(&"--rlimit=10"));
 
     cargo_plan.assert_env_has_no_key_prefix(&format!("{VERUS_DRIVER_ARGS_FOR}{optout}-0.1.0-"));
     cargo_plan.assert_env_has_no_key_prefix(&format!("{VERUS_DRIVER_ARGS_FOR}{unset}-0.1.0-"));
@@ -350,7 +324,7 @@ fn workspace_default_for_focus_is_roots() {
         "--verify-module=bar",
     ];
 
-    let plan = cargo_verus::plan_execution(Some(workspace_dir.as_path()), args).expect("plan");
+    let plan = plan_execution(workspace_dir.as_path(), args).expect("plan");
     let ExecutionPlan::RunCargo(cargo_plan) = plan else {
         panic!("expected `ExecutionPlan::RunCargo`");
     };

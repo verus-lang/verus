@@ -22,7 +22,7 @@ env:
 jobs:
   build:
     if: github.repository == 'verus-lang/verus'
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: checkout
         uses: actions/checkout@v6
@@ -30,7 +30,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.96.0
+          toolchain: 1.98.0
 
       - name: build verusdoc
         working-directory: ./source
@@ -90,7 +90,7 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: deploy to github pages
         id: deployment

@@ -846,3 +846,102 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_string_push_pop verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let mut s = String::new();
+            assert(s@ == Seq::<char>::empty());
+            s.push('a');
+            s.push('b');
+            assert(s@ == seq!['a', 'b']);
+            let popped = s.pop();
+            assert(popped == Some('b'));
+            assert(s@ == seq!['a']);
+            let popped2 = s.pop();
+            assert(popped2 == Some('a'));
+            assert(s@ == Seq::<char>::empty());
+            let popped3 = s.pop();
+            assert(popped3 is None);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_string_push_pop_fails verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let mut s = String::new();
+            s.push('a');
+            let popped = s.pop();
+            assert(popped == Some('b')); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] test_string_push_str verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let mut s = String::new();
+            s.push('a');
+            s.push_str("bc");
+            proof {
+                reveal_strlit("bc");
+            }
+            assert(s@ == seq!['a', 'b', 'c']);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_string_push_str_fails verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let mut s = String::new();
+            s.push_str("bc");
+            proof {
+                reveal_strlit("bc");
+            }
+            assert(s@ == seq!['b']); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] test_string_is_empty_and_clear verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let mut s = String::new();
+            let empty0 = s.is_empty();
+            assert(empty0);
+            s.push('a');
+            let empty1 = s.is_empty();
+            assert(!empty1);
+            s.clear();
+            let empty2 = s.is_empty();
+            assert(empty2);
+            assert(s@ == Seq::<char>::empty());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_string_is_empty_and_clear_fails verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let mut s = String::new();
+            s.push('a');
+            s.clear();
+            let empty = s.is_empty();
+            assert(!empty); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}

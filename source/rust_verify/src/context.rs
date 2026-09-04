@@ -2,7 +2,6 @@ use crate::{erase::ResolvedCall, verus_items::VerusItems};
 use rustc_hir::Attribute;
 use rustc_hir::HirId;
 use rustc_hir::def_id::LocalDefId;
-use rustc_middle::hir::Crate;
 use rustc_middle::ty::{TyCtxt, TypeckResults};
 use rustc_mir_build_verus::verus::BodyErasure;
 use rustc_span::SpanData;
@@ -13,6 +12,7 @@ use std::ops::DerefMut;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
+use std::sync::mpsc::Sender;
 use vir::ast::{CrateId, Mode, Path, Pattern, VirErr};
 use vir::messages::{AstId, WarningAllow};
 
@@ -22,14 +22,12 @@ pub struct ErasureInfo {
     pub(crate) resolved_pats: Vec<(SpanData, Pattern)>,
     pub(crate) direct_var_modes: Vec<(HirId, Mode)>,
     pub(crate) external_functions: Vec<vir::ast::Fun>,
-    pub(crate) ignored_functions: Vec<(rustc_span::def_id::DefId, SpanData)>,
+    pub(crate) ignored_functions: Vec<(DefId, SpanData)>,
     pub(crate) bodies: Vec<(LocalDefId, BodyErasure)>,
     pub(crate) shadow_check: Vec<HirId>,
     /// Extra nodes to erase, use this when a VIR tree gets dropped without getting to
     /// mode-checking.
     pub(crate) extra_erase_ast_ids: Vec<vir::messages::Span>,
-    /// Extra nodes to erase, use this when an HIR tree gets dropped without becoming a VIR tree.
-    pub(crate) extra_erase_hir_ids_including_adjustments: Vec<HirId>,
     pub(crate) local_invariant_bodies: Vec<rustc_mir_build_verus::verus::LocalInvariantBody>,
 }
 
@@ -39,7 +37,6 @@ pub type Context<'tcx> = Rc<ContextX<'tcx>>;
 pub struct ContextX<'tcx> {
     pub(crate) cmd_line_args: crate::config::Args,
     pub(crate) tcx: TyCtxt<'tcx>,
-    pub(crate) krate: &'tcx Crate<'tcx>,
     pub(crate) erasure_info: ErasureInfoRef,
     pub(crate) spans: crate::spans::SpanContext,
     pub(crate) verus_items: Arc<VerusItems>,
@@ -72,8 +69,7 @@ pub(crate) struct BodyCtxt<'tcx> {
     pub(crate) mode: Mode,
     pub(crate) external_body: bool,
     pub(crate) in_ghost: bool,
-    // loop_isolation for the nearest enclosing loop, false otherwise
-    pub(crate) loop_isolation: bool,
+    pub(crate) atomically: Option<Arc<AtomicallyCtxt>>,
     pub(crate) migrate_postcondition_vars: Option<std::collections::HashSet<vir::ast::VarIdent>>,
     /// Context to interpret a header if we encounter one
     /// (this is used to determine when it's correct to set `in_fn_sig`).
@@ -93,6 +89,13 @@ pub(crate) struct BodyCtxt<'tcx> {
     /// Assume specification defines a new opaque type for each opaque type in the external function.
     /// We use this map to resolve them later.
     pub(crate) external_opaque_type_map: Option<HashMap<Path, Path>>,
+    /// Mapping for HirId found in an HIR Destination to the corresponding VIR Label.
+    pub(crate) label_map: Rc<RefCell<(HashMap<HirId, vir::ast::Label>, usize)>>,
+}
+
+pub(crate) struct AtomicallyCtxt {
+    pub(crate) update_binder: HirId,
+    pub(crate) call_spans: Sender<vir::messages::Span>,
 }
 
 impl<'tcx> ContextX<'tcx> {
@@ -108,7 +111,6 @@ impl<'tcx> ContextX<'tcx> {
         ContextX {
             cmd_line_args,
             tcx,
-            krate: tcx.hir_crate(()),
             erasure_info,
             spans,
             verus_items,
@@ -253,5 +255,38 @@ impl<'tcx> BodyCtxt<'tcx> {
         emit: impl FnOnce(vir::messages::Message) -> (),
     ) {
         crate::attributes::warning_maybe(self.ctxt.tcx, self.fun_id, span, allow, note, emit);
+    }
+
+    pub(crate) fn fresh_label(
+        &self,
+        hir_id: HirId,
+        label: &Option<rustc_ast::ast::Label>,
+    ) -> vir::ast::Label {
+        let (map, next_id) = &mut *self.label_map.borrow_mut();
+        let label = vir::ast::Label { id: *next_id, name: label.map(|l| l.ident.to_string()) };
+        *next_id += 1;
+        let found = map.insert(hir_id, label.clone());
+        assert!(found.is_none());
+        label
+    }
+
+    pub(crate) fn label_from_dest(
+        &self,
+        span: rustc_span::Span,
+        dest: &rustc_hir::Destination,
+    ) -> Result<vir::ast::Label, VirErr> {
+        match dest.target_id {
+            Ok(hir_id) => {
+                let (map, _next_id) = &*self.label_map.borrow();
+                match map.get(&hir_id) {
+                    None => crate::internal_err!(span, "unable to find loop label destination"),
+                    Some(label) => Ok(label.clone()),
+                }
+            }
+            Err(_err) => {
+                // This should have already been reported by rustc
+                crate::internal_err!(span, "unresolved loop label");
+            }
+        }
     }
 }

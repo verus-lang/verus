@@ -7,8 +7,7 @@ use crate::def::mk_skolem_id;
 use crate::messages::ArcDynMessageLabel;
 use crate::model::{ModelDef, ModelDefX, ModelDefs};
 use crate::printer::node_to_string;
-use sise::Node;
-use std::io::Write;
+use sise::TreeNode as Node;
 use std::sync::Arc;
 
 // Following SMT-LIB syntax specification
@@ -577,19 +576,21 @@ impl Parser {
         }
         match (qid.clone(), skolemid) {
             (Some(q), Some(skolem)) => {
-                let expected_skolemid = mk_skolem_id(&q);
+                let expected_skolemid = mk_skolem_id(q.as_str());
                 if skolem == expected_skolemid {
                     Ok((Arc::new(triggers), qid))
                 } else {
                     Err(format!(
                         "for qid {}, expected skolemid {}; found {}",
-                        q, expected_skolemid, skolem
+                        q.as_str(),
+                        expected_skolemid,
+                        skolem
                     ))
                 }
             }
             (Some(q), None) => Err(format!(
                 "for qid {}, expected skolemid {} but found no skolemid at all",
-                q,
+                q.as_str(),
                 mk_skolem_id(&q)
             )),
             (None, Some(_)) => Err(format!("skolemid must be accompanied by a qid")),
@@ -882,11 +883,8 @@ impl Parser {
 }
 
 pub(crate) fn parse_sexpression(lines: &Vec<String>) -> Node {
-    let mut model_bytes: Vec<u8> = Vec::new();
-    for line in lines {
-        writeln!(model_bytes, "{}", line).expect("model_bytes");
-    }
-    let mut parser = sise::Parser::new(&model_bytes[..]);
-    let node = sise::read_into_tree(&mut parser).unwrap();
+    let expr = lines.join("\n");
+    let mut parser = sise::Parser::new(expr.as_str());
+    let node = sise::parse_tree(&mut parser).unwrap();
     node
 }

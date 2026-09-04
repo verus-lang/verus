@@ -19,9 +19,8 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use vir::ast::VirErr;
 
-// TODO: CompilableOperator is an outdated name; many of these aren't compilable
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum CompilableOperator {
+pub enum MiscCall {
     IntIntrinsic,
     Implies,
     RcNew,
@@ -49,8 +48,8 @@ pub enum ResolvedCall {
     SpecPure,
     /// The call is to a spec or proof function, but may have proof-mode arguments
     SpecAllowProofArgs,
-    /// The call is to an operator like == or + that should be compiled.
-    CompilableOperator(CompilableOperator),
+    /// Miscellaneous
+    MiscCall(MiscCall),
     /// The call is to a function, and we record the name of the function here
     /// (both unresolved and resolved), as well as the 'assume_external' flag.
     /// This is replaced by CallModes as soon as the modes are available.
@@ -66,8 +65,6 @@ pub enum ResolvedCall {
     /// Erase the node and all subtrees completely. Suitable for ad hoc directives
     /// like `constraint_type`.
     MiscEraseAbsolutely,
-    /// InferSpecForLoopIter. May need to be erased depending on mode-checking results
-    InferSpecForLoopIter(AstId),
     /// Loop spec (invariant, decreases, etc.). HirId is the HirId of the loop body.
     LoopSpec(HirId, LoopSpecKind),
 }
@@ -131,7 +128,6 @@ pub struct ErasureHints {
     pub(crate) bodies: Vec<(LocalDefId, BodyErasure)>,
     pub(crate) shadow_check: Vec<HirId>,
     pub(crate) extra_erase_ast_ids: Vec<vir::messages::Span>,
-    pub(crate) extra_erase_hir_ids_including_adjustments: Vec<HirId>,
     pub(crate) local_invariant_bodies: Vec<LocalInvariantBody>,
 }
 
@@ -169,7 +165,6 @@ fn resolved_call_to_call_erase(
     _datatypes: &HashMap<Path, Datatype>,
     resolved_call: &ResolvedCall,
     ctor_mode: Option<Mode>,
-    infer_spec_for_loop_iter_erase: &HashMap<AstId, bool>,
     in_ghost: bool,
 ) -> Result<(CallErasure, bool), VirErr> {
     let mut call_returning_never = false;
@@ -207,40 +202,33 @@ fn resolved_call_to_call_erase(
         },
         ResolvedCall::NonStaticExec => CallErasure::keep_all(),
         ResolvedCall::NonStaticProof(_modes) => CallErasure::Call(NodeErase::Keep),
-        ResolvedCall::CompilableOperator(co) => match co {
-            CompilableOperator::IntIntrinsic => CallErasure::Call(NodeErase::Erase),
+        ResolvedCall::MiscCall(misc_call) => match misc_call {
+            MiscCall::IntIntrinsic => CallErasure::Call(NodeErase::Erase),
 
-            CompilableOperator::GhostExec => CallErasure::Call(NodeErase::Keep),
+            MiscCall::GhostExec => CallErasure::Call(NodeErase::Keep),
 
-            CompilableOperator::Implies
-            | CompilableOperator::RcNew
-            | CompilableOperator::ArcNew
-            | CompilableOperator::BoxNew
-            | CompilableOperator::SmartPtrClone { .. }
-            | CompilableOperator::TrackedNew
-            | CompilableOperator::TrackedExec => CallErasure::keep_all(),
+            MiscCall::Implies
+            | MiscCall::RcNew
+            | MiscCall::ArcNew
+            | MiscCall::BoxNew
+            | MiscCall::SmartPtrClone { .. }
+            | MiscCall::TrackedNew
+            | MiscCall::TrackedExec => CallErasure::keep_all(),
 
-            CompilableOperator::ClosureToFnProof(_)
-            | CompilableOperator::TrackedExecBorrow
-            | CompilableOperator::TrackedGet
-            | CompilableOperator::TrackedBorrow
-            | CompilableOperator::TrackedBorrowMut
-            | CompilableOperator::GhostBorrowMut
-            | CompilableOperator::MutRefTracked
-            | CompilableOperator::ShrRefStructWrap
-            | CompilableOperator::UseTypeInvariant => CallErasure::keep_all(),
+            MiscCall::ClosureToFnProof(_)
+            | MiscCall::TrackedExecBorrow
+            | MiscCall::TrackedGet
+            | MiscCall::TrackedBorrow
+            | MiscCall::TrackedBorrowMut
+            | MiscCall::GhostBorrowMut
+            | MiscCall::MutRefTracked
+            | MiscCall::ShrRefStructWrap
+            | MiscCall::UseTypeInvariant => CallErasure::keep_all(),
         },
         ResolvedCall::MiscEraseAbsolutely => CallErasure::EraseTree(TreeErase::EraseAbsolutely),
         // LoopSpecs get special handling, so they are marked EraseAbsolutely to avoid
         // double-handling.
         ResolvedCall::LoopSpec(..) => CallErasure::EraseTree(TreeErase::EraseAbsolutely),
-        ResolvedCall::InferSpecForLoopIter(ast_id) => {
-            if infer_spec_for_loop_iter_erase[ast_id] {
-                CallErasure::EraseTree(TreeErase::EraseAbsolutely)
-            } else {
-                CallErasure::Call(NodeErase::Erase)
-            }
-        }
     };
 
     // Rust prunes the CFG when a call returns an uninhabited type. However, there are
@@ -357,20 +345,14 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
 
     let mut functions = HashMap::<Fun, Function>::new();
     for f in &erasure_hints.vir_crate.functions {
-        functions.insert(f.x.name.clone(), f.clone()).map(|_| panic!("{:?}", &f.x.name));
+        functions.insert(f.x.name.clone(), f.clone()).map(|_| panic!("{:?}", f.x.name));
     }
 
     let mut datatypes = HashMap::<Path, Datatype>::new();
     for d in &erasure_hints.vir_crate.datatypes {
         if let Dt::Path(path) = &d.x.name {
-            datatypes.insert(path.clone(), d.clone()).map(|_| panic!("{:?}", &path));
+            datatypes.insert(path.clone(), d.clone()).map(|_| panic!("{:?}", path));
         }
-    }
-
-    let mut infer_spec_for_loop_iter_erase = HashMap::<AstId, bool>::new();
-    for (span, erase) in erasure_hints.erasure_modes.infer_spec_for_loop_iter_erase.iter() {
-        let found = infer_spec_for_loop_iter_erase.insert(span.id, *erase);
-        assert!(found.is_none());
     }
 
     let mut calls = HashMap::<HirId, (CallErasure, bool)>::new();
@@ -384,7 +366,6 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
             &datatypes,
             resolved_call,
             ctor_mode,
-            &infer_spec_for_loop_iter_erase,
             *in_ghost,
         )?;
         let _found = calls.insert(*hir_id, (call_erasure, force_treat_as_inhabited));
@@ -404,11 +385,6 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
         bodies.insert(*hir_id, *c);
     }
 
-    let mut adjusted_node_erasure = HashSet::new();
-    for hir_id in erasure_hints.extra_erase_hir_ids_including_adjustments.iter() {
-        adjusted_node_erasure.insert(*hir_id);
-    }
-
     let mut local_invariant_bodies = HashMap::new();
     for l in erasure_hints.local_invariant_bodies.iter() {
         let found = local_invariant_bodies.insert(l.inner_block_hir_id, l.clone());
@@ -419,7 +395,6 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
         vars,
         calls,
         bodies,
-        adjusted_node_erasure,
         loop_erasure,
         local_invariant_bodies,
 
@@ -478,13 +453,6 @@ pub(crate) fn mark_tree_for_erasure<'tcx>(
         },
     )
     .unwrap();
-}
-
-pub(crate) fn mark_adjusted_node_for_erasure<'tcx>(
-    context: &crate::context::Context<'tcx>,
-    expr: &rustc_hir::Expr<'tcx>,
-) {
-    context.erasure_info.borrow_mut().extra_erase_hir_ids_including_adjustments.push(expr.hir_id);
 }
 
 pub(crate) fn setup_verus_aware_ids(crate_items: &crate::external::CrateItems) {

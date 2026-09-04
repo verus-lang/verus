@@ -195,6 +195,7 @@ impl<V> PCell<V> {
             *v == old(perm).value(),
             final(perm).is_init(),
             final(perm).value() == *final(v),
+            final(perm).id() == self.id(),
         opens_invariants none
         no_unwind
     {

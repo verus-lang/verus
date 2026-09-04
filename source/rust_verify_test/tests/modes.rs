@@ -484,7 +484,10 @@ test_verify_one_file! {
             }
             assert(e);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot mutate through a spec-mode mutable reference")
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "cannot mutate through a spec-mode mutable reference",
+        "mutable borrow is not allowed in spec context",
+    ])
 }
 
 test_verify_one_file! {
@@ -1344,7 +1347,7 @@ test_verify_one_file! {
             let Tracked(x) = t;
             let t = Tracked::new(x);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot perform operation with mode proof")
+    } => Err(err) => assert_vir_error_msg(err, "cannot perform operation with mode spec")
 }
 
 test_verify_one_file! {
@@ -1593,6 +1596,57 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] tracked_ctor_in_spec_fn verus_code! {
+        spec fn test(f: spec_fn(nat) -> nat) {
+            let n = Tracked(f(0));
+            ()
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] tracked_ctor_spec_value_cannot_be_promoted_to_tracked verus_code! {
+        proof fn test(f: spec_fn(nat) -> nat) {
+            let tracked n = Tracked(f(0));
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
+}
+
+test_verify_one_file! {
+    #[test] tracked_ctor_tracked_value_remains_tracked verus_code! {
+        proof fn test<T>(tracked t: T) {
+            let tracked x = Tracked(t);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] tracked_ctor_consumes_tracked_value verus_code! {
+        proof fn consume<T>(tracked t: T) {
+        }
+
+        proof fn test<T>(tracked t: T) {
+            let tracked x = Tracked(t);
+            consume(t);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value: `t`")
+}
+
+test_verify_one_file! {
+    #[test] tracked_ctor_coerced_to_spec_does_not_consume verus_code! {
+        tracked struct Token {}
+
+        proof fn consume(tracked t: Token) {
+        }
+
+        proof fn test(tracked t: Token) {
+            let wrapped = Tracked(t);
+            consume(t);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] tracked_ctor_immediately_coerce_to_spec_fail verus_code! {
         fn test() {
             let ghost x = true;
@@ -1728,4 +1782,21 @@ test_verify_one_file! {
             });
         }
     } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
+}
+
+test_verify_one_file! {
+    #[test] builtin_add_fail_issue2703 verus_code! {
+        fn test() {
+            let x = add(0, 1);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot use `verus_builtin::add` in executable context")
+}
+
+test_verify_one_file! {
+    #[test] builtin_spec_neg_fail_issue2703 verus_code! {
+        fn test() {
+            let a = 3;
+            let y = a.spec_neg();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot use `verus_builtin::SpecNeg::spec_neg` in executable context")
 }

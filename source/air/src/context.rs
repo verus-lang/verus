@@ -12,7 +12,7 @@ use crate::scope_map::ScopeMap;
 use crate::smt_process::SmtProcess;
 use crate::smt_verify::ReportLongRunning;
 use crate::typecheck::Typing;
-use sise::Node;
+use sise::TreeNode as Node;
 use std::any::Any;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -261,10 +261,24 @@ impl Context {
 
     pub fn set_rlimit(&mut self, rlimit: u32) {
         self.rlimit = rlimit;
-        if matches!(self.solver, SmtSolver::Z3) {
-            self.air_initial_log.log_set_option("rlimit", &rlimit.to_string());
-            self.air_middle_log.log_set_option("rlimit", &rlimit.to_string());
-            self.air_final_log.log_set_option("rlimit", &rlimit.to_string());
+        self.air_initial_log.log_set_option("rlimit", &rlimit.to_string());
+        self.air_middle_log.log_set_option("rlimit", &rlimit.to_string());
+        self.air_final_log.log_set_option("rlimit", &rlimit.to_string());
+        if matches!(self.solver, SmtSolver::Cvc5) {
+            if matches!(self.state, ContextState::NotStarted) {
+                // cvc5 only allows a single upfront rlimit declaration;
+                // Using rlimit-per configures a fixed budget for each check-sat query,
+                // rather than for the entire session's worth of queries.
+                self.smt_log.log_set_option("rlimit-per", &rlimit.to_string());
+            }
+        }
+    }
+
+    /// Can the rlimit be adjusted for each check-sat query?
+    pub fn rlimit_is_mutable(&self) -> bool {
+        match self.solver {
+            SmtSolver::Z3 => true,
+            SmtSolver::Cvc5 => matches!(self.state, ContextState::NotStarted),
         }
     }
 
@@ -527,12 +541,12 @@ impl Context {
         }
     }
 
-    pub fn eval_expr(&mut self, expr: sise::Node) -> String {
+    pub fn eval_expr(&mut self, expr: sise::TreeNode) -> String {
         self.smt_log.log_eval(expr);
         let smt_data = self.smt_log.take_pipe_data();
         let smt_output = self.get_smt_process().send_commands(smt_data);
         if smt_output.len() != 1 {
-            panic!("unexpected output from SMT eval {:?}", &smt_output);
+            panic!("unexpected output from SMT eval {:?}", smt_output);
         }
         smt_output[0].clone()
     }

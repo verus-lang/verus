@@ -28,6 +28,7 @@ verus! {
 /// operator `=~=`.
 #[verifier::ext_equal]
 #[verifier::reject_recursive_types(A)]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::iset::ISet")]
 pub struct ISet<A> {
     set: spec_fn(A) -> bool,
 }
@@ -634,7 +635,7 @@ pub mod fold {
 
 }
 
-// Axioms
+// Lemmas
 /// The empty set contains no elements
 pub broadcast proof fn lemma_iset_empty<A>(a: A)
     ensures

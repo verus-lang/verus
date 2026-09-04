@@ -1777,7 +1777,7 @@ test_verify_one_file! {
         fn test(tree: Tree) {
             let x = decreases_to!(tree => tree);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use spec-mode expression in executable context")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use `verus_builtin::is_smaller_than_lexicographic` (of the `decreases_to!` macro) in executable context")
 }
 
 test_verify_one_file! {
@@ -1810,7 +1810,7 @@ test_verify_one_file! {
         }
 
         pub struct Directory {
-            pub entries: Seq<Entry>,
+            pub entries: Ghost<Seq<Entry>>,
         }
 
         #[verifier(external_body)]
@@ -1821,7 +1821,7 @@ test_verify_one_file! {
             pub open spec fn fn_one(self, layer: nat) -> Directory
                 decreases NUM_LAYERS - layer, NUM_ENTRIES, 2nat
             {
-                Directory { entries: self.fn_three(layer, seq![]) }
+                Directory { entries: Ghost(self.fn_three(layer, seq![])) }
             }
 
             pub open spec fn fn_two(self, layer: nat, idx: nat) -> Entry
@@ -2070,16 +2070,16 @@ test_verify_one_file! {
         }
 
         struct X {
-            y: Seq<X>,
+            y: Ghost<Seq<X>>,
         }
 
         proof fn bad() {
-            let x0 = X { y: seq![] };
-            let t = seq![X { y: seq![ x0, x0 ] }];
+            let x0 = X { y: Ghost(seq![]) };
+            let t = seq![X { y: Ghost(seq![ x0, x0 ]) }];
             assert(decreases_to!(t => t[0]));
             assert(decreases_to!(t[0] => t[0].y));
 
-            vstd::seq::axiom_seq_len_decreases(t[0].y, t); // FAILS
+            vstd::seq::axiom_seq_len_decreases(t[0].y@, t); // FAILS
             assert(decreases_to!(t[0].y => t));
         }
     } => Err(e) => assert_fails(e, 3)

@@ -6,8 +6,12 @@
     feature(negative_impls),
     feature(unboxed_closures),
     feature(fn_traits),
+    feature(tuple_trait)
+)]
+#![cfg_attr(
+    // register_tool is only allowed at crate root. Disable this trait during `test_is_core`:
+    all(verus_keep_ghost, not(verus_verify_core)),
     feature(register_tool),
-    feature(tuple_trait),
     register_tool(verus),
     register_tool(verifier)
 )]
@@ -49,6 +53,14 @@ pub fn ensures<A>(_a: A) {
 
 // Can only appear at beginning of function body
 #[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::atomic_spec"]
+#[verifier::proof]
+pub fn atomic_spec<A>(_a: A) {
+    unimplemented!();
+}
+
+// Can only appear at beginning of function body
+#[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::returns"]
 #[verifier::proof]
 pub fn returns<A>(_a: A) {
@@ -76,6 +88,14 @@ pub fn invariant_except_break<A>(_a: A) {
 #[rustc_diagnostic_item = "verus::verus_builtin::invariant"]
 #[verifier::proof]
 pub fn invariant<A>(_a: A) {
+    unimplemented!();
+}
+
+// Can only appear at beginning of loop body
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::atomic_call_loop"]
+#[verifier::proof]
+pub fn atomic_call_loop() {
     unimplemented!();
 }
 
@@ -122,41 +142,9 @@ pub fn extra_dependency<F>(_f: F) {
 
 // Can only appear at beginning of function body
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::verus_builtin::opens_invariants_none"]
+#[rustc_diagnostic_item = "verus::verus_builtin::opens_invariant_mask"]
 #[verifier::proof]
-pub fn opens_invariants_none() {
-    unimplemented!();
-}
-
-// Can only appear at beginning of function body
-#[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::verus_builtin::opens_invariants_any"]
-#[verifier::proof]
-pub fn opens_invariants_any() {
-    unimplemented!();
-}
-
-// Can only appear at beginning of function body
-#[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::verus_builtin::opens_invariants"]
-#[verifier::proof]
-pub fn opens_invariants<A>(_a: A) {
-    unimplemented!();
-}
-
-// Can only appear at beginning of function body
-#[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::verus_builtin::opens_invariants_except"]
-#[verifier::proof]
-pub fn opens_invariants_except<A>(_a: A) {
-    unimplemented!();
-}
-
-// Can only appear at beginning of function body
-#[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::verus_builtin::opens_invariants_set"]
-#[verifier::proof]
-pub fn opens_invariants_set<A>(_a: A) {
+pub fn opens_invariant_mask(_inv_mask: ()) {
     unimplemented!();
 }
 
@@ -313,6 +301,41 @@ pub fn get_variant_field<Adt, Field>(_a: Adt, _variant: &str, _field: &str) -> F
 #[verifier::spec]
 pub fn get_union_field<Adt, Field>(_a: Adt, _field: &str) -> Field {
     unimplemented!();
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::inv_mask_none"]
+#[verifier::proof]
+pub fn inv_mask_none<A>() -> A {
+    unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::inv_mask_any"]
+#[verifier::proof]
+pub fn inv_mask_any<A>() -> A {
+    unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::inv_mask_list"]
+#[verifier::proof]
+pub fn inv_mask_list<A, E>(_e: E) -> A {
+    unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::inv_mask_list_compl"]
+#[verifier::proof]
+pub fn inv_mask_list_compl<A, E>(_e: E) -> A {
+    unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::inv_mask_set"]
+#[verifier::proof]
+pub fn inv_mask_set<A, E>(_e: E) -> A {
+    unimplemented!()
 }
 
 #[cfg(verus_keep_ghost)]
@@ -836,6 +859,30 @@ impl_structural! {
 }
 
 unsafe impl<T: Structural> Structural for Option<T> {}
+
+unsafe impl<T: Structural, E: Structural> Structural for core::result::Result<T, E> {}
+
+unsafe impl<T: Structural, const N: usize> Structural for [T; N] {}
+
+// Mirrors core's own tuple_impls! (library/core/src/tuple.rs), which provides
+// PartialEq for tuples up to arity 12.
+macro_rules! impl_structural_tuple {
+    ($($T:ident)*) => {
+        unsafe impl<$($T: Structural),*> Structural for ($($T,)*) {}
+    }
+}
+
+macro_rules! impl_structural_tuples {
+    () => {
+        impl_structural_tuple!();
+    };
+    ($T:ident $($U:ident)*) => {
+        impl_structural_tuple!($T $($U)*);
+        impl_structural_tuples!($($U)*);
+    };
+}
+
+impl_structural_tuples!(A B C D E F G H I J K L);
 
 pub struct NoCopy {}
 #[cfg(verus_keep_ghost)]
@@ -1961,6 +2008,13 @@ pub fn reveal_strlit<A>(_a: A) {
     unimplemented!()
 }
 
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::reveal_byteslit"]
+#[verifier::proof]
+pub fn reveal_byteslit<A>(_a: A) {
+    unimplemented!()
+}
+
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::verus_builtin::FnSpec")]
 pub struct FnSpec<Args, Output> {
     phantom: PhantomData<(Args, Output)>,
@@ -2360,13 +2414,6 @@ macro_rules! decreases_to {
 pub use decreases_to;
 #[cfg(verus_verify_core)]
 pub use decreases_to_internal;
-
-#[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::verus_builtin::infer_spec_for_loop_iter"]
-#[verifier::spec]
-pub fn infer_spec_for_loop_iter<A>(_: A, _: A, _print_hint: bool) -> Option<A> {
-    unimplemented!()
-}
 
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::global_size_of"]

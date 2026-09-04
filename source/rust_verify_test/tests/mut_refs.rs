@@ -5132,15 +5132,28 @@ test_verify_one_file_with_options! {
     #[test] compound_op_overloaded_evaluation_order [] => verus_code! {
         // Future-proofing test; overloaded compound assignment isn't supported yet
         use vstd::prelude::*;
+        use vstd::std_specs::ops::AddAssignSpec;
 
-        struct X {
-            a: u64,
+        pub struct X {
+            pub a: u64,
         }
 
         impl std::ops::AddAssign<u64> for X {
             fn add_assign(&mut self, other: u64)
             {
                 *self = X { a: self.a & other };
+            }
+        }
+
+        impl vstd::std_specs::ops::AddAssignSpecImpl<u64> for X {
+            open spec fn obeys_add_assign_spec() -> bool {
+                true
+            }
+            open spec fn add_assign_req(&self, other: u64) -> bool {
+                true
+            }
+            open spec fn add_assign_spec(&self, other: u64) -> &X {
+                &(X { a: self.a & other })
             }
         }
 
@@ -5179,12 +5192,7 @@ test_verify_one_file_with_options! {
             assert(a == 2);
             assert(false); // FAILS
         }
-    } => Err(err) => assert_vir_error_msgs(err, &[
-        "overloaded op-assignment operator",
-        "overloaded op-assignment operator",
-        "overloaded op-assignment operator",
-        "overloaded op-assignment operator",
-    ])
+    } => Err(err) => assert_fails(err, 2)
 }
 
 test_verify_one_file_with_options! {

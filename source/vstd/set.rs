@@ -30,6 +30,7 @@ verus! {
 #[verifier::ext_equal]
 #[verifier::external_body]
 #[verifier::accept_recursive_types(A)]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::set::Set")]
 pub struct Set<A> {
     // To prevent Verus's internal checks from rejecting recursive types,
     // we use an artificial definition of `Set` that hides its inclusion
@@ -131,20 +132,6 @@ impl<A> Set<A> {
     /// ```
     pub closed spec fn new(f: spec_fn(A) -> bool) -> Option<Set<A>> {
         Self::new_from_iset(ISet::new(f))
-    }
-
-    /// Set whose membership is determined by the given boolean predicate,
-    /// assuming the predicate produces a finite set.
-    ///
-    /// Usage Examples:
-    /// ```rust
-    /// let set_a = Set::new_assuming_finite(|x : nat| x < 42);
-    /// let set_b = Set::<A>::new_assuming_finite(|x| some_predicate(x));
-    /// assert(forall|x| some_predicate(x) <==> set_b.contains(x));
-    /// ```
-    #[deprecated(note = "Set::new_assuming_finite is helpful for incremental porting of existing code to the new version of Verus supporting finite sets. But it's dangerous since it assumes the given function describes a finite set.")]
-    pub closed spec fn new_assuming_finite(f: spec_fn(A) -> bool) -> Set<A> {
-        Self::make_set(ISet::new(f))
     }
 
     /// The "full" set, i.e., set containing every element of type `A`.
@@ -288,6 +275,14 @@ pub broadcast proof fn axiom_set_ext_equal_deep<A>(s1: Set<A>, s2: Set<A>)
     admit();
 }
 
+/// A member of a `Set` is less than that `Set`.
+pub broadcast axiom fn axiom_set_decreases_to_member<A>(s: Set<A>, a: A)
+    requires
+        #[trigger] s.contains(a),
+    ensures
+        #[trigger] (decreases_to!(s => a)),
+;
+
 broadcast use super::iset::group_iset_lemmas;
 
 pub mod fold {
@@ -342,18 +337,6 @@ pub broadcast proof fn lemma_set_new_some<A>(f: spec_fn(A) -> bool)
 {
     broadcast use Set::axiom_make_set;
 
-}
-
-/// Shows that `Set::<A>::new_assuming_finite(f)` contains `a`
-/// if and only if `f(a)` is true.
-#[allow(deprecated)]
-pub broadcast proof fn lemma_set_new_assuming_finite<A>(f: spec_fn(A) -> bool, a: A)
-    ensures
-        #[trigger] Set::<A>::new_assuming_finite(f).contains(a) == f(a),
-{
-    broadcast use Set::axiom_make_set;
-
-    assume(ISet::new(f).finite());  // This is the assumption
 }
 
 /// If an iset `s` is finite, then `Set::new_from_iset(s)` has the same
@@ -592,9 +575,9 @@ pub broadcast proof fn lemma_to_iset_len<A>(s: Set<A>)
 pub broadcast group group_set_lemmas {
     axiom_set_ext_equal,
     axiom_set_ext_equal_deep,
+    axiom_set_decreases_to_member,
     lemma_set_empty,
     lemma_set_new,
-    lemma_set_new_assuming_finite,
     lemma_set_new_from_iset,
     lemma_set_new_some,
     lemma_set_insert_same,

@@ -307,10 +307,10 @@ pub struct InvariantBlockGuard<'a>(core::marker::PhantomData<&'a ()>);
 
 verus! {
 
-#[doc(hidden)]
 #[cfg_attr(verus_keep_ghost, verifier::proof)]
 #[verifier::external_body]
-pub struct OpenInvariantCredit {}
+#[non_exhaustive]
+pub struct OpenInvariantCredit;
 
 // It's intentional that `create_open_invariant_credit` uses `exec` mode. This prevents
 // creation of an infinite number of credits to open invariants infinitely often.

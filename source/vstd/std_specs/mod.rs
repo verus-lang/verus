@@ -1,15 +1,18 @@
 #[cfg(feature = "alloc")]
 pub mod alloc;
 
+pub mod array;
 pub mod atomic;
 pub mod bits;
 pub mod borrow;
+pub mod char;
 pub mod clone;
 pub mod cmp;
 pub mod control_flow;
 pub mod convert;
 pub mod core;
 pub mod default;
+pub mod fmt;
 pub mod iter;
 pub mod manually_drop;
 pub mod maybe_uninit;
@@ -35,6 +38,9 @@ pub mod vecdeque;
 
 #[cfg(feature = "alloc")]
 pub mod smart_ptrs;
+
+#[cfg(feature = "nonzero_internals")]
+pub mod nonzero;
 
 // This struct is a hack that exists purely to create
 // a rustdoc page dedicated to 'assume_specification' specs

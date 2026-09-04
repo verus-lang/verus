@@ -17,8 +17,8 @@ use rustc_middle::thir::{
 use rustc_middle::ty;
 use rustc_middle::ty::{
     Binder, BoundRegion, BoundRegionKind, BoundVar, BoundVarIndexKind, BoundVariableKind,
-    CapturedPlace, GenericArg, Mutability, Ty, TyCtxt, TyKind, TypeSuperFoldable, UpvarCapture,
-    adjustment::DerefAdjustKind,
+    CapturedPlace, FnSigKind, GenericArg, Mutability, Ty, TyCtxt, TyKind, TypeSuperFoldable,
+    UpvarCapture, adjustment::DerefAdjustKind,
 };
 use rustc_middle::ty::{TypeFoldable, TypeFolder, UpvarArgs};
 use rustc_span::Span;
@@ -108,10 +108,6 @@ pub struct VerusErasureCtxt {
     /// If there's a '..struct_tail' in the ctor, it's the last argument.
     /// The bool indicates if we should force the return type to be treated as inhabited.
     pub calls: HashMap<HirId, (CallErasure, bool)>,
-
-    /// Node that should be erased (absolutely), including its adjustments.
-    /// Useful, e.g., to erase a single argument of some call.
-    pub adjusted_node_erasure: HashSet<HirId>,
 
     /// Loop headers require special handling. This maps every loop expression to
     /// a list of all its headers. (Note: the headers themselves should be marked
@@ -609,6 +605,7 @@ pub(crate) fn is_node_with_single_arg_erased_or_shadow<'tcx>(
             is_erased_or_shadow(cx, erasure_ctxt, &cx.thir.exprs[args[0]].kind)
         }
         ExprKind::Borrow { borrow_kind: _, arg }
+        | ExprKind::RawBorrow { mutability: _, arg }
         | ExprKind::Deref { arg }
         | ExprKind::NeverToAny { source: arg }
         | ExprKind::Field { lhs: arg, .. } => {
@@ -897,9 +894,6 @@ impl<'a, 'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitTreeForPats<'a, 'tc
     type NestedFilter = rustc_hir::intravisit::nested_filter::None;
 
     fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
-        if self.erasure_ctxt.adjusted_node_erasure.contains(&expr.hir_id) {
-            return;
-        }
         match &expr.kind {
             hir::ExprKind::Call(..) | hir::ExprKind::MethodCall(..) => {
                 if matches!(
@@ -950,9 +944,6 @@ impl<'a, 'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitTreeForLocalUses<'a
     }
 
     fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
-        if self.erasure_ctxt.adjusted_node_erasure.contains(&expr.hir_id) {
-            return;
-        }
         match &expr.kind {
             hir::ExprKind::Call(..) | hir::ExprKind::MethodCall(..) => {
                 if matches!(
@@ -1537,9 +1528,14 @@ fn mk_closure_magic_coercion_fn<'tcx, 'a>(
     let fnty = tcx.mk_ty_from_kind(TyKind::FnPtr(
         Binder::bind_with_vars(rustc_middle::ty::FnSigTys { inputs_and_output }, bound_var_kinds),
         rustc_middle::ty::FnHeader {
-            c_variadic: false,
-            safety: rustc_hir::Safety::Safe,
-            abi: rustc_abi::ExternAbi::Rust,
+            fn_sig_kind: FnSigKind::new(
+                rustc_abi::ExternAbi::Rust,
+                rustc_hir::Safety::Safe,
+                false,
+                None,
+                input_tys.len(),
+            )
+            .expect("valid signature"),
         },
     ));
 
@@ -1563,7 +1559,11 @@ pub(crate) fn apply_projection<'tcx>(
         },
         ProjectionKind::Field(field_idx, variant_idx) => match ty.kind() {
             TyKind::Tuple(tys) => tys[field_idx.as_usize()],
-            TyKind::Adt(adt, args) => adt.variant(*variant_idx).fields[*field_idx].ty(tcx, args),
+            TyKind::Adt(adt, args) =>
+            // TODO(1.97.1): do we need to normalize here?
+            {
+                adt.variant(*variant_idx).fields[*field_idx].ty(tcx, args).skip_normalization()
+            }
             _ => {
                 panic!("apply_projection: unexpected type");
             }
@@ -1779,6 +1779,17 @@ pub(crate) fn possibly_handle_complex_closure_block<'tcx>(
 }
 
 pub(crate) fn get_closure_expr<'tcx>(e: &'tcx hir::Expr<'tcx>) -> &'tcx hir::Expr<'tcx> {
+    // NOTE: We expect every closuse to have exactly this form:
+    //
+    // {
+    //     let _verus_internal_dummy_capture = ::builtin::dummy_capture_new();
+    //     || { ... }
+    // }
+    //
+    // This function is invoked when we detect the capture dummy, and tries
+    // to find the corresponding closure expression. If there are any other
+    // statements in the block, this function will fail.
+
     match &e.kind {
         hir::ExprKind::Closure(_) => e,
         hir::ExprKind::Call(_f, args) => get_closure_expr(&args[0]),

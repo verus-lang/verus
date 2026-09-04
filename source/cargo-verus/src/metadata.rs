@@ -4,7 +4,7 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use cargo_metadata::{Metadata, MetadataCommand, Package, PackageId};
+use cargo_metadata::{Metadata, MetadataCommand, Package, PackageId, Source, semver::Version};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
@@ -38,13 +38,13 @@ impl VerusMetadata {
 }
 
 pub struct MetadataIndex<'a> {
-    entries: BTreeMap<&'a PackageId, MetadataIndexEntry<'a>>,
+    pub entries: BTreeMap<&'a PackageId, MetadataIndexEntry<'a>>,
 }
 
 pub struct MetadataIndexEntry<'a> {
-    package: &'a Package,
-    verus_metadata: VerusMetadata,
-    deps: BTreeMap<&'a PackageId, &'a cargo_metadata::NodeDep>,
+    pub package: &'a Package,
+    pub verus_metadata: VerusMetadata,
+    pub deps: BTreeMap<&'a PackageId, &'a cargo_metadata::NodeDep>,
 }
 
 impl<'a> MetadataIndex<'a> {
@@ -75,6 +75,10 @@ impl<'a> MetadataIndex<'a> {
         }
         assert!(deps_by_package.is_empty());
         Ok(Self { entries })
+    }
+
+    pub fn iter_package_ids(&self) -> impl Iterator<Item = &PackageId> {
+        self.entries.keys().map(|package_id| *package_id)
     }
 
     pub fn get(&self, id: &PackageId) -> &MetadataIndexEntry<'a> {
@@ -132,15 +136,92 @@ impl<'a> MetadataIndex<'a> {
         }
         names
     }
+
+    /// Collect sources of `vstd` that appear in the verified part of the build.
+    pub fn collect_vstd_metadata(
+        &self,
+        packages_to_verify: &Set<PackageId>,
+    ) -> Set<PackageMetadata> {
+        // Packages that verification will run on.
+        let packages_will_verify = Set::from_iter(
+            packages_to_verify
+                .iter()
+                .filter(|package_id| self.get(package_id).verus_metadata.verify)
+                .cloned(),
+        );
+        // Transitive closure of packages that verification will run on.
+        let tclosure_will_verify = self.get_transitive_closure(packages_will_verify);
+
+        // Metadata of all `vstd` instances that appear anywhere in the transitive closure.
+        let vstd_metadata: Set<PackageMetadata> = tclosure_will_verify
+            .iter()
+            .flat_map(|package_id| {
+                let entry = self.get(package_id);
+                if entry.verus_metadata.is_vstd {
+                    Some(PackageMetadata::from(entry.package))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        assert!(
+            vstd_metadata.len() <= 1,
+            "The `vstd` versioning scheme prevents multiple instances in a resolve set.",
+            // This is a consequence of the current `vstd` versioning scheme.
+            // In the current scheme, each version matches `0.0.0-*`.
+            // By definition, *all* such versions are semver-compatible.
+            // Cargo disallows different *compatible* versions in a resolve set.
+            // https://doc.rust-lang.org/cargo/reference/resolver.html#semver-compatibility
+        );
+
+        vstd_metadata
+    }
 }
 
-impl<'a> MetadataIndexEntry<'a> {
-    pub fn package(&self) -> &'a Package {
-        self.package
-    }
+/// Metadata about a package.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct PackageMetadata {
+    pub version: Version,
+    pub source: PackageSource,
+}
 
-    pub fn verus_metadata(&self) -> &VerusMetadata {
-        &self.verus_metadata
+/// Details of a package source.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum PackageSource {
+    Registry { url: String },
+    Git { url: String, rev: Option<String> },
+    Unsupported,
+}
+
+impl From<&Package> for PackageMetadata {
+    fn from(package: &Package) -> Self {
+        let version = package.version.clone();
+        let source =
+            package.source.as_ref().map(PackageSource::from).unwrap_or(PackageSource::Unsupported);
+        PackageMetadata { version, source }
+    }
+}
+
+/// NOTE: This code relies on Cargo internals because there's no stable API.
+/// The tests in `test_vstd_sources.rs` should be able to detect if these assumptions break.
+impl From<&Source> for PackageSource {
+    fn from(source: &Source) -> Self {
+        let repr = &source.repr;
+        if let Some(registry) = repr.strip_prefix("registry+") {
+            PackageSource::Registry { url: registry.to_string() }
+        } else if let Some(git_source) = repr.strip_prefix("git+") {
+            let (url, rev) = if let Some((url, rev)) = git_source.rsplit_once('#') {
+                (url, Some(rev.to_owned()))
+            } else {
+                (git_source, None)
+            };
+            // Trim the query part of the URL.
+            let url = url.split_once('?').map_or(url, |(trimmed_url, _query)| trimmed_url);
+            PackageSource::Git { url: url.to_string(), rev }
+        } else {
+            PackageSource::Unsupported
+        }
     }
 }
 

@@ -513,7 +513,7 @@ test_verify_one_file_with_options! {
         fn foo() {
             let t = closure_to_fn_spec(|x: u64| x);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use spec_fn closure in 'exec' mode")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use `verus_builtin::closure_to_fn_spec` in executable context")
 }
 
 test_verify_one_file_with_options! {
@@ -535,7 +535,7 @@ test_verify_one_file_with_options! {
 
             let m = call_requires(f, (5, ));
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call spec function from exec mode")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use `verus_builtin::call_requires` in executable context")
 }
 
 test_verify_one_file_with_options! {
@@ -547,7 +547,7 @@ test_verify_one_file_with_options! {
 
             let m = call_ensures(f, (5, ), 7);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call spec function from exec mode")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use `verus_builtin::call_ensures` in executable context")
 }
 
 test_verify_one_file_with_options! {
@@ -1878,6 +1878,68 @@ test_verify_one_file! {
                     return;
                 }
             };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] closure_local_const verus_code! {
+        use vstd::prelude::*;
+
+        fn foo() {
+            let x = || -> (z: u64)
+                ensures z == 42
+            {
+                const Z: u64 = 42;
+                Z
+            };
+            let z = x();
+            assert(z == 42);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] closure_local_fn verus_code! {
+        use vstd::prelude::*;
+
+        fn foo() {
+            let x = || -> (z: u64)
+                ensures z == 42
+            {
+                fn f() -> (z: u64)
+                    ensures z == 42
+                {
+                    42
+                }
+
+                let z = f();
+                assert(z == 42);
+                z
+            };
+            let z = x();
+            assert(z == 42);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] closure_local_struct verus_code! {
+        use vstd::prelude::*;
+
+        fn foo() {
+            let x = || -> (z: u64)
+                ensures z == 42
+            {
+                struct S {
+                    x: u64,
+                }
+
+                let s = S { x: 42 };
+                s.x
+            };
+            let z = x();
+            assert(z == 42);
         }
     } => Ok(())
 }

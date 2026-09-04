@@ -1,3 +1,5 @@
+use yansi::Paint;
+
 use crate::context::SmtSolver;
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, ChildStdout};
@@ -109,8 +111,6 @@ impl SmtProcess {
                     "--quant-dsplit=none", // Recommended by Andrew Reynolds (@ajreynol)
                     "--no-cbqi",           // Recommended by Andrew Reynolds (@ajreynol)
                     "--user-pat=strict",   // Recommended by Andrew Reynolds (@ajreynol)
-                    "--rlimit",
-                    "1666666", // ~= 5s
                 ],
             })
             .stdin(std::process::Stdio::piped())
@@ -121,10 +121,11 @@ impl SmtProcess {
             Err(err) => {
                 eprintln!(
                     "{}",
-                    yansi::Paint::red(format!(
+                    format!(
                         "error: could not execute {} process ({})",
                         solver_info.executable_name, err
-                    ))
+                    )
+                    .red()
                 );
                 eprintln!(
                     "help: {name} needs to be in the PATH, or the environment variable {var} must be set to the path of the {name} executable",

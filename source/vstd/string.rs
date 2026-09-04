@@ -17,7 +17,7 @@ use super::view::*;
 
 verus! {
 
-broadcast use {super::seq::group_seq_axioms, super::slice::group_slice_axioms};
+broadcast use {super::seq::group_seq_lemmas, super::slice::group_slice_axioms};
 
 #[cfg(not(verus_verify_core))]
 impl View for str {
@@ -297,8 +297,6 @@ pub broadcast group group_string_axioms {
     axiom_str_literal_len,
     axiom_str_literal_get_char,
     to_string_from_display_ensures_for_str,
-    axiom_spec_iter,
-    next_postcondition,
     is_ascii_spec_bytes,
     is_ascii_concat,
 }
@@ -358,6 +356,37 @@ pub assume_specification[ <String as PartialEq>::eq ](s: &String, other: &String
 pub assume_specification[ String::new ]() -> (res: String)
     ensures
         res@ == Seq::<char>::empty(),
+;
+
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+pub assume_specification[ String::push ](s: &mut String, c: char)
+    ensures
+        final(s)@ == old(s)@.push(c),
+;
+
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+pub assume_specification[ String::pop ](s: &mut String) -> (res: Option<char>)
+    ensures
+        old(s)@.len() == 0 ==> res is None && final(s)@ == old(s)@,
+        old(s)@.len() > 0 ==> res == Some(old(s)@.last()) && final(s)@ == old(s)@.drop_last(),
+;
+
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+pub assume_specification[ String::push_str ](s: &mut String, other: &str)
+    ensures
+        final(s)@ == old(s)@ + other@,
+;
+
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+pub assume_specification[ String::is_empty ](s: &String) -> (res: bool)
+    ensures
+        res == (s@.len() == 0),
+;
+
+#[cfg(all(feature = "alloc", not(verus_verify_core)))]
+pub assume_specification[ String::clear ](s: &mut String)
+    ensures
+        final(s)@ == Seq::<char>::empty(),
 ;
 
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]
@@ -432,29 +461,11 @@ pub struct ExChars<'a>(Chars<'a>);
 #[cfg(feature = "alloc")]
 pub uninterp spec fn into_iter_elts<'a>(i: Chars<'a>) -> Seq<char>;
 
-// To allow reasoning about the ghost iterator when the executable
-// function `iter()` is invoked in a `for` loop header (e.g., in
-// `for x in it: v.iter() { ... }`), we need to specify the behavior of
-// the iterator in spec mode. To do that, we add
-// `#[verifier::when_used_as_spec(spec_iter)` to the specification for
-// the executable `iter` method and define that spec function here.
-#[cfg(feature = "alloc")]
-pub uninterp spec fn spec_iter<'a>(s: &'a str) -> (r: Chars<'a>);
-
-#[cfg(feature = "alloc")]
-pub broadcast proof fn axiom_spec_iter<'a>(s: &'a str)
-    ensures
-        #[trigger] spec_iter(s).remaining() == s@,
-{
-    admit();
-}
-
 #[cfg(feature = "alloc")]
 pub assume_specification[ str::chars ](s: &str) -> (iter: Chars<'_>)
     ensures
-        iter == spec_iter(s),
+        IteratorSpec::remaining(&iter) == s@,
         IteratorSpec::decrease(&iter) is Some,
-        IteratorSpec::initial_value_relation(&iter, &iter),
 ;
 
 #[cfg(verus_keep_ghost)]
@@ -468,12 +479,6 @@ impl<'a> super::std_specs::iter::IteratorSpecImpl for Chars<'a> {
 
     uninterp spec fn will_return_none(&self) -> bool;
 
-    #[verifier::prophetic]
-    open spec fn initial_value_relation(&self, init: &Self) -> bool {
-        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-        &&& into_iter_elts(*self) == IteratorSpec::remaining(self)
-    }
-
     uninterp spec fn decrease(&self) -> Option<nat>;
 
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
@@ -484,61 +489,6 @@ impl<'a> super::std_specs::iter::IteratorSpecImpl for Chars<'a> {
         }
     }
 }
-
-// Ideally, we would write this postcondition directly on the definition of
-// next below.  However, Verus says that this introduces a cyclic  dependency.
-// Hence we introduce a layer of indirection via this uninterp spec function.
-#[cfg(feature = "alloc")]
-pub uninterp spec fn next_post<'a>(
-    old_chars: &Chars<'a>,
-    new_chars: &Chars<'a>,
-    ret: Option<char>,
-) -> bool;
-
-#[cfg(feature = "alloc")]
-pub broadcast axiom fn next_postcondition<'a>(
-    old_chars: &Chars<'a>,
-    new_chars: &Chars<'a>,
-    ret: Option<char>,
-)
-    requires
-        #[trigger] next_post(
-            old_chars,
-            new_chars,
-            ret,
-        ),
-// TODO: These are copied from the Iterator::next function.  Eventually, we should
-//       relax Verus's retrictions and allow this function to inherit those specs.
-
-    ensures
-// The iterator consistently obeys, completes, and decreases throughout its lifetime
-
-        new_chars.obeys_prophetic_iter_laws() == old_chars.obeys_prophetic_iter_laws(),
-        new_chars.obeys_prophetic_iter_laws() ==> new_chars.will_return_none()
-            == old_chars.will_return_none(),
-        new_chars.obeys_prophetic_iter_laws() ==> (old_chars.decrease() is Some
-            <==> new_chars.decrease() is Some),
-        // `next` pops the head of the prophesized remaining(), or returns None
-        new_chars.obeys_prophetic_iter_laws() ==> ({
-            if old_chars.remaining().len() > 0 {
-                &&& new_chars.remaining() == old_chars.remaining().drop_first()
-                &&& ret == Some(old_chars.remaining()[0])
-            } else {
-                new_chars.remaining() == old_chars.remaining() && ret == None
-                    && new_chars.will_return_none()
-            }
-        }),
-        // If the iterator isn't done yet, then it successfully decreases its metric (if any)
-        new_chars.obeys_prophetic_iter_laws() && old_chars.remaining().len() > 0
-            && new_chars.decrease() is Some
-            ==> decreases_to!(old_chars.decrease()->0 => new_chars.decrease()->0),
-;
-
-#[cfg(feature = "alloc")]
-pub assume_specification<'a>[ Chars::<'a>::next ](chars: &mut Chars<'a>) -> (ret: Option<char>)
-    ensures
-        next_post(old(chars), final(chars), ret),
-;
 
 pub use super::view::View;
 

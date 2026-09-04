@@ -325,6 +325,17 @@ impl<T> FracGhost<T> {
         self.r.validate()
     }
 
+    /// Allowed values for a token's quantity when there is another token.
+    pub proof fn bounded_with(tracked &mut self, tracked other: &Self)
+        requires
+            self.id() == other.id(),
+        ensures
+            0.0real < (old(self).frac() + other.frac()) <= 1.0real,
+            *old(self) == *final(self),
+    {
+        self.r.validate_2(&other.r);
+    }
+
     /// Obtain an arbitrary resource with no information about it.
     /// Useful if you need a well-typed placeholder.
     pub proof fn dummy() -> (tracked result: Self) {

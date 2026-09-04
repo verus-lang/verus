@@ -49,7 +49,6 @@ mod heuristics;
 pub mod interpreter;
 mod inv_masks;
 pub mod layout;
-mod loop_inference;
 pub mod messages;
 pub mod modes;
 pub mod opaque_type_to_air;

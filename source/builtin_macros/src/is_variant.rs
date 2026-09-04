@@ -72,7 +72,7 @@ fn attribute_is_variant_internal(
             let variant_ident = v.ast().ident;
             let variant_ident_str = variant_ident.to_string();
             let fun_ident =
-                syn::Ident::new(&format!("is_{}", &variant_ident_str), v.ast().ident.span());
+                syn::Ident::new(&format!("is_{}", variant_ident_str), v.ast().ident.span());
             let get_fns = match v.ast().fields {
                 &syn::Fields::Named(syn::FieldsNamed { named: ref fields, .. }) => fields
                     .iter()
@@ -92,6 +92,7 @@ fn attribute_is_variant_internal(
                             #[verifier::inline]
                             #publish
                             #vis fn #get_ident(self) -> #field_ty {
+                                #verus_builtin::recommends([#verus_builtin::is_variant(&self, #variant_ident_str)]);
                                 #verus_builtin::get_variant_field(self, #variant_ident_str, #field_str)
                             }
                         }
@@ -115,6 +116,7 @@ fn attribute_is_variant_internal(
                             #[verifier::inline]
                             #publish
                             #vis fn #get_ident(self) -> #field_ty {
+                                #verus_builtin::recommends([#verus_builtin::is_variant(&self, #variant_ident_str)]);
                                 #verus_builtin::get_variant_field(self, #variant_ident_str, #field_lit)
                             }
                         }

@@ -5,6 +5,22 @@ use super::super::wrapping::*;
 
 use core::cmp::Ordering;
 
+verus! {
+
+/// The smallest multiple of `y` that is `>= x` (for `y > 0`), matching the value
+/// std's `next_multiple_of` / `checked_next_multiple_of` compute.
+pub open spec fn next_multiple_of(x: int, y: int) -> int
+    recommends
+        y > 0,
+{
+    if x % y == 0 {
+        x
+    } else {
+        x + (y - x % y)
+    }
+}
+
+} // verus!
 macro_rules! num_specs {
     ($uN: ty, $iN: ty, $mod_u_tmp:ident, $mod_i_tmp:ident, $mod_u:ident, $mod_i:ident, $range:expr) => {
         verus! {
@@ -128,7 +144,8 @@ macro_rules! num_specs {
                     } else {
                         Some((x + y) as $uN)
                     }
-                );
+                )
+                no_unwind;
 
             #[verifier::allow_in_spec]
             #[cfg(not(verus_verify_core))]
@@ -139,7 +156,8 @@ macro_rules! num_specs {
                     } else {
                         Some((x + y) as $uN)
                     }
-                );
+                )
+                no_unwind;
 
             #[verifier::allow_in_spec]
             #[cfg(not(verus_verify_core))]
@@ -150,7 +168,8 @@ macro_rules! num_specs {
                     } else {
                         Some((x - y) as $uN)
                     }
-                );
+                )
+                no_unwind;
 
             #[verifier::allow_in_spec]
             #[cfg(not(verus_verify_core))]
@@ -161,7 +180,22 @@ macro_rules! num_specs {
                     } else {
                         Some((x * y) as $uN)
                     }
-                );
+                )
+                no_unwind;
+
+            #[verifier::allow_in_spec]
+            #[cfg(not(verus_verify_core))]
+            pub assume_specification[<$uN>::checked_next_multiple_of](x: $uN, rhs: $uN) -> Option<$uN>
+                returns (
+                    if rhs == 0 {
+                        None
+                    } else if next_multiple_of(x as int, rhs as int) > <$uN>::MAX {
+                        None
+                    } else {
+                        Some(next_multiple_of(x as int, rhs as int) as $uN)
+                    }
+                )
+                no_unwind;
 
             pub open spec fn checked_div(x: $uN, y: $uN) -> Option<$uN> {
                 if y == 0 {
@@ -175,14 +209,16 @@ macro_rules! num_specs {
             #[cfg(not(verus_verify_core))]
             pub assume_specification[<$uN>::checked_div](lhs: $uN, rhs: $uN) -> (result: Option<$uN>)
                 ensures
-                    result == checked_div(lhs, rhs);
+                    result == checked_div(lhs, rhs),
+                no_unwind;
 
             #[verifier::when_used_as_spec(checked_div)]
             #[cfg(not(verus_verify_core))]
             pub assume_specification[<$uN>::checked_div_euclid](lhs: $uN, rhs: $uN) -> (result: Option<$uN>)
                 ensures
                     // checked_div is the same as checked_div_euclid for unsigned ints
-                    result == checked_div(lhs, rhs);
+                    result == checked_div(lhs, rhs),
+                no_unwind;
 
             #[verifier::allow_in_spec]
             #[cfg(not(verus_verify_core))]
@@ -194,7 +230,8 @@ macro_rules! num_specs {
                     else {
                         Some((lhs % rhs) as $uN)
                     }
-                );
+                )
+                no_unwind;
 
             #[verifier::allow_in_spec]
             #[cfg(not(verus_verify_core))]
@@ -206,7 +243,8 @@ macro_rules! num_specs {
                     else {
                         Some((lhs % rhs) as $uN)
                     }
-                );
+                )
+                no_unwind;
 
             #[verifier::allow_in_spec]
             #[cfg(not(verus_verify_core))]
@@ -217,7 +255,8 @@ macro_rules! num_specs {
                     } else {
                         (x + y) as $uN
                     }
-                );
+                )
+                no_unwind;
 
             #[verifier::allow_in_spec]
             #[cfg(not(verus_verify_core))]
@@ -228,14 +267,28 @@ macro_rules! num_specs {
                     } else {
                         (x - y) as $uN
                     }
-                );
+                )
+                no_unwind;
+
+            #[verifier::allow_in_spec]
+            #[cfg(not(verus_verify_core))]
+            pub assume_specification[<$uN>::saturating_mul](x: $uN, y: $uN) -> $uN
+                returns (
+                    if x * y > <$uN>::MAX {
+                        <$uN>::MAX
+                    } else {
+                        (x * y) as $uN
+                    }
+                )
+                no_unwind;
 
             #[verifier::allow_in_spec]
             #[cfg(not(verus_verify_core))]
             pub assume_specification[<$uN>::is_multiple_of](x: $uN, y: $uN) -> bool
                 returns (
                     if y == 0 { x == 0 } else { x % y == 0 }
-                );
+                )
+                no_unwind;
         }
 
         // Signed ints (i8, i16, etc.)
@@ -355,7 +408,8 @@ macro_rules! num_specs {
                     } else {
                         Some((x + y) as $iN)
                     }
-                );
+                )
+                no_unwind;
 
             #[verifier::allow_in_spec]
             #[cfg(not(verus_verify_core))]
@@ -366,7 +420,8 @@ macro_rules! num_specs {
                     } else {
                         Some((x + y) as $iN)
                     }
-                );
+                )
+                no_unwind;
 
             #[verifier::allow_in_spec]
             #[cfg(not(verus_verify_core))]
@@ -377,7 +432,8 @@ macro_rules! num_specs {
                     } else {
                         Some((x - y) as $iN)
                     }
-                );
+                )
+                no_unwind;
 
             #[verifier::allow_in_spec]
             #[cfg(not(verus_verify_core))]
@@ -388,7 +444,8 @@ macro_rules! num_specs {
                     } else {
                         Some((x - y) as $iN)
                     }
-                );
+                )
+                no_unwind;
 
             #[verifier::allow_in_spec]
             #[cfg(not(verus_verify_core))]
@@ -399,7 +456,8 @@ macro_rules! num_specs {
                     } else {
                         Some((x * y) as $iN)
                     }
-                );
+                )
+                no_unwind;
 
             #[verifier::allow_in_spec]
             #[cfg(not(verus_verify_core))]
@@ -410,7 +468,8 @@ macro_rules! num_specs {
                     } else {
                         Some(rust_div(lhs as int, rhs as int) as $iN)
                     }
-                );
+                )
+                no_unwind;
 
             #[verifier::allow_in_spec]
             #[cfg(not(verus_verify_core))]
@@ -421,7 +480,8 @@ macro_rules! num_specs {
                     } else {
                         Some((lhs / rhs) as $iN)
                     }
-                );
+                )
+                no_unwind;
 
             #[verifier::allow_in_spec]
             #[cfg(not(verus_verify_core))]
@@ -432,7 +492,8 @@ macro_rules! num_specs {
                     } else {
                         Some(rust_rem(lhs as int, rhs as int) as $iN)
                     }
-                );
+                )
+                no_unwind;
 
             #[verifier::allow_in_spec]
             #[cfg(not(verus_verify_core))]
@@ -443,7 +504,8 @@ macro_rules! num_specs {
                     } else {
                         Some((lhs % rhs) as $iN)
                     }
-                );
+                )
+                no_unwind;
         }
 
         }

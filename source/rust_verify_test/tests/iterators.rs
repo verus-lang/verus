@@ -24,6 +24,23 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] chars_next_falls_back_to_iterator_spec verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        fn test(s: &str)
+            requires
+                s@.len() >= 1,
+        {
+            let mut it = s.chars();
+            assert(it.remaining() == s@);
+            let r = it.next();
+            assert(r == Some(s@[0]));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] range_works verus_code! {
         use vstd::prelude::*;
 
@@ -447,17 +464,9 @@ test_verify_one_file! {
                   && (forall |i: int| self.idx@ <= i < self.idx@ + self.iter.remaining().len() ==> self.prophs@.proph_elem(i).is_some())
             }
 
-            #[verifier::prophetic]
-            open spec fn initial_value_relation(&self, init: &Self) -> bool {
-                &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-                &&& self.inner().initial_value_relation(&init.inner())
-            }
-
-
             closed spec fn decrease(&self) -> Option<nat> {
                 self.inner().decrease()
             }
-
 
             open spec fn peek(&self, index: int) -> Option<Self::Item> {
                 match self.inner().peek(index) {

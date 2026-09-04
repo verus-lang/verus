@@ -265,6 +265,8 @@ pub(crate) enum Attr {
     GhostBlock(GhostBlockAttr),
     // proof block inside spec-mode code
     ProofInSpec,
+    // use for loop_isolation_boundary, should be in a block surrounding a loop
+    LoopIsolationBoundary,
     // Header to unwrap Tracked<T> and Ghost<T> parameters
     UnwrapParameter,
     // type parameter is not necessarily used in strictly positive positions
@@ -306,6 +308,10 @@ pub(crate) enum Attr {
     Atomic,
     // specifies an invariant block
     InvariantBlock,
+    // specifies an open atomic update block
+    AtomicUpdateBlock,
+    // for function calls with an `atomically` block
+    AtomicCall,
     // mark that a loop was desugared from a for-loop in the syntax macro
     ForLoop,
     // mark the syntax macro inserted a synthetic decreases into a desugared for-loop
@@ -387,6 +393,8 @@ pub(crate) enum Attr {
     ExecAllowNoDecreasesClause,
     // Assume that external items can be used without a Verus declaration (unsound)
     ExternalsAvailableWithoutDeclaration(bool),
+    // Prohibit impls from adding ensures clauses (to enable exec nontermination)
+    ImplsCannotExtendSpec,
     // Assume that the function terminates
     AssumeTermination,
     // Proxy containing unerased code
@@ -403,7 +411,7 @@ pub(crate) enum Attr {
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
-    let err_fn = || err_span(span, format!("expected integer constant, found {:?}", &attr_tree));
+    let err_fn = || err_span(span, format!("expected integer constant, found {:?}", attr_tree));
     match attr_tree {
         AttrTree::Lit(LitKind::Integer, digits) => digits.parse::<u64>().or_else(|_e| err_fn()),
         _ => err_fn(),
@@ -571,6 +579,10 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, arg, None) if arg == "invariant_block" => {
                     v.push(Attr::InvariantBlock)
                 }
+                AttrTree::Fun(_, arg, None) if arg == "open_au_block" => {
+                    v.push(Attr::AtomicUpdateBlock)
+                }
+                AttrTree::Fun(_, arg, None) if arg == "atomic_call" => v.push(Attr::AtomicCall),
                 AttrTree::Fun(_, arg, None) if arg == "bit_vector" => v.push(Attr::BitVector),
                 AttrTree::Fun(_, arg, None) if arg == "decreases_by" || arg == "recommends_by" => {
                     v.push(Attr::DecreasesBy)
@@ -747,6 +759,9 @@ pub(crate) fn parse_attrs(
                         "invalid trigger attribute: to provide a trigger expression, use the #![trigger <expr>] attribute",
                     );
                 }
+                AttrTree::Fun(_, arg, None) if arg == "impls_cannot_extend_spec" => {
+                    v.push(Attr::ImplsCannotExtendSpec);
+                }
                 AttrTree::Fun(_, arg, None) if arg == "assume_termination" => {
                     v.push(Attr::AssumeTermination);
                 }
@@ -917,6 +932,9 @@ pub(crate) fn parse_attrs(
                     }
                     AttrTree::Fun(_, arg, None) if arg == "structural_const_wrapper" => {
                         v.push(Attr::StructuralConstWrapper)
+                    }
+                    AttrTree::Fun(_, arg, None) if arg == "loop_isolation_boundary" => {
+                        v.push(Attr::LoopIsolationBoundary)
                     }
                     _ => {
                         return err_span(span, "unrecognized internal attribute");
@@ -1114,6 +1132,16 @@ pub(crate) fn is_proof_in_spec(attrs: &[Attribute]) -> bool {
     false
 }
 
+pub(crate) fn is_loop_isolation_boundary(attrs: &[Attribute]) -> bool {
+    for attr in parse_attrs_opt(attrs, None) {
+        match attr {
+            Attr::LoopIsolationBoundary => return true,
+            _ => {}
+        }
+    }
+    false
+}
+
 pub(crate) fn get_mode_opt(attrs: &[Attribute]) -> Option<Mode> {
     for attr in parse_attrs_opt(attrs, None) {
         match attr {
@@ -1278,6 +1306,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) size_of_broadcast_proof: bool,
     pub(crate) type_invariant_fn: bool,
     pub(crate) open_visibility_qualifier: bool,
+    pub(crate) impls_cannot_extend_spec: bool,
     pub(crate) assume_termination: bool,
     pub(crate) exec_allows_no_decreases_clause: bool,
     pub(crate) externals_available_without_declaration: Option<bool>,
@@ -1473,6 +1502,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
         size_of_broadcast_proof: false,
         type_invariant_fn: false,
         open_visibility_qualifier: false,
+        impls_cannot_extend_spec: false,
         assume_termination: false,
         exec_allows_no_decreases_clause: false,
         externals_available_without_declaration: None,
@@ -1558,6 +1588,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             Attr::SizeOfBroadcastProof => vs.size_of_broadcast_proof = true,
             Attr::TypeInvariantFn => vs.type_invariant_fn = true,
             Attr::OpenVisibilityQualifier => vs.open_visibility_qualifier = true,
+            Attr::ImplsCannotExtendSpec => vs.impls_cannot_extend_spec = true,
             Attr::AssumeTermination => vs.assume_termination = true,
             Attr::ExecAllowNoDecreasesClause => vs.exec_allows_no_decreases_clause = true,
             Attr::ExternalsAvailableWithoutDeclaration(flag) => {

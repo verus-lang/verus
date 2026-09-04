@@ -130,7 +130,7 @@ pub struct MessageX {
     pub note: String,
     pub spans: Vec<Span>,          // "primary" spans
     pub labels: Vec<MessageLabel>, // additional spans, with string annotations
-    pub help: Option<String>,
+    pub help: Vec<String>,
     pub fancy_note: Option<String>, // allows terminal-colored output
 }
 
@@ -161,7 +161,7 @@ impl air::messages::MessageInterface for VirMessageInterface {
             note: "".to_owned(),
             spans: Vec::new(),
             labels: Vec::new(),
-            help: None,
+            help: Vec::new(),
             fancy_note: None,
         })
     }
@@ -181,7 +181,7 @@ impl air::messages::MessageInterface for VirMessageInterface {
             note: note.to_owned(),
             spans: Vec::new(),
             labels: Vec::new(),
-            help: None,
+            help: Vec::new(),
             fancy_note: None,
         })
     }
@@ -192,7 +192,7 @@ impl air::messages::MessageInterface for VirMessageInterface {
             note: format!("expected z3 version {expected}, found {found}"),
             labels: Vec::new(),
             spans: Vec::new(),
-            help: None,
+            help: Vec::new(),
             fancy_note: None,
         })
     }
@@ -257,7 +257,7 @@ impl air::messages::MessageInterface for VirMessageInterface {
                     })
                     .cloned()
                     .collect(),
-                help: None,
+                help: Vec::new(),
                 fancy_note: None,
             })
         }
@@ -273,7 +273,7 @@ pub fn message<S: Into<String>>(level: MessageLevel, note: S, span: &Span) -> Me
         note: note.into(),
         spans: vec![span.clone()],
         labels: Vec::new(),
-        help: None,
+        help: Vec::new(),
         fancy_note: None,
     })
 }
@@ -285,7 +285,7 @@ pub fn message_bare<S: Into<String>>(level: MessageLevel, note: S) -> Message {
         note: note.into(),
         spans: vec![],
         labels: Vec::new(),
-        help: None,
+        help: Vec::new(),
         fancy_note: None,
     })
 }
@@ -307,7 +307,7 @@ pub fn message_with_label<S: Into<String>, T: Into<String>>(
             is_proof_note: false,
             is_custom_err: false,
         }],
-        help: None,
+        help: Vec::new(),
         fancy_note: None,
     })
 }
@@ -328,7 +328,7 @@ pub fn message_with_secondary_label<S: Into<String>, T: Into<String>>(
             is_proof_note: false,
             is_custom_err: false,
         }],
-        help: None,
+        help: Vec::new(),
         fancy_note: None,
     })
 }
@@ -344,7 +344,7 @@ pub fn multiple_message<'a, S: Into<String>>(
         note: note.into(),
         spans: spans.cloned().collect(),
         labels: Vec::new(),
-        help: None,
+        help: Vec::new(),
         fancy_note: None,
     })
 }
@@ -522,16 +522,11 @@ impl MessageX {
         Arc::new(e)
     }
 
+    /// Add a help message, keeping any help messages already present
     pub fn help(&self, help: impl Into<String>) -> Message {
-        let MessageX { level, note, spans, labels, help: _, fancy_note } = &self;
-        Arc::new(MessageX {
-            level: *level,
-            note: note.clone(),
-            spans: spans.clone(),
-            labels: labels.clone(),
-            help: Some(help.into()),
-            fancy_note: fancy_note.clone(),
-        })
+        let mut e = self.clone();
+        e.help.push(help.into());
+        Arc::new(e)
     }
 
     pub fn fancy_note(&self, fancy_note: impl Into<String>) -> Message {
@@ -548,51 +543,14 @@ impl MessageX {
 }
 
 pub enum MessageAs {
-    NonBlockingError(Message, Option<crate::ast::Path>),
-    NonFatalError(Message, Option<crate::ast::Path>),
     Warning(Message),
     Note(Message),
 }
 
-impl MessageAs {
-    /// Given a primary diagnostic message and an additional message,
+impl MessageX {
+    /// Given a primary error message and an additional error message,
     /// fold the spans of the additional message into a new message copied from the original.
-    pub fn merge(&self, other: &MessageAs) -> MessageAs {
-        let added_msg = match other {
-            MessageAs::NonBlockingError(message_x, _)
-            | MessageAs::NonFatalError(message_x, _)
-            | MessageAs::Warning(message_x)
-            | MessageAs::Note(message_x) => message_x,
-        };
-        let new_msg_builder = |msg: &Message| {
-            added_msg.spans.iter().fold(msg.clone(), |acc, v| acc.secondary_span(v))
-        };
-        match (self, other) {
-            (MessageAs::NonBlockingError(orig_msg, p), _) => {
-                MessageAs::NonBlockingError(new_msg_builder(orig_msg), p.clone())
-            }
-            (MessageAs::NonFatalError(orig_msg, p), _) => {
-                MessageAs::NonFatalError(new_msg_builder(orig_msg), p.clone())
-            }
-            (MessageAs::Warning(orig_msg), MessageAs::NonBlockingError(_, p)) => {
-                MessageAs::NonBlockingError(new_msg_builder(orig_msg), p.clone())
-            }
-            (MessageAs::Warning(orig_msg), MessageAs::NonFatalError(_, p)) => {
-                MessageAs::NonFatalError(new_msg_builder(orig_msg), p.clone())
-            }
-            (MessageAs::Warning(orig_msg), _) => MessageAs::Warning(new_msg_builder(orig_msg)),
-            (MessageAs::Note(orig_msg), MessageAs::NonBlockingError(_, p)) => {
-                MessageAs::NonBlockingError(new_msg_builder(orig_msg), p.clone())
-            }
-            (MessageAs::Note(orig_msg), MessageAs::NonFatalError(_, p)) => {
-                MessageAs::NonFatalError(new_msg_builder(orig_msg), p.clone())
-            }
-            (MessageAs::Note(orig_msg), MessageAs::Warning(..)) => {
-                MessageAs::Warning(new_msg_builder(orig_msg))
-            }
-            (MessageAs::Note(orig_msg), MessageAs::Note(..)) => {
-                MessageAs::Note(new_msg_builder(orig_msg))
-            }
-        }
+    pub fn merge(self: &Arc<Self>, added_msg: &Message) -> Message {
+        added_msg.spans.iter().fold(self.clone(), |acc, v| acc.secondary_span(v))
     }
 }

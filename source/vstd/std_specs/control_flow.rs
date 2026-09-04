@@ -24,6 +24,7 @@ pub assume_specification<T, E>[ Result::<T, E>::branch ](result: Result<T, E>) -
             Ok(v) => ControlFlow::Continue(v),
             Err(e) => ControlFlow::Break(Err(e)),
         },
+    no_unwind
 ;
 
 pub assume_specification<T>[ Option::<T>::branch ](option: Option<T>) -> (cf: ControlFlow<
@@ -35,6 +36,7 @@ pub assume_specification<T>[ Option::<T>::branch ](option: Option<T>) -> (cf: Co
             Some(v) => ControlFlow::Continue(v),
             None => ControlFlow::Break(None),
         },
+    no_unwind
 ;
 
 pub assume_specification<T>[ Option::<T>::from_residual ](option: Option<Infallible>) -> (option2:
@@ -42,6 +44,7 @@ pub assume_specification<T>[ Option::<T>::from_residual ](option: Option<Infalli
     ensures
         option.is_none(),
         option2.is_none(),
+    no_unwind
 ;
 
 pub uninterp spec fn spec_from<S, T>(value: T, ret: S) -> bool;
@@ -61,6 +64,7 @@ pub assume_specification<T, E, F: From<E>>[ Result::<T, F>::from_residual ](
             (Err(e), Err(e2)) => spec_from::<F, E>(e, e2),
             _ => false,
         },
+    no_unwind
 ;
 
 pub broadcast group group_control_flow_axioms {

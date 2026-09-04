@@ -1184,6 +1184,41 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] pattern_ranges_unsuffixed_literals_issue2850 verus_code! {
+        spec fn m_range(x: u8) -> u8 {
+            match x {
+                0 ..= 128 => 0,
+                _ => 1,
+            }
+        }
+
+        spec fn m_range_half_open(x: u8) -> bool {
+            match x {
+                0 .. 128 => true,
+                _ => false,
+            }
+        }
+
+        proof fn test(x: u8) {
+            assert(m_range(0) == 0);
+            assert(m_range(128) == 0);
+            assert(m_range(129) == 1);
+            assert(m_range_half_open(127) == true);
+            assert(m_range_half_open(128) == false);
+        }
+
+        fn test_exec(x: u8) -> (r: u8)
+            ensures r == m_range(x)
+        {
+            match x {
+                0 ..= 128 => 0,
+                _ => 1,
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] pattern_ranges_bad_range verus_code! {
         spec fn m_range6(x: u64) -> bool {
             match x {
@@ -1390,4 +1425,204 @@ test_verify_one_file! {
             true
         }
     } => Err(err) => assert_rust_error_msg(err, "refutable pattern in local binding")
+}
+
+test_verify_one_file! {
+    #[test] int_intrinsic_consts_in_patterns verus_code! {
+        fn example1(x: u64) {
+            let mut b = false;
+            match x {
+                u64::MIN => { b = true; },
+                _ => ()
+            }
+            assert(b <==> x == 0);
+        }
+
+        fn example2(x: u64) {
+            let mut b = false;
+            match x {
+                u64::MAX => { b = true; },
+                _ => ()
+            }
+            assert(b <==> x == 0xffff_ffff_ffff_ffff);
+        }
+
+        fn example3(x: i64) {
+            let mut b = false;
+            match x {
+                i64::MAX => { b = true; },
+                _ => ()
+            }
+            assert(b <==> x == 0x7fff_ffff_ffff_ffff);
+        }
+
+        fn example4(x: i64) {
+            let mut b = false;
+            match x {
+                i64::MIN => { b = true; },
+                _ => ()
+            }
+            assert(b <==> x == -0x8000_0000_0000_0000);
+        }
+
+        fn example5(x: usize) {
+            let mut b = false;
+            match x {
+                usize::MAX => { b = true; },
+                _ => ()
+            }
+            assert(usize::BITS == 64 ==> (b <==> x == 0xffff_ffff_ffff_ffff));
+            assert(usize::BITS == 32 ==> (b <==> x == 0xffff_ffff));
+        }
+
+        fn example6(x: usize) {
+            let mut b = false;
+            match x {
+                usize::MIN => { b = true; },
+                _ => ()
+            }
+            assert(b <==> x == 0);
+        }
+
+        fn example7(x: isize) {
+            let mut b = false;
+            match x {
+                isize::MAX => { b = true; },
+                _ => ()
+            }
+            assert(usize::BITS == 64 ==> (b <==> x == 0x7fff_ffff_ffff_ffff));
+            assert(usize::BITS == 32 ==> (b <==> x == 0x7fff_ffff));
+        }
+
+        fn example8(x: isize) {
+            let mut b = false;
+            match x {
+                isize::MIN => { b = true; },
+                _ => ()
+            }
+            assert(usize::BITS == 64 ==> (b <==> x == -0x8000_0000_0000_0000));
+            assert(usize::BITS == 32 ==> (b <==> x == -0x8000_0000));
+        }
+
+        fn example9(x: isize) {
+            let mut b = false;
+            match x {
+                isize::MIN .. isize::MAX => { b = true; },
+                _ => ()
+            }
+            assert(b <==> x != isize::MAX);
+        }
+
+        spec fn s1(x: isize) -> bool {
+            match x {
+                isize::MIN => true,
+                _ => false,
+            }
+        }
+
+        fn spec_example1(x: isize) {
+            assert(s1(x) <==> x == isize::MIN);
+        }
+
+        spec fn s2(x: isize) -> bool {
+            match x {
+                isize::MIN .. isize::MAX => true,
+                _ => false,
+            }
+        }
+
+        fn spec_example2(x: isize) {
+            assert(s2(x) <==> x != isize::MAX);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] assoc_consts_in_patterns verus_code! {
+        struct X { }
+        impl X {
+            const SOME_CONST: u64 = 13;
+        }
+
+        fn test(x: u64) {
+            let mut b = false;
+            match x {
+                X::SOME_CONST => { b = true; }
+                _ => { }
+            }
+            assert(b <==> x == 13);
+        }
+
+        spec fn s1(x: u64) -> bool {
+            match x {
+                X::SOME_CONST => true,
+                _ => false,
+            }
+        }
+
+        fn test2(x: u64) {
+            assert(s1(x) <==> x == 13);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] let_decl_with_uninhabited_ghost_field_issue1764 verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::external_body]
+        tracked struct False {
+        }
+
+        axiom fn false_from_False(tracked f: False)
+            ensures false;
+
+        tracked enum Enum {
+            GhostNvr { ghost ghost_never: std::convert::Infallible },
+            TrackedNvr { tracked tracked_never: False },
+        }
+
+        proof fn test()
+            ensures false
+        {
+            let tracked e = Enum::GhostNvr { ghost_never: arbitrary() };
+            let tracked Enum::TrackedNvr { tracked_never } = e; // FAILS
+            false_from_False(tracked_never);
+        }
+    } => Err(err) => {
+        assert!(err.errors[0].message.contains("unable to prove this pattern will successfully match"));
+        assert_fails(err, 1);
+    }
+}
+
+test_verify_one_file! {
+    #[test] match_with_uninhabited_ghost_field_issue1764 verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::external_body]
+        tracked struct False {
+        }
+
+        axiom fn false_from_False(tracked f: False)
+            ensures false;
+
+        tracked enum Enum {
+            GhostNvr { ghost ghost_never: std::convert::Infallible },
+            TrackedNvr { tracked tracked_never: False },
+        }
+
+        proof fn test2()
+            ensures false
+        {
+            let tracked e = Enum::GhostNvr { ghost_never: arbitrary() };
+            match e {
+                Enum::TrackedNvr { tracked_never } => { // FAILS
+                    false_from_False(tracked_never);
+                }
+            }
+        }
+} => Err(err) => {
+        assert!(err.errors[0].message.contains("unable to prove this pattern will successfully match"));
+        assert_fails(err, 1);
+    }
 }
