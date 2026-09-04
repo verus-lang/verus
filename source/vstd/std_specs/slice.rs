@@ -7,7 +7,7 @@ use super::range::{slice_range_end, slice_range_start, slice_range_valid};
 use core::ops::{
     Index, IndexMut, Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive,
 };
-use core::slice::{Iter, SliceIndex};
+use core::slice::{Chunks, Iter, SliceIndex};
 
 use verus as verus_;
 
@@ -474,6 +474,63 @@ pub assume_specification<T: Copy, R: core::ops::RangeBounds<usize>>[ <[T]>::copy
             slice_range_end(&src, old(slice)@.len()),
             dest as int,
         ),
+;
+
+// The `chunks` method of a `[T]` returns an iterator of type `Chunks<'_, T>`,
+// so we specify that type here.
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::accept_recursive_types(T)]
+pub struct ExChunks<'a, T: 'a>(Chunks<'a, T>);
+
+// To allow reasoning about the "chunks" of the slice iterator, without using
+// a prophecy, we need a function that gives us the the sequence of chunk slices
+// remaining in the iterator.
+pub uninterp spec fn after_chunks_elts<'a, T: 'a>(i: Chunks<'a, T>) -> Seq<&'a [T]>;
+
+impl<'a, T: 'a> super::iter::IteratorSpecImpl for Chunks<'a, T> {
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        true
+    }
+
+    uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+
+    uninterp spec fn will_return_none(&self) -> bool;
+
+    uninterp spec fn decrease(&self) -> Option<nat>;
+
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        if 0 <= index < after_chunks_elts(*self).len() {
+            Some(after_chunks_elts(*self)[index])
+        } else {
+            None
+        }
+    }
+}
+
+pub assume_specification<'a, T>[ <[T]>::chunks ](s: &'a [T], chunk_size: usize) -> (iter: Chunks<
+    'a,
+    T,
+>)
+    requires
+        chunk_size > 0,
+    ensures
+        IteratorSpec::remaining(&iter) == after_chunks_elts(iter),
+        IteratorSpec::remaining(&iter).len() == (s@.len() + chunk_size as int - 1) / (
+        chunk_size as int),
+        forall|i: int|
+            #![trigger IteratorSpec::remaining(&iter)[i]]
+            0 <= i < IteratorSpec::remaining(&iter).len() ==> {
+                let start = i * chunk_size as int;
+                let end = if start + chunk_size as int <= s@.len() {
+                    start + chunk_size as int
+                } else {
+                    s@.len() as int
+                };
+
+                IteratorSpec::remaining(&iter)[i]@ == s@.subrange(start, end)
+            },
+        IteratorSpec::decrease(&iter) is Some,
 ;
 
 pub broadcast group group_slice_axioms {
