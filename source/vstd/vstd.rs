@@ -60,7 +60,7 @@ pub mod points_to;
 pub mod predicate;
 pub mod proph;
 pub mod raw_ptr;
-pub mod raw_ptr_new;
+// pub mod raw_ptr_new;
 pub mod relations;
 pub mod resource;
 pub mod rwlock;
