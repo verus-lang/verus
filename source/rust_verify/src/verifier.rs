@@ -372,8 +372,17 @@ impl FuncDetails {
     }
 }
 
+// A trigger span from inside a macro_rules! body should point at the call site, not the definition.
+fn resolve_macro_span(spans: &SpanContext, span: &vir::messages::Span) -> vir::messages::Span {
+    match from_raw_span(&span.raw_span) {
+        Some(rspan) => spans.to_air_span(rspan.source_callsite()),
+        None => span.clone(),
+    }
+}
+
 fn report_chosen_triggers(
     diagnostics: &impl air::messages::Diagnostics,
+    spans: &SpanContext,
     chosen: &vir::context::ChosenTriggers,
     automatically: bool,
 ) {
@@ -386,7 +395,7 @@ fn report_chosen_triggers(
         let msg: ArcDynMessage = trigger.iter().fold(msg, |m, (s, _)| {
             let m: &vir::messages::MessageX =
                 m.downcast_ref().expect("unexpected value in Any -> Message conversion");
-            m.primary_span(s)
+            m.primary_span(&resolve_macro_span(spans, s))
         });
         diagnostics.report(&msg);
     }
@@ -2545,20 +2554,20 @@ impl Verifier {
                 chosen.manual,
             ) {
                 (ShowTriggers::Selective, true, false) if chosen.low_confidence => {
-                    report_chosen_triggers(&reporter, &chosen, true);
+                    report_chosen_triggers(&reporter, spans, &chosen, true);
                     low_confidence_triggers = Some(chosen.span);
                 }
                 (ShowTriggers::Module, true, false) => {
-                    report_chosen_triggers(&reporter, &chosen, true);
+                    report_chosen_triggers(&reporter, spans, &chosen, true);
                 }
                 (ShowTriggers::AllModules, _, false) => {
-                    report_chosen_triggers(&reporter, &chosen, true);
+                    report_chosen_triggers(&reporter, spans, &chosen, true);
                 }
                 (ShowTriggers::Verbose, true, _) => {
-                    report_chosen_triggers(&reporter, &chosen, !chosen.manual);
+                    report_chosen_triggers(&reporter, spans, &chosen, !chosen.manual);
                 }
                 (ShowTriggers::VerboseAllModules, _, _) => {
-                    report_chosen_triggers(&reporter, &chosen, !chosen.manual);
+                    report_chosen_triggers(&reporter, spans, &chosen, !chosen.manual);
                 }
                 (
                     ShowTriggers::Selective
