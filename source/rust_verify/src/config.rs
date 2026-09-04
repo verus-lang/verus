@@ -411,7 +411,6 @@ pub fn parse_args_with_imports(
     const EXTENDED_NO_BV_SIMPLIFY: &str = "no-bv-simplify";
     const EXTENDED_KEYS: &[(&str, &str)] = &[
         (EXTENDED_IGNORE_UNEXPECTED_SMT, "Ignore unexpected SMT output"),
-        (EXTENDED_DEBUG, "Enable debugging of proof failures"),
         (
             EXTENDED_NO_SOLVER_VERSION_CHECK,
             "Skip the check that the solver has the expected version (useful to experiment with different versions of z3)",
