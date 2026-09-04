@@ -981,6 +981,7 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
             crate::ast::Primitive::StrSlice => "StrSlice".to_owned(),
             crate::ast::Primitive::Ptr => format!("*mut {:}", typ_to_diagnostic_str(&typs[0])),
             crate::ast::Primitive::Global => format!("Global"),
+            crate::ast::Primitive::TypeTag => format!("TypeId"),
         },
         TypX::Datatype(Dt::Tuple(_arity), typs, _) => {
             // 1-tuples should be formatted like `(T,)`

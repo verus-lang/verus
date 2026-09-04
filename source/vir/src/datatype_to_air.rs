@@ -102,6 +102,7 @@ fn uses_ext_equal(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::Primitive(crate::ast::Primitive::StrSlice, _) => false,
         TypX::Primitive(crate::ast::Primitive::Ptr, _) => false,
         TypX::Primitive(crate::ast::Primitive::Global, _) => false,
+        TypX::Primitive(crate::ast::Primitive::TypeTag, _) => false,
         TypX::FnDef(..) => false,
         TypX::MutRef(_) => false,
         TypX::Opaque { .. } => false,
@@ -156,6 +157,57 @@ fn datatype_or_fun_to_air_commands(
             str_typ(crate::def::TYPE),
         ));
         token_commands.push(Arc::new(CommandX::Global(decl_type_id)));
+
+        if ctx.uses_type_id {
+            let mut binders: Vec<air::ast::Binder<air::ast::Typ>> = Vec::new();
+            let mut id_args: Vec<Expr> = Vec::new();
+            let mut tag_args: Vec<Expr> = Vec::new();
+            for (i, _) in tparams.iter().enumerate() {
+                let mut param_ids: Vec<Expr> = Vec::new();
+                for (j, s) in crate::def::types().iter().enumerate() {
+                    let nm = air_unique_var(&format!("tag%p{}%{}", i, j));
+                    binders.push(ident_binder(&nm.lower(), &str_typ(s)));
+                    let v = ident_var(&nm.lower());
+                    param_ids.push(v.clone());
+                    id_args.push(v);
+                }
+                tag_args.push(str_apply(
+                    crate::def::TYPE_TAG_APP,
+                    &vec![
+                        str_apply(crate::def::DCR_TAG, &vec![param_ids[0].clone()]),
+                        str_apply(crate::def::TYPE_TAG, &vec![param_ids[1].clone()]),
+                    ],
+                ));
+            }
+            let k = crate::sst_to_air::path_type_tag_id(ctx, dpath);
+            let mut rhs = str_apply(
+                crate::def::TYPE_TAG_MK,
+                &vec![Arc::new(ExprX::Const(air::ast::Constant::Nat(Arc::new(k))))],
+            );
+            for a in tag_args.iter() {
+                rhs = str_apply(crate::def::TYPE_TAG_APP, &vec![rhs, a.clone()]);
+            }
+            let id_app = if id_args.is_empty() {
+                ident_var(&ctx.name_ctxt.prefix_type_id(dpath))
+            } else {
+                ident_apply(&ctx.name_ctxt.prefix_type_id(dpath), &Arc::new(id_args))
+            };
+            let lhs = str_apply(crate::def::TYPE_TAG, &vec![id_app]);
+            let body = mk_eq(&lhs, &rhs);
+            let axiom = if binders.is_empty() {
+                mk_unnamed_axiom(body)
+            } else {
+                let trigs = Arc::new(vec![Arc::new(vec![lhs.clone()])]);
+                let bind = Arc::new(air::ast::BindX::Quant(
+                    air::ast::Quant::Forall,
+                    Arc::new(binders),
+                    trigs,
+                    None,
+                ));
+                mk_unnamed_axiom(mk_bind_expr(&bind, &body))
+            };
+            token_commands.push(Arc::new(CommandX::Global(axiom)));
+        }
     }
 
     if declare_box {

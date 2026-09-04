@@ -97,6 +97,7 @@ pub(crate) fn primitive_path(name: &Primitive) -> Path {
         Primitive::StrSlice => crate::def::strslice_type(),
         Primitive::Ptr => crate::def::ptr_type(),
         Primitive::Global => crate::def::global_type(),
+        Primitive::TypeTag => crate::def::typetag_type(),
     }
 }
 
@@ -107,6 +108,7 @@ pub(crate) fn primitive_type_id(name: &Primitive) -> Ident {
         Primitive::StrSlice => crate::def::TYPE_ID_STRSLICE,
         Primitive::Ptr => crate::def::TYPE_ID_PTR,
         Primitive::Global => crate::def::TYPE_ID_GLOBAL,
+        Primitive::TypeTag => crate::def::TYPE_ID_TYPETAG,
     })
 }
 
@@ -156,6 +158,7 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         TypX::Float(_) => int_typ(),
         TypX::SpecFn(..) => Arc::new(air::ast::TypX::Fun),
         TypX::Primitive(Primitive::Array, _) => Arc::new(air::ast::TypX::Fun),
+        TypX::Primitive(Primitive::TypeTag, _) => str_typ(crate::def::TYPE_TAG_SORT),
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should have been removed by ast_simplify")
         }
@@ -301,7 +304,9 @@ fn big_int_to_expr(i: &BigInt) -> Expr {
 
 fn decoration_base_for_primitive(name: Primitive) -> &'static str {
     match name {
-        Primitive::Array | Primitive::Ptr | Primitive::Global => crate::def::DECORATE_NIL_SIZED,
+        Primitive::Array | Primitive::Ptr | Primitive::Global | Primitive::TypeTag => {
+            crate::def::DECORATE_NIL_SIZED
+        }
         Primitive::Slice | Primitive::StrSlice => crate::def::DECORATE_NIL_SLICE,
     }
 }
@@ -592,7 +597,7 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
                         panic!("abstract datatype should be boxed")
                     }
                 }
-                Primitive::StrSlice | Primitive::Global => {}
+                Primitive::StrSlice | Primitive::Global | Primitive::TypeTag => {}
             }
             None
         }
@@ -652,6 +657,7 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
             }
         }
         TypX::Dyn(..) => None,
+        TypX::Primitive(Primitive::TypeTag, _) => Some(str_ident(crate::def::BOX_TYPETAG)),
         TypX::Primitive(_, _) => {
             prefix_typ_as_mono(ctx, |p| ctx.name_ctxt.prefix_box(p), typ, "primitive type")
         }
@@ -692,6 +698,7 @@ pub(crate) fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::Primitive(Primitive::Array, _) => {
             Some(ctx.name_ctxt.prefix_unbox(&crate::def::array_type()))
         }
+        TypX::Primitive(Primitive::TypeTag, _) => Some(str_ident(crate::def::UNBOX_TYPETAG)),
         TypX::Primitive(_, _) => {
             prefix_typ_as_mono(ctx, |p| ctx.name_ctxt.prefix_unbox(p), typ, "primitive type")
         }
@@ -723,6 +730,39 @@ pub(crate) fn ctor_to_apply<'a>(
     let variant = ctx.name_ctxt.variant_ident(dt, &variant);
     let field_exps = fields.iter().map(move |f| get_field(binders, &f.name));
     (variant, field_exps)
+}
+
+/// A globally-unique tag for a type constructor, derived from its path
+///  -- the same treatment string literals get in `str_to_const_str`
+pub(crate) fn path_type_tag_id(ctx: &Ctx, path: &crate::ast::Path) -> String {
+    use crate::ast::CrateId;
+    use num_bigint::BigUint;
+    use sha2::{Digest, Sha512};
+    let krate = match &path.krate {
+        CrateId::Internal => "internal".to_string(),
+        CrateId::Core => "core".to_string(),
+        CrateId::Alloc => "alloc".to_string(),
+        CrateId::Vstd => "vstd".to_string(),
+        CrateId::Id(ident, stable_id) => format!("{}#{}", ident, stable_id),
+    };
+
+    let mut buf = format!("{}:{}", krate.len(), krate);
+    for segment in path.segments.iter() {
+        buf.push_str(&format!("{}:{}", segment.len(), segment));
+    }
+    let mut hasher = Sha512::new();
+    hasher.update(buf.as_bytes());
+    let res = hasher.finalize();
+    let num = BigUint::from_bytes_be(&res[..]);
+    let num_str = num.to_string();
+
+    if let Some(other) = ctx.type_tag_hashes.borrow_mut().insert(num, path.clone()) {
+        if other != *path {
+            panic!("sha512 collision detected, choosing to panic over introducing unsoundness");
+        }
+    }
+
+    num_str
 }
 
 fn str_to_const_str(ctx: &Ctx, s: Arc<String>) -> Expr {
@@ -1058,6 +1098,17 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
         ExpX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(c)) => {
             let f = crate::ast_util::const_generic_to_primitive(&exp.typ);
             str_apply(f, &vec![typ_to_id(ctx, c)])
+        }
+
+        ExpX::NullaryOpr(crate::ast::NullaryOpr::TypeTag(t)) => {
+            let ids = typ_to_ids(t);
+            str_apply(
+                crate::def::TYPE_TAG_APP,
+                &vec![
+                    str_apply(crate::def::DCR_TAG, &vec![ids[0].clone()]),
+                    str_apply(crate::def::TYPE_TAG, &vec![ids[1].clone()]),
+                ],
+            )
         }
         ExpX::NullaryOpr(crate::ast::NullaryOpr::TraitBound(p, ts)) => {
             match crate::traits::trait_bound_to_air(ctx, p, ts) {
