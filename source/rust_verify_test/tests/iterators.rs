@@ -481,3 +481,56 @@ test_verify_one_file! {
 
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] filter_map_for_loop verus_code! {
+        use vstd::prelude::*;
+
+        fn count_big(v: Vec<u32>) {
+            let fm = v.into_iter().filter_map(|x: u32| if x >= 10 { Some(x) } else { None });
+            for x in fm {
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] filter_map_collect verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::*;
+
+        spec fn keep(x: u32) -> Option<u32> { if x >= 10 { Some(x) } else { None } }
+
+        proof fn lemma_map_filter_map_fusion<A, B>(s: Seq<A>, f: spec_fn(A) -> Option<B>)
+            ensures s.map_values(f).filter_map(|o: Option<B>| o) == s.filter_map(f),
+            decreases s.len(),
+        {
+            if s.len() != 0 {
+                lemma_map_filter_map_fusion(s.drop_last(), f);
+                assert(s.map_values(f).drop_last() =~= s.drop_last().map_values(f));
+            } else {
+                assert(s.map_values(f) =~= Seq::<Option<B>>::empty());
+            }
+        }
+
+        fn collect_big(v: Vec<u32>) -> (out: Vec<u32>)
+            ensures out@ == v@.filter_map(|x: u32| keep(x)),
+        {
+            let mut out: Vec<u32> = Vec::new();
+            let it = v.into_iter();
+            let f = |x: u32| -> (o: Option<u32>) ensures o == keep(x) { if x >= 10 { Some(x) } else { None } };
+            let fm = it.filter_map(f);
+            for x in iter: fm
+                invariant out@ == iter.seq().take(iter.index()),
+            {
+                out.push(x);
+            }
+            proof {
+                let g = |x: u32| keep(x);
+                assert(filter_map_mapped::<u32, _, _>(it, f) =~= v@.map_values(g));
+                lemma_map_filter_map_fusion(v@, g);
+            }
+            out
+        }
+    } => Ok(())
+}
