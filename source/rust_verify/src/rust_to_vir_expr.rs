@@ -309,6 +309,38 @@ pub(crate) fn pat_to_mut_var<'tcx>(pat: &Pat) -> Result<(bool, VarIdent), VirErr
     }
 }
 
+fn closure_pat_to_mut_var<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    pat: &Pat<'tcx>,
+    typ: &Typ,
+    pattern_stmts: &mut Vec<vir::ast::Stmt>,
+) -> Result<(bool, VarIdent), VirErr> {
+    // Preserve the existing path for single bindings
+    if matches!(pat.kind, PatKind::Binding(_, _, _, None)) {
+        return pat_to_mut_var(pat);
+    }
+
+    let name = str_unique_var(
+        "%closure_param",
+        vir::ast::VarIdentDisambiguate::RustcId(pat.hir_id.local_id.index()),
+    );
+    let pattern = pattern_to_vir(bctx, pat)?;
+    let init = SpannedTyped::new(&pattern.span, typ, PlaceX::Local(name.clone()));
+
+    pattern_stmts.push(bctx.spanned_new(
+        pat.span,
+        StmtX::Decl {
+            pattern,
+            mode: Some((Mode::Exec, vir::ast::DeclProph::Default)),
+            init: Some(init),
+            els: None,
+            assert_irrefutable: false,
+        },
+    ));
+
+    Ok((false, name))
+}
+
 pub(crate) fn pat_to_var<'tcx>(pat: &Pat) -> Result<VarIdent, VirErr> {
     let (_, name) = pat_to_mut_var(pat)?;
     Ok(name)
@@ -857,10 +889,27 @@ pub(crate) fn pattern_to_vir_unadjusted<'tcx>(
             PatternX::Range(e1, e2)
         }
         PatKind::Guard(..) => unsupported_err!(pat.span, "pattern guards", pat),
-        PatKind::Ref(..) => {
-            // note: to handle this, you need to check skipped_ref_pats
-            // see rustc_mir_build/src/thir/pattern/mod.rs
-            unsupported_err!(pat.span, "ref patterns", pat);
+        PatKind::Ref(subpat, pinnedness, mutability) => {
+            // pinned patterns such as `&pin const x` unsupported
+            unsupported_err_unless!(
+                matches!(pinnedness, rustc_hir::Pinnedness::Not),
+                pat.span,
+                "pinned ref patterns"
+            );
+
+            // Follow rustc_mir_build/src/thir/pattern/mod.rs: when rustc marks this reference
+            // pattern as skipped, lower only its inner pattern.
+            // Adding a reference wrapper here would introduce an extra layer.
+            if bctx.types.skipped_ref_pats().contains(pat.hir_id) {
+                return pattern_to_vir(bctx, subpat);
+            }
+
+            let subpattern = pattern_to_vir(bctx, subpat)?;
+
+            match mutability {
+                Mutability::Not => PatternX::ImmutRef(subpattern), // '&' pattern
+                Mutability::Mut => PatternX::MutRef(subpattern),   // '&mut' pattern
+            }
         }
         PatKind::Slice(..) => unsupported_err!(pat.span, "slice patterns", pat),
         PatKind::Never => unsupported_err!(pat.span, "never patterns", pat),
@@ -4090,6 +4139,9 @@ pub(crate) fn closure_to_vir<'tcx>(
 
         let typs = closure_param_typs(bctx, closure_expr)?;
         assert!(typs.len() == body.params.len());
+
+        let mut pattern_stmts: Vec<vir::ast::Stmt> = Vec::new();
+
         let params: Vec<VarBinder<Typ>> = body
             .params
             .iter()
@@ -4101,7 +4153,7 @@ pub(crate) fn closure_to_vir<'tcx>(
                     return err_span(x.span, "closures only accept exec-mode parameters");
                 }
 
-                let (_is_mut, name) = pat_to_mut_var(x.pat)?;
+                let (_is_mut, name) = closure_pat_to_mut_var(bctx, x.pat, &t, &mut pattern_stmts)?;
                 Ok(Arc::new(VarBinderX { name, a: t }))
             })
             .collect::<Result<Vec<_>, _>>()?;
@@ -4118,8 +4170,44 @@ pub(crate) fn closure_to_vir<'tcx>(
         let mut body = expr_to_vir_consume(body_bctx, &body.value)?;
 
         let header = vir::headers::read_header(&mut body, &vir::headers::HeaderAllows::Closure)?;
-        let vir::headers::Header { require, ensure, ensure_id_typ, .. } = header;
+        let vir::headers::Header { mut require, mut ensure, ensure_id_typ, .. } = header;
         assert!(ensure.1.len() == 0);
+
+        if !pattern_stmts.is_empty() {
+            require = Arc::new(
+                require
+                    .iter()
+                    .map(|expr| {
+                        SpannedTyped::new(
+                            &expr.span,
+                            &expr.typ,
+                            ExprX::Block(Arc::new(pattern_stmts.to_vec()), Some(expr.clone())),
+                        )
+                    })
+                    .collect(),
+            );
+
+            ensure.0 = Arc::new(
+                ensure
+                    .0
+                    .iter()
+                    .map(|expr| {
+                        SpannedTyped::new(
+                            &expr.span,
+                            &expr.typ,
+                            ExprX::Block(Arc::new(pattern_stmts.to_vec()), Some(expr.clone())),
+                        )
+                    })
+                    .collect(),
+            );
+            let body_typ = body.typ.clone();
+
+            body = bctx.spanned_typed_new(
+                closure_expr.span,
+                &body_typ,
+                ExprX::Block(Arc::new(pattern_stmts), Some(body)),
+            );
+        }
 
         let exprx = if is_spec_fn {
             bctx.ctxt.push_body_erasure(*def_id, BodyErasure { erase_body: true, ret_spec: true });
