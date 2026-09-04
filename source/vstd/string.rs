@@ -554,7 +554,8 @@ impl super::slice::SliceIndexSpecImpl<str> for (Bound<usize>, Bound<usize>) {
 pub assume_specification[ <(Bound<usize>, Bound<usize>) as SliceIndex<str>>::get ](
     i: (Bound<usize>, Bound<usize>),
     s: &str,
-) -> (r: Option<&str>);
+) -> (r: Option<&str>)
+;
 
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 pub assume_specification[ <(Bound<usize>, Bound<usize>) as SliceIndex<str>>::index ](
@@ -569,7 +570,8 @@ pub assume_specification[ <(Bound<usize>, Bound<usize>) as SliceIndex<str>>::ind
 pub assume_specification[ <(Bound<usize>, Bound<usize>) as SliceIndex<str>>::get_mut ](
     i: (Bound<usize>, Bound<usize>),
     s: &mut str,
-) -> (r: Option<&mut str>);
+) -> (r: Option<&mut str>)
+;
 
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 pub assume_specification[ <(Bound<usize>, Bound<usize>) as SliceIndex<str>>::index_mut ](
@@ -594,10 +596,9 @@ impl super::slice::SliceIndexSpecImpl<str> for Range<usize> {
 }
 
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
-pub assume_specification[ <Range<usize> as SliceIndex<str>>::get ](
-    i: Range<usize>,
-    s: &str,
-) -> (r: Option<&<Range<usize> as SliceIndex<str>>::Output>);
+pub assume_specification[ <Range<usize> as SliceIndex<str>>::get ](i: Range<usize>, s: &str) -> (r:
+    Option<&<Range<usize> as SliceIndex<str>>::Output>)
+;
 
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 pub assume_specification[ <Range<usize> as SliceIndex<str>>::index ](
@@ -612,7 +613,8 @@ pub assume_specification[ <Range<usize> as SliceIndex<str>>::index ](
 pub assume_specification[ <Range<usize> as SliceIndex<str>>::get_mut ](
     i: Range<usize>,
     s: &mut str,
-) -> (r: Option<&mut <Range<usize> as SliceIndex<str>>::Output>);
+) -> (r: Option<&mut <Range<usize> as SliceIndex<str>>::Output>)
+;
 
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 pub assume_specification[ <Range<usize> as SliceIndex<str>>::index_mut ](
@@ -640,7 +642,8 @@ impl super::slice::SliceIndexSpecImpl<str> for RangeFrom<usize> {
 pub assume_specification[ <RangeFrom<usize> as SliceIndex<str>>::get ](
     i: RangeFrom<usize>,
     s: &str,
-) -> (r: Option<&<RangeFrom<usize> as SliceIndex<str>>::Output>);
+) -> (r: Option<&<RangeFrom<usize> as SliceIndex<str>>::Output>)
+;
 
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 pub assume_specification[ <RangeFrom<usize> as SliceIndex<str>>::index ](
@@ -655,7 +658,8 @@ pub assume_specification[ <RangeFrom<usize> as SliceIndex<str>>::index ](
 pub assume_specification[ <RangeFrom<usize> as SliceIndex<str>>::get_mut ](
     i: RangeFrom<usize>,
     s: &mut str,
-) -> (r: Option<&mut <RangeFrom<usize> as SliceIndex<str>>::Output>);
+) -> (r: Option<&mut <RangeFrom<usize> as SliceIndex<str>>::Output>)
+;
 
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 pub assume_specification[ <RangeFrom<usize> as SliceIndex<str>>::index_mut ](
@@ -680,10 +684,9 @@ impl super::slice::SliceIndexSpecImpl<str> for RangeFull {
 }
 
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
-pub assume_specification[ <RangeFull as SliceIndex<str>>::get ](
-    i: RangeFull,
-    s: &str,
-) -> (r: Option<&<RangeFull as SliceIndex<str>>::Output>);
+pub assume_specification[ <RangeFull as SliceIndex<str>>::get ](i: RangeFull, s: &str) -> (r:
+    Option<&<RangeFull as SliceIndex<str>>::Output>)
+;
 
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 pub assume_specification[ <RangeFull as SliceIndex<str>>::index ](i: RangeFull, s: &str) -> (r:
@@ -696,7 +699,8 @@ pub assume_specification[ <RangeFull as SliceIndex<str>>::index ](i: RangeFull, 
 pub assume_specification[ <RangeFull as SliceIndex<str>>::get_mut ](
     i: RangeFull,
     s: &mut str,
-) -> (r: Option<&mut <RangeFull as SliceIndex<str>>::Output>);
+) -> (r: Option<&mut <RangeFull as SliceIndex<str>>::Output>)
+;
 
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 pub assume_specification[ <RangeFull as SliceIndex<str>>::index_mut ](
@@ -724,7 +728,8 @@ impl super::slice::SliceIndexSpecImpl<str> for RangeInclusive<usize> {
 pub assume_specification[ <RangeInclusive<usize> as SliceIndex<str>>::get ](
     i: RangeInclusive<usize>,
     s: &str,
-) -> (r: Option<&<RangeInclusive<usize> as SliceIndex<str>>::Output>);
+) -> (r: Option<&<RangeInclusive<usize> as SliceIndex<str>>::Output>)
+;
 
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 pub assume_specification[ <RangeInclusive<usize> as SliceIndex<str>>::index ](
@@ -739,7 +744,8 @@ pub assume_specification[ <RangeInclusive<usize> as SliceIndex<str>>::index ](
 pub assume_specification[ <RangeInclusive<usize> as SliceIndex<str>>::get_mut ](
     i: RangeInclusive<usize>,
     s: &mut str,
-) -> (r: Option<&mut <RangeInclusive<usize> as SliceIndex<str>>::Output>);
+) -> (r: Option<&mut <RangeInclusive<usize> as SliceIndex<str>>::Output>)
+;
 
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 pub assume_specification[ <RangeInclusive<usize> as SliceIndex<str>>::index_mut ](
@@ -767,7 +773,8 @@ impl super::slice::SliceIndexSpecImpl<str> for RangeTo<usize> {
 pub assume_specification[ <RangeTo<usize> as SliceIndex<str>>::get ](
     i: RangeTo<usize>,
     s: &str,
-) -> (r: Option<&<RangeTo<usize> as SliceIndex<str>>::Output>);
+) -> (r: Option<&<RangeTo<usize> as SliceIndex<str>>::Output>)
+;
 
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 pub assume_specification[ <RangeTo<usize> as SliceIndex<str>>::index ](
@@ -782,7 +789,8 @@ pub assume_specification[ <RangeTo<usize> as SliceIndex<str>>::index ](
 pub assume_specification[ <RangeTo<usize> as SliceIndex<str>>::get_mut ](
     i: RangeTo<usize>,
     s: &mut str,
-) -> (r: Option<&mut <RangeTo<usize> as SliceIndex<str>>::Output>);
+) -> (r: Option<&mut <RangeTo<usize> as SliceIndex<str>>::Output>)
+;
 
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 pub assume_specification[ <RangeTo<usize> as SliceIndex<str>>::index_mut ](
@@ -810,7 +818,8 @@ impl super::slice::SliceIndexSpecImpl<str> for RangeToInclusive<usize> {
 pub assume_specification[ <RangeToInclusive<usize> as SliceIndex<str>>::get ](
     i: RangeToInclusive<usize>,
     s: &str,
-) -> (r: Option<&<RangeToInclusive<usize> as SliceIndex<str>>::Output>);
+) -> (r: Option<&<RangeToInclusive<usize> as SliceIndex<str>>::Output>)
+;
 
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 pub assume_specification[ <RangeToInclusive<usize> as SliceIndex<str>>::index ](
@@ -825,7 +834,8 @@ pub assume_specification[ <RangeToInclusive<usize> as SliceIndex<str>>::index ](
 pub assume_specification[ <RangeToInclusive<usize> as SliceIndex<str>>::get_mut ](
     i: RangeToInclusive<usize>,
     s: &mut str,
-) -> (r: Option<&mut <RangeToInclusive<usize> as SliceIndex<str>>::Output>);
+) -> (r: Option<&mut <RangeToInclusive<usize> as SliceIndex<str>>::Output>)
+;
 
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 pub assume_specification[ <RangeToInclusive<usize> as SliceIndex<str>>::index_mut ](
