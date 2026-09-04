@@ -376,7 +376,8 @@ fn build_where_clauses<'tcx>(
             rustc_type_ir::ClauseKind::Projection(projection_predicate) => {
                 let (trait_ref, proj_term_args) =
                     projection_predicate.projection_term.trait_ref_and_own_args(ctxt.tcx);
-                let projected_item_id = projection_predicate.projection_term.def_id();
+                let projected_item_id =
+                    projection_predicate.projection_term.expect_projection_def_id();
                 // Assuming here that the only projection predicate possible on an Fn trait is the Output restriction.
                 // Assuming that trait ref args for an fn trait are [self_ty, args_tuple]
                 if ctxt.tcx.is_fn_trait(trait_ref.def_id) {
