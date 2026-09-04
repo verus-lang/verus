@@ -1,5 +1,5 @@
 use super::super::prelude::*;
-use super::super::slice::{SliceIndexSpec, spec_slice_get};
+use super::super::slice::SliceIndexSpec;
 use super::core::IndexSpec;
 use super::iter::IteratorSpec;
 use super::range::{slice_range_end, slice_range_start, slice_range_valid};
@@ -14,15 +14,19 @@ use verus as verus_;
 verus_! {
 
 impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for usize {
-    open spec fn index_req(&self, slice: &[T]) -> bool {
+    open spec fn in_bounds(&self, slice: &[T]) -> bool {
         *self < slice@.len()
     }
 }
+
+pub assume_specification<T>[ <usize as SliceIndex<[T]>>::get ](i: usize, slice: &[T]) -> Option<&T>;
 
 pub assume_specification<T>[ <usize as SliceIndex<[T]>>::index ](i: usize, slice: &[T]) -> &T
     returns
         slice@[i as int],
 ;
+
+pub assume_specification<T>[ <usize as SliceIndex<[T]>>::get_mut ](i: usize, slice: &mut [T]) -> Option<&mut T>;
 
 pub assume_specification<T>[ <usize as SliceIndex<[T]>>::index_mut ](i: usize, slice: &mut [T]) -> (output: &mut T)
     ensures
@@ -31,16 +35,20 @@ pub assume_specification<T>[ <usize as SliceIndex<[T]>>::index_mut ](i: usize, s
 ;
 
 impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for Range<usize> {
-    open spec fn index_req(&self, slice: &[T]) -> bool {
+    open spec fn in_bounds(&self, slice: &[T]) -> bool {
         &&& self.start <= self.end
         &&& self.end <= slice@.len()
     }
 }
 
+pub assume_specification<T>[ <Range<usize> as SliceIndex<[T]>>::get ](i: Range<usize>, slice: &[T]) -> Option<&[T]>;
+
 pub assume_specification<T>[ <Range<usize> as SliceIndex<[T]>>::index ](i: Range<usize>, slice: &[T]) -> (r: &[T])
     ensures
         r@ == slice@.subrange(i.start as int, i.end as int),
 ;
+
+pub assume_specification<T>[ <Range<usize> as SliceIndex<[T]>>::get_mut ](i: Range<usize>, slice: &mut [T]) -> Option<&mut [T]>;
 
 pub assume_specification<T>[ <Range<usize> as SliceIndex<[T]>>::index_mut ](i: Range<usize>, slice: &mut [T]) -> (r: &mut [T])
     ensures
@@ -53,15 +61,19 @@ pub assume_specification<T>[ <Range<usize> as SliceIndex<[T]>>::index_mut ](i: R
 ;
 
 impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for RangeTo<usize> {
-    open spec fn index_req(&self, slice: &[T]) -> bool {
+    open spec fn in_bounds(&self, slice: &[T]) -> bool {
         self.end <= slice@.len()
     }
 }
+
+pub assume_specification<T>[ <RangeTo<usize> as SliceIndex<[T]>>::get ](i: RangeTo<usize>, slice: &[T]) -> Option<&[T]>;
 
 pub assume_specification<T>[ <RangeTo<usize> as SliceIndex<[T]>>::index ](i: RangeTo<usize>, slice: &[T]) -> (r: &[T])
     ensures
         r@ == slice@.subrange(0, i.end as int),
 ;
+
+pub assume_specification<T>[ <RangeTo<usize> as SliceIndex<[T]>>::get_mut ](i: RangeTo<usize>, slice: &mut [T]) -> Option<&mut [T]>;
 
 pub assume_specification<T>[ <RangeTo<usize> as SliceIndex<[T]>>::index_mut ](i: RangeTo<usize>, slice: &mut [T]) -> (r: &mut [T])
     ensures
@@ -71,15 +83,19 @@ pub assume_specification<T>[ <RangeTo<usize> as SliceIndex<[T]>>::index_mut ](i:
 ;
 
 impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for RangeFrom<usize> {
-    open spec fn index_req(&self, slice: &[T]) -> bool {
+    open spec fn in_bounds(&self, slice: &[T]) -> bool {
         self.start <= slice@.len()
     }
 }
+
+pub assume_specification<T>[ <RangeFrom<usize> as SliceIndex<[T]>>::get ](i: RangeFrom<usize>, slice: &[T]) -> Option<&[T]>;
 
 pub assume_specification<T>[ <RangeFrom<usize> as SliceIndex<[T]>>::index ](i: RangeFrom<usize>, slice: &[T]) -> (r: &[T])
     ensures
         r@ == slice@.subrange(i.start as int, slice@.len() as int),
 ;
+
+pub assume_specification<T>[ <RangeFrom<usize> as SliceIndex<[T]>>::get_mut ](i: RangeFrom<usize>, slice: &mut [T]) -> Option<&mut [T]>;
 
 pub assume_specification<T>[ <RangeFrom<usize> as SliceIndex<[T]>>::index_mut ](i: RangeFrom<usize>, slice: &mut [T]) -> (r: &mut [T])
     ensures
@@ -137,15 +153,19 @@ pub assume_specification<T: PartialEq>[ <[T]>::ends_with ](
 ;
 
 impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for RangeToInclusive<usize> {
-    open spec fn index_req(&self, slice: &[T]) -> bool {
+    open spec fn in_bounds(&self, slice: &[T]) -> bool {
         self.end < slice@.len()
     }
 }
+
+pub assume_specification<T>[ <RangeToInclusive<usize> as SliceIndex<[T]>>::get ](i: RangeToInclusive<usize>, slice: &[T]) -> Option<&[T]>;
 
 pub assume_specification<T>[ <RangeToInclusive<usize> as SliceIndex<[T]>>::index ](i: RangeToInclusive<usize>, slice: &[T]) -> (r: &[T])
     ensures
         r@ == slice@.subrange(0, i.end as int + 1),
 ;
+
+pub assume_specification<T>[ <RangeToInclusive<usize> as SliceIndex<[T]>>::get_mut ](i: RangeToInclusive<usize>, slice: &mut [T]) -> Option<&mut [T]>;
 
 pub assume_specification<T>[ <RangeToInclusive<usize> as SliceIndex<[T]>>::index_mut ](i: RangeToInclusive<usize>, slice: &mut [T]) -> (r: &mut [T])
     ensures
@@ -155,15 +175,19 @@ pub assume_specification<T>[ <RangeToInclusive<usize> as SliceIndex<[T]>>::index
 ;
 
 impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for RangeFull {
-    open spec fn index_req(&self, slice: &[T]) -> bool {
+    open spec fn in_bounds(&self, slice: &[T]) -> bool {
         true
     }
 }
+
+pub assume_specification<T>[ <RangeFull as SliceIndex<[T]>>::get ](i: RangeFull, slice: &[T]) -> Option<&[T]>;
 
 pub assume_specification<T>[ <RangeFull as SliceIndex<[T]>>::index ](i: RangeFull, slice: &[T]) -> (r: &[T])
     ensures
         r@ == slice@,
 ;
+
+pub assume_specification<T>[ <RangeFull as SliceIndex<[T]>>::get_mut ](i: RangeFull, slice: &mut [T]) -> Option<&mut [T]>;
 
 pub assume_specification<T>[ <RangeFull as SliceIndex<[T]>>::index_mut ](i: RangeFull, slice: &mut [T]) -> (r: &mut [T])
     ensures
@@ -172,15 +196,19 @@ pub assume_specification<T>[ <RangeFull as SliceIndex<[T]>>::index_mut ](i: Rang
 ;
 
 impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for RangeInclusive<usize> {
-    open spec fn index_req(&self, slice: &[T]) -> bool {
+    open spec fn in_bounds(&self, slice: &[T]) -> bool {
         slice_range_valid(self, slice@.len())
     }
 }
+
+pub assume_specification<T>[ <RangeInclusive<usize> as SliceIndex<[T]>>::get ](i: RangeInclusive<usize>, slice: &[T]) -> Option<&[T]>;
 
 pub assume_specification<T>[ <RangeInclusive<usize> as SliceIndex<[T]>>::index ](i: RangeInclusive<usize>, slice: &[T]) -> (r: &[T])
     ensures
         r@ == slice@.subrange(slice_range_start(&i), slice_range_end(&i, slice@.len() as nat)),
 ;
+
+pub assume_specification<T>[ <RangeInclusive<usize> as SliceIndex<[T]>>::get_mut ](i: RangeInclusive<usize>, slice: &mut [T]) -> Option<&mut [T]>;
 
 pub assume_specification<T>[ <RangeInclusive<usize> as SliceIndex<[T]>>::index_mut ](i: RangeInclusive<usize>, slice: &mut [T]) -> (r: &mut [T])
     ensures
@@ -199,65 +227,25 @@ pub assume_specification<T>[ <RangeInclusive<usize> as SliceIndex<[T]>>::index_m
             ),
 ;
 
-pub broadcast axiom fn axiom_slice_get_range<T>(v: &[T], i: Range<usize>)
-    ensures
-        i.start <= i.end <= v@.len() ==> {
-            &&& (#[trigger] spec_slice_get(v, i)).is_some()
-            &&& spec_slice_get(v, i).unwrap()@ == v@.subrange(i.start as int, i.end as int)
-        },
-        !(i.start <= i.end <= v@.len()) ==> spec_slice_get(v, i).is_none(),
-;
-
-pub broadcast axiom fn axiom_slice_get_range_to<T>(v: &[T], i: RangeTo<usize>)
-    ensures
-        i.end <= v@.len() ==> {
-            &&& (#[trigger] spec_slice_get(v, i)).is_some()
-            &&& spec_slice_get(v, i).unwrap()@ == v@.subrange(0, i.end as int)
-        },
-        !(i.end <= v@.len()) ==> spec_slice_get(v, i).is_none(),
-;
-
-pub broadcast axiom fn axiom_slice_get_range_from<T>(v: &[T], i: RangeFrom<usize>)
-    ensures
-        i.start <= v@.len() ==> {
-            &&& (#[trigger] spec_slice_get(v, i)).is_some()
-            &&& spec_slice_get(v, i).unwrap()@ == v@.subrange(i.start as int, v@.len() as int)
-        },
-        !(i.start <= v@.len()) ==> spec_slice_get(v, i).is_none(),
-;
-
-pub broadcast axiom fn axiom_slice_get_range_to_inclusive<T>(v: &[T], i: RangeToInclusive<usize>)
-    ensures
-        i.end < v@.len() ==> {
-            &&& (#[trigger] spec_slice_get(v, i)).is_some()
-            &&& spec_slice_get(v, i).unwrap()@ == v@.subrange(0, i.end as int + 1)
-        },
-        !(i.end < v@.len()) ==> spec_slice_get(v, i).is_none(),
-;
-
-pub broadcast axiom fn axiom_slice_get_range_full<T>(v: &[T], i: RangeFull)
-    ensures
-        (#[trigger] spec_slice_get(v, i)).is_some(),
-        spec_slice_get(v, i).unwrap()@ == v@,
-;
-
-pub broadcast axiom fn axiom_slice_get_range_inclusive<T>(v: &[T], i: RangeInclusive<usize>)
-    ensures
-        slice_range_valid(&i, v@.len()) ==> {
-            &&& (#[trigger] spec_slice_get(v, i)).is_some()
-            &&& spec_slice_get(v, i).unwrap()@ == v@.subrange(
-                slice_range_start(&i),
-                slice_range_end(&i, v@.len()),
-            )
-        },
-        !slice_range_valid(&i, v@.len()) ==> spec_slice_get(v, i).is_none(),
-;
-
 impl<T, I: SliceIndex<[T]>> super::core::IndexSpecImpl<I> for [T] {
     open spec fn index_req(&self, index: &I) -> bool {
-        index.index_req(self)
+        index.in_bounds(self)
     }
 }
+
+pub assume_specification<T, I>[ <[T]>::get::<I> ](slice: &[T], i: I) -> (b: Option<
+    &<I as SliceIndex<[T]>>::Output,
+>) where I: SliceIndex<[T]>
+    ensures
+        call_ensures(<I as SliceIndex<[T]>>::get, (i, slice), b),
+;
+
+pub assume_specification<T, I>[ <[T]>::get_mut::<I> ](slice: &mut [T], i: I) -> (b: Option<
+    &mut <I as SliceIndex<[T]>>::Output,
+>) where I: SliceIndex<[T]>
+    ensures
+        call_ensures(<I as SliceIndex<[T]>>::get_mut, (i, slice), b),
+;
 
 pub assume_specification<T, I: SliceIndex<[T]>>[ <[T] as Index<I>>::index ](
     slice: &[T],
@@ -475,14 +463,5 @@ pub assume_specification<T: Copy, R: core::ops::RangeBounds<usize>>[ <[T]>::copy
             dest as int,
         ),
 ;
-
-pub broadcast group group_slice_axioms {
-    axiom_slice_get_range,
-    axiom_slice_get_range_to,
-    axiom_slice_get_range_from,
-    axiom_slice_get_range_to_inclusive,
-    axiom_slice_get_range_full,
-    axiom_slice_get_range_inclusive,
-}
 
 } // verus!
