@@ -280,9 +280,7 @@ pub assume_specification<T, U>[ Option::<T>::zip ](option: Option<T>, other: Opt
 
 // unzip
 #[verifier::inline]
-pub open spec fn spec_unzip<T, U>(
-    option: Option<(T, U)>,
-) -> (Option<T>, Option<U>) {
+pub open spec fn spec_unzip<T, U>(option: Option<(T, U)>) -> (Option<T>, Option<U>) {
     match option {
         Some((a, b)) => (Some(a), Some(b)),
         None => (None, None),
@@ -290,9 +288,10 @@ pub open spec fn spec_unzip<T, U>(
 }
 
 #[verifier::when_used_as_spec(spec_unzip)]
-pub assume_specification<T, U>[ Option::<(T, U)>::unzip ](
-    option: Option<(T, U)>,
-) -> (res: (Option<T>, Option<U>))
+pub assume_specification<T, U>[ Option::<(T, U)>::unzip ](option: Option<(T, U)>) -> (res: (
+    Option<T>,
+    Option<U>,
+))
     ensures
         res == spec_unzip(option),
     no_unwind
