@@ -211,4 +211,19 @@ pub broadcast group group_slice_axioms {
     lemma_slice_index_decreases,
 }
 
+pub axiom fn tracked_borrow<T>(tracked s: &[T], i: int) -> (tracked t: &T)
+    requires
+        0 <= i < s.len(),
+    ensures
+        t == s[i],
+;
+
+pub axiom fn tracked_borrow_mut<T>(tracked s: &mut [T], i: int) -> (tracked t: &mut T)
+    requires
+        0 <= i < s.len(),
+    ensures
+        *t == old(s)[i],
+        final(s)@ == old(s)@.update(i, *final(t)),
+;
+
 } // verus!
