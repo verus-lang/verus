@@ -2,7 +2,7 @@
 //! when it reaches a SAT conclusion
 
 use crate::ast::{Binders, Decl, DeclX, Ident, Snapshots, Typ};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::Arc;
 
 /// For now, expressions are just strings, but we can later change this to a more detailed enum
@@ -28,11 +28,6 @@ pub struct Model {
     id_snapshots: Snapshots,
     /// The list of paramters of the function
     parameters: HashSet<Ident>,
-    /// Every zero-parameter constant from Z3's raw model dump. Read this instead of a
-    /// later `eval_expr` call, which can invalidate the model first.
-    raw_values: HashMap<Ident, ModelExpr>,
-    /// Every function definition from the same dump, parameterized or not.
-    raw_defs: HashMap<Ident, ModelDef>,
 }
 
 impl Model {
@@ -56,12 +51,7 @@ impl Model {
             }
         }
 
-        Model {
-            id_snapshots: snapshots,
-            parameters,
-            raw_values: HashMap::new(),
-            raw_defs: HashMap::new(),
-        }
+        Model { id_snapshots: snapshots, parameters }
     }
 
     pub fn translate_variable(&self, sid: &Ident, name: &Ident) -> Option<String> {
@@ -75,34 +65,5 @@ impl Model {
             return Some((**name).clone());
         }
         None
-    }
-
-    /// Populates `raw_values`/`raw_defs` from Z3's raw model dump.
-    pub fn set_raw_values(&mut self, defs: &[ModelDef]) {
-        for def in defs {
-            if def.params.is_empty() {
-                self.raw_values.insert(def.name.clone(), def.body.clone());
-            }
-            self.raw_defs.insert(def.name.clone(), def.clone());
-        }
-    }
-
-    /// The concrete value Z3 assigned a plain constant, if any.
-    pub fn raw_value(&self, name: &Ident) -> Option<&str> {
-        self.raw_values.get(name).map(|v| v.as_str())
-    }
-
-    /// A function's model definition, found by matching the tail of its AIR name (e.g.
-    /// `"add_one.?"` for `"my_crate!add_one.?"`) rather than requiring the caller to
-    /// know the full, crate-qualified name. Requires a `.`/`!` boundary right before the
-    /// match (so `"add_one.?"` can't match a name like `"xadd_one.?"`), and returns
-    /// `None` rather than an arbitrary pick if more than one name matches.
-    pub fn find_def_by_suffix(&self, suffix: &str) -> Option<&ModelDefX> {
-        let mut matches = self.raw_defs.iter().filter(|(name, _)| {
-            name.strip_suffix(suffix)
-                .is_some_and(|prefix| prefix.is_empty() || prefix.ends_with(['.', '!']))
-        });
-        let (_, def) = matches.next()?;
-        if matches.next().is_some() { None } else { Some(&**def) }
     }
 }

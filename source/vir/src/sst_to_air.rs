@@ -2234,6 +2234,10 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             stmts
         }
         StmX::AssertQuery { typ_inv_exps: _, typ_inv_vars, body, mode } => {
+            if ctx.debug {
+                unimplemented!("assert query is unsupported in debugger mode");
+            }
+
             let mut local = state.local_shared.clone();
             for (x, typ) in typ_inv_vars.iter() {
                 let typ_inv = typ_invariant(ctx, typ, &ident_var(&suffix_local_unique_id(x)));
@@ -2271,6 +2275,10 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             vec![]
         }
         StmX::AssertBitVector { requires, ensures } => {
+            if ctx.debug {
+                unimplemented!("AssertBitVector is unsupported in debugger mode");
+            }
+
             let queries = bv_to_queries(ctx, requires, ensures)?;
 
             for (query, error_desc) in queries.into_iter() {
@@ -2301,6 +2309,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
         }
         StmX::Assign { lhs: Dest { dest, is_init: false }, rhs } => {
             let mut stmts: Vec<Stmt> = Vec::new();
+            if ctx.debug {
+                unimplemented!("assignments are unsupported in debugger mode");
+            }
 
             let mut value = exp_to_expr(ctx, &rhs, expr_ctxt)?;
             let mut value_typ = rhs.typ.clone();
@@ -2376,13 +2387,6 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 if let Some(expr) = typ_inv {
                     stmts.push(Arc::new(StmtX::Assume(expr)));
                 }
-            }
-
-            if ctx.debug {
-                // Add a snapshot after we modify the destination
-                let sid = state.update_current_sid(SUFFIX_SNAP_MUT);
-                state.map_span(&stm, SpanKind::Full);
-                stmts.push(Arc::new(StmtX::Snapshot(sid)));
             }
 
             stmts

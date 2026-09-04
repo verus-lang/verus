@@ -944,7 +944,7 @@ impl Verifier {
                             if let Some(source_map) = source_map {
                                 let mut debugger =
                                     Debugger::new(air_model, assign_map, snap_map, source_map);
-                                debugger.start_shell();
+                                debugger.start_shell(air_context);
                             } else {
                                 reporter.report(&message(
                                     MessageLevel::Warning,

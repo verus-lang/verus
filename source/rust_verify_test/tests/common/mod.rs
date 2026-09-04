@@ -318,9 +318,6 @@ pub fn run_verus(
         } else if *option == "-V allow-inline-air" {
             verus_args.push("-V".to_string());
             verus_args.push("allow-inline-air".to_string());
-        } else if *option == "-V debug" {
-            verus_args.push("-V".to_string());
-            verus_args.push("debug".to_string());
         } else if *option == "-V check-api-safety" {
             verus_args.push("-V".to_string());
             verus_args.push("check-api-safety".to_string());
@@ -488,65 +485,6 @@ pub fn run_verus_raw(args: &[&str], dir: &std::path::Path) -> std::process::Outp
         .expect("could not execute verus")
         .wait_with_output()
         .expect("raw verus wait failed")
-}
-
-/// Like `run_verus_raw`, but feeds `stdin_input` to the child's stdin and closes it -
-/// needed to drive `-V debug`'s interactive debugger shell (`Debugger::start_shell`)
-/// from a test, since it otherwise inherits the test process's own stdin.
-pub fn run_verus_raw_with_stdin(
-    args: &[&str],
-    dir: &std::path::Path,
-    stdin_input: &str,
-) -> std::process::Output {
-    if std::env::var("VERUS_IN_VARGO").is_err() {
-        panic!("not running in vargo, read the README for instructions");
-    }
-    let exe = if cfg!(target_os = "windows") { ".exe" } else { "" };
-
-    let current_exe = std::env::current_exe().unwrap();
-    let deps_path = current_exe.parent().unwrap();
-    let target_path = deps_path.parent().unwrap();
-    let profile = target_path.file_name().unwrap().to_str().unwrap();
-    let verus_target_path = target_path
-        .ancestors()
-        .nth(2)
-        .expect("expected path to have at least two parents")
-        .join("target-verus")
-        .join(profile);
-    let bin = verus_target_path.join(format!("rust_verify{exe}"));
-
-    let z3 = std::env::var("VERUS_Z3_PATH")
-        .map(|p| {
-            let p = std::path::PathBuf::from(p);
-            if p.is_relative() { std::path::PathBuf::from("..").join(p) } else { p }
-        })
-        .unwrap_or({
-            if cfg!(target_os = "windows") {
-                std::path::PathBuf::from("..\\z3.exe")
-            } else {
-                std::path::PathBuf::from("../z3")
-            }
-        });
-    let z3 = path::absolute(z3).expect("Failed to find absolute path for Z3 executable");
-
-    let mut child = std::process::Command::new(bin)
-        .current_dir(dir)
-        .env("VERUS_Z3_PATH", z3)
-        .args(args)
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .expect("could not execute verus");
-
-    {
-        use std::io::Write;
-        let mut stdin = child.stdin.take().expect("child stdin");
-        stdin.write_all(stdin_input.as_bytes()).expect("write to child stdin");
-        // stdin is dropped (and thus closed) here, so the child sees EOF after our input
-    }
-
-    child.wait_with_output().expect("raw verus wait failed")
 }
 
 pub fn run_cargo_verus(args: &[&str], dir: &std::path::Path) -> std::process::Output {

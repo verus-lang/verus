@@ -7,7 +7,6 @@ use sise::TreeNode as Node;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
-use std::io::{self, BufRead, Write};
 use std::sync::Arc;
 use vir::def::{SnapPos, SpanKind, suffix_local_stmt_id};
 use vir::messages::Span as ASpan;
@@ -122,72 +121,48 @@ impl Debugger {
         self.air_model.translate_variable(sid, &name)
     }
 
-    /// A plain variable's value at the current line, read off the model directly
-    /// (no live Z3 round-trip - see `air::model::Model::raw_values`).
-    fn variable_value(&self, name: &Ident) -> Option<String> {
-        let incarnated = self.translate_variable(name)?;
-        self.air_model.raw_value(&Arc::new(incarnated)).map(|v| v.to_string())
-    }
-
-    /// Evaluates purely from the captured model (no live round-trip, see
-    /// `variable_value`). Only a flat (non-case-split) function body can be returned.
-    fn eval_node(&self, expr: &Node) -> Option<String> {
+    fn rewrite_eval_expr(&self, expr: &Node) -> Option<Node> {
         match expr {
-            Node::Atom(var) => self.variable_value(&Arc::new(var.clone())),
+            Node::Atom(var) => {
+                let name = self.translate_variable(&Arc::new(String::from(var)))?;
+                Some(Node::Atom(name))
+            }
             Node::List(app) => {
-                let Node::Atom(func_name) = &app[0] else { return None };
-                for arg in app.iter().skip(1) {
-                    self.eval_node(arg)?; // just check every arg is itself resolvable
+                if let Node::Atom(var) = &app[0] {
+                    // TODO: should use suffix_global_id + path_to_air_ident?
+                    let mut func_name = var.clone();
+                    func_name.push('.');
+                    func_name.push('?');
+                    let mut items = vec![Node::Atom(func_name)];
+                    for name in app.iter().skip(1) {
+                        let name = self.rewrite_eval_expr(name)?;
+                        items.push(name);
+                    }
+                    Some(Node::List(items))
+                } else {
+                    None
                 }
-                let def = self.air_model.find_def_by_suffix(&format!("{func_name}.?"))?;
-                if def.body.trim_start().starts_with('(') {
-                    return None; // case-split body, not attempted
-                }
-                Some(def.body.to_string())
             }
         }
     }
 
-    fn eval_expr(&self, expr: &str) {
+    fn eval_expr(&self, context: &mut air::context::Context, expr: &str) {
         let mut parser = sise::Parser::new(expr);
         let node = sise::parse_tree(&mut parser).unwrap();
-        match self.eval_node(&node) {
-            Some(value) => println!("{}", value),
-            None => println!("cannot evaluate '{}' from the captured model", expr),
-        }
+        let expr = self.rewrite_eval_expr(&node).unwrap();
+        let result = context.eval_expr(expr);
+        println!("{}", result);
     }
 
-    /// `line <N>` moves to a line, anything else is evaluated there. `quit`/`exit`,
-    /// or EOF, ends the session.
-    pub fn start_shell(&mut self) {
+    pub fn start_shell(&mut self, context: &mut air::context::Context) {
         println!("welcome to verus debugger shell");
-        println!("{}", self);
 
-        let stdin = io::stdin();
-        loop {
-            print!("verus-debug> ");
-            io::stdout().flush().ok();
+        self.set_line(26);
 
-            let mut line = String::new();
-            if stdin.lock().read_line(&mut line).unwrap_or(0) == 0 {
-                break; // EOF
-            }
-            let cmd = line.trim();
-            if cmd.is_empty() {
-                continue;
-            }
-            if cmd == "quit" || cmd == "exit" {
-                break;
-            }
-            if let Some(rest) = cmd.strip_prefix("line ") {
-                match rest.trim().parse::<usize>() {
-                    Ok(n) => self.set_line(n),
-                    Err(_) => println!("expected a line number, got '{}'", rest.trim()),
-                }
-                continue;
-            }
-            self.eval_expr(cmd);
-        }
+        self.eval_expr(context, "x");
+        // self.eval_expr(context, "y");
+        self.eval_expr(context, "(add_one x)");
+        // self.eval_expr(context, "(add_one (add_one x))");
     }
 }
 
