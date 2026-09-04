@@ -88,7 +88,7 @@ impl<'a> NodeWriter<'a> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ToDebugSNodeOpts {
     pub no_span: bool,
     pub no_type: bool,

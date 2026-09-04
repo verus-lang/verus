@@ -1517,6 +1517,8 @@ pub struct FunctionAttrsX {
     pub nonlinear: bool,
     /// Use a dedicated Z3 process for this single query
     pub spinoff_prover: bool,
+    /// Try proof search using try_broadcasts
+    pub try_broadcasts: Option<bool>,
     /// Memoize function call results during interpretation
     pub memoize: bool,
     /// override default rlimit
