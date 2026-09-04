@@ -25,6 +25,7 @@
 #![cfg_attr(verus_keep_ghost, feature(hint_must_use))]
 #![cfg_attr(verus_keep_ghost, feature(fmt_internals))]
 #![cfg_attr(verus_keep_ghost, feature(fmt_arguments_from_str))]
+#![cfg_attr(verus_keep_ghost, feature(panic_internals))]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
@@ -130,7 +131,6 @@ pub broadcast group group_vstd_default {
     // core std_specs
     //
     std_specs::range::group_range_axioms,
-    std_specs::slice::group_slice_axioms,
     std_specs::bits::group_bits_axioms,
     std_specs::control_flow::group_control_flow_axioms,
     std_specs::fmt::group_fmt_axioms,

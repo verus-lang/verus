@@ -1894,3 +1894,31 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] panic_ok verus_code! {
+        use vstd::*;
+        fn test() {
+            if 2 + 2 == 3 { panic!("{} = {}", 2 + 2, 3); }
+            assert!(2 + 2 == 4);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] panic_fails verus_code! {
+        use vstd::*;
+        fn test1() {
+            panic!(); // FAILS
+        }
+        fn test2() {
+            panic!("{} = {}", 2 + 2, 3); // FAILS
+        }
+        fn test3() {
+            assert!(2 + 2 == 3); // FAILS
+        }
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 3);
+        assert!(err.errors.iter().all(|e| e.rendered.contains("precondition not satisfied")));
+    }
+}

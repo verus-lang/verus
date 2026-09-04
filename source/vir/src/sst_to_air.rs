@@ -1230,24 +1230,24 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 let name = ctx.name_ctxt.is_variant_ident(datatype, variant);
                 Arc::new(ExprX::Apply(name, Arc::new(vec![expr])))
             }
-            UnaryOpr::IntegerTypeBound(IntegerTypeBoundKind::SignedMin, _) => {
+            UnaryOpr::IntegerTypeBound(IntegerTypeBoundKind::SignedMin) => {
                 let expr = exp_to_expr(ctx, e, expr_ctxt)?;
                 let name = Arc::new(I_LO.to_string());
                 Arc::new(ExprX::Apply(name, Arc::new(vec![expr])))
             }
-            UnaryOpr::IntegerTypeBound(IntegerTypeBoundKind::SignedMax, _) => {
+            UnaryOpr::IntegerTypeBound(IntegerTypeBoundKind::SignedMax) => {
                 let expr = exp_to_expr(ctx, e, expr_ctxt)?;
                 let name = Arc::new(I_HI.to_string());
                 let x = Arc::new(ExprX::Apply(name, Arc::new(vec![expr])));
                 mk_sub(&x, &mk_nat(1))
             }
-            UnaryOpr::IntegerTypeBound(IntegerTypeBoundKind::UnsignedMax, _) => {
+            UnaryOpr::IntegerTypeBound(IntegerTypeBoundKind::UnsignedMax) => {
                 let expr = exp_to_expr(ctx, e, expr_ctxt)?;
                 let name = Arc::new(U_HI.to_string());
                 let x = Arc::new(ExprX::Apply(name, Arc::new(vec![expr])));
                 mk_sub(&x, &mk_nat(1))
             }
-            UnaryOpr::IntegerTypeBound(IntegerTypeBoundKind::ArchWordBits, _) => {
+            UnaryOpr::IntegerTypeBound(IntegerTypeBoundKind::ArchWordBits) => {
                 let name = Arc::new(ARCH_SIZE.to_string());
                 Arc::new(ExprX::Var(name))
             }

@@ -11,7 +11,7 @@ use rustc_hir::{GenericParam, GenericParamKind, Generics, HirId, LifetimeParamKi
 use rustc_infer::infer::TyCtxtInferExt;
 use rustc_middle::ty::{
     AdtDef, AliasTyKind, BoundVarIndexKind, BoundVarReplacerDelegate, Clause, ClauseKind,
-    ConstKind, GenericArg, GenericArgKind, GenericParamDefKind, TermKind, TyCtxt, TyKind,
+    ConstKind, GenericArg, GenericArgKind, GenericParamDefKind, IsRigid, TermKind, TyCtxt, TyKind,
     TypeFoldable, TypeFolder, TypeSuperFoldable, TypeVisitableExt, TypingMode, ValTreeKind, Value,
     Visibility,
 };
@@ -429,8 +429,9 @@ fn instantiate_pred_clauses<'tcx>(
             // This is based on GenericPredicates.instantiate_into, which is close to what
             // we need but doesn't track the relation between the uninstantiated and
             // instantiated clauses.
-            let inst =
-                rustc_middle::ty::EarlyBinder::bind(*clause).instantiate(tcx, args).skip_norm_wip();
+            let inst = rustc_middle::ty::EarlyBinder::bind(tcx, *clause)
+                .instantiate(tcx, args)
+                .skip_norm_wip();
             let is_self_trait_bound = *span == rustc_span::DUMMY_SP;
             if is_self_trait_bound {
                 if let ClauseKind::Trait(TraitPredicate { trait_ref, .. }) =
@@ -901,10 +902,10 @@ pub(crate) fn mid_ty_filter_for_external_impls<'tcx>(
         // The "impl<T> From<!> for T" causes a real conflict with "impl<T> From<T> for T",
         // so don't auto-import ! for now.
         TyKind::Never => false,
-        TyKind::Alias(t) => match t.kind {
+        TyKind::Alias(_, t) => match t.kind {
             AliasTyKind::Opaque { .. } | AliasTyKind::Free { .. } => false,
-            AliasTyKind::Projection { .. } | AliasTyKind::Inherent { .. } => {
-                let trait_def = ctxt.tcx.generics_of(t.kind.def_id()).parent;
+            AliasTyKind::Projection { def_id } | AliasTyKind::Inherent { def_id } => {
+                let trait_def = ctxt.tcx.generics_of(def_id).parent;
                 let t_args: Vec<_> = t.args.iter().filter(|x| x.as_region().is_none()).collect();
                 t_args.iter().find(|x| x.as_type().is_none()).is_none()
                     && trait_def.is_some()
@@ -1240,10 +1241,10 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
 
             (Arc::new(TypX::AnonymousClosure(args, ret, kind, id)), false)
         }
-        TyKind::Alias(al_ty) => {
+        TyKind::Alias(_, al_ty) => {
             match al_ty.kind {
-                rustc_middle::ty::AliasTyKind::Projection { def_id: _ }
-                | rustc_middle::ty::AliasTyKind::Inherent { def_id: _ } => {
+                rustc_middle::ty::AliasTyKind::Projection { def_id }
+                | rustc_middle::ty::AliasTyKind::Inherent { def_id } => {
                     // First, try to normalize to a non-projection type.
                     // This can enable concrete operations on the type (e.g.
                     // arithmetic if the normalized type is int) that
@@ -1251,7 +1252,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                     use crate::rustc_trait_selection::traits::NormalizeExt;
                     let param_env = tcx.param_env(param_env_src);
                     let infcx = tcx.infer_ctxt().ignoring_regions().build(
-                        rustc_type_ir::TypingMode::Analysis {
+                        rustc_type_ir::TypingMode::Typeck {
                             defining_opaque_types_and_generators: Default::default(),
                         },
                     );
@@ -1268,12 +1269,12 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                         return t_rec(&norm.value);
                     }
                     // If normalization isn't possible, return a projection type:
-                    let assoc_item = tcx.associated_item(al_ty.kind.def_id());
+                    let assoc_item = tcx.associated_item(def_id);
                     let name = Arc::new(assoc_item.name().to_string());
                     // Note: this looks like it would work, but trait_item_def_id is sometimes None:
                     //   use crate::rustc_middle::ty::DefIdTree;
                     //   let trait_def = tcx.parent(assoc_item.trait_item_def_id.expect("..."));
-                    let trait_def = tcx.generics_of(al_ty.kind.def_id()).parent;
+                    let trait_def = tcx.generics_of(def_id).parent;
                     let t_args: Vec<_> =
                         al_ty.args.iter().filter(|x| x.as_region().is_none()).collect();
                     match trait_def {
@@ -1322,7 +1323,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                         }
                     }
                 }
-                rustc_middle::ty::AliasTyKind::Opaque { .. } => {
+                rustc_middle::ty::AliasTyKind::Opaque { def_id } => {
                     let mut args = Vec::new();
                     for arg in al_ty.args {
                         match arg.kind() {
@@ -1353,7 +1354,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                         let def_path = def_id_to_vir_path(
                             tcx,
                             verus_items,
-                            al_ty.kind.def_id(),
+                            def_id,
                             None::<&mut HashMap<_, _>>,
                         );
                         if assume_specification_opaque_type_map.contains_key(&def_path) {
@@ -1362,12 +1363,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                             def_path
                         }
                     } else {
-                        def_id_to_vir_path(
-                            tcx,
-                            verus_items,
-                            al_ty.kind.def_id(),
-                            None::<&mut HashMap<_, _>>,
-                        )
+                        def_id_to_vir_path(tcx, verus_items, def_id, None::<&mut HashMap<_, _>>)
                     };
                     (Arc::new(TypX::Opaque { def_path: def_path, args: Arc::new(args) }), false)
                 }
@@ -1491,14 +1487,16 @@ pub(crate) fn mid_ty_const_to_vir<'tcx>(
     span: Option<Span>,
     cnst: &rustc_middle::ty::Const<'tcx>,
 ) -> Result<Typ, VirErr> {
+    let normalized;
     let cnst = match cnst.kind() {
-        ConstKind::Unevaluated(unevaluated) => {
-            let typing_env =
-                TypingEnv::new(tcx.param_env(unevaluated.def), TypingMode::PostAnalysis);
-            &tcx.normalize_erasing_regions(
+        ConstKind::Alias(IsRigid::No, alias) => {
+            let def_id = alias.kind.opt_def_id().expect("alias constants have a definition");
+            let typing_env = TypingEnv::post_analysis(tcx, def_id);
+            normalized = tcx.normalize_erasing_regions(
                 typing_env,
-                rustc_middle::ty::Unnormalized::new_wip(cnst.clone()),
-            )
+                rustc_middle::ty::Unnormalized::new_wip(*cnst),
+            );
+            &normalized
         }
         _ => cnst,
     };
@@ -1716,7 +1714,7 @@ pub(crate) fn try_get_proof_fn_modes<'tcx>(
                 let ret_mode = if let Some(ty) = ret_mode_typ.as_type() {
                     get_proof_fn_one_mode(ctxt, span, &ty)?
                 } else {
-                    panic!("unexpected FnProof argument")
+                    return err_span(span, "unexpected FnProof argument");
                 };
                 let arg_modes = if let Some(ty) = arg_mode_tuple.as_type() {
                     if let TyKind::Tuple(_) = ty.kind() {
@@ -1726,10 +1724,10 @@ pub(crate) fn try_get_proof_fn_modes<'tcx>(
                         }
                         modes
                     } else {
-                        panic!("unexpected FnProof argument")
+                        return err_span(span, "unexpected FnProof argument");
                     }
                 } else {
-                    panic!("unexpected FnProof argument")
+                    return err_span(span, "unexpected FnProof argument");
                 };
                 return Ok(Some((arg_modes, ret_mode)));
             }
@@ -1887,7 +1885,7 @@ where
                 }
             }
             ClauseKind::Projection(pred) => {
-                let item_def_id = pred.projection_term.def_id();
+                let item_def_id = pred.projection_term.expect_projection_def_id();
                 let typ = if let Some(ty) = pred.term.as_type() {
                     mid_ty_to_vir(
                         tcx,
@@ -2376,11 +2374,12 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
         ty.kind(),
         assume_specification_ty.map(|assume_specification_ty| assume_specification_ty.kind()),
     ) {
-        (rustc_middle::ty::TyKind::Alias(al_ty), _)
+        (rustc_middle::ty::TyKind::Alias(_, al_ty), _)
             if matches!(al_ty.kind, rustc_middle::ty::AliasTyKind::Opaque { .. }) =>
         {
-            let span = ctxt.tcx.def_span(al_ty.kind.def_id());
-            let alias_def_id = al_ty.kind.def_id();
+            let alias_def_id =
+                al_ty.kind.try_to_opaque().expect("alias kind was checked to be opaque");
+            let span = ctxt.tcx.def_span(alias_def_id);
             let opaque_type_path = def_id_to_vir_path(
                 ctxt.tcx,
                 &ctxt.verus_items,
@@ -2421,37 +2420,40 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
 
             // If the opaque type is defined by assume specification, recursively reveal the
             // bounds of the assume_specification opaque type too.
-            let assume_specification_ty_instantiated_bounds =
-                if let Some(assume_specification_ty) = assume_specification_ty {
-                    if let rustc_middle::ty::TyKind::Alias(assume_specification_al_ty) =
-                        assume_specification_ty.kind()
-                        && matches!(
-                            assume_specification_al_ty.kind,
-                            rustc_middle::ty::AliasTyKind::Opaque { .. }
-                        )
-                    {
-                        let assume_specification_span =
-                            ctxt.tcx.def_span(assume_specification_al_ty.kind.def_id());
+            let assume_specification_ty_instantiated_bounds = if let Some(assume_specification_ty) =
+                assume_specification_ty
+            {
+                if let rustc_middle::ty::TyKind::Alias(_, assume_specification_al_ty) =
+                    assume_specification_ty.kind()
+                    && matches!(
+                        assume_specification_al_ty.kind,
+                        rustc_middle::ty::AliasTyKind::Opaque { .. }
+                    )
+                {
+                    let assume_specification_alias_def_id = assume_specification_al_ty
+                        .kind
+                        .try_to_opaque()
+                        .expect("alias kind was checked to be opaque");
+                    let assume_specification_span =
+                        ctxt.tcx.def_span(assume_specification_alias_def_id);
 
-                        let assume_specification_typing_env = TypingEnv::non_body_analysis(
-                            ctxt.tcx,
-                            assume_specification_al_ty.kind.def_id(),
-                        );
-                        Some((
-                            ctxt.tcx.normalize_erasing_regions(
-                                assume_specification_typing_env,
-                                ctxt.tcx
-                                    .item_bounds(assume_specification_al_ty.kind.def_id())
-                                    .instantiate(ctxt.tcx, assume_specification_al_ty.args),
-                            ),
-                            assume_specification_span,
-                        ))
-                    } else {
-                        return unmatch_err();
-                    }
+                    let assume_specification_typing_env =
+                        TypingEnv::non_body_analysis(ctxt.tcx, assume_specification_alias_def_id);
+                    Some((
+                        ctxt.tcx.normalize_erasing_regions(
+                            assume_specification_typing_env,
+                            ctxt.tcx
+                                .item_bounds(assume_specification_alias_def_id)
+                                .instantiate(ctxt.tcx, assume_specification_al_ty.args),
+                        ),
+                        assume_specification_span,
+                    ))
                 } else {
-                    None
-                };
+                    return unmatch_err();
+                }
+            } else {
+                None
+            };
 
             for i in 0..instantiated_bounds.len() {
                 match instantiated_bounds[i].kind().skip_binder() {
@@ -2478,7 +2480,7 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
 
                     // Additional opaque types can be defined in projections, recurse into them.
                     ClauseKind::Projection(pred) => {
-                        let item_def_id = pred.projection_term.def_id();
+                        let item_def_id = pred.projection_term.expect_projection_def_id();
                         // find the corresponding nested type in the opaque type projection, if it exists
                         let nested_assume_specification_ty = if let Some((
                             assume_specification_ty_instantiated_bounds,
@@ -2489,8 +2491,9 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                             if let ClauseKind::Projection(assume_specification_pred) =
                                 assume_specification_ty_instantiated_bounds[i].kind().skip_binder()
                             {
-                                let assume_specification_item_def_id =
-                                    assume_specification_pred.projection_term.def_id();
+                                let assume_specification_item_def_id = assume_specification_pred
+                                    .projection_term
+                                    .expect_projection_def_id();
 
                                 if Some(assume_specification_item_def_id)
                                     == ctxt.tcx.lang_items().fn_once_output()

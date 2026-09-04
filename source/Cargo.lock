@@ -230,7 +230,6 @@ dependencies = [
  "clap",
  "crates_io_api",
  "petgraph 0.8.3",
- "regex",
  "tempfile",
  "toml_edit",
 ]
@@ -312,7 +311,7 @@ dependencies = [
  "anyhow",
  "clap",
  "indoc",
- "itertools 0.15.0",
+ "itertools",
  "pretty_assertions",
  "regex",
  "serde",
@@ -1366,15 +1365,6 @@ checksum = "a6cb138bb79a146c1bd460005623e142ef0181e3d0219cb493e02f7d08a35695"
 
 [[package]]
 name = "itertools"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba291022dbbd398a455acf126c1e341954079855bc60dfdda641363bd6922569"
-dependencies = [
- "either",
-]
-
-[[package]]
-name = "itertools"
 version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b4baf93f58d4425749ca49a51c50ebab072c5df6994d08fed93541c331481dc"
@@ -2383,7 +2373,7 @@ dependencies = [
 name = "rustc_mir_build"
 version = "0.0.0"
 dependencies = [
- "itertools 0.12.1",
+ "itertools",
  "tracing",
 ]
 
@@ -3248,11 +3238,11 @@ dependencies = [
 
 [[package]]
 name = "verus_builtin"
-version = "0.0.0-2026-08-09-0044"
+version = "0.0.0-2026-08-30-0159"
 
 [[package]]
 name = "verus_builtin_macros"
-version = "0.0.0-2026-08-23-0033"
+version = "0.0.0-2026-08-30-0159"
 dependencies = [
  "convert_case",
  "proc-macro2",

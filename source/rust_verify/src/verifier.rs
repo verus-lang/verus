@@ -21,7 +21,8 @@ use rustc_interface::interface::Compiler;
 use rustc_session::config::ErrorOutputType;
 
 use vir::messages::{
-    Message, MessageLabel, MessageLevel, MessageX, ToAny, message, note, note_bare, warning_bare,
+    Message, MessageLabel, MessageLevel, MessageX, ToAny, message, note, note_bare, warning,
+    warning_bare,
 };
 
 use num_format::{Locale, ToFormattedString};
@@ -45,7 +46,8 @@ use vir::ast_util::{fun_as_friendly_rust_name, is_visible_to};
 use vir::def::{CommandContext, CommandsWithContext, CommandsWithContextX, SnapPos};
 use vir::prelude::PreludeConfig;
 
-const RLIMIT_PER_SECOND: f32 = 3000000f32;
+const RLIMIT_PER_SECOND_Z3: f32 = 3000000f32;
+const RLIMIT_PER_SECOND_CVC5: f32 = 333333f32; // ~= 5s
 
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub(crate) struct ProgressBarId(String);
@@ -114,10 +116,10 @@ impl air::messages::Diagnostics for Reporter<'_> {
         fn emit_with_diagnostic_details<'a, G: EmissionGuarantee>(
             mut diag: Diag<'a, G>,
             multispan: MultiSpan,
-            help: &Option<String>,
+            help: &[String],
         ) {
             diag.span = multispan;
-            if let Some(help) = help {
+            for help in help {
                 diag.help(help.clone());
             }
             diag.emit();
@@ -1126,10 +1128,14 @@ impl Verifier {
     }
 
     fn set_rlimit(air_context: &mut air::context::Context, rlimit: f32) {
+        let per_second = match air_context.get_solver() {
+            air::context::SmtSolver::Z3 => RLIMIT_PER_SECOND_Z3,
+            air::context::SmtSolver::Cvc5 => RLIMIT_PER_SECOND_CVC5,
+        };
         air_context.set_rlimit(if rlimit == f32::INFINITY {
-            0 // z3 interprets a zero rlimit as infinity
+            0 // both solvers interpret a zero rlimit as infinity
         } else {
-            (rlimit * RLIMIT_PER_SECOND).min(u32::MAX as f32) as u32
+            (rlimit * per_second).min(u32::MAX as f32) as u32
         });
     }
 
@@ -1590,7 +1596,18 @@ impl Verifier {
                             let iter_curr_smt_rlimit_count =
                                 query_air_context.get_rlimit_count().map(|x| x.1);
                             if let Some(rlimit) = function.x.attrs.rlimit {
-                                Self::set_rlimit(&mut query_air_context, rlimit);
+                                if query_air_context.rlimit_is_mutable() {
+                                    Self::set_rlimit(&mut query_air_context, rlimit);
+                                } else {
+                                    reporter.report(
+                                        &warning(
+                                            &cmds.context.span,
+                                            "#[verifier::rlimit] is not supported with your current solver; \
+                                             the global --rlimit applies instead",
+                                        )
+                                        .to_any(),
+                                    );
+                                }
                             }
                             let RunCommandQueriesResult {
                                 invalidity: command_invalidity,
@@ -2605,9 +2622,8 @@ impl Verifier {
         }
 
         self.air_no_span = {
-            let hir_crate = tcx.hir_crate(());
+            let crate_owner = tcx.lower_to_hir(rustc_span::def_id::CRATE_DEF_ID);
             let no_span = {
-                let crate_owner = hir_crate.owner(tcx, rustc_span::def_id::CRATE_DEF_ID);
                 let owner_info = crate_owner.as_owner().expect("OwnerNode::Crate missing");
                 let OwnerNode::Crate(c) = owner_info.node() else {
                     panic!("OwnerNode::Crate missing");
@@ -3036,9 +3052,12 @@ pub(crate) static BODY_HIR_ID_TO_REVEAL_PATH_RES: std::sync::RwLock<
     >,
 > = std::sync::RwLock::new(None);
 
-fn hir_crate<'tcx>(tcx: TyCtxt<'tcx>, _: ()) -> rustc_middle::hir::Crate<'tcx> {
-    let crate_ = (rustc_interface::DEFAULT_QUERY_PROVIDERS.queries.hir_crate)(tcx, ());
-    crate::hir_hide_reveal_rewrite::hir_hide_reveal_rewrite(crate_, tcx)
+fn lower_to_hir<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    def_id: rustc_hir::def_id::LocalDefId,
+) -> rustc_hir::MaybeOwner<'tcx> {
+    let owner = (rustc_interface::DEFAULT_QUERY_PROVIDERS.queries.lower_to_hir)(tcx, def_id);
+    crate::hir_hide_reveal_rewrite::hir_hide_reveal_rewrite(owner, tcx)
 }
 
 impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
@@ -3072,7 +3091,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
 
         if self.verifier.args.no_lifetime {
             config.override_queries = Some(|_session, providers| {
-                providers.queries.hir_crate = hir_crate;
+                providers.queries.lower_to_hir = lower_to_hir;
                 providers.queries.mir_const_qualif =
                     |_, _| rustc_middle::mir::ConstQualifs::default();
                 providers.queries.lint_mod = |_, _| {};
@@ -3093,7 +3112,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             });
         } else {
             config.override_queries = Some(|_session, providers| {
-                providers.queries.hir_crate = hir_crate;
+                providers.queries.lower_to_hir = lower_to_hir;
                 providers.queries.mir_const_qualif =
                     |_, _| rustc_middle::mir::ConstQualifs::default();
                 providers.queries.lint_mod = |_, _| {};

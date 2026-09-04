@@ -470,6 +470,15 @@ fn datatype_or_fun_to_air_commands(
                 let typ = crate::ast_util::undecorate_typ(typ);
                 let field_box_path = match &*typ {
                     TypX::SpecFn(typs, _) => Some(prefix_spec_fn_type(typs.len())),
+                    TypX::Primitive(crate::ast::Primitive::Array, _) => {
+                        Some(crate::def::array_type())
+                    }
+                    TypX::Primitive(crate::ast::Primitive::Slice, _) => {
+                        let Some(monotyp) = crate::poly::typ_as_mono(&typ) else {
+                            continue;
+                        };
+                        Some(monotyp_to_path(ctx, &monotyp))
+                    }
                     TypX::Datatype(..) => crate::sst_to_air::datatype_box_prefix(ctx, &typ),
                     TypX::Boxed(_) => None,
                     TypX::TypParam(_) => None,

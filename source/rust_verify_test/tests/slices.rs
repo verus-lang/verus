@@ -1026,3 +1026,133 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_bv_file! {
+    #[test] test_slice_starts_with verus_code! {
+        use vstd::prelude::*;
+
+        fn test_slice_starts_with(data: &[u8]) {
+            let result = data.starts_with(&[0xFFu8, 0xFEu8]);
+
+            assert(
+                result <==>
+                    data@.len() >= 2
+                    && data@[0] == 0xFF
+                    && data@[1] == 0xFE
+            );
+        }
+
+        fn test_overlong_prefix(data: &[u8])
+            requires
+                data@.len() < 3,
+        {
+            assert(!data.starts_with(&[1u8, 2u8, 3u8]));
+        }
+
+        fn test_empty_prefix(data: &[u8]) {
+            assert(data.starts_with(&[]));
+        }
+
+        fn test_empty_slice_starts_with_empty() {
+            let v: &[u8] = &[];
+            assert(v.starts_with(&[]));
+        }
+
+    } => Ok(())
+}
+
+test_verify_one_bv_file! {
+    #[test] test_slice_ends_with verus_code! {
+        use vstd::prelude::*;
+
+        fn test_slice_ends_with(data: &[u8]) {
+            let result = data.ends_with(&[0xFFu8, 0xFEu8]);
+
+            assert(
+                result <==>
+                    data@.len() >= 2
+                    && data@[data@.len() - 2] == 0xFF
+                    && data@[data@.len() - 1] == 0xFE
+            );
+        }
+
+        fn test_overlong_suffix(data: &[u8])
+            requires
+                data@.len() < 3,
+        {
+            assert(!data.ends_with(&[1u8, 2u8, 3u8]));
+        }
+
+        fn test_empty_suffix(data: &[u8]) {
+            assert(data.ends_with(&[]));
+        }
+
+        fn test_empty_slice_ends_with_empty() {
+            let v: &[u8] = &[];
+            assert(v.ends_with(&[]));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test]
+    slice_equality_uses_view verus_code! {
+        use vstd::prelude::*;
+
+        fn check(left: &[u8], right: &[u8]) -> (result: bool)
+            ensures
+                result == (left@ =~= right@),
+        {
+            left == right
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test]
+    slice_inequality_uses_view verus_code! {
+        use vstd::prelude::*;
+
+        fn check(left: &[u8], right: &[u8]) -> (result: bool)
+            ensures
+                result == !(left@ =~= right@),
+        {
+            left != right
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test]
+    slice_equality_uses_element_eq_spec verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::cmp::PartialEqSpecImpl;
+
+        struct Left(u8);
+        struct Right(u8);
+
+        // Deliberately consider every Left equal to every Right.
+        impl PartialEq<Right> for Left {
+            fn eq(&self, _other: &Right) -> bool {
+                true
+            }
+        }
+
+        impl PartialEqSpecImpl<Right> for Left {
+            open spec fn obeys_eq_spec() -> bool {
+                true
+            }
+
+            open spec fn eq_spec(&self, other: &Right) -> bool {
+                true
+            }
+        }
+
+        fn check(left: &[Left], right: &[Right]) -> (result: bool)
+            ensures
+                result == (left@.len() == right@.len()),
+        {
+            left == right
+        }
+    } => Ok(())
+}

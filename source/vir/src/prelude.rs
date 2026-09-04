@@ -728,6 +728,15 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
         )))
         (axiom (forall ((x [Poly])) (!
             (=>
+                ([has_type] x [type_id_char])
+                ([char_inv] ([unbox_int] x))
+            )
+            :pattern (([has_type] x [type_id_char]))
+            :qid prelude_unbox_char
+            :skolemid skolem_prelude_unbox_char
+        )))
+        (axiom (forall ((x [Poly])) (!
+            (=>
                 ([has_type] x [type_id_isize])
                 ([i_inv] [arch_size] ([unbox_int] x))
             )

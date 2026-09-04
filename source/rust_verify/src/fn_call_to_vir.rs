@@ -1,6 +1,6 @@
 use crate::attributes::{GhostBlockAttr, get_ghost_block_opt};
 use crate::context::{AtomicallyCtxt, BodyCtxt, HeaderSetting};
-use crate::erase::{CompilableOperator, LoopSpecKind, ResolvedCall};
+use crate::erase::{LoopSpecKind, MiscCall, ResolvedCall};
 use crate::resolve_traits::{ResolutionResult, ResolvedItem, resolve_trait_item};
 use crate::reveal_hide::RevealHideResult;
 use crate::rust_to_vir_base::{
@@ -83,24 +83,16 @@ pub(crate) fn fn_call_to_vir<'tcx>(
 
     match rust_item {
         Some(RustItem::BoxNew) if bctx.in_ghost => {
-            record_compilable_operator(bctx, expr, CompilableOperator::BoxNew);
+            record_misc(bctx, expr, MiscCall::BoxNew);
             return mk_one_vir_arg(bctx, expr.span, &args);
         }
         Some(RustItem::RcNew) if bctx.in_ghost => {
-            record_compilable_operator(bctx, expr, CompilableOperator::RcNew);
+            record_misc(bctx, expr, MiscCall::RcNew);
             return mk_one_vir_arg(bctx, expr.span, &args);
         }
         Some(RustItem::ArcNew) if bctx.in_ghost => {
-            record_compilable_operator(bctx, expr, CompilableOperator::ArcNew);
+            record_misc(bctx, expr, MiscCall::ArcNew);
             return mk_one_vir_arg(bctx, expr.span, &args);
-        }
-        Some(RustItem::Panic) => {
-            return err_span(
-                expr.span,
-                format!(
-                    "panic is not supported (if you used Rust's `assert!` macro, you may have meant to use Verus's `assert` function)"
-                ),
-            );
         }
         Some(RustItem::CloneClone) => {
             // Special case `clone` for standard Rc and Arc types
@@ -110,11 +102,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
 
             if is_type_std_rc_or_arc_or_ref(bctx.ctxt.tcx, arg_typ) {
                 let arg = mk_one_vir_arg(bctx, expr.span, &args)?;
-                record_compilable_operator(
-                    bctx,
-                    expr,
-                    CompilableOperator::SmartPtrClone { is_method },
-                );
+                record_misc(bctx, expr, MiscCall::SmartPtrClone { is_method });
                 return Ok(arg);
             }
         }
@@ -518,6 +506,20 @@ fn verus_item_to_vir<'tcx, 'a>(
     // use `crate::verus_item::get_rust_item` instead
     let f_name = tcx.def_path_str(f);
     let args_len = args.len();
+
+    if !bctx.in_ghost && uncompilable_verus_fn(verus_item) {
+        return err_span(
+            expr.span,
+            format!(
+                "cannot use `{f_name}`{:} in executable context",
+                match verus_item {
+                    VerusItem::Expr(ExprItem::IsSmallerThanLexicographic) =>
+                        " (of the `decreases_to!` macro)",
+                    _ => "",
+                }
+            ),
+        );
+    }
 
     let mk_expr = |x: ExprX| Ok(bctx.spanned_typed_new(expr.span, &expr_typ()?, x));
     let mk_expr_span = |span: Span, x: ExprX| Ok(bctx.spanned_typed_new(span, &expr_typ()?, x));
@@ -939,7 +941,6 @@ fn verus_item_to_vir<'tcx, 'a>(
                     }
 
                     assert!(bctx.atomically.is_none());
-                    let bctx = BodyCtxt { mode: Mode::Proof, ..bctx.clone() };
 
                     let [
                         Expr {
@@ -977,7 +978,8 @@ fn verus_item_to_vir<'tcx, 'a>(
                     });
 
                     let atomically = Some(actx.clone());
-                    let bctx_inner = BodyCtxt { atomically, mode: Mode::Proof, ..bctx.clone() };
+                    let bctx_inner = BodyCtxt { atomically, in_ghost: true, ..bctx.clone() };
+
                     let value = expr_to_vir_consume(&bctx_inner, body.value)?;
 
                     let update_span = update_param.span.clone();
@@ -991,7 +993,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                                 .into(),
                             spans: call_spans,
                             labels: Vec::new(),
-                            help: None,
+                            help: Vec::new(),
                             fancy_note: None,
                         })),
                     }
@@ -1217,7 +1219,7 @@ fn verus_item_to_vir<'tcx, 'a>(
 
                 let kind = IntegerTypeBoundKind::ArchWordBits;
 
-                mk_expr(ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(kind, Mode::Spec), arg))
+                mk_expr(ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(kind), arg))
             }
             ExprItem::ClosureToFnSpec | ExprItem::ClosureToFnProof => {
                 unsupported_err_unless!(args_len == 1, expr.span, "expected closure_to_fn", &args);
@@ -1241,8 +1243,8 @@ fn verus_item_to_vir<'tcx, 'a>(
                                 &bctx.ctxt, expr.span, &ty,
                             )?
                         {
-                            let op = CompilableOperator::ClosureToFnProof(ret_mode);
-                            record_call(bctx, expr, ResolvedCall::CompilableOperator(op));
+                            let op = MiscCall::ClosureToFnProof(ret_mode);
+                            record_call(bctx, expr, ResolvedCall::MiscCall(op));
                             Some((Arc::new(arg_modes), ret_mode))
                         } else {
                             panic!("unexpected closure_to_proof_fn type")
@@ -1266,7 +1268,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     ExprItem::UnsignedMax => IntegerTypeBoundKind::UnsignedMax,
                     _ => unreachable!(),
                 };
-                mk_expr(ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(kind, Mode::Spec), arg))
+                mk_expr(ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(kind), arg))
             }
             ExprItem::IsSmallerThan
             | ExprItem::IsSmallerThanLexicographic
@@ -1364,7 +1366,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 ))
             }
             ExprItem::ShrRefStructWrap => {
-                record_compilable_operator(bctx, expr, CompilableOperator::ShrRefStructWrap);
+                record_misc(bctx, expr, MiscCall::ShrRefStructWrap);
                 assert!(args.len() == 4);
                 let arg0 = expr_to_vir_consume(bctx, &args[0])?;
                 let arg1 = expr_to_vir_consume(bctx, &args[1])?;
@@ -1385,12 +1387,12 @@ fn verus_item_to_vir<'tcx, 'a>(
         VerusItem::CompilableOpr(
             compilable_opr @ (CompilableOprItem::GhostExec | CompilableOprItem::TrackedExec),
         ) => {
-            record_compilable_operator(
+            record_misc(
                 bctx,
                 expr,
                 match compilable_opr {
-                    CompilableOprItem::GhostExec => CompilableOperator::GhostExec,
-                    CompilableOprItem::TrackedExec => CompilableOperator::TrackedExec,
+                    CompilableOprItem::GhostExec => MiscCall::GhostExec,
+                    CompilableOprItem::TrackedExec => MiscCall::TrackedExec,
                     _ => unreachable!(),
                 },
             );
@@ -1572,7 +1574,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             }
         }
         VerusItem::UseTypeInvariant => {
-            record_compilable_operator(bctx, expr, CompilableOperator::UseTypeInvariant);
+            record_misc(bctx, expr, MiscCall::UseTypeInvariant);
             unsupported_err_unless!(args_len == 1, expr.span, "expected use_type_invariant", &args);
             if !bctx.in_ghost {
                 return err_span(expr.span, "use_type_invariant must be in a 'proof' block");
@@ -1872,7 +1874,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             | SpecGhostTrackedItem::TrackedView,
         )) => {
             if matches!(verus_item, VerusItem::CompilableOpr(CompilableOprItem::GhostNew)) {
-                record_compilable_operator(bctx, expr, CompilableOperator::GhostExec);
+                record_misc(bctx, expr, MiscCall::GhostExec);
             } else {
                 record_spec_fn(bctx, expr);
             }
@@ -1889,7 +1891,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             mk_expr(ExprX::Unary(op, vir_args[0].clone()))
         }
         VerusItem::CompilableOpr(CompilableOprItem::TrackedNew) => {
-            record_compilable_operator(bctx, expr, CompilableOperator::TrackedNew);
+            record_misc(bctx, expr, MiscCall::TrackedNew);
             let vir_args = mk_vir_args(bctx, &args)?;
             assert!(vir_args.len() == 1);
             let op = UnaryOp::CoerceMode {
@@ -1902,7 +1904,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             mk_expr(ExprX::Unary(op, vir_args[0].clone()))
         }
         VerusItem::CompilableOpr(CompilableOprItem::TrackedExecBorrow) => {
-            record_compilable_operator(bctx, expr, CompilableOperator::TrackedExecBorrow);
+            record_misc(bctx, expr, MiscCall::TrackedExecBorrow);
             let vir_args = mk_vir_args(bctx, &args)?;
             assert!(vir_args.len() == 1);
             let op = UnaryOp::CoerceMode {
@@ -1916,12 +1918,12 @@ fn verus_item_to_vir<'tcx, 'a>(
         VerusItem::CompilableOpr(
             opr @ (CompilableOprItem::TrackedGet | CompilableOprItem::TrackedBorrow),
         ) => {
-            record_compilable_operator(
+            record_misc(
                 bctx,
                 expr,
                 match opr {
-                    CompilableOprItem::TrackedGet => CompilableOperator::TrackedGet,
-                    CompilableOprItem::TrackedBorrow => CompilableOperator::TrackedBorrow,
+                    CompilableOprItem::TrackedGet => MiscCall::TrackedGet,
+                    CompilableOprItem::TrackedBorrow => MiscCall::TrackedBorrow,
                     _ => unreachable!(),
                 },
             );
@@ -1943,9 +1945,9 @@ fn verus_item_to_vir<'tcx, 'a>(
                 matches!(verus_item, VerusItem::CompilableOpr(CompilableOprItem::TrackedBorrowMut));
 
             if tracked_mode {
-                record_compilable_operator(bctx, expr, CompilableOperator::TrackedBorrowMut);
+                record_misc(bctx, expr, MiscCall::TrackedBorrowMut);
             } else {
-                record_compilable_operator(bctx, expr, CompilableOperator::GhostBorrowMut);
+                record_misc(bctx, expr, MiscCall::GhostBorrowMut);
             }
             let mwm = if tracked_mode { ModeWrapperMode::Proof } else { ModeWrapperMode::Spec };
 
@@ -2033,7 +2035,7 @@ fn verus_item_to_vir<'tcx, 'a>(
         VerusItem::CompilableOpr(CompilableOprItem::Implies) => {
             // REVIEW: should this really be a 'compilable operator'?
             // Imply is marked as unimplemented! in verus_builtin.
-            record_compilable_operator(bctx, expr, CompilableOperator::Implies);
+            record_misc(bctx, expr, MiscCall::Implies);
 
             let (lhs, rhs) = mk_two_vir_args(bctx, expr.span, &args)?;
             mk_expr(ExprX::Logical(LogicalOp::Implies, lhs, rhs))
@@ -2332,9 +2334,6 @@ fn verus_item_to_vir<'tcx, 'a>(
             }
 
             record_spec_fn(bctx, expr);
-            if !bctx.in_ghost {
-                return err_span(expr.span, format!("{name} must be in a 'proof' block"));
-            }
             let exp = expr_to_vir_consume(bctx, &args[0])?;
             let op = match verus_item {
                 VerusItem::MutRefCurrent => UnaryOp::MutRefCurrent,
@@ -2348,9 +2347,6 @@ fn verus_item_to_vir<'tcx, 'a>(
         }
         VerusItem::AfterBorrow => {
             record_spec_fn(bctx, expr);
-            if !bctx.in_ghost {
-                return err_span(expr.span, "`after_borrow` must be in a 'proof' block");
-            }
             let bctx = BodyCtxt { in_explicit_prophecy_node: true, ..bctx.clone() };
             let p = expr_to_vir_place(&bctx, &args[0])?;
             if !is_place_ok_for_spec_after_borrow(&p) {
@@ -2368,10 +2364,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             mk_expr(ExprX::ReadPlace(p, rk))
         }
         VerusItem::MutRefTracked => {
-            record_compilable_operator(bctx, expr, CompilableOperator::MutRefTracked);
-            if !bctx.in_ghost {
-                return err_span(expr.span, "`mut_ref_tracked` must be in a 'proof' block");
-            }
+            record_misc(bctx, expr, MiscCall::MutRefTracked);
             let p = expr_to_vir_place(&bctx, &args[0])?;
             let p = crate::rust_to_vir_expr::deref_mut(bctx, expr.span, &p)?;
             let p = crate::rust_to_vir_expr::simplify_place_by_cancelling(&p);
@@ -2403,6 +2396,71 @@ fn verus_item_to_vir<'tcx, 'a>(
         | VerusItem::Global(_)
         | VerusItem::BuiltinFunction(BuiltinFunctionItem::ConstrainType)
         | VerusItem::BuiltinFunction(BuiltinFunctionItem::GetFutureOutputType) => unreachable!(),
+    }
+}
+
+fn uncompilable_verus_fn(verus_item: &VerusItem) -> bool {
+    match verus_item {
+        // Disallowed, but handled in modes
+        VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(
+            SpecGhostTrackedItem::GhostView
+            | SpecGhostTrackedItem::GhostBorrow
+            | SpecGhostTrackedItem::GhostBorrowMut
+            | SpecGhostTrackedItem::TrackedView,
+        )) => false,
+        VerusItem::Quant(_) => false,
+        VerusItem::Assert(_) => false,
+        VerusItem::Expr(
+            ExprItem::Choose
+            | ExprItem::ChooseTuple
+            | ExprItem::Old
+            | ExprItem::GetVariantField
+            | ExprItem::GetUnionField
+            | ExprItem::IsVariant
+            | ExprItem::ShrRefStructWrap,
+        ) => false,
+
+        // Disallowed, error here
+        VerusItem::Expr(_)
+        | VerusItem::UnaryOp(_)
+        | VerusItem::BinaryOp(_)
+        | VerusItem::Chained(_)
+        | VerusItem::UseTypeInvariant
+        | VerusItem::WithTriggers
+        | VerusItem::OpenInvariantBlock(_)
+        | VerusItem::OpenAtomicUpdate(_)
+        | VerusItem::BuiltinFunction(_)
+        | VerusItem::HasResolved
+        | VerusItem::HasResolvedUnsized
+        | VerusItem::MutRefCurrent
+        | VerusItem::MutRefFuture
+        | VerusItem::Final
+        | VerusItem::AfterBorrow
+        | VerusItem::ErasedGhostValue
+        | VerusItem::ShadowGhostValue
+        | VerusItem::MutableReferenceTie
+        | VerusItem::TwoPhaseMutableReferenceTie
+        | VerusItem::GetFirst
+        | VerusItem::DummyCapture(_)
+        | VerusItem::MutRefTracked => true,
+
+        VerusItem::CompilableOpr(_) => false,
+        VerusItem::RustPrivate(_) => false,
+
+        // Handled properly by mode-checking
+        VerusItem::BuiltinDeref(_) => false,
+        VerusItem::Vstd(_, _) => false,
+
+        // Handled properly by erasure
+        VerusItem::Spec(_) => false,
+        VerusItem::Directive(_) => false,
+
+        // Not functions
+        VerusItem::Marker(_) => false,
+        VerusItem::BuiltinType(_) => false,
+        VerusItem::BuiltinTrait(_) => false,
+        VerusItem::Global(_) => false,
+        VerusItem::External(_) => false,
     }
 }
 
@@ -3060,8 +3118,8 @@ fn check_union_field<'tcx>(
     Ok(adt_path)
 }
 
-fn record_compilable_operator<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr, op: CompilableOperator) {
-    record_call(bctx, expr, ResolvedCall::CompilableOperator(op));
+fn record_misc<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr, op: MiscCall) {
+    record_call(bctx, expr, ResolvedCall::MiscCall(op));
 }
 
 fn record_spec_fn<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr) {
