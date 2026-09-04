@@ -503,6 +503,28 @@ test_verify_one_file_with_options! {
     } => Ok(())
 }
 
+// A public struct's `global size_of` lemma is now visible everywhere (matching the
+// struct's own pub visibility) - confirm a sibling module that never references the
+// struct at all still verifies without crashing.
+test_verify_one_file_with_options! {
+    #[test] issue_1114_sibling_module_unused_public_struct ["vstd", "--compile"] => verus_code! {
+        mod m1 {
+            #[repr(C)]
+            pub struct S { pub v: u64 }
+
+            global size_of S == 8;
+        }
+
+        mod m2 {
+            fn test() -> (r: u32)
+                ensures r == 5,
+            {
+                5
+            }
+        }
+    } => Ok(())
+}
+
 test_verify_one_file_with_options! {
     #[test] test_layouts_for_primitives ["vstd"] => verus_code! {
         proof fn test() {

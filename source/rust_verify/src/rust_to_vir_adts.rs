@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use vir::ast::{
     CrateId, CtorPrintStyle, Datatype, DatatypeTransparency, DatatypeX, Dt, Fun, Function, Ident,
-    KrateX, Mode, Path, TypX, Variant, VirErr,
+    KrateX, Mode, Path, TypX, Variant, VirErr, Visibility,
 };
 use vir::ast_util::ident_binder;
 use vir::def::field_ident_from_rust;
@@ -839,4 +839,37 @@ pub(crate) fn setup_type_invariants(krate: &mut KrateX) -> Result<(), VirErr> {
     }
 
     Ok(())
+}
+
+// `global size_of`/`global layout` expand to an auto-generated, unnamed broadcast lemma
+// (see builtin_macros/src/syntax.rs) that by default is private to its declaring module,
+// even though the fact it proves is meant to be usable wherever its target type is
+// itself nameable. Give it the same visibility as that type, so it's neither more nor
+// less exposed than the type it describes.
+pub(crate) fn fix_size_of_broadcast_lemma_visibility(krate: &mut KrateX) {
+    let mut dt_visibility: HashMap<Dt, Visibility> = HashMap::new();
+    for dt in krate.datatypes.iter() {
+        dt_visibility.insert(dt.x.name.clone(), dt.x.visibility.clone());
+    }
+
+    for i in 0..krate.functions.len() {
+        if !krate.functions[i].x.attrs.size_of_broadcast_proof {
+            continue;
+        }
+        let target_dt = vir::ast_util::size_of_broadcast_target_types(&krate.functions[i])
+            .into_iter()
+            .find_map(|t| match &*vir::ast_util::undecorate_typ(&t) {
+                TypX::Datatype(dt, _, _) => Some(dt.clone()),
+                _ => None,
+            });
+        // A type outside this crate (or a primitive) has no local visibility to match;
+        // its name is as public as the crate makes it importable, so default to pub.
+        let visibility = target_dt
+            .and_then(|dt| dt_visibility.get(&dt).cloned())
+            .unwrap_or(Visibility { restricted_to: None });
+
+        let mut f = (*krate.functions[i]).clone();
+        f.x.visibility = visibility;
+        krate.functions[i] = Arc::new(f);
+    }
 }

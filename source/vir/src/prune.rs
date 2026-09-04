@@ -81,8 +81,6 @@ struct Ctxt {
     // For a broadcast function f with triggers containing functions f0..fn, point f0..fn to f:
     fun_to_trigger_broadcasts: HashMap<Fun, Vec<Fun>>,
     typ_to_trigger_broadcasts: HashMap<ReachedType, Vec<Fun>>,
-    // Maps a type to its size_of/layout lemma(s), reached once the type is reached.
-    typ_to_size_of_broadcasts: HashMap<ReachedType, Vec<Fun>>,
     // Map each revealed broadcast function f to its ReachBroadcastFunction
     fun_revealed_broadcast_map: HashMap<Fun, ReachBroadcastFunction>,
     assert_by_compute: bool,
@@ -611,11 +609,6 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                     reach_function_via_reveal(ctxt, state, f_trig);
                 }
             }
-            if let Some(f_size_ofs) = ctxt.typ_to_size_of_broadcasts.get(&t) {
-                for f_size_of in f_size_ofs {
-                    reach_function(ctxt, state, f_size_of);
-                }
-            }
             match &t {
                 ReachedType::Datatype(dt @ Dt::Path(_path)) => {
                     let datatype = &ctxt.datatype_map[dt];
@@ -770,29 +763,6 @@ fn overapproximate_revealed_functions(
             }
         }
     }
-}
-
-// Collects the explicit type args of calls in f's ensures (e.g. `S` in `size_of::<S>()`),
-// not any other type the expression touches (like a call's own return type).
-fn collect_size_of_broadcast_target_types(f: &Function) -> Vec<ReachedType> {
-    let mut typ_set: HashSet<ReachedType> = HashSet::new();
-    let mut typs: Vec<ReachedType> = Vec::new();
-    let mut visit = |_: &mut VisitorScopeMap, expr: &Expr| {
-        if let ExprX::Call { target: CallTarget::Fun(_, _, ts, _, _), .. } = &expr.x {
-            for t in ts.iter() {
-                let rt = typ_to_reached_type(t);
-                if typ_set.insert(rt.clone()) {
-                    typs.push(rt);
-                }
-            }
-        }
-        VisitorControlFlow::Recurse::<()>
-    };
-    let mut map: VisitorScopeMap = ScopeMap::new();
-    for expr in f.x.ensure.0.iter().chain(f.x.ensure.1.iter()) {
-        let _ = crate::ast_visitor::expr_visitor_dfs(expr, &mut map, &mut visit);
-    }
-    typs
 }
 
 fn collect_broadcast_triggers(f: &Function) -> Vec<(Vec<Fun>, Vec<ReachedType>)> {
@@ -1008,8 +978,16 @@ pub fn prune_krate_for_module_or_krate(
         }
     }
 
-    // size_of/layout lemmas are reached via typ_to_size_of_broadcasts (below), not
-    // unconditionally - only once their target type is itself reached.
+    // `global size_of`/`global layout` broadcast lemmas are a crate-wide fact by design
+    // (the size can only be set once per crate), so reach them regardless of module.
+    // Their visibility is set (in rust_to_vir.rs) to match their target type's own
+    // visibility, so the usual per-module visibility check still keeps them out of
+    // modules that can't see the type.
+    for f in &krate.functions {
+        if f.x.attrs.size_of_broadcast_proof {
+            reach(&mut state.reached_functions, &mut state.worklist_functions, &f.x.name);
+        }
+    }
 
     // Collect all functions that our module reveals:
     let mut revealed_functions: HashSet<Fun> = HashSet::new();
@@ -1163,7 +1141,6 @@ pub fn prune_krate_for_module_or_krate(
     let mut method_map: HashMap<(ReachedType, Fun), Vec<Fun>> = HashMap::new();
     let mut fun_to_trigger_broadcasts: HashMap<Fun, Vec<Fun>> = HashMap::new();
     let mut typ_to_trigger_broadcasts: HashMap<ReachedType, Vec<Fun>> = HashMap::new();
-    let mut typ_to_size_of_broadcasts: HashMap<ReachedType, Vec<Fun>> = HashMap::new();
     let mut fun_revealed_broadcast_map: HashMap<Fun, ReachBroadcastFunction> = HashMap::new();
     let mut assert_by_compute_seq_funs: Vec<Fun> = Vec::new();
     for f in &functions {
@@ -1196,16 +1173,6 @@ pub fn prune_krate_for_module_or_krate(
             }
             let reach_broadcast = ReachBroadcastFunction { reach_triggers };
             fun_revealed_broadcast_map.insert(f.x.name.clone(), reach_broadcast);
-        }
-        if f.x.attrs.size_of_broadcast_proof {
-            // Not the call's own return type (`nat`) - that would spuriously reach this
-            // lemma whenever anything else reaches `nat`.
-            for typ in collect_size_of_broadcast_target_types(f) {
-                typ_to_size_of_broadcasts
-                    .entry(typ)
-                    .or_insert_with(|| Vec::new())
-                    .push(f.x.name.clone());
-            }
         }
         if assert_by_compute && crate::interpreter::is_seq_to_sst_fun(&f.x.name) {
             assert_by_compute_seq_funs.push(f.x.name.clone());
@@ -1294,7 +1261,6 @@ pub fn prune_krate_for_module_or_krate(
         method_map,
         fun_to_trigger_broadcasts,
         typ_to_trigger_broadcasts,
-        typ_to_size_of_broadcasts,
         fun_revealed_broadcast_map,
         assert_by_compute,
         assert_by_compute_seq_funs,
