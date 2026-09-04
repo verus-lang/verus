@@ -802,6 +802,7 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
         );
     }
 
+    let mut fndef_commands = vec![];
     for fun in &ctx.fndef_types {
         let func = ctx.func_map.get(fun).expect("expected fndef function in pruned crate");
         let tparams = &func.x.typ_params;
@@ -815,6 +816,12 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
             str_typ(crate::def::TYPE),
         ));
         token_commands.push(Arc::new(CommandX::Global(decl_type_id)));
+
+        let node = crate::prelude::fndef_axioms(&ctx.name_ctxt, func);
+        let cmds = air::parser::Parser::new(Arc::new(crate::messages::VirMessageInterface {}))
+            .nodes_to_commands(&[node])
+            .expect("internal error: malformed fndef axioms");
+        fndef_commands.extend((*cmds).clone());
     }
 
     let array_commands = if ctx.used_builtins.uses_array {
@@ -894,5 +901,6 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
     commands.extend(bytestr_commands);
     commands.extend(ieee_float_commands);
     commands.extend(resolve_axiom_commands);
+    commands.extend(fndef_commands);
     Arc::new(commands)
 }

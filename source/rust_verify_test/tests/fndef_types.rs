@@ -2062,3 +2062,50 @@ test_verify_one_file_with_options! {
         struct S11; impl Clone for S11 { fn clone(&self) -> Self { S11 } }
     } => Ok(())
 }
+
+test_verify_one_file_with_options! {
+    #[test] test_broadcast ["vstd"] => verus_code! {
+        // Tests type invariant is emitted
+
+        uninterp spec fn a<T>(x: T) -> bool;
+        uninterp spec fn b<T>(x: T) -> bool;
+
+        broadcast axiom fn test1<T>(x: T)
+            requires #[trigger] a(x),
+            ensures b(x);
+
+        fn some_func() { }
+
+        fn test() {
+            broadcast use test1;
+            let f = some_func;
+            assume(a(f));
+            assert(b(f));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_broadcast_with_generics ["vstd"] => verus_code! {
+        uninterp spec fn a<T>(x: T) -> bool;
+        uninterp spec fn b<T>(x: T) -> bool;
+
+        broadcast axiom fn test1<T>(x: T)
+            requires #[trigger] a(x),
+            ensures b(x);
+
+        fn some_func<U>() { }
+
+        fn test() {
+            broadcast use test1;
+            assume(a(some_func::<u64>));
+            assert(b(some_func::<u64>));
+        }
+
+        fn test_fails() {
+            broadcast use test1;
+            assume(a(some_func::<u64>));
+            assert(b(some_func::<u32>)); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
