@@ -3,7 +3,6 @@ use super::layout::{self, *};
 use super::prelude::*;
 use super::raw_ptr;
 use super::raw_ptr::*;
-use super::raw_ptr_new;
 #[cfg(verus_keep_ghost)]
 use super::type_representation::*;
 
@@ -11,41 +10,44 @@ verus! {
 
 broadcast use group_vstd_default;
 
-#[verifier::external_body]
-pub tracked struct PointsToSingleton {
-    no_copy: NoCopy,
+/// Defines parameters common to all `PointsTo` permissions: 
+/// the pointer to memory and the size of the pointed-to region.
+pub trait PointsToParam: Sized {
+    type T;
+
+    /// The pointer that this permission is associated with.
+    spec fn ptr(self) -> *mut Self::T;
+
+    /// The size of the memory region that this permission tracks.
+    spec fn size(self) -> nat;
 }
 
-impl PointsToSingleton {
-    /// The byte pointer that this permission is associated with.
-    pub uninterp spec fn ptr(&self) -> *mut u8;
-
-    /// The byte that this permission tracks.
-    pub uninterp spec fn byte(&self) -> AbstractByte;
-
-    /// Guarantee that the `PointsToSingleton` points to a non-null address.
+/// Defines properties which should hold of any `PointsTo` permission.
+pub trait PointsToProperties: PointsToParam {
+    /// Guarantee that the pointer is non-null.
     ///
-    /// See <https://doc.rust-lang.org/std/ptr/#safety>
-    pub axiom fn is_nonnull(tracked &self)
+    /// See <https://doc.rust-lang.org/std/ptr/#safety>    
+    proof fn is_nonnull(tracked &self)
         ensures
             self.ptr()@.addr != 0,
     ;
 
     /// The memory associated with a pointer should always be within bounds of its spatial provenance.
-    pub axiom fn ptr_bounds(tracked &self)
+    // TODO: change data() to unwrap()
+    proof fn ptr_bounds(tracked &self)
         requires
             self.ptr()@.provenance.is_some(),
         ensures
-    // Q: better to use size of u8 or 1?
-
             self.ptr()@.addr as int >= self.ptr()@.provenance.data().start_addr(),
-            self.ptr()@.addr + size_of::<u8>() <= self.ptr()@.provenance.data().start_addr()
+            self.ptr()@.addr + self.size() <= self.ptr()@.provenance.data().start_addr()
                 + self.ptr()@.provenance.data().alloc_len(),
     ;
 
-    /// Since `u8` is not a ZST, the pointer's provenance is non-null.
-    /// <https://doc.rust-lang.org/std/ptr/index.html#provenance>
-    pub axiom fn provenance_non_null(tracked &self)
+    /// If the size of the pointed-to region is nonzero, 
+    /// then the pointer's provenance is non-null.
+    proof fn provenance_non_null(tracked &self)
+        requires
+            self.size() != 0,
         ensures
             self.ptr()@.provenance != raw_ptr::Provenance::None,
     ;
@@ -54,21 +56,103 @@ impl PointsToSingleton {
     /// since you cannot have two permissions to the same memory.
     /// (`self` is an &mut reference to enforce distinctness,
     /// so you cannot pass the same PointsTo as both arguments.)
+    /// Since both memory regions are non-zero-sized, this implies the pointers have distinct addresses.
+    ///
+    /// Note: If either memory region is zero-sized, we get disjointness "for free" without having to call this axiom,
+    /// since the empty memory range corresponding to a ZST cannot possibly intersect with any other memory.
+    /// However, note that if one type is a ZST and the other is a non-ZST,
+    /// the disjointness definition as stated here here does not hold,
+    /// since the ZST pointer could be in the middle of the non-ZST's range.
+    proof fn is_disjoint<PointsToPerm>(tracked &mut self, tracked other: &PointsToPerm)
+        where
+            PointsToPerm: PointsToParam,
+        requires
+            self.size() != 0,
+            other.size() != 0,
+        ensures
+            *old(self) == *final(self),
+            final(self).ptr() as int + final(self).size() <= other.ptr() as int || other.ptr() as int
+                + other.size() <= final(self).ptr() as int,
+    ;
+}
+
+/// Permission to access a byte of memory.
+#[verifier::external_body]
+pub tracked struct PointsToSingleton {
+    no_copy: NoCopy,
+}
+
+impl PointsToParam for PointsToSingleton {
+    type T = u8;
+
+    /// This permission points to a single byte of memory.
+    uninterp spec fn ptr(self) -> *mut u8;
+
+    /// This permission tracks a single byte of memory.
+    open spec fn size(self) -> nat {
+        size_of::<u8>()
+    }
+}
+
+impl PointsToProperties for PointsToSingleton {
+    /// Guarantee that the `PointsToSingleton` points to a non-null address.
+    ///
+    /// See <https://doc.rust-lang.org/std/ptr/#safety>
+    axiom fn is_nonnull(tracked &self);
+
+    /// The memory associated with a pointer should always be within bounds of its spatial provenance.
+    axiom fn ptr_bounds(tracked &self);
+
+    /// Since `u8` is not a ZST, the pointer's provenance is non-null.
+    /// <https://doc.rust-lang.org/std/ptr/index.html#provenance>
+    axiom fn provenance_non_null(tracked &self);
+
+    /// Guarantees that the memory ranges associated with two distinct, non-ZST permissions will not overlap,
+    /// since you cannot have two permissions to the same memory.
+    /// (`self` is an &mut reference to enforce distinctness,
+    /// so you cannot pass the same PointsTo as both arguments.)
     /// Since `u8` is not a ZST, this implies the pointers have distinct addresses.
-    pub axiom fn is_disjoint(tracked &mut self, tracked other: &Self)
+    axiom fn is_disjoint<PointsToPerm: PointsToParam>(tracked &mut self, tracked other: &PointsToPerm);
+}
+
+impl PointsToSingleton {
+    /// The byte that this permission tracks.
+    pub uninterp spec fn byte(self) -> AbstractByte;
+
+    /// Guarantees that the memory ranges associated with two distinct, non-ZST permissions will not overlap,
+    /// since you cannot have two permissions to the same memory.
+    /// (`self` is an &mut reference to enforce distinctness,
+    /// so you cannot pass the same PointsTo as both arguments.)
+    /// Since `u8` is not a ZST, this implies the pointers have distinct addresses.
+    pub proof fn is_disjoint_singleton(tracked &mut self, tracked other: &Self)
         ensures
             *old(self) == *final(self),
             final(self).ptr() as int + size_of::<u8>() <= other.ptr() as int || other.ptr() as int
                 + size_of::<u8>() <= final(self).ptr() as int,
-    ;
-
-    // necessary? Might only matter for PointsTo
-    pub proof fn is_aligned(tracked &self)
-        ensures
-            self.ptr()@.addr as int % layout::align_of::<u8>() as int == 0,
     {
-        broadcast use align_of_u8;
+        self.is_disjoint(other);
+    }
+}
 
+/// The interface for a `PointsToSingleton` permission, 
+/// which represents permission to access a single byte in memory.
+/// We track the pointer to that memory as well as 
+/// the abstract byte corresponding to Rust's abstract machine.
+#[cfg(verus_keep_ghost)]
+pub ghost struct PointsToSingletonData {
+    pub ptr: *mut u8,
+    pub byte: AbstractByte,
+}
+
+#[cfg(verus_keep_ghost)]
+impl View for PointsToSingleton {
+    type V = PointsToSingletonData;
+
+    open spec fn view(&self) -> Self::V {
+        PointsToSingletonData {
+            ptr: self.ptr(),
+            byte: self.byte(),
+        }
     }
 }
 
@@ -150,15 +234,6 @@ impl PointsToUntyped {
             self.seq_perm.tracked_borrow(0).ptr_bounds();
             self.seq_perm.tracked_borrow(self.len() - 1).ptr_bounds();
         }
-    }
-
-    // necessary?
-    pub proof fn is_aligned(tracked &self)
-        ensures
-            self.ptr()@.addr as int % layout::align_of::<u8>() as int == 0,
-    {
-        broadcast use align_of_u8;
-
     }
 
     // TODO: prove (recursively?)
@@ -427,6 +502,53 @@ impl<T> PointsToUnaligned<T> {
 //         self.perm.is_disjoint(other.tracked_pt_untyped());
 //     }
 // }
+
+/**
+Permission to access possibly-initialized, _typed_ memory.
+
+The associated pointer ([`points_to.ptr()`](PointsTo::ptr)) is always a valid pointer for constructing
+a reference to the underlying data. That means it's always aligned to its type
+([`is_aligned`](PointsTo::is_nonnull)) and is non-null ([`is_nonnull`](PointsTo::is_nonnull)).
+
+### Notes
+
+The invariants on a `PointsTo` are a little more restrictive than is necessary for all
+Rust operations you might want to do. For example:
+
+1. With a null pointer to a ZST, Rust lets you read and write (though not take a reference).
+
+```
+#[derive(Copy, Clone)]
+#[repr(align(64))]
+struct X { }
+
+fn zst_test() {
+    let x_ptr: *mut X = std::ptr::null_mut();
+
+    let x = unsafe { *x_ptr };  // allowed
+
+    let x = X { };
+    unsafe { *x_ptr = x; }      // allowed
+
+    let j = unsafe { &*x_ptr }; // not allowed because ptr is null
+}
+```
+
+2. The [`std::ptr::read_unaligned`] and [`std::ptr::write_unaligned`] don't require the pointer
+   to be aligned.
+
+Currently, these use-cases aren't supported because `PointsTo` enforces both non-nullness
+and alignment.
+*/
+
+// ptr |--> Init(v) means:
+//   bytes in this memory are consistent with value v
+//   and we have all the ghost state associated with type V
+//
+// ptr |--> Uninit means:
+//   no knowledge about what's in memory
+//   (to be pedantic, the bytes might be initialized in rust's abstract machine,
+//   but we don't know so we have to pretend they're uninitialized)
 pub tracked struct PointsTo<T: ?Sized> {
     pt_unaligned: Tracked<PointsToUnaligned<T>>,
 }
@@ -545,6 +667,31 @@ impl<T> PointsTo<T> {
         self.pt_unaligned.is_disjoint(other.tracked_pt_unaligned());
     }
 }
+
+// impl IsPointsTo for PointsToUntyped {}
+// impl<T: ?Sized> IsPointsTo for PointsToUnaligned<T> {}
+// impl<T: ?Sized> IsPointsTo for PointsTo<T> {}
+
+// pub tracked struct SeqPointsTo<T: ?Sized, PointsToPerm: IsPointsTo> {
+//     perm: Seq<PointsToPerm>,
+//     ptr: Ghost<*mut T>,
+// }
+
+// impl<T: ?Sized, PointsToPerm: IsPointsTo> IsPointsTo for SeqPointsTo<T, PointsToPerm> {
+
+// }
+
+// impl<T: ?Sized, PointsToPerm: IsPointsTo> SeqPointsTo<T, PointsToPerm> {
+
+// }
+
+// impl SeqPointsTo<[u8], PointsToSingleton> {
+
+// }
+
+// impl<T> SeqPointsTo<T, PointsTo<T>> {
+
+// }
 
 // TODO: is_disjoint, impl View for PointsTo types (helps to clarify the interface)
 } // verus!
