@@ -2060,7 +2060,8 @@ impl Verifier {
         // Whereas the 'buckets' are the way we group obligations for parallelizing
         // and context pruning.
         // Buckets usually fall along module boundaries, but the user can create
-        // more buckets using #[spinoff_prover].
+        // more buckets using #[spinoff_prover] (also implied by `assert(..) by
+        // (compute)` - see buckets::needs_own_bucket).
         //
         // For example, suppose module M has functions a, b, c, d.
         // with a and b both marked spinoff_prover.
