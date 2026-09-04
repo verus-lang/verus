@@ -182,3 +182,132 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_one_fails(e)
 }
+
+test_verify_one_file! {
+    #[test] test_or_else verus_code! {
+        use vstd::prelude::*;
+
+        fn test_or_else_some() {
+            let opt: Option<u32> = Some(42);
+            let res = opt.or_else(|| -> (r: Option<u32>){ Some(31) });
+            assert(res == Some(42u32));
+        }
+
+        fn test_or_else_none_some() {
+            let opt: Option<u32> = None;
+
+            let res = opt.or_else(|| -> (r: Option<u32>)
+                    ensures r == Some(99u32),
+                { Some(99) },
+            );
+            assert(res == Some(99u32));
+        }
+
+        fn test_or_else_chain() {
+            let res = None::<u32>
+                .or_else(|| -> (r: Option<u32>)
+                        ensures r.is_none(),
+                    { None },
+                )
+                .or_else(|| -> (r: Option<u32>)
+                        ensures r == Some(10u32),
+                    { Some(10) },
+                )
+                .or_else(|| -> (r: Option<u32>)
+                        requires false,
+                        ensures false,
+                    { None },
+                );
+            assert(res == Some(10u32));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_xor verus_code! {
+        use vstd::prelude::*;
+
+        fn test_some_none() {
+            let a = Some(10u32);
+            let b = None::<u32>;
+            assert(a.xor(b) == Some(10u32));
+        }
+
+        fn test_none_some() {
+            let a = None::<u32>;
+            let b = Some(20u32);
+            assert(a.xor(b) == Some(20u32));
+        }
+
+        fn test_some_some() {
+            let a = Some(10u32);
+            let b = Some(20u32);
+            assert(a.xor(b) == None::<u32>);
+        }
+
+        fn test_none_none() {
+            let a = None::<u32>;
+            let b = None::<u32>;
+            assert(a.xor(b) == None::<u32>);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_option_zip verus_code! {
+        use vstd::prelude::*;
+
+        fn test_exec() {
+            let a = Some(10u8);
+            let b = Some(20u16);
+            assert(a.zip(b) == Some((10u8, 20u16)));
+
+            let a = Some(10u8);
+            let b = None::<u16>;
+            assert(a.zip(b) == None::<(u8, u16)>);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] option_unzip verus_code! {
+        use vstd::prelude::*;
+
+        fn test_some() {
+            let x = Some((10u8, 20u16));
+            assert(x.unzip() == (Some(10u8), Some(20u16)));
+        }
+
+        fn test_none() {
+            let x = None::<(u8, u16)>;
+            assert(x.unzip() == (None::<u8>, None::<u16>));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_is_some_and verus_code! {
+        use vstd::prelude::*;
+
+        fn test_some(x: u32)
+            requires x < 100,
+        {
+            let result = Some(x).is_some_and(|value: u32| -> (r: bool)
+                    requires value < 100,
+                    ensures r == (value == 42),
+                { value == 42 },
+            );
+            assert(result == (x == 42));
+        }
+
+        fn test_none() {
+            let option: Option<u32> = None;
+            let result = option.is_some_and(|_value: u32| -> (r: bool)
+                    requires false,
+                    ensures r,
+                { true },
+            );
+            assert(!result);
+        }
+    } => Ok(())
+}
