@@ -11,6 +11,7 @@ pub enum SumRA<RA1: ResourceAlgebra, RA2: ResourceAlgebra> {
 
 // Rust does not support variadic generics, so we define the sum pairwise
 impl<RA1: ResourceAlgebra, RA2: ResourceAlgebra> ResourceAlgebra for SumRA<RA1, RA2> {
+    #[verifier::prophetic]
     open spec fn valid(self) -> bool {
         match self {
             SumRA::Left(l) => l.valid(),
