@@ -158,6 +158,53 @@ test_verify_one_file_with_options! {
     } => Ok(())
 }
 
+test_verify_one_file_with_options! {
+    #[test] test_pattern_in_closure_parameter ["vstd"] => verus_code! {
+        fn test_reference() {
+            let is_seven = |&x: &u8| -> (result: bool)
+                ensures result == (x == 7)
+            { x == 7 };
+            let x = 7u8;
+            let result = is_seven(&x);
+            assert(result);
+        }
+
+        fn test_tuple() {
+            let are_equal = |(x, y): (u8, u8)| -> (result: bool)
+                ensures result == (x == y)
+            { x == y };
+            let result = are_equal((7, 7));
+            assert(result);
+        }
+
+        struct Pair1 { x: u8, y: u8 }
+        fn test_struct() {
+            let are_equal = |Pair1 { x, y }: Pair1| -> (result: bool)
+                ensures result == (x == y)
+            { x == y };
+            let result = are_equal(Pair1 { x: 7, y: 7 });
+            assert(result);
+        }
+
+        struct Pair2(u8, u8);
+        fn test_tuple_struct() {
+            let are_equal = |Pair2(x, y): Pair2| -> (result: bool)
+                ensures result == (x == y)
+            { x == y };
+            let result = are_equal(Pair2(7, 7));
+            assert(result);
+        }
+
+        fn testfn() {
+            let is_seven = |ref x: u8| -> (result: bool)
+                ensures result == (*x == 7)
+            { *x == 7 };
+            let result = is_seven(7u8);
+            assert(result);
+        }
+    } => Ok(())
+}
+
 // 2 arg closures
 
 test_verify_one_file_with_options! {
