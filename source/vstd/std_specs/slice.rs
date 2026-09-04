@@ -7,7 +7,7 @@ use super::range::{slice_range_end, slice_range_start, slice_range_valid};
 use core::ops::{
     Index, IndexMut, Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive,
 };
-use core::slice::{Iter, SliceIndex};
+use core::slice::{Iter, IterMut, SliceIndex};
 
 use verus as verus_;
 
@@ -368,6 +368,48 @@ pub assume_specification<'a, T> [<&'a [T] as core::iter::IntoIterator>::into_ite
     ensures
         IteratorSpec::remaining(&iter) == s@.as_ref(),
         into_iter_elts(iter) == IteratorSpec::remaining(&iter).unref(),
+        IteratorSpec::decrease(&iter) is Some,
+;
+
+/***********************************************************************************************
+ * Definitions for `slice::IterMut` (the iterator behind `<[T]>::iter_mut` and `Vec::iter_mut`)
+ ***********************************************************************************************/
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::accept_recursive_types(T)]
+pub struct ExIterMut<'a, T: 'a>(IterMut<'a, T>);
+
+// See exampes/iterators.rs for a verified implementation of this interface.
+// Any changes here should first be verified over there.
+impl<'a, T: 'a> super::iter::IteratorSpecImpl for IterMut<'a, T> {
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        true
+    }
+
+    #[verifier::prophetic]
+    uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+
+    open spec fn will_return_none(&self) -> bool { true }
+
+    uninterp spec fn decrease(&self) -> Option<nat>;
+
+    open spec fn peek(&self, index: int) -> Option<Self::Item> { None }
+}
+
+// Also covers `vec.iter_mut(), which reaches this slice fn through `Vec`'s `DerefMut`
+pub assume_specification<'a, T>[ <[T]>::iter_mut ](slice: &'a mut [T]) -> (iter: IterMut<'a, T>)
+    ensures
+        IteratorSpec::remaining(&iter).len() == old(slice)@.len() == final(slice)@.len(),
+        // Each yielded reference initially points at the corresponding element...
+        forall|i: int| #![trigger IteratorSpec::remaining(&iter)[i]]
+            0 <= i < old(slice)@.len() ==> *(IteratorSpec::remaining(&iter)[i]) == old(slice)@[i],
+        // ...and its eventual value flows back to the corresponding element.
+        forall|i: int|
+            #![trigger IteratorSpec::remaining(&iter)[i]]
+            #![trigger final(slice)@[i]]
+            0 <= i < old(slice)@.len() ==> *final(IteratorSpec::remaining(&iter)[i]) == final(slice)@[i],
+        IteratorSpec::obeys_prophetic_iter_laws(&iter),
+        IteratorSpec::will_return_none(&iter),
         IteratorSpec::decrease(&iter) is Some,
 ;
 

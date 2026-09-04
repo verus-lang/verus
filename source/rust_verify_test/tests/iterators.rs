@@ -100,6 +100,25 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] vec_iter_mut_works verus_code! {
+        use vstd::prelude::*;
+
+        fn client_for_loop() {
+            let mut v: Vec<u32> = vec![1, 2, 3, 4];
+            for x in it: v.iter_mut()
+                invariant
+                    forall |i: int| #![auto] 0 <= i < it.index() ==> *final(it.seq()[i]) == 0,
+            {
+                *x = 0;
+            }
+            assert(forall |i: int| 0 <= i < v.len() ==> v[i] == 0);
+            assert(v@ == seq![0, 0, 0, 0]);
+        }
+
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] find_works verus_code! {
         use vstd::prelude::*;
         use vstd::std_specs::iter::IteratorSpec;
