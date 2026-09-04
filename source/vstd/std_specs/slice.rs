@@ -327,6 +327,20 @@ impl<T, U> super::cmp::PartialEqSpecImpl<[U]> for [T] where T: PartialEq<U> + su
     }
 }
 
+// contains
+pub open spec fn spec_slice_contains<T: PartialEq<T>>(slice: &[T], value: &T) -> bool {
+    exists |i: int| #![auto] 0 <= i < slice@.len()
+        && <T as super::cmp::PartialEqSpec<T>>::eq_spec(&slice[i], value)
+}
+
+#[verifier::when_used_as_spec(spec_slice_contains)]
+pub assume_specification<T>[ <[T]>::contains ] (slice: &[T], value: &T) -> (result: bool)
+    where
+        T: PartialEq<T>,
+        ensures
+            <T as super::cmp::PartialEqSpec<T>>::obeys_eq_spec() ==> result == spec_slice_contains(slice, value),
+;
+
 // The `iter` method of a `<T>` returns an iterator of type `Iter<'_, T>`,
 // so we specify that type here.
 #[verifier::external_type_specification]
