@@ -5,12 +5,12 @@ use crate::ast::{
 use crate::ast_util::{LowerUniqueVar, QUANT_FORALL};
 use crate::context::Ctx;
 use crate::def::{
-    CommandsWithContext, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_PARAM, FUEL_TYPE, SUCC, SnapPos,
-    Spanned, THIS_PRE_FAILED, ZERO, new_internal_qid, prefix_ensures, prefix_fuel_id,
-    prefix_fuel_nat, prefix_no_unwind_when, prefix_open_inv, prefix_pre_var, prefix_recursive_fun,
-    prefix_requires, suffix_global_id, suffix_typ_param_ids,
+    CommandsWithContext, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_PARAM, FUEL_TYPE, SUCC, Spanned,
+    THIS_PRE_FAILED, ZERO, new_internal_qid, prefix_ensures, prefix_fuel_id, prefix_fuel_nat,
+    prefix_no_unwind_when, prefix_open_inv, prefix_pre_var, prefix_recursive_fun, prefix_requires,
+    suffix_global_id, suffix_typ_param_ids,
 };
-use crate::messages::{MessageLabel, Span};
+use crate::messages::MessageLabel;
 use crate::sst::FuncCheckSst;
 use crate::sst::{BndX, ExpX, Exps, FunctionSst, ParPurpose, ParX, Pars};
 use crate::sst_to_air::{
@@ -294,7 +294,7 @@ fn func_body_to_air(
     }
 
     if let Some(termination_check) = termination_check {
-        let (termination_commands, _snap_map) = crate::sst_to_air::body_stm_to_air(
+        let termination_commands = crate::sst_to_air::body_stm_to_air(
             ctx,
             &function.span,
             &typ_params,
@@ -1015,8 +1015,8 @@ pub fn func_sst_to_air(
     ctx: &Ctx,
     function: &FunctionSst,
     func_check_sst: &FuncCheckSst,
-) -> Result<(Arc<Vec<CommandsWithContext>>, Vec<(Span, SnapPos)>), VirErr> {
-    let (commands, snap_map) = crate::sst_to_air::body_stm_to_air(
+) -> Result<Arc<Vec<CommandsWithContext>>, VirErr> {
+    let commands = crate::sst_to_air::body_stm_to_air(
         ctx,
         &function.span,
         &function.x.typ_params,
@@ -1029,5 +1029,5 @@ pub fn func_sst_to_air(
         function.x.attrs.nonlinear,
     )?;
 
-    Ok((Arc::new(commands), snap_map))
+    Ok(Arc::new(commands))
 }

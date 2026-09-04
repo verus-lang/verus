@@ -8,7 +8,7 @@ use std::sync::Arc;
 use vir::ast::{Fun, FunctionKind, ImplPath, ItemKind, Mode, Path, TraitImpl, VirErr};
 use vir::ast_to_sst_func::{mk_fun_ctx, mk_fun_ctx_dec};
 use vir::ast_util::{fun_as_friendly_rust_name, is_body_visible_to};
-use vir::def::{CommandsWithContext, SnapPos};
+use vir::def::CommandsWithContext;
 use vir::recursion::Node;
 use vir::sst::{FuncCheckSst, FunctionSst};
 
@@ -50,7 +50,6 @@ pub enum OpKind {
     Query {
         query_op: QueryOp,
         commands_with_context_list: Arc<Vec<CommandsWithContext>>,
-        snap_map: Arc<Vec<(vir::messages::Span, SnapPos)>>,
         profile_rerun: bool,
         func_check_sst: Option<Arc<FuncCheckSst>>,
     },
@@ -223,15 +222,8 @@ impl<'a> OpGenerator<'a> {
             self.ctx.fun = None;
 
             if verifying_owning_bucket {
-                let snap_map = vec![];
                 let commands = Arc::new(check_commands);
-                query_ops.push(Op::query(
-                    QueryOp::SpecTermination,
-                    commands,
-                    snap_map,
-                    &function,
-                    None,
-                ));
+                query_ops.push(Op::query(QueryOp::SpecTermination, commands, &function, None));
             }
 
             let op_kind = if function.x.axioms.proof_exec_axioms.is_some() {
@@ -290,18 +282,11 @@ impl<'a> OpGenerator<'a> {
             return Ok(vec![]);
         };
 
-        let (commands, snap_map) =
-            vir::sst_to_air_func::func_sst_to_air(self.ctx, &function, func_check_sst)?;
+        let commands = vir::sst_to_air_func::func_sst_to_air(self.ctx, &function, func_check_sst)?;
 
         self.ctx.fun = None;
 
-        Ok(vec![Op::query(
-            QueryOp::Body(style),
-            commands,
-            snap_map,
-            &function,
-            Some(func_check_sst.clone()),
-        )])
+        Ok(vec![Op::query(QueryOp::Body(style), commands, &function, Some(func_check_sst.clone()))])
     }
 
     fn handle_proof_body_expand(
@@ -312,13 +297,13 @@ impl<'a> OpGenerator<'a> {
     ) -> Result<Op, VirErr> {
         self.ctx.fun = mk_fun_ctx(&function, false /*recommend*/);
 
-        let (commands, snap_map) =
+        let commands =
             vir::sst_to_air_func::func_sst_to_air(self.ctx, &function, &expanded_function_sst)?;
         let commands = focus_commands_with_context_on_assert_id(commands, assert_id);
 
         self.ctx.fun = None;
 
-        Ok(Op::query(QueryOp::Body(Style::Expanded), commands, snap_map, &function, None))
+        Ok(Op::query(QueryOp::Body(Style::Expanded), commands, &function, None))
     }
 }
 
@@ -405,7 +390,6 @@ impl<'a, 'b> FunctionOpGenerator<'a, 'b> {
         &mut self,
         query_op: QueryOp,
         commands_with_context_list: Arc<Vec<CommandsWithContext>>,
-        snap_map: Arc<Vec<(vir::messages::Span, SnapPos)>>,
         function: &FunctionSst,
         func_check_sst: Option<Arc<FuncCheckSst>>,
     ) {
@@ -413,7 +397,6 @@ impl<'a, 'b> FunctionOpGenerator<'a, 'b> {
             kind: OpKind::Query {
                 query_op,
                 commands_with_context_list,
-                snap_map,
                 profile_rerun: true,
                 func_check_sst,
             },
@@ -535,7 +518,6 @@ impl Op {
     pub fn query(
         query_op: QueryOp,
         commands: Arc<Vec<CommandsWithContext>>,
-        snap_map: Vec<(vir::messages::Span, SnapPos)>,
         f: &FunctionSst,
         func_check_sst: Option<Arc<FuncCheckSst>>,
     ) -> Self {
@@ -543,7 +525,6 @@ impl Op {
             kind: OpKind::Query {
                 query_op,
                 commands_with_context_list: commands,
-                snap_map: Arc::new(snap_map),
                 profile_rerun: false,
                 func_check_sst,
             },

@@ -13,11 +13,10 @@ use crate::def::{
     ARCH_SIZE, BYTESTR_NEW_BYTELIT, CommandsWithContext, CommandsWithContextX, FUEL_BOOL,
     FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, NameCtxt, POLY,
     ProverChoice, SNAPSHOT_BOUNDARY, SNAPSHOT_CALL, SNAPSHOT_LOOP, SNAPSHOT_PRE, STRSLICE_GET_CHAR,
-    STRSLICE_LEN, STRSLICE_NEW_STRLIT, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT,
-    SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END, SnapPos, SpanKind, Spanned, U_HI,
-    encode_dt_as_path, new_internal_qid, new_user_qid_name, prefix_ensures, prefix_fuel_id,
-    prefix_no_unwind_when, prefix_open_inv, prefix_pre_var, prefix_requires, prefix_spec_fn_type,
-    snapshot_ident, suffix_global_id, suffix_local_unique_id, suffix_typ_param_ids,
+    STRSLICE_LEN, STRSLICE_NEW_STRLIT, SUCC, Spanned, U_HI, encode_dt_as_path, new_internal_qid,
+    new_user_qid_name, prefix_ensures, prefix_fuel_id, prefix_no_unwind_when, prefix_open_inv,
+    prefix_pre_var, prefix_requires, prefix_spec_fn_type, snapshot_ident, suffix_global_id,
+    suffix_local_unique_id, suffix_typ_param_ids,
 };
 use crate::messages::{Span, error, error_with_label};
 use crate::poly::{MonoTyp, MonoTypX, MonoTyps, typ_as_mono, typ_is_poly};
@@ -27,7 +26,7 @@ use crate::sst::{
     UnwindSst,
 };
 use crate::sst_util::{sst_exp_get_proof_note, subst_typ_for_datatype};
-use crate::sst_vars::{AssignMap, get_loc_var};
+use crate::sst_vars::get_loc_var;
 use crate::util::{vec_map, vec_map_result};
 use air::ast::{
     BindX, Binder, BinderX, Binders, CommandX, Constant, Decl, DeclX, Expr, ExprX, MultiOp, Qid,
@@ -1622,64 +1621,10 @@ struct State {
     local_shared: Vec<Decl>,
     local_decls_decreases_init: Stms,
     commands: Vec<CommandsWithContext>,
-    /// Used to ensure unique Idents for each snapshot
-    snapshot_count: u32,
-    /// a stack of snapshot ids, the top one should dominate the current position in the AST
-    sids: Vec<Ident>,
-    /// Maps each statement's span to the closest dominating snapshot's ID
-    snap_map: Vec<(Span, SnapPos)>,
-    /// Maps Maps each statement's span to the assigned variables (that can potentially be queried)
-    assign_map: AssignMap,
     unwind: UnwindAir,
     post_condition_info: PostConditionInfo,
     loop_infos: Vec<LoopInfo>,
     static_prelude: Vec<Stmt>,
-}
-
-impl State {
-    /// get the current sid (top of the scope stack)
-    fn get_current_sid(&self) -> Ident {
-        let last = self.sids.last().unwrap();
-        last.clone()
-    }
-
-    /// copy the current sid into a new scope (when entering a block)
-    fn push_scope(&mut self) {
-        let sid = self.get_current_sid();
-        self.sids.push(sid);
-    }
-
-    /// pop off the scope (when exiting a block)
-    fn pop_scope(&mut self) {
-        self.sids.pop();
-    }
-
-    fn get_new_sid(&mut self, suffix: &str) -> Ident {
-        self.snapshot_count += 1;
-        Arc::new(format!("{}{}", self.snapshot_count, suffix))
-    }
-
-    /// replace the current sid (without changing scope depth)
-    fn update_current_sid(&mut self, suffix: &str) -> Ident {
-        let sid = self.get_new_sid(suffix);
-        self.sids.pop();
-        self.sids.push(sid.clone());
-        sid
-    }
-
-    // fn get_assigned_set(&self, stm: &Stm) -> HashSet<Arc<String>> {
-    //     if let Some(s) = self.assign_map.get(&Arc::as_ptr(stm)) {
-    //         return s.clone();
-    //     }
-    //     return HashSet::new();
-    // }
-
-    fn map_span(&mut self, stm: &Stm, kind: SpanKind) {
-        let spos = SnapPos { snapshot_id: self.get_current_sid(), kind };
-        // let aset = self.get_assigned_set(stm);
-        // println!("{:?} {:?}", stm.span, aset);
-        self.snap_map.push((stm.span.clone(), spos));
-    }
 }
 
 fn loc_is_var(e: &Exp) -> Option<&UniqueIdent> {
@@ -1834,11 +1779,9 @@ fn assert_atomic_update_control_flow(
 
 fn call_args_to_air(
     ctx: &Ctx,
-    state: &mut State,
     expr_ctxt: &ExprCtxt,
     args: &Vec<Exp>,
     dest: &Option<Dest>,
-    stm: &Stm,
     ens_args_wo_typ: &mut Vec<Expr>,
     stmts: &mut Vec<Stmt>,
 ) -> Result<(), VirErr> {
@@ -1865,10 +1808,6 @@ fn call_args_to_air(
 
     if call_snapshot {
         stmts.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_CALL))));
-    } else {
-        if ctx.debug {
-            state.map_span(&stm, SpanKind::Full);
-        }
     }
     Ok(())
 }
@@ -1998,16 +1937,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             }
 
             let mut ens_args_wo_typ = Vec::new();
-            call_args_to_air(
-                ctx,
-                state,
-                expr_ctxt,
-                args,
-                dest,
-                stm,
-                &mut ens_args_wo_typ,
-                &mut stmts,
-            )?;
+            call_args_to_air(ctx, expr_ctxt, args, dest, &mut ens_args_wo_typ, &mut stmts)?;
 
             if let Some(stm) = body {
                 let stmt = stm_to_stmts(ctx, state, stm)?;
@@ -2040,15 +1970,6 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     if !*is_init {
                         let havoc = StmtX::Havoc(var);
                         stmts.push(Arc::new(havoc));
-                    }
-                    if ctx.debug {
-                        // Add a snapshot after we modify the destination
-                        let sid = state.update_current_sid(SUFFIX_SNAP_MUT);
-                        // Update the snap_map so that it reflects the state _after_ the
-                        // statement takes effect.
-                        state.map_span(&stm, SpanKind::Full);
-                        let snapshot = Arc::new(StmtX::Snapshot(sid.clone()));
-                        stmts.push(snapshot);
                     }
                 } else {
                     crate::messages::internal_error(&stm.span, "ens_has_return but no Dest");
@@ -2085,16 +2006,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
         StmX::Call { fun: crate::sst::CallTarget::AssumeExternal, args, dest, .. } => {
             let mut stmts: Vec<Stmt> = Vec::new();
             let mut ens_args_wo_typ = Vec::new();
-            call_args_to_air(
-                ctx,
-                state,
-                expr_ctxt,
-                args,
-                dest,
-                stm,
-                &mut ens_args_wo_typ,
-                &mut stmts,
-            )?;
+            call_args_to_air(ctx, expr_ctxt, args, dest, &mut ens_args_wo_typ, &mut stmts)?;
             if let Some(Dest { dest, is_init }) = dest {
                 let var = suffix_local_unique_id(&get_loc_var(dest));
                 assert!(*is_init); // for simplicity, ast_to_sst always generates is_init = true
@@ -2118,9 +2030,6 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             if let Some(label) = sst_exp_get_proof_note(expr) {
                 error =
                     error.proof_note_label(&stm.span, label.text.to_string(), label.is_custom_err);
-            }
-            if ctx.debug {
-                state.map_span(&stm, SpanKind::Full);
             }
             vec![Arc::new(StmtX::Assert(assert_id.clone(), error, None, air_expr))]
         }
@@ -2234,10 +2143,6 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             stmts
         }
         StmX::AssertQuery { typ_inv_exps: _, typ_inv_vars, body, mode } => {
-            if ctx.debug {
-                unimplemented!("assert query is unsupported in debugger mode");
-            }
-
             let mut local = state.local_shared.clone();
             for (x, typ) in typ_inv_vars.iter() {
                 let typ_inv = typ_invariant(ctx, typ, &ident_var(&suffix_local_unique_id(x)));
@@ -2246,9 +2151,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 }
             }
 
-            state.push_scope();
             let proof_stmts: Vec<Stmt> = stm_to_stmts(ctx, state, body)?;
-            state.pop_scope();
             let mut air_body: Vec<Stmt> = Vec::new();
             air_body.append(&mut proof_stmts.clone());
             let assertion = one_stmt(air_body);
@@ -2275,10 +2178,6 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             vec![]
         }
         StmX::AssertBitVector { requires, ensures } => {
-            if ctx.debug {
-                unimplemented!("AssertBitVector is unsupported in debugger mode");
-            }
-
             let queries = bv_to_queries(ctx, requires, ensures)?;
 
             for (query, error_desc) in queries.into_iter() {
@@ -2298,9 +2197,6 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             vec![]
         }
         StmX::Assume(expr) => {
-            if ctx.debug {
-                state.map_span(&stm, SpanKind::Full);
-            }
             vec![Arc::new(StmtX::Assume(exp_to_expr(ctx, &expr, expr_ctxt)?))]
         }
         StmX::Assign { lhs: Dest { dest, is_init: true }, rhs } => {
@@ -2309,10 +2205,6 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
         }
         StmX::Assign { lhs: Dest { dest, is_init: false }, rhs } => {
             let mut stmts: Vec<Stmt> = Vec::new();
-            if ctx.debug {
-                unimplemented!("assignments are unsupported in debugger mode");
-            }
-
             let mut value = exp_to_expr(ctx, &rhs, expr_ctxt)?;
             let mut value_typ = rhs.typ.clone();
 
@@ -2512,14 +2404,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             rhss.insert(0, neg_assume);
             let lblock = Arc::new(StmtX::Block(Arc::new(lhss)));
             let rblock = Arc::new(StmtX::Block(Arc::new(rhss)));
-            let mut stmts = vec![Arc::new(StmtX::Switch(Arc::new(vec![lblock, rblock])))];
-            if ctx.debug {
-                // Add a snapshot for the state after we join the lhs and rhs back together
-                let sid = state.update_current_sid(SUFFIX_SNAP_JOIN);
-                let snapshot = Arc::new(StmtX::Snapshot(sid.clone()));
-                stmts.push(snapshot);
-                state.map_span(&stm, SpanKind::End);
-            }
+            let stmts = vec![Arc::new(StmtX::Switch(Arc::new(vec![lblock, rblock])))];
             stmts
         }
         StmX::Loop { pre_stms, .. } => {
@@ -2571,9 +2456,6 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 let qid = None; // Introduces a variable name but shouldn't otherwise be instantiated
                 stmts.push(Arc::new(StmtX::Assume(mk_exists(&vec![binder], &vec![], qid, &eq))));
             }
-            if ctx.debug {
-                state.map_span(&stm, SpanKind::Full);
-            }
             stmts
         }
         StmX::RevealString(lit) => {
@@ -2590,16 +2472,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             vec![Arc::new(StmtX::Assume(facts))]
         }
         StmX::Block(stms) => {
-            if ctx.debug {
-                state.push_scope();
-                state.map_span(&stm, SpanKind::Start);
-            }
             let mut stmts: Vec<Stmt> = Vec::new();
             for s in stms.iter() {
                 stmts.extend(stm_to_stmts(ctx, state, s)?);
-            }
-            if ctx.debug {
-                state.pop_scope();
             }
             stmts
         }
@@ -2679,15 +2554,6 @@ fn loop_to_stmts(
 
     let (_, decrease_init) =
         crate::recursion::mk_decreases_at_entry(ctx, &stm.span, Some(*id), &decrease)?;
-
-    let entry_snap_id = if ctx.debug {
-        // Add a snapshot to capture the start of the while loop
-        // We add the snapshot via Block to avoid copying the entire AST of the loop body
-        let entry_snap = state.update_current_sid(SUFFIX_SNAP_WHILE_BEGIN);
-        Some(entry_snap)
-    } else {
-        None
-    };
 
     /*
     When loop_isolation = true:
@@ -2881,16 +2747,6 @@ fn loop_to_stmts(
     }
     let assertion = one_stmt(air_body);
 
-    let assertion = if !ctx.debug {
-        assertion
-    } else {
-        // Update the snap_map to associate the start of the while loop with the new snapshot
-        let entry_snap_id = entry_snap_id.unwrap(); // Always Some if ctx.debug
-        let snapshot: Stmt = Arc::new(StmtX::Snapshot(entry_snap_id.clone()));
-        state.map_span(&body, SpanKind::Start);
-        let block_contents: Vec<Stmt> = vec![snapshot, assertion];
-        Arc::new(StmtX::Block(Arc::new(block_contents)))
-    };
     if loop_isolation {
         let assertion = assertion.clone();
         let query = Arc::new(QueryX { local: Arc::new(local), assertion });
@@ -2937,15 +2793,6 @@ fn loop_to_stmts(
     if let Some(neg_assume) = neg_assume {
         assert!(loop_isolation);
         stmts.push(neg_assume);
-    }
-    if ctx.debug {
-        // Add a snapshot for the state after we emerge from the while loop
-        let sid = state.update_current_sid(SUFFIX_SNAP_WHILE_END);
-        // Update the snap_map so that it reflects the state _after_ the
-        // statement takes effect.
-        state.map_span(&stm, SpanKind::End);
-        let snapshot = Arc::new(StmtX::Snapshot(sid));
-        stmts.push(snapshot);
     }
     Ok(stmts)
 }
@@ -3081,7 +2928,7 @@ pub(crate) fn body_stm_to_air(
     is_integer_ring: bool,
     is_bit_vector_mode: bool,
     is_nonlinear: bool,
-) -> Result<(Vec<CommandsWithContext>, Vec<(Span, SnapPos)>), VirErr> {
+) -> Result<Vec<CommandsWithContext>, VirErr> {
     let FuncCheckSst {
         reqs,
         post_condition,
@@ -3111,7 +2958,7 @@ pub(crate) fn body_stm_to_air(
             ));
         }
 
-        return Ok((commands, vec![]));
+        return Ok(commands);
     }
 
     // Verifying a single function can generate multiple SMT queries.
@@ -3133,8 +2980,6 @@ pub(crate) fn body_stm_to_air(
     }
 
     set_fuel(ctx, &mut local_shared, hidden);
-
-    let initial_sid = Arc::new("0_entry".to_string());
 
     let mut ens_exprs: Vec<(Span, Expr, Option<ProofNoteLabel>)> = Vec::new();
     for ens in post_condition.ens_exps.iter() {
@@ -3165,10 +3010,6 @@ pub(crate) fn body_stm_to_air(
         local_shared,
         local_decls_decreases_init: local_decls_decreases_init.clone(),
         commands: Vec::new(),
-        snapshot_count: 0,
-        sids: vec![initial_sid.clone()],
-        snap_map: Vec::new(),
-        assign_map: indexmap::IndexMap::new(),
         unwind: unwind_air,
         post_condition_info: PostConditionInfo {
             dest: post_condition.dest.clone(),
@@ -3180,20 +3021,18 @@ pub(crate) fn body_stm_to_air(
         static_prelude: mk_static_prelude(ctx, statics),
     };
 
-    let stm = crate::sst_vars::compute_assign_info(&mut state.assign_map, params, local_decls, stm);
+    let stm = crate::sst_vars::compute_assign_info(
+        &mut indexmap::IndexMap::new(),
+        params,
+        local_decls,
+        stm,
+    );
 
     let mut stmts = stm_to_stmts(ctx, &mut state, &stm)?;
 
     stmts.insert(0, Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_PRE))));
     if state.static_prelude.len() > 0 {
         stmts.splice(0..0, state.static_prelude.clone());
-    }
-
-    if ctx.debug {
-        let snapshot = Arc::new(StmtX::Snapshot(initial_sid));
-        let mut new_stmts = vec![snapshot];
-        new_stmts.append(&mut stmts);
-        stmts = new_stmts;
     }
 
     let assertion = one_stmt(stmts);
@@ -3283,7 +3122,7 @@ pub(crate) fn body_stm_to_air(
             is_integer_ring || is_nonlinear,
         ));
     }
-    Ok((state.commands, state.snap_map))
+    Ok(state.commands)
 }
 
 /// At function returns, we need to tell the SMT solver that the
