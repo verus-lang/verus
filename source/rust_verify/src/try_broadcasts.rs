@@ -18,7 +18,7 @@ use vir::{
     },
     ast_visitor,
     context::GlobalCtx,
-    def::Spanned,
+    def::{NameCtxt, Spanned},
     messages::{Span, note, warning},
 };
 
@@ -296,11 +296,12 @@ impl<'a, R: Diagnostics> TryBroadcasts<'a, R> {
             &span,
             global_ctx,
         )?;
-        let (result, global_ctx) = self.try_verify(&new_krate, &NoOpReporter {}, global_ctx)?;
+        let (result, name_ctxt, global_ctx) =
+            self.try_verify(&new_krate, &NoOpReporter {}, global_ctx)?;
         if result.any_timeout || result.any_invalid {
             Ok((GuessOutcome::give_up(), global_ctx))
         } else {
-            Ok((GuessOutcome::Success { verification_outcome: result }, global_ctx))
+            Ok((GuessOutcome::Success { verification_outcome: result, name_ctxt }, global_ctx))
         }
     }
 
@@ -416,13 +417,8 @@ impl<'a, R: Diagnostics> TryBroadcasts<'a, R> {
         let (outcome, mut new_ctx) = self.try_guess(&guess, global_ctx)?;
         match outcome {
             GuessOutcome::Success {
-                verification_outcome:
-                    VerificationOutcome {
-                        used_axioms: Some(used_axioms),
-                        name_ctxt: Some(name_ctxt),
-                        ..
-                    },
-                ..
+                verification_outcome: VerificationOutcome { used_axioms: Some(used_axioms), .. },
+                name_ctxt,
             } => {
                 guess.broadcasts.retain(|bc| {
                     used_axioms.contains(&vir::sst_to_air::fun_to_air_ident(&name_ctxt, bc))
@@ -456,7 +452,7 @@ impl<'a, R: Diagnostics> TryBroadcasts<'a, R> {
         krate: &Krate,
         reporter: &impl Diagnostics,
         global_ctx: GlobalCtx,
-    ) -> Result<(VerificationOutcome, GlobalCtx), VirErr> {
+    ) -> Result<(VerificationOutcome, NameCtxt, GlobalCtx), VirErr> {
         self.verifier.try_verify(reporter, krate, self.source_map, &self.bucket_id, global_ctx)
     }
 
@@ -691,7 +687,7 @@ impl Guess {
 
 #[derive(Clone, Debug)]
 pub(crate) enum GuessOutcome {
-    Success { verification_outcome: VerificationOutcome },
+    Success { verification_outcome: VerificationOutcome, name_ctxt: NameCtxt },
     Next { try_next: Vec<Guess> },
 }
 
@@ -716,7 +712,7 @@ impl Verifier {
         source_map: Option<&SourceMap>,
         bucket_id: &BucketId,
         global_ctx: GlobalCtx,
-    ) -> Result<(VerificationOutcome, GlobalCtx), VirErr> {
+    ) -> Result<(VerificationOutcome, NameCtxt, GlobalCtx), VirErr> {
         let prev_errors = self.count_errors;
         let prev_verified = self.count_verified;
         let (global_ctx, verify_out) = self.verify_bucket_middle(
@@ -725,6 +721,6 @@ impl Verifier {
         self.count_errors = prev_errors;
         self.count_verified = prev_verified;
 
-        Ok((verify_out.verification_outcome, global_ctx))
+        Ok((verify_out.verification_outcome, verify_out.name_ctxt, global_ctx))
     }
 }

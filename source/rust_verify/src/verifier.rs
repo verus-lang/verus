@@ -463,20 +463,11 @@ pub(crate) struct VerificationOutcome {
     pub(crate) any_invalid: bool,
     pub(crate) any_timeout: bool,
     pub(crate) used_axioms: Option<Vec<air::ast::Ident>>,
-    // The naming context used while verifying. Needed to map `Fun`s back to the
-    // AIR identifiers recorded in `used_axioms`, since names are disambiguated
-    // per-`NameCtxt` (e.g. when multiple crates share a name).
-    pub(crate) name_ctxt: Option<vir::def::NameCtxt>,
 }
 
 impl VerificationOutcome {
     fn new() -> Self {
-        VerificationOutcome {
-            any_invalid: false,
-            any_timeout: false,
-            used_axioms: None,
-            name_ctxt: None,
-        }
+        VerificationOutcome { any_invalid: false, any_timeout: false, used_axioms: None }
     }
 
     #[allow(dead_code)]
@@ -503,6 +494,11 @@ pub(crate) struct VerifyBucketOut {
     time_smt_run: Duration,
     rlimit_count: Option<(u64, u64)>,
     pub(crate) verification_outcome: VerificationOutcome,
+    // The naming context used while verifying. Needed by `try_broadcasts` to
+    // map `Fun`s back to the AIR identifiers recorded in `used_axioms`, since
+    // names are disambiguated per-`NameCtxt` (e.g. when multiple crates share a
+    // name).
+    pub(crate) name_ctxt: vir::def::NameCtxt,
 }
 pub(crate) enum VerifyErr {
     Vir(VirErr),
@@ -1364,10 +1360,7 @@ impl Verifier {
     ) -> Result<VerifyBucketOut, VirErr> {
         let message_interface = Arc::new(vir::messages::VirMessageInterface {});
 
-        // Record the naming context used for this bucket so that Sledgehammer can map the
-        // `used_axioms` AIR identifiers back to the corresponding `Fun`s.
         let mut verification_outcome = VerificationOutcome::new();
-        verification_outcome.name_ctxt = Some(ctx.name_ctxt.clone());
 
         assert!(!(self.args.profile && self.args.profile_all));
         assert!(!(self.args.profile && self.args.capture_profiles));
@@ -1948,6 +1941,7 @@ impl Verifier {
                 (rlimit_count.0 + spunoff_rlimit_count.0, rlimit_count.1 + spunoff_rlimit_count.1)
             }),
             verification_outcome,
+            name_ctxt: ctx.name_ctxt.clone(),
         })
     }
 
