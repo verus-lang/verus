@@ -178,3 +178,24 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] async_impl_future_trait_issue2521 code! {
+        use std::future::Future;
+        use vstd::prelude::*;
+
+        trait T {
+            fn f() -> impl Future;
+        }
+
+        struct S;
+
+        impl T for S {
+          fn f() -> impl Future { async {} }
+        }
+
+        verus! {
+          async fn foo();
+        }
+    } => Ok(())
+}

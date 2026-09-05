@@ -27,6 +27,7 @@ use vir::messages::{
 
 use num_format::{Locale, ToFormattedString};
 use rustc_error_messages::MultiSpan;
+use rustc_hir::def::DefKind;
 use rustc_index::bit_set::DenseBitSet;
 use rustc_middle::ty::TyCtxt;
 use rustc_span::Span;
@@ -2697,7 +2698,7 @@ impl Verifier {
 
         let time_hir0 = Instant::now();
 
-        rustc_hir_analysis::check_crate(tcx);
+        rustc_hir_analysis_verus::check_crate(tcx);
         if tcx.dcx().err_count() != 0 {
             return Ok(false);
         }
@@ -3098,6 +3099,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 providers.queries.check_liveness = |_, _| DenseBitSet::new_empty(0);
                 providers.queries.check_mod_deathness = |_, _| {};
 
+                rustc_hir_analysis_verus::provide(&mut providers.queries);
                 providers.queries.mir_borrowck =
                     |tcx, _local_def_id| Ok(tcx.arena.alloc(Default::default()));
 
@@ -3119,6 +3121,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 providers.queries.check_liveness = |_, _| DenseBitSet::new_empty(0);
                 providers.queries.check_mod_deathness = |_, _| {};
 
+                rustc_hir_analysis_verus::provide(&mut providers.queries);
                 rustc_mir_build_verus::verus_provide(providers);
                 providers.queries.mir_built = |tcx, def| {
                     // We need to override this to call our verus of build_mir.
@@ -3130,20 +3133,6 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                     //pass.run_pass(tcx, &mut body);
                     tcx.alloc_steal_mir(body)
                 };
-
-                // check_well_formed when called on an OpaqueTy will trigger mir_borrowck to run.
-                // This happens earlier than we'd like, so we disable it.
-                // TODO: when we support opaque types we should run this check later
-                providers.queries.check_well_formed =
-                    |tcx: TyCtxt<'_>, def_id: rustc_hir::def_id::LocalDefId| {
-                        let node = tcx.hir_node_by_def_id(def_id);
-                        if matches!(node, rustc_hir::Node::OpaqueTy(_)) {
-                            return Ok(());
-                        }
-                        (rustc_interface::DEFAULT_QUERY_PROVIDERS.queries.check_well_formed)(
-                            tcx, def_id,
-                        )
-                    };
             });
         }
     }
@@ -3328,6 +3317,13 @@ impl VerifierCallbacksEraseMacro {
     fn run_lifetime_checks_on_verus_aware_items<'tcx>(&mut self, tcx: TyCtxt<'tcx>) {
         let crate_items = self.verifier.crate_items.as_ref().unwrap().clone();
         tcx.par_hir_body_owners(|def_id| {
+            if matches!(tcx.def_kind(def_id), DefKind::OpaqueTy | DefKind::Impl { of_trait: true })
+            {
+                let _ = rustc_hir_analysis_verus::check::check::check_item_type_inner(
+                    tcx, def_id, true,
+                );
+            }
+
             if !tcx.is_typeck_child(def_id.to_def_id()) {
                 let owner_id = rustc_hir::OwnerId { def_id: def_id };
                 let crate_item = crate_items.map.get(&owner_id);
