@@ -170,11 +170,17 @@ pub broadcast axiom fn is_nonnull(p: ProvenanceData)
         #[trigger] p.start_addr() != 0,
 ;
 
+pub broadcast axiom fn orig_size_bound(p: ProvenanceData)
+    ensures
+        p.orig_size() <= p.alloc_len(),
+;
+
 pub broadcast group group_provenance_properties {
     prov_alignment,
     alloc_bound,
     start_addr_aligned,
     is_nonnull,
+    orig_size_bound,
 }
 
 /// Metadata
