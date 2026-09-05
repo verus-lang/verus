@@ -2690,11 +2690,13 @@ fn loop_to_stmts(
         (None, None, None)
     };
     if cond.is_some() {
-        // `cond` is only kept (rather than folded into the body as an `if !cond { break }`)
-        // for the two homogeneous cases ast_to_sst.rs's `simple_while` allows: every clause
-        // is a plain `invariant` (at_entry && at_exit), or every clause is a bare `ensures`
-        // (at_exit only). A mix, or any `invariant_except_break` clause, should never reach
-        // here with `cond` still `Some`.
+        // `cond` only stays separate from the body (instead of being folded in as
+        // `if !cond { break }`) for the two loop shapes ast_to_sst.rs's `simple_while`
+        // allows: a loop where every clause is a plain `invariant` (true on entry and
+        // required to still hold at exit), or a loop where every clause is a bare
+        // `ensures` (not assumed on entry, only required at exit). Anything else - a
+        // mix of clause kinds, or any `invariant_except_break` clause - should never
+        // reach this point with `cond` still `Some`.
         let all_both = invs.iter().all(|inv| inv.at_entry && inv.at_exit);
         let all_ensures_only = invs.iter().all(|inv| !inv.at_entry && inv.at_exit);
         assert!(all_both || all_ensures_only);
@@ -2796,6 +2798,18 @@ fn loop_to_stmts(
             assume cond_exp
             body // "break" inside body turns into assert invs_exit; assume false
             assert invs_entry
+    Suppose instead that `invs` is entirely bare `ensures` clauses (fixes #925):
+    We generate this AIR in the outer query, before any havoc:
+        assert (!cond_exp ==> e) for each bare ensures clause e
+        havoc modified_vars
+        ...
+    We generate this AIR in the spun-off loop query, at the same point invs_entry
+    gets re-asserted:
+        body
+        assert (!cond_exp ==> e) for each bare ensures clause e
+        assert invs_entry
+    (the outer assert has full pre-loop context and covers 0 iterations; the inner
+    one is the same check the "both" case above always had, covering >=1 iterations)
     */
 
     let mut air_body: Vec<Stmt> = state.static_prelude.clone();
