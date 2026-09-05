@@ -254,12 +254,13 @@ impl<T: ?Sized, PointsToPerm: PointsToProperties + FixedSizeParam> PointsToPrope
 
     proof fn ptr_bounds(tracked &self) {
         if self.len() > 0 {
-            self.seq_pt.tracked_borrow(0).ptr_bounds();
             self.seq_pt.tracked_borrow(self.len() - 1).ptr_bounds();
-            self.seq_pt.tracked_borrow(0).size_eq_const_size();
             self.seq_pt.tracked_borrow(self.len() - 1).size_eq_const_size();
-            assert(self[self.len() - 1].ptr()@.addr == self.ptr()@.addr + (self.len() - 1) * PointsToPerm::const_size());
-            assert(self.seq_pt()[0].size() == self.seq_pt()[self.len() - 1].size());
+            super::arithmetic::mul::lemma_mul_is_distributive_add_other_way(
+                PointsToPerm::const_size() as int,
+                (self.len() - 1) as int,
+                1,
+            );
         }
     }
 
