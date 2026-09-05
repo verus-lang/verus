@@ -39,6 +39,9 @@ pub mod vecdeque;
 #[cfg(feature = "alloc")]
 pub mod smart_ptrs;
 
+#[cfg(feature = "alloc")]
+pub mod string;
+
 #[cfg(feature = "nonzero_internals")]
 pub mod nonzero;
 
