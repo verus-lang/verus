@@ -57,6 +57,7 @@ pub mod multiset;
 pub mod multiset_lib;
 pub mod pervasive;
 pub mod points_to;
+pub mod points_to_permissions;
 pub mod predicate;
 pub mod proph;
 pub mod raw_ptr;
