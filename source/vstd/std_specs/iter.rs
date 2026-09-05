@@ -78,6 +78,17 @@ pub trait ExIterator {
                 r == into_rev_spec(self) && rev_post(self, r),
     ;
 
+    fn map<B, F>(self, f: F) -> (r: core::iter::Map<Self, F>)
+        where
+            Self: Sized,
+            F: FnMut(Self::Item) -> B,
+        requires
+            self.obeys_prophetic_iter_laws(),
+            forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(f, (self.remaining()[k], )),
+        ensures
+            self.obeys_prophetic_iter_laws() ==> map_post(self, f, r),
+    ;
+
     fn collect<B>(self) -> (collection: B)
         where
             B: FromIterator<Self::Item>,
@@ -380,6 +391,93 @@ impl <I> IteratorSpecImpl for &mut I
 }
 
 /********************************************************************************
+ * Definitions for `map()`
+ ********************************************************************************/
+
+#[verifier::external_body]
+#[verifier::external_type_specification]
+#[verifier::reject_recursive_types(I)]
+#[verifier::reject_recursive_types(F)]
+pub struct ExMap<I, F>(core::iter::Map<I, F>);
+
+// Ghost accessor for the inner iterator
+pub uninterp spec fn map_iter<I, F>(r: core::iter::Map<I, F>) -> I;
+
+// Ghost accessor for the inner function
+pub uninterp spec fn map_fun<I, F>(r: core::iter::Map<I, F>) -> F;
+
+// Ideally, we would write this postcondition directly on the definition of
+// Iterator::map above.  However, to do so, we would need to impose a trait
+// bound of `Self: IteratorSpec`.  However, this introduces a cyclic
+// dependency, since IteratorSpec depends on Iterator.  Hence,
+// we introduce a layer of indirection via this uninterp spec function.
+pub uninterp spec fn map_post<I, F>(i: I, f: F, r: core::iter::Map<I, F>) -> bool;
+
+pub broadcast axiom fn map_postcondition<I, F>(i: I, f: F, r: core::iter::Map<I, F>)
+    where
+        I: IteratorSpec,
+        F: FnMut<(I::Item,)>,
+    requires
+        i.obeys_prophetic_iter_laws(),
+        #[trigger] map_post(i, f, r),
+    ensures
+        IteratorSpec::remaining(&r).len() <= i.remaining().len(),
+        forall |k| #![auto] 0 <= k < IteratorSpec::remaining(&r).len() ==> call_ensures(f, (i.remaining()[k],), IteratorSpec::remaining(&r)[k]),
+        IteratorSpec::will_return_none(&r) ==> i.will_return_none() && IteratorSpec::remaining(&r).len() == i.remaining().len(),
+        IteratorSpec::decrease(&r) is Some == i.decrease() is Some,
+        map_iter(r) == i,
+        map_fun(r) == f,
+;
+
+// See rust_verify_test/tests/iterators.rs for how this Map
+// spec can be verifiably implemented when Map is not an
+// external type.
+impl <B, I, F> IteratorSpecImpl for core::iter::Map<I, F>
+    where
+        I: Iterator + IteratorSpec,
+        F: FnMut(I::Item) -> B,
+{
+
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        map_iter(*self).obeys_prophetic_iter_laws()
+    }
+
+    #[verifier::prophetic]
+    uninterp spec fn remaining(&self) -> Seq<B>;
+
+    #[verifier::prophetic]
+    uninterp spec fn will_return_none(&self) -> bool;
+
+    uninterp spec fn decrease(&self) -> Option<nat>;
+
+    open spec fn peek(&self, index: int) -> Option<B> {
+        match map_iter(*self).peek(index) {
+            Some(v) => {
+                let x = choose |x| map_fun(*self).ensures((v,), x);
+                Some(x)
+            }
+            None => None,
+        }
+    }
+}
+
+impl <B, I, F> DoubleEndedIteratorSpecImpl for core::iter::Map<I, F>
+    where I: DoubleEndedIterator + IteratorSpec,
+          F: FnMut(I::Item) -> B,
+{
+    open spec fn peek_back(&self, index: int) -> Option<B> {
+        match map_iter(*self).peek_back(index) {
+            Some(v) => {
+                let x = choose |x| map_fun(*self).ensures((v,), x);
+                Some(x)
+            }
+            None => None,
+        }
+    }
+}
+
+
+/********************************************************************************
  * Defines a convenient wrapper type that bundles state and invariants needed
  * for ergonomic for-loop support.
  ********************************************************************************/
@@ -516,6 +614,7 @@ pub trait ExIterStep: Clone + PartialOrd + Sized {
 
 pub broadcast group group_iter_axioms {
     rev_postcondition,
+    map_postcondition,
 }
 
 } // verus!
