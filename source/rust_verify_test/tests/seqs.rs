@@ -128,3 +128,25 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] range_syntax verus_code! {
+        use vstd::prelude::*;
+
+        proof fn test(s: Seq<bool>) {
+            assert(s[..] == s);
+            assert(s[10..] == s.subrange(10, s.len() as int));
+            assert(s[..20] == s.subrange(0, 20));
+            assert(s[..=19] == s.subrange(0, 20));
+            assert(s[10..20] == s.subrange(10, 20));
+            assert(s[10..=19] == s.subrange(10, 20));
+
+            assert(s[..] == s);
+            assert(s[10u32..] == s.subrange(10, s.len() as int));
+            assert(s[..20nat] == s.subrange(0, 20));
+            assert(s[..=19u8] == s.subrange(0, 20));
+            assert(s[10i64..20u16] == s.subrange(10, 20));
+            assert(s[10i128..=19int] == s.subrange(10, 20));
+        }
+    } => Ok(())
+}
