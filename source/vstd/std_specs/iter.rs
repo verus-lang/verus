@@ -3,9 +3,8 @@ use super::super::seq::{
     group_seq_lemmas, lemma_seq_empty, lemma_seq_subrange_index, lemma_seq_subrange_len,
 };
 
+use core::iter::{FromIterator, Iterator, Rev, Zip};
 use verus as verus_;
-
-use core::iter::{FromIterator, Iterator, Rev};
 
 verus_! {
 
@@ -76,6 +75,15 @@ pub trait ExIterator {
         ensures
             self.obeys_prophetic_iter_laws() ==>
                 r == into_rev_spec(self) && rev_post(self, r),
+    ;
+
+    #[verifier::impls_cannot_extend_spec]
+    fn zip<U>(self, other: U) -> (r: Zip<Self, <U as IntoIterator>::IntoIter>)
+        where
+            Self: Sized,
+            U: IntoIterator,
+        ensures
+            self.obeys_prophetic_iter_laws() ==> zip_post(self, other, r),
     ;
 
     fn collect<B>(self) -> (collection: B)
@@ -243,6 +251,11 @@ pub trait ExDoubleEndedIterator : Iterator {
 #[verifier::external_trait_specification]
 pub trait ExIntoIterator {
     type ExternalTraitSpecificationFor: core::iter::IntoIterator;
+
+    type Item;
+    type IntoIter: Iterator<Item = Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter;
 }
 
 pub open spec fn iter_into_iter_spec<I: Iterator>(i: I) -> I {
@@ -274,6 +287,7 @@ pub trait ExFromIterator<A>: Sized {
 
     spec fn from_iter_ensures(remaining: Seq<A>, s: Self) -> bool;
 
+    #[verifier::impls_cannot_extend_spec]
     fn from_iter<T>(iter: T) -> (s: Self)
        where T: IntoIterator<Item = A>
         ensures
@@ -378,6 +392,77 @@ impl <I> IteratorSpecImpl for &mut I
         <I as IteratorSpec>::peek(*self, index)
     }
 }
+
+/********************************************************************************
+ * Definitions for `zip()`
+ ********************************************************************************/
+#[verifier::external_body]
+#[verifier::external_type_specification]
+#[verifier::reject_recursive_types(A)]
+#[verifier::reject_recursive_types(B)]
+pub struct ExZip<A, B>(Zip<A, B>);
+
+// Ghost accessor for the first inner iterator
+pub uninterp spec fn zip_iter_fst<A, B>(z: Zip<A, B>) -> A;
+
+// Ghost accessor for the second inner iterator
+pub uninterp spec fn zip_iter_snd<A, B>(z: Zip<A, B>) -> B;
+
+impl<A, B> IteratorSpecImpl for Zip<A, B>
+    where A: Iterator + IteratorSpec, B: Iterator + IteratorSpec
+{
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        &&& zip_iter_fst(*self).obeys_prophetic_iter_laws()
+        &&& zip_iter_snd(*self).obeys_prophetic_iter_laws()
+    }
+
+    #[verifier::prophetic]
+    closed spec fn remaining(&self) -> Seq<Self::Item> {
+        zip_iter_fst(*self).remaining().zip_truncate(zip_iter_snd(*self).remaining())
+    }
+
+    #[verifier::prophetic]
+    closed spec fn will_return_none(&self) -> bool {
+        zip_iter_fst(*self).will_return_none() || zip_iter_snd(*self).will_return_none()
+    }
+
+    closed spec fn decrease(&self) -> Option<nat> {
+        match (zip_iter_fst(*self).decrease(), zip_iter_snd(*self).decrease()) {
+            (Some(a), Some(b)) => if a <= b { Some(a) } else { Some(b) },
+            (Some(a), None) => Some(a),
+            (None, Some(b)) => Some(b),
+            (None, None) => None,
+        }
+    }
+
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        match (zip_iter_fst(*self).peek(index), zip_iter_snd(*self).peek(index)) {
+            (Some(a), Some(b)) => Some((a, b)),
+            _ => None,
+        }
+    }
+}
+
+// Ideally, we would write this postcondition directly on the definition of
+// Iterator::zip above.  However, to do so, we would need to impose a trait
+// bound of `Self: IteratorSpec`.  However, this introduces a cyclic dependency.
+pub uninterp spec fn zip_post<I, U, Z>(i: I, other: U, r: Z) -> bool;
+
+pub broadcast axiom fn zip_postcondition<I, U>(i: I, other: U, r: Zip<I, <U as IntoIterator>::IntoIter>)
+    where
+            I: Sized + IteratorSpec,
+            U: IntoIterator, //Spec,
+    requires
+        i.obeys_prophetic_iter_laws(),
+        #[trigger] zip_post(i, other, r),
+    ensures
+        call_ensures(U::into_iter, (other,), zip_iter_snd(r)),
+        zip_iter_fst(r) == i,
+        IteratorSpec::remaining(&r) == i.remaining().zip_truncate(zip_iter_snd(r).remaining()),
+        IteratorSpec::will_return_none(&r) ==> i.will_return_none() && zip_iter_snd(r).will_return_none(),
+        IteratorSpec::decrease(&r) is Some == (i.decrease() is Some || zip_iter_snd(r).decrease() is Some),
+;
+
 
 /********************************************************************************
  * Defines a convenient wrapper type that bundles state and invariants needed
@@ -516,6 +601,7 @@ pub trait ExIterStep: Clone + PartialOrd + Sized {
 
 pub broadcast group group_iter_axioms {
     rev_postcondition,
+    zip_postcondition,
 }
 
 } // verus!

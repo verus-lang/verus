@@ -81,6 +81,30 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] zip_works verus_code! {
+        use vstd::prelude::*;
+
+        fn zip_works() {
+            let x1 = vec![1u32, 2, 3];
+            let x2 = vec![2u32, 4, 6];
+            let y1 = vec![2u32, 4, 6];
+            let y2 = vec![1u32, 2];
+            let z1 = vec![1u32, 2];
+            let z2 = vec![2u32, 4, 6, 8, 10];
+
+            let x: Vec<(u32, u32)> = x1.into_iter().zip(x2).collect();
+            assert(x@ == seq![(1u32,2u32), (2, 4), (3, 6)]);
+
+            let y: Vec<(u32, u32)> = y1.into_iter().zip(y2).collect();
+            assert(y@ == seq![(2u32,1u32), (4, 2)]);
+
+            let z: Vec<(u32, u32)> = z1.into_iter().zip(z2).collect();
+            assert(z@ == seq![(1u32,2u32), (2, 4)]);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] collect_works verus_code! {
         use vstd::prelude::*;
 
