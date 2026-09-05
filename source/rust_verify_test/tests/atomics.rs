@@ -16,6 +16,14 @@ const COMMON: &str = verus_code_str! {
     {
     }
 
+    #[verifier(atomic)] /* vattr */
+    fn atomic_cond() -> bool
+        opens_invariants none
+        no_unwind
+    {
+        true
+    }
+
     #[verifier(external_body)] /* vattr */
     fn non_atomic_op()
         opens_invariants none
@@ -74,6 +82,400 @@ test_verify_one_file! {
             });
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] one_atomic_per_branch_ok
+    COMMON.to_string() + verus_code_str! {
+        pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(i: Tracked<AtomicInvariant<A, u8, B>>, j: u64) {
+            open_atomic_invariant!(i.borrow() => inner => {
+                if j == 1 {
+                    atomic_op();
+                } else {
+                    atomic_op();
+                }
+            });
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] one_atomic_per_match_arm_ok
+    COMMON.to_string() + verus_code_str! {
+        pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(i: Tracked<AtomicInvariant<A, u8, B>>, j: u64) {
+            open_atomic_invariant!(i.borrow() => inner => {
+                match j {
+                    1 => atomic_op(),
+                    2 => atomic_op(),
+                    _ => {}
+                }
+            });
+        }
+    } => Ok(())
+}
+
+// Guards are not alternatives: a later guard runs only after an earlier one has run and
+// failed, so two atomic guards really do perform two atomic operations.
+test_verify_one_file! {
+    #[test] two_atomic_match_guards_fail
+    COMMON.to_string() + verus_code_str! {
+        pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(i: Tracked<AtomicInvariant<A, u8, B>>, j: u64) {
+            open_atomic_invariant!(i.borrow() => inner => {
+                match j {
+                    _ if atomic_cond() => { }
+                    _ if atomic_cond() => { }
+                    _ => { }
+                }
+            });
+        }
+    } => Err(err) => assert_vir_error_msg(err, "open_atomic_invariant cannot contain more than one atomic operation")
+}
+
+test_verify_one_file! {
+    #[test] two_atomic_in_one_branch_fail
+    COMMON.to_string() + verus_code_str! {
+        pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(i: Tracked<AtomicInvariant<A, u8, B>>, j: u64) {
+            open_atomic_invariant!(i.borrow() => inner => {
+                if j == 1 {
+                    atomic_op();
+                    atomic_op();
+                } else {
+                    atomic_op();
+                }
+            });
+        }
+    } => Err(err) => assert_vir_error_msg(err, "open_atomic_invariant cannot contain more than one atomic operation")
+}
+
+test_verify_one_file! {
+    #[test] atomic_before_branch_fail
+    COMMON.to_string() + verus_code_str! {
+        pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(i: Tracked<AtomicInvariant<A, u8, B>>, j: u64) {
+            open_atomic_invariant!(i.borrow() => inner => {
+                atomic_op();
+                if j == 1 {
+                    atomic_op();
+                }
+            });
+        }
+    } => Err(err) => assert_vir_error_msg(err, "open_atomic_invariant cannot contain more than one atomic operation")
+}
+
+test_verify_one_file! {
+    #[test] atomic_in_branch_fail
+    COMMON.to_string() + verus_code_str! {
+        #[verifier::atomic]
+        fn atomic_ret_bool() -> bool {
+            true
+        }
+        pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(i: Tracked<AtomicInvariant<A, u8, B>>) {
+            open_atomic_invariant!(i.borrow() => inner => {
+                if atomic_ret_bool() {
+                } else {
+                    atomic_op();
+                }
+            });
+        }
+    } => Err(err) => assert_vir_error_msg(err, "open_atomic_invariant cannot contain more than one atomic operation")
+}
+
+test_verify_one_file! {
+    #[test] non_atomic_in_branch_fail
+    COMMON.to_string() + verus_code_str! {
+        pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(i: Tracked<AtomicInvariant<A, u8, B>>, j: u64) {
+            open_atomic_invariant!(i.borrow() => inner => {
+                if j == 1 {
+                    atomic_op();
+                } else {
+                    non_atomic_op();
+                }
+            });
+        }
+    } => Err(err) => assert_vir_error_msg(err, "open_atomic_invariant cannot contain non-atomic operations")
+}
+
+// Counting per path is not on its own enough to let an atomic function recurse: the collector
+// counts a recursive call as one operation, but the call unfolds, so the syntactic count does
+// not bound the number performed. A separate check rejects this.
+test_verify_one_file! {
+    #[test] recursive_atomic_one_per_branch_fail
+    COMMON.to_string() + verus_code_str! {
+        #[verifier(atomic)] /* vattr */
+        fn descend(n: u64)
+            decreases n,
+            opens_invariants none
+            no_unwind
+        {
+            if n == 0 {
+                atomic_op();
+            } else {
+                descend(n - 1);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] nested_if_one_atomic_per_path_ok
+    COMMON.to_string() + verus_code_str! {
+        pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(i: Tracked<AtomicInvariant<A, u8, B>>, j: u64, k: u64) {
+            open_atomic_invariant!(i.borrow() => inner => {
+                if j == 1 {
+                    if k == 1 {
+                        atomic_op();
+                    } else {
+                        atomic_op();
+                    }
+                } else {
+                    atomic_op();
+                }
+            });
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] nested_if_two_atomic_on_one_path_fail
+    COMMON.to_string() + verus_code_str! {
+        pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(i: Tracked<AtomicInvariant<A, u8, B>>, j: u64, k: u64) {
+            open_atomic_invariant!(i.borrow() => inner => {
+                if j == 1 {
+                    atomic_op();
+                    if k == 1 {
+                        atomic_op();
+                    }
+                }
+            });
+        }
+    } => Err(err) => assert_vir_error_msg(err, "open_atomic_invariant cannot contain more than one atomic operation")
+}
+
+test_verify_one_file! {
+    #[test] else_if_chain_ok
+    COMMON.to_string() + verus_code_str! {
+        pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(i: Tracked<AtomicInvariant<A, u8, B>>, j: u64) {
+            open_atomic_invariant!(i.borrow() => inner => {
+                if j == 1 {
+                    atomic_op();
+                } else if j == 2 {
+                    atomic_op();
+                } else if j == 3 {
+                    atomic_op();
+                } else {
+                    atomic_op();
+                }
+            });
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] match_arm_containing_if_ok
+    COMMON.to_string() + verus_code_str! {
+        pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(i: Tracked<AtomicInvariant<A, u8, B>>, j: u64, k: u64) {
+            open_atomic_invariant!(i.borrow() => inner => {
+                match j {
+                    1 => {
+                        if k == 1 {
+                            atomic_op();
+                        } else {
+                            atomic_op();
+                        }
+                    }
+                    _ => atomic_op(),
+                }
+            });
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] if_branch_containing_match_ok
+    COMMON.to_string() + verus_code_str! {
+        pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(i: Tracked<AtomicInvariant<A, u8, B>>, j: u64, k: u64) {
+            open_atomic_invariant!(i.borrow() => inner => {
+                if j == 1 {
+                    match k {
+                        1 => atomic_op(),
+                        _ => atomic_op(),
+                    }
+                } else {
+                    atomic_op();
+                }
+            });
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] match_arm_containing_two_atomic_fail
+    COMMON.to_string() + verus_code_str! {
+        pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(i: Tracked<AtomicInvariant<A, u8, B>>, j: u64) {
+            open_atomic_invariant!(i.borrow() => inner => {
+                match j {
+                    1 => {
+                        atomic_op();
+                        atomic_op();
+                    }
+                    _ => atomic_op(),
+                }
+            });
+        }
+    } => Err(err) => assert_vir_error_msg(err, "open_atomic_invariant cannot contain more than one atomic operation")
+}
+
+test_verify_one_file! {
+    #[test] atomic_after_branch_fail
+    COMMON.to_string() + verus_code_str! {
+        fn do_nothing<A, B: InvariantPredicate<A, u8>>(i: Tracked<AtomicInvariant<A, u8, B>>, j: u64) {
+            open_atomic_invariant!(i.borrow() => inner => {
+                if j == 1 {
+                    atomic_op();
+                } else {
+                    atomic_op();
+                }
+                atomic_op();
+            });
+        }
+    } => Err(err) => assert_vir_error_msg(err, "open_atomic_invariant cannot contain more than one atomic operation")
+}
+
+test_verify_one_file! {
+    #[test] two_sequential_branches_fail
+    COMMON.to_string() + verus_code_str! {
+        fn do_nothing<A, B: InvariantPredicate<A, u8>>(i: Tracked<AtomicInvariant<A, u8, B>>, j: u64) {
+            open_atomic_invariant!(i.borrow() => inner => {
+                if j == 1 {
+                    atomic_op();
+                }
+                if j == 2 {
+                    atomic_op();
+                }
+            });
+        }
+    } => Err(err) => assert_vir_error_msg(err, "open_atomic_invariant cannot contain more than one atomic operation")
+}
+
+test_verify_one_file! {
+    #[test] atomic_in_if_condition_and_branch_fail
+    COMMON.to_string() + verus_code_str! {
+        fn do_nothing<A, B: InvariantPredicate<A, u8>>(i: Tracked<AtomicInvariant<A, u8, B>>) {
+            open_atomic_invariant!(i.borrow() => inner => {
+                if atomic_cond() {
+                    atomic_op();
+                } else {
+                    atomic_op();
+                }
+            });
+        }
+    } => Err(err) => assert_vir_error_msg(err, "open_atomic_invariant cannot contain more than one atomic operation")
+}
+
+test_verify_one_file! {
+    #[test] atomic_in_match_scrutinee_and_arm_fail
+    COMMON.to_string() + verus_code_str! {
+        fn do_nothing<A, B: InvariantPredicate<A, u8>>(i: Tracked<AtomicInvariant<A, u8, B>>) {
+            open_atomic_invariant!(i.borrow() => inner => {
+                match atomic_cond() {
+                    true => atomic_op(),
+                    _ => atomic_op(),
+                }
+            });
+        }
+    } => Err(err) => assert_vir_error_msg(err, "open_atomic_invariant cannot contain more than one atomic operation")
+}
+
+test_verify_one_file! {
+    #[test] one_atomic_guard_and_arms_ok
+    COMMON.to_string() + verus_code_str! {
+        fn do_nothing<A, B: InvariantPredicate<A, u8>>(i: Tracked<AtomicInvariant<A, u8, B>>, j: u64) {
+            open_atomic_invariant!(i.borrow() => inner => {
+                match j {
+                    _ if j == 1 => atomic_op(),
+                    _ => atomic_op(),
+                }
+            });
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] non_atomic_in_match_arm_fail
+    COMMON.to_string() + verus_code_str! {
+        fn do_nothing<A, B: InvariantPredicate<A, u8>>(i: Tracked<AtomicInvariant<A, u8, B>>, j: u64) {
+            open_atomic_invariant!(i.borrow() => inner => {
+                match j {
+                    1 => atomic_op(),
+                    _ => non_atomic_op(),
+                }
+            });
+        }
+    } => Err(err) => assert_vir_error_msg(err, "open_atomic_invariant cannot contain non-atomic operations")
+}
+
+test_verify_one_file_with_options! {
+    #[test] loop_in_branch_fail ["exec_allows_no_decreases_clause"] =>
+    COMMON.to_string() + verus_code_str! {
+        fn do_nothing<A, B: InvariantPredicate<A, u8>>(i: Tracked<AtomicInvariant<A, u8, B>>, j: u64) {
+            open_atomic_invariant!(i.borrow() => inner => {
+                if j == 1 {
+                    atomic_op();
+                } else {
+                    while j < 10 {
+                    }
+                }
+            });
+        }
+    } => Err(err) => assert_vir_error_msg(err, "open_atomic_invariant cannot contain an 'exec' loop")
+}
+
+test_verify_one_file! {
+    #[test] branch_with_empty_arms_ok
+    COMMON.to_string() + verus_code_str! {
+        fn do_nothing<A, B: InvariantPredicate<A, u8>>(i: Tracked<AtomicInvariant<A, u8, B>>, j: u64) {
+            open_atomic_invariant!(i.borrow() => inner => {
+                if j == 1 {
+                } else {
+                }
+                atomic_op();
+            });
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] atomic_fn_one_per_branch_ok
+    COMMON.to_string() + verus_code_str! {
+        #[verifier(atomic)] /* vattr */
+        fn do_nothing(j: u64)
+            opens_invariants none
+            no_unwind
+        {
+            if j == 1 {
+                atomic_op();
+            } else {
+                atomic_op();
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] atomic_fn_two_in_one_branch_fail
+    COMMON.to_string() + verus_code_str! {
+        #[verifier(atomic)] /* vattr */
+        fn do_nothing(j: u64)
+            opens_invariants none
+            no_unwind
+        {
+            if j == 1 {
+                atomic_op();
+                atomic_op();
+            } else {
+                atomic_op();
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "atomic function cannot contain more than one atomic operation")
 }
 
 test_verify_one_file! {
@@ -329,7 +731,7 @@ test_verify_one_file! {
         fn stuff() {
             stuff();
         }
-    } => Err(err) => assert_vir_error_msg(err, "'atomic' cannot be used on a recursive function")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
 }
 
 test_verify_one_file! {
@@ -343,7 +745,7 @@ test_verify_one_file! {
         fn stuff2() {
             stuff1();
         }
-    } => Err(err) => assert_vir_error_msg(err, "'atomic' cannot be used on a recursive function")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
 }
 
 test_verify_one_file! {
