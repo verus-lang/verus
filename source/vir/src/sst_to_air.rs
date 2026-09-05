@@ -2620,6 +2620,38 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
     Ok(result)
 }
 
+// assert bare-ensures loop clauses hold wherever `cond` is false
+fn assert_bare_ensures_if_cond_false(
+    ctx: &Ctx,
+    state: &mut State,
+    expr_ctxt: &ExprCtxt,
+    cond: &Option<(Stm, Exp)>,
+    bare_ensures: &[(Span, Expr, Option<Arc<String>>)],
+    msg: &str,
+    out: &mut Vec<Stmt>,
+) -> Result<(), VirErr> {
+    if bare_ensures.is_empty() {
+        return Ok(());
+    }
+    let Some((c_stm, c_exp)) = cond else {
+        return Ok(());
+    };
+    out.extend(stm_to_stmts(ctx, state, c_stm)?);
+    let pos_cond = exp_to_expr(ctx, c_exp, expr_ctxt)?;
+    let neg_cond = Arc::new(ExprX::Unary(air::ast::UnaryOp::Not, pos_cond));
+    for (span, inv, m) in bare_ensures.iter() {
+        let mut error = error(span, msg);
+        if let Some(m) = m {
+            error = error.secondary_label(span, &**m);
+        }
+        let implication =
+            Arc::new(ExprX::Binary(air::ast::BinaryOp::Implies, neg_cond.clone(), inv.clone()));
+        let inv_stmt = StmtX::Assert(None, error, None, implication);
+        out.push(Arc::new(inv_stmt));
+    }
+    Ok(())
+}
+
 fn loop_to_stmts(
     ctx: &Ctx,
     state: &mut State,
@@ -2657,15 +2689,23 @@ fn loop_to_stmts(
     } else {
         (None, None, None)
     };
+    if cond.is_some() {
+        // `cond` only stays separate from the body (instead of being folded in as
+        // `if !cond { break }`) for the two loop shapes ast_to_sst.rs's `simple_while`
+        // allows: a loop where every clause is a plain `invariant` (true on entry and
+        // required to still hold at exit), or a loop where every clause is a bare
+        // `ensures` (not assumed on entry, only required at exit). Anything else - a
+        // mix of clause kinds, or any `invariant_except_break` clause - should never
+        // reach this point with `cond` still `Some`.
+        let all_both = invs.iter().all(|inv| inv.at_entry && inv.at_exit);
+        let all_ensures_only = invs.iter().all(|inv| !inv.at_entry && inv.at_exit);
+        assert!(all_both || all_ensures_only);
+    }
     let mut invs_entry: Vec<(Span, Expr, Option<Arc<String>>, bool)> = Vec::new();
     let mut invs_exit: Vec<(Span, Expr, Option<Arc<String>>, bool)> = Vec::new();
     let modified_vars = modified_vars.as_ref().unwrap();
     for inv in invs.iter() {
         let expr = exp_to_expr(ctx, &inv.inv, expr_ctxt)?;
-        if cond.is_some() {
-            assert!(inv.at_entry);
-            assert!(inv.at_exit);
-        }
         let both = inv.at_entry && inv.at_exit;
         if inv.at_entry {
             invs_entry.push((inv.inv.span.clone(), expr.clone(), None, both));
@@ -2676,6 +2716,12 @@ fn loop_to_stmts(
     }
     let invs_entry = Arc::new(invs_entry);
     let invs_exit = Arc::new(invs_exit);
+    // bare `ensures` clauses (at_exit but not at_entry - "both" is false)
+    let bare_ensures: Vec<(Span, Expr, Option<Arc<String>>)> = invs_exit
+        .iter()
+        .filter(|(_, _, _, both)| !both)
+        .map(|(span, expr, msg, _)| (span.clone(), expr.clone(), msg.clone()))
+        .collect();
 
     let (_, decrease_init) =
         crate::recursion::mk_decreases_at_entry(ctx, &stm.span, Some(*id), &decrease)?;
@@ -2752,6 +2798,18 @@ fn loop_to_stmts(
             assume cond_exp
             body // "break" inside body turns into assert invs_exit; assume false
             assert invs_entry
+    Suppose instead that `invs` is entirely bare `ensures` clauses (fixes #925):
+    We generate this AIR in the outer query, before any havoc:
+        assert (!cond_exp ==> e) for each bare ensures clause e
+        havoc modified_vars
+        ...
+    We generate this AIR in the spun-off loop query, at the same point invs_entry
+    gets re-asserted:
+        body
+        assert (!cond_exp ==> e) for each bare ensures clause e
+        assert invs_entry
+    (the outer assert has full pre-loop context and covers 0 iterations; the inner
+    one is the same check the "both" case above always had, covering >=1 iterations)
     */
 
     let mut air_body: Vec<Stmt> = state.static_prelude.clone();
@@ -2861,6 +2919,16 @@ fn loop_to_stmts(
             let inv_stmt = StmtX::Assert(None, error, None, inv.clone());
             air_body.push(Arc::new(inv_stmt));
         }
+        // inductive step, covers the loop running >=1 times
+        assert_bare_ensures_if_cond_false(
+            ctx,
+            state,
+            expr_ctxt,
+            cond,
+            &bare_ensures,
+            crate::def::ENSURES_FAIL_LOOP_EXIT,
+            &mut air_body,
+        )?;
         if decrease.len() > 0 {
             let dec_exp = crate::recursion::check_decrease(
                 ctx,
@@ -2916,6 +2984,16 @@ fn loop_to_stmts(
             let inv_stmt = StmtX::Assert(None, error, None, inv.clone());
             stmts.push(Arc::new(inv_stmt));
         }
+        // zero-iteration base case, before havoc, with full pre-loop context
+        assert_bare_ensures_if_cond_false(
+            ctx,
+            state,
+            expr_ctxt,
+            cond,
+            &bare_ensures,
+            crate::def::ENSURES_FAIL_LOOP_ZERO_ITERS,
+            &mut stmts,
+        )?;
     }
     if !loop_isolation {
         let break_label = air_break_label.clone();
