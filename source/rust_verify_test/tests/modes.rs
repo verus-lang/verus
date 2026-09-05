@@ -378,22 +378,22 @@ test_verify_one_file_with_options! {
             #[verifier::spec] let x: u64;
             x = 2;
             x = 3;
-            verus_builtin::assert_(false); // FAILS
+            verus_builtin::assert_(false);
         }
-    } => Err(err) => assert_fails(err, 1)
+    } => Err(err) => assert_vir_error_msg(err, "variable `x` is not marked mutable")
 }
 
 test_verify_one_file! {
     #[test] decl_init_let_spec_fail2 verus_code! {
         fn test1() {
-            let ghost x: u64; // TODO should probably require this to be mut
+            let ghost x: u64;
             proof {
                 x = 2;
                 x = 3;
             }
-            assert(false); // FAILS
+            assert(false);
         }
-    } => Err(err) => assert_fails(err, 1)
+    } => Err(err) => assert_vir_error_msg(err, "variable `x` is not marked mutable")
 }
 
 test_verify_one_file! {
@@ -402,9 +402,9 @@ test_verify_one_file! {
             let x: u64;
             x = 2;
             x = 3;
-            assert(false); // FAILS
+            assert(false);
         }
-    } => Err(err) => assert_fails(err, 1)
+    } => Err(err) => assert_vir_error_msg(err, "variable `x` is not marked mutable")
 }
 
 const FIELD_UPDATE: &str = code_str! {
