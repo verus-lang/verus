@@ -22,17 +22,16 @@ pub trait PointsToParam: Sized {
     spec fn size(self) -> nat;
 }
 
-/// A `PointsToParam` whose size is determined by the type alone,
-/// not by any particular tracked value of that type.
-/// This lets code that is generic over some `PointsToParam`
+/// Restricts `PointsToParam` to permissions whose pointed-to size is determined by the type alone.
+/// This lets code which is generic over some `PointsToParam`
 /// rely on all instances of that type reporting the same `size()`
-/// (for example, `SeqPointsTo` requires this of its element permission type,
-/// since every element of the sequence must be the same size).
+/// (for example, `SeqPointsTo` requires that every permission in the sequence must track the same size of memory).
 pub trait FixedSizeParam: PointsToParam {
-    /// The size that every instance of `Self` reports via `size()`.
+    /// The (constant) size of the memory region that this permission tracks,
+    /// which is the same for every `PointsTo` permission satisfying this trait bound.
     spec fn const_size() -> nat;
 
-    /// Every tracked value of `Self` must actually have the size `const_size()` claims.
+    /// Ensures that the `PointsToParam` size is always the same as the constant size defined here.
     proof fn size_eq_const_size(tracked &self)
         ensures
             self.size() == Self::const_size(),
@@ -265,7 +264,46 @@ impl<T: ?Sized, PointsToPerm: PointsToProperties + FixedSizeParam> PointsToPrope
     }
 
     proof fn is_disjoint<OtherPointsToPerm: PointsToParam>(tracked &mut self, tracked other: &OtherPointsToPerm) {
-        assume(false);
+        assert(self.size() != 0);
+        assert(self.wf_basic());
+        assert(other.size() != 0);
+        let self_addr = self.ptr()@.addr as int;
+        let other_addr = other.ptr()@.addr as int;
+        let csize = PointsToPerm::const_size() as int;
+        let len = self.len() as int;
+
+        super::arithmetic::mul::lemma_mul_nonzero(len, csize);
+
+        if other_addr < self_addr {
+            // `other` starts strictly before `self`'s whole range: since element 0
+            // starts exactly where `self` does, its disjointness from `other` is
+            // exactly the disjointness we need for the whole array.
+            assert(self[0].ptr()@.addr == self_addr);
+            self.seq_pt.tracked_borrow_mut(0).size_eq_const_size();
+            self.seq_pt.tracked_borrow_mut(0).is_disjoint(other);
+        } else if other_addr >= self_addr + len * csize {
+            // `other` starts at or after `self`'s whole range ends: the last
+            // element ends exactly where `self` does, so its disjointness from
+            // `other` gives us what we need.
+            assert(self[len - 1].ptr()@.addr == self_addr + (len - 1) * csize);
+            self.seq_pt.tracked_borrow_mut(len - 1).size_eq_const_size();
+            self.seq_pt.tracked_borrow_mut(len - 1).is_disjoint(other);
+            super::arithmetic::mul::lemma_mul_is_distributive_add_other_way(csize, len - 1, 1);
+        } else {
+            // `other` starts strictly inside `self`'s range: find the element `k`
+            // whose byte range contains `other`'s start address, and derive a
+            // contradiction from the fact that it can't possibly be disjoint from
+            // `other` (since `other`'s own start address lies within it).
+            let k = (other_addr - self_addr) / csize;
+            super::arithmetic::div_mod::lemma_fundamental_div_mod(other_addr - self_addr, csize);
+            super::arithmetic::div_mod::lemma_remainder(other_addr - self_addr, csize);
+            super::arithmetic::div_mod::lemma_multiply_divide_lt(other_addr - self_addr, csize, len);
+            super::arithmetic::div_mod::lemma_div_pos_is_pos(other_addr - self_addr, csize);
+            assert(self[k].ptr()@.addr == self_addr + k * csize);
+            self.seq_pt.tracked_borrow_mut(k).size_eq_const_size();
+            self.seq_pt.tracked_borrow_mut(k).is_disjoint(other);
+            assert(false);
+        }
     }
 }
 
