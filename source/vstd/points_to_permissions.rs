@@ -1,7 +1,7 @@
 use super::group_vstd_default;
 use super::layout::{self, *};
-use super::points_to::*;
 use super::points_to::SeqPointsTo;
+use super::points_to::*;
 use super::prelude::*;
 use super::raw_ptr;
 use super::raw_ptr::*;
@@ -17,9 +17,9 @@ broadcast use group_vstd_default;
 /// along with a `*mut [u8]` pointer to the region of bytes.
 pub type PointsToUntyped = SeqPointsTo<[u8], PointsToSingleton>;
 
-/// The interface for a `PointsToUntyped` permission, 
+/// The interface for a `PointsToUntyped` permission,
 /// which represents permission to access an (untyped) contiguous sequence of bytes in memory.
-/// We track the pointer to that memory as well as 
+/// We track the pointer to that memory as well as
 /// the abstract bytes corresponding to Rust's abstract machine.
 #[cfg(verus_keep_ghost)]
 pub ghost struct PointsToUntypedData {
@@ -32,10 +32,7 @@ impl View for PointsToUntyped {
     type V = PointsToUntypedData;
 
     open spec fn view(&self) -> Self::V {
-        PointsToUntypedData {
-            ptr: self.ptr(),
-            bytes: self.bytes(),
-        }
+        PointsToUntypedData { ptr: self.ptr(), bytes: self.bytes() }
     }
 }
 
@@ -78,7 +75,7 @@ pub tracked struct PointsToUnaligned<T: ?Sized> {
 }
 
 /// The interface for a `PointsToUnaligned` permission,
-/// which represents permission to access possibly-unaligned memory 
+/// which represents permission to access possibly-unaligned memory
 /// which may decode to a valid value of type `T`.
 /// We track the pointer to that memory,
 /// the (possibly-valid) typed value, and its abstract bytes.
@@ -94,11 +91,7 @@ impl<T> View for PointsToUnaligned<T> {
     type V = PointsToUnalignedData<T>;
 
     open spec fn view(&self) -> Self::V {
-        PointsToUnalignedData {
-            ptr: self.ptr(),
-            value: self.typed_value(),
-            bytes: self.bytes(),
-        }
+        PointsToUnalignedData { ptr: self.ptr(), value: self.typed_value(), bytes: self.bytes() }
     }
 }
 
@@ -160,7 +153,8 @@ impl<T> FixedSizeParam for PointsToUnaligned<T> {
         size_of::<T>()
     }
 
-    proof fn size_eq_const_size(tracked &self) {}
+    proof fn size_eq_const_size(tracked &self) {
+    }
 }
 
 impl<T> PointsToProperties for PointsToUnaligned<T> {
@@ -175,7 +169,8 @@ impl<T> PointsToProperties for PointsToUnaligned<T> {
 
     /// Non-nullness follows from the underlying `PointsToUntyped`'s invariant,
     /// since `self.ptr()` and `self.pt_untyped().ptr()` have the same address.
-    proof fn is_nonnull(tracked &self) {}
+    proof fn is_nonnull(tracked &self) {
+    }
 
     /// Delegates to the underlying `PointsToUntyped`'s `ptr_bounds`,
     /// since `self.ptr()` and `self.pt_untyped().ptr()` have the same address.
@@ -190,7 +185,10 @@ impl<T> PointsToProperties for PointsToUnaligned<T> {
 
     /// Delegates to the underlying `PointsToUntyped`'s `is_disjoint`,
     /// since the two permissions track the same memory range.
-    proof fn is_disjoint<OtherPointsToPerm: PointsToParam>(tracked &mut self, tracked other: &OtherPointsToPerm) {
+    proof fn is_disjoint<OtherPointsToPerm: PointsToParam>(
+        tracked &mut self,
+        tracked other: &OtherPointsToPerm,
+    ) {
         self.pt_untyped.is_disjoint(other);
     }
 }
@@ -296,11 +294,7 @@ impl<T> View for PointsTo<T> {
     type V = PointsToData<T>;
 
     open spec fn view(&self) -> Self::V {
-        PointsToData {
-            ptr: self.ptr(),
-            value: self.typed_value(),
-            bytes: self.bytes(),
-        }
+        PointsToData { ptr: self.ptr(), value: self.typed_value(), bytes: self.bytes() }
     }
 }
 
@@ -362,7 +356,8 @@ impl<T> FixedSizeParam for PointsTo<T> {
         size_of::<T>()
     }
 
-    proof fn size_eq_const_size(tracked &self) {}
+    proof fn size_eq_const_size(tracked &self) {
+    }
 }
 
 impl<T> PointsToProperties for PointsTo<T> {
@@ -375,7 +370,8 @@ impl<T> PointsToProperties for PointsTo<T> {
 
     /// Non-nullness follows from the underlying `PointsToUnaligned`'s invariant,
     /// since `self.ptr()` and `self.pt_unaligned().ptr()` are the same pointer.
-    proof fn is_nonnull(tracked &self) {}
+    proof fn is_nonnull(tracked &self) {
+    }
 
     /// Delegates to the underlying `PointsToUnaligned`'s `ptr_bounds`,
     /// since `self.ptr()` and `self.pt_unaligned().ptr()` are the same pointer.
@@ -390,7 +386,10 @@ impl<T> PointsToProperties for PointsTo<T> {
 
     /// Delegates to the underlying `PointsToUnaligned`'s `is_disjoint`,
     /// since the two permissions track the same memory range.
-    proof fn is_disjoint<OtherPointsToPerm: PointsToParam>(tracked &mut self, tracked other: &OtherPointsToPerm) {
+    proof fn is_disjoint<OtherPointsToPerm: PointsToParam>(
+        tracked &mut self,
+        tracked other: &OtherPointsToPerm,
+    ) {
         self.pt_unaligned.is_disjoint(other);
     }
 }
@@ -437,5 +436,4 @@ impl<T> PointsTo<T> {
     }
 }
 
-
-}
+} // verus!

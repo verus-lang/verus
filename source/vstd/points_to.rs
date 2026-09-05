@@ -10,7 +10,7 @@ verus! {
 
 broadcast use group_vstd_default;
 
-/// Defines parameters common to all `PointsTo` permissions: 
+/// Defines parameters common to all `PointsTo` permissions:
 /// the pointer to memory and the size of the pointed-to region.
 pub trait PointsToParam: Sized {
     type A: ?Sized;
@@ -40,17 +40,17 @@ pub trait FixedSizeParam: PointsToParam {
 
 /// Defines properties which should hold of any `PointsTo` permission.
 pub trait PointsToProperties: PointsToParam {
-    /// Define basic well-formed-ness conditions. 
-    /// This function is designed to apply to a generic trait implementation 
+    /// Define basic well-formed-ness conditions.
+    /// This function is designed to apply to a generic trait implementation
     /// of this trait for a `PointsTo` permission,
     /// and specific implementatations of the `PointsTo` permissions can define additional well-formedness properites.
-    /// 
+    ///
     /// See `SeqPointsTo` and `PointsToUntyped` for an example.
     spec fn wf_basic(self) -> bool;
 
     /// Guarantee that the pointer is non-null.
     ///
-    /// See <https://doc.rust-lang.org/std/ptr/#safety>    
+    /// See <https://doc.rust-lang.org/std/ptr/#safety>
     proof fn is_nonnull(tracked &self)
         requires
             self.wf_basic(),
@@ -70,7 +70,7 @@ pub trait PointsToProperties: PointsToParam {
                 + self.ptr()@.provenance.data().alloc_len(),
     ;
 
-    /// If the size of the pointed-to region is nonzero, 
+    /// If the size of the pointed-to region is nonzero,
     /// then the pointer's provenance is non-null.
     proof fn provenance_not_none(tracked &self)
         requires
@@ -91,15 +91,18 @@ pub trait PointsToProperties: PointsToParam {
     /// However, note that if one type is a ZST and the other is a non-ZST,
     /// the disjointness definition as stated here here does not hold,
     /// since the ZST pointer could be in the middle of the non-ZST's range.
-    proof fn is_disjoint<OtherPointsToPerm: PointsToParam>(tracked &mut self, tracked other: &OtherPointsToPerm)
+    proof fn is_disjoint<OtherPointsToPerm: PointsToParam>(
+        tracked &mut self,
+        tracked other: &OtherPointsToPerm,
+    )
         requires
             self.size() != 0,
             other.size() != 0,
             self.wf_basic(),
         ensures
             *old(self) == *final(self),
-            final(self).ptr() as int + final(self).size() <= other.ptr() as int || other.ptr() as int
-                + other.size() <= final(self).ptr() as int,
+            final(self).ptr() as int + final(self).size() <= other.ptr() as int
+                || other.ptr() as int + other.size() <= final(self).ptr() as int,
     ;
 }
 
@@ -144,7 +147,10 @@ impl PointsToProperties for PointsToSingleton {
     /// (`self` is an &mut reference to enforce distinctness,
     /// so you cannot pass the same PointsTo as both arguments.)
     /// Since `u8` is not a ZST, this implies the pointers have distinct addresses.
-    axiom fn is_disjoint<PointsToPerm: PointsToParam>(tracked &mut self, tracked other: &PointsToPerm);
+    axiom fn is_disjoint<PointsToPerm: PointsToParam>(
+        tracked &mut self,
+        tracked other: &PointsToPerm,
+    );
 }
 
 impl FixedSizeParam for PointsToSingleton {
@@ -153,7 +159,8 @@ impl FixedSizeParam for PointsToSingleton {
         size_of::<u8>()
     }
 
-    proof fn size_eq_const_size(tracked &self) {}
+    proof fn size_eq_const_size(tracked &self) {
+    }
 }
 
 impl PointsToSingleton {
@@ -175,9 +182,9 @@ impl PointsToSingleton {
     }
 }
 
-/// The interface for a `PointsToSingleton` permission, 
+/// The interface for a `PointsToSingleton` permission,
 /// which represents permission to access a single byte in memory.
-/// We track the pointer to that memory as well as 
+/// We track the pointer to that memory as well as
 /// the abstract byte corresponding to Rust's abstract machine.
 #[cfg(verus_keep_ghost)]
 pub ghost struct PointsToSingletonData {
@@ -190,10 +197,7 @@ impl View for PointsToSingleton {
     type V = PointsToSingletonData;
 
     open spec fn view(&self) -> Self::V {
-        PointsToSingletonData {
-            ptr: self.ptr(),
-            byte: self.byte(),
-        }
+        PointsToSingletonData { ptr: self.ptr(), byte: self.byte() }
     }
 }
 
@@ -202,7 +206,10 @@ pub tracked struct SeqPointsTo<T: ?Sized, PointsToPerm: PointsToProperties + Fix
     ptr: Ghost<*mut T>,
 }
 
-impl<T: ?Sized, PointsToPerm: PointsToProperties + FixedSizeParam> PointsToParam for SeqPointsTo<T, PointsToPerm> {
+impl<T: ?Sized, PointsToPerm: PointsToProperties + FixedSizeParam> PointsToParam for SeqPointsTo<
+    T,
+    PointsToPerm,
+> {
     type A = T;
 
     closed spec fn ptr(self) -> *mut T {
@@ -216,7 +223,10 @@ impl<T: ?Sized, PointsToPerm: PointsToProperties + FixedSizeParam> PointsToParam
     }
 }
 
-impl<T: ?Sized, PointsToPerm: PointsToProperties + FixedSizeParam> PointsToProperties for SeqPointsTo<T, PointsToPerm> {
+impl<
+    T: ?Sized,
+    PointsToPerm: PointsToProperties + FixedSizeParam,
+> PointsToProperties for SeqPointsTo<T, PointsToPerm> {
     open spec fn wf_basic(self) -> bool {
         // Defining the provenance and address for the individual PointsToSingletons
         &&& forall|i|
@@ -228,7 +238,7 @@ impl<T: ?Sized, PointsToPerm: PointsToProperties + FixedSizeParam> PointsToPrope
                 &&& self[i].ptr()@.addr == self.ptr()@.addr + i * PointsToPerm::const_size()
                 &&& self[i].wf_basic()
             }
-        // The ptr is non-null
+            // The ptr is non-null
         &&& self.ptr()@.addr
             != 0
         // If ptr's provenance is Some, the address is in bounds of the provenance
@@ -240,7 +250,8 @@ impl<T: ?Sized, PointsToPerm: PointsToProperties + FixedSizeParam> PointsToPrope
     }
 
     /// Non-nullness is guaranteed by the invariant.
-    proof fn is_nonnull(tracked &self) {}
+    proof fn is_nonnull(tracked &self) {
+    }
 
     /// If the size is non-zero, the length must be nonzero.
     /// Then this follows from the `provenance_not_none` property of an individual `PointsToPerm`.
@@ -261,7 +272,10 @@ impl<T: ?Sized, PointsToPerm: PointsToProperties + FixedSizeParam> PointsToPrope
         }
     }
 
-    proof fn is_disjoint<OtherPointsToPerm: PointsToParam>(tracked &mut self, tracked other: &OtherPointsToPerm) {
+    proof fn is_disjoint<OtherPointsToPerm: PointsToParam>(
+        tracked &mut self,
+        tracked other: &OtherPointsToPerm,
+    ) {
         let self_addr = self.ptr()@.addr as int;
         let other_addr = other.ptr()@.addr as int;
         let csize = PointsToPerm::const_size() as int;
@@ -290,7 +304,11 @@ impl<T: ?Sized, PointsToPerm: PointsToProperties + FixedSizeParam> PointsToPrope
             let k = (other_addr - self_addr) / csize;
             super::arithmetic::div_mod::lemma_fundamental_div_mod(other_addr - self_addr, csize);
             super::arithmetic::div_mod::lemma_remainder(other_addr - self_addr, csize);
-            super::arithmetic::div_mod::lemma_multiply_divide_lt(other_addr - self_addr, csize, len);
+            super::arithmetic::div_mod::lemma_multiply_divide_lt(
+                other_addr - self_addr,
+                csize,
+                len,
+            );
             super::arithmetic::div_mod::lemma_div_pos_is_pos(other_addr - self_addr, csize);
             self.seq_pt.tracked_borrow_mut(k).size_eq_const_size();
             self.seq_pt.tracked_borrow_mut(k).is_disjoint(other);
@@ -375,22 +393,13 @@ impl<T> TypedValue<[T]> {
 // impl IsPointsTo for PointsToUntyped {}
 // impl<T: ?Sized> IsPointsTo for PointsToUnaligned<T> {}
 // impl<T: ?Sized> IsPointsTo for PointsTo<T> {}
-
 // impl<T: ?Sized, PointsToPerm: IsPointsTo> IsPointsTo for SeqPointsTo<T, PointsToPerm> {
-
 // }
-
 // impl<T: ?Sized, PointsToPerm: IsPointsTo> SeqPointsTo<T, PointsToPerm> {
-
 // }
-
 // impl SeqPointsTo<[u8], PointsToSingleton> {
-
 // }
-
 // impl<T> SeqPointsTo<T, PointsTo<T>> {
-
 // }
-
 // TODO: is_disjoint, impl View for PointsTo types (helps to clarify the interface)
 } // verus!
