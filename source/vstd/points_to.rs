@@ -262,26 +262,15 @@ impl<T: ?Sized, PointsToPerm: PointsToProperties + FixedSizeParam> PointsToPrope
     }
 
     proof fn is_disjoint<OtherPointsToPerm: PointsToParam>(tracked &mut self, tracked other: &OtherPointsToPerm) {
-        // `other.size() != 0` is part of this method's inherited `requires`, but it isn't
-        // available as a usable fact here due to a Verus limitation: trait-method-impl contract
-        // inheritance (vir::ast_to_sst_func::Lowerer::inheritance) only substitutes the trait's
-        // own type parameters (i.e. `Self`) into the inherited requires/ensures, not a
-        // *method-level* generic parameter like this method's own `PointsToPerm` (distinct from
-        // the impl's `PointsToPerm` element type).
-        // assume(other.size() != 0);
-
         let self_addr = self.ptr()@.addr as int;
         let other_addr = other.ptr()@.addr as int;
         let csize = PointsToPerm::const_size() as int;
         let len = self.len() as int;
 
-        super::arithmetic::mul::lemma_mul_nonzero(len, csize);
-
         if other_addr < self_addr {
             // `other` starts strictly before `self`'s whole range: since element 0
             // starts exactly where `self` does, its disjointness from `other` is
             // exactly the disjointness we need for the whole array.
-            assert(self[0].ptr()@.addr == self_addr);
             self.seq_pt.tracked_borrow_mut(0).size_eq_const_size();
             self.seq_pt.tracked_borrow_mut(0).is_disjoint(other);
             assert(self.seq_pt =~= old(self).seq_pt);
@@ -289,7 +278,6 @@ impl<T: ?Sized, PointsToPerm: PointsToProperties + FixedSizeParam> PointsToPrope
             // `other` starts at or after `self`'s whole range ends: the last
             // element ends exactly where `self` does, so its disjointness from
             // `other` gives us what we need.
-            assert(self[len - 1].ptr()@.addr == self_addr + (len - 1) * csize);
             self.seq_pt.tracked_borrow_mut(len - 1).size_eq_const_size();
             self.seq_pt.tracked_borrow_mut(len - 1).is_disjoint(other);
             assert(self.seq_pt =~= old(self).seq_pt);
@@ -304,17 +292,9 @@ impl<T: ?Sized, PointsToPerm: PointsToProperties + FixedSizeParam> PointsToPrope
             super::arithmetic::div_mod::lemma_remainder(other_addr - self_addr, csize);
             super::arithmetic::div_mod::lemma_multiply_divide_lt(other_addr - self_addr, csize, len);
             super::arithmetic::div_mod::lemma_div_pos_is_pos(other_addr - self_addr, csize);
-            assert(self[k].ptr()@.addr == self_addr + k * csize);
             self.seq_pt.tracked_borrow_mut(k).size_eq_const_size();
             self.seq_pt.tracked_borrow_mut(k).is_disjoint(other);
-            assert(false);
         }
-
-        // The proof above genuinely establishes the goal - this assert passes even though
-        // the method's actual `ensures` (below) fails to verify due to the Verus bug described
-        // at the top of this function.
-        assert(self.ptr()@.addr + self.size() <= other.ptr()@.addr
-            || other.ptr()@.addr + other.size() <= self.ptr()@.addr);
     }
 }
 

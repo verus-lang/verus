@@ -249,25 +249,54 @@ validate that every type parameter appearing in `trait_function`'s requires/ensu
 `trait_typ_substs` before proceeding, so that a name collision cannot silently produce a wrong-but-
 well-typed substitution instead of an error.
 
+## Workaround: aligning names so the collision resolves correctly
+
+Since the dangling, unsubstituted type parameter is resolved by an ordinary in-scope name lookup
+(see Root cause above), the wrong-type-resolution failure mode can be turned into a *correct*
+resolution — without touching Verus at all — by controlling which name it collides with:
+
+1. Rename the trait method's own generic parameter to something that cannot collide with any
+   implementing type's own struct/impl-level generics (e.g. `OtherPointsToPerm` instead of a short,
+   generic-sounding name like `PointsToPerm` that an impl might also use for its own type
+   parameter).
+2. In every impl of that method, give the impl's own method-level generic parameter (`other`'s
+   type) **the same name**.
+
+The dangling reference is still never substituted — the underlying bug in `Lowerer::inheritance` is
+completely untouched — but now the *only* thing in scope it can coincidentally match by name is the
+impl's own method-level generic parameter, which is exactly `other`'s real type. The same fallback
+that used to silently resolve to the wrong type (an impl's outer struct-level generic) now
+resolves to the right one, purely because the name it's looking for no longer exists anywhere else
+in scope.
+
+This is not a fix: it relies on the same accidental name-matching behavior that causes the bug in
+the first place, just aimed at the correct target instead of the wrong one. Any trait method with
+its own generic parameter needs this same discipline applied deliberately (choose a
+collision-proof name for the trait's own method generic; match it in every impl) to avoid silently
+hitting this failure mode again, and a future Verus fix (see Suggested fix above) would make it
+unnecessary.
+
 ## Background: where this was found
 
 This surfaced while adding `is_disjoint` to `SeqPointsTo` in `source/vstd/points_to.rs` — a
-`PointsToProperties` trait method with its own generic parameter (`is_disjoint<PointsToPerm:
-PointsToParam>(tracked &mut self, tracked other: &PointsToPerm)`), implemented for
+`PointsToProperties` trait method with its own generic parameter, implemented for
 `SeqPointsTo<T, PointsToPerm>` (whose own element-type parameter is, by pre-existing convention in
-that file, also named `PointsToPerm`) — the same collision-triggered shape as the minimal repro
-above (the `tracked &mut self` there is specific to `points_to.rs`'s ownership tracking and isn't
-needed to trigger the bug itself, as the minimal repro's plain `&self` demonstrates).
+that file, named `PointsToPerm`) — the same collision-triggered shape as the minimal repro above
+(the `tracked &mut self` there is specific to `points_to.rs`'s ownership tracking and isn't needed
+to trigger the bug itself, as the minimal repro's plain `&self` demonstrates).
 `vstd::points_to::PointsToSingleton::is_disjoint` (the base-case, non-generic-container
 implementation of the same trait method) sidesteps this entirely by being declared `axiom fn` (no
 body), which is presumably why this bug had not previously surfaced in that file.
 
-`SeqPointsTo::is_disjoint` is currently left as a real `proof fn` body with `assume(other.size() !=
-0)` at the top (routing around the missing `requires` fact) followed by a full, genuine case-split
-proof of the actual goal, ending in a passing `assert` of the real disjointness disjunction as
-evidence the argument is sound independent of the trait's own (currently broken) postcondition
-check. The file does **not** currently pass `vargo build --release` because of the `ensures`-side
-failure described above; this is left in place intentionally (per project decision) as a live repro
-case, pending either a fix to Verus or a decision to fall back to `axiom fn` (matching
-`PointsToSingleton::is_disjoint`'s precedent) with the case-split argument preserved only as a
-comment.
+The trait originally declared `is_disjoint<PointsToPerm: PointsToParam>(...)` — colliding with
+`SeqPointsTo`'s own outer `PointsToPerm` element-type generic, exactly like the silent repro above
+— which is why `SeqPointsTo::is_disjoint` needed `assume(other.size() != 0)` and still failed its
+`ensures` even with a complete, independently-verified case-split proof of the real goal (see
+Evidence chain above). Applying the workaround above — renaming the trait's method generic to
+`OtherPointsToPerm` ([points_to.rs:94](vstd/points_to.rs#L94)) and giving `SeqPointsTo::is_disjoint`'s
+own method generic the same name ([points_to.rs:264](vstd/points_to.rs#L264)), while leaving the
+impl block's outer element-type generic as plain `PointsToPerm` — resolved both failures: the
+`assume` could be deleted, and the full case-split proof (case-split on `other`'s address relative
+to `self`'s range, using elements `0`/`len - 1` for the two outer cases and a div/mod witness index
+for the "starts inside" case) now verifies for real, with no workaround left in the body. The whole
+file passes `vargo build --release` (1937 verified, 0 errors).
