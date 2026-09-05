@@ -206,10 +206,10 @@ pub tracked struct SeqPointsTo<T: ?Sized, PointsToPerm: PointsToProperties + Fix
     ptr: Ghost<*mut T>,
 }
 
-impl<T: ?Sized, PointsToPerm: PointsToProperties + FixedSizeParam> PointsToParam for SeqPointsTo<
-    T,
-    PointsToPerm,
-> {
+impl<T, PointsToPerm> PointsToParam for SeqPointsTo<T, PointsToPerm> where
+    T: ?Sized,
+    PointsToPerm: PointsToProperties + FixedSizeParam,
+ {
     type A = T;
 
     closed spec fn ptr(self) -> *mut T {
@@ -223,10 +223,10 @@ impl<T: ?Sized, PointsToPerm: PointsToProperties + FixedSizeParam> PointsToParam
     }
 }
 
-impl<
+impl<T, PointsToPerm> PointsToProperties for SeqPointsTo<T, PointsToPerm> where
     T: ?Sized,
     PointsToPerm: PointsToProperties + FixedSizeParam,
-> PointsToProperties for SeqPointsTo<T, PointsToPerm> {
+ {
     open spec fn wf_basic(self) -> bool {
         // Defining the provenance and address for the individual PointsToSingletons
         &&& forall|i|
@@ -316,7 +316,10 @@ impl<
     }
 }
 
-impl<T: ?Sized, PointsToPerm: PointsToProperties + FixedSizeParam> SeqPointsTo<T, PointsToPerm> {
+impl<T, PointsToPerm> SeqPointsTo<T, PointsToPerm> where
+    T: ?Sized,
+    PointsToPerm: PointsToProperties + FixedSizeParam,
+ {
     /// The sequence of permissions that the `SeqPointsTo` contains.
     pub closed spec fn seq_pt(self) -> Seq<PointsToPerm> {
         self.seq_pt
@@ -390,16 +393,10 @@ impl<T> TypedValue<[T]> {
     }
 }
 
-// impl IsPointsTo for PointsToUntyped {}
 // impl<T: ?Sized> IsPointsTo for PointsToUnaligned<T> {}
 // impl<T: ?Sized> IsPointsTo for PointsTo<T> {}
 // impl<T: ?Sized, PointsToPerm: IsPointsTo> IsPointsTo for SeqPointsTo<T, PointsToPerm> {
 // }
-// impl<T: ?Sized, PointsToPerm: IsPointsTo> SeqPointsTo<T, PointsToPerm> {
-// }
-// impl SeqPointsTo<[u8], PointsToSingleton> {
-// }
 // impl<T> SeqPointsTo<T, PointsTo<T>> {
 // }
-// TODO: is_disjoint, impl View for PointsTo types (helps to clarify the interface)
 } // verus!
