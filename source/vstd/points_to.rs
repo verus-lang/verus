@@ -22,6 +22,23 @@ pub trait PointsToParam: Sized {
     spec fn size(self) -> nat;
 }
 
+/// A `PointsToParam` whose size is determined by the type alone,
+/// not by any particular tracked value of that type.
+/// This lets code that is generic over some `PointsToParam`
+/// rely on all instances of that type reporting the same `size()`
+/// (for example, `SeqPointsTo` requires this of its element permission type,
+/// since every element of the sequence must be the same size).
+pub trait FixedSizeParam: PointsToParam {
+    /// The size that every instance of `Self` reports via `size()`.
+    spec fn const_size() -> nat;
+
+    /// Every tracked value of `Self` must actually have the size `const_size()` claims.
+    proof fn size_eq_const_size(tracked &self)
+        ensures
+            self.size() == Self::const_size(),
+    ;
+}
+
 /// Defines properties which should hold of any `PointsTo` permission.
 pub trait PointsToProperties: PointsToParam {
     /// Define basic well-formed-ness conditions. 
@@ -133,6 +150,15 @@ impl PointsToProperties for PointsToSingleton {
     axiom fn is_disjoint<PointsToPerm: PointsToParam>(tracked &mut self, tracked other: &PointsToPerm);
 }
 
+impl FixedSizeParam for PointsToSingleton {
+    /// A `PointsToSingleton` always tracks a single byte of memory.
+    open spec fn const_size() -> nat {
+        size_of::<u8>()
+    }
+
+    proof fn size_eq_const_size(tracked &self) {}
+}
+
 impl PointsToSingleton {
     /// The byte that this permission tracks.
     pub uninterp spec fn byte(self) -> AbstractByte;
@@ -174,12 +200,12 @@ impl View for PointsToSingleton {
     }
 }
 
-pub tracked struct SeqPointsTo<T: ?Sized, PointsToPerm: PointsToProperties> {
+pub tracked struct SeqPointsTo<T: ?Sized, PointsToPerm: PointsToProperties + FixedSizeParam> {
     seq_pt: Seq<PointsToPerm>,
     ptr: Ghost<*mut T>,
 }
 
-impl<T: ?Sized, PointsToPerm: PointsToProperties> PointsToParam for SeqPointsTo<T, PointsToPerm> {
+impl<T: ?Sized, PointsToPerm: PointsToProperties + FixedSizeParam> PointsToParam for SeqPointsTo<T, PointsToPerm> {
     type A = T;
 
     closed spec fn ptr(self) -> *mut T {
@@ -187,16 +213,13 @@ impl<T: ?Sized, PointsToPerm: PointsToProperties> PointsToParam for SeqPointsTo<
     }
 
     /// The size of the pointed-to region is given by the length of the sequence
-    /// times the size of the permissions in the sequence.
-    /// 
-    /// Note that if the length is 0, the size is always 0,
-    /// even though the permission size calculation indexes into an empty sequence.
+    /// times the (constant) size of the permission type in the sequence.
     open spec fn size(self) -> nat {
-        self.seq_pt().len() * self.seq_pt()[0].size()
+        self.seq_pt().len() * PointsToPerm::const_size()
     }
 }
 
-impl<T: ?Sized, PointsToPerm: PointsToProperties> PointsToProperties for SeqPointsTo<T, PointsToPerm> {
+impl<T: ?Sized, PointsToPerm: PointsToProperties + FixedSizeParam> PointsToProperties for SeqPointsTo<T, PointsToPerm> {
     open spec fn wf_basic(self) -> bool {
         // Defining the provenance and address for the individual PointsToSingletons
         &&& forall|i|
@@ -205,7 +228,7 @@ impl<T: ?Sized, PointsToPerm: PointsToProperties> PointsToProperties for SeqPoin
             #![trigger self[i].wf_basic()]
             0 <= i < self.len() ==> {
                 &&& self[i].ptr()@.provenance == self.ptr()@.provenance
-                &&& self[i].ptr()@.addr == self.ptr()@.addr + i * self[i].size()
+                &&& self[i].ptr()@.addr == self.ptr()@.addr + i * PointsToPerm::const_size()
                 &&& self[i].wf_basic()
             }
         // The ptr is non-null
@@ -225,6 +248,7 @@ impl<T: ?Sized, PointsToPerm: PointsToProperties> PointsToProperties for SeqPoin
     /// If the size is non-zero, the length must be nonzero.
     /// Then this follows from the `provenance_not_none` property of an individual `PointsToPerm`.
     proof fn provenance_not_none(tracked &self) {
+        self.seq_pt.tracked_borrow(0).size_eq_const_size();
         self.seq_pt.tracked_borrow(0).provenance_not_none();
     }
 
@@ -232,12 +256,10 @@ impl<T: ?Sized, PointsToPerm: PointsToProperties> PointsToProperties for SeqPoin
         if self.len() > 0 {
             self.seq_pt.tracked_borrow(0).ptr_bounds();
             self.seq_pt.tracked_borrow(self.len() - 1).ptr_bounds();
-            // assume(false);
-
-            // assert(self.len() == self.size());
-            assert(self.size() == self.len() * PointsToPerm::size(self.seq_pt()[0]));
+            self.seq_pt.tracked_borrow(0).size_eq_const_size();
+            self.seq_pt.tracked_borrow(self.len() - 1).size_eq_const_size();
+            assert(self[self.len() - 1].ptr()@.addr == self.ptr()@.addr + (self.len() - 1) * PointsToPerm::const_size());
             assert(self.seq_pt()[0].size() == self.seq_pt()[self.len() - 1].size());
-            assert(self.size() == self.len() * PointsToPerm::size(self.seq_pt()[self.len() - 1]));
         }
     }
 
@@ -246,7 +268,7 @@ impl<T: ?Sized, PointsToPerm: PointsToProperties> PointsToProperties for SeqPoin
     }
 }
 
-impl<T: ?Sized, PointsToPerm: PointsToProperties> SeqPointsTo<T, PointsToPerm> {
+impl<T: ?Sized, PointsToPerm: PointsToProperties + FixedSizeParam> SeqPointsTo<T, PointsToPerm> {
     /// The sequence of permissions that the `SeqPointsTo` contains.
     pub closed spec fn seq_pt(self) -> Seq<PointsToPerm> {
         self.seq_pt
