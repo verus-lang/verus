@@ -2689,15 +2689,21 @@ fn loop_to_stmts(
     } else {
         (None, None, None)
     };
+    if cond.is_some() {
+        // `cond` is only kept (rather than folded into the body as an `if !cond { break }`)
+        // for the two homogeneous cases ast_to_sst.rs's `simple_while` allows: every clause
+        // is a plain `invariant` (at_entry && at_exit), or every clause is a bare `ensures`
+        // (at_exit only). A mix, or any `invariant_except_break` clause, should never reach
+        // here with `cond` still `Some`.
+        let all_both = invs.iter().all(|inv| inv.at_entry && inv.at_exit);
+        let all_ensures_only = invs.iter().all(|inv| !inv.at_entry && inv.at_exit);
+        assert!(all_both || all_ensures_only);
+    }
     let mut invs_entry: Vec<(Span, Expr, Option<Arc<String>>, bool)> = Vec::new();
     let mut invs_exit: Vec<(Span, Expr, Option<Arc<String>>, bool)> = Vec::new();
     let modified_vars = modified_vars.as_ref().unwrap();
     for inv in invs.iter() {
         let expr = exp_to_expr(ctx, &inv.inv, expr_ctxt)?;
-        // bare Ensures (at_exit only) can now also keep cond.is_some()
-        if cond.is_some() {
-            assert!(inv.at_entry || inv.at_exit);
-        }
         let both = inv.at_entry && inv.at_exit;
         if inv.at_entry {
             invs_entry.push((inv.inv.span.clone(), expr.clone(), None, both));
