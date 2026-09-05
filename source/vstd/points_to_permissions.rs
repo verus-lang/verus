@@ -77,6 +77,31 @@ pub tracked struct PointsToUnaligned<T: ?Sized> {
     pt_untyped: Tracked<PointsToUntyped>,
 }
 
+/// The interface for a `PointsToUnaligned` permission,
+/// which represents permission to access possibly-unaligned memory 
+/// which may decode to a valid value of type `T`.
+/// We track the pointer to that memory,
+/// the (possibly-valid) typed value, and its abstract bytes.
+#[cfg(verus_keep_ghost)]
+pub ghost struct PointsToUnalignedData<T> {
+    pub ptr: *mut T,
+    pub value: TypedValue<T>,
+    pub bytes: Seq<AbstractByte>,
+}
+
+#[cfg(verus_keep_ghost)]
+impl<T> View for PointsToUnaligned<T> {
+    type V = PointsToUnalignedData<T>;
+
+    open spec fn view(&self) -> Self::V {
+        PointsToUnalignedData {
+            ptr: self.ptr(),
+            value: self.typed_value(),
+            bytes: self.bytes(),
+        }
+    }
+}
+
 impl<T: ?Sized> PointsToUnaligned<T> {
     /// The (possibly-valid) typed value that this permission tracks.
     pub closed spec fn typed_value(self) -> TypedValue<T> {
@@ -209,7 +234,7 @@ Permission to access possibly-initialized, _typed_ memory.
 
 The associated pointer ([`points_to.ptr()`](PointsTo::ptr)) is always a valid pointer for constructing
 a reference to the underlying data. That means it's always aligned to its type
-([`is_aligned`](PointsTo::is_nonnull)) and is non-null ([`is_nonnull`](PointsTo::is_nonnull)).
+([`is_aligned`](PointsTo::is_aligned)) and is non-null ([`is_nonnull`](PointsTo::is_nonnull)).
 
 ### Notes
 
@@ -254,36 +279,61 @@ pub tracked struct PointsTo<T: ?Sized> {
     pt_unaligned: Tracked<PointsToUnaligned<T>>,
 }
 
+/// The interface for a `PointsTo` permission,
+/// which represents permission to access memory which is aligned to `T`,
+/// whose bytes may decode to a valid value of type `T`.
+/// We track the pointer to that memory,
+/// the (possibly-valid) typed value, and its abstract bytes.
+#[cfg(verus_keep_ghost)]
+pub ghost struct PointsToData<T> {
+    pub ptr: *mut T,
+    pub value: TypedValue<T>,
+    pub bytes: Seq<AbstractByte>,
+}
+
+#[cfg(verus_keep_ghost)]
+impl<T> View for PointsTo<T> {
+    type V = PointsToData<T>;
+
+    open spec fn view(&self) -> Self::V {
+        PointsToData {
+            ptr: self.ptr(),
+            value: self.typed_value(),
+            bytes: self.bytes(),
+        }
+    }
+}
+
 impl<T: ?Sized> PointsTo<T> {
+    /// The underlying `PointsToUnaligned` permission to the pointed-to memory.
     pub closed spec fn pt_unaligned(self) -> PointsToUnaligned<T> {
         self.pt_unaligned@
     }
 
+    /// The (possibly-valid) typed value that this permission tracks.
     pub open spec fn typed_value(self) -> TypedValue<T> {
         self.pt_unaligned().typed_value()
     }
 
-    pub open spec fn pt_untyped(self) -> PointsToUntyped {
-        self.pt_unaligned().pt_untyped()
-    }
-
+    /// The contiguous sequence of bytes that this permission tracks.
+    #[verifier::inline]
     pub open spec fn bytes(self) -> Seq<AbstractByte> {
         self.pt_unaligned().bytes()
     }
 
-    /// Returns `true` if the permission's associated memory is initialized.
+    /// Returns `true` if the permission's associated memory is valid for the type `T`.
     #[verifier::inline]
     pub open spec fn is_valid(&self) -> bool {
         self.typed_value().is_valid()
     }
 
-    /// Returns `true` if the permission's associated memory is uninitialized.
+    /// Returns `true` if the permission's associated memory is not valid for the type `T`.
     #[verifier::inline]
     pub open spec fn is_empty(&self) -> bool {
         self.typed_value().is_empty()
     }
 
-    /// Returns a tracked reference to the underlying `PointsToUntyped` permission.
+    /// Returns a tracked reference to the underlying `PointsToUnaligned` permission.
     pub proof fn tracked_pt_unaligned(tracked &self) -> tracked &PointsToUnaligned<T>
         returns
             self.pt_unaligned(),
@@ -292,12 +342,61 @@ impl<T: ?Sized> PointsTo<T> {
     }
 }
 
-impl<T> PointsTo<T> {
-    pub open spec fn ptr(self) -> *mut T {
+impl<T> PointsToParam for PointsTo<T> {
+    type A = T;
+
+    /// Delegates to the underlying `PointsToUnaligned`'s pointer.
+    open spec fn ptr(self) -> *mut T {
         self.pt_unaligned().ptr()
     }
 
-    /// If the permission's associated memory is initialized,
+    /// The size of the pointed-to region is the size of `T`.
+    open spec fn size(self) -> nat {
+        size_of::<T>()
+    }
+}
+
+impl<T> FixedSizeParam for PointsTo<T> {
+    /// A `PointsTo<T>` always tracks `size_of::<T>()` bytes of memory.
+    open spec fn const_size() -> nat {
+        size_of::<T>()
+    }
+
+    proof fn size_eq_const_size(tracked &self) {}
+}
+
+impl<T> PointsToProperties for PointsTo<T> {
+    /// A `PointsTo` is well-formed if its pointer is aligned to `T`,
+    /// and the underlying `PointsToUnaligned` is well-formed.
+    open spec fn wf_basic(self) -> bool {
+        &&& self.ptr()@.addr as nat % align_of::<T>() == 0
+        &&& self.pt_unaligned().wf()
+    }
+
+    /// Non-nullness follows from the underlying `PointsToUnaligned`'s invariant,
+    /// since `self.ptr()` and `self.pt_unaligned().ptr()` are the same pointer.
+    proof fn is_nonnull(tracked &self) {}
+
+    /// Delegates to the underlying `PointsToUnaligned`'s `ptr_bounds`,
+    /// since `self.ptr()` and `self.pt_unaligned().ptr()` are the same pointer.
+    proof fn ptr_bounds(tracked &self) {
+        self.pt_unaligned.ptr_bounds();
+    }
+
+    /// Delegates to the underlying `PointsToUnaligned`'s `provenance_not_none`.
+    proof fn provenance_not_none(tracked &self) {
+        self.pt_unaligned.provenance_not_none();
+    }
+
+    /// Delegates to the underlying `PointsToUnaligned`'s `is_disjoint`,
+    /// since the two permissions track the same memory range.
+    proof fn is_disjoint<OtherPointsToPerm: PointsToParam>(tracked &mut self, tracked other: &OtherPointsToPerm) {
+        self.pt_unaligned.is_disjoint(other);
+    }
+}
+
+impl<T> PointsTo<T> {
+    /// If the permission's associated memory is valid,
     /// returns the value that the pointer points to.
     /// Otherwise, the result is meaningless.
     #[verifier::inline]
@@ -308,10 +407,9 @@ impl<T> PointsTo<T> {
         self.typed_value().value()
     }
 
-    /// Invariant: The abstract bytes must decode into the value in memory.
+    /// Well-formedness is defined in the `PointsToProperties` trait function `wf_basic`.
     pub open spec fn wf(&self) -> bool {
-        &&& self.ptr()@.addr as nat % align_of::<T>() == 0
-        &&& self.pt_unaligned().wf()
+        self.wf_basic()
     }
 
     pub proof fn is_aligned(tracked &self)
@@ -322,44 +420,20 @@ impl<T> PointsTo<T> {
     {
     }
 
-    pub proof fn is_non_null(tracked &self)
-        requires
-            self.wf(),
-        ensures
-            self.ptr()@.addr != 0,
-    {
-    }
-
-    pub proof fn provenance_not_none(tracked &self)
+    /// Specializes `is_disjoint` to the case when the other permission is a `PointsTo<S>`.
+    pub proof fn is_disjoint_pointsto<S>(tracked &mut self, tracked other: &PointsTo<S>)
         requires
             size_of::<T>() != 0,
+            size_of::<S>() != 0,
             self.wf(),
-        ensures
-            self.ptr()@.provenance != raw_ptr::Provenance::None,
-    {
-        self.tracked_pt_unaligned().provenance_not_none();
-    }
-
-    pub proof fn ptr_bounds(tracked &self)
-        requires
-            self.ptr()@.provenance.is_some(),
-            self.wf(),
-        ensures
-            self.ptr()@.addr as int >= self.ptr()@.provenance.data().start_addr(),
-            self.ptr()@.addr + size_of::<T>() <= self.ptr()@.provenance.data().start_addr()
-                + self.ptr()@.provenance.data().alloc_len(),
-    {
-        self.tracked_pt_unaligned().ptr_bounds();
-    }
-
-    pub proof fn is_disjoint<S>(tracked &mut self, tracked other: &PointsTo<S>)
         ensures
             *old(self) == *final(self),
             final(self).ptr() as int + size_of::<T>() <= other.ptr() as int || other.ptr() as int
                 + size_of::<S>() <= final(self).ptr() as int,
     {
-        assume(false);
-        self.pt_unaligned.is_disjoint(other.tracked_pt_unaligned());
+        self.size_eq_const_size();
+        other.size_eq_const_size();
+        self.is_disjoint(other);
     }
 }
 
