@@ -1053,6 +1053,173 @@ pub broadcast proof fn is_char_boundary_iff_is_leading_byte(bytes: Seq<u8>, inde
     }
 }
 
+proof fn leading_byte_width_1_is_width_1(scalar: u32)
+    by (bit_vector)
+    requires
+        has_width_1_encoding(scalar),
+    ensures
+        is_leading_byte_width_1(leading_byte_width_1(scalar)),
+{
+}
+
+proof fn leading_byte_width_2_is_width_2(scalar: u32)
+    by (bit_vector)
+    requires
+        has_width_2_encoding(scalar),
+    ensures
+        is_leading_byte_width_2(leading_byte_width_2(scalar)),
+{
+}
+
+proof fn leading_byte_width_3_is_width_3(scalar: u32)
+    by (bit_vector)
+    requires
+        has_width_3_encoding(scalar),
+    ensures
+        is_leading_byte_width_3(leading_byte_width_3(scalar)),
+{
+}
+
+proof fn leading_byte_width_4_is_width_4(scalar: u32)
+    by (bit_vector)
+    requires
+        has_width_4_encoding(scalar),
+    ensures
+        is_leading_byte_width_4(leading_byte_width_4(scalar)),
+{
+}
+
+proof fn leading_byte_widths_disjoint(byte: u8)
+    by (bit_vector)
+    ensures
+        is_leading_byte_width_1(byte) ==> !is_leading_byte_width_2(byte)
+            && !is_leading_byte_width_3(byte) && !is_leading_byte_width_4(byte),
+        is_leading_byte_width_2(byte) ==> !is_leading_byte_width_1(byte)
+            && !is_leading_byte_width_3(byte) && !is_leading_byte_width_4(byte),
+        is_leading_byte_width_3(byte) ==> !is_leading_byte_width_1(byte)
+            && !is_leading_byte_width_2(byte) && !is_leading_byte_width_4(byte),
+{
+}
+
+/// Which UTF-8 width a scalar's encoding uses, with proof its first byte matches.
+proof fn scalar_leading_byte_class(x: u32) -> (w: int)
+    requires
+        is_scalar(x),
+    ensures
+        w == 1 || w == 2 || w == 3 || w == 4,
+        encode_scalar(x).len() == w,
+        w == 1 ==> is_leading_byte_width_1(encode_scalar(x)[0]),
+        w == 2 ==> is_leading_byte_width_2(encode_scalar(x)[0]),
+        w == 3 ==> is_leading_byte_width_3(encode_scalar(x)[0]),
+        w == 4 ==> is_leading_byte_width_4(encode_scalar(x)[0]),
+{
+    if has_width_1_encoding(x) {
+        leading_byte_width_1_is_width_1(x);
+        1
+    } else if has_width_2_encoding(x) {
+        leading_byte_width_2_is_width_2(x);
+        2
+    } else if has_width_3_encoding(x) {
+        leading_byte_width_3_is_width_3(x);
+        3
+    } else {
+        leading_byte_width_4_is_width_4(x);
+        4
+    }
+}
+
+/// Same first byte implies same width - each width's leading byte range is disjoint.
+pub proof fn encode_scalar_widths_disjoint(a: u32, b: u32)
+    requires
+        is_scalar(a),
+        is_scalar(b),
+        encode_scalar(a)[0] == encode_scalar(b)[0],
+    ensures
+        encode_scalar(a).len() == encode_scalar(b).len(),
+{
+    scalar_leading_byte_class(a);
+    scalar_leading_byte_class(b);
+    leading_byte_widths_disjoint(encode_scalar(a)[0]);
+}
+
+/// Given a valid char-boundary byte position inside `encode_utf8(chars)`,
+/// recovers the char index whose prefix encodes to exactly that many bytes.
+pub proof fn char_index_at_byte_boundary(chars: Seq<char>, byte_pos: int) -> (char_i: int)
+    requires
+        0 <= byte_pos <= encode_utf8(chars).len(),
+        is_char_boundary(encode_utf8(chars), byte_pos),
+    ensures
+        0 <= char_i <= chars.len(),
+        encode_utf8(chars.subrange(0, char_i)).len() == byte_pos,
+    decreases chars.len(),
+{
+    encode_utf8_valid_utf8(chars);
+    if byte_pos == 0 {
+        0
+    } else {
+        reveal_with_fuel(is_char_boundary, 2);
+        reveal_with_fuel(encode_utf8, 2);
+        encode_utf8_first_scalar(chars);
+        assert(pop_first_scalar(encode_utf8(chars)) =~= encode_utf8(chars.drop_first()));
+        encode_utf8_valid_utf8(chars.drop_first());
+        let rest_i = char_index_at_byte_boundary(
+            chars.drop_first(),
+            byte_pos - length_of_first_scalar(encode_utf8(chars)),
+        );
+        assert(chars.drop_first().subrange(0, rest_i) =~= chars.subrange(1, rest_i + 1));
+        assert(chars.subrange(0, rest_i + 1) =~= seq![chars[0]] + chars.subrange(1, rest_i + 1));
+        encode_utf8_concat(seq![chars[0]], chars.subrange(1, rest_i + 1));
+        rest_i + 1
+    }
+}
+
+/// Recovers a char's index and identity from a byte range matching its encoding.
+pub proof fn char_at_byte_offset(chars: Seq<char>, byte_i: int, byte_j: int, c: char) -> (char_i:
+    int)
+    requires
+        is_scalar(c as u32),
+        0 <= byte_i < byte_j <= encode_utf8(chars).len(),
+        encode_utf8(chars).subrange(byte_i, byte_j) =~= encode_scalar(c as u32),
+    ensures
+        0 <= char_i < chars.len(),
+        byte_i == encode_utf8(chars.subrange(0, char_i)).len(),
+        byte_j == encode_utf8(chars.subrange(0, char_i + 1)).len(),
+        chars[char_i] == c,
+{
+    encode_utf8_valid_utf8(chars);
+    scalar_leading_byte_class(c as u32);
+    assert(encode_utf8(chars)[byte_i] == encode_scalar(c as u32)[0]);
+    is_char_boundary_iff_is_leading_byte(encode_utf8(chars), byte_i);
+
+    let char_i = char_index_at_byte_boundary(chars, byte_i);
+    if char_i == chars.len() as int {
+        assert(chars.subrange(0, char_i) =~= chars);
+    }
+    assert(0 <= char_i < chars.len());
+
+    let k = encode_utf8(chars.subrange(0, char_i)).len() as int;
+    let j2 = encode_utf8(chars.subrange(0, char_i + 1)).len() as int;
+    assert(chars.subrange(0, char_i + 1) =~= chars.subrange(0, char_i).push(chars[char_i]));
+    encode_utf8_push(chars.subrange(0, char_i), chars[char_i]);
+    assert(chars.subrange(0, char_i + 1) + chars.subrange(char_i + 1, chars.len() as int)
+        =~= chars);
+    encode_utf8_concat(
+        chars.subrange(0, char_i + 1),
+        chars.subrange(char_i + 1, chars.len() as int),
+    );
+    assert(encode_utf8(chars).subrange(k, j2) =~= encode_scalar(chars[char_i] as u32));
+    assert(k == byte_i);
+    char_is_scalar(chars[char_i]);
+    encode_scalar_widths_disjoint(chars[char_i] as u32, c as u32);
+
+    reveal_with_fuel(encode_utf8, 2);
+    encode_utf8_first_scalar(seq![chars[char_i]]);
+    encode_utf8_first_scalar(seq![c]);
+    char_u32_cast(chars[char_i], chars[char_i] as u32);
+    char_u32_cast(c, c as u32);
+    char_i
+}
+
 pub broadcast proof fn valid_utf8_last(s: Seq<u8>)
     requires
         valid_utf8(s),
