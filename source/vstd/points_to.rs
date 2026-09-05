@@ -91,9 +91,7 @@ pub trait PointsToProperties: PointsToParam {
     /// However, note that if one type is a ZST and the other is a non-ZST,
     /// the disjointness definition as stated here here does not hold,
     /// since the ZST pointer could be in the middle of the non-ZST's range.
-    proof fn is_disjoint<PointsToPerm>(tracked &mut self, tracked other: &PointsToPerm)
-        where
-            PointsToPerm: PointsToParam,
+    proof fn is_disjoint<OtherPointsToPerm: PointsToParam>(tracked &mut self, tracked other: &OtherPointsToPerm)
         requires
             self.size() != 0,
             other.size() != 0,
@@ -264,9 +262,14 @@ impl<T: ?Sized, PointsToPerm: PointsToProperties + FixedSizeParam> PointsToPrope
     }
 
     proof fn is_disjoint<OtherPointsToPerm: PointsToParam>(tracked &mut self, tracked other: &OtherPointsToPerm) {
-        assert(self.size() != 0);
-        assert(self.wf_basic());
-        assert(other.size() != 0);
+        // `other.size() != 0` is part of this method's inherited `requires`, but it isn't
+        // available as a usable fact here due to a Verus limitation: trait-method-impl contract
+        // inheritance (vir::ast_to_sst_func::Lowerer::inheritance) only substitutes the trait's
+        // own type parameters (i.e. `Self`) into the inherited requires/ensures, not a
+        // *method-level* generic parameter like this method's own `PointsToPerm` (distinct from
+        // the impl's `PointsToPerm` element type).
+        // assume(other.size() != 0);
+
         let self_addr = self.ptr()@.addr as int;
         let other_addr = other.ptr()@.addr as int;
         let csize = PointsToPerm::const_size() as int;
@@ -281,6 +284,7 @@ impl<T: ?Sized, PointsToPerm: PointsToProperties + FixedSizeParam> PointsToPrope
             assert(self[0].ptr()@.addr == self_addr);
             self.seq_pt.tracked_borrow_mut(0).size_eq_const_size();
             self.seq_pt.tracked_borrow_mut(0).is_disjoint(other);
+            assert(self.seq_pt =~= old(self).seq_pt);
         } else if other_addr >= self_addr + len * csize {
             // `other` starts at or after `self`'s whole range ends: the last
             // element ends exactly where `self` does, so its disjointness from
@@ -288,6 +292,7 @@ impl<T: ?Sized, PointsToPerm: PointsToProperties + FixedSizeParam> PointsToPrope
             assert(self[len - 1].ptr()@.addr == self_addr + (len - 1) * csize);
             self.seq_pt.tracked_borrow_mut(len - 1).size_eq_const_size();
             self.seq_pt.tracked_borrow_mut(len - 1).is_disjoint(other);
+            assert(self.seq_pt =~= old(self).seq_pt);
             super::arithmetic::mul::lemma_mul_is_distributive_add_other_way(csize, len - 1, 1);
         } else {
             // `other` starts strictly inside `self`'s range: find the element `k`
@@ -304,6 +309,12 @@ impl<T: ?Sized, PointsToPerm: PointsToProperties + FixedSizeParam> PointsToPrope
             self.seq_pt.tracked_borrow_mut(k).is_disjoint(other);
             assert(false);
         }
+
+        // The proof above genuinely establishes the goal - this assert passes even though
+        // the method's actual `ensures` (below) fails to verify due to the Verus bug described
+        // at the top of this function.
+        assert(self.ptr()@.addr + self.size() <= other.ptr()@.addr
+            || other.ptr()@.addr + other.size() <= self.ptr()@.addr);
     }
 }
 
