@@ -21,6 +21,7 @@ use vir::{
     context::GlobalCtx,
     def::{NameCtxt, Spanned},
     messages::{Span, note, warning},
+    recursion::Node,
 };
 
 use crate::{buckets::BucketId, verifier::Verifier};
@@ -191,7 +192,7 @@ impl<'a, R: Diagnostics> TryBroadcasts<'a, R> {
         mut gctx: GlobalCtx,
     ) -> Result<(Option<(Guess, Krate)>, GlobalCtx), TryBroadcastsErr> {
         // TODO: this will eventually need to be generalized to allow for multiple strategies
-        let relevant = self.try_all_relevant_lemmas()?;
+        let relevant = self.try_all_relevant_lemmas(&gctx)?;
         let mut guesses = VecDeque::from([relevant]);
         while let Some(mut guess) = guesses.pop_front() {
             match self.try_guess(&guess, gctx)? {
@@ -258,9 +259,16 @@ impl<'a, R: Diagnostics> TryBroadcasts<'a, R> {
         Ok((None, gctx))
     }
 
-    fn try_all_relevant_lemmas(&self) -> Result<Guess, VirErr> {
+    fn try_all_relevant_lemmas(&self, global_ctx: &GlobalCtx) -> Result<Guess, VirErr> {
         let mut all_broadcast_functions = Self::find_broadcast_fns(self.krate);
         all_broadcast_functions.retain(|func| &func.x.name != &self.target_func.x.name);
+        let target_node = Node::Fun(self.target_func.x.name.clone());
+        all_broadcast_functions.retain(|func| {
+            let broadcast_node = Node::Fun(func.x.name.clone());
+            // Inserting the broadcast adds target -> broadcast, so a pre-existing
+            // path from broadcast -> target would introduce a cycle.
+            !global_ctx.func_call_graph.can_reach(&broadcast_node, &target_node, None)
+        });
         let mut relevant = HashSet::new();
         let mut used_symbols =
             self.reachable_spec_functions_from_fun(&self.target_func, true, true);
