@@ -138,7 +138,6 @@ pub struct Ctx {
     // proof debug purposes
     pub debug: bool,
     pub arch_word_bits: ArchWordBits,
-    pub uses_type_id: bool,
 }
 
 impl Ctx {
@@ -888,7 +887,6 @@ impl Ctx {
             type_tag_hashes,
             debug,
             arch_word_bits: krate.arch.word_bits,
-            uses_type_id: crate::traits::krate_uses_type_id(krate),
             opaque_type_map,
         })
     }
