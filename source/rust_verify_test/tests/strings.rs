@@ -945,3 +945,33 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_one_fails(e)
 }
+
+test_verify_one_file! {
+    #[test]
+    str_equality_uses_view verus_code! {
+        use vstd::prelude::*;
+
+        struct TextSource;
+
+        uninterp spec fn modeled_text(source: &TextSource) -> Seq<char>;
+
+        #[verifier::external_body]
+        fn get_text<'a>(source: &'a TextSource) -> (result: &'a str)
+            ensures
+                result@ == modeled_text(source),
+        {
+            "hello world"
+        }
+
+        spec fn is_hello(source: &TextSource) -> bool {
+            modeled_text(source) == "hello world"@
+        }
+
+        fn check(source: &TextSource) -> (result: bool)
+            ensures
+                result == is_hello(source),
+        {
+            get_text(source) == "hello world"
+        }
+    } => Ok(())
+}
