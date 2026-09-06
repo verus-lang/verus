@@ -940,10 +940,17 @@ pub fn prune_krate_for_module_or_krate(
             external_types: _no_pruning_of_external_types,
             path_as_rust_names: _no_pruning_of_past_as_rust_names,
             arch: _no_pruning_of_arch,
-            has_try_broadcasts: _,
+            has_try_broadcasts,
         } = &**current_crate;
         for f in functions {
             reach(&mut state.reached_functions, &mut state.worklist_functions, &f.x.name);
+        }
+        if *has_try_broadcasts {
+            for f in &krate.functions {
+                if f.x.name.path.krate != *crate_name && f.x.attrs.broadcast_forall {
+                    reach(&mut state.reached_functions, &mut state.worklist_functions, &f.x.name);
+                }
+            }
         }
         for f in reveal_groups {
             reach(&mut state.reached_functions, &mut state.worklist_reveal_groups, &f.x.name);
