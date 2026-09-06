@@ -418,6 +418,113 @@ test_verify_one_file_with_options! {
     } => Ok(())
 }
 
+// https://github.com/verus-lang/verus/issues/1114: `global size_of`/`global layout` facts
+// must be usable outside the module where they're declared.
+test_verify_one_file_with_options! {
+    #[test] issue_1114_size_of_cross_module ["vstd", "--compile"] => verus_code! {
+        #[repr(C)]
+        struct S { v: u64 }
+
+        global size_of S == 8;
+
+        mod m {
+            fn test() {
+                assert(core::mem::size_of::<crate::S>() == 8);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] issue_1114_layout_cross_module ["vstd", "--compile"] => verus_code! {
+        #[repr(C)]
+        struct S { v: u64 }
+
+        global layout S is size == 8, align == 8;
+
+        mod m {
+            fn test() {
+                assert(core::mem::size_of::<crate::S>() == 8);
+                assert(core::mem::align_of::<crate::S>() == 8);
+            }
+        }
+    } => Ok(())
+}
+
+// A private, unused struct's `global size_of` must not break other modules' queries -
+// its lemma is correctly omitted there rather than crashing. The `int` usage below
+// isn't incidental: an earlier version of this fix reached the lemma whenever anything
+// reached `nat` (size_of's own return type), and this was enough to trigger that.
+test_verify_one_file_with_options! {
+    #[test] issue_1114_size_of_cross_module_private_struct ["vstd", "--compile"] => verus_code! {
+        mod m1 {
+            #[repr(C)]
+            struct S { v: u64 }
+
+            global size_of S == 8;
+        }
+
+        mod m2 {
+            use vstd::prelude::*;
+
+            fn test() -> (r: u32)
+                ensures r == 5,
+            {
+                let x: u32 = 5;
+                assert(x == 5);
+                proof {
+                    let y: int = 3;
+                    assert(y == 3);
+                }
+                x
+            }
+        }
+    } => Ok(())
+}
+
+// The case #1114 was actually filed about: `global size_of` declared in one non-root
+// module, used from a sibling module (neither an ancestor nor descendant of it).
+test_verify_one_file_with_options! {
+    #[test] issue_1114_sibling_module_size_of ["vstd", "--compile"] => verus_code! {
+        mod m1 {
+            #[repr(C)]
+            pub struct S { pub v: u64 }
+
+            global size_of S == 8;
+        }
+
+        mod m2 {
+            use vstd::prelude::*;
+
+            fn test() {
+                assert(core::mem::size_of::<crate::m1::S>() == 8);
+            }
+        }
+    } => Ok(())
+}
+
+// A public struct's `global size_of` lemma is now visible everywhere (matching the
+// struct's own pub visibility) - confirm a sibling module that never references the
+// struct at all still verifies without crashing.
+test_verify_one_file_with_options! {
+    #[test] issue_1114_sibling_module_unused_public_struct ["vstd", "--compile"] => verus_code! {
+        mod m1 {
+            #[repr(C)]
+            pub struct S { pub v: u64 }
+
+            global size_of S == 8;
+        }
+
+        mod m2 {
+            fn test() -> (r: u32)
+                ensures r == 5,
+            {
+                5
+            }
+        }
+    } => Ok(())
+}
+
 test_verify_one_file_with_options! {
     #[test] test_layouts_for_primitives ["vstd"] => verus_code! {
         proof fn test() {
