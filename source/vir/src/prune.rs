@@ -940,6 +940,7 @@ pub fn prune_krate_for_module_or_krate(
             external_types: _no_pruning_of_external_types,
             path_as_rust_names: _no_pruning_of_past_as_rust_names,
             arch: _no_pruning_of_arch,
+            has_try_broadcasts: _,
         } = &**current_crate;
         for f in functions {
             reach(&mut state.reached_functions, &mut state.worklist_functions, &f.x.name);
@@ -1300,12 +1301,19 @@ pub fn prune_krate_for_module_or_krate(
         f
     };
 
+    let mut has_try_broadcasts = false;
+    let functions = functions
+        .into_iter()
+        .filter(|f| state.reached_functions.contains(&f.x.name))
+        .map(|f| {
+            let f = set_broadcast_only(f);
+            has_try_broadcasts |= f.x.attrs.try_broadcasts.is_some();
+            f
+        })
+        .collect();
+
     let kratex = KrateX {
-        functions: functions
-            .into_iter()
-            .filter(|f| state.reached_functions.contains(&f.x.name))
-            .map(set_broadcast_only)
-            .collect(),
+        functions,
         reveal_groups: reveal_groups
             .into_iter()
             .filter(|f| state.reached_functions.contains(&f.x.name))
@@ -1340,6 +1348,7 @@ pub fn prune_krate_for_module_or_krate(
         external_types: krate.external_types.clone(),
         path_as_rust_names: krate.path_as_rust_names.clone(),
         arch: krate.arch.clone(),
+        has_try_broadcasts,
     };
     let mut spec_fn_types: Vec<usize> = state.spec_fn_types.into_iter().collect();
     spec_fn_types.sort();

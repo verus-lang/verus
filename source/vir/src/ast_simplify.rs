@@ -1438,6 +1438,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         external_types,
         path_as_rust_names,
         arch,
+        has_try_broadcasts,
     } = &**krate;
     let mut state = State::new();
 
@@ -1652,6 +1653,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         external_types,
         path_as_rust_names: path_as_rust_names.clone(),
         arch: arch.clone(),
+        has_try_broadcasts: *has_try_broadcasts,
     });
     *ctx = crate::context::GlobalCtx::new(
         &krate,
@@ -1688,8 +1690,10 @@ pub fn merge_krates(krates: Vec<Krate>) -> Result<Krate, VirErr> {
             external_types,
             path_as_rust_names,
             arch,
+            has_try_broadcasts,
         } = &*k;
         kratex.functions.extend(functions.clone());
+        kratex.has_try_broadcasts |= *has_try_broadcasts;
         kratex.reveal_groups.extend(reveal_groups.clone());
         kratex.datatypes.extend(datatypes.clone());
         kratex.opaque_types.extend(opaque_types.clone());

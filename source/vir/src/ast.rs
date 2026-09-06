@@ -1939,4 +1939,7 @@ pub struct KrateX {
     pub arch: Arch,
     /// All opaque type constructors
     pub opaque_types: OpaqueTypes,
+    /// Whether any function in this crate has the `try_broadcasts` attribute.
+    #[serde(default)]
+    pub has_try_broadcasts: bool,
 }

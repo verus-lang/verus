@@ -2038,16 +2038,21 @@ impl Verifier {
         krate: &Krate,
         source_map: Option<&SourceMap>,
         bucket_id: &BucketId,
-        mut global_ctx: vir::context::GlobalCtx,
+        global_ctx: vir::context::GlobalCtx,
     ) -> Result<vir::context::GlobalCtx, VirErr> {
         let time_verify_start = Instant::now();
 
         self.bucket_stats.insert(bucket_id.clone(), Default::default());
 
-        let (try_broadcasts_result, new_ctx) =
-            try_broadcasts(self, reporter, krate, source_map, bucket_id, global_ctx)?;
-        let krate = try_broadcasts_result.as_ref().unwrap_or(krate);
-        global_ctx = new_ctx;
+        let try_broadcasts_result;
+        let (krate, global_ctx) = if krate.has_try_broadcasts {
+            let result = try_broadcasts(self, reporter, krate, source_map, bucket_id, global_ctx)?;
+            try_broadcasts_result = result.0;
+            let krate = try_broadcasts_result.as_ref().unwrap_or(krate);
+            (krate, result.1)
+        } else {
+            (krate, global_ctx)
+        };
 
         let (new_ctx, VerifyBucketOut { time_smt_init, time_smt_run, rlimit_count, .. }) = self
             .verify_bucket_middle(
