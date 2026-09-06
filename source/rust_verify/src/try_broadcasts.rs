@@ -1,3 +1,4 @@
+#![allow(clippy::result_large_err)] // we often return a `GlobalCtx` back in the error case, which is intended
 //! This module implements a heuristic proof search strategy by using potentially-relevant broadcast lemmas,
 //! inspired by Isabelle/HOL's Sledgehammer tool. If a proof is found, the proof is then optionally minimized
 //! and displayed to the user.
@@ -24,9 +25,12 @@ use vir::{
 
 use crate::{buckets::BucketId, verifier::Verifier};
 
-/// Sledgehammer might fail in two ways: either we called another Verus function that returned a `VirErr`, which
-/// we may not be able to recover from if that function consumed the `GlobalCtx` or Sledgehammer itself produced
-/// an error, in which case we can signal that to verify_bucket_outer and return back the original GlobalCtx.
+/// try_broadcasts might fail in two ways: either we called another Verus
+/// function that returned a `VirErr`, which we may not be able to recover from
+/// if that function consumed the `GlobalCtx` or try_broadcasts itself produced an
+/// error, in which case we can signal that to verify_bucket_outer and return
+/// back the original GlobalCtx.
+#[allow(clippy::large_enum_variant)] // okay, since the error case should be uncommon
 pub(crate) enum TryBroadcastsErr {
     VirErr(VirErr),
     InternalError { msg: String, global_ctx: GlobalCtx },
