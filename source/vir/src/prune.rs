@@ -765,7 +765,10 @@ fn overapproximate_revealed_functions(
     }
 }
 
-fn collect_broadcast_triggers(f: &Function) -> Vec<(Vec<Fun>, Vec<ReachedType>)> {
+fn collect_broadcast_triggers(
+    function_map: &HashMap<Fun, Function>,
+    f: &Function,
+) -> Vec<(Vec<Fun>, Vec<ReachedType>)> {
     use crate::ast::{Exprs, TriggerAnnotation, UnaryOp};
     let mut unary_trigs: Vec<Expr> = Vec::new();
     let mut with_triggers: Vec<Exprs> = Vec::new();
@@ -804,10 +807,12 @@ fn collect_broadcast_triggers(f: &Function) -> Vec<(Vec<Fun>, Vec<ReachedType>)>
     // (Note: it's ok to err on the side of missing some function calls and types)
     let mut trigs: Vec<(Vec<Fun>, Vec<ReachedType>)> = Vec::new();
     for trig in &with_triggers {
+        use std::cell::RefCell;
         let mut call_set: HashSet<Fun> = HashSet::new();
         let mut calls: Vec<Fun> = Vec::new();
         let mut typ_set: HashSet<ReachedType> = HashSet::new();
         let mut typs: Vec<ReachedType> = Vec::new();
+        let inline_call_worklist: RefCell<Vec<Function>> = RefCell::new(Vec::new());
         typ_set.insert(ReachedType::None);
         let mut ft = |typ: &Typ| {
             let t = typ_to_reached_type(typ);
@@ -830,7 +835,15 @@ fn collect_broadcast_triggers(f: &Function) -> Vec<(Vec<Fun>, Vec<ReachedType>)>
                     }
                     if !call_set.contains(name) {
                         call_set.insert(name.clone());
-                        calls.push(name.clone());
+                        if let Some(call_f) = function_map.get(name)
+                            && call_f.x.attrs.inline
+                        {
+                            // We must omit inline call names from calls;
+                            // if we included them, we'd prune too eagerly if name isn't reached
+                            inline_call_worklist.borrow_mut().push(call_f.clone());
+                        } else {
+                            calls.push(name.clone());
+                        }
                     }
                     VisitorControlFlow::Recurse
                 }
@@ -838,6 +851,17 @@ fn collect_broadcast_triggers(f: &Function) -> Vec<(Vec<Fun>, Vec<ReachedType>)>
             }
         };
         for term in trig.iter() {
+            let control =
+                crate::ast_visitor::expr_visitor_dfs(term, &mut ScopeMap::new(), &mut f_get_calls);
+            if control == VisitorControlFlow::Stop(()) {
+                return vec![];
+            }
+        }
+        let pop_inline_call = || inline_call_worklist.borrow_mut().pop();
+        while let Some(inline_f) = pop_inline_call() {
+            let Some(term) = &inline_f.x.body else {
+                continue;
+            };
             let control =
                 crate::ast_visitor::expr_visitor_dfs(term, &mut ScopeMap::new(), &mut f_get_calls);
             if control == VisitorControlFlow::Stop(()) {
@@ -1134,6 +1158,8 @@ pub fn prune_krate_for_module_or_krate(
     let mut assert_by_compute_seq_funs: Vec<Fun> = Vec::new();
     for f in &functions {
         function_map.insert(f.x.name.clone(), f.clone());
+    }
+    for f in &functions {
         if let FunctionKind::TraitMethodImpl { method, trait_typ_args, .. }
         | FunctionKind::ForeignTraitMethodImpl { method, trait_typ_args, .. } = &f.x.kind
         {
@@ -1145,7 +1171,7 @@ pub fn prune_krate_for_module_or_krate(
             method_map.get_mut(&key).unwrap().push(f.x.name.clone());
         }
         if revealed_functions.contains(&f.x.name) {
-            let reach_triggers = collect_broadcast_triggers(f);
+            let reach_triggers = collect_broadcast_triggers(&function_map, f);
             for (trig_funs, trig_typs) in &reach_triggers {
                 for term in trig_funs {
                     fun_to_trigger_broadcasts
