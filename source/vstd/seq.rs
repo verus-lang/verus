@@ -1224,7 +1224,7 @@ impl<A> Seq<A> {
         ensures
             ret == old(self).last(),
             final(self).len() == old(self).len() - 1,
-            *final(self) == old(self).take(old(self).len() - 1),
+            *final(self) == old(self)[..old(self).len() - 1],
     {
         self.inner.tracked_pop()
     }

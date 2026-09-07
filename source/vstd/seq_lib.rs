@@ -1446,7 +1446,7 @@ impl<A> Seq<A> {
             0 <= i < self.len(),
         ensures
             self.remove_duplicates(seen) == self.skip(i).remove_duplicates(
-                self.take(i).remove_duplicates(seen),
+                self[..i].remove_duplicates(seen),
             ),
         decreases self.len(),
     {
@@ -1656,7 +1656,7 @@ impl<A> Seq<A> {
         requires
             0 <= k < xs.len(),
         ensures
-            xs.take(k + 1) =~= xs.take(k) + seq![xs[k]],
+            xs[..k + 1] =~= xs[..k] + seq![xs[k]],
     {
         broadcast use group_seq_properties;
 
@@ -1690,7 +1690,7 @@ impl<A> Seq<A> {
         requires
             0 <= i < self.len(),
         ensures
-            #[trigger] self.take(i + 1).filter_map(f) =~= self.take(i).filter_map(f) + (match f(
+            #[trigger] self[..i + 1].filter_map(f) =~= self[..i].filter_map(f) + (match f(
                 self[i],
             ) {
                 Option::Some(s) => seq![s],
@@ -1844,7 +1844,7 @@ impl<A> Seq<A> {
         requires
             0 <= i <= self.len(),
         ensures
-            self.filter(p).len() >= self.take(i).filter(p).len(),
+            self.filter(p).len() >= self[..i].filter(p).len(),
         decreases i,
     {
         broadcast use group_seq_properties;
@@ -1894,7 +1894,7 @@ impl<A> Seq<A> {
         requires
             0 <= i < self.len(),
         ensures
-            #[trigger] self.take(i + 1) =~= self.take(i).push(self[i]),
+            #[trigger] self[..i + 1] =~= self[..i].push(self[i]),
     {
         broadcast use group_seq_properties;
 
@@ -1903,7 +1903,7 @@ impl<A> Seq<A> {
     /// Taking the full length of a sequence returns the sequence itself.
     pub broadcast proof fn lemma_take_len(self)
         ensures
-            #[trigger] self.take(self.len() as int) == self,
+            #[trigger] self[..self.len()] == self,
     {
         broadcast use group_seq_properties;
 
@@ -1925,7 +1925,7 @@ impl<A> Seq<A> {
         requires
             0 <= i < self.len(),
         ensures
-            #[trigger] self.take(i + 1).any(p) <==> self.take(i).any(p) || p(self[i]),
+            #[trigger] self[..i + 1].any(p) <==> self[..i].any(p) || p(self[i]),
     {
         broadcast use group_seq_properties;
 
@@ -2144,7 +2144,7 @@ impl<A> Seq<A> {
         requires
             0 <= i < self.len(),
         ensures
-            #[trigger] self.take(i + 1).flat_map(f) =~= self.take(i).flat_map(f) + f(self[i]),
+            #[trigger] self[..i + 1].flat_map(f) =~= self[..i].flat_map(f) + f(self[i]),
         decreases i,
     {
         broadcast use group_seq_properties;
@@ -2183,7 +2183,7 @@ impl<A> Seq<A> {
         requires
             0 <= i < self.len(),
         ensures
-            #[trigger] self.take(i + 1).map_values(f) =~= self.take(i).map_values(f).push(
+            #[trigger] self[..i + 1].map_values(f) =~= self[..i].map_values(f).push(
                 f(self[i]),
             ),
     {
@@ -3414,7 +3414,7 @@ pub proof fn lemma_fold_left_permutation<A, B>(l1: Seq<A>, l2: Seq<A>, f: spec_f
 /// as long as `n` is within the bounds of the original sequence.
 pub broadcast proof fn lemma_seq_take_len<A>(s: Seq<A>, n: int)
     ensures
-        0 <= n <= s.len() ==> #[trigger] s.take(n).len() == n,
+        0 <= n <= s.len() ==> #[trigger] s[..n].len() == n,
 {
 }
 
@@ -3425,7 +3425,7 @@ pub broadcast proof fn lemma_seq_take_contains<A>(s: Seq<A>, n: int, x: A)
     requires
         0 <= n <= s.len(),
     ensures
-        #[trigger] s.take(n).contains(x) <==> (exists|i: int|
+        #[trigger] s[..n].contains(x) <==> (exists|i: int|
             0 <= i < n <= s.len() && #[trigger] s[i] == x),
 {
     assert((exists|i: int| 0 <= i < n <= s.len() && #[trigger] s[i] == x) ==> s.take(n).contains(x))
@@ -3442,13 +3442,13 @@ pub broadcast proof fn lemma_seq_take_contains<A>(s: Seq<A>, n: int, x: A)
 /// is the same as `j`th element of the sequence after taking the first `n` elements of `s`.
 pub broadcast proof fn lemma_seq_take_index<A>(s: Seq<A>, n: int, j: int)
     ensures
-        0 <= j < n <= s.len() ==> #[trigger] s.take(n)[j] == s[j],
+        0 <= j < n <= s.len() ==> #[trigger] s[..n][j] == s[j],
 {
 }
 
 pub proof fn subrange_of_matching_take<T>(a: Seq<T>, b: Seq<T>, s: int, e: int, l: int)
     requires
-        a.take(l) == b.take(l),
+        a[..l] == b[..l],
         l <= a.len(),
         l <= b.len(),
         0 <= s <= e <= l,
@@ -3517,7 +3517,9 @@ pub broadcast proof fn lemma_seq_append_take_skip<A>(a: Seq<A>, b: Seq<A>, n: in
     ensures
         #![trigger (a + b).take(n)]
         #![trigger (a + b).skip(n)]
-        n == a.len() ==> ((a + b).take(n) =~= a && (a + b).skip(n) =~= b),
+//        #![trigger (a + b)[..n]]
+//        #![trigger (a + b)[n..]]
+        n == a.len() ==> ((a + b)[..n] =~= a && (a + b)[n..] =~= b),
 {
 }
 
@@ -3529,8 +3531,8 @@ pub broadcast proof fn lemma_seq_append_take_skip<A>(a: Seq<A>, b: Seq<A>, n: in
 /// elements of `s` and then updating index `i` to value `v`.
 pub broadcast proof fn lemma_seq_take_update_commut1<A>(s: Seq<A>, i: int, v: A, n: int)
     ensures
-        #![trigger s.update(i, v).take(n)]
-        0 <= i < n <= s.len() ==> #[trigger] s.update(i, v).take(n) =~= s.take(n).update(i, v),
+        #![trigger s.update(i, v)[..n]]
+        0 <= i < n <= s.len() ==> #[trigger] s.update(i, v)[..n] =~= s[..n].update(i, v),
 {
 }
 
@@ -3540,7 +3542,7 @@ pub broadcast proof fn lemma_seq_take_update_commut1<A>(s: Seq<A>, i: int, v: A,
 /// elements of `s` without the update.
 pub broadcast proof fn lemma_seq_take_update_commut2<A>(s: Seq<A>, i: int, v: A, n: int)
     ensures
-        0 <= n <= i < s.len() ==> #[trigger] s.update(i, v).take(n) =~= s.take(n),
+        0 <= n <= i < s.len() ==> #[trigger] s.update(i, v)[..n] =~= s[..n],
 {
 }
 
@@ -3586,7 +3588,7 @@ pub broadcast proof fn lemma_seq_skip_nothing<A>(s: Seq<A>, n: int)
 /// `s.take(0)` is equivalent to the empty sequence.
 pub broadcast proof fn lemma_seq_take_nothing<A>(s: Seq<A>, n: int)
     ensures
-        n == 0 ==> #[trigger] s.take(n) =~= Seq::<A>::empty(),
+        n == 0 ==> #[trigger] s[..n] =~= Seq::<A>::empty(),
 {
 }
 

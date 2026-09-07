@@ -162,7 +162,7 @@ impl<B: Base> EndianNat<B> {
         recommends
             0 <= n <= self.digits.len(),
     {
-        EndianNat { endian: self.endian, digits: self.digits.take(n as int), phantom: self.phantom }
+        EndianNat { endian: self.endian, digits: self.digits[..n], phantom: self.phantom }
     }
 
     /// Constructs an `EndianNat` by skipping the least significant `n` digits of the original `EndianNat`.
