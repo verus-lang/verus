@@ -84,6 +84,7 @@ pub struct ArgsX {
     pub verify_function: Option<String>,
     pub no_external_by_default: bool,
     pub no_verify: bool,
+    pub build_sst: bool,
     pub no_lifetime: bool,
     pub no_erasure_check: bool,
     pub no_auto_recommends_check: bool,
@@ -131,6 +132,7 @@ impl ArgsX {
             verify_function: Default::default(),
             no_external_by_default: Default::default(),
             no_verify: Default::default(),
+            build_sst: Default::default(),
             no_lifetime: Default::default(),
             no_erasure_check: Default::default(),
             no_auto_recommends_check: Default::default(),
@@ -307,6 +309,7 @@ pub fn parse_args_with_imports(
     const OPT_VERIFY_FUNCTION: &str = "verify-function";
     const OPT_NO_EXTERNAL_BY_DEFAULT: &str = "no-external-by-default";
     const OPT_NO_VERIFY: &str = "no-verify";
+    const OPT_BUILD_SST: &str = "build-sst";
     const OPT_NO_LIFETIME: &str = "no-lifetime";
     const OPT_NO_ERASURE_CHECK: &str = "no-erasure-check";
     const OPT_NO_AUTO_RECOMMENDS_CHECK: &str = "no-auto-recommends-check";
@@ -471,6 +474,7 @@ pub fn parse_args_with_imports(
     );
     opts.optflag("", OPT_NO_EXTERNAL_BY_DEFAULT, "(deprecated) Verify all items, even those declared outside the verus! macro, and even if they aren't marked #[verifier::verify]");
     opts.optflag("", OPT_NO_VERIFY, "Do not run verification");
+    opts.optflag("", OPT_BUILD_SST, "Always build SST even if no-verify is set");
     opts.optflag("", OPT_NO_LIFETIME, "Do not run lifetime checking on proofs");
     opts.optflag("", OPT_NO_ERASURE_CHECK, "Do not run the final erasure check");
     opts.optflag(
@@ -684,6 +688,7 @@ pub fn parse_args_with_imports(
         },
         no_external_by_default: matches.opt_present(OPT_NO_EXTERNAL_BY_DEFAULT),
         no_verify: matches.opt_present(OPT_NO_VERIFY),
+        build_sst: matches.opt_present(OPT_BUILD_SST),
         no_lifetime: matches.opt_present(OPT_NO_LIFETIME),
         no_erasure_check: matches.opt_present(OPT_NO_ERASURE_CHECK),
         no_auto_recommends_check: matches.opt_present(OPT_NO_AUTO_RECOMMENDS_CHECK),
