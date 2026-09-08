@@ -83,6 +83,16 @@ impl Default for SmtSolver {
     }
 }
 
+impl SmtSolver {
+    /// Name of the solver, for use in user-facing diagnostics.
+    pub fn name(&self) -> &'static str {
+        match self {
+            SmtSolver::Z3 => "z3",
+            SmtSolver::Cvc5 => "cvc5",
+        }
+    }
+}
+
 pub struct Context {
     pub(crate) message_interface: Arc<dyn crate::messages::MessageInterface>,
     smt_process: Option<SmtProcess>,
