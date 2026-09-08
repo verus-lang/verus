@@ -11,7 +11,6 @@
 //! This API is completely unstable and subject to change.
 
 // tidy-alphabetical-start
-#![cfg_attr(bootstrap, feature(strip_circumfix))]
 #![feature(associated_type_defaults)]
 #![feature(default_field_values)]
 #![feature(deref_patterns)]
@@ -24,7 +23,24 @@
 #![feature(unwrap_infallible)]
 #![feature(yeet_expr)]
 #![recursion_limit = "512"] // For rustdoc
+#![feature(rustc_private)]
 // tidy-alphabetical-end
+
+extern crate rustc_abi;
+extern crate rustc_ast;
+extern crate rustc_data_structures;
+extern crate rustc_errors;
+extern crate rustc_hir;
+extern crate rustc_infer;
+extern crate rustc_macros;
+extern crate rustc_middle;
+extern crate rustc_next_trait_solver;
+extern crate rustc_session;
+extern crate rustc_span;
+extern crate rustc_transmute;
+extern crate thin_vec;
+extern crate smallvec;
+
 
 pub mod diagnostics;
 pub mod error_reporting;

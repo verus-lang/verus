@@ -2337,6 +2337,7 @@ dependencies = [
  "regex",
  "rust_verify_test_macros",
  "rustc_hir_analysis",
+ "rustc_hir_typeck",
  "rustc_mir_build",
  "serde",
  "serde_json",
@@ -2375,6 +2376,18 @@ name = "rustc_hir_analysis"
 version = "0.0.0"
 dependencies = [
  "itertools",
+ "rustc_trait_selection",
+ "tracing",
+]
+
+[[package]]
+name = "rustc_hir_typeck"
+version = "0.0.0"
+dependencies = [
+ "itertools",
+ "rustc_hir_analysis",
+ "rustc_trait_selection",
+ "smallvec",
  "tracing",
 ]
 
@@ -2391,6 +2404,14 @@ name = "rustc_tools_util"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a3b75158011a63889ba12084cf1224baad7bcad50f6ee7c842f772b74aa148ed"
+
+[[package]]
+name = "rustc_trait_selection"
+version = "0.0.0"
+dependencies = [
+ "itertools",
+ "tracing",
+]
 
 [[package]]
 name = "rustc_version"
