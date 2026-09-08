@@ -292,7 +292,7 @@ impl Context {
     pub fn enable_usage_info(&mut self) {
         assert!(matches!(self.state, ContextState::NotStarted));
         self.usage_info_enabled = true;
-        self.set_z3_param_bool("produce-unsat-cores", true, true);
+        self.set_solver_option_bool("produce-unsat-cores", true, true);
     }
 
     // emit blank line into log files
@@ -311,30 +311,35 @@ impl Context {
         self.smt_log.comment(s);
     }
 
-    fn log_set_z3_param(&mut self, option: &str, value: &str) {
+    fn log_set_solver_option(&mut self, option: &str, value: &str) {
         self.air_initial_log.log_set_option(option, value);
         self.air_middle_log.log_set_option(option, value);
         self.air_final_log.log_set_option(option, value);
         self.smt_log.log_set_option(option, value);
     }
 
-    pub(crate) fn set_z3_param_bool(&mut self, option: &str, value: bool, write_to_logs: bool) {
+    pub(crate) fn set_solver_option_bool(
+        &mut self,
+        option: &str,
+        value: bool,
+        write_to_logs: bool,
+    ) {
         if option == "air_recommended_options" && value {
             match self.solver {
                 SmtSolver::Z3 => {
-                    self.set_z3_param_bool("auto_config", false, true);
-                    self.set_z3_param_bool("smt.mbqi", false, true);
-                    self.set_z3_param_u32("smt.case_split", 3, true);
-                    self.set_z3_param_f64("smt.qi.eager_threshold", 100.0, true);
-                    self.set_z3_param_bool("smt.delay_units", true, true);
-                    self.set_z3_param_u32("smt.arith.solver", 2, true);
-                    self.set_z3_param_bool("smt.arith.nl", false, true);
-                    self.set_z3_param_bool("pi.enabled", false, true);
-                    self.set_z3_param_bool("rewriter.sort_disjunctions", false, true);
+                    self.set_solver_option_bool("auto_config", false, true);
+                    self.set_solver_option_bool("smt.mbqi", false, true);
+                    self.set_solver_option_u32("smt.case_split", 3, true);
+                    self.set_solver_option_f64("smt.qi.eager_threshold", 100.0, true);
+                    self.set_solver_option_bool("smt.delay_units", true, true);
+                    self.set_solver_option_u32("smt.arith.solver", 2, true);
+                    self.set_solver_option_bool("smt.arith.nl", false, true);
+                    self.set_solver_option_bool("pi.enabled", false, true);
+                    self.set_solver_option_bool("rewriter.sort_disjunctions", false, true);
                 }
                 SmtSolver::Cvc5 => {
                     self.smt_log.log_node(&node!((set-logic {str_to_node("ALL")})));
-                    self.set_z3_param_bool("incremental", true, true);
+                    self.set_solver_option_bool("incremental", true, true);
                 }
             }
         } else if option == "single_check_query" && value {
@@ -344,50 +349,50 @@ impl Context {
             }
         } else {
             if write_to_logs {
-                self.log_set_z3_param(option, &value.to_string());
+                self.log_set_solver_option(option, &value.to_string());
             }
         }
     }
 
-    pub(crate) fn set_z3_param_u32(&mut self, option: &str, value: u32, write_to_logs: bool) {
+    pub(crate) fn set_solver_option_u32(&mut self, option: &str, value: u32, write_to_logs: bool) {
         if option == "rlimit" && write_to_logs && matches!(self.solver, SmtSolver::Z3) {
             self.set_rlimit(value);
         } else {
             if write_to_logs {
-                self.log_set_z3_param(option, &value.to_string());
+                self.log_set_solver_option(option, &value.to_string());
             }
         }
     }
 
-    pub(crate) fn set_z3_param_f64(&mut self, option: &str, value: f64, write_to_logs: bool) {
+    pub(crate) fn set_solver_option_f64(&mut self, option: &str, value: f64, write_to_logs: bool) {
         if write_to_logs {
             let mut s = value.to_string();
             if !s.contains(".") {
                 s += ".0";
             }
-            self.log_set_z3_param(option, &s);
+            self.log_set_solver_option(option, &s);
         }
     }
 
-    pub(crate) fn set_z3_param_str(&mut self, option: &str, value: &str, write_to_logs: bool) {
+    pub(crate) fn set_solver_option_str(&mut self, option: &str, value: &str, write_to_logs: bool) {
         if write_to_logs {
-            self.log_set_z3_param(option, value);
+            self.log_set_solver_option(option, value);
         }
     }
 
-    pub fn set_z3_param(&mut self, option: &str, value: &str) {
+    pub fn set_solver_option(&mut self, option: &str, value: &str) {
         if value == "true" {
-            self.set_z3_param_bool(option, true, true);
+            self.set_solver_option_bool(option, true, true);
         } else if value == "false" {
-            self.set_z3_param_bool(option, false, true);
+            self.set_solver_option_bool(option, false, true);
         } else if let Ok(v) = value.parse::<u32>() {
-            self.set_z3_param_u32(option, v, true);
+            self.set_solver_option_u32(option, v, true);
         } else if let Ok(v) = value.parse::<f64>() {
-            self.set_z3_param_f64(option, v, true);
+            self.set_solver_option_f64(option, v, true);
         } else if value.is_ascii() {
-            self.set_z3_param_str(option, value, true);
+            self.set_solver_option_str(option, value, true);
         } else {
-            panic!("unexpected z3 param {}", value);
+            panic!("unexpected solver option value {}", value);
         }
     }
 
@@ -414,13 +419,13 @@ impl Context {
             ContextState::NotStarted => {
                 let profile_logfile_name = self.profile_logfile_name.clone();
                 if let Some(profile_logfile_name) = profile_logfile_name {
-                    self.set_z3_param("trace", "true");
+                    self.set_solver_option("trace", "true");
                     // Very expensive.  May be needed to support more detailed log analysis.
-                    // self.set_z3_param("proof", "true");
+                    // self.set_solver_option("proof", "true");
 
                     // sise does not support backslashes in atoms, which appear in Windows paths
                     let profile_logfile_name = profile_logfile_name.replace("\\", "/");
-                    self.log_set_z3_param("trace_file_name", &profile_logfile_name);
+                    self.log_set_solver_option("trace_file_name", &profile_logfile_name);
                 }
                 self.blank_line();
                 self.comment("AIR prelude");
@@ -568,7 +573,7 @@ impl Context {
                 ValidityResult::Valid(UsageInfo::None)
             }
             CommandX::SetOption(option, value) => {
-                self.set_z3_param(option, value);
+                self.set_solver_option(option, value);
                 ValidityResult::Valid(UsageInfo::None)
             }
             CommandX::Global(decl) => {
