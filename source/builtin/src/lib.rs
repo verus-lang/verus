@@ -6,8 +6,12 @@
     feature(negative_impls),
     feature(unboxed_closures),
     feature(fn_traits),
+    feature(tuple_trait)
+)]
+#![cfg_attr(
+    // register_tool is only allowed at crate root. Disable this trait during `test_is_core`:
+    all(verus_keep_ghost, not(verus_verify_core)),
     feature(register_tool),
-    feature(tuple_trait),
     register_tool(verus),
     register_tool(verifier)
 )]
