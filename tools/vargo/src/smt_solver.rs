@@ -44,8 +44,8 @@ impl SmtSolverType {
 
     fn expected_version(&self) -> String {
         match self {
-            SmtSolverType::Z3 => external_deps::EXPECTED_Z3_VERSION.to_string(),
-            SmtSolverType::Cvc5 => external_deps::EXPECTED_CVC5_VERSION.to_string(),
+            SmtSolverType::Z3 => external_deps::Z3_VERSION.to_string(),
+            SmtSolverType::Cvc5 => external_deps::CVC5_VERSION.to_string(),
         }
     }
 }
