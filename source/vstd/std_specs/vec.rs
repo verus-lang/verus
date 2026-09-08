@@ -4,12 +4,13 @@ use verus_builtin::*;
 
 use super::super::slice::SliceIndexSpec;
 use super::core::IndexSpec;
+use alloc::boxed::Box;
 use alloc::collections::TryReserveError;
 use alloc::vec::{IntoIter, Vec};
 use core::alloc::Allocator;
 use core::clone::Clone;
 use core::marker::PhantomData;
-use core::ops::Index;
+use core::ops::{FnMut, Index};
 use core::option::Option;
 use core::option::Option::None;
 use core::slice::SliceIndex;
@@ -475,5 +476,91 @@ pub broadcast group group_vec_axioms {
     axiom_vec_has_resolved,
     axiom_vec_decreases_to_view,
 }
+
+pub trait CapacitySpec {
+    spec fn spec_capacity(&self) -> nat;
+}
+
+impl<T, A: Allocator> CapacitySpec for Vec<T, A> {
+    #[verifier::external_body]
+    uninterp spec fn spec_capacity(&self) -> nat;
+}
+
+pub uninterp spec fn vec_start_ptr<T>(seq: Seq<T>, capacity: nat, ptr: *const T) -> bool;
+
+pub uninterp spec fn vec_start_mut_ptr<T>(seq: Seq<T>, capacity: nat, ptr: *mut T) -> bool;
+
+pub open spec fn vec_set_len_domain<T>(seq: Seq<T>, capacity: nat, new_len: usize) -> bool {
+    new_len as nat <= capacity
+}
+
+pub uninterp spec fn vec_set_len_result<T>(
+    old_seq: Seq<T>,
+    capacity: nat,
+    new_len: usize,
+    final_seq: Seq<T>,
+) -> bool;
+
+pub uninterp spec fn boxed_slice_view<T, A: Allocator>(boxed: Box<[T], A>) -> Seq<T>;
+
+pub uninterp spec fn boxed_slice_capacity<T, A: Allocator>(boxed: Box<[T], A>) -> nat;
+
+pub uninterp spec fn vec_resize_with_result<T, F: FnMut() -> T>(
+    source: Seq<T>,
+    new_len: usize,
+    f: F,
+    result: Seq<T>,
+) -> bool;
+
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::as_mut_ptr ](
+    vec: &mut Vec<T, A>,
+) -> (ptr: *mut T)
+    ensures
+        vec_start_mut_ptr(old(vec)@, old(vec).spec_capacity(), ptr),
+        final(vec)@ == old(vec)@,
+;
+
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::as_ptr ](
+    vec: &Vec<T, A>,
+) -> (ptr: *const T)
+    ensures
+        vec_start_ptr(vec@, vec.spec_capacity(), ptr),
+;
+
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::into_boxed_slice ](
+    vec: Vec<T, A>,
+) -> (ret: Box<[T], A>)
+    ensures
+        boxed_slice_view::<T, A>(ret) == vec@,
+        boxed_slice_capacity::<T, A>(ret) == vec@.len(),
+;
+
+pub assume_specification<T, A: Allocator, F: FnMut() -> T>[
+    Vec::<T, A>::resize_with::<F>
+](
+    vec: &mut Vec<T, A>,
+    new_len: usize,
+    f: F,
+)
+    ensures
+        new_len <= old(vec)@.len() ==> final(vec)@ == old(vec)@.subrange(0, new_len as int),
+        new_len > old(vec)@.len() ==> vec_resize_with_result(
+            old(vec)@,
+            new_len,
+            f,
+            final(vec)@,
+        ),
+;
+
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::set_len ](
+    vec: &mut Vec<T, A>,
+    new_len: usize,
+)
+    requires
+        vec_set_len_domain(old(vec)@, old(vec).spec_capacity(), new_len),
+    ensures
+        final(vec)@.len() == new_len,
+        vec_set_len_result(old(vec)@, old(vec).spec_capacity(), new_len, final(vec)@),
+;
 
 } // verus!
