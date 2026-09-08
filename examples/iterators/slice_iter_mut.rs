@@ -72,13 +72,10 @@ pub open spec fn exists_witness<V, Pred: IndexPredicate<V>>(p: Pred, i: nat) -> 
     exists |v| p.predicate(v, i)
 }
 
-// TODO: workaround
-type SpecFnNat<T> = spec_fn(nat) -> T;
-
 tracked struct ProphecyGhostConstrainedSeq<T, Pred: IndexPredicate<T>> {
     ghost pred: Pred,
     ghost history: Seq<T>,
-    tracked inner: ProphecyGhost< SpecFnNat<T> >,
+    tracked inner: ProphecyGhost<spec_fn(nat) -> T>,
 }
 
 impl<T, Pred: IndexPredicate<T>> ProphecyGhostConstrainedSeq<T, Pred> {
@@ -114,7 +111,7 @@ impl<T, Pred: IndexPredicate<T>> ProphecyGhostConstrainedSeq<T, Pred> {
         ProphecyGhostConstrainedSeq {
             pred: pred,
             history: seq![],
-            inner: ProphecyGhost::<SpecFnNat<T>>::new(),
+            inner: ProphecyGhost::<spec_fn(nat) -> T>::new(),
         }
     }
 
