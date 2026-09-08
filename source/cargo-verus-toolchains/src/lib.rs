@@ -46,6 +46,8 @@ pub struct Toolchain<Str: AsRef<str> = String> {
     pub vstd: Crate<Str>,
     /// The Z3 version.
     pub z3: Str,
+    /// The CVC5 version.
+    pub cvc5: Str,
     /// The Singular version.
     pub singular: Str,
 }
@@ -120,6 +122,8 @@ impl Toolchain {
         writeln!(out, ",")?;
 
         writeln!(out, "{i1}z3: {:?},", self.z3)?;
+
+        writeln!(out, "{i1}cvc5: {:?},", self.cvc5)?;
 
         writeln!(out, "{i1}singular: {:?},", self.singular)?;
 
