@@ -9,6 +9,7 @@ use vstd::std_specs::iter::IteratorSpec;
 verus! {
 
 // Proph lib
+// TODO: add this or something similar to vstd
 
 tracked struct ProphecyGhostConstrained<T, Pred: Predicate<T>> {
     ghost pred: Pred,
@@ -215,10 +216,6 @@ impl<'a, T> SliceIterMut<'a, T> {
             proph_var = ProphecyGhostConstrainedSeq::new(pred);
 
             broadcast use prophecy_ghost_seq_constrained_satisfies;
-            //assert forall |i| #![all_triggers] 0 <= i < old(s).len() implies
-            //    *proph_var.value(i as nat) == old(s)[i] && *final(proph_var.value(i as nat)) == final(s)[i]
-            //by {
-            //}
         }
 
         SliceIterMut {
