@@ -215,6 +215,11 @@ pub broadcast proof fn lemma_slice_index_decreases<T>(s: &[T], i: int)
     lemma_seq_index_decreases(s@, i);
 }
 
+pub axiom fn mut_ref_slice_len_eq<T>(tracked slice: &&mut [T])
+    ensures
+        old(*slice).len() == final(*slice).len(),
+;
+
 pub broadcast group group_slice_axioms {
     axiom_spec_len,
     axiom_slice_ext_equal,

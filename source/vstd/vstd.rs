@@ -66,6 +66,8 @@ pub mod math;
 pub mod modes;
 pub mod multiset;
 pub mod multiset_lib;
+#[cfg(verus_keep_ghost)]
+pub mod mut_ref;
 pub mod pervasive;
 pub mod predicate;
 pub mod proph;
@@ -127,6 +129,7 @@ pub broadcast group group_vstd_default {
     string::group_string_axioms,
     raw_ptr::group_raw_ptr_axioms,
     layout::group_layout_axioms,
+    mut_ref::group_mut_ref_axioms,
     //
     // core std_specs
     //
