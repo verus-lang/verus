@@ -72,6 +72,28 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] atomic_generic_function_call
+    TOKEN_LIB.to_owned() + verus_code_str! {
+        fn generic_atomic<F>(_callback: F)
+            atomically (atomic_update) {
+                (old: Token) -> (new: Commit<Token>),
+                ensures new@ == old,
+            },
+        {
+            try_open_atomic_update!(atomic_update, token => {
+                Tracked(Commit(token))
+            });
+        }
+
+        fn client() {
+            generic_atomic(5u8) atomically |update| {
+                let tracked _token = update(Token::new());
+            };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] atomic_function_commit_only
     TOKEN_LIB.to_owned() + verus_code_str! {
         pub fn atomic_function()
