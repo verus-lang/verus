@@ -1357,10 +1357,10 @@ impl Verifier {
         if self.args.solver_version_check {
             air_context.set_expected_solver_version(match self.args.solver {
                 air::context::SmtSolver::Z3 => {
-                    cargo_verus_toolchains::external_deps::EXPECTED_Z3_VERSION.to_string()
+                    cargo_verus_toolchains::external_deps::Z3_VERSION.to_string()
                 }
                 air::context::SmtSolver::Cvc5 => {
-                    cargo_verus_toolchains::external_deps::EXPECTED_CVC5_VERSION.to_string()
+                    cargo_verus_toolchains::external_deps::CVC5_VERSION.to_string()
                 }
             });
         }
