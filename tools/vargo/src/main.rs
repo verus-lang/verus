@@ -8,6 +8,9 @@
 #[path = "../../common/consts.rs"]
 mod consts;
 
+#[path = "../../../source/cargo-verus-toolchains/src/external_deps.rs"]
+mod external_deps;
+
 use clap::Parser;
 
 mod cli;

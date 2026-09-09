@@ -597,10 +597,15 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 UnaryOp::MustBeFinalized | UnaryOp::MustBeElaborated => {
                     panic!("internal error: MustBeFinalized in SST")
                 }
-                UnaryOp::CastToInteger => {
-                    let unbox = UnaryOpr::Unbox(Arc::new(TypX::Int(IntRange::Int)));
-                    mk_exp(ExpX::UnaryOpr(unbox, e1.clone()))
-                }
+                UnaryOp::CastToInteger => match &*crate::ast_util::undecorate_typ(&e1.typ) {
+                    TypX::TypParam(_) => {
+                        // View as boxed integer rather than type parameter
+                        // (e.g. so that it can be unboxed if needed,
+                        // or passed as boxed int argument if needed)
+                        e1.new_typ(&Arc::new(TypX::Boxed(Arc::new(TypX::Int(IntRange::Int)))))
+                    }
+                    _ => e1.clone(),
+                },
                 UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_) => {
                     let e1 = coerce_exp_to_native(ctx, &e1);
                     mk_exp_typ(&coerce_typ_to_poly(ctx, &exp.typ), ExpX::Unary(*op, e1))

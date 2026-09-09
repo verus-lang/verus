@@ -879,7 +879,6 @@ pub(crate) struct RustIntIntrinsicItem(pub(crate) RustIntType, pub(crate) RustIn
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub(crate) enum RustItem {
-    Panic,
     Box,
     Fn,
     FnOnce,
@@ -919,10 +918,6 @@ pub(crate) enum RustItem {
 }
 
 pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<RustItem> {
-    // if tcx.parent(def_id) == partial_eq {
-    if tcx.lang_items().panic_fn() == Some(def_id) {
-        return Some(RustItem::Panic);
-    }
     if tcx.lang_items().owned_box() == Some(def_id) {
         return Some(RustItem::Box);
     }

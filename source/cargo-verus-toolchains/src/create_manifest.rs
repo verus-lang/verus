@@ -2,11 +2,10 @@ use std::path::PathBuf;
 
 use anyhow::Context;
 use cargo_verus_toolchains::{
-    format_manifest,
+    external_deps, format_manifest,
     versions::{get_verus_version, get_vstd_version},
 };
 use clap::Parser;
-use serde::{Deserialize, Serialize};
 
 type Toolchain = cargo_verus_toolchains::Toolchain<String>;
 
@@ -45,25 +44,11 @@ struct Cli {
     pub rolling: bool,
 }
 
-/// External components that Verus depends on.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-struct ExternalDeps {
-    z3: String,
-    singular: String,
-}
-
 fn create_toolchain(is_rolling: bool) -> anyhow::Result<Toolchain> {
-    let external_deps = get_external_deps()?;
     let (verus, _) = get_verus_version(false)?;
     let vstd = get_vstd_version(is_rolling)?;
-    let z3 = external_deps.z3;
-    let singular = external_deps.singular;
-    Ok(Toolchain { verus, vstd, z3, singular })
-}
-
-fn get_external_deps() -> anyhow::Result<ExternalDeps> {
-    const PATH: &str = "external-deps.toml";
-    let contents = std::fs::read_to_string(PATH).context(format!("reading `{PATH}`"))?;
-    let external_deps = toml::from_str(&contents).context(format!("parsing `{PATH}`"))?;
-    Ok(external_deps)
+    let z3 = external_deps::Z3_VERSION.to_string();
+    let cvc5 = external_deps::CVC5_VERSION.to_string();
+    let singular = external_deps::SINGULAR_VERSION.to_string();
+    Ok(Toolchain { verus, vstd, z3, cvc5, singular })
 }

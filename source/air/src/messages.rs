@@ -10,7 +10,8 @@ pub trait MessageInterface {
     fn message_label_from_air_span(&self, air_span: &str, note: &str) -> ArcDynMessage;
     fn all_msgs(&self, message: &ArcDynMessage) -> Vec<String>;
     fn bare(&self, level: MessageLevel, notes: &str) -> ArcDynMessage;
-    fn unexpected_z3_version(&self, expected: &str, found: &str) -> ArcDynMessage;
+    fn unexpected_solver_version(&self, solver: &str, expected: &str, found: &str)
+    -> ArcDynMessage;
     fn get_note<'b>(&self, message: &'b ArcDynMessage) -> &'b str;
     fn from_labels(&self, labels: &Vec<ArcDynMessageLabel>) -> ArcDynMessage;
     fn append_labels(
@@ -94,10 +95,15 @@ impl MessageInterface for AirMessageInterface {
         Arc::new(AirMessage { level, note: msg.to_owned(), labels: Vec::new(), span: None })
     }
 
-    fn unexpected_z3_version(&self, expected: &str, found: &str) -> ArcDynMessage {
+    fn unexpected_solver_version(
+        &self,
+        solver: &str,
+        expected: &str,
+        found: &str,
+    ) -> ArcDynMessage {
         Arc::new(AirMessage {
             level: MessageLevel::Error,
-            note: format!("expected z3 version {expected}, found {found}"),
+            note: format!("expected {solver} version {expected}, found {found}"),
             labels: Vec::new(),
             span: None,
         })
