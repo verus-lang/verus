@@ -481,3 +481,87 @@ test_verify_one_file! {
 
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] enumerate_works verus_code! {
+        use vstd::prelude::*;
+
+        // The index the loop yields is the loop index, and the item is the
+        // corresponding element of the source.
+        fn copy_it(v: &Vec<u32>) -> (w: Vec<u32>)
+            ensures
+                w.len() == v.len(),
+                forall |k: int| 0 <= k < w.len() ==> w[k] == v[k],
+        {
+            let mut w: Vec<u32> = Vec::new();
+            for (i, x) in iter: v.iter().enumerate()
+                invariant
+                    w.len() == iter.index(),
+                    forall |k: int| 0 <= k < w.len() ==> w[k] == v[k],
+            {
+                // `w.len() == iter.index()` bounds the loop index by `usize::MAX`,
+                // which is what relating it to `Enumerate`'s `usize` index needs.
+                assert(i == iter.index());
+                w.push(*x);
+            }
+            w
+        }
+
+        // The `(i, x)` pattern is usable in the invariant (via `peek`).
+        // `Enumerate`'s index is a `usize`, so relating it to the (unbounded) loop
+        // index needs `v@.len() <= usize::MAX`, which the `v.len()` call surfaces.
+        #[verifier::loop_isolation(false)]
+        fn peek_binding(v: &Vec<u32>) {
+            let n = v.len();
+            for (i, x) in iter: v.iter().enumerate()
+                invariant
+                    iter.index() < iter.seq().len() ==>
+                        i == iter.index() && x == &v[iter.index()],
+            {
+            }
+        }
+
+        fn over_range(n: usize) {
+            for (i, x) in iter: (0..n).enumerate()
+                invariant
+                    iter.index() < iter.seq().len() ==> i == x,
+            {
+                assert(i == x);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] enumerate_spec_level verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        fn remaining_of_fresh_enumerate(v: &Vec<u32>) {
+            let it = v.iter().enumerate();
+            assert(IteratorSpec::remaining(&it).len() == v.len());
+            assert(forall |k: int| 0 <= k < v.len() ==>
+                #[trigger] IteratorSpec::remaining(&it)[k] == ((k as usize), &v[k]));
+        }
+
+        fn collect_it(v: &Vec<u32>) {
+            let w: Vec<(usize, &u32)> = v.iter().enumerate().collect();
+            assert(w.len() == v.len());
+            assert(forall |k: int| 0 <= k < v.len() ==>
+                #[trigger] w[k] == ((k as usize), &v[k]));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] enumerate_wrong_index_fails verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        fn wrong_index(v: &Vec<u32>) {
+            let it = v.iter().enumerate();
+            assert(forall |k: int| 0 <= k < v.len() ==>
+                #[trigger] IteratorSpec::remaining(&it)[k] == (((k + 1) as usize), &v[k])); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}

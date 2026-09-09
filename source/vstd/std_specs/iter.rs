@@ -5,7 +5,7 @@ use super::super::seq::{
 
 use verus as verus_;
 
-use core::iter::{FromIterator, Iterator, Rev};
+use core::iter::{Enumerate, FromIterator, Iterator, Rev};
 
 verus_! {
 
@@ -76,6 +76,12 @@ pub trait ExIterator {
         ensures
             self.obeys_prophetic_iter_laws() ==>
                 r == into_rev_spec(self) && rev_post(self, r),
+    ;
+
+    fn enumerate(self) -> (r: Enumerate<Self>)
+        where Self: Sized,
+        ensures
+            self.obeys_prophetic_iter_laws() ==> enumerate_post(self, r),
     ;
 
     fn collect<B>(self) -> (collection: B)
@@ -350,6 +356,71 @@ impl <I> DoubleEndedIteratorSpecImpl for Rev<I>
     }
 }
 
+/********************************************************************************
+ * Definitions for `enumerate()`
+ ********************************************************************************/
+#[verifier::external_body]
+#[verifier::external_type_specification]
+#[verifier::reject_recursive_types(I)]
+pub struct ExEnumerate<I>(Enumerate<I>);
+
+// Ghost accessor for the inner iterator
+pub uninterp spec fn enumerate_iter<I>(e: Enumerate<I>) -> I;
+
+// Ghost accessor for the number of items the inner iterator has already yielded,
+// i.e. the index `e` will pair with the next item it produces.
+pub uninterp spec fn enumerate_count<I>(e: Enumerate<I>) -> int;
+
+// Ideally, we would write this postcondition directly on the definition of
+// Iterator::enumerate above.  However, to do so, we would need to impose a trait
+// bound of `Self: IteratorSpec`.  However, this introduces a cyclic
+// dependency, since IteratorSpec depends on Iterator.  Hence,
+// we introduce a layer of indirection via this uninterp spec function.
+pub uninterp spec fn enumerate_post<I>(i: I, r: Enumerate<I>) -> bool;
+
+// `enumerate` returns a fresh `Enumerate` over `i` whose counter starts at 0.
+// Everything else about the result (`remaining`, `peek`, `decrease`, ...) follows
+// from the `IteratorSpecImpl` below, which is defined in terms of these two accessors.
+pub broadcast axiom fn enumerate_postcondition<I>(i: I, r: Enumerate<I>)
+    requires
+        #[trigger] enumerate_post(i, r),
+    ensures
+        enumerate_iter(r) == i,
+        enumerate_count(r) == 0,
+;
+
+impl <I> IteratorSpecImpl for Enumerate<I>
+    where I: Iterator + IteratorSpec {
+
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        enumerate_iter(*self).obeys_prophetic_iter_laws()
+    }
+
+    // Item `k` of what's left to yield is the inner iterator's item `k`, tagged with
+    // the index it will be reached at: `count` items have been consumed already.
+    #[verifier::prophetic]
+    open spec fn remaining(&self) -> Seq<(usize, I::Item)> {
+        let inner = enumerate_iter(*self).remaining();
+        Seq::new(inner.len(), |k: int| (((enumerate_count(*self) + k) as usize), inner[k]))
+    }
+
+    #[verifier::prophetic]
+    open spec fn will_return_none(&self) -> bool {
+        enumerate_iter(*self).will_return_none()
+    }
+
+    open spec fn decrease(&self) -> Option<nat> {
+        enumerate_iter(*self).decrease()
+    }
+
+    open spec fn peek(&self, index: int) -> Option<(usize, I::Item)> {
+        match enumerate_iter(*self).peek(index) {
+            Some(v) => Some((((enumerate_count(*self) + index) as usize), v)),
+            None => None,
+        }
+    }
+}
+
 // Forwarding spec impl for the Rust-supplied blanket `impl<I> Iterator for &mut I`.
 // Without this, bare method-call syntax on a `i: &mut I` receiver (e.g. `i.remaining()`)
 // resolves to these (otherwise uninterpreted) functions on `&mut I` rather than on `I`,
@@ -516,6 +587,7 @@ pub trait ExIterStep: Clone + PartialOrd + Sized {
 
 pub broadcast group group_iter_axioms {
     rev_postcondition,
+    enumerate_postcondition,
 }
 
 } // verus!
