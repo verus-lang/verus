@@ -2,7 +2,6 @@ use crate::{erase::ResolvedCall, verus_items::VerusItems};
 use rustc_hir::Attribute;
 use rustc_hir::HirId;
 use rustc_hir::def_id::LocalDefId;
-use rustc_middle::hir::Crate;
 use rustc_middle::ty::{TyCtxt, TypeckResults};
 use rustc_mir_build_verus::verus::BodyErasure;
 use rustc_span::SpanData;
@@ -38,7 +37,6 @@ pub type Context<'tcx> = Rc<ContextX<'tcx>>;
 pub struct ContextX<'tcx> {
     pub(crate) cmd_line_args: crate::config::Args,
     pub(crate) tcx: TyCtxt<'tcx>,
-    pub(crate) krate: &'tcx Crate<'tcx>,
     pub(crate) erasure_info: ErasureInfoRef,
     pub(crate) spans: crate::spans::SpanContext,
     pub(crate) verus_items: Arc<VerusItems>,
@@ -113,7 +111,6 @@ impl<'tcx> ContextX<'tcx> {
         ContextX {
             cmd_line_args,
             tcx,
-            krate: tcx.hir_crate(()),
             erasure_info,
             spans,
             verus_items,

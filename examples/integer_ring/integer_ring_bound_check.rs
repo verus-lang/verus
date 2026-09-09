@@ -24,11 +24,16 @@ proof fn ModAfterMul(x: int, y: int, z: int, m: int)
 }
 
 // bound check lemmas
-#[verifier::external_body]
 proof fn LemmaMulUpperBound(x: int, XBound: int, y: int, YBound: int)
-    by (nonlinear_arith) {
-    requires([x <= XBound, y <= YBound, 0 <= x, 0 <= y]);
-    ensures(x * y <= XBound * YBound);
+    by (nonlinear_arith)
+    requires
+        x <= XBound,
+        y <= YBound,
+        0 <= x,
+        0 <= y,
+    ensures
+        x * y <= XBound * YBound,
+{
 }
 
 proof fn LemmaMulStayPositive(x: int, y: int)

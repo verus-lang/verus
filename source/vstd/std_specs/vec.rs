@@ -177,7 +177,7 @@ pub assume_specification<T: core::clone::Clone, A: Allocator>[ Vec::<T, A>::exte
 
 impl<T: Sized, I: SliceIndex<[T]>, A: Allocator> super::core::IndexSpecImpl<I> for Vec<T, A> {
     open spec fn index_req(&self, index: &I) -> bool {
-        forall|s: &[T]| #[trigger] s@ == self@ ==> index.index_req(s)
+        forall|s: &[T]| #[trigger] s@ == self@ ==> index.in_bounds(s)
     }
 }
 
@@ -475,5 +475,14 @@ pub broadcast group group_vec_axioms {
     axiom_vec_has_resolved,
     axiom_vec_decreases_to_view,
 }
+
+pub axiom fn tracked_borrow_slice<T, A: Allocator>(tracked vec: &Vec<T, A>) -> (tracked t: &[T])
+    ensures t@ == vec@;
+
+pub axiom fn tracked_borrow_mut_slice<T, A: Allocator>(tracked vec: &mut Vec<T, A>) -> (tracked t: &mut [T])
+    ensures
+        (*t)@ == old(vec)@,
+        (*t).len() == final(t).len(),
+        final(vec)@ == final(t)@;
 
 } // verus!

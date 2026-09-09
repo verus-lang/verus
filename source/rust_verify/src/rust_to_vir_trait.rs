@@ -245,15 +245,8 @@ pub(crate) fn translate_trait<'tcx>(
 
     for trait_item_id in trait_items {
         let trait_item = tcx.hir_trait_item(*trait_item_id);
-        let TraitItem {
-            ident,
-            owner_id,
-            generics: item_generics,
-            kind,
-            span,
-            defaultness: _,
-            has_delayed_lints: _,
-        } = trait_item;
+        let TraitItem { ident, owner_id, generics: item_generics, kind, span, defaultness: _ } =
+            trait_item;
         let (item_generics_params, item_typ_bounds) = check_generics_bounds_with_polarity(
             tcx,
             &ctxt.verus_items,
@@ -375,7 +368,7 @@ pub(crate) fn translate_trait<'tcx>(
                     method_names.push(fun);
                 }
             }
-            TraitItemKind::Const(_ty, body_opt, _is_type_const) => {
+            TraitItemKind::Const(_ty, body_opt) => {
                 let param_names = vec![];
                 let (body_id, has_default) = match body_opt {
                     Some(_) if ex_trait_id_for.is_some() && !is_verus_spec => {
@@ -493,7 +486,9 @@ pub(crate) fn translate_trait<'tcx>(
                                 }
                             }
                             (ClauseKind::Projection(p1), ClauseKind::Projection(p2)) => {
-                                if p1.projection_term.def_id() != p2.projection_term.def_id() {
+                                if p1.projection_term.expect_projection_def_id()
+                                    != p2.projection_term.expect_projection_def_id()
+                                {
                                     return err_span(
                                         trait_span,
                                         format!(
