@@ -57,7 +57,7 @@ use crate::attributes::{
     get_var_mode, parse_attrs, parse_attrs_opt,
 };
 use crate::context::{BodyCtxt, Context, HeaderSetting};
-use crate::erase::{CompilableOperator, ResolvedCall};
+use crate::erase::{MiscCall, ResolvedCall};
 use crate::fn_call_to_vir::{const_var_to_vir, fn_call_to_vir};
 use crate::rust_intrinsics_to_vir::int_intrinsic_constant_to_vir;
 use crate::rust_to_vir_base::{
@@ -2884,7 +2884,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         erasure_info.resolved_calls.push((
                             expr.hir_id,
                             expr.span.data(),
-                            ResolvedCall::CompilableOperator(CompilableOperator::IntIntrinsic),
+                            ResolvedCall::MiscCall(MiscCall::IntIntrinsic),
                             bctx.in_ghost,
                         ));
                         return Ok(ExprOrPlace::Expr(vir_expr));
@@ -3422,6 +3422,17 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 Ok(ExprOrPlace::Place(p))
             }
         }
+        ExprKind::Loop(_, _, LoopSource::ForLoop, _) => {
+            // The `verus!` macro rewrites `for` loops internally before they
+            // reach rustc's native for-loop desugaring, so a `LoopSource::ForLoop`
+            // only shows up here when the `for` loop was not visited by `verus!`
+            unsupported_err!(
+                expr.span,
+                format!(
+                    "`for` loops produced by a macro expansion (wrap the loop in the macro body with `verus_exec_expr! {{ ... }}`)"
+                )
+            )
+        }
         ExprKind::Loop(..) => unsupported_err!(expr.span, format!("complex loop expressions")),
         ExprKind::Break(..) => unsupported_err!(expr.span, format!("complex break expressions")),
         ExprKind::AssignOp(op, lhs, rhs) => {
@@ -3874,10 +3885,9 @@ fn unwrap_parameter_to_vir<'tcx>(
             Some(VerusItem::UnaryOp(UnaryOpItem::SpecGhostTracked(
                 SpecGhostTrackedItem::GhostView,
             ))) => Some((Mode::Spec, ResolvedCall::SpecAllowProofArgs)),
-            Some(VerusItem::CompilableOpr(CompilableOprItem::TrackedGet)) => Some((
-                Mode::Proof,
-                ResolvedCall::CompilableOperator(CompilableOperator::TrackedGet),
-            )),
+            Some(VerusItem::CompilableOpr(CompilableOprItem::TrackedGet)) => {
+                Some((Mode::Proof, ResolvedCall::MiscCall(MiscCall::TrackedGet)))
+            }
             _ => None,
         };
         Some((expr_x.hir_id, expr_y.hir_id, expr_get.hir_id, ident_x, ident_y, mode))

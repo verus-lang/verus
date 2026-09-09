@@ -1402,7 +1402,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                     }
                     _ => ok,
                 },
-                IntegerTypeBound(kind, _) => {
+                IntegerTypeBound(kind) => {
                     // We're about to take an exponent, so bound this
                     // by something reasonable.
                     match &e.x {

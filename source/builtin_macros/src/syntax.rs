@@ -83,6 +83,8 @@ pub(crate) struct Visitor {
     use_spec_traits: bool,
     // inside_ghost > 0 means we're currently visiting ghost code
     inside_ghost: u32,
+    // inside_pat > 0 means we're currently visiting a pattern
+    inside_pat: u32,
     // inside_type > 0 means we're currently visiting a type
     inside_type: u32,
     // inside_external_code > 0 means we're currently visiting an external or external_body body
@@ -2464,6 +2466,10 @@ fn chain_count(expr: &Expr) -> u32 {
 const ILLEGAL_CALLEES: &[&str] = &["forall", "exists", "choose"];
 
 impl Visitor {
+    fn inside_pat_or_type(&self) -> bool {
+        self.inside_pat + self.inside_type > 0
+    }
+
     fn chain_operators(&mut self, expr: &mut Expr) -> bool {
         let count = chain_count(expr);
         if count < 2 {
@@ -3116,7 +3122,7 @@ impl Visitor {
             return false;
         };
 
-        if self.use_spec_traits && self.inside_ghost > 0 && self.inside_type == 0 {
+        if self.use_spec_traits && self.inside_ghost > 0 && !self.inside_pat_or_type() {
             let span = lit.span();
             let n = lit.base10_digits().to_string();
             if lit.suffix() == "" {
@@ -3160,7 +3166,7 @@ impl Visitor {
         let Expr::Lit(ExprLit { lit: Lit::Float(lit), attrs }) = expr else {
             return false;
         };
-        if self.use_spec_traits && self.inside_ghost > 0 && self.inside_type == 0 {
+        if self.use_spec_traits && self.inside_ghost > 0 && !self.inside_pat_or_type() {
             let span = lit.span();
             let n = lit.base10_digits().to_string();
             if lit.suffix() == "" {
@@ -4400,7 +4406,7 @@ impl VisitMut for Visitor {
             Expr::ForLoop(..) => true,
             _ => false,
         };
-        if do_replace && self.inside_type == 0 {
+        if do_replace && !self.inside_pat_or_type() {
             match take_expr(expr) {
                 Expr::ForLoop(for_loop) => {
                     *expr = self.desugar_for_loop(for_loop);
@@ -4408,6 +4414,12 @@ impl VisitMut for Visitor {
                 _ => panic!("expected to replace expression"),
             }
         }
+    }
+
+    fn visit_pat_mut(&mut self, pat: &mut Pat) {
+        self.inside_pat += 1;
+        verus_syn::visit_mut::visit_pat_mut(self, pat);
+        self.inside_pat -= 1;
     }
 
     fn visit_attribute_mut(&mut self, attr: &mut Attribute) {
@@ -5329,6 +5341,7 @@ pub(crate) fn rewrite_items_inner(
         erase_ghost,
         use_spec_traits,
         inside_ghost: 0,
+        inside_pat: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
@@ -5370,6 +5383,7 @@ pub(crate) fn rewrite_impl_items(
         erase_ghost,
         use_spec_traits,
         inside_ghost: 0,
+        inside_pat: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
@@ -5405,6 +5419,7 @@ pub(crate) fn rewrite_expr(
         erase_ghost,
         use_spec_traits: true,
         inside_ghost: if inside_ghost { 1 } else { 0 },
+        inside_pat: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
@@ -5438,6 +5453,7 @@ pub(crate) fn rewrite_proof_decl(
         erase_ghost,
         use_spec_traits: true,
         inside_ghost: 0,
+        inside_pat: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
@@ -5493,6 +5509,7 @@ pub(crate) fn rewrite_expr_node(erase_ghost: EraseGhost, inside_ghost: bool, exp
         erase_ghost,
         use_spec_traits: true,
         inside_ghost: if inside_ghost { 1 } else { 0 },
+        inside_pat: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
@@ -5684,6 +5701,7 @@ pub(crate) fn sig_specs_attr(
         erase_ghost,
         use_spec_traits: true,
         inside_ghost: 1,
+        inside_pat: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
@@ -5725,6 +5743,7 @@ pub(crate) fn while_loop_spec_attr(
         erase_ghost,
         use_spec_traits: true,
         inside_ghost: 1,
+        inside_pat: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
@@ -5759,6 +5778,7 @@ pub(crate) fn for_loop_spec_attr(
         erase_ghost,
         use_spec_traits: true,
         inside_ghost: 1,
+        inside_pat: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
@@ -5819,6 +5839,7 @@ pub(crate) fn proof_block(
         erase_ghost,
         use_spec_traits: true,
         inside_ghost: 1,
+        inside_pat: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
@@ -5845,6 +5866,7 @@ pub(crate) fn proof_macro_exprs(
         erase_ghost,
         use_spec_traits: true,
         inside_ghost: if inside_ghost { 1 } else { 0 },
+        inside_pat: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
@@ -5877,6 +5899,7 @@ pub(crate) fn inv_au_macro_exprs(
         erase_ghost,
         use_spec_traits: true,
         inside_ghost: 0,
+        inside_pat: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
@@ -5920,6 +5943,7 @@ pub(crate) fn proof_macro_explicit_exprs(
         erase_ghost,
         use_spec_traits: true,
         inside_ghost: if inside_ghost { 1 } else { 0 },
+        inside_pat: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,

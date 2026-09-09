@@ -583,7 +583,7 @@ macro_rules! def_bop_impls_shift {
                 $(
                     (
                         $typ,
-                        $rhs < $typ::BITS,
+                        0 <= $rhs && $rhs < $typ::BITS,
                         $self $op $rhs
                     )
                 )*
@@ -599,7 +599,7 @@ macro_rules! def_bop_assign_impls_shift {
                 $(
                     (
                         $typ,
-                        $rhs < $typ::BITS,
+                        0 <= $rhs && $rhs < $typ::BITS,
                         $self $op $rhs
                     )
                 )*

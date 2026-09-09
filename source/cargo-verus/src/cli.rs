@@ -12,6 +12,10 @@ use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
     styles = clap_cargo::style::CLAP_STYLING,
 )]
 pub struct CargoVerusCli {
+    /// Override the version reported by `verus --version`.
+    #[arg(long, global = true)]
+    pub override_verus_version: Option<String>,
+
     #[command(subcommand)]
     pub command: VerusSubcommand,
 }

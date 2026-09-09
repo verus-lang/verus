@@ -62,96 +62,93 @@ impl<'f> Visitor<'f> {
     }
 
     fn item_attr_enter(&mut self, attrs: &Vec<Attribute>) -> ItemAttrExit {
+        let mut exit = ItemAttrExit {
+            entered_trusted: false,
+            entered_ignore: false,
+            entered_verify: false,
+            entered_external: false,
+            entered_consider: false,
+            entered_verus_spec: false,
+        };
+
         for attr in attrs.iter() {
-            if let Meta::Path(path) = &attr.meta {
+            let mut recognized = false;
+            let path = match &attr.meta {
+                Meta::Path(path) => Some(path),
+                Meta::List(meta) if meta.path.is_ident("verus_verify") => Some(&meta.path),
+                _ => None,
+            };
+            if let Some(path) = path {
                 let mut path_iter = path.segments.iter();
                 match (path_iter.next(), path_iter.next(), path_iter.next()) {
                     (Some(first), Some(second), None)
                         if first.ident == "verus" && second.ident == "trusted" =>
                     {
-                        self.trusted += 1;
-                        return ItemAttrExit {
-                            entered_trusted: true,
-                            entered_ignore: false,
-                            entered_verify: false,
-                            entered_external: false,
-                            entered_consider: false,
-                            entered_verus_spec: false,
-                        };
+                        if !exit.entered_trusted {
+                            self.trusted += 1;
+                            exit.entered_trusted = true;
+                        }
+                        recognized = true;
                     }
                     (Some(first), Some(second), Some(third))
                         if first.ident == "verus"
                             && second.ident == "line_count"
                             && third.ident == "ignore" =>
                     {
-                        self.inside_line_count_ignore_or_external += 1;
-                        return ItemAttrExit {
-                            entered_trusted: false,
-                            entered_ignore: true,
-                            entered_verify: false,
-                            entered_external: false,
-                            entered_consider: false,
-                            entered_verus_spec: false,
-                        };
+                        if !exit.entered_ignore {
+                            self.inside_line_count_ignore_or_external += 1;
+                            exit.entered_ignore = true;
+                        }
+                        recognized = true;
                     }
                     (Some(first), Some(second), Some(third))
                         if first.ident == "verus"
                             && second.ident == "line_count"
                             && third.ident == "consider" =>
                     {
-                        self.inside_verus_macro_or_verify_or_consider += 1;
-                        return ItemAttrExit {
-                            entered_trusted: false,
-                            entered_ignore: false,
-                            entered_verify: false,
-                            entered_external: false,
-                            entered_consider: true,
-                            entered_verus_spec: false,
-                        };
+                        if !exit.entered_consider {
+                            self.inside_verus_macro_or_verify_or_consider += 1;
+                            exit.entered_consider = true;
+                        }
+                        recognized = true;
                     }
-                    (Some(first), Some(second), None)
-                        if first.ident == "verifier" && second.ident == "verify" =>
+                    (Some(first), second, None)
+                        if (first.ident == "verus_verify" && second.is_none())
+                            || (first.ident == "verifier"
+                                && second.is_some_and(|second| second.ident == "verify")) =>
                     {
-                        self.inside_verus_macro_or_verify_or_consider += 1;
-                        return ItemAttrExit {
-                            entered_trusted: false,
-                            entered_ignore: false,
-                            entered_verify: true,
-                            entered_external: false,
-                            entered_consider: false,
-                            entered_verus_spec: false,
-                        };
+                        if !exit.entered_verify {
+                            self.inside_verus_macro_or_verify_or_consider += 1;
+                            exit.entered_verify = true;
+                        }
+                        recognized = true;
                     }
                     (Some(first), Some(second), None)
                         if first.ident == "verifier" && second.ident == "external" =>
                     {
-                        self.inside_line_count_ignore_or_external += 1;
-                        return ItemAttrExit {
-                            entered_trusted: false,
-                            entered_ignore: false,
-                            entered_verify: false,
-                            entered_external: true,
-                            entered_consider: false,
-                            entered_verus_spec: false,
-                        };
+                        if !exit.entered_external {
+                            self.inside_line_count_ignore_or_external += 1;
+                            exit.entered_external = true;
+                        }
+                        recognized = true;
                     }
                     _ => {}
                 }
             }
 
+            if recognized {
+                continue;
+            }
+
             // Treat #[verus_spec(...)] as entering a Verus region so that
             // the enclosed code is considered by the visitor like verus! code.
             if attr.path().segments.first().map(|s| s.ident == "verus_spec").unwrap_or(false) {
-                self.inside_verus_macro_or_verify_or_consider += 1;
+                if !exit.entered_verus_spec {
+                    self.inside_verus_macro_or_verify_or_consider += 1;
+                    exit.entered_verus_spec = true;
+                }
                 self.mark(&attr, CodeKind::Spec, LineContent::FunctionSpec);
-                return ItemAttrExit {
-                    entered_trusted: false,
-                    entered_ignore: false,
-                    entered_verify: false,
-                    entered_external: false,
-                    entered_consider: false,
-                    entered_verus_spec: true,
-                };
+                continue;
             }
 
             if attr.path().segments.first().map(|x| x.ident == "doc").unwrap_or(false) {
@@ -163,14 +160,7 @@ impl<'f> Visitor<'f> {
                 );
             }
         }
-        ItemAttrExit {
-            entered_trusted: false,
-            entered_ignore: false,
-            entered_verify: false,
-            entered_external: false,
-            entered_consider: false,
-            entered_verus_spec: false,
-        }
+        exit
     }
 
     fn fn_code_kind(&self, kind: CodeKind) -> CodeKind {

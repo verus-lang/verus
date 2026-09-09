@@ -51,3 +51,36 @@ fn test_line_verus_outside() {
     | total            |       0 |    3 |     0 | 0    | 0          | 0       | 0      | 15          |
     ");
 }
+
+#[test]
+fn test_line_verus_verify() {
+    insta::assert_snapshot!(line_count_file("verus_verify.rs"), @r"
+    | file            | Trusted | Spec | Proof | Exec | Proof+Exec | Comment | Layout | unaccounted |
+    |-----------------|---------|------|-------|------|------------|---------|--------|-------------|
+    | verus_verify.rs |       0 |    0 |     0 | 3    | 0          | 0       | 0      | 5           |
+    |-----------------|---------|------|-------|------|------------|---------|--------|-------------|
+    | total           |       0 |    0 |     0 | 3    | 0          | 0       | 0      | 5           |
+    ");
+}
+
+#[test]
+fn test_line_verus_verify_dual_spec() {
+    insta::assert_snapshot!(line_count_file("verus_verify_dual_spec.rs"), @r"
+    | file                      | Trusted | Spec | Proof | Exec | Proof+Exec | Comment | Layout | unaccounted |
+    |---------------------------|---------|------|-------|------|------------|---------|--------|-------------|
+    | verus_verify_dual_spec.rs |       0 |    0 |     0 | 3    | 0          | 0       | 0      | 5           |
+    |---------------------------|---------|------|-------|------|------------|---------|--------|-------------|
+    | total                     |       0 |    0 |     0 | 3    | 0          | 0       | 0      | 5           |
+    ");
+}
+
+#[test]
+fn test_multiple_item_attributes() {
+    insta::assert_snapshot!(line_count_file("multiple_item_attributes.rs"), @r"
+    | file                        | Trusted | Spec | Proof | Exec | Proof+Exec | Comment | Layout | unaccounted |
+    |-----------------------------|---------|------|-------|------|------------|---------|--------|-------------|
+    | multiple_item_attributes.rs |       3 |    1 |     0 |    0 | 0          | 0       | 0      | 6           |
+    |-----------------------------|---------|------|-------|------|------------|---------|--------|-------------|
+    | total                       |       3 |    1 |     0 |    0 | 0          | 0       | 0      | 6           |
+    ");
+}
