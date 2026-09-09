@@ -1951,8 +1951,8 @@ impl Verifier {
         })
     }
 
+    // TODO: Find a better name for this
     /// Verifies the given bucket but does not emit logs or update timers.
-    /// TODO: Find a better name for this
     pub(crate) fn verify_bucket_middle(
         &mut self,
         reporter: &impl Diagnostics,
