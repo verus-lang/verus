@@ -2433,15 +2433,28 @@ impl<'tcx> SelectionContext<'_, 'tcx> {
                     // We can resolve the opaque type to its hidden type,
                     // which enforces a DAG between the functions requiring
                     // the auto trait bounds in question.
-                    dbg!(def_id);
-                    unreachable!()
-                    /*
-                    let ty = self.tcx().type_of_opaque(def_id);
+                    let ty = if def_id.is_local() {
+                        match dbg!(self.typing_mode()) {
+                            TypingMode::Coherence
+                            | TypingMode::PostBorrowck { .. }
+                            | TypingMode::PostAnalysis
+                            | TypingMode::Codegen
+                            | TypingMode::ErasedNotCoherence(..) =>
+                                self.tcx().type_of_opaque(def_id),
+
+                            TypingMode::Typeck { .. }
+                            | TypingMode::PostTypeckUntilBorrowck { .. } =>
+                                self.tcx().type_of_opaque_hir_typeck(def_id.expect_local()),
+                        }
+                    } else { 
+                        self.tcx().type_of_opaque(def_id)
+                    };
+                    dbg!(ty);
+
                     ty::Binder::dummy(AutoImplConstituents {
                         types: vec![ty.instantiate(self.tcx(), args).skip_norm_wip()],
                         assumptions: vec![],
                     })
-                    */
                 }
             }
         })

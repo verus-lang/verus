@@ -2339,6 +2339,7 @@ dependencies = [
  "rustc_hir_analysis",
  "rustc_hir_typeck",
  "rustc_mir_build",
+ "rustc_traits",
  "serde",
  "serde_json",
  "sha2",
@@ -2410,6 +2411,14 @@ name = "rustc_trait_selection"
 version = "0.0.0"
 dependencies = [
  "itertools",
+ "tracing",
+]
+
+[[package]]
+name = "rustc_traits"
+version = "0.0.0"
+dependencies = [
+ "rustc_trait_selection",
  "tracing",
 ]
 

@@ -4,6 +4,13 @@
 #![recursion_limit = "256"]
 // tidy-alphabetical-end
 
+#![feature(rustc_private)]
+
+extern crate rustc_data_structures;
+extern crate rustc_infer;
+extern crate rustc_middle;
+extern crate rustc_span;
+
 mod codegen;
 mod coroutine_witnesses;
 mod dropck_outlives;

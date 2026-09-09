@@ -3114,6 +3114,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 providers.queries.check_mod_deathness = |_, _| {};
 
                 rustc_hir_typeck_verus::provide(&mut providers.queries);
+                rustc_traits_verus::provide(&mut providers.queries);
                 rustc_hir_analysis_verus::provide(&mut providers.queries);
                 providers.queries.mir_borrowck =
                     |tcx, _local_def_id| Ok(tcx.arena.alloc(Default::default()));
@@ -3137,6 +3138,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 providers.queries.check_mod_deathness = |_, _| {};
 
                 rustc_hir_typeck_verus::provide(&mut providers.queries);
+                rustc_traits_verus::provide(&mut providers.queries);
                 rustc_hir_analysis_verus::provide(&mut providers.queries);
                 rustc_mir_build_verus::verus_provide(providers);
                 providers.queries.mir_built = |tcx, def| {
