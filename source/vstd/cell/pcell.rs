@@ -120,6 +120,15 @@ impl<T: ?Sized> PointsTo<T> {
         *final(self) == *old(self),
         final(self).id() != other.id(),
     ;
+
+    pub axiom fn borrow(tracked &self) -> (tracked t: &T)
+        ensures t == self.value();
+
+    pub axiom fn borrow_mut(tracked &mut self) -> (tracked t: &mut T)
+        ensures
+            &*t == old(self).value(),
+            final(self).value() == &*final(t),
+            final(self).id() == old(self).id();
 }
 
 impl<T: ?Sized> PCell<T> {
@@ -189,7 +198,6 @@ impl<T: ?Sized> PCell<T> {
     ////// Trusted core ends here
 
     #[inline(always)]
-    #[verifier::external_body]
     pub fn replace(&self, Tracked(perm): Tracked<&mut PointsTo<T>>, in_v: T) -> (out_v: T)
         where T: Sized
         requires

@@ -410,3 +410,35 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "in a non-positive position")
 }
+
+test_verify_one_file! {
+    #[test] test_slice_array verus_code! {
+        use vstd::prelude::*;
+
+        enum E {
+            Single(Box<E>),
+            Slice(Box<[E]>),
+            Array(Box<[E; 3]>),
+            Vector(Vec<E>),
+        }
+
+        proof fn test1(e: E) {
+            match e {
+                E::Single(boxed) => {
+                    assert(decreases_to!(e => boxed));
+                }
+                E::Array(boxed) => {
+                    assert(decreases_to!(e => boxed[0]));
+                }
+                E::Slice(boxed) => {
+                    assume(boxed.len() == 3);
+                    assert(decreases_to!(e => boxed[0]));
+                }
+                E::Vector(v) => {
+                    assume(v.len() == 3);
+                    assert(decreases_to!(e => v[0]));
+                }
+            }
+        }
+    } => Ok(())
+}

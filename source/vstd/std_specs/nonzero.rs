@@ -12,7 +12,6 @@ verus! {
 
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(ZeroablePrimitiveSpec via ZeroablePrimitiveSpecImpl)]
-#[verifier::external_trait_private_bound(core::num::nonzero::private::Sealed)]
 pub trait ExZeroablePrimitive: Sized + Copy {
     type ExternalTraitSpecificationFor: ZeroablePrimitive;
 

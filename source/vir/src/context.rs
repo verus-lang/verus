@@ -16,7 +16,6 @@ use air::ast::{Command, CommandX, Commands, DeclX, MultiOp};
 use air::ast_util::{mk_unnamed_axiom, str_typ};
 use air::context::SmtSolver;
 use num_bigint::BigUint;
-use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
@@ -120,7 +119,7 @@ pub struct Ctx {
     pub(crate) reveal_groups: Vec<crate::ast::RevealGroup>,
     pub(crate) reveal_group_set: HashSet<Fun>,
     // Ensure a unique identifier for each quantifier in a given function
-    pub quantifier_count: Cell<u64>,
+    pub quantifier_count: RefCell<HashMap<Arc<String>, u64>>,
     pub(crate) funcs_with_ensure_predicate: HashMap<Fun, bool>,
     pub(crate) datatype_map: HashMap<Dt, Datatype>,
     pub(crate) trait_map: HashMap<Path, Trait>,
@@ -841,7 +840,7 @@ impl Ctx {
             krate.reveal_groups.iter().map(|g| g.x.name.clone()).collect();
         fun_ident_map
             .extend(reveal_group_set.iter().map(|g| (fun_to_air_ident(&name_ctxt, &g), g.clone())));
-        let quantifier_count = Cell::new(0);
+        let quantifier_count = RefCell::new(HashMap::new());
         let string_hashes = RefCell::new(HashMap::new());
         let byte_string_hashes = RefCell::new(HashMap::new());
 
