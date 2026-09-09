@@ -87,6 +87,9 @@ pub(crate) fn export_crate(
             }
             *func = func.new_x(functionx);
         }
+        // Don't propagate has_try_broadcasts to exported crates (should only apply locally).
+        // TODO: Maybe `has_try_broadcasts` being true should error here instead.
+        kratex.has_try_broadcasts = false;
         let vir_crate = Arc::new(kratex);
 
         let mut file = std::io::BufWriter::new(match std::fs::File::create(file_path) {
