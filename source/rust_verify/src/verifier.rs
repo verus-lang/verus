@@ -44,7 +44,7 @@ use crate::buckets::{Bucket, BucketId};
 use crate::expand_errors_driver::ExpandErrorsResult;
 use vir::ast::{CrateId, Fun, Krate, VirErr};
 use vir::ast_util::{fun_as_friendly_rust_name, is_visible_to};
-use vir::def::{CommandContext, CommandsWithContext, CommandsWithContextX, SnapPos};
+use vir::def::{CommandContext, CommandsWithContext, CommandsWithContextX, NameCtxt, SnapPos};
 use vir::prelude::PreludeConfig;
 
 const RLIMIT_PER_SECOND_Z3: f32 = 3000000f32;
@@ -2031,7 +2031,14 @@ impl Verifier {
             );
         }
         if self.args.no_verify {
-            return Ok(ctx.free());
+            let verify_out = VerifyBucketOut {
+                time_smt_init: Duration::ZERO,
+                time_smt_run: Duration::ZERO,
+                rlimit_count: None,
+                name_ctxt: NameCtxt::new(),
+                verification_outcome: VerificationOutcome::new(),
+            };
+            return Ok((ctx.free(), verify_out));
         }
         let krate_sst = vir::poly::poly_krate_for_module(&mut ctx, &krate_sst);
 

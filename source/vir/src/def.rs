@@ -361,7 +361,7 @@ impl NameCtxt {
     // consistent across an entire AIR file.
     // Therefore, code generating AIR should use the existing NameCtxt from the Ctx struct
     // for that AIR file, rather than allocating additional NameCtxt values.
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self { imp: std::rc::Rc::new(std::cell::RefCell::new(NameCtxtImpl::new())) }
     }
 
