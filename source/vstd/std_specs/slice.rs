@@ -630,13 +630,4 @@ pub assume_specification<'a, T>[ <[T]>::chunks ](s: &'a [T], chunk_size: usize) 
         IteratorSpec::decrease(&iter) is Some,
 ;
 
-pub broadcast group group_slice_axioms {
-    axiom_slice_get_range,
-    axiom_slice_get_range_to,
-    axiom_slice_get_range_from,
-    axiom_slice_get_range_to_inclusive,
-    axiom_slice_get_range_full,
-    axiom_slice_get_range_inclusive,
-}
-
 } // verus!
