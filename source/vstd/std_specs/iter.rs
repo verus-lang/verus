@@ -453,7 +453,7 @@ pub broadcast axiom fn zip_postcondition<I, U>(i: I, other: U, r: Zip<I, <U as I
         call_ensures(U::into_iter, (other,), zip_iter_snd(r)),
         zip_iter_fst(r) == i,
         IteratorSpec::remaining(&r) == i.remaining().zip_truncate(zip_iter_snd(r).remaining()),
-        IteratorSpec::will_return_none(&r) ==> i.will_return_none() && zip_iter_snd(r).will_return_none(),
+        IteratorSpec::will_return_none(&r) ==> i.will_return_none() || zip_iter_snd(r).will_return_none(),
         IteratorSpec::decrease(&r) is Some == (i.decrease() is Some || zip_iter_snd(r).decrease() is Some),
 ;
 
