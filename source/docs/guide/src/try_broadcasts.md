@@ -78,7 +78,7 @@ though a proof with the right subset of relevant lemmas would succeed.
 
 By default, `try_broadcasts` will minimize a proof; in the above example,
 `try_broadcasts` initially found a proof that used 5 lemmas, but then determined
-that only one lemma is actually necessary. However, in some case, minimizing a
+that only one lemma is actually necessary. However, in some cases, minimizing a
 successful proof is time-consuming. During development, it may be enough to know
 that a proof exists, while leaving minimization of this proof for later.
 
