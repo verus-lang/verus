@@ -406,6 +406,7 @@ pub uninterp spec fn filter_fun<I, F>(r: Filter<I, F>) -> F;
 
 // Ghost accessor for the sequence of predicate decisions made for the (prefix of) the
 // inner iterator's elements
+#[verifier::prophetic]
 pub uninterp spec fn filter_keep<I, F>(r: Filter<I, F>) -> Seq<bool>;
 
 // Ideally, we would write this postcondition directly on the definition of
