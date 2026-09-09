@@ -172,7 +172,7 @@ impl<A> ISet<A> {
         exists|f: spec_fn(A) -> nat, ub: nat|
             {
                 &&& #[trigger] trigger_finite(f, ub)
-                &&& surj_on(f, self)
+                &&& inj_on(f, self)
                 &&& forall|a| self.contains(a) ==> f(a) < ub
             }
     }
@@ -221,7 +221,7 @@ spec fn trigger_finite<A>(f: spec_fn(A) -> nat, ub: nat) -> bool {
     true
 }
 
-spec fn surj_on<A, B>(f: spec_fn(A) -> B, s: ISet<A>) -> bool {
+spec fn inj_on<A, B>(f: spec_fn(A) -> B, s: ISet<A>) -> bool {
     forall|a1, a2| #![all_triggers] s.contains(a1) && s.contains(a2) && a1 != a2 ==> f(a1) != f(a2)
 }
 
@@ -552,7 +552,7 @@ pub mod fold {
             pred(s),
     {
         let (f, ub) = choose|f: spec_fn(A) -> nat, ub: nat| #[trigger]
-            trigger_finite(f, ub) && surj_on(f, s) && (forall|a| s.contains(a) ==> f(a) < ub);
+            trigger_finite(f, ub) && inj_on(f, s) && (forall|a| s.contains(a) ==> f(a) < ub);
         lemma_finite_set_induct_aux(s, f, ub, pred);
     }
 
@@ -563,7 +563,7 @@ pub mod fold {
         pred: spec_fn(ISet<A>) -> bool,
     )
         requires
-            surj_on(f, s),
+            inj_on(f, s),
             s.finite(),
             forall|a| s.contains(a) ==> f(a) < ub,
             pred(ISet::empty()),
@@ -801,7 +801,7 @@ pub broadcast proof fn lemma_iset_insert_finite<A>(s: ISet<A>, a: A)
         #[trigger] s.insert(a).finite(),
 {
     let (f, ub) = choose|f: spec_fn(A) -> nat, ub: nat| #[trigger]
-        trigger_finite(f, ub) && surj_on(f, s) && (forall|a| s.contains(a) ==> f(a) < ub);
+        trigger_finite(f, ub) && inj_on(f, s) && (forall|a| s.contains(a) ==> f(a) < ub);
     let f2 = |a2: A|
         if a2 == a {
             ub
@@ -838,7 +838,7 @@ pub broadcast proof fn lemma_iset_remove_finite<A>(s: ISet<A>, a: A)
         #[trigger] s.remove(a).finite(),
 {
     let (f, ub) = choose|f: spec_fn(A) -> nat, ub: nat| #[trigger]
-        trigger_finite(f, ub) && surj_on(f, s) && (forall|a| s.contains(a) ==> f(a) < ub);
+        trigger_finite(f, ub) && inj_on(f, s) && (forall|a| s.contains(a) ==> f(a) < ub);
     assert forall|a1, a2|
         #![all_triggers]
         s.remove(a).contains(a1) && s.remove(a).contains(a2) && a1 != a2 implies f(a1) != f(a2) by {
@@ -849,7 +849,7 @@ pub broadcast proof fn lemma_iset_remove_finite<A>(s: ISet<A>, a: A)
             assert(s.contains(a2));
         }
     };
-    assert(surj_on(f, s.remove(a)));
+    assert(inj_on(f, s.remove(a)));
     assert forall|a2| s.remove(a).contains(a2) implies #[trigger] f(a2) < ub by {
         if a == a2 {
         } else {
@@ -867,9 +867,9 @@ pub broadcast proof fn lemma_iset_union_finite<A>(s1: ISet<A>, s2: ISet<A>)
         #[trigger] s1.union(s2).finite(),
 {
     let (f1, ub1) = choose|f: spec_fn(A) -> nat, ub: nat| #[trigger]
-        trigger_finite(f, ub) && surj_on(f, s1) && (forall|a| s1.contains(a) ==> f(a) < ub);
+        trigger_finite(f, ub) && inj_on(f, s1) && (forall|a| s1.contains(a) ==> f(a) < ub);
     let (f2, ub2) = choose|f: spec_fn(A) -> nat, ub: nat| #[trigger]
-        trigger_finite(f, ub) && surj_on(f, s2) && (forall|a| s2.contains(a) ==> f(a) < ub);
+        trigger_finite(f, ub) && inj_on(f, s2) && (forall|a| s2.contains(a) ==> f(a) < ub);
     let f3 = |a|
         if s1.contains(a) {
             f1(a)
@@ -1011,7 +1011,7 @@ pub proof fn lemma_iset_finite_if_subset_of_seq<A>(i: ISet<A>, s: Seq<A>)
 {
     let f = |a: A| (s.index_of(a) as nat);
     let ub = s.len();
-    assert(surj_on(f, i)) by {
+    assert(inj_on(f, i)) by {
         assert forall|a1, a2|
             #![all_triggers]
             i.contains(a1) && i.contains(a2) && a1 != a2 implies f(a1) != f(a2) by {

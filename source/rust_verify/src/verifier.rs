@@ -1264,11 +1264,11 @@ impl Verifier {
         // recommended-options preset, the prelude, and the bucket background.
         let bitvector = prover_choice == vir::def::ProverChoice::BitVector;
         if !bitvector {
-            air_context.set_z3_param("air_recommended_options", "true");
+            air_context.set_solver_option("air_recommended_options", "true");
         }
         self.set_default_rlimit(&mut air_context);
         for (option, value) in self.args.smt_options.iter() {
-            air_context.set_z3_param(&option, &value);
+            air_context.set_solver_option(&option, &value);
         }
         if !bitvector {
             if self.args.axiom_usage_info {
@@ -1302,7 +1302,9 @@ impl Verifier {
                 // TODO: tune Z3/CVC5 options for bit-vector queries
             }
             vir::def::ProverChoice::Nonlinear => match self.args.solver {
-                air::context::SmtSolver::Z3 => air_context.set_z3_param("smt.arith.solver", "6"),
+                air::context::SmtSolver::Z3 => {
+                    air_context.set_solver_option("smt.arith.solver", "6")
+                }
                 // TODO: What cvc5 settings would help here?
                 air::context::SmtSolver::Cvc5 => {}
             },
@@ -1396,8 +1398,12 @@ impl Verifier {
         )?;
         if self.args.solver_version_check {
             air_context.set_expected_solver_version(match self.args.solver {
-                air::context::SmtSolver::Z3 => crate::consts::EXPECTED_Z3_VERSION.to_string(),
-                air::context::SmtSolver::Cvc5 => crate::consts::EXPECTED_CVC5_VERSION.to_string(),
+                air::context::SmtSolver::Z3 => {
+                    cargo_verus_toolchains::external_deps::Z3_VERSION.to_string()
+                }
+                air::context::SmtSolver::Cvc5 => {
+                    cargo_verus_toolchains::external_deps::CVC5_VERSION.to_string()
+                }
             });
         }
 
@@ -1563,7 +1569,7 @@ impl Verifier {
                                     "Found singular command when Verus is compiled without Singular feature"
                                 );
                             }
-                            let mut spinoff_z3_context;
+                            let mut spinoff_context;
                             let do_spinoff = (cmds.prover_choice
                                 == vir::def::ProverChoice::Nonlinear)
                                 || (cmds.prover_choice == vir::def::ProverChoice::BitVector)
@@ -1605,7 +1611,7 @@ impl Verifier {
                                 } else {
                                     "spinoff_all"
                                 };
-                                spinoff_z3_context = self.new_air_context_with_bucket_context(
+                                spinoff_context = self.new_air_context_with_bucket_context(
                                     message_interface.clone(),
                                     function_opgen.ctx(),
                                     reporter,
@@ -1620,15 +1626,15 @@ impl Verifier {
                                 )?;
                                 // for bitvector, only one query, no push/pop
                                 if cmds.prover_choice == vir::def::ProverChoice::BitVector {
-                                    spinoff_z3_context.set_single_check_query();
+                                    spinoff_context.set_single_check_query();
                                 }
                                 // Apply prover-specific SMT tuning.
                                 self.apply_per_query_smt_options(
-                                    &mut spinoff_z3_context,
+                                    &mut spinoff_context,
                                     cmds.prover_choice,
                                 );
                                 spinoff_context_counter += 1;
-                                &mut spinoff_z3_context
+                                &mut spinoff_context
                             } else {
                                 &mut air_context
                             };
@@ -2024,6 +2030,9 @@ impl Verifier {
                 &self.args.log_args.vir_log_option,
             );
         }
+        if self.args.no_verify {
+            return Ok(ctx.free());
+        }
         let krate_sst = vir::poly::poly_krate_for_module(&mut ctx, &krate_sst);
 
         let verify_out =
@@ -2179,12 +2188,16 @@ impl Verifier {
 
         let source_map = compiler.sess.source_map();
 
-        self.num_threads = std::cmp::min(self.args.num_threads, bucket_ids.len());
+        self.num_threads = if self.args.no_verify {
+            1
+        } else {
+            std::cmp::min(self.args.num_threads, bucket_ids.len())
+        };
         if self.args.num_threads != 1 && self.num_threads >= 1 {
             // create the multiple producers, single consumer queue
             let (sender, receiver) = std::sync::mpsc::channel();
 
-            // collect the buckets and create the task queueu
+            // collect the buckets and create the task queue
             let mut tasks = VecDeque::with_capacity(bucket_ids.len());
             let mut messages: Vec<(bool, Vec<(Message, MessageLevel)>)> = Vec::new();
             for (i, bucket_id) in bucket_ids.iter().enumerate() {
@@ -2602,6 +2615,10 @@ impl Verifier {
             }
         }
 
+        if self.args.no_verify {
+            return Ok(());
+        }
+
         if self.args.profile && self.count_errors == 0 {
             let msg = note_bare(
                 "--profile reports prover performance data only when rlimts are exceeded, use --profile-all to always report profiler results",
@@ -2681,8 +2698,11 @@ impl Verifier {
         // Verify crate
         let time_verify_crate_start = Instant::now();
 
-        let result =
-            if !self.args.no_verify { self.verify_crate_inner(&compiler, spans) } else { Ok(()) };
+        let result = if !self.args.no_verify || self.args.build_sst {
+            self.verify_crate_inner(&compiler, spans)
+        } else {
+            Ok(())
+        };
 
         let time_verify_crate_end = Instant::now();
         self.time_verify_crate = time_verify_crate_end - time_verify_crate_start;

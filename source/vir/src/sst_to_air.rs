@@ -872,9 +872,11 @@ pub(crate) fn new_user_qid(ctx: &Ctx, exp: &Exp) -> Qid {
         Some(f) => fun_as_friendly_rust_name(&f.current_fun),
         None => "no_function".to_string(),
     };
-    let qcount = ctx.quantifier_count.get();
-    let qid = new_user_qid_name(&fun_name, qcount);
-    ctx.quantifier_count.set(qcount + 1);
+    let fun_name = Arc::new(fun_name);
+    let mut quantifier_count = ctx.quantifier_count.borrow_mut();
+    let qcount = quantifier_count.entry(fun_name.clone()).or_insert(0);
+    let qid = new_user_qid_name(&fun_name, *qcount);
+    *qcount += 1;
     let trigs = match &exp.x {
         ExpX::Bind(bnd, _) => match &bnd.x {
             BndX::Quant(_, _, trigs, _) => trigs,
