@@ -123,21 +123,35 @@ pub trait ExSliceIndex<T> where T: ?Sized {
 
     spec fn in_bounds(&self, slice: &T) -> bool;
 
-    fn index(self, slice: &T) -> &Self::Output
+    spec fn index_postcondition(&self, slice: &T, r: &Self::Output) -> bool;
+
+    spec fn index_mut_postcondition(
+        &self,
+        old_slice: &T,
+        final_slice: &T,
+        immediate_output: &Self::Output,
+        final_output: &Self::Output,
+    ) -> bool;
+
+    fn index(self, slice: &T) -> (r: &Self::Output)
         requires
             self.in_bounds(slice),
+        ensures
+            self.index_postcondition(slice, r),
     ;
 
-    fn index_mut(self, slice: &mut T) -> &mut Self::Output
+    fn index_mut(self, slice: &mut T) -> (r: &mut Self::Output)
         requires
             self.in_bounds(slice),
+        ensures
+            self.index_mut_postcondition(&*old(slice), &*final(slice), r, &*final(r)),
     ;
 
     fn get(self, slice: &T) -> (r: Option<&Self::Output>)
         ensures
             match r {
                 None => !self.in_bounds(slice),
-                Some(x) => self.in_bounds(slice) && call_ensures(Self::index, (self, slice), x),
+                Some(x) => self.in_bounds(slice) && self.index_postcondition(slice, x),
             },
     ;
 
@@ -147,7 +161,7 @@ pub trait ExSliceIndex<T> where T: ?Sized {
                 None => !self.in_bounds(old(slice)) && &*final(slice) == &*old(slice),
                 Some(x) => {
                     &&& self.in_bounds(old(slice))
-                    &&& call_ensures(Self::index_mut, (self, slice), x)
+                    &&& self.index_mut_postcondition(&*old(slice), &*final(slice), x, &*final(x))
                 },
             },
     ;
@@ -200,6 +214,11 @@ pub broadcast proof fn lemma_slice_index_decreases<T>(s: &[T], i: int)
     axiom_slice_decreases_to_seq(s);
     lemma_seq_index_decreases(s@, i);
 }
+
+pub axiom fn mut_ref_slice_len_eq<T>(tracked slice: &&mut [T])
+    ensures
+        old(*slice).len() == final(*slice).len(),
+;
 
 pub broadcast group group_slice_axioms {
     axiom_spec_len,
