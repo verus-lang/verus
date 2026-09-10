@@ -3268,7 +3268,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 return rustc_driver::Compilation::Stop;
             }
             self.tc_start_time = Some(Instant::now());
-            let status = if self.verifier.args.no_lifetime {
+            let status = if self.verifier.args.no_trait_conflicts {
                 Ok(vec![])
             } else {
                 let log_trait_conflicts =
