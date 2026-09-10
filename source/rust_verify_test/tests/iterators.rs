@@ -164,8 +164,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test]
-    position_works verus_code! {
+    #[test] position_works verus_code! {
         use vstd::prelude::*;
         use vstd::std_specs::iter::IteratorSpec;
 
