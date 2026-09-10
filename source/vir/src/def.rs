@@ -87,6 +87,7 @@ const STRSLICE_TYPE: &str = "strslice%";
 const ARRAY_TYPE: &str = "array%";
 const PTR_TYPE: &str = "ptr_mut%";
 const GLOBAL_TYPE: &str = "allocator_global%";
+const TYPETAG_TYPE: &str = "typetag%";
 const PREFIX_SNAPSHOT: &str = "snap%";
 const SUBST_RENAME_SEPARATOR: &str = "$$";
 const EXPAND_ERRORS_DECL_SEPARATOR: &str = "$$$";
@@ -167,10 +168,12 @@ pub const BOX_INT: &str = "I";
 pub const BOX_BOOL: &str = "B";
 pub const BOX_REAL: &str = "R";
 pub const BOX_FNDEF: &str = "F";
+pub const BOX_TYPETAG: &str = "Tg";
 pub const UNBOX_INT: &str = "%I";
 pub const UNBOX_BOOL: &str = "%B";
 pub const UNBOX_REAL: &str = "%R";
 pub const UNBOX_FNDEF: &str = "%F";
+pub const UNBOX_TYPETAG: &str = "%Tg";
 pub const TYPE: &str = "Type";
 pub const TYPE_ID_BOOL: &str = "BOOL";
 pub const TYPE_ID_REAL: &str = "REAL";
@@ -184,6 +187,16 @@ pub const TYPE_ID_SINT: &str = "SINT";
 pub const TYPE_ID_FLOAT: &str = "FLOAT";
 pub const TYPE_ID_CONST_INT: &str = "CONST_INT";
 pub const TYPE_ID_CONST_BOOL: &str = "CONST_BOOL";
+
+pub const TYPE_TAG_SORT: &str = "TypeTag";
+pub const TYPE_TAG: &str = "TYPE%tag";
+pub const DCR_TAG: &str = "dcr%tag";
+pub const TYPE_ID_TYPETAG: &str = "TYPETAG";
+pub const TYPE_TAG_MK: &str = "tag%mk";
+pub const TYPE_TAG_ID: &str = "tag%id";
+pub const TYPE_TAG_APP: &str = "tag%app";
+pub const TYPE_TAG_FN: &str = "tag%fn";
+pub const TYPE_TAG_ARG: &str = "tag%arg";
 pub const DECORATION: &str = "Dcr";
 pub const DECORATE_NIL_SIZED: &str = "$";
 pub const DECORATE_NIL_SLICE: &str = "$slice"; // for 'str' and '[T]' types
@@ -594,6 +607,11 @@ pub fn ptr_type() -> Path {
 
 pub fn global_type() -> Path {
     let ident = Arc::new(GLOBAL_TYPE.to_string());
+    Arc::new(PathX { krate: CrateId::Internal, segments: Arc::new(vec![ident]) })
+}
+
+pub fn typetag_type() -> Path {
+    let ident = Arc::new(TYPETAG_TYPE.to_string());
     Arc::new(PathX { krate: CrateId::Internal, segments: Arc::new(vec![ident]) })
 }
 

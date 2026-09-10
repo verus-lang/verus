@@ -133,6 +133,7 @@ pub struct Ctx {
     // is overkill, perhaps this should be revisited.
     pub(crate) string_hashes: RefCell<HashMap<BigUint, Arc<String>>>,
     pub(crate) byte_string_hashes: RefCell<HashMap<BigUint, Arc<Vec<u8>>>>,
+    pub(crate) type_tag_hashes: RefCell<HashMap<BigUint, Path>>,
     // proof debug purposes
     pub debug: bool,
     pub arch_word_bits: ArchWordBits,
@@ -245,6 +246,7 @@ fn datatypes_invs(
                         TypX::Decorate(..) => unreachable!("TypX::Decorate"),
                         TypX::Boxed(_) => {}
                         TypX::TypeId => {}
+                        TypX::Primitive(Primitive::TypeTag, _) => {}
                         TypX::Opaque { .. } => {}
                         TypX::Bool => {}
                         TypX::Float(_) => {}
@@ -843,6 +845,7 @@ impl Ctx {
         let quantifier_count = RefCell::new(HashMap::new());
         let string_hashes = RefCell::new(HashMap::new());
         let byte_string_hashes = RefCell::new(HashMap::new());
+        let type_tag_hashes = RefCell::new(HashMap::new());
 
         let mut fndef_type_set = HashSet::new();
         for fndef_type in fndef_types.iter() {
@@ -880,6 +883,7 @@ impl Ctx {
             global,
             string_hashes,
             byte_string_hashes,
+            type_tag_hashes,
             debug,
             arch_word_bits: krate.arch.word_bits,
             opaque_type_map,

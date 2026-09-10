@@ -5,7 +5,7 @@ use crate::resolve_traits::{ResolutionResult, ResolvedItem, resolve_trait_item};
 use crate::reveal_hide::RevealHideResult;
 use crate::rust_to_vir_base::{
     bitwidth_and_signedness_of_integer_type, is_smt_arith, is_type_std_rc_or_arc_or_ref,
-    typ_of_expr_adjusted, typ_of_node_unadjusted,
+    mid_ty_to_vir, typ_of_expr_adjusted, typ_of_node_unadjusted,
 };
 use crate::rust_to_vir_expr::{
     check_lit_int, closure_param_typs, closure_to_vir, expr_to_vir, expr_to_vir_consume,
@@ -1220,6 +1220,21 @@ fn verus_item_to_vir<'tcx, 'a>(
                 let kind = IntegerTypeBoundKind::ArchWordBits;
 
                 mk_expr(ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(kind), arg))
+            }
+            ExprItem::TypeId => {
+                record_spec_fn(bctx, expr);
+                assert!(args.len() == 0);
+                let t = mid_ty_to_vir(
+                    tcx,
+                    &bctx.ctxt.verus_items,
+                    None::<&mut std::collections::HashMap<vir::ast::Path, rustc_span::def_id::DefId>>,
+                    bctx.fun_id,
+                    expr.span,
+                    &node_substs[0].expect_ty(),
+                    None,
+                )?;
+
+                mk_expr(ExprX::NullaryOpr(vir::ast::NullaryOpr::TypeTag(t)))
             }
             ExprItem::ClosureToFnSpec | ExprItem::ClosureToFnProof => {
                 unsupported_err_unless!(args_len == 1, expr.span, "expected closure_to_fn", &args);
