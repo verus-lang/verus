@@ -114,8 +114,8 @@ fn do_count(num_threads: u32) {
     let tracked (
         Tracked(instance),
         Tracked(counter_token),
-        Tracked(unstamped_tokens),
-        Tracked(stamped_tokens),
+        Tracked(mut unstamped_tokens),
+        Tracked(mut stamped_tokens),
     ) = X::Instance::initialize(num_threads as nat);
     // Initialize the counter
     let tracked_instance = Tracked(instance.clone());

@@ -729,7 +729,7 @@ impl MyHashMap {
         let h1x = if l1 < l2 { h1 } else { h2 };
         let h2x = if l1 < l2 { h2 } else { h1 };
 
-        let (Tracked(lock1x), handle1x) = self.locks[l1x].acquire_write();
+        let (Tracked(mut lock1x), handle1x) = self.locks[l1x].acquire_write();
 
         let mut i: usize = 0;
         while i < WIDTH
@@ -770,7 +770,7 @@ impl MyHashMap {
             i += 1;
         }
 
-        let (Tracked(lock2x), handle2x) = self.locks[l2x].acquire_write();
+        let (Tracked(mut lock2x), handle2x) = self.locks[l2x].acquire_write();
 
         let mut i: usize = 0;
         while i < WIDTH
@@ -862,7 +862,7 @@ impl MyHashMap {
         let h2x = if l1 < l2 { h2 } else { h1 };
 
         let (Tracked(_unused), main_handle) = self.main_write_lock.acquire_write();
-        let (Tracked(lock1x), handle1x) = self.locks[l1x].acquire_write();
+        let (Tracked(mut lock1x), handle1x) = self.locks[l1x].acquire_write();
 
         // Update the key, value pair if it already exists
 
@@ -906,7 +906,7 @@ impl MyHashMap {
             i += 1;
         }
 
-        let (Tracked(lock2x), handle2x) = self.locks[l2x].acquire_write();
+        let (Tracked(mut lock2x), handle2x) = self.locks[l2x].acquire_write();
 
         let mut i: usize = 0;
         while i < WIDTH
@@ -1157,7 +1157,7 @@ impl MyHashMap {
         // to prove that correct, instead I'm just going to repeat the code from the beginning
         // of the function.
 
-        let (Tracked(lock1x), handle1x) = self.locks[l1x].acquire_write();
+        let (Tracked(mut lock1x), handle1x) = self.locks[l1x].acquire_write();
 
         // Update the key, value pair if it already exists
 
@@ -1201,7 +1201,7 @@ impl MyHashMap {
             i += 1;
         }
 
-        let (Tracked(lock2x), handle2x) = self.locks[l2x].acquire_write();
+        let (Tracked(mut lock2x), handle2x) = self.locks[l2x].acquire_write();
 
         let mut i: usize = 0;
         while i < WIDTH
@@ -1394,8 +1394,8 @@ impl MyHashMap {
         let l1x = if l1 < l2 { l1 } else { l2 };
         let l2x = if l1 < l2 { l2 } else { l1 };
 
-        let (Tracked(lock1x), handle1x) = self.locks[l1x].acquire_write();
-        let (Tracked(lock2x), handle2x) = self.locks[l2x].acquire_write();
+        let (Tracked(mut lock1x), handle1x) = self.locks[l1x].acquire_write();
+        let (Tracked(mut lock2x), handle2x) = self.locks[l2x].acquire_write();
 
         let tracked mut lock1;
         let tracked mut lock2;
