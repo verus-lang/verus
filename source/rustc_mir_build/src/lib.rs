@@ -43,10 +43,10 @@ pub mod verus_expr;
 #[path = "../../rustc_mir_build_additional_files/verus_time_travel_prevention.rs"]
 pub mod verus_time_travel_prevention;
 
-#[path = "../../rustc_hir_typeck/src/expr_use_visitor.rs"]
+#[path = "../../rustc_hir_typeck_small_fork/src/expr_use_visitor.rs"]
 pub mod expr_use_visitor;
 
-#[path = "../../rustc_hir_typeck/src/upvar.rs"]
+#[path = "../../rustc_hir_typeck_small_fork/src/upvar.rs"]
 pub mod upvar;
 
 use rustc_middle::util::Providers;

@@ -19,6 +19,9 @@ num-bigint = { workspace = true }
 num-format = { workspace = true }
 regex = { workspace = true }
 rustc_mir_build_verus = { workspace = true }
+rustc_hir_analysis_verus = { workspace = true }
+rustc_hir_typeck_verus = { workspace = true }
+rustc_traits_verus = { workspace = true }
 serde_json = { workspace = true }
 serde = { workspace = true }
 sha2 = { workspace = true }

@@ -5,8 +5,6 @@
 //! In the compiler, this is only used for upvar inference and diagnostics, but there
 //! are many uses within clippy.
 
-#![allow(unused_imports)]
-
 use std::cell::{Ref, RefCell};
 use std::ops::Deref;
 
@@ -17,7 +15,7 @@ use rustc_ast::UnsafeBinderCastKind;
 use rustc_data_structures::fx::FxIndexMap;
 use rustc_hir::def::{CtorOf, Res};
 use rustc_hir::def_id::LocalDefId;
-use rustc_hir::{self as hir, Expr, HirId, PatExpr, PatExprKind, PatKind};
+use rustc_hir::{self as hir, HirId, PatExpr, PatExprKind, PatKind};
 use rustc_lint::LateContext;
 use rustc_middle::hir::place::ProjectionKind;
 // Export these here so that Clippy can use them.
@@ -32,6 +30,8 @@ use rustc_middle::{bug, span_bug};
 use rustc_span::{ErrorGuaranteed, Span};
 use rustc_trait_selection::infer::InferCtxtExt;
 use tracing::{debug, instrument, trace};
+
+use crate::fn_ctxt::FnCtxt;
 
 /// This trait defines the callbacks you can expect to receive when
 /// employing the ExprUseVisitor.
@@ -153,17 +153,9 @@ pub trait TypeInformationCtxt<'tcx> {
     where
         Self: 'a;
 
-    type FreshTypeckResults<'a>: Deref<Target = crate::upvar::UpvarResults<'tcx>>
-    where
-        Self: 'a;
-
     type Error;
 
     fn typeck_results(&self) -> Self::TypeckResults<'_>;
-
-    fn fresh_typeck_results(&self) -> Self::FreshTypeckResults<'_>;
-
-    fn recursive_analyze_closure(&self, expr: &Expr, closure: &rustc_hir::Closure);
 
     fn resolve_vars_if_possible<T: TypeFoldable<TyCtxt<'tcx>>>(&self, t: T) -> T;
 
@@ -184,34 +176,69 @@ pub trait TypeInformationCtxt<'tcx> {
     fn tcx(&self) -> TyCtxt<'tcx>;
 }
 
-impl<'tcx> TypeInformationCtxt<'tcx> for &crate::upvar::FnCtxt<'_, 'tcx> {
+impl<'tcx> TypeInformationCtxt<'tcx> for &FnCtxt<'_, 'tcx> {
     type TypeckResults<'a>
-        = &'tcx ty::TypeckResults<'tcx>
+        = Ref<'a, ty::TypeckResults<'tcx>>
     where
         Self: 'a;
 
-    type FreshTypeckResults<'a>
-        = Ref<'a, crate::upvar::UpvarResults<'tcx>>
+    type Error = ErrorGuaranteed;
+
+    fn typeck_results(&self) -> Self::TypeckResults<'_> {
+        self.typeck_results.borrow()
+    }
+
+    fn resolve_vars_if_possible<T: TypeFoldable<TyCtxt<'tcx>>>(&self, t: T) -> T {
+        self.infcx.resolve_vars_if_possible(t)
+    }
+
+    fn structurally_resolve_type(&self, sp: Span, ty: Ty<'tcx>) -> Ty<'tcx> {
+        (**self).structurally_resolve_type(sp, ty)
+    }
+
+    fn report_bug(&self, span: Span, msg: impl ToString) -> Self::Error {
+        self.dcx().span_delayed_bug(span, msg.to_string())
+    }
+
+    fn error_reported_in_ty(&self, ty: Ty<'tcx>) -> Result<(), Self::Error> {
+        ty.error_reported()
+    }
+
+    fn tainted_by_errors(&self) -> Result<(), ErrorGuaranteed> {
+        if let Some(guar) = self.infcx.tainted_by_errors() { Err(guar) } else { Ok(()) }
+    }
+
+    fn type_is_copy_modulo_regions(&self, ty: Ty<'tcx>) -> bool {
+        self.infcx.type_is_copy_modulo_regions(self.param_env, ty)
+    }
+
+    fn type_is_use_cloned_modulo_regions(&self, ty: Ty<'tcx>) -> bool {
+        self.infcx.type_is_use_cloned_modulo_regions(self.param_env, ty)
+    }
+
+    fn body_owner_def_id(&self) -> LocalDefId {
+        self.body_id
+    }
+
+    fn tcx(&self) -> TyCtxt<'tcx> {
+        self.tcx
+    }
+}
+
+impl<'tcx> TypeInformationCtxt<'tcx> for (&LateContext<'tcx>, LocalDefId) {
+    type TypeckResults<'a>
+        = &'tcx ty::TypeckResults<'tcx>
     where
         Self: 'a;
 
     type Error = !;
 
     fn typeck_results(&self) -> Self::TypeckResults<'_> {
-        self.typeck_results
-    }
-
-    fn fresh_typeck_results(&self) -> Self::FreshTypeckResults<'_> {
-        self.fresh_typeck_results.borrow()
-    }
-
-    fn recursive_analyze_closure(&self, expr: &Expr, closure: &rustc_hir::Closure) {
-        let body_id = closure.body;
-        let body = self.tcx.hir_body(body_id);
-        self.analyze_closure(expr.hir_id, expr.span, body_id, body, closure.capture_clause);
+        self.0.maybe_typeck_results().expect("expected typeck results")
     }
 
     fn structurally_resolve_type(&self, _span: Span, ty: Ty<'tcx>) -> Ty<'tcx> {
+        // FIXME: Maybe need to normalize here.
         ty
     }
 
@@ -232,27 +259,19 @@ impl<'tcx> TypeInformationCtxt<'tcx> for &crate::upvar::FnCtxt<'_, 'tcx> {
     }
 
     fn type_is_copy_modulo_regions(&self, ty: Ty<'tcx>) -> bool {
-        let typing_env = rustc_middle::ty::TypingEnv::new(
-            self.param_env,
-            rustc_middle::ty::TypingMode::PostAnalysis,
-        );
-        self.tcx.type_is_copy_modulo_regions(typing_env, ty)
+        self.0.type_is_copy_modulo_regions(ty)
     }
 
     fn type_is_use_cloned_modulo_regions(&self, ty: Ty<'tcx>) -> bool {
-        let typing_env = rustc_middle::ty::TypingEnv::new(
-            self.param_env,
-            rustc_middle::ty::TypingMode::PostAnalysis,
-        );
-        self.tcx.type_is_use_cloned_modulo_regions(typing_env, ty)
+        self.0.type_is_use_cloned_modulo_regions(ty)
     }
 
     fn body_owner_def_id(&self) -> LocalDefId {
-        self.closure_def_id
+        self.1
     }
 
     fn tcx(&self) -> TyCtxt<'tcx> {
-        self.tcx
+        self.0.tcx
     }
 }
 
@@ -265,6 +284,12 @@ pub struct ExprUseVisitor<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>
     /// still have calls to our own helper functions.
     delegate: RefCell<D>,
     upvars: Option<&'tcx FxIndexMap<HirId, hir::Upvar>>,
+}
+
+impl<'a, 'tcx, D: Delegate<'tcx>> ExprUseVisitor<'tcx, (&'a LateContext<'tcx>, LocalDefId), D> {
+    pub fn for_clippy(cx: &'a LateContext<'tcx>, body_def_id: LocalDefId, delegate: D) -> Self {
+        Self::new((cx, body_def_id), delegate)
+    }
 }
 
 impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx, Cx, D> {
@@ -538,10 +563,7 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
             }
 
             hir::ExprKind::Closure(closure) => {
-                if !crate::verus::erase_closure_body_for_closure_captures(closure.def_id) {
-                    self.cx.recursive_analyze_closure(expr, closure);
-                    self.walk_captures(closure)?;
-                }
+                self.walk_captures(closure)?;
             }
 
             hir::ExprKind::Yield(value, _) => {
@@ -993,9 +1015,7 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
 
         // If we have a nested closure, we want to include the fake reads present in the nested
         // closure.
-        if let Some(fake_reads) =
-            self.cx.fresh_typeck_results().closure_fake_reads.get(&closure_def_id)
-        {
+        if let Some(fake_reads) = self.cx.typeck_results().closure_fake_reads.get(&closure_def_id) {
             for (fake_read, cause, hir_id) in fake_reads.iter() {
                 match fake_read.base {
                     PlaceBase::Upvar(upvar_id) => {
@@ -1039,7 +1059,7 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
         }
 
         if let Some(min_captures) =
-            self.cx.fresh_typeck_results().closure_min_captures.get(&closure_def_id)
+            self.cx.typeck_results().closure_min_captures.get(&closure_def_id)
         {
             for (var_hir_id, min_list) in min_captures.iter() {
                 if self
@@ -1403,14 +1423,6 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
 
             Res::Local(var_id) => {
                 if self.upvars.is_some_and(|upvars| upvars.contains_key(&var_id)) {
-                    if crate::verus::erase_var_for_closure_captures(hir_id) {
-                        return Ok(PlaceWithHirId::new(
-                            hir_id,
-                            expr_ty,
-                            PlaceBase::Rvalue,
-                            Vec::new(),
-                        ));
-                    }
                     self.cat_upvar(hir_id, var_id)
                 } else {
                     Ok(PlaceWithHirId::new(hir_id, expr_ty, PlaceBase::Local(var_id), Vec::new()))
@@ -1853,4 +1865,28 @@ impl<'tcx, Cx: TypeInformationCtxt<'tcx>, D: Delegate<'tcx>> ExprUseVisitor<'tcx
             false
         }
     }
+}
+
+struct ExprPlaceDelegate;
+
+impl<'tcx> Delegate<'tcx> for ExprPlaceDelegate {
+    fn consume(&mut self, _: &PlaceWithHirId<'tcx>, _: HirId) {}
+
+    fn use_cloned(&mut self, _: &PlaceWithHirId<'tcx>, _: HirId) {}
+
+    fn borrow(&mut self, _: &PlaceWithHirId<'tcx>, _: HirId, _: ty::BorrowKind) {}
+
+    fn mutate(&mut self, _: &PlaceWithHirId<'tcx>, _: HirId) {}
+
+    fn fake_read(&mut self, _: &PlaceWithHirId<'tcx>, _: FakeReadCause, _: HirId) {}
+}
+
+/// Categorizes `expr` as a place for diagnostic suggestions.
+///
+/// This should be used for diagnostics purpose only.
+pub(crate) fn expr_place<'tcx>(
+    fcx: &FnCtxt<'_, 'tcx>,
+    expr: &hir::Expr<'_>,
+) -> Result<PlaceWithHirId<'tcx>, ErrorGuaranteed> {
+    ExprUseVisitor::new(fcx, ExprPlaceDelegate).cat_expr(expr)
 }
