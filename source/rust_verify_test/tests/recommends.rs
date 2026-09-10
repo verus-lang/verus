@@ -131,3 +131,102 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_has_recommends_failure(e)
 }
+
+// https://github.com/verus-lang/verus/issues/912
+// `h`'s recommends (m == 41) is genuinely met here (f(42) == 41), so recommends checking
+// shouldn't complain about it, regardless of whether f(n) is passed to h directly or via
+// a `let` binding first.
+test_verify_one_file! {
+    #[test] let_bound_call_recommends_completeness_issue912 verus_code! {
+        spec fn f(n: int) -> int
+            recommends n > 0,
+        {
+            n - 1
+        }
+
+        spec fn h(m: int) -> int
+            recommends m == 41,
+        {
+            m + 1
+        }
+
+        proof fn test_let(n: int)
+            requires n == 42,
+            ensures ({
+                let x = f(n);
+                h(x) == 999  // FAILS: genuinely false, but h's recommends is met
+            }),
+        {
+        }
+    } => Err(e) => {
+        assert_eq!(e.errors.len(), 1);
+        assert!(e.notes.iter().all(|n| !n.message.contains("recommendation not met")));
+    }
+}
+
+// https://github.com/verus-lang/verus/issues/1060 - same root cause as #912.
+// `spec_affirm`'s equality trivially follows from the `let`, but recommends-checking
+// lost the link and spuriously warned about `discard_old`'s own recommends instead.
+test_verify_one_file! {
+    #[test] let_bound_spec_call_recommends_issue1060 verus_code! {
+        use vstd::prelude::*;
+
+        spec(checked) fn discard_old(x: int, y: int) -> int
+            recommends y <= x,
+        {
+            x - y
+        }
+
+        spec(checked) fn foo(x: int, y: int) -> int
+            recommends y <= x,
+        {
+            let remaining = discard_old(x, y);
+            let _ = spec_affirm(remaining == discard_old(x, y));
+            remaining
+        }
+    } => Ok(())
+}
+
+// https://github.com/verus-lang/verus/issues/692 - same root cause as #912.
+// A fact established by a `recommends_by` lemma about a `let`-bound call's result
+// couldn't reach a later recommends check that used the bound variable.
+test_verify_one_file! {
+    #[test] recommends_by_fact_flows_through_let_bound_call_issue692 verus_code! {
+        pub uninterp spec fn route(len: nat) -> nat
+            recommends len > 0,
+        ;
+
+        proof fn route_lemma(len: nat)
+            requires len > 0,
+            ensures route(len) < len,
+        {
+            admit();
+        }
+
+        pub closed spec fn get(len: nat, i: nat) -> nat
+            recommends i < len,
+        {
+            i
+        }
+
+        pub struct Node { pub len: nat }
+
+        impl Node {
+            #[verifier(recommends_by)]
+            proof fn flushed_ofs_inline_lemma(&self)
+            {
+                route_lemma(self.len);
+                assert(0 <= route(self.len) < self.len);
+            }
+
+            pub open spec(checked) fn flushed_ofs(&self) -> nat
+                recommends
+                    self.len > 0,
+            {
+                recommends_by(Self::flushed_ofs_inline_lemma);
+                let r = route(self.len);
+                get(self.len, r)
+            }
+        }
+    } => Ok(())
+}
