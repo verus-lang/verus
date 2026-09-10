@@ -992,6 +992,8 @@ impl<B: Base> EndianNat<B> {
     ///
     /// [`to_big`]: EndianNat::to_big
     /// [`from_big`]: EndianNat::from_big
+    #[verifier::spinoff_prover]
+    #[verifier::rlimit(20)]
     pub broadcast proof fn from_big_to_big<BIG>(n: EndianNat<BIG>) where
         BIG: BasePow2,
         B: CompatibleSmallerBaseFor<BIG>,

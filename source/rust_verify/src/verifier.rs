@@ -21,7 +21,8 @@ use rustc_interface::interface::Compiler;
 use rustc_session::config::ErrorOutputType;
 
 use vir::messages::{
-    Message, MessageLabel, MessageLevel, MessageX, ToAny, message, note, note_bare, warning_bare,
+    Message, MessageLabel, MessageLevel, MessageX, ToAny, message, note, note_bare, warning,
+    warning_bare,
 };
 
 use num_format::{Locale, ToFormattedString};
@@ -45,7 +46,8 @@ use vir::ast_util::{fun_as_friendly_rust_name, is_visible_to};
 use vir::def::{CommandContext, CommandsWithContext, CommandsWithContextX, SnapPos};
 use vir::prelude::PreludeConfig;
 
-const RLIMIT_PER_SECOND: f32 = 3000000f32;
+const RLIMIT_PER_SECOND_Z3: f32 = 3000000f32;
+const RLIMIT_PER_SECOND_CVC5: f32 = 333333f32; // ~= 5s
 
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub(crate) struct ProgressBarId(String);
@@ -114,10 +116,10 @@ impl air::messages::Diagnostics for Reporter<'_> {
         fn emit_with_diagnostic_details<'a, G: EmissionGuarantee>(
             mut diag: Diag<'a, G>,
             multispan: MultiSpan,
-            help: &Option<String>,
+            help: &[String],
         ) {
             diag.span = multispan;
-            if let Some(help) = help {
+            for help in help {
                 diag.help(help.clone());
             }
             diag.emit();
@@ -1126,10 +1128,14 @@ impl Verifier {
     }
 
     fn set_rlimit(air_context: &mut air::context::Context, rlimit: f32) {
+        let per_second = match air_context.get_solver() {
+            air::context::SmtSolver::Z3 => RLIMIT_PER_SECOND_Z3,
+            air::context::SmtSolver::Cvc5 => RLIMIT_PER_SECOND_CVC5,
+        };
         air_context.set_rlimit(if rlimit == f32::INFINITY {
-            0 // z3 interprets a zero rlimit as infinity
+            0 // both solvers interpret a zero rlimit as infinity
         } else {
-            (rlimit * RLIMIT_PER_SECOND).min(u32::MAX as f32) as u32
+            (rlimit * per_second).min(u32::MAX as f32) as u32
         });
     }
 
@@ -1220,11 +1226,11 @@ impl Verifier {
         // recommended-options preset, the prelude, and the bucket background.
         let bitvector = prover_choice == vir::def::ProverChoice::BitVector;
         if !bitvector {
-            air_context.set_z3_param("air_recommended_options", "true");
+            air_context.set_solver_option("air_recommended_options", "true");
         }
         self.set_default_rlimit(&mut air_context);
         for (option, value) in self.args.smt_options.iter() {
-            air_context.set_z3_param(&option, &value);
+            air_context.set_solver_option(&option, &value);
         }
         if !bitvector {
             if self.args.axiom_usage_info {
@@ -1258,7 +1264,9 @@ impl Verifier {
                 // TODO: tune Z3/CVC5 options for bit-vector queries
             }
             vir::def::ProverChoice::Nonlinear => match self.args.solver {
-                air::context::SmtSolver::Z3 => air_context.set_z3_param("smt.arith.solver", "6"),
+                air::context::SmtSolver::Z3 => {
+                    air_context.set_solver_option("smt.arith.solver", "6")
+                }
                 // TODO: What cvc5 settings would help here?
                 air::context::SmtSolver::Cvc5 => {}
             },
@@ -1350,8 +1358,12 @@ impl Verifier {
         )?;
         if self.args.solver_version_check {
             air_context.set_expected_solver_version(match self.args.solver {
-                air::context::SmtSolver::Z3 => crate::consts::EXPECTED_Z3_VERSION.to_string(),
-                air::context::SmtSolver::Cvc5 => crate::consts::EXPECTED_CVC5_VERSION.to_string(),
+                air::context::SmtSolver::Z3 => {
+                    cargo_verus_toolchains::external_deps::Z3_VERSION.to_string()
+                }
+                air::context::SmtSolver::Cvc5 => {
+                    cargo_verus_toolchains::external_deps::CVC5_VERSION.to_string()
+                }
             });
         }
 
@@ -1517,7 +1529,7 @@ impl Verifier {
                                     "Found singular command when Verus is compiled without Singular feature"
                                 );
                             }
-                            let mut spinoff_z3_context;
+                            let mut spinoff_context;
                             let do_spinoff = (cmds.prover_choice
                                 == vir::def::ProverChoice::Nonlinear)
                                 || (cmds.prover_choice == vir::def::ProverChoice::BitVector)
@@ -1559,7 +1571,7 @@ impl Verifier {
                                 } else {
                                     "spinoff_all"
                                 };
-                                spinoff_z3_context = self.new_air_context_with_bucket_context(
+                                spinoff_context = self.new_air_context_with_bucket_context(
                                     message_interface.clone(),
                                     function_opgen.ctx(),
                                     reporter,
@@ -1574,15 +1586,15 @@ impl Verifier {
                                 )?;
                                 // for bitvector, only one query, no push/pop
                                 if cmds.prover_choice == vir::def::ProverChoice::BitVector {
-                                    spinoff_z3_context.set_single_check_query();
+                                    spinoff_context.set_single_check_query();
                                 }
                                 // Apply prover-specific SMT tuning.
                                 self.apply_per_query_smt_options(
-                                    &mut spinoff_z3_context,
+                                    &mut spinoff_context,
                                     cmds.prover_choice,
                                 );
                                 spinoff_context_counter += 1;
-                                &mut spinoff_z3_context
+                                &mut spinoff_context
                             } else {
                                 &mut air_context
                             };
@@ -1590,7 +1602,18 @@ impl Verifier {
                             let iter_curr_smt_rlimit_count =
                                 query_air_context.get_rlimit_count().map(|x| x.1);
                             if let Some(rlimit) = function.x.attrs.rlimit {
-                                Self::set_rlimit(&mut query_air_context, rlimit);
+                                if query_air_context.rlimit_is_mutable() {
+                                    Self::set_rlimit(&mut query_air_context, rlimit);
+                                } else {
+                                    reporter.report(
+                                        &warning(
+                                            &cmds.context.span,
+                                            "#[verifier::rlimit] is not supported with your current solver; \
+                                             the global --rlimit applies instead",
+                                        )
+                                        .to_any(),
+                                    );
+                                }
                             }
                             let RunCommandQueriesResult {
                                 invalidity: command_invalidity,
@@ -1960,6 +1983,9 @@ impl Verifier {
                 &self.args.log_args.vir_log_option,
             );
         }
+        if self.args.no_verify {
+            return Ok(ctx.free());
+        }
         let krate_sst = vir::poly::poly_krate_for_module(&mut ctx, &krate_sst);
 
         let VerifyBucketOut { time_smt_init, time_smt_run, rlimit_count } =
@@ -2081,12 +2107,16 @@ impl Verifier {
 
         let source_map = compiler.sess.source_map();
 
-        self.num_threads = std::cmp::min(self.args.num_threads, bucket_ids.len());
+        self.num_threads = if self.args.no_verify {
+            1
+        } else {
+            std::cmp::min(self.args.num_threads, bucket_ids.len())
+        };
         if self.args.num_threads != 1 && self.num_threads >= 1 {
             // create the multiple producers, single consumer queue
             let (sender, receiver) = std::sync::mpsc::channel();
 
-            // collect the buckets and create the task queueu
+            // collect the buckets and create the task queue
             let mut tasks = VecDeque::with_capacity(bucket_ids.len());
             let mut messages: Vec<(bool, Vec<(Message, MessageLevel)>)> = Vec::new();
             for (i, bucket_id) in bucket_ids.iter().enumerate() {
@@ -2504,6 +2534,10 @@ impl Verifier {
             }
         }
 
+        if self.args.no_verify {
+            return Ok(());
+        }
+
         if self.args.profile && self.count_errors == 0 {
             let msg = note_bare(
                 "--profile reports prover performance data only when rlimts are exceeded, use --profile-all to always report profiler results",
@@ -2583,8 +2617,11 @@ impl Verifier {
         // Verify crate
         let time_verify_crate_start = Instant::now();
 
-        let result =
-            if !self.args.no_verify { self.verify_crate_inner(&compiler, spans) } else { Ok(()) };
+        let result = if !self.args.no_verify || self.args.build_sst {
+            self.verify_crate_inner(&compiler, spans)
+        } else {
+            Ok(())
+        };
 
         let time_verify_crate_end = Instant::now();
         self.time_verify_crate = time_verify_crate_end - time_verify_crate_start;
@@ -2605,9 +2642,8 @@ impl Verifier {
         }
 
         self.air_no_span = {
-            let hir_crate = tcx.hir_crate(());
+            let crate_owner = tcx.lower_to_hir(rustc_span::def_id::CRATE_DEF_ID);
             let no_span = {
-                let crate_owner = hir_crate.owner(tcx, rustc_span::def_id::CRATE_DEF_ID);
                 let owner_info = crate_owner.as_owner().expect("OwnerNode::Crate missing");
                 let OwnerNode::Crate(c) = owner_info.node() else {
                     panic!("OwnerNode::Crate missing");
@@ -3036,9 +3072,12 @@ pub(crate) static BODY_HIR_ID_TO_REVEAL_PATH_RES: std::sync::RwLock<
     >,
 > = std::sync::RwLock::new(None);
 
-fn hir_crate<'tcx>(tcx: TyCtxt<'tcx>, _: ()) -> rustc_middle::hir::Crate<'tcx> {
-    let crate_ = (rustc_interface::DEFAULT_QUERY_PROVIDERS.queries.hir_crate)(tcx, ());
-    crate::hir_hide_reveal_rewrite::hir_hide_reveal_rewrite(crate_, tcx)
+fn lower_to_hir<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    def_id: rustc_hir::def_id::LocalDefId,
+) -> rustc_hir::MaybeOwner<'tcx> {
+    let owner = (rustc_interface::DEFAULT_QUERY_PROVIDERS.queries.lower_to_hir)(tcx, def_id);
+    crate::hir_hide_reveal_rewrite::hir_hide_reveal_rewrite(owner, tcx)
 }
 
 impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
@@ -3072,7 +3111,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
 
         if self.verifier.args.no_lifetime {
             config.override_queries = Some(|_session, providers| {
-                providers.queries.hir_crate = hir_crate;
+                providers.queries.lower_to_hir = lower_to_hir;
                 providers.queries.mir_const_qualif =
                     |_, _| rustc_middle::mir::ConstQualifs::default();
                 providers.queries.lint_mod = |_, _| {};
@@ -3093,7 +3132,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             });
         } else {
             config.override_queries = Some(|_session, providers| {
-                providers.queries.hir_crate = hir_crate;
+                providers.queries.lower_to_hir = lower_to_hir;
                 providers.queries.mir_const_qualif =
                     |_, _| rustc_middle::mir::ConstQualifs::default();
                 providers.queries.lint_mod = |_, _| {};

@@ -227,6 +227,12 @@ pub broadcast axiom fn axiom_map_index_decreases<K, V>(m: Map<K, V>, key: K)
     ensures
         #[trigger](decreases_to!(m => m[key]));
 
+pub broadcast axiom fn axiom_map_decreases_to_entry<K, V>(m: Map<K, V>, key: K)
+    requires
+        m.dom().contains(key),
+    ensures
+        #[trigger](decreases_to!(m => (key, m[key])));
+
 /// Since `Map::new` is uninterpret, this broadcast lemma is needed to establish
 /// that it produces a map with the given set as its domain.
 pub broadcast proof fn lemma_map_new_domain<K, V>(s: Set<K>, fv: spec_fn(K) -> V)
@@ -328,6 +334,7 @@ pub broadcast proof fn axiom_map_ext_equal_deep<K, V>(m1: Map<K, V>, m2: Map<K, 
 
 pub broadcast group group_map_lemmas {
     axiom_map_index_decreases,
+    axiom_map_decreases_to_entry,
     lemma_map_new_domain,
     lemma_map_new_index,
     lemma_map_empty,
