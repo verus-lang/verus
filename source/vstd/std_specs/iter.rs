@@ -289,18 +289,27 @@ pub trait ExDoubleEndedIterator : Iterator {
 pub trait ExExactSizeIterator: Iterator {
     type ExternalTraitSpecificationFor: ExactSizeIterator;
 
+    // An `ExactSizeIterator` is an iterator that knows its exact
+    // length. This lets it have a non-prophetic spec function that's
+    // equal to the prophetic `self.remaining().len()`. That
+    // non-prophetic spec function is `exact_len`.
     spec fn exact_len(&self) -> usize;
 
     fn len(&self) -> (len: usize)
         ensures
-            self.obeys_prophetic_iter_laws() ==> len as int == self.exact_len() == self.remaining().len();
+            self.obeys_prophetic_iter_laws() ==> len == self.exact_len() == self.remaining().len();
 }
 
+// A type implementing the `ExactSizeIteratorSpec` trait must
+// implement a `len` function that returns something that's
+// simultaneously equal to both `self.exact_len()` and
+// `self.remaining().len()`. Thus, it's reasonable to have this axiom
+// saying that those two expressions are always equal.
 pub broadcast axiom fn axiom_exact_len_exact<I: ExactSizeIteratorSpec>(i: &I)
     requires
         i.obeys_prophetic_iter_laws(),
     ensures
-        #[trigger] ExactSizeIteratorSpec::exact_len(i) == i.remaining().len(),
+        #[trigger] i.exact_len() == i.remaining().len(),
 ;
 
 /********************************************************************************
@@ -591,7 +600,7 @@ impl <I> DoubleEndedIteratorSpecImpl for Take<I>
     where I: DoubleEndedIteratorSpec + ExactSizeIteratorSpec
 {
     open spec fn peek_back(&self, index: int) -> Option<Self::Item> {
-        let len = ExactSizeIteratorSpec::exact_len(&take_iter(*self));
+        let len = take_iter(*self).exact_len();
         if len < take_count(*self) {
             None
         } else {
@@ -655,7 +664,7 @@ impl <I> DoubleEndedIteratorSpecImpl for Skip<I>
         // Skip only drops elements from the front, so the back of the skipped
         // sequence coincides with the back of the inner iterator, as long as
         // `index` stays within the (un-skipped) remaining elements.
-        let len = ExactSizeIteratorSpec::exact_len(&skip_iter(*self));
+        let len = skip_iter(*self).exact_len();
         if len < skip_init_n(*self) || index >= len - skip_init_n(*self) {
             None
         } else {
