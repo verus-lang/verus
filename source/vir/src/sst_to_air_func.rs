@@ -418,7 +418,8 @@ fn func_body_to_air(
     // Preserve the opacity of the spec body by guarding its literal facts with the same fuel condition.
     let literal_facts = crate::sst_to_air::function_literal_facts(ctx, &function.x.name);
     if !literal_facts.is_empty() {
-        let literal_axiom: Arc<DeclX> = mk_unnamed_axiom(mk_implies(&fuel_bool, &mk_and(&literal_facts)));
+        let literal_axiom: Arc<DeclX> =
+            mk_unnamed_axiom(mk_implies(&fuel_bool, &mk_and(&literal_facts)));
         decl_commands.push(Arc::new(CommandX::Global(literal_axiom)));
     }
     let def_axiom = mk_unnamed_axiom(mk_implies(&fuel_bool, &e_forall));
