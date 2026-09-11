@@ -472,7 +472,7 @@ impl <I> IteratorSpecImpl for Take<I>
 }
 
 impl <I> DoubleEndedIteratorSpecImpl for Take<I>
-    where I: DoubleEndedIteratorSpec + ExactSizeIterator + ExactSizeIteratorSpec
+    where I: DoubleEndedIteratorSpec + ExactSizeIteratorSpec
 {
     open spec fn peek_back(&self, index: int) -> Option<Self::Item> {
         let len = ExactSizeIteratorSpec::exact_len(&take_iter(*self));
@@ -533,7 +533,7 @@ impl <I> IteratorSpecImpl for Skip<I>
 }
 
 impl <I> DoubleEndedIteratorSpecImpl for Skip<I>
-    where I: DoubleEndedIteratorSpec + ExactSizeIterator + ExactSizeIteratorSpec
+    where I: DoubleEndedIteratorSpec + ExactSizeIteratorSpec
 {
     open spec fn peek_back(&self, index: int) -> Option<Self::Item> {
         // Skip only drops elements from the front, so the back of the skipped
