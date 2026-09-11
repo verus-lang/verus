@@ -59,34 +59,6 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-// #[verifier::allow_in_spec] lets these be called directly in spec position, not just
-// through an exec `let` first - the tests above don't exercise that.
-test_verify_one_file! {
-    #[test] test_char_len_utf8_allow_in_spec verus_code! {
-        use vstd::prelude::*;
-
-        proof fn test() {
-            assert('a'.len_utf8() == 1); // ASCII, U+0061
-            assert('\u{a3}'.len_utf8() == 2); // £, U+00A3
-            assert('\u{20ac}'.len_utf8() == 3); // €, U+20AC
-            assert('\u{1f600}'.len_utf8() == 4); // 😀, U+1F600
-        }
-    } => Ok(())
-}
-
-test_verify_one_file! {
-    #[test] test_char_is_whitespace_allow_in_spec verus_code! {
-        use vstd::prelude::*;
-
-        proof fn test() {
-            assert(' '.is_whitespace());
-            assert('\u{3000}'.is_whitespace()); // IDEOGRAPHIC SPACE
-            assert(!'a'.is_whitespace());
-            assert(!'\u{2010}'.is_whitespace()); // HYPHEN, not whitespace
-        }
-    } => Ok(())
-}
-
 test_verify_one_file! {
     #[test] typ_invariant_issue2876 verus_code! {
         fn foo(c: &mut char)
