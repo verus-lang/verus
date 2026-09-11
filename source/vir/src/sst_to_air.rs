@@ -2257,6 +2257,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
 
             match mode {
                 AssertQueryMode::NonLinear => {
+                    auto_literal_axioms(ctx, &mut local);
                     let query = Arc::new(QueryX { local: Arc::new(local), assertion });
                     state.commands.push(CommandsWithContextX::new(
                         ctx.fun
@@ -2895,6 +2896,7 @@ fn loop_to_stmts(
     };
     if loop_isolation {
         let assertion = assertion.clone();
+        auto_literal_axioms(ctx, &mut local);
         let query = Arc::new(QueryX { local: Arc::new(local), assertion });
         let loop_cmd_context = CommandsWithContextX::new(
             ctx.fun.as_ref().expect("asserts are expected to be in a function").current_fun.clone(),
@@ -2950,6 +2952,61 @@ fn loop_to_stmts(
         stmts.push(snapshot);
     }
     Ok(stmts)
+}
+
+// Collect only literals in the annotated function's contracts and body.
+// Do not traverse called functions or expose unrelated literals in the module.
+// Spec-definition translation can also use these facts under its fuel guard.
+pub(crate) fn function_literal_facts(ctx: &Ctx, fun: &Fun) -> Vec<Expr> {
+    let function = &ctx.func_map[fun];
+    let attrs = &function.x.attrs;
+    if !attrs.auto_reveal_strlit && !attrs.auto_reveal_byteslit {
+        return vec![];
+    }
+
+    let mut strings = Vec::new();
+    let mut byte_strings = Vec::new();
+    crate::ast_visitor::function_visitor_check(function, &mut |expr| {
+        match &expr.x {
+            crate::ast::ExprX::Const(crate::ast::Constant::StrSlice(literal))
+                if attrs.auto_reveal_strlit =>
+            {
+                strings.push(literal.clone());
+            }
+            crate::ast::ExprX::Const(crate::ast::Constant::ByteStr(literal))
+                if attrs.auto_reveal_byteslit =>
+            {
+                byte_strings.push(literal.clone());
+            }
+            _ => {}
+        }
+        Ok::<(), std::convert::Infallible>(())
+    })
+    .unwrap();
+
+    // Deduplicate literals and keep the generated solver input deterministic.
+    strings.sort();
+    strings.dedup();
+    byte_strings.sort();
+    byte_strings.dedup();
+
+    let mut facts = Vec::new();
+    for literal in strings {
+        facts.push(string_len_to_air(ctx, literal.clone()));
+        facts.push(string_indices_to_air(ctx, literal));
+    }
+    for literal in byte_strings {
+        facts.push(byte_string_indices_to_air(ctx, literal));
+    }
+    facts
+}
+
+fn auto_literal_axioms(ctx: &Ctx, local: &mut Vec<Decl>) {
+    if let Some(function) = &ctx.fun {
+        for fact in function_literal_facts(ctx, &function.current_fun) {
+            local.push(mk_unnamed_axiom(fact));
+        }
+    }
 }
 
 fn string_len_to_air(ctx: &Ctx, lit: Arc<String>) -> Expr {
@@ -3274,6 +3331,7 @@ pub(crate) fn body_stm_to_air(
             ));
         }
     } else {
+        auto_literal_axioms(ctx, &mut local);
         let query = Arc::new(QueryX { local: Arc::new(local), assertion });
         let commands = vec![Arc::new(CommandX::CheckValid(query))];
         state.commands.push(CommandsWithContextX::new(

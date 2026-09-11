@@ -1499,6 +1499,10 @@ pub struct FunctionAttrsX {
     pub broadcast_forall_only: bool,
     /// In triggers_auto, don't use this function as a trigger
     pub no_auto_trigger: bool,
+    /// Automatically expose this function's string-literal lengths and characters.
+    pub auto_reveal_strlit: bool,
+    /// Automatically expose this function's byte-string-literal contents.
+    pub auto_reveal_byteslit: bool,
     /// Specify which places we auto-promote == to =~= when verifying this function
     pub auto_ext_equal: AutoExtEqual,
     /// When used in a ghost context, redirect to a specified spec function
