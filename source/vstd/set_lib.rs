@@ -655,6 +655,44 @@ impl<A> Set<A> {
             assert(self.to_seq().to_set() =~= self.remove(elem).to_seq().to_set().insert(elem));
         }
     }
+
+    /// Any sequence converted from set has no duplicates
+    pub broadcast proof fn lemma_to_seq_no_duplicates(self)
+        ensures
+            #[trigger] self.to_seq().no_duplicates(),
+        decreases self.len(),
+    {
+        broadcast use super::seq::group_seq_axioms;
+
+        if self.len() == 0 {
+        } else {
+            let x = choose|x: A| #[trigger]
+                self.contains(x) && self.to_seq() =~= seq![x] + self.remove(x).to_seq();
+            let seq = self.to_seq();
+            let seq2 = self.remove(x).to_seq();
+            assert(seq2.no_duplicates()) by { self.remove(x).lemma_to_seq_no_duplicates() }
+            assert(seq2.to_set() == self.remove(x)) by {
+                self.remove(x).lemma_to_seq_to_set_id();
+            }
+            assert(!seq2.contains(x)) by { seq2.to_set_ensures() }
+        }
+    }
+
+    /// Conversion from set to seq preserves the length
+    pub broadcast proof fn lemma_to_seq_len(self)
+        ensures
+            #[trigger] self.to_seq().len() == self.len(),
+        decreases self.len(),
+    {
+        broadcast use super::seq::group_seq_axioms;
+
+        if self.len() == 0 {
+        } else {
+            let x = choose|x: A| #[trigger]
+                self.contains(x) && self.to_seq() =~= seq![x] + self.remove(x).to_seq();
+            self.remove(x).lemma_to_seq_len();
+        }
+    }
 }
 
 impl<A> Set<Set<A>> {

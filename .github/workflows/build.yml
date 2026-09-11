@@ -61,7 +61,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.97.1
+          toolchain: 1.98.1
 
       - name: create temporary toolchain manifest
         working-directory: ./source
@@ -77,6 +77,19 @@ jobs:
           cargo clean
           cargo build --release
           cargo run --release -p cargo-verus -- build --release --manifest-path vstd/Cargo.toml
+
+      - name: stage external dependencies
+        working-directory: ./source
+        run: |
+          if [[ -f ./z3.exe ]]; then
+            z3=./z3.exe
+          else
+            z3=./z3
+          fi
+
+          test -f "$z3"
+          cp "$z3" ./target-verus/release/
+          "./target-verus/release/$(basename "$z3")" --version
 
       - name: create archive
         working-directory: ./source

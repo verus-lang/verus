@@ -1414,3 +1414,45 @@ pub(crate) fn datatype_height_axioms(
         vec![axiom1]
     }
 }
+
+pub(crate) fn fndef_axioms(name_ctxt: &NameCtxt, func: &crate::ast::Function) -> Node {
+    #[allow(non_snake_case)]
+    let FnDef = str_to_node(FNDEF_TYPE);
+    let type_id_fndef_str = name_ctxt.prefix_fndef_type_id(&func.x.name);
+    let type_id_fndef = str_to_node(&type_id_fndef_str);
+    let qid = str_to_node(format!("prelude_has_type_fndef_{}", type_id_fndef_str).as_str());
+    let skolem_id =
+        str_to_node(format!("skolem_prelude_has_type_fndef_{}", type_id_fndef_str).as_str());
+    let has_type = str_to_node(HAS_TYPE);
+    let box_fndef = str_to_node(BOX_FNDEF);
+
+    let mut forall_params: Vec<Node> = Vec::new();
+    forall_params.push(node!((x[FnDef])));
+
+    let mut type_id_call: Vec<Node> = Vec::new();
+    type_id_call.push(node!([type_id_fndef]));
+
+    let tparams = &func.x.typ_params;
+    for typ_param in tparams.iter() {
+        for (x, t) in crate::def::suffix_typ_param_ids_types(&typ_param) {
+            use crate::ast_util::LowerUniqueVar;
+            let x = str_to_node(&x.lower());
+            let t = str_to_node(t);
+            forall_params.push(node!(([x][t])));
+            type_id_call.push(x);
+        }
+    }
+
+    let forall_params = Node::List(forall_params);
+    let type_id_call =
+        if type_id_call.len() == 1 { type_id_call[0].clone() } else { Node::List(type_id_call) };
+
+    node!(
+        (axiom (forall [forall_params] (!
+            ([has_type] ([box_fndef] x) [type_id_call])
+            :pattern (([has_type] ([box_fndef] x) [type_id_call]))
+            :qid [qid]
+            :skolemid [skolem_id]
+        )))
+    )
+}

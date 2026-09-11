@@ -116,41 +116,56 @@ pub exec fn slice_subrange<T, 'a>(slice: &'a [T], i: usize, j: usize) -> (out: &
 
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(SliceIndexSpec via SliceIndexSpecImpl)]
-#[verifier::external_trait_private_bound(core::slice::index::private_slice_index::Sealed)]
 pub trait ExSliceIndex<T> where T: ?Sized {
     type ExternalTraitSpecificationFor: SliceIndex<T>;
 
     type Output: ?Sized;
 
-    spec fn index_req(&self, slice: &T) -> bool;
+    spec fn in_bounds(&self, slice: &T) -> bool;
 
-    fn index(self, slice: &T) -> &Self::Output
+    spec fn index_postcondition(&self, slice: &T, r: &Self::Output) -> bool;
+
+    spec fn index_mut_postcondition(
+        &self,
+        old_slice: &T,
+        final_slice: &T,
+        immediate_output: &Self::Output,
+        final_output: &Self::Output,
+    ) -> bool;
+
+    fn index(self, slice: &T) -> (r: &Self::Output)
         requires
-            self.index_req(slice),
+            self.in_bounds(slice),
+        ensures
+            self.index_postcondition(slice, r),
     ;
 
-    fn index_mut(self, slice: &mut T) -> &mut Self::Output
+    fn index_mut(self, slice: &mut T) -> (r: &mut Self::Output)
         requires
-            self.index_req(slice),
+            self.in_bounds(slice),
+        ensures
+            self.index_mut_postcondition(&*old(slice), &*final(slice), r, &*final(r)),
+    ;
+
+    fn get(self, slice: &T) -> (r: Option<&Self::Output>)
+        ensures
+            match r {
+                None => !self.in_bounds(slice),
+                Some(x) => self.in_bounds(slice) && self.index_postcondition(slice, x),
+            },
+    ;
+
+    fn get_mut(self, slice: &mut T) -> (r: Option<&mut Self::Output>)
+        ensures
+            match r {
+                None => !self.in_bounds(old(slice)) && &*final(slice) == &*old(slice),
+                Some(x) => {
+                    &&& self.in_bounds(old(slice))
+                    &&& self.index_mut_postcondition(&*old(slice), &*final(slice), x, &*final(x))
+                },
+            },
     ;
 }
-
-pub assume_specification<T, I>[ <[T]>::get::<I> ](slice: &[T], i: I) -> (b: Option<
-    &<I as SliceIndex<[T]>>::Output,
->) where I: SliceIndex<[T]>
-    returns
-        spec_slice_get(slice, i),
-;
-
-pub uninterp spec fn spec_slice_get<T: ?Sized, I: SliceIndex<T>>(val: &T, idx: I) -> Option<
-    &<I as SliceIndex<T>>::Output,
->;
-
-pub broadcast axiom fn axiom_slice_get_usize<T>(v: &[T], i: usize)
-    ensures
-        i < v.len() ==> #[trigger] spec_slice_get(v, i) == Some(&v[i as int]),
-        i >= v.len() ==> spec_slice_get(v, i).is_none(),
-;
 
 pub broadcast axiom fn axiom_slice_ext_equal<T>(a1: &[T], a2: &[T])
     ensures
@@ -200,9 +215,13 @@ pub broadcast proof fn lemma_slice_index_decreases<T>(s: &[T], i: int)
     lemma_seq_index_decreases(s@, i);
 }
 
+pub axiom fn mut_ref_slice_len_eq<T>(tracked slice: &&mut [T])
+    ensures
+        old(*slice).len() == final(*slice).len(),
+;
+
 pub broadcast group group_slice_axioms {
     axiom_spec_len,
-    axiom_slice_get_usize,
     axiom_slice_ext_equal,
     axiom_spec_slice_update,
     axiom_spec_slice_index,
@@ -210,5 +229,20 @@ pub broadcast group group_slice_axioms {
     axiom_slice_decreases_to_seq,
     lemma_slice_index_decreases,
 }
+
+pub axiom fn tracked_borrow<T>(tracked s: &[T], i: int) -> (tracked t: &T)
+    requires
+        0 <= i < s.len(),
+    ensures
+        t == s[i],
+;
+
+pub axiom fn tracked_borrow_mut<T>(tracked s: &mut [T], i: int) -> (tracked t: &mut T)
+    requires
+        0 <= i < s.len(),
+    ensures
+        *t == old(s)[i],
+        final(s)@ == old(s)@.update(i, *final(t)),
+;
 
 } // verus!
