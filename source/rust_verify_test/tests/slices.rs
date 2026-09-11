@@ -1156,3 +1156,16 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_slice_contains verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let values: &[u8] = &[1, 2, 3];
+
+            assert(values.contains(&2));
+            assert(!values.contains(&4));
+        }
+    } => Ok(())
+}
