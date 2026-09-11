@@ -262,22 +262,24 @@ pub trait ExDoubleEndedIterator : Iterator {
     spec fn peek_back(&self, index: int) -> Option<Self::Item>;
 }
 
-pub uninterp spec fn iter_len<I: ?Sized>(i: &I) -> usize;
-
-pub broadcast axiom fn iter_len_exact<I: ExactSizeIterator>(i: I)
-    requires
-        i.obeys_prophetic_iter_laws(),
-    ensures
-        #[trigger] iter_len(&i) == i.remaining().len();
-
 #[verifier::external_trait_specification]
+#[verifier::external_trait_extension(ExactSizeIteratorSpec via ExactSizeIteratorSpecImpl)]
 pub trait ExExactSizeIterator: Iterator {
     type ExternalTraitSpecificationFor: ExactSizeIterator;
 
+    spec fn exact_len(&self) -> usize;
+
     fn len(&self) -> (len: usize)
         ensures
-            self.obeys_prophetic_iter_laws() ==> len as int == iter_len(self) == self.remaining().len();
+            self.obeys_prophetic_iter_laws() ==> len as int == self.exact_len() == self.remaining().len();
 }
+
+pub broadcast axiom fn axiom_exact_len_exact<I: ExactSizeIteratorSpec>(i: &I)
+    requires
+        i.obeys_prophetic_iter_laws(),
+    ensures
+        #[trigger] ExactSizeIteratorSpec::exact_len(i) == i.remaining().len(),
+;
 
 /********************************************************************************
  * Definitions for `IntoIterator` and `FromIterator``
@@ -470,10 +472,10 @@ impl <I> IteratorSpecImpl for Take<I>
 }
 
 impl <I> DoubleEndedIteratorSpecImpl for Take<I>
-    where I: DoubleEndedIteratorSpec + ExactSizeIterator
+    where I: DoubleEndedIteratorSpec + ExactSizeIterator + ExactSizeIteratorSpec
 {
     open spec fn peek_back(&self, index: int) -> Option<Self::Item> {
-        let len = iter_len(&take_iter(*self));
+        let len = ExactSizeIteratorSpec::exact_len(&take_iter(*self));
         if len < take_count(*self) {
             None
         } else {
@@ -531,13 +533,13 @@ impl <I> IteratorSpecImpl for Skip<I>
 }
 
 impl <I> DoubleEndedIteratorSpecImpl for Skip<I>
-    where I: DoubleEndedIteratorSpec + ExactSizeIterator
+    where I: DoubleEndedIteratorSpec + ExactSizeIterator + ExactSizeIteratorSpec
 {
     open spec fn peek_back(&self, index: int) -> Option<Self::Item> {
         // Skip only drops elements from the front, so the back of the skipped
         // sequence coincides with the back of the inner iterator, as long as
         // `index` stays within the (un-skipped) remaining elements.
-        let len = iter_len(&skip_iter(*self));
+        let len = ExactSizeIteratorSpec::exact_len(&skip_iter(*self));
         if len < skip_init_n(*self) || index >= len - skip_init_n(*self) {
             None
         } else {
@@ -772,7 +774,7 @@ pub broadcast group group_iter_axioms {
     rev_postcondition,
     take_postcondition,
     skip_postcondition,
-    iter_len_exact,
+    axiom_exact_len_exact,
     map_postcondition,
 }
 
