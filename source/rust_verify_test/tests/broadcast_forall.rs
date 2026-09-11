@@ -117,6 +117,26 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] try_broadcasts_omits_lemmas_that_introduce_cycles verus_code! {
+        #[verifier::opaque]
+        spec fn f() -> bool { false }
+
+        #[verifier::try_broadcasts]
+        proof fn target()
+            ensures f(),
+        {
+            assert(f()); // FAILS
+        }
+
+        broadcast proof fn lemma()
+            ensures #[trigger] f(),
+        {
+            target();
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
     #[test] test_sm verus_code! {
         // This tests the fix for an issue with the heuristic for pushing broadcast_forall
         // functions to the front.

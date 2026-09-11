@@ -41,7 +41,7 @@ pub const CALL_GRAPH_FILE_SUFFIX_FULL_SIMPLIFIED: &str = "-call-graph-full-simpl
 pub const CALL_GRAPH_FILE_SUFFIX_NOSTD_INITIAL: &str = "-call-graph-nostd-initial.dot";
 pub const CALL_GRAPH_FILE_SUFFIX_NOSTD_SIMPLIFIED: &str = "-call-graph-nostd-simplified.dot";
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct LogArgs {
     pub log_vir: bool,
     pub log_vir_simple: bool,
@@ -74,7 +74,7 @@ pub enum Vstd {
     ImportedViaCore,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ArgsX {
     pub export: Option<String>,
     pub import: Vec<(String, String)>,

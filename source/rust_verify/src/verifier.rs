@@ -7,6 +7,7 @@ use crate::external::VerifOrExternal;
 use crate::externs::VerusExterns;
 use crate::rust_to_vir_base::mk_crate_id;
 use crate::spans::{SpanContext, SpanContextX, from_raw_span};
+use crate::try_broadcasts::try_broadcasts;
 use crate::user_filter::UserFilter;
 use crate::util::{HashMapAbsorbWith, error};
 use crate::verus_items::{VerusItem, VerusItems};
@@ -44,7 +45,7 @@ use crate::buckets::{Bucket, BucketId};
 use crate::expand_errors_driver::ExpandErrorsResult;
 use vir::ast::{CrateId, Fun, Krate, VirErr};
 use vir::ast_util::{fun_as_friendly_rust_name, is_visible_to};
-use vir::def::{CommandContext, CommandsWithContext, CommandsWithContextX, SnapPos};
+use vir::def::{CommandContext, CommandsWithContext, CommandsWithContextX, NameCtxt, SnapPos};
 use vir::prelude::PreludeConfig;
 
 const RLIMIT_PER_SECOND_Z3: f32 = 3000000f32;
@@ -53,7 +54,7 @@ const RLIMIT_PER_SECOND_CVC5: f32 = 333333f32; // ~= 5s
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub(crate) struct ProgressBarId(String);
 
-trait Diagnostics: air::messages::Diagnostics {
+pub(crate) trait Diagnostics: air::messages::Diagnostics {
     fn use_progress_bars(&self) -> bool;
     fn add_progress_bar(&self, ctx: CommandContext);
     fn complete_progress_bar(&self, ctx: CommandContext);
@@ -337,7 +338,7 @@ pub struct Verifier {
     created_log_dir: Arc<std::sync::Mutex<Option<std::path::PathBuf>>>,
     created_solver_log_dir: Arc<std::sync::Mutex<Option<std::path::PathBuf>>>,
     vir_crate: Option<Krate>,
-    crate_id: Option<CrateId>,
+    pub(crate) crate_id: Option<CrateId>,
     air_no_span: Option<vir::messages::Span>,
     current_crate_modules: Option<Vec<vir::ast::Module>>,
     crate_items: Option<Arc<crate::external::CrateItems>>,
@@ -458,10 +459,47 @@ impl std::ops::Add for RunCommandQueriesResult {
     }
 }
 
-struct VerifyBucketOut {
+#[derive(Clone, Debug)]
+pub(crate) struct VerificationOutcome {
+    pub(crate) any_invalid: bool,
+    pub(crate) any_timeout: bool,
+    pub(crate) used_axioms: Option<Vec<air::ast::Ident>>,
+}
+
+impl VerificationOutcome {
+    fn new() -> Self {
+        VerificationOutcome { any_invalid: false, any_timeout: false, used_axioms: None }
+    }
+
+    #[allow(dead_code)]
+    fn success(&self) -> bool {
+        !self.any_invalid && !self.any_timeout
+    }
+
+    fn merge_axioms(&mut self, new_axioms: &Option<Vec<air::ast::Ident>>) {
+        match self.used_axioms.as_mut() {
+            Option::None => {
+                self.used_axioms = new_axioms.clone();
+            }
+            Some(axioms) => {
+                if let Some(new_axioms) = new_axioms {
+                    axioms.extend(new_axioms.clone());
+                }
+            }
+        }
+    }
+}
+
+pub(crate) struct VerifyBucketOut {
     time_smt_init: Duration,
     time_smt_run: Duration,
     rlimit_count: Option<(u64, u64)>,
+    pub(crate) verification_outcome: VerificationOutcome,
+    // The naming context used while verifying. Needed by `try_broadcasts` to
+    // map `Fun`s back to the AIR identifiers recorded in `used_axioms`, since
+    // names are disambiguated per-`NameCtxt` (e.g. when multiple crates share a
+    // name).
+    pub(crate) name_ctxt: vir::def::NameCtxt,
 }
 pub(crate) enum VerifyErr {
     Vir(VirErr),
@@ -602,7 +640,7 @@ impl Verifier {
         self.deferred_errors.extend(other.deferred_errors);
     }
 
-    fn get_bucket<'a>(&'a self, bucket_id: &BucketId) -> &'a Bucket {
+    pub(crate) fn get_bucket<'a>(&'a self, bucket_id: &BucketId) -> &'a Bucket {
         self.buckets.get(bucket_id).expect("expected valid BucketId")
     }
 
@@ -624,7 +662,7 @@ impl Verifier {
         })
     }
 
-    fn create_log_file(
+    pub(crate) fn create_log_file(
         &mut self,
         bucket_id_opt: Option<&BucketId>,
         suffix: &str,
@@ -1315,7 +1353,7 @@ impl Verifier {
     }
 
     // Verify a single bucket
-    fn verify_bucket(
+    pub(crate) fn verify_bucket(
         &mut self,
         reporter: &impl Diagnostics,
         krate: &vir::sst::KrateSst,
@@ -1324,6 +1362,8 @@ impl Verifier {
         ctx: &mut vir::context::Ctx,
     ) -> Result<VerifyBucketOut, VirErr> {
         let message_interface = Arc::new(vir::messages::VirMessageInterface {});
+
+        let mut verification_outcome = VerificationOutcome::new();
 
         assert!(!(self.args.profile && self.args.profile_all));
         assert!(!(self.args.profile && self.args.capture_profiles));
@@ -1666,6 +1706,9 @@ impl Verifier {
 
                             any_invalid |= command_invalidity;
                             any_timed_out |= command_timed_out;
+                            verification_outcome.any_invalid |= any_invalid;
+                            verification_outcome.any_timeout |= any_timed_out;
+                            verification_outcome.merge_axioms(&command_used_axioms);
 
                             if let Some(used_axioms) = command_used_axioms {
                                 if used_axioms.len() > 0 {
@@ -1904,21 +1947,25 @@ impl Verifier {
                     spunoff_rlimit_count.expect("spunoff rlimit count should be present");
                 (rlimit_count.0 + spunoff_rlimit_count.0, rlimit_count.1 + spunoff_rlimit_count.1)
             }),
+            verification_outcome,
+            name_ctxt: ctx.name_ctxt.clone(),
         })
     }
 
-    fn verify_bucket_outer(
+    // TODO: Find a better name for this
+    /// Verifies the given bucket but does not emit logs or update timers.
+    pub(crate) fn verify_bucket_middle(
         &mut self,
         reporter: &impl Diagnostics,
         krate: &Krate,
         source_map: Option<&SourceMap>,
         bucket_id: &BucketId,
-        mut global_ctx: vir::context::GlobalCtx,
-    ) -> Result<vir::context::GlobalCtx, VirErr> {
-        let time_verify_start = Instant::now();
-
-        self.bucket_stats.insert(bucket_id.clone(), Default::default());
-
+        global_ctx: vir::context::GlobalCtx,
+        // Passed in separately despite existing in `self.args` to
+        // suppress these in try_broadcasts
+        log_vir_sst: bool,
+        log_vir_poly: bool,
+    ) -> Result<(vir::context::GlobalCtx, VerifyBucketOut), VirErr> {
         let bucket_name = bucket_id.friendly_name();
         let user_filter = self.user_filter.as_ref().unwrap();
         if self.args.trace || !user_filter.is_everything() {
@@ -1963,7 +2010,7 @@ impl Verifier {
             resolved_typs.unwrap(),
             self.args.debugger,
         )?;
-        if self.args.log_all || self.args.log_args.log_vir_poly {
+        if log_vir_poly {
             let mut file =
                 self.create_log_file(Some(&bucket_id), crate::config::VIR_POLY_FILE_SUFFIX)?;
             vir::printer::write_krate(&mut file, &pruned_krate, &self.args.log_args.vir_log_option);
@@ -1975,7 +2022,7 @@ impl Verifier {
             &self.get_bucket(bucket_id).funs,
             &pruned_krate,
         )?;
-        if self.args.log_all || self.args.log_args.log_vir_sst {
+        if log_vir_sst {
             let mut file =
                 self.create_log_file(Some(&bucket_id), crate::config::VIR_SST_FILE_SUFFIX)?;
             vir::printer::write_krate_sst(
@@ -1985,14 +2032,55 @@ impl Verifier {
             );
         }
         if self.args.no_verify {
-            return Ok(ctx.free());
+            let verify_out = VerifyBucketOut {
+                time_smt_init: Duration::ZERO,
+                time_smt_run: Duration::ZERO,
+                rlimit_count: None,
+                name_ctxt: NameCtxt::new(),
+                verification_outcome: VerificationOutcome::new(),
+            };
+            return Ok((ctx.free(), verify_out));
         }
         let krate_sst = vir::poly::poly_krate_for_module(&mut ctx, &krate_sst);
 
-        let VerifyBucketOut { time_smt_init, time_smt_run, rlimit_count } =
+        let verify_out =
             self.verify_bucket(reporter, &krate_sst, source_map, bucket_id, &mut ctx)?;
 
-        global_ctx = ctx.free();
+        Ok((ctx.free(), verify_out))
+    }
+
+    pub(crate) fn verify_bucket_outer(
+        &mut self,
+        reporter: &impl Diagnostics,
+        krate: &Krate,
+        source_map: Option<&SourceMap>,
+        bucket_id: &BucketId,
+        global_ctx: vir::context::GlobalCtx,
+    ) -> Result<vir::context::GlobalCtx, VirErr> {
+        let time_verify_start = Instant::now();
+
+        self.bucket_stats.insert(bucket_id.clone(), Default::default());
+
+        let try_broadcasts_result;
+        let (krate, global_ctx) = if krate.has_try_broadcasts {
+            let result = try_broadcasts(self, reporter, krate, source_map, bucket_id, global_ctx)?;
+            try_broadcasts_result = result.0;
+            let krate = try_broadcasts_result.as_ref().unwrap_or(krate);
+            (krate, result.1)
+        } else {
+            (krate, global_ctx)
+        };
+
+        let (new_ctx, VerifyBucketOut { time_smt_init, time_smt_run, rlimit_count, .. }) = self
+            .verify_bucket_middle(
+                reporter,
+                krate,
+                source_map,
+                bucket_id,
+                global_ctx,
+                self.args.log_all || self.args.log_args.log_vir_poly,
+                self.args.log_all || self.args.log_args.log_vir_sst,
+            )?;
 
         let time_verify_end = Instant::now();
 
@@ -2008,7 +2096,7 @@ impl Verifier {
             );
         }
 
-        Ok(global_ctx)
+        Ok(new_ctx)
     }
 
     // Verify one or more modules in a crate
