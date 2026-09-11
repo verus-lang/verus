@@ -74,7 +74,15 @@ name = "vest"
 git_url = "https://github.com/secure-foundations/vest.git"
 refspec = "main"
 cargo_verus = true
-crate_roots = ["vest_lib", "vest_tests"]
+crate_roots = ["vest_lib"]
+
+[[project]]
+name = "vest-generated"
+git_url = "https://github.com/secure-foundations/vest.git"
+refspec = "main"
+cargo_verus = true
+crate_roots = ["vest_tests"]
+extra_verus_args = ["--verify-module", "tls"]
 
 [[project]]
 name = "human-eval"
