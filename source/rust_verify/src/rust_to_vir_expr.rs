@@ -309,22 +309,26 @@ pub(crate) fn pat_to_mut_var<'tcx>(pat: &Pat) -> Result<(bool, VarIdent), VirErr
     }
 }
 
-fn closure_pat_to_mut_var<'tcx>(
+/// Translates a parameter pattern for an exec-mode closure into a parameter variable.
+fn exec_closure_pat_to_mut_var<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     pat: &Pat<'tcx>,
     typ: &Typ,
     pattern_stmts: &mut Vec<vir::ast::Stmt>,
 ) -> Result<(bool, VarIdent), VirErr> {
-    // Preserve the existing path for single bindings
-    if matches!(pat.kind, PatKind::Binding(_, _, _, None)) {
+    // Use a single by-value identifier binding directly as the closure parameter.
+    if matches!(pat.kind, PatKind::Binding(BindingMode(ByRef::No, _), _, _, None)) {
         return pat_to_mut_var(pat);
     }
 
+    // Generate a hidden parameter name and append a declaration equivalent to
+    // `let <pattern> = <hidden_parameter>;` to `pattern_stmts`.
     let name = str_unique_var(
         "%closure_param",
         vir::ast::VarIdentDisambiguate::RustcId(pat.hir_id.local_id.index()),
     );
     let pattern = pattern_to_vir(bctx, pat)?;
+    vir::ast_util::check_exec_closure_param_pattern(&pattern)?;
     let init = SpannedTyped::new(&pattern.span, typ, PlaceX::Local(name.clone()));
 
     pattern_stmts.push(bctx.spanned_new(
@@ -4153,7 +4157,8 @@ pub(crate) fn closure_to_vir<'tcx>(
                     return err_span(x.span, "closures only accept exec-mode parameters");
                 }
 
-                let (_is_mut, name) = closure_pat_to_mut_var(bctx, x.pat, &t, &mut pattern_stmts)?;
+                let (_is_mut, name) =
+                    exec_closure_pat_to_mut_var(bctx, x.pat, &t, &mut pattern_stmts)?;
                 Ok(Arc::new(VarBinderX { name, a: t }))
             })
             .collect::<Result<Vec<_>, _>>()?;
