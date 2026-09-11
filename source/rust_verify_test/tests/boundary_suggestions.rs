@@ -124,6 +124,41 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_assume_specification_mut_ref_suggestion_made code! {
+        use vstd::prelude::*;
+
+        fn unverified_function(x: &mut u64) {
+            *x += 42;
+        }
+
+        verus! {
+            fn verified_caller() {
+                let mut x = 42;
+                unverified_function(&mut x);
+            }
+        }
+    } => Err(err) => assert_help_error_msg(err, "assume_specification [crate::unverified_function] (_0: &mut u64);")
+}
+test_verify_one_file! {
+    #[test] test_assume_specification_mut_ref_suggestion_correct code! {
+        use vstd::prelude::*;
+
+        fn unverified_function(x: &mut u64) {
+            *x += 42;
+        }
+
+        verus! {
+            assume_specification [crate::unverified_function] (_0: &mut u64);
+
+            fn verified_caller() {
+                let mut x = 42;
+                unverified_function(&mut x);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_assume_specification_foreign_suggestion_made code! {
         use vstd::prelude::*;
 

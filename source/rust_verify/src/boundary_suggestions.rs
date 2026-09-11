@@ -236,18 +236,15 @@ fn prepend_crate_if_local_for_type<'tcx>(ctxt: &Context<'tcx>, ty: &Ty<'tcx>, s:
     match ty.kind() {
         rustc_type_ir::TyKind::Adt(adt_def, _) => prepend_crate_if_local(adt_def.did(), s),
         rustc_type_ir::TyKind::FnDef(did, _) => prepend_crate_if_local(*did, s),
-        rustc_type_ir::TyKind::Ref(region, inner_ty, _) => match region.get_name(ctxt.tcx) {
-            Some(sym) => {
-                "&".to_owned()
-                    + sym.as_str()
-                    + " "
-                    + &prepend_crate_if_local_for_type(ctxt, inner_ty, inner_ty.to_string())
-            }
-            None => {
-                "&".to_owned()
-                    + &prepend_crate_if_local_for_type(ctxt, inner_ty, inner_ty.to_string())
-            }
-        },
+        rustc_type_ir::TyKind::Ref(_region, inner_ty, mutability) => {
+            let mutability = match mutability {
+                rustc_ast::Mutability::Mut => "mut ",
+                rustc_ast::Mutability::Not => "",
+            };
+            "&".to_owned()
+                + mutability
+                + &prepend_crate_if_local_for_type(ctxt, inner_ty, inner_ty.to_string())
+        }
         _ => s,
     }
 }
