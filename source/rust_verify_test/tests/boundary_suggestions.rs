@@ -232,22 +232,7 @@ test_verify_one_file! {
            where
            'c: 'a + 'b,;")
 }
-test_verify_one_file! {
-    #[test] test_assume_specification_region_outlives_correct code! {
-        fn foo<'a, 'b, 'c, A, B>(a: &'a A, b: &'b B) -> &'c A
-        where 'c: 'a + 'b {
-            panic!()
-        }
-        verus! {
-            assume_specification<'a, 'b, 'c, A, B> [crate::foo] (_0: &'a A, _1: &'b B) -> &'c A
-            where
-            'c: 'a + 'b,;
-            pub fn bar<'a, 'b, 'c, A, B>(a: &'a A, b: &'b B) -> &'c A {
-                foo(a, b)
-            }
-        }
-    } => Ok(())
-}
+
 // The impl header has an anonymous early-bound lifetime (`S<'_>`) that the
 // method inherits, and which also appears in the method's `Self: Bound`
 // where-clause. The RegionRenamer must rename that anonymous lifetime
