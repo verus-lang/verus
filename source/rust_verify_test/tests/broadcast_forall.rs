@@ -136,6 +136,22 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
+test_verify_one_file_with_options! {
+    #[test] try_broadcasts_large_candidate_set_does_not_overflow ["--num-threads=2"] => verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::try_broadcasts]
+        proof fn my_proof() {
+            let xs = seq![seq![1int, 2], seq![3]];
+            assert(xs.push(seq![5]).flatten() =~= xs.flatten() + seq![5]);
+        }
+    } => Ok(err) => {
+        assert!(err.notes.iter().any(|note|
+            note.message.contains("try_broadcasts found a proof with 1 lemma")
+        ));
+    }
+}
+
 test_verify_one_file! {
     #[test] test_sm verus_code! {
         // This tests the fix for an issue with the heuristic for pushing broadcast_forall

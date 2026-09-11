@@ -49,6 +49,7 @@ use vir::prelude::PreludeConfig;
 
 const RLIMIT_PER_SECOND_Z3: f32 = 3000000f32;
 const RLIMIT_PER_SECOND_CVC5: f32 = 333333f32; // ~= 5s
+const TRY_BROADCASTS_WORKER_STACK_SIZE: usize = 8 * 1024 * 1024;
 
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub(crate) struct ProgressBarId(String);
@@ -2246,46 +2247,54 @@ impl Verifier {
                 let thread_krate = krate.clone(); // is an Arc<T>
 
                 let worker_sender = sender.clone();
-                let worker = std::thread::spawn(move || {
-                    let r = std::panic::catch_unwind(|| {
-                        let mut completed_tasks: Vec<Result<GlobalCtx, ()>> = Vec::new();
-                        loop {
-                            let elm = {
-                                let mut tq = thread_taskq.lock().unwrap();
-                                let elm = tq.pop_front();
-                                drop(tq);
-                                elm
-                            };
-                            if let Some((_i, bucket_id, task, reporter)) = elm {
-                                let res = thread_verifier.verify_bucket_outer(
-                                    &reporter,
-                                    &thread_krate,
-                                    None,
-                                    &bucket_id,
-                                    task,
-                                );
-                                if let Err(e) = &res {
-                                    reporter.report_now(&e.clone().to_any());
+                let mut worker_builder = std::thread::Builder::new();
+                if thread_krate.has_try_broadcasts {
+                    // Try broadcasts traverses large spec expressions in some
+                    // cases, causing a stack overflow in debug builds.
+                    worker_builder = worker_builder.stack_size(TRY_BROADCASTS_WORKER_STACK_SIZE);
+                }
+                let worker = worker_builder
+                    .spawn(move || {
+                        let r = std::panic::catch_unwind(|| {
+                            let mut completed_tasks: Vec<Result<GlobalCtx, ()>> = Vec::new();
+                            loop {
+                                let elm = {
+                                    let mut tq = thread_taskq.lock().unwrap();
+                                    let elm = tq.pop_front();
+                                    drop(tq);
+                                    elm
+                                };
+                                if let Some((_i, bucket_id, task, reporter)) = elm {
+                                    let res = thread_verifier.verify_bucket_outer(
+                                        &reporter,
+                                        &thread_krate,
+                                        None,
+                                        &bucket_id,
+                                        task,
+                                    );
+                                    if let Err(e) = &res {
+                                        reporter.report_now(&e.clone().to_any());
+                                    }
+                                    reporter.done(); // we've verified the bucket, send the done message
+                                    completed_tasks.push(res.map_err(|_| ()));
+                                } else {
+                                    break;
                                 }
-                                reporter.done(); // we've verified the bucket, send the done message
-                                completed_tasks.push(res.map_err(|_| ()));
-                            } else {
-                                break;
+                            }
+                            (thread_verifier, completed_tasks)
+                        });
+
+                        match r {
+                            Ok(x) => x,
+                            Err(e) => {
+                                worker_sender
+                                    .send(ReporterMessage::WorkerPanicked(e))
+                                    .expect("mpsc open");
+                                panic!("worker thread panicked");
                             }
                         }
-                        (thread_verifier, completed_tasks)
-                    });
-
-                    match r {
-                        Ok(x) => x,
-                        Err(e) => {
-                            worker_sender
-                                .send(ReporterMessage::WorkerPanicked(e))
-                                .expect("mpsc open");
-                            panic!("worker thread panicked");
-                        }
-                    }
-                });
+                    })
+                    .expect("failed to spawn verifier worker thread");
                 workers.push(worker);
             }
 
