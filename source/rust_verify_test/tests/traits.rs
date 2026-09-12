@@ -2724,6 +2724,100 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_tuple_clone_associated_type verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::external]
+        trait Read { type Cfg: Clone; }
+        #[verifier::external]
+        impl Read for u64 { type Cfg = (); }
+        #[verifier::external]
+        impl<T: Read> Read for Option<T> { type Cfg = ((T::Cfg, u64),); }
+
+        #[verifier::external_trait_specification]
+        trait ExRead {
+            type ExternalTraitSpecificationFor: Read;
+            type Cfg: Clone;
+        }
+
+        fn identity<T: Read>(x: T) -> T { x }
+        fn test() {
+            identity(0u64);
+            identity(Some(Some(0u64)));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_tuple_clone_copy_supertraits verus_code! {
+        // https://github.com/verus-lang/verus/issues/2748
+        use vstd::prelude::*;
+
+        trait CloneTuple: Clone {}
+        impl CloneTuple for () {}
+        impl<T: Clone> CloneTuple for (T,) {}
+        // Include nesting and an arity beyond the usual library tuple impls.
+        impl<T: Clone> CloneTuple for ((T, ()), T, T, T, T, T, T, T, T, T, T, T, T) {}
+
+        trait CopyTuple: Copy {}
+        impl CopyTuple for () {}
+        impl<A: Copy, B: Copy> CopyTuple for (A, B) {}
+        impl<T: Copy> CopyTuple for ((T, ()), T, T, T, T, T, T, T, T, T, T, T, T) {}
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_tuple_clone_bounds verus_code! {
+        use vstd::prelude::*;
+        struct NotClone;
+        impl !Send for NotClone {}
+        trait T { spec fn f() -> int; }
+        impl T for (NotClone,) { spec fn f() -> int { 100 } }
+        // Rust rules out overlap using Send; after erasure the checker needs
+        // the tuple's conditional Clone bound to keep these impls disjoint.
+        impl<A: Send> T for (A,) where (A,): Clone { spec fn f() -> int { 200 } }
+
+        proof fn test() {
+            assert(<(NotClone,) as T>::f() == 100);
+            assert(<(NotClone,) as T>::f() == 200); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_tuple_copy_bounds verus_code! {
+        use vstd::prelude::*;
+        struct NotCopy;
+        impl !Send for NotCopy {}
+        impl Clone for NotCopy {
+            fn clone(&self) -> Self { NotCopy }
+        }
+        trait T { spec fn f() -> int; }
+        impl T for (NotCopy,) { spec fn f() -> int { 100 } }
+        impl<A: Send> T for (A,) where (A,): Copy { spec fn f() -> int { 200 } }
+
+        proof fn test() {
+            assert(<(NotCopy,) as T>::f() == 100);
+            assert(<(NotCopy,) as T>::f() == 200); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_tuple_clone_conflict verus_code! {
+        use vstd::prelude::*;
+        struct NotSend;
+        impl !Send for NotSend {}
+        impl Clone for NotSend {
+            fn clone(&self) -> Self { NotSend }
+        }
+        trait T: Clone { spec fn f() -> int; }
+        impl T for (NotSend,) { spec fn f() -> int { 100 } }
+        impl<A: Clone + Send> T for (A,) { spec fn f() -> int { 200 } }
+    } => Err(err) => assert_vir_error_msg(err, "conflicting implementations")
+}
+
+test_verify_one_file! {
     #[test] test_tuples_and_marker_traits verus_code! {
         use vstd::prelude::*;
 
