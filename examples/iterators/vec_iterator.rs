@@ -25,7 +25,7 @@ impl<'a, T> MyVecIterator<'a, T> {
     }
 
     pub open spec fn peek_front(&self, index: int) -> Option<&'a T> {
-        if self.exact_remaining().len() > index {
+        if 0 <= index < self.exact_remaining().len() {
             Some(self.exact_remaining()[index])
         } else {
             None
@@ -33,7 +33,7 @@ impl<'a, T> MyVecIterator<'a, T> {
     }
 
     pub open spec fn peek_back(&self, index: int) -> Option<&'a T> {
-        if self.exact_remaining().len() > index {
+        if 0 <= index < self.exact_remaining().len() {
             Some(self.exact_remaining()[self.exact_remaining().len() - index - 1])
         } else {
             None
