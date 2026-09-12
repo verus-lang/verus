@@ -46,22 +46,6 @@ impl<'a, T> ExactSizeIterator for VecIterator<'a, T> {
 }
 
 impl <'a, T> VecIterator<'a, T> {
-    pub open spec fn peek_front(&self, index: int) -> Option<&'a T> {
-        if 0 <= index < self.elts_remaining().len() {
-            Some(self.elts_remaining()[index])
-        } else {
-            None
-        }
-    }
-
-    pub open spec fn peek_back(&self, index: int) -> Option<&'a T> {
-        if 0 <= index < self.elts_remaining().len() {
-            Some(self.elts_remaining()[self.elts_remaining().len() - index - 1])
-        } else {
-            None
-        }
-    }
-
     // This proof establishes that the prophetic `self.remaining()` is
     // equivalent to the non-prophetic `self.elts_remaining()`.
     proof fn lemma_elts_remaining_matches_remaining(&self)
