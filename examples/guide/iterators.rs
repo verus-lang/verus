@@ -1,6 +1,8 @@
 #[allow(unused_imports)]
 use vstd::prelude::*;
-use vstd::std_specs::iter::{DoubleEndedIteratorSpecImpl,IteratorSpec,IteratorSpecImpl};
+use vstd::std_specs::iter::{
+    DoubleEndedIteratorSpecImpl, ExactSizeIteratorSpecImpl, IteratorSpec, IteratorSpecImpl,
+};
 use vstd::proph::ProphecyGhost;
 use vstd::modes::tracked_swap;
 
@@ -18,13 +20,56 @@ impl <'a, T> VecIterator<'a, T> {
         self.v@
     }
 
+    pub closed spec fn elts_remaining(&self) -> Seq<&'a T>
+    {
+        self.v@.subrange(self.i as int, self.j as int).as_ref()
+    }
+
     #[verifier::type_invariant]
     pub closed spec fn vec_iterator_type_inv(self) -> bool {
-        &&& self.i <= self.j <= self.v.len()
-        &&& self.i <= self.j <= self.v@.len()
+        self.i <= self.j <= self.v.len()
     }
 }
 // ANCHOR_END: iter_def
+
+impl<'a, T> ExactSizeIteratorSpecImpl for VecIterator<'a, T> {
+    open spec fn exact_len(&self) -> usize {
+        self.elts_remaining().len() as usize
+    }
+}
+
+impl<'a, T> ExactSizeIterator for VecIterator<'a, T> {
+    fn len(&self) -> usize {
+        proof { use_type_invariant(self); }
+        self.j - self.i
+    }
+}
+
+impl <'a, T> VecIterator<'a, T> {
+    pub open spec fn peek_front(&self, index: int) -> Option<&'a T> {
+        if 0 <= index < self.elts_remaining().len() {
+            Some(self.elts_remaining()[index])
+        } else {
+            None
+        }
+    }
+
+    pub open spec fn peek_back(&self, index: int) -> Option<&'a T> {
+        if 0 <= index < self.elts_remaining().len() {
+            Some(self.elts_remaining()[self.elts_remaining().len() - index - 1])
+        } else {
+            None
+        }
+    }
+
+    // This proof establishes that the prophetic `self.remaining()` is
+    // equivalent to the non-prophetic `self.elts_remaining()`.
+    proof fn lemma_elts_remaining_matches_remaining(&self)
+        ensures
+            self.elts_remaining() == IteratorSpec::remaining(self),
+    {
+    }
+}
 
 // ANCHOR: iter_creation
 pub fn vec_iter<'a, T>(v: &'a Vec<T>) -> (iter: VecIterator<'a, T>)
@@ -32,6 +77,7 @@ pub fn vec_iter<'a, T>(v: &'a Vec<T>) -> (iter: VecIterator<'a, T>)
         IteratorSpec::remaining(&iter) == v@.as_ref(),
         IteratorSpec::remaining(&iter).unref() == iter.elts(),
         IteratorSpec::decrease(&iter) is Some,
+        iter.elts_remaining() == v@.as_ref(),
 {
     VecIterator { v: v, i: 0, j: v.len() }
 }
@@ -126,6 +172,32 @@ fn test_basic() {
     }
     assert(w.len() == v.len());
     assert(w@ == v@);
+}
+
+fn test_next() {
+    let values = vec![10u64, 20u64, 30u64, 40u64];
+    let mut iter = vec_iter(&values);
+
+    let len = iter.len();
+    assert(len == 4);
+    let next = iter.next();
+    assert(next == Some(&10));
+    let len = iter.len();
+    assert(len == 3);
+    let next = iter.next_back();
+    assert(next == Some(&40));
+    let len = iter.len();
+    assert(len == 2);
+    let next = iter.next_back();
+    assert(next == Some(&30));
+    let next = iter.next();
+    assert(next == Some(&20));
+    let len = iter.len();
+    assert(len == 0);
+    let next = iter.next();
+    assert(next is None);
+    let next = iter.next_back();
+    assert(next is None);
 }
 
 // ANCHOR: usage_example
