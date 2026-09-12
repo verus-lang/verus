@@ -182,6 +182,23 @@ pub fn ref_mut_array_unsizing_coercion<T, const N: usize>(r: &mut [T; N]) -> (ou
     r
 }
 
+/// We axiomatize that an array can decrease to its corresponding sequence.
+pub broadcast axiom fn axiom_array_decreases_to_seq<T, const N: usize>(a: &[T; N])
+    ensures
+        #[trigger] (decreases_to!(a => a@)),
+;
+
+/// An array can decrease to any of its elements, obtained by indexing.
+pub broadcast proof fn lemma_array_index_decreases<T, const N: usize>(a: &[T; N], i: int)
+    requires
+        0 <= i < a@.len(),
+    ensures
+        #[trigger] (decreases_to!(a => a@[i])),
+{
+    axiom_array_decreases_to_seq(a);
+    lemma_seq_index_decreases(a@, i);
+}
+
 pub broadcast group group_array_axioms {
     array_len_matches_n,
     lemma_array_index,
@@ -190,6 +207,8 @@ pub broadcast group group_array_axioms {
     axiom_array_ext_equal,
     axiom_spec_array_update,
     axiom_array_has_resolved,
+    axiom_array_decreases_to_seq,
+    lemma_array_index_decreases,
 }
 
 } // verus!

@@ -26,6 +26,49 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_trait_provided_method_not_required verus_code! {
+        #[verifier::external]
+        trait Tr {
+            fn foo(&self) -> usize;
+            fn bar(&self) -> usize { 7 }
+        }
+
+        #[verifier::external_trait_specification]
+        trait ExTr {
+            type ExternalTraitSpecificationFor: Tr;
+
+            fn foo(&self) -> (r: usize)
+                ensures r > 3,
+            ;
+
+            fn bar(&self) -> (r: usize)
+                ensures r > 5,
+            ;
+        }
+
+        struct X { }
+
+        #[verifier::external]
+        impl Tr for X {
+            fn foo(&self) -> usize { 4 }
+        }
+
+        assume_specification [<X as Tr>::foo](x: &X) -> (r: usize)
+            ensures r > 3,
+        ;
+
+        fn test(x: &X) {
+            let a = x.foo();
+            assert(a > 3);
+            // `bar` is inherited from the trait's default body, so the caller gets
+            // the trait declaration's ensures.
+            let b = x.bar();
+            assert(b > 5);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_trait_dupe verus_code! {
         trait Tr {
             fn foo();
@@ -299,11 +342,6 @@ test_verify_one_file! {
 
 test_verify_one_file_with_options! {
     #[test] test_trait4 ["--disable-internal-test-mode"] => verus_code! {
-        #[verifier::external_trait_specification]
-        pub trait ExIntoIterator {
-            type ExternalTraitSpecificationFor: core::iter::IntoIterator;
-        }
-
         #[verifier::external_type_specification]
         #[verifier::external_body]
         #[verifier::reject_recursive_types_in_ground_variants(I)]
@@ -314,6 +352,7 @@ test_verify_one_file_with_options! {
             type ExternalTraitSpecificationFor: core::iter::Iterator;
             type Item;
             fn count(self) -> usize where Self: Sized;
+            #[verifier::impls_cannot_extend_spec]
             fn cmp<I>(self, other: I) -> core::cmp::Ordering where Self: core::iter::Iterator, I: core::iter::IntoIterator<Item = <Self as core::iter::Iterator>::Item>, <Self as core::iter::Iterator>::Item: Ord, Self: Sized;
         }
 

@@ -1777,7 +1777,7 @@ test_verify_one_file! {
         fn test(tree: Tree) {
             let x = decreases_to!(tree => tree);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use spec-mode expression in executable context")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use `verus_builtin::is_smaller_than_lexicographic` (of the `decreases_to!` macro) in executable context")
 }
 
 test_verify_one_file! {

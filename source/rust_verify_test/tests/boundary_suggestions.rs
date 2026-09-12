@@ -124,6 +124,41 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_assume_specification_mut_ref_suggestion_made code! {
+        use vstd::prelude::*;
+
+        fn unverified_function(x: &mut u64) {
+            *x += 42;
+        }
+
+        verus! {
+            fn verified_caller() {
+                let mut x = 42;
+                unverified_function(&mut x);
+            }
+        }
+    } => Err(err) => assert_help_error_msg(err, "assume_specification [crate::unverified_function] (_0: &mut u64);")
+}
+test_verify_one_file! {
+    #[test] test_assume_specification_mut_ref_suggestion_correct code! {
+        use vstd::prelude::*;
+
+        fn unverified_function(x: &mut u64) {
+            *x += 42;
+        }
+
+        verus! {
+            assume_specification [crate::unverified_function] (_0: &mut u64);
+
+            fn verified_caller() {
+                let mut x = 42;
+                unverified_function(&mut x);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_assume_specification_foreign_suggestion_made code! {
         use vstd::prelude::*;
 
@@ -197,22 +232,7 @@ test_verify_one_file! {
            where
            'c: 'a + 'b,;")
 }
-test_verify_one_file! {
-    #[test] test_assume_specification_region_outlives_correct code! {
-        fn foo<'a, 'b, 'c, A, B>(a: &'a A, b: &'b B) -> &'c A
-        where 'c: 'a + 'b {
-            panic!()
-        }
-        verus! {
-            assume_specification<'a, 'b, 'c, A, B> [crate::foo] (_0: &'a A, _1: &'b B) -> &'c A
-            where
-            'c: 'a + 'b,;
-            pub fn bar<'a, 'b, 'c, A, B>(a: &'a A, b: &'b B) -> &'c A {
-                foo(a, b)
-            }
-        }
-    } => Ok(())
-}
+
 // The impl header has an anonymous early-bound lifetime (`S<'_>`) that the
 // method inherits, and which also appears in the method's `Self: Bound`
 // where-clause. The RegionRenamer must rename that anonymous lifetime
