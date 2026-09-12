@@ -298,18 +298,6 @@ pub trait ExExactSizeIterator: Iterator {
             self.obeys_prophetic_iter_laws() ==> len == self.exact_len() == self.remaining().len();
 }
 
-// A type implementing the `ExactSizeIteratorSpec` trait must
-// implement a `len` function that returns something that's
-// simultaneously equal to both `self.exact_len()` and
-// `self.remaining().len()`. Thus, it's reasonable to have this axiom
-// saying that those two expressions are always equal.
-pub broadcast axiom fn axiom_exact_len_exact<I: ExactSizeIteratorSpec>(i: &I)
-    requires
-        i.obeys_prophetic_iter_laws(),
-    ensures
-        #[trigger] i.exact_len() == i.remaining().len(),
-;
-
 /********************************************************************************
  * Definitions for `IntoIterator` and `FromIterator``
  ********************************************************************************/
@@ -968,7 +956,6 @@ pub broadcast group group_iter_axioms {
     filter_postcondition,
     take_postcondition,
     skip_postcondition,
-    axiom_exact_len_exact,
     map_postcondition,
 }
 

@@ -19,21 +19,22 @@ impl<'a, T> MyVecIterator<'a, T> {
 }
 
 impl<'a, T> MyVecIterator<'a, T> {
-    pub closed spec fn exact_len_spec(&self) -> usize {
-        (self.back - self.front) as usize
+    pub closed spec fn exact_remaining(&self) -> Seq<&'a T>
+    {
+        self.values@.subrange(self.front as int, self.back as int).as_ref()
     }
 
     pub open spec fn peek_front(&self, index: int) -> Option<&'a T> {
-        if 0 <= index < self.exact_len_spec() {
-            Some(&self.values@[self.front + index])
+        if self.exact_remaining().len() > index {
+            Some(self.exact_remaining()[index])
         } else {
             None
         }
     }
 
     pub open spec fn peek_back(&self, index: int) -> Option<&'a T> {
-        if 0 <= index < self.exact_len_spec() {
-            Some(&self.values@[self.back - index - 1])
+        if self.exact_remaining().len() > index {
+            Some(self.exact_remaining()[self.exact_remaining().len() - index - 1])
         } else {
             None
         }
@@ -42,10 +43,16 @@ impl<'a, T> MyVecIterator<'a, T> {
     fn new(values: &'a Vec<T>) -> (iter: Self)
         ensures
             IteratorSpec::remaining(&iter) == values@.as_ref(),
-            iter.exact_len_spec() == values.len(),
+            iter.exact_remaining() == values@.as_ref(),
     {
         let back = values.len();
         MyVecIterator { values, front: 0, back }
+    }
+
+    proof fn lemma_exact_values_match_prophetic_ones(&self)
+        ensures
+            self.exact_remaining() == IteratorSpec::remaining(self),
+    {
     }
 }
 
@@ -88,7 +95,7 @@ impl<'a, T> IteratorSpecImpl for MyVecIterator<'a, T> {
 
 impl<'a, T> ExactSizeIteratorSpecImpl for MyVecIterator<'a, T> {
     open spec fn exact_len(&self) -> usize {
-        (self.back - self.front) as usize
+        self.exact_remaining().len() as usize
     }
 }
 
