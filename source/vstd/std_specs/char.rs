@@ -22,6 +22,7 @@ pub open spec fn is_white_space(c: char) -> bool {
         == '\u{3000}'
 }
 
+#[verifier::allow_in_spec]
 pub assume_specification[ char::is_whitespace ](c: char) -> (res: bool)
     returns
         is_white_space(c),
