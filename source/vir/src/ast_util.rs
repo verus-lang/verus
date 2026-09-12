@@ -1417,6 +1417,17 @@ pub fn place_has_deref_mut(p: &Place) -> bool {
     }
 }
 
+/// Rejects mutable-reference bindings, which are not yet supported in exec closure parameters.
+pub fn check_exec_closure_param_pattern(pattern: &Pattern) -> Result<(), VirErr> {
+    if let Some(span) = crate::patterns::pattern_find_mut_binding(pattern) {
+        return Err(crate::messages::error(
+            &span,
+            "mutable-reference bindings in closure parameters are not supported",
+        ));
+    }
+    Ok(())
+}
+
 impl PatternX {
     /// Returns a Pattern Var that is valid post-simplification.
     pub(crate) fn simple_var(name: VarIdent, span: &Span, typ: &Typ) -> Pattern {
