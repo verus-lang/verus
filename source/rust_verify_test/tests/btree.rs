@@ -49,6 +49,370 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_btree_map_get_mut verus_code! {
+        extern crate alloc;
+        use alloc::collections::BTreeMap;
+        use vstd::prelude::*;
+
+        fn test() {
+            let mut m = BTreeMap::<u32, i32>::new();
+            m.insert(1, 10);
+            m.insert(2, 20);
+
+            match m.get_mut(&1) {
+                Some(value) => {
+                    assert(*value == 10);
+                    *value = 11;
+                },
+                None => assert(false),
+            }
+            assert(m@[1] == 11);
+            assert(m@[2] == 20);
+
+            let ghost before = m@;
+            match m.get_mut(&3) {
+                Some(_) => assert(false),
+                None => {},
+            }
+            assert(m@ == before);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_btree_map_lower_bound_mut verus_code! {
+        extern crate alloc;
+        use alloc::collections::BTreeMap;
+        use core::ops::Bound;
+        use vstd::prelude::*;
+        use vstd::std_specs::btree::*;
+
+        proof fn lemma_three_keys(model: CursorMutModel<u32, i32>)
+            requires
+                model.wf(),
+                model.map.dom() == set![1u32, 3u32, 5u32],
+            ensures
+                model.keys == seq![1u32, 3u32, 5u32],
+        {
+            assert forall|i, j| 0 <= i < j < model.keys.len()
+                implies model.keys[i] < model.keys[j] by {
+                assert(<u32 as vstd::std_specs::cmp::OrdSpec>::cmp_spec(
+                    &model.keys[i], &model.keys[j],
+                ) is Less);
+            }
+            model.keys.unique_seq_to_set();
+            assert(model.keys.len() == 3);
+            assert(model.keys.to_set().contains(model.keys[0]));
+            assert(model.keys.to_set().contains(model.keys[1]));
+            assert(model.keys.to_set().contains(model.keys[2]));
+            assert(model.keys =~= seq![1u32, 3u32, 5u32]);
+        }
+
+        fn test() {
+            let mut m = BTreeMap::<u32, i32>::new();
+            m.insert(1, 10);
+            m.insert(3, 30);
+            m.insert(5, 50);
+
+            {
+                let mut cursor = m.lower_bound_mut(Bound::Included(&3));
+                assert(cursor@.wf());
+                proof { lemma_three_keys(cursor@); }
+                assert(before_lower_bound(1u32, Bound::Included(&3u32)));
+                assert(!before_lower_bound(3u32, Bound::Included(&3u32)));
+                assert(cursor@.position == 1);
+
+                match cursor.peek_prev() {
+                    Some((key, value)) => {
+                        assert(*key == 1);
+                        assert(*value == 10);
+                    },
+                    None => assert(false),
+                }
+                match cursor.peek_next() {
+                    Some((key, value)) => {
+                        assert(*key == 3);
+                        assert(*value == 30);
+                        *value = 31;
+                    },
+                    None => assert(false),
+                }
+            }
+
+            assert(m@[1] == 10);
+            assert(m@[3] == 31);
+            assert(m@[5] == 50);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_btree_map_cursor_boundaries verus_code! {
+        extern crate alloc;
+        use alloc::collections::BTreeMap;
+        use core::ops::Bound;
+        use vstd::prelude::*;
+        use vstd::std_specs::btree::*;
+
+        proof fn lemma_three_keys(model: CursorMutModel<u32, i32>)
+            requires
+                model.wf(),
+                model.map.dom() == set![1u32, 3u32, 5u32],
+            ensures
+                model.keys == seq![1u32, 3u32, 5u32],
+        {
+            assert forall|i, j| 0 <= i < j < model.keys.len()
+                implies model.keys[i] < model.keys[j] by {
+                assert(<u32 as vstd::std_specs::cmp::OrdSpec>::cmp_spec(
+                    &model.keys[i], &model.keys[j],
+                ) is Less);
+            }
+            model.keys.unique_seq_to_set();
+            assert(model.keys.len() == 3);
+            assert(model.keys.to_set().contains(model.keys[0]));
+            assert(model.keys.to_set().contains(model.keys[1]));
+            assert(model.keys.to_set().contains(model.keys[2]));
+            assert(model.keys =~= seq![1u32, 3u32, 5u32]);
+        }
+
+        fn test() {
+            let mut m = BTreeMap::<u32, i32>::new();
+            m.insert(1, 10);
+            m.insert(3, 30);
+            m.insert(5, 50);
+
+            {
+                let mut cursor = m.lower_bound_mut(Bound::Unbounded::<&u32>);
+                proof { lemma_three_keys(cursor@); }
+                assert(!before_lower_bound(1u32, Bound::Unbounded::<&u32>));
+                assert(cursor@.position == 0);
+                match cursor.peek_prev() {
+                    Some(_) => assert(false),
+                    None => {},
+                }
+                match cursor.peek_next() {
+                    Some((key, _)) => assert(*key == 1),
+                    None => assert(false),
+                }
+            }
+
+            {
+                let mut cursor = m.lower_bound_mut(Bound::Excluded(&3));
+                proof { lemma_three_keys(cursor@); }
+                assert(before_lower_bound(3u32, Bound::Excluded(&3u32)));
+                assert(!before_lower_bound(5u32, Bound::Excluded(&3u32)));
+                assert(cursor@.position == 2);
+                match cursor.peek_prev() {
+                    Some((key, _)) => assert(*key == 3),
+                    None => assert(false),
+                }
+                match cursor.peek_next() {
+                    Some((key, _)) => assert(*key == 5),
+                    None => assert(false),
+                }
+            }
+
+            {
+                let mut cursor = m.upper_bound_mut(Bound::Excluded(&3));
+                proof { lemma_three_keys(cursor@); }
+                assert(before_upper_bound(1u32, Bound::Excluded(&3u32)));
+                assert(!before_upper_bound(3u32, Bound::Excluded(&3u32)));
+                assert(cursor@.position == 1);
+                match cursor.peek_prev() {
+                    Some((key, _)) => assert(*key == 1),
+                    None => assert(false),
+                }
+                match cursor.peek_next() {
+                    Some((key, _)) => assert(*key == 3),
+                    None => assert(false),
+                }
+            }
+
+            {
+                let mut cursor = m.upper_bound_mut(Bound::Included(&3));
+                proof { lemma_three_keys(cursor@); }
+                assert(before_upper_bound(3u32, Bound::Included(&3u32)));
+                assert(!before_upper_bound(5u32, Bound::Included(&3u32)));
+                assert(cursor@.position == 2);
+                match cursor.peek_prev() {
+                    Some((key, _)) => assert(*key == 3),
+                    None => assert(false),
+                }
+                match cursor.peek_next() {
+                    Some((key, _)) => assert(*key == 5),
+                    None => assert(false),
+                }
+            }
+
+            {
+                let mut cursor = m.upper_bound_mut(Bound::Unbounded::<&u32>);
+                proof { lemma_three_keys(cursor@); }
+                assert(before_upper_bound(5u32, Bound::Unbounded::<&u32>));
+                assert(cursor@.position == cursor@.keys.len());
+                match cursor.peek_next() {
+                    Some(_) => assert(false),
+                    None => {},
+                }
+                match cursor.peek_prev() {
+                    Some((key, _)) => assert(*key == 5),
+                    None => assert(false),
+                }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_btree_map_cursor_operations verus_code! {
+        extern crate alloc;
+        use alloc::collections::BTreeMap;
+        use core::ops::Bound;
+        use vstd::prelude::*;
+        use vstd::std_specs::btree::*;
+
+        proof fn lemma_three_keys(model: CursorMutModel<u32, i32>)
+            requires
+                model.wf(),
+                model.map.dom() == set![1u32, 3u32, 5u32],
+            ensures
+                model.keys == seq![1u32, 3u32, 5u32],
+        {
+            assert forall|i, j| 0 <= i < j < model.keys.len()
+                implies model.keys[i] < model.keys[j] by {
+                assert(<u32 as vstd::std_specs::cmp::OrdSpec>::cmp_spec(
+                    &model.keys[i], &model.keys[j],
+                ) is Less);
+            }
+            model.keys.unique_seq_to_set();
+            assert(model.keys.len() == 3);
+            assert(model.keys.to_set().contains(model.keys[0]));
+            assert(model.keys.to_set().contains(model.keys[1]));
+            assert(model.keys.to_set().contains(model.keys[2]));
+            assert(model.keys =~= seq![1u32, 3u32, 5u32]);
+        }
+
+        fn test() {
+            let mut m = BTreeMap::<u32, i32>::new();
+            m.insert(1, 10);
+            m.insert(3, 30);
+            m.insert(5, 50);
+
+            {
+                let mut cursor = m.lower_bound_mut(Bound::Unbounded::<&u32>);
+                proof { lemma_three_keys(cursor@); }
+                assert(!before_lower_bound(1u32, Bound::Unbounded::<&u32>));
+                assert(cursor@.position == 0);
+
+                match cursor.next() {
+                    Some((key, value)) => {
+                        assert(*key == 1);
+                        assert(*value == 10);
+                        *value = 11;
+                    },
+                    None => assert(false),
+                }
+                assert(cursor@.position == 1);
+
+                match cursor.next() {
+                    Some((key, value)) => {
+                        assert(*key == 3);
+                        assert(*value == 30);
+                        *value = 31;
+                    },
+                    None => assert(false),
+                }
+                assert(cursor@.position == 2);
+
+                match cursor.prev() {
+                    Some((key, value)) => {
+                        assert(*key == 3);
+                        assert(*value == 31);
+                        *value = 32;
+                    },
+                    None => assert(false),
+                }
+                assert(cursor@.position == 1);
+
+                match cursor.prev() {
+                    Some((key, value)) => {
+                        assert(*key == 1);
+                        assert(*value == 11);
+                    },
+                    None => assert(false),
+                }
+                assert(cursor@.position == 0);
+                match cursor.prev() {
+                    Some(_) => assert(false),
+                    None => {},
+                }
+                assert(cursor@.position == 0);
+
+                assert(key_fits_at_position(cursor@, 0u32));
+                match cursor.insert_after(0, 0) {
+                    Ok(()) => {},
+                    Err(_) => assert(false),
+                }
+                assert(cursor@.keys == seq![0u32, 1u32, 3u32, 5u32]);
+                assert(cursor@.position == 0);
+
+                match cursor.next() {
+                    Some((key, value)) => {
+                        assert(*key == 0);
+                        assert(*value == 0);
+                        *value = 1;
+                    },
+                    None => assert(false),
+                }
+                assert(cursor@.position == 1);
+
+                assert(!key_fits_at_position(cursor@, 1u32));
+                let ghost before_rejected_insert = cursor@;
+                match cursor.insert_after(1, 100) {
+                    Ok(()) => assert(false),
+                    Err(_) => {},
+                }
+                assert(cursor@ == before_rejected_insert);
+
+                match cursor.remove_next() {
+                    Some((key, value)) => {
+                        assert(key == 1);
+                        assert(value == 11);
+                    },
+                    None => assert(false),
+                }
+                assert(cursor@.keys == seq![0u32, 3u32, 5u32]);
+                assert(cursor@.position == 1);
+
+                match cursor.next() {
+                    Some((key, value)) => {
+                        assert(*key == 3);
+                        assert(*value == 32);
+                    },
+                    None => assert(false),
+                }
+                match cursor.next() {
+                    Some((key, value)) => {
+                        assert(*key == 5);
+                        assert(*value == 50);
+                    },
+                    None => assert(false),
+                }
+                assert(cursor@.position == cursor@.keys.len());
+                match cursor.next() {
+                    Some(_) => assert(false),
+                    None => {},
+                }
+            }
+
+            assert(m@[0] == 1);
+            assert(!m@.contains_key(1));
+            assert(m@[3] == 32);
+            assert(m@[5] == 50);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_btree_set verus_code! {
         extern crate alloc;
         use alloc::collections::BTreeSet;
