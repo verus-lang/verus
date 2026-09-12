@@ -75,6 +75,7 @@ enum InsideArith {
     None,
     Widen,
     Fixed,
+    Int,
 }
 
 pub(crate) struct Visitor {
@@ -2717,16 +2718,54 @@ impl Visitor {
             return false;
         }
 
-        self.visit_expr_with_arith(expr, InsideArith::None);
+        let arith = match &expr {
+            Expr::Index(idx) => match &*idx.index {
+                Expr::Range(_) if self.use_spec_traits && self.inside_ghost > 0 => InsideArith::Int,
+                _ => InsideArith::None,
+            },
+            _ => InsideArith::None,
+        };
+        self.visit_expr_with_arith(expr, arith);
 
         match take_expr(expr) {
             Expr::Index(idx) => {
                 if self.use_spec_traits && self.inside_ghost > 0 {
                     let span = idx.span();
                     let src = idx.expr;
-                    let attrs = idx.attrs;
+                    let mut attrs = idx.attrs;
                     let index = idx.index;
-                    *expr = quote_verbatim!(span, attrs => #src.spec_index(#index));
+                    match *index {
+                        Expr::Range(range) => {
+                            use verus_syn::RangeLimits;
+                            let mut attrs2 = range.attrs;
+                            let start = range.start;
+                            let end = range.end;
+                            attrs.append(&mut attrs2);
+                            match (range.limits, start, end) {
+                                (_, None, None) => {
+                                    *expr = quote_verbatim!(span, attrs => #src.spec_index_range_full());
+                                }
+                                (_, Some(start), None) => {
+                                    *expr = quote_verbatim!(span, attrs => #src.spec_index_range_from(#start));
+                                }
+                                (RangeLimits::HalfOpen(_), None, Some(end)) => {
+                                    *expr = quote_verbatim!(span, attrs => #src.spec_index_range_to(#end));
+                                }
+                                (RangeLimits::Closed(_), None, Some(end)) => {
+                                    *expr = quote_verbatim!(span, attrs => #src.spec_index_range_to_inclusive(#end));
+                                }
+                                (RangeLimits::HalfOpen(_), Some(start), Some(end)) => {
+                                    *expr = quote_verbatim!(span, attrs => #src.spec_index_range(#start, #end));
+                                }
+                                (RangeLimits::Closed(_), Some(start), Some(end)) => {
+                                    *expr = quote_verbatim!(span, attrs => #src.spec_index_range_inclusive(#start, #end));
+                                }
+                            }
+                        }
+                        _ => {
+                            *expr = quote_verbatim!(span, attrs => #src.spec_index(#index));
+                        }
+                    }
                 } else {
                     *expr = Expr::Index(idx);
                 }
@@ -3139,6 +3178,9 @@ impl Visitor {
                     InsideArith::Widen => {
                         // Use int inside +, -, etc., since these promote to int anyway
                         *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_literal_nat(#n));
+                    }
+                    InsideArith::Int => {
+                        *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_literal_int(#n));
                     }
                     InsideArith::Fixed => {
                         // We generally won't want int/nat literals for bitwise ops,
@@ -4367,6 +4409,7 @@ impl VisitMut for Visitor {
 
         let sub_inside_arith = match expr {
             Expr::Paren(..) | Expr::Block(..) | Expr::Group(..) => self.inside_arith,
+            Expr::Range(..) => self.inside_arith,
             _ => InsideArith::None,
         };
         let sub_assign_to = match expr {
