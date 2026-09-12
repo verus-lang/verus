@@ -23,16 +23,16 @@ impl<'a, T> MyVecIterator<'a, T> {
         (self.back - self.front) as usize
     }
 
-    pub closed spec fn peek_front(&self, index: int) -> Option<&'a T> {
-        if 0 <= index < self.back - self.front {
+    pub open spec fn peek_front(&self, index: int) -> Option<&'a T> {
+        if 0 <= index < self.exact_len_spec() {
             Some(&self.values@[self.front + index])
         } else {
             None
         }
     }
 
-    pub closed spec fn peek_back(&self, index: int) -> Option<&'a T> {
-        if 0 <= index < self.back - self.front {
+    pub open spec fn peek_back(&self, index: int) -> Option<&'a T> {
+        if 0 <= index < self.exact_len_spec() {
             Some(&self.values@[self.back - index - 1])
         } else {
             None
@@ -88,7 +88,7 @@ impl<'a, T> IteratorSpecImpl for MyVecIterator<'a, T> {
 
 impl<'a, T> ExactSizeIteratorSpecImpl for MyVecIterator<'a, T> {
     open spec fn exact_len(&self) -> usize {
-        self.exact_len_spec()
+        (self.back - self.front) as usize
     }
 }
 

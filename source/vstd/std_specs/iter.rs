@@ -289,11 +289,8 @@ pub trait ExDoubleEndedIterator : Iterator {
 pub trait ExExactSizeIterator: Iterator {
     type ExternalTraitSpecificationFor: ExactSizeIterator;
 
-    // An `ExactSizeIterator` is an iterator that knows its exact
-    // length. This lets it have a non-prophetic spec function that
-    // produces a value equal to the prophetic
-    // `self.remaining().len()`. That non-prophetic spec function is
-    // `exact_len`.
+    // An `ExactSizeIterator` can specify its length non-prophetically,
+    // i.e., without using `self.remaining().len()`.
     spec fn exact_len(&self) -> usize;
 
     fn len(&self) -> (len: usize)
