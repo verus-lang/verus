@@ -20,17 +20,19 @@ impl <'a, T> VecIterator<'a, T> {
         self.v@
     }
 
-    pub closed spec fn elts_remaining(&self) -> Seq<&'a T>
-    {
-        self.v@.subrange(self.i as int, self.j as int).as_ref()
-    }
-
     #[verifier::type_invariant]
     pub closed spec fn vec_iterator_type_inv(self) -> bool {
         self.i <= self.j <= self.v.len()
     }
 }
 // ANCHOR_END: iter_def
+
+impl <'a, T> VecIterator<'a, T> {
+    pub closed spec fn elts_remaining(&self) -> Seq<&'a T>
+    {
+        self.v@.subrange(self.i as int, self.j as int).as_ref()
+    }
+}
 
 impl<'a, T> ExactSizeIteratorSpecImpl for VecIterator<'a, T> {
     open spec fn exact_len(&self) -> usize {
@@ -61,7 +63,6 @@ pub fn vec_iter<'a, T>(v: &'a Vec<T>) -> (iter: VecIterator<'a, T>)
         IteratorSpec::remaining(&iter) == v@.as_ref(),
         IteratorSpec::remaining(&iter).unref() == iter.elts(),
         IteratorSpec::decrease(&iter) is Some,
-        iter.elts_remaining() == v@.as_ref(),
 {
     VecIterator { v: v, i: 0, j: v.len() }
 }
