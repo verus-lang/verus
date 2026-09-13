@@ -4,6 +4,120 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
+    #[test] test_auto_reveal_strlit verus_code! {
+        use vstd::prelude::*;
+
+        spec fn combine(str1: Seq<char>, str2: Seq<char>) -> Seq<char> {
+            str1 + " "@ + str2
+        }
+
+        #[verifier::auto_reveal_literals(strlit)]
+        proof fn check_hello_world(str1: Seq<char>, str2: Seq<char>)
+            requires
+                str1 =~= "hello"@,
+                str2 =~= "world"@,
+            ensures
+                combine(str1, str2) =~= "hello world"@,
+        {
+            assert(str1 + " "@ + str2 == "hello world"@);
+        }
+
+        spec fn has_prefix(string: Seq<char>, prefix: Seq<char>) -> bool
+        {
+            string.len() >= prefix.len()
+                && string.subrange(0, prefix.len() as int) == prefix
+        }
+
+        #[verifier::auto_reveal_literals(strlit)]
+        proof fn check_prefix_abc(string: Seq<char>)
+            requires
+                has_prefix(string, "abc"@),
+        {
+            assert(string.subrange(0, 3) == "abc"@);
+        }
+
+        #[verifier::auto_reveal_literals(strlit)]
+        proof fn function_query(input: Seq<char>)
+            requires input == "abc"@,
+            ensures input.len() == 3,
+        {
+            assert(input[1] == 'b');
+        }
+
+        #[verifier::auto_reveal_literals(strlit)]
+        fn isolated_loop_query(n: u64) {
+            let mut i = 0u64;
+            while i < n
+                invariant i <= n,
+                decreases n - i,
+            {
+                assert("hello"@.len() == 5);
+                assert("hello"@[0] == 'h');
+                i += 1;
+            }
+        }
+
+        #[verifier::auto_reveal_literals(strlit)]
+        proof fn nonlinear_query() {
+            assert(("abc"@.len() as int) * ("abc"@.len() as int) == 9)
+                by (nonlinear_arith);
+        }
+
+        #[verifier::opaque]
+        #[verifier::auto_reveal_literals(strlit)]
+        spec fn prefix() -> Seq<char> {
+            "text/"@
+        }
+
+        proof fn caller(tail: Seq<char>) {
+            reveal(prefix);
+            assert(prefix().len() == 5);
+            assert("text/"@[4] == '/');
+            let input = prefix() + tail;
+            assert(input.subrange(5, input.len() as int) =~= tail);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_auto_reveal_strlit_fails verus_code! {
+        use vstd::prelude::*;
+
+        proof fn function_query(input: Seq<char>)
+            requires input == "abc"@,
+        {
+            assert(input[1] == 'b'); // FAILS
+        }
+
+        fn isolated_loop_query(n: u64) {
+            let mut i = 0u64;
+            while i < n
+                invariant i <= n,
+                decreases n - i,
+            {
+                assert("hello"@.len() == 5); // FAILS
+                i += 1;
+            }
+        }
+
+        proof fn nonlinear_query() {
+            assert(("abc"@.len() as int) * ("abc"@.len() as int) == 9) // FAILS
+                by (nonlinear_arith);
+        }
+
+        #[verifier::opaque]
+        #[verifier::auto_reveal_literals(strlit)]
+        spec fn prefix() -> Seq<char> { "text/"@ }
+        proof fn definition_stays_hidden() {
+            assert(prefix().len() == 5); // FAILS
+        }
+        proof fn literal_stays_hidden() {
+            assert("text/"@.len() == 5); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 5)
+}
+
+test_verify_one_file! {
     #[test] test_pass_is_ascii verus_code! {
     #[allow(unused_imports)]
     use vstd::string::*;
