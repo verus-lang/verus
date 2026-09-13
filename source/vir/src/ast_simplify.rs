@@ -599,7 +599,7 @@ fn simplify_one_expr(
                 if let Some(prev) = if_expr {
                     // if pattern && guard then body else prev
                     let ifx = ExprX::If(test.clone(), body, Some(prev));
-                    if_expr = Some(SpannedTyped::new(&test.span, &expr.typ.clone(), ifx));
+                    if_expr = Some(SpannedTyped::new(&expr.span, &expr.typ.clone(), ifx));
                 } else if *assert_irrefutable && !test_is_true {
                     if has_guard {
                         return Err(error(&arm.x.guard.span, "if-guard on final match arm"));
