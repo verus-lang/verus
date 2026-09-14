@@ -24,10 +24,10 @@ use super::super::super::arithmetic::internals::general_internals::is_le;
 use super::super::super::arithmetic::internals::mod_internals::{
     lemma_mod_induction_forall,
     lemma_mod_induction_forall2,
-    mod_auto,
     lemma_mod_auto,
     lemma_mod_basics,
     lemma_quotient_and_remainder,
+    mod_auto,
 };
 #[cfg(verus_keep_ghost)]
 use super::super::super::arithmetic::internals::mod_internals_nonlinear;
