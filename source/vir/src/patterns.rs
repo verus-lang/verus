@@ -206,7 +206,7 @@ fn pattern_to_exprs_rec(
     }
 }
 
-pub(crate) fn pattern_find_mut_binding(pattern: &Pattern) -> Option<Span> {
+pub fn pattern_find_mut_binding(pattern: &Pattern) -> Option<Span> {
     match &pattern.x {
         PatternX::Wildcard(_) => None,
         PatternX::Var(binding) => {

@@ -328,7 +328,20 @@ fn exec_closure_pat_to_mut_var<'tcx>(
         vir::ast::VarIdentDisambiguate::RustcId(pat.hir_id.local_id.index()),
     );
     let pattern = pattern_to_vir(bctx, pat)?;
-    vir::ast_util::check_exec_closure_param_pattern(&pattern)?;
+    if let Some(span) = vir::patterns::pattern_find_mut_binding(&pattern) {
+        return Err(vir::messages::error(
+            &span,
+            "mutable-reference bindings in closure parameters are not supported",
+        ));
+    }
+
+    // Register the adjusted pattern's span for erasure of the generated initializer.
+    let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+    let mapping = (pat.hir_id, pattern.span.id);
+    if !erasure_info.hir_vir_ids.contains(&mapping) {
+        erasure_info.hir_vir_ids.push(mapping);
+    }
+
     let init = SpannedTyped::new(&pattern.span, typ, PlaceX::Local(name.clone()));
 
     pattern_stmts.push(bctx.spanned_new(
