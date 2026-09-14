@@ -194,6 +194,8 @@ proof fn lemma_div_auto_minus(n: int)
     ensures
         div_auto_minus(n),
 {
+    broadcast use mul_internals::lemma_mul_commutes;
+
     assert forall|x: int, y: int|
         #![trigger ((x - y) / n)]
         {
@@ -216,8 +218,12 @@ proof fn lemma_div_auto_minus(n: int)
         assert(x - y == n * dq + dr) by {
             mod_internals_nonlinear::lemma_fundamental_div_mod(x - y, n);
         }
-        assert(0 <= xr < n);
-        assert(0 <= yr < n);
+        assert(0 <= xr < n) by {
+            mod_internals_nonlinear::lemma_mod_range(x, n);
+        }
+        assert(0 <= yr < n) by {
+            mod_internals_nonlinear::lemma_mod_range(y, n);
+        }
         if 0 <= xr - yr < n {
             assert(dq == xq - yq) by {
                 assert(n * (xq - yq) == n * xq - n * yq) by {
