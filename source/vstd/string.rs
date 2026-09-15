@@ -303,7 +303,7 @@ pub uninterp spec fn strlit_view_id(s: Seq<char>) -> int;
 #[cfg(not(verus_verify_core))]
 pub broadcast axiom fn axiom_new_strlit_view_id(id: int)
     ensures
-        strlit_view_id(#[trigger] new_strlit(id).view()) == id,
+        strlit_view_id(#[trigger] strslice_new_strlit(id).view()) == id,
 ;
 
 #[cfg(not(verus_verify_core))]

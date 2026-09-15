@@ -1186,7 +1186,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                         mk_expr(ExprX::Unary(UnaryOp::NewStrLit, arg0))
                     }
                     _ => panic!(
-                        "Expected a call for verus_builtin::new_strlit with one argument but did not receive it"
+                        "Expected a call for verus_builtin::strslice_new_strlit with one argument but did not receive it"
                     ),
                 }
             }

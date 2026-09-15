@@ -450,7 +450,7 @@ pub enum UnaryOp {
     /// HeightCompare triggers into HeightTrigger, which is eventually translated
     /// into direct calls to the "height" function in the triggers.
     HeightTrigger,
-    /// Used only for handling verus_builtin::new_strlit
+    /// Used only for handling verus_builtin::strslice_new_strlit
     NewStrLit,
     /// Used only for handling verus_builtin::strslice_len
     StrLen,

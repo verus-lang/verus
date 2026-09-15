@@ -1988,9 +1988,9 @@ pub fn f64_to_bits(_f: f64) -> u64 {
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::verus_builtin::new_strlit"]
+#[rustc_diagnostic_item = "verus::verus_builtin::strslice_new_strlit"]
 #[verifier::spec]
-pub fn new_strlit(_id: int) -> &'static str {
+pub fn strslice_new_strlit(_id: int) -> &'static str {
     unimplemented!()
 }
 
