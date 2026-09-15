@@ -1234,6 +1234,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | Trigger(_)
                         | CoerceMode { .. }
                         | StrLen
+                        | NewStrLit
                         | Length(..)
                         | MutRefCurrent
                         | MutRefFuture(_)
@@ -1369,6 +1370,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | IeeeFloat(_)
                         | CoerceMode { .. }
                         | StrLen
+                        | NewStrLit
                         | Length(..)
                         | MutRefCurrent
                         | MutRefFuture(_)

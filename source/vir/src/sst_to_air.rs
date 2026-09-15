@@ -726,35 +726,44 @@ pub(crate) fn ctor_to_apply<'a>(
 }
 
 fn str_to_const_str(ctx: &Ctx, s: Arc<String>) -> Expr {
+    // The id is emitted as %I(I(n)) rather than a bare numeral so that it
+    // matches triggers over quantified int variables, which take the same
+    // unboxed form (e.g. vstd::string::axiom_new_strlit_view_id).
     Arc::new(ExprX::Apply(
         str_ident(STRSLICE_NEW_STRLIT),
-        Arc::new(vec![Arc::new(ExprX::Const(Constant::Nat({
-            use num_bigint::BigUint;
-            use sha2::{Digest, Sha512};
+        Arc::new(vec![str_apply(
+            crate::def::UNBOX_INT,
+            &vec![str_apply(
+                crate::def::BOX_INT,
+                &vec![Arc::new(ExprX::Const(Constant::Nat({
+                    use num_bigint::BigUint;
+                    use sha2::{Digest, Sha512};
 
-            let mut str_hashes = ctx.string_hashes.borrow_mut();
+                    let mut str_hashes = ctx.string_hashes.borrow_mut();
 
-            let mut hasher = Sha512::new();
-            hasher.update(&*s);
-            let res = hasher.finalize();
+                    let mut hasher = Sha512::new();
+                    hasher.update(&*s);
+                    let res = hasher.finalize();
 
-            #[cfg(target_endian = "little")]
-            let num = BigUint::from_bytes_le(&res[..]);
+                    #[cfg(target_endian = "little")]
+                    let num = BigUint::from_bytes_le(&res[..]);
 
-            #[cfg(target_endian = "big")]
-            let num = BigUint::from_bytes_be(&res[..]);
+                    #[cfg(target_endian = "big")]
+                    let num = BigUint::from_bytes_be(&res[..]);
 
-            let num_str = Arc::new(num.to_string());
+                    let num_str = Arc::new(num.to_string());
 
-            if let Some(other_s) = str_hashes.insert(num, s.clone()) {
-                if other_s != s {
-                    panic!(
-                        "sha512 collision detected, choosing to panic over introducing unsoundness"
-                    );
-                }
-            }
-            num_str
-        })))]),
+                    if let Some(other_s) = str_hashes.insert(num, s.clone()) {
+                        if other_s != s {
+                            panic!(
+                                "sha512 collision detected, choosing to panic over introducing unsoundness"
+                            );
+                        }
+                    }
+                    num_str
+                })))],
+            )],
+        )]),
     ))
 }
 
@@ -1076,6 +1085,10 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
         ExpX::Unary(op, e) => match op {
             UnaryOp::StrLen => Arc::new(ExprX::Apply(
                 str_ident(STRSLICE_LEN),
+                Arc::new(vec![exp_to_expr(ctx, e, expr_ctxt)?]),
+            )),
+            UnaryOp::NewStrLit => Arc::new(ExprX::Apply(
+                str_ident(STRSLICE_NEW_STRLIT),
                 Arc::new(vec![exp_to_expr(ctx, e, expr_ctxt)?]),
             )),
             UnaryOp::Not => mk_not(&exp_to_expr(ctx, e, expr_ctxt)?),
