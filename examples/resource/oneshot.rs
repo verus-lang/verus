@@ -425,7 +425,7 @@ impl<T> OneShotResource2<T> {
 
 // This example illustrates some uses of the one-shot functions.
 fn test_manual() {
-    let tracked full = OneShotResource::alloc();
+    let tracked mut full = OneShotResource::alloc();
     proof {
         full.perform();
     }
@@ -450,7 +450,7 @@ fn test_manual() {
 }
 
 fn test_combinator() {
-    let tracked full = OneShotResource2::<int>::alloc();
+    let tracked mut full = OneShotResource2::<int>::alloc();
     proof {
         full.shoot(2);
     }

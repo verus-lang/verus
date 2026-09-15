@@ -361,7 +361,7 @@ test_verify_one_file_with_options! {
         verus!{
 
         fn cell_test() {
-            let (c, Tracked(points_to)) = PCell::<u64>::new(0);
+            let (c, Tracked(mut points_to)) = PCell::<u64>::new(0);
 
             let r = c.borrow_mut(Tracked(&mut points_to));
             *r = 20;
@@ -371,7 +371,7 @@ test_verify_one_file_with_options! {
         }
 
         fn cell_test2() {
-            let (c, Tracked(points_to)) = PCell::<u64>::new(0);
+            let (c, Tracked(mut points_to)) = PCell::<u64>::new(0);
 
             *c.borrow_mut(Tracked(&mut points_to)) = 20;
 
@@ -380,7 +380,7 @@ test_verify_one_file_with_options! {
         }
 
         fn fails_cell_test() {
-            let (c, Tracked(points_to)) = PCell::<u64>::new(0);
+            let (c, Tracked(mut points_to)) = PCell::<u64>::new(0);
 
             let r = c.borrow_mut(Tracked(&mut points_to));
             *r = 20;
@@ -391,7 +391,7 @@ test_verify_one_file_with_options! {
         }
 
         fn fails_cell_test2() {
-            let (c, Tracked(points_to)) = PCell::<u64>::new(0);
+            let (c, Tracked(mut points_to)) = PCell::<u64>::new(0);
 
             *c.borrow_mut(Tracked(&mut points_to)) = 20;
 
