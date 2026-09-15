@@ -1260,13 +1260,21 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                     let at = infcx.at(&cause, param_env);
                     let ty = &clean_all_escaping_bound_vars(tcx, *ty, param_env_src);
                     let norm = at.normalize(rustc_middle::ty::Unnormalized::new_wip(*ty));
-                    if norm.value != *ty {
-                        for arg in norm.value.walk().into_iter() {
-                            if let Some(t) = arg.as_type() {
-                                assert!(!matches!(t.kind(), TyKind::Infer(..)));
-                            }
+                    // Normalization can succeed and still leave an inference
+                    // variable: an associated type fixed only by a
+                    // where-clause bound normalizes to a bare `?0`. Resolve
+                    // what we can; if anything is still unresolved, fall
+                    // through to the projection representation below.
+                    let norm_value = infcx.resolve_vars_if_possible(norm.value);
+                    let has_infer = norm_value.walk().into_iter().any(|arg| {
+                        if let Some(t) = arg.as_type() {
+                            matches!(t.kind(), TyKind::Infer(..))
+                        } else {
+                            false
                         }
-                        return t_rec(&norm.value);
+                    });
+                    if norm_value != *ty && !has_infer {
+                        return t_rec(&norm_value);
                     }
                     // If normalization isn't possible, return a projection type:
                     let assoc_item = tcx.associated_item(def_id);
