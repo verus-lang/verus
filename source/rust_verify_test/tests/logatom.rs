@@ -121,6 +121,27 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] atomic_function_lifetime_generic
+    verus_code! {
+        use vstd::prelude::*;
+        use vstd::atomic::*;
+
+        tracked struct Token;
+
+        fn atomic_ref<'a>(_value: &'a u8)
+            atomically (atomic_update) {
+                (old: Token) -> (new: Commit<Token>),
+                ensures new@ == old,
+            },
+        {
+            try_open_atomic_update!(atomic_update, token => {
+                Tracked(Commit(token))
+            });
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] atomic_function_commit_only
     TOKEN_LIB.to_owned() + verus_code_str! {
         pub fn atomic_function()

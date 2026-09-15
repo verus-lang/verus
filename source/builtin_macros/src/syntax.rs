@@ -766,37 +766,41 @@ impl Visitor {
             comma.to_tokens(&mut args_full_tokens);
         }
 
-        let mut generics = self
-            .inside_impl
-            .as_deref()
-            .map(|(generics, _)| generics.clone())
-            .unwrap_or_default();
+        let mut generics =
+            self.inside_impl.as_deref().map(|(generics, _)| generics.clone()).unwrap_or_default();
         generics.params.extend(sig.generics.params.clone());
         if let Some(where_clause) = &sig.generics.where_clause {
             generics.make_where_clause().predicates.extend(where_clause.predicates.clone());
         }
-        generics.params.retain(|val, _| match val {
-            GenericParam::Lifetime(..) => false,
-            GenericParam::Const(..) => true,
-            GenericParam::Type(..) => true,
-        });
+        let generic_params = generics.params.iter().cloned().collect::<Vec<_>>();
+        generics.params = generic_params
+            .iter()
+            .filter(|param| matches!(param, GenericParam::Lifetime(_)))
+            .chain(
+                generic_params.iter().filter(|param| !matches!(param, GenericParam::Lifetime(_))),
+            )
+            .cloned()
+            .collect();
 
         let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-        let ty_generics_inner = {
-            let tokens = ty_generics.to_token_stream().into_iter().collect::<Vec<_>>();
-            let mut out = TokenStream::new();
-            if let [_, inner @ .., _] = &*tokens {
-                for tt in inner {
-                    tt.to_tokens(&mut out);
-                }
+        let marker_types = generics.params.iter().filter_map(|param| match param {
+            GenericParam::Lifetime(param) => {
+                let lifetime = &param.lifetime;
+                Some(quote! { & #lifetime () })
             }
-
-            out
-        };
+            GenericParam::Type(param) => {
+                let ident = &param.ident;
+                Some(quote! { #ident })
+            }
+            GenericParam::Const(param) => {
+                let ident = &param.ident;
+                Some(quote! { #ident })
+            }
+        });
 
         self.additional_items.push(parse_quote_spanned!(full_span =>
             #vis struct #pred_ident #impl_generics #where_clause {
-                _marker: ::core::marker::PhantomData<( #ty_generics_inner )>,
+                _marker: ::core::marker::PhantomData<( #(#marker_types,)* )>,
             }
         ));
 
