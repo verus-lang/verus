@@ -128,6 +128,7 @@ fn check_trigger_expr_arg(state: &mut State, arg: &Exp) {
             | UnaryOp::IeeeFloat(_)
             | UnaryOp::BitNot(_)
             | UnaryOp::StrLen
+            | UnaryOp::NewStrLit
             | UnaryOp::CastToInteger
             | UnaryOp::MutRefCurrent
             | UnaryOp::MutRefFuture(_)
@@ -260,7 +261,8 @@ fn check_trigger_expr(
             Err(error(&exp.span, "triggers cannot contain const type bounds"))
         }
         ExpX::Unary(op, arg) => match op {
-            UnaryOp::StrLen
+            UnaryOp::NewStrLit
+            | UnaryOp::StrLen
             | UnaryOp::BitNot(_)
             | UnaryOp::MutRefCurrent
             | UnaryOp::MutRefFuture(_)

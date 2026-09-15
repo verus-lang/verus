@@ -1329,3 +1329,74 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_strlit_view_id_literal_disequality verus_code! {
+        use vstd::prelude::*;
+
+        broadcast use vstd::string::axiom_new_strlit_view_id;
+
+        proof fn same_length() {
+            assert("hello"@ != "world"@);
+        }
+
+        proof fn prefix() {
+            assert("hello"@ != "helloworld"@);
+        }
+
+        proof fn same_literal_stays_equal() {
+            assert("hello"@ == "hello"@);
+        }
+
+        proof fn map_keys() {
+            let m = Map::<Seq<char>, int>::empty()
+                .insert("hello"@, 1)
+                .insert("world"@, 2);
+            assert(m["hello"@] == 1);
+            assert(m.remove("hello"@)["world"@] == 2);
+        }
+
+        proof fn empty_string() {
+            assert(""@ != "hello"@);
+        }
+
+        proof fn unicode() {
+            assert("héllo"@ != "hello"@);
+        }
+
+        // the axiom coexists with reveal_strlit content facts
+        proof fn with_reveal() {
+            reveal_strlit("hello");
+            assert("hello"@.len() == 5);
+            assert("hello"@ != "world"@);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_strlit_view_id_no_slice_identity verus_code! {
+        use vstd::prelude::*;
+
+        broadcast use vstd::string::group_string_axioms;
+
+        // equal contents must NOT imply slice identity: two subslices of
+        // "hellohello" can share content ("hello") yet differ as values
+        proof fn p(s1: &str, s2: &str)
+            requires s1@ == s2@,
+        {
+            assert(s1 == s2); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_strlit_view_id_no_spurious_disequality verus_code! {
+        use vstd::prelude::*;
+
+        broadcast use vstd::string::group_string_axioms;
+
+        proof fn p() {
+            assert("hello"@ != "hello"@); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}

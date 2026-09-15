@@ -452,6 +452,9 @@ pub enum UnaryOp {
     HeightTrigger,
     /// Used only for handling verus_builtin::strslice_len
     StrLen,
+    /// Used only for handling verus_builtin::new_strlit
+    NewStrLit,
+
     /// Represents "as" cast from generic Integer type to int or nat
     /// (needed by poly.rs to insert proper unboxing)
     CastToInteger,
