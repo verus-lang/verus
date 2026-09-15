@@ -853,8 +853,7 @@ pub type Patterns = Arc<Vec<Pattern>>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone)]
 pub enum PatternX {
     /// _
-    /// True if this is implicitly added from a ..
-    Wildcard(bool),
+    Wildcard,
     /// Be careful: when binding a variable, the *type of the variable* is found in the
     /// PatternBinding struct. This can be different than the &pattern.typ which is the
     /// *type of the value being matched against*.
