@@ -624,7 +624,7 @@ pub(crate) fn pattern_to_vir<'tcx>(
     pat: &Pat<'tcx>,
 ) -> Result<vir::ast::Pattern, VirErr> {
     let unadjusted_pat = pattern_to_vir_unadjusted(bctx, pat)?;
-    {
+    if matches!(pat.kind, PatKind::Binding(..)) {
         let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
         erasure_info.hir_vir_ids.push((pat.hir_id, unadjusted_pat.span.id));
     }
