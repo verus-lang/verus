@@ -792,10 +792,7 @@ impl Visitor {
                 let ident = &param.ident;
                 Some(quote! { #ident })
             }
-            GenericParam::Const(param) => {
-                let ident = &param.ident;
-                Some(quote! { #ident })
-            }
+            GenericParam::Const(_) => None,
         });
 
         self.additional_items.push(parse_quote_spanned!(full_span =>
