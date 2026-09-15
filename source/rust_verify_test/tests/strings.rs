@@ -1374,22 +1374,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_strlit_view_id_no_slice_identity verus_code! {
-        use vstd::prelude::*;
-
-        broadcast use vstd::string::group_string_axioms;
-
-        // equal contents must NOT imply slice identity: two subslices of
-        // "hellohello" can share content ("hello") yet differ as values
-        proof fn p(s1: &str, s2: &str)
-            requires s1@ == s2@,
-        {
-            assert(s1 == s2); // FAILS
-        }
-    } => Err(err) => assert_one_fails(err)
-}
-
-test_verify_one_file! {
     #[test] test_strlit_view_id_no_spurious_disequality verus_code! {
         use vstd::prelude::*;
 

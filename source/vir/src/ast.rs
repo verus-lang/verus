@@ -454,7 +454,6 @@ pub enum UnaryOp {
     NewStrLit,
     /// Used only for handling verus_builtin::strslice_len
     StrLen,
-
     /// Represents "as" cast from generic Integer type to int or nat
     /// (needed by poly.rs to insert proper unboxing)
     CastToInteger,
@@ -465,7 +464,6 @@ pub enum UnaryOp {
     /// `*final(e)` should be replaced with `mut_ref_future(e)`; other appearances are an error
     /// boolean param = did this arise from migration?
     MutRefFinal(bool),
-
     /// Length of an array or slice
     Length(ArrayKind),
 }
