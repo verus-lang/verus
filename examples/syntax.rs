@@ -153,7 +153,7 @@ spec fn add0(a: nat, b: nat) -> nat
 
 spec fn dec0(a: int) -> int
     decreases a,
-    when a > 0
+    when a >= 0
     via dec0_decreases
 {
     if a > 0 {
