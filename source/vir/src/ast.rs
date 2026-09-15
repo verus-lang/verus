@@ -450,6 +450,8 @@ pub enum UnaryOp {
     /// HeightCompare triggers into HeightTrigger, which is eventually translated
     /// into direct calls to the "height" function in the triggers.
     HeightTrigger,
+    /// Used only for handling verus_builtin::strslice_new_strlit
+    NewStrLit,
     /// Used only for handling verus_builtin::strslice_len
     StrLen,
     /// Represents "as" cast from generic Integer type to int or nat
@@ -462,7 +464,6 @@ pub enum UnaryOp {
     /// `*final(e)` should be replaced with `mut_ref_future(e)`; other appearances are an error
     /// boolean param = did this arise from migration?
     MutRefFinal(bool),
-
     /// Length of an array or slice
     Length(ArrayKind),
 }
