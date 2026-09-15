@@ -942,11 +942,8 @@ fn get_call_args(
 
     if let Some(expr) = atomically {
         assert_eq!(function_typ_params.len(), function_typ_args.len());
-        let typ_substs: HashMap<Ident, Typ> = function_typ_params
-            .iter()
-            .cloned()
-            .zip(function_typ_args.iter().cloned())
-            .collect();
+        let typ_substs: HashMap<Ident, Typ> =
+            function_typ_params.iter().cloned().zip(function_typ_args.iter().cloned()).collect();
 
         for (exp, param) in std::iter::zip(&mut exps, function_params.iter()) {
             let tmp = state.make_tmp_var_for_exp(&mut stms, exp.clone());
