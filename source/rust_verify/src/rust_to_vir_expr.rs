@@ -676,7 +676,7 @@ pub(crate) fn pattern_to_vir_unadjusted<'tcx>(
     let mut pat_typ = typ_of_node_unadjusted(bctx, pat.span, &pat.hir_id)?;
     unsupported_err_unless!(pat.default_binding_modes, pat.span, "destructuring assignment");
     let pattern = match &pat.kind {
-        PatKind::Wild => PatternX::Wildcard(false),
+        PatKind::Wild => PatternX::Wildcard,
         PatKind::Binding(_binding_mode, canonical, x, subpat) => {
             // We want the computed binding mode, which accounts for match ergonomics,
             // rather than the source-level binding mode.
@@ -2097,7 +2097,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         /* rhs */
         {
             let pat_typ = vir_arms[0].x.pattern.typ.clone();
-            let pattern = bctx.spanned_typed_new(cond.span, &pat_typ, PatternX::Wildcard(false));
+            let pattern = bctx.spanned_typed_new(cond.span, &pat_typ, PatternX::Wildcard);
             {
                 let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
                 erasure_info.hir_vir_ids.push((cond.hir_id, pattern.span.id));

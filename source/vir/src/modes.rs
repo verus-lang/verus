@@ -906,7 +906,7 @@ fn add_pattern_rec(
     let mode = if typing.in_pure { Mode::Spec } else { mode };
 
     match &pattern.x {
-        PatternX::Wildcard(_dd) => Ok(()),
+        PatternX::Wildcard => Ok(()),
         PatternX::Var(PatternBinding { name: x, user_mut: _, by_ref, typ: _, copy: _ }) => {
             check_binding(&pattern.span, by_ref, mode)?;
             decls.push(PatternBoundDecl { span: pattern.span.clone(), name: x.clone(), mode });
