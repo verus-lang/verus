@@ -839,30 +839,26 @@ impl<B: Base> EndianNat<B> {
             n.len() % Self::exp() == 0,
         decreases n.len(),
         when n.len() % Self::exp() == 0
-        via Self::to_big_decreases
     {
         if n.len() == 0 {
             EndianNat::new(n.endian, Seq::empty())
         } else {
+            proof {
+                broadcast use EndianNat::exp_properties;
+
+                assert(Self::exp() <= n.len()) by {
+                    broadcast use crate::vstd::arithmetic::div_mod::lemma_mod_is_zero;
+
+                }
+                let rest = n.skip_least(Self::exp());
+                assert(rest.len() < n.len());
+                assert(rest.len() % Self::exp() == 0) by {
+                    lemma_mod_sub_multiples_vanish(n.len() as int, Self::exp() as int);
+                }
+            }
             Self::to_big(n.skip_least(Self::exp())).append_least(
                 EndianNat::new(n.endian, seq![n.take_least(Self::exp()).to_nat() as int]),
             )
-        }
-    }
-
-    #[via_fn]
-    proof fn to_big_decreases<BIG>(n: EndianNat<B>) where
-        BIG: BasePow2,
-        B: CompatibleSmallerBaseFor<BIG>,
-     {
-        broadcast use EndianNat::exp_properties;
-
-        if n.len() != 0 {
-            assert(Self::exp() <= n.len()) by {
-                broadcast use crate::vstd::arithmetic::div_mod::lemma_mod_is_zero;
-
-            }
-            assert(n.skip_least(Self::exp()).len() < n.len());
         }
     }
 
