@@ -68,6 +68,7 @@ pub(crate) fn native_quant_vars(bs: &VarBinders<Typ>, triggers: &Trigs) -> HashS
             match &exp.x {
                 ExpX::Unary(op, arg) => match op {
                     UnaryOp::Clip { .. } => check_arg(arg, true),
+                    UnaryOp::NewStrLit => check_arg(arg, true),
                     _ => check_arg(arg, false),
                 },
                 ExpX::UnaryOpr(UnaryOpr::IntegerTypeBound(..), arg) => check_arg(arg, true),
@@ -127,8 +128,8 @@ fn check_trigger_expr_arg(state: &mut State, arg: &Exp) {
             | UnaryOp::FloatToBits
             | UnaryOp::IeeeFloat(_)
             | UnaryOp::BitNot(_)
-            | UnaryOp::StrLen
             | UnaryOp::NewStrLit
+            | UnaryOp::StrLen
             | UnaryOp::CastToInteger
             | UnaryOp::MutRefCurrent
             | UnaryOp::MutRefFuture(_)

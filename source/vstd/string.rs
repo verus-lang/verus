@@ -320,18 +320,18 @@ pub broadcast axiom fn axiom_str_literal_get_char<'a>(s: &'a str, i: int)
 
 #[cfg(all(not(feature = "alloc"), not(verus_verify_core)))]
 pub broadcast group group_string_axioms {
+    axiom_new_strlit_view_id,
     axiom_str_literal_len,
     axiom_str_literal_get_char,
-    axiom_new_strlit_view_id,
     is_ascii_spec_bytes,
     is_ascii_concat,
 }
 
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]
 pub broadcast group group_string_axioms {
+    axiom_new_strlit_view_id,
     axiom_str_literal_len,
     axiom_str_literal_get_char,
-    axiom_new_strlit_view_id,
     to_string_from_display_ensures_for_str,
     is_ascii_spec_bytes,
     is_ascii_concat,

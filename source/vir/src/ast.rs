@@ -450,10 +450,10 @@ pub enum UnaryOp {
     /// HeightCompare triggers into HeightTrigger, which is eventually translated
     /// into direct calls to the "height" function in the triggers.
     HeightTrigger,
-    /// Used only for handling verus_builtin::strslice_len
-    StrLen,
     /// Used only for handling verus_builtin::new_strlit
     NewStrLit,
+    /// Used only for handling verus_builtin::strslice_len
+    StrLen,
 
     /// Represents "as" cast from generic Integer type to int or nat
     /// (needed by poly.rs to insert proper unboxing)
