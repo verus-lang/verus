@@ -766,7 +766,15 @@ impl Visitor {
             comma.to_tokens(&mut args_full_tokens);
         }
 
-        let mut generics = sig.generics.clone();
+        let mut generics = self
+            .inside_impl
+            .as_deref()
+            .map(|(generics, _)| generics.clone())
+            .unwrap_or_default();
+        generics.params.extend(sig.generics.params.clone());
+        if let Some(where_clause) = &sig.generics.where_clause {
+            generics.make_where_clause().predicates.extend(where_clause.predicates.clone());
+        }
         generics.params.retain(|val, _| match val {
             GenericParam::Lifetime(..) => false,
             GenericParam::Const(..) => true,
