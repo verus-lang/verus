@@ -391,7 +391,7 @@ test_verify_one_file_with_options! {
 #[test]
 fn test_pattern_contract_copies_have_distinct_ids() {
     use std::collections::HashMap;
-    use vir::ast::{Expr, ExprX, Krate};
+    use vir::ast::{Expr, ExprX, Krate, StmtX};
     use vir::messages::AstId;
 
     let tempdir = tempfile::TempDir::new().expect("temp dir");
@@ -463,17 +463,25 @@ fn test_pattern_contract_copies_have_distinct_ids() {
     assert_eq!(ensures.len(), 2);
 
     let mut seen: HashMap<AstId, usize> = HashMap::new();
+    let mut locations = None;
     for (copy, expression) in
         requires.iter().chain(ensures.iter()).chain(std::iter::once(body)).enumerate()
     {
-        let mut ids = Vec::new();
+        let ExprX::Block(stmts, _) = &expression.x else {
+            panic!("expected generated destructuring block");
+        };
+        let stmt = stmts.first().expect("generated declaration");
+        let StmtX::Decl { init: Some(init), .. } = &stmt.x else {
+            panic!("expected initialized declaration");
+        };
+        let mut spans = vec![stmt.span.clone(), init.span.clone()];
         vir::ast_visitor::ast_visitor_check::<(), _, _, _, _, _, _>(
             expression,
-            &mut ids,
+            &mut spans,
             &mut |_, _, _| Ok(()),
             &mut |_, _, _| Ok(()),
-            &mut |ids, _, pattern| {
-                ids.push(pattern.span.id);
+            &mut |spans, _, pattern| {
+                spans.push(pattern.span.clone());
                 Ok(())
             },
             &mut |_, _, _, _| Ok(()),
@@ -481,13 +489,21 @@ fn test_pattern_contract_copies_have_distinct_ids() {
         )
         .unwrap();
         assert_eq!(
-            ids.len(), 5,
-            "expected both tuple patterns and all three bindings in copy {copy}"
+            spans.len(), 7,
+            "expected a declaration, initializer, two tuple patterns, and three bindings in copy {copy}"
         );
-        for id in ids {
+        let copy_locations: Vec<_> =
+            spans.iter().map(|span| (span.data.clone(), span.as_string.clone())).collect();
+        if let Some(locations) = &locations {
+            assert_eq!(locations, &copy_locations, "diagnostic locations changed in copy {copy}");
+        } else {
+            locations = Some(copy_locations);
+        }
+        for span in spans {
+            let id = span.id;
             assert!(
                 !seen.contains_key(&id),
-                "pattern AstId {id} is shared by copies {:?} and {copy}; contract and body patterns need independent IDs",
+                "AstId {id} is shared by copies {:?} and {copy}; contract and body declarations need independent IDs",
                 seen.get(&id),
             );
             seen.insert(id, copy);

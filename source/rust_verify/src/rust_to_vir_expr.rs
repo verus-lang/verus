@@ -4194,7 +4194,10 @@ pub(crate) fn closure_to_vir<'tcx>(
                         bctx.ctxt.spanned_typed_new_vir(
                             &expr.span,
                             &expr.typ,
-                            ExprX::Block(Arc::new(pattern_stmts.to_vec()), Some(expr.clone())),
+                            ExprX::Block(
+                                bctx.ctxt.clone_stmts_with_fresh_ids(&pattern_stmts),
+                                Some(expr.clone()),
+                            ),
                         )
                     })
                     .collect(),
@@ -4208,7 +4211,10 @@ pub(crate) fn closure_to_vir<'tcx>(
                         bctx.ctxt.spanned_typed_new_vir(
                             &expr.span,
                             &expr.typ,
-                            ExprX::Block(Arc::new(pattern_stmts.to_vec()), Some(expr.clone())),
+                            ExprX::Block(
+                                bctx.ctxt.clone_stmts_with_fresh_ids(&pattern_stmts),
+                                Some(expr.clone()),
+                            ),
                         )
                     })
                     .collect(),

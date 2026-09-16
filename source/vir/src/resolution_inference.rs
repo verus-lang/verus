@@ -3576,6 +3576,7 @@ fn apply_resolutions(
                 Ok(p1)
             }
         },
+        &|_, _, pattern| Ok(pattern.clone()),
     )?;
 
     let (id_map, temp_map, typ_inv_map) = maps;
