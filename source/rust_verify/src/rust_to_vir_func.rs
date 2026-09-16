@@ -2376,20 +2376,16 @@ fn param_names_for_async_func<'tcx>(
     Ok(rewitten_params)
 }
 
-/// Re-keys `substs` (a datatype's type args, as spelled out in `target_id`'s own
-/// parameter type, e.g. `x: X<'a, T>`) to match `target_id`'s own generics_of instead of
-/// the datatype's - they can differ in length/order, since a lifetime used only in a
-/// function signature is "late-bound" and excluded from the function's own generics_of,
-/// while a datatype's lifetimes are always early-bound. Looks each parameter up by index
-/// rather than assuming position N in one list means position N in the other, and walks
-/// `target_id`'s parent chain (e.g. impl block, then method) too, since a method's own
-/// generics_of excludes its impl's even though its predicates can reference them.
+/// Re-keys `substs` (a datatype's args, from `target_id`'s own parameter type, e.g.
+/// `x: X<'a, T>`) to `target_id`'s own generics_of, which can differ in length/order: an
+/// unconstrained lifetime is "late-bound" and excluded from a function's generics_of,
+/// but never from a datatype's. Matches by each parameter's own index, and walks the
+/// parent chain (e.g. an enclosing impl) too, since a method's generics_of excludes its
+/// impl's own params.
 ///
-/// Panics if some parameter isn't found in `substs` at all - e.g. if the datatype's
-/// generic argument were some compound type (`X<Vec<T>>`) instead of a bare reference to
-/// the function's own parameter (`X<T>`). The caller's earlier check_item_external_generics
-/// call already requires exactly that bare-reference shape and rejects `X<Vec<T>>` on its
-/// own with a clean error first, so this should be unreachable through a real program.
+/// Panics if a parameter isn't found in `substs` - should be unreachable, since the
+/// caller's earlier check_item_external_generics call already requires `substs` to be
+/// bare references to `target_id`'s own params (rejecting e.g. `X<Vec<T>>`).
 fn substs_for_own_generics<'tcx>(
     tcx: TyCtxt<'tcx>,
     target_id: DefId,
