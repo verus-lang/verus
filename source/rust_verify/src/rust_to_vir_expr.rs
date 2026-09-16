@@ -342,7 +342,8 @@ fn exec_closure_pat_to_mut_var<'tcx>(
         erasure_info.hir_vir_ids.push(mapping);
     }
 
-    let init = SpannedTyped::new(&pattern.span, typ, PlaceX::Local(name.clone()));
+    // let init = SpannedTyped::new(&pattern.span, typ, PlaceX::Local(name.clone()));
+    let init = bctx.spanned_typed_new(pat.span, typ, PlaceX::Local(name.clone()));
 
     pattern_stmts.push(bctx.spanned_new(
         pat.span,
@@ -4196,7 +4197,7 @@ pub(crate) fn closure_to_vir<'tcx>(
                 require
                     .iter()
                     .map(|expr| {
-                        SpannedTyped::new(
+                        bctx.ctxt.spanned_typed_new_vir(
                             &expr.span,
                             &expr.typ,
                             ExprX::Block(Arc::new(pattern_stmts.to_vec()), Some(expr.clone())),
@@ -4210,7 +4211,7 @@ pub(crate) fn closure_to_vir<'tcx>(
                     .0
                     .iter()
                     .map(|expr| {
-                        SpannedTyped::new(
+                        bctx.ctxt.spanned_typed_new_vir(
                             &expr.span,
                             &expr.typ,
                             ExprX::Block(Arc::new(pattern_stmts.to_vec()), Some(expr.clone())),
