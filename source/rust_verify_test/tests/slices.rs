@@ -993,7 +993,9 @@ test_verify_one_file! {
             let mut r: RangeInclusive<u8> = 255..=255;
             let _ = r.next();
             let ub = r.end_bound();
-            assert(matches!(ub, Bound::Included(_))); // FAILS
+            // there seems to be an issue with revelant_error_span when
+            // the expression is a macro. The `true &&` works around it.
+            assert(true && matches!(ub, Bound::Included(_))); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }

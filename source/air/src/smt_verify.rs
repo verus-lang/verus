@@ -186,14 +186,15 @@ pub(crate) fn smt_check_assertion<'ctx>(
                 let value: &str = &line[GET_VERSION_RESPONSE_PREFIX.len()..line.len() - 1];
                 let version = value.trim_matches(&[' ', '"'][..]);
                 if version != expected_version.as_str() {
-                    diagnostics.report(
-                        &context
-                            .message_interface
-                            .unexpected_z3_version(&expected_version, version),
-                    );
+                    let solver = context.solver.name();
+                    diagnostics.report(&context.message_interface.unexpected_solver_version(
+                        solver,
+                        &expected_version,
+                        version,
+                    ));
                     panic!(
-                        "The verifier expects z3 version \"{}\", found version \"{}\"",
-                        expected_version, version
+                        "The verifier expects {} version \"{}\", found version \"{}\"",
+                        solver, expected_version, version
                     );
                 }
             }
@@ -213,7 +214,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
 
     if matches!(context.solver, SmtSolver::Z3) {
         context.smt_log.log_set_option("rlimit", &context.rlimit.to_string());
-        context.set_z3_param_u32("rlimit", context.rlimit, false);
+        context.set_solver_option_u32("rlimit", context.rlimit, false);
     }
 
     context.smt_log.log_word("check-sat");
@@ -268,7 +269,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
 
     if matches!(context.solver, SmtSolver::Z3) {
         context.smt_log.log_set_option("rlimit", "0");
-        context.set_z3_param_u32("rlimit", 0, false);
+        context.set_solver_option_u32("rlimit", 0, false);
     }
 
     let unsat = unsat.expect("expected sat/unsat/unknown from SMT solver");

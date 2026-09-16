@@ -1074,6 +1074,10 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             crate::traits::const_typ_bound_to_air(ctx, t1, t2)
         }
         ExpX::Unary(op, e) => match op {
+            UnaryOp::NewStrLit => Arc::new(ExprX::Apply(
+                str_ident(STRSLICE_NEW_STRLIT),
+                Arc::new(vec![exp_to_expr(ctx, e, expr_ctxt)?]),
+            )),
             UnaryOp::StrLen => Arc::new(ExprX::Apply(
                 str_ident(STRSLICE_LEN),
                 Arc::new(vec![exp_to_expr(ctx, e, expr_ctxt)?]),

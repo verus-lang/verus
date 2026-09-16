@@ -25,6 +25,7 @@
 #![cfg_attr(verus_keep_ghost, feature(hint_must_use))]
 #![cfg_attr(verus_keep_ghost, feature(fmt_internals))]
 #![cfg_attr(verus_keep_ghost, feature(fmt_arguments_from_str))]
+#![cfg_attr(all(feature = "alloc", verus_keep_ghost), feature(btree_cursors))]
 #![cfg_attr(verus_keep_ghost, feature(panic_internals))]
 
 #[cfg(feature = "alloc")]
@@ -66,6 +67,8 @@ pub mod math;
 pub mod modes;
 pub mod multiset;
 pub mod multiset_lib;
+#[cfg(verus_keep_ghost)]
+pub mod mut_ref;
 pub mod pervasive;
 pub mod predicate;
 pub mod proph;
@@ -127,6 +130,7 @@ pub broadcast group group_vstd_default {
     string::group_string_axioms,
     raw_ptr::group_raw_ptr_axioms,
     layout::group_layout_axioms,
+    mut_ref::group_mut_ref_axioms,
     //
     // core std_specs
     //

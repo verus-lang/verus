@@ -35,6 +35,7 @@ fn main() {
     let mut trace = false;
     let mut log_all = false;
     let mut no_lifetime = false;
+    let mut no_trait_conflicts = false;
     let mut expand_errors = false;
     let mut no_solver_version_check = false;
     for arg in args {
@@ -54,6 +55,8 @@ fn main() {
             log_all = true;
         } else if arg == "--no-lifetime" {
             no_lifetime = true;
+        } else if arg == "--no-trait-conflicts" {
+            no_trait_conflicts = true;
         } else if arg == "--expand-errors" {
             expand_errors = true;
         } else if arg == "--no-solver-version-check" {
@@ -113,6 +116,7 @@ fn main() {
     if no_verify {
         child_args.push("--no-verify".to_string());
         child_args.push("--no-lifetime".to_string());
+        child_args.push("--no-trait-conflicts".to_string());
     }
     if trace {
         child_args.push("--trace".to_string());
@@ -122,6 +126,9 @@ fn main() {
     }
     if no_lifetime {
         child_args.push("--no-lifetime".to_string());
+    }
+    if no_trait_conflicts {
+        child_args.push("--no-trait-conflicts".to_string());
     }
     if expand_errors {
         child_args.push("--expand-errors".to_string());
