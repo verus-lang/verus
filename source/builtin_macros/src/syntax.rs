@@ -786,7 +786,7 @@ impl Visitor {
         let marker_types = generics.params.iter().filter_map(|param| match param {
             GenericParam::Lifetime(param) => {
                 let lifetime = &param.lifetime;
-                Some(quote! { & #lifetime () })
+                Some(quote! { fn(& #lifetime ()) })
             }
             GenericParam::Type(param) => {
                 let ident = &param.ident;
