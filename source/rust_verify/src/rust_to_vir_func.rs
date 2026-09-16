@@ -2385,12 +2385,16 @@ fn param_names_for_async_func<'tcx>(
 /// `target_id`'s parent chain (e.g. impl block, then method) too, since a method's own
 /// generics_of excludes its impl's even though its predicates can reference them.
 ///
-/// `None` if some parameter isn't found in `substs` at all.
+/// Panics if some parameter isn't found in `substs` at all - e.g. if the datatype's
+/// generic argument were some compound type (`X<Vec<T>>`) instead of a bare reference to
+/// the function's own parameter (`X<T>`). The caller's earlier check_item_external_generics
+/// call already requires exactly that bare-reference shape and rejects `X<Vec<T>>` on its
+/// own with a clean error first, so this should be unreachable through a real program.
 fn substs_for_own_generics<'tcx>(
     tcx: TyCtxt<'tcx>,
     target_id: DefId,
     substs: GenericArgsRef<'tcx>,
-) -> Option<GenericArgsRef<'tcx>> {
+) -> GenericArgsRef<'tcx> {
     let mut arg_by_index: HashMap<u32, GenericArg> = HashMap::new();
     for arg in substs.iter() {
         match arg.kind() {
@@ -2424,10 +2428,16 @@ fn substs_for_own_generics<'tcx>(
     let mut result = Vec::new();
     for g in chain {
         for param in &g.own_params {
-            result.push(*arg_by_index.get(&param.index)?);
+            let arg = arg_by_index.get(&param.index).unwrap_or_else(|| {
+                panic!(
+                    "substs_for_own_generics: parameter {:?} not found in substs {:?}",
+                    param, substs
+                )
+            });
+            result.push(*arg);
         }
     }
-    Some(tcx.mk_args(&result))
+    tcx.mk_args(&result)
 }
 
 fn check_generics_for_invariant_fn<'tcx>(
@@ -2476,13 +2486,7 @@ fn check_generics_for_invariant_fn<'tcx>(
             let func_typing_env = TypingEnv::post_analysis(tcx, id);
             let preds1 = datatype_predicates.instantiate(tcx, substs).predicates;
             // `substs` is the datatype's own arity, not the function's - see substs_for_own_generics.
-            let Some(func_substs) = substs_for_own_generics(tcx, id, substs) else {
-                return err_span(
-                    span,
-                    "#[verifier::type_invariant]: could not match the function's own generic \
-                     parameters to the datatype's",
-                );
-            };
+            let func_substs = substs_for_own_generics(tcx, id, substs);
             let preds2 = func_predicates.instantiate(tcx, func_substs).predicates;
             // The 'outlives' predicates don't always line up; I don't know why.
             // But they don't matter for the purpose of this check, so filter them out here.

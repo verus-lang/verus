@@ -2732,3 +2732,73 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    // Same as above but with two lifetimes and two type params, to check the fix
+    // generalizes beyond exactly one of each.
+    #[test] type_invariant_free_fn_multiple_lifetimes_and_type_params_issue2898 verus_code! {
+        pub struct MultiX<'a, 'b, T, U> {
+            r: &'a T,
+            s: &'b U,
+        }
+
+        #[verifier::type_invariant]
+        pub closed spec fn inv_multi<'a, 'b, T, U>(x: MultiX<'a, 'b, T, U>) -> bool {
+            true
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // Same shape again, with a const generic mixed in - the fix's const-generic
+    // handling (ConstKind::Param) isn't exercised by any other case here.
+    #[test] type_invariant_free_fn_lifetime_type_and_const_param_issue2898 verus_code! {
+        pub struct ConstX<'a, T, const N: usize> {
+            r: &'a T,
+        }
+
+        #[verifier::type_invariant]
+        pub closed spec fn inv_const<'a, T, const N: usize>(x: ConstX<'a, T, N>) -> bool {
+            true
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // Regression test for the second panic hit while fixing #2898: an impl-based
+    // type_invariant on a struct with an explicit trait bound (not just an implicit
+    // Sized bound) used to panic differently ("has parameters, but no args were
+    // provided") once the fix above only considered the method's own generics_of,
+    // excluding the enclosing impl block's - even though the impl's own bound
+    // (T: Copy here) still shows up in the method's own predicates.
+    #[test] type_invariant_impl_generic_with_bound_issue2898 verus_code! {
+        use vstd::prelude::*;
+
+        pub struct BoundedX<T: Copy> {
+            v: T,
+        }
+
+        impl<T: Copy> BoundedX<T> {
+            #[verifier::type_invariant]
+            pub closed spec fn inv(&self) -> bool {
+                true
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // Same shape as the first test, but the lifetime is constrained by a where-clause,
+    // so it's early-bound on the function too (not just the datatype) - the case that
+    // never needed re-keying in the first place, kept working.
+    #[test] type_invariant_free_fn_lifetime_early_bound_via_where_clause_issue2898 verus_code! {
+        pub struct WhereX<'a, T> {
+            r: &'a T,
+        }
+
+        #[verifier::type_invariant]
+        pub closed spec fn inv_where<'a, T>(x: WhereX<'a, T>) -> bool where T: 'a {
+            true
+        }
+    } => Ok(())
+}
