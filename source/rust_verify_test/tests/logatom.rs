@@ -147,11 +147,12 @@ test_verify_one_file! {
         use vstd::prelude::*;
         use vstd::atomic::*;
 
-        tracked struct Token;
+        pub tracked struct Token { pub len: usize }
 
-        fn atomic_array<const N: usize>(_value: [u8; N])
+        pub fn atomic_array<const N: usize>(_value: [u8; N])
             atomically (atomic_update) {
                 (old: Token) -> (new: Commit<Token>),
+                requires old.len == N,
                 ensures new@ == old,
             },
         {
