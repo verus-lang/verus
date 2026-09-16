@@ -2376,6 +2376,60 @@ fn param_names_for_async_func<'tcx>(
     Ok(rewitten_params)
 }
 
+/// Re-keys `substs` (a datatype's type args, as spelled out in `target_id`'s own
+/// parameter type, e.g. `x: X<'a, T>`) to match `target_id`'s own generics_of instead of
+/// the datatype's - they can differ in length/order, since a lifetime used only in a
+/// function signature is "late-bound" and excluded from the function's own generics_of,
+/// while a datatype's lifetimes are always early-bound. Looks each parameter up by index
+/// rather than assuming position N in one list means position N in the other, and walks
+/// `target_id`'s parent chain (e.g. impl block, then method) too, since a method's own
+/// generics_of excludes its impl's even though its predicates can reference them.
+///
+/// `None` if some parameter isn't found in `substs` at all.
+fn substs_for_own_generics<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    target_id: DefId,
+    substs: GenericArgsRef<'tcx>,
+) -> Option<GenericArgsRef<'tcx>> {
+    let mut arg_by_index: HashMap<u32, GenericArg> = HashMap::new();
+    for arg in substs.iter() {
+        match arg.kind() {
+            GenericArgKind::Lifetime(r) => {
+                if let RegionKind::ReEarlyParam(early) = r.kind() {
+                    arg_by_index.insert(early.index, arg);
+                }
+            }
+            GenericArgKind::Type(t) => {
+                if let TyKind::Param(pty) = t.kind() {
+                    arg_by_index.insert(pty.index, arg);
+                }
+            }
+            GenericArgKind::Const(c) => {
+                if let ConstKind::Param(pc) = c.kind() {
+                    arg_by_index.insert(pc.index, arg);
+                }
+            }
+        }
+    }
+
+    let mut chain = Vec::new();
+    let mut cur = Some(target_id);
+    while let Some(next) = cur {
+        let g = tcx.generics_of(next);
+        chain.push(g);
+        cur = g.parent;
+    }
+    chain.reverse();
+
+    let mut result = Vec::new();
+    for g in chain {
+        for param in &g.own_params {
+            result.push(*arg_by_index.get(&param.index)?);
+        }
+    }
+    Some(tcx.mk_args(&result))
+}
+
 fn check_generics_for_invariant_fn<'tcx>(
     tcx: TyCtxt<'tcx>,
     id: DefId,
@@ -2421,7 +2475,15 @@ fn check_generics_for_invariant_fn<'tcx>(
             let datatype_typing_env = TypingEnv::post_analysis(tcx, adt_def.did());
             let func_typing_env = TypingEnv::post_analysis(tcx, id);
             let preds1 = datatype_predicates.instantiate(tcx, substs).predicates;
-            let preds2 = func_predicates.instantiate(tcx, substs).predicates;
+            // `substs` is the datatype's own arity, not the function's - see substs_for_own_generics.
+            let Some(func_substs) = substs_for_own_generics(tcx, id, substs) else {
+                return err_span(
+                    span,
+                    "#[verifier::type_invariant]: could not match the function's own generic \
+                     parameters to the datatype's",
+                );
+            };
+            let preds2 = func_predicates.instantiate(tcx, func_substs).predicates;
             // The 'outlives' predicates don't always line up; I don't know why.
             // But they don't matter for the purpose of this check, so filter them out here.
             let preds1 = preds1

@@ -2714,3 +2714,21 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "type invariant function `vstd::resource::impls::frac_opt::impl&%2::inv` is not visible to this program point, which requires us to prove the invariant is preserved")
 }
+
+test_verify_one_file! {
+    // Regression test for #2898: a free (non-impl) #[verifier::type_invariant] fn whose
+    // datatype has both a lifetime and a type parameter used to panic rustc - the
+    // lifetime is late-bound on the function (unconstrained, used only in the
+    // signature) but always early-bound on the datatype, so the two disagreed on how
+    // many generic parameters the function itself has.
+    #[test] type_invariant_free_fn_lifetime_and_type_param_issue2898 verus_code! {
+        pub struct X<'a, T> {
+            r: &'a T,
+        }
+
+        #[verifier::type_invariant]
+        pub closed spec fn inv<'a, T>(x: X<'a, T>) -> bool {
+            true
+        }
+    } => Ok(())
+}
