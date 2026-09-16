@@ -10,6 +10,7 @@ air = { workspace = true }
 vir = { workspace = true }
 
 [dev-dependencies]
+bincode-next = { workspace = true }
 regex = { workspace = true }
 rust_verify_test_macros = { workspace = true }
 serde_json = { workspace = true }

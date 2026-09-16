@@ -2351,6 +2351,7 @@ name = "rust_verify_test"
 version = "0.1.0"
 dependencies = [
  "air",
+ "bincode-next",
  "regex",
  "rust_verify_test_macros",
  "serde",

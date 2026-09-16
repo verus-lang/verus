@@ -388,6 +388,113 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_one_fails(err)
 }
 
+#[test]
+fn test_pattern_contract_copies_have_distinct_ids() {
+    use std::collections::HashMap;
+    use vir::ast::{Expr, ExprX, Krate};
+    use vir::messages::AstId;
+
+    let tempdir = tempfile::TempDir::new().expect("temp dir");
+    let entry_file = tempdir.path().join("test.rs");
+    let export_file = tempdir.path().join("test.vir");
+    // Export retains default trait method bodies, allowing inspection of the
+    // actual HIR-to-VIR translation without a compiler test hook.
+    let body = code_str! {
+        verus! {
+            pub trait Example {
+                fn evaluate() -> (result: u64)
+                    ensures result == 12,
+                {
+                    let f = |(x, (y, z)): (u64, (u64, u64))| -> (result: u64)
+                        requires x < 10, y < 10, z < 10,
+                        ensures result == x + y + z, result < 30,
+                    { x + y + z };
+                    f((3, (4, 5)))
+                }
+            }
+        }
+    };
+    std::fs::write(&entry_file, format!("{}\n{}\n{}", FEATURE_PRELUDE, USE_PRELUDE, body))
+        .expect("write source");
+    let output = run_verus_raw(
+        &[
+            "--crate-type=lib",
+            "--export",
+            export_file.to_str().unwrap(),
+            entry_file.to_str().unwrap(),
+        ],
+        tempdir.path(),
+    );
+    assert!(output.status.success(), "verus failed:\n{}", String::from_utf8_lossy(&output.stderr));
+
+    // CrateWithMetadata serializes the Krate first, followed by file metadata.
+    // Decode only that prefix; metadata is irrelevant to node identity.
+    let mut file = std::io::BufReader::new(std::fs::File::open(export_file).unwrap());
+    let krate: Krate = bincode_next::serde::decode_from_std_read(
+        &mut file,
+        bincode_next::config::legacy(),
+    )
+    .expect("decode exported VIR crate");
+    let mut closures = Vec::new();
+    for function in &krate.functions {
+        if let Some(body) = &function.x.body {
+            vir::ast_visitor::ast_visitor_check::<(), _, _, _, _, _, _>(
+                body,
+                &mut closures,
+                &mut |closures, _, expr: &Expr| {
+                    if matches!(&expr.x, ExprX::NonSpecClosure { .. }) {
+                        closures.push(expr.clone());
+                    }
+                    Ok(())
+                },
+                &mut |_, _, _| Ok(()),
+                &mut |_, _, _| Ok(()),
+                &mut |_, _, _, _| Ok(()),
+                &mut |_, _, _| Ok(()),
+            )
+            .unwrap();
+        }
+    }
+    assert_eq!(closures.len(), 1, "expected the exported closure body");
+    let ExprX::NonSpecClosure { requires, ensures, body, .. } = &closures[0].x else {
+        unreachable!();
+    };
+    assert_eq!(requires.len(), 3);
+    assert_eq!(ensures.len(), 2);
+
+    let mut seen: HashMap<AstId, usize> = HashMap::new();
+    for (copy, expression) in
+        requires.iter().chain(ensures.iter()).chain(std::iter::once(body)).enumerate()
+    {
+        let mut ids = Vec::new();
+        vir::ast_visitor::ast_visitor_check::<(), _, _, _, _, _, _>(
+            expression,
+            &mut ids,
+            &mut |_, _, _| Ok(()),
+            &mut |_, _, _| Ok(()),
+            &mut |ids, _, pattern| {
+                ids.push(pattern.span.id);
+                Ok(())
+            },
+            &mut |_, _, _, _| Ok(()),
+            &mut |_, _, _| Ok(()),
+        )
+        .unwrap();
+        assert_eq!(
+            ids.len(), 5,
+            "expected both tuple patterns and all three bindings in copy {copy}"
+        );
+        for id in ids {
+            assert!(
+                !seen.contains_key(&id),
+                "pattern AstId {id} is shared by copies {:?} and {copy}; contract and body patterns need independent IDs",
+                seen.get(&id),
+            );
+            seen.insert(id, copy);
+        }
+    }
+}
+
 // 2 arg closures
 
 test_verify_one_file_with_options! {
