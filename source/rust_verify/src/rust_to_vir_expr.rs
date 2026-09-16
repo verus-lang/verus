@@ -335,15 +335,9 @@ fn exec_closure_pat_to_mut_var<'tcx>(
         ));
     }
 
-    // Register the adjusted pattern's span for erasure of the generated initializer.
-    let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-    let mapping = (pat.hir_id, pattern.span.id);
-    if !erasure_info.hir_vir_ids.contains(&mapping) {
-        erasure_info.hir_vir_ids.push(mapping);
-    }
-
-    // let init = SpannedTyped::new(&pattern.span, typ, PlaceX::Local(name.clone()));
     let init = bctx.spanned_typed_new(pat.span, typ, PlaceX::Local(name.clone()));
+    // Generated initializer has no corresponding source HIR node.
+    bctx.ctxt.erasure_info.borrow_mut().hir_vir_ids.push((None, init.span.id));
 
     pattern_stmts.push(bctx.spanned_new(
         pat.span,
@@ -559,7 +553,7 @@ pub(crate) fn patexpr_to_vir<'tcx>(
                     let expr = bctx.spanned_typed_new(pat.span, &pat_typ, x.x.clone());
 
                     let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-                    erasure_info.hir_vir_ids.push((pat_expr.hir_id, expr.span.id));
+                    erasure_info.hir_vir_ids.push((Some(pat_expr.hir_id), expr.span.id));
 
                     Ok(PatternX::Expr(expr))
                 }
@@ -575,7 +569,7 @@ pub(crate) fn patexpr_to_vir<'tcx>(
                         let expr = bctx.spanned_typed_new(pat.span, &pat_typ, x.x.clone());
 
                         let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-                        erasure_info.hir_vir_ids.push((pat_expr.hir_id, expr.span.id));
+                        erasure_info.hir_vir_ids.push((Some(pat_expr.hir_id), expr.span.id));
 
                         Ok(PatternX::Expr(expr))
                     }
@@ -676,7 +670,7 @@ pub(crate) fn pattern_to_vir<'tcx>(
     let unadjusted_pat = pattern_to_vir_unadjusted(bctx, pat)?;
     if matches!(pat.kind, PatKind::Binding(..)) {
         let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-        erasure_info.hir_vir_ids.push((pat.hir_id, unadjusted_pat.span.id));
+        erasure_info.hir_vir_ids.push((Some(pat.hir_id), unadjusted_pat.span.id));
     }
 
     // See rustc_mir_build/src/thir/pattern/mod.rs
@@ -1540,7 +1534,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
         let vir_expr = expr_to_vir_innermost(bctx, expr)?;
 
         let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-        erasure_info.hir_vir_ids.push((expr.hir_id, vir_expr.span().id));
+        erasure_info.hir_vir_ids.push((Some(expr.hir_id), vir_expr.span().id));
         return Ok(vir_expr);
     }
 
@@ -2107,7 +2101,7 @@ pub(crate) fn expr_cast_enum_int_to_vir<'tcx>(
             PatternX::Constructor(adt_path, Arc::new(variant_name), Arc::new(vec![])),
         );
         let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-        erasure_info.hir_vir_ids.push((expr.hir_id, pattern.span.id));
+        erasure_info.hir_vir_ids.push((Some(expr.hir_id), pattern.span.id));
         let guard =
             bctx.spanned_typed_new(expr.span, &bool_typ(), ExprX::Const(Constant::Bool(true)));
         let body = cast_to;
@@ -2167,7 +2161,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let pattern = bctx.spanned_typed_new(cond.span, &pat_typ, PatternX::Wildcard);
             {
                 let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-                erasure_info.hir_vir_ids.push((cond.hir_id, pattern.span.id));
+                erasure_info.hir_vir_ids.push((Some(cond.hir_id), pattern.span.id));
             }
             let guard =
                 bctx.spanned_typed_new(expr.span, &bool_typ(), ExprX::Const(Constant::Bool(true)));
@@ -2895,7 +2889,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         if bctx.in_postcondition && !bctx.in_old && bctx.is_param_migrated(&name) {
                             {
                                 let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-                                erasure_info.hir_vir_ids.push((expr.hir_id, place.span.id));
+                                erasure_info.hir_vir_ids.push((Some(expr.hir_id), place.span.id));
                             }
                             let e = ExprOrPlace::Place(place).to_spec_expr(bctx);
                             let x = ExprX::Unary(UnaryOp::MutRefFinal(true), e);
