@@ -157,7 +157,7 @@ fn small_or_temp(state: &mut State, expr: &Expr) -> (Vec<Stmt>, Expr) {
 
 fn pattern_to_decls_with_no_initializer(pattern: &Pattern, stmts: &mut Vec<Stmt>) {
     match &pattern.x {
-        PatternX::Wildcard(_) => {}
+        PatternX::Wildcard => {}
         PatternX::Var(binding) | PatternX::Binding { binding, sub_pat: _ } => {
             let v_patternx = PatternX::Var(PatternBinding {
                 name: binding.name.clone(),
