@@ -95,6 +95,25 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] copied_relates_to_inner_iterator verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::*;
+
+        fn copied_relates_to_inner() {
+            let v = vec![1u32, 2, 3];
+            let it = v.iter();
+            let ghost g = it;
+            let c = it.copied();
+            assert(copied_iter(c) == g);
+            assert(IteratorSpec::obeys_prophetic_iter_laws(&c));
+            assert(IteratorSpec::remaining(&c).len() == IteratorSpec::remaining(&g).len());
+            assert(IteratorSpec::remaining(&c)[0] == *IteratorSpec::remaining(&g)[0]);
+        }
+
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] filter_works verus_code! {
         use vstd::prelude::*;
         use vstd::std_specs::iter::*;
