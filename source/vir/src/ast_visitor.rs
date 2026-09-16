@@ -2027,9 +2027,7 @@ where
         stmt,
         &mut VisitorScopeMap::new(),
         f_span,
-        &|f_span, _, expr| {
-            Ok(SpannedTyped::new(&f_span(&expr.span), &expr.typ, expr.x.clone()))
-        },
+        &|f_span, _, expr| Ok(SpannedTyped::new(&f_span(&expr.span), &expr.typ, expr.x.clone())),
         &|f_span, _, stmt| {
             let x = match &stmt.x {
                 StmtX::Expr(expr) => StmtX::Expr(expr.clone()),

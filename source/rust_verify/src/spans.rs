@@ -318,7 +318,7 @@ impl SpanContextX {
 }
 
 impl<'tcx> crate::context::ContextX<'tcx> {
-    /// Clones generated statements with fresh IDs, while preserving diagnostic locations. 
+    /// Clones generated statements with fresh IDs, while preserving diagnostic locations.
     pub(crate) fn clone_stmts_with_fresh_ids(&self, stmts: &[vir::ast::Stmt]) -> vir::ast::Stmts {
         Arc::new(
             stmts
