@@ -1,35 +1,3 @@
-/// Data associated with a `PointsTo` permission.
-/// We keep track of both the pointer, the (potentially uninitialized) value
-/// it points to, and the abstract bytes in memory corresponding to Rust's abstract machine.
-///
-/// If `mem_contents` is `Init(T)`, this signifies that `ptr` points to initialized memory,
-/// and the value of `mem_contents` is consistent with the bytes `ptr` points to,
-/// We also have all the ghost state associated with type `T`.
-///
-/// If `mem_contents` is `Uninit`, then we have no knowledge about what's in memory,
-/// and we assume `ptr` points to uninitialized memory.
-/// (To be pedantic, the bytes might be initialized in Rust's abstract machine,
-///  but we don't know, so we have to pretend they're uninitialized.)
-#[cfg(verus_keep_ghost)]
-pub ghost struct PointsToData<T> {
-    pub ptr: *mut T,
-    pub mem_contents: MemContents<T>,
-    pub abstract_bytes: Seq<AbstractByte>,
-}
-
-#[cfg(verus_keep_ghost)]
-impl<T> View for PointsTo<T> {
-    type V = PointsToData<T>;
-
-    open spec fn view(&self) -> Self::V {
-        PointsToData {
-            ptr: self.ptr(),
-            mem_contents: self.mem_contents(),
-            abstract_bytes: self.abstract_bytes(),
-        }
-    }
-}
-
 impl<T: ?Sized> PointsTo<T> {
     /// Guarantee that the `PointsTo` points to an aligned address.
     /// See: <https://doc.rust-lang.org/reference/behavior-considered-undefined.html#r-undefined.validity.reference-box>
@@ -38,19 +6,6 @@ impl<T: ?Sized> PointsTo<T> {
     pub closed spec fn inv(self) -> bool {
         let v: &T = arbitrary();
         self.inner.ptr()@.addr as int % spec_align_of_val::<T>(v) as int == 0
-    }
-}
-
-#[cfg(verus_keep_ghost)]
-impl<T> View for PointsToUnaligned<T> {
-    type V = PointsToData<T>;
-
-    open spec fn view(&self) -> Self::V {
-        PointsToData {
-            ptr: self.ptr(),
-            mem_contents: self.mem_contents(),
-            abstract_bytes: self.abstract_bytes(),
-        }
     }
 }
 
@@ -1367,11 +1322,6 @@ impl PointsTo<str> {
     ;
 }
 
-pub tracked struct SeqPointsTo<T> {
-    perm: Seq<PointsTo<T>>,
-    ptr: Ghost<*mut T>,
-}
-
 /// We can convert this permission into a `PointsTo<[T]>` with the same pointer
 /// and the same memory contents at every index.
 pub axiom fn seq_into_slice<T>(tracked spt: SeqPointsTo<T>) -> (tracked pt: PointsTo<[T]>)
@@ -1433,114 +1383,6 @@ pub axiom fn seq_into_slice_mut<T>(tracked spt: &mut SeqPointsTo<T>) -> (tracked
 ;
 
 impl<T> SeqPointsTo<T> {
-    /// The keys must fall in the range `[0, self.len())`.
-    /// For each key `i`, the corresponding `PointsTo<T>` must have the same provenance as
-    /// the `self.ptr()`, and its pointer's address is offset from `self.ptr()` by `i`.
-    // #[verifier::type_invariant]
-    // Cannot use type invariant since we need to return a mutable reference to `perm`.
-    pub open spec fn wf(self) -> bool {
-        &&& forall|i|
-            #![trigger self[i].ptr()@.provenance]
-            #![trigger self[i].ptr()@.addr]
-            0 <= i < self.len() ==> {
-                &&& self[i].ptr()@.provenance == self.ptr()@.provenance
-                &&& self[i].ptr()@.addr == self.ptr()@.addr + i * layout::size_of::<T>()
-            }
-        &&& (self.len() != 0 && layout::size_of::<T>() != 0) ==> {
-            &&& self.ptr()@.provenance.is_some()
-        }
-        &&& self.ptr()@.provenance.is_some() ==> {
-            &&& self.ptr()@.provenance.data().start_addr() <= self.ptr()@.addr
-            &&& self.ptr()@.addr + self.len() * layout::size_of::<T>()
-                <= self.ptr()@.provenance.data().start_addr()
-                + self.ptr()@.provenance.data().alloc_len()
-        }
-        &&& self.ptr()@.addr != 0
-        &&& self.ptr()@.addr as nat % align_of::<T>() == 0
-    }
-
-    /// The pointer that this permission is associated with.
-    pub closed spec fn ptr(self) -> *mut T {
-        self.ptr@
-    }
-
-    /// The `Seq<PointsTo<T>>` that this type is a wrapper for.
-    pub closed spec fn seq_perm(self) -> Seq<PointsTo<T>> {
-        self.perm
-    }
-
-    pub open spec fn mem_contents(self) -> Seq<MemContents<T>> {
-        self.seq_perm().map(|i: int, elt: PointsTo<T>| elt.mem_contents())
-    }
-
-    /// A "flattened" view of the abstract bytes.
-    /// Because the abstract bytes do not change across casting/transmuting, it is often more
-    /// convenient to have a single flattened view of the bytes that is the same as for `PointsTo<[T]>`.
-    pub open spec fn abstract_bytes(self) -> Seq<AbstractByte> {
-        Self::abstract_bytes_inner(self.seq_perm())
-    }
-
-    pub open spec fn abstract_bytes_inner(perms: Seq<PointsTo<T>>) -> Seq<AbstractByte> {
-        perms.fold_left(
-            Seq::empty(),
-            |acc: Seq<AbstractByte>, elt: PointsTo<T>| acc + elt.abstract_bytes(),
-        )
-    }
-
-    /// The length of the sequence of `PointsTo<T>`.
-    #[verifier::inline]
-    pub open spec fn len(self) -> nat {
-        self.seq_perm().len()
-    }
-
-    /// `[]` operator, synonymous with `index`.
-    #[verifier::inline]
-    pub open spec fn spec_index(self, index: nat) -> PointsTo<T>
-        recommends
-            0 <= index < self.len(),
-    {
-        self.seq_perm()[index as int]
-    }
-
-    /// Returns `true` if all of the permission's associated memory is initialized.
-    #[verifier::inline]
-    pub open spec fn is_init(&self) -> bool {
-        forall|i| 0 <= i < self.len() ==> #[trigger] self[i].is_init()
-    }
-
-    /// Returns `true` if any part of the permission's associated memory is uninitialized.
-    #[verifier::inline]
-    pub open spec fn is_uninit(&self) -> bool {
-        !self.is_init()
-    }
-
-    /// Returns `true` if all of the permission's associated memory is uninitialized.
-    #[verifier::inline]
-    pub open spec fn is_fully_uninit(&self) -> bool {
-        forall|i| 0 <= i < self.len() ==> #[trigger] self[i].is_uninit()
-    }
-
-    /// Given that all of the permission's associated memory is initialized,
-    /// returns the underlying values as a sequence.
-    #[verifier::inline]
-    pub open spec fn value(&self) -> Seq<T>
-        recommends
-            self.is_init(),
-    {
-        Seq::new(self.len(), |i| self[i as nat].value())
-    }
-
-    /// Returns a `tracked` reference to the underlying `Seq<PointsTo<T>>`,
-    /// given `tracked &self`.
-    pub proof fn tracked_perm_seq(tracked &self) -> (tracked ret: &Seq<PointsTo<T>>)
-        requires
-            self.wf(),
-        ensures
-            ret == self.seq_perm(),
-    {
-        &self.perm
-    }
-
     pub proof fn borrow_mut(tracked &mut self, i: int) -> (tracked ret: &mut PointsTo<T>)
         requires
             self.wf(),
@@ -1630,20 +1472,6 @@ impl<T> SeqPointsTo<T> {
         broadcast use group_vstd_default;
 
         SeqPointsTo { perm: Seq::tracked_empty(), ptr: Ghost(ptr) }
-    }
-
-    /// If the memory covered by this permission is not zero-sized,
-    /// then the pointer's provenance is non-null.
-    pub proof fn provenance_non_null(tracked &self)
-        requires
-            layout::size_of::<T>() * self.len() != 0,
-            self.wf(),
-        ensures
-            self.ptr()@.provenance != Provenance::None,
-    {
-        assert(layout::size_of::<T>() != 0);
-        assert(self.len() != 0);
-        self.perm.tracked_borrow(0).provenance_non_null();
     }
 
     /// We can construct a `SeqPointsTo` with `length`-many `PointsTo` permissions,
@@ -2272,6 +2100,7 @@ impl SeqPointsTo<u8> {
     }
 }
 
+/* I think these can just be deleted
 pub open spec fn addr_from_index<T>(ptr: *mut [T], i: nat) -> usize
     recommends
         ptr@.addr + i * layout::size_of::<T>() <= usize::MAX,
@@ -2397,3 +2226,5 @@ impl Dealloc {
                 <= final(self)@.provenance.data().start_addr() as int,
     ;
 }
+
+*/

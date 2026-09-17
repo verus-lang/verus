@@ -1,6 +1,5 @@
 use super::group_vstd_default;
 use super::layout::{self, *};
-use super::points_to::SeqPointsTo;
 use super::points_to::*;
 use super::prelude::*;
 use super::raw_ptr;
@@ -11,6 +10,146 @@ use super::type_representation::*;
 verus! {
 
 broadcast use group_vstd_default;
+
+pub tracked struct SeqPointsTo<T: ?Sized, PointsToPerm: PointsToProperties + FixedSizeParam> {
+    seq_pt: Seq<PointsToPerm>,
+    ptr: Ghost<*mut T>,
+}
+
+impl<T, PointsToPerm> PointsToParam for SeqPointsTo<T, PointsToPerm> where
+    T: ?Sized,
+    PointsToPerm: PointsToProperties + FixedSizeParam,
+ {
+    type A = T;
+
+    closed spec fn ptr(self) -> *mut T {
+        self.ptr@
+    }
+
+    /// The size of the pointed-to region is given by the length of the sequence
+    /// times the (constant) size of the permission type in the sequence.
+    open spec fn size(self) -> nat {
+        self.seq_pt().len() * PointsToPerm::const_size()
+    }
+}
+
+impl<T, PointsToPerm> PointsToProperties for SeqPointsTo<T, PointsToPerm> where
+    T: ?Sized,
+    PointsToPerm: PointsToProperties + FixedSizeParam,
+ {
+    open spec fn wf_basic(self) -> bool {
+        // Defining the provenance and address for the individual PointsToPerms
+        &&& forall|i|
+            #![trigger self[i].ptr()@.provenance]
+            #![trigger self[i].ptr()@.addr]
+            #![trigger self[i].wf_basic()]
+            0 <= i < self.len() ==> {
+                &&& self[i].ptr()@.provenance == self.ptr()@.provenance
+                &&& self[i].ptr()@.addr == self.ptr()@.addr + i * PointsToPerm::const_size()
+                &&& self[i].wf_basic()
+            }
+            // The ptr is non-null
+        &&& self.ptr()@.addr
+            != 0
+        // If ptr's provenance is Some, the address is in bounds of the provenance
+        &&& self.ptr()@.provenance.is_some() ==> {
+            &&& self.ptr()@.provenance.data().start_addr() <= self.ptr()@.addr
+            &&& self.ptr()@.addr <= self.ptr()@.provenance.data().start_addr()
+                + self.ptr()@.provenance.data().alloc_len()
+        }
+    }
+
+    /// Non-nullness is guaranteed by the invariant.
+    proof fn is_nonnull(tracked &self) {
+    }
+
+    /// If the size is non-zero, the length must be nonzero.
+    /// Then this follows from the `provenance_not_none` property of an individual `PointsToPerm`.
+    proof fn provenance_not_none(tracked &self) {
+        self.seq_pt.tracked_borrow(0).size_eq_const_size();
+        self.seq_pt.tracked_borrow(0).provenance_not_none();
+    }
+
+    proof fn ptr_bounds(tracked &self) {
+        if self.len() > 0 {
+            self.seq_pt.tracked_borrow(self.len() - 1).ptr_bounds();
+            self.seq_pt.tracked_borrow(self.len() - 1).size_eq_const_size();
+            super::arithmetic::mul::lemma_mul_is_distributive_add_other_way(
+                PointsToPerm::const_size() as int,
+                (self.len() - 1) as int,
+                1,
+            );
+        }
+    }
+
+    proof fn is_disjoint<OtherPointsToPerm: PointsToParam>(
+        tracked &mut self,
+        tracked other: &OtherPointsToPerm,
+    ) {
+        let self_addr = self.ptr()@.addr as int;
+        let other_addr = other.ptr()@.addr as int;
+        let csize = PointsToPerm::const_size() as int;
+        let len = self.len() as int;
+
+        if other_addr < self_addr {
+            // `other` starts strictly before `self`'s whole range: since element 0
+            // starts exactly where `self` does, its disjointness from `other` is
+            // exactly the disjointness we need for the whole array.
+            self.seq_pt.tracked_borrow_mut(0).size_eq_const_size();
+            self.seq_pt.tracked_borrow_mut(0).is_disjoint(other);
+            assert(self.seq_pt =~= old(self).seq_pt);
+        } else if other_addr >= self_addr + len * csize {
+            // `other` starts at or after `self`'s whole range ends: the last
+            // element ends exactly where `self` does, so its disjointness from
+            // `other` gives us what we need.
+            self.seq_pt.tracked_borrow_mut(len - 1).size_eq_const_size();
+            self.seq_pt.tracked_borrow_mut(len - 1).is_disjoint(other);
+            assert(self.seq_pt =~= old(self).seq_pt);
+            super::arithmetic::mul::lemma_mul_is_distributive_add_other_way(csize, len - 1, 1);
+        } else {
+            // `other` starts strictly inside `self`'s range: find the element `k`
+            // whose byte range contains `other`'s start address, and derive a
+            // contradiction from the fact that it can't possibly be disjoint from
+            // `other` (since `other`'s own start address lies within it).
+            let k = (other_addr - self_addr) / csize;
+            super::arithmetic::div_mod::lemma_fundamental_div_mod(other_addr - self_addr, csize);
+            super::arithmetic::div_mod::lemma_remainder(other_addr - self_addr, csize);
+            super::arithmetic::div_mod::lemma_multiply_divide_lt(
+                other_addr - self_addr,
+                csize,
+                len,
+            );
+            super::arithmetic::div_mod::lemma_div_pos_is_pos(other_addr - self_addr, csize);
+            self.seq_pt.tracked_borrow_mut(k).size_eq_const_size();
+            self.seq_pt.tracked_borrow_mut(k).is_disjoint(other);
+        }
+    }
+}
+
+impl<T, PointsToPerm> SeqPointsTo<T, PointsToPerm> where
+    T: ?Sized,
+    PointsToPerm: PointsToProperties + FixedSizeParam,
+ {
+    /// The sequence of permissions that the `SeqPointsTo` contains.
+    pub closed spec fn seq_pt(self) -> Seq<PointsToPerm> {
+        self.seq_pt
+    }
+
+    /// The length of the sequence of `PointsToPerm`.
+    #[verifier::inline]
+    pub open spec fn len(self) -> nat {
+        self.seq_pt().len()
+    }
+
+    /// `[]` operator, synonymous with `index`.
+    #[verifier::inline]
+    pub open spec fn spec_index(self, index: int) -> PointsToPerm
+        recommends
+            0 <= index < self.len(),
+    {
+        self.seq_pt()[index]
+    }
+}
 
 /// Permission to access an (untyped) contiguous sequence of bytes in memory.
 /// Internally represented as a sequence of `PointsToSingleton` permissions,
@@ -227,6 +366,58 @@ impl<T> PointsToUnaligned<T> {
     }
 }
 
+/// Represents (typed) contents of memory.
+// Don't use std Option here in order to avoid circular dependency issues
+// with verifying the standard library.
+// (Also, using our own enum here lets us have more meaningful
+// variant names like Empty/Valid.)
+#[verifier::accept_recursive_types(T)]
+pub tracked enum TypedValue<T: ?Sized> {
+    /// Represents uninitialized memory.
+    Empty,
+    /// Represents initialized memory with the given value of type `T`.
+    Valid(Box<T>),
+}
+
+impl<T: ?Sized> TypedValue<T> {
+    /// Returns `true` if it is a [`TypedValue::Valid`] value.
+    #[verifier::inline]
+    pub open spec fn is_valid(&self) -> bool {
+        self is Valid
+    }
+
+    /// Returns `true` if it is a [`TypedValue::Empty`] value.
+    #[verifier::inline]
+    pub open spec fn is_empty(&self) -> bool {
+        self is Empty
+    }
+}
+
+impl<T> TypedValue<T> {
+    /// If it is a [`TypedValue::Valid`] value, returns the value.
+    /// Otherwise, the return value is meaningless.
+    #[verifier::inline]
+    pub open spec fn value(&self) -> T
+        recommends
+            self is Valid,
+    {
+        *self->0
+    }
+}
+
+impl<T> TypedValue<[T]> {
+    /// If it is a [`TypedValue::Valid`] value, returns the value.
+    /// Otherwise, the return value is meaningless.
+    // Does this make sense as the return value? Returning [T] doesn't work bc it's not Sized.
+    #[verifier::inline]
+    pub open spec fn value(&self) -> &[T]
+        recommends
+            self is Valid,
+    {
+        &*self->0
+    }
+}
+
 /**
 Permission to access possibly-initialized, _typed_ memory.
 
@@ -282,6 +473,19 @@ pub tracked struct PointsTo<T: ?Sized> {
 /// whose bytes may decode to a valid value of type `T`.
 /// We track the pointer to that memory,
 /// the (possibly-valid) typed value, and its abstract bytes.
+/// 
+/// Data associated with a `PointsTo` permission.
+/// We keep track of both the pointer, the (potentially uninitialized) value
+/// it points to, and the abstract bytes in memory corresponding to Rust's abstract machine.
+///
+/// If `mem_contents` is `Init(T)`, this signifies that `ptr` points to initialized memory,
+/// and the value of `mem_contents` is consistent with the bytes `ptr` points to,
+/// We also have all the ghost state associated with type `T`.
+///
+/// If `mem_contents` is `Uninit`, then we have no knowledge about what's in memory,
+/// and we assume `ptr` points to uninitialized memory.
+/// (To be pedantic, the bytes might be initialized in Rust's abstract machine,
+///  but we don't know, so we have to pretend they're uninitialized.)
 #[cfg(verus_keep_ghost)]
 pub ghost struct PointsToData<T> {
     pub ptr: *mut T,
@@ -434,6 +638,88 @@ impl<T> PointsTo<T> {
         other.size_eq_const_size();
         self.is_disjoint(other);
     }
+}
+
+impl<T> SeqPointsTo<T, PointsTo<T>> {
+    /// In addition to the well-formed-ness properties which must hold of every `SeqPointsTo`,
+    /// the `*mut T` pointer must be aligned to `T`.
+    pub open spec fn wf(self) -> bool {
+        &&& self.wf_basic() 
+        &&& self.ptr()@.addr as nat % align_of::<T>() == 0
+    }
+
+    /// A "flattened" view of the abstract bytes.
+    /// Because the abstract bytes do not change across casting/transmuting, it is often more
+    /// convenient to have a single flattened view of the bytes that is the same as for `PointsTo<[T]>`.
+    pub open spec fn bytes(self) -> Seq<AbstractByte> {
+        Self::bytes_inner(self.seq_pt())
+    }
+
+    pub open spec fn bytes_inner(perms: Seq<PointsTo<T>>) -> Seq<AbstractByte> {
+        perms.fold_left(
+            Seq::empty(),
+            |acc: Seq<AbstractByte>, elt: PointsTo<T>| acc + elt.bytes(),
+        )
+    }
+
+    pub open spec fn typed_value(self) -> Seq<TypedValue<T>> {
+        self.seq_pt().map(|i: int, pt: PointsTo<T>| pt.typed_value())
+    }
+
+    /// Returns `true` if all of the permission's associated memory is valid for the type `T`.
+    #[verifier::inline]
+    pub open spec fn is_valid(&self) -> bool {
+        forall|i| 0 <= i < self.len() ==> #[trigger] self[i].is_valid()
+    }
+
+    /// Returns `true` if any part of the permission's associated memory is not valid for the type `T`.
+    #[verifier::inline]
+    pub open spec fn is_empty(&self) -> bool {
+        !self.is_valid()
+    }
+
+    /// Returns `true` if all of the permission's associated memory is not valid for the type `T`.
+    #[verifier::inline]
+    pub open spec fn is_fully_empty(&self) -> bool {
+        forall|i| 0 <= i < self.len() ==> #[trigger] self[i].is_empty()
+    }
+
+    /// Given that all of the permission's associated memory is initialized,
+    /// returns the underlying values as a sequence.
+    #[verifier::inline]
+    pub open spec fn value(&self) -> Seq<T>
+        recommends
+            self.is_valid(),
+    {
+        Seq::new(self.len(), |i| self[i].value())
+    }
+
+    /// Returns a `tracked` reference to the underlying `Seq<PointsTo<T>>`,
+    /// given `tracked &self`.
+    pub proof fn tracked_pt_seq(tracked &self) -> (tracked ret: &Seq<PointsTo<T>>)
+        requires
+            self.wf(),
+        ensures
+            ret == self.seq_pt(),
+    {
+        &self.seq_pt
+    }
+
+    // /// Specializes `is_disjoint` to the case when the other permission is a `PointsToUntyped`.
+    // pub proof fn is_disjoint_untyped(tracked &mut self, tracked other: &PointsToUntyped)
+    //     requires
+    //         self.len() != 0,
+    //         other.len() != 0,
+    //         self.wf(),
+    //     ensures
+    //         *old(self) == *final(self),
+    //         final(self).ptr() as int + final(self).len() <= other.ptr() as int || other.ptr() as int
+    //             + other.len() <= final(self).ptr() as int,
+    // {
+    //     assert(self.len() == self.size());
+    //     assert(other.size() == other.len() * other.seq_pt()[0].size());
+    //     self.is_disjoint(other);
+    // }
 }
 
 } // verus!
