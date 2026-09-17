@@ -369,3 +369,78 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+// Named-ghost-iterator variant: checks that the auto-generated obeys invariant coexists with
+// a user-supplied invariant referencing the same fact (and that the fact is actually usable
+// inside the loop body, not just silently present in the invariant list).
+test_verify_one_file! {
+    #[test] for_loop_generic_iterator_user_invariant_combines verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::*;
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn generic_named<I: Iterator<Item = u32> + IteratorSpec>(args: I)
+            requires args.obeys_prophetic_iter_laws(),
+        {
+            for x in git: args
+                invariant IteratorSpec::obeys_prophetic_iter_laws(&git.iter),
+            {
+                assert(IteratorSpec::obeys_prophetic_iter_laws(&git.iter));
+            }
+        }
+    } => Ok(())
+}
+
+// A for-loop over an iterator that structurally never obeys prophetic laws already failed to
+// verify before this fix too (just later - "at loop exit" rather than "before loop" - since
+// the macro's auto-generated `ensures will_return_none()` already implicitly required obeys
+// to be provable). This fix doesn't introduce a new limitation for this case, just surfaces
+// the same pre-existing one earlier and more clearly.
+test_verify_one_file! {
+    #[test] for_loop_non_obeying_iterator_fails verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::*;
+
+        pub struct NonObeying<T> {
+            pub v: std::vec::Vec<T>,
+            pub i: usize,
+        }
+
+        impl<T> Iterator for NonObeying<T> {
+            type Item = T;
+            #[verifier::external_body]
+            fn next(&mut self) -> Option<T> {
+                None
+            }
+        }
+
+        impl<T> IteratorSpecImpl for NonObeying<T> {
+            open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+                false
+            }
+
+            #[verifier::prophetic]
+            closed spec fn remaining(&self) -> Seq<T> {
+                Seq::empty()
+            }
+
+            #[verifier::prophetic]
+            closed spec fn will_return_none(&self) -> bool {
+                false
+            }
+
+            closed spec fn decrease(&self) -> Option<nat> {
+                None
+            }
+
+            open spec fn peek(&self, index: int) -> Option<T> {
+                None
+            }
+        }
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn loop_over_non_obeying(it: NonObeying<u32>) {
+            for x in it { } // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
