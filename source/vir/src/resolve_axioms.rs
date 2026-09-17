@@ -101,6 +101,7 @@ impl ResolvedTypeCollection {
             | TypX::TypParam(_)
             | TypX::Projection { .. }
             | TypX::PointeeMetadata(_)
+            | TypX::ProjectionDeref(_)
             | TypX::TypeId
             | TypX::ConstInt(_)
             | TypX::ConstBool(_)

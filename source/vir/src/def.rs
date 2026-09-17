@@ -190,6 +190,7 @@ pub const DECORATE_NIL_SLICE: &str = "$slice"; // for 'str' and '[T]' types
 pub const DECORATE_NIL_DYN: &str = "$dyn"; // for 'dyn' types
 pub const DECORATE_DST_INHERIT: &str = "DST";
 pub const DECORATE_REF: &str = "REF";
+pub const DECORATE_REF_INV: &str = "REF_INV";
 pub const DECORATE_BOX: &str = "BOX";
 pub const DECORATE_RC: &str = "RC";
 pub const DECORATE_ARC: &str = "ARC";

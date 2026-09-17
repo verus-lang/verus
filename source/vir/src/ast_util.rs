@@ -198,6 +198,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
             f1 == f2 && n_types_equal(ts1, ts2)
         }
         (TypX::PointeeMetadata(t1), TypX::PointeeMetadata(t2)) => types_equal(t1, t2),
+        (TypX::ProjectionDeref(t1), TypX::ProjectionDeref(t2)) => types_equal(t1, t2),
         (TypX::MutRef(t1), TypX::MutRef(t2)) => types_equal(t1, t2),
         (
             TypX::Opaque { def_path: def_path1, args: args1 },
@@ -223,6 +224,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::Air(_), _) => false,
         (TypX::FnDef(..), _) => false,
         (TypX::PointeeMetadata(..), _) => false,
+        (TypX::ProjectionDeref(..), _) => false,
         (TypX::Opaque { .. }, _) => false,
         (TypX::MutRef(..), _) => false,
     }
@@ -1072,6 +1074,10 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
         TypX::PointeeMetadata(t) => {
             let t = typ_to_diagnostic_str(t);
             format!("<{} as Pointee>::Metadata", t)
+        }
+        TypX::ProjectionDeref(t) => {
+            let t = typ_to_diagnostic_str(t);
+            format!("<{} as Deref>::Target", t)
         }
         TypX::MutRef(t) => {
             let t = typ_to_diagnostic_str(t);
