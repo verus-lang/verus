@@ -2486,6 +2486,11 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
 
             let source_vir_ty = &source_vir_expr.typ;
             let to_vir_ty = expr_typ()?;
+            // rustc may apply an implicit coercion to the source of an explicit cast,
+            // leaving the cast itself with identical source and destination VIR types.
+            if types_equal(source_vir_ty, &to_vir_ty) {
+                return Ok(ExprOrPlace::Expr(source_vir_expr));
+            }
             match (&*undecorate_typ(source_vir_ty), &*undecorate_typ(&to_vir_ty)) {
                 (TypX::Int(_), TypX::Int(_)) => Ok(ExprOrPlace::Expr(mk_ty_clip(
                     bctx,
