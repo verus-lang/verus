@@ -4,6 +4,143 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
+    #[test] test_auto_reveal_byteslit verus_code! {
+        use vstd::prelude::*;
+
+        spec fn combine(first: Seq<u8>, second: Seq<u8>) -> Seq<u8> {
+            first + b" "@ + second
+        }
+
+        #[verifier::auto_reveal_literals(byteslit)]
+        proof fn check_hello_world(first: Seq<u8>, second: Seq<u8>)
+            requires
+                first =~= b"hello"@,
+                second =~= b"world"@,
+            ensures
+                combine(first, second) =~= b"hello world"@,
+        {
+            assert(first + b" "@ + second == b"hello world"@);
+        }
+
+        spec fn has_prefix(bytes: Seq<u8>, prefix: Seq<u8>) -> bool {
+            bytes.len() >= prefix.len()
+                && bytes.subrange(0, prefix.len() as int) == prefix
+        }
+
+        #[verifier::auto_reveal_literals(byteslit)]
+        proof fn check_prefix_ab(bytes: Seq<u8>)
+            requires
+                has_prefix(bytes, b"abc"@),
+        {
+            // Relate two different literals: knowing their lengths is not enough.
+            assert(bytes.subrange(0, 2) == b"ab"@);
+        }
+
+        #[verifier::auto_reveal_literals(byteslit)]
+        proof fn check_masked_pattern(pattern: Seq<u8>, mask: Seq<u8>)
+            requires
+                pattern =~= b"\x89\x00HTML"@,
+                mask =~= b"\xFF\x00\xDF\xDF\xDF\xDF"@,
+        {
+            assert(pattern.len() == mask.len());
+
+            assert forall|i: int| #![trigger pattern[i]]
+                0 <= i < pattern.len()
+                implies (pattern[i] & mask[i]) == pattern[i]
+            by {
+                let p = pattern[i];
+                let m = mask[i];
+                assert((p & m) == p) by (bit_vector)
+                    requires
+                        m == 0xFFu8
+                        || (m == 0x00u8 && p == 0x00u8)
+                        || (m == 0xDFu8 && 0x40u8 <= p && p < 0x60u8),
+                ;
+            }
+        }
+
+        #[verifier::auto_reveal_literals(byteslit)]
+        proof fn function_query(input: Seq<u8>)
+            requires input == b"abc"@,
+            ensures input[1] == b'b',
+        {
+            assert(input[0] == b'a');
+        }
+
+        #[verifier::auto_reveal_literals(byteslit)]
+        fn isolated_loop_query(n: u64) {
+            let mut i = 0u64;
+            while i < n
+                invariant i <= n,
+                decreases n - i,
+            {
+                assert(b"hello"@[0] == b'h');
+                assert(b"\x00\xFF"@[1] == 255u8);
+                i += 1;
+            }
+        }
+
+        #[verifier::auto_reveal_literals(byteslit)]
+        proof fn nonlinear_query() {
+            assert((b"\x03"@[0] as int) * (b"\x03"@[0] as int) == 9)
+                by (nonlinear_arith);
+        }
+
+        #[verifier::opaque]
+        #[verifier::auto_reveal_literals(byteslit)]
+        spec fn prefix() -> Seq<u8> {
+            b"text/"@
+        }
+
+        proof fn caller(tail: Seq<u8>) {
+            reveal(prefix);
+            assert(prefix()[0] == b't');
+            assert(b"text/"@[4] == b'/');
+            let input = prefix() + tail;
+            assert(input.subrange(5, input.len() as int) =~= tail);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_auto_reveal_byteslit_fails verus_code! {
+        use vstd::prelude::*;
+
+        proof fn function_query(input: Seq<u8>)
+            requires input == b"abc"@,
+        {
+            assert(input[0] == b'a'); // FAILS
+        }
+
+        fn isolated_loop_query(n: u64) {
+            let mut i = 0u64;
+            while i < n
+                invariant i <= n,
+                decreases n - i,
+            {
+                assert(b"hello"@[0] == b'h'); // FAILS
+                i += 1;
+            }
+        }
+
+        proof fn nonlinear_query() {
+            assert((b"\x03"@[0] as int) * (b"\x03"@[0] as int) == 9) // FAILS
+                by (nonlinear_arith);
+        }
+
+        #[verifier::opaque]
+        #[verifier::auto_reveal_literals(byteslit)]
+        spec fn prefix() -> Seq<u8> { b"text/"@ }
+        proof fn definition_stays_hidden() {
+            assert(prefix() =~= seq![b't', b'e', b'x', b't', b'/']); // FAILS
+        }
+        proof fn literal_stays_hidden() {
+            assert(b"text/"@[4] == b'/'); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 5)
+}
+
+test_verify_one_file! {
     #[test] byte_string_opaque_without_reveal verus_code! {
         use vstd::prelude::*;
 
