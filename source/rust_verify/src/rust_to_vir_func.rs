@@ -2879,13 +2879,16 @@ pub(crate) fn check_item_const_or_static<'tcx>(
     let mode_opt = crate::attributes::get_mode_opt(attrs);
     let (func_mode, body_mode, ret_mode) = if is_static {
         // All statics are exec
-        // For consistency with const, require the user to mark it 'exec' explicitly
+        // Require user-written statics to say `exec` explicitly, but macros that emit
+        // ordinary Rust statics have no way to add Verus syntax at their invocation site.
         match mode_opt {
             None => {
-                return err_span(
-                    span,
-                    "explicitly mark the static as `exec` and use an `ensures` clause",
-                );
+                if !span.from_expansion() {
+                    return err_span(
+                        span,
+                        "explicitly mark the static as `exec` and use an `ensures` clause",
+                    );
+                }
             }
             Some(m) => {
                 if m != Mode::Exec {

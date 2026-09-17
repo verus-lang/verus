@@ -193,6 +193,43 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] macro_expanded_function_local_static_defaults_to_exec verus_code! {
+        macro_rules! read_local_static {
+            () => {{
+                static E: u64 = 7;
+                E
+            }};
+        }
+
+        fn test() {
+            let x = read_local_static!();
+            assert(x <= 0xffff_ffff_ffff_ffff);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] macro_expanded_function_local_static_initializer_is_verified verus_code! {
+        const fn requires_nonzero(x: u64) -> u64
+            requires x != 0
+        {
+            if x == 0 { 0 } else { 1 / x }
+        }
+
+        macro_rules! read_local_static {
+            () => {{
+                static E: u64 = requires_nonzero(0); // FAILS
+                E
+            }};
+        }
+
+        fn test() {
+            let _ = read_local_static!();
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
     #[test] reference_static_from_proof_unsupported verus_code! {
         exec static E: u64 = 0;
 
