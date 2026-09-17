@@ -342,3 +342,30 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+// Regression test: a for-loop over a generic `I: Iterator + IteratorSpec` type parameter
+// used to fail with "loop invariant not satisfied" even with no user invariant, while the
+// identical loop over a concrete iterator type verified with none. The auto-generated loop
+// invariant included `wf()`, whose own guarantees are conditional on
+// `obeys_prophetic_iter_laws()`; for concrete types that's unconditionally, structurally true
+// (masking the gap), but for a generic type parameter it only holds via an external
+// precondition that the invariant set never carried into the loop body. The
+// `#[verifier::exec_allows_no_decreases_clause]` escape hatch the error message points to does
+// not affect this at all (it only concerns a separate decreases-metric invariant).
+test_verify_one_file! {
+    #[test] for_loop_generic_iterator_obeys_invariant verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::*;
+
+        #[verifier::exec_allows_no_decreases_clause]
+        fn generic<I: Iterator<Item = u32> + IteratorSpec>(args: I)
+            requires args.obeys_prophetic_iter_laws(),
+        {
+            for x in args { }
+        }
+
+        fn concrete(v: &Vec<u32>) {
+            for x in v.iter() { }
+        }
+    } => Ok(())
+}
