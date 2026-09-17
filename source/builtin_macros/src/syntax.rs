@@ -794,8 +794,17 @@ impl Visitor {
             }
             GenericParam::Const(_) => None,
         });
+        let reject_recursive_type_attrs = generics.params.iter().filter_map(|param| match param {
+            GenericParam::Type(param) => {
+                let ident = &param.ident;
+                Some(quote! { #[verifier::reject_recursive_types(#ident)] })
+            }
+            GenericParam::Lifetime(_) | GenericParam::Const(_) => None,
+        });
 
         self.additional_items.push(parse_quote_spanned!(full_span =>
+            #(#reject_recursive_type_attrs)*
+            #[verifier::external_body]
             #vis struct #pred_ident #impl_generics #where_clause {
                 _marker: ::core::marker::PhantomData<( #(#marker_types,)* )>,
             }
