@@ -93,6 +93,7 @@ fn uses_ext_equal(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::TypParam(_) => true,
         TypX::Projection { .. } => true,
         TypX::PointeeMetadata(_) => true,
+        TypX::ProjectionDeref(_) => true,
         TypX::TypeId => panic!("internal error: uses_ext_equal of TypeId"),
         TypX::ConstInt(_) => false,
         TypX::ConstBool(_) => false,

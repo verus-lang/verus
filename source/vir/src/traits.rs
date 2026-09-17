@@ -1,8 +1,8 @@
 use crate::ast::{
     CallTarget, CallTargetKind, Expr, ExprX, Fun, Function, FunctionKind, FunctionX, GenericBound,
     GenericBoundX, GenericBounds, Ident, Idents, ImplPath, ImplPaths, Krate, Mode, Path, Place,
-    Sizedness, SpannedTyped, Trait, TraitId, TraitImpl, TraitX, Typ, TypX, Typs, VirErr,
-    Visibility, WellKnownItem,
+    Sizedness, SpannedTyped, Trait, TraitId, TraitImpl, TraitX, Typ, TypDecoration, TypX, Typs,
+    VirErr, Visibility, WellKnownItem,
 };
 use crate::ast_util::path_as_friendly_rust_name;
 use crate::ast_visitor::VisitorScopeMap;
@@ -1204,14 +1204,29 @@ pub(crate) fn fix_missing_trigger_params(
     // (this is the good case where we can strictly improve the triggering)
     loop {
         // Collect all candidates A for which an equality bound T(args)::X == A
+        // (or T(args)::X == &A, via ProjectionDeref - see below)
         // Compute free vars of args of all candidates
-        let mut candidates: Vec<(usize, Ident, (Path, Typs, Ident))> = Vec::new();
+        let mut candidates: Vec<(usize, Ident, (Path, Typs, Ident), bool)> = Vec::new();
         let mut candidate_free_vars: HashSet<Ident> = HashSet::new();
         for (i, bound) in typ_bounds.iter().enumerate() {
             if let GenericBoundX::TypEquality(path, args, assoc, typ) = &**bound {
-                if let TypX::TypParam(a) = &**typ {
+                // `via_ref`: the bound's target is `&A` rather than a bare `A`
+                // (e.g. `I: Iterator<Item = &'a T>`). We can still eliminate `A`,
+                // using ProjectionDeref to invert the reference at the AIR level,
+                // since decorations never change a type's own base type id
+                // (see TypX::Decorate in sst_to_air::typ_to_ids).
+                let (target, via_ref) = match &**typ {
+                    TypX::TypParam(a) => (Some(a), false),
+                    TypX::Decorate(TypDecoration::Ref, None, inner) => match &**inner {
+                        TypX::TypParam(a) => (Some(a), true),
+                        _ => (None, false),
+                    },
+                    _ => (None, false),
+                };
+                if let Some(a) = target {
                     if typ_params.contains(a) && !already_in_trigger.contains(a) {
-                        let candidate = (i, a.clone(), (path.clone(), args.clone(), assoc.clone()));
+                        let candidate =
+                            (i, a.clone(), (path.clone(), args.clone(), assoc.clone()), via_ref);
                         candidates.push(candidate);
                         for t in args.iter() {
                             crate::sst_util::free_vars_typ_insert(t, &mut candidate_free_vars);
@@ -1221,11 +1236,12 @@ pub(crate) fn fix_missing_trigger_params(
             }
         }
         // Pick an A that does not appear in candidate_free_vars
-        if let Some((i, a, g)) =
-            candidates.iter().find(|(_, a, _)| !candidate_free_vars.contains(a))
+        if let Some((i, a, g, via_ref)) =
+            candidates.iter().find(|(_, a, _, _)| !candidate_free_vars.contains(a))
         {
             let (trait_path, trait_typ_args, name) = g.clone();
-            let a_typ = Arc::new(TypX::Projection { trait_typ_args, trait_path, name });
+            let proj = Arc::new(TypX::Projection { trait_typ_args, trait_path, name });
+            let a_typ = if *via_ref { Arc::new(TypX::ProjectionDeref(proj)) } else { proj };
 
             // Substitute to eliminate A
             Arc::make_mut(typ_params).retain(|p| p != a);
