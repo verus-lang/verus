@@ -736,7 +736,7 @@ verus! {
 #[doc(hidden)]
 #[verifier::external_body]
 pub struct AtomicUpdateLifetimeMarker<'a> {
-    _marker: core::marker::PhantomData<fn(&'a ())>,
+    _marker: core::marker::PhantomData<fn (&'a ())>,
 }
 
 /// The **atomic update (AU)** is a ghost object which encapsulates the linearization point of a logically atomic function.
