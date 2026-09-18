@@ -72,7 +72,6 @@ pub trait ExIterator {
     fn rev(self) -> (r: Rev<Self>)
         where Self: Sized,
         ensures
-            self.obeys_prophetic_iter_laws() ==>
                 r == into_rev_spec(self) && rev_post(self, r),
     ;
 
@@ -359,7 +358,6 @@ pub struct ExRev<I>(Rev<I>);
 // Ghost accessor for the inner iterator
 pub uninterp spec fn rev_iter<I>(r: Rev<I>) -> I;
 
-// TODO: Do we still need this?
 
 // Spec version of Rev::new
 pub uninterp spec fn into_rev_spec<I>(i: I) -> Rev<I>;
@@ -371,17 +369,13 @@ pub uninterp spec fn into_rev_spec<I>(i: I) -> Rev<I>;
 // we introduce a layer of indirection via this uninterp spec function.
 pub uninterp spec fn rev_post<I>(i: I, r: Rev<I>) -> bool;
 
-pub broadcast axiom fn rev_postcondition<I: DoubleEndedIteratorSpec>(i: I)
+pub broadcast axiom fn rev_postcondition<I: DoubleEndedIteratorSpec>(i: I, r: Rev<I>)
     requires
-        i.obeys_prophetic_iter_laws(),
-        rev_post(i, into_rev_spec(i)),
+        #[trigger] rev_post(i, r),
     ensures
-        {
-            let r = #[trigger] into_rev_spec(i);
-            &&& IteratorSpec::remaining(&r) == IteratorSpec::remaining(&i).reverse()
-            &&& IteratorSpec::will_return_none(&r) == i.will_return_none()
-            &&& IteratorSpec::decrease(&r) is Some == i.decrease() is Some
-        },
+        IteratorSpec::remaining(&r) == IteratorSpec::remaining(&i).reverse(),
+        IteratorSpec::will_return_none(&r) == i.will_return_none(),
+        IteratorSpec::decrease(&r) is Some == i.decrease() is Some,
 ;
 
 impl <I> IteratorSpecImpl for Rev<I>
