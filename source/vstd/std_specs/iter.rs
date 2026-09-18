@@ -436,9 +436,8 @@ pub broadcast axiom fn filter_postcondition<I, F>(i: I, f: F, r: core::iter::Fil
         },
 ;
 
-// See rust_verify_test/tests/iterators.rs for how this Filter
-// spec can be verifiably implemented when Filter is not an
-// external type.
+// See examples/itereators/map_and_filter.rs for how this Filter
+// spec can be verifiably implemented when Filter is not an external type.
 impl <I, P> IteratorSpecImpl for core::iter::Filter<I, P>
     where
         I: Iterator + IteratorSpec,
@@ -497,9 +496,8 @@ pub broadcast axiom fn map_postcondition<I, F>(i: I, f: F, r: core::iter::Map<I,
         map_fun(r) == f,
 ;
 
-// See rust_verify_test/tests/iterators.rs for how this Map
-// spec can be verifiably implemented when Map is not an
-// external type.
+// See examples/itereators/map_and_filter.rs for how this Map
+// spec can be verifiably implemented when Map is not an external type.
 impl <B, I, F> IteratorSpecImpl for core::iter::Map<I, F>
     where
         I: Iterator + IteratorSpec,
@@ -693,6 +691,8 @@ pub broadcast axiom fn take_postcondition<I: IteratorSpec>(i: I, n: usize, r: Ta
         IteratorSpec::decrease(&r) is Some,
 ;
 
+// See examples/itereators/take.rs for how this Take 
+// spec can be verifiably implemented when Take is not an external type.
 impl <I> IteratorSpecImpl for Take<I>
     where I: Iterator {
     open spec fn obeys_prophetic_iter_laws(&self) -> bool {
