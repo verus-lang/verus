@@ -110,7 +110,6 @@ pub(crate) struct State<'a> {
     pub assert_id_counter: u64,
     loop_id_counter: u64,
     loop_result_dests: HashMap<Label, VarIdent>,
-    result_flow_labels: HashSet<Label>,
 
     pub mask: Option<MaskSet>,
 
@@ -258,7 +257,6 @@ impl<'a> State<'a> {
             assert_id_counter: 0,
             loop_id_counter: 0,
             loop_result_dests: HashMap::new(),
-            result_flow_labels: HashSet::new(),
             mask: None,
             au_pred_args: Vec::new(),
             au_var_exp_to_resolve: None,
@@ -2703,10 +2701,6 @@ pub(crate) fn expr_to_stm_opt(
                         or ensures, unless #[verifier::allow_complex_invariants] is used",
                 ));
             }
-            if has_break_value {
-                let inserted = state.result_flow_labels.insert(label.clone());
-                assert!(inserted);
-            }
             let mut cnd = if let Some(cond) = cond {
                 let (stms0, e0) = expr_to_stm_opt(ctx, state, cond)?;
                 let e0 = match e0 {
@@ -2761,10 +2755,6 @@ pub(crate) fn expr_to_stm_opt(
             };
 
             let (mut body_stms, _val) = expr_to_stm_opt(ctx, state, body)?;
-            if has_break_value {
-                let removed = state.result_flow_labels.remove(label);
-                assert!(removed);
-            }
             if loop_result.is_some() {
                 let removed = state.loop_result_dests.remove(label);
                 assert!(removed.is_some());
