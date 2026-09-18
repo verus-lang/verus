@@ -2480,17 +2480,21 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let source_ty = bctx.types.expr_ty_adjusted(source);
             let source_vir_expr = source_vir.consume(bctx, source_ty);
 
+            let source_vir_ty = &source_vir_expr.typ;
+            let to_vir_ty = expr_typ()?;
+            // If the source and destination types are the same, we don't need to do anything.
+            // This case can show up unexpectedly. For example, in
+            // `fn test(value: &u8) { let value = value as &dyn T; ... }`, the cast appears
+            // non-trivial, but rustc inserts an explicit coercion on the source, making the
+            // explicit `as` coercion trivial.
+            if types_equal(source_vir_ty, &to_vir_ty) {
+                return Ok(ExprOrPlace::Expr(source_vir_expr));
+            }
+
             if let Some(expr) = maybe_do_ptr_cast(bctx, expr, source, &source_vir_expr)? {
                 return Ok(ExprOrPlace::Expr(expr));
             }
 
-            let source_vir_ty = &source_vir_expr.typ;
-            let to_vir_ty = expr_typ()?;
-            // rustc may apply an implicit coercion to the source of an explicit cast,
-            // leaving the cast itself with identical source and destination VIR types.
-            if types_equal(source_vir_ty, &to_vir_ty) {
-                return Ok(ExprOrPlace::Expr(source_vir_expr));
-            }
             match (&*undecorate_typ(source_vir_ty), &*undecorate_typ(&to_vir_ty)) {
                 (TypX::Int(_), TypX::Int(_)) => Ok(ExprOrPlace::Expr(mk_ty_clip(
                     bctx,
