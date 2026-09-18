@@ -382,6 +382,20 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
+    #[test] closure_param_with_pattern [] => verus_code! {
+        use vstd::prelude::*;
+        fn closure_test() {
+            let clos = |(mut x, z): (u64, u64)| {
+                let y = &mut x;
+                assert(x == 0);
+                *y = 20;
+            };
+            clos((0, 0));
+        }
+    } => Err(err) => assert_spec_borrowed(err, "x")
+}
+
+test_verify_one_file_with_options! {
     #[test] double_closure_param [] => verus_code! {
         use vstd::prelude::*;
         fn closure_test() {
