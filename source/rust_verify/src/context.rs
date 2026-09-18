@@ -17,7 +17,8 @@ use vir::ast::{CrateId, Mode, Path, Pattern, VirErr};
 use vir::messages::{AstId, WarningAllow};
 
 pub struct ErasureInfo {
-    pub(crate) hir_vir_ids: Vec<(HirId, AstId)>,
+    /// None for a generated VIR node with no corresponding source HIR node.
+    pub(crate) hir_vir_ids: Vec<(Option<HirId>, AstId)>,
     pub(crate) resolved_calls: Vec<(HirId, SpanData, ResolvedCall, bool)>,
     pub(crate) resolved_pats: Vec<(SpanData, Pattern)>,
     pub(crate) direct_var_modes: Vec<(HirId, Mode)>,
