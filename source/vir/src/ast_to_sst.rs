@@ -3617,6 +3617,7 @@ pub(crate) fn expr_to_stm_opt(
                     Maybe::Some(value) => value.to_exp(),
                     Maybe::Never => return Ok((stms, Maybe::Never)),
                 };
+                // Unit-typed loops do not have a result destination.
                 if let Some(dest) = state.loop_result_dests.get(label) {
                     stms.push(init_var(&expr.span, dest, &value));
                 }
