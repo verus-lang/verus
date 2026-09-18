@@ -597,6 +597,7 @@ test_verify_one_file_with_options! {
             value: u64,
         }
 
+        #[verifier::loop_isolation(false)]
         fn test_basic() {
             let value = loop {
                 break 5u64;
@@ -610,6 +611,7 @@ test_verify_one_file_with_options! {
             };
         }
 
+        #[verifier::loop_isolation(false)]
         fn test_multiple_paths(select_first: bool) {
             let value = loop {
                 if select_first {
@@ -621,6 +623,7 @@ test_verify_one_file_with_options! {
             assert((select_first && value == 10) || (!select_first && value == 20));
         }
 
+        #[verifier::loop_isolation(false)]
         fn test_labeled_outer_break() {
             let value = 'outer: loop {
                 loop {
@@ -630,6 +633,7 @@ test_verify_one_file_with_options! {
             assert(value == 30);
         }
 
+        #[verifier::loop_isolation(false)]
         fn test_non_copy_result() {
             let token = loop {
                 break Token { value: 40 };
@@ -638,6 +642,7 @@ test_verify_one_file_with_options! {
         }
 
         #[verifier::allow_complex_invariants]
+        #[verifier::loop_isolation(false)]
         fn test_value_evaluated_once() {
             let mut count = 0u64;
             let value = loop
@@ -654,6 +659,7 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test] loop_break_value_wrong_result ["exec_allows_no_decreases_clause"] => verus_code! {
+        #[verifier::loop_isolation(false)]
         fn test() {
             let value = loop {
                 break 5u64;
@@ -661,6 +667,16 @@ test_verify_one_file_with_options! {
             assert(value == 6); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file_with_options! {
+    #[test] loop_break_value_requires_no_isolation ["exec_allows_no_decreases_clause"] => verus_code! {
+        fn test() {
+            let _value = loop {
+                break 5u64;
+            };
+        }
+    } => Err(err) => assert_vir_error_msg(err, "loops with value-bearing 'break' do not yet support loop isolation")
 }
 
 test_verify_one_file_with_options! {

@@ -661,18 +661,6 @@ fn loop_has_breaks(loop_label: &Label, expr: &Expr) -> (usize, usize) {
     (num_breaks, num_isolated_breaks)
 }
 
-fn has_break_to_any_label(labels: &HashSet<Label>, body: &Expr) -> bool {
-    let mut found = false;
-    let mut f = |expr: &Expr| {
-        if let ExprX::BreakOrContinue { label, is_break: true, .. } = &expr.x {
-            found |= labels.contains(label);
-        }
-        VisitorControlFlow::Recurse
-    };
-    crate::ast_visitor::expr_visitor_walk(body, &mut f);
-    found
-}
-
 /// Determine if it's possible for control flow to reach the statement after the loop exit.
 /// To be conservative, we need to answer 'yes' (true) if we can't tell.
 pub fn can_control_flow_reach_after_loop(expr: &Expr) -> bool {
@@ -2635,10 +2623,14 @@ pub(crate) fn expr_to_stm_opt(
             let is_for_loop = *is_for_loop;
             let produces_value =
                 !crate::ast_util::is_unit(&expr.typ) && !crate::ast_util::is_never(&expr.typ);
-            let carries_outer_result = has_break_to_any_label(&state.result_flow_labels, expr);
-            let requires_result_flow = produces_value || carries_outer_result;
-            // Keep the result assignment and every intervening labeled break in one AIR query.
-            let loop_isolation = *loop_isolation && !requires_result_flow;
+            let loop_isolation = *loop_isolation;
+            if produces_value && loop_isolation {
+                return Err(error(
+                    &expr.span,
+                    "loops with value-bearing 'break' do not yet support loop isolation",
+                )
+                .help("add #[verifier::loop_isolation(false)] to this loop"));
+            }
             let allow_complex_invariants = *allow_complex_invariants;
             let id = state.loop_id_counter;
             state.loop_id_counter += 1;
@@ -2660,7 +2652,7 @@ pub(crate) fn expr_to_stm_opt(
                 invs.clone()
             };
             let (num_breaks, num_iso_breaks) = loop_has_breaks(label, expr);
-            if !loop_isolation && num_iso_breaks > 0 && !requires_result_flow {
+            if !loop_isolation && num_iso_breaks > 0 {
                 // our encoding for loop_isolation=false requires all 'break' statements to be
                 // in the same query
                 return Err(error(
@@ -2711,7 +2703,7 @@ pub(crate) fn expr_to_stm_opt(
                         or ensures, unless #[verifier::allow_complex_invariants] is used",
                 ));
             }
-            if requires_result_flow {
+            if has_break_value {
                 let inserted = state.result_flow_labels.insert(label.clone());
                 assert!(inserted);
             }
@@ -2769,7 +2761,7 @@ pub(crate) fn expr_to_stm_opt(
             };
 
             let (mut body_stms, _val) = expr_to_stm_opt(ctx, state, body)?;
-            if requires_result_flow {
+            if has_break_value {
                 let removed = state.result_flow_labels.remove(label);
                 assert!(removed);
             }
