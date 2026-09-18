@@ -222,7 +222,6 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-
 test_verify_one_file! {
     #[test] skip_works verus_code! {
         use vstd::prelude::*;

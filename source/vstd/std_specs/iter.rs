@@ -143,7 +143,7 @@ pub trait ExIterator {
                         f.ensures((#[trigger] old(self).remaining()[i],), false)
                 }
             };
-    
+
     fn collect<B>(self) -> (collection: B)
         where
             B: FromIterator<Self::Item>,
