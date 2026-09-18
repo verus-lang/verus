@@ -4428,19 +4428,30 @@ fn stmt_to_stm(
                             state,
                             &init.span,
                             fun.clone(),
-                            resolved_method,
+                            resolved_method.clone(),
                             is_trait_default,
-                            typs,
-                            args,
+                            typs.clone(),
+                            args.clone(),
                             Some(dest),
                             body,
                         )?);
-                        // REVIEW: for a similar case in `ExprX::Call` we emit a StmX::Assign to set the
-                        // value of the destination when, in recommends checking, the StmX::Call is used
-                        // to check its recommends, however we do not do this here.
-                        // That may cause recommends incompleteness. We should either use the `ExprX::Call`
-                        // special-case for recommends here, or replace this logic with a recursive call
-                        // to handle the right-hand-side, if possible.
+                        // Mirror the `ExprX::Call` case: also give the destination its
+                        // defining value (not just its type invariant) so recommends
+                        // checking of later code can see through it.
+                        if state.checking_recommends(ctx)
+                            || state.checking_spec_decreases(ctx, &fun, &resolved_method)
+                        {
+                            let f = get_function(ctx, &init.span, &fun)?;
+                            if f.x.mode == Mode::Spec {
+                                let call = ExpX::Call(
+                                    CallFun::Fun(fun.clone(), resolved_method.clone()),
+                                    typs,
+                                    args,
+                                );
+                                let call = SpannedTyped::new(&init.span, &typ, call);
+                                stms.push(init_var(&init.span, &decl.ident, &call));
+                            }
+                        }
                         let ret = Maybe::Some(Value::ImplicitUnit(stmt.span.clone()));
 
                         let ti = if may_unwind { TypInv::UnwindError } else { TypInv::Call(fun) };
