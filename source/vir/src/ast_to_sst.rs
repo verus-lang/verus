@@ -19,7 +19,7 @@ use crate::messages::{
 use crate::sst;
 use crate::sst::{
     Bnd, BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclKind, LocalDeclX,
-    ParPurpose, Pars, Stm, StmX, Stms, UniqueIdent,
+    Pars, Stm, StmX, Stms, UniqueIdent,
 };
 use crate::sst_util::{
     exp_with_vars_at_pre_state, sst_bitwidth, sst_conjoin, sst_equal, sst_exp_get_proof_note,
@@ -426,17 +426,15 @@ impl<'a> State<'a> {
 
     pub(crate) fn declare_params(&mut self, params: &Pars) {
         for param in params.iter() {
-            if !matches!(param.x.purpose, ParPurpose::MutPost) {
-                let name = &param.x.name;
-                self.rename_counters.insert(name.0.clone(), 0).map(|_| panic!("rename_counters"));
-                self.rename_map.insert(name.clone(), name.clone()).expect("rename_map");
-                self.declare_imm_var_stm(
-                    name,
-                    &param.x.typ,
-                    LocalDeclKind::Param { mutable: false },
-                    false,
-                );
-            }
+            let name = &param.x.name;
+            self.rename_counters.insert(name.0.clone(), 0).map(|_| panic!("rename_counters"));
+            self.rename_map.insert(name.clone(), name.clone()).expect("rename_map");
+            self.declare_imm_var_stm(
+                name,
+                &param.x.typ,
+                LocalDeclKind::Param { mutable: false },
+                false,
+            );
         }
     }
 

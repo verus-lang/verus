@@ -14,9 +14,7 @@ use crate::context::{Ctx, FunctionCtx};
 use crate::def::{Spanned, unique_local};
 use crate::inv_masks::MaskSet;
 use crate::messages::{Message, error};
-use crate::sst::{
-    BndX, CallFun, Exp, ExpX, Exps, LocalDeclKind, Par, ParPurpose, ParX, Pars, Stm, StmX,
-};
+use crate::sst::{BndX, CallFun, Exp, ExpX, Exps, LocalDeclKind, Par, ParX, Pars, Stm, StmX};
 use crate::sst::{
     FuncAxiomsSst, FuncCheckSst, FuncDeclSst, FuncSpecBodySst, FunctionSst, FunctionSstHas,
     FunctionSstX, PostConditionKind, PostConditionSst, UnwindSst,
@@ -99,7 +97,7 @@ pub fn mk_fun_ctx<F: FunctionCommon>(
 pub(crate) fn param_to_par(param: &Param) -> Par {
     param.map_x(|p| {
         let ParamX { name, typ, mode, user_mut: _, unwrapped_info: _ } = p;
-        ParX { name: name.clone(), typ: typ.clone(), mode: *mode, purpose: ParPurpose::Regular }
+        ParX { name: name.clone(), typ: typ.clone(), mode: *mode }
     })
 }
 
@@ -112,12 +110,7 @@ pub(crate) fn params_to_pre_post_pars(params: &Params) -> Pars {
         params
             .iter()
             .map(|param| {
-                param.map_x(|p| ParX {
-                    name: p.name.clone(),
-                    typ: p.typ.clone(),
-                    mode: p.mode,
-                    purpose: ParPurpose::Regular,
-                })
+                param.map_x(|p| ParX { name: p.name.clone(), typ: p.typ.clone(), mode: p.mode })
             })
             .collect::<Vec<_>>(),
     )
