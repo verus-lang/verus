@@ -105,6 +105,23 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] explicit_dyn_coercion_lowered_to_identity verus_code! {
+        trait T {
+            fn f(&self);
+        }
+
+        impl T for u8 {
+            fn f(&self) {}
+        }
+
+        fn test(value: &u8) {
+            let value: &dyn T = value as _;
+            value.f();
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_dyn_generic verus_code! {
         use vstd::prelude::*;
 

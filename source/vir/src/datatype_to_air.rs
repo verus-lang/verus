@@ -11,7 +11,7 @@ use crate::def::{
     prefix_spec_fn_type, prefix_tuple_param,
 };
 use crate::messages::Span;
-use crate::sst::{Par, ParPurpose, ParX};
+use crate::sst::{Par, ParX};
 use crate::sst_to_air::{
     datatype_id, dt_to_air_ident, expr_has_type, monotyp_to_path, path_to_air_ident, typ_invariant,
     typ_to_air,
@@ -61,7 +61,6 @@ fn field_to_par(span: &Span, f: &Field) -> Par {
             name: crate::ast_util::str_unique_var(&("_".to_string() + &f.name), dis),
             typ: f.a.0.clone(),
             mode: f.a.1,
-            purpose: ParPurpose::Regular,
         },
     )
 }
@@ -178,15 +177,7 @@ fn datatype_or_fun_to_air_commands(
 
     // datatype axioms
     let var_param = |x: VarIdent, typ: &Typ| {
-        Spanned::new(
-            span.clone(),
-            ParX {
-                name: x.clone(),
-                typ: typ.clone(),
-                mode: Mode::Exec,
-                purpose: ParPurpose::Regular,
-            },
-        )
+        Spanned::new(span.clone(), ParX { name: x.clone(), typ: typ.clone(), mode: Mode::Exec })
     };
     let x_param = |typ: &Typ| var_param(x.clone(), typ);
     let x_params = |typ: &Typ| Arc::new(vec![x_param(typ)]);
@@ -237,12 +228,7 @@ fn datatype_or_fun_to_air_commands(
                 pre.push(inv);
             }
             args.push(arg);
-            let parx = ParX {
-                name,
-                typ: vpolytyp.clone(),
-                mode: Mode::Exec,
-                purpose: ParPurpose::Regular,
-            };
+            let parx = ParX { name, typ: vpolytyp.clone(), mode: Mode::Exec };
             params.push(Spanned::new(span.clone(), parx));
         }
         let args = Arc::new(args);

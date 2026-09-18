@@ -28,6 +28,7 @@ mkdir source
 mkdir source/rustc_hir_typeck
 mkdir source/rustc_hir_typeck/src
 cp -r $RUST_DIR/compiler/rustc_mir_build $VERUS_TMP_DIR/source/
+cp -r $RUST_DIR/compiler/rustc_hir_analysis $VERUS_TMP_DIR/source/
 cp -r $RUST_DIR/compiler/rustc_hir_typeck/src/upvar.rs $VERUS_TMP_DIR/source/rustc_hir_typeck/src/
 cp -r $RUST_DIR/compiler/rustc_hir_typeck/src/expr_use_visitor.rs $VERUS_TMP_DIR/source/rustc_hir_typeck/src/
 git add source
@@ -43,6 +44,7 @@ mkdir source
 mkdir source/rustc_hir_typeck
 mkdir source/rustc_hir_typeck/src
 cp -r $RUST_DIR/compiler/rustc_mir_build $VERUS_TMP_DIR/source/
+cp -r $RUST_DIR/compiler/rustc_hir_analysis $VERUS_TMP_DIR/source/
 cp -r $RUST_DIR/compiler/rustc_hir_typeck/src/upvar.rs $VERUS_TMP_DIR/source/rustc_hir_typeck/src/
 cp -r $RUST_DIR/compiler/rustc_hir_typeck/src/expr_use_visitor.rs $VERUS_TMP_DIR/source/rustc_hir_typeck/src/
 git add source
