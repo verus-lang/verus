@@ -5,7 +5,7 @@ use verus_builtin::*;
 use super::super::slice::SliceIndexSpec;
 use super::core::IndexSpec;
 use alloc::collections::TryReserveError;
-use alloc::vec::{IntoIter, Vec};
+use alloc::vec::{Drain, IntoIter, Vec};
 use core::alloc::Allocator;
 use core::clone::Clone;
 use core::marker::PhantomData;
@@ -22,6 +22,16 @@ verus_! {
 #[verifier::accept_recursive_types(T)]
 #[verifier::reject_recursive_types(A)]
 pub struct ExVec<T, A: Allocator>(Vec<T, A>);
+
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::reject_recursive_types(T)]
+#[verifier::reject_recursive_types(A)]
+pub struct ExDrain<'a, T, A>(Drain<'a, T, A>)
+where
+    T: 'a,
+    A: Allocator,
+;
 
 pub trait VecAdditionalSpecFns<T>: View<V = Seq<T>> {
     spec fn spec_index(&self, i: int) -> T
@@ -484,5 +494,120 @@ pub axiom fn tracked_borrow_mut_slice<T, A: Allocator>(tracked vec: &mut Vec<T, 
         (*t)@ == old(vec)@,
         (*t).len() == final(t).len(),
         final(vec)@ == final(t)@;
+
+pub assume_specification<'a, 'b, T, A: Allocator>[ Drain::<'a, T, A>::as_slice ](
+    drain: &'b Drain<'a, T, A>,
+) -> (ret: &'b [T])
+    ensures
+        <Drain<'a, T, A> as super::iter::IteratorSpec>::obeys_prophetic_iter_laws(drain),
+        ret@ == <Drain<'a, T, A> as super::iter::IteratorSpec>::remaining(drain),
+;
+
+pub assume_specification<T, A: Allocator>[ IntoIter::<T, A>::as_mut_slice ](
+    iter: &mut IntoIter<T, A>,
+) -> (ret: &mut [T])
+    ensures
+        ret@ == into_iter_elts(*old(iter)),
+        ret@ == <IntoIter<T, A> as super::iter::IteratorSpec>::remaining(old(iter)),
+        into_iter_elts(*final(iter)) == final(ret)@,
+        <IntoIter<T, A> as super::iter::IteratorSpec>::remaining(final(iter)) == final(ret)@,
+        final(ret)@.len() == ret@.len(),
+;
+
+pub assume_specification<T, A: Allocator>[ IntoIter::<T, A>::as_slice ](
+    iter: &IntoIter<T, A>,
+) -> (ret: &[T])
+    ensures
+        ret@ == into_iter_elts(*iter),
+        ret@ == <IntoIter<T, A> as super::iter::IteratorSpec>::remaining(iter),
+;
+
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::as_mut_ptr ](
+    vec: &mut Vec<T, A>,
+) -> (ptr: *mut T)
+    ensures
+        ptr@.addr != 0,
+        ptr@.addr as nat % super::super::layout::align_of::<T>() == 0,
+        final(vec)@ == old(vec)@,
+;
+
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::as_ptr ](
+    vec: &Vec<T, A>,
+) -> (ptr: *const T)
+    ensures
+        ptr@.addr != 0,
+        ptr@.addr as nat % super::super::layout::align_of::<T>() == 0,
+;
+
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::into_boxed_slice ](
+    vec: Vec<T, A>,
+) -> (ret: alloc::boxed::Box<[T], A>)
+    ensures
+        (*ret)@ == vec@,
+;
+
+pub assume_specification<T, A: Allocator, const N: usize>[
+    Vec::<[T; N], A>::into_flattened
+](
+    vec: Vec<[T; N], A>,
+) -> (ret: Vec<T, A>)
+    requires
+        super::super::layout::size_of::<T>() != 0 || vec@.len() * N <= usize::MAX,
+    ensures
+        ret@.len() == vec@.len() * N,
+        forall|i: int, j: int| #![trigger ret@[i * N as int + j]] #![trigger vec@[i]@[j]]
+            0 <= i < vec@.len() && 0 <= j < N ==>
+                ret@[i * N as int + j] == vec@[i]@[j],
+;
+
+pub assume_specification<'a, T, A: Allocator + 'a>[ Vec::<T, A>::leak ](
+    vec: Vec<T, A>,
+) -> (ret: &'a mut [T])
+    ensures
+        ret@ == vec@,
+        final(ret)@.len() == vec@.len(),
+;
+
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::insert_mut ](
+    vec: &mut Vec<T, A>,
+    index: usize,
+    element: T,
+) -> (ret: &mut T)
+    requires
+        index <= old(vec)@.len(),
+    ensures
+        old(vec)@.len() < usize::MAX,
+        *ret == element,
+;
+
+pub assume_specification<T, A: Allocator, P: core::ops::FnOnce(&mut T) -> bool>[
+    Vec::<T, A>::pop_if
+](
+    vec: &mut Vec<T, A>,
+    predicate: P,
+) -> (ret: Option<T>)
+    ensures
+        old(vec)@.len() == 0 ==> ret == None::<T> && final(vec)@ == old(vec)@,
+        ret.is_none() ==> final(vec)@.len() == old(vec)@.len(),
+        ret.is_some() ==> final(vec)@.len() + 1 == old(vec)@.len(),
+        old(vec)@.len() > 0 ==> exists|last: &mut T| #![auto] {
+            &&& mut_ref_current(last) == old(vec)@.last()
+            &&& (call_requires(predicate, (last,)) ==>
+                call_ensures(predicate, (last,), ret.is_some()))
+            &&& match ret {
+                Some(value) => value == *final(last),
+                None => final(vec)@.last() == *final(last),
+            }
+        },
+;
+
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::push_mut ](
+    vec: &mut Vec<T, A>,
+    value: T,
+) -> (ret: &mut T)
+    ensures
+        old(vec)@.len() < usize::MAX,
+        *ret == value,
+;
 
 } // verus!
