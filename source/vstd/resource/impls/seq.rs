@@ -3,7 +3,8 @@ use super::super::super::prelude::*;
 use super::super::Loc;
 use super::super::imap::*;
 
-verus! {
+use verus as verus_skip_verusfmt; // verusfmt doesn't handle s[..e] yet
+verus_skip_verusfmt! {
 
 broadcast use super::super::super::group_vstd_default;
 

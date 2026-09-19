@@ -2,7 +2,8 @@
 use crate::contrib::exec_spec::*;
 use crate::prelude::*;
 
-verus! {
+use verus as verus_skip_verusfmt; // verusfmt doesn't handle s[..e] yet
+verus_skip_verusfmt! {
 
 // Note: the exec translations which use iterators are unverified.
 broadcast use crate::group_vstd_default;
