@@ -1094,7 +1094,10 @@ impl<'a> Builder<'a> {
                 self.basic_blocks[bb].is_exit = true;
                 Maybe::Never
             }
-            ExprX::BreakOrContinue { label, is_break } => {
+            ExprX::BreakOrContinue { label, is_break, value } => {
+                if let Some(value) = value {
+                    bb = unwrap!(self.build(value, bb));
+                }
                 let entry = self.get_loop(label);
                 if *is_break {
                     self.basic_blocks[bb].successors.push(entry.break_bb);

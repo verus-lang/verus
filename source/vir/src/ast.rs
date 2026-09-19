@@ -1199,8 +1199,8 @@ pub enum ExprX {
     InvMask(MaskSpec),
     /// Return from function
     Return(Option<Expr>),
-    /// break or continue
-    BreakOrContinue { label: Label, is_break: bool },
+    /// break or continue; only break may carry a loop result
+    BreakOrContinue { label: Label, is_break: bool, value: Option<Expr> },
     /// Enter a Rust ghost block, which will be erased during compilation.
     /// In principle, this is not needed, because we can infer which code to erase using modes.
     /// However, we can't easily communicate the inferred modes back to rustc for erasure
