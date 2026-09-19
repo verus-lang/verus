@@ -15,7 +15,7 @@ test_verify_one_file! {
             let s2 = Seq::<int>::empty().push(0).push(10).push(20).push(30).push(40);
             assert(s1 =~= s2);
             assert(s1 == s2);
-            let s3 = s2.subrange(1, 4);
+            let s3 = s2[1..4];
             assert(s3.len() == 3);
             let s4 = Seq::<int>::empty().push(10).push(20).push(30);
             assert(s3 =~= s4);
@@ -64,7 +64,7 @@ test_verify_one_file! {
             let s2 = Seq::<int>::empty().push(0).push(10).push(20).push(30).push(40);
             assert(s1 =~= s2);
             assert(s1 == s2);
-            let s3 = s2.subrange(1, 4);
+            let s3 = s2[1..4];
             assert(s3.len() == 3);
             let s4 = Seq::<int>::empty().push(10).push(20).push(30);
             assert(s3 =~= s4);
@@ -172,18 +172,18 @@ test_verify_one_file! {
 
         proof fn test(s: Seq<bool>) {
             assert(s[..] == s);
-            assert(s[10..] == s.subrange(10, s.len() as int));
-            assert(s[..20] == s.subrange(0, 20));
-            assert(s[..=19] == s.subrange(0, 20));
-            assert(s[10..20] == s.subrange(10, 20));
-            assert(s[10..=19] == s.subrange(10, 20));
+            assert(s[10..] == s[10..s.len()]);
+            assert(s[..20] == s[0..20]);
+            assert(s[..=19] == s[0..20]);
+            assert(s[10..20] == s[10..20]);
+            assert(s[10..=19] == s[10..20]);
 
             assert(s[..] == s);
-            assert(s[10u32..] == s.subrange(10, s.len() as int));
-            assert(s[..20nat] == s.subrange(0, 20));
-            assert(s[..=19u8] == s.subrange(0, 20));
-            assert(s[10i64..20u16] == s.subrange(10, 20));
-            assert(s[10i128..=19int] == s.subrange(10, 20));
+            assert(s[10u32..] == s[10..s.len()]);
+            assert(s[..20nat] == s[0..20]);
+            assert(s[..=19u8] == s[0..20]);
+            assert(s[10i64..20u16] == s[10..20]);
+            assert(s[10i128..=19int] == s[10..20]);
         }
     } => Ok(())
 }

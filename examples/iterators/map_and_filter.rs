@@ -192,7 +192,7 @@ impl<Item, Iter, F> MapIterator<Item, Iter, F>
     #[verifier::prophetic]
     pub closed spec fn map_iterator_type_inv(self) -> bool {
         0 <= self.idx@ <= self.prophs@.pred().iter.remaining().len()
-          && self.iter.remaining() =~= self.prophs@.pred().iter.remaining().skip(self.idx@)
+          && self.iter.remaining() =~= self.prophs@.pred().iter.remaining()[self.idx@..]
           && self.prophs@.pred().f == self.f
           && (forall |i| #![auto] 0 <= i < self.iter.remaining().len() ==> call_requires(self.f, (self.iter.remaining()[i], )))
           && (forall |i: int| self.idx@ <= i < self.idx@ + self.iter.remaining().len() ==> !self.prophs@.has_resolved(i))
@@ -365,7 +365,7 @@ impl<Iter, F> FilterIterator<Iter, F>
     #[verifier::prophetic]
     pub closed spec fn filter_iterator_type_inv(self) -> bool {
         0 <= self.idx@ <= self.prophs@.pred().iter.remaining().len()
-        && self.iter.remaining() =~= self.prophs@.pred().iter.remaining().skip(self.idx@)
+        && self.iter.remaining() =~= self.prophs@.pred().iter.remaining()[self.idx@..]
         && self.prophs@.pred().f == self.f
         && (forall |i| #![auto] 0 <= i < self.iter.remaining().len() ==> self.f.requires((&self.iter.remaining()[i], )))
         && (forall |i: int| self.idx@ <= i < self.idx@ + self.iter.remaining().len() ==> !self.prophs@.has_resolved(i))
@@ -383,7 +383,7 @@ impl<Iter, F> FilterIterator<Iter, F>
         ensures
             s.keep().len() <= iter.remaining().len(),
             forall |j| 0 <= j < s.keep().len() ==> f.ensures((&iter.remaining()[j],), #[trigger] s.keep()[j]),
-            IteratorSpec::remaining(&s) == iter.remaining().take(s.keep().len() as int).filter_index(|j: int| s.keep()[j]),
+            IteratorSpec::remaining(&s) == iter.remaining()[..s.keep().len()].filter_index(|j: int| s.keep()[j]),
             IteratorSpec::remaining(&s).len() <= iter.remaining().len(),
             forall |i| #![trigger IteratorSpec::remaining(&s)[i]] 0 <= i < IteratorSpec::remaining(&s).len() ==>
                 exists |j| 0 <= j < iter.remaining().len()
@@ -429,7 +429,7 @@ impl<Iter, F> FilterIterator<Iter, F>
 
     #[verifier::prophetic]
     closed spec fn spec_remaining(&self) -> Seq<Iter::Item> {
-        self.iter.remaining().take(self.keep().len() as int).filter_index(|i| self.keep()[i])
+        self.iter.remaining()[..self.keep().len()].filter_index(|i| self.keep()[i])
     }
 
     #[verifier::prophetic]
@@ -450,8 +450,8 @@ proof fn lemma_remaining_step<T>(rem: Seq<T>, opts: Seq<Option<bool>>, b: bool)
         ({
             let keep = unwrap_up_to_first_none(opts);
             let keep_n = unwrap_up_to_first_none(opts.drop_first());
-            let remaining = rem.take(keep.len() as int).filter_index(|i: int| keep[i]);
-            let remaining_n = rem.drop_first().take(keep_n.len() as int).filter_index(|i: int| keep_n[i]);
+            let remaining = rem[..keep.len()].filter_index(|i: int| keep[i]);
+            let remaining_n = rem.drop_first()[..keep_n.len()].filter_index(|i: int| keep_n[i]);
             &&& keep.len() == keep_n.len() + 1
             &&& b ==> remaining == seq![rem[0]] + remaining_n
             &&& !b ==> remaining == remaining_n
@@ -464,16 +464,16 @@ proof fn lemma_remaining_step<T>(rem: Seq<T>, opts: Seq<Option<bool>>, b: bool)
         reveal(unwrap_up_to_first_none);
     }
     assert(forall|i: int| 0 <= i < keep_n.len() ==> keep[i + 1] == keep_n[i]);
-    let s = rem.take(keep.len() as int);
+    let s = rem[..keep.len()];
     let pred = |i: int| keep[i];
     s.lemma_filter_index_head(pred);
 
     let rem_n = rem.drop_first();
-    assert(s.drop_first() =~= rem_n.take(keep_n.len() as int));
+    assert(s.drop_first() =~= rem_n[..keep_n.len()]);
 
     let shifted = |i: int| pred(i + 1);
     let pred_n = |i: int| keep_n[i];
-    rem_n.take(keep_n.len() as int).filter_index_ext(shifted, pred_n);
+    rem_n[..keep_n.len()].filter_index_ext(shifted, pred_n);
 }
 
 proof fn lemma_filter_step<Iter, F>(

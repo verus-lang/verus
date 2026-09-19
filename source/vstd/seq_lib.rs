@@ -13,7 +13,8 @@ use super::seq::*;
 #[allow(unused_imports)]
 use super::set::*;
 
-verus! {
+use verus as verus_skip_verusfmt; // verusfmt doesn't handle s[..e] yet
+verus_skip_verusfmt! {
 
 broadcast use group_seq_lemmas;
 
@@ -65,7 +66,7 @@ impl<A> Seq<A> {
     /// }
     /// ```
     pub open spec fn is_prefix_of(self, other: Self) -> bool {
-        self.len() <= other.len() && self =~= other.subrange(0, self.len() as int)
+        self.len() <= other.len() && self =~= other[..self.len()]
     }
 
     /// Is true if the calling sequence is a suffix of the given sequence 'other'.
@@ -80,10 +81,8 @@ impl<A> Seq<A> {
     /// }
     /// ```
     pub open spec fn is_suffix_of(self, other: Self) -> bool {
-        self.len() <= other.len() && self =~= other.subrange(
-            (other.len() - self.len()) as int,
-            other.len() as int,
-        )
+        &&& self.len() <= other.len()
+        &&& self =~= other[other.len() - self.len()..other.len()]
     }
 
     /// Sorts the sequence according to the given leq function
@@ -102,8 +101,8 @@ impl<A> Seq<A> {
             self
         } else {
             let split_index = self.len() / 2;
-            let left = self.subrange(0, split_index as int);
-            let right = self.subrange(split_index as int, self.len() as int);
+            let left = self[..split_index];
+            let right = self[split_index..];
             let left_sorted = left.sort_by(leq);
             let right_sorted = right.sort_by(leq);
             merge_sorted_with(left_sorted, right_sorted, leq)
@@ -163,8 +162,8 @@ impl<A> Seq<A> {
         if self.len() <= 1 {
         } else {
             let split_index = self.len() / 2;
-            let left = self.subrange(0, split_index as int);
-            let right = self.subrange(split_index as int, self.len() as int);
+            let left = self[..split_index];
+            let right = self[split_index..];
             assert(self =~= left + right);
             let left_sorted = left.sort_by(leq);
             left.lemma_sort_by_ensures(leq);
@@ -570,8 +569,8 @@ impl<A> Seq<A> {
         decreases self.len(),
     {
         if self.len() > 1 {
-            if leq(self[0], self.subrange(1, self.len() as int).max_via(leq)) {
-                self.subrange(1, self.len() as int).max_via(leq)
+            if leq(self[0], self[1..].max_via(leq)) {
+                self[1..].max_via(leq)
             } else {
                 self[0]
             }
@@ -587,7 +586,7 @@ impl<A> Seq<A> {
         decreases self.len(),
     {
         if self.len() > 1 {
-            let subseq = self.subrange(1, self.len() as int);
+            let subseq = self[1..];
             let elt = subseq.min_via(leq);
             if leq(elt, self[0]) {
                 elt
@@ -628,11 +627,10 @@ impl<A> Seq<A> {
     {
         if self.len() <= 0 {
             -1  //arbitrary, will never get to this case
-
         } else if self[0] == needle {
             0
         } else {
-            1 + self.subrange(1, self.len() as int).first_index_helper(needle)
+            1 + self[1..].first_index_helper(needle)
         }
     }
 
@@ -729,7 +727,6 @@ impl<A> Seq<A> {
         ensures
             (a + b).drop_last() == a + b.drop_last(),
     {
-        assert_seqs_equal!((a+b).drop_last(), a+b.drop_last());
     }
 
     pub open spec fn drop_first(self) -> Seq<A>
@@ -903,9 +900,9 @@ impl<A> Seq<A> {
             // Simplify the triggers involved in the common case
             self.zip_with(other)
         } else if self.len() < other.len() {
-            self.zip_with(other.take(self.len() as int))
+            self.zip_with(other[..self.len()])
         } else {
-            self.take(other.len() as int).zip_with(other)
+            self[..other.len()].zip_with(other)
         }
     }
 
@@ -934,7 +931,7 @@ impl<A> Seq<A> {
         if self.len() == 0 {
             b
         } else {
-            self.subrange(1, self.len() as int).fold_left_alt(f(b, self[0]), f)
+            self[1..].fold_left_alt(f(b, self[0]), f)
         }
     }
 
@@ -943,29 +940,23 @@ impl<A> Seq<A> {
         requires
             0 <= k <= self.len(),
         ensures
-            self.subrange(k, self.len() as int).fold_left(
-                (#[trigger] self.subrange(0, k).fold_left(b, f)),
+            self[k..].fold_left(
+                (#[trigger] self[..k].fold_left(b, f)),
                 f,
             ) == self.fold_left(b, f),
         decreases self.len(),
     {
         reveal_with_fuel(Seq::fold_left, 2);
         if k == self.len() {
-            assert(self.subrange(0, self.len() as int) == self);
+            assert(self[0..] == self);
         } else {
             self.drop_last().lemma_fold_left_split(b, f, k);
-            assert_seqs_equal!(
-                self.drop_last().subrange(k, self.drop_last().len() as int) ==
-                self.subrange(k, self.len()-1)
+            assert(
+                self.drop_last()[k..self.drop_last().len()] =~=
+                self[k..self.len() - 1]
             );
-            assert_seqs_equal!(
-                self.drop_last().subrange(0, k) ==
-                self.subrange(0, k)
-            );
-            assert_seqs_equal!(
-                self.subrange(k, self.len() as int).drop_last() ==
-                self.subrange(k, self.len() - 1)
-            );
+            assert(self.drop_last()[..k] =~= self[..k]);
+            assert(self[k..].drop_last() =~= self[k..self.len() - 1]);
         }
     }
 
@@ -974,8 +965,8 @@ impl<A> Seq<A> {
         requires
             0 < k <= self.len(),
         ensures
-            self.subrange(k, self.len() as int).fold_left_alt(
-                self.subrange(0, k).fold_left_alt(b, f),
+            self[k..].fold_left_alt(
+                self[..k].fold_left_alt(b, f),
                 f,
             ) == self.fold_left_alt(b, f),
         decreases k,
@@ -984,20 +975,10 @@ impl<A> Seq<A> {
         if k == 1 {
             // trivial base case
         } else {
-            self.subrange(1, self.len() as int).aux_lemma_fold_left_alt(f(b, self[0]), f, k - 1);
-            assert_seqs_equal!(
-                self.subrange(1, self.len() as int)
-                    .subrange(k - 1, self.subrange(1, self.len() as int).len() as int) ==
-                self.subrange(k, self.len() as int)
-            );
-            assert_seqs_equal!(
-                self.subrange(1, self.len() as int).subrange(0, k - 1) ==
-                self.subrange(1, k)
-            );
-            assert_seqs_equal!(
-                self.subrange(0, k).subrange(1, self.subrange(0, k).len() as int) ==
-                self.subrange(1, k)
-            );
+            self[1..].aux_lemma_fold_left_alt(f(b, self[0]), f, k - 1);
+            assert(self[1..][k - 1..self[1..].len()] =~= self[k..]);
+            assert(self[1..][..k - 1] =~= self[1..k]);
+            assert(self[..k][1..self[..k].len()] =~= self[1..k]);
         }
     }
 
@@ -1013,11 +994,11 @@ impl<A> Seq<A> {
             // trivial base cases
         } else {
             self.aux_lemma_fold_left_alt(b, f, self.len() - 1);
-            self.subrange(self.len() - 1, self.len() as int).lemma_fold_left_alt(
+            self[self.len() - 1..].lemma_fold_left_alt(
                 self.drop_last().fold_left_alt(b, f),
                 f,
             );
-            self.subrange(0, self.len() - 1).lemma_fold_left_alt(b, f);
+            self[..self.len() - 1].lemma_fold_left_alt(b, f);
         }
     }
 
@@ -1058,7 +1039,7 @@ impl<A> Seq<A> {
         if self.len() == 0 {
             b
         } else {
-            f(self[0], self.subrange(1, self.len() as int).fold_right_alt(f, b))
+            f(self[0], self[1..].fold_right_alt(f, b))
         }
     }
 
@@ -1067,31 +1048,25 @@ impl<A> Seq<A> {
         requires
             0 <= k <= self.len(),
         ensures
-            self.subrange(0, k).fold_right(
+            self[..k].fold_right(
                 f,
-                (#[trigger] self.subrange(k, self.len() as int).fold_right(f, b)),
+                (#[trigger] self[k..].fold_right(f, b)),
             ) == self.fold_right(f, b),
         decreases self.len(),
     {
         reveal_with_fuel(Seq::fold_right, 2);
         if k == self.len() {
-            assert(self.subrange(0, k) == self);
+            assert(self[..k] == self);
         } else if k == self.len() - 1 {
             // trivial base case
         } else {
-            self.subrange(0, self.len() - 1).lemma_fold_right_split(f, f(self.last(), b), k);
-            assert_seqs_equal!(
-                self.subrange(0, self.len() - 1).subrange(0, k) ==
-                self.subrange(0, k)
+            self[..self.len() - 1].lemma_fold_right_split(f, f(self.last(), b), k);
+            assert(self[..self.len() - 1][..k] =~= self[..k]);
+            assert(
+                self[..self.len() - 1][k..self[..self.len() - 1].len()] =~=
+                self[k..self.len() - 1]
             );
-            assert_seqs_equal!(
-                self.subrange(0, self.len() - 1).subrange(k, self.subrange(0, self.len() - 1).len() as int) ==
-                self.subrange(k, self.len() - 1)
-            );
-            assert_seqs_equal!(
-                self.subrange(k, self.len() as int).drop_last() ==
-                self.subrange(k, self.len() - 1)
-            );
+            assert(self[k..].drop_last() =~= self[k..self.len() - 1]);
         }
     }
 
@@ -1119,7 +1094,7 @@ impl<A> Seq<A> {
         if self.len() <= 1 {
             // trivial base cases
         } else {
-            self.subrange(1, self.len() as int).lemma_fold_right_alt(f, b);
+            self[1..].lemma_fold_right_alt(f, b);
             self.lemma_fold_right_split(f, b, 1);
         }
     }
@@ -1143,7 +1118,7 @@ impl<A> Seq<A> {
             }
             assert(res2 == g(s0.fold_left(v, g), last));
             assert(self.reverse().first() == last);
-            assert(self.reverse().subrange(1, self.reverse().len() as int) =~= s0.reverse());
+            assert(self.reverse()[1..self.reverse().len()] =~= s0.reverse());
             assert(res1 == f(last, s0.reverse().fold_right_alt(f, v)));
             assert(res1 == f(last, s0.reverse().fold_right(f, v))) by {
                 s0.reverse().lemma_fold_right_alt(f, v)
@@ -1200,8 +1175,8 @@ impl<A> Seq<A> {
             };
 
             if (self[a] == self[b]) {
-                let s0 = self.subrange(0, b);
-                let s1 = self.subrange(b, self.len() as int);
+                let s0 = self[..b];
+                let s1 = self[b..];
                 assert(self == s0 + s1);
 
                 broadcast use group_to_multiset_ensures;
@@ -1280,7 +1255,7 @@ impl<A> Seq<A> {
         requires
             0 <= pos <= self.len(),
         ensures
-            self.subrange(0, pos) + self.subrange(pos, self.len() as int) =~= self,
+            self[..pos] + self[pos..] =~= self,
     {
     }
 
@@ -1288,7 +1263,7 @@ impl<A> Seq<A> {
     pub proof fn lemma_element_from_slice(self, new: Seq<A>, a: int, b: int, pos: int)
         requires
             0 <= a <= b <= self.len(),
-            new == self.subrange(a, b),
+            new == self[a..b],
             a <= pos < b,
         ensures
             pos - a < new.len(),
@@ -1303,7 +1278,7 @@ impl<A> Seq<A> {
             0 <= s1 <= e1 <= self.len(),
             0 <= s2 <= e2 <= e1 - s1,
         ensures
-            self.subrange(s1, e1).subrange(s2, e2) =~= self.subrange(s1 + s2, s1 + e2),
+            self[s1..e1][s2..e2] =~= self[s1 + s2..s1 + e2],
     {
     }
 
@@ -1505,12 +1480,12 @@ impl<A> Seq<A> {
     /// proof fn example() {
     ///     let s = seq![1, 2, 3, 4];
     ///     s.lemma_seq_skip_skip(2);
-    ///     assert(s.skip(2).skip(1) =~= s.skip(3));
+    ///     assert(s[2..][1..] =~= s[3..]);
     /// }
     /// ```
     pub broadcast proof fn lemma_seq_skip_skip(self, i: int)
         ensures
-            0 <= i < self.len() ==> (self.skip(i)).skip(1) =~= #[trigger] self.skip(i + 1),
+            0 <= i < self.len() ==> self[i..][1..] =~= #[trigger] self[i + 1..],
     {
         broadcast use group_seq_properties;
 
@@ -1540,7 +1515,7 @@ impl<A> Seq<A> {
         if self[0] == elem {
             0
         } else {
-            let i = self.skip(1).lemma_contains_to_index(elem);
+            let i = self[1..].lemma_contains_to_index(elem);
             i + 1
         }
     }
@@ -1555,7 +1530,7 @@ impl<A> Seq<A> {
     ///     let s = seq![2, 4, 6, 8];
     ///     let is_even = |x| x % 2 == 0;
     ///     assert(is_even(s[0]));
-    ///     assert(s.skip(1).all(is_even));
+    ///     assert(s[1..].all(is_even));
     ///     s.lemma_all_from_head_tail(is_even);
     ///     assert(s.all(is_even));
     /// }
@@ -1563,13 +1538,13 @@ impl<A> Seq<A> {
     pub proof fn lemma_all_from_head_tail(self, pred: spec_fn(A) -> bool)
         requires
             self.len() > 0,
-            pred(self[0]) && self.skip(1).all(|x| pred(x)),
+            pred(self[0]) && self[1..].all(|x| pred(x)),
         ensures
             self.all(|x| pred(x)),
     {
         broadcast use group_seq_properties;
 
-        assert(seq![self[0]] + self.skip(1) == self);
+        assert(seq![self[0]] + self[1..] == self);
     }
 
     /// If a predicate holds for any element in the sequence and does not hold for the first element,
@@ -1584,14 +1559,14 @@ impl<A> Seq<A> {
     ///     assert(s.any(is_even));
     ///     assert(!is_even(s[0]));
     ///     s.lemma_any_tail(is_even);
-    ///     assert(s.skip(1).any(is_even));
+    ///     assert(s[1..].any(is_even));
     /// }
     /// ```
     pub proof fn lemma_any_tail(self, pred: spec_fn(A) -> bool)
         requires
             self.any(|x| pred(x)),
         ensures
-            !pred(self[0]) ==> self.skip(1).any(|x| pred(x)),
+            !pred(self[0]) ==> self[1..].any(|x| pred(x)),
     {
         broadcast use group_seq_properties;
 
@@ -1620,9 +1595,9 @@ impl<A> Seq<A> {
         if self.len() == 0 {
             seen
         } else if seen.contains(self[0]) {
-            self.skip(1).remove_duplicates(seen)
+            self[1..].remove_duplicates(seen)
         } else {
-            self.skip(1).remove_duplicates(seen + seq![self[0]])
+            self[1..].remove_duplicates(seen + seq![self[0]])
         }
     }
 
@@ -1654,10 +1629,10 @@ impl<A> Seq<A> {
 
         if self.len() == 0 {
         } else if seen.contains(self[0]) {
-            let rest = self.skip(1);
+            let rest = self[1..];
             rest.lemma_remove_duplicates_properties(seen);
         } else {
-            let rest = self.skip(1);
+            let rest = self[1..];
             rest.lemma_remove_duplicates_properties(seen + seq![self[0]]);
         }
     }
@@ -1681,8 +1656,8 @@ impl<A> Seq<A> {
         requires
             0 <= i < self.len(),
         ensures
-            self.remove_duplicates(seen) == self.skip(i).remove_duplicates(
-                self.take(i).remove_duplicates(seen),
+            self.remove_duplicates(seen) == self[i..].remove_duplicates(
+                self[..i].remove_duplicates(seen),
             ),
         decreases self.len(),
     {
@@ -1694,15 +1669,15 @@ impl<A> Seq<A> {
 
         if i == 0 {
         } else if i == self.len() {
-            assert(self.take(i) == self);
+            assert(self[..i] == self);
         } else {
-            assert(self.skip(1).take(i - 1) == self.subrange(1, i));
-            assert(self.take(i).skip(1) == self.subrange(1, i));
-            assert(self.skip(1).take(i - 1) == self.take(i).skip(1));
+            assert(self[1..][..i - 1] == self[1..i]);
+            assert(self[..i][1..] == self[1..i]);
+            assert(self[1..][..i - 1] == self[..i][1..]);
             if seen.contains(self[0]) {
-                self.skip(1).lemma_remove_duplicates_append_index(i - 1, seen);
+                self[1..].lemma_remove_duplicates_append_index(i - 1, seen);
             } else {
-                self.skip(1).lemma_remove_duplicates_append_index(i - 1, seen + seq![self[0]]);
+                self[1..].lemma_remove_duplicates_append_index(i - 1, seen + seq![self[0]]);
             }
         }
     }
@@ -1718,18 +1693,18 @@ impl<A> Seq<A> {
     ///     let s2 = seq![3, 4, 5];
     ///
     ///     lemma_skip1_concat(s1, s2);
-    ///     assert((s1 + s2).skip(1) =~= seq![2, 3, 4, 5]);
+    ///     assert((s1 + s2)[1..] =~= seq![2, 3, 4, 5]);
     /// }
     /// ```
     proof fn lemma_skip1_concat(xs: Seq<A>, ys: Seq<A>)
         requires
             xs.len() > 0,
         ensures
-            (xs + ys).skip(1) == xs.skip(1) + ys,
+            (xs + ys)[1..] == xs[1..] + ys,
     {
         broadcast use group_seq_properties;
 
-        assert((xs + ys).skip(1) == xs.skip(1) + ys);
+        assert((xs + ys)[1..] == xs[1..] + ys);
     }
 
     /// When appending an element `x` to a sequence:
@@ -1761,7 +1736,7 @@ impl<A> Seq<A> {
 
         if self.len() != 0 {
             let head = self[0];
-            let tail = self.skip(1);
+            let tail = self[1..];
 
             let seen2 = if seen.contains(head) {
                 seen
@@ -1769,7 +1744,7 @@ impl<A> Seq<A> {
                 seen + seq![head]
             };
             tail.lemma_remove_duplicates_append(x, seen2);
-            assert((self + seq![x]).skip(1) == tail + seq![x]) by {
+            assert((self + seq![x])[1..] == tail + seq![x]) by {
                 Seq::lemma_skip1_concat(self, seq![x]);
             };
         }
@@ -1892,7 +1867,7 @@ impl<A> Seq<A> {
         requires
             0 <= k < xs.len(),
         ensures
-            xs.take(k + 1) =~= xs.take(k) + seq![xs[k]],
+            xs[..k + 1] =~= xs[..k] + seq![xs[k]],
     {
         broadcast use group_seq_properties;
 
@@ -1919,14 +1894,14 @@ impl<A> Seq<A> {
     /// let s = seq![1, 2, 3];
     /// let f = |x| if x % 2 == 0 { Some(x * 2) } else { None };
     /// s.lemma_filter_map_take_succ(s, f, 1);
-    /// assert(s.take(2).filter_map(f) == s.take(1).filter_map(f) + seq![f(s[1]).unwrap()]);
-    /// assert(s.take(2).filter_map(f) == seq![] + seq![4]);
+    /// assert(s[..2].filter_map(f) == s[..1].filter_map(f) + seq![f(s[1]).unwrap()]);
+    /// assert(s[..2].filter_map(f) == seq![] + seq![4]);
     /// ```
     pub broadcast proof fn lemma_filter_map_take_succ<B>(self, f: spec_fn(A) -> Option<B>, i: int)
         requires
             0 <= i < self.len(),
         ensures
-            #[trigger] self.take(i + 1).filter_map(f) =~= self.take(i).filter_map(f) + (match f(
+            #[trigger] self[..i + 1].filter_map(f) =~= self[..i].filter_map(f) + (match f(
                 self[i],
             ) {
                 Option::Some(s) => seq![s],
@@ -1938,7 +1913,7 @@ impl<A> Seq<A> {
 
         if i != 0 {
             self.drop_last().lemma_filter_map_take_succ(f, i - 1);
-            assert(self.take(i + 1).drop_last() == self.take(i));
+            assert(self[..i + 1].drop_last() == self[..i]);
         }
     }
 
@@ -2070,24 +2045,24 @@ impl<A> Seq<A> {
     ///     let s = seq![1, 2, 3, 4, 5];
     ///     let is_even = |x: int| x % 2 == 0;
     ///     let i = 3;
-    ///     assert(s.take(i) =~= seq![1, 2, 3]);
-    ///     assert(s.take(i).filter(is_even) =~= seq![2]);
+    ///     assert(s[..i] =~= seq![1, 2, 3]);
+    ///     assert(s[..i].filter(is_even) =~= seq![2]);
     ///     assert(s.filter(is_even) =~= seq![2, 4]);
-    ///     assert(s.filter(is_even).len() >= s.take(i).filter(is_even).len());
+    ///     assert(s.filter(is_even).len() >= s[..i].filter(is_even).len());
     /// }
     /// ```
     pub proof fn lemma_filter_take_len(self, p: spec_fn(A) -> bool, i: int)
         requires
             0 <= i <= self.len(),
         ensures
-            self.filter(p).len() >= self.take(i).filter(p).len(),
+            self.filter(p).len() >= self[..i].filter(p).len(),
         decreases i,
     {
         broadcast use group_seq_properties;
         broadcast use Seq::lemma_filter_len_push;
         broadcast use Seq::lemma_filter_push;
 
-        self.take(i).lemma_filter_monotone(self, p);
+        self[..i].lemma_filter_monotone(self, p);
     }
 
     /// Filtering a prefix of a sequence produces the same number or fewer elements
@@ -2098,7 +2073,7 @@ impl<A> Seq<A> {
     /// proof fn filter_take_len_test() {
     ///     let s = seq![1, 2, 3, 4, 5];
     ///     let is_even = |x: int| x % 2 == 0;
-    ///     assert(s.filter(is_even).len() >= s.take(3).filter(is_even).len());
+    ///     assert(s.filter(is_even).len() >= s[..3].filter(is_even).len());
     /// }
     /// ```
     pub broadcast proof fn lemma_filter_len_push(self, p: spec_fn(A) -> bool, elem: A)
@@ -2130,7 +2105,7 @@ impl<A> Seq<A> {
         requires
             0 <= i < self.len(),
         ensures
-            #[trigger] self.take(i + 1) =~= self.take(i).push(self[i]),
+            #[trigger] self[..i + 1] =~= self[..i].push(self[i]),
     {
         broadcast use group_seq_properties;
 
@@ -2139,7 +2114,7 @@ impl<A> Seq<A> {
     /// Taking the full length of a sequence returns the sequence itself.
     pub broadcast proof fn lemma_take_len(self)
         ensures
-            #[trigger] self.take(self.len() as int) == self,
+            #[trigger] self[..self.len()] == self,
     {
         broadcast use group_seq_properties;
 
@@ -2154,28 +2129,28 @@ impl<A> Seq<A> {
     ///     let s = seq![1, 2, 3];
     ///     let is_even = |x| x % 2 == 0;
     ///     let i = 1;
-    ///     assert(s.take(i + 1).any(is_even) == (s.take(i).any(is_even) || is_even(s[i])));
+    ///     assert(s[..i + 1].any(is_even) == (s[..i].any(is_even) || is_even(s[i])));
     /// }
     /// ```
     pub broadcast proof fn lemma_take_any_succ(self, p: spec_fn(A) -> bool, i: int)
         requires
             0 <= i < self.len(),
         ensures
-            #[trigger] self.take(i + 1).any(p) <==> self.take(i).any(p) || p(self[i]),
+            #[trigger] self[..i + 1].any(p) <==> self[..i].any(p) || p(self[i]),
     {
         broadcast use group_seq_properties;
 
         self.lemma_take_succ_push(i);
-        if self.take(i + 1).any(p) {
-            let x = choose|x: A| self.take(i + 1).contains(x) && #[trigger] p(x);
-            assert(self.take(i).contains(x) || x == self[i]);
+        if self[..i + 1].any(p) {
+            let x = choose|x: A| self[..i + 1].contains(x) && #[trigger] p(x);
+            assert(self[..i].contains(x) || x == self[i]);
         }
-        if self.take(i).any(p) {
-            let x = choose|x: A| self.take(i).contains(x) && #[trigger] p(x);
-            assert(self.take(i + 1).contains(x));
+        if self[..i].any(p) {
+            let x = choose|x: A| self[..i].contains(x) && #[trigger] p(x);
+            assert(self[..i + 1].contains(x));
         }
         if p(self[i]) {
-            assert(self.take(i + 1).contains(self[i]));
+            assert(self[..i + 1].contains(self[i]));
         }
     }
 
@@ -2371,22 +2346,22 @@ impl<A> Seq<A> {
     ///     let xs = seq![1, 2, 3];
     ///     let f = |x| seq![x, x + 1];
     ///
-    ///     assert(xs.take(2).flat_map(f) =~= xs.take(1).flat_map(f) + f(xs[1]));
-    ///     // xs.take(2).flat_map(f)        = [1,2,2,3]
-    ///     // xs.take(1).flat_map(f) + f(2) = [1,2] + [2,3]
+    ///     assert(xs[..2].flat_map(f) =~= xs[..1].flat_map(f) + f(xs[1]));
+    ///     // xs[..2].flat_map(f)        = [1,2,2,3]
+    ///     // xs[..1].flat_map(f) + f(2) = [1,2] + [2,3]
     /// }
     /// ```
     pub broadcast proof fn lemma_flat_map_take_append<B>(self, f: spec_fn(A) -> Seq<B>, i: int)
         requires
             0 <= i < self.len(),
         ensures
-            #[trigger] self.take(i + 1).flat_map(f) =~= self.take(i).flat_map(f) + f(self[i]),
+            #[trigger] self[..i + 1].flat_map(f) =~= self[..i].flat_map(f) + f(self[i]),
         decreases i,
     {
         broadcast use group_seq_properties;
 
         self.lemma_take_succ_push(i);
-        self.take(i).lemma_flat_map_push(f, self[i]);
+        self[..i].lemma_flat_map_push(f, self[i]);
     }
 
     /// flat_mapping a sequence with a single element
@@ -2410,7 +2385,7 @@ impl<A> Seq<A> {
     ///     let xs = seq![1, 2, 3];
     ///     let f = |x| x * 2;
     ///
-    ///     assert(xs.take(2).map_values(f) =~= xs.take(1).map_values(f).push(f(xs[1])));
+    ///     assert(xs[..2].map_values(f) =~= xs[..1].map_values(f).push(f(xs[1])));
     ///     // Left:  [1,2].map(f)          = [2,4]
     ///     // Right: [1].map(f).push(f(2)) = [2].push(4)
     /// }
@@ -2419,7 +2394,7 @@ impl<A> Seq<A> {
         requires
             0 <= i < self.len(),
         ensures
-            #[trigger] self.take(i + 1).map_values(f) =~= self.take(i).map_values(f).push(
+            #[trigger] self[..i + 1].map_values(f) =~= self[..i].map_values(f).push(
                 f(self[i]),
             ),
     {
@@ -2564,7 +2539,7 @@ impl<A> Seq<A> {
     {
         broadcast use group_seq_properties;
 
-        assert((self + s1).skip(self.len() as int) == s1);
+        assert((self + s1)[self.len()..] == s1);
     }
 
     pub broadcast group group_seq_extra {
@@ -2934,7 +2909,7 @@ impl Seq<int> {
         if self.len() <= 1 {
         } else {
             let elt = self.drop_first().min();
-            assert(self.subrange(1, self.len() as int).contains(elt)) by {
+            assert(self[1..].contains(elt)) by {
                 self.drop_first().min_ensures()
             }
             assert forall|i: int| 0 <= i < self.len() implies self.min() <= self[i] by {
@@ -2964,10 +2939,10 @@ impl Seq<int> {
         requires
             0 <= from < to <= self.len(),
         ensures
-            self.subrange(from, to).max() <= self.max(),
+            self[from..to].max() <= self.max(),
     {
         self.max_ensures();
-        self.subrange(from, to).max_ensures();
+        self[from..to].max_ensures();
     }
 
     /// The minimum element in a non-empty sequence is less than or equal to
@@ -2976,10 +2951,10 @@ impl Seq<int> {
         requires
             0 <= from < to <= self.len(),
         ensures
-            self.subrange(from, to).min() >= self.min(),
+            self[from..to].min() >= self.min(),
     {
         self.min_ensures();
-        self.subrange(from, to).min_ensures();
+        self[from..to].min_ensures();
     }
 }
 
@@ -3173,9 +3148,9 @@ pub broadcast proof fn to_multiset_remove<A>(s: Seq<A>, i: int)
 {
     broadcast use super::multiset::group_multiset_axioms;
 
-    let s0 = s.subrange(0, i);
-    let s1 = s.subrange(i, s.len() as int);
-    let s2 = s.subrange(i + 1, s.len() as int);
+    let s0 = s[..i];
+    let s1 = s[i..];
+    let s2 = s[i + 1..];
     lemma_seq_union_to_multiset_commutative(s0, s2);
     lemma_seq_union_to_multiset_commutative(s0, s1);
     assert(s == s0 + s1);
@@ -3193,8 +3168,8 @@ pub broadcast proof fn to_multiset_insert<A>(s: Seq<A>, i: int, a: A)
 {
     broadcast use super::multiset::group_multiset_axioms;
 
-    let s0 = s.subrange(0, i);
-    let s1 = s.subrange(i, s.len() as int);
+    let s0 = s[..i];
+    let s1 = s[i..];
 
     assert(s =~= s0 + s1);
     assert(s.insert(i, a) =~= s0 + seq![a] + s1);
@@ -3244,7 +3219,7 @@ pub broadcast proof fn to_multiset_contains<A>(s: Seq<A>, a: A)
                 assert(Multiset::<A>::empty().insert(s.first()).contains(s.first()));
             } else {
                 to_multiset_contains(s.drop_first(), a);
-                assert(s.skip(1) =~= s.drop_first());
+                assert(s[1..] =~= s.drop_first());
                 lemma_seq_skip_contains(s, 1, a);
                 assert(s.to_multiset().count(a) == s.drop_first().to_multiset().count(a));
                 assert(s.contains(a) <==> s.to_multiset().count(a) > 0);
@@ -3554,16 +3529,13 @@ pub broadcast proof fn lemma_seq_subrange_elements<A>(s: Seq<A>, start: int, sto
     requires
         0 <= start <= stop <= s.len(),
     ensures
-        #[trigger] s.subrange(start, stop).contains(x) <==> (exists|i: int|
+        #[trigger] s[start..stop].contains(x) <==> (exists|i: int|
             0 <= start <= i < stop <= s.len() && #[trigger] s[i] == x),
 {
-    assert((exists|i: int| 0 <= start <= i < stop <= s.len() && s[i] == x) ==> s.subrange(
-        start,
-        stop,
-    ).contains(x)) by {
+    assert((exists|i: int| 0 <= start <= i < stop <= s.len() && s[i] == x) ==> s[start..stop].contains(x)) by {
         if exists|i: int| 0 <= start <= i < stop <= s.len() && s[i] == x {
             let index = choose|i: int| 0 <= start <= i < stop <= s.len() && s[i] == x;
-            assert(s.subrange(start, stop)[index - start] == s[index]);
+            assert(s[start..stop][index - start] == s[index]);
         }
     }
 }
@@ -3593,23 +3565,20 @@ pub proof fn lemma_fold_right_permutation<A, B>(l1: Seq<A>, l2: Seq<A>, f: spec_
     if l1.len() > 0 {
         let a = l1.last();
         let i = l2.index_of(a);
-        let l2r = l2.subrange(i + 1, l2.len() as int).fold_right(f, v);
+        let l2r = l2[i + 1..].fold_right(f, v);
 
         assert(l1.to_multiset().count(a) > 0);
         l1.drop_last().lemma_fold_right_commute_one(a, f, v);
-        l2.subrange(0, i).lemma_fold_right_commute_one(a, f, l2r);
+        l2[..i].lemma_fold_right_commute_one(a, f, l2r);
 
         l2.lemma_fold_right_split(f, v, i + 1);
         l2.remove(i).lemma_fold_right_split(f, v, i);
 
-        assert(l2.subrange(0, i + 1).drop_last() == l2.subrange(0, i));
+        assert(l2[..i + 1].drop_last() == l2[..i]);
         assert(l1.drop_last() == l1.remove(l1.len() - 1));
 
-        assert(l2.remove(i).subrange(0, i) == l2.subrange(0, i));
-        assert(l2.remove(i).subrange(i, l2.remove(i).len() as int) == l2.subrange(
-            i + 1,
-            l2.len() as int,
-        ));
+        assert(l2.remove(i)[..i] == l2[..i]);
+        assert(l2.remove(i)[i..l2.remove(i).len()] == l2[i + 1..l2.len()]);
 
         lemma_fold_right_permutation(l1.drop_last(), l2.remove(i), f, v);
     } else {
@@ -3650,7 +3619,7 @@ pub proof fn lemma_fold_left_permutation<A, B>(l1: Seq<A>, l2: Seq<A>, f: spec_f
 /// as long as `n` is within the bounds of the original sequence.
 pub broadcast proof fn lemma_seq_take_len<A>(s: Seq<A>, n: int)
     ensures
-        0 <= n <= s.len() ==> #[trigger] s.take(n).len() == n,
+        0 <= n <= s.len() ==> #[trigger] s[..n].len() == n,
 {
 }
 
@@ -3661,14 +3630,14 @@ pub broadcast proof fn lemma_seq_take_contains<A>(s: Seq<A>, n: int, x: A)
     requires
         0 <= n <= s.len(),
     ensures
-        #[trigger] s.take(n).contains(x) <==> (exists|i: int|
+        #[trigger] s[..n].contains(x) <==> (exists|i: int|
             0 <= i < n <= s.len() && #[trigger] s[i] == x),
 {
-    assert((exists|i: int| 0 <= i < n <= s.len() && #[trigger] s[i] == x) ==> s.take(n).contains(x))
+    assert((exists|i: int| 0 <= i < n <= s.len() && #[trigger] s[i] == x) ==> s[..n].contains(x))
         by {
         if exists|i: int| 0 <= i < n <= s.len() && #[trigger] s[i] == x {
             let index = choose|i: int| 0 <= i < n <= s.len() && #[trigger] s[i] == x;
-            assert(s.take(n)[index] == s[index]);
+            assert(s[..n][index] == s[index]);
         }
     }
 }
@@ -3678,26 +3647,26 @@ pub broadcast proof fn lemma_seq_take_contains<A>(s: Seq<A>, n: int, x: A)
 /// is the same as `j`th element of the sequence after taking the first `n` elements of `s`.
 pub broadcast proof fn lemma_seq_take_index<A>(s: Seq<A>, n: int, j: int)
     ensures
-        0 <= j < n <= s.len() ==> #[trigger] s.take(n)[j] == s[j],
+        0 <= j < n <= s.len() ==> #[trigger] s[..n][j] == s[j],
 {
 }
 
 pub proof fn subrange_of_matching_take<T>(a: Seq<T>, b: Seq<T>, s: int, e: int, l: int)
     requires
-        a.take(l) == b.take(l),
+        a[..l] == b[..l],
         l <= a.len(),
         l <= b.len(),
         0 <= s <= e <= l,
     ensures
-        a.subrange(s, e) == b.subrange(s, e),
+        a[s..e] == b[s..e],
 {
-    assert forall|i| 0 <= i < e - s implies a.subrange(s, e)[i] == b.subrange(s, e)[i] by {
-        assert(a.subrange(s, e)[i] == a.take(l)[i + s]);
-        //             assert( b.subrange(s, e)[i] == b.take(l)[i + s] );   // either trigger will do
+    assert forall|i| 0 <= i < e - s implies #[trigger] a[s..e][i] == b[s..e][i] by {
+        assert(a[s..e][i] == a[..l][i + s]);
+        //             assert( b[s..e][i] == b[..l][i + s] );   // either trigger will do
     }
     // trigger extn equality (verus issue #1257)
 
-    assert(a.subrange(s, e) == b.subrange(s, e));
+    assert(a[s..e] == b[s..e]);
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude
@@ -3705,7 +3674,7 @@ pub proof fn subrange_of_matching_take<T>(a: Seq<T>, b: Seq<T>, s: int, e: int, 
 /// the original sequence's length.
 pub broadcast proof fn lemma_seq_skip_len<A>(s: Seq<A>, n: int)
     ensures
-        0 <= n <= s.len() ==> #[trigger] s.skip(n).len() == s.len() - n,
+        0 <= n <= s.len() ==> #[trigger] s[n..].len() == s.len() - n,
 {
 }
 
@@ -3716,10 +3685,10 @@ pub broadcast proof fn lemma_seq_skip_contains<A>(s: Seq<A>, n: int, x: A)
     requires
         0 <= n <= s.len(),
     ensures
-        #[trigger] s.skip(n).contains(x) <==> (exists|i: int|
+        #[trigger] s[n..].contains(x) <==> (exists|i: int|
             0 <= n <= i < s.len() && #[trigger] s[i] == x),
 {
-    assert((exists|i: int| 0 <= n <= i < s.len() && #[trigger] s[i] == x) ==> s.skip(n).contains(x))
+    assert((exists|i: int| 0 <= n <= i < s.len() && #[trigger] s[i] == x) ==> s[n..].contains(x))
         by {
         let index = choose|i: int| 0 <= n <= i < s.len() && #[trigger] s[i] == x;
         lemma_seq_skip_index(s, n, index - n);
@@ -3728,20 +3697,20 @@ pub broadcast proof fn lemma_seq_skip_contains<A>(s: Seq<A>, n: int, x: A)
 
 // This verified lemma used to be an axiom in the Dafny prelude
 /// If `j` is a valid index less than `s.len() - n`, then the `j`th element of the sequence
-/// `s.skip(n)` is the same as the `j+n`th element of the sequence `s`.
+/// `s[n..]` is the same as the `j+n`th element of the sequence `s`.
 pub broadcast proof fn lemma_seq_skip_index<A>(s: Seq<A>, n: int, j: int)
     ensures
-        0 <= n && 0 <= j < (s.len() - n) ==> #[trigger] s.skip(n)[j] == s[j + n],
+        0 <= n && 0 <= j < (s.len() - n) ==> #[trigger] s[n..][j] == s[j + n],
 {
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude
 /// If `k` is a valid index between `n` (inclusive) and the length of sequence `s` (exclusive),
-/// then the `k-n`th element of the sequence `s.skip(n)` is the same as the `k`th element of the
+/// then the `k-n`th element of the sequence `s[n..]` is the same as the `k`th element of the
 /// original sequence `s`.
 pub broadcast proof fn lemma_seq_skip_index2<A>(s: Seq<A>, n: int, k: int)
     ensures
-        0 <= n <= k < s.len() ==> (#[trigger] s.skip(n))[k - n] == #[trigger] s[k],
+        0 <= n <= k < s.len() ==> (#[trigger] s[n..])[k - n] == #[trigger] s[k],
 {
 }
 
@@ -3751,9 +3720,11 @@ pub broadcast proof fn lemma_seq_skip_index2<A>(s: Seq<A>, n: int, k: int)
 /// `a + b` is equivalent to the sequence `b`.
 pub broadcast proof fn lemma_seq_append_take_skip<A>(a: Seq<A>, b: Seq<A>, n: int)
     ensures
-        #![trigger (a + b).take(n)]
-        #![trigger (a + b).skip(n)]
-        n == a.len() ==> ((a + b).take(n) =~= a && (a + b).skip(n) =~= b),
+        #![trigger (a + b)[..n]]
+        #![trigger (a + b)[n..]]
+//        #![trigger (a + b)[..n]]
+//        #![trigger (a + b)[n..]]
+        n == a.len() ==> ((a + b)[..n] =~= a && (a + b)[n..] =~= b),
 {
 }
 
@@ -3765,8 +3736,8 @@ pub broadcast proof fn lemma_seq_append_take_skip<A>(a: Seq<A>, b: Seq<A>, n: in
 /// elements of `s` and then updating index `i` to value `v`.
 pub broadcast proof fn lemma_seq_take_update_commut1<A>(s: Seq<A>, i: int, v: A, n: int)
     ensures
-        #![trigger s.update(i, v).take(n)]
-        0 <= i < n <= s.len() ==> #[trigger] s.update(i, v).take(n) =~= s.take(n).update(i, v),
+        #![trigger s.update(i, v)[..n]]
+        0 <= i < n <= s.len() ==> #[trigger] s.update(i, v)[..n] =~= s[..n].update(i, v),
 {
 }
 
@@ -3776,7 +3747,7 @@ pub broadcast proof fn lemma_seq_take_update_commut1<A>(s: Seq<A>, i: int, v: A,
 /// elements of `s` without the update.
 pub broadcast proof fn lemma_seq_take_update_commut2<A>(s: Seq<A>, i: int, v: A, n: int)
     ensures
-        0 <= n <= i < s.len() ==> #[trigger] s.update(i, v).take(n) =~= s.take(n),
+        0 <= n <= i < s.len() ==> #[trigger] s.update(i, v)[..n] =~= s[..n],
 {
 }
 
@@ -3786,7 +3757,7 @@ pub broadcast proof fn lemma_seq_take_update_commut2<A>(s: Seq<A>, i: int, v: A,
 /// elements of `s` and then updating index `i-n` to value `v`.
 pub broadcast proof fn lemma_seq_skip_update_commut1<A>(s: Seq<A>, i: int, v: A, n: int)
     ensures
-        0 <= n <= i < s.len() ==> #[trigger] s.update(i, v).skip(n) =~= s.skip(n).update(i - n, v),
+        0 <= n <= i < s.len() ==> #[trigger] s.update(i, v)[n..] =~= s[n..].update(i - n, v),
 {
 }
 
@@ -3796,7 +3767,7 @@ pub broadcast proof fn lemma_seq_skip_update_commut1<A>(s: Seq<A>, i: int, v: A,
 /// the first `n` elements without the update.
 pub broadcast proof fn lemma_seq_skip_update_commut2<A>(s: Seq<A>, i: int, v: A, n: int)
     ensures
-        0 <= i < n <= s.len() ==> #[trigger] s.update(i, v).skip(n) =~= s.skip(n),
+        0 <= i < n <= s.len() ==> #[trigger] s.update(i, v)[n..] =~= s[n..],
 {
 }
 
@@ -3805,24 +3776,24 @@ pub broadcast proof fn lemma_seq_skip_update_commut2<A>(s: Seq<A>, i: int, v: A,
 /// equivalent to skipping the first `n` elements of `s` and then pushing `v` onto the end.
 pub broadcast proof fn lemma_seq_skip_build_commut<A>(s: Seq<A>, v: A, n: int)
     ensures
-        #![trigger s.push(v).skip(n)]
-        0 <= n <= s.len() ==> s.push(v).skip(n) =~= s.skip(n).push(v),
+        #![trigger s.push(v)[n..]]
+        0 <= n <= s.len() ==> s.push(v)[n..] =~= s[n..].push(v),
 {
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude
-/// `s.skip(0)` is equivalent to `s`.
+/// `s[0..]` is equivalent to `s`.
 pub broadcast proof fn lemma_seq_skip_nothing<A>(s: Seq<A>, n: int)
     ensures
-        n == 0 ==> #[trigger] s.skip(n) =~= s,
+        n == 0 ==> #[trigger] s[n..] =~= s,
 {
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude
-/// `s.take(0)` is equivalent to the empty sequence.
+/// `s[..0]` is equivalent to the empty sequence.
 pub broadcast proof fn lemma_seq_take_nothing<A>(s: Seq<A>, n: int)
     ensures
-        n == 0 ==> #[trigger] s.take(n) =~= Seq::<A>::empty(),
+        n == 0 ==> #[trigger] s[..n] =~= Seq::<A>::empty(),
 {
 }
 
@@ -3832,7 +3803,7 @@ pub broadcast proof fn lemma_seq_take_nothing<A>(s: Seq<A>, n: int)
 /// the first `m + n` elements.
 pub broadcast proof fn lemma_seq_skip_of_skip<A>(s: Seq<A>, m: int, n: int)
     ensures
-        (0 <= m && 0 <= n && m + n <= s.len()) ==> #[trigger] s.skip(m).skip(n) =~= s.skip(m + n),
+        (0 <= m && 0 <= n && m + n <= s.len()) ==> #[trigger] s[m..][n..] =~= s[m + n..],
 {
 }
 
@@ -3859,8 +3830,8 @@ pub open spec fn check_argument_is_seq<A>(s: Seq<A>) -> Seq<A> {
 ///         0 <= i && i <= s.len(),
 ///     ]);
 ///
-///     let t1 = s.subrange(0, i);
-///     let t2 = s.subrange(i, s.len());
+///     let t1 = s[..i];
+///     let t2 = s[i..];
 ///     let t = t1.add(t2);
 ///
 ///     assert_seqs_equal!(s == t);
