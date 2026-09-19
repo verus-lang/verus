@@ -1,4 +1,6 @@
 #![allow(unused_macros)]
+use std::collections::BTreeSet;
+
 use crate::EraseGhost;
 use crate::rustdoc::env_rustdoc;
 use crate::{VstdKind, vstd_kind};
@@ -12,9 +14,6 @@ use quote::format_ident;
 use quote::{quote, quote_spanned};
 use syn::token::Comma;
 use syn::visit::Visit as SynVisit;
-use verus_syn::BroadcastUse;
-use verus_syn::DefaultEnsures;
-use verus_syn::ExprBlock;
 use verus_syn::ExprForLoop;
 use verus_syn::Generics;
 use verus_syn::parse::{Parse, ParseStream};
@@ -31,17 +30,19 @@ use verus_syn::visit_mut::{
     visit_item_union_mut, visit_local_mut, visit_specification_mut, visit_trait_item_fn_mut,
 };
 use verus_syn::{
-    AssumeSpecification, AtomicSpec, AtomicallyBlock, Attribute, BareFnArg, BinOp, Block, DataMode,
-    Decreases, Ensures, Expr, ExprBinary, ExprCall, ExprLit, ExprLoop, ExprMatches, ExprMethodCall,
-    ExprTuple, ExprUnary, ExprWhile, Field, FnArg, FnArgKind, FnMode, GenericParam, Global, Ident,
+    AssumeSpecification, AtomicSpec, AtomicallyBlock, Attribute, BareFnArg, BinOp, Block,
+    BoundLifetimes, BroadcastUse, DataMode, Decreases, DefaultEnsures, Ensures, Expr, ExprBinary,
+    ExprBlock, ExprCall, ExprLit, ExprLoop, ExprMatches, ExprMethodCall, ExprTuple, ExprUnary,
+    ExprWhile, Field, FnArg, FnArgKind, FnMode, GenericArgument, GenericParam, Global, Ident,
     ImplItem, ImplItemFn, Invariant, InvariantEnsures, InvariantExceptBreak, InvariantNameSet,
     InvariantNameSetList, InvariantNameSetListCompl, InvariantNameSetSet, Item, ItemBroadcastGroup,
     ItemConst, ItemEnum, ItemFn, ItemImpl, ItemMod, ItemStatic, ItemStruct, ItemTrait, ItemUnion,
-    Lit, Local, MatchesOpExpr, MatchesOpToken, Meta, MetaList, ModeSpec, ModeSpecChecked, Pat,
-    PatIdent, PatType, Path, PathArguments, Publish, Receiver, Recommends, Requires, ReturnType,
-    Returns, Signature, SignatureDecreases, SignatureInvariants, SignatureSpec, SignatureSpecAttr,
-    SignatureUnwind, Stmt, Token, TraitItem, TraitItemFn, Type, TypeFnProof, TypeFnSpec, TypePath,
-    TypeReference, UnOp, Visibility, braced, bracketed, parenthesized, parse_macro_input,
+    Lifetime, Lit, Local, MatchesOpExpr, MatchesOpToken, Meta, MetaList, ModeSpec, ModeSpecChecked,
+    Pat, PatIdent, PatType, Path, PathArguments, Publish, Receiver, Recommends, Requires,
+    ReturnType, Returns, Signature, SignatureDecreases, SignatureInvariants, SignatureSpec,
+    SignatureSpecAttr, SignatureUnwind, Stmt, Token, TraitItem, TraitItemFn, Type, TypeFnProof,
+    TypeFnSpec, TypeParamBound, TypePath, TypeReference, UnOp, Visibility, braced, bracketed,
+    parenthesized, parse_macro_input,
 };
 
 pub(crate) const VERUS_SPEC: &str = "VERUS_SPEC__";
@@ -531,6 +532,220 @@ fn rewrite_args_unwrap_ghost_tracked(erase_ghost: &EraseGhost, arg: &mut FnArg) 
     unwrap_ghost_tracked
 }
 
+/// Remove lifetime parameters from types for spec-mode code
+///
+/// Verus does not check the lifetimes in spec-mode code, but every lifetime
+/// annotation used in a type must still resolve to a binder. This means, even
+/// in spec-mode code, types like `&'a T` or `Foo<'a>` can only be used when
+/// a binder for `'a` is in scope.
+///
+/// This helper rewrites types such that they can be used freely in spec-mode
+/// code, either by removing lifetimes or replacing them with `'static`.
+struct GhostLifetimeRewriter {
+    scopes: Vec<BTreeSet<Lifetime>>,
+    removed: BTreeSet<Lifetime>,
+    error_spans: Vec<Span>,
+}
+
+impl GhostLifetimeRewriter {
+    fn new() -> Self {
+        Self { scopes: Vec::new(), removed: BTreeSet::new(), error_spans: Vec::new() }
+    }
+
+    fn push_scope(&mut self) {
+        self.scopes.push(Default::default());
+    }
+
+    fn pop_scope(&mut self) {
+        debug_assert!(self.scopes.pop().is_some());
+    }
+
+    fn bind(&mut self, lifetime: Lifetime) {
+        self.scopes.last_mut().unwrap().insert(lifetime);
+    }
+
+    fn has_bound_for(&self, lifetime: &Lifetime) -> bool {
+        self.scopes.iter().any(|set| set.contains(&lifetime))
+    }
+
+    fn handle_bound_lifetimes(&mut self, bound_lifetimes: &mut BoundLifetimes) {
+        for generic_param in bound_lifetimes.lifetimes.iter_mut() {
+            let GenericParam::Lifetime(lifetime_param) = generic_param else {
+                // The `for<..>` binder only supports lifetime parameters in Rust
+                // https://doc.rust-lang.org/stable/reference/trait-bounds.html#higher-ranked-trait-bounds
+                continue;
+            };
+
+            lifetime_param.bounds.clear();
+            lifetime_param.colon_token = None;
+            self.bind(lifetime_param.lifetime.clone());
+        }
+    }
+
+    fn rewrite_type_param_bounds<P>(&mut self, bounds: &mut Punctuated<TypeParamBound, P>) {
+        bounds.retain_mut(|bound, _| match bound {
+            TypeParamBound::Trait(trait_bound) => {
+                self.push_scope();
+                if let Some(bound_lifetimes) = &mut trait_bound.lifetimes {
+                    self.handle_bound_lifetimes(bound_lifetimes);
+                }
+                self.rewrite_path(&mut trait_bound.path);
+                self.pop_scope();
+                true
+            }
+            TypeParamBound::Lifetime(_) | TypeParamBound::PreciseCapture(_) => {
+                // We can simply remove extraneous lifetime bounds
+                false
+            }
+            TypeParamBound::Verbatim(_) => {
+                // Since this could contain macro calls,
+                // there is not much we can do here.
+                self.error_spans.push(bound.span());
+                true
+            }
+            _ => unreachable!(),
+        });
+    }
+
+    fn rewrite_generic_arguments<P>(
+        &mut self,
+        generic_arguments: &mut Punctuated<GenericArgument, P>,
+    ) {
+        for generic_argument in generic_arguments.iter_mut() {
+            match generic_argument {
+                GenericArgument::Lifetime(lifetime) => {
+                    if !self.has_bound_for(lifetime) {
+                        self.removed.insert(lifetime.clone());
+                        *lifetime = parse_quote_spanned!(lifetime.span() => 'static);
+                    }
+                }
+                GenericArgument::Type(ty) => self.rewrite_type(ty),
+                GenericArgument::Const(_) => {}
+                GenericArgument::AssocType(assoc_type) => self.rewrite_type(&mut assoc_type.ty),
+                GenericArgument::AssocConst(_) => {}
+                GenericArgument::Constraint(constraint) => {
+                    self.rewrite_type_param_bounds(&mut constraint.bounds)
+                }
+                _ => unreachable!(),
+            }
+        }
+    }
+
+    fn rewrite_path(&mut self, path: &mut Path) {
+        for path_segment in &mut path.segments {
+            match &mut path_segment.arguments {
+                PathArguments::None => continue,
+                PathArguments::AngleBracketed(inner) => {
+                    self.rewrite_generic_arguments(&mut inner.args)
+                }
+                PathArguments::Parenthesized(inner) => {
+                    for arg_ty in inner.inputs.iter_mut() {
+                        self.rewrite_type(arg_ty);
+                    }
+                    if let ReturnType::Type(.., ret_ty) = &mut inner.output {
+                        self.rewrite_type(ret_ty);
+                    }
+                }
+            }
+        }
+    }
+
+    fn rewrite_type(&mut self, ty: &mut Type) {
+        match ty {
+            Type::Array(type_array) => self.rewrite_type(&mut type_array.elem),
+            Type::BareFn(type_bare_fn) => {
+                self.push_scope();
+                if let Some(bound_lifetimes) = &mut type_bare_fn.lifetimes {
+                    self.handle_bound_lifetimes(bound_lifetimes);
+                }
+                for arg in type_bare_fn.inputs.iter_mut() {
+                    self.rewrite_type(&mut arg.ty);
+                }
+                if let ReturnType::Type(.., ret_ty) = &mut type_bare_fn.output {
+                    self.rewrite_type(ret_ty);
+                }
+                self.pop_scope();
+            }
+            Type::Group(type_group) => self.rewrite_type(&mut type_group.elem),
+            Type::ImplTrait(type_impl_trait) => {
+                self.rewrite_type_param_bounds(&mut type_impl_trait.bounds);
+            }
+            Type::Infer(_) => {}
+            Type::Macro(_) => {
+                // There is nothing we can realistically do here, because macros are
+                // not hygienic for lifetimes, i.e. the following is valid Rust code:
+                // ```
+                // macro_rules! my_type {
+                //     () => { &'a () }
+                // }
+                //
+                // fn example<'a>(_x: my_type!()) {}
+                // ```
+                // and because the arguments to a macro call could be a completely
+                // arbitrary token stream that uses the lifetime-or-label token
+                // for something other than lifetimes.
+                self.error_spans.push(ty.span());
+            }
+            Type::Never(_) => {}
+            Type::Paren(type_paren) => self.rewrite_type(&mut type_paren.elem),
+            Type::Path(type_path) => {
+                if let Some(qself) = &mut type_path.qself {
+                    self.rewrite_type(&mut qself.ty);
+                }
+                self.rewrite_path(&mut type_path.path);
+            }
+            Type::Ptr(type_ptr) => self.rewrite_type(&mut type_ptr.elem),
+            Type::Reference(type_reference) => {
+                if type_reference.lifetime.as_ref().is_none_or(|lt| !self.has_bound_for(lt)) {
+                    if let Some(lifetime) = type_reference.lifetime.clone() {
+                        self.removed.insert(lifetime.clone());
+                    }
+
+                    let span = type_reference.and_token.span();
+                    type_reference.lifetime = Some(parse_quote_spanned!(span => 'static));
+                }
+                self.rewrite_type(&mut type_reference.elem)
+            }
+            Type::Slice(type_slice) => self.rewrite_type(&mut type_slice.elem),
+            Type::TraitObject(type_trait_object) => {
+                self.rewrite_type_param_bounds(&mut type_trait_object.bounds);
+            }
+            Type::Tuple(type_tuple) => {
+                for elem in type_tuple.elems.iter_mut() {
+                    self.rewrite_type(elem);
+                }
+            }
+            Type::Verbatim(_) => {
+                // Since this could contain macro calls,
+                // there is once again nothing we can do here.
+                self.error_spans.push(ty.span());
+            }
+            Type::FnSpec(type_fn_spec) => {
+                for arg in type_fn_spec.inputs.iter_mut() {
+                    self.rewrite_type(&mut arg.ty);
+                }
+                if let ReturnType::Type(.., ret_ty) = &mut type_fn_spec.output {
+                    self.rewrite_type(ret_ty);
+                }
+            }
+            Type::FnProof(type_fn_proof) => {
+                self.push_scope();
+                if let Some(generics) = &mut type_fn_proof.generics {
+                    self.rewrite_generic_arguments(&mut generics.args);
+                }
+                for arg in type_fn_proof.inputs.iter_mut() {
+                    self.rewrite_type(&mut arg.arg.ty);
+                }
+                if let ReturnType::Type(.., ret_ty) = &mut type_fn_proof.output {
+                    self.rewrite_type(ret_ty);
+                }
+                self.pop_scope();
+            }
+            _ => unreachable!(),
+        }
+    }
+}
+
 impl Visitor {
     fn take_ghost<T: Default>(&self, dest: &mut T) -> T {
         take_ghost(self.erase_ghost, dest)
@@ -720,18 +935,22 @@ impl Visitor {
         let mut args_full_tokens = TokenStream::new();
 
         let mut self_ident = None;
+        let mut rewriter = GhostLifetimeRewriter::new();
         for pair in sig.inputs.pairs() {
             let (fn_arg, comma) = pair.into_tuple();
             match &fn_arg.kind {
                 FnArgKind::Typed(pat_type) => {
+                    let mut pat_ty = pat_type.ty.clone();
+                    rewriter.rewrite_type(&mut pat_ty);
+
                     pat_type.pat.to_tokens(&mut args_use_tokens);
                     pat_type.pat.to_tokens(&mut args_pat_tokens);
                     pat_type.pat.to_tokens(&mut args_full_tokens);
 
                     pat_type.colon_token.to_tokens(&mut args_full_tokens);
 
-                    pat_type.ty.to_tokens(&mut args_ty_tokens);
-                    pat_type.ty.to_tokens(&mut args_full_tokens);
+                    pat_ty.to_tokens(&mut args_ty_tokens);
+                    pat_ty.to_tokens(&mut args_full_tokens);
                 }
 
                 FnArgKind::Receiver(receiver) => {
@@ -767,21 +986,38 @@ impl Visitor {
             comma.to_tokens(&mut args_full_tokens);
         }
 
-        let mut generics =
-            self.inside_impl.as_deref().map(|(generics, _)| generics.clone()).unwrap_or_default();
+        let mut generics = self
+            .inside_impl
+            .as_deref()
+            .map(|(generics, _type)| generics.clone())
+            .unwrap_or_default();
         generics.params.extend(sig.generics.params.clone());
         if let Some(where_clause) = &sig.generics.where_clause {
             generics.make_where_clause().predicates.extend(where_clause.predicates.clone());
         }
-        let generic_params = generics.params.iter().cloned().collect::<Vec<_>>();
-        generics.params = generic_params
-            .iter()
-            .filter(|param| matches!(param, GenericParam::Lifetime(_)))
-            .chain(
-                generic_params.iter().filter(|param| !matches!(param, GenericParam::Lifetime(_))),
-            )
-            .cloned()
-            .collect();
+
+        let mut residual_lifetimes_count = 0;
+        generics.params.retain(|param, _| {
+            if let GenericParam::Lifetime(lifetime_param) = param {
+                let removed = rewriter.removed.contains(&lifetime_param.lifetime);
+                residual_lifetimes_count += usize::from(!removed);
+                false
+            } else {
+                true
+            }
+        });
+
+        if residual_lifetimes_count > 0 {
+            for (k, error_span) in rewriter.error_spans.into_iter().enumerate() {
+                let name = format!("_LIFETIME_REWRITE_ERROR_{k}");
+                let ident = Ident::new(&name, error_span);
+                self.additional_items.push(parse_quote_spanned!(
+                    error_span => const #ident: () = compile_error!(
+                        "failed to remove lifetimes from type"
+                    );
+                ));
+            }
+        }
 
         let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
         let marker_types = generics.params.iter().filter_map(|param| match param {
@@ -5051,7 +5287,7 @@ impl VisitMut for Visitor {
         self.inside_type -= 1;
     }
 
-    fn visit_generic_argument_mut(&mut self, arg: &mut verus_syn::GenericArgument) {
+    fn visit_generic_argument_mut(&mut self, arg: &mut GenericArgument) {
         self.inside_type += 1;
         verus_syn::visit_mut::visit_generic_argument_mut(self, arg);
         self.inside_type -= 1;
@@ -5689,17 +5925,17 @@ pub(crate) fn verus_generic_to_tokens(generic: &Generics) -> Option<TokenStream>
     }
     let mut ret = TokenStream::new();
     generic.lt_token.to_tokens(&mut ret);
-    let mut params: Punctuated<verus_syn::GenericArgument, Comma> = Punctuated::new();
+    let mut params: Punctuated<GenericArgument, Comma> = Punctuated::new();
     for gen_arg in generic.params.iter() {
         match gen_arg {
             verus_syn::GenericParam::Lifetime(_) => {}
             verus_syn::GenericParam::Type(type_param) => {
-                params.push(verus_syn::GenericArgument::Type(Type::Verbatim(
+                params.push(GenericArgument::Type(Type::Verbatim(
                     type_param.ident.to_token_stream(),
                 )));
             }
             verus_syn::GenericParam::Const(const_param) => {
-                params.push(verus_syn::GenericArgument::Const(Expr::Verbatim(
+                params.push(GenericArgument::Const(Expr::Verbatim(
                     const_param.ident.to_token_stream(),
                 )));
             }

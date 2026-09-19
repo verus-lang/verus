@@ -279,7 +279,13 @@ impl<T, P> Punctuated<T, P> {
 
     /// Retains only the elements specified by the predicate.
     pub fn retain(&mut self, mut f: impl FnMut(&T, Option<&P>) -> bool) {
-        self.inner.retain(|(value, punct)| f(&value, Some(punct)));
+        self.inner.retain(|(value, punct)| f(value, Some(punct)));
+        self.last.take_if(|value| !f(value, None));
+    }
+
+    /// Retains only the elements specified by the predicate.
+    pub fn retain_mut(&mut self, mut f: impl FnMut(&mut T, Option<&mut P>) -> bool) {
+        self.inner.retain_mut(|(value, punct)| f(value, Some(punct)));
         self.last.take_if(|value| !f(value, None));
     }
 
