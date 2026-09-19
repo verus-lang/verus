@@ -248,6 +248,7 @@ fn handle_autospec<'tcx>(
                     check_recommends: false,
                     nonlinear: false,
                     spinoff_prover: false,
+                    try_broadcasts: None,
                     memoize: false,
                     rlimit: None,
                     print_zero_args: functionx.attrs.print_zero_args,
@@ -1414,6 +1415,7 @@ fn make_attributes<'tcx>(
         check_recommends: vattrs.check_recommends,
         nonlinear: vattrs.nonlinear,
         spinoff_prover: vattrs.spinoff_prover,
+        try_broadcasts: vattrs.try_broadcasts,
         memoize: vattrs.memoize,
         rlimit: vattrs.rlimit,
         print_zero_args,
@@ -2181,12 +2183,10 @@ pub(crate) fn check_item_fn<'tcx>(
             autospec.redirect_to.clone();
     }
 
-    state.insert_fun_warn_config(ctxt, &function.x.name, id);
-    functions.push(function);
+    state.push_function(ctxt, functions, function, id);
 
     if let Some(f) = &autospec.new_func {
-        state.insert_fun_warn_config(ctxt, &f.x.name, id);
-        functions.push(f.clone());
+        state.push_function(ctxt, functions, f.clone(), id);
     }
 
     if is_verus_spec { Ok(None) } else { Ok(Some(name)) }
@@ -3035,12 +3035,10 @@ pub(crate) fn check_item_const_or_static<'tcx>(
     }
 
     let function = ctxt.spanned_new(span, functionx);
-    state.insert_fun_warn_config(ctxt, &function.x.name, id);
-    functions.push(function);
+    state.push_function(ctxt, functions, function, id);
 
     if let Some(f) = &autospec.new_func {
-        state.insert_fun_warn_config(ctxt, &f.x.name, id);
-        functions.push(f.clone());
+        state.push_function(ctxt, functions, f.clone(), id);
     }
 
     Ok(name)
