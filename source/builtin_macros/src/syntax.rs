@@ -1,4 +1,6 @@
 #![allow(unused_macros)]
+use std::collections::BTreeSet;
+
 use crate::EraseGhost;
 use crate::rustdoc::env_rustdoc;
 use crate::{VstdKind, vstd_kind};
@@ -540,12 +542,14 @@ fn rewrite_args_unwrap_ghost_tracked(erase_ghost: &EraseGhost, arg: &mut FnArg) 
 /// This helper rewrites types such that they can be used freely in spec-mode
 /// code, either by removing lifetimes or replacing them with `'static`.
 struct GhostLifetimeRewriter {
-    scopes: Vec<std::collections::BTreeSet<Lifetime>>,
+    scopes: Vec<BTreeSet<Lifetime>>,
+    removed: BTreeSet<Lifetime>,
+    error_spans: Vec<Span>,
 }
 
 impl GhostLifetimeRewriter {
     fn new() -> Self {
-        Self { scopes: Vec::new() }
+        Self { scopes: Vec::new(), removed: BTreeSet::new(), error_spans: Vec::new() }
     }
 
     fn push_scope(&mut self) {
@@ -596,7 +600,8 @@ impl GhostLifetimeRewriter {
             TypeParamBound::Verbatim(_) => {
                 // Since this could contain macro calls,
                 // there is not much we can do here.
-                todo!()
+                self.error_spans.push(bound.span());
+                true
             }
             _ => unreachable!(),
         });
@@ -610,6 +615,7 @@ impl GhostLifetimeRewriter {
             match generic_argument {
                 GenericArgument::Lifetime(lifetime) => {
                     if !self.has_bound_for(lifetime) {
+                        self.removed.insert(lifetime.clone());
                         *lifetime = parse_quote_spanned!(lifetime.span() => 'static);
                     }
                 }
@@ -678,7 +684,7 @@ impl GhostLifetimeRewriter {
                 // and because the arguments to a macro call could be a completely
                 // arbitrary token stream that uses the lifetime-or-label token
                 // for something other than lifetimes.
-                todo!()
+                self.error_spans.push(ty.span());
             }
             Type::Never(_) => {}
             Type::Paren(type_paren) => self.rewrite_type(&mut type_paren.elem),
@@ -691,6 +697,10 @@ impl GhostLifetimeRewriter {
             Type::Ptr(type_ptr) => self.rewrite_type(&mut type_ptr.elem),
             Type::Reference(type_reference) => {
                 if type_reference.lifetime.as_ref().is_none_or(|lt| !self.has_bound_for(lt)) {
+                    if let Some(lifetime) = type_reference.lifetime.clone() {
+                        self.removed.insert(lifetime.clone());
+                    }
+
                     let span = type_reference.and_token.span();
                     type_reference.lifetime = Some(parse_quote_spanned!(span => 'static));
                 }
@@ -708,7 +718,7 @@ impl GhostLifetimeRewriter {
             Type::Verbatim(_) => {
                 // Since this could contain macro calls,
                 // there is once again nothing we can do here.
-                todo!()
+                self.error_spans.push(ty.span());
             }
             Type::FnSpec(type_fn_spec) => {
                 for arg in type_fn_spec.inputs.iter_mut() {
@@ -985,7 +995,29 @@ impl Visitor {
         if let Some(where_clause) = &sig.generics.where_clause {
             generics.make_where_clause().predicates.extend(where_clause.predicates.clone());
         }
-        generics.params.retain(|param, _| !matches!(param, GenericParam::Lifetime(_)));
+
+        let mut residual_lifetimes_count = 0;
+        generics.params.retain(|param, _| {
+            if let GenericParam::Lifetime(lifetime_param) = param {
+                let removed = rewriter.removed.contains(&lifetime_param.lifetime);
+                residual_lifetimes_count += usize::from(!removed);
+                false
+            } else {
+                true
+            }
+        });
+
+        if residual_lifetimes_count > 0 {
+            for (k, error_span) in rewriter.error_spans.into_iter().enumerate() {
+                let name = format!("_LIFETIME_REWRITE_ERROR_{k}");
+                let ident = Ident::new(&name, error_span);
+                self.additional_items.push(parse_quote_spanned!(
+                    error_span => const #ident: () = compile_error!(
+                        "failed to remove lifetimes from type"
+                    );
+                ));
+            }
+        }
 
         let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
         let marker_types = generics.params.iter().filter_map(|param| match param {
