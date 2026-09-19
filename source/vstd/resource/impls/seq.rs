@@ -107,7 +107,7 @@ impl<V> GhostSeqAuth<V> {
         recommends
             self.off() <= start_inclusive <= end_exclusive <= self.off() + self@.len(),
     {
-        self@.subrange(start_inclusive - self.off(), end_exclusive - self.off())
+        self@[start_inclusive - self.off()..end_exclusive - self.off()]
     }
 
     pub proof fn new(s: Seq<V>, off: nat) -> (tracked result: (GhostSeqAuth<V>, GhostSubseq<V>))
@@ -134,10 +134,9 @@ impl<V> GhostSeqAuth<V> {
             self.id() == frac.id(),
         ensures
             frac@.len() > 0 ==> {
-                &&& frac@ =~= self@.subrange(
-                    frac.off() as int - self.off(),
-                    frac.off() - self.off() + frac@.len() as int,
-                )
+                &&& frac@ =~= self@[
+                    frac.off() - self.off()..frac.off() - self.off() + frac@.len()
+                ]
                 &&& frac.off() >= self.off()
                 &&& frac.off() + frac@.len() <= self.off() + self@.len()
             },
@@ -197,7 +196,7 @@ impl<V> GhostSubseq<V> {
         recommends
             self.off() <= start_inclusive <= end_exclusive <= self.off() + self@.len(),
     {
-        self@.subrange(start_inclusive - self.off(), end_exclusive - self.off())
+        self@[start_inclusive - self.off()..end_exclusive - self.off()]
     }
 
     pub closed spec fn off(self) -> nat {
@@ -213,10 +212,9 @@ impl<V> GhostSubseq<V> {
             self.id() == auth.id(),
         ensures
             self@.len() > 0 ==> {
-                &&& self@ =~= auth@.subrange(
-                    self.off() as int - auth.off(),
-                    self.off() - auth.off() + self@.len() as int,
-                )
+                &&& self@ =~= auth@[
+                    self.off() - auth.off()..self.off() - auth.off() + self@.len()
+                ]
                 &&& self.off() >= auth.off()
                 &&& self.off() + self@.len() <= auth.off() + auth@.len()
             },
@@ -327,8 +325,8 @@ impl<V> GhostSubseq<V> {
             final(self).off() == old(self).off(),
             result.id() == final(self).id(),
             result.off() == old(self).off() + n,
-            final(self)@ =~= old(self)@.subrange(0, n),
-            result@ =~= old(self)@.subrange(n, old(self)@.len() as int),
+            final(self)@ =~= old(self)@[0..n],
+            result@ =~= old(self)@[n..old(self)@.len()],
     {
         let tracked mut mself = Self::dummy();
         tracked_swap(self, &mut mself);

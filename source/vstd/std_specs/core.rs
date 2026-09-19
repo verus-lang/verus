@@ -1,9 +1,8 @@
 use super::super::prelude::*;
 use core::marker::PointeeSized;
 
-use verus as verus_;
-
-verus_! {
+use verus as verus_skip_verusfmt;
+verus_skip_verusfmt! {
 
 #[verifier::external_trait_specification]
 pub trait ExTuple {
