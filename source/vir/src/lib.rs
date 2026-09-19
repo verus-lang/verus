@@ -52,7 +52,7 @@ pub mod layout;
 pub mod messages;
 pub mod modes;
 pub mod opaque_type_to_air;
-mod patterns;
+pub mod patterns;
 pub mod place_preconditions;
 pub mod poly;
 pub mod prelude;

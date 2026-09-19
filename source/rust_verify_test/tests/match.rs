@@ -1626,3 +1626,19 @@ test_verify_one_file! {
         assert_fails(err, 1);
     }
 }
+
+test_verify_one_file! {
+    #[test] ref_patterns verus_code! {
+        fn test(x: &u64) {
+            match x {
+                &y => { assert(x == y); }
+            }
+        }
+
+        fn test2(x: &mut u64) {
+            match x {
+                &mut y => { assert(*x == y); }
+            }
+        }
+    } => Ok(())
+}

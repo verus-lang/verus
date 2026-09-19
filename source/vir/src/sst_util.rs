@@ -521,6 +521,9 @@ impl ExpX {
                 UnaryOp::HeightTrigger => {
                     (format!("height_trigger({})", exp.x.to_user_string(global)), 99)
                 }
+                UnaryOp::NewStrLit => {
+                    (format!("new_strlit({})", exp.x.to_string_prec(global, 99)), 90)
+                }
                 UnaryOp::StrLen => (format!("{}.len()", exp.x.to_string_prec(global, 99)), 90),
                 UnaryOp::Trigger(..)
                 | UnaryOp::CoerceMode { .. }

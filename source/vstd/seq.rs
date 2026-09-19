@@ -974,6 +974,57 @@ impl<A> Seq<A> {
         self.index(i)
     }
 
+    /// `[..]` operator, which returns the original Seq
+    #[verifier::inline]
+    pub open spec fn spec_index_range_full(self) -> Seq<A> {
+        self
+    }
+
+    /// `[i..]` operator, synonymous with `skip`
+    #[verifier::inline]
+    pub open spec fn spec_index_range_from<I: Integer>(self, i: I) -> Seq<A>
+        recommends
+            0 <= i as int <= self.len(),
+    {
+        self.skip(i as int)
+    }
+
+    /// `[..j]` operator, synonymous with `take`
+    #[verifier::inline]
+    pub open spec fn spec_index_range_to<J: Integer>(self, j: J) -> Seq<A>
+        recommends
+            0 <= j as int <= self.len(),
+    {
+        self.take(j as int)
+    }
+
+    /// `[..=j]` operator, synonymous with `take` on j + 1
+    #[verifier::inline]
+    pub open spec fn spec_index_range_to_inclusive<J: Integer>(self, j: J) -> Seq<A>
+        recommends
+            0 <= (j as int) < self.len(),
+    {
+        self.take(j as int + 1)
+    }
+
+    /// `[i..j]` operator, synonymous with `subrange`
+    #[verifier::inline]
+    pub open spec fn spec_index_range<I: Integer, J: Integer>(self, i: I, j: J) -> Seq<A>
+        recommends
+            0 <= i as int <= j as int <= self.len(),
+    {
+        self.subrange(i as int, j as int)
+    }
+
+    /// `[i..=j]` operator, synonymous with `subrange` on j + 1
+    #[verifier::inline]
+    pub open spec fn spec_index_range_inclusive<I: Integer, J: Integer>(self, i: I, j: J) -> Seq<A>
+        recommends
+            0 <= i as int <= (j as int) < self.len(),
+    {
+        self.subrange(i as int, j as int + 1)
+    }
+
     /// Appends the value `a` to the end of the sequence.
     /// This always increases the length of the sequence by 1.
     /// This often requires annotating the type of the element literal in the sequence,

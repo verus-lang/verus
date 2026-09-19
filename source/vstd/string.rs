@@ -297,6 +297,16 @@ impl StrSliceExecFns for str {
 }
 
 #[cfg(not(verus_verify_core))]
+pub uninterp spec fn strlit_view_id(s: Seq<char>) -> int;
+
+/// Distinct string literals have provably distinct views.
+#[cfg(not(verus_verify_core))]
+pub broadcast axiom fn axiom_new_strlit_view_id(id: int)
+    ensures
+        strlit_view_id(#[trigger] strslice_new_strlit(id).view()) == id,
+;
+
+#[cfg(not(verus_verify_core))]
 pub broadcast axiom fn axiom_str_literal_len<'a>(s: &'a str)
     ensures
         #[trigger] s@.len() == strslice_len(s),
@@ -310,6 +320,7 @@ pub broadcast axiom fn axiom_str_literal_get_char<'a>(s: &'a str, i: int)
 
 #[cfg(all(not(feature = "alloc"), not(verus_verify_core)))]
 pub broadcast group group_string_axioms {
+    axiom_new_strlit_view_id,
     axiom_str_literal_len,
     axiom_str_literal_get_char,
     is_ascii_spec_bytes,
@@ -318,6 +329,7 @@ pub broadcast group group_string_axioms {
 
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]
 pub broadcast group group_string_axioms {
+    axiom_new_strlit_view_id,
     axiom_str_literal_len,
     axiom_str_literal_get_char,
     to_string_from_display_ensures_for_str,

@@ -19,12 +19,12 @@ use crate::messages::{
 use crate::sst;
 use crate::sst::{
     Bnd, BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclKind, LocalDeclX,
-    ParPurpose, Pars, Stm, StmX, Stms, UniqueIdent,
+    Pars, Stm, StmX, Stms, UniqueIdent,
 };
 use crate::sst_util::{
     exp_with_vars_at_pre_state, sst_bitwidth, sst_conjoin, sst_equal, sst_exp_get_proof_note,
     sst_int_literal, sst_le, sst_lt, sst_mut_ref_current, sst_unit_value,
-    stm_with_vars_at_pre_state, subst_exp, subst_pre_local_decl, subst_stm,
+    stm_with_vars_at_pre_state, subst_exp, subst_pre_local_decl, subst_stm, subst_typ,
 };
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor, stm_visitor_check};
 use crate::util::vec_map_result;
@@ -426,17 +426,15 @@ impl<'a> State<'a> {
 
     pub(crate) fn declare_params(&mut self, params: &Pars) {
         for param in params.iter() {
-            if !matches!(param.x.purpose, ParPurpose::MutPost) {
-                let name = &param.x.name;
-                self.rename_counters.insert(name.0.clone(), 0).map(|_| panic!("rename_counters"));
-                self.rename_map.insert(name.clone(), name.clone()).expect("rename_map");
-                self.declare_imm_var_stm(
-                    name,
-                    &param.x.typ,
-                    LocalDeclKind::Param { mutable: false },
-                    false,
-                );
-            }
+            let name = &param.x.name;
+            self.rename_counters.insert(name.0.clone(), 0).map(|_| panic!("rename_counters"));
+            self.rename_map.insert(name.clone(), name.clone()).expect("rename_map");
+            self.declare_imm_var_stm(
+                name,
+                &param.x.typ,
+                LocalDeclKind::Param { mutable: false },
+                false,
+            );
         }
     }
 
@@ -862,6 +860,8 @@ fn get_call_args(
     body: &Option<Expr>,
     function_kind: &crate::ast::FunctionKind,
     function_mode: Mode,
+    function_typ_params: &[Ident],
+    function_typ_args: &[Typ],
     function_params: &crate::ast::Params,
 ) -> Result<(Vec<Stm>, Vec<Obligation>, Option<Vec<Exp>>, Option<Stm>), VirErr> {
     let mut sequr = Sequencer::new();
@@ -939,9 +939,14 @@ fn get_call_args(
     let (mut stms, mut exps) = sequr.into_stms_exps_with_extra(state, second_phase)?;
 
     if let Some(expr) = atomically {
+        assert_eq!(function_typ_params.len(), function_typ_args.len());
+        let typ_substs: HashMap<Ident, Typ> =
+            function_typ_params.iter().cloned().zip(function_typ_args.iter().cloned()).collect();
+
         for (exp, param) in std::iter::zip(&mut exps, function_params.iter()) {
             let tmp = state.make_tmp_var_for_exp(&mut stms, exp.clone());
-            *exp = SpannedTyped::new(&tmp.span, &param.x.typ, tmp.x.clone());
+            let param_typ = subst_typ(&typ_substs, &param.x.typ);
+            *exp = SpannedTyped::new(&tmp.span, &param_typ, tmp.x.clone());
         }
 
         state.au_pred_args = exps.clone();
@@ -1005,6 +1010,8 @@ fn expr_get_call(
                     body,
                     &function.x.kind,
                     function.x.mode,
+                    &function.x.typ_params,
+                    typs,
                     &function.x.params,
                 )?;
                 let Some(exps) = exps else {
@@ -1841,6 +1848,8 @@ pub(crate) fn expr_to_stm_opt(
                 body,
                 &crate::ast::FunctionKind::Static,
                 Mode::Exec,
+                &[],
+                &[],
                 &Default::default(),
             )?;
             let Some(exps) = exps else {
