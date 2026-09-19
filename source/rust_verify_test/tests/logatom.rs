@@ -108,6 +108,7 @@ test_verify_one_file! {
         impl<T> Wrapper<T> {
             fn atomic_method(&self)
                 atomically (atomic_update) {
+                    type PredType,
                     (old: Token) -> (new: Commit<Token>),
                     ensures new@ == old,
                 },
@@ -117,6 +118,8 @@ test_verify_one_file! {
                 });
             }
         }
+
+        struct CheckPred<T>(PredType<T>);
     } => Ok(())
 }
 
@@ -130,6 +133,7 @@ test_verify_one_file! {
 
         fn atomic_ref<'a>(_value: &'a u8)
             atomically (atomic_update) {
+                type PredType,
                 (old: Token) -> (new: Commit<Token>),
                 ensures new@ == old,
             },
@@ -138,7 +142,61 @@ test_verify_one_file! {
                 Tracked(Commit(token))
             });
         }
+
+        struct CheckPred(PredType);
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] atomic_function_many_lifetimes
+    verus_code! {
+        use vstd::prelude::*;
+        use vstd::atomic::*;
+
+        tracked struct Token;
+
+        struct Foo<'a>(&'a u32);
+
+        trait Bar<'a> {}
+
+        fn function<'a, 'b, 'c>(
+            _x1: &'a u8,
+            _x2: Foo<'b>,
+            _x3: &dyn Bar<'c>,
+        )
+            atomically (atomic_update) {
+                type PredType,
+                (old: Token) -> (new: Commit<Token>),
+                ensures new@ == old,
+            },
+        {
+            try_open_atomic_update!(atomic_update, token => {
+                Tracked(Commit(token))
+            });
+        }
+
+        struct CheckPred(PredType);
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] atomic_function_ref_in_macro
+    verus_code! {
+        use vstd::prelude::*;
+        use vstd::atomic::*;
+
+        macro_rules! my_type {
+            () => { &'a () };
+        }
+
+        fn function<'a>(x: my_type!())
+            atomically (atomic_update) {},
+        {
+            try_open_atomic_update!(atomic_update, _unit => {
+                Tracked(())
+            });
+        }
+    } => Err(err) => assert!(err.errors[0].message.contains("failed to remove lifetimes from type"))
 }
 
 test_verify_one_file! {
