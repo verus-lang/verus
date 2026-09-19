@@ -28,19 +28,29 @@ pub trait ExFn<Args: core::marker::Tuple>: FnMut<Args> {
 }
 
 #[verifier::external_trait_specification]
+#[verifier::external_trait_extension(DerefSpec via DerefSpecImpl)]
 pub trait ExDeref: PointeeSized {
     type ExternalTraitSpecificationFor: core::ops::Deref;
 
     type Target: ?Sized;
 
-    fn deref(&self) -> &Self::Target;
+    spec fn deref_req(&self) -> bool;
+
+    fn deref(&self) -> &Self::Target
+    requires
+        self.deref_req();
 }
 
 #[verifier::external_trait_specification]
+#[verifier::external_trait_extension(DerefMutSpec via DerefMutSpecImpl)]
 pub trait ExDerefMut: core::ops::Deref + PointeeSized {
     type ExternalTraitSpecificationFor: core::ops::DerefMut;
 
-    fn deref_mut(&mut self) -> &mut Self::Target;
+    spec fn deref_mut_req(&self) -> bool;
+
+    fn deref_mut(&mut self) -> &mut Self::Target
+    requires
+        self.deref_mut_req();
 }
 
 #[verifier::external_trait_specification]
