@@ -1523,14 +1523,14 @@ test_verify_one_file! {
                 hi <= src.len(),
                 hi <= old(dst).len(),
             ensures
-                src@.subrange(lo as int, hi as int) == final(dst)@.subrange(lo as int, hi as int),
+                src@[lo..hi] == final(dst)@[lo..hi],
         {
             for n in lo..hi
                 invariant
                     lo <= hi,
                     hi <= src.len(),
                     hi <= dst.len(),
-                    src@.subrange(lo as int, n as int) =~= dst@.subrange(lo as int, n as int),
+                    src@[lo..n] =~= dst@[lo..n],
             {
                 dst[n] = src[n];
             }
@@ -1616,27 +1616,27 @@ test_verify_one_file! {
             requires
                 0 <= i <= j < s.len(),
             ensures
-                sum_u8(s.take(i)) <= sum_u8(s.take(j)),
+                sum_u8(s[..i]) <= sum_u8(s[..j]),
             decreases j - i,
         {
             if i == j {
             } else {
                 sum_u8_monotonic(s, i, j - 1);
-                assert(sum_u8(s.take(i)) <= sum_u8(s.take(j - 1)));
-                assert(sum_u8(s.take(j - 1)) <= sum_u8(s.take(j))) by {
-                    assert(s.take(j).drop_last() == s.take(j - 1)); // OBSERVE
+                assert(sum_u8(s[..i]) <= sum_u8(s[..j - 1]));
+                assert(sum_u8(s[..j - 1]) <= sum_u8(s[..j])) by {
+                    assert(s[..j].drop_last() == s[..j - 1]); // OBSERVE
                 }
             }
         }
 
         proof fn sum_u8_monotonic_forall()
             ensures
-                forall |s: Seq<u8>, i, j| #![auto]
+                forall|s: Seq<u8>, i: int, j: int|
                     0 <= i <= j < s.len() ==>
-                    sum_u8(s.take(i)) <= sum_u8(s.take(j)),
+                    sum_u8(#[trigger] s[..i]) <= sum_u8(#[trigger] s[..j]),
         {
-            assert forall |s: Seq<u8>, i, j| #![auto] 0 <= i <= j < s.len() implies
-                sum_u8(s.take(i)) <= sum_u8(s.take(j)) by {
+            assert forall|s: Seq<u8>, i: int, j: int| 0 <= i <= j < s.len() implies
+                sum_u8(#[trigger] s[..i]) <= sum_u8(#[trigger] s[..j]) by {
                 sum_u8_monotonic(s, i, j);
             }
         }
@@ -1647,12 +1647,12 @@ test_verify_one_file! {
 
             for x in y: v
               invariant_except_break
-                 sum == sum_u8(v@.take(y.index()))
+                 sum == sum_u8(v@[..y.index()])
               ensures
-                  (y.index() == y.seq().len() && sum == sum_u8(y.seq().take(y.index()))) ||
-                      (sum == u8::MAX && sum_u8(v@.take(y.index())) > u8::MAX),
+                  (y.index() == y.seq().len() && sum == sum_u8(y.seq()[..y.index()])) ||
+                      (sum == u8::MAX && sum_u8(v@[..y.index()]) > u8::MAX),
             {
-                assert(v@.take(y.index() + 1).drop_last() == v@.take(y.index() as int)); // OBSERVE
+                assert(v@[..y.index() + 1].drop_last() == v@[..y.index()]); // OBSERVE
                 if x <= u8::MAX - sum {
                     sum += x;
                 } else {
@@ -1662,7 +1662,7 @@ test_verify_one_file! {
             }
 
             // Prove that we accomplished our goal
-            assert(v@.take(v@.len() as int) == v@); // OBSERVE
+            assert(v@[..v@.len()] == v@); // OBSERVE
             proof {
                 // PAPER CUT: Can't call a lemma on the prophetic sequence
                 sum_u8_monotonic_forall();
@@ -1723,151 +1723,149 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-  #[test] test_vecdeque_for_loop verus_code! {
-      use vstd::prelude::*;
-      use vstd::std_specs::vecdeque::*;
-      use std::collections::VecDeque;
-      spec fn sum(s: Seq<u32>) -> nat
-          decreases s.len(),
-      {
-          if s.len() == 0 {
-              0
-          } else {
-              sum(s.drop_last()) + s.last() as nat
-          }
-      }
+    #[test] test_vecdeque_for_loop verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::vecdeque::*;
+        use std::collections::VecDeque;
+        spec fn sum(s: Seq<u32>) -> nat
+            decreases s.len(),
+        {
+            if s.len() == 0 {
+                0
+            } else {
+                sum(s.drop_last()) + s.last() as nat
+            }
+        }
 
-      broadcast proof fn sum_monotonic(s: Seq<u32>, i: nat, j: nat)
-          requires
-              i <= j,
-              j <= s.len(),
-          ensures
-              #[trigger] sum(s.take(i as int)) <= #[trigger] sum(s.take(j as int)),
-          decreases j,
-      {
-          if j == 0 {
-          } else if i == j {
-          } else {
-              sum_monotonic(s, i, (j - 1) as nat);
-              assert(s.take(j as int).drop_last() == s.take((j - 1) as int));
-          }
-      }
+        broadcast proof fn sum_monotonic(s: Seq<u32>, i: nat, j: nat)
+            requires
+                i <= j,
+                j <= s.len(),
+            ensures
+                #[trigger] sum(s[..i]) <= #[trigger] sum(s[..j]),
+            decreases j,
+        {
+            if j == 0 {
+            } else if i == j {
+            } else {
+                sum_monotonic(s, i, (j - 1) as nat);
+                assert(s[..j].drop_last() == s[..j - 1]);
+            }
+        }
 
+        fn test() {
+            let mut vd = VecDeque::<u32>::new();
+            vd.push_back(10);
+            vd.push_back(20);
+            vd.push_back(30);
 
-      fn test() {
-          let mut vd = VecDeque::<u32>::new();
-          vd.push_back(10);
-          vd.push_back(20);
-          vd.push_back(30);
-
-
-          let mut s: u32 = 0;
-          for x in it: vd.iter()
-              invariant
-                  vd@ == seq![10u32, 20u32, 30u32],
-                  s as nat == sum(vd@.take(it.index())),
-          {
-              // Prove that we don't overflow
-              broadcast use sum_monotonic;
-              assert(sum(vd@.take(it.index() + 1)) <= sum(vd@.take(vd@.len() as int)));
-              assert(sum(vd@.take(vd@.len() as int)) == sum(vd@)) by {
-                  assert(vd@.take(vd@.len() as int) == vd@);
-              };
-              assert(sum(seq![10u32, 20u32, 30u32]) < u32::MAX) by (compute);
-              s = s + *x;
-              // Prove the invariant
-              assert(s as nat == sum(vd@.take(it.index() + 1))) by {
-                  assert(vd@.take(it.index() + 1).drop_last() == vd@.take(it.index())); // OBSERVE
-              };
-          }
-          assert(sum(seq![10u32, 20u32, 30u32]) == 60) by (compute);
-          assert(vd@.take(vd@.len() as int) == vd@);  // OBSERVE
-          assert(s == 60);
-      }
-  } => Ok(())
+            let mut s: u32 = 0;
+            for x in it: vd.iter()
+                invariant
+                    vd@ == seq![10u32, 20u32, 30u32],
+                    s as nat == sum(vd@[..it.index()]),
+            {
+                // Prove that we don't overflow
+                broadcast use sum_monotonic;
+                assert(sum(vd@[..it.index() + 1]) <= sum(vd@[..vd@.len()]));
+                assert(sum(vd@[..vd@.len()]) == sum(vd@)) by {
+                    assert(vd@[..vd@.len()] == vd@);
+                };
+                assert(sum(seq![10u32, 20u32, 30u32]) < u32::MAX) by (compute);
+                s = s + *x;
+                // Prove the invariant
+                assert(s as nat == sum(vd@[..it.index() + 1])) by {
+                    assert(vd@[..it.index() + 1].drop_last() == vd@[..it.index()]); // OBSERVE
+                };
+            }
+            assert(sum(seq![10u32, 20u32, 30u32]) == 60) by (compute);
+            assert(vd@[..vd@.len()] == vd@);  // OBSERVE
+            assert(s == 60);
+        }
+    } => Ok(())
 }
 
 test_verify_one_file! {
-  #[test] test_vecdeque_rev_for_loop verus_code! {
-      use vstd::prelude::*;
-      use vstd::std_specs::vecdeque::*;
-      use std::collections::VecDeque;
+    #[test] test_vecdeque_rev_for_loop verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::vecdeque::*;
+        use std::collections::VecDeque;
 
-      fn test() {
-          let mut vd = VecDeque::<u32>::new();
-          vd.push_back(1);
-          vd.push_back(2);
-          vd.push_back(3);
+        fn test() {
+            let mut vd = VecDeque::<u32>::new();
+            vd.push_back(1);
+            vd.push_back(2);
+            vd.push_back(3);
 
-          let mut w: Vec<u32> = Vec::new();
-          for x in it: vd.iter().rev()
-              invariant
-                  w.len() == it.index(),
-                  forall |i| 0 <= i < w.len() ==> w[i] == *it.seq()[i],
-          {
-              w.push(*x);
-          }
-          assert(w@ == vd@.reverse());
-      }
-  } => Ok(())
+            let mut w: Vec<u32> = Vec::new();
+            for x in it: vd.iter().rev()
+                invariant
+                    w.len() == it.index(),
+                    forall |i| 0 <= i < w.len() ==> w[i] == *it.seq()[i],
+            {
+                w.push(*x);
+            }
+            assert(w@ == vd@.reverse());
+        }
+    } => Ok(())
 }
 
 test_verify_one_file! {
-  #[test] test_nested_for_loops verus_code! {
-      use vstd::prelude::*;
+    #[test] test_nested_for_loops verus_code! {
+        use vstd::prelude::*;
 
-      fn test() {
-          let mut count: u64 = 0;
-          #[verifier::loop_isolation(false)]
-          for i in 0u64..3u64
-              invariant count == i * 4,
-          {
-              for j in 0u64..4u64
-                  invariant
-                      count == i * 4 + j,
-                      i < 3
-              {
-                  count += 1;
-              }
-          }
-          assert(count == 12);
-      }
-  } => Ok(())
+        fn test() {
+            let mut count: u64 = 0;
+            #[verifier::loop_isolation(false)]
+            for i in 0u64..3u64
+                invariant count == i * 4,
+            {
+                for j in 0u64..4u64
+                    invariant
+                        count == i * 4 + j,
+                        i < 3
+                {
+                    count += 1;
+                }
+            }
+            assert(count == 12);
+        }
+    } => Ok(())
 }
 
 test_verify_one_file! {
-  #[test] test_for_loop_search verus_code! {
-      use vstd::prelude::*;
-      fn find_value(v: &Vec<u32>, target: u32) -> (result: Option<usize>)
-          ensures
-              match result {
-                  Some(idx) => idx < v.len() && v[idx as int] == target,
-                  None => forall |i: int| 0 <= i < v.len() ==> v[i] != target,
-              },
-      {
-          let mut result: Option<usize> = None;
-          let mut index: usize = 0;
-          for x in it: v
-              invariant_except_break
-                  index as int == it.index(),
-                  result is None,
-              invariant
-                  index <= v.len(),
-                  result is None ==> forall |i: int| 0 <= i < it.index() ==> v[i] != target,
-                  result matches Some(idx) ==> idx < v.len() && v[idx as int] == target,
-              ensures
-                  result is None ==> forall |i: int| 0 <= i < v.len() ==> v[i] != target,
-                  result matches Some(idx) ==> idx < v.len() && v[idx as int] == target,
-          {
-              if *x == target {
-                  result = Some(index);
-                  break;
-              }
-              index += 1;
-          }
-          result
-      }
-  } => Ok(())
+    #[test] test_for_loop_search verus_code! {
+        use vstd::prelude::*;
+        fn find_value(v: &Vec<u32>, target: u32) -> (result: Option<usize>)
+            ensures
+                match result {
+                    Some(idx) => idx < v.len() && v[idx as int] == target,
+                    None => forall |i: int| 0 <= i < v.len() ==> v[i] != target,
+                },
+        {
+            let mut result: Option<usize> = None;
+            let mut index: usize = 0;
+            for x in it: v
+                invariant_except_break
+                    index as int == it.index(),
+                    result is None,
+                invariant
+                    index <= v.len(),
+                    result is None ==> forall |i: int| 0 <= i < it.index() ==> v[i] != target,
+                    result matches Some(idx) ==> idx < v.len() && v[idx as int] == target,
+                ensures
+                    result is None ==> forall |i: int| 0 <= i < v.len() ==> v[i] != target,
+                    result matches Some(idx) ==> idx < v.len() && v[idx as int] == target,
+            {
+                if *x == target {
+                    result = Some(index);
+                    break;
+                }
+                index += 1;
+            }
+            result
+        }
+    } => Ok(())
 }
 
 test_verify_one_file! {

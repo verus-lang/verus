@@ -1,11 +1,10 @@
 use super::super::prelude::*;
 
-use verus as verus_;
-
 use core::cmp::{Eq, Ord, Ordering, PartialEq, PartialOrd};
 use core::marker::PointeeSized;
 
-verus_! {
+use verus as verus_skip_verusfmt;
+verus_skip_verusfmt! {
 
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(PartialEqSpec via PartialEqSpecImpl)]

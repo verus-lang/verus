@@ -11,7 +11,8 @@ use core::ops::{Index, IndexMut};
 use core::option::Option;
 use core::option::Option::None;
 
-verus! {
+use verus as verus_skip_verusfmt; // verusfmt doesn't handle s[..e] yet
+verus_skip_verusfmt! {
 
 #[verifier::external_type_specification]
 #[verifier::external_body]
@@ -139,7 +140,7 @@ pub assume_specification<T, A: Allocator>[ VecDeque::<T, A>::pop_back ](
             Some(x) => {
                 &&& old(v)@.len() > 0
                 &&& x == old(v)@[old(v)@.len() - 1]
-                &&& final(v)@ == old(v)@.subrange(0, old(v)@.len() as int - 1)
+                &&& final(v)@ == old(v)@[..old(v)@.len() - 1]
             },
             None => {
                 &&& old(v)@.len() == 0
@@ -156,7 +157,7 @@ pub assume_specification<T, A: Allocator>[ VecDeque::<T, A>::pop_front ](
             Some(x) => {
                 &&& old(v)@.len() > 0
                 &&& x == old(v)@[0]
-                &&& final(v)@ == old(v)@.subrange(1, old(v)@.len() as int)
+                &&& final(v)@ == old(v)@[1..]
             },
             None => {
                 &&& old(v)@.len() == 0
@@ -215,8 +216,8 @@ pub assume_specification<T, A: Allocator + core::clone::Clone>[ VecDeque::<T, A>
     requires
         at <= old(v)@.len(),
     ensures
-        final(v)@ == old(v)@.subrange(0, at as int),
-        return_value@ == old(v)@.subrange(at as int, old(v)@.len() as int),
+        final(v)@ == old(v)@[..at],
+        return_value@ == old(v)@[at..],
 ;
 
 pub open spec fn vec_dequeue_clone_trigger<T, A: Allocator>(
@@ -241,7 +242,7 @@ pub assume_specification<T, A: Allocator>[ VecDeque::<T, A>::truncate ](
     len: usize,
 )
     ensures
-        len <= old(v).len() ==> final(v)@ == old(v)@.subrange(0, len as int),
+        len <= old(v).len() ==> final(v)@ == old(v)@[..len],
         len > old(v).len() ==> final(v)@ == old(v)@,
 ;
 
@@ -251,10 +252,10 @@ pub assume_specification<T: Clone, A: Allocator>[ VecDeque::<T, A>::resize ](
     value: T,
 )
     ensures
-        len <= old(v).len() ==> final(v)@ == old(v)@.subrange(0, len as int),
+        len <= old(v).len() ==> final(v)@ == old(v)@[..len],
         len > old(v).len() ==> {
             &&& final(v)@.len() == len
-            &&& final(v)@.subrange(0, old(v).len() as int) == old(v)@
+            &&& final(v)@[..old(v).len()] == old(v)@
             &&& forall|i|
                 #![all_triggers]
                 old(v).len() <= i < len ==> cloned::<T>(value, final(v)@[i])

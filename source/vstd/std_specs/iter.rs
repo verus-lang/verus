@@ -3,9 +3,9 @@ use super::super::seq::{
     group_seq_lemmas, lemma_seq_empty, lemma_seq_subrange_index, lemma_seq_subrange_len,
 };
 use core::iter::{Filter, FromIterator, Iterator, Rev, Skip, Take, Zip};
-use verus as verus_;
 
-verus_! {
+use verus as verus_skip_verusfmt;
+verus_skip_verusfmt! {
 
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(IteratorSpec via IteratorSpecImpl)]
@@ -421,7 +421,7 @@ pub broadcast axiom fn filter_postcondition<I, F>(i: I, f: F, r: core::iter::Fil
             &&& keep.len() <= i.remaining().len()
             &&& forall |j| 0 <= j < keep.len() ==> call_ensures(f, (&i.remaining()[j],), #[trigger] keep[j])
             // Completeness: Every inner element the predicate keeps is retained and in order.
-            &&& IteratorSpec::remaining(&r) == i.remaining().take(keep.len() as int).filter_index(|j: int| keep[j])
+            &&& IteratorSpec::remaining(&r) == i.remaining()[..keep.len()].filter_index(|j: int| keep[j])
             // The two facts below follow from the `filter_index` above; we expose them directly for convenience.
             &&& IteratorSpec::remaining(&r).len() <= i.remaining().len()
             &&& forall |k| #![trigger IteratorSpec::remaining(&r)[k]] 0 <= k < IteratorSpec::remaining(&r).len() ==>
@@ -620,7 +620,7 @@ pub broadcast axiom fn skip_postcondition<I: IteratorSpec>(i: I, n: usize, r: Sk
         i.obeys_prophetic_iter_laws(),
         #[trigger] skip_post(i, n, r),
     ensures
-        IteratorSpec::remaining(&r) == if i.remaining().len() < n { Seq::empty() } else { i.remaining().skip(n as int) },
+        IteratorSpec::remaining(&r) == if i.remaining().len() < n { Seq::empty() } else { i.remaining()[n..] },
         skip_iter(r) == i,
         skip_init_n(r) == n,
         IteratorSpec::will_return_none(&r) <==> i.will_return_none(),
@@ -684,7 +684,7 @@ pub broadcast axiom fn take_postcondition<I: IteratorSpec>(i: I, n: usize, r: Ta
         i.obeys_prophetic_iter_laws(),
         #[trigger] take_post(i, n, r),
     ensures
-        IteratorSpec::remaining(&r) == if i.remaining().len() < n { i.remaining() } else { i.remaining().take(n as int) },
+        IteratorSpec::remaining(&r) == if i.remaining().len() < n { i.remaining() } else { i.remaining()[..n] },
         take_iter(r) == i,
         take_count(r) == n,
         IteratorSpec::will_return_none(&r) <==> i.will_return_none() || i.remaining().len() >= n,

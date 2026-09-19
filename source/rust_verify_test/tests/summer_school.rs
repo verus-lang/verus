@@ -227,15 +227,15 @@ test_verify_one_file! {
 
             assert(fibo[7] == 21);
 
-            assert(fibo.subrange(2, 4) =~= seq![2, 3]);
+            assert(fibo[2..4] =~= seq![2, 3]);
 
-            assert(fibo.subrange(0, 3) =~= seq![1, 1, 2]);
+            assert(fibo[0..3] =~= seq![1, 1, 2]);
 
-            assert(fibo.subrange(7, fibo.len() as int) =~= seq![21, 34]);
+            assert(fibo[7..] =~= seq![21, 34]);
 
-            assert(fibo.subrange(2, 5).len() == 3);
+            assert(fibo[2..5].len() == 3);
 
-            assert(fibo.subrange(5, 6) =~= seq![8]);
+            assert(fibo[5..6] =~= seq![8]);
 
             let copy: Seq<int> = fibo;
 
@@ -265,7 +265,7 @@ test_verify_one_file! {
         proof fn experiments_with_sequences_2() {
             let fibo: Seq<int> = seq![1, 1, 2, 3, 5, 8, 13, 21, 34];
 
-            assert(fibo.subrange(2, 5).len() == 4); // FAILS
+            assert(fibo[2..5].len() == 4); // FAILS
         }
 
         proof fn experiments_with_sequences_3() {

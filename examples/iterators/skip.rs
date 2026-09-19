@@ -31,7 +31,7 @@ impl<I: IteratorSpec> MySkip<I> {
         ensures
             s.init_n() == n,
             s.iter() == iter,
-            s.remaining() == (if iter.remaining().len() < n { seq![] } else { iter.remaining().skip(n as int) }),
+            s.remaining() == (if iter.remaining().len() < n { seq![] } else { iter.remaining()[n..] }),
             s.will_return_none() <==> iter.will_return_none(),
             s.obeys_prophetic_iter_laws(),
             s.decrease() is Some == iter.decrease() is Some,
@@ -63,7 +63,7 @@ impl<I: Iterator> Iterator for MySkip<I> {
                     self.iter.decrease() is Some == snap.decrease() is Some,
                     snap.decrease() is Some && snap.remaining().len() >= i
                         ==> snap.decrease()->0 >= self.iter.decrease()->0,
-                    snap.remaining().len() >= i ==> self.iter.remaining() == snap.remaining().skip(i as int),
+                    snap.remaining().len() >= i ==> self.iter.remaining() == snap.remaining()[i..],
                     snap.remaining().len() < i ==> self.iter.remaining().len() == 0,
                 decreases self.n - i,
             {
@@ -86,7 +86,7 @@ impl<I: Iterator> vstd::std_specs::iter::IteratorSpecImpl for MySkip<I> {
 
     #[verifier::prophetic]
     closed spec fn remaining(&self) -> Seq<Self::Item> {
-        if self.iter.remaining().len() < self.n { seq![] } else { self.iter.remaining().skip(self.n as int) }
+        if self.iter.remaining().len() < self.n { seq![] } else { self.iter.remaining()[self.n..] }
     }
 
     #[verifier::prophetic]
