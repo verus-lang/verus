@@ -95,19 +95,16 @@ fn merge(v1: &Vec<u64>, v2: &Vec<u64>) -> (r: Vec<u64>)
                 lemma_to_multiset_distributes_over_add(v1@[..i1], v2@[..i2]);
                 v1@[..i1].to_multiset_ensures();
                 lemma_subrange_push(v1@, 0, i1 as int);
-                lemma_to_multiset_distributes_over_add(v1@.subrange[..i1 + 1], v2@.subrange[..i2]);
+                lemma_to_multiset_distributes_over_add(v1@[..i1 + 1], v2@[..i2]);
             }
             i1 += 1;
         } else {
             r.push(v2[i2]);
             proof {
                 lemma_to_multiset_distributes_over_add(v1@[..i1], v2@[..i2]);
-                v2@.subrange[..i2 as int].to_multiset_ensures();
+                v2@[..i2].to_multiset_ensures();
                 lemma_subrange_push(v2@, 0, i2 as int);
-                lemma_to_multiset_distributes_over_add(
-                    v1@.subrange[..i1],
-                    v2@.subrange[..i2 + 1],
-                );
+                lemma_to_multiset_distributes_over_add(v1@[..i1], v2@[..i2 + 1]);
             }
             i2 += 1;
         }

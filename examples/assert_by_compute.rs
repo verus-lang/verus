@@ -222,7 +222,7 @@ mod veribetrkv_example_original {
         if p.len() == 0 {
             Seq::empty()
         } else {
-            xor(p[..p.len()], q[..q.len() - 1]).push(p.last() ^ q.last())
+            xor(p[..p.len() - 1], q[..q.len() - 1]).push(p.last() ^ q.last())
         }
     }
 
