@@ -3251,7 +3251,7 @@ version = "0.0.0-2026-09-16-0054"
 
 [[package]]
 name = "verus_builtin_macros"
-version = "0.0.0-2026-09-06-0133"
+version = "0.0.0-2026-09-20-0158"
 dependencies = [
  "convert_case",
  "proc-macro2",
