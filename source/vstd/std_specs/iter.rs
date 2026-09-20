@@ -3,9 +3,9 @@ use super::super::seq::{
     group_seq_lemmas, lemma_seq_empty, lemma_seq_subrange_index, lemma_seq_subrange_len,
 };
 use core::iter::{Filter, FromIterator, Iterator, Rev, Skip, Sum, Take, Zip};
+use verus as verus_;
 
-use verus as verus_skip_verusfmt;
-verus_skip_verusfmt! {
+verus_! {
 
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(IteratorSpec via IteratorSpecImpl)]
@@ -369,6 +369,7 @@ pub trait ExFromIterator<A>: Sized {
 pub trait ExSum<A>: Sized {
     type ExternalTraitSpecificationFor: Sum<A>;
 
+    // The exact result is guaranteed only when it is representable.
     spec fn sum_ensures(remaining: Seq<A>, sum: Self) -> bool;
 
     // Whether this implementation consumes the entire iterator.
@@ -396,22 +397,6 @@ pub broadcast axiom fn axiom_sum_iter_obeys<I: Iterator + IteratorSpec>(iter: I)
         #[trigger] sum_iter_obeys(iter) == iter.obeys_prophetic_iter_laws(),
         #[trigger] sum_iter_will_return_none(iter) == iter.will_return_none(),
 ;
-
-// Sum the elements in iterator order, starting from zero.
-pub open spec fn usize_sum(remaining: Seq<usize>) -> int {
-    remaining.fold_left(0, |sum: int, value: usize| sum + value)
-}
-
-impl SumSpecImpl<usize> for usize {
-    open spec fn sum_ensures(remaining: Seq<usize>, sum: Self) -> bool {
-        // The exact result is guaranteed only when it is representable.
-        usize_sum(remaining) <= usize::MAX ==> sum as int == usize_sum(remaining)
-    }
-
-    open spec fn sum_consumes_all() -> bool {
-        true
-    }
-}
 
 /********************************************************************************
  * Definitions for `&mut I`
@@ -485,7 +470,7 @@ pub broadcast axiom fn filter_postcondition<I, F>(i: I, f: F, r: core::iter::Fil
             &&& keep.len() <= i.remaining().len()
             &&& forall |j| 0 <= j < keep.len() ==> call_ensures(f, (&i.remaining()[j],), #[trigger] keep[j])
             // Completeness: Every inner element the predicate keeps is retained and in order.
-            &&& IteratorSpec::remaining(&r) == i.remaining()[..keep.len()].filter_index(|j: int| keep[j])
+            &&& IteratorSpec::remaining(&r) == i.remaining().take(keep.len() as int).filter_index(|j: int| keep[j])
             // The two facts below follow from the `filter_index` above; we expose them directly for convenience.
             &&& IteratorSpec::remaining(&r).len() <= i.remaining().len()
             &&& forall |k| #![trigger IteratorSpec::remaining(&r)[k]] 0 <= k < IteratorSpec::remaining(&r).len() ==>
@@ -684,7 +669,7 @@ pub broadcast axiom fn skip_postcondition<I: IteratorSpec>(i: I, n: usize, r: Sk
         i.obeys_prophetic_iter_laws(),
         #[trigger] skip_post(i, n, r),
     ensures
-        IteratorSpec::remaining(&r) == if i.remaining().len() < n { Seq::empty() } else { i.remaining()[n..] },
+        IteratorSpec::remaining(&r) == if i.remaining().len() < n { Seq::empty() } else { i.remaining().skip(n as int) },
         skip_iter(r) == i,
         skip_init_n(r) == n,
         IteratorSpec::will_return_none(&r) <==> i.will_return_none(),
@@ -748,7 +733,7 @@ pub broadcast axiom fn take_postcondition<I: IteratorSpec>(i: I, n: usize, r: Ta
         i.obeys_prophetic_iter_laws(),
         #[trigger] take_post(i, n, r),
     ensures
-        IteratorSpec::remaining(&r) == if i.remaining().len() < n { i.remaining() } else { i.remaining()[..n] },
+        IteratorSpec::remaining(&r) == if i.remaining().len() < n { i.remaining() } else { i.remaining().take(n as int) },
         take_iter(r) == i,
         take_count(r) == n,
         IteratorSpec::will_return_none(&r) <==> i.will_return_none() || i.remaining().len() >= n,
@@ -1002,3 +987,64 @@ pub broadcast group group_iter_axioms {
 }
 
 } // verus!
+
+/********************************************************************************
+ * Concrete `Sum` models for the primitive integer types
+ ********************************************************************************/
+
+macro_rules! int_sum_spec {
+    ($t:ty, $sum_fn:ident, $max:expr) => {
+        verus_! {
+
+        pub open spec fn $sum_fn(remaining: Seq<$t>) -> int {
+            remaining.fold_left(0, |sum: int, value: $t| sum + value)
+        }
+
+        impl SumSpecImpl<$t> for $t {
+            open spec fn sum_ensures(remaining: Seq<$t>, sum: Self) -> bool {
+                $sum_fn(remaining) <= $max
+                    ==> sum as int == $sum_fn(remaining)
+            }
+
+            open spec fn sum_consumes_all() -> bool {
+                true
+            }
+        }
+
+        } // verus_!
+    };
+
+    ($t:ty, $sum_fn:ident, $min:expr, $max:expr) => {
+        verus_! {
+
+        pub open spec fn $sum_fn(remaining: Seq<$t>) -> int {
+            remaining.fold_left(0, |sum: int, value: $t| sum + value)
+        }
+
+        impl SumSpecImpl<$t> for $t {
+            open spec fn sum_ensures(remaining: Seq<$t>, sum: Self) -> bool {
+                $min <= $sum_fn(remaining) <= $max
+                    ==> sum as int == $sum_fn(remaining)
+            }
+
+            open spec fn sum_consumes_all() -> bool {
+                true
+            }
+        }
+
+        } // verus_!
+    };
+}
+
+int_sum_spec!(u8, u8_sum, u8::MAX);
+int_sum_spec!(u16, u16_sum, u16::MAX);
+int_sum_spec!(u32, u32_sum, u32::MAX);
+int_sum_spec!(u64, u64_sum, u64::MAX);
+int_sum_spec!(u128, u128_sum, u128::MAX);
+int_sum_spec!(usize, usize_sum, usize::MAX);
+int_sum_spec!(i8, i8_sum, i8::MIN, i8::MAX);
+int_sum_spec!(i16, i16_sum, i16::MIN, i16::MAX);
+int_sum_spec!(i32, i32_sum, i32::MIN, i32::MAX);
+int_sum_spec!(i64, i64_sum, i64::MIN, i64::MAX);
+int_sum_spec!(i128, i128_sum, i128::MIN, i128::MAX);
+int_sum_spec!(isize, isize_sum, isize::MIN, isize::MAX);

@@ -115,6 +115,26 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] sum_works_i64 verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::{IteratorSpec, i64_sum};
+
+        fn test_sum(v: Vec<i64>) -> (sum: i64)
+            requires
+                i64::MIN <= i64_sum(v@) <= i64::MAX,
+            ensures
+                sum as int == i64_sum(v@),
+        {
+            let iter = v.into_iter();
+            let ghost iter_snapshot = iter;
+            let sum = iter.sum();
+            assert(iter_snapshot.will_return_none());
+            sum
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] filter_works verus_code! {
         use vstd::prelude::*;
         use vstd::std_specs::iter::*;
