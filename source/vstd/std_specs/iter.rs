@@ -2,7 +2,7 @@ use super::super::prelude::*;
 use super::super::seq::{
     group_seq_lemmas, lemma_seq_empty, lemma_seq_subrange_index, lemma_seq_subrange_len,
 };
-use core::iter::{Filter, FromIterator, Iterator, Rev, Skip, Take, Zip};
+use core::iter::{Filter, FromIterator, Iterator, Rev, Skip, Sum, Take, Zip};
 
 use verus as verus_skip_verusfmt;
 verus_skip_verusfmt! {
@@ -152,6 +152,17 @@ pub trait ExIterator {
             self.obeys_prophetic_iter_laws() ==>
                 self.will_return_none() &&
                 FromIteratorSpec::from_iter_ensures(self.remaining(), collection),
+    ;
+
+    fn sum<S>(self) -> (sum: S)
+        where
+            Self: Sized,
+            S: Sum<Self::Item>,
+        ensures
+            self.obeys_prophetic_iter_laws() ==>
+                <S as SumSpec<Self::Item>>::sum_ensures(self.remaining(), sum),
+            self.obeys_prophetic_iter_laws()
+                && <S as SumSpec<Self::Item>>::sum_consumes_all() ==> self.will_return_none(),
     ;
 
     fn filter<P>(self, predicate: P) -> (r: core::iter::Filter<Self, P>)
@@ -347,6 +358,59 @@ pub trait ExFromIterator<A>: Sized {
         ensures
             Self::from_iter_ensures(into_iter_remaining(iter), s),
     ;
+}
+
+/********************************************************************************
+ * Definitions for `Sum`
+ ********************************************************************************/
+
+#[verifier::external_trait_specification]
+#[verifier::external_trait_extension(SumSpec via SumSpecImpl)]
+pub trait ExSum<A>: Sized {
+    type ExternalTraitSpecificationFor: Sum<A>;
+
+    spec fn sum_ensures(remaining: Seq<A>, sum: Self) -> bool;
+
+    // Whether this implementation consumes the entire iterator.
+    spec fn sum_consumes_all() -> bool;
+
+    #[verifier::impls_cannot_extend_spec]
+    fn sum<I>(iter: I) -> (sum: Self)
+        where
+            I: Iterator<Item = A>,
+        ensures
+            sum_iter_obeys(iter) ==> Self::sum_ensures(into_iter_remaining(iter), sum),
+            sum_iter_obeys(iter) && Self::sum_consumes_all() ==>
+                sum_iter_will_return_none(iter),
+    ;
+}
+
+// These functions keep the external `Sum` signature unchanged while exposing
+// the iterator model to its specification.
+pub uninterp spec fn sum_iter_obeys<T>(iter: T) -> bool;
+
+pub uninterp spec fn sum_iter_will_return_none<T>(iter: T) -> bool;
+
+pub broadcast axiom fn axiom_sum_iter_obeys<I: Iterator + IteratorSpec>(iter: I)
+    ensures
+        #[trigger] sum_iter_obeys(iter) == iter.obeys_prophetic_iter_laws(),
+        #[trigger] sum_iter_will_return_none(iter) == iter.will_return_none(),
+;
+
+// Sum the elements in iterator order, starting from zero.
+pub open spec fn usize_sum(remaining: Seq<usize>) -> int {
+    remaining.fold_left(0, |sum: int, value: usize| sum + value)
+}
+
+impl SumSpecImpl<usize> for usize {
+    open spec fn sum_ensures(remaining: Seq<usize>, sum: Self) -> bool {
+        // The exact result is guaranteed only when it is representable.
+        usize_sum(remaining) <= usize::MAX ==> sum as int == usize_sum(remaining)
+    }
+
+    open spec fn sum_consumes_all() -> bool {
+        true
+    }
 }
 
 /********************************************************************************

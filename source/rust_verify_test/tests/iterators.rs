@@ -95,6 +95,26 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] sum_works verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::{IteratorSpec, usize_sum};
+
+        fn test_sum(v: Vec<usize>) -> (sum: usize)
+            requires
+                usize_sum(v@) <= usize::MAX,
+            ensures
+                sum as int == usize_sum(v@),
+        {
+            let iter = v.into_iter();
+            let ghost iter_snapshot = iter;
+            let sum = iter.sum();
+            assert(iter_snapshot.will_return_none());
+            sum
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] filter_works verus_code! {
         use vstd::prelude::*;
         use vstd::std_specs::iter::*;
