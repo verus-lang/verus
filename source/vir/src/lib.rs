@@ -79,5 +79,6 @@ mod triggers_auto;
 mod unicode;
 pub mod user_defined_type_invariants;
 pub mod util;
+pub mod vir_observer;
 mod visitor;
 pub mod well_formed;
