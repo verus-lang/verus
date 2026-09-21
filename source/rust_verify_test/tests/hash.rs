@@ -131,6 +131,19 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_hash_set_with_hasher verus_code! {
+        use std::collections::HashSet;
+        use std::collections::hash_map::RandomState;
+        use vstd::prelude::*;
+
+        fn test(hasher: RandomState) {
+            let m: HashSet<u32> = HashSet::with_hasher(hasher);
+            assert(m@ == Set::<u32>::empty());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_hash_map_box verus_code! {
         use std::collections::HashMap;
         use vstd::prelude::*;
