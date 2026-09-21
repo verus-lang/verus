@@ -82,13 +82,13 @@ pub enum ArithOp {
 /// Primitive binary operations, all are pure functions on 2 inputs
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, ToDebugSNode)]
 pub enum BinaryOp {
-    /// boolean and (short-circuiting: right side is evaluated only if left side is true)
+    /// boolean and (no short-circuiting: Exps are pure)
     And,
-    /// boolean or (short-circuiting: right side is evaluated only if left side is false)
+    /// boolean or (no short-circuiting: Exps are pure)
     Or,
-    /// boolean xor (no short-circuiting)
+    /// boolean xor
     Xor,
-    /// boolean implies (short-circuiting: right side is evaluated only if left side is true)
+    /// boolean implies (no short-circuiting: Exps are pure)
     Implies,
     /// the is_smaller_than verus_builtin, used for decreases (true for <, false for ==)
     HeightCompare { strictly_lt: bool, recursive_function_field: bool },
