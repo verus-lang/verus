@@ -12,8 +12,8 @@ broadcast use group_vstd_default;
 
 /// Defines parameters common to all `PointsTo` permissions:
 /// the pointer to memory and the size of the pointed-to region.
-pub trait PointsToParam: Sized {
-    type A: ?Sized;
+pub trait PointsToParam: Sized { // TODO: rename to PointsToPhys
+    type A: ?Sized; //caller choice vs implementor choice, so maybe can go with implementor
 
     /// The pointer that this permission is associated with.
     spec fn ptr(self) -> *mut Self::A;
@@ -26,7 +26,7 @@ pub trait PointsToParam: Sized {
 /// This lets code which is generic over some `PointsToParam`
 /// rely on all instances of that type reporting the same `size()`
 /// (for example, `SeqPointsTo` requires that every permission in the sequence must track the same size of memory).
-pub trait FixedSizeParam: PointsToParam {
+pub trait FixedSizeParam: PointsToParam { // rename to FixedSize
     /// The (constant) size of the memory region that this permission tracks,
     /// which is the same for every `PointsTo` permission satisfying this trait bound.
     spec fn const_size() -> nat;

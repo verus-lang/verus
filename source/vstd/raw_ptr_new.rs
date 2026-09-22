@@ -99,6 +99,8 @@ impl ProvenanceData {
 
     /// The originally requested allocation size.
     pub uninterp spec fn orig_size(&self) -> nat;
+
+    // change axioms into type invariant
 }
 
 pub type Provenance = Option<ProvenanceData>;
