@@ -159,6 +159,59 @@ test_verify_one_file! {
 // ---- type, mode and lifetime checking is done by rustc ----
 
 test_verify_one_file! {
+    // rustc checks the extra arguments of a redirected call; a wrong extra type
+    // is a `mismatched types` error in every form.
+    #[test] test_mismatched_extra_type_rejected
+        code_str!{
+            use vstd::prelude::*;
+
+            // a wrong type for a `Tracked` input
+            #[verus_spec(with Tracked(b): Tracked<u64>)]
+            fn f1(a: u64) {}
+
+            #[verus_spec]
+            fn c1() {
+                proof_with!{Tracked(1u32)}
+                f1(0);
+            }
+
+            // a `Ghost` value where a `Tracked` input is declared
+            #[verus_spec(with Tracked(b): Tracked<u64>)]
+            fn f2(a: u64) {}
+
+            #[verus_spec]
+            fn c2() {
+                proof_with!{Ghost(1u64)}
+                f2(0);
+            }
+
+            // a wrong type for a generic `Tracked` input
+            #[verus_spec(with Tracked(b): Tracked<T>)]
+            fn f3<T>(a: T) {}
+
+            #[verus_spec]
+            fn c3() {
+                proof_with!{Tracked(1u32)}
+                f3(0u64);
+            }
+        }.to_string()
+        // a wrong extra type on a call redirected to an `assume_specification`
+        + EXTERNAL_FN_NEGATE_BOOL
+        + code_str!{
+            #[verus_spec]
+            fn call_external() {
+                proof_with!{Tracked(1u32)}
+                let ret = negate_bool(true, 1);
+            }
+        }
+    => Err(e) => {
+        // one error per case, so no case can stop being rejected unnoticed
+        assert_eq!(e.errors.len(), 4);
+        assert_rust_error_msg_all(e, "mismatched types");
+    }
+}
+
+test_verify_one_file! {
     #[test] test_proof_with_wrong_arity code!{
         use vstd::prelude::*;
 
@@ -465,6 +518,95 @@ test_verify_one_file! {
 
 // An external function and its `assume_specification`, which gives it an extra
 // `Tracked` input constrained to equal its `x` argument.
+
+const EXTERNAL_FN_NEGATE_BOOL: &str = code_str! {
+    use vstd::prelude::*;
+
+    #[verifier::external]
+    fn negate_bool(b: bool, x: u8) -> bool {
+        !b
+    }
+
+    #[verifier::external_fn_specification]
+    #[verus_spec(ret =>
+        with Tracked(extra): Tracked<u8>
+        requires x == extra,
+        ensures ret == !b,
+    )]
+    fn negate_bool_spec(b: bool, x: u8) -> bool {
+        negate_bool(b, x)
+    }
+};
+
+test_verify_one_file! {
+    #[test] test_external_fn_group
+        // an `assume_specification` with an extra `Tracked` input
+        in_mod("input_only", &(EXTERNAL_FN_NEGATE_BOOL.to_string() + code_str!{
+            #[verus_spec]
+            fn call_external() {
+                proof_with!{Tracked(1u8)}
+                let ret = negate_bool(true, 1);
+                proof!{ assert(!ret); }
+            }
+        }))
+        // an `assume_specification` that also produces an extra `Ghost` output
+        + &in_mod("extra_output", code_str!{
+            use vstd::prelude::*;
+
+            #[verifier::external]
+            fn negate_bool(b: bool, x: u8) -> bool {
+                !b
+            }
+
+            #[verifier::external_fn_specification]
+            #[verus_spec(ret =>
+                with Tracked(extra): Tracked<u8> -> z: Ghost<u8>
+                requires x == extra,
+                ensures ret == !b, z@ == extra,
+            )]
+            fn negate_bool_spec(b: bool, x: u8) -> bool {
+                negate_bool(b, x)
+            }
+
+            #[verus_spec]
+            fn call_external() {
+                proof_with!{Tracked(1u8) => Ghost(z)}
+                let ret = negate_bool(true, 1);
+                proof!{ assert(!ret); assert(z == 1u8); }
+            }
+        })
+    => Ok(())
+}
+
+test_verify_one_file! {
+    // Without `proof_with!`, the call goes to the `assume_specification`, whose
+    // precondition is `false`; with the wrong extra argument, its own
+    // precondition fails.
+    #[test] test_external_fn_missing_or_failed_requires
+        EXTERNAL_FN_NEGATE_BOOL.to_string() + code_str!{
+        #[verus_spec]
+        fn call_missing() {
+            let ret = negate_bool(true, 1); // FAILS
+        }
+
+        #[verus_spec]
+        fn call_wrong_arg() {
+            proof_with!{Tracked(99u8)}
+            let ret = negate_bool(true, 1); // FAILS
+        }
+    } => Err(e) => assert_fails(e, 2)
+}
+
+// --- `with` on a trait method ---
+//
+// A method that declares extra ghost/tracked parameters cannot be its own
+// verified counterpart, so the counterparts are collected into a companion
+// trait, `_VERUS_WITH_TRAIT_X`, declared next to `X` as a subtrait of it and
+// blanket-implemented for every implementor of `X`. The method of `X` keeps
+// `requires(false)`; an overriding implementation puts its body in a second
+// companion, `_VERUS_WITH_IMPL_TRAIT_X`. Because the blanket impl covers
+// every type, no caller needs an extra bound. None of this is spelled out in the
+// source.
 
 test_verify_one_file_with_options! {
     // The verified counterpart is named after the function the user wrote, so

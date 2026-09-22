@@ -107,6 +107,7 @@ use rustc_hir::{
 use rustc_index::IndexVec;
 use rustc_middle::ty::TyCtxt;
 use rustc_span::symbol::Symbol;
+use std::collections::HashMap;
 
 /// This prefix must match `builtin_macros::attr_rewrite::WITH`.
 const WITH_PREFIX: &str = "_VERUS_WITH";
@@ -146,6 +147,7 @@ pub(crate) fn lower_to_hir<'tcx>(
     let ctxt = Ctxt {
         tcx,
         owners: from_static_owners(crate_.indexed),
+        external_targets: &crate_.external_targets,
     };
     rewrite_owner(&ctxt, inner_owner, def_id).unwrap_or(owner)
 }
@@ -159,6 +161,8 @@ struct CrateOwners {
     owners: &'static IndexVec<LocalDefId, Option<MaybeOwner<'static>>>,
     /// The same owners, read by definition and without the holes, for `Ctxt`.
     indexed: &'static IndexVec<LocalDefId, MaybeOwner<'static>>,
+    /// External functions are indexed through their local `assume_specification`.
+    external_targets: HashMap<DefId, DefId>,
 }
 
 /// `CrateOwners` holds HIR, which is neither `Send` nor `Sync`, so the table is
@@ -269,7 +273,11 @@ fn crate_owners<'tcx>(
     }
     let owners = Box::leak(Box::new(lowered));
     let indexed: &'static IndexVec<LocalDefId, MaybeOwner<'static>> = Box::leak(Box::new(indexed));
-    let crate_: &'static CrateOwners = Box::leak(Box::new(CrateOwners { owners, indexed }));
+    let crate_: &'static CrateOwners = Box::leak(Box::new(CrateOwners {
+        owners,
+        indexed,
+        external_targets: external_target_map(tcx, from_static_owners(indexed)),
+    }));
     *cached = Some((gcx, std::ptr::from_ref(crate_) as usize));
     crate_
 }
@@ -294,6 +302,8 @@ struct Ctxt<'a, 'tcx> {
     tcx: TyCtxt<'tcx>,
     /// Local HIR must be read here because `tcx` would re-enter `lower_to_hir`.
     owners: &'a IndexVec<LocalDefId, MaybeOwner<'tcx>>,
+    /// External functions are indexed through their local `assume_specification`.
+    external_targets: &'a HashMap<DefId, DefId>,
 }
 
 fn owner_attrs<'tcx>(
@@ -371,6 +381,69 @@ fn local_fn_name<'tcx>(
     }
 }
 
+/// An external function belongs to a crate that cannot carry a Verus attribute
+/// naming its counterpart. The link therefore lives on the local
+/// `assume_specification`, whose trailing body call names the external target.
+///
+/// Unlike `get_external_def_id`, which runs after type checking, this supports only
+/// a plain path callee.
+fn external_target_map<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    owners: &IndexVec<LocalDefId, MaybeOwner<'tcx>>,
+) -> HashMap<DefId, DefId> {
+    let mut map = HashMap::new();
+    for (def_id, owner) in owners.iter_enumerated() {
+        let MaybeOwner::Owner(owner) = owner else {
+            continue;
+        };
+        let OwnerNode::Item(item) = owner.node() else {
+            continue;
+        };
+        let rustc_hir::ItemKind::Fn { body, .. } = &item.kind else {
+            continue;
+        };
+        let attrs = owner.attrs.get(ItemLocalId::ZERO);
+        let (mut is_external_fn_spec, mut is_stub) = (false, false);
+        for attr in parse_attrs_opt(attrs, None) {
+            match attr {
+                Attr::ExternalFnSpecification => is_external_fn_spec = true,
+                Attr::UnverifiedStub => is_stub = true,
+                _ => {}
+            }
+        }
+        if !is_external_fn_spec || !is_stub {
+            continue;
+        }
+        let Some(body) = owner.nodes.bodies.get(&body.hir_id.local_id) else {
+            continue;
+        };
+        let Some(target) = tail_call_target(body.value) else {
+            continue;
+        };
+        if let Some(verified) = counterpart_of(tcx, owners, def_id.to_def_id()) {
+            map.insert(target, verified);
+        }
+    }
+    map
+}
+
+fn tail_call_target(mut expr: &Expr<'_>) -> Option<DefId> {
+    loop {
+        match &expr.kind {
+            ExprKind::Block(block, _) => expr = block.expr?,
+            ExprKind::Call(callee, _) => {
+                let ExprKind::Path(QPath::Resolved(_, path)) = &callee.kind else {
+                    return None;
+                };
+                return path.res.opt_def_id();
+            }
+            _ => {
+                return None;
+            }
+        }
+    }
+}
+
 impl<'tcx> Ctxt<'_, 'tcx> {
     fn attrs(&self, def_id: DefId) -> Option<&'tcx [rustc_hir::Attribute]> {
         def_attrs(self.tcx, self.owners, def_id)
@@ -416,7 +489,8 @@ impl<'tcx> Ctxt<'_, 'tcx> {
 
     fn verified_counterpart(&self, def_id: DefId) -> Option<DefId> {
         if !self.is_unverified_stub(def_id) {
-            return None;
+            // An external function is linked through its `assume_specification`.
+            return self.external_targets.get(&def_id).copied();
         }
         counterpart_of(self.tcx, self.owners, def_id)
     }

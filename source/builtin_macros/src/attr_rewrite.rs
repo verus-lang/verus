@@ -1233,15 +1233,36 @@ fn forward_to_counterpart(
 /// counterpart is named `_VERUS_WITH_{name}` and carries the extra parameters,
 /// the extra results, and the specification. Erased metadata retains the counterpart
 /// declaration so downstream marker calls can resolve it, but only the stub executes.
+/// Returns true for `#[verifier::assume_specification]` and
+/// `#[verifier::external_fn_specification]`, in either the `verifier::x` or the
+/// `verus_verify(x)` spelling.
+fn is_external_fn_specification_attr(attr: &syn::Attribute) -> bool {
+    let is_name = |n: &str| n == "assume_specification" || n == "external_fn_specification";
+    let segments: Vec<String> = attr.path().segments.iter().map(|s| s.ident.to_string()).collect();
+    match segments.as_slice() {
+        [verifier, name] if verifier == "verifier" => is_name(name),
+        [verifier] if verifier == "verifier" => match &attr.meta {
+            syn::Meta::List(list) => list
+                .parse_args::<syn::Path>()
+                .ok()
+                .and_then(|p| p.get_ident().map(|i| is_name(&i.to_string())))
+                .unwrap_or(false),
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
 fn rewrite_unverified_func(
     fun: &mut syn::ItemFn,
     span: proc_macro2::Span,
     erase: EraseGhost,
     forward: (ForwardTarget, &verus_syn::WithSpecOnFn),
 ) -> Vec<syn::ItemFn> {
+    let is_assume_spec = fun.attrs.iter().any(is_external_fn_specification_attr);
     let mut ret = vec![];
     let mut unverified_fun = fun.clone();
-    if fun.sig.constness.is_some() {
+    if fun.sig.constness.is_some() && !is_assume_spec {
         // Create a proxy function to include requires/ensures.
         let proxy = rewrite_const_ret_proxy(&mut unverified_fun);
         ret.push(unverified_fun);
@@ -1257,7 +1278,11 @@ fn rewrite_unverified_func(
         ),
         Some(syn::token::Semi { spans: [span] }),
     );
-    unverified_fun.attrs_mut().push(mk_verus_attr_syn(span, quote! { external_body }));
+    if !is_assume_spec {
+        // `assume_specification` already implies an external body, and marking it
+        // `external_body` explicitly is rejected.
+        unverified_fun.attrs_mut().push(mk_verus_attr_syn(span, quote! { external_body }));
+    }
     if !crate::rustdoc::env_rustdoc() {
         unverified_fun.attrs_mut().push(crate::syntax::mk_rust_attr_syn(
             span,
@@ -1266,7 +1291,7 @@ fn rewrite_unverified_func(
         ));
     }
     let (target, with) = forward;
-    let forwarding = if erase.keep() && fun.sig.constness.is_none() {
+    let forwarding = if erase.keep() && fun.sig.constness.is_none() && !is_assume_spec {
         let counterpart =
             syn::Ident::new(&format!("{WITH}_{}", fun.sig.ident), fun.sig.ident.span());
         Some(forward_to_counterpart(&mut unverified_fun.sig, &target, &counterpart, with, span))
@@ -1277,9 +1302,14 @@ fn rewrite_unverified_func(
         // Verification cannot type-check the executable body against the stub signature
         // when the body refers to the erased parameters.
         if erase.keep() {
-            block.stmts.clear();
-            block.stmts.push(precondition_false);
-            block.stmts.push(forwarding.unwrap_or_else(|| unimplemented.clone()));
+            if is_assume_spec {
+                // Keep the body: its trailing call names the specified function.
+                block.stmts.insert(0, precondition_false);
+            } else {
+                block.stmts.clear();
+                block.stmts.push(precondition_false);
+                block.stmts.push(forwarding.unwrap_or_else(|| unimplemented.clone()));
+            }
         }
     }
     let x = &fun.sig.ident;
@@ -1287,7 +1317,13 @@ fn rewrite_unverified_func(
     fun.attrs.push(mk_verus_attr_syn(span, quote! { verified_with }));
     fun.attrs.push(crate::syntax::mk_rust_attr_syn(span, "allow", quote! {non_snake_case}));
 
-    if erase.erase() {
+    if is_assume_spec {
+        // The counterpart's expanded signature cannot name the external target directly.
+        fun.attrs.retain(|attr| !is_external_fn_specification_attr(attr));
+        fun.attrs.push(mk_verus_attr_syn(span, quote! { external_body }));
+        fun.block.stmts.clear();
+        fun.block.stmts.push(unimplemented);
+    } else if erase.erase() {
         fun.block.stmts.clear();
         fun.block.stmts.push(unimplemented);
     }
