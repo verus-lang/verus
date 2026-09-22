@@ -954,6 +954,31 @@ fn check_expr<Emit: EmitError>(
     check_result
 }
 
+// Exec or proof functions with a literal `requires false` precondition vacuously
+// satisfy their specification. Axiomatized specifications via `external_body` or
+// `assume_specification` with `requires false` therefore do not need to be trusted.
+// Under `--no-cheating`, this function filters out those cases.
+fn function_has_literal_false_precondition(ctxt: &Ctxt, function: &Function) -> bool {
+    let function = match &function.x.kind {
+        FunctionKind::TraitMethodImpl { method, .. }
+        | FunctionKind::ForeignTraitMethodImpl { method, .. } => {
+            // Calls to an implementation use the trait declaration's `requires` clauses.
+            let Some(function) = ctxt.funs.get(method) else {
+                return false;
+            };
+            function
+        }
+        _ => function,
+    };
+
+    if function.x.mode == Mode::Spec {
+        // For spec functions, `require` stores recommendations, not call preconditions.
+        return false;
+    }
+
+    function.x.require.iter().any(|req| matches!(&req.x, ExprX::Const(Constant::Bool(false))))
+}
+
 fn check_function<Emit: EmitError>(
     ctxt: &Ctxt,
     function: &Function,
@@ -1563,7 +1588,10 @@ fn check_function<Emit: EmitError>(
         }
     }
 
-    if ctxt.no_cheating && (function.x.attrs.is_external_body || function.x.proxy.is_some()) {
+    if ctxt.no_cheating
+        && (function.x.attrs.is_external_body || function.x.proxy.is_some())
+        && !function_has_literal_false_precondition(ctxt, function)
+    {
         match &function.x.owning_module {
             // Allow external_body/assume_specification inside vstd
             Some(path) if path.is_vstd_path() => {}
