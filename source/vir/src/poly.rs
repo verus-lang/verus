@@ -407,7 +407,7 @@ fn visit_and_insert_pars(
     // Parameter types are made Poly for spec functions and trait methods
     let mut new_pars: Vec<Par> = Vec::new();
     for par in pars.iter() {
-        let ParX { name, typ, mode, purpose } = &par.x;
+        let ParX { name, typ, mode } = &par.x;
         let is_poly = match poly {
             InsertPars::Native => false,
             InsertPars::Poly => true,
@@ -416,7 +416,7 @@ fn visit_and_insert_pars(
         let typ =
             if is_poly { coerce_typ_to_poly(ctx, typ) } else { coerce_typ_to_native(ctx, typ) };
         let _ = types.insert(name.clone(), typ.clone());
-        let parx = ParX { name: name.clone(), typ, mode: *mode, purpose: *purpose };
+        let parx = ParX { name: name.clone(), typ, mode: *mode };
         new_pars.push(Spanned::new(par.span.clone(), parx));
     }
     Arc::new(new_pars)
@@ -583,6 +583,7 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 | UnaryOp::FloatToBits
                 | UnaryOp::IeeeFloat(..)
                 | UnaryOp::BitNot(_)
+                | UnaryOp::NewStrLit
                 | UnaryOp::StrLen => {
                     let e1 = coerce_exp_to_native(ctx, &e1);
                     mk_exp(ExpX::Unary(*op, e1))
@@ -597,10 +598,15 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 UnaryOp::MustBeFinalized | UnaryOp::MustBeElaborated => {
                     panic!("internal error: MustBeFinalized in SST")
                 }
-                UnaryOp::CastToInteger => {
-                    let unbox = UnaryOpr::Unbox(Arc::new(TypX::Int(IntRange::Int)));
-                    mk_exp(ExpX::UnaryOpr(unbox, e1.clone()))
-                }
+                UnaryOp::CastToInteger => match &*crate::ast_util::undecorate_typ(&e1.typ) {
+                    TypX::TypParam(_) => {
+                        // View as boxed integer rather than type parameter
+                        // (e.g. so that it can be unboxed if needed,
+                        // or passed as boxed int argument if needed)
+                        e1.new_typ(&Arc::new(TypX::Boxed(Arc::new(TypX::Int(IntRange::Int)))))
+                    }
+                    _ => e1.clone(),
+                },
                 UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_) => {
                     let e1 = coerce_exp_to_native(ctx, &e1);
                     mk_exp_typ(&coerce_typ_to_poly(ctx, &exp.typ), ExpX::Unary(*op, e1))

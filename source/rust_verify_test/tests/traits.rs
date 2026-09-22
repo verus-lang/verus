@@ -4696,13 +4696,13 @@ test_verify_one_file_with_options! {
         }
         const unsafe trait U {
         }
-        impl const T for bool {
+        const impl T for bool {
             fn f() -> (r: u8) ensures r == 3 { 3 }
         }
         const impl T for () {
             fn f() -> (r: u8) ensures r == 4 { 4 }
         }
-        unsafe impl const U for () {
+        const unsafe impl U for () {
         }
         fn test() {
             let c1 = <bool as T>::f();
@@ -4724,7 +4724,7 @@ test_verify_one_file_with_options! {
         const trait T {
             fn f() -> (r: u8) ensures r == 3; // TRAIT
         }
-        impl const T for bool {
+        const impl T for bool {
             fn f() -> (r: u8) { 3 }
         }
         const impl T for () {
@@ -4814,4 +4814,26 @@ test_verify_one_file! {
             assert(r == Some(7u8));
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] normalization_issue2350 verus_code! {
+        use vstd::prelude::*;
+        trait Foo {
+            type T;
+
+            fn f(&self, i: u8) -> Self::T;
+        }
+
+        impl<T, F> Foo for F
+        where
+            F: Fn(u8) -> T,
+        {
+            type T = T;
+
+            fn f(&self, i: u8) -> Self::T {
+                (self)(i)
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Call to non-static function fails to satisfy `callee.requires(args)`")
 }

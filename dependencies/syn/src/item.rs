@@ -1116,6 +1116,7 @@ pub(crate) mod parsing {
             && !ahead.peek2(Token![impl])
             && !ahead.peek2(Token![trait])
             && !(ahead.peek2(Token![unsafe]) && ahead.peek3(Token![trait]))
+            && !(ahead.peek2(Token![unsafe]) && ahead.peek3(Token![impl]))
         {
             let vis = input.parse()?;
             let publish = input.parse()?;
@@ -1215,6 +1216,9 @@ pub(crate) mod parsing {
             input.parse().map(Item::Trait)
         } else if lookahead.peek(Token![impl])
             || lookahead.peek(Token![const]) && ahead.peek2(Token![impl])
+            || lookahead.peek(Token![const])
+                && ahead.peek2(Token![unsafe])
+                && ahead.peek3(Token![impl])
             || lookahead.peek(Token![default]) && !ahead.peek2(Token![!])
         {
             let allow_verbatim_impl = true;
@@ -2813,8 +2817,8 @@ pub(crate) mod parsing {
         let mut attrs = input.call(Attribute::parse_outer)?;
         let has_visibility = allow_verbatim_impl && input.parse::<Visibility>()?.is_some();
         let defaultness: Option<Token![default]> = input.parse()?;
+        let constness: Option<Token![const]> = input.parse()?;
         let unsafety: Option<Token![unsafe]> = input.parse()?;
-        let mut constness: Option<Token![const]> = input.parse()?;
         let impl_token: Token![impl] = input.parse()?;
 
         let has_generics = generics::parsing::choose_generics_over_qpath(input);
@@ -2823,10 +2827,6 @@ pub(crate) mod parsing {
         } else {
             Generics::default()
         };
-
-        if constness.is_none() {
-            constness = input.parse()?;
-        }
 
         let polarity = if input.peek(Token![!]) && !input.peek2(token::Brace) {
             Some(input.parse::<Token![!]>()?)
@@ -3464,15 +3464,10 @@ pub(crate) mod printing {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             tokens.append_all(self.attrs.outer());
             self.defaultness.to_tokens(tokens);
+            self.constness.to_tokens(tokens);
             self.unsafety.to_tokens(tokens);
-            if self.unsafety.is_none() {
-                self.constness.to_tokens(tokens);
-            }
             self.impl_token.to_tokens(tokens);
             self.generics.to_tokens(tokens);
-            if self.unsafety.is_some() {
-                self.constness.to_tokens(tokens);
-            }
             if let Some((polarity, path, for_token)) = &self.trait_ {
                 polarity.to_tokens(tokens);
                 path.to_tokens(tokens);

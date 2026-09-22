@@ -720,6 +720,7 @@ impl<A> ISet<A> {
             self.finite(),
         ensures
             self.map(f).finite(),
+            self.map(f).len() <= self.len(),
         decreases self.len(),
     {
         broadcast use group_iset_lemmas;
@@ -833,6 +834,48 @@ impl<A> ISet<A> {
             self.remove(elem).lemma_to_seq_to_set_id();
             assert(self =~= self.remove(elem).insert(elem));
             assert(self.to_seq().to_set() =~= self.remove(elem).to_seq().to_set().insert(elem));
+        }
+    }
+
+    /// Any sequence converted from finite iset has no duplicates
+    pub broadcast proof fn lemma_to_seq_no_duplicates(self)
+        requires
+            self.finite(),
+        ensures
+            #[trigger] self.to_seq().no_duplicates(),
+        decreases self.len(),
+    {
+        broadcast use super::seq::group_seq_axioms;
+
+        if self.len() == 0 {
+        } else {
+            let x = choose|x: A| #[trigger]
+                self.contains(x) && self.to_seq() =~= seq![x] + self.remove(x).to_seq();
+            let seq = self.to_seq();
+            let seq2 = self.remove(x).to_seq();
+            assert(seq2.no_duplicates()) by { self.remove(x).lemma_to_seq_no_duplicates() }
+            assert(seq2.to_set().to_iset() == self.remove(x)) by {
+                self.remove(x).lemma_to_seq_to_set_id();
+            }
+            assert(!seq2.contains(x)) by { seq2.to_set_ensures() }
+        }
+    }
+
+    /// Conversion from finite iset to seq preserves the length
+    pub broadcast proof fn lemma_to_seq_len(self)
+        requires
+            self.finite(),
+        ensures
+            #[trigger] self.to_seq().len() == self.len(),
+        decreases self.len(),
+    {
+        broadcast use super::seq::group_seq_axioms;
+
+        if self.len() == 0 {
+        } else {
+            let x = choose|x: A| #[trigger]
+                self.contains(x) && self.to_seq() =~= seq![x] + self.remove(x).to_seq();
+            self.remove(x).lemma_to_seq_len();
         }
     }
 }

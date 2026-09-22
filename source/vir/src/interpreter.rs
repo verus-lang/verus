@@ -1233,16 +1233,15 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | HeightTrigger
                         | Trigger(_)
                         | CoerceMode { .. }
+                        | NewStrLit
                         | StrLen
                         | Length(..)
+                        | CastToInteger
                         | MutRefCurrent
                         | MutRefFuture(_)
                         | MutRefFinal(_) => ok,
                         MustBeFinalized | UnaryOp::MustBeElaborated => {
                             panic!("Found MustBeFinalized op {:?} after calling finalize_exp", exp)
-                        }
-                        CastToInteger => {
-                            panic!("CastToInteger should have been removed by poly!")
                         }
                     }
                 }
@@ -1357,9 +1356,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         MustBeFinalized | UnaryOp::MustBeElaborated => {
                             panic!("Found MustBeFinalized op {:?} after calling finalize_exp", exp)
                         }
-                        CastToInteger => {
-                            panic!("CastToInteger should have been removed by poly!")
-                        }
+                        CastToInteger => Ok(e.clone()),
                         Not
                         | HeightTrigger
                         | Trigger(_)
@@ -1368,6 +1365,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | FloatToBits
                         | IeeeFloat(_)
                         | CoerceMode { .. }
+                        | NewStrLit
                         | StrLen
                         | Length(..)
                         | MutRefCurrent

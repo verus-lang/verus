@@ -358,7 +358,7 @@ mod doubly_linked_list {
                 old(self).view().len() > 0,
             ensures
                 final(self).well_formed(),
-                final(self)@ == old(self)@.subrange(1, old(self)@.len() as int),
+                final(self)@ == old(self)@[1..],
                 v == old(self)@[0],
         {
             assert(self.well_formed_node(0));
@@ -417,7 +417,7 @@ mod doubly_linked_list {
             // Additional proof work to help the solver show that
             // `self.well_formed()` has been restored.
             proof {
-                self.ghost_state@.ptrs = self.ghost_state@.ptrs.subrange(1, self.ghost_state@.ptrs.len() as int);
+                self.ghost_state@.ptrs = self.ghost_state@.ptrs[1..];
                 if self.ghost_state@.ptrs.len() > 0 {
                     assert(self.well_formed_node(0));
                 }
@@ -425,10 +425,10 @@ mod doubly_linked_list {
                     i < self.view().len() && old(self).well_formed_node(i + 1) ==> self.well_formed_node(i));
                 assert forall|i: int| 0 <= i && i < self@.len() implies #[trigger] self@[i] == old(
                     self,
-                )@.subrange(1, old(self)@.len() as int)[i] by {
+                )@[1..][i] by {
                     assert(old(self).well_formed_node(i as nat + 1));  // trigger
                 }
-                assert(self@ =~= old(self)@.subrange(1, old(self)@.len() as int));
+                assert(self@ =~= old(self)@[1..]);
 
                 assert(self.well_formed());
             }
@@ -476,6 +476,54 @@ mod doubly_linked_list {
                 self.ghost_state.borrow().points_to_map.tracked_borrow(j as nat);
             let node_ref: &Node<V> = ptr.borrow(Tracked(pointsto_ref));
             return &node_ref.payload;
+        }
+
+        /// Get a reference to the i^th value in the list
+        fn get_mut<'a>(&'a mut self, i: usize) -> (v: &'a mut V)
+            requires
+                self.well_formed(),
+                0 <= i < self@.len(),
+            ensures
+                final(self).well_formed(),
+                *v == old(self)@[i as int],
+                final(self)@ == old(self)@.update(i as int, *final(v))
+        {
+            // Iterate the nodes from 0 to j, starting at the head node
+            let mut j = 0;
+            let mut ptr = self.head.unwrap();
+            while j < i
+                invariant
+                    self.well_formed(),
+                    old(self)@ == self@,
+                    0 <= j <= i < self@.len(),
+                    ptr == self.ghost_state@.ptrs[j as int],
+            {
+                proof {
+                    assert(self.well_formed_node(j as nat)); // trigger
+                }
+
+                // Get the next node from the 'next' field
+                let tracked pointsto_ref: &PointsTo<Node<V>> =
+                    self.ghost_state.borrow().points_to_map.tracked_borrow(j as nat);
+                let node_ref: &Node<V> = ptr.borrow(Tracked(pointsto_ref));
+                let next_ptr = node_ref.next.unwrap();
+
+                j += 1;
+                ptr = next_ptr;
+            }
+
+            proof {
+                assert(self.well_formed_node(j as nat)); // trigger
+                assert(forall |k: nat| #![trigger final(self).well_formed_node(k)]
+                    0 <= k < self.ghost_state.ptrs.len() ==>
+                    self.well_formed_node(k as nat));
+            }
+
+            // Get a reference to this node's payload and return it
+            let tracked pointsto_ref: &mut PointsTo<Node<V>> =
+                self.ghost_state.borrow_mut().points_to_map.tracked_borrow_mut(j as nat);
+            let node_ref: &mut Node<V> = ptr.borrow_mut(Tracked(pointsto_ref));
+            return &mut node_ref.payload;
         }
     }
 

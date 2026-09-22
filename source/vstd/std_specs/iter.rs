@@ -2,12 +2,10 @@ use super::super::prelude::*;
 use super::super::seq::{
     group_seq_lemmas, lemma_seq_empty, lemma_seq_subrange_index, lemma_seq_subrange_len,
 };
+use core::iter::{Filter, FromIterator, Iterator, Rev, Skip, Take, Zip};
 
-use verus as verus_;
-
-use core::iter::{FromIterator, Iterator, Rev};
-
-verus_! {
+use verus as verus_skip_verusfmt;
+verus_skip_verusfmt! {
 
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(IteratorSpec via IteratorSpecImpl)]
@@ -67,61 +65,14 @@ pub trait ExIterator {
     // Otherwise, return None.
     spec fn peek(&self, index: int) -> Option<Self::Item>;
 
-    // Provided methods
 
-    // TODO: Once we can add when_used_as_spec to provided trait methods, this would be a simpler encoding:
-    //#[verifier::when_used_as_spec(into_rev_spec)]
-    fn rev(self) -> (r: Rev<Self>)
-        where Self: Sized,
-        ensures
-            self.obeys_prophetic_iter_laws() ==>
-                r == into_rev_spec(self) && rev_post(self, r),
-    ;
 
-    fn collect<B>(self) -> (collection: B)
-        where
-            B: FromIterator<Self::Item>,
-            Self: Sized,
-        ensures
-            self.obeys_prophetic_iter_laws() ==>
-                self.will_return_none() &&
-                FromIteratorSpec::from_iter_ensures(self.remaining(), collection),
-    ;
-
-    fn find<P>(&mut self, predicate: P) -> (r: Option<Self::Item>)
-        where Self: Sized,
-            P: FnMut(&Self::Item) -> bool
-        requires
-            forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(predicate, (&self.remaining()[k], )),
-        ensures
-            // The iterator consistently obeys, completes, and decreases throughout its lifetime
-            final(self).obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
-            final(self).obeys_prophetic_iter_laws() ==> final(self).will_return_none() == old(self).will_return_none(),
-            final(self).obeys_prophetic_iter_laws() ==> (old(self).decrease() is Some <==> final(self).decrease() is Some),
-            final(self).obeys_prophetic_iter_laws() ==> {
-                final(self).remaining().is_suffix_of(old(self).remaining())
-            },
-            // If find returns None, then the iterator has no remaining
-            // elements, and the predicate was false for all of the original
-            // iterator's elements.
-            final(self).obeys_prophetic_iter_laws() && r.is_none() ==> {
-                &&& final(self).remaining().len() == 0
-                &&& forall |i| 0 <= i < old(self).remaining().len() ==>
-                    predicate.ensures((#[trigger]&old(self).remaining()[i],), false)
-            },
-            // If find returns Some, then the returned value satisfies the
-            // predicate, and all previous elements did not satisfy the
-            // predicate.
-            final(self).obeys_prophetic_iter_laws() && r.is_some() ==> {
-                let idx = old(self).remaining().len() - final(self).remaining().len() - 1;
-                {
-                    &&& 0 <= final(self).remaining().len() < old(self).remaining().len()
-                    &&& predicate.ensures((&r.unwrap(),), true)
-                    &&& old(self).remaining()[idx] == r.unwrap()
-                    &&& forall |i| 0 <= i < idx ==>
-                        predicate.ensures((#[trigger] &old(self).remaining()[i],), false)
-                }
-            };
+    /******* Provided methods (in alphabetical order) *********/
+    // For provided method that returns a new iterator (e.g., filter, map, or zip),
+    // ideally we would write their postconditions here.  However, this requires
+    // a trait bound of `Self: IteratorSpec`, which introduces a cyclic dependency.
+    // Hence, we introduce a layer of indirection via an uninterp spec function that
+    // describes the postconditions.
 
     // TODO: The Rust implementations of `all` and `any` depend on a correct implementation of `try_fold`
     //       For now, we assume obeys_prophetic_iter_laws() entails such an implementation, but we should
@@ -192,6 +143,103 @@ pub trait ExIterator {
                         f.ensures((#[trigger] old(self).remaining()[i],), false)
                 }
             };
+
+    fn collect<B>(self) -> (collection: B)
+        where
+            B: FromIterator<Self::Item>,
+            Self: Sized,
+        ensures
+            self.obeys_prophetic_iter_laws() ==>
+                self.will_return_none() &&
+                FromIteratorSpec::from_iter_ensures(self.remaining(), collection),
+    ;
+
+    fn filter<P>(self, predicate: P) -> (r: core::iter::Filter<Self, P>)
+        where
+            Self: Sized,
+            P: FnMut(&Self::Item) -> bool,
+        requires
+            self.obeys_prophetic_iter_laws(),
+            // `filter`'s implementation loops over the inner iterator until the predicate accepts an element,
+            // so it needs a decreases metric to prove termination.
+            self.decrease() is Some,
+            forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(predicate, (&self.remaining()[k], )),
+        ensures
+            self.obeys_prophetic_iter_laws() ==> filter_post(self, predicate, r),
+    ;
+
+    fn find<P>(&mut self, predicate: P) -> (r: Option<Self::Item>)
+        where Self: Sized,
+            P: FnMut(&Self::Item) -> bool
+        requires
+            forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(predicate, (&self.remaining()[k], )),
+        ensures
+            // The iterator consistently obeys, completes, and decreases throughout its lifetime
+            final(self).obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
+            final(self).obeys_prophetic_iter_laws() ==> final(self).will_return_none() == old(self).will_return_none(),
+            final(self).obeys_prophetic_iter_laws() ==> (old(self).decrease() is Some <==> final(self).decrease() is Some),
+            final(self).obeys_prophetic_iter_laws() ==> {
+                final(self).remaining().is_suffix_of(old(self).remaining())
+            },
+            // If find returns None, then the iterator has no remaining
+            // elements, and the predicate was false for all of the original
+            // iterator's elements.
+            final(self).obeys_prophetic_iter_laws() && r.is_none() ==> {
+                &&& final(self).remaining().len() == 0
+                &&& forall |i| 0 <= i < old(self).remaining().len() ==>
+                    predicate.ensures((#[trigger]&old(self).remaining()[i],), false)
+            },
+            // If find returns Some, then the returned value satisfies the
+            // predicate, and all previous elements did not satisfy the
+            // predicate.
+            final(self).obeys_prophetic_iter_laws() && r.is_some() ==> {
+                let idx = old(self).remaining().len() - final(self).remaining().len() - 1;
+                {
+                    &&& 0 <= final(self).remaining().len() < old(self).remaining().len()
+                    &&& predicate.ensures((&r.unwrap(),), true)
+                    &&& old(self).remaining()[idx] == r.unwrap()
+                    &&& forall |i| 0 <= i < idx ==>
+                        predicate.ensures((#[trigger] &old(self).remaining()[i],), false)
+                }
+            };
+
+    fn map<B, F>(self, f: F) -> (r: core::iter::Map<Self, F>)
+        where
+            Self: Sized,
+            F: FnMut(Self::Item) -> B,
+        requires
+            self.obeys_prophetic_iter_laws(),
+            forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(f, (self.remaining()[k], )),
+        ensures
+            self.obeys_prophetic_iter_laws() ==> map_post(self, f, r),
+    ;
+
+    fn rev(self) -> (r: Rev<Self>)
+        where Self: Sized,
+        ensures
+            self.obeys_prophetic_iter_laws() ==> rev_post(self, r),
+    ;
+
+    fn skip(self, n: usize) -> (s: Skip<Self>)
+        where Self: Sized,
+        ensures
+            self.obeys_prophetic_iter_laws() ==> skip_post(self, n, s),
+    ;
+
+    fn take(self, n: usize) -> (t: Take<Self>)
+        where Self: Sized,
+        ensures
+            self.obeys_prophetic_iter_laws() ==> take_post(self, n, t),
+    ;
+
+    #[verifier::impls_cannot_extend_spec]
+    fn zip<U>(self, other: U) -> (r: Zip<Self, <U as IntoIterator>::IntoIter>)
+        where
+            Self: Sized,
+            U: IntoIterator,
+        ensures
+            self.obeys_prophetic_iter_laws() ==> zip_post(self, other, r),
+    ;
 }
 
 #[verifier::external_trait_specification]
@@ -237,12 +285,31 @@ pub trait ExDoubleEndedIterator : Iterator {
     spec fn peek_back(&self, index: int) -> Option<Self::Item>;
 }
 
+#[verifier::external_trait_specification]
+#[verifier::external_trait_extension(ExactSizeIteratorSpec via ExactSizeIteratorSpecImpl)]
+pub trait ExExactSizeIterator: Iterator {
+    type ExternalTraitSpecificationFor: ExactSizeIterator;
+
+    // An `ExactSizeIterator` can specify its length non-prophetically,
+    // i.e., without using `self.remaining().len()`.
+    spec fn exact_len(&self) -> usize;
+
+    fn len(&self) -> (len: usize)
+        ensures
+            self.obeys_prophetic_iter_laws() ==> len == self.exact_len() == self.remaining().len();
+}
+
 /********************************************************************************
  * Definitions for `IntoIterator` and `FromIterator``
  ********************************************************************************/
 #[verifier::external_trait_specification]
 pub trait ExIntoIterator {
     type ExternalTraitSpecificationFor: core::iter::IntoIterator;
+
+    type Item;
+    type IntoIter: Iterator<Item = Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter;
 }
 
 pub open spec fn iter_into_iter_spec<I: Iterator>(i: I) -> I {
@@ -274,11 +341,205 @@ pub trait ExFromIterator<A>: Sized {
 
     spec fn from_iter_ensures(remaining: Seq<A>, s: Self) -> bool;
 
+    #[verifier::impls_cannot_extend_spec]
     fn from_iter<T>(iter: T) -> (s: Self)
        where T: IntoIterator<Item = A>
         ensures
             Self::from_iter_ensures(into_iter_remaining(iter), s),
     ;
+}
+
+/********************************************************************************
+ * Definitions for `&mut I`
+ ********************************************************************************/
+// Forwarding spec impl for the Rust-supplied blanket `impl<I> Iterator for &mut I`.
+// Without this, bare method-call syntax on a `i: &mut I` receiver (e.g. `i.remaining()`)
+// resolves to these (otherwise uninterpreted) functions on `&mut I` rather than on `I`,
+// silently disconnecting clients from `I`'s actual specs.
+impl <I> IteratorSpecImpl for &mut I
+    where I: Iterator {
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        <I as IteratorSpec>::obeys_prophetic_iter_laws(*self)
+    }
+
+    #[verifier::prophetic]
+    open spec fn remaining(&self) -> Seq<Self::Item> {
+        <I as IteratorSpec>::remaining(*self)
+    }
+
+    #[verifier::prophetic]
+    open spec fn will_return_none(&self) -> bool {
+        <I as IteratorSpec>::will_return_none(*self)
+    }
+
+    open spec fn decrease(&self) -> Option<nat> {
+        <I as IteratorSpec>::decrease(*self)
+    }
+
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        <I as IteratorSpec>::peek(*self, index)
+    }
+}
+
+/********************************************************************************
+ * Definitions for `filter()`
+ ********************************************************************************/
+#[verifier::external_body]
+#[verifier::external_type_specification]
+#[verifier::reject_recursive_types(I)]
+#[verifier::reject_recursive_types(F)]
+pub struct ExFilter<I, F>(Filter<I, F>);
+
+// Ghost accessor for the inner iterator
+pub uninterp spec fn filter_iter<I, F>(r: Filter<I, F>) -> I;
+
+// Ghost accessor for the inner predicate
+pub uninterp spec fn filter_fun<I, F>(r: Filter<I, F>) -> F;
+
+// Ghost accessor for the sequence of predicate decisions made for the (prefix of) the
+// inner iterator's elements
+#[verifier::prophetic]
+pub uninterp spec fn filter_keep<I, F>(r: Filter<I, F>) -> Seq<bool>;
+
+// Define Iter::filter's postcondition
+pub uninterp spec fn filter_post<I, F>(i: I, f: F, r: Filter<I, F>) -> bool;
+
+pub broadcast axiom fn filter_postcondition<I, F>(i: I, f: F, r: core::iter::Filter<I, F>)
+    where
+        I: IteratorSpec,
+        F: FnMut(&I::Item) -> bool,
+    requires
+        i.obeys_prophetic_iter_laws(),
+        i.decrease() is Some,
+        forall |k| #![auto] 0 <= k < i.remaining().len() ==> call_requires(f, (&i.remaining()[k], )),
+        #[trigger] filter_post(i, f, r),
+    ensures
+        {
+            let keep = filter_keep(r);
+            {
+            // `keep` records, for each inspected inner element, the predicate's decision
+            &&& keep.len() <= i.remaining().len()
+            &&& forall |j| 0 <= j < keep.len() ==> call_ensures(f, (&i.remaining()[j],), #[trigger] keep[j])
+            // Completeness: Every inner element the predicate keeps is retained and in order.
+            &&& IteratorSpec::remaining(&r) == i.remaining()[..keep.len()].filter_index(|j: int| keep[j])
+            // The two facts below follow from the `filter_index` above; we expose them directly for convenience.
+            &&& IteratorSpec::remaining(&r).len() <= i.remaining().len()
+            &&& forall |k| #![trigger IteratorSpec::remaining(&r)[k]] 0 <= k < IteratorSpec::remaining(&r).len() ==>
+                    exists |j| 0 <= j < i.remaining().len()
+                        && IteratorSpec::remaining(&r)[k] == #[trigger] i.remaining()[j]
+                        && call_ensures(f, (&i.remaining()[j],), true)
+            &&& IteratorSpec::will_return_none(&r) ==> i.will_return_none() && keep.len() == i.remaining().len()
+            &&& IteratorSpec::decrease(&r) is Some == i.decrease() is Some
+            &&& filter_iter(r) == i
+            &&& filter_fun(r) == f
+            }
+        },
+;
+
+// See examples/iterators/map_and_filter.rs for a verified version of this interface.
+// Any changes here should first be verified over there.
+impl <I, P> IteratorSpecImpl for core::iter::Filter<I, P>
+    where
+        I: Iterator + IteratorSpec,
+        P: FnMut(&I::Item) -> bool,
+{
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        filter_iter(*self).obeys_prophetic_iter_laws()
+    }
+
+    #[verifier::prophetic]
+    uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+
+    #[verifier::prophetic]
+    uninterp spec fn will_return_none(&self) -> bool;
+
+    uninterp spec fn decrease(&self) -> Option<nat>;
+
+    // `filter` cannot make a useful static guess about which element will be returned at a given index,
+    // since that depends on prophetic evaluations of the predicate.
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        None
+    }
+}
+
+/********************************************************************************
+ * Definitions for `map()`
+ ********************************************************************************/
+#[verifier::external_body]
+#[verifier::external_type_specification]
+#[verifier::reject_recursive_types(I)]
+#[verifier::reject_recursive_types(F)]
+pub struct ExMap<I, F>(core::iter::Map<I, F>);
+
+// Ghost accessor for the inner iterator
+pub uninterp spec fn map_iter<I, F>(r: core::iter::Map<I, F>) -> I;
+
+// Ghost accessor for the inner function
+pub uninterp spec fn map_fun<I, F>(r: core::iter::Map<I, F>) -> F;
+
+// Define Iter::map's postcondition
+pub uninterp spec fn map_post<I, F>(i: I, f: F, r: core::iter::Map<I, F>) -> bool;
+
+pub broadcast axiom fn map_postcondition<I, F>(i: I, f: F, r: core::iter::Map<I, F>)
+    where
+        I: IteratorSpec,
+        F: FnMut<(I::Item,)>,
+    requires
+        i.obeys_prophetic_iter_laws(),
+        #[trigger] map_post(i, f, r),
+    ensures
+        IteratorSpec::remaining(&r).len() <= i.remaining().len(),
+        forall |k| #![auto] 0 <= k < IteratorSpec::remaining(&r).len() ==> call_ensures(f, (i.remaining()[k],), IteratorSpec::remaining(&r)[k]),
+        IteratorSpec::will_return_none(&r) ==> i.will_return_none() && IteratorSpec::remaining(&r).len() == i.remaining().len(),
+        IteratorSpec::decrease(&r) is Some == i.decrease() is Some,
+        map_iter(r) == i,
+        map_fun(r) == f,
+;
+
+// See examples/iterators/map_and_filter.rs for a verified version of this interface.
+// Any changes here should first be verified over there.
+impl <B, I, F> IteratorSpecImpl for core::iter::Map<I, F>
+    where
+        I: Iterator + IteratorSpec,
+        F: FnMut(I::Item) -> B,
+{
+
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        map_iter(*self).obeys_prophetic_iter_laws()
+    }
+
+    #[verifier::prophetic]
+    uninterp spec fn remaining(&self) -> Seq<B>;
+
+    #[verifier::prophetic]
+    uninterp spec fn will_return_none(&self) -> bool;
+
+    uninterp spec fn decrease(&self) -> Option<nat>;
+
+    open spec fn peek(&self, index: int) -> Option<B> {
+        match map_iter(*self).peek(index) {
+            Some(v) => {
+                let x = choose |x| map_fun(*self).ensures((v,), x);
+                Some(x)
+            }
+            None => None,
+        }
+    }
+}
+
+impl <B, I, F> DoubleEndedIteratorSpecImpl for core::iter::Map<I, F>
+    where I: DoubleEndedIterator + IteratorSpec,
+          F: FnMut(I::Item) -> B,
+{
+    open spec fn peek_back(&self, index: int) -> Option<B> {
+        match map_iter(*self).peek_back(index) {
+            Some(v) => {
+                let x = choose |x| map_fun(*self).ensures((v,), x);
+                Some(x)
+            }
+            None => None,
+        }
+    }
 }
 
 /********************************************************************************
@@ -292,29 +553,16 @@ pub struct ExRev<I>(Rev<I>);
 // Ghost accessor for the inner iterator
 pub uninterp spec fn rev_iter<I>(r: Rev<I>) -> I;
 
-// TODO: Do we still need this?
-
-// Spec version of Rev::new
-pub uninterp spec fn into_rev_spec<I>(i: I) -> Rev<I>;
-
-// Ideally, we would write this postcondition directly on the definition of
-// Iterator::rev above.  However, to do so, we would need to impose a trait
-// bound of `Self: DoubleEndedIteratorSpec`.  However, this introduces a cyclic
-// dependency, since DoubleEndedIteratorSpec depends on Iterator.  Hence,
-// we introduce a layer of indirection via this uninterp spec function.
+// Define Iter::rev's postcondition
 pub uninterp spec fn rev_post<I>(i: I, r: Rev<I>) -> bool;
 
-pub broadcast axiom fn rev_postcondition<I: DoubleEndedIteratorSpec>(i: I)
+pub broadcast axiom fn rev_postcondition<I: DoubleEndedIteratorSpec>(i: I, r: Rev<I>)
     requires
-        i.obeys_prophetic_iter_laws(),
-        rev_post(i, into_rev_spec(i)),
+        #[trigger] rev_post(i, r),
     ensures
-        {
-            let r = #[trigger] into_rev_spec(i);
-            &&& IteratorSpec::remaining(&r) == IteratorSpec::remaining(&i).reverse()
-            &&& IteratorSpec::will_return_none(&r) == i.will_return_none()
-            &&& IteratorSpec::decrease(&r) is Some == i.decrease() is Some
-        },
+        IteratorSpec::remaining(&r) == IteratorSpec::remaining(&i).reverse(),
+        IteratorSpec::will_return_none(&r) == i.will_return_none(),
+        IteratorSpec::decrease(&r) is Some == i.decrease() is Some,
 ;
 
 impl <I> IteratorSpecImpl for Rev<I>
@@ -350,34 +598,200 @@ impl <I> DoubleEndedIteratorSpecImpl for Rev<I>
     }
 }
 
-// Forwarding spec impl for the Rust-supplied blanket `impl<I> Iterator for &mut I`.
-// Without this, bare method-call syntax on a `i: &mut I` receiver (e.g. `i.remaining()`)
-// resolves to these (otherwise uninterpreted) functions on `&mut I` rather than on `I`,
-// silently disconnecting clients from `I`'s actual specs.
-impl <I> IteratorSpecImpl for &mut I
+/********************************************************************************
+ * Definitions for `skip()`
+ ********************************************************************************/
+#[verifier::external_body]
+#[verifier::external_type_specification]
+#[verifier::reject_recursive_types(I)]
+pub struct ExSkip<I>(Skip<I>);
+
+// Ghost accessor for the inner iterator
+pub uninterp spec fn skip_iter<I>(s: Skip<I>) -> I;
+
+// Ghost accessor for the initial count of items to skip
+pub uninterp spec fn skip_init_n<I>(s: Skip<I>) -> usize;
+
+// Define Iter::skip's postcondition
+pub uninterp spec fn skip_post<I>(i: I, n: usize, s: Skip<I>) -> bool;
+
+pub broadcast axiom fn skip_postcondition<I: IteratorSpec>(i: I, n: usize, r: Skip<I>)
+    requires
+        i.obeys_prophetic_iter_laws(),
+        #[trigger] skip_post(i, n, r),
+    ensures
+        IteratorSpec::remaining(&r) == if i.remaining().len() < n { Seq::empty() } else { i.remaining()[n..] },
+        skip_iter(r) == i,
+        skip_init_n(r) == n,
+        IteratorSpec::will_return_none(&r) <==> i.will_return_none(),
+        IteratorSpec::decrease(&r) is Some == i.decrease() is Some,
+;
+
+impl <I> IteratorSpecImpl for Skip<I>
     where I: Iterator {
     open spec fn obeys_prophetic_iter_laws(&self) -> bool {
-        <I as IteratorSpec>::obeys_prophetic_iter_laws(*self)
+        skip_iter(*self).obeys_prophetic_iter_laws()
     }
 
     #[verifier::prophetic]
-    open spec fn remaining(&self) -> Seq<Self::Item> {
-        <I as IteratorSpec>::remaining(*self)
+    uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+
+    #[verifier::prophetic]
+    uninterp spec fn will_return_none(&self) -> bool;
+
+    uninterp spec fn decrease(&self) -> Option<nat>;
+
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        skip_iter(*self).peek(skip_init_n(*self) + index)
+    }
+}
+
+impl <I> DoubleEndedIteratorSpecImpl for Skip<I>
+    where I: DoubleEndedIteratorSpec + ExactSizeIteratorSpec
+{
+    open spec fn peek_back(&self, index: int) -> Option<Self::Item> {
+        // Skip only drops elements from the front, so the back of the skipped
+        // sequence coincides with the back of the inner iterator, as long as
+        // `index` stays within the (un-skipped) remaining elements.
+        let len = skip_iter(*self).exact_len();
+        if len < skip_init_n(*self) || index >= len - skip_init_n(*self) {
+            None
+        } else {
+            skip_iter(*self).peek_back(index)
+        }
+    }
+}
+
+/********************************************************************************
+ * Definitions for `take()`
+ ********************************************************************************/
+#[verifier::external_body]
+#[verifier::external_type_specification]
+#[verifier::reject_recursive_types(I)]
+pub struct ExTake<I>(Take<I>);
+
+// Ghost accessor for the inner iterator
+pub uninterp spec fn take_iter<I>(r: Take<I>) -> I;
+
+// Ghost accessor for the count
+pub uninterp spec fn take_count<I>(r: Take<I>) -> usize;
+
+// Define Iter::take's postcondition
+pub uninterp spec fn take_post<I>(i: I, n: usize, t: Take<I>) -> bool;
+
+pub broadcast axiom fn take_postcondition<I: IteratorSpec>(i: I, n: usize, r: Take<I>)
+    requires
+        i.obeys_prophetic_iter_laws(),
+        #[trigger] take_post(i, n, r),
+    ensures
+        IteratorSpec::remaining(&r) == if i.remaining().len() < n { i.remaining() } else { i.remaining()[..n] },
+        take_iter(r) == i,
+        take_count(r) == n,
+        IteratorSpec::will_return_none(&r) <==> i.will_return_none() || i.remaining().len() >= n,
+        IteratorSpec::decrease(&r) is Some,
+;
+
+// See examples/iterators/take.rs for a verified version of this interface.
+// Any changes here should first be verified over there.
+impl <I> IteratorSpecImpl for Take<I>
+    where I: Iterator {
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        take_iter(*self).obeys_prophetic_iter_laws()
     }
 
     #[verifier::prophetic]
-    open spec fn will_return_none(&self) -> bool {
-        <I as IteratorSpec>::will_return_none(*self)
+    uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+
+    #[verifier::prophetic]
+    uninterp spec fn will_return_none(&self) -> bool;
+
+    uninterp spec fn decrease(&self) -> Option<nat>;
+
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        take_iter(*self).peek(index)
+    }
+}
+
+impl <I> DoubleEndedIteratorSpecImpl for Take<I>
+    where I: DoubleEndedIteratorSpec + ExactSizeIteratorSpec
+{
+    open spec fn peek_back(&self, index: int) -> Option<Self::Item> {
+        let len = take_iter(*self).exact_len();
+        if len < take_count(*self) {
+            None
+        } else {
+            take_iter(*self).peek_back(len - take_count(*self) - index - 1)
+        }
+    }
+}
+
+/********************************************************************************
+ * Definitions for `zip()`
+ ********************************************************************************/
+#[verifier::external_body]
+#[verifier::external_type_specification]
+#[verifier::reject_recursive_types(A)]
+#[verifier::reject_recursive_types(B)]
+pub struct ExZip<A, B>(Zip<A, B>);
+
+// Ghost accessor for the first inner iterator
+pub uninterp spec fn zip_iter_fst<A, B>(z: Zip<A, B>) -> A;
+
+// Ghost accessor for the second inner iterator
+pub uninterp spec fn zip_iter_snd<A, B>(z: Zip<A, B>) -> B;
+
+impl<A, B> IteratorSpecImpl for Zip<A, B>
+    where A: Iterator + IteratorSpec, B: Iterator + IteratorSpec
+{
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        &&& zip_iter_fst(*self).obeys_prophetic_iter_laws()
+        &&& zip_iter_snd(*self).obeys_prophetic_iter_laws()
     }
 
-    open spec fn decrease(&self) -> Option<nat> {
-        <I as IteratorSpec>::decrease(*self)
+    #[verifier::prophetic]
+    closed spec fn remaining(&self) -> Seq<Self::Item> {
+        zip_iter_fst(*self).remaining().zip_truncate(zip_iter_snd(*self).remaining())
+    }
+
+    #[verifier::prophetic]
+    closed spec fn will_return_none(&self) -> bool {
+        zip_iter_fst(*self).will_return_none() || zip_iter_snd(*self).will_return_none()
+    }
+
+    closed spec fn decrease(&self) -> Option<nat> {
+        match (zip_iter_fst(*self).decrease(), zip_iter_snd(*self).decrease()) {
+            (Some(a), Some(b)) => if a <= b { Some(a) } else { Some(b) },
+            (Some(a), None) => Some(a),
+            (None, Some(b)) => Some(b),
+            (None, None) => None,
+        }
     }
 
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
-        <I as IteratorSpec>::peek(*self, index)
+        match (zip_iter_fst(*self).peek(index), zip_iter_snd(*self).peek(index)) {
+            (Some(a), Some(b)) => Some((a, b)),
+            _ => None,
+        }
     }
 }
+
+// Define Iter::zip's postcondition
+pub uninterp spec fn zip_post<I, U, Z>(i: I, other: U, r: Z) -> bool;
+
+pub broadcast axiom fn zip_postcondition<I, U>(i: I, other: U, r: Zip<I, <U as IntoIterator>::IntoIter>)
+    where
+            I: Sized + IteratorSpec,
+            U: IntoIterator, //Spec,
+    requires
+        i.obeys_prophetic_iter_laws(),
+        #[trigger] zip_post(i, other, r),
+    ensures
+        call_ensures(U::into_iter, (other,), zip_iter_snd(r)),
+        zip_iter_fst(r) == i,
+        IteratorSpec::remaining(&r) == i.remaining().zip_truncate(zip_iter_snd(r).remaining()),
+        IteratorSpec::will_return_none(&r) ==> i.will_return_none() || zip_iter_snd(r).will_return_none(),
+        IteratorSpec::decrease(&r) is Some == (i.decrease() is Some || zip_iter_snd(r).decrease() is Some),
+;
 
 /********************************************************************************
  * Defines a convenient wrapper type that bundles state and invariants needed
@@ -516,6 +930,11 @@ pub trait ExIterStep: Clone + PartialOrd + Sized {
 
 pub broadcast group group_iter_axioms {
     rev_postcondition,
+    zip_postcondition,
+    filter_postcondition,
+    take_postcondition,
+    skip_postcondition,
+    map_postcondition,
 }
 
 } // verus!

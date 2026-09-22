@@ -581,6 +581,44 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] vstd_checked_integer_operations_no_unwind verus_code! {
+        use vstd::prelude::*;
+
+        fn unsigned_operations(x: u64, y: u64, z: i64)
+            no_unwind
+        {
+            let _ = x.checked_add(y);
+            let _ = x.checked_add_signed(z);
+            let _ = x.checked_sub(y);
+            let _ = x.checked_mul(y);
+            let _ = x.checked_next_multiple_of(y);
+            let _ = x.checked_div(y);
+            let _ = x.checked_div_euclid(y);
+            let _ = x.checked_rem(y);
+            let _ = x.checked_rem_euclid(y);
+            let _ = x.saturating_add(y);
+            let _ = x.saturating_sub(y);
+            let _ = x.saturating_mul(y);
+            let _ = x.is_multiple_of(y);
+        }
+
+        fn signed_operations(x: i64, y: i64, z: u64)
+            no_unwind
+        {
+            let _ = x.checked_add(y);
+            let _ = x.checked_add_unsigned(z);
+            let _ = x.checked_sub(y);
+            let _ = x.checked_sub_unsigned(z);
+            let _ = x.checked_mul(y);
+            let _ = x.checked_div(y);
+            let _ = x.checked_div_euclid(y);
+            let _ = x.checked_rem(y);
+            let _ = x.checked_rem_euclid(y);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] no_unwind_box_rc_arc_new verus_code! {
         use vstd::prelude::*;
         use std::rc::Rc;

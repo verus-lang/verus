@@ -1,8 +1,6 @@
 use rustc_data_structures::steal::Steal;
-use rustc_hir::{ExprKind, MaybeOwner, OwnerNode, def_id::LocalDefId};
-use rustc_index::IndexVec;
+use rustc_hir::{ExprKind, MaybeOwner, OwnerNode};
 use rustc_middle::ty::TyCtxt;
-use rustc_span::def_id::DefIndex;
 use std::collections::HashMap;
 
 pub(crate) enum ResOrSymbol {
@@ -11,38 +9,19 @@ pub(crate) enum ResOrSymbol {
 }
 
 pub(crate) fn hir_hide_reveal_rewrite<'tcx>(
-    mut crate_: rustc_middle::hir::Crate<'tcx>,
+    owner: MaybeOwner<'tcx>,
     tcx: TyCtxt<'tcx>,
-) -> rustc_middle::hir::Crate<'tcx> {
-    // To read all owners from the original crate without triggering query cycles,
-    // we temporarily clear delayed_ids. With delayed_ids empty, Crate::owner()
-    // returns directly from the internal owners vec (even for Phantom entries)
-    // without falling through to tcx.delayed_owner().
-    let delayed_ids = std::mem::take(&mut crate_.delayed_ids);
-    let mut new_owners: IndexVec<LocalDefId, MaybeOwner<'tcx>> = IndexVec::new();
-    let num_defs = tcx.definitions_untracked().num_definitions();
-    for i in 0..num_defs {
-        let def_id = LocalDefId { local_def_index: DefIndex::from_usize(i) };
-        let owner = new_owners.ensure_contains_elem(def_id, || MaybeOwner::Phantom);
-        *owner = crate_.owner(tcx, def_id);
-    }
-    for new_owner in new_owners.iter_mut() {
-        if let MaybeOwner::Owner(inner_owner) = new_owner {
-            if let OwnerNode::Item(item) = inner_owner.node() {
-                if let rustc_hir::ItemKind::Fn { ident, body: body_id, .. } = &item.kind {
-                    if ident.as_str() == "__VERUS_REVEAL_INTERNAL__" {
-                        *new_owner = rewrite_reveal_internal(inner_owner, item, body_id, tcx);
-                    }
+) -> MaybeOwner<'tcx> {
+    if let MaybeOwner::Owner(inner_owner) = owner {
+        if let OwnerNode::Item(item) = inner_owner.node() {
+            if let rustc_hir::ItemKind::Fn { ident, body: body_id, .. } = &item.kind {
+                if ident.as_str() == "__VERUS_REVEAL_INTERNAL__" {
+                    return rewrite_reveal_internal(inner_owner, item, body_id, tcx);
                 }
             }
         }
     }
-    rustc_middle::hir::Crate::new(
-        new_owners,
-        delayed_ids,
-        crate_.delayed_resolver,
-        crate_.opt_hir_hash.clone(),
-    )
+    owner
 }
 
 fn rewrite_reveal_internal<'tcx>(
@@ -188,38 +167,24 @@ fn rewrite_reveal_internal<'tcx>(
         bodies[&body_id.hir_id.local_id] = body;
 
         let nodes: rustc_hir::OwnerNodes<'tcx> = rustc_hir::OwnerNodes {
-            opt_hash_including_bodies: inner_owner.nodes.opt_hash_including_bodies,
+            opt_hash: inner_owner.nodes.opt_hash,
             nodes: inner_owner.nodes.nodes.clone(),
             bodies,
         };
         let attrs: rustc_hir::AttributeMap<'tcx> = rustc_hir::AttributeMap {
             map: inner_owner.attrs.map.clone(),
             opt_hash: inner_owner.attrs.opt_hash,
-            define_opaque: None,
+            define_opaque: inner_owner.attrs.define_opaque,
         };
-        let delayed_lints = Steal::new(Vec::new().into_boxed_slice());
+        let delayed_lints = Steal::new(inner_owner.delayed_lints.steal());
         let owner_info = tcx.hir_arena.alloc(rustc_hir::OwnerInfo {
             nodes,
             parenting: inner_owner.parenting.clone(),
             attrs,
-            trait_map: inner_owner
-                .trait_map
-                .items()
-                .map(|(&id, traits)| {
-                    let as_vec = traits
-                        .iter()
-                        .map(|trait_| rustc_hir::TraitCandidate {
-                            def_id: trait_.def_id,
-                            import_ids: trait_.import_ids,
-                            lint_ambiguous: false,
-                        })
-                        .collect::<Vec<_>>();
-                    let alloced: &[rustc_hir::TraitCandidate<'_>] =
-                        tcx.hir_arena.alloc_slice(&as_vec);
-                    (id, alloced)
-                })
-                .collect(),
+            trait_map: inner_owner.trait_map.clone(),
+            children: inner_owner.children.clone(),
             delayed_lints,
+            opt_hash: inner_owner.opt_hash,
         });
         rustc_hir::MaybeOwner::Owner(owner_info)
     }

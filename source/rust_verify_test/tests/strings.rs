@@ -90,7 +90,7 @@ test_verify_one_file! {
         use vstd::string::*;
         fn test_substring_passes<'a>() -> (ret: &'a str)
             ensures
-                ret@.subrange(0,5) =~= ("Hello")@
+                ret@[0..5] =~= ("Hello")@
         {
             proof {
                 reveal_strlit("Hello");
@@ -102,7 +102,7 @@ test_verify_one_file! {
 
         fn test_substring_passes2<'a>() -> (ret: &'a str)
             ensures
-                ret@.subrange(0,5) =~= ("Hello")@
+                ret@[0..5] =~= ("Hello")@
         {
             let x = ("Hello World");
 
@@ -121,7 +121,7 @@ test_verify_one_file! {
         use vstd::string::*;
         fn test_substring_fails<'a>() -> (ret: &'a str)
             ensures
-                ret@.subrange(0,5) =~= ("Hello")@ // FAILS
+                ret@[0..5] =~= ("Hello")@ // FAILS
         {
             proof {
                 reveal_strlit("Hello");
@@ -130,6 +130,360 @@ test_verify_one_file! {
             ("Gello World")
         }
     } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_str_index_ranges ["no-auto-import-verus_builtin"] => code! {
+        #![cfg_attr(verus_keep_ghost, feature(slice_index_methods))]
+
+        use verus_builtin::*;
+        use verus_builtin_macros::*;
+
+        verus! {
+        use core::ops::{Bound, Index};
+        use core::slice::SliceIndex;
+        use vstd::prelude::*;
+        use vstd::seq::lemma_seq_subrange_len;
+        use vstd::string::StringSliceAdditionalSpecFns;
+        use vstd::utf8::*;
+
+        broadcast use group_utf8_lib;
+
+        // @zero-to-nat points out: This `assume_specification` is for
+        // testing purposes only; we shouldn't use it in real code. We
+        // can't have a verified `str::as_bytes_mut` because we don't
+        // have a way of ensuring the UTF8 invariant is enforced on
+        // final(b), so uses of this function could easily create a
+        // str which violates the invariant. In vstd, we assume that
+        // the UTF8 invariant always holds, because the View of a str
+        // is Seq<char> instead of Seq<u8>.
+        pub assume_specification[ str::as_bytes_mut ](s: &mut str) -> (b: &mut [u8])
+            ensures
+                b@ == old(s).spec_bytes(),
+                final(b)@ == final(s).spec_bytes(),
+        ;
+
+        fn overwrite_2(s: &mut str)
+            requires
+                s.spec_bytes().len() == 2,
+            ensures
+                final(s).spec_bytes() == seq![b'x', b'y'],
+        {
+            unsafe {
+                let bytes = s.as_bytes_mut();
+                bytes[0] = b'x';
+                bytes[1] = b'y';
+            }
+        }
+
+        fn overwrite_3(s: &mut str)
+            requires
+                s.spec_bytes().len() == 3,
+            ensures
+                final(s).spec_bytes() == seq![b'x', b'y', b'z'],
+        {
+            unsafe {
+                let bytes = s.as_bytes_mut();
+                bytes[0] = b'x';
+                bytes[1] = b'y';
+                bytes[2] = b'z';
+            }
+        }
+
+        fn overwrite_4(s: &mut str)
+            requires
+                s.spec_bytes().len() == 4,
+            ensures
+                final(s).spec_bytes() == seq![b'w', b'x', b'y', b'z'],
+        {
+            unsafe {
+                let bytes = s.as_bytes_mut();
+                bytes[0] = b'w';
+                bytes[1] = b'x';
+                bytes[2] = b'y';
+                bytes[3] = b'z';
+            }
+        }
+
+        fn overwrite_5(s: &mut str)
+            requires
+                s.spec_bytes().len() == 5,
+            ensures
+                final(s).spec_bytes() == seq![b'v', b'w', b'x', b'y', b'z'],
+        {
+            unsafe {
+                let bytes = s.as_bytes_mut();
+                bytes[0] = b'v';
+                bytes[1] = b'w';
+                bytes[2] = b'x';
+                bytes[3] = b'y';
+                bytes[4] = b'z';
+            }
+        }
+
+        fn bound_pair(s: &str)
+            requires
+                valid_utf8(s.spec_bytes()),
+                s.len() == 5,
+                s.is_char_boundary(2),
+                s.is_char_boundary(4),
+        {
+            let _: &str = &s[(Bound::Excluded(1), Bound::Included(3))];
+            let _: &str = &s[(Bound::Unbounded, Bound::Unbounded)];
+        }
+
+        fn range(s: &mut str)
+            requires
+                s.len() == 5,
+                s.is_char_boundary(1),
+                s.is_char_boundary(3),
+        {
+            let _: &str = &s[1..3];
+            let _: &str = s.index(1..3);
+            let r: &str = (1..3).index(s);
+            assert(r.spec_bytes() == s.spec_bytes()[1..3]);
+
+            let ghost old_s = s.spec_bytes();
+            let r: &mut str = (1..3).index_mut(s);
+            assert(r.spec_bytes() == old_s[1..3]);
+            overwrite_2(r);
+            assert(s.spec_bytes()[0..1] == old_s[0..1]);
+            assert(s.spec_bytes()[1..3] == seq![b'x', b'y']);
+            assert(s.spec_bytes()[3..5] == old_s[3..5]);
+        }
+
+        fn range_from(s: &mut str)
+            requires
+                valid_utf8(s.spec_bytes()),
+                s.spec_bytes().len() == 5,
+                s.is_char_boundary(2),
+        {
+            let _: &str = &s[2..];
+            let r: &str = (2..).index(s);
+            assert(r.spec_bytes() == s.spec_bytes()[2..]);
+
+            let ghost old_s = s.spec_bytes();
+            let r: &mut str = (2..).index_mut(s);
+            assert(r.spec_bytes() == old_s[2..]);
+            proof {
+                lemma_seq_subrange_len(old_s, 2, old_s.len() as int);
+            }
+            assert(r.spec_bytes().len() == 3);
+            overwrite_3(r);
+            assert(s.spec_bytes()[0..2] == old_s[0..2]);
+            assert(s.spec_bytes()[2..5] == seq![b'x', b'y', b'z']);
+        }
+
+        fn range_full(s: &mut str)
+            requires
+                valid_utf8(s.spec_bytes()),
+                s.len() == 5,
+                s.spec_bytes().len() == 5,
+        {
+            let _: &str = &s[..];
+            let r: &str = (..).index(s);
+            assert(r.spec_bytes() == s.spec_bytes());
+
+            let ghost old_s = s.spec_bytes();
+            let r: &mut str = (..).index_mut(s);
+            assert(r.spec_bytes() == old_s);
+            assert(r.spec_bytes().len() == 5);
+            overwrite_5(r);
+            assert(s.spec_bytes() == seq![b'v', b'w', b'x', b'y', b'z']);
+        }
+
+        fn range_inclusive(s: &mut str)
+            requires
+                s.len() == 5,
+                s.is_char_boundary(1),
+                s.is_char_boundary(4),
+        {
+            let _: &str = &s[1..=3];
+            let r: &str = (1..=3).index(s);
+            assert(r.spec_bytes() == s.spec_bytes()[1..4]);
+
+            let ghost old_s = s.spec_bytes();
+            let r: &mut str = (1..=3).index_mut(s);
+            assert(r.spec_bytes() == old_s[1..4]);
+            overwrite_3(r);
+            assert(s.spec_bytes()[0..1] == old_s[0..1]);
+            assert(s.spec_bytes()[1..4] == seq![b'x', b'y', b'z']);
+            assert(s.spec_bytes()[4..5] == old_s[4..5]);
+        }
+
+        fn range_to(s: &mut str)
+            requires
+                valid_utf8(s.spec_bytes()),
+                s.len() == 5,
+                s.is_char_boundary(4),
+        {
+            let _: &str = &s[..4];
+            let r: &str = (..4).index(s);
+            assert(r.spec_bytes() == s.spec_bytes()[0..4]);
+
+            let ghost old_s = s.spec_bytes();
+            let r: &mut str = (..4).index_mut(s);
+            assert(r.spec_bytes() == old_s[0..4]);
+            overwrite_4(r);
+            assert(s.spec_bytes()[0..4] == seq![b'w', b'x', b'y', b'z']);
+            assert(s.spec_bytes()[4..5] == old_s[4..5]);
+        }
+
+        fn range_to_inclusive(s: &mut str)
+            requires
+                valid_utf8(s.spec_bytes()),
+                s.len() == 5,
+                s.is_char_boundary(4),
+        {
+            let _: &str = &s[..=3];
+            let r: &str = (..=3).index(s);
+            assert(r.spec_bytes() == s.spec_bytes()[0..4]);
+
+            let ghost old_s = s.spec_bytes();
+            let r: &mut str = (..=3).index_mut(s);
+            assert(r.spec_bytes() == old_s[0..4]);
+            overwrite_4(r);
+            assert(s.spec_bytes()[0..4] == seq![b'w', b'x', b'y', b'z']);
+            assert(s.spec_bytes()[4..5] == old_s[4..5]);
+        }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_str_index_ranges_fail verus_code! {
+        use core::ops::Bound;
+        use vstd::prelude::*;
+        use vstd::string::StringSliceAdditionalSpecFns;
+        use vstd::utf8::*;
+
+        broadcast use group_utf8_lib;
+
+        fn bound_pair_end_out_of_bounds(s: &str)
+            requires
+                valid_utf8(s.spec_bytes()),
+                s.len() == 5,
+        {
+            let _ = &s[(Bound::Unbounded, Bound::Included(5))]; // FAILS
+        }
+
+        fn bound_pair_start_not_char_boundary(s: &str)
+            requires
+                valid_utf8(s.spec_bytes()),
+                s.len() == 5,
+                !s.is_char_boundary(2),
+                s.is_char_boundary(4),
+        {
+            let _ = &s[(Bound::Excluded(1), Bound::Included(3))]; // FAILS
+        }
+
+        fn range_start_after_end(s: &str)
+            requires
+                valid_utf8(s.spec_bytes()),
+                s.len() == 5,
+                s.is_char_boundary(1),
+                s.is_char_boundary(3),
+        {
+            let _ = &s[3..1]; // FAILS
+        }
+
+        fn range_end_out_of_bounds(s: &str)
+            requires
+                valid_utf8(s.spec_bytes()),
+                s.len() == 5,
+        {
+            let _ = &s[3..7]; // FAILS
+        }
+
+        fn range_start_not_char_boundary(s: &str)
+            requires
+                valid_utf8(s.spec_bytes()),
+                s.len() == 5,
+                !s.is_char_boundary(1),
+                s.is_char_boundary(3),
+        {
+            let _ = &s[1..3]; // FAILS
+        }
+
+        fn range_end_not_char_boundary(s: &str)
+            requires
+                valid_utf8(s.spec_bytes()),
+                s.len() == 5,
+                s.is_char_boundary(1),
+                !s.is_char_boundary(3),
+        {
+            let _ = &s[1..3]; // FAILS
+        }
+
+        fn range_from_out_of_bounds(s: &str)
+            requires
+                valid_utf8(s.spec_bytes()),
+                s.len() == 5,
+        {
+            let _ = &s[7..]; // FAILS
+        }
+
+        fn range_from_not_char_boundary(s: &str)
+            requires
+                valid_utf8(s.spec_bytes()),
+                s.len() == 5,
+                !s.is_char_boundary(2),
+        {
+            let _ = &s[2..]; // FAILS
+        }
+
+        fn range_inclusive_end_out_of_bounds(s: &str)
+            requires
+                valid_utf8(s.spec_bytes()),
+                s.len() == 5,
+        {
+            let _ = &s[1..=5]; // FAILS
+        }
+
+        fn range_inclusive_end_not_char_boundary(s: &str)
+            requires
+                valid_utf8(s.spec_bytes()),
+                s.len() == 5,
+                s.is_char_boundary(1),
+                !s.is_char_boundary(4),
+        {
+            let _ = &s[1..=3]; // FAILS
+        }
+
+        fn range_to_out_of_bounds(s: &str)
+            requires
+                valid_utf8(s.spec_bytes()),
+                s.len() == 5,
+        {
+            let _ = &s[..7]; // FAILS
+        }
+
+        fn range_to_not_char_boundary(s: &str)
+            requires
+                valid_utf8(s.spec_bytes()),
+                s.len() == 5,
+                !s.is_char_boundary(4),
+        {
+            let _ = &s[..4]; // FAILS
+        }
+
+        fn range_to_inclusive_out_of_bounds(s: &str)
+            requires
+                valid_utf8(s.spec_bytes()),
+                s.len() == 5,
+        {
+            let _ = &s[..=5]; // FAILS
+        }
+
+        fn range_to_inclusive_not_char_boundary(s: &str)
+            requires
+                valid_utf8(s.spec_bytes()),
+                s.len() == 5,
+                !s.is_char_boundary(4),
+        {
+            let _ = &s[..=3]; // FAILS
+        }
+    } => Err(err) => assert_fails(err, 14)
 }
 
 test_verify_one_file! {
@@ -164,9 +518,9 @@ test_verify_one_file! {
             assert(a == a);
             assert(a0_clone == a0);
 
-            assert(a@ =~= abc@.subrange(0,1));
-            assert(b@ =~= abc@.subrange(1,2));
-            assert(c@ =~= abc@.subrange(2,3));
+            assert(a@ =~= abc@[0..1]);
+            assert(b@ =~= abc@[1..2]);
+            assert(c@ =~= abc@[2..3]);
 
             assert(cba != abc);
             assert(abc == abc_clone);
@@ -812,11 +1166,11 @@ test_verify_one_file! {
             let mut num_as = 0usize;
             let ghost is_a = |c: char| c == 'a';
             for c in it: chars_it
-                invariant num_as == it.seq().take(it.index()).filter(is_a).len()
+                invariant num_as == it.seq()[..it.index()].filter(is_a).len()
             {
                 reveal(Seq::filter);
-                let ghost prev_chars = it.seq().take(it.index());
-                let ghost next_chars = it.seq().take(it.index() + 1);
+                let ghost prev_chars = it.seq()[..it.index()];
+                let ghost next_chars = it.seq()[..it.index() + 1];
                 assert(next_chars =~= prev_chars + seq![c]);
                 if c == 'a' {
                     assert(seq![c].filter(is_a) =~= seq![c]);
@@ -944,4 +1298,89 @@ test_verify_one_file! {
             assert(!empty); // FAILS
         }
     } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test]
+    str_equality_uses_view verus_code! {
+        use vstd::prelude::*;
+
+        struct TextSource;
+
+        uninterp spec fn modeled_text(source: &TextSource) -> Seq<char>;
+
+        #[verifier::external_body]
+        fn get_text<'a>(source: &'a TextSource) -> (result: &'a str)
+            ensures
+                result@ == modeled_text(source),
+        {
+            "hello world"
+        }
+
+        spec fn is_hello(source: &TextSource) -> bool {
+            modeled_text(source) == "hello world"@
+        }
+
+        fn check(source: &TextSource) -> (result: bool)
+            ensures
+                result == is_hello(source),
+        {
+            get_text(source) == "hello world"
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_strlit_view_id_literal_disequality verus_code! {
+        use vstd::prelude::*;
+
+        broadcast use vstd::string::axiom_new_strlit_view_id;
+
+        proof fn same_length() {
+            assert("hello"@ != "world"@);
+        }
+
+        proof fn prefix() {
+            assert("hello"@ != "helloworld"@);
+        }
+
+        proof fn same_literal_stays_equal() {
+            assert("hello"@ == "hello"@);
+        }
+
+        proof fn map_keys() {
+            let m = Map::<Seq<char>, int>::empty()
+                .insert("hello"@, 1)
+                .insert("world"@, 2);
+            assert(m["hello"@] == 1);
+            assert(m.remove("hello"@)["world"@] == 2);
+        }
+
+        proof fn empty_string() {
+            assert(""@ != "hello"@);
+        }
+
+        proof fn unicode() {
+            assert("héllo"@ != "hello"@);
+        }
+
+        // the axiom coexists with reveal_strlit content facts
+        proof fn with_reveal() {
+            reveal_strlit("hello");
+            assert("hello"@.len() == 5);
+            assert("hello"@ != "world"@);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_strlit_view_id_no_spurious_disequality verus_code! {
+        use vstd::prelude::*;
+
+        broadcast use vstd::string::group_string_axioms;
+
+        proof fn p() {
+            assert("hello"@ != "hello"@); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
 }

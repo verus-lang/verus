@@ -342,11 +342,6 @@ test_verify_one_file! {
 
 test_verify_one_file_with_options! {
     #[test] test_trait4 ["--disable-internal-test-mode"] => verus_code! {
-        #[verifier::external_trait_specification]
-        pub trait ExIntoIterator {
-            type ExternalTraitSpecificationFor: core::iter::IntoIterator;
-        }
-
         #[verifier::external_type_specification]
         #[verifier::external_body]
         #[verifier::reject_recursive_types_in_ground_variants(I)]
@@ -357,6 +352,7 @@ test_verify_one_file_with_options! {
             type ExternalTraitSpecificationFor: core::iter::Iterator;
             type Item;
             fn count(self) -> usize where Self: Sized;
+            #[verifier::impls_cannot_extend_spec]
             fn cmp<I>(self, other: I) -> core::cmp::Ordering where Self: core::iter::Iterator, I: core::iter::IntoIterator<Item = <Self as core::iter::Iterator>::Item>, <Self as core::iter::Iterator>::Item: Ord, Self: Sized;
         }
 
@@ -1023,4 +1019,47 @@ test_verify_one_file! {
             type ExternalTraitSpecificationFor: Integer;
         }
     } => Err(err) => assert_vir_error_msg(err, "not a private non-local bound")
+}
+
+test_verify_one_file! {
+    // Regression test: an associated type fixed only by a where-clause bound
+    // normalizes to a bare inference variable, which used to trip an
+    // `assert!(!matches!(t.kind(), TyKind::Infer(..)))` in rust_to_vir_base
+    // and panic the verifier. The program is rejected either way -- the point
+    // is that it is rejected with a diagnostic rather than an ICE.
+    #[test] external_trait_extension_projection_normalizes_to_infer verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::external]
+        pub trait Src { type Item; }
+
+        #[verifier::external]
+        pub struct Adapt<I>(I);
+
+        #[verifier::external]
+        impl<'a, I, X: 'a> Src for Adapt<I>
+            where I: Src<Item = &'a X>, X: Copy,
+        {
+            type Item = X;
+        }
+
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(SrcSpec via SrcSpecImpl)]
+        pub trait ExSrc {
+            type ExternalTraitSpecificationFor: Src;
+            type Item;
+            spec fn items(&self) -> Seq<Self::Item>;
+        }
+
+        #[verifier::external_body]
+        #[verifier::external_type_specification]
+        #[verifier::reject_recursive_types(I)]
+        pub struct ExAdapt<I>(Adapt<I>);
+
+        impl<'a, I, X: 'a> SrcSpecImpl for Adapt<I>
+            where I: Src<Item = &'a X> + SrcSpec, X: Copy,
+        {
+            closed spec fn items(&self) -> Seq<Self::Item> { Seq::empty() }
+        }
+    } => Err(err) => assert_rust_error_msg(err, "overflow evaluating the requirement")
 }

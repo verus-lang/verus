@@ -72,6 +72,98 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] atomic_generic_function_call
+    TOKEN_LIB.to_owned() + verus_code_str! {
+        fn generic_atomic<F>(_callback: F)
+            atomically (atomic_update) {
+                (old: Token) -> (new: Commit<Token>),
+                ensures new@ == old,
+            },
+        {
+            try_open_atomic_update!(atomic_update, token => {
+                Tracked(Commit(token))
+            });
+        }
+
+        fn client() {
+            generic_atomic(5u8) atomically |update| {
+                let tracked _token = update(Token::new());
+            };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] atomic_method_impl_generic
+    verus_code! {
+        use vstd::prelude::*;
+        use vstd::atomic::*;
+
+        tracked struct Token;
+
+        struct Wrapper<T> {
+            value: T,
+        }
+
+        impl<T> Wrapper<T> {
+            fn atomic_method(&self)
+                atomically (atomic_update) {
+                    (old: Token) -> (new: Commit<Token>),
+                    ensures new@ == old,
+                },
+            {
+                try_open_atomic_update!(atomic_update, token => {
+                    Tracked(Commit(token))
+                });
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] atomic_function_lifetime_generic
+    verus_code! {
+        use vstd::prelude::*;
+        use vstd::atomic::*;
+
+        tracked struct Token;
+
+        fn atomic_ref<'a>(_value: &'a u8)
+            atomically (atomic_update) {
+                (old: Token) -> (new: Commit<Token>),
+                ensures new@ == old,
+            },
+        {
+            try_open_atomic_update!(atomic_update, token => {
+                Tracked(Commit(token))
+            });
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] atomic_function_const_generic
+    verus_code! {
+        use vstd::prelude::*;
+        use vstd::atomic::*;
+
+        pub tracked struct Token { pub len: usize }
+
+        pub fn atomic_array<const N: usize>(_value: [u8; N])
+            atomically (atomic_update) {
+                (old: Token) -> (new: Commit<Token>),
+                requires old.len == N,
+                ensures new@ == old,
+            },
+        {
+            try_open_atomic_update!(atomic_update, token => {
+                Tracked(Commit(token))
+            });
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] atomic_function_commit_only
     TOKEN_LIB.to_owned() + verus_code_str! {
         pub fn atomic_function()

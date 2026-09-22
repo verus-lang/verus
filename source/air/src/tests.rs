@@ -14,7 +14,7 @@ fn run_nodes_as_test(should_typecheck: bool, should_be_valid: bool, nodes: &[sis
     let reporter = Reporter {};
     // TODO: Support testing with cvc5 too
     let mut air_context = crate::context::Context::new(message_interface.clone(), SmtSolver::Z3);
-    air_context.set_z3_param("air_recommended_options", "true");
+    air_context.set_solver_option("air_recommended_options", "true");
     match Parser::new(message_interface.clone()).nodes_to_commands(&nodes) {
         Ok(commands) => {
             for command in commands.iter() {

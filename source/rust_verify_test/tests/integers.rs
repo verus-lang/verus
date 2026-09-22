@@ -441,6 +441,20 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_integer_trait_inline verus_code! {
+        use vstd::prelude::*;
+        spec fn f(i: int) -> int { i }
+        #[verifier::inline]
+        spec fn g<I: Integer>(i: I) -> int {
+            f(i as int)
+        }
+        proof fn test(i: nat) {
+            let x = g(i);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_integer_trait_3 verus_code! {
         use vstd::prelude::*;
         pub open spec fn plus_three<T: Integer>(t: T) -> int {

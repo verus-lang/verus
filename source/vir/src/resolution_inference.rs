@@ -1886,7 +1886,7 @@ impl<'a> Builder<'a> {
 
     fn scope_insert_pattern(&mut self, pattern: &Pattern) {
         match &pattern.x {
-            PatternX::Wildcard(_) | PatternX::Expr(_) | PatternX::Range(_, _) => {
+            PatternX::Wildcard | PatternX::Expr(_) | PatternX::Range(_, _) => {
                 // nothing to do
             }
             PatternX::Var(binding) => {
@@ -1992,7 +1992,7 @@ pub fn pattern_all_bound_vars_with_ownership(
         modes: &HashMap<VarIdent, Mode>,
     ) {
         match &pattern.x {
-            PatternX::Wildcard(_) => {}
+            PatternX::Wildcard => {}
             PatternX::Var(PatternBinding { name, user_mut: _, by_ref: _, typ, copy: _ })
             | PatternX::Binding {
                 binding: PatternBinding { name, user_mut: _, by_ref: _, typ, copy: _ },
@@ -2044,7 +2044,7 @@ fn moves_and_muts_for_pattern(
         errors: &mut Vec<VirErr>,
     ) {
         match &pattern.x {
-            PatternX::Wildcard(_) => {}
+            PatternX::Wildcard => {}
             PatternX::Var(PatternBinding { name, user_mut: _, by_ref, typ: _, copy })
             | PatternX::Binding {
                 binding: PatternBinding { name, user_mut: _, by_ref, typ: _, copy },
@@ -3576,6 +3576,7 @@ fn apply_resolutions(
                 Ok(p1)
             }
         },
+        &|_, _, pattern| Ok(pattern.clone()),
     )?;
 
     let (id_map, temp_map, typ_inv_map) = maps;

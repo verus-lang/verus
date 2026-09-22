@@ -6,8 +6,12 @@
     feature(negative_impls),
     feature(unboxed_closures),
     feature(fn_traits),
+    feature(tuple_trait)
+)]
+#![cfg_attr(
+    // register_tool is only allowed at crate root. Disable this trait during `test_is_core`:
+    all(verus_keep_ghost, not(verus_verify_core)),
     feature(register_tool),
-    feature(tuple_trait),
     register_tool(verus),
     register_tool(verifier)
 )]
@@ -1980,6 +1984,13 @@ pub fn f32_to_bits(_f: f32) -> u32 {
 #[verifier::spec]
 #[rustc_diagnostic_item = "verus::verus_builtin::f64_to_bits"]
 pub fn f64_to_bits(_f: f64) -> u64 {
+    unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::strslice_new_strlit"]
+#[verifier::spec]
+pub fn strslice_new_strlit(_id: int) -> &'static str {
     unimplemented!()
 }
 

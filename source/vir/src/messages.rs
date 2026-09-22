@@ -186,10 +186,15 @@ impl air::messages::MessageInterface for VirMessageInterface {
         })
     }
 
-    fn unexpected_z3_version(&self, expected: &str, found: &str) -> ArcDynMessage {
+    fn unexpected_solver_version(
+        &self,
+        solver: &str,
+        expected: &str,
+        found: &str,
+    ) -> ArcDynMessage {
         Arc::new(MessageX {
             level: MessageLevel::Error,
-            note: format!("expected z3 version {expected}, found {found}"),
+            note: format!("expected {solver} version {expected}, found {found}"),
             labels: Vec::new(),
             spans: Vec::new(),
             help: Vec::new(),
