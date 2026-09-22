@@ -52,6 +52,7 @@ mod hir_hide_reveal_rewrite;
 mod hir_proof_with_rewrite;
 mod import_export;
 pub mod profiler;
+mod proof_with;
 mod resolve_traits;
 pub mod reveal_hide;
 mod rust_intrinsics_to_vir;

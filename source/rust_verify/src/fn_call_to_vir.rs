@@ -53,6 +53,8 @@ pub(crate) fn fn_call_to_vir<'tcx>(
 ) -> Result<vir::ast::Expr, VirErr> {
     let tcx = bctx.ctxt.tcx;
 
+    crate::proof_with::check_call(tcx, bctx.types, expr, f)?;
+
     let expr_typ = || typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id);
 
     let rust_item = verus_items::get_rust_item(tcx, f);
@@ -2378,6 +2380,15 @@ fn verus_item_to_vir<'tcx, 'a>(
             };
             mk_expr(ExprX::ReadPlace(p, rk))
         }
+        VerusItem::ProofWith | VerusItem::ProofWithRet => err_span(
+            expr.span,
+            format!(
+                "{} should have been replaced by a call to the verified function; \
+                 `with` ghost inputs/outputs can only be applied to a call of a function \
+                 declared with `with`",
+                f_name
+            ),
+        ),
         VerusItem::MutRefTracked => {
             record_misc(bctx, expr, MiscCall::MutRefTracked);
             let p = expr_to_vir_place(&bctx, &args[0])?;
@@ -2425,6 +2436,8 @@ fn uncompilable_verus_fn(verus_item: &VerusItem) -> bool {
         )) => false,
         VerusItem::Quant(_) => false,
         VerusItem::Assert(_) => false,
+        // A surviving marker is reported against the call it failed to rewrite.
+        VerusItem::ProofWith | VerusItem::ProofWithRet => false,
         VerusItem::Expr(
             ExprItem::Choose
             | ExprItem::ChooseTuple

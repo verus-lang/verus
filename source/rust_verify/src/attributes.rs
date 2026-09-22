@@ -956,6 +956,20 @@ pub(crate) fn parse_attrs(
     Ok(v)
 }
 
+/// The proc macro uses this prefix for generated verified counterparts.
+pub(crate) const WITH_PREFIX: &str = "_VERUS_WITH_";
+/// VIR uses this prefix for stubs after assigning the source name to their counterparts.
+pub(crate) const UNVERIFIED_PREFIX: &str = "_VERUS_UNVERIFIED_";
+
+pub(crate) fn is_unverified_stub(attrs: &[Attribute]) -> bool {
+    parse_attrs_opt(attrs, None).into_iter().any(|a| matches!(a, Attr::UnverifiedStub))
+}
+
+/// The marker is authoritative because user functions may also start with `WITH_PREFIX`.
+pub(crate) fn is_verified_counterpart(attrs: &[Attribute]) -> bool {
+    parse_attrs_opt(attrs, None).into_iter().any(|a| matches!(a, Attr::VerifiedWith))
+}
+
 pub(crate) fn parse_attrs_opt(
     attrs: &[Attribute],
     diagnostics: Option<&mut Vec<VirErrAs>>,
