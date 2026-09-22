@@ -281,7 +281,7 @@ fn crate_owners<'tcx>(
     let crate_: &'static CrateOwners = Box::leak(Box::new(CrateOwners {
         owners,
         indexed,
-        companion_traits: companion_traits(borrowed),
+        companion_traits: companion_traits(tcx, borrowed),
         external_targets: external_target_map(tcx, borrowed),
     }));
     *cached = Some((gcx, std::ptr::from_ref(crate_) as usize));
@@ -390,7 +390,10 @@ fn local_fn_name<'tcx>(
     }
 }
 
-fn companion_traits<'tcx>(owners: &IndexVec<LocalDefId, MaybeOwner<'tcx>>) -> Vec<DefId> {
+fn companion_traits<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    owners: &IndexVec<LocalDefId, MaybeOwner<'tcx>>,
+) -> Vec<DefId> {
     let mut companion_traits: Vec<DefId> = Vec::new();
     for (def_id, owner) in owners.iter_enumerated() {
         let MaybeOwner::Owner(owner) = owner else {
@@ -402,6 +405,7 @@ fn companion_traits<'tcx>(owners: &IndexVec<LocalDefId, MaybeOwner<'tcx>>) -> Ve
             companion_traits.push(def_id.to_def_id());
         }
     }
+    external_companion_traits(tcx, &mut companion_traits);
     companion_traits
 }
 
@@ -414,6 +418,14 @@ fn is_inherent_impl<'tcx>(
     };
     matches!(owner.node(), OwnerNode::Item(item)
         if matches!(&item.kind, rustc_hir::ItemKind::Impl(impl_) if impl_.of_trait.is_none()))
+}
+
+fn foreign_supertraits<'tcx>(tcx: TyCtxt<'tcx>, trait_def_id: DefId) -> Vec<DefId> {
+    tcx.explicit_super_predicates_of(trait_def_id)
+        .skip_binder()
+        .iter()
+        .filter_map(|(clause, _)| Some(clause.as_trait_clause()?.def_id()))
+        .collect()
 }
 
 fn bound_trait_ids(bounds: &[GenericBound<'_>]) -> Vec<DefId> {
@@ -434,6 +446,24 @@ fn is_companion_trait(attrs: &[rustc_hir::Attribute]) -> bool {
     parse_attrs_opt(attrs, None).into_iter().any(|a| matches!(a, Attr::VerifiedTrait))
 }
 
+fn external_companion_traits<'tcx>(tcx: TyCtxt<'tcx>, companion_traits: &mut Vec<DefId>) {
+    for cnum in tcx.crates(()) {
+        for trait_def_id in tcx.traits(*cnum) {
+            // The reserved prefix avoids decoding attributes for almost every trait.
+            if !tcx.item_name(*trait_def_id).as_str().starts_with(WITH_PREFIX) {
+                continue;
+            }
+            // Verus attributes are `Unparsed`, for which the deprecation note permits
+            // `get_all_attrs`.
+            #[allow(deprecated)]
+            let attrs = tcx.get_all_attrs(*trait_def_id);
+            if !is_companion_trait(attrs) {
+                continue;
+            }
+            companion_traits.push(*trait_def_id);
+        }
+    }
+}
 
 /// An external function belongs to a crate that cannot carry a Verus attribute
 /// naming its counterpart. The link therefore lives on the local
@@ -625,7 +655,7 @@ impl<'tcx> Ctxt<'_, 'tcx> {
     /// `lower_to_hir`.
     fn supertraits(&self, trait_def_id: DefId) -> Vec<DefId> {
         let Some(local) = trait_def_id.as_local() else {
-            return Vec::new();
+            return foreign_supertraits(self.tcx, trait_def_id);
         };
         let Some(MaybeOwner::Owner(owner)) = self.owners.get(local) else {
             return Vec::new();

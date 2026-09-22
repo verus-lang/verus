@@ -125,16 +125,29 @@ impl syn::parse::Parse for VerusSpecTarget {
 /// In this mode, `#[verus_spec]` does not declare counterparts itself. The companion
 /// trait and implementation must therefore remain in metadata so downstream crates can
 /// resolve calls to verified counterparts.
-fn erase_verus_attribute(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+fn erase_verus_attribute(
+    attr_args: proc_macro::TokenStream,
+    input: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let parser = syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated;
+    let Ok(args) = syn::parse::Parser::parse(parser, attr_args) else {
+        return input;
+    };
+    let has_arg =
+        |name: &str| args.iter().any(|arg| arg.path().get_ident().map_or(false, |id| id == name));
     let Ok(mut item) = syn::parse::<syn::Item>(input.clone()) else {
         return input;
     };
+    let is_proxy = has_arg("external_trait_specification")
+        || matches!(&item, syn::Item::Trait(item_trait) if item_trait.attrs.iter().any(|attr| {
+            attr.path().segments.last().map_or(false, |seg| seg.ident == "external_trait_specification")
+        }));
     let span = item.span();
     let companion_impl = match split_trait_impl(&mut item) {
         Ok(companion_impl) => companion_impl,
         Err(error_tokens) => return error_tokens.into(),
     };
-    let companions = match companion_traits_of(&mut item) {
+    let companions = match companion_traits_of(&mut item, is_proxy) {
         Ok(companions) => companions,
         Err(error_tokens) => return error_tokens.into(),
     };
@@ -159,7 +172,7 @@ pub(crate) fn rewrite_verus_attribute(
         return input;
     }
     if !erase.keep() {
-        return erase_verus_attribute(input);
+        return erase_verus_attribute(attr_args, input);
     }
 
     let mut item = syn::parse_macro_input!(input as Item);
@@ -177,6 +190,16 @@ pub(crate) fn rewrite_verus_attribute(
     const DUAL_OPAQUE_ATTR: &str = "opaque";
     const IGNORE_VERIFY_ATTRS: [&str; 3] =
         ["external", "external_body", "external_type_specification"];
+    const EXTERNAL_TRAIT_SPECIFICATION: &str = "external_trait_specification";
+    let mut is_external_trait_proxy = match &item {
+        syn::Item::Trait(item_trait) => item_trait.attrs.iter().any(|attr| {
+            attr.path()
+                .segments
+                .last()
+                .map_or(false, |seg| seg.ident == EXTERNAL_TRAIT_SPECIFICATION)
+        }),
+        _ => false,
+    };
     // Modifier attrs are compatible with both external and non-external attrs.
     // They neither set contains_external nor contains_non_external.
     const MODIFIER_ATTRS: [&str; 3] = [
@@ -187,7 +210,11 @@ pub(crate) fn rewrite_verus_attribute(
 
     for arg in &args {
         let path = arg.path().get_ident().expect("Invalid verus verifier attribute");
-        if IGNORE_VERIFY_ATTRS.contains(&path.to_string().as_str()) {
+        if EXTERNAL_TRAIT_SPECIFICATION == path.to_string().as_str() {
+            is_external_trait_proxy = true;
+            contains_external = true;
+            attributes.push(quote_spanned!(arg.span() => #[verifier::#arg]));
+        } else if IGNORE_VERIFY_ATTRS.contains(&path.to_string().as_str()) {
             contains_external = true;
             attributes.push(quote_spanned!(arg.span() => #[verifier::#arg]));
         } else if VERIFY_ATTRS.contains(&path.to_string().as_str()) {
@@ -258,7 +285,7 @@ pub(crate) fn rewrite_verus_attribute(
         }
     }
 
-    let companions = match companion_traits_of(&mut item) {
+    let companions = match companion_traits_of(&mut item, is_external_trait_proxy) {
         Ok(companions) => companions,
         Err(error_tokens) => return error_tokens.into(),
     };
@@ -574,8 +601,9 @@ struct Companions {
 /// Creates the companion traits because adding counterparts would change the original
 /// trait's public signature and break existing implementors.
 ///
+/// For an external trait, the companions are generated beside its proxy declaration.
 /// Making them subtraits preserves access to the original trait's associated items.
-fn companion_traits_of(item: &mut syn::Item) -> Result<Companions, TokenStream> {
+fn companion_traits_of(item: &mut syn::Item, is_proxy: bool) -> Result<Companions, TokenStream> {
     let syn::Item::Trait(item_trait) = item else {
         return Ok(Companions::default());
     };
@@ -610,7 +638,17 @@ fn companion_traits_of(item: &mut syn::Item) -> Result<Companions, TokenStream> 
     if spec_methods.is_empty() {
         return Ok(Companions::default());
     }
-    let trait_path = self_trait_path(item_trait);
+    // A proxy's companions extend the external trait rather than the proxy.
+    let trait_path = if is_proxy {
+        let Some(external) = external_trait_of_proxy(item_trait) else {
+            return Err(quote_spanned!(span =>
+                compile_error!("`with` on the proxy of an external trait requires an `ExternalTraitSpecificationFor` member naming the external trait");
+            ));
+        };
+        external
+    } else {
+        self_trait_path(item_trait)
+    };
     let spec_path = companion_trait_path(&trait_path);
     let impl_path = impl_companion_trait_path(&trait_path);
     let mk = |path: &syn::Path, items: Vec<syn::TraitItem>| {
@@ -718,6 +756,23 @@ fn self_trait_path(item_trait: &syn::ItemTrait) -> syn::Path {
     let ident = &item_trait.ident;
     let (_, ty_generics, _) = item_trait.generics.split_for_impl();
     syn::parse_quote_spanned!(ident.span() => #ident #ty_generics)
+}
+
+/// The external trait that a proxy specifies, named by the bound of its
+/// `ExternalTraitSpecificationFor` member.
+fn external_trait_of_proxy(item_trait: &syn::ItemTrait) -> Option<syn::Path> {
+    item_trait.items.iter().find_map(|trait_item| {
+        let syn::TraitItem::Type(assoc) = trait_item else {
+            return None;
+        };
+        if assoc.ident != "ExternalTraitSpecificationFor" {
+            return None;
+        }
+        assoc.bounds.iter().find_map(|bound| match bound {
+            syn::TypeParamBound::Trait(bound) => Some(bound.path.clone()),
+            _ => None,
+        })
+    })
 }
 
 fn has_with_clause(attrs: &[syn::Attribute]) -> Result<bool, TokenStream> {

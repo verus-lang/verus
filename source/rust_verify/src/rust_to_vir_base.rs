@@ -207,7 +207,9 @@ fn with_fn_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId, path: Path) -> Path {
             base.to_owned()
         }
         Some(_) => return path,
-        None if crate::attributes::is_unverified_stub(def_attrs(tcx, def_id)) => {
+        None if crate::attributes::is_unverified_stub(def_attrs(tcx, def_id))
+            && has_sibling_counterpart(tcx, def_id) =>
+        {
             format!("{}{base}", crate::attributes::UNVERIFIED_PREFIX)
         }
         None => return path,
@@ -221,6 +223,24 @@ pub(crate) fn is_with_fn_renamed<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> bool
     match def_path_to_vir_path(tcx, tcx.def_path(def_id)) {
         Some(path) => with_fn_path(tcx, def_id, path.clone()).last_segment() != path.last_segment(),
         None => false,
+    }
+}
+
+/// A free function, inherent method, or method of a trait declared in this crate can give up
+/// its name because its counterpart is a sibling item or a companion-trait method.
+/// An `external_trait_specification` method cannot because it is named after the external
+/// method it specifies, and call sites compute exactly that name.
+fn has_sibling_counterpart<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> bool {
+    use rustc_hir::def::DefKind;
+    let Some(parent) = tcx.opt_parent(def_id) else {
+        return false;
+    };
+    match tcx.def_kind(parent) {
+        DefKind::Mod | DefKind::Impl { .. } => true,
+        DefKind::Trait => crate::attributes::parse_attrs_opt(def_attrs(tcx, parent), None)
+            .into_iter()
+            .all(|a| !matches!(a, crate::attributes::Attr::ExternalTraitSpecification(..))),
+        _ => false,
     }
 }
 
