@@ -198,7 +198,11 @@ fn with_fn_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId, path: Path) -> Path {
             base = rest;
         }
     }
-    let renamed = match base.strip_prefix(crate::attributes::WITH_PREFIX) {
+    fn strip_verified(base: &str) -> Option<&str> {
+        base.strip_prefix(crate::attributes::WITH_IMPL_PREFIX)
+            .or_else(|| base.strip_prefix(crate::attributes::WITH_PREFIX))
+    }
+    let renamed = match strip_verified(base) {
         Some(base) if crate::attributes::is_verified_counterpart(def_attrs(tcx, def_id)) => {
             base.to_owned()
         }
@@ -209,6 +213,15 @@ fn with_fn_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId, path: Path) -> Path {
         None => return path,
     };
     path.pop_segment().push_segment(Arc::new(format!("{prefix}{renamed}")))
+}
+
+/// Does `with_fn_path` rename this function? Only the two halves of a `with ..` split
+/// are renamed; every other function keeps the name it is written with.
+pub(crate) fn is_with_fn_renamed<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> bool {
+    match def_path_to_vir_path(tcx, tcx.def_path(def_id)) {
+        Some(path) => with_fn_path(tcx, def_id, path.clone()).last_segment() != path.last_segment(),
+        None => false,
+    }
 }
 
 /// The attributes of any item, local or not.

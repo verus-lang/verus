@@ -412,6 +412,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_trait_signature code!{
+        #[verus_verify]
         trait X {
             #[verus_spec(ret =>
                 with
@@ -421,7 +422,33 @@ test_verify_one_file! {
             )]
             fn f(&self, x: u32) -> bool;
         }
-    } => Err(e) => assert_any_vir_error_msg(e, "`with` does not support trait")
+
+        #[verus_verify]
+        struct S;
+
+        #[verus_verify]
+        impl X for S {
+            #[verus_spec(
+                with
+                    Tracked(y): Tracked<&mut u32>,
+                    Ghost(w): Ghost<u32>,
+                    -> z: Ghost<u32>
+            )]
+            fn f(&self, x: u32) -> bool {
+                #[verus_spec(with |= Ghost(w))]
+                true
+            }
+        }
+
+        #[verus_spec]
+        fn call(s: &S, x: u32) {
+            proof_decl!{
+                let tracked mut y = 0u32;
+            }
+            #[verus_spec(with Tracked(&mut y), Ghost(0) => Ghost(z))]
+            let _ = s.f(x);
+        }
+    } => Ok(())
 }
 
 test_verify_one_file! {

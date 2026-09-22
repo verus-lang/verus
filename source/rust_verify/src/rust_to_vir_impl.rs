@@ -461,8 +461,16 @@ pub(crate) fn translate_impl_item<'tcx>(
     let assoc_item = ctxt.tcx.associated_item(impl_item_id.hir_id().owner.to_def_id());
     let mk_trait_function_kind = || -> FunctionKind {
         if let Some((trait_path, trait_typ_args)) = trait_path_typ_args.clone() {
-            let ident = impl_item.ident.to_string();
-            let ident = Arc::new(ident);
+            // A trait method declared with `with ..` is renamed in VIR, and its impls
+            // have to be named by the declaration rather than by themselves. No other
+            // method is renamed, so no other method reaches the first arm.
+            let renamed_decl = assoc_item
+                .trait_item_def_id()
+                .filter(|decl| crate::rust_to_vir_base::is_with_fn_renamed(ctxt.tcx, *decl));
+            let ident = match renamed_decl {
+                Some(decl) => ctxt.def_id_to_vir_path(decl).last_segment(),
+                None => Arc::new(impl_item.ident.to_string()),
+            };
             let path = typ_path_and_ident_to_vir_path(&trait_path, ident);
             let fun = FunX { path };
             let method = Arc::new(fun);
@@ -483,6 +491,14 @@ pub(crate) fn translate_impl_item<'tcx>(
             match &impl_item.kind {
                 ImplItemKind::Fn(sig, body_id) => {
                     let kind = mk_trait_function_kind();
+                    if let Some(decl) = assoc_item.trait_item_def_id() {
+                        crate::proof_with::check_trait_method_impl(
+                            ctxt.tcx,
+                            impl_item.span,
+                            decl,
+                            impl_item.owner_id.to_def_id(),
+                        )?;
+                    }
 
                     check_item_fn(
                         ctxt,
