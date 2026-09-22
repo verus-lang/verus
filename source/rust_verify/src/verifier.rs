@@ -3077,8 +3077,10 @@ fn lower_to_hir<'tcx>(
     tcx: TyCtxt<'tcx>,
     def_id: rustc_hir::def_id::LocalDefId,
 ) -> rustc_hir::MaybeOwner<'tcx> {
-    let owner = (rustc_interface::DEFAULT_QUERY_PROVIDERS.queries.lower_to_hir)(tcx, def_id);
-    crate::hir_hide_reveal_rewrite::hir_hide_reveal_rewrite(owner, tcx)
+    crate::hir_proof_with_rewrite::lower_to_hir(tcx, def_id, |tcx, def_id| {
+        let owner = (rustc_interface::DEFAULT_QUERY_PROVIDERS.queries.lower_to_hir)(tcx, def_id);
+        crate::hir_hide_reveal_rewrite::hir_hide_reveal_rewrite(owner, tcx)
+    })
 }
 
 impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
