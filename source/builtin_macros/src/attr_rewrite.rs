@@ -11,9 +11,8 @@
 /// - To apply `ensures`, `invariant`, `decreases` in `exec`,
 ///   developers should call the corresponding macros at the beginning of the loop
 /// - To use proof block, add proof!{...} inside function body.
-/// - To Add tracked/ghost in signature, use #[verus_spec(with ...)] in function definition.
-///   To pass and get tracked/ghost from function call, use #[verus_spec(with ...)] in
-///   call expr or local statement. Unverified code does not need to change arguments or outputs.
+/// - `#[verus_spec(with ...)]` adds ghost or tracked inputs and outputs without changing
+///   the executable signature.
 ///
 /// Rationale:
 /// - This approach avoids introducing new syntax into existing Rust executable
@@ -23,7 +22,7 @@
 ///   For developers who do not understand verification, they can easily ignore
 ///   verus code via feature/cfg selection and use standard rust tools like
 ///   `rustfmt` and `rust-analyzer`.
-/// - Unverified code does not need additional annotation to interact with verified.
+/// - Executable callers use the signature written by the user.
 ///
 /// Limitations:
 /// - #[verus_verify] does not support all `verus` syntax, particularly
@@ -37,6 +36,7 @@
 use proc_macro2::TokenStream;
 use quote::{ToTokens, quote, quote_spanned};
 use syn::parse::Parser;
+use syn::punctuated::Punctuated;
 use syn::visit_mut::VisitMut;
 use syn::{Expr, Item, ItemConst, parse2, spanned::Spanned};
 
@@ -48,11 +48,15 @@ use crate::{
     unerased_proxies::VERUS_UNERASED_PROXY,
 };
 
-pub const VERIFIED: &str = "_VERUS_VERIFIED";
+pub const WITH: &str = "_VERUS_WITH";
 
 pub const DUAL_SPEC_PREFIX: &str = "__VERUS_SPEC";
 
 const VERUS_SPEC: &str = "verus_spec";
+
+fn is_verus_spec_attr(attr: &syn::Attribute) -> bool {
+    attr.path().get_ident().is_some_and(|ident| ident == VERUS_SPEC)
+}
 
 enum VerusIOTarget {
     Local(syn::Local),
@@ -205,6 +209,7 @@ pub(crate) fn rewrite_verus_attribute(
 
     // Inject #[verus_spec] where missing and stamp impl methods with the sentinel marker.
     prepare_items_for_verus_spec(args.span(), &mut item);
+
     let mut new_stream = quote_spanned! {item.span()=>
         #(#attributes)*
         #item
@@ -258,13 +263,19 @@ impl VisitMut for ExecReplacer {
         }
     }
 
-    /// convert proof_with macro to functin with ghost/tracked argumemts.
-    /// In order to apply `with` to expr/stmt without using unstable feature.
-    /// proof_with!(Tracked(x), Ghost(y);
+    /// Lowers `proof_with!` without requiring unstable attributes on expressions.
+    ///
+    /// Calls can supply extra arguments:
+    /// ```ignore
+    /// proof_with!{Tracked(x), Ghost(y)}
     /// f(a);
-    /// Also supports struct constructors with ghost/tracked fields:
+    /// ```
+    ///
+    /// Struct constructors can supply ghost or tracked fields:
+    /// ```ignore
     /// proof_with!{ p: Tracked(p) }
     /// STest { u }
+    /// ```
     fn visit_block_mut(&mut self, block: &mut syn::Block) {
         // Don't call visit_block_mut to recurse on the whole block --
         // skip statements that will be processed by their own #[verus_spec] attribute.
@@ -417,7 +428,7 @@ fn is_verus_macro_applied(attrs: &syn::Attribute) -> bool {
 /// If it's applied earlier, we can infer it via verus::internal(xxx).
 /// If it's applied later, we can find it directly.
 fn add_verus_spec_if_needed(attrs: &mut Vec<syn::Attribute>, span: proc_macro2::Span) {
-    if attrs.iter().any(|attr| attr.path().get_ident().map_or(false, |ident| ident == VERUS_SPEC)) {
+    if attrs.iter().any(is_verus_spec_attr) {
         return;
     }
     attrs.push(crate::syntax::mk_rust_attr_syn(span, VERUS_SPEC, TokenStream::new()));
@@ -694,6 +705,15 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
             // Remove the marker attribute (internal use only)
             fun.attrs.retain(|attr| !is_hidden_impl_marker(attr));
 
+            // The attribute form gives no impl context, so a receiver is the only signal
+            // that the counterpart is an associated item rather than a sibling.
+            let forward_target =
+                if is_impl_fn || matches!(fun.sig.inputs.first(), Some(syn::FnArg::Receiver(_))) {
+                    ForwardTarget::Inherent
+                } else {
+                    ForwardTarget::Sibling
+                };
+
             let mut new_stream = TokenStream::new();
             let mut rustdoc_attrs: Vec<syn::Attribute> = vec![];
             if crate::rustdoc::env_rustdoc() {
@@ -728,22 +748,16 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
                 }
             }
 
-            // Create a copy of unverified function.
-            // To avoid misuse of the unverified function,
-            // we add `requires false` and thus prevent verified function to use it.
-            // Allow unverified code to use the function without changing in/output.
             if let Some(with) = &spec_attr.spec.with {
-                let mut extra_funs = rewrite_unverified_func(&mut fun, with.with.span(), erase);
+                let span = with.with.span();
+                let mut extra_funs =
+                    rewrite_unverified_func(&mut fun, span, erase, (forward_target, with));
 
                 if crate::rustdoc::env_rustdoc() {
                     if let Some(unverified_fun) = extra_funs.last_mut() {
                         unverified_fun.attrs.extend(rustdoc_attrs.clone());
                     }
-                    fun.attrs.push(crate::syntax::mk_rust_attr_syn(
-                        with.with.span(),
-                        "doc",
-                        quote! {hidden},
-                    ));
+                    fun.attrs.push(crate::syntax::mk_rust_attr_syn(span, "doc", quote! {hidden}));
                 }
                 extra_funs.iter().for_each(|f| f.to_tokens(&mut new_stream));
             } else if crate::rustdoc::env_rustdoc() {
@@ -788,8 +802,6 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
                 syntax::sig_specs_attr(erase, spec_attr, &mut fun.sig, is_impl_fn, false);
 
             if erase.erase() {
-                // In erase mode, just return the stub functions.
-                // No need to add proof statements.
                 fun.to_tokens(&mut new_stream);
                 return proc_macro::TokenStream::from(new_stream);
             }
@@ -854,8 +866,6 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
             if let Some(with) = &spec_attr.spec.with {
                 // Trait method requires can only be inherited from the trait declaration
                 // However, we cannot distinguish trait function impl vs other function impl.
-                // let unverified_method = rewrite_unverified_func(&mut method, with.with.span());
-                // unverified_method.to_tokens(&mut new_stream);
                 return proc_macro::TokenStream::from(
                     quote_spanned!(with.with.span() => compile_error!("`with` does not support trait");),
                 );
@@ -912,47 +922,21 @@ pub(crate) fn proof_rewrite(erase: EraseGhost, input: TokenStream) -> proc_macro
     }
 }
 
-/// The `verus_spec(with)` annotation can be applied to either a local statement or an expression.
+/// Lowers a `with` clause on a call to a marker that is replaced before type checking.
 ///
-/// - When applied to an expression (`expr`), the trailing semicolon (`;`) is ignored due to limitations of the procedure macro.
-///   To include the semicolon, developers must use the following syntax:
-///   ```rust
-///   {#[verus_spec(with ..)] expr};
-///   ```
-///
-/// - When used with an expression, developers must explicitly declare the returned ghost or tracked patterns.
-///   This is because the additional declarations cannot be automatically added in a meaningful way.
-///
-/// Example:
-/// ```rust
-/// if #[verus_io(with Tracked(arg1), Ghost(arg2) -> Tracked(out) |= Tracked(extra))]
-/// call(arg0) == something {
-/// }
+/// The attribute can apply to a local statement:
+/// ```ignore
+/// #[verus_spec(with Tracked(&mut y), Ghost(0) => Ghost(z))]
+/// let result = test_mut_tracked(1);
 /// ```
-/// This will be transformed to the following:
-/// ```rust
+///
+/// It can also apply directly to an expression:
+/// ```ignore
+/// if #[verus_spec(with Tracked(&mut y), Ghost(0) => _)]
+///     test_mut_tracked(1) == 0
 /// {
-///     let (tmp, tmp_out) = call(arg0, Tracked(arg1), Tracked(arg2));
-///     proof!{out = tmp_out.get();}  // Ensuring `out` is properly assigned.
-///     (tmp, Tracked(extra))  // Returning the transformed values.
+///     return;
 /// }
-/// ```
-///
-/// The recommended approach for handling returned ghost/tracked outputs is to use a local statement:
-///
-/// Example:
-/// ```rust
-/// #[verus_spec(with Tracked(arg1), Ghost(arg2) -> Tracked(out) |= Tracked(extra))]
-/// let out0 = call(arg0);
-/// ```
-/// This will be transformed to:
-/// ```rust
-/// let tracked mut out;
-/// let out0 = {
-///     let (tmp, tmp_out) = call(arg0, Tracked(arg1), Tracked(arg2));
-///     proof!{out = tmp_out.get();}  // Ensure proper assignment of the ghost value.
-///     (tmp, Tracked(extra))  // Returning the transformed values.
-/// };
 /// ```
 fn rewrite_verus_spec_on_expr_local(
     erase: EraseGhost,
@@ -998,7 +982,6 @@ fn apply_follows(erase: &EraseGhost, expr: &mut Expr, follow_tokens: TokenStream
 }
 
 fn is_tracked_ghost_expr(expr: &verus_syn::Expr) -> bool {
-    // check expr is of the form Tracked(...) or Ghost(...)
     if let verus_syn::Expr::Call(verus_syn::ExprCall { func, .. }) = expr {
         if let verus_syn::Expr::Path(path) = func.as_ref() {
             if let Some(ident) = path.path.get_ident() {
@@ -1009,22 +992,18 @@ fn is_tracked_ghost_expr(expr: &verus_syn::Expr) -> bool {
     false
 }
 
-/// Apply ghost/tracked fields in `with` clause to a struct constructor expression.
-/// Return Err if the ghost/tracked fields are not valid.
 fn apply_erased_fields<'a>(
     erase: EraseGhost,
     expr: &mut Expr,
     erased_fields: impl Iterator<Item = &'a verus_syn::FieldValue>,
 ) -> Result<(), ()> {
     let syn::Expr::Struct(expr_struct) = expr else {
-        // If there's no struct constructor, we cannot apply ghost/tracked fields.
         if let Some(field) = erased_fields.last() {
             *expr = syn::Expr::Verbatim(quote_spanned! {field.span() =>
                 compile_error!("Ghost/tracked fields can only be applied to struct constructors.")
             });
             return Err(());
         }
-        // No ghost/tracked fields, just return.
         return Ok(());
     };
     for field in erased_fields {
@@ -1054,8 +1033,6 @@ fn apply_erased_fields<'a>(
     return Ok(());
 }
 
-// Expand `with extra_in => extra_out` on a method call expr.
-// Return some pre-statements that needs to be declared before the expr.
 fn rewrite_with_expr(
     erase: EraseGhost,
     expr: &mut Expr,
@@ -1065,16 +1042,35 @@ fn rewrite_with_expr(
 
     if outputs.is_some() || inputs.len() > 0 {
         match expr {
-            syn::Expr::Call(syn::ExprCall { func, .. }) => {
-                if let Expr::Path(path) = func.as_mut() {
-                    let x = &path.path.segments.last().unwrap().ident;
-                    path.path.segments.last_mut().unwrap().ident =
-                        syn::Ident::new(&format!("{VERIFIED}_{x}"), x.span());
-                }
-            }
-            syn::Expr::MethodCall(syn::ExprMethodCall { method, .. }) => {
-                let x = &method;
-                *method = syn::Ident::new(&format!("{VERIFIED}_{x}"), x.span());
+            syn::Expr::Call(_) | syn::Expr::MethodCall(_) => {
+                let elems = inputs
+                    .iter()
+                    .map(|arg| {
+                        syn::Expr::Verbatim(
+                            syntax::rewrite_expr(
+                                erase.clone(),
+                                false,
+                                arg.into_token_stream().into(),
+                            )
+                            .into(),
+                        )
+                    })
+                    .collect::<Punctuated<syn::Expr, syn::Token![,]>>();
+
+                let inputs_expr = syn::Expr::Tuple(syn::ExprTuple {
+                    attrs: vec![],
+                    paren_token: syn::token::Paren::default(),
+                    elems,
+                });
+                *expr = if outputs.is_some() {
+                    syn::Expr::Verbatim(quote_spanned_builtin!(verus_builtin, expr.span() =>
+                        #verus_builtin::proof_with_ret(#inputs_expr, #expr)
+                    ))
+                } else {
+                    syn::Expr::Verbatim(quote_spanned_builtin!(verus_builtin, expr.span() => {
+                        #verus_builtin::proof_with(#inputs_expr, #expr)
+                    }))
+                };
             }
             syn::Expr::Try(syn::ExprTry { expr, .. }) => {
                 let call_with_spec = verus_syn::WithSpecOnExpr {
@@ -1098,19 +1094,7 @@ fn rewrite_with_expr(
     if apply_erased_fields(erase.clone(), expr, erased_fields.iter()).is_err() {
         return vec![];
     }
-    match expr {
-        syn::Expr::Call(syn::ExprCall { args, .. })
-        | syn::Expr::MethodCall(syn::ExprMethodCall { args, .. }) => {
-            for arg in inputs {
-                let arg =
-                    syntax::rewrite_expr(erase.clone(), false, arg.into_token_stream().into());
-                args.push(syn::Expr::Verbatim(arg.into()));
-            }
-        }
-        _ => {}
-    };
     let x_declares = if let Some((_, extra_pat)) = outputs {
-        // The expected pat.
         let tmp_pat =
             verus_syn::Pat::Verbatim(quote_spanned! {expr.span() => __verus_tmp_expr_var__});
         let mut elems =
@@ -1161,17 +1145,99 @@ fn rewrite_const_ret_proxy(const_fun: &mut syn::ItemFn) -> syn::ItemFn {
         const_fun.sig.ident.span(),
     );
     proxy_fun.attrs.push(mk_verus_attr_syn(span, quote! { unerased_proxy }));
+    proxy_fun.attrs.push(crate::syntax::mk_rust_attr_syn(span, "allow", quote! { non_snake_case }));
     proxy_fun
 }
 
-// Create a copy of function with unverified function signature without a
-// function body, to enable seamless use of unverified call to the function in
-// verification.
-// If the function is const, it will be rewritten to a proxy function and a verified function.
+/// Where the stub finds the counterpart that carries its body.
+enum ForwardTarget {
+    /// A sibling item in the same module.
+    Sibling,
+    /// A method of the same inherent implementation.
+    Inherent,
+}
+
+/// Rewrites every parameter that is not already a plain binding, because the forwarding
+/// call has to name each one.
+fn forwarded_args(sig: &mut syn::Signature) -> Vec<syn::Expr> {
+    let mut args = vec![];
+    for (i, input) in sig.inputs.iter_mut().enumerate() {
+        let ident = match input {
+            syn::FnArg::Receiver(receiver) => {
+                let span = receiver.self_token.span();
+                args.push(syn::parse_quote_spanned! { span => self });
+                continue;
+            }
+            syn::FnArg::Typed(pat_type) => match &*pat_type.pat {
+                syn::Pat::Ident(pat_ident)
+                    if pat_ident.subpat.is_none() && pat_ident.by_ref.is_none() =>
+                {
+                    pat_ident.ident.clone()
+                }
+                pat => {
+                    let ident = syn::Ident::new(&format!("__verus_arg_{i}"), pat.span());
+                    *pat_type.pat = syn::parse_quote_spanned! { ident.span() => #ident };
+                    ident
+                }
+            },
+        };
+        args.push(syn::parse_quote_spanned! { ident.span() => #ident });
+    }
+    args
+}
+
+/// Builds the stub body that calls the verified counterpart, so that the compiled program
+/// still runs the user's code instead of trapping.
+///
+/// The extra ghost and tracked arguments are zero-sized, so making them up here costs
+/// nothing at run time and the counterpart never reads them.
+fn forward_to_counterpart(
+    sig: &mut syn::Signature,
+    target: &ForwardTarget,
+    counterpart: &syn::Ident,
+    with: &verus_syn::WithSpecOnFn,
+    span: proc_macro2::Span,
+) -> syn::Stmt {
+    let mut args = forwarded_args(sig);
+    for arg in with.inputs.iter() {
+        if let verus_syn::FnArgKind::Typed(pat_type) = &arg.kind {
+            let ty = &pat_type.ty;
+            args.push(syn::parse_quote_spanned! { span => <#ty>::assume_new() });
+        }
+    }
+    let mut call: syn::Expr = match target {
+        ForwardTarget::Sibling => {
+            syn::parse_quote_spanned! { span => #counterpart(#(#args),*) }
+        }
+        ForwardTarget::Inherent => {
+            syn::parse_quote_spanned! { span => Self::#counterpart(#(#args),*) }
+        }
+    };
+    if sig.asyncness.is_some() {
+        call = syn::parse_quote_spanned! { span => #call.await };
+    }
+    if with.outputs.as_ref().is_some_and(|(_, outputs)| !outputs.is_empty()) {
+        // The counterpart returns the extra outputs alongside the executable result.
+        call = syn::parse_quote_spanned! { span => #call.0 };
+    }
+    if sig.unsafety.is_some() {
+        call = syn::parse_quote_spanned! { span => unsafe { #call } };
+    }
+    syn::Stmt::Expr(call, None)
+}
+
+/// Emits two items because executable code must retain the user's signature while
+/// verification must expose the extra ghost or tracked inputs and outputs.
+///
+/// The unverified stub keeps the original name and executable signature. The verified
+/// counterpart is named `_VERUS_WITH_{name}` and carries the extra parameters,
+/// the extra results, and the specification. Erased metadata retains the counterpart
+/// declaration so downstream marker calls can resolve it, but only the stub executes.
 fn rewrite_unverified_func(
     fun: &mut syn::ItemFn,
     span: proc_macro2::Span,
     erase: EraseGhost,
+    forward: (ForwardTarget, &verus_syn::WithSpecOnFn),
 ) -> Vec<syn::ItemFn> {
     let mut ret = vec![];
     let mut unverified_fun = fun.clone();
@@ -1199,32 +1265,36 @@ fn rewrite_unverified_func(
             quote! {hidden},
         ));
     }
+    let (target, with) = forward;
+    let forwarding = if erase.keep() && fun.sig.constness.is_none() {
+        let counterpart =
+            syn::Ident::new(&format!("{WITH}_{}", fun.sig.ident), fun.sig.ident.span());
+        Some(forward_to_counterpart(&mut unverified_fun.sig, &target, &counterpart, with, span))
+    } else {
+        None
+    };
     if let Some(block) = unverified_fun.block_mut() {
-        // For an unverified function, if it is in keep mode,
-        // we erase the function body to avoid using
-        // proof code, since we do not need to verify anything in unverified
-        // function and we never pass ghost/tracked to unverified function
-        // and so it may cause errors due to undefined vars.
-        // Since the body is erased only in keep mode, we still
-        // see correct body in generated executable in erase mode.
+        // Verification cannot type-check the executable body against the stub signature
+        // when the body refers to the erased parameters.
         if erase.keep() {
             block.stmts.clear();
             block.stmts.push(precondition_false);
-            block.stmts.push(unimplemented.clone());
+            block.stmts.push(forwarding.unwrap_or_else(|| unimplemented.clone()));
         }
     }
-    // change name to verified_{fname}
     let x = &fun.sig.ident;
-    fun.sig.ident = syn::Ident::new(&format!("{VERIFIED}_{x}"), x.span());
+    fun.sig.ident = syn::Ident::new(&format!("{WITH}_{x}"), x.span());
+    fun.attrs.push(mk_verus_attr_syn(span, quote! { verified_with }));
     fun.attrs.push(crate::syntax::mk_rust_attr_syn(span, "allow", quote! {non_snake_case}));
 
-    // In erase mode, we just keep the verified function with unimplemented!()
-    // since we do not need to verifying the function body and only unverified
-    // function is called in erase mode.
     if erase.erase() {
         fun.block.stmts.clear();
         fun.block.stmts.push(unimplemented);
     }
     ret.push(unverified_fun);
+    // Const functions may expose both the executable item and its proxy as call targets.
+    for unverified_fun in ret.iter_mut() {
+        unverified_fun.attrs_mut().push(mk_verus_attr_syn(span, quote! { unverified_stub }));
+    }
     ret
 }
