@@ -26,7 +26,7 @@ proof fn pop_and_push(s: Seq<u64>)
     requires
         s.len() >= 1,
 {
-    let t = s.subrange(0, s.len() as int - 1).push(s[s.len() as int - 1]);
+    let t = s[..s.len() as int - 1].push(s[s.len() as int - 1]);
     assert_seqs_equal!(s, t);
     assert(s == t);
 }
@@ -35,8 +35,8 @@ proof fn subrange_concat(s: Seq<u64>, i: int)
     requires
         0 <= i <= s.len(),
 {
-    let t1 = s.subrange(0, i);
-    let t2 = s.subrange(i, s.len() as int);
+    let t1 = s[..i];
+    let t2 = s[i..];
     let t = t1.add(t2);
     assert_seqs_equal!(s, t);
     assert(s == t);

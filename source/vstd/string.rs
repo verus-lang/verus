@@ -27,7 +27,8 @@ use super::view::*;
 #[cfg(not(verus_verify_core))]
 use super::std_specs::cmp::PartialEqSpecImpl;
 
-verus! {
+use verus as verus_skip_verusfmt; // verusfmt doesn't handle s[..e] yet
+verus_skip_verusfmt! {
 
 broadcast use {super::seq::group_seq_lemmas, super::slice::group_slice_axioms};
 
@@ -152,8 +153,8 @@ pub assume_specification[ str::split_at ](s: &str, mid: usize) -> (res: (&str, &
     requires
         is_char_boundary(s.spec_bytes(), mid as int),
     ensures
-        res.0.spec_bytes() =~= s.spec_bytes().subrange(0, mid as int),
-        res.1.spec_bytes() =~= s.spec_bytes().subrange(mid as int, s.spec_bytes().len() as int),
+        res.0.spec_bytes() =~= s.spec_bytes()[..mid],
+        res.1.spec_bytes() =~= s.spec_bytes()[mid..],
 ;
 
 #[cfg(not(verus_verify_core))]
@@ -234,7 +235,7 @@ impl StrSliceExecFns for str {
             self.is_ascii(),
             from <= to <= self@.len(),
         ensures
-            ret@ == self@.subrange(from as int, to as int),
+            ret@ == self@[from..to],
             ret.is_ascii(),
     {
         // Range::index panics if from > to or from > self@.len()
@@ -246,7 +247,7 @@ impl StrSliceExecFns for str {
         requires
             from <= to <= self@.len(),
         ensures
-            ret@ == self@.subrange(from as int, to as int),
+            ret@ == self@[from..to],
     {
         let mut char_pos = 0;
         let mut byte_start = None;
@@ -297,6 +298,16 @@ impl StrSliceExecFns for str {
 }
 
 #[cfg(not(verus_verify_core))]
+pub uninterp spec fn strlit_view_id(s: Seq<char>) -> int;
+
+/// Distinct string literals have provably distinct views.
+#[cfg(not(verus_verify_core))]
+pub broadcast axiom fn axiom_new_strlit_view_id(id: int)
+    ensures
+        strlit_view_id(#[trigger] strslice_new_strlit(id).view()) == id,
+;
+
+#[cfg(not(verus_verify_core))]
 pub broadcast axiom fn axiom_str_literal_len<'a>(s: &'a str)
     ensures
         #[trigger] s@.len() == strslice_len(s),
@@ -310,6 +321,7 @@ pub broadcast axiom fn axiom_str_literal_get_char<'a>(s: &'a str, i: int)
 
 #[cfg(all(not(feature = "alloc"), not(verus_verify_core)))]
 pub broadcast group group_string_axioms {
+    axiom_new_strlit_view_id,
     axiom_str_literal_len,
     axiom_str_literal_get_char,
     is_ascii_spec_bytes,
@@ -318,6 +330,7 @@ pub broadcast group group_string_axioms {
 
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]
 pub broadcast group group_string_axioms {
+    axiom_new_strlit_view_id,
     axiom_str_literal_len,
     axiom_str_literal_get_char,
     to_string_from_display_ensures_for_str,
@@ -535,7 +548,7 @@ pub open spec fn str_slice_index_postcondition<R: RangeBoundsSpec<usize>>(
     s: Seq<u8>,
     r: Seq<u8>,
 ) -> bool {
-    r == s.subrange(slice_range_start(range), slice_range_end(range, s.len()))
+    r == s[slice_range_start(range)..slice_range_end(range, s.len())]
 }
 
 // There are various types you can use to index into a `str` to get a
@@ -552,11 +565,11 @@ pub open spec fn str_slice_index_mut_postcondition<R: RangeBoundsSpec<usize>>(
 ) -> bool {
     let start = slice_range_start(range);
     let end = slice_range_end(range, old_s.len());
-    &&& r == old_s.subrange(start, end)
+    &&& r == old_s[start..end]
     &&& final_s.len() == old_s.len()
-    &&& final_s.subrange(0, start) == old_s.subrange(0, start)
-    &&& final_s.subrange(start, end) == final_r
-    &&& final_s.subrange(end, old_s.len() as int) == old_s.subrange(end, old_s.len() as int)
+    &&& final_s[..start] == old_s[..start]
+    &&& final_s[start..end] == final_r
+    &&& final_s[end..old_s.len()] == old_s[end..]
 }
 
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]

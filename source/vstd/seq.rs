@@ -5,7 +5,8 @@ use super::pervasive::*;
 #[allow(unused_imports)]
 use super::prelude::*;
 
-verus! {
+use verus as verus_skip_verusfmt; // verusfmt doesn't handle s[..e] yet
+verus_skip_verusfmt! {
 
 #[verifier::ext_equal]
 #[verifier::accept_recursive_types(A)]
@@ -49,6 +50,14 @@ impl<A> SeqInner<A> {
             0 <= i < self.len(),
     {
         self.index(i)
+    }
+
+    #[verifier::inline]
+    spec fn spec_index_range<I: Integer, J: Integer>(self, i: I, j: J) -> Self
+        recommends
+            0 <= i as int <= j as int <= self.len(),
+    {
+        self.subrange(i as int, j as int)
     }
 
     spec fn first(self) -> A
@@ -153,8 +162,8 @@ impl<A> SeqInner<A> {
         requires
             0 <= i <= old(self).len(),
         ensures
-            *final(self) == old(self).subrange(0, i),
-            ret == old(self).subrange(i, old(self).len() as int),
+            *final(self) == old(self)[0..i],
+            ret == old(self)[i..old(self).len()],
             final(self).len() == i,
             ret.len() == old(self).len() - i,
         decreases self.len(),
@@ -163,7 +172,7 @@ impl<A> SeqInner<A> {
         super::modes::tracked_swap(&mut s, self);
         let tracked ret = if i == 0 {
             seq_inner::lemma_subrange_len(*old(self), 0, i);
-            seq_inner::lemma_empty(old(self).subrange(0, i));
+            seq_inner::lemma_empty(old(self)[0..i]);
             seq_inner::lemma_full_subrange_idempotent(*old(self));
 
             s
@@ -188,8 +197,8 @@ impl<A> SeqInner<A> {
             }
         };
 
-        assert(*final(self) == old(self).subrange(0, i));
-        assert(ret == old(self).subrange(i, old(self).len() as int));
+        assert(*final(self) == old(self)[0..i]);
+        assert(ret == old(self)[i..old(self).len()]);
         seq_inner::lemma_subrange_len(*old(self), 0, i);
         seq_inner::lemma_subrange_len(*old(self), i, old(self).len() as int);
 
@@ -229,7 +238,7 @@ impl<A> SeqInner<A> {
     {
         if i == self.len() {
             seq_inner::lemma_subrange_len(*old(self), i, self.len() as int);
-            seq_inner::lemma_empty(old(self).subrange(i, self.len() as int));
+            seq_inner::lemma_empty(old(self)[i..self.len()]);
             seq_inner::lemma_full_subrange_idempotent(*old(self));
             seq_inner::lemma_add_empty(self.push(v));
             self.tracked_push(v);
@@ -253,12 +262,12 @@ impl<A> SeqInner<A> {
             self.tracked_pop_front()
         } else {
             let tracked suff = self.tracked_split_at(i + 1);
-            assert(suff == old(self).subrange(i + 1, old(self).len() as int));
+            assert(suff == old(self)[i + 1..old(self).len()]);
 
             let tracked ret = self.tracked_pop();
             seq_inner::lemma_subrange_index(*old(self), 0, i + 1, i);
             assert(ret == old(self)[i]);
-            assert(*self == old(self).subrange(0, i + 1).subrange(0, i));
+            assert(*self == old(self)[0..i + 1][0..i]);
             seq_inner::lemma_subrange_composition(*old(self), 0, i + 1, 0, i);
 
             self.tracked_add(suff);
@@ -361,7 +370,7 @@ impl<A> SeqInner<A> {
         ensures
             ret == old(self).last(),
             final(self).len() == old(self).len() - 1,
-            *final(self) == old(self).subrange(0, old(self).len() - 1),
+            *final(self) == old(self)[0..old(self).len() - 1],
         decreases self.len(),
     {
         let tracked mut s = SeqInner::Nil;
@@ -383,7 +392,7 @@ impl<A> SeqInner<A> {
 
                         seq_inner::lemma_empty(tail);
                         seq_inner::lemma_subrange_len(*old(self), 0, old(self).len() - 1);
-                        seq_inner::lemma_empty(old(self).subrange(0, old(self).len() - 1));
+                        seq_inner::lemma_empty(old(self)[0..old(self).len() - 1]);
 
                         head
                     },
@@ -405,7 +414,7 @@ impl<A> SeqInner<A> {
             },
         };
 
-        assert(*final(self) == old(self).subrange(0, old(self).len() - 1));
+        assert(*final(self) == old(self)[0..old(self).len() - 1]);
         seq_inner::lemma_subrange_len(*old(self), 0, old(self).len() - 1);
 
         ret
@@ -417,7 +426,7 @@ impl<A> SeqInner<A> {
         ensures
             ret == old(self).first(),
             final(self).len() == old(self).len() - 1,
-            *final(self) == old(self).subrange(1, old(self).len() as int),
+            *final(self) == old(self)[1..old(self).len()],
     {
         let tracked mut s = SeqInner::Nil;
         super::modes::tracked_swap(&mut s, self);
@@ -430,13 +439,13 @@ impl<A> SeqInner<A> {
                 let tracked Tracked(mut tail) = tail;
                 let tracked Tracked(head) = head;
                 seq_inner::lemma_tail_subrange(head, tail);
-                assert(tail == old(self).subrange(1, old(self).len() as int));
+                assert(tail == old(self)[1..old(self).len()]);
                 super::modes::tracked_swap(&mut tail, self);
                 head
             },
         };
 
-        assert(*final(self) == old(self).subrange(1, old(self).len() as int));
+        assert(*final(self) == old(self)[1..old(self).len()]);
         seq_inner::lemma_subrange_len(*old(self), 1, old(self).len() as int);
 
         ret
@@ -591,24 +600,24 @@ mod seq_inner {
         requires
             0 <= j <= k <= s.len(),
         ensures
-            s.subrange(j, k).len() == k - j,
+            s[j..k].len() == k - j,
         decreases j, k,
     {
         match s {
             SeqInner::Nil => {},
             SeqInner::Cons { head, tail } => {
                 if j > 0 {
-                    assert(s.subrange(j, k) == tail.subrange(j - 1, k - 1));
+                    assert(s[j..k] == tail[j - 1..k - 1]);
                     lemma_subrange_len(tail@, j - 1, k - 1);
                 } else if k > 0 {
-                    let new_tail = tail@.subrange(j, k - 1);
+                    let new_tail = tail@[j..k - 1];
                     lemma_subrange_len(tail@, j, k - 1);
                     assert(new_tail.len() == k - j - 1);
                     let sub = SeqInner::Cons { head, tail: Tracked(new_tail) };
                     assert(sub.len() == 1 + new_tail.len());
                 } else {
                     assert(j == k == 0);
-                    assert(s.subrange(j, k).len() == 0);
+                    assert(s[j..k].len() == 0);
                 }
             },
         }
@@ -618,17 +627,17 @@ mod seq_inner {
         requires
             0 <= j2 <= j1 <= s.len(),
         ensures
-            s.subrange(0, j1).subrange(0, j2) == s.subrange(0, j2),
+            s[0..j1][0..j2] == s[0..j2],
         decreases s.len(),
     {
         if j1 == j2 {
             lemma_subrange_len(s, 0, j1);
-            lemma_full_subrange_idempotent(s.subrange(0, j1));
+            lemma_full_subrange_idempotent(s[0..j1]);
         } else if j1 == 0 {
             assert(false);
         } else if j2 == 0 {
-            lemma_subrange_len(s.subrange(0, j1), 0, j2);
-            lemma_empty(s.subrange(0, j1).subrange(0, j2));
+            lemma_subrange_len(s[0..j1], 0, j2);
+            lemma_empty(s[0..j1][0..j2]);
         } else {
             match s {
                 SeqInner::Nil => {},
@@ -644,12 +653,12 @@ mod seq_inner {
             0 <= k <= s.len(),
             0 <= i < k,
         ensures
-            s.subrange(0, k)[i] == s[i],
+            s[0..k][i] == s[i],
         decreases s,
     {
         lemma_subrange_len(s, 0, k);
-        // assert(s.subrange(0, k).len() == k);
-        // assert(0 <= i < s.subrange(0, k).len());
+        // assert(s[0..k].len() == k);
+        // assert(0 <= i < s[0..k].len());
         match s {
             SeqInner::Nil => {
                 // assert(false);
@@ -657,7 +666,7 @@ mod seq_inner {
             SeqInner::Cons { head, tail } => {
                 if i == 0 {
                     // assert(s[0] == head);
-                    assert(s.subrange(0, k)[0] == head);
+                    assert(s[0..k][0] == head);
                 } else {
                     lemma_subrange_index_aux(tail@, k - 1, i - 1);
                 }
@@ -670,7 +679,7 @@ mod seq_inner {
             0 <= j <= k <= s.len(),
             0 <= i < k - j,
         ensures
-            s.subrange(j, k)[i] == s[i + j],
+            s[j..k][i] == s[i + j],
         decreases s,
     {
         lemma_subrange_len(s, j, k);
@@ -698,7 +707,7 @@ mod seq_inner {
             0 <= j1 <= s.len(),
             0 <= i2 <= j2 <= j1,
         ensures
-            s.subrange(0, j1).subrange(i2, j2) == s.subrange(i2, j2),
+            s[0..j1][i2..j2] == s[i2..j2],
         decreases s.len(),
     {
         if i2 == 0 {
@@ -724,7 +733,7 @@ mod seq_inner {
             0 <= i1 <= j1 <= s.len(),
             0 <= i2 <= j2 <= j1 - i1,
         ensures
-            s.subrange(i1, j1).subrange(i2, j2) == s.subrange(i1 + i2, i1 + j2),
+            s[i1..j1][i2..j2] == s[i1 + i2..i1 + j2],
         decreases s.len(),
     {
         if i1 == 0 {
@@ -745,7 +754,7 @@ mod seq_inner {
 
     pub(super) proof fn lemma_tail_subrange<A>(head: A, tail: SeqInner<A>)
         ensures
-            cons_list(head, tail).subrange(1, cons_list(head, tail).len() as int) == tail,
+            cons_list(head, tail)[1..cons_list(head, tail).len()] == tail,
     {
         let s = SeqInner::Cons { head: Tracked(head), tail: Tracked(tail) };
         match s {
@@ -758,12 +767,12 @@ mod seq_inner {
 
     pub(super) proof fn lemma_full_subrange_idempotent<A>(s: SeqInner<A>)
         ensures
-            s.subrange(0, s.len() as int) == s,
+            s[0..s.len()] == s,
         decreases s.len(),
     {
         match s {
             SeqInner::Nil => {
-                assert(s.subrange(0, s.len() as int) == s);
+                assert(s[0..s.len()] == s);
             },
             SeqInner::Cons { head, tail } => {
                 lemma_subrange_index(s, 0, s.len() as int, 0);
@@ -974,6 +983,57 @@ impl<A> Seq<A> {
         self.index(i)
     }
 
+    /// `[..]` operator, which returns the original Seq
+    #[verifier::inline]
+    pub open spec fn spec_index_range_full(self) -> Seq<A> {
+        self
+    }
+
+    /// `[i..]` operator, synonymous with `skip`
+    #[verifier::inline]
+    pub open spec fn spec_index_range_from<I: Integer>(self, i: I) -> Seq<A>
+        recommends
+            0 <= i as int <= self.len(),
+    {
+        self.skip(i as int)
+    }
+
+    /// `[..j]` operator, synonymous with `take`
+    #[verifier::inline]
+    pub open spec fn spec_index_range_to<J: Integer>(self, j: J) -> Seq<A>
+        recommends
+            0 <= j as int <= self.len(),
+    {
+        self.take(j as int)
+    }
+
+    /// `[..=j]` operator, synonymous with `take` on j + 1
+    #[verifier::inline]
+    pub open spec fn spec_index_range_to_inclusive<J: Integer>(self, j: J) -> Seq<A>
+        recommends
+            0 <= (j as int) < self.len(),
+    {
+        self.take(j as int + 1)
+    }
+
+    /// `[i..j]` operator, synonymous with `subrange`
+    #[verifier::inline]
+    pub open spec fn spec_index_range<I: Integer, J: Integer>(self, i: I, j: J) -> Seq<A>
+        recommends
+            0 <= i as int <= j as int <= self.len(),
+    {
+        self.subrange(i as int, j as int)
+    }
+
+    /// `[i..=j]` operator, synonymous with `subrange` on j + 1
+    #[verifier::inline]
+    pub open spec fn spec_index_range_inclusive<I: Integer, J: Integer>(self, i: I, j: J) -> Seq<A>
+        recommends
+            0 <= i as int <= (j as int) < self.len(),
+    {
+        self.subrange(i as int, j as int + 1)
+    }
+
     /// Appends the value `a` to the end of the sequence.
     /// This always increases the length of the sequence by 1.
     /// This often requires annotating the type of the element literal in the sequence,
@@ -1020,7 +1080,7 @@ impl<A> Seq<A> {
     ///     let s = seq![10int, 11, 12, 13, 14];
     ///     //                      ^-------^
     ///     //           0      1   2   3   4   5
-    ///     let sub = s.subrange(2, 4);
+    ///     let sub = s[2..4];
     ///     assert(sub =~= seq![12, 13]);
     /// }
     /// ```
@@ -1173,7 +1233,7 @@ impl<A> Seq<A> {
         ensures
             ret == old(self).last(),
             final(self).len() == old(self).len() - 1,
-            *final(self) == old(self).take(old(self).len() - 1),
+            *final(self) == old(self)[..old(self).len() - 1],
     {
         self.inner.tracked_pop()
     }
@@ -1195,8 +1255,8 @@ impl<A> Seq<A> {
         requires
             0 <= i <= old(self).len(),
         ensures
-            *final(self) == old(self).subrange(0, i),
-            ret == old(self).subrange(i, old(self).len() as int),
+            *final(self) == old(self)[0..i],
+            ret == old(self)[i..old(self).len()],
             final(self).len() == i,
             ret.len() == old(self).len() - i,
     {
@@ -1246,9 +1306,9 @@ pub axiom fn axiom_seq_len_decreases<A>(s1: Seq<A>, s2: Seq<A>)
 pub broadcast proof fn axiom_seq_subrange_decreases<A>(s: Seq<A>, i: int, j: int)
     requires
         0 <= i <= j <= s.len(),
-        s.subrange(i, j).len() < s.len(),
+        s[i..j].len() < s.len(),
     ensures
-        #[trigger] (decreases_to!(s => s.subrange(i, j))),
+        #[trigger] (decreases_to!(s => s[i..j])),
 {
     lemma_seq_subrange_decreases(s, i, j)
 }
@@ -1256,13 +1316,13 @@ pub broadcast proof fn axiom_seq_subrange_decreases<A>(s: Seq<A>, i: int, j: int
 pub broadcast proof fn lemma_seq_subrange_decreases<A>(s: Seq<A>, i: int, j: int)
     requires
         0 <= i <= j <= s.len(),
-        s.subrange(i, j).len() < s.len(),
+        s[i..j].len() < s.len(),
     ensures
-        #[trigger] (decreases_to!(s => s.subrange(i, j))),
+        #[trigger] (decreases_to!(s => s[i..j])),
 {
     broadcast use {lemma_seq_subrange_len, lemma_seq_subrange_index};
 
-    let s2 = s.subrange(i, j);
+    let s2 = s[i..j];
     assert forall|i2: int| 0 <= i2 < s2.len() && #[trigger] trigger(s2[i2]) implies exists|i1: int|
         0 <= i1 < s.len() && s[i1] == s2[i2] by {
         assert(s[i + i2] == s2[i2]);
@@ -1634,7 +1694,7 @@ pub broadcast proof fn axiom_seq_subrange_len<A>(s: Seq<A>, j: int, k: int)
     requires
         0 <= j <= k <= s.len(),
     ensures
-        #[trigger] s.subrange(j, k).len() == k - j,
+        #[trigger] s[j..k].len() == k - j,
 {
     lemma_seq_subrange_len(s, j, k)
 }
@@ -1643,7 +1703,7 @@ pub broadcast proof fn lemma_seq_subrange_len<A>(s: Seq<A>, j: int, k: int)
     requires
         0 <= j <= k <= s.len(),
     ensures
-        #[trigger] s.subrange(j, k).len() == k - j,
+        #[trigger] s[j..k].len() == k - j,
 {
     seq_inner::lemma_subrange_len(s.inner, j, k)
 }
@@ -1659,7 +1719,7 @@ pub broadcast proof fn lemma_seq_subrange_composition<A>(
         0 <= i1 <= j1 <= s.len(),
         0 <= i2 <= j2 <= j1 - i1,
     ensures
-        #[trigger] s.subrange(i1, j1).subrange(i2, j2) == s.subrange(i1 + i2, i1 + j2),
+        #[trigger] s[i1..j1][i2..j2] == s[i1 + i2..i1 + j2],
 {
     seq_inner::lemma_subrange_composition(s.inner, i1, j1, i2, j2)
 }
@@ -1670,7 +1730,7 @@ pub broadcast proof fn axiom_seq_subrange_index<A>(s: Seq<A>, j: int, k: int, i:
         0 <= j <= k <= s.len(),
         0 <= i < k - j,
     ensures
-        #[trigger] s.subrange(j, k)[i] == s[i + j],
+        #[trigger] s[j..k][i] == s[i + j],
 {
     lemma_seq_subrange_index(s, j, k, i)
 }
@@ -1680,7 +1740,7 @@ pub broadcast proof fn lemma_seq_subrange_index<A>(s: Seq<A>, j: int, k: int, i:
         0 <= j <= k <= s.len(),
         0 <= i < k - j,
     ensures
-        #[trigger] s.subrange(j, k)[i] == s[i + j],
+        #[trigger] s[j..k][i] == s[i + j],
 {
     seq_inner::lemma_subrange_index(s.inner, j, k, i);
 }
@@ -1691,7 +1751,7 @@ pub broadcast proof fn lemma_seq_subrange_index_alt<A>(s: Seq<A>, j: int, k: int
         0 <= j <= k <= s.len(),
         0 <= i - j < k - j,
     ensures
-        (#[trigger] s.subrange(j, k))[i - j] == #[trigger] s[i],
+        (#[trigger] s[j..k])[i - j] == #[trigger] s[i],
 {
     broadcast use lemma_seq_subrange_index;
 
@@ -1705,7 +1765,7 @@ pub broadcast proof fn lemma_seq_two_subranges_index<A>(s: Seq<A>, j: int, k1: i
         0 <= i < k1 - j,
         0 <= i < k2 - j,
     ensures
-        #[trigger] s.subrange(j, k1)[i] == (#[trigger] s.subrange(j, k2))[i],
+        #[trigger] s[j..k1][i] == (#[trigger] s[j..k2])[i],
 {
     broadcast use lemma_seq_subrange_index;
 

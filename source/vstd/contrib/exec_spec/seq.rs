@@ -2,7 +2,8 @@
 use crate::contrib::exec_spec::*;
 use crate::prelude::*;
 
-verus! {
+use verus as verus_skip_verusfmt; // verusfmt doesn't handle s[..e] yet
+verus_skip_verusfmt! {
 
 // Note: the exec translations which use iterators are unverified.
 broadcast use crate::group_vstd_default;
@@ -280,10 +281,7 @@ impl<'a, T: DeepView> ExecSpecSeqSubrange<'a> for &'a [T] {
     #[inline(always)]
     fn exec_subrange(self, start_inclusive: usize, end_exclusive: usize) -> (res: Self)
         ensures
-            res.deep_view() =~= self.deep_view().subrange(
-                start_inclusive as int,
-                end_exclusive as int,
-            ),
+            res.deep_view() =~= self.deep_view()[start_inclusive..end_exclusive],
     {
         &self[start_inclusive..end_exclusive]
     }
@@ -355,7 +353,7 @@ impl<'a, T: DeepView> ExecSpecSeqTake<'a> for &'a [T] {
     #[inline(always)]
     fn exec_take(self, n: usize) -> (res: Self)
         ensures
-            res.deep_view() =~= self.deep_view().take(n as int),
+            res.deep_view() =~= self.deep_view()[..n],
     {
         self.exec_subrange(0, n)
     }
@@ -367,7 +365,7 @@ impl<'a, T: DeepView> ExecSpecSeqSkip<'a> for &'a [T] {
     #[inline(always)]
     fn exec_skip(self, n: usize) -> (res: Self)
         ensures
-            res.deep_view() =~= self.deep_view().skip(n as int),
+            res.deep_view() =~= self.deep_view()[n..],
     {
         self.exec_subrange(n, self.exec_len())
     }

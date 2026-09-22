@@ -1175,6 +1175,21 @@ fn verus_item_to_vir<'tcx, 'a>(
                     ),
                 }
             }
+            ExprItem::NewStrLit => {
+                record_spec_fn(bctx, expr);
+                match &expr.kind {
+                    ExprKind::Call(_, args) => {
+                        assert!(args.len() == 1);
+                        let arg0 = args.first().unwrap();
+                        let arg0 =
+                            expr_to_vir_consume(bctx, arg0).expect("internal compiler error");
+                        mk_expr(ExprX::Unary(UnaryOp::NewStrLit, arg0))
+                    }
+                    _ => panic!(
+                        "Expected a call for verus_builtin::strslice_new_strlit with one argument but did not receive it"
+                    ),
+                }
+            }
             ExprItem::StrSliceLen => {
                 record_spec_fn(bctx, expr);
                 match &expr.kind {
@@ -2731,7 +2746,7 @@ fn extract_choose<'tcx>(
                 let name = pat_to_var(x.pat)?;
                 let vir_expr = bctx.spanned_typed_new(x.span, &typ, ExprX::Var(name.clone()));
                 let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-                erasure_info.hir_vir_ids.push((x.pat.hir_id, vir_expr.span.id));
+                erasure_info.hir_vir_ids.push((Some(x.pat.hir_id), vir_expr.span.id));
                 vars.push(vir_expr);
                 params.push(Arc::new(VarBinderX { name, a: typ }));
             }

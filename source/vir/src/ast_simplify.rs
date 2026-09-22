@@ -157,7 +157,7 @@ fn small_or_temp(state: &mut State, expr: &Expr) -> (Vec<Stmt>, Expr) {
 
 fn pattern_to_decls_with_no_initializer(pattern: &Pattern, stmts: &mut Vec<Stmt>) {
     match &pattern.x {
-        PatternX::Wildcard(_) => {}
+        PatternX::Wildcard => {}
         PatternX::Var(binding) | PatternX::Binding { binding, sub_pat: _ } => {
             let v_patternx = PatternX::Var(PatternBinding {
                 name: binding.name.clone(),
@@ -599,7 +599,7 @@ fn simplify_one_expr(
                 if let Some(prev) = if_expr {
                     // if pattern && guard then body else prev
                     let ifx = ExprX::If(test.clone(), body, Some(prev));
-                    if_expr = Some(SpannedTyped::new(&test.span, &expr.typ.clone(), ifx));
+                    if_expr = Some(SpannedTyped::new(&expr.span, &expr.typ.clone(), ifx));
                 } else if *assert_irrefutable && !test_is_true {
                     if has_guard {
                         return Err(error(&arm.x.guard.span, "if-guard on final match arm"));

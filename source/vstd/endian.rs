@@ -11,7 +11,8 @@ use crate::vstd::layout;
 use crate::vstd::prelude::*;
 use core::marker::PhantomData;
 
-verus! {
+use verus as verus_skip_verusfmt; // verusfmt doesn't handle s[..e] yet
+verus_skip_verusfmt! {
 
 broadcast use group_vstd_default;
 
@@ -111,6 +112,14 @@ impl<B: Base> EndianNat<B> {
         self.digits[i]
     }
 
+    #[verifier::inline]
+    pub open spec fn spec_index(self, i: int) -> int
+        recommends
+            0 <= i < self.digits.len(),
+    {
+        self.index(i)
+    }
+
     /// The first digit in this `EndianNat`. Ignores endianness.
     pub open spec fn first(self) -> nat
         recommends
@@ -162,7 +171,23 @@ impl<B: Base> EndianNat<B> {
         recommends
             0 <= n <= self.digits.len(),
     {
-        EndianNat { endian: self.endian, digits: self.digits.take(n as int), phantom: self.phantom }
+        EndianNat { endian: self.endian, digits: self.digits[..n], phantom: self.phantom }
+    }
+
+    #[verifier::inline]
+    pub open spec fn spec_index_range_from<N: Integer>(self, n: N) -> Self
+        recommends
+            0 <= n as int <= self.digits.len(),
+    {
+        self.skip(n as nat)
+    }
+
+    #[verifier::inline]
+    pub open spec fn spec_index_range_to<N: Integer>(self, n: N) -> Self
+        recommends
+            0 <= n as int <= self.digits.len(),
+    {
+        self.take(n as nat)
     }
 
     /// Constructs an `EndianNat` by skipping the least significant `n` digits of the original `EndianNat`.
@@ -171,8 +196,8 @@ impl<B: Base> EndianNat<B> {
             0 <= n <= self.digits.len(),
     {
         match self.endian {
-            Endian::Little => self.skip(n),
-            Endian::Big => self.take((self.len() - n) as nat),
+            Endian::Little => self[n..],
+            Endian::Big => self[..self.len() - n],
         }
     }
 
@@ -182,8 +207,8 @@ impl<B: Base> EndianNat<B> {
             0 <= n <= self.digits.len(),
     {
         match self.endian {
-            Endian::Little => self.take((self.len() - n) as nat),
-            Endian::Big => self.skip(n),
+            Endian::Little => self[..self.len() - n],
+            Endian::Big => self[n..],
         }
     }
 
@@ -193,8 +218,8 @@ impl<B: Base> EndianNat<B> {
             0 <= n <= self.digits.len(),
     {
         match self.endian {
-            Endian::Little => self.take(n),
-            Endian::Big => self.skip((self.len() - n) as nat),
+            Endian::Little => self[..n],
+            Endian::Big => self[self.len() - n..],
         }
     }
 
@@ -204,8 +229,8 @@ impl<B: Base> EndianNat<B> {
             0 <= n <= self.digits.len(),
     {
         match self.endian {
-            Endian::Little => self.skip((self.len() - n) as nat),
-            Endian::Big => self.take(n),
+            Endian::Little => self[self.len() - n..],
+            Endian::Big => self[..n],
         }
     }
 
@@ -1097,7 +1122,7 @@ impl<B: Base> EndianNat<B> {
             x.len() > 0,
         ensures
             Self::to_big(x).len() == 1,
-            Self::to_big(x).index(0) == x.to_nat() as int,
+            Self::to_big(x)[0] == x.to_nat(),
     {
         broadcast use EndianNat::exp_properties;
 

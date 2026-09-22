@@ -4815,3 +4815,25 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] normalization_issue2350 verus_code! {
+        use vstd::prelude::*;
+        trait Foo {
+            type T;
+
+            fn f(&self, i: u8) -> Self::T;
+        }
+
+        impl<T, F> Foo for F
+        where
+            F: Fn(u8) -> T,
+        {
+            type T = T;
+
+            fn f(&self, i: u8) -> Self::T {
+                (self)(i)
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Call to non-static function fails to satisfy `callee.requires(args)`")
+}

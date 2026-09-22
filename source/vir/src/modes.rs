@@ -876,7 +876,7 @@ fn add_pattern(
     pattern: &Pattern,
 ) -> Result<(), VirErr> {
     let mut decls = vec![];
-    add_pattern_rec(ctxt, record, typing, &mut decls, mode, pattern, false)?;
+    add_pattern_rec(ctxt, record, typing, &mut decls, mode, pattern)?;
     for decl in decls {
         let PatternBoundDecl { span: _, name, mode } = decl;
         typing.insert(&name, mode, proph_var.clone());
@@ -898,23 +898,15 @@ fn add_pattern_rec(
     decls: &mut Vec<PatternBoundDecl>,
     mode: Mode,
     pattern: &Pattern,
-    // Is the parent node of this node an 'Or'
-    in_or: bool,
 ) -> Result<(), VirErr> {
-    // Testing this condition prevents us from adding duplicate spans into var_modes
-    if !(in_or && matches!(&pattern.x, PatternX::Or(..)))
-        && !matches!(&pattern.x, PatternX::Wildcard(true))
-        && !matches!(&pattern.x, PatternX::Expr(_))
-        && !matches!(&pattern.x, PatternX::ImmutRef(_))
-        && !matches!(&pattern.x, PatternX::MutRef(_))
-    {
+    if matches!(&pattern.x, PatternX::Var(..) | PatternX::Binding { .. }) {
         record.erasure_modes.var_modes.push((pattern.span.clone(), (mode, mode)));
     }
 
     let mode = if typing.in_pure { Mode::Spec } else { mode };
 
     match &pattern.x {
-        PatternX::Wildcard(_dd) => Ok(()),
+        PatternX::Wildcard => Ok(()),
         PatternX::Var(PatternBinding { name: x, user_mut: _, by_ref, typ: _, copy: _ }) => {
             check_binding(&pattern.span, by_ref, mode)?;
             decls.push(PatternBoundDecl { span: pattern.span.clone(), name: x.clone(), mode });
@@ -925,7 +917,7 @@ fn add_pattern_rec(
             sub_pat,
         } => {
             check_binding(&pattern.span, by_ref, mode)?;
-            add_pattern_rec(ctxt, record, typing, decls, mode, sub_pat, false)?;
+            add_pattern_rec(ctxt, record, typing, decls, mode, sub_pat)?;
             decls.push(PatternBoundDecl { span: pattern.span.clone(), name: x.clone(), mode });
             Ok(())
         }
@@ -957,7 +949,6 @@ fn add_pattern_rec(
                     decls,
                     mode_join(field_mode, mode),
                     &binder.a,
-                    false,
                 )?;
             }
             Ok(())
@@ -965,8 +956,8 @@ fn add_pattern_rec(
         PatternX::Or(pat1, pat2) => {
             let mut decls1 = vec![];
             let mut decls2 = vec![];
-            add_pattern_rec(ctxt, record, typing, &mut decls1, mode, pat1, true)?;
-            add_pattern_rec(ctxt, record, typing, &mut decls2, mode, pat2, true)?;
+            add_pattern_rec(ctxt, record, typing, &mut decls1, mode, pat1)?;
+            add_pattern_rec(ctxt, record, typing, &mut decls2, mode, pat2)?;
 
             // Rust type-checking should have made sure that both sides
             // of the pattern bound the same variables with the same types.
@@ -1010,12 +1001,8 @@ fn add_pattern_rec(
             }
             Ok(())
         }
-        PatternX::ImmutRef(sub_pat) => {
-            add_pattern_rec(ctxt, record, typing, decls, mode, sub_pat, false)
-        }
-        PatternX::MutRef(sub_pat) => {
-            add_pattern_rec(ctxt, record, typing, decls, mode, sub_pat, false)
-        }
+        PatternX::ImmutRef(sub_pat) => add_pattern_rec(ctxt, record, typing, decls, mode, sub_pat),
+        PatternX::MutRef(sub_pat) => add_pattern_rec(ctxt, record, typing, decls, mode, sub_pat),
     }
 }
 
