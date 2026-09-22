@@ -1929,6 +1929,7 @@ pub(crate) fn expr_to_stm_opt(
                 }
             }
         }
+        ExprX::UnaryOpr(UnaryOpr::AutoRevealLiteral, arg) => expr_to_stm_opt(ctx, state, arg),
         ExprX::Unary(op, exprr) => {
             let (mut stms, exp) = expr_to_stm_opt(ctx, state, exprr)?;
             let exp = to_exp_or_return_never!(exp, stms);

@@ -1267,6 +1267,11 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 // the inner expression.
                 return exp_to_expr(ctx, e, expr_ctxt);
             }
+            UnaryOpr::AutoRevealLiteral => {
+                // `AutoRevealLiteral` is just a marker for revealing literal values
+                // and has no effect on the expression's value.
+                return exp_to_expr(ctx, e, expr_ctxt);
+            }
             UnaryOpr::HasResolved(t) => {
                 let mut exprs: Vec<Expr> = typ_to_ids(t);
                 exprs.push(exp_to_expr(ctx, e, expr_ctxt)?);
@@ -2954,31 +2959,24 @@ fn loop_to_stmts(
     Ok(stmts)
 }
 
-// Collect only literals in the annotated function's contracts and body.
+// Collect only selected literal occurrences in this function's contracts and body.
 // Do not traverse called functions or expose unrelated literals in the module.
 // Spec-definition translation can also use these facts under its fuel guard.
 pub(crate) fn function_literal_facts(ctx: &Ctx, fun: &Fun) -> Vec<Expr> {
     let function = &ctx.func_map[fun];
-    let attrs = &function.x.attrs;
-    if !attrs.auto_reveal_strlit && !attrs.auto_reveal_byteslit {
-        return vec![];
-    }
-
     let mut strings = Vec::new();
     let mut byte_strings = Vec::new();
     crate::ast_visitor::function_visitor_check(function, &mut |expr| {
-        match &expr.x {
-            crate::ast::ExprX::Const(crate::ast::Constant::StrSlice(literal))
-                if attrs.auto_reveal_strlit =>
-            {
-                strings.push(literal.clone());
+        if let crate::ast::ExprX::UnaryOpr(UnaryOpr::AutoRevealLiteral, literal) = &expr.x {
+            match &literal.x {
+                crate::ast::ExprX::Const(crate::ast::Constant::StrSlice(literal)) => {
+                    strings.push(literal.clone());
+                }
+                crate::ast::ExprX::Const(crate::ast::Constant::ByteStr(literal)) => {
+                    byte_strings.push(literal.clone());
+                }
+                _ => panic!("AutoRevealLiteral must wrap a string or byte-string literal"),
             }
-            crate::ast::ExprX::Const(crate::ast::Constant::ByteStr(literal))
-                if attrs.auto_reveal_byteslit =>
-            {
-                byte_strings.push(literal.clone());
-            }
-            _ => {}
         }
         Ok::<(), std::convert::Infallible>(())
     })

@@ -1042,7 +1042,9 @@ fn check_expr_in_pattern(expr: &Expr) -> Result<(), VirErr> {
             check_expr_in_pattern(expr1)?;
             check_expr_in_pattern(expr2)
         }
-        ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(..), expr1) => check_expr_in_pattern(expr1),
+        ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(..) | UnaryOpr::AutoRevealLiteral, expr1) => {
+            check_expr_in_pattern(expr1)
+        }
         _ => Err(error(&expr.span, "Verus Internal Error: bad PatternX::Expr")),
     }
 }
@@ -2203,7 +2205,8 @@ fn check_expr(
             let mode_read = Mode::Spec;
             Ok((mode_read, proph))
         }
-        ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(_kind), e1) => {
+        ExprX::UnaryOpr(UnaryOpr::AutoRevealLiteral, e1)
+        | ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(_), e1) => {
             let (mode, proph) =
                 check_expr(ctxt, record, typing, outer_mode, expect, e1, outer_proph)?;
             Ok((mode, proph))

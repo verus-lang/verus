@@ -423,6 +423,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             UnaryOpr::CustomErr(_)
             | UnaryOpr::ProofNote(_)
             | UnaryOpr::AutoDecreases
+            | UnaryOpr::AutoRevealLiteral
             | UnaryOpr::AutoLoopEnsures,
             e1,
         ) => gather_terms(ctxt, ctx, e1, depth),

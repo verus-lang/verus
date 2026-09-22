@@ -637,6 +637,7 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 UnaryOpr::CustomErr(_)
                 | UnaryOpr::ProofNote(_)
                 | UnaryOpr::AutoDecreases
+                | UnaryOpr::AutoRevealLiteral
                 | UnaryOpr::AutoLoopEnsures => {
                     mk_exp_typ(&e1.typ, ExpX::UnaryOpr(op.clone(), e1.clone()))
                 }
