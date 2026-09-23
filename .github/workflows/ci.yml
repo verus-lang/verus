@@ -38,6 +38,12 @@ jobs:
       - name: setup verusfmt
         run: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/verus-lang/verusfmt/releases/latest/download/verusfmt-installer.sh | sh
 
+      - name: check formatting of `dependencies`
+        working-directory: ./dependencies
+        run: |
+          cargo fmt --check --manifest-path prettyplease/Cargo.toml
+          cargo fmt --check --manifest-path syn/Cargo.toml
+
       - name: check rustfmt/verusfmt
         working-directory: ./source
         run: |
