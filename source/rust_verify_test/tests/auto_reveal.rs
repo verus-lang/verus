@@ -671,3 +671,157 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+// Attributes on compound expressions and closure expressions.
+
+test_verify_one_file! {
+    #[test] test_expression_call_enable verus_code! {
+        use vstd::prelude::*;
+
+        spec fn identity<A>(x: A) -> A { x }
+
+        proof fn test() {
+            let s = #[verifier::auto_reveal_strlit] identity("abc"@);
+            let b = #[verifier::auto_reveal_byteslit] identity(b"def"@);
+            assert(s[1] == 'b');
+            assert(b[1] == b'e');
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_expression_call_disable verus_code! {
+        use vstd::prelude::*;
+
+        spec fn identity<A>(x: A) -> A { x }
+
+        #[verifier::auto_reveal_strlit]
+        proof fn strings() {
+            let s = #[verifier::auto_reveal_strlit(false)] identity("abc"@);
+            assert(s[1] == 'b'); // FAILS
+        }
+
+        #[verifier::auto_reveal_byteslit]
+        proof fn bytes() {
+            let b = #[verifier::auto_reveal_byteslit(false)] identity(b"def"@);
+            assert(b[1] == b'e'); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] test_expression_exec_closure_enable verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let f = #[verifier::auto_reveal_strlit]
+                #[verifier::auto_reveal_byteslit] || {
+                    assert("abc"@[1] == 'b');
+                    assert(b"def"@[1] == b'e');
+                };
+            f();
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_expression_exec_closure_disable verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::auto_reveal_strlit]
+        #[verifier::auto_reveal_byteslit]
+        fn strings() {
+            let f = #[verifier::auto_reveal_strlit(false)] || {
+                assert(b"abc"@[1] == b'b');
+                assert("def"@[1] == 'e'); // FAILS
+            };
+            f();
+        }
+
+        #[verifier::auto_reveal_strlit]
+        #[verifier::auto_reveal_byteslit]
+        fn bytes() {
+            let f = #[verifier::auto_reveal_byteslit(false)] || {
+                assert("ghi"@[1] == 'h');
+                assert(b"jkl"@[1] == b'k'); // FAILS
+            };
+            f();
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] test_expression_spec_closure_enable verus_code! {
+        use vstd::prelude::*;
+
+        proof fn test() {
+            let s = #[verifier::auto_reveal_strlit] |i: int| "abc"@[i];
+            let b = #[verifier::auto_reveal_byteslit] |i: int| b"def"@[i];
+            assert(s(1) == 'b');
+            assert(b(1) == b'e');
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_expression_spec_closure_disable verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::auto_reveal_strlit]
+        proof fn strings() {
+            let s = #[verifier::auto_reveal_strlit(false)] |i: int| "abc"@[i];
+            assert(s(1) == 'b'); // FAILS
+        }
+
+        #[verifier::auto_reveal_byteslit]
+        proof fn bytes() {
+            let b = #[verifier::auto_reveal_byteslit(false)] |i: int| b"def"@[i];
+            assert(b(1) == b'e'); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] test_expression_nested_closure_override verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let outer = #[verifier::auto_reveal_strlit]
+                #[verifier::auto_reveal_byteslit] || {
+                    assert("abc"@[1] == 'b');
+                    assert(b"def"@[1] == b'e');
+                    let inner = #[verifier::auto_reveal_strlit(false)]
+                        #[verifier::auto_reveal_byteslit(false)] || {
+                            let s = #[verifier::auto_reveal_strlit] "ghi";
+                            let b = #[verifier::auto_reveal_byteslit] b"jkl";
+                            assert(s@[1] == 'h');
+                            assert(b@[1] == b'k');
+                        };
+                    inner();
+                };
+            outer();
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_expression_closure_call_site_is_not_definition_scope verus_code! {
+        use vstd::prelude::*;
+
+        fn strings() {
+            let f = || {
+                assert("abc"@[1] == 'b'); // FAILS
+            };
+            #[verifier::auto_reveal_strlit]
+            f();
+        }
+
+        fn bytes() {
+            let f = || {
+                assert(b"def"@[1] == b'e'); // FAILS
+            };
+            #[verifier::auto_reveal_byteslit]
+            f();
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
