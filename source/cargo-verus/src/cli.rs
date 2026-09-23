@@ -74,6 +74,10 @@ pub struct VerifyCommand {
     #[arg(short, long, action = ArgAction::Count)]
     pub verbosity: u8,
 
+    /// Force verification of `trusted_crates`.
+    #[arg(long)]
+    pub verify_trusted: bool,
+
     /// Check toolchain components, e.g. version compatibility of verus and vstd.
     #[arg(long)]
     pub check_toolchain: bool,

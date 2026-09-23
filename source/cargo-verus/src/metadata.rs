@@ -107,12 +107,12 @@ impl<'a> MetadataIndex<'a> {
     /// `Cargo.toml` manifests of `roots`.
     ///
     /// If the resulting set intersects `roots`, fail with an error.
-    pub fn get_trusted_crates(
+    pub fn get_trusted(
         &self,
-        roots: &Set<PackageId>,
+        root_packages: &Set<PackageId>,
         all_packages: &Set<PackageId>,
     ) -> Set<PackageId> {
-        let trusted_names: Set<String> = roots
+        let trusted_names: Set<String> = root_packages
             .iter()
             .flat_map(|root| self.get(root).verus_metadata.trusted_crates.iter().cloned())
             .collect();
@@ -123,7 +123,7 @@ impl<'a> MetadataIndex<'a> {
             .collect();
 
         let trusted_roots: Vec<String> = trusted_crates
-            .intersection(roots)
+            .intersection(root_packages)
             .map(|package_id| self.get(package_id).package.name.to_string())
             .collect();
         assert!(
@@ -386,7 +386,7 @@ mod tests {
 
         let all_packages = index.get_transitive_closure(roots.clone());
         let trusted_names: Set<String> = index
-            .get_trusted_crates(&roots, &all_packages)
+            .get_trusted(&roots, &all_packages)
             .iter()
             .map(|package_id| index.get(package_id).package.name.to_string())
             .collect();
