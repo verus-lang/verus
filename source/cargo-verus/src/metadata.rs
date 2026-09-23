@@ -12,6 +12,8 @@ use sha2::{Digest, Sha256};
 pub struct VerusMetadata {
     #[serde(default)]
     pub verify: bool,
+    #[serde(default)]
+    pub trusted_crates: Set<String>,
     #[serde(rename = "no-vstd", default)]
     pub no_vstd: bool,
     #[serde(rename = "is-vstd", default)]
