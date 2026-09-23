@@ -73,7 +73,8 @@ pub enum LineContent {
     TypeDefinition,
     Trait,
     ProofBlock,
-    ProofDirective, // Assert, Assume, Reveal, ...
+    ProofDirective, // Assert, Reveal, ...
+    Assumption,     // assume(...), admit()
     ProofBinding,
     Impl,
     Signature(CodeKind),
