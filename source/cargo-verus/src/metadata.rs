@@ -103,10 +103,10 @@ impl<'a> MetadataIndex<'a> {
         visited
     }
 
-    /// Collect the trusted crates for the build by unioning the `trusted_crates` sets from the
-    /// `Cargo.toml` manifests of `roots`.
+    /// Collect the trusted packages for the build by unioning the `trusted_crates` sets from the
+    /// `Cargo.toml` manifests of `root_packages`.
     ///
-    /// If the resulting set intersects `roots`, fail with an error.
+    /// If the resulting set intersects `root_packages`, fail with an error.
     pub fn get_trusted(
         &self,
         root_packages: &Set<PackageId>,
@@ -116,13 +116,13 @@ impl<'a> MetadataIndex<'a> {
             .iter()
             .flat_map(|root| self.get(root).verus_metadata.trusted_crates.iter().cloned())
             .collect();
-        let trusted_crates: Set<PackageId> = all_packages
+        let trusted_packages: Set<PackageId> = all_packages
             .iter()
             .filter(|package_id| trusted_names.contains(self.get(package_id).package.name.as_str()))
             .cloned()
             .collect();
 
-        let trusted_roots: Vec<String> = trusted_crates
+        let trusted_roots: Vec<String> = trusted_packages
             .intersection(root_packages)
             .map(|package_id| self.get(package_id).package.name.to_string())
             .collect();
@@ -132,7 +132,7 @@ impl<'a> MetadataIndex<'a> {
             trusted_roots.join(", "),
         );
 
-        trusted_crates
+        trusted_packages
     }
 
     /// Names to pass via `--import-dep-if-present` for every `verify=true`
