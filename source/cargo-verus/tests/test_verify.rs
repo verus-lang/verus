@@ -448,7 +448,7 @@ fn workspace_renamed_dependency_import_uses_workspace_alias() {
 }
 
 #[test]
-fn crate_with_verified_dep() {
+fn crate_with_trusted_dep() {
     let root = "root";
     let trusted_child = "trusted_child";
     let untrusted_grandchild = "untrusted_grandchild";

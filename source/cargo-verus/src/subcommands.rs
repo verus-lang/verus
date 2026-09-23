@@ -188,7 +188,6 @@ pub fn plan_cargo_run(mut cfg: VerusConfig) -> Result<CargoRunPlan> {
     let root_packages: Set<PackageId> =
         included_packages.iter().map(|package| package.id.clone()).collect();
     let all_packages = metadata_index.get_transitive_closure(root_packages.clone());
-
     let dep_packages: Set<PackageId> = all_packages.difference(&root_packages).cloned().collect();
 
     let build_only_vstd = if cfg.subcommand == "build"
