@@ -109,7 +109,7 @@ jobs:
               - 'source/cargo-verus/**'
               - 'source/cargo-verus-toolchains/**'
 
-  # run cargo-verus tests
+  # run cargo-verus (and -toolchains) tests
   cargo-verus-test:
     needs: [fmt, clippy, change_filter]
     runs-on: ubuntu-24.04
@@ -131,7 +131,9 @@ jobs:
       - name: cargo-verus tests
         if: needs.change_filter.outputs.cargo_verus == 'true'
         working-directory: ./source
-        run: cargo test -p cargo-verus
+        run: |
+          cargo test -p cargo-verus
+          cargo test -p cargo-verus-toolchains
 
   # run line_count tests
   line-count-test:
