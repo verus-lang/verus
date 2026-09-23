@@ -2175,6 +2175,17 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 }
                 _ => remove_decoration_typs_for_unsizing(bctx.ctxt.tcx, ty1, ty2),
             };
+            // A `dyn Trait + Send` to `dyn Trait` coercion drops only auto-trait bounds,
+            // which the VIR encoding does not carry; both sides have the same VIR type
+            // and the coercion is the identity. Emitting `ToDyn` here would re-box an
+            // already-boxed value and lose every fact about it (cf. the no-op case above).
+            if let (TyKind::Dynamic(_, _), TyKind::Dynamic(_, _)) = (tyr1.kind(), tyr2.kind()) {
+                let v1 = bctx.mid_ty_to_vir(expr.span, &tyr1)?;
+                let v2 = bctx.mid_ty_to_vir(expr.span, &tyr2)?;
+                if vir::ast_util::types_equal(&v1, &v2) {
+                    return Ok(ExprOrPlace::Expr(arg.consume(bctx, ty1)));
+                }
+            }
             let op = match (tyr1.kind(), tyr2.kind()) {
                 (_, TyKind::Dynamic(preds, _)) => {
                     let vir_ty = bctx.mid_ty_to_vir(expr.span, &tyr1)?;
