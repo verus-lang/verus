@@ -451,6 +451,7 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
                                     _ => {}
                                 }
                             } else if Some(trait_def_id) == tcx.lang_items().sized_trait()
+                                || Some(trait_def_id) == tcx.lang_items().unpin_trait()
                                 || Some(trait_def_id) == tcx.lang_items().meta_sized_trait()
                                 || Some(trait_def_id) == tcx.lang_items().copy_trait()
                                 || Some(trait_def_id) == tcx.lang_items().tuple_trait()
