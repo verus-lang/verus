@@ -1006,7 +1006,7 @@ pub fn func_sst_to_air(
         &function.x.typ_bounds,
         &function.x.pars,
         func_check_sst,
-        &function.x.attrs.hidden,
+        &function.x.hidden,
         function.x.attrs.integer_ring,
         function.x.attrs.bit_vector,
         function.x.attrs.nonlinear,

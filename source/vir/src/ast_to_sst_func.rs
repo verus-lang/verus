@@ -1174,6 +1174,7 @@ pub fn function_to_sst(
             Some(async_ret) => Some(param_to_par(async_ret)),
             None => None,
         },
+        hidden: function.x.hidden.clone(),
     };
     Ok(function.new_x(functionx))
 }

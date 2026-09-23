@@ -75,7 +75,7 @@ test_verify_one_file_with_options! {
             }
         }
     } => Err(err) => assert_vir_error_msgs(err, &[
-        "no_method_body can only appear in trait method declarations",
+        "trait declaration with no_method_body() should start with VERUS_SPEC__",
         "no_method_body can only appear in trait method declarations",
     ])
 }

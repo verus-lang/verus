@@ -1239,7 +1239,7 @@ pub(crate) struct ExternalAttrs {
     pub(crate) structural_const_wrapper: bool,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct VerifierAttrs {
     pub(crate) verus_macro: bool,
     pub(crate) external_body: bool,

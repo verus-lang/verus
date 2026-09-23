@@ -707,6 +707,7 @@ pub fn inherit_default_bodies(
                     body: None,
                     extra_dependencies: vec![],
                     async_ret: None,
+                    hidden: Arc::new(vec![]),
                 };
                 let warn_config = warning_ctx.fun_warn_configs[&default_function.x.name].clone();
                 warning_ctx.fun_warn_configs.insert(inherit_functionx.name.clone(), warn_config);

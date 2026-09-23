@@ -982,7 +982,7 @@ fn can_inline_function(
         fun_to_inline.x.opaqueness.get_fuel_for_module(&fun_to_inline.x.name, &ctx.module);
     let mut hidden = false;
 
-    let fs_to_hide = &fun_owner.x.attrs.hidden;
+    let fs_to_hide = &fun_owner.x.hidden;
     for f_to_hide in &**fs_to_hide {
         if **f_to_hide == *fun_to_inline.x.name {
             fuel = 0;
