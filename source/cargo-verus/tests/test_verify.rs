@@ -446,3 +446,70 @@ fn workspace_renamed_dependency_import_uses_workspace_alias() {
         "expected alias (not package name) for direct renamed workspace dep, got: {driver_args:?}",
     );
 }
+
+#[test]
+fn crate_with_verified_dep() {
+    let root = "root";
+    let trusted_child = "trusted_child";
+    let untrusted_grandchild = "untrusted_grandchild";
+    let workspace_dir = MockWorkspace::new()
+        .members([
+            MockPackage::new(root)
+                .lib()
+                .verify(true)
+                .trusted_crates([trusted_child])
+                .deps([MockDep::workspace(trusted_child)]),
+            MockPackage::new(trusted_child)
+                .lib()
+                .verify(true)
+                .deps([MockDep::workspace(untrusted_grandchild)]),
+            MockPackage::new(untrusted_grandchild).lib().verify(true),
+        ])
+        .materialize();
+
+    let plan = plan_execution(workspace_dir.path(), [BIN_NAME, "verify", "--package", root])
+        .expect("plan");
+    let ExecutionPlan::RunCargo(cargo_plan) = plan else {
+        panic!("expected `ExecutionPlan::RunCargo`");
+    };
+
+    let trusted_child_args = cargo_plan.parse_driver_args_for_key_prefix(&format!(
+        "{VERUS_DRIVER_ARGS_FOR}{trusted_child}-0.1.0-"
+    ));
+    assert!(trusted_child_args.contains(&"--no-verify"));
+
+    let untrusted_grandchild_args = cargo_plan.parse_driver_args_for_key_prefix(&format!(
+        "{VERUS_DRIVER_ARGS_FOR}{untrusted_grandchild}-0.1.0-"
+    ));
+    assert!(!untrusted_grandchild_args.contains(&"--no-verify"));
+}
+
+#[test]
+fn crate_with_trusted_dep_verify_trusted() {
+    let root = "root";
+    let trusted_child = "trusted_child";
+    let workspace_dir = MockWorkspace::new()
+        .members([
+            MockPackage::new(root)
+                .lib()
+                .verify(true)
+                .trusted_crates([trusted_child])
+                .deps([MockDep::workspace(trusted_child)]),
+            MockPackage::new(trusted_child).lib().verify(true),
+        ])
+        .materialize();
+
+    let plan = plan_execution(
+        workspace_dir.path(),
+        [BIN_NAME, "verify", "--verify-trusted", "--package", root],
+    )
+    .expect("plan");
+    let ExecutionPlan::RunCargo(cargo_plan) = plan else {
+        panic!("expected `ExecutionPlan::RunCargo`");
+    };
+
+    let trusted_child_args = cargo_plan.parse_driver_args_for_key_prefix(&format!(
+        "{VERUS_DRIVER_ARGS_FOR}{trusted_child}-0.1.0-"
+    ));
+    assert!(!trusted_child_args.contains(&"--no-verify"));
+}
