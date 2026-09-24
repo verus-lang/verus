@@ -473,7 +473,7 @@ pub tracked struct PointsTo<T: ?Sized> {
 /// whose bytes may decode to a valid value of type `T`.
 /// We track the pointer to that memory,
 /// the (possibly-valid) typed value, and its abstract bytes.
-/// 
+///
 /// Data associated with a `PointsTo` permission.
 /// We keep track of both the pointer, the (potentially uninitialized) value
 /// it points to, and the abstract bytes in memory corresponding to Rust's abstract machine.
@@ -644,7 +644,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
     /// In addition to the well-formed-ness properties which must hold of every `SeqPointsTo`,
     /// the `*mut T` pointer must be aligned to `T`.
     pub open spec fn wf(self) -> bool {
-        &&& self.wf_basic() 
+        &&& self.wf_basic()
         &&& self.ptr()@.addr as nat % align_of::<T>() == 0
     }
 
@@ -656,10 +656,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
     }
 
     pub open spec fn bytes_inner(perms: Seq<PointsTo<T>>) -> Seq<AbstractByte> {
-        perms.fold_left(
-            Seq::empty(),
-            |acc: Seq<AbstractByte>, elt: PointsTo<T>| acc + elt.bytes(),
-        )
+        perms.fold_left(Seq::empty(), |acc: Seq<AbstractByte>, elt: PointsTo<T>| acc + elt.bytes())
     }
 
     pub open spec fn typed_value(self) -> Seq<TypedValue<T>> {
@@ -720,13 +717,29 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             // Criteria necessary for re-establishing invariants
             (old(self).len() == final(self).len() && forall|i|
                 #![auto]
-                0 <= i < final(self).len() ==> final(self)[i].ptr() == old(self)[i].ptr())
-                ==> final(self).wf(),
+                0 <= i < final(self).len() ==> {
+                    &&& final(self)[i].ptr() == old(self)[i].ptr()
+                    &&& final(self)[i].is_valid() ==> abs_decode::<T>(
+                        final(self)[i].bytes(),
+                        &final(self)[i].value(),
+                    )
+                    &&& final(self)[i].bytes().len() == size_of::<T>()
+                    &&& final(self)[i].pt_unaligned().pt_untyped().ptr() == old(
+                        self,
+                    )[i].pt_unaligned().pt_untyped().ptr()
+                    &&& final(self)[i].pt_unaligned().pt_untyped().len() == old(
+                        self,
+                    )[i].pt_unaligned().pt_untyped().len()
+                    &&& forall|j: int|
+                        0 <= j < final(self)[i].pt_unaligned().pt_untyped().len()
+                            ==> final(self)[i].pt_unaligned().pt_untyped()[j].ptr() == old(
+                            self,
+                        )[i].pt_unaligned().pt_untyped()[j].ptr()
+                }) ==> final(self).wf(),
     {
         &mut self.seq_pt
-    }
-
-    // /// Specializes `is_disjoint` to the case when the other permission is a `PointsToUntyped`.
+    }  // /
+    // Specializes `is_disjoint` to the case when the other permission is a `PointsToUntyped`.
     // pub proof fn is_disjoint_untyped(tracked &mut self, tracked other: &PointsToUntyped)
     //     requires
     //         self.len() != 0,
@@ -741,6 +754,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
     //     assert(other.size() == other.len() * other.seq_pt()[0].size());
     //     self.is_disjoint(other);
     // }
+
 }
 
 } // verus!
