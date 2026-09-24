@@ -705,6 +705,27 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         &self.seq_pt
     }
 
+    /// Returns a `tracked` mutable reference to the underlying `Seq<PointsTo<T>>`,
+    /// given `tracked &mut self`. `self.ptr` will remain unchanged.
+    ///
+    /// Provided that this mutable reference is not used to change the sequence length
+    /// or any of the `PointsTo<T>` pointers, the invariant will be preserved.
+    pub proof fn tracked_seq_pt_mut(tracked &mut self) -> (tracked ret: &mut Seq<PointsTo<T>>)
+        requires
+            self.wf(),
+        ensures
+            *ret == old(self).seq_pt(),
+            final(self).seq_pt() == *final(ret),
+            old(self).ptr() == final(self).ptr(),
+            // Criteria necessary for re-establishing invariants
+            (old(self).len() == final(self).len() && forall|i|
+                #![auto]
+                0 <= i < final(self).len() ==> final(self)[i].ptr() == old(self)[i].ptr())
+                ==> final(self).wf(),
+    {
+        &mut self.seq_pt
+    }
+
     // /// Specializes `is_disjoint` to the case when the other permission is a `PointsToUntyped`.
     // pub proof fn is_disjoint_untyped(tracked &mut self, tracked other: &PointsToUntyped)
     //     requires
