@@ -11,14 +11,14 @@ verus! {
 
 broadcast use group_vstd_default;
 
-pub tracked struct SeqPointsTo<T: ?Sized, PointsToPerm: PointsToProperties + FixedSizeParam> {
+pub tracked struct SeqPointsTo<T: ?Sized, PointsToPerm: PointsToProperties + FixedSize> {
     seq_pt: Seq<PointsToPerm>,
     ptr: Ghost<*mut T>,
 }
 
-impl<T, PointsToPerm> PointsToParam for SeqPointsTo<T, PointsToPerm> where
+impl<T, PointsToPerm> PointsToPhys for SeqPointsTo<T, PointsToPerm> where
     T: ?Sized,
-    PointsToPerm: PointsToProperties + FixedSizeParam,
+    PointsToPerm: PointsToProperties + FixedSize,
  {
     type A = T;
 
@@ -35,7 +35,7 @@ impl<T, PointsToPerm> PointsToParam for SeqPointsTo<T, PointsToPerm> where
 
 impl<T, PointsToPerm> PointsToProperties for SeqPointsTo<T, PointsToPerm> where
     T: ?Sized,
-    PointsToPerm: PointsToProperties + FixedSizeParam,
+    PointsToPerm: PointsToProperties + FixedSize,
  {
     open spec fn wf_basic(self) -> bool {
         // Defining the provenance and address for the individual PointsToPerms
@@ -82,7 +82,7 @@ impl<T, PointsToPerm> PointsToProperties for SeqPointsTo<T, PointsToPerm> where
         }
     }
 
-    proof fn is_disjoint<OtherPointsToPerm: PointsToParam>(
+    proof fn is_disjoint<OtherPointsToPerm: PointsToPhys>(
         tracked &mut self,
         tracked other: &OtherPointsToPerm,
     ) {
@@ -128,7 +128,7 @@ impl<T, PointsToPerm> PointsToProperties for SeqPointsTo<T, PointsToPerm> where
 
 impl<T, PointsToPerm> SeqPointsTo<T, PointsToPerm> where
     T: ?Sized,
-    PointsToPerm: PointsToProperties + FixedSizeParam,
+    PointsToPerm: PointsToProperties + FixedSize,
  {
     /// The sequence of permissions that the `SeqPointsTo` contains.
     pub closed spec fn seq_pt(self) -> Seq<PointsToPerm> {
@@ -272,7 +272,7 @@ impl<T: ?Sized> PointsToUnaligned<T> {
     }
 }
 
-impl<T> PointsToParam for PointsToUnaligned<T> {
+impl<T> PointsToPhys for PointsToUnaligned<T> {
     type A = T;
 
     /// Casts the underlying untyped pointer to a `*mut T`.
@@ -286,7 +286,7 @@ impl<T> PointsToParam for PointsToUnaligned<T> {
     }
 }
 
-impl<T> FixedSizeParam for PointsToUnaligned<T> {
+impl<T> FixedSize for PointsToUnaligned<T> {
     /// A `PointsToUnaligned<T>` always tracks `size_of::<T>()` bytes of memory.
     open spec fn const_size() -> nat {
         size_of::<T>()
@@ -324,7 +324,7 @@ impl<T> PointsToProperties for PointsToUnaligned<T> {
 
     /// Delegates to the underlying `PointsToUntyped`'s `is_disjoint`,
     /// since the two permissions track the same memory range.
-    proof fn is_disjoint<OtherPointsToPerm: PointsToParam>(
+    proof fn is_disjoint<OtherPointsToPerm: PointsToPhys>(
         tracked &mut self,
         tracked other: &OtherPointsToPerm,
     ) {
@@ -540,7 +540,7 @@ impl<T: ?Sized> PointsTo<T> {
     }
 }
 
-impl<T> PointsToParam for PointsTo<T> {
+impl<T> PointsToPhys for PointsTo<T> {
     type A = T;
 
     /// Delegates to the underlying `PointsToUnaligned`'s pointer.
@@ -554,7 +554,7 @@ impl<T> PointsToParam for PointsTo<T> {
     }
 }
 
-impl<T> FixedSizeParam for PointsTo<T> {
+impl<T> FixedSize for PointsTo<T> {
     /// A `PointsTo<T>` always tracks `size_of::<T>()` bytes of memory.
     open spec fn const_size() -> nat {
         size_of::<T>()
@@ -590,7 +590,7 @@ impl<T> PointsToProperties for PointsTo<T> {
 
     /// Delegates to the underlying `PointsToUnaligned`'s `is_disjoint`,
     /// since the two permissions track the same memory range.
-    proof fn is_disjoint<OtherPointsToPerm: PointsToParam>(
+    proof fn is_disjoint<OtherPointsToPerm: PointsToPhys>(
         tracked &mut self,
         tracked other: &OtherPointsToPerm,
     ) {

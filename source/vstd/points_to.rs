@@ -12,7 +12,7 @@ broadcast use group_vstd_default;
 
 /// Defines parameters common to all `PointsTo` permissions:
 /// the pointer to memory and the size of the pointed-to region.
-pub trait PointsToParam: Sized { // TODO: rename to PointsToPhys
+pub trait PointsToPhys: Sized {
     type A: ?Sized; //caller choice vs implementor choice, so maybe can go with implementor
 
     /// The pointer that this permission is associated with.
@@ -22,16 +22,16 @@ pub trait PointsToParam: Sized { // TODO: rename to PointsToPhys
     spec fn size(self) -> nat;
 }
 
-/// Restricts `PointsToParam` to permissions whose pointed-to size is determined by the type alone.
-/// This lets code which is generic over some `PointsToParam`
+/// Restricts `PointsToPhys` to permissions whose pointed-to size is determined by the type alone.
+/// This lets code which is generic over some `PointsToPhys`
 /// rely on all instances of that type reporting the same `size()`
 /// (for example, `SeqPointsTo` requires that every permission in the sequence must track the same size of memory).
-pub trait FixedSizeParam: PointsToParam { // rename to FixedSize
+pub trait FixedSize: PointsToPhys {
     /// The (constant) size of the memory region that this permission tracks,
     /// which is the same for every `PointsTo` permission satisfying this trait bound.
     spec fn const_size() -> nat;
 
-    /// Ensures that the `PointsToParam` size is always the same as the constant size defined here.
+    /// Ensures that the `PointsToPhys` size is always the same as the constant size defined here.
     proof fn size_eq_const_size(tracked &self)
         ensures
             self.size() == Self::const_size(),
@@ -39,7 +39,7 @@ pub trait FixedSizeParam: PointsToParam { // rename to FixedSize
 }
 
 /// Defines properties which should hold of any `PointsTo` permission.
-pub trait PointsToProperties: PointsToParam {
+pub trait PointsToProperties: PointsToPhys {
     /// Define basic well-formed-ness conditions.
     /// This function is designed to apply to a generic trait implementation
     /// of this trait for a `PointsTo` permission,
@@ -91,7 +91,7 @@ pub trait PointsToProperties: PointsToParam {
     /// However, note that if one type is a ZST and the other is a non-ZST,
     /// the disjointness definition as stated here here does not hold,
     /// since the ZST pointer could be in the middle of the non-ZST's range.
-    proof fn is_disjoint<OtherPointsToPerm: PointsToParam>(
+    proof fn is_disjoint<OtherPointsToPerm: PointsToPhys>(
         tracked &mut self,
         tracked other: &OtherPointsToPerm,
     )
@@ -112,7 +112,7 @@ pub tracked struct PointsToSingleton {
     no_copy: NoCopy,
 }
 
-impl PointsToParam for PointsToSingleton {
+impl PointsToPhys for PointsToSingleton {
     type A = u8;
 
     /// This permission points to a single byte of memory.
@@ -147,13 +147,13 @@ impl PointsToProperties for PointsToSingleton {
     /// (`self` is an &mut reference to enforce distinctness,
     /// so you cannot pass the same PointsTo as both arguments.)
     /// Since `u8` is not a ZST, this implies the pointers have distinct addresses.
-    axiom fn is_disjoint<PointsToPerm: PointsToParam>(
+    axiom fn is_disjoint<PointsToPerm: PointsToPhys>(
         tracked &mut self,
         tracked other: &PointsToPerm,
     );
 }
 
-impl FixedSizeParam for PointsToSingleton {
+impl FixedSize for PointsToSingleton {
     /// A `PointsToSingleton` always tracks a single byte of memory.
     open spec fn const_size() -> nat {
         size_of::<u8>()

@@ -192,7 +192,7 @@ own fresh parameter]).
 All of the following are captured directly in the two repro files above, and were also confirmed
 against the original context this was found in (`source/vstd/points_to.rs`,
 `SeqPointsTo::is_disjoint` — a much larger, real-world instance of the exact same shape: a
-`PointsToProperties` trait method `is_disjoint<PointsToPerm: PointsToParam>`, implemented for
+`PointsToProperties` trait method `is_disjoint<PointsToPerm: PointsToPhys>`, implemented for
 `SeqPointsTo<T, PointsToPerm>`, whose own element-type parameter is *also* named `PointsToPerm`).
 
 1. **Crash vs. silent.** The two repro files above, identical except for one type parameter's name,
@@ -288,7 +288,7 @@ to trigger the bug itself, as the minimal repro's plain `&self` demonstrates).
 implementation of the same trait method) sidesteps this entirely by being declared `axiom fn` (no
 body), which is presumably why this bug had not previously surfaced in that file.
 
-The trait originally declared `is_disjoint<PointsToPerm: PointsToParam>(...)` — colliding with
+The trait originally declared `is_disjoint<PointsToPerm: PointsToPhys>(...)` — colliding with
 `SeqPointsTo`'s own outer `PointsToPerm` element-type generic, exactly like the silent repro above
 — which is why `SeqPointsTo::is_disjoint` needed `assume(other.size() != 0)` and still failed its
 `ensures` even with a complete, independently-verified case-split proof of the real goal (see
