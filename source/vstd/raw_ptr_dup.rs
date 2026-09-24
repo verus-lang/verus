@@ -1398,26 +1398,6 @@ impl<T> SeqPointsTo<T> {
         self.perm.tracked_borrow_mut(i)
     }
 
-    /// Sanity check for the criteria for ensuring that the final value of `&mut self` is still well-formed:
-    ///
-    /// * All pointers remain the same.
-    /// * The length remains the same.
-    ///
-    /// Note that we _are_ allowed to change `self.mem_contents()` without affecting the invariant's validity.
-    pub broadcast proof fn constants(&mut self)
-        requires
-            old(self).wf(),
-            forall|i|
-                #![trigger old(self)[i].ptr()]
-                #![trigger final(self)[i].ptr()]
-                0 <= i < final(self).len() ==> old(self)[i].ptr() == final(self)[i].ptr(),
-            old(self).len() == final(self).len(),
-            old(self).ptr() == final(self).ptr(),
-        ensures
-            #[trigger] final(self).wf(),
-    {
-    }
-
     /// Proof of equivalence for two different ways to get the `MemContents<T>` at a given index `i`.
     pub broadcast proof fn mem_contents_equiv(self, i: int)
         requires
