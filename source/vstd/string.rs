@@ -179,8 +179,9 @@ pub trait ExPattern: Sized {
     /// offsets, not char positions.
     spec fn matches_at_bytes(&self, haystack: Seq<u8>, start: int, end: int) -> bool;
 
-    /// Licenses the "didn't match" direction, separate from `matches_at` since
-    /// they aren't simple negations of each other for closures.
+    /// The "didn't match" direction. Equivalent to `!matches_at` for every impl here,
+    /// but kept as its own method since a hypothetical impl not obeying `obeys_pattern_spec`'s
+    /// exclusivity (no input both matches and doesn't) could need it to differ.
     spec fn not_matches_at_witness(&self, haystack: Seq<char>, start: int) -> bool;
 
     /// Byte-offset sibling of `not_matches_at_witness`.
@@ -278,8 +279,14 @@ impl<'b> PatternSpecImpl for &'b [char] {
 
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 impl<F: FnMut(char) -> bool> PatternSpecImpl for F {
+    // At most one of `ensures(_, true)`/`ensures(_, false)` can hold for a given char - not
+    // both. This (NAND, not the stronger "exactly one") is the most that's provable in
+    // general: Verus's closure axioms are all one-directional (`ensures(..) ==> ..`), so a
+    // caller can show a given `ensures` value is false, never that it's true, without an
+    // actual call. NAND only needs the former, so it's provable here purely by case-splitting
+    // on the closure's own `ensures` formula. See PR #2741's discussion with @parno/@tjhance.
     open spec fn obeys_pattern_spec(&self) -> bool {
-        true
+        forall|c: char| !(self.ensures((c,), true) && self.ensures((c,), false))
     }
 
     open spec fn matches_at(&self, haystack: Seq<char>, start: int, end: int) -> bool {
@@ -295,7 +302,7 @@ impl<F: FnMut(char) -> bool> PatternSpecImpl for F {
     }
 
     open spec fn not_matches_at_witness(&self, haystack: Seq<char>, start: int) -> bool {
-        start < haystack.len() ==> self.ensures((haystack[start],), false)
+        start < haystack.len() ==> !PatternSpec::matches_at(self, haystack, start, start + 1)
     }
 
     open spec fn not_matches_at_bytes_witness(
@@ -304,8 +311,7 @@ impl<F: FnMut(char) -> bool> PatternSpecImpl for F {
         start: int,
         end: int,
     ) -> bool {
-        forall|c: char|
-            haystack.subrange(start, end) =~= encode_scalar(c as u32) ==> self.ensures((c,), false)
+        !PatternSpec::matches_at_bytes(self, haystack, start, end)
     }
 }
 
