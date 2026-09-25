@@ -237,7 +237,7 @@ impl<F: FnMut(char) -> bool> PatternSpecImpl for F {
     // general: Verus's closure axioms are all one-directional (`ensures(..) ==> ..`), so a
     // caller can show a given `ensures` value is false, never that it's true, without an
     // actual call. NAND only needs the former, so it's provable here purely by case-splitting
-    // on the closure's own `ensures` formula. See PR #2741's discussion with @parno/@tjhance.
+    // on the closure's own `ensures` formula. See PR #2741's discussion for more.
     open spec fn obeys_pattern_spec(&self) -> bool {
         forall|c: char| !(self.ensures((c,), true) && self.ensures((c,), false))
     }

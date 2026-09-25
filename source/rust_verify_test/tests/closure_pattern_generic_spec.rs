@@ -7,7 +7,7 @@ use common::*;
 // vstd/string.rs) - each wraps a `Pattern` function to prove the same
 // pre/postconditions a hand-written per-call wrapper would, but for any
 // `FnMut(char) -> bool` predicate obeying `obeys_pattern_spec()`. See PR
-// #2741's discussion with @parno/@tjhance.
+// #2741's discussion for more.
 test_verify_one_file_with_options! {
     #[test] generic_starts_with_matches_wrapper ["vstd"] => verus_code! {
         use vstd::prelude::*;
