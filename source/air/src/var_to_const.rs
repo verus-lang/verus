@@ -118,15 +118,28 @@ fn update_breaks_to_versions(
     }
 }
 
-struct LowerStmtState {
+struct LowerStmtState<'a> {
     decls: Vec<Decl>,
     break_versions: HashMap<Ident, Vec<IndexMap<Ident, u32>>>,
     version_decls: HashSet<Ident>,
     all_snapshots: Snapshots,
+    observer: Option<&'a mut dyn crate::air_observer::AirObserver>,
+}
+
+impl LowerStmtState<'_> {
+    fn notify_version_created(
+        &mut self,
+        versioned: &Ident,
+        kind: crate::air_observer::VersionOrigin,
+    ) {
+        if let Some(obs) = &mut self.observer {
+            obs.on_wp_version_created(versioned, kind);
+        }
+    }
 }
 
 fn lower_stmt(
-    state: &mut LowerStmtState,
+    state: &mut LowerStmtState<'_>,
     versions: &mut IndexMap<Ident, u32>,
     snapshots: &mut Snapshots,
     types: &HashMap<Ident, Typ>,
@@ -138,6 +151,7 @@ fn lower_stmt(
     match &*stmt {
         StmtX::Assume(_) | StmtX::Assert(..) => stmt,
         StmtX::Havoc(x) | StmtX::Assign(x, _) => {
+            let is_havoc = matches!(&*stmt, StmtX::Havoc(_));
             let n = find_version(&versions, x);
             let typ = types[x].clone();
             versions.insert(x.clone(), n + 1);
@@ -147,6 +161,12 @@ fn lower_stmt(
                 state.decls.push(decl);
                 state.version_decls.insert(x.clone());
             }
+            let kind = if is_havoc {
+                crate::air_observer::VersionOrigin::Havoc
+            } else {
+                crate::air_observer::VersionOrigin::Assign
+            };
+            state.notify_version_created(&x, kind);
             match &*stmt {
                 StmtX::Assign(_, e) => {
                     let expr1 = Arc::new(ExprX::Var(x));
@@ -182,6 +202,18 @@ fn lower_stmt(
                 state.break_versions.remove(label).expect("break_versions");
             all_versions.insert(0, versions.clone());
             update_versions_from_all_branches(&all_versions, versions);
+            // Notify observer of phantom versions created by break merge reconciliation
+            for x in versions.keys() {
+                let merged_version = versions[x];
+                let had_explicit = all_versions.iter().any(|v| v[x] == merged_version);
+                if !had_explicit {
+                    let renamed = Arc::new(rename_var(x, merged_version));
+                    state.notify_version_created(
+                        &renamed,
+                        crate::air_observer::VersionOrigin::BreakMerge,
+                    );
+                }
+            }
             let mut break_i: usize = 1;
             let s = update_breaks_to_versions(label, &all_versions, versions, &mut break_i, &s);
             assert!(break_i == all_versions.len());
@@ -211,6 +243,18 @@ fn lower_stmt(
                 state.all_snapshots.extend(snapshots_i);
             }
             update_versions_from_all_branches(&all_versions, versions);
+            // Notify observer of phantom versions created by merge reconciliation
+            for x in versions.keys() {
+                let merged_version = versions[x];
+                let had_explicit = all_versions.iter().any(|v| v[x] == merged_version);
+                if !had_explicit {
+                    let renamed = Arc::new(rename_var(x, merged_version));
+                    state.notify_version_created(
+                        &renamed,
+                        crate::air_observer::VersionOrigin::BranchMerge,
+                    );
+                }
+            }
             for i in 0..ss.len() {
                 stmts[i] = update_branch_to_versions(&all_versions[i], versions, &stmts[i], false);
             }
@@ -219,7 +263,10 @@ fn lower_stmt(
     }
 }
 
-pub(crate) fn lower_query(query: &Query) -> (Query, Snapshots, Vec<Decl>) {
+pub(crate) fn lower_query(
+    query: &Query,
+    observer: Option<&mut dyn crate::air_observer::AirObserver>,
+) -> (Query, Snapshots, Vec<Decl>) {
     let QueryX { local, assertion } = &**query;
     let mut decls: Vec<Decl> = Vec::new();
     let mut versions: IndexMap<Ident, u32> = IndexMap::new();
@@ -251,7 +298,8 @@ pub(crate) fn lower_query(query: &Query) -> (Query, Snapshots, Vec<Decl>) {
             local_vars.push(decl.clone());
         }
     }
-    let mut state = LowerStmtState { decls, break_versions, version_decls, all_snapshots };
+    let mut state =
+        LowerStmtState { decls, break_versions, version_decls, all_snapshots, observer };
     let assertion = lower_stmt(&mut state, &mut versions, &mut snapshots, &types, assertion);
     let local = Arc::new(state.decls);
     (Arc::new(QueryX { local, assertion }), state.all_snapshots, local_vars)

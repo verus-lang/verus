@@ -108,6 +108,11 @@ pub struct Context {
     pub(crate) apply_count: u64,
     pub(crate) typing: Typing,
     pub(crate) debug: bool,
+    pub(crate) air_observer:
+        Option<std::rc::Rc<std::cell::RefCell<dyn crate::air_observer::AirObserver>>>,
+    pub(crate) query_result_observer: Option<
+        std::rc::Rc<std::cell::RefCell<dyn crate::query_result_observer::QueryResultObserver>>,
+    >,
     pub(crate) ignore_unexpected_smt: bool,
     pub(crate) rlimit: u32,
     pub(crate) air_initial_log: Emitter,
@@ -154,6 +159,8 @@ impl Context {
                 solver: solver.clone(),
             },
             debug: false,
+            air_observer: None,
+            query_result_observer: None,
             ignore_unexpected_smt: false,
             rlimit: 0,
             air_initial_log: Emitter::new(
@@ -210,6 +217,19 @@ impl Context {
             self.smt_process = Some(SmtProcess::launch(&self.solver, transcript_log));
         }
         self.smt_process.as_mut().unwrap()
+    }
+
+    /// Register observers for AIR passes and for solver results. Either may be `None`;
+    /// with none registered every observer hook is a no-op.
+    pub fn set_observers(
+        &mut self,
+        air_observer: Option<std::rc::Rc<std::cell::RefCell<dyn crate::air_observer::AirObserver>>>,
+        query_result_observer: Option<
+            std::rc::Rc<std::cell::RefCell<dyn crate::query_result_observer::QueryResultObserver>>,
+        >,
+    ) {
+        self.air_observer = air_observer;
+        self.query_result_observer = query_result_observer;
     }
 
     pub fn set_air_initial_log(&mut self, writer: Box<dyn std::io::Write>) {
@@ -498,7 +518,17 @@ impl Context {
             Ok(query) => query,
             Err(err) => return ValidityResult::TypeError(err),
         };
-        let (query, snapshots, local_vars) = crate::var_to_const::lower_query(&query);
+        let (query, snapshots, local_vars) = {
+            // Scope the borrow so it is released before `on_query_lowered` below
+            // (both use the same shared observer handle — no reentrant borrow).
+            let mut guard = self.air_observer.as_ref().map(|o| o.borrow_mut());
+            let obs_ref =
+                guard.as_mut().map(|g| &mut **g as &mut dyn crate::air_observer::AirObserver);
+            crate::var_to_const::lower_query(&query, obs_ref)
+        };
+        if let Some(o) = &self.air_observer {
+            o.borrow_mut().on_query_lowered(&query, &snapshots, &local_vars);
+        }
         self.air_middle_log.log_query(&query);
         let query = crate::block_to_assert::lower_query(message_interface, &query);
         self.air_final_log.log_query(&query);
@@ -560,10 +590,28 @@ impl Context {
         self.smt_log.log_eval(expr);
         let smt_data = self.smt_log.take_pipe_data();
         let smt_output = self.get_smt_process().send_commands(smt_data);
-        if smt_output.len() != 1 {
-            panic!("unexpected output from SMT eval {:?}", smt_output);
+        if smt_output.len() == 1 {
+            smt_output[0].clone()
+        } else {
+            // The solver prints multi-line output for compound model values (quantified
+            // formulas, algebraic data type constructors). These are never simple booleans,
+            // so return a value that callers will treat as unknown.
+            "unknown".to_string()
         }
-        smt_output[0].clone()
+    }
+
+    /// Evaluate an AIR expression against the current solver model as a boolean.
+    /// Returns `Some(true)` / `Some(false)` if the solver returns a boolean,
+    /// `None` if the expression is non-boolean or evaluation fails.
+    pub fn evaluate_bool(&mut self, expr: &crate::ast::Expr) -> Option<bool> {
+        let printer =
+            crate::printer::Printer::new(self.message_interface.clone(), true, self.solver.clone());
+        let node = printer.expr_to_node(expr);
+        match self.eval_expr(node).as_str() {
+            "true" => Some(true),
+            "false" => Some(false),
+            _ => None,
+        }
     }
 
     pub fn command(

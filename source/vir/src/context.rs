@@ -135,10 +135,44 @@ pub struct Ctx {
     pub(crate) byte_string_hashes: RefCell<HashMap<BigUint, Arc<Vec<u8>>>>,
     // proof debug purposes
     pub debug: bool,
+    /// Observer for the verification pipeline. Three layers of indirection:
+    /// - `Rc`: shared between VIR `Ctx` (for lowering callbacks) and AIR
+    ///   `Context` (for query/result callbacks) which have independent lifetimes.
+    /// - `RefCell`: callbacks require `&mut` through shared `Rc` references.
+    /// - `dyn VirObserver`: type-erased observer, shared with the AIR context's
+    ///   own trait handles via the verifier's observer registry (all views point
+    ///   at one object).
+    pub observer: Option<std::rc::Rc<std::cell::RefCell<dyn crate::vir_observer::VirObserver>>>,
+    /// AIR-level handles to the same shared observer object, carried here so the
+    /// verifier can attach them to each `air::Context` it builds (see verifier.rs).
+    pub air_observer: Option<std::rc::Rc<std::cell::RefCell<dyn air::air_observer::AirObserver>>>,
+    pub query_result_observer: Option<
+        std::rc::Rc<std::cell::RefCell<dyn air::query_result_observer::QueryResultObserver>>,
+    >,
     pub arch_word_bits: ArchWordBits,
 }
 
 impl Ctx {
+    /// Call a callback on the observer if one is registered.
+    pub(crate) fn notify<F: FnOnce(&mut dyn crate::vir_observer::VirObserver)>(&self, f: F) {
+        if let Some(obs) = &self.observer {
+            f(&mut *obs.borrow_mut());
+        }
+    }
+
+    /// Ask the observer for an assert ID, or use the default (clone parent).
+    pub(crate) fn make_assert_id(
+        &self,
+        kind: &crate::vir_observer::AssertIdKind,
+        index: usize,
+        parent: &Option<air::ast::AssertId>,
+    ) -> Option<air::ast::AssertId> {
+        self.observer.as_ref().map_or_else(
+            || parent.clone(),
+            |obs| obs.borrow_mut().make_assert_id(kind, index, parent),
+        )
+    }
+
     pub(crate) fn checking_spec_preconditions(&self) -> bool {
         match self.fun {
             Some(FunctionCtx { checking_spec_preconditions: true, .. }) => true,
@@ -805,6 +839,7 @@ impl Ctx {
         fndef_types: Vec<Fun>,
         resolved_typs: Vec<crate::resolve_axioms::ResolvableType>,
         debug: bool,
+        observers: crate::vir_observer::Observers,
     ) -> Result<Self, VirErr> {
         let name_ctxt = NameCtxt::new();
         let mut datatype_is_transparent: HashMap<Dt, bool> = HashMap::new();
@@ -853,6 +888,19 @@ impl Ctx {
             opaque_type_map.insert(opaque_type.x.name.clone(), opaque_type.clone());
         }
 
+        // Register the observer and deliver the krate. The observer receives the
+        // NameCtxt so it can compute AIR names consistently with lowering — both
+        // share the same NameCtxt instance, so crate-name interning decisions
+        // made here are reused during lowering.
+        let crate::vir_observer::Observers {
+            vir: observer,
+            air: air_observer,
+            query_result: query_result_observer,
+        } = observers;
+        if let Some(obs) = &observer {
+            obs.borrow_mut().on_krate(&krate, &name_ctxt, &module.x.path.krate);
+        }
+
         Ok(Ctx {
             module,
             datatype_is_transparent,
@@ -881,6 +929,9 @@ impl Ctx {
             string_hashes,
             byte_string_hashes,
             debug,
+            observer,
+            air_observer,
+            query_result_observer,
             arch_word_bits: krate.arch.word_bits,
             opaque_type_map,
         })

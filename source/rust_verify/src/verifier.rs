@@ -31,6 +31,67 @@ use rustc_hir::def::DefKind;
 use rustc_index::bit_set::DenseBitSet;
 use rustc_middle::ty::TyCtxt;
 use rustc_span::Span;
+
+/// Build the observer registry for a given observer name. The concrete type is
+/// known here, so each `Rc<RefCell<Concrete>>` is coerced (unsizing) into an
+/// independent per-trait handle. A consumer that implements only a subset of the
+/// traits populates only those slots. `TestObserver` implements all three.
+fn create_observer(name: &str) -> vir::vir_observer::Observers {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+    match name {
+        "test" => {
+            let o = Rc::new(RefCell::new(crate::test_observer::TestObserver::new()));
+            let vir: Rc<RefCell<dyn vir::vir_observer::VirObserver>> = o.clone();
+            let air: Rc<RefCell<dyn air::air_observer::AirObserver>> = o.clone();
+            let query_result: Rc<RefCell<dyn air::query_result_observer::QueryResultObserver>> =
+                o.clone();
+            vir::vir_observer::Observers {
+                vir: Some(vir),
+                air: Some(air),
+                query_result: Some(query_result),
+            }
+        }
+        // Dedicated single-trait observers: each populates only its own slot,
+        // proving a consumer couples nothing it does not implement.
+        "air-only" => {
+            let o = Rc::new(RefCell::new(crate::test_observer::AirOnlyObserver::new()));
+            let air: Rc<RefCell<dyn air::air_observer::AirObserver>> = o;
+            vir::vir_observer::Observers { air: Some(air), ..Default::default() }
+        }
+        "query-result-only" => {
+            let o = Rc::new(RefCell::new(crate::test_observer::QueryResultOnlyObserver::new()));
+            let qr: Rc<RefCell<dyn air::query_result_observer::QueryResultObserver>> = o;
+            vir::vir_observer::Observers { query_result: Some(qr), ..Default::default() }
+        }
+        "vir-only" => {
+            let o = Rc::new(RefCell::new(crate::test_observer::VirOnlyObserver::new()));
+            let vir: Rc<RefCell<dyn vir::vir_observer::VirObserver>> = o;
+            vir::vir_observer::Observers { vir: Some(vir), ..Default::default() }
+        }
+        _ => vir::vir_observer::Observers::default(),
+    }
+}
+
+fn create_observer_from_args(names: &[String]) -> vir::vir_observer::Observers {
+    if names.len() > 1 {
+        panic!("only one observer may be specified at a time; got: {:?}", names);
+    }
+    names.first().map_or_else(Default::default, |n| create_observer(n))
+}
+
+fn emit_observer_summaries(any: &dyn std::any::Any, reporter: &impl air::messages::Diagnostics) {
+    if let Some(o) = any.downcast_ref::<crate::test_observer::TestObserver>() {
+        reporter.report(&note_bare(&o.summary_json()).to_any());
+    } else if let Some(o) = any.downcast_ref::<crate::test_observer::AirOnlyObserver>() {
+        reporter.report(&note_bare(&o.summary_json()).to_any());
+    } else if let Some(o) = any.downcast_ref::<crate::test_observer::QueryResultOnlyObserver>() {
+        reporter.report(&note_bare(&o.summary_json()).to_any());
+    } else if let Some(o) = any.downcast_ref::<crate::test_observer::VirOnlyObserver>() {
+        reporter.report(&note_bare(&o.summary_json()).to_any());
+    }
+}
+
 use rustc_span::def_id::LOCAL_CRATE;
 use rustc_span::source_map::SourceMap;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -1301,6 +1362,10 @@ impl Verifier {
             prover_choice,
         )?;
 
+        // Attach the same shared observer object to the spinoff context via its
+        // per-trait handles (real trait-object views of one object — no bridge).
+        air_context.set_observers(ctx.air_observer.clone(), ctx.query_result_observer.clone());
+
         // Write the span of spun-off query
         air_context.comment(&span.as_string);
         air_context.blank_line();
@@ -1357,6 +1422,13 @@ impl Verifier {
             profile_all_file_name.as_ref(),
             vir::def::ProverChoice::DefaultProver,
         )?;
+
+        // Attach the same shared observer object to air::Context via its per-trait
+        // handles. All views point at one object; the Rc keeps it alive on both
+        // ctx (VIR callbacks during lowering) and air_context (AIR callbacks +
+        // query results during verification).
+        air_context.set_observers(ctx.air_observer.clone(), ctx.query_result_observer.clone());
+
         if self.args.solver_version_check {
             air_context.set_expected_solver_version(match self.args.solver {
                 air::context::SmtSolver::Z3 => {
@@ -1896,6 +1968,16 @@ impl Verifier {
         let (time_smt_init, time_smt_run) = air_context.get_time();
         let rlimit_count = air_context.get_rlimit_count();
 
+        // Emit observer summaries as diagnostic notes. Only one underlying object
+        // exists; try each handle (a single-trait observer populates only one).
+        if let Some(obs_cell) = &ctx.observer {
+            emit_observer_summaries(obs_cell.borrow().as_any(), reporter);
+        } else if let Some(obs_cell) = &ctx.air_observer {
+            emit_observer_summaries(obs_cell.borrow().as_any(), reporter);
+        } else if let Some(obs_cell) = &ctx.query_result_observer {
+            emit_observer_summaries(obs_cell.borrow().as_any(), reporter);
+        }
+
         Ok(VerifyBucketOut {
             time_smt_init: time_smt_init + spunoff_time_smt_init,
             time_smt_run: time_smt_run + spunoff_time_smt_run,
@@ -1962,6 +2044,7 @@ impl Verifier {
             fndef_types,
             resolved_typs.unwrap(),
             self.args.debugger,
+            create_observer_from_args(&self.args.observers),
         )?;
         if self.args.log_all || self.args.log_args.log_vir_poly {
             let mut file =

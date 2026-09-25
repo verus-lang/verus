@@ -314,6 +314,10 @@ fn simplify_lambda(
             let closure_fun = Arc::new(name);
             ctxt.lambda_count += 1;
             let _ = ctxt.lambda_map.insert(closure, closure_fun.clone());
+            if let Some(obs) = &ctxt.air_observer {
+                let params: Vec<Ident> = binders.iter().map(|b| b.name.clone()).collect();
+                obs.borrow_mut().on_lambda_decl(&closure_fun, &params, &e1);
+            }
 
             // f(holes): (Fun (t_params) t_body)
             let decl = Arc::new(DeclX::Fun(closure_fun.clone(), holes.clone(), typ.clone()));
@@ -418,6 +422,14 @@ fn simplify_choose(
             let closure_fun = Arc::new(name);
             ctxt.choose_count += 1;
             let _ = ctxt.choose_map.insert(closure, closure_fun.clone());
+            if let Some(obs) = &ctxt.air_observer {
+                let binder_name = binders
+                    .iter()
+                    .next()
+                    .map(|b| b.name.clone())
+                    .unwrap_or_else(|| Arc::new("_".to_string()));
+                obs.borrow_mut().on_choose_decl(&closure_fun, &binder_name);
+            }
 
             // f(holes): typ_body
             let decl = Arc::new(DeclX::Fun(closure_fun.clone(), holes.clone(), typ_body.clone()));

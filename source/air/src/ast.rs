@@ -9,8 +9,8 @@ pub type TypeError = String;
 
 pub type Ident = Arc<String>;
 
-pub(crate) type Snapshot = IndexMap<Ident, u32>;
-pub(crate) type Snapshots = HashMap<Ident, Snapshot>;
+pub type Snapshot = IndexMap<Ident, u32>;
+pub type Snapshots = HashMap<Ident, Snapshot>;
 
 pub type Typ = Arc<TypX>;
 pub type Typs = Arc<Vec<Typ>>;
