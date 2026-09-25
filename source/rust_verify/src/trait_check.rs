@@ -67,6 +67,7 @@ const PROOF_FN_SYNC: u8 = 6;
 const PRELUDE: &str = "\
 #![feature(negative_impls)]
 #![feature(with_negative_coherence)]
+#![feature(trivial_bounds)]
 #![feature(box_patterns)]
 #![feature(ptr_metadata)]
 #![feature(never_type)]
