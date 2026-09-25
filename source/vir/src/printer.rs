@@ -116,7 +116,7 @@ impl<A: ToDebugSNode> ToDebugSNode for crate::def::Spanned<A> {
         } else {
             Node::List(vec![
                 Node::Atom("@".to_string()),
-                Node::Atom(format!("\"{}\"", self.span.as_string)),
+                self.span.as_string.to_node(opts),
                 self.x.to_node(opts),
             ])
         }
@@ -277,7 +277,7 @@ impl<A: ToDebugSNode> ToDebugSNode for SpannedTyped<A> {
         } else {
             let mut v = vec![Node::Atom("@@".to_string())];
             if !opts.no_span {
-                v.push(Node::Atom(format!("\"{}\"", self.span.as_string)));
+                v.push(self.span.as_string.to_node(opts));
             }
             v.push(self.x.to_node(opts));
             if !opts.no_type {
@@ -352,8 +352,8 @@ impl ToDebugSNode for FunctionX {
 }
 
 impl ToDebugSNode for crate::messages::Span {
-    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
-        Node::Atom(format!("\"{}\"", self.as_string))
+    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
+        self.as_string.to_node(opts)
     }
 }
 
