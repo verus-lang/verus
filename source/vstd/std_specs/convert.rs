@@ -136,10 +136,10 @@ macro_rules! impl_from_spec {
     };
 }
 
-impl_from_spec! {u8 => [u16 u32 u64 usize u128]}
-impl_from_spec! {u16 => [u32 u64 usize u128]}
-impl_from_spec! {u32 => [u64 u128]}
-impl_from_spec! {u64 => [u128]}
+impl_from_spec! {u8 => [u16 u32 u64 usize u128 i16 i32 i64 isize i128]}
+impl_from_spec! {u16 => [u32 u64 usize u128 i32 i64 i128]}
+impl_from_spec! {u32 => [u64 u128 i64 i128]}
+impl_from_spec! {u64 => [u128 i128]}
 impl_from_spec! {i8 => [i16 i32 i64 isize i128]}
 impl_from_spec! {i16 => [i32 i64 isize i128]}
 impl_from_spec! {i32 => [i64 i128]}
