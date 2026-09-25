@@ -66,7 +66,7 @@ test_verify_one_file_with_options! {
                         (#[trigger] s@[i],),
                         true,
                     ) by {
-                        assert(pred.not_matches_at_witness(s@, i));
+                        assert(!pred.matches_at(s@, i, i + 1));
                     };
                 }
             }
@@ -108,7 +108,7 @@ test_verify_one_file_with_options! {
                         assert(s@.subrange(0, i + 1) + s@.subrange(i + 1, s@.len() as int) =~= s@);
                         encode_utf8_concat(s@.subrange(0, i + 1), s@.subrange(i + 1, s@.len() as int));
                         assert(s.spec_bytes().subrange(k, j) =~= encode_scalar(s@[i] as u32));
-                        assert(pred.not_matches_at_bytes_witness(s.spec_bytes(), k, j));
+                        assert(!pred.matches_at_bytes(s.spec_bytes(), k, j));
                     };
                 }
                 if res is Some {
@@ -157,7 +157,7 @@ test_verify_one_file_with_options! {
                             assert(s@.subrange(0, j + 1) =~= s@);
                         }
                         assert(jj <= s.spec_bytes().len() as int);
-                        assert(pred.not_matches_at_bytes_witness(s.spec_bytes(), k, jj));
+                        assert(!pred.matches_at_bytes(s.spec_bytes(), k, jj));
                     };
                 }
             }
@@ -199,7 +199,7 @@ test_verify_one_file_with_options! {
                         assert(s@.subrange(0, i + 1) + s@.subrange(i + 1, s@.len() as int) =~= s@);
                         encode_utf8_concat(s@.subrange(0, i + 1), s@.subrange(i + 1, s@.len() as int));
                         assert(s.spec_bytes().subrange(k, j) =~= encode_scalar(s@[i] as u32));
-                        assert(pred.not_matches_at_bytes_witness(s.spec_bytes(), k, j));
+                        assert(!pred.matches_at_bytes(s.spec_bytes(), k, j));
                     };
                 }
                 if res is Some {
@@ -248,7 +248,7 @@ test_verify_one_file_with_options! {
                             assert(s@.subrange(0, j + 1) =~= s@);
                         }
                         assert(jj <= s.spec_bytes().len() as int);
-                        assert(pred.not_matches_at_bytes_witness(s.spec_bytes(), k, jj));
+                        assert(!pred.matches_at_bytes(s.spec_bytes(), k, jj));
                     };
                 }
             }

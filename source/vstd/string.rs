@@ -178,14 +178,6 @@ pub trait ExPattern: Sized {
     /// Byte-offset sibling of `matches_at`: `find`/`rfind` return byte
     /// offsets, not char positions.
     spec fn matches_at_bytes(&self, haystack: Seq<u8>, start: int, end: int) -> bool;
-
-    /// The "didn't match" direction. Equivalent to `!matches_at` for every impl here,
-    /// but kept as its own method since a hypothetical impl not obeying `obeys_pattern_spec`'s
-    /// exclusivity (no input both matches and doesn't) could need it to differ.
-    spec fn not_matches_at_witness(&self, haystack: Seq<char>, start: int) -> bool;
-
-    /// Byte-offset sibling of `not_matches_at_witness`.
-    spec fn not_matches_at_bytes_witness(&self, haystack: Seq<u8>, start: int, end: int) -> bool;
 }
 
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
@@ -203,19 +195,6 @@ impl PatternSpecImpl for char {
             *self as u32,
         )
     }
-
-    open spec fn not_matches_at_witness(&self, haystack: Seq<char>, start: int) -> bool {
-        true
-    }
-
-    open spec fn not_matches_at_bytes_witness(
-        &self,
-        haystack: Seq<u8>,
-        start: int,
-        end: int,
-    ) -> bool {
-        true
-    }
 }
 
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
@@ -230,19 +209,6 @@ impl<'b> PatternSpecImpl for &'b str {
 
     open spec fn matches_at_bytes(&self, haystack: Seq<u8>, start: int, end: int) -> bool {
         0 <= start <= end <= haystack.len() && haystack.subrange(start, end) =~= self.spec_bytes()
-    }
-
-    open spec fn not_matches_at_witness(&self, haystack: Seq<char>, start: int) -> bool {
-        true
-    }
-
-    open spec fn not_matches_at_bytes_witness(
-        &self,
-        haystack: Seq<u8>,
-        start: int,
-        end: int,
-    ) -> bool {
-        true
     }
 }
 
@@ -261,19 +227,6 @@ impl<'b> PatternSpecImpl for &'b [char] {
     open spec fn matches_at_bytes(&self, haystack: Seq<u8>, start: int, end: int) -> bool {
         0 <= start <= end <= haystack.len() && exists|c: char|
             self@.contains(c) && haystack.subrange(start, end) =~= encode_scalar(c as u32)
-    }
-
-    open spec fn not_matches_at_witness(&self, haystack: Seq<char>, start: int) -> bool {
-        true
-    }
-
-    open spec fn not_matches_at_bytes_witness(
-        &self,
-        haystack: Seq<u8>,
-        start: int,
-        end: int,
-    ) -> bool {
-        true
     }
 }
 
@@ -300,19 +253,6 @@ impl<F: FnMut(char) -> bool> PatternSpecImpl for F {
         0 <= start <= end <= haystack.len() && exists|c: char|
             self.ensures((c,), true) && haystack.subrange(start, end) =~= encode_scalar(c as u32)
     }
-
-    open spec fn not_matches_at_witness(&self, haystack: Seq<char>, start: int) -> bool {
-        start < haystack.len() ==> !PatternSpec::matches_at(self, haystack, start, start + 1)
-    }
-
-    open spec fn not_matches_at_bytes_witness(
-        &self,
-        haystack: Seq<u8>,
-        start: int,
-        end: int,
-    ) -> bool {
-        !PatternSpec::matches_at_bytes(self, haystack, start, end)
-    }
 }
 
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
@@ -323,7 +263,7 @@ pub assume_specification<P: core::str::pattern::Pattern>[ str::starts_with::<P> 
     ensures
         pat.obeys_pattern_spec() ==> {
             &&& r == exists|len: int| 0 <= len <= s@.len() && pat.matches_at(s@, 0, len)
-            &&& !r ==> pat.not_matches_at_witness(s@, 0)
+            &&& !r ==> !pat.matches_at(s@, 0, 1)
         },
 ;
 
@@ -336,7 +276,7 @@ pub assume_specification<P: core::str::pattern::Pattern>[ str::contains::<P> ](
         pat.obeys_pattern_spec() ==> {
             &&& r == exists|i: int, j: int| 0 <= i <= j <= s@.len() && pat.matches_at(s@, i, j)
             &&& !r ==> forall|i: int|
-                0 <= i < s@.len() ==> #[trigger] pat.not_matches_at_witness(s@, i)
+                0 <= i < s@.len() ==> !(#[trigger] pat.matches_at(s@, i, i + 1))
         },
 ;
 
@@ -350,7 +290,7 @@ pub assume_specification<P: core::str::pattern::Pattern>[ str::ends_with::<P> ](
         pat.obeys_pattern_spec() ==> {
             &&& r == exists|start: int|
                 0 <= start <= s@.len() as int && pat.matches_at(s@, start, s@.len() as int)
-            &&& (!r && s@.len() > 0) ==> pat.not_matches_at_witness(s@, s@.len() - 1)
+            &&& (!r && s@.len() > 0) ==> !pat.matches_at(s@, s@.len() - 1, s@.len() as int)
         },
 ;
 
@@ -367,7 +307,7 @@ pub assume_specification<P: core::str::pattern::Pattern>[ str::find::<P> ](s: &s
                 )
             &&& res is None ==> forall|k: int, j: int|
                 0 <= k < s.spec_bytes().len() as int && k <= j <= s.spec_bytes().len() as int
-                    ==> #[trigger] pat.not_matches_at_bytes_witness(s.spec_bytes(), k, j)
+                    ==> !(#[trigger] pat.matches_at_bytes(s.spec_bytes(), k, j))
             &&& res is Some ==> {
                 let i = res.unwrap() as int;
                 &&& exists|j: int|
@@ -382,9 +322,6 @@ pub assume_specification<P: core::str::pattern::Pattern>[ str::find::<P> ](s: &s
                         k,
                         j,
                     )
-                &&& forall|k: int, j: int|
-                    0 <= k < i && k <= j <= s.spec_bytes().len() as int
-                        ==> #[trigger] pat.not_matches_at_bytes_witness(s.spec_bytes(), k, j)
             }
         },
 ;
@@ -405,7 +342,7 @@ pub assume_specification<P: core::str::pattern::Pattern>[ str::rfind::<P> ](
                 )
             &&& res is None ==> forall|k: int, j: int|
                 0 <= k < s.spec_bytes().len() as int && k <= j <= s.spec_bytes().len() as int
-                    ==> #[trigger] pat.not_matches_at_bytes_witness(s.spec_bytes(), k, j)
+                    ==> !(#[trigger] pat.matches_at_bytes(s.spec_bytes(), k, j))
             &&& res is Some ==> {
                 let i = res.unwrap() as int;
                 &&& exists|j: int|
@@ -420,9 +357,6 @@ pub assume_specification<P: core::str::pattern::Pattern>[ str::rfind::<P> ](
                         k,
                         j,
                     )
-                &&& forall|k: int, j: int|
-                    i < k && k <= j <= s.spec_bytes().len() as int
-                        ==> #[trigger] pat.not_matches_at_bytes_witness(s.spec_bytes(), k, j)
             }
         },
 ;
