@@ -3985,7 +3985,6 @@ fn unwrap_parameter_to_vir<'tcx>(
             let exprx = ExprX::Header(Arc::new(headerx));
             let expr = bctx.spanned_typed_new(stmt1.span, &Arc::new(TypX::Bool), exprx);
             let stmt = bctx.spanned_new(stmt1.span, StmtX::Expr(expr));
-            bctx.unwrap_param_map.borrow_mut().insert(unwrap.inner_name, unwrap.outer_name);
             Ok(vec![stmt])
         }
         _ => err_span(stmt1.span, "ill-formed unwrap_parameter header"),
@@ -4035,21 +4034,7 @@ pub(crate) fn stmt_to_vir<'tcx>(
                 dbg!(&item_id.hir_id());
                 unreachable!();
             } else if vattrs.open_visibility_qualifier {
-                let item = bctx.ctxt.tcx.hir_item(*item_id);
-                if !matches!(&item.kind, ItemKind::Use(..)) {
-                    crate::internal_err!(
-                        item.span,
-                        "open_visibility_qualifier should be on a 'use' item"
-                    );
-                }
-
-                let hir_id = item.hir_id();
-                let owner_id = hir_id.expect_owner();
-                let def_id = owner_id.to_def_id();
-
-                let vis = bctx.ctxt.tcx.visibility(def_id);
-                let vis = crate::rust_to_vir_base::mk_visibility_from_vis(&bctx.ctxt, vis);
-
+                let vis = get_open_visibility_qualifier(&bctx.ctxt, *item_id)?;
                 let vir_expr = bctx.spanned_typed_new(
                     stmt.span,
                     &vir::ast_util::unit_typ(),
@@ -4090,6 +4075,23 @@ pub(crate) fn stmt_to_vir<'tcx>(
             let_stmt_to_vir(bctx, pat, init, els, bctx.ctxt.tcx.hir_attrs(stmt.hir_id))
         }
     }
+}
+
+pub(crate) fn get_open_visibility_qualifier<'tcx>(
+    ctxt: &Context<'tcx>,
+    item_id: rustc_hir::ItemId,
+) -> Result<vir::ast::Visibility, VirErr> {
+    let item = ctxt.tcx.hir_item(item_id);
+    if !matches!(&item.kind, ItemKind::Use(..)) {
+        crate::internal_err!(item.span, "open_visibility_qualifier should be on a 'use' item");
+    }
+
+    let hir_id = item.hir_id();
+    let owner_id = hir_id.expect_owner();
+    let def_id = owner_id.to_def_id();
+
+    let vis = ctxt.tcx.visibility(def_id);
+    Ok(crate::rust_to_vir_base::mk_visibility_from_vis(ctxt, vis))
 }
 
 pub(crate) fn stmts_to_vir<'tcx>(
