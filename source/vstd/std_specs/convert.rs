@@ -20,6 +20,16 @@ pub trait ExFrom<T>: Sized {
     ;
 }
 
+impl<T> FromSpecImpl<T> for T {
+    open spec fn obeys_from_spec() -> bool {
+        true
+    }
+
+    open spec fn from_spec(v: T) -> Self {
+        v
+    }
+}
+
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(IntoSpec via IntoSpecImpl)]
 pub trait ExInto<T>: Sized {
@@ -41,7 +51,7 @@ impl<T, U: From<T>> IntoSpecImpl<U> for T {
     }
 
     open spec fn into_spec(self) -> U {
-        U::from_spec(self)
+        <U as FromSpec<Self>>::from_spec(self)
     }
 }
 
