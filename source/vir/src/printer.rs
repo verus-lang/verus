@@ -136,12 +136,29 @@ impl<A: ToDebugSNode> ToDebugSNode for std::sync::Arc<A> {
     }
 }
 
+fn escape(s: &str) -> String {
+    let mut res = "".to_string();
+    for c in s.chars() {
+        if c == '\\' {
+            res += "\\\\";
+        } else if c.is_ascii_graphic() && c != '"' {
+            res.push(c);
+        } else if c == ' ' {
+            res.push(c);
+        } else if c == '\n' {
+            res += "\\n";
+        } else {
+            res += "\\u{";
+            res += &format!("{:x}", c as u32);
+            res += "}";
+        }
+    }
+    res
+}
+
 impl ToDebugSNode for String {
     fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
-        Node::Atom(match self.is_ascii() {
-            true => format!("\"{}\"", self.replace("\n", "\\n")),
-            false => "non_ascii_string".to_string(),
-        })
+        Node::Atom(format!("\"{}\"", escape(&self)))
     }
 }
 
