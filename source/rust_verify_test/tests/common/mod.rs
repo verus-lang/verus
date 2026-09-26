@@ -307,6 +307,8 @@ pub fn run_verus(
             verus_args.push("--no-erasure-check".to_string());
         } else if *option == "--no-verify" {
             verus_args.push("--no-verify".to_string());
+        } else if *option == "--triggers" {
+            verus_args.push("--triggers".to_string());
         } else if *option == "--no-report-long-running" {
             verus_args.push("--no-report-long-running".to_string());
         } else if *option == "--no-cheating" {

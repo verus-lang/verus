@@ -648,3 +648,32 @@ test_verify_one_file! {
         assert!(err.errors[0].message.contains("Could not automatically infer triggers for this quantifier"));
     }
 }
+
+test_verify_one_file_with_options! {
+    // https://github.com/verus-lang/verus/issues/935
+    // When a chosen trigger term comes from inside a macro invocation, the diagnostic
+    // should point at the invocation site (e.g. `bit!(i)`), not at the macro's own
+    // definition.
+    #[test] issue935_trigger_span_through_macro ["--triggers"] => verus_code! {
+        macro_rules! bit {
+            ($v:expr) => {
+                1u64 << $v
+            }
+        }
+
+        proof fn foo(a: u64, b: u64) {
+            assume(a == b);
+            assert(forall|i: u64| i < 64u64 ==> a & bit!(i) == b & bit!(i)) by (bit_vector)
+                requires a == b;
+        }
+    } => Ok(err) => {
+        let trigger_note = err
+            .notes
+            .iter()
+            .find(|n| n.message.starts_with("  trigger"))
+            .expect("expected a trigger note");
+        let line = &trigger_note.spans[0].text[0];
+        let highlighted = &line.text[line.highlight_start - 1..line.highlight_end - 1];
+        assert_eq!(highlighted, "bit!(i)");
+    }
+}
