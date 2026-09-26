@@ -1078,39 +1078,59 @@ pub fn trait_bound_axioms(ctx: &Ctx, traits: &Vec<Trait>) -> Commands {
     Arc::new(commands)
 }
 
+// TODO: Add axioms for projection types when projections are enabled for dyn.
 pub(crate) fn dyn_spec_fn_axiom(
     ctx: &Ctx,
     decl_commands: &mut Vec<Command>,
     trait_path: &Path,
     function: &crate::sst::FunctionSst,
 ) {
-    // For spec functions, connect dyn T blanket impl to a specific impl of T:
+    // For spec functions, connect dyn T dispatch to any implementation of T:
     //   trait T<A1..Am> { spec fn f(self, x1..xk) }
-    //   impl<B1..Bn> T<t1..tm> for t0
     // ==>
-    //   (axiom (forall (B1..Bn (self! Poly) x1..xk) (!
+    //   (axiom (forall (Self A1..Am (self! Poly) x1..xk) (!
     //      (=
-    //       (T.f.? $dyn (DYN%T. t1..tm) t1..tm (to_dyn%T t0 t1..tm self!) x1..xk)
-    //       (T.f.? $          t0        t1..tm                     self!  x1..xk)
+    //       (T.f.? $dyn (DYN%T. A1..Am) A1..Am (to_dyn%T Self A1..Am self!) x1..xk)
+    //       (T.f.? $          Self       A1..Am                         self!  x1..xk)
     //      )
     //   )))
     // function.x.pars = self, x1...xk
-    // function.x.typ_params = B1..Bn
-    // trait_typ_args = t0 t1..tm
+    // function.x.typ_params = Self, A1..Am
     // Note: we don't need anything for exec/proof functions,
     // because dyn T just uses T's requires/ensures.
     use crate::ast_util::LowerUniqueVar;
-    let FunctionKind::TraitMethodImpl { method, trait_typ_args, .. } = &function.x.kind else {
-        panic!("dyn_spec_fn_axiom expects TraitMethodImpl");
+    let FunctionKind::TraitMethodDecl { trait_path: method_trait_path, .. } = &function.x.kind
+    else {
+        panic!("dyn_spec_fn_axiom expects TraitMethodDecl");
     };
-    let mut typ_ids: Vec<air::ast::Expr> = Vec::new();
+    // A method requiring `Self: Sized` cannot be called through dyn,
+    // so it does not need a dyn spec axiom.
+    for bound in function.x.typ_bounds.iter() {
+        if let GenericBoundX::Trait(TraitId::Sizedness(Sizedness::Sized), typ_args) = &**bound {
+            if typ_args.len() == 1 {
+                if let TypX::TypParam(param) = &*typ_args[0] {
+                    if *param == crate::def::trait_self_type_param() {
+                        return;
+                    }
+                }
+            }
+        }
+    }
+    let trait_typ_param_count = ctx.trait_map[method_trait_path].x.typ_params.len() + 1;
+
+    let typ_args: Vec<Typ> =
+        function.x.typ_params.iter().map(|x| Arc::new(TypX::TypParam(x.clone()))).collect();
+    let mut to_dyn_typ_ids: Vec<air::ast::Expr> = Vec::new();
     let mut lhs_args: Vec<air::ast::Expr> = Vec::new();
     let mut rhs_args: Vec<air::ast::Expr> = Vec::new();
-    for (n, targ) in trait_typ_args.iter().enumerate() {
+    for (n, targ) in typ_args.iter().enumerate() {
         rhs_args.extend(typ_to_ids(ctx, targ));
-        typ_ids.extend(typ_to_ids(ctx, targ));
+        if n < trait_typ_param_count {
+            to_dyn_typ_ids.extend(typ_to_ids(ctx, targ));
+        }
         if n == 0 {
-            let typ_args_no_self = Arc::new(trait_typ_args.iter().skip(1).cloned().collect());
+            let typ_args_no_self =
+                Arc::new(typ_args.iter().take(trait_typ_param_count).skip(1).cloned().collect());
             let dyn_typ =
                 Arc::new(TypX::Dyn(trait_path.clone(), typ_args_no_self, Arc::new(vec![])));
             lhs_args.extend(typ_to_ids(ctx, &dyn_typ));
@@ -1121,15 +1141,17 @@ pub(crate) fn dyn_spec_fn_axiom(
     for (n, param) in function.x.pars.iter().enumerate() {
         rhs_args.push(ident_var(&param.x.name.lower()));
         if n == 0 {
-            let mut to_dyn_args = typ_ids.clone();
+            let mut to_dyn_args = to_dyn_typ_ids.clone();
             to_dyn_args.push(ident_var(&param.x.name.lower()));
             lhs_args.push(ident_apply(&ctx.name_ctxt.to_dyn(trait_path), &to_dyn_args));
         } else {
             lhs_args.push(ident_var(&param.x.name.lower()));
         }
     }
-    let name =
-        crate::def::suffix_global_id(&crate::sst_to_air::fun_to_air_ident(&ctx.name_ctxt, &method));
+    let name = crate::def::suffix_global_id(&crate::sst_to_air::fun_to_air_ident(
+        &ctx.name_ctxt,
+        &function.x.name,
+    ));
     let lhs = ident_apply(&name, &Arc::new(lhs_args));
     let rhs = ident_apply(&name, &Arc::new(rhs_args));
     let f_eq = Arc::new(air::ast::ExprX::Binary(air::ast::BinaryOp::Eq, lhs.clone(), rhs));

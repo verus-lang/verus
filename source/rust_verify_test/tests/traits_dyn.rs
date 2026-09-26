@@ -479,6 +479,29 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] dyn_associated_type_unsupported verus_code! {
+        use vstd::prelude::*;
+
+        trait Project {
+            uninterp spec fn value(&self) -> bool;
+        }
+
+        trait TrA {
+            type Project: Project;
+            spec fn project(&self) -> Self::Project;
+        }
+
+        fn generic<T: Project + 'static, X: TrA<Project = T> + 'static>(x: X)
+            requires
+                x.project().value(),
+        {
+            let y: Box<dyn TrA<Project = T>> = Box::new(x);
+            assert(y.project().value());
+        }
+    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: dyn with more that one trait")
+}
+
+test_verify_one_file! {
     #[test] test_dyn2 verus_code! {
         use vstd::prelude::*;
         trait T {
@@ -527,6 +550,65 @@ test_verify_one_file! {
                 // breaks carrying the precondition through:
                 owned(x);
             }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_generic_to_dyn verus_code! {
+        use vstd::prelude::*;
+
+        pub trait T {
+            spec fn value(&self) -> int;
+        }
+
+        struct Ty {}
+
+        impl T for Ty {
+            open spec fn value(&self) -> int {
+                0
+            }
+        }
+
+        fn owned(value: Box<dyn T>)
+            requires
+                value.value() == 0,
+        {
+        }
+
+        fn generic<X: T + 'static>(value: X)
+            requires
+                value.value() == 0,
+        {
+            let value: Box<dyn T> = Box::new(value);
+            assert(value.value() == 0);
+            owned(value);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_generic_trait_with_args_to_dyn verus_code! {
+        use vstd::prelude::*;
+
+        pub trait T<A> {
+            spec fn value(&self) -> A;
+        }
+
+        struct Ty {}
+
+        impl T<int> for Ty {
+            open spec fn value(&self) -> int {
+                0
+            }
+        }
+
+        fn generic<X: T<int> + 'static>(value: X)
+            requires
+                value.value() == 0,
+        {
+            let value: Box<dyn T<int>> = Box::new(value);
+            assert(value.value() == 0);
         }
     } => Ok(())
 }
