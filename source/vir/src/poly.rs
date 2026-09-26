@@ -157,6 +157,7 @@ pub(crate) fn typ_as_mono(typ: &Typ) -> Option<MonoTyp> {
             Some(Arc::new(MonoTypX::Decorate2(*d, Arc::new(vec![m1, m2]))))
         }
         TypX::Primitive(Primitive::Array, _) => None,
+        TypX::Primitive(Primitive::TypeTag, _) => None,
         TypX::Primitive(name, typs) => {
             let monotyps = monotyps_as_mono(typs)?;
             Some(Arc::new(MonoTypX::Primitive(*name, Arc::new(monotyps))))
@@ -204,6 +205,7 @@ pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
     match &**typ {
         TypX::Bool | TypX::Int(_) | TypX::Real | TypX::Float(_) => false,
         TypX::SpecFn(..) | TypX::FnDef(..) => false,
+        TypX::Primitive(Primitive::TypeTag, _) => false,
         TypX::Primitive(Primitive::Array, _) => false,
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should be removed by ast_simplify")
@@ -238,6 +240,7 @@ pub(crate) fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
     match &**typ {
         TypX::Bool | TypX::Int(_) | TypX::Real | TypX::Float(_) => typ.clone(),
         TypX::SpecFn(..) | TypX::FnDef(..) => typ.clone(),
+        TypX::Primitive(Primitive::TypeTag, _) => typ.clone(),
         TypX::Primitive(Primitive::Array, _) => typ.clone(),
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should be removed by ast_simplify")
@@ -280,6 +283,7 @@ pub(crate) fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
         TypX::Bool | TypX::Int(_) => Arc::new(TypX::Boxed(typ.clone())),
         TypX::Real | TypX::Float(_) => Arc::new(TypX::Boxed(typ.clone())),
         TypX::SpecFn(..) | TypX::FnDef(..) => Arc::new(TypX::Boxed(typ.clone())),
+        TypX::Primitive(Primitive::TypeTag, _) => Arc::new(TypX::Boxed(typ.clone())),
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should be removed by ast_simplify")
         }
@@ -569,6 +573,7 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
         ExpX::NullaryOpr(NullaryOpr::TraitBound(..)) => exp.clone(),
         ExpX::NullaryOpr(NullaryOpr::TypEqualityBound(..)) => exp.clone(),
         ExpX::NullaryOpr(NullaryOpr::ConstTypBound(..)) => exp.clone(),
+        ExpX::NullaryOpr(NullaryOpr::TypeTag(..)) => exp.clone(),
         ExpX::Unary(op, e1) => {
             let e1 = visit_exp(ctx, state, e1);
             match op {

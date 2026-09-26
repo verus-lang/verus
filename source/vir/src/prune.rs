@@ -146,6 +146,7 @@ fn typ_to_reached_type(typ: &Typ) -> ReachedType {
         TypX::Primitive(Primitive::Slice | Primitive::Ptr | Primitive::Global, _) => {
             ReachedType::Primitive
         }
+        TypX::Primitive(Primitive::TypeTag, _) => ReachedType::None,
         TypX::MutRef(_) => ReachedType::None,
         TypX::Opaque { .. } => ReachedType::None,
     }
