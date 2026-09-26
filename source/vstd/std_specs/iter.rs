@@ -232,6 +232,28 @@ pub trait ExIterator {
             self.obeys_prophetic_iter_laws() ==> map_post(self, f, r),
     ;
 
+    // `nth(n)` consumes `n` elements and returns the next one, so it lands on
+    // index `n` of the original `remaining()` when there are enough elements
+    // and `None` otherwise.
+    fn nth(&mut self, n: usize) -> (r: Option<Self::Item>)
+        where Self: Sized,
+        ensures
+            final(self).obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
+            final(self).obeys_prophetic_iter_laws() ==> final(self).will_return_none() == old(self).will_return_none(),
+            final(self).obeys_prophetic_iter_laws() ==> (old(self).decrease() is Some <==> final(self).decrease() is Some),
+            final(self).obeys_prophetic_iter_laws() ==> {
+                final(self).remaining().is_suffix_of(old(self).remaining())
+            },
+            final(self).obeys_prophetic_iter_laws() ==> {
+                if n < old(self).remaining().len() {
+                    &&& r == Some(old(self).remaining()[n as int])
+                    &&& final(self).remaining() == old(self).remaining().skip(n + 1)
+                } else {
+                    &&& r is None
+                    &&& final(self).remaining().len() == 0
+                }
+            };
+
     fn rev(self) -> (r: Rev<Self>)
         where Self: Sized,
         ensures

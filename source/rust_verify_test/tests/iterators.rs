@@ -275,6 +275,25 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] nth_works verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let v: Vec<u32> = vec![1, 2, 3, 4];
+            let mut it = v.into_iter();
+            let x = it.nth(1);
+            assert(x == Some(2u32));
+
+            let y = it.next();
+            assert(y == Some(3u32));
+
+            let z = it.nth(5);
+            assert(z is None);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] range_works verus_code! {
         use vstd::prelude::*;
 
