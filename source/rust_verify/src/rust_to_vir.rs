@@ -28,12 +28,13 @@ use rustc_hir::{
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use vir::ast::{CrateId, Fun, FunX, FunctionKind, Krate, KrateX, Path, VirErr};
+use vir::ast::{CrateId, Fun, FunX, Function, FunctionKind, Krate, KrateX, Path, VirErr};
 use vir::context::{WarningConfig, WarningCtx};
 
 pub(crate) struct State {
     pub(crate) external_info: ExternalInfo,
     pub(crate) fun_warn_configs: HashMap<Fun, WarningConfig>,
+    pub(crate) has_try_broadcasts: bool,
 }
 
 impl State {
@@ -45,6 +46,18 @@ impl State {
     ) {
         self.fun_warn_configs
             .insert(name.clone(), crate::attributes::warning_config_walk_parents(ctxt.tcx, id));
+    }
+
+    pub(crate) fn push_function<'tcx>(
+        &mut self,
+        ctxt: &Context<'tcx>,
+        functions: &mut Vec<Function>,
+        function: Function,
+        id: rustc_span::def_id::DefId,
+    ) {
+        self.has_try_broadcasts |= function.x.attrs.try_broadcasts.is_some();
+        self.insert_fun_warn_config(ctxt, &function.x.name, id);
+        functions.push(function);
     }
 }
 
@@ -416,6 +429,7 @@ pub fn crate_to_vir<'a, 'tcx>(
         external_types: Vec::new(),
         path_as_rust_names: Vec::new(),
         arch: vir::ast::Arch { word_bits: vir::ast::ArchWordBits::Either32Or64 },
+        has_try_broadcasts: false,
     };
 
     let tcx = ctxtx.tcx;
@@ -431,7 +445,7 @@ pub fn crate_to_vir<'a, 'tcx>(
         .insert(tcx.get_diagnostic_item(rustc_span::sym::Send).expect("send"));
 
     let fun_warn_configs = HashMap::new();
-    let mut state = State { external_info, fun_warn_configs };
+    let mut state = State { external_info, fun_warn_configs, has_try_broadcasts: false };
 
     let mut errors = vec![];
 
@@ -600,6 +614,7 @@ pub fn crate_to_vir<'a, 'tcx>(
     crate::rust_to_vir_adts::setup_type_invariants(&mut vir).map_err(|e| vec![e])?;
     vir::traits::set_krate_dyn_compatibility(imported, &mut vir);
 
+    vir.has_try_broadcasts = state.has_try_broadcasts;
     let mut fun_warn_configs: HashMap<Fun, Option<WarningConfig>> = HashMap::new();
     for krate in imported {
         for function in &krate.functions {

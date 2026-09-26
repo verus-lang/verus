@@ -1517,6 +1517,8 @@ pub struct FunctionAttrsX {
     pub nonlinear: bool,
     /// Use a dedicated Z3 process for this single query
     pub spinoff_prover: bool,
+    /// Try proof search using try_broadcasts
+    pub try_broadcasts: Option<bool>,
     /// Memoize function call results during interpretation
     pub memoize: bool,
     /// override default rlimit
@@ -1937,4 +1939,7 @@ pub struct KrateX {
     pub arch: Arch,
     /// All opaque type constructors
     pub opaque_types: OpaqueTypes,
+    /// Whether any function in this crate has the `try_broadcasts` attribute.
+    #[serde(default)]
+    pub has_try_broadcasts: bool,
 }
