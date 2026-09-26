@@ -1431,6 +1431,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 ToDyn(_) => Ok(e),
                 CustomErr(_) => Ok(e),
                 AutoDecreases => Ok(e),
+                AutoRevealLiteral => Ok(e),
                 AutoLoopEnsures => Ok(e),
                 ProofNote(_) => Ok(e),
                 HasResolved(_) => Ok(e),
