@@ -20,6 +20,16 @@ pub trait ExFrom<T>: Sized {
     ;
 }
 
+impl<T> FromSpecImpl<T> for T {
+    open spec fn obeys_from_spec() -> bool {
+        true
+    }
+
+    open spec fn from_spec(v: T) -> Self {
+        v
+    }
+}
+
 #[verifier::external_trait_specification]
 #[verifier::external_trait_extension(IntoSpec via IntoSpecImpl)]
 pub trait ExInto<T>: Sized {
@@ -41,7 +51,7 @@ impl<T, U: From<T>> IntoSpecImpl<U> for T {
     }
 
     open spec fn into_spec(self) -> U {
-        U::from_spec(self)
+        <U as FromSpec<Self>>::from_spec(self)
     }
 }
 
@@ -120,8 +130,6 @@ macro_rules! impl_from_spec {
     ($from: ty => [$($to: ty)*]) => {
         verus!{
         $(
-        pub assume_specification[ <$to as core::convert::From<$from>>::from ](a: $from) -> (ret: $to);
-
         impl FromSpecImpl<$from> for $to {
             open spec fn obeys_from_spec() -> bool {
                 true
@@ -136,10 +144,10 @@ macro_rules! impl_from_spec {
     };
 }
 
-impl_from_spec! {u8 => [u16 u32 u64 usize u128]}
-impl_from_spec! {u16 => [u32 u64 usize u128]}
-impl_from_spec! {u32 => [u64 u128]}
-impl_from_spec! {u64 => [u128]}
+impl_from_spec! {u8 => [u16 u32 u64 usize u128 i16 i32 i64 i128]}
+impl_from_spec! {u16 => [u32 u64 usize u128 i32 i64 i128]}
+impl_from_spec! {u32 => [u64 u128 i64 i128]}
+impl_from_spec! {u64 => [u128 i128]}
 impl_from_spec! {i8 => [i16 i32 i64 isize i128]}
 impl_from_spec! {i16 => [i32 i64 isize i128]}
 impl_from_spec! {i32 => [i64 i128]}
@@ -149,8 +157,6 @@ macro_rules! impl_int_try_from_spec {
     ($from:ty => [$($to:ty)*]) => {
         verus!{
         $(
-        pub assume_specification[ <$to as TryFrom<$from>>::try_from ](a: $from) -> (ret: Result<$to, <$to as TryFrom<$from>>::Error>);
-
         impl TryFromSpecImpl<$from> for $to {
             open spec fn obeys_try_from_spec() -> bool {
                 true
@@ -169,11 +175,11 @@ macro_rules! impl_int_try_from_spec {
     };
 }
 
-impl_int_try_from_spec! { u16 => [u8 i8] }
-impl_int_try_from_spec! { u32 => [u8 u16 i8 i16 usize isize] }
-impl_int_try_from_spec! { u64 => [u8 u16 u32 i8 i16 i32 usize isize] }
-impl_int_try_from_spec! { u128 => [u8 u16 u32 u64 i8 i16 i32 i64 usize isize] }
-impl_int_try_from_spec! { usize => [u8 u16 u32 u64 u128 i8 i16 i32 i64] }
+impl_int_try_from_spec! { u16 => [u8 i8 i16 isize] }
+impl_int_try_from_spec! { u32 => [u8 u16 i8 i16 i32 usize isize] }
+impl_int_try_from_spec! { u64 => [u8 u16 u32 i8 i16 i32 i64 usize isize] }
+impl_int_try_from_spec! { u128 => [u8 u16 u32 u64 i8 i16 i32 i64 i128 usize isize] }
+impl_int_try_from_spec! { usize => [u8 u16 u32 u64 u128 i8 i16 i32 i64 isize] }
 impl_int_try_from_spec! { i8 => [u8 u16 u32 u64 u128 usize] }
 impl_int_try_from_spec! { i16 => [u8 u16 u32 u64 u128 i8 usize] }
 impl_int_try_from_spec! { i32 => [u8 u16 u32 u64 u128 i8 i16 usize isize] }
