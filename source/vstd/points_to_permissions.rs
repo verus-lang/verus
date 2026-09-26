@@ -187,6 +187,31 @@ impl PointsToUntyped {
         self.wf_basic() && self.ptr()@.metadata == self.len()
     }
 
+    /// If `T` is zero sized, then we can construct a `PointsToUntyped` from any non-null pointer.
+    /// The range of memory pointed to by this permission will be empty.
+    pub proof fn zero_sized<T>(ptr: *mut T) -> (tracked perm: Self)
+        requires
+            ptr@.addr != 0,
+            size_of::<T>() == 0,
+            ptr@.provenance.is_some() ==> {
+                &&& ptr@.addr as int >= ptr@.provenance.data().start_addr()
+                &&& ptr@.addr <= ptr@.provenance.data().start_addr()
+                    + ptr@.provenance.data().alloc_len()
+            },
+        ensures
+            perm.ptr()@.addr == ptr@.addr,
+            perm.ptr()@.provenance == ptr@.provenance,
+            perm.bytes().len() == size_of::<T>(),
+            perm.wf(),
+    {
+        broadcast use raw_ptr::group_raw_ptr_axioms;
+
+        let byte_ptr: *mut [u8] = ptr_mut_from_data(
+            PtrData::<[u8]> { addr: ptr@.addr, provenance: ptr@.provenance, metadata: 0 },
+        );
+        SeqPointsTo { seq_pt: Seq::tracked_empty(), ptr: Ghost(byte_ptr) }
+    }
+
     /// Specializes `is_disjoint` to the case when the other permission is a `PointsToUntyped`.
     pub proof fn is_disjoint_untyped(tracked &mut self, tracked other: &PointsToUntyped)
         requires
@@ -445,14 +470,7 @@ impl<T> PointsToUnaligned<T> {
     {
         broadcast use raw_ptr::group_raw_ptr_axioms;
 
-        // TODO: define zero_sized function on PointsToUntyped and use that here
-        let byte_ptr: *mut [u8] = ptr_mut_from_data(
-            PtrData::<[u8]> { addr: ptr@.addr, provenance: ptr@.provenance, metadata: 0 },
-        );
-        let tracked untyped: PointsToUntyped = SeqPointsTo {
-            seq_pt: Seq::tracked_empty(),
-            ptr: Ghost(byte_ptr),
-        };
+        let tracked untyped: PointsToUntyped = PointsToUntyped::zero_sized(ptr);
         PointsToUnaligned { val: TypedValue::Empty, pt_untyped: Tracked(untyped) }
     }
 

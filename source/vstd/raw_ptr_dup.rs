@@ -1155,26 +1155,6 @@ impl<T> PointsToUnaligned<[T]> {
     ;
 }
 
-impl PointsToUnaligned<[u8]> {
-    /// If `T` is zero sized, then we can construct an uninitialized `PointsToUnaligned<[T]>` from any non-null pointer.
-    /// The range of memory pointed to by this permission will be empty.
-    pub axiom fn zero_sized<T>(ptr: *mut T) -> (tracked perm: Self)
-        requires
-            ptr@.addr != 0,
-            layout::size_of::<T>() == 0,
-            ptr@.provenance.is_some() ==> {
-                &&& ptr@.addr as int >= ptr@.provenance.data().start_addr()
-                &&& ptr@.addr <= ptr@.provenance.data().start_addr()
-                    + ptr@.provenance.data().alloc_len()
-            },
-        ensures
-            perm.ptr()@.addr == ptr@.addr,
-            perm.ptr()@.provenance == ptr@.provenance,
-            perm.ptr()@.metadata == 0,
-            perm.abstract_bytes().len() == layout::size_of::<T>(),
-    ;
-}
-
 impl PointsTo<str> {
     /// The (possibly uninitialized) memory that this permission gives access to.
     pub uninterp spec fn mem_contents(&self) -> MemContents<&str>;
