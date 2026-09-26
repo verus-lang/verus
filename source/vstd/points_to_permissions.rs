@@ -936,7 +936,6 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         requires
             ptr@.addr != 0,
             ptr@.addr as nat % align_of::<T>() == 0,
-            // TODO: add ptr spec fn encoding this property?
             ptr_addr_in_bounds(ptr),
         ensures
             spt.seq_pt() == Seq::<PointsTo<T>>::empty(),
