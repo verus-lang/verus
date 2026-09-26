@@ -4117,16 +4117,12 @@ impl Visitor {
             #[verifier::custom_err(#exec_wf_inv_msg)]
             #x_iter_name.wf()
         ));
-        // `wf()`'s own guarantees are conditional on `obeys_prophetic_iter_laws()`, which for
-        // most concrete external iterator types is unconditionally true, masking that it isn't
-        // otherwise part of the loop's invariant. For a generic `I: IteratorSpec` type
-        // parameter, obeys only holds because of a precondition on the enclosing function, and
-        // without this invariant it's lost after the first loop iteration even though `next()`'s
-        // own contract preserves it exactly.
+        // `wf()`'s guarantees are conditional on `obeys_prophetic_iter_laws()` - unconditionally
+        // true for concrete iterator types, but only provable here via an external precondition
+        // for a generic one, and otherwise lost after the first iteration.
         //
-        // Only added when the initial value is known to obey (an `==>`/`==` form relating it to
-        // the unchanging snapshot is also always provable, but empirically doesn't help Z3
-        // re-derive `wf()`'s own conditional guarantees the way this bare form does).
+        // Stated bare, not as `==>`/`==` against the snapshot: that's equally provable but
+        // empirically doesn't help Z3 re-derive `wf()`'s own conditional guarantees.
         let obeys_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
             #vstd::std_specs::iter::IteratorSpec::obeys_prophetic_iter_laws(&#x_iter_name.iter)
         ));

@@ -343,15 +343,9 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-// Regression test: a for-loop over a generic `I: Iterator + IteratorSpec` type parameter
-// used to fail with "loop invariant not satisfied" even with no user invariant, while the
-// identical loop over a concrete iterator type verified with none. The auto-generated loop
-// invariant included `wf()`, whose own guarantees are conditional on
-// `obeys_prophetic_iter_laws()`; for concrete types that's unconditionally, structurally true
-// (masking the gap), but for a generic type parameter it only holds via an external
-// precondition that the invariant set never carried into the loop body. The
-// `#[verifier::exec_allows_no_decreases_clause]` escape hatch the error message points to does
-// not affect this at all (it only concerns a separate decreases-metric invariant).
+// A for-loop over a generic `I: Iterator + IteratorSpec` used to fail even with `invariant
+// true`, since the auto-generated invariant's `wf()` needs `obeys_prophetic_iter_laws()` -
+// unconditionally true for concrete types, but only provable here via an external precondition.
 test_verify_one_file! {
     #[test] for_loop_generic_iterator_obeys_invariant verus_code! {
         use vstd::prelude::*;
@@ -370,9 +364,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-// Named-ghost-iterator variant: checks that the auto-generated obeys invariant coexists with
-// a user-supplied invariant referencing the same fact (and that the fact is actually usable
-// inside the loop body, not just silently present in the invariant list).
+// The auto-generated obeys invariant coexists with, and is usable alongside, a user-supplied one.
 test_verify_one_file! {
     #[test] for_loop_generic_iterator_user_invariant_combines verus_code! {
         use vstd::prelude::*;
@@ -391,11 +383,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-// A for-loop over an iterator that structurally never obeys prophetic laws already failed to
-// verify before this fix too (just later - "at loop exit" rather than "before loop" - since
-// the macro's auto-generated `ensures will_return_none()` already implicitly required obeys
-// to be provable). This fix doesn't introduce a new limitation for this case, just surfaces
-// the same pre-existing one earlier and more clearly.
+// A non-obeying iterator already failed before this fix too (just later, less precisely) -
+// this surfaces the same pre-existing requirement earlier, not a new one.
 test_verify_one_file! {
     #[test] for_loop_non_obeying_iterator_fails verus_code! {
         use vstd::prelude::*;
