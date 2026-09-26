@@ -35,6 +35,57 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
+    #[test] test_no_cheating_external_body_false_requires ["--no-cheating"] => verus_code! {
+        #[verifier::external_body]
+        fn unreachable()
+            requires false
+            ensures false
+        {}
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_no_cheating_external_body_trait_impl_false_requires ["--no-cheating"] => verus_code! {
+        trait A {
+            fn unreachable(&self)
+                requires false;
+        }
+
+        struct S;
+
+        impl A for S {
+            #[verifier::external_body]
+            fn unreachable(&self) {}
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_no_cheating_external_body_false_recommends ["--no-cheating"] => verus_code! {
+        // This should fail because `--no-cheating` triggers on `#[verifier::external_body]`;
+        // `recommends false` is not a precondition.
+        #[verifier::external_body]
+        spec fn still_usable() -> bool // FAILS
+            recommends false
+        {
+            true
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_no_cheating_verus_spec_with ["--no-cheating"] => code! {
+        #[verus_spec(
+            with
+                Ghost(g): Ghost<u32>
+        )]
+        fn has_ghost_input() -> u32 {
+            42
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
     #[test] test_no_cheating_assume ["--no-cheating"] => verus_code! {
         proof fn test() {
             assume(1 + 1 == 3); // FAILS
@@ -78,6 +129,18 @@ test_verify_one_file_with_options! {
             ensures false
         ;
     } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_no_cheating_assume_spec_false_requires ["--no-cheating"] => verus_code! {
+        #[verifier::external]
+        fn external_fn() {}
+
+        assume_specification [external_fn]()
+            requires false
+            ensures false
+        ;
+    } => Ok(())
 }
 
 test_verify_one_file_with_options! {
