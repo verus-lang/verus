@@ -728,9 +728,16 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
                         if !trait_map[&trait_path].iter().any(|t| t.x.assoc_typs.contains(&name)) {
                             continue;
                         }
-                        if !crate::rust_to_vir_base::mid_ty_filter_for_external_impls(
+                        // Normalize projections so filtering sees the resolved types.
+                        let Ok(typ) = tcx.try_normalize_erasing_regions(
+                            TypingEnv::post_analysis(tcx, assoc_item.def_id),
+                            tcx.type_of(assoc_item.def_id).instantiate_identity(),
+                        ) else {
+                            continue 'impls;
+                        };
+                        if !crate::rust_to_vir_base::mid_arg_filter_for_external_impls(
                             ctxt,
-                            &tcx.type_of(assoc_item.def_id).skip_binder(),
+                            typ.walk(),
                             external_info,
                         ) {
                             continue 'impls;
