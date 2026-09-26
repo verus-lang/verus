@@ -1057,6 +1057,16 @@ pub assume_specification<Key: Eq + Hash, S: BuildHasher, A: Allocator>[ HashSet:
         },
 ;
 
+// `HashSet` equality is equality of the sets, for keys that obey the model:
+// `a == b` holds exactly when each contains every element of the other.
+pub assume_specification<T: Eq + Hash, S: BuildHasher, A: Allocator>[ <HashSet<T, S, A> as PartialEq>::eq ](
+    a: &HashSet<T, S, A>,
+    b: &HashSet<T, S, A>,
+) -> (r: bool)
+    ensures
+        keys_obey_model::<T>(a@.union(b@)) && builds_valid_hashers::<S>() ==> r == (a@ == b@),
+;
+
 // The specification for `contains` has a parameter `key: &Q`
 // where you'd expect to find `key: &Key`. This allows for the case
 // that `Key` can be borrowed as something other than `&Key`. For
