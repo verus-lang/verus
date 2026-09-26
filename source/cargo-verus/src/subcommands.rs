@@ -214,7 +214,18 @@ pub fn plan_cargo_run(mut cfg: VerusConfig) -> Result<CargoRunPlan> {
     };
 
     let packages_to_process = &all_packages;
-    let packages_to_verify = if cfg.verify_deps { &all_packages } else { &root_packages };
+
+    let packages_to_verify = if cfg.verify_deps {
+        if cfg.options.verify_trusted {
+            &all_packages
+        } else {
+            // Remove `trusted_crates` from the set of packages to verify.
+            let trusted_packages = metadata_index.get_trusted(&root_packages, &all_packages);
+            &all_packages.difference(&trusted_packages).cloned().collect()
+        }
+    } else {
+        &root_packages
+    };
 
     let fwd_verus_args_packages = match fwd_verus_args_to {
         VerusArgFwdSelector::All => &all_packages,

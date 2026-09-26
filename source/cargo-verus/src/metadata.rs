@@ -12,6 +12,8 @@ use sha2::{Digest, Sha256};
 pub struct VerusMetadata {
     #[serde(default)]
     pub verify: bool,
+    #[serde(default)]
+    pub trusted_crates: Set<String>,
     #[serde(rename = "no-vstd", default)]
     pub no_vstd: bool,
     #[serde(rename = "is-vstd", default)]
@@ -99,6 +101,38 @@ impl<'a> MetadataIndex<'a> {
             }
         }
         visited
+    }
+
+    /// Collect the trusted packages for the build by unioning the `trusted_crates` sets from the
+    /// `Cargo.toml` manifests of `root_packages`.
+    ///
+    /// If the resulting set intersects `root_packages`, fail with an error.
+    pub fn get_trusted(
+        &self,
+        root_packages: &Set<PackageId>,
+        all_packages: &Set<PackageId>,
+    ) -> Set<PackageId> {
+        let trusted_names: Set<String> = root_packages
+            .iter()
+            .flat_map(|root| self.get(root).verus_metadata.trusted_crates.iter().cloned())
+            .collect();
+        let trusted_packages: Set<PackageId> = all_packages
+            .iter()
+            .filter(|package_id| trusted_names.contains(self.get(package_id).package.name.as_str()))
+            .cloned()
+            .collect();
+
+        let trusted_roots: Vec<String> = trusted_packages
+            .intersection(root_packages)
+            .map(|package_id| self.get(package_id).package.name.to_string())
+            .collect();
+        assert!(
+            trusted_roots.is_empty(),
+            "root packages cannot be marked as trusted: {}",
+            trusted_roots.join(", "),
+        );
+
+        trusted_packages
     }
 
     /// Names to pass via `--import-dep-if-present` for every `verify=true`
@@ -323,5 +357,40 @@ mod tests {
         // - `not_verified` is not emitted, but the walk still descends into
         //   its deps to reach `deeper`.
         assert_eq!(names, vec!["deeper".to_string(), "renamed".to_string()]);
+    }
+
+    #[test]
+    fn trusted_crates_are_selected_from_root_metadata() {
+        let workspace = MockWorkspace::new()
+            .members([
+                MockPackage::new("deeper").lib(),
+                MockPackage::new("mid")
+                    .lib()
+                    .trusted_crates(["deeper"])
+                    .deps([MockDep::workspace("deeper")]),
+                MockPackage::new("root")
+                    .lib()
+                    .trusted_crates(["mid"])
+                    .deps([MockDep::workspace("mid")]),
+            ])
+            .materialize();
+
+        let metadata = fetch_metadata(vec![], workspace.path().to_path_buf()).unwrap();
+        let index = MetadataIndex::new(&metadata).unwrap();
+        let roots: Set<PackageId> = metadata
+            .packages
+            .iter()
+            .filter(|package| package.name.as_str() == "root")
+            .map(|package| package.id.clone())
+            .collect();
+
+        let all_packages = index.get_transitive_closure(roots.clone());
+        let trusted_names: Set<String> = index
+            .get_trusted(&roots, &all_packages)
+            .iter()
+            .map(|package_id| index.get(package_id).package.name.to_string())
+            .collect();
+
+        assert_eq!(trusted_names, Set::from(["mid".to_string()]));
     }
 }
