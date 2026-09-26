@@ -1042,8 +1042,11 @@ impl<'a> Builder<'a> {
 
                 Maybe::Some(post_bb)
             }
-            ExprX::OpenInvariant(arg, binder, body, _)
+            ExprX::OpenInvariant(_, arg, binder, body, _)
             | ExprX::TryOpenAtomicUpdate(arg, binder, body) => {
+                if let ExprX::OpenInvariant(credit, ..) = &expr.x {
+                    bb = unwrap!(self.build(credit, bb));
+                }
                 bb = unwrap!(self.build(arg, bb));
 
                 let local = FlattenedPlaceTyped {

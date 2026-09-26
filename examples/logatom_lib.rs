@@ -478,7 +478,7 @@ impl logatom::MutLinearizer<IncrementOp> for ClientInvCarrier<'_> {
 pub fn client_inv() {
     let (my_patomic, Tracked(my_perm)) = MyPAtomicU64::new(6, Ghost(1234));
     let tracked inv = AtomicInvariant::<_, _, UserInv>::new(my_perm.id(), my_perm, USER_INV);
-    let Tracked(mut credit) = vstd::invariant::create_open_invariant_credit();
+    let tracked mut credit = vstd::invariant::create_open_invariant_credit();
 
     let tracked carrier = ClientInvCarrier { my_inv: &inv, credit };
     let (prev, Tracked(_unit)) = increment::<ClientInvCarrier>(

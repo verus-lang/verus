@@ -548,7 +548,7 @@ fn check_one_expr<Emit: EmitError>(
                 ));
             }
         }
-        ExprX::OpenInvariant(_inv, _binder, body, _atomicity) => {
+        ExprX::OpenInvariant(_credit, _inv, _binder, body, _atomicity) => {
             assert_no_early_exit_in_inv_block(&body.span, body)?;
         }
         ExprX::AssertQuery { requires, ensures, proof, mode: _ } => {

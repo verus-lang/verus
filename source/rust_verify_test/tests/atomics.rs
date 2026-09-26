@@ -358,8 +358,7 @@ test_verify_one_file! {
             });
         }
         pub fn call_do_nothing<A, B: InvariantPredicate<A, u8>>(i: Tracked<&AtomicInvariant<A, u8, B>>) {
-            let Tracked(credit) = create_open_invariant_credit();
-            proof { do_nothing(credit, i.get()); }
+            proof { do_nothing(create_open_invariant_credit(), i.get()); }
         }
     } => Ok(())
 }
@@ -376,8 +375,7 @@ test_verify_one_file! {
             });
         }
         pub fn call_do_nothing<A, B: InvariantPredicate<A, u8>>(i: Tracked<&LocalInvariant<A, u8, B>>) {
-            let Tracked(credit) = create_open_invariant_credit();
-            proof { do_nothing(credit, i.get()); }
+            proof { do_nothing(create_open_invariant_credit(), i.get()); }
         }
     } => Ok(())
 }
