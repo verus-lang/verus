@@ -106,24 +106,16 @@ pub assume_specification[ DefaultHasher::finish ](state: &DefaultHasher) -> (res
 #[verifier::external_body]
 pub uninterp spec fn obeys_key_model<Key: ?Sized>() -> bool;
 
-/// `obeys_key_model`, restricted to the keys in `s`: the hash of a key in
-/// `s` is deterministic, `Key::clone` is the identity on `s`, and two keys
-/// in `s` are identical if and only if the executable `==` says so.
+/// `obeys_key_model`, restricted to the keys in `s`: deterministic hash, faithful `==`, and
+/// identity `clone`, all only among keys in `s`. A table only ever compares the key it's given
+/// against the keys it holds, so this is all its specs need - and it admits key types whose
+/// `==` is faithful only on part of the type (e.g. a ghost field `==` can't see).
 ///
-/// A hash table only ever compares the key it is given against the keys
-/// it holds, so its specifications need no more than this about those
-/// keys. This admits key types whose `==` is only faithful on part of the
-/// type -- for instance a type with a ghost field that `==` cannot see,
-/// whose `==` is faithful among values that agree on that field.
-///
-/// A type that obeys `obeys_key_model` obeys this on every set
-/// (`axiom_obeys_key_model_keys`).
+/// `obeys_key_model` implies this for every set (`axiom_obeys_key_model_keys`).
 pub uninterp spec fn keys_obey_model<Key>(s: Set<Key>) -> bool;
 
-/// `keys_obey_model` for a table's keys `s` and a key looked up through a
-/// borrow `k: &Q`. For `Q = Key` this is `keys_obey_model(s.insert(*k))`
-/// (`axiom_deref_keys_obey_model`); for any other `Q` it follows only from
-/// `obeys_key_model`.
+/// `keys_obey_model` for a lookup through a borrow `k: &Q`. For `Q = Key` this is
+/// `keys_obey_model(s.insert(*k))`; for any other `Q` it only follows from `obeys_key_model`.
 pub uninterp spec fn borrowed_keys_obey_model<Key, Q: ?Sized>(s: Set<Key>, k: &Q) -> bool;
 
 pub broadcast proof fn axiom_obeys_key_model_keys<Key>(s: Set<Key>)
@@ -840,11 +832,8 @@ pub broadcast proof fn axiom_deref_key_removed<Q, Value>(
     admit();
 }
 
-/// A pair obeys the key model on a set whose components come from sets that
-/// do: std derives `==`, `Hash` and `Clone` for tuples componentwise, so
-/// `==` on the pair is faithful where both components' `==` is, its hash is a
-/// deterministic function of the components', and its clone is the identity
-/// where theirs are. The component sets may be any supersets of the
+/// A pair obeys the key model on a set whose components come from sets that do: std derives
+/// `==`/`Hash`/`Clone` for tuples componentwise. Component sets may be any supersets of the
 /// projections.
 pub proof fn axiom_keys_obey_model_pair<A, B>(s: Set<(A, B)>, sa: Set<A>, sb: Set<B>)
     requires
