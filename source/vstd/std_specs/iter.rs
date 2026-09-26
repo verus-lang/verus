@@ -819,31 +819,12 @@ pub broadcast axiom fn zip_postcondition<I, U>(i: I, other: U, r: Zip<I, <U as I
 #[verifier::reject_recursive_types(I)]
 pub struct ExCopied<I>(Copied<I>);
 
-// Ghost accessor for the inner iterator
-//
-// KNOWN INCOMPLETE. A `for` loop over `copied()` type-checks but its
-// generated invariants do not discharge. Isolated as far as it can be from
-// outside the verifier:
-//
-//   for k in a.iter()          verifies
-//   for k in a.iter().rev()    verifies
-//   for k in a.iter().map(..)  verifies
-//   for (k,v) in a.iter().zip(..)  verifies
-//   for k in a.iter().copied()     FAILS
-//
-// So it is not adapters in general, not the inner iterator, and not the
-// composition with zip. Three spec shapes were tried and all fail the same
-// way: a concrete `remaining`, an uninterpreted one, and a literal
-// transcription of `map()`'s impl and axiom. The single step that does not
-// hold is `remaining(&it) == remaining(&old).drop_first()` after one
-// `next()` -- the trait's own ensures -- which `rev()` satisfies under the
-// identical test.
-//
-// What is structurally unusual about `Copied`: its `Item` is related to the
-// inner one INVERSELY (`I::Item = &'a T`, solve for `T`), where `Map`'s `B`
-// and `Zip`'s pair are derived forwards from the inner `Item`. That is the
-// remaining suspect, and checking it needs someone who knows how `Self::Item`
-// is resolved for such an impl.
+// Ghost accessor for the inner iterator. `Copied`'s `Item` (`T`) relates to the
+// inner iterator's (`&'a T`) inversely, via a `TypEquality` bound rather than a
+// bare type parameter - unlike `Map`'s `B` or `Zip`'s pair, which are derived
+// forwards from the inner `Item`. That gap in VIR's trigger generation (issue
+// #2947) used to make `for` loops and `collect()` over `copied()` fail to
+// verify even a trivial invariant; fixed by this PR's VIR change above.
 pub uninterp spec fn copied_iter<I>(c: Copied<I>) -> I;
 
 // Parameter names and order must match std's own
