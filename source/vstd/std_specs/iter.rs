@@ -2,7 +2,7 @@ use super::super::prelude::*;
 use super::super::seq::{
     group_seq_lemmas, lemma_seq_empty, lemma_seq_subrange_index, lemma_seq_subrange_len,
 };
-use core::iter::{Filter, FromIterator, Iterator, Rev, Skip, Take, Zip};
+use core::iter::{Cloned, Copied, Filter, FromIterator, Iterator, Rev, Skip, Take, Zip};
 
 use verus as verus_skip_verusfmt;
 verus_skip_verusfmt! {
@@ -144,6 +144,15 @@ pub trait ExIterator {
                 }
             };
 
+    #[verifier::impls_cannot_extend_spec]
+    fn cloned<'a, T>(self) -> (r: Cloned<Self>)
+        where
+            T: Clone + 'a,
+            Self: Sized + Iterator<Item = &'a T>,
+        ensures
+            self.obeys_prophetic_iter_laws() ==> cloned_post::<T, Self, Cloned<Self>>(self, r),
+    ;
+
     fn collect<B>(self) -> (collection: B)
         where
             B: FromIterator<Self::Item>,
@@ -152,6 +161,15 @@ pub trait ExIterator {
             self.obeys_prophetic_iter_laws() ==>
                 self.will_return_none() &&
                 FromIteratorSpec::from_iter_ensures(self.remaining(), collection),
+    ;
+
+    #[verifier::impls_cannot_extend_spec]
+    fn copied<'a, T>(self) -> (r: Copied<Self>)
+        where
+            T: Copy + 'a,
+            Self: Sized + Iterator<Item = &'a T>,
+        ensures
+            self.obeys_prophetic_iter_laws() ==> copied_post::<T, Self, Copied<Self>>(self, r),
     ;
 
     fn filter<P>(self, predicate: P) -> (r: core::iter::Filter<Self, P>)
@@ -794,6 +812,174 @@ pub broadcast axiom fn zip_postcondition<I, U>(i: I, other: U, r: Zip<I, <U as I
 ;
 
 /********************************************************************************
+ * Definitions for `copied()`
+ ********************************************************************************/
+#[verifier::external_body]
+#[verifier::external_type_specification]
+#[verifier::reject_recursive_types(I)]
+pub struct ExCopied<I>(Copied<I>);
+
+// Ghost accessor for the inner iterator. `Copied`'s `Item` (`T`) relates to the
+// inner iterator's (`&'a T`) inversely, via a `TypEquality` bound rather than a
+// bare type parameter - unlike `Map`'s `B` or `Zip`'s pair, which are derived
+// forwards from the inner `Item`. That gap in VIR's trigger generation (issue
+// #2947) used to make `for` loops and `collect()` over `copied()` fail to
+// verify even a trivial invariant; fixed by this PR's VIR change above.
+pub uninterp spec fn copied_iter<I>(c: Copied<I>) -> I;
+
+// Parameter names and order must match std's own
+// `impl<'a, I, T: 'a> Iterator for Copied<I>`.
+impl<'a, I, T: 'a> IteratorSpecImpl for Copied<I>
+    where
+        I: Iterator<Item = &'a T> + IteratorSpec,
+        T: Copy,
+{
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        copied_iter(*self).obeys_prophetic_iter_laws()
+    }
+
+    // Defined concretely, as `zip()` does rather than as `map()` does: an
+    // uninterpreted `remaining` is enough for `for` loops but not for
+    // `collect()`, which needs the whole sequence.
+    //
+    // The index closure is deliberately over `int`. Writing this as
+    // `.map_values(|r: &'a T| *r)` ICEs the verifier (`TyKind::Infer` in
+    // rust_to_vir_base) on the reference-typed closure parameter.
+    #[verifier::prophetic]
+    closed spec fn remaining(&self) -> Seq<Self::Item> {
+        Seq::new(
+            copied_iter(*self).remaining().len(),
+            |k: int| *copied_iter(*self).remaining()[k],
+        )
+    }
+
+    #[verifier::prophetic]
+    closed spec fn will_return_none(&self) -> bool {
+        copied_iter(*self).will_return_none()
+    }
+
+    closed spec fn decrease(&self) -> Option<nat> {
+        copied_iter(*self).decrease()
+    }
+
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        match copied_iter(*self).peek(index) {
+            Some(v) => Some(*v),
+            None => None,
+        }
+    }
+}
+
+/********************************************************************************
+ * Definitions for `cloned()`
+ ********************************************************************************/
+#[verifier::external_body]
+#[verifier::external_type_specification]
+#[verifier::reject_recursive_types(I)]
+pub struct ExCloned<I>(Cloned<I>);
+
+// Ghost accessor for the inner iterator
+pub uninterp spec fn cloned_iter<I>(c: Cloned<I>) -> I;
+
+// Unlike copied(), Clone::clone()'s result isn't guaranteed to equal the original value for
+// arbitrary T: Clone. `cloned_value` is an uninterpreted per-value ghost accessor, ordinary
+// enough (T is just the type of its own argument, not reached through anyone else's
+// associated type) that it needs none of this file's trigger machinery; it's related to its
+// argument via `cloned()` - the same relation vstd's own `[T; N]::clone` spec uses (see
+// std_specs/clone.rs) - rather than being defined outright as an exact dereference.
+pub uninterp spec fn cloned_value<T>(orig: T) -> T;
+
+pub broadcast axiom fn cloned_value_is_cloned<T: Clone>(orig: T)
+    ensures
+        cloned::<T>(orig, #[trigger] cloned_value(orig)),
+;
+
+// Parameter names and order must match std's own
+// `impl<'a, I, T: 'a> Iterator for Cloned<I>`.
+impl<'a, I, T: 'a> IteratorSpecImpl for Cloned<I>
+    where
+        I: Iterator<Item = &'a T> + IteratorSpec,
+        T: Clone,
+{
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        cloned_iter(*self).obeys_prophetic_iter_laws()
+    }
+
+    #[verifier::prophetic]
+    closed spec fn remaining(&self) -> Seq<Self::Item> {
+        Seq::new(
+            cloned_iter(*self).remaining().len(),
+            |k: int| cloned_value(*cloned_iter(*self).remaining()[k]),
+        )
+    }
+
+    #[verifier::prophetic]
+    closed spec fn will_return_none(&self) -> bool {
+        cloned_iter(*self).will_return_none()
+    }
+
+    closed spec fn decrease(&self) -> Option<nat> {
+        cloned_iter(*self).decrease()
+    }
+
+    // Unlike copied()'s peek, there's no way to deterministically predict a cloned value
+    // without actually cloning it, so this conservatively never hints ahead.
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        None
+    }
+}
+
+// Split out from cloned()'s own ensures for the same reason as copied_post (see below):
+// avoiding a cyclic `Self: IteratorSpec` bound. `T` is carried explicitly for the trigger.
+pub uninterp spec fn cloned_post<T, I, C>(i: I, r: C) -> bool;
+
+pub broadcast axiom fn cloned_postcondition<'a, T, I>(i: I, r: Cloned<I>)
+    where
+        T: Clone + 'a,
+        I: Iterator<Item = &'a T> + IteratorSpec,
+    requires
+        i.obeys_prophetic_iter_laws(),
+        #[trigger] cloned_post::<T, I, Cloned<I>>(i, r),
+    ensures
+        cloned_iter(r) == i,
+        // Stated outright for the same reason as copied_postcondition (T isn't determined
+        // by Cloned<I> alone, so the impl doesn't unfold at use sites).
+        IteratorSpec::obeys_prophetic_iter_laws(&r),
+        IteratorSpec::remaining(&r).len() == i.remaining().len(),
+        forall |k| #![auto] 0 <= k < i.remaining().len() ==>
+            cloned::<T>(*i.remaining()[k], IteratorSpec::remaining(&r)[k]),
+        IteratorSpec::will_return_none(&r) == i.will_return_none(),
+        IteratorSpec::decrease(&r) == i.decrease(),
+;
+
+// Ideally, we would write this postcondition directly on the definition of
+// Iterator::copied above.  However, to do so, we would need to impose a trait
+// bound of `Self: IteratorSpec`.  However, this introduces a cyclic dependency.
+// `T` is carried explicitly so the broadcast trigger below covers it;
+// it is determined by `I::Item = &'a T` but does not appear in the arguments.
+pub uninterp spec fn copied_post<T, I, C>(i: I, r: C) -> bool;
+
+pub broadcast axiom fn copied_postcondition<'a, T, I>(i: I, r: Copied<I>)
+    where
+        T: Copy + 'a,
+        I: Iterator<Item = &'a T> + IteratorSpec,
+    requires
+        i.obeys_prophetic_iter_laws(),
+        #[trigger] copied_post::<T, I, Copied<I>>(i, r),
+    ensures
+        copied_iter(r) == i,
+        // Stated outright rather than left to unfold from the impl: `T` is
+        // not determined by the self type `Copied<I>` (it arrives through
+        // `I::Item = &'a T`), so the definition does not unfold at use sites.
+        IteratorSpec::obeys_prophetic_iter_laws(&r),
+        IteratorSpec::remaining(&r).len() == i.remaining().len(),
+        forall |k| #![auto] 0 <= k < i.remaining().len() ==>
+            IteratorSpec::remaining(&r)[k] == *i.remaining()[k],
+        IteratorSpec::will_return_none(&r) == i.will_return_none(),
+        IteratorSpec::decrease(&r) == i.decrease(),
+;
+
+/********************************************************************************
  * Defines a convenient wrapper type that bundles state and invariants needed
  * for ergonomic for-loop support.
  ********************************************************************************/
@@ -935,6 +1121,9 @@ pub broadcast group group_iter_axioms {
     take_postcondition,
     skip_postcondition,
     map_postcondition,
+    copied_postcondition,
+    cloned_postcondition,
+    cloned_value_is_cloned,
 }
 
 } // verus!
