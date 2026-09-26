@@ -204,6 +204,58 @@ impl PointsToUntyped {
     }
 }
 
+/// Represents (typed) contents of memory.
+// Don't use std Option here in order to avoid circular dependency issues
+// with verifying the standard library.
+// (Also, using our own enum here lets us have more meaningful
+// variant names like Empty/Valid.)
+#[verifier::accept_recursive_types(T)]
+pub tracked enum TypedValue<T: ?Sized> {
+    /// Represents uninitialized memory.
+    Empty,
+    /// Represents initialized memory with the given value of type `T`.
+    Valid(Box<T>),
+}
+
+impl<T: ?Sized> TypedValue<T> {
+    /// Returns `true` if it is a [`TypedValue::Valid`] value.
+    #[verifier::inline]
+    pub open spec fn is_valid(&self) -> bool {
+        self is Valid
+    }
+
+    /// Returns `true` if it is a [`TypedValue::Empty`] value.
+    #[verifier::inline]
+    pub open spec fn is_empty(&self) -> bool {
+        self is Empty
+    }
+}
+
+impl<T> TypedValue<T> {
+    /// If it is a [`TypedValue::Valid`] value, returns the value.
+    /// Otherwise, the return value is meaningless.
+    #[verifier::inline]
+    pub open spec fn value(&self) -> T
+        recommends
+            self is Valid,
+    {
+        *self->0
+    }
+}
+
+impl<T> TypedValue<[T]> {
+    /// If it is a [`TypedValue::Valid`] value, returns the value.
+    /// Otherwise, the return value is meaningless.
+    // Does this make sense as the return value? Returning [T] doesn't work bc it's not Sized.
+    #[verifier::inline]
+    pub open spec fn value(&self) -> &[T]
+        recommends
+            self is Valid,
+    {
+        &*self->0
+    }
+}
+
 /// Permission to access memory which may decode to a valid value of type `T`;
 /// this memory is not guaranteed to be aligned to `T`.
 /// Internally represented as a possibly-valid value of type `T`,
@@ -219,18 +271,11 @@ pub tracked struct PointsToUnaligned<T: ?Sized> {
 /// We track the pointer to that memory,
 /// the (possibly-valid) typed value, and its abstract bytes.
 #[cfg(verus_keep_ghost)]
-pub ghost struct PointsToUnalignedData<T> {
-    pub ptr: *mut T,
-    pub value: TypedValue<T>,
-    pub bytes: Seq<AbstractByte>,
-}
-
-#[cfg(verus_keep_ghost)]
 impl<T> View for PointsToUnaligned<T> {
-    type V = PointsToUnalignedData<T>;
+    type V = PointsToData<T>;
 
     open spec fn view(&self) -> Self::V {
-        PointsToUnalignedData { ptr: self.ptr(), value: self.typed_value(), bytes: self.bytes() }
+        PointsToData { ptr: self.ptr(), value: self.typed_value(), bytes: self.bytes() }
     }
 }
 
@@ -349,6 +394,68 @@ impl<T> PointsToUnaligned<T> {
         self.wf_basic()
     }
 
+    /// Convert PointsToUnaligned to an aligned PointsTo.
+    /// Requires the pointer address to be properly aligned.
+    ///
+    /// Ensures pointer locations remain the same, and memory
+    /// initializations states remain the same.
+    pub proof fn into_aligned(tracked self) -> (tracked perm: PointsTo<T>)
+        requires
+            self.ptr()@.addr as int % align_of::<T>() as int == 0,
+        ensures
+            perm@ == self@,
+    {
+        broadcast use layout_of_sized;
+
+        PointsTo { pt_unaligned: Tracked(self) }
+    }
+
+    /// Borrow an unaligned PointsToUnaligned as an aligned PointsTo.
+    /// Requires the pointer address to be properly aligned.
+    ///
+    /// Ensures pointer locations remain the same, and memory
+    /// initializations states remain the same.
+    pub axiom fn as_aligned(tracked &self) -> (tracked perm: &PointsTo<T>)
+        requires
+            self.ptr()@.addr as int % align_of::<T>() as int == 0,
+        ensures
+            perm@ == self@,
+    // TODO: uncomment when main is merged in
+    // { shr_ref_struct_wrap(self, &PointsTo { pt_unaligned: Tracked(self) }, "", "pt_unaligned") }
+    ;
+
+    /// If `T` is zero sized, then we can construct an uninitialized `PointsToUnaligned<T>`
+    /// from any non-null pointer whose address (and, if known, provenance) is otherwise valid.
+    /// The range of memory pointed to by this permission will be empty.
+    pub proof fn zero_sized(ptr: *mut T) -> (tracked perm: Self)
+        requires
+            ptr@.addr != 0,
+            size_of::<T>() == 0,
+            ptr@.provenance.is_some() ==> {
+                &&& ptr@.addr as int >= ptr@.provenance.data().start_addr()
+                &&& ptr@.addr <= ptr@.provenance.data().start_addr()
+                    + ptr@.provenance.data().alloc_len()
+            },
+        ensures
+            perm.ptr()@.addr == ptr@.addr,
+            perm.ptr()@.provenance == ptr@.provenance,
+            perm.is_empty(),
+            perm.bytes().len() == size_of::<T>(),
+            perm.wf(),
+    {
+        broadcast use raw_ptr::group_raw_ptr_axioms;
+
+        // TODO: define zero_sized function on PointsToUntyped and use that here
+        let byte_ptr: *mut [u8] = ptr_mut_from_data(
+            PtrData::<[u8]> { addr: ptr@.addr, provenance: ptr@.provenance, metadata: 0 },
+        );
+        let tracked untyped: PointsToUntyped = SeqPointsTo {
+            seq_pt: Seq::tracked_empty(),
+            ptr: Ghost(byte_ptr),
+        };
+        PointsToUnaligned { val: TypedValue::Empty, pt_untyped: Tracked(untyped) }
+    }
+
     /// Specializes `is_disjoint` to the case when the other permission is a `PointsToUnaligned<S>`.
     pub proof fn is_disjoint_unaligned<S>(tracked &mut self, tracked other: &PointsToUnaligned<S>)
         requires
@@ -363,58 +470,6 @@ impl<T> PointsToUnaligned<T> {
         self.size_eq_const_size();
         other.size_eq_const_size();
         self.is_disjoint(other);
-    }
-}
-
-/// Represents (typed) contents of memory.
-// Don't use std Option here in order to avoid circular dependency issues
-// with verifying the standard library.
-// (Also, using our own enum here lets us have more meaningful
-// variant names like Empty/Valid.)
-#[verifier::accept_recursive_types(T)]
-pub tracked enum TypedValue<T: ?Sized> {
-    /// Represents uninitialized memory.
-    Empty,
-    /// Represents initialized memory with the given value of type `T`.
-    Valid(Box<T>),
-}
-
-impl<T: ?Sized> TypedValue<T> {
-    /// Returns `true` if it is a [`TypedValue::Valid`] value.
-    #[verifier::inline]
-    pub open spec fn is_valid(&self) -> bool {
-        self is Valid
-    }
-
-    /// Returns `true` if it is a [`TypedValue::Empty`] value.
-    #[verifier::inline]
-    pub open spec fn is_empty(&self) -> bool {
-        self is Empty
-    }
-}
-
-impl<T> TypedValue<T> {
-    /// If it is a [`TypedValue::Valid`] value, returns the value.
-    /// Otherwise, the return value is meaningless.
-    #[verifier::inline]
-    pub open spec fn value(&self) -> T
-        recommends
-            self is Valid,
-    {
-        *self->0
-    }
-}
-
-impl<T> TypedValue<[T]> {
-    /// If it is a [`TypedValue::Valid`] value, returns the value.
-    /// Otherwise, the return value is meaningless.
-    // Does this make sense as the return value? Returning [T] doesn't work bc it's not Sized.
-    #[verifier::inline]
-    pub open spec fn value(&self) -> &[T]
-        recommends
-            self is Valid,
-    {
-        &*self->0
     }
 }
 
@@ -623,6 +678,30 @@ impl<T> PointsTo<T> {
     {
     }
 
+    /// From a non-null, aligned pointer to a zero-sized type, we can construct an
+    /// uninitialized `PointsTo<T>`. The memory range pointed to by this pointer will be empty.
+    pub proof fn zero_sized(ptr: *mut T) -> (tracked perm: PointsTo<T>)
+        requires
+            ptr@.addr != 0,
+            ptr@.addr as nat % align_of::<T>() == 0,
+            ptr@.provenance.is_some() ==> {
+                &&& ptr@.addr as int >= ptr@.provenance.data().start_addr()
+                &&& ptr@.addr <= ptr@.provenance.data().start_addr()
+                    + ptr@.provenance.data().alloc_len()
+            },
+            size_of::<T>() == 0,
+        ensures
+            perm.ptr() == ptr,
+            perm.is_empty(),
+            perm.bytes().len() == size_of::<T>(),
+            perm.wf(),
+    {
+        broadcast use raw_ptr::group_raw_ptr_axioms;
+
+        let tracked pt_unaligned = PointsToUnaligned::<T>::zero_sized(ptr);
+        PointsTo { pt_unaligned: Tracked(pt_unaligned) }
+    }
+
     /// Specializes `is_disjoint` to the case when the other permission is a `PointsTo<S>`.
     pub proof fn is_disjoint_pointsto<S>(tracked &mut self, tracked other: &PointsTo<S>)
         requires
@@ -718,6 +797,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             (old(self).len() == final(self).len() && forall|i|
                 #![auto]
                 0 <= i < final(self).len() ==> {
+                    // TODO: define spec fns on each nested struct specifying that staying the same ensures wf
                     &&& final(self)[i].ptr() == old(self)[i].ptr()
                     &&& final(self)[i].is_valid() ==> abs_decode::<T>(
                         final(self)[i].bytes(),
@@ -731,6 +811,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                         self,
                     )[i].pt_unaligned().pt_untyped().len()
                     &&& forall|j: int|
+                        #![trigger final(self)[i].pt_unaligned().pt_untyped()[j]]
                         0 <= j < final(self)[i].pt_unaligned().pt_untyped().len()
                             ==> final(self)[i].pt_unaligned().pt_untyped()[j].ptr() == old(
                             self,
@@ -738,7 +819,325 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                 }) ==> final(self).wf(),
     {
         &mut self.seq_pt
-    }  // /
+    }
+
+    /// Returns a `tracked` mutable reference to the `PointsTo<T>` permission at index `i`,
+    /// given `tracked &mut self`. `self.ptr()` will remain unchanged.
+    ///
+    /// Provided that this mutable reference is not used to change the pointer at index `i`,
+    /// the invariant will be preserved.
+    pub proof fn borrow_mut(tracked &mut self, i: int) -> (tracked ret: &mut PointsTo<T>)
+        requires
+            self.wf(),
+            0 <= i < self.len(),
+        ensures
+            final(self).ptr() == old(self).ptr(),
+            *ret == old(self).seq_pt()[i],
+            final(self).seq_pt() == old(self).seq_pt().update(i, *final(ret)),
+            // Criteria necessary for re-establishing invariants
+            ({
+                // TODO: update similarly
+                &&& final(ret).ptr() == ret.ptr()
+                &&& final(ret).is_valid() ==> abs_decode::<T>(
+                    final(ret).bytes(),
+                    &final(ret).value(),
+                )
+                &&& final(ret).bytes().len() == size_of::<T>()
+                &&& final(ret).pt_unaligned().pt_untyped().ptr()
+                    == ret.pt_unaligned().pt_untyped().ptr()
+                &&& final(ret).pt_unaligned().pt_untyped().len()
+                    == ret.pt_unaligned().pt_untyped().len()
+                &&& forall|j: int|
+                    #![trigger final(ret).pt_unaligned().pt_untyped()[j]]
+                    0 <= j < final(ret).pt_unaligned().pt_untyped().len()
+                        ==> final(ret).pt_unaligned().pt_untyped()[j].ptr()
+                        == ret.pt_unaligned().pt_untyped()[j].ptr()
+            }) ==> final(self).wf(),
+    {
+        broadcast use crate::vstd::seq::group_seq_axioms;
+
+        self.seq_pt.tracked_borrow_mut(i)
+    }
+
+    /// Proof of equivalence for two different ways to get the `TypedValue<T>` at a given index `i`.
+    pub broadcast proof fn typed_value_equiv(self, i: int)
+        requires
+            0 <= i < self.len(),
+        ensures
+            #![trigger self.typed_value()[i]]
+            #![trigger self.seq_pt()[i]]
+            self.typed_value()[i] == self.seq_pt()[i].typed_value(),
+    {
+        broadcast use group_vstd_default;
+
+    }
+
+    /// Given an aligned and non-null pointer,
+    /// it is always possible to construct a `SeqPointsTo` with an empty sequence of permissions.
+    pub proof fn empty(ptr: *mut T) -> (tracked spt: Self)
+        requires
+            ptr@.addr != 0,
+            ptr@.addr as nat % align_of::<T>() == 0,
+            // TODO: add ptr spec fn encoding this property?
+            ptr@.provenance.is_some() ==> {
+                &&& ptr@.addr as int >= ptr@.provenance.data().start_addr()
+                &&& ptr@.addr <= ptr@.provenance.data().start_addr()
+                    + ptr@.provenance.data().alloc_len()
+            },
+        ensures
+            spt.seq_pt() == Seq::<PointsTo<T>>::empty(),
+            spt.ptr() == ptr,
+            spt.len() == 0,
+            spt.wf(),
+    {
+        broadcast use group_vstd_default;
+
+        SeqPointsTo { seq_pt: Seq::tracked_empty(), ptr: Ghost(ptr) }
+    }
+
+    /// We can construct a `SeqPointsTo` with `length`-many `PointsTo` permissions,
+    /// provided that `T` is zero-sized and that the pointer is non-null and aligned.
+    pub proof fn zero_sized(ptr: *mut T, length: nat) -> (tracked spt: Self)
+        requires
+            ptr@.addr != 0,
+            ptr@.addr as nat % align_of::<T>() == 0,
+            ptr@.provenance.is_some() ==> {
+                &&& ptr@.addr as int >= ptr@.provenance.data().start_addr()
+                &&& ptr@.addr <= ptr@.provenance.data().start_addr()
+                    + ptr@.provenance.data().alloc_len()
+            },
+            size_of::<T>() == 0,
+        ensures
+            forall|i| #![auto] 0 <= i < spt.len() ==> spt[i].is_empty(),
+            spt.ptr() == ptr,
+            spt.len() == length,
+            spt.wf(),
+    {
+        Self::empty(ptr).zero_sized_helper(length, length)
+    }
+
+    proof fn zero_sized_helper(tracked self, remaining: nat, total: nat) -> (tracked spt: Self)
+        requires
+            self.ptr()@.addr != 0,
+            self.ptr()@.addr as nat % align_of::<T>() == 0,
+            size_of::<T>() == 0,
+            self.len() + remaining == total,
+            forall|i| #![auto] 0 <= i < self.len() ==> self[i].is_empty(),
+            self.wf(),
+            self.ptr()@.provenance.is_some() ==> {
+                &&& self.ptr()@.addr as int >= self.ptr()@.provenance.data().start_addr()
+                &&& self.ptr()@.addr <= self.ptr()@.provenance.data().start_addr()
+                    + self.ptr()@.provenance.data().alloc_len()
+            },
+        ensures
+            spt.ptr() == self.ptr(),
+            spt.len() == total,
+            forall|i| #![auto] 0 <= i < spt.len() ==> spt[i].is_empty(),
+            spt.wf(),
+        decreases remaining,
+    {
+        broadcast use group_vstd_default;
+
+        if remaining == 0 {
+            self
+        } else {
+            let tracked zs_pt = PointsTo::zero_sized(self.ptr());
+            let tracked mut mut_spt = self;
+            mut_spt.seq_pt.tracked_push(zs_pt);
+            Self::bytes_len_helper(mut_spt.seq_pt());
+
+            assert(PointsTo::<T>::const_size() == 0);
+            assert(mut_spt.wf_basic());
+            assert(mut_spt.wf());
+
+            mut_spt.zero_sized_helper((remaining - 1) as nat, total)
+        }
+    }
+
+    /// The length of the flattened abstract bytes for a sequence of well-formed permissions
+    /// matches the size of this type multiplied by the number of elements in the sequence.
+    proof fn bytes_len_helper(perms: Seq<PointsTo<T>>)
+        requires
+            forall|i: int| 0 <= i < perms.len() ==> #[trigger] perms[i].wf(),
+        ensures
+            Self::bytes_inner(perms).len() == perms.len() * size_of::<T>(),
+        decreases perms.len(),
+    {
+        broadcast use
+            crate::vstd::seq::group_seq_axioms,
+            crate::vstd::type_representation::encode_decode_len,
+        ;
+
+        if perms.len() > 0 {
+            Self::bytes_len_helper(perms.drop_last());
+            assert(perms.last() == perms[perms.len() - 1]);
+            assert(perms[perms.len() - 1].wf());
+            assert(perms.last().wf());
+            assert(perms.last().wf_basic());
+            assert(perms.last().pt_unaligned().wf());
+            assert(perms.last().pt_unaligned().wf_basic());
+            assert(perms.last().bytes().len() == size_of::<T>());
+            assert((perms.len() - 1) * size_of::<T>() + size_of::<T>() == perms.len() * size_of::<
+                T,
+            >()) by (nonlinear_arith);
+        }
+    }
+
+    /// The length of the abstract bytes matches the size of this type multiplied by the number of elements this permission represents.
+    pub broadcast proof fn bytes_len(&self)
+        requires
+            self.wf(),
+        ensures
+            #[trigger] self.bytes().len() == self.len() * size_of::<T>(),
+    {
+        Self::bytes_len_helper(self.seq_pt());
+    }
+
+    // Relates the abstract bytes for a sequence of permissions to subranges of those permissions and subranges of the abstract bytes.
+    // Useful for avoiding reasoning about fold_left directly.
+    proof fn bytes_subrange(perms: Seq<PointsTo<T>>, split: int)
+        requires
+            0 <= split <= perms.len(),
+            forall|i: int| 0 <= i < perms.len() ==> #[trigger] perms[i].wf(),
+        ensures
+    // abstract bytes can be split by subranges of the permissions themselves
+
+            Self::bytes_inner(perms) == Self::bytes_inner(perms.subrange(0, split))
+                + Self::bytes_inner(perms.subrange(split, perms.len() as int)),
+            // abstract bytes of a prefix of permssions correspond to a prefix of the entire abstract bytes
+            Self::bytes_inner(perms.subrange(0, split)) == Self::bytes_inner(perms).subrange(
+                0,
+                split * size_of::<T>(),
+            ),
+            // abstract bytes of a suffix of permissions correspond to suffix of the entire abstract bytes
+            Self::bytes_inner(perms.subrange(split, perms.len() as int)) == Self::bytes_inner(
+                perms,
+            ).subrange(split * size_of::<T>(), perms.len() as int * size_of::<T>()),
+            // the abstract bytes of a prefix of permissions has the expected length
+            Self::bytes_inner(perms.subrange(0, split)).len() == split * size_of::<T>(),
+            // the abstract bytes of a suffix of permissions has the expected length
+            Self::bytes_inner(perms.subrange(split, perms.len() as int)).len() == (perms.len()
+                - split) * size_of::<T>(),
+        decreases perms.len() - split,
+    {
+        broadcast use group_vstd_default, crate::vstd::arithmetic::mul::group_mul_basics;
+
+        if perms.len() > split {
+            Self::bytes_subrange(perms.subrange(0, perms.len() - 1), split);
+            perms.lemma_slice_of_slice(0, perms.len() - 1, 0, split);
+            perms.lemma_slice_of_slice(0, perms.len() - 1, split, perms.len() - 1);
+            assert(Self::bytes_inner(perms.subrange(0, perms.len() - 1)) == Self::bytes_inner(
+                perms.subrange(0, split),
+            ) + Self::bytes_inner(perms.subrange(split, perms.len() - 1)));
+
+            assert(perms.last() == perms[perms.len() - 1]);
+            assert(perms.drop_last() == perms.subrange(0, perms.len() - 1));
+            assert(Self::bytes_inner(perms) == Self::bytes_inner(
+                perms.subrange(0, perms.len() - 1),
+            ) + perms[perms.len() - 1].bytes());
+            assert(perms.subrange(split, perms.len() as int).last() == perms[perms.len() - 1]);
+            assert(perms.subrange(split, perms.len() as int).drop_last() == perms.subrange(
+                split,
+                perms.len() - 1,
+            ));
+            assert(Self::bytes_inner(perms.subrange(split, perms.len() as int))
+                == Self::bytes_inner(perms.subrange(split, perms.len() - 1)) + perms[perms.len()
+                - 1].bytes());
+
+            Self::bytes_len_helper(perms.subrange(0, split));
+            Self::bytes_len_helper(perms.subrange(split, perms.len() as int));
+            assert(perms.subrange(split, perms.len() as int).len() == perms.len() - split);
+            assert(Self::bytes_inner(perms.subrange(0, perms.len() - 1).subrange(0, split)).len()
+                == Self::bytes_inner(perms.subrange(0, split)).len());
+            assert(Self::bytes_inner(perms).len() - Self::bytes_inner(
+                perms.subrange(0, split),
+            ).len() == Self::bytes_inner(perms.subrange(split, perms.len() as int)).len());
+            assert(perms.len() * size_of::<T>() - split * size_of::<T>() == (perms.len() - split)
+                * size_of::<T>()) by (nonlinear_arith);
+        } else {
+            Self::bytes_len_helper(perms);
+        }
+    }
+
+    /// The abstract bytes of an individual permission in a sequence corresponds to a subrange of length `size_of::<T>()`
+    /// from the entire abstract bytes.
+    pub broadcast proof fn bytes_equiv(&self, i: int)
+        requires
+            self.wf(),
+            0 <= i < self.len(),
+        ensures
+            #[trigger] self.seq_pt()[i].bytes() == self.bytes().subrange(
+                i * size_of::<T>(),
+                (i + 1) * size_of::<T>(),
+            ),
+    {
+        broadcast use group_vstd_default;
+
+        Self::bytes_len_helper(self.seq_pt());
+
+        Self::bytes_subrange(self.seq_pt(), i + 1);
+        Self::bytes_subrange(self.seq_pt().subrange(0, i + 1), i);
+        assert(self.seq_pt()[i] == self.seq_pt().subrange(0, i + 1).subrange(i, i + 1)[0]);
+        self.bytes().lemma_slice_of_slice(
+            0,
+            (i + 1) * size_of::<T>(),
+            i * size_of::<T>(),
+            (i + 1) * size_of::<T>(),
+        );
+    }
+
+    /// For all positions in this sequence, the bytes for that position (given `self.wf()`)
+    /// can be decoded into the value in memory at that position.
+    proof fn bytes_decode_helper(&self, len: int)
+        requires
+            0 <= len <= self.len(),
+            self.wf(),
+        ensures
+            forall|i: int|
+                0 <= i < len ==> {
+                    &&& (#[trigger] self.typed_value()[i]).is_valid() ==> abs_decode::<T>(
+                        self.seq_pt()[i].bytes(),
+                        &self.typed_value()[i].value(),
+                    )
+                    &&& self.seq_pt()[i].bytes().len() == size_of::<T>()
+                },
+        decreases len,
+    {
+        if len > 0 {
+            self.bytes_decode_helper(len - 1);
+            assert(self.seq_pt()[len - 1].wf());
+            self.typed_value_equiv(len - 1);
+        }
+    }
+
+    /// For all positions in this sequence, the abstract bytes for that position can be decoded into the value in memory at that position.
+    pub proof fn bytes_decode(&self)
+        requires
+            self.wf(),
+        ensures
+            forall|i: int|
+                0 <= i < self.len() ==> {
+                    &&& (#[trigger] self.typed_value()[i]).is_valid() ==> abs_decode::<T>(
+                        self.bytes().subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()),
+                        &self.typed_value()[i].value(),
+                    )
+                    &&& self.seq_pt()[i].bytes().len() == size_of::<T>()
+                },
+    {
+        broadcast use SeqPointsTo::bytes_equiv;
+
+        self.bytes_decode_helper(self.len() as int);
+    }
+
+    /// Consumes this `SeqPointsTo`, returning the underlying `Seq<PointsTo<T>>`.
+    pub proof fn into_seq(tracked self) -> (tracked r: Seq<PointsTo<T>>)
+        ensures
+            r == self.seq_pt(),
+    {
+        self.seq_pt
+    }
+
+    // /
     // Specializes `is_disjoint` to the case when the other permission is a `PointsToUntyped`.
     // pub proof fn is_disjoint_untyped(tracked &mut self, tracked other: &PointsToUntyped)
     //     requires
