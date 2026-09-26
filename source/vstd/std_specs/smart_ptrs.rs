@@ -57,6 +57,14 @@ pub assume_specification<T: ?Sized, A: Allocator>[ <Arc<T, A> as core::ops::Dere
         arc_contents(a),
 ;
 
+// `AsRef` is the same borrow of the contents as `Deref`.
+pub assume_specification<T: ?Sized, A: Allocator>[ <Arc<T, A> as core::convert::AsRef<T>>::as_ref ](
+    a: &Arc<T, A>,
+) -> (res: &T)
+    returns
+        arc_contents(a),
+;
+
 pub broadcast axiom fn axiom_arc_contents_view<T: View + ?Sized, A: Allocator>(a: &Arc<T, A>)
     ensures
         (#[trigger] arc_contents(a))@ == a@,
