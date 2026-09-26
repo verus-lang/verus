@@ -513,6 +513,25 @@ pub fn is_visible_to_or_true(target_visibility: &Visibility, source_module: &Opt
     }
 }
 
+/// The explicit generic type args of calls in a `global size_of`/`global layout`
+/// lemma's ensures clause (e.g. `S` in `size_of::<S>() == 8`) - i.e. the type(s) the
+/// lemma proves a fact about. Used to give the auto-generated lemma the same
+/// visibility as its target type.
+pub fn size_of_broadcast_target_types(f: &Function) -> Vec<Typ> {
+    let mut typs: Vec<Typ> = Vec::new();
+    let mut visit = |_: &mut crate::ast_visitor::VisitorScopeMap, expr: &Expr| {
+        if let ExprX::Call { target: CallTarget::Fun(_, _, ts, _, _), .. } = &expr.x {
+            typs.extend(ts.iter().cloned());
+        }
+        crate::ast_visitor::VisitorControlFlow::Recurse::<()>
+    };
+    let mut map: crate::ast_visitor::VisitorScopeMap = air::scope_map::ScopeMap::new();
+    for expr in f.x.ensure.0.iter().chain(f.x.ensure.1.iter()) {
+        let _ = crate::ast_visitor::expr_visitor_dfs(expr, &mut map, &mut visit);
+    }
+    typs
+}
+
 impl Visibility {
     pub fn is_public(&self) -> bool {
         matches!(self, Visibility { restricted_to: None })
