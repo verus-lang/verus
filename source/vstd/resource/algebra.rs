@@ -30,6 +30,7 @@ pub tracked struct Resource<RA: ResourceAlgebra> {
 // like a relatively complicated change -- needs to be done across the codebase
 pub trait ResourceAlgebra: Sized {
     /// Whether an element is valid
+    #[verifier::prophetic]
     spec fn valid(self) -> bool;
 
     /// Compose two elements

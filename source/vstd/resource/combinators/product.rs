@@ -11,6 +11,7 @@ pub struct ProductRA<RA1: ResourceAlgebra, RA2: ResourceAlgebra> {
 
 // Rust does not support variadic generics, so we define the product pairwise
 impl<RA1: ResourceAlgebra, RA2: ResourceAlgebra> ResourceAlgebra for ProductRA<RA1, RA2> {
+    #[verifier::prophetic]
     open spec fn valid(self) -> bool {
         self.left.valid() && self.right.valid()
     }
