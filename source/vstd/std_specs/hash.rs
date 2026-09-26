@@ -1057,6 +1057,15 @@ pub assume_specification<Key: Eq + Hash, S: BuildHasher, A: Allocator>[ HashSet:
         },
 ;
 
+// Cloning a `HashSet` clones each key; for keys that obey the model `clone`
+// is the identity, so the copy is the same set.
+pub assume_specification<T: Clone, S: Clone, A: Allocator + Clone>[ <HashSet<T, S, A> as Clone>::clone ](
+    this: &HashSet<T, S, A>,
+) -> (other: HashSet<T, S, A>)
+    ensures
+        keys_obey_model::<T>(this@) ==> other@ == this@,
+;
+
 // `HashSet` equality is equality of the sets, for keys that obey the model:
 // `a == b` holds exactly when each contains every element of the other.
 pub assume_specification<T: Eq + Hash, S: BuildHasher, A: Allocator>[ <HashSet<T, S, A> as PartialEq>::eq ](
