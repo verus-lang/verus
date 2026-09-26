@@ -157,6 +157,210 @@ pub assume_specification[ str::split_at ](s: &str, mid: usize) -> (res: (&str, &
         res.1.spec_bytes() =~= s.spec_bytes()[mid..],
 ;
 
+/// Specifies `Pattern` for `str::starts_with`/`ends_with`/`contains`/`find`/`rfind`.
+/// `matches_at`/`matches_at_bytes` describe which spans match; ensures are
+/// gated on `obeys_pattern_spec()`, same as `PartialEqSpec`.
+///
+/// Gated on `verus_keep_ghost` (not `verus_verify_core`): a plain cargo build
+/// can't reference `Pattern` without nightly's `pattern` feature, but
+/// `--is-core` still needs the trait registered.
+#[cfg(verus_keep_ghost)]
+#[verifier::external_trait_specification]
+#[verifier::external_trait_extension(PatternSpec via PatternSpecImpl)]
+pub trait ExPattern: Sized {
+    type ExternalTraitSpecificationFor: core::str::pattern::Pattern;
+
+    spec fn obeys_pattern_spec(&self) -> bool;
+
+    /// True iff this pattern instance matches exactly haystack[start..end).
+    spec fn matches_at(&self, haystack: Seq<char>, start: int, end: int) -> bool;
+
+    /// Byte-offset sibling of `matches_at`: `find`/`rfind` return byte
+    /// offsets, not char positions.
+    spec fn matches_at_bytes(&self, haystack: Seq<u8>, start: int, end: int) -> bool;
+}
+
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
+impl PatternSpecImpl for char {
+    open spec fn obeys_pattern_spec(&self) -> bool {
+        true
+    }
+
+    open spec fn matches_at(&self, haystack: Seq<char>, start: int, end: int) -> bool {
+        0 <= start && end == start + 1 && end <= haystack.len() && haystack[start] == *self
+    }
+
+    open spec fn matches_at_bytes(&self, haystack: Seq<u8>, start: int, end: int) -> bool {
+        0 <= start && end <= haystack.len() && haystack.subrange(start, end) =~= encode_scalar(
+            *self as u32,
+        )
+    }
+}
+
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
+impl<'b> PatternSpecImpl for &'b str {
+    open spec fn obeys_pattern_spec(&self) -> bool {
+        true
+    }
+
+    open spec fn matches_at(&self, haystack: Seq<char>, start: int, end: int) -> bool {
+        0 <= start <= end <= haystack.len() && haystack.subrange(start, end) =~= self@
+    }
+
+    open spec fn matches_at_bytes(&self, haystack: Seq<u8>, start: int, end: int) -> bool {
+        0 <= start <= end <= haystack.len() && haystack.subrange(start, end) =~= self.spec_bytes()
+    }
+}
+
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
+impl<'b> PatternSpecImpl for &'b [char] {
+    open spec fn obeys_pattern_spec(&self) -> bool {
+        true
+    }
+
+    // `&[char]` matches by set membership of a single char, not by sequence -
+    // e.g. `"hello".starts_with(&['h', 'x'])` is true because 'h' is in the set.
+    open spec fn matches_at(&self, haystack: Seq<char>, start: int, end: int) -> bool {
+        0 <= start < haystack.len() && end == start + 1 && self@.contains(haystack[start])
+    }
+
+    open spec fn matches_at_bytes(&self, haystack: Seq<u8>, start: int, end: int) -> bool {
+        0 <= start <= end <= haystack.len() && exists|c: char|
+            self@.contains(c) && haystack.subrange(start, end) =~= encode_scalar(c as u32)
+    }
+}
+
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
+impl<F: FnMut(char) -> bool> PatternSpecImpl for F {
+    // At most one of `ensures(_, true)`/`ensures(_, false)` can hold for a given char - not
+    // both. This (NAND, not the stronger "exactly one") is the most that's provable in
+    // general: Verus's closure axioms are all one-directional (`ensures(..) ==> ..`), so a
+    // caller can show a given `ensures` value is false, never that it's true, without an
+    // actual call. NAND only needs the former, so it's provable here purely by case-splitting
+    // on the closure's own `ensures` formula. See PR #2741's discussion for more.
+    open spec fn obeys_pattern_spec(&self) -> bool {
+        forall|c: char| !(self.ensures((c,), true) && self.ensures((c,), false))
+    }
+
+    open spec fn matches_at(&self, haystack: Seq<char>, start: int, end: int) -> bool {
+        0 <= start && end == start + 1 && end <= haystack.len() && self.ensures(
+            (haystack[start],),
+            true,
+        )
+    }
+
+    open spec fn matches_at_bytes(&self, haystack: Seq<u8>, start: int, end: int) -> bool {
+        0 <= start <= end <= haystack.len() && exists|c: char|
+            self.ensures((c,), true) && haystack.subrange(start, end) =~= encode_scalar(c as u32)
+    }
+}
+
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
+pub assume_specification<P: core::str::pattern::Pattern>[ str::starts_with::<P> ](
+    s: &str,
+    pat: P,
+) -> (r: bool)
+    ensures
+        pat.obeys_pattern_spec() ==> {
+            &&& r == exists|len: int| 0 <= len <= s@.len() && pat.matches_at(s@, 0, len)
+            &&& !r ==> !pat.matches_at(s@, 0, 1)
+        },
+;
+
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
+pub assume_specification<P: core::str::pattern::Pattern>[ str::contains::<P> ](
+    s: &str,
+    pat: P,
+) -> (r: bool)
+    ensures
+        pat.obeys_pattern_spec() ==> {
+            &&& r == exists|i: int, j: int| 0 <= i <= j <= s@.len() && pat.matches_at(s@, i, j)
+            &&& !r ==> forall|i: int|
+                0 <= i < s@.len() ==> !(#[trigger] pat.matches_at(s@, i, i + 1))
+        },
+;
+
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
+#[verifier::allow(undeclared_external_trait)]
+pub assume_specification<P: core::str::pattern::Pattern>[ str::ends_with::<P> ](
+    s: &str,
+    pat: P,
+) -> (r: bool) where for <'a>P::Searcher<'a>: core::str::pattern::ReverseSearcher<'a>
+    ensures
+        pat.obeys_pattern_spec() ==> {
+            &&& r == exists|start: int|
+                0 <= start <= s@.len() as int && pat.matches_at(s@, start, s@.len() as int)
+            &&& (!r && s@.len() > 0) ==> !pat.matches_at(s@, s@.len() - 1, s@.len() as int)
+        },
+;
+
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
+pub assume_specification<P: core::str::pattern::Pattern>[ str::find::<P> ](s: &str, pat: P) -> (res:
+    Option<usize>)
+    ensures
+        pat.obeys_pattern_spec() ==> {
+            &&& (res is Some) == exists|i: int, j: int|
+                0 <= i <= j <= s.spec_bytes().len() as int && pat.matches_at_bytes(
+                    s.spec_bytes(),
+                    i,
+                    j,
+                )
+            &&& res is None ==> forall|k: int, j: int|
+                0 <= k < s.spec_bytes().len() as int && k <= j <= s.spec_bytes().len() as int
+                    ==> !(#[trigger] pat.matches_at_bytes(s.spec_bytes(), k, j))
+            &&& res is Some ==> {
+                let i = res.unwrap() as int;
+                &&& exists|j: int|
+                    i <= j <= s.spec_bytes().len() as int && pat.matches_at_bytes(
+                        s.spec_bytes(),
+                        i,
+                        j,
+                    )
+                &&& forall|k: int, j: int|
+                    0 <= k < i && k <= j <= s.spec_bytes().len() as int ==> !pat.matches_at_bytes(
+                        s.spec_bytes(),
+                        k,
+                        j,
+                    )
+            }
+        },
+;
+
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
+#[verifier::allow(undeclared_external_trait)]
+pub assume_specification<P: core::str::pattern::Pattern>[ str::rfind::<P> ](
+    s: &str,
+    pat: P,
+) -> (res: Option<usize>) where for <'a>P::Searcher<'a>: core::str::pattern::ReverseSearcher<'a>
+    ensures
+        pat.obeys_pattern_spec() ==> {
+            &&& (res is Some) == exists|i: int, j: int|
+                0 <= i <= j <= s.spec_bytes().len() as int && pat.matches_at_bytes(
+                    s.spec_bytes(),
+                    i,
+                    j,
+                )
+            &&& res is None ==> forall|k: int, j: int|
+                0 <= k < s.spec_bytes().len() as int && k <= j <= s.spec_bytes().len() as int
+                    ==> !(#[trigger] pat.matches_at_bytes(s.spec_bytes(), k, j))
+            &&& res is Some ==> {
+                let i = res.unwrap() as int;
+                &&& exists|j: int|
+                    i <= j <= s.spec_bytes().len() as int && pat.matches_at_bytes(
+                        s.spec_bytes(),
+                        i,
+                        j,
+                    )
+                &&& forall|k: int, j: int|
+                    i < k && k <= j <= s.spec_bytes().len() as int ==> !pat.matches_at_bytes(
+                        s.spec_bytes(),
+                        k,
+                        j,
+                    )
+            }
+        },
+;
+
 #[cfg(not(verus_verify_core))]
 pub assume_specification[ str::from_utf8_unchecked ](v: &[u8]) -> (res: &str)
     requires
