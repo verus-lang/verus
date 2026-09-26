@@ -275,7 +275,7 @@ impl<T> LogResource<T> {
 }
 
 pub fn main() {
-    let tracked full_auth = LogResource::<int>::alloc();
+    let tracked mut full_auth = LogResource::<int>::alloc();
     assert(full_auth@ is FullAuthority);
     assert(full_auth@.log().len() == 0);
     proof {
@@ -287,7 +287,7 @@ pub fn main() {
     assert(full_auth@.log().len() == 2);
     assert(full_auth@.log()[0] == 42);
     assert(full_auth@.log()[1] == 86);
-    let tracked (half_auth1, half_auth2) = full_auth.split();
+    let tracked (mut half_auth1, mut half_auth2) = full_auth.split();
     assert(half_auth1@ == half_auth2@);
     assert(half_auth1@ is HalfAuthority);
     proof {
