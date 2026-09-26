@@ -456,3 +456,22 @@ test_verify_one_file_with_options! {
         }
     } => Err(e) => assert_expand_fails(e, 1)
 }
+
+// Loop-invariant checks have no SST node for --expand-errors to find; confirm
+// it degrades to ordinary error reporting instead of crashing on one.
+test_verify_one_file_with_options! {
+    #[test] test_expand_errors_does_not_crash_on_loop_invariant_failure ["--expand-errors"] => verus_code! {
+        fn count_up(n: u32) -> (r: u32)
+            ensures r == n, // FAILS
+        {
+            let mut i: u32 = 0;
+            while i < n
+                invariant i <= 100, // FAILS
+                decreases n - i,
+            {
+                i = i + 1;
+            }
+            i
+        }
+    } => Err(e) => assert_fails(e, 2)
+}
