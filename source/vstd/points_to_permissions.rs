@@ -11,6 +11,16 @@ verus! {
 
 broadcast use group_vstd_default;
 
+// TODO: move to ptr file
+/// Specifies that the pointer's address is within the bounds of its provenance.
+pub open spec fn ptr_addr_in_bounds<T: ?Sized>(ptr: *mut T) -> bool {
+    ptr@.provenance.is_some() ==> {
+        &&& ptr@.addr as int >= ptr@.provenance.data().start_addr()
+        &&& ptr@.addr <= ptr@.provenance.data().start_addr()
+            + ptr@.provenance.data().alloc_len()
+    }
+}
+
 pub tracked struct SeqPointsTo<T: ?Sized, PointsToPerm: PointsToProperties + FixedSize> {
     seq_pt: Seq<PointsToPerm>,
     ptr: Ghost<*mut T>,
@@ -193,11 +203,7 @@ impl PointsToUntyped {
         requires
             ptr@.addr != 0,
             size_of::<T>() == 0,
-            ptr@.provenance.is_some() ==> {
-                &&& ptr@.addr as int >= ptr@.provenance.data().start_addr()
-                &&& ptr@.addr <= ptr@.provenance.data().start_addr()
-                    + ptr@.provenance.data().alloc_len()
-            },
+            ptr_addr_in_bounds(ptr),
         ensures
             perm.ptr()@.addr == ptr@.addr,
             perm.ptr()@.provenance == ptr@.provenance,
@@ -456,11 +462,7 @@ impl<T> PointsToUnaligned<T> {
         requires
             ptr@.addr != 0,
             size_of::<T>() == 0,
-            ptr@.provenance.is_some() ==> {
-                &&& ptr@.addr as int >= ptr@.provenance.data().start_addr()
-                &&& ptr@.addr <= ptr@.provenance.data().start_addr()
-                    + ptr@.provenance.data().alloc_len()
-            },
+            ptr_addr_in_bounds(ptr),
         ensures
             perm.ptr()@.addr == ptr@.addr,
             perm.ptr()@.provenance == ptr@.provenance,
@@ -702,11 +704,7 @@ impl<T> PointsTo<T> {
         requires
             ptr@.addr != 0,
             ptr@.addr as nat % align_of::<T>() == 0,
-            ptr@.provenance.is_some() ==> {
-                &&& ptr@.addr as int >= ptr@.provenance.data().start_addr()
-                &&& ptr@.addr <= ptr@.provenance.data().start_addr()
-                    + ptr@.provenance.data().alloc_len()
-            },
+            ptr_addr_in_bounds(ptr),
             size_of::<T>() == 0,
         ensures
             perm.ptr() == ptr,
@@ -897,11 +895,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             ptr@.addr != 0,
             ptr@.addr as nat % align_of::<T>() == 0,
             // TODO: add ptr spec fn encoding this property?
-            ptr@.provenance.is_some() ==> {
-                &&& ptr@.addr as int >= ptr@.provenance.data().start_addr()
-                &&& ptr@.addr <= ptr@.provenance.data().start_addr()
-                    + ptr@.provenance.data().alloc_len()
-            },
+            ptr_addr_in_bounds(ptr),
         ensures
             spt.seq_pt() == Seq::<PointsTo<T>>::empty(),
             spt.ptr() == ptr,
@@ -919,11 +913,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         requires
             ptr@.addr != 0,
             ptr@.addr as nat % align_of::<T>() == 0,
-            ptr@.provenance.is_some() ==> {
-                &&& ptr@.addr as int >= ptr@.provenance.data().start_addr()
-                &&& ptr@.addr <= ptr@.provenance.data().start_addr()
-                    + ptr@.provenance.data().alloc_len()
-            },
+            ptr_addr_in_bounds(ptr),
             size_of::<T>() == 0,
         ensures
             forall|i| #![auto] 0 <= i < spt.len() ==> spt[i].is_empty(),
