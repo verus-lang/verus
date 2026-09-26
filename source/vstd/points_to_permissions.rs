@@ -1155,23 +1155,25 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         self.seq_pt
     }
 
-    // /
-    // Specializes `is_disjoint` to the case when the other permission is a `PointsToUntyped`.
-    // pub proof fn is_disjoint_untyped(tracked &mut self, tracked other: &PointsToUntyped)
-    //     requires
-    //         self.len() != 0,
-    //         other.len() != 0,
-    //         self.wf(),
-    //     ensures
-    //         *old(self) == *final(self),
-    //         final(self).ptr() as int + final(self).len() <= other.ptr() as int || other.ptr() as int
-    //             + other.len() <= final(self).ptr() as int,
-    // {
-    //     assert(self.len() == self.size());
-    //     assert(other.size() == other.len() * other.seq_pt()[0].size());
-    //     self.is_disjoint(other);
-    // }
+    /// Specializes `is_disjoint` to the case when the other permission is a `SeqPointsTo<S, PointsTo<S>>`.
+    pub proof fn is_disjoint_seqpt<S>(tracked &mut self, tracked other: &SeqPointsTo<S, PointsTo<S>>)
+        requires
+            self.len() != 0,
+            other.len() != 0,
+            size_of::<T>() != 0,
+            size_of::<S>() != 0,
+            self.wf(),
+        ensures
+            *old(self) == *final(self),
+            final(self).ptr() as int + final(self).len() * size_of::<T>() <= other.ptr() as int
+                || other.ptr() as int + other.len() * size_of::<S>() <= final(self).ptr() as int,
+    {
+        broadcast use crate::vstd::arithmetic::mul::lemma_mul_nonzero;
 
+        assert(self.size() == self.len() * size_of::<T>());
+        assert(other.size() == other.len() * size_of::<S>());
+        self.is_disjoint(other);
+    }
 }
 
 } // verus!
