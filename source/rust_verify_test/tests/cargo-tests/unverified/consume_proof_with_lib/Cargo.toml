@@ -1,0 +1,11 @@
+[package]
+name = "consume_proof_with_lib"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+proof_with_lib = { path = "../../verified/proof_with_lib" }
+
+[package.metadata.verus]
+
+[workspace]

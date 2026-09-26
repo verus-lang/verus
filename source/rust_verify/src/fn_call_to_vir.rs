@@ -53,6 +53,8 @@ pub(crate) fn fn_call_to_vir<'tcx>(
 ) -> Result<vir::ast::Expr, VirErr> {
     let tcx = bctx.ctxt.tcx;
 
+    crate::proof_with::check_call(tcx, bctx.types, expr, f)?;
+
     let expr_typ = || typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id);
 
     let rust_item = verus_items::get_rust_item(tcx, f);
@@ -242,31 +244,58 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
             } => {
                 // We resolved to the trait method itself, which means this must be
                 // a default method implementation in the trait.
-                // Redirect this to the appropriate per-instance copy of the default method.
+                // Redirect this to the appropriate per-instance copy of the default method,
+                // unless an overriding implementation carries its own body and contract.
 
-                let typs = mk_typ_args(bctx, args, did, expr.span)?;
+                let counterpart =
+                    crate::proof_with::impl_counterpart(expr.span, tcx, typing_env, did, args);
+                if let Some((impl_did, impl_args)) = counterpart {
+                    let typs = mk_typ_args(bctx, impl_args, impl_did, expr.span)?;
+                    let impl_paths =
+                        get_impl_paths(bctx, impl_did, impl_args, None, const_var, expr.span)?;
+                    let f = Arc::new(FunX { path: bctx.ctxt.def_id_to_vir_path(impl_did) });
+                    record_name = f.clone();
 
-                let mut self_trait_impl_path = None;
-                let trait_id = tcx.trait_of_assoc(did).unwrap();
-                let remove_self_trait_bound = Some((trait_id, &mut self_trait_impl_path));
-                let impl_paths =
-                    get_impl_paths(bctx, did, args, remove_self_trait_bound, const_var, expr.span)?;
+                    vir::ast::CallTargetKind::DynamicResolved {
+                        resolved: f,
+                        typs,
+                        impl_paths,
+                        is_trait_default: false,
+                    }
+                } else {
+                    let typs = mk_typ_args(bctx, args, did, expr.span)?;
 
-                let Some(vir::ast::ImplPath::TraitImplPath(impl_path)) = self_trait_impl_path
-                else {
-                    panic!("{} {:?}", "could not resolve call to trait default method", expr.span);
-                };
+                    let mut self_trait_impl_path = None;
+                    let trait_id = tcx.trait_of_assoc(did).unwrap();
+                    let remove_self_trait_bound = Some((trait_id, &mut self_trait_impl_path));
+                    let impl_paths = get_impl_paths(
+                        bctx,
+                        did,
+                        args,
+                        remove_self_trait_bound,
+                        const_var,
+                        expr.span,
+                    )?;
 
-                let f = Arc::new(FunX { path: bctx.ctxt.def_id_to_vir_path(did) });
-                record_name = f.clone();
+                    let Some(vir::ast::ImplPath::TraitImplPath(impl_path)) = self_trait_impl_path
+                    else {
+                        panic!(
+                            "{} {:?}",
+                            "could not resolve call to trait default method", expr.span
+                        );
+                    };
 
-                let f = vir::def::trait_inherit_default_name(&f, &impl_path);
+                    let f = Arc::new(FunX { path: bctx.ctxt.def_id_to_vir_path(did) });
+                    record_name = f.clone();
 
-                vir::ast::CallTargetKind::DynamicResolved {
-                    resolved: f,
-                    typs,
-                    impl_paths,
-                    is_trait_default: true,
+                    let f = vir::def::trait_inherit_default_name(&f, &impl_path);
+
+                    vir::ast::CallTargetKind::DynamicResolved {
+                        resolved: f,
+                        typs,
+                        impl_paths,
+                        is_trait_default: true,
+                    }
                 }
             }
             ResolutionResult::Builtin(
@@ -2378,6 +2407,15 @@ fn verus_item_to_vir<'tcx, 'a>(
             };
             mk_expr(ExprX::ReadPlace(p, rk))
         }
+        VerusItem::ProofWith | VerusItem::ProofWithRet => err_span(
+            expr.span,
+            format!(
+                "{} should have been replaced by a call to the verified function; \
+                 `with` ghost inputs/outputs can only be applied to a call of a function \
+                 declared with `with`",
+                f_name
+            ),
+        ),
         VerusItem::MutRefTracked => {
             record_misc(bctx, expr, MiscCall::MutRefTracked);
             let p = expr_to_vir_place(&bctx, &args[0])?;
@@ -2425,6 +2463,8 @@ fn uncompilable_verus_fn(verus_item: &VerusItem) -> bool {
         )) => false,
         VerusItem::Quant(_) => false,
         VerusItem::Assert(_) => false,
+        // A surviving marker is reported against the call it failed to rewrite.
+        VerusItem::ProofWith | VerusItem::ProofWithRet => false,
         VerusItem::Expr(
             ExprItem::Choose
             | ExprItem::ChooseTuple

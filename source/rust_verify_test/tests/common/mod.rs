@@ -332,6 +332,11 @@ pub fn run_verus(
         } else if *option == "no-bv-simplify" {
             verus_args.push("-V".to_string());
             verus_args.push("no-bv-simplify".to_string());
+        } else if *option == "--verify-root" {
+            verus_args.push("--verify-root".to_string());
+        } else if let Some(function) = option.strip_prefix("--verify-function ") {
+            verus_args.push("--verify-function".to_string());
+            verus_args.push(function.to_string());
         } else if *option == "--edition 2024" {
             verus_args.push("--edition".to_string());
             verus_args.push("2024".to_string());

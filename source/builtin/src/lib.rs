@@ -27,6 +27,30 @@ pub fn admit() {
     unimplemented!();
 }
 
+/// Marks a call with extra ghost or tracked arguments.
+///
+/// Before type checking, the verifier replaces this marker with a direct call to the
+/// `_VERUS_WITH_` counterpart. Rustc then checks the extra arguments, including
+/// their borrows and lifetimes. A surviving marker is an invalid `with` call, so this
+/// body is never reached on the success path.
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::proof_with"]
+#[verifier::proof]
+pub fn proof_with<A, B>(_a: A, _b: B) -> B {
+    unimplemented!();
+}
+
+/// Marks a call whose verified counterpart also returns extra values as one flat tuple.
+///
+/// The verifier replaces this marker before type checking; its body is unreachable on
+/// the success path.
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::proof_with_ret"]
+#[verifier::proof]
+pub fn proof_with_ret<A, B, C>(_a: A, _b: B) -> (B, C) {
+    unimplemented!();
+}
+
 // Can only appear at beginning of function body
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::no_method_body"]

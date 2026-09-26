@@ -1,0 +1,13 @@
+[package]
+name = "proof_with_use"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+vstd = { path = "../../../../../vstd" }
+proof_with_lib = { path = "../proof_with_lib" }
+
+[package.metadata.verus]
+verify = true
+
+[workspace]

@@ -1442,12 +1442,15 @@ fn make_attributes<'tcx>(
     Ok(Arc::new(fattrs))
 }
 
+/// Keep in sync with `builtin_macros::unerased_proxies::VERUS_UNERASED_PROXY`.
+pub(crate) const UNERASED_PROXY_PREFIX: &str = "VERUS_UNERASED_PROXY__";
+
 pub(crate) fn fixup_unerased_proxy_path(
     path: &vir::ast::Path,
     span: Span,
 ) -> Result<vir::ast::Path, VirErr> {
     let id = path.last_segment();
-    let prefix = "VERUS_UNERASED_PROXY__";
+    let prefix = UNERASED_PROXY_PREFIX;
     if id.starts_with(&prefix) {
         let p = path.pop_segment().push_segment(Arc::new(id[prefix.len()..].to_string()));
         Ok(p)

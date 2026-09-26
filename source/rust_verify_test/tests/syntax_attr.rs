@@ -412,6 +412,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_trait_signature code!{
+        #[verus_verify]
         trait X {
             #[verus_spec(ret =>
                 with
@@ -421,7 +422,33 @@ test_verify_one_file! {
             )]
             fn f(&self, x: u32) -> bool;
         }
-    } => Err(e) => assert_any_vir_error_msg(e, "`with` does not support trait")
+
+        #[verus_verify]
+        struct S;
+
+        #[verus_verify]
+        impl X for S {
+            #[verus_spec(
+                with
+                    Tracked(y): Tracked<&mut u32>,
+                    Ghost(w): Ghost<u32>,
+                    -> z: Ghost<u32>
+            )]
+            fn f(&self, x: u32) -> bool {
+                #[verus_spec(with |= Ghost(w))]
+                true
+            }
+        }
+
+        #[verus_spec]
+        fn call(s: &S, x: u32) {
+            proof_decl!{
+                let tracked mut y = 0u32;
+            }
+            #[verus_spec(with Tracked(&mut y), Ghost(0) => Ghost(z))]
+            let _ = s.f(x);
+        }
+    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -1332,6 +1359,35 @@ test_verify_one_file! {
         fn qux(x: u32) -> u32 {
             proof_with!(|= Ghost(x));
             (x + 1)
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // Several extra outputs make the function return the tuple `(ret, (y, z))`,
+    // which the tuple a `|=` clause supplies and the tuple pattern a `=>`
+    // clause binds match directly.
+    #[test] test_verus_spec_with_multiple_extra_outputs code!{
+        use vstd::prelude::*;
+
+        #[verus_spec(ret =>
+            with -> y: Ghost<u8>, z: Ghost<u32>
+            ensures ret == 1u64, y@ == 3u8, z@ == 2u32,
+        )]
+        fn test() -> u64 {
+            proof_with!{|= (Ghost(3u8), Ghost(2u32))}
+            1
+        }
+
+        #[verus_spec]
+        fn call_test() {
+            proof_with!{=> (Ghost(y), Ghost(z))}
+            let r = test();
+            proof!{
+                assert(r == 1);
+                assert(y == 3);
+                assert(z == 2);
+            }
         }
     } => Ok(())
 }
