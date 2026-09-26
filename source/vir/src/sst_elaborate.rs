@@ -19,6 +19,7 @@ fn elaborate_one_exp<D: Diagnostics + ?Sized>(
     diagnostics: &D,
     fun_ssts: &HashMap<Fun, FunctionSst>,
     is_native: &mut Option<HashMap<VarIdent, bool>>,
+    inlined_calls: &mut HashMap<usize, Fun>,
     exp: &Exp,
 ) -> Result<Exp, VirErr> {
     match &exp.x {
@@ -50,6 +51,8 @@ fn elaborate_one_exp<D: Diagnostics + ?Sized>(
                 // keep the original outer span for better trigger messages
                 // keep the original type so that poly.rs can perform the proper box/unbox on e
                 let e = SpannedTyped::new(&exp.span, &exp.typ, e.x.clone());
+                // record that `e` came from inlining `fun`, for better trigger errors
+                inlined_calls.insert(Arc::as_ptr(&e) as usize, fun.clone());
                 return Ok(e);
             }
             Ok(exp.clone())
@@ -64,7 +67,7 @@ fn elaborate_one_exp<D: Diagnostics + ?Sized>(
                         _ => vars.push(b.name.clone()),
                     }
                 }
-                let trigs = build_triggers(ctx, &exp.span, &vars, &body, false)?;
+                let trigs = build_triggers(ctx, &exp.span, &vars, &body, false, inlined_calls)?;
                 if let Some(assert_by_vars) = assert_by_vars {
                     let natives = crate::triggers::native_quant_vars(bs, &trigs);
                     assert!(assert_by_vars.len() == bs.len());
@@ -84,7 +87,7 @@ fn elaborate_one_exp<D: Diagnostics + ?Sized>(
             BndX::Choose(bs, trigs, cond) => {
                 assert!(trigs.len() == 0);
                 let vars = bs.iter().map(|b| b.name.clone()).collect();
-                let trigs = build_triggers(ctx, &exp.span, &vars, &cond, false)?;
+                let trigs = build_triggers(ctx, &exp.span, &vars, &cond, false, inlined_calls)?;
                 let bnd =
                     Spanned::new(bnd.span.clone(), BndX::Choose(bs.clone(), trigs, cond.clone()));
                 Ok(SpannedTyped::new(&exp.span, &exp.typ, ExpX::Bind(bnd, body.clone())))
@@ -92,7 +95,7 @@ fn elaborate_one_exp<D: Diagnostics + ?Sized>(
             BndX::Lambda(bs, trigs) => {
                 assert!(trigs.len() == 0);
                 let vars = bs.iter().map(|b| b.name.clone()).collect();
-                let trigs = build_triggers(ctx, &exp.span, &vars, &body, true)?;
+                let trigs = build_triggers(ctx, &exp.span, &vars, &body, true, inlined_calls)?;
                 if trigs.len() > 0 {
                     let msg = "#[trigger] on a spec_fn closure is deprecated - \
                         generally spec_fn closures don't need triggers because spec_fn \
@@ -185,6 +188,7 @@ struct ElaborateVisitor1<'a, 'b, 'c, D: Diagnostics> {
     diagnostics: &'b D,
     fun_ssts: &'c HashMap<Fun, FunctionSst>,
     is_native: Option<HashMap<VarIdent, bool>>,
+    inlined_calls: HashMap<usize, Fun>,
 }
 
 impl<'a, 'b, 'c, D: Diagnostics> Visitor<Rewrite, VirErr, NoScoper>
@@ -192,7 +196,14 @@ impl<'a, 'b, 'c, D: Diagnostics> Visitor<Rewrite, VirErr, NoScoper>
 {
     fn visit_exp(&mut self, exp: &Exp) -> Result<Exp, VirErr> {
         let exp = self.visit_exp_rec(exp)?;
-        elaborate_one_exp(self.ctx, self.diagnostics, &self.fun_ssts, &mut self.is_native, &exp)
+        elaborate_one_exp(
+            self.ctx,
+            self.diagnostics,
+            &self.fun_ssts,
+            &mut self.is_native,
+            &mut self.inlined_calls,
+            &exp,
+        )
     }
 
     fn visit_stm(&mut self, stm: &Stm) -> Result<Stm, VirErr> {
@@ -256,7 +267,13 @@ pub(crate) fn elaborate_function1<'a, 'b, 'c, D: Diagnostics>(
     fun_ssts: &'c HashMap<Fun, FunctionSst>,
     function: &mut FunctionSst,
 ) -> Result<(), VirErr> {
-    let mut visitor = ElaborateVisitor1 { ctx, diagnostics, fun_ssts, is_native: None };
+    let mut visitor = ElaborateVisitor1 {
+        ctx,
+        diagnostics,
+        fun_ssts,
+        is_native: None,
+        inlined_calls: HashMap::new(),
+    };
     *function = visitor.visit_function(function)?;
 
     if function.x.axioms.proof_exec_axioms.is_some() {
@@ -272,7 +289,7 @@ pub(crate) fn elaborate_function1<'a, 'b, 'c, D: Diagnostics>(
         for param in params.iter() {
             vars.push(param.x.name.clone());
         }
-        let triggers = build_triggers(ctx, &span, &vars, exp, false)?;
+        let triggers = build_triggers(ctx, &span, &vars, exp, false, &visitor.inlined_calls)?;
         axioms.proof_exec_axioms = Some((params.clone(), exp.clone(), triggers));
     }
 
