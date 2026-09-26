@@ -3336,13 +3336,45 @@ fn get_resolutions_for_place(
                     // If the place had a different value at the previous instruction
                     || (i > 0 && place.value_may_change(&cfg.basic_blocks[bb].instructions[i - 1]));
                 if should_assume_has_resolved {
-                    output.push(ResolutionToInsert {
-                        place: place.clone(),
-                        position: cfg.basic_blocks[bb].position(i),
-                    });
+                    push_resolution(cfg, place, bb, i, output);
                 }
             }
         }
+    }
+}
+
+/// Emit a resolution at instruction `i` of `bb`. An empty `MatchIntermediate` block (where a
+/// failed pattern/guard rejoins before the next arm) has no AST position, so the resolution is
+/// forwarded to each successor's start instead - nothing executes in between, so the place
+/// still holds the same value there.
+fn push_resolution(
+    cfg: &CFG,
+    place: &FlattenedPlace,
+    bb: BBIndex,
+    i: usize,
+    output: &mut Vec<ResolutionToInsert>,
+) {
+    let position = cfg.basic_blocks[bb].position(i);
+    if matches!(position, AstPosition::MatchIntermediate)
+        && i == 0
+        && cfg.basic_blocks[bb].instructions.is_empty()
+    {
+        for succ in cfg.basic_blocks[bb].successors.iter() {
+            // Forwarding is only sound if `bb` is the sole way to reach `succ`: the place must
+            // hold the same value there as it did at the start of `bb`. An empty
+            // MatchIntermediate should never be shared by another predecessor or be an entry
+            // block, by construction - checked here rather than assumed.
+            assert!(
+                cfg.basic_blocks[*succ].predecessors.as_slice() == [bb]
+                    && !cfg.basic_blocks[*succ].is_entry,
+                "Verus Internal Error: MatchIntermediate successor {:?} is not uniquely reached from {:?}",
+                succ,
+                bb,
+            );
+            push_resolution(cfg, place, *succ, 0, output);
+        }
+    } else {
+        output.push(ResolutionToInsert { place: place.clone(), position });
     }
 }
 
