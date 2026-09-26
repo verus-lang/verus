@@ -68,7 +68,7 @@
     - [Hiding local proofs with `assert (...) by { ... }`](assert_by.md)
     - [Structured proofs by calculation](calc.md)
     - [Proof by computation](assert_by_compute.md)
-    - [Spinning off separate SMT queries]()
+    - [Spinning off separate SMT queries](spinoff_prover.md)
     - [Breaking proofs into smaller pieces](breaking_proofs_into_pieces.md)
 - [Using LLM assistants](llms.md)
     - [Using LLMs to develop proofs](llmforverusproof.md)
