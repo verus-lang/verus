@@ -840,6 +840,36 @@ pub broadcast proof fn axiom_deref_key_removed<Q, Value>(
     admit();
 }
 
+/// A pair obeys the key model on a set whose components come from sets that
+/// do: std derives `==`, `Hash` and `Clone` for tuples componentwise, so
+/// `==` on the pair is faithful where both components' `==` is, its hash is a
+/// deterministic function of the components', and its clone is the identity
+/// where theirs are. The component sets may be any supersets of the
+/// projections.
+pub proof fn axiom_keys_obey_model_pair<A, B>(s: Set<(A, B)>, sa: Set<A>, sb: Set<B>)
+    requires
+        forall|k: (A, B)| #[trigger] s.contains(k) ==> sa.contains(k.0) && sb.contains(k.1),
+        keys_obey_model::<A>(sa),
+        keys_obey_model::<B>(sb),
+    ensures
+        keys_obey_model::<(A, B)>(s),
+{
+    admit();
+}
+
+/// `axiom_keys_obey_model_pair` for triples.
+pub proof fn axiom_keys_obey_model_triple<A, B, C>(s: Set<(A, B, C)>, sa: Set<A>, sb: Set<B>, sc: Set<C>)
+    requires
+        forall|k: (A, B, C)| #[trigger] s.contains(k) ==> sa.contains(k.0) && sb.contains(k.1) && sc.contains(k.2),
+        keys_obey_model::<A>(sa),
+        keys_obey_model::<B>(sb),
+        keys_obey_model::<C>(sc),
+    ensures
+        keys_obey_model::<(A, B, C)>(s),
+{
+    admit();
+}
+
 pub broadcast proof fn axiom_box_key_removed<Q, Value>(
     old_m: Map<Box<Q>, Value>,
     new_m: Map<Box<Q>, Value>,
