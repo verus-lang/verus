@@ -23,6 +23,7 @@ verus_syn = { workspace = true }
 verus_prettyplease = { workspace = true }
 
 [package.metadata.verus]
+fmt-as-rust = true
 is-builtin-macros = true
 
 [features]

@@ -8,9 +8,9 @@ fn known_verus_version_uses_matching_vstd_dep() {
 
     let args = [
         BIN_NAME,
+        "new",
         "--override-verus-version",
         "0.2026.08.23.fbbbbcf",
-        "new",
         "--lib",
         "test-project",
     ];
@@ -38,9 +38,9 @@ fn dirty_verus_version_uses_path_vstd_dep() {
 
     let args = [
         BIN_NAME,
+        "new",
         "--override-verus-version",
         "0.2026.08.23.fbbbbcf.dirty",
-        "new",
         "--bin",
         "test-project",
     ];
