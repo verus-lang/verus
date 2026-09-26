@@ -77,6 +77,24 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] cloned_relates_to_inner_iterator verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::*;
+
+        fn cloned_relates_to_inner() {
+            let v = vec![1u32, 2, 3];
+            let it = v.iter();
+            let ghost g = it;
+            let c = it.cloned();
+            assert(cloned_iter(c) == g);
+            assert(IteratorSpec::obeys_prophetic_iter_laws(&c));
+            assert(IteratorSpec::remaining(&c).len() == IteratorSpec::remaining(&g).len());
+        }
+
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] collect_works verus_code! {
         use vstd::prelude::*;
 
@@ -91,6 +109,80 @@ test_verify_one_file! {
             let z: Vec<u32> = y.into_iter().rev().rev().collect();
             assert(z@ == y@);
         }
+    } => Ok(())
+}
+
+// Regression test for issue #2947: for-loops over `.copied()`/`.cloned()` iterators used to
+// fail to verify even a trivial `invariant true`, because VIR's trigger generation for
+// `Copied<I>`/`Cloned<I>`'s associated `Item` type couldn't resolve it back to a concrete
+// type (the `TypEquality` bound `I: Iterator<Item = &'a T>` has a compound target, `&'a T`,
+// not a bare type parameter, unlike e.g. `Map`'s `F: FnMut(...) -> B`).
+test_verify_one_file! {
+    #[test] copied_cloned_for_loop_issue2947 verus_code! {
+        use vstd::prelude::*;
+
+        fn copied_for_loop_trivial(xs: &Vec<u32>) {
+            for x in xs.iter().copied()
+                invariant true,
+            {
+            }
+        }
+
+        fn cloned_for_loop_trivial(xs: &Vec<u32>) {
+            for x in xs.iter().cloned()
+                invariant true,
+            {
+            }
+        }
+
+        fn copied_cloned_zip_for_loop(xs: &Vec<u32>, ys: &Vec<u32>)
+            requires xs.len() == ys.len(),
+        {
+            for (a, b) in xs.iter().copied().zip(ys.iter().cloned())
+                invariant true,
+            {
+                assert(true);
+            }
+        }
+    } => Ok(())
+}
+
+// Regression test for issue #2947: `collect()` through `.copied()`/`.cloned()` used to be
+// unable to prove even a full sequence-equality postcondition.
+test_verify_one_file! {
+    #[test] copied_cloned_collect_issue2947 verus_code! {
+        use vstd::prelude::*;
+
+        fn collect_through_copied(xs: &Vec<u32>) -> (r: Vec<u32>)
+            ensures r@ == xs@,
+        {
+            xs.iter().copied().collect()
+        }
+
+        fn collect_through_cloned(xs: &Vec<u32>) -> (r: Vec<u32>)
+            ensures r@ == xs@,
+        {
+            xs.iter().cloned().collect()
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] copied_relates_to_inner_iterator verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::*;
+
+        fn copied_relates_to_inner() {
+            let v = vec![1u32, 2, 3];
+            let it = v.iter();
+            let ghost g = it;
+            let c = it.copied();
+            assert(copied_iter(c) == g);
+            assert(IteratorSpec::obeys_prophetic_iter_laws(&c));
+            assert(IteratorSpec::remaining(&c).len() == IteratorSpec::remaining(&g).len());
+            assert(IteratorSpec::remaining(&c)[0] == *IteratorSpec::remaining(&g)[0]);
+        }
+
     } => Ok(())
 }
 
@@ -178,6 +270,25 @@ test_verify_one_file! {
         {
             i.next();
 
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] nth_works verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let v: Vec<u32> = vec![1, 2, 3, 4];
+            let mut it = v.into_iter();
+            let x = it.nth(1);
+            assert(x == Some(2u32));
+
+            let y = it.next();
+            assert(y == Some(3u32));
+
+            let z = it.nth(5);
+            assert(z is None);
         }
     } => Ok(())
 }

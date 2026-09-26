@@ -133,6 +133,7 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
     let decorate_nil_slice = str_to_node(DECORATE_NIL_SLICE);
     let decorate_nil_dyn = str_to_node(DECORATE_NIL_DYN);
     let decorate_ref = str_to_node(DECORATE_REF);
+    let decorate_ref_inv = str_to_node(DECORATE_REF_INV);
     let decorate_box = str_to_node(DECORATE_BOX);
     let decorate_rc = str_to_node(DECORATE_RC);
     let decorate_arc = str_to_node(DECORATE_ARC);
@@ -222,6 +223,7 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
         (declare-const [decorate_nil_dyn] [decoration])
         (declare-fun [decorate_dst_inherit] ([decoration]) [decoration])
         (declare-fun [decorate_ref] ([decoration]) [decoration])
+        (declare-fun [decorate_ref_inv] ([decoration]) [decoration])
         (declare-fun [decorate_box] ([decoration] [typ] [decoration]) [decoration])
         (declare-fun [decorate_rc] ([decoration] [typ] [decoration]) [decoration])
         (declare-fun [decorate_arc] ([decoration] [typ] [decoration]) [decoration])
@@ -317,6 +319,15 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
             :pattern (([sized] ([decorate_ref] d)))
             :qid prelude_sized_decorate_ref
             :skolemid skolem_prelude_sized_decorate_ref
+        )))
+        // Left inverse of decorate_ref: lets us recover the decoration of `T` from
+        // a projection known (via a TypEquality bound) to equal `&T`, without needing
+        // `T` as an independently-triggered quantified variable (see ProjectionDeref).
+        (axiom (forall ((d [decoration])) (!
+            (= ([decorate_ref_inv] ([decorate_ref] d)) d)
+            :pattern (([decorate_ref] d))
+            :qid prelude_decorate_ref_inv
+            :skolemid skolem_prelude_decorate_ref_inv
         )))
         (axiom (forall ((d [decoration]) (t [typ]) (d2 [decoration])) (!
             ([sized] ([decorate_box] d t d2))

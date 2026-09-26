@@ -173,6 +173,12 @@ fn gen_typ(state: &mut State, typ: &vir::ast::Typ) -> Typ {
             let t = gen_typ(state, t);
             Box::new(TypX::PointeeMetadata(t))
         }
+        vir::ast::TypX::ProjectionDeref(t) => {
+            // ProjectionDeref only arises from fix_missing_trigger_params's
+            // AssocTypeImpl-specific trigger substitution (see vir::traits), not from the
+            // trait/impl header types this module processes for overlap checking.
+            panic!("internal error: unexpected ProjectionDeref in trait conflict checking: {:?}", t)
+        }
         vir::ast::TypX::ConstInt(i) => Box::new(TypX::Primitive(i.to_string())),
         vir::ast::TypX::ConstBool(b) => Box::new(TypX::Primitive(b.to_string())),
         vir::ast::TypX::TypeId | vir::ast::TypX::Air(..) => {

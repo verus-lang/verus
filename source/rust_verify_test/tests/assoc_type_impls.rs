@@ -1041,3 +1041,72 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+// Regression test for issue #2947, independent of `Iterator` (the case that surfaced the
+// bug - see `iterators.rs`'s `copied_cloned_for_loop_issue2947`). `Unref<S>` has the same
+// shape as `Copied<I>`: a `TypEquality` bound (`S: Source<Item = &'a T>`) whose target is a
+// compound type wrapping the eliminated parameter `T`, rather than a bare parameter (compare
+// to `Map`'s `F: FnMut(...) -> B`, whose target `B` is bare and always worked). `T` is not a
+// direct type parameter of `Unref<S>` (only `S` is) - it's reachable only through the bound.
+test_verify_one_file! {
+    #[test] assoc_type_equality_reference_target_issue2947 verus_code! {
+        use vstd::prelude::*;
+
+        trait Source {
+            type Item;
+            spec fn seq(&self) -> Seq<Self::Item>;
+        }
+
+        struct RefSource<'a, T>(Seq<&'a T>);
+
+        impl<'a, T> Source for RefSource<'a, T> {
+            type Item = &'a T;
+            closed spec fn seq(&self) -> Seq<&'a T> { self.0 }
+        }
+
+        struct Unref<S>(S);
+
+        trait UnrefSource {
+            type Item;
+            spec fn seq(&self) -> Seq<Self::Item>;
+        }
+
+        impl<'a, S, T: 'a> UnrefSource for Unref<S>
+            where
+                S: Source<Item = &'a T>,
+                T: Copy,
+        {
+            type Item = T;
+            closed spec fn seq(&self) -> Seq<T> {
+                Seq::new(self.0.seq().len(), |k: int| *self.0.seq()[k])
+            }
+        }
+
+        uninterp spec fn related<Slf>(before: Slf, after: Slf) -> bool;
+
+        // Declared once, abstractly over Self::Item - analogous to `ExIterator::next`'s
+        // externally-assumed, generic postcondition. This is the exact mechanism under
+        // test: instantiating this axiom for a concrete Slf requires resolving Slf::Item
+        // back to a concrete type.
+        broadcast axiom fn unref_advance<Slf: UnrefSource>(before: Slf, after: Slf)
+            requires
+                #[trigger] related(before, after),
+            ensures
+                before.seq().len() > 0 ==> after.seq() == before.seq().drop_first(),
+        ;
+
+        proof fn regression_test(t1: u32, t2: u32) {
+            broadcast use unref_advance;
+
+            let s1 = RefSource(seq![&t1, &t2]);
+            let u1 = Unref(s1);
+            let s2 = RefSource(seq![&t2]);
+            let u2 = Unref(s2);
+            assume(related(u1, u2));
+            assert(u1.seq().len() > 0) by {
+                assert(u1.seq() =~= seq![t1, t2]);
+            }
+            assert(u2.seq() == u1.seq().drop_first());
+        }
+    } => Ok(())
+}
