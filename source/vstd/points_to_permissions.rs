@@ -11,13 +11,12 @@ verus! {
 
 broadcast use group_vstd_default;
 
-// TODO: move to ptr file
 /// Specifies that the pointer's address is within the bounds of its provenance.
+// TODO: move to ptr file
 pub open spec fn ptr_addr_in_bounds<T: ?Sized>(ptr: *mut T) -> bool {
     ptr@.provenance.is_some() ==> {
         &&& ptr@.addr as int >= ptr@.provenance.data().start_addr()
-        &&& ptr@.addr <= ptr@.provenance.data().start_addr()
-            + ptr@.provenance.data().alloc_len()
+        &&& ptr@.addr <= ptr@.provenance.data().start_addr() + ptr@.provenance.data().alloc_len()
     }
 }
 
@@ -206,13 +205,14 @@ impl PointsToUntyped {
 
     /// Ensures that if `self` is well-formed, and `other` has the same pointers and length,
     /// then `other` is well-formed.
-    pub proof fn stays_wf(tracked self, tracked other: Self) 
+    pub proof fn stays_wf(tracked self, tracked other: Self)
         requires
             self.wf(),
             Self::ptrs_len_same(self, other),
         ensures
             other.wf(),
-    {}
+    {
+    }
 
     /// If `T` is zero sized, then we can construct a `PointsToUntyped` from any non-null pointer.
     /// The range of memory pointed to by this permission will be empty.
@@ -449,16 +449,17 @@ impl<T> PointsToUnaligned<T> {
         &&& new.is_valid() ==> abs_decode::<T>(new.bytes(), &new.value())
     }
 
-    /// Ensures that if `self` is well-formed, and `other` has the same pointers and length 
+    /// Ensures that if `self` is well-formed, and `other` has the same pointers and length
     /// and still satisfies decode validity,
     /// then `other` is well-formed.
-    pub proof fn stays_wf(tracked self, tracked other: Self) 
+    pub proof fn stays_wf(tracked self, tracked other: Self)
         requires
             self.wf(),
             Self::ptrs_len_same_valid_decode(self, other),
         ensures
             other.wf(),
-    {}
+    {
+    }
 
     /// Convert PointsToUnaligned to an aligned PointsTo.
     /// Requires the pointer address to be properly aligned.
@@ -488,6 +489,7 @@ impl<T> PointsToUnaligned<T> {
             perm@ == self@,
     // TODO: uncomment when main is merged in
     // { shr_ref_struct_wrap(self, &PointsTo { pt_unaligned: Tracked(self) }, "", "pt_unaligned") }
+
     ;
 
     /// If `T` is zero sized, then we can construct an uninitialized `PointsToUnaligned<T>`
@@ -730,16 +732,17 @@ impl<T> PointsTo<T> {
         PointsToUnaligned::<T>::ptrs_len_same_valid_decode(old.pt_unaligned(), new.pt_unaligned())
     }
 
-    /// Ensures that if `self` is well-formed, and `other` has the same pointers and length 
+    /// Ensures that if `self` is well-formed, and `other` has the same pointers and length
     /// and still satisfies decode validity,
     /// then `other` is well-formed.
-    pub proof fn stays_wf(tracked self, tracked other: Self) 
+    pub proof fn stays_wf(tracked self, tracked other: Self)
         requires
             self.wf(),
             Self::ptrs_len_same_valid_decode(self, other),
         ensures
             other.wf(),
-    {}
+    {
+    }
 
     pub proof fn is_aligned(tracked &self)
         requires
@@ -837,26 +840,29 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         Seq::new(self.len(), |i| self[i].value())
     }
 
-    /// Specifies that `old` and `new` have the same pointer and length, 
-    /// and the underlying `PointsTo<T>` permissions have the same pointer 
+    /// Specifies that `old` and `new` have the same pointer and length,
+    /// and the underlying `PointsTo<T>` permissions have the same pointer
     /// and satisfy the `PointsTo` requirements for preserving well-formed-ness.
     pub open spec fn ptrs_len_same_valid_decode(old: Self, new: Self) -> bool {
         &&& new.ptr() == old.ptr()
         &&& new.len() == old.len()
-        &&& forall|i: int| #![trigger new[i]] 0 <= i < new.len() 
-        ==> new[i].ptr() == old[i].ptr() && PointsTo::<T>::ptrs_len_same_valid_decode(old[i], new[i])
+        &&& forall|i: int|
+            #![trigger new[i]]
+            0 <= i < new.len() ==> PointsTo::<T>::ptrs_len_same_valid_decode(old[i], new[i])
+                && new[i].ptr() == old[i].ptr()
     }
 
-    /// Ensures that if `self` is well-formed, and `other` has the same pointers and length 
+    /// Ensures that if `self` is well-formed, and `other` has the same pointers and length
     /// and still satisfies decode validity,
     /// then `other` is well-formed.
-    pub proof fn stays_wf(tracked self, tracked other: Self) 
+    pub proof fn stays_wf(tracked self, tracked other: Self)
         requires
             self.wf(),
             Self::ptrs_len_same_valid_decode(self, other),
         ensures
             other.wf(),
-    {}
+    {
+    }
 
     /// Returns a `tracked` reference to the underlying `Seq<PointsTo<T>>`,
     /// given `tracked &self`.
@@ -901,7 +907,10 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             *ret == old(self).seq_pt()[i],
             final(self).seq_pt() == old(self).seq_pt().update(i, *final(ret)),
             // Criteria necessary for re-establishing invariants
-            (final(ret).ptr() == ret.ptr() && PointsTo::<T>::ptrs_len_same_valid_decode(*ret, *final(ret))) ==> final(self).wf(),
+            ({
+                &&& final(ret).ptr() == ret.ptr()
+                &&& PointsTo::<T>::ptrs_len_same_valid_decode(*ret, *final(ret))
+            }) ==> final(self).wf(),
     {
         broadcast use crate::vstd::seq::group_seq_axioms;
 
@@ -1073,9 +1082,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
 
             assert(perms.last() == perms[perms.len() - 1]);
             assert(perms.drop_last() == perms.subrange(0, perms.len() - 1));
-            assert(Self::bytes_inner(perms) == Self::bytes_inner(
-                perms.subrange(0, perms.len() - 1),
-            ) + perms[perms.len() - 1].bytes());
+            assert(Self::bytes_inner(perms) == Self::bytes_inner(perms.subrange(0, perms.len() - 1))
+                + perms[perms.len() - 1].bytes());
             assert(perms.subrange(split, perms.len() as int).last() == perms[perms.len() - 1]);
             assert(perms.subrange(split, perms.len() as int).drop_last() == perms.subrange(
                 split,
@@ -1179,7 +1187,10 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
     }
 
     /// Specializes `is_disjoint` to the case when the other permission is a `SeqPointsTo<S, PointsTo<S>>`.
-    pub proof fn is_disjoint_seqpt<S>(tracked &mut self, tracked other: &SeqPointsTo<S, PointsTo<S>>)
+    pub proof fn is_disjoint_seqpt<S>(
+        tracked &mut self,
+        tracked other: &SeqPointsTo<S, PointsTo<S>>,
+    )
         requires
             self.len() != 0,
             other.len() != 0,
