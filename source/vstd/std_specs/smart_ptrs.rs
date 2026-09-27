@@ -88,8 +88,8 @@ pub assume_specification<'a, T: Clone>[ <Arc<[T]> as core::convert::From<&'a [T]
 // contents (`arc_contents`) because std's impl is allocator-generic and
 // `Arc`'s `View` is for the global allocator only.
 pub assume_specification<T, A: Allocator + Clone>[ <Arc<[T], A> as core::convert::From<
-    alloc::vec::Vec<T, A>,
->>::from ](v: alloc::vec::Vec<T, A>) -> (r: Arc<[T], A>)
+    Vec<T, A>,
+>>::from ](v: Vec<T, A>) -> (r: Arc<[T], A>)
     ensures
         arc_contents(&r)@ == v@,
 ;
