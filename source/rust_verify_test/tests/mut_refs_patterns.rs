@@ -4323,11 +4323,10 @@ test_verify_one_file_with_options! {
         pub struct Cs { pub n: u64 }
         pub enum Op { A, B, Z }
 
-        // Regression test for an internal-error panic (found via a real downstream
-        // project): a MatchIntermediate block can have two live predecessors when
-        // only some of several consecutive guarded arms mutate a shared &mut place
-        // (unlike guarded_chain above, where every arm mutates uniformly) -
-        // push_resolution now falls back instead of asserting on this.
+        // Test illustrates an example where a MatchIntermediate basic block (X)
+        // has a successor (Y) with a predecessor other than X (Z, when flag is false)
+        // This regression test exists because it was previously assumed that couldn't
+        // be the case.
         fn f(op: Op, flag: bool, cs: &mut Cs)
             requires old(cs).n < 100,
         {
@@ -4335,8 +4334,8 @@ test_verify_one_file_with_options! {
                 Op::A if flag => {
                     cs.n = cs.n + 1;
                 },
-                Op::B if flag => { },
-                _ => { },
+                /* X */ Op::B if flag /* Z */ => { },
+                /* Y */ _ => { },
             }
         }
     } => Ok(())

@@ -3343,16 +3343,15 @@ fn get_resolutions_for_place(
     }
 }
 
-/// Emit a resolution at instruction `i` of `bb`. An empty `MatchIntermediate` block (where a
-/// failed pattern/guard rejoins before the next arm) has no AST position, so the resolution is
-/// forwarded to a successor's start instead when that's sound - nothing executes in between, so
-/// the place still holds the same value there. Forwarding requires `bb` to be the sole way to
-/// reach the successor (ruling out another predecessor or an entry block): a `MatchIntermediate`
-/// with a guarded arm can have two live predecessors (pattern failed, or guard failed - see
-/// `build_match`), observed in practice when only some of several consecutive guarded arms
-/// mutate a shared place. When forwarding isn't sound, this falls back to the pre-existing
-/// behavior of emitting at the unattached `MatchIntermediate` position, which is silently
-/// dropped downstream - a missed resolution, not an unsound one.
+/// Emit a resolution at instruction `i` of `bb`.
+///
+/// We special case the `MatchIntermediate` position because there's otherwise no good place
+/// to put it in the AST. To deal with it, we try to forward it to the successor blocks,
+/// which is sound to do if the successor block only has a single predecessor.
+/// (This can be seen from the dataflow equations.)
+/// However, this criterion doesn't always hold (See the
+/// `test_match_guard_asymmetric_mutation_no_panic` case)
+/// TODO (new_mut_ref) (completeness): Find a different solutio that works in all cases
 fn push_resolution(
     cfg: &CFG,
     place: &FlattenedPlace,
