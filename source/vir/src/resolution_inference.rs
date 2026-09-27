@@ -3343,10 +3343,15 @@ fn get_resolutions_for_place(
     }
 }
 
-/// Emit a resolution at instruction `i` of `bb`. An empty `MatchIntermediate` block (where a
-/// failed pattern/guard rejoins before the next arm) has no AST position, so the resolution is
-/// forwarded to each successor's start instead - nothing executes in between, so the place
-/// still holds the same value there.
+/// Emit a resolution at instruction `i` of `bb`.
+///
+/// We special case the `MatchIntermediate` position because there's otherwise no good place
+/// to put it in the AST. To deal with it, we try to forward it to the successor blocks,
+/// which is sound to do if the successor block only has a single predecessor.
+/// (This can be seen from the dataflow equations.)
+/// However, this criterion doesn't always hold (See the
+/// `test_match_guard_asymmetric_mutation_no_panic` case)
+/// TODO (new_mut_ref) (completeness): Find a different solutio that works in all cases
 fn push_resolution(
     cfg: &CFG,
     place: &FlattenedPlace,
@@ -3358,19 +3363,12 @@ fn push_resolution(
     if matches!(position, AstPosition::MatchIntermediate)
         && i == 0
         && cfg.basic_blocks[bb].instructions.is_empty()
+        && cfg.basic_blocks[bb].successors.iter().all(|succ| {
+            cfg.basic_blocks[*succ].predecessors.as_slice() == [bb]
+                && !cfg.basic_blocks[*succ].is_entry
+        })
     {
         for succ in cfg.basic_blocks[bb].successors.iter() {
-            // Forwarding is only sound if `bb` is the sole way to reach `succ`: the place must
-            // hold the same value there as it did at the start of `bb`. An empty
-            // MatchIntermediate should never be shared by another predecessor or be an entry
-            // block, by construction - checked here rather than assumed.
-            assert!(
-                cfg.basic_blocks[*succ].predecessors.as_slice() == [bb]
-                    && !cfg.basic_blocks[*succ].is_entry,
-                "Verus Internal Error: MatchIntermediate successor {:?} is not uniquely reached from {:?}",
-                succ,
-                bb,
-            );
             push_resolution(cfg, place, *succ, 0, output);
         }
     } else {
