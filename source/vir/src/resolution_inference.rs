@@ -3345,8 +3345,14 @@ fn get_resolutions_for_place(
 
 /// Emit a resolution at instruction `i` of `bb`. An empty `MatchIntermediate` block (where a
 /// failed pattern/guard rejoins before the next arm) has no AST position, so the resolution is
-/// forwarded to each successor's start instead - nothing executes in between, so the place
-/// still holds the same value there.
+/// forwarded to a successor's start instead when that's sound - nothing executes in between, so
+/// the place still holds the same value there. Forwarding requires `bb` to be the sole way to
+/// reach the successor (ruling out another predecessor or an entry block): a `MatchIntermediate`
+/// with a guarded arm can have two live predecessors (pattern failed, or guard failed - see
+/// `build_match`), observed in practice when only some of several consecutive guarded arms
+/// mutate a shared place. When forwarding isn't sound, this falls back to the pre-existing
+/// behavior of emitting at the unattached `MatchIntermediate` position, which is silently
+/// dropped downstream - a missed resolution, not an unsound one.
 fn push_resolution(
     cfg: &CFG,
     place: &FlattenedPlace,
@@ -3358,19 +3364,12 @@ fn push_resolution(
     if matches!(position, AstPosition::MatchIntermediate)
         && i == 0
         && cfg.basic_blocks[bb].instructions.is_empty()
+        && cfg.basic_blocks[bb].successors.iter().all(|succ| {
+            cfg.basic_blocks[*succ].predecessors.as_slice() == [bb]
+                && !cfg.basic_blocks[*succ].is_entry
+        })
     {
         for succ in cfg.basic_blocks[bb].successors.iter() {
-            // Forwarding is only sound if `bb` is the sole way to reach `succ`: the place must
-            // hold the same value there as it did at the start of `bb`. An empty
-            // MatchIntermediate should never be shared by another predecessor or be an entry
-            // block, by construction - checked here rather than assumed.
-            assert!(
-                cfg.basic_blocks[*succ].predecessors.as_slice() == [bb]
-                    && !cfg.basic_blocks[*succ].is_entry,
-                "Verus Internal Error: MatchIntermediate successor {:?} is not uniquely reached from {:?}",
-                succ,
-                bb,
-            );
             push_resolution(cfg, place, *succ, 0, output);
         }
     } else {

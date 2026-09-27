@@ -4317,3 +4317,27 @@ test_verify_one_file_with_options! {
         }
     } => Ok(())
 }
+
+test_verify_one_file_with_options! {
+    #[test] test_match_guard_asymmetric_mutation_no_panic [] => verus_code! {
+        pub struct Cs { pub n: u64 }
+        pub enum Op { A, B, Z }
+
+        // Regression test for an internal-error panic (found via a real downstream
+        // project): a MatchIntermediate block can have two live predecessors when
+        // only some of several consecutive guarded arms mutate a shared &mut place
+        // (unlike guarded_chain above, where every arm mutates uniformly) -
+        // push_resolution now falls back instead of asserting on this.
+        fn f(op: Op, flag: bool, cs: &mut Cs)
+            requires old(cs).n < 100,
+        {
+            match op {
+                Op::A if flag => {
+                    cs.n = cs.n + 1;
+                },
+                Op::B if flag => { },
+                _ => { },
+            }
+        }
+    } => Ok(())
+}
