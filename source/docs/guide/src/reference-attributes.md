@@ -134,8 +134,13 @@ applicable attribute will take precedence.
 This attribute impacts the deductions that Verus can make automatically inside the loop
 body (absent any loop invariants).
 
- * When set to `true`: Verus does not automatically infer anything inside the loop body,
-   not even function preconditions.
+ * When set to `true`: Verus does not automatically infer ordinary facts inside the loop body,
+   not even function preconditions. Those facts need to be stated as loop invariants.
+   `reveal`, `reveal_with_fuel`, and `broadcast use` directives that are already in scope
+   at loop entry are still available inside the loop, with the fuel bound from
+   `reveal_with_fuel` preserved. See [Loops and invariants](./while.md).
+   `hide` remains function-wide and does not cancel those directives inside a single loop;
+   whether it should is an open design question.
  * When set the `false`: Verus automatically makes some facts from outside the loop body
    available in the loop body. In particular, any assertion outside the loop body
    that depends only on variables not mutated by the loop body will also be available
