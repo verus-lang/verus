@@ -4340,3 +4340,48 @@ test_verify_one_file_with_options! {
         }
     } => Ok(())
 }
+
+test_verify_one_file_with_options! {
+    #[test] test_match_guard_asymmetric_mutation_soundness [] => verus_code! {
+        pub enum Op { A, B, Z }
+
+        fn f() {
+            let op = Op::B;
+            let mut x = 0;
+            let mut y = 0;
+            let mut z = 0;
+            let mut w = 0;
+            let mut v = 0;
+            let mut u = 0;
+            let mut refs = (&mut x, &mut y);
+            let mut refs2 = (&mut w, &mut z);
+
+            let flag1 = false;
+            let flag2 = false;
+
+            // This test indicates how we can get unsoundness with the above bug.
+            // Here, the match guard leaves `refs` uninitialized, meaning it's unsound
+            // to `assume(has_resolve(refs))` at the `_ => { }` line.
+            match op {
+                Op::A if flag1 => {
+                    *refs.0 = 20;
+                },
+                Op::B if ({ refs = (&mut v, &mut u); refs2 = refs; flag2 }) => { },
+                _ => { },
+            }
+
+            *refs2.0 = 30;
+
+            // This fails due to incompleteness
+            assert(x == 0); // FAILS
+            assert(y == 0);
+            assert(w == 0);
+            assert(z == 0);
+            assert(v == 30);
+            assert(u == 0);
+
+            // The point of the test is to make sure this fails:
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
