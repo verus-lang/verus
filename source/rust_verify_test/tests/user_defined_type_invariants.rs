@@ -2712,5 +2712,5 @@ test_verify_one_file! {
         pub proof fn new(tracked p: Frac<u64>) {
             use_type_invariant(&p);
         }
-    } => Err(err) => assert_vir_error_msg(err, "type invariant function `vstd::resource::impls::frac_opt::impl&%2::inv` is not visible to this program point, which requires us to prove the invariant is preserved")
+    } => Err(err) => assert_vir_error_msg(err, "type invariant function `vstd::resource::impls::frac_opt::Frac::inv` is not visible to this program point, which requires us to prove the invariant is preserved")
 }

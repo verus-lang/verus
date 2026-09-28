@@ -1420,6 +1420,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             path_as_rust_names,
             arch,
             opaque_types,
+            has_try_broadcasts,
         } = &**krate;
         let functions = R::map_vec(functions, &mut |f| self.visit_function(f))?;
         let datatypes = R::map_vec(datatypes, &mut |d| self.visit_datatype(d))?;
@@ -1441,6 +1442,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 path_as_rust_names: path_as_rust_names.clone(),
                 arch: arch.clone(),
                 opaque_types: opaque_types.clone(),
+                has_try_broadcasts: *has_try_broadcasts,
             })
         })
     }
@@ -1764,7 +1766,7 @@ where
 }
 
 /// Walk the AST, visit every Expr
-pub(crate) fn expr_visitor_check<E, MF>(expr: &Expr, mf: &mut MF) -> Result<(), E>
+pub fn expr_visitor_check<E, MF>(expr: &Expr, mf: &mut MF) -> Result<(), E>
 where
     MF: FnMut(&VisitorScopeMap, &Expr) -> Result<(), E>,
 {

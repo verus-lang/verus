@@ -407,6 +407,7 @@ pub(crate) enum Attr {
     MigratePostconditionsWithMutRefs(bool),
     TrackedSwap,
     TrackedTakeOption,
+    TryBroadcasts(bool), // if `true` is passed, try_broadcasts will minimize proof
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -605,6 +606,16 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, arg, None) if arg == "nonlinear" => v.push(Attr::NonLinear),
                 AttrTree::Fun(_, arg, None) if arg == "spinoff_prover" => {
                     v.push(Attr::SpinoffProver)
+                }
+                AttrTree::Fun(_, arg, None) if arg == "try_broadcasts" => {
+                    v.push(Attr::TryBroadcasts(true));
+                    v.push(Attr::SpinoffProver);
+                }
+                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, r, None)]))
+                    if arg == "try_broadcasts" && (r == "true" || r == "false") =>
+                {
+                    v.push(Attr::TryBroadcasts(r == "true"));
+                    v.push(Attr::SpinoffProver);
                 }
                 AttrTree::Fun(_, arg, None) if arg == "loop_isolation" => {
                     v.push(Attr::LoopIsolation(true))
@@ -1269,6 +1280,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) check_recommends: bool,
     pub(crate) nonlinear: bool,
     pub(crate) spinoff_prover: bool,
+    pub(crate) try_broadcasts: Option<bool>,
     pub(crate) loop_isolation: Option<bool>,
     pub(crate) allow_complex_invariants: bool,
     pub(crate) memoize: bool,
@@ -1464,6 +1476,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
         check_recommends: false,
         nonlinear: false,
         spinoff_prover: false,
+        try_broadcasts: None,
         loop_isolation: None,
         allow_complex_invariants: false,
         memoize: false,
@@ -1552,6 +1565,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             Attr::CheckRecommends => vs.check_recommends = true,
             Attr::NonLinear => vs.nonlinear = true,
             Attr::SpinoffProver => vs.spinoff_prover = true,
+            Attr::TryBroadcasts(minimize) => vs.try_broadcasts = Some(minimize),
             Attr::LoopIsolation(flag) => vs.loop_isolation = Some(flag),
             Attr::AllowComplexInvariants => vs.allow_complex_invariants = true,
             Attr::Memoize => vs.memoize = true,
