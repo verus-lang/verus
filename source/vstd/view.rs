@@ -57,8 +57,9 @@ impl<A: DeepView + ?Sized> DeepView for alloc::boxed::Box<A> {
     }
 }
 
+// Matches `Arc<A>` below, so `Rc<[T]>`/`Rc<str>` also get a view.
 #[cfg(feature = "alloc")]
-impl<A: View> View for alloc::rc::Rc<A> {
+impl<A: View + ?Sized> View for alloc::rc::Rc<A> {
     type V = A::V;
 
     #[verifier::inline]
@@ -68,7 +69,7 @@ impl<A: View> View for alloc::rc::Rc<A> {
 }
 
 #[cfg(feature = "alloc")]
-impl<A: DeepView> DeepView for alloc::rc::Rc<A> {
+impl<A: DeepView + ?Sized> DeepView for alloc::rc::Rc<A> {
     type V = A::V;
 
     #[verifier::inline]

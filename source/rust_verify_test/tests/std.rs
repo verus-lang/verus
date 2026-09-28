@@ -33,7 +33,6 @@ test_verify_one_file! {
         fn test() {
             let v: Vec<u32> = vec![1, 2, 3];
             let a: Arc<[u32]> = Arc::from(v);
-            broadcast use vstd::std_specs::smart_ptrs::group_smart_ptrs_axioms;
 
             assert(a@ == seq![1u32, 2, 3]);
             assert(a.len() == 3);
@@ -53,7 +52,41 @@ test_verify_one_file! {
         fn test() {
             let s: [u32; 2] = [10, 20];
             let a: Arc<[u32]> = Arc::from(&s[..]);
-            broadcast use vstd::std_specs::smart_ptrs::group_smart_ptrs_axioms;
+
+            assert(a@.len() == 2);
+            assert(a[0] == 10);
+            assert(a[1] == 20);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] rc_slice_deref_and_as_ref verus_code! {
+        use std::rc::Rc;
+        use vstd::prelude::*;
+
+        fn test() {
+            let v: Vec<u32> = vec![1, 2, 3];
+            let a: Rc<[u32]> = Rc::from(v);
+
+            assert(a@ == seq![1u32, 2, 3]);
+            assert(a.len() == 3);
+            assert(a[0] == 1);
+
+            let r: &[u32] = a.as_ref();
+            assert(r@ == seq![1u32, 2, 3]);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] rc_slice_from_slice_clones verus_code! {
+        use std::rc::Rc;
+        use vstd::prelude::*;
+
+        fn test() {
+            let s: [u32; 2] = [10, 20];
+            let a: Rc<[u32]> = Rc::from(&s[..]);
 
             assert(a@.len() == 2);
             assert(a[0] == 10);
