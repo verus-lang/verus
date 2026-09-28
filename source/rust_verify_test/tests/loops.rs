@@ -629,6 +629,17 @@ test_verify_one_file_with_options! {
             assert(false);
         }
 
+        #[allow(unreachable_code)]
+        fn test_diverging_break_value_with_non_unit_loop(cond: bool) -> u64 {
+            if cond {
+                3
+            } else {
+                loop {
+                    break (return 5);
+                }
+            }
+        }
+
         #[verifier::loop_isolation(false)]
         fn test_multiple_paths(select_first: bool) {
             let value = loop {

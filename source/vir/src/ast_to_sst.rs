@@ -659,16 +659,18 @@ fn loop_has_breaks(loop_label: &Label, expr: &Expr) -> (usize, usize) {
     (num_breaks, num_isolated_breaks)
 }
 
-/// Determine if it's possible for control flow to reach the statement after the loop exit.
-/// To be conservative, we need to answer 'yes' (true) if we can't tell.
-pub fn can_control_flow_reach_after_loop(expr: &Expr) -> bool {
-    match &expr.x {
-        ExprX::Loop { label, cond: None, body, .. } => loop_has_breaks(label, body).0 > 0,
-        ExprX::Loop { cond: Some(_), .. } => true,
-        _ => {
-            panic!("expected while loop");
-        }
+fn stms_have_break_to_label(stms: &[Stm], label: &Label) -> bool {
+    let mut found = false;
+    for stm in stms {
+        stm_visitor_check::<(), _>(stm, &mut |stm| {
+            if let StmX::BreakOrContinue { label: break_label, is_break: true } = &stm.x {
+                found |= break_label == label;
+            }
+            Ok(())
+        })
+        .unwrap();
     }
+    found
 }
 
 /// The `Sequencer` struct should be used for most nodes that have multiple Exprs as input
@@ -2622,13 +2624,6 @@ pub(crate) fn expr_to_stm_opt(
             let produces_value =
                 !crate::ast_util::is_unit(&expr.typ) && !crate::ast_util::is_never(&expr.typ);
             let loop_isolation = *loop_isolation;
-            if produces_value && loop_isolation {
-                return Err(error(
-                    &expr.span,
-                    "loops with value-bearing 'break' do not yet support loop isolation",
-                )
-                .help("add #[verifier::loop_isolation(false)] to this loop"));
-            }
             let allow_complex_invariants = *allow_complex_invariants;
             let id = state.loop_id_counter;
             state.loop_id_counter += 1;
@@ -2754,12 +2749,20 @@ pub(crate) fn expr_to_stm_opt(
                 Some(result)
             };
 
-            let (mut body_stms, _val) = expr_to_stm_opt(ctx, state, body)?;
+            let (mut body_stms, _body_value) = expr_to_stm_opt(ctx, state, body)?;
+            let has_reachable_break = stms_have_break_to_label(&body_stms, label);
             if loop_result.is_some() {
                 let removed = state.loop_result_dests.remove(label);
                 assert!(removed.is_some());
             }
             state.branch_bool_var = None;
+            if produces_value && loop_isolation && has_reachable_break {
+                return Err(error(
+                    &expr.span,
+                    "loops with value-bearing 'break' do not yet support loop isolation",
+                )
+                .help("add #[verifier::loop_isolation(false)] to this loop"));
+            }
 
             let mut check_recommends: Vec<Stm> = Vec::new();
             let mut invs1: Vec<crate::sst::LoopInv> = Vec::new();
@@ -2846,7 +2849,7 @@ pub(crate) fn expr_to_stm_opt(
                 },
             );
 
-            if can_control_flow_reach_after_loop(expr) {
+            if cond.is_some() || has_reachable_break {
                 let ret = Maybe::Some(match loop_result {
                     Some(result) => Value::Exp(result),
                     None => Value::ImplicitUnit(expr.span.clone()),
