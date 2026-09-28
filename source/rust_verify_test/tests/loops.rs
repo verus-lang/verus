@@ -612,6 +612,15 @@ test_verify_one_file_with_options! {
         }
 
         #[verifier::loop_isolation(false)]
+        fn test_unit_value_side_effect() {
+            let mut a = 0;
+            loop {
+                break ({ a = 2; () });
+            }
+            assert(a == 2);
+        }
+
+        #[verifier::loop_isolation(false)]
         fn test_multiple_paths(select_first: bool) {
             let value = loop {
                 if select_first {
