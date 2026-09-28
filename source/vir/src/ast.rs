@@ -702,8 +702,12 @@ pub enum LogicalOp {
 /// and UnaryOp::Clip.
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
 pub enum BinaryOp {
+    /// boolean and (no short-circuiting)
+    BoolAndNoSC,
+    /// boolean or (no short-circuiting)
+    BoolOrNoSC,
     /// boolean xor (no short-circuiting)
-    Xor,
+    BoolXor,
     /// the is_smaller_than verus_builtin, used for decreases (true for <, false for ==)
     HeightCompare { strictly_lt: bool, recursive_function_field: bool },
     /// SMT equality for any type -- two expressions are exactly the same value
