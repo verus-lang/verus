@@ -489,6 +489,80 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
+    #[test] closure_capture_edition2018 ["--edition 2018"] => verus_code! {
+        use vstd::prelude::*;
+        fn closure_test() {
+            let mut y = 0;
+            let y_ref = &mut y;
+
+            let clos = |x: u64| {
+                assert(y == 0);
+            };
+
+            *y_ref = 20;
+
+            clos(0);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `y` as immutable because it is also borrowed as mutable")
+}
+
+test_verify_one_file_with_options! {
+    #[test] closure_capture_let_ghost_edition2018 ["--edition 2018"] => verus_code! {
+        use vstd::prelude::*;
+        fn closure_test() {
+            let mut y = 0;
+            let y_ref = &mut y;
+
+            let clos = |x: u64| {
+                let ghost j = y;
+            };
+
+            *y_ref = 20;
+
+            clos(0);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `y` as immutable because it is also borrowed as mutable")
+}
+
+test_verify_one_file_with_options! {
+    #[test] closure_capture_in_requires_edition2018 ["--edition 2018"] => verus_code! {
+        use vstd::prelude::*;
+        fn closure_test() {
+            let mut y = 0;
+            let y_ref = &mut y;
+
+            let clos = |x: u64|
+                requires y == 0
+            {
+            };
+
+            *y_ref = 20;
+
+            clos(0);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `y` as immutable because it is also borrowed as mutable")
+}
+
+test_verify_one_file_with_options! {
+    #[test] closure_capture_in_ensures_edition2018 ["--edition 2018"] => verus_code! {
+        use vstd::prelude::*;
+        fn closure_test() {
+            let mut y = 0;
+            let y_ref = &mut y;
+
+            let clos = |x: u64|
+                ensures y == 0
+            {
+            };
+
+            *y_ref = 20;
+
+            clos(0);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `y` as immutable because it is also borrowed as mutable")
+}
+
+test_verify_one_file_with_options! {
     #[test] misc_borrows_and_reborrows [] => verus_code! {
         fn test() {
             let mut a = 0;
