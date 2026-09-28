@@ -13,8 +13,7 @@ use super::seq::*;
 #[allow(unused_imports)]
 use super::set::*;
 
-use verus as verus_skip_verusfmt; // verusfmt doesn't handle s[..e] yet
-verus_skip_verusfmt! {
+verus! {
 
 broadcast use group_seq_lemmas;
 
@@ -627,6 +626,7 @@ impl<A> Seq<A> {
     {
         if self.len() <= 0 {
             -1  //arbitrary, will never get to this case
+
         } else if self[0] == needle {
             0
         } else {
@@ -940,10 +940,7 @@ impl<A> Seq<A> {
         requires
             0 <= k <= self.len(),
         ensures
-            self[k..].fold_left(
-                (#[trigger] self[..k].fold_left(b, f)),
-                f,
-            ) == self.fold_left(b, f),
+            self[k..].fold_left((#[trigger] self[..k].fold_left(b, f)), f) == self.fold_left(b, f),
         decreases self.len(),
     {
         reveal_with_fuel(Seq::fold_left, 2);
@@ -951,10 +948,7 @@ impl<A> Seq<A> {
             assert(self[0..] == self);
         } else {
             self.drop_last().lemma_fold_left_split(b, f, k);
-            assert(
-                self.drop_last()[k..self.drop_last().len()] =~=
-                self[k..self.len() - 1]
-            );
+            assert(self.drop_last()[k..self.drop_last().len()] =~= self[k..self.len() - 1]);
             assert(self.drop_last()[..k] =~= self[..k]);
             assert(self[k..].drop_last() =~= self[k..self.len() - 1]);
         }
@@ -965,10 +959,7 @@ impl<A> Seq<A> {
         requires
             0 < k <= self.len(),
         ensures
-            self[k..].fold_left_alt(
-                self[..k].fold_left_alt(b, f),
-                f,
-            ) == self.fold_left_alt(b, f),
+            self[k..].fold_left_alt(self[..k].fold_left_alt(b, f), f) == self.fold_left_alt(b, f),
         decreases k,
     {
         reveal_with_fuel(Seq::fold_left_alt, 2);
@@ -994,10 +985,7 @@ impl<A> Seq<A> {
             // trivial base cases
         } else {
             self.aux_lemma_fold_left_alt(b, f, self.len() - 1);
-            self[self.len() - 1..].lemma_fold_left_alt(
-                self.drop_last().fold_left_alt(b, f),
-                f,
-            );
+            self[self.len() - 1..].lemma_fold_left_alt(self.drop_last().fold_left_alt(b, f), f);
             self[..self.len() - 1].lemma_fold_left_alt(b, f);
         }
     }
@@ -1048,10 +1036,10 @@ impl<A> Seq<A> {
         requires
             0 <= k <= self.len(),
         ensures
-            self[..k].fold_right(
+            self[..k].fold_right(f, (#[trigger] self[k..].fold_right(f, b))) == self.fold_right(
                 f,
-                (#[trigger] self[k..].fold_right(f, b)),
-            ) == self.fold_right(f, b),
+                b,
+            ),
         decreases self.len(),
     {
         reveal_with_fuel(Seq::fold_right, 2);
@@ -1062,10 +1050,8 @@ impl<A> Seq<A> {
         } else {
             self[..self.len() - 1].lemma_fold_right_split(f, f(self.last(), b), k);
             assert(self[..self.len() - 1][..k] =~= self[..k]);
-            assert(
-                self[..self.len() - 1][k..self[..self.len() - 1].len()] =~=
-                self[k..self.len() - 1]
-            );
+            assert(self[..self.len() - 1][k..self[..self.len() - 1].len()] =~= self[k..self.len()
+                - 1]);
             assert(self[k..].drop_last() =~= self[k..self.len() - 1]);
         }
     }
@@ -1901,9 +1887,7 @@ impl<A> Seq<A> {
         requires
             0 <= i < self.len(),
         ensures
-            #[trigger] self[..i + 1].filter_map(f) =~= self[..i].filter_map(f) + (match f(
-                self[i],
-            ) {
+            #[trigger] self[..i + 1].filter_map(f) =~= self[..i].filter_map(f) + (match f(self[i]) {
                 Option::Some(s) => seq![s],
                 Option::None => Seq::empty(),
             }),
@@ -2394,9 +2378,7 @@ impl<A> Seq<A> {
         requires
             0 <= i < self.len(),
         ensures
-            #[trigger] self[..i + 1].map_values(f) =~= self[..i].map_values(f).push(
-                f(self[i]),
-            ),
+            #[trigger] self[..i + 1].map_values(f) =~= self[..i].map_values(f).push(f(self[i])),
     {
         broadcast use group_seq_properties;
 
@@ -2909,9 +2891,7 @@ impl Seq<int> {
         if self.len() <= 1 {
         } else {
             let elt = self.drop_first().min();
-            assert(self[1..].contains(elt)) by {
-                self.drop_first().min_ensures()
-            }
+            assert(self[1..].contains(elt)) by { self.drop_first().min_ensures() }
             assert forall|i: int| 0 <= i < self.len() implies self.min() <= self[i] by {
                 assert(i == 0 || self[i] == self.drop_first()[i - 1]);
                 assert(forall|j: int|
@@ -3532,7 +3512,8 @@ pub broadcast proof fn lemma_seq_subrange_elements<A>(s: Seq<A>, start: int, sto
         #[trigger] s[start..stop].contains(x) <==> (exists|i: int|
             0 <= start <= i < stop <= s.len() && #[trigger] s[i] == x),
 {
-    assert((exists|i: int| 0 <= start <= i < stop <= s.len() && s[i] == x) ==> s[start..stop].contains(x)) by {
+    assert((exists|i: int| 0 <= start <= i < stop <= s.len() && s[i] == x)
+        ==> s[start..stop].contains(x)) by {
         if exists|i: int| 0 <= start <= i < stop <= s.len() && s[i] == x {
             let index = choose|i: int| 0 <= start <= i < stop <= s.len() && s[i] == x;
             assert(s[start..stop][index - start] == s[index]);
@@ -3722,8 +3703,8 @@ pub broadcast proof fn lemma_seq_append_take_skip<A>(a: Seq<A>, b: Seq<A>, n: in
     ensures
         #![trigger (a + b)[..n]]
         #![trigger (a + b)[n..]]
-//        #![trigger (a + b)[..n]]
-//        #![trigger (a + b)[n..]]
+        //        #![trigger (a + b)[..n]]
+        //        #![trigger (a + b)[n..]]
         n == a.len() ==> ((a + b)[..n] =~= a && (a + b)[n..] =~= b),
 {
 }

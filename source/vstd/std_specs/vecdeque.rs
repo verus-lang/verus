@@ -11,8 +11,7 @@ use core::ops::{Index, IndexMut};
 use core::option::Option;
 use core::option::Option::None;
 
-use verus as verus_skip_verusfmt; // verusfmt doesn't handle s[..e] yet
-verus_skip_verusfmt! {
+verus! {
 
 #[verifier::external_type_specification]
 #[verifier::external_body]
