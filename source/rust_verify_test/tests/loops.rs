@@ -620,6 +620,15 @@ test_verify_one_file_with_options! {
             assert(a == 2);
         }
 
+        #[allow(unreachable_code)]
+        #[verifier::loop_isolation(false)]
+        fn test_diverging_break_value() {
+            let _: () = loop {
+                break (loop {});
+            };
+            assert(false);
+        }
+
         #[verifier::loop_isolation(false)]
         fn test_multiple_paths(select_first: bool) {
             let value = loop {
