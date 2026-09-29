@@ -98,9 +98,10 @@ use std::sync::Arc;
 use vir::ast::{
     ArithOp, ArmX, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp, BoundsCheck, CallTarget,
     Constant, CrateId, Div0Behavior, Dt, ExprX, FieldOpr, FunX, HeaderExprX, ImplPath,
-    InequalityOp, IntRange, InvAtomicity, Mode, OverflowBehavior, PatternX, Place, PlaceX,
-    Primitive, ProofNoteLabel, SpannedTyped, StmtX, Stmts, Typ, TypDecoration, TypX, UnaryOp,
-    UnaryOpr, UnfinalizedReadKind, VarBinder, VarBinderX, VarIdent, VariantCheck, VirErr,
+    InequalityOp, IntRange, IntegerTypeBitwidth, InvAtomicity, Mode, OverflowBehavior, PatternX,
+    Place, PlaceX, Primitive, ProofNoteLabel, SignedDivEdgeCaseBehavior, SpannedTyped, StmtX,
+    Stmts, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, UnfinalizedReadKind, VarBinder, VarBinderX,
+    VarIdent, VariantCheck, VirErr,
 };
 use vir::ast_util::{
     bool_typ, ident_binder, mk_tuple_field_opr, mk_tuple_typ, mk_tuple_x, str_unique_var,
@@ -1949,6 +1950,8 @@ fn binary_operator_overload_to_vir<'tcx>(
                 BinOpKind::Add
                 | BinOpKind::Sub
                 | BinOpKind::Mul
+                | BinOpKind::Div
+                | BinOpKind::Rem
                 | BinOpKind::BitXor
                 | BinOpKind::BitAnd
                 | BinOpKind::BitOr
@@ -1960,19 +1963,6 @@ fn binary_operator_overload_to_vir<'tcx>(
                 | BinOpKind::Gt => {
                     if is_smt_arith(bctx, lhs.span, rhs.span, &lhs.hir_id, &rhs.hir_id)? {
                         return Ok(None);
-                    }
-                }
-                BinOpKind::Div | BinOpKind::Rem => {
-                    if is_smt_arith(bctx, lhs.span, rhs.span, &lhs.hir_id, &rhs.hir_id)? {
-                        let tc = bctx.types;
-                        match mk_range(&bctx.ctxt.verus_items, &tc.node_type(expr.hir_id)) {
-                            IntRange::I(_) | IntRange::ISize => {
-                                // Let trait impls handle signed div/rem
-                            }
-                            _ => {
-                                return Ok(None);
-                            }
-                        }
                     }
                 }
                 BinOpKind::And | BinOpKind::Or => {
@@ -2851,13 +2841,14 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 BinOpKind::Add | BinOpKind::Sub | BinOpKind::Mul => Ok(ExprOrPlace::Expr(e)),
                 BinOpKind::Div | BinOpKind::Rem => {
                     match mk_range(&bctx.ctxt.verus_items, &tc.node_type(expr.hir_id)) {
-                        IntRange::Int | IntRange::Nat | IntRange::U(_) | IntRange::USize => {
-                            // Euclidean division
+                        IntRange::Int
+                        | IntRange::Nat
+                        | IntRange::U(_)
+                        | IntRange::USize
+                        | IntRange::I(_)
+                        | IntRange::ISize => {
+                            // Euclidean division or truncating division
                             Ok(ExprOrPlace::Expr(mk_ty_clip(bctx, &expr_typ()?, &e, true)))
-                        }
-                        IntRange::I(_) | IntRange::ISize => {
-                            // Handled by binary_operator_overload_to_vir
-                            unreachable!("signed fixed-width div/mod handled by traits")
                         }
                         IntRange::Char => {
                             unsupported_err!(expr.span, "div/mod on char type")
@@ -3541,13 +3532,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 return Ok(ExprOrPlace::Expr(e));
             }
 
-            if matches!(op.node, AssignOpKind::DivAssign | AssignOpKind::RemAssign) {
-                let range = mk_range(&bctx.ctxt.verus_items, &tc.expr_ty_adjusted(lhs));
-                if matches!(range, IntRange::I(_) | IntRange::ISize) {
-                    // Non-Euclidean division, which will need more encoding
-                    unsupported_err!(expr.span, "div/mod on signed finite-width integers");
-                }
-            }
             expr_assign_to_vir_innermost(bctx, lhs, mk_expr, rhs, Some(op))
         }
         ExprKind::ConstBlock(..) => unsupported_err!(expr.span, format!("const block expressions")),
@@ -3633,8 +3617,8 @@ fn lit_to_vir<'tcx>(
 fn assignop_kind_to_binaryop<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     op: &Spanned<AssignOpKind>,
-    lhs: &Expr,
-    rhs: &Expr,
+    lhs: &Expr<'tcx>,
+    rhs: &Expr<'tcx>,
 ) -> Result<BinaryOp, VirErr> {
     let bop: BinOpKind = match op.node {
         AssignOpKind::AddAssign => BinOpKind::Add,
@@ -3651,11 +3635,42 @@ fn assignop_kind_to_binaryop<'tcx>(
     binopkind_to_binaryop_inner(bctx, bop, lhs, rhs)
 }
 
+fn euclidean_or_truncating_div<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    lhs: &Expr<'tcx>,
+    rhs: &Expr<'tcx>,
+) -> Result<Option<IntegerTypeBitwidth>, VirErr> {
+    let lhs_ty = bctx.types.expr_ty_adjusted(lhs);
+    let lhs_typ = bctx.mid_ty_to_vir(lhs.span, &lhs_ty)?;
+    let TypX::Int(lhs_int_range) = &*undecorate_typ(&lhs_typ) else {
+        crate::internal_err!(lhs.span, "For div/mod, expected some kind of int typ");
+    };
+
+    let rhs_ty = bctx.types.expr_ty_adjusted(rhs);
+    let rhs_typ = bctx.mid_ty_to_vir(rhs.span, &rhs_ty)?;
+    let TypX::Int(rhs_int_range) = &*undecorate_typ(&rhs_typ) else {
+        crate::internal_err!(rhs.span, "For div/mod, expected some kind of int typ");
+    };
+
+    if lhs_int_range != rhs_int_range {
+        crate::internal_err!(lhs.span, "For div/mod, expected both sides to have the same type");
+    }
+
+    match lhs_int_range {
+        IntRange::USize | IntRange::U(_) => Ok(None),
+        IntRange::ISize => Ok(Some(IntegerTypeBitwidth::ArchWordSize)),
+        IntRange::I(w) => Ok(Some(IntegerTypeBitwidth::Width(*w))),
+        IntRange::Int | IntRange::Nat | IntRange::Char => {
+            crate::internal_err!(lhs.span, "For div/mod, got unexpected typ {:}", lhs_ty)
+        }
+    }
+}
+
 fn binopkind_to_binaryop_inner<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     op: BinOpKind,
-    lhs: &Expr,
-    rhs: &Expr,
+    lhs: &Expr<'tcx>,
+    rhs: &Expr<'tcx>,
 ) -> Result<BinaryOp, VirErr> {
     let tc = bctx.types;
 
@@ -3689,8 +3704,31 @@ fn binopkind_to_binaryop_inner<'tcx>(
                 _ => unreachable!(),
             }
         }
-        BinOpKind::Div => BinaryOp::Arith(ArithOp::EuclideanDiv(d0b)),
-        BinOpKind::Rem => BinaryOp::Arith(ArithOp::EuclideanMod(d0b)),
+        BinOpKind::Div => match euclidean_or_truncating_div(bctx, lhs, rhs)? {
+            Some(width) => {
+                // REVIEW: The non-ghost case is unexpected here; since `/` and `%`
+                // are replaced by builtin spec functions in spec code, this case
+                // should only happen for exec code.
+                let sdecb = if bctx.in_ghost {
+                    SignedDivEdgeCaseBehavior::Allow
+                } else {
+                    SignedDivEdgeCaseBehavior::Error(width)
+                };
+                BinaryOp::Arith(ArithOp::TruncatingDiv(d0b, sdecb))
+            }
+            None => BinaryOp::Arith(ArithOp::EuclideanDiv(d0b)),
+        },
+        BinOpKind::Rem => match euclidean_or_truncating_div(bctx, lhs, rhs)? {
+            Some(width) => {
+                let sdecb = if bctx.in_ghost {
+                    SignedDivEdgeCaseBehavior::Allow
+                } else {
+                    SignedDivEdgeCaseBehavior::Error(width)
+                };
+                BinaryOp::Arith(ArithOp::TruncatingMod(d0b, sdecb))
+            }
+            None => BinaryOp::Arith(ArithOp::EuclideanMod(d0b)),
+        },
         BinOpKind::BitXor => {
             match ((tc.expr_ty_adjusted(lhs)).kind(), (tc.expr_ty_adjusted(rhs)).kind()) {
                 (TyKind::Bool, TyKind::Bool) => BinaryOp::BoolXor,
@@ -3756,8 +3794,8 @@ fn binopkind_to_binaryop_inner<'tcx>(
 fn binopkind_to_binaryop<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     op: &Spanned<BinOpKind>,
-    lhs: &Expr,
-    rhs: &Expr,
+    lhs: &Expr<'tcx>,
+    rhs: &Expr<'tcx>,
 ) -> Result<BinaryOp, VirErr> {
     binopkind_to_binaryop_inner(bctx, op.node, lhs, rhs)
 }
