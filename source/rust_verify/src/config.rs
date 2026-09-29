@@ -49,6 +49,7 @@ const OPT_NO_LIFETIME: &str = "no-lifetime";
 const OPT_NO_TRAIT_CONFLICTS: &str = "no-trait-conflicts";
 const OPT_NO_ERASURE_CHECK: &str = "no-erasure-check";
 const OPT_NO_CHEATING: &str = "no-cheating";
+const OPT_EMIT_TRUST_MANIFEST: &str = "emit-trust-manifest";
 const OPT_IS_VSTD: &str = "is-vstd";
 const OPT_IS_CORE: &str = "is-core";
 const OPT_IS_STDLIB_OUTSIDE_OF_CORE: &str = "is-stdlib-outside-of-core";
@@ -200,6 +201,7 @@ pub struct ArgsX {
     pub no_erasure_check: bool,
     pub no_auto_recommends_check: bool,
     pub no_cheating: bool,
+    pub emit_trust_manifest: Option<String>,
     pub time: bool,
     pub time_expanded: bool,
     pub output_json: bool,
@@ -250,6 +252,7 @@ impl ArgsX {
             no_erasure_check: Default::default(),
             no_auto_recommends_check: Default::default(),
             no_cheating: Default::default(),
+            emit_trust_manifest: Default::default(),
             time: Default::default(),
             time_expanded: Default::default(),
             output_json: Default::default(),
@@ -387,6 +390,10 @@ pub struct VerusCli {
     /// Do not allow assume, admit, verifier::external_body, and assume_specification; also reject options that skip or weaken checks
     #[arg(long)]
     pub no_cheating: bool,
+
+    /// Write out a manifest detailing the crate's explicitly trusted code (requires --no-cheating).  Process using the verus-trust-audit tool.
+    #[arg(long, value_name = "PATH")]
+    pub emit_trust_manifest: Option<String>,
 
     /// Measure and report time taken
     #[arg(long)]
@@ -783,6 +790,7 @@ pub fn parse_args_with_imports(
         no_erasure_check: cli.no_erasure_check,
         no_auto_recommends_check: cli.no_auto_recommends_check,
         no_cheating: cli.no_cheating,
+        emit_trust_manifest: cli.emit_trust_manifest.clone(),
         time: cli.time || cli.time_expanded,
         time_expanded: cli.time_expanded,
         output_json: cli.output_json,
@@ -892,6 +900,10 @@ pub fn parse_args_with_imports(
             )),
         },
     };
+
+    if args.emit_trust_manifest.is_some() && !args.no_cheating {
+        error(format!("`--{OPT_EMIT_TRUST_MANIFEST}` requires `--{OPT_NO_CHEATING}`"));
+    }
 
     if args.no_cheating {
         let disallowed_flags = [

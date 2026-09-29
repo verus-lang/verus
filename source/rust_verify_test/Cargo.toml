@@ -16,6 +16,7 @@ serde_json = { workspace = true }
 serde = { workspace = true }
 tempfile = { workspace = true }
 toml = { workspace = true }
+verus-trust-audit = { workspace = true }
 yansi = { workspace = true }
 
 [features]
