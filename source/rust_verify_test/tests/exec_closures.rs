@@ -2173,3 +2173,81 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file_with_options! {
+    #[test] closure_edition2018 ["--edition 2018"] => verus_code! {
+        use vstd::prelude::*;
+        pub fn ghost_capture_panics2() {
+            let ghost expected = 1u64;
+
+            let _closure = || -> (result: u64) ensures result == expected { { 1 } };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] closure_edition2021 ["--edition 2021"] => verus_code! {
+        use vstd::prelude::*;
+        pub fn ghost_capture_panics2() {
+            let ghost expected = 1u64;
+
+            let _closure = || -> (result: u64) ensures result == expected { { 1 } };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] closure_verus_spec_attr_edition2018 ["--edition 2018"] => code! {
+        use vstd::prelude::*;
+        #[verus_spec]
+        pub fn ghost_capture_panics() {
+            proof_decl! {
+                let ghost expected = 1u64;
+            }
+
+            let _closure = #[verus_spec(result: u64 =>
+                ensures
+                    result == expected,
+            )]
+            || 1;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] closure_verus_spec_attr_edition2021 ["--edition 2021"] => code! {
+        use vstd::prelude::*;
+        #[verus_spec]
+        pub fn ghost_capture_panics() {
+            proof_decl! {
+                let ghost expected = 1u64;
+            }
+
+            let _closure = #[verus_spec(result: u64 =>
+                ensures
+                    result == expected,
+            )]
+            || 1;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] closure_edition2018_fail_tracked_var ["--edition 2018"] => verus_code! {
+        use vstd::prelude::*;
+        tracked struct X { }
+        pub fn ghost_capture_panics2() {
+            let ghost expected = 1u64;
+
+            let tracked x = X{};
+
+            let closure = || -> (result: u64) ensures result == expected {
+                let tracked x1 = x;
+                0
+            };
+
+            let tracked y = x;
+            closure();
+        }
+    } => Err(e) => assert_rust_error_msg(e, "use of moved value: `x`")
+}

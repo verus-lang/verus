@@ -3336,13 +3336,43 @@ fn get_resolutions_for_place(
                     // If the place had a different value at the previous instruction
                     || (i > 0 && place.value_may_change(&cfg.basic_blocks[bb].instructions[i - 1]));
                 if should_assume_has_resolved {
-                    output.push(ResolutionToInsert {
-                        place: place.clone(),
-                        position: cfg.basic_blocks[bb].position(i),
-                    });
+                    push_resolution(cfg, place, bb, i, output);
                 }
             }
         }
+    }
+}
+
+/// Emit a resolution at instruction `i` of `bb`.
+///
+/// We special case the `MatchIntermediate` position because there's otherwise no good place
+/// to put it in the AST. To deal with it, we try to forward it to the successor blocks,
+/// which is sound to do if the successor block only has a single predecessor.
+/// (This can be seen from the dataflow equations.)
+/// However, this criterion doesn't always hold (See the
+/// `test_match_guard_asymmetric_mutation_no_panic` case)
+/// TODO (new_mut_ref) (completeness): Find a different solutio that works in all cases
+fn push_resolution(
+    cfg: &CFG,
+    place: &FlattenedPlace,
+    bb: BBIndex,
+    i: usize,
+    output: &mut Vec<ResolutionToInsert>,
+) {
+    let position = cfg.basic_blocks[bb].position(i);
+    if matches!(position, AstPosition::MatchIntermediate)
+        && i == 0
+        && cfg.basic_blocks[bb].instructions.is_empty()
+        && cfg.basic_blocks[bb].successors.iter().all(|succ| {
+            cfg.basic_blocks[*succ].predecessors.as_slice() == [bb]
+                && !cfg.basic_blocks[*succ].is_entry
+        })
+    {
+        for succ in cfg.basic_blocks[bb].successors.iter() {
+            push_resolution(cfg, place, *succ, 0, output);
+        }
+    } else {
+        output.push(ResolutionToInsert { place: place.clone(), position });
     }
 }
 
