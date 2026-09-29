@@ -3896,7 +3896,9 @@ fn binary_op_exp(
         BinaryOp::Index(kind, _) => sst::BinaryOp::Index(kind),
 
         // Pure ops
-        BinaryOp::Xor => sst::BinaryOp::Xor,
+        BinaryOp::BoolOrNoSC => sst::BinaryOp::Or,
+        BinaryOp::BoolAndNoSC => sst::BinaryOp::And,
+        BinaryOp::BoolXor => sst::BinaryOp::Xor,
         BinaryOp::HeightCompare { strictly_lt, recursive_function_field } => {
             sst::BinaryOp::HeightCompare { strictly_lt, recursive_function_field }
         }
