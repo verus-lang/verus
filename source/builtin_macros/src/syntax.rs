@@ -187,9 +187,9 @@ macro_rules! stmt_with_semi {
         }
     };
     ($span:expr => $($tok:tt)*) => {
-        Stmt::Expr(
-            Expr::Verbatim(quote_spanned!{ $span => $($tok)* }),
-            Some(Semi { spans: [ $span ] }),
+        ::verus_syn::Stmt::Expr(
+            ::verus_syn::Expr::Verbatim(quote_spanned!{ $span => $($tok)* }),
+            Some(::verus_syn::token::Semi { spans: [ $span ] }),
         )
     };
 }

@@ -835,12 +835,28 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
             let mut signature = closure_to_fn_sig(&closure);
             let spec_stmts = syntax::sig_specs_attr(erase, spec_attr, &mut signature, false, true);
             let body = &closure.body;
+            let dcc = if erase.keep() {
+                Some(stmt_with_semi!(builtin, closure.span() =>
+                    #builtin::dummy_capture_consume(_verus_internal_identifier_for_closures)
+                ))
+            } else {
+                None
+            };
             let new_body = quote_spanned!(closure.body.span() =>
+                #dcc
                 #(#spec_stmts)*
                 {#body}
             );
             *closure.body = Expr::Verbatim(new_body);
-            closure.to_token_stream().into()
+            let toks = closure.to_token_stream();
+            let toks = if erase.keep() {
+                quote_spanned_builtin!(builtin, closure.span() =>
+                    { let _verus_internal_identifier_for_closures = #builtin::dummy_capture_new(); #toks }
+                )
+            } else {
+                toks
+            };
+            toks.into()
         }
         AnyFnOrLoop::TraitMethod(mut method) => {
             // Note: default trait methods appear in the AnyFnOrLoop::Fn case, not here
