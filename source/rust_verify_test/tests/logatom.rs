@@ -180,6 +180,32 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] atomic_function_impl_trait_error
+    verus_code! {
+        use vstd::prelude::*;
+        use vstd::atomic::*;
+
+        tracked struct Token;
+
+        trait Trait {}
+
+        fn function(_x: impl Trait)
+            atomically (atomic_update) {
+                (old: Token) -> (new: Commit<Token>),
+                ensures new@ == old,
+            },
+        {
+            try_open_atomic_update!(atomic_update, token => {
+                Tracked(Commit(token))
+            });
+        }
+    } => Err(err) => assert!(err.errors[0].message.contains(
+        "impl-trait in argument position is not supported for logically \
+        atomic functions; please use generics and trait bounds instead"
+    ))
+}
+
+test_verify_one_file! {
     #[test] atomic_function_ref_in_macro
     verus_code! {
         use vstd::prelude::*;
