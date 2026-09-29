@@ -7,7 +7,7 @@ on verification but on the assumptions being made.
 Assumptions can be introduced through the following mechanisms:
 
  * As [`assume`](./requires_ensures.md) statement
- * An axiom - any proof function introduced with [`#[verifier::external_body]`](./calling-unverified-from-verified.md)
+ * An axiom - any function introduced with [`#[verifier::external_body]`](./calling-unverified-from-verified.md) or declared as an `axiom fn`
  * An axiomatic specification - any exec function introduced with `#[verifier::external_body]` or `#[verifier::external_fn_specification]`
  * `#[verifier::external]` (See below.)
 
@@ -17,7 +17,7 @@ In practice, though, such types are usually associated with additional assumptio
 to make them useful.
 
 To control where these assumptions may appear, Verus offers a [`--no-cheating` mode](#no-cheating-mode)
-that confines them to an auditable set of files.
+that confines them to explicitly trusted code.
 
 ### The `#[verifier::external]` attribute
 
@@ -47,10 +47,8 @@ unsafe impl Send for X { }
 
 By default, Verus lets you introduce unverified assumptions through the mechanisms above.
 To increase your project's assurance, we recommend using the `--no-cheating` command-line flag,
-which prohibits all such "cheating" by default and forces all assumptions to be confined to a
-small, auditable set of files. It follows
-[Rust's lint levels](https://doc.rust-lang.org/rustc/lints/levels.html), using the
-`verus::assumptions` lint.
+which prohibits all such "cheating" by default and forces assumptions to be confined to
+explicitly trusted, auditable code.
 
 When Verus is run with `--no-cheating`, the following are rejected anywhere assumptions are not
 explicitly allowed:
@@ -63,47 +61,74 @@ explicitly allowed:
 
 (`#[verifier::external]` is not affected, since on its own it does not introduce an assumption.)
 
-### Defining trusted modules
+### Marking trusted code
 
-To opt-in to the no-cheating mode checking, the crate root must include a crate-level attribute:
-
-```rust
-#![deny(verus::assumptions)]
-```
-
-With this in place, no assumptions are permitted anywhere in the crate. To carve out an exception,
-mark a module with `#[allow(verus::assumptions)]`:
+Code is untrusted by default. Use `#[verus::trusted]` to permit assumptions in a file, module,
+or item.  An inner attribute applies at file level:
 
 ```rust
-#![deny(verus::assumptions)]
-
-#[allow(verus::assumptions)]
-mod assumptions; // assumptions are permitted in assumptions.rs and its submodules
+// environment.rs
+#![verus::trusted]
 ```
 
-So that the assumption-bearing code is easy to find and audit, Verus enforces these rules:
+Use outer attributes at the module or item level:
+```rust
+#[verus::trusted]
+mod environment;
+```
 
- * `#[allow(verus::assumptions)]` may appear **only in the crate root**, and **only on a `mod` item**.
- * That `mod` must be a **file-level module** (`mod name;`, not an inline `mod name { ... }`),
-   so every allowed file is named in one place.
- * The allowed modules must be **closed under references**: code in an allowed module (or any of
-   its submodules) may only refer to other allowed modules, to [`vstd`](./vstd.md), to other
-   external crates, and to items in the crate root. It may not refer to ordinary (non-allowed)
-   modules of the same crate.
+The trusted label is inherited by child items. A child can opt back into normal
+no-cheating checking with `#[verus::untrusted]`.  Once an item is explicitly
+marked `untrusted`, none of its descendants may use `trusted` or `trusted(spec)`.
 
-The last rule keeps the trusted, assumption-bearing part of the crate self-contained: the verified
-core may freely build on the allowed modules, but the allowed modules cannot reach back into the
-verified core.  This creates a clear separation between what code is verified, and what code
-is trusted and hence must be audited.
+```rust
+#[verus::trusted]
+mod environment {
+    // Trusted through inheritance.
+    proof fn platform_axiom() {
+        assume(platform_property());
+    }
+
+    // Assumptions are prohibited here and in all descendants.
+    #[verus::untrusted]
+    mod verified_model {
+        // ...
+    }
+}
+```
+
+### Trusted closure
+
+Trusted code must be transitively closed within its crate: every local item referenced by trusted
+code must also be trusted.  This way, changes to untrusted code within the crate cannot affect
+the assumptions, definitions, etc. made by trusted code.
+
+References to [`vstd`](./vstd.md) and other external crates are allowed.
+Crate-root `use` declarations are ignored as closure roots, but a reference
+through such an import is checked against the actual item it resolves to.
+
+Untrusted code may freely reference trusted code. This gives the trusted base a clear dependency
+boundary and keeps the code that must be audited self-contained.
+
+### Trusting only a function specification
+
+A function may use `#[verus::trusted(spec)]`. This marks only the function's interface as trusted:
+
+ * its Rust type signature, generic bounds, and associated types;
+ * its Verus specification, including `requires`, `recommends`, `ensures`, `returns`, `decreases`,
+   invariant-mask, unwind, and related clauses.
+
+The implementation body remains untrusted: it may not contain `assume`, `external_body`, or any
+other construct prohibited by `--no-cheating`. References made only by the implementation body
+are not part of the trusted reference-closure check, so the body may call ordinary untrusted code.
+`trusted(spec)` may only be applied directly to a function.
 
 ### Example
 
 ```rust
 // lib.rs (crate root)
-#![deny(verus::assumptions)]
-
 // Trusted models of the environment and external dependencies live here:
-#[allow(verus::assumptions)]
+#[verus::trusted]
 mod trusted;
 
 // ...the rest of the crate is fully verified, with no assumptions...
@@ -115,7 +140,7 @@ use vstd::prelude::*;
 
 verus! {
 
-// OK: assumptions are allowed in this module and its submodules.
+// OK: assumptions are allowed because the module is trusted.
 pub proof fn environment_axiom()
     ensures some_property(),
 {

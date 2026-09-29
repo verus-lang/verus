@@ -6,8 +6,8 @@ aware of the unverified code, and we need to tell Verus what it should
 **assume without proof**.
 
 The mechanisms below (`external_body`, `assume_specification`) introduce unverified assumptions,
-so they are rejected under [no-cheating mode](./tcb.md#no-cheating-mode) unless they appear in an
-explicitly-allowed module.
+so they are rejected under [no-cheating mode](./tcb.md#no-cheating-mode) unless the containing
+function is (directly or indirectly) [annotated as trusted](./tcb.md).
 
 ## Specifications without proof
 
