@@ -947,6 +947,10 @@ pub fn sst_conjoin(span: &Span, exps: &Vec<Exp>) -> Exp {
     chain_binary(span, BinaryOp::And, &sst_bool(span, true), exps)
 }
 
+pub fn sst_disjoin(span: &Span, exps: &[Exp]) -> Exp {
+    chain_binary(span, BinaryOp::Or, &sst_bool(span, false), exps)
+}
+
 pub fn sst_and(span: &Span, e1: &Exp, e2: &Exp) -> Exp {
     let op = BinaryOp::And;
     SpannedTyped::new(span, &Arc::new(TypX::Bool), ExpX::Binary(op, e1.clone(), e2.clone()))

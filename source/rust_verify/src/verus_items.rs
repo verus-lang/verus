@@ -392,6 +392,8 @@ pub(crate) enum VstdItem {
     VecIndex,
     VecIndexMut,
     SharedReference,
+    RustDiv,
+    RustRem,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -746,6 +748,9 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::raw_ptr::cast_ptr_to_usize", VerusItem::Vstd(VstdItem::CastPtrToUsize, Some(Arc::new("raw_ptr::cast_ptr_to_usize".to_owned())))),
         ("verus::vstd::raw_ptr::SharedReference", VerusItem::Vstd(VstdItem::SharedReference, Some(Arc::new("raw_ptr::SharedReference".to_owned())))),
         ("verus::vstd::float::float_cast", VerusItem::Vstd(VstdItem::FloatCast, Some(Arc::new("float::float_cast".to_owned())))),
+        ("verus::vstd::arithmetic::div_mod::rust_div", VerusItem::Vstd(VstdItem::RustDiv, Some(Arc::new("arithmetic::div_mod::rust_div".to_owned())))),
+        ("verus::vstd::arithmetic::div_mod::rust_rem", VerusItem::Vstd(VstdItem::RustRem, Some(Arc::new("arithmetic::div_mod::rust_rem".to_owned())))),
+
             // SeqFn(vir::interpreter::SeqFn::Last    ))),
 
         ("verus::vstd::std_specs::fmt::rt::Argument", VerusItem::RustPrivate(RustPrivate::Path(vir::path!(CrateId::Core => "fmt", "rt", "Argument")))),

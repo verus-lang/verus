@@ -586,6 +586,18 @@ pub enum OverflowBehavior {
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum SignedDivEdgeCaseBehavior {
+    /// Return an unbounded int, the exact value of the arithmetic expression.
+    Allow,
+    /// Error if the operands trigger the division edge case of
+    /// lhs == iN::MIN and rhs == (-1)
+    /// This is an error because the division result doesn't fit in the range for the iN
+    /// type (the result would be -iN::MIN which is iN::MAX + 1).
+    /// This is an error both for div and mod.
+    Error(IntegerTypeBitwidth),
+}
+
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
 pub enum Div0Behavior {
     /// Return the (unspecified) result of divide- or mod-by-0.
     Allow,
@@ -612,10 +624,14 @@ pub enum ArithOp {
     Sub(OverflowBehavior),
     /// IntRange::Int *
     Mul(OverflowBehavior),
-    /// IntRange::Int / defined as Euclidean (round towards -infinity, not round-towards zero)
+    /// IntRange::Int / defined as Euclidean (round towards -infinity)
     EuclideanDiv(Div0Behavior),
-    /// IntRange::Int % defined as Euclidean (returns non-negative result even for negative divisor)
+    /// IntRange::Int % defined as Euclidean (returns non-negative result even for negative dividend)
     EuclideanMod(Div0Behavior),
+    /// IntRange::Int / defined as Rust does (round towards 0)
+    TruncatingDiv(Div0Behavior, SignedDivEdgeCaseBehavior),
+    /// IntRange::Int % defined as Rust does (returns non-positive result for negative dividend)
+    TruncatingMod(Div0Behavior, SignedDivEdgeCaseBehavior),
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]

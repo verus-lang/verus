@@ -1572,10 +1572,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                             match op {
                                 Add | Sub => Ok(e1.clone()),
                                 Mul => zero,
-                                EuclideanDiv => {
-                                    ok_e2(e2) // Treat as symbolic instead of erroring
-                                }
-                                EuclideanMod => {
+                                EuclideanDiv | EuclideanMod => {
                                     ok_e2(e2) // Treat as symbolic instead of erroring
                                 }
                             }
