@@ -2762,7 +2762,11 @@ pub(crate) fn expr_to_stm_opt(
             let loop_result = if !produces_value {
                 None
             } else {
-                let (dest, result) = state.declare_temp_assign(&expr.span, &expr.typ);
+                let (dest, result) = state.declare_temp_var_stm(
+                    &expr.span,
+                    &expr.typ,
+                    PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::LoopBreakValue)),
+                );
                 let previous = state.loop_result_dests.insert(label.clone(), dest);
                 assert!(previous.is_none());
                 Some(result)

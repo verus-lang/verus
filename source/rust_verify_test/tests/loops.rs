@@ -610,6 +610,17 @@ test_verify_one_file_with_options! {
             };
         }
 
+        #[allow(unreachable_code)]
+        fn test_diverging_break_value_with_non_unit_loop(cond: bool) -> u64 {
+            if cond {
+                3
+            } else {
+                loop {
+                    break (return 5);
+                }
+            }
+        }
+
         fn test_multiple_paths(select_first: bool) {
             let value = loop {
                 if select_first {
