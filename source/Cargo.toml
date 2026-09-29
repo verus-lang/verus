@@ -18,6 +18,7 @@ members = [
   "tools/bump_crate_versions",
   "tools/internals_interface",
   "tools/line_count",
+  "tools/verus-trust-audit",
 ]
 exclude = [
   "vstd",
@@ -94,6 +95,7 @@ verus_prettyplease = { version = "=0.0.0-2026-09-06-0133", path = "../dependenci
 verus_syn = { version = "=0.0.0-2026-09-06-0133", path = "../dependencies/syn", features = ["full", "visit", "visit-mut", "extra-traits"] }
 vir-macros = { path = "vir_macros" }
 vir = { path = "vir" }
+verus-trust-audit = { path = "tools/verus-trust-audit" }
 
 [workspace.lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [

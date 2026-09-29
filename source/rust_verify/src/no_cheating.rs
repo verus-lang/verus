@@ -13,13 +13,17 @@ use rustc_hir::def::Res;
 use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_hir::intravisit::{FnKind, Visitor};
 use rustc_hir::{
-    BodyId, Expr, ExprKind, FnDecl, ForeignItem, ForeignItemKind, HirId, ImplItem, ImplItemKind,
-    Item, ItemKind, OwnerId, TraitItem, TraitItemKind,
+    Attribute, BodyId, Expr, ExprKind, FnDecl, ForeignItem, ForeignItemKind, HirId, ImplItem,
+    ImplItemKind, Item, ItemKind, OwnerId, TraitFn, TraitItem, TraitItemKind,
 };
 use rustc_middle::hir::nested_filter;
 use rustc_middle::ty::TyCtxt;
-use rustc_span::Span;
-use std::collections::HashMap;
+use rustc_span::{FileName, Span};
+use std::collections::{HashMap, HashSet};
+use std::path::Path;
+use verus_trust_audit::{
+    MANIFEST_VERSION, Manifest, Node, NodeKind, SourceFile, SourceRange, Trust, source_hash,
+};
 use vir::ast::VirErr;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -126,27 +130,257 @@ pub(crate) fn effective_trust<'tcx>(
     Ok(effective)
 }
 
-/// Validate trust attributes and check that trusted local code is closed under references.
-pub(crate) fn check_trust<'tcx>(ctxt: &ContextX<'tcx>) -> Vec<VirErr> {
+fn manifest_trust(trust: EffectiveTrust) -> Trust {
+    match trust {
+        EffectiveTrust::Untrusted => Trust::Untrusted,
+        EffectiveTrust::Trusted => Trust::Trusted,
+        EffectiveTrust::TrustedSpec => Trust::TrustedSpec,
+    }
+}
+
+fn source_attr_span(attr: &Attribute) -> Option<Span> {
+    match attr {
+        Attribute::Unparsed(_) => Some(attr.span()),
+        Attribute::Parsed(rustc_hir::attrs::AttributeKind::DocComment { span, .. }) => Some(*span),
+        _ => None,
+    }
+}
+
+fn source_range(tcx: TyCtxt<'_>, span: Span) -> Option<SourceRange> {
+    if span.is_dummy() {
+        return None;
+    }
+    let source_map = tcx.sess.source_map();
+    let lo = source_map.lookup_byte_offset(span.lo());
+    let hi = source_map.lookup_byte_offset(span.hi());
+    if lo.sf.name != hi.sf.name {
+        return None;
+    }
+    let FileName::Real(filename) = &lo.sf.name else {
+        return None;
+    };
+    let path = filename.local_path()?.canonicalize().ok()?;
+    Some(SourceRange {
+        file: path.to_string_lossy().into_owned(),
+        start: lo.pos.0 as usize,
+        end: hi.pos.0 as usize,
+    })
+}
+
+struct ManifestCollector<'a, 'tcx> {
+    tcx: TyCtxt<'tcx>,
+    policies: &'a HashMap<LocalDefId, EffectiveTrust>,
+    nodes: Vec<Node>,
+    parents: Vec<u64>,
+    files: HashSet<String>,
+    next_id: u64,
+}
+
+impl<'a, 'tcx> ManifestCollector<'a, 'tcx> {
+    fn add(
+        &mut self,
+        owner_id: OwnerId,
+        hir_id: HirId,
+        name: String,
+        kind: NodeKind,
+        span: Span,
+        body_span: Option<Span>,
+        vis_span: Option<Span>,
+    ) -> Option<u64> {
+        let trust = self.policies.get(&owner_id.def_id).copied()?;
+        let mut range = source_range(self.tcx, span)?;
+        for attr in self.tcx.hir_attrs(hir_id) {
+            if let Some(attr_range) = source_attr_span(attr).and_then(|s| source_range(self.tcx, s))
+                && attr_range.file == range.file
+            {
+                range.start = range.start.min(attr_range.start);
+            }
+        }
+        if let Some(vis_range) = vis_span.and_then(|s| source_range(self.tcx, s))
+            && vis_range.file == range.file
+        {
+            range.start = range.start.min(vis_range.start);
+        }
+        let body = body_span.and_then(|s| source_range(self.tcx, s));
+        let call_site = span
+            .from_expansion()
+            .then(|| span.ctxt().outer_expn_data().call_site)
+            .and_then(|s| source_range(self.tcx, s));
+        self.files.insert(range.file.clone());
+        if let Some(body) = &body {
+            self.files.insert(body.file.clone());
+        }
+        let id = self.next_id;
+        self.next_id += 1;
+        self.nodes.push(Node {
+            id,
+            parent: self.parents.last().copied(),
+            name,
+            kind,
+            trust: manifest_trust(trust),
+            range,
+            body,
+            from_expansion: span.from_expansion(),
+            call_site,
+        });
+        Some(id)
+    }
+
+    fn with_parent(&mut self, id: Option<u64>, f: impl FnOnce(&mut Self)) {
+        if let Some(id) = id {
+            self.parents.push(id);
+            f(self);
+            self.parents.pop();
+        } else {
+            f(self);
+        }
+    }
+}
+
+impl<'a, 'tcx> Visitor<'tcx> for ManifestCollector<'a, 'tcx> {
+    type NestedFilter = nested_filter::All;
+
+    fn maybe_tcx(&mut self) -> TyCtxt<'tcx> {
+        self.tcx
+    }
+
+    fn visit_item(&mut self, item: &'tcx Item<'tcx>) {
+        let (kind, body) = match item.kind {
+            ItemKind::Fn { body, .. } => {
+                (NodeKind::Function, Some(self.tcx.hir_body(body).value.span))
+            }
+            ItemKind::Mod(..) => (NodeKind::Module, None),
+            ItemKind::Impl(..) => (NodeKind::Impl, None),
+            ItemKind::Trait { .. } => (NodeKind::Trait, None),
+            ItemKind::ForeignMod { .. } => (NodeKind::Foreign, None),
+            _ => (NodeKind::Other, None),
+        };
+        let id = self.add(
+            item.owner_id,
+            item.hir_id(),
+            self.tcx.def_path_str(item.owner_id.to_def_id()),
+            kind,
+            item.span,
+            body,
+            Some(item.vis_span),
+        );
+        self.with_parent(id, |this| rustc_hir::intravisit::walk_item(this, item));
+    }
+
+    fn visit_impl_item(&mut self, item: &'tcx ImplItem<'tcx>) {
+        let body = match item.kind {
+            ImplItemKind::Fn(_, body) => Some(self.tcx.hir_body(body).value.span),
+            _ => None,
+        };
+        let kind = if body.is_some() { NodeKind::Function } else { NodeKind::Other };
+        let id = self.add(
+            item.owner_id,
+            item.hir_id(),
+            self.tcx.def_path_str(item.owner_id.to_def_id()),
+            kind,
+            item.span,
+            body,
+            item.vis_span(),
+        );
+        self.with_parent(id, |this| rustc_hir::intravisit::walk_impl_item(this, item));
+    }
+
+    fn visit_trait_item(&mut self, item: &'tcx TraitItem<'tcx>) {
+        let body = match item.kind {
+            TraitItemKind::Fn(_, TraitFn::Provided(body)) => {
+                Some(self.tcx.hir_body(body).value.span)
+            }
+            _ => None,
+        };
+        let kind = if matches!(item.kind, TraitItemKind::Fn(..)) {
+            NodeKind::Function
+        } else {
+            NodeKind::Other
+        };
+        let id = self.add(
+            item.owner_id,
+            item.hir_id(),
+            self.tcx.def_path_str(item.owner_id.to_def_id()),
+            kind,
+            item.span,
+            body,
+            None,
+        );
+        self.with_parent(id, |this| rustc_hir::intravisit::walk_trait_item(this, item));
+    }
+
+    fn visit_foreign_item(&mut self, item: &'tcx ForeignItem<'tcx>) {
+        let kind = if matches!(item.kind, ForeignItemKind::Fn(..)) {
+            NodeKind::Function
+        } else {
+            NodeKind::Other
+        };
+        let id = self.add(
+            item.owner_id,
+            item.hir_id(),
+            self.tcx.def_path_str(item.owner_id.to_def_id()),
+            kind,
+            item.span,
+            None,
+            Some(item.vis_span),
+        );
+        self.with_parent(id, |this| rustc_hir::intravisit::walk_foreign_item(this, item));
+    }
+}
+
+fn write_tcb_manifest(
+    ctxt: &ContextX<'_>,
+    policies: &HashMap<LocalDefId, EffectiveTrust>,
+    path: &Path,
+) -> Result<(), String> {
     let tcx = ctxt.tcx;
+    let mut collector = ManifestCollector {
+        tcx,
+        policies,
+        nodes: Vec::new(),
+        parents: Vec::new(),
+        files: HashSet::new(),
+        next_id: 1,
+    };
     let root_module = tcx.hir_root_module();
     let root_owner = tcx.hir_owner_node(rustc_hir::CRATE_OWNER_ID);
-    let mut collector = PolicyCollector {
-        tcx,
-        inherited: InheritedPolicy { trusted: false, untrusted_locked: false },
-        policies: HashMap::new(),
-        errors: Vec::new(),
-    };
-    let saved = collector.enter(rustc_hir::CRATE_HIR_ID, rustc_hir::CRATE_OWNER_ID, false);
     collector.visit_mod(root_module, root_owner.span(), rustc_hir::CRATE_HIR_ID);
-    collector.inherited = saved;
-
-    let mut errors = collector.errors;
-    let policies = collector.policies;
-    let mut scanner = TrustedItemScanner { ctxt, policies: &policies, errors: Vec::new() };
-    scanner.visit_mod(root_module, root_owner.span(), rustc_hir::CRATE_HIR_ID);
-    errors.append(&mut scanner.errors);
-    errors
+    let crate_attributes: Vec<SourceRange> = tcx
+        .hir_attrs(rustc_hir::CRATE_HIR_ID)
+        .iter()
+        .filter(|attr| {
+            get_trust_attributes(std::slice::from_ref(*attr)).is_ok_and(|attrs| !attrs.is_empty())
+        })
+        .filter_map(|attr| source_attr_span(attr).and_then(|span| source_range(tcx, span)))
+        .collect();
+    collector.files.extend(crate_attributes.iter().map(|range| range.file.clone()));
+    let mut files = Vec::new();
+    for file in collector.files {
+        let bytes = std::fs::read(&file).map_err(|err| format!("failed to read {file}: {err}"))?;
+        files.push(SourceFile { path: file, sha256: source_hash(&bytes) });
+    }
+    files.sort_by(|a, b| a.path.cmp(&b.path));
+    let root_trust = policies
+        .get(&rustc_hir::CRATE_OWNER_ID.def_id)
+        .copied()
+        .unwrap_or(EffectiveTrust::Untrusted);
+    let manifest = Manifest {
+        format_version: MANIFEST_VERSION,
+        crate_name: tcx.crate_name(rustc_span::def_id::LOCAL_CRATE).to_string(),
+        root_trust: manifest_trust(root_trust),
+        crate_attributes,
+        files,
+        nodes: collector.nodes,
+    };
+    if let Some(parent) = path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        std::fs::create_dir_all(parent)
+            .map_err(|err| format!("failed to create {}: {err}", parent.display()))?;
+    }
+    let json = serde_json::to_vec_pretty(&manifest)
+        .map_err(|err| format!("failed to serialize TCB manifest: {err}"))?;
+    std::fs::write(path, json).map_err(|err| format!("failed to write {}: {err}", path.display()))
 }
 
 struct PolicyCollector<'tcx> {
@@ -235,113 +469,55 @@ impl<'tcx> Visitor<'tcx> for PolicyCollector<'tcx> {
     }
 }
 
-struct TrustedItemScanner<'a, 'tcx> {
+struct HeaderFinder<'a, 'tcx> {
     ctxt: &'a ContextX<'tcx>,
-    policies: &'a HashMap<LocalDefId, EffectiveTrust>,
-    errors: Vec<VirErr>,
+    root_owner: OwnerId,
+    header_exprs: Vec<&'tcx Expr<'tcx>>,
 }
 
-impl<'a, 'tcx> TrustedItemScanner<'a, 'tcx> {
-    fn scan_item(&mut self, item: &'tcx Item<'tcx>) {
-        let Some(policy) = self.policies.get(&item.owner_id.def_id).copied() else {
-            return;
-        };
-        if !policy.in_trusted_closure() {
-            return;
-        }
-        if matches!(item.kind, ItemKind::Use(..))
-            && self.ctxt.tcx.parent_module_from_def_id(item.owner_id.def_id).to_local_def_id()
-                == rustc_hir::CRATE_OWNER_ID.def_id
-        {
-            return;
-        }
-        let mut checker = RefChecker::new(
-            self.ctxt,
-            self.policies,
-            item.owner_id,
-            policy == EffectiveTrust::TrustedSpec,
-        );
-        checker.visit_item(item);
-        self.errors.append(&mut checker.errors);
-    }
-
-    fn scan_impl_item(&mut self, item: &'tcx ImplItem<'tcx>) {
-        let Some(policy) = self.policies.get(&item.owner_id.def_id).copied() else {
-            return;
-        };
-        if !policy.in_trusted_closure() {
-            return;
-        }
-        let mut checker = RefChecker::new(
-            self.ctxt,
-            self.policies,
-            item.owner_id,
-            policy == EffectiveTrust::TrustedSpec,
-        );
-        checker.visit_impl_item(item);
-        self.errors.append(&mut checker.errors);
-    }
-
-    fn scan_trait_item(&mut self, item: &'tcx TraitItem<'tcx>) {
-        let Some(policy) = self.policies.get(&item.owner_id.def_id).copied() else {
-            return;
-        };
-        if !policy.in_trusted_closure() {
-            return;
-        }
-        let mut checker = RefChecker::new(
-            self.ctxt,
-            self.policies,
-            item.owner_id,
-            policy == EffectiveTrust::TrustedSpec,
-        );
-        checker.visit_trait_item(item);
-        self.errors.append(&mut checker.errors);
-    }
-
-    fn scan_foreign_item(&mut self, item: &'tcx ForeignItem<'tcx>) {
-        let Some(policy) = self.policies.get(&item.owner_id.def_id).copied() else {
-            return;
-        };
-        if !policy.in_trusted_closure() {
-            return;
-        }
-        let mut checker = RefChecker::new(
-            self.ctxt,
-            self.policies,
-            item.owner_id,
-            policy == EffectiveTrust::TrustedSpec,
-        );
-        checker.visit_foreign_item(item);
-        self.errors.append(&mut checker.errors);
+impl<'a, 'tcx> HeaderFinder<'a, 'tcx> {
+    fn is_specification_header(&self, def_id: DefId) -> bool {
+        matches!(
+            self.ctxt.get_verus_item(def_id),
+            Some(VerusItem::Spec(
+                SpecItem::Requires
+                    | SpecItem::Recommends
+                    | SpecItem::Ensures
+                    | SpecItem::Returns
+                    | SpecItem::Decreases
+                    | SpecItem::DecreasesWhen
+                    | SpecItem::DecreasesBy
+                    | SpecItem::RecommendsBy
+                    | SpecItem::OpensInvariantMask
+                    | SpecItem::NoUnwind
+                    | SpecItem::NoUnwindWhen
+                    | SpecItem::AtomicSpec
+            )) | Some(VerusItem::Directive(DirectiveItem::ExtraDependency))
+        )
     }
 }
 
-impl<'a, 'tcx> Visitor<'tcx> for TrustedItemScanner<'a, 'tcx> {
+impl<'a, 'tcx> Visitor<'tcx> for HeaderFinder<'a, 'tcx> {
     type NestedFilter = nested_filter::All;
 
     fn maybe_tcx(&mut self) -> TyCtxt<'tcx> {
         self.ctxt.tcx
     }
 
-    fn visit_item(&mut self, item: &'tcx Item<'tcx>) {
-        self.scan_item(item);
-        rustc_hir::intravisit::walk_item(self, item);
-    }
-
-    fn visit_impl_item(&mut self, item: &'tcx ImplItem<'tcx>) {
-        self.scan_impl_item(item);
-        rustc_hir::intravisit::walk_impl_item(self, item);
-    }
-
-    fn visit_trait_item(&mut self, item: &'tcx TraitItem<'tcx>) {
-        self.scan_trait_item(item);
-        rustc_hir::intravisit::walk_trait_item(self, item);
-    }
-
-    fn visit_foreign_item(&mut self, item: &'tcx ForeignItem<'tcx>) {
-        self.scan_foreign_item(item);
-        rustc_hir::intravisit::walk_foreign_item(self, item);
+    fn visit_expr(&mut self, expr: &'tcx Expr<'tcx>) {
+        if expr.hir_id.owner != self.root_owner {
+            return;
+        }
+        if let ExprKind::Call(callee, args) = expr.kind
+            && let ExprKind::Path(qpath) = callee.kind
+            && let Res::Def(_, def_id) =
+                self.ctxt.tcx.typeck(self.root_owner.def_id).qpath_res(&qpath, callee.hir_id)
+            && self.is_specification_header(def_id)
+        {
+            self.header_exprs.extend(args);
+            return;
+        }
+        rustc_hir::intravisit::walk_expr(self, expr);
     }
 }
 
@@ -469,54 +645,141 @@ impl<'a, 'tcx> Visitor<'tcx> for RefChecker<'a, 'tcx> {
     }
 }
 
-struct HeaderFinder<'a, 'tcx> {
+struct TrustedItemScanner<'a, 'tcx> {
     ctxt: &'a ContextX<'tcx>,
-    root_owner: OwnerId,
-    header_exprs: Vec<&'tcx Expr<'tcx>>,
+    policies: &'a HashMap<LocalDefId, EffectiveTrust>,
+    errors: Vec<VirErr>,
 }
 
-impl<'a, 'tcx> HeaderFinder<'a, 'tcx> {
-    fn is_specification_header(&self, def_id: DefId) -> bool {
-        matches!(
-            self.ctxt.get_verus_item(def_id),
-            Some(VerusItem::Spec(
-                SpecItem::Requires
-                    | SpecItem::Recommends
-                    | SpecItem::Ensures
-                    | SpecItem::Returns
-                    | SpecItem::Decreases
-                    | SpecItem::DecreasesWhen
-                    | SpecItem::DecreasesBy
-                    | SpecItem::RecommendsBy
-                    | SpecItem::OpensInvariantMask
-                    | SpecItem::NoUnwind
-                    | SpecItem::NoUnwindWhen
-                    | SpecItem::AtomicSpec
-            )) | Some(VerusItem::Directive(DirectiveItem::ExtraDependency))
-        )
+impl<'a, 'tcx> TrustedItemScanner<'a, 'tcx> {
+    fn scan_item(&mut self, item: &'tcx Item<'tcx>) {
+        let Some(policy) = self.policies.get(&item.owner_id.def_id).copied() else {
+            return;
+        };
+        if !policy.in_trusted_closure() {
+            return;
+        }
+        if matches!(item.kind, ItemKind::Use(..))
+            && self.ctxt.tcx.parent_module_from_def_id(item.owner_id.def_id).to_local_def_id()
+                == rustc_hir::CRATE_OWNER_ID.def_id
+        {
+            return;
+        }
+        let mut checker = RefChecker::new(
+            self.ctxt,
+            self.policies,
+            item.owner_id,
+            policy == EffectiveTrust::TrustedSpec,
+        );
+        checker.visit_item(item);
+        self.errors.append(&mut checker.errors);
+    }
+
+    fn scan_impl_item(&mut self, item: &'tcx ImplItem<'tcx>) {
+        let Some(policy) = self.policies.get(&item.owner_id.def_id).copied() else {
+            return;
+        };
+        if !policy.in_trusted_closure() {
+            return;
+        }
+        let mut checker = RefChecker::new(
+            self.ctxt,
+            self.policies,
+            item.owner_id,
+            policy == EffectiveTrust::TrustedSpec,
+        );
+        checker.visit_impl_item(item);
+        self.errors.append(&mut checker.errors);
+    }
+
+    fn scan_trait_item(&mut self, item: &'tcx TraitItem<'tcx>) {
+        let Some(policy) = self.policies.get(&item.owner_id.def_id).copied() else {
+            return;
+        };
+        if !policy.in_trusted_closure() {
+            return;
+        }
+        let mut checker = RefChecker::new(
+            self.ctxt,
+            self.policies,
+            item.owner_id,
+            policy == EffectiveTrust::TrustedSpec,
+        );
+        checker.visit_trait_item(item);
+        self.errors.append(&mut checker.errors);
+    }
+
+    fn scan_foreign_item(&mut self, item: &'tcx ForeignItem<'tcx>) {
+        let Some(policy) = self.policies.get(&item.owner_id.def_id).copied() else {
+            return;
+        };
+        if !policy.in_trusted_closure() {
+            return;
+        }
+        let mut checker = RefChecker::new(
+            self.ctxt,
+            self.policies,
+            item.owner_id,
+            policy == EffectiveTrust::TrustedSpec,
+        );
+        checker.visit_foreign_item(item);
+        self.errors.append(&mut checker.errors);
     }
 }
 
-impl<'a, 'tcx> Visitor<'tcx> for HeaderFinder<'a, 'tcx> {
+impl<'a, 'tcx> Visitor<'tcx> for TrustedItemScanner<'a, 'tcx> {
     type NestedFilter = nested_filter::All;
 
     fn maybe_tcx(&mut self) -> TyCtxt<'tcx> {
         self.ctxt.tcx
     }
 
-    fn visit_expr(&mut self, expr: &'tcx Expr<'tcx>) {
-        if expr.hir_id.owner != self.root_owner {
-            return;
-        }
-        if let ExprKind::Call(callee, args) = expr.kind
-            && let ExprKind::Path(qpath) = callee.kind
-            && let Res::Def(_, def_id) =
-                self.ctxt.tcx.typeck(self.root_owner.def_id).qpath_res(&qpath, callee.hir_id)
-            && self.is_specification_header(def_id)
-        {
-            self.header_exprs.extend(args);
-            return;
-        }
-        rustc_hir::intravisit::walk_expr(self, expr);
+    fn visit_item(&mut self, item: &'tcx Item<'tcx>) {
+        self.scan_item(item);
+        rustc_hir::intravisit::walk_item(self, item);
     }
+
+    fn visit_impl_item(&mut self, item: &'tcx ImplItem<'tcx>) {
+        self.scan_impl_item(item);
+        rustc_hir::intravisit::walk_impl_item(self, item);
+    }
+
+    fn visit_trait_item(&mut self, item: &'tcx TraitItem<'tcx>) {
+        self.scan_trait_item(item);
+        rustc_hir::intravisit::walk_trait_item(self, item);
+    }
+
+    fn visit_foreign_item(&mut self, item: &'tcx ForeignItem<'tcx>) {
+        self.scan_foreign_item(item);
+        rustc_hir::intravisit::walk_foreign_item(self, item);
+    }
+}
+
+/// Validate trust attributes and check that trusted local code is closed under references.
+pub(crate) fn check_trust<'tcx>(ctxt: &ContextX<'tcx>) -> Vec<VirErr> {
+    let tcx = ctxt.tcx;
+    let root_module = tcx.hir_root_module();
+    let root_owner = tcx.hir_owner_node(rustc_hir::CRATE_OWNER_ID);
+    let mut collector = PolicyCollector {
+        tcx,
+        inherited: InheritedPolicy { trusted: false, untrusted_locked: false },
+        policies: HashMap::new(),
+        errors: Vec::new(),
+    };
+    let saved = collector.enter(rustc_hir::CRATE_HIR_ID, rustc_hir::CRATE_OWNER_ID, false);
+    collector.visit_mod(root_module, root_owner.span(), rustc_hir::CRATE_HIR_ID);
+    collector.inherited = saved;
+
+    let mut errors = collector.errors;
+    let policies = collector.policies;
+    let mut scanner = TrustedItemScanner { ctxt, policies: &policies, errors: Vec::new() };
+    scanner.visit_mod(root_module, root_owner.span(), rustc_hir::CRATE_HIR_ID);
+    errors.append(&mut scanner.errors);
+    if errors.is_empty()
+        && let Some(path) = &ctxt.cmd_line_args.emit_trust_manifest
+        && let Err(message) = write_tcb_manifest(ctxt, &policies, Path::new(path))
+    {
+        errors.push(vir_err_span_str(root_owner.span(), &message));
+    }
+    errors
 }

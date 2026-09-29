@@ -90,6 +90,7 @@ pub struct ArgsX {
     pub no_erasure_check: bool,
     pub no_auto_recommends_check: bool,
     pub no_cheating: bool,
+    pub emit_trust_manifest: Option<String>,
     pub time: bool,
     pub time_expanded: bool,
     pub output_json: bool,
@@ -139,6 +140,7 @@ impl ArgsX {
             no_erasure_check: Default::default(),
             no_auto_recommends_check: Default::default(),
             no_cheating: Default::default(),
+            emit_trust_manifest: Default::default(),
             time: Default::default(),
             time_expanded: Default::default(),
             output_json: Default::default(),
@@ -317,6 +319,7 @@ pub fn parse_args_with_imports(
     const OPT_NO_ERASURE_CHECK: &str = "no-erasure-check";
     const OPT_NO_AUTO_RECOMMENDS_CHECK: &str = "no-auto-recommends-check";
     const OPT_NO_CHEATING: &str = "no-cheating";
+    const OPT_EMIT_TRUST_MANIFEST: &str = "emit-trust-manifest";
     const OPT_TIME: &str = "time";
     const OPT_TIME_EXPANDED: &str = "time-expanded";
     const OPT_OUTPUT_JSON: &str = "output-json";
@@ -491,6 +494,12 @@ pub fn parse_args_with_imports(
         OPT_NO_CHEATING,
         "Do not allow assume, admit, verifier::external_body, and assume_specification",
     );
+    opts.optopt(
+        "",
+        OPT_EMIT_TRUST_MANIFEST,
+        "Write out a manifest detailing the crate's explicitly trusted code (requires --no-cheating).  Process using the verus-trust-audit tool.",
+        "PATH",
+    );
     opts.optflag("", OPT_TIME, "Measure and report time taken");
     opts.optflag("", OPT_TIME_EXPANDED, "Measure and report time taken with module breakdown");
     opts.optflag("", OPT_OUTPUT_JSON, "Emit verification results and timing as json");
@@ -624,6 +633,9 @@ pub fn parse_args_with_imports(
     };
 
     let no_vstd = matches.opt_present(OPT_NO_VSTD);
+    if matches.opt_present(OPT_EMIT_TRUST_MANIFEST) && !matches.opt_present(OPT_NO_CHEATING) {
+        error("--emit-trust-manifest requires --no-cheating".to_string());
+    }
     let is_vstd = matches.opt_present(OPT_IS_VSTD);
     let is_core = matches.opt_present(OPT_IS_CORE);
     let is_stdlib_outside_of_core = matches.opt_present(OPT_IS_STDLIB_OUTSIDE_OF_CORE);
@@ -698,6 +710,7 @@ pub fn parse_args_with_imports(
         no_erasure_check: matches.opt_present(OPT_NO_ERASURE_CHECK),
         no_auto_recommends_check: matches.opt_present(OPT_NO_AUTO_RECOMMENDS_CHECK),
         no_cheating: matches.opt_present(OPT_NO_CHEATING),
+        emit_trust_manifest: matches.opt_str(OPT_EMIT_TRUST_MANIFEST),
         time: matches.opt_present(OPT_TIME) || matches.opt_present(OPT_TIME_EXPANDED),
         time_expanded: matches.opt_present(OPT_TIME_EXPANDED),
         output_json: matches.opt_present(OPT_OUTPUT_JSON),

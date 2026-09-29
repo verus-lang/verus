@@ -25,6 +25,7 @@ serde = { workspace = true }
 sha2 = { workspace = true }
 sise = { workspace = true }
 vir = { workspace = true }
+verus-trust-audit = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 win32job = "1"

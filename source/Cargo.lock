@@ -2342,6 +2342,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "sise",
+ "verus-trust-audit",
  "vir",
  "win32job",
 ]
@@ -2357,6 +2358,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "toml",
+ "verus-trust-audit",
  "vir",
  "yansi",
 ]
@@ -3243,6 +3245,18 @@ dependencies = [
  "win32job",
  "yansi",
  "zip",
+]
+
+[[package]]
+name = "verus-trust-audit"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
 ]
 
 [[package]]

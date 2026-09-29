@@ -2,6 +2,7 @@
 #[macro_use]
 mod common;
 use common::*;
+use verus_trust_audit::MANIFEST_VERSION;
 
 const NO_CHEATING: &[&str] = &["--no-cheating"];
 
@@ -363,5 +364,37 @@ fn trust_attributes_are_inert_without_flag() {
     assert!(
         verify_files("trust_attributes_are_inert_without_flag", files, "test.rs".to_string(), &[],)
             .is_ok()
+    );
+}
+
+#[test]
+fn emits_trust_manifest() {
+    let temp = tempfile::tempdir().unwrap();
+    let manifest_path = temp.path().join("tcb.json");
+    let manifest_arg = manifest_path.to_string_lossy().into_owned();
+    let files = vec![entry(
+        "",
+        "verus! {\n\
+         #[verus::trusted]\n\
+         proof fn trusted() { assume(true); }\n\
+         proof fn untrusted() {}\n\
+         }",
+    )];
+    verify_files(
+        "emits_trust_manifest",
+        files,
+        "test.rs".to_string(),
+        &["--no-cheating", &format!("--emit-trust-manifest={manifest_arg}")],
+    )
+    .unwrap();
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(manifest_path).unwrap()).unwrap();
+    assert_eq!(manifest["format_version"], MANIFEST_VERSION);
+    assert!(
+        manifest["nodes"].as_array().unwrap().iter().any(|node| node["name"]
+            .as_str()
+            .unwrap()
+            .ends_with("trusted")
+            && node["trust"] == "trusted")
     );
 }
