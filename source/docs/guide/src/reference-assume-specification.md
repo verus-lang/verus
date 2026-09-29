@@ -9,7 +9,7 @@
 The `assume_specification` directive tells Verus to use the given specification for the given function.
 Verus assumes that this specification holds **without proof**.
 Because this introduces an unverified assumption, it is rejected under
-[no-cheating mode](./tcb.md#no-cheating-mode) outside of explicitly-allowed modules.
+[no-cheating mode](./tcb.md#no-cheating-mode) unless the function is (directly or indirectly) [annotated as trusted](./tcb.md).
 
 It can be used with any `exec`-mode function that Verus would otherwise be unaware of; for example,
 any function marked [`external`](./reference-attributes.md#verifierexternal) or which is imported from an external crate.
@@ -101,5 +101,4 @@ Tips:
 | `T: Sized`        | `T: Sized`     |
 | `T: ?Sized`       | `T: MetaSized` |
 | `T: PointeeSized` | No bound       |
-
 

@@ -124,7 +124,7 @@ There are many ways that LLMs cheat. Here are just some typical cheating methods
 
 A simple tool that compares the model's output against the original file can catch most of these. The first three cheating methods can be easily identified by searching for strings like ```assume```, ```admit```, ```external_body```, and ```axiom```, in the added content of LLMs. Precisely checking specification or executable code changes would require parser support.
 
-Verus can also enforce the first three automatically: running with [no-cheating mode](./tcb.md#no-cheating-mode) rejects `assume`, `admit`, `external_body`, `assume_specification`, and similar constructs unless they appear in an explicitly-allowed, auditable set of modules.
+Verus can also enforce the first three automatically: running with [no-cheating mode](./tcb.md#no-cheating-mode) rejects `assume`, `admit`, `external_body`, `assume_specification`, and similar constructs unless they appear in explicitly code [annotated as trusted](./tcb.md).
 
 
 ## Understand Model Capabilities and Costs
@@ -244,4 +244,3 @@ For verified system development, an LLM is a powerful assistant but not a replac
 | Start with Sonnet 4.5 if budget allows | Highest success rate |
 | Expect verbose proofs | LLMs over-explain; can be trimmed later |
 | Human + LLM collaboration | Combine human insight with LLM thoroughness |
-

@@ -310,4 +310,4 @@ Disables the requirement that `exec` functions with recursion or loops have a de
 Assumes that an `exec` function is guaranteed to terminate, even if it does not have a `decreases` clause.
 This is currently unneeded, as `exec` termination checking does not check that callees also terminate.
 Because it introduces an unverified assumption, it is rejected under
-[no-cheating mode](./tcb.md#no-cheating-mode) outside of explicitly-allowed modules.
+[no-cheating mode](./tcb.md#no-cheating-mode) unless the function is (directly or indirectly) [annotated as trusted](./tcb.md).

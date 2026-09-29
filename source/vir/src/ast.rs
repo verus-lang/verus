@@ -1534,6 +1534,8 @@ pub struct FunctionAttrsX {
     /// Marked with external_body or external_fn_specification
     /// TODO: might be duplicate with https://github.com/verus-lang/verus/pull/1473
     pub is_external_body: bool,
+    /// This function may introduce assumptions when `--no-cheating` is enabled.
+    pub no_cheating_trusted: bool,
     /// Is the function marked unsafe (i.e., with the Rust keyword 'unsafe')
     pub is_unsafe: bool,
     /// Does the exec trait function disallow impls from extending the ensures clause
@@ -1896,9 +1898,6 @@ pub struct ModuleX {
     pub path: Path,
     // add attrs here
     pub reveals: Option<ModuleReveals>,
-    /// True if this module is allowed to introduce unverified assumptions even under `--no-cheating`.
-    /// Always false when `--no-cheating` is not in effect.
-    pub assumptions_allowed: bool,
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, ToDebugSNode)]

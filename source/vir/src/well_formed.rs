@@ -29,19 +29,12 @@ struct Ctxt<'a> {
     pub(crate) krate: &'a Krate,
     unpruned_krate: &'a Krate,
     no_cheating: bool,
-    /// Module paths that may introduce unverified assumptions even under `--no-cheating`
-    assumptions_allowed_modules: HashSet<Path>,
 }
 
 impl<'a> Ctxt<'a> {
-    /// Whether the owning module is permitted to introduce unverified assumptions:
-    /// either it is part of `vstd`, or it is in (the subtree of) an `#[allow(verus::assumptions)]` module.
-    fn assumptions_allowed(&self, owning_module: &Option<Path>) -> bool {
-        match owning_module {
-            Some(path) if path.is_vstd_path() => true,
-            Some(path) => self.assumptions_allowed_modules.contains(path),
-            None => false,
-        }
+    fn assumptions_allowed(&self, function: &Function) -> bool {
+        function.x.attrs.no_cheating_trusted
+            || matches!(&function.x.owning_module, Some(path) if path.is_vstd_path())
     }
 }
 
@@ -475,7 +468,7 @@ fn check_one_expr<Emit: EmitError>(
             body: _,
         } => {
             if attrs.assume_external_allowed && !ctxt.funs.contains_key(x) {
-                if ctxt.no_cheating && !ctxt.assumptions_allowed(&function.x.owning_module) {
+                if ctxt.no_cheating && !ctxt.assumptions_allowed(function) {
                     return Err(error(
                         &expr.span,
                         "call via externals_available_without_declaration not allowed with --no-cheating",
@@ -609,10 +602,7 @@ fn check_one_expr<Emit: EmitError>(
             )?;
         }
         ExprX::AssertAssume { is_assume, expr: inner_expr, .. } => {
-            if ctxt.no_cheating
-                && *is_assume
-                && !ctxt.assumptions_allowed(&function.x.owning_module)
-            {
+            if ctxt.no_cheating && *is_assume && !ctxt.assumptions_allowed(function) {
                 let mut msg = error(&expr.span, "assume/admit not allowed with --no-cheating");
                 if let Some(label) = ast_expr_get_proof_note(inner_expr) {
                     msg =
@@ -1236,7 +1226,7 @@ fn check_function<Emit: EmitError>(
 
     if function.x.attrs.exec_assume_termination
         && ctxt.no_cheating
-        && !ctxt.assumptions_allowed(&function.x.owning_module)
+        && !ctxt.assumptions_allowed(function)
     {
         let msg =
             error(&function.span, "#[verifier::assume_termination] not allowed with --no-cheating");
@@ -1585,7 +1575,7 @@ fn check_function<Emit: EmitError>(
 
     if ctxt.no_cheating
         && (function.x.attrs.is_external_body || function.x.proxy.is_some())
-        && !ctxt.assumptions_allowed(&function.x.owning_module)
+        && !ctxt.assumptions_allowed(function)
     {
         let msg = error(
             &function.span,
@@ -2104,22 +2094,7 @@ pub fn check_crate(
         func_failed_proof_notes: HashMap::new(),
         deferred_errors: vec![],
     };
-    let assumptions_allowed_modules: HashSet<Path> = krate
-        .modules
-        .iter()
-        .filter(|m| m.x.assumptions_allowed)
-        .map(|m| m.x.path.clone())
-        .collect();
-    let ctxt = Ctxt {
-        funs,
-        reveal_groups,
-        dts,
-        traits,
-        krate,
-        unpruned_krate,
-        no_cheating,
-        assumptions_allowed_modules,
-    };
+    let ctxt = Ctxt { funs, reveal_groups, dts, traits, krate, unpruned_krate, no_cheating };
 
     let mut errors = vec![];
 
