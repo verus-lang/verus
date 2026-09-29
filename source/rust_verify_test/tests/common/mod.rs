@@ -321,6 +321,9 @@ pub fn run_verus(
         } else if *option == "-V check-api-safety" {
             verus_args.push("-V".to_string());
             verus_args.push("check-api-safety".to_string());
+        } else if *option == "-V axiom-usage-info" {
+            verus_args.push("-V".to_string());
+            verus_args.push("axiom-usage-info".to_string());
         } else if *option == "-V spinoff-all" {
             verus_args.push("-V".to_string());
             verus_args.push("spinoff-all".to_string());
@@ -335,6 +338,14 @@ pub fn run_verus(
         } else if *option == "--edition 2024" {
             verus_args.push("--edition".to_string());
             verus_args.push("2024".to_string());
+        } else if option.starts_with("observers=") || option.starts_with("observer=") {
+            verus_args.push("-V".to_string());
+            if option.starts_with("observer=") && !option.starts_with("observers=") {
+                // Normalize singular to plural form
+                verus_args.push(format!("observers={}", &option["observer=".len()..]));
+            } else {
+                verus_args.push(option.to_string());
+            }
         } else {
             panic!("option '{}' not recognized by test harness", option);
         }
