@@ -936,12 +936,25 @@ impl Visitor {
 
         let mut self_ident = None;
         let mut rewriter = GhostLifetimeRewriter::new();
-        for pair in sig.inputs.pairs() {
+        for (k, pair) in sig.inputs.pairs().enumerate() {
             let (fn_arg, comma) = pair.into_tuple();
             match &fn_arg.kind {
                 FnArgKind::Typed(pat_type) => {
                     let mut pat_ty = pat_type.ty.clone();
                     rewriter.rewrite_type(&mut pat_ty);
+
+                    if let Type::ImplTrait(..) = &*pat_ty {
+                        let error_span = pat_ty.span();
+                        let name = format!("_IMPL_TRAIT_ERROR_{k}");
+                        let ident = Ident::new(&name, error_span);
+                        self.additional_items.push(parse_quote_spanned!(
+                            error_span => const #ident: () = compile_error!(
+                                "impl-trait in argument position is not \
+                                supported for logically atomic functions; \
+                                please use generics and trait bounds instead"
+                            );
+                        ));
+                    }
 
                     pat_type.pat.to_tokens(&mut args_use_tokens);
                     pat_type.pat.to_tokens(&mut args_pat_tokens);
