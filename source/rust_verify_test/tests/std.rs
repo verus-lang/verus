@@ -335,6 +335,43 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file! {
+    #[test] question_mark_result_uses_from_spec verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::convert::FromSpecImpl;
+
+        pub struct ConvertedError {
+            pub code: u16,
+            pub converted: bool,
+        }
+
+        impl From<u8> for ConvertedError {
+            fn from(value: u8) -> Self {
+                ConvertedError { code: value as u16, converted: true }
+            }
+        }
+
+        impl FromSpecImpl<u8> for ConvertedError {
+            open spec fn obeys_from_spec() -> bool {
+                true
+            }
+
+            open spec fn from_spec(value: u8) -> Self {
+                ConvertedError { code: value as u16, converted: true }
+            }
+        }
+
+        fn test(value: u8) -> (res: Result<(), ConvertedError>)
+            ensures
+                res == Err(ConvertedError { code: value as u16, converted: true }),
+        {
+            let input: Result<(), u8> = Err(value);
+            input?;
+            Ok(())
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] clone_for_std_types verus_code! {
         use vstd::*;
         use vstd::prelude::*;
