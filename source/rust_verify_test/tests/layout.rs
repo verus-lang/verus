@@ -525,6 +525,29 @@ test_verify_one_file_with_options! {
     } => Ok(())
 }
 
+// A private struct nested inside a foreign wrapper (`MaybeUninit<Foo>`) must still
+// restrict the lemma's visibility, not just the outermost (non-local) type.
+test_verify_one_file_with_options! {
+    #[test] issue_1114_private_type_nested_in_target ["vstd", "--compile"] => verus_code! {
+        mod m1 {
+            use core::mem::MaybeUninit;
+
+            #[repr(C)]
+            struct Foo { v: u64 }
+
+            global size_of MaybeUninit<Foo> == 8;
+        }
+
+        mod m2 {
+            fn test() -> (r: u32)
+                ensures r == 5,
+            {
+                5
+            }
+        }
+    } => Ok(())
+}
+
 test_verify_one_file_with_options! {
     #[test] test_layouts_for_primitives ["vstd"] => verus_code! {
         proof fn test() {
