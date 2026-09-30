@@ -1003,16 +1003,19 @@ pub fn prune_krate_for_module_or_krate(
     }
 
     // `global size_of`/`global layout` broadcast lemmas are a crate-wide fact by design
-    // (the size can only be set once per crate), so reach them regardless of module. Tried
-    // dropping this in favor of relying solely on the visibility fix (in rust_to_vir.rs) plus
-    // the ordinary broadcast-trigger mechanism below to pull them in per-module; that
-    // regressed issue_1114_size_of_cross_module, issue_1114_layout_cross_module, and
-    // issue_1114_sibling_module_size_of, so the ordinary mechanism doesn't reach a lemma
-    // declared in a different module even when it's visible - this explicit reach is still
-    // needed. Their visibility is still set to match their target type's own visibility, so
-    // the usual per-module visibility check keeps them out of modules that can't see the type.
+    // (the size can only be set once per crate), so reach them regardless of the normal
+    // reveal/trigger-based mechanism (which doesn't reach a lemma declared in a different
+    // module even when it's visible - tried relying on it alone, regressed
+    // issue_1114_size_of_cross_module, issue_1114_layout_cross_module, and
+    // issue_1114_sibling_module_size_of). But still gate on visibility to *this* module:
+    // reaching the function also walks its ensures clause and can register a mono type for
+    // it (e.g. `MaybeUninit<Foo>`, see record_datatype/traverse_typ above), even for a
+    // module where the lemma will later be excluded entirely by the ordinary visibility
+    // check in ast_to_sst_crate.rs - and that mono type can itself need to reference a
+    // private type's (`Foo`'s) type id in this module's AIR, which was never declared here,
+    // producing "ill-typed AIR" instead of just omitting the (correctly invisible) fact.
     for f in &krate.functions {
-        if f.x.attrs.size_of_broadcast_proof {
+        if f.x.attrs.size_of_broadcast_proof && is_visible_to_or_true(&f.x.visibility, &module) {
             reach(&mut state.reached_functions, &mut state.worklist_functions, &f.x.name);
         }
     }

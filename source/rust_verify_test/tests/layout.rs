@@ -525,6 +525,32 @@ test_verify_one_file_with_options! {
     } => Ok(())
 }
 
+// A private struct only *nested* inside the `global size_of` target type (not the target
+// type itself) must still restrict the lemma's visibility. `MaybeUninit<Foo>` is itself a
+// foreign (non-local) type, so the old top-level-only check saw no local datatype at all
+// and defaulted to pub, silently ignoring that `Foo` is private to `m1` - the lemma's axiom
+// then leaks into `m2`, which can't even name `Foo`.
+test_verify_one_file_with_options! {
+    #[test] issue_1114_private_type_nested_in_target ["vstd", "--compile"] => verus_code! {
+        mod m1 {
+            use core::mem::MaybeUninit;
+
+            #[repr(C)]
+            struct Foo { v: u64 }
+
+            global size_of MaybeUninit<Foo> == 8;
+        }
+
+        mod m2 {
+            fn test() -> (r: u32)
+                ensures r == 5,
+            {
+                5
+            }
+        }
+    } => Ok(())
+}
+
 test_verify_one_file_with_options! {
     #[test] test_layouts_for_primitives ["vstd"] => verus_code! {
         proof fn test() {

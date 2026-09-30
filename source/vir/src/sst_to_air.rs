@@ -494,7 +494,14 @@ pub(crate) fn expr_has_typ(ctx: &Ctx, expr: &Expr, typ: &Typ) -> Expr {
 }
 
 pub(crate) fn decoration_for_datatype_mono(ctx: &Ctx, dt: &Dt, monotyps: &MonoTyps) -> Expr {
-    let datatype = ctx.datatype_map.get(dt).unwrap();
+    // `dt` can be reached only via a crate-wide monomorphization fact (not per-module
+    // reachability/visibility) - e.g. a private type nested inside a foreign generic
+    // wrapper (`MaybeUninit<Foo>`) whose `global size_of`/`layout` lemma is visible
+    // elsewhere but not in this module. This module can't see `dt`'s fields either way,
+    // so this is the same "unknown sizedness" case as an abstract/opaque datatype below.
+    let Some(datatype) = ctx.datatype_map.get(dt) else {
+        return str_var(crate::def::DECORATE_NIL_SIZED);
+    };
     match &datatype.x.sized_constraint {
         None => str_var(crate::def::DECORATE_NIL_SIZED),
         Some(constraint) => {
@@ -507,7 +514,10 @@ pub(crate) fn decoration_for_datatype_mono(ctx: &Ctx, dt: &Dt, monotyps: &MonoTy
 }
 
 pub(crate) fn decoration_for_datatype(ctx: &Ctx, dt: &Dt, typs: &Typs) -> Expr {
-    let datatype = ctx.datatype_map.get(dt).unwrap();
+    // See decoration_for_datatype_mono above for why `dt` might not be in this module's map.
+    let Some(datatype) = ctx.datatype_map.get(dt) else {
+        return str_var(crate::def::DECORATE_NIL_SIZED);
+    };
     match &datatype.x.sized_constraint {
         None => str_var(crate::def::DECORATE_NIL_SIZED),
         Some(constraint) => {
