@@ -787,6 +787,211 @@ impl<T> PointsTo<T> {
         other.size_eq_const_size();
         self.is_disjoint(other);
     }
+
+    /// Convert an aligned `PointsTo` to an unaligned `PointsToUnaligned`.
+    /// This is always safe since aligned is stricter than unaligned.
+    ///
+    /// Ensures pointer locations remain the same, and memory
+    /// initializations states remain the same.
+    pub proof fn into_unaligned(tracked self) -> (tracked perm: PointsToUnaligned<T>)
+        ensures
+            perm@ == self@,
+    {
+        self.pt_unaligned.get()
+    }
+
+    /// Borrow an aligned `PointsTo` as an unaligned `PointsToUnaligned`.
+    /// This is always safe since aligned is stricter than unaligned.
+    ///
+    /// Ensures pointer locations remain the same, and memory
+    /// initializations states remain the same.
+    pub proof fn as_unaligned(tracked &self) -> (tracked perm: &PointsToUnaligned<T>)
+        ensures
+            perm@ == self@,
+    {
+        &self.pt_unaligned
+    }
+
+    /// If the memory is valid, then the bytes must decode into the given value in memory.
+    pub broadcast proof fn bytes_decode(&self)
+        requires
+            self.wf(),
+        ensures
+            self.is_valid() ==> #[trigger] abs_decode::<T>(self.bytes(), &self.value()),
+            self.bytes().len() == size_of::<T>(),
+    {
+    }
+
+    /// A `PointsTo<T>` can always be cast to a `PointsToUntyped`, an untyped permission to the
+    /// same underlying bytes. The resulting permission carries no information about validity.
+    ///
+    /// The abstract bytes remain the same. This preserves the typed contents in memory on a
+    /// roundtrip cast (see `PointsToUntyped::cast_to_typed`, once ported).
+    /// Note that this means provenance is not lost, which matches Rust's semantics for
+    /// casting/transmuting in-memory values.
+    ///
+    /// This function also returns a `tracked Option<T>` corresponding to the `TypedValue<T>` on
+    /// `self`. The use of `tracked Option<T>` prohibits creating permission-carrying types out of
+    /// thin air, i.e. in the case where `T` is a type that stores/represents a permission
+    /// (e.g., shared references).
+    pub proof fn cast_to_untyped(tracked self) -> (tracked (dst, typed_value): (
+        PointsToUntyped,
+        Option<T>,
+    ))
+        requires
+            self.wf(),
+        ensures
+            self.bytes() == dst.bytes(),
+            self.ptr()@.addr == dst.ptr()@.addr,
+            self.ptr()@.provenance == dst.ptr()@.provenance,
+            dst.wf(),
+            dst.len() == size_of::<T>(),
+            typed_value.is_some() <==> self.is_valid(),
+            typed_value.is_some() ==> typed_value.unwrap() == self.value(),
+    {
+        let tracked PointsTo { pt_unaligned } = self;
+        let tracked PointsToUnaligned { val, pt_untyped } = pt_unaligned.get();
+        let tracked typed_value = match val {
+            TypedValue::Valid(b) => Some(*b),
+            TypedValue::Empty => None,
+        };
+        (pt_untyped.get(), typed_value)
+    }
+
+    /// Creates a `PointsTo<T>` from a `PointsToUntyped` with the same provenance
+    /// and a ptr corresponding to the range of the `PointsToUntyped`.
+    /// The resulting `PointsTo<T>` will be empty (uninitialized).
+    pub proof fn from_untyped(tracked pt_untyped: PointsToUntyped) -> (tracked out: Self)
+        requires
+            pt_untyped.wf(),
+            pt_untyped.ptr()@.addr as int % align_of::<T>() as int == 0,
+            pt_untyped.len() == size_of::<T>(),
+        ensures
+            out.ptr() == pt_untyped.ptr() as *mut T,
+            out.bytes() == pt_untyped.bytes(),
+            out.is_empty(),
+            out.wf(),
+    {
+        PointsTo {
+            pt_unaligned: Tracked(
+                PointsToUnaligned { val: TypedValue::Empty, pt_untyped: Tracked(pt_untyped) },
+            ),
+        }
+    }
+
+    /// Creates a `PointsToUntyped` from a `PointsTo<T>` with the same provenance
+    /// and a range corresponding to the address of the `PointsTo<T>` and size of `T`.
+    /// If there is any value stored in memory, it is dropped.
+    pub proof fn into_untyped(tracked self) -> (tracked pt_untyped: PointsToUntyped)
+        requires
+            self.wf(),
+        ensures
+            pt_untyped.ptr() as *mut T == self.ptr(),
+            pt_untyped.len() == size_of::<T>(),
+            pt_untyped.bytes() == self.bytes(),
+            pt_untyped.wf(),
+    {
+        let tracked PointsTo { pt_unaligned } = self;
+        let tracked PointsToUnaligned { val: _, pt_untyped } = pt_unaligned.get();
+        pt_untyped.get()
+    }
+
+    /// Creates a reference to a `PointsToUntyped` from a reference to a `PointsTo<T>` with the same
+    /// provenance and a range corresponding to the address of the `PointsTo<T>` and size of `T`.
+    pub proof fn as_untyped(tracked &self) -> (tracked pt_untyped: &PointsToUntyped)
+        requires
+            self.wf(),
+        ensures
+            pt_untyped.ptr() as *mut T == self.ptr(),
+            pt_untyped.len() == size_of::<T>(),
+            pt_untyped.bytes() == self.bytes(),
+            pt_untyped.wf(),
+    {
+        self.pt_unaligned.tracked_pt_untyped()
+    }
+
+    /// Creates a mutable reference to a `PointsToUntyped` from a mutable reference to a `PointsTo<T>`
+    /// with the same provenance and a range corresponding to the address of the `PointsTo<T>` and
+    /// size of `T`. If this permission carries any typed value, it is dropped here.
+    /// (call `take` first if you want to save the value.)
+    pub proof fn as_untyped_mut(tracked &mut self) -> (tracked pt_untyped: &mut PointsToUntyped)
+        requires
+            old(self).wf(),
+        ensures
+            pt_untyped.ptr() as *mut T == old(self).ptr(),
+            pt_untyped.len() == size_of::<T>(),
+            pt_untyped.bytes() == old(self).bytes(),
+            pt_untyped.wf(),
+            final(pt_untyped).ptr() == pt_untyped.ptr() ==> ({
+                &&& final(self).ptr() == old(self).ptr()
+                &&& final(self).bytes() == final(pt_untyped).bytes()
+                &&& final(self).is_empty()
+            }),
+    {
+        self.pt_unaligned.borrow_mut().val = TypedValue::Empty;
+        &mut self.pt_unaligned.borrow_mut().pt_untyped
+    }
+
+    /// This takes a borrow of the `T` from the `TypedValue<T>` on `self`.
+    pub proof fn borrow(tracked &self) -> tracked &T
+        requires
+            self.is_valid(),
+        returns
+            self.value(),
+    {
+        match &self.pt_unaligned.borrow().val {
+            TypedValue::Valid(b) => b,
+            TypedValue::Empty => proof_from_false(),
+        }
+    }
+
+    /// This takes a mutable borrow of the `T` from the `TypedValue<T>` on `self`.
+    ///
+    /// Note: unlike `borrow`/`take`/`put`, this cannot be proven from the `TypedValue<T>`
+    /// representation alone: `mut_ref_ptr` links a real Rust reference to the raw pointer it was
+    /// derived from, and that linkage can only be established by an actual unsafe dereference of
+    /// `self.ptr()` (as in, e.g., `ptr_mut_ref`), not by borrowing out of a ghost `Box<T>`.
+    pub axiom fn borrow_mut(tracked &mut self) -> (tracked val: &mut T)
+        requires
+            self.is_valid(),
+        ensures
+            *val == old(self).value(),
+            mut_ref_ptr(val) == old(self).ptr(),
+            final(self).is_valid(),
+            final(self).ptr() == old(self).ptr(),
+            final(self).value() == *final(val),
+    ;
+
+    /// This moves the `T` out from the `TypedValue<T>` on `self`, leaving `self` empty.
+    pub proof fn take(tracked &mut self) -> (tracked val: T)
+        requires
+            self.is_valid(),
+        ensures
+            val == old(self).value(),
+            final(self).ptr() == old(self).ptr(),
+            final(self).bytes() == old(self).bytes(),
+            final(self).is_empty(),
+    {
+        let tracked mut tmp = TypedValue::Empty;
+        super::modes::tracked_swap(&mut tmp, &mut self.pt_unaligned.borrow_mut().val);
+        match tmp {
+            TypedValue::Valid(b) => *b,
+            TypedValue::Empty => proof_from_false(),
+        }
+    }
+
+    /// Consumes the `T` and puts it in the `TypedValue<T>` for `self`.
+    pub proof fn put(tracked &mut self, tracked val: T)
+        requires
+            abs_decode::<T>(self.bytes(), &val),
+        ensures
+            final(self).ptr() == old(self).ptr(),
+            final(self).bytes() == old(self).bytes(),
+            final(self).is_valid(),
+            final(self).value() == val,
+    {
+        self.pt_unaligned.borrow_mut().val = TypedValue::Valid(Box::new(val));
+    }
 }
 
 impl<T> SeqPointsTo<T, PointsTo<T>> {
