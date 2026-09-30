@@ -1002,6 +1002,21 @@ pub fn prune_krate_for_module_or_krate(
         }
     }
 
+    // `global size_of`/`global layout` broadcast lemmas are a crate-wide fact by design
+    // (the size can only be set once per crate), so reach them regardless of module. Tried
+    // dropping this in favor of relying solely on the visibility fix (in rust_to_vir.rs) plus
+    // the ordinary broadcast-trigger mechanism below to pull them in per-module; that
+    // regressed issue_1114_size_of_cross_module, issue_1114_layout_cross_module, and
+    // issue_1114_sibling_module_size_of, so the ordinary mechanism doesn't reach a lemma
+    // declared in a different module even when it's visible - this explicit reach is still
+    // needed. Their visibility is still set to match their target type's own visibility, so
+    // the usual per-module visibility check keeps them out of modules that can't see the type.
+    for f in &krate.functions {
+        if f.x.attrs.size_of_broadcast_proof {
+            reach(&mut state.reached_functions, &mut state.worklist_functions, &f.x.name);
+        }
+    }
+
     // Collect all functions that our module reveals:
     let mut revealed_functions: HashSet<Fun> = HashSet::new();
     let mut assert_by_compute = false;
