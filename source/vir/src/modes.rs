@@ -371,7 +371,8 @@ fn function_allows_proph(function: &Function) -> (Option<NoProphReason>, Option<
                     break;
                 }
             }
-            any_non_spec |= function.x.ret.x.mode != Mode::Spec && !is_unit(&function.x.ret.x.typ);
+            any_non_spec |=
+                function.x.outer_ret.x.mode != Mode::Spec && !is_unit(&function.x.outer_ret.x.typ);
 
             if any_non_spec {
                 (Some(NoProphReason::ProofFnCall), Some(OuterProphReason::ProofFnCall))
@@ -1736,7 +1737,9 @@ fn check_expr(
                         format!("cannot read {} with mode {}", kind, function.x.mode),
                     ));
                 }
-                if function.x.ret.x.mode != Mode::Exec && typing.block_ghostness == Ghost::Exec {
+                if function.x.outer_ret.x.mode != Mode::Exec
+                    && typing.block_ghostness == Ghost::Exec
+                {
                     return Err(error(
                         &expr.span,
                         format!("cannot read {} with mode {}", kind, function.x.mode),
@@ -1749,7 +1752,7 @@ fn check_expr(
                     format!("cannot read {} with mode {}", kind, function.x.mode),
                 ));
             }
-            let mode = function.x.ret.x.mode;
+            let mode = function.x.outer_ret.x.mode;
             let mode =
                 if ctxt.check_ghost_blocks { typing.block_ghostness.join_mode(mode) } else { mode };
             record.erasure_modes.var_modes.push((expr.span.clone(), (mode, mode)));
@@ -1911,7 +1914,7 @@ fn check_expr(
                 let _ = check_expr(ctxt, record, typing, outer_mode, expect, expr, outer_proph)?;
             }
 
-            Ok((function.x.ret.x.mode, out_proph))
+            Ok((function.x.outer_ret.x.mode, out_proph))
         }
         ExprX::Call { target: CallTarget::FnSpec(e0), args: es, post_args: None, body } => {
             assert!(body.is_none());
@@ -3684,7 +3687,7 @@ fn check_function(
                 }
                 (
                     trait_method.x.params.iter().map(|f| f.x.mode).collect(),
-                    trait_method.x.ret.x.mode,
+                    trait_method.x.outer_ret.x.mode,
                     expect_proph,
                 )
             } else {
@@ -3700,7 +3703,7 @@ fn check_function(
                 ));
             }
         }
-        if function.x.ret.x.mode != expected_ret_mode {
+        if function.x.outer_ret.x.mode != expected_ret_mode {
             return Err(error(
                 &function.span,
                 format!("function return value must have mode {}", expected_ret_mode),
@@ -3744,7 +3747,7 @@ fn check_function(
 
     let mut ens_typing = fun_typing.push_var_scope();
     if function.x.ens_has_return {
-        ens_typing.insert(&function.x.ret.x.name, Mode::Spec, Some(ProphVar::No));
+        ens_typing.insert(&function.x.inner_ret.x.name, Mode::Spec, Some(ProphVar::No));
     }
 
     for expr in function.x.ensure.0.iter().chain(function.x.ensure.1.iter()) {
@@ -3823,7 +3826,7 @@ fn check_function(
     }
 
     let ret_mode = if function.x.ens_has_return {
-        let ret_mode = function.x.ret.x.mode;
+        let ret_mode = function.x.outer_ret.x.mode;
         if !matches!(function.x.item_kind, ItemKind::Const) && !mode_le(function.x.mode, ret_mode) {
             return Err(error(
                 &function.span,
@@ -3852,8 +3855,8 @@ fn check_function(
         None
     };
 
-    let dual_mode_fn = function.x.mode == Mode::Spec && function.x.ret.x.mode == Mode::Exec;
-    let pure_spec_fn = function.x.mode == Mode::Spec && function.x.ret.x.mode == Mode::Spec;
+    let dual_mode_fn = function.x.mode == Mode::Spec && function.x.outer_ret.x.mode == Mode::Exec;
+    let pure_spec_fn = function.x.mode == Mode::Spec && function.x.outer_ret.x.mode == Mode::Spec;
 
     if let Some(body) = &function.x.body {
         let mut body_typing = fun_typing.push_ret_mode(ret_mode);
@@ -3874,7 +3877,7 @@ fn check_function(
             &mut body_typing,
             function.x.mode,
             body,
-            function.x.ret.x.mode,
+            function.x.outer_ret.x.mode,
             &Proph::No,
         )?;
 
@@ -3988,7 +3991,7 @@ fn check_function(
         }
         record.infer_spec_for_implicit_reborrows = None;
 
-        if function.x.mode != Mode::Spec || function.x.ret.x.mode != Mode::Spec {
+        if function.x.mode != Mode::Spec || function.x.outer_ret.x.mode != Mode::Spec {
             let functionx = &mut Arc::make_mut(&mut *function).x;
             // For dual mode we _could_ probably skip entirely, but
             // resolution_inference does some extra (soundness-related) checks

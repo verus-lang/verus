@@ -556,7 +556,7 @@ pub fn func_name_to_air(
                     }
                 }
                 rec_typs.push(str_typ(FUEL_TYPE));
-                let typ = typ_to_air(ctx, &function.x.ret.x.typ);
+                let typ = typ_to_air(ctx, &function.x.outer_ret.x.typ);
                 let rec_decl = Arc::new(DeclX::Fun(rec_f, Arc::new(rec_typs), typ));
                 commands.push(Arc::new(CommandX::Global(rec_decl)));
             }
@@ -580,7 +580,7 @@ pub fn func_name_to_air(
         let all_typs = Arc::new(all_typs);
 
         // Declare the function symbol itself
-        let typ = typ_to_air(ctx, &function.x.ret.x.typ);
+        let typ = typ_to_air(ctx, &function.x.outer_ret.x.typ);
         let mut names = vec![function.x.name.clone()];
         if let FunctionKind::TraitMethodDecl { .. } = &function.x.kind {
             names.push(crate::def::trait_default_name(&function.x.name));
@@ -600,7 +600,7 @@ pub fn func_name_to_air(
         // represent as 0-argument function)
         commands.push(Arc::new(CommandX::Global(Arc::new(DeclX::Const(
             ctx.name_ctxt.static_name(&function.x.name),
-            typ_to_air(ctx, &function.x.ret.x.typ),
+            typ_to_air(ctx, &function.x.outer_ret.x.typ),
         )))));
     }
 
@@ -726,11 +726,7 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
     let mut ens_typing_invs: Vec<Expr> = Vec::new();
     if matches!(function.x.mode, Mode::Exec | Mode::Proof) {
         if function.x.has.has_return_name {
-            let ParX { name, typ, .. } = if function.x.attrs.is_async {
-                &function.x.async_ret.as_ref().expect("Async function has no return type").x
-            } else {
-                &function.x.ret.x
-            };
+            let ParX { name, typ, .. } = &function.x.outer_ret.x;
             ens_typs.push(typ_to_air(ctx, &typ));
             if let Some(expr) = typ_invariant(ctx, &typ, &ident_var(&name.lower())) {
                 ens_typing_invs.push(expr);
@@ -739,7 +735,7 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
     } else {
         if function.x.has.has_ensures {
             return Err(crate::messages::error(
-                &function.x.ret.span,
+                &function.x.outer_ret.span,
                 "ensures clause unsupported on spec function",
             ));
         }
@@ -911,7 +907,7 @@ pub fn func_axioms_to_air(
                     f_args.push(str_var(FUEL_PARAM));
                 }
                 let f_app = ident_apply(&name, &Arc::new(f_args));
-                if let Some(post) = typ_invariant(ctx, &function.x.ret.x.typ, &f_app) {
+                if let Some(post) = typ_invariant(ctx, &function.x.outer_ret.x.typ, &f_app) {
                     // (axiom (forall (...) (=> pre post)))
                     let name = format!("{}{}", name, qid);
                     let opts = if is_rec {
