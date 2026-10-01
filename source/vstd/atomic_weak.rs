@@ -548,6 +548,41 @@ macro_rules! atomic_common_methods {
 
         #[inline(always)]
         #[verifier::external_body]
+        pub fn from_mut<'a>(v: &'a mut $value_ty) -> ((ato, pt, vs, ts): (
+            &'a mut Self,
+            Tracked<&'a mut AtomicPointsTo<$value_ty>>,
+            Tracked<ViewSeen>,
+            Ghost<nat>,
+        ))
+            ensures
+                ato.loc() == (pt@).loc(),
+                (pt@).hist().is_singleton(ts@, (*old(v), vs@@)),
+                (pt@).get_timestamp(vs@@) == Some(ts@),
+                forall |ts| final(pt@).hist().is_max_timestamp(ts) ==>  final(ato).loc() == final(pt@).loc() ==>  final(pt@).hist().value(ts) == *final(v),
+        {
+            // can't use $rust_ty::from_mut, so I'll inline it:
+            let p = unsafe { &mut *(v as *mut bool as *mut Self) };
+            (p, Tracked::assume_new(), Tracked::assume_new(), Ghost::assume_new())
+        }
+
+        #[inline(always)]
+        #[verifier::external_body]
+        pub fn get_mut<'a>(&'a mut self, Tracked(pt) : Tracked<&'a mut AtomicPointsTo<$value_ty>>) -> ((val, vs, ts) : (&'a mut bool, Tracked<ViewSeen>, Ghost<nat>))
+            requires
+                old(self).loc() == old(pt).loc()
+            ensures
+                *final(self) == *old(self),
+                final(self).loc() == final(pt).loc(),
+                old(pt).hist().is_max_timestamp(ts@),
+                *val == old(pt).hist().value(ts@),
+                vs@@ == old(pt).hist().thread_view(ts@),
+                forall |t| #[trigger] final(pt).hist().is_max_timestamp(t) ==>  final(pt).hist().value(t) == *final(val),
+        {
+            (self.ato.get_mut(), Tracked::assume_new(), Ghost::assume_new())
+        }
+
+        #[inline(always)]
+        #[verifier::external_body]
         #[verifier::atomic]
         pub fn load(
             &self,
@@ -739,29 +774,30 @@ macro_rules! atomic_bool_methods {
     };
 }
 
+#[cfg(target_has_atomic_primitive_alignment = "8")]
 make_bool_atomic!(PAtomicWeakBool, AtomicBool, bool);
 
-make_unsigned_integer_atomic!(PAtomicWeakU8, AtomicU8, u8, u8_specs);
+// make_unsigned_integer_atomic!(PAtomicWeakU8, AtomicU8, u8, u8_specs);
 
-make_unsigned_integer_atomic!(PAtomicWeakU16, AtomicU16, u16, u16_specs);
+// make_unsigned_integer_atomic!(PAtomicWeakU16, AtomicU16, u16, u16_specs);
 
-make_unsigned_integer_atomic!(PAtomicWeakU32, AtomicU32, u32, u32_specs);
+// make_unsigned_integer_atomic!(PAtomicWeakU32, AtomicU32, u32, u32_specs);
 
-#[cfg(target_has_atomic = "64")]
-make_unsigned_integer_atomic!(PAtomicWeakU64, AtomicU64, u64, u64_specs);
+// #[cfg(target_has_atomic = "64")]
+// make_unsigned_integer_atomic!(PAtomicWeakU64, AtomicU64, u64, u64_specs);
 
-make_unsigned_integer_atomic!(PAtomicWeakUsize, AtomicUsize, usize, usize_specs);
+// make_unsigned_integer_atomic!(PAtomicWeakUsize, AtomicUsize, usize, usize_specs);
 
-make_signed_integer_atomic!(PAtomicWeakI8, AtomicI8, i8, i8_specs);
+// make_signed_integer_atomic!(PAtomicWeakI8, AtomicI8, i8, i8_specs);
 
-make_signed_integer_atomic!(PAtomicWeakI16, AtomicI16, i16, i16_specs);
+// make_signed_integer_atomic!(PAtomicWeakI16, AtomicI16, i16, i16_specs);
 
-make_signed_integer_atomic!(PAtomicWeakI32, AtomicI32, i32, i32_specs);
+// make_signed_integer_atomic!(PAtomicWeakI32, AtomicI32, i32, i32_specs);
 
-#[cfg(target_has_atomic = "64")]
-make_signed_integer_atomic!(PAtomicWeakI64, AtomicI64, i64,i64_specs);
+// #[cfg(target_has_atomic = "64")]
+// make_signed_integer_atomic!(PAtomicWeakI64, AtomicI64, i64,i64_specs);
 
-make_signed_integer_atomic!(PAtomicWeakIsize, AtomicIsize, isize, isize_specs);
+// make_signed_integer_atomic!(PAtomicWeakIsize, AtomicIsize, isize, isize_specs);
 
 // TODO - AtomicPtr
 } // verus!
