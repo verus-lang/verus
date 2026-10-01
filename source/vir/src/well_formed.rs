@@ -1001,6 +1001,13 @@ fn check_function<Emit: EmitError>(
                 ));
             }
         }
+
+        if orig_decl.x.returns.is_some() && function.x.returns.is_some() {
+            return Err(error(
+                &function.span,
+                "a `returns` clause cannot be declared on both a trait method impl and its declaration",
+            ).secondary_span(&orig_decl.span));
+        }
     } else {
     }
     if function.x.attrs.impls_cannot_extend_spec {
