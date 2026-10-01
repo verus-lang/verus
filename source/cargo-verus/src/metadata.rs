@@ -10,8 +10,6 @@ use sha2::{Digest, Sha256};
 
 #[derive(Debug, Default, Deserialize)]
 pub struct VerusMetadata {
-    #[serde(rename = "fmt-as-rust", default)]
-    pub fmt_as_rust: bool,
     #[serde(default)]
     pub verify: bool,
     #[serde(rename = "no-vstd", default)]
@@ -24,6 +22,8 @@ pub struct VerusMetadata {
     pub is_builtin: bool,
     #[serde(rename = "is-builtin-macros", default)]
     pub is_builtin_macros: bool,
+    #[serde(rename = "fmt-verus-only", default)]
+    pub fmt_verus_only: bool,
 }
 
 impl VerusMetadata {
