@@ -43,6 +43,10 @@ pub fn main() {
                 rust_verify::trait_check::trait_check_rustc_driver(&internal_args[..], buffer);
                 return;
             }
+            rust_verify::driver::ERASE_DRIVER_ARG => {
+                let internal_args: Vec<String> = internal_args.collect();
+                rust_verify::driver::erase_compile_driver(&internal_args);
+            }
             arg if arg.contains("rustc") => {
                 // Setting RUSTC_WRAPPER causes Cargo to pass rustc path as the first argument.
                 (false, true)
