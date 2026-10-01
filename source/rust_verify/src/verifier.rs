@@ -2827,8 +2827,6 @@ impl Verifier {
         .map_err(map_err_diagnostics)?;
         let vir_crate = vir::traits::inherit_default_bodies(&vir_crate, &mut warning_ctx)
             .map_err(|e| (vec![e], Vec::new()))?;
-        let vir_crate = vir::traits::fixup_ens_has_return_for_trait_method_impls(vir_crate)
-            .map_err(|e| (vec![e], Vec::new()))?;
 
         if self.args.check_api_safety {
             vir::safe_api::check_safe_api(&vir_crate).map_err(|e| (vec![e], Vec::new()))?;

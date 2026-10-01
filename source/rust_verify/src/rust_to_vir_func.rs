@@ -215,7 +215,6 @@ fn handle_autospec<'tcx>(
                 typ_bounds: functionx.typ_bounds.clone(),
                 params: Arc::new(spec_params),
                 outer_ret: spec_ret_param,
-                ens_has_return: true,
                 item_kind: ItemKind::Function,
                 attrs: Arc::new(FunctionAttrsX {
                     uses_ghost_blocks: vattrs.verus_macro,
@@ -281,7 +280,6 @@ fn finish_autospec<'tcx>(
         typ_bounds,
         params,
         outer_ret,
-        ens_has_return,
         item_kind,
         attrs,
     } = function_autospec.x.clone();
@@ -299,7 +297,6 @@ fn finish_autospec<'tcx>(
         params,
         outer_ret: outer_ret.clone(),
         inner_ret: outer_ret,
-        ens_has_return,
         decrease_by: None,
         item_kind,
         attrs,
@@ -2109,11 +2106,6 @@ pub(crate) fn check_item_fn<'tcx>(
         visibility.restricted_to = None;
     }
 
-    // Note: ens_has_return isn't final; it may need to be changed later to make
-    // sure it's in sync for trait method impls and trait method decls.
-    // See `fixup_ens_has_return_for_trait_method_impls`.
-    let ens_has_return = !vir::ast_util::is_unit(&vir::ast_util::undecorate_typ(&ret.x.typ));
-
     let (publish, mode, item_kind) = match (is_external_const, pre_header.returns) {
         (true, true) => {
             // In an external const declaration, use returns expression as spec function body:
@@ -2164,8 +2156,6 @@ pub(crate) fn check_item_fn<'tcx>(
         typ_bounds,
         params,
         outer_ret: ret,
-        // async function always refer to return value in ensures
-        ens_has_return: is_async || ens_has_return,
         item_kind,
         attrs: fattrs,
     };
@@ -2258,7 +2248,6 @@ pub(crate) fn finish_function<'tcx>(
         typ_bounds,
         params,
         outer_ret,
-        ens_has_return,
         item_kind,
         attrs,
     } = function.x.clone();
@@ -2412,7 +2401,6 @@ pub(crate) fn finish_function<'tcx>(
         params,
         outer_ret,
         inner_ret,
-        ens_has_return,
         require: if mode == Mode::Spec { Arc::new(recommend) } else { header.require },
         returns,
         ensure,
@@ -2502,7 +2490,6 @@ fn fix_external_fn_specification_trait_method_decl_typs_stub(
             mut typ_bounds,
             mut params,
             mut outer_ret,
-            ens_has_return,
             item_kind,
             attrs,
         } = func;
@@ -2544,7 +2531,6 @@ fn fix_external_fn_specification_trait_method_decl_typs_stub(
             typ_bounds,
             params,
             outer_ret,
-            ens_has_return,
             item_kind,
             attrs,
         })
@@ -2572,7 +2558,6 @@ fn check_external_fn_specification_trait_method_decl_typs(
             params: _,
             outer_ret: _,
             inner_ret: _,
-            ens_has_return: _,
             require,
             ensure,
             returns,
@@ -3264,9 +3249,6 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         (Arc::new(vec![]), Arc::new(vec![]))
     };
 
-    let ens_has_return = !vir::ast_util::is_unit(&vir::ast_util::undecorate_typ(&outer_ret.x.typ));
-    assert!(!is_async || ens_has_return);
-
     let mut functionx = FunctionStubX {
         name: name.clone(),
         proxy: None,
@@ -3280,7 +3262,6 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         typ_bounds,
         params: Arc::new(vec![]),
         outer_ret,
-        ens_has_return,
         item_kind: if is_static { ItemKind::Static } else { ItemKind::Const },
         attrs: fattrs,
     };
@@ -3345,7 +3326,6 @@ pub(crate) fn finish_const_or_static<'tcx>(
         typ_bounds,
         params,
         outer_ret,
-        ens_has_return,
         item_kind,
         attrs,
     } = function.x.clone();
@@ -3402,7 +3382,6 @@ pub(crate) fn finish_const_or_static<'tcx>(
         params,
         inner_ret,
         outer_ret,
-        ens_has_return,
         require: Arc::new(vec![]),
         ensure: (ensure, Arc::new(vec![])),
         returns: None,
@@ -3481,9 +3460,9 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         vir_params.push(vir_param);
     }
     let params = Arc::new(vir_params);
-    let (ret_typ, ret_mode, ens_has_return) = match ret_typ_mode {
-        None => (unit_typ(), mode, false),
-        Some((typ, mode)) => (typ, mode, true),
+    let (ret_typ, ret_mode) = match ret_typ_mode {
+        None => (unit_typ(), mode),
+        Some((typ, mode)) => (typ, mode),
     };
     let ret_param = ParamX {
         name: air_unique_var(RETURN_VALUE),
@@ -3512,7 +3491,6 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         params,
         outer_ret: ret.clone(),
         inner_ret: ret,
-        ens_has_return,
         require: Arc::new(vec![]),
         ensure: (Arc::new(vec![]), Arc::new(vec![])),
         returns: None,

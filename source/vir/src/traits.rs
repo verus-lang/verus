@@ -701,7 +701,6 @@ pub fn inherit_default_bodies(
                     params,
                     outer_ret,
                     inner_ret,
-                    ens_has_return: default_function.x.ens_has_return,
                     require: Arc::new(vec![]),
                     ensure: (Arc::new(vec![]), Arc::new(vec![])),
                     returns: None,
@@ -1529,34 +1528,6 @@ pub(crate) fn find_trait_impl_from_extension(
         err = err.secondary_span(&candidate.span)
     }
     return Err(err);
-}
-
-/// For trait method impls, the 'ens_has_return' should be inherited from the method decl
-pub fn fixup_ens_has_return_for_trait_method_impls(krate: Krate) -> Result<Krate, VirErr> {
-    let mut krate = krate;
-    let kratex = &mut Arc::make_mut(&mut krate);
-    let mut fun_map = HashMap::<Fun, Function>::new();
-    for function in kratex.functions.iter() {
-        if matches!(function.x.kind, FunctionKind::TraitMethodDecl { .. }) {
-            fun_map.insert(function.x.name.clone(), function.clone());
-        }
-    }
-    for function in kratex.functions.iter_mut() {
-        if let FunctionKind::TraitMethodImpl { method, .. } = &function.x.kind {
-            let method = method.clone();
-            if !function.x.ens_has_return {
-                match fun_map.get(&method) {
-                    None => {}
-                    Some(f) if f.x.ens_has_return => {
-                        let functionx = &mut Arc::make_mut(&mut *function).x;
-                        functionx.ens_has_return = true;
-                    }
-                    Some(_) => {}
-                }
-            }
-        }
-    }
-    Ok(krate)
 }
 
 // Is an impl of the form impl<A: ?Sized + ...> T<...> for A
