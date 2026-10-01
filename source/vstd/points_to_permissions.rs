@@ -357,6 +357,12 @@ impl<T: ?Sized> PointsToUnaligned<T> {
     }
 
     /// Returns a tracked reference to the underlying `PointsToUntyped` permission.
+    ///
+    /// This has no `wf()` requires/ensures because `wf` is only defined for `Sized` `T`, 
+    /// and this impl block is `?Sized`. 
+    /// This also gives flexibility for getting the underlying `PointsToUntyped` 
+    /// when the permission is not well-formed.
+    /// For `Sized` `T`, if `self.wf()`, then the returned permission is `wf()`. 
     pub proof fn tracked_pt_untyped(tracked &self) -> tracked &PointsToUntyped
         returns
             self.pt_untyped(),
@@ -468,9 +474,11 @@ impl<T> PointsToUnaligned<T> {
     /// initializations states remain the same.
     pub proof fn into_aligned(tracked self) -> (tracked perm: PointsTo<T>)
         requires
+            self.wf(),
             self.ptr()@.addr as int % align_of::<T>() as int == 0,
         ensures
             perm@ == self@,
+            perm.wf(),
     {
         broadcast use layout_of_sized;
 
@@ -484,9 +492,11 @@ impl<T> PointsToUnaligned<T> {
     /// initializations states remain the same.
     pub axiom fn as_aligned(tracked &self) -> (tracked perm: &PointsTo<T>)
         requires
+            self.wf(),
             self.ptr()@.addr as int % align_of::<T>() as int == 0,
         ensures
             perm@ == self@,
+            perm.wf(),
     // TODO: uncomment when main is merged in
     // { shr_ref_struct_wrap(self, &PointsTo { pt_unaligned: Tracked(self) }, "", "pt_unaligned") }
 
@@ -644,6 +654,12 @@ impl<T: ?Sized> PointsTo<T> {
     }
 
     /// Returns a tracked reference to the underlying `PointsToUnaligned` permission.
+    ///
+    /// This has no `wf()` requires/ensures because `wf` is only defined for `Sized` `T`,
+    /// and this impl block is `?Sized`.
+    /// This also gives flexibility for getting the underlying `PointsToUnaligned`
+    /// when the permission is not well-formed.
+    /// For `Sized` `T`, if `self.wf()`, then the returned permission is `wf()`.
     pub proof fn tracked_pt_unaligned(tracked &self) -> tracked &PointsToUnaligned<T>
         returns
             self.pt_unaligned(),
@@ -794,8 +810,11 @@ impl<T> PointsTo<T> {
     /// Ensures pointer locations remain the same, and memory
     /// initializations states remain the same.
     pub proof fn into_unaligned(tracked self) -> (tracked perm: PointsToUnaligned<T>)
+        requires
+            self.wf(),
         ensures
             perm@ == self@,
+            perm.wf(),
     {
         self.pt_unaligned.get()
     }
@@ -806,8 +825,11 @@ impl<T> PointsTo<T> {
     /// Ensures pointer locations remain the same, and memory
     /// initializations states remain the same.
     pub proof fn as_unaligned(tracked &self) -> (tracked perm: &PointsToUnaligned<T>)
+        requires
+            self.wf(),
         ensures
             perm@ == self@,
+            perm.wf(),
     {
         &self.pt_unaligned
     }
@@ -922,10 +944,11 @@ impl<T> PointsTo<T> {
             pt_untyped.len() == size_of::<T>(),
             pt_untyped.bytes() == old(self).bytes(),
             pt_untyped.wf(),
-            final(pt_untyped).ptr() == pt_untyped.ptr() ==> ({
+            PointsToUntyped::ptrs_len_same(*pt_untyped, *final(pt_untyped)) ==> ({
                 &&& final(self).ptr() == old(self).ptr()
                 &&& final(self).bytes() == final(pt_untyped).bytes()
                 &&& final(self).is_empty()
+                &&& final(self).wf()
             }),
     {
         self.pt_unaligned.borrow_mut().val = TypedValue::Empty;
@@ -935,6 +958,7 @@ impl<T> PointsTo<T> {
     /// This takes a borrow of the `T` from the `TypedValue<T>` on `self`.
     pub proof fn borrow(tracked &self) -> tracked &T
         requires
+            self.wf(),
             self.is_valid(),
         returns
             self.value(),
@@ -953,6 +977,7 @@ impl<T> PointsTo<T> {
     /// `self.ptr()` (as in, e.g., `ptr_mut_ref`), not by borrowing out of a ghost `Box<T>`.
     pub axiom fn borrow_mut(tracked &mut self) -> (tracked val: &mut T)
         requires
+            self.wf(),
             self.is_valid(),
         ensures
             *val == old(self).value(),
@@ -960,17 +985,21 @@ impl<T> PointsTo<T> {
             final(self).is_valid(),
             final(self).ptr() == old(self).ptr(),
             final(self).value() == *final(val),
+            // TODO: is this right/sound?
+            Self::ptrs_len_same_valid_decode(*old(self), *final(self)) ==> final(self).wf(),
     ;
 
     /// This moves the `T` out from the `TypedValue<T>` on `self`, leaving `self` empty.
     pub proof fn take(tracked &mut self) -> (tracked val: T)
         requires
+            self.wf(),
             self.is_valid(),
         ensures
             val == old(self).value(),
             final(self).ptr() == old(self).ptr(),
             final(self).bytes() == old(self).bytes(),
             final(self).is_empty(),
+            final(self).wf(),
     {
         let tracked mut tmp = TypedValue::Empty;
         super::modes::tracked_swap(&mut tmp, &mut self.pt_unaligned.borrow_mut().val);
@@ -983,12 +1012,14 @@ impl<T> PointsTo<T> {
     /// Consumes the `T` and puts it in the `TypedValue<T>` for `self`.
     pub proof fn put(tracked &mut self, tracked val: T)
         requires
+            self.wf(),
             abs_decode::<T>(self.bytes(), &val),
         ensures
             final(self).ptr() == old(self).ptr(),
             final(self).bytes() == old(self).bytes(),
             final(self).is_valid(),
             final(self).value() == val,
+            final(self).wf(),
     {
         self.pt_unaligned.borrow_mut().val = TypedValue::Valid(Box::new(val));
     }
@@ -1076,7 +1107,11 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             self.wf(),
         ensures
             ret == self.seq_pt(),
+            forall|i: int| 0 <= i < ret.len() ==> #[trigger] ret[i].wf(),
     {
+        assert forall|i: int| 0 <= i < self.seq_pt().len() implies #[trigger] self.seq_pt()[i].wf() by {
+            assert(self[i].wf_basic());
+        }
         &self.seq_pt
     }
 
@@ -1384,9 +1419,15 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
 
     /// Consumes this `SeqPointsTo`, returning the underlying `Seq<PointsTo<T>>`.
     pub proof fn into_seq(tracked self) -> (tracked r: Seq<PointsTo<T>>)
+        requires
+            self.wf(),
         ensures
             r == self.seq_pt(),
+            forall|i: int| 0 <= i < r.len() ==> #[trigger] r[i].wf(),
     {
+        assert forall|i: int| 0 <= i < self.seq_pt().len() implies #[trigger] self.seq_pt()[i].wf() by {
+            assert(self[i].wf_basic());
+        }
         self.seq_pt
     }
 

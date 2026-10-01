@@ -80,14 +80,35 @@ IDs — they'll drift as the file changes.)
 
 ## TODO
 
-- [ ] Audit `as_untyped_mut` and `borrow_mut` specifically: check whether the returned/final
-  permission actually needs (and currently has) a `wf()` postcondition after the call.
-- [ ] More generally: go through every proof fn touched so far, and every one ported from here on,
-  and systematically check whether `requires self.wf()` (or `old(self).wf()`) and
-  `ensures final(self).wf()` should be present. Some functions (`take`, `put`, `borrow`) turned out
-  not to *need* `wf()` to prove their stated postconditions, but we haven't checked whether they
-  *should* additionally guarantee `final(self).wf()` as part of their contract, matching the
-  pattern used elsewhere in the file (e.g. `is_aligned`, `is_disjoint_pointsto`, both of which
-  require `self.wf()`).
+- [x] Audit `as_untyped_mut` and `borrow_mut`: `as_untyped_mut` now guarantees `final(self).wf()`
+  under `PointsToUntyped::ptrs_len_same` (replacing the bare pointer-equality condition);
+  `borrow_mut` requires `old(self).wf()` and ensures
+  `ptrs_len_same_valid_decode(old, final) ==> final(self).wf()`.
+- [x] `take` and `put` now require `old(self).wf()` and ensure `final(self).wf()`. `borrow` takes
+  `&self` so has no `final` state to guarantee.
+- [x] Audited every proof fn in `points_to_permissions.rs` for `wf()` requires/ensures. Added
+  `requires self.wf()` / `ensures perm.wf()` to `PointsToUnaligned::into_aligned`/`as_aligned` and
+  `PointsTo::into_unaligned`/`as_unaligned`, and `requires self.wf()` plus
+  `ensures forall|i| r[i].wf()` to `SeqPointsTo::into_seq`. `tracked_pt_untyped` and
+  `tracked_pt_unaligned` intentionally have no `wf` clauses (they live in `?Sized` impl blocks,
+  where `wf` isn't defined); each has a comment explaining this. Follow-up: `PointsTo::borrow` now
+  requires `self.wf()` for consistency, and `SeqPointsTo::tracked_pt_seq` now ensures every element
+  is `wf()` (like `into_seq`). The `PointsToProperties` trait contracts in `points_to.rs` were
+  checked and already require `wf_basic()`; note `is_disjoint` puts no `wf` requirement on `other`
+  (its bound is only `PointsToPhys`).
+- [ ] Keep applying the same wf requires/ensures audit to every proof fn ported from here on.
+- [ ] Audit whether the `Tracked<...>` wrappers around the permissions held by the various
+  `PointsTo*` structs (e.g. `PointsTo::pt_unaligned: Tracked<PointsToUnaligned<T>>`,
+  `PointsToUnaligned::pt_untyped: Tracked<PointsToUntyped>`) are actually needed, or whether they
+  can be removed since the structs holding them are themselves `tracked`.
+  - Status: on hold, no edits made. Likely feasible and a simplification: bare fields already work
+    in tracked structs (`val: TypedValue<T>`, `SeqPointsTo::seq_pt`), so removal would drop
+    `.get()`/`.borrow()`/`.borrow_mut()`, `Tracked(...)` in constructors, and the `@` in the closed
+    specs `pt_untyped()`/`pt_unaligned()`. The fields are private, so there's no external API change.
+  - Known risk: the commented-out body of the `PointsToUnaligned::as_aligned` axiom uses
+    `shr_ref_struct_wrap(self, &PointsTo { pt_unaligned: Tracked(self) }, "", "pt_unaligned")` (from
+    `main`, not on this branch). If that helper needs a `Tracked` field, removing it from
+    `PointsTo::pt_unaligned` would block proving `as_aligned`. Investigate `shr_ref_struct_wrap`
+    before removing that wrapper. The `PointsToUnaligned::pt_untyped` wrapper doesn't have this concern.
 - [ ] Continue porting the remaining impl blocks listed above — `impl<T> PointsTo<[T]>` is
   probably next, since it's the biggest and most load-bearing.
