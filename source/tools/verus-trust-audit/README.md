@@ -9,6 +9,13 @@ First ask Verus to produce a manifest:
 verus --no-cheating --emit-trust-manifest crate.trust.json src/lib.rs
 ```
 
+For a Cargo project, emit one manifest per verified package target into a
+package-specific subdirectory (the option implies `--no-cheating`):
+
+```sh
+cargo verus verify --emit-trust-manifests trust-manifests
+```
+
 Then render it:
 
 ```sh

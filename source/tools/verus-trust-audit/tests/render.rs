@@ -150,3 +150,65 @@ fn untrusted_only_edits_do_not_change_snapshot() {
     let second = "verus! {\n#[verus::trusted]\nproof fn trusted() { assume(true); }\n\n// changed\nproof fn omitted() {\n    assert(true);\n}\n}\n";
     assert_eq!(render(first), render(second));
 }
+
+#[test]
+fn overlapping_generated_nodes_are_rendered_once() {
+    let temp = tempdir().unwrap();
+    let source_path = temp.path().join("input.rs");
+    let manifest_path = temp.path().join("manifest.json");
+    let output_path = temp.path().join("out");
+    let source = "verus! {\n#[verus::trusted]\npub trait AtomicStateMachine {\n    spec fn init() -> bool;\n}\n}\n";
+    fs::write(&source_path, source).unwrap();
+    let trait_start = source.find("#[verus::trusted]").unwrap();
+    let trait_end = source.find("\n}\n}").unwrap() + 2;
+    let method_start = source.find("spec fn init").unwrap();
+    let method_end = source[method_start..].find(';').unwrap() + method_start + 1;
+    let file = source_path.canonicalize().unwrap().to_string_lossy().into_owned();
+    let range = |start, end| SourceRange { file: file.clone(), start, end };
+    let manifest = Manifest {
+        format_version: MANIFEST_VERSION,
+        crate_name: "test".to_string(),
+        root_trust: Trust::Untrusted,
+        crate_attributes: vec![],
+        files: vec![SourceFile { path: file.clone(), sha256: source_hash(source.as_bytes()) }],
+        nodes: vec![
+            Node {
+                id: 1,
+                parent: None,
+                name: "AtomicStateMachine".to_string(),
+                kind: NodeKind::Trait,
+                trust: Trust::Trusted,
+                range: range(trait_start, trait_end),
+                body: None,
+                from_expansion: false,
+                call_site: None,
+            },
+            Node {
+                id: 2,
+                parent: Some(1),
+                name: "AtomicStateMachine::init".to_string(),
+                kind: NodeKind::Function,
+                trust: Trust::Trusted,
+                range: range(method_start, method_end),
+                body: None,
+                from_expansion: false,
+                call_site: None,
+            },
+            Node {
+                id: 3,
+                parent: Some(1),
+                name: "AtomicStateMachine::VERUS_SPEC__init".to_string(),
+                kind: NodeKind::Function,
+                trust: Trust::Trusted,
+                range: range(method_start, method_start + "spec fn".len()),
+                body: None,
+                from_expansion: false,
+                call_site: None,
+            },
+        ],
+    };
+    fs::write(&manifest_path, serde_json::to_vec_pretty(&manifest).unwrap()).unwrap();
+    let written = render_manifest(&manifest_path, &output_path).unwrap();
+    let rendered = fs::read_to_string(&written[0]).unwrap();
+    assert_eq!(rendered, source);
+}

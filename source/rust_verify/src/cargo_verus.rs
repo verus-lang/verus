@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, HashSet};
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 
@@ -12,6 +12,8 @@ pub const VERUS_DRIVER_ARGS_FOR: &str = " __VERUS_DRIVER_ARGS_FOR_";
 pub const VERUS_DRIVER_ARGS_SEP: &str = "__VERUS_DRIVER_ARGS_SEP__";
 pub const VERUS_DRIVER_IS_BUILTIN: &str = " __VERUS_DRIVER_IS_BUILTIN_";
 pub const VERUS_DRIVER_IS_BUILTIN_MACROS: &str = " __VERUS_DRIVER_IS_BUILTIN_MACROS_";
+pub const VERUS_DRIVER_TRUST_MANIFEST_DIR: &str = "__VERUS_DRIVER_TRUST_MANIFEST_DIR_";
+pub const VERUS_DRIVER_TRUST_MANIFEST_TARGETS: &str = "__VERUS_DRIVER_TRUST_MANIFEST_TARGETS_";
 pub const VERUS_DRIVER_VERIFY: &str = "__VERUS_DRIVER_VERIFY_";
 pub const VERUS_DRIVER_VIA_CARGO: &str = "__VERUS_DRIVER_VIA_CARGO__";
 
@@ -24,6 +26,109 @@ fn is_build_script(dep_tracker: &mut DepTracker) -> bool {
         .get_env("CARGO_CRATE_NAME")
         .map(|name| name.starts_with("build_script_"))
         .unwrap_or(false)
+}
+
+fn rustc_arg_has_value(args: &[String], option: &str, expected: &str) -> bool {
+    args.windows(2)
+        .any(|window| window[0] == option && window[1].split(',').any(|value| value == expected))
+        || args.iter().any(|arg| {
+            arg.strip_prefix(option)
+                .and_then(|suffix| suffix.strip_prefix('='))
+                .is_some_and(|values| values.split(',').any(|value| value == expected))
+        })
+}
+
+fn source_is_in_directory(args: &[String], manifest_dir: Option<&Path>, directory: &str) -> bool {
+    args.iter()
+        .map(Path::new)
+        .filter(|path| path.extension().is_some_and(|extension| extension == "rs"))
+        .any(|source| {
+            let relative = if source.is_absolute() {
+                let Some(manifest_dir) = manifest_dir else {
+                    return false;
+                };
+                let Ok(relative) = source.strip_prefix(manifest_dir) else {
+                    return false;
+                };
+                relative
+            } else {
+                source
+            };
+            relative.iter().next().is_some_and(|component| component == directory)
+        })
+}
+
+fn cargo_target_kind(rustc_args: &[String], manifest_dir: Option<&Path>) -> &'static str {
+    if rustc_args.iter().any(|arg| arg == "--test") {
+        "test"
+    } else if rustc_arg_has_value(rustc_args, "--crate-type", "proc-macro") {
+        "proc-macro"
+    } else if rustc_arg_has_value(rustc_args, "--crate-type", "bin") {
+        if source_is_in_directory(rustc_args, manifest_dir, "examples") { "example" } else { "bin" }
+    } else {
+        "lib"
+    }
+}
+
+/// The source file compiled by this rustc invocation
+fn rustc_source_file(rustc_args: &[String]) -> Option<PathBuf> {
+    rustc_args
+        .iter()
+        .map(Path::new)
+        .find(|path| path.extension().is_some_and(|extension| extension == "rs"))
+        .map(Path::to_path_buf)
+}
+
+/// Name the kind of target for a trust manifest, using the package's targets as described by
+/// cargo-verus (`<kind>\t<source path>` per line).  Unit-test builds (`--test` of a lib, bin,
+/// example, ...) are named `<kind>-test` when the package has several targets, so that, e.g., the
+/// unit tests of a lib and of a bin with the same crate name get distinct manifests.
+fn trust_manifest_target_kind(
+    rustc_args: &[String],
+    manifest_dir: Option<&Path>,
+    targets: Option<&str>,
+) -> String {
+    let targets: Vec<(&str, &str)> =
+        targets.unwrap_or_default().lines().filter_map(|line| line.split_once('\t')).collect();
+    let source = rustc_source_file(rustc_args).and_then(|source| source.canonicalize().ok());
+    let matched = source.and_then(|source| {
+        targets.iter().find_map(|(kind, path)| {
+            (Path::new(path).canonicalize().ok().as_ref() == Some(&source)).then_some(*kind)
+        })
+    });
+    let Some(kind) = matched else {
+        return cargo_target_kind(rustc_args, manifest_dir).to_owned();
+    };
+    if rustc_args.iter().any(|arg| arg == "--test") && kind != "test" {
+        if targets.len() > 1 { format!("{kind}-test") } else { "test".to_owned() }
+    } else {
+        kind.to_owned()
+    }
+}
+
+fn extend_args_for_trust_manifest(
+    rustc_args: &mut Vec<String>,
+    package_id: &str,
+    dep_tracker: &mut DepTracker,
+) {
+    let Some(directory) =
+        dep_tracker.get_env(&format!("{VERUS_DRIVER_TRUST_MANIFEST_DIR}{package_id}"))
+    else {
+        return;
+    };
+
+    let crate_name = dep_tracker.get_env("CARGO_CRATE_NAME").unwrap_or_else(|| "crate".to_owned());
+    let manifest_dir = dep_tracker.get_env("CARGO_MANIFEST_DIR").map(PathBuf::from);
+    let targets =
+        dep_tracker.get_env(&format!("{VERUS_DRIVER_TRUST_MANIFEST_TARGETS}{package_id}"));
+    let target_kind =
+        trust_manifest_target_kind(rustc_args, manifest_dir.as_deref(), targets.as_deref());
+    let manifest_path = PathBuf::from(directory).join(format!("{crate_name}-{target_kind}.json"));
+
+    if !rustc_args.iter().any(|arg| arg == "--no-cheating") {
+        rustc_args.push("--no-cheating".to_owned());
+    }
+    rustc_args.push(format!("--emit-trust-manifest={}", manifest_path.to_string_lossy()));
 }
 
 // returns true if this is a direct call to rustc, false if it's a package to verify
@@ -49,6 +154,7 @@ pub fn extend_args_and_check_is_direct_rustc_call(
             {
                 rustc_args.extend(unpack_verus_driver_args_for_env(&val));
             }
+            extend_args_for_trust_manifest(rustc_args, package_id, dep_tracker);
         }
         verify_package
     } else {

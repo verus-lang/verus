@@ -1,6 +1,7 @@
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::cmp::Reverse;
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -235,6 +236,15 @@ impl<'a> Renderer<'a> {
                 .is_some_and(|children| children.iter().any(|child| self.relevant(*child)))
     }
 
+    fn can_copy_verbatim(&self, id: u64) -> bool {
+        let node = self.nodes[&id];
+        node.trust == Trust::Trusted
+            && self
+                .children
+                .get(&Some(id))
+                .is_none_or(|children| children.iter().all(|child| self.can_copy_verbatim(*child)))
+    }
+
     fn render_children(&self, parent: Option<u64>) -> Result<String> {
         let Some(children) = self.children.get(&parent) else {
             return Ok(String::new());
@@ -328,18 +338,28 @@ impl<'a> Renderer<'a> {
                 Ok(output)
             }
             Trust::Trusted => {
-                let children = self.children.get(&Some(id));
-                if children.is_none() {
+                if self.can_copy_verbatim(id) {
                     return Ok(self.source[start..node.range.end].to_owned());
                 }
+                let children = self
+                    .children
+                    .get(&Some(id))
+                    .context("trusted node requiring rewriting has no children")?;
                 let mut output = String::new();
                 let mut cursor = start;
-                for child in children.unwrap() {
+                for child in children {
                     let child_node = self.nodes[child];
                     if child_node.range.file != node.range.file {
                         continue;
                     }
                     let child_start = extend_leading_comments(self.source, child_node.range.start);
+                    if child_start < cursor {
+                        bail!(
+                            "source ranges for `{}` and child `{}` overlap after including leading comments",
+                            node.name,
+                            child_node.name
+                        );
+                    }
                     output.push_str(&self.source[cursor..child_start]);
                     if self.relevant(*child) {
                         output.push_str(&self.render_node(*child)?);
@@ -387,6 +407,52 @@ fn common_root(paths: &[PathBuf]) -> PathBuf {
     root
 }
 
+fn normalize_children(
+    nodes: &HashMap<u64, &Node>,
+    children: &mut HashMap<Option<u64>, Vec<u64>>,
+    source_len: usize,
+) -> Result<()> {
+    for ids in children.values_mut() {
+        ids.sort_by_key(|id| {
+            let range = &nodes[id].range;
+            (range.start, Reverse(range.end))
+        });
+        let mut normalized = Vec::with_capacity(ids.len());
+        for id in ids.drain(..) {
+            let node = nodes[&id];
+            if node.range.start > node.range.end || node.range.end > source_len {
+                bail!(
+                    "invalid source range {}..{} for `{}` in {}",
+                    node.range.start,
+                    node.range.end,
+                    node.name,
+                    node.range.file
+                );
+            }
+            if let Some(previous_id) = normalized.last() {
+                let previous = nodes[previous_id];
+                if node.range.start < previous.range.end {
+                    if node.range.end <= previous.range.end {
+                        continue;
+                    }
+                    bail!(
+                        "source ranges for `{}` ({}..{}) and `{}` ({}..{}) overlap without containment",
+                        previous.name,
+                        previous.range.start,
+                        previous.range.end,
+                        node.name,
+                        node.range.start,
+                        node.range.end
+                    );
+                }
+            }
+            normalized.push(id);
+        }
+        *ids = normalized;
+    }
+    Ok(())
+}
+
 pub fn render_manifest(manifest_path: &Path, output_dir: &Path) -> Result<Vec<PathBuf>> {
     let manifest_bytes = fs::read(manifest_path)
         .with_context(|| format!("failed to read {}", manifest_path.display()))?;
@@ -423,22 +489,27 @@ pub fn render_manifest(manifest_path: &Path, output_dir: &Path) -> Result<Vec<Pa
             let parent = node.parent.filter(|parent| file_ids.contains(parent));
             children.entry(parent).or_default().push(node.id);
         }
-        for ids in children.values_mut() {
-            ids.sort_by_key(|id| nodes[id].range.start);
-        }
+        normalize_children(&nodes, &mut children, source.len())?;
         let renderer = Renderer { source: &source, nodes: &nodes, children: &children };
-        let mut rendered = String::new();
-        for range in manifest.crate_attributes.iter().filter(|range| range.file == file.path) {
-            if !rendered.is_empty() {
-                rendered.push('\n');
+        let mut rendered = if children.get(&None).is_some_and(|roots| {
+            !roots.is_empty() && roots.iter().all(|id| renderer.can_copy_verbatim(*id))
+        }) {
+            source.clone()
+        } else {
+            let mut rendered = String::new();
+            for range in manifest.crate_attributes.iter().filter(|range| range.file == file.path) {
+                if !rendered.is_empty() {
+                    rendered.push('\n');
+                }
+                rendered.push_str(&source[range.start..range.end]);
             }
-            rendered.push_str(&source[range.start..range.end]);
-        }
-        let children = renderer.render_children(None)?;
-        if !rendered.is_empty() && !children.is_empty() {
-            rendered.push_str("\n\n");
-        }
-        rendered.push_str(&children);
+            let rendered_children = renderer.render_children(None)?;
+            if !rendered.is_empty() && !rendered_children.is_empty() {
+                rendered.push_str("\n\n");
+            }
+            rendered.push_str(&rendered_children);
+            rendered
+        };
         if rendered.is_empty() {
             continue;
         }
@@ -448,7 +519,10 @@ pub fn render_manifest(manifest_path: &Path, output_dir: &Path) -> Result<Vec<Pa
         if let Some(parent) = output_path.parent() {
             fs::create_dir_all(parent)?;
         }
-        fs::write(&output_path, format!("{rendered}\n"))?;
+        if !rendered.ends_with('\n') {
+            rendered.push('\n');
+        }
+        fs::write(&output_path, rendered)?;
         written.push(output_path);
     }
     Ok(written)

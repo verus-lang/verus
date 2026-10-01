@@ -8,6 +8,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use cargo_metadata::PackageId;
 use clap::ValueEnum;
 use colored::Colorize;
+use sha2::{Digest, Sha256};
 use walkdir::WalkDir;
 
 use crate::cli::{CargoOptions, FmtCommand, NewCommand, VerifyCommand, VerusArgFwdSelector};
@@ -26,6 +27,8 @@ pub const VERUS_DRIVER_ARGS_FOR: &str = " __VERUS_DRIVER_ARGS_FOR_";
 pub const VERUS_DRIVER_ARGS_SEP: &str = "__VERUS_DRIVER_ARGS_SEP__";
 pub const VERUS_DRIVER_IS_BUILTIN: &str = " __VERUS_DRIVER_IS_BUILTIN_";
 pub const VERUS_DRIVER_IS_BUILTIN_MACROS: &str = " __VERUS_DRIVER_IS_BUILTIN_MACROS_";
+pub const VERUS_DRIVER_TRUST_MANIFEST_DIR: &str = "__VERUS_DRIVER_TRUST_MANIFEST_DIR_";
+pub const VERUS_DRIVER_TRUST_MANIFEST_TARGETS: &str = "__VERUS_DRIVER_TRUST_MANIFEST_TARGETS_";
 pub const VERUS_DRIVER_VERIFY: &str = "__VERUS_DRIVER_VERIFY_";
 pub const VERUS_DRIVER_VIA_CARGO: &str = "__VERUS_DRIVER_VIA_CARGO__";
 
@@ -293,6 +296,9 @@ pub struct VerusConfig {
 
 pub fn plan_cargo_run(cfg: VerusConfig) -> Result<CargoRunPlan> {
     let fwd_verus_args_to = cfg.options.fwd_verus_args_to.expect("fwd_verus_args_to must be set");
+    let trust_manifest_dir = cfg.options.emit_trust_manifests.as_ref().map(|directory| {
+        if directory.is_absolute() { directory.clone() } else { cfg.current_dir.join(directory) }
+    });
 
     //////////////////////////////////////////////////
     // Phase 1: fetch metadata via `cargo metadata` //
@@ -429,6 +435,7 @@ pub fn plan_cargo_run(cfg: VerusConfig) -> Result<CargoRunPlan> {
         cfg.current_dir,
         &verus_version,
         build_only_vstd,
+        trust_manifest_dir.clone(),
         cfg.subcommand,
         cargo_args,
         common_verus_driver_args,
@@ -555,6 +562,7 @@ fn make_cargo_args(opts: &CargoOptions, for_cargo_metadata: bool, verbosity: u8)
 pub struct CargoRunPlan {
     pub current_dir: PathBuf,
     pub build_only_vstd: Option<VstdBuild>,
+    pub trust_manifest_dir: Option<PathBuf>,
     pub args: Vec<String>,
     pub env: Map<String, String>,
     pub verified_something: bool,
@@ -572,10 +580,52 @@ impl CargoRunPlan {
     }
 }
 
+// Cargo does not include wrapper-only arguments in its freshness calculation. Give each trust
+// manifest directory its own artifact namespace so a manifest run cannot reuse ordinary
+// verification artifacts or artifacts generated for another output directory.
+fn cargo_default_lib_metadata(verus_version: &str, trust_manifest_dir: Option<&Path>) -> String {
+    let Some(directory) = trust_manifest_dir else {
+        return format!("verus-{verus_version}");
+    };
+
+    let mut hasher = Sha256::new();
+    hasher.update(directory.as_os_str().as_encoded_bytes());
+    let directory_hash = hex::encode(hasher.finalize());
+    format!("verus-{verus_version}-trust-{}", &directory_hash[..12])
+}
+
+/// Describe a package's targets for the driver, one `<kind>\t<source path>` per line, so that it can
+/// tell which target a rustc invocation compiles (in particular, which target a `--test` build
+/// tests) when naming trust manifests.
+fn trust_manifest_targets(package: &cargo_metadata::Package) -> String {
+    package
+        .targets
+        .iter()
+        .filter(|target| !target.is_custom_build())
+        .map(|target| {
+            let kind = if target.is_proc_macro() {
+                "proc-macro".to_owned()
+            } else if target.is_lib()
+                || target.is_rlib()
+                || target.is_dylib()
+                || target.is_cdylib()
+                || target.is_staticlib()
+            {
+                "lib".to_owned()
+            } else {
+                target.kind.first().map_or_else(|| "lib".to_owned(), |kind| kind.to_string())
+            };
+            format!("{kind}\t{}", target.src_path)
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 fn make_cargo_plan(
     current_dir: PathBuf,
     verus_version: &str,
     build_only_vstd: Option<VstdBuild>,
+    trust_manifest_dir: Option<PathBuf>,
     subcommand: &'static str,
     mut cargo_args: Vec<String>,
     common_verus_driver_args: Vec<String>,
@@ -592,7 +642,10 @@ fn make_cargo_plan(
         .insert(RUSTC_WRAPPER.to_owned(), get_verus_driver_path().to_string_lossy().into_owned());
     env_overrides.insert(VERUS_DRIVER_VIA_CARGO.to_owned(), "1".to_owned());
     // See https://github.com/rust-lang/cargo/blob/94aa7fb1321545bbe922a87cb11f5f4559e3be63/src/cargo/core/compiler/fingerprint/mod.rs#L71
-    env_overrides.insert(CARGO_DEFAULT_LIB_METADATA.to_owned(), format!("verus-{verus_version}"));
+    env_overrides.insert(
+        CARGO_DEFAULT_LIB_METADATA.to_owned(),
+        cargo_default_lib_metadata(verus_version, trust_manifest_dir.as_deref()),
+    );
     env_overrides.insert(CARGO_UNSTABLE_CHECKSUM_FRESHNESS.to_owned(), "true".to_owned());
     env_overrides.insert(RUSTC_BOOTSTRAP.to_owned(), "1".to_owned());
 
@@ -636,6 +689,23 @@ fn make_cargo_plan(
                 verified_something = true;
             }
             env_overrides.insert(format!("{VERUS_DRIVER_VERIFY}{package_id}"), "1".to_owned());
+
+            // vstd and core are built with `--is-vstd`/`--is-core`, which `--no-cheating` rejects
+            if !no_verify
+                && !verus_metadata.is_vstd
+                && !verus_metadata.is_core
+                && let Some(trust_manifest_dir) = &trust_manifest_dir
+            {
+                let package_dir = trust_manifest_dir.join(&package_id);
+                env_overrides.insert(
+                    format!("{VERUS_DRIVER_TRUST_MANIFEST_DIR}{package_id}"),
+                    package_dir.to_string_lossy().into_owned(),
+                );
+                env_overrides.insert(
+                    format!("{VERUS_DRIVER_TRUST_MANIFEST_TARGETS}{package_id}"),
+                    trust_manifest_targets(package),
+                );
+            }
 
             let mut verus_driver_args_for_package = vec![];
 
@@ -690,10 +760,23 @@ fn make_cargo_plan(
     let mut args = vec![subcommand.to_owned()];
     args.append(&mut cargo_args);
 
-    Ok(CargoRunPlan { build_only_vstd, current_dir, args, env: env_overrides, verified_something })
+    Ok(CargoRunPlan {
+        current_dir,
+        build_only_vstd,
+        trust_manifest_dir,
+        args,
+        env: env_overrides,
+        verified_something,
+    })
 }
 
 pub fn run_cargo(plan: &CargoRunPlan) -> Result<ExitCode> {
+    if let Some(directory) = &plan.trust_manifest_dir {
+        std::fs::create_dir_all(directory).with_context(|| {
+            format!("failed to create trust manifest directory {}", directory.display())
+        })?;
+    }
+
     // TODO: use the "+ ... toolchain" argument?
     let mut command = plan.to_command();
 
