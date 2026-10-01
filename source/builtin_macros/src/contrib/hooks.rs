@@ -72,6 +72,7 @@
 //! [patch.crates-io]
 //! verus_builtin_macros = { git = "...", tag = "..." }
 //! ```
+
 use verus_syn::{ImplItem, Item};
 
 /// A hook that runs over the full list of top-level items.
