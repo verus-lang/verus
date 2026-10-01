@@ -561,7 +561,7 @@ macro_rules! atomic_common_methods {
                 forall |ts| final(pt@).hist().is_max_timestamp(ts) ==>  final(ato).loc() == final(pt@).loc() ==>  final(pt@).hist().value(ts) == *final(v),
         {
             // can't use $rust_ty::from_mut, so I'll inline it:
-            let p = unsafe { &mut *(v as *mut bool as *mut Self) };
+            let p = unsafe { &mut *(v as *mut $value_ty as *mut Self) };
             (p, Tracked::assume_new(), Tracked::assume_new(), Ghost::assume_new())
         }
 
@@ -576,7 +576,7 @@ macro_rules! atomic_common_methods {
                 old(pt).hist().is_max_timestamp(ts@),
                 *val == old(pt).hist().value(ts@),
                 vs@@ == old(pt).hist().thread_view(ts@),
-                forall |t| #[trigger] final(pt).hist().is_max_timestamp(t) ==>  final(pt).hist().value(t) == *final(val),
+                final(pt).hist().value(ts@) == *final(val),
         {
             (self.ato.get_mut(), Tracked::assume_new(), Ghost::assume_new())
         }
