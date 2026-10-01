@@ -9,8 +9,8 @@ use crate::ast::{
 };
 use crate::ast::{BuiltinSpecFun, CrateId, Exprs};
 use crate::ast_util::{
-    QUANT_FORALL, bitwidth_to_signed_type_string, bool_typ, int_typ, types_equal, undecorate_typ,
-    unit_typ,
+    QUANT_FORALL, bitwidth_to_signed_type_string, bool_typ, int_typ, is_unit, types_equal,
+    undecorate_typ, unit_typ,
 };
 use crate::context::Ctx;
 use crate::def::{self, Spanned};
@@ -593,6 +593,16 @@ pub(crate) fn get_function_sst(
     }
 }
 
+pub(crate) fn ens_has_return(ctx: &Ctx, function: &Function) -> bool {
+    match &function.x.kind {
+        crate::ast::FunctionKind::TraitMethodImpl { method, .. } => {
+            let method = &ctx.func_map[method];
+            !is_unit(&undecorate_typ(&method.x.outer_ret.x.typ))
+        }
+        _ => !is_unit(&undecorate_typ(&function.x.outer_ret.x.typ)),
+    }
+}
+
 fn function_can_be_exp(
     ctx: &Ctx,
     state: &State,
@@ -988,7 +998,7 @@ fn expr_get_call(
                     return Err(internal_error(&expr.span, "autospec not discharged"));
                 }
                 let function = get_function(ctx, &expr.span, x)?;
-                let has_ret = function.x.ens_has_return;
+                let has_ret = ens_has_return(ctx, &function);
                 if disallow_poly_ret.is_some()
                     && has_ret
                     && crate::poly::ret_needs_native(
