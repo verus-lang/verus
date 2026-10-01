@@ -54,11 +54,13 @@ impl<A> Seq<A> {
     }
 
     pub broadcast proof fn lemma_as_ref_index(self, i: int)
-        requires 0 <= i < self.len(),
+        requires
+            0 <= i < self.len(),
         ensures
             #![trigger self.as_ref(), self[i]]
             *self.as_ref()[i] == self[i],
-    {}
+    {
+    }
 
     /// Is true if the calling sequence is a prefix of the given sequence 'other'.
     ///
