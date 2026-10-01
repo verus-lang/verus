@@ -1116,9 +1116,9 @@ impl Visitor {
                                     }
                                 };
                                 if is_async_fn {
-                                    quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::constrain_type(#ret_val_ident, #verus_builtin::get_future_output_type(#receiver_token #fn_ident #generics_token(#args))))
+                                    quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::constrain_type(#ret_val_ident, #verus_builtin::get_future_output_type(#receiver_token#fn_ident#generics_token(#args))))
                                 } else {
-                                    quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::constrain_type(#ret_val_ident, #receiver_token #fn_ident #generics_token(#args)))
+                                    quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::constrain_type(#ret_val_ident, #receiver_token#fn_ident#generics_token(#args)))
                                 }
                             };
                             let contrain_typ_expr = Expr::Verbatim(constrain_type);
@@ -1353,7 +1353,7 @@ impl Visitor {
                 stmts.push(stmt_with_semi!(
                     o.path.span() =>
                     #[verus::internal(open_visibility_qualifier)]
-                    pub(#in_token #p) use crate as _
+                    pub(#in_token#p) use crate as _
                 ));
                 vec![mk_verus_attr(o.open_token.span, quote! { open })]
             }
@@ -2787,7 +2787,7 @@ impl Visitor {
                 let span = view.span();
                 let attrs = view.attrs;
                 let base = view.expr;
-                *expr = quote_verbatim!(span, attrs => (#base #view_call));
+                *expr = quote_verbatim!(span, attrs => (#base#view_call));
             }
             Expr::View(view) => {
                 assert!(self.assign_to);
@@ -2823,7 +2823,7 @@ impl Visitor {
                 let rhs = has.rhs;
                 let has_call = quote_spanned!(has_token.span => .spec_has(#rhs));
                 let lhs = has.lhs;
-                *expr = Expr::Verbatim(quote_spanned!(span => (#lhs #has_call)));
+                *expr = Expr::Verbatim(quote_spanned!(span => (#lhs#has_call)));
             }
             Expr::HasNot(hasnot) => {
                 let has_not_token = hasnot.has_not_token;
@@ -2831,7 +2831,7 @@ impl Visitor {
                 let rhs = hasnot.rhs;
                 let has_call = quote_spanned!(has_not_token.span => .spec_has(#rhs));
                 let lhs = hasnot.lhs;
-                *expr = Expr::Verbatim(quote_spanned!(span => !(#lhs #has_call)));
+                *expr = Expr::Verbatim(quote_spanned!(span => !(#lhs#has_call)));
             }
             Expr::Matches(matches) => {
                 let span = matches.span();
@@ -2867,7 +2867,7 @@ impl Visitor {
                 let base = gf.base;
                 let member_ident = quote::format_ident!("arrow_{}", gf.member);
                 let get_call = quote_spanned!(gf.arrow_token.span() => .#member_ident());
-                *expr = Expr::Verbatim(quote_spanned!(span => (#base #get_call)));
+                *expr = Expr::Verbatim(quote_spanned!(span => (#base#get_call)));
             }
             Expr::Final(expr_final) => {
                 let span = expr_final.span();
