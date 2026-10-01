@@ -260,13 +260,14 @@ pub assume_specification<T>[ <RangeInclusive<usize> as SliceIndex<[T]>>::index_m
 ;
 
 // starts_with
+// Rust compares `needle == &slice[..needle.len()]`
 pub open spec fn spec_slice_starts_with<T: PartialEq>(slice: &[T], needle: &[T]) -> bool {
     &&& needle@.len() <= slice@.len()
     &&& forall|i: int| #![auto]
         0 <= i < needle@.len() ==>
             <T as super::cmp::PartialEqSpec<T>>::eq_spec(
-                &slice@[i],
                 &needle@[i],
+                &slice@[i],
             )
 }
 
@@ -284,13 +285,14 @@ pub assume_specification<T: PartialEq>[ <[T]>::starts_with ](
 ;
 
 // ends_with
+// Rust compares `needle == &slice[slice.len() - needle.len()..]`.
 pub open spec fn spec_slice_ends_with<T: PartialEq>(slice: &[T], needle: &[T]) -> bool {
     &&& needle@.len() <= slice@.len()
     &&& forall|i: int| #![auto]
         0 <= i < needle@.len() ==>
             <T as super::cmp::PartialEqSpec<T>>::eq_spec(
-                &slice@[slice@.len() - needle@.len() + i],
                 &needle@[i],
+                &slice@[slice@.len() - needle@.len() + i],
             )
 }
 
