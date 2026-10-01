@@ -163,11 +163,11 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         verus! {
-            pub fn bar<T>(o: Option<T>)-> Option<T> {
-                o.inspect(|_x: &T| {})
+            pub fn bar<T>(o: &mut Option<T>)-> Option<T> {
+                o.take_if(|_x: &mut T| true)
             }
         }
-    } => Err(err) => assert_help_error_msg(err, "pub assume_specification<T, F> [std::option::Option::<T>::inspect] (_0: std::option::Option<T>, _1: F) -> std::option::Option<T>")
+    } => Err(err) => assert_help_error_msg(err, "pub assume_specification<T, P> [std::option::Option::<T>::take_if] (_0: &mut std::option::Option<T>, _1: P) -> std::option::Option<T>")
 }
 test_verify_one_file! {
     #[test] test_assume_specification_foreign_suggestion_correct code! {
@@ -179,12 +179,12 @@ test_verify_one_file! {
                 type ExternalTraitSpecificationFor: core::marker::Destruct;
             }
 
-            pub assume_specification<T, F> [std::option::Option::<T>::inspect] (_0: std::option::Option<T>, _1: F) -> std::option::Option<T>
+            pub assume_specification<T, P> [std::option::Option::<T>::take_if] (_0: &mut std::option::Option<T>, _1: P) -> std::option::Option<T>
             where
-            F: std::ops::FnOnce(&T,) -> () + core::marker::Destruct,;
+            P: std::ops::FnOnce(&mut T,) -> bool + core::marker::Destruct,;
 
-            pub fn bar<T>(o: Option<T>)-> Option<T> {
-                o.inspect(|_x: &T| {})
+            pub fn bar<T>(o: &mut Option<T>)-> Option<T> {
+                o.take_if(|_x: &mut T| true)
             }
         }
     } => Ok(())

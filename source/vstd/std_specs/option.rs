@@ -126,6 +126,18 @@ pub assume_specification<T>[ Option::<T>::is_some ](option: &Option<T>) -> (b: b
     no_unwind
 ;
 
+// is_some_and
+pub assume_specification<T, F: FnOnce(T) -> bool>[ Option::<T>::is_some_and ](
+    option: Option<T>,
+    f: F,
+) -> (res: bool)
+    requires
+        option is Some ==> f.requires((option->0,)),
+    ensures
+        option is None ==> !res,
+        option is Some ==> f.ensures((option->0,), res),
+;
+
 // is_none
 #[verifier::inline]
 pub open spec fn is_none<T>(option: &Option<T>) -> bool {
@@ -137,6 +149,18 @@ pub assume_specification<T>[ Option::<T>::is_none ](option: &Option<T>) -> (b: b
     ensures
         b == is_none(option),
     no_unwind
+;
+
+// is_none_or
+pub assume_specification<T, F: FnOnce(T) -> bool>[ Option::<T>::is_none_or ](
+    option: Option<T>,
+    f: F,
+) -> (res: bool)
+    requires
+        option is Some ==> f.requires((option->0,)),
+    ensures
+        option is None ==> res,
+        option is Some ==> f.ensures((option->0,), res),
 ;
 
 // as_ref
@@ -162,6 +186,14 @@ pub assume_specification<T>[ Option::<T>::unwrap ](option: Option<T>) -> (t: T)
         option is Some,
     ensures
         t == spec_unwrap(option),
+;
+
+// unwrap_unchecked
+pub assume_specification<T>[ Option::<T>::unwrap_unchecked ](option: Option<T>) -> T
+    requires
+        option is Some,
+    returns
+        option->0,
 ;
 
 // unwrap_or
@@ -215,12 +247,67 @@ pub assume_specification<T, U, F: FnOnce(T) -> U>[ Option::<T>::map ](a: Option<
         ret.is_some() ==> f.ensures((a.unwrap(),), ret.unwrap()),
 ;
 
+// inspect
+pub assume_specification<T, F: FnOnce(&T)>[ Option::<T>::inspect ](option: Option<T>, f: F) -> (res:
+    Option<T>)
+    requires
+        option is Some ==> f.requires((&option->0,)),
+    ensures
+        res == option,
+        option is Some ==> f.ensures((&option->0,), ()),
+;
+
+// map_or
+pub assume_specification<T, U, F: FnOnce(T) -> U>[ Option::<T>::map_or ](
+    option: Option<T>,
+    default: U,
+    f: F,
+) -> (res: U)
+    requires
+        option is Some ==> f.requires((option->0,)),
+    ensures
+        option is None ==> res == default,
+        option is Some ==> f.ensures((option->0,), res),
+;
+
+// map_or_else
+pub assume_specification<T, U, D: FnOnce() -> U, F: FnOnce(T) -> U>[ Option::<T>::map_or_else ](
+    option: Option<T>,
+    default: D,
+    f: F,
+) -> (res: U)
+    requires
+        option is None ==> default.requires(()),
+        option is Some ==> f.requires((option->0,)),
+    ensures
+        option is None ==> default.ensures((), res),
+        option is Some ==> f.ensures((option->0,), res),
+;
+
 // cloned
 pub assume_specification<'a, T: Clone>[ Option::<&'a T>::cloned ](opt: Option<&'a T>) -> (res:
     Option<T>)
     ensures
         opt.is_none() ==> res.is_none(),
         opt.is_some() ==> res.is_some() && cloned::<T>(*opt.unwrap(), res.unwrap()),
+;
+
+// copied
+pub assume_specification<'a, T: Copy>[ Option::<&'a T>::copied ](option: Option<&'a T>) -> Option<T>
+    returns
+        match option {
+            Some(value) => Some(*value),
+            None => None,
+        },
+;
+
+// and
+pub assume_specification<T, U>[ Option::<T>::and ](option: Option<T>, optb: Option<U>) -> Option<U>
+    returns
+        match option {
+            Some(_) => optb,
+            None => None,
+        },
 ;
 
 // and_then
@@ -233,6 +320,52 @@ pub assume_specification<T, U, F: FnOnce(T) -> Option<U>>[ Option::<T>::and_then
     ensures
         option.is_none() ==> res.is_none(),
         option.is_some() ==> f.ensures((option.unwrap(),), res),
+;
+
+// filter
+pub assume_specification<T, P: FnOnce(&T) -> bool>[ Option::<T>::filter ](
+    option: Option<T>,
+    predicate: P,
+) -> (res: Option<T>)
+    requires
+        option is Some ==> predicate.requires((&option->0,)),
+    ensures
+        option is None ==> res is None,
+        option is Some ==> {
+            ||| res == option && predicate.ensures((&option->0,), true)
+            ||| res is None && predicate.ensures((&option->0,), false)
+        },
+;
+
+// or
+pub assume_specification<T>[ Option::<T>::or ](option: Option<T>, optb: Option<T>) -> Option<T>
+    returns
+        match option {
+            Some(_) => option,
+            None => optb,
+        },
+;
+
+// xor
+pub assume_specification<T>[ Option::<T>::xor ](option: Option<T>, optb: Option<T>) -> Option<T>
+    returns
+        match (option, optb) {
+            (Some(value), None) => Some(value),
+            (None, Some(value)) => Some(value),
+            _ => None,
+        },
+;
+
+// or_else
+pub assume_specification<T, F: FnOnce() -> Option<T>>[ Option::<T>::or_else ](
+    option: Option<T>,
+    f: F,
+) -> (res: Option<T>)
+    requires
+        option is None ==> f.requires(()),
+    ensures
+        option is Some ==> res == option,
+        option is None ==> f.ensures((), res),
 ;
 
 // ok_or_else
@@ -407,6 +540,57 @@ pub assume_specification<T>[ Option::get_or_insert ](option: &mut Option<T>, val
             None => value,
         }),
         *final(option) == Some(*final(res)),
+;
+
+pub assume_specification<T>[ Option::<T>::replace ](option: &mut Option<T>, value: T) -> (res:
+    Option<T>)
+    ensures
+        res == *old(option),
+        *final(option) == Some(value),
+;
+
+// zip
+pub assume_specification<T, U>[ Option::<T>::zip ](option: Option<T>, other: Option<U>) -> Option<
+    (T, U),
+>
+    returns
+        match (option, other) {
+            (Some(a), Some(b)) => Some((a, b)),
+            _ => None,
+        },
+;
+
+// unzip
+pub assume_specification<T, U>[ Option::<(T, U)>::unzip ](option: Option<(T, U)>) -> (
+    Option<T>,
+    Option<U>,
+)
+    returns
+        match option {
+            Some((a, b)) => (Some(a), Some(b)),
+            None => (None, None),
+        },
+;
+
+// flatten
+pub assume_specification<T>[ Option::<Option<T>>::flatten ](option: Option<Option<T>>) -> Option<T>
+    returns
+        match option {
+            Some(inner) => inner,
+            None => None,
+        },
+;
+
+// transpose
+pub assume_specification<T, E>[ Option::<Result<T, E>>::transpose ](
+    option: Option<Result<T, E>>,
+) -> Result<Option<T>, E>
+    returns
+        match option {
+            Some(Ok(value)) => Ok(Some(value)),
+            Some(Err(error)) => Err(error),
+            None => Ok(None),
+        },
 ;
 
 } // verus!
