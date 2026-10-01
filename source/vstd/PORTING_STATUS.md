@@ -3,7 +3,7 @@
 ## Goal
 
 `raw_ptr_dup.rs` is a reference snapshot of the old, axiom-heavy `PointsTo` /
-`PointsToUnaligned` / `SeqPointsTo` / `Dealloc` API (originally from `raw_ptr.rs`). It is **not**
+`PointsToUnaligned` / `SeqPointsTo` API (originally from `raw_ptr.rs`). It is **not**
 part of the build — it's not listed as a module in `vstd.rs` — so it's just there to make porting
 easier without scrolling through the much larger `raw_ptr.rs`.
 
@@ -51,32 +51,69 @@ errors; currently 1976 verified / 0 errors.
 
 ## Not yet ported (remaining `raw_ptr_dup.rs` contents)
 
-(Line numbers are as of the current `raw_ptr_dup.rs`; treat as approximate pointers, not stable
-IDs — they'll drift as the file changes.)
+The old slice/`str` permissions (`PointsTo<[T]>`, `PointsTo<[u8]>`, `PointsToUnaligned<[T]>`,
+`PointsTo<str>`) will be ported as impls on `SeqPointsTo` rather than as separate types, so this
+section lists only what has no equivalent in `SeqPointsTo<T, PointsTo<T>>` yet. (The alignment type
+invariant on `impl<T: ?Sized> PointsTo<T>` is just there for reference and won't be ported.)
 
-- `impl<T: ?Sized> PointsTo<T>` (lines 1-10) — just the alignment type invariant. Worth checking
-  this is equivalent to the new file's own `?Sized` impl block / `inv`, but low priority.
-- `impl<T> PointsTo<[T]>` (lines 185-768) — the slice-typed permission API: `mem_contents_seq`,
-  `is_init`/`is_uninit`, `subrange`, `cast_points_to`/`cast_points_to_unaligned`, `is_disjoint`,
-  `into_unaligned`/`as_unaligned`, `abstract_bytes_decode`, `into_seq_pt`/`into_seq_pt_shared`,
-  `tracked_borrow`/`tracked_borrow_mut`, `from_untyped`/`as_untyped`/`as_untyped_mut`,
-  `borrow_mem_contents_subrange`/`copy_mem_contents_subrange`/`take_mem_contents_subrange`/
-  `put_subrange`/`put_mem_contents_subrange`. Biggest remaining chunk, mostly axioms.
-- `impl PointsTo<[u8]>` (lines 770-874) — `cast_to_typed`, `cast_to_typed_uninit`,
-  `cast_to_str_shared`/`cast_to_str_shared_inner`.
-- `impl<T> PointsToUnaligned<[T]>` (lines 877-1156) — the unaligned slice permission:
-  `is_nonnull`, `ptr_bounds`, `provenance_non_null`, `is_disjoint`,
-  `into_aligned`/`as_aligned`/`as_aligned_mut`, `cast_points_to`/`cast_points_to_unaligned`,
-  `subrange`, `into_seq_pt`/`into_seq_pt_shared`.
-- `impl PointsTo<str>` (lines 1158-1258) — `is_nonnull`, `is_aligned`, `abstract_bytes_decode`,
-  `cast_to_u8_shared`/`cast_to_u8_shared_inner`, `as_untyped`.
-- Free functions `seq_into_slice`/`seq_into_slice_shared`/`seq_into_slice_mut` (lines 1259-1316).
-- `impl<T> SeqPointsTo<T>` (lines 1317-1572-ish) — note: this is the *old* `SeqPointsTo<T>` (one
-  type param), distinct from the new file's `SeqPointsTo<T, PointsToPerm>` (two type params) /
-  `SeqPointsTo<T, PointsTo<T>>` impl that's already been ported. Includes `subrange_mut` etc. —
-  need to work out the mapping to the new two-param type before porting.
-- `impl SeqPointsTo<u8>` (lines 1573-1757-ish).
-- `impl Dealloc` (lines 1758-1837) — `empty`, `provenance_non_null`, `in_bounds`, `is_disjoint`.
+### Already covered by `SeqPointsTo<T, PointsTo<T>>` (no porting needed)
+
+- `mem_contents_seq`/`len`/`spec_index`, `is_init`/`is_uninit`/`is_fully_uninit`, `value` →
+  `typed_value`/`len`/`spec_index`, `is_valid`/`is_empty`/`is_fully_empty`, `value`.
+- `is_nonnull`/`ptr_bounds`/`provenance_non_null` → the `PointsToProperties` trait methods;
+  `is_aligned` → `wf()` includes alignment; `is_disjoint` → `is_disjoint_seqpt` / trait
+  `is_disjoint`.
+- `abstract_bytes_decode` → `bytes_decode`/`bytes_equiv`/`bytes_len`.
+- `into_seq_pt*` and the `seq_into_slice*` free functions disappear once slices are `SeqPointsTo`.
+  Seq access is via `into_seq`/`tracked_seq_pt`/`tracked_seq_pt_mut`/`borrow_mut(i)`.
+- `as_untyped` → `as_untyped` (axiom); `from_untyped` (all uninitialized) →
+  `PointsToUntyped::cast_to_seq_pt` with an empty `typed_value`;
+  `PointsTo<[u8]>::cast_to_typed_uninit` → `PointsTo::from_untyped`.
+
+### Not yet covered
+
+- Shared-borrow `subrange(&self, start, len) -> &Self` (`split`/`subrange_mut` need ownership or
+  `&mut`; would be an axiom like `as_untyped`).
+- Subrange specs `is_init_subrange` and `value_subrange`.
+- Subrange content operations `borrow_mem_contents_subrange`, `copy_mem_contents_subrange`,
+  `take_mem_contents_subrange`, `put_subrange`, `put_mem_contents_subrange` (partly expressible via
+  `subrange_mut` plus per-element `PointsTo::take`/`put`, but no range versions exist).
+- `tracked_borrow` (`&[T]`) and `tracked_borrow_mut` (`&mut [T]`): real slice references, so the
+  same trust boundary as `PointsTo::borrow_mut`; would be axioms.
+- `as_untyped_mut` for sequences (`PointsTo::as_untyped_mut` exists for a single element).
+- Integer casts `cast_points_to`/`cast_points_to_unaligned` (`[T]` permission to a `V`
+  permission); needs design since the new `PointsTo<V>` holds a `Box<V>` and can't just be borrowed.
+- Single-value `PointsTo<[u8]>::cast_to_typed` (one `T` from `[u8]` bytes plus a `typed_value`);
+  easy from `PointsTo::from_untyped` + `put`, but not packaged as one function.
+- `cast_to_str_shared`/`cast_to_str_shared_inner` (`[u8]` to `str`).
+
+### Needs a design decision before porting
+
+- **Unaligned slices** (`impl<T> PointsToUnaligned<[T]>`): the unaligned-specific functions
+  (`into_aligned`/`as_aligned`/`as_aligned_mut`, `subrange`, the `cast_points_to` pair) assume a
+  `SeqPointsTo<T, PointsToUnaligned<T>>`, which has no impl yet (the current impl is only for
+  `PointsTo<T>`). The trait methods (`is_nonnull`, `ptr_bounds`, `is_disjoint`) already work for it
+  generically.
+- **`str`** (`impl PointsTo<str>`): all of `mem_contents`, the `is_init` family, `value`,
+  `is_nonnull`, `is_aligned`, `abstract_bytes_decode`, `cast_to_u8_shared`/`_inner`, `as_untyped`
+  are not ported. `SeqPointsTo<T: ?Sized, ...>` is generic over `T`, so a
+  `SeqPointsTo<str, PointsTo<u8>>` might fit, but no impl exists and `wf` and the byte-level specs
+  would need their own definitions.
+
+## Done: old `SeqPointsTo<T>` and `SeqPointsTo<u8>` impls
+
+The old `impl<T> SeqPointsTo<T>` (`raw_ptr_dup.rs` lines 1144-1398) is the old one-type-param
+`SeqPointsTo<T>`, distinct from the new `SeqPointsTo<T, PointsToPerm>`; it is now ported to
+`SeqPointsTo<T, PointsTo<T>>`:
+- `from_seq`, `split`, `join`, and `cast_to_untyped` (returns a `PointsToUntyped`) are proved.
+- `subrange_mut` and `as_untyped` are axioms. `subrange_mut` hands out a `&mut` sub-permission
+  whose final state flows back into `self`. `as_untyped` is an axiom returning `&PointsToUntyped`
+  because the new type stores no `PointsToUntyped` to borrow.
+- Added `PointsToUntyped::split`/`join`, which `cast_to_untyped` needed.
+
+The old `impl SeqPointsTo<u8>` is ported as `PointsToUntyped::cast_to_seq_pt`, which returns a
+`SeqPointsTo<T, PointsTo<T>>` (proved by induction using `split`/`join`, `PointsTo::from_untyped`
+and `PointsTo::put`).
 
 ## TODO
 
@@ -92,7 +129,7 @@ IDs — they'll drift as the file changes.)
   `ensures forall|i| r[i].wf()` to `SeqPointsTo::into_seq`. `tracked_pt_untyped` and
   `tracked_pt_unaligned` intentionally have no `wf` clauses (they live in `?Sized` impl blocks,
   where `wf` isn't defined); each has a comment explaining this. Follow-up: `PointsTo::borrow` now
-  requires `self.wf()` for consistency, and `SeqPointsTo::tracked_pt_seq` now ensures every element
+  requires `self.wf()` for consistency, and `SeqPointsTo::tracked_seq_pt` now ensures every element
   is `wf()` (like `into_seq`). The `PointsToProperties` trait contracts in `points_to.rs` were
   checked and already require `wf_basic()`; note `is_disjoint` puts no `wf` requirement on `other`
   (its bound is only `PointsToPhys`).
@@ -112,3 +149,12 @@ IDs — they'll drift as the file changes.)
     before removing that wrapper. The `PointsToUnaligned::pt_untyped` wrapper doesn't have this concern.
 - [ ] Continue porting the remaining impl blocks listed above — `impl<T> PointsTo<[T]>` is
   probably next, since it's the biggest and most load-bearing.
+- [ ] (Lower priority) Fill out `SeqPointsTo<T, PointsTo<T>>` for completeness with respect to
+  `PointsTo<T>` (see `POINTS_TO_COMPARISON.md`):
+  - Add `as_untyped_mut`, `into_untyped` and `from_untyped`.
+  - Add per-index versions of `borrow`, `take`, `put` and `borrow_mut`, which work on the `T` at
+    index `i` rather than on the whole sequence.
+  - Rename `borrow_index_mut` to something that makes clear it borrows the `PointsTo<T>` at
+    index `i` rather than a `T` value, so it isn't confused with the per-index `borrow_mut` above.
+  - The unaligned conversions (`as_unaligned`, `into_unaligned`, ...) can wait until there is a
+    `SeqPointsTo<T, PointsToUnaligned<T>>`.

@@ -250,6 +250,280 @@ impl PointsToUntyped {
         assert(other.size() == other.len() * other.seq_pt()[0].size());
         self.is_disjoint(other);
     }
+
+    /// Splits the `PointsToUntyped` into two permissions at the index boundary `mid`.
+    /// The first covers bytes `[0, mid)` and the second covers bytes `[mid, len)`.
+    pub proof fn split(tracked self, mid: nat) -> (tracked (first, second): (Self, Self))
+        requires
+            0 <= mid <= self.len(),
+            self.wf(),
+        ensures
+            first.seq_pt() == self.seq_pt().take(mid as int),
+            second.seq_pt() == self.seq_pt().skip(mid as int),
+            first.bytes() == self.bytes().take(mid as int),
+            second.bytes() == self.bytes().skip(mid as int),
+            first.ptr() == ptr_mut_from_data::<[u8]>(
+                PtrData {
+                    addr: self.ptr()@.addr,
+                    provenance: self.ptr()@.provenance,
+                    metadata: mid as usize,
+                },
+            ),
+            second.ptr() == ptr_mut_from_data::<[u8]>(
+                PtrData {
+                    addr: (self.ptr()@.addr + mid) as usize,
+                    provenance: self.ptr()@.provenance,
+                    metadata: (self.len() - mid) as usize,
+                },
+            ),
+            first.wf(),
+            second.wf(),
+    {
+        if self.len() != 0 {
+            self.provenance_not_none();
+            self.ptr_bounds();
+        }
+
+        let tracked mut seq_pt = self.seq_pt;
+        let tracked other = seq_pt.tracked_skip(mid as int);
+
+        let tracked first = SeqPointsTo {
+            seq_pt: seq_pt,
+            ptr: Ghost(
+                ptr_mut_from_data::<[u8]>(
+                    PtrData {
+                        addr: self.ptr()@.addr,
+                        provenance: self.ptr()@.provenance,
+                        metadata: mid as usize,
+                    },
+                ),
+            ),
+        };
+        let tracked second = SeqPointsTo {
+            seq_pt: other,
+            ptr: Ghost(
+                ptr_mut_from_data::<[u8]>(
+                    PtrData {
+                        addr: (self.ptr()@.addr + mid) as usize,
+                        provenance: self.ptr()@.provenance,
+                        metadata: (self.len() - mid) as usize,
+                    },
+                ),
+            ),
+        };
+        (first, second)
+    }
+
+    /// Concatenates `PointsToUntyped` permissions `self` and `other`,
+    /// provided their pointers have the same provenance
+    /// and `other`'s pointer starts at the end of `self`'s range.
+    pub proof fn join(tracked self, tracked other: Self) -> (tracked joined: Self)
+        requires
+            self.wf(),
+            other.wf(),
+            self.ptr()@.provenance == other.ptr()@.provenance,
+            other.ptr()@.addr == self.ptr()@.addr + self.len(),
+        ensures
+            joined.seq_pt() == self.seq_pt() + other.seq_pt(),
+            joined.bytes() == self.bytes() + other.bytes(),
+            joined.ptr() == ptr_mut_from_data::<[u8]>(
+                PtrData {
+                    addr: self.ptr()@.addr,
+                    provenance: self.ptr()@.provenance,
+                    metadata: (self.len() + other.len()) as usize,
+                },
+            ),
+            joined.wf(),
+    {
+        if self.len() != 0 {
+            self.provenance_not_none();
+            self.ptr_bounds();
+        }
+        if other.len() != 0 {
+            other.provenance_not_none();
+            other.ptr_bounds();
+        }
+        let tracked mut seq_pt = self.seq_pt;
+        seq_pt.tracked_add(other.seq_pt);
+
+        let tracked joined = SeqPointsTo {
+            seq_pt: seq_pt,
+            ptr: Ghost(
+                ptr_mut_from_data::<[u8]>(
+                    PtrData {
+                        addr: self.ptr()@.addr,
+                        provenance: self.ptr()@.provenance,
+                        metadata: (self.len() + other.len()) as usize,
+                    },
+                ),
+            ),
+        };
+        joined
+    }
+
+    /// We can cast a `PointsToUntyped` to a `SeqPointsTo<T, PointsTo<T>>` of length `capacity`
+    /// under the following conditions:
+    ///
+    /// (1) The pointer's address is aligned to `T`.
+    ///
+    /// (2) The length is exactly `capacity * size_of::<T>()`.
+    ///
+    /// (3) For each non-None element in `typed_value`, the corresponding abstract bytes for the
+    ///     `PointsToUntyped` can be decoded into the given value. Note that `typed_value` is allowed
+    ///     to contain None items (these are ignored for purposes of decoding)
+    ///     and can be a prefix of the total `capacity` (in which case, the remaining memory is
+    ///     all logically uninitialized).
+    ///
+    /// The resulting `SeqPointsTo<T, PointsTo<T>>` will have a prefix of memory corresponding to
+    /// `typed_value`. The rest of the memory will be logically uninitialized.
+    /// The abstract bytes will also remain the same.
+    pub proof fn cast_to_seq_pt<T>(
+        tracked self,
+        capacity: usize,
+        tracked typed_value: Seq<Option<T>>,
+    ) -> (tracked out: SeqPointsTo<T, PointsTo<T>>)
+        requires
+            self.wf(),
+            self.ptr()@.addr as nat % align_of::<T>() == 0,
+            self.len() == capacity * size_of::<T>(),
+            typed_value.len() <= capacity,
+            forall|i: int|
+                0 <= i < typed_value.len() && typed_value[i].is_some() ==> #[trigger] abs_decode::<
+                    T,
+                >(
+                    self.bytes().subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()),
+                    &typed_value[i].unwrap(),
+                ),
+        ensures
+            out.ptr() == self.ptr() as *mut T,
+            out.len() == capacity,
+            out.bytes() == self.bytes(),
+            forall|i: int|
+                0 <= i < typed_value.len() ==> {
+                    &&& (#[trigger] out[i]).is_valid() <==> typed_value[i].is_some()
+                    &&& typed_value[i].is_some() ==> typed_value[i].unwrap() == out[i].value()
+                },
+            out.wf(),
+        decreases capacity,
+    {
+        let ghost ghost_self = self;
+
+        if capacity == 0 {
+            assert(capacity * size_of::<T>() == 0) by (nonlinear_arith)
+                requires
+                    capacity == 0,
+            ;
+            let tracked out = SeqPointsTo::<T, PointsTo<T>>::empty(self.ptr() as *mut T);
+            assert(out.bytes() =~= self.bytes());
+            out
+        } else {
+            if size_of::<T>() != 0 {
+                assert(capacity * size_of::<T>() != 0) by (nonlinear_arith)
+                    requires
+                        capacity != 0,
+                        size_of::<T>() != 0,
+                ;
+                self.provenance_not_none();
+                self.ptr_bounds();
+            }
+            assert(0 <= (capacity - 1) as nat * size_of::<T>() <= capacity * size_of::<T>())
+                by (nonlinear_arith)
+                requires
+                    capacity > 0,
+            ;
+            assert(((self.ptr()@.addr + (capacity - 1) as nat * size_of::<T>()) as nat
+                % align_of::<T>() == 0)) by {
+                broadcast use
+                    crate::vstd::arithmetic::div_mod::lemma_mul_mod_noop_right,
+                    crate::vstd::arithmetic::div_mod::lemma_add_mod_noop,
+                    layout_of_sized,
+                ;
+
+            }
+            // Split into "head" and "tail", where tail is the last element's bytes
+            let tracked (head, tail) = self.split(((capacity - 1) as nat * size_of::<T>()) as nat);
+            assert(tail.len() + (capacity - 1) as nat * size_of::<T>() == capacity
+                * size_of::<T>());
+            assert(tail.len() == size_of::<T>()) by (nonlinear_arith)
+                requires
+                    tail.len() + (capacity - 1) as nat * size_of::<T>() == capacity * size_of::<T>(),
+                    capacity > 0,
+            ;
+            if size_of::<T>() == 0 {
+                assert((capacity - 1) as nat * size_of::<T>() == 0) by (nonlinear_arith)
+                    requires
+                        size_of::<T>() == 0,
+                ;
+            }
+            assert(tail.ptr()@.addr == ghost_self.ptr()@.addr + (capacity - 1) as nat * size_of::<
+                T,
+            >());
+
+            // Cast the tail into either a valid or empty permission, depending on `typed_value`
+            let ghost ghost_tail = tail;
+            let tracked mut tail_pt = PointsTo::<T>::from_untyped(tail);
+            let tracked mut head_typed_value = typed_value;
+            if typed_value.len() == capacity {
+                let tracked last = head_typed_value.tracked_pop();
+                match last {
+                    Some(v) => {
+                        let i = (capacity - 1) as int;
+                        assert(typed_value[i].is_some());
+                        assert(tail_pt.bytes() =~= ghost_self.bytes().subrange(
+                            i * size_of::<T>(),
+                            (i + 1) * size_of::<T>(),
+                        ));
+                        tail_pt.put(v);
+                    },
+                    None => {},
+                }
+            }
+            let ghost tail_ptr = tail_pt.ptr();
+            let ghost tail_bytes = tail_pt.bytes();
+            assert(tail_bytes == ghost_tail.bytes());
+            let tracked mut tail_seq = Seq::tracked_empty();
+            tail_seq.tracked_push(tail_pt);
+            assert forall|i: int| 0 <= i < tail_seq.len() implies #[trigger] tail_seq[i].ptr()@.addr
+                == tail_ptr@.addr + i * size_of::<T>() by {
+                assert(i == 0);
+                assert(0 * size_of::<T>() == 0) by (nonlinear_arith);
+            }
+            let tracked tail_typed = SeqPointsTo::<T, PointsTo<T>>::from_seq(tail_seq, tail_ptr);
+
+            // Invoke the inductive hypothesis on the head
+            assert forall|i: int|
+                0 <= i < head_typed_value.len() && head_typed_value[i].is_some() implies #[trigger] abs_decode::<
+                T,
+            >(
+                head.bytes().subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()),
+                &head_typed_value[i].unwrap(),
+            ) by {
+                assert(0 <= i * size_of::<T>() <= (i + 1) * size_of::<T>() <= (capacity
+                    - 1) as nat * size_of::<T>()) by (nonlinear_arith)
+                    requires
+                        0 <= i < capacity - 1,
+                ;
+                ghost_self.bytes().lemma_slice_of_slice(
+                    0,
+                    ((capacity - 1) as nat * size_of::<T>()) as int,
+                    i * size_of::<T>(),
+                    (i + 1) * size_of::<T>(),
+                );
+            }
+            let tracked head_typed = head.cast_to_seq_pt((capacity - 1) as usize, head_typed_value);
+
+            // Join head and tail
+            assert(tail_typed.bytes() =~= tail_bytes) by {
+                reveal_with_fuel(Seq::fold_left, 2);
+            }
+            let tracked out = head_typed.join(tail_typed);
+            assert(ghost_self.bytes().take(
+                ((capacity - 1) as nat * size_of::<T>()) as int,
+            ) + ghost_self.bytes().skip(((capacity - 1) as nat * size_of::<T>()) as int)
+                =~= ghost_self.bytes());
+            out
+        }
+    }
 }
 
 /// Represents (typed) contents of memory.
@@ -760,6 +1034,7 @@ impl<T> PointsTo<T> {
     {
     }
 
+    /// A `PointsTo<T>` is always aligned.
     pub proof fn is_aligned(tracked &self)
         requires
             self.wf(),
@@ -848,7 +1123,7 @@ impl<T> PointsTo<T> {
     /// same underlying bytes. The resulting permission carries no information about validity.
     ///
     /// The abstract bytes remain the same. This preserves the typed contents in memory on a
-    /// roundtrip cast (see `PointsToUntyped::cast_to_typed`, once ported).
+    /// roundtrip cast (see `PointsToUntyped::cast_to_seq_pt`).
     /// Note that this means provenance is not lost, which matches Rust's semantics for
     /// casting/transmuting in-memory values.
     ///
@@ -1100,9 +1375,18 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
     {
     }
 
+    /// A `SeqPointsTo<T, PointsTo<T>>` is always aligned to `T`.
+    pub proof fn is_aligned(tracked &self)
+        requires
+            self.wf(),
+        ensures
+            self.ptr()@.addr as nat % align_of::<T>() == 0,
+    {
+    }
+
     /// Returns a `tracked` reference to the underlying `Seq<PointsTo<T>>`,
     /// given `tracked &self`.
-    pub proof fn tracked_pt_seq(tracked &self) -> (tracked ret: &Seq<PointsTo<T>>)
+    pub proof fn tracked_seq_pt(tracked &self) -> (tracked ret: &Seq<PointsTo<T>>)
         requires
             self.wf(),
         ensures
@@ -1138,7 +1422,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
     ///
     /// Provided that this mutable reference is not used to change the pointer at index `i`,
     /// the invariant will be preserved.
-    pub proof fn borrow_mut(tracked &mut self, i: int) -> (tracked ret: &mut PointsTo<T>)
+    pub proof fn borrow_index_mut(tracked &mut self, i: int) -> (tracked ret: &mut PointsTo<T>)
         requires
             self.wf(),
             0 <= i < self.len(),
@@ -1168,6 +1452,34 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
     {
         broadcast use group_vstd_default;
 
+    }
+
+    /// Constructs a `SeqPointsTo` from a sequence of well-formed `PointsTo<T>` permissions and a pointer,
+    /// provided that the pointer is aligned, non-null, and in bounds of its provenance,
+    /// and the pointer of each permission is at the expected offset from the given pointer.
+    pub proof fn from_seq(tracked r: Seq<PointsTo<T>>, ptr: *mut T) -> (tracked s: Self)
+        requires
+            forall|i: int| 0 <= i < r.len() ==> #[trigger] r[i].wf(),
+            forall|i: int|
+                #![trigger r[i].ptr()@.provenance]
+                #![trigger r[i].ptr()@.addr]
+                0 <= i < r.len() ==> {
+                    &&& r[i].ptr()@.provenance == ptr@.provenance
+                    &&& r[i].ptr()@.addr == ptr@.addr + i * size_of::<T>()
+                },
+            ptr@.addr != 0,
+            ptr@.addr as nat % align_of::<T>() == 0,
+            ptr_addr_in_bounds(ptr),
+        ensures
+            s.seq_pt() == r,
+            s.ptr() == ptr,
+            s.wf(),
+    {
+        let tracked s = SeqPointsTo { seq_pt: r, ptr: Ghost(ptr) };
+        assert forall|i: int| 0 <= i < s.len() implies #[trigger] s[i].wf_basic() by {
+            assert(r[i].wf());
+        }
+        s
     }
 
     /// Given an aligned and non-null pointer,
@@ -1416,6 +1728,259 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
 
         self.bytes_decode_helper(self.len() as int);
     }
+
+    /// Casts a `SeqPointsTo<T, PointsTo<T>>` to a `PointsToUntyped` covering the same bytes.
+    /// The resulting `PointsToUntyped` has the same address and provenance and a length of
+    /// `self.len() * size_of::<T>()`, and preserves the abstract bytes.
+    /// It carries no information about validity, so it cannot be read from as a `T`.
+    /// The returned `tracked typed_value` holds the typed contents from this memory,
+    /// which can later be used to cast the `dst` permission back to a typed permission.
+    pub proof fn cast_to_untyped(tracked self) -> (tracked (dst, typed_value): (
+        PointsToUntyped,
+        Seq<Option<T>>,
+    ))
+        requires
+            self.wf(),
+        ensures
+            dst.ptr() == ptr_mut_from_data::<[u8]>(
+                PtrData {
+                    addr: self.ptr()@.addr,
+                    provenance: self.ptr()@.provenance,
+                    metadata: (self.len() * size_of::<T>()) as usize,
+                },
+            ),
+            dst.bytes() == self.bytes(),
+            forall|i: int|
+                0 <= i < self.len() ==> {
+                    &&& typed_value[i].is_some() <==> (#[trigger] self[i]).is_valid()
+                    &&& typed_value[i].is_some() ==> typed_value[i].unwrap() == self[i].value()
+                },
+            typed_value.len() == self.len(),
+            dst.wf(),
+        decreases self.len(),
+    {
+        let ghost ghost_self = self;
+        if self.len() == 0 {
+            assert(self.len() * size_of::<T>() == 0) by (nonlinear_arith)
+                requires
+                    self.len() == 0,
+            ;
+            let tracked dst = SeqPointsTo {
+                seq_pt: Seq::tracked_empty(),
+                ptr: Ghost(
+                    ptr_mut_from_data::<[u8]>(
+                        PtrData {
+                            addr: self.ptr()@.addr,
+                            provenance: self.ptr()@.provenance,
+                            metadata: 0,
+                        },
+                    ),
+                ),
+            };
+            (dst, Seq::tracked_empty())
+        } else {
+            let tracked mut seq_pt = self.seq_pt;
+            let tracked last = seq_pt.tracked_pop();
+            let tracked head = SeqPointsTo { seq_pt: seq_pt, ptr: self.ptr };
+            let ghost ghost_head = head;
+            let ghost ghost_last = last;
+            let tracked (head_u8, mut head_typed_value) = head.cast_to_untyped();
+            let tracked (last_u8, last_typed_value) = last.cast_to_untyped();
+            head_typed_value.tracked_push(last_typed_value);
+            let tracked dst = head_u8.join(last_u8);
+
+            ghost_self.bytes_len();
+
+            assert forall|i: int| 0 <= i < ghost_self.len() implies {
+                &&& head_typed_value[i].is_some() <==> (#[trigger] ghost_self[i]).is_valid()
+                &&& head_typed_value[i].is_some() ==> head_typed_value[i].unwrap()
+                    == ghost_self[i].value()
+            } by {
+                if i < ghost_self.len() - 1 {
+                    assert(ghost_head[i] == ghost_self[i]);
+                } else {
+                    assert(ghost_last == ghost_self[i]);
+                }
+            }
+            (dst, head_typed_value)
+        }
+    }
+
+    /// Creates a reference to a `PointsToUntyped` from a reference to a `SeqPointsTo<T, PointsTo<T>>`,
+    /// with the same address and provenance, a length of `self.len() * size_of::<T>()`,
+    /// and the same abstract bytes.
+    ///
+    /// This is an axiom because the `SeqPointsTo` does not store a `PointsToUntyped` that can be borrowed.
+    pub axiom fn as_untyped(tracked &self) -> (tracked raw: &PointsToUntyped)
+        requires
+            self.wf(),
+        ensures
+            raw.ptr() == ptr_mut_from_data::<[u8]>(
+                PtrData {
+                    addr: self.ptr()@.addr,
+                    provenance: self.ptr()@.provenance,
+                    metadata: (self.len() * size_of::<T>()) as usize,
+                },
+            ),
+            raw.bytes() == self.bytes(),
+            raw.wf(),
+    ;
+
+    /// Splits the `SeqPointsTo` into two permissions at the index boundary `mid`.
+    pub proof fn split(tracked self, mid: nat) -> (tracked (first, second): (Self, Self))
+        requires
+            0 <= mid <= self.len(),
+            self.wf(),
+        ensures
+            first.seq_pt() == self.seq_pt().take(mid as int),
+            second.seq_pt() == self.seq_pt().skip(mid as int),
+            first.bytes() == self.bytes().take(mid as int * size_of::<T>()),
+            second.bytes() == self.bytes().skip(mid as int * size_of::<T>()),
+            first.ptr() == self.ptr(),
+            second.ptr() == ptr_mut_from_data(
+                PtrData::<T> {
+                    addr: (self.ptr()@.addr + mid * size_of::<T>()) as usize,
+                    provenance: self.ptr()@.provenance,
+                    metadata: self.ptr()@.metadata,
+                },
+            ),
+            first.wf(),
+            second.wf(),
+    {
+        if self.len() != 0 && size_of::<T>() != 0 {
+            assert(size_of::<T>() * self.len() != 0) by (nonlinear_arith)
+                requires
+                    self.len() != 0,
+                    size_of::<T>() != 0,
+            ;
+            self.provenance_not_none();
+            self.ptr_bounds();
+        }
+        let ghost ghost_self = self;
+
+        let tracked mut seq_pt = self.seq_pt;
+        let tracked other = seq_pt.tracked_skip(mid as int);
+
+        let tracked first = SeqPointsTo { seq_pt: seq_pt, ptr: self.ptr };
+        let tracked second = SeqPointsTo {
+            seq_pt: other,
+            ptr: Ghost(
+                ptr_mut_from_data(
+                    PtrData::<T> {
+                        addr: (self.ptr()@.addr + mid * size_of::<T>()) as usize,
+                        provenance: self.ptr()@.provenance,
+                        metadata: self.ptr()@.metadata,
+                    },
+                ),
+            ),
+        };
+        Self::bytes_subrange(ghost_self.seq_pt(), mid as int);
+
+        if ghost_self.len() == 0 || size_of::<T>() == 0 {
+            assert(mid * size_of::<T>() == 0) by (nonlinear_arith)
+                requires
+                    mid == 0 || size_of::<T>() == 0,
+            ;
+        } else {
+            assert(mid * size_of::<T>() <= ghost_self.len() * size_of::<T>()) by (nonlinear_arith)
+                requires
+                    mid <= ghost_self.len(),
+            ;
+            assert((ghost_self.ptr()@.addr + mid * size_of::<T>()) as nat % align_of::<T>() == 0)
+                by {
+                broadcast use
+                    crate::vstd::arithmetic::div_mod::lemma_mul_mod_noop_right,
+                    crate::vstd::arithmetic::div_mod::lemma_add_mod_noop,
+                    layout_of_sized,
+                ;
+
+            }
+        }
+        assert forall|i: int| 0 <= i < second.len() implies #[trigger] second[i].ptr()@.addr
+            == second.ptr()@.addr + i * size_of::<T>() by {
+            assert(ghost_self.ptr()@.addr + (i + mid) * size_of::<T>() == ghost_self.ptr()@.addr
+                + mid * size_of::<T>() + i * size_of::<T>()) by (nonlinear_arith);
+        }
+        (first, second)
+    }
+
+    /// Concatenates `SeqPointsTo` permissions `self` and `other`,
+    /// provided their pointers have the same provenance
+    /// and `other`'s pointer starts at the end of `self`'s range.
+    pub proof fn join(tracked self, tracked other: Self) -> (tracked joined: Self)
+        requires
+            self.wf(),
+            other.wf(),
+            self.ptr()@.provenance == other.ptr()@.provenance,
+            other.ptr()@.addr == self.ptr()@.addr + self.len() * size_of::<T>(),
+        ensures
+            joined.ptr() == self.ptr(),
+            joined.seq_pt() == self.seq_pt() + other.seq_pt(),
+            joined.bytes() == self.bytes() + other.bytes(),
+            joined.wf(),
+    {
+        let ghost ghost_self = self;
+        let ghost ghost_other = other;
+
+        let tracked mut seq_pt = self.seq_pt;
+        seq_pt.tracked_add(other.seq_pt);
+        let tracked joined = SeqPointsTo { seq_pt: seq_pt, ptr: self.ptr };
+
+        assert forall|i: int| 0 <= i < joined.len() implies #[trigger] joined.seq_pt()[i].wf() by {
+            if i < ghost_self.len() {
+                assert(ghost_self[i].wf_basic());
+            } else {
+                assert(ghost_other[i - ghost_self.len()].wf_basic());
+            }
+        }
+        Self::bytes_subrange(joined.seq_pt(), ghost_self.len() as int);
+        assert(joined.seq_pt().subrange(0, ghost_self.len() as int) =~= ghost_self.seq_pt());
+        assert(joined.seq_pt().subrange(ghost_self.len() as int, joined.len() as int)
+            =~= ghost_other.seq_pt());
+
+        assert forall|i: int| 0 <= i < joined.len() implies #[trigger] joined[i].ptr()@.addr
+            == joined.ptr()@.addr + i * size_of::<T>() by {
+            if i >= ghost_self.len() {
+                assert(ghost_self.ptr()@.addr + ghost_self.len() * size_of::<T>() + (i
+                    - ghost_self.len()) * size_of::<T>() == ghost_self.ptr()@.addr + i
+                    * size_of::<T>()) by (nonlinear_arith);
+            }
+        }
+        joined
+    }
+
+    /// Returns a mutable reference to the sub-permission covering indices `[i, j)`.
+    /// The sub-permission has the same provenance, and its pointer is offset from `self.ptr()`
+    /// by `i * size_of::<T>()`.
+    ///
+    /// Provided that the mutable reference is not used to change the pointer or length of the
+    /// sub-permission, and that it is still well-formed, `self` is also still well-formed,
+    /// with the sub-sequence of permissions replaced by the final sub-permission's.
+    pub axiom fn subrange_mut(tracked &mut self, i: nat, j: nat) -> (tracked r: &mut Self)
+        requires
+            self.wf(),
+            0 <= i <= j <= self.len(),
+        ensures
+            r.wf(),
+            r.ptr() == ptr_mut_from_data::<T>(
+                PtrData {
+                    addr: ((old(self).ptr()@.addr + i * size_of::<T>()) as usize),
+                    provenance: old(self).ptr()@.provenance,
+                    metadata: (),
+                },
+            ),
+            r.seq_pt() == old(self).seq_pt().subrange(i as int, j as int),
+            // Criteria necessary for re-establishing invariants
+            final(r).wf() && final(r).ptr() == r.ptr() && final(r).len() == r.len() ==> {
+                &&& final(self).wf()
+                &&& final(self).ptr() == old(self).ptr()
+                &&& final(self).seq_pt() == old(self).seq_pt().subrange(0, i as int)
+                    + final(r).seq_pt() + old(self).seq_pt().subrange(
+                    j as int,
+                    old(self).len() as int,
+                )
+            },
+    ;
 
     /// Consumes this `SeqPointsTo`, returning the underlying `Seq<PointsTo<T>>`.
     pub proof fn into_seq(tracked self) -> (tracked r: Seq<PointsTo<T>>)
