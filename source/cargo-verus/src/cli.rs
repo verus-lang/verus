@@ -78,6 +78,10 @@ pub struct VerifyCommand {
     #[arg(long)]
     pub check_toolchain: bool,
 
+    /// Emit one trust manifest per verified package target into this directory.
+    #[arg(long, value_name = "DIR")]
+    pub emit_trust_manifests: Option<PathBuf>,
+
     /// Crates to receive forwarded Verus args
     #[arg(
         long,
@@ -209,6 +213,17 @@ impl CargoVerusCli {
         if parsed_cli.has_inadvisable_verus_arg() {
             eprintln!("Args forwarded to Cargo must precede args forwarded to Verus");
             return Err(anyhow!("Args forwarded to Cargo must precede args forwarded to Verus"));
+        }
+
+        if parsed_cli.get_verify_cmd().is_some_and(|cmd| {
+            cmd.emit_trust_manifests.is_some()
+                && cmd.verus_args.iter().any(|arg| {
+                    arg == "--emit-trust-manifest" || arg.starts_with("--emit-trust-manifest=")
+                })
+        }) {
+            return Err(anyhow!(
+                "--emit-trust-manifests cannot be combined with --emit-trust-manifest"
+            ));
         }
 
         if let partial_selectors = parsed_cli.filter_partial_verification_selectors()

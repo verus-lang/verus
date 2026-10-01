@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, HashSet};
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 
@@ -12,6 +12,7 @@ pub const VERUS_DRIVER_ARGS_FOR: &str = " __VERUS_DRIVER_ARGS_FOR_";
 pub const VERUS_DRIVER_ARGS_SEP: &str = "__VERUS_DRIVER_ARGS_SEP__";
 pub const VERUS_DRIVER_IS_BUILTIN: &str = " __VERUS_DRIVER_IS_BUILTIN_";
 pub const VERUS_DRIVER_IS_BUILTIN_MACROS: &str = " __VERUS_DRIVER_IS_BUILTIN_MACROS_";
+pub const VERUS_DRIVER_TRUST_MANIFEST_DIR: &str = "__VERUS_DRIVER_TRUST_MANIFEST_DIR_";
 pub const VERUS_DRIVER_VERIFY: &str = "__VERUS_DRIVER_VERIFY_";
 pub const VERUS_DRIVER_VIA_CARGO: &str = "__VERUS_DRIVER_VIA_CARGO__";
 
@@ -24,6 +25,70 @@ fn is_build_script(dep_tracker: &mut DepTracker) -> bool {
         .get_env("CARGO_CRATE_NAME")
         .map(|name| name.starts_with("build_script_"))
         .unwrap_or(false)
+}
+
+fn rustc_arg_has_value(args: &[String], option: &str, expected: &str) -> bool {
+    args.windows(2)
+        .any(|window| window[0] == option && window[1].split(',').any(|value| value == expected))
+        || args.iter().any(|arg| {
+            arg.strip_prefix(option)
+                .and_then(|suffix| suffix.strip_prefix('='))
+                .is_some_and(|values| values.split(',').any(|value| value == expected))
+        })
+}
+
+fn source_is_in_directory(args: &[String], manifest_dir: Option<&Path>, directory: &str) -> bool {
+    args.iter()
+        .map(Path::new)
+        .filter(|path| path.extension().is_some_and(|extension| extension == "rs"))
+        .any(|source| {
+            let relative = if source.is_absolute() {
+                let Some(manifest_dir) = manifest_dir else {
+                    return false;
+                };
+                let Ok(relative) = source.strip_prefix(manifest_dir) else {
+                    return false;
+                };
+                relative
+            } else {
+                source
+            };
+            relative.iter().next().is_some_and(|component| component == directory)
+        })
+}
+
+fn cargo_target_kind(rustc_args: &[String], manifest_dir: Option<&Path>) -> &'static str {
+    if rustc_args.iter().any(|arg| arg == "--test") {
+        "test"
+    } else if rustc_arg_has_value(rustc_args, "--crate-type", "proc-macro") {
+        "proc-macro"
+    } else if rustc_arg_has_value(rustc_args, "--crate-type", "bin") {
+        if source_is_in_directory(rustc_args, manifest_dir, "examples") { "example" } else { "bin" }
+    } else {
+        "lib"
+    }
+}
+
+fn extend_args_for_trust_manifest(
+    rustc_args: &mut Vec<String>,
+    package_id: &str,
+    dep_tracker: &mut DepTracker,
+) {
+    let Some(directory) =
+        dep_tracker.get_env(&format!("{VERUS_DRIVER_TRUST_MANIFEST_DIR}{package_id}"))
+    else {
+        return;
+    };
+
+    let crate_name = dep_tracker.get_env("CARGO_CRATE_NAME").unwrap_or_else(|| "crate".to_owned());
+    let manifest_dir = dep_tracker.get_env("CARGO_MANIFEST_DIR").map(PathBuf::from);
+    let target_kind = cargo_target_kind(rustc_args, manifest_dir.as_deref());
+    let manifest_path = PathBuf::from(directory).join(format!("{crate_name}-{target_kind}.json"));
+
+    if !rustc_args.iter().any(|arg| arg == "--no-cheating") {
+        rustc_args.push("--no-cheating".to_owned());
+    }
+    rustc_args.push(format!("--emit-trust-manifest={}", manifest_path.to_string_lossy()));
 }
 
 // returns true if this is a direct call to rustc, false if it's a package to verify
@@ -49,6 +114,7 @@ pub fn extend_args_and_check_is_direct_rustc_call(
             {
                 rustc_args.extend(unpack_verus_driver_args_for_env(&val));
             }
+            extend_args_for_trust_manifest(rustc_args, package_id, dep_tracker);
         }
         verify_package
     } else {
@@ -224,4 +290,47 @@ fn extend_rustc_args_for_builtin_and_builtin_macros(args: &mut Vec<String>) {
 fn set_rustc_bootstrap() {
     // TODO: Audit that the environment access only happens in single-threaded code.
     unsafe { env::set_var("RUSTC_BOOTSTRAP", "1") };
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::cargo_target_kind;
+
+    fn args(values: &[&str]) -> Vec<String> {
+        values.iter().map(|value| (*value).to_owned()).collect()
+    }
+
+    #[test]
+    fn trust_manifest_target_kinds_are_distinct() {
+        let manifest_dir = Path::new("/workspace/examples/project");
+
+        assert_eq!(
+            cargo_target_kind(
+                &args(&["--crate-type", "lib", "/workspace/examples/project/src/lib.rs"]),
+                Some(manifest_dir)
+            ),
+            "lib"
+        );
+        assert_eq!(
+            cargo_target_kind(
+                &args(&["--crate-type=bin", "/workspace/examples/project/src/main.rs"]),
+                Some(manifest_dir)
+            ),
+            "bin"
+        );
+        assert_eq!(
+            cargo_target_kind(
+                &args(&["--crate-type", "bin", "/workspace/examples/project/examples/demo.rs"]),
+                Some(manifest_dir)
+            ),
+            "example"
+        );
+        assert_eq!(cargo_target_kind(&args(&["--test", "tests/integration.rs"]), None), "test");
+        assert_eq!(
+            cargo_target_kind(&args(&["--crate-type", "proc-macro", "src/lib.rs"]), None),
+            "proc-macro"
+        );
+    }
 }
