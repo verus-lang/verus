@@ -184,7 +184,8 @@ pub type Bind = Arc<BindX>;
 pub enum BindX {
     Let(Binders<Expr>),
     Quant(Quant, Binders<Typ>, Triggers, Qid),
-    Lambda(Binders<Typ>, Triggers, Qid),
+    // define an anonymous function (over the domain where Expr is true, if Some(Expr))
+    Lambda(Binders<Typ>, Triggers, Qid, Option<Expr>),
     // choose Binders s.t. Expr is true
     Choose(Binders<Typ>, Triggers, Qid, Expr),
 }

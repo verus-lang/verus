@@ -272,7 +272,8 @@ fn simplify_lambda(
     binders: &Binders<Typ>,
     triggers: &Triggers,
     qid: &Qid,
-    e1: &Expr,
+    cond: &Option<Expr>,
+    body: &Expr,
 ) -> (Typ, Expr, Option<Term>) {
     let closure_state =
         ClosureState { typing_depth: ctxt.typing.decls.num_scopes(), holes: Vec::new() };
@@ -284,10 +285,28 @@ fn simplify_lambda(
         let _ = ctxt.typing.insert(&binder.name, Arc::new(var));
     }
     state.closure_states.push(closure_state);
-    let (typ1, e1, t1) = simplify_expr(ctxt, state, e1);
-    let (e1, t1) =
-        enclose_force_hole(state.closure_states.last_mut().unwrap(), typ1.clone(), e1, t1);
-    terms.push(t1);
+    let cond = match cond {
+        None => crate::ast_util::mk_true(),
+        Some(cond) => {
+            let (typ_cond, cond, t_cond) = simplify_expr(ctxt, state, cond);
+            let (cond, t_cond) = enclose_force_hole(
+                state.closure_states.last_mut().unwrap(),
+                typ_cond.clone(),
+                cond,
+                t_cond,
+            );
+            terms.push(t_cond);
+            cond
+        }
+    };
+    let (typ_body, body, t_body) = simplify_expr(ctxt, state, body);
+    let (body, t_body) = enclose_force_hole(
+        state.closure_states.last_mut().unwrap(),
+        typ_body.clone(),
+        body,
+        t_body,
+    );
+    terms.push(t_body);
     for trigger in triggers.iter() {
         let mut new_trigger: Vec<Expr> = Vec::new();
         let mut trigger_terms: Vec<Term> = Vec::new();
@@ -320,7 +339,7 @@ fn simplify_lambda(
             state.generated_decls.push(decl);
             insert_fun_typing(ctxt, &closure_fun, &holes, &typ);
 
-            // forall holes params. #[trigger] apply_param_typs(f(captures), params) == body
+            // forall holes params. cond ==> #[trigger] apply_param_typs(f(captures), params) == body
             let mut xholes: Vec<Expr> = Vec::new();
             let mut bs: Vec<Binder<Typ>> = Vec::new();
             for (x, typ, _) in closure_state.holes.iter() {
@@ -333,16 +352,17 @@ fn simplify_lambda(
                 bs.push(binder.clone());
                 eparams.push(Arc::new(ExprX::Var(binder.name.clone())));
             }
-            let apply_fun = mk_apply(ctxt, state, param_typs, typ1);
+            let apply_fun = mk_apply(ctxt, state, param_typs, typ_body);
             let apply = Arc::new(ExprX::Apply(apply_fun, Arc::new(eparams)));
-            let eq = Arc::new(ExprX::Binary(BinaryOp::Eq, apply.clone(), e1));
+            let eq = Arc::new(ExprX::Binary(BinaryOp::Eq, apply.clone(), body));
             let trig = Arc::new(vec![apply]);
             let trigs = Arc::new({
                 let mut trigs = vec![trig];
                 trigs.extend(new_triggers.into_iter());
                 trigs
             });
-            let forall = mk_forall(&bs, &trigs, qid.clone(), &eq);
+            let imp = crate::ast_util::mk_implies(&cond, &eq);
+            let forall = mk_forall(&bs, &trigs, qid.clone(), &imp);
             let decl = mk_unnamed_axiom(forall);
             state.generated_decls.push(decl);
 
@@ -717,8 +737,8 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
                     BindX::Quant(*quant, binders.clone(), Arc::new(new_triggers), qid.clone());
                 (typ, Arc::new(ExprX::Bind(Arc::new(bind), e1)), t)
             }
-            BindX::Lambda(binders, triggers, qid) => {
-                simplify_lambda(ctxt, state, binders, triggers, qid, e1)
+            BindX::Lambda(binders, triggers, qid, cond) => {
+                simplify_lambda(ctxt, state, binders, triggers, qid, cond, e1)
             }
             BindX::Choose(binders, triggers, qid, cond) => {
                 simplify_choose(ctxt, state, binders, triggers, qid, cond, e1)

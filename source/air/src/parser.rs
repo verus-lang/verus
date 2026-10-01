@@ -114,7 +114,7 @@ where
 enum QuantOrChooseOrLambda {
     Quant(Quant),
     Choose(Expr),
-    Lambda,
+    Lambda(Option<Expr>),
 }
 
 pub struct Parser {
@@ -235,8 +235,13 @@ impl Parser {
                         return self.node_to_quant_or_lambda_expr(quantchooselambda, binders, e);
                     }
                     [Node::Atom(s), Node::List(binders), e] if s == "lambda" => {
-                        let quantchooselambda = QuantOrChooseOrLambda::Lambda;
+                        let quantchooselambda = QuantOrChooseOrLambda::Lambda(None);
                         return self.node_to_quant_or_lambda_expr(quantchooselambda, binders, e);
+                    }
+                    [Node::Atom(s), Node::List(binders), e1, e2] if s == "lambda" => {
+                        let quantchooselambda =
+                            QuantOrChooseOrLambda::Lambda(Some(self.node_to_expr(e1)?));
+                        return self.node_to_quant_or_lambda_expr(quantchooselambda, binders, e2);
                     }
                     [Node::Atom(s), Node::List(binders), e1, e2] if s == "choose" => {
                         let quantchooselambda =
@@ -645,7 +650,9 @@ impl Parser {
             QuantOrChooseOrLambda::Choose(body) => {
                 (body, BindX::Choose(binders, triggers, qid, expr))
             }
-            QuantOrChooseOrLambda::Lambda => (expr, BindX::Lambda(binders, triggers, qid)),
+            QuantOrChooseOrLambda::Lambda(cond) => {
+                (expr, BindX::Lambda(binders, triggers, qid, cond))
+            }
         };
         Ok(Arc::new(ExprX::Bind(Arc::new(bind), body)))
     }

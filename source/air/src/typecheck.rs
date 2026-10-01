@@ -693,7 +693,7 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
                     Arc::new(binders)
                 }
                 BindX::Quant(_, binders, _, _) => binders.clone(),
-                BindX::Lambda(binders, _, _) => binders.clone(),
+                BindX::Lambda(binders, _, _, _) => binders.clone(),
                 BindX::Choose(binders, _, _, _) => binders.clone(),
             };
             // Collect all binder names, make sure they are unique
@@ -708,7 +708,7 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
                 BindX::Let(_) => {}
                 BindX::Quant(_, _, triggers, _)
                 | BindX::Choose(_, triggers, _, _)
-                | BindX::Lambda(_, triggers, _) => {
+                | BindX::Lambda(_, triggers, _, _) => {
                     for trigger in triggers.iter() {
                         for expr in trigger.iter() {
                             check_expr(typing, expr)?;
@@ -717,14 +717,19 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
                 }
             }
             // Type-check inner expressions
-            if let BindX::Choose(_, _, _, e2) = &**bind {
-                let t2 = check_expr(typing, e2)?;
-                if !typ_eq(&t2, &bt()) {
-                    return Err(format!(
-                        "in choose, condition has type {} instead of Bool",
-                        typ_name(&t2)
-                    ));
+            match &**bind {
+                BindX::Lambda(_, _, _, Some(e2)) | BindX::Choose(_, _, _, e2) => {
+                    let t2 = check_expr(typing, e2)?;
+                    if !typ_eq(&t2, &bt()) {
+                        let s = match &**bind {
+                            BindX::Lambda(_, _, _, _) => "lambda, condition",
+                            BindX::Choose(_, _, _, _) => "choose, body",
+                            _ => unreachable!(),
+                        };
+                        return Err(format!("in {} has type {} instead of Bool", s, typ_name(&t2)));
+                    }
                 }
+                _ => {}
             }
             // Type-check expr
             let t1 = check_expr(typing, e1)?;
@@ -734,7 +739,7 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
                     expect_typ(&t1, &bt(), "forall/exists body must have type bool")?;
                     t1
                 }
-                BindX::Lambda(_, _, _) => Arc::new(TypX::Fun),
+                BindX::Lambda(_, _, _, _) => Arc::new(TypX::Fun),
                 BindX::Choose(..) => t1,
             };
             // Done

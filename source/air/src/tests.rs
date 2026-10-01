@@ -1819,6 +1819,28 @@ fn no_lambda6() {
 }
 
 #[test]
+fn yes_lambda_cond() {
+    yes!(
+        (declare-const f Fun)
+        (axiom (= f (lambda ((x Int)) (<= 10 x) (+ x 1))))
+        (check-valid
+            (assert (= (apply Int f 20) 21))
+        )
+    )
+}
+
+#[test]
+fn no_lambda_cond() {
+    no!(
+        (declare-const f Fun)
+        (axiom (= f (lambda ((x Int)) (<= 30 x) (+ x 1))))
+        (check-valid
+            (assert (= (apply Int f 20) 21))
+        )
+    )
+}
+
+#[test]
 fn yes_lambda_trigger1() {
     yes!(
         (declare-fun f (Int) Bool)

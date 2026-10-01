@@ -401,9 +401,14 @@ impl Printer {
                         let body = with_triggers(expr, triggers, qid);
                         nodes!({str_to_node(s_quant)} {s_binders} {body})
                     }
-                    BindX::Lambda(binders, triggers, qid) => {
+                    BindX::Lambda(binders, triggers, qid, None) => {
                         let body = with_triggers(expr, triggers, qid);
                         nodes!(lambda {self.binders_to_node(binders, &|t| self.typ_to_node(t))} {body})
+                    }
+                    BindX::Lambda(binders, triggers, qid, Some(expr_cond)) => {
+                        let cond = self.expr_to_node(expr_cond);
+                        let body = with_triggers(expr, triggers, qid);
+                        nodes!(lambda {self.binders_to_node(binders, &|t| self.typ_to_node(t))} {cond} {body})
                     }
                     BindX::Choose(binders, triggers, qid, expr_cond) => {
                         let s_binders = self.binders_to_node(binders, &|t| self.typ_to_node(t));

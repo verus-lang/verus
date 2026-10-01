@@ -78,7 +78,7 @@ pub(crate) fn map_expr_visitor<F: FnMut(&Expr) -> Expr>(expr: &Expr, f: &mut F) 
                     }
                     BindX::Quant(*quant, binders.clone(), Arc::new(triggers), qid.clone())
                 }
-                BindX::Lambda(binders, ts, qid) => {
+                BindX::Lambda(binders, ts, qid, cond) => {
                     let mut triggers: Vec<Trigger> = Vec::new();
                     for t in ts.iter() {
                         let mut exprs: Vec<Expr> = Vec::new();
@@ -87,7 +87,8 @@ pub(crate) fn map_expr_visitor<F: FnMut(&Expr) -> Expr>(expr: &Expr, f: &mut F) 
                         }
                         triggers.push(Arc::new(exprs));
                     }
-                    BindX::Lambda(binders.clone(), Arc::new(triggers), qid.clone())
+                    let cond = cond.as_ref().map(|cond| map_expr_visitor(cond, f));
+                    BindX::Lambda(binders.clone(), Arc::new(triggers), qid.clone(), cond)
                 }
                 BindX::Choose(binders, ts, qid, e2) => {
                     let mut triggers: Vec<Trigger> = Vec::new();
