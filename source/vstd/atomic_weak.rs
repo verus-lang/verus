@@ -567,7 +567,7 @@ macro_rules! atomic_common_methods {
 
         #[inline(always)]
         #[verifier::external_body]
-        pub fn get_mut<'a>(&'a mut self, Tracked(pt) : Tracked<&'a mut AtomicPointsTo<$value_ty>>) -> ((val, vs, ts) : (&'a mut bool, Tracked<ViewSeen>, Ghost<nat>))
+        pub fn get_mut<'a>(&'a mut self, Tracked(pt) : Tracked<&'a mut AtomicPointsTo<$value_ty>>) -> ((val, vs, ts) : (&'a mut $value_ty, Tracked<ViewSeen>, Ghost<nat>))
             requires
                 old(self).loc() == old(pt).loc()
             ensures
@@ -777,27 +777,37 @@ macro_rules! atomic_bool_methods {
 #[cfg(target_has_atomic_primitive_alignment = "8")]
 make_bool_atomic!(PAtomicWeakBool, AtomicBool, bool);
 
-// make_unsigned_integer_atomic!(PAtomicWeakU8, AtomicU8, u8, u8_specs);
+#[cfg(target_has_atomic_primitive_alignment = "8")]
+make_unsigned_integer_atomic!(PAtomicWeakU8, AtomicU8, u8, u8_specs);
 
-// make_unsigned_integer_atomic!(PAtomicWeakU16, AtomicU16, u16, u16_specs);
+#[cfg(target_has_atomic_primitive_alignment = "16")]
+make_unsigned_integer_atomic!(PAtomicWeakU16, AtomicU16, u16, u16_specs);
 
-// make_unsigned_integer_atomic!(PAtomicWeakU32, AtomicU32, u32, u32_specs);
+#[cfg(target_has_atomic_primitive_alignment = "32")]
+make_unsigned_integer_atomic!(PAtomicWeakU32, AtomicU32, u32, u32_specs);
 
-// #[cfg(target_has_atomic = "64")]
-// make_unsigned_integer_atomic!(PAtomicWeakU64, AtomicU64, u64, u64_specs);
+#[cfg(target_has_atomic = "64")]
+#[cfg(target_has_atomic_primitive_alignment = "64")]
+make_unsigned_integer_atomic!(PAtomicWeakU64, AtomicU64, u64, u64_specs);
 
-// make_unsigned_integer_atomic!(PAtomicWeakUsize, AtomicUsize, usize, usize_specs);
+#[cfg(target_has_atomic_primitive_alignment = "ptr")]
+make_unsigned_integer_atomic!(PAtomicWeakUsize, AtomicUsize, usize, usize_specs);
 
-// make_signed_integer_atomic!(PAtomicWeakI8, AtomicI8, i8, i8_specs);
+#[cfg(target_has_atomic_primitive_alignment = "8")]
+make_signed_integer_atomic!(PAtomicWeakI8, AtomicI8, i8, i8_specs);
 
-// make_signed_integer_atomic!(PAtomicWeakI16, AtomicI16, i16, i16_specs);
+#[cfg(target_has_atomic_primitive_alignment = "16")]
+make_signed_integer_atomic!(PAtomicWeakI16, AtomicI16, i16, i16_specs);
 
-// make_signed_integer_atomic!(PAtomicWeakI32, AtomicI32, i32, i32_specs);
+#[cfg(target_has_atomic_primitive_alignment = "32")]
+make_signed_integer_atomic!(PAtomicWeakI32, AtomicI32, i32, i32_specs);
 
-// #[cfg(target_has_atomic = "64")]
-// make_signed_integer_atomic!(PAtomicWeakI64, AtomicI64, i64,i64_specs);
+#[cfg(target_has_atomic = "64")]
+#[cfg(target_has_atomic_primitive_alignment = "64")]
+make_signed_integer_atomic!(PAtomicWeakI64, AtomicI64, i64,i64_specs);
 
-// make_signed_integer_atomic!(PAtomicWeakIsize, AtomicIsize, isize, isize_specs);
+#[cfg(target_has_atomic_primitive_alignment = "ptr")]
+make_signed_integer_atomic!(PAtomicWeakIsize, AtomicIsize, isize, isize_specs);
 
 // TODO - AtomicPtr
 } // verus!
