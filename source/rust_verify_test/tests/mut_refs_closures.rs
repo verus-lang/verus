@@ -4,6 +4,51 @@ mod common;
 use common::*;
 
 test_verify_one_file_with_options! {
+    #[test] fn_mut_call_ensures_does_not_resolve_borrow [] => verus_code! {
+        use vstd::prelude::*;
+
+        proof fn test<F: FnMut(u64) -> u64>(f: &mut F, arg: u64, output: u64)
+            requires call_ensures(f, (arg,), output),
+        {
+            // The output contract applies to the callable at the time of the call.
+            assert(call_ensures(*f, (arg,), output));
+            // The reference can still be used to replace the callable afterwards.
+            assert(*final(f) == *f); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] fn_mut_call_ensures_preserves_call_reborrow [] => verus_code! {
+        use vstd::prelude::*;
+
+        fn call<G: FnMut() -> u64>(mut g: G) -> (res: (G, u64))
+            requires g.requires(()),
+            ensures res.0 == g, call_ensures(g, (), res.1),
+        {
+            let r = g();
+            (g, r)
+        }
+
+        fn mk(v: u64) -> (f: impl FnMut() -> u64)
+            ensures f.requires(()), forall|r: u64| f.ensures((), r) ==> r == v,
+        {
+            move || -> (r: u64) ensures r == v { v }
+        }
+
+        fn test() {
+            let mut c = mk(1);
+            let replacement = mk(2);
+            let (x, r) = call(&mut c);
+            assert(r == 1);
+            *x = replacement;
+            let after_replacement = c();
+            assert(after_replacement == 2);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
     #[test] closure_with_mut_ref_arg_basic [] => verus_code! {
         use vstd::prelude::*;
 
