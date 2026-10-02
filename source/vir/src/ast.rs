@@ -528,6 +528,8 @@ pub struct Label {
 /// (Below, "boxed" refers to boxing types in the SMT encoding, not the Rust Box type)
 #[derive(Clone, Debug, Serialize, Deserialize, Hash, ToDebugSNode)]
 pub enum UnaryOpr {
+    /// Label from the nearest auto_reveal_* attribute.
+    AutoRevealLiteral,
     /// coerce Typ --> Boxed(Typ)
     Box(Typ),
     /// coerce Boxed(Typ) --> Typ

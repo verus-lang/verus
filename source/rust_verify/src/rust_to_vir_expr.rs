@@ -541,9 +541,15 @@ pub(crate) fn patexpr_to_vir<'tcx>(
 ) -> Result<PatternX, VirErr> {
     let tcx = bctx.ctxt.tcx;
     match pat_expr.kind {
-        PatExprKind::Lit { lit, negated } => {
-            Ok(PatternX::Expr(lit_to_vir(bctx, span, lit, negated, pat_typ, None)?))
-        }
+        PatExprKind::Lit { lit, negated } => Ok(PatternX::Expr(lit_to_vir(
+            bctx,
+            pat_expr.hir_id,
+            span,
+            lit,
+            negated,
+            pat_typ,
+            None,
+        )?)),
         PatExprKind::Path(qpath) => {
             let res = bctx.types.qpath_res(&qpath, pat_expr.hir_id);
             match res {
@@ -2529,6 +2535,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         }
         ExprKind::Lit(lit) => Ok(ExprOrPlace::Expr(lit_to_vir(
             bctx,
+            expr.hir_id,
             expr.span,
             *lit,
             false,
@@ -2733,6 +2740,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         }
                         return Ok(ExprOrPlace::Expr(lit_to_vir(
                             bctx,
+                            arg.hir_id,
                             expr.span,
                             *lit,
                             true,
@@ -3568,6 +3576,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
 
 fn lit_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
+    hir_id: HirId,
     span: Span,
     lit: Lit,
     negated: bool,
@@ -3596,11 +3605,29 @@ fn lit_to_vir<'tcx>(
         LitKind::Byte(b) => mk_lit_int(false, u128::from(b), typ),
         LitKind::Str(s, _str_style) => {
             let c = vir::ast::Constant::StrSlice(Arc::new(s.to_string()));
-            mk_expr(ExprX::Const(c))
+            let literal = mk_expr(ExprX::Const(c))?;
+            if crate::attributes::get_auto_reveal_literal_walk_parents(
+                bctx.ctxt.tcx,
+                hir_id,
+                &lit.node,
+            )? {
+                mk_expr(ExprX::UnaryOpr(UnaryOpr::AutoRevealLiteral, literal))
+            } else {
+                Ok(literal)
+            }
         }
         LitKind::ByteStr(bs, _str_style) => {
             let c = Constant::ByteStr(Arc::new(bs.as_byte_str().to_vec()));
-            mk_expr(ExprX::Const(c))
+            let literal = mk_expr(ExprX::Const(c))?;
+            if crate::attributes::get_auto_reveal_literal_walk_parents(
+                bctx.ctxt.tcx,
+                hir_id,
+                &lit.node,
+            )? {
+                mk_expr(ExprX::UnaryOpr(UnaryOpr::AutoRevealLiteral, literal))
+            } else {
+                Ok(literal)
+            }
         }
         LitKind::Float(..) => {
             if let Some(ty) = ty {
