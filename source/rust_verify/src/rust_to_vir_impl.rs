@@ -11,14 +11,14 @@ use crate::util::{err_span, err_span_vec, vir_err_span_str};
 use crate::verus_items::{self, MarkerItem, RustItem, VerusItem};
 use indexmap::{IndexMap, IndexSet};
 use rustc_hir::{ConstItemRhs, ImplItemKind, Item, QPath, Safety, TraitImplHeader, TraitRef};
-use rustc_middle::ty::{AssocKind, GenericArgKind, PseudoCanonicalInput, TypingEnv};
+use rustc_middle::ty::{AssocKind, GenericArgKind, TypingEnv};
 use rustc_span::Span;
 use rustc_span::def_id::DefId;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use vir::ast::{
-    AssocTypeImpl, AssocTypeImplX, Dt, Fun, FunX, Function, FunctionKind, Ident, ImplPath, Krate,
-    KrateX, Path, Trait, TraitImpl, Typ, Typs, VirErr,
+    AssocTypeImpl, AssocTypeImplX, Dt, Fun, FunX, Function, FunctionKind, Ident, Krate, KrateX,
+    Path, Trait, TraitImpl, Typ, Typs, VirErr,
 };
 
 // Used to collect all needed external trait implementations
@@ -207,27 +207,15 @@ fn translate_assoc_type<'tcx>(
     let typing_env = TypingEnv::post_analysis(ctxt.tcx, impl_item_id);
     let inst_bounds = ctxt.tcx.normalize_erasing_regions(typing_env, inst_bounds);
 
-    let mut impl_paths = Vec::new();
-    for inst_pred in inst_bounds {
-        if let rustc_middle::ty::ClauseKind::Trait(_) = inst_pred.kind().skip_binder() {
-            let poly_trait_refs = inst_pred.kind().map_bound(|p| {
-                if let rustc_middle::ty::ClauseKind::Trait(tp) = &p {
-                    tp.trait_ref
-                } else {
-                    unreachable!()
-                }
-            });
-            let pseudo_canonical_inp =
-                PseudoCanonicalInput { typing_env, value: poly_trait_refs.skip_binder() };
-            let candidate = ctxt.tcx.codegen_select_candidate(pseudo_canonical_inp);
-            if let Ok(impl_source) = candidate {
-                if let rustc_middle::traits::ImplSource::UserDefined(u) = impl_source {
-                    let impl_path = ctxt.def_id_to_vir_path(u.impl_def_id);
-                    impl_paths.push(ImplPath::TraitImplPath(impl_path));
-                }
-            }
-        }
-    }
+    // Include the instantiated bounds of selected impls, not just the impls themselves.
+    let impl_paths = crate::rust_to_vir_base::get_impl_paths_for_clauses(
+        ctxt.tcx,
+        &ctxt.verus_items,
+        impl_item_id,
+        inst_bounds.into_iter().map(|clause| (None, clause)).collect(),
+        None,
+        impl_item_span,
+    )?;
 
     let assocx = AssocTypeImplX {
         name,
@@ -237,7 +225,7 @@ fn translate_assoc_type<'tcx>(
         trait_path,
         trait_typ_args,
         typ,
-        impl_paths: Arc::new(impl_paths),
+        impl_paths,
     };
     Ok(ctxt.spanned_new(impl_item_span, assocx))
 }
