@@ -2235,7 +2235,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                         }
                         verus_items::SpecBitwiseItem::BitXor => {
                             if matches!(*lhs.typ, TypX::Bool) {
-                                BinaryOp::Xor
+                                BinaryOp::BoolXor
                             } else {
                                 BinaryOp::Bitwise(BitwiseOp::BitXor, BitshiftBehavior::Allow)
                             }

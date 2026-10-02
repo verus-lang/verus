@@ -16,7 +16,7 @@ pub enum SpecialTrait {
 }
 
 /// What to do for a given automatically-derived trait impl
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum AutomaticDeriveAction {
     Special(SpecialTrait),
     VerifyAsIs,
@@ -67,7 +67,7 @@ pub fn modify_derived_item<'tcx>(
     inputs: &Vec<rustc_middle::ty::Ty>,
     span: Span,
     hir_id: HirId,
-    action: &AutomaticDeriveAction,
+    action: AutomaticDeriveAction,
     function: &mut FunctionX,
 ) -> Result<(), VirErr> {
     let AutomaticDeriveAction::Special(special) = action else {

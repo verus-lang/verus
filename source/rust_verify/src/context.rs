@@ -85,8 +85,6 @@ pub(crate) struct BodyCtxt<'tcx> {
     pub(crate) in_explicit_prophecy_node: bool,
     /// params for the enclosing function and all enclosing non-spec-closures
     pub(crate) params: Rc<Vec<Vec<vir::ast::VarIdent>>>,
-    /// unwrapped params encountered so far (inner_name -> outer_name) e.g. (x -> verus_tmp_x)
-    pub(crate) unwrap_param_map: Rc<RefCell<HashMap<vir::ast::VarIdent, vir::ast::VarIdent>>>,
     /// Assume specification defines a new opaque type for each opaque type in the external function.
     /// We use this map to resolve them later.
     pub(crate) external_opaque_type_map: Option<HashMap<Path, Path>>,
@@ -215,33 +213,18 @@ impl<'tcx> BodyCtxt<'tcx> {
         let Some(vars) = &self.migrate_postcondition_vars else {
             return false;
         };
-        let r = self.unwrap_param_map.borrow();
-        let id = match r.get(ident) {
-            Some(unwrap_param_outer_id) => unwrap_param_outer_id,
-            None => ident,
-        };
-        vars.contains(id)
+        vars.contains(ident)
     }
 
     pub(crate) fn is_param_for_fn_or_non_spec_closure(&self, ident: &vir::ast::VarIdent) -> bool {
-        let r = self.unwrap_param_map.borrow();
-        let id = match r.get(ident) {
-            Some(unwrap_param_outer_id) => unwrap_param_outer_id,
-            None => ident,
-        };
-        self.params.iter().any(|params| params.iter().any(|param| param == id))
+        self.params.iter().any(|params| params.iter().any(|param| param == ident))
     }
 
     pub(crate) fn is_param_for_innermost_fn_or_non_spec_closure(
         &self,
         ident: &vir::ast::VarIdent,
     ) -> bool {
-        let r = self.unwrap_param_map.borrow();
-        let id = match r.get(ident) {
-            Some(unwrap_param_outer_id) => unwrap_param_outer_id,
-            None => ident,
-        };
-        self.params.last().unwrap().iter().any(|param| param == id)
+        self.params.last().unwrap().iter().any(|param| param == ident)
     }
 
     pub(crate) fn set_header_setting(&self, s: HeaderSetting) -> BodyCtxt<'tcx> {

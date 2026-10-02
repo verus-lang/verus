@@ -5,8 +5,7 @@ use super::pervasive::*;
 #[allow(unused_imports)]
 use super::prelude::*;
 
-use verus as verus_skip_verusfmt; // verusfmt doesn't handle s[..e] yet
-verus_skip_verusfmt! {
+verus! {
 
 #[verifier::ext_equal]
 #[verifier::accept_recursive_types(A)]
