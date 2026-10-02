@@ -235,7 +235,7 @@ impl Parser {
                         return self.node_to_quant_or_lambda_expr(quantchooselambda, binders, e);
                     }
                     // Note: (lambda list ...) distinguishes wrap = None
-                    // Note: (lambda atom list ...) wrap = Some(WrapLambda)
+                    // Note: (lambda atom ...) distinguishes wrap = Some(WrapLambda)
                     [Node::Atom(s), Node::List(binders), body] if s == "lambda" => {
                         let quantchooselambda = QuantOrChooseOrLambda::Lambda(None, None);
                         return self.node_to_quant_or_lambda_expr(quantchooselambda, binders, body);
@@ -245,7 +245,7 @@ impl Parser {
                         let quantchooselambda = QuantOrChooseOrLambda::Lambda(None, Some(cond));
                         return self.node_to_quant_or_lambda_expr(quantchooselambda, binders, body);
                     }
-                    [Node::Atom(s), Node::Atom(wrap), Node::List(binders), id, body]
+                    [Node::Atom(s), Node::Atom(wrap), id, Node::List(binders), body]
                         if s == "lambda" =>
                     {
                         let id = self.node_to_expr(id)?;
@@ -253,7 +253,7 @@ impl Parser {
                         let quantchooselambda = QuantOrChooseOrLambda::Lambda(Some(wrap), None);
                         return self.node_to_quant_or_lambda_expr(quantchooselambda, binders, body);
                     }
-                    [Node::Atom(s), Node::Atom(wrap), Node::List(binders), id, cond, body]
+                    [Node::Atom(s), Node::Atom(wrap), id, Node::List(binders), cond, body]
                         if s == "lambda" =>
                     {
                         let id = self.node_to_expr(id)?;

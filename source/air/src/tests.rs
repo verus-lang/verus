@@ -1823,9 +1823,9 @@ fn yes_lambda_wrap() {
     yes!(
         (declare-fun mk_fun (Int Fun) Fun)
         (declare-const a Fun)
-        (axiom (= a (lambda mk_fun ((x Int)) 3 (+ x 1))))
+        (axiom (= a (lambda mk_fun 3 ((x Int)) (+ x 1))))
         (declare-const b Fun)
-        (axiom (= b (lambda mk_fun ((x Int)) 3 (+ x 1))))
+        (axiom (= b (lambda mk_fun 3 ((x Int)) (+ x 1))))
         (check-valid
             (assert (= a b))
         )
@@ -1837,9 +1837,9 @@ fn no_lambda_wrap() {
     no!(
         (declare-fun mk_fun (Int Fun) Fun)
         (declare-const a Fun)
-        (axiom (= a (lambda mk_fun ((x Int)) 3 (+ x 1))))
+        (axiom (= a (lambda mk_fun 3 ((x Int)) (+ x 1))))
         (declare-const b Fun)
-        (axiom (= b (lambda mk_fun ((x Int)) 4 (+ x 1))))
+        (axiom (= b (lambda mk_fun 4 ((x Int)) (+ x 1))))
         (check-valid
             (assert (= a b))
         )

@@ -696,6 +696,24 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
                 BindX::Lambda(binders, _, _, _, _) => binders.clone(),
                 BindX::Choose(binders, _, _, _) => binders.clone(),
             };
+            // Typecheck WrapLambda outside binder scope
+            if let BindX::Lambda(_, _, _, Some(wrap), _) = &**bind {
+                let t_id = check_expr(typing, &wrap.id)?;
+                let result = match typing.get(&wrap.wrap).cloned() {
+                    Some(DeclaredX::Fun { params, ret, field_accessor: _ }) => {
+                        if !matches!(&*ret, TypX::Fun) {
+                            return Err(format!(
+                                "in lambda, wrapper {} returns type {} instead of Fun",
+                                wrap.wrap,
+                                typ_name(&ret)
+                            ));
+                        }
+                        check_has_typs(typing, &wrap.wrap, &params, &ret, &[t_id, ret.clone()])
+                    }
+                    _ => Err(format!("use of undeclared function {}", wrap.wrap)),
+                };
+                let _ = result?;
+            }
             // Collect all binder names, make sure they are unique
             typing.decls.push_scope(true);
             for binder in binders.iter() {
@@ -730,23 +748,6 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
                     }
                 }
                 _ => {}
-            }
-            if let BindX::Lambda(_, _, _, Some(wrap), _) = &**bind {
-                let t_id = check_expr(typing, &wrap.id)?;
-                let result = match typing.get(&wrap.wrap).cloned() {
-                    Some(DeclaredX::Fun { params, ret, field_accessor: _ }) => {
-                        if !matches!(&*ret, TypX::Fun) {
-                            return Err(format!(
-                                "in lambda, wrapper {} returns type {} instead of Fun",
-                                wrap.wrap,
-                                typ_name(&ret)
-                            ));
-                        }
-                        check_has_typs(typing, &wrap.wrap, &params, &ret, &[t_id, ret.clone()])
-                    }
-                    _ => Err(format!("use of undeclared function {}", wrap.wrap)),
-                };
-                let _ = result?;
             }
             // Type-check expr
             let t1 = check_expr(typing, e1)?;
