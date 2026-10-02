@@ -269,6 +269,20 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] choose_different_predicates_compute_only verus_code! {
+        struct U;
+
+        uninterp spec fn p(x: U) -> bool;
+
+        proof fn test() ensures false {
+            // Different predicates can choose the same value; U has only one value.
+            assert((choose|x: U| #![trigger p(x)] true) != (choose|x: U| #![trigger p(x)] false))
+                by(compute_only);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
+}
+
+test_verify_one_file! {
     #[test] fn_calls_good verus_code! {
         spec fn f(x: int, y: int) -> bool { x == y }
 
