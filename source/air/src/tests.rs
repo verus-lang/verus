@@ -1819,6 +1819,34 @@ fn no_lambda6() {
 }
 
 #[test]
+fn yes_lambda_wrap() {
+    yes!(
+        (declare-fun mk_fun (Int Fun) Fun)
+        (declare-const a Fun)
+        (axiom (= a (lambda mk_fun ((x Int)) 3 (+ x 1))))
+        (declare-const b Fun)
+        (axiom (= b (lambda mk_fun ((x Int)) 3 (+ x 1))))
+        (check-valid
+            (assert (= a b))
+        )
+    )
+}
+
+#[test]
+fn no_lambda_wrap() {
+    no!(
+        (declare-fun mk_fun (Int Fun) Fun)
+        (declare-const a Fun)
+        (axiom (= a (lambda mk_fun ((x Int)) 3 (+ x 1))))
+        (declare-const b Fun)
+        (axiom (= b (lambda mk_fun ((x Int)) 4 (+ x 1))))
+        (check-valid
+            (assert (= a b))
+        )
+    )
+}
+
+#[test]
 fn yes_lambda_cond() {
     yes!(
         (declare-const f Fun)

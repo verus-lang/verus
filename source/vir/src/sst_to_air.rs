@@ -1553,7 +1553,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     vec_map_result(trig, |x| exp_to_expr(ctx, x, expr_ctxt)).map(|v| Arc::new(v))
                 })?;
                 let qid = (triggers.len() > 0).then(|| ()).and_then(|_| new_user_qid(ctx, &exp));
-                let lambda = air::ast_util::mk_lambda(&bs, &triggers, qid, &cond, &expr);
+                let lambda = air::ast_util::mk_lambda(&bs, &triggers, qid, &None, &cond, &expr);
                 str_apply(crate::def::MK_FUN, &vec![lambda])
             }
             BndX::Choose(binders, trigs, cond) => {

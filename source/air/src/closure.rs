@@ -272,6 +272,7 @@ fn simplify_lambda(
     binders: &Binders<Typ>,
     triggers: &Triggers,
     qid: &Qid,
+    wrap: &Option<crate::ast::WrapLambda>,
     cond: &Option<Expr>,
     body: &Expr,
 ) -> (Typ, Expr, Option<Term>) {
@@ -327,6 +328,13 @@ fn simplify_lambda(
     let holes = Arc::new(vec_map(&closure_state.holes, |(_, typ, _)| typ.clone()));
     let closure = ClosureTermX { terms, params: param_typs.clone(), holes: holes.clone() };
     let closure = Arc::new(closure);
+    let f_wrap_call = |call: Expr| {
+        if let Some(wrap) = wrap {
+            crate::ast_util::ident_apply(&wrap.wrap, &vec![wrap.id.clone(), call])
+        } else {
+            call
+        }
+    };
     let closure_fun = match ctxt.lambda_map.get(&closure) {
         None => {
             let name = format!("{}{}", crate::def::LAMBDA, ctxt.lambda_count);
@@ -340,6 +348,8 @@ fn simplify_lambda(
             insert_fun_typing(ctxt, &closure_fun, &holes, &typ);
 
             // forall holes params. cond ==> #[trigger] apply_param_typs(f(captures), params) == body
+            // or:
+            // forall holes params. cond ==> #[trigger] apply_param_typs(wrap(id, f(captures)), params) == body
             let mut xholes: Vec<Expr> = Vec::new();
             let mut bs: Vec<Binder<Typ>> = Vec::new();
             for (x, typ, _) in closure_state.holes.iter() {
@@ -347,6 +357,7 @@ fn simplify_lambda(
                 bs.push(ident_binder(x, typ));
             }
             let call = Arc::new(ExprX::Apply(closure_fun.clone(), Arc::new(xholes)));
+            let call = f_wrap_call(call);
             let mut eparams: Vec<Expr> = vec![call];
             for binder in binders.iter() {
                 bs.push(binder.clone());
@@ -372,6 +383,7 @@ fn simplify_lambda(
     };
     let exprs = vec_map(&closure_state.holes, |(_, _, e)| e.clone());
     let app = Arc::new(ExprX::Apply(closure_fun, Arc::new(exprs)));
+    let app = f_wrap_call(app);
     simplify_closure_app(ctxt, state, typ, app)
 }
 
@@ -737,8 +749,8 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
                     BindX::Quant(*quant, binders.clone(), Arc::new(new_triggers), qid.clone());
                 (typ, Arc::new(ExprX::Bind(Arc::new(bind), e1)), t)
             }
-            BindX::Lambda(binders, triggers, qid, cond) => {
-                simplify_lambda(ctxt, state, binders, triggers, qid, cond, e1)
+            BindX::Lambda(binders, triggers, qid, wrap, cond) => {
+                simplify_lambda(ctxt, state, binders, triggers, qid, wrap, cond, e1)
             }
             BindX::Choose(binders, triggers, qid, cond) => {
                 simplify_choose(ctxt, state, binders, triggers, qid, cond, e1)
