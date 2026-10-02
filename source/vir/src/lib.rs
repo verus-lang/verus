@@ -54,6 +54,7 @@ pub mod modes;
 pub mod opaque_type_to_air;
 pub mod patterns;
 pub mod place_preconditions;
+mod points_to;
 pub mod poly;
 pub mod prelude;
 pub mod printer;

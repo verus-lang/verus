@@ -1505,6 +1505,9 @@ impl<'a> Builder<'a> {
                 let bb = unwrap!(self.build(idx, bb));
                 Maybe::Some((cpt.to_partial(), bb))
             }
+            PlaceX::DerefRaw(..) => {
+                todo!()
+            }
         }
     }
 
@@ -2610,6 +2613,7 @@ impl<'a> LocalCollection<'a> {
                     }
                 })
             }
+            PlaceX::DerefRaw(..) => None,
         }
     }
 }
