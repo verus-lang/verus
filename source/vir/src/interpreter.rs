@@ -382,11 +382,22 @@ impl SyntacticEquality for Binders<Typ> {
         })
     }
 }
+
+// Constructor fields may appear in any source order. Use the same order for equality and hashing.
+fn sorted_ctor_fields(fields: &Binders<Exp>) -> Vec<&Binder<Exp>> {
+    let mut fields: Vec<_> = fields.iter().collect();
+    fields.sort_unstable_by(|l, r| l.name.cmp(&r.name));
+    fields
+}
+
 impl SyntacticEquality for Binders<Exp> {
     fn syntactic_eq(&self, other: &Self) -> Option<bool> {
-        self.iter().zip(other.iter()).try_fold(true, |acc, (bnd_l, bnd_r)| {
-            Some(acc && bnd_l.name == bnd_r.name && bnd_l.a.syntactic_eq(&bnd_r.a)?)
-        })
+        sorted_ctor_fields(self).into_iter().zip(sorted_ctor_fields(other)).try_fold(
+            true,
+            |acc, (bnd_l, bnd_r)| {
+                Some(acc && bnd_l.name == bnd_r.name && bnd_l.a.syntactic_eq(&bnd_r.a)?)
+            },
+        )
     }
 }
 
@@ -535,7 +546,7 @@ fn hash_var_binders_typ<H: Hasher>(state: &mut H, bnds: &VarBinders<Typ>) {
 }
 
 fn hash_binders_exp<H: Hasher>(state: &mut H, bnds: &Binders<Exp>) {
-    hash_iter(state, bnds.iter().map(|b| (&b.name, &b.a)), hash_exp)
+    hash_iter(state, sorted_ctor_fields(bnds).into_iter().map(|b| (&b.name, &b.a)), hash_exp)
 }
 
 fn hash_var_binders_exp<H: Hasher>(state: &mut H, bnds: &VarBinders<Exp>) {

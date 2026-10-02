@@ -219,6 +219,16 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] ctor_field_order verus_code! {
+        struct S { a: int, b: int }
+
+        proof fn bad() ensures false {
+            assert(S { a: 1, b: 2 } != S { b: 2, a: 1 }) by (compute_only);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expression simplifies to false")
+}
+
+test_verify_one_file! {
     #[test] closures verus_code! {
 
         fn test(x: u64) {
