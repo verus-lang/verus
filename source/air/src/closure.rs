@@ -69,6 +69,7 @@ pub(crate) struct ClosureTermX {
     terms: Vec<Term>,
     params: Typs,
     holes: Typs,
+    wrap: Option<Ident>,
 }
 
 // We generate new function declarations for closures while processing the expressions
@@ -210,7 +211,8 @@ fn simplify_array(
     let closure_state = state.closure_states.pop().unwrap();
     let typ = Arc::new(TypX::Fun);
     let holes = Arc::new(vec_map(&closure_state.holes, |(_, typ, _)| typ.clone()));
-    let closure = ClosureTermX { terms, params: Arc::new(vec![]), holes: holes.clone() };
+    let closure =
+        ClosureTermX { terms, params: Arc::new(vec![]), holes: holes.clone(), wrap: None };
     let closure = Arc::new(closure);
     let closure_fun = match ctxt.array_map.get(&closure) {
         None => {
@@ -326,11 +328,18 @@ fn simplify_lambda(
     let param_typs = Arc::new(vec_map(&**binders, |b| b.a.clone()));
     let typ = Arc::new(TypX::Fun);
     let holes = Arc::new(vec_map(&closure_state.holes, |(_, typ, _)| typ.clone()));
-    let closure = ClosureTermX { terms, params: param_typs.clone(), holes: holes.clone() };
+    let closure = ClosureTermX {
+        terms,
+        params: param_typs.clone(),
+        holes: holes.clone(),
+        wrap: wrap.as_ref().map(|wrap| wrap.wrap.clone()),
+    };
     let closure = Arc::new(closure);
-    let f_wrap_call = |call: Expr| {
+    let wrap_x = Arc::new(crate::def::TEMP.to_string());
+    let f_wrap_call = |call: Expr, id_var: bool| {
         if let Some(wrap) = wrap {
-            crate::ast_util::ident_apply(&wrap.wrap, &vec![wrap.id.clone(), call])
+            let id = if id_var { Arc::new(ExprX::Var(wrap_x.clone())) } else { wrap.id.clone() };
+            crate::ast_util::ident_apply(&wrap.wrap, &vec![id, call])
         } else {
             call
         }
@@ -349,15 +358,19 @@ fn simplify_lambda(
 
             // forall holes params. cond ==> #[trigger] apply_param_typs(f(captures), params) == body
             // or:
-            // forall holes params. cond ==> #[trigger] apply_param_typs(wrap(id, f(captures)), params) == body
+            // forall id holes params. cond ==> #[trigger] apply_param_typs(wrap(id, f(captures)), params) == body
             let mut xholes: Vec<Expr> = Vec::new();
             let mut bs: Vec<Binder<Typ>> = Vec::new();
+            if let Some(wrap) = wrap {
+                let (typ, _, _) = simplify_expr(ctxt, state, &wrap.id);
+                bs.push(ident_binder(&wrap_x, &typ));
+            }
             for (x, typ, _) in closure_state.holes.iter() {
                 xholes.push(Arc::new(ExprX::Var(x.clone())));
                 bs.push(ident_binder(x, typ));
             }
             let call = Arc::new(ExprX::Apply(closure_fun.clone(), Arc::new(xholes)));
-            let call = f_wrap_call(call);
+            let call = f_wrap_call(call, true);
             let mut eparams: Vec<Expr> = vec![call];
             for binder in binders.iter() {
                 bs.push(binder.clone());
@@ -383,7 +396,7 @@ fn simplify_lambda(
     };
     let exprs = vec_map(&closure_state.holes, |(_, _, e)| e.clone());
     let app = Arc::new(ExprX::Apply(closure_fun, Arc::new(exprs)));
-    let app = f_wrap_call(app);
+    let app = f_wrap_call(app, false);
     simplify_closure_app(ctxt, state, typ, app)
 }
 
@@ -440,7 +453,8 @@ fn simplify_choose(
 
     let param_typs = Arc::new(vec_map(&**binders, |b| b.a.clone()));
     let holes = Arc::new(vec_map(&closure_state.holes, |(_, typ, _)| typ.clone()));
-    let closure = ClosureTermX { terms, params: param_typs.clone(), holes: holes.clone() };
+    let closure =
+        ClosureTermX { terms, params: param_typs.clone(), holes: holes.clone(), wrap: None };
     let closure = Arc::new(closure);
 
     // Declare closure function or find existing closure function
