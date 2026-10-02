@@ -238,10 +238,9 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
         (declare-fun [has_type] ([Poly] [typ]) Bool)
         (declare-fun [sized] ([decoration]) Bool)
         (declare-fun [as_type] ([Poly] [typ]) [Poly])
-        // Keep the source-level SpecFn type attached to an erased function value.
-        // In particular, do not identify wrappers for different source types merely
-        // because their erased lambda bodies have the same AIR representation.
-        // datatype_to_air adds the guarded application semantics for this wrapper.
+        // Wrap the AIR lambda with the VIR SpecFn type so that the has_type axiom
+        // can trigger on the right SpecFn type (this makes sure that
+        // extensional equality is used with the correct spec_fn domain).
         (declare-fun [mk_fun] ([typ] Fun) Fun)
         (declare-fun [const_int] ([typ]) Int)
         (declare-fun [const_bool] ([typ]) Bool)

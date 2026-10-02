@@ -235,7 +235,7 @@ fn datatype_or_fun_to_air_commands(
         fun_args = Some(args.clone());
         fun_params = Some(params.clone());
         let tparamret = typ_args.last().expect("return type").clone();
-        let app = Arc::new(ExprX::ApplyFun(apolytyp.clone(), x_var.clone(), args.clone()));
+        let app = Arc::new(ExprX::ApplyFun(apolytyp.clone(), x_var.clone(), args));
         let has_app = typ_invariant(ctx, &tparamret, &app).expect("return invariant");
 
         // SpecFn constructor axiom:
@@ -260,27 +260,6 @@ fn datatype_or_fun_to_air_commands(
         let inner_imply = mk_implies(&inner_pre, &has_app);
         let inner_forall = mk_bind_expr(&inner_bind, &inner_imply);
         let mk_fun = str_apply(crate::def::MK_FUN, &vec![id.clone(), x_var.clone()]);
-
-        // A typed SpecFn wrapper agrees with its erased function only on arguments
-        // belonging to that SpecFn's source domain. Outside the source domain the
-        // wrapper is deliberately unconstrained. This is essential: extensional
-        // equality for (say) nat -> bool must not constrain the same erased function
-        // as though it were int -> bool.
-        //
-        // forall typ1 ... typn, tret, arg1 ... argn, x: Fun.
-        //   has_type1 && ... && has_typen ==>
-        //     apply(mk_fun(FUN(typ1...typn, tret), x), args) == apply(x, args)
-        let app_mk_fun = Arc::new(ExprX::ApplyFun(apolytyp.clone(), mk_fun.clone(), args.clone()));
-        let mut bridge_params = params.clone();
-        bridge_params.push(x_param(&datatyp));
-        let bridge_trigs = vec![app_mk_fun.clone()];
-        let name = format!("{}_mk_fun_apply", path_as_friendly_rust_name(dpath));
-        let bridge_bind =
-            func_bind_trig(ctx, name, tparams, &Arc::new(bridge_params), &bridge_trigs, None);
-        let bridge_eq = mk_eq(&app_mk_fun, &app);
-        let bridge_forall = mk_bind_expr(&bridge_bind, &mk_implies(&inner_pre, &bridge_eq));
-        axiom_commands.push(Arc::new(CommandX::Global(mk_unnamed_axiom(bridge_forall))));
-
         let box_mk_fun = ident_apply(&ctx.name_ctxt.prefix_box(dpath), &vec![mk_fun.clone()]);
         let has_box_mk_fun = expr_has_type(&box_mk_fun, &id);
         let trigs = vec![has_box_mk_fun.clone()];
