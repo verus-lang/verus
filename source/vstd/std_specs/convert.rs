@@ -144,7 +144,7 @@ macro_rules! impl_from_spec {
     };
 }
 
-impl_from_spec! {u8 => [u16 u32 u64 usize u128 i16 i32 i64 i128]}
+impl_from_spec! {u8 => [u16 u32 u64 usize u128 i16 i32 i64 i128 isize]}
 impl_from_spec! {u16 => [u32 u64 usize u128 i32 i64 i128]}
 impl_from_spec! {u32 => [u64 u128 i64 i128]}
 impl_from_spec! {u64 => [u128 i128]}
@@ -175,6 +175,7 @@ macro_rules! impl_int_try_from_spec {
     };
 }
 
+impl_int_try_from_spec! { u8 => [i8] }
 impl_int_try_from_spec! { u16 => [u8 i8 i16 isize] }
 impl_int_try_from_spec! { u32 => [u8 u16 i8 i16 i32 usize isize] }
 impl_int_try_from_spec! { u64 => [u8 u16 u32 i8 i16 i32 i64 usize isize] }
