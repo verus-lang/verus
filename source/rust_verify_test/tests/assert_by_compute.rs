@@ -172,6 +172,19 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] enum_variant_checked_on_field_access verus_code! {
+        enum E { A(int), B(u8) }
+
+        proof fn in_range(x: u8) ensures x <= 255 {}
+
+        proof fn test() ensures false {
+            assert((E::A(300))->B_0 == 300) by (compute_only); // FAILS
+            in_range((E::A(300))->B_0);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
+}
+
+test_verify_one_file! {
     #[test] tuples verus_code! {
         spec fn mk_tuple() -> (u32, u32, u64, bool) {
             (42, 330, 0x1_0000_0000, false)
