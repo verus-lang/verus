@@ -235,16 +235,15 @@ fn datatype_or_fun_to_air_commands(
         fun_args = Some(args.clone());
         fun_params = Some(params.clone());
         let tparamret = typ_args.last().expect("return type").clone();
-        let app = Arc::new(ExprX::ApplyFun(apolytyp.clone(), x_var.clone(), args.clone()));
+        let app = Arc::new(ExprX::ApplyFun(apolytyp.clone(), x_var.clone(), args));
         let has_app = typ_invariant(ctx, &tparamret, &app).expect("return invariant");
 
         // SpecFn constructor axiom:
         // forall typ1 ... typn, tret, x: Fun.
         //   (forall arg1: Poly ... argn: Poly.
         //     has_type1 && ... && has_typen ==> has_type(apply(x, args), tret)) ==>
-        //   has_type(box(mk_fun(FUN(typ1...typn, tret), x)), FUN(typ1...typn, tret))
-        // The type argument keeps erased functions from being reused at a different SpecFn type.
-        // trigger on has_type(box(mk_fun(FUN(...), x)), FUN(...))
+        //   has_type(box(mk_fun(x)), FUN(typ1...typn, tret))
+        // trigger on has_type(box(mk_fun(x)), FUN(typ1...typn, tret))
         let inner_trigs = vec![has_app.clone()];
         let name = format!("{}_{}", path_as_friendly_rust_name(dpath), QID_CONSTRUCTOR_INNER);
         let inner_bind = func_bind_trig(
@@ -259,29 +258,8 @@ fn datatype_or_fun_to_air_commands(
         fun_has = Some(inner_pre.clone());
         let inner_imply = mk_implies(&inner_pre, &has_app);
         let inner_forall = mk_bind_expr(&inner_bind, &inner_imply);
-        let mk_fun = str_apply(crate::def::MK_FUN, &vec![id.clone(), x_var.clone()]);
-
-        // A typed SpecFn wrapper agrees with its erased function only on arguments
-        // belonging to that SpecFn's source domain. Outside the source domain the
-        // wrapper is deliberately unconstrained. This is essential: extensional
-        // equality for (say) nat -> bool must not constrain the same erased function
-        // as though it were int -> bool.
-        //
-        // forall typ1 ... typn, tret, arg1 ... argn, x: Fun.
-        //   has_type1 && ... && has_typen ==>
-        //     apply(mk_fun(FUN(typ1...typn, tret), x), args) == apply(x, args)
-        let app_mk_fun = Arc::new(ExprX::ApplyFun(apolytyp.clone(), mk_fun.clone(), args.clone()));
-        let mut bridge_params = params.clone();
-        bridge_params.push(x_param(&datatyp));
-        let bridge_trigs = vec![app_mk_fun.clone()];
-        let name = format!("{}_mk_fun_apply", path_as_friendly_rust_name(dpath));
-        let bridge_bind =
-            func_bind_trig(ctx, name, tparams, &Arc::new(bridge_params), &bridge_trigs, None);
-        let bridge_eq = mk_eq(&app_mk_fun, &app);
-        let bridge_forall = mk_bind_expr(&bridge_bind, &mk_implies(&inner_pre, &bridge_eq));
-        axiom_commands.push(Arc::new(CommandX::Global(mk_unnamed_axiom(bridge_forall))));
-
-        let box_mk_fun = ident_apply(&ctx.name_ctxt.prefix_box(dpath), &vec![mk_fun.clone()]);
+        let mk_fun = str_apply(crate::def::MK_FUN, &vec![x_var.clone()]);
+        let box_mk_fun = ident_apply(&ctx.name_ctxt.prefix_box(dpath), &vec![mk_fun]);
         let has_box_mk_fun = expr_has_type(&box_mk_fun, &id);
         let trigs = vec![has_box_mk_fun.clone()];
         let name = format!("{}_{}", path_as_friendly_rust_name(dpath), QID_CONSTRUCTOR);
@@ -310,10 +288,10 @@ fn datatype_or_fun_to_air_commands(
         // SpecFn height axiom:
         // forall typ1 ... typn, tret, arg1: Poly ... argn: Poly, x: Fun.
         //   has_type_f && has_type1 && ... && has_typen ==>
-        //     height_lt(height(apply(x, args)), height(height_rec_fun(box(x))))
+        //     height_lt(height(apply(x, args)), height(box(mk_fun(x))))
         // trigger on height(apply(x, args)), has_type_f
         let height_app = str_apply(crate::def::HEIGHT, &vec![app]);
-        let from_rec_fun = str_apply(crate::def::HEIGHT_REC_FUN, &vec![box_x.clone()]);
+        let from_rec_fun = str_apply(crate::def::HEIGHT_REC_FUN, &vec![box_mk_fun]);
         let height_fun = str_apply(crate::def::HEIGHT, &vec![from_rec_fun]);
         let height_lt = str_apply(crate::def::HEIGHT_LT, &vec![height_app.clone(), height_fun]);
         let trigs = vec![height_app, has_box.clone()];
