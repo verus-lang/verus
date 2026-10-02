@@ -62,6 +62,9 @@ pub enum CallErasure {
     /// to have no proof code in the subtree (e.g., consired 'pure' by modes.rs)
     EraseTree(TreeErase),
     Call(NodeErase),
+    /// Lower to a call whose signature relates the input to the selected field,
+    /// including its lifetimes.
+    ShrRefStructWrap,
 }
 
 /// Information for a body (function or closure).
@@ -348,6 +351,9 @@ impl CallErasure {
         match self {
             CallErasure::EraseTree(_) => panic!("EraseTree should be handled by mirror_expr_opt"),
             CallErasure::Call(node_erase) => node_erase.should_erase(),
+            CallErasure::ShrRefStructWrap => {
+                panic!("ShrRefStructWrap should be handled by mirror_expr_post")
+            }
         }
     }
 }
@@ -1923,6 +1929,85 @@ pub(crate) fn make_fake_call_kind<'tcx>(
         from_hir_call: false,
         fn_span: span,
     }
+}
+
+pub(crate) fn shr_ref_struct_wrap<'tcx>(
+    cx: &mut ThirBuildCx<'tcx>,
+    erasure_ctxt: &VerusErasureCtxt,
+    expr: &'tcx hir::Expr<'tcx>,
+    kind: ExprKind<'tcx>,
+) -> ExprKind<'tcx> {
+    let hir::ExprKind::Call(_, hir_args) = expr.kind else { unreachable!() };
+    let ExprKind::Call { args, .. } = kind else { unreachable!() };
+
+    let mut replacer = ReErasedReplacer::new(cx.tcx);
+    let result_ty = cx.typeck_results.expr_ty(expr).fold_with(&mut replacer);
+    let TyKind::Ref(region, target_ty, _) = result_ty.kind() else { unreachable!() };
+    let TyKind::Adt(adt, adt_args) = target_ty.kind() else {
+        unreachable!("shr_ref_struct_wrap target checked by VIR well-formedness")
+    };
+    let string_arg = |i: usize| {
+        let hir::ExprKind::Lit(lit) = hir_args[i].kind else { unreachable!() };
+        let rustc_ast::LitKind::Str(s, _) = lit.node else { unreachable!() };
+        s
+    };
+    let variant_name = string_arg(2);
+    let field_name = string_arg(3);
+    // VIR names union variants after their fields, but rustc has a single variant
+    let variant = if adt.variants().len() == 1 {
+        adt.variants().iter().next().unwrap()
+    } else {
+        adt.variants().iter().find(|v| v.ident(cx.tcx).name == variant_name).unwrap()
+    };
+    let field = variant.fields.iter().find(|f| f.ident(cx.tcx).name == field_name).unwrap();
+    let field_ty = field.ty(cx.tcx, adt_args).skip_normalization();
+    let input_ty = Ty::new_ref(cx.tcx, *region, field_ty, Mutability::Not);
+    let mut input_tys = vec![input_ty];
+    for arg in args.iter().skip(1) {
+        input_tys.push(cx.thir.exprs[*arg].ty.fold_with(&mut replacer));
+    }
+
+    // for<'r, ...> fn(&'r Field<...>, ...) -> &'r Wrapper<...>: the field and result share regions
+    let inputs_and_output =
+        cx.tcx.mk_type_list_from_iter(input_tys.into_iter().chain(std::iter::once(result_ty)));
+    let bound_vars = vec![BoundVariableKind::Region(BoundRegionKind::Anon); replacer.current_var];
+    let fn_ty = cx.tcx.mk_ty_from_kind(TyKind::FnPtr(
+        Binder::bind_with_vars(
+            ty::FnSigTys { inputs_and_output },
+            cx.tcx.mk_bound_variable_kinds(&bound_vars),
+        ),
+        ty::FnHeader {
+            fn_sig_kind: FnSigKind::new(
+                rustc_abi::ExternAbi::Rust,
+                hir::Safety::Safe,
+                false,
+                None,
+                args.len(),
+            )
+            .expect("valid signature"),
+        },
+    ));
+    let mut call =
+        make_fake_call_kind(cx, erasure_ctxt, expr.hir_id, expr.span, fn_ty, args.into_vec());
+    let ExprKind::Call { fun, .. } = &mut call else { unreachable!() };
+    // Ascribe the type so MIR borrowck keeps fixed regions (e.g. 'static in the field declaration)
+    let user_ty = ty::CanonicalUserType {
+        max_universe: ty::UniverseIndex::ROOT,
+        var_kinds: ty::List::empty(),
+        value: ty::UserType::new(ty::UserTypeKind::Ty(fn_ty)),
+    };
+    *fun = expr_id_from_kind(
+        cx,
+        ExprKind::ValueTypeAscription {
+            source: *fun,
+            user_ty: Some(Box::new(user_ty)),
+            user_ty_span: expr.span,
+        },
+        expr.hir_id,
+        expr.span,
+        fn_ty,
+    );
+    call
 }
 
 pub(crate) fn make_let<'tcx>(
