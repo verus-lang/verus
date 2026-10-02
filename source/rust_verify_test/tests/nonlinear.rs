@@ -95,6 +95,90 @@ test_verify_one_file! {
 
 // Test assert_nonlinear_by
 test_verify_one_file! {
+    #[test] test_assert_nonlinear_by_assign verus_code! {
+        proof fn test()
+            ensures false,
+        {
+            let ghost mut g: int = 0;
+            assert(g == 1) by(nonlinear_arith) {
+                g = 1;
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "assignment is not allowed in 'assert ... by' statement")
+}
+
+test_verify_one_file! {
+    #[test] test_assert_nonlinear_by_mut_borrow verus_code! {
+        proof fn set_one(tracked g: &mut int)
+            ensures *final(g) == 1,
+        {
+            *g = 1;
+        }
+
+        proof fn test()
+            ensures false,
+        {
+            let tracked mut g: int = 0;
+            assert(g == 1) by(nonlinear_arith) {
+                set_one(&mut g);
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "mutable borrow is not allowed in 'assert ... by' statement")
+}
+
+test_verify_one_file! {
+    #[test] test_assert_nonlinear_by_tracked_duplicate verus_code! {
+        use vstd::simple_pptr::*;
+
+        proof fn distinct(tracked a: PointsTo<u64>, tracked b: PointsTo<u64>)
+            ensures a.addr() != b.addr(),
+        {
+            let tracked mut a = a;
+            a.is_disjoint(&b);
+        }
+
+        proof fn test(tracked p: PointsTo<u64>)
+            ensures false,
+        {
+            assert(p.addr() != p.addr()) by(nonlinear_arith) {
+                distinct(p, p);
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
+}
+
+test_verify_one_file! {
+    #[test] test_assert_nonlinear_by_return verus_code! {
+        proof fn test() {
+            assert(false) by(nonlinear_arith) {
+                return;
+            }
+            assert(false);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "return is not allowed in 'assert ... by' statements")
+}
+
+test_verify_one_file! {
+    #[test] test_assert_nonlinear_by_spec_reads verus_code! {
+        proof fn square_nonnegative(x: int)
+            ensures x * x >= 0,
+        {
+            assert(x * x >= 0) by(nonlinear_arith);
+        }
+
+        proof fn test(tracked x: int) {
+            assert(x * x >= 0) by(nonlinear_arith) {
+                let y = x;
+                square_nonnegative(y);
+            }
+            let tracked mut y = x;
+            y = y + 1;
+            assert(y * y >= 0) by(nonlinear_arith);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test5 verus_code! {
         proof fn test5_bound_checking(x: u32, y: u32, z: u32)
             requires
