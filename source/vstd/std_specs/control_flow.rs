@@ -64,7 +64,6 @@ pub assume_specification<T, E, F: From<E>>[ Result::<T, F>::from_residual ](
             (Err(e), Err(e2)) => spec_from::<F, E>(e, e2),
             _ => false,
         },
-    no_unwind
 ;
 
 pub broadcast group group_control_flow_axioms {
