@@ -224,6 +224,18 @@ pub trait ExIterator {
             self.obeys_prophetic_iter_laws() ==> skip_post(self, n, s),
     ;
 
+    /// Returns conservative bounds on the remaining number of items.
+    /// Overrides must uphold these bounds, including when a provided method
+    /// such as `ExactSizeIterator::len` dispatches to the override.
+    fn size_hint(&self) -> (hint: (usize, Option<usize>))
+        ensures
+            self.obeys_prophetic_iter_laws() ==> hint.0 <= self.remaining().len(),
+            self.obeys_prophetic_iter_laws() && hint.1 is Some ==>
+                self.remaining().len() <= hint.1->0,
+        default_ensures
+            hint == (0usize, None),
+    ;
+
     fn take(self, n: usize) -> (t: Take<Self>)
         where Self: Sized,
         ensures
@@ -288,13 +300,17 @@ pub trait ExDoubleEndedIterator : Iterator {
 pub trait ExExactSizeIterator: Iterator {
     type ExternalTraitSpecificationFor: ExactSizeIterator;
 
-    // An `ExactSizeIterator` can specify its length non-prophetically,
-    // i.e., without using `self.remaining().len()`.
+    // An `ExactSizeIterator` can model its length non-prophetically.
+    // Implementors must establish this model's agreement with `remaining`
+    // separately: the provided `len` cannot validate an arbitrary spec model.
     spec fn exact_len(&self) -> usize;
 
     fn len(&self) -> (len: usize)
         ensures
-            self.obeys_prophetic_iter_laws() ==> len == self.exact_len() == self.remaining().len();
+            self.obeys_prophetic_iter_laws() ==> len == self.remaining().len(),
+        default_ensures
+            call_ensures(Self::size_hint, (self,), (len, Some(len))),
+    ;
 }
 
 /********************************************************************************
