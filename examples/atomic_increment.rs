@@ -58,7 +58,7 @@ pub fn increment_good(var: &PAtomicU64) -> (out: u64)
     ensures
         out == perm@.value,
 {
-    let Tracked(credit) = vstd::invariant::create_open_invariant_credit();
+    let tracked credit = vstd::invariant::create_open_invariant_credit();
     let tracked mut au = atomic_update;
 
     let mut curr;
@@ -70,7 +70,7 @@ pub fn increment_good(var: &PAtomicU64) -> (out: u64)
     proof { au = wrapped_au.get().tracked_unwrap_err() };
 
     loop invariant au == atomic_update {
-        let Tracked(credit) = vstd::invariant::create_open_invariant_credit();
+        let tracked credit = vstd::invariant::create_open_invariant_credit();
         let next = curr.wrapping_add(1);
 
         let res;
@@ -133,7 +133,7 @@ impl InvariantPredicate<int, PermissionU64> for UserInv {
 fn call_increment_good_inv() {
     let (var, Tracked(perm)) = PAtomicU64::new(6);
     let tracked inv = AtomicInvariant::<_, _, UserInv>::new(perm.id(), perm, USER_INV);
-    let Tracked(mut credit) = vstd::invariant::create_open_invariant_credit();
+    let tracked mut credit = vstd::invariant::create_open_invariant_credit();
 
     increment_good(&var) atomically loop |update| {
         let tracked mut spare = None;

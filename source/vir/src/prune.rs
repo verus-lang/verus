@@ -510,7 +510,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                         }
                         maybe_reach_set_ops_for_call(state, name, &ctxt, function);
                     }
-                    ExprX::OpenInvariant(_, _, _, atomicity) => {
+                    ExprX::OpenInvariant(_, _, _, _, atomicity) => {
                         // SST -> AIR conversion for OpenInvariant may introduce
                         // references to these particular names.
                         reach_function(ctxt, state, &fn_inv_name(*atomicity));

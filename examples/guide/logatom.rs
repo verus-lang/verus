@@ -72,7 +72,7 @@ fn reset_client_async() {
     );
 
 // ANCHOR: reset_client_async
-let Tracked(mut credit) = vstd::invariant::create_open_invariant_credit();
+let tracked mut credit = vstd::invariant::create_open_invariant_credit();
 
 reset(&var) atomically |update| {
     open_atomic_invariant!(credit => &inv => perm => {
@@ -112,7 +112,7 @@ fn increment(var: &PAtomicU64) -> (out: u64)
         out == perm@.value,
 // ANCHOR_END: increment_signature_5
 {
-    let Tracked(credit) = vstd::invariant::create_open_invariant_credit();
+    let tracked credit = vstd::invariant::create_open_invariant_credit();
     let tracked mut au = atomic_update;
     let mut curr;
 
@@ -127,7 +127,7 @@ fn increment(var: &PAtomicU64) -> (out: u64)
 
     // compare exchange loop
     loop invariant au == atomic_update {
-        let Tracked(credit) = vstd::invariant::create_open_invariant_credit();
+        let tracked credit = vstd::invariant::create_open_invariant_credit();
         let next = curr.wrapping_add(1);
         let res;
 
@@ -186,7 +186,7 @@ fn increment_client_async() {
     );
 
 // ANCHOR: increment_client_async
-let Tracked(mut credit) = vstd::invariant::create_open_invariant_credit();
+let tracked mut credit = vstd::invariant::create_open_invariant_credit();
 
 increment(&var) atomically loop |update| {
     let tracked mut spare = None;

@@ -312,39 +312,31 @@ verus! {
 #[non_exhaustive]
 pub struct OpenInvariantCredit;
 
-// It's intentional that `create_open_invariant_credit` uses `exec` mode. This prevents
-// creation of an infinite number of credits to open invariants infinitely often.
-#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::invariant::create_open_invariant_credit")]
-#[verifier::external_body]
-#[inline(always)]
-pub fn create_open_invariant_credit() -> Tracked<OpenInvariantCredit>
-    opens_invariants none
-    no_unwind
-{
-    Tracked::<OpenInvariantCredit>::assume_new()
-}
-
+/// Create a new `OpenInvariantCredit`.
+///
+/// Verus enforces certain restrictions to ensure that the number of credits is always
+/// bounded in terms of the number of _executable_ steps that have passed.
+/// This means a credit can be created in the middle of an executable function:
+///
+/// ```
+/// fn example() {
+///     let tracked credit1 = create_open_invariant_credit();
+///     let tracked credit2 = create_open_invariant_credit();
+///     let tracked credit3 = create_open_invariant_credit();
+/// }
+/// ```
+///
+/// But not in a `proof` function:
+///
+/// ```
+/// proof fn example() {
+///     let tracked credit = create_open_invariant_credit();
+/// }
+/// ```
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::vstd::invariant::spend_open_invariant_credit_in_proof"]
-#[doc(hidden)]
-#[inline(always)]
-pub proof fn spend_open_invariant_credit_in_proof(tracked credit: OpenInvariantCredit) {
-}
-
-#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::invariant::spend_open_invariant_credit")]
-#[doc(hidden)]
-#[inline(always)]
-pub fn spend_open_invariant_credit(
-    #[allow(unused_variables)]
-    credit: Tracked<OpenInvariantCredit>,
-)
-    opens_invariants none
-    no_unwind
-{
-    proof {
-        spend_open_invariant_credit_in_proof(credit.get());
-    }
-}
+#[rustc_diagnostic_item = "verus::vstd::invariant::create_open_invariant_credit"]
+#[verifier::create_open_invariant_credit]
+pub axiom fn create_open_invariant_credit() -> (tracked c: OpenInvariantCredit);
 
 } // verus!
 // NOTE: These 3 methods are removed in the conversion to VIR; they are only used
@@ -370,6 +362,7 @@ pub fn spend_open_invariant_credit(
 #[doc(hidden)]
 #[verifier::external] /* vattr */
 pub fn open_atomic_invariant_begin<'a, K, V, Pred: InvariantPredicate<K, V>>(
+    _credit: OpenInvariantCredit,
     _inv: &'a AtomicInvariant<K, V, Pred>,
 ) -> (InvariantBlockGuard<'static>, V) {
     unimplemented!();
@@ -380,6 +373,7 @@ pub fn open_atomic_invariant_begin<'a, K, V, Pred: InvariantPredicate<K, V>>(
 #[doc(hidden)]
 #[verifier::external] /* vattr */
 pub fn open_local_invariant_begin<'a, K, V, Pred: InvariantPredicate<K, V>>(
+    _credit: OpenInvariantCredit,
     _inv: &'a LocalInvariant<K, V, Pred>,
 ) -> (InvariantBlockGuard<'a>, V) {
     unimplemented!();
@@ -466,10 +460,8 @@ macro_rules! open_atomic_invariant_internal {
     ($credit_expr:expr => $eexpr:expr => $iident:ident => $bblock:block) => {
         #[cfg_attr(verus_keep_ghost, verifier::invariant_block)] /* vattr */ {
             #[cfg(verus_keep_ghost_body)]
-            $crate::vstd::invariant::spend_open_invariant_credit($credit_expr);
-            #[cfg(verus_keep_ghost_body)]
             #[allow(unused_mut)] let (guard, mut $iident) =
-                $crate::vstd::invariant::open_atomic_invariant_begin($eexpr);
+                $crate::vstd::invariant::open_atomic_invariant_begin($credit_expr, $eexpr);
             $bblock
             #[cfg(verus_keep_ghost_body)]
             $crate::vstd::invariant::open_invariant_end(guard, $iident);
@@ -482,10 +474,8 @@ macro_rules! open_atomic_invariant_in_proof_internal {
     ($credit_expr:expr => $eexpr:expr => $iident:ident => $bblock:block) => {
         #[cfg_attr(verus_keep_ghost, verifier::invariant_block)] /* vattr */ {
             #[cfg(verus_keep_ghost_body)]
-            $crate::vstd::invariant::spend_open_invariant_credit_in_proof($credit_expr);
-            #[cfg(verus_keep_ghost_body)]
             #[allow(unused_mut)] let (guard, mut $iident) =
-                $crate::vstd::invariant::open_atomic_invariant_begin($eexpr);
+                $crate::vstd::invariant::open_atomic_invariant_begin($credit_expr, $eexpr);
             $bblock
             #[cfg(verus_keep_ghost_body)]
             $crate::vstd::invariant::open_invariant_end(guard, $iident);
@@ -598,10 +588,8 @@ macro_rules! open_local_invariant {
     [$($tail:tt)*] => {
         #[allow(unexpected_cfgs)] // make sure client crates don't see "unexpected `cfg` condition name: `verus_...`"
         {
-            #[cfg(verus_keep_ghost_body)]
-            let credit = $crate::vstd::invariant::create_open_invariant_credit();
             $crate::vstd::prelude::verus_exec_inv_macro_exprs!(
-                $crate::vstd::invariant::open_local_invariant_internal!(credit => $($tail)*))
+                $crate::vstd::invariant::open_local_invariant_internal!($crate::vstd::invariant::create_open_invariant_credit() => $($tail)*))
         }
     };
 }
@@ -618,9 +606,7 @@ macro_rules! open_local_invariant_internal {
     ($credit_expr:expr => $eexpr:expr => $iident:ident => $bblock:block) => {
         #[cfg_attr(verus_keep_ghost, verifier::invariant_block)] /* vattr */ {
             #[cfg(verus_keep_ghost_body)]
-            $crate::vstd::invariant::spend_open_invariant_credit($credit_expr);
-            #[cfg(verus_keep_ghost_body)]
-            #[allow(unused_mut)] let (guard, mut $iident) = $crate::vstd::invariant::open_local_invariant_begin($eexpr);
+            #[allow(unused_mut)] let (guard, mut $iident) = $crate::vstd::invariant::open_local_invariant_begin($credit_expr, $eexpr);
             $bblock
             #[cfg(verus_keep_ghost_body)]
             $crate::vstd::invariant::open_invariant_end(guard, $iident);
@@ -633,9 +619,7 @@ macro_rules! open_local_invariant_in_proof_internal {
     ($credit_expr:expr => $eexpr:expr => $iident:ident => $bblock:block) => {
         #[cfg_attr(verus_keep_ghost, verifier::invariant_block)] /* vattr */ {
             #[cfg(verus_keep_ghost_body)]
-            $crate::vstd::invariant::spend_open_invariant_credit_in_proof($credit_expr);
-            #[cfg(verus_keep_ghost_body)]
-            #[allow(unused_mut)] let (guard, mut $iident) = $crate::vstd::invariant::open_local_invariant_begin($eexpr);
+            #[allow(unused_mut)] let (guard, mut $iident) = $crate::vstd::invariant::open_local_invariant_begin($credit_expr, $eexpr);
             $bblock
             #[cfg(verus_keep_ghost_body)]
             $crate::vstd::invariant::open_invariant_end(guard, $iident);
