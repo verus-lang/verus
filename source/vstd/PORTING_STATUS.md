@@ -65,40 +65,71 @@ invariant on `impl<T: ?Sized> PointsTo<T>` is just there for reference and won't
   `is_disjoint`.
 - `abstract_bytes_decode` → `bytes_decode`/`bytes_equiv`/`bytes_len`.
 - `into_seq_pt*` and the `seq_into_slice*` free functions disappear once slices are `SeqPointsTo`.
-  Seq access is via `into_seq`/`tracked_seq_pt`/`tracked_seq_pt_mut`/`borrow_mut(i)`.
+  Seq access is via `into_seq`/`tracked_seq_pt`/`tracked_seq_pt_mut`/`index_mut`.
 - `as_untyped` → `as_untyped` (axiom); `from_untyped` (all uninitialized) →
   `PointsToUntyped::cast_to_seq_pt` with an empty `typed_value`;
   `PointsTo<[u8]>::cast_to_typed_uninit` → `PointsTo::from_untyped`.
 
-### Not yet covered
+### Ported from the remaining slice functions
 
-- Shared-borrow `subrange(&self, start, len) -> &Self` (`split`/`subrange_mut` need ownership or
-  `&mut`; would be an axiom like `as_untyped`).
-- Subrange specs `is_init_subrange` and `value_subrange`.
-- Subrange content operations `borrow_mem_contents_subrange`, `copy_mem_contents_subrange`,
-  `take_mem_contents_subrange`, `put_subrange`, `put_mem_contents_subrange` (partly expressible via
-  `subrange_mut` plus per-element `PointsTo::take`/`put`, but no range versions exist).
+- `is_init_subrange`/`value_subrange` → `is_valid_subrange`/`value_subrange` (specs).
+- Subrange content operations. **Proved** (by induction over the range, using `index_mut`
+  and the concrete `TypedValue` representation): `put_subrange`, `put_typed_value_subrange`,
+  `take_typed_value_subrange`, `copy_typed_value_subrange` (`T: Copy`). `PointsTo::put`/`take` now
+  also ensure `ptrs_len_same_valid_decode`, which these proofs need.
+  Note: the old `take_mem_contents_subrange` filled the range with `Seq::new(end, ...)` (length
+  `end`); the port uses `end - start`.
+- **Axioms** (they return a reference to something the `SeqPointsTo` doesn't store, so there is
+  nothing to borrow): shared-borrow `subrange`, `borrow_typed_value_subrange`, and `as_untyped_mut`
+  for sequences.
+- Integer casts `cast_points_to`/`cast_points_to_unaligned` were drafted as axioms on
+  `SeqPointsTo<T, PointsTo<T>>` and then removed, since that isn't their final home (see the
+  TODOs). The old contracts are in `raw_ptr_dup.rs` (`impl<T> PointsTo<[T]>`).
+- Single-value `PointsTo<[u8]>::cast_to_typed` → `PointsToUntyped::cast_to_typed` (proved from
+  `PointsTo::from_untyped` + `put`).
+
+### `PointsTo<str>` → `SeqPointsTo<str, PointsTo<u8>>`: drafted, removed from the build
+
+A `str` permission as a `SeqPointsTo<str, PointsTo<u8>>` (one `PointsTo<u8>` per byte, a `*mut str`
+pointer whose metadata is the length, no stored `str`; the value is derived from the `u8` values via
+`str::spec_bytes()`) was drafted and verified, including the `[u8]` to `str` cast, but is **not**
+in `points_to_permissions.rs` right now (it is excluded because of the `spec_bytes` cfg issue
+below). The complete code and its design notes are saved in
+[points_to_str_wip.rs](points_to_str_wip.rs), a reference snapshot that is not part of the build.
+It has the build at 2009 verified, 0 errors (2005 without it).
+
+What the snapshot contains:
+- Specs `bytes`, `value_bytes`, `is_valid`, `is_empty`, `value`, `wf`. `is_valid()` = every byte
+  valid and some `&str` has exactly those bytes and the abstract bytes decode into it; `wf()` =
+  `wf_basic()` and `ptr()@.metadata == len()`. Decodability is in `is_valid()` rather than `wf()`
+  because there is no `str` extensionality axiom (two `&str`s with the same `spec_bytes()` aren't
+  known to be equal), so a `choose`-based `value()` couldn't otherwise be shown to decode.
+- Proved: `is_aligned`, `bytes_decode`, `cast_to_u8_seq_pt` (replaces `cast_to_u8_shared`/`_inner`),
+  and `cast_to_str` on `SeqPointsTo<u8, PointsTo<u8>>` (replaces `cast_to_str_shared`/`_inner`;
+  ensures `out.value().spec_bytes() == value@` rather than `out.value() == target`, for the same
+  extensionality reason).
+- Axioms: `as_untyped` and `as_u8_seq_pt` (nothing is stored to borrow).
+
+Reason it was taken out: `StringSliceAdditionalSpecFns::spec_bytes` is
+`cfg(not(verus_verify_core))` in `string.rs`, so the `str` code would need a cfg guard if
+`points_to_permissions.rs` is ever built under `verus_verify_core`. To restore: see the header of
+the snapshot file (paste the block back and re-add two imports).
+
+### Not yet covered (on hold)
+
+- All of `PointsTo<str>` and the `[u8]` to `str` casts (`cast_to_str_shared`/`_inner`): see above
+  (drafted, saved in `points_to_str_wip.rs`).
 - `tracked_borrow` (`&[T]`) and `tracked_borrow_mut` (`&mut [T]`): real slice references, so the
   same trust boundary as `PointsTo::borrow_mut`; would be axioms.
-- `as_untyped_mut` for sequences (`PointsTo::as_untyped_mut` exists for a single element).
-- Integer casts `cast_points_to`/`cast_points_to_unaligned` (`[T]` permission to a `V`
-  permission); needs design since the new `PointsTo<V>` holds a `Box<V>` and can't just be borrowed.
-- Single-value `PointsTo<[u8]>::cast_to_typed` (one `T` from `[u8]` bytes plus a `typed_value`);
-  easy from `PointsTo::from_untyped` + `put`, but not packaged as one function.
-- `cast_to_str_shared`/`cast_to_str_shared_inner` (`[u8]` to `str`).
-
-### Needs a design decision before porting
-
+- `cast_points_to` and `cast_points_to_unaligned` (a `[T]` permission to a `V` permission, for
+  integer `T`, `V`): they belong in an `impl` block on `PointsTo<[T]>`, not on `SeqPointsTo`, so
+  they are on hold until `PointsTo<[T]>` is implemented (see the TODOs; they were drafted on
+  `SeqPointsTo<T, PointsTo<T>>` and removed).
 - **Unaligned slices** (`impl<T> PointsToUnaligned<[T]>`): the unaligned-specific functions
   (`into_aligned`/`as_aligned`/`as_aligned_mut`, `subrange`, the `cast_points_to` pair) assume a
   `SeqPointsTo<T, PointsToUnaligned<T>>`, which has no impl yet (the current impl is only for
-  `PointsTo<T>`). The trait methods (`is_nonnull`, `ptr_bounds`, `is_disjoint`) already work for it
-  generically.
-- **`str`** (`impl PointsTo<str>`): all of `mem_contents`, the `is_init` family, `value`,
-  `is_nonnull`, `is_aligned`, `abstract_bytes_decode`, `cast_to_u8_shared`/`_inner`, `as_untyped`
-  are not ported. `SeqPointsTo<T: ?Sized, ...>` is generic over `T`, so a
-  `SeqPointsTo<str, PointsTo<u8>>` might fit, but no impl exists and `wf` and the byte-level specs
-  would need their own definitions.
+  `PointsTo<T>`). On hold until needed. The trait methods (`is_nonnull`, `ptr_bounds`,
+  `is_disjoint`) already work for it generically.
 
 ## Done: old `SeqPointsTo<T>` and `SeqPointsTo<u8>` impls
 
@@ -149,12 +180,17 @@ and `PointsTo::put`).
     before removing that wrapper. The `PointsToUnaligned::pt_untyped` wrapper doesn't have this concern.
 - [ ] Continue porting the remaining impl blocks listed above — `impl<T> PointsTo<[T]>` is
   probably next, since it's the biggest and most load-bearing.
-- [ ] (Lower priority) Fill out `SeqPointsTo<T, PointsTo<T>>` for completeness with respect to
-  `PointsTo<T>` (see `POINTS_TO_COMPARISON.md`):
-  - Add `as_untyped_mut`, `into_untyped` and `from_untyped`.
-  - Add per-index versions of `borrow`, `take`, `put` and `borrow_mut`, which work on the `T` at
-    index `i` rather than on the whole sequence.
-  - Rename `borrow_index_mut` to something that makes clear it borrows the `PointsTo<T>` at
-    index `i` rather than a `T` value, so it isn't confused with the per-index `borrow_mut` above.
-  - The unaligned conversions (`as_unaligned`, `into_unaligned`, ...) can wait until there is a
-    `SeqPointsTo<T, PointsToUnaligned<T>>`.
+- [ ] (Lower priority) Fill out `SeqPointsTo<T, PointsTo<T>>` and `PointsTo<T>` for completeness
+  with respect to each other. The up-to-date list of what is missing is in the TODOs section of
+  [POINTS_TO_COMPARISON.md](POINTS_TO_COMPARISON.md) (e.g. the
+  `Seq<T>` subrange versions, the single-value `TypedValue<T>` operations on `PointsTo`). The
+  unaligned conversions (`as_unaligned`, `into_unaligned`, ...) can wait until there is a
+  `SeqPointsTo<T, PointsToUnaligned<T>>`.
+- [ ] Add `cast_points_to` and `cast_points_to_unaligned` in an `impl` block on `PointsTo<[T]>`,
+  where they make more sense than on `SeqPointsTo`. They were drafted as axioms on
+  `SeqPointsTo<T, PointsTo<T>>` and removed; the draft contract (requires `wf()`, all elements
+  valid, `len * size_of::<T>() == size_of::<V>()`, plus alignment to `V` for the aligned version;
+  ensures `points_to.wf()`, the same address/provenance, same bytes, and
+  `value() as int == to_big_from_digits::<V, T>(value()).index(0)`) is straightforward to redo.
+  They would also need the `endian` imports (`CompatibleSmallerBaseFor`, `BasePow2`,
+  `to_big_from_digits`). On hold until `PointsTo<[T]>` is implemented.

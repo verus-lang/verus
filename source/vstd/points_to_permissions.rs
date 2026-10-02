@@ -524,6 +524,37 @@ impl PointsToUntyped {
             out
         }
     }
+
+    /// A `PointsToUntyped` can be cast to a valid `PointsTo<T>` when the abstract bytes can be
+    /// decoded into the given `tracked typed_value`, the length is `size_of::<T>()`,
+    /// and the pointer is aligned to `T`.
+    /// The resulting permission will take on the value in memory given by `typed_value`.
+    ///
+    /// The abstract bytes remain the same. This preserves the typed contents in memory on a
+    /// roundtrip cast (see `PointsTo::cast_to_untyped`).
+    /// Note that this means provenance is not lost, which matches Rust's semantics for
+    /// casting/transmuting in-memory values.
+    ///
+    /// The inclusion of `tracked typed_value` prohibits creating permission-carrying types out of
+    /// thin air, in the case where `T` is a type that stores/represents a permission
+    /// (e.g., shared references).
+    pub proof fn cast_to_typed<T>(tracked self, tracked typed_value: T) -> (tracked dst: PointsTo<T>)
+        requires
+            self.wf(),
+            self.len() == size_of::<T>(),
+            self.ptr()@.addr as nat % align_of::<T>() == 0,
+            abs_decode::<T>(self.bytes(), &typed_value),
+        ensures
+            dst.bytes() == self.bytes(),
+            dst.is_valid(),
+            dst.value() == typed_value,
+            dst.ptr() == self.ptr() as *mut T,
+            dst.wf(),
+    {
+        let tracked mut perm = PointsTo::<T>::from_untyped(self);
+        perm.put(typed_value);
+        perm
+    }
 }
 
 /// Represents (typed) contents of memory.
@@ -562,6 +593,17 @@ impl<T> TypedValue<T> {
             self is Valid,
     {
         *self->0
+    }
+
+    /// Copies a `TypedValue<T>` out of a shared reference, given that `T` is `Copy`.
+    pub proof fn tracked_copy(tracked &self) -> (tracked out: TypedValue<T>) where T: Copy
+        ensures
+            out == *self,
+    {
+        match self {
+            TypedValue::Valid(b) => TypedValue::Valid(Box::new(**b)),
+            TypedValue::Empty => TypedValue::Empty,
+        }
     }
 }
 
@@ -1213,7 +1255,7 @@ impl<T> PointsTo<T> {
     /// (call `take` first if you want to save the value.)
     pub proof fn as_untyped_mut(tracked &mut self) -> (tracked pt_untyped: &mut PointsToUntyped)
         requires
-            old(self).wf(),
+            self.wf(),
         ensures
             pt_untyped.ptr() as *mut T == old(self).ptr(),
             pt_untyped.len() == size_of::<T>(),
@@ -1275,6 +1317,7 @@ impl<T> PointsTo<T> {
             final(self).bytes() == old(self).bytes(),
             final(self).is_empty(),
             final(self).wf(),
+            Self::ptrs_len_same_valid_decode(*old(self), *final(self)),
     {
         let tracked mut tmp = TypedValue::Empty;
         super::modes::tracked_swap(&mut tmp, &mut self.pt_unaligned.borrow_mut().val);
@@ -1295,6 +1338,7 @@ impl<T> PointsTo<T> {
             final(self).is_valid(),
             final(self).value() == val,
             final(self).wf(),
+            Self::ptrs_len_same_valid_decode(*old(self), *final(self)),
     {
         self.pt_unaligned.borrow_mut().val = TypedValue::Valid(Box::new(val));
     }
@@ -1349,6 +1393,22 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             self.is_valid(),
     {
         Seq::new(self.len(), |i| self[i].value())
+    }
+
+    /// Returns `true` if all of the permission's associated memory in the given subrange is valid for the type `T`.
+    #[verifier::inline]
+    pub open spec fn is_valid_subrange(&self, start_index: int, len: nat) -> bool {
+        &&& 0 <= start_index <= start_index + len <= self.len()
+        &&& forall|i: int| start_index <= i < start_index + len ==> #[trigger] self[i].is_valid()
+    }
+
+    /// Given that the subrange is valid, returns the underlying values in that subrange as a sequence.
+    #[verifier::inline]
+    pub open spec fn value_subrange(&self, start_index: int, len: nat) -> Seq<T>
+        recommends
+            self.is_valid_subrange(start_index, len),
+    {
+        Seq::new(len, |i: int| self[start_index + i].value())
     }
 
     /// Specifies that `old` and `new` have the same pointer and length,
@@ -1422,7 +1482,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
     ///
     /// Provided that this mutable reference is not used to change the pointer at index `i`,
     /// the invariant will be preserved.
-    pub proof fn borrow_index_mut(tracked &mut self, i: int) -> (tracked ret: &mut PointsTo<T>)
+    pub proof fn index_mut(tracked &mut self, i: int) -> (tracked ret: &mut PointsTo<T>)
         requires
             self.wf(),
             0 <= i < self.len(),
@@ -1806,6 +1866,58 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         }
     }
 
+    /// Creates a `PointsToUntyped` from a `SeqPointsTo<T, PointsTo<T>>` with the same address and
+    /// provenance and a length of `self.len() * size_of::<T>()`.
+    /// If there are any typed values stored in memory, they are dropped here.
+    /// (Use `cast_to_untyped` instead if you want to keep them.)
+    pub proof fn into_untyped(tracked self) -> (tracked pt_untyped: PointsToUntyped)
+        requires
+            self.wf(),
+        ensures
+            pt_untyped.ptr() == ptr_mut_from_data::<[u8]>(
+                PtrData {
+                    addr: self.ptr()@.addr,
+                    provenance: self.ptr()@.provenance,
+                    metadata: (self.len() * size_of::<T>()) as usize,
+                },
+            ),
+            pt_untyped.bytes() == self.bytes(),
+            pt_untyped.wf(),
+    {
+        let tracked (pt_untyped, _) = self.cast_to_untyped();
+        pt_untyped
+    }
+
+    /// Creates a `SeqPointsTo<T, PointsTo<T>>` of length `len` from a `PointsToUntyped` with the
+    /// same provenance and a ptr corresponding to the range of the `PointsToUntyped`.
+    /// The resulting permission will be empty (uninitialized).
+    /// (Use `PointsToUntyped::cast_to_seq_pt` instead if you want to supply typed values.)
+    pub proof fn from_untyped(tracked pt_untyped: PointsToUntyped, len: usize) -> (tracked out: Self)
+        requires
+            pt_untyped.wf(),
+            pt_untyped.ptr()@.addr as nat % align_of::<T>() == 0,
+            pt_untyped.len() == len * size_of::<T>(),
+        ensures
+            out.ptr() == pt_untyped.ptr() as *mut T,
+            out.len() == len,
+            out.bytes() == pt_untyped.bytes(),
+            out.is_fully_empty(),
+            out.wf(),
+    {
+        let tracked mut out = pt_untyped.cast_to_seq_pt::<T>(len, Seq::tracked_empty());
+        // `cast_to_seq_pt` says nothing about the validity of elements past the supplied
+        // `typed_value`, so empty all of them.
+        let ghost before = out;
+        let tracked _taken = out.take_typed_value_subrange(0, len as int);
+        assert(out.typed_value().len() == before.typed_value().len());
+        assert(out.len() == len);
+        assert forall|i: int| 0 <= i < out.len() implies #[trigger] out[i].is_empty() by {
+            out.typed_value_equiv(i);
+            assert(out.typed_value()[i] == TypedValue::<T>::Empty);
+        }
+        out
+    }
+
     /// Creates a reference to a `PointsToUntyped` from a reference to a `SeqPointsTo<T, PointsTo<T>>`,
     /// with the same address and provenance, a length of `self.len() * size_of::<T>()`,
     /// and the same abstract bytes.
@@ -1825,6 +1937,251 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             raw.bytes() == self.bytes(),
             raw.wf(),
     ;
+
+    /// Creates a mutable reference to a `PointsToUntyped` from a mutable reference to a
+    /// `SeqPointsTo<T, PointsTo<T>>`, with the same address and provenance and a length of
+    /// `self.len() * size_of::<T>()`. If this permission carries any typed values, they are dropped here.
+    ///
+    /// This is an axiom because the `SeqPointsTo` does not store a `PointsToUntyped` that can be borrowed.
+    pub axiom fn as_untyped_mut(tracked &mut self) -> (tracked raw: &mut PointsToUntyped)
+        requires
+            self.wf(),
+        ensures
+            raw.ptr() == ptr_mut_from_data::<[u8]>(
+                PtrData {
+                    addr: old(self).ptr()@.addr,
+                    provenance: old(self).ptr()@.provenance,
+                    metadata: (old(self).len() * size_of::<T>()) as usize,
+                },
+            ),
+            raw.bytes() == old(self).bytes(),
+            raw.wf(),
+            // Criteria necessary for re-establishing invariants
+            PointsToUntyped::ptrs_len_same(*raw, *final(raw)) ==> ({
+                &&& final(self).ptr() == old(self).ptr()
+                &&& final(self).len() == old(self).len()
+                &&& final(self).bytes() == final(raw).bytes()
+                &&& final(self).is_fully_empty()
+                &&& final(self).wf()
+            }),
+    ;
+
+    /// Given that the subrange is within bounds, it is always possible to borrow a permission
+    /// to just that subrange.
+    pub axiom fn subrange(tracked &self, start_index: nat, len: nat) -> (tracked sub: &Self)
+        requires
+            self.wf(),
+            start_index + len <= self.len(),
+        ensures
+            sub.wf(),
+            sub.ptr() == ptr_mut_from_data::<T>(
+                PtrData {
+                    addr: ((self.ptr()@.addr + start_index * size_of::<T>()) as usize),
+                    provenance: self.ptr()@.provenance,
+                    metadata: (),
+                },
+            ),
+            sub.seq_pt() == self.seq_pt().subrange(start_index as int, (start_index + len) as int),
+    ;
+
+    /// This takes a borrow of a subrange of the `TypedValue<T>`s from `self`.
+    pub axiom fn borrow_typed_value_subrange(tracked &self, start: int, end: int) -> (tracked val:
+        &Seq<TypedValue<T>>)
+        requires
+            self.wf(),
+            0 <= start <= end <= self.len(),
+        ensures
+            val == self.typed_value().subrange(start, end),
+    ;
+
+    /// Copies the first `n` `TypedValue<T>`s out of a shared reference to a sequence, given that `T` is `Copy`.
+    proof fn copy_typed_values(tracked val: &Seq<TypedValue<T>>, n: nat) -> (tracked out: Seq<
+        TypedValue<T>,
+    >) where T: Copy
+        requires
+            n <= val.len(),
+        ensures
+            out == val.take(n as int),
+        decreases n,
+    {
+        if n == 0 {
+            Seq::tracked_empty()
+        } else {
+            let tracked mut out = Self::copy_typed_values(val, (n - 1) as nat);
+            let tracked last = val.tracked_borrow((n - 1) as int).tracked_copy();
+            out.tracked_push(last);
+            out
+        }
+    }
+
+    /// Copies the given `TypedValue<T>`s into the subrange starting at `start`.
+    pub proof fn copy_typed_value_subrange(
+        tracked &mut self,
+        start: int,
+        tracked val: &Seq<TypedValue<T>>,
+    ) where T: Copy
+        requires
+            self.wf(),
+            0 <= start <= start + val.len() <= self.len(),
+            forall|i: int|
+                0 <= i < val.len() ==> {
+                    (#[trigger] val[i]).is_valid() ==> abs_decode::<T>(
+                        self.bytes().subrange(
+                            (start + i) * size_of::<T>(),
+                            (start + i + 1) * size_of::<T>(),
+                        ),
+                        &val[i].value(),
+                    )
+                },
+        ensures
+            final(self).ptr() == old(self).ptr(),
+            final(self).bytes() == old(self).bytes(),
+            final(self).typed_value() == old(self).typed_value().update_subrange_with(start, *val),
+            final(self).wf(),
+    {
+        let tracked copied = Self::copy_typed_values(val, val.len());
+        self.put_typed_value_subrange(start, copied);
+    }
+
+    /// This moves a subrange of the `TypedValue<T>`s out from `self`, leaving that subrange empty.
+    pub proof fn take_typed_value_subrange(tracked &mut self, start: int, end: int) -> (tracked val:
+        Seq<TypedValue<T>>)
+        requires
+            self.wf(),
+            0 <= start <= end <= self.len(),
+        ensures
+            val == old(self).typed_value().subrange(start, end),
+            final(self).ptr() == old(self).ptr(),
+            final(self).bytes() == old(self).bytes(),
+            final(self).typed_value() == old(self).typed_value().update_subrange_with(
+                start,
+                Seq::new((end - start) as nat, |i: int| TypedValue::Empty),
+            ),
+            final(self).wf(),
+        decreases end - start,
+    {
+        if start == end {
+            Seq::tracked_empty()
+        } else {
+            let ghost old_self = *self;
+
+            // Take the last value in the range out of the element at `end - 1`
+            let tracked elt = self.index_mut(end - 1);
+            let tracked mut taken = TypedValue::Empty;
+            super::modes::tracked_swap(&mut taken, &mut elt.pt_unaligned.borrow_mut().val);
+
+            // The bytes of the whole sequence are unchanged
+            Self::bytes_inner_ext(old_self.seq_pt(), self.seq_pt());
+
+            // Take the rest of the range out of the preceding elements
+            let tracked mut val = self.take_typed_value_subrange(start, end - 1);
+            val.tracked_push(taken);
+
+            val
+        }
+    }
+
+    /// The flattened abstract bytes depend only on the abstract bytes of each individual permission.
+    proof fn bytes_inner_ext(a: Seq<PointsTo<T>>, b: Seq<PointsTo<T>>)
+        requires
+            a.len() == b.len(),
+            forall|i: int| 0 <= i < a.len() ==> #[trigger] a[i].bytes() == b[i].bytes(),
+        ensures
+            Self::bytes_inner(a) == Self::bytes_inner(b),
+        decreases a.len(),
+    {
+        if a.len() > 0 {
+            Self::bytes_inner_ext(a.drop_last(), b.drop_last());
+        }
+    }
+
+    /// Consumes the `Seq<T>` and puts it in the specified subrange of the `TypedValue<T>`s for `self`.
+    pub proof fn put_subrange(tracked &mut self, start: int, tracked val: Seq<T>)
+        requires
+            self.wf(),
+            0 <= start <= start + val.len() <= self.len(),
+            forall|i: int|
+                0 <= i < val.len() ==> {
+                    abs_decode::<T>(
+                        self.bytes().subrange(
+                            (start + i) * size_of::<T>(),
+                            (start + i + 1) * size_of::<T>(),
+                        ),
+                        &val[i],
+                    )
+                },
+        ensures
+            final(self).ptr() == old(self).ptr(),
+            final(self).bytes() == old(self).bytes(),
+            final(self).typed_value() == old(self).typed_value().update_subrange_with(
+                start,
+                Seq::new(val.len(), |i: int| TypedValue::Valid(Box::new(val[i]))),
+            ),
+            final(self).wf(),
+        decreases val.len(),
+    {
+        if val.len() > 0 {
+            let ghost old_self = *self;
+            let tracked mut rest = val;
+            let tracked first = rest.tracked_pop_front();
+
+            // Put the first value into the element at `start`
+            old_self.bytes_equiv(start);
+            let tracked elt = self.index_mut(start);
+            elt.put(first);
+
+            // The bytes of the whole sequence are unchanged
+            Self::bytes_inner_ext(old_self.seq_pt(), self.seq_pt());
+
+            // Put the rest of the values into the following elements
+            self.put_subrange(start + 1, rest);
+        }
+    }
+
+    /// Consumes the `Seq<TypedValue<T>>` and puts it in the specified subrange of the
+    /// `TypedValue<T>`s for `self`.
+    pub proof fn put_typed_value_subrange(
+        tracked &mut self,
+        start: int,
+        tracked val: Seq<TypedValue<T>>,
+    )
+        requires
+            self.wf(),
+            0 <= start <= start + val.len() <= self.len(),
+            forall|i: int|
+                0 <= i < val.len() ==> {
+                    (#[trigger] val[i]).is_valid() ==> abs_decode::<T>(
+                        self.bytes().subrange(
+                            (start + i) * size_of::<T>(),
+                            (start + i + 1) * size_of::<T>(),
+                        ),
+                        &val[i].value(),
+                    )
+                },
+        ensures
+            final(self).ptr() == old(self).ptr(),
+            final(self).bytes() == old(self).bytes(),
+            final(self).typed_value() == old(self).typed_value().update_subrange_with(start, val),
+            final(self).wf(),
+        decreases val.len(),
+    {
+        if val.len() > 0 {
+            let ghost old_self = *self;
+            let tracked mut rest = val;
+            let tracked first = rest.tracked_pop_front();
+
+            // Put the first value into the element at `start`
+            old_self.bytes_equiv(start);
+            let tracked elt = self.index_mut(start);
+            elt.pt_unaligned.borrow_mut().val = first;
+
+            // The bytes of the whole sequence are unchanged
+            Self::bytes_inner_ext(old_self.seq_pt(), self.seq_pt());
+
+            // Put the rest of the values into the following elements
+            self.put_typed_value_subrange(start + 1, rest);
+        }
+    }
 
     /// Splits the `SeqPointsTo` into two permissions at the index boundary `mid`.
     pub proof fn split(tracked self, mid: nat) -> (tracked (first, second): (Self, Self))
