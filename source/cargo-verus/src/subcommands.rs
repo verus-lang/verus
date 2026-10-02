@@ -144,17 +144,11 @@ unexpected_cfgs = {{ level = "warn", check-cfg = [
     Ok(ExitCode::SUCCESS)
 }
 
-#[derive(Debug, Clone)]
 pub struct FormattingPlan {
     pub is_check: bool,
-    pub targets: Vec<FormattingTarget>,
+    pub cargo_targets: Vec<PathBuf>,
+    pub verus_targets: Vec<PathBuf>,
     pub verusfmt_args: Vec<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct FormattingTarget {
-    pub manifest_path: PathBuf,
-    pub fmt_verus_only: bool,
 }
 
 /// Plan formatting Verus and Rust packages based on `cargo metadata`.
@@ -171,35 +165,63 @@ pub fn plan_formatting(current_dir: PathBuf, command: FmtCommand) -> Result<Form
     workspace.all = command.all;
     let (included_packages, _) = workspace.partition_packages(&metadata);
 
-    let mut targets = Vec::new();
+    let mut cargo_targets = Vec::new();
+    let mut verus_targets = Vec::new();
     for package in included_packages {
         let manifest_path = package.manifest_path.clone().into_std_path_buf();
-        let fmt_verus_only: bool = metadata_index
-            .get(&package.id)
-            .verus_metadata
-            .as_ref()
-            .map(|metadata| metadata.fmt_verus_only)
-            .unwrap_or(false);
-        targets.push(FormattingTarget { manifest_path, fmt_verus_only });
+        if let Some(metadata) = &metadata_index.get(&package.id).verus_metadata
+            && !metadata.fmt_as_rust
+        {
+            verus_targets.push(manifest_path);
+        } else {
+            cargo_targets.push(manifest_path);
+        }
     }
-    targets.sort();
+    cargo_targets.sort();
+    verus_targets.sort();
 
     if command.verbosity > 0 {
+        println!("Packages to format using `cargo fmt`:");
+        for manifest_path in &cargo_targets {
+            println!("  {}", manifest_path.display());
+        }
         println!("Packages to format using `verusfmt`:");
-        for target in &targets {
-            println!("  {}", target.manifest_path.display());
+        for manifest_path in &verus_targets {
+            println!("  {}", manifest_path.display());
         }
     }
 
-    Ok(FormattingPlan { is_check: command.check, targets, verusfmt_args: command.verusfmt_args })
+    Ok(FormattingPlan {
+        is_check: command.check,
+        cargo_targets,
+        verus_targets,
+        verusfmt_args: command.verusfmt_args,
+    })
 }
 
 pub fn run_formatting(plan: &FormattingPlan) -> Result<ExitCode> {
+    for manifest_path in &plan.cargo_targets {
+        let mut command = Command::new(env::var("CARGO").unwrap_or("cargo".into()));
+        command.args(["fmt", "--manifest-path"]).arg(manifest_path);
+        if plan.is_check {
+            command.arg("--check");
+        }
+        let exit_status = command
+            .spawn()
+            .context("Failed to spawn `cargo fmt`")?
+            .wait()
+            .context("Failed to wait for `cargo fmt`")?;
+
+        if let Some(exit_code) = formatting_exit_code(exit_status)? {
+            return Ok(exit_code);
+        }
+    }
+
     let verusfmt = env::var("VERUSFMT").unwrap_or_else(|_| "verusfmt".to_owned());
-    for target in &plan.targets {
-        let package_root = target.manifest_path.parent().context(format!(
+    for manifest_path in &plan.verus_targets {
+        let package_root = manifest_path.parent().context(format!(
             "package manifest `{}` has no parent directory",
-            target.manifest_path.display()
+            manifest_path.display()
         ))?;
         let mut target_paths = WalkDir::new(package_root)
             .follow_links(true)
@@ -220,9 +242,6 @@ pub fn run_formatting(plan: &FormattingPlan) -> Result<ExitCode> {
         let mut command = Command::new(&verusfmt);
         if plan.is_check {
             command.arg("--check");
-        }
-        if target.fmt_verus_only {
-            command.arg("--verus-only");
         }
         let exit_status = command
             .args(&plan.verusfmt_args)
