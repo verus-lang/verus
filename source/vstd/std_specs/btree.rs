@@ -517,13 +517,20 @@ pub assume_specification<Key: Ord, Value, A: Allocator + Clone>[ BTreeMap::<
     A,
 >::insert ](m: &mut BTreeMap<Key, Value, A>, k: Key, v: Value) -> (result: Option<Value>)
     ensures
-        obeys_cmp::<Key>() ==> {
-            &&& final(m)@ == old(m)@.insert(k, v)
-            &&& match result {
-                Some(v) => old(m)@.contains_key(k) && v == old(m)[k],
-                None => !old(m)@.contains_key(k),
-            }
-        },
+        obeys_cmp::<Key>() ==>
+            match result {
+                Some(old_v) => exists|equiv_k: Key| {
+                    &&& #[trigger] old(m)@.contains_key(equiv_k)
+                    &&& k.cmp_spec(&equiv_k) is Equal
+                    &&& final(m)@ == old(m)@.insert(equiv_k, v)
+                    &&& old_v == old(m)@[equiv_k]
+                },
+                None => {
+                    &&& !old(m)@.contains_key(k) // this is redundant with the next conjunct, but nevertheless useful
+                    &&& forall|equiv_k: Key| #[trigger] old(m)@.contains_key(equiv_k) ==> !(k.cmp_spec(&equiv_k) is Equal)
+                    &&& final(m)@ == old(m)@.insert(k, v)
+                },
+            },
 ;
 
 // The specification for `contains_key` has a parameter `key: &Q`

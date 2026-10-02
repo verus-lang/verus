@@ -49,6 +49,142 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_btree_map_insert_ordering_equal_key verus_code! {
+        use std::cmp::Ordering;
+        use std::collections::BTreeMap;
+        use vstd::laws_cmp::*;
+        use vstd::laws_eq::*;
+        use vstd::prelude::*;
+        use vstd::std_specs::cmp::{
+            OrdSpec, OrdSpecImpl, PartialEqSpecImpl, PartialOrdSpecImpl,
+        };
+
+        pub struct K {
+            pub a: u64,
+            pub b: u64,
+        }
+
+        pub open spec fn cmp_a(x: &K, y: &K) -> Ordering {
+            if x.a < y.a {
+                Ordering::Less
+            } else if x.a > y.a {
+                Ordering::Greater
+            } else {
+                Ordering::Equal
+            }
+        }
+
+        impl PartialEqSpecImpl for K {
+            open spec fn obeys_eq_spec() -> bool {
+                true
+            }
+
+            open spec fn eq_spec(&self, other: &K) -> bool {
+                self.a == other.a
+            }
+        }
+
+        impl PartialEq for K {
+            fn eq(&self, other: &K) -> bool {
+                self.a == other.a
+            }
+        }
+
+        impl Eq for K {}
+
+        impl PartialOrdSpecImpl for K {
+            open spec fn obeys_partial_cmp_spec() -> bool {
+                true
+            }
+
+            open spec fn partial_cmp_spec(&self, other: &K) -> Option<Ordering> {
+                Some(cmp_a(self, other))
+            }
+        }
+
+        impl PartialOrd for K {
+            fn partial_cmp(&self, other: &K) -> Option<Ordering> {
+                if self.a < other.a {
+                    Some(Ordering::Less)
+                } else if self.a > other.a {
+                    Some(Ordering::Greater)
+                } else {
+                    Some(Ordering::Equal)
+                }
+            }
+        }
+
+        impl OrdSpecImpl for K {
+            open spec fn obeys_cmp_spec() -> bool {
+                true
+            }
+
+            open spec fn cmp_spec(&self, other: &K) -> Ordering {
+                cmp_a(self, other)
+            }
+        }
+
+        impl Ord for K {
+            fn cmp(&self, other: &K) -> Ordering {
+                if self.a < other.a {
+                    Ordering::Less
+                } else if self.a > other.a {
+                    Ordering::Greater
+                } else {
+                    Ordering::Equal
+                }
+            }
+        }
+
+        proof fn k_obeys_cmp()
+            ensures
+                obeys_cmp::<K>(),
+        {
+            reveal(obeys_eq_spec_properties);
+            reveal(obeys_cmp_partial_ord);
+            reveal(obeys_cmp_ord);
+            reveal(obeys_partial_cmp_spec_properties);
+        }
+
+        fn test() {
+            proof {
+                k_obeys_cmp();
+            }
+
+            let mut m = BTreeMap::<K, u64>::new();
+            let first = m.insert(K { a: 1, b: 0 }, 10);
+            assert(first.is_none());
+            assert(m@ == map![K { a: 1, b: 0 } => 10]);
+            assert(
+                OrdSpec::cmp_spec(&K { a: 1, b: 1 }, &K { a: 1, b: 0 }) is Equal
+            );
+
+            let ghost before_second = m@;
+            let second = m.insert(K { a: 1, b: 1 }, 20);
+            match second {
+                Some(old_value) => assert(old_value == 10),
+                None => {
+                    assert(before_second.contains_key(K { a: 1, b: 0 }));
+                    assert(
+                        OrdSpec::cmp_spec(
+                            &K { a: 1, b: 1 },
+                            &K { a: 1, b: 0 },
+                        ) is Equal
+                    );
+                    assert(false);
+                },
+            }
+
+            assert(m@.contains_key(K { a: 1, b: 0 }));
+            assert(m@[K { a: 1, b: 0 }] == 20);
+            assert(!m@.contains_key(K { a: 1, b: 1 }));
+            let len = m.len();
+            assert(len == 1);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_btree_map_get_mut verus_code! {
         extern crate alloc;
         use alloc::collections::BTreeMap;
