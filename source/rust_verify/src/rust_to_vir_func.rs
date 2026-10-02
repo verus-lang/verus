@@ -420,7 +420,7 @@ fn check_fn_decl<'tcx>(
         rustc_hir::ImplicitSelfKind::Imm => {}
         rustc_hir::ImplicitSelfKind::RefImm => {}
         rustc_hir::ImplicitSelfKind::RefMut => {}
-        rustc_hir::ImplicitSelfKind::Mut => unsupported_err!(span, "mut self"),
+        rustc_hir::ImplicitSelfKind::Mut => {}
     }
     match output {
         rustc_hir::FnRetTy::DefaultReturn(_) => Ok(None),
