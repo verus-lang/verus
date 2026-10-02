@@ -2,7 +2,7 @@ use crate::ast::{
     CallTarget, CallTargetKind, Expr, ExprX, Fun, Function, FunctionKind, FunctionX, GenericBound,
     GenericBoundX, GenericBounds, Ident, Idents, ImplPath, ImplPaths, Krate, Mode, Path, Place,
     Sizedness, SpannedTyped, Trait, TraitId, TraitImpl, TraitX, Typ, TypX, Typs, VirErr,
-    Visibility, WellKnownItem,
+    Visibility,
 };
 use crate::ast_util::path_as_friendly_rust_name;
 use crate::ast_visitor::VisitorScopeMap;
@@ -193,7 +193,6 @@ fn demote_one_expr(
 pub fn demote_external_traits(
     diagnostics: &impl air::messages::Diagnostics,
     warning_ctx: &crate::context::WarningCtx,
-    path_to_well_known_item: &HashMap<Path, WellKnownItem>,
     krate: &Krate,
 ) -> Result<Krate, VirErr> {
     check_no_dupe_impls(krate)?;
@@ -248,27 +247,6 @@ pub fn demote_external_traits(
             let our_trait_method = traits.contains(trait_path) && funs.contains(method);
             let mut functionx = function.x.clone();
             if !our_trait_method {
-                if path_to_well_known_item.get(trait_path) == Some(&WellKnownItem::DropTrait) {
-                    if !function.x.require.is_empty() {
-                        return Err(error(
-                            &function.span,
-                            "requires are not allowed on the implementation for Drop",
-                        ));
-                    }
-                    if !matches!(&function.x.mask_spec, Some(crate::ast::MaskSpec::InvariantOpens(_span, es)) if es.len() == 0)
-                    {
-                        return Err(error(
-                            &function.span,
-                            "the implementation for Drop must be marked opens_invariants none",
-                        ));
-                    }
-                    if !matches!(&function.x.unwind_spec, Some(crate::ast::UnwindSpec::NoUnwind)) {
-                        return Err(error(
-                            &function.span,
-                            "the implementation for Drop must be marked no_unwind",
-                        ));
-                    }
-                }
                 check_modes(function, &function.span)?;
                 functionx.kind = FunctionKind::Static;
             }
