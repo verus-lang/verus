@@ -702,8 +702,12 @@ pub enum LogicalOp {
 /// and UnaryOp::Clip.
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
 pub enum BinaryOp {
+    /// boolean and (no short-circuiting)
+    BoolAndNoSC,
+    /// boolean or (no short-circuiting)
+    BoolOrNoSC,
     /// boolean xor (no short-circuiting)
-    Xor,
+    BoolXor,
     /// the is_smaller_than verus_builtin, used for decreases (true for <, false for ==)
     HeightCompare { strictly_lt: bool, recursive_function_field: bool },
     /// SMT equality for any type -- two expressions are exactly the same value
@@ -741,7 +745,7 @@ pub enum MultiOp {
 }
 
 /// Use Ghost(x) or Tracked(x) to unwrap an argument
-#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode, PartialEq, Eq)]
 pub struct UnwrapParameter {
     // indicates Ghost or Tracked
     pub mode: Mode,
@@ -1491,8 +1495,6 @@ pub struct FunctionAttrsX {
     pub uses_ghost_blocks: bool,
     /// Inline spec function for SMT
     pub inline: bool,
-    /// List of functions that this function wants to view as opaque
-    pub hidden: Arc<Vec<Fun>>,
     /// Create a global axiom saying forall params, require ==> ensure
     pub broadcast_forall: bool,
     /// Only create global axioms; don't declare req/ens functions (set by prune.rs)
@@ -1705,6 +1707,31 @@ pub struct FunctionX {
     /// Useful only for trusted fns.
     pub extra_dependencies: Vec<Fun>,
     /// The return type of the async function i.e., impl Future<Output>.
+    pub async_ret: Option<Param>,
+    /// List of functions that this function wants to view as opaque
+    pub hidden: Arc<Vec<Fun>>,
+}
+
+/// Function, including signature and body
+pub type FunctionStub = Arc<Spanned<FunctionStubX>>;
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[to_node_impl]
+pub struct FunctionStubX {
+    pub name: Fun,
+    pub proxy: Option<Spanned<Path>>,
+    pub kind: FunctionKind,
+    pub visibility: Visibility,
+    pub body_visibility: BodyVisibility,
+    pub opaqueness: Opaqueness,
+    pub owning_module: Option<Path>,
+    pub mode: Mode,
+    pub typ_params: Idents,
+    pub typ_bounds: GenericBounds,
+    pub params: Params,
+    pub ret: Param,
+    pub ens_has_return: bool,
+    pub item_kind: ItemKind,
+    pub attrs: FunctionAttrs,
     pub async_ret: Option<Param>,
 }
 

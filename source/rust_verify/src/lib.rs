@@ -51,6 +51,7 @@ mod fn_call_to_vir;
 mod hir_hide_reveal_rewrite;
 mod import_export;
 mod no_cheating;
+mod pre_header;
 pub mod profiler;
 mod resolve_traits;
 pub mod reveal_hide;
