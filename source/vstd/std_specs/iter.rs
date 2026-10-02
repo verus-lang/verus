@@ -159,7 +159,6 @@ pub trait ExIterator {
             Self: Sized,
             P: FnMut(&Self::Item) -> bool,
         requires
-            self.obeys_prophetic_iter_laws(),
             // `filter`'s implementation loops over the inner iterator until the predicate accepts an element,
             // so it needs a decreases metric to prove termination.
             self.decrease() is Some,
@@ -208,7 +207,6 @@ pub trait ExIterator {
             Self: Sized,
             F: FnMut(Self::Item) -> B,
         requires
-            self.obeys_prophetic_iter_laws(),
             forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(f, (self.remaining()[k], )),
         ensures
             self.obeys_prophetic_iter_laws() ==> map_post(self, f, r),

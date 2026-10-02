@@ -25,6 +25,7 @@ pub struct MockPackage {
     features: Vec<String>,
     verus_verify: Option<bool>,
     trusted_crates: Vec<String>,
+    verus_fmt_as_rust: Option<bool>,
     is_vstd: bool,
 }
 
@@ -211,6 +212,7 @@ impl MockPackage {
             features: vec![],
             verus_verify: None,
             trusted_crates: vec![],
+            verus_fmt_as_rust: None,
             is_vstd: false,
         }
     }
@@ -272,6 +274,11 @@ impl MockPackage {
 
     pub fn trusted_crates(mut self, names: impl IntoIterator<Item = impl AsRef<str>>) -> Self {
         self.trusted_crates.extend(names.into_iter().map(|name| name.as_ref().to_owned()));
+        self
+    }
+
+    pub fn fmt_as_rust(mut self, setting: bool) -> Self {
+        self.verus_fmt_as_rust = Some(setting);
         self
     }
 
@@ -390,6 +397,9 @@ impl MockPackage {
         }
         if !self.trusted_crates.is_empty() {
             verus_metadata_lines.push(format!("trusted_crates = {:?}", self.trusted_crates));
+        }
+        if let Some(verus_fmt_as_rust) = self.verus_fmt_as_rust {
+            verus_metadata_lines.push(format!("fmt-as-rust = {verus_fmt_as_rust}"));
         }
         if self.is_vstd {
             verus_metadata_lines.push(format!("is-vstd = true"));

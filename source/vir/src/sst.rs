@@ -449,6 +449,7 @@ pub struct FunctionSstX {
     pub recommends_check: Option<Arc<FuncCheckSst>>,
     pub safe_api_check: Option<Arc<FuncCheckSst>>,
     pub async_ret: Option<Par>,
+    pub hidden: Arc<Vec<Fun>>,
 }
 
 pub type KrateSst = Arc<KrateSstX>;
