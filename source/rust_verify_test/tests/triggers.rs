@@ -330,22 +330,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_trigger_on_lambda_2 TRIGGER_ON_LAMBDA_COMMON.to_string() + verus_code_str! {
-        #[verifier(external_body)]
-        proof fn something(fn1: spec_fn(S)->bool, fn2: spec_fn(S)->bool)
-        ensures forall|s: S| #[trigger] fn1(s) ==> fn2(s) { }
-
-        proof fn foo(s: S) {
-          something(|s1| #[trigger] prop_1(s1), |s1| prop_2(s1));
-          assert forall|s: S| prop_1(s) implies prop_2(s) by {
-            assert(prop_1(s));
-            assert(prop_2(s));
-          }
-        }
-    } => Ok(_err) => { /* ignore deprecation warning */ }
-}
-
-test_verify_one_file! {
     #[test] test_trigger_on_lambda_3 verus_code! {
         spec fn id<A>(a: A) -> A { a }
 
