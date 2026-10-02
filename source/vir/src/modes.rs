@@ -1349,6 +1349,33 @@ fn check_place_rec_inner(
             let deref_mode = if mode == Mode::Spec { Mode::Spec } else { Mode::Exec };
             Ok((deref_mode, proph))
         }
+        PlaceX::DerefRaw(p, permission_place) => {
+            let (mode, proph) = check_place_rec(
+                ctxt,
+                record,
+                typing,
+                note,
+                outer_mode,
+                p,
+                access,
+                expect,
+                outer_proph,
+            )?;
+
+            // TODO: I think we can be much more lenient here
+            if mode != Mode::Exec || !matches!(typing.block_ghostness, Ghost::Exec) {
+                return Err(error(
+                    &place.span,
+                    &format!("to dereference a pointer, it must be exec mode"),
+                ));
+            }
+
+            if let Some(_permission_place) = permission_place {
+                todo!();
+            }
+
+            Ok((Mode::Exec, proph))
+        }
         PlaceX::Local(var) => {
             let (mode, proph) = typing.get(var, &place.span)?;
             let proph = proph.to_proph(var, &place.span);
@@ -1560,7 +1587,7 @@ fn ok_to_assign_exec_place_in_erased_code(ctxt: &Ctxt, place: &Place, typ: &Typ)
     // that we need this extra allowance in the first place, i.e., if it's not a mutable
     // reference, then we can just check directly if it's a tracked location and there's
     // no need for all this guesswork.
-    if !crate::ast_util::place_has_deref_mut(place) {
+    if !crate::ast_util::place_has_deref_mut_or_raw(place) {
         return false;
     }
 
@@ -1586,6 +1613,9 @@ fn ok_to_assign_exec_place_in_erased_code(ctxt: &Ctxt, place: &Place, typ: &Typ)
             | PlaceX::UserDefinedTypInvariantObligation(p, _)
             | PlaceX::Index(p, ..) => {
                 place = p;
+            }
+            PlaceX::DerefRaw(..) => {
+                todo!();
             }
         }
     }

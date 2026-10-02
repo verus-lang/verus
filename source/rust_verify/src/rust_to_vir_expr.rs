@@ -4759,7 +4759,7 @@ evaluation of `*x` early.
 Therefore, this should only be called on a place when you know how that place is being used.
 For example, when constructing an expression like `&mut P` or `P = rhs`, you can go ahead
 and call `simplify_place_by_cancelling` on P. But if P is only partially constructed
-might be composed with an Index place later, it's not safe to call this yet.
+and might be composed with an Index place later, it's not safe to call this yet.
 */
 pub(crate) fn simplify_place_by_cancelling(place: &Place) -> Place {
     match &place.x {
@@ -4814,6 +4814,7 @@ pub(crate) fn simplify_place_by_cancelling(place: &Place) -> Place {
         PlaceX::WithExpr(..) | PlaceX::UserDefinedTypInvariantObligation(..) => {
             panic!("simplify_place_by_cancelling got unexpected place kind");
         }
+        PlaceX::DerefRaw(..) => place.clone(),
     }
 }
 

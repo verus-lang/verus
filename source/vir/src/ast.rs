@@ -1374,6 +1374,9 @@ pub enum PlaceX {
     ///
     /// These nodes are inserted by resolution analysis.
     UserDefinedTypInvariantObligation(Place, Fun),
+    /// Dereference the given pointer.
+    /// Second argument is (once inferred) the permission to use.
+    DerefRaw(Place, Option<Place>),
 }
 
 /// Statement, similar to rustc_hir::Stmt

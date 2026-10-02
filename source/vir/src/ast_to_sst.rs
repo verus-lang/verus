@@ -16,6 +16,7 @@ use crate::messages::{
     Message, Span, ToAny, WarningAllow, error, error_with_label, error_with_secondary_label,
     internal_error,
 };
+use crate::place_preconditions::sst_raw_deref_check;
 use crate::sst;
 use crate::sst::{
     Bnd, BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclKind, LocalDeclX,
@@ -1570,13 +1571,11 @@ fn if_to_stm(
     }
 }
 
-/// Emits the Stms for a field-access check: `is_hard_requirement` (e.g. union access)
-/// asserts except while checking recommends, plus an assume for both passes; otherwise
-/// (e.g. get_variant access) it only asserts while checking recommends, with no assume,
-/// since it's not a soundness fact.
-fn field_check_stms(
-    state: &mut State,
+/// Emits the Stms for a precondition needed to access a given place.
+/// If `is_hard_requirement` is false, emit as a recommendation.
+fn place_check_stms(
     ctx: &Ctx,
+    state: &mut State,
     span: &Span,
     condition: Exp,
     msg: Message,
@@ -1983,9 +1982,9 @@ pub(crate) fn expr_to_stm_opt(
                 _ => (None, op.clone()),
             };
             if let Some((condition, msg, is_hard_requirement)) = check {
-                stms.extend(field_check_stms(
-                    state,
+                stms.extend(place_check_stms(
                     ctx,
+                    state,
                     &expr.span,
                     condition,
                     msg,
@@ -4127,7 +4126,7 @@ fn place_to_exp_for_read(
     Ok((stms, Maybe::Some(rhs)))
 }
 
-fn place_is_simple(place: &Place) -> bool {
+pub(crate) fn place_is_simple(place: &Place) -> bool {
     match &place.x {
         PlaceX::Local(_) => true,
         PlaceX::Temporary(_) => true,
@@ -4151,11 +4150,12 @@ fn place_is_simple(place: &Place) -> bool {
             matches!(bounds_check, BoundsCheck::Allow) && index_is_simple && place_is_simple(p)
         }
         PlaceX::UserDefinedTypInvariantObligation(..) => false,
+        PlaceX::DerefRaw(..) => false,
     }
 }
 
 /// Precondition: place_is_simple
-fn place_to_exp_simple(
+pub(crate) fn place_to_exp_simple(
     ctx: &Ctx,
     state: &mut State,
     place: &Place,
@@ -4198,6 +4198,7 @@ fn place_to_exp_simple(
             Ok((stms, Maybe::Some(e)))
         }
         PlaceX::UserDefinedTypInvariantObligation(..) => unreachable!(),
+        PlaceX::DerefRaw(..) => unreachable!(),
     }
 }
 
@@ -4263,9 +4264,9 @@ fn place_to_exp_pair_rec(
                 VariantCheck::None => None,
             };
             if let Some((condition, msg, is_hard_requirement)) = check {
-                wf.extend(field_check_stms(
-                    state,
+                wf.extend(place_check_stms(
                     ctx,
+                    state,
                     &place.span,
                     condition,
                     msg,
@@ -4362,6 +4363,39 @@ fn place_to_exp_pair_rec(
                 obligations.push(Obligation { fun: fun.clone(), exp: e2.clone() });
             }
             Ok((stms, exps))
+        }
+        PlaceX::DerefRaw(p, permission_place) => {
+            let (mut stms, exps) = place_to_exp_pair_rec(ctx, state, p)?;
+            // We can ignore the l-value and all the obligations up to this point,
+            // because the place containing the pointer will not be modified.
+            let (_e1, e2, _obligations, mut wf) = unwrap_or_return_never!(exps, stms);
+
+            let checks = sst_raw_deref_check(ctx, state, &place.span, &e2, &permission_place);
+            for (condition, msg) in checks {
+                wf.extend(place_check_stms(ctx, state, &place.span, condition, msg, true));
+            }
+
+            let Some(permission_place) = permission_place else {
+                let kind = PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::Nondeterministic));
+                let (var_ident, e_r) = state.declare_temp_var_stm(&place.span, &place.typ, kind);
+                let stm = assume_has_typ(&var_ident, &place.typ, &place.span);
+                stms.push(stm);
+                let e_l = mk_exp(ExpX::VarLoc(var_ident.clone()));
+                return Ok((stms, Maybe::Some((e_l, e_r, vec![], wf))));
+            };
+
+            let (stms1, exps) = place_to_exp_pair_rec(ctx, state, permission_place)?;
+            let Maybe::Some((perm_l, perm_r, perm_obligations, perm_wf)) = exps else {
+                crate::internal_err!(place.span.clone(), "never-return DerefRaw permissions place");
+            };
+            if stms1.len() > 0 || perm_obligations.len() > 0 || perm_wf.len() > 0 {
+                crate::internal_err!(place.span.clone(), "complex DerefRaw permissions place");
+            }
+
+            let value_l = crate::points_to::sst_loc_inside_permission(&perm_l);
+            let value_r = crate::points_to::sst_loc_inside_permission(&perm_r);
+
+            Ok((stms, Maybe::Some((value_l, value_r, vec![], wf))))
         }
     }
 }
