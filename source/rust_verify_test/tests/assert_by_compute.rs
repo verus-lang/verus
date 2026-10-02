@@ -101,6 +101,24 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] if_equality_branches_agree verus_code! {
+        proof fn test(c: bool) {
+            assert((if c { 1int } else { 2int }) == (if c { 1int } else { 2int })) by(compute_only);
+            assert((if c { 1int } else { 2int }) != (if c { 3int } else { 4int })) by(compute_only);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] if_equality_compute_only_then_matches verus_code! {
+        proof fn test() ensures false {
+            let c = true;
+            assert((if c { 1int } else { 2int }) != (if c { 1int } else { 3int })) by(compute_only);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
+}
+
+test_verify_one_file! {
     #[test] lets verus_code! {
 
         fn test() {

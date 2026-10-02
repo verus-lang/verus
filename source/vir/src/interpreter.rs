@@ -485,9 +485,14 @@ impl SyntacticEquality for Exp {
             (Binary(op_l, e1_l, e2_l), Binary(op_r, e1_r, e2_r)) => {
                 def_eq(op_l == op_r && e1_l.syntactic_eq(e1_r)? && e2_l.syntactic_eq(e2_r)?)
             }
-            (If(e1_l, e2_l, e3_l), If(e1_r, e2_r, e3_r)) => Some(
-                e1_l.syntactic_eq(e1_r)? && e2_l.syntactic_eq(e2_r)? && e3_l.syntactic_eq(e3_r)?,
-            ),
+            (If(e1_l, e2_l, e3_l), If(e1_r, e2_r, e3_r)) => {
+                if !e1_l.definitely_eq(e1_r) {
+                    return None;
+                }
+                let then_eq = e2_l.syntactic_eq(e2_r)?;
+                let else_eq = e3_l.syntactic_eq(e3_r)?;
+                if then_eq == else_eq { Some(then_eq) } else { None }
+            }
             (WithTriggers(_trigs_l, e_l), WithTriggers(_trigs_r, e_r)) => e_l.syntactic_eq(e_r),
             (Bind(bnd_l, e_l), Bind(bnd_r, e_r)) => {
                 Some(bnd_l.syntactic_eq(bnd_r)? && e_l.syntactic_eq(e_r)?)
