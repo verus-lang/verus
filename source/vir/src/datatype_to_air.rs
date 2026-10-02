@@ -235,17 +235,24 @@ fn datatype_or_fun_to_air_commands(
         fun_args = Some(args.clone());
         fun_params = Some(params.clone());
         let tparamret = typ_args.last().expect("return type").clone();
-        let app = Arc::new(ExprX::ApplyFun(apolytyp.clone(), x_var.clone(), args));
-        let has_app = typ_invariant(ctx, &tparamret, &app).expect("return invariant");
+        let mk_fun = str_apply(crate::def::MK_FUN, &vec![id.clone(), x_var.clone()]);
+        let unwrapped_app =
+            Arc::new(ExprX::ApplyFun(apolytyp.clone(), mk_fun.clone(), args.clone()));
+        let unwrapped_has_app =
+            typ_invariant(ctx, &tparamret, &unwrapped_app).expect("return invariant");
 
-        // SpecFn constructor axiom:
+        // SpecFn constructor axiom
+        // Note that in this axiom (and only this axiom), x is the unwrapped Fun value,
+        // which must be wrapped in (mk_fun typeid x) to be create a full-blown SpecFn value,
+        // and this axiom only applies when the typeid in the wrapper matches typ1...typn, tret,
+        // preventing confusion between different SpecFn types.
+        // (In other axioms, x is the wrapped Fun value)
         // forall typ1 ... typn, tret, x: Fun.
         //   (forall arg1: Poly ... argn: Poly.
-        //     has_type1 && ... && has_typen ==> has_type(apply(x, args), tret)) ==>
+        //     has_type1 && ... && has_typen ==> has_type(apply(mk_fun(FUN(typ1...typn, tret), x), args), tret)) ==>
         //   has_type(box(mk_fun(FUN(typ1...typn, tret), x)), FUN(typ1...typn, tret))
-        // The type argument keeps erased functions from being reused at a different SpecFn type.
         // trigger on has_type(box(mk_fun(FUN(...), x)), FUN(...))
-        let inner_trigs = vec![has_app.clone()];
+        let inner_trigs = vec![unwrapped_has_app.clone()];
         let name = format!("{}_{}", path_as_friendly_rust_name(dpath), QID_CONSTRUCTOR_INNER);
         let inner_bind = func_bind_trig(
             ctx,
@@ -257,9 +264,8 @@ fn datatype_or_fun_to_air_commands(
         );
         let inner_pre = mk_and(&pre);
         fun_has = Some(inner_pre.clone());
-        let inner_imply = mk_implies(&inner_pre, &has_app);
+        let inner_imply = mk_implies(&inner_pre, &unwrapped_has_app);
         let inner_forall = mk_bind_expr(&inner_bind, &inner_imply);
-        let mk_fun = str_apply(crate::def::MK_FUN, &vec![id.clone(), x_var.clone()]);
         let box_mk_fun = ident_apply(&ctx.name_ctxt.prefix_box(dpath), &vec![mk_fun.clone()]);
         let has_box_mk_fun = expr_has_type(&box_mk_fun, &id);
         let trigs = vec![has_box_mk_fun.clone()];
@@ -277,6 +283,8 @@ fn datatype_or_fun_to_air_commands(
         // trigger on apply(x, args), has_type_f
         params.push(x_param(&datatyp));
         pre.insert(0, has_box.clone());
+        let app = Arc::new(ExprX::ApplyFun(apolytyp.clone(), x_var.clone(), args));
+        let has_app = typ_invariant(ctx, &tparamret, &app).expect("return invariant");
         let trigs = vec![app.clone(), has_box.clone()];
         let name = format!("{}_{}", path_as_friendly_rust_name(dpath), QID_APPLY);
         let aparams = Arc::new(params.clone());
