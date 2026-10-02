@@ -42,6 +42,18 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] try_from_self verus_code! {
+        use vstd::prelude::*;
+
+        fn main() {
+            let n: i64 = 42;
+            let m: i64 = n.try_into().unwrap();
+            assert(m == 42);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] external_clone_fail verus_code! {
         // Make sure the support for &X clone doesn't mistakenly trigger in other situations
 
