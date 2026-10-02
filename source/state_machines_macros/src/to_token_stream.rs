@@ -336,6 +336,7 @@ pub fn output_primary_stuff(
                     #[verus::internal(verus_macro)]
                     #[verifier::spec]
                     #[verus::internal(open)] /* vattr */
+                    #[verifier::prophetic]
                     pub fn #name (#args) -> ::core::primitive::bool {
                         #vstd::prelude::verus_proof_expr!({ #f })
                     }
@@ -347,6 +348,7 @@ pub fn output_primary_stuff(
                     #[verus::internal(verus_macro)]
                     #[verifier::spec]
                     #[verus::internal(open)] /* vattr */
+                    #[verifier::prophetic]
                     pub fn #name (#args) -> ::core::primitive::bool {
                         #vstd::prelude::verus_proof_expr!({ #f })
                     }
@@ -370,6 +372,7 @@ pub fn output_primary_stuff(
                 #[verus::internal(verus_macro)]
                 #[verifier::spec]
                 #[verus::internal(open)] /* vattr */
+                #[verifier::prophetic]
                 pub fn #name (#params) -> ::core::primitive::bool {
                     #vstd::prelude::verus_proof_expr!({ #f })
                 }
@@ -390,6 +393,7 @@ pub fn output_primary_stuff(
                 #[verus::internal(verus_macro)]
                 #[verifier::spec]
                 #[verus::internal(open)] /* vattr */
+                #[verifier::prophetic]
                 pub fn #name (#params) -> ::core::primitive::bool {
                     #vstd::prelude::verus_proof_expr!({ #f })
                 }
@@ -407,6 +411,7 @@ pub fn output_primary_stuff(
                 #[verus::internal(verus_macro)]
                 #[verifier::spec]
                 #[verus::internal(open)] /* vattr */
+                #[verifier::prophetic]
                 pub fn #name (#params) -> ::core::primitive::bool {
                     #vstd::prelude::verus_proof_expr!({ #f })
                 }
@@ -668,6 +673,7 @@ fn output_step_datatype(
             #[verus::internal(open)] /* vattr */
             #[verus::internal(verus_macro)]
             #[verifier::spec]
+            #[verifier::prophetic]
             pub fn init_by(post: #self_ty, #label_param step: #step_ty) -> ::core::primitive::bool {
                 match step {
                     #(#arms)*
@@ -681,6 +687,7 @@ fn output_step_datatype(
             #[verus::internal(open)] /* vattr */
             #[verus::internal(verus_macro)]
             #[verifier::spec]
+            #[verifier::prophetic]
             pub fn init(post: #self_ty, #label_param) -> ::core::primitive::bool {
                 #vstd::prelude::exists(|step: #step_ty| Self::init_by(post, #label_arg step))
             }
@@ -712,6 +719,7 @@ fn output_step_datatype(
             #[verus::internal(open)] /* vattr */
             #[verus::internal(verus_macro)]
             #[verifier::spec]
+            #[verifier::prophetic]
             pub fn next_by(pre: #self_ty, post: #self_ty, #label_param step: #step_ty) -> ::core::primitive::bool {
                 match step {
                     #(#arms)*
@@ -724,6 +732,7 @@ fn output_step_datatype(
             #[verus::internal(open)] /* vattr */
             #[verus::internal(verus_macro)]
             #[verifier::spec]
+            #[verifier::prophetic]
             pub fn next(pre: #self_ty, post: #self_ty, #label_param) -> ::core::primitive::bool {
                 #vstd::prelude::exists(|step: #step_ty| Self::next_by(pre, post, #label_arg step))
             }
@@ -733,6 +742,7 @@ fn output_step_datatype(
             #[verus::internal(open)] /* vattr */
             #[verus::internal(verus_macro)]
             #[verifier::spec]
+            #[verifier::prophetic]
             pub fn next_strong_by(pre: #self_ty, post: #self_ty, #label_param step: #step_ty) -> ::core::primitive::bool {
                 match step {
                     #(#arms_strong)*
@@ -745,6 +755,7 @@ fn output_step_datatype(
             #[verus::internal(open)] /* vattr */
             #[verus::internal(verus_macro)]
             #[verifier::spec]
+            #[verifier::prophetic]
             pub fn next_strong(pre: #self_ty, post: #self_ty, #label_param) -> ::core::primitive::bool {
                 #vstd::prelude::exists(|step: #step_ty| Self::next_strong_by(pre, post, #label_arg step))
             }
@@ -1096,6 +1107,7 @@ fn output_other_fns(
         #[verifier::spec]
         #[verus::internal(verus_macro)]
         #[verus::internal(open)] /* vattr */
+        #[verifier::prophetic]
         pub fn invariant(&self) -> ::core::primitive::bool {
             #conj
         }
