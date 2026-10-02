@@ -367,6 +367,64 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] unevaluated_choose_arguments verus_code! {
+        spec fn g(x: int) -> int { x }
+
+        spec fn c(a: int) -> int {
+            choose|x: int| #[trigger] g(x) == a
+        }
+
+        proof fn test() {
+            assert(c(5) == c(6)) by (compute_only);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
+}
+
+test_verify_one_file! {
+    #[test] unevaluated_choose_symbolic_capture verus_code! {
+        spec fn tag(x: int, a: int) -> int { x }
+
+        spec fn pick(a: int) -> int {
+            choose|x: int| #[trigger] tag(x, a) == a
+        }
+
+        proof fn reflexive(a: int) {
+            assert(pick(a) == pick(a)) by (compute_only);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] unevaluated_call_lambda_arguments verus_code! {
+        spec fn h(f: spec_fn(int) -> int, a: int) -> int { f(a) }
+
+        proof fn test(f: spec_fn(int) -> int) {
+            assert(h(f, 5) == h(f, 6)) by (compute_only);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "evaluates to false")
+}
+
+test_verify_one_file! {
+    #[test] unevaluated_call_lambda_callee verus_code! {
+        spec fn h(f: spec_fn(int) -> int, a: int) -> int { f(a) }
+
+        proof fn test(f: spec_fn(int) -> int, g: spec_fn(int) -> int) {
+            assert(h(f, 5) == h(g, 5)) by (compute_only);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
+}
+
+test_verify_one_file! {
+    #[test] unevaluated_unsigned_shift_arguments verus_code! {
+        spec fn s(a: usize) -> usize { a << 31usize }
+
+        proof fn test() {
+            assert(s(2) == s(3)) by (compute_only);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
+}
+
+test_verify_one_file! {
     #[test] fn_calls_good verus_code! {
         spec fn f(x: int, y: int) -> bool { x == y }
 

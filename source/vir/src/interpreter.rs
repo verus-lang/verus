@@ -17,7 +17,7 @@ use crate::messages::{Message, Span, ToAny, WarningAllow, error};
 use crate::sst::{
     ArithOp, BinaryOp, Bnd, BndX, CallFun, Exp, ExpX, Exps, FunctionSst, Trigs, UniqueIdent,
 };
-use crate::sst_util::subst_exp;
+use crate::sst_util::{subst_exp, subst_exp_for_interpreter};
 use crate::unicode::valid_unicode_scalar_bigint;
 use air::ast::{Binder, BinderX, Binders};
 use air::scope_map::ScopeMap;
@@ -1615,6 +1615,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 Bitwise(op) => {
                     use BitwiseOp::*;
                     let e2 = eval_expr_internal(ctx, state, e2)?;
+                    let ok = ok_e2(e2.clone());
                     match (&e1.x, &e2.x) {
                         // Ideal case where both sides are concrete
                         (Const(Int(i1)), Const(Int(i2))) => match op {
@@ -1808,13 +1809,14 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
         }
         CallLambda(lambda, args) => {
             let lambda = eval_expr_internal(ctx, state, lambda)?;
+            let new_args: Result<Vec<Exp>, VirErr> =
+                args.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
+            let new_args = Arc::new(new_args?);
+            let ok = exp_new(CallLambda(lambda.clone(), new_args.clone()));
             match &lambda.x {
                 Interp(InterpExp::Closure(lambda, context)) => match &lambda.x {
                     Bind(bnd, body) => match &bnd.x {
                         BndX::Lambda(bnds, _trigs) => {
-                            let new_args: Result<Vec<Exp>, VirErr> =
-                                args.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
-                            let new_args = Arc::new(new_args?);
                             state.env.push_scope(true);
                             // Process the original context first, so formal args take precedence
                             context.iter().for_each(|(k, v)| {
@@ -1874,7 +1876,38 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                     exp_new(Bind(bnd.clone(), e))
                 }
             }
-            _ => ok,
+            BndX::Choose(bnds, triggers, cond) => {
+                state.env.push_scope(true);
+                for b in bnds.iter() {
+                    let id = b.name.clone();
+                    let val = SpannedTyped::new(&e.span, &b.a, ExpX::Var(id.clone()));
+                    state.env.insert(id, val).unwrap();
+                }
+                let cond = eval_expr_internal(ctx, state, cond)?;
+                let e = eval_expr_internal(ctx, state, e)?;
+                // Substitute captured values without simplifying trigger applications away.
+                let triggers = Arc::new(
+                    triggers
+                        .iter()
+                        .map(|trig| {
+                            Arc::new(
+                                trig.iter()
+                                    .map(|t| {
+                                        subst_exp_for_interpreter(
+                                            state.type_env.map(),
+                                            state.env.map(),
+                                            t,
+                                        )
+                                    })
+                                    .collect(),
+                            )
+                        })
+                        .collect(),
+                );
+                state.env.pop_scope();
+                let bnd = bnd.new_x(BndX::Choose(bnds.clone(), triggers, cond));
+                exp_new(Bind(bnd, e))
+            }
         },
         Ctor(path, id, bnds) => {
             let new_bnds: Result<Vec<Binder<Exp>>, VirErr> = bnds

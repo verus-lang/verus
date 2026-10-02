@@ -144,6 +144,7 @@ struct SubstCtxt<'a> {
     typ_substs: &'a HashMap<Ident, Typ>,
     // free variables in the Exps in SubstState.substs:
     allow_unfinalized: bool,
+    allow_interp: bool,
 }
 
 struct SubstState {
@@ -308,6 +309,9 @@ fn subst_exp_rec(ctxt: &SubstCtxt, state: &mut SubstState, exp: &Exp) -> Exp {
             }
             mk_exp(ExpX::ArrayLiteral(Arc::new(new_exprs)))
         }
+        // Interpreter values have already captured their variables. In particular,
+        // FreeVar must remain hidden from substitutions in the current environment.
+        ExpX::Interp(_) if ctxt.allow_interp => exp.clone(),
         ExpX::Interp(_) => {
             panic!("Found an interpreter expression {:?} outside the interpreter", exp)
         }
@@ -318,6 +322,24 @@ pub(crate) fn subst_exp(
     typ_substs: &HashMap<Ident, Typ>,
     substs: &HashMap<UniqueIdent, Exp>,
     exp: &Exp,
+) -> Exp {
+    subst_exp_internal(typ_substs, substs, exp, false)
+}
+
+/// Capture-avoiding substitution that preserves already evaluated interpreter values.
+pub(crate) fn subst_exp_for_interpreter(
+    typ_substs: &HashMap<Ident, Typ>,
+    substs: &HashMap<UniqueIdent, Exp>,
+    exp: &Exp,
+) -> Exp {
+    subst_exp_internal(typ_substs, substs, exp, true)
+}
+
+fn subst_exp_internal(
+    typ_substs: &HashMap<Ident, Typ>,
+    substs: &HashMap<UniqueIdent, Exp>,
+    exp: &Exp,
+    allow_interp: bool,
 ) -> Exp {
     if typ_substs.len() == 0 && substs.len() == 0 {
         return exp.clone();
@@ -347,7 +369,7 @@ pub(crate) fn subst_exp(
             let _ = fresh_var_blacklist.insert(y.clone(), ());
         }
     }
-    let ctxt = SubstCtxt { typ_substs, allow_unfinalized };
+    let ctxt = SubstCtxt { typ_substs, allow_unfinalized, allow_interp };
     let mut state = SubstState { substs: scope_substs, free_vars, fresh_var_blacklist };
     let e = subst_exp_rec(&ctxt, &mut state, exp);
     state.substs.pop_scope();
