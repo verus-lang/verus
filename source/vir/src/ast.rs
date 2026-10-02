@@ -560,8 +560,9 @@ pub enum UnaryOpr {
     /// For primitive types this is trivially true.
     /// For datatypes this is recursive in the natural way.
     HasResolved(Typ),
-    /// Coerce from concrete type to `dyn T`. Typ arg is the Self type
-    ToDyn(Typ),
+    /// Coerce from concrete type to `dyn T`, recording the Self type and the
+    /// trait implementations needed to construct the trait object.
+    ToDyn(Typ, ImplPaths),
     /// Isolation boundary for the loop of the given label, which must be contained
     /// in the boundary.
     LoopIsolationBoundary(Label),

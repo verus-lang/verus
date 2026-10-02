@@ -363,6 +363,111 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] dyn_coercion_cycle_proof verus_code! {
+        trait T {
+            proof fn f(tracked &self) ensures false;
+        }
+        impl T for u8 {
+            proof fn f(tracked &self) {
+                let tracked d: &dyn T = self;
+                d.f();
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference")
+}
+
+#[test]
+fn dyn_coercion_cycle_proof_cross_crate() {
+    let tempdir = tempfile::TempDir::new().expect("temp dir");
+    let trait_code = verus_code! {
+        pub trait T {
+            proof fn f(tracked &self) ensures false;
+        }
+    };
+    std::fs::write(
+        tempdir.path().join("trait.rs"),
+        format!("{}\n{}\n{}", FEATURE_PRELUDE, USE_PRELUDE, trait_code),
+    )
+    .expect("write trait crate");
+
+    let output = run_verus_raw(
+        &[
+            "--crate-type=lib",
+            "--crate-name=dyn_coercion_trait",
+            "--compile",
+            "--export=trait.vir",
+            "-o",
+            "libdyn_coercion_trait.rlib",
+            "trait.rs",
+        ],
+        tempdir.path(),
+    );
+    assert!(
+        output.status.success(),
+        "trait crate failed:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // An upstream trait can acquire a recursive implementation in a downstream crate.
+    let impl_code = verus_code! {
+        use dyn_coercion_trait::T;
+
+        struct S {}
+        impl T for S {
+            proof fn f(tracked &self) {
+                let tracked d: &dyn T = self;
+                d.f();
+            }
+        }
+    };
+    std::fs::write(
+        tempdir.path().join("impl.rs"),
+        format!("{}\n{}\n{}", FEATURE_PRELUDE, USE_PRELUDE, impl_code),
+    )
+    .expect("write impl crate");
+
+    let output = run_verus_raw(
+        &[
+            "--crate-type=lib",
+            "--crate-name=dyn_coercion_impl",
+            "--edition=2021",
+            "--extern",
+            "dyn_coercion_trait=libdyn_coercion_trait.rlib",
+            "--import",
+            "dyn_coercion_trait=trait.vir",
+            "-L",
+            "dependency=.",
+            "--emit=metadata",
+            "impl.rs",
+        ],
+        tempdir.path(),
+    );
+    assert!(!output.status.success(), "recursive impl unexpectedly verified");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("found a cyclic self-reference"), "unexpected error:\n{}", stderr);
+}
+
+test_verify_one_file! {
+    #[test] dyn_coercion_cycle_blanket_impl verus_code! {
+        trait T {
+            spec fn f(&self) -> int;
+        }
+        trait U {
+            spec fn g(&self) -> int;
+        }
+        impl<A: T> U for A {
+            spec fn g(&self) -> int { self.f() }
+        }
+        impl T for u8 {
+            spec fn f(&self) -> int {
+                let d: &dyn U = self;
+                d.g() + 1
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference")
+}
+
+test_verify_one_file! {
     #[test] dyn_cycle1 verus_code! {
         trait T {
             spec fn f(&self, d: &dyn T) -> int;
