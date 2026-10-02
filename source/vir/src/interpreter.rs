@@ -363,7 +363,7 @@ impl SyntacticEquality for Bnd {
                 }
             }
             (Quant(q_l, bnds_l, _trigs_l, _), Quant(q_r, bnds_r, _trigs_r, _)) => {
-                Some(q_l == q_r && bnds_l.conservative_eq(bnds_r)?)
+                if q_l == q_r { bnds_l.conservative_eq(bnds_r) } else { None }
             }
             (Lambda(bnds_l, _trigs_l), Lambda(bnds_r, _trigs_r)) => bnds_l.conservative_eq(bnds_r),
             (Choose(bnds_l, _trigs_l, e_l), Choose(bnds_r, _trigs_r, e_r)) => {
@@ -490,7 +490,7 @@ impl SyntacticEquality for Exp {
             ),
             (WithTriggers(_trigs_l, e_l), WithTriggers(_trigs_r, e_r)) => e_l.syntactic_eq(e_r),
             (Bind(bnd_l, e_l), Bind(bnd_r, e_r)) => {
-                Some(bnd_l.syntactic_eq(bnd_r)? && e_l.syntactic_eq(e_r)?)
+                def_eq(bnd_l.syntactic_eq(bnd_r)? && e_l.syntactic_eq(e_r)?)
             }
             (Interp(l), Interp(r)) => match (l, r) {
                 (InterpExp::FreeVar(l), InterpExp::FreeVar(r)) => def_eq(l == r),
