@@ -599,6 +599,148 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_btree_set_insert_ordering_equal_key verus_code! {
+        use std::cmp::Ordering;
+        use std::collections::BTreeSet;
+        use vstd::laws_cmp::*;
+        use vstd::laws_eq::*;
+        use vstd::prelude::*;
+        use vstd::std_specs::cmp::{
+            OrdSpec, OrdSpecImpl, PartialEqSpecImpl, PartialOrdSpecImpl,
+        };
+
+        pub struct K {
+            pub a: u64,
+            pub b: u64,
+        }
+
+        pub open spec fn cmp_a(x: &K, y: &K) -> Ordering {
+            if x.a < y.a {
+                Ordering::Less
+            } else if x.a > y.a {
+                Ordering::Greater
+            } else {
+                Ordering::Equal
+            }
+        }
+
+        impl PartialEqSpecImpl for K {
+            open spec fn obeys_eq_spec() -> bool {
+                true
+            }
+
+            open spec fn eq_spec(&self, other: &K) -> bool {
+                self.a == other.a
+            }
+        }
+
+        impl PartialEq for K {
+            fn eq(&self, other: &K) -> bool {
+                self.a == other.a
+            }
+        }
+
+        impl Eq for K {}
+
+        impl PartialOrdSpecImpl for K {
+            open spec fn obeys_partial_cmp_spec() -> bool {
+                true
+            }
+
+            open spec fn partial_cmp_spec(&self, other: &K) -> Option<Ordering> {
+                Some(cmp_a(self, other))
+            }
+        }
+
+        impl PartialOrd for K {
+            fn partial_cmp(&self, other: &K) -> Option<Ordering> {
+                if self.a < other.a {
+                    Some(Ordering::Less)
+                } else if self.a > other.a {
+                    Some(Ordering::Greater)
+                } else {
+                    Some(Ordering::Equal)
+                }
+            }
+        }
+
+        impl OrdSpecImpl for K {
+            open spec fn obeys_cmp_spec() -> bool {
+                true
+            }
+
+            open spec fn cmp_spec(&self, other: &K) -> Ordering {
+                cmp_a(self, other)
+            }
+        }
+
+        impl Ord for K {
+            fn cmp(&self, other: &K) -> Ordering {
+                if self.a < other.a {
+                    Ordering::Less
+                } else if self.a > other.a {
+                    Ordering::Greater
+                } else {
+                    Ordering::Equal
+                }
+            }
+        }
+
+        proof fn k_obeys_cmp()
+            ensures
+                obeys_cmp::<K>(),
+        {
+            reveal(obeys_eq_spec_properties);
+            reveal(obeys_cmp_partial_ord);
+            reveal(obeys_cmp_ord);
+            reveal(obeys_partial_cmp_spec_properties);
+        }
+
+        fn test() {
+            proof {
+                k_obeys_cmp();
+            }
+
+            let mut m = BTreeSet::<K>::new();
+            let ghost before_first = m@;
+            let first = m.insert(K { a: 1, b: 0 });
+            if !first {
+                let ghost equiv_k = choose|equiv_k: K| {
+                    &&& before_first.contains(equiv_k)
+                    &&& OrdSpec::cmp_spec(&K { a: 1, b: 0 }, &equiv_k) is Equal
+                };
+                assert(before_first.contains(equiv_k));
+                assert(false);
+            }
+
+            assert(m@ == set![K { a: 1, b: 0 }]);
+            assert(
+                OrdSpec::cmp_spec(&K { a: 1, b: 1 }, &K { a: 1, b: 0 }) is Equal
+            );
+
+            let ghost before_second = m@;
+            let second = m.insert(K { a: 1, b: 1 });
+            if second {
+                assert(before_second.contains(K { a: 1, b: 0 }));
+                assert(
+                    OrdSpec::cmp_spec(
+                        &K { a: 1, b: 1 },
+                        &K { a: 1, b: 0 },
+                    ) is Equal
+                );
+                assert(false);
+            }
+
+            assert(m@ == before_second);
+            assert(m@.contains(K { a: 1, b: 0 }));
+            assert(!m@.contains(K { a: 1, b: 1 }));
+            let len = m.len();
+            assert(len == 1);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_btree_map_struct verus_code! {
         use std::collections::BTreeMap;
         use vstd::prelude::*;
@@ -642,10 +784,12 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_btree_set_struct verus_code! {
+        use std::cmp::Ordering;
         use std::collections::BTreeSet;
         use vstd::prelude::*;
+        use vstd::std_specs::cmp::{OrdSpec, PartialEqSpec};
 
-        #[derive(PartialEq, Eq, PartialOrd, Ord)]
+        #[derive(PartialEq, Eq, PartialOrd, Ord, StructuralEq)]
         struct MyStruct
         {
             pub i: u16,
@@ -659,10 +803,32 @@ test_verify_one_file! {
             let mut m = BTreeSet::<MyStruct>::new();
             assert(m@ == Set::<MyStruct>::empty());
             let s1 = MyStruct{ i: 3, j: 7 };
+            let ghost before_first = m@;
             let res = m.insert(s1);
-            assert(res);
+            if !res {
+                let ghost equiv_k = choose|equiv_k: MyStruct| {
+                    &&& before_first.contains(equiv_k)
+                    &&& OrdSpec::cmp_spec(
+                        &MyStruct { i: 3, j: 7 },
+                        &equiv_k,
+                    ) is Equal
+                };
+                assert(before_first.contains(equiv_k));
+                assert(false);
+            }
+
+            let ghost before_second = m@;
             let res = m.insert(MyStruct{ i: 3, j: 7 });
-            assert(!res);
+            if res {
+                assert(before_second.contains(MyStruct { i: 3, j: 7 }));
+                assert(
+                    OrdSpec::cmp_spec(
+                        &MyStruct { i: 3, j: 7 },
+                        &MyStruct { i: 3, j: 7 },
+                    ) is Equal
+                );
+                assert(false);
+            }
 
             let s2 = MyStruct{ i: 3, j: 7 };
             assert(m@.contains(s2));
@@ -678,7 +844,30 @@ test_verify_one_file! {
 
             let s3 = MyStruct { i: 9, j: 9 };
 
-            m.insert(MyStruct { i: 9, j: 9 });
+            let ghost before_third = m@;
+            proof {
+                reveal(vstd::laws_cmp::obeys_cmp_partial_ord);
+                reveal(vstd::laws_cmp::obeys_cmp_ord);
+                assert(!MyStruct { i: 9, j: 9 }.eq_spec(&MyStruct { i: 3, j: 7 }));
+                assert(
+                    !(OrdSpec::cmp_spec(
+                        &MyStruct { i: 9, j: 9 },
+                        &MyStruct { i: 3, j: 7 },
+                    ) is Equal)
+                );
+            }
+            let res = m.insert(MyStruct { i: 9, j: 9 });
+            if !res {
+                let ghost equiv_k = choose|equiv_k: MyStruct| {
+                    &&& before_third.contains(equiv_k)
+                    &&& OrdSpec::cmp_spec(
+                        &MyStruct { i: 9, j: 9 },
+                        &equiv_k,
+                    ) is Equal
+                };
+                assert(equiv_k == MyStruct { i: 3, j: 7 });
+                assert(false);
+            }
             let res = m.remove(&s3);
             assert(res);
             let res = m.remove(&s3);
