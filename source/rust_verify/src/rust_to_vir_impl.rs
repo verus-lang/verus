@@ -12,13 +12,14 @@ use crate::verus_items::{self, MarkerItem, RustItem, VerusItem};
 use indexmap::{IndexMap, IndexSet};
 use rustc_hir::{ConstItemRhs, ImplItemKind, Item, QPath, Safety, TraitImplHeader, TraitRef};
 use rustc_middle::ty::{AssocKind, GenericArgKind, PseudoCanonicalInput, TypingEnv};
-use rustc_span::Span;
 use rustc_span::def_id::DefId;
+use rustc_span::hygiene::MacroKind;
+use rustc_span::{ExpnKind, Span, sym};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use vir::ast::{
     AssocTypeImpl, AssocTypeImplX, Dt, Fun, FunX, Function, FunctionKind, Ident, ImplPath, Krate,
-    KrateX, Path, Trait, TraitImpl, Typ, Typs, VirErr,
+    KrateX, Mode, Path, Trait, TraitImpl, Typ, Typs, VirErr,
 };
 
 // Used to collect all needed external trait implementations
@@ -301,6 +302,19 @@ pub(crate) fn translate_impl<'tcx>(
             let ty_kind_applied_never = if let rustc_middle::ty::TyKind::Adt(def, substs) =
                 ty.kind()
             {
+                // SMT equality includes ghost and tracked fields, whereas executable
+                // equality cannot observe their erased updates.
+                for field in def.all_fields() {
+                    if let Some(field_id) = field.did.as_local() {
+                        let attrs = ctxt.tcx.hir_attrs(ctxt.tcx.local_def_id_to_hir_id(field_id));
+                        if crate::attributes::get_mode(Mode::Exec, attrs) != Mode::Exec {
+                            return err_span_vec(
+                                ctxt.tcx.def_span(field.did),
+                                "`Structural` types cannot have ghost or tracked fields",
+                            );
+                        }
+                    }
+                }
                 rustc_middle::ty::TyKind::Adt(
                     def.to_owned(),
                     ctxt.tcx.mk_args_from_iter(substs.iter().map(|g| match g.kind() {
@@ -323,6 +337,40 @@ pub(crate) fn translate_impl<'tcx>(
                     )
                     .help("make sure `PartialEq` is also auto-derived for this type"),
                 ]);
+            }
+            // StructuralPartialEq is a safe marker that can be implemented by hand.
+            // Check the actual PartialEq impl's expansion, not an automatically_derived
+            // attribute, which can also be written by hand.
+            let partial_eq = ctxt.tcx.lang_items().eq_trait().expect("PartialEq trait");
+            let trait_ref = rustc_middle::ty::TraitRef::new(
+                ctxt.tcx,
+                partial_eq,
+                [ty_applied_never, ty_applied_never],
+            );
+            let typing_env = TypingEnv::post_analysis(ctxt.tcx, impl_def_id);
+            let derived_partial_eq = match ctxt
+                .tcx
+                .codegen_select_candidate(PseudoCanonicalInput { typing_env, value: trait_ref })
+            {
+                Ok(rustc_middle::traits::ImplSource::UserDefined(u)) => {
+                    let expansion = ctxt.tcx.def_span(u.impl_def_id).ctxt().outer_expn_data();
+                    match (expansion.kind, expansion.macro_def_id) {
+                        (ExpnKind::Macro(MacroKind::Derive, _), Some(macro_id)) => {
+                            rustc_hir::find_attr!(ctxt.tcx, macro_id,
+                                RustcBuiltinMacro { builtin_name, .. } =>
+                                    builtin_name.unwrap_or_else(|| ctxt.tcx.item_name(macro_id))
+                            ) == Some(sym::PartialEq)
+                        }
+                        _ => false,
+                    }
+                }
+                _ => false,
+            };
+            if !derived_partial_eq {
+                return err_span_vec(
+                    item.span,
+                    "`Structural` requires a built-in derived `PartialEq` implementation",
+                );
             }
             true
         } else {
