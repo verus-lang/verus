@@ -1463,6 +1463,9 @@ impl<'a> Builder<'a> {
                 let bb = unwrap!(self.build(idx, bb));
                 Maybe::Some((cpt.to_partial(), bb))
             }
+            PlaceX::DerefRaw(..) => {
+                todo!()
+            }
         }
     }
 
@@ -2455,6 +2458,7 @@ impl<'a> LocalCollection<'a> {
                 let m = self.try_get_flattened_place_rec(p);
                 m.map(|(fp, _tree)| (fp, None))
             }
+            PlaceX::DerefRaw(..) => None,
         }
     }
 }
