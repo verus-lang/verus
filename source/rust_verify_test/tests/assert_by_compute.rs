@@ -179,7 +179,6 @@ test_verify_one_file! {
 
         proof fn test() ensures false {
             assert((E::A(300))->B_0 == 300) by (compute_only); // FAILS
-            in_range((E::A(300))->B_0);
         }
     } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
 }
