@@ -425,7 +425,12 @@ test_verify_one_file! {
             assert((s + seq![1int])[0] == 5) by (compute);
             assert((s + seq![1int])[1] == 1) by (compute);
         }
-    } => Ok(())
+    } => Ok(err) => {
+        assert_eq!(
+            err.warnings.iter().filter(|w| w.message.contains("Failed to simplify expression")).count(),
+            2,
+        );
+    }
 }
 
 test_verify_one_file! {
