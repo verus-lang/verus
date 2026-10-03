@@ -175,6 +175,29 @@ pub trait ExPattern: Sized {
 }
 
 #[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
+/// Shared by the `&str`-like `Pattern` impls: matches exactly the chars of `pat`.
+pub open spec fn str_pattern_matches_at(pat: Seq<char>, h: Seq<char>, i: int, j: int) -> bool {
+    0 <= i <= j <= h.len() && h.subrange(i, j) =~= pat
+}
+
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
+pub open spec fn str_pattern_matches_at_bytes(pat: Seq<char>, h: Seq<u8>, i: int, j: int) -> bool {
+    0 <= i <= j <= h.len() && h.subrange(i, j) =~= encode_utf8(pat)
+}
+
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
+/// Shared by the char-set `Pattern` impls: matches any single char in `set`.
+pub open spec fn char_set_matches_at(set: Seq<char>, h: Seq<char>, i: int, j: int) -> bool {
+    0 <= i < h.len() && j == i + 1 && set.contains(h[i])
+}
+
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
+pub open spec fn char_set_matches_at_bytes(set: Seq<char>, h: Seq<u8>, i: int, j: int) -> bool {
+    0 <= i <= j <= h.len() && exists|c: char|
+        set.contains(c) && h.subrange(i, j) =~= encode_scalar(c as u32)
+}
+
+#[cfg(all(verus_keep_ghost, not(verus_verify_core)))]
 impl PatternSpecImpl for char {
     open spec fn obeys_pattern_spec(&self) -> bool {
         true
@@ -198,11 +221,11 @@ impl<'b> PatternSpecImpl for &'b str {
     }
 
     open spec fn matches_at(&self, haystack: Seq<char>, start: int, end: int) -> bool {
-        0 <= start <= end <= haystack.len() && haystack.subrange(start, end) =~= self@
+        str_pattern_matches_at(self@, haystack, start, end)
     }
 
     open spec fn matches_at_bytes(&self, haystack: Seq<u8>, start: int, end: int) -> bool {
-        0 <= start <= end <= haystack.len() && haystack.subrange(start, end) =~= self.spec_bytes()
+        str_pattern_matches_at_bytes(self@, haystack, start, end)
     }
 }
 
@@ -212,15 +235,12 @@ impl<'b> PatternSpecImpl for &'b [char] {
         true
     }
 
-    // `&[char]` matches by set membership of a single char, not by sequence -
-    // e.g. `"hello".starts_with(&['h', 'x'])` is true because 'h' is in the set.
     open spec fn matches_at(&self, haystack: Seq<char>, start: int, end: int) -> bool {
-        0 <= start < haystack.len() && end == start + 1 && self@.contains(haystack[start])
+        char_set_matches_at(self@, haystack, start, end)
     }
 
     open spec fn matches_at_bytes(&self, haystack: Seq<u8>, start: int, end: int) -> bool {
-        0 <= start <= end <= haystack.len() && exists|c: char|
-            self@.contains(c) && haystack.subrange(start, end) =~= encode_scalar(c as u32)
+        char_set_matches_at_bytes(self@, haystack, start, end)
     }
 }
 
@@ -231,12 +251,11 @@ impl<const N: usize> PatternSpecImpl for [char; N] {
     }
 
     open spec fn matches_at(&self, haystack: Seq<char>, start: int, end: int) -> bool {
-        0 <= start < haystack.len() && end == start + 1 && self@.contains(haystack[start])
+        char_set_matches_at(self@, haystack, start, end)
     }
 
     open spec fn matches_at_bytes(&self, haystack: Seq<u8>, start: int, end: int) -> bool {
-        0 <= start <= end <= haystack.len() && exists|c: char|
-            self@.contains(c) && haystack.subrange(start, end) =~= encode_scalar(c as u32)
+        char_set_matches_at_bytes(self@, haystack, start, end)
     }
 }
 
@@ -247,12 +266,11 @@ impl<'b, const N: usize> PatternSpecImpl for &'b [char; N] {
     }
 
     open spec fn matches_at(&self, haystack: Seq<char>, start: int, end: int) -> bool {
-        0 <= start < haystack.len() && end == start + 1 && self@.contains(haystack[start])
+        char_set_matches_at(self@, haystack, start, end)
     }
 
     open spec fn matches_at_bytes(&self, haystack: Seq<u8>, start: int, end: int) -> bool {
-        0 <= start <= end <= haystack.len() && exists|c: char|
-            self@.contains(c) && haystack.subrange(start, end) =~= encode_scalar(c as u32)
+        char_set_matches_at_bytes(self@, haystack, start, end)
     }
 }
 
@@ -263,11 +281,11 @@ impl<'b, 'c> PatternSpecImpl for &'c &'b str {
     }
 
     open spec fn matches_at(&self, haystack: Seq<char>, start: int, end: int) -> bool {
-        0 <= start <= end <= haystack.len() && haystack.subrange(start, end) =~= self@
+        str_pattern_matches_at(self@, haystack, start, end)
     }
 
     open spec fn matches_at_bytes(&self, haystack: Seq<u8>, start: int, end: int) -> bool {
-        0 <= start <= end <= haystack.len() && haystack.subrange(start, end) =~= encode_utf8(self@)
+        str_pattern_matches_at_bytes(self@, haystack, start, end)
     }
 }
 
@@ -278,11 +296,11 @@ impl<'b> PatternSpecImpl for &'b String {
     }
 
     open spec fn matches_at(&self, haystack: Seq<char>, start: int, end: int) -> bool {
-        0 <= start <= end <= haystack.len() && haystack.subrange(start, end) =~= self@
+        str_pattern_matches_at(self@, haystack, start, end)
     }
 
     open spec fn matches_at_bytes(&self, haystack: Seq<u8>, start: int, end: int) -> bool {
-        0 <= start <= end <= haystack.len() && haystack.subrange(start, end) =~= encode_utf8(self@)
+        str_pattern_matches_at_bytes(self@, haystack, start, end)
     }
 }
 
