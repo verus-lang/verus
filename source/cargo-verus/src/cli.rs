@@ -12,10 +12,6 @@ use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
     styles = clap_cargo::style::CLAP_STYLING,
 )]
 pub struct CargoVerusCli {
-    /// Override the version reported by `verus --version`.
-    #[arg(long, global = true)]
-    pub override_verus_version: Option<String>,
-
     #[command(subcommand)]
     pub command: VerusSubcommand,
 }
@@ -24,6 +20,9 @@ pub struct CargoVerusCli {
 pub enum VerusSubcommand {
     /// Create a new Verus project
     New(NewCommand),
+
+    /// Format Verus and Rust source files
+    Fmt(FmtCommand),
 
     /// Manage Verus toolchains
     Toolchain(ToolchainCommand),
@@ -54,8 +53,19 @@ pub enum ToolchainSubcommand {
 }
 
 #[derive(Clone, Debug, Args)]
-#[group(required = true, multiple = false)]
+#[group(skip)]
 pub struct NewCommand {
+    #[command(flatten)]
+    pub project_kind: NewProjectKind,
+
+    /// Override the version reported by `verus --version`
+    #[arg(long)]
+    pub override_verus_version: Option<String>,
+}
+
+#[derive(Clone, Debug, Args)]
+#[group(required = true, multiple = false)]
+pub struct NewProjectKind {
     /// Create a binary
     #[arg(short, long)]
     pub bin: Option<String>,
@@ -66,6 +76,31 @@ pub struct NewCommand {
 }
 
 #[derive(Clone, Debug, Args)]
+pub struct FmtCommand {
+    /// Check whether formatting is needed without modifying files
+    #[arg(long)]
+    pub check: bool,
+
+    /// Increase verbosity (use -vv for more output)
+    #[arg(short, long, action = ArgAction::Count)]
+    pub verbosity: u8,
+
+    #[command(flatten)]
+    pub manifest: clap_cargo::Manifest,
+
+    /// Specify packages to format
+    #[arg(short, long, value_name = "PACKAGE")]
+    pub package: Vec<String>,
+
+    /// Format all workspace packages
+    #[arg(long)]
+    pub all: bool,
+
+    #[arg(last = true, num_args = 0.., allow_hyphen_values = true)]
+    pub verusfmt_args: Vec<String>,
+}
+
+#[derive(Clone, Debug, Args)]
 pub struct VerifyCommand {
     #[command(flatten)]
     pub cargo_opts: CargoOptions,
@@ -73,6 +108,10 @@ pub struct VerifyCommand {
     /// Increase verbosity (use -vv for more output)
     #[arg(short, long, action = ArgAction::Count)]
     pub verbosity: u8,
+
+    /// Override the version reported by `verus --version`
+    #[arg(long)]
+    pub override_verus_version: Option<String>,
 
     /// Check toolchain components, e.g. version compatibility of verus and vstd.
     #[arg(long)]
@@ -228,7 +267,7 @@ impl CargoVerusCli {
 
     fn set_fwd_verus_args_to_default(&mut self) {
         match &mut self.command {
-            VerusSubcommand::New(_) | VerusSubcommand::Toolchain(_) => {}
+            VerusSubcommand::New(_) | VerusSubcommand::Fmt(_) | VerusSubcommand::Toolchain(_) => {}
             VerusSubcommand::Verify(cmd)
             | VerusSubcommand::Build(cmd)
             | VerusSubcommand::Check(cmd) => {
@@ -280,7 +319,9 @@ impl CargoVerusCli {
             | VerusSubcommand::Focus(cmd)
             | VerusSubcommand::Build(cmd)
             | VerusSubcommand::Check(cmd) => Some(cmd),
-            VerusSubcommand::New(_) | VerusSubcommand::Toolchain(_) => None,
+            VerusSubcommand::New(_) | VerusSubcommand::Fmt(_) | VerusSubcommand::Toolchain(_) => {
+                None
+            }
         }
     }
 
@@ -290,7 +331,9 @@ impl CargoVerusCli {
             | VerusSubcommand::Focus(cmd)
             | VerusSubcommand::Build(cmd)
             | VerusSubcommand::Check(cmd) => Some(cmd),
-            VerusSubcommand::New(_) | VerusSubcommand::Toolchain(_) => None,
+            VerusSubcommand::New(_) | VerusSubcommand::Fmt(_) | VerusSubcommand::Toolchain(_) => {
+                None
+            }
         }
     }
 }

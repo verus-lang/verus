@@ -64,7 +64,6 @@ const fn x(t: u64): u64 = {
 }
 ```
 */
-
 use crate::EraseGhost;
 use crate::syntax::{into_spans, is_external, mk_verifier_attr, mk_verus_attr};
 use quote::{quote, quote_spanned};

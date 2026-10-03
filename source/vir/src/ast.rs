@@ -1553,6 +1553,8 @@ pub struct FunctionAttrsX {
     pub tracked_take_option: bool,
     /// Whether the function is an async function
     pub is_async: bool,
+    /// Is this a types's drop implementation
+    pub is_drop: bool,
 }
 
 /// Function specification of its invariant mask
@@ -1908,11 +1910,6 @@ pub struct TraitImplX {
     pub auto_imported: bool,
     // Is a blanket implementation declared by external_trait_extension:
     pub external_trait_blanket: bool,
-}
-
-#[derive(Clone, Debug, Hash, Serialize, Deserialize, ToDebugSNode, PartialEq, Eq)]
-pub enum WellKnownItem {
-    DropTrait,
 }
 
 pub type ModuleReveals = Arc<Spanned<Vec<Fun>>>;
