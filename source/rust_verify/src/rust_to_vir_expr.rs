@@ -4520,12 +4520,12 @@ pub(crate) fn deref_primitive<'tcx>(
             Ok(place.clone())
         }
         TyKind::RawPtr(..) => {
-            unsupported_err!(
-                span,
-                format!(
-                    "dereferencing a raw pointer. Currently, Verus only supports raw pointers through the permissioned raw_ptr interface: https://verus-lang.github.io/verus/verusdoc/vstd/raw_ptr/index.html"
-                )
-            );
+            let placex = PlaceX::DerefRaw(place.clone(), None);
+            let t = match &*undecorate_typ(&place.typ) {
+                TypX::Primitive(Primitive::Ptr, t) => t[0].clone(),
+                _ => panic!("expected mut ref"),
+            };
+            Ok(bctx.spanned_typed_new(span, &t, placex))
         }
         _ => {
             unsupported_err!(span, format!("primitive deref operation for {ty:?}"))
