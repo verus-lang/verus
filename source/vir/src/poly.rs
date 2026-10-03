@@ -1147,6 +1147,7 @@ fn visit_func_check_sst(
         local_decls,
         local_decls_decreases_init,
         statics,
+        last_minted_id,
     } = function;
 
     state.temp_types.clear();
@@ -1236,6 +1237,7 @@ fn visit_func_check_sst(
         local_decls: Arc::new(locals),
         local_decls_decreases_init,
         statics: statics.clone(),
+        last_minted_id: last_minted_id.clone(),
     }
 }
 
