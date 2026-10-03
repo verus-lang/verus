@@ -454,16 +454,8 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-// A `#[cfg(...)]` on a trait combining external_trait_specification with
-// external_trait_extension must also apply to the items the extension
-// generates (the SpecTrait, SpecImplTrait, and their blanket impl) - not
-// just to the original trait declaration. Previously, `new_trait_from`/
-// `new_impl_for_trait` in builtin_macros::syntax_trait always dropped the
-// original trait's attributes (`attrs: Vec::new()`), so a `#[cfg(any())]`
-// (always-false) trait+extension still emitted its generated items
-// unconditionally - here, that would mean referencing `DoesNotExist`
-// (an undefined supertrait, copied onto the generated items too) even
-// though the whole block is supposed to be compiled out.
+// A cfg'd-out external_trait_extension must also drop its generated items
+// (here they would reference the nonexistent `DoesNotExist`).
 test_verify_one_file! {
     #[test] test_trait_extension_cfg_gated verus_code! {
         #[verifier::external]

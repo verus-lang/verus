@@ -9,11 +9,7 @@ use verus_syn::{TraitBound, parse_quote_spanned};
 
 /// Generated items don't automatically inherit the original trait's `#[cfg(...)]`.
 fn cfg_attrs(attrs: &[verus_syn::Attribute]) -> Vec<verus_syn::Attribute> {
-    attrs
-        .iter()
-        .filter(|attr| attr.path().is_ident("cfg") || attr.path().is_ident("cfg_attr"))
-        .cloned()
-        .collect()
+    attrs.iter().filter(|attr| attr.path().is_ident("cfg")).cloned().collect()
 }
 
 fn new_trait_from(tr: &ItemTrait, ident: Ident) -> ItemTrait {
