@@ -247,6 +247,7 @@ fn handle_autospec<'tcx>(
                     tracked_swap: false,
                     tracked_take_option: false,
                     is_async: false,
+                    is_drop: false,
                 }),
                 async_ret: functionx.async_ret.clone(),
             },
@@ -1433,6 +1434,7 @@ fn make_attributes<'tcx>(
     is_async: bool,
     span: Span,
     is_trait_decl_no_default: bool,
+    is_drop: bool,
 ) -> Result<vir::ast::FunctionAttrs, VirErr> {
     if vattrs.nonlinear && vattrs.spinoff_prover {
         return err_span(
@@ -1479,6 +1481,7 @@ fn make_attributes<'tcx>(
         tracked_swap: vattrs.tracked_swap,
         tracked_take_option: vattrs.tracked_take_option,
         is_async: is_async,
+        is_drop: is_drop,
     };
     Ok(Arc::new(fattrs))
 }
@@ -1644,7 +1647,7 @@ pub(crate) fn check_item_fn<'tcx>(
         has_self_param,
         safety,
         is_external_const,
-        proxy_id,
+        external_id,
         is_async,
     ) = if vattrs.external_fn_specification
         || external_fn_specification_via_external_trait.is_some()
@@ -1701,8 +1704,8 @@ pub(crate) fn check_item_fn<'tcx>(
         (this_path.clone(), None, visibility, kind, has_self_param, safety, false, None, is_async)
     };
 
-    let assume_specification_opaque_type_map = if let Some(proxy_id) = proxy_id {
-        Some(check_fn_opaque_ty(ctxt, opaque_types, &proxy_id, sig.output_span(), Some(&id))?)
+    let assume_specification_opaque_type_map = if let Some(external_id) = external_id {
+        Some(check_fn_opaque_ty(ctxt, opaque_types, &external_id, sig.output_span(), Some(&id))?)
     } else {
         check_fn_opaque_ty(ctxt, opaque_types, &id, sig.output_span(), None)?;
         None
@@ -2083,6 +2086,13 @@ pub(crate) fn check_item_fn<'tcx>(
         check_generics_for_invariant_fn(ctxt.tcx, id, self_generics, generics, sig.span)?;
     }
 
+    let is_drop = match kind {
+        FunctionKind::TraitMethodImpl { ref trait_path, .. } => {
+            trait_path == &ctxt.def_id_to_vir_path(ctxt.tcx.lang_items().drop_trait().unwrap())
+        }
+        _ => false,
+    };
+
     let fattrs = make_attributes(
         ctxt,
         id,
@@ -2094,6 +2104,7 @@ pub(crate) fn check_item_fn<'tcx>(
         is_async,
         sig.span,
         matches!(kind, FunctionKind::TraitMethodDecl { has_default: false, .. }),
+        is_drop,
     )?;
 
     // This function is marked 'private' at the source level to prevent the user from
@@ -3221,6 +3232,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         Safety::Safe,
         is_async,
         span,
+        false,
         false,
     )?;
 
