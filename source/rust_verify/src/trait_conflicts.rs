@@ -80,6 +80,7 @@ fn gen_typ(state: &mut State, typ: &vir::ast::Typ) -> Typ {
             panic!("internal error: unexpected opaque type in trait")
         }
         vir::ast::TypX::Datatype(Dt::Tuple(_), ts, _) => {
+            state.tuple_arities.insert(ts.len());
             let ts = gen_typs(state, ts);
             // types are unsized, so tuple elements must be boxed:
             let box_name = Id::new(IdKind::Builtin, 0, "Box".to_owned());
@@ -497,5 +498,49 @@ pub(crate) fn gen_check_trait_impl_conflicts(
         };
         state.trait_impls.push(decl);
         n_trait += 1;
+    }
+
+    // rustc's builtin tuple Clone/Copy impls do not apply to our renamed traits.
+    // Mirror the conditional impls added later by ast_simplify::add_tuple_auto_impl.
+    for trait_path in [
+        vir::path![CrateId::Core => "clone", "Clone"],
+        vir::path![CrateId::Core => "marker", "Copy"],
+    ] {
+        if !used_traits.contains(&trait_path) {
+            continue;
+        }
+        let trait_name = state.trait_name(&trait_path);
+        for arity in state.tuple_arities.clone() {
+            let mut generic_params = Vec::new();
+            let mut generic_bounds = Vec::new();
+            let mut elements = Vec::new();
+            for i in 0..arity {
+                let name = state.typ_param(format!("T{i}"), None);
+                let typ = Box::new(TypX::TypParam(name.clone()));
+                generic_params.push(GenericParam { name, const_typ: None });
+                generic_bounds.push(GenericBound {
+                    typ: typ.clone(),
+                    bound_vars: vec![],
+                    bound: Bound::Trait {
+                        trait_path: trait_name.clone(),
+                        args: vec![],
+                        equality: None,
+                    },
+                });
+                // Match gen_typ's boxes, with bounds on the original element types.
+                let box_name = Id::new(IdKind::Builtin, 0, "Box".to_owned());
+                elements.push(Box::new(TypX::Datatype(box_name, vec![], vec![typ])));
+            }
+            state.trait_impls.push(TraitImpl {
+                span: None,
+                self_typ: Box::new(TypX::Tuple(elements)),
+                generic_params,
+                generic_bounds,
+                trait_as_datatype: Box::new(TypX::Datatype(trait_name.clone(), vec![], vec![])),
+                assoc_typs: vec![],
+                trait_polarity: rustc_middle::ty::ImplPolarity::Positive,
+                is_clone: false,
+            });
+        }
     }
 }
