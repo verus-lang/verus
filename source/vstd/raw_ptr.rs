@@ -236,6 +236,16 @@ pub uninterp spec fn points_to_contents<T: ?Sized>(p: PointsTo<T>) -> Ghost<T>;
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::points_to_init")]
 pub uninterp spec fn points_to_init<T: ?Sized>(p: PointsTo<T>) -> bool;
 
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::points_to_update_contents")]
+pub uninterp spec fn points_to_update_contents<T: ?Sized>(p: PointsTo<T>, t: Ghost<T>) -> PointsTo<T>;
+
+pub broadcast axiom fn points_to_update_contents_def<T: ?Sized>(p: PointsTo<T>, t: Ghost<T>)
+    ensures
+        #![trigger points_to_update_contents(p, t)]
+        points_to_ptr(points_to_update_contents(p, t)) == points_to_ptr(p),
+        points_to_init(points_to_update_contents(p, t)) <==> points_to_init(p),
+        points_to_init(p) ==> points_to_contents(points_to_update_contents(p, t)) == t;
+
 impl<T> View for PointsTo<T> {
     type V = PointsToData<T>;
 
@@ -709,6 +719,7 @@ pub broadcast group group_raw_ptr_axioms {
     axiom_ptr_mut_from_data,
     ptrs_mut_eq,
     ptrs_mut_eq_sized,
+    points_to_update_contents_def,
 }
 
 /// Tracked object that indicates a given provenance has been exposed.

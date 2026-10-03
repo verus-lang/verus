@@ -1403,6 +1403,7 @@ impl PlaceX {
     }
 }
 
+// TODO(native_raw_ptrs): review uses of this
 pub fn place_get_local(p: &Place) -> Option<Place> {
     match &p.x {
         PlaceX::Local(_) => Some(p.clone()),
@@ -1413,7 +1414,7 @@ pub fn place_get_local(p: &Place) -> Option<Place> {
         PlaceX::WithExpr(_e, p) => place_get_local(p),
         PlaceX::Index(p, _idx, _k, _needs_bounds_check) => place_get_local(p),
         PlaceX::UserDefinedTypInvariantObligation(p, _) => place_get_local(p),
-        PlaceX::DerefRaw(_p, _) => todo!(),
+        PlaceX::DerefRaw(p, _) => place_get_local(p),
     }
 }
 
