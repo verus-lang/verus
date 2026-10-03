@@ -466,6 +466,7 @@ pub enum UnaryOp {
     MutRefFinal(bool),
     /// Length of an array or slice
     Length(ArrayKind),
+    PointsToContents,
 }
 
 /// Which builtin source name does this come from

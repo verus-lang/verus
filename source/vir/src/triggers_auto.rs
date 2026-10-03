@@ -408,6 +408,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 UnaryOp::CastToInteger => 1,
                 UnaryOp::MutRefFinal(_) => 1,
                 UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_) => unreachable!(),
+                UnaryOp::PointsToContents => 1,
             };
             let (is_pure1, term1) = gather_terms(ctxt, ctx, e1, depth);
             match op {

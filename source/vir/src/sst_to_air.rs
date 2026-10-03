@@ -1214,6 +1214,18 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     }
                 }
             }
+            UnaryOp::PointsToContents => {
+                let name = crate::fun!(CrateId::Vstd => "raw_ptr", "points_to_contents");
+                let name = suffix_global_id(&fun_to_air_ident(&ctx.name_ctxt, &name));
+                let e_typ = match &*e.typ {
+                    TypX::Boxed(t) => t,
+                    _ => &e.typ,
+                };
+                let t = crate::points_to::get_points_to_typ_arg(e_typ);
+                let mut exprs = typ_to_ids(&t);
+                exprs.push(exp_to_expr(ctx, e, expr_ctxt)?);
+                ident_apply(&name, &exprs)
+            }
         },
         ExpX::UnaryOpr(op, e) => match op {
             UnaryOpr::Box(typ) => {

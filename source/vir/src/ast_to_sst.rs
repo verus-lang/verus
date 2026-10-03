@@ -4392,8 +4392,8 @@ fn place_to_exp_pair_rec(
                 crate::internal_err!(place.span.clone(), "complex DerefRaw permissions place");
             }
 
-            let value_l = crate::points_to::sst_loc_inside_permission(&perm_l);
-            let value_r = crate::points_to::sst_loc_inside_permission(&perm_r);
+            let value_l = crate::points_to::sst_get_contents(&perm_l);
+            let value_r = crate::points_to::sst_get_contents(&perm_r);
 
             Ok((stms, Maybe::Some((value_l, value_r, vec![], wf))))
         }

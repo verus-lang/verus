@@ -396,6 +396,7 @@ pub(crate) enum VstdItem {
     PointsToInit,
     PointsToPtr,
     PointsToContents,
+    PointsToUpdateContents,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -756,6 +757,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::raw_ptr::points_to_ptr", VerusItem::Vstd(VstdItem::PointsToPtr, Some(Arc::new("raw_ptr::points_to_ptr".to_owned())))),
         ("verus::vstd::raw_ptr::points_to_init", VerusItem::Vstd(VstdItem::PointsToInit, Some(Arc::new("raw_ptr::points_to_init".to_owned())))),
         ("verus::vstd::raw_ptr::points_to_contents", VerusItem::Vstd(VstdItem::PointsToContents, Some(Arc::new("raw_ptr::points_to_contents".to_owned())))),
+        ("verus::vstd::raw_ptr::points_to_update_contents", VerusItem::Vstd(VstdItem::PointsToUpdateContents, Some(Arc::new("raw_ptr::points_to_update_contents".to_owned())))),
 
         ("verus::vstd::std_specs::fmt::rt::Argument", VerusItem::RustPrivate(RustPrivate::Path(vir::path!(CrateId::Core => "fmt", "rt", "Argument")))),
         ("verus::vstd::std_specs::fmt::rt::Argument::new_binary", VerusItem::RustPrivate(RustPrivate::FormatArgumentFn(Arc::new("new_binary".to_owned())))),
