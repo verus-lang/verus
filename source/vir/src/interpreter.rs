@@ -367,7 +367,7 @@ impl SyntacticEquality for Bnd {
             }
             (Lambda(bnds_l, _trigs_l), Lambda(bnds_r, _trigs_r)) => bnds_l.conservative_eq(bnds_r),
             (Choose(bnds_l, _trigs_l, e_l), Choose(bnds_r, _trigs_r, e_r)) => {
-                Some(bnds_l.conservative_eq(bnds_r)? && e_l.syntactic_eq(e_r)?)
+                Some(bnds_l.conservative_eq(bnds_r)? && e_l.conservative_eq(e_r)?)
             }
             _ => None,
         }
