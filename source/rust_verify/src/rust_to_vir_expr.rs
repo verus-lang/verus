@@ -4172,6 +4172,9 @@ pub(crate) fn closure_to_vir<'tcx>(
             })
             .collect::<Result<Vec<_>, _>>()?;
 
+        // Closures may be called multiple times, so their bodies must not inherit
+        // the enclosing atomically block's update function.
+        let bctx = &BodyCtxt { atomically: None, ..bctx.clone() };
         let body_bctx = if is_spec_fn {
             bctx
         } else {
