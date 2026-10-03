@@ -105,6 +105,14 @@ pub(crate) struct BodyCtxt<'tcx> {
     pub(crate) external_opaque_type_map: Option<HashMap<Path, Path>>,
     /// Mapping for HirId found in an HIR Destination to the corresponding VIR Label.
     pub(crate) label_map: Rc<RefCell<(HashMap<HirId, vir::ast::Label>, usize)>>,
+    /// The 'permission' vars in scope
+    pub(crate) permission_vars: Rc<RefCell<Vec<PermissionVar>>>,
+}
+
+pub(crate) struct PermissionVar {
+    pub name: vir::ast::VarIdent,
+    pub typ: vir::ast::Typ,
+    pub place_descriptor: String,
 }
 
 pub(crate) struct AtomicallyCtxt {

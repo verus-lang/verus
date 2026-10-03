@@ -357,6 +357,7 @@ fn mk_bctx<'tcx>(
         header_setting: HeaderSetting::Fn,
         external_opaque_type_map,
         label_map: std::rc::Rc::new(std::cell::RefCell::new((HashMap::new(), 0))),
+        permission_vars: std::rc::Rc::new(std::cell::RefCell::new(vec![])),
     }
 }
 
