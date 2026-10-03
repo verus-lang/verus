@@ -27,8 +27,7 @@ use super::view::*;
 #[cfg(not(verus_verify_core))]
 use super::std_specs::cmp::PartialEqSpecImpl;
 
-use verus as verus_skip_verusfmt; // verusfmt doesn't handle s[..e] yet
-verus_skip_verusfmt! {
+verus! {
 
 broadcast use {super::seq::group_seq_lemmas, super::slice::group_slice_axioms};
 

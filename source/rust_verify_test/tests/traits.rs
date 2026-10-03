@@ -108,7 +108,20 @@ test_verify_one_file_with_options! {
                 no_method_body()
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "no_method_body can only appear in trait method declarations")
+    } => Err(err) => assert_vir_error_msg(err, "trait declaration with no_method_body() should start with VERUS_SPEC__")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_ill_formed_2 ["--no-external-by-default"] => code! {
+        trait T1 {
+            fn f(&self);
+
+            fn VERUS_SPEC__f(&self) {
+                no_method_body();
+                let b = true; // no code after no_method_body
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "no_method_body() must be a method's final expression, with no semicolon")
 }
 
 test_verify_one_file_with_options! {
@@ -118,7 +131,7 @@ test_verify_one_file_with_options! {
                 no_method_body(); // no semicolon allowed
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "no_method_body() must be a method's final expression, with no semicolon")
+    } => Err(err) => assert_vir_error_msg(err, "trait declaration with no_method_body() should start with VERUS_SPEC__")
 }
 
 test_verify_one_file_with_options! {
@@ -136,11 +149,14 @@ test_verify_one_file_with_options! {
     #[test] test_ill_formed_5 ["--no-external-by-default"] => code! {
         trait T1 {
             fn f(&self) {
+            }
+
+            fn VERUS_SPEC__f(&self) {
                 no_method_body();
                 let b = true; // no code after no_method_body
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "no_method_body() must be a method's final expression, with no semicolon")
+    } => Err(err) => assert_vir_error_msg(err, "a VERUS_SPEC function should be paired with a function that has no body")
 }
 
 test_verify_one_file_with_options! {
@@ -165,7 +181,7 @@ test_verify_one_file_with_options! {
             }
         }
     } => Err(err) => assert_vir_error_msgs(err, &[
-        "no_method_body can only appear in trait method declarations",
+        "trait declaration with no_method_body() should start with VERUS_SPEC__",
         "no_method_body can only appear in trait method declarations",
     ])
 }
@@ -199,7 +215,7 @@ test_verify_one_file_with_options! {
             fn VERUS_SPEC__f(&self) { }
             fn f(&self);
         }
-    } => Err(err) => assert_vir_error_msg(err, "trait method declaration body must end with call to no_method_body()")
+    } => Err(err) => assert_vir_error_msg(err, "trait method declaration body must start with call to no_method_body()")
 }
 
 test_verify_one_file_with_options! {
@@ -2787,7 +2803,6 @@ test_verify_one_file_with_options! {
         }
         }
     } => Err(err) => assert_vir_error_msgs(err, &[
-        "The verifier does not yet support the following Rust feature: foreign types",
         "The verifier does not yet support the following Rust feature: foreign types",
     ])
 }

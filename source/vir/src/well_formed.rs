@@ -1577,6 +1577,28 @@ fn check_function<Emit: EmitError>(
         }
     }
 
+    if function.x.attrs.is_drop {
+        if !function.x.require.is_empty() {
+            return Err(error(
+                &function.span,
+                "requires are not allowed on the implementation for Drop",
+            ));
+        }
+        if !matches!(&function.x.mask_spec, Some(crate::ast::MaskSpec::InvariantOpens(_span, es)) if es.len() == 0)
+        {
+            return Err(error(
+                &function.span,
+                "the implementation for Drop must be marked opens_invariants none",
+            ));
+        }
+        if !matches!(&function.x.unwind_spec, Some(crate::ast::UnwindSpec::NoUnwind)) {
+            return Err(error(
+                &function.span,
+                "the implementation for Drop must be marked no_unwind",
+            ));
+        }
+    }
+
     Ok(())
 }
 
