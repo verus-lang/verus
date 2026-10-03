@@ -291,9 +291,12 @@ pub fn run_verus(
     let mut no_external_by_default = false;
     let mut is_core = false;
     let mut use_internal_test_mode = true;
+    let mut crate_name = "test_crate";
 
     for option in options.iter() {
-        if *option == "--expand-errors" {
+        if let Some(name) = option.strip_prefix("--crate-name=") {
+            crate_name = name;
+        } else if *option == "--expand-errors" {
             verus_args.push("--expand-errors".to_string());
             verus_args.push("--multiple-errors".to_string());
             verus_args.push("2".to_string());
@@ -355,7 +358,7 @@ pub fn run_verus(
     verus_args.extend(
         vec![
             "--crate-name".to_string(),
-            "test_crate".to_string(),
+            crate_name.to_string(),
             "--crate-type".to_string(),
             "lib".to_string(),
         ]
