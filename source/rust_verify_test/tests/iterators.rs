@@ -294,6 +294,23 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] nth_past_end_will_return_none verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        pub fn nth_past_end<I: Iterator>(i: &mut I)
+            requires
+                i.obeys_prophetic_iter_laws(),
+                i.remaining().len() == 0,
+            ensures
+                (&(*final(i))).will_return_none(),
+        {
+            i.nth(0);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] range_works verus_code! {
         use vstd::prelude::*;
 

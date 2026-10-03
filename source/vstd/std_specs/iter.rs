@@ -249,6 +249,7 @@ pub trait ExIterator {
                 } else {
                     &&& r is None
                     &&& final(self).remaining().len() == 0
+                    &&& final(self).will_return_none()
                 }
             };
 
