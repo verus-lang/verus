@@ -953,8 +953,7 @@ fn eval_seq(
             // and reassemble the call with the sequence in its original argument position.
             let ok_seq = |index: usize, seq: &Vector<Exp>| {
                 let mut new_args = args.as_ref().clone();
-                new_args[index] =
-                    seq_to_sst(&args[index].span, typs[0].clone(), &seq);
+                new_args[index] = seq_to_sst(&args[index].span, typs[0].clone(), &seq);
                 let new_args = Arc::new(new_args);
                 Ok(exp_new(Call(fun.clone(), typs.clone(), new_args)))
             };
