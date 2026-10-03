@@ -3746,9 +3746,7 @@ fn check_function(
     }
 
     let mut ens_typing = fun_typing.push_var_scope();
-    if function.x.ens_has_return {
-        ens_typing.insert(&function.x.inner_ret.x.name, Mode::Spec, Some(ProphVar::No));
-    }
+    ens_typing.insert(&function.x.inner_ret.x.name, Mode::Spec, Some(ProphVar::No));
 
     for expr in function.x.ensure.0.iter().chain(function.x.ensure.1.iter()) {
         let mut ens_typing = ens_typing.push_block_ghostness(Ghost::Ghost);
@@ -3825,7 +3823,7 @@ fn check_function(
         }
     }
 
-    let ret_mode = if function.x.ens_has_return {
+    let ret_mode = if !is_unit(&function.x.outer_ret.x.typ) {
         let ret_mode = function.x.outer_ret.x.mode;
         if !matches!(function.x.item_kind, ItemKind::Const) && !mode_le(function.x.mode, ret_mode) {
             return Err(error(

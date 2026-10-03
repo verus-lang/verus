@@ -2039,7 +2039,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
 
             let mut ens_args: Vec<_> =
                 ens_typ_args.into_iter().chain(ens_args_wo_typ.into_iter()).collect();
-            if func.x.ens_has_return {
+            let ens_has_return = crate::ast_to_sst::ens_has_return(ctx, func);
+            if ens_has_return {
                 if let Some(Dest { dest, is_init }) = dest {
                     let var = suffix_local_unique_id(&get_loc_var(dest));
                     ens_args.push(exp_to_expr(ctx, &dest, expr_ctxt)?);
@@ -2071,8 +2072,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 stmts.push(Arc::new(StmtX::Assume(e_ens)));
             }
             if emit_generic_conditions {
-                let dest_exp =
-                    if func.x.ens_has_return { Some(dest.clone().unwrap().dest) } else { None };
+                let dest_exp = if ens_has_return { Some(dest.clone().unwrap().dest) } else { None };
                 let generic_ens_exp = crate::sst_util::sst_call_ensures(
                     ctx,
                     &stm.span,
