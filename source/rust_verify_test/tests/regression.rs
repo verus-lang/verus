@@ -1532,3 +1532,64 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] reveal_strlit_standalone_issue2987 verus_code! {
+        use vstd::prelude::*;
+        proof fn test() {
+            reveal_strlit("a");
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] reveal_strlit_standalone_empty_issue2987 verus_code! {
+        use vstd::prelude::*;
+        proof fn test() {
+            reveal_strlit("");
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] reveal_strlit_standalone_unicode_issue2987 verus_code! {
+        use vstd::prelude::*;
+        proof fn test() {
+            reveal_strlit("héllo");
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] reveal_strlit_standalone_multiple_issue2987 verus_code! {
+        use vstd::prelude::*;
+        proof fn test() {
+            reveal_strlit("a");
+            reveal_strlit("b");
+            reveal_strlit("a");
+        }
+    } => Ok(())
+}
+
+// Not just that this doesn't crash - the revealed fact must actually be usable afterward.
+test_verify_one_file! {
+    #[test] reveal_strlit_standalone_then_use_issue2987 verus_code! {
+        use vstd::prelude::*;
+        proof fn test() {
+            reveal_strlit("abc");
+            assert("abc"@.len() == 3);
+        }
+    } => Ok(())
+}
+
+// Same as above but asserting a false fact - must still fail, confirming the fix didn't
+// make this vacuously true.
+test_verify_one_file! {
+    #[test] reveal_strlit_standalone_then_use_fails_issue2987 verus_code! {
+        use vstd::prelude::*;
+        proof fn test() {
+            reveal_strlit("abc");
+            assert("abc"@.len() == 4); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
