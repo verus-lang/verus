@@ -18,9 +18,9 @@ use rustc_hir::{
     HirId, Param, Safety,
 };
 use rustc_middle::ty::{
-    AdtDef, AliasTyKind, BoundRegion, BoundRegionKind, BoundVar, Clause, ClauseKind, ConstKind,
-    GenericArg, GenericArgKind, GenericArgsRef, IsRigid, Region, RegionKind, TyCtxt, TyKind,
-    TypingEnv, ValTreeKind, Value,
+    AdtDef, AliasTermKind, AliasTyKind, BoundRegion, BoundRegionKind, BoundVar, Clause, ClauseKind,
+    ConstKind, GenericArg, GenericArgKind, GenericArgsRef, IsRigid, Region, RegionKind, TyCtxt,
+    TyKind, TypingEnv, ValTreeKind, Value,
 };
 use rustc_mir_build_verus::verus::BodyErasure;
 use rustc_span::Span;
@@ -35,7 +35,7 @@ use vir::ast::{
     UnwrapParameter, VarIdent, VirErr, Visibility,
 };
 use vir::ast_util::{air_unique_var, unit_typ};
-use vir::def::{RETURN_VALUE, Spanned, VERUS_SPEC};
+use vir::def::{RETURN_VALUE, RETURN_VALUE_ASYNC_FUTURE, Spanned, VERUS_SPEC};
 use vir::sst_util::subst_typ;
 
 #[derive(Debug, Clone)]
@@ -183,7 +183,7 @@ fn handle_autospec<'tcx>(
                 },
             ));
         }
-        let ret_param = &functionx.ret;
+        let ret_param = &functionx.outer_ret;
         let spec_ret_param = vir::def::Spanned::new(
             ret_param.span.clone(),
             ParamX {
@@ -214,7 +214,7 @@ fn handle_autospec<'tcx>(
                 typ_params: functionx.typ_params.clone(),
                 typ_bounds: functionx.typ_bounds.clone(),
                 params: Arc::new(spec_params),
-                ret: spec_ret_param,
+                outer_ret: spec_ret_param,
                 ens_has_return: true,
                 item_kind: ItemKind::Function,
                 attrs: Arc::new(FunctionAttrsX {
@@ -249,7 +249,6 @@ fn handle_autospec<'tcx>(
                     is_async: false,
                     is_drop: false,
                 }),
-                async_ret: functionx.async_ret.clone(),
             },
         );
 
@@ -282,11 +281,10 @@ fn finish_autospec<'tcx>(
         typ_params,
         typ_bounds,
         params,
-        ret,
+        outer_ret,
         ens_has_return,
         item_kind,
         attrs,
-        async_ret,
     } = function_autospec.x.clone();
     let function_autospec_x = FunctionX {
         name,
@@ -300,13 +298,13 @@ fn finish_autospec<'tcx>(
         typ_params,
         typ_bounds,
         params,
-        ret,
+        outer_ret: outer_ret.clone(),
+        inner_ret: outer_ret,
         ens_has_return,
         decrease_by: None,
         item_kind,
         attrs,
         extra_dependencies: vec![],
-        async_ret,
 
         body: Some(ret_clause.clone()),
         require: function_main.x.require.clone(), // requires becomes recommends
@@ -1711,6 +1709,25 @@ pub(crate) fn check_item_fn<'tcx>(
         None
     };
 
+    if opaque_types.len() > 0 || is_async {
+        let reason = if is_async { "async" } else { "impl trait in return position" };
+        if mode != Mode::Exec {
+            return err_span(sig.span, format!("{reason} is only supported for 'exec' functions"));
+        }
+        if vattrs.autospec.is_some() {
+            return err_span(
+                sig.span,
+                format!("{reason} is not supported together with `when_used_as_spec`"),
+            );
+        }
+        if vattrs.allow_in_spec {
+            return err_span(
+                sig.span,
+                format!("{reason} is not supported together with `allow_in_spec`"),
+            );
+        }
+    }
+
     let name = Arc::new(FunX { path: path.clone() });
 
     let self_typ_params = if let Some((cg, impl_def_id)) = self_generics {
@@ -1983,12 +2000,14 @@ pub(crate) fn check_item_fn<'tcx>(
     }
     let params: vir::ast::Params = Arc::new(vir_params);
 
-    let (ret_name, ret_typ, ret_mode) = match (pre_header.ensure_id.clone(), ret_typ_mode.clone()) {
-        (None, None) => (air_unique_var(RETURN_VALUE), unit_typ(), mode),
-        (None, Some((typ, mode))) => (air_unique_var(RETURN_VALUE), typ, mode),
-        (Some(x), Some((typ, mode))) => (x, typ, mode),
-        _ => panic!("internal error: ret_typ"),
-    };
+    let (ret_name, ret_typ, ret_mode) =
+        match (is_async, pre_header.ensure_id.clone(), ret_typ_mode.clone()) {
+            (false, None, None) => (air_unique_var(RETURN_VALUE), unit_typ(), mode),
+            (false, None, Some((typ, mode))) => (air_unique_var(RETURN_VALUE), typ, mode),
+            (false, Some(x), Some((typ, mode))) => (x, typ, mode),
+            (true, _, Some((typ, mode))) => (air_unique_var(RETURN_VALUE_ASYNC_FUTURE), typ, mode),
+            _ => panic!("internal error: ret_typ"),
+        };
     let ret_span = sig.output_span();
     let ret = ctxt.spanned_new(
         ret_span,
@@ -2000,26 +2019,6 @@ pub(crate) fn check_item_fn<'tcx>(
             unwrapped_info: None,
         },
     );
-
-    let async_ret = if is_async {
-        Some(
-            ctxt.spanned_new(
-                ret_span,
-                ParamX {
-                    name: air_unique_var(&vir::def::prefix_ensures_async_ret(&ret_name.0)),
-                    typ: ret_typ_mode
-                        .clone()
-                        .expect("internal error: Async function has no return value")
-                        .0,
-                    mode: ret_mode,
-                    unwrapped_info: None,
-                    user_mut: false,
-                },
-            ),
-        )
-    } else {
-        None
-    };
 
     let (typ_params, typ_bounds) = {
         let mut typ_params: Vec<vir::ast::Ident> = Vec::new();
@@ -2175,12 +2174,11 @@ pub(crate) fn check_item_fn<'tcx>(
         typ_params,
         typ_bounds,
         params,
-        ret,
+        outer_ret: ret,
         // async function always refer to return value in ensures
         ens_has_return: is_async || ens_has_return,
         item_kind,
         attrs: fattrs,
-        async_ret: async_ret,
     };
 
     if vattrs.external_fn_specification {
@@ -2270,13 +2268,12 @@ pub(crate) fn finish_function<'tcx>(
         typ_params,
         typ_bounds,
         params,
-        ret,
+        outer_ret,
         ens_has_return,
         item_kind,
         attrs,
-        async_ret,
     } = function.x.clone();
-    let is_async = async_ret.is_some();
+    let is_async = attrs.is_async;
 
     let (vir_body, header, body_hir_id) = match &body_id {
         CheckItemFnEither::BodyId(body_id) => {
@@ -2287,6 +2284,7 @@ pub(crate) fn finish_function<'tcx>(
             let body = find_body(ctxt, body_id);
             let external_body = vattrs.external_body || vattrs.external_fn_specification;
             let param_names = params.iter().map(|p| p.x.name.clone()).collect::<Vec<_>>();
+
             let mut vir_body = body_to_vir(
                 ctxt,
                 def_id,
@@ -2326,8 +2324,29 @@ pub(crate) fn finish_function<'tcx>(
         recommend.push(decrease_when.clone());
     }
 
-    let ensure0 = clean_ensures_for_unit_return(ctxt, &ret, &header.ensure.0);
-    let ensure1 = clean_ensures_for_unit_return(ctxt, &ret, &header.ensure.1);
+    let inner_ret = if !is_async {
+        outer_ret.clone()
+    } else {
+        outer_ret.new_x(ParamX {
+            name: match header.ensure_id_typ {
+                Some((ref id, _)) => id.clone(),
+                None => air_unique_var(RETURN_VALUE),
+            },
+            typ: get_async_inner_return_typ(ctxt, sig.span, def_id, &body_id)?,
+            mode: outer_ret.x.mode,
+            user_mut: false,
+            unwrapped_info: None,
+        })
+    };
+
+    if let Some((_, Some(t))) = &header.ensure_id_typ
+        && !vir::ast_util::types_equal(t, &inner_ret.x.typ)
+    {
+        crate::internal_err!(sig.span, "return type does not match binder in ensures")
+    }
+
+    let ensure0 = clean_ensures_for_unit_return(ctxt, &inner_ret, &header.ensure.0);
+    let ensure1 = clean_ensures_for_unit_return(ctxt, &inner_ret, &header.ensure.1);
 
     if mode == Mode::Spec
         && (header.require.len() + header.ensure.0.len() + header.ensure.1.len()) > 0
@@ -2390,18 +2409,6 @@ pub(crate) fn finish_function<'tcx>(
         }
     }
 
-    // Prefer the type from ensure_id_typ if it exists.
-    // If the return type is an opaque type, we expect the concrete type in the ret param
-    // for use by the ensures clause.
-    // We can get the conrete type from header.ensure_id_typ.
-    // TODO(function lowering refactor) (opaque types): revisit this
-    let mut ret = ret;
-    if let Some((_mode, Some(typ))) = &header.ensure_id_typ {
-        let mut retx = ret.x.clone();
-        retx.typ = typ.clone();
-        ret = ret.new_x(retx);
-    }
-
     let mut functionx = FunctionX {
         name,
         proxy,
@@ -2414,7 +2421,8 @@ pub(crate) fn finish_function<'tcx>(
         typ_params,
         typ_bounds,
         params,
-        ret,
+        outer_ret,
+        inner_ret,
         ens_has_return,
         require: if mode == Mode::Spec { Arc::new(recommend) } else { header.require },
         returns,
@@ -2430,7 +2438,6 @@ pub(crate) fn finish_function<'tcx>(
         attrs,
         body,
         extra_dependencies: header.extra_dependencies,
-        async_ret: async_ret,
         hidden: Arc::new(header.hidden.clone()),
     };
 
@@ -2505,11 +2512,10 @@ fn fix_external_fn_specification_trait_method_decl_typs_stub(
             typ_params,
             mut typ_bounds,
             mut params,
-            mut ret,
+            mut outer_ret,
             ens_has_return,
             item_kind,
             attrs,
-            async_ret,
         } = func;
 
         unsupported_err_unless!(typ_params.len() == 1, span, "type params");
@@ -2526,12 +2532,13 @@ fn fix_external_fn_specification_trait_method_decl_typs_stub(
         let typ_params = Arc::new(typ_params);
 
         //params = params.iter().map(|p| p.new_x(p.x.new_a(subst_typ(&typ_substs, &p.a)))).collect();
-        //ret = ret.new_x(ret.x.new_a(&typ_substs, &ret.a));
+        //outer_ret = outer_ret.new_x(outer_ret.x.new_a(&typ_substs, &outer_ret.a));
         params = Arc::new(crate::util::vec_map(&params, |p| {
             p.new_x(ParamX { typ: subst_typ(&typ_substs, &p.x.typ), ..p.x.clone() })
         }));
 
-        ret = ret.new_x(ParamX { typ: subst_typ(&typ_substs, &ret.x.typ), ..ret.x.clone() });
+        outer_ret = outer_ret
+            .new_x(ParamX { typ: subst_typ(&typ_substs, &outer_ret.x.typ), ..outer_ret.x.clone() });
 
         unsupported_err_unless!(!attrs.broadcast_forall, span, "broadcast_forall");
 
@@ -2547,11 +2554,10 @@ fn fix_external_fn_specification_trait_method_decl_typs_stub(
             typ_params,
             typ_bounds,
             params,
-            ret,
+            outer_ret,
             ens_has_return,
             item_kind,
             attrs,
-            async_ret,
         })
     } else {
         Ok(func)
@@ -2575,7 +2581,8 @@ fn check_external_fn_specification_trait_method_decl_typs(
             typ_params: _,
             typ_bounds: _,
             params: _,
-            ret: _,
+            outer_ret: _,
+            inner_ret: _,
             ens_has_return: _,
             require,
             ensure,
@@ -2591,7 +2598,6 @@ fn check_external_fn_specification_trait_method_decl_typs(
             attrs: _,
             body,
             extra_dependencies: _,
-            async_ret: _,
             hidden: _,
         } = func;
 
@@ -3212,7 +3218,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
     }
 
     let ret_name = air_unique_var(RETURN_VALUE);
-    let ret = ctxt.spanned_new(
+    let outer_ret = ctxt.spanned_new(
         span,
         ParamX {
             name: ret_name,
@@ -3270,7 +3276,8 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         (Arc::new(vec![]), Arc::new(vec![]))
     };
 
-    let ens_has_return = !vir::ast_util::is_unit(&vir::ast_util::undecorate_typ(&ret.x.typ));
+    let ens_has_return = !vir::ast_util::is_unit(&vir::ast_util::undecorate_typ(&outer_ret.x.typ));
+    assert!(!is_async || ens_has_return);
 
     let mut functionx = FunctionStubX {
         name: name.clone(),
@@ -3284,11 +3291,10 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         typ_params,
         typ_bounds,
         params: Arc::new(vec![]),
-        ret,
+        outer_ret,
         ens_has_return,
         item_kind: if is_static { ItemKind::Static } else { ItemKind::Const },
         attrs: fattrs,
-        async_ret: None,
     };
 
     let autospec = handle_autospec(ctxt, span, id, &vattrs, &functionx)?;
@@ -3350,11 +3356,10 @@ pub(crate) fn finish_const_or_static<'tcx>(
         typ_params,
         typ_bounds,
         params,
-        ret,
+        outer_ret,
         ens_has_return,
         item_kind,
         attrs,
-        async_ret,
     } = function.x.clone();
 
     let body = find_body(ctxt, &body_id);
@@ -3388,8 +3393,12 @@ pub(crate) fn finish_const_or_static<'tcx>(
         return err_span(span, "const cannot have `returns` unless it is `exec const`");
     }
 
-    let ensure =
-        clean_ensures_for_unit_return(ctxt, &ret, &header.const_static_ensures(&name, is_static));
+    let inner_ret = outer_ret.clone();
+    let ensure = clean_ensures_for_unit_return(
+        ctxt,
+        &inner_ret,
+        &header.const_static_ensures(&name, is_static),
+    );
 
     let functionx = FunctionX {
         name,
@@ -3403,7 +3412,8 @@ pub(crate) fn finish_const_or_static<'tcx>(
         typ_params,
         typ_bounds,
         params,
-        ret,
+        inner_ret,
+        outer_ret,
         ens_has_return,
         require: Arc::new(vec![]),
         ensure: (ensure, Arc::new(vec![])),
@@ -3419,7 +3429,6 @@ pub(crate) fn finish_const_or_static<'tcx>(
         attrs,
         body: if vattrs.external_body { None } else { Some(vir_body) },
         extra_dependencies: vec![],
-        async_ret,
         hidden: Arc::new(header.hidden.clone()),
     };
     let function = ctxt.spanned_new(span, functionx);
@@ -3513,7 +3522,8 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         typ_params,
         typ_bounds,
         params,
-        ret,
+        outer_ret: ret.clone(),
+        inner_ret: ret,
         ens_has_return,
         require: Arc::new(vec![]),
         ensure: (Arc::new(vec![]), Arc::new(vec![])),
@@ -3529,7 +3539,6 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         attrs: Default::default(),
         body: None,
         extra_dependencies: vec![],
-        async_ret: None,
         hidden: Arc::new(vec![]),
     };
     let function = ctxt.spanned_new(span, func);
@@ -3642,12 +3651,12 @@ fn get_body_visibility_and_fuel(
 /// Therefore, we substitute out the name here so it be safely elided.
 pub fn clean_ensures_for_unit_return<'tcx>(
     ctxt: &Context<'tcx>,
-    ret: &vir::ast::Param,
+    inner_ret: &vir::ast::Param,
     ensure: &vir::ast::Exprs,
 ) -> vir::ast::Exprs {
-    match &*vir::ast_util::undecorate_typ(&ret.x.typ) {
+    match &*vir::ast_util::undecorate_typ(&inner_ret.x.typ) {
         TypX::Datatype(vir::ast::Dt::Tuple(0), ..) => {
-            if ret.x.name == air_unique_var(vir::def::RETURN_VALUE) {
+            if inner_ret.x.name == air_unique_var(vir::def::RETURN_VALUE) {
                 ensure.clone()
             } else {
                 let mut es = vec![];
@@ -3655,7 +3664,7 @@ pub fn clean_ensures_for_unit_return<'tcx>(
                     let e1 = vir::ast_visitor::map_expr_place_visitor(
                         e,
                         &|expr| match &expr.x {
-                            vir::ast::ExprX::Var(ident) if ident == &ret.x.name => {
+                            vir::ast::ExprX::Var(ident) if ident == &inner_ret.x.name => {
                                 assert!(vir::ast_util::is_unit(&vir::ast_util::undecorate_typ(
                                     &expr.typ
                                 )));
@@ -3668,7 +3677,7 @@ pub fn clean_ensures_for_unit_return<'tcx>(
                             _ => Ok(expr.clone()),
                         },
                         &|place| match &place.x {
-                            vir::ast::PlaceX::Local(ident) if ident == &ret.x.name => {
+                            vir::ast::PlaceX::Local(ident) if ident == &inner_ret.x.name => {
                                 assert!(vir::ast_util::is_unit(&vir::ast_util::undecorate_typ(
                                     &place.typ
                                 )));
@@ -3694,4 +3703,63 @@ pub fn clean_ensures_for_unit_return<'tcx>(
         }
         _ => ensure.clone(),
     }
+}
+
+fn get_async_inner_return_typ<'tcx>(
+    ctxt: &Context<'tcx>,
+    span: Span,
+    def_id: DefId,
+    body_id: &CheckItemFnEither<BodyId, ()>,
+) -> Result<vir::ast::Typ, VirErr> {
+    let ty = get_async_inner_return_ty(ctxt, span, def_id, body_id)?;
+    ctxt.mid_ty_to_vir(def_id, span, &ty, None)
+}
+
+/// Given an async function `async fn(...) -> X` which de-sugars to
+/// `fn(...) -> impl Future<Output=X>`
+/// this functionrecovers the type `X`.
+fn get_async_inner_return_ty<'tcx>(
+    ctxt: &Context<'tcx>,
+    span: Span,
+    def_id: DefId,
+    _body_id: &CheckItemFnEither<BodyId, ()>,
+) -> Result<rustc_middle::ty::Ty<'tcx>, VirErr> {
+    let fn_sig = ctxt.tcx.fn_sig(def_id).skip_binder();
+    let output = fn_sig.output().skip_binder();
+
+    let rustc_middle::ty::TyKind::Alias(_, al_ty) = output.kind() else {
+        crate::internal_err!(span, "get_async_inner_return_ty");
+    };
+    let alias_def_id = al_ty.kind.try_to_opaque().expect("alias kind");
+    let typing_env = TypingEnv::non_body_analysis(ctxt.tcx, alias_def_id);
+    let instantiated_bounds = ctxt.tcx.normalize_erasing_regions(
+        typing_env,
+        ctxt.tcx.item_bounds(alias_def_id).instantiate(ctxt.tcx, al_ty.args),
+    );
+    // We are looking for a ProjectionPredicate that <F as Future>::Output = X
+    // where F is the opaque type.
+    let ty_list = instantiated_bounds
+        .iter()
+        .filter_map(|clause| match clause.kind().skip_binder() {
+            ClauseKind::Projection(pc) => match pc.projection_term.kind {
+                AliasTermKind::ProjectionTy { def_id } => {
+                    if Some(def_id) == ctxt.tcx.lang_items().future_output()
+                        && pc.projection_term.args.len() == 1
+                        && let rustc_middle::ty::TyKind::Alias(_, al_ty) = output.kind()
+                        && al_ty.kind.try_to_opaque() == Some(alias_def_id)
+                    {
+                        Some(pc.term.expect_type())
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    if ty_list.len() != 1 {
+        crate::internal_err!(span, "get_async_inner_return_ty failed to find bound");
+    }
+    Ok(ty_list[0])
 }

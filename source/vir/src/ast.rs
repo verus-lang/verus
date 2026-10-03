@@ -1664,8 +1664,14 @@ pub struct FunctionX {
     pub typ_bounds: GenericBounds,
     /// Function parameters
     pub params: Params,
-    /// Return value
-    pub ret: Param,
+    /// Return value from the external perspective
+    pub outer_ret: Param,
+    /// Return value from the internal perspective, serves as a binder for the 'ensures' clauses.
+    ///
+    /// For non-async functions, `inner_ret` is always identical to `outer_ret`.
+    /// For async functions, `inner_ret` has the source-level type and `outer_ret` has
+    /// the `impl Future` opaque type. In this case, the two should be named differently.
+    pub inner_ret: Param,
     /// Can the ensures clause reference the 'ret' param (must be true for non-unit types)
     pub ens_has_return: bool,
     /// Preconditions (requires for proof/exec functions, recommends for spec functions)
@@ -1706,8 +1712,6 @@ pub struct FunctionX {
     /// Extra dependencies, only used for for the purposes of recursion-well-foundedness
     /// Useful only for trusted fns.
     pub extra_dependencies: Vec<Fun>,
-    /// The return type of the async function i.e., impl Future<Output>.
-    pub async_ret: Option<Param>,
     /// List of functions that this function wants to view as opaque
     pub hidden: Arc<Vec<Fun>>,
 }
@@ -1728,11 +1732,10 @@ pub struct FunctionStubX {
     pub typ_params: Idents,
     pub typ_bounds: GenericBounds,
     pub params: Params,
-    pub ret: Param,
+    pub outer_ret: Param,
     pub ens_has_return: bool,
     pub item_kind: ItemKind,
     pub attrs: FunctionAttrs,
-    pub async_ret: Option<Param>,
 }
 
 pub type RevealGroup = Arc<Spanned<RevealGroupX>>;
