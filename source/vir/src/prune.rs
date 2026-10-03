@@ -550,10 +550,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                         state.uses_bytestr = true;
                     }
                     ExprX::RevealString(_) => {
-                        // Unlike a normal string-literal expr, this carries just a raw
-                        // string, not a typed sub-expr, so it's never reached via the
-                        // visitor's usual e.typ-reaching - reach it explicitly, or its
-                        // AIR (string_len_to_air) references an undeclared strslice_len.
+                        // Holds a raw string, not a typed expr, so StrSlice isn't otherwise reached
                         let strslice_typ = Arc::new(TypX::Primitive(
                             crate::ast::Primitive::StrSlice,
                             Arc::new(vec![]),
