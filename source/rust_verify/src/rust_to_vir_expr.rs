@@ -931,12 +931,14 @@ pub(crate) fn block_to_vir<'tcx>(
     span: &Span,
     ty: &Typ,
 ) -> Result<vir::ast::Expr, VirErr> {
+    let current_perm_len = { bctx.permission_vars.borrow().len() };
     let mut vir_stmts: Vec<vir::ast::Stmt> = Vec::new();
     let mut stmts_iter = block.stmts.iter();
     while let Some(mut some_stmts) = stmts_to_vir(bctx, &mut stmts_iter)? {
         vir_stmts.append(&mut some_stmts);
     }
     let vir_expr = block.expr.map(|expr| expr_to_vir_consume(bctx, &expr)).transpose()?;
+    bctx.permission_vars.borrow_mut().truncate(current_perm_len);
 
     let x = ExprX::Block(Arc::new(vir_stmts), vir_expr);
     Ok(bctx.spanned_typed_new(span.clone(), ty, x))
@@ -3853,6 +3855,13 @@ pub(crate) fn let_stmt_to_vir<'tcx>(
     let parsed_attrs = parse_attrs_opt(attrs, None);
     let infer_mode = parsed_attrs.contains(&Attr::InferMode);
     let prophetic = parsed_attrs.contains(&Attr::Prophetic);
+    let permissions: Vec<_> = parsed_attrs
+        .iter()
+        .filter_map(|attr| match attr {
+            Attr::Permission(p) => Some(p.clone()),
+            _ => None,
+        })
+        .collect();
     let els = if let Some(els) = els {
         if matches!(mode, Mode::Spec | Mode::Proof) {
             unsupported_err!(els.span, "let-else in spec/proof", els);
@@ -3923,6 +3932,24 @@ pub(crate) fn let_stmt_to_vir<'tcx>(
     };
 
     let vir_pattern = pattern_to_vir(bctx, pattern)?;
+
+    if permissions.len() > 0 {
+        let PatternX::Var(binding) = &vir_pattern.x else {
+            return err_span(
+                pattern.span,
+                "the #[verifier::permissions] attribute cannot apply to let-decl with nontrivial patterns",
+            );
+        };
+        let mut r = bctx.permission_vars.borrow_mut();
+        for p in permissions.into_iter() {
+            r.push(crate::context::PermissionVar {
+                name: binding.name.clone(),
+                typ: binding.typ.clone(),
+                place_descriptor: p,
+            });
+        }
+    }
+
     let mode = if infer_mode { None } else { Some((mode, proph_mode)) };
     Ok(vec![bctx.spanned_new(
         pattern.span,
@@ -4520,7 +4547,23 @@ pub(crate) fn deref_primitive<'tcx>(
             Ok(place.clone())
         }
         TyKind::RawPtr(..) => {
-            let placex = PlaceX::DerefRaw(place.clone(), None);
+            let place_descriptor = get_place_descriptor(place);
+            let vars = bctx.permission_vars.borrow();
+            let candidate_opt = match place_descriptor {
+                Some(place_descriptor) => {
+                    vars.iter().rev().find(|v| v.place_descriptor == place_descriptor)
+                }
+                None => None,
+            };
+
+            let permission_place = match candidate_opt {
+                Some(candidate) => {
+                    Some(get_permission_place(bctx, span, &candidate.name, &candidate.typ)?)
+                }
+                None => None,
+            };
+
+            let placex = PlaceX::DerefRaw(place.clone(), permission_place);
             let t = match &*undecorate_typ(&place.typ) {
                 TypX::Primitive(Primitive::Ptr, t) => t[0].clone(),
                 _ => panic!("expected mut ref"),
@@ -4531,6 +4574,38 @@ pub(crate) fn deref_primitive<'tcx>(
             unsupported_err!(span, format!("primitive deref operation for {ty:?}"))
         }
     }
+}
+
+fn get_permission_place<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    span: Span,
+    name: &VarIdent,
+    typ: &Typ,
+) -> Result<Place, VirErr> {
+    // TODO
+    Ok(bctx.spanned_typed_new(span, typ, PlaceX::Local(name.clone())))
+}
+
+fn get_place_descriptor(p: &Place) -> Option<String> {
+    Some(match &p.x {
+        PlaceX::Local(x) => (*x.0).clone(),
+        PlaceX::DerefMut(p) => get_place_descriptor(p)?,
+        PlaceX::Field(opr, p) => get_place_descriptor(p)? + "." + &opr.field,
+        PlaceX::Temporary(_) => {
+            return None;
+        }
+        PlaceX::ModeUnwrap(p, _) => get_place_descriptor(p)?,
+        PlaceX::WithExpr(..) => {
+            return None;
+        }
+        PlaceX::Index(_p, _idx, _k, _needs_bounds_check) => {
+            return None;
+        }
+        PlaceX::UserDefinedTypInvariantObligation(..) => {
+            return None;
+        }
+        PlaceX::DerefRaw(p, _) => get_place_descriptor(p)?,
+    })
 }
 
 /// Handle overloaded deref. This is equivalent to either:
