@@ -524,16 +524,19 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
                 unreachable!()
             };
 
-            let candidate_query_input = typing_env.as_query_input(trait_refs);
+            // Normalize before selecting: `codegen_select_candidate` reports
+            // solver overflow as a hard error, and overflows on a bound whose
+            // associated type is fixed only by a where-clause bound. Skipping
+            // an un-normalizable bound matches the `Err(_)` arm below.
+            let norm_trait_refs = tcx.try_normalize_erasing_regions(
+                typing_env,
+                rustc_middle::ty::Unnormalized::new_wip(trait_refs),
+            );
+            let Ok(norm_trait_refs) = norm_trait_refs else {
+                continue;
+            };
+            let candidate_query_input = typing_env.as_query_input(norm_trait_refs);
             let candidate = tcx.codegen_select_candidate(candidate_query_input);
-            let candidate = candidate.or_else(|_| {
-                let trait_refs = tcx.normalize_erasing_regions(
-                    typing_env,
-                    rustc_middle::ty::Unnormalized::new_wip(trait_refs),
-                );
-                let candidate_query_input = typing_env.as_query_input(trait_refs);
-                tcx.codegen_select_candidate(candidate_query_input)
-            });
             match candidate {
                 Ok(rustc_middle::traits::ImplSource::UserDefined(u)) => {
                     err_for_builtin_tracked_ghost_deref(tcx, verus_items, u.impl_def_id, span)?;
