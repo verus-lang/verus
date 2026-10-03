@@ -1,9 +1,14 @@
-use crate::ast::{CrateId, Dt, Primitive, SpannedTyped, Typ, TypX};
+use crate::ast::{CrateId, Dt, Primitive, SpannedTyped, Typ, TypX, UnaryOp};
+use crate::ast_util::undecorate_typ;
 use crate::sst::*;
 use std::sync::Arc;
 
-pub fn sst_loc_inside_permission(_e: &Exp) -> Exp {
-    todo!()
+pub fn sst_get_contents(e: &Exp) -> Exp {
+    SpannedTyped::new(
+        &e.span,
+        &get_points_to_typ_arg(&e.typ),
+        ExpX::Unary(UnaryOp::PointsToContents, e.clone()),
+    )
 }
 
 pub fn sst_get_ptr(e: &Exp) -> Exp {
@@ -25,8 +30,8 @@ pub fn sst_get_is_init(e: &Exp) -> Exp {
     SpannedTyped::new(&e.span, &Arc::new(TypX::Bool), expx)
 }
 
-fn get_points_to_typ_arg(t: &Typ) -> Typ {
-    match &**t {
+pub fn get_points_to_typ_arg(t: &Typ) -> Typ {
+    match &*undecorate_typ(t) {
         TypX::Datatype(Dt::Path(pt), args, _)
             if *pt == crate::path!(CrateId::Vstd => "raw_ptr", "PointsTo") =>
         {
