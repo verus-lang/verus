@@ -1002,6 +1002,19 @@ pub fn prune_krate_for_module_or_krate(
         }
     }
 
+    // `global size_of`/`global layout` lemmas are a crate-wide fact, so reach them past the
+    // normal reveal/trigger mechanism (which misses a lemma declared in another module even
+    // when visible - see issue_1114_size_of_cross_module and friends). Still gated on
+    // visibility to this module though: reaching the function also walks its ensures and
+    // can register a mono type for it (e.g. `MaybeUninit<Foo>`), which can then need a
+    // private nested type's id in this module's AIR even though the lemma itself is
+    // invisible here - "ill-typed AIR" instead of just omitting the fact.
+    for f in &krate.functions {
+        if f.x.attrs.size_of_broadcast_proof && is_visible_to_or_true(&f.x.visibility, &module) {
+            reach(&mut state.reached_functions, &mut state.worklist_functions, &f.x.name);
+        }
+    }
+
     // Collect all functions that our module reveals:
     let mut revealed_functions: HashSet<Fun> = HashSet::new();
     let mut assert_by_compute = false;
