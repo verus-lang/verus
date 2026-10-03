@@ -2713,7 +2713,7 @@ impl Verifier {
         check_no_opaque_types_in_trait(ctxtx.tcx, &crate_items).map_err(map_err_diagnostics)?;
 
         if !self.args.no_lifetime {
-            crate::erase::setup_verus_aware_ids(&crate_items);
+            crate::erase::setup_verus_aware_ids(ctxtx.tcx, &crate_items);
         }
 
         let time_hir0 = Instant::now();
