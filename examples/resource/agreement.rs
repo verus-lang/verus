@@ -91,7 +91,7 @@ impl<T> AgreementResource<T> {
 pub fn main() {
     let tracked r1 = AgreementResource::<int>::alloc(72);
     assert(r1@ == 72);
-    let tracked r2 = r1.duplicate();
+    let tracked mut r2 = r1.duplicate();
     assert(r2@ == r1@);
     proof {
         r1.lemma_agreement(&mut r2);

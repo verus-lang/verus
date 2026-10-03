@@ -56,12 +56,27 @@ test_verify_one_file_with_options! {
     #[test] mut_borrow_of_tracked_local_in_proof_block_to_ghost [] => verus_code! {
         struct X { }
         fn test() {
-            let tracked x = X { };
+            let tracked mut x = X { };
             proof {
                 let tracked mut_ret = &mut x;
             }
         }
     } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    // issue 1169: a `tracked` local declared without `mut` at exec-fn top level must
+    // still be rejected when mutably borrowed in a nested proof block, just like a
+    // missing `mut` on an ordinary exec-mode local.
+    #[test] mut_borrow_of_tracked_local_missing_mut_issue1169 [] => verus_code! {
+        struct X { }
+        fn test() {
+            let tracked x = X { };
+            proof {
+                let tracked mut_ret = &mut x;
+            }
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `x` as mutable, as it is not declared as mutable")
 }
 
 test_verify_one_file_with_options! {
