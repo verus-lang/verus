@@ -652,6 +652,19 @@ pub(crate) fn expand_call_graph(
                     call_graph.add_edge(f_node.clone(), Node::TraitImpl(impl_path.clone()));
                 }
             }
+            ExprX::UnaryOpr(UnaryOpr::ToDyn(_, impl_paths), _) => {
+                for impl_path in impl_paths.iter() {
+                    let expr_node = crate::recursive_types::new_span_info_node(
+                        span_infos,
+                        expr.span.clone(),
+                        ": coercion to a trait object, which depends on trait implementations \
+                            to satisfy the object's trait bounds"
+                            .to_string(),
+                    );
+                    call_graph.add_edge(f_node.clone(), expr_node.clone());
+                    call_graph.add_edge(expr_node, Node::TraitImpl(impl_path.clone()));
+                }
+            }
             ExprX::Fuel(callee, fuel, _is_broadcast_use) if *fuel >= 1 => {
                 let broadcast_forall =
                     reveal_group_set.contains(callee) || func_map[callee].x.attrs.broadcast_forall;

@@ -441,7 +441,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             let (is_pure, term1) = gather_terms(ctxt, ctx, e1, depth + 1);
             (is_pure, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![term1]))))
         }
-        ExpX::UnaryOpr(UnaryOpr::ToDyn(_), e1) => {
+        ExpX::UnaryOpr(UnaryOpr::ToDyn(..), e1) => {
             let (_is_pure, term1) = gather_terms(ctxt, ctx, e1, 1);
             (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![term1]))))
         }
