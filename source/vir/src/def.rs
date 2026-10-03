@@ -301,6 +301,9 @@ pub const THIS_POST_FAILED: &str = "failed this postcondition";
 pub const THIS_PRE_FAILED: &str = "failed precondition";
 pub const INV_FAIL_LOOP_END: &str = "invariant not satisfied at end of loop body";
 pub const INV_FAIL_LOOP_FRONT: &str = "invariant not satisfied before loop";
+pub const ENSURES_FAIL_LOOP_ZERO_ITERS: &str =
+    "loop invariant not satisfied if the loop body never executes";
+pub const ENSURES_FAIL_LOOP_EXIT: &str = "loop invariant not satisfied at this loop exit";
 pub const DEC_FAIL_LOOP_END: &str = "decreases not satisfied at end of loop";
 pub const DEC_FAIL_LOOP_CONTINUE: &str = "decreases not satisfied at continue";
 pub const SPLIT_ASSERT_FAILURE: &str = "split assertion failure";
