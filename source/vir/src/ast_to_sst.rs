@@ -4376,7 +4376,7 @@ fn place_to_exp_pair_rec(
             }
 
             let Some(permission_place) = permission_place else {
-                let kind = PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::Nondeterministic));
+                let kind = PreLocalDeclKind::StmtLet;
                 let (var_ident, e_r) = state.declare_temp_var_stm(&place.span, &place.typ, kind);
                 let stm = assume_has_typ(&var_ident, &place.typ, &place.span);
                 stms.push(stm);

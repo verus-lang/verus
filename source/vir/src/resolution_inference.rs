@@ -1463,8 +1463,18 @@ impl<'a> Builder<'a> {
                 let bb = unwrap!(self.build(idx, bb));
                 Maybe::Some((cpt.to_partial(), bb))
             }
-            PlaceX::DerefRaw(..) => {
-                todo!()
+            PlaceX::DerefRaw(p, opt_perm_p) => {
+                let (_cpt, bb) = unwrap!(self.build_place_typed(p, bb, TypInv::No));
+                match opt_perm_p {
+                    Some(perm_p) => {
+                        let (cpt2, bb) = unwrap!(self.build_place_typed(perm_p, bb, TypInv::No));
+                        let ComputedPlaceTyped::Exact(fpt) = cpt2 else {
+                            panic!("build_place_typed: error in DerefRaw");
+                        };
+                        Maybe::Some((ComputedPlaceTyped::Partial(fpt), bb))
+                    }
+                    None => Maybe::Some((ComputedPlaceTyped::Ghost(None), bb)),
+                }
             }
         }
     }
