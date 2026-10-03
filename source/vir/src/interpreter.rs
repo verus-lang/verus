@@ -1403,7 +1403,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                     _ => ok,
                 },
                 Field(f) => match &e.x {
-                    Ctor(_dt, _var, binders) => {
+                    Ctor(_dt, var, binders) if var == &f.variant => {
                         match binders.iter().position(|b| b.name == f.field) {
                             None => ok,
                             Some(i) => Ok(binders.get(i).unwrap().a.clone()),
