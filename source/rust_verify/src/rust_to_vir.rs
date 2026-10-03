@@ -459,6 +459,10 @@ pub fn crate_to_vir<'a, 'tcx>(
     vir.arch.word_bits = arch_word_bits;
     let ctxt = Rc::new(ctxtx);
 
+    if ctxt.cmd_line_args.no_cheating {
+        errors.extend(crate::no_cheating::check_trust(&ctxt));
+    }
+
     // Find all modules that contain at least 1 item of interest
     let mut used_modules = HashSet::<Path>::new();
     for crate_item in crate_items.items.iter() {
