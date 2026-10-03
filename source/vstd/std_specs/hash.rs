@@ -945,6 +945,18 @@ pub assume_specification<Key>[ HashSet::<Key>::with_capacity ](capacity: usize) 
         m@ == Set::<Key>::empty(),
 ;
 
+/// Sibling of `new`/`with_capacity` above, but generic in the hasher builder --
+/// a set built with a custom `BuildHasher` had no specification at all, so
+/// `HashSet::with_hasher(..)` could not be used in `verus!` even to make an
+/// empty one.
+pub assume_specification<Key, S>[ HashSet::<Key, S>::with_hasher ](hash_builder: S) -> (m: HashSet<
+    Key,
+    S,
+>)
+    ensures
+        m@ == Set::<Key>::empty(),
+;
+
 pub assume_specification<Key: Eq + Hash, S: BuildHasher, A: Allocator>[ HashSet::<
     Key,
     S,
