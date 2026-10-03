@@ -950,10 +950,10 @@ fn eval_seq(
             // If we can't make any progress at all, we return the partially simplified call
             let ok = Ok(exp_new(Call(fun.clone(), typs.clone(), args.clone())));
             // We made partial progress, so convert the internal sequence back to SST
-            // and reassemble a call from the rest of the args
-            let ok_seq = |seq_exp: &Exp, seq: &Vector<Exp>, args: &[Exp]| {
-                let mut new_args = vec![seq_to_sst(&seq_exp.span, typs[0].clone(), &seq)];
-                new_args.extend(args.iter().map(|arg| arg.clone()));
+            // and reassemble the call with the sequence in its original argument position.
+            let ok_seq = |index: usize, seq: &Vector<Exp>| {
+                let mut new_args = args.as_ref().clone();
+                new_args[index] = seq_to_sst(&args[index].span, typs[0].clone(), &seq);
                 let new_args = Arc::new(new_args);
                 Ok(exp_new(Call(fun.clone(), typs.clone(), new_args)))
             };
@@ -1001,7 +1001,7 @@ fn eval_seq(
                             let s = s.update(index, args[2].clone());
                             seq_new(s)
                         }
-                        _ => ok_seq(&args[0], &s, &args[1..]),
+                        _ => ok_seq(0, &s),
                     },
                     _ => ok,
                 },
@@ -1013,7 +1013,7 @@ fn eval_seq(
                             (Some(start), Some(end)) if start <= end && end <= s.len() => {
                                 seq_new(s.clone().slice(start..end))
                             }
-                            _ => ok_seq(&args[0], &s, &args[1..]),
+                            _ => ok_seq(0, &s),
                         }
                     }
                     _ => ok,
@@ -1024,8 +1024,8 @@ fn eval_seq(
                         s.append(s2.clone());
                         seq_new(s)
                     }
-                    (_, Interp(Seq(s2))) => ok_seq(&args[1], &s2, &args[0..1]),
-                    (Interp(Seq(s1)), _) => ok_seq(&args[0], &s1, &args[1..]),
+                    (_, Interp(Seq(s2))) => ok_seq(1, &s2),
+                    (Interp(Seq(s1)), _) => ok_seq(0, &s1),
                     _ => ok,
                 },
                 Len => match &args[0].x {
@@ -1042,7 +1042,7 @@ fn eval_seq(
                                     || "Computation tried to index into a sequence using a value that does not fit into usize",
                                     |msg| state.msgs.push(msg),
                                 );
-                                ok_seq(&args[0], &s, &args[1..])
+                                ok_seq(0, &s)
                             }
                             Some(index) => {
                                 if index < s.len() {
@@ -1054,11 +1054,11 @@ fn eval_seq(
                                         || "Computation tried to index past the length of a sequence",
                                         |msg| state.msgs.push(msg),
                                     );
-                                    ok_seq(&args[0], &s, &args[1..])
+                                    ok_seq(0, &s)
                                 }
                             }
                         },
-                        _ => ok_seq(&args[0], &s, &args[1..]),
+                        _ => ok_seq(0, &s),
                     },
                     _ => ok,
                 },
@@ -1074,8 +1074,8 @@ fn eval_seq(
                         }
                         Some(b) => bool_new(b),
                     },
-                    (_, Interp(Seq(r))) => ok_seq(&args[1], &r, &args[0..1]),
-                    (Interp(Seq(l)), _) => ok_seq(&args[0], &l, &args[1..]),
+                    (_, Interp(Seq(r))) => ok_seq(1, &r),
+                    (Interp(Seq(l)), _) => ok_seq(0, &l),
                     _ => ok,
                 },
                 Last => match &args[0].x {
@@ -1083,7 +1083,7 @@ fn eval_seq(
                         if s.len() > 0 {
                             Ok(s.last().unwrap().clone())
                         } else {
-                            ok_seq(&args[0], &s, &args[1..])
+                            ok_seq(0, &s)
                         }
                     }
                     _ => ok,

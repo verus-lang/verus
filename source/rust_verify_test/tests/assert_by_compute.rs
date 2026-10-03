@@ -431,6 +431,34 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] sequence_add_operand_order verus_code! {
+        use vstd::seq::*;
+
+        proof fn test() {
+            let s = seq![5int];
+            assert((s + seq![1int])[0] == 5) by (compute);
+            assert((s + seq![1int])[1] == 1) by (compute);
+        }
+    } => Ok(err) => {
+        assert_eq!(
+            err.warnings.iter().filter(|w| w.message.contains("Failed to simplify expression")).count(),
+            2,
+        );
+    }
+}
+
+test_verify_one_file! {
+    #[test] sequence_add_operand_order_false verus_code! {
+        use vstd::seq::*;
+
+        proof fn test() {
+            let s = seq![5int];
+            assert((s + seq![1int])[0] == 1) by (compute); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
     #[test] mut_ref_and_ghost verus_code! {
         #[allow(unused_imports)]
         use vstd::seq::*;
