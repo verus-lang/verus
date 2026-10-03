@@ -142,7 +142,8 @@ and alignment.
 //   but we don't know so we have to pretend they're uninitialized)
 #[verifier::external_body]
 #[verifier::accept_recursive_types(T)]
-pub tracked struct PointsTo<T> {
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::PointsTo")]
+pub tracked struct PointsTo<T: ?Sized> {
     phantom: core::marker::PhantomData<T>,
     no_copy: NoCopy,
 }
@@ -226,17 +227,35 @@ pub assume_specification<T: core::marker::PointeeSized>[ <*const T as PartialEq<
         res <==> (x@.addr == y@.addr) && (x@.metadata == y@.metadata),
 ;
 
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::points_to_ptr")]
+pub uninterp spec fn points_to_ptr<T: ?Sized>(p: PointsTo<T>) -> *mut T;
+
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::points_to_contents")]
+pub uninterp spec fn points_to_contents<T: ?Sized>(p: PointsTo<T>) -> Ghost<T>;
+
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::points_to_init")]
+pub uninterp spec fn points_to_init<T: ?Sized>(p: PointsTo<T>) -> bool;
+
 impl<T> View for PointsTo<T> {
     type V = PointsToData<T>;
 
-    uninterp spec fn view(&self) -> Self::V;
+    open spec fn view(&self) -> Self::V {
+        PointsToData {
+            ptr: points_to_ptr(*self),
+            opt_value: if points_to_init(*self) {
+                MemContents::Init(*points_to_contents(*self))
+            } else {
+                MemContents::Uninit
+            }
+        }
+    }
 }
 
 impl<T> PointsTo<T> {
     /// The pointer that this permission is associated with.
     #[verifier::inline]
     pub open spec fn ptr(&self) -> *mut T {
-        self.view().ptr
+        points_to_ptr(*self)
     }
 
     /// The (possibly uninitialized) memory that this permission gives access to.
@@ -248,13 +267,13 @@ impl<T> PointsTo<T> {
     /// Returns `true` if the permission's associated memory is initialized.
     #[verifier::inline]
     pub open spec fn is_init(&self) -> bool {
-        self.opt_value().is_init()
+        points_to_init(*self)
     }
 
     /// Returns `true` if the permission's associated memory is uninitialized.
     #[verifier::inline]
     pub open spec fn is_uninit(&self) -> bool {
-        self.opt_value().is_uninit()
+        !points_to_init(*self)
     }
 
     /// If the permission's associated memory is initialized,
@@ -265,7 +284,7 @@ impl<T> PointsTo<T> {
         recommends
             self.is_init(),
     {
-        self.opt_value().value()
+        *points_to_contents(*self)
     }
 
     /// Guarantee that the `PointsTo` points to a non-null address.

@@ -393,6 +393,10 @@ pub(crate) enum VstdItem {
     SharedReference,
     RustDiv,
     RustRem,
+    PointsTo,
+    PointsToInit,
+    PointsToPtr,
+    PointsToContents,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -751,6 +755,11 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::arithmetic::div_mod::rust_rem", VerusItem::Vstd(VstdItem::RustRem, Some(Arc::new("arithmetic::div_mod::rust_rem".to_owned())))),
 
             // SeqFn(vir::interpreter::SeqFn::Last    ))),
+
+        ("verus::vstd::raw_ptr::PointsTo", VerusItem::Vstd(VstdItem::PointsTo, Some(Arc::new("raw_ptr::PointsTo".to_owned())))),
+        ("verus::vstd::raw_ptr::points_to_ptr", VerusItem::Vstd(VstdItem::PointsToPtr, Some(Arc::new("raw_ptr::points_to_ptr".to_owned())))),
+        ("verus::vstd::raw_ptr::points_to_init", VerusItem::Vstd(VstdItem::PointsToInit, Some(Arc::new("raw_ptr::points_to_init".to_owned())))),
+        ("verus::vstd::raw_ptr::points_to_contents", VerusItem::Vstd(VstdItem::PointsToContents, Some(Arc::new("raw_ptr::points_to_contents".to_owned())))),
 
         ("verus::vstd::std_specs::fmt::rt::Argument", VerusItem::RustPrivate(RustPrivate::Path(vir::path!(CrateId::Core => "fmt", "rt", "Argument")))),
         ("verus::vstd::std_specs::fmt::rt::Argument::new_binary", VerusItem::RustPrivate(RustPrivate::FormatArgumentFn(Arc::new("new_binary".to_owned())))),

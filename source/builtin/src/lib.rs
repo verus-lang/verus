@@ -415,7 +415,7 @@ pub fn use_type_invariant<A>(_a: A) {
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::verus_builtin::Ghost")]
 #[cfg_attr(verus_keep_ghost, verifier::external_body)]
 #[cfg_attr(verus_keep_ghost, verifier::reject_recursive_types_in_ground_variants(A))]
-pub struct Ghost<A> {
+pub struct Ghost<A: ?Sized> {
     phantom: PhantomData<A>,
 }
 
