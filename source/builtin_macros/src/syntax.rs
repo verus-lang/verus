@@ -979,7 +979,8 @@ impl Visitor {
                     }
 
                     let ident = Ident::new("this", receiver.self_token.span());
-                    let pat_type = self.resolve_receiver(receiver, &ident);
+                    let mut pat_type = self.resolve_receiver(receiver, &ident);
+                    rewriter.rewrite_type(&mut pat_type.ty);
                     self_ident = Some(ident);
 
                     receiver.self_token.to_tokens(&mut args_use_tokens);
@@ -1009,15 +1010,19 @@ impl Visitor {
             generics.make_where_clause().predicates.extend(where_clause.predicates.clone());
         }
 
+        let mut generics_stripped = generics.clone();
         let mut residual_lifetimes_count = 0;
-        generics.params.retain(|param, _| {
-            if let GenericParam::Lifetime(lifetime_param) = param {
+        generics_stripped.params.retain_mut(|param, _| match param {
+            GenericParam::Lifetime(lifetime_param) => {
                 let removed = rewriter.removed.contains(&lifetime_param.lifetime);
                 residual_lifetimes_count += usize::from(!removed);
                 false
-            } else {
+            }
+            GenericParam::Type(type_param) => {
+                type_param.bounds.clear();
                 true
             }
+            GenericParam::Const(_) => true,
         });
 
         if residual_lifetimes_count > 0 {
@@ -1032,30 +1037,25 @@ impl Visitor {
             }
         }
 
-        let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+        let (impl_generics, _, where_clause) = generics.split_for_impl();
+        let (impl_generics_stripped, ty_generics_stripped, _) = generics_stripped.split_for_impl();
         let marker_types = generics.params.iter().filter_map(|param| match param {
-            GenericParam::Lifetime(param) => {
-                let lifetime = &param.lifetime;
-                Some(quote_spanned_vstd!(vstd, param.span() =>
-                    #vstd::atomic::AtomicUpdateLifetimeMarker<#lifetime>
-                ))
-            }
             GenericParam::Type(param) => {
                 let ident = &param.ident;
                 Some(quote! { #ident })
             }
-            GenericParam::Const(_) => None,
+            _ => None,
         });
 
         self.additional_items.push(parse_quote_spanned!(full_span =>
-            #vis struct #pred_ident #impl_generics #where_clause {
+            #vis struct #pred_ident #impl_generics_stripped {
                 _marker: ::core::marker::PhantomData<( #(#marker_types,)* )>,
             }
         ));
 
         let update_arg: FnArg = parse_quote_spanned_vstd!(vstd, full_span =>
             tracked #atomic_update: #vstd::atomic::AtomicUpdate
-                < #old_ty, #new_ty, #pred_ident #ty_generics >
+                < #old_ty, #new_ty, #pred_ident #ty_generics_stripped >
         );
 
         let mut old_pat = TokenStream::new();
@@ -1086,7 +1086,7 @@ impl Visitor {
         }
 
         self.additional_items.push(parse_quote_spanned_vstd!(vstd, full_span =>
-            impl #impl_generics #pred_ident #ty_generics #where_clause {
+            impl #impl_generics #pred_ident #ty_generics_stripped #where_clause {
                 #[allow(private_interfaces)]
                 pub open spec fn args(self, #args_full_tokens ) -> bool {
                     #vstd::atomic::pred_args::< Self, ( #args_ty_tokens ) >(self)
@@ -1097,12 +1097,12 @@ impl Visitor {
 
         let mut impl_members = quote_spanned_vstd!(vstd, full_span =>
             open spec fn req(self, #old_pat: #old_ty) -> bool {
-                let ( #args_pat_tokens ) = #vstd::atomic::pred_args::< #pred_ident #ty_generics , ( #args_ty_tokens ) >(self);
+                let ( #args_pat_tokens ) = #vstd::atomic::pred_args::< #pred_ident #ty_generics_stripped , ( #args_ty_tokens ) >(self);
                 #atomic_req
             }
 
             open spec fn ens(self, #old_pat: #old_ty, #new_pat: #new_ty) -> bool {
-                let ( #args_pat_tokens ) = #vstd::atomic::pred_args::< #pred_ident #ty_generics , ( #args_ty_tokens ) >(self);
+                let ( #args_pat_tokens ) = #vstd::atomic::pred_args::< #pred_ident #ty_generics_stripped , ( #args_ty_tokens ) >(self);
                 #atomic_ens
             }
         );
@@ -1114,7 +1114,7 @@ impl Visitor {
             let mask_expr = self.inv_name_set_to_mask_expr(outer_mask.set);
             let fn_tokens = &quote_spanned_vstd!(vstd, outer_mask.token.span =>
                 open spec fn outer_mask(self) -> #vstd::iset::ISet<vstd::prelude::int> {
-                    let ( #args_pat_tokens ) = #vstd::atomic::pred_args::< #pred_ident #ty_generics , ( #args_ty_tokens ) >(self);
+                    let ( #args_pat_tokens ) = #vstd::atomic::pred_args::< #pred_ident #ty_generics_stripped , ( #args_ty_tokens ) >(self);
                     #mask_expr
                 }
             );
@@ -1126,7 +1126,7 @@ impl Visitor {
             let mask_expr = self.inv_name_set_to_mask_expr(inner_mask.set);
             let fn_tokens = &quote_spanned_vstd!(vstd, inner_mask.token.span =>
                 open spec fn inner_mask(self) -> #vstd::iset::ISet<vstd::prelude::int> {
-                    let ( #args_pat_tokens ) = #vstd::atomic::pred_args::< #pred_ident #ty_generics , ( #args_ty_tokens ) >(self);
+                    let ( #args_pat_tokens ) = #vstd::atomic::pred_args::< #pred_ident #ty_generics_stripped , ( #args_ty_tokens ) >(self);
                     #mask_expr
                 }
             );
@@ -1136,7 +1136,7 @@ impl Visitor {
 
         self.additional_items.push(parse_quote_spanned_vstd!(vstd, full_span =>
             impl #impl_generics #vstd::atomic::UpdatePredicate<#old_ty, #new_ty>
-            for #pred_ident #ty_generics #where_clause { #impl_members }
+            for #pred_ident #ty_generics_stripped #where_clause { #impl_members }
         ));
 
         if self.erase_ghost == EraseGhost::Keep {
