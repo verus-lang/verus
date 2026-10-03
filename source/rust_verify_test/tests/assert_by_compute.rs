@@ -119,6 +119,50 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] quantifier_kind_inequality_compute_only verus_code! {
+        spec fn p(x: int) -> bool { x > 0 }
+
+        proof fn test() ensures false {
+            let b = true;
+            // Both quantifiers are true, despite their different kinds.
+            assert((forall|x: int| #[trigger] p(x) || b)
+                != (exists|x: int| #[trigger] p(x) || b)) by (compute_only); // FAILS
+            assert(p(1));
+        }
+    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
+}
+
+test_verify_one_file! {
+    #[test] quantifier_body_inequality_compute_only verus_code! {
+        spec fn p(x: int) -> bool { x > 0 }
+
+        proof fn test() ensures false {
+            // The bodies differ pointwise, but both universal quantifiers are false.
+            assert((forall|x: int| if #[trigger] p(x) { true } else { false })
+                != (forall|x: int| if #[trigger] p(x) { false } else { true }))
+                by (compute_only); // FAILS
+            assert(!(if p(1) { false } else { true }));
+            assert(!(if p(0) { true } else { false }));
+        }
+    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
+}
+
+test_verify_one_file! {
+    #[test] quantifier_exists_body_inequality_compute_only verus_code! {
+        spec fn p(x: int) -> bool { x > 0 }
+
+        proof fn test() ensures false {
+            // The bodies differ pointwise, but both existential quantifiers are true.
+            assert((exists|x: int| if #[trigger] p(x) { true } else { false })
+                != (exists|x: int| if #[trigger] p(x) { false } else { true }))
+                by (compute_only); // FAILS
+            assert(if p(1) { true } else { false });
+            assert(if p(0) { false } else { true });
+        }
+    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
+}
+
+test_verify_one_file! {
     #[test] lets verus_code! {
 
         fn test() {
