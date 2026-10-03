@@ -106,6 +106,54 @@ pub assume_specification[ DefaultHasher::finish ](state: &DefaultHasher) -> (res
 #[verifier::external_body]
 pub uninterp spec fn obeys_key_model<Key: ?Sized>() -> bool;
 
+/// `obeys_key_model`, restricted to the keys in `s`: deterministic hash, faithful `==`, and
+/// identity `clone`, all only among keys in `s`. A table only ever compares the key it's given
+/// against the keys it holds, so this is all its specs need - and it admits key types whose
+/// `==` is faithful only on part of the type (e.g. a ghost field `==` can't see).
+///
+/// `obeys_key_model` implies this for every set (`axiom_obeys_key_model_keys`).
+pub uninterp spec fn keys_obey_model<Key>(s: Set<Key>) -> bool;
+
+/// `keys_obey_model` for a lookup through a borrow `k: &Q`. For `Q = Key` this is
+/// `keys_obey_model(s.insert(*k))`; for any other `Q` it only follows from `obeys_key_model`.
+pub uninterp spec fn borrowed_keys_obey_model<Key, Q: ?Sized>(s: Set<Key>, k: &Q) -> bool;
+
+pub broadcast proof fn axiom_obeys_key_model_keys<Key>(s: Set<Key>)
+    requires
+        obeys_key_model::<Key>(),
+    ensures
+        #[trigger] keys_obey_model::<Key>(s),
+{
+    admit();
+}
+
+pub broadcast proof fn axiom_obeys_key_model_borrowed_keys<Key, Q: ?Sized>(s: Set<Key>, k: &Q)
+    requires
+        obeys_key_model::<Key>(),
+    ensures
+        #[trigger] borrowed_keys_obey_model::<Key, Q>(s, k),
+{
+    admit();
+}
+
+pub broadcast proof fn axiom_deref_keys_obey_model<Q>(s: Set<Q>, k: &Q)
+    ensures
+        #[trigger] borrowed_keys_obey_model::<Q, Q>(s, k) <==> keys_obey_model::<Q>(s.insert(*k)),
+{
+    admit();
+}
+
+/// A subset of keys that obey the model obeys it.
+pub broadcast proof fn axiom_keys_obey_model_subset<Key>(s: Set<Key>, t: Set<Key>)
+    requires
+        #[trigger] keys_obey_model::<Key>(t),
+        #[trigger] s.subset_of(t),
+    ensures
+        keys_obey_model::<Key>(s),
+{
+    admit();
+}
+
 // These axioms state that any primitive type, or `Box` thereof,
 // obeys the requirements to be a key in a hash table that
 // conforms to our hash-table model.
@@ -373,7 +421,7 @@ pub assume_specification<'a, Key, Value, S, A: Allocator>[ HashMap::<Key, Value,
     m: &'a HashMap<Key, Value, S, A>,
 ) -> (iter: hash_map::Iter<'a, Key, Value>)
     ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
+        keys_obey_model::<Key>(m@.dom()) && builds_valid_hashers::<S>() ==> {
             &&& IteratorSpec::remaining(&iter).len() == m@.dom().len()
             &&& forall|i: int|
                 #![trigger m@.contains_key(*IteratorSpec::remaining(&iter)[i].0)]
@@ -396,7 +444,9 @@ pub assume_specification<'a, Key, Value, S, A: Allocator>[ HashMap::<Key, Value,
 ///
 /// We model a `HashMap` as having a view of type `Map<Key, Value>`, which reflects the current state of the map.
 ///
-/// These specifications are only meaningful if `obeys_key_model::<Key>()` and `builds_valid_hashers::<S>()` hold.
+/// These specifications are only meaningful if the keys involved obey the key model
+/// (`keys_obey_model`, which `obeys_key_model::<Key>()` implies for every set of keys) and
+/// `builds_valid_hashers::<S>()` holds.
 /// See [`obeys_key_model()`](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/hash/fn.obeys_key_model.html)
 /// for information on use with primitive types and other types,
 /// and see [`builds_valid_hashers()`](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/hash/fn.builds_valid_hashers.html)
@@ -554,8 +604,8 @@ pub broadcast proof fn axiom_spec_hash_map_len<Key, Value, S, A: Allocator>(
     m: &HashMap<Key, Value, S, A>,
 )
     ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> #[trigger] spec_hash_map_len(m)
-            == m@.len(),
+        keys_obey_model::<Key>(m@.dom()) && builds_valid_hashers::<S>()
+            ==> #[trigger] spec_hash_map_len(m) == m@.len(),
 {
     admit();
 }
@@ -629,7 +679,7 @@ pub assume_specification<Key: Eq + Hash, Value, S: BuildHasher, A: Allocator>[ H
     A,
 >::insert ](m: &mut HashMap<Key, Value, S, A>, k: Key, v: Value) -> (result: Option<Value>)
     ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
+        keys_obey_model::<Key>(old(m)@.dom().insert(k)) && builds_valid_hashers::<S>() ==> {
             &&& final(m)@ == old(m)@.insert(k, v)
             &&& match result {
                 Some(v) => old(m)@.contains_key(k) && v == old(m)[k],
@@ -684,10 +734,8 @@ pub assume_specification<
     k: &Q,
 ) -> (result: bool)
     ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> result == contains_borrowed_key(
-            m@,
-            k,
-        ),
+        borrowed_keys_obey_model::<Key, Q>(m@.dom(), k) && builds_valid_hashers::<S>() ==> result
+            == contains_borrowed_key(m@, k),
 ;
 
 // The specification for `get` has a parameter `key: &Q` where you'd
@@ -741,7 +789,8 @@ pub assume_specification<
 >[ HashMap::<Key, Value, S, A>::get::<Q> ](m: &'a HashMap<Key, Value, S, A>, k: &Q) -> (result:
     Option<&'a Value>)
     ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> match result {
+        borrowed_keys_obey_model::<Key, Q>(m@.dom(), k) && builds_valid_hashers::<S>()
+            ==> match result {
             Some(v) => maps_borrowed_key_to_value(m@, k, *v),
             None => !contains_borrowed_key(m@, k),
         },
@@ -781,6 +830,39 @@ pub broadcast proof fn axiom_deref_key_removed<Q, Value>(
     admit();
 }
 
+/// A pair obeys the key model on a set whose components come from sets that do: std derives
+/// `==`/`Hash`/`Clone` for tuples componentwise. Component sets may be any supersets of the
+/// projections.
+pub proof fn axiom_keys_obey_model_pair<A, B>(s: Set<(A, B)>, sa: Set<A>, sb: Set<B>)
+    requires
+        forall|k: (A, B)| #[trigger] s.contains(k) ==> sa.contains(k.0) && sb.contains(k.1),
+        keys_obey_model::<A>(sa),
+        keys_obey_model::<B>(sb),
+    ensures
+        keys_obey_model::<(A, B)>(s),
+{
+    admit();
+}
+
+/// `axiom_keys_obey_model_pair` for triples.
+pub proof fn axiom_keys_obey_model_triple<A, B, C>(
+    s: Set<(A, B, C)>,
+    sa: Set<A>,
+    sb: Set<B>,
+    sc: Set<C>,
+)
+    requires
+        forall|k: (A, B, C)| #[trigger]
+            s.contains(k) ==> sa.contains(k.0) && sb.contains(k.1) && sc.contains(k.2),
+        keys_obey_model::<A>(sa),
+        keys_obey_model::<B>(sb),
+        keys_obey_model::<C>(sc),
+    ensures
+        keys_obey_model::<(A, B, C)>(s),
+{
+    admit();
+}
+
 pub broadcast proof fn axiom_box_key_removed<Q, Value>(
     old_m: Map<Box<Q>, Value>,
     new_m: Map<Box<Q>, Value>,
@@ -802,7 +884,7 @@ pub assume_specification<
 >[ HashMap::<Key, Value, S, A>::remove::<Q> ](m: &mut HashMap<Key, Value, S, A>, k: &Q) -> (result:
     Option<Value>)
     ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
+        borrowed_keys_obey_model::<Key, Q>(old(m)@.dom(), k) && builds_valid_hashers::<S>() ==> {
             &&& borrowed_key_removed(old(m)@, final(m)@, k)
             &&& match result {
                 Some(v) => maps_borrowed_key_to_value(old(m)@, k, v),
@@ -822,7 +904,7 @@ pub assume_specification<'a, Key, Value, S, A: Allocator>[ HashMap::<Key, Value,
     m: &'a HashMap<Key, Value, S, A>,
 ) -> (keys: Keys<'a, Key, Value>)
     ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
+        keys_obey_model::<Key>(m@.dom()) && builds_valid_hashers::<S>() ==> {
             &&& IteratorSpec::remaining(&keys).unref().to_set() == m@.dom()
             &&& IteratorSpec::remaining(&keys).no_duplicates()
             &&& IteratorSpec::remaining(&keys).len() == m@.dom().len()
@@ -835,7 +917,7 @@ pub assume_specification<'a, Key, Value, S, A: Allocator>[ HashMap::<Key, Value,
     m: &'a HashMap<Key, Value, S, A>,
 ) -> (values: Values<'a, Key, Value>)
     ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
+        keys_obey_model::<Key>(m@.dom()) && builds_valid_hashers::<S>() ==> {
             &&& IteratorSpec::remaining(&values).unref().to_set() == m@.values()
             &&& IteratorSpec::remaining(&values).len() == m@.dom().len()
             &&& into_iter_values(values) == IteratorSpec::remaining(&values).unref()
@@ -885,7 +967,9 @@ impl<'a, K> super::iter::IteratorSpecImpl for hash_set::Iter::<'a, K> {
 ///
 /// We model a `HashSet` as having a view of type `Set<Key>`, which reflects the current state of the set.
 ///
-/// These specifications are only meaningful if `obeys_key_model::<Key>()` and `builds_valid_hashers::<S>()` hold.
+/// These specifications are only meaningful if the keys involved obey the key model
+/// (`keys_obey_model`, which `obeys_key_model::<Key>()` implies for every set of keys) and
+/// `builds_valid_hashers::<S>()` holds.
 /// See [`obeys_key_model()`](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/hash/fn.obeys_key_model.html)
 /// for information on use with primitive types and custom types,
 /// and see [`builds_valid_hashers()`](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/hash/fn.builds_valid_hashers.html)
@@ -903,8 +987,9 @@ pub uninterp spec fn spec_hash_set_len<Key, S, A: Allocator>(m: &HashSet<Key, S,
 
 pub broadcast proof fn axiom_spec_hash_set_len<Key, S, A: Allocator>(m: &HashSet<Key, S, A>)
     ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> #[trigger] spec_hash_set_len(m)
-            == m@.len(),
+        keys_obey_model::<Key>(m@) && builds_valid_hashers::<S>() ==> #[trigger] spec_hash_set_len(
+            m,
+        ) == m@.len(),
 {
     admit();
 }
@@ -960,10 +1045,32 @@ pub assume_specification<Key: Eq + Hash, S: BuildHasher, A: Allocator>[ HashSet:
     A,
 >::insert ](m: &mut HashSet<Key, S, A>, k: Key) -> (result: bool)
     ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
+        keys_obey_model::<Key>(old(m)@.insert(k)) && builds_valid_hashers::<S>() ==> {
             &&& final(m)@ == old(m)@.insert(k)
             &&& result == !old(m)@.contains(k)
         },
+;
+
+// Cloning a `HashSet` clones each key; for keys that obey the model `clone`
+// is the identity, so the copy is the same set.
+pub assume_specification<T: Clone, S: Clone, A: Allocator + Clone>[ <HashSet<
+    T,
+    S,
+    A,
+> as Clone>::clone ](this: &HashSet<T, S, A>) -> (other: HashSet<T, S, A>)
+    ensures
+        keys_obey_model::<T>(this@) ==> other@ == this@,
+;
+
+// `HashSet` equality is equality of the sets, for keys that obey the model:
+// `a == b` holds exactly when each contains every element of the other.
+pub assume_specification<T: Eq + Hash, S: BuildHasher, A: Allocator>[ <HashSet<
+    T,
+    S,
+    A,
+> as PartialEq>::eq ](a: &HashSet<T, S, A>, b: &HashSet<T, S, A>) -> (r: bool)
+    ensures
+        keys_obey_model::<T>(a@.union(b@)) && builds_valid_hashers::<S>() ==> r == (a@ == b@),
 ;
 
 // The specification for `contains` has a parameter `key: &Q`
@@ -1003,7 +1110,7 @@ pub assume_specification<
     Q: Hash + Eq + ?Sized,
 >[ HashSet::<Key, S, A>::contains ](m: &HashSet<Key, S, A>, k: &Q) -> (result: bool)
     ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> result
+        borrowed_keys_obey_model::<Key, Q>(m@, k) && builds_valid_hashers::<S>() ==> result
             == set_contains_borrowed_key(m@, k),
 ;
 
@@ -1049,7 +1156,7 @@ pub assume_specification<
     Q: Hash + Eq + ?Sized,
 >[ HashSet::<Key, S, A>::get::<Q> ](m: &'a HashSet<Key, S, A>, k: &Q) -> (result: Option<&'a Key>)
     ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> match result {
+        borrowed_keys_obey_model::<Key, Q>(m@, k) && builds_valid_hashers::<S>() ==> match result {
             Some(v) => sets_borrowed_key_to_key(m@, k, v),
             None => !set_contains_borrowed_key(m@, k),
         },
@@ -1099,7 +1206,7 @@ pub assume_specification<
     Q: Hash + Eq + ?Sized,
 >[ HashSet::<Key, S, A>::remove::<Q> ](m: &mut HashSet<Key, S, A>, k: &Q) -> (result: bool)
     ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
+        borrowed_keys_obey_model::<Key, Q>(old(m)@, k) && builds_valid_hashers::<S>() ==> {
             &&& sets_differ_by_borrowed_key(old(m)@, final(m)@, k)
             &&& result == set_contains_borrowed_key(old(m)@, k)
         },
@@ -1116,7 +1223,7 @@ pub assume_specification<'a, Key, S, A: Allocator>[ HashSet::<Key, S, A>::iter ]
     m: &'a HashSet<Key, S, A>,
 ) -> (hash_keys: hash_set::Iter<'a, Key>)
     ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
+        keys_obey_model::<Key>(m@) && builds_valid_hashers::<S>() ==> {
             &&& IteratorSpec::remaining(&hash_keys).unref().to_set() == m@
             &&& IteratorSpec::remaining(&hash_keys).no_duplicates()
             &&& IteratorSpec::remaining(&hash_keys).len() == m@.len()
@@ -1260,8 +1367,9 @@ pub assume_specification<'a, Key: Hash + Eq, Value, S: BuildHasher, A: Allocator
     A,
 >::entry ](m: &'a mut HashMap<Key, Value, S, A>, key: Key) -> (entry: Entry<'a, Key, Value, A>)
     ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> (entry.key() == key
-            && entry.value() == old(m)@.get(key) && final(m)@ == (match entry.final_value() {
+        keys_obey_model::<Key>(old(m)@.dom().insert(key)) && builds_valid_hashers::<S>() ==> (
+        entry.key() == key && entry.value() == old(m)@.get(key) && final(m)@ == (
+        match entry.final_value() {
             Some(value) => old(m)@.insert(key, value),
             None => old(m)@.remove(key),
         })),
@@ -1409,6 +1517,10 @@ pub assume_specification<'a, K: 'a, V: 'a, A: Allocator>[ VacantEntry::insert_en
 ;
 
 pub broadcast group group_hash_axioms {
+    axiom_obeys_key_model_keys,
+    axiom_obeys_key_model_borrowed_keys,
+    axiom_deref_keys_obey_model,
+    axiom_keys_obey_model_subset,
     axiom_box_key_removed,
     axiom_contains_deref_key,
     axiom_contains_box,

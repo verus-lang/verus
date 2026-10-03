@@ -970,3 +970,71 @@ test_verify_one_file_with_options! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_keys_obey_model_partial_eq verus_code! {
+        // A key whose `==` ignores a ghost field is faithful only among keys
+        // that agree on that field; a table of such keys is still specified.
+        use std::collections::HashMap;
+        use std::hash::{Hash, Hasher};
+        use vstd::prelude::*;
+        use vstd::std_specs::hash::*;
+
+        pub struct K {
+            pub raw: u32,
+            pub tag: Ghost<nat>,
+        }
+
+        #[verifier::external]
+        impl PartialEq for K {
+            fn eq(&self, other: &Self) -> bool {
+                self.raw == other.raw
+            }
+        }
+
+        #[verifier::external]
+        impl Eq for K {}
+
+        #[verifier::external]
+        impl Hash for K {
+            fn hash<H: Hasher>(&self, state: &mut H) {
+                self.raw.hash(state)
+            }
+        }
+
+        pub open spec fn raw_injective(s: Set<K>) -> bool {
+            forall|a: K, b: K| s.contains(a) && s.contains(b) && a.raw == b.raw ==> a == b
+        }
+
+        #[verifier::external_body]
+        proof fn k_keys_obey_model(s: Set<K>)
+            requires
+                raw_injective(s),
+            ensures
+                keys_obey_model::<K>(s),
+        {
+        }
+
+        fn test() {
+            broadcast use vstd::std_specs::hash::group_hash_axioms;
+            let mut m = HashMap::<K, u8>::new();
+            let k1 = K { raw: 1, tag: Ghost(7) };
+            let k2 = K { raw: 2, tag: Ghost(7) };
+            let q1 = K { raw: 1, tag: Ghost(7) };
+            proof { k_keys_obey_model(m@.dom().insert(k1)); }
+            m.insert(k1, 5);
+            proof { k_keys_obey_model(m@.dom().insert(k2)); }
+            m.insert(k2, 6);
+            proof { k_keys_obey_model(m@.dom().insert(q1)); }
+            let r = m.get(&q1);
+            assert(r == Some(&5u8));
+        }
+
+        fn test_no_model() {
+            let mut m = HashMap::<K, u8>::new();
+            let k1 = K { raw: 1, tag: Ghost(7) };
+            m.insert(k1, 5);
+            assert(m@.contains_key(K { raw: 1, tag: Ghost(7) })); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
