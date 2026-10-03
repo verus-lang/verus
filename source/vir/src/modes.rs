@@ -1371,7 +1371,7 @@ fn check_place_rec_inner(
             }
 
             if let Some(_permission_place) = permission_place {
-                todo!();
+                // TODO (native_ptrs): check
             }
 
             Ok((Mode::Exec, proph))
