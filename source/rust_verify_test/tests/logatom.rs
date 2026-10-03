@@ -206,6 +206,44 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] atomic_function_lifetime_in_type_param
+    verus_code! {
+        use vstd::atomic::*;
+        use vstd::prelude::*;
+
+        trait Trait<'a> {}
+
+        fn function<'a, 'b, T: 'a>()
+            atomically (atomic_update) {},
+        {
+            try_open_atomic_update!(atomic_update, _unit => {
+                Tracked(())
+            });
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] atomic_function_lifetime_in_trait_bound
+    verus_code! {
+        use vstd::atomic::*;
+        use vstd::prelude::*;
+
+        trait Trait<'a> {
+            type Assoc;
+        }
+
+        fn function<'a, T: Trait<'a>>(_x: T, _y: T::Assoc)
+            atomically (atomic_update) {},
+        {
+            try_open_atomic_update!(atomic_update, _unit => {
+                Tracked(())
+            });
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] atomic_function_ref_in_macro
     verus_code! {
         use vstd::prelude::*;
