@@ -1300,6 +1300,20 @@ pub(crate) fn fix_missing_trigger_params_fn(
     (substs, extra_trigger_terms)
 }
 
+pub fn external_trait_blanket_impls_to_air(ctx: &Ctx, imps: &Vec<TraitImpl>) -> Commands {
+    // If TSpec extends T, the generated blanket impl "impl<A: T> TSpec for A" yields
+    //   forall A. tr_bound%T(A) ==> tr_bound%TSpec(A)
+    // This is the converse of TSpec's supertrait axiom (see trait_bound_axioms),
+    // and like that axiom, it depends only on the traits, not on any other impls or functions,
+    // and it has no proof obligations (the blanket impl's methods are all external_body),
+    // so we emit it up front.
+    let mut commands: Vec<Command> = Vec::new();
+    for imp in imps.iter().filter(|imp| imp.x.external_trait_blanket) {
+        commands.extend(trait_impl_to_air(ctx, imp).iter().cloned());
+    }
+    Arc::new(commands)
+}
+
 pub fn trait_impl_to_air(ctx: &Ctx, imp: &TraitImpl) -> Commands {
     // Axiom for bounds predicates (based on trait impls)
     // forall typ_params. typ_bounds ==> tr_bound%T(...typ_args...)
