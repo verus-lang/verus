@@ -615,7 +615,7 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                     panic!("internal error: MustBeFinalized in SST")
                 }
                 UnaryOp::PointsToContents => {
-                    let e1 = coerce_exp_to_poly(ctx, &e1);
+                    let e1 = coerce_exp_to_native(ctx, &e1);
                     mk_exp_typ(&coerce_typ_to_poly(ctx, &exp.typ), ExpX::Unary(*op, e1))
                 }
             }
