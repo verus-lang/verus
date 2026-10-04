@@ -946,6 +946,11 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                     place_new(PlaceX::UserDefinedTypInvariantObligation(R::get(p), fun.clone()))
                 })
             }
+            PlaceX::DerefRaw(p, opt_p) => {
+                let p = self.visit_place(p)?;
+                let opt_p = self.visit_opt_place(opt_p)?;
+                R::ret(|| place_new(PlaceX::DerefRaw(R::get(p), R::get_opt(opt_p))))
+            }
         }
     }
 

@@ -1387,10 +1387,12 @@ impl PlaceX {
             PlaceX::WithExpr(_e, p) => p.x.uses_unnamed_temporary(),
             PlaceX::Index(p, _idx, _k, _needs_bounds_check) => p.x.uses_unnamed_temporary(),
             PlaceX::UserDefinedTypInvariantObligation(p, _) => p.x.uses_unnamed_temporary(),
+            PlaceX::DerefRaw(_p, _) => todo!(),
         }
     }
 }
 
+// TODO(native_raw_ptrs): review uses of this
 pub fn place_get_local(p: &Place) -> Option<Place> {
     match &p.x {
         PlaceX::Local(_) => Some(p.clone()),
@@ -1401,19 +1403,21 @@ pub fn place_get_local(p: &Place) -> Option<Place> {
         PlaceX::WithExpr(_e, p) => place_get_local(p),
         PlaceX::Index(p, _idx, _k, _needs_bounds_check) => place_get_local(p),
         PlaceX::UserDefinedTypInvariantObligation(p, _) => place_get_local(p),
+        PlaceX::DerefRaw(p, _) => place_get_local(p),
     }
 }
 
-pub fn place_has_deref_mut(p: &Place) -> bool {
+pub fn place_has_deref_mut_or_raw(p: &Place) -> bool {
     match &p.x {
         PlaceX::Local(_) => false,
         PlaceX::DerefMut(_p) => true,
-        PlaceX::Field(_opr, p) => place_has_deref_mut(p),
+        PlaceX::Field(_opr, p) => place_has_deref_mut_or_raw(p),
         PlaceX::Temporary(_) => false,
-        PlaceX::ModeUnwrap(p, _) => place_has_deref_mut(p),
-        PlaceX::WithExpr(_e, p) => place_has_deref_mut(p),
-        PlaceX::Index(p, _idx, _k, _needs_bounds_check) => place_has_deref_mut(p),
-        PlaceX::UserDefinedTypInvariantObligation(p, _) => place_has_deref_mut(p),
+        PlaceX::ModeUnwrap(p, _) => place_has_deref_mut_or_raw(p),
+        PlaceX::WithExpr(_e, p) => place_has_deref_mut_or_raw(p),
+        PlaceX::Index(p, _idx, _k, _needs_bounds_check) => place_has_deref_mut_or_raw(p),
+        PlaceX::UserDefinedTypInvariantObligation(p, _) => place_has_deref_mut_or_raw(p),
+        PlaceX::DerefRaw(_p, _) => true,
     }
 }
 

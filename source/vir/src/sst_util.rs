@@ -546,6 +546,9 @@ impl ExpX {
                 UnaryOp::Length(_kind) => {
                     (format!("length({})", exp.x.to_string_prec(global, 99)), 0)
                 }
+                UnaryOp::PointsToContents => {
+                    (format!("points_to_contents({})", exp.x.to_string_prec(global, 99)), 0)
+                }
             },
             UnaryOpr(op, exp) => {
                 use crate::ast::UnaryOpr::*;

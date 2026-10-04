@@ -578,6 +578,28 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                             reach_function(ctxt, state, &fn_slice_len());
                         }
                     }
+                    PlaceX::DerefRaw(..) => {
+                        reach_function(
+                            ctxt,
+                            state,
+                            &crate::fun!(CrateId::Vstd => "raw_ptr", "points_to_ptr"),
+                        );
+                        reach_function(
+                            ctxt,
+                            state,
+                            &crate::fun!(CrateId::Vstd => "raw_ptr", "points_to_contents"),
+                        );
+                        reach_function(
+                            ctxt,
+                            state,
+                            &crate::fun!(CrateId::Vstd => "raw_ptr", "points_to_init"),
+                        );
+                        reach_function(
+                            ctxt,
+                            state,
+                            &crate::fun!(CrateId::Vstd => "raw_ptr", "points_to_update_contents"),
+                        );
+                    }
                     _ => {}
                 }
                 Ok(p.clone())

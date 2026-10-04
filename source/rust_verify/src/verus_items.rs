@@ -391,6 +391,11 @@ pub(crate) enum VstdItem {
     VecIndex,
     VecIndexMut,
     SharedReference,
+    PointsTo,
+    PointsToInit,
+    PointsToPtr,
+    PointsToContents,
+    PointsToUpdateContents,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -746,6 +751,12 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::raw_ptr::SharedReference", VerusItem::Vstd(VstdItem::SharedReference, Some(Arc::new("raw_ptr::SharedReference".to_owned())))),
         ("verus::vstd::float::float_cast", VerusItem::Vstd(VstdItem::FloatCast, Some(Arc::new("float::float_cast".to_owned())))),
             // SeqFn(vir::interpreter::SeqFn::Last    ))),
+
+        ("verus::vstd::raw_ptr::PointsTo", VerusItem::Vstd(VstdItem::PointsTo, Some(Arc::new("raw_ptr::PointsTo".to_owned())))),
+        ("verus::vstd::raw_ptr::points_to_ptr", VerusItem::Vstd(VstdItem::PointsToPtr, Some(Arc::new("raw_ptr::points_to_ptr".to_owned())))),
+        ("verus::vstd::raw_ptr::points_to_init", VerusItem::Vstd(VstdItem::PointsToInit, Some(Arc::new("raw_ptr::points_to_init".to_owned())))),
+        ("verus::vstd::raw_ptr::points_to_contents", VerusItem::Vstd(VstdItem::PointsToContents, Some(Arc::new("raw_ptr::points_to_contents".to_owned())))),
+        ("verus::vstd::raw_ptr::points_to_update_contents", VerusItem::Vstd(VstdItem::PointsToUpdateContents, Some(Arc::new("raw_ptr::points_to_update_contents".to_owned())))),
 
         ("verus::vstd::std_specs::fmt::rt::Argument", VerusItem::RustPrivate(RustPrivate::Path(vir::path!(CrateId::Core => "fmt", "rt", "Argument")))),
         ("verus::vstd::std_specs::fmt::rt::Argument::new_binary", VerusItem::RustPrivate(RustPrivate::FormatArgumentFn(Arc::new("new_binary".to_owned())))),

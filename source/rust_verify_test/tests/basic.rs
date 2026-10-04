@@ -765,14 +765,19 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_mut_self_disallowed verus_code! {
-        struct T{}
+        struct T { i: u64 }
 
         impl T {
-            fn test(mut self) {
-                self = T{};
+            fn test(mut self) -> (u: u64)
+                requires self.i == 0,
+                ensures u == self.i
+            {
+                self.i = 20;
+                assert(self.i == 20);
+                0
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: mut self")
+    } => Ok(())
 }
 
 test_verify_one_file! {

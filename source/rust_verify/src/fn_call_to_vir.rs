@@ -2491,6 +2491,7 @@ fn is_place_ok_for_spec_after_borrow(place: &Place) -> bool {
         PlaceX::WithExpr(..) => false,
         PlaceX::Index(..) => false,
         PlaceX::UserDefinedTypInvariantObligation(..) => false,
+        PlaceX::DerefRaw(..) => false,
     }
 }
 

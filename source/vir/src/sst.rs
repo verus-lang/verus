@@ -135,6 +135,7 @@ pub enum ExpX {
     ///  - `Field` (unary op)
     ///  - `DerefMut` (unary op)
     ///  - `Index` (binary op) (the index argument must be a non-mutable Var)
+    ///  - `PointsToContent` (unary op)
     Loc(Exp),
     /// Snapshot reference for generating AIR Old expressions; only used during sst_to_air
     Old(Ident, UniqueIdent),
