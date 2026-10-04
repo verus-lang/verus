@@ -302,7 +302,7 @@ impl<V> DListXor<V> {
             old(self)@.len() > 0,
         ensures
             final(self).wf(),
-            final(self)@ == old(self)@.subrange(1, old(self)@.len() as int),
+            final(self)@ == old(self)@[1..],
             v == old(self)@[0],
     {
         assert(self.wf_perm(0));
@@ -361,7 +361,7 @@ impl<V> DListXor<V> {
             }
         }
         proof {
-            self.ptrs@ = self.ptrs@.subrange(1, self.ptrs@.len() as int);
+            self.ptrs@ = self.ptrs@[1..];
         }
         proof {
             assert(self.wf_tail());
@@ -373,10 +373,10 @@ impl<V> DListXor<V> {
             assert(self.wf_perms());
             assert forall|i: int| 0 <= i < self@.len() implies #[trigger] self@[i] == old(
                 self,
-            )@.subrange(1, old(self)@.len() as int)[i] by {
+            )@[1..][i] by {
                 assert(old(self).wf_perm(i as nat + 1));  // trigger
             }
-            assert(self@ =~= old(self)@.subrange(1, old(self)@.len() as int));
+            assert(self@ =~= old(self)@[1..]);
         }
         v
     }

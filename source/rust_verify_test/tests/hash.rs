@@ -829,12 +829,12 @@ test_verify_one_file_with_options! {
             let mut items = Vec::<u32>::new();
             for k in iter: m_keys
                 invariant
-                    items@ == iter.seq().take(iter.index()).unref(),
+                    items@ == iter.seq()[..iter.index()].unref(),
             {
                 items.push(*k);
             }
             assert(items@.to_set() =~= set![3u32, 6u32]) by {
-                assert(m_keys.remaining().take(m_keys.remaining().len() as int) == m_keys.remaining());
+                assert(m_keys.remaining()[..m_keys.remaining().len()] == m_keys.remaining());
             }
             assert(items@.no_duplicates());
         }
@@ -865,12 +865,12 @@ test_verify_one_file_with_options! {
             let mut items = Vec::<i8>::new();
             for v in iter: m_values
                 invariant
-                    items@ == iter.seq().take(iter.index()).unref(),
+                    items@ == iter.seq()[..iter.index()].unref(),
             {
                 items.push(*v);
             }
             assert(items@.to_set() =~= set![4i8, -8i8]) by {
-                assert(m_values.remaining().take(m_values.remaining().len() as int) == m_values.remaining());
+                assert(m_values.remaining()[..m_values.remaining().len()] == m_values.remaining());
             }
         }
     } => Ok(())
@@ -929,12 +929,12 @@ test_verify_one_file_with_options! {
             for k in iter: m_iter
                 invariant
                     iter.seq().unref().to_set() =~= set![3u32, 6u32],
-                    items@ == iter.seq().take(iter.index()).unref(),
+                    items@ == iter.seq()[..iter.index()].unref(),
             {
                 items.push(*k);
             }
             assert(items@.to_set() =~= set![3u32, 6u32]) by {
-                assert(m_iter.remaining().take(m_iter.remaining().len() as int) == m_iter.remaining());
+                assert(m_iter.remaining()[..m_iter.remaining().len()] == m_iter.remaining());
             }
             assert(items@.no_duplicates());
         }

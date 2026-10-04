@@ -42,6 +42,18 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] try_from_self verus_code! {
+        use vstd::prelude::*;
+
+        fn main() {
+            let n: i64 = 42;
+            let m: i64 = n.try_into().unwrap();
+            assert(m == 42);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] external_clone_fail verus_code! {
         // Make sure the support for &X clone doesn't mistakenly trigger in other situations
 
@@ -332,6 +344,43 @@ test_verify_one_file_with_options! {
             loop { }
         }
     } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] question_mark_result_uses_from_spec verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::convert::FromSpecImpl;
+
+        pub struct ConvertedError {
+            pub code: u16,
+            pub converted: bool,
+        }
+
+        impl From<u8> for ConvertedError {
+            fn from(value: u8) -> Self {
+                ConvertedError { code: value as u16, converted: true }
+            }
+        }
+
+        impl FromSpecImpl<u8> for ConvertedError {
+            open spec fn obeys_from_spec() -> bool {
+                true
+            }
+
+            open spec fn from_spec(value: u8) -> Self {
+                ConvertedError { code: value as u16, converted: true }
+            }
+        }
+
+        fn test(value: u8) -> (res: Result<(), ConvertedError>)
+            ensures
+                res == Err(ConvertedError { code: value as u16, converted: true }),
+        {
+            let input: Result<(), u8> = Err(value);
+            input?;
+            Ok(())
+        }
+    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -1893,4 +1942,32 @@ test_verify_one_file! {
             println!("ok {} then {} then {} and {}", &(2 + 2), true, x, u);
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] panic_ok verus_code! {
+        use vstd::*;
+        fn test() {
+            if 2 + 2 == 3 { panic!("{} = {}", 2 + 2, 3); }
+            assert!(2 + 2 == 4);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] panic_fails verus_code! {
+        use vstd::*;
+        fn test1() {
+            panic!(); // FAILS
+        }
+        fn test2() {
+            panic!("{} = {}", 2 + 2, 3); // FAILS
+        }
+        fn test3() {
+            assert!(2 + 2 == 3); // FAILS
+        }
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 3);
+        assert!(err.errors.iter().all(|e| e.rendered.contains("precondition not satisfied")));
+    }
 }

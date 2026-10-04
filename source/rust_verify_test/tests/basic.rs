@@ -829,3 +829,51 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 1)
 }
+
+test_verify_one_file! {
+    #[test] test_bitwise_bool_ops verus_code! {
+        fn test_or(a: bool, b: bool) {
+            let x = a | b;
+            assert(x <==> (a || b));
+
+            let mut y = a;
+            y |= b;
+            assert(y <==> (a || b));
+        }
+
+        fn test_and(a: bool, b: bool) {
+            let x = a & b;
+            assert(x <==> (a && b));
+
+            let mut y = a;
+            y &= b;
+            assert(y <==> (a && b));
+        }
+
+        fn test_or_with_side_effect(a: bool, b: bool) {
+            let mut side_tester = 0;
+
+            let x = a | ({ side_tester = 1; b });
+            assert(x <==> (a || b));
+            assert(side_tester == 1);
+
+            let mut y = a;
+            y |= ({ side_tester = 2; b });
+            assert(y <==> (a || b));
+            assert(side_tester == 2);
+        }
+
+        fn test_and_with_side_effect(a: bool, b: bool) {
+            let mut side_tester = 0;
+
+            let x = a & ({ side_tester = 1; b });
+            assert(x <==> (a && b));
+            assert(side_tester == 1);
+
+            let mut y = a;
+            y &= ({ side_tester = 2; b });
+            assert(y <==> (a && b));
+            assert(side_tester == 2);
+        }
+    } => Ok(())
+}

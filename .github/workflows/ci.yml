@@ -33,18 +33,22 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.97.1
+          toolchain: 1.98.1
 
       - name: setup verusfmt
         run: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/verus-lang/verusfmt/releases/latest/download/verusfmt-installer.sh | sh
 
+      - name: check formatting of `dependencies`
+        working-directory: ./dependencies
+        run: |
+          cargo fmt --check --manifest-path prettyplease/Cargo.toml
+          cargo fmt --check --manifest-path syn/Cargo.toml
+
       - name: check rustfmt/verusfmt
         working-directory: ./source
         run: |
-          cargo fmt -- --check
-          # TODO: Should use `cargo verus fmt` when it's implemented:
-          #   https://github.com/verus-lang/verus/issues/2758
-          find ./vstd -name '*.rs' -type f -exec verusfmt --check {} +
+          cargo run -p cargo-verus -- fmt --check
+          cargo run -p cargo-verus -- fmt --check --manifest-path vstd/Cargo.toml
 
       - name: check cargo fmt for vargo
         working-directory: ./tools/vargo
@@ -60,7 +64,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.97.1
+          toolchain: 1.98.1
           components: clippy
 
       - name: clippy check codebase
@@ -109,7 +113,7 @@ jobs:
               - 'source/cargo-verus/**'
               - 'source/cargo-verus-toolchains/**'
 
-  # run cargo-verus tests
+  # run cargo-verus (and -toolchains) tests
   cargo-verus-test:
     needs: [fmt, clippy, change_filter]
     runs-on: ubuntu-24.04
@@ -126,12 +130,14 @@ jobs:
         if: needs.change_filter.outputs.cargo_verus == 'true'
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.97.1
+          toolchain: 1.98.1
 
       - name: cargo-verus tests
         if: needs.change_filter.outputs.cargo_verus == 'true'
         working-directory: ./source
-        run: cargo test -p cargo-verus
+        run: |
+          cargo test -p cargo-verus
+          cargo test -p cargo-verus-toolchains
 
   # run line_count tests
   line-count-test:
@@ -144,7 +150,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.97.1
+          toolchain: 1.98.1
 
       - name: setup nextest
         uses: taiki-e/install-action@nextest
@@ -181,7 +187,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.97.1
+          toolchain: 1.98.1
 
       - name: setup nextest
         uses: taiki-e/install-action@nextest
@@ -190,6 +196,7 @@ jobs:
         working-directory: ./source
         run: |
           cargo clean
+          cargo run --release -p cargo-verus-toolchains --bin create-manifest -- --rolling --write-to-dir cargo-verus/toolchain-manifests
           CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS=true cargo build --release
           cargo run --release -p cargo-verus -- build --release --manifest-path vstd/Cargo.toml
 
@@ -233,7 +240,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.97.1
+          toolchain: 1.98.1
 
       - name: setup nextest
         uses: taiki-e/install-action@nextest
@@ -275,7 +282,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.97.1
+          toolchain: 1.98.1
 
       - name: setup nextest
         uses: taiki-e/install-action@nextest
@@ -340,7 +347,7 @@ jobs:
       - name: setup rust
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.97.1
+          toolchain: 1.98.1
 
       - name: build docs
         working-directory: ./source

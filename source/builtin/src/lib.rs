@@ -6,8 +6,12 @@
     feature(negative_impls),
     feature(unboxed_closures),
     feature(fn_traits),
+    feature(tuple_trait)
+)]
+#![cfg_attr(
+    // register_tool is only allowed at crate root. Disable this trait during `test_is_core`:
+    all(verus_keep_ghost, not(verus_verify_core)),
     feature(register_tool),
-    feature(tuple_trait),
     register_tool(verus),
     register_tool(verifier)
 )]
@@ -855,6 +859,30 @@ impl_structural! {
 }
 
 unsafe impl<T: Structural> Structural for Option<T> {}
+
+unsafe impl<T: Structural, E: Structural> Structural for core::result::Result<T, E> {}
+
+unsafe impl<T: Structural, const N: usize> Structural for [T; N] {}
+
+// Mirrors core's own tuple_impls! (library/core/src/tuple.rs), which provides
+// PartialEq for tuples up to arity 12.
+macro_rules! impl_structural_tuple {
+    ($($T:ident)*) => {
+        unsafe impl<$($T: Structural),*> Structural for ($($T,)*) {}
+    }
+}
+
+macro_rules! impl_structural_tuples {
+    () => {
+        impl_structural_tuple!();
+    };
+    ($T:ident $($U:ident)*) => {
+        impl_structural_tuple!($T $($U)*);
+        impl_structural_tuples!($($U)*);
+    };
+}
+
+impl_structural_tuples!(A B C D E F G H I J K L);
 
 pub struct NoCopy {}
 #[cfg(verus_keep_ghost)]
@@ -1956,6 +1984,13 @@ pub fn f32_to_bits(_f: f32) -> u32 {
 #[verifier::spec]
 #[rustc_diagnostic_item = "verus::verus_builtin::f64_to_bits"]
 pub fn f64_to_bits(_f: f64) -> u64 {
+    unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::strslice_new_strlit"]
+#[verifier::spec]
+pub fn strslice_new_strlit(_id: int) -> &'static str {
     unimplemented!()
 }
 

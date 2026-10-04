@@ -75,6 +75,7 @@ enum InsideArith {
     None,
     Widen,
     Fixed,
+    Int,
 }
 
 pub(crate) struct Visitor {
@@ -83,6 +84,8 @@ pub(crate) struct Visitor {
     use_spec_traits: bool,
     // inside_ghost > 0 means we're currently visiting ghost code
     inside_ghost: u32,
+    // inside_pat > 0 means we're currently visiting a pattern
+    inside_pat: u32,
     // inside_type > 0 means we're currently visiting a type
     inside_type: u32,
     // inside_external_code > 0 means we're currently visiting an external or external_body body
@@ -184,9 +187,9 @@ macro_rules! stmt_with_semi {
         }
     };
     ($span:expr => $($tok:tt)*) => {
-        Stmt::Expr(
-            Expr::Verbatim(quote_spanned!{ $span => $($tok)* }),
-            Some(Semi { spans: [ $span ] }),
+        ::verus_syn::Stmt::Expr(
+            ::verus_syn::Expr::Verbatim(quote_spanned!{ $span => $($tok)* }),
+            Some(::verus_syn::token::Semi { spans: [ $span ] }),
         )
     };
 }
@@ -764,29 +767,40 @@ impl Visitor {
             comma.to_tokens(&mut args_full_tokens);
         }
 
-        let mut generics = sig.generics.clone();
-        generics.params.retain(|val, _| match val {
-            GenericParam::Lifetime(..) => false,
-            GenericParam::Const(..) => true,
-            GenericParam::Type(..) => true,
-        });
+        let mut generics =
+            self.inside_impl.as_deref().map(|(generics, _)| generics.clone()).unwrap_or_default();
+        generics.params.extend(sig.generics.params.clone());
+        if let Some(where_clause) = &sig.generics.where_clause {
+            generics.make_where_clause().predicates.extend(where_clause.predicates.clone());
+        }
+        let generic_params = generics.params.iter().cloned().collect::<Vec<_>>();
+        generics.params = generic_params
+            .iter()
+            .filter(|param| matches!(param, GenericParam::Lifetime(_)))
+            .chain(
+                generic_params.iter().filter(|param| !matches!(param, GenericParam::Lifetime(_))),
+            )
+            .cloned()
+            .collect();
 
         let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-        let ty_generics_inner = {
-            let tokens = ty_generics.to_token_stream().into_iter().collect::<Vec<_>>();
-            let mut out = TokenStream::new();
-            if let [_, inner @ .., _] = &*tokens {
-                for tt in inner {
-                    tt.to_tokens(&mut out);
-                }
+        let marker_types = generics.params.iter().filter_map(|param| match param {
+            GenericParam::Lifetime(param) => {
+                let lifetime = &param.lifetime;
+                Some(quote_spanned_vstd!(vstd, param.span() =>
+                    #vstd::atomic::AtomicUpdateLifetimeMarker<#lifetime>
+                ))
             }
-
-            out
-        };
+            GenericParam::Type(param) => {
+                let ident = &param.ident;
+                Some(quote! { #ident })
+            }
+            GenericParam::Const(_) => None,
+        });
 
         self.additional_items.push(parse_quote_spanned!(full_span =>
             #vis struct #pred_ident #impl_generics #where_clause {
-                _marker: ::core::marker::PhantomData<( #ty_generics_inner )>,
+                _marker: ::core::marker::PhantomData<( #(#marker_types,)* )>,
             }
         ));
 
@@ -1102,9 +1116,9 @@ impl Visitor {
                                     }
                                 };
                                 if is_async_fn {
-                                    quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::constrain_type(#ret_val_ident, #verus_builtin::get_future_output_type(#receiver_token#fn_ident#generics_token(#args))))
+                                    quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::constrain_type(#ret_val_ident, #verus_builtin::get_future_output_type(#receiver_token #fn_ident #generics_token(#args))))
                                 } else {
-                                    quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::constrain_type(#ret_val_ident, #receiver_token#fn_ident#generics_token(#args)))
+                                    quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::constrain_type(#ret_val_ident, #receiver_token #fn_ident #generics_token(#args)))
                                 }
                             };
                             let contrain_typ_expr = Expr::Verbatim(constrain_type);
@@ -1339,7 +1353,7 @@ impl Visitor {
                 stmts.push(stmt_with_semi!(
                     o.path.span() =>
                     #[verus::internal(open_visibility_qualifier)]
-                    pub(#in_token#p) use crate as _
+                    pub(#in_token #p) use crate as _
                 ));
                 vec![mk_verus_attr(o.open_token.span, quote! { open })]
             }
@@ -2464,6 +2478,10 @@ fn chain_count(expr: &Expr) -> u32 {
 const ILLEGAL_CALLEES: &[&str] = &["forall", "exists", "choose"];
 
 impl Visitor {
+    fn inside_pat_or_type(&self) -> bool {
+        self.inside_pat + self.inside_type > 0
+    }
+
     fn chain_operators(&mut self, expr: &mut Expr) -> bool {
         let count = chain_count(expr);
         if count < 2 {
@@ -2711,16 +2729,54 @@ impl Visitor {
             return false;
         }
 
-        self.visit_expr_with_arith(expr, InsideArith::None);
+        let arith = match &expr {
+            Expr::Index(idx) => match &*idx.index {
+                Expr::Range(_) if self.use_spec_traits && self.inside_ghost > 0 => InsideArith::Int,
+                _ => InsideArith::None,
+            },
+            _ => InsideArith::None,
+        };
+        self.visit_expr_with_arith(expr, arith);
 
         match take_expr(expr) {
             Expr::Index(idx) => {
                 if self.use_spec_traits && self.inside_ghost > 0 {
                     let span = idx.span();
                     let src = idx.expr;
-                    let attrs = idx.attrs;
+                    let mut attrs = idx.attrs;
                     let index = idx.index;
-                    *expr = quote_verbatim!(span, attrs => #src.spec_index(#index));
+                    match *index {
+                        Expr::Range(range) => {
+                            use verus_syn::RangeLimits;
+                            let mut attrs2 = range.attrs;
+                            let start = range.start;
+                            let end = range.end;
+                            attrs.append(&mut attrs2);
+                            match (range.limits, start, end) {
+                                (_, None, None) => {
+                                    *expr = quote_verbatim!(span, attrs => #src.spec_index_range_full());
+                                }
+                                (_, Some(start), None) => {
+                                    *expr = quote_verbatim!(span, attrs => #src.spec_index_range_from(#start));
+                                }
+                                (RangeLimits::HalfOpen(_), None, Some(end)) => {
+                                    *expr = quote_verbatim!(span, attrs => #src.spec_index_range_to(#end));
+                                }
+                                (RangeLimits::Closed(_), None, Some(end)) => {
+                                    *expr = quote_verbatim!(span, attrs => #src.spec_index_range_to_inclusive(#end));
+                                }
+                                (RangeLimits::HalfOpen(_), Some(start), Some(end)) => {
+                                    *expr = quote_verbatim!(span, attrs => #src.spec_index_range(#start, #end));
+                                }
+                                (RangeLimits::Closed(_), Some(start), Some(end)) => {
+                                    *expr = quote_verbatim!(span, attrs => #src.spec_index_range_inclusive(#start, #end));
+                                }
+                            }
+                        }
+                        _ => {
+                            *expr = quote_verbatim!(span, attrs => #src.spec_index(#index));
+                        }
+                    }
                 } else {
                     *expr = Expr::Index(idx);
                 }
@@ -2731,7 +2787,7 @@ impl Visitor {
                 let span = view.span();
                 let attrs = view.attrs;
                 let base = view.expr;
-                *expr = quote_verbatim!(span, attrs => (#base#view_call));
+                *expr = quote_verbatim!(span, attrs => (#base #view_call));
             }
             Expr::View(view) => {
                 assert!(self.assign_to);
@@ -2767,7 +2823,7 @@ impl Visitor {
                 let rhs = has.rhs;
                 let has_call = quote_spanned!(has_token.span => .spec_has(#rhs));
                 let lhs = has.lhs;
-                *expr = Expr::Verbatim(quote_spanned!(span => (#lhs#has_call)));
+                *expr = Expr::Verbatim(quote_spanned!(span => (#lhs #has_call)));
             }
             Expr::HasNot(hasnot) => {
                 let has_not_token = hasnot.has_not_token;
@@ -2775,7 +2831,7 @@ impl Visitor {
                 let rhs = hasnot.rhs;
                 let has_call = quote_spanned!(has_not_token.span => .spec_has(#rhs));
                 let lhs = hasnot.lhs;
-                *expr = Expr::Verbatim(quote_spanned!(span => !(#lhs#has_call)));
+                *expr = Expr::Verbatim(quote_spanned!(span => !(#lhs #has_call)));
             }
             Expr::Matches(matches) => {
                 let span = matches.span();
@@ -2811,7 +2867,7 @@ impl Visitor {
                 let base = gf.base;
                 let member_ident = quote::format_ident!("arrow_{}", gf.member);
                 let get_call = quote_spanned!(gf.arrow_token.span() => .#member_ident());
-                *expr = Expr::Verbatim(quote_spanned!(span => (#base#get_call)));
+                *expr = Expr::Verbatim(quote_spanned!(span => (#base #get_call)));
             }
             Expr::Final(expr_final) => {
                 let span = expr_final.span();
@@ -3116,7 +3172,7 @@ impl Visitor {
             return false;
         };
 
-        if self.use_spec_traits && self.inside_ghost > 0 && self.inside_type == 0 {
+        if self.use_spec_traits && self.inside_ghost > 0 && !self.inside_pat_or_type() {
             let span = lit.span();
             let n = lit.base10_digits().to_string();
             if lit.suffix() == "" {
@@ -3133,6 +3189,9 @@ impl Visitor {
                     InsideArith::Widen => {
                         // Use int inside +, -, etc., since these promote to int anyway
                         *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_literal_nat(#n));
+                    }
+                    InsideArith::Int => {
+                        *expr = quote_verbatim!(verus_builtin, span, attrs => #verus_builtin::spec_literal_int(#n));
                     }
                     InsideArith::Fixed => {
                         // We generally won't want int/nat literals for bitwise ops,
@@ -3160,7 +3219,7 @@ impl Visitor {
         let Expr::Lit(ExprLit { lit: Lit::Float(lit), attrs }) = expr else {
             return false;
         };
-        if self.use_spec_traits && self.inside_ghost > 0 && self.inside_type == 0 {
+        if self.use_spec_traits && self.inside_ghost > 0 && !self.inside_pat_or_type() {
             let span = lit.span();
             let n = lit.base10_digits().to_string();
             if lit.suffix() == "" {
@@ -4361,6 +4420,7 @@ impl VisitMut for Visitor {
 
         let sub_inside_arith = match expr {
             Expr::Paren(..) | Expr::Block(..) | Expr::Group(..) => self.inside_arith,
+            Expr::Range(..) => self.inside_arith,
             _ => InsideArith::None,
         };
         let sub_assign_to = match expr {
@@ -4400,7 +4460,7 @@ impl VisitMut for Visitor {
             Expr::ForLoop(..) => true,
             _ => false,
         };
-        if do_replace && self.inside_type == 0 {
+        if do_replace && !self.inside_pat_or_type() {
             match take_expr(expr) {
                 Expr::ForLoop(for_loop) => {
                     *expr = self.desugar_for_loop(for_loop);
@@ -4408,6 +4468,12 @@ impl VisitMut for Visitor {
                 _ => panic!("expected to replace expression"),
             }
         }
+    }
+
+    fn visit_pat_mut(&mut self, pat: &mut Pat) {
+        self.inside_pat += 1;
+        verus_syn::visit_mut::visit_pat_mut(self, pat);
+        self.inside_pat -= 1;
     }
 
     fn visit_attribute_mut(&mut self, attr: &mut Attribute) {
@@ -5329,6 +5395,7 @@ pub(crate) fn rewrite_items_inner(
         erase_ghost,
         use_spec_traits,
         inside_ghost: 0,
+        inside_pat: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
@@ -5370,6 +5437,7 @@ pub(crate) fn rewrite_impl_items(
         erase_ghost,
         use_spec_traits,
         inside_ghost: 0,
+        inside_pat: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
@@ -5405,6 +5473,7 @@ pub(crate) fn rewrite_expr(
         erase_ghost,
         use_spec_traits: true,
         inside_ghost: if inside_ghost { 1 } else { 0 },
+        inside_pat: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
@@ -5438,6 +5507,7 @@ pub(crate) fn rewrite_proof_decl(
         erase_ghost,
         use_spec_traits: true,
         inside_ghost: 0,
+        inside_pat: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
@@ -5493,6 +5563,7 @@ pub(crate) fn rewrite_expr_node(erase_ghost: EraseGhost, inside_ghost: bool, exp
         erase_ghost,
         use_spec_traits: true,
         inside_ghost: if inside_ghost { 1 } else { 0 },
+        inside_pat: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
@@ -5684,6 +5755,7 @@ pub(crate) fn sig_specs_attr(
         erase_ghost,
         use_spec_traits: true,
         inside_ghost: 1,
+        inside_pat: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
@@ -5725,6 +5797,7 @@ pub(crate) fn while_loop_spec_attr(
         erase_ghost,
         use_spec_traits: true,
         inside_ghost: 1,
+        inside_pat: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
@@ -5759,6 +5832,7 @@ pub(crate) fn for_loop_spec_attr(
         erase_ghost,
         use_spec_traits: true,
         inside_ghost: 1,
+        inside_pat: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
@@ -5819,6 +5893,7 @@ pub(crate) fn proof_block(
         erase_ghost,
         use_spec_traits: true,
         inside_ghost: 1,
+        inside_pat: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
@@ -5845,6 +5920,7 @@ pub(crate) fn proof_macro_exprs(
         erase_ghost,
         use_spec_traits: true,
         inside_ghost: if inside_ghost { 1 } else { 0 },
+        inside_pat: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
@@ -5877,6 +5953,7 @@ pub(crate) fn inv_au_macro_exprs(
         erase_ghost,
         use_spec_traits: true,
         inside_ghost: 0,
+        inside_pat: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,
@@ -5920,6 +5997,7 @@ pub(crate) fn proof_macro_explicit_exprs(
         erase_ghost,
         use_spec_traits: true,
         inside_ghost: if inside_ghost { 1 } else { 0 },
+        inside_pat: 0,
         inside_type: 0,
         inside_external_code: 0,
         inside_const: false,

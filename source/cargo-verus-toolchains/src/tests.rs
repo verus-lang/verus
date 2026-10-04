@@ -8,6 +8,7 @@ fn make_release_manifest() -> Toolchain {
         verus: "0.2026.06.07.cd03505".into(),
         vstd: Crate::Registry("0.0.0-2026-05-31-0205".into()),
         z3: "4.12.5".into(),
+        cvc5: "1.1.2".into(),
         singular: "4.3.2".into(),
     }
 }
@@ -20,6 +21,7 @@ fn make_rolling_release_manifest() -> Toolchain {
             rev: "e6a6d4f".into(),
         },
         z3: "4.12.5".into(),
+        cvc5: "1.1.2".into(),
         singular: "4.3.2".into(),
     }
 }
@@ -30,6 +32,7 @@ fn parse_print_toolchain_release() {
         verus = "0.2026.06.07.cd03505"
         vstd = "0.0.0-2026-05-31-0205"
         z3 = "4.12.5"
+        cvc5 = "1.1.2"
         singular = "4.3.2"
     "#};
 
@@ -44,6 +47,7 @@ fn parse_print_toolchain_release() {
         verus: "0.2026.06.07.cd03505",
         vstd: Crate::Registry("0.0.0-2026-05-31-0205"),
         z3: "4.12.5",
+        cvc5: "1.1.2",
         singular: "4.3.2",
     }"#};
 
@@ -59,6 +63,7 @@ fn parse_print_toolchain_rolling_release() {
         verus = "0.2026.06.10.e6a6d4f"
         vstd = { git = "https://github.com/verus-lang/verus.git", rev = "e6a6d4f" }
         z3 = "4.12.5"
+        cvc5 = "1.1.2"
         singular = "4.3.2"
     "#};
 
@@ -73,6 +78,7 @@ fn parse_print_toolchain_rolling_release() {
         verus: "0.2026.06.10.e6a6d4f",
         vstd: Crate::GitCommit { git: "https://github.com/verus-lang/verus.git", rev: "e6a6d4f" },
         z3: "4.12.5",
+        cvc5: "1.1.2",
         singular: "4.3.2",
     }"#};
 
@@ -97,12 +103,14 @@ fn print_toolchains_code() {
                 verus: "0.2026.06.10.e6a6d4f",
                 vstd: Crate::GitCommit { git: "https://github.com/verus-lang/verus.git", rev: "e6a6d4f" },
                 z3: "4.12.5",
+                cvc5: "1.1.2",
                 singular: "4.3.2",
             },
             Toolchain {
                 verus: "0.2026.06.07.cd03505",
                 vstd: Crate::Registry("0.0.0-2026-05-31-0205"),
                 z3: "4.12.5",
+                cvc5: "1.1.2",
                 singular: "4.3.2",
             },
         ];

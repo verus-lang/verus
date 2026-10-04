@@ -209,6 +209,59 @@ test_verify_one_file! {
             field: Box<[ Foo ; 1 ]>,
         }
 
+    } => Err(err) => assert_vir_error_msg(err, "datatype must have at least one non-recursive variant")
+}
+
+test_verify_one_file! {
+    #[test] test_recursive_array_no_ground_variant verus_code! {
+        use vstd::prelude::*;
+
+        struct S { a: [Box<S>; 1] }
+
+        proof fn descend(s: S)
+            ensures false
+            decreases s
+        {
+            descend(*s.a@[0]);
+        }
+
+        proof fn bad() ensures false {
+            descend(arbitrary());
+        }
+    } => Err(err) => assert_vir_error_msg(err, "datatype must have at least one non-recursive variant")
+}
+
+test_verify_one_file! {
+    #[test] test_recursive_array_no_ground_variant_generic verus_code! {
+        use vstd::prelude::*;
+
+        struct S<const N: usize> { a: [Box<S<N>>; N] }
+    } => Err(err) => assert_vir_error_msg(err, "datatype must have at least one non-recursive variant")
+}
+
+test_verify_one_file! {
+    #[test] test_recursive_array_ground_variants verus_code! {
+        use vstd::prelude::*;
+
+        struct Empty { a: [Box<Empty>; 0] }
+
+        fn make_empty() -> Empty {
+            Empty { a: [] }
+        }
+
+        enum Tree<const N: usize> {
+            Leaf,
+            Branch([Box<Tree<N>>; N]),
+        }
+
+        proof fn test_decreases(t: Tree<1>) {
+            match t {
+                Tree::Leaf => {},
+                Tree::Branch(children) => {
+                    assert(decreases_to!(t => children@[0]));
+                },
+            }
+        }
     } => Ok(())
 }
 
@@ -461,6 +514,102 @@ test_verify_one_file! {
                 assert(x % 2 == 0);
                 i = i + 1;
             }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_array_equality_uses_view verus_code! {
+        use vstd::prelude::*;
+
+        fn check<const N: usize>(left: [u8; N], right: [u8; N]) -> (result: bool)
+            ensures
+                result == (left@ =~= right@),
+        {
+            left == right
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_slice_ref_equals_array verus_code! {
+        use vstd::prelude::*;
+
+        fn check<const N: usize>(left: &[u8], right: [u8; N]) -> (result: bool)
+            ensures
+                result == (left@ =~= right@),
+        {
+            left == right
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test]
+    array_equals_slice_ref verus_code! {
+        use vstd::prelude::*;
+
+        fn check<const N: usize>(left: [u8; N], right: &[u8]) -> (result: bool)
+            ensures
+                result == (left@ =~= right@),
+        {
+            left == right
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test]
+    slice_equals_array_uses_view verus_code! {
+        use vstd::prelude::*;
+
+        fn check(left: &[u8], right: &[u8; 11]) -> (result: bool)
+            ensures
+                result == (left@ =~= right@),
+        {
+            <[u8] as PartialEq<[u8; 11]>>::eq(left, right)
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test]
+    array_equals_slice_uses_view verus_code! {
+        use vstd::prelude::*;
+
+        fn check(left: &[u8; 11], right: &[u8]) -> (result: bool)
+            ensures
+                result == (left@ =~= right@),
+        {
+            <[u8; 11] as PartialEq<[u8]>>::eq(left, right)
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test]
+    slice_ref_equals_array_ref_uses_view verus_code! {
+        use vstd::prelude::*;
+
+        fn check(left: &[u8], right: &[u8; 11]) -> (result: bool)
+            ensures
+                result == (left@ =~= right@),
+        {
+            left == right
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test]
+    array_ref_equals_slice_ref_uses_view verus_code! {
+        use vstd::prelude::*;
+
+        fn check(left: &[u8; 11], right: &[u8]) -> (result: bool)
+            ensures
+                result == (left@ =~= right@),
+        {
+            left == right
         }
     } => Ok(())
 }

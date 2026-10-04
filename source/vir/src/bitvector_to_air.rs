@@ -470,6 +470,12 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
             UnaryOp::MustBeFinalized | UnaryOp::MustBeElaborated => {
                 panic!("internal error: Exp not finalized: {:?}", arg)
             }
+            UnaryOp::NewStrLit => {
+                return Err(error(
+                    &exp.span,
+                    "strslice_new_strlit not supported in bit_vector assert",
+                ));
+            }
             UnaryOp::StrLen => {
                 return Err(error(
                     &exp.span,
@@ -687,7 +693,7 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
             ));
         }
         ExpX::UnaryOpr(
-            crate::ast::UnaryOpr::IntegerTypeBound(IntegerTypeBoundKind::ArchWordBits, _mode),
+            crate::ast::UnaryOpr::IntegerTypeBound(IntegerTypeBoundKind::ArchWordBits),
             _e,
         ) => {
             let archw = bitwidth_exact(state, IntegerTypeBitwidth::ArchWordSize);

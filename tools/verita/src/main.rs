@@ -417,6 +417,7 @@ fn process_project(
         .revparse_ext(&project.refspec)
         .map_err(|e| anyhow!("failed to find {}: {}", project.refspec, e))?;
     project_repo.checkout_tree(&rev, None)?;
+    project_repo.set_head_detached(rev.id())?;
     let hash = rev.id().to_string();
     ctx.sh.change_dir(&repo_path);
 

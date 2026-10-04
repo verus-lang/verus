@@ -1841,7 +1841,7 @@ test_verify_one_file_with_options! {
             let mut u: u64 = 0;
             let z = mut_ref_tracked(&mut u);
         }
-    } => Err(err) => assert_vir_error_msg(err, "`mut_ref_tracked` must be in a 'proof' block")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use `verus_builtin::mut_ref_tracked` in executable context")
 }
 
 test_verify_one_file_with_options! {

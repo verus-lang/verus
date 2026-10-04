@@ -1783,3 +1783,20 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
 }
+
+test_verify_one_file! {
+    #[test] builtin_add_fail_issue2703 verus_code! {
+        fn test() {
+            let x = add(0, 1);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot use `verus_builtin::add` in executable context")
+}
+
+test_verify_one_file! {
+    #[test] builtin_spec_neg_fail_issue2703 verus_code! {
+        fn test() {
+            let a = 3;
+            let y = a.spec_neg();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot use `verus_builtin::SpecNeg::spec_neg` in executable context")
+}

@@ -2,8 +2,8 @@ use super::multiset::*;
 use super::prelude::*;
 use core::marker::PhantomData;
 
-use verus as verus_;
-verus_! {
+use verus as verus_skip_verusfmt;
+verus_skip_verusfmt! {
 
 // Note that the tokenized_state_machine! macro creates trusted implementations
 // of all these traits. Therefore all the proof functions in here are trusted.

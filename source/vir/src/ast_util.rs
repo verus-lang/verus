@@ -566,6 +566,12 @@ impl<X> SpannedTyped<X> {
     }
 }
 
+impl<X: Clone> SpannedTyped<X> {
+    pub fn new_typ(&self, typ: &Typ) -> Arc<Self> {
+        Arc::new(SpannedTyped { span: self.span.clone(), typ: typ.clone(), x: self.x.clone() })
+    }
+}
+
 /// Unit type
 pub fn unit_typ() -> Typ {
     let name = Dt::Tuple(0);

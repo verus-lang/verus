@@ -12,11 +12,11 @@ fn extend_from_idx(r: &mut Vec<u64>, v: &Vec<u64>, start: usize)
     requires
         start < v.len(),
     ensures
-        final(r)@ == old(r)@ + v@.subrange(start as int, v.len() as int),
+        final(r)@ == old(r)@ + v@[start..],
 {
     for i in start..v.len()
         invariant
-            r@ =~= old(r)@ + v@.subrange(start as int, i as int),
+            r@ =~= old(r)@ + v@[start..i],
     {
         r.push(v[i]);
     }
@@ -47,7 +47,7 @@ proof fn lemma_subrange_push(s1: Seq<u64>, start: int, end: int)
     requires
         0 <= start <= end < s1.len(),
     ensures
-        s1.subrange(start, end).push(s1[end]) =~= s1.subrange(start, end + 1),
+        s1[start..end].push(s1[end]) =~= s1[start..end + 1],
 {
 }
 
@@ -55,7 +55,7 @@ proof fn lemma_subrange_add(s1: Seq<u64>, start: int, mid: int, end: int)
     requires
         0 <= start <= mid <= end <= s1.len(),
     ensures
-        s1.subrange(start, mid) + s1.subrange(mid, end) =~= s1.subrange(start, end),
+        s1[start..mid] + s1[mid..end] =~= s1[start..end],
 {
 }
 
@@ -72,7 +72,7 @@ fn merge(v1: &Vec<u64>, v2: &Vec<u64>) -> (r: Vec<u64>)
     let mut r: Vec<u64> = Vec::new();
     let mut i1: usize = 0;
     let mut i2: usize = 0;
-    assert(v1@.subrange(0 as int, i1 as int) == Seq::<u64>::empty());
+    assert(v1@[..i1] == Seq::<u64>::empty());
 
     while i1 < v1.len() && i2 < v2.len()
         invariant
@@ -82,10 +82,7 @@ fn merge(v1: &Vec<u64>, v2: &Vec<u64>) -> (r: Vec<u64>)
             is_sorted(v2),
             forall|i: int| i1 < v1.len() ==> 0 <= i < r.len() ==> r[i] <= v1[i1 as int],
             forall|i: int| i2 < v2.len() ==> 0 <= i < r.len() ==> r[i] <= v2[i2 as int],
-            r@.to_multiset() =~= (v1@.subrange(0 as int, i1 as int) + v2@.subrange(
-                0 as int,
-                i2 as int,
-            )).to_multiset(),
+            r@.to_multiset() =~= (v1@[..i1] + v2@[..i2]).to_multiset(),
             is_sorted(&r),
         decreases v1.len() + v2.len() - i1 - i2,
     {
@@ -95,49 +92,37 @@ fn merge(v1: &Vec<u64>, v2: &Vec<u64>) -> (r: Vec<u64>)
         if v1[i1] < v2[i2] {
             r.push(v1[i1]);
             proof {
-                lemma_to_multiset_distributes_over_add(
-                    v1@.subrange(0 as int, i1 as int),
-                    v2@.subrange(0 as int, i2 as int),
-                );
-                v1@.subrange(0 as int, i1 as int).to_multiset_ensures();
-                lemma_subrange_push(v1@, 0 as int, i1 as int);
-                lemma_to_multiset_distributes_over_add(
-                    v1@.subrange(0 as int, (i1 + 1) as int),
-                    v2@.subrange(0 as int, i2 as int),
-                );
+                lemma_to_multiset_distributes_over_add(v1@[..i1], v2@[..i2]);
+                v1@[..i1].to_multiset_ensures();
+                lemma_subrange_push(v1@, 0, i1 as int);
+                lemma_to_multiset_distributes_over_add(v1@[..i1 + 1], v2@[..i2]);
             }
             i1 += 1;
         } else {
             r.push(v2[i2]);
             proof {
-                lemma_to_multiset_distributes_over_add(
-                    v1@.subrange(0 as int, i1 as int),
-                    v2@.subrange(0 as int, i2 as int),
-                );
-                v2@.subrange(0 as int, i2 as int).to_multiset_ensures();
-                lemma_subrange_push(v2@, 0 as int, i2 as int);
-                lemma_to_multiset_distributes_over_add(
-                    v1@.subrange(0 as int, i1 as int),
-                    v2@.subrange(0 as int, (i2 + 1) as int),
-                );
+                lemma_to_multiset_distributes_over_add(v1@[..i1], v2@[..i2]);
+                v2@[..i2].to_multiset_ensures();
+                lemma_subrange_push(v2@, 0, i2 as int);
+                lemma_to_multiset_distributes_over_add(v1@[..i1], v2@[..i2 + 1]);
             }
             i2 += 1;
         }
 
     }
-    assert(v1@.subrange(0 as int, v1.len() as int) =~= v1@);
-    assert(v2@.subrange(0 as int, v2.len() as int) =~= v2@);
+    assert(v1@[..v1.len()] =~= v1@);
+    assert(v2@[..v2.len()] =~= v2@);
 
     if i1 < v1.len() {
         extend_from_idx(&mut r, v1, i1);
         proof {
-            lemma_subrange_add(v1@, 0 as int, i1 as int, v1.len() as int);
+            lemma_subrange_add(v1@, 0, i1 as int, v1.len() as int);
             assert(r@.to_multiset() =~= (v1@ + v2@).to_multiset());
         }
     } else if i2 < v2.len() {
         extend_from_idx(&mut r, v2, i2);
         proof {
-            lemma_subrange_add(v2@, 0 as int, i2 as int, v2.len() as int);
+            lemma_subrange_add(v2@, 0, i2 as int, v2.len() as int);
             assert(r@.to_multiset() =~= (v1@ + v2@).to_multiset());
         }
     }

@@ -4,8 +4,8 @@ use super::pervasive::*;
 use super::prelude::*;
 use super::set::*;
 
-use verus as verus_; // skip verusfmt due to unhandled return-value-pattern
-verus_! {
+use verus as verus_skip_verusfmt; // skip verusfmt due to unhandled return-value-pattern
+verus_skip_verusfmt! {
 
 /// `IMap<K, V>` is an abstract map type for specifications.
 ///
@@ -467,7 +467,7 @@ pub use assert_imaps_equal;
 
 } // verus!
 
-verus_! { // skip verusfmt, issue with 'final'
+verus_skip_verusfmt! { // skip verusfmt, issue with 'final'
 
 impl<K, V> IMap<K, V> {
     pub proof fn tracked_map_keys_in_place(tracked &mut self, key_map: IMap<K, K>)
