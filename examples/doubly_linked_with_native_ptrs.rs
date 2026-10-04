@@ -22,8 +22,8 @@ verus! {
         }
     }
 
-    fn allocate<T>() -> ((ptr, pt): (*mut T, Tracked<FullPointsTo<T>>))
-        ensures pt.wf(ptr)
+    fn allocate<T>(t: T) -> ((ptr, pt): (*mut T, Tracked<FullPointsTo<T>>))
+        ensures pt.wf(ptr), pt.points_to.is_init(), pt.points_to.value() == t,
     {
         vstd::layout::layout_for_type_is_valid::<T>();
         assume(size_of::<T>() > 0);
@@ -33,6 +33,7 @@ verus! {
         let tracked fpt = FullPointsTo { points_to, dealloc: Some(dealloc) };
 
         let ptr = ptr as *mut T;
+        ptr_mut_write(ptr, Tracked(&mut fpt.points_to), t);
         (ptr, Tracked(fpt))
     }
 
@@ -148,12 +149,9 @@ mod doubly_linked_list {
                 final(self)@ =~= old(self)@.push(v),
         {
             // Allocate a node to contain the payload
-            let (ptr, Tracked(full_points_to)) = crate::allocate::<Node<V>>();
-
-            let ptr = ptr as *mut Node<V>;
-            ptr_mut_write(ptr,
-                Tracked(&mut full_points_to.points_to),
-                Node::<V> { prev: None, next: None, payload: v });
+            let (ptr, Tracked(full_points_to)) = crate::allocate::<Node<V>>(
+                Node::<V> { prev: None, next: None, payload: v }
+            );
 
             // Update head and tail pointers
             self.tail = Some(ptr);
@@ -200,13 +198,11 @@ mod doubly_linked_list {
                     let ghost idx = (self.ghost_state@.ptrs.len() - 1) as nat;
 
                     #[verifier::permission(old_tail_ptr)]
-                    let tracked old_tail_perm = self.ghost_state.points_to_map.tracked_borrow_mut(idx);
+                    let tracked old_tail_perm = &mut self.ghost_state.points_to_map.tracked_borrow_mut(idx).points_to;
 
                     // Allocate a new node to go on the end. It's 'prev' field points
                     // to the old tail pointer.
-                    let (new_tail_ptr, Tracked(new_tail_pointsto)) = crate::allocate::<Node<V>>();
-                    ptr_mut_write(new_tail_ptr,
-                        Tracked(&mut new_tail_pointsto.points_to),
+                    let (new_tail_ptr, Tracked(new_tail_pointsto)) = crate::allocate::<Node<V>>(
                         Node::<V> { prev: Some(old_tail_ptr), next: None, payload: v },
                     );
 
