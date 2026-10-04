@@ -291,9 +291,12 @@ pub fn run_verus(
     let mut no_external_by_default = false;
     let mut is_core = false;
     let mut use_internal_test_mode = true;
+    let mut crate_name = "test_crate";
 
     for option in options.iter() {
-        if *option == "--expand-errors" {
+        if let Some(name) = option.strip_prefix("--crate-name=") {
+            crate_name = name;
+        } else if *option == "--expand-errors" {
             verus_args.push("--expand-errors".to_string());
             verus_args.push("--multiple-errors".to_string());
             verus_args.push("2".to_string());
@@ -335,6 +338,12 @@ pub fn run_verus(
         } else if *option == "--edition 2024" {
             verus_args.push("--edition".to_string());
             verus_args.push("2024".to_string());
+        } else if *option == "--edition 2021" {
+            verus_args.push("--edition".to_string());
+            verus_args.push("2021".to_string());
+        } else if *option == "--edition 2018" {
+            verus_args.push("--edition".to_string());
+            verus_args.push("2018".to_string());
         } else {
             panic!("option '{}' not recognized by test harness", option);
         }
@@ -349,7 +358,7 @@ pub fn run_verus(
     verus_args.extend(
         vec![
             "--crate-name".to_string(),
-            "test_crate".to_string(),
+            crate_name.to_string(),
             "--crate-type".to_string(),
             "lib".to_string(),
         ]
@@ -631,6 +640,7 @@ pub const FEATURE_PRELUDE: &str = crate::common::code_str! {
     #![feature(core_intrinsics)]
     #![feature(ptr_metadata)]
     #![feature(sized_hierarchy)]
+    #![feature(btree_cursors)]
     #![feature(const_destruct)]
     #![feature(print_internals)]
 };

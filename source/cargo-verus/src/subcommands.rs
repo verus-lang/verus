@@ -1,16 +1,17 @@
 use std::collections::{BTreeMap as Map, BTreeSet as Set};
 use std::env;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
 use anyhow::{Context, Result, anyhow, bail};
 use cargo_metadata::PackageId;
 use clap::ValueEnum;
 use colored::Colorize;
+use walkdir::WalkDir;
 
-use crate::cli::{CargoOptions, VerifyCommand, VerusArgFwdSelector};
-use crate::metadata::{MetadataIndex, fetch_metadata, make_package_id};
+use crate::cli::{CargoOptions, FmtCommand, NewCommand, VerifyCommand, VerusArgFwdSelector};
+use crate::metadata::{MetadataIndex, VerusMetadata, fetch_metadata, make_package_id};
 use crate::toolchains::{self, TOOLCHAINS, is_matching_known_and_used};
 use crate::vstd_build::{VstdBuild, build_vstd};
 
@@ -32,10 +33,31 @@ pub struct NewCreationPlan {
     pub current_dir: PathBuf,
     pub name: String,
     pub is_bin: bool,
+    pub vstd_dependency: String,
+}
+
+/// Plan the creation of a project with `cargo verus new`.
+pub fn plan_new_project(current_dir: PathBuf, command: NewCommand) -> Result<NewCreationPlan> {
+    let verus_version = match command.override_verus_version {
+        Some(version) => version,
+        None => get_verus_driver_version()?,
+    };
+    let vstd_source_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("cargo-verus manifest directory should have a parent")
+        .join("vstd");
+    let vstd_dependency = toolchains::infer_vstd_dependency(&verus_version, &vstd_source_dir)?;
+    let (name, is_bin) = match (command.project_kind.bin, command.project_kind.lib) {
+        (Some(name), None) => (name, true),
+        (None, Some(name)) => (name, false),
+        _ => unreachable!("clap enforces exactly one of --bin/--lib"),
+    };
+
+    Ok(NewCreationPlan { current_dir, name, is_bin, vstd_dependency })
 }
 
 pub fn create_new_project(creation_plan: &NewCreationPlan) -> Result<ExitCode> {
-    let NewCreationPlan { current_dir, name, is_bin } = creation_plan;
+    let NewCreationPlan { current_dir, name, is_bin, vstd_dependency } = creation_plan;
 
     let (src_rs, src_rs_data) = if *is_bin {
         (
@@ -78,7 +100,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-vstd = "=0.0.0-2026-08-09-0044"
+vstd = {vstd_dependency}
 
 [package.metadata.verus]
 verify = true
@@ -120,6 +142,132 @@ unexpected_cfgs = {{ level = "warn", check-cfg = [
     println!("Created new Verus project at {name}");
 
     Ok(ExitCode::SUCCESS)
+}
+
+pub struct FormattingPlan {
+    pub is_check: bool,
+    pub cargo_targets: Vec<PathBuf>,
+    pub verus_targets: Vec<PathBuf>,
+    pub verusfmt_args: Vec<String>,
+}
+
+/// Plan formatting Verus and Rust packages based on `cargo metadata`.
+pub fn plan_formatting(current_dir: PathBuf, command: FmtCommand) -> Result<FormattingPlan> {
+    let metadata_args = if let Some(manifest_path) = &command.manifest.manifest_path {
+        vec!["--manifest-path".to_owned(), manifest_path.to_string_lossy().into_owned()]
+    } else {
+        vec![]
+    };
+    let metadata = fetch_metadata(metadata_args, current_dir)?;
+    let metadata_index = MetadataIndex::new(&metadata)?;
+    let mut workspace = clap_cargo::Workspace::default();
+    workspace.package = command.package;
+    workspace.all = command.all;
+    let (included_packages, _) = workspace.partition_packages(&metadata);
+
+    let mut cargo_targets = Vec::new();
+    let mut verus_targets = Vec::new();
+    for package in included_packages {
+        let manifest_path = package.manifest_path.clone().into_std_path_buf();
+        if let Some(metadata) = &metadata_index.get(&package.id).verus_metadata
+            && !metadata.fmt_as_rust
+        {
+            verus_targets.push(manifest_path);
+        } else {
+            cargo_targets.push(manifest_path);
+        }
+    }
+    cargo_targets.sort();
+    verus_targets.sort();
+
+    if command.verbosity > 0 {
+        println!("Packages to format using `cargo fmt`:");
+        for manifest_path in &cargo_targets {
+            println!("  {}", manifest_path.display());
+        }
+        println!("Packages to format using `verusfmt`:");
+        for manifest_path in &verus_targets {
+            println!("  {}", manifest_path.display());
+        }
+    }
+
+    Ok(FormattingPlan {
+        is_check: command.check,
+        cargo_targets,
+        verus_targets,
+        verusfmt_args: command.verusfmt_args,
+    })
+}
+
+pub fn run_formatting(plan: &FormattingPlan) -> Result<ExitCode> {
+    for manifest_path in &plan.cargo_targets {
+        let mut command = Command::new(env::var("CARGO").unwrap_or("cargo".into()));
+        command.args(["fmt", "--manifest-path"]).arg(manifest_path);
+        if plan.is_check {
+            command.arg("--check");
+        }
+        let exit_status = command
+            .spawn()
+            .context("Failed to spawn `cargo fmt`")?
+            .wait()
+            .context("Failed to wait for `cargo fmt`")?;
+
+        if let Some(exit_code) = formatting_exit_code(exit_status)? {
+            return Ok(exit_code);
+        }
+    }
+
+    let verusfmt = env::var("VERUSFMT").unwrap_or_else(|_| "verusfmt".to_owned());
+    for manifest_path in &plan.verus_targets {
+        let package_root = manifest_path.parent().context(format!(
+            "package manifest `{}` has no parent directory",
+            manifest_path.display()
+        ))?;
+        let mut target_paths = WalkDir::new(package_root)
+            .follow_links(true)
+            .into_iter()
+            .filter_map(|entry| match entry {
+                Ok(entry)
+                    if entry.file_type().is_file()
+                        && entry.path().extension().is_some_and(|extension| extension == "rs") =>
+                {
+                    Some(Ok(entry.into_path()))
+                }
+                Ok(_) => None,
+                Err(error) => Some(Err(error.into())),
+            })
+            .collect::<Result<Vec<_>>>()?;
+        target_paths.sort();
+
+        let mut command = Command::new(&verusfmt);
+        if plan.is_check {
+            command.arg("--check");
+        }
+        let exit_status = command
+            .args(&plan.verusfmt_args)
+            .args(target_paths)
+            .spawn()
+            .context("Failed to spawn `verusfmt`")?
+            .wait()
+            .context("Failed to wait for `verusfmt`")?;
+
+        if let Some(exit_code) = formatting_exit_code(exit_status)? {
+            return Ok(exit_code);
+        }
+    }
+
+    Ok(ExitCode::SUCCESS)
+}
+
+fn formatting_exit_code(exit_status: std::process::ExitStatus) -> Result<Option<ExitCode>> {
+    match exit_status.code() {
+        Some(0) => Ok(None),
+        Some(code) => u8::try_from(code)
+            .map(ExitCode::from)
+            .map(Some)
+            .map_err(|_| anyhow!("Formatting command terminated with an odd exit code: {code}")),
+        None => bail!("Formatting command was terminated by a signal: {exit_status}"),
+    }
 }
 
 pub fn list_toolchains() -> Result<ExitCode> {
@@ -168,7 +316,13 @@ pub fn plan_cargo_run(mut cfg: VerusConfig) -> Result<CargoRunPlan> {
         && root_packages.len() == 1
         && let Some(vstd_id) = root_packages
             .iter()
-            .find(|package_id| metadata_index.get(package_id).verus_metadata.is_vstd)
+            .find(|package_id| {
+                metadata_index
+                    .get(package_id)
+                    .verus_metadata
+                    .as_ref()
+                    .is_some_and(|metadata| metadata.is_vstd)
+            })
             .cloned()
     {
         // When the only primary package to build is `vstd`, special treatment of resulting artifacts is needed.
@@ -202,7 +356,10 @@ pub fn plan_cargo_run(mut cfg: VerusConfig) -> Result<CargoRunPlan> {
         }
 
         let vstd_metadata = metadata_index.collect_vstd_metadata(packages_to_verify);
-        let verus_version = get_verus_driver_version()?;
+        let verus_version = match &cfg.options.override_verus_version {
+            Some(version) => version.clone(),
+            None => get_verus_driver_version()?,
+        };
 
         if cfg.options.verbosity > 0 {
             println!("verus version: {verus_version:?}");
@@ -215,10 +372,8 @@ pub fn plan_cargo_run(mut cfg: VerusConfig) -> Result<CargoRunPlan> {
         }
 
         for used_vstd in &vstd_metadata {
-            let is_compatible = toolchains::TOOLCHAINS.iter().any(|toolchain| {
-                toolchain.verus == verus_version
-                    && is_matching_known_and_used(&toolchain.vstd, used_vstd)
-            });
+            let is_compatible = toolchains::find_toolchain(&verus_version)
+                .is_some_and(|toolchain| is_matching_known_and_used(&toolchain.vstd, used_vstd));
             if !is_compatible {
                 bail!(
                     "Components are incompatible:\n\
@@ -450,7 +605,8 @@ fn make_cargo_plan(
         let package_id =
             make_package_id(&package.name, package.version.to_string(), &package.manifest_path);
 
-        let verus_metadata = &entry.verus_metadata;
+        let default_verus_metadata = VerusMetadata::default();
+        let verus_metadata = entry.verus_metadata.as_ref().unwrap_or(&default_verus_metadata);
 
         // The is_builtin, is_builtin_macro, and verify fields are passed as env vars as they
         // are relevant for crates which are skipped by Verus. In such cases, the driver avoids

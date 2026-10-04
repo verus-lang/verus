@@ -856,3 +856,293 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 1)
 }
+
+test_verify_one_file! {
+    #[test] test_impls_cannot_extend_spec_trait_decl_only1 verus_code! {
+        #[verifier::impls_cannot_extend_spec]
+        fn e();
+    } => Err(err) => assert_vir_error_msg(err, "only exec trait functions can be marked impls_cannot_extend_spec")
+}
+
+test_verify_one_file! {
+    #[test] test_impls_cannot_extend_spec_trait_decl_only2 verus_code! {
+        trait T {
+            fn e();
+        }
+        impl T for u8 {
+            #[verifier::impls_cannot_extend_spec]
+            fn e() {}
+        }
+    } => Err(err) => assert_vir_error_msg(err, "only exec trait functions can be marked impls_cannot_extend_spec")
+}
+
+test_verify_one_file! {
+    #[test] test_impls_cannot_extend_spec_no_spec verus_code! {
+        trait T {
+            #[verifier::impls_cannot_extend_spec]
+            spec fn e();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "only exec trait functions can be marked impls_cannot_extend_spec")
+}
+
+test_verify_one_file! {
+    #[test] test_impls_cannot_extend_spec_no_proof verus_code! {
+        trait T {
+            #[verifier::impls_cannot_extend_spec]
+            proof fn e();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "only exec trait functions can be marked impls_cannot_extend_spec")
+}
+
+test_verify_one_file! {
+    #[test] test_impls_cannot_extend_spec_no_add_ensures verus_code! {
+        trait T {
+            #[verifier::impls_cannot_extend_spec]
+            fn e();
+        }
+        impl T for u8 {
+            fn e() ensures true {}
+        }
+    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare ensures clauses because the trait declaration is marked impls_cannot_extend_spec")
+}
+
+test_verify_one_file! {
+    #[test] test_impls_cannot_extend_spec_no_default_ensures verus_code! {
+        trait T {
+            #[verifier::impls_cannot_extend_spec]
+            fn f() default_ensures true {}
+        }
+    } => Err(err) => assert_vir_error_msg(err, "impls_cannot_extend_spec functions cannot use default_ensures")
+}
+
+test_verify_one_file! {
+    #[test] test_impls_cannot_extend_spec_allow_self_bound verus_code! {
+        trait T {
+            #[verifier::impls_cannot_extend_spec]
+            fn e<A: T>();
+        }
+
+        trait T1 {
+            fn e<A: T2>();
+        }
+        trait T2 {
+            #[verifier::impls_cannot_extend_spec]
+            fn e<A: T1>();
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_impls_cannot_extend_spec_cycle1 verus_code! {
+        spec fn r() -> bool { f::<u8>() }
+        trait T { fn e() requires r(); }
+        spec fn f<A: T>() -> bool { call_requires(A::e, ()) }
+        impl T for u8 { fn e() {} }
+    } => Err(err) => assert_vir_error_msg(err, "cyclic dependency")
+}
+
+test_verify_one_file! {
+    #[test] test_impls_cannot_extend_spec_cycle2 verus_code! {
+        spec fn r() -> bool { f() }
+        trait T { fn e() requires r(); }
+        impl T for u8 { fn e() {} }
+        spec fn f() -> bool { call_requires(u8::e, ()) }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference")
+}
+
+test_verify_one_file! {
+    #[test] test_impls_cannot_extend_spec_cycle3 verus_code! {
+        spec fn r() -> bool { f::<u8>() }
+        trait T { fn e() ensures r(); }
+        spec fn f<A: T>() -> bool { call_ensures(A::e, (), ()) }
+        impl T for u8 { fn e() {} }
+    } => Err(err) => assert_vir_error_msg(err, "cyclic dependency")
+}
+
+test_verify_one_file! {
+    #[test] test_impls_cannot_extend_spec_cycle4 verus_code! {
+        spec fn r() -> bool { f() }
+        trait T { fn e() ensures r(); }
+        impl T for u8 { fn e() {} }
+        spec fn f() -> bool { call_ensures(u8::e, (), ()) }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference")
+}
+
+test_verify_one_file! {
+    #[test] test_impls_cannot_extend_spec_cycle1b verus_code! {
+        spec fn r() -> bool { f::<u8>() }
+        trait T { #[verifier::impls_cannot_extend_spec]fn e() requires r(); }
+        spec fn f<A: T>() -> bool { call_requires(A::e, ()) }
+        impl T for u8 { fn e() {} }
+    } => Err(err) => assert_vir_error_msg(err, "cyclic dependency")
+}
+
+test_verify_one_file! {
+    #[test] test_impls_cannot_extend_spec_cycle2b verus_code! {
+        spec fn r() -> bool { f() }
+        trait T { #[verifier::impls_cannot_extend_spec]fn e() requires r(); }
+        impl T for u8 { fn e() {} }
+        spec fn f() -> bool { call_requires(u8::e, ()) }
+    } => Err(err) => assert_vir_error_msg(err, "cyclic dependency")
+}
+
+test_verify_one_file! {
+    #[test] test_impls_cannot_extend_spec_cycle3b verus_code! {
+        spec fn r() -> bool { f::<u8>() }
+        trait T { #[verifier::impls_cannot_extend_spec]fn e() ensures r(); }
+        spec fn f<A: T>() -> bool { call_ensures(A::e, (), ()) }
+        impl T for u8 { fn e() {} }
+    } => Err(err) => assert_vir_error_msg(err, "cyclic dependency")
+}
+
+test_verify_one_file! {
+    #[test] test_impls_cannot_extend_spec_cycle4b verus_code! {
+        spec fn r() -> bool { f() }
+        trait T { #[verifier::impls_cannot_extend_spec] fn e() ensures r(); }
+        impl T for u8 { fn e() {} }
+        spec fn f() -> bool { call_ensures(u8::e, (), ()) }
+    } => Err(err) => assert_vir_error_msg(err, "cyclic dependency")
+}
+
+test_verify_one_file! {
+    #[test] test_impls_cannot_extend_spec_example verus_code! {
+        trait Iter1 {
+            spec fn next1_spec(self) -> u8;
+
+            fn next1(self) -> (r: u8) ensures r == self.next1_spec();
+
+            #[verifier::impls_cannot_extend_spec]
+            fn zip1<U: Iter1>(self, other: U) -> ((x, y): (u8, u8))
+                ensures x == self.next1_spec() && y == other.next1_spec();
+        }
+
+        struct Always42 {}
+
+        impl Iter1 for Always42 {
+            spec fn next1_spec(self) -> u8 {
+                42
+            }
+
+            fn next1(self) -> u8 {
+                42
+            }
+
+            fn zip1<U: Iter1>(self, other: U) -> ((x, y): (u8, u8)) {
+                let y = other.next1();
+                (42, y)
+            }
+        }
+
+        fn generic<I: Iter1>(i1: I, i2: I) -> ((x, y): (u8, u8))
+            ensures x == i1.next1_spec() && y == i2.next1_spec()
+        {
+            i1.zip1(i2)
+        }
+
+        fn test() {
+            let i1 = Always42 {};
+            let i2 = Always42 {};
+            let v = generic(i1, i2);
+            assert(v == (42, 42));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_impls_cannot_extend_spec_bad1 verus_code! {
+        trait T {
+            fn f<A: T>();
+        }
+        impl T for u8 {
+            fn f<A: T>()
+                ensures !call_ensures(u8::f::<A>, (), ()) // must be rejected
+            {
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference")
+}
+
+test_verify_one_file! {
+    #[test] test_impls_cannot_extend_spec_bad2 verus_code! {
+        trait T {
+            #[verifier::impls_cannot_extend_spec]
+            fn f<A: T>();
+        }
+        impl T for u8 {
+            fn f<A: T>()
+                ensures !call_ensures(u8::f::<A>, (), ()) // must be rejected
+            {
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare ensures clauses because the trait declaration is marked impls_cannot_extend_spec")
+}
+
+test_verify_one_file! {
+    #[test] test_impls_cannot_extend_spec_bad3 verus_code! {
+        trait T {
+            fn f<A: T>()
+                requires !call_requires(A::f::<A>, ());
+        }
+        impl T for u8 {
+            fn f<A: T>() {
+                assert(false);
+            }
+        }
+        fn test() {
+            u8::f::<u8>();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cyclic dependency")
+}
+
+test_verify_one_file! {
+    #[test] test_impls_cannot_extend_spec_bad4 verus_code! {
+        trait T {
+            #[verifier::impls_cannot_extend_spec]
+            fn f<A: T>()
+                requires !call_requires(A::f::<A>, ());
+        }
+        impl T for u8 {
+            fn f<A: T>() {
+                assert(false);
+            }
+        }
+        fn test() {
+            u8::f::<u8>();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cyclic dependency")
+}
+
+test_verify_one_file! {
+    #[test] test_impls_cannot_extend_spec_bad5 verus_code! {
+        trait T {
+            fn f<A: T>()
+                ensures !call_ensures(A::f::<A>, (), ());
+        }
+        impl T for u8 {
+            fn f<A: T>() {
+            }
+        }
+        fn test() {
+            u8::f::<u8>();
+            assert(false);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cyclic dependency")
+}
+
+test_verify_one_file! {
+    #[test] test_impls_cannot_extend_spec_bad6 verus_code! {
+        trait T {
+            #[verifier::impls_cannot_extend_spec]
+            fn f<A: T>()
+                ensures !call_ensures(A::f::<A>, (), ());
+        }
+        impl T for u8 {
+            fn f<A: T>() {
+            }
+        }
+        fn test() {
+            u8::f::<u8>();
+            assert(false);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cyclic dependency")
+}

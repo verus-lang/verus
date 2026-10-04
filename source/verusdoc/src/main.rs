@@ -409,8 +409,14 @@ fn do_splices_for_info(node: &NodeRef, full_text: &str, fn_idx: usize, info: &Up
 
                 arg_idx = next_comma_or_rparen(&full_text, arg_idx);
 
-                // skip of the comma and space
-                arg_idx += 2;
+                // Check if we hit a comma (middle arg) or paren (last arg)
+                if arg_idx < full_text.len() && full_text.as_bytes()[arg_idx] == b',' {
+                    // skip comma and space
+                    arg_idx += 2;
+                } else {
+                    // closing paren, just skip it
+                    arg_idx += 1;
+                }
             }
 
             let needs_return_annotation =

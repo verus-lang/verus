@@ -105,6 +105,23 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] explicit_dyn_coercion_lowered_to_identity verus_code! {
+        trait T {
+            fn f(&self);
+        }
+
+        impl T for u8 {
+            fn f(&self) {}
+        }
+
+        fn test(value: &u8) {
+            let value: &dyn T = value as _;
+            value.f();
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_dyn_generic verus_code! {
         use vstd::prelude::*;
 
@@ -309,6 +326,26 @@ test_verify_one_file! {
         impl<X: TraitA> TraitB<X> for X::Item { }
         impl TraitA for () { type Item = dyn TraitB<()>; }
     } => Err(err) => assert_vir_error_msg(err, "conflicting implementations of trait")
+}
+
+test_verify_one_file! {
+    #[test] dyn_rust_blanket_unsoundness3 verus_code! {
+        // https://github.com/rust-lang/rust/issues/57893
+        trait TraitA { type Item: ?Sized; }
+        trait TraitBase<T> { }
+        trait TraitB<T>: TraitBase<T> { }
+        impl<X: TraitA> TraitB<X> for X::Item where Self: TraitBase<X> { }
+        impl TraitA for () { type Item = dyn TraitB<()>; }
+    } => Err(err) => assert_vir_error_msg(err, "conflicting implementations of trait")
+}
+
+test_verify_one_file! {
+    #[test] dyn_rust_blanket_unsoundness4 verus_code! {
+        // https://github.com/rust-lang/rust/issues/57893
+        trait T1 {}
+        trait T2: T1 {}
+        fn use_dyn(value: &dyn T2) {}
+    } => Ok(())
 }
 
 test_verify_one_file! {

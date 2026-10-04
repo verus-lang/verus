@@ -386,6 +386,9 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
 
             if let Some(upvars) = self.tcx.upvars_mentioned(closure_def_id) {
                 for var_hir_id in upvars.keys() {
+                    if crate::verus::erase_var_for_closure_captures(*var_hir_id) {
+                        continue;
+                    }
                     let place = closure_fcx.place_for_root_variable(closure_def_id, *var_hir_id);
 
                     debug!("seed place {:?}", place);

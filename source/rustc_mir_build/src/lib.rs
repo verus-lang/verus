@@ -31,7 +31,7 @@ extern crate rustc_trait_selection;
 pub mod builder;
 mod check_tail_calls;
 mod check_unsafety;
-mod errors;
+mod diagnostics;
 pub mod thir;
 
 #[path = "../../rustc_mir_build_additional_files/verus.rs"]

@@ -101,6 +101,68 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] if_equality_branches_agree verus_code! {
+        proof fn test(c: bool) {
+            assert((if c { 1int } else { 2int }) == (if c { 1int } else { 2int })) by(compute_only);
+            assert((if c { 1int } else { 2int }) != (if c { 3int } else { 4int })) by(compute_only);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] if_equality_compute_only_then_matches verus_code! {
+        proof fn test() ensures false {
+            let c = true;
+            assert((if c { 1int } else { 2int }) != (if c { 1int } else { 3int })) by(compute_only);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
+}
+
+test_verify_one_file! {
+    #[test] quantifier_kind_inequality_compute_only verus_code! {
+        spec fn p(x: int) -> bool { x > 0 }
+
+        proof fn test() ensures false {
+            let b = true;
+            // Both quantifiers are true, despite their different kinds.
+            assert((forall|x: int| #[trigger] p(x) || b)
+                != (exists|x: int| #[trigger] p(x) || b)) by (compute_only); // FAILS
+            assert(p(1));
+        }
+    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
+}
+
+test_verify_one_file! {
+    #[test] quantifier_body_inequality_compute_only verus_code! {
+        spec fn p(x: int) -> bool { x > 0 }
+
+        proof fn test() ensures false {
+            // The bodies differ pointwise, but both universal quantifiers are false.
+            assert((forall|x: int| if #[trigger] p(x) { true } else { false })
+                != (forall|x: int| if #[trigger] p(x) { false } else { true }))
+                by (compute_only); // FAILS
+            assert(!(if p(1) { false } else { true }));
+            assert(!(if p(0) { true } else { false }));
+        }
+    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
+}
+
+test_verify_one_file! {
+    #[test] quantifier_exists_body_inequality_compute_only verus_code! {
+        spec fn p(x: int) -> bool { x > 0 }
+
+        proof fn test() ensures false {
+            // The bodies differ pointwise, but both existential quantifiers are true.
+            assert((exists|x: int| if #[trigger] p(x) { true } else { false })
+                != (exists|x: int| if #[trigger] p(x) { false } else { true }))
+                by (compute_only); // FAILS
+            assert(if p(1) { true } else { false });
+            assert(if p(0) { false } else { true });
+        }
+    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
+}
+
+test_verify_one_file! {
     #[test] lets verus_code! {
 
         fn test() {
@@ -172,6 +234,18 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] enum_variant_checked_on_field_access verus_code! {
+        enum E { A(int), B(u8) }
+
+        proof fn in_range(x: u8) ensures x <= 255 {}
+
+        proof fn test() ensures false {
+            assert((E::A(300))->B_0 == 300) by (compute_only); // FAILS
+        }
+    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
+}
+
+test_verify_one_file! {
     #[test] tuples verus_code! {
         spec fn mk_tuple() -> (u32, u32, u64, bool) {
             (42, 330, 0x1_0000_0000, false)
@@ -216,6 +290,16 @@ test_verify_one_file! {
             }) by (compute_only);
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] ctor_field_order verus_code! {
+        struct S { a: int, b: int }
+
+        proof fn bad() ensures false {
+            assert(S { a: 1, b: 2 } != S { b: 2, a: 1 }) by (compute_only);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expression simplifies to false")
 }
 
 test_verify_one_file! {
@@ -269,6 +353,20 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] choose_different_predicates_compute_only verus_code! {
+        struct U;
+
+        uninterp spec fn p(x: U) -> bool;
+
+        proof fn test() ensures false {
+            // Different predicates can choose the same value; U has only one value.
+            assert((choose|x: U| #![trigger p(x)] true) != (choose|x: U| #![trigger p(x)] false))
+                by(compute_only);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
+}
+
+test_verify_one_file! {
     #[test] fn_calls_good verus_code! {
         spec fn f(x: int, y: int) -> bool { x == y }
 
@@ -280,15 +378,9 @@ test_verify_one_file! {
             if x == 0 { 0 } else { 1 + sum((x - 1) as nat) }
         }
 
-        #[verifier(external_body)]
-        spec fn f_no_body(x: nat) -> nat {
-            0
-        }
+        uninterp spec fn f_no_body(x: nat) -> nat;
 
-        #[verifier(external_body)]
-        spec fn g_no_body(x: nat) -> nat {
-            0
-        }
+        uninterp spec fn g_no_body(x: nat) -> nat;
 
         fn test() {
             assert(sum(20) == 20) by (compute_only);
@@ -306,15 +398,9 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] fn_calls_bad1 verus_code! {
-        #[verifier(external_body)]
-        spec fn f_no_body(x: nat) -> nat {
-            0
-        }
+        uninterp spec fn f_no_body(x: nat) -> nat;
 
-        #[verifier(external_body)]
-        spec fn g_no_body(x: nat) -> nat {
-            0
-        }
+        uninterp spec fn g_no_body(x: nat) -> nat;
 
         fn test() {
             assert(f_no_body(5) != f_no_body(6)) by (compute_only); // FAILS
@@ -324,15 +410,9 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] fn_calls_bad2 verus_code! {
-        #[verifier(external_body)]
-        spec fn f_no_body(x: nat) -> nat {
-            0
-        }
+        uninterp spec fn f_no_body(x: nat) -> nat;
 
-        #[verifier(external_body)]
-        spec fn g_no_body(x: nat) -> nat {
-            0
-        }
+        uninterp spec fn g_no_body(x: nat) -> nat;
 
         fn test() {
             assert(f_no_body(5) == g_no_body(5)) by (compute_only); // FAILS
@@ -377,12 +457,12 @@ test_verify_one_file! {
             assert(seq![1int, 2, 3].update(1, 5).index(2) == 3) by (compute_only);
             assert(seq![1int, 2, 3].add(seq![4, 5]).len() == 5) by (compute_only);
             assert(seq![1int, 2, 3] =~= seq![1].add(seq![2, 3])) by (compute_only);
-            assert(seq![1int, 2].subrange(1, 2) =~= seq![2]) by (compute_only);
-            assert(seq![1int, 2, 3, 4, 5].subrange(2, 4) =~= seq![3, 4]) by (compute_only);
+            assert(seq![1int, 2][1..2] =~= seq![2]) by (compute_only);
+            assert(seq![1int, 2, 3, 4, 5][2..4] =~= seq![3, 4]) by (compute_only);
             assert(Seq::new(5, |x: int| x).index(3) == 3) by (compute_only);
             assert(Seq::new(5, |x: int| x + x).index(3) == 6) by (compute_only);
             assert(Seq::new(5, |x: int| x + x).last() == 8) by (compute_only);
-            assert(Seq::new(5, |x: int| x + x).subrange(1,4) =~= seq![2, 4, 6]) by (compute_only);
+            assert(Seq::new(5, |x: int| x + x)[1..4] =~= seq![2, 4, 6]) by (compute_only);
         }
 
         spec fn use_seq(s: &Seq<u32>) -> (u32, u32) {
@@ -432,6 +512,34 @@ test_verify_one_file! {
             }) by (compute);
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] sequence_add_operand_order verus_code! {
+        use vstd::seq::*;
+
+        proof fn test() {
+            let s = seq![5int];
+            assert((s + seq![1int])[0] == 5) by (compute);
+            assert((s + seq![1int])[1] == 1) by (compute);
+        }
+    } => Ok(err) => {
+        assert_eq!(
+            err.warnings.iter().filter(|w| w.message.contains("Failed to simplify expression")).count(),
+            2,
+        );
+    }
+}
+
+test_verify_one_file! {
+    #[test] sequence_add_operand_order_false verus_code! {
+        use vstd::seq::*;
+
+        proof fn test() {
+            let s = seq![5int];
+            assert((s + seq![1int])[0] == 1) by (compute); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {

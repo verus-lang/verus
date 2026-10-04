@@ -80,6 +80,60 @@ test_verify_one_file! {
     } => Ok(())
 }
 
+test_verify_one_file! {
+    // https://github.com/verus-lang/verus/issues/178
+    #[test] test_result_is_structural verus_code! {
+        use vstd::prelude::*;
+
+        fn eq_generic<T: PartialEq + Structural>(a: &T, b: &T) -> (r: bool)
+            ensures r == (a == b),
+        {
+            a == b
+        }
+
+        fn test_result(a: Result<u32, u32>, b: Result<u32, u32>) {
+            let r = eq_generic(&a, &b);
+            assert(r == (a == b));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // https://github.com/verus-lang/verus/issues/178
+    #[test] test_tuple_is_structural verus_code! {
+        use vstd::prelude::*;
+
+        fn eq_generic<T: PartialEq + Structural>(a: &T, b: &T) -> (r: bool)
+            ensures r == (a == b),
+        {
+            a == b
+        }
+
+        fn test_tuple(a: (u32, bool), b: (u32, bool)) {
+            let r = eq_generic(&a, &b);
+            assert(r == (a == b));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // https://github.com/verus-lang/verus/issues/178
+    #[test] test_array_is_structural verus_code! {
+        use vstd::prelude::*;
+
+        fn eq_generic<T: PartialEq + Structural>(a: &T, b: &T) -> (r: bool)
+            ensures r == (a == b),
+        {
+            a == b
+        }
+
+        fn test_array(a: [u32; 3], b: [u32; 3]) {
+            let r = eq_generic(&a, &b);
+            assert(r == (a == b));
+        }
+    } => Ok(())
+}
+
 test_verify_one_file_with_options! {
     #[test] test_structural_trait_bound ["exec_allows_no_decreases_clause"] => verus_code! {
         use vstd::prelude::*;

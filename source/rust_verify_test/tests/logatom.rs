@@ -72,6 +72,98 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] atomic_generic_function_call
+    TOKEN_LIB.to_owned() + verus_code_str! {
+        fn generic_atomic<F>(_callback: F)
+            atomically (atomic_update) {
+                (old: Token) -> (new: Commit<Token>),
+                ensures new@ == old,
+            },
+        {
+            try_open_atomic_update!(atomic_update, token => {
+                Tracked(Commit(token))
+            });
+        }
+
+        fn client() {
+            generic_atomic(5u8) atomically |update| {
+                let tracked _token = update(Token::new());
+            };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] atomic_method_impl_generic
+    verus_code! {
+        use vstd::prelude::*;
+        use vstd::atomic::*;
+
+        tracked struct Token;
+
+        struct Wrapper<T> {
+            value: T,
+        }
+
+        impl<T> Wrapper<T> {
+            fn atomic_method(&self)
+                atomically (atomic_update) {
+                    (old: Token) -> (new: Commit<Token>),
+                    ensures new@ == old,
+                },
+            {
+                try_open_atomic_update!(atomic_update, token => {
+                    Tracked(Commit(token))
+                });
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] atomic_function_lifetime_generic
+    verus_code! {
+        use vstd::prelude::*;
+        use vstd::atomic::*;
+
+        tracked struct Token;
+
+        fn atomic_ref<'a>(_value: &'a u8)
+            atomically (atomic_update) {
+                (old: Token) -> (new: Commit<Token>),
+                ensures new@ == old,
+            },
+        {
+            try_open_atomic_update!(atomic_update, token => {
+                Tracked(Commit(token))
+            });
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] atomic_function_const_generic
+    verus_code! {
+        use vstd::prelude::*;
+        use vstd::atomic::*;
+
+        pub tracked struct Token { pub len: usize }
+
+        pub fn atomic_array<const N: usize>(_value: [u8; N])
+            atomically (atomic_update) {
+                (old: Token) -> (new: Commit<Token>),
+                requires old.len == N,
+                ensures new@ == old,
+            },
+        {
+            try_open_atomic_update!(atomic_update, token => {
+                Tracked(Commit(token))
+            });
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] atomic_function_commit_only
     TOKEN_LIB.to_owned() + verus_code_str! {
         pub fn atomic_function()
@@ -382,6 +474,69 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => assert_any_vir_error_msg(err, "function must be called exactly once in `atomically` block")
+}
+
+const COMMIT_U8_FUNCTION: &'static str = verus_code_str! {
+    use vstd::prelude::*;
+    use vstd::atomic::*;
+
+    fn atomic_function()
+        atomically (au) {
+            (x: u8) -> (y: Commit<u8>),
+        },
+    {
+        try_open_atomic_update!(au, x => { Tracked(Commit(x)) });
+    }
+};
+
+test_verify_one_file! {
+    #[test] atomic_call_update_in_proof_closure
+    COMMIT_U8_FUNCTION.to_owned() + verus_code_str! {
+        fn client() -> (r: u8)
+            ensures r == 1,
+        {
+            atomic_function() atomically |update| -> (au) {
+                let tracked g = proof_fn|tracked v: u8|
+                    ensures au.input() == v,
+                {
+                    update(v);
+                };
+                g(1);
+                g(2);
+            };
+            0
+        }
+    } => Err(err) => assert_vir_error_msg(err, "function pointer types")
+}
+
+test_verify_one_file! {
+    #[test] atomic_call_update_in_proof_closure_with_direct_update
+    COMMIT_U8_FUNCTION.to_owned() + verus_code_str! {
+        fn client() {
+            atomic_function() atomically |update| {
+                let tracked g = proof_fn|tracked v: u8| { update(v); };
+                g(1);
+                update(2);
+            };
+        }
+    } => Err(err) => assert_vir_error_msg(err, "function pointer types")
+}
+
+test_verify_one_file! {
+    #[test] atomic_call_with_helper_closures
+    COMMIT_U8_FUNCTION.to_owned() + verus_code_str! {
+        fn client() {
+            atomic_function() atomically |update| -> (au) {
+                let ghost identity = |v: u8| v;
+                let tracked identity_proof = proof_fn|tracked v: u8| -> (tracked r: u8)
+                    ensures r == v,
+                { v };
+                let tracked v = identity_proof(1);
+                update(v);
+                assert(au.input() == identity(1));
+            };
+        }
+    } => Ok(())
 }
 
 test_verify_one_file! {

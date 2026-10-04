@@ -62,96 +62,93 @@ impl<'f> Visitor<'f> {
     }
 
     fn item_attr_enter(&mut self, attrs: &Vec<Attribute>) -> ItemAttrExit {
+        let mut exit = ItemAttrExit {
+            entered_trusted: false,
+            entered_ignore: false,
+            entered_verify: false,
+            entered_external: false,
+            entered_consider: false,
+            entered_verus_spec: false,
+        };
+
         for attr in attrs.iter() {
-            if let Meta::Path(path) = &attr.meta {
-                let mut path_iter = path.segments.iter();
-                match (path_iter.next(), path_iter.next(), path_iter.next()) {
-                    (Some(first), Some(second), None)
-                        if first.ident == "verus" && second.ident == "trusted" =>
-                    {
-                        self.trusted += 1;
-                        return ItemAttrExit {
-                            entered_trusted: true,
-                            entered_ignore: false,
-                            entered_verify: false,
-                            entered_external: false,
-                            entered_consider: false,
-                            entered_verus_spec: false,
-                        };
+            let mut recognized = false;
+            // Each path this attribute refers to; the old-style #[verifier(a, b)] syntax
+            // is treated as #[verifier::a] #[verifier::b]
+            let paths: Vec<Vec<String>> = match &attr.meta {
+                Meta::Path(path) => vec![Self::path_segments(path)],
+                Meta::List(meta) if meta.path.is_ident("verus_verify") => {
+                    vec![Self::path_segments(&meta.path)]
+                }
+                Meta::List(meta) if meta.path.is_ident("verifier") => attr
+                    .parse_args_with(
+                        verus_syn::punctuated::Punctuated::<Meta, verus_syn::Token![,]>::parse_terminated,
+                    )
+                    .unwrap_or_default()
+                    .iter()
+                    .filter_map(|m| m.path().get_ident())
+                    .map(|ident| vec!["verifier".to_string(), ident.to_string()])
+                    .collect(),
+                _ => vec![],
+            };
+            for path in paths.iter() {
+                let path: Vec<&str> = path.iter().map(String::as_str).collect();
+                match path[..] {
+                    ["verus", "trusted"] => {
+                        Self::enter(&mut exit.entered_trusted, &mut self.trusted);
+                        recognized = true;
                     }
-                    (Some(first), Some(second), Some(third))
-                        if first.ident == "verus"
-                            && second.ident == "line_count"
-                            && third.ident == "ignore" =>
-                    {
-                        self.inside_line_count_ignore_or_external += 1;
-                        return ItemAttrExit {
-                            entered_trusted: false,
-                            entered_ignore: true,
-                            entered_verify: false,
-                            entered_external: false,
-                            entered_consider: false,
-                            entered_verus_spec: false,
-                        };
+                    ["verus", "line_count", "ignore"] => {
+                        Self::enter(
+                            &mut exit.entered_ignore,
+                            &mut self.inside_line_count_ignore_or_external,
+                        );
+                        recognized = true;
                     }
-                    (Some(first), Some(second), Some(third))
-                        if first.ident == "verus"
-                            && second.ident == "line_count"
-                            && third.ident == "consider" =>
-                    {
-                        self.inside_verus_macro_or_verify_or_consider += 1;
-                        return ItemAttrExit {
-                            entered_trusted: false,
-                            entered_ignore: false,
-                            entered_verify: false,
-                            entered_external: false,
-                            entered_consider: true,
-                            entered_verus_spec: false,
-                        };
+                    ["verus", "line_count", "consider"] => {
+                        Self::enter(
+                            &mut exit.entered_consider,
+                            &mut self.inside_verus_macro_or_verify_or_consider,
+                        );
+                        recognized = true;
                     }
-                    (Some(first), Some(second), None)
-                        if first.ident == "verifier" && second.ident == "verify" =>
-                    {
-                        self.inside_verus_macro_or_verify_or_consider += 1;
-                        return ItemAttrExit {
-                            entered_trusted: false,
-                            entered_ignore: false,
-                            entered_verify: true,
-                            entered_external: false,
-                            entered_consider: false,
-                            entered_verus_spec: false,
-                        };
+                    ["verus_verify"] | ["verifier", "verify"] => {
+                        Self::enter(
+                            &mut exit.entered_verify,
+                            &mut self.inside_verus_macro_or_verify_or_consider,
+                        );
+                        recognized = true;
                     }
-                    (Some(first), Some(second), None)
-                        if first.ident == "verifier" && second.ident == "external" =>
-                    {
-                        self.inside_line_count_ignore_or_external += 1;
-                        return ItemAttrExit {
-                            entered_trusted: false,
-                            entered_ignore: false,
-                            entered_verify: false,
-                            entered_external: true,
-                            entered_consider: false,
-                            entered_verus_spec: false,
-                        };
+                    ["verifier", "external"] => {
+                        Self::enter(
+                            &mut exit.entered_external,
+                            &mut self.inside_line_count_ignore_or_external,
+                        );
+                        recognized = true;
+                    }
+                    // Assumed rather than verified, thus part of the trusted base.
+                    // Not `recognized`: the attribute line itself is still counted
+                    // (as a trusted directive).
+                    ["verifier", "external_body" | "external_fn_specification"] => {
+                        Self::enter(&mut exit.entered_trusted, &mut self.trusted);
                     }
                     _ => {}
                 }
             }
 
+            if recognized {
+                continue;
+            }
+
             // Treat #[verus_spec(...)] as entering a Verus region so that
             // the enclosed code is considered by the visitor like verus! code.
             if attr.path().segments.first().map(|s| s.ident == "verus_spec").unwrap_or(false) {
-                self.inside_verus_macro_or_verify_or_consider += 1;
+                if !exit.entered_verus_spec {
+                    self.inside_verus_macro_or_verify_or_consider += 1;
+                    exit.entered_verus_spec = true;
+                }
                 self.mark(&attr, CodeKind::Spec, LineContent::FunctionSpec);
-                return ItemAttrExit {
-                    entered_trusted: false,
-                    entered_ignore: false,
-                    entered_verify: false,
-                    entered_external: false,
-                    entered_consider: false,
-                    entered_verus_spec: true,
-                };
+                continue;
             }
 
             if attr.path().segments.first().map(|x| x.ident == "doc").unwrap_or(false) {
@@ -163,13 +160,18 @@ impl<'f> Visitor<'f> {
                 );
             }
         }
-        ItemAttrExit {
-            entered_trusted: false,
-            entered_ignore: false,
-            entered_verify: false,
-            entered_external: false,
-            entered_consider: false,
-            entered_verus_spec: false,
+        exit
+    }
+
+    fn path_segments(path: &verus_syn::Path) -> Vec<String> {
+        path.segments.iter().map(|s| s.ident.to_string()).collect()
+    }
+
+    /// Increment `counter` the first time an item enters a region
+    fn enter(entered: &mut bool, counter: &mut u64) {
+        if !*entered {
+            *counter += 1;
+            *entered = true;
         }
     }
 
@@ -252,7 +254,8 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
 
     fn visit_assume(&mut self, i: &'ast verus_syn::Assume) {
         self.in_proof_directive += 1;
-        self.mark(i, self.mode_or_trusted(CodeKind::Proof), LineContent::ProofDirective);
+        // An assumption is unverified, so the line is part of the trusted base
+        self.mark(i, CodeKind::Trusted, LineContent::Assumption);
         verus_syn::visit::visit_assume(self, i);
         self.in_proof_directive -= 1;
     }
@@ -319,6 +322,13 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
     }
 
     fn visit_expr_call(&mut self, i: &'ast verus_syn::ExprCall) {
+        if let verus_syn::Expr::Path(path) = &*i.func {
+            // admit() is unverified, so the line is part of the trusted base
+            if i.args.is_empty() && path.path.segments.last().is_some_and(|s| s.ident == "admit") {
+                self.mark(i, CodeKind::Trusted, LineContent::Assumption);
+                return;
+            }
+        }
         // Ghost / Tracked ?
         if let verus_syn::Expr::Path(path) = &*i.func {
             if let Some(wrapper_code_kind) = (path.path.segments.len() == 1)
@@ -471,6 +481,16 @@ impl<'ast, 'f> verus_syn::visit::Visit<'ast> for Visitor<'f> {
             _ => (),
         }
         verus_syn::visit::visit_item(self, i);
+    }
+
+    fn visit_assume_specification(&mut self, i: &'ast verus_syn::AssumeSpecification) {
+        let exit = self.item_attr_enter(&i.attrs);
+        // An assume_specification is an unverified axiom about an external function
+        self.trusted += 1;
+        self.mark(i, CodeKind::Trusted, LineContent::FunctionSpec);
+        verus_syn::visit::visit_assume_specification(self, i);
+        self.trusted -= 1;
+        exit.exit(self);
     }
 
     fn visit_item_const(&mut self, i: &'ast verus_syn::ItemConst) {

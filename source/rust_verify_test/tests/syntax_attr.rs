@@ -672,6 +672,99 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_dual_spec_open code!{
+        mod m {
+            use super::*;
+            #[verus_verify(dual_spec, open)]
+            #[verus_spec(returns f(x))]
+            pub fn f(x: u32) -> u32 {
+                x / 2
+            }
+        }
+
+        verus!{
+        proof fn lemma_f(x: u32)
+            ensures crate::m::f(x) == x / 2,
+        {}
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_dual_spec_closed code!{
+        mod m {
+            use super::*;
+            #[verus_verify(dual_spec, closed)]
+            #[verus_spec(returns f(x))]
+            pub fn f(x: u32) -> u32 {
+                x / 2
+            }
+        }
+
+        verus!{
+        proof fn lemma_f(x: u32)
+            ensures crate::m::f(x) == x / 2,
+        {}
+        }
+    } => Err(e) => assert_vir_error_msg(e, "postcondition not satisfied")
+}
+
+test_verify_one_file! {
+    #[test] test_dual_spec_opaque code!{
+        #[verus_verify(dual_spec(f_spec), open, opaque)]
+        #[verus_spec(returns f(x))]
+        pub fn f(x: u32) -> u32 {
+            proof!{ reveal(f_spec); }
+            x / 2
+        }
+
+        verus!{
+        proof fn lemma_f(x: u32)
+            ensures f(x) == x / 2,
+        {
+            reveal(f_spec);
+        }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_dual_spec_opaque_not_revealed code!{
+        #[verus_verify(dual_spec, open, opaque)]
+        #[verus_spec(returns f(x))]
+        pub fn f(x: u32) -> u32 {
+            proof!{ reveal(__VERUS_SPEC_f); }
+            x / 2
+        }
+
+        verus!{
+        proof fn lemma_f(x: u32)
+            ensures f(x) == x / 2,
+        {}
+        }
+    } => Err(e) => assert_vir_error_msg(e, "postcondition not satisfied")
+}
+
+test_verify_one_file! {
+    #[test] test_dual_spec_open_not_pub code!{
+        #[verus_verify(dual_spec, open)]
+        #[verus_spec(returns f(x))]
+        fn f(x: u32) -> u32 {
+            x / 2
+        }
+    } => Err(e) => assert_vir_error_msg(e, "function is marked `open` but not marked `pub`")
+}
+
+test_verify_one_file! {
+    #[test] test_publish_without_dual_spec code!{
+        #[verus_verify(open)]
+        pub fn f(x: u32) -> u32 {
+            x / 2
+        }
+    } => Err(e) => assert_vir_error_msg(e, "publish modifiers in #[verus_verify(...)] require `dual_spec`")
+}
+
+test_verify_one_file! {
     #[test] test_dual_spec_unsupported_body code!{
         #[verus_verify(dual_spec(spec_f))]
         #[verus_spec(

@@ -1247,7 +1247,7 @@ impl<'a> Builder<'a> {
     fn build_stmt(&mut self, stmt: &Stmt, bb: BBIndex) -> Maybe<BBIndex> {
         match &stmt.x {
             StmtX::Expr(e) => self.build(e, bb),
-            StmtX::Decl { pattern, mode: _, init: None, els: None } => {
+            StmtX::Decl { pattern, mode: _, init: None, els: None, assert_irrefutable: _ } => {
                 self.push_scope();
                 self.scope_insert_pattern(pattern);
 
@@ -1262,7 +1262,7 @@ impl<'a> Builder<'a> {
 
                 Maybe::Some(bb)
             }
-            StmtX::Decl { pattern, mode: _, init: Some(init), els } => {
+            StmtX::Decl { pattern, mode: _, init: Some(init), els, assert_irrefutable: _ } => {
                 let tinv = if pattern_has_mut(pattern) { TypInv::PatternError } else { TypInv::No };
                 let (cpt, bb) = unwrap!(self.build_place_typed(init, bb, tinv));
 
@@ -1308,7 +1308,7 @@ impl<'a> Builder<'a> {
                 }
                 Maybe::Some(next_bb)
             }
-            StmtX::Decl { pattern: _, mode: _, init: None, els: Some(_) } => {
+            StmtX::Decl { pattern: _, mode: _, init: None, els: Some(_), .. } => {
                 panic!("Unexpected let-else without an initializer");
             }
         }
@@ -1610,7 +1610,7 @@ impl<'a> Builder<'a> {
         // TODO(new_mut_ref): (blocking) need more tests for guards
         // TODO(new_mut_ref): (blocking) need more tests for or-patterns
 
-        let ExprX::Match(place, arms) = &expr.x else {
+        let ExprX::Match(place, arms, _assert_irrefutable) = &expr.x else {
             unreachable!();
         };
 
@@ -1886,7 +1886,7 @@ impl<'a> Builder<'a> {
 
     fn scope_insert_pattern(&mut self, pattern: &Pattern) {
         match &pattern.x {
-            PatternX::Wildcard(_) | PatternX::Expr(_) | PatternX::Range(_, _) => {
+            PatternX::Wildcard | PatternX::Expr(_) | PatternX::Range(_, _) => {
                 // nothing to do
             }
             PatternX::Var(binding) => {
@@ -1992,7 +1992,7 @@ pub fn pattern_all_bound_vars_with_ownership(
         modes: &HashMap<VarIdent, Mode>,
     ) {
         match &pattern.x {
-            PatternX::Wildcard(_) => {}
+            PatternX::Wildcard => {}
             PatternX::Var(PatternBinding { name, user_mut: _, by_ref: _, typ, copy: _ })
             | PatternX::Binding {
                 binding: PatternBinding { name, user_mut: _, by_ref: _, typ, copy: _ },
@@ -2044,7 +2044,7 @@ fn moves_and_muts_for_pattern(
         errors: &mut Vec<VirErr>,
     ) {
         match &pattern.x {
-            PatternX::Wildcard(_) => {}
+            PatternX::Wildcard => {}
             PatternX::Var(PatternBinding { name, user_mut: _, by_ref, typ: _, copy })
             | PatternX::Binding {
                 binding: PatternBinding { name, user_mut: _, by_ref, typ: _, copy },
@@ -3336,13 +3336,43 @@ fn get_resolutions_for_place(
                     // If the place had a different value at the previous instruction
                     || (i > 0 && place.value_may_change(&cfg.basic_blocks[bb].instructions[i - 1]));
                 if should_assume_has_resolved {
-                    output.push(ResolutionToInsert {
-                        place: place.clone(),
-                        position: cfg.basic_blocks[bb].position(i),
-                    });
+                    push_resolution(cfg, place, bb, i, output);
                 }
             }
         }
+    }
+}
+
+/// Emit a resolution at instruction `i` of `bb`.
+///
+/// We special case the `MatchIntermediate` position because there's otherwise no good place
+/// to put it in the AST. To deal with it, we try to forward it to the successor blocks,
+/// which is sound to do if the successor block only has a single predecessor.
+/// (This can be seen from the dataflow equations.)
+/// However, this criterion doesn't always hold (See the
+/// `test_match_guard_asymmetric_mutation_no_panic` case)
+/// TODO (new_mut_ref) (completeness): Find a different solutio that works in all cases
+fn push_resolution(
+    cfg: &CFG,
+    place: &FlattenedPlace,
+    bb: BBIndex,
+    i: usize,
+    output: &mut Vec<ResolutionToInsert>,
+) {
+    let position = cfg.basic_blocks[bb].position(i);
+    if matches!(position, AstPosition::MatchIntermediate)
+        && i == 0
+        && cfg.basic_blocks[bb].instructions.is_empty()
+        && cfg.basic_blocks[bb].successors.iter().all(|succ| {
+            cfg.basic_blocks[*succ].predecessors.as_slice() == [bb]
+                && !cfg.basic_blocks[*succ].is_entry
+        })
+    {
+        for succ in cfg.basic_blocks[bb].successors.iter() {
+            push_resolution(cfg, place, *succ, 0, output);
+        }
+    } else {
+        output.push(ResolutionToInsert { place: place.clone(), position });
     }
 }
 
@@ -3528,7 +3558,7 @@ fn apply_resolutions(
                 scope_map.push_scope(true);
                 match &stmt.x {
                     StmtX::Expr(_) => {}
-                    StmtX::Decl { pattern, mode: _, init, els: _ } => {
+                    StmtX::Decl { pattern, mode: _, init, els: _, assert_irrefutable: _ } => {
                         use crate::ast_visitor::Scoper;
                         scope_map.insert_pattern_bindings(pattern, init.is_some());
                     }
@@ -3576,6 +3606,7 @@ fn apply_resolutions(
                 Ok(p1)
             }
         },
+        &|_, _, pattern| Ok(pattern.clone()),
     )?;
 
     let (id_map, temp_map, typ_inv_map) = maps;
@@ -3870,6 +3901,7 @@ fn add_decls_for_temps(
                         mode: None, // doesn't matter
                         init: None,
                         els: None,
+                        assert_irrefutable: false,
                     },
                 ));
             }

@@ -99,7 +99,7 @@ use tracing::{debug, instrument};
 
 use super::matches::BuiltMatchTree;
 use crate::builder::{BlockAnd, BlockAndExtension, BlockFrame, Builder, CFG};
-use crate::errors::{
+use crate::diagnostics::{
     ConstContinueBadConst, ConstContinueNotMonomorphicConst, ConstContinueUnknownJumpTarget,
 };
 
@@ -427,7 +427,6 @@ impl DropTree {
                         place: drop_node.data.local.into(),
                         replace: false,
                         drop: None,
-                        async_fut: None,
                     };
                     cfg.terminate(block, drop_node.data.source_info, terminator);
                 }
@@ -846,7 +845,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
     ) -> Result<(ty::ValTree<'tcx>, Ty<'tcx>), interpret::ErrorHandled> {
         assert!(!constant.const_.ty().has_param());
         let (uv, ty) = match constant.const_ {
-            mir::Const::Unevaluated(uv, ty) => (uv.shrink(), ty),
+            mir::Const::Unevaluated(uv, ty) => (uv.shrink(self.tcx), ty),
             mir::Const::Ty(_, c) => match c.kind() {
                 // A constant that came from a const generic but was then used as an argument to
                 // old-style simd_shuffle (passing as argument instead of as a generic param).
@@ -925,7 +924,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
             | ExprKind::NamedConst { .. } => self.as_constant(&self.thir[value]),
 
             other => {
-                use crate::errors::ConstContinueNotMonomorphicConstReason as Reason;
+                use crate::diagnostics::ConstContinueNotMonomorphicConstReason as Reason;
 
                 let span = expr.span;
                 let reason = match other {
@@ -1170,7 +1169,6 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                                 unwind: UnwindAction::Continue,
                                 replace: false,
                                 drop: None,
-                                async_fut: None,
                             },
                         );
                         block = next;
@@ -1745,7 +1743,6 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
                 unwind: UnwindAction::Cleanup(assign_unwind),
                 replace: true,
                 drop: None,
-                async_fut: None,
             },
         );
         self.diverge_from(block);
@@ -1916,7 +1913,6 @@ where
                         unwind: UnwindAction::Continue,
                         replace: false,
                         drop: None,
-                        async_fut: None,
                     },
                 );
                 block = next;

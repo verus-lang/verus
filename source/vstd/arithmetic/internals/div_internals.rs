@@ -17,19 +17,22 @@ use super::super::super::prelude::*;
 verus! {
 
 #[cfg(verus_keep_ghost)]
+use super::super::super::arithmetic::internals::div_internals_nonlinear;
+#[cfg(verus_keep_ghost)]
 use super::super::super::arithmetic::internals::general_internals::is_le;
 #[cfg(verus_keep_ghost)]
 use super::super::super::arithmetic::internals::mod_internals::{
     lemma_mod_induction_forall,
     lemma_mod_induction_forall2,
-    mod_auto,
     lemma_mod_auto,
     lemma_mod_basics,
+    lemma_quotient_and_remainder,
+    mod_auto,
 };
+#[cfg(verus_keep_ghost)]
 use super::super::super::arithmetic::internals::mod_internals_nonlinear;
 #[cfg(verus_keep_ghost)]
-#[cfg(verus_keep_ghost)]
-use super::super::super::arithmetic::internals::div_internals_nonlinear;
+use super::super::super::arithmetic::internals::mul_internals;
 #[cfg(verus_keep_ghost)]
 use super::super::super::math::{add as add1, sub as sub1};
 
@@ -183,49 +186,69 @@ proof fn lemma_div_auto_plus(n: int)
     }
 }
 
-/// Proof of `div_auto_mius(n)`, not exported publicly because it's
+/// Proof of `div_auto_minus(n)`, not exported publicly because it's
 /// just used as part of [`lemma_div_auto`] to prove `div_auto(n)`
-#[verifier::spinoff_prover]
 proof fn lemma_div_auto_minus(n: int)
     requires
         n > 0,
     ensures
         div_auto_minus(n),
 {
-    lemma_mod_auto(n);
-    lemma_div_basics(n);
-    let f = |xx: int, yy: int|
-        {
-            let z = (xx % n) - (yy % n);
-            ((0 <= z < n && ((xx - yy) / n) == xx / n - yy / n) || (-n <= z < 0 && (xx - yy) / n
-                == xx / n - yy / n - 1))
-        };
-    assert forall|i: int, j: int|
-        {
-            &&& (j >= 0 && #[trigger] f(i, j) ==> f(i, add1(j, n)))
-            &&& (i < n && f(i, j) ==> f(sub1(i, n), j))
-            &&& (j < n && f(i, j) ==> f(i, sub1(j, n)))
-            &&& (i >= 0 && f(i, j) ==> f(add1(i, n), j))
-        } by {
-        assert(((i + n) - j) / n == ((i - j) + n) / n);
-        assert((i - (j - n)) / n == ((i - j) + n) / n);
-        assert(((i - n) - j) / n == ((i - j) - n) / n);
-        assert((i - (j + n)) / n == ((i - j) - n) / n);
-    }
-    assert forall|i: int, j: int| 0 <= i < n && 0 <= j < n implies #[trigger] f(i, j) by {
-        assert(((i + n) - j) / n == ((i - j) + n) / n);
-        assert((i - (j - n)) / n == ((i - j) + n) / n);
-        assert(((i - n) - j) / n == ((i - j) - n) / n);
-        assert((i - (j + n)) / n == ((i - j) - n) / n);
-    }
-    lemma_mod_induction_forall2(n, f);
+    broadcast use mul_internals::lemma_mul_commutes;
+
     assert forall|x: int, y: int|
+        #![trigger ((x - y) / n)]
         {
             let z = (x % n) - (y % n);
-            ((0 <= z < n && #[trigger] ((x - y) / n) == x / n - y / n) || (-n <= z < 0 && ((x - y)
-                / n) == x / n - y / n - 1))
+            ((0 <= z < n && ((x - y) / n) == x / n - y / n) || (-n <= z < 0 && ((x - y) / n) == x
+                / n - y / n - 1))
         } by {
-        assert(f(x, y));
+        let xq = x / n;
+        let xr = x % n;
+        let yq = y / n;
+        let yr = y % n;
+        let dq = (x - y) / n;
+        let dr = (x - y) % n;
+        assert(y == n * yq + yr) by {
+            mod_internals_nonlinear::lemma_fundamental_div_mod(y, n);
+        }
+        assert(x == n * xq + xr) by {
+            mod_internals_nonlinear::lemma_fundamental_div_mod(x, n);
+        }
+        assert(x - y == n * dq + dr) by {
+            mod_internals_nonlinear::lemma_fundamental_div_mod(x - y, n);
+        }
+        assert(0 <= xr < n) by {
+            mod_internals_nonlinear::lemma_mod_range(x, n);
+        }
+        assert(0 <= yr < n) by {
+            mod_internals_nonlinear::lemma_mod_range(y, n);
+        }
+        if 0 <= xr - yr < n {
+            assert(dq == xq - yq) by {
+                assert(n * (xq - yq) == n * xq - n * yq) by {
+                    mul_internals::lemma_mul_distributes_minus(xq, yq, n);
+                }
+                assert(x - y == n * (xq - yq) + (xr - yr));
+                assert(xq - yq == dq && xr - yr == dr) by {
+                    lemma_quotient_and_remainder(x - y, xq - yq, xr - yr, n);
+                }
+            }
+        } else {
+            assert(-n <= xr - yr < 0);
+            assert(dq == xq - yq - 1) by {
+                assert(n * (xq - yq) == n * xq - n * yq) by {
+                    mul_internals::lemma_mul_distributes_minus(xq, yq, n);
+                }
+                assert(n * (xq - yq) - n == n * (xq - yq - 1)) by {
+                    mul_internals::lemma_mul_distributes_minus(xq - yq, 1, n);
+                }
+                assert(x - y == n * (xq - yq - 1) + (n + xr - yr));
+                assert(xq - yq - 1 == dq && n + xr - yr == dr) by {
+                    lemma_quotient_and_remainder(x - y, xq - yq - 1, n + xr - yr, n);
+                }
+            }
+        }
     }
 }
 
