@@ -4554,6 +4554,7 @@ fn get_permission_place_rec<'tcx>(
             get_permission_place_rec(bctx, span, t, p1)
         }
         _ => {
+            dbg!(typ);
             todo!(); // TODO(native_raw_ptrs)
         }
     }
