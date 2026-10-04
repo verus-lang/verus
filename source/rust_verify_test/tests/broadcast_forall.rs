@@ -658,3 +658,37 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] broadcast_prune_inline verus_code! {
+        mod m1 {
+            use verus_builtin::*; use verus_builtin_macros::*;
+
+            pub closed spec fn f(i: int) -> int { i }
+
+            #[verifier::inline]
+            pub open spec fn g(i: int) -> int { f(i) }
+
+            pub broadcast proof fn p(i: int)
+                ensures
+                    #![trigger g(i)]
+                    g(i) == i,
+            {
+            }
+
+            pub broadcast group b {
+                p,
+            }
+        }
+
+        mod m2 {
+            use verus_builtin::*; use verus_builtin_macros::*;
+
+            proof fn test() {
+                use crate::m1::{f, g};
+                broadcast use crate::m1::b;
+                assert(f(10) == 10);
+            }
+        }
+    } => Ok(())
+}

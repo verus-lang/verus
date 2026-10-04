@@ -1,6 +1,7 @@
 #[cfg(feature = "alloc")]
 pub mod alloc;
 
+pub mod array;
 pub mod atomic;
 pub mod bits;
 pub mod borrow;

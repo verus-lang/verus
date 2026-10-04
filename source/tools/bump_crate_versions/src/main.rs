@@ -2,7 +2,6 @@ use clap::Parser as ClapParser;
 use crates_io_api::SyncClient;
 use petgraph::algo::toposort;
 use petgraph::graph::DiGraph;
-use regex::Regex;
 use std::{
     collections::{HashMap, HashSet},
     fs,
@@ -22,8 +21,7 @@ const WORKSPACE_MANIFEST: &str = "source/Cargo.toml";
 
 /// This tool scans for modified crates in the Verus repository and updates the version numbers
 /// in their respective Cargo.toml files. In cases where one crate depends on another, we also
-/// update the version of the dependency in the dependent crate's Cargo.toml.  Finally, when vstd
-/// is modified, we also update the version in the cargo-verus template.  The code is optimized
+/// update the version of the dependency in the dependent crate's Cargo.toml. The code is optimized
 /// for readability and maintainability, rather than performance.
 ///
 /// Usage: Run this tool from the root of the Verus repository.
@@ -47,10 +45,6 @@ struct Args {
     command: Command,
 }
 
-// Path to cargo-verus's main file, where we have a static string
-// indicating which version of vstd to use
-const CARGO_VERUS_TEMPLATE_FILE: &str = "source/cargo-verus/src/subcommands.rs";
-
 // Generates a fresh version string of the form "0.0.0-year-month-day-time",
 // which we'll assign to any updated crate.  Using a const + LazyLock ensures
 // we only compute this once and then use it consistently throughout.
@@ -73,6 +67,8 @@ struct Crate {
     name: String,
     // Absolute path to the crate's directory
     path: AbsolutePath,
+    // Path to the crate's sources, relative to the crate directory
+    source_path: String,
 }
 
 // For each crate, identify the other crates (in `crates`) that depend on it
@@ -161,8 +157,8 @@ fn last_commit(dir: &AbsolutePath) -> Option<String> {
     }
 }
 
-// Given the most recent commit hash, run git to check if the src directory has been modified
-fn src_modified(dir: &AbsolutePath, commit: &str) -> bool {
+// Given the most recent commit hash, run git to check if the crate's sources have been modified
+fn source_modified(dir: &AbsolutePath, source_path: &str, commit: &str) -> bool {
     use std::process::Command;
 
     let status = Command::new("git")
@@ -172,7 +168,7 @@ fn src_modified(dir: &AbsolutePath, commit: &str) -> bool {
         .arg("--exit-code")
         .arg(format!("{}..HEAD", commit))
         .arg("--")
-        .arg("src")
+        .arg(source_path)
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
@@ -292,38 +288,17 @@ fn publish(dir: &AbsolutePath, dry_run: bool) {
     }
 }
 
-fn update_cargo_verus_template(main: &AbsolutePath) {
-    let content = fs::read_to_string(main).expect("Failed to read cargo-verus main.rs");
-
-    // Replace the version in the template
-    let re = Regex::new("(?m)^vstd =.*$").expect("Failed to create regex");
-    let count = re.find_iter(&content).count();
-    if count != 1 {
-        panic!(
-            "Expected to find exactly one occurence of 'vstd = ' in {}.  Found {}.",
-            CARGO_VERUS_TEMPLATE_FILE, count
-        );
-    }
-    let updated_content = re.replace(&content, format!("vstd = \"={}\"", *NEW_VERSION).as_str());
-    //println!("Updated cargo-verus main.rs:\n{}", updated_content);
-    println!("Updated cargo-verus main.rs\n");
-
-    // Write the updated content back to the file
-    fs::write(main, updated_content.to_string()).expect("Failed to write cargo-verus main.rs");
-}
-
 fn update_crates(
     crates: Vec<Crate>,
     workspace_manifest: &AbsolutePath,
     line_count_dir: &AbsolutePath,
-    cargo_verus_template: &AbsolutePath,
 ) {
     // Compute directly modified crates
     println!("\nScanning for crates with modified source code...");
     let mut modified_crates: HashSet<&Crate> = HashSet::new();
     for krate in &crates {
         if let Some(commit) = last_commit(&krate.path) {
-            if src_modified(&krate.path, &commit) {
+            if source_modified(&krate.path, &krate.source_path, &commit) {
                 println!("\t{}:\n\t\tHAS been modified since commit {}.\n", krate.name, commit);
                 modified_crates.insert(&krate);
             } else {
@@ -380,10 +355,6 @@ fn update_crates(
             println!("\t{}", krate.name);
             update_toml_version(&krate.path);
             update_toml_dependencies(&krate.path, &modified_crates);
-
-            if krate.name == "vstd" {
-                update_cargo_verus_template(cargo_verus_template);
-            }
         }
 
         // Update the versions that the workspace's members inherit
@@ -431,30 +402,42 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let workspace_manifest = AbsolutePath::new(WORKSPACE_MANIFEST)?;
     let line_count_dir = AbsolutePath::new(LINE_COUNT_DIR)?;
-    let cargo_verus_template = AbsolutePath::new(CARGO_VERUS_TEMPLATE_FILE)?;
 
     let crates = vec![
-        Crate { name: "vstd".to_string(), path: "source/vstd".try_into()? },
-        Crate { name: "verus_builtin".to_string(), path: "source/builtin".try_into()? },
+        Crate {
+            name: "vstd".to_string(),
+            path: "source/vstd".try_into()?,
+            source_path: ".".to_string(),
+        },
+        Crate {
+            name: "verus_builtin".to_string(),
+            path: "source/builtin".try_into()?,
+            source_path: "src".to_string(),
+        },
         Crate {
             name: "verus_builtin_macros".to_string(),
             path: "source/builtin_macros".try_into()?,
+            source_path: "src".to_string(),
         },
         Crate {
             name: "verus_state_machines_macros".to_string(),
             path: "source/state_machines_macros".try_into()?,
+            source_path: "src".to_string(),
         },
         Crate {
             name: "verus_prettyplease".to_string(),
             path: "dependencies/prettyplease".try_into()?,
+            source_path: "src".to_string(),
         },
-        Crate { name: "verus_syn".to_string(), path: "dependencies/syn".try_into()? },
+        Crate {
+            name: "verus_syn".to_string(),
+            path: "dependencies/syn".try_into()?,
+            source_path: "src".to_string(),
+        },
     ];
 
     match &args.command {
-        Command::Update => {
-            update_crates(crates, &workspace_manifest, &line_count_dir, &cargo_verus_template)
-        }
+        Command::Update => update_crates(crates, &workspace_manifest, &line_count_dir),
         Command::Publish { dry_run } => {
             let dep_map = compute_immediate_deps(&crates);
             let graph = dep_map_to_graph(&dep_map);

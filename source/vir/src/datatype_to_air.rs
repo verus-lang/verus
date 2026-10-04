@@ -11,7 +11,7 @@ use crate::def::{
     prefix_spec_fn_type, prefix_tuple_param,
 };
 use crate::messages::Span;
-use crate::sst::{Par, ParPurpose, ParX};
+use crate::sst::{Par, ParX};
 use crate::sst_to_air::{
     datatype_id, dt_to_air_ident, expr_has_type, monotyp_to_path, path_to_air_ident, typ_invariant,
     typ_to_air,
@@ -61,7 +61,6 @@ fn field_to_par(span: &Span, f: &Field) -> Par {
             name: crate::ast_util::str_unique_var(&("_".to_string() + &f.name), dis),
             typ: f.a.0.clone(),
             mode: f.a.1,
-            purpose: ParPurpose::Regular,
         },
     )
 }
@@ -178,15 +177,7 @@ fn datatype_or_fun_to_air_commands(
 
     // datatype axioms
     let var_param = |x: VarIdent, typ: &Typ| {
-        Spanned::new(
-            span.clone(),
-            ParX {
-                name: x.clone(),
-                typ: typ.clone(),
-                mode: Mode::Exec,
-                purpose: ParPurpose::Regular,
-            },
-        )
+        Spanned::new(span.clone(), ParX { name: x.clone(), typ: typ.clone(), mode: Mode::Exec })
     };
     let x_param = |typ: &Typ| var_param(x.clone(), typ);
     let x_params = |typ: &Typ| Arc::new(vec![x_param(typ)]);
@@ -237,12 +228,7 @@ fn datatype_or_fun_to_air_commands(
                 pre.push(inv);
             }
             args.push(arg);
-            let parx = ParX {
-                name,
-                typ: vpolytyp.clone(),
-                mode: Mode::Exec,
-                purpose: ParPurpose::Regular,
-            };
+            let parx = ParX { name, typ: vpolytyp.clone(), mode: Mode::Exec };
             params.push(Spanned::new(span.clone(), parx));
         }
         let args = Arc::new(args);
@@ -470,6 +456,15 @@ fn datatype_or_fun_to_air_commands(
                 let typ = crate::ast_util::undecorate_typ(typ);
                 let field_box_path = match &*typ {
                     TypX::SpecFn(typs, _) => Some(prefix_spec_fn_type(typs.len())),
+                    TypX::Primitive(crate::ast::Primitive::Array, _) => {
+                        Some(crate::def::array_type())
+                    }
+                    TypX::Primitive(crate::ast::Primitive::Slice, _) => {
+                        let Some(monotyp) = crate::poly::typ_as_mono(&typ) else {
+                            continue;
+                        };
+                        Some(monotyp_to_path(ctx, &monotyp))
+                    }
                     TypX::Datatype(..) => crate::sst_to_air::datatype_box_prefix(ctx, &typ),
                     TypX::Boxed(_) => None,
                     TypX::TypParam(_) => None,
@@ -793,6 +788,7 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
         );
     }
 
+    let mut fndef_commands = vec![];
     for fun in &ctx.fndef_types {
         let func = ctx.func_map.get(fun).expect("expected fndef function in pruned crate");
         let tparams = &func.x.typ_params;
@@ -806,6 +802,12 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
             str_typ(crate::def::TYPE),
         ));
         token_commands.push(Arc::new(CommandX::Global(decl_type_id)));
+
+        let node = crate::prelude::fndef_axioms(&ctx.name_ctxt, func);
+        let cmds = air::parser::Parser::new(Arc::new(crate::messages::VirMessageInterface {}))
+            .nodes_to_commands(&[node])
+            .expect("internal error: malformed fndef axioms");
+        fndef_commands.extend((*cmds).clone());
     }
 
     let array_commands = if ctx.used_builtins.uses_array {
@@ -885,5 +887,6 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
     commands.extend(bytestr_commands);
     commands.extend(ieee_float_commands);
     commands.extend(resolve_axiom_commands);
+    commands.extend(fndef_commands);
     Arc::new(commands)
 }

@@ -5,7 +5,7 @@ use crate::rust_to_vir::State;
 use crate::rust_to_vir_base::{
     def_id_to_vir_path_option, mid_ty_const_to_vir, mk_visibility, typ_path_and_ident_to_vir_path,
 };
-use crate::rust_to_vir_func::{CheckItemFnEither, check_item_fn};
+use crate::rust_to_vir_func::{CheckItemFnEither, FunctionOrConstInfo, check_item_fn};
 use crate::unsupported_err;
 use crate::util::{err_span, err_span_vec, vir_err_span_str};
 use crate::verus_items::{self, MarkerItem, RustItem, VerusItem};
@@ -246,6 +246,7 @@ pub(crate) fn translate_impl<'tcx>(
     ctxt: &Context<'tcx>,
     state: &mut State,
     vir: &mut KrateX,
+    infos: &mut Vec<FunctionOrConstInfo<'tcx>>,
     item: &'tcx Item<'tcx>,
     impll: &rustc_hir::Impl<'tcx>,
     module_path: Path,
@@ -286,7 +287,12 @@ pub(crate) fn translate_impl<'tcx>(
                 // ?
                 let def_id = match impll.self_ty.kind {
                     rustc_hir::TyKind::Path(QPath::Resolved(None, path)) => path.res.def_id(),
-                    _ => panic!("self type of impl is not resolved: {:?}", impll.self_ty.kind),
+                    _ => {
+                        return err_span_vec(
+                            item.span,
+                            "`Structural` can only be implemented for struct or enum types",
+                        );
+                    }
                 };
                 ctxt.tcx.type_of(def_id).skip_binder()
             };
@@ -303,7 +309,10 @@ pub(crate) fn translate_impl<'tcx>(
                     })),
                 )
             } else {
-                panic!("Structural impl for non-adt type");
+                return err_span_vec(
+                    item.span,
+                    "`Structural` can only be implemented for struct or enum types",
+                );
             };
             let ty_applied_never = ctxt.tcx.mk_ty_from_kind(ty_kind_applied_never);
             if !ty_applied_never.is_structural_eq_shallow(ctxt.tcx) {
@@ -406,6 +415,7 @@ pub(crate) fn translate_impl<'tcx>(
             ctxt,
             state,
             vir,
+            infos,
             item,
             impll,
             &module_path,
@@ -427,6 +437,7 @@ pub(crate) fn translate_impl_item<'tcx>(
     ctxt: &Context<'tcx>,
     state: &mut State,
     vir: &mut KrateX,
+    infos: &mut Vec<FunctionOrConstInfo<'tcx>>,
     item: &'tcx Item<'tcx>,
     impll: &rustc_hir::Impl<'tcx>,
     module_path: &Path,
@@ -479,7 +490,7 @@ pub(crate) fn translate_impl_item<'tcx>(
                     check_item_fn(
                         ctxt,
                         state,
-                        &mut vir.functions,
+                        &mut *infos,
                         Some(&mut vir.reveal_groups),
                         impl_item.owner_id.to_def_id(),
                         kind,
@@ -492,7 +503,7 @@ pub(crate) fn translate_impl_item<'tcx>(
                         CheckItemFnEither::BodyId(&body_id),
                         None,
                         None,
-                        autoderive_action.as_ref(),
+                        *autoderive_action,
                         &mut vir.opaque_types,
                     )?;
                 }
@@ -540,7 +551,7 @@ pub(crate) fn translate_impl_item<'tcx>(
                     crate::rust_to_vir_func::check_item_const_or_static(
                         ctxt,
                         state,
-                        &mut vir.functions,
+                        &mut *infos,
                         impl_item.span,
                         impl_item.owner_id.to_def_id(),
                         mk_visibility(ctxt, impl_item.owner_id.to_def_id()),
@@ -556,7 +567,7 @@ pub(crate) fn translate_impl_item<'tcx>(
                     crate::rust_to_vir_func::check_item_fn(
                         ctxt,
                         state,
-                        &mut vir.functions,
+                        &mut *infos,
                         Some(&mut vir.reveal_groups),
                         impl_item.owner_id.to_def_id(),
                         kind,

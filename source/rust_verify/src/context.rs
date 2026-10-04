@@ -2,7 +2,6 @@ use crate::{erase::ResolvedCall, verus_items::VerusItems};
 use rustc_hir::Attribute;
 use rustc_hir::HirId;
 use rustc_hir::def_id::LocalDefId;
-use rustc_middle::hir::Crate;
 use rustc_middle::ty::{TyCtxt, TypeckResults};
 use rustc_mir_build_verus::verus::BodyErasure;
 use rustc_span::SpanData;
@@ -18,7 +17,8 @@ use vir::ast::{CrateId, Mode, Path, Pattern, VirErr};
 use vir::messages::{AstId, WarningAllow};
 
 pub struct ErasureInfo {
-    pub(crate) hir_vir_ids: Vec<(HirId, AstId)>,
+    /// None for a generated VIR node with no corresponding source HIR node.
+    pub(crate) hir_vir_ids: Vec<(Option<HirId>, AstId)>,
     pub(crate) resolved_calls: Vec<(HirId, SpanData, ResolvedCall, bool)>,
     pub(crate) resolved_pats: Vec<(SpanData, Pattern)>,
     pub(crate) direct_var_modes: Vec<(HirId, Mode)>,
@@ -38,7 +38,6 @@ pub type Context<'tcx> = Rc<ContextX<'tcx>>;
 pub struct ContextX<'tcx> {
     pub(crate) cmd_line_args: crate::config::Args,
     pub(crate) tcx: TyCtxt<'tcx>,
-    pub(crate) krate: &'tcx Crate<'tcx>,
     pub(crate) erasure_info: ErasureInfoRef,
     pub(crate) spans: crate::spans::SpanContext,
     pub(crate) verus_items: Arc<VerusItems>,
@@ -86,8 +85,6 @@ pub(crate) struct BodyCtxt<'tcx> {
     pub(crate) in_explicit_prophecy_node: bool,
     /// params for the enclosing function and all enclosing non-spec-closures
     pub(crate) params: Rc<Vec<Vec<vir::ast::VarIdent>>>,
-    /// unwrapped params encountered so far (inner_name -> outer_name) e.g. (x -> verus_tmp_x)
-    pub(crate) unwrap_param_map: Rc<RefCell<HashMap<vir::ast::VarIdent, vir::ast::VarIdent>>>,
     /// Assume specification defines a new opaque type for each opaque type in the external function.
     /// We use this map to resolve them later.
     pub(crate) external_opaque_type_map: Option<HashMap<Path, Path>>,
@@ -113,7 +110,6 @@ impl<'tcx> ContextX<'tcx> {
         ContextX {
             cmd_line_args,
             tcx,
-            krate: tcx.hir_crate(()),
             erasure_info,
             spans,
             verus_items,
@@ -217,33 +213,18 @@ impl<'tcx> BodyCtxt<'tcx> {
         let Some(vars) = &self.migrate_postcondition_vars else {
             return false;
         };
-        let r = self.unwrap_param_map.borrow();
-        let id = match r.get(ident) {
-            Some(unwrap_param_outer_id) => unwrap_param_outer_id,
-            None => ident,
-        };
-        vars.contains(id)
+        vars.contains(ident)
     }
 
     pub(crate) fn is_param_for_fn_or_non_spec_closure(&self, ident: &vir::ast::VarIdent) -> bool {
-        let r = self.unwrap_param_map.borrow();
-        let id = match r.get(ident) {
-            Some(unwrap_param_outer_id) => unwrap_param_outer_id,
-            None => ident,
-        };
-        self.params.iter().any(|params| params.iter().any(|param| param == id))
+        self.params.iter().any(|params| params.iter().any(|param| param == ident))
     }
 
     pub(crate) fn is_param_for_innermost_fn_or_non_spec_closure(
         &self,
         ident: &vir::ast::VarIdent,
     ) -> bool {
-        let r = self.unwrap_param_map.borrow();
-        let id = match r.get(ident) {
-            Some(unwrap_param_outer_id) => unwrap_param_outer_id,
-            None => ident,
-        };
-        self.params.last().unwrap().iter().any(|param| param == id)
+        self.params.last().unwrap().iter().any(|param| param == ident)
     }
 
     pub(crate) fn set_header_setting(&self, s: HeaderSetting) -> BodyCtxt<'tcx> {

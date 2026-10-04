@@ -158,6 +158,236 @@ test_verify_one_file_with_options! {
     } => Ok(())
 }
 
+test_verify_one_file_with_options! {
+    #[test] test_pattern_in_closure_parameter ["vstd"] => verus_code! {
+        fn test_reference() {
+            let is_seven = |&x: &u8| -> (result: bool)
+                ensures result == (x == 7)
+            { x == 7 };
+            let x = 7u8;
+            let result = is_seven(&x);
+            assert(result);
+        }
+
+        fn test_tuple() {
+            let are_equal = |(x, y): (u8, u8)| -> (result: bool)
+                ensures result == (x == y)
+            { x == y };
+            let result = are_equal((7, 7));
+            assert(result);
+        }
+
+        struct Pair1 { x: u8, y: u8 }
+        fn test_struct() {
+            let are_equal = |Pair1 { x, y }: Pair1| -> (result: bool)
+                ensures result == (x == y)
+            { x == y };
+            let result = are_equal(Pair1 { x: 7, y: 7 });
+            assert(result);
+        }
+
+        struct Pair2(u8, u8);
+        fn test_tuple_struct() {
+            let are_equal = |Pair2(x, y): Pair2| -> (result: bool)
+                ensures result == (x == y)
+            { x == y };
+            let result = are_equal(Pair2(7, 7));
+            assert(result);
+        }
+
+        fn testfn() {
+            let is_seven = |ref x: u8| -> (result: bool)
+                ensures result == (*x == 7)
+            { *x == 7 };
+            let result = is_seven(7u8);
+            assert(result);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_pattern_implicit_mut_ref_unsupported ["vstd"] => verus_code! {
+        fn test() {
+            let y = |(x, y): &mut (u64, u64)| {
+            };
+        }
+    } => Err(err) => assert_vir_error_msg(err,
+        "mutable-reference bindings in closure parameters are not supported")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_pattern_explicit_mut_ref_unsupported ["vstd"] => verus_code! {
+        fn test() {
+            let f = |ref mut x: u64| {};
+        }
+    } => Err(err) => assert_vir_error_msg(err,
+        "mutable-reference bindings in closure parameters are not supported")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_pattern_nested_mut_ref_unsupported ["vstd"] => verus_code! {
+        struct Pair { values: (u64, u64) }
+
+        fn test() {
+            let f = |Pair { values: (x, ref mut y) }: Pair| {};
+        }
+    } => Err(err) => assert_vir_error_msg(err,
+        "mutable-reference bindings in closure parameters are not supported")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_pattern_call_requires_fail ["vstd"] => verus_code! {
+        fn test() {
+            let f = |(x, y): (u8, u8)|
+                requires x == y
+            {};
+
+            f((7, 7));
+            f((7, 8)); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_pattern_ensures_fail ["vstd"] => verus_code! {
+        fn test() {
+            let f = |(x, y): (u8, u8)| -> (result: bool)
+                ensures result == (x == y) // FAILS
+            { x != y };
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_pattern_explicit_mut_deref ["vstd"] => verus_code! {
+        fn test() {
+            let f = |&mut (x, y): &mut (u64, u64)| -> (result: u64)
+                requires x == y
+                ensures result == x
+            { y };
+            let mut pair = (7, 7);
+            let result = f(&mut pair);
+            assert(result == 7);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_pattern_explicit_mut_deref_requires_fail ["vstd"] => verus_code! {
+        fn test() {
+            let f = |&mut (x, y): &mut (u64, u64)|
+                requires x == y
+            {};
+            let mut pair = (7, 8);
+            f(&mut pair); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_pattern_implicit_shared_ref ["vstd"] => verus_code! {
+        fn test() {
+            let f = |(x, y): &(u64, u64)| -> (result: u64)
+                requires *x == *y
+                ensures result == *x
+            { *y };
+            let pair = (7, 7);
+            let result = f(&pair);
+            assert(result == 7);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_pattern_implicit_shared_ref_requires_fail ["vstd"] => verus_code! {
+        fn test() {
+            let f = |(x, y): &(u64, u64)|
+                requires *x == *y
+            {};
+            let pair = (7, 8);
+            f(&pair); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_pattern_at_binding ["vstd"] => verus_code! {
+        fn test() {
+            let f = |whole @ (x, y): (u64, u64)| -> (result: u64)
+                requires whole.0 == y
+                ensures result == x, result == whole.1
+            { assert(whole.0 == x); y };
+            let result = f((7, 7));
+            assert(result == 7);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_pattern_at_binding_ensures_fail ["vstd"] => verus_code! {
+        fn test() {
+            let f = |whole @ (x, y): (u64, u64)| -> (result: u64)
+                requires whole.0 != y
+                ensures result == x // FAILS
+            { whole.1 };
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_pattern_nested_rest ["vstd"] => verus_code! {
+        struct Packet { values: (u64, u64, u64), ignored: u64 }
+        fn test() {
+            let f = |Packet { values: (x, .., z), .. }: Packet| -> (result: u64)
+                requires x < z
+                ensures result == z
+            { z };
+            let result = f(Packet { values: (3, 5, 7), ignored: 9 });
+            assert(result == 7);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_pattern_nested_rest_requires_fail ["vstd"] => verus_code! {
+        struct Packet { values: (u64, u64, u64), ignored: u64 }
+        fn test() {
+            let f = |Packet { values: (x, .., z), .. }: Packet|
+                requires x < z
+            {};
+            f(Packet { values: (7, 9, 3), ignored: 0 }); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_pattern_non_copy ["vstd"] => verus_code! {
+        struct Item { value: u64 }
+        struct Pair { first: Item, second: Item }
+        fn test() {
+            let f = |Pair { first, second }: Pair| -> (result: Item)
+                requires first.value == second.value
+                ensures result.value == first.value
+            { second };
+            let result = f(Pair { first: Item { value: 7 }, second: Item { value: 7 } });
+            assert(result.value == 7);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_pattern_non_copy_ensures_fail ["vstd"] => verus_code! {
+        struct Item { value: u64 }
+        struct Pair { first: Item, second: Item }
+        fn test() {
+            let f = |Pair { first, second }: Pair| -> (result: Item)
+                requires first.value != second.value
+                ensures result.value == first.value // FAILS
+            { second };
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
 // 2 arg closures
 
 test_verify_one_file_with_options! {
@@ -513,7 +743,7 @@ test_verify_one_file_with_options! {
         fn foo() {
             let t = closure_to_fn_spec(|x: u64| x);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use spec_fn closure in 'exec' mode")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use `verus_builtin::closure_to_fn_spec` in executable context")
 }
 
 test_verify_one_file_with_options! {
@@ -535,7 +765,7 @@ test_verify_one_file_with_options! {
 
             let m = call_requires(f, (5, ));
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call spec function from exec mode")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use `verus_builtin::call_requires` in executable context")
 }
 
 test_verify_one_file_with_options! {
@@ -547,7 +777,7 @@ test_verify_one_file_with_options! {
 
             let m = call_ensures(f, (5, ), 7);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call spec function from exec mode")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use `verus_builtin::call_ensures` in executable context")
 }
 
 test_verify_one_file_with_options! {
@@ -1942,4 +2172,82 @@ test_verify_one_file! {
             assert(z == 42);
         }
     } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] closure_edition2018 ["--edition 2018"] => verus_code! {
+        use vstd::prelude::*;
+        pub fn ghost_capture_panics2() {
+            let ghost expected = 1u64;
+
+            let _closure = || -> (result: u64) ensures result == expected { { 1 } };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] closure_edition2021 ["--edition 2021"] => verus_code! {
+        use vstd::prelude::*;
+        pub fn ghost_capture_panics2() {
+            let ghost expected = 1u64;
+
+            let _closure = || -> (result: u64) ensures result == expected { { 1 } };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] closure_verus_spec_attr_edition2018 ["--edition 2018"] => code! {
+        use vstd::prelude::*;
+        #[verus_spec]
+        pub fn ghost_capture_panics() {
+            proof_decl! {
+                let ghost expected = 1u64;
+            }
+
+            let _closure = #[verus_spec(result: u64 =>
+                ensures
+                    result == expected,
+            )]
+            || 1;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] closure_verus_spec_attr_edition2021 ["--edition 2021"] => code! {
+        use vstd::prelude::*;
+        #[verus_spec]
+        pub fn ghost_capture_panics() {
+            proof_decl! {
+                let ghost expected = 1u64;
+            }
+
+            let _closure = #[verus_spec(result: u64 =>
+                ensures
+                    result == expected,
+            )]
+            || 1;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] closure_edition2018_fail_tracked_var ["--edition 2018"] => verus_code! {
+        use vstd::prelude::*;
+        tracked struct X { }
+        pub fn ghost_capture_panics2() {
+            let ghost expected = 1u64;
+
+            let tracked x = X{};
+
+            let closure = || -> (result: u64) ensures result == expected {
+                let tracked x1 = x;
+                0
+            };
+
+            let tracked y = x;
+            closure();
+        }
+    } => Err(e) => assert_rust_error_msg(e, "use of moved value: `x`")
 }

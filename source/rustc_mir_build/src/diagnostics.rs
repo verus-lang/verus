@@ -5,7 +5,7 @@ use rustc_errors::{
 };
 use rustc_macros::{Diagnostic, Subdiagnostic};
 use rustc_middle::ty::{self, Ty};
-use rustc_pattern_analysis::errors::Uncovered;
+use rustc_pattern_analysis::diagnostics::Uncovered;
 use rustc_pattern_analysis::rustc::RustcPatCtxt;
 use rustc_span::{Ident, Span, Symbol};
 
@@ -724,9 +724,25 @@ pub(crate) struct NonConstPath {
     pub(crate) span: Span,
 }
 
+pub(crate) struct UnreachablePattern<'tcx> {
+    pub(crate) covered_by_many_n_more_count: Option<usize>,
+    pub(crate) inner: UnreachablePatternInner<'tcx>,
+}
+
+impl<'a, 'tcx, G: EmissionGuarantee> Diagnostic<'a, G> for UnreachablePattern<'tcx> {
+    #[track_caller]
+    fn into_diag(self, dcx: DiagCtxtHandle<'a>, level: Level) -> Diag<'a, G> {
+        let mut diag = self.inner.into_diag(dcx, level);
+        if let Some(covered_by_many_n_more_count) = self.covered_by_many_n_more_count {
+            diag.arg("covered_by_many_n_more_count", covered_by_many_n_more_count);
+        }
+        diag
+    }
+}
+
 #[derive(Diagnostic)]
 #[diag("unreachable pattern")]
-pub(crate) struct UnreachablePattern<'tcx> {
+pub(crate) struct UnreachablePatternInner<'tcx> {
     #[label("no value can reach this")]
     pub(crate) span: Option<Span>,
     #[label("matches no values because `{$matches_no_values_ty}` is uninhabited")]
@@ -756,7 +772,6 @@ pub(crate) struct UnreachablePattern<'tcx> {
     pub(crate) covered_by_one: Option<Span>,
     #[note("multiple earlier patterns match some of the same values")]
     pub(crate) covered_by_many: Option<MultiSpan>,
-    pub(crate) covered_by_many_n_more_count: usize,
     #[suggestion("remove the match arm", code = "", applicability = "machine-applicable")]
     pub(crate) suggest_remove: Option<Span>,
 }
@@ -776,18 +791,6 @@ pub(crate) struct WantedConstant {
     pub(crate) is_typo: bool,
     pub(crate) const_name: String,
     pub(crate) const_path: String,
-}
-
-#[derive(Diagnostic)]
-#[diag("unreachable {$descr}")]
-pub(crate) struct UnreachableDueToUninhabited<'desc, 'tcx> {
-    pub descr: &'desc str,
-    #[label("unreachable {$descr}")]
-    pub expr: Span,
-    #[label("any code following this expression is unreachable")]
-    #[note("this expression has type `{$ty}`, which is uninhabited")]
-    pub orig: Span,
-    pub ty: Ty<'tcx>,
 }
 
 #[derive(Diagnostic)]
@@ -1226,12 +1229,14 @@ pub(crate) struct PatternNotCovered<'s, 'tcx> {
     pub(crate) misc_suggestion: Option<MiscPatternSuggestion>,
 }
 
-#[derive(Subdiagnostic)]
+#[derive(Subdiagnostic, Debug)]
 #[note(
-    "`let` bindings require an \"irrefutable pattern\", like a `struct` or an `enum` with only one variant"
+    "{$descr} require an \"irrefutable pattern\", like a `struct` or an `enum` with only one variant"
 )]
 #[note("for more information, visit https://doc.rust-lang.org/book/ch19-02-refutability.html")]
-pub(crate) struct Inform;
+pub(crate) struct Inform {
+    pub(crate) descr: &'static str,
+}
 
 #[derive(Subdiagnostic)]
 #[label(
@@ -1429,4 +1434,16 @@ pub(crate) struct ConstContinueMissingLabelOrValue {
 pub(crate) struct ConstContinueUnknownJumpTarget {
     #[primary_span]
     pub span: Span,
+}
+
+#[derive(Diagnostic)]
+#[diag("unreachable {$descr}")]
+pub(crate) struct UnreachableDueToUninhabited<'desc, 'tcx> {
+    pub descr: &'desc str,
+    #[label("unreachable {$descr}")]
+    pub expr: Span,
+    #[label("any code following this expression is unreachable")]
+    #[note("this expression has type `{$ty}`, which is uninhabited")]
+    pub orig: Span,
+    pub ty: Ty<'tcx>,
 }

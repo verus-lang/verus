@@ -210,6 +210,34 @@ be better off as an independent package published on [crates.io](https://crates.
 which the community can then integrate via `cargo verus`.  See the
 [Best Practices](best-practices-for-publishing-verusverified-code-on-cratesio) below.
 
+### Guidelines for developing `vstd` contributions
+
+When contributing *trusted specifications* for the Rust standard library to `vstd`, 
+the absolute most important consideration is soundness.  Since `assume_specification`
+and external trait specifications are unchecked, they can easily 
+[subvert Verus's guarantees](https://verus-lang.github.io/verus/guide/external_trait_specifications.html?highlight=assume_spec#soundness-warning).
+To help mitigate this risk, please follow these guidelines:
+1. Specifications should be written in a concise, easy-to-read style, using the
+   simplest, clearest constructs possible.  A necessary, but not sufficient
+   step, is typically to abstract complex implementation types into
+   mathematical types; e.g., we abstract both `HashSet` and `BtreeSet` as a
+   mathematical `Set`; `Vec` as a mathmematical `Seq`, etc. 
+2. Please consult the corresponding Rust documentation for the function.  Then
+   write your formal specification so as to make it easy to compare it with the
+   informal documentation.
+3. The assumed precondition should be strong enough to rule out unsafety and panics.
+4. We strongly recommend consulting the function's implementation to look
+   for corner cases that are not mentioned in the documentation (e.g., some
+   functions may clone or copy their arguments, which may not be apparent from
+   the function signature) or for places where the code and the documentation disagree.
+5. Despite the point above, it's important that implementation details **not "leak"**
+   into the specification.  See above regarding keeping specifications simple and abstract.
+
+Stylistically, inside `vstd`: 
+- We add a `lemma_` prefix to the name of a lemma (i.e., a `proof fn`) to make its purpose explicit.
+- We try to make lemmas associated functions when possible, e.g., `my_map.lemma_remove_keys_len(keys)`, not `lemma_remove_keys_len(my_map, keys)`.
+- Run `vargo fmt` to run the `verusfmt` tool on `vstd`.
+
 ### Tips for testing and verifying your contribution
 
 If you're contributing to the standard library, you should also test the
@@ -237,11 +265,6 @@ run, from the project root:
 cd source/vstd
 ../target-verus/release/verus --crate-type=lib --is-vstd vstd.rs --cfg 'feature="std"' --cfg 'feature="alloc"'
 ```
-
-### Common conventions
-Inside `vstd`:
-- We add a `lemma_` prefix to the name of a lemma (i.e., a `proof fn`) to make its purpose explicit.
-- We try to make lemmas associated functions when possible, e.g., `my_map.lemma_remove_keys_len(keys)`, not `lemma_remove_keys_len(my_map, keys)`.
 
 ## Best practices for publishing Verus-verified code on crates.io
 

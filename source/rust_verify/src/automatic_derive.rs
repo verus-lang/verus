@@ -16,7 +16,7 @@ pub enum SpecialTrait {
 }
 
 /// What to do for a given automatically-derived trait impl
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum AutomaticDeriveAction {
     Special(SpecialTrait),
     VerifyAsIs,
@@ -67,7 +67,7 @@ pub fn modify_derived_item<'tcx>(
     inputs: &Vec<rustc_middle::ty::Ty>,
     span: Span,
     hir_id: HirId,
-    action: &AutomaticDeriveAction,
+    action: AutomaticDeriveAction,
     function: &mut FunctionX,
 ) -> Result<(), VirErr> {
     let AutomaticDeriveAction::Special(special) = action else {
@@ -190,13 +190,13 @@ fn cleanup_span_ids<'tcx>(ctxt: &Context<'tcx>, span: Span, hir_id: HirId, expr:
         &|e: &Expr| {
             let e = ctxt.spans.spanned_typed_new(span, &e.typ, e.x.clone());
             let mut erasure_info = ctxt.erasure_info.borrow_mut();
-            erasure_info.hir_vir_ids.push((hir_id, e.span.id));
+            erasure_info.hir_vir_ids.push((Some(hir_id), e.span.id));
             Ok(e)
         },
         &|p: &Place| {
             let p = ctxt.spans.spanned_typed_new(span, &p.typ, p.x.clone());
             let mut erasure_info = ctxt.erasure_info.borrow_mut();
-            erasure_info.hir_vir_ids.push((hir_id, p.span.id));
+            erasure_info.hir_vir_ids.push((Some(hir_id), p.span.id));
             Ok(p)
         },
     )

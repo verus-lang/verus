@@ -11,7 +11,6 @@ use core::sync::atomic::*;
 pub struct ExAtomic<T: AtomicPrimitive>(Atomic<T>);
 
 #[verifier::external_trait_specification]
-#[verifier::external_trait_private_bound(core::sync::atomic::private::Sealed)]
 pub trait ExAtomicPrimitive: Sized + Copy {
     type ExternalTraitSpecificationFor: AtomicPrimitive;
 }

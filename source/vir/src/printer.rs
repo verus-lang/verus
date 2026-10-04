@@ -285,7 +285,7 @@ impl<A: ToDebugSNode + Clone> ToDebugSNode for VarBinder<A> {
     fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
         Node::List(vec![
             Node::Atom("->".to_string()),
-            Node::Atom((&self.name).into()),
+            self.name.to_node(opts),
             self.a.to_node(opts),
         ])
     }

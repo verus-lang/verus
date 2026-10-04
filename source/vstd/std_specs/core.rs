@@ -1,9 +1,8 @@
 use super::super::prelude::*;
 use core::marker::PointeeSized;
 
-use verus as verus_;
-
-verus_! {
+use verus as verus_skip_verusfmt;
+verus_skip_verusfmt! {
 
 #[verifier::external_trait_specification]
 pub trait ExTuple {
@@ -184,6 +183,16 @@ pub assume_specification<T, F: FnOnce() -> T>[ bool::then ](b: bool, f: F) -> (r
 pub assume_specification<T> [core::hint::must_use] (value: T) -> (ret: T)
     ensures
         ret == value,
+;
+
+pub assume_specification [core::panicking::panic] (s: &'static str) -> !
+    requires
+        false,
+;
+
+pub assume_specification [core::panicking::panic_fmt] (s: core::fmt::Arguments<'_>) -> !
+    requires
+        false,
 ;
 
 } // verus!
