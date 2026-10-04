@@ -1537,16 +1537,27 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 air::ast_util::mk_quantifier(quant.quant, &bs, &triggers, qid, &expr)
             }
             BndX::Lambda(binders, trigs) => {
+                let mut bs: Vec<Binder<air::ast::Typ>> = Vec::new();
+                let mut invs: Vec<Expr> = Vec::new();
+                for b in binders.iter() {
+                    let name = b.name.lower();
+                    let typ_inv = typ_invariant(ctx, &b.a, &ident_var(&name));
+                    if let Some(inv) = &typ_inv {
+                        invs.push(inv.clone());
+                    }
+                    bs.push(Arc::new(BinderX { name, a: typ_to_air(ctx, &b.a) }));
+                }
+                let cond = if invs.len() == 0 { None } else { Some(mk_and(&invs)) };
                 let expr = exp_to_expr(ctx, e, expr_ctxt)?;
-                let binders = vec_map(&*binders, |b| {
-                    Arc::new(BinderX { name: b.name.lower(), a: typ_to_air(ctx, &b.a) })
-                });
                 let triggers = vec_map_result(&*trigs, |trig| {
                     vec_map_result(trig, |x| exp_to_expr(ctx, x, expr_ctxt)).map(|v| Arc::new(v))
                 })?;
                 let qid = (triggers.len() > 0).then(|| ()).and_then(|_| new_user_qid(ctx, &exp));
-                let lambda = air::ast_util::mk_lambda(&binders, &triggers, qid, &expr);
-                str_apply(crate::def::MK_FUN, &vec![lambda])
+                let wrap = Some(air::ast::WrapLambda {
+                    wrap: str_ident(crate::def::MK_FUN),
+                    id: typ_to_id(ctx, &exp.typ),
+                });
+                air::ast_util::mk_lambda(&bs, &triggers, qid, &wrap, &cond, &expr)
             }
             BndX::Choose(binders, trigs, cond) => {
                 let mut bs: Vec<Binder<air::ast::Typ>> = Vec::new();
