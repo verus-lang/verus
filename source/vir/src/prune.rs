@@ -549,6 +549,14 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                     ExprX::RevealByteString(_) => {
                         state.uses_bytestr = true;
                     }
+                    ExprX::RevealString(_) => {
+                        // Holds a raw string, not a typed expr, so StrSlice isn't otherwise reached
+                        let strslice_typ = Arc::new(TypX::Primitive(
+                            crate::ast::Primitive::StrSlice,
+                            Arc::new(vec![]),
+                        ));
+                        traverse_typ(ctxt, state, &strslice_typ);
+                    }
                     ExprX::Unary(UnaryOp::IeeeFloat(_), _)
                     | ExprX::Binary(BinaryOp::IeeeFloat(_), _, _) => {
                         state.uses_ieee_float = true;
