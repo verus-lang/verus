@@ -1,0 +1,685 @@
+#![cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
+
+use vstd::prelude::*;
+use vstd::raw_ptr::*;
+
+verus! {
+
+    pub tracked struct FullPointsTo<T> {
+        pub points_to: PointsTo<T>,
+        pub dealloc: Option<Dealloc>,
+    }
+
+    impl<T> FullPointsTo<T> {
+        pub open spec fn wf(self, ptr: *mut T) -> bool {
+            &&& size_of::<T>() > 0 ==> {
+              &&& self.dealloc.unwrap().addr() == ptr as int
+              &&& self.dealloc.unwrap().size() == size_of::<T>()
+              &&& self.dealloc.unwrap().align() == align_of::<T>()
+              &&& self.dealloc.unwrap().provenance() == ptr@.provenance
+            }
+            &&& self.points_to.ptr() == ptr
+        }
+    }
+
+    fn allocate<T>() -> ((ptr, pt): (*mut T, Tracked<FullPointsTo<T>>))
+        ensures pt.wf(ptr)
+    {
+        vstd::layout::layout_for_type_is_valid::<T>();
+        assume(size_of::<T>() > 0);
+        let (ptr, Tracked(points_to_raw), Tracked(dealloc)) =
+            vstd::raw_ptr::allocate(size_of::<T>(), align_of::<T>());
+        let tracked points_to = points_to_raw.into_typed::<T>(ptr as usize);
+        let tracked fpt = FullPointsTo { points_to, dealloc: Some(dealloc) };
+
+        let ptr = ptr as *mut T;
+        (ptr, Tracked(fpt))
+    }
+
+
+mod doubly_linked_list {
+    use vstd::prelude::*;
+    use vstd::raw_ptr::*;
+    use vstd::raw_ptr::MemContents;
+    use vstd::assert_by_contradiction;
+    use crate::FullPointsTo;
+
+    // Single node in the list
+    struct Node<V> {
+        prev: Option<*mut Node<V>>,
+        next: Option<*mut Node<V>>,
+        payload: V,
+    }
+
+    // Doubly-linked list
+    // Contains head pointer, tail pointer
+    // and in ghost code, tracks all the pointers and all the PointsTo permissions
+    // to access the nodes
+    pub struct DoublyLinkedList<V> {
+        // physical data:
+        head: Option<*mut Node<V>>,
+        tail: Option<*mut Node<V>>,
+
+        // ghost and tracked data:
+        ghost_state: Tracked<GhostState<V>>,
+    }
+
+
+    pub tracked struct GhostState<V> {
+        ghost ptrs: Seq<*mut Node<V>>,
+        tracked points_to_map: Map<nat, FullPointsTo<Node<V>>>,
+    }
+
+    impl<V> DoublyLinkedList<V> {
+        /// Pointer to the node of index (i-1), or None if i is 0.
+        spec fn prev_of(&self, i: nat) -> Option<*mut Node<V>> {
+            if i == 0 {
+                None
+            } else {
+                Some(self.ghost_state@.ptrs[i as int - 1])
+            }
+        }
+
+        /// Pointer to the node of index (i+1), or None if i is the last index.
+        spec fn next_of(&self, i: nat) -> Option<*mut Node<V>> {
+            if i + 1 == self.ghost_state@.ptrs.len() {
+                None
+            } else {
+                Some(self.ghost_state@.ptrs[i as int + 1])
+            }
+        }
+
+        /// Node at index `i` is well-formed
+        spec fn well_formed_node(&self, i: nat) -> bool {
+            &&& self.ghost_state@.points_to_map.dom().contains(i)
+            &&& self.ghost_state@.points_to_map[i].wf(self.ghost_state.ptrs[i as int])
+            &&& self.ghost_state@.points_to_map[i].points_to.opt_value() matches MemContents::Init(node)
+                  && node.prev == self.prev_of(i) && node.next == self.next_of(i)
+        }
+
+        /// Linked list is well-formed
+        pub closed spec fn well_formed(&self) -> bool {
+            // Every node from 0 .. len - 1 is well-formed
+            &&& forall|i: nat| 0 <= i && i < self.ghost_state.ptrs.len() ==> self.well_formed_node(i)
+            &&& if self.ghost_state@.ptrs.len() == 0 {
+                // If the list is empty, then the `head` and `tail` pointers are both None
+                self.head.is_none() && self.tail.is_none()
+            } else {
+                // If the list is non-empty, then `head` and `tail` pointers point to the
+                // the first and last nodes.
+                &&& self.head == Some(self.ghost_state@.ptrs[0])
+                &&& self.tail == Some(self.ghost_state@.ptrs[self.ghost_state@.ptrs.len() as int - 1])
+            }
+        }
+
+        /// Representation of this list as a sequence
+        pub closed spec fn view(&self) -> Seq<V> {
+            Seq::<V>::new(
+                self.ghost_state@.ptrs.len(),
+                |i: int| { self.ghost_state@.points_to_map[i as nat].points_to.value().payload },
+            )
+        }
+
+        //// Interface of executable functions
+
+        /// Construct a new, empty, doubly-linked list.
+        pub fn new() -> (s: Self)
+            ensures
+                s.well_formed(),
+                s@.len() == 0,
+        {
+            DoublyLinkedList {
+                ghost_state: Tracked(GhostState {
+                    ptrs: Seq::empty(),
+                    points_to_map: Map::tracked_empty(),
+                }),
+                head: None,
+                tail: None,
+            }
+        }
+
+        /// Insert one node, assuming the linked list is empty.
+        fn push_empty_case(&mut self, v: V)
+            requires
+                old(self).well_formed(),
+                old(self).ghost_state@.ptrs.len() == 0,
+            ensures
+                final(self).well_formed(),
+                final(self)@ =~= old(self)@.push(v),
+        {
+            // Allocate a node to contain the payload
+            let (ptr, Tracked(full_points_to)) = crate::allocate::<Node<V>>();
+
+            let ptr = ptr as *mut Node<V>;
+            ptr_mut_write(ptr,
+                Tracked(&mut full_points_to.points_to),
+                Node::<V> { prev: None, next: None, payload: v });
+
+            // Update head and tail pointers
+            self.tail = Some(ptr);
+            self.head = Some(ptr);
+
+            // Update proof state
+            proof {
+                self.ghost_state.borrow_mut().ptrs = self.ghost_state@.ptrs.push(ptr);
+                let ghost len = self.ghost_state@.ptrs.len();
+                self.ghost_state.borrow_mut().points_to_map.tracked_insert(
+                    (len - 1) as nat,
+                    full_points_to,
+                );
+            }
+        }
+
+        /// Insert a value to the end of the list
+        pub fn push_back(&mut self, v: V)
+            requires
+                old(self).well_formed(),
+            ensures
+                final(self).well_formed(),
+                final(self)@ == old(self)@.push(v),
+        {
+            match self.tail {
+                None => {
+                    // Special case: list is empty
+                    proof {
+                        // Show that the `self.tail == None` implies the list is empty
+                        assert_by_contradiction!(self.ghost_state@.ptrs.len() == 0,
+                        {
+                            assert(self.well_formed_node((self.ghost_state@.ptrs.len() - 1) as nat)); // trigger
+                        });
+                    }
+                    self.push_empty_case(v);
+                }
+                Some(old_tail_ptr) => {
+                    proof {
+                        assert(self.well_formed_node((self.ghost_state@.ptrs.len() - 1) as nat)); // trigger
+                    }
+
+                    // Update the 'next' pointer of the previous tail node
+                    // This is all equivalent to `(*old_tail_ptr).next = new_tail_ptr;`
+                    let ghost idx = (self.ghost_state@.ptrs.len() - 1) as nat;
+
+                    #[verifier::permission(old_tail_ptr)]
+                    let tracked old_tail_perm = self.ghost_state.points_to_map.tracked_borrow_mut(idx);
+
+                    // Allocate a new node to go on the end. It's 'prev' field points
+                    // to the old tail pointer.
+                    let (new_tail_ptr, Tracked(new_tail_pointsto)) = crate::allocate::<Node<V>>();
+                    ptr_mut_write(new_tail_ptr,
+                        Tracked(&mut new_tail_pointsto.points_to),
+                        Node::<V> { prev: Some(old_tail_ptr), next: None, payload: v },
+                    );
+
+                    unsafe {
+                        (*old_tail_ptr).next = Some(new_tail_ptr);
+                    }
+
+                    // Update `self.tail`
+                    self.tail = Some(new_tail_ptr);
+
+                    proof {
+                        // Put the new tail's PointsTo into the map
+                        let len = self.ghost_state@.ptrs.len();
+                        self.ghost_state.borrow_mut().points_to_map.tracked_insert(len, new_tail_pointsto);
+                        self.ghost_state@.ptrs = self.ghost_state@.ptrs.push(new_tail_ptr);
+
+                        // Additional proof work to help the solver show that
+                        // `self.well_formed()` has been restored.
+                        assert(self.well_formed_node((self.ghost_state@.ptrs.len() - 2) as nat));
+                        assert(self.well_formed_node((self.ghost_state@.ptrs.len() - 1) as nat));
+                        assert(forall|i: nat| i < self.ghost_state@.ptrs.len() && old(self).well_formed_node(i)
+                            ==> self.well_formed_node(i));
+                        assert forall|i: int| 0 <= i && i < self.ghost_state@.ptrs.len() as int - 1
+                            implies old(self)@[i] == self@[i]
+                        by {
+                            assert(old(self).well_formed_node(i as nat));  // trigger
+                        }
+                        assert(self@ =~= old(self)@.push(v));
+
+                        assert(self.well_formed());
+                    }
+                }
+            }
+        }
+
+/*
+        /// Take a value from the end of the list. Requires the list to be non-empty.
+        pub fn pop_back(&mut self) -> (v: V)
+            requires
+                old(self).well_formed(),
+                old(self)@.len() > 0,
+            ensures
+                final(self).well_formed(),
+                final(self)@ == old(self)@.drop_last(),
+                v == old(self)@[old(self)@.len() as int - 1],
+        {
+            assert(self.well_formed_node((self.ghost_state@.ptrs.len() - 1) as nat));
+
+            // Deallocate the last node in the list and get the payload.
+            // Note self.tail.unwrap() will always succeed because of the precondition `len > 0`
+            let last_ptr = self.tail.unwrap();
+            let ghost idx = (self.ghost_state@.ptrs.len() - 1) as nat;
+            let tracked last_pointsto = self.ghost_state.borrow_mut().points_to_map.tracked_remove(
+                idx,
+            );
+            let last_node = last_ptr.into_inner(Tracked(last_pointsto));
+            let v = last_node.payload;
+
+            match last_node.prev {
+                None => {
+                    // If this was the *only* node in the list,
+                    // we set both `head` and `tail` to None
+                    self.tail = None;
+                    self.head = None;
+                    proof {
+                        assert_by_contradiction!(self.ghost_state@.ptrs.len() == 1,
+                        {
+                            assert(old(self).well_formed_node((self.ghost_state@.ptrs.len() - 2) as nat)); // trigger
+                        });
+                    }
+                },
+                Some(penultimate_ptr) => {
+                    assert(old(self)@.len() >= 2);
+                    assert(old(self).well_formed_node((self.ghost_state@.ptrs.len() - 2) as nat));
+
+                    // Otherwise, we need to set the 'tail' pointer to the (new) tail pointer,
+                    // i.e., the pointer that was previously the second-to-last pointer.
+                    self.tail = Some(penultimate_ptr);
+
+                    // And we need to set the 'next' pointer of the new tail node to None.
+                    let ghost idx = (self.ghost_state@.ptrs.len() - 2) as nat;
+                    let penultimate_node =
+                        penultimate_ptr.borrow_mut(Tracked(self.ghost_state.points_to_map.tracked_borrow_mut(idx)));
+                    penultimate_node.next = None;
+                },
+            }
+
+            // Additional proof work to help the solver show that
+            // `self.well_formed()` has been restored.
+            proof {
+                self.ghost_state@.ptrs = self.ghost_state@.ptrs.drop_last();
+                if self.ghost_state@.ptrs.len() > 0 {
+                    assert(self.well_formed_node((self.ghost_state@.ptrs.len() - 1) as nat));
+                }
+                assert(forall|i: nat| i < self@.len() && old(self).well_formed_node(i) ==> self.well_formed_node(i));
+                assert forall|i: int| 0 <= i && i < self@.len() implies #[trigger] self@[i] == old(
+                    self,
+                )@.drop_last()[i] by {
+                    assert(old(self).well_formed_node(i as nat));  // trigger
+                }
+                assert(self@ =~= old(self)@.drop_last());
+
+                assert(self.well_formed());
+            }
+
+            return v;
+        }
+
+        /// Insert a value to the front of the list
+        pub fn push_front(&mut self, v: V)
+            requires
+                old(self).well_formed(),
+            ensures
+                final(self).well_formed(),
+                final(self)@ == seq![v].add(old(self)@),
+        {
+            match self.head {
+                None => {
+                    // Special case: list is empty
+                    proof {
+                        // Show that the `self.head == None` implies the list is empty
+                        assert_by_contradiction!(self.ghost_state@.ptrs.len() == 0, {
+                            assert(self.well_formed_node((self.ghost_state@.ptrs.len() - 1) as nat));
+                        });
+                    }
+                    self.push_empty_case(v);
+                    assert(self@ =~= seq![v].add(old(self)@));
+                }
+                Some(old_head_ptr) => {
+                    proof {
+                        assert(self.ghost_state@.ptrs.len() > 0);
+                        assert(self.well_formed_node(0));
+                    }
+
+                    // Allocate a new node to go at the front. It's 'next' field points
+                    // to the old head pointer.
+                    let (new_head_ptr, Tracked(new_head_pointsto)) = PPtr::new(
+                        Node::<V> { prev: None, next: Some(old_head_ptr), payload: v },
+                    );
+
+                    // Update the 'tail' pointer of the previous head node
+                    // This is all equivalent to `(*old_head_ptr).next = new_head_ptr;`
+                    let mut old_head_node =
+                        old_head_ptr.borrow_mut(Tracked(self.ghost_state.points_to_map.tracked_borrow_mut(0)));
+                    old_head_node.prev = Some(new_head_ptr);
+
+                    // Update `self.head`
+                    self.head = Some(new_head_ptr);
+
+                    proof {
+                        // Put the new head's PointsTo into the map.
+                        // This goes in at index 0, so we have to shift all the keys up by 1.
+                        assert forall|j: nat|
+                            0 <= j && j < old(self)@.len() implies self.ghost_state@.points_to_map.dom().contains(
+                            j,
+                        ) by {
+                            assert(old(self).well_formed_node(j));
+                        }
+                        self.ghost_state.borrow_mut().points_to_map.tracked_map_keys_in_place(
+                            Map::<nat, nat>::new(
+                                Set::range(1, old(self)@.len() + 1),
+                                |j: nat| (j - 1) as nat,
+                            ),
+                        );
+                        self.ghost_state.borrow_mut().points_to_map.tracked_insert(0, new_head_pointsto);
+                        self.ghost_state@.ptrs = seq![new_head_ptr].add(self.ghost_state@.ptrs);
+
+                        // Additional proof work to help the solver show that
+                        // `self.well_formed()` has been restored.
+                        assert(self.well_formed_node(0));
+                        assert(self.well_formed_node(1));
+                        assert(forall|i: nat|
+                            1 <= i && i <= old(self).ghost_state@.ptrs.len() && old(self).well_formed_node((i - 1) as nat)
+                                ==> #[trigger] self.well_formed_node(i));
+                        assert forall|i: int| 1 <= i && i <= self.ghost_state@.ptrs.len() as int - 1
+                            implies old(self)@[i - 1] == self@[i]
+                        by {
+                            assert(old(self).well_formed_node((i - 1) as nat));  // trigger
+                        }
+                        assert(self@ =~= seq![v].add(old(self)@));
+
+                        assert(self.well_formed());
+                    }
+                }
+            }
+        }
+
+        /// Take a value from the front of the list. Requires the list to be non-empty.
+        pub fn pop_front(&mut self) -> (v: V)
+            requires
+                old(self).well_formed(),
+                old(self).view().len() > 0,
+            ensures
+                final(self).well_formed(),
+                final(self)@ == old(self)@[1..],
+                v == old(self)@[0],
+        {
+            assert(self.well_formed_node(0));
+
+            // Deallocate the first node in the list and get the payload.
+            // Note self.head.unwrap() will always succeed because of the precondition `len > 0`
+            let first_ptr = self.head.unwrap();
+            let tracked first_pointsto = self.ghost_state.borrow_mut().points_to_map.tracked_remove(0);
+            let first_node = first_ptr.into_inner(Tracked(first_pointsto));
+            let v = first_node.payload;
+
+            match first_node.next {
+                None => {
+                    // If this was the *only* node in the list,
+                    // we set both `head` and `tail` to None
+                    self.tail = None;
+                    self.head = None;
+                    proof {
+                        assert_by_contradiction!(self.ghost_state@.ptrs.len() == 1,
+                        {
+                            assert(old(self).well_formed_node(1)); // trigger
+                        });
+                    }
+                }
+                Some(second_ptr) => {
+                    assert(old(self)@.len() >= 2);
+                    assert(old(self).well_formed_node(1));
+
+                    // Otherwise, we need to set the 'head' pointer to the (new) head pointer,
+                    // i.e., the pointer that was previously the second pointer.
+                    self.head = Some(second_ptr);
+
+                    // And we need to set the 'tail' pointer of the new head node to None
+                    let mut second_node = second_ptr.borrow_mut(Tracked(self.ghost_state.points_to_map.tracked_borrow_mut(1)));
+                    second_node.prev = None;
+
+                    proof {
+                        // Since we removed index 0, we need to shift all the keys down,
+                        // 1 -> 0, 2 -> 1, etc.
+                        assert forall|j: nat|
+                            1 <= j && j < old(self)@.len() implies self.ghost_state@.points_to_map.dom().contains(
+                            j,
+                        ) by {
+                            assert(old(self).well_formed_node(j));
+                        };
+                        self.ghost_state.borrow_mut().points_to_map.tracked_map_keys_in_place(
+                            Map::<nat, nat>::new(
+                                Set::range(0, (old(self)@.len() - 1) as nat),
+                                |j: nat| (j + 1) as nat,
+                            ),
+                        );
+                    }
+                }
+            }
+
+            // Additional proof work to help the solver show that
+            // `self.well_formed()` has been restored.
+            proof {
+                self.ghost_state@.ptrs = self.ghost_state@.ptrs[1..];
+                if self.ghost_state@.ptrs.len() > 0 {
+                    assert(self.well_formed_node(0));
+                }
+                assert(forall|i: nat|
+                    i < self.view().len() && old(self).well_formed_node(i + 1) ==> self.well_formed_node(i));
+                assert forall|i: int| 0 <= i && i < self@.len() implies #[trigger] self@[i] == old(
+                    self,
+                )@[1..][i] by {
+                    assert(old(self).well_formed_node(i as nat + 1));  // trigger
+                }
+                assert(self@ =~= old(self)@[1..]);
+
+                assert(self.well_formed());
+            }
+
+            return v;
+        }
+
+        /// Get a reference to the i^th value in the list
+        fn get<'a>(&'a self, i: usize) -> (v: &'a V)
+            requires
+                self.well_formed(),
+                0 <= i < self@.len(),
+            ensures
+                *v == self@[i as int]
+        {
+            // Iterate the nodes from 0 to j, starting at the head node
+            let mut j = 0;
+            let mut ptr = self.head.unwrap();
+            while j < i
+                invariant
+                    self.well_formed(),
+                    0 <= j <= i < self@.len(),
+                    ptr == self.ghost_state@.ptrs[j as int],
+            {
+                proof {
+                    assert(self.well_formed_node(j as nat)); // trigger
+                }
+
+                // Get the next node from the 'next' field
+                let tracked pointsto_ref: &PointsTo<Node<V>> =
+                    self.ghost_state.borrow().points_to_map.tracked_borrow(j as nat);
+                let node_ref: &Node<V> = ptr.borrow(Tracked(pointsto_ref));
+                let next_ptr = node_ref.next.unwrap();
+
+                j += 1;
+                ptr = next_ptr;
+            }
+
+            proof {
+                assert(self.well_formed_node(j as nat)); // trigger
+            }
+
+            // Get a reference to this node's payload and return it
+            let tracked pointsto_ref: &PointsTo<Node<V>> =
+                self.ghost_state.borrow().points_to_map.tracked_borrow(j as nat);
+            let node_ref: &Node<V> = ptr.borrow(Tracked(pointsto_ref));
+            return &node_ref.payload;
+        }
+
+        /// Get a reference to the i^th value in the list
+        fn get_mut<'a>(&'a mut self, i: usize) -> (v: &'a mut V)
+            requires
+                self.well_formed(),
+                0 <= i < self@.len(),
+            ensures
+                final(self).well_formed(),
+                *v == old(self)@[i as int],
+                final(self)@ == old(self)@.update(i as int, *final(v))
+        {
+            // Iterate the nodes from 0 to j, starting at the head node
+            let mut j = 0;
+            let mut ptr = self.head.unwrap();
+            while j < i
+                invariant
+                    self.well_formed(),
+                    old(self)@ == self@,
+                    0 <= j <= i < self@.len(),
+                    ptr == self.ghost_state@.ptrs[j as int],
+            {
+                proof {
+                    assert(self.well_formed_node(j as nat)); // trigger
+                }
+
+                // Get the next node from the 'next' field
+                let tracked pointsto_ref: &PointsTo<Node<V>> =
+                    self.ghost_state.borrow().points_to_map.tracked_borrow(j as nat);
+                let node_ref: &Node<V> = ptr.borrow(Tracked(pointsto_ref));
+                let next_ptr = node_ref.next.unwrap();
+
+                j += 1;
+                ptr = next_ptr;
+            }
+
+            proof {
+                assert(self.well_formed_node(j as nat)); // trigger
+                assert(forall |k: nat| #![trigger final(self).well_formed_node(k)]
+                    0 <= k < self.ghost_state.ptrs.len() ==>
+                    self.well_formed_node(k as nat));
+            }
+
+            // Get a reference to this node's payload and return it
+            let tracked pointsto_ref: &mut PointsTo<Node<V>> =
+                self.ghost_state.borrow_mut().points_to_map.tracked_borrow_mut(j as nat);
+            let node_ref: &mut Node<V> = ptr.borrow_mut(Tracked(pointsto_ref));
+            return &mut node_ref.payload;
+        }
+        */
+    }
+
+    /*
+    pub struct Iterator<'a, V> {
+        l: &'a DoublyLinkedList<V>,
+        cur: Option<PPtr<Node<V>>>,
+        index: Ghost<nat>,
+    }
+
+    impl<'a, V> Iterator<'a, V> {
+        pub closed spec fn list(&self) -> &'a DoublyLinkedList<V> {
+            self.l
+        }
+
+        pub closed spec fn index(&self) -> nat {
+            self.index@
+        }
+
+        pub closed spec fn valid(&self) -> bool {
+            &&& self.list().well_formed()
+            &&& self.index@ < self.list()@.len()
+            &&& self.cur.is_some() && self.cur.unwrap() =~= self.l.ghost_state@.ptrs[self.index@ as int]
+        }
+
+        pub fn new(l: &'a DoublyLinkedList<V>) -> (it: Self)
+            requires
+                l.well_formed(),
+                l@.len() > 0,
+            ensures
+                it.valid(),
+                it.index() == 0,
+                it.list() == l,
+        {
+            Iterator { l, cur: l.head, index: Ghost(0) }
+        }
+
+        pub fn value(&self) -> (v: &V)
+            requires
+                self.valid(),
+            ensures
+                v == self.list()@[self.index() as int],
+        {
+            let cur = self.cur.unwrap();
+            assert(self.l.well_formed_node(self.index()));
+            let tracked pointsto = self.l.ghost_state.borrow().points_to_map.tracked_borrow(self.index());
+            let node = cur.borrow(Tracked(pointsto));
+            &node.payload
+        }
+
+        pub fn move_next(&mut self) -> (good: bool)
+            requires
+                old(self).valid(),
+            ensures
+                old(self).list() == final(self).list(),
+                good == (old(self).index() < old(self).list()@.len() - 1),
+                good ==> (final(self).valid() && final(self).index() == old(self).index() + 1),
+        {
+            assert(self.l.well_formed_node(self.index()));
+            let cur = self.cur.unwrap();
+            let tracked pointsto = self.l.ghost_state.borrow().points_to_map.tracked_borrow(self.index());
+            let node = cur.borrow(Tracked(pointsto));
+            proof {
+                self.index@ = self.index@ + 1;
+            }
+            match node.next {
+                None => {
+                    self.cur = None;
+                    false
+                },
+                Some(next_ptr) => {
+                    self.cur = Some(next_ptr);
+                    true
+                },
+            }
+        }
+    }
+    */
+}
+
+/*
+mod main {
+    use super::doubly_linked_list::{DoublyLinkedList, Iterator};
+
+    pub fn run() {
+        let mut t = DoublyLinkedList::<u32>::new();
+        t.push_back(2);
+        t.push_back(3);
+        t.push_front(1);  // 1, 2, 3
+        let mut it = Iterator::new(&t);
+        let v1 = it.value();
+        assert(*v1 == 1);
+        let g = it.move_next();
+        let v2 = it.value();
+        assert(*v2 == 2);
+        let _ = it.move_next();
+        let v3 = it.value();
+        assert(*v3 == 3);
+        let g = it.move_next();
+        assert(!g);
+        let x = t.pop_back();  // 3
+        let y = t.pop_front();  // 1
+        let z = t.pop_front();  // 2
+        assert(x == 3);
+        assert(y == 1);
+        assert(z == 2);
+    }
+}
+*/
+
+fn main() {
+    //main::run();
+}
+
+} // verus!
