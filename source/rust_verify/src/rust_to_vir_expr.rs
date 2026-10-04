@@ -4582,8 +4582,30 @@ fn get_permission_place<'tcx>(
     name: &VarIdent,
     typ: &Typ,
 ) -> Result<Place, VirErr> {
-    // TODO
-    Ok(bctx.spanned_typed_new(span, typ, PlaceX::Local(name.clone())))
+    let local = bctx.spanned_typed_new(span, typ, PlaceX::Local(name.clone()));
+    get_permission_place_rec(bctx, span, typ, local)
+}
+
+fn get_permission_place_rec<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    span: Span,
+    typ: &Typ,
+    place: Place,
+) -> Result<Place, VirErr> {
+    match &**typ {
+        TypX::Datatype(Dt::Path(pt), ..)
+            if *pt == vir::path!(CrateId::Vstd => "raw_ptr", "PointsTo") =>
+        {
+            Ok(place)
+        }
+        TypX::MutRef(t) => {
+            let p1 = bctx.spanned_typed_new(span, t, PlaceX::DerefMut(place));
+            get_permission_place_rec(bctx, span, t, p1)
+        }
+        _ => {
+            todo!(); // TODO(native_raw_ptrs)
+        }
+    }
 }
 
 fn get_place_descriptor(p: &Place) -> Option<String> {
