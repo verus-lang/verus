@@ -2642,10 +2642,13 @@ fn check_expr(
                     )?;
                 }
             }
+            // The proof runs in a separate query and is erased before lifetime checking,
+            // so it must not mutate state or consume tracked values.
+            let mut typing = typing.push_in_forall_stmt(true);
             check_expr_has_mode(
                 ctxt,
                 record,
-                typing,
+                &mut typing,
                 Mode::Proof,
                 proof,
                 Mode::Proof,
