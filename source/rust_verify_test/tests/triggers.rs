@@ -648,3 +648,48 @@ test_verify_one_file! {
         assert!(err.errors[0].message.contains("Could not automatically infer triggers for this quantifier"));
     }
 }
+
+test_verify_one_file_with_options! {
+    // Real end-to-end regression for verus-lang/verus#1907: a recursive
+    // spec fn's own quantifier is independently elaborated more than once
+    // (once via the ordinary elaboration pass, again via the recursive-call
+    // rewrite pass) - confirmed directly, this reliably reproduces the same
+    // span's "automatically chose triggers" note being recorded twice. The
+    // two elaborations here choose identical trigger content, so they must
+    // be deduped down to exactly one printed note, not shown twice.
+    #[test] duplicate_chosen_triggers_for_a_recursive_spec_fn_are_deduped ["--triggers"] => verus_code! {
+        spec fn pred_a(x: int, bound: int) -> bool { x <= bound }
+
+        spec fn all_le_below(n: nat, bound: int) -> bool
+            decreases n,
+        {
+            if n == 0 {
+                true
+            } else {
+                (forall|i: int| 0 <= i < n as int ==> pred_a(i, bound)) && all_le_below((n - 1) as nat, bound)
+            }
+        }
+    } => Ok(err) => {
+        // Each real "chose triggers" report is actually *two* note-level
+        // diagnostics under --error-format=json (a parent "automatically
+        // chose triggers..." note plus a child "trigger 1 of 1: ..." note,
+        // both rendering the same source line) - filter on the parent's
+        // distinctive message, not on rendered source text, so counting
+        // isn't thrown off by that structure.
+        let matching: Vec<_> = err
+            .notes
+            .iter()
+            .filter(|n| {
+                n.message.contains("automatically chose triggers")
+                    && n.rendered.contains("pred_a(i, bound)")
+            })
+            .collect();
+        assert_eq!(
+            matching.len(),
+            1,
+            "expected exactly one deduped note, got {}:\n{}",
+            matching.len(),
+            matching.iter().map(|n| n.rendered.clone()).collect::<Vec<_>>().join("\n---\n")
+        );
+    }
+}
