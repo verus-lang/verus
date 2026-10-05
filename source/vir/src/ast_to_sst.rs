@@ -27,8 +27,9 @@ use crate::sst::{
 };
 use crate::sst_util::{
     exp_with_vars_at_pre_state, sst_bitwidth, sst_conjoin, sst_disjoin, sst_equal,
-    sst_exp_get_proof_note, sst_int_literal, sst_le, sst_lt, sst_mut_ref_current, sst_unit_value,
-    stm_with_vars_at_pre_state, subst_exp, subst_pre_local_decl, subst_stm, subst_typ,
+    sst_exp_get_proof_note, sst_int_literal, sst_le, sst_lt, sst_mut_ref_current,
+    sst_mut_ref_future, sst_unit_value, stm_with_vars_at_pre_state, subst_exp,
+    subst_pre_local_decl, subst_stm, subst_typ,
 };
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor, stm_visitor_check};
 use crate::util::vec_map_result;
@@ -1482,12 +1483,12 @@ fn stm_call(
     }
 
     let call = StmX::Call {
-        fun: crate::sst::CallTarget::Fun(name),
+        fun: crate::sst::CallTarget::Fun(name.clone()),
         resolved_method,
         mode: fun.x.mode,
         is_trait_default,
         typ_args: typs,
-        args: small_args,
+        args: small_args.clone(),
         split: None,
         dest,
         assert_id: state.next_assert_id(),
@@ -1495,6 +1496,18 @@ fn stm_call(
     };
 
     stms.push(Spanned::new(span.clone(), call));
+    if (name == def::nonstatic_call_fun(false) || name == def::nonstatic_call_fun(true))
+        && matches!(&*small_args[0].typ, TypX::MutRef(_))
+    {
+        // Supported closures cannot mutate their captures, so a FnMut call preserves
+        // the callable during its call reborrow. This does not constrain the final
+        // value of a longer-lived reference passed through a generic FnOnce argument.
+        let f = &small_args[0];
+        let current = sst_mut_ref_current(span, f);
+        let future = sst_mut_ref_future(span, f);
+        let equal = sst_equal(span, &current, &future);
+        stms.push(Spanned::new(span.clone(), StmX::Assume(equal)));
+    }
     Ok(stms_to_one_stm(span, stms))
 }
 
