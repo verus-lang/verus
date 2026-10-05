@@ -4,6 +4,24 @@ mod common;
 use common::*;
 
 test_verify_one_file_with_options! {
+    // Soundness of closure handling currently relies on disallowing mutation of
+    // captured variables. Once that is supported, we will have to revisit the
+    // assumption added in ast_to_sst::stm_call.
+    #[test] fn_mut_call_ensures_disallows_mutating_moved_capture [] => verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let mut captured = 0u64;
+            let mut f = move || -> u64 {
+                captured += 1;
+                captured
+            };
+            f();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support closures capturing a mutable reference")
+}
+
+test_verify_one_file_with_options! {
     #[test] fn_mut_call_ensures_does_not_resolve_borrow [] => verus_code! {
         use vstd::prelude::*;
 
