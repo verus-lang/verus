@@ -74,7 +74,7 @@ pub trait ExIterator {
     // Hence, we introduce a layer of indirection via an uninterp spec function that
     // describes the postconditions.
 
-    // TODO: The Rust implementations of `all` and `any` depend on a correct implementation of `try_fold`
+    // TODO: The Rust implementations of `all`, `any`, `find`, `find_map` and `position` depend on a correct implementation of `try_fold`
     //       For now, we assume obeys_prophetic_iter_laws() entails such an implementation, but we should
     //       eventually constrain implementations of `try_fold` to actually be correct enough to uphold the specs below.
 
@@ -273,7 +273,6 @@ pub trait ExIterator {
                 let index = r.unwrap();
                 {
                     &&& index as int == (old(self).remaining().len() - final(self).remaining().len() - 1)
-                    &&& (index as int) < old(self).remaining().len()
                     &&& 0 <= final(self).remaining().len() < old(self).remaining().len()
                     &&& predicate.ensures((#[trigger] old(self).remaining()[index as int],), true)
                     &&& forall |i| 0 <= i < index as int ==>

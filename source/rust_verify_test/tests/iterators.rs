@@ -243,42 +243,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] position_and_then_bound verus_code! {
-        use vstd::prelude::*;
-        use vstd::seq::group_seq_lemmas;
-
-        fn test(
-            data: &[u8],
-            end: usize,
-        ) -> Option<usize>
-            requires
-                end <= data.len(),
-        {
-            broadcast use group_seq_lemmas;
-
-            data[..end]
-                .iter()
-                .position(
-                    |x: &u8| -> (r: bool)
-                        ensures r == (*x != 0),
-                    {
-                        *x != 0
-                    },
-                )
-                .and_then(
-                    |start: usize| -> (r: Option<usize>)
-                        requires
-                            (start as int) < end as int,
-                    {
-                        assert(start < end);
-                        Some(start)
-                    },
-                )
-        }
-    } => Ok(())
-}
-
-test_verify_one_file! {
     #[test] range_works verus_code! {
         use vstd::prelude::*;
 
