@@ -361,3 +361,72 @@ fn structural_derives_preserve_rust_derives() {
         "struct S;\n#[derive(Clone,  Debug)]\nstruct T;\n#[cfg_attr(feature = \"verify\", derive(Clone ))]\nstruct U;\nstruct V;\n",
     );
 }
+
+#[test]
+fn expression_wrappers_preserve_precedence() {
+    check(
+        "fn f() { let x = verus_exec_expr!(1 + 2) * 3; let y = verus_exec_expr!{1 + 2} * 3; let z = verus_exec_expr![1 + 2] * 3; }\n",
+        "fn f() { let x = (1 + 2) * 3; let y = (1 + 2) * 3; let z = (1 + 2) * 3; }\n",
+    );
+    check(
+        "verus! { fn f() { let x = verus_exec_expr!(1 + 2) * 3; } }\n",
+        " fn f() { let x = (1 + 2) * 3; } \n",
+    );
+    check(
+        "fn f() { verus_exec_expr!{work()} next(); verus_exec_expr!{42} }\n",
+        "fn f() { (work()); next(); (42) }\n",
+    );
+    check(
+        "verus! { fn f() { verus_exec_expr!{work()} next(); verus_exec_expr!{42} } }\n",
+        " fn f() { (work()); next(); (42) } \n",
+    );
+    check("verus! { fn f() { verus_exec_expr!{42} proof!{} } }\n", " fn f() { (42);  } \n");
+    check("verus! { fn f() { verus_exec_expr!{42} let ghost g = 0; } }\n", " fn f() { (42);  } \n");
+}
+
+#[test]
+fn proof_macro_values_preserve_executable_control_flow() {
+    check(
+        "fn f(b: bool) {\n    let unit = proof! { assert(true); };\n    consume(proof!{});\n    match b { true => proof!{}, false => proof!{} }\n}\n",
+        "fn f(b: bool) {\n    let unit = {};\n    consume({});\n    match b { true => {}, false => {} }\n}\n",
+    );
+    check("fn f() { verus_exec_expr!(proof { assert(true); }) }\n", "fn f() { ({}) }\n");
+}
+
+#[test]
+fn executable_constant_and_static_contracts() {
+    check(
+        "verus! {\nexec const C: u32 ensures C == 1 { 1 }\nexec static S: u32 ensures S == 2 { 2 }\nimpl T {\n    exec const D: u32 ensures D == 3 { 3 }\n    exec const E: u32 = 4;\n}\n}\n",
+        " const C: u32  = { 1 };\n static S: u32  = { 2 };\nimpl T {\n     const D: u32  = { 3 };\n     const E: u32 = 4;\n}\n",
+    );
+}
+
+#[test]
+fn attributed_ghost_constants() {
+    check(
+        "#[verifier::spec]\nconst C: u32 = 1;\nimpl T {\n    #[verus::internal(spec)]\n    const D: u32 = 2;\n}\ntrait U {\n    #[verifier::spec]\n    const E: u32;\n}\n",
+        "impl T {\n}\ntrait U {\n}\n",
+    );
+}
+
+#[test]
+fn ghost_wrappers_still_erase_nested_proof_artifacts() {
+    check(
+        "verus! { fn f() -> Ghost<int> { Ghost({ proof { assert(true); } 0int }) } }\n",
+        " fn f() -> Ghost<int> { Ghost({  0int }) } \n",
+    );
+}
+
+#[test]
+fn unrelated_qualified_macros_and_attributes_are_preserved() {
+    let input = "#[business::verus_verify]\n#[business::trigger]\nfn f() { business::proof! { executable(); } business::verus! { opaque tokens } }\n";
+    check(input, input);
+}
+
+#[test]
+fn attributed_ghost_locals_blocks_and_checked_spec_functions() {
+    let input = "fn f() {\n    #[verifier::spec]\n    let model = 1;\n    #[verifier::proof]\n    let token = make_token();\n    #[verifier::proof_block]\n    { lemma(); };\n    let unit = #[verifier::proof_block] { lemma(); };\n    consume(unit);\n}\n#[verus::internal(spec(checked))]\nfn checked_model() -> u32 { 0 }\n";
+    let expected = "fn f() {\n    let unit = {};\n    consume(unit);\n}\n";
+    check(input, expected);
+    check(&format!("verus! {{\n{input}}}\n"), expected);
+}
