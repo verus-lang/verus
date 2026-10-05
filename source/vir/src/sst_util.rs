@@ -521,6 +521,9 @@ impl ExpX {
                 UnaryOp::HeightTrigger => {
                     (format!("height_trigger({})", exp.x.to_user_string(global)), 99)
                 }
+                UnaryOp::NewStrLit => {
+                    (format!("new_strlit({})", exp.x.to_string_prec(global, 99)), 90)
+                }
                 UnaryOp::StrLen => (format!("{}.len()", exp.x.to_string_prec(global, 99)), 90),
                 UnaryOp::Trigger(..)
                 | UnaryOp::CoerceMode { .. }
@@ -942,6 +945,10 @@ pub fn sst_bool(span: &Span, b: bool) -> Exp {
 
 pub fn sst_conjoin(span: &Span, exps: &Vec<Exp>) -> Exp {
     chain_binary(span, BinaryOp::And, &sst_bool(span, true), exps)
+}
+
+pub fn sst_disjoin(span: &Span, exps: &[Exp]) -> Exp {
+    chain_binary(span, BinaryOp::Or, &sst_bool(span, false), exps)
 }
 
 pub fn sst_and(span: &Span, e1: &Exp, e2: &Exp) -> Exp {

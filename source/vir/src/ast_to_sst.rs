@@ -1,13 +1,17 @@
 use crate::ast::{
     ArithOp, AssertQueryMode, AtomicallyKind, AutospecUsage, BinaryOp, BitshiftBehavior, BitwiseOp,
     BoundsCheck, ByRef, CallTarget, ComputeMode, Constant, Div0Behavior, Dt, Expr, ExprX, FieldOpr,
-    Fun, Function, Ident, IntRange, InvAtomicity, Label, LogicalOp, LoopInvariantKind, MaskSpec,
-    Mode, OverflowBehavior, PatternBinding, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX,
-    Typ, TypX, Typs, UnaryOp, UnaryOpr, UnwindSpec, VarAt, VarBinder, VarBinderX, VarBinders,
-    VarIdent, VarIdentDisambiguate, VariantCheck, VirErr,
+    Fun, Function, Ident, IntRange, IntegerTypeBoundKind, InvAtomicity, Label, LogicalOp,
+    LoopInvariantKind, MaskSpec, Mode, OverflowBehavior, PatternBinding, PatternX, Place, PlaceX,
+    SignedDivEdgeCaseBehavior, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr,
+    UnwindSpec, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent, VarIdentDisambiguate,
+    VariantCheck, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, CrateId, Exprs};
-use crate::ast_util::{QUANT_FORALL, bool_typ, types_equal, undecorate_typ, unit_typ};
+use crate::ast_util::{
+    QUANT_FORALL, bitwidth_to_signed_type_string, bool_typ, int_typ, types_equal, undecorate_typ,
+    unit_typ,
+};
 use crate::context::Ctx;
 use crate::def::{self, Spanned};
 use crate::fun;
@@ -19,12 +23,13 @@ use crate::messages::{
 use crate::sst;
 use crate::sst::{
     Bnd, BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclKind, LocalDeclX,
-    ParPurpose, Pars, Stm, StmX, Stms, UniqueIdent,
+    Pars, Stm, StmX, Stms, UniqueIdent,
 };
 use crate::sst_util::{
-    exp_with_vars_at_pre_state, sst_bitwidth, sst_conjoin, sst_equal, sst_exp_get_proof_note,
-    sst_int_literal, sst_le, sst_lt, sst_mut_ref_current, sst_unit_value,
-    stm_with_vars_at_pre_state, subst_exp, subst_pre_local_decl, subst_stm,
+    exp_with_vars_at_pre_state, sst_bitwidth, sst_conjoin, sst_disjoin, sst_equal,
+    sst_exp_get_proof_note, sst_int_literal, sst_le, sst_lt, sst_mut_ref_current,
+    sst_mut_ref_future, sst_unit_value, stm_with_vars_at_pre_state, subst_exp,
+    subst_pre_local_decl, subst_stm, subst_typ,
 };
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor, stm_visitor_check};
 use crate::util::vec_map_result;
@@ -426,17 +431,15 @@ impl<'a> State<'a> {
 
     pub(crate) fn declare_params(&mut self, params: &Pars) {
         for param in params.iter() {
-            if !matches!(param.x.purpose, ParPurpose::MutPost) {
-                let name = &param.x.name;
-                self.rename_counters.insert(name.0.clone(), 0).map(|_| panic!("rename_counters"));
-                self.rename_map.insert(name.clone(), name.clone()).expect("rename_map");
-                self.declare_imm_var_stm(
-                    name,
-                    &param.x.typ,
-                    LocalDeclKind::Param { mutable: false },
-                    false,
-                );
-            }
+            let name = &param.x.name;
+            self.rename_counters.insert(name.0.clone(), 0).map(|_| panic!("rename_counters"));
+            self.rename_map.insert(name.clone(), name.clone()).expect("rename_map");
+            self.declare_imm_var_stm(
+                name,
+                &param.x.typ,
+                LocalDeclKind::Param { mutable: false },
+                false,
+            );
         }
     }
 
@@ -862,6 +865,8 @@ fn get_call_args(
     body: &Option<Expr>,
     function_kind: &crate::ast::FunctionKind,
     function_mode: Mode,
+    function_typ_params: &[Ident],
+    function_typ_args: &[Typ],
     function_params: &crate::ast::Params,
 ) -> Result<(Vec<Stm>, Vec<Obligation>, Option<Vec<Exp>>, Option<Stm>), VirErr> {
     let mut sequr = Sequencer::new();
@@ -939,9 +944,14 @@ fn get_call_args(
     let (mut stms, mut exps) = sequr.into_stms_exps_with_extra(state, second_phase)?;
 
     if let Some(expr) = atomically {
+        assert_eq!(function_typ_params.len(), function_typ_args.len());
+        let typ_substs: HashMap<Ident, Typ> =
+            function_typ_params.iter().cloned().zip(function_typ_args.iter().cloned()).collect();
+
         for (exp, param) in std::iter::zip(&mut exps, function_params.iter()) {
             let tmp = state.make_tmp_var_for_exp(&mut stms, exp.clone());
-            *exp = SpannedTyped::new(&tmp.span, &param.x.typ, tmp.x.clone());
+            let param_typ = subst_typ(&typ_substs, &param.x.typ);
+            *exp = SpannedTyped::new(&tmp.span, &param_typ, tmp.x.clone());
         }
 
         state.au_pred_args = exps.clone();
@@ -1005,6 +1015,8 @@ fn expr_get_call(
                     body,
                     &function.x.kind,
                     function.x.mode,
+                    &function.x.typ_params,
+                    typs,
                     &function.x.params,
                 )?;
                 let Some(exps) = exps else {
@@ -1471,12 +1483,12 @@ fn stm_call(
     }
 
     let call = StmX::Call {
-        fun: crate::sst::CallTarget::Fun(name),
+        fun: crate::sst::CallTarget::Fun(name.clone()),
         resolved_method,
         mode: fun.x.mode,
         is_trait_default,
         typ_args: typs,
-        args: small_args,
+        args: small_args.clone(),
         split: None,
         dest,
         assert_id: state.next_assert_id(),
@@ -1484,6 +1496,18 @@ fn stm_call(
     };
 
     stms.push(Spanned::new(span.clone(), call));
+    if (name == def::nonstatic_call_fun(false) || name == def::nonstatic_call_fun(true))
+        && matches!(&*small_args[0].typ, TypX::MutRef(_))
+    {
+        // Supported closures cannot mutate their captures, so a FnMut call preserves
+        // the callable during its call reborrow. This does not constrain the final
+        // value of a longer-lived reference passed through a generic FnOnce argument.
+        let f = &small_args[0];
+        let current = sst_mut_ref_current(span, f);
+        let future = sst_mut_ref_future(span, f);
+        let equal = sst_equal(span, &current, &future);
+        stms.push(Spanned::new(span.clone(), StmX::Assume(equal)));
+    }
     Ok(stms_to_one_stm(span, stms))
 }
 
@@ -1841,6 +1865,8 @@ pub(crate) fn expr_to_stm_opt(
                 body,
                 &crate::ast::FunctionKind::Static,
                 Mode::Exec,
+                &[],
+                &[],
                 &Default::default(),
             )?;
             let Some(exps) = exps else {
@@ -3872,58 +3898,123 @@ fn binary_op_exp(
     e1: &Exp,
     e2: &Exp,
 ) -> (Vec<Stm>, Exp) {
-    let pure_op = match op {
-        // Ops with side-effects are turned into sst ops without side-effects
-        BinaryOp::Arith(ArithOp::Add(_)) => sst::BinaryOp::Arith(sst::ArithOp::Add),
-        BinaryOp::Arith(ArithOp::Sub(_)) => sst::BinaryOp::Arith(sst::ArithOp::Sub),
-        BinaryOp::Arith(ArithOp::Mul(_)) => sst::BinaryOp::Arith(sst::ArithOp::Mul),
-        BinaryOp::Arith(ArithOp::EuclideanDiv(_)) => {
-            sst::BinaryOp::Arith(sst::ArithOp::EuclideanDiv)
-        }
-        BinaryOp::Arith(ArithOp::EuclideanMod(_)) => {
-            sst::BinaryOp::Arith(sst::ArithOp::EuclideanMod)
-        }
-        BinaryOp::Bitwise(op, _) => sst::BinaryOp::Bitwise(op),
-        BinaryOp::Index(kind, _) => sst::BinaryOp::Index(kind),
+    let bin = if matches!(
+        op,
+        BinaryOp::Arith(ArithOp::TruncatingDiv(_, _))
+            | BinaryOp::Arith(ArithOp::TruncatingMod(_, _))
+    ) {
+        let f = match op {
+            BinaryOp::Arith(ArithOp::TruncatingDiv(_, _)) => crate::def::fn_truncating_div(),
+            BinaryOp::Arith(ArithOp::TruncatingMod(_, _)) => crate::def::fn_truncating_mod(),
+            _ => unreachable!(),
+        };
+        let call_fun = CallFun::Fun(f, None);
+        let expx = ExpX::Call(call_fun, Arc::new(vec![]), Arc::new(vec![e1.clone(), e2.clone()]));
+        SpannedTyped::new(span, typ, expx)
+    } else {
+        let pure_op = match op {
+            // Ops with side-effects are turned into sst ops without side-effects
+            BinaryOp::Arith(ArithOp::Add(_)) => sst::BinaryOp::Arith(sst::ArithOp::Add),
+            BinaryOp::Arith(ArithOp::Sub(_)) => sst::BinaryOp::Arith(sst::ArithOp::Sub),
+            BinaryOp::Arith(ArithOp::Mul(_)) => sst::BinaryOp::Arith(sst::ArithOp::Mul),
+            BinaryOp::Arith(ArithOp::EuclideanDiv(_)) => {
+                sst::BinaryOp::Arith(sst::ArithOp::EuclideanDiv)
+            }
+            BinaryOp::Arith(ArithOp::EuclideanMod(_)) => {
+                sst::BinaryOp::Arith(sst::ArithOp::EuclideanMod)
+            }
+            BinaryOp::Arith(ArithOp::TruncatingDiv(_, _)) => unreachable!(),
+            BinaryOp::Arith(ArithOp::TruncatingMod(_, _)) => unreachable!(),
+            BinaryOp::Bitwise(op, _) => sst::BinaryOp::Bitwise(op),
+            BinaryOp::Index(kind, _) => sst::BinaryOp::Index(kind),
 
-        // Pure ops
-        BinaryOp::Xor => sst::BinaryOp::Xor,
-        BinaryOp::HeightCompare { strictly_lt, recursive_function_field } => {
-            sst::BinaryOp::HeightCompare { strictly_lt, recursive_function_field }
-        }
-        BinaryOp::Eq(_) => sst::BinaryOp::Eq,
-        BinaryOp::Ne => sst::BinaryOp::Ne,
-        BinaryOp::Inequality(op) => sst::BinaryOp::Inequality(op),
-        BinaryOp::RealArith(op) => sst::BinaryOp::RealArith(op),
-        BinaryOp::IeeeFloat(op) => sst::BinaryOp::IeeeFloat(op),
-        BinaryOp::StrGetChar => sst::BinaryOp::StrGetChar,
+            // Pure ops
+            BinaryOp::BoolOrNoSC => sst::BinaryOp::Or,
+            BinaryOp::BoolAndNoSC => sst::BinaryOp::And,
+            BinaryOp::BoolXor => sst::BinaryOp::Xor,
+            BinaryOp::HeightCompare { strictly_lt, recursive_function_field } => {
+                sst::BinaryOp::HeightCompare { strictly_lt, recursive_function_field }
+            }
+            BinaryOp::Eq(_) => sst::BinaryOp::Eq,
+            BinaryOp::Ne => sst::BinaryOp::Ne,
+            BinaryOp::Inequality(op) => sst::BinaryOp::Inequality(op),
+            BinaryOp::RealArith(op) => sst::BinaryOp::RealArith(op),
+            BinaryOp::IeeeFloat(op) => sst::BinaryOp::IeeeFloat(op),
+            BinaryOp::StrGetChar => sst::BinaryOp::StrGetChar,
+        };
+        SpannedTyped::new(span, typ, ExpX::Binary(pure_op, e1.clone(), e2.clone()))
     };
-    let bin = SpannedTyped::new(span, typ, ExpX::Binary(pure_op, e1.clone(), e2.clone()));
 
     // Insert bounds check
-    let check = match op {
-        _ if state.view_as_spec => None,
-        BinaryOp::Arith(arith) => match arith {
-            ArithOp::Add(ob) | ArithOp::Sub(ob) | ArithOp::Mul(ob) => match ob {
-                OverflowBehavior::Allow => None,
-                OverflowBehavior::Truncate(_) => None,
-                OverflowBehavior::Error(range) => {
-                    let unary = UnaryOpr::HasType(Arc::new(TypX::Int(range)));
-                    let has_type = ExpX::UnaryOpr(unary, bin.clone());
-                    let has_type = SpannedTyped::new(span, &Arc::new(TypX::Bool), has_type);
-                    Some((has_type, error(span, "possible arithmetic underflow/overflow")))
-                }
-            },
-            ArithOp::EuclideanDiv(d0b) | ArithOp::EuclideanMod(d0b) => match d0b {
-                Div0Behavior::Allow => None,
-                Div0Behavior::Error => {
-                    let zero = ExpX::Const(Constant::Int(BigInt::zero()));
-                    let ne = ExpX::Binary(sst::BinaryOp::Ne, e2.clone(), e2.new_x(zero));
-                    let ne = SpannedTyped::new(span, &Arc::new(TypX::Bool), ne);
-                    Some((ne, error(span, "possible division by zero")))
-                }
-            },
-        },
+    let checks = match op {
+        _ if state.view_as_spec => [None, None],
+        BinaryOp::Arith(arith) => {
+            let c1 = match arith {
+                ArithOp::Add(ob) | ArithOp::Sub(ob) | ArithOp::Mul(ob) => match ob {
+                    OverflowBehavior::Allow => None,
+                    OverflowBehavior::Truncate(_) => None,
+                    OverflowBehavior::Error(range) => {
+                        let unary = UnaryOpr::HasType(Arc::new(TypX::Int(range)));
+                        let has_type = ExpX::UnaryOpr(unary, bin.clone());
+                        let has_type = SpannedTyped::new(span, &Arc::new(TypX::Bool), has_type);
+                        Some((has_type, error(span, "possible arithmetic underflow/overflow")))
+                    }
+                },
+                ArithOp::TruncatingDiv(_, sb) | ArithOp::TruncatingMod(_, sb) => match sb {
+                    SignedDivEdgeCaseBehavior::Allow => None,
+                    SignedDivEdgeCaseBehavior::Error(bitwidth) => {
+                        let signed_type_min_x = ExpX::UnaryOpr(
+                            UnaryOpr::IntegerTypeBound(IntegerTypeBoundKind::SignedMin),
+                            sst_bitwidth(span, &bitwidth, &ctx.global.arch),
+                        );
+                        let signed_type_min =
+                            SpannedTyped::new(span, &int_typ(), signed_type_min_x);
+                        let ne1x = ExpX::Binary(sst::BinaryOp::Ne, e1.clone(), signed_type_min);
+                        let ne1 = SpannedTyped::new(span, &bool_typ(), ne1x);
+
+                        let negative1_const = crate::ast_util::const_int_from_i128(-1);
+                        let negative1_x = ExpX::Const(negative1_const);
+                        let negative1 = SpannedTyped::new(span, &int_typ(), negative1_x);
+                        let ne2x = ExpX::Binary(sst::BinaryOp::Ne, e2.clone(), negative1);
+                        let ne2 = SpannedTyped::new(span, &bool_typ(), ne2x);
+
+                        let cond = sst_disjoin(span, &[ne1, ne2]);
+                        Some((
+                            cond,
+                            error(
+                                span,
+                                format!(
+                                    "possible overflow case for signed {:}: cannot prove that (lhs, rhs) != ({:}::MIN, -1)",
+                                    match arith {
+                                        ArithOp::TruncatingDiv(..) => "division",
+                                        ArithOp::TruncatingMod(..) => "remainder",
+                                        _ => unreachable!(),
+                                    },
+                                    bitwidth_to_signed_type_string(&bitwidth)
+                                ),
+                            ),
+                        ))
+                    }
+                },
+                _ => None,
+            };
+            let c2 = match arith {
+                ArithOp::EuclideanDiv(d0b)
+                | ArithOp::EuclideanMod(d0b)
+                | ArithOp::TruncatingDiv(d0b, _)
+                | ArithOp::TruncatingMod(d0b, _) => match d0b {
+                    Div0Behavior::Allow => None,
+                    Div0Behavior::Error => {
+                        let zero = ExpX::Const(Constant::Int(BigInt::zero()));
+                        let ne = ExpX::Binary(sst::BinaryOp::Ne, e2.clone(), e2.new_x(zero));
+                        let ne = SpannedTyped::new(span, &Arc::new(TypX::Bool), ne);
+                        Some((ne, error(span, "possible division by zero")))
+                    }
+                },
+                _ => None,
+            };
+            [c1, c2]
+        }
         BinaryOp::Bitwise(bitwise, mode) => {
             match (mode, bitwise) {
                 (BitshiftBehavior::Error(w), BitwiseOp::Shr | BitwiseOp::Shl(_, _)) => {
@@ -3943,27 +4034,27 @@ fn binary_op_exp(
                     );
 
                     let msg = "possible bit shift underflow/overflow";
-                    Some((assert_exp, error(span, msg)))
+                    [Some((assert_exp, error(span, msg))), None]
                 }
-                (BitshiftBehavior::Allow, BitwiseOp::Shr | BitwiseOp::Shl(..)) => None,
+                (BitshiftBehavior::Allow, BitwiseOp::Shr | BitwiseOp::Shl(..)) => [None, None],
                 (_, BitwiseOp::BitXor | BitwiseOp::BitAnd | BitwiseOp::BitOr) => {
                     // no overflow check needed
-                    None
+                    [None, None]
                 }
             }
         }
         BinaryOp::Index(kind, bounds_check) => match bounds_check {
-            BoundsCheck::Allow => None,
+            BoundsCheck::Allow => [None, None],
             BoundsCheck::Error => {
-                Some(crate::place_preconditions::sst_index_bound(span, e1, e2, kind))
+                [Some(crate::place_preconditions::sst_index_bound(span, e1, e2, kind)), None]
             }
         },
-        _ => None,
+        _ => [None, None],
     };
 
     let mut stms = vec![];
 
-    if let Some((assert_exp, msg)) = check {
+    for (assert_exp, msg) in checks.into_iter().flatten() {
         if !state.checking_spec_preconditions(ctx) {
             let assert = StmX::Assert(state.next_assert_id(), Some(msg), assert_exp.clone());
             let assert = Spanned::new(span.clone(), assert);

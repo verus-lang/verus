@@ -67,6 +67,8 @@ struct Crate {
     name: String,
     // Absolute path to the crate's directory
     path: AbsolutePath,
+    // Path to the crate's sources, relative to the crate directory
+    source_path: String,
 }
 
 // For each crate, identify the other crates (in `crates`) that depend on it
@@ -155,8 +157,8 @@ fn last_commit(dir: &AbsolutePath) -> Option<String> {
     }
 }
 
-// Given the most recent commit hash, run git to check if the src directory has been modified
-fn src_modified(dir: &AbsolutePath, commit: &str) -> bool {
+// Given the most recent commit hash, run git to check if the crate's sources have been modified
+fn source_modified(dir: &AbsolutePath, source_path: &str, commit: &str) -> bool {
     use std::process::Command;
 
     let status = Command::new("git")
@@ -166,7 +168,7 @@ fn src_modified(dir: &AbsolutePath, commit: &str) -> bool {
         .arg("--exit-code")
         .arg(format!("{}..HEAD", commit))
         .arg("--")
-        .arg("src")
+        .arg(source_path)
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
@@ -296,7 +298,7 @@ fn update_crates(
     let mut modified_crates: HashSet<&Crate> = HashSet::new();
     for krate in &crates {
         if let Some(commit) = last_commit(&krate.path) {
-            if src_modified(&krate.path, &commit) {
+            if source_modified(&krate.path, &krate.source_path, &commit) {
                 println!("\t{}:\n\t\tHAS been modified since commit {}.\n", krate.name, commit);
                 modified_crates.insert(&krate);
             } else {
@@ -402,21 +404,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let line_count_dir = AbsolutePath::new(LINE_COUNT_DIR)?;
 
     let crates = vec![
-        Crate { name: "vstd".to_string(), path: "source/vstd".try_into()? },
-        Crate { name: "verus_builtin".to_string(), path: "source/builtin".try_into()? },
+        Crate {
+            name: "vstd".to_string(),
+            path: "source/vstd".try_into()?,
+            source_path: ".".to_string(),
+        },
+        Crate {
+            name: "verus_builtin".to_string(),
+            path: "source/builtin".try_into()?,
+            source_path: "src".to_string(),
+        },
         Crate {
             name: "verus_builtin_macros".to_string(),
             path: "source/builtin_macros".try_into()?,
+            source_path: "src".to_string(),
         },
         Crate {
             name: "verus_state_machines_macros".to_string(),
             path: "source/state_machines_macros".try_into()?,
+            source_path: "src".to_string(),
         },
         Crate {
             name: "verus_prettyplease".to_string(),
             path: "dependencies/prettyplease".try_into()?,
+            source_path: "src".to_string(),
         },
-        Crate { name: "verus_syn".to_string(), path: "dependencies/syn".try_into()? },
+        Crate {
+            name: "verus_syn".to_string(),
+            path: "dependencies/syn".try_into()?,
+            source_path: "src".to_string(),
+        },
     ];
 
     match &args.command {

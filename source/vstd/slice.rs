@@ -109,7 +109,7 @@ pub exec fn slice_subrange<T, 'a>(slice: &'a [T], i: usize, j: usize) -> (out: &
     requires
         0 <= i <= j <= slice@.len(),
     ensures
-        out@ == slice@.subrange(i as int, j as int),
+        out@ == slice@[i..j],
 {
     &slice[i..j]
 }

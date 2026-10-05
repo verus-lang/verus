@@ -733,6 +733,12 @@ unsafe impl<X, Y, Pred> Sync for AtomicUpdate<X, Y, Pred> {}
 
 verus! {
 
+#[doc(hidden)]
+#[verifier::external_body]
+pub struct AtomicUpdateLifetimeMarker<'a> {
+    _marker: core::marker::PhantomData<fn (&'a ())>,
+}
+
 /// The **atomic update (AU)** is a ghost object which encapsulates the linearization point of a logically atomic function.
 ///
 /// Logical atomicity is a proof technique that allows us to treat a function as if it was atomic, i.e. as if it evaluates in a single atomic step, even though it might perform multiple `exec`-mode operations internally.

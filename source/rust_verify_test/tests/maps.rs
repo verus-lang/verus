@@ -184,3 +184,27 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] tracked_union_map_spec_input verus_code! {
+        use vstd::prelude::*;
+
+        proof fn test<V>(tracked perm: V) {
+            let tracked mut left = Map::<int, V>::tracked_empty();
+            // A spec map must not manufacture tracked ownership of its values.
+            left.tracked_union_prefer_right(map![0int => perm]);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
+}
+
+test_verify_one_file! {
+    #[test] tracked_union_imap_spec_input verus_code! {
+        use vstd::prelude::*;
+
+        proof fn test<V>(tracked perm: V) {
+            let tracked mut left = IMap::<int, V>::tracked_empty();
+            // A spec map must not manufacture tracked ownership of its values.
+            left.tracked_union_prefer_right(imap![0int => perm]);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
+}

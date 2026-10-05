@@ -450,6 +450,8 @@ pub enum UnaryOp {
     /// HeightCompare triggers into HeightTrigger, which is eventually translated
     /// into direct calls to the "height" function in the triggers.
     HeightTrigger,
+    /// Used only for handling verus_builtin::strslice_new_strlit
+    NewStrLit,
     /// Used only for handling verus_builtin::strslice_len
     StrLen,
     /// Represents "as" cast from generic Integer type to int or nat
@@ -462,7 +464,6 @@ pub enum UnaryOp {
     /// `*final(e)` should be replaced with `mut_ref_future(e)`; other appearances are an error
     /// boolean param = did this arise from migration?
     MutRefFinal(bool),
-
     /// Length of an array or slice
     Length(ArrayKind),
 }
@@ -585,6 +586,18 @@ pub enum OverflowBehavior {
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum SignedDivEdgeCaseBehavior {
+    /// Return an unbounded int, the exact value of the arithmetic expression.
+    Allow,
+    /// Error if the operands trigger the division edge case of
+    /// lhs == iN::MIN and rhs == (-1)
+    /// This is an error because the division result doesn't fit in the range for the iN
+    /// type (the result would be -iN::MIN which is iN::MAX + 1).
+    /// This is an error both for div and mod.
+    Error(IntegerTypeBitwidth),
+}
+
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
 pub enum Div0Behavior {
     /// Return the (unspecified) result of divide- or mod-by-0.
     Allow,
@@ -611,10 +624,14 @@ pub enum ArithOp {
     Sub(OverflowBehavior),
     /// IntRange::Int *
     Mul(OverflowBehavior),
-    /// IntRange::Int / defined as Euclidean (round towards -infinity, not round-towards zero)
+    /// IntRange::Int / defined as Euclidean (round towards -infinity)
     EuclideanDiv(Div0Behavior),
-    /// IntRange::Int % defined as Euclidean (returns non-negative result even for negative divisor)
+    /// IntRange::Int % defined as Euclidean (returns non-negative result even for negative dividend)
     EuclideanMod(Div0Behavior),
+    /// IntRange::Int / defined as Rust does (round towards 0)
+    TruncatingDiv(Div0Behavior, SignedDivEdgeCaseBehavior),
+    /// IntRange::Int % defined as Rust does (returns non-positive result for negative dividend)
+    TruncatingMod(Div0Behavior, SignedDivEdgeCaseBehavior),
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
@@ -701,8 +718,12 @@ pub enum LogicalOp {
 /// and UnaryOp::Clip.
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
 pub enum BinaryOp {
+    /// boolean and (no short-circuiting)
+    BoolAndNoSC,
+    /// boolean or (no short-circuiting)
+    BoolOrNoSC,
     /// boolean xor (no short-circuiting)
-    Xor,
+    BoolXor,
     /// the is_smaller_than verus_builtin, used for decreases (true for <, false for ==)
     HeightCompare { strictly_lt: bool, recursive_function_field: bool },
     /// SMT equality for any type -- two expressions are exactly the same value
@@ -740,7 +761,7 @@ pub enum MultiOp {
 }
 
 /// Use Ghost(x) or Tracked(x) to unwrap an argument
-#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode, PartialEq, Eq)]
 pub struct UnwrapParameter {
     // indicates Ghost or Tracked
     pub mode: Mode,
@@ -853,8 +874,7 @@ pub type Patterns = Arc<Vec<Pattern>>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone)]
 pub enum PatternX {
     /// _
-    /// True if this is implicitly added from a ..
-    Wildcard(bool),
+    Wildcard,
     /// Be careful: when binding a variable, the *type of the variable* is found in the
     /// PatternBinding struct. This can be different than the &pattern.typ which is the
     /// *type of the value being matched against*.
@@ -1491,8 +1511,6 @@ pub struct FunctionAttrsX {
     pub uses_ghost_blocks: bool,
     /// Inline spec function for SMT
     pub inline: bool,
-    /// List of functions that this function wants to view as opaque
-    pub hidden: Arc<Vec<Fun>>,
     /// Create a global axiom saying forall params, require ==> ensure
     pub broadcast_forall: bool,
     /// Only create global axioms; don't declare req/ens functions (set by prune.rs)
@@ -1551,6 +1569,8 @@ pub struct FunctionAttrsX {
     pub tracked_take_option: bool,
     /// Whether the function is an async function
     pub is_async: bool,
+    /// Is this a types's drop implementation
+    pub is_drop: bool,
 }
 
 /// Function specification of its invariant mask
@@ -1703,6 +1723,31 @@ pub struct FunctionX {
     /// Useful only for trusted fns.
     pub extra_dependencies: Vec<Fun>,
     /// The return type of the async function i.e., impl Future<Output>.
+    pub async_ret: Option<Param>,
+    /// List of functions that this function wants to view as opaque
+    pub hidden: Arc<Vec<Fun>>,
+}
+
+/// Function, including signature and body
+pub type FunctionStub = Arc<Spanned<FunctionStubX>>;
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[to_node_impl]
+pub struct FunctionStubX {
+    pub name: Fun,
+    pub proxy: Option<Spanned<Path>>,
+    pub kind: FunctionKind,
+    pub visibility: Visibility,
+    pub body_visibility: BodyVisibility,
+    pub opaqueness: Opaqueness,
+    pub owning_module: Option<Path>,
+    pub mode: Mode,
+    pub typ_params: Idents,
+    pub typ_bounds: GenericBounds,
+    pub params: Params,
+    pub ret: Param,
+    pub ens_has_return: bool,
+    pub item_kind: ItemKind,
+    pub attrs: FunctionAttrs,
     pub async_ret: Option<Param>,
 }
 
@@ -1881,11 +1926,6 @@ pub struct TraitImplX {
     pub auto_imported: bool,
     // Is a blanket implementation declared by external_trait_extension:
     pub external_trait_blanket: bool,
-}
-
-#[derive(Clone, Debug, Hash, Serialize, Deserialize, ToDebugSNode, PartialEq, Eq)]
-pub enum WellKnownItem {
-    DropTrait,
 }
 
 pub type ModuleReveals = Arc<Spanned<Vec<Fun>>>;

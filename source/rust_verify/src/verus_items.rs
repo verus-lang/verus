@@ -1,6 +1,5 @@
 use air::ast::Ident;
-use regex::Regex;
-use rustc_middle::ty::{TyCtxt, TyKind};
+use rustc_middle::ty::{IntTy, TyCtxt, TyKind, UintTy};
 use rustc_span::def_id::DefId;
 use std::{collections::HashMap, sync::Arc};
 use vir::ast::CrateId;
@@ -142,6 +141,7 @@ pub(crate) enum ExprItem {
     ArrayIndex,
     F32ToBits,
     F64ToBits,
+    NewStrLit,
     StrSliceLen,
     StrSliceGetChar,
     ArchWordBits,
@@ -391,6 +391,8 @@ pub(crate) enum VstdItem {
     VecIndex,
     VecIndexMut,
     SharedReference,
+    RustDiv,
+    RustRem,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -544,6 +546,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::array_index",             VerusItem::Expr(ExprItem::ArrayIndex)),
         ("verus::verus_builtin::f32_to_bits",             VerusItem::Expr(ExprItem::F32ToBits)),
         ("verus::verus_builtin::f64_to_bits",             VerusItem::Expr(ExprItem::F64ToBits)),
+        ("verus::verus_builtin::strslice_new_strlit",     VerusItem::Expr(ExprItem::NewStrLit)),
         ("verus::verus_builtin::strslice_len",            VerusItem::Expr(ExprItem::StrSliceLen)),
         ("verus::verus_builtin::strslice_get_char",       VerusItem::Expr(ExprItem::StrSliceGetChar)),
         ("verus::verus_builtin::arch_word_bits",          VerusItem::Expr(ExprItem::ArchWordBits)),
@@ -744,6 +747,9 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::raw_ptr::cast_ptr_to_usize", VerusItem::Vstd(VstdItem::CastPtrToUsize, Some(Arc::new("raw_ptr::cast_ptr_to_usize".to_owned())))),
         ("verus::vstd::raw_ptr::SharedReference", VerusItem::Vstd(VstdItem::SharedReference, Some(Arc::new("raw_ptr::SharedReference".to_owned())))),
         ("verus::vstd::float::float_cast", VerusItem::Vstd(VstdItem::FloatCast, Some(Arc::new("float::float_cast".to_owned())))),
+        ("verus::vstd::arithmetic::div_mod::rust_div", VerusItem::Vstd(VstdItem::RustDiv, Some(Arc::new("arithmetic::div_mod::rust_div".to_owned())))),
+        ("verus::vstd::arithmetic::div_mod::rust_rem", VerusItem::Vstd(VstdItem::RustRem, Some(Arc::new("arithmetic::div_mod::rust_rem".to_owned())))),
+
             // SeqFn(vir::interpreter::SeqFn::Last    ))),
 
         ("verus::vstd::std_specs::fmt::rt::Argument", VerusItem::RustPrivate(RustPrivate::Path(vir::path!(CrateId::Core => "fmt", "rt", "Argument")))),
@@ -917,6 +923,38 @@ pub(crate) enum RustItem {
     Thin,
 }
 
+fn get_rust_int_intrinsic<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<RustIntIntrinsicItem> {
+    let impl_def_id = tcx.impl_of_assoc(def_id)?;
+    if tcx.trait_impl_of_assoc(impl_def_id).is_some() {
+        return None;
+    }
+
+    let ty = match tcx.type_of(impl_def_id).skip_binder().kind() {
+        TyKind::Uint(UintTy::U8) => RustIntType::U8,
+        TyKind::Uint(UintTy::U16) => RustIntType::U16,
+        TyKind::Uint(UintTy::U32) => RustIntType::U32,
+        TyKind::Uint(UintTy::U64) => RustIntType::U64,
+        TyKind::Uint(UintTy::U128) => RustIntType::U128,
+        TyKind::Uint(UintTy::Usize) => RustIntType::USize,
+        TyKind::Int(IntTy::I8) => RustIntType::I8,
+        TyKind::Int(IntTy::I16) => RustIntType::I16,
+        TyKind::Int(IntTy::I32) => RustIntType::I32,
+        TyKind::Int(IntTy::I64) => RustIntType::I64,
+        TyKind::Int(IntTy::I128) => RustIntType::I128,
+        TyKind::Int(IntTy::Isize) => RustIntType::ISize,
+        _ => return None,
+    };
+
+    let const_ = match tcx.item_name(def_id).as_str() {
+        "MIN" => RustIntConst::Min,
+        "MAX" => RustIntConst::Max,
+        "BITS" => RustIntConst::Bits,
+        _ => return None,
+    };
+
+    Some(RustIntIntrinsicItem(ty, const_))
+}
+
 pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<RustItem> {
     if tcx.lang_items().owned_box() == Some(def_id) {
         return Some(RustItem::Box);
@@ -959,6 +997,9 @@ pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Ru
     }
     if tcx.lang_items().partial_ord_trait() == Some(def_id) {
         return Some(RustItem::PartialOrd);
+    }
+    if let Some(item) = get_rust_int_intrinsic(tcx, def_id) {
+        return Some(RustItem::IntIntrinsic(item));
     }
     let rust_path = def_id_to_stable_rust_path(tcx, def_id);
     let rust_path = rust_path.as_ref().map(|x| x.as_str());
@@ -1038,44 +1079,6 @@ pub(crate) fn get_rust_item_str(rust_path: Option<&str>) -> Option<RustItem> {
     }
     if rust_path == Some("core::any::Any") {
         return Some(RustItem::Any);
-    }
-
-    if let Some(rust_path) = rust_path {
-        static NUM_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
-        let num_re =
-            NUM_RE.get_or_init(|| Regex::new(r"^([A-Za-z0-9_]+)::(MIN|MAX|BITS)").unwrap());
-        if let Some(captures) = num_re.captures(rust_path) {
-            let ty_name = captures.get(1).expect("invalid int intrinsic regex");
-            let const_name = captures.get(2).expect("invalid int intrinsic regex");
-            use RustIntType::*;
-            let ty = match ty_name.as_str() {
-                "u8" => Some(U8),
-                "u16" => Some(U16),
-                "u32" => Some(U32),
-                "u64" => Some(U64),
-                "u128" => Some(U128),
-                "usize" => Some(USize),
-
-                "i8" => Some(I8),
-                "i16" => Some(I16),
-                "i32" => Some(I32),
-                "i64" => Some(I64),
-                "i128" => Some(I128),
-                "isize" => Some(ISize),
-
-                _ => None,
-            };
-            return ty.map(|ty| {
-                let const_ = match const_name.as_str() {
-                    "MIN" => RustIntConst::Min,
-                    "MAX" => RustIntConst::Max,
-                    "BITS" => RustIntConst::Bits,
-
-                    _ => panic!("unexpected int const"),
-                };
-                RustItem::IntIntrinsic(RustIntIntrinsicItem(ty, const_))
-            });
-        }
     }
 
     None
