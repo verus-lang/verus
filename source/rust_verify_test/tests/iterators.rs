@@ -214,8 +214,9 @@ test_verify_one_file! {
                 (&(*final(i))).will_return_none(),
         {
             i.next();
-        } => Ok(())
-    }
+
+        }
+    } => Ok(())
 }
 
 test_verify_one_file! {
