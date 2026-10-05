@@ -58,3 +58,117 @@ fn failed_crate_copy_leaves_no_snapshot() {
     assert!(!output.exists());
     assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 1);
 }
+
+#[test]
+fn crate_copy_skips_git_worktree_files_and_nested_git_directories() {
+    let temp = tempfile::tempdir().unwrap();
+    let input = temp.path().join("crate");
+    let output = temp.path().join("snapshot");
+    fs::create_dir_all(input.join("nested/.git")).unwrap();
+    fs::write(input.join("Cargo.toml"), "").unwrap();
+    fs::write(input.join(".git"), "gitdir: /original/repo/.git/worktrees/crate\n").unwrap();
+    fs::write(input.join("nested/.git/invalid.rs"), "not valid Rust").unwrap();
+    fs::write(input.join("lib.rs"), "fn f() {}\n").unwrap();
+    let result = run(&[&input, std::path::Path::new("-o"), &output]);
+    assert!(result.status.success(), "{:?}", result);
+    assert!(!output.join(".git").exists());
+    assert!(!output.join("nested/.git").exists());
+    assert_eq!(fs::read_to_string(output.join("lib.rs")).unwrap(), "fn f() {}\n");
+}
+
+#[cfg(unix)]
+#[test]
+fn symlink_inputs_and_entries_are_rejected() {
+    use std::os::unix::fs::symlink;
+
+    let temp = tempfile::tempdir().unwrap();
+    let input = temp.path().join("crate");
+    let output = temp.path().join("snapshot");
+    let alias = temp.path().join("alias");
+    fs::create_dir(&input).unwrap();
+    fs::write(input.join("Cargo.toml"), "").unwrap();
+    fs::write(input.join("lib.rs"), "fn f() {}\n").unwrap();
+    symlink(&input, &alias).unwrap();
+    assert!(!run(&[&alias, std::path::Path::new("-o"), &output]).status.success());
+    symlink(input.join("lib.rs"), input.join("alias.rs")).unwrap();
+    assert!(!run(&[&input, std::path::Path::new("-o"), &output]).status.success());
+    assert!(!output.exists());
+}
+
+#[test]
+fn crate_output_inside_input_is_rejected() {
+    let temp = tempfile::tempdir().unwrap();
+    let input = temp.path().join("crate");
+    fs::create_dir(&input).unwrap();
+    fs::write(input.join("Cargo.toml"), "").unwrap();
+    let output = input.join("snapshot");
+    assert!(!run(&[&input, std::path::Path::new("-o"), &output]).status.success());
+    assert!(!output.exists());
+}
+
+#[test]
+fn crate_excludes_skip_custom_build_output() {
+    let temp = tempfile::tempdir().unwrap();
+    let input = temp.path().join("crate");
+    let output = temp.path().join("snapshot");
+    fs::create_dir_all(input.join("target-custom")).unwrap();
+    fs::write(input.join("Cargo.toml"), "").unwrap();
+    fs::write(input.join("target-custom/broken.rs"), "not valid Rust").unwrap();
+    fs::write(input.join("launcher"), "not needed in the snapshot").unwrap();
+    fs::write(input.join("lib.rs"), "fn f() {}\n").unwrap();
+    let result = run(&[
+        &input,
+        std::path::Path::new("-o"),
+        &output,
+        std::path::Path::new("--exclude"),
+        std::path::Path::new("target-custom"),
+        std::path::Path::new("--exclude"),
+        std::path::Path::new("launcher"),
+    ]);
+    assert!(result.status.success(), "{:?}", result);
+    assert!(!output.join("target-custom").exists());
+    assert!(!output.join("launcher").exists());
+    assert_eq!(fs::read_to_string(output.join("lib.rs")).unwrap(), "fn f() {}\n");
+}
+
+#[test]
+fn crate_excludes_reject_parent_paths() {
+    let temp = tempfile::tempdir().unwrap();
+    let input = temp.path().join("crate");
+    let output = temp.path().join("snapshot");
+    fs::create_dir(&input).unwrap();
+    fs::write(input.join("Cargo.toml"), "").unwrap();
+    let result = run(&[
+        &input,
+        std::path::Path::new("-o"),
+        &output,
+        std::path::Path::new("--exclude"),
+        std::path::Path::new("../crate"),
+    ]);
+    assert!(!result.status.success());
+    assert!(!output.exists());
+}
+
+#[test]
+fn extracted_expressions_and_constants_compile_and_execute() {
+    let temp = tempfile::tempdir().unwrap();
+    let input = temp.path().join("input.rs");
+    let output = temp.path().join("output.rs");
+    let binary = temp.path().join(format!("snapshot{}", std::env::consts::EXE_SUFFIX));
+    fs::write(
+        &input,
+        "verus! {\nexec const C: u32 ensures C == 9 { verus_exec_expr!(1 + 2) * 3 }\n}\nfn main() {\n    let unit = proof! { assert(true); };\n    assert_eq!(unit, ());\n    verus_exec_expr!{assert_eq!(C, 9)}\n    let value = verus_exec_expr!{1 + 2} * 3;\n    assert_eq!(value, 9);\n}\n",
+    )
+    .unwrap();
+    let result = run(&[&input, std::path::Path::new("-o"), &output]);
+    assert!(result.status.success(), "{:?}", result);
+    let compile = Command::new("rustc")
+        .arg("--edition=2021")
+        .arg(&output)
+        .arg("-o")
+        .arg(&binary)
+        .output()
+        .unwrap();
+    assert!(compile.status.success(), "{:?}", compile);
+    assert!(Command::new(binary).status().unwrap().success());
+}

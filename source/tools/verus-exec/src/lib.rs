@@ -46,6 +46,7 @@ pub fn strip_source(source: &str) -> Result<String> {
                     }
                 }
                 ErasureKind::Unit => replacement = Some("{}"),
+                ErasureKind::Replace(text) => replacement = Some(text),
                 ErasureKind::Node => {}
             }
             Ok(Edit { range, replacement })

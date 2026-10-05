@@ -1,10 +1,13 @@
 `verus-exec` creates readable snapshots of executable Verus source. It removes
 proof artifacts with the same syntax visitor used by `builtin_macros`, then
-applies deletions to the original text. It does not pretty-print or expand
+applies edits to the original text. It does not pretty-print or expand
 executable code. Comments, spacing, indentation, and line endings outside the
 erased regions are preserved. Whole-line annotations and blank lines immediately
 inside a removed `verus!` wrapper are removed. A proof expression used as a value
 (for example, a match arm body) becomes `{}`, preserving executable control flow.
+Expression macro wrappers become parentheses, retaining operator precedence;
+statement terminators are added where needed. Contracted constants and statics
+retain their initializer blocks using Rust's `= { ... };` syntax.
 
 From `source/`, build the standalone tool with:
 
@@ -35,6 +38,15 @@ must be new, its parent must exist, and it must be outside the input directory.
 Symlinks are rejected. A parse failure leaves no partial crate snapshot. Source
 files are never modified.
 
+Git worktree `.git` files are skipped too. Use repeatable `--exclude` arguments
+to skip relative paths, including custom build directories and local symlinked
+launchers:
+
+```sh
+target-verus/release/verus-exec path/to/crate -o /tmp/snapshot \
+    --exclude target-custom --exclude verus
+```
+
 Both `verus!` and `#[verus_spec(...)]` / `#[verus_verify(...)]` syntax are
 supported, including functions in modules, impls, traits, and blocks. Erasure
 includes contracts, loop specifications, Verus assertions and assumptions,
@@ -52,6 +64,17 @@ Unrecognized macro payloads are opaque: the tool does not expand arbitrary
 macros, evaluate `cfg`, resolve names, or perform the verifier's type-based
 erasure. Use the canonical Verus macro and attribute names; renamed imports
 cannot be identified without name resolution.
+This also applies to Verus macros such as `atomic_with_ghost!`,
+`struct_with_invariants!`, and `tokenized_state_machine!`: their payloads can
+still contain proof code. A successful snapshot therefore does not certify
+that every proof artifact was removed or that arbitrary proof edits leave
+the snapshot unchanged.
+
+Qualified macro and derive names are recognized through `verus_builtin_macros`,
+`builtin_macros`, and `vstd`; similarly named macros in other namespaces stay
+opaque. Conditional mode attributes are not evaluated, so `cfg_attr` that changes
+an item between exec and ghost modes cannot be classified without choosing a
+configuration.
 
 The companion `verus_builtin_macros_syntax` crate compiles the macro visitor's
 existing source files as an ordinary library. Recording happens at the visitor's
