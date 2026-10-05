@@ -471,11 +471,10 @@ fn prepare_items_for_verus_spec(span: proc_macro2::Span, i: &mut syn::Item) {
 }
 
 fn is_verus_proof_stmt(stmt: &syn::Stmt) -> bool {
-    pub const VERUS_MACROS: [&str; 3] = ["proof", "proof_decl", "proof_with"];
     if let syn::Stmt::Macro(mac_stmt) = stmt {
         let syn::Macro { path, .. } = &mac_stmt.mac;
         if let Some(ident) = path.get_ident() {
-            return VERUS_MACROS.contains(&ident.to_string().as_str());
+            return crate::source_erase::is_proof_macro_name(&ident.to_string());
         }
     }
     false

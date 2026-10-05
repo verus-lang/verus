@@ -3247,6 +3247,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "verus-exec"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "proc-macro2",
+ "tempfile",
+ "verus_builtin_macros_syntax",
+ "verus_syn",
+ "walkdir",
+]
+
+[[package]]
 name = "verus_builtin"
 version = "0.0.0-2026-09-16-0054"
 
@@ -3259,6 +3272,18 @@ dependencies = [
  "quote",
  "syn 2.0.119",
  "synstructure",
+ "verus_prettyplease",
+ "verus_syn",
+]
+
+[[package]]
+name = "verus_builtin_macros_syntax"
+version = "0.1.0"
+dependencies = [
+ "convert_case",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
  "verus_prettyplease",
  "verus_syn",
 ]

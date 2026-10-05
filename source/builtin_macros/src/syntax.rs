@@ -109,6 +109,7 @@ pub(crate) struct Visitor {
     inside_impl: Option<Box<(Generics, Box<Type>)>>,
     // A place to put items that are emitted while visiting
     additional_items: Vec<Item>,
+    pub(crate) source_erasure: Option<crate::source_erase::SourceErasure>,
 }
 
 // For exec "let pat = init" declarations, recursively find Tracked(x), Ghost(x), x in pat
@@ -532,7 +533,8 @@ fn rewrite_args_unwrap_ghost_tracked(erase_ghost: &EraseGhost, arg: &mut FnArg) 
 }
 
 impl Visitor {
-    fn take_ghost<T: Default>(&self, dest: &mut T) -> T {
+    fn take_ghost<T: Default + ToTokens>(&mut self, dest: &mut T) -> T {
+        self.record_erasure(dest);
         take_ghost(self.erase_ghost, dest)
     }
 
@@ -541,6 +543,9 @@ impl Visitor {
     }
 
     fn filter_attrs(&mut self, attrs: &mut Vec<Attribute>) {
+        if self.source_erasure.is_some() {
+            return;
+        }
         if self.erase_ghost.erase_all() {
             // Remove verus:: and verifier:: attributes to make it easier for
             // standard rustc to compile the code
@@ -1664,7 +1669,11 @@ impl VisitMut for ExecGhostPatVisitor {
 impl Visitor {
     fn visit_local_extend(&mut self, local: &mut Local) -> (bool, Vec<Stmt>) {
         if self.erase_ghost.erase() && (local.tracked.is_some() || local.ghost.is_some()) {
+            self.record_erasure(local);
             return (true, vec![]);
+        }
+        if self.source_erasure.is_some() {
+            return (false, vec![]);
         }
         if local.init.is_none() {
             return (false, vec![]);
@@ -1795,6 +1804,7 @@ impl Visitor {
             Stmt::Item(Item::BroadcastUse(broadcast_use)) => {
                 let BroadcastUse { attrs, paths, .. } = broadcast_use;
                 if self.erase_ghost.erase() {
+                    self.record_erasure(broadcast_use);
                     (true, vec![])
                 } else {
                     let stmts: Vec<Stmt> = paths.iter().map(|path| Stmt::Expr(Expr::Verbatim(
@@ -1816,7 +1826,22 @@ impl Visitor {
                 }
             }
             Stmt::Macro(macro_stmt) => {
-                self.rewrite_macro_call(&mut macro_stmt.mac);
+                if self.source_erasure.is_some() {
+                    if crate::source_erase::is_proof_macro(&macro_stmt.mac.path) {
+                        self.record_erasure(macro_stmt);
+                        return (true, vec![]);
+                    }
+                    if macro_stmt.mac.path.segments.last().is_some_and(|s| {
+                        matches!(
+                            s.ident.to_string().as_str(),
+                            "verus" | "verus_keep_ghost" | "verus_erase_ghost"
+                        )
+                    }) {
+                        self.record_erasure(&macro_stmt.semi_token);
+                    }
+                } else {
+                    self.rewrite_macro_call(&mut macro_stmt.mac);
+                }
                 (false, vec![])
             }
             _ => (false, vec![]),
@@ -1831,32 +1856,48 @@ impl Visitor {
         proc_macro::TokenStream::from(new_stream)
     }
 
-    fn visit_items_prefilter(&mut self, items: &mut Vec<Item>) {
-        crate::contrib::contrib_preprocess_items(items);
-        self.visit_items_make_unerased_proxies(items);
-        crate::syntax_trait::expand_extension_traits(self.erase_ghost.erase_all(), items);
+    pub(crate) fn visit_items_prefilter(&mut self, items: &mut Vec<Item>) {
+        if self.source_erasure.is_none() {
+            crate::contrib::contrib_preprocess_items(items);
+            self.visit_items_make_unerased_proxies(items);
+            crate::syntax_trait::expand_extension_traits(self.erase_ghost.erase_all(), items);
+        }
 
         if self.erase_ghost.erase_all() {
             // Erase ghost functions and constants
-            items.retain(|item| match item {
-                Item::Fn(fun) => match fun.sig.mode {
-                    FnMode::Spec(_)
-                    | FnMode::SpecChecked(_)
-                    | FnMode::Proof(_)
-                    | FnMode::ProofAxiom(_) => false,
-                    FnMode::Exec(_) | FnMode::Default => true,
-                },
-                Item::Const(c) => match c.mode {
-                    FnMode::Spec(_)
-                    | FnMode::SpecChecked(_)
-                    | FnMode::Proof(_)
-                    | FnMode::ProofAxiom(_) => false,
-                    FnMode::Exec(_) | FnMode::Default => true,
-                },
-                _ => true,
+            items.retain(|item| {
+                let keep = match item {
+                    Item::Fn(fun) => match fun.sig.mode {
+                        FnMode::Spec(_)
+                        | FnMode::SpecChecked(_)
+                        | FnMode::Proof(_)
+                        | FnMode::ProofAxiom(_) => false,
+                        FnMode::Exec(_) | FnMode::Default => true,
+                    },
+                    Item::Const(c) => match c.mode {
+                        FnMode::Spec(_)
+                        | FnMode::SpecChecked(_)
+                        | FnMode::Proof(_)
+                        | FnMode::ProofAxiom(_) => false,
+                        FnMode::Exec(_) | FnMode::Default => true,
+                    },
+                    _ => true,
+                };
+                if !keep {
+                    match item {
+                        Item::Fn(fun) => self.record_fn_erasure(fun, &fun.sig),
+                        _ => {
+                            self.record_erasure(item);
+                        }
+                    }
+                }
+                keep
             });
             // We can't erase ghost datatypes D, because they can be used
             // as Ghost<D> or Tracked<D>.
+        }
+        if self.source_erasure.is_some() {
+            return;
         }
         let erase_ghost = self.erase_ghost.erase();
         let mut assume_spec_extra_impl_items = vec![];
@@ -2318,6 +2359,9 @@ impl Visitor {
     }
 
     fn visit_items_post(&mut self, items: &mut Vec<Item>) {
+        if self.source_erasure.is_some() {
+            return;
+        }
         let mut i = 0;
         while i < items.len() {
             if let Item::Enum(enum_) = &mut items[i] {
@@ -2336,28 +2380,48 @@ impl Visitor {
         // nothing to do
     }
 
-    fn visit_impl_items_prefilter(&mut self, items: &mut Vec<ImplItem>, for_trait: bool) {
-        crate::contrib::contrib_preprocess_impl_items(items);
-        self.visit_impl_items_make_unerased_proxies(items, for_trait);
+    pub(crate) fn visit_impl_items_prefilter(
+        &mut self,
+        items: &mut Vec<ImplItem>,
+        for_trait: bool,
+    ) {
+        if self.source_erasure.is_none() {
+            crate::contrib::contrib_preprocess_impl_items(items);
+            self.visit_impl_items_make_unerased_proxies(items, for_trait);
+        }
 
         if self.erase_ghost.erase_all() {
-            items.retain(|item| match item {
-                ImplItem::Fn(fun) => match fun.sig.mode {
-                    FnMode::Spec(_)
-                    | FnMode::SpecChecked(_)
-                    | FnMode::Proof(_)
-                    | FnMode::ProofAxiom(_) => false,
-                    FnMode::Exec(_) | FnMode::Default => true,
-                },
-                ImplItem::Const(c) => match c.mode {
-                    FnMode::Spec(_)
-                    | FnMode::SpecChecked(_)
-                    | FnMode::Proof(_)
-                    | FnMode::ProofAxiom(_) => false,
-                    FnMode::Exec(_) | FnMode::Default => true,
-                },
-                _ => true,
+            items.retain(|item| {
+                let keep = match item {
+                    ImplItem::Fn(fun) => match fun.sig.mode {
+                        FnMode::Spec(_)
+                        | FnMode::SpecChecked(_)
+                        | FnMode::Proof(_)
+                        | FnMode::ProofAxiom(_) => false,
+                        FnMode::Exec(_) | FnMode::Default => true,
+                    },
+                    ImplItem::Const(c) => match c.mode {
+                        FnMode::Spec(_)
+                        | FnMode::SpecChecked(_)
+                        | FnMode::Proof(_)
+                        | FnMode::ProofAxiom(_) => false,
+                        FnMode::Exec(_) | FnMode::Default => true,
+                    },
+                    _ => true,
+                };
+                if !keep {
+                    match item {
+                        ImplItem::Fn(fun) => self.record_fn_erasure(fun, &fun.sig),
+                        _ => {
+                            self.record_erasure(item);
+                        }
+                    }
+                }
+                keep
             });
+        }
+        if self.source_erasure.is_some() {
+            return;
         }
         let erase_ghost = self.erase_ghost.erase();
         // Unfortunately, we just have to assume that if for_trait == true,
@@ -2424,7 +2488,7 @@ impl Visitor {
         }
     }
 
-    fn visit_trait_items_prefilter(&mut self, items: &mut Vec<TraitItem>) {
+    pub(crate) fn visit_trait_items_prefilter(&mut self, items: &mut Vec<TraitItem>) {
         if self.rustdoc {
             for trait_item in items.iter_mut() {
                 match trait_item {
@@ -2437,16 +2501,30 @@ impl Visitor {
         }
 
         if self.erase_ghost.erase_all() {
-            items.retain(|item| match item {
-                TraitItem::Fn(fun) => match fun.sig.mode {
-                    FnMode::Spec(_)
-                    | FnMode::SpecChecked(_)
-                    | FnMode::Proof(_)
-                    | FnMode::ProofAxiom(_) => false,
-                    FnMode::Exec(_) | FnMode::Default => true,
-                },
-                _ => true,
+            items.retain(|item| {
+                let keep = match item {
+                    TraitItem::Fn(fun) => match fun.sig.mode {
+                        FnMode::Spec(_)
+                        | FnMode::SpecChecked(_)
+                        | FnMode::Proof(_)
+                        | FnMode::ProofAxiom(_) => false,
+                        FnMode::Exec(_) | FnMode::Default => true,
+                    },
+                    _ => true,
+                };
+                if !keep {
+                    match item {
+                        TraitItem::Fn(fun) => self.record_fn_erasure(fun, &fun.sig),
+                        _ => {
+                            self.record_erasure(item);
+                        }
+                    }
+                }
+                keep
             });
+        }
+        if self.source_erasure.is_some() {
+            return;
         }
         let erase_ghost = self.erase_ghost.erase();
         let mut spec_items: Vec<TraitItem> = Vec::new();
@@ -3238,6 +3316,9 @@ impl Visitor {
         let Expr::Assume(_) = expr else {
             return false;
         };
+        if self.erase_source_expr(expr) {
+            return true;
+        }
 
         self.inside_ghost += 1;
         self.visit_expr_with_arith(expr, InsideArith::None);
@@ -3260,6 +3341,9 @@ impl Visitor {
         let Expr::Assert(_) = expr else {
             return false;
         };
+        if self.erase_source_expr(expr) {
+            return true;
+        }
 
         if self.rustdoc && self.inside_const {
             let Expr::Assert(assert) = take_expr(expr) else { unreachable!() };
@@ -3362,6 +3446,9 @@ impl Visitor {
         let Expr::AssertForall(_) = expr else {
             return false;
         };
+        if self.erase_source_expr(expr) {
+            return true;
+        }
 
         self.inside_ghost += 1;
         self.visit_expr_with_arith(expr, InsideArith::None);
@@ -3417,6 +3504,9 @@ impl Visitor {
         let Expr::RevealHide(_) = expr else {
             return false;
         };
+        if self.erase_source_expr(expr) {
+            return true;
+        }
 
         self.inside_ghost += 1;
         self.visit_expr_with_arith(expr, InsideArith::None);
@@ -3506,6 +3596,17 @@ impl Visitor {
                 return false;
             }
         };
+
+        if self.source_erasure.is_some() {
+            if !mode_block.0 {
+                self.erase_source_expr(expr);
+            } else if let Expr::Call(call) = expr {
+                for attr in &mut call.attrs {
+                    self.visit_attribute_mut(attr);
+                }
+            }
+            return true;
+        }
 
         // Extract type arguments (e.g., from Ghost::<int>(...) or Tracked::<u64>(...))
         // before the visitor modifies the expression
@@ -4395,7 +4496,130 @@ enum ExtractQuantTriggersFound {
 //     if let E::A = E::A { true } else { false || false ==> true }
 
 impl VisitMut for Visitor {
+    fn visit_stmt_mut(&mut self, stmt: &mut Stmt) {
+        if let Some(source) = &mut self.source_erasure {
+            source.expression_is_statement = matches!(stmt, Stmt::Expr(_, _));
+        }
+        verus_syn::visit_mut::visit_stmt_mut(self, stmt);
+        if let Some(source) = &mut self.source_erasure {
+            source.expression_is_statement = false;
+        }
+    }
+
+    fn visit_signature_mut(&mut self, sig: &mut Signature) {
+        if self.source_erasure.is_some() {
+            self.visit_source_signature(sig);
+        } else {
+            verus_syn::visit_mut::visit_signature_mut(self, sig);
+        }
+    }
+
+    fn visit_macro_mut(&mut self, mac: &mut verus_syn::Macro) {
+        if self.source_erasure.is_some() {
+            self.visit_source_macro(mac);
+        } else {
+            verus_syn::visit_mut::visit_macro_mut(self, mac);
+        }
+    }
+
+    fn visit_item_mut(&mut self, item: &mut Item) {
+        if self.source_erasure.is_some() {
+            match item {
+                Item::AssumeSpecification(_)
+                | Item::Global(_)
+                | Item::BroadcastUse(_)
+                | Item::BroadcastGroup(_) => {
+                    self.record_erasure(item);
+                    return;
+                }
+                Item::Macro(mac) => {
+                    let unwrap = mac.mac.path.segments.last().is_some_and(|s| {
+                        matches!(
+                            s.ident.to_string().as_str(),
+                            "verus" | "verus_keep_ghost" | "verus_erase_ghost"
+                        )
+                    });
+                    if unwrap {
+                        self.record_erasure(&mac.semi_token);
+                    }
+                }
+                _ => {}
+            }
+        }
+        verus_syn::visit_mut::visit_item_mut(self, item);
+    }
+
+    fn visit_impl_item_mut(&mut self, item: &mut ImplItem) {
+        if self.source_erasure.is_some() && matches!(item, ImplItem::BroadcastGroup(_)) {
+            self.record_erasure(item);
+            return;
+        }
+        if self.source_erasure.is_some() {
+            if let ImplItem::Macro(mac) = item {
+                if mac.mac.path.segments.last().is_some_and(|s| {
+                    matches!(s.ident.to_string().as_str(), "verus_impl" | "verus_trait_impl")
+                }) {
+                    self.record_erasure(&mac.semi_token);
+                }
+            }
+        }
+        verus_syn::visit_mut::visit_impl_item_mut(self, item);
+    }
+
+    fn visit_expr_for_loop_mut(&mut self, expr: &mut ExprForLoop) {
+        if self.source_erasure.is_some() {
+            self.take_ghost(&mut expr.invariant_except_break);
+            self.take_ghost(&mut expr.invariant);
+            self.take_ghost(&mut expr.ensures);
+            self.take_ghost(&mut expr.decreases);
+            if let Some(name) = &expr.expr_name {
+                self.record_erasure(&name.0);
+                self.record_erasure(&name.1);
+            }
+            expr.expr_name = None;
+        }
+        verus_syn::visit_mut::visit_expr_for_loop_mut(self, expr);
+    }
+
+    fn visit_expr_closure_mut(&mut self, expr: &mut verus_syn::ExprClosure) {
+        if self.source_erasure.is_some() {
+            self.take_ghost(&mut expr.requires);
+            self.take_ghost(&mut expr.ensures);
+        }
+        verus_syn::visit_mut::visit_expr_closure_mut(self, expr);
+    }
+
     fn visit_expr_mut(&mut self, expr: &mut Expr) {
+        if let Some(source) = &self.source_erasure {
+            let in_verus = source.verus_depth > 0;
+            if in_verus
+                && (self.handle_assume(expr)
+                    || self.handle_assert(expr)
+                    || self.handle_assert_forall(expr)
+                    || self.handle_reveal_hide(expr)
+                    || self.handle_mode_blocks(expr))
+            {
+                return;
+            }
+            match expr {
+                Expr::Call(call) => {
+                    self.record_erasure(&call.atomically);
+                    call.atomically = None;
+                }
+                Expr::MethodCall(call) => {
+                    self.record_erasure(&call.atomically);
+                    call.atomically = None;
+                }
+                Expr::Macro(mac) if crate::source_erase::is_proof_macro(&mac.mac.path) => {
+                    self.erase_source_expr(expr);
+                    return;
+                }
+                _ => {}
+            }
+            self.source_erasure.as_mut().unwrap().expression_is_statement = false;
+            visit_expr_mut(self, expr);
+            return;
+        }
         self.handle_atomic_call(expr);
         self.normalize_expr_proof_note_attrs(expr);
 
@@ -4477,6 +4701,10 @@ impl VisitMut for Visitor {
     }
 
     fn visit_attribute_mut(&mut self, attr: &mut Attribute) {
+        if self.source_erasure.is_some() {
+            self.visit_source_attribute(attr);
+            return;
+        }
         fn path_verifier(
             span: Span,
         ) -> Punctuated<verus_syn::PathSegment, verus_syn::token::PathSep> {
@@ -4705,6 +4933,11 @@ impl VisitMut for Visitor {
         }
         block.stmts = stmts;
         visit_block_mut(self, block);
+        if self.source_erasure.is_some() {
+            for stmt in &block.stmts {
+                self.record_source_stmt(stmt);
+            }
+        }
         if has_pre_post_items {
             visit_items_in_block(&mut block.stmts, |items| self.visit_items_post(items));
         }
@@ -4716,6 +4949,14 @@ impl VisitMut for Visitor {
     }
 
     fn visit_item_fn_mut(&mut self, fun: &mut ItemFn) {
+        if self.source_erasure.is_some() {
+            if has_ghost_mode(&fun.attrs) {
+                self.record_fn_erasure(fun, &fun.sig);
+            } else {
+                visit_item_fn_mut(self, fun);
+            }
+            return;
+        }
         // Process rustdoc before processing the ItemFn itself.
         // That way, the generated rustdoc gets the prettier syntax instead of the
         // de-sugared syntax.
@@ -4743,6 +4984,14 @@ impl VisitMut for Visitor {
     }
 
     fn visit_impl_item_fn_mut(&mut self, method: &mut ImplItemFn) {
+        if self.source_erasure.is_some() {
+            if has_ghost_mode(&method.attrs) {
+                self.record_fn_erasure(method, &method.sig);
+            } else {
+                visit_impl_item_fn_mut(self, method);
+            }
+            return;
+        }
         if self.rustdoc {
             crate::rustdoc::process_impl_item_method(method);
         }
@@ -4768,6 +5017,14 @@ impl VisitMut for Visitor {
     }
 
     fn visit_trait_item_fn_mut(&mut self, method: &mut TraitItemFn) {
+        if self.source_erasure.is_some() {
+            if has_ghost_mode(&method.attrs) {
+                self.record_fn_erasure(method, &method.sig);
+            } else {
+                visit_trait_item_fn_mut(self, method);
+            }
+            return;
+        }
         let is_spec_method = method.sig.ident.to_string().starts_with(VERUS_SPEC);
         let mut stmts =
             self.visit_fn(&mut method.attrs, None, &mut method.sig, method.semi_token, true, true);
@@ -4798,6 +5055,10 @@ impl VisitMut for Visitor {
     }
 
     fn visit_item_const_mut(&mut self, con: &mut ItemConst) {
+        if self.source_erasure.is_some() {
+            visit_item_const_mut(self, con);
+            return;
+        }
         let mode = self.visit_const_or_static(
             con.const_token.span,
             &mut con.attrs,
@@ -4819,6 +5080,10 @@ impl VisitMut for Visitor {
     }
 
     fn visit_item_static_mut(&mut self, sta: &mut ItemStatic) {
+        if self.source_erasure.is_some() {
+            visit_item_static_mut(self, sta);
+            return;
+        }
         let mode = self.visit_const_or_static(
             sta.static_token.span,
             &mut sta.attrs,
@@ -4840,6 +5105,10 @@ impl VisitMut for Visitor {
     }
 
     fn visit_impl_item_const_mut(&mut self, con: &mut verus_syn::ImplItemConst) {
+        if self.source_erasure.is_some() {
+            visit_impl_item_const_mut(self, con);
+            return;
+        }
         let mode = self.visit_const_or_static(
             con.const_token.span,
             &mut con.attrs,
@@ -4861,6 +5130,11 @@ impl VisitMut for Visitor {
     }
 
     fn visit_field_mut(&mut self, field: &mut Field) {
+        if self.source_erasure.is_some() {
+            self.record_erasure(&field.mode);
+            visit_field_mut(self, field);
+            return;
+        }
         visit_field_mut(self, field);
         field.attrs.extend(data_mode_attrs(&field.mode));
         field.mode = DataMode::Default;
@@ -4868,7 +5142,14 @@ impl VisitMut for Visitor {
     }
 
     fn visit_item_enum_mut(&mut self, item: &mut ItemEnum) {
-        item.attrs.push(mk_verus_attr(item.span(), quote! { verus_macro }));
+        if self.source_erasure.is_some() {
+            self.record_erasure(&item.mode);
+            visit_item_enum_mut(self, item);
+            return;
+        }
+        if self.source_erasure.is_none() {
+            item.attrs.push(mk_verus_attr(item.span(), quote! { verus_macro }));
+        }
         visit_item_enum_mut(self, item);
         item.attrs.extend(data_mode_attrs(&item.mode));
         item.mode = DataMode::Default;
@@ -4876,13 +5157,22 @@ impl VisitMut for Visitor {
     }
 
     fn visit_item_union_mut(&mut self, item: &mut ItemUnion) {
-        item.attrs.push(mk_verus_attr(item.span(), quote! { verus_macro }));
+        if self.source_erasure.is_none() {
+            item.attrs.push(mk_verus_attr(item.span(), quote! { verus_macro }));
+        }
         visit_item_union_mut(self, item);
         self.filter_attrs(&mut item.attrs);
     }
 
     fn visit_item_struct_mut(&mut self, item: &mut ItemStruct) {
-        item.attrs.push(mk_verus_attr(item.span(), quote! { verus_macro }));
+        if self.source_erasure.is_some() {
+            self.record_erasure(&item.mode);
+            visit_item_struct_mut(self, item);
+            return;
+        }
+        if self.source_erasure.is_none() {
+            item.attrs.push(mk_verus_attr(item.span(), quote! { verus_macro }));
+        }
         visit_item_struct_mut(self, item);
         item.attrs.extend(data_mode_attrs(&item.mode));
         item.mode = DataMode::Default;
@@ -4891,6 +5181,10 @@ impl VisitMut for Visitor {
 
     #[cfg_attr(not(verus_keep_ghost), allow(unused_variables))]
     fn visit_type_mut(&mut self, ty: &mut Type) {
+        if self.source_erasure.is_some() {
+            verus_syn::visit_mut::visit_type_mut(self, ty);
+            return;
+        }
         self.inside_type += 1;
         verus_syn::visit_mut::visit_type_mut(self, ty);
         self.inside_type -= 1;
@@ -5058,7 +5352,16 @@ impl VisitMut for Visitor {
     }
 
     fn visit_item_mod_mut(&mut self, item: &mut ItemMod) {
-        item.attrs.push(mk_verus_attr(item.span(), quote! { verus_macro }));
+        if self.source_erasure.is_some() {
+            if let Some((_, items)) = &mut item.content {
+                self.visit_items_prefilter(items);
+            }
+            verus_syn::visit_mut::visit_item_mod_mut(self, item);
+            return;
+        }
+        if self.source_erasure.is_none() {
+            item.attrs.push(mk_verus_attr(item.span(), quote! { verus_macro }));
+        }
         if let Some((_, items)) = &mut item.content {
             self.visit_items_prefilter(items);
         }
@@ -5070,9 +5373,16 @@ impl VisitMut for Visitor {
     }
 
     fn visit_item_impl_mut(&mut self, imp: &mut ItemImpl) {
+        if self.source_erasure.is_some() {
+            self.visit_impl_items_prefilter(&mut imp.items, imp.trait_.is_some());
+            verus_syn::visit_mut::visit_item_impl_mut(self, imp);
+            return;
+        }
         let impl_info = (imp.generics.clone(), imp.self_ty.clone());
         let outer_impl = self.inside_impl.replace(Box::new(impl_info));
-        imp.attrs.push(mk_verus_attr(imp.span(), quote! { verus_macro }));
+        if self.source_erasure.is_none() {
+            imp.attrs.push(mk_verus_attr(imp.span(), quote! { verus_macro }));
+        }
         self.visit_impl_items_prefilter(&mut imp.items, imp.trait_.is_some());
         self.filter_attrs(&mut imp.attrs);
         verus_syn::visit_mut::visit_item_impl_mut(self, imp);
@@ -5080,7 +5390,14 @@ impl VisitMut for Visitor {
     }
 
     fn visit_item_trait_mut(&mut self, tr: &mut ItemTrait) {
-        tr.attrs.push(mk_verus_attr(tr.span(), quote! { verus_macro }));
+        if self.source_erasure.is_some() {
+            self.visit_trait_items_prefilter(&mut tr.items);
+            verus_syn::visit_mut::visit_item_trait_mut(self, tr);
+            return;
+        }
+        if self.source_erasure.is_none() {
+            tr.attrs.push(mk_verus_attr(tr.span(), quote! { verus_macro }));
+        }
         self.visit_trait_items_prefilter(&mut tr.items);
         self.filter_attrs(&mut tr.attrs);
         verus_syn::visit_mut::visit_item_trait_mut(self, tr);
@@ -5095,8 +5412,8 @@ impl VisitMut for Visitor {
     }
 }
 
-struct Items {
-    items: Vec<Item>,
+pub(crate) struct Items {
+    pub(crate) items: Vec<Item>,
 }
 
 impl Parse for Items {
@@ -5109,8 +5426,8 @@ impl Parse for Items {
     }
 }
 
-struct ImplItems {
-    items: Vec<ImplItem>,
+pub(crate) struct ImplItems {
+    pub(crate) items: Vec<ImplItem>,
 }
 
 impl Parse for ImplItems {
@@ -5386,6 +5703,53 @@ pub(crate) fn rewrite_items(
     rewrite_items_inner(&mut items.items, erase_ghost, use_spec_traits)
 }
 
+fn source_visitor() -> Visitor {
+    Visitor {
+        erase_ghost: EraseGhost::EraseAll,
+        use_spec_traits: false,
+        inside_ghost: 0,
+        inside_pat: 0,
+        inside_type: 0,
+        inside_external_code: 0,
+        inside_const: false,
+        inside_arith: InsideArith::None,
+        assign_to: false,
+        rustdoc: false,
+        inside_impl: None,
+        additional_items: Vec::new(),
+        source_erasure: Some(crate::source_erase::SourceErasure::default()),
+    }
+}
+
+fn source_result(visitor: Visitor) -> verus_syn::Result<Vec<crate::source_erase::Erasure>> {
+    let source = visitor.source_erasure.unwrap();
+    match source.error {
+        Some(error) => Err(error),
+        None => Ok(source.spans),
+    }
+}
+
+// Used by the ordinary library entry points, not by proc-macro expansion.
+#[allow(dead_code)]
+pub(crate) fn source_erasure(
+    file: &mut verus_syn::File,
+) -> verus_syn::Result<Vec<crate::source_erase::Erasure>> {
+    let mut visitor = source_visitor();
+    visitor.visit_items_prefilter(&mut file.items);
+    visitor.visit_file_mut(file);
+    source_result(visitor)
+}
+
+#[allow(dead_code)]
+pub(crate) fn source_erasure_rust(
+    file: &syn::File,
+) -> verus_syn::Result<Vec<crate::source_erase::Erasure>> {
+    let mut visitor = source_visitor();
+    let mut rust = crate::source_erase::RustVisitor { visitor: &mut visitor };
+    syn::visit::Visit::visit_file(&mut rust, file);
+    source_result(visitor)
+}
+
 pub(crate) fn rewrite_items_inner(
     items: &mut Vec<Item>,
     erase_ghost: EraseGhost,
@@ -5404,6 +5768,7 @@ pub(crate) fn rewrite_items_inner(
         rustdoc: env_rustdoc(),
         inside_impl: None,
         additional_items: Vec::new(),
+        source_erasure: None,
     };
     visitor.visit_items_prefilter(items);
     let mut index = 0;
@@ -5446,6 +5811,7 @@ pub(crate) fn rewrite_impl_items(
         rustdoc: env_rustdoc(),
         inside_impl: None,
         additional_items: Vec::new(),
+        source_erasure: None,
     };
     visitor.visit_impl_items_prefilter(&mut items.items, for_trait);
     for mut item in &mut items.items {
@@ -5482,6 +5848,7 @@ pub(crate) fn rewrite_expr(
         rustdoc: env_rustdoc(),
         inside_impl: None,
         additional_items: Vec::new(),
+        source_erasure: None,
     };
     visitor.visit_expr_mut(&mut expr);
     expr.to_tokens(&mut new_stream);
@@ -5516,6 +5883,7 @@ pub(crate) fn rewrite_proof_decl(
         rustdoc: env_rustdoc(),
         inside_impl: None,
         additional_items: Vec::new(),
+        source_erasure: None,
     };
     for mut ss in stmts {
         match ss {
@@ -5572,6 +5940,7 @@ pub(crate) fn rewrite_expr_node(erase_ghost: EraseGhost, inside_ghost: bool, exp
         rustdoc: env_rustdoc(),
         inside_impl: None,
         additional_items: Vec::new(),
+        source_erasure: None,
     };
     visitor.visit_expr_mut(expr);
 }
@@ -5764,6 +6133,7 @@ pub(crate) fn sig_specs_attr(
         rustdoc: env_rustdoc(),
         inside_impl: None,
         additional_items: Vec::new(),
+        source_erasure: None,
     };
 
     if let Some(pat) = &ret_pat {
@@ -5806,6 +6176,7 @@ pub(crate) fn while_loop_spec_attr(
         rustdoc: env_rustdoc(),
         inside_impl: None,
         additional_items: Vec::new(),
+        source_erasure: None,
     };
     let mut spec_attr = spec_attr;
     visitor.visit_loop_spec(&mut spec_attr);
@@ -5841,6 +6212,7 @@ pub(crate) fn for_loop_spec_attr(
         rustdoc: env_rustdoc(),
         inside_impl: None,
         additional_items: Vec::new(),
+        source_erasure: None,
     };
     let mut spec_attr = spec_attr;
     visitor.visit_loop_spec(&mut spec_attr);
@@ -5902,6 +6274,7 @@ pub(crate) fn proof_block(
         rustdoc: env_rustdoc(),
         inside_impl: None,
         additional_items: Vec::new(),
+        source_erasure: None,
     };
     visitor.visit_block_mut(&mut invoke);
     invoke.to_tokens(&mut new_stream);
@@ -5929,6 +6302,7 @@ pub(crate) fn proof_macro_exprs(
         rustdoc: env_rustdoc(),
         inside_impl: None,
         additional_items: Vec::new(),
+        source_erasure: None,
     };
     for element in &mut invoke.elements.elements {
         match element {
@@ -5962,6 +6336,7 @@ pub(crate) fn inv_au_macro_exprs(
         rustdoc: env_rustdoc(),
         inside_impl: None,
         additional_items: Vec::new(),
+        source_erasure: None,
     };
 
     invoke
@@ -6006,6 +6381,7 @@ pub(crate) fn proof_macro_explicit_exprs(
         rustdoc: env_rustdoc(),
         inside_impl: None,
         additional_items: Vec::new(),
+        source_erasure: None,
     };
     for element in &mut invoke.elements.elements {
         match element {
@@ -6043,6 +6419,34 @@ macro_rules! declare_has_external_code {
 }
 declare_has_external_code!(has_external_code, verus_syn);
 declare_has_external_code!(has_external_code_syn, syn);
+
+macro_rules! declare_has_ghost_mode {
+    ($name:ident, $s:ident) => {
+        pub(crate) fn $name(attrs: &[$s::Attribute]) -> bool {
+            attrs.iter().any(|attr| {
+                let segments = &attr.path().segments;
+                let ghost_mode =
+                    |name: &str| matches!(name, "spec" | "spec_checked" | "proof" | "proof_axiom");
+                if segments.len() == 2 && segments[0].ident == "verifier" {
+                    ghost_mode(&segments[1].ident.to_string())
+                } else if (segments.len() == 1 && segments[0].ident == "verifier")
+                    || (segments.len() == 2
+                        && segments[0].ident == "verus"
+                        && segments[1].ident == "internal")
+                {
+                    match &attr.meta {
+                        $s::Meta::List(list) => ghost_mode(&list.tokens.to_string()),
+                        _ => false,
+                    }
+                } else {
+                    false
+                }
+            })
+        }
+    };
+}
+declare_has_ghost_mode!(has_ghost_mode, verus_syn);
+declare_has_ghost_mode!(has_ghost_mode_syn, syn);
 
 pub(crate) fn is_encoded_const(attrs: &Vec<Attribute>) -> bool {
     attrs.iter().any(|attr| match &attr.meta {

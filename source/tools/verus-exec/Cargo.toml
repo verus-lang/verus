@@ -1,0 +1,18 @@
+[package]
+name = "verus-exec"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Preserve executable Verus source while removing proof artifacts"
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true }
+proc-macro2 = { workspace = true, features = ["span-locations"] }
+tempfile = { workspace = true }
+verus_syn = { workspace = true }
+verus_builtin_macros_syntax = { path = "../../builtin_macros/syntax" }
+walkdir = { workspace = true }
+
+[lints]
+workspace = true

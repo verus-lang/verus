@@ -1,0 +1,26 @@
+[package]
+name = "verus_builtin_macros_syntax"
+version = "0.1.0"
+edition = "2018"
+license = "MIT"
+description = "Source-preserving access to the Verus macro syntax rewriter"
+
+# Compile the macro implementation as an ordinary library too. Both entry points
+# use the same files, so source erasure cannot drift from macro erasure.
+[lib]
+path = "../src/syntax_lib.rs"
+
+[dependencies]
+convert_case = { workspace = true }
+proc-macro2 = { workspace = true, features = ["span-locations"] }
+quote = { workspace = true }
+syn = { workspace = true }
+verus_syn = { workspace = true }
+verus_prettyplease = { workspace = true }
+
+[features]
+vpanic = []
+contrib-hooks = []
+
+[lints]
+workspace = true
