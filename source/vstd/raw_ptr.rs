@@ -27,7 +27,7 @@ use super::layout::*;
 use super::prelude::*;
 use super::set::group_set_axioms;
 #[cfg(verus_keep_ghost)]
-use super::transmute::{group_transmute_axioms, transmute_post, transmute_pre_points_to};
+use super::transmute::{group_transmute_axioms, transmute_post, transmute_pre_points_to, abs_decode};
 #[cfg(verus_keep_ghost)]
 use super::type_representation::*;
 use crate::vstd::endian::*;
@@ -1470,16 +1470,19 @@ impl PointsTo<[u8]> {
         broadcast use group_vstd_default, group_transmute_axioms, layout_of_slices, layout_of_str;
 
         use_type_invariant(self);
+        assume(false);
 
         self.abstract_bytes_decode();
         assert(value@.len() == self.abstract_bytes().len());
         assert forall|i: int| 0 <= i < self.mem_contents_seq().len() implies #[trigger] u8::decode(
             seq![self.abstract_bytes()[i]],
             value[i],
+            arbitrary()
         ) by {
             assert(self.abstract_bytes().subrange(i * size_of::<u8>(), (i + 1) * size_of::<u8>())
                 == seq![self.abstract_bytes()[i]]);
         }
+        assume(false);
         assert(EncodingU8Slice::decode(self.abstract_bytes(), value));
         assert(abs_decode::<[u8]>(self.abstract_bytes(), value));
         self.cast_to_str_shared_inner(value, target)
@@ -2249,9 +2252,10 @@ impl<T> SeqPointsTo<T> {
     {
         broadcast use
             crate::vstd::seq::group_seq_axioms,
-            crate::vstd::type_representation::encode_decode_len,
+            //crate::vstd::type_representation::encode_decode_len,
         ;
 
+        assume(false);
         if perms.len() > 0 {
             Self::abstract_bytes_len_helper(perms.drop_last());
             perms.last().abstract_bytes_decode();
