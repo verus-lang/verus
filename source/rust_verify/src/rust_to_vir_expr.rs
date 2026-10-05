@@ -1860,154 +1860,6 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
     }
 }
 
-#[allow(dead_code)]
-enum OpKind {
-    UnOp(rustc_hir::UnOp),
-    BinOp(rustc_hir::BinOp),
-    AssignOp(rustc_hir::AssignOp),
-}
-
-/// If `ty` is a reference type, return the referent; otherwise return `ty` unchanged.
-fn strip_ref<'tcx>(ty: rustc_middle::ty::Ty<'tcx>) -> rustc_middle::ty::Ty<'tcx> {
-    match ty.kind() {
-        TyKind::Ref(_, inner_ty, _) => *inner_ty,
-        _ => ty,
-    }
-}
-
-// Add lang_item_for_op from rust/compiler/rustc_hir_typeck/src/op.rs
-// Returns the required traits to use op
-// Note: comparison operators are defined only by PartialEq and PartialOrd
-fn lang_item_for_op(
-    tcx: TyCtxt<'_>,
-    op: OpKind,
-    span: Span,
-) -> Result<(rustc_span::Symbol, Option<rustc_hir::def_id::DefId>), VirErr> {
-    let lang = tcx.lang_items();
-    use rustc_span::symbol::sym;
-    let ret = match op {
-        OpKind::AssignOp(op) => match op.node {
-            AssignOpKind::AddAssign => (sym::add_assign, lang.add_assign_trait()),
-            AssignOpKind::SubAssign => (sym::sub_assign, lang.sub_assign_trait()),
-            AssignOpKind::MulAssign => (sym::mul_assign, lang.mul_assign_trait()),
-            AssignOpKind::DivAssign => (sym::div_assign, lang.div_assign_trait()),
-            AssignOpKind::RemAssign => (sym::rem_assign, lang.rem_assign_trait()),
-            AssignOpKind::BitXorAssign => (sym::bitxor_assign, lang.bitxor_assign_trait()),
-            AssignOpKind::BitAndAssign => (sym::bitand_assign, lang.bitand_assign_trait()),
-            AssignOpKind::BitOrAssign => (sym::bitor_assign, lang.bitor_assign_trait()),
-            AssignOpKind::ShlAssign => (sym::shl_assign, lang.shl_assign_trait()),
-            AssignOpKind::ShrAssign => (sym::shr_assign, lang.shr_assign_trait()),
-        },
-        OpKind::BinOp(op) => match op.node {
-            BinOpKind::Add => (sym::add, lang.add_trait()),
-            BinOpKind::Sub => (sym::sub, lang.sub_trait()),
-            BinOpKind::Mul => (sym::mul, lang.mul_trait()),
-            BinOpKind::Div => (sym::div, lang.div_trait()),
-            BinOpKind::Rem => (sym::rem, lang.rem_trait()),
-            BinOpKind::BitXor => (sym::bitxor, lang.bitxor_trait()),
-            BinOpKind::BitAnd => (sym::bitand, lang.bitand_trait()),
-            BinOpKind::BitOr => (sym::bitor, lang.bitor_trait()),
-            BinOpKind::Shl => (sym::shl, lang.shl_trait()),
-            BinOpKind::Shr => (sym::shr, lang.shr_trait()),
-            BinOpKind::Lt => (sym::lt, lang.partial_ord_trait()),
-            BinOpKind::Le => (sym::le, lang.partial_ord_trait()),
-            BinOpKind::Ge => (sym::ge, lang.partial_ord_trait()),
-            BinOpKind::Gt => (sym::gt, lang.partial_ord_trait()),
-            BinOpKind::Eq => (sym::eq, lang.eq_trait()), // PartialEq
-            BinOpKind::Ne => (sym::ne, lang.eq_trait()), // PartialEq
-            BinOpKind::And | BinOpKind::Or => {
-                crate::internal_err!(span, "&& and || are not overloadable")
-            }
-        },
-        OpKind::UnOp(op) => match op {
-            UnOp::Not => (sym::not, lang.not_trait()),
-            UnOp::Neg => (sym::neg, lang.neg_trait()),
-            UnOp::Deref => {
-                crate::internal_err!(span, "unexpected Deref")
-            }
-        },
-    };
-    Ok(ret)
-}
-
-/// Return None if we do not want to overload the operator.
-/// We do not replace operators for some primitive types so that we still see
-/// consistent errors for integer overflow/underflow.
-fn binary_operator_overload_to_vir<'tcx>(
-    bctx: &BodyCtxt<'tcx>,
-    expr: &Expr<'tcx>,
-) -> Result<Option<vir::ast::Expr>, VirErr> {
-    let tcx = bctx.ctxt.tcx;
-    let span = expr.span;
-    let (op, bin_args) = match expr.kind {
-        ExprKind::Binary(op, lhs, rhs) => {
-            match op.node {
-                BinOpKind::Eq | BinOpKind::Ne => {
-                    if is_smt_equality(bctx, expr.span, &lhs.hir_id, &rhs.hir_id)? {
-                        return Ok(None);
-                    }
-                }
-                BinOpKind::Add
-                | BinOpKind::Sub
-                | BinOpKind::Mul
-                | BinOpKind::Div
-                | BinOpKind::Rem
-                | BinOpKind::BitXor
-                | BinOpKind::BitAnd
-                | BinOpKind::BitOr
-                | BinOpKind::Shl
-                | BinOpKind::Shr
-                | BinOpKind::Le
-                | BinOpKind::Ge
-                | BinOpKind::Lt
-                | BinOpKind::Gt => {
-                    if is_smt_arith(bctx, lhs.span, rhs.span, &lhs.hir_id, &rhs.hir_id)? {
-                        return Ok(None);
-                    }
-                }
-                BinOpKind::And | BinOpKind::Or => {
-                    return Ok(None);
-                }
-            };
-            (OpKind::BinOp(op), Some((lhs, rhs)))
-        }
-        _ => return Ok(None),
-    };
-
-    // Usually it's easier to get the fn_def_id like this:
-    // fn_def_id = bctx.types.type_dependent_def_id(expr.hir_id);
-    // However, this only works for the method_call case, i.e., when the operator
-    // isn't primitive. However, because of the signed div and signed rem cases,
-    // we reach this point outside the method_call case.
-    // So we can't clean this all up in favor of type_dependent_def_id right now.
-
-    let (trait_id, fun_sym, args, substs) = if let Some((lhs, rhs)) = bin_args {
-        let (fun_sym, Some(trait_id)) = lang_item_for_op(tcx, op, span)? else {
-            crate::internal_err!(span, "operator needs an accessible trait");
-        };
-        // When constructing the substs for trait resolution, we use
-        // expr_ty_adjusted to account for all adjustments (e.g., pointer
-        // coercions like *mut T -> *const T), then strip off any Refs.
-        let lhs_ty = strip_ref(bctx.types.expr_ty_adjusted(lhs));
-        let rhs_ty = strip_ref(bctx.types.expr_ty_adjusted(rhs));
-        let substs = tcx.mk_args(&[lhs_ty.into(), rhs_ty.into()]);
-
-        let args = vec![lhs, rhs];
-        (trait_id, fun_sym, args, substs)
-    } else {
-        return Ok(None);
-    };
-    let Some(assoc_fn) = tcx
-        .associated_items(trait_id)
-        .filter_by_name_unhygienic(fun_sym)
-        .find(|item| matches!(item.kind, rustc_middle::ty::AssocKind::Fn { .. }))
-    else {
-        panic!("could not find function");
-    };
-    let fun_def_id = assoc_fn.def_id;
-    Ok(Some(fn_call_to_vir(bctx, expr, fun_def_id, substs, expr.span, args, true)?))
-}
-
 /// Callers must guarantee that expr_vir is a vir representation of expr.
 pub(crate) fn expr_cast_enum_int_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
@@ -2747,15 +2599,14 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     .types
                     .type_dependent_def_id(expr.hir_id)
                     .expect("cannot get the function definition id for a unary op");
-                let arg_ty = tc.expr_ty_adjusted(arg);
                 let arg_vir = expr_to_vir_consume(bctx, arg)?;
-                Ok(ExprOrPlace::Expr(crate::fn_call_to_vir::call_unary_method(
+                Ok(ExprOrPlace::Expr(crate::fn_call_to_vir::call_overloaded_method(
                     bctx,
                     expr.span,
                     expr_typ()?,
                     fn_def_id,
-                    arg_vir,
-                    arg_ty,
+                    Arc::new(vec![arg_vir]),
+                    bctx.types.node_args(expr.hir_id),
                 )?))
             }
             UnOp::Deref => {
@@ -2828,35 +2679,92 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             mk_expr(ExprX::Logical(vop, vlhs, vrhs))
         }
         ExprKind::Binary(op, lhs, rhs) => {
-            let ret = binary_operator_overload_to_vir(bctx, expr)?;
-            if let Some(r) = ret {
-                return Ok(ExprOrPlace::Expr(r));
+            let lhs_vir = expr_to_vir_consume(bctx, lhs)?;
+            let rhs_vir = expr_to_vir_consume(bctx, rhs)?;
+
+            // Special-case various types of equality where it is known to match spec equality
+            if matches!(op.node, BinOpKind::Eq | BinOpKind::Ne)
+                && is_smt_equality(bctx, expr.span, &lhs.hir_id, &rhs.hir_id)?
+            {
+                let op_vir = binopkind_to_binaryop(bctx, op, lhs, rhs)?;
+                return mk_expr(ExprX::Binary(op_vir, lhs_vir, rhs_vir));
             }
 
-            let vlhs = expr_to_vir_consume(bctx, lhs)?;
-            let vrhs = expr_to_vir_consume(bctx, rhs)?;
-            let vop = binopkind_to_binaryop(bctx, op, lhs, rhs)?;
-            let e = mk_expr(ExprX::Binary(vop, vlhs, vrhs))?.expect_expr();
-            match op.node {
-                BinOpKind::Add | BinOpKind::Sub | BinOpKind::Mul => Ok(ExprOrPlace::Expr(e)),
-                BinOpKind::Div | BinOpKind::Rem => {
-                    match mk_range(&bctx.ctxt.verus_items, &tc.node_type(expr.hir_id)) {
-                        IntRange::Int
-                        | IntRange::Nat
-                        | IntRange::U(_)
-                        | IntRange::USize
-                        | IntRange::I(_)
-                        | IntRange::ISize => {
-                            // Euclidean division or truncating division
-                            Ok(ExprOrPlace::Expr(mk_ty_clip(bctx, &expr_typ()?, &e, true)))
-                        }
-                        IntRange::Char => {
-                            unsupported_err!(expr.span, "div/mod on char type")
+            // Special-case arithmetic for integer types
+            if matches!(
+                op.node,
+                BinOpKind::Add
+                    | BinOpKind::Sub
+                    | BinOpKind::Mul
+                    | BinOpKind::Div
+                    | BinOpKind::Rem
+                    | BinOpKind::BitXor
+                    | BinOpKind::BitAnd
+                    | BinOpKind::BitOr
+                    | BinOpKind::Shl
+                    | BinOpKind::Shr
+                    | BinOpKind::Le
+                    | BinOpKind::Ge
+                    | BinOpKind::Lt
+                    | BinOpKind::Gt
+            ) && is_smt_arith(bctx, lhs.span, rhs.span, &lhs.hir_id, &rhs.hir_id)?
+            {
+                let op_vir = binopkind_to_binaryop(bctx, op, lhs, rhs)?;
+                let e = mk_expr(ExprX::Binary(op_vir, lhs_vir, rhs_vir))?.expect_expr();
+                match op.node {
+                    BinOpKind::Div | BinOpKind::Rem => {
+                        match mk_range(&bctx.ctxt.verus_items, &tc.node_type(expr.hir_id)) {
+                            IntRange::Int
+                            | IntRange::Nat
+                            | IntRange::U(_)
+                            | IntRange::USize
+                            | IntRange::I(_)
+                            | IntRange::ISize => {
+                                // Euclidean division or truncating division
+                                // This clip is to help the smt solver see that it's in-bounds
+                                // REVIEW: Should this be applied to AssignOp as well?
+                                // Consider moving this clipping logic to ast_to_sst for consistency
+                                return Ok(ExprOrPlace::Expr(mk_ty_clip(
+                                    bctx,
+                                    &expr_typ()?,
+                                    &e,
+                                    true,
+                                )));
+                            }
+                            IntRange::Char => {
+                                unsupported_err!(expr.span, "div/mod on char type")
+                            }
                         }
                     }
+                    _ => {
+                        return Ok(ExprOrPlace::Expr(e));
+                    }
                 }
-                _ => Ok(ExprOrPlace::Expr(e)),
             }
+
+            // The above cases should handle (at mininum) all non-method-call cases.
+            if !bctx.types.is_method_call(expr) {
+                let lhs_ty = bctx.types.expr_ty_adjusted(lhs);
+                let rhs_ty = bctx.types.expr_ty_adjusted(rhs);
+                unsupported_err!(
+                    expr.span,
+                    format!("applying binary operator {op:?} to types {lhs_ty:?}, {rhs_ty:?}")
+                )
+            }
+
+            // Handle any method call case
+            let fn_def_id = bctx
+                .types
+                .type_dependent_def_id(expr.hir_id)
+                .expect("cannot get the function definition id for a unary op");
+            Ok(ExprOrPlace::Expr(crate::fn_call_to_vir::call_overloaded_method(
+                bctx,
+                expr.span,
+                expr_typ()?,
+                fn_def_id,
+                Arc::new(vec![lhs_vir, rhs_vir]),
+                bctx.types.node_args(expr.hir_id),
+            )?))
         }
         ExprKind::Path(qpath) => {
             let res = bctx.types.qpath_res(&qpath, expr.hir_id);
