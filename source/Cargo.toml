@@ -4,6 +4,7 @@ members = [
   "air",
   "builtin",
   "builtin_macros",
+  "builtin_macros/syntax",
   "cargo-verus",
   "cargo-verus-toolchains",
   "vir",
@@ -18,6 +19,7 @@ members = [
   "tools/bump_crate_versions",
   "tools/internals_interface",
   "tools/line_count",
+  "tools/verus-exec",
 ]
 exclude = [
   "vstd",
