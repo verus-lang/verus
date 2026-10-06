@@ -581,6 +581,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_add_overloaded_with_shared_refs_issue3061 verus_code! {
+        use vstd::prelude::*;
+
         pub struct F { pub x: u8 }
 
         impl vstd::std_specs::ops::AddSpecImpl<F> for F {
@@ -589,7 +591,7 @@ test_verify_one_file! {
             open spec fn add_spec(self, rhs: F) -> F { F { x: 1 } }
         }
 
-        impl Add<F> for F {
+        impl std::ops::Add<F> for F {
             type Output = F;
             fn add(self, rhs: F) -> F { F { x: 1 } }
         }
@@ -600,7 +602,7 @@ test_verify_one_file! {
             open spec fn add_spec(self, rhs: &F) -> F { F { x: 2 } }
         }
 
-        impl<'a> Add<&'a F> for &F {
+        impl<'a> std::ops::Add<&'a F> for &F {
             type Output = F;
             fn add(self, rhs: &'a F) -> F { F { x: 2 } }
         }
