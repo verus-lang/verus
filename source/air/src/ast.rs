@@ -179,12 +179,22 @@ pub type Triggers = Arc<Vec<Trigger>>;
 
 pub type Qid = Option<Ident>;
 
+// Wrap the underlying lambda value in (wrap id lambda),
+// where the apply axioms are about the wrapped lambda, not the underlying lambda
+#[derive(Clone, Debug)]
+pub struct WrapLambda {
+    pub wrap: Ident,
+    pub id: Expr,
+}
+
 pub type Bind = Arc<BindX>;
 #[derive(Clone, Debug)]
 pub enum BindX {
     Let(Binders<Expr>),
     Quant(Quant, Binders<Typ>, Triggers, Qid),
-    Lambda(Binders<Typ>, Triggers, Qid),
+    // define an anonymous function (over the domain where Expr is true, if Some(Expr))
+    // TODO: remove support for Triggers in Lambda
+    Lambda(Binders<Typ>, Triggers, Qid, Option<WrapLambda>, Option<Expr>),
     // choose Binders s.t. Expr is true
     Choose(Binders<Typ>, Triggers, Qid, Expr),
 }

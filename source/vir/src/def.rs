@@ -582,6 +582,32 @@ pub fn fn_array_update() -> Fun {
     })
 }
 
+pub fn fn_truncating_div() -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX {
+            krate: CrateId::Vstd,
+            segments: Arc::new(vec![
+                Arc::new("arithmetic".to_string()),
+                Arc::new("div_mod".to_string()),
+                Arc::new("rust_div".to_string()),
+            ]),
+        }),
+    })
+}
+
+pub fn fn_truncating_mod() -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX {
+            krate: CrateId::Vstd,
+            segments: Arc::new(vec![
+                Arc::new("arithmetic".to_string()),
+                Arc::new("div_mod".to_string()),
+                Arc::new("rust_rem".to_string()),
+            ]),
+        }),
+    })
+}
+
 pub fn array_type() -> Path {
     let ident = Arc::new(ARRAY_TYPE.to_string());
     Arc::new(PathX { krate: CrateId::Internal, segments: Arc::new(vec![ident]) })

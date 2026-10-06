@@ -476,6 +476,69 @@ test_verify_one_file! {
     } => Err(err) => assert_any_vir_error_msg(err, "function must be called exactly once in `atomically` block")
 }
 
+const COMMIT_U8_FUNCTION: &'static str = verus_code_str! {
+    use vstd::prelude::*;
+    use vstd::atomic::*;
+
+    fn atomic_function()
+        atomically (au) {
+            (x: u8) -> (y: Commit<u8>),
+        },
+    {
+        try_open_atomic_update!(au, x => { Tracked(Commit(x)) });
+    }
+};
+
+test_verify_one_file! {
+    #[test] atomic_call_update_in_proof_closure
+    COMMIT_U8_FUNCTION.to_owned() + verus_code_str! {
+        fn client() -> (r: u8)
+            ensures r == 1,
+        {
+            atomic_function() atomically |update| -> (au) {
+                let tracked g = proof_fn|tracked v: u8|
+                    ensures au.input() == v,
+                {
+                    update(v);
+                };
+                g(1);
+                g(2);
+            };
+            0
+        }
+    } => Err(err) => assert_vir_error_msg(err, "function pointer types")
+}
+
+test_verify_one_file! {
+    #[test] atomic_call_update_in_proof_closure_with_direct_update
+    COMMIT_U8_FUNCTION.to_owned() + verus_code_str! {
+        fn client() {
+            atomic_function() atomically |update| {
+                let tracked g = proof_fn|tracked v: u8| { update(v); };
+                g(1);
+                update(2);
+            };
+        }
+    } => Err(err) => assert_vir_error_msg(err, "function pointer types")
+}
+
+test_verify_one_file! {
+    #[test] atomic_call_with_helper_closures
+    COMMIT_U8_FUNCTION.to_owned() + verus_code_str! {
+        fn client() {
+            atomic_function() atomically |update| -> (au) {
+                let ghost identity = |v: u8| v;
+                let tracked identity_proof = proof_fn|tracked v: u8| -> (tracked r: u8)
+                    ensures r == v,
+                { v };
+                let tracked v = identity_proof(1);
+                update(v);
+                assert(au.input() == identity(1));
+            };
+        }
+    } => Ok(())
+}
+
 test_verify_one_file! {
     #[test] atomic_call_success
     ATOMIC_FUNCTION.to_owned() + verus_code_str! {

@@ -466,6 +466,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_arith_assign_signed verus_code! {
+        use vstd::prelude::*;
         fn test_signed_div() {
             let mut x = 53i8;
             x /= 10i8;
@@ -499,9 +500,81 @@ test_verify_one_file! {
             let mut x = (-128i8);
             x %= (-1i8); // FAILS
         }
-    // TODO: } => Err(e) => assert_fails(e, 4)
-    } => Err(err) => assert_vir_error_msgs(err, &[
-        "div/mod on signed finite-width integers",
-        "div/mod on signed finite-width integers",
-    ])
+
+        fn test_signed_div0() {
+            let mut x = 1i8;
+            x /= 0; // FAILS
+        }
+
+        fn test_signed_mod0() {
+            let mut x = 1i8;
+            x %= 0; // FAILS
+        }
+
+        fn test_eval_ordering_div() {
+            let mut a = false;
+            let mut b = false;
+            let mut c = false;
+
+            let mut x = -20;
+
+            // rhs first
+            *({ a = true; &mut x }) /= { b = a; c = true; -1 };
+
+            assert(x == 20);
+            assert(a == true);
+            assert(b == false);
+            assert(c == true);
+        }
+
+        fn test_eval_ordering_mod() {
+            let mut a = false;
+            let mut b = false;
+            let mut c = false;
+
+            let mut x = -20;
+
+            // rhs first
+            *({ a = true; &mut x }) %= { b = a; c = true; -1 };
+
+            assert(x == 0);
+            assert(a == true);
+            assert(b == false);
+            assert(c == true);
+        }
+
+        fn test_eval_ordering_div_fails() {
+            let mut a = false;
+            let mut b = false;
+            let mut c = false;
+
+            let mut x = -20;
+
+            // rhs first
+            *({ a = true; &mut x }) /= { b = a; c = true; -1 };
+
+            assert(x == 20);
+            assert(a == true);
+            assert(b == false);
+            assert(c == true);
+            assert(false); // FAILS
+        }
+
+        fn test_eval_ordering_mod_fails() {
+            let mut a = false;
+            let mut b = false;
+            let mut c = false;
+
+            let mut x = -20;
+
+            // rhs first
+            *({ a = true; &mut x }) %= { b = a; c = true; -1 };
+
+            assert(x == 0);
+            assert(a == true);
+            assert(b == false);
+            assert(c == true);
+            assert(false); // FAILS
+        }
+    } => Err(e) => assert_fails(e, 6)
 }

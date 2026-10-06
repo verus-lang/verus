@@ -1,7 +1,7 @@
 use crate::ast::{
     Axiom, BinaryOp, BindX, Binder, BinderX, Binders, Command, CommandX, Commands, Constant, Decl,
     DeclX, Decls, Expr, ExprX, Exprs, Ident, MultiOp, Qid, Quant, QueryX, Relation, RoundingMode,
-    Stmt, StmtX, Stmts, Trigger, Triggers, Typ, TypX, UnaryOp,
+    Stmt, StmtX, Stmts, Trigger, Triggers, Typ, TypX, UnaryOp, WrapLambda,
 };
 use crate::def::mk_skolem_id;
 use crate::messages::ArcDynMessageLabel;
@@ -114,7 +114,7 @@ where
 enum QuantOrChooseOrLambda {
     Quant(Quant),
     Choose(Expr),
-    Lambda,
+    Lambda(Option<WrapLambda>, Option<Expr>),
 }
 
 pub struct Parser {
@@ -234,9 +234,34 @@ impl Parser {
                         let quantchooselambda = QuantOrChooseOrLambda::Quant(Quant::Exists);
                         return self.node_to_quant_or_lambda_expr(quantchooselambda, binders, e);
                     }
-                    [Node::Atom(s), Node::List(binders), e] if s == "lambda" => {
-                        let quantchooselambda = QuantOrChooseOrLambda::Lambda;
-                        return self.node_to_quant_or_lambda_expr(quantchooselambda, binders, e);
+                    // Note: (lambda list ...) distinguishes wrap = None
+                    // Note: (lambda atom ...) distinguishes wrap = Some(WrapLambda)
+                    [Node::Atom(s), Node::List(binders), body] if s == "lambda" => {
+                        let quantchooselambda = QuantOrChooseOrLambda::Lambda(None, None);
+                        return self.node_to_quant_or_lambda_expr(quantchooselambda, binders, body);
+                    }
+                    [Node::Atom(s), Node::List(binders), cond, body] if s == "lambda" => {
+                        let cond = self.node_to_expr(cond)?;
+                        let quantchooselambda = QuantOrChooseOrLambda::Lambda(None, Some(cond));
+                        return self.node_to_quant_or_lambda_expr(quantchooselambda, binders, body);
+                    }
+                    [Node::Atom(s), Node::Atom(wrap), id, Node::List(binders), body]
+                        if s == "lambda" =>
+                    {
+                        let id = self.node_to_expr(id)?;
+                        let wrap = WrapLambda { wrap: Arc::new(wrap.clone()), id };
+                        let quantchooselambda = QuantOrChooseOrLambda::Lambda(Some(wrap), None);
+                        return self.node_to_quant_or_lambda_expr(quantchooselambda, binders, body);
+                    }
+                    [Node::Atom(s), Node::Atom(wrap), id, Node::List(binders), cond, body]
+                        if s == "lambda" =>
+                    {
+                        let id = self.node_to_expr(id)?;
+                        let wrap = WrapLambda { wrap: Arc::new(wrap.clone()), id };
+                        let cond = self.node_to_expr(cond)?;
+                        let quantchooselambda =
+                            QuantOrChooseOrLambda::Lambda(Some(wrap), Some(cond));
+                        return self.node_to_quant_or_lambda_expr(quantchooselambda, binders, body);
                     }
                     [Node::Atom(s), Node::List(binders), e1, e2] if s == "choose" => {
                         let quantchooselambda =
@@ -645,7 +670,9 @@ impl Parser {
             QuantOrChooseOrLambda::Choose(body) => {
                 (body, BindX::Choose(binders, triggers, qid, expr))
             }
-            QuantOrChooseOrLambda::Lambda => (expr, BindX::Lambda(binders, triggers, qid)),
+            QuantOrChooseOrLambda::Lambda(wrap, cond) => {
+                (expr, BindX::Lambda(binders, triggers, qid, wrap, cond))
+            }
         };
         Ok(Arc::new(ExprX::Bind(Arc::new(bind), body)))
     }
