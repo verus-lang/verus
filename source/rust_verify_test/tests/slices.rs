@@ -151,6 +151,43 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_slice_chunks verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        fn test(slice: &[u8])
+            requires
+                slice@ == seq![
+                    0u8, 1u8, 2u8, 3u8,
+                    4u8, 5u8, 6u8, 7u8,
+                    8u8, 9u8,
+                ],
+        {
+            let mut iter = slice.chunks(4);
+            assert(IteratorSpec::remaining(&iter).len() == 3);
+            assert(IteratorSpec::remaining(&iter)[0]@ == seq![0u8, 1u8, 2u8, 3u8]);
+            assert(IteratorSpec::remaining(&iter)[1]@ == seq![4u8, 5u8, 6u8, 7u8]);
+            assert(IteratorSpec::remaining(&iter)[2]@ == seq![8u8, 9u8]);
+
+            let first = iter.next().unwrap();
+            assert(first@ == seq![0u8, 1u8, 2u8, 3u8]);
+            assert(IteratorSpec::remaining(&iter).len() == 2);
+
+            let second = iter.next().unwrap();
+            assert(second@ == seq![4u8, 5u8, 6u8, 7u8]);
+            assert(IteratorSpec::remaining(&iter).len() == 1);
+
+            let third = iter.next().unwrap();
+            assert(third@ == seq![8u8, 9u8]);
+            assert(IteratorSpec::remaining(&iter).len() == 0);
+
+            let last = iter.next();
+            assert(last.is_none());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_slices_arrays_extensionality verus_code! {
         use vstd::prelude::*;
 
