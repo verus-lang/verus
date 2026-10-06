@@ -1,4 +1,7 @@
-use crate::ast::{ClosureKind, CrateId, Dt, Fun, FunX, InvAtomicity, Path, PathX, VarIdent};
+use crate::ast::{
+    ClosureKind, CrateId, Dt, Fun, FunX, InvAtomicity, Path, PathX, UninterpretedFloatBinaryOp,
+    VarIdent,
+};
 use crate::ast_util::air_unique_var;
 use crate::messages::Span;
 use crate::util::vec_map;
@@ -1357,4 +1360,21 @@ pub fn autospec_return_clause_spec_fn_name(path: &Path) -> Fun {
     let name = path.last_segment();
     let p = path.pop_segment().push_segment(Arc::new(format!("{}{}", name, AUTOSPEC_FUNC_SUFFIX)));
     Arc::new(FunX { path: p })
+}
+
+pub fn fn_fp_postcondition_name(op: UninterpretedFloatBinaryOp) -> Fun {
+    match op {
+        UninterpretedFloatBinaryOp::Add => {
+            crate::fun!(CrateId::Vstd => "std_specs", "ops",  "add_ensures")
+        }
+        UninterpretedFloatBinaryOp::Sub => {
+            crate::fun!(CrateId::Vstd => "std_specs", "ops",  "sub_ensures")
+        }
+        UninterpretedFloatBinaryOp::Mul => {
+            crate::fun!(CrateId::Vstd => "std_specs", "ops",  "mul_ensures")
+        }
+        UninterpretedFloatBinaryOp::Div => {
+            crate::fun!(CrateId::Vstd => "std_specs", "ops",  "div_ensures")
+        }
+    }
 }

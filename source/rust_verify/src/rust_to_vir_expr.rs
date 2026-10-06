@@ -62,8 +62,8 @@ use crate::fn_call_to_vir::{const_var_to_vir, fn_call_to_vir};
 use crate::rust_intrinsics_to_vir::int_intrinsic_constant_to_vir;
 use crate::rust_to_vir_base::{
     bitwidth_and_signedness_of_integer_type, get_impl_paths_for_clauses, get_range, is_integer_ty,
-    is_smt_arith, is_smt_equality, local_to_var, mid_ty_simplify, mk_range, ty_is_vec,
-    typ_of_expr_adjusted, typ_of_node_unadjusted,
+    is_smt_arith, is_smt_equality, local_to_var, mid_ty_simplify, ty_is_vec, typ_of_expr_adjusted,
+    typ_of_node_unadjusted,
 };
 use crate::rust_to_vir_ctor::{resolve_braces_ctor, resolve_ctor};
 use crate::util::{err_span, slice_vec_map_result, vec_map_result};
@@ -2682,64 +2682,9 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let lhs_vir = expr_to_vir_consume(bctx, lhs)?;
             let rhs_vir = expr_to_vir_consume(bctx, rhs)?;
 
-            // Special-case various types of equality where it is known to match spec equality
-            if matches!(op.node, BinOpKind::Eq | BinOpKind::Ne)
-                && is_smt_equality(bctx, expr.span, &lhs.hir_id, &rhs.hir_id)?
-            {
-                let op_vir = binopkind_to_binaryop(bctx, op, lhs, rhs)?;
+            let op_vir = binopkind_to_binaryop(bctx, op, expr.span, lhs, rhs)?;
+            if let Some(op_vir) = op_vir {
                 return mk_expr(ExprX::Binary(op_vir, lhs_vir, rhs_vir));
-            }
-
-            // Special-case arithmetic for integer types
-            if matches!(
-                op.node,
-                BinOpKind::Add
-                    | BinOpKind::Sub
-                    | BinOpKind::Mul
-                    | BinOpKind::Div
-                    | BinOpKind::Rem
-                    | BinOpKind::BitXor
-                    | BinOpKind::BitAnd
-                    | BinOpKind::BitOr
-                    | BinOpKind::Shl
-                    | BinOpKind::Shr
-                    | BinOpKind::Le
-                    | BinOpKind::Ge
-                    | BinOpKind::Lt
-                    | BinOpKind::Gt
-            ) && is_smt_arith(bctx, lhs.span, rhs.span, &lhs.hir_id, &rhs.hir_id)?
-            {
-                let op_vir = binopkind_to_binaryop(bctx, op, lhs, rhs)?;
-                let e = mk_expr(ExprX::Binary(op_vir, lhs_vir, rhs_vir))?.expect_expr();
-                match op.node {
-                    BinOpKind::Div | BinOpKind::Rem => {
-                        match mk_range(&bctx.ctxt.verus_items, &tc.node_type(expr.hir_id)) {
-                            IntRange::Int
-                            | IntRange::Nat
-                            | IntRange::U(_)
-                            | IntRange::USize
-                            | IntRange::I(_)
-                            | IntRange::ISize => {
-                                // Euclidean division or truncating division
-                                // This clip is to help the smt solver see that it's in-bounds
-                                // REVIEW: Should this be applied to AssignOp as well?
-                                // Consider moving this clipping logic to ast_to_sst for consistency
-                                return Ok(ExprOrPlace::Expr(mk_ty_clip(
-                                    bctx,
-                                    &expr_typ()?,
-                                    &e,
-                                    true,
-                                )));
-                            }
-                            IntRange::Char => {
-                                unsupported_err!(expr.span, "div/mod on char type")
-                            }
-                        }
-                    }
-                    _ => {
-                        return Ok(ExprOrPlace::Expr(e));
-                    }
-                }
             }
 
             // The above cases should handle (at mininum) all non-method-call cases.
@@ -2748,7 +2693,10 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 let rhs_ty = bctx.types.expr_ty_adjusted(rhs);
                 unsupported_err!(
                     expr.span,
-                    format!("applying binary operator {op:?} to types {lhs_ty:?}, {rhs_ty:?}")
+                    format!(
+                        "applying binary operator {:?} to types {lhs_ty:?}, {rhs_ty:?}",
+                        op.node
+                    )
                 )
             }
 
@@ -2931,7 +2879,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             }
         }
         ExprKind::Assign(lhs, rhs, _) => {
-            expr_assign_to_vir_innermost(bctx, lhs, mk_expr, rhs, None)
+            expr_assign_to_vir_innermost(bctx, expr.span, lhs, mk_expr, rhs, None)
         }
         ExprKind::Field(lhs, name) => {
             let vir_lhs = expr_to_vir_place(bctx, lhs)?;
@@ -3440,7 +3388,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 return Ok(ExprOrPlace::Expr(e));
             }
 
-            expr_assign_to_vir_innermost(bctx, lhs, mk_expr, rhs, Some(op))
+            expr_assign_to_vir_innermost(bctx, expr.span, lhs, mk_expr, rhs, Some(op))
         }
         ExprKind::ConstBlock(..) => unsupported_err!(expr.span, format!("const block expressions")),
         ExprKind::Type(..) => unsupported_err!(expr.span, format!("type expressions")),
@@ -3525,9 +3473,10 @@ fn lit_to_vir<'tcx>(
 fn assignop_kind_to_binaryop<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     op: &Spanned<AssignOpKind>,
+    span: Span,
     lhs: &Expr<'tcx>,
     rhs: &Expr<'tcx>,
-) -> Result<BinaryOp, VirErr> {
+) -> Result<Option<BinaryOp>, VirErr> {
     let bop: BinOpKind = match op.node {
         AssignOpKind::AddAssign => BinOpKind::Add,
         AssignOpKind::SubAssign => BinOpKind::Sub,
@@ -3540,7 +3489,7 @@ fn assignop_kind_to_binaryop<'tcx>(
         AssignOpKind::ShlAssign => BinOpKind::Shl,
         AssignOpKind::ShrAssign => BinOpKind::Shr,
     };
-    binopkind_to_binaryop_inner(bctx, bop, lhs, rhs)
+    binopkind_to_binaryop_inner(bctx, bop, span, lhs, rhs)
 }
 
 fn euclidean_or_truncating_div<'tcx>(
@@ -3574,142 +3523,168 @@ fn euclidean_or_truncating_div<'tcx>(
     }
 }
 
+/// Must handle all "primitive" bin ops (it's ok to handle more).
 fn binopkind_to_binaryop_inner<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     op: BinOpKind,
+    span: Span,
     lhs: &Expr<'tcx>,
     rhs: &Expr<'tcx>,
-) -> Result<BinaryOp, VirErr> {
+) -> Result<Option<BinaryOp>, VirErr> {
     let tc = bctx.types;
 
-    let d0b = if bctx.in_ghost { Div0Behavior::Allow } else { Div0Behavior::Error };
-
-    let vop = match op {
+    match op {
         BinOpKind::And | BinOpKind::Or => {
             // And and Or aren't allowed for AssignOp, and for normal BinOps,
             // these are handled separately.
             unsupported_err!(lhs.span, "use of `&&` or `||` here");
         }
-        BinOpKind::Eq => BinaryOp::Eq(Mode::Exec),
-        BinOpKind::Ne => BinaryOp::Ne,
-        BinOpKind::Le => BinaryOp::Inequality(InequalityOp::Le),
-        BinOpKind::Ge => BinaryOp::Inequality(InequalityOp::Ge),
-        BinOpKind::Lt => BinaryOp::Inequality(InequalityOp::Lt),
-        BinOpKind::Gt => BinaryOp::Inequality(InequalityOp::Gt),
-        BinOpKind::Add | BinOpKind::Sub | BinOpKind::Mul => {
-            let ty = bctx.mid_ty_to_vir(lhs.span, &tc.expr_ty_adjusted(lhs))?;
-            let range = get_range(&ty);
-            let ob = if bctx.in_ghost {
-                OverflowBehavior::Truncate(range)
-            } else {
-                OverflowBehavior::Error(range)
-            };
-
-            match op {
-                BinOpKind::Add => BinaryOp::Arith(ArithOp::Add(ob)),
-                BinOpKind::Sub => BinaryOp::Arith(ArithOp::Sub(ob)),
-                BinOpKind::Mul => BinaryOp::Arith(ArithOp::Mul(ob)),
+        BinOpKind::Eq | BinOpKind::Ne if is_smt_equality(bctx, span, &lhs.hir_id, &rhs.hir_id)? => {
+            let op = match op {
+                BinOpKind::Eq => BinaryOp::Eq(Mode::Exec),
+                BinOpKind::Ne => BinaryOp::Ne,
                 _ => unreachable!(),
-            }
-        }
-        BinOpKind::Div => match euclidean_or_truncating_div(bctx, lhs, rhs)? {
-            Some(width) => {
-                // REVIEW: The non-ghost case is unexpected here; since `/` and `%`
-                // are replaced by builtin spec functions in spec code, this case
-                // should only happen for exec code.
-                let sdecb = if bctx.in_ghost {
-                    SignedDivEdgeCaseBehavior::Allow
-                } else {
-                    SignedDivEdgeCaseBehavior::Error(width)
-                };
-                BinaryOp::Arith(ArithOp::TruncatingDiv(d0b, sdecb))
-            }
-            None => BinaryOp::Arith(ArithOp::EuclideanDiv(d0b)),
-        },
-        BinOpKind::Rem => match euclidean_or_truncating_div(bctx, lhs, rhs)? {
-            Some(width) => {
-                let sdecb = if bctx.in_ghost {
-                    SignedDivEdgeCaseBehavior::Allow
-                } else {
-                    SignedDivEdgeCaseBehavior::Error(width)
-                };
-                BinaryOp::Arith(ArithOp::TruncatingMod(d0b, sdecb))
-            }
-            None => BinaryOp::Arith(ArithOp::EuclideanMod(d0b)),
-        },
-        BinOpKind::BitXor => {
-            match ((tc.expr_ty_adjusted(lhs)).kind(), (tc.expr_ty_adjusted(rhs)).kind()) {
-                (TyKind::Bool, TyKind::Bool) => BinaryOp::BoolXor,
-                (TyKind::Int(_), TyKind::Int(_)) => {
-                    BinaryOp::Bitwise(BitwiseOp::BitXor, BitshiftBehavior::Allow)
-                }
-                (TyKind::Uint(_), TyKind::Uint(_)) => {
-                    BinaryOp::Bitwise(BitwiseOp::BitXor, BitshiftBehavior::Allow)
-                }
-                _ => panic!("bitwise XOR for this type not supported"),
-            }
-        }
-        BinOpKind::BitAnd => {
-            match ((tc.expr_ty_adjusted(lhs)).kind(), (tc.expr_ty_adjusted(rhs)).kind()) {
-                (TyKind::Bool, TyKind::Bool) => BinaryOp::BoolAndNoSC,
-                (TyKind::Int(_), TyKind::Int(_)) => {
-                    BinaryOp::Bitwise(BitwiseOp::BitAnd, BitshiftBehavior::Allow)
-                }
-                (TyKind::Uint(_), TyKind::Uint(_)) => {
-                    BinaryOp::Bitwise(BitwiseOp::BitAnd, BitshiftBehavior::Allow)
-                }
-                t => panic!("bitwise AND for this type not supported {:#?}", t),
-            }
-        }
-        BinOpKind::BitOr => {
-            match ((tc.expr_ty_adjusted(lhs)).kind(), (tc.expr_ty_adjusted(rhs)).kind()) {
-                (TyKind::Bool, TyKind::Bool) => BinaryOp::BoolOrNoSC,
-                (TyKind::Int(_), TyKind::Int(_)) => {
-                    BinaryOp::Bitwise(BitwiseOp::BitOr, BitshiftBehavior::Allow)
-                }
-                (TyKind::Uint(_), TyKind::Uint(_)) => {
-                    BinaryOp::Bitwise(BitwiseOp::BitOr, BitshiftBehavior::Allow)
-                }
-                _ => panic!("bitwise OR for this type not supported"),
-            }
-        }
-        BinOpKind::Shl => {
-            let (Some(w), s) = bitwidth_and_signedness_of_integer_type(
-                &bctx.ctxt.verus_items,
-                bctx.types.expr_ty(lhs),
-            ) else {
-                return err_span(lhs.span, "expected finite integer width for <<");
             };
-            let bb_for_ghostness =
-                if bctx.in_ghost { BitshiftBehavior::Allow } else { BitshiftBehavior::Error(w) };
-            BinaryOp::Bitwise(BitwiseOp::Shl(w, s), bb_for_ghostness)
+            return Ok(Some(op));
         }
-        BinOpKind::Shr => {
-            let (Some(w), _s) = bitwidth_and_signedness_of_integer_type(
-                &bctx.ctxt.verus_items,
-                bctx.types.expr_ty(lhs),
-            ) else {
-                return err_span(lhs.span, "expected finite integer width for >>");
-            };
-            let bb_for_ghostness =
-                if bctx.in_ghost { BitshiftBehavior::Allow } else { BitshiftBehavior::Error(w) };
-            BinaryOp::Bitwise(BitwiseOp::Shr, bb_for_ghostness)
-        }
+        _ => {}
+    }
+
+    if is_smt_arith(bctx, lhs.span, rhs.span, &lhs.hir_id, &rhs.hir_id)? {
+        let d0b = if bctx.in_ghost { Div0Behavior::Allow } else { Div0Behavior::Error };
+        let vop = match op {
+            BinOpKind::Le => BinaryOp::Inequality(InequalityOp::Le),
+            BinOpKind::Ge => BinaryOp::Inequality(InequalityOp::Ge),
+            BinOpKind::Lt => BinaryOp::Inequality(InequalityOp::Lt),
+            BinOpKind::Gt => BinaryOp::Inequality(InequalityOp::Gt),
+            BinOpKind::Add | BinOpKind::Sub | BinOpKind::Mul => {
+                let ty = bctx.mid_ty_to_vir(lhs.span, &tc.expr_ty_adjusted(lhs))?;
+                let range = get_range(&ty);
+                let ob = if bctx.in_ghost {
+                    OverflowBehavior::Truncate(range)
+                } else {
+                    OverflowBehavior::Error(range)
+                };
+
+                match op {
+                    BinOpKind::Add => BinaryOp::Arith(ArithOp::Add(ob)),
+                    BinOpKind::Sub => BinaryOp::Arith(ArithOp::Sub(ob)),
+                    BinOpKind::Mul => BinaryOp::Arith(ArithOp::Mul(ob)),
+                    _ => unreachable!(),
+                }
+            }
+            BinOpKind::Div => match euclidean_or_truncating_div(bctx, lhs, rhs)? {
+                Some(width) => {
+                    // REVIEW: The non-ghost case is unexpected here; since `/` and `%`
+                    // are replaced by builtin spec functions in spec code, this case
+                    // should only happen for exec code.
+                    let sdecb = if bctx.in_ghost {
+                        SignedDivEdgeCaseBehavior::Allow
+                    } else {
+                        SignedDivEdgeCaseBehavior::Error(width)
+                    };
+                    BinaryOp::Arith(ArithOp::TruncatingDiv(d0b, sdecb))
+                }
+                None => BinaryOp::Arith(ArithOp::EuclideanDiv(d0b)),
+            },
+            BinOpKind::Rem => match euclidean_or_truncating_div(bctx, lhs, rhs)? {
+                Some(width) => {
+                    let sdecb = if bctx.in_ghost {
+                        SignedDivEdgeCaseBehavior::Allow
+                    } else {
+                        SignedDivEdgeCaseBehavior::Error(width)
+                    };
+                    BinaryOp::Arith(ArithOp::TruncatingMod(d0b, sdecb))
+                }
+                None => BinaryOp::Arith(ArithOp::EuclideanMod(d0b)),
+            },
+            BinOpKind::BitXor => {
+                match ((tc.expr_ty_adjusted(lhs)).kind(), (tc.expr_ty_adjusted(rhs)).kind()) {
+                    (TyKind::Bool, TyKind::Bool) => BinaryOp::BoolXor,
+                    (TyKind::Int(_), TyKind::Int(_)) => {
+                        BinaryOp::Bitwise(BitwiseOp::BitXor, BitshiftBehavior::Allow)
+                    }
+                    (TyKind::Uint(_), TyKind::Uint(_)) => {
+                        BinaryOp::Bitwise(BitwiseOp::BitXor, BitshiftBehavior::Allow)
+                    }
+                    _ => panic!("bitwise XOR for this type not supported"),
+                }
+            }
+            BinOpKind::BitAnd => {
+                match ((tc.expr_ty_adjusted(lhs)).kind(), (tc.expr_ty_adjusted(rhs)).kind()) {
+                    (TyKind::Bool, TyKind::Bool) => BinaryOp::BoolAndNoSC,
+                    (TyKind::Int(_), TyKind::Int(_)) => {
+                        BinaryOp::Bitwise(BitwiseOp::BitAnd, BitshiftBehavior::Allow)
+                    }
+                    (TyKind::Uint(_), TyKind::Uint(_)) => {
+                        BinaryOp::Bitwise(BitwiseOp::BitAnd, BitshiftBehavior::Allow)
+                    }
+                    t => panic!("bitwise AND for this type not supported {:#?}", t),
+                }
+            }
+            BinOpKind::BitOr => {
+                match ((tc.expr_ty_adjusted(lhs)).kind(), (tc.expr_ty_adjusted(rhs)).kind()) {
+                    (TyKind::Bool, TyKind::Bool) => BinaryOp::BoolOrNoSC,
+                    (TyKind::Int(_), TyKind::Int(_)) => {
+                        BinaryOp::Bitwise(BitwiseOp::BitOr, BitshiftBehavior::Allow)
+                    }
+                    (TyKind::Uint(_), TyKind::Uint(_)) => {
+                        BinaryOp::Bitwise(BitwiseOp::BitOr, BitshiftBehavior::Allow)
+                    }
+                    _ => panic!("bitwise OR for this type not supported"),
+                }
+            }
+            BinOpKind::Shl => {
+                let (Some(w), s) = bitwidth_and_signedness_of_integer_type(
+                    &bctx.ctxt.verus_items,
+                    bctx.types.expr_ty(lhs),
+                ) else {
+                    return err_span(lhs.span, "expected finite integer width for <<");
+                };
+                let bb_for_ghostness = if bctx.in_ghost {
+                    BitshiftBehavior::Allow
+                } else {
+                    BitshiftBehavior::Error(w)
+                };
+                BinaryOp::Bitwise(BitwiseOp::Shl(w, s), bb_for_ghostness)
+            }
+            BinOpKind::Shr => {
+                let (Some(w), _s) = bitwidth_and_signedness_of_integer_type(
+                    &bctx.ctxt.verus_items,
+                    bctx.types.expr_ty(lhs),
+                ) else {
+                    return err_span(lhs.span, "expected finite integer width for >>");
+                };
+                let bb_for_ghostness = if bctx.in_ghost {
+                    BitshiftBehavior::Allow
+                } else {
+                    BitshiftBehavior::Error(w)
+                };
+                BinaryOp::Bitwise(BitwiseOp::Shr, bb_for_ghostness)
+            }
+            _ => {
+                return Ok(None);
+            }
+        };
+        return Ok(Some(vop));
     };
-    Ok(vop)
+
+    Ok(None)
 }
 
 fn binopkind_to_binaryop<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     op: &Spanned<BinOpKind>,
+    span: Span,
     lhs: &Expr<'tcx>,
     rhs: &Expr<'tcx>,
-) -> Result<BinaryOp, VirErr> {
-    binopkind_to_binaryop_inner(bctx, op.node, lhs, rhs)
+) -> Result<Option<BinaryOp>, VirErr> {
+    binopkind_to_binaryop_inner(bctx, op.node, span, lhs, rhs)
 }
 
 fn expr_assign_to_vir_innermost<'tcx>(
     bctx: &BodyCtxt<'tcx>,
+    span: Span,
     lhs: &Expr<'tcx>,
     mk_expr: impl Fn(ExprX) -> Result<ExprOrPlace, vir::messages::Message>,
     rhs: &Expr<'tcx>,
@@ -3721,7 +3696,17 @@ fn expr_assign_to_vir_innermost<'tcx>(
     let vir_rhs = expr_to_vir_consume(bctx, rhs)?;
 
     let op = match op_kind {
-        Some(op) => Some(assignop_kind_to_binaryop(bctx, op, lhs, rhs)?),
+        Some(op) => match assignop_kind_to_binaryop(bctx, op, span, lhs, rhs)? {
+            Some(op) => Some(op),
+            None => {
+                let lhs_ty = bctx.types.expr_ty_adjusted(lhs);
+                let rhs_ty = bctx.types.expr_ty_adjusted(rhs);
+                unsupported_err!(
+                    span,
+                    format!("unsupported binary op: {:?} for {lhs_ty:} and {rhs_ty:}", op.node)
+                )
+            }
+        },
         None => None,
     };
 
