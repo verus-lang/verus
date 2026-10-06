@@ -550,6 +550,9 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                         BinaryOp::Arith(crate::ast::ArithOp::TruncatingMod(..)) => {
                             reach_function(ctxt, state, &fn_truncating_mod());
                         }
+                        BinaryOp::UninterpretedFloat(op) => {
+                            reach_function(ctxt, state, &crate::def::fn_fp_postcondition_name(*op));
+                        }
                         BinaryOp::IeeeFloat(_) => {
                             state.uses_ieee_float = true;
                         }

@@ -3902,7 +3902,7 @@ fn binary_op_exp(
         let (var_ident, exp) = state.declare_temp_var_stm(span, typ, kind);
         let stms = vec![
             assume_has_typ(&var_ident, typ, span),
-            assume_fp_postcondition(&var_ident, e1, e2, op, typ, span),
+            assume_fp_postcondition(&var_ident, e1, e2, op, &e1.typ, typ, span),
         ];
         return (stms, exp);
     } else {
@@ -4096,14 +4096,18 @@ pub(crate) fn assume_fp_postcondition(
     e1: &Exp,
     e2: &Exp,
     op: UninterpretedFloatBinaryOp,
-    typ: &Typ,
+    float_typ: &Typ,
+    out_typ: &Typ,
     span: &Span,
 ) -> Stm {
+    let float_typ = undecorate_typ(float_typ);
+    assert!(matches!(*float_typ, TypX::Float(..)));
+
     let xvarx = ExpX::Var(x.clone());
-    let xvar = SpannedTyped::new(span, typ, xvarx);
+    let xvar = SpannedTyped::new(span, out_typ, xvarx);
     let name = def::fn_fp_postcondition_name(op);
     let call_fun = CallFun::Fun(name, None);
-    let typ_args = Arc::new(vec![typ.clone()]);
+    let typ_args = Arc::new(vec![float_typ.clone()]);
     let expx = ExpX::Call(call_fun, typ_args, Arc::new(vec![e1.clone(), e2.clone(), xvar.clone()]));
     let exp = SpannedTyped::new(span, &Arc::new(TypX::Bool), expx);
     Spanned::new(span.clone(), StmX::Assume(exp))

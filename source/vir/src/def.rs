@@ -1376,5 +1376,23 @@ pub fn fn_fp_postcondition_name(op: UninterpretedFloatBinaryOp) -> Fun {
         UninterpretedFloatBinaryOp::Div => {
             crate::fun!(CrateId::Vstd => "std_specs", "ops",  "div_ensures")
         }
+        UninterpretedFloatBinaryOp::Eq => {
+            crate::fun!(CrateId::Vstd => "std_specs", "cmp",  "eq_ensures")
+        }
+        UninterpretedFloatBinaryOp::Ne => {
+            crate::fun!(CrateId::Vstd => "std_specs", "cmp",  "ne_ensures")
+        }
+        UninterpretedFloatBinaryOp::Lt => {
+            crate::fun!(CrateId::Vstd => "std_specs", "cmp",  "lt_ensures")
+        }
+        UninterpretedFloatBinaryOp::Gt => {
+            crate::fun!(CrateId::Vstd => "std_specs", "cmp",  "gt_ensures")
+        }
+        UninterpretedFloatBinaryOp::Le => {
+            crate::fun!(CrateId::Vstd => "std_specs", "cmp",  "le_ensures")
+        }
+        UninterpretedFloatBinaryOp::Ge => {
+            crate::fun!(CrateId::Vstd => "std_specs", "cmp",  "ge_ensures")
+        }
     }
 }

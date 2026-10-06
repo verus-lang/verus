@@ -694,6 +694,12 @@ pub enum UninterpretedFloatBinaryOp {
     Sub,
     Mul,
     Div,
+    Lt,
+    Gt,
+    Le,
+    Ge,
+    Eq,
+    Ne,
 }
 
 /// IEEE floating point binary ops (rounding mode RNE)

@@ -100,8 +100,8 @@ use vir::ast::{
     Constant, CrateId, Div0Behavior, Dt, ExprX, FieldOpr, FunX, HeaderExprX, ImplPath,
     InequalityOp, IntRange, IntegerTypeBitwidth, InvAtomicity, Mode, OverflowBehavior, PatternX,
     Place, PlaceX, Primitive, ProofNoteLabel, SignedDivEdgeCaseBehavior, SpannedTyped, StmtX,
-    Stmts, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, UnfinalizedReadKind, VarBinder, VarBinderX,
-    VarIdent, VariantCheck, VirErr,
+    Stmts, Typ, TypDecoration, TypX, UnaryOp, UnaryOpr, UnfinalizedReadKind,
+    UninterpretedFloatBinaryOp, VarBinder, VarBinderX, VarIdent, VariantCheck, VirErr,
 };
 use vir::ast_util::{
     bool_typ, ident_binder, mk_tuple_field_opr, mk_tuple_typ, mk_tuple_x, str_unique_var,
@@ -3548,6 +3548,45 @@ fn binopkind_to_binaryop_inner<'tcx>(
             return Ok(Some(op));
         }
         _ => {}
+    }
+
+    let lhs_ty = bctx.types.expr_ty_adjusted(lhs);
+    let rhs_ty = bctx.types.expr_ty_adjusted(rhs);
+
+    if ty_is_float_or_ref_float(lhs_ty) && lhs_ty == rhs_ty {
+        match op {
+            BinOpKind::Add => {
+                return Ok(Some(BinaryOp::UninterpretedFloat(UninterpretedFloatBinaryOp::Add)));
+            }
+            BinOpKind::Sub => {
+                return Ok(Some(BinaryOp::UninterpretedFloat(UninterpretedFloatBinaryOp::Sub)));
+            }
+            BinOpKind::Mul => {
+                return Ok(Some(BinaryOp::UninterpretedFloat(UninterpretedFloatBinaryOp::Mul)));
+            }
+            BinOpKind::Div => {
+                return Ok(Some(BinaryOp::UninterpretedFloat(UninterpretedFloatBinaryOp::Div)));
+            }
+            BinOpKind::Eq => {
+                return Ok(Some(BinaryOp::UninterpretedFloat(UninterpretedFloatBinaryOp::Eq)));
+            }
+            BinOpKind::Ne => {
+                return Ok(Some(BinaryOp::UninterpretedFloat(UninterpretedFloatBinaryOp::Ne)));
+            }
+            BinOpKind::Le => {
+                return Ok(Some(BinaryOp::UninterpretedFloat(UninterpretedFloatBinaryOp::Le)));
+            }
+            BinOpKind::Lt => {
+                return Ok(Some(BinaryOp::UninterpretedFloat(UninterpretedFloatBinaryOp::Lt)));
+            }
+            BinOpKind::Ge => {
+                return Ok(Some(BinaryOp::UninterpretedFloat(UninterpretedFloatBinaryOp::Ge)));
+            }
+            BinOpKind::Gt => {
+                return Ok(Some(BinaryOp::UninterpretedFloat(UninterpretedFloatBinaryOp::Gt)));
+            }
+            _ => {}
+        }
     }
 
     if is_smt_arith(bctx, lhs.span, rhs.span, &lhs.hir_id, &rhs.hir_id)? {
