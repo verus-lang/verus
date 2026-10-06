@@ -2581,7 +2581,9 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 | (t1 @ TypX::Int(_), t2 @ TypX::Float(_))
                 | (t1 @ TypX::Float(_), t2 @ TypX::Int(_)) => {
                     let is_supported = |t: &TypX| match t {
-                        TypX::Int(IntRange::U(_) | IntRange::I(_)) => true,
+                        TypX::Int(
+                            IntRange::U(_) | IntRange::I(_) | IntRange::USize | IntRange::ISize,
+                        ) => true,
                         TypX::Float(32 | 64) => true,
                         _ => false,
                     };
