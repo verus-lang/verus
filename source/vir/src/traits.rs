@@ -1667,17 +1667,51 @@ fn check_dyn_spec(f: &Function) -> Result<(), ()> {
         }
     }
 
-    let receiver = f.x.params.first().filter(|p| p.x.name.0.as_str() == "self");
+    let FunctionX {
+        name: _,
+        proxy: _,
+        kind: _,
+        visibility: _,
+        body_visibility: _,
+        opaqueness: _,
+        owning_module: _,
+        mode: _,
+        typ_params: _,
+        typ_bounds: _,
+        params,
+        ret: _,
+        ens_has_return: _,
+        require,
+        ensure: (ensure0, ensure1),
+        returns,
+        decrease,
+        decrease_when,
+        decrease_by: _,
+        fndef_axioms,
+        mask_spec,
+        atomic_update,
+        unwind_spec,
+        item_kind: _,
+        attrs: _,
+        body: _,
+        extra_dependencies: _,
+        async_ret: _,
+        hidden: _,
+    } = &f.x;
+    let receiver = params.first().filter(|p| p.x.name.0.as_str() == "self");
     let mut visitor = Visitor { receiver: receiver.map(|p| &p.x.name) };
-    visitor.visit_exprs(&f.x.require)?;
-    visitor.visit_exprs(&f.x.ensure.0)?;
-    visitor.visit_exprs(&f.x.ensure.1)?;
-    visitor.visit_opt_expr(&f.x.returns)?;
-    if let Some(mask_spec) = &f.x.mask_spec {
+    visitor.visit_exprs(require)?;
+    visitor.visit_exprs(ensure0)?;
+    visitor.visit_exprs(ensure1)?;
+    visitor.visit_opt_expr(returns)?;
+    visitor.visit_exprs(decrease)?;
+    visitor.visit_opt_expr(decrease_when)?;
+    visitor.visit_opt_exprs(fndef_axioms)?;
+    if let Some(mask_spec) = mask_spec {
         visitor.visit_mask_spec(mask_spec)?;
     }
-    visitor.visit_opt_expr(&f.x.atomic_update)?;
-    if let Some(unwind_spec) = &f.x.unwind_spec {
+    visitor.visit_opt_expr(atomic_update)?;
+    if let Some(unwind_spec) = unwind_spec {
         visitor.visit_unwind_spec(unwind_spec)?;
     }
     Ok(())
