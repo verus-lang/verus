@@ -1063,6 +1063,53 @@ test_verify_one_bv_file! {
     } => Ok(())
 }
 
+test_verify_one_file! {
+    #[test] test_slice_starts_with_asymmetric_eq verus_code! {
+        // Expected results checked by executing these cases with Rust 1.98.1.
+        use vstd::prelude::*;
+        use vstd::std_specs::cmp::PartialEqSpecImpl;
+
+        pub struct S(pub u8);
+
+        // Deliberately asymmetric so reversing the eq arguments changes the result.
+        impl PartialEq for S {
+            fn eq(&self, other: &Self) -> bool {
+                self.0 < other.0
+            }
+        }
+
+        impl PartialEqSpecImpl for S {
+            open spec fn obeys_eq_spec() -> bool {
+                true
+            }
+
+            open spec fn eq_spec(&self, other: &Self) -> bool {
+                self.0 < other.0
+            }
+        }
+
+        fn test_equal_length() {
+            let slice: &[S] = &[S(0), S(0)];
+            let needle: &[S] = &[S(1), S(1)];
+            let cmp01 = slice.starts_with(needle);
+            let cmp10 = needle.starts_with(slice);
+
+            // needle == slice
+            assert(!cmp01);
+            assert(cmp10);
+        }
+
+        fn test_shorter_prefix() {
+            let slice: &[S] = &[S(2), S(3), S(0)];
+            let matches = slice.starts_with(&[S(1), S(2)]);
+            let mismatches = slice.starts_with(&[S(1), S(4)]);
+
+            assert(matches);
+            assert(!mismatches);
+        }
+    } => Ok(())
+}
+
 test_verify_one_bv_file! {
     #[test] test_slice_ends_with verus_code! {
         use vstd::prelude::*;
@@ -1092,6 +1139,53 @@ test_verify_one_bv_file! {
         fn test_empty_slice_ends_with_empty() {
             let v: &[u8] = &[];
             assert(v.ends_with(&[]));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_slice_ends_with_asymmetric_eq verus_code! {
+        // Expected results checked by executing these cases with Rust 1.98.1.
+        use vstd::prelude::*;
+        use vstd::std_specs::cmp::PartialEqSpecImpl;
+
+        pub struct S(pub u8);
+
+        // Deliberately asymmetric so reversing the eq arguments changes the result.
+        impl PartialEq for S {
+            fn eq(&self, other: &Self) -> bool {
+                self.0 < other.0
+            }
+        }
+
+        impl PartialEqSpecImpl for S {
+            open spec fn obeys_eq_spec() -> bool {
+                true
+            }
+
+            open spec fn eq_spec(&self, other: &Self) -> bool {
+                self.0 < other.0
+            }
+        }
+
+        fn test_equal_length() {
+            let slice: &[S] = &[S(0), S(0)];
+            let needle: &[S] = &[S(1), S(1)];
+            let cmp01 = slice.ends_with(needle);
+            let cmp10 = needle.ends_with(slice);
+
+            // needle == slice
+            assert(!cmp01);
+            assert(cmp10);
+        }
+
+        fn test_shorter_suffix() {
+            let slice: &[S] = &[S(0), S(2), S(3)];
+            let matches = slice.ends_with(&[S(1), S(2)]);
+            let mismatches = slice.ends_with(&[S(1), S(4)]);
+
+            assert(matches);
+            assert(!mismatches);
         }
     } => Ok(())
 }
