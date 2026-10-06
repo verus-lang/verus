@@ -124,6 +124,7 @@ cargo_verus = true
 crate_roots = ["."]
 extra_cargo_args = ["--lib"]
 extra_verus_args = [
+    "--rlimit", "100",
     "--verify-module", "vdeployment_controller", # To run full verification on all controllers, comment this line, need ~30mins.
 ]
 
