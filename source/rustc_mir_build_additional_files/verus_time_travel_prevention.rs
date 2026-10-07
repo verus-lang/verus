@@ -1456,7 +1456,7 @@ pub(crate) fn shadow_var_uses<'tcx>(
 ) -> Vec<ExprId> {
     let mut v = vec![];
     for local_use in uses.iter() {
-        let emit_shadow = match erasure_ctxt.vars.get(&local_use.hir_id) {
+        let emit_shadow = match erasure_ctxt.locals.get(&local_use.hir_id) {
             Some(VarErasure::Erase) => false,
             Some(VarErasure::Shadow | VarErasure::Keep) | None => true,
         };
