@@ -2678,6 +2678,57 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             };
             mk_expr(ExprX::Logical(vop, vlhs, vrhs))
         }
+        ExprKind::Binary(
+            Spanned {
+                node:
+                    op @ (BinOpKind::Eq
+                    | BinOpKind::Ne
+                    | BinOpKind::Lt
+                    | BinOpKind::Gt
+                    | BinOpKind::Le
+                    | BinOpKind::Ge),
+                ..
+            },
+            lhs,
+            rhs,
+        ) if ty_is_raw_ptr(bctx.types.expr_ty_adjusted(lhs))
+            && ty_is_raw_ptr(bctx.types.expr_ty_adjusted(rhs)) =>
+        {
+            // Pointer equality is considered primitive to Rust,
+            // but we want to dispatch to the trait function, so we have to manually
+            // go get the DefId for the trait function.
+            let lang = bctx.ctxt.tcx.lang_items();
+            let (trait_id, fun_sym) = match op {
+                BinOpKind::Eq => (lang.eq_trait(), rustc_span::sym::eq),
+                BinOpKind::Ne => (lang.eq_trait(), rustc_span::sym::ne),
+                BinOpKind::Lt => (lang.partial_ord_trait(), rustc_span::sym::lt),
+                BinOpKind::Le => (lang.partial_ord_trait(), rustc_span::sym::le),
+                BinOpKind::Gt => (lang.partial_ord_trait(), rustc_span::sym::gt),
+                BinOpKind::Ge => (lang.partial_ord_trait(), rustc_span::sym::ge),
+                _ => unreachable!(),
+            };
+            // The signature for eq is `fn eq(&self, other: &Rhs) -> bool;`,
+            // (and similarly for ne, lt, le, gt, ge)
+            // so normally we would strip a reference off here.
+            // But since ptr equality is primitive, there's no shared reference.
+            // So we just use the types of the 2 arguments to get Self and Rhs
+            // without stripping a reference off.
+            let lhs_ty = bctx.types.expr_ty_adjusted(lhs);
+            let rhs_ty = bctx.types.expr_ty_adjusted(rhs);
+            let ty_args = tcx.mk_args(&[lhs_ty.into(), rhs_ty.into()]);
+            let args = vec![*lhs, *rhs];
+            let Some(assoc_fn) = tcx
+                .associated_items(trait_id.unwrap())
+                .filter_by_name_unhygienic(fun_sym)
+                .find(|item| matches!(item.kind, rustc_middle::ty::AssocKind::Fn { .. }))
+            else {
+                crate::internal_err!(expr.span, "could not find associated function");
+            };
+            let fun_def_id = assoc_fn.def_id;
+            Ok(ExprOrPlace::Expr(fn_call_to_vir(
+                bctx, expr, fun_def_id, ty_args, expr.span, args, true,
+            )?))
+        }
         ExprKind::Binary(op, lhs, rhs) => {
             let lhs_vir = expr_to_vir_consume(bctx, lhs)?;
             let rhs_vir = expr_to_vir_consume(bctx, rhs)?;
@@ -3523,7 +3574,10 @@ fn euclidean_or_truncating_div<'tcx>(
     }
 }
 
-/// Must handle all "primitive" bin ops (it's ok to handle more).
+/// Lower a Rust BinaryOp to a VIR BinaryOp.
+/// For ops which are allowed in AssignOps, this function must handle,
+/// at minimum, all the "primitive" bin ops, since these need to be lowered
+/// through VIR's Assign node, which takes a BinaryOp.
 fn binopkind_to_binaryop_inner<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     op: BinOpKind,
@@ -4780,6 +4834,10 @@ pub(crate) fn simplify_place_by_cancelling(place: &Place) -> Place {
             panic!("simplify_place_by_cancelling got unexpected place kind");
         }
     }
+}
+
+fn ty_is_raw_ptr<'tcx>(ty: rustc_middle::ty::Ty<'tcx>) -> bool {
+    matches!(ty.kind(), TyKind::RawPtr(_, Mutability::Not | Mutability::Mut))
 }
 
 fn ty_is_bool_or_ref_bool<'tcx>(ty: rustc_middle::ty::Ty<'tcx>) -> bool {
