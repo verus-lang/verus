@@ -1959,15 +1959,17 @@ impl_ieee_float_cast!(u16, [f32 f64]);
 impl_ieee_float_cast!(u32, [f32 f64]);
 impl_ieee_float_cast!(u64, [f32 f64]);
 impl_ieee_float_cast!(u128, [f32 f64]);
+impl_ieee_float_cast!(usize, [f32 f64]);
 impl_ieee_float_cast!(i8, [f32 f64]);
 impl_ieee_float_cast!(i16, [f32 f64]);
 impl_ieee_float_cast!(i32, [f32 f64]);
 impl_ieee_float_cast!(i64, [f32 f64]);
 impl_ieee_float_cast!(i128, [f32 f64]);
-impl_ieee_float_cast!(f32, [u8 u16 u32 u64 u128]);
-impl_ieee_float_cast!(f32, [i8 i16 i32 i64 i128]);
-impl_ieee_float_cast!(f64, [u8 u16 u32 u64 u128]);
-impl_ieee_float_cast!(f64, [i8 i16 i32 i64 i128]);
+impl_ieee_float_cast!(isize, [f32 f64]);
+impl_ieee_float_cast!(f32, [u8 u16 u32 u64 u128 usize]);
+impl_ieee_float_cast!(f32, [i8 i16 i32 i64 i128 isize]);
+impl_ieee_float_cast!(f64, [u8 u16 u32 u64 u128 usize]);
+impl_ieee_float_cast!(f64, [i8 i16 i32 i64 i128 isize]);
 
 //
 //

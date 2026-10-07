@@ -211,6 +211,9 @@ impl IdentVisitor {
 
 impl<'ast> Visit<'ast> for IdentVisitor {
     fn visit_ident(&mut self, node: &'ast Ident) {
+        // In some cases, "pre" and "post" can be used but not declared.
+        // The `visit_pat_ident` override needs to call `validate_ident` directly
+        // to skip past these checks.
         if node == "post" {
             self.errors.push(Error::new(
                 node.span(),
@@ -229,6 +232,20 @@ impl<'ast> Visit<'ast> for IdentVisitor {
                 Err(err) => self.errors.push(err),
                 Ok(()) => {}
             }
+        }
+    }
+
+    fn visit_pat_ident(&mut self, node: &'ast PatIdent) {
+        let PatIdent { attrs, by_ref: _, mutability: _, ident, subpat } = node;
+        match validate_ident(ident) {
+            Err(err) => self.errors.push(err),
+            Ok(()) => {}
+        }
+        for attr in attrs {
+            self.visit_attribute(attr);
+        }
+        if let Some((_token, pat)) = subpat {
+            self.visit_pat(pat);
         }
     }
 
@@ -276,7 +293,7 @@ impl<'ast> Visit<'ast> for IdentVisitor {
 
 /// Validate a single identifier.
 pub fn validate_ident(ident: &Ident) -> Result<(), Error> {
-    for kw in ["post", "instance", "tmp_tuple", "tmp_e", "tmp_assert"] {
+    for kw in ["pre", "post", "instance", "tmp_tuple", "tmp_e", "tmp_assert"] {
         if ident == kw {
             return Err(Error::new(
                 ident.span(),
