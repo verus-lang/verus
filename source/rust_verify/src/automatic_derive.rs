@@ -187,6 +187,10 @@ fn cleanup_span_ids<'tcx>(ctxt: &Context<'tcx>, span: Span, expr: &Expr) -> Expr
         expr,
         &|e: &Expr| {
             let e = ctxt.spans.spanned_typed_new(span, &e.typ, e.x.clone());
+            if matches!(&e.x, ExprX::Var(..) | ExprX::VarAt(..)) {
+                let mut erasure_info = ctxt.erasure_info.borrow_mut();
+                erasure_info.local_hir_vir_ids.push((None, e.span.id));
+            }
             Ok(e)
         },
         &|p: &Place| {
