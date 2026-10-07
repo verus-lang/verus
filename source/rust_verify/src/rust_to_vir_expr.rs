@@ -62,8 +62,8 @@ use crate::fn_call_to_vir::{const_var_to_vir, fn_call_to_vir};
 use crate::rust_intrinsics_to_vir::int_intrinsic_constant_to_vir;
 use crate::rust_to_vir_base::{
     bitwidth_and_signedness_of_integer_type, get_impl_paths_for_clauses, get_range, is_integer_ty,
-    is_smt_arith, is_smt_equality, local_to_var, mid_ty_simplify, ty_is_vec, typ_of_expr_adjusted,
-    typ_of_node_unadjusted,
+    is_smt_arith, is_smt_equality, local_to_var, mid_ty_simplify, mk_range, ty_is_vec,
+    typ_of_expr_adjusted, typ_of_node_unadjusted,
 };
 use crate::rust_to_vir_ctor::{resolve_braces_ctor, resolve_ctor};
 use crate::util::{err_span, slice_vec_map_result, vec_map_result};
@@ -2735,7 +2735,29 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
 
             let op_vir = binopkind_to_binaryop(bctx, op, expr.span, lhs, rhs)?;
             if let Some(op_vir) = op_vir {
-                return mk_expr(ExprX::Binary(op_vir, lhs_vir, rhs_vir));
+                let e = mk_expr(ExprX::Binary(op_vir, lhs_vir, rhs_vir))?.expect_expr();
+                if matches!(op.node, BinOpKind::Div | BinOpKind::Rem)
+                    && is_smt_arith(bctx, lhs.span, rhs.span, &lhs.hir_id, &rhs.hir_id)?
+                {
+                    match mk_range(&bctx.ctxt.verus_items, &tc.node_type(expr.hir_id)) {
+                        IntRange::Int
+                        | IntRange::Nat
+                        | IntRange::U(_)
+                        | IntRange::USize
+                        | IntRange::I(_)
+                        | IntRange::ISize => {
+                            // This clip is to help the smt solver see that the result
+                            // of the operation is in-bounds.
+                            // REVIEW: Should this be applied to AssignOp as well?
+                            // Consider moving this clipping logic to ast_to_sst for consistency
+                            return Ok(ExprOrPlace::Expr(mk_ty_clip(bctx, &expr_typ()?, &e, true)));
+                        }
+                        IntRange::Char => {
+                            unsupported_err!(expr.span, "div/mod on char type")
+                        }
+                    }
+                }
+                return Ok(ExprOrPlace::Expr(e));
             }
 
             // The above cases should handle (at mininum) all non-method-call cases.

@@ -618,3 +618,41 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_fails(e, 1)
 }
+
+test_verify_one_file! {
+    #[test] type_invariant_preserved_for_div_mod verus_code! {
+        use vstd::prelude::*;
+
+        fn test_u_div(a: u64, b: u64)
+            requires b != 0
+        {
+            let x = a / b;
+            assert(0 <= x <= u64::MAX);
+        }
+
+        fn test_i_div(a: i64, b: i64)
+            requires
+                b != 0,
+                a != i64::MIN || b != -1,
+        {
+            let x = a / b;
+            assert(i64::MIN <= x <= i64::MAX);
+        }
+
+        fn test_u_mod(a: u64, b: u64)
+            requires b != 0
+        {
+            let x = a % b;
+            assert(0 <= x <= u64::MAX);
+        }
+
+        fn test_i_mod(a: i64, b: i64)
+            requires
+                b != 0,
+                a != i64::MIN || b != -1,
+        {
+            let x = a % b;
+            assert(i64::MIN <= x <= i64::MAX);
+        }
+    } => Ok(())
+}
