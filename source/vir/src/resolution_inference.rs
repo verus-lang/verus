@@ -1515,6 +1515,7 @@ impl<'a> Builder<'a> {
             }
             ComputedPlaceTyped::Partial(fpt) | ComputedPlaceTyped::Ghost(Some(fpt)) => {
                 if pattern_has_mut(pattern) {
+                    check_illegal_muts(pattern, &self.locals.datatypes, &mut self.errors);
                     let fp = self.locals.add_place(fpt);
                     self.push_instruction_propagate(bb, position, InstructionKind::Mutate(fp));
                 }
@@ -2092,6 +2093,7 @@ fn moves_and_muts_for_pattern(
                     // only mut refs. We also need to handle this as a whole place in our analysis
                     // so we check if there are any mutations and then stop here.
                     if pattern_has_mut(pattern) {
+                        check_illegal_muts(pattern, datatypes, errors);
                         out.push((projs.clone(), ByRef::MutRef));
                     }
                 }
@@ -2117,6 +2119,40 @@ fn moves_and_muts_for_pattern(
     let mut out = vec![];
     moves_and_muts_for_pattern_rec(pattern, &mut vec![], &mut out, datatypes, modes, errors);
     out
+}
+
+/// Check for mutable borrows inside datatype structs
+fn check_illegal_muts(
+    pattern: &Pattern,
+    datatypes: &HashMap<Path, Datatype>,
+    errors: &mut Vec<VirErr>,
+) {
+    match &pattern.x {
+        PatternX::Wildcard => {}
+        PatternX::Var(_binding) => {}
+        PatternX::Binding { binding: _, sub_pat } => check_illegal_muts(sub_pat, datatypes, errors),
+        PatternX::Constructor(dt, _variant, patterns) => {
+            if let Some(_typ_inv_fun) = get_typ_inv_fun_dt(datatypes, dt) {
+                if let Some(span) = crate::patterns::pattern_find_mut_binding(pattern) {
+                    errors.push(error(&pattern.span, "not supported: using pattern to take mutable reference to field of datatype that has a declared type invariant").secondary_label(&span, "mutable binding here"));
+                }
+                // Can skip recursing; either we already added an error, or there are no
+                // mutable bindings in this node.
+                return;
+            }
+
+            for binder in patterns.iter() {
+                check_illegal_muts(&binder.a, datatypes, errors);
+            }
+        }
+        PatternX::Or(pat1, pat2) => {
+            check_illegal_muts(pat1, datatypes, errors);
+            check_illegal_muts(pat2, datatypes, errors);
+        }
+        PatternX::Expr(_e) => {}
+        PatternX::Range(_lower, _upper) => {}
+        PatternX::ImmutRef(p) | PatternX::MutRef(p) => check_illegal_muts(p, datatypes, errors),
+    }
 }
 
 ////// Place trees
