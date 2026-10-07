@@ -1263,6 +1263,7 @@ impl<'a> Builder<'a> {
                 Maybe::Some(bb)
             }
             StmtX::Decl { pattern, mode: _, init: Some(init), els, assert_irrefutable: _ } => {
+                check_illegal_muts(pattern, &self.locals.datatypes, &mut self.errors);
                 let tinv = if pattern_has_mut(pattern) { TypInv::PatternError } else { TypInv::No };
                 let (cpt, bb) = unwrap!(self.build_place_typed(init, bb, tinv));
 
@@ -1515,7 +1516,6 @@ impl<'a> Builder<'a> {
             }
             ComputedPlaceTyped::Partial(fpt) | ComputedPlaceTyped::Ghost(Some(fpt)) => {
                 if pattern_has_mut(pattern) {
-                    check_illegal_muts(pattern, &self.locals.datatypes, &mut self.errors);
                     let fp = self.locals.add_place(fpt);
                     self.push_instruction_propagate(bb, position, InstructionKind::Mutate(fp));
                 }
@@ -1615,6 +1615,9 @@ impl<'a> Builder<'a> {
             unreachable!();
         };
 
+        for arm in arms.iter() {
+            check_illegal_muts(&arm.x.pattern, &self.locals.datatypes, &mut self.errors);
+        }
         let tinv = if arms.iter().any(|arm| pattern_has_mut(&arm.x.pattern)) {
             TypInv::PatternError
         } else {
@@ -2093,7 +2096,6 @@ fn moves_and_muts_for_pattern(
                     // only mut refs. We also need to handle this as a whole place in our analysis
                     // so we check if there are any mutations and then stop here.
                     if pattern_has_mut(pattern) {
-                        check_illegal_muts(pattern, datatypes, errors);
                         out.push((projs.clone(), ByRef::MutRef));
                     }
                 }
