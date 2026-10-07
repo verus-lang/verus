@@ -126,20 +126,28 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] cast_usize_to_f64_unsupported verus_code! {
-        fn test_usize_as_f64(n: usize) {
-            let x: f64 = n as f64;
-        }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not support `as` cast from `usize` to `f64`")
-}
+test_verify_one_file_with_options! {
+    #[test] pointer_sized_float_cast ["vstd", "--compile"] => verus_code! {
+        use vstd::float::float_cast_spec;
 
-test_verify_one_file! {
-    #[test] cast_f64_to_isize_unsupported verus_code! {
-        fn test_f64_as_isize(f: f64) {
-            let n: isize = f as isize;
+        fn test_to_float(u: usize, i: isize) {
+            let a: f32 = u as f32;
+            let b: f64 = u as f64;
+            let c: f32 = i as f32;
+            let d: f64 = i as f64;
+            assert(float_cast_spec(u, a) && float_cast_spec(u, b));
+            assert(float_cast_spec(i, c) && float_cast_spec(i, d));
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not support `as` cast from `f64` to `isize`")
+
+        fn test_from_float(single: f32, double: f64) {
+            let a: usize = single as usize;
+            let b: usize = double as usize;
+            let c: isize = single as isize;
+            let d: isize = double as isize;
+            assert(float_cast_spec(single, a) && float_cast_spec(double, b));
+            assert(float_cast_spec(single, c) && float_cast_spec(double, d));
+        }
+    } => Ok(())
 }
 
 test_verify_one_file_with_options! {
@@ -185,6 +193,48 @@ test_verify_one_file_with_options! {
             }
         }
     } => Err(err) => assert_vir_error_msg(err, "Verus does not support `as` cast from `f16` to `f64`")
+}
+
+test_verify_one_bv_file! {
+    #[test] pointer_sized_float_ieee verus_code! {
+        proof fn test_to_float(u: usize, i: isize) {
+            assert(u == 16_777_217usize ==> u as f32 == 16_777_216f32) by(bit_vector);
+            assert(u == 4_294_967_295usize ==> u as f64 == 4_294_967_295f64) by(bit_vector);
+            assert(1isize as f64 == 1f64) by(bit_vector);
+            assert(i == -1isize ==> i as f64 == -1f64) by(bit_vector);
+        }
+
+        proof fn test_from_float() {
+            assert(3.75f32 as usize == 3usize) by(bit_vector);
+            assert(4_294_967_295f64 as usize == 4_294_967_295usize) by(bit_vector);
+            assert(-3.75f32 as isize == -3isize) by(bit_vector);
+        }
+    } => Ok(())
+}
+
+test_verify_one_bv_file! {
+    #[test] pointer_sized_float_ieee_64 verus_code! {
+        use vstd::prelude::*;
+        global size_of usize == 8;
+
+        proof fn test_to_float(u: usize, i: isize) {
+            assert(u == 9_007_199_254_740_993usize ==> u as f64 == 9_007_199_254_740_992f64) by(bit_vector);
+            assert(i == -9_007_199_254_740_993isize ==> i as f64 == -9_007_199_254_740_992f64) by(bit_vector);
+        }
+
+        proof fn test_from_float() {
+            assert(4_294_967_296f64 as usize == 4_294_967_296usize) by(bit_vector);
+            assert(-4_294_967_296f64 as isize == -4_294_967_296isize) by(bit_vector);
+        }
+    } => Ok(())
+}
+
+test_verify_one_bv_file! {
+    #[test] float_to_usize_arch_split_fail verus_code! {
+        proof fn test() {
+            assert(4_294_967_296f64 as usize as u64 == 4_294_967_296u64) by(bit_vector); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
