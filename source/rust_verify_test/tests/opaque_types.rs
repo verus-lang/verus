@@ -584,3 +584,44 @@ test_verify_one_file_with_options! {
         fn main() {}
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] opaque_type_spec_fn verus_code! {
+        struct X { }
+        trait Tr { }
+        impl Tr for X { }
+
+        spec fn foo() -> impl Tr {
+            X{}
+        }
+    } => Err(err) => assert_vir_error_msg(err, "impl trait in return position is only supported for 'exec' functions")
+}
+
+test_verify_one_file! {
+    #[test] opaque_type_proof_fn verus_code! {
+        struct X { }
+        trait Tr { }
+        impl Tr for X { }
+
+        proof fn foo() -> Option<impl Tr> {
+            Some(X{})
+        }
+    } => Err(err) => assert_vir_error_msg(err, "impl trait in return position is only supported for 'exec' functions")
+}
+
+test_verify_one_file! {
+    #[test] opaque_type_when_used_as_spec verus_code! {
+        struct X { }
+        trait Tr { }
+        impl Tr for X { }
+
+        spec fn foo2() -> X {
+            X{}
+        }
+
+        #[verifier::when_used_as_spec(foo2)]
+        fn foo() -> impl Tr {
+            X{}
+        }
+    } => Err(err) => assert_vir_error_msg(err, "impl trait in return position is not supported together with `when_used_as_spec`")
+}
