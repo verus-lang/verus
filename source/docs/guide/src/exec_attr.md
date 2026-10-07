@@ -104,7 +104,7 @@ Specifically, `proof_with!` works with exec functions verified via
 function verified via `verus!` will result in this error:
 
 ```text
-[E0425]: cannot find function `_VERUS_VERIFIED_xxx` in this scope.
+[E0425]: cannot find function `_VERUS_WITH_xxx` in this scope.
 ```
 
 This is because `verus!` always requires a real change to the function's

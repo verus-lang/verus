@@ -5591,7 +5591,7 @@ fn take_sig_with_spec(
         }
     }
     // ret.0 is executable returns.
-    // ret.1.. is the tracked/ghost returns.
+    // ret.1 is the tuple of tracked/ghost returns.
     if let Some((token, extra_ret)) = outputs {
         if extra_ret.len() > 0 {
             let span = extra_ret.span();
@@ -5605,8 +5605,20 @@ fn take_sig_with_spec(
                     underscore_token: Token![_](span),
                 }));
             }
+            let mut extra_elems: Punctuated<Pat, Token![,]> = Punctuated::new();
             for pt in extra_ret {
-                elems.push(pt.pat.as_ref().clone());
+                extra_elems.push(pt.pat.as_ref().clone());
+            }
+            // A single extra output stays unwrapped, since `(T)` is `T` and a
+            // one-element pattern tuple would be printed as `(p,)` instead.
+            if extra_elems.len() == 1 {
+                elems.push(extra_elems.pop().unwrap().into_value());
+            } else {
+                elems.push(Pat::Tuple(verus_syn::PatTuple {
+                    attrs: vec![],
+                    paren_token: Paren::default(),
+                    elems: extra_elems,
+                }));
             }
             *ret_pat = Some(Pat::Tuple(verus_syn::PatTuple {
                 attrs: vec![],
@@ -5616,13 +5628,13 @@ fn take_sig_with_spec(
             match &mut sig.output {
                 syn::ReturnType::Default => {
                     let ty = syn::Type::Verbatim(quote_spanned!(
-                        sig.output.span() => (() #(,#extra_ret_typs)*)
+                        sig.output.span() => ((), (#(#extra_ret_typs),*))
                     ));
                     sig.output = syn::ReturnType::Type(syn::Token![->](token.span()), Box::new(ty));
                 }
                 syn::ReturnType::Type(_, ty) => {
                     **ty = syn::Type::Verbatim(quote_spanned!(
-                        ty.span() => (#ty #(,#extra_ret_typs)*)
+                        ty.span() => (#ty, (#(#extra_ret_typs),*))
                     ));
                 }
             }
