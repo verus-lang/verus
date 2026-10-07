@@ -2060,12 +2060,6 @@ fn moves_and_muts_for_pattern(
                 }
             }
             PatternX::Constructor(dt, variant, patterns) => {
-                if let Some(_typ_inv_fun) = get_typ_inv_fun_dt(datatypes, dt) {
-                    if let Some(span) = crate::patterns::pattern_find_mut_binding(pattern) {
-                        errors.push(error(&pattern.span, "not supported: using pattern to take mutable reference to field of datatype that has a declared type invariant").secondary_label(&span, "mutable binding here"));
-                    }
-                }
-
                 let has_dtor = match dt {
                     Dt::Tuple(_) => false,
                     Dt::Path(path) => datatypes[path].x.destructor,
