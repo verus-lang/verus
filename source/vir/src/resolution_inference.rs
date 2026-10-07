@@ -2062,22 +2062,38 @@ fn moves_and_muts_for_pattern(
                     }
                 }
 
-                for binder in patterns.iter() {
-                    let field_typ = binder.a.typ.clone();
-                    let proj = ProjectionTyped::StructField(
-                        FieldOpr {
-                            datatype: dt.clone(),
-                            variant: variant.clone(),
-                            field: binder.name.clone(),
-                            get_variant: false,
-                            check: crate::ast::VariantCheck::None,
-                        },
-                        field_typ,
-                    );
+                let has_dtor = match dt {
+                    Dt::Tuple(_) => false,
+                    Dt::Path(path) => datatypes[path].x.destructor,
+                };
 
-                    projs.push(proj);
-                    moves_and_muts_for_pattern_rec(&binder.a, projs, out, datatypes, modes, errors);
-                    projs.pop();
+                if !has_dtor {
+                    for binder in patterns.iter() {
+                        let field_typ = binder.a.typ.clone();
+                        let proj = ProjectionTyped::StructField(
+                            FieldOpr {
+                                datatype: dt.clone(),
+                                variant: variant.clone(),
+                                field: binder.name.clone(),
+                                get_variant: false,
+                                check: crate::ast::VariantCheck::None,
+                            },
+                            field_typ,
+                        );
+
+                        projs.push(proj);
+                        moves_and_muts_for_pattern_rec(
+                            &binder.a, projs, out, datatypes, modes, errors,
+                        );
+                        projs.pop();
+                    }
+                } else {
+                    // For a struct with a destructor, it's not possible to take moves,
+                    // only mut refs. We also need to handle this as a whole place in our analysis
+                    // so we check if there are any mutations and then stop here.
+                    if pattern_has_mut(pattern) {
+                        out.push((projs.clone(), ByRef::MutRef));
+                    }
                 }
             }
             PatternX::Or(pat1, pat2) => {
@@ -2199,6 +2215,11 @@ impl<'a> LocalCollection<'a> {
                         }
                         Dt::Path(path) => {
                             let datatype = &datatypes[path];
+
+                            // Sanity check that we haven't been asked to split a datatype
+                            // with a nontrivial destructor.
+                            assert!(!datatype.x.destructor);
+
                             let fields = datatype
                                 .x
                                 .variants
