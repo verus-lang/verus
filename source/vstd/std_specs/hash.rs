@@ -953,10 +953,10 @@ pub assume_specification<Key, S>[ HashSet::<Key, S>::with_hasher ](hash_builder:
         m@ == Set::<Key>::empty(),
 ;
 
-pub assume_specification<Key, S>[ HashSet::<Key, S>::with_capacity_and_hasher ](capacity: usize, hash_builder: S) -> (m: HashSet<
-    Key,
-    S,
->)
+pub assume_specification<Key, S>[ HashSet::<Key, S>::with_capacity_and_hasher ](
+    capacity: usize,
+    hash_builder: S,
+) -> (m: HashSet<Key, S>)
     ensures
         m@ == Set::<Key>::empty(),
 ;
