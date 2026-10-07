@@ -142,6 +142,8 @@ pub broadcast axiom fn axiom_fn_mut_call_requires<Args: core::marker::Tuple, F: 
         #[trigger] call_requires::<Args, &mut F>(f, args),
 ;
 
+// The output contract concerns the callable's current value. The reference may
+// outlive the call and be used to replace the callable, so its future is unconstrained.
 pub broadcast axiom fn axiom_fn_mut_call_ensures<Args: core::marker::Tuple, F: FnMut<Args>>(
     f: &mut F,
     args: Args,
@@ -151,7 +153,6 @@ pub broadcast axiom fn axiom_fn_mut_call_ensures<Args: core::marker::Tuple, F: F
         #[trigger] call_ensures::<Args, &mut F>(f, args, output),
     ensures
         call_ensures::<Args, F>(mut_ref_current(f), args, output),
-        mut_ref_current(f) == mut_ref_future(f),
 ;
 
 pub broadcast group group_function_axioms {

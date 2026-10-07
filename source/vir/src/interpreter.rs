@@ -363,11 +363,15 @@ impl SyntacticEquality for Bnd {
                 }
             }
             (Quant(q_l, bnds_l, _trigs_l, _), Quant(q_r, bnds_r, _trigs_r, _)) => {
-                Some(q_l == q_r && bnds_l.conservative_eq(bnds_r)?)
+                if q_l == q_r {
+                    bnds_l.conservative_eq(bnds_r)
+                } else {
+                    None
+                }
             }
             (Lambda(bnds_l, _trigs_l), Lambda(bnds_r, _trigs_r)) => bnds_l.conservative_eq(bnds_r),
             (Choose(bnds_l, _trigs_l, e_l), Choose(bnds_r, _trigs_r, e_r)) => {
-                Some(bnds_l.conservative_eq(bnds_r)? && e_l.syntactic_eq(e_r)?)
+                Some(bnds_l.conservative_eq(bnds_r)? && e_l.conservative_eq(e_r)?)
             }
             _ => None,
         }
@@ -382,11 +386,22 @@ impl SyntacticEquality for Binders<Typ> {
         })
     }
 }
+
+// Constructor fields may appear in any source order. Use the same order for equality and hashing.
+fn sorted_ctor_fields(fields: &Binders<Exp>) -> Vec<&Binder<Exp>> {
+    let mut fields: Vec<_> = fields.iter().collect();
+    fields.sort_unstable_by(|l, r| l.name.cmp(&r.name));
+    fields
+}
+
 impl SyntacticEquality for Binders<Exp> {
     fn syntactic_eq(&self, other: &Self) -> Option<bool> {
-        self.iter().zip(other.iter()).try_fold(true, |acc, (bnd_l, bnd_r)| {
-            Some(acc && bnd_l.name == bnd_r.name && bnd_l.a.syntactic_eq(&bnd_r.a)?)
-        })
+        sorted_ctor_fields(self).into_iter().zip(sorted_ctor_fields(other)).try_fold(
+            true,
+            |acc, (bnd_l, bnd_r)| {
+                Some(acc && bnd_l.name == bnd_r.name && bnd_l.a.syntactic_eq(&bnd_r.a)?)
+            },
+        )
     }
 }
 
@@ -485,12 +500,17 @@ impl SyntacticEquality for Exp {
             (Binary(op_l, e1_l, e2_l), Binary(op_r, e1_r, e2_r)) => {
                 def_eq(op_l == op_r && e1_l.syntactic_eq(e1_r)? && e2_l.syntactic_eq(e2_r)?)
             }
-            (If(e1_l, e2_l, e3_l), If(e1_r, e2_r, e3_r)) => Some(
-                e1_l.syntactic_eq(e1_r)? && e2_l.syntactic_eq(e2_r)? && e3_l.syntactic_eq(e3_r)?,
-            ),
+            (If(e1_l, e2_l, e3_l), If(e1_r, e2_r, e3_r)) => {
+                if !e1_l.definitely_eq(e1_r) {
+                    return None;
+                }
+                let then_eq = e2_l.syntactic_eq(e2_r)?;
+                let else_eq = e3_l.syntactic_eq(e3_r)?;
+                if then_eq == else_eq { Some(then_eq) } else { None }
+            }
             (WithTriggers(_trigs_l, e_l), WithTriggers(_trigs_r, e_r)) => e_l.syntactic_eq(e_r),
             (Bind(bnd_l, e_l), Bind(bnd_r, e_r)) => {
-                Some(bnd_l.syntactic_eq(bnd_r)? && e_l.syntactic_eq(e_r)?)
+                def_eq(bnd_l.syntactic_eq(bnd_r)? && e_l.syntactic_eq(e_r)?)
             }
             (Interp(l), Interp(r)) => match (l, r) {
                 (InterpExp::FreeVar(l), InterpExp::FreeVar(r)) => def_eq(l == r),
@@ -535,7 +555,7 @@ fn hash_var_binders_typ<H: Hasher>(state: &mut H, bnds: &VarBinders<Typ>) {
 }
 
 fn hash_binders_exp<H: Hasher>(state: &mut H, bnds: &Binders<Exp>) {
-    hash_iter(state, bnds.iter().map(|b| (&b.name, &b.a)), hash_exp)
+    hash_iter(state, sorted_ctor_fields(bnds).into_iter().map(|b| (&b.name, &b.a)), hash_exp)
 }
 
 fn hash_var_binders_exp<H: Hasher>(state: &mut H, bnds: &VarBinders<Exp>) {
@@ -950,10 +970,10 @@ fn eval_seq(
             // If we can't make any progress at all, we return the partially simplified call
             let ok = Ok(exp_new(Call(fun.clone(), typs.clone(), args.clone())));
             // We made partial progress, so convert the internal sequence back to SST
-            // and reassemble a call from the rest of the args
-            let ok_seq = |seq_exp: &Exp, seq: &Vector<Exp>, args: &[Exp]| {
-                let mut new_args = vec![seq_to_sst(&seq_exp.span, typs[0].clone(), &seq)];
-                new_args.extend(args.iter().map(|arg| arg.clone()));
+            // and reassemble the call with the sequence in its original argument position.
+            let ok_seq = |index: usize, seq: &Vector<Exp>| {
+                let mut new_args = args.as_ref().clone();
+                new_args[index] = seq_to_sst(&args[index].span, typs[0].clone(), &seq);
                 let new_args = Arc::new(new_args);
                 Ok(exp_new(Call(fun.clone(), typs.clone(), new_args)))
             };
@@ -1001,7 +1021,7 @@ fn eval_seq(
                             let s = s.update(index, args[2].clone());
                             seq_new(s)
                         }
-                        _ => ok_seq(&args[0], &s, &args[1..]),
+                        _ => ok_seq(0, &s),
                     },
                     _ => ok,
                 },
@@ -1013,7 +1033,7 @@ fn eval_seq(
                             (Some(start), Some(end)) if start <= end && end <= s.len() => {
                                 seq_new(s.clone().slice(start..end))
                             }
-                            _ => ok_seq(&args[0], &s, &args[1..]),
+                            _ => ok_seq(0, &s),
                         }
                     }
                     _ => ok,
@@ -1024,8 +1044,8 @@ fn eval_seq(
                         s.append(s2.clone());
                         seq_new(s)
                     }
-                    (_, Interp(Seq(s2))) => ok_seq(&args[1], &s2, &args[0..1]),
-                    (Interp(Seq(s1)), _) => ok_seq(&args[0], &s1, &args[1..]),
+                    (_, Interp(Seq(s2))) => ok_seq(1, &s2),
+                    (Interp(Seq(s1)), _) => ok_seq(0, &s1),
                     _ => ok,
                 },
                 Len => match &args[0].x {
@@ -1042,7 +1062,7 @@ fn eval_seq(
                                     || "Computation tried to index into a sequence using a value that does not fit into usize",
                                     |msg| state.msgs.push(msg),
                                 );
-                                ok_seq(&args[0], &s, &args[1..])
+                                ok_seq(0, &s)
                             }
                             Some(index) => {
                                 if index < s.len() {
@@ -1054,11 +1074,11 @@ fn eval_seq(
                                         || "Computation tried to index past the length of a sequence",
                                         |msg| state.msgs.push(msg),
                                     );
-                                    ok_seq(&args[0], &s, &args[1..])
+                                    ok_seq(0, &s)
                                 }
                             }
                         },
-                        _ => ok_seq(&args[0], &s, &args[1..]),
+                        _ => ok_seq(0, &s),
                     },
                     _ => ok,
                 },
@@ -1074,8 +1094,8 @@ fn eval_seq(
                         }
                         Some(b) => bool_new(b),
                     },
-                    (_, Interp(Seq(r))) => ok_seq(&args[1], &r, &args[0..1]),
-                    (Interp(Seq(l)), _) => ok_seq(&args[0], &l, &args[1..]),
+                    (_, Interp(Seq(r))) => ok_seq(1, &r),
+                    (Interp(Seq(l)), _) => ok_seq(0, &l),
                     _ => ok,
                 },
                 Last => match &args[0].x {
@@ -1083,7 +1103,7 @@ fn eval_seq(
                         if s.len() > 0 {
                             Ok(s.last().unwrap().clone())
                         } else {
-                            ok_seq(&args[0], &s, &args[1..])
+                            ok_seq(0, &s)
                         }
                     }
                     _ => ok,
@@ -1392,7 +1412,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                     _ => ok,
                 },
                 Field(f) => match &e.x {
-                    Ctor(_dt, _var, binders) => {
+                    Ctor(_dt, var, binders) if var == &f.variant => {
                         match binders.iter().position(|b| b.name == f.field) {
                             None => ok,
                             Some(i) => Ok(binders.get(i).unwrap().a.clone()),
@@ -1572,10 +1592,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                             match op {
                                 Add | Sub => Ok(e1.clone()),
                                 Mul => zero,
-                                EuclideanDiv => {
-                                    ok_e2(e2) // Treat as symbolic instead of erroring
-                                }
-                                EuclideanMod => {
+                                EuclideanDiv | EuclideanMod => {
                                     ok_e2(e2) // Treat as symbolic instead of erroring
                                 }
                             }

@@ -73,9 +73,9 @@ pub enum ArithOp {
     Sub,
     /// IntRange::Int *
     Mul,
-    /// IntRange::Int / defined as Euclidean (round towards -infinity, not round-towards zero)
+    /// IntRange::Int / defined as Euclidean (round towards -infinity)
     EuclideanDiv,
-    /// IntRange::Int % defined as Euclidean (returns non-negative result even for negative divisor)
+    /// IntRange::Int % defined as Euclidean (returns non-negative result even for negative dividend)
     EuclideanMod,
 }
 

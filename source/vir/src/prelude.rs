@@ -238,7 +238,10 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
         (declare-fun [has_type] ([Poly] [typ]) Bool)
         (declare-fun [sized] ([decoration]) Bool)
         (declare-fun [as_type] ([Poly] [typ]) [Poly])
-        (declare-fun [mk_fun] (Fun) Fun)
+        // Wrap the AIR lambda with the VIR SpecFn type so that the has_type axiom
+        // can trigger on the right SpecFn type (this makes sure that
+        // extensional equality is used with the correct spec_fn domain).
+        (declare-fun [mk_fun] ([typ] Fun) Fun)
         (declare-fun [const_int] ([typ]) Int)
         (declare-fun [const_bool] ([typ]) Bool)
         (declare-fun [mut_ref_current] ([Poly]) [Poly])
@@ -397,12 +400,6 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
             :pattern (([as_type] x t))
             :qid prelude_as_type
             :skolemid skolem_prelude_as_type
-        )))
-        (axiom (forall ((x Fun)) (!
-            (= ([mk_fun] x) x)
-            :pattern (([mk_fun] x))
-            :qid prelude_mk_fun
-            :skolemid skolem_prelude_mk_fun
         )))
         (axiom (forall ((x Bool)) (!
             (= x ([unbox_bool] ([box_bool] x)))

@@ -589,6 +589,10 @@ pub fn is_never(t: &Typ) -> bool {
     }
 }
 
+pub fn int_typ() -> Typ {
+    Arc::new(TypX::Int(IntRange::Int))
+}
+
 pub fn mk_bool(span: &Span, b: bool) -> Expr {
     SpannedTyped::new(span, &Arc::new(TypX::Bool), ExprX::Const(Constant::Bool(b)))
 }
@@ -954,6 +958,13 @@ pub fn int_range_to_type_string(range: &IntRange) -> String {
         IntRange::USize => "usize".to_string(),
         IntRange::ISize => "isize".to_string(),
         IntRange::Char => "char".to_string(),
+    }
+}
+
+pub fn bitwidth_to_signed_type_string(bw: &IntegerTypeBitwidth) -> String {
+    match bw {
+        IntegerTypeBitwidth::Width(w) => format!("i{:}", w),
+        IntegerTypeBitwidth::ArchWordSize => format!("isize"),
     }
 }
 

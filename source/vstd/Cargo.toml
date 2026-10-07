@@ -5,7 +5,7 @@
 
 [package]
 name = "vstd"
-version = "0.0.0-2026-09-20-0158"
+version = "0.0.0-2026-10-04-0306"
 edition = "2021"
 license = "MIT"
 description = "Verus Standard Library: Useful specifications and lemmas for verifying Rust code"
