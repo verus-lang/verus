@@ -4385,3 +4385,33 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_fails(err, 2)
 }
+
+test_verify_one_file_with_options! {
+    #[test] pattern_match_ref_mut_binding_on_drop_type [] => verus_code! {
+        struct X<'a> {
+            b: &'a mut u64,
+        }
+
+        impl<'a> Drop for X<'a> {
+            fn drop(&mut self)
+                opens_invariants none
+                no_unwind
+            {
+                *self.b = 20;
+            }
+        }
+
+        // With `let b = &mut x.b;` in place of the pattern, the postcondition fails.
+        fn test() -> (r: u64)
+            ensures
+                r == 5, // FAILS
+        {
+            let mut y: u64 = 5;
+            {
+                let mut x = X { b: &mut y };
+                let X { ref mut b } = x;
+            }
+            y
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
