@@ -75,6 +75,7 @@ git_url = "https://github.com/secure-foundations/vest.git"
 refspec = "main"
 cargo_verus = true
 crate_roots = ["vest_lib"]
+extra_verus_args = ["--rlimit", "100"]
 
 [[project]]
 name = "vest-generated"
