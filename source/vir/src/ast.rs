@@ -687,6 +687,21 @@ pub enum ChainedOp {
     MultiEq,
 }
 
+/// Floating point Binary Ops, unspecified
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum UninterpretedFloatBinaryOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Lt,
+    Gt,
+    Le,
+    Ge,
+    Eq,
+    Ne,
+}
+
 /// IEEE floating point binary ops (rounding mode RNE)
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
 pub enum IeeeFloatBinaryOp {
@@ -725,7 +740,10 @@ pub enum BinaryOp {
     /// boolean xor (no short-circuiting)
     BoolXor,
     /// the is_smaller_than verus_builtin, used for decreases (true for <, false for ==)
-    HeightCompare { strictly_lt: bool, recursive_function_field: bool },
+    HeightCompare {
+        strictly_lt: bool,
+        recursive_function_field: bool,
+    },
     /// SMT equality for any type -- two expressions are exactly the same value
     /// Some types support compilable equality (Mode == Exec); others only support spec equality (Mode == Spec)
     Eq(Mode),
@@ -739,6 +757,7 @@ pub enum BinaryOp {
     RealArith(RealArithOp),
     /// Bit Vector Operators
     Bitwise(BitwiseOp, BitshiftBehavior),
+    UninterpretedFloat(UninterpretedFloatBinaryOp),
     /// IEEE floating point binary ops (rounding mode RNE)
     IeeeFloat(IeeeFloatBinaryOp),
     /// Used only for handling verus_builtin::strslice_get_char
