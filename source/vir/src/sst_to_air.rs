@@ -2168,7 +2168,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                         .fun
                         .as_ref()
                         .and_then(|f| ctx.func_sst_map.get(&f.current_fun))
-                        .map(|fun| fun.x.ret.x.typ.clone());
+                        .map(|fun| fun.x.inner_ret.x.typ.clone());
                     if let Some(ret) = ret_op {
                         stmts.extend(opaque_ty_additional_stmts(
                             ctx,

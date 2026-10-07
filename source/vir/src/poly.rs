@@ -423,7 +423,7 @@ fn visit_and_insert_pars(
 }
 
 fn return_typ(ctx: &Ctx, function: &FunctionSstX, is_trait: bool, typ: &Typ) -> Typ {
-    if (is_trait || typ_is_poly(ctx, &function.ret.x.typ))
+    if (is_trait || typ_is_poly(ctx, &function.outer_ret.x.typ))
         && (function.ens_has_return || function.mode == Mode::Spec)
     {
         coerce_typ_to_poly(ctx, typ)
@@ -1250,7 +1250,8 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
         ref typ_params,
         ref typ_bounds,
         ref pars,
-        ref ret,
+        ref outer_ret,
+        ref inner_ret,
         ref ens_has_return,
         ref item_kind,
         ref attrs,
@@ -1260,7 +1261,6 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
         ref exec_proof_check,
         ref recommends_check,
         ref safe_api_check,
-        ref async_ret,
         ref hidden,
     } = &function.x;
 
@@ -1284,7 +1284,7 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
         is_trait,
         in_exec_closure: false,
         remaining_temps: HashSet::new(),
-        is_ret_opaque: matches!(*ret.x.typ, TypX::Opaque { .. }),
+        is_ret_opaque: matches!(*inner_ret.x.typ, TypX::Opaque { .. }),
     };
 
     let decl = Arc::new(visit_func_decl_sst(ctx, &mut state, &poly_pars, decl));
@@ -1308,12 +1308,21 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
     };
 
     // Return type is left native (except for trait methods)
-    let ret_typ = match poly_ret {
-        InsertPars::Poly => coerce_typ_to_poly(ctx, &ret.x.typ),
-        InsertPars::Native => coerce_typ_to_native(ctx, &ret.x.typ),
+    let outer_ret_typ = match poly_ret {
+        InsertPars::Poly => coerce_typ_to_poly(ctx, &outer_ret.x.typ),
+        InsertPars::Native => coerce_typ_to_native(ctx, &outer_ret.x.typ),
         _ => unreachable!(),
     };
-    let ret = Spanned::new(ret.span.clone(), ParX { typ: ret_typ, ..ret.x.clone() });
+    let outer_ret =
+        Spanned::new(outer_ret.span.clone(), ParX { typ: outer_ret_typ, ..outer_ret.x.clone() });
+
+    let inner_ret_typ = match poly_ret {
+        InsertPars::Poly => coerce_typ_to_poly(ctx, &inner_ret.x.typ),
+        InsertPars::Native => coerce_typ_to_native(ctx, &inner_ret.x.typ),
+        _ => unreachable!(),
+    };
+    let inner_ret =
+        Spanned::new(inner_ret.span.clone(), ParX { typ: inner_ret_typ, ..inner_ret.x.clone() });
 
     state.types.push_scope(true);
     let pars = visit_and_insert_pars(ctx, &mut state.types, &poly_pars, pars);
@@ -1321,10 +1330,9 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
     let spec_axioms = if let Some(spec_body) = &axioms.spec_axioms {
         let decrease_when =
             spec_body.decrease_when.as_ref().map(|e| visit_exp_native(ctx, &mut state, e));
-        let termination_check = spec_body
-            .termination_check
-            .as_ref()
-            .map(|f| visit_func_check_sst(ctx, &mut state, f, &poly_pars, &poly_ret, &ret.x.typ));
+        let termination_check = spec_body.termination_check.as_ref().map(|f| {
+            visit_func_check_sst(ctx, &mut state, f, &poly_pars, &poly_ret, &inner_ret.x.typ)
+        });
         let body_exp = if is_trait && (function.x.ens_has_return || function_mode == Mode::Spec) {
             visit_exp_poly(ctx, &mut state, &spec_body.body_exp)
         } else {
@@ -1338,13 +1346,13 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
     let axioms = Arc::new(crate::sst::FuncAxiomsSst { spec_axioms, proof_exec_axioms });
 
     let exec_proof_check = exec_proof_check.as_ref().map(|f| {
-        Arc::new(visit_func_check_sst(ctx, &mut state, f, &poly_pars, &poly_ret, &ret.x.typ))
+        Arc::new(visit_func_check_sst(ctx, &mut state, f, &poly_pars, &poly_ret, &inner_ret.x.typ))
     });
     let recommends_check = recommends_check.as_ref().map(|f| {
-        Arc::new(visit_func_check_sst(ctx, &mut state, f, &poly_pars, &poly_ret, &ret.x.typ))
+        Arc::new(visit_func_check_sst(ctx, &mut state, f, &poly_pars, &poly_ret, &inner_ret.x.typ))
     });
     let safe_api_check = safe_api_check.as_ref().map(|f| {
-        Arc::new(visit_func_check_sst(ctx, &mut state, f, &poly_pars, &poly_ret, &ret.x.typ))
+        Arc::new(visit_func_check_sst(ctx, &mut state, f, &poly_pars, &poly_ret, &inner_ret.x.typ))
     });
 
     state.types.pop_scope();
@@ -1360,7 +1368,8 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
         typ_params: typ_params.clone(),
         typ_bounds: typ_bounds.clone(),
         pars,
-        ret,
+        outer_ret,
+        inner_ret: inner_ret.clone(),
         ens_has_return: *ens_has_return,
         item_kind: *item_kind,
         attrs: attrs.clone(),
@@ -1370,7 +1379,6 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
         exec_proof_check,
         recommends_check,
         safe_api_check,
-        async_ret: async_ret.clone(),
         hidden: hidden.clone(),
     };
     Spanned::new(function.span.clone(), functionx)
