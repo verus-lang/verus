@@ -764,7 +764,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_mut_self_disallowed verus_code! {
+    #[test] test_mut_self verus_code! {
         struct T { i: u64 }
 
         impl T {
@@ -775,6 +775,15 @@ test_verify_one_file! {
                 self.i = 20;
                 assert(self.i == 20);
                 0
+            }
+
+            fn test2(mut self) -> (s: Self)
+                requires self.i == 0,
+                ensures self.i == 0 && s.i == 20
+            {
+                self.i = 20;
+                assert(self.i == 20);
+                self
             }
         }
     } => Ok(())
