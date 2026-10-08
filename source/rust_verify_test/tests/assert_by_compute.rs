@@ -1146,3 +1146,121 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
 }
+
+test_verify_one_file! {
+    #[test] scope_quantifier_equality verus_code! {
+        uninterp spec fn p(x: int) -> bool;
+
+        proof fn test() {
+            assert((forall|x: int| #[trigger] p(x))
+                == (forall|x: int| #[trigger] p(x))) by (compute_only);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] scope_quantifier_capture verus_code! {
+        spec fn g(x: int) -> int { x }
+        spec fn f(y: int) -> bool { exists|x: int| #[trigger] g(x) == x && x != y }
+
+        proof fn test() {
+            assert(forall|x: int| !#[trigger] f(x)) by (compute); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] scope_closure_capture verus_code! {
+        spec fn apply(f: spec_fn(int) -> int, y: int) -> int { f(0) }
+
+        proof fn test(y: int) {
+            assert(apply(|z: int| y, 5) == 5) by (compute_only);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
+}
+
+test_verify_one_file! {
+    #[test] scope_const_generic_capture verus_code! {
+        spec fn h<const N: u64, const M: u64>() -> int { M as int }
+
+        proof fn test<const N: u64>() {
+            assert(h::<5, N>() == 5) by (compute_only);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
+}
+
+test_verify_one_file! {
+    #[test] scope_const_generic_fallback_failure verus_code! {
+        spec fn h<const N: u64, const M: u64>() -> int { M as int }
+
+        proof fn test<const N: u64>() {
+            assert(h::<5, N>() == N as int + 1) by (compute); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] scope_const_generic_fallback verus_code! {
+        spec fn h<const N: u64, const M: u64>() -> int { M as int }
+
+        proof fn test<const N: u64>() {
+            assert(h::<5, N>() <= N as int + 1) by (compute);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] scope_closure_lexical_capture verus_code! {
+        spec fn apply(f: spec_fn(int) -> int, y: int) -> int { f(0) }
+
+        proof fn test(y: int) {
+            assert(apply(|z: int| y, 5) == y) by (compute_only);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] scope_const_generic_forwarding verus_code! {
+        spec fn h<const N: u64, const M: u64>() -> int { M as int }
+        spec fn forward<const N: u64, const M: u64>() -> int { h::<N, M>() }
+
+        proof fn test<const N: u64>() {
+            assert(forward::<5, N>() == N as int) by (compute_only);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] scope_const_generic_closure_capture verus_code! {
+        spec fn call<const N: u64>(f: spec_fn() -> int) -> int { f() }
+
+        proof fn test<const N: u64>() {
+            assert(call::<5>(|| N as int) == N as int) by (compute_only);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] scope_quantifier_lexical_capture verus_code! {
+        spec fn g(x: int) -> int { x }
+        spec fn f(y: int) -> bool { exists|x: int| #[trigger] g(x) == x && x != y }
+
+        proof fn test(x: int) {
+            assert(g(x + 1) == x + 1);
+            assert(f(x)) by (compute);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] scope_nested_quantifier_shadowing verus_code! {
+        spec fn g(x: int) -> int { x }
+
+        proof fn test() {
+            assert(g(0) == 0);
+            assert(forall|x: int| #![trigger g(x)]
+                (exists|x: int| #![trigger g(x)] g(x) == x) && g(x) == x)
+                by (compute);
+        }
+    } => Ok(())
+}
