@@ -1384,3 +1384,271 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] test_str_pattern_char_and_str verus_code! {
+        use vstd::prelude::*;
+        use vstd::string::{PatternSpec, StringExecFns, StringSliceAdditionalSpecFns};
+
+        fn test() {
+            proof {
+                reveal_strlit("héllo");
+                reveal_strlit("hé");
+                reveal_strlit("lo");
+                reveal_strlit("él");
+                assert("héllo"@ =~= seq!['h', 'é', 'l', 'l', 'o']);
+                assert("héllo"@.subrange(0, 2) =~= "hé"@);
+                assert("héllo"@.subrange(3, 5) =~= "lo"@);
+                assert("héllo"@.subrange(1, 3) =~= "él"@);
+            }
+            // A positive match needs its witness; a non-match doesn't.
+            assert("hé".matches_at("héllo"@, 0, 2));
+            let r = "héllo".starts_with("hé");
+            assert(r);
+            assert("lo".matches_at("héllo"@, 3, 5));
+            let r = "héllo".ends_with("lo");
+            assert(r);
+            assert("él".matches_at("héllo"@, 1, 3));
+            let r = "héllo".contains("él");
+            assert(r);
+            assert('é'.matches_at("héllo"@, 1, 2));
+            let r = "héllo".contains('é');
+            assert(r);
+            let r = "héllo".starts_with('é');
+            assert(!r);
+            let r = "héllo".contains('z');
+            assert(!r);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_str_pattern_other_impls verus_code! {
+        use vstd::prelude::*;
+        use vstd::string::{PatternSpec, StringExecFns, StringSliceAdditionalSpecFns};
+
+        fn test() {
+            proof {
+                reveal_strlit("héllo");
+                reveal_strlit("ll");
+                assert("héllo"@ =~= seq!['h', 'é', 'l', 'l', 'o']);
+                assert("héllo"@.subrange(2, 4) =~= "ll"@);
+            }
+            let arr = ['x', 'h'];
+            assert(arr.matches_at("héllo"@, 0, 1));
+            let r = "héllo".starts_with(arr);
+            assert(r);
+            let arr_ref = &['o', 'z'];
+            assert((&arr_ref).matches_at("héllo"@, 4, 5));
+            let r = "héllo".ends_with(arr_ref);
+            assert(r);
+            let slice: &[char] = &['z', 'é'];
+            assert(slice.matches_at("héllo"@, 1, 2));
+            let r = "héllo".contains(slice);
+            assert(r);
+            let slice: &[char] = &['z', 'q'];
+            let r = "héllo".contains(slice);
+            assert(!r);
+            let pat: &&str = &"ll";
+            assert((&pat).matches_at("héllo"@, 2, 4));
+            let r = "héllo".contains(pat);
+            assert(r);
+            let owned = String::from_str("ll");
+            let owned_ref = &owned;
+            assert((&owned_ref).matches_at("héllo"@, 2, 4));
+            let r = "héllo".contains(owned_ref);
+            assert(r);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_str_pattern_closure verus_code! {
+        use vstd::prelude::*;
+        use vstd::string::{PatternSpec, StringExecFns, StringSliceAdditionalSpecFns};
+
+        fn test() {
+            proof {
+                reveal_strlit("héllo");
+                assert("héllo"@ =~= seq!['h', 'é', 'l', 'l', 'o']);
+            }
+            let is_l = |c: char| -> (b: bool) ensures b == (c == 'l') { c == 'l' };
+            // `is_l.ensures(('l',), true)` is only known from an actual call.
+            let _ = is_l('l');
+            assert(is_l.matches_at("héllo"@, 2, 3));
+            let r = "héllo".contains(is_l);
+            assert(r);
+            let is_z = |c: char| -> (b: bool) ensures b == (c == 'z') { c == 'z' };
+            let r = "héllo".contains(is_z);
+            assert(!r);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_closure_pattern_requires_false_not_obeyed verus_code! {
+        use vstd::prelude::*;
+        use vstd::string::{PatternSpec, StringExecFns, StringSliceAdditionalSpecFns};
+
+        fn test() {
+            let pred = |_c: char| -> (b: bool)
+                requires false
+                ensures !b
+            { true };
+            assert(pred.obeys_pattern_spec()); // FAILS
+            let res = "a".starts_with(pred);
+            // Wrong at runtime: provable only because the failed assert above is assumed.
+            assert(!res);
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_str_find_rfind_byte_offsets verus_code! {
+        use vstd::prelude::*;
+        use vstd::string::{PatternSpec, StringSliceAdditionalSpecFns};
+        use vstd::utf8::{encode_scalar, encode_utf8};
+
+        // UTF-8 bytes of "héllo" ('é' is two bytes), 'l', and 'z'.
+        proof fn lemma_hello_bytes()
+            ensures
+                "héllo".spec_bytes() =~= seq![0x68u8, 0xC3, 0xA9, 0x6C, 0x6C, 0x6F],
+                encode_scalar('l' as u32) =~= seq![0x6Cu8],
+                encode_scalar('z' as u32) =~= seq![0x7Au8],
+        {
+            reveal_strlit("héllo");
+            assert("héllo"@ =~= seq!['h', 'é', 'l', 'l', 'o']);
+            assert((0x68u32 & 0x7F) as u8 == 0x68u8 && (0x6Cu32 & 0x7F) as u8 == 0x6Cu8
+                && (0x6Fu32 & 0x7F) as u8 == 0x6Fu8 && (0x7Au32 & 0x7F) as u8 == 0x7Au8
+                && (0xC0u8 | ((0xE9u32 >> 6) & 0x1F) as u8) == 0xC3u8
+                && (0x80u8 | (0xE9u32 & 0x3F) as u8) == 0xA9u8) by (bit_vector);
+            reveal_with_fuel(encode_utf8, 6);
+        }
+
+        // A one-byte pattern match pins down the byte at its start.
+        proof fn lemma_one_byte_match(bytes: Seq<u8>, start: int, end: int, b: u8)
+            requires
+                0 <= start <= end <= bytes.len(),
+                bytes.subrange(start, end) =~= seq![b],
+            ensures
+                end == start + 1,
+                bytes[start] == b,
+        {
+            assert(seq![b].len() == 1 && seq![b][0] == b);
+            assert(bytes.subrange(start, end)[0] == bytes[start]);
+        }
+
+        fn test() {
+            proof { lemma_hello_bytes(); }
+            let ghost bytes = "héllo".spec_bytes();
+            // The first 'l' is at byte 3 (char index 2), the last at byte 4.
+            let r = "héllo".find('l');
+            assert(r == Some(3usize)) by {
+                assert('l'.matches_at_bytes(bytes, 3, 4));
+                let i = r->0 as int;
+                let end = choose|end: int| i <= end <= bytes.len() && 'l'.matches_at_bytes(bytes, i, end);
+                lemma_one_byte_match(bytes, i, end, 0x6C);
+            }
+            let r = "héllo".rfind('l');
+            assert(r == Some(4usize)) by {
+                assert('l'.matches_at_bytes(bytes, 4, 5));
+                let i = r->0 as int;
+                let end = choose|end: int| i <= end <= bytes.len() && 'l'.matches_at_bytes(bytes, i, end);
+                lemma_one_byte_match(bytes, i, end, 0x6C);
+            }
+            // The empty pattern matches at byte 0 first and at the end last.
+            proof { reveal_strlit(""); }
+            let r = "héllo".find("");
+            assert(r == Some(0usize)) by {
+                assert("".matches_at_bytes(bytes, 0, 0));
+            }
+            let r = "héllo".rfind("");
+            assert(r == Some(6usize)) by {
+                assert("".matches_at_bytes(bytes, 6, 6));
+            }
+            let r = "héllo".find('z');
+            assert(r is None) by {
+                if r is Some {
+                    let i = r->0 as int;
+                    let end = choose|end: int| i <= end <= bytes.len() && 'z'.matches_at_bytes(bytes, i, end);
+                    lemma_one_byte_match(bytes, i, end, 0x7A);
+                }
+            }
+        }
+    } => Ok(())
+}
+
+// A caller generic over the closure can recover per-char facts in both directions.
+test_verify_one_file_with_options! {
+    #[test] generic_starts_with_matches_wrapper ["vstd"] => verus_code! {
+        use vstd::prelude::*;
+        use vstd::string::PatternSpec;
+
+        fn generic_starts_with_pred<F: FnMut(char) -> bool>(s: &str, pred: F) -> (res: bool)
+            requires
+                pred.obeys_pattern_spec(),
+            ensures
+                s@.len() == 0 ==> !res,
+                s@.len() > 0 ==> (res == pred.ensures((s@[0],), true)),
+        {
+            let res = s.starts_with(pred);
+            proof {
+                if s@.len() > 0 {
+                    assert(pred.matches_at(s@, 0, 1) == pred.ensures((s@[0],), true));
+                }
+            }
+            res
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] generic_ends_with_matches_wrapper ["vstd"] => verus_code! {
+        use vstd::prelude::*;
+        use vstd::string::PatternSpec;
+
+        fn generic_ends_with_pred<F: FnMut(char) -> bool>(s: &str, pred: F) -> (res: bool)
+            requires
+                pred.obeys_pattern_spec(),
+            ensures
+                s@.len() == 0 ==> !res,
+                s@.len() > 0 ==> (res == pred.ensures((s@[s@.len() - 1],), true)),
+        {
+            let res = s.ends_with(pred);
+            proof {
+                if s@.len() > 0 {
+                    let last = s@.len() - 1;
+                    assert(pred.matches_at(s@, last, last + 1) == pred.ensures((s@[last],), true));
+                }
+            }
+            res
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] generic_contains_matches_wrapper ["vstd"] => verus_code! {
+        use vstd::prelude::*;
+        use vstd::string::PatternSpec;
+
+        fn generic_contains_pred<F: FnMut(char) -> bool>(s: &str, pred: F) -> (res: bool)
+            requires
+                pred.obeys_pattern_spec(),
+            ensures
+                res == exists|i: int| 0 <= i < s@.len() && pred.ensures((#[trigger] s@[i],), true),
+        {
+            let res = s.contains(pred);
+            proof {
+                if !res {
+                    assert forall|i: int| 0 <= i < s@.len() implies !pred.ensures(
+                        (#[trigger] s@[i],),
+                        true,
+                    ) by {
+                        assert(!pred.matches_at(s@, i, i + 1));
+                    };
+                }
+            }
+            res
+        }
+    } => Ok(())
+}
