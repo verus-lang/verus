@@ -103,7 +103,6 @@ pub struct ArgsX {
     pub show_triggers: ShowTriggers,
     pub ignore_unexpected_smt: bool,
     pub allow_inline_air: bool,
-    pub debugger: bool,
     pub profile: bool,
     pub profile_all: bool,
     pub capture_profiles: bool,
@@ -152,7 +151,6 @@ impl ArgsX {
             show_triggers: Default::default(),
             ignore_unexpected_smt: Default::default(),
             allow_inline_air: Default::default(),
-            debugger: Default::default(),
             profile: Default::default(),
             profile_all: Default::default(),
             capture_profiles: Default::default(),
@@ -405,7 +403,6 @@ pub fn parse_args_with_imports(
 
     const OPT_EXTENDED_MULTI: &str = "V";
     const EXTENDED_IGNORE_UNEXPECTED_SMT: &str = "ignore-unexpected-smt";
-    const EXTENDED_DEBUG: &str = "debug";
     const EXTENDED_NO_SOLVER_VERSION_CHECK: &str = "no-solver-version-check";
     const EXTENDED_SPINOFF_ALL: &str = "spinoff-all";
     const EXTENDED_CAPTURE_PROFILES: &str = "capture-profiles";
@@ -417,7 +414,6 @@ pub fn parse_args_with_imports(
     const EXTENDED_NO_BV_SIMPLIFY: &str = "no-bv-simplify";
     const EXTENDED_KEYS: &[(&str, &str)] = &[
         (EXTENDED_IGNORE_UNEXPECTED_SMT, "Ignore unexpected SMT output"),
-        (EXTENDED_DEBUG, "Enable debugging of proof failures"),
         (
             EXTENDED_NO_SOLVER_VERSION_CHECK,
             "Skip the check that the solver has the expected version (useful to experiment with different versions of z3)",
@@ -784,7 +780,6 @@ pub fn parse_args_with_imports(
         },
         ignore_unexpected_smt: extended.contains_key(EXTENDED_IGNORE_UNEXPECTED_SMT),
         allow_inline_air: extended.contains_key(EXTENDED_ALLOW_INLINE_AIR),
-        debugger: extended.contains_key(EXTENDED_DEBUG),
         profile: {
             if matches.opt_present(OPT_PROFILE) {
                 if matches.opt_present(OPT_PROFILE_ALL) {
