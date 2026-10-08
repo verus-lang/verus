@@ -47,8 +47,7 @@ pub enum CheckValidResult<'a> {
 
 /// Observer for verification query results.
 ///
-/// The single callback fires once per query after the solver returns. All
-/// methods except `as_any`/`as_any_mut` have default no-op implementations.
+/// The single callback fires once per query after the solver returns.
 pub trait QueryResultObserver: Any {
     /// A verification query completed with a result.
     fn on_check_valid_result(&mut self, _result: &mut CheckValidResult) {}

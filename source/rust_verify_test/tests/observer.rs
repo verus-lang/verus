@@ -1,7 +1,8 @@
 //! Observer e2e tests with strong oracles.
 //!
-//! Shared VC-shape seed corpus lives in `vc_shapes` (this branch), so all three layers'
-//! suites can drive the same programs. This file adds event-trace oracles over selected seeds.
+//! Shared VC-shape seed corpus lives in `vc_shapes` to allow client observers
+//! to build on them in their own test suites.  This file adds event-trace
+//! oracles over selected seeds.
 //!
 //! Coverage matrix (+ = positive check, 0 = negative check):
 //!

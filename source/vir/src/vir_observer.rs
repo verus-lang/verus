@@ -21,12 +21,8 @@ pub use air::air_observer::VersionOrigin;
 /// without an id, and a function's postconditions all share the id of the enclosing return.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AssertIdKind {
-    /// One of a function's `ensures` clauses; `index` is its position among them.
     Ensures,
-    /// A loop invariant, checked at loop entry and at the end of the body; `index` is its
-    /// position among the loop's invariants.
     LoopInvariant,
-    /// A loop's decreases check.
     DecreasesCheck,
 }
 

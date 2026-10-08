@@ -1362,8 +1362,7 @@ impl Verifier {
             prover_choice,
         )?;
 
-        // Attach the same shared observer object to the spinoff context via its
-        // per-trait handles (real trait-object views of one object — no bridge).
+        // Attach the same shared observer objects to the spinoff context
         air_context.set_observers(ctx.air_observer.clone(), ctx.query_result_observer.clone());
 
         // Write the span of spun-off query
