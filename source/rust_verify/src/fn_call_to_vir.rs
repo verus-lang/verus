@@ -429,21 +429,6 @@ pub(crate) fn call_index<'tcx>(
     call_overloaded_method(bctx, span, expr_typ, trait_fun_id, args, trait_args)
 }
 
-/// Emit a call to unary method call (Neg or Not)
-pub(crate) fn call_unary_method<'tcx>(
-    bctx: &BodyCtxt<'tcx>,
-    span: Span,
-    expr_typ: Typ,
-    trait_fun_id: DefId,
-    arg: vir::ast::Expr,
-    arg_ty: rustc_middle::ty::Ty<'tcx>,
-) -> Result<vir::ast::Expr, VirErr> {
-    let self_ty = arg_ty;
-    let trait_args = bctx.ctxt.tcx.mk_args(&[GenericArg::from(self_ty)]);
-    let args = Arc::new(vec![arg]);
-    call_overloaded_method(bctx, span, expr_typ, trait_fun_id, args, trait_args)
-}
-
 /// Common logic for all the overloaded methods
 pub(crate) fn call_overloaded_method<'tcx>(
     bctx: &BodyCtxt<'tcx>,
@@ -1668,13 +1653,15 @@ fn verus_item_to_vir<'tcx, 'a>(
             let source_vir = source_vir0.consume(bctx, bctx.types.expr_ty_adjusted(&args[0]));
             let source_ty = undecorate_typ(&source_vir.typ);
             match &*source_ty {
-                TypX::Int(IntRange::I(_) | IntRange::U(_)) | TypX::Real | TypX::Float(_) => {
+                TypX::Int(IntRange::I(_) | IntRange::U(_) | IntRange::USize | IntRange::ISize)
+                | TypX::Real
+                | TypX::Float(_) => {
                     let op = UnaryOp::IeeeFloat(vir::ast::IeeeFloatUnaryOp::Cast);
                     mk_expr(ExprX::Unary(op, source_vir))
                 }
                 _ => err_span(
                     expr.span,
-                    "Only i8...u128, real, and float types can be cast to float",
+                    "Only i8...u128, isize, usize, real, and float types can be cast to float",
                 ),
             }
         }
@@ -1747,13 +1734,17 @@ fn verus_item_to_vir<'tcx, 'a>(
                     let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;
                     Ok(mk_ty_clip(bctx, &to_ty, &cast_to, expr_vattrs.truncate))
                 }
-                ((TypX::Float(_), _), TypX::Int(IntRange::U(_) | IntRange::I(_))) => {
+                (
+                    (TypX::Float(_), _),
+                    TypX::Int(IntRange::U(_) | IntRange::I(_) | IntRange::USize | IntRange::ISize),
+                ) => {
                     let op = UnaryOp::IeeeFloat(vir::ast::IeeeFloatUnaryOp::Cast);
                     mk_expr(ExprX::Unary(op, source_vir))
                 }
-                ((TypX::Float(_), _), TypX::Int(_)) => {
-                    err_span(expr.span, "for floats, only casts to i8..u128 are supported")
-                }
+                ((TypX::Float(_), _), TypX::Int(_)) => err_span(
+                    expr.span,
+                    "for floats, only casts to i8..u128, isize, and usize are supported",
+                ),
                 ((TypX::Real, _), TypX::Int(_)) => err_span(
                     expr.span,
                     "cannot cast real to int directly; use .floor() instead (e.g., x.floor() or x.floor() as u64)",

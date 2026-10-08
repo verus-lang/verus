@@ -126,20 +126,28 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] cast_usize_to_f64_unsupported verus_code! {
-        fn test_usize_as_f64(n: usize) {
-            let x: f64 = n as f64;
-        }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not support `as` cast from `usize` to `f64`")
-}
+test_verify_one_file_with_options! {
+    #[test] pointer_sized_float_cast ["vstd", "--compile"] => verus_code! {
+        use vstd::float::float_cast_spec;
 
-test_verify_one_file! {
-    #[test] cast_f64_to_isize_unsupported verus_code! {
-        fn test_f64_as_isize(f: f64) {
-            let n: isize = f as isize;
+        fn test_to_float(u: usize, i: isize) {
+            let a: f32 = u as f32;
+            let b: f64 = u as f64;
+            let c: f32 = i as f32;
+            let d: f64 = i as f64;
+            assert(float_cast_spec(u, a) && float_cast_spec(u, b));
+            assert(float_cast_spec(i, c) && float_cast_spec(i, d));
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not support `as` cast from `f64` to `isize`")
+
+        fn test_from_float(single: f32, double: f64) {
+            let a: usize = single as usize;
+            let b: usize = double as usize;
+            let c: isize = single as isize;
+            let d: isize = double as isize;
+            assert(float_cast_spec(single, a) && float_cast_spec(double, b));
+            assert(float_cast_spec(single, c) && float_cast_spec(double, d));
+        }
+    } => Ok(())
 }
 
 test_verify_one_file_with_options! {
@@ -185,6 +193,48 @@ test_verify_one_file_with_options! {
             }
         }
     } => Err(err) => assert_vir_error_msg(err, "Verus does not support `as` cast from `f16` to `f64`")
+}
+
+test_verify_one_bv_file! {
+    #[test] pointer_sized_float_ieee verus_code! {
+        proof fn test_to_float(u: usize, i: isize) {
+            assert(u == 16_777_217usize ==> u as f32 == 16_777_216f32) by(bit_vector);
+            assert(u == 4_294_967_295usize ==> u as f64 == 4_294_967_295f64) by(bit_vector);
+            assert(1isize as f64 == 1f64) by(bit_vector);
+            assert(i == -1isize ==> i as f64 == -1f64) by(bit_vector);
+        }
+
+        proof fn test_from_float() {
+            assert(3.75f32 as usize == 3usize) by(bit_vector);
+            assert(4_294_967_295f64 as usize == 4_294_967_295usize) by(bit_vector);
+            assert(-3.75f32 as isize == -3isize) by(bit_vector);
+        }
+    } => Ok(())
+}
+
+test_verify_one_bv_file! {
+    #[test] pointer_sized_float_ieee_64 verus_code! {
+        use vstd::prelude::*;
+        global size_of usize == 8;
+
+        proof fn test_to_float(u: usize, i: isize) {
+            assert(u == 9_007_199_254_740_993usize ==> u as f64 == 9_007_199_254_740_992f64) by(bit_vector);
+            assert(i == -9_007_199_254_740_993isize ==> i as f64 == -9_007_199_254_740_992f64) by(bit_vector);
+        }
+
+        proof fn test_from_float() {
+            assert(4_294_967_296f64 as usize == 4_294_967_296usize) by(bit_vector);
+            assert(-4_294_967_296f64 as isize == -4_294_967_296isize) by(bit_vector);
+        }
+    } => Ok(())
+}
+
+test_verify_one_bv_file! {
+    #[test] float_to_usize_arch_split_fail verus_code! {
+        proof fn test() {
+            assert(4_294_967_296f64 as usize as u64 == 4_294_967_296u64) by(bit_vector); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
@@ -236,4 +286,376 @@ test_verify_one_file! {
             let y = -x2;
         }
     } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: unary op negation of floating point")
+}
+
+test_verify_one_file! {
+    #[test] f32_ops verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::ops::*;
+        use vstd::std_specs::cmp::*;
+
+        fn test_add(a: f32, b: f32) {
+            let x = a + b;
+            let y = a + b;
+            assert(add_ensures(a, b, x));
+            assert(add_ensures(a, b, y));
+        }
+
+        fn test_add_determinism_fails(a: f32, b: f32) {
+            let x = a + b;
+            let y = a + b;
+            assert(x == y); // FAILS
+        }
+
+        fn test_sub(a: f32, b: f32) {
+            let x = a - b;
+            let y = a - b;
+            assert(sub_ensures(a, b, x));
+            assert(sub_ensures(a, b, y));
+        }
+
+        fn test_sub_determinism_fails(a: f32, b: f32) {
+            let x = a - b;
+            let y = a - b;
+            assert(x == y); // FAILS
+        }
+
+        fn test_mul(a: f32, b: f32) {
+            let x = a * b;
+            let y = a * b;
+            assert(mul_ensures(a, b, x));
+            assert(mul_ensures(a, b, y));
+        }
+
+        fn test_mul_determinism_fails(a: f32, b: f32) {
+            let x = a * b;
+            let y = a * b;
+            assert(x == y); // FAILS
+        }
+
+        fn test_div(a: f32, b: f32) {
+            let x = a / b;
+            let y = a / b;
+            assert(div_ensures(a, b, x));
+            assert(div_ensures(a, b, y));
+        }
+
+        fn test_div_determinism_fails(a: f32, b: f32) {
+            let x = a / b;
+            let y = a / b;
+            assert(x == y); // FAILS
+        }
+
+        fn test_eq(a: f32, b: f32) {
+            let x = a == b;
+            let y = a == b;
+            assert(eq_ensures(a, b, x));
+            assert(eq_ensures(a, b, y));
+        }
+
+        fn test_eq_determinism_fails(a: f32, b: f32) {
+            let x = a == b;
+            let y = a == b;
+            assert(x == y); // FAILS
+        }
+
+        fn test_ne(a: f32, b: f32) {
+            let x = a != b;
+            let y = a != b;
+            assert(ne_ensures(a, b, x));
+            assert(ne_ensures(a, b, y));
+        }
+
+        fn test_ne_determinism_fails(a: f32, b: f32) {
+            let x = a != b;
+            let y = a != b;
+            assert(x == y); // FAILS
+        }
+
+        fn test_le(a: f32, b: f32) {
+            let x = a <= b;
+            let y = a <= b;
+            assert(le_ensures(a, b, x));
+            assert(le_ensures(a, b, y));
+        }
+
+        fn test_le_determinism_fails(a: f32, b: f32) {
+            let x = a <= b;
+            let y = a <= b;
+            assert(x == y); // FAILS
+        }
+
+        fn test_lt(a: f32, b: f32) {
+            let x = a < b;
+            let y = a < b;
+            assert(lt_ensures(a, b, x));
+            assert(lt_ensures(a, b, y));
+        }
+
+        fn test_lt_determinism_fails(a: f32, b: f32) {
+            let x = a < b;
+            let y = a < b;
+            assert(x == y); // FAILS
+        }
+
+        fn test_ge(a: f32, b: f32) {
+            let x = a >= b;
+            let y = a >= b;
+            assert(ge_ensures(a, b, x));
+            assert(ge_ensures(a, b, y));
+        }
+
+        fn test_ge_determinism_fails(a: f32, b: f32) {
+            let x = a >= b;
+            let y = a >= b;
+            assert(x == y); // FAILS
+        }
+
+        fn test_gt(a: f32, b: f32) {
+            let x = a > b;
+            let y = a > b;
+            assert(gt_ensures(a, b, x));
+            assert(gt_ensures(a, b, y));
+        }
+
+        fn test_gt_determinism_fails(a: f32, b: f32) {
+            let x = a > b;
+            let y = a > b;
+            assert(x == y); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 10)
+}
+
+test_verify_one_file! {
+    #[test] f64_ops verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::ops::*;
+        use vstd::std_specs::cmp::*;
+
+        fn test_add(a: f64, b: f64) {
+            let x = a + b;
+            let y = a + b;
+            assert(add_ensures(a, b, x));
+            assert(add_ensures(a, b, y));
+        }
+
+        fn test_add_determinism_fails(a: f64, b: f64) {
+            let x = a + b;
+            let y = a + b;
+            assert(x == y); // FAILS
+        }
+
+        fn test_sub(a: f64, b: f64) {
+            let x = a - b;
+            let y = a - b;
+            assert(sub_ensures(a, b, x));
+            assert(sub_ensures(a, b, y));
+        }
+
+        fn test_sub_determinism_fails(a: f64, b: f64) {
+            let x = a - b;
+            let y = a - b;
+            assert(x == y); // FAILS
+        }
+
+        fn test_mul(a: f64, b: f64) {
+            let x = a * b;
+            let y = a * b;
+            assert(mul_ensures(a, b, x));
+            assert(mul_ensures(a, b, y));
+        }
+
+        fn test_mul_determinism_fails(a: f64, b: f64) {
+            let x = a * b;
+            let y = a * b;
+            assert(x == y); // FAILS
+        }
+
+        fn test_div(a: f64, b: f64) {
+            let x = a / b;
+            let y = a / b;
+            assert(div_ensures(a, b, x));
+            assert(div_ensures(a, b, y));
+        }
+
+        fn test_div_determinism_fails(a: f64, b: f64) {
+            let x = a / b;
+            let y = a / b;
+            assert(x == y); // FAILS
+        }
+
+        fn test_eq(a: f64, b: f64) {
+            let x = a == b;
+            let y = a == b;
+            assert(eq_ensures(a, b, x));
+            assert(eq_ensures(a, b, y));
+        }
+
+        fn test_eq_determinism_fails(a: f64, b: f64) {
+            let x = a == b;
+            let y = a == b;
+            assert(x == y); // FAILS
+        }
+
+        fn test_ne(a: f64, b: f64) {
+            let x = a != b;
+            let y = a != b;
+            assert(ne_ensures(a, b, x));
+            assert(ne_ensures(a, b, y));
+        }
+
+        fn test_ne_determinism_fails(a: f64, b: f64) {
+            let x = a != b;
+            let y = a != b;
+            assert(x == y); // FAILS
+        }
+
+        fn test_le(a: f64, b: f64) {
+            let x = a <= b;
+            let y = a <= b;
+            assert(le_ensures(a, b, x));
+            assert(le_ensures(a, b, y));
+        }
+
+        fn test_le_determinism_fails(a: f64, b: f64) {
+            let x = a <= b;
+            let y = a <= b;
+            assert(x == y); // FAILS
+        }
+
+        fn test_lt(a: f64, b: f64) {
+            let x = a < b;
+            let y = a < b;
+            assert(lt_ensures(a, b, x));
+            assert(lt_ensures(a, b, y));
+        }
+
+        fn test_lt_determinism_fails(a: f64, b: f64) {
+            let x = a < b;
+            let y = a < b;
+            assert(x == y); // FAILS
+        }
+
+        fn test_ge(a: f64, b: f64) {
+            let x = a >= b;
+            let y = a >= b;
+            assert(ge_ensures(a, b, x));
+            assert(ge_ensures(a, b, y));
+        }
+
+        fn test_ge_determinism_fails(a: f64, b: f64) {
+            let x = a >= b;
+            let y = a >= b;
+            assert(x == y); // FAILS
+        }
+
+        fn test_gt(a: f64, b: f64) {
+            let x = a > b;
+            let y = a > b;
+            assert(gt_ensures(a, b, x));
+            assert(gt_ensures(a, b, y));
+        }
+
+        fn test_gt_determinism_fails(a: f64, b: f64) {
+            let x = a > b;
+            let y = a > b;
+            assert(x == y); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 10)
+}
+
+test_verify_one_file! {
+    #[test] f32_assign_ops verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::ops::*;
+
+        fn test_add(a: f32, b: f32) {
+            let mut x = a; x += b;
+            let mut y = a; y += b;
+            assert(add_ensures(a, b, x));
+            assert(add_ensures(a, b, y));
+        }
+
+        fn test_add_determinism_fails(a: f32, b: f32) {
+            let mut x = a; x += b;
+            let mut y = a; y += b;
+            assert(x == y); // FAILS
+        }
+
+        fn test_sub(a: f32, b: f32) {
+            let mut x = a; x -= b;
+            let mut y = a; y -= b;
+            assert(sub_ensures(a, b, x));
+            assert(sub_ensures(a, b, y));
+        }
+
+        fn test_sub_determinism_fails(a: f32, b: f32) {
+            let mut x = a; x -= b;
+            let mut y = a; y -= b;
+            assert(x == y); // FAILS
+        }
+
+        fn test_mul(a: f32, b: f32) {
+            let mut x = a; x *= b;
+            let mut y = a; y *= b;
+            assert(mul_ensures(a, b, x));
+            assert(mul_ensures(a, b, y));
+        }
+
+        fn test_mul_determinism_fails(a: f32, b: f32) {
+            let mut x = a; x *= b;
+            let mut y = a; y *= b;
+            assert(x == y); // FAILS
+        }
+
+        fn test_div(a: f32, b: f32) {
+            let mut x = a; x /= b;
+            let mut y = a; y /= b;
+            assert(div_ensures(a, b, x));
+            assert(div_ensures(a, b, y));
+        }
+
+        fn test_div_determinism_fails(a: f32, b: f32) {
+            let mut x = a; x /= b;
+            let mut y = a; y /= b;
+            assert(x == y); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 4)
+}
+
+test_verify_one_file! {
+    #[test] f32_assign_ops_ordering verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::ops::*;
+
+        // check rhs before lhs
+
+        fn test_add(a: f32, b: f32) {
+            let mut a = a;
+            let mut z = 0;
+            *({ z = 1; &mut a }) += ({ z = z * 2; b });
+            assert(z == 1);
+        }
+
+        fn test_sub(a: f32, b: f32) {
+            let mut a = a;
+            let mut z = 0;
+            *({ z = 1; &mut a }) -= ({ z = z * 2; b });
+            assert(z == 1);
+        }
+
+        fn test_mul(a: f32, b: f32) {
+            let mut a = a;
+            let mut z = 0;
+            *({ z = 1; &mut a }) *= ({ z = z * 2; b });
+            assert(z == 1);
+        }
+
+        fn test_div(a: f32, b: f32) {
+            let mut a = a;
+            let mut z = 0;
+            *({ z = 1; &mut a }) /= ({ z = z * 2; b });
+            assert(z == 1);
+        }
+    } => Ok(())
 }
