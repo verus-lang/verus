@@ -24,6 +24,8 @@ use super::arithmetic::power::pow;
 use super::calc_macro::*;
 use super::layout;
 use super::layout::*;
+use super::points_to::*;
+use super::points_to_permissions::*;
 use super::prelude::*;
 use super::set::group_set_axioms;
 #[cfg(verus_keep_ghost)]
@@ -36,8 +38,6 @@ use crate::vstd::seq::*;
 use crate::vstd::slice::*;
 use core::ops::Index;
 use core::slice::SliceIndex;
-use super::points_to::*;
-use super::points_to_permissions::*;
 
 verus! {
 
@@ -66,9 +66,9 @@ verus! {
 /// The identifier of the `Allocator` instance used to allocate memory.
 pub type AllocId = int;
 
-/// An allocation has a start address, length, and alignment. 
+/// An allocation has a start address, length, and alignment.
 /// Since the `Allocator` trait permits allocations that are larger than the originally-requested size,
-/// we also keep track of this. 
+/// we also keep track of this.
 /// Similarly, we track an `Allocator` instance identifier to ensure that allocations
 /// are deallocated with the same instance used to allocate them,
 /// as per the `Allocator::deallocate` spec.
@@ -99,14 +99,14 @@ impl ProvenanceData {
 ///
 /// None of these models are finalized, nor has Rust committed to them.
 /// Rust's recent [RFC on provenance](https://rust-lang.github.io/rfcs/3559-rust-has-provenance.html)
-/// simply details that there *is* some concept of provenance. 
+/// simply details that there *is* some concept of provenance.
 /// MiniRust currently declares a pointer has an `Option<Provenance>`
-/// 
+///
 /// Likewise, our model here defines `Provenance` as an `Option<ProvenanceData>`,
 /// which is `Some` if there is an actual allocation, and `None` otherwise.
 /// If it is `Some`, it has all of the elements defined in `ProvenanceData`,
-/// and the properties in `provenace_properties` will hold. 
-/// 
+/// and the properties in `provenace_properties` will hold.
+///
 /// This is axiomatized at the Verus level and proven to be upheld by trusted specs and axioms
 /// (e.g., they are guaranteed by the allocate spec and upheld by various transformations).
 ///
@@ -140,8 +140,8 @@ pub broadcast axiom fn provenance_properties(p: ProvenanceData)
         p.start_addr() + p.alloc_len() <= usize::MAX,
         p.alloc_len() <= isize::MAX,
         exists|i: nat|
-        pow(2, i) == p.alignment() as int && i < isize::BITS && 0 < p.alignment() <= isize::MAX
-            + 1,
+            pow(2, i) == p.alignment() as int && i < isize::BITS && 0 < p.alignment() <= isize::MAX
+                + 1,
         p.start_addr() as nat % p.alignment() == 0,
         p.start_addr() != 0,
         p.orig_size() <= p.alloc_len(),
@@ -151,7 +151,8 @@ pub broadcast axiom fn provenance_properties(p: ProvenanceData)
 pub open spec fn ptr_addr_in_bounds<T: ?Sized>(ptr: *mut T) -> bool {
     ptr@.provenance.is_some() ==> {
         &&& ptr@.addr as int >= ptr@.provenance.unwrap().start_addr()
-        &&& ptr@.addr <= ptr@.provenance.unwrap().start_addr() + ptr@.provenance.unwrap().alloc_len()
+        &&& ptr@.addr <= ptr@.provenance.unwrap().start_addr()
+            + ptr@.provenance.unwrap().alloc_len()
     }
 }
 
@@ -515,7 +516,6 @@ pub const fn ptr_ref<T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> 
 // {
 //     unsafe { &*ptr }
 // }
-
 // /// Equivalent to `&*ptr`, passing in a permission `perm` to ensure safety.
 // /// The memory pointed to by `ptr` must be initialized.
 // TODO: add back in
@@ -532,7 +532,6 @@ pub const fn ptr_ref<T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> 
 // {
 //     unsafe { &*ptr }
 // }
-
 /// Equivalent to `&mut *X`, passing in a permission `perm` to ensure safety.
 /// The memory pointed to by `ptr` must be initialized.
 #[inline(always)]
@@ -572,7 +571,6 @@ pub const fn ptr_mut_ref<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>
 // {
 //     unsafe { &mut *ptr }
 // }
-
 // /// Equivalent to `&mut *X`, passing in a permission `perm` to ensure safety.
 // /// The memory pointed to by `ptr` must be initialized.
 // TODO: add back in
@@ -593,7 +591,6 @@ pub const fn ptr_mut_ref<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>
 // {
 //     unsafe { &mut *ptr }
 // }
-
 //////////////////////////////////////////////////////
 // Specifications for `ptr::addr` and `ptr::with_addr`
 //////////////////////////////////////////////////////
@@ -691,7 +688,6 @@ pub axiom fn mut_ref_to_shr_points_to<'a, T>(tracked mut_ref: &'a &'a mut T) -> 
 //         pt.value() == (*old(*mut_ref))@,
 //         &*final(*mut_ref) == &*old(*mut_ref),
 // ;
-
 // /// Convert from a shared reference to a `&'a mut [T]` to a `&'a PointsTo<[T]>`.
 // pub axiom fn mut_ref_to_shr_points_to_str<'a>(tracked mut_ref: &'a &'a mut str) -> (tracked pt:
 //     &'a PointsTo<str>)
@@ -701,7 +697,6 @@ pub axiom fn mut_ref_to_shr_points_to<'a, T>(tracked mut_ref: &'a &'a mut T) -> 
 //         &pt.value() == &(*old(*mut_ref)),
 //         &*final(*mut_ref) == &*old(*mut_ref),
 // ;
-
 /// Take a `&mut [T]` subrange of a `&mut [T]`.
 pub axiom fn tracked_mut_ref_slice_subrange<T>(
     tracked mut_ref: &mut [T],
@@ -749,6 +744,7 @@ pub open spec fn ptr_eq_up_to_tag<T: ?Sized>(p: *mut T, q: *mut T) -> bool {
         == q@.metadata
     // should also compare the spatial elements of provenance, i.e., the non-tag
     // part of provenance
+
 }
 
 /// Convert a mutable reference into a raw pointer and accompanying `PointsTo` permission.
