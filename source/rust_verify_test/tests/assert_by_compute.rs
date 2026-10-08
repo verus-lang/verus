@@ -795,6 +795,22 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] array_closure_elements_github3072 verus_code! {
+        spec fn mk1() -> [spec_fn(int) -> int; 1] {
+            [|x: int| x + 1]
+        }
+
+        spec fn mk2() -> [spec_fn(int) -> int; 1] {
+            [|x: int| x + 2]
+        }
+
+        proof fn test() {
+            assert(mk1() == mk2()) by (compute);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Proof by computation included a closure literal that wasn't applied")
+}
+
+test_verify_one_file! {
     #[test] array_incompletely_resolved verus_code! {
         use vstd::prelude::*;
 

@@ -884,7 +884,7 @@ pub(crate) fn is_seq_to_sst_fun(fun: &Fun) -> bool {
 /// representation we can pass to AIR.  The algorithm follows the seq_internal
 /// macro definition in vstd's seq.rs.
 // TODO: More robust way of pointing to vstd's sequence functions
-fn seq_to_sst(span: &Span, inner_typ: Typ, s: &Vector<Exp>) -> Exp {
+fn seq_to_sst(span: &Span, inner_typ: Typ, s: &Vector<Exp>) -> Result<Exp, VirErr> {
     let seq_type_path =
         Arc::new(PathX { krate: CrateId::Vstd, segments: strs_to_idents(vec!["seq", "Seq"]) });
     let seq_typ = Arc::new(TypX::Datatype(
@@ -911,7 +911,7 @@ fn seq_to_sst(span: &Span, inner_typ: Typ, s: &Vector<Exp>) -> Exp {
             let args = Arc::new(vec![acc, e.clone()]);
             new_seq_exp(ExpX::Call(CallFun::Fun(fun_push.clone(), None), typs.clone(), args))
         });
-        seq
+        Ok(seq)
     } else {
         // Describe the sequence in terms of a view on an array literal
         let path_view = Arc::new(PathX {
@@ -919,20 +919,20 @@ fn seq_to_sst(span: &Span, inner_typ: Typ, s: &Vector<Exp>) -> Exp {
             segments: strs_to_idents(vec!["array", "array_view"]),
         });
         let fun_view = Arc::new(FunX { path: path_view });
-        let array = cleanup_array(span, inner_typ.clone(), s);
+        let array = cleanup_array(span, inner_typ.clone(), s)?;
         let array_len_typ = Arc::new(TypX::ConstInt(BigInt::from(s.len())));
         let array_view = new_seq_exp(ExpX::Call(
             CallFun::Fun(fun_view, None),
             Arc::new(vec![inner_typ.clone(), array_len_typ]),
             Arc::new(vec![array]),
         ));
-        array_view
+        Ok(array_view)
     }
 }
 
 /// Convert an interpreter-internal array representation back into a
 /// representation we can pass to AIR
-fn array_to_sst(span: &Span, typ: Typ, arr: &Vector<Exp>) -> Exp {
+fn array_to_sst(span: &Span, typ: Typ, arr: &Vector<Exp>) -> Result<Exp, VirErr> {
     let arr_typ = if !matches!(*typ, TypX::Primitive(Primitive::Array, _)) {
         // We only have the inner type for the array, so we need to construct the rest
         let array_len_typ = Arc::new(TypX::ConstInt(BigInt::from(arr.len())));
@@ -943,9 +943,10 @@ fn array_to_sst(span: &Span, typ: Typ, arr: &Vector<Exp>) -> Exp {
         typ
     };
     let exp_new = |e: ExpX| SpannedTyped::new(span, &arr_typ, e);
-    let exps = Arc::new(arr.iter().flat_map(|e| cleanup_exp(e)).collect());
+    let exps: Result<Vec<Exp>, VirErr> = arr.iter().map(|e| cleanup_exp(e)).collect();
+    let exps = Arc::new(exps?);
     let exp = exp_new(ExpX::ArrayLiteral(exps));
-    exp
+    Ok(exp)
 }
 
 /// Custom interpretation for sequence functions.
@@ -973,7 +974,7 @@ fn eval_seq(
             // and reassemble the call with the sequence in its original argument position.
             let ok_seq = |index: usize, seq: &Vector<Exp>| {
                 let mut new_args = args.as_ref().clone();
-                new_args[index] = seq_to_sst(&args[index].span, typs[0].clone(), &seq);
+                new_args[index] = seq_to_sst(&args[index].span, typs[0].clone(), &seq)?;
                 let new_args = Arc::new(new_args);
                 Ok(exp_new(Call(fun.clone(), typs.clone(), new_args)))
             };
@@ -1086,8 +1087,8 @@ fn eval_seq(
                     (Interp(Seq(l)), Interp(Seq(r))) => match l.syntactic_eq(r) {
                         None => {
                             let new_args = vec![
-                                seq_to_sst(&args[0].span, args[0].typ.clone(), &l),
-                                seq_to_sst(&args[1].span, args[1].typ.clone(), &r),
+                                seq_to_sst(&args[0].span, args[0].typ.clone(), &l)?,
+                                seq_to_sst(&args[1].span, args[1].typ.clone(), &r)?,
                             ];
                             let new_args = Arc::new(new_args);
                             Ok(exp_new(Call(fun.clone(), typs.clone(), new_args)))
@@ -1954,7 +1955,7 @@ fn cleanup_seq(span: &Span, typ: Typ, v: &Vector<Exp>) -> Result<Exp, VirErr> {
             // Clean up any nested Interp nodes in the sequence elements
             let cleaned: Result<Vector<Exp>, VirErr> = v.iter().map(|e| cleanup_exp(e)).collect();
             // Convert back to a standard SST representation
-            Ok(seq_to_sst(span, inner_type.clone(), &cleaned?))
+            seq_to_sst(span, inner_type.clone(), &cleaned?)
         }
         _ => Err(error(
             &span,
@@ -1963,7 +1964,7 @@ fn cleanup_seq(span: &Span, typ: Typ, v: &Vector<Exp>) -> Result<Exp, VirErr> {
     }
 }
 
-fn cleanup_array(span: &Span, typ: Typ, v: &Vector<Exp>) -> Exp {
+fn cleanup_array(span: &Span, typ: Typ, v: &Vector<Exp>) -> Result<Exp, VirErr> {
     array_to_sst(span, typ.clone(), v)
 }
 
@@ -1974,7 +1975,7 @@ fn cleanup_exp(exp: &Exp) -> Result<Exp, VirErr> {
         ExpX::Interp(InterpExp::FreeVar(v)) => {
             Ok(SpannedTyped::new(&e.span, &e.typ, ExpX::Var(v.clone())))
         }
-        ExpX::Interp(InterpExp::Array(v)) => Ok(cleanup_array(&e.span, e.typ.clone(), v)),
+        ExpX::Interp(InterpExp::Array(v)) => cleanup_array(&e.span, e.typ.clone(), v),
         ExpX::Interp(InterpExp::Seq(v)) => cleanup_seq(&e.span, e.typ.clone(), v),
         ExpX::Interp(InterpExp::Closure(..)) => Err(error(
             &e.span,
