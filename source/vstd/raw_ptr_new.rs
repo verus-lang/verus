@@ -62,27 +62,16 @@ verus! {
 //    tag is readonly or not. In our model here, this tag is folded
 //    into the provenance.
 //
-/// Provenance
-///
-/// A full model of provenance is given by formalisms such as "Stacked Borrows"
-/// or "Tree Borrows."
-///
-/// None of these models are finalized, nor has Rust committed to them.
-/// Rust's recent [RFC on provenance](https://rust-lang.github.io/rfcs/3559-rust-has-provenance.html)
-/// simply details that there *is* some concept of provenance.
-///
-/// Our model here, likewise, simply declares `Provenance` as an
-/// abstract type.
-///
-/// MiniRust currently declares a pointer has an `Option<Provenance>`;
-/// the model here gives provenance a special "null" value instead
-/// of using an option.
-///
-/// More reading for reference:
-/// * [https://doc.rust-lang.org/std/ptr/](https://doc.rust-lang.org/std/ptr/)
-/// * [https://github.com/minirust/minirust/tree/master](https://github.com/minirust/minirust/tree/master)
+//////////////////////////////////////
+/// The identifier of the `Allocator` instance used to allocate memory.
 pub type AllocId = int;
 
+/// An allocation has a start address, length, and alignment. 
+/// Since the `Allocator` trait permits allocations that are larger than the originally-requested size,
+/// we also keep track of this. 
+/// Similarly, we track an `Allocator` instance identifier to ensure that allocations
+/// are deallocated with the same instance used to allocate them,
+/// as per the `Allocator::deallocate` spec.
 #[verifier::external_body]
 pub ghost struct ProvenanceData {}
 
@@ -96,14 +85,34 @@ impl ProvenanceData {
     /// The alignment of the pointer's allocation. Must be a power of 2 bounded by `isize::MAX + 1`.
     pub uninterp spec fn alignment(&self) -> nat;
 
-    /// The ID of the `Allocator` instance used to allocate this memory.
-    pub uninterp spec fn alloc_id(&self) -> AllocId;
-
     /// The originally requested allocation size.
     pub uninterp spec fn orig_size(&self) -> nat;
+
+    /// The ID of the `Allocator` instance used to allocate this memory.
+    pub uninterp spec fn alloc_id(&self) -> AllocId;
 }
 
+/// Provenance
+///
+/// A full model of provenance is given by formalisms such as "Stacked Borrows"
+/// or "Tree Borrows."
+///
+/// None of these models are finalized, nor has Rust committed to them.
+/// Rust's recent [RFC on provenance](https://rust-lang.github.io/rfcs/3559-rust-has-provenance.html)
+/// simply details that there *is* some concept of provenance. 
+/// MiniRust currently declares a pointer has an `Option<Provenance>`
 /// 
+/// Likewise, our model here defines `Provenance` as an `Option<ProvenanceData>`,
+/// which is `Some` if there is an actual allocation, and `None` otherwise.
+/// If it is `Some`, it has all of the elements defined in `ProvenanceData`,
+/// and the properties in `provenace_properties` will hold. 
+/// 
+/// This is axiomatized at the Verus level and proven to be upheld by trusted specs and axioms
+/// (e.g., they are guaranteed by the allocate spec and upheld by various transformations).
+///
+/// More reading for reference:
+/// * [https://doc.rust-lang.org/std/ptr/](https://doc.rust-lang.org/std/ptr/)
+/// * [https://github.com/minirust/minirust/tree/master](https://github.com/minirust/minirust/tree/master)
 pub type Provenance = Option<ProvenanceData>;
 
 /// Defines properties of an allocation:
@@ -137,6 +146,14 @@ pub broadcast axiom fn provenance_properties(p: ProvenanceData)
         p.start_addr() != 0,
         p.orig_size() <= p.alloc_len(),
 ;
+
+/// Specifies that the pointer's address is within the bounds of its provenance.
+pub open spec fn ptr_addr_in_bounds<T: ?Sized>(ptr: *mut T) -> bool {
+    ptr@.provenance.is_some() ==> {
+        &&& ptr@.addr as int >= ptr@.provenance.unwrap().start_addr()
+        &&& ptr@.addr <= ptr@.provenance.unwrap().start_addr() + ptr@.provenance.unwrap().alloc_len()
+    }
+}
 
 /// Metadata
 ///
@@ -172,6 +189,19 @@ impl<T: core::marker::PointeeSized> View for *mut T {
     uninterp spec fn view(&self) -> Self::V;
 }
 
+#[cfg(verus_keep_ghost)]
+impl<T: core::marker::PointeeSized> View for *const T {
+    type V = PtrData<T>;
+
+    #[verifier::inline]
+    open spec fn view(&self) -> Self::V {
+        (*self as *mut T).view()
+    }
+}
+
+//////////////////////////////////////
+// Pointer comparison functions
+//////////////////////////////////////
 /// Compares the address and metadata of two pointers.
 ///
 /// Note that this does NOT compare provenance, which does not exist in the runtime
@@ -184,16 +214,6 @@ pub assume_specification<T: core::marker::PointeeSized>[ <*mut T as PartialEq<*m
     ensures
         res <==> (x@.addr == y@.addr) && (x@.metadata == y@.metadata),
 ;
-
-#[cfg(verus_keep_ghost)]
-impl<T: core::marker::PointeeSized> View for *const T {
-    type V = PtrData<T>;
-
-    #[verifier::inline]
-    open spec fn view(&self) -> Self::V {
-        (*self as *mut T).view()
-    }
-}
 
 /// Compares the address and metadata of two pointers.
 ///
@@ -208,9 +228,9 @@ pub assume_specification<T: core::marker::PointeeSized>[ <*const T as PartialEq<
         res <==> (x@.addr == y@.addr) && (x@.metadata == y@.metadata),
 ;
 
-//////////////////////////////////////
-// Inverse functions:
-// Pointers are equivalent to their model
+/////////////////////////////////////////////////////////////
+// Inverse functions: Pointers are equivalent to their model
+/////////////////////////////////////////////////////////////
 /// Constructs a pointer from its underlying model.
 pub uninterp spec fn ptr_mut_from_data<T: core::marker::PointeeSized>(data: PtrData<T>) -> *mut T;
 
@@ -254,6 +274,7 @@ pub closed spec fn view_reverse_for_eq_sized<T>(addr: usize, provenance: Provena
     view_reverse_for_eq(PtrData { addr: addr, provenance: provenance, metadata: () })
 }
 
+/// Implies that `a@ == b@ ==> a == b` for `Sized` types.
 pub broadcast proof fn ptrs_mut_eq_sized<T>(a: *mut T)
     ensures
         view_reverse_for_eq_sized::<T>((#[trigger] a@).addr, a@.provenance) == a,
@@ -262,6 +283,8 @@ pub broadcast proof fn ptrs_mut_eq_sized<T>(a: *mut T)
     ptrs_mut_eq(a);
 }
 
+//////////////////////////////////////
+// Specifications for null pointers
 //////////////////////////////////////
 /// Constructs a null pointer.
 /// NOTE: Trait aliases are not yet supported,
@@ -305,9 +328,9 @@ pub assume_specification<
     no_unwind
 ;
 
-//////////////////////////////////////
-// Casting
-// as-casts and implicit casts are translated internally to these functions
+/////////////////////////////////////////////////////////////////////////////////////
+// Casting: as-casts and implicit casts are translated internally to these functions
+/////////////////////////////////////////////////////////////////////////////////////
 // (including casts that involve *const ptrs)
 /// Cast a pointer to a thin pointer. Address and provenance are preserved; metadata is now thin.
 pub open spec fn spec_cast_ptr_to_thin_ptr<T: ?Sized, U: Sized>(ptr: *mut T) -> *mut U {
@@ -353,6 +376,7 @@ pub fn cast_array_ptr_to_slice_ptr<T, const N: usize>(ptr: *mut [T; N]) -> (resu
 
 /// Cast a slice pointer to another slice pointer.
 /// Length is preserved even if the size of the elements changes.
+/// <https://doc.rust-lang.org/reference/expressions/operator-expr.html#r-expr.as.pointer.unsized.unchanged>
 pub open spec fn spec_cast_slice_ptr_to_slice_ptr<T, U>(ptr: *mut [T]) -> *mut [U] {
     ptr_mut_from_data(
         PtrData::<[U]> { addr: ptr@.addr, provenance: ptr@.provenance, metadata: ptr@.metadata },
@@ -361,6 +385,7 @@ pub open spec fn spec_cast_slice_ptr_to_slice_ptr<T, U>(ptr: *mut [T]) -> *mut [
 
 /// Cast a slice pointer to another slice pointer.
 /// Length is preserved even if the size of the elements changes.
+/// <https://doc.rust-lang.org/reference/expressions/operator-expr.html#r-expr.as.pointer.unsized.unchanged>
 ///
 /// Don't call this directly; use an `as`-cast instead.
 #[verifier::external_body]
@@ -377,6 +402,7 @@ pub fn cast_slice_ptr_to_slice_ptr<T, U>(ptr: *mut [T]) -> (result: *mut [U])
 
 /// Cast a slice pointer to a `str` pointer.
 /// Length is preserved even if the size of the elements changes.
+/// <https://doc.rust-lang.org/reference/expressions/operator-expr.html#r-expr.as.pointer.unsized.unchanged>
 pub open spec fn spec_cast_slice_ptr_to_str_ptr<T>(ptr: *mut [T]) -> *mut str {
     ptr_mut_from_data(
         PtrData::<str> { addr: ptr@.addr, provenance: ptr@.provenance, metadata: ptr@.metadata },
@@ -402,6 +428,7 @@ pub fn cast_slice_ptr_to_str_ptr<T>(ptr: *mut [T]) -> (result: *mut str)
 
 /// Cast a `str` pointer to a slice pointer.
 /// Length is preserved even if the size of the elements changes.
+/// <https://doc.rust-lang.org/reference/expressions/operator-expr.html#r-expr.as.pointer.unsized.unchanged>
 pub open spec fn spec_cast_str_ptr_to_slice_ptr<T>(ptr: *mut str) -> *mut [T] {
     ptr_mut_from_data(
         PtrData::<[T]> { addr: ptr@.addr, provenance: ptr@.provenance, metadata: ptr@.metadata },
@@ -410,6 +437,7 @@ pub open spec fn spec_cast_str_ptr_to_slice_ptr<T>(ptr: *mut str) -> *mut [T] {
 
 /// Cast a `str` pointer to a slice pointer.
 /// Length is preserved even if the size of the elements changes.
+/// <https://doc.rust-lang.org/reference/expressions/operator-expr.html#r-expr.as.pointer.unsized.unchanged>
 ///
 /// Don't call this directly; use an `as`-cast instead.
 #[verifier::external_body]
@@ -429,6 +457,14 @@ pub open spec fn spec_cast_ptr_to_usize<T: Sized>(ptr: *mut T) -> usize {
     ptr@.addr
 }
 
+/// Return the address of a pointer.
+// TODO: ask Travis if this function is necessary - what purpose does it serve? We also have spec_cast_ptr_to_usize and spec_addr
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::spec_ptr_addr")]
+#[verifier::inline]
+pub open spec fn spec_ptr_addr<T: Sized>(ptr: *mut T) -> usize {
+    spec_cast_ptr_to_usize(ptr)
+}
+
 /// Cast the address of a pointer to a `usize`.
 ///
 /// Don't call this directly; use an `as`-cast instead.
@@ -444,7 +480,9 @@ pub fn cast_ptr_to_usize<T: Sized>(ptr: *mut T) -> (result: usize)
     ptr as usize
 }
 
-//////////////////////////////////////
+////////////////////////////////////////////////
+// Pointer reference and dereference operations
+////////////////////////////////////////////////
 /// Equivalent to `&*ptr`, passing in a permission `perm` to ensure safety.
 /// The memory pointed to by `ptr` must be initialized.
 #[inline(always)]
@@ -463,6 +501,7 @@ pub const fn ptr_ref<T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> 
 
 // /// Equivalent to `&*ptr`, passing in a permission `perm` to ensure safety.
 // /// The memory pointed to by `ptr` must be initialized.
+// TODO: move to rustlib
 // #[inline(always)]
 // #[verifier::external_body]
 // pub const fn ptr_ref_str(ptr: *const str, Tracked(perm): Tracked<&PointsTo<str>>) -> (v: &str)
@@ -479,6 +518,7 @@ pub const fn ptr_ref<T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> 
 
 // /// Equivalent to `&*ptr`, passing in a permission `perm` to ensure safety.
 // /// The memory pointed to by `ptr` must be initialized.
+// TODO: add back in
 // #[inline(always)]
 // #[verifier::external_body]
 // pub const fn ptr_ref_slice<T>(ptr: *const [T], Tracked(perm): Tracked<&PointsTo<[T]>>) -> (v: &[T])
@@ -512,28 +552,9 @@ pub const fn ptr_mut_ref<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>
     unsafe { &mut *ptr }
 }
 
-#[inline(always)]
-#[verifier::external_body]
-pub const fn ptr_mut_ref_join<T: ?Sized>(ptr: *mut T, Tracked(perm): Tracked<&mut T>) -> (v: &mut T)
-    requires
-        mut_ref_ptr(perm) == ptr,
-    ensures
-        &*v == &*old(perm),
-        &*final(v) == &*final(perm),
-        ptr_eq_up_to_tag(ptr, mut_ref_ptr(v)),
-    opens_invariants none
-    no_unwind
-{
-    unsafe { &mut *ptr }
-}
-
-pub axiom fn mut_ref_slice_len<T>(tracked b: &&mut [T])
-    ensures
-        mut_ref_ptr(*b)@.metadata == old(*b)@.len(),
-;
-
 // /// Equivalent to `&mut *X`, passing in a permission `perm` to ensure safety.
 // /// The memory pointed to by `ptr` must be initialized.
+// TODO: move to rustlib
 // #[inline(always)]
 // #[verifier::external_body]
 // pub const fn ptr_mut_ref_slice<T>(ptr: *mut [T], Tracked(perm): Tracked<&mut PointsTo<[T]>>) -> (v:
@@ -554,6 +575,7 @@ pub axiom fn mut_ref_slice_len<T>(tracked b: &&mut [T])
 
 // /// Equivalent to `&mut *X`, passing in a permission `perm` to ensure safety.
 // /// The memory pointed to by `ptr` must be initialized.
+// TODO: add back in
 // #[inline(always)]
 // #[verifier::external_body]
 // pub const fn ptr_mut_ref_str(ptr: *mut str, Tracked(perm): Tracked<&mut PointsTo<str>>) -> (v:
@@ -572,6 +594,9 @@ pub axiom fn mut_ref_slice_len<T>(tracked b: &&mut [T])
 //     unsafe { &mut *ptr }
 // }
 
+//////////////////////////////////////////////////////
+// Specifications for `ptr::addr` and `ptr::with_addr`
+//////////////////////////////////////////////////////
 macro_rules! pointer_specs {
     ($mod_ident:ident, $ptr_from_data:ident, $mu:tt) => {
         #[cfg(verus_keep_ghost)]
@@ -580,6 +605,7 @@ macro_rules! pointer_specs {
 
             verus!{
 
+            /// Returns the address of a pointer.
             #[verifier::inline]
             pub open spec fn spec_addr<T: ::core::marker::PointeeSized>(p: *$mu T) -> usize { p@.addr }
 
@@ -590,6 +616,7 @@ macro_rules! pointer_specs {
                 opens_invariants none
                 no_unwind;
 
+            /// Returns a pointer with the specified address and the same provenance and metadata of the input pointer.
             pub open spec fn spec_with_addr<T: ::core::marker::PointeeSized>(p: *$mu T, addr: usize) -> *$mu T {
                 $ptr_from_data(PtrData::<T> { addr: addr, .. p@ })
             }
@@ -610,15 +637,41 @@ pointer_specs!(ptr_mut_specs, ptr_mut_from_data, mut);
 
 pointer_specs!(ptr_const_specs, ptr_from_data, const);
 
-pub broadcast group group_raw_ptr_axioms {
-    axiom_ptr_mut_from_data,
-    ptrs_mut_eq,
-    ptrs_mut_eq_sized,
-    // axiom_pt_slice_len,
-    // axiom_pt_slice_unaligned_len,
-    provenance_properties,
+////////////////////////////////////////
+// Shared and mutable reference specs
+////////////////////////////////////////
+/// Extracts the pointer from the shadow data of a shared reference.
+pub uninterp spec fn shared_ref_ptr<T: ?Sized>(s: ShadowData<&T>) -> *const T;
+
+/// The length of a `&mut [T]` should always match the metadata of its corresponding pointer.
+// TODO: ask Travis if this has to be axiomatized
+// TODO: define the equivalent shared ref version, using shadow data?
+pub axiom fn mut_ref_slice_len<T>(tracked b: &&mut [T])
+    ensures
+        mut_ref_ptr(*b)@.metadata == old(*b)@.len(),
+;
+
+////////////////////////////////////////
+// Mutable reference conversions
+// TODO: ask Travis - do these have to be axiomatized?
+///////////////////////////////////////
+/// Combine a pointer and a tracked `&mut T` to get an executable `&mut T`
+#[inline(always)]
+#[verifier::external_body]
+pub const fn ptr_mut_ref_join<T: ?Sized>(ptr: *mut T, Tracked(perm): Tracked<&mut T>) -> (v: &mut T)
+    requires
+        mut_ref_ptr(perm) == ptr,
+    ensures
+        &*v == &*old(perm),
+        &*final(v) == &*final(perm),
+        ptr_eq_up_to_tag(ptr, mut_ref_ptr(v)),
+    opens_invariants none
+    no_unwind
+{
+    unsafe { &mut *ptr }
 }
 
+/// Convert from a shared reference to a `&'a mut T` to a `&'a PointsTo<T>`.
 pub axiom fn mut_ref_to_shr_points_to<'a, T>(tracked mut_ref: &'a &'a mut T) -> (tracked pt:
     &'a PointsTo<T>)
     ensures
@@ -628,6 +681,8 @@ pub axiom fn mut_ref_to_shr_points_to<'a, T>(tracked mut_ref: &'a &'a mut T) -> 
         *final(*mut_ref) == *old(*mut_ref),
 ;
 
+// TODO: move to rustlib
+// /// Convert from a shared reference to a `&'a mut str` to a `&'a PointsTo<str>`.
 // pub axiom fn mut_ref_to_shr_points_to_slice<'a, T>(tracked mut_ref: &'a &'a mut [T]) -> (tracked pt:
 //     &'a PointsTo<[T]>)
 //     ensures
@@ -637,6 +692,7 @@ pub axiom fn mut_ref_to_shr_points_to<'a, T>(tracked mut_ref: &'a &'a mut T) -> 
 //         &*final(*mut_ref) == &*old(*mut_ref),
 // ;
 
+// /// Convert from a shared reference to a `&'a mut [T]` to a `&'a PointsTo<[T]>`.
 // pub axiom fn mut_ref_to_shr_points_to_str<'a>(tracked mut_ref: &'a &'a mut str) -> (tracked pt:
 //     &'a PointsTo<str>)
 //     ensures
@@ -646,6 +702,7 @@ pub axiom fn mut_ref_to_shr_points_to<'a, T>(tracked mut_ref: &'a &'a mut T) -> 
 //         &*final(*mut_ref) == &*old(*mut_ref),
 // ;
 
+/// Take a `&mut [T]` subrange of a `&mut [T]`.
 pub axiom fn tracked_mut_ref_slice_subrange<T>(
     tracked mut_ref: &mut [T],
     i: int,
@@ -664,6 +721,7 @@ pub axiom fn tracked_mut_ref_slice_subrange<T>(
         ))@.subrange(j, old(mut_ref)@.len() as int),
 ;
 
+/// Index into a `&mut [T]`, returning a `&mut T`.
 pub axiom fn tracked_mut_ref_slice_idx<T>(
     tracked mut_ref: &mut [T],
     i: int,
@@ -678,19 +736,19 @@ pub axiom fn tracked_mut_ref_slice_idx<T>(
         (*final(mut_ref))@ == (*old(mut_ref))@.update(i, *final(sub_mut_ref)),
 ;
 
-// Conceptually, turning a mut ref into a ptr is just splitting it into exec and tracked components.
-// Ideally, we wouldn't need a dedicated function for doing both of these things; we would just
-// model the exec operation turning a mut ref into a pointer, and then getting the tracked mut ref
-// by mode coercion.
-//
-// However, the actual operation still requires a (nondeterministic) retag, so we need one function
-// that produces both the raw pointer and the permission and ties the fresh pointer values together.
+/// Conceptually, turning a mut ref into a ptr is just splitting it into exec and tracked components.
+/// Ideally, we wouldn't need a dedicated function for doing both of these things; we would just
+/// model the exec operation turning a mut ref into a pointer, and then getting the tracked mut ref
+/// by mode coercion.
+///
+/// However, the actual operation still requires a (nondeterministic) retag, so we need one function
+/// that produces both the raw pointer and the permission and ties the fresh pointer values together.
+// TODO: ask Travis if this function is done
 pub open spec fn ptr_eq_up_to_tag<T: ?Sized>(p: *mut T, q: *mut T) -> bool {
     p.addr() == q.addr() && p@.metadata
         == q@.metadata
     // should also compare the spatial elements of provenance, i.e., the non-tag
     // part of provenance
-
 }
 
 /// Convert a mutable reference into a raw pointer and accompanying `PointsTo` permission.
@@ -705,7 +763,7 @@ pub const fn cast_mut_ref_to_ptr<T>(mut_ref: &mut T) -> ((ptr, perm): (*mut T, T
     (mut_ref as *mut T, Tracked::assume_new())
 }
 
-/// Convert a mutable reference into a raw pointer and accompanying `PointsTo` permission.
+/// Convert a mutable reference to a slice into a raw pointer and accompanying `PointsTo` permission.
 #[verifier::external_body]
 pub const fn cast_mut_ref_slice_to_ptr<T>(mut_ref: &mut [T]) -> ((ptr, perm): (
     *mut [T],
@@ -720,7 +778,7 @@ pub const fn cast_mut_ref_slice_to_ptr<T>(mut_ref: &mut [T]) -> ((ptr, perm): (
     (mut_ref as *mut [T], Tracked::assume_new())
 }
 
-/// Convert a mutable reference into a raw pointer and accompanying `PointsTo` permission.
+/// Convert a mutable reference to a `str` into a raw pointer and accompanying `PointsTo` permission.
 #[verifier::external_body]
 pub const fn cast_mut_ref_str_to_ptr(mut_ref: &mut str) -> ((ptr, perm): (
     *mut str,
@@ -735,10 +793,11 @@ pub const fn cast_mut_ref_str_to_ptr(mut_ref: &mut str) -> ((ptr, perm): (
     (mut_ref as *mut str, Tracked::assume_new())
 }
 
-#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::spec_ptr_addr")]
-#[verifier::inline]
-pub open spec fn spec_ptr_addr<T: Sized>(ptr: *mut T) -> usize {
-    spec_cast_ptr_to_usize(ptr)
+pub broadcast group group_raw_ptr_axioms {
+    axiom_ptr_mut_from_data,
+    ptrs_mut_eq,
+    ptrs_mut_eq_sized,
+    provenance_properties,
 }
 
 } // verus!
