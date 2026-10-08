@@ -17,7 +17,7 @@ use crate::messages::{Message, Span, ToAny, WarningAllow, error};
 use crate::sst::{
     ArithOp, BinaryOp, Bnd, BndX, CallFun, Exp, ExpX, Exps, FunctionSst, Trigs, UniqueIdent,
 };
-use crate::sst_util::subst_exp;
+use crate::sst_util::{free_vars_exp, subst_exp};
 use crate::unicode::valid_unicode_scalar_bigint;
 use air::ast::{Binder, BinderX, Binders};
 use air::scope_map::ScopeMap;
@@ -465,7 +465,7 @@ impl SyntacticEquality for Exp {
                 }
             }
             (CallLambda(exp_l, exps_l), CallLambda(exp_r, exps_r)) => {
-                Some(exp_l.syntactic_eq(exp_r)? && exps_l.syntactic_eq(exps_r)?)
+                Some(exp_l.conservative_eq(exp_r)? && exps_l.conservative_eq(exps_r)?)
             }
 
             (Ctor(path_l, id_l, bnds_l), Ctor(path_r, id_r, bnds_r)) => {
@@ -1808,13 +1808,14 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
         }
         CallLambda(lambda, args) => {
             let lambda = eval_expr_internal(ctx, state, lambda)?;
+            let new_args: Result<Vec<Exp>, VirErr> =
+                args.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
+            let new_args = Arc::new(new_args?);
+            let ok = exp_new(CallLambda(lambda.clone(), new_args.clone()));
             match &lambda.x {
                 Interp(InterpExp::Closure(lambda, context)) => match &lambda.x {
                     Bind(bnd, body) => match &bnd.x {
                         BndX::Lambda(bnds, _trigs) => {
-                            let new_args: Result<Vec<Exp>, VirErr> =
-                                args.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
-                            let new_args = Arc::new(new_args?);
                             state.env.push_scope(true);
                             // Process the original context first, so formal args take precedence
                             context.iter().for_each(|(k, v)| {
@@ -1874,7 +1875,32 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                     exp_new(Bind(bnd.clone(), e))
                 }
             }
-            _ => ok,
+            BndX::Choose(..) => {
+                let free_vars = free_vars_exp(exp);
+                if free_vars.is_empty() {
+                    ok
+                } else {
+                    let substs: Result<HashMap<UniqueIdent, Exp>, VirErr> = free_vars
+                        .keys()
+                        .filter_map(|id| {
+                            state.env.get(id).map(|e| cleanup_exp(e).map(|e| (id.clone(), e)))
+                        })
+                        .collect();
+                    let e = subst_exp(&HashMap::new(), &substs?, exp);
+                    let substs = free_vars_exp(&e)
+                        .into_iter()
+                        .map(|(id, typ)| {
+                            let var = SpannedTyped::new(
+                                &exp.span,
+                                &typ,
+                                Interp(InterpExp::FreeVar(id.clone())),
+                            );
+                            (id, var)
+                        })
+                        .collect();
+                    Ok(subst_exp(&HashMap::new(), &substs, &e))
+                }
+            }
         },
         Ctor(path, id, bnds) => {
             let new_bnds: Result<Vec<Binder<Exp>>, VirErr> = bnds
