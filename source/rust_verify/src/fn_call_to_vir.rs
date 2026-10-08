@@ -254,7 +254,7 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
 
                 let Some(vir::ast::ImplPath::TraitImplPath(impl_path)) = self_trait_impl_path
                 else {
-                    panic!("{} {:?}", "could not resolve call to trait default method", expr.span);
+                    panic!("{} {:?}", "could not resolve call to trait provided method", expr.span);
                 };
 
                 let f = Arc::new(FunX { path: bctx.ctxt.def_id_to_vir_path(did) });
@@ -457,8 +457,35 @@ pub(crate) fn call_overloaded_method<'tcx>(
                 is_trait_default: false,
             }
         }
+        ResolutionResult::Resolved {
+            impl_def_id: _,
+            impl_args: _,
+            impl_item_args: _,
+            resolved_item: ResolvedItem::FromTrait(did, args),
+        } => {
+            let typs = mk_typ_args(bctx, args, did, span)?;
+
+            let mut self_trait_impl_path = None;
+            let trait_id = tcx.trait_of_assoc(did).unwrap();
+            let remove_self_trait_bound = Some((trait_id, &mut self_trait_impl_path));
+            let impl_paths = get_impl_paths(bctx, did, args, remove_self_trait_bound, false, span)?;
+
+            let Some(vir::ast::ImplPath::TraitImplPath(impl_path)) = self_trait_impl_path else {
+                panic!("{} {:?}", "could not resolve call to trait provided method", span);
+            };
+
+            let f = Arc::new(FunX { path: bctx.ctxt.def_id_to_vir_path(did) });
+            let f = vir::def::trait_inherit_default_name(&f, &impl_path);
+
+            vir::ast::CallTargetKind::DynamicResolved {
+                resolved: f,
+                typs,
+                impl_paths,
+                is_trait_default: true,
+            }
+        }
         ResolutionResult::Unresolved => vir::ast::CallTargetKind::Dynamic,
-        _ => crate::internal_err!(span, "unexpected deref"),
+        _ => crate::internal_err!(span, "unexpected ResolutionResult"),
     };
 
     let autospec_usage = if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
