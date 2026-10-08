@@ -1907,3 +1907,40 @@ test_verify_one_file! {
         fn main() {}
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] implicit_deref_mut_through_tracked verus_code! {
+        // `&mut x.0` borrows through `DerefMut for Tracked`.
+        proof fn through_tracked(tracked x: Tracked<(Ghost<int>, Ghost<int>)>)
+            ensures
+                false,
+        {
+            let tracked mut x = x;
+            let tracked y: &mut Ghost<int> = &mut x.0;
+            let ghost snap: int = x@.0@;
+            *y = Ghost(snap + 1);
+        }
+    } => Err(err) => assert_spec_borrowed(err, "x")
+}
+
+test_verify_one_file! {
+    #[test] implicit_deref_mut_through_vec verus_code! {
+        use vstd::prelude::*;
+
+        // `v.first_mut()` borrows through `DerefMut for Vec`.
+        fn through_vec()
+            ensures
+                false,
+        {
+            let mut v: Vec<Ghost<int>> = Vec::new();
+            v.push(Ghost(0));
+            match v.first_mut() {
+                Some(r) => {
+                    let ghost snap = v@;
+                    *r = Ghost(snap[0]@ + 1);
+                },
+                None => {},
+            }
+        }
+    } => Err(err) => assert_spec_borrowed(err, "v")
+}
