@@ -315,7 +315,16 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             ExprX::Fuel(_fun, _fuel, _is_broadcast_use) => R::ret(|| expr_new(expr.x.clone())),
             ExprX::RevealString(_s) => R::ret(|| expr_new(expr.x.clone())),
             ExprX::RevealByteString(_bs) => R::ret(|| expr_new(expr.x.clone())),
-            ExprX::BreakOrContinue { label: _, is_break: _ } => R::ret(|| expr_new(expr.x.clone())),
+            ExprX::BreakOrContinue { label, is_break, value } => {
+                let value = self.visit_opt_expr(value)?;
+                R::ret(|| {
+                    expr_new(ExprX::BreakOrContinue {
+                        label: label.clone(),
+                        is_break: *is_break,
+                        value: R::get_opt(value),
+                    })
+                })
+            }
             ExprX::AirStmt(_) => R::ret(|| expr_new(expr.x.clone())),
             ExprX::Nondeterministic => R::ret(|| expr_new(expr.x.clone())),
             ExprX::Call { target, args, post_args, body } => {
