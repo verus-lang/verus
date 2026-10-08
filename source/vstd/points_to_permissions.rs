@@ -15,8 +15,8 @@ broadcast use group_vstd_default;
 // TODO: move to ptr file
 pub open spec fn ptr_addr_in_bounds<T: ?Sized>(ptr: *mut T) -> bool {
     ptr@.provenance.is_some() ==> {
-        &&& ptr@.addr as int >= ptr@.provenance.data().start_addr()
-        &&& ptr@.addr <= ptr@.provenance.data().start_addr() + ptr@.provenance.data().alloc_len()
+        &&& ptr@.addr as int >= ptr@.provenance.unwrap().start_addr()
+        &&& ptr@.addr <= ptr@.provenance.unwrap().start_addr() + ptr@.provenance.unwrap().alloc_len()
     }
 }
 
@@ -62,9 +62,9 @@ impl<T, PointsToPerm> PointsToProperties for SeqPointsTo<T, PointsToPerm> where
             != 0
         // If ptr's provenance is Some, the address is in bounds of the provenance
         &&& self.ptr()@.provenance.is_some() ==> {
-            &&& self.ptr()@.provenance.data().start_addr() <= self.ptr()@.addr
-            &&& self.ptr()@.addr <= self.ptr()@.provenance.data().start_addr()
-                + self.ptr()@.provenance.data().alloc_len()
+            &&& self.ptr()@.provenance.unwrap().start_addr() <= self.ptr()@.addr
+            &&& self.ptr()@.addr <= self.ptr()@.provenance.unwrap().start_addr()
+                + self.ptr()@.provenance.unwrap().alloc_len()
         }
     }
 
@@ -1583,9 +1583,9 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             forall|i| #![auto] 0 <= i < self.len() ==> self[i].is_empty(),
             self.wf(),
             self.ptr()@.provenance.is_some() ==> {
-                &&& self.ptr()@.addr as int >= self.ptr()@.provenance.data().start_addr()
-                &&& self.ptr()@.addr <= self.ptr()@.provenance.data().start_addr()
-                    + self.ptr()@.provenance.data().alloc_len()
+                &&& self.ptr()@.addr as int >= self.ptr()@.provenance.unwrap().start_addr()
+                &&& self.ptr()@.addr <= self.ptr()@.provenance.unwrap().start_addr()
+                    + self.ptr()@.provenance.unwrap().alloc_len()
             },
         ensures
             spt.ptr() == self.ptr(),

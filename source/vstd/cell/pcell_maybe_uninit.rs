@@ -30,18 +30,18 @@ fn example_pcell_maybe_uninit() {
     let (cell, Tracked(mut points_to)) = un::PCell::new(5);
 
     assert(points_to.id() == cell.id());
-    assert(points_to.mem_contents() == TypedValue::Init(5));
+    assert(points_to.mem_contents() == TypedValue::Valid(Box::new(5)));
 
     let x = cell.take(Tracked(&mut points_to));
     assert(x == 5);
 
     assert(points_to.id() == cell.id());
-    assert(points_to.mem_contents() == TypedValue::Uninit);
+    assert(points_to.mem_contents() == TypedValue::Empty);
 
     cell.put(Tracked(&mut points_to), 17);
 
     assert(points_to.id() == cell.id());
-    assert(points_to.mem_contents() == TypedValue::Init(17));
+    assert(points_to.mem_contents() == TypedValue::Valid(Box::new(17)));
 }
 
 } // verus!
@@ -68,13 +68,13 @@ impl<V> PointsTo<V> {
     /// Is this cell initialized?
     #[verifier::inline]
     pub open spec fn is_init(&self) -> bool {
-        self.mem_contents().is_init()
+        self.mem_contents().is_valid()
     }
 
     /// Is this cell uninitialized?
     #[verifier::inline]
     pub open spec fn is_uninit(&self) -> bool {
-        self.mem_contents().is_uninit()
+        self.mem_contents().is_empty()
     }
 
     /// Value of the cell (if initialized)
@@ -107,7 +107,7 @@ impl<V> PCell<V> {
     pub const fn empty() -> (pt: (PCell<V>, Tracked<PointsTo<V>>))
         ensures
             pt.1@.id() == pt.0.id(),
-            pt.1@.mem_contents() == TypedValue::Uninit,
+            pt.1@.mem_contents() == TypedValue::Empty,
     {
         let (pcell, Tracked(pt)) = pc::PCell::new(MaybeUninit::uninit());
         (PCell(pcell), Tracked(PointsTo(pt)))
@@ -117,7 +117,7 @@ impl<V> PCell<V> {
     pub const fn new(v: V) -> (pt: (PCell<V>, Tracked<PointsTo<V>>))
         ensures
             pt.1@.id() == pt.0.id(),
-            pt.1@.mem_contents() == TypedValue::Init(v),
+            pt.1@.mem_contents() == TypedValue::Valid(Box::new(v)),
     {
         let (pcell, Tracked(pt)) = pc::PCell::new(MaybeUninit::new(v));
         (PCell(pcell), Tracked(PointsTo(pt)))
@@ -127,10 +127,10 @@ impl<V> PCell<V> {
     pub fn put(&self, Tracked(perm): Tracked<&mut PointsTo<V>>, in_v: V)
         requires
             old(perm).id() == self.id(),
-            old(perm).mem_contents() == TypedValue::Uninit,
+            old(perm).mem_contents() == TypedValue::Empty,
         ensures
             final(perm).id() == self.id(),
-            final(perm).mem_contents() == TypedValue::Init(in_v),
+            final(perm).mem_contents() == TypedValue::Valid(Box::new(in_v)),
         opens_invariants none
         no_unwind
     {
@@ -144,7 +144,7 @@ impl<V> PCell<V> {
             old(perm).is_init(),
         ensures
             final(perm).id() == old(perm).id(),
-            final(perm).mem_contents() == TypedValue::Uninit,
+            final(perm).mem_contents() == TypedValue::Empty,
             out_v == old(perm).value(),
         opens_invariants none
         no_unwind
@@ -161,7 +161,7 @@ impl<V> PCell<V> {
             old(perm).is_init(),
         ensures
             final(perm).id() == old(perm).id(),
-            final(perm).mem_contents() == TypedValue::Init(in_v),
+            final(perm).mem_contents() == TypedValue::Valid(Box::new(in_v)),
             out_v == old(perm).value(),
         opens_invariants none
         no_unwind
@@ -223,7 +223,7 @@ impl<V> PCell<V> {
             self.id() == old(perm).id(),
         ensures
             final(perm).id() == old(perm).id(),
-            final(perm).mem_contents() == TypedValue::Init(in_v),
+            final(perm).mem_contents() == TypedValue::Valid(Box::new(in_v)),
         opens_invariants none
         no_unwind
     {

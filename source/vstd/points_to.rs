@@ -58,15 +58,14 @@ pub trait PointsToProperties: PointsToPhys {
     ;
 
     /// The memory associated with a pointer should always be within bounds of its spatial provenance.
-    // TODO: change data() to unwrap()
     proof fn ptr_bounds(tracked &self)
         requires
             self.ptr()@.provenance.is_some(),
             self.wf_basic(),
         ensures
-            self.ptr()@.addr as int >= self.ptr()@.provenance.data().start_addr(),
-            self.ptr()@.addr + self.size() <= self.ptr()@.provenance.data().start_addr()
-                + self.ptr()@.provenance.data().alloc_len(),
+            self.ptr()@.addr as int >= self.ptr()@.provenance.unwrap().start_addr(),
+            self.ptr()@.addr + self.size() <= self.ptr()@.provenance.unwrap().start_addr()
+                + self.ptr()@.provenance.unwrap().alloc_len(),
     ;
 
     /// If the size of the pointed-to region is nonzero,

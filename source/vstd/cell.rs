@@ -138,13 +138,13 @@ impl<V> PointsTo<V> {
     /// Is this cell initialized?
     #[verifier::inline]
     pub open spec fn is_init(&self) -> bool {
-        self.mem_contents().is_init()
+        self.mem_contents().is_valid()
     }
 
     /// Is this cell uninitialized?
     #[verifier::inline]
     pub open spec fn is_uninit(&self) -> bool {
-        self.mem_contents().is_uninit()
+        self.mem_contents().is_empty()
     }
 
     /// Value of the cell (if initialized)
@@ -167,7 +167,7 @@ impl<V> PCell<V> {
     #[verifier::external_body]
     pub const fn empty() -> (pt: (PCell<V>, Tracked<PointsTo<V>>))
         ensures
-            pt.1@@ == pcell_points![ pt.0.id() => TypedValue::Uninit ],
+            pt.1@@ == pcell_points![ pt.0.id() => TypedValue::Empty ],
     {
         let p = PCell { ucell: UnsafeCell::new(MaybeUninit::uninit()) };
         (p, Tracked::assume_new())
@@ -177,7 +177,7 @@ impl<V> PCell<V> {
     #[verifier::external_body]
     pub const fn new(v: V) -> (pt: (PCell<V>, Tracked<PointsTo<V>>))
         ensures
-            pt.1@@ == pcell_points! [ pt.0.id() => TypedValue::Init(v) ],
+            pt.1@@ == pcell_points! [ pt.0.id() => TypedValue::Valid(Box::new(v)) ],
     {
         let p = PCell { ucell: UnsafeCell::new(MaybeUninit::new(v)) };
         (p, Tracked::assume_new())
@@ -187,9 +187,9 @@ impl<V> PCell<V> {
     #[verifier::external_body]
     pub fn put(&self, Tracked(perm): Tracked<&mut PointsTo<V>>, v: V)
         requires
-            old(perm)@ == pcell_points![ self.id() => TypedValue::Uninit ],
+            old(perm)@ == pcell_points![ self.id() => TypedValue::Empty ],
         ensures
-            final(perm)@ == pcell_points![ self.id() => TypedValue::Init(v) ],
+            final(perm)@ == pcell_points![ self.id() => TypedValue::Valid(Box::new(v)) ],
         opens_invariants none
         no_unwind
     {
@@ -206,7 +206,7 @@ impl<V> PCell<V> {
             old(perm).is_init(),
         ensures
             final(perm).id() == old(perm)@.pcell,
-            final(perm).mem_contents() == TypedValue::Uninit,
+            final(perm).mem_contents() == TypedValue::Empty,
             v == old(perm).value(),
         opens_invariants none
         no_unwind
@@ -226,7 +226,7 @@ impl<V> PCell<V> {
             old(perm).is_init(),
         ensures
             final(perm).id() == old(perm)@.pcell,
-            final(perm).mem_contents() == TypedValue::Init(in_v),
+            final(perm).mem_contents() == TypedValue::Valid(Box::new(in_v)),
             out_v == old(perm).value(),
         opens_invariants none
         no_unwind
@@ -300,7 +300,7 @@ impl<V: Copy> PCell<V> {
             old(perm).is_init(),
         ensures
             final(perm).id() == old(perm)@.pcell,
-            final(perm).mem_contents() == TypedValue::Init(in_v),
+            final(perm).mem_contents() == TypedValue::Valid(Box::new(in_v)),
         opens_invariants none
         no_unwind
     {
