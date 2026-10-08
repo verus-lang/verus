@@ -221,10 +221,23 @@ impl SingularEncoder {
                 let rhs = self.expr_to_singular(&rhs)?;
                 Ok(lhs.modulo(rhs))
             }
+            ExprX::Multi(MultiOp::Sub, exprs) => {
+                let (arg1, arg2) = if exprs.len() == 1 {
+                    let zero = SingularExpr::Literal(Arc::new("0".to_string()));
+                    let arg = self.expr_to_singular(&exprs[0])?;
+                    (zero, arg)
+                } else if exprs.len() == 2 {
+                    let arg1 = self.expr_to_singular(&exprs[0])?;
+                    let arg2 = self.expr_to_singular(&exprs[1])?;
+                    (arg1, arg2)
+                } else {
+                    return Err(format!("Verus internal error: unsupported MultiOp Sub"));
+                };
+                Ok(SingularExpr::Binary(BinOp::Sub, Rc::new(arg1), Rc::new(arg2)))
+            }
             ExprX::Multi(op, exprs) => {
                 let bin_op = match op {
                     MultiOp::Add => BinOp::Add,
-                    MultiOp::Sub => BinOp::Sub,
                     MultiOp::Mul => BinOp::Mul, // still reachable with constant multiplication
                     _ => {
                         return Err(format!("unsupported integer_ring operator: {:?}", op.clone()));
