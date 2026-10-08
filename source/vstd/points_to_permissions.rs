@@ -1298,13 +1298,14 @@ impl<T> PointsTo<T> {
             self.is_valid(),
         ensures
             *val == old(self).value(),
-            mut_ref_ptr(val) == old(self).ptr(),
+            mut_ref_ptr(val) == old(self).ptr(), // Travis: not necessarily true bc Box/enum, also odd thing to want, or necessary
             final(self).is_valid(),
             final(self).ptr() == old(self).ptr(),
             final(self).value() == *final(val),
             // TODO: is this right/sound?
             Self::ptrs_len_same_valid_decode(*old(self), *final(self)) ==> final(self).wf(),
     ;
+    // match
 
     /// This moves the `T` out from the `TypedValue<T>` on `self`, leaving `self` empty.
     pub proof fn take(tracked &mut self) -> (tracked val: T)
@@ -1918,6 +1919,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         out
     }
 
+    // May need axiom for taking &Seq<PointsToUntyped> -> &PointsToUntyped
     /// Creates a reference to a `PointsToUntyped` from a reference to a `SeqPointsTo<T, PointsTo<T>>`,
     /// with the same address and provenance, a length of `self.len() * size_of::<T>()`,
     /// and the same abstract bytes.
@@ -1937,6 +1939,15 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             raw.bytes() == self.bytes(),
             raw.wf(),
     ;
+
+    // axiom for &mut Seq<PointsToUntyped> -> &mut PointsToUntyped
+    // Need way to combine two PointsToUptyped.
+    // Can merge maps, so can merge maps of PointsToSingleton.
+    // Either axiomatize PointsToUntyped combo or axiomatize conversion to PointsToRaw
+
+    // PointToSingleton - single byte
+    // PointsToUntyped - Seq<PointsToSingleton>
+    // PointsToRaw - Map/Set<PointsToSingleton>
 
     /// Creates a mutable reference to a `PointsToUntyped` from a mutable reference to a
     /// `SeqPointsTo<T, PointsTo<T>>`, with the same address and provenance and a length of
@@ -1966,6 +1977,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             }),
     ;
 
+    // Use shr_ref_wrapper
     /// Given that the subrange is within bounds, it is always possible to borrow a permission
     /// to just that subrange.
     pub axiom fn subrange(tracked &self, start_index: nat, len: nat) -> (tracked sub: &Self)
@@ -1984,6 +1996,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             sub.seq_pt() == self.seq_pt().subrange(start_index as int, (start_index + len) as int),
     ;
 
+    // &Seq<PointsTo<T>> -> &Seq<TypedValue<T>> where PointsTo<T> holds a TypedValue<T>
+    // Seq<&TypedValue<T>> - try to make this the return type instead
     /// This takes a borrow of a subrange of the `TypedValue<T>`s from `self`.
     pub axiom fn borrow_typed_value_subrange(tracked &self, start: int, end: int) -> (tracked val:
         &Seq<TypedValue<T>>)
@@ -2305,6 +2319,11 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         }
         joined
     }
+
+    // cam probably have axiom splitting mutable reference in two and . 
+    // would need general-purpose way to prove &mut transmutes
+    // &mut Seq<PointsTo<T>> -> (&mut Seq<PointsToUntyped>, &mut Seq<TypedValue<T>>)
+    // -> (&mut PointsToUntyped, &mut Seq<TypedValue<T>>)
 
     /// Returns a mutable reference to the sub-permission covering indices `[i, j)`.
     /// The sub-permission has the same provenance, and its pointer is offset from `self.ptr()`
