@@ -3,132 +3,18 @@ use crate::ast::{
 };
 use crate::ast_to_sst_func::SstMap;
 use crate::context::Ctx;
-use crate::def::{Spanned, unique_local, user_local_name};
+use crate::def::{Spanned, unique_local};
 use crate::messages::{ToAny, WarningAllow, error_with_label};
-use crate::sst::{
-    BndX, CallFun, Exp, ExpX, FuncCheckSst, FunctionSst, Stm, StmX, Trigs, UniqueIdent,
-};
-use crate::sst_util::free_vars_exp;
-use crate::sst_visitor::{
-    NoScoper, Rewrite, Visitor, VisitorControlFlow, VisitorScopeMap, Walk, exp_visitor_dfs,
-};
+use crate::sst::{BndX, CallFun, Exp, ExpX, FuncCheckSst, FunctionSst, Stm, StmX, UniqueIdent};
+use crate::sst_visitor::{NoScoper, Rewrite, Visitor};
 use crate::triggers::build_triggers;
+use crate::triggers_let::check_let_bound_if_triggers;
 use crate::util::vec_map_result;
 use crate::visitor::Returner;
+use air::context::SmtSolver;
 use air::messages::Diagnostics;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
-
-// Z3 inlines `let`s before checking patterns, so a trigger over a let-bound `if`/`else` is
-// silently dropped (Z3 only warns). Reject such triggers after selection instead.
-fn contains_if(exp: &Exp) -> bool {
-    let mut map = VisitorScopeMap::new();
-    let res = exp_visitor_dfs::<(), _>(exp, &mut map, &mut |e, _| match &e.x {
-        ExpX::If(..) => VisitorControlFlow::Stop(()),
-        _ => VisitorControlFlow::Recurse,
-    });
-    matches!(res, VisitorControlFlow::Stop(()))
-}
-
-struct LetTriggerChecker {
-    // enclosing let-bound variables in scope, mapped to their (unsubstituted) definitions
-    let_defs: HashMap<VarIdent, Exp>,
-}
-
-impl LetTriggerChecker {
-    // the `if`/`else` value `x` is (transitively) let-bound to, if any
-    fn resolve_to_if(&self, x: &VarIdent, visited: &mut HashSet<VarIdent>) -> Option<Exp> {
-        if !visited.insert(x.clone()) {
-            return None;
-        }
-        let val = self.let_defs.get(x)?;
-        if contains_if(val) {
-            return Some(val.clone());
-        }
-        free_vars_exp(val).keys().find_map(|y| self.resolve_to_if(y, visited))
-    }
-
-    fn check_trigs(&self, trigs: &Trigs) -> Result<(), VirErr> {
-        for trig in trigs.iter() {
-            for t in trig.iter() {
-                for x in free_vars_exp(t).keys() {
-                    let mut visited = HashSet::new();
-                    if let Some(if_exp) = self.resolve_to_if(x, &mut visited) {
-                        let msg = format!(
-                            "after Z3 inlines the enclosing `let`, this trigger would embed an \
-                             `if`/`else` (via the let-bound variable `{}`), but Z3 does not \
-                             allow `if` inside a trigger pattern; Z3 would otherwise silently \
-                             discard this trigger with a warning instead of using it",
-                            user_local_name(x),
-                        );
-                        return Err(error_with_label(&t.span, msg, "trigger chosen here")
-                            .secondary_label(&if_exp.span, "...bound to this `if`/`else`"));
-                    }
-                }
-            }
-        }
-        Ok(())
-    }
-}
-
-impl Visitor<Walk, VirErr, NoScoper> for LetTriggerChecker {
-    // override the default (non-recursing) visit_stm so exec/proof fn bodies get walked too
-    fn visit_stm(&mut self, stm: &Stm) -> Result<(), VirErr> {
-        self.visit_stm_rec(stm)
-    }
-
-    fn visit_exp(&mut self, exp: &Exp) -> Result<(), VirErr> {
-        match &exp.x {
-            ExpX::Bind(bnd, body) => match &bnd.x {
-                BndX::Let(binders) => {
-                    for b in binders.iter() {
-                        self.visit_exp(&b.a)?;
-                    }
-                    // save/restore in case a binder name shadows an outer let (unlikely, given
-                    // hygienic VarIdents, but keep this correct regardless)
-                    let saved: Vec<_> = binders
-                        .iter()
-                        .map(|b| {
-                            (b.name.clone(), self.let_defs.insert(b.name.clone(), b.a.clone()))
-                        })
-                        .collect();
-                    let res = self.visit_exp(body);
-                    for (name, prev) in saved {
-                        match prev {
-                            Some(prev) => {
-                                self.let_defs.insert(name, prev);
-                            }
-                            None => {
-                                self.let_defs.remove(&name);
-                            }
-                        }
-                    }
-                    res
-                }
-                BndX::Quant(_, _, trigs, _) => {
-                    self.check_trigs(trigs)?;
-                    self.visit_exp(body)
-                }
-                BndX::Lambda(_, trigs) => {
-                    self.check_trigs(trigs)?;
-                    self.visit_exp(body)
-                }
-                BndX::Choose(_, trigs, cond) => {
-                    self.check_trigs(trigs)?;
-                    self.visit_exp(cond)?;
-                    self.visit_exp(body)
-                }
-            },
-            _ => self.visit_exp_rec(exp),
-        }
-    }
-}
-
-fn check_let_bound_if_triggers(function: &FunctionSst) -> Result<(), VirErr> {
-    let mut checker = LetTriggerChecker { let_defs: HashMap::new() };
-    checker.visit_function(function)?;
-    Ok(())
-}
 
 fn elaborate_one_exp<D: Diagnostics + ?Sized>(
     ctx: &Ctx,
@@ -392,7 +278,9 @@ pub(crate) fn elaborate_function1<'a, 'b, 'c, D: Diagnostics>(
         axioms.proof_exec_axioms = Some((params.clone(), exp.clone(), triggers));
     }
 
-    check_let_bound_if_triggers(function)?;
+    if matches!(ctx.global.solver, SmtSolver::Z3) {
+        check_let_bound_if_triggers(function)?;
+    }
 
     Ok(())
 }
