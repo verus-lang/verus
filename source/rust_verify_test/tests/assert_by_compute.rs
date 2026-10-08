@@ -665,6 +665,48 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] const_generics verus_code! {
+        spec fn f<const N: usize>() -> int {
+            N as int
+        }
+
+        spec fn g<const N: usize>() -> int {
+            (N as int) * 2
+        }
+
+        spec fn times_two_plus_one<const N: usize>() -> int {
+            g::<N>() + 1
+        }
+
+        spec fn len_of<const N: usize>(a: [u8; N]) -> int {
+            N as int
+        }
+
+        spec fn signed<const N: i32>() -> int {
+            N as int
+        }
+
+        spec fn flag<const B: bool>() -> bool {
+            B
+        }
+
+        proof fn test(x: [u8; 4]) {
+            assert(f::<3>() == 3) by (compute_only);
+            assert(f::<3>() + f::<4>() == 7) by (compute_only);
+            assert(times_two_plus_one::<3>() == 7) by (compute_only);
+            assert(len_of(x) == 4) by (compute_only);
+            assert(signed::<3>() == 3) by (compute_only);
+            assert(flag::<true>()) by (compute_only);
+            assert(!flag::<false>()) by (compute_only);
+        }
+
+        proof fn symbolic<const N: usize>() {
+            assert(f::<N>() == N as int) by (compute_only);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] array_literals verus_code! {
         use vstd::prelude::*;
 
