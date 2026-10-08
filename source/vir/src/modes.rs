@@ -3807,7 +3807,7 @@ fn check_function(
     }
     match &function.x.unwind_spec {
         None | Some(UnwindSpec::MayUnwind | UnwindSpec::NoUnwind) => {}
-        Some(UnwindSpec::NoUnwindWhen(expr)) => {
+        Some(UnwindSpec::NoUnwindWhen(expr, _)) => {
             let mut unw_typing = fun_typing.push_block_ghostness(Ghost::Ghost);
             let mut unw_typing = unw_typing.push_in_pure(true);
             check_expr_has_mode(

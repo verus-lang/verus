@@ -1312,7 +1312,9 @@ impl HeaderExprX {
             | HeaderExprX::ExtraDependency(_)
             | HeaderExprX::OpenVisibilityQualifier(_)
             | HeaderExprX::NoUnwind
-            | HeaderExprX::NoUnwindWhen(_) => "beginning of the function body",
+            | HeaderExprX::NoUnwindWhen(_)
+            | HeaderExprX::NoUnwindRequires(_)
+            | HeaderExprX::NoUnwindRequiresExact(_) => "beginning of the function body",
 
             HeaderExprX::InvariantExceptBreak(_)
             | HeaderExprX::Invariant(_)

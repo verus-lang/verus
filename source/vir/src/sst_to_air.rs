@@ -1,8 +1,8 @@
 use crate::ast::{
     ArrayKind, AssertQueryMode, BitwiseOp, CrateId, Dt, FieldOpr, Fun, GenericBoundX, Ident,
-    Idents, InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Label, Mode, Path,
-    PathX, Primitive, ProofNoteLabel, SpannedTyped, Typ, TypDecoration, TypDecorationArg, TypX,
-    Typs, UnaryOp, UnaryOpr, UnwindSpec, VarAt, VarIdent, VirErr,
+    Idents, InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Label, Mode,
+    NoUnwindWhenKind, Path, PathX, Primitive, ProofNoteLabel, SpannedTyped, Typ, TypDecoration,
+    TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr, UnwindSpec, VarAt, VarIdent, VirErr,
 };
 use crate::ast_util::{
     LowerUniqueVar, fun_as_friendly_rust_name, get_field, get_variant, undecorate_typ,
@@ -1905,6 +1905,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             dest,
             assert_id,
             body,
+            restrict_unwind,
         } => {
             // When we emit the VCs for a call to `f`, we might also want these to include
             // the generic conditions
@@ -1960,8 +1961,35 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
 
             let callee_unwind_spec = func.x.unwind_spec_or_default();
             let callee_never_unwinds = matches!(callee_unwind_spec, UnwindSpec::NoUnwind);
+            let callee_no_unwind_when = || {
+                let f_unwind =
+                    prefix_no_unwind_when(&fun_to_air_ident(&ctx.name_ctxt, &func.x.name));
+                Arc::new(ExprX::Apply(f_unwind, req_args.clone()))
+            };
+
+            // For `requires[no_unwind]`, check the condition unless restrict_unwind is false.
+            // This subsumes the check below.
+            let check_unwind_requires = match &callee_unwind_spec {
+                UnwindSpec::NoUnwindWhen(e, NoUnwindWhenKind::Requires)
+                | UnwindSpec::NoUnwindWhen(e, NoUnwindWhenKind::RequiresExact)
+                    if *restrict_unwind && !ctx.checking_spec_preconditions() =>
+                {
+                    let error = error_with_label(
+                        &stm.span,
+                        "cannot show this call will not unwind",
+                        format!("call to {:} might unwind", fun_as_friendly_rust_name(fun)),
+                    )
+                    .secondary_label(&e.span, "failed this requires[no_unwind] condition")
+                    .help("to allow unwinding here, use #[verifier::restrict_unwind(false)]");
+                    stmts.push(Arc::new(StmtX::Assert(None, error, None, callee_no_unwind_when())));
+                    true
+                }
+                _ => false,
+            };
+
             if !matches!(state.unwind, UnwindAir::MayUnwind)
                 && !callee_never_unwinds
+                && !check_unwind_requires
                 && !ctx.checking_spec_preconditions()
             {
                 let e1 = match &state.unwind {
@@ -1972,11 +2000,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 let e2 = match &callee_unwind_spec {
                     UnwindSpec::MayUnwind => Arc::new(ExprX::Const(Constant::Bool(false))),
                     UnwindSpec::NoUnwind => unreachable!(),
-                    UnwindSpec::NoUnwindWhen(_) => {
-                        let f_unwind =
-                            prefix_no_unwind_when(&fun_to_air_ident(&ctx.name_ctxt, &func.x.name));
-                        Arc::new(ExprX::Apply(f_unwind, req_args.clone()))
-                    }
+                    UnwindSpec::NoUnwindWhen(..) => callee_no_unwind_when(),
                 };
                 let error = match &state.unwind {
                     UnwindAir::MayUnwind => unreachable!(),
@@ -1999,7 +2023,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                         "this call might unwind",
                     ),
                 };
-                let error = if let UnwindSpec::NoUnwindWhen(e) = &callee_unwind_spec {
+                let error = if let UnwindSpec::NoUnwindWhen(e, _) = &callee_unwind_spec {
                     error.secondary_label(
                         &e.span,
                         "this conditition needs to hold to show that the callee will not unwind",
@@ -2029,6 +2053,16 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             if let Some(stm) = body {
                 let stmt = stm_to_stmts(ctx, state, stm)?;
                 stmts.extend(stmt);
+            }
+
+            // For `requires[no_unwind exact]`, the callee unwinds if the condition fails,
+            // so if the call returns, the condition holds
+            if matches!(
+                callee_unwind_spec,
+                UnwindSpec::NoUnwindWhen(_, NoUnwindWhenKind::RequiresExact)
+            ) && !ctx.checking_spec_preconditions()
+            {
+                stmts.push(Arc::new(StmtX::Assume(callee_no_unwind_when())));
             }
 
             let typ_args: Vec<Expr> = typs.iter().flat_map(typ_to_ids).collect();

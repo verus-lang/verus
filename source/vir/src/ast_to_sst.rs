@@ -854,6 +854,7 @@ struct ReturnedCall {
     args: Exps,
     obligations: Vec<Obligation>,
     may_unwind: bool,
+    restrict_unwind: bool,
     body: Option<Stm>,
 }
 
@@ -1054,6 +1055,7 @@ fn expr_get_call(
                             function.x.unwind_spec_or_default(),
                             UnwindSpec::NoUnwind
                         ),
+                        restrict_unwind: attrs.restrict_unwind,
                         body,
                     }),
                 )))
@@ -1444,6 +1446,7 @@ fn stm_call(
     args: Exps,
     dest: Option<Dest>,
     body: Option<Stm>,
+    restrict_unwind: bool,
 ) -> Result<Stm, VirErr> {
     let fun = get_function(ctx, span, &name)?;
     let mut stms: Vec<Stm> = Vec::new();
@@ -1493,6 +1496,7 @@ fn stm_call(
         dest,
         assert_id: state.next_assert_id(),
         body,
+        restrict_unwind,
     };
 
     stms.push(Spanned::new(span.clone(), call));
@@ -1778,6 +1782,7 @@ pub(crate) fn expr_to_stm_opt(
                         args,
                         obligations,
                         may_unwind,
+                        restrict_unwind,
                         body,
                     }),
                 ) => {
@@ -1808,6 +1813,7 @@ pub(crate) fn expr_to_stm_opt(
                             args.clone(),
                             Some(dest),
                             body,
+                            restrict_unwind,
                         )?);
                         // REVIEW: this emits a StmX::Assign to set the value of the destination when,
                         // in recommends checking, the StmX::Call is used to check its recommends, however
@@ -1848,6 +1854,7 @@ pub(crate) fn expr_to_stm_opt(
                             args,
                             None,
                             body,
+                            restrict_unwind,
                         )?);
                         let ti = if may_unwind { TypInv::UnwindError } else { TypInv::Call(x) };
                         typ_inv_obligations(ctx, state, &mut stms, obligations, ti)?;
@@ -1889,6 +1896,7 @@ pub(crate) fn expr_to_stm_opt(
                 dest: Some(dest),
                 assert_id: None,
                 body,
+                restrict_unwind: false,
             };
             stms.push(Spanned::new(expr.span.clone(), call));
             let ti = TypInv::UnwindError; // exec functions are may_unwind = true by default
@@ -3725,6 +3733,7 @@ pub(crate) fn expr_to_stm_opt(
                 autospec: AutospecUsage::Final,
                 const_var: false,
                 assume_external_allowed: false,
+                restrict_unwind: true,
             };
             let call_expr = SpannedTyped::new(
                 &expr.span,
@@ -4505,6 +4514,7 @@ fn stmt_to_stm(
                             args,
                             obligations,
                             may_unwind,
+                            restrict_unwind,
                             body,
                         }),
                     )) => {
@@ -4525,6 +4535,7 @@ fn stmt_to_stm(
                             args,
                             Some(dest),
                             body,
+                            restrict_unwind,
                         )?);
                         // REVIEW: for a similar case in `ExprX::Call` we emit a StmX::Assign to set the
                         // value of the destination when, in recommends checking, the StmX::Call is used

@@ -643,3 +643,287 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 3)
 }
+
+test_verify_one_file_with_options! {
+    #[test] requires_no_unwind ["exec_allows_no_decreases_clause"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn fn_may_unwind() {
+        }
+
+        fn f(i: u8)
+            requires[no_unwind]
+                i >= 5,
+        {
+        }
+
+        fn f2(i: u8, j: u8)
+            requires
+                i < 200,
+            requires[no_unwind]
+                i >= 5,
+                j >= 5,
+        {
+        }
+
+        fn f3(i: u8, j: u8)
+            requires[no_unwind]
+                i >= 5,
+            requires
+                j < 200,
+            ensures
+                true,
+        {
+        }
+
+        fn caller1() {
+            f(10);
+            f2(10, 10);
+            f3(10, 10);
+        }
+
+        fn caller2() {
+            f(3); // FAILS
+        }
+
+        fn caller3(j: u8) {
+            f(j); // FAILS
+        }
+
+        fn caller4() {
+            f2(10, 3); // FAILS
+        }
+
+        #[verifier::restrict_unwind(false)]
+        fn caller5() {
+            f(3);
+            f2(10, 3);
+        }
+
+        #[verifier::restrict_unwind(false)]
+        fn caller6()
+            no_unwind
+        {
+            f(3); // FAILS
+        }
+
+        #[verifier::restrict_unwind(false)]
+        fn caller7()
+            no_unwind
+        {
+            f(10);
+        }
+
+        fn caller8() {
+            #[verifier::restrict_unwind(false)] f(3);
+            f(3); // FAILS
+        }
+
+        #[verifier::restrict_unwind(false)]
+        fn caller9() {
+            #[verifier::restrict_unwind(true)] f(3); // FAILS
+        }
+
+        fn body1(i: u8)
+            requires[no_unwind]
+                i >= 5,
+        {
+            fn_may_unwind(); // FAILS
+        }
+
+        fn body2(i: u8)
+            requires[no_unwind]
+                i >= 5,
+        {
+            // the caller's own requires[no_unwind] conditions are not preconditions,
+            // so with restrict_unwind, this must be proven unconditionally
+            f(i); // FAILS
+        }
+
+        #[verifier::restrict_unwind(false)]
+        fn body3(i: u8)
+            requires[no_unwind]
+                i >= 5,
+        {
+            f(i);
+            if i < 5 {
+                fn_may_unwind();
+            }
+        }
+
+        #[verifier::restrict_unwind(false)]
+        fn body4(i: u8)
+            requires[no_unwind]
+                i >= 4,
+        {
+            f(i); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 9)
+}
+
+test_verify_one_file_with_options! {
+    #[test] requires_no_unwind_exact ["exec_allows_no_decreases_clause"] => verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::external_body]
+        fn do_panic()
+            ensures
+                false,
+        {
+            panic!();
+        }
+
+        fn g(i: u8)
+            requires[no_unwind exact]
+                i >= 5,
+        {
+            if i < 5 {
+                do_panic();
+            }
+        }
+
+        fn g_bad(i: u8)
+            requires[no_unwind exact]
+                i >= 5, // FAILS
+        {
+        }
+
+        fn g_bad2(i: u8)
+            requires[no_unwind exact]
+                i >= 5,
+        {
+            if i < 5 {
+                do_panic();
+            }
+            do_panic(); // FAILS
+        }
+
+        #[verifier::restrict_unwind(false)]
+        fn caller1(j: u8) {
+            g(j);
+            assert(j >= 5);
+        }
+
+        #[verifier::restrict_unwind(false)]
+        fn caller2(j: u8) {
+            g(j);
+            assert(j >= 6); // FAILS
+        }
+
+        fn caller3(j: u8) {
+            g(j); // FAILS
+        }
+
+        fn caller4(j: u8) {
+            #[verifier::restrict_unwind(false)] g(j);
+            #[verifier::restrict_unwind(true)] g(j);
+        }
+    } => Err(err) => assert_fails(err, 4)
+}
+
+test_verify_one_file! {
+    #[test] requires_no_unwind_assume_specification verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::external]
+        fn ext(i: u8) -> u8 {
+            if i == 0 { panic!() }
+            i
+        }
+
+        pub assume_specification[ext](i: u8) -> (r: u8)
+            requires[no_unwind exact]
+                i > 0,
+            ensures
+                r == i;
+
+        fn test1() {
+            let r = ext(3);
+            assert(r == 3);
+        }
+
+        fn test2() {
+            let r = ext(0); // FAILS
+        }
+
+        #[verifier::restrict_unwind(false)]
+        fn test3(i: u8) {
+            let r = ext(i);
+            assert(i > 0);
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] requires_no_unwind_trait verus_code! {
+        use vstd::prelude::*;
+
+        trait T {
+            fn m(&self, i: u8)
+                requires[no_unwind]
+                    i >= 5;
+        }
+
+        struct S;
+
+        impl T for S {
+            fn m(&self, i: u8) {
+            }
+        }
+
+        struct S2;
+
+        impl T for S2 {
+            fn m(&self, i: u8) {
+                if i < 5 {
+                    may_unwind();
+                }
+                may_unwind(); // FAILS
+            }
+        }
+
+        fn may_unwind() {
+        }
+
+        fn test1<A: T>(a: &A) {
+            a.m(5);
+            a.m(4); // FAILS
+        }
+
+        fn test2(s: &S) {
+            s.m(5);
+            s.m(4); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] requires_no_unwind_bad_syntax verus_code! {
+        fn f(i: u8)
+            requires[no_unwind bogus]
+                i >= 5,
+        {
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expected `exact`")
+}
+
+test_verify_one_file! {
+    #[test] requires_no_unwind_with_no_unwind verus_code! {
+        fn f(i: u8)
+            requires[no_unwind]
+                i >= 5,
+            no_unwind
+        {
+        }
+    } => Err(err) => assert_vir_error_msg(err, "only one unwind spec allowed")
+}
+
+test_verify_one_file! {
+    #[test] requires_no_unwind_proof_fn verus_code! {
+        proof fn f(i: u8)
+            requires[no_unwind]
+                i >= 5,
+        {
+        }
+    } => Err(err) => assert_vir_error_msg(err, "an 'unwind' specification can only be given on exec functions")
+}

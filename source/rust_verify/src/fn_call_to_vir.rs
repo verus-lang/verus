@@ -70,6 +70,8 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                         | SpecItem::OpensInvariantMask
                         | SpecItem::NoUnwind
                         | SpecItem::NoUnwindWhen
+                        | SpecItem::NoUnwindRequires
+                        | SpecItem::NoUnwindRequiresExact
                 ) | VerusItem::Directive(DirectiveItem::ExtraDependency)
             )
         )
@@ -349,8 +351,12 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
 
     let typ_args = mk_typ_args(bctx, node_substs, f, expr.span)?;
     let impl_paths = get_impl_paths(bctx, f, node_substs, None, const_var, expr.span)?;
-    let call_target_attrs =
-        vir::ast::CallTargetAttrs { autospec: autospec_usage, assume_external_allowed, const_var };
+    let call_target_attrs = vir::ast::CallTargetAttrs {
+        autospec: autospec_usage,
+        assume_external_allowed,
+        const_var,
+        restrict_unwind: get_restrict_unwind(bctx, Some(expr.hir_id))?,
+    };
     let target = CallTarget::Fun(target_kind, name, typ_args, impl_paths, call_target_attrs);
     Ok(bctx.spanned_typed_new(
         expr.span,
@@ -429,6 +435,24 @@ pub(crate) fn call_index<'tcx>(
     call_overloaded_method(bctx, span, expr_typ, trait_fun_id, args, trait_args)
 }
 
+/// Determine whether `requires[no_unwind]` conditions should be checked for a call,
+/// based on #[verifier::restrict_unwind(...)] on the call expression (if any)
+/// or on the enclosing items.
+pub(crate) fn get_restrict_unwind<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    hir_id: Option<rustc_hir::HirId>,
+) -> Result<bool, VirErr> {
+    if let Some(hir_id) = hir_id {
+        let expr_attrs = bctx.ctxt.tcx.hir_attrs(hir_id);
+        let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;
+        if let Some(b) = expr_vattrs.restrict_unwind {
+            return Ok(b);
+        }
+    }
+    Ok(crate::attributes::get_restrict_unwind_walk_parents(bctx.ctxt.tcx, bctx.fun_id)
+        .unwrap_or(true))
+}
+
 /// Emit a call to unary method call (Neg or Not)
 pub(crate) fn call_unary_method<'tcx>(
     bctx: &BodyCtxt<'tcx>,
@@ -484,6 +508,7 @@ pub(crate) fn call_overloaded_method<'tcx>(
         autospec: autospec_usage,
         assume_external_allowed: false,
         const_var: false,
+        restrict_unwind: get_restrict_unwind(bctx, None)?,
     };
     let call_target =
         CallTarget::Fun(target_kind, trait_fun, typ_args, impl_paths, call_target_attrs);
@@ -631,7 +656,9 @@ fn verus_item_to_vir<'tcx, 'a>(
                     | SpecItem::InvMaskListCompl
                     | SpecItem::InvMaskSet
                     | SpecItem::NoUnwind
-                    | SpecItem::NoUnwindWhen => (true, false),
+                    | SpecItem::NoUnwindWhen
+                    | SpecItem::NoUnwindRequires
+                    | SpecItem::NoUnwindRequiresExact => (true, false),
 
                     SpecItem::Ensures | SpecItem::Returns => (true, true),
 
@@ -653,7 +680,11 @@ fn verus_item_to_vir<'tcx, 'a>(
                     record_spec_fn_pure_args_only(bctx, expr);
                     mk_expr(ExprX::Header(Arc::new(HeaderExprX::NoMethodBody)))
                 }
-                SpecItem::Requires | SpecItem::Recommends | SpecItem::Returns => {
+                SpecItem::Requires
+                | SpecItem::NoUnwindRequires
+                | SpecItem::NoUnwindRequiresExact
+                | SpecItem::Recommends
+                | SpecItem::Returns => {
                     record_spec_fn_pure_args_only(bctx, expr);
                     unsupported_err_unless!(
                         args_len == 1,
@@ -676,7 +707,10 @@ fn verus_item_to_vir<'tcx, 'a>(
                     for (arg, vir_arg) in subargs.iter().zip(vir_args.iter()) {
                         let typ = vir::ast_util::undecorate_typ(&vir_arg.typ);
                         match spec_item {
-                            SpecItem::Requires | SpecItem::Recommends => match &*typ {
+                            SpecItem::Requires
+                            | SpecItem::NoUnwindRequires
+                            | SpecItem::NoUnwindRequiresExact
+                            | SpecItem::Recommends => match &*typ {
                                 TypX::Bool => {}
                                 _ => {
                                     return err_span(
@@ -694,6 +728,12 @@ fn verus_item_to_vir<'tcx, 'a>(
 
                     let header = match spec_item {
                         SpecItem::Requires => Arc::new(HeaderExprX::Requires(Arc::new(vir_args))),
+                        SpecItem::NoUnwindRequires => {
+                            Arc::new(HeaderExprX::NoUnwindRequires(Arc::new(vir_args)))
+                        }
+                        SpecItem::NoUnwindRequiresExact => {
+                            Arc::new(HeaderExprX::NoUnwindRequiresExact(Arc::new(vir_args)))
+                        }
                         SpecItem::Recommends => {
                             Arc::new(HeaderExprX::Recommends(Arc::new(vir_args)))
                         }

@@ -1447,7 +1447,7 @@ fn check_function<Emit: EmitError>(
     }
     match &function.x.unwind_spec {
         None | Some(UnwindSpec::MayUnwind | UnwindSpec::NoUnwind) => {}
-        Some(UnwindSpec::NoUnwindWhen(expr)) => {
+        Some(UnwindSpec::NoUnwindWhen(expr, _)) => {
             let msg = "unwind clause of public function";
             let disallow_private_access = Some((&function.x.visibility, msg));
             check_expr(

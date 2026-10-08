@@ -41,7 +41,8 @@ use verus_syn::{
     PatIdent, PatType, Path, PathArguments, Publish, Receiver, Recommends, Requires, ReturnType,
     Returns, Signature, SignatureDecreases, SignatureInvariants, SignatureSpec, SignatureSpecAttr,
     SignatureUnwind, Stmt, Token, TraitItem, TraitItemFn, Type, TypeFnProof, TypeFnSpec, TypePath,
-    TypeReference, UnOp, Visibility, braced, bracketed, parenthesized, parse_macro_input,
+    TypeReference, UnOp, UnwindRequires, Visibility, braced, bracketed, parenthesized,
+    parse_macro_input,
 };
 
 pub(crate) const VERUS_SPEC: &str = "VERUS_SPEC__";
@@ -922,6 +923,7 @@ impl Visitor {
         atomic_perm_clause: Option<(verus_syn::Ident, verus_syn::PermClause)>,
     ) -> Vec<Stmt> {
         let requires = self.take_ghost(&mut spec.requires);
+        let unwind_requires = self.take_ghost(&mut spec.unwind_requires);
         let recommends = self.take_ghost(&mut spec.recommends);
         let ensures = self.take_ghost(&mut spec.ensures);
         let default_ensures = self.take_ghost(&mut spec.default_ensures);
@@ -996,6 +998,22 @@ impl Visitor {
                     Expr::Verbatim(
                         quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::requires([#exprs])),
                     ),
+                    Some(Semi { spans: [token.span] }),
+                ));
+            }
+        }
+        if let Some(UnwindRequires { token, exact, mut exprs, .. }) = unwind_requires {
+            if exprs.exprs.len() > 0 {
+                for expr in exprs.exprs.iter_mut() {
+                    self.visit_expr_mut(expr);
+                }
+                let f = if exact.is_some() {
+                    quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::no_unwind_requires_exact)
+                } else {
+                    quote_spanned_builtin!(verus_builtin, token.span => #verus_builtin::no_unwind_requires)
+                };
+                spec_stmts.push(Stmt::Expr(
+                    Expr::Verbatim(quote_spanned!(token.span => #f([#exprs]))),
                     Some(Semi { spans: [token.span] }),
                 ));
             }
@@ -2112,6 +2130,7 @@ impl Visitor {
             inputs,
             output,
             requires,
+            unwind_requires,
             ensures,
             default_ensures,
             returns,
@@ -2145,6 +2164,7 @@ impl Visitor {
                 prover: None,
                 atomic_spec: None,
                 requires: requires,
+                unwind_requires,
                 recommends: None,
                 ensures: ensures,
                 default_ensures,

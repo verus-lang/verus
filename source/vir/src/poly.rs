@@ -851,6 +851,7 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
             dest,
             assert_id,
             body,
+            restrict_unwind,
         } => {
             let (is_polys, function) = if let crate::sst::CallTarget::Fun(fun) = fun {
                 let function = &ctx.func_sst_map[fun].x;
@@ -906,6 +907,7 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
                 dest,
                 assert_id: assert_id.clone(),
                 body,
+                restrict_unwind: *restrict_unwind,
             })
         }
         StmX::Assert(id, msg, e1) => {

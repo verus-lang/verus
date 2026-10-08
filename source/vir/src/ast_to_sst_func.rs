@@ -1,7 +1,7 @@
 use crate::ast::{
     AutospecUsage, CallTarget, CrateId, DeclProph, Expr, ExprX, Fun, Function, FunctionKind, Ident,
-    ItemKind, MaskSpec, Mode, Param, ParamX, Params, Path, PlaceX, SpannedTyped, StmtX, Typ, TypX,
-    UnaryOp, UnwindSpec, VarBinder, VarBinderX, VarIdent, VirErr,
+    ItemKind, MaskSpec, Mode, NoUnwindWhenKind, Param, ParamX, Params, Path, PlaceX, SpannedTyped,
+    StmtX, Typ, TypX, UnaryOp, UnwindSpec, VarBinder, VarBinderX, VarIdent, VirErr,
 };
 use crate::ast_to_sst::{
     FinalState, PreLocalDeclKind, State, expr_to_bind_decls_exp_skip_checks,
@@ -253,6 +253,7 @@ fn rewrite_async_ens_vir(function: &Function, specs: &Vec<Expr>) -> Result<Vec<E
             autospec: AutospecUsage::Final,
             const_var: false,
             assume_external_allowed: false,
+            restrict_unwind: true,
         };
         let awaited_call = SpannedTyped::new(
             &e.span,
@@ -453,7 +454,7 @@ pub fn func_decl_to_sst(
         None => None,
         Some(UnwindSpec::NoUnwind) => None,
         Some(UnwindSpec::MayUnwind) => None,
-        Some(UnwindSpec::NoUnwindWhen(e)) => {
+        Some(UnwindSpec::NoUnwindWhen(e, _)) => {
             let (_pars, exps) = req_ens_to_sst(ctx, diagnostics, function, &vec![e.clone()], true)?;
             assert!(exps.len() == 1);
             Some(exps[0].clone())
@@ -778,7 +779,7 @@ impl UnwindSpec {
         let unwind_sst = match self {
             UnwindSpec::NoUnwind => UnwindSst::NoUnwind,
             UnwindSpec::MayUnwind => UnwindSst::MayUnwind,
-            UnwindSpec::NoUnwindWhen(expr) => UnwindSst::NoUnwindWhen(f(expr)?),
+            UnwindSpec::NoUnwindWhen(expr, _) => UnwindSst::NoUnwindWhen(f(expr)?),
         };
         Ok(unwind_sst)
     }
@@ -1035,6 +1036,18 @@ pub fn func_def_to_sst(
         .collect();
     let ens_spec_precondition_stms = ens_spec_precondition_stms?;
     let unwind_sst = unwind_sst.map(&|e| Ok(exp_pre(&state.finalize_exp(&ctx, e)?)))?;
+
+    // For `requires[no_unwind exact]`, the function must unwind when the condition fails,
+    // so a normal return must establish the condition
+    if let (
+        UnwindSpec::NoUnwindWhen(_, NoUnwindWhenKind::RequiresExact),
+        UnwindSst::NoUnwindWhen(e),
+    ) = (&unwind_ast, &unwind_sst)
+    {
+        if !ctx.checking_spec_preconditions() && !check_api_safety {
+            enss.push(e.clone());
+        }
+    }
 
     // Check termination
     let exec_with_no_termination_check = function.x.mode == Mode::Exec

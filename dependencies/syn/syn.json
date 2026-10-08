@@ -1,5 +1,5 @@
 {
-  "version": "0.0.0-2026-05-24-0157",
+  "version": "0.0.0-2026-09-06-0133",
   "types": [
     {
       "ident": "Abi",
@@ -336,6 +336,11 @@
         "requires": {
           "option": {
             "syn": "Requires"
+          }
+        },
+        "unwind_requires": {
+          "option": {
+            "syn": "UnwindRequires"
           }
         },
         "ensures": {
@@ -6613,6 +6618,11 @@
             "syn": "Requires"
           }
         },
+        "unwind_requires": {
+          "option": {
+            "syn": "UnwindRequires"
+          }
+        },
         "recommends": {
           "option": {
             "syn": "Recommends"
@@ -7636,6 +7646,31 @@
       "fields": {
         "token": {
           "token": "Uninterp"
+        }
+      }
+    },
+    {
+      "ident": "UnwindRequires",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "Requires"
+        },
+        "bracket_token": {
+          "group": "Bracket"
+        },
+        "no_unwind_token": {
+          "token": "NoUnwind"
+        },
+        "exact": {
+          "option": {
+            "proc_macro2": "Ident"
+          }
+        },
+        "exprs": {
+          "syn": "Specification"
         }
       }
     },

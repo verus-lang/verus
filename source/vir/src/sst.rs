@@ -228,6 +228,9 @@ pub enum StmX {
         /// Code to be executed *inside* the function call,
         /// i.e. emplaced between the pre- and postcondition
         body: Option<Stm>,
+        /// If true, check the callee's `requires[no_unwind]` conditions
+        /// (see CallTargetAttrs::restrict_unwind)
+        restrict_unwind: bool,
     },
     /// Assertion to be verified by the SMT solver; reports Stm's span on failure plus optional extra info
     Assert(Option<AssertId>, Option<Message>, Exp),

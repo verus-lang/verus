@@ -116,6 +116,7 @@ impl Hash for crate::AssumeSpecification {
         self.inputs.hash(state);
         self.output.hash(state);
         self.requires.hash(state);
+        self.unwind_requires.hash(state);
         self.ensures.hash(state);
         self.default_ensures.hash(state);
         self.returns.hash(state);
@@ -3256,6 +3257,7 @@ impl Hash for crate::SignatureSpec {
         self.prover.hash(state);
         self.atomic_spec.hash(state);
         self.requires.hash(state);
+        self.unwind_requires.hash(state);
         self.recommends.hash(state);
         self.ensures.hash(state);
         self.default_ensures.hash(state);
@@ -3802,6 +3804,16 @@ impl Hash for crate::Uninterp {
     where
         H: Hasher,
     {}
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::UnwindRequires {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.exact.hash(state);
+        self.exprs.hash(state);
+    }
 }
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]

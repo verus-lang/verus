@@ -1,6 +1,7 @@
 use crate::ast::{
     Expr, ExprX, Exprs, Fun, HeaderExprX, LoopInvariant, LoopInvariantKind, LoopInvariants,
-    MaskSpec, PlaceX, Stmt, StmtX, Typ, UnwindSpec, UnwrapParameter, VarIdent, VirErr, Visibility,
+    MaskSpec, NoUnwindWhenKind, PlaceX, Stmt, StmtX, Typ, UnwindSpec, UnwrapParameter, VarIdent,
+    VirErr, Visibility,
 };
 use crate::ast_util::air_unique_var;
 use crate::messages::error;
@@ -227,7 +228,10 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         atomic_call_loop = true;
                         allowed = allows.loops();
                     }
-                    HeaderExprX::NoUnwind | HeaderExprX::NoUnwindWhen(_) => {
+                    HeaderExprX::NoUnwind
+                    | HeaderExprX::NoUnwindWhen(_)
+                    | HeaderExprX::NoUnwindRequires(_)
+                    | HeaderExprX::NoUnwindRequiresExact(_) => {
                         match unwind_spec {
                             None => {}
                             _ => {
@@ -237,7 +241,18 @@ pub fn read_header_block(block: &mut Vec<Stmt>, allows: &HeaderAllows) -> Result
                         unwind_spec = match &**header {
                             HeaderExprX::NoUnwind => Some(UnwindSpec::NoUnwind),
                             HeaderExprX::NoUnwindWhen(expr) => {
-                                Some(UnwindSpec::NoUnwindWhen(expr.clone()))
+                                Some(UnwindSpec::NoUnwindWhen(expr.clone(), NoUnwindWhenKind::When))
+                            }
+                            HeaderExprX::NoUnwindRequires(es)
+                            | HeaderExprX::NoUnwindRequiresExact(es) => {
+                                let kind = if matches!(&**header, HeaderExprX::NoUnwindRequires(_))
+                                {
+                                    NoUnwindWhenKind::Requires
+                                } else {
+                                    NoUnwindWhenKind::RequiresExact
+                                };
+                                let expr = crate::ast_util::conjoin(&stmt.span, &es);
+                                Some(UnwindSpec::NoUnwindWhen(expr, kind))
                             }
                             _ => unreachable!(),
                         };

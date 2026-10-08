@@ -330,6 +330,8 @@ pub(crate) enum Attr {
     SpinoffProver,
     // Use a new dedicated Z3 process for loops
     LoopIsolation(bool),
+    // Check requires[no_unwind] conditions at call sites
+    RestrictUnwind(bool),
     // Allow complex invariants (invariant_except_break, ensures) with loop_isolation(false)
     AllowComplexInvariants,
     // Memoize function call results during interpretation
@@ -618,6 +620,19 @@ pub(crate) fn parse_attrs(
                     if arg == "loop_isolation" && r == "false" =>
                 {
                     v.push(Attr::LoopIsolation(false))
+                }
+                AttrTree::Fun(_, arg, None) if arg == "restrict_unwind" => {
+                    v.push(Attr::RestrictUnwind(true))
+                }
+                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, r, None)]))
+                    if arg == "restrict_unwind" && r == "true" =>
+                {
+                    v.push(Attr::RestrictUnwind(true))
+                }
+                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, r, None)]))
+                    if arg == "restrict_unwind" && r == "false" =>
+                {
+                    v.push(Attr::RestrictUnwind(false))
                 }
                 AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, r, None)]))
                     if arg == "deprecated_postcondition_mut_ref_style" && r == "true" =>
@@ -1041,6 +1056,18 @@ pub(crate) fn get_loop_isolation_walk_parents<'tcx>(
     None
 }
 
+pub(crate) fn get_restrict_unwind_walk_parents<'tcx>(
+    tcx: rustc_middle::ty::TyCtxt<'tcx>,
+    def_id: rustc_span::def_id::DefId,
+) -> Option<bool> {
+    for attr in parse_attrs_walk_parents(tcx, def_id) {
+        if let Attr::RestrictUnwind(flag) = attr {
+            return Some(flag);
+        }
+    }
+    None
+}
+
 pub(crate) fn migrate_postconditions_walk_parents<'tcx>(
     tcx: rustc_middle::ty::TyCtxt<'tcx>,
     def_id: rustc_span::def_id::DefId,
@@ -1270,6 +1297,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) nonlinear: bool,
     pub(crate) spinoff_prover: bool,
     pub(crate) loop_isolation: Option<bool>,
+    pub(crate) restrict_unwind: Option<bool>,
     pub(crate) allow_complex_invariants: bool,
     pub(crate) memoize: bool,
     pub(crate) rlimit: Option<f32>,
@@ -1465,6 +1493,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
         nonlinear: false,
         spinoff_prover: false,
         loop_isolation: None,
+        restrict_unwind: None,
         allow_complex_invariants: false,
         memoize: false,
         rlimit: None,
@@ -1553,6 +1582,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             Attr::NonLinear => vs.nonlinear = true,
             Attr::SpinoffProver => vs.spinoff_prover = true,
             Attr::LoopIsolation(flag) => vs.loop_isolation = Some(flag),
+            Attr::RestrictUnwind(flag) => vs.restrict_unwind = Some(flag),
             Attr::AllowComplexInvariants => vs.allow_complex_invariants = true,
             Attr::Memoize => vs.memoize = true,
             Attr::RLimit(rlimit) => vs.rlimit = Some(rlimit),

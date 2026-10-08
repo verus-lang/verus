@@ -257,6 +257,20 @@ impl Debug for Lite<syn::AssumeSpecification> {
             }
             formatter.field("requires", Print::ref_cast(val));
         }
+        if let Some(val) = &self.value.unwind_requires {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::UnwindRequires);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some(")?;
+                    Debug::fmt(Lite(&self.0), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("unwind_requires", Print::ref_cast(val));
+        }
         if let Some(val) = &self.value.ensures {
             #[derive(RefCast)]
             #[repr(transparent)]
@@ -6208,6 +6222,20 @@ impl Debug for Lite<syn::SignatureSpec> {
             }
             formatter.field("requires", Print::ref_cast(val));
         }
+        if let Some(val) = &self.value.unwind_requires {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::UnwindRequires);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some(")?;
+                    Debug::fmt(Lite(&self.0), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("unwind_requires", Print::ref_cast(val));
+        }
         if let Some(val) = &self.value.recommends {
             #[derive(RefCast)]
             #[repr(transparent)]
@@ -7284,6 +7312,27 @@ impl Debug for Lite<syn::UnOp> {
 impl Debug for Lite<syn::Uninterp> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("Uninterp");
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::UnwindRequires> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("UnwindRequires");
+        if let Some(val) = &self.value.exact {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(proc_macro2::Ident);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some(")?;
+                    Debug::fmt(Lite(&self.0), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("exact", Print::ref_cast(val));
+        }
+        formatter.field("exprs", Lite(&self.value.exprs));
         formatter.finish()
     }
 }

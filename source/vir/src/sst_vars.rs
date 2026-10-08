@@ -285,6 +285,7 @@ fn stm_assign(
             dest,
             assert_id,
             body,
+            restrict_unwind,
         } => {
             if let Some(dest) = dest {
                 let var: UniqueIdent = get_loc_var(&dest.dest);
@@ -327,6 +328,7 @@ fn stm_assign(
                 dest: dest.clone(),
                 assert_id: assert_id.clone(),
                 body,
+                restrict_unwind: *restrict_unwind,
             })
         }
         StmX::AssertQuery { mode, typ_inv_exps, typ_inv_vars, body } => {
@@ -512,6 +514,7 @@ fn stm_mutations(param_typs: &[(VarIdent, Typ)], mutations: &mut HavocSet, stm: 
             dest,
             assert_id,
             body,
+            restrict_unwind,
         } => {
             if let Some(Dest { is_init: false, dest }) = dest {
                 mutations.insert(dest);
@@ -530,6 +533,7 @@ fn stm_mutations(param_typs: &[(VarIdent, Typ)], mutations: &mut HavocSet, stm: 
                 dest: dest.clone(),
                 assert_id: assert_id.clone(),
                 body,
+                restrict_unwind: *restrict_unwind,
             })
         }
         StmX::Assign { lhs, rhs: _ } => {

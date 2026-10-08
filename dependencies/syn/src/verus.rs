@@ -150,6 +150,17 @@ ast_struct! {
 }
 
 ast_struct! {
+    /// `requires[no_unwind] exprs` or `requires[no_unwind exact] exprs`
+    pub struct UnwindRequires {
+        pub token: Token![requires],
+        pub bracket_token: token::Bracket,
+        pub no_unwind_token: Token![no_unwind],
+        pub exact: Option<Ident>,
+        pub exprs: Specification,
+    }
+}
+
+ast_struct! {
     pub struct Recommends {
         pub token: Token![recommends],
         pub exprs: Specification,
@@ -298,6 +309,7 @@ ast_struct! {
         pub prover: Option<Prover>,
         pub atomic_spec: Option<AtomicSpec>,
         pub requires: Option<Requires>,
+        pub unwind_requires: Option<UnwindRequires>,
         pub recommends: Option<Recommends>,
         pub ensures: Option<Ensures>,
         pub default_ensures: Option<DefaultEnsures>,
@@ -314,6 +326,7 @@ impl SignatureSpec {
         self.prover = None;
         self.atomic_spec = None;
         self.requires = None;
+        self.unwind_requires = None;
         self.recommends = None;
         self.ensures = None;
         self.default_ensures = None;
@@ -416,6 +429,7 @@ ast_struct! {
         pub output: ReturnType,
         // REVIEW: consider replacing these with SignatureSpec
         pub requires: Option<Requires>,
+        pub unwind_requires: Option<UnwindRequires>,
         pub ensures: Option<Ensures>,
         pub default_ensures: Option<DefaultEnsures>,
         pub returns: Option<Returns>,
@@ -897,7 +911,8 @@ pub mod parsing {
         }
 
         fn peek_spec_keyword(input: ParseStream) -> bool {
-            input.peek(Token![invariant_except_break])
+            input.peek(Token![requires])
+                || input.peek(Token![invariant_except_break])
                 || input.peek(Token![invariant])
                 || input.peek(Token![invariant_ensures])
                 || input.peek(Token![ensures])
@@ -913,7 +928,8 @@ pub mod parsing {
         }
 
         fn peek2_spec_keyword(input: ParseStream) -> bool {
-            input.peek2(Token![invariant_except_break])
+            input.peek2(Token![requires])
+                || input.peek2(Token![invariant_except_break])
                 || input.peek2(Token![invariant])
                 || input.peek2(Token![invariant_ensures])
                 || input.peek2(Token![ensures])
@@ -1007,7 +1023,62 @@ pub mod parsing {
 
         /// Parse an optional `requires` clause group in a given context.
         pub fn parse_optional_in(ctx: Context, input: ParseStream) -> Result<Option<Self>> {
-            if input.peek(Token![requires]) {
+            if input.peek(Token![requires]) && !UnwindRequires::peek(input) {
+                Self::parse_in(ctx, input).map(Some)
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl UnwindRequires {
+        /// Check for `requires[no_unwind ...]`
+        pub fn peek(input: ParseStream) -> bool {
+            if !(input.peek(Token![requires]) && input.peek2(token::Bracket)) {
+                return false;
+            }
+            let fork = input.fork();
+            let check = |fork: ParseStream| -> Result<bool> {
+                let _: Token![requires] = fork.parse()?;
+                let content;
+                let _ = bracketed!(content in fork);
+                Ok(content.peek(Token![no_unwind]))
+            };
+            check(&fork).unwrap_or(false)
+        }
+
+        /// Parse a `requires[no_unwind]` or `requires[no_unwind exact]` clause group in a given context.
+        pub fn parse_in(ctx: Context, input: ParseStream) -> Result<Self> {
+            let token = input.parse()?;
+            let content;
+            let bracket_token = bracketed!(content in input);
+            let no_unwind_token = content.parse()?;
+            let exact = if content.is_empty() {
+                None
+            } else {
+                let id: Ident = content.parse()?;
+                if id != "exact" {
+                    return Err(Error::new(id.span(), "expected `exact`"));
+                }
+                Some(id)
+            };
+            if !content.is_empty() {
+                return Err(content.error("unexpected token in `requires[...]`"));
+            }
+            let exprs = Specification::parse_in(ctx, input)?;
+            Ok(UnwindRequires {
+                token,
+                bracket_token,
+                no_unwind_token,
+                exact,
+                exprs,
+            })
+        }
+
+        /// Parse an optional `requires[no_unwind]` clause group in a given context.
+        pub fn parse_optional_in(ctx: Context, input: ParseStream) -> Result<Option<Self>> {
+            if Self::peek(input) {
                 Self::parse_in(ctx, input).map(Some)
             } else {
                 Ok(None)
@@ -1404,7 +1475,13 @@ pub mod parsing {
             let prover: Option<Prover> = input.parse()?;
             let with: Option<WithSpecOnFn> = input.parse()?;
             let atomic_spec: Option<AtomicSpec> = input.parse()?;
-            let requires: Option<Requires> = Requires::parse_optional_in(Context::Item, input)?;
+            // requires and requires[no_unwind] may appear in either order
+            let mut requires: Option<Requires> = Requires::parse_optional_in(Context::Item, input)?;
+            let unwind_requires: Option<UnwindRequires> =
+                UnwindRequires::parse_optional_in(Context::Item, input)?;
+            if requires.is_none() {
+                requires = Requires::parse_optional_in(Context::Item, input)?;
+            }
             let recommends: Option<Recommends> = input.parse()?;
             let ensures: Option<Ensures> = Ensures::parse_optional_in(Context::Item, input)?;
             let default_ensures: Option<DefaultEnsures> = input.parse()?;
@@ -1417,6 +1494,7 @@ pub mod parsing {
                 prover,
                 atomic_spec,
                 requires,
+                unwind_requires,
                 recommends,
                 ensures,
                 default_ensures,
@@ -1712,7 +1790,13 @@ pub mod parsing {
             let output: ReturnType = input.parse()?;
             generics.where_clause = input.parse()?;
 
-            let requires: Option<Requires> = Requires::parse_optional_in(Context::Item, input)?;
+            // requires and requires[no_unwind] may appear in either order
+            let mut requires: Option<Requires> = Requires::parse_optional_in(Context::Item, input)?;
+            let unwind_requires: Option<UnwindRequires> =
+                UnwindRequires::parse_optional_in(Context::Item, input)?;
+            if requires.is_none() {
+                requires = Requires::parse_optional_in(Context::Item, input)?;
+            }
             let ensures: Option<Ensures> = Ensures::parse_optional_in(Context::Item, input)?;
             let default_ensures: Option<DefaultEnsures> = input.parse()?;
             let returns: Option<Returns> = input.parse()?;
@@ -1732,6 +1816,7 @@ pub mod parsing {
                 inputs,
                 output,
                 requires,
+                unwind_requires,
                 ensures,
                 default_ensures,
                 returns,
@@ -2234,6 +2319,18 @@ mod printing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for UnwindRequires {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.token.to_tokens(tokens);
+            self.bracket_token.surround(tokens, |tokens| {
+                self.no_unwind_token.to_tokens(tokens);
+                self.exact.to_tokens(tokens);
+            });
+            self.exprs.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
     impl ToTokens for Recommends {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             self.token.to_tokens(tokens);
@@ -2378,6 +2475,7 @@ mod printing {
             self.prover.to_tokens(tokens);
             self.atomic_spec.to_tokens(tokens);
             self.requires.to_tokens(tokens);
+            self.unwind_requires.to_tokens(tokens);
             self.recommends.to_tokens(tokens);
             self.ensures.to_tokens(tokens);
             self.default_ensures.to_tokens(tokens);
@@ -2737,6 +2835,7 @@ mod printing {
             self.generics.where_clause.to_tokens(tokens);
 
             self.requires.to_tokens(tokens);
+            self.unwind_requires.to_tokens(tokens);
             self.ensures.to_tokens(tokens);
             self.default_ensures.to_tokens(tokens);
             self.returns.to_tokens(tokens);

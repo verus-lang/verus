@@ -178,7 +178,9 @@ fn is_header_verus_item(verus_item: &VerusItem) -> bool {
             | SpecItem::RecommendsBy
             | SpecItem::OpensInvariantMask
             | SpecItem::NoUnwind
-            | SpecItem::NoUnwindWhen => true,
+            | SpecItem::NoUnwindWhen
+            | SpecItem::NoUnwindRequires
+            | SpecItem::NoUnwindRequiresExact => true,
         },
         VerusItem::Directive(dir_item) => match dir_item {
             crate::verus_items::DirectiveItem::ExtraDependency => true,

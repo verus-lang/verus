@@ -1106,9 +1106,9 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
     fn visit_unwind_spec(&mut self, us: &UnwindSpec) -> Result<R::Ret<UnwindSpec>, Err> {
         match us {
             UnwindSpec::NoUnwind => R::ret(|| UnwindSpec::NoUnwind),
-            UnwindSpec::NoUnwindWhen(expr) => {
+            UnwindSpec::NoUnwindWhen(expr, kind) => {
                 let e = self.visit_expr(expr)?;
-                R::ret(|| UnwindSpec::NoUnwindWhen(R::get(e)))
+                R::ret(|| UnwindSpec::NoUnwindWhen(R::get(e), *kind))
             }
             UnwindSpec::MayUnwind => R::ret(|| UnwindSpec::MayUnwind),
         }

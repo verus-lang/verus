@@ -1121,6 +1121,9 @@ pub trait Visit<'ast> {
     fn visit_uninterp(&mut self, i: &'ast crate::Uninterp) {
         visit_uninterp(self, i);
     }
+    fn visit_unwind_requires(&mut self, i: &'ast crate::UnwindRequires) {
+        visit_unwind_requires(self, i);
+    }
     #[cfg(feature = "full")]
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
     fn visit_use_glob(&mut self, i: &'ast crate::UseGlob) {
@@ -1347,6 +1350,9 @@ where
     v.visit_return_type(&node.output);
     if let Some(it) = &node.requires {
         v.visit_requires(it);
+    }
+    if let Some(it) = &node.unwind_requires {
+        v.visit_unwind_requires(it);
     }
     if let Some(it) = &node.ensures {
         v.visit_ensures(it);
@@ -4646,6 +4652,9 @@ where
     if let Some(it) = &node.requires {
         v.visit_requires(it);
     }
+    if let Some(it) = &node.unwind_requires {
+        v.visit_unwind_requires(it);
+    }
     if let Some(it) = &node.recommends {
         v.visit_recommends(it);
     }
@@ -5203,6 +5212,18 @@ where
     V: Visit<'ast> + ?Sized,
 {
     skip!(node.token);
+}
+pub fn visit_unwind_requires<'ast, V>(v: &mut V, node: &'ast crate::UnwindRequires)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    skip!(node.token);
+    skip!(node.bracket_token);
+    skip!(node.no_unwind_token);
+    if let Some(it) = &node.exact {
+        v.visit_ident(it);
+    }
+    v.visit_specification(&node.exprs);
 }
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "full")))]

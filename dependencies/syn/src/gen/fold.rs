@@ -1268,6 +1268,12 @@ pub trait Fold {
     fn fold_uninterp(&mut self, i: crate::Uninterp) -> crate::Uninterp {
         fold_uninterp(self, i)
     }
+    fn fold_unwind_requires(
+        &mut self,
+        i: crate::UnwindRequires,
+    ) -> crate::UnwindRequires {
+        fold_unwind_requires(self, i)
+    }
     #[cfg(feature = "full")]
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
     fn fold_use_glob(&mut self, i: crate::UseGlob) -> crate::UseGlob {
@@ -1474,6 +1480,7 @@ where
             .map(|it| ((it).0, crate::punctuated::fold((it).1, f, F::fold_fn_arg))),
         output: f.fold_return_type(node.output),
         requires: (node.requires).map(|it| f.fold_requires(it)),
+        unwind_requires: (node.unwind_requires).map(|it| f.fold_unwind_requires(it)),
         ensures: (node.ensures).map(|it| f.fold_ensures(it)),
         default_ensures: (node.default_ensures).map(|it| f.fold_default_ensures(it)),
         returns: (node.returns).map(|it| f.fold_returns(it)),
@@ -4606,6 +4613,7 @@ where
         prover: (node.prover).map(|it| f.fold_prover(it)),
         atomic_spec: (node.atomic_spec).map(|it| f.fold_atomic_spec(it)),
         requires: (node.requires).map(|it| f.fold_requires(it)),
+        unwind_requires: (node.unwind_requires).map(|it| f.fold_unwind_requires(it)),
         recommends: (node.recommends).map(|it| f.fold_recommends(it)),
         ensures: (node.ensures).map(|it| f.fold_ensures(it)),
         default_ensures: (node.default_ensures).map(|it| f.fold_default_ensures(it)),
@@ -5141,6 +5149,21 @@ where
 {
     crate::Uninterp {
         token: node.token,
+    }
+}
+pub fn fold_unwind_requires<F>(
+    f: &mut F,
+    node: crate::UnwindRequires,
+) -> crate::UnwindRequires
+where
+    F: Fold + ?Sized,
+{
+    crate::UnwindRequires {
+        token: node.token,
+        bracket_token: node.bracket_token,
+        no_unwind_token: node.no_unwind_token,
+        exact: (node.exact).map(|it| f.fold_ident(it)),
+        exprs: f.fold_specification(node.exprs),
     }
 }
 #[cfg(feature = "full")]

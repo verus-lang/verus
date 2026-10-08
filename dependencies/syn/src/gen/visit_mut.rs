@@ -1137,6 +1137,9 @@ pub trait VisitMut {
     fn visit_uninterp_mut(&mut self, i: &mut crate::Uninterp) {
         visit_uninterp_mut(self, i);
     }
+    fn visit_unwind_requires_mut(&mut self, i: &mut crate::UnwindRequires) {
+        visit_unwind_requires_mut(self, i);
+    }
     #[cfg(feature = "full")]
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
     fn visit_use_glob_mut(&mut self, i: &mut crate::UseGlob) {
@@ -1353,6 +1356,9 @@ where
     v.visit_return_type_mut(&mut node.output);
     if let Some(it) = &mut node.requires {
         v.visit_requires_mut(it);
+    }
+    if let Some(it) = &mut node.unwind_requires {
+        v.visit_unwind_requires_mut(it);
     }
     if let Some(it) = &mut node.ensures {
         v.visit_ensures_mut(it);
@@ -4451,6 +4457,9 @@ where
     if let Some(it) = &mut node.requires {
         v.visit_requires_mut(it);
     }
+    if let Some(it) = &mut node.unwind_requires {
+        v.visit_unwind_requires_mut(it);
+    }
     if let Some(it) = &mut node.recommends {
         v.visit_recommends_mut(it);
     }
@@ -4990,6 +4999,18 @@ where
     V: VisitMut + ?Sized,
 {
     skip!(node.token);
+}
+pub fn visit_unwind_requires_mut<V>(v: &mut V, node: &mut crate::UnwindRequires)
+where
+    V: VisitMut + ?Sized,
+{
+    skip!(node.token);
+    skip!(node.bracket_token);
+    skip!(node.no_unwind_token);
+    if let Some(it) = &mut node.exact {
+        v.visit_ident_mut(it);
+    }
+    v.visit_specification_mut(&mut node.exprs);
 }
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "full")))]

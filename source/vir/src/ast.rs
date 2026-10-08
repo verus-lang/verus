@@ -816,6 +816,12 @@ pub enum HeaderExprX {
     NoUnwind,
     /// This function will not unwind if the given condition holds (function of arguments)
     NoUnwindWhen(Expr),
+    /// `requires[no_unwind]`: the function will not unwind if the conditions hold,
+    /// and the conditions are checked at call sites by default (see restrict_unwind)
+    NoUnwindRequires(Exprs),
+    /// `requires[no_unwind exact]`: same as NoUnwindRequires, but additionally
+    /// the function unwinds if the conditions do not hold
+    NoUnwindRequiresExact(Exprs),
     /// The visibility used in, e.g., `open(crate)`
     OpenVisibilityQualifier(Visibility),
 }
@@ -981,6 +987,9 @@ pub struct CallTargetAttrs {
     pub const_var: bool,
     /// If the expected Fun is undeclared, enable replacing Fun with AssumeExternal
     pub assume_external_allowed: bool,
+    /// If true, check the callee's `requires[no_unwind]` conditions at this call site
+    /// even if not needed to prove that the caller does not unwind
+    pub restrict_unwind: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
@@ -1581,11 +1590,25 @@ pub enum MaskSpec {
     InvariantOpensSet(Expr),
 }
 
-/// Function specification of its invariant mask
+/// Where a NoUnwindWhen condition came from
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, ToDebugSNode, PartialEq, Eq)]
+pub enum NoUnwindWhenKind {
+    /// `no_unwind when e`: the condition is only checked at call sites
+    /// when needed to prove that the caller doesn't unwind
+    When,
+    /// `requires[no_unwind] e`: the condition is checked at call sites
+    /// (unless restrict_unwind is false for the call)
+    Requires,
+    /// `requires[no_unwind exact] e`: same as Requires, but additionally the function
+    /// unwinds if the condition does not hold (so the condition holds if the function returns)
+    RequiresExact,
+}
+
+/// Function specification of whether it may unwind
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum UnwindSpec {
     NoUnwind,
-    NoUnwindWhen(Expr),
+    NoUnwindWhen(Expr, NoUnwindWhenKind),
     MayUnwind,
 }
 
