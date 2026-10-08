@@ -4,7 +4,7 @@ Verus provides a tool to help make Verus specification look nice in rustdoc.
 To do this, you first run `rustdoc` on a crate and then run an HTML postprocessor called
 Verusdoc.
 
-First, make sure `verusdoc` is built by running `vargo build -p verusdoc` in the
+First, make sure `verusdoc` is built by running `cargo build -p verusdoc` in the
 `verus/source` directory.
 
 Unfortunately, we currently don't have helpful tooling for running `rustdoc` with the
@@ -71,6 +71,5 @@ pub fn compute_max(x: u32, y: u32) -> (max: u32)
 ```
 
 It will generate rustdoc that looks like this:
-
 
 ![Screenshot of a verusdoc example illustrating the inclusion of an `ensures` clauses](graphics/verusdoc-example.png)
