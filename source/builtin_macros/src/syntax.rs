@@ -1236,8 +1236,10 @@ impl Visitor {
         let has_body = semi_token.is_none();
         let atomic_perm_clause = self.handle_atomic_spec(sig, vis, &mut stmts);
 
-        // attrs.push(mk_verus_attr(sig.fn_token.span, quote! { verus_macro }));
         if self.erase_ghost.keep() {
+            if !self.rustdoc {
+                name_verus_wildcard_params(sig);
+            }
             attrs.push(mk_verus_attr(sig.fn_token.span, quote! { verus_macro }));
         }
 
@@ -1436,7 +1438,11 @@ impl Visitor {
             atomic_perm_clause,
         );
         if !self.erase_ghost.erase() {
-            if !(self.rustdoc && sig.constness.is_some()) {
+            // Rustdoc omits contracts for const fns, and for named returns with `_` params
+            let omit_in_rustdoc = self.rustdoc
+                && (sig.constness.is_some()
+                    || (ret_pat.is_some() && has_verus_wildcard_param(sig)));
+            if !omit_in_rustdoc {
                 stmts.extend(spec_stmts);
             }
         }
@@ -5631,6 +5637,67 @@ fn take_sig_with_spec(
     spec_stmts
 }
 
+#[cfg(verus_keep_ghost)]
+fn def_site() -> Span {
+    Span::from(proc_macro::Span::def_site())
+}
+
+#[cfg(not(verus_keep_ghost))]
+fn def_site() -> Span {
+    unreachable!("wildcard parameters are only named when keeping ghost code")
+}
+
+// Named-return contracts call the function to infer the return type, so each
+// wildcard parameter needs a name to pass. The def-site span hides the name
+// from user locals and items alike.
+fn wildcard_param_ident(index: usize, span: Span) -> Ident {
+    Ident::new(&format!("__verus_wildcard_param_{index}"), def_site().located_at(span))
+}
+
+fn has_verus_wildcard_param(sig: &Signature) -> bool {
+    sig.inputs.iter().any(
+        |arg| matches!(&arg.kind, FnArgKind::Typed(typed) if matches!(&*typed.pat, Pat::Wild(_))),
+    )
+}
+
+fn has_wildcard_param(sig: &syn::Signature) -> bool {
+    sig.inputs.iter().any(
+        |arg| matches!(arg, syn::FnArg::Typed(typed) if matches!(&*typed.pat, syn::Pat::Wild(_))),
+    )
+}
+
+fn name_verus_wildcard_params(sig: &mut Signature) {
+    for (index, arg) in sig.inputs.iter_mut().enumerate() {
+        if let FnArgKind::Typed(typed) = &mut arg.kind {
+            if let Pat::Wild(wild) = &mut *typed.pat {
+                *typed.pat = Pat::Ident(PatIdent {
+                    attrs: std::mem::take(&mut wild.attrs),
+                    by_ref: None,
+                    mutability: None,
+                    ident: wildcard_param_ident(index, wild.span()),
+                    subpat: None,
+                });
+            }
+        }
+    }
+}
+
+fn name_wildcard_params(sig: &mut syn::Signature) {
+    for (index, arg) in sig.inputs.iter_mut().enumerate() {
+        if let syn::FnArg::Typed(typed) = arg {
+            if let syn::Pat::Wild(wild) = &mut *typed.pat {
+                *typed.pat = syn::Pat::Ident(syn::PatIdent {
+                    attrs: std::mem::take(&mut wild.attrs),
+                    by_ref: None,
+                    mutability: None,
+                    ident: wildcard_param_ident(index, wild.span()),
+                    subpat: None,
+                });
+            }
+        }
+    }
+}
+
 pub(crate) fn verus_inputs_to_tokens(
     inputs: &Punctuated<FnArg, Token![,]>,
 ) -> (Option<TokenStream>, TokenStream) {
@@ -5747,6 +5814,15 @@ pub(crate) fn sig_specs_attr(
         spec_stmts.extend(take_sig_with_spec(erase_ghost, with, sig, &mut ret_pat));
     }
     spec.with = None;
+    let rustdoc = env_rustdoc();
+    if erase_ghost.keep() && !is_closure {
+        if !rustdoc {
+            name_wildcard_params(sig);
+        } else if ret_pat.is_some() && has_wildcard_param(sig) {
+            // Rustdoc keeps `_` params, which the named-return contract's dummy call can't pass.
+            return spec_stmts;
+        }
+    }
     let (ret_pat, ret_ty) = match (ret_pat, &sig.output) {
         (Some(pat), syn::ReturnType::Type(_, ty)) => (Some(pat), Some(ty)),
         _ => (None, None),
@@ -5761,7 +5837,7 @@ pub(crate) fn sig_specs_attr(
         inside_const: false,
         inside_arith: InsideArith::None,
         assign_to: false,
-        rustdoc: env_rustdoc(),
+        rustdoc,
         inside_impl: None,
         additional_items: Vec::new(),
     };

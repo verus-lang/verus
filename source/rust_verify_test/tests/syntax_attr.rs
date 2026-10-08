@@ -4,6 +4,38 @@ mod common;
 use common::*;
 
 test_verify_one_file_with_options! {
+    #[test] wildcard_params_named_return [] => code! {
+        #[verus_spec(result => ensures result == value)]
+        fn f<T>(_: T, value: u32, _: &mut u64) -> u32 {
+            value
+        }
+
+        #[verus_spec(result => ensures result.1)]
+        fn g(_: impl Sized, _: &impl Sized) -> (impl Sized, bool) {
+            (true, true)
+        }
+
+        #[verus_spec]
+        fn caller() {
+            let mut value = 30u64;
+            let result = f(false, 20, &mut value);
+            proof! { assert(result == 20); }
+            let result = g(true, &false);
+            proof! { assert(result.1); }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] wildcard_params_named_return_false_postcondition code! {
+        #[verus_spec(result => ensures result.1)] // FAILS
+        fn f(_: impl Sized) -> (impl Sized, bool) {
+            (true, false)
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
     #[test] verus_verify_basic_while ["exec_allows_no_decreases_clause"] =>  code! {
         #[verus_spec]
         fn test1() {
