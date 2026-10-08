@@ -2714,3 +2714,81 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "type invariant function `vstd::resource::impls::frac_opt::impl&%2::inv` is not visible to this program point, which requires us to prove the invariant is preserved")
 }
+
+test_verify_one_file! {
+    // Regression test for #2898: a lifetime late-bound on the function but early-bound
+    // on the datatype used to panic rustc.
+    #[test] type_invariant_free_fn_lifetime_and_type_param_issue2898 verus_code! {
+        pub struct X<'a, T> {
+            r: &'a T,
+        }
+
+        #[verifier::type_invariant]
+        pub closed spec fn inv<'a, T>(x: X<'a, T>) -> bool {
+            true
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // Same as above with two lifetimes and two type params, to check the fix generalizes.
+    #[test] type_invariant_free_fn_multiple_lifetimes_and_type_params_issue2898 verus_code! {
+        pub struct MultiX<'a, 'b, T, U> {
+            r: &'a T,
+            s: &'b U,
+        }
+
+        #[verifier::type_invariant]
+        pub closed spec fn inv_multi<'a, 'b, T, U>(x: MultiX<'a, 'b, T, U>) -> bool {
+            true
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // Same shape with a const generic mixed in, to exercise the fix's ConstKind::Param handling.
+    #[test] type_invariant_free_fn_lifetime_type_and_const_param_issue2898 verus_code! {
+        pub struct ConstX<'a, T, const N: usize> {
+            r: &'a T,
+        }
+
+        #[verifier::type_invariant]
+        pub closed spec fn inv_const<'a, T, const N: usize>(x: ConstX<'a, T, N>) -> bool {
+            true
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // Regression test for the second panic hit while fixing #2898: an impl's own
+    // bound (T: Copy) wasn't substituted, since a method's generics_of excludes its impl's.
+    #[test] type_invariant_impl_generic_with_bound_issue2898 verus_code! {
+        use vstd::prelude::*;
+
+        pub struct BoundedX<T: Copy> {
+            v: T,
+        }
+
+        impl<T: Copy> BoundedX<T> {
+            #[verifier::type_invariant]
+            pub closed spec fn inv(&self) -> bool {
+                true
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // Same as the first test, but the lifetime is early-bound via a where-clause - the
+    // case that never needed re-keying, kept working.
+    #[test] type_invariant_free_fn_lifetime_early_bound_via_where_clause_issue2898 verus_code! {
+        pub struct WhereX<'a, T> {
+            r: &'a T,
+        }
+
+        #[verifier::type_invariant]
+        pub closed spec fn inv_where<'a, T>(x: WhereX<'a, T>) -> bool where T: 'a {
+            true
+        }
+    } => Ok(())
+}
