@@ -1180,6 +1180,32 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] const_generic_signed_out_of_range verus_code! {
+        spec fn h<const N: i8>() -> i8 { N }
+
+        proof fn test() {
+            let x = h::<{-1}>();
+            assert(x <= 127);
+            assert(h::<{-1}>() == 255int) by (compute_only);
+            assert(false);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
+}
+
+test_verify_one_file! {
+    #[test] const_generic_signed_boundaries verus_code! {
+        spec fn h<const N: i8>() -> i8 { N }
+        spec fn wide<const N: i128>() -> i128 { N }
+
+        proof fn test() {
+            assert(h::<0>() == 0) by (compute_only);
+            assert(h::<127>() == 127) by (compute_only);
+            assert(wide::<{i128::MAX}>() == i128::MAX) by (compute_only);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] scope_const_generic_capture verus_code! {
         spec fn h<const N: u64, const M: u64>() -> int { M as int }
 
