@@ -4,6 +4,28 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
+    #[test] test_opaque_return_followed_by_spec_and_proof verus_code! {
+        use vstd::prelude::*;
+
+        trait Marker { }
+        impl Marker for bool { }
+
+        fn opaque_return() -> impl Marker {
+            true
+        }
+
+        spec fn ordinary_spec() -> bool {
+            true
+        }
+
+        proof fn ordinary_proof()
+            ensures ordinary_spec(),
+        {
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_return_opaque_type verus_code! {
         use vstd::prelude::*;
         trait DummyTrait{}
