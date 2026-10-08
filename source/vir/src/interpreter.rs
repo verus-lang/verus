@@ -1213,6 +1213,8 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             match op {
                 crate::ast::NullaryOpr::ConstGeneric(typ) => {
                     match &**typ {
+                        TypX::ConstInt(i) => int_new(i.clone()),
+                        TypX::ConstBool(b) => bool_new(*b),
                         TypX::TypParam(id) => {
                             let var_id = VarIdent(id.clone(), VarIdentDisambiguate::TypParamBare);
                             match state.env.get(&var_id) {
