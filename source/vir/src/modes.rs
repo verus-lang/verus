@@ -425,6 +425,21 @@ pub struct ErasureModes {
     pub var_modes: Vec<(Span, (Mode, Mode))>,
     // Modes of calls and struct Ctors
     pub ctor_modes: Vec<(Span, Mode)>,
+    // For the erasure consistency check (-V check-erasure):
+    // AstId of every expression and place checked, and whether it is exec code
+    // (survives erasure into the compiled program).
+    pub expr_exec: Vec<(crate::messages::AstId, bool)>,
+    // AstId of every pattern checked, and its mode.
+    pub pat_modes: Vec<(crate::messages::AstId, Mode)>,
+    // AstId of every expression and place checked, and the mode it has.
+    pub expr_modes: Vec<(crate::messages::AstId, Mode)>,
+}
+
+fn is_exec_context(typing: &Typing, outer_mode: Mode) -> bool {
+    typing.block_ghostness.join_mode(outer_mode) == Mode::Exec
+        && !typing.in_pure
+        && !typing.in_forall_stmt
+        && !typing.in_proof_in_spec
 }
 
 impl Ghost {
@@ -905,6 +920,7 @@ fn add_pattern_rec(
     }
 
     let mode = if typing.in_pure { Mode::Spec } else { mode };
+    record.erasure_modes.pat_modes.push((pattern.span.id, mode));
 
     match &pattern.x {
         PatternX::Wildcard => Ok(()),
@@ -1094,6 +1110,23 @@ fn check_place(
     expect: Expect,
     outer_proph: &Proph,
 ) -> Result<(Mode, Proph), VirErr> {
+    let r = check_place_inner(ctxt, record, typing, outer_mode, place, access, expect, outer_proph);
+    if let Ok((mode, _)) = &r {
+        record.erasure_modes.expr_modes.push((place.span.id, *mode));
+    }
+    r
+}
+
+fn check_place_inner(
+    ctxt: &Ctxt,
+    record: &mut Record,
+    typing: &mut Typing,
+    outer_mode: Mode,
+    place: &Place,
+    access: PlaceAccess,
+    expect: Expect,
+    outer_proph: &Proph,
+) -> Result<(Mode, Proph), VirErr> {
     let mut note = None;
     let (place_mode, proph) = check_place_rec(
         ctxt,
@@ -1242,6 +1275,7 @@ fn check_place_rec(
     expect: Expect,
     outer_proph: &Proph,
 ) -> Result<(Mode, Proph), VirErr> {
+    record.erasure_modes.expr_exec.push((place.span.id, is_exec_context(typing, outer_mode)));
     let (mode, proph) = check_place_rec_inner(
         ctxt,
         record,
@@ -1651,6 +1685,23 @@ fn check_expr_has_mode(
 }
 
 fn check_expr(
+    ctxt: &Ctxt,
+    record: &mut Record,
+    typing: &mut Typing,
+    outer_mode: Mode,
+    expect: Expect,
+    expr: &Expr,
+    outer_proph: &Proph,
+) -> Result<(Mode, Proph), VirErr> {
+    record.erasure_modes.expr_exec.push((expr.span.id, is_exec_context(typing, outer_mode)));
+    let r = check_expr_inner(ctxt, record, typing, outer_mode, expect, expr, outer_proph);
+    if let Ok((mode, _)) = &r {
+        record.erasure_modes.expr_modes.push((expr.span.id, *mode));
+    }
+    r
+}
+
+fn check_expr_inner(
     ctxt: &Ctxt,
     record: &mut Record,
     typing: &mut Typing,
@@ -4034,7 +4085,13 @@ pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes), Vec<VirErr>> 
             }
         }
     }
-    let erasure_modes = ErasureModes { var_modes: vec![], ctor_modes: vec![] };
+    let erasure_modes = ErasureModes {
+        var_modes: vec![],
+        ctor_modes: vec![],
+        expr_exec: vec![],
+        pat_modes: vec![],
+        expr_modes: vec![],
+    };
     let special_paths = SpecialPaths::new();
     let mut ctxt = Ctxt {
         funs,

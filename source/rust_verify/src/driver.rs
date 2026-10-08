@@ -117,6 +117,7 @@ for all functions (it would only be needed for functions with tracked data in pr
 struct CompilerCallbacksEraseMacro {
     pub do_compile: bool,
     pub override_stability: bool,
+    pub erasure_check_table: Option<std::sync::Arc<crate::erasure_check::Table>>,
 }
 
 impl rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
@@ -141,8 +142,13 @@ impl rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
     fn after_analysis<'tcx>(
         &mut self,
         _compiler: &rustc_interface::interface::Compiler,
-        _tcx: TyCtxt<'tcx>,
+        tcx: TyCtxt<'tcx>,
     ) -> rustc_driver::Compilation {
+        if let Some(table) = &self.erasure_check_table {
+            if crate::erasure_check::check_compile_run(tcx, table) > 0 {
+                return rustc_driver::Compilation::Stop;
+            }
+        }
         if self.do_compile {
             rustc_driver::Compilation::Continue
         } else {
@@ -168,10 +174,12 @@ pub(crate) fn run_with_erase_macro_compile(
     mut rustc_args: Vec<String>,
     do_compile: bool,
     vstd: Vstd,
+    erasure_check_table: Option<std::sync::Arc<crate::erasure_check::Table>>,
 ) -> Result<(), ()> {
     let mut callbacks = CompilerCallbacksEraseMacro {
         do_compile,
         override_stability: matches!(vstd, Vstd::IsCore | Vstd::ImportedViaCore),
+        erasure_check_table,
     };
     rustc_args.extend(["--cfg", "verus_only", "--cfg", "verus_keep_ghost"].map(|s| s.to_string()));
     if matches!(vstd, Vstd::IsCore | Vstd::ImportedViaCore) {
@@ -340,7 +348,12 @@ pub fn run(
             Ok(())
         } else {
             let do_compile = verifier.compile || verifier.via_cargo_args.is_some();
-            run_with_erase_macro_compile(rustc_args, do_compile, verifier.args.vstd)
+            run_with_erase_macro_compile(
+                rustc_args,
+                do_compile,
+                verifier.args.vstd,
+                verifier.erasure_check_table.clone(),
+            )
         };
 
     let time2 = Instant::now();

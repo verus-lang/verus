@@ -324,6 +324,9 @@ pub fn run_verus(
         } else if *option == "-V check-api-safety" {
             verus_args.push("-V".to_string());
             verus_args.push("check-api-safety".to_string());
+        } else if *option == "-V check-erasure" {
+            verus_args.push("-V".to_string());
+            verus_args.push("check-erasure".to_string());
         } else if *option == "-V spinoff-all" {
             verus_args.push("-V".to_string());
             verus_args.push("spinoff-all".to_string());

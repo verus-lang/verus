@@ -300,6 +300,8 @@ pub struct Verifier {
     pub args: Args,
     pub user_filter: Option<UserFilter>,
     pub erasure_hints: Option<crate::erase::ErasureHints>,
+    /// -V check-erasure: table of the verified program, compared against the compile run
+    pub erasure_check_table: Option<Arc<crate::erasure_check::Table>>,
     pub(crate) verus_items: Option<Arc<VerusItems>>,
 
     /// total real time to verify all activated buckets of the crate, including real time for
@@ -505,6 +507,7 @@ impl Verifier {
             args,
             user_filter: None,
             erasure_hints: None,
+            erasure_check_table: None,
             verus_items: None,
             time_verify_crate: Duration::new(0, 0),
             time_verify_crate_sequential: Duration::new(0, 0),
@@ -554,6 +557,7 @@ impl Verifier {
             args: self.args.clone(),
             user_filter: self.user_filter.clone(),
             erasure_hints: self.erasure_hints.clone(),
+            erasure_check_table: self.erasure_check_table.clone(),
             verus_items: self.verus_items.clone(),
 
             time_verify_crate: Duration::new(0, 0),
@@ -2689,6 +2693,8 @@ impl Verifier {
             shadow_check: vec![],
             extra_erase_ast_ids: vec![],
             local_invariant_bodies: vec![],
+            check_erasure_hir_vir: vec![],
+            check_erasure_bodies: vec![],
         };
         let erasure_info = std::rc::Rc::new(std::cell::RefCell::new(erasure_info));
 
@@ -2927,6 +2933,23 @@ impl Verifier {
                 self.erasure_hints.as_ref().unwrap(),
             )
             .map_err(|e| (vec![e], Vec::new()))?;
+        }
+
+        if self.args.check_erasure {
+            let hints = self.erasure_hints.as_ref().unwrap();
+            let exec_info = crate::erasure_check::ExecInfo::new(
+                &erasure_info.check_erasure_hir_vir,
+                &hints.erasure_modes.expr_exec,
+                &hints.erasure_modes.pat_modes,
+                &hints.erasure_modes.expr_modes,
+                &hints.resolved_calls,
+            );
+            let table = crate::erasure_check::build_verify_table(
+                tcx,
+                &erasure_info.check_erasure_bodies,
+                &exec_info,
+            );
+            self.erasure_check_table = Some(Arc::new(table));
         }
 
         // These can invoke mir_borrowck when opaque types are involved.
