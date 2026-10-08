@@ -4117,6 +4117,15 @@ impl Visitor {
             #[verifier::custom_err(#exec_wf_inv_msg)]
             #x_iter_name.wf()
         ));
+        // `wf()`'s guarantees are conditional on `obeys_prophetic_iter_laws()` - unconditionally
+        // true for concrete iterator types, but only provable here via an external precondition
+        // for a generic one, and otherwise lost after the first iteration.
+        //
+        // Stated bare, not as `==>`/`==` against the snapshot: that's equally provable but
+        // empirically doesn't help Z3 re-derive `wf()`'s own conditional guarantees.
+        let obeys_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
+            #vstd::std_specs::iter::IteratorSpec::obeys_prophetic_iter_laws(&#x_iter_name.iter)
+        ));
         let some_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
             #[verifier::custom_err(#decrease_is_some_msg)]
             #[verus::internal(auto_decreases)]
@@ -4133,10 +4142,11 @@ impl Visitor {
             if no_loop_invariant.is_none() {
                 invariant.exprs.exprs.insert(0, init_inv);
                 invariant.exprs.exprs.insert(1, wf_inv);
+                invariant.exprs.exprs.insert(2, obeys_inv);
             }
             Some(Invariant { token: Token![invariant](span), exprs: invariant.exprs })
         } else if no_loop_invariant.is_none() {
-            Some(parse_quote_spanned!(span => invariant #init_inv, #wf_inv,))
+            Some(parse_quote_spanned!(span => invariant #init_inv, #wf_inv, #obeys_inv,))
         } else {
             None
         };
