@@ -11,7 +11,7 @@ We're porting its contents, piece by piece, into the new, compositionally-built 
 `points_to_permissions.rs`, proving what were previously axioms wherever the new concrete
 representation makes that possible. The new model builds `PointsTo<T>` on top of
 `PointsToUnaligned<T>` (which now directly holds a `TypedValue<T>` — a real `Box<T>` when valid —
-plus a `Tracked<PointsToUntyped>`), which is built on `PointsToUntyped = SeqPointsTo<[u8],
+plus a `PointsToUntyped`), which is built on `PointsToUntyped = SeqPointsTo<[u8],
 PointsToSingleton>`, bottoming out at `PointsToSingleton` (the one remaining
 `#[verifier::external_body]` primitive, in `points_to.rs`). Because `PointsToUnaligned<T>` is no
 longer opaque, a lot of what used to require an axiom can now be proved by directly manipulating
@@ -165,19 +165,13 @@ and `PointsTo::put`).
   checked and already require `wf_basic()`; note `is_disjoint` puts no `wf` requirement on `other`
   (its bound is only `PointsToPhys`).
 - [ ] Keep applying the same wf requires/ensures audit to every proof fn ported from here on.
-- [ ] Audit whether the `Tracked<...>` wrappers around the permissions held by the various
-  `PointsTo*` structs (e.g. `PointsTo::pt_unaligned: Tracked<PointsToUnaligned<T>>`,
-  `PointsToUnaligned::pt_untyped: Tracked<PointsToUntyped>`) are actually needed, or whether they
-  can be removed since the structs holding them are themselves `tracked`.
-  - Status: on hold, no edits made. Likely feasible and a simplification: bare fields already work
-    in tracked structs (`val: TypedValue<T>`, `SeqPointsTo::seq_pt`), so removal would drop
-    `.get()`/`.borrow()`/`.borrow_mut()`, `Tracked(...)` in constructors, and the `@` in the closed
-    specs `pt_untyped()`/`pt_unaligned()`. The fields are private, so there's no external API change.
-  - Known risk: the commented-out body of the `PointsToUnaligned::as_aligned` axiom uses
-    `shr_ref_struct_wrap(self, &PointsTo { pt_unaligned: Tracked(self) }, "", "pt_unaligned")` (from
-    `main`, not on this branch). If that helper needs a `Tracked` field, removing it from
-    `PointsTo::pt_unaligned` would block proving `as_aligned`. Investigate `shr_ref_struct_wrap`
-    before removing that wrapper. The `PointsToUnaligned::pt_untyped` wrapper doesn't have this concern.
+- [x] Removed the `Tracked<...>` wrappers around `PointsTo::pt_unaligned` and
+  `PointsToUnaligned::pt_untyped`, since the structs holding them are themselves `tracked`. This
+  dropped the `.get()`/`.borrow()`/`.borrow_mut()` calls, the `Tracked(...)` in constructors, and the
+  `@` in the closed specs `pt_untyped()`/`pt_unaligned()`. The fields are private, so there's no
+  external API change. `shr_ref_struct_wrap` (for the commented-out `as_aligned` body) was checked
+  and doesn't need a `Tracked` field. Verified at 2007 verified, 0 errors (with `raw_ptr_new`
+  excluded from the build).
 - [ ] Continue porting the remaining impl blocks listed above — `impl<T> PointsTo<[T]>` is
   probably next, since it's the biggest and most load-bearing.
 - [ ] (Lower priority) Fill out `SeqPointsTo<T, PointsTo<T>>` and `PointsTo<T>` for completeness

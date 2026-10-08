@@ -33,8 +33,9 @@ use super::endian::*;
 use super::layout::*;
 use super::math::*;
 use super::prelude::*;
-use super::raw_ptr::*;
+use super::raw_ptr_new::*;
 use super::seq::*;
+use super::shared_reference::*;
 use crate::vstd::group_vstd_default;
 use core::marker::{MetaSized, PhantomData, PointeeSized};
 

@@ -1,10 +1,9 @@
 use super::group_vstd_default;
 use super::layout::{self, *};
 use super::prelude::*;
-use super::raw_ptr;
+use super::raw_ptr_new::*;
 #[cfg(verus_keep_ghost)]
 use super::type_representation::*;
-use super::points_to_permissions::*;
 
 verus! {
 
@@ -77,7 +76,7 @@ pub trait PointsToProperties: PointsToPhys {
             self.size() != 0,
             self.wf_basic(),
         ensures
-            self.ptr()@.provenance != raw_ptr::Provenance::None,
+            self.ptr()@.provenance != Provenance::None,
     ;
 
     /// Guarantees that the memory ranges associated with two distinct, non-ZST permissions will not overlap,

@@ -1,5 +1,5 @@
 use super::super::prelude::*;
-use super::super::raw_ptr::MemContents;
+use super::super::points_to_permissions::TypedValue;
 use core::mem::MaybeUninit;
 
 use verus as verus_;
@@ -11,28 +11,28 @@ verus_! {
 pub struct ExMaybeUninit<T>(MaybeUninit<T>);
 
 pub trait MaybeUninitAdditionalSpecFns<T> {
-    spec fn mem_contents(self) -> MemContents<T>;
+    spec fn mem_contents(self) -> TypedValue<T>;
     spec fn as_option(self) -> Option<T>;
 }
 
 impl<T> MaybeUninitAdditionalSpecFns<T> for MaybeUninit<T> {
-    uninterp spec fn mem_contents(self) -> MemContents<T>;
+    uninterp spec fn mem_contents(self) -> TypedValue<T>;
 
     open spec fn as_option(self) -> Option<T> {
         match self.mem_contents() {
-            MemContents::Init(v) => Some(v),
-            MemContents::Uninit => None,
+            TypedValue::Init(v) => Some(v),
+            TypedValue::Uninit => None,
         }
     }
 }
 
 pub assume_specification<T>[ MaybeUninit::<T>::new ](val: T) -> (res: MaybeUninit<T>)
-    ensures res.mem_contents() == MemContents::Init(val),
+    ensures res.mem_contents() == TypedValue::Init(val),
     opens_invariants none
     no_unwind;
 
 pub assume_specification<T>[ MaybeUninit::<T>::uninit ]() -> (res: MaybeUninit<T>)
-    ensures res.mem_contents() == MemContents::Uninit,
+    ensures res.mem_contents() == TypedValue::Uninit,
     opens_invariants none
     no_unwind;
 

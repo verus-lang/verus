@@ -1,7 +1,7 @@
 use super::layout::*;
 use super::prelude::*;
-use super::raw_ptr;
-use super::raw_ptr::*;
+use super::raw_ptr_new;
+use super::raw_ptr_new::*;
 use core::marker::PhantomData;
 
 verus! {
@@ -36,9 +36,9 @@ verus! {
 /// The `perm: PointsTo<V>` object tracks two pieces of data:
 ///  * [`perm.pptr()`](PointsTo::pptr) is the pointer that the permission is associated to.
 ///  * [`perm.mem_contents()`](PointsTo::mem_contents) is the memory contents, which is one of either:
-///     * [`MemContents::Uninit`] if the memory pointed-to by
+///     * [`TypedValue::Uninit`] if the memory pointed-to by
 ///       by the pointer is uninitialized.
-///     * [`MemContents::Init(v)`](raw_ptr::MemContents::Init) if the memory points-to the
+///     * [`TypedValue::Init(v)`](raw_ptr::TypedValue::Init) if the memory points-to the
 ///       the value `v`.
 ///
 /// Your access to the `PointsTo` object determines what operations you can safely perform
@@ -62,13 +62,13 @@ verus! {
 ///         // p: PPtr<u64>, points_to: PointsTo<u64>
 ///         let (p, Tracked(mut points_to)) = PPtr::<u64>::empty();
 ///
-///         assert(points_to.mem_contents() == MemContents::Uninit);
+///         assert(points_to.mem_contents() == TypedValue::Uninit);
 ///         assert(points_to.pptr() == p);
 ///
 ///         // unsafe { *p = 5; }
 ///         p.write(Tracked(&mut points_to), 5);
 ///
-///         assert(points_to.mem_contents() == MemContents::Init(5));
+///         assert(points_to.mem_contents() == TypedValue::Init(5));
 ///         assert(points_to.pptr() == p);
 ///
 ///         // let x = unsafe { *p };
@@ -167,7 +167,7 @@ pub tracked struct PointsTo<V> {
 
 #[verusfmt::skip]
 broadcast use {
-    super::raw_ptr::group_raw_ptr_axioms,
+    super::raw_ptr_new::group_raw_ptr_axioms,
     super::set_lib::group_set_lib_default,
     super::set::group_set_axioms};
 
@@ -243,13 +243,13 @@ impl<V> PointsTo<V> {
         &&& self.points_to.ptr().addr() != 0
     }
 
-    pub closed spec fn mem_contents(&self) -> MemContents<V> {
+    pub closed spec fn mem_contents(&self) -> TypedValue<V> {
         self.points_to.mem_contents()
     }
 
     #[doc(hidden)]
     #[verifier::inline]
-    pub open spec fn opt_value(&self) -> MemContents<V> {
+    pub open spec fn opt_value(&self) -> TypedValue<V> {
         self.mem_contents()
     }
 
@@ -280,7 +280,7 @@ impl<V> PointsTo<V> {
     }
 
     /// "Forgets" about the value stored behind the pointer.
-    /// Updates the `PointsTo` value to [`MemContents::Uninit`](MemContents::Uninit).
+    /// Updates the `PointsTo` value to [`TypedValue::Uninit`](TypedValue::Uninit).
     /// Note that this is a `proof` function, i.e., it is operationally a no-op in executable code.
     pub proof fn leak_contents(tracked &mut self)
         ensures
@@ -386,7 +386,7 @@ impl<V> PPtr<V> {
     pub fn new(v: V) -> (pt: (PPtr<V>, Tracked<PointsTo<V>>))
         ensures
             pt.1@.pptr() == pt.0,
-            pt.1@.mem_contents() == MemContents::Init(v),
+            pt.1@.mem_contents() == TypedValue::Init(v),
         opens_invariants none
     {
         let (p, Tracked(mut pt)) = PPtr::<V>::empty();
@@ -446,15 +446,15 @@ impl<V> PPtr<V> {
     /// Requires the memory to be uninitialized, and leaves it initialized.
     ///
     /// In the ghost perspective, this updates `perm.mem_contents()`
-    /// from `MemContents::Uninit` to `MemContents::Init(v)`.
+    /// from `TypedValue::Uninit` to `TypedValue::Init(v)`.
     #[inline(always)]
     pub fn put(self, Tracked(perm): Tracked<&mut PointsTo<V>>, v: V)
         requires
             old(perm).pptr() == self,
-            old(perm).mem_contents() == MemContents::Uninit::<V>,
+            old(perm).mem_contents() == TypedValue::Uninit::<V>,
         ensures
             final(perm).pptr() == old(perm).pptr(),
-            final(perm).mem_contents() == MemContents::Init(v),
+            final(perm).mem_contents() == TypedValue::Init(v),
         opens_invariants none
         no_unwind
     {
@@ -479,7 +479,7 @@ impl<V> PPtr<V> {
             old(perm).is_init(),
         ensures
             final(perm).pptr() == old(perm).pptr(),
-            final(perm).mem_contents() == MemContents::Uninit::<V>,
+            final(perm).mem_contents() == TypedValue::Uninit::<V>,
             v == old(perm).value(),
         opens_invariants none
         no_unwind
@@ -500,7 +500,7 @@ impl<V> PPtr<V> {
             old(perm).is_init(),
         ensures
             final(perm).pptr() == old(perm).pptr(),
-            final(perm).mem_contents() == MemContents::Init(in_v),
+            final(perm).mem_contents() == TypedValue::Init(in_v),
             out_v == old(perm).value(),
         opens_invariants none
         no_unwind
@@ -559,7 +559,7 @@ impl<V> PPtr<V> {
             old(perm).pptr() == self,
         ensures
             final(perm).pptr() == old(perm).pptr(),
-            final(perm).mem_contents() == MemContents::Init(in_v),
+            final(perm).mem_contents() == TypedValue::Init(in_v),
         opens_invariants none
         no_unwind
     {
@@ -584,6 +584,6 @@ impl<V> PPtr<V> {
     }
 }
 
-pub use raw_ptr::MemContents;
+pub use raw_ptr::TypedValue;
 
 } // verus!

@@ -60,8 +60,8 @@ pub mod points_to;
 pub mod points_to_permissions;
 pub mod predicate;
 pub mod proph;
-pub mod raw_ptr;
-// pub mod raw_ptr_new;
+// pub mod raw_ptr;
+pub mod raw_ptr_new;
 pub mod relations;
 pub mod resource;
 pub mod rwlock;
@@ -70,6 +70,7 @@ pub mod seq_lib;
 pub mod set;
 pub mod set_lib;
 pub mod shared;
+pub mod shared_reference;
 // comment out - pptr depends on raw_ptr_old
 // #[cfg(feature = "alloc")]
 // pub mod simple_pptr;
@@ -120,7 +121,7 @@ pub broadcast group group_vstd_default {
     array::group_array_axioms,
     #[cfg(not(verus_verify_core))]
     string::group_string_axioms,
-    raw_ptr::group_raw_ptr_axioms,
+    raw_ptr_new::group_raw_ptr_axioms,
     layout::group_layout_axioms,
     //
     // core std_specs

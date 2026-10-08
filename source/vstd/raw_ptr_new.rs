@@ -36,6 +36,8 @@ use crate::vstd::seq::*;
 use crate::vstd::slice::*;
 use core::ops::Index;
 use core::slice::SliceIndex;
+use super::points_to::*;
+use super::points_to_permissions::*;
 
 verus! {
 
@@ -99,91 +101,42 @@ impl ProvenanceData {
 
     /// The originally requested allocation size.
     pub uninterp spec fn orig_size(&self) -> nat;
-
-    // change axioms into type invariant
 }
 
+/// 
 pub type Provenance = Option<ProvenanceData>;
-// pub ghost enum Provenance {
-//     /// Represents no memory allocation.
-//     None,
-//     /// Represents a memory allocation with the given `ProvenanceData`.
-//     Some(ProvenanceData),
-// }
 
-// impl Provenance {
-//     pub open spec fn is_none(self) -> bool {
-//         self is None
-//     }
-
-//     pub open spec fn is_some(self) -> bool {
-//         self is Some
-//     }
-
-//     pub closed spec fn data(self) -> ProvenanceData
-//         recommends
-//             self is Some,
-//     {
-//         self->0
-//     }
-// }
-
-/// Allocations do not "wrap around" the address space.
-/// From: <https://doc.rust-lang.org/std/ptr/index.html#allocation>:
-/// For any allocation with `base` address and size `size`, the following are guaranteed:
-/// - `base + size <= usize::MAX`
-/// - `size <= isize::MAX`
-pub broadcast axiom fn alloc_bound(p: ProvenanceData)
+/// Defines properties of an allocation:
+/// - Allocations do not "wrap around" the address space.
+///   From: <https://doc.rust-lang.org/std/ptr/index.html#allocation>:
+///   For any allocation with `base` address and size `size`, it is guaranteed that
+///   `base + size <= usize::MAX` and `size <= isize::MAX`.
+/// - `Alignment` invariants hold of `p.alignment()` (since here we have a `nat`).
+/// - The start address of an allocation should be aligned to the allocation's alignment,
+///    as per the postcondition of `Allocator::allocate`.
+/// - Allocations should always start with a non-null address, even zero-sized allocations.
+///   `Allocator::allocate` returns a `NonNull` pointer, and documentation here
+///   (<https://doc.rust-lang.org/1.88.0/core/alloc/trait.Allocator.html>)
+///   implies that returning a null pointer should not happen.
+///   Additionally, MiniRust's allocate cannot return a null address.
+///   <https://github.com/minirust/minirust/blob/master/spec/mem/basic.md>
+/// - The actual size of the allocation is at least as big as the originally requested size
+///   (from the documentation for the `Allocator` trait).
+pub broadcast axiom fn provenance_properties(p: ProvenanceData)
     ensures
         #![trigger p.start_addr()]
         #![trigger p.alloc_len()]
+        #![trigger p.alignment()]
+        #![trigger p.orig_size()]
         p.start_addr() + p.alloc_len() <= usize::MAX,
         p.alloc_len() <= isize::MAX,
-;
-
-/// Since `self.alignment()` returns a `int`, `Alignment` invariants do not follow directly from the type.
-/// We bring them in as an axiom, instead.
-#[verusfmt::skip]
-pub broadcast axiom fn prov_alignment(p: ProvenanceData)
-    ensures
-    // Weaker version: is_power_2_exists(self.alignment())
-    // Taken directly from `alignment_properties`
-    #![trigger p.alignment()]
-    exists|i: nat|
+        exists|i: nat|
         pow(2, i) == p.alignment() as int && i < isize::BITS && 0 < p.alignment() <= isize::MAX
             + 1,
-;
-
-/// The start address of an allocation should be aligned to the allocation's alignment,
-/// as per the postcondition of `Allocator::allocate`.
-pub broadcast axiom fn start_addr_aligned(p: ProvenanceData)
-    ensures
-        #[trigger] p.start_addr() as nat % #[trigger] p.alignment() == 0,
-;
-
-/// Allocations should always start with a non-null address, even zero-sized allocations.
-/// `Allocator::allocate` returns a `NonNull` pointer, and documentation here
-/// (<https://doc.rust-lang.org/1.88.0/core/alloc/trait.Allocator.html>)
-/// implies that returning a null pointer should not happen.
-/// Additionally, MiniRust's allocate cannot return a null address.
-/// <https://github.com/minirust/minirust/blob/master/spec/mem/basic.md>
-pub broadcast axiom fn is_nonnull(p: ProvenanceData)
-    ensures
-        #[trigger] p.start_addr() != 0,
-;
-
-pub broadcast axiom fn orig_size_bound(p: ProvenanceData)
-    ensures
+        p.start_addr() as nat % p.alignment() == 0,
+        p.start_addr() != 0,
         p.orig_size() <= p.alloc_len(),
 ;
-
-pub broadcast group group_provenance_properties {
-    prov_alignment,
-    alloc_bound,
-    start_addr_aligned,
-    is_nonnull,
-    orig_size_bound,
-}
 
 /// Metadata
 ///
@@ -499,7 +452,7 @@ pub fn cast_ptr_to_usize<T: Sized>(ptr: *mut T) -> (result: usize)
 pub const fn ptr_ref<T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (v: &T)
     requires
         perm.ptr() == ptr,
-        perm.is_init(),
+        perm.is_valid(),
     ensures
         v == perm.value(),
     opens_invariants none
@@ -508,37 +461,37 @@ pub const fn ptr_ref<T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> 
     unsafe { &*ptr }
 }
 
-/// Equivalent to `&*ptr`, passing in a permission `perm` to ensure safety.
-/// The memory pointed to by `ptr` must be initialized.
-#[inline(always)]
-#[verifier::external_body]
-pub const fn ptr_ref_str(ptr: *const str, Tracked(perm): Tracked<&PointsTo<str>>) -> (v: &str)
-    requires
-        perm.ptr() == ptr,
-        perm.is_init(),
-    ensures
-        v == perm.value(),
-    opens_invariants none
-    no_unwind
-{
-    unsafe { &*ptr }
-}
+// /// Equivalent to `&*ptr`, passing in a permission `perm` to ensure safety.
+// /// The memory pointed to by `ptr` must be initialized.
+// #[inline(always)]
+// #[verifier::external_body]
+// pub const fn ptr_ref_str(ptr: *const str, Tracked(perm): Tracked<&PointsTo<str>>) -> (v: &str)
+//     requires
+//         perm.ptr() == ptr,
+//         perm.is_valid(),
+//     ensures
+//         v == perm.value(),
+//     opens_invariants none
+//     no_unwind
+// {
+//     unsafe { &*ptr }
+// }
 
-/// Equivalent to `&*ptr`, passing in a permission `perm` to ensure safety.
-/// The memory pointed to by `ptr` must be initialized.
-#[inline(always)]
-#[verifier::external_body]
-pub const fn ptr_ref_slice<T>(ptr: *const [T], Tracked(perm): Tracked<&PointsTo<[T]>>) -> (v: &[T])
-    requires
-        perm.ptr() == ptr,
-        perm.is_init(),
-    ensures
-        v@ == perm.value(),
-    opens_invariants none
-    no_unwind
-{
-    unsafe { &*ptr }
-}
+// /// Equivalent to `&*ptr`, passing in a permission `perm` to ensure safety.
+// /// The memory pointed to by `ptr` must be initialized.
+// #[inline(always)]
+// #[verifier::external_body]
+// pub const fn ptr_ref_slice<T>(ptr: *const [T], Tracked(perm): Tracked<&PointsTo<[T]>>) -> (v: &[T])
+//     requires
+//         perm.ptr() == ptr,
+//         perm.is_valid(),
+//     ensures
+//         v@ == perm.value(),
+//     opens_invariants none
+//     no_unwind
+// {
+//     unsafe { &*ptr }
+// }
 
 /// Equivalent to `&mut *X`, passing in a permission `perm` to ensure safety.
 /// The memory pointed to by `ptr` must be initialized.
@@ -547,10 +500,10 @@ pub const fn ptr_ref_slice<T>(ptr: *const [T], Tracked(perm): Tracked<&PointsTo<
 pub const fn ptr_mut_ref<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>) -> (v: &mut T)
     requires
         old(perm).ptr() == ptr,
-        old(perm).is_init(),
+        old(perm).is_valid(),
     ensures
         final(perm).ptr() == ptr,
-        final(perm).is_init(),
+        final(perm).is_valid(),
         old(perm).value() == *v,
         final(perm).value() == *final(v),
     opens_invariants none
@@ -579,45 +532,45 @@ pub axiom fn mut_ref_slice_len<T>(tracked b: &&mut [T])
         mut_ref_ptr(*b)@.metadata == old(*b)@.len(),
 ;
 
-/// Equivalent to `&mut *X`, passing in a permission `perm` to ensure safety.
-/// The memory pointed to by `ptr` must be initialized.
-#[inline(always)]
-#[verifier::external_body]
-pub const fn ptr_mut_ref_slice<T>(ptr: *mut [T], Tracked(perm): Tracked<&mut PointsTo<[T]>>) -> (v:
-    &mut [T])
-    requires
-        old(perm).ptr() == ptr,
-        old(perm).is_init(),
-    ensures
-        final(perm).ptr() == ptr,
-        final(perm).is_init(),
-        old(perm).value() == v@,
-        final(perm).value() == final(v)@,
-    opens_invariants none
-    no_unwind
-{
-    unsafe { &mut *ptr }
-}
+// /// Equivalent to `&mut *X`, passing in a permission `perm` to ensure safety.
+// /// The memory pointed to by `ptr` must be initialized.
+// #[inline(always)]
+// #[verifier::external_body]
+// pub const fn ptr_mut_ref_slice<T>(ptr: *mut [T], Tracked(perm): Tracked<&mut PointsTo<[T]>>) -> (v:
+//     &mut [T])
+//     requires
+//         old(perm).ptr() == ptr,
+//         old(perm).is_valid(),
+//     ensures
+//         final(perm).ptr() == ptr,
+//         final(perm).is_valid(),
+//         old(perm).value() == v@,
+//         final(perm).value() == final(v)@,
+//     opens_invariants none
+//     no_unwind
+// {
+//     unsafe { &mut *ptr }
+// }
 
-/// Equivalent to `&mut *X`, passing in a permission `perm` to ensure safety.
-/// The memory pointed to by `ptr` must be initialized.
-#[inline(always)]
-#[verifier::external_body]
-pub const fn ptr_mut_ref_str(ptr: *mut str, Tracked(perm): Tracked<&mut PointsTo<str>>) -> (v:
-    &mut str)
-    requires
-        old(perm).ptr() == ptr,
-        old(perm).is_init(),
-    ensures
-        final(perm).ptr() == ptr,
-        final(perm).is_init(),
-        old(perm).value() == &*v,
-        final(perm).value() == &*final(v),
-    opens_invariants none
-    no_unwind
-{
-    unsafe { &mut *ptr }
-}
+// /// Equivalent to `&mut *X`, passing in a permission `perm` to ensure safety.
+// /// The memory pointed to by `ptr` must be initialized.
+// #[inline(always)]
+// #[verifier::external_body]
+// pub const fn ptr_mut_ref_str(ptr: *mut str, Tracked(perm): Tracked<&mut PointsTo<str>>) -> (v:
+//     &mut str)
+//     requires
+//         old(perm).ptr() == ptr,
+//         old(perm).is_valid(),
+//     ensures
+//         final(perm).ptr() == ptr,
+//         final(perm).is_valid(),
+//         old(perm).value() == &*v,
+//         final(perm).value() == &*final(v),
+//     opens_invariants none
+//     no_unwind
+// {
+//     unsafe { &mut *ptr }
+// }
 
 macro_rules! pointer_specs {
     ($mod_ident:ident, $ptr_from_data:ident, $mu:tt) => {
@@ -661,37 +614,37 @@ pub broadcast group group_raw_ptr_axioms {
     axiom_ptr_mut_from_data,
     ptrs_mut_eq,
     ptrs_mut_eq_sized,
-    axiom_pt_slice_len,
-    axiom_pt_slice_unaligned_len,
-    group_provenance_properties,
+    // axiom_pt_slice_len,
+    // axiom_pt_slice_unaligned_len,
+    provenance_properties,
 }
 
 pub axiom fn mut_ref_to_shr_points_to<'a, T>(tracked mut_ref: &'a &'a mut T) -> (tracked pt:
     &'a PointsTo<T>)
     ensures
         pt.ptr() == mut_ref_ptr(*mut_ref),
-        pt.is_init(),
+        pt.is_valid(),
         pt.value() == *old(*mut_ref),
         *final(*mut_ref) == *old(*mut_ref),
 ;
 
-pub axiom fn mut_ref_to_shr_points_to_slice<'a, T>(tracked mut_ref: &'a &'a mut [T]) -> (tracked pt:
-    &'a PointsTo<[T]>)
-    ensures
-        pt.ptr() == mut_ref_ptr(*mut_ref),
-        pt.is_init(),
-        pt.value() == (*old(*mut_ref))@,
-        &*final(*mut_ref) == &*old(*mut_ref),
-;
+// pub axiom fn mut_ref_to_shr_points_to_slice<'a, T>(tracked mut_ref: &'a &'a mut [T]) -> (tracked pt:
+//     &'a PointsTo<[T]>)
+//     ensures
+//         pt.ptr() == mut_ref_ptr(*mut_ref),
+//         pt.is_valid(),
+//         pt.value() == (*old(*mut_ref))@,
+//         &*final(*mut_ref) == &*old(*mut_ref),
+// ;
 
-pub axiom fn mut_ref_to_shr_points_to_str<'a>(tracked mut_ref: &'a &'a mut str) -> (tracked pt:
-    &'a PointsTo<str>)
-    ensures
-        pt.ptr() == mut_ref_ptr(*mut_ref),
-        pt.is_init(),
-        &pt.value() == &(*old(*mut_ref)),
-        &*final(*mut_ref) == &*old(*mut_ref),
-;
+// pub axiom fn mut_ref_to_shr_points_to_str<'a>(tracked mut_ref: &'a &'a mut str) -> (tracked pt:
+//     &'a PointsTo<str>)
+//     ensures
+//         pt.ptr() == mut_ref_ptr(*mut_ref),
+//         pt.is_valid(),
+//         &pt.value() == &(*old(*mut_ref)),
+//         &*final(*mut_ref) == &*old(*mut_ref),
+// ;
 
 pub axiom fn tracked_mut_ref_slice_subrange<T>(
     tracked mut_ref: &mut [T],

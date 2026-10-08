@@ -7,7 +7,7 @@ verus! {
 mod doubly_linked_list {
     use vstd::prelude::*;
     use vstd::simple_pptr::*;
-    use vstd::raw_ptr::MemContents;
+    use vstd::raw_ptr::TypedValue;
     use vstd::assert_by_contradiction;
 
     // Single node in the list
@@ -58,7 +58,7 @@ mod doubly_linked_list {
         spec fn well_formed_node(&self, i: nat) -> bool {
             &&& self.ghost_state@.points_to_map.dom().contains(i)
             &&& self.ghost_state@.points_to_map[i].pptr() == self.ghost_state@.ptrs[i as int]
-            &&& self.ghost_state@.points_to_map[i].mem_contents() matches MemContents::Init(node)
+            &&& self.ghost_state@.points_to_map[i].mem_contents() matches TypedValue::Init(node)
                   && node.prev == self.prev_of(i) && node.next == self.next_of(i)
         }
 

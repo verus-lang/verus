@@ -2,8 +2,8 @@ use super::group_vstd_default;
 use super::layout::{self, *};
 use super::points_to::*;
 use super::prelude::*;
-use super::raw_ptr;
-use super::raw_ptr::*;
+use super::raw_ptr_new;
+use super::raw_ptr_new::*;
 #[cfg(verus_keep_ghost)]
 use super::type_representation::*;
 
@@ -227,7 +227,7 @@ impl PointsToUntyped {
             perm.bytes().len() == size_of::<T>(),
             perm.wf(),
     {
-        broadcast use raw_ptr::group_raw_ptr_axioms;
+        broadcast use raw_ptr_new::group_raw_ptr_axioms;
 
         let byte_ptr: *mut [u8] = ptr_mut_from_data(
             PtrData::<[u8]> { addr: ptr@.addr, provenance: ptr@.provenance, metadata: 0 },
@@ -626,7 +626,7 @@ impl<T> TypedValue<[T]> {
 /// along with a `PointsToUntyped` permission to the underlying bytes.
 pub tracked struct PointsToUnaligned<T: ?Sized> {
     val: TypedValue<T>,
-    pt_untyped: Tracked<PointsToUntyped>,
+    pt_untyped: PointsToUntyped,
 }
 
 /// The interface for a `PointsToUnaligned` permission,
@@ -651,7 +651,7 @@ impl<T: ?Sized> PointsToUnaligned<T> {
 
     /// The underlying `PointsToUntyped` permission to the pointed-to bytes.
     pub closed spec fn pt_untyped(self) -> PointsToUntyped {
-        self.pt_untyped@
+        self.pt_untyped
     }
 
     /// The contiguous sequence of bytes that this permission tracks.
@@ -798,7 +798,7 @@ impl<T> PointsToUnaligned<T> {
     {
         broadcast use layout_of_sized;
 
-        PointsTo { pt_unaligned: Tracked(self) }
+        PointsTo { pt_unaligned: self }
     }
 
     /// Borrow an unaligned PointsToUnaligned as an aligned PointsTo.
@@ -814,7 +814,7 @@ impl<T> PointsToUnaligned<T> {
             perm@ == self@,
             perm.wf(),
     // TODO: uncomment when main is merged in
-    // { shr_ref_struct_wrap(self, &PointsTo { pt_unaligned: Tracked(self) }, "", "pt_unaligned") }
+    // { shr_ref_struct_wrap(self, &PointsTo { pt_unaligned: *self }, "", "pt_unaligned") }
 
     ;
 
@@ -833,10 +833,10 @@ impl<T> PointsToUnaligned<T> {
             perm.bytes().len() == size_of::<T>(),
             perm.wf(),
     {
-        broadcast use raw_ptr::group_raw_ptr_axioms;
+        broadcast use raw_ptr_new::group_raw_ptr_axioms;
 
         let tracked untyped: PointsToUntyped = PointsToUntyped::zero_sized(ptr);
-        PointsToUnaligned { val: TypedValue::Empty, pt_untyped: Tracked(untyped) }
+        PointsToUnaligned { val: TypedValue::Empty, pt_untyped: untyped }
     }
 
     /// Specializes `is_disjoint` to the case when the other permission is a `PointsToUnaligned<S>`.
@@ -903,7 +903,7 @@ and alignment.
 //   (to be pedantic, the bytes might be initialized in rust's abstract machine,
 //   but we don't know so we have to pretend they're uninitialized)
 pub tracked struct PointsTo<T: ?Sized> {
-    pt_unaligned: Tracked<PointsToUnaligned<T>>,
+    pt_unaligned: PointsToUnaligned<T>,
 }
 
 /// The interface for a `PointsTo` permission,
@@ -943,7 +943,7 @@ impl<T> View for PointsTo<T> {
 impl<T: ?Sized> PointsTo<T> {
     /// The underlying `PointsToUnaligned` permission to the pointed-to memory.
     pub closed spec fn pt_unaligned(self) -> PointsToUnaligned<T> {
-        self.pt_unaligned@
+        self.pt_unaligned
     }
 
     /// The (possibly-valid) typed value that this permission tracks.
@@ -1099,10 +1099,10 @@ impl<T> PointsTo<T> {
             perm.bytes().len() == size_of::<T>(),
             perm.wf(),
     {
-        broadcast use raw_ptr::group_raw_ptr_axioms;
+        broadcast use raw_ptr_new::group_raw_ptr_axioms;
 
         let tracked pt_unaligned = PointsToUnaligned::<T>::zero_sized(ptr);
-        PointsTo { pt_unaligned: Tracked(pt_unaligned) }
+        PointsTo { pt_unaligned }
     }
 
     /// Specializes `is_disjoint` to the case when the other permission is a `PointsTo<S>`.
@@ -1133,7 +1133,7 @@ impl<T> PointsTo<T> {
             perm@ == self@,
             perm.wf(),
     {
-        self.pt_unaligned.get()
+        self.pt_unaligned
     }
 
     /// Borrow an aligned `PointsTo` as an unaligned `PointsToUnaligned`.
@@ -1189,12 +1189,12 @@ impl<T> PointsTo<T> {
             typed_value.is_some() ==> typed_value.unwrap() == self.value(),
     {
         let tracked PointsTo { pt_unaligned } = self;
-        let tracked PointsToUnaligned { val, pt_untyped } = pt_unaligned.get();
+        let tracked PointsToUnaligned { val, pt_untyped } = pt_unaligned;
         let tracked typed_value = match val {
             TypedValue::Valid(b) => Some(*b),
             TypedValue::Empty => None,
         };
-        (pt_untyped.get(), typed_value)
+        (pt_untyped, typed_value)
     }
 
     /// Creates a `PointsTo<T>` from a `PointsToUntyped` with the same provenance
@@ -1211,11 +1211,7 @@ impl<T> PointsTo<T> {
             out.is_empty(),
             out.wf(),
     {
-        PointsTo {
-            pt_unaligned: Tracked(
-                PointsToUnaligned { val: TypedValue::Empty, pt_untyped: Tracked(pt_untyped) },
-            ),
-        }
+        PointsTo { pt_unaligned: PointsToUnaligned { val: TypedValue::Empty, pt_untyped } }
     }
 
     /// Creates a `PointsToUntyped` from a `PointsTo<T>` with the same provenance
@@ -1231,8 +1227,8 @@ impl<T> PointsTo<T> {
             pt_untyped.wf(),
     {
         let tracked PointsTo { pt_unaligned } = self;
-        let tracked PointsToUnaligned { val: _, pt_untyped } = pt_unaligned.get();
-        pt_untyped.get()
+        let tracked PointsToUnaligned { val: _, pt_untyped } = pt_unaligned;
+        pt_untyped
     }
 
     /// Creates a reference to a `PointsToUntyped` from a reference to a `PointsTo<T>` with the same
@@ -1268,8 +1264,8 @@ impl<T> PointsTo<T> {
                 &&& final(self).wf()
             }),
     {
-        self.pt_unaligned.borrow_mut().val = TypedValue::Empty;
-        &mut self.pt_unaligned.borrow_mut().pt_untyped
+        self.pt_unaligned.val = TypedValue::Empty;
+        &mut self.pt_unaligned.pt_untyped
     }
 
     /// This takes a borrow of the `T` from the `TypedValue<T>` on `self`.
@@ -1280,7 +1276,7 @@ impl<T> PointsTo<T> {
         returns
             self.value(),
     {
-        match &self.pt_unaligned.borrow().val {
+        match &self.pt_unaligned.val {
             TypedValue::Valid(b) => b,
             TypedValue::Empty => proof_from_false(),
         }
@@ -1321,7 +1317,7 @@ impl<T> PointsTo<T> {
             Self::ptrs_len_same_valid_decode(*old(self), *final(self)),
     {
         let tracked mut tmp = TypedValue::Empty;
-        super::modes::tracked_swap(&mut tmp, &mut self.pt_unaligned.borrow_mut().val);
+        super::modes::tracked_swap(&mut tmp, &mut self.pt_unaligned.val);
         match tmp {
             TypedValue::Valid(b) => *b,
             TypedValue::Empty => proof_from_false(),
@@ -1341,7 +1337,7 @@ impl<T> PointsTo<T> {
             final(self).wf(),
             Self::ptrs_len_same_valid_decode(*old(self), *final(self)),
     {
-        self.pt_unaligned.borrow_mut().val = TypedValue::Valid(Box::new(val));
+        self.pt_unaligned.val = TypedValue::Valid(Box::new(val));
     }
 }
 
@@ -2082,7 +2078,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             // Take the last value in the range out of the element at `end - 1`
             let tracked elt = self.index_mut(end - 1);
             let tracked mut taken = TypedValue::Empty;
-            super::modes::tracked_swap(&mut taken, &mut elt.pt_unaligned.borrow_mut().val);
+            super::modes::tracked_swap(&mut taken, &mut elt.pt_unaligned.val);
 
             // The bytes of the whole sequence are unchanged
             Self::bytes_inner_ext(old_self.seq_pt(), self.seq_pt());
@@ -2187,7 +2183,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             // Put the first value into the element at `start`
             old_self.bytes_equiv(start);
             let tracked elt = self.index_mut(start);
-            elt.pt_unaligned.borrow_mut().val = first;
+            elt.pt_unaligned.val = first;
 
             // The bytes of the whole sequence are unchanged
             Self::bytes_inner_ext(old_self.seq_pt(), self.seq_pt());

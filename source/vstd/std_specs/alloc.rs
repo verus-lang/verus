@@ -1,5 +1,5 @@
 use super::super::prelude::*;
-use super::super::raw_ptr::MemContents;
+use super::super::points_to_permissions::TypedValue;
 
 verus! {
 
@@ -18,7 +18,7 @@ pub assume_specification<T, const N: usize>[ alloc::boxed::box_assume_init_into_
     requires
         vals.mem_contents() is Init,
     ensures
-        vals.mem_contents() matches MemContents::Init(array) && result@ == array@,
+        vals.mem_contents() matches TypedValue::Init(array) && result@ == array@,
 ;
 
 #[cfg(feature = "alloc")]
@@ -28,7 +28,7 @@ pub assume_specification<T>[ alloc::intrinsics::write_box_via_move ](
     v: T,
 ) -> (result: alloc::boxed::Box<core::mem::MaybeUninit<T>>)
     ensures
-        result.mem_contents() == MemContents::Init(v),
+        result.mem_contents() == TypedValue::Init(v),
 ;
 
 #[cfg(feature = "alloc")]

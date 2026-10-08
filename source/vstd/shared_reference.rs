@@ -1,3 +1,7 @@
+use super::points_to_permissions::PointsTo;
+use super::prelude::*;
+use crate::group_vstd_default;
+
 verus! {
 
 /// This is meant to be a replacement for `&'a T` that allows Verus to keep track of
