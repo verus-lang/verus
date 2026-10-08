@@ -494,7 +494,12 @@ pub(crate) fn expr_has_typ(ctx: &Ctx, expr: &Expr, typ: &Typ) -> Expr {
 }
 
 pub(crate) fn decoration_for_datatype_mono(ctx: &Ctx, dt: &Dt, monotyps: &MonoTyps) -> Expr {
-    let datatype = ctx.datatype_map.get(dt).unwrap();
+    // `dt` may come from a crate-wide monomorphization fact rather than per-module
+    // reachability, so it isn't always in this module's map - same "unknown sizedness"
+    // case as an abstract/opaque datatype below.
+    let Some(datatype) = ctx.datatype_map.get(dt) else {
+        return str_var(crate::def::DECORATE_NIL_SIZED);
+    };
     match &datatype.x.sized_constraint {
         None => str_var(crate::def::DECORATE_NIL_SIZED),
         Some(constraint) => {
@@ -507,7 +512,10 @@ pub(crate) fn decoration_for_datatype_mono(ctx: &Ctx, dt: &Dt, monotyps: &MonoTy
 }
 
 pub(crate) fn decoration_for_datatype(ctx: &Ctx, dt: &Dt, typs: &Typs) -> Expr {
-    let datatype = ctx.datatype_map.get(dt).unwrap();
+    // See decoration_for_datatype_mono above for why `dt` might not be in this module's map.
+    let Some(datatype) = ctx.datatype_map.get(dt) else {
+        return str_var(crate::def::DECORATE_NIL_SIZED);
+    };
     match &datatype.x.sized_constraint {
         None => str_var(crate::def::DECORATE_NIL_SIZED),
         Some(constraint) => {
