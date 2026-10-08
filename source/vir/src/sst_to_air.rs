@@ -1651,6 +1651,13 @@ struct State {
     post_condition_info: PostConditionInfo,
     loop_infos: Vec<LoopInfo>,
     static_prelude: Vec<Stmt>,
+    /// `reveal` / `reveal_with_fuel` / `broadcast use` assumptions in scope at
+    /// the current control-flow position. Isolated loop queries are seeded
+    /// with this list so those directives survive loop isolation.
+    /// `hide` is intentionally absent: headers.rs records it on the function
+    /// and `set_fuel` applies it to every query. A loop-local `hide` that
+    /// cancels an outer reveal or broadcast is an open design question.
+    fuel_assumptions: Vec<Stmt>,
 }
 
 impl State {
@@ -1696,6 +1703,24 @@ impl State {
         // let aset = self.get_assigned_set(stm);
         // println!("{:?} {:?}", stm.span, aset);
         self.snap_map.push((stm.span.clone(), spos));
+    }
+
+    fn record_fuel_assumptions(&mut self, stmts: &[Stmt]) {
+        self.fuel_assumptions.extend(stmts.iter().cloned());
+    }
+
+    /// Run `f`, then restore the fuel environment from entry.
+    /// Directives recorded inside `f` stay visible to nested translation
+    /// (including isolated loops) and do not escape this scope.
+    /// Restoration is independent of debug snapshot tracking.
+    fn with_fuel_scope<T>(
+        &mut self,
+        f: impl FnOnce(&mut Self) -> Result<T, VirErr>,
+    ) -> Result<T, VirErr> {
+        let saved = self.fuel_assumptions.clone();
+        let result = f(self);
+        self.fuel_assumptions = saved;
+        result
     }
 }
 
@@ -2264,7 +2289,12 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             }
 
             state.push_scope();
-            let proof_stmts: Vec<Stmt> = stm_to_stmts(ctx, state, body)?;
+            // The proof query itself is not seeded with outer fuel (that
+            // isolation stays as it was). Scope the body so directives inside
+            // the proof do not escape, while loops nested in it still observe
+            // the fuel active during this translation.
+            let proof_stmts: Vec<Stmt> =
+                state.with_fuel_scope(|state| stm_to_stmts(ctx, state, body))?;
             state.pop_scope();
             let mut air_body: Vec<Stmt> = Vec::new();
             air_body.append(&mut proof_stmts.clone());
@@ -2409,7 +2439,10 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             stmts
         }
         StmX::DeadEnd(s) => {
-            vec![Arc::new(StmtX::DeadEnd(one_stmt(stm_to_stmts(ctx, state, s)?)))]
+            // Assert-by proofs are dead ends in the same query. Fuel inside
+            // them must not leak into later loop queries.
+            let inner = state.with_fuel_scope(|state| stm_to_stmts(ctx, state, s))?;
+            vec![Arc::new(StmtX::DeadEnd(one_stmt(inner)))]
         }
         StmX::BreakOrContinue { label, is_break } => {
             let loop_info = state
@@ -2508,7 +2541,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             let mut unwind = UnwindAir::MayUnwind;
             std::mem::swap(&mut state.unwind, &mut unwind);
 
-            let mut body_stmts = stm_to_stmts(ctx, state, body)?;
+            // Closure bodies are dead ends. Keep their fuel local so a
+            // directive inside one closure cannot reach another query.
+            let mut body_stmts = state.with_fuel_scope(|state| stm_to_stmts(ctx, state, body))?;
             std::mem::swap(&mut state.unwind, &mut unwind);
 
             stmts.append(&mut body_stmts);
@@ -2520,11 +2555,13 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             let neg_cond = Arc::new(ExprX::Unary(air::ast::UnaryOp::Not, pos_cond.clone()));
             let pos_assume = Arc::new(StmtX::Assume(pos_cond));
             let neg_assume = Arc::new(StmtX::Assume(neg_cond));
-            let mut lhss = stm_to_stmts(ctx, state, lhs)?;
-            let mut rhss = match rhs {
-                None => vec![],
-                Some(rhs) => stm_to_stmts(ctx, state, rhs)?,
-            };
+            // Each branch starts from the fuel in scope at the if, and
+            // neither branch's directives survive the join.
+            let mut lhss = state.with_fuel_scope(|state| stm_to_stmts(ctx, state, lhs))?;
+            let mut rhss = state.with_fuel_scope(|state| match rhs {
+                None => Ok(vec![]),
+                Some(rhs) => stm_to_stmts(ctx, state, rhs),
+            })?;
             lhss.insert(0, pos_assume);
             rhss.insert(0, neg_assume);
             let lblock = Arc::new(StmtX::Block(Arc::new(lhss)));
@@ -2591,6 +2628,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             if ctx.debug {
                 state.map_span(&stm, SpanKind::Full);
             }
+            // fuel == 0 emits nothing. `hide` is a function-wide header, not a
+            // local fuel fact, so it is not recorded here.
+            state.record_fuel_assumptions(&stmts);
             stmts
         }
         StmX::RevealString(lit) => {
@@ -2747,6 +2787,7 @@ fn loop_to_stmts(
             assume typ_invs(modified_vars)
             assume invs_exit
         We generate this AIR in the spun-off loop query:
+            assume fuel assumptions active at loop entry (reveal / broadcast use)
             axiom typ_invs(all_used_vars)
             assume invs_entry
             body // "break" inside body turns into assert invs_exit; assume false
@@ -2763,6 +2804,7 @@ fn loop_to_stmts(
             cond_stm
             assume !cond_exp
         We generate this AIR in the spun-off loop query:
+            assume fuel assumptions active at loop entry (reveal / broadcast use)
             axiom typ_invs(all_used_vars)
             assume invs_entry
             cond_stm
@@ -2772,6 +2814,13 @@ fn loop_to_stmts(
     */
 
     let mut air_body: Vec<Stmt> = state.static_prelude.clone();
+    if loop_isolation {
+        // Replay reveal / broadcast-use facts that are in scope at entry,
+        // including directives translated from pre_stms above this call.
+        // Ordinary AIR assumptions are not copied. loop_isolation(false)
+        // keeps the body in the outer query, which already contains them.
+        air_body.extend(state.fuel_assumptions.iter().cloned());
+    }
     if !loop_isolation {
         air_body.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_LOOP))));
         modified_vars.emit_havocs(ctx, SNAPSHOT_LOOP, &mut air_body);
@@ -2854,8 +2903,14 @@ fn loop_to_stmts(
         au_branch_bool: au_branch_bool.clone(),
     };
     state.loop_infos.push(loop_info);
-    air_body.append(&mut stm_to_stmts(ctx, state, body)?);
+    // Drop fuel recorded in the body so a completed loop cannot change the
+    // entry environment of a later loop. Nested loops still see directives
+    // that are in scope while the body is translated. Condition statements
+    // are translated above and remain in scope: the outer query keeps them
+    // on the exit path.
+    let mut body_stmts = state.with_fuel_scope(|state| stm_to_stmts(ctx, state, body))?;
     state.loop_infos.pop();
+    air_body.append(&mut body_stmts);
 
     if let Some(branch_bool) = au_branch_bool {
         let is_break = false;
@@ -3038,6 +3093,9 @@ fn byte_string_indices_to_air(ctx: &Ctx, lit: Arc<Vec<u8>>) -> Expr {
 }
 
 fn set_fuel(ctx: &Ctx, local: &mut Vec<Decl>, hidden: &Vec<Fun>) {
+    // `hidden` is the function-wide set collected from `hide` headers.
+    // It suppresses default unfolding in every query for this function,
+    // including isolated loops. It does not record a loop-local opt-out.
     let fuel_expr = if hidden.len() == 0 {
         str_var(&FUEL_DEFAULTS)
     } else {
@@ -3195,6 +3253,7 @@ pub(crate) fn body_stm_to_air(
         },
         loop_infos: Vec::new(),
         static_prelude: mk_static_prelude(ctx, statics),
+        fuel_assumptions: Vec::new(),
     };
 
     let stm = crate::sst_vars::compute_assign_info(&mut state.assign_map, params, local_decls, stm);
