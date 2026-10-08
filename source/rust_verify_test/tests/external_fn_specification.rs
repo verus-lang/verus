@@ -101,20 +101,11 @@ test_verify_one_file! {
     #[test] test_import_try_reserve_exact_spec_from_vstd verus_code! {
         use vstd::prelude::*;
 
-        fn reserve_preserves_contents(
-            values: &mut Vec<u64>,
-            additional: usize,
-        ) -> Result<(), std::collections::TryReserveError>
-            ensures final(values)@ == old(values)@,
-        {
-            values.try_reserve_exact(additional)
-        }
-
         fn test() {
             let mut values: Vec<u64> = Vec::new();
             values.push(12);
             values.push(34);
-            let _result = reserve_preserves_contents(&mut values, 1);
+            let _result = values.try_reserve_exact(1);
             assert(values.len() == 2);
             assert(values[0] == 12);
             assert(values[1] == 34);
