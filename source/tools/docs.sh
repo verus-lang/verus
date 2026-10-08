@@ -1,6 +1,4 @@
 #! /bin/bash
-# TODO: Replace with `docs-cargo.sh` when `vargo` is removed.
-#   https://github.com/verus-lang/verus/pull/2686
 
 set -e
 
@@ -28,9 +26,8 @@ elif [ `uname` == "Linux" ]; then
     DYN_LIB_EXT=so
 fi
 
-. ../tools/activate
-vargo build -p verusdoc
-vargo build --vstd-no-verify
+cargo build -p verusdoc
+cargo build
 
 echo "Running rustdoc..."
 RUSTC_BOOTSTRAP=1 eval ""VERUSDOC=1 VSTD_KIND=IsVstd VERUS_Z3_PATH="$(pwd)/z3"  rustdoc \
@@ -58,6 +55,6 @@ RUSTC_BOOTSTRAP=1 eval ""VERUSDOC=1 VSTD_KIND=IsVstd VERUS_Z3_PATH="$(pwd)/z3"  
   vstd/vstd.rs""
 
 echo "Running post-processor..."
-./target/debug/verusdoc
+./target-verus/debug/verusdoc
 
 echo "Documentation generated at ./doc/vstd/index.html"

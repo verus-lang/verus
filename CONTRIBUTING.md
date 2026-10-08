@@ -101,7 +101,7 @@ To manually build the `vstd` documentation, run,
 
 ```sh
 cd source
-./tools/docs-cargo.sh
+./tools/docs.sh
 ```
 
 The output of the command will tell you where the HTML is generated.
