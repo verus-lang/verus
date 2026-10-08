@@ -293,6 +293,7 @@ fn clone_add_post_condition<'tcx>(
                 autospec: AutospecUsage::Final,
                 const_var: false,
                 assume_external_allowed: false,
+                restrict_unwind: true,
             },
         );
         let self_var = SpannedTyped::new(
@@ -406,6 +407,7 @@ fn strictly_cloned_call(e1: &Expr, e2: &Expr, typ: Typ, impl_paths: ImplPaths) -
             autospec: AutospecUsage::Final,
             const_var: false,
             assume_external_allowed: false,
+            restrict_unwind: true,
         },
     );
     let args = Arc::new(vec![e1.clone(), e2.clone()]);

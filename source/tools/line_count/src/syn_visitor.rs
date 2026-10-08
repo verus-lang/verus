@@ -198,6 +198,13 @@ impl<'f> Visitor<'f> {
                     LineContent::FunctionSpec,
                 );
             }
+            if let Some(unwind_requires) = &sig.spec.unwind_requires {
+                self.mark(
+                    unwind_requires,
+                    self.mode_or_trusted(CodeKind::Spec),
+                    LineContent::FunctionSpec,
+                );
+            }
             if let Some(ensures) = &sig.spec.ensures {
                 self.mark(ensures, self.mode_or_trusted(CodeKind::Spec), LineContent::FunctionSpec);
             }

@@ -32,6 +32,48 @@ This effectively says:
  * If `i < self.len()`, then the function will not unwind.
  * If the function returns normally, then `i < self.len()` (equivalently, if `i >= self.len()`, then the function must unwind).
 
+## `requires[no_unwind]`
+
+A function can also give its no-unwind condition as a `requires`-like clause:
+
+```rust
+fn unwrap<T>(o: Option<T>) -> T
+    requires[no_unwind]
+        o.is_some(),
+```
+
+Like `no_unwind when o.is_some()`, this means that the function will not unwind
+if the condition holds. The difference is that the condition is checked at every call site
+by default, as if it were a precondition, even if the caller is itself allowed to unwind.
+
+To skip this check, use `#[verifier::restrict_unwind(false)]`. This attribute can be placed
+on a call expression, or on a function, impl, module, or crate, in which case it applies to all
+calls inside it. When `restrict_unwind` is false for a call, the condition is only checked
+to the extent needed to show that the caller meets its own unwinding signature
+(as with `no_unwind when`).
+
+The form `requires[no_unwind exact]` additionally specifies that the function
+_will_ unwind if the condition does not hold.
+Equivalently, if the function returns normally, then the condition holds.
+Verus checks this in the body of the function (the condition must hold at every normal return),
+and callers may assume the condition after the call returns:
+
+```rust
+fn unwrap<T>(o: Option<T>) -> T
+    requires[no_unwind exact]
+        o.is_some(),
+
+#[verifier::restrict_unwind(false)]
+fn test(o: Option<u8>) {
+    let x = unwrap(o);
+    assert(o.is_some());
+}
+```
+
+A function may use either `requires[no_unwind]`, `requires[no_unwind exact]`,
+or `no_unwind`/`no_unwind when`, but not more than one of these.
+`requires[no_unwind ...]` can be combined with an ordinary `requires` clause.
+
 ## Restrictions with invariants
 
 You cannot unwind when an [invariant](https://verus-lang.github.io/verus/verusdoc/vstd/macro.open_local_invariant.html) is open.
