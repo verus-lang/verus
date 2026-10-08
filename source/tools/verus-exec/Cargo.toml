@@ -12,6 +12,8 @@ proc-macro2 = { workspace = true, features = ["span-locations"] }
 tempfile = { workspace = true }
 verus_syn = { workspace = true }
 verus_builtin_macros_syntax = { path = "../../builtin_macros/syntax" }
+verus_state_machines_macros_syntax = { path = "../../state_machines_macros/syntax" }
+verus_prettyplease = { workspace = true }
 walkdir = { workspace = true }
 
 [lints]

@@ -2,11 +2,11 @@
 //! this module handles the cases where a snapshot needs to retain source syntax
 //! instead of emitting the compiler's desugared representation.
 use proc_macro2::{Span, TokenStream};
-use quote::ToTokens;
+use quote::{ToTokens, quote};
 use verus_syn::parse::Parser;
 use verus_syn::spanned::Spanned;
 use verus_syn::visit_mut::VisitMut;
-use verus_syn::{Attribute, Expr, Macro, Meta, Signature, Stmt, Token};
+use verus_syn::{Attribute, Expr, Macro, Meta, Pat, Signature, Stmt, Token};
 
 use crate::syntax::{ImplItems, Items, Visitor};
 
@@ -17,6 +17,7 @@ pub(crate) struct SourceErasure {
     pub(crate) verus_depth: u32,
     pub(crate) expression_is_statement: bool,
     pub(crate) statement_macro_needs_semi: bool,
+    identifiers: std::collections::HashSet<String>,
 }
 
 /// A source range selected by the macro rewriter for removal.
@@ -36,11 +37,74 @@ pub enum ErasureKind {
     WrapperClose,
     /// Small syntax repairs such as grouping parentheses or const delimiters.
     Replace(&'static str),
+    /// A named return's opening delimiter, pattern, and colon.
+    ReturnName,
+    /// Compiler-generated syntax replacing a constructor's argument list.
+    ConstructorSuffix(TokenStream),
+    /// A source binding renamed by the shared pattern rewriter.
+    Identifier(String),
+    /// Expand a known executable Verus macro with its existing generator.
+    ExpandMacro {
+        name: String,
+        tokens: TokenStream,
+    },
 }
 
 impl Erasure {
     pub(crate) fn node(span: Span) -> Self {
         Self { span, kind: ErasureKind::Node }
+    }
+}
+
+impl SourceErasure {
+    pub(crate) fn collect_identifiers(&mut self, tokens: TokenStream) {
+        for token in tokens {
+            match token {
+                proc_macro2::TokenTree::Ident(id) => {
+                    let name = id.to_string();
+                    self.identifiers.insert(name.strip_prefix("r#").unwrap_or(&name).to_owned());
+                }
+                proc_macro2::TokenTree::Group(group) => self.collect_identifiers(group.stream()),
+                _ => {}
+            }
+        }
+    }
+
+    pub(crate) fn record_ghost_pattern(
+        &mut self,
+        original: &verus_syn::PatTupleStruct,
+        lowered: &mut Pat,
+        temporaries: &mut std::collections::HashMap<String, proc_macro2::Ident>,
+    ) {
+        let Pat::Ident(binding) = &original.elems[0] else { unreachable!() };
+        let Pat::Ident(lowered) = lowered else { unreachable!() };
+        let base = lowered.ident.to_string();
+        let ident = temporaries.entry(base.clone()).or_insert_with(|| {
+            let mut name = base.clone();
+            let mut suffix = 0;
+            while !self.identifiers.insert(name.clone()) {
+                suffix += 1;
+                name = format!("{base}_{suffix}");
+            }
+            proc_macro2::Ident::new(&name, binding.ident.span())
+        });
+        lowered.ident = ident.clone();
+        lowered.attrs = original.attrs.iter().chain(&binding.attrs).cloned().collect();
+        self.spans.push(Erasure::node(original.path.span()));
+        self.spans.push(Erasure::node(original.paren_token.span.open()));
+        self.spans.push(Erasure::node(original.paren_token.span.close()));
+        if original.elems.trailing_punct() {
+            self.spans.push(Erasure::node(
+                original.elems.pairs().next_back().unwrap().punct().unwrap().span(),
+            ));
+        }
+        if binding.mutability.is_some() && lowered.mutability.is_none() {
+            self.spans.push(Erasure::node(binding.mutability.span()));
+        }
+        self.spans.push(Erasure {
+            span: binding.ident.span(),
+            kind: ErasureKind::Identifier(ident.to_string()),
+        });
     }
 }
 
@@ -69,7 +133,7 @@ fn canonical_macro_name<'a>(
         Some(first)
     } else if matches!(
         first.to_string().as_str(),
-        "verus_builtin_macros" | "builtin_macros" | "vstd"
+        "verus_builtin_macros" | "builtin_macros" | "vstd" | "verus_state_machines_macros"
     ) {
         segments.last()
     } else {
@@ -89,6 +153,20 @@ pub(crate) fn is_item_wrapper_name(name: &str) -> bool {
     matches!(
         name,
         "verus" | "verus_keep_ghost" | "verus_erase_ghost" | "verus_impl" | "verus_trait_impl"
+    )
+}
+
+pub(crate) fn is_expanded_item_macro(path: &verus_syn::Path) -> bool {
+    macro_name(path).is_some_and(|name| is_expanded_item_macro_name(&name.to_string()))
+}
+
+fn is_expanded_item_macro_name(name: &str) -> bool {
+    matches!(
+        name,
+        "struct_with_invariants"
+            | "state_machine"
+            | "tokenized_state_machine"
+            | "tokenized_state_machine_vstd"
     )
 }
 
@@ -125,6 +203,37 @@ pub(crate) struct RustVisitor<'a> {
 }
 
 impl<'ast> syn::visit::Visit<'ast> for RustVisitor<'_> {
+    fn visit_signature(&mut self, sig: &'ast syn::Signature) {
+        match verus_syn::parse2(sig.to_token_stream()) {
+            Ok(mut sig) => self.visitor.visit_source_signature(&mut sig),
+            Err(error) => self.visitor.record_source_error(error),
+        }
+    }
+
+    fn visit_item(&mut self, item: &'ast syn::Item) {
+        if !self.visitor.record_cfg_item_erasure(item) {
+            syn::visit::visit_item(self, item);
+        }
+    }
+
+    fn visit_impl_item(&mut self, item: &'ast syn::ImplItem) {
+        if !self.visitor.record_cfg_item_erasure(item) {
+            syn::visit::visit_impl_item(self, item);
+        }
+    }
+
+    fn visit_trait_item(&mut self, item: &'ast syn::TraitItem) {
+        if !self.visitor.record_cfg_item_erasure(item) {
+            syn::visit::visit_trait_item(self, item);
+        }
+    }
+
+    fn visit_foreign_item(&mut self, item: &'ast syn::ForeignItem) {
+        if !self.visitor.record_cfg_item_erasure(item) {
+            syn::visit::visit_foreign_item(self, item);
+        }
+    }
+
     fn visit_block(&mut self, block: &'ast syn::Block) {
         let previous = self.visitor.source_erasure.as_ref().unwrap().statement_macro_needs_semi;
         for (index, stmt) in block.stmts.iter().enumerate() {
@@ -215,6 +324,13 @@ impl<'ast> syn::visit::Visit<'ast> for RustVisitor<'_> {
     }
 
     fn visit_expr(&mut self, expr: &'ast syn::Expr) {
+        if matches!(expr, syn::Expr::Call(_)) {
+            if let Ok(mut expr) = verus_syn::parse2(expr.to_token_stream()) {
+                if self.visitor.handle_mode_blocks(&mut expr) {
+                    return;
+                }
+            }
+        }
         if let syn::Expr::Block(block) = expr {
             if crate::syntax::has_ghost_mode_syn(&block.attrs) {
                 self.visitor
@@ -246,6 +362,17 @@ impl<'ast> syn::visit::Visit<'ast> for RustVisitor<'_> {
         if crate::syntax::has_ghost_mode_syn(&local.attrs) {
             self.visitor.record_erasure(local);
         } else {
+            // A local pattern may include a type annotation, which the
+            // standalone pattern parser does not accept.
+            let pat = &local.pat;
+            match verus_syn::parse2::<Stmt>(quote! { let #pat; }) {
+                Ok(Stmt::Local(mut local)) => crate::syntax::rewrite_exe_pat_source(
+                    &mut local.pat,
+                    self.visitor.source_erasure.as_mut().unwrap(),
+                ),
+                Ok(_) => unreachable!(),
+                Err(error) => self.visitor.record_source_error(error),
+            }
             syn::visit::visit_local(self, local);
         }
     }
@@ -284,7 +411,9 @@ impl<'ast> syn::visit::Visit<'ast> for RustVisitor<'_> {
             self.visitor.record_erasure(mac);
             return;
         }
-        if name.as_deref().is_some_and(is_item_wrapper_name) {
+        if name.as_deref().is_some_and(is_item_wrapper_name)
+            || name.as_deref().is_some_and(is_expanded_item_macro_name)
+        {
             self.visitor.record_erasure(&mac.semi_token);
         }
         syn::visit::visit_item_macro(self, mac);
@@ -324,7 +453,40 @@ pub(crate) fn is_verus_attribute(path: &verus_syn::Path) -> bool {
             ))
 }
 
+pub(crate) fn has_ghost_cfg(item: &impl ToTokens, include_body: bool) -> bool {
+    // Read only the leading attributes, leaving item and macro bodies opaque.
+    // This works for both ASTs without duplicating their item variant lists.
+    let attrs = (|input: verus_syn::parse::ParseStream| {
+        let attrs = input.call(Attribute::parse_outer)?;
+        let _: TokenStream = input.parse()?;
+        Ok(attrs)
+    })
+    .parse2(item.to_token_stream());
+    attrs.is_ok_and(|attrs| {
+        attrs.iter().any(|attr| {
+            attr.path().is_ident("cfg")
+                && attr
+                    .parse_args_with(
+                        verus_syn::punctuated::Punctuated::<Meta, Token![,]>::parse_terminated,
+                    )
+                    .is_ok_and(|args| {
+                        args.len() == 1
+                            && matches!(args.first(), Some(Meta::Path(path)) if path.is_ident("verus_keep_ghost")
+                                || (include_body && path.is_ident("verus_keep_ghost_body")))
+                    })
+        })
+    })
+}
+
 impl Visitor {
+    pub(crate) fn record_cfg_item_erasure(&mut self, item: &impl ToTokens) -> bool {
+        let ghost = has_ghost_cfg(item, false);
+        if ghost {
+            self.record_erasure(item);
+        }
+        ghost
+    }
+
     pub(crate) fn record_source_error(&mut self, error: verus_syn::Error) {
         let source = self.source_erasure.as_mut().unwrap();
         if let Some(existing) = &mut source.error {
@@ -414,19 +576,37 @@ impl Visitor {
             }
             self.record_erasure(&tokens);
         }
-        // Preserve named returns, parameters, and Ghost/Tracked types.
-        // These snapshots describe exec source; they are not macro expansion.
+        // Preserve parameters and wrapper types, while sharing the compiler's
+        // lowering of wrapped bindings.
         verus_syn::visit_mut::visit_generics_mut(self, &mut sig.generics);
         for arg in &mut sig.inputs {
             self.record_erasure(&arg.tracked);
             arg.tracked = None;
+            crate::syntax::rewrite_args_unwrap_ghost_tracked(
+                &crate::EraseGhost::EraseAll,
+                arg,
+                self.source_erasure.as_mut(),
+            );
             self.visit_fn_arg_mut(arg);
         }
-        if let verus_syn::ReturnType::Type(_, tracked, _, _) = &mut sig.output {
+        self.visit_return_type_mut(&mut sig.output);
+    }
+
+    pub(crate) fn visit_source_return_type(&mut self, output: &mut verus_syn::ReturnType) {
+        if let verus_syn::ReturnType::Type(_, tracked, name, _) = output {
             self.record_erasure(tracked);
             *tracked = None;
+            if let Some(name) = name.take() {
+                let (paren, _, colon) = *name;
+                let source = self.source_erasure.as_mut().unwrap();
+                source.spans.push(Erasure {
+                    span: paren.span.open().join(colon.span).unwrap(),
+                    kind: ErasureKind::ReturnName,
+                });
+                source.spans.push(Erasure::node(paren.span.close()));
+            }
         }
-        self.visit_return_type_mut(&mut sig.output);
+        verus_syn::visit_mut::visit_return_type_mut(self, output);
     }
 
     pub(crate) fn visit_source_attribute(&mut self, attr: &mut Attribute) {
@@ -476,6 +656,13 @@ impl Visitor {
             return;
         }
         let tokens = verus_syn::rejoin_tokens(mac.tokens.clone());
+        if name == "atomic_with_ghost" || is_expanded_item_macro_name(&name) {
+            self.source_erasure.as_mut().unwrap().spans.push(Erasure {
+                span: mac.span(),
+                kind: ErasureKind::ExpandMacro { name, tokens },
+            });
+            return;
+        }
         let depth = self.source_erasure.as_ref().unwrap().verus_depth;
         // Only these macros introduce a Verus grammar context. In ordinary Rust
         // an identifier such as assert or assume may name an executable function.

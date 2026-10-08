@@ -1,4 +1,5 @@
 //! Source-preserving snapshots of executable Verus code.
+use std::borrow::Cow;
 use std::ops::Range;
 
 use anyhow::{Context, Result, ensure};
@@ -45,14 +46,78 @@ pub fn strip_source(source: &str) -> Result<String> {
                         start = line - 1;
                     }
                 }
-                ErasureKind::Unit => replacement = Some("{}"),
-                ErasureKind::Replace(text) => replacement = Some(text),
+                ErasureKind::Unit => replacement = Some(Cow::Borrowed("{}")),
+                ErasureKind::Replace(text) => replacement = Some(Cow::Borrowed(text)),
+                ErasureKind::Identifier(name) => replacement = Some(Cow::Owned(name)),
+                ErasureKind::ConstructorSuffix(tokens) => {
+                    // Format only the generated suffix. The original constructor
+                    // path, generic arguments, and their comments remain intact.
+                    let expr =
+                        verus_syn::parse_str(&format!("Ghost{tokens}")).map_err(parse_error)?;
+                    let formatted = verus_prettyplease::unparse_expr(&expr);
+                    replacement = Some(Cow::Owned(formatted["Ghost".len()..].to_owned()));
+                }
+                ErasureKind::ExpandMacro { name, tokens } => {
+                    let expanded = expand_macro(&name, tokens)
+                        .map_err(parse_error)
+                        .with_context(|| format!("expanding {name}!"))?;
+                    let expanded = if name == "atomic_with_ghost" {
+                        // Parse expressions in a Rust body so nested known macros
+                        // can use the same source visitor and replacement logic.
+                        let prefix = "fn __verus_exec_expression() {\n";
+                        let wrapped = strip_source(&format!("{prefix}{expanded}\n}}"))?;
+                        wrapped[prefix.len()..wrapped.len() - 2].to_owned()
+                    } else {
+                        strip_source(&expanded)?
+                    };
+                    let line = source[..range.start].rfind('\n').map_or(0, |i| i + 1);
+                    let indentation: String = source[line..range.start]
+                        .chars()
+                        .take_while(|c| matches!(c, ' ' | '\t'))
+                        .collect();
+                    let newline = if source.contains("\r\n") { "\r\n" } else { "\n" };
+                    replacement = Some(Cow::Owned(
+                        expanded
+                            .trim_end()
+                            .split('\n')
+                            .collect::<Vec<_>>()
+                            .join(&format!("{newline}{indentation}")),
+                    ));
+                }
+                ErasureKind::ReturnName => {
+                    // The space following `result:` belongs to the removed
+                    // binding. Keep comments and line breaks in the type.
+                    range.end += source[range.end..]
+                        .chars()
+                        .take_while(|c| matches!(c, ' ' | '\t'))
+                        .map(char::len_utf8)
+                        .sum::<usize>();
+                }
                 ErasureKind::Node => {}
             }
             Ok(Edit { range, replacement })
         })
         .collect::<Result<Vec<_>>>()?;
     erase_ranges(source, ranges)
+}
+
+fn expand_macro(name: &str, tokens: proc_macro2::TokenStream) -> verus_syn::Result<String> {
+    use verus_builtin_macros_syntax::{erase_generated, expand_atomic, expand_struct};
+    if name == "atomic_with_ghost" {
+        let expr = verus_syn::parse2(expand_atomic(tokens)?)?;
+        return Ok(verus_prettyplease::unparse_expr(&expr));
+    }
+    let tokens = if name == "struct_with_invariants" {
+        expand_struct(tokens)?
+    } else {
+        erase_generated(verus_state_machines_macros_syntax::expand(
+            tokens,
+            name != "state_machine",
+            name == "tokenized_state_machine_vstd",
+        )?)?
+    };
+    let file = verus_syn::parse2(tokens)?;
+    Ok(verus_prettyplease::unparse(&file))
 }
 
 fn parse_error(error: verus_syn::Error) -> anyhow::Error {
@@ -92,7 +157,7 @@ impl<'a> Positions<'a> {
 
 struct Edit {
     range: Range<usize>,
-    replacement: Option<&'static str>,
+    replacement: Option<Cow<'static, str>>,
 }
 
 fn erase_ranges(source: &str, mut edits: Vec<Edit>) -> Result<String> {
@@ -134,7 +199,7 @@ fn erase_ranges(source: &str, mut edits: Vec<Edit>) -> Result<String> {
             output.push_str(&source[cursor..range.start]);
         }
         if let Some(replacement) = replacement {
-            output.push_str(replacement);
+            output.push_str(&replacement);
         }
         cursor = cursor.max(range.end);
     }

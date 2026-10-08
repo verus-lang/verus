@@ -157,7 +157,7 @@ fn extracted_expressions_and_constants_compile_and_execute() {
     let binary = temp.path().join(format!("snapshot{}", std::env::consts::EXE_SUFFIX));
     fs::write(
         &input,
-        "verus! {\nexec const C: u32 ensures C == 9 { verus_exec_expr!(1 + 2) * 3 }\n}\nfn main() {\n    let unit = proof! { assert(true); };\n    assert_eq!(unit, ());\n    verus_exec_expr!{assert_eq!(C, 9)}\n    let value = verus_exec_expr!{1 + 2} * 3;\n    assert_eq!(value, 9);\n}\n",
+        "verus! {\n#[cfg(verus_keep_ghost)]\nmod ghost { custom! { opaque tokens } }\nexec const C: u32 ensures C == 9 { verus_exec_expr!(1 + 2) * 3 }\nfn value() -> (result: u32) ensures result == C { C }\n}\nfn main() {\n    let unit = proof! { assert(true); };\n    assert_eq!(unit, ());\n    verus_exec_expr!{assert_eq!(C, 9)}\n    let value = verus_exec_expr!{1 + 2} * 3;\n    assert_eq!(value, 9);\n    assert_eq!(crate::value(), 9);\n}\n",
     )
     .unwrap();
     let result = run(&[&input, std::path::Path::new("-o"), &output]);
@@ -171,4 +171,46 @@ fn extracted_expressions_and_constants_compile_and_execute() {
         .unwrap();
     assert!(compile.status.success(), "{:?}", compile);
     assert!(Command::new(binary).status().unwrap().success());
+}
+
+#[test]
+fn macro_expansions_compile_and_match_normal_macro_execution() {
+    let temp = tempfile::tempdir().unwrap();
+    let source =
+        fs::canonicalize(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")).unwrap();
+    let fixture = include_str!("fixtures/macros.rs");
+    let src = temp.path().join("src");
+    fs::create_dir(&src).unwrap();
+    fs::write(
+        temp.path().join("Cargo.toml"),
+        format!(
+            "[package]\nname = \"exec-macro-test\"\nversion = \"0.1.0\"\nedition = \"2021\"\n[workspace]\n[dependencies]\nvstd = {{ path = {:?} }}\nverus_state_machines_macros = {{ path = {:?} }}\n",
+            source.join("vstd"), source.join("state_machines_macros"),
+        ),
+    )
+    .unwrap();
+    let execute = |text: &str| {
+        fs::write(src.join("main.rs"), text).unwrap();
+        // Running outside source/ selects normal rustc's ghost-free config.
+        let output = Command::new("cargo")
+            .current_dir(temp.path())
+            .args(["run", "--offline", "--quiet"])
+            .env_remove("RUSTFLAGS")
+            .env_remove("CARGO_ENCODED_RUSTFLAGS")
+            .env_remove("CARGO_BUILD_RUSTFLAGS")
+            .env_remove("VSTD_KIND")
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr),);
+        output.stdout
+    };
+    let normal = execute(fixture);
+    let extracted = verus_exec::strip_source(fixture).unwrap();
+    assert!(!extracted.contains("atomic_with_ghost!"));
+    assert!(!extracted.contains("struct_with_invariants!"));
+    assert!(!extracted.contains("tokenized_state_machine!"));
+    assert!(!extracted.contains("tokenized_state_machine_vstd!"));
+    assert!(!extracted.contains("state_machine!"));
+    assert_eq!(execute(&extracted), normal);
+    assert_eq!(verus_exec::strip_source(&extracted).unwrap(), extracted);
 }

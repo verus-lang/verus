@@ -1,5 +1,110 @@
 use verus_exec::strip_source;
 
+#[test]
+fn expands_atomic_operations_and_preserves_surrounding_source() {
+    let input = "// before\nfn f() {\n    let value = atomic_with_ghost!(a => fetch_add(2); update old -> new; returning r; ghost g => { assert(new == old + 2); }); // after\n}\n";
+    let output = strip_source(input).unwrap();
+    assert!(output.starts_with("// before\nfn f() {\n    let value = {"));
+    assert!(output.contains(".patomic") && output.contains(".fetch_add("), "{output}");
+    assert!(output.contains("Tracked::assume_new()"), "{output}");
+    assert!(output.ends_with("}; // after\n}\n"));
+    assert!(!output.contains("assert"));
+    assert!(!output.contains("ghost g"));
+    assert_eq!(strip_source(&output).unwrap(), output);
+}
+
+#[test]
+fn nested_atomic_expansions_and_legacy_ghost_shorthand() {
+    let input = "fn f() { atomic_with_ghost!(a => store(atomic_with_ghost!(b => load(); g => {})); ghost g => {}); }";
+    let output = strip_source(input).unwrap();
+    assert!(!output.contains("atomic_with_ghost!"), "{output}");
+    assert!(output.contains(".store("), "{output}");
+    assert!(output.contains(".load("), "{output}");
+    assert_eq!(strip_source(&output).unwrap(), output);
+}
+
+#[test]
+fn expands_struct_invariants_and_retains_rust_attributes() {
+    let input = "// before\nverus! {\nstruct_with_invariants! {\n    #[repr(C)]\n    /// shared atomic\n    pub struct Counter { pub value: AtomicU32<_, (), _>, }\n    closed spec fn wf(&self) -> bool {\n        invariant on value is (v: u32, g: ()) { v < 10 }\n    }\n}\n}\n// after\n";
+    let output = strip_source(input).unwrap();
+    assert!(output.starts_with("// before\n"));
+    assert!(output.ends_with("// after\n"));
+    assert!(output.contains("#[repr(C)]"), "{output}");
+    assert!(output.contains("shared atomic"), "{output}");
+    assert!(output.contains("pub struct Counter"), "{output}");
+    assert!(!output.contains("spec fn"));
+    assert!(!output.contains("invariant on"));
+    assert!(!output.contains("verus!"));
+    assert_eq!(strip_source(&output).unwrap(), output);
+}
+
+#[test]
+fn expands_state_machines_in_both_grammars_and_removes_item_semicolon() {
+    for wrapper in ["", "verus! {"] {
+        for name in ["state_machine", "tokenized_state_machine", "tokenized_state_machine_vstd"] {
+            let sharding = if name == "state_machine" { "" } else { "#[sharding(variable)]" };
+            let input = format!(
+                "{wrapper}\n{name}! ( Counter {{ fields {{ {sharding} pub value: u32 }} init! {{ initialize() {{ init value = 0; }} }} }} );\n{}",
+                if wrapper.is_empty() { "" } else { "}" },
+            );
+            let output = strip_source(&input).unwrap();
+            assert!(output.contains("pub mod Counter"), "{output}");
+            assert!(!output.contains("init!"));
+            assert!(!output.contains("#[cfg(verus_keep_ghost)]"), "{output}");
+            assert!(!output.contains("#[cfg(verus_keep_ghost_body)]"), "{output}");
+            assert!(!output.trim_end().ends_with(';'), "{output}");
+            assert_eq!(strip_source(&output).unwrap(), output);
+        }
+    }
+}
+
+#[test]
+fn preserves_foreign_macros_and_skips_disabled_known_macros() {
+    let input = "other::atomic_with_ghost! { invalid }\nother::tokenized_state_machine! { invalid }\n#[cfg(verus_keep_ghost)]\ntokenized_state_machine! { invalid }\n";
+    check(
+        input,
+        "other::atomic_with_ghost! { invalid }\nother::tokenized_state_machine! { invalid }\n",
+    );
+}
+
+#[test]
+fn invalid_known_macros_report_errors() {
+    for input in [
+        "fn f() { atomic_with_ghost!(a => unknown(); ghost g => {}); }",
+        "fn f() { atomic_with_ghost!(a => store(); ghost g => {}); }",
+        "struct_with_invariants! { invalid }",
+        "tokenized_state_machine! { invalid }",
+    ] {
+        assert!(strip_source(input).is_err(), "{input}");
+    }
+    let error = strip_source("fn f() {\n    atomic_with_ghost!(a => store(); ghost g => {});\n}")
+        .unwrap_err();
+    assert!(format!("{error:#}").contains("at 2:"), "{error:#}");
+}
+
+#[test]
+fn generated_macros_preserve_crlf_and_indentation() {
+    let input = "fn f() {\r\n\tlet x = atomic_with_ghost!(a => load(); ghost g => {});\r\n}\r\n";
+    let output = strip_source(input).unwrap();
+    assert!(output.starts_with("fn f() {\r\n\tlet x = {\r\n\t"));
+    assert!(output.ends_with("\t};\r\n}\r\n"));
+    assert!(!output.replace("\r\n", "").contains('\n'));
+    assert_eq!(strip_source(&output).unwrap(), output);
+}
+
+#[test]
+fn generated_types_use_exec_desugaring_without_compiler_context() {
+    for spelling in ["spec_fn", "FnSpec"] {
+        let input = format!(
+            "struct_with_invariants! {{ pub struct S {{ pub callback: Ghost<{spelling}(u8) -> u8>, }} closed spec fn wf(&self) -> bool {{ predicate {{ true }} }} }}"
+        );
+        let output = strip_source(&input).unwrap();
+        assert!(output.contains("FnSpec<"), "{output}");
+        assert!(!output.contains("spec_fn("));
+        assert_eq!(strip_source(&output).unwrap(), output);
+    }
+}
+
 fn check(input: &str, expected: &str) {
     let output = strip_source(input).unwrap();
     assert_eq!(output, expected);
@@ -39,7 +144,7 @@ fn binary_search(v: &Vec<u64>, k: u64) -> (r: usize)
 }
 }
 "#,
-        r#"fn binary_search(v: &Vec<u64>, k: u64) -> (r: usize)
+        r#"fn binary_search(v: &Vec<u64>, k: u64) -> usize
 {
     let mut i1: usize = 0;
     let mut i2: usize = v.len() - 1;
@@ -236,10 +341,10 @@ fn f() {
 }
 
 #[test]
-fn executable_ghost_wrappers_are_retained() {
+fn executable_ghost_wrapper_types_are_retained() {
     check(
         "verus! { fn f(g: Ghost<int>) -> Tracked<Token> { let g = Ghost(0int); make(g) } }\n",
-        " fn f(g: Ghost<int>) -> Tracked<Token> { let g = Ghost(0int); make(g) } \n",
+        " fn f(g: Ghost<int>) -> Tracked<Token> { let g = Ghost::assume_new_fallback(|| unreachable!()); make(g) } \n",
     );
 }
 
@@ -295,7 +400,7 @@ fn impl_wrappers_and_qualified_names() {
 fn complete_function_contract() {
     check(
         "verus! {\nexec fn f() -> (r: u32)\n    requires true,\n    ensures true,\n    returns 1u32,\n    decreases 1,\n    opens_invariants none\n    no_unwind\n{ 1 }\n}\n",
-        " fn f() -> (r: u32)\n{ 1 }\n",
+        " fn f() -> u32\n{ 1 }\n",
     );
 }
 
@@ -413,8 +518,104 @@ fn attributed_ghost_constants() {
 fn ghost_wrappers_still_erase_nested_proof_artifacts() {
     check(
         "verus! { fn f() -> Ghost<int> { Ghost({ proof { assert(true); } 0int }) } }\n",
-        " fn f() -> Ghost<int> { Ghost({  0int }) } \n",
+        " fn f() -> Ghost<int> { Ghost::assume_new_fallback(|| unreachable!()) } \n",
     );
+}
+
+#[test]
+fn wrapper_constructors_discard_payloads_and_preserve_paths() {
+    let input = r#"fn f() -> (Ghost<u32>, Tracked<u32>) {
+    // retain this comment
+    let g = Ghost /* path comment */ ::< /* type comment */ u32 > /* call comment */ (
+        atomic_with_ghost! { invalid ghost-only macro payload },
+    );
+    let t = Tracked::<u32>(undefined_token.borrow());
+    (g, t) // retain this too
+}
+"#;
+    let expected = r#"fn f() -> (Ghost<u32>, Tracked<u32>) {
+    // retain this comment
+    let g = Ghost /* path comment */ ::< /* type comment */ u32 > /* call comment */ ::assume_new_fallback(|| unreachable!());
+    let t = Tracked::<u32>::assume_new_fallback(|| unreachable!());
+    (g, t) // retain this too
+}
+"#;
+    check(input, expected);
+    check(&format!("verus! {{\n{input}}}\n"), expected);
+    check(
+        "#[verus_verify]\nfn f() -> Ghost<u32> { Ghost(removed.view()) }\n",
+        "fn f() -> Ghost<u32> { Ghost::assume_new_fallback(|| unreachable!()) }\n",
+    );
+    check(
+        "verus! {\r\nfn f() -> Tracked<u32> { Tracked(removed) }\r\n}\r\n",
+        "fn f() -> Tracked<u32> { Tracked::assume_new_fallback(|| unreachable!()) }\r\n",
+    );
+}
+
+#[test]
+fn wrapper_patterns_preserve_types_comments_and_exec_bindings() {
+    let input = r#"fn f(Tracked /* wrapper comment */ (/* binding */ mut tok /* after */,): Tracked<u32>, Ghost(model,): Ghost<u32>) {
+    let (value, Tracked(/* local */ mut next /* after */,), Ghost(g)) = make();
+    let S { plain, token: Tracked(t) }: S = other();
+    let Some(Ghost(x)) = maybe() else { return; };
+    consume(value, plain);
+}
+"#;
+    let expected = r#"fn f( /* wrapper comment */ /* binding */ mut verus_tmp_tok /* after */: Tracked<u32>, verus_tmp_model: Ghost<u32>) {
+    let (value, /* local */  verus_tmp_next /* after */, verus_tmp_g) = make();
+    let S { plain, token: verus_tmp_t }: S = other();
+    let Some(verus_tmp_x) = maybe() else { return; };
+    consume(value, plain);
+}
+"#;
+    check(input, expected);
+    check(&format!("verus! {{\n{input}}}\n"), expected);
+}
+
+#[test]
+fn wrapper_patterns_avoid_capture_and_support_raw_identifiers() {
+    let input = r#"fn f(Tracked(tok): Tracked<u32>, Ghost(r#type): Ghost<u32>) {
+    let verus_tmp_tok = 1;
+    let r#verus_tmp_tok_1 = 2;
+    let Tracked(tok) = make();
+    let Ghost(r#type) = model();
+    let (A(Tracked(item)) | B(Tracked(item))) = other();
+    opaque! { verus_tmp_item }
+    consume(verus_tmp_tok, r#verus_tmp_tok_1);
+}
+"#;
+    let expected = r#"fn f(verus_tmp_tok_2: Tracked<u32>, verus_tmp_type: Ghost<u32>) {
+    let verus_tmp_tok = 1;
+    let r#verus_tmp_tok_1 = 2;
+    let verus_tmp_tok_3 = make();
+    let verus_tmp_type_1 = model();
+    let (A(verus_tmp_item_1) | B(verus_tmp_item_1)) = other();
+    opaque! { verus_tmp_item }
+    consume(verus_tmp_tok, r#verus_tmp_tok_1);
+}
+"#;
+    check(input, expected);
+    check(&format!("verus! {{\n{input}}}\n"), expected);
+}
+
+#[test]
+fn unrelated_and_unsupported_wrapper_forms_are_preserved() {
+    // The shared compiler rewriter recognizes bare, single-identifier wrappers
+    // in function parameters and local let bindings.
+    let input = r#"fn f(Plain(x): Plain, other::Ghost(y): other::Ghost<u32>) {
+    let Plain(z) = plain();
+    let other::Tracked(t) = other();
+    let Ghost(ref g) = model();
+    let Tracked(t @ _) = token();
+    let Ghost((a, b)) = pair();
+    let empty = Ghost();
+    let many = Tracked(a, b);
+    let qualified = other::Ghost(1);
+    consume(x, y, z, t, g);
+}
+"#;
+    check(input, input);
+    check(&format!("verus! {{\n{input}}}\n"), input);
 }
 
 #[test]
@@ -429,4 +630,102 @@ fn attributed_ghost_locals_blocks_and_checked_spec_functions() {
     let expected = "fn f() {\n    let unit = {};\n    consume(unit);\n}\n";
     check(input, expected);
     check(&format!("verus! {{\n{input}}}\n"), expected);
+}
+
+#[test]
+fn ghost_cfg_items_are_removed_in_both_syntaxes() {
+    let input = r#"#[cfg(verus_keep_ghost)]
+use ghost_crate::*;
+#[cfg(verus_keep_ghost)]
+mod ghost_module;
+#[cfg(verus_keep_ghost)]
+mod ghost_inline { verus! { deliberately invalid Verus } }
+#[cfg(verus_keep_ghost)]
+struct GhostData;
+#[cfg(verus_keep_ghost)]
+enum GhostEnum { A }
+#[cfg(verus_keep_ghost)]
+trait GhostTrait {}
+#[cfg(verus_keep_ghost)]
+type GhostAlias = u32;
+#[cfg(verus_keep_ghost)]
+const GHOST_CONST: u32 = 1;
+#[cfg(verus_keep_ghost)]
+static GHOST_STATIC: u32 = 1;
+#[cfg(verus_keep_ghost)]
+fn ghost_fn() {}
+#[cfg(verus_keep_ghost)]
+impl S { fn ghost_impl() {} }
+#[cfg(verus_keep_ghost)]
+custom! { opaque tokens }
+struct S;
+impl S {
+    #[cfg(verus_keep_ghost)]
+    fn ghost_method(&self) {}
+    #[cfg(verus_keep_ghost)]
+    const GHOST: u32 = 1;
+    fn exec(&self) {}
+}
+trait T {
+    #[cfg(verus_keep_ghost)]
+    fn ghost_method(&self);
+    #[cfg(verus_keep_ghost)]
+    type GhostType;
+    fn exec(&self);
+}
+extern "C" {
+    #[cfg(verus_keep_ghost)]
+    fn ghost_foreign();
+    fn exec_foreign();
+}
+fn exec() {
+    #[cfg(verus_keep_ghost)]
+    fn ghost_local() {}
+}
+"#;
+    let expected = r#"struct S;
+impl S {
+    fn exec(&self) {}
+}
+trait T {
+    fn exec(&self);
+}
+extern "C" {
+    fn exec_foreign();
+}
+fn exec() {
+}
+"#;
+    check(input, expected);
+    check(&format!("verus! {{\n{input}}}\n"), expected);
+}
+
+#[test]
+fn ghost_cfg_matching_is_exact() {
+    check(
+        "#[cfg( /* keep only in Verus */ verus_keep_ghost, )]\nfn ghost() {}\nfn exec() {}\n",
+        "fn exec() {}\n",
+    );
+    let input = "#[cfg(not(verus_keep_ghost))]\nfn exec() {}\n#[cfg(any(verus_keep_ghost, feature = \"other\"))]\nfn conditional() {}\n#[cfg(verus_keep_ghost = \"yes\")]\nfn different_condition() {}\n#[cfg_attr(verus_keep_ghost, allow(unused))]\nfn attributed() {}\n";
+    check(input, input);
+}
+
+#[test]
+fn named_return_bindings_are_removed() {
+    check(
+        "verus! {\nstruct S;\nimpl S {\n    fn clone(&self) -> (result: Self) { S }\n}\ntrait T {\n    fn clone(&self) -> (result: Self);\n}\nfn tuple() -> ((a, b): (u32, u32)) { (1, 2) }\nfn reference<'a>(x: &'a u32) -> (result: &'a u32) { x }\nfn ghost() -> (result: Ghost<u32>) { Ghost(1) }\nfn tracked() -> (tracked result: Tracked<Token>) { make() }\nfn closure() { let c = || -> (result: u32) { 1 }; }\n}\n",
+        "struct S;\nimpl S {\n    fn clone(&self) -> Self { S }\n}\ntrait T {\n    fn clone(&self) -> Self;\n}\nfn tuple() -> (u32, u32) { (1, 2) }\nfn reference<'a>(x: &'a u32) -> &'a u32 { x }\nfn ghost() -> Ghost<u32> { Ghost::assume_new_fallback(|| unreachable!()) }\nfn tracked() -> Tracked<Token> { make() }\nfn closure() { let c = || -> u32 { 1 }; }\n",
+    );
+    check("fn clone(&self) -> (result: Self) { make() }\n", "fn clone(&self) -> Self { make() }\n");
+    let input = "fn tuple() -> (u32, u32) { (1, 2) }\nfn grouped() -> (u32) { 1 }\n";
+    check(input, input);
+}
+
+#[test]
+fn named_return_bindings_preserve_type_comments_and_line_breaks() {
+    check(
+        "verus! {\nfn f() -> (result: /* keep type comment */ u32 /* keep trailing comment */) { 1 }\nfn g() -> (result:\n    u32\n) { 2 }\n}\n",
+        "fn f() -> /* keep type comment */ u32 /* keep trailing comment */ { 1 }\nfn g() -> \n    u32\n { 2 }\n",
+    );
+    check("verus! {\r\nfn café() -> (résumé: u32) { 1 }\r\n}\r\n", "fn café() -> u32 { 1 }\r\n");
 }
