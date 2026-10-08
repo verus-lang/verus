@@ -43,8 +43,18 @@ pub uninterp spec fn key_obeys_cmp_spec<Key: ?Sized>() -> bool;
 /// For types that are ordered, [`key_obeys_cmp_spec`] is equivalent to [`obeys_cmp`].
 pub broadcast axiom fn axiom_key_obeys_cmp_spec_meaning<K: Ord>()
     ensures
-        #[trigger] key_obeys_cmp_spec::<K>() <==> obeys_cmp::<K>(),
+        #[trigger] key_obeys_cmp_spec::<K>() <==> btree_key_obeys::<K>(),
 ;
+
+/// The keys of a `BTreeMap`/`BTreeSet` are modelled as a `Map`/`Set` over the key values,
+/// which identifies keys by `==`; the implementation identifies them by `cmp`. The two agree
+/// only if `cmp` is a total order whose `Equal` is `==` (#3029: an `Ord` that
+/// ignores a field made `insert` of two such keys a two-entry `Map` but a one-entry tree).
+/// The specifications below hold under this predicate.
+pub open spec fn btree_key_obeys<K: Ord>() -> bool {
+    &&& obeys_cmp::<K>()
+    &&& super::super::laws_eq::obeys_concrete_eq::<K>()
+}
 
 /// Whether a sequence is ordered in increasing order.
 /// This only has meaning if `K: Ord` and [`obeys_cmp::<K>`].
@@ -497,7 +507,15 @@ pub assume_specification<K: Clone, V: Clone, A: Allocator + Clone>[ <BTreeMap::<
     A,
 > as Clone>::clone ](this: &BTreeMap<K, V, A>) -> (other: BTreeMap<K, V, A>)
     ensures
-        other@ == this@,
+        // Keys and values are cloned with their `Clone` impls (#3086, as #1835 for
+        // `HashMap`): the keys are the same only if `K::clone` returns an equal value, and
+        // each value is a clone.
+        (forall|a: K, b: K| #[trigger] cloned(a, b) ==> a == b) ==> {
+            &&& other@.dom() == this@.dom()
+            &&& forall|key|
+                #![trigger other@.dom().contains(key)]
+                other@.dom().contains(key) ==> cloned(this@[key], #[trigger] other@[key])
+        },
 ;
 
 pub assume_specification<Key, Value>[ BTreeMap::<Key, Value>::new ]() -> (m: BTreeMap<Key, Value>)
@@ -517,7 +535,7 @@ pub assume_specification<Key: Ord, Value, A: Allocator + Clone>[ BTreeMap::<
     A,
 >::insert ](m: &mut BTreeMap<Key, Value, A>, k: Key, v: Value) -> (result: Option<Value>)
     ensures
-        obeys_cmp::<Key>() ==> {
+        btree_key_obeys::<Key>() ==> {
             &&& final(m)@ == old(m)@.insert(k, v)
             &&& match result {
                 Some(v) => old(m)@.contains_key(k) && v == old(m)[k],
@@ -565,7 +583,7 @@ pub assume_specification<
 >[ BTreeMap::<Key, Value, A>::contains_key::<Q> ](m: &BTreeMap<Key, Value, A>, k: &Q) -> (result:
     bool)
     ensures
-        obeys_cmp::<Key>() ==> result == contains_borrowed_key(m@, k),
+        btree_key_obeys::<Key>() ==> result == contains_borrowed_key(m@, k),
 ;
 
 // The specification for `get` has a parameter `key: &Q` where you'd
@@ -617,7 +635,7 @@ pub assume_specification<
     requires
         borrowed_key_ordering_matches::<Key, Q>(),
     ensures
-        obeys_cmp::<Key>() ==> match result {
+        btree_key_obeys::<Key>() ==> match result {
             Some(v) => maps_borrowed_key_to_value(m@, k, *v),
             None => !contains_borrowed_key(m@, k),
         },
@@ -673,7 +691,7 @@ pub assume_specification<
 >[ BTreeMap::<Key, Value, A>::remove::<Q> ](m: &mut BTreeMap<Key, Value, A>, k: &Q) -> (result:
     Option<Value>)
     ensures
-        obeys_cmp::<Key>() ==> {
+        btree_key_obeys::<Key>() ==> {
             &&& borrowed_key_removed(old(m)@, final(m)@, k)
             &&& match result {
                 Some(v) => maps_borrowed_key_to_value(old(m)@, k, v),
@@ -757,7 +775,7 @@ pub assume_specification<
     requires
         borrowed_key_ordering_matches::<Key, Q>(),
     ensures
-        obeys_cmp::<Key>() ==> match result {
+        btree_key_obeys::<Key>() ==> match result {
             Some(value) => borrowed_key_mutated(old(map)@, final(map)@, key, *value, *final(value)),
             None => !contains_borrowed_key(old(map)@, key) && final(map)@ == old(map)@,
         },
@@ -784,7 +802,7 @@ pub assume_specification<
     requires
         borrowed_key_ordering_matches::<Key, Q>(),
     ensures
-        obeys_cmp::<Key>() ==> {
+        btree_key_obeys::<Key>() ==> {
             &&& cursor@.wf()
             &&& cursor@.map == old(map)@
             &&& final(map)@ == cursor.final_map()
@@ -806,7 +824,7 @@ pub assume_specification<
     requires
         borrowed_key_ordering_matches::<Key, Q>(),
     ensures
-        obeys_cmp::<Key>() ==> {
+        btree_key_obeys::<Key>() ==> {
             &&& cursor@.wf()
             &&& cursor@.map == old(map)@
             &&& final(map)@ == cursor.final_map()
@@ -934,7 +952,7 @@ pub assume_specification<'a, Key: Ord, Value, A: Allocator + Clone>[ CursorMut::
         old(cursor)@.wf(),
     ensures
         final(cursor).final_map() == old(cursor).final_map(),
-        obeys_cmp::<Key>() ==> {
+        btree_key_obeys::<Key>() ==> {
             &&& final(cursor)@.wf()
             &&& match result {
                 Ok(()) => {
@@ -1058,7 +1076,7 @@ impl<'a, T> super::iter::IteratorSpecImpl for btree_set::Iter::<'a, T> {
 ///
 /// We model a `BTreeSet` as having a view of type `Set<Key>`, which reflects the current state of the set.
 ///
-/// These specifications are only meaningful if `obeys_cmp::<Key>()` hold.
+/// These specifications are only meaningful if `btree_key_obeys::<Key>()` holds.
 /// See [`obeys_cmp`] for information on use with primitive types and custom types.
 ///
 /// Axioms about the behavior of BTreeSet are present in the broadcast group `vstd::std_specs::btree::group_btree_axioms`.
@@ -1108,7 +1126,8 @@ pub assume_specification<K: Clone, A: Allocator + Clone>[ <BTreeSet::<K, A> as C
     this: &BTreeSet<K, A>,
 ) -> (other: BTreeSet<K, A>)
     ensures
-        other@ == this@,
+        // the elements are cloned (#3086)
+        (forall|a: K, b: K| #[trigger] cloned(a, b) ==> a == b) ==> other@ == this@,
 ;
 
 pub assume_specification<Key>[ BTreeSet::<Key>::new ]() -> (m: BTreeSet<Key>)
@@ -1128,7 +1147,7 @@ pub assume_specification<Key: Ord, A: Allocator + Clone>[ BTreeSet::<Key, A>::in
     k: Key,
 ) -> (result: bool)
     ensures
-        obeys_cmp::<Key>() ==> {
+        btree_key_obeys::<Key>() ==> {
             &&& final(m)@ == old(m)@.insert(k)
             &&& result == !old(m)@.contains(k)
         },
@@ -1165,7 +1184,7 @@ pub assume_specification<Key: Borrow<Q> + Ord, A: Allocator + Clone, Q: Ord + ?S
     A,
 >::contains ](m: &BTreeSet<Key, A>, k: &Q) -> (result: bool)
     ensures
-        obeys_cmp::<Key>() ==> result == set_contains_borrowed_key(m@, k),
+        btree_key_obeys::<Key>() ==> result == set_contains_borrowed_key(m@, k),
 ;
 
 // The specification for `get` has a parameter `key: &Q` where you'd
@@ -1205,7 +1224,7 @@ pub assume_specification<
     Q: Ord + ?Sized,
 >[ BTreeSet::<Key, A>::get::<Q> ](m: &'a BTreeSet<Key, A>, k: &Q) -> (result: Option<&'a Key>)
     ensures
-        obeys_cmp::<Key>() ==> match result {
+        btree_key_obeys::<Key>() ==> match result {
             Some(v) => sets_borrowed_key_to_key(m@, k, v),
             None => !set_contains_borrowed_key(m@, k),
         },
@@ -1249,7 +1268,7 @@ pub assume_specification<Key: Borrow<Q> + Ord, A: Allocator + Clone, Q: Ord + ?S
     A,
 >::remove::<Q> ](m: &mut BTreeSet<Key, A>, k: &Q) -> (result: bool)
     ensures
-        obeys_cmp::<Key>() ==> {
+        btree_key_obeys::<Key>() ==> {
             &&& sets_differ_by_borrowed_key(old(m)@, final(m)@, k)
             &&& result == set_contains_borrowed_key(old(m)@, k)
         },
