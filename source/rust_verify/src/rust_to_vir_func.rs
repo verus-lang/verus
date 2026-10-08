@@ -1702,6 +1702,7 @@ pub(crate) fn check_item_fn<'tcx>(
         (this_path.clone(), None, visibility, kind, has_self_param, safety, false, None, is_async)
     };
 
+    let opaque_types_len_before = opaque_types.len();
     let assume_specification_opaque_type_map = if let Some(external_id) = external_id {
         Some(check_fn_opaque_ty(ctxt, opaque_types, &external_id, sig.output_span(), Some(&id))?)
     } else {
@@ -1709,7 +1710,7 @@ pub(crate) fn check_item_fn<'tcx>(
         None
     };
 
-    if opaque_types.len() > 0 || is_async {
+    if opaque_types.len() > opaque_types_len_before || is_async {
         let reason = if is_async { "async" } else { "impl trait in return position" };
         if mode != Mode::Exec {
             return err_span(sig.span, format!("{reason} is only supported for 'exec' functions"));
