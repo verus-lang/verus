@@ -223,7 +223,7 @@ pub assume_specification<'a, T: Clone>[ Option::<&'a T>::cloned ](opt: Option<&'
         opt.is_some() ==> res.is_some() && cloned::<T>(*opt.unwrap(), res.unwrap()),
 ;
 
-// copied (`Copy`, so the result equals the referent)
+// copied
 pub assume_specification<'a, T: Copy>[ Option::<&'a T>::copied ](opt: Option<&'a T>) -> (res:
     Option<T>)
     ensures
