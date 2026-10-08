@@ -320,6 +320,12 @@ pub enum TypX {
     /// For the msot part, this should be treated identically to a Projection, but the AIR
     /// encoding is special.
     PointeeMetadata(Typ),
+    /// The type `A` behind a projection known (via a `TypEquality` bound) to equal `&A`,
+    /// e.g. for `impl<I, T> Trait for X<I> where I: Iterator<Item = &T>`, this represents `T`
+    /// in terms of the projection `<I as Iterator>::Item`, without needing `T` as a separate
+    /// (untriggerable) quantified type parameter. The inner `Typ` must be a `Projection`.
+    /// Only inverts a `Ref` decoration; see `fix_missing_trigger_params`.
+    ProjectionDeref(Typ),
     /// Type of type identifiers
     TypeId,
     /// Const integer type argument (e.g. for array sizes)

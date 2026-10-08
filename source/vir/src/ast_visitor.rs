@@ -1028,6 +1028,10 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let t = self.visit_typ(t)?;
                 R::ret(|| Arc::new(TypX::PointeeMetadata(R::get(t))))
             }
+            TypX::ProjectionDeref(t) => {
+                let t = self.visit_typ(t)?;
+                R::ret(|| Arc::new(TypX::ProjectionDeref(R::get(t))))
+            }
             TypX::MutRef(t) => {
                 let t = self.visit_typ(t)?;
                 R::ret(|| Arc::new(TypX::MutRef(R::get(t))))
