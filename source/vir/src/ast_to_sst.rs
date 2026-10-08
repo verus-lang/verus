@@ -4,8 +4,8 @@ use crate::ast::{
     Fun, Function, Ident, IntRange, IntegerTypeBoundKind, InvAtomicity, Label, LogicalOp,
     LoopInvariantKind, MaskSpec, Mode, OverflowBehavior, PatternBinding, PatternX, Place, PlaceX,
     SignedDivEdgeCaseBehavior, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr,
-    UnwindSpec, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent, VarIdentDisambiguate,
-    VariantCheck, VirErr,
+    UninterpretedFloatBinaryOp, UnwindSpec, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent,
+    VarIdentDisambiguate, VariantCheck, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, CrateId, Exprs};
 use crate::ast_util::{
@@ -616,8 +616,7 @@ pub fn assume_false(span: &Span) -> Stm {
 
 pub(crate) fn assume_has_typ(x: &UniqueIdent, typ: &Typ, span: &Span) -> Stm {
     let xvarx = ExpX::Var(x.clone());
-    // TODO: Bool is wrong here
-    let xvar = SpannedTyped::new(span, &Arc::new(TypX::Bool), xvarx);
+    let xvar = SpannedTyped::new(span, typ, xvarx);
     let has_typx = ExpX::UnaryOpr(UnaryOpr::HasType(typ.clone()), xvar);
     let has_typ = SpannedTyped::new(span, &Arc::new(TypX::Bool), has_typx);
     Spanned::new(span.clone(), StmX::Assume(has_typ))
@@ -995,7 +994,7 @@ fn expr_get_call(
                     && crate::poly::ret_needs_native(
                         ctx,
                         &function.x.kind,
-                        &function.x.ret.x.typ,
+                        &function.x.outer_ret.x.typ,
                         disallow_poly_ret.unwrap(),
                     )
                 {
@@ -3911,6 +3910,14 @@ fn binary_op_exp(
         let call_fun = CallFun::Fun(f, None);
         let expx = ExpX::Call(call_fun, Arc::new(vec![]), Arc::new(vec![e1.clone(), e2.clone()]));
         SpannedTyped::new(span, typ, expx)
+    } else if let BinaryOp::UninterpretedFloat(op) = op {
+        let kind = PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::Nondeterministic));
+        let (var_ident, exp) = state.declare_temp_var_stm(span, typ, kind);
+        let stms = vec![
+            assume_has_typ(&var_ident, typ, span),
+            assume_fp_postcondition(&var_ident, e1, e2, op, &e1.typ, typ, span),
+        ];
+        return (stms, exp);
     } else {
         let pure_op = match op {
             // Ops with side-effects are turned into sst ops without side-effects
@@ -3923,10 +3930,13 @@ fn binary_op_exp(
             BinaryOp::Arith(ArithOp::EuclideanMod(_)) => {
                 sst::BinaryOp::Arith(sst::ArithOp::EuclideanMod)
             }
-            BinaryOp::Arith(ArithOp::TruncatingDiv(_, _)) => unreachable!(),
-            BinaryOp::Arith(ArithOp::TruncatingMod(_, _)) => unreachable!(),
             BinaryOp::Bitwise(op, _) => sst::BinaryOp::Bitwise(op),
             BinaryOp::Index(kind, _) => sst::BinaryOp::Index(kind),
+
+            // Handled in earlier case
+            BinaryOp::Arith(ArithOp::TruncatingMod(_, _)) => unreachable!(),
+            BinaryOp::Arith(ArithOp::TruncatingDiv(_, _)) => unreachable!(),
+            BinaryOp::UninterpretedFloat(..) => unreachable!(),
 
             // Pure ops
             BinaryOp::BoolOrNoSC => sst::BinaryOp::Or,
@@ -4091,6 +4101,29 @@ fn binary_op_exp(
     };
 
     (stms, bin)
+}
+
+/// assume(add_ensures(e1, e2, x)); (specific function depends on the op)
+pub(crate) fn assume_fp_postcondition(
+    x: &UniqueIdent,
+    e1: &Exp,
+    e2: &Exp,
+    op: UninterpretedFloatBinaryOp,
+    float_typ: &Typ,
+    out_typ: &Typ,
+    span: &Span,
+) -> Stm {
+    let float_typ = undecorate_typ(float_typ);
+    assert!(matches!(*float_typ, TypX::Float(..)));
+
+    let xvarx = ExpX::Var(x.clone());
+    let xvar = SpannedTyped::new(span, out_typ, xvarx);
+    let name = def::fn_fp_postcondition_name(op);
+    let call_fun = CallFun::Fun(name, None);
+    let typ_args = Arc::new(vec![float_typ.clone()]);
+    let expx = ExpX::Call(call_fun, typ_args, Arc::new(vec![e1.clone(), e2.clone(), xvar.clone()]));
+    let exp = SpannedTyped::new(span, &Arc::new(TypX::Bool), expx);
+    Spanned::new(span.clone(), StmX::Assume(exp))
 }
 
 /// Stms and Exps needed to execute a 2-phase borrow.

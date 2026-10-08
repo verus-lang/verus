@@ -687,6 +687,21 @@ pub enum ChainedOp {
     MultiEq,
 }
 
+/// Floating point Binary Ops, unspecified
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum UninterpretedFloatBinaryOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Lt,
+    Gt,
+    Le,
+    Ge,
+    Eq,
+    Ne,
+}
+
 /// IEEE floating point binary ops (rounding mode RNE)
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
 pub enum IeeeFloatBinaryOp {
@@ -725,7 +740,10 @@ pub enum BinaryOp {
     /// boolean xor (no short-circuiting)
     BoolXor,
     /// the is_smaller_than verus_builtin, used for decreases (true for <, false for ==)
-    HeightCompare { strictly_lt: bool, recursive_function_field: bool },
+    HeightCompare {
+        strictly_lt: bool,
+        recursive_function_field: bool,
+    },
     /// SMT equality for any type -- two expressions are exactly the same value
     /// Some types support compilable equality (Mode == Exec); others only support spec equality (Mode == Spec)
     Eq(Mode),
@@ -739,6 +757,7 @@ pub enum BinaryOp {
     RealArith(RealArithOp),
     /// Bit Vector Operators
     Bitwise(BitwiseOp, BitshiftBehavior),
+    UninterpretedFloat(UninterpretedFloatBinaryOp),
     /// IEEE floating point binary ops (rounding mode RNE)
     IeeeFloat(IeeeFloatBinaryOp),
     /// Used only for handling verus_builtin::strslice_get_char
@@ -1680,8 +1699,14 @@ pub struct FunctionX {
     pub typ_bounds: GenericBounds,
     /// Function parameters
     pub params: Params,
-    /// Return value
-    pub ret: Param,
+    /// Return value from the external perspective
+    pub outer_ret: Param,
+    /// Return value from the internal perspective, serves as a binder for the 'ensures' clauses.
+    ///
+    /// For non-async functions, `inner_ret` is always identical to `outer_ret`.
+    /// For async functions, `inner_ret` has the source-level type and `outer_ret` has
+    /// the `impl Future` opaque type. In this case, the two should be named differently.
+    pub inner_ret: Param,
     /// Can the ensures clause reference the 'ret' param (must be true for non-unit types)
     pub ens_has_return: bool,
     /// Preconditions (requires for proof/exec functions, recommends for spec functions)
@@ -1722,8 +1747,6 @@ pub struct FunctionX {
     /// Extra dependencies, only used for for the purposes of recursion-well-foundedness
     /// Useful only for trusted fns.
     pub extra_dependencies: Vec<Fun>,
-    /// The return type of the async function i.e., impl Future<Output>.
-    pub async_ret: Option<Param>,
     /// List of functions that this function wants to view as opaque
     pub hidden: Arc<Vec<Fun>>,
 }
@@ -1744,11 +1767,10 @@ pub struct FunctionStubX {
     pub typ_params: Idents,
     pub typ_bounds: GenericBounds,
     pub params: Params,
-    pub ret: Param,
+    pub outer_ret: Param,
     pub ens_has_return: bool,
     pub item_kind: ItemKind,
     pub attrs: FunctionAttrs,
-    pub async_ret: Option<Param>,
 }
 
 pub type RevealGroup = Arc<Spanned<RevealGroupX>>;

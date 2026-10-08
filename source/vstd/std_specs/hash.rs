@@ -945,6 +945,22 @@ pub assume_specification<Key>[ HashSet::<Key>::with_capacity ](capacity: usize) 
         m@ == Set::<Key>::empty(),
 ;
 
+pub assume_specification<Key, S>[ HashSet::<Key, S>::with_hasher ](hash_builder: S) -> (m: HashSet<
+    Key,
+    S,
+>)
+    ensures
+        m@ == Set::<Key>::empty(),
+;
+
+pub assume_specification<Key, S>[ HashSet::<Key, S>::with_capacity_and_hasher ](
+    capacity: usize,
+    hash_builder: S,
+) -> (m: HashSet<Key, S>)
+    ensures
+        m@ == Set::<Key>::empty(),
+;
+
 pub assume_specification<Key: Eq + Hash, S: BuildHasher, A: Allocator>[ HashSet::<
     Key,
     S,
