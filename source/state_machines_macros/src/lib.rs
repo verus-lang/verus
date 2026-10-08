@@ -10,6 +10,7 @@ mod case_macro;
 mod check_bind_stmts;
 mod check_birds_eye;
 mod concurrency_tokens;
+mod expand;
 mod field_access_visitor;
 mod ident_visitor;
 mod inherent_safety_conditions;
@@ -27,38 +28,13 @@ mod transitions;
 mod util;
 
 use case_macro::case_on;
-use lemmas::check_lemmas;
-use parse_token_stream::{ParseResult, parse_result_to_smir};
 use proc_macro::TokenStream;
-use to_token_stream::output_token_stream;
-use verus_syn::parse_macro_input;
 
 fn construct_state_machine(input: TokenStream, concurrent: bool) -> TokenStream {
-    let pr: ParseResult = parse_macro_input!(input as ParseResult);
-
-    let smir_res = parse_result_to_smir(pr, concurrent);
-    let smir = match smir_res {
-        Ok(smir) => smir,
-        Err(err) => {
-            return TokenStream::from(err.to_compile_error());
-        }
-    };
-
-    match check_lemmas(&smir) {
-        Ok(_) => {}
-        Err(err) => {
-            return TokenStream::from(err.to_compile_error());
-        }
+    match expand::expand(input.into(), concurrent) {
+        Ok(tokens) => tokens.into(),
+        Err(error) => error.to_compile_error().into(),
     }
-
-    let token_stream = match output_token_stream(smir, concurrent) {
-        Ok(ts) => ts,
-        Err(err) => {
-            return TokenStream::from(err.to_compile_error());
-        }
-    };
-
-    token_stream.into()
 }
 
 #[proc_macro]

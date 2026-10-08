@@ -14,6 +14,7 @@ members = [
   "rust_verify_test",
   "rust_verify_test_macros",
   "state_machines_macros",
+  "state_machines_macros/syntax",
   "verusdoc",
   "vstd_build",
   "tools/bump_crate_versions",

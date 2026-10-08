@@ -1142,6 +1142,19 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] wrapper_bindings_accept_raw_identifiers verus_code! {
+        struct Token { value: int }
+
+        fn rewrap(Tracked(r#type): Tracked<Token>, Ghost(r#match): Ghost<int>)
+            -> (Tracked<Token>, Ghost<int>)
+        {
+            let (Tracked(r#loop), Ghost(r#return)) = (Tracked(r#type), Ghost(r#match));
+            (Tracked(r#loop), Ghost(r#return))
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] fn_param_wrappers verus_code! {
         struct S(int);
 

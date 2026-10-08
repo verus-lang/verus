@@ -6,18 +6,19 @@ use quote::quote;
 use verus_syn::Token;
 use verus_syn::parse;
 use verus_syn::parse::{Parse, ParseStream};
-use verus_syn::parse_macro_input;
 use verus_syn::punctuated::Punctuated;
-use verus_syn::spanned::Spanned;
 use verus_syn::token;
 use verus_syn::{Block, Error, Expr, ExprBlock, Ident, Path, parenthesized};
 
 pub fn atomic_ghost(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let ag: AG = parse_macro_input!(input as AG);
-    match atomic_ghost_main(ag) {
+    match expand(input.into()) {
         Ok(t) => t.into(),
         Err(err) => proc_macro::TokenStream::from(err.to_compile_error()),
     }
+}
+
+pub(crate) fn expand(input: TokenStream) -> parse::Result<TokenStream> {
+    atomic_ghost_main(verus_syn::parse2(input)?)
 }
 
 struct AG {
@@ -50,7 +51,7 @@ impl Parse for AG {
         let _: Token![;] = input.parse()?;
 
         let prev_next = if peek_keyword(input.cursor(), "update") {
-            let _ = keyword(input, "update");
+            keyword(input, "update")?;
             let prev: Ident = input.parse()?;
             let _: Token![->] = input.parse()?;
             let next: Ident = input.parse()?;
@@ -61,7 +62,7 @@ impl Parse for AG {
         };
 
         let ret = if peek_keyword(input.cursor(), "returning") {
-            let _ = keyword(input, "returning");
+            keyword(input, "returning")?;
             let ret: Ident = input.parse()?;
             let _: Token![;] = input.parse()?;
             Some(ret)
@@ -69,7 +70,10 @@ impl Parse for AG {
             None
         };
 
-        let _ = keyword(input, "ghost");
+        // Preserve the historically accepted shorthand `g => { ... }`.
+        if peek_keyword(input.cursor(), "ghost") {
+            keyword(input, "ghost")?;
+        }
 
         let ghost_name: Ident = input.parse()?;
         let _: Token![=>] = input.parse()?;
@@ -108,14 +112,14 @@ fn atomic_ghost_main(ag: AG) -> parse::Result<TokenStream> {
             let valid_ops = valid_ops.join(", ");
 
             Err(Error::new(
-                op_name.span(),
+                ag.op_name.span(),
                 &format!(
                     "atomic_with_ghost: `{op_name}` is not a recognized operation (valid operations are: {valid_ops})",
                 ),
             ))
         }
         Some((_, num_args)) if *num_args != ag.operands.len() => Err(Error::new(
-            op_name.span(),
+            ag.op_name.span(),
             &format!(
                 "atomic_with_ghost: `{op_name}` expected {num_args} arguments (found {:})",
                 ag.operands.len()
@@ -149,6 +153,10 @@ fn atomic_ghost_main(ag: AG) -> parse::Result<TokenStream> {
                 crate::syntax::rewrite_expr_node(erase, false, operand);
             }
 
+            if erase.erase_all() {
+                return Ok(exec_operation(&atomic, &op_name, &operands));
+            }
+
             let mut block_expr = Expr::Block(ExprBlock { attrs: vec![], label: None, block });
             crate::syntax::rewrite_expr_node(crate::EraseGhost::Keep, true, &mut block_expr);
             if let Expr::Block(expr_block) = block_expr {
@@ -171,4 +179,43 @@ fn atomic_ghost_main(ag: AG) -> parse::Result<TokenStream> {
             })
         }
     }
+}
+
+// The exec-only form of the vstd atomic_* macros. Keep the receiver and
+// operands evaluated once, in that order, including for no_op.
+fn exec_operation(atomic: &Expr, op: &Ident, operands: &[Expr]) -> TokenStream {
+    fn identifiers(tokens: TokenStream, names: &mut std::collections::HashSet<String>) {
+        for token in tokens {
+            match token {
+                proc_macro2::TokenTree::Ident(id) => {
+                    names.insert(id.to_string());
+                }
+                proc_macro2::TokenTree::Group(group) => identifiers(group.stream(), names),
+                _ => {}
+            }
+        }
+    }
+    let mut names = std::collections::HashSet::new();
+    identifiers(quote! { #atomic #(#operands)* }, &mut names);
+    let mut fresh = |base: &str| {
+        let mut name = base.to_owned();
+        while !names.insert(name.clone()) {
+            name.push('_');
+        }
+        Ident::new(&name, proc_macro2::Span::mixed_site())
+    };
+    let receiver = fresh("__verus_exec_atomic");
+    let args: Vec<_> = operands.iter().map(|_| fresh("__verus_exec_operand")).collect();
+    let call = if op == "no_op" {
+        quote! { () }
+    } else {
+        quote_vstd! { vstd =>
+            #receiver.patomic.#op(#vstd::prelude::Tracked::assume_new(), #(#args),*)
+        }
+    };
+    quote! {{
+        let #receiver = &(#atomic);
+        #(let #args = #operands;)*
+        #call
+    }}
 }

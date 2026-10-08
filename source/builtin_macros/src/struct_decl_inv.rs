@@ -10,7 +10,6 @@ use verus_syn::TypeInfer;
 use verus_syn::buffer::Cursor;
 use verus_syn::parse;
 use verus_syn::parse::{Parse, ParseStream};
-use verus_syn::parse_macro_input;
 use verus_syn::punctuated::Punctuated;
 use verus_syn::spanned::Spanned;
 use verus_syn::token;
@@ -26,11 +25,14 @@ use verus_syn::{
 };
 
 pub fn struct_decl_inv(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let sdi: SDI = parse_macro_input!(input as SDI);
-    match struct_decl_inv_main(sdi) {
+    match expand(input.into()) {
         Ok(t) => t.into(),
         Err(err) => proc_macro::TokenStream::from(err.to_compile_error()),
     }
+}
+
+pub(crate) fn expand(input: TokenStream) -> parse::Result<TokenStream> {
+    struct_decl_inv_main(verus_syn::parse2(input)?)
 }
 
 fn struct_decl_inv_main(sdi: SDI) -> parse::Result<TokenStream> {

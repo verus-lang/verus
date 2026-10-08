@@ -1461,17 +1461,20 @@ fn token_trait_impl_main(
     };
     let add_join_split = |ts: &mut TokenStream| {
         ts.extend(quote! {
+            #[cfg(verus_keep_ghost)]
             #[cfg_attr(verus_keep_ghost, verifier::proof)]
             #[cfg_attr(verus_keep_ghost, verifier::external_body)]
             fn join(#[cfg_attr(verus_keep_ghost, verifier::proof)] &mut self, #[cfg_attr(verus_keep_ghost, verifier::proof)] other: Self)
             { ::core::unimplemented!(); }
 
+            #[cfg(verus_keep_ghost)]
             #[cfg_attr(verus_keep_ghost, verifier::proof)]
             #[cfg_attr(verus_keep_ghost, verifier::external_body)]
             #[cfg_attr(verus_keep_ghost, verifier::returns(proof))]
             fn split(#[cfg_attr(verus_keep_ghost, verifier::proof)] &mut self, count: nat) -> Self
             { ::core::unimplemented!(); }
 
+            #[cfg(verus_keep_ghost)]
             #[cfg_attr(verus_keep_ghost, verifier::proof)]
             #[cfg_attr(verus_keep_ghost, verifier::external_body)]
             #[cfg_attr(verus_keep_ghost, verifier::returns(proof))]
@@ -1481,6 +1484,7 @@ fn token_trait_impl_main(
     };
     let add_weaken = |ts: &mut TokenStream| {
         ts.extend(quote! {
+            #[cfg(verus_keep_ghost)]
             #[cfg_attr(verus_keep_ghost, verifier::proof)]
             #[cfg_attr(verus_keep_ghost, verifier::external_body)]
             #[cfg_attr(verus_keep_ghost, verifier::returns(proof))]

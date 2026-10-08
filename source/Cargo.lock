@@ -3255,6 +3255,8 @@ dependencies = [
  "proc-macro2",
  "tempfile",
  "verus_builtin_macros_syntax",
+ "verus_prettyplease",
+ "verus_state_machines_macros_syntax",
  "verus_syn",
  "walkdir",
 ]
@@ -3299,6 +3301,16 @@ dependencies = [
 [[package]]
 name = "verus_state_machines_macros"
 version = "0.0.0-2026-09-06-0133"
+dependencies = [
+ "indexmap 2.14.0",
+ "proc-macro2",
+ "quote",
+ "verus_syn",
+]
+
+[[package]]
+name = "verus_state_machines_macros_syntax"
+version = "0.1.0"
 dependencies = [
  "indexmap 2.14.0",
  "proc-macro2",

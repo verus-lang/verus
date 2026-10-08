@@ -113,12 +113,24 @@ pub(crate) struct Visitor {
 }
 
 // For exec "let pat = init" declarations, recursively find Tracked(x), Ghost(x), x in pat
-struct ExecGhostPatVisitor {
+struct ExecGhostPatVisitor<'a> {
     inside_ghost: u32,
     tracked: Option<Token![tracked]>,
     ghost: Option<Token![ghost]>,
     x_decls: Vec<Stmt>,
     x_assigns: Vec<Stmt>,
+    source_erasure: Option<&'a mut crate::source_erase::SourceErasure>,
+    source_temporaries: std::collections::HashMap<String, Ident>,
+}
+
+fn ghost_temporary_ident(ident: &Ident, span: Span) -> Ident {
+    let name = ident.to_string();
+    let name = name.strip_prefix("r#").unwrap_or(&name);
+    Ident::new(&format!("verus_tmp_{name}"), Span::mixed_site().located_at(span))
+}
+
+fn erased_ghost_constructor_suffix(span: Span) -> TokenStream {
+    quote_spanned!(span => ::assume_new_fallback(|| unreachable!()))
 }
 
 fn data_mode_attrs(mode: &DataMode) -> Vec<Attribute> {
@@ -480,6 +492,8 @@ pub(crate) fn rewrite_exe_pat(pat: &mut Pat) -> (Vec<Stmt>, Vec<Stmt>) {
         ghost: None,
         x_decls: Vec::new(),
         x_assigns: Vec::new(),
+        source_erasure: None,
+        source_temporaries: std::collections::HashMap::new(),
     };
 
     visit_pat.visit_pat_mut(pat);
@@ -487,7 +501,27 @@ pub(crate) fn rewrite_exe_pat(pat: &mut Pat) -> (Vec<Stmt>, Vec<Stmt>) {
     return (x_decls, x_assigns);
 }
 
-fn rewrite_args_unwrap_ghost_tracked(erase_ghost: &EraseGhost, arg: &mut FnArg) -> Vec<Stmt> {
+pub(crate) fn rewrite_exe_pat_source(
+    pat: &mut Pat,
+    source: &mut crate::source_erase::SourceErasure,
+) {
+    ExecGhostPatVisitor {
+        inside_ghost: 0,
+        tracked: None,
+        ghost: None,
+        x_decls: Vec::new(),
+        x_assigns: Vec::new(),
+        source_erasure: Some(source),
+        source_temporaries: std::collections::HashMap::new(),
+    }
+    .visit_pat_mut(pat);
+}
+
+pub(crate) fn rewrite_args_unwrap_ghost_tracked(
+    erase_ghost: &EraseGhost,
+    arg: &mut FnArg,
+    source: Option<&mut crate::source_erase::SourceErasure>,
+) -> Vec<Stmt> {
     // Check for Ghost(x) or Tracked(x) argument
     let mut unwrap_ghost_tracked = Vec::new();
     if let FnArgKind::Typed(PatType { pat, .. }) = &mut arg.kind {
@@ -497,7 +531,7 @@ fn rewrite_args_unwrap_ghost_tracked(erase_ghost: &EraseGhost, arg: &mut FnArg) 
         if let Pat::TupleStruct(tup) = &*pat {
             let ghost_wrapper = path_is_ident(&tup.path, "Ghost");
             tracked_wrapper = path_is_ident(&tup.path, "Tracked");
-            if ghost_wrapper || tracked_wrapper || tup.elems.len() == 1 {
+            if (ghost_wrapper || tracked_wrapper) && tup.elems.len() == 1 {
                 if let Pat::Ident(id) = &tup.elems[0] {
                     wrapped_pat_id = Some(id.clone());
                 }
@@ -512,10 +546,13 @@ fn rewrite_args_unwrap_ghost_tracked(erase_ghost: &EraseGhost, arg: &mut FnArg) 
             //       #[verifier::proof_block] { t = verus_tmp_x.get() };
             let span = pat.span();
             let x = wrapped_pat_id.ident;
-            let tmp_id =
-                Ident::new(&format!("verus_tmp_{x}"), Span::mixed_site().located_at(pat.span()));
+            let tmp_id = ghost_temporary_ident(&x, pat.span());
             wrapped_pat_id.ident = tmp_id.clone();
-            *pat = Pat::Ident(wrapped_pat_id);
+            let mut lowered = Pat::Ident(wrapped_pat_id);
+            if let (Some(source), Pat::TupleStruct(original)) = (source, &*pat) {
+                source.record_ghost_pattern(original, &mut lowered, &mut Default::default());
+            }
+            *pat = lowered;
             if erase_ghost.keep() {
                 unwrap_ghost_tracked.push(stmt_with_semi!(
                     span => #[verus::internal(header_unwrap_parameter)] let #x));
@@ -1259,7 +1296,11 @@ impl Visitor {
             }
 
             // Check for Ghost(x) or Tracked(x) argument
-            unwrap_ghost_tracked.extend(rewrite_args_unwrap_ghost_tracked(&self.erase_ghost, arg));
+            unwrap_ghost_tracked.extend(rewrite_args_unwrap_ghost_tracked(
+                &self.erase_ghost,
+                arg,
+                None,
+            ));
 
             arg.tracked = None;
         }
@@ -1379,7 +1420,7 @@ impl Visitor {
                     None,
                 )];
                 #[cfg(verus_keep_ghost)]
-                if !matches!(&sig.publish, Publish::Uninterp(_)) {
+                if proc_macro::is_available() && !matches!(&sig.publish, Publish::Uninterp(_)) {
                     proc_macro::Diagnostic::spanned(
                         sig.span().unwrap(),
                         proc_macro::Level::Warning,
@@ -1552,7 +1593,7 @@ impl Visitor {
     }
 }
 
-impl VisitMut for ExecGhostPatVisitor {
+impl VisitMut for ExecGhostPatVisitor<'_> {
     // Recursive traverse pat, finding all Tracked(x), Ghost(x), and, for ghost/tracked, x.
     fn visit_pat_mut(&mut self, pat: &mut Pat) {
         // Replace
@@ -1570,12 +1611,7 @@ impl VisitMut for ExecGhostPatVisitor {
         //   x_decls: let tracked x; let ghost mut y; let [mode] mut z;
         //   x_assigns: x = tmp_x.get(); y = tmp_y.view(); z = tmp_z;
         let pat_span = pat.span();
-        let mk_ident_tmp = |x: &Ident| {
-            Ident::new(
-                &("verus_tmp_".to_string() + &x.to_string()),
-                Span::mixed_site().located_at(pat_span),
-            )
-        };
+        let mk_ident_tmp = |x: &Ident| ghost_temporary_ident(x, pat_span);
         match pat {
             Pat::TupleStruct(pts)
                 if pts.elems.len() == 1
@@ -1618,7 +1654,15 @@ impl VisitMut for ExecGhostPatVisitor {
                             Stmt::Expr(Expr::Verbatim(assign), Some(Semi { spans: [span] }));
                         self.x_assigns.push(assign);
                     }
-                    *pat = parse_quote_spanned!(span => #tmp_x);
+                    let mut lowered = parse_quote_spanned!(span => #tmp_x);
+                    if let Some(source) = &mut self.source_erasure {
+                        source.record_ghost_pattern(
+                            pts,
+                            &mut lowered,
+                            &mut self.source_temporaries,
+                        );
+                    }
+                    *pat = lowered;
                     return;
                 }
             }
@@ -1676,7 +1720,8 @@ impl Visitor {
             self.record_erasure(local);
             return (true, vec![]);
         }
-        if self.source_erasure.is_some() {
+        if let Some(source) = &mut self.source_erasure {
+            rewrite_exe_pat_source(&mut local.pat, source);
             return (false, vec![]);
         }
         if local.init.is_none() {
@@ -1717,6 +1762,8 @@ impl Visitor {
             ghost: local.ghost.clone(),
             x_decls: Vec::new(),
             x_assigns: Vec::new(),
+            source_erasure: None,
+            source_temporaries: std::collections::HashMap::new(),
         };
         visit_pat.visit_pat_mut(&mut local.pat);
         if visit_pat.x_decls.len() == 0 && local.tracked.is_none() && local.ghost.is_none() {
@@ -2085,13 +2132,15 @@ impl Visitor {
                     if self.erase_ghost.erase() {
                         if item_broadcast_use.warning {
                             #[cfg(verus_keep_ghost)]
-                            proc_macro::Diagnostic::spanned(
-                                span.unwrap(),
-                                proc_macro::Level::Warning,
-                                "Outdated syntax for broadcast use.\n\
-                                         Use curly braces for multiple uses.",
-                            )
-                            .emit();
+                            if proc_macro::is_available() {
+                                proc_macro::Diagnostic::spanned(
+                                    span.unwrap(),
+                                    proc_macro::Level::Warning,
+                                    "Outdated syntax for broadcast use.\n\
+                                             Use curly braces for multiple uses.",
+                                )
+                                .emit();
+                            }
                         }
                         *item = Item::Verbatim(quote! { const _: () = (); });
                     } else {
@@ -3574,7 +3623,7 @@ impl Visitor {
     ///   - proof { ... } blocks
     ///   - Ghost(...)
     ///   - Tracked(...)
-    fn handle_mode_blocks(&mut self, expr: &mut Expr) -> bool {
+    pub(crate) fn handle_mode_blocks(&mut self, expr: &mut Expr) -> bool {
         let mode_block = match expr {
             Expr::Unary(ExprUnary { op: UnOp::Proof(..), .. }) => (false, false),
             Expr::Call(ExprCall { func, args, .. }) => match &**func {
@@ -3600,9 +3649,16 @@ impl Visitor {
             if !mode_block.0 {
                 self.erase_source_expr(expr);
             } else if let Expr::Call(call) = expr {
-                // Retain the executable wrapper and its argument, while still
-                // visiting nested proof blocks and verifier attributes.
-                verus_syn::visit_mut::visit_expr_call_mut(self, call);
+                for attr in &mut call.attrs {
+                    self.visit_attribute_mut(attr);
+                }
+                self.visit_expr_mut(&mut call.func);
+                self.source_erasure.as_mut().unwrap().spans.push(crate::source_erase::Erasure {
+                    span: call.paren_token.span.open().join(call.paren_token.span.close()).unwrap(),
+                    kind: crate::source_erase::ErasureKind::ConstructorSuffix(
+                        erased_ghost_constructor_suffix(call.span()),
+                    ),
+                });
             }
             return true;
         }
@@ -3632,7 +3688,8 @@ impl Visitor {
                 // Tracked(...)
                 let inner = take_expr(&mut call.args[0]);
                 *expr = Expr::Verbatim(if self.erase_ghost.erase() {
-                    quote_spanned!(span => Tracked #turbofish ::assume_new_fallback(|| unreachable!()))
+                    let suffix = erased_ghost_constructor_suffix(span);
+                    quote_spanned!(span => Tracked #turbofish #suffix)
                 } else if is_inside_ghost {
                     quote_spanned_builtin!(verus_builtin, span => #verus_builtin::Tracked #turbofish ::new(#inner))
                 } else {
@@ -3642,7 +3699,8 @@ impl Visitor {
                 // Ghost(...)
                 let inner = take_expr(&mut call.args[0]);
                 *expr = Expr::Verbatim(if self.erase_ghost.erase() {
-                    quote_spanned!(span => Ghost #turbofish ::assume_new_fallback(|| unreachable!()))
+                    let suffix = erased_ghost_constructor_suffix(span);
+                    quote_spanned!(span => Ghost #turbofish #suffix)
                 } else if is_inside_ghost {
                     quote_spanned_builtin!(verus_builtin, span => #verus_builtin::Ghost #turbofish ::new(#inner))
                 } else {
@@ -3912,20 +3970,22 @@ impl Visitor {
 
             loop_header
         } else {
-            let s1 = invariant_except_breaks.map(|x| x.token.span.unwrap());
-            let s2 = invariants.map(|x| x.token.span.unwrap());
-            let s3 = ensures.map(|x| x.token.span.unwrap());
+            if proc_macro::is_available() {
+                let s1 = invariant_except_breaks.map(|x| x.token.span.unwrap());
+                let s2 = invariants.map(|x| x.token.span.unwrap());
+                let s3 = ensures.map(|x| x.token.span.unwrap());
 
-            let spans = s1.into_iter().chain(s2).chain(s3).collect::<Vec<_>>();
-            if !spans.is_empty() {
-                #[cfg(verus_keep_ghost)]
-                proc_macro::Diagnostic::spanned(
-                    spans,
-                    proc_macro::Level::Error,
-                    "invariants are only effective \
-                        on `atomically loop` function calls",
-                )
-                .emit();
+                let spans = s1.into_iter().chain(s2).chain(s3).collect::<Vec<_>>();
+                if !spans.is_empty() {
+                    #[cfg(verus_keep_ghost)]
+                    proc_macro::Diagnostic::spanned(
+                        spans,
+                        proc_macro::Level::Error,
+                        "invariants are only effective \
+                            on `atomically loop` function calls",
+                    )
+                    .emit();
+                }
             }
 
             self.inside_ghost += 1;
@@ -3998,14 +4058,16 @@ impl Visitor {
         #[allow(clippy::needless_bool)]
         let old_style = if invariant_ensures.is_some() {
             #[cfg(verus_keep_ghost)]
-            proc_macro::Diagnostic::spanned(
-                invariant_ensures.span().unwrap(),
-                proc_macro::Level::Warning,
-                "invariant_ensures is deprecated - \
-                    instead of 'invariant/invariant_ensures/ensures', \
-                    use 'invariant_except_break/invariant/ensures'",
-            )
-            .emit();
+            if proc_macro::is_available() {
+                proc_macro::Diagnostic::spanned(
+                    invariant_ensures.span().unwrap(),
+                    proc_macro::Level::Warning,
+                    "invariant_ensures is deprecated - \
+                        instead of 'invariant/invariant_ensures/ensures', \
+                        use 'invariant_except_break/invariant/ensures'",
+                )
+                .emit();
+            }
             true
         } else {
             false
@@ -4513,6 +4575,14 @@ impl VisitMut for Visitor {
         }
     }
 
+    fn visit_return_type_mut(&mut self, output: &mut verus_syn::ReturnType) {
+        if self.source_erasure.is_some() {
+            self.visit_source_return_type(output);
+        } else {
+            verus_syn::visit_mut::visit_return_type_mut(self, output);
+        }
+    }
+
     fn visit_macro_mut(&mut self, mac: &mut verus_syn::Macro) {
         if self.source_erasure.is_some() {
             self.visit_source_macro(mac);
@@ -4523,6 +4593,9 @@ impl VisitMut for Visitor {
 
     fn visit_item_mut(&mut self, item: &mut Item) {
         if self.source_erasure.is_some() {
+            if self.record_cfg_item_erasure(item) {
+                return;
+            }
             match item {
                 Item::AssumeSpecification(_)
                 | Item::Global(_)
@@ -4532,7 +4605,9 @@ impl VisitMut for Visitor {
                     return;
                 }
                 Item::Macro(mac) => {
-                    if crate::source_erase::is_item_wrapper(&mac.mac.path) {
+                    if crate::source_erase::is_item_wrapper(&mac.mac.path)
+                        || crate::source_erase::is_expanded_item_macro(&mac.mac.path)
+                    {
                         self.record_erasure(&mac.semi_token);
                     }
                 }
@@ -4543,6 +4618,9 @@ impl VisitMut for Visitor {
     }
 
     fn visit_impl_item_mut(&mut self, item: &mut ImplItem) {
+        if self.source_erasure.is_some() && self.record_cfg_item_erasure(item) {
+            return;
+        }
         if self.source_erasure.is_some() && matches!(item, ImplItem::BroadcastGroup(_)) {
             self.record_erasure(item);
             return;
@@ -4555,6 +4633,20 @@ impl VisitMut for Visitor {
             }
         }
         verus_syn::visit_mut::visit_impl_item_mut(self, item);
+    }
+
+    fn visit_trait_item_mut(&mut self, item: &mut TraitItem) {
+        if self.source_erasure.is_some() && self.record_cfg_item_erasure(item) {
+            return;
+        }
+        verus_syn::visit_mut::visit_trait_item_mut(self, item);
+    }
+
+    fn visit_foreign_item_mut(&mut self, item: &mut verus_syn::ForeignItem) {
+        if self.source_erasure.is_some() && self.record_cfg_item_erasure(item) {
+            return;
+        }
+        verus_syn::visit_mut::visit_foreign_item_mut(self, item);
     }
 
     fn visit_expr_for_loop_mut(&mut self, expr: &mut ExprForLoop) {
@@ -4594,6 +4686,10 @@ impl VisitMut for Visitor {
                     || self.handle_reveal_hide(expr)
                     || self.handle_mode_blocks(expr))
             {
+                return;
+            }
+            // Ghost/Tracked constructors also occur in attribute syntax.
+            if !in_verus && self.handle_mode_blocks(expr) {
                 return;
             }
             match expr {
@@ -5258,7 +5354,7 @@ impl VisitMut for Visitor {
                 output,
             }) => {
                 #[cfg(verus_keep_ghost)]
-                if fn_spec_token.is_some() {
+                if proc_macro::is_available() && fn_spec_token.is_some() {
                     proc_macro::Diagnostic::spanned(
                         span.unwrap(),
                         proc_macro::Level::Warning,
@@ -5792,6 +5888,7 @@ pub(crate) fn source_erasure(
     file: &mut verus_syn::File,
 ) -> verus_syn::Result<Vec<crate::source_erase::Erasure>> {
     let mut visitor = source_visitor();
+    visitor.source_erasure.as_mut().unwrap().collect_identifiers(file.to_token_stream());
     visitor.visit_items_prefilter(&mut file.items);
     visitor.visit_file_mut(file);
     source_result(visitor)
@@ -5802,6 +5899,7 @@ pub(crate) fn source_erasure_rust(
     file: &syn::File,
 ) -> verus_syn::Result<Vec<crate::source_erase::Erasure>> {
     let mut visitor = source_visitor();
+    visitor.source_erasure.as_mut().unwrap().collect_identifiers(file.to_token_stream());
     let mut rust = crate::source_erase::RustVisitor { visitor: &mut visitor };
     syn::visit::Visit::visit_file(&mut rust, file);
     source_result(visitor)
@@ -5812,6 +5910,14 @@ pub(crate) fn rewrite_items_inner(
     erase_ghost: EraseGhost,
     use_spec_traits: bool,
 ) -> proc_macro::TokenStream {
+    rewrite_items_tokens(items, erase_ghost, use_spec_traits).into()
+}
+
+pub(crate) fn rewrite_items_tokens(
+    items: &mut Vec<Item>,
+    erase_ghost: EraseGhost,
+    use_spec_traits: bool,
+) -> TokenStream {
     let mut visitor = Visitor {
         erase_ghost,
         use_spec_traits,
@@ -5843,7 +5949,7 @@ pub(crate) fn rewrite_items_inner(
     for item in items {
         item.to_tokens(&mut new_stream);
     }
-    proc_macro::TokenStream::from(new_stream)
+    new_stream
 }
 
 pub(crate) fn rewrite_impl_items(
@@ -6012,7 +6118,7 @@ fn take_sig_with_spec(
     let mut spec_stmts = vec![];
     if inputs.len() > 0 {
         for arg in inputs.iter_mut() {
-            spec_stmts.extend(rewrite_args_unwrap_ghost_tracked(&erase_ghost, arg));
+            spec_stmts.extend(rewrite_args_unwrap_ghost_tracked(&erase_ghost, arg, None));
             sig.inputs.push(syn::parse_quote_spanned! { arg.span() => #arg })
         }
     }
