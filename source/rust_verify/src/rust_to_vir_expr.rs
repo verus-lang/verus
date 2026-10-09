@@ -1709,9 +1709,32 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
 
             let (tyr1, tyr2) = remove_decoration_typs_for_unsizing(bctx.ctxt.tcx, ty1, ty2);
             let op = match (tyr1.kind(), tyr2.kind()) {
-                (_, TyKind::Dynamic(_, _)) => {
+                (_, TyKind::Dynamic(preds, _)) => {
                     let vir_ty = bctx.mid_ty_to_vir(expr.span, &tyr1)?;
-                    Some(UnaryOpr::ToDyn(vir_ty))
+                    let clauses = preds
+                        .principal()
+                        .map(|trait_ref| {
+                            let clause = trait_ref
+                                .map_bound(|trait_ref| {
+                                    ClauseKind::Trait(TraitPredicate {
+                                        trait_ref: trait_ref.with_self_ty(bctx.ctxt.tcx, tyr1),
+                                        polarity: rustc_middle::ty::PredicatePolarity::Positive,
+                                    })
+                                })
+                                .upcast(bctx.ctxt.tcx);
+                            (None, clause)
+                        })
+                        .into_iter()
+                        .collect();
+                    let impl_paths = get_impl_paths_for_clauses(
+                        bctx.ctxt.tcx,
+                        &bctx.ctxt.verus_items,
+                        bctx.fun_id,
+                        clauses,
+                        None,
+                        expr.span,
+                    )?;
+                    Some(UnaryOpr::ToDyn(vir_ty, impl_paths))
                 }
                 _ => None,
             };

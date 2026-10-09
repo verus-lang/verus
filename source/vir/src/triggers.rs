@@ -138,7 +138,7 @@ fn check_trigger_expr_arg(state: &mut State, arg: &Exp) {
         },
         ExpX::UnaryOpr(op, arg) => match op {
             UnaryOpr::Box(_) | UnaryOpr::Unbox(_) => panic!("unexpected box"),
-            UnaryOpr::ProofNote(_) | UnaryOpr::CustomErr(_) | UnaryOpr::ToDyn(_) => {
+            UnaryOpr::ProofNote(_) | UnaryOpr::CustomErr(_) | UnaryOpr::ToDyn(..) => {
                 // recurse inside coercions
                 check_trigger_expr_arg(state, arg)
             }
@@ -296,7 +296,7 @@ fn check_trigger_expr(
             | UnaryOpr::AutoDecreases
             | UnaryOpr::AutoLoopEnsures
             | UnaryOpr::ProofNote(_)
-            | UnaryOpr::ToDyn(_) => Ok(()),
+            | UnaryOpr::ToDyn(..) => Ok(()),
             UnaryOpr::IsVariant { .. } | UnaryOpr::Field { .. } => {
                 check_trigger_expr_arg(state, arg);
                 Ok(())

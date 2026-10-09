@@ -278,9 +278,9 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let t = self.visit_typ(t)?;
                 R::ret(|| UnaryOpr::HasResolved(R::get(t)))
             }
-            UnaryOpr::ToDyn(t) => {
+            UnaryOpr::ToDyn(t, impl_paths) => {
                 let t = self.visit_typ(t)?;
-                R::ret(|| UnaryOpr::ToDyn(R::get(t)))
+                R::ret(|| UnaryOpr::ToDyn(R::get(t), impl_paths.clone()))
             }
             UnaryOpr::IsVariant { .. }
             | UnaryOpr::Field { .. }
