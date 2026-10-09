@@ -7,7 +7,7 @@ use crate::ast::{
 };
 use crate::ast_util::{
     ast_expr_get_proof_note, dt_as_friendly_rust_name, fun_as_friendly_rust_name, get_field_or_err,
-    get_variant_or_err, is_body_visible_to, is_visible_to_opt, path_as_friendly_rust_name,
+    get_variant_or_err, is_body_visible_to, is_unit, is_visible_to_opt, path_as_friendly_rust_name,
     referenced_vars_expr, typ_to_diagnostic_str, types_equal, undecorate_typ,
 };
 use crate::context::WarningConfig;
@@ -1001,6 +1001,13 @@ fn check_function<Emit: EmitError>(
                 ));
             }
         }
+
+        if orig_decl.x.returns.is_some() && function.x.returns.is_some() {
+            return Err(error(
+                &function.span,
+                "a `returns` clause cannot be declared on both a trait method impl and its declaration",
+            ).secondary_span(&orig_decl.span));
+        }
     } else {
     }
     if function.x.attrs.impls_cannot_extend_spec {
@@ -1080,7 +1087,7 @@ fn check_function<Emit: EmitError>(
                 "decreases_by/recommends_by function cannot have ensures clauses",
             ));
         }
-        if function.x.ens_has_return {
+        if !is_unit(&function.x.outer_ret.x.typ) {
             return Err(error(
                 &function.span,
                 "decreases_by/recommends_by function cannot have a return value",
@@ -1164,7 +1171,7 @@ fn check_function<Emit: EmitError>(
         if function.x.mode != Mode::Proof {
             return Err(error(&function.span, "broadcast function must be declared as proof"));
         }
-        if function.x.ens_has_return {
+        if !is_unit(&function.x.outer_ret.x.typ) {
             return Err(error(&function.span, "broadcast function cannot have return type"));
         }
         for param in function.x.params.iter() {
@@ -1272,7 +1279,7 @@ fn check_function<Emit: EmitError>(
                 }
             }
         }
-        if function.x.ens_has_return {
+        if !is_unit(&function.x.outer_ret.x.typ) {
             return Err(error(
                 &function.span,
                 "integer_ring mode function cannot have a return value",

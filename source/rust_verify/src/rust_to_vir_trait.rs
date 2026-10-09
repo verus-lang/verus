@@ -628,7 +628,6 @@ fn make_trait_decl<'tcx>(
         mut typ_bounds,
         params,
         outer_ret,
-        ens_has_return: _,
         item_kind: _,
         attrs,
     } = spec_method.x.clone();

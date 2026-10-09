@@ -1168,7 +1168,6 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             params: ps,
             outer_ret: ort,
             inner_ret: irt,
-            ens_has_return,
             require,
             ensure: (ensure0, ensure1),
             returns,
@@ -1200,13 +1199,11 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
         let require = self.visit_exprs(require)?;
 
         self.push_scope();
-        if function.x.ens_has_return {
-            let r = R::get_or(&iret, irt);
-            let _ = self.insert_binding(
-                &r.x.name.clone(),
-                ScopeEntry::new_outer_param_ret(&r.x.typ, Some(false), true),
-            );
-        }
+        let r = R::get_or(&iret, irt);
+        let _ = self.insert_binding(
+            &r.x.name.clone(),
+            ScopeEntry::new_outer_param_ret(&r.x.typ, Some(false), true),
+        );
         let ensure0 = self.visit_exprs(ensure0)?;
         let ensure1 = self.visit_exprs(ensure1)?;
         self.pop_scope();
@@ -1236,7 +1233,6 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 params: R::get_vec_a(params),
                 outer_ret: R::get(oret),
                 inner_ret: R::get(iret),
-                ens_has_return: *ens_has_return,
                 require: R::get_vec_a(require),
                 ensure: (R::get_vec_a(ensure0), R::get_vec_a(ensure1)),
                 returns: R::get_opt(returns),

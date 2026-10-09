@@ -2355,3 +2355,20 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] decreases_by_non_unit_return verus_code!{
+        use vstd::prelude::*;
+        spec fn foo() -> bool
+            decreases 0nat via foo_proof
+        {
+            foo()
+        }
+
+        // Use ! for this test to make sure this error message isn't confused by decorations
+        #[verifier::decreases_by]
+        proof fn foo_proof() -> ! {
+            proof_from_false()
+        }
+    } => Err(err) => assert_vir_error_msg(err, "decreases_by/recommends_by function cannot have a return value")
+}
