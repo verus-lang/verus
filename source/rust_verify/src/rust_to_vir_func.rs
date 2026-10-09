@@ -15,7 +15,7 @@ use crate::verus_items::{BuiltinTypeItem, VerusItem};
 use crate::{unsupported_err, unsupported_err_unless};
 use rustc_hir::{
     Attribute, Body, BodyId, Expr, ExprKind, FnDecl, FnHeader, FnSig, Generics, HeaderSafety,
-    HirId, Param, Safety,
+    HirId, Param, Pat, PatKind, Safety,
 };
 use rustc_middle::ty::{
     AdtDef, AliasTermKind, AliasTyKind, BoundRegion, BoundRegionKind, BoundVar, Clause, ClauseKind,
@@ -34,7 +34,7 @@ use vir::ast::{
     ItemKind, KrateX, Mode, OpaqueTypes, Opaqueness, ParamX, Path, Typ, TypDecoration, TypX,
     UnwrapParameter, VarIdent, VirErr, Visibility,
 };
-use vir::ast_util::{air_unique_var, unit_typ};
+use vir::ast_util::{air_unique_var, str_unique_var, unit_typ};
 use vir::def::{RETURN_VALUE, RETURN_VALUE_ASYNC_FUTURE, Spanned, VERUS_SPEC};
 use vir::sst_util::subst_typ;
 
@@ -1550,6 +1550,28 @@ fn get_pre_header<'tcx>(
     }
 }
 
+/// Translates a function parameter pattern
+fn function_param_pat_to_mut_var(pat: &Pat) -> Result<(bool, VarIdent), VirErr> {
+    match pat.kind {
+        PatKind::Binding(_, _, _, None) => pat_to_mut_var(pat),
+        PatKind::Wild => {
+            // each wildcard gets a distinct name
+            let id = pat.hir_id.local_id.index();
+            Ok((
+                false,
+                str_unique_var(
+                    &format!("%function_param{id}"),
+                    vir::ast::VarIdentDisambiguate::RustcId(id),
+                ),
+            ))
+        }
+        _ => err_span(
+            pat.span,
+            "function parameters must be a plain identifier pattern or wildcard (e.g. `x: T`, `mut x: T`, or `_: T`)",
+        ),
+    }
+}
+
 pub(crate) fn check_item_fn<'tcx>(
     ctxt: &Context<'tcx>,
     state: &mut State,
@@ -1796,16 +1818,7 @@ pub(crate) fn check_item_fn<'tcx>(
             let Body { params, value: _ } = body;
             let mut ps = Vec::new();
             for Param { hir_id, pat, ty_span: _, span } in params.iter() {
-                // Check the parameter's pattern is a plain identifier (e.g., `x: T`).
-                // VIR expects each param to be associated with exactly one identifier so complex params
-                // (e.g., `(x, y): T` or `_: T` or `a @ b: T`) are unsupported
-                if !matches!(pat.kind, rustc_hir::PatKind::Binding(_, _, _, None)) {
-                    return err_span(
-                        *span,
-                        "function parameters must be a plain identifier pattern (e.g. `x: T` or `mut x: T`)",
-                    );
-                }
-                let (is_mut_var, name) = pat_to_mut_var(pat)?;
+                let (is_mut_var, name) = function_param_pat_to_mut_var(pat)?;
                 // is_mut_var: means a parameter is like `mut x: X`
                 // is_mut: means a parameter is like `x: &mut X` or `x: Tracked<&mut X>`
                 ps.push((name, *span, Some(*hir_id), is_mut_var));

@@ -610,10 +610,6 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_vir_error_msg(err, "plain identifier pattern")
 }
 
-// Not just `@` patterns - the check is a positive allow-list (plain
-// identifier only), so ordinary destructuring/wildcard patterns in
-// parameter position are rejected the same way, with the same clear error,
-// rather than relying on pat_to_mut_var's own separate catch-all.
 test_verify_one_file_with_options! {
     #[test] tuple_pattern_in_param_position_rejected [] => verus_code! {
         fn add_pair((a, b): (i32, i32)) -> i32 { a + b }
@@ -621,7 +617,172 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] wildcard_pattern_in_param_position_rejected [] => verus_code! {
-        fn ignore_arg(_: i32) -> i32 { 0 }
-    } => Err(err) => assert_vir_error_msg(err, "plain identifier pattern")
+    #[test] wildcard_pattern_in_param_position [] => code! {
+        #[verifier::verify]
+        fn ignore_arg(_: bool, value: i32, _: u64) -> i32 {
+            ensures(|result: i32| [result == value]);
+            value
+        }
+
+        verus! {
+            fn caller() {
+                let result = ignore_arg(true, 10, 20);
+                assert(result == 10);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] wildcard_named_returns [] => verus_code! {
+        fn f<T>(_: T, value: u32, _: &mut u64) -> (result: u32)
+            ensures result == value
+        {
+            value
+        }
+
+        fn g(_: impl Sized, _: &impl Sized) -> (result: (impl Sized, bool))
+            ensures result.1
+        {
+            (true, true)
+        }
+
+        fn caller() {
+            let mut value = 30u64;
+            let result = f(false, 20, &mut value);
+            assert(result == 20);
+            let result = g(true, &false);
+            assert(result.1);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] wildcard_params_preserve_spec_and_proof_modes [] => verus_code! {
+        spec fn zero(_: int) -> int { 0 }
+        proof fn ignore_ghost(_: int) {}
+        proof fn ignore_tracked<T>(tracked _: T) -> (result: bool)
+            ensures result
+        {
+            true
+        }
+
+        proof fn caller<T>(tracked token: T) {
+            ignore_ghost(10);
+            let result = ignore_tracked(token);
+            assert(result);
+            assert(zero(20) == 0);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] wildcard_tracked_consumes_token [] => verus_code! {
+        proof fn ignore<T>(tracked _: T) {}
+
+        proof fn caller<T>(tracked token: T) {
+            ignore(token);
+            ignore(token);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "use of moved value")
+}
+
+test_verify_one_file_with_options! {
+    #[test] wildcard_params_named_return_false_postcondition [] => verus_code! {
+        fn f(_: impl Sized) -> (result: (impl Sized, bool))
+            ensures result.1 // FAILS
+        {
+            (true, false)
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file_with_options! {
+    #[test] wildcard_params_async_named_returns ["vstd"] => code! {
+        use vstd::prelude::*;
+
+        verus! {
+            async fn ignore(_: u32) -> (result: bool)
+                ensures result
+            {
+                true
+            }
+        }
+
+        #[verus_spec(result => ensures result)]
+        async fn ignore_attr(_: u32) -> bool {
+            true
+        }
+
+        verus! {
+            async fn caller() {
+                let result = ignore(10).await;
+                assert(result);
+                let result = ignore_attr(20).await;
+                assert(result);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] wildcard_name_hygiene [] => code! {
+        const __verus_wildcard_param_0: u32 = 0;
+        struct __verus_wildcard_param_1;
+
+        verus! {
+            fn f(_: u32, _: bool) -> (r: u32)
+                ensures r == 1
+            {
+                fn __verus_wildcard_param_0() -> bool { true }
+                1
+            }
+        }
+
+        #[verus_spec(r => ensures r == 1)]
+        fn g(_: u32, _: bool) -> u32 {
+            fn __verus_wildcard_param_0() -> bool { true }
+            1
+        }
+
+        verus! {
+            fn caller() {
+                let r = f(5, true);
+                assert(r == 1);
+                let r = g(5, true);
+                assert(r == 1);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] wildcard_params_in_trait_methods_and_external_body [] => verus_code! {
+        trait Ignore {
+            fn mixed(&self, _: bool, value: u32, _: u64) -> (result: u32)
+                ensures result == value;
+        }
+
+        struct S;
+
+        impl Ignore for S {
+            fn mixed(&self, _: bool, value: u32, _: u64) -> u32 {
+                value
+            }
+        }
+
+        #[verifier::external_body]
+        fn external(_: u32) -> (result: bool)
+            ensures result
+        {
+            true
+        }
+
+        fn caller() {
+            let result = S.mixed(false, 20, 30);
+            assert(result == 20);
+            let result = external(40);
+            assert(result);
+        }
+    } => Ok(())
 }
