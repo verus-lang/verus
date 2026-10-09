@@ -15,7 +15,7 @@ Comparison of the inherent impl blocks in `source/vstd/points_to_permissions.rs`
 | Underlying data | `pt_unaligned()` (closed) | `seq_pt()` (closed, in the generic block) | A `PointsTo` wraps one `PointsToUnaligned`. A `SeqPointsTo` wraps a `Seq<PointsTo<T>>` plus a ghost `*mut T`. |
 | `wf` | `wf_basic()`, which checks alignment and `pt_unaligned().wf()` | `wf_basic()` plus alignment of the base pointer | `SeqPointsTo::wf_basic` is the trait impl. It checks that each element's ptr and provenance line up at `addr + i*size` and that each element is wf_basic. It also checks non-null and bounds. |
 | `typed_value` | `TypedValue<T>` | `Seq<TypedValue<T>>` (via `map`) | The Seq version adds the broadcast lemma `typed_value_equiv`. |
-| `bytes` | `pt_unaligned().bytes()` | `bytes_inner(seq_pt())`, a `fold_left` that concatenates the elements' bytes | The Seq version needs `bytes_len`, `bytes_len_helper`, `bytes_subrange` and `bytes_equiv` to reason about the fold. |
+| `bytes` | `pt_unaligned().bytes()` | `bytes_inner(seq_pt())`, a `fold_left` that concatenates the elements' bytes | The Seq version needs `bytes_len`, `bytes_len_helper`, `bytes_subrange`, `bytes_equiv` and `bytes_subrange_equiv` to reason about the fold. |
 | `value` | `T` (recommends valid) | `Seq<T>` (recommends valid) | |
 | `is_valid` | the single value is valid | all elements valid | |
 | `is_empty` | `typed_value().is_empty()` | `!is_valid()`, meaning any element is invalid | Semantic mismatch. For `PointsTo`, `is_empty` is the exact complement of `is_valid`. For `SeqPointsTo`, `is_empty` means "not all valid", so it is not "all empty". |
@@ -32,8 +32,10 @@ Comparison of the inherent impl blocks in `source/vstd/points_to_permissions.rs`
 | `from_untyped` | `from_untyped(pt_untyped)`, builds an empty `PointsTo<T>` | `from_untyped(pt_untyped, len)`, builds an all-empty `SeqPointsTo<T, PointsTo<T>>` of length `len` | Proved from `PointsToUntyped::cast_to_seq_pt` followed by `take_typed_value_subrange(0, len)` to empty every element. `cast_to_seq_pt(capacity, typed_value)` is the version that also takes a prefix of typed values. |
 | `cast_to_typed` (from untyped bytes plus a value) | `PointsToUntyped::cast_to_typed(typed_value)`, proved from `from_untyped` + `put` | `PointsToUntyped::cast_to_seq_pt` | Both are on `PointsToUntyped`. |
 | `as_unaligned` / `into_unaligned` | present | none | No `SeqPointsTo<T, PointsToUnaligned<T>>` impl yet (on hold). |
-| `borrow` / `take` / `put` | present (single value); `put`/`take` also ensure `ptrs_len_same_valid_decode` | none for single elements; range versions instead: `take_typed_value_subrange`, `put_subrange`, `put_typed_value_subrange`, `copy_typed_value_subrange` (proved), `borrow_typed_value_subrange` (axiom) | The range versions are built by induction on `index_mut` and the `TypedValue` fields; they use the `ptrs_len_same_valid_decode` guarantee on `put`/`take`. |
-| `borrow_mut` | axiom, borrows the `&mut T` | `index_mut(i)`, borrows the `&mut PointsTo<T>` at index `i` | Different semantics, so the Seq version was renamed from `borrow_mut` to `index_mut` (the name then matches `subrange_mut`). |
+| `borrow` / `take` / `put` / `copy` (with `T`) | `borrow`, `take`, `put` and `copy` (`T: Copy`, taking `&T`); all but `borrow` ensure `ptrs_len_same_valid_decode` | none for single elements; range versions instead: `take_subrange`, `put_subrange`, `copy_subrange` (proved), `borrow_subrange` (axiom) | `take_subrange` requires the range to be valid and returns `value_subrange`. The proved range versions are built by induction on `index_mut`, using the `ptrs_len_same_valid_decode` guarantee on `put`/`take`. `copy` is proved from `put`; `copy_subrange` from `put_subrange`. |
+| `borrow` / `take` / `put` / `copy` (with `TypedValue<T>`) | `borrow_typed_value`, `take_typed_value`, `put_typed_value` and `copy_typed_value` (`T: Copy`), all proved | `take_typed_value_subrange`, `put_typed_value_subrange`, `copy_typed_value_subrange` (proved), `borrow_typed_value_subrange` (axiom) | Unlike the `T` versions, these don't require validity. `take_typed_value` leaves `self` empty; `put_typed_value` requires decoding only if the value is valid. |
+| `borrow_mut` | axiom, borrows the `&mut T` | `borrow_mut_subrange(start, end)`, axiom, borrows a `&mut Seq<T>` for a valid range | The Seq version only describes `final(self)` if the `Seq<T>` keeps its length (a `&mut Seq` could change it, unlike `&mut [T]`). Like `borrow_mut`, it re-establishes `wf()` only under `ptrs_len_same_valid_decode`, which carries the same soundness TODO. |
+| `index_mut` | none | `index_mut(i)`, borrows the `&mut PointsTo<T>` at index `i` | Renamed from `borrow_mut` to `index_mut` because the semantics differ (the name then matches `subrange_mut`). |
 | `bytes_decode` | broadcast, with `wf` as requires | not broadcast, ensures a per-index subrange decode | |
 
 ## Only on `SeqPointsTo`
@@ -47,11 +49,11 @@ Comparison of the inherent impl blocks in `source/vstd/points_to_permissions.rs`
 - **Splitting and joining:**
   - `split(mid)` splits into `[0, mid)` and `[mid, len)`. The first keeps `self.ptr()`, the second's pointer is offset by `mid * size_of::<T>()`. It ensures the `seq_pt` and `bytes` are split to match, and both halves are `wf`.
   - `join(other)` concatenates two `SeqPointsTo`. It requires the same provenance and `other` starting exactly at the end of `self`. It ensures the `seq_pt` and `bytes` are concatenated and the result is `wf`.
-- **Sub-range borrowing** (both axioms): `subrange_mut(i, j)` returns `&mut Self` for indices `[i, j)`, with the pointer offset by `i * size_of::<T>()`. If the final sub-permission stays `wf` with the same ptr and len, then `self` is `wf` again with that range replaced. `subrange(start_index, len)` is the shared-borrow version, returning `&Self`; it also ensures the matching `bytes` subrange.
+- **Sub-range borrowing** (both axioms): `subrange_mut(i, j)` returns `&mut Self` for indices `[i, j)`, with the pointer offset by `i * size_of::<T>()`. If the final sub-permission stays `wf` with the same ptr and len, then `self` is `wf` again with that range replaced. `subrange(start_index, len)` is the shared-borrow version, returning `&Self`. Its `bytes` are the matching subrange of `self.bytes()`, which follows from `bytes_subrange_equiv`.
 - **Sub-range contents:**
-  - Proved: `put_subrange` (put a `Seq<T>`), `put_typed_value_subrange` (put a `Seq<TypedValue<T>>`), `take_typed_value_subrange` (move the values out, leaving that range empty) and `copy_typed_value_subrange` (`T: Copy`). Each requires `wf()` and ensures `wf()`, the same `ptr()` and `bytes()`, and the `update_subrange_with` result for `typed_value()`.
-  - Axiom: `borrow_typed_value_subrange` (borrow the `Seq<TypedValue<T>>` for a range).
-- **Byte reasoning lemmas:** `bytes_len`, `bytes_equiv`, `bytes_decode` and the private helpers (`bytes_len_helper`, `bytes_subrange`, `bytes_inner_ext`).
+  - Proved: `put_subrange` (put a `Seq<T>`), `copy_subrange` (copy from a `&Seq<T>`, `T: Copy`), `take_subrange` (move the `Seq<T>` out of a valid range, leaving it empty), `put_typed_value_subrange` (put a `Seq<TypedValue<T>>`), `take_typed_value_subrange` (move the `TypedValue`s out, leaving that range empty) and `copy_typed_value_subrange` (`T: Copy`). Each requires `wf()` and ensures `wf()`, the same `ptr()` and `bytes()`, and the `update_subrange_with` result for `typed_value()`.
+  - Axioms: `borrow_subrange` (borrow the `Seq<T>` for a valid range), `borrow_mut_subrange` (mutably borrow it) and `borrow_typed_value_subrange` (borrow the `Seq<TypedValue<T>>` for a range).
+- **Byte reasoning lemmas:** `bytes_len`, `bytes_equiv`, `bytes_subrange_equiv` (public wrapper around `bytes_subrange` for `[start, end)`), `bytes_decode` and the private helpers (`bytes_len_helper`, `bytes_subrange`, `bytes_inner_ext`).
 
 ## `PointsToUntyped` counterparts
 
@@ -68,21 +70,18 @@ Comparison of the inherent impl blocks in `source/vstd/points_to_permissions.rs`
 
 - `split` and `join` on `SeqPointsTo<T, PointsTo<T>>` follow the same shape as `PointsToUntyped::split` and `join`, but split at element indices (scaled by `size_of::<T>()`) rather than byte indices.
 - `PointsTo` has no analogue of `split`, `join`, `subrange`, `subrange_mut`, the subrange content operations or `from_seq`, since those only make sense for a sequence.
-- The single-element `borrow`, `take` and `put` are not missing on the Seq side: they are subsumed by the subrange versions (a single element is a subrange of length 1). What is still missing are the `Seq<T>` subrange operations `take_subrange`, `borrow_subrange` and `borrow_mut_subrange` (see the TODOs), and potentially `copy_subrange` (taking in `&Seq<T>`).
-- Potentially missing on the `PointsTo` side: `copy` (taking in `&T`) and `copy_typed_value` (taking in `&TypedValue<T>`). The Seq side already has `copy_typed_value_subrange`, and `PointsTo` has no copy operation at all.
-- Also still missing on the Seq side compared to `PointsTo`: `as_unaligned` and `into_unaligned`. `index_mut` and `tracked_seq_pt_mut` cover element mutation, but only through `PointsTo`.
+- The single-element `borrow`, `take`, `put` and `copy` are not missing on the Seq side: they are subsumed by the subrange versions (a single element is a subrange of length 1). Both sides now have the full `T` and `TypedValue<T>` sets of borrow/take/put/copy.
+- Still missing on the Seq side compared to `PointsTo`: `as_unaligned` and `into_unaligned`.
 - The `is_empty` semantics above are the main inconsistency.
 - `PointsTo::bytes_decode` is `broadcast` and the Seq one isn't, even though `bytes_equiv` and `bytes_len` on the Seq side are.
 - `as_untyped` and `as_untyped_mut` are axioms on the Seq side but proof fns on `PointsTo`: a `SeqPointsTo` stores no `PointsToUntyped` to borrow, whereas `PointsTo` holds one inside its `PointsToUnaligned`.
-- The sequence-only range operations (`put_subrange`, `take_typed_value_subrange`, ...) are proved, not axioms. They rely on `PointsTo::put` / `take` ensuring `ptrs_len_same_valid_decode`, so `index_mut` can re-establish `wf()`.
-- The axioms on the Seq side are the ones that return a reference to something not stored (`as_untyped`, `as_untyped_mut`, `subrange`, `borrow_typed_value_subrange`), and `subrange_mut` (needs a `&mut` sub-permission whose final state flows back into `self`).
+- The sequence-only range operations (`put_subrange`, `take_subrange`, `take_typed_value_subrange`, ...) are proved, not axioms. They rely on `PointsTo::put` / `take` ensuring `ptrs_len_same_valid_decode`, so `index_mut` can re-establish `wf()`.
+- The axioms on the Seq side are the ones that return a reference to something not stored (`as_untyped`, `as_untyped_mut`, `subrange`, `borrow_subrange`, `borrow_mut_subrange`, `borrow_typed_value_subrange`), and `subrange_mut` (needs a `&mut` sub-permission whose final state flows back into `self`).
 - The `str` permission (`SeqPointsTo<str, PointsTo<u8>>`) is drafted in `points_to_str_wip.rs` and is not part of this comparison.
 
 ## TODOs
 
 Based on the comparison above:
 
-- `SeqPointsTo::take_subrange`, `SeqPointsTo::borrow_subrange` and `SeqPointsTo::borrow_mut_subrange` (with `Seq<T>`).
-- `PointsTo::borrow_typed_value`, `PointsTo::take_typed_value` and `PointsTo::put_typed_value` (with `TypedValue<T>`).
-- Potentially: `SeqPointsTo::copy_subrange` (taking in `&Seq<T>`), `PointsTo::copy` (taking in `&T`) and `PointsTo::copy_typed_value` (taking in `&TypedValue<T>`).
 - `PointsTo::cast_points_to` and `PointsTo::cast_points_to_unaligned`: possibly in the future, if we implement `PointsTo<[T]>`. On hold for now.
+- Check whether the `ptrs_len_same_valid_decode ==> wf()` postcondition on `PointsTo::borrow_mut` and `SeqPointsTo::borrow_mut_subrange` is sound and usable, since callers cannot see the inner pointers they would need to establish it.
