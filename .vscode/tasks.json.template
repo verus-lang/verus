@@ -4,7 +4,7 @@
     {
       "label": "build",
       "type": "shell",
-      "command": "bash -c 'cd source; . ../tools/activate && vargo build'",
+      "command": "bash -c 'cd source; cargo build --release && cargo run --release -p cargo-verus -- build --manifest-path vstd/Cargo.toml'",
       "problemMatcher": [],
       "group": {
         "kind": "build",
@@ -14,7 +14,7 @@
     {
       "label": "build-no-vstd",
       "type": "shell",
-      "command": "bash -c 'cd source; . ../tools/activate && vargo build --exclude vstd'",
+      "command": "bash -c 'cd source; cargo build --release'",
       "problemMatcher": [],
       "group": {
         "kind": "build",

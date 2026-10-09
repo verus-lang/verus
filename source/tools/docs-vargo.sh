@@ -2,6 +2,9 @@
 
 set -e
 
+echo "WARNING: Use `docs.sh` instead, because `vargo` is being deprecated."
+echo "  See also: https://github.com/verus-lang/verus/pull/2686"
+
 RUSTDOC=""
 if [ "x$1" = "x--strict" ]; then
     RUSTDOC="-D warnings"
@@ -26,8 +29,9 @@ elif [ `uname` == "Linux" ]; then
     DYN_LIB_EXT=so
 fi
 
-cargo build -p verusdoc
-cargo build
+. ../tools/activate
+vargo build -p verusdoc
+vargo build --vstd-no-verify
 
 echo "Running rustdoc..."
 RUSTC_BOOTSTRAP=1 eval ""VERUSDOC=1 VSTD_KIND=IsVstd VERUS_Z3_PATH="$(pwd)/z3"  rustdoc \
@@ -55,6 +59,6 @@ RUSTC_BOOTSTRAP=1 eval ""VERUSDOC=1 VSTD_KIND=IsVstd VERUS_Z3_PATH="$(pwd)/z3"  
   vstd/vstd.rs""
 
 echo "Running post-processor..."
-./target-verus/debug/verusdoc
+./target/debug/verusdoc
 
 echo "Documentation generated at ./doc/vstd/index.html"
