@@ -620,10 +620,10 @@ pub(crate) fn parse_attrs(
                 {
                     v.push(Attr::LoopIsolation(false))
                 }
-                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, r, None)]))
+                AttrTree::Fun(_, arg, Some(box [AttrTree::Lit(LitKind::Str, r)]))
                     if arg == "permission" =>
                 {
-                    v.push(Attr::Permission(r.to_string()))
+                    v.push(Attr::Permission(r.clone()))
                 }
                 AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, r, None)]))
                     if arg == "deprecated_postcondition_mut_ref_style" && r == "true" =>

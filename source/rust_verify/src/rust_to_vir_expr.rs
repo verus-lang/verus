@@ -4602,6 +4602,22 @@ fn get_permission_place_rec<'tcx>(
             let p1 = bctx.spanned_typed_new(span, t, PlaceX::DerefMut(place));
             get_permission_place_rec(bctx, span, t, p1)
         }
+        TypX::Decorate(TypDecoration::Ref, None, t) => {
+            get_permission_place_rec(bctx, span, t, place)
+        }
+        TypX::Datatype(Dt::Path(path), t, _)
+            if *path == vir::path!(CrateId::Core => "option", "Option") =>
+        {
+            let field_opr = FieldOpr {
+                datatype: Dt::Path(path.clone()),
+                variant: Arc::new("Some".to_string()),
+                field: Arc::new("0".to_string()),
+                get_variant: false,
+                check: VariantCheck::None,
+            };
+            let p1 = bctx.spanned_typed_new(span, &t[0], PlaceX::Field(field_opr, place));
+            get_permission_place_rec(bctx, span, &t[0], p1)
+        }
         _ => {
             dbg!(typ);
             todo!(); // TODO(native_raw_ptrs)
@@ -4621,9 +4637,7 @@ fn get_place_descriptor(p: &Place) -> Option<String> {
         PlaceX::WithExpr(..) => {
             return None;
         }
-        PlaceX::Index(_p, _idx, _k, _needs_bounds_check) => {
-            return None;
-        }
+        PlaceX::Index(p, _idx, _k, _needs_bounds_check) => get_place_descriptor(p)? + "[?]",
         PlaceX::UserDefinedTypInvariantObligation(..) => {
             return None;
         }

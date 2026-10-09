@@ -202,8 +202,8 @@ fn check_variants_correct(
     }
 }
 
-fn place_to_string(_p: &Place) -> String {
-    todo!()
+fn place_to_string(p: &Place) -> String {
+    format!("{:?}", p) // TODO prettier string here
 }
 
 pub(crate) fn sst_raw_deref_check(
