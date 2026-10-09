@@ -1,267 +1,201 @@
 #![allow(unused_imports)]
 
-use super::arithmetic::power::*;
-use super::arithmetic::power2::*;
-use super::endian::*;
-use super::layout::*;
-use super::math::*;
 use super::prelude::*;
-use super::raw_ptr::*;
-use super::seq::*;
 use super::type_representation::*;
 use crate::vstd::group_vstd_default;
+use std::marker::MetaSized;
 
 verus! {
 
-broadcast use {group_layout_axioms, group_vstd_default};
+broadcast use {group_vstd_default};
 
 pub trait TransmuteSpec where Self: TypeRepresentation {
-    spec fn transmute_req<Dst: TypeRepresentation>(src: Self, dst: Dst, shadow_data: ShadowData<Self>) -> bool;
-}
-
-pub open spec fn transmute_req_default<Src: TypeRepresentation, Dst: TypeRepresentation>(src: Src, dst: Dst) -> bool {
-    &&& forall|bytes|
-        #![trigger Src::encode(src, arbitrary(), bytes)]
-        #![trigger Dst::decode(bytes, dst, arbitrary())]
-        Src::encode(src, arbitrary(), bytes) ==> Dst::decode(bytes, dst, arbitrary())
-    &&& Src::can_be_encoded()
-}
-
-// TODO - use "default" impl to all the necessary types
-/*impl TransmuteSpec for bool {
-    open spec fn transmute_req<Dst: TypeRepresentation>(src: bool, dst: Dst, shadow_data: ShadowData<bool>) -> bool {
-        //transmute_req_default::<bool, Dst>(src, dst)
-        false
+    open spec fn transmute_req<Dst: TypeRepresentation>(src: Self, dst: Dst) -> bool {
+        &&& encode_decode::<Self, Dst>(src, arbitrary(), dst, arbitrary())
+        &&& Self::can_be_encoded()
     }
-}*/
-
-//TODO - will delete
-// The below spec functions define the `AbstractByte` encoding _abstractly_ for each type.
-// This means that, e.g., we can state the specification for transmutes over all types.
-// However, in order to reason meaningfully about this encoding, we must provide a concrete specification for it.
-/// Is encoding allowed for this type?
-pub uninterp spec fn abs_can_be_encoded<T: ?Sized>() -> bool;
-
-/// Can 'value' be encoded to the given bytes?
-pub uninterp spec fn abs_encode<T: ?Sized>(value: &T, bytes: Seq<AbstractByte>) -> bool;
-
-/// Can the given bytes always be decoded to the given value?
-pub uninterp spec fn abs_decode<T: ?Sized>(bytes: Seq<AbstractByte>, value: &T) -> bool;
-
-/// For any type `T`, the encoding must correctly translate the size of the type.
-/*pub broadcast axiom fn encode_decode_len<T>(value: T, bytes: Seq<AbstractByte>)
-    ensures
-        #![trigger abs_encode::<T>(&value, bytes)]
-        #![trigger abs_decode::<T>(bytes, &value)]
-        abs_encode::<T>(&value, bytes) ==> bytes.len() == size_of::<T>(),
-        abs_decode::<T>(bytes, &value) ==> bytes.len() == size_of::<T>(),
-;
-
-pub axiom fn encode_decode_inverse<T>(tracked value: &T)
-    ensures
-        forall|bytes| #[trigger] abs_encode::<T>(value, bytes) ==> abs_decode::<T>(bytes, value),
-;
-*/
-
-
-/// Generic precondition on transmute.
-pub open spec fn transmute_pre<T, U>(src: T, dst: U) -> bool {
-    &&& forall|bytes|
-        #![trigger abs_encode::<T>(&src, bytes)]
-        #![trigger abs_decode::<U>(bytes, &dst)]
-        abs_encode::<T>(&src, bytes) ==> abs_decode::<U>(bytes, &dst)
-    &&& abs_can_be_encoded::<T>()
 }
 
-/// Generic postcondition on transmute.
-pub open spec fn transmute_post<U>(dst_ghost: U, dst: U) -> bool {
-    dst_ghost == dst
+impl TransmuteSpec for bool {}
+impl TransmuteSpec for u8 {}
+impl TransmuteSpec for u16 {}
+impl TransmuteSpec for u32 {}
+impl TransmuteSpec for u64 {}
+impl TransmuteSpec for u128 {}
+impl TransmuteSpec for usize {}
+impl TransmuteSpec for i8 {}
+impl TransmuteSpec for i16 {}
+impl TransmuteSpec for i32 {}
+impl TransmuteSpec for i64 {}
+impl TransmuteSpec for i128 {}
+impl TransmuteSpec for isize {}
+impl<T: ?Sized> TransmuteSpec for *mut T where <T as core::ptr::Pointee>::Metadata: TypeRepresentation {}
+impl<T: ?Sized> TransmuteSpec for *const T where <T as core::ptr::Pointee>::Metadata: TypeRepresentation {}
+impl TransmuteSpec for () {}
+
+pub trait TransmutePairwiseSpec<Dst: TypeRepresentation> where Self: TypeRepresentation {
+    spec fn transmute_req(src: Self, src_shadow_data: ShadowData<Self>, dst: Dst, dst_shadow_data: ShadowData<Dst>) -> bool;
 }
 
-/// Generic precondition on transmute for "pointed-to" values of the given types.
-pub open spec fn transmute_pre_points_to<T: ?Sized, U: ?Sized>(src: &T, dst: &U) -> bool {
-    &&& forall|bytes| #[trigger] abs_decode::<T>(bytes, src) ==> abs_decode::<U>(bytes, dst)
-    &&& abs_can_be_encoded::<T>()
+// TODO - impl for sized types as well?
+impl<'a, T, U> TransmutePairwiseSpec<&'a U> for &'a T 
+    where T: TypeRepresentationMetaSized + MetaSized, 
+    U: TypeRepresentationMetaSized + MetaSized,
+    <T as std::ptr::Pointee>::Metadata: TypeRepresentation,
+    <U as std::ptr::Pointee>::Metadata: TypeRepresentation
+{
+    open spec fn transmute_req(src: &'a T, src_shadow_data: ShadowData<&'a T>, dst: &'a U, dst_shadow_data: ShadowData<&'a U>) -> bool {
+        &&& encode_decode::<&'a T, &'a U>(src, src_shadow_data, dst, dst_shadow_data)
+        &&& decode_decode_metasized::<T, U>(src, dst)
+        &&& Self::can_be_encoded()
+        &&& T::can_be_encoded()
+    }
 }
 
-pub broadcast group group_transmute_axioms {
-    group_type_representation_axioms,
-}
-
-/*
 /* "Test cases" on transmute to validate the encoding specs */
 
-macro_rules! transmute_refl_unique_lemma {
+macro_rules! transmute_reflexive_injective_lemma {
     ($(
-        ($typ:ty, $refl_lemma_name:ident, $unique_lemma_name:ident);
+        ($typ:ty, $reflexive_lemma:ident, $injective_lemma:ident);
     )+) => {$(
         verus! {
             /// A value `x: $typ` can be transmuted to itself.
-            pub proof fn $refl_lemma_name(tracked x: $typ, y: $typ)
+            pub proof fn $reflexive_lemma(tracked x: $typ, y: $typ)
                 requires
                     x == y
                 ensures
-                    transmute_pre(x, y),
+                    <$typ as TransmuteSpec>::transmute_req(x, y),
             {
-                broadcast use group_transmute_axioms;
+                broadcast use group_type_representation_axioms;
 
-                assert forall|bytes| abs_encode::<$typ>(&x, bytes) implies abs_decode::<$typ>(bytes, &(y@)) by {
-                    <$typ as TypeRepresentation>::encoding_invertible(x, bytes);
+                assert forall|bytes| <$typ as TypeRepresentation>::encode(x, arbitrary(), bytes) implies <$typ as TypeRepresentation>::decode(bytes, y, arbitrary()) by {
+                    <$typ as TypeRepresentation>::encoding_invertible(x, arbitrary(), bytes);
                 }
             }
 
             /// When a `$typ` is transmuted to a `$typ`, the value can only be transmuted to itself.
-            pub proof fn $unique_lemma_name(tracked x: $typ, y: $typ)
+            pub proof fn $injective_lemma(tracked x: $typ, y: $typ)
                 requires
-                    transmute_pre(x, y)
+                    <$typ as TransmuteSpec>::transmute_req(x, y)
                 ensures
                     x == y
             {
-                broadcast use group_transmute_axioms;
+                broadcast use group_type_representation_axioms;
 
-                let bytes = <$typ as TypeRepresentation>::encoding_exists(x);
+                let bytes = <$typ as TypeRepresentation>::encoding_exists(x, arbitrary());
             }
         }
     )+};
 }
 
-transmute_refl_unique_lemma! {
-    ((), transmute_unit_refl, transmute_unit_unique);
-    (bool, transmute_bool_refl, transmute_bool_unique);
-    (u8, transmute_u8_refl, transmute_u8_unique);
-    (u16, transmute_u16_refl, transmute_u16_unique);
-    (u32, transmute_u32_refl, transmute_u32_unique);
-    (u64, transmute_u64_refl, transmute_u64_unique);
-    (u128, transmute_u128_refl, transmute_u128_unique);
-    (usize, transmute_usize_refl, transmute_usize_unique);
-    (i8, transmute_i8_refl, transmute_i8_unique);
-    (i16, transmute_i16_refl, transmute_i16_unique);
-    (i32, transmute_i32_refl, transmute_i32_unique);
-    (i64, transmute_i64_refl, transmute_i64_unique);
-    (i128, transmute_i128_refl, transmute_i128_unique);
-    (isize, transmute_isize_refl, transmute_isize_unique);
+transmute_reflexive_injective_lemma! {
+    ((), transmute_unit_reflexive, transmute_unit_injective);
+    (bool, transmute_bool_reflexive, transmute_bool_injective);
+    (u8, transmute_u8_reflexive, transmute_u8_injective);
+    (u16, transmute_u16_reflexive, transmute_u16_injective);
+    (u32, transmute_u32_reflexive, transmute_u32_injective);
+    (u64, transmute_u64_reflexive, transmute_u64_injective);
+    (u128, transmute_u128_reflexive, transmute_u128_injective);
+    (usize, transmute_usize_reflexive, transmute_usize_injective);
+    (i8, transmute_i8_reflexive, transmute_i8_injective);
+    (i16, transmute_i16_reflexive, transmute_i16_injective);
+    (i32, transmute_i32_reflexive, transmute_i32_injective);
+    (i64, transmute_i64_reflexive, transmute_i64_injective);
+    (i128, transmute_i128_reflexive, transmute_i128_injective);
+    (isize, transmute_isize_reflexive, transmute_isize_injective);
 }
 
+// TODO
 /// A value `x: *mut T` for `T: Sized` can be transmuted to itself.
-pub proof fn transmute_mut_ptr_sized_refl<T: Sized>(tracked x: *mut T, y: *mut T)
+pub proof fn transmute_mut_ptr_reflexive<T: ?Sized>(tracked x: *mut T, y: *mut T)
+    where <T as core::ptr::Pointee>::Metadata: TypeRepresentation
     requires
+        <*mut T as TypeRepresentation>::can_be_encoded(),
         x@ == y@,
     ensures
-        transmute_pre(x, y),
+        <*mut T as TransmuteSpec>::transmute_req(x, y),
 {
-    broadcast use group_transmute_axioms;
+    broadcast use group_type_representation_axioms;
 
-    assert forall|bytes| abs_encode::<*mut T>(&x, bytes) implies abs_decode::<*mut T>(
+    assert forall|bytes| <*mut T as TypeRepresentation>::encode(x, arbitrary(), bytes) implies <*mut T as TypeRepresentation>::decode(
         bytes,
-        &y,
+        y,
+        arbitrary()
     ) by {
-        <*mut T as TypeRepresentation>::encoding_invertible(x, bytes);
+        <*mut T as TypeRepresentation>::encoding_invertible(x, arbitrary(), bytes);
     }
 }
 
 /// When a `*mut T` is transmuted to a `*mut T` for `T: Sized`, a value can only be transmuted to itself.
-pub proof fn transmute_mut_ptr_sized_unique<T: Sized>(tracked x: *mut T, y: *mut T)
+pub proof fn transmute_mut_ptr_sized_injective<T>(tracked x: *mut T, y: *mut T)
     requires
-        transmute_pre(x, y),
+        <*mut T as TransmuteSpec>::transmute_req(x, y),
     ensures
         x@ == y@,
 {
-    broadcast use group_transmute_axioms;
+    broadcast use group_type_representation_axioms;
 
-    let bytes = <*mut T as TypeRepresentation>::encoding_exists(x);
+    let bytes = <*mut T as TypeRepresentation>::encoding_exists(x, arbitrary());
 }
 
-/// A value `x: *const T` for `T: Sized` can be transmuted to itself.
-pub proof fn transmute_const_ptr_sized_refl<T: Sized>(tracked x: *const T, y: *const T)
+// TODO
+/// When a `*mut T` is transmuted to a `*mut T` for `T: Sized`, a value can only be transmuted to itself.
+pub proof fn transmute_mut_ptr_metasized_usize_injective<T: std::ptr::Pointee<Metadata = usize>>(tracked x: *mut T, y: *mut T)
     requires
+        <*mut T as TransmuteSpec>::transmute_req(x, y),
+    ensures
+        x@ == y@,
+{
+    broadcast use group_type_representation_axioms;
+
+    let bytes = <*mut T as TypeRepresentation>::encoding_exists(x, arbitrary());
+}
+
+// TODO
+/// A value `x: *const T` for `T: Sized` can be transmuted to itself.
+pub proof fn transmute_const_ptr_reflexive<T: ?Sized>(tracked x: *const T, y: *const T)
+    where <T as core::ptr::Pointee>::Metadata: TypeRepresentation
+    requires
+        <*const T as TypeRepresentation>::can_be_encoded(),
         x@ == y@,
     ensures
-        transmute_pre(x, y),
+        <*const T as TransmuteSpec>::transmute_req(x, y),
 {
-    broadcast use group_transmute_axioms;
+    broadcast use group_type_representation_axioms;
 
-    assert forall|bytes| abs_encode::<*const T>(&x, bytes) implies abs_decode::<*const T>(
+    assert forall|bytes| <*const T as TypeRepresentation>::encode(x, arbitrary(), bytes) implies <*const T as TypeRepresentation>::decode(
         bytes,
-        &y,
+        y,
+        arbitrary()
     ) by {
-        <*const T as TypeRepresentation>::encoding_invertible(x, bytes);
+        <*const T as TypeRepresentation>::encoding_invertible(x, arbitrary(), bytes);
     }
 }
 
 /// When a `*const T` is transmuted to a `*const T` for `T: Sized`, a value can only be transmuted to itself.
-pub proof fn transmute_const_ptr_sized_unique<T: Sized>(tracked x: *const T, y: *const T)
+pub proof fn transmute_const_ptr_sized_injective<T: Sized>(tracked x: *const T, y: *const T)
     requires
-        transmute_pre(x, y),
+        <*const T as TransmuteSpec>::transmute_req(x, y),
     ensures
         x@ == y@,
 {
-    broadcast use group_transmute_axioms;
+    broadcast use group_type_representation_axioms;
 
-    let bytes = <*const T as TypeRepresentation>::encoding_exists(x);
+    let bytes = <*const T as TypeRepresentation>::encoding_exists(x, arbitrary());
 }
 
-// we cannot prove that x can only be transmuted to y because that would need stronger properties from the metadata encoding
-/// When transmuting a `*mut T` to a `*mut T` for `T: ?Sized`, a value `x: *mut T` can be transmuted to itself.
-pub proof fn transmute_mut_ptr_unsized_refl<T: ?Sized>(tracked x: *mut T, y: *mut T)
+// TODO
+pub proof fn transmute_const_ptr_metasized_usize_injective<T: std::ptr::Pointee<Metadata = usize>>(tracked x: *const T, y: *const T)
     requires
-        ptr_metadata_encoding_well_defined::<T>(),
-        x == y,
+        <*const T as TransmuteSpec>::transmute_req(x, y),
     ensures
-        transmute_pre(x, y),
+        x@ == y@,
 {
-    broadcast use group_transmute_axioms;
+    broadcast use group_type_representation_axioms;
 
-    assert forall|bytes| abs_encode::<*mut T>(&x, bytes) implies abs_decode::<*mut T>(
-        bytes,
-        &y,
-    ) by {
-        <*mut T as TypeRepresentation>::encoding_invertible(x, bytes);
-    }
+    let bytes = <*const T as TypeRepresentation>::encoding_exists(x, arbitrary());
 }
 
-/// When transmuting a `*const T` to a `*const T` for `T: ?Sized`, a value `x: *const T` can be transmuted to itself.
-pub proof fn transmute_const_ptr_unsized_refl<T: ?Sized>(tracked x: *const T, y: *const T)
-    requires
-        ptr_metadata_encoding_well_defined::<T>(),
-        x == y,
-    ensures
-        transmute_pre(x, y),
-{
-    broadcast use group_transmute_axioms;
-
-    assert forall|bytes| abs_encode::<*const T>(&x, bytes) implies abs_decode::<*const T>(
-        bytes,
-        &y,
-    ) by {
-        <*const T as TypeRepresentation>::encoding_invertible(x, bytes);
-    }
-}
-
-/// A `usize` can be transmuted to a `*mut T` for `T: Sized`. The resulting pointer has an address corresponding to the source value and a null `Provenance`.
-pub proof fn transmute_usize_mut_ptr<T: Sized>(tracked src: usize) -> (tracked dst: *mut T)
-    ensures
-        transmute_pre(src, dst),
-        dst == ptr_mut_from_data(
-            PtrData::<T> { addr: src, provenance: Provenance::None, metadata: () },
-        ),
-{
-    broadcast use group_transmute_axioms;
-
-    let tracked dst = tracked_ptr_mut_from_data(
-        PtrData { addr: src, provenance: Provenance::None, metadata: () },
-    );
-    assert forall|bytes| #[trigger] abs_encode::<usize>(&src, bytes) implies abs_decode::<*mut T>(
-        bytes,
-        &dst,
-    ) by {
-        assert(bytes =~= bytes.subrange(0, size_of::<usize>() as int));
-        assert(Seq::<AbstractByte>::empty() =~= bytes.subrange(
-            size_of::<usize>() as int,
-            size_of::<*mut T>() as int,
-        ));
-    }
-    dst
-}
-    */
+// TODO - test cases for &T, &U
 
 } // verus!
