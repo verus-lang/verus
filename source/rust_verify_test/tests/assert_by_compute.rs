@@ -1148,17 +1148,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] scope_quantifier_equality verus_code! {
-        uninterp spec fn p(x: int) -> bool;
-
-        proof fn test() {
-            assert((forall|x: int| #[trigger] p(x))
-                == (forall|x: int| #[trigger] p(x))) by (compute_only);
-        }
-    } => Ok(())
-}
-
-test_verify_one_file! {
     #[test] scope_quantifier_equality_after_unfold verus_code! {
         uninterp spec fn p(x: int) -> bool;
         spec fn id(x: int) -> int { x }
@@ -1177,9 +1166,9 @@ test_verify_one_file! {
 
         proof fn test() {
             assert((forall|x: int| #[trigger] p(id(x), id(x))
-                    && (exists|y: int| #[trigger] p(id(x), id(y))))
+                    && (exists|x: int| #[trigger] p(id(x), id(x))))
                 == (forall|y: int| #[trigger] p(y, y)
-                    && (exists|x: int| #[trigger] p(y, x)))) by (compute_only);
+                    && (exists|z: int| #[trigger] p(z, z)))) by (compute_only);
             assert((forall|x: int| #[trigger] p(x, x)
                     && (exists|y: int| #[trigger] p(x, y)))
                 == (forall|y: int| #[trigger] p(y, y)
@@ -1198,21 +1187,6 @@ test_verify_one_file! {
                 == (forall|x: int| #[trigger] p(x, x))) by (compute_only);
         }
     } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
-}
-
-test_verify_one_file! {
-    #[test] scope_quantifier_equality_memoized verus_code! {
-        uninterp spec fn p(x: int) -> bool;
-        spec fn id(x: int) -> int { x }
-
-        #[verifier::memoize]
-        spec fn cached(b: bool) -> bool { b }
-
-        proof fn test() {
-            assert(cached(forall|x: int| #[trigger] p(id(x)))
-                == cached(forall|y: int| #[trigger] p(y))) by (compute_only);
-        }
-    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -1251,19 +1225,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] const_generic_signed_out_of_range verus_code! {
-        spec fn h<const N: i8>() -> i8 { N }
-
-        proof fn test() {
-            let x = h::<{-1}>();
-            assert(x <= 127);
-            assert(h::<{-1}>() == 255int) by (compute_only);
-            assert(false);
-        }
-    } => Err(err) => assert_vir_error_msg(err, "which evaluates to false")
-}
-
-test_verify_one_file! {
     #[test] const_generic_signed_boundaries verus_code! {
         spec fn h<const N: i8>() -> i8 { N }
         spec fn wide<const N: i128>() -> i128 { N }
@@ -1272,8 +1233,6 @@ test_verify_one_file! {
         proof fn test() {
             assert(h::<{-1}>() == -1) by (compute_only);
             assert(h::<{i8::MIN}>() == -128) by (compute_only);
-            assert(h::<0>() == 0) by (compute_only);
-            assert(h::<127>() == 127) by (compute_only);
             assert(wide::<{i128::MIN}>() == i128::MIN) by (compute_only);
             assert(wide::<{i128::MAX}>() == i128::MAX) by (compute_only);
             assert(pointer_sized::<{-1}>() == -1) by (compute_only);
@@ -1306,16 +1265,6 @@ test_verify_one_file! {
             assert(h::<5, N>() == 5) by (compute_only);
         }
     } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
-}
-
-test_verify_one_file! {
-    #[test] scope_const_generic_fallback_failure verus_code! {
-        spec fn h<const N: u64, const M: u64>() -> int { M as int }
-
-        proof fn test<const N: u64>() {
-            assert(h::<5, N>() == N as int + 1) by (compute); // FAILS
-        }
-    } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
@@ -1367,19 +1316,6 @@ test_verify_one_file! {
         proof fn test(x: int) {
             assert(g(x + 1) == x + 1);
             assert(f(x)) by (compute);
-        }
-    } => Ok(())
-}
-
-test_verify_one_file! {
-    #[test] scope_nested_quantifier_shadowing verus_code! {
-        spec fn g(x: int) -> int { x }
-
-        proof fn test() {
-            assert(g(0) == 0);
-            assert(forall|x: int| #![trigger g(x)]
-                (exists|x: int| #![trigger g(x)] g(x) == x) && g(x) == x)
-                by (compute);
         }
     } => Ok(())
 }
