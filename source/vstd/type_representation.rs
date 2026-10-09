@@ -777,7 +777,8 @@ macro_rules! impl_type_representation_for_zero_sized_type {
         ($name:ty, $spec_mod:tt);
     )+) => {$(
         verus! {
-            /// The type representation for `$name` encodes the value as an empty sequence of bytes, as `$name` is a zero-sized type.
+            /// The type representation for `$name` ensures that values of type `$name` are encoded and decoded as an empty sequence of abstract bytes.
+            /// This is because `$name` is a zero-sized type.
             impl TypeRepresentation for $name {
                 open spec fn can_be_encoded() -> bool {
                     true
@@ -819,12 +820,10 @@ impl_type_representation_for_zero_sized_type! {
     ((), open);
 }
 
-/// This trait is implemented on fieldness enums with a primitive type representation, defined with the `#[repr(<primitive>)]` attribute.
-/// Such types therefore share the same byte encoding as the `Primitive` type (see: [Primitive representations](https://doc.rust-lang.org/reference/type-layout.html#primitive-representation-of-field-less-enums)).
-/// A primitive type representation means that the enum is encoded as the discriminant's integer value.
-/// This trait is used to define a `AbstractByteEncodingFor` for `Self` which is implemented on `PrimitiveRepresentationEncoding<Primitive, Self>`.
-/// This representation uses `<Primitive as TypeRepresentation>::encode` and `<Primitive as TypeRepresentation>::decode` after invoking `Self::to_primitive`.
-/// `PrimitiveRepresentationEncoding<Primitive, Self>` can then be used to implement `TypeRepresentation` on `Self`.
+/// This trait is intended to be implemented on types a primitive type representation,
+/// i.e. types defined with the `#[repr(<primitive>)]` attribute
+/// (see: [Primitive representations](https://doc.rust-lang.org/reference/type-layout.html#primitive-representation-of-field-less-enums)).
+/// Intended to be used in conjunction with the `impl_type_representation_for_primitive_repr` macro.
 pub trait PrimitiveRepresentation<Primitive: TypeRepresentation> where Self: Sized {
     spec fn to_primitive(v: Self) -> Primitive;
 
@@ -846,7 +845,10 @@ macro_rules! impl_type_representation_for_primitive_repr {
         ($name:ty, $spec_mod:tt, $primitive:ty);
     )+) => {$(
         verus! {
-            /// TODO - comment
+            /// The type representation for `$name` ensures that values of type `$name` are encoded and decoded 
+            /// as specified in the type representation for the underlying `$primitive` value.
+            /// This is because `$name` has a primitive type representation
+            /// (see: [Primitive representations](https://doc.rust-lang.org/reference/type-layout.html#primitive-representation-of-field-less-enums)).
             impl TypeRepresentation for $name {
                 open spec fn can_be_encoded() -> bool {
                     $primitive::can_be_encoded()
@@ -879,12 +881,10 @@ macro_rules! impl_type_representation_for_primitive_repr {
 
 pub(crate) use impl_type_representation_for_primitive_repr;
 
-/// This trait is implemented on structs or enums with a transparent type representation, defined with the `#[repr(transparent)]` attribute.
-/// Such types therefore share the same encoding as the `Inner` type (see: [Transparent representations](https://doc.rust-lang.org/reference/type-layout.html#the-transparent-representation)).
-/// A transparent type representation means that the struct/enum has at most one non-zero-sized field, and the type is thus encoded as that field's value.
-/// This trait is used to define a `AbstractByteEncodingFor` for `Self` which is implemented on `TransparentRepresentationEncoding<Inner, Self>`.
-/// This representation uses `<Inner as TypeRepresentation>::encode` and `<Inner as TypeRepresentation>::decode` after invoking `Self::to_inner`.
-/// `TransparentRepresentationEncoding<Inner, Self>` can then be used to implement `TypeRepresentation` on `Self`.
+/// This trait is intended to be implemented on types a transparent type representation,
+/// i.e. types defined with the `#[repr(<transparent>)]` attribute
+/// (see: [Transparent representations](https://doc.rust-lang.org/reference/type-layout.html#the-transparent-representation)).
+/// Intended to be used in conjunction with the `impl_type_representation_for_transparent_repr` macro.
 pub trait TransparentRepresentation<Inner: TypeRepresentation> where Self: Sized {
     spec fn to_inner(v: Self) -> Inner;
 
@@ -906,7 +906,10 @@ macro_rules! impl_type_representation_for_transparent_repr {
         ($name:ty, $spec_mod:tt, $inner:ty);
     )+) => {$(
         verus! {
-            /// TODO - comment
+            /// The type representation for `$name` ensures that values of type `$name` are encoded and decoded 
+            /// as specified in the type representation for the underlying `$inner` value.
+            /// This is because `$name` has a transparent type representation
+            /// (see: [Transparent representations](https://doc.rust-lang.org/reference/type-layout.html#the-transparent-representation)).
             impl TypeRepresentation for $name {
                 open spec fn can_be_encoded() -> bool {
                     $inner::can_be_encoded()
