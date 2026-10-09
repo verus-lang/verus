@@ -95,7 +95,7 @@ pub fn verify_files_vstd_all_diags(
         eprintln!("the input directory is {}", test_input_dir.to_string_lossy());
         eprintln!("{}", yansi::Paint::blue("rerun this test with:"));
         eprintln!(
-            "cargo run -p rust_verify -- --crate-type=lib {} {}",
+            "cargo run --release -p rust_verify -- --crate-type=lib {} {}",
             options.join(" "),
             test_input_dir.join(entry_file).to_string_lossy()
         );
