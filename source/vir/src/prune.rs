@@ -5,10 +5,12 @@
 use crate::ast::{
     ArrayKind, AssocTypeImpl, AssocTypeImplX, AutospecUsage, BinaryOp, BoundsCheck, CallTarget,
     CrateId, Datatype, Dt, Expr, ExprX, Fun, FunWithVis, Function, FunctionKind, Ident, Krate,
-    KrateX, Mode, Module, ModuleX, OpaqueType, Path, Place, PlaceX, RevealGroup, Stmt, Trait,
-    TraitId, TraitX, Typ, TypX, UnaryOp, UnaryOpr, Pattern, PatternX,
+    KrateX, Mode, Module, ModuleX, OpaqueType, Path, Pattern, PatternX, Place, PlaceX, RevealGroup,
+    Stmt, Trait, TraitId, TraitX, Typ, TypX, UnaryOp, UnaryOpr,
 };
-use crate::ast_util::{is_body_visible_to, is_visible_to, is_visible_to_or_true, array_kind_of_typ};
+use crate::ast_util::{
+    array_kind_of_typ, is_body_visible_to, is_visible_to, is_visible_to_or_true,
+};
 use crate::ast_visitor::{VisitorControlFlow, VisitorScopeMap};
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::*;
@@ -607,7 +609,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                             reach_function(ctxt, state, &fn_slice_update());
                             reach_function(ctxt, state, &fn_slice_len());
                         }
-                    }
+                    },
                     _ => {}
                 }
                 Ok(pat.clone())

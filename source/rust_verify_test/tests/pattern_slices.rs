@@ -612,7 +612,6 @@ test_verify_one_file! {
     } => Err(err) => assert_rust_error_msg(err, "cannot move out of type `[X]`, a non-copy slice")
 }
 
-
 test_verify_one_file! {
     #[test] match_slice_with_tracked verus_code! {
         use vstd::prelude::*;
@@ -693,7 +692,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] spec_match verus_code! {
+    #[test] match_slice_in_spec verus_code! {
         use vstd::prelude::*;
         spec fn foo(a: &[u64]) -> Option<u64> {
             match a {

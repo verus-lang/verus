@@ -1,7 +1,7 @@
 use crate::ast::*;
 use crate::ast_util::{
-    bool_typ, conjoin, disjoin, if_then_else, mk_eq, mk_ineq, place_to_spec_expr,
-    int_typ, mk_int_lit_from_usize,
+    bool_typ, conjoin, disjoin, if_then_else, int_typ, mk_eq, mk_ineq, mk_int_lit_from_usize,
+    place_to_spec_expr,
 };
 use crate::context::GlobalCtx;
 use crate::def::Spanned;
@@ -211,8 +211,11 @@ fn pattern_to_exprs_rec(
 
             // If it's a slice, we need to test the length
             if kind == ArrayKind::Slice {
-                let actual_len = SpannedTyped::new(&pattern.span, &int_typ(),
-                    ExprX::Unary(UnaryOp::Length(ArrayKind::Slice), read_place(&place)));
+                let actual_len = SpannedTyped::new(
+                    &pattern.span,
+                    &int_typ(),
+                    ExprX::Unary(UnaryOp::Length(ArrayKind::Slice), read_place(&place)),
+                );
                 let expected_len = mk_int_lit_from_usize(&pattern.span, patterns.len());
                 conjuncts.push(mk_eq(&pattern.span, &actual_len, &expected_len));
             }
@@ -222,9 +225,9 @@ fn pattern_to_exprs_rec(
                 let index_place = SpannedTyped::new(
                     &p.span,
                     &elem_typ,
-                    PlaceX::Index(place.clone(), idx, kind, BoundsCheck::Allow));
-                let pattern_test =
-                    pattern_to_exprs_rec(ctx, p, &index_place, bindings, in_immut)?;
+                    PlaceX::Index(place.clone(), idx, kind, BoundsCheck::Allow),
+                );
+                let pattern_test = pattern_to_exprs_rec(ctx, p, &index_place, bindings, in_immut)?;
                 conjuncts.push(pattern_test);
             }
 
@@ -303,9 +306,7 @@ pub(crate) fn pattern_has_or(pattern: &Pattern) -> bool {
         PatternX::Expr(_e) => false,
         PatternX::Range(_lower, _upper) => false,
         PatternX::ImmutRef(p) | PatternX::MutRef(p) => pattern_has_or(p),
-        PatternX::Slice(patterns) => {
-            patterns.iter().any(|p| pattern_has_or(p))
-        }
+        PatternX::Slice(patterns) => patterns.iter().any(|p| pattern_has_or(p)),
     }
 }
 
@@ -329,8 +330,6 @@ pub(crate) fn definitely_irrefutable(
         PatternX::Expr(_e) => false,
         PatternX::Range(_lower, _upper) => false,
         PatternX::ImmutRef(p) | PatternX::MutRef(p) => definitely_irrefutable(p, datatypes),
-        PatternX::Slice(patterns) => {
-            patterns.iter().all(|p| definitely_irrefutable(p, datatypes))
-        }
+        PatternX::Slice(patterns) => patterns.iter().all(|p| definitely_irrefutable(p, datatypes)),
     }
 }

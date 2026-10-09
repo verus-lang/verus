@@ -233,14 +233,16 @@ The analysis is pretty weak right now but could be improved.
 */
 
 use crate::ast::{
-    Arm, ByRef, CtorUpdateTail, Datatype, Dt, Expr, ExprX, FieldOpr, Fun, FunWithVis, Function,
-    Ident, Label, Mode, ModeWrapperMode, Params, Path, Pattern, PatternBinding, PatternX, Place,
-    PlaceX, ReadKind, SpannedTyped, Stmt, StmtX, Typ, TypDecoration, TypX, UnaryOpr,
-    UnfinalizedReadKind, VarBinders, VarIdent, VarIdentDisambiguate, VariantCheck, VirErr,
-    Primitive, ArrayKind, BoundsCheck,
+    Arm, ArrayKind, BoundsCheck, ByRef, CtorUpdateTail, Datatype, Dt, Expr, ExprX, FieldOpr, Fun,
+    FunWithVis, Function, Ident, Label, Mode, ModeWrapperMode, Params, Path, Pattern,
+    PatternBinding, PatternX, Place, PlaceX, Primitive, ReadKind, SpannedTyped, Stmt, StmtX, Typ,
+    TypDecoration, TypX, UnaryOpr, UnfinalizedReadKind, VarBinders, VarIdent, VarIdentDisambiguate,
+    VariantCheck, VirErr,
 };
 use crate::ast_to_sst::Maybe;
-use crate::ast_util::{bool_typ, mk_bool, typ_to_diagnostic_str, undecorate_typ, unit_typ, mk_int_lit_from_usize};
+use crate::ast_util::{
+    bool_typ, mk_bool, mk_int_lit_from_usize, typ_to_diagnostic_str, undecorate_typ, unit_typ,
+};
 use crate::ast_visitor::VisitorScopeMap;
 use crate::def::Spanned;
 use crate::messages::error;
@@ -2117,7 +2119,9 @@ fn moves_and_muts_for_pattern(
                         for (i, sub_pat) in sub_patterns.iter().enumerate() {
                             let proj = ProjectionTyped::Index(i, elem_typ.clone());
                             projs.push(proj);
-                            moves_and_muts_for_pattern_rec(sub_pat, projs, out, datatypes, modes, errors);
+                            moves_and_muts_for_pattern_rec(
+                                sub_pat, projs, out, datatypes, modes, errors,
+                            );
                             projs.pop();
                         }
                     }
@@ -2262,12 +2266,13 @@ impl<'a> LocalCollection<'a> {
                     TypX::Primitive(Primitive::Array, typs) => {
                         assert!(typs.len() == 2);
                         let len: usize = match &*typs[1] {
-                            TypX::ConstInt(n) => { n.try_into().unwrap() },
-                            _ => { todo!("slice"); }
+                            TypX::ConstInt(n) => n.try_into().unwrap(),
+                            _ => {
+                                todo!("slice");
+                            }
                         };
-                        let children =
-                            std::iter::repeat_n(PlaceTree::Leaf(typs[0].clone()), len)
-                                .collect::<Vec<PlaceTree>>();
+                        let children = std::iter::repeat_n(PlaceTree::Leaf(typs[0].clone()), len)
+                            .collect::<Vec<PlaceTree>>();
                         *tree = PlaceTree::Array(typ.clone(), children);
                     }
                     _ => {
@@ -2320,7 +2325,7 @@ impl<'a> LocalCollection<'a> {
                             "Verus internal error: extend_tree failed, conflicting projection type"
                         );
                     }
-                }
+                },
             }
 
             cur_typ = projection_typed.typ();
@@ -2414,7 +2419,16 @@ impl<'a> LocalCollection<'a> {
                         _ => unreachable!(),
                     };
                     let inner_tree = &inner_trees[*idx];
-                    ast_place = SpannedTyped::new(span, inner_tree.typ(), PlaceX::Index(ast_place, mk_int_lit_from_usize(span, *idx), ArrayKind::Array, BoundsCheck::Allow));
+                    ast_place = SpannedTyped::new(
+                        span,
+                        inner_tree.typ(),
+                        PlaceX::Index(
+                            ast_place,
+                            mk_int_lit_from_usize(span, *idx),
+                            ArrayKind::Array,
+                            BoundsCheck::Allow,
+                        ),
+                    );
                     tree = inner_tree;
                 }
             }
@@ -2556,7 +2570,7 @@ impl<'a> LocalCollection<'a> {
                                 let child: &PlaceTree = &children[i];
                                 (fp, Some(child))
                             }
-                            _ => (fp, None)
+                            _ => (fp, None),
                         }
                     }
                 })
@@ -3835,6 +3849,9 @@ fn condition_on_enum_variants(
     match &place.x {
         PlaceX::Local(_l) => bool_expr.clone(),
         PlaceX::DerefMut(p) => condition_on_enum_variants(bool_expr, p, datatypes),
+        PlaceX::Index(p, _, ArrayKind::Array, _) => {
+            condition_on_enum_variants(bool_expr, p, datatypes)
+        }
         PlaceX::Field(field_opr, p) => {
             let is_irref = match &field_opr.datatype {
                 Dt::Tuple(_) => true,
