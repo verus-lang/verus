@@ -4,6 +4,45 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
+    #[test] size_hint_upper_bound verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::*;
+
+        pub struct One {
+            pub item: Option<u8>,
+        }
+
+        impl Iterator for One {
+            type Item = u8;
+            fn next(&mut self) -> Option<u8> {
+                self.item.take()
+            }
+            fn size_hint(&self) -> (usize, Option<usize>) {
+                (0, Some(0)) // FAILS
+            }
+        }
+
+        impl IteratorSpecImpl for One {
+            open spec fn obeys_prophetic_iter_laws(&self) -> bool { true }
+            open spec fn remaining(&self) -> Seq<u8> {
+                match self.item {
+                    Some(x) => seq![x],
+                    None => Seq::empty(),
+                }
+            }
+            open spec fn will_return_none(&self) -> bool { true }
+            open spec fn decrease(&self) -> Option<nat> {
+                Some(if self.item is Some { 1nat } else { 0nat })
+            }
+            open spec fn peek(&self, index: int) -> Option<u8> { None }
+        }
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 1);
+        assert_eq!(err.errors[0].message, "postcondition not satisfied");
+    }
+}
+
+test_verify_one_file! {
     #[test] all_works verus_code! {
         use vstd::prelude::*;
         use vstd::std_specs::iter::IteratorSpec;
