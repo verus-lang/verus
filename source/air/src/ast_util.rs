@@ -175,10 +175,18 @@ pub fn mk_lambda(
     binders: &Vec<Binder<Typ>>,
     triggers: &Vec<Trigger>,
     qid: Qid,
+    wrap: &Option<crate::ast::WrapLambda>,
+    cond: &Option<Expr>,
     body: &Expr,
 ) -> Expr {
     Arc::new(ExprX::Bind(
-        Arc::new(BindX::Lambda(Arc::new(binders.clone()), Arc::new(triggers.clone()), qid)),
+        Arc::new(BindX::Lambda(
+            Arc::new(binders.clone()),
+            Arc::new(triggers.clone()),
+            qid,
+            wrap.clone(),
+            cond.clone(),
+        )),
         body.clone(),
     ))
 }

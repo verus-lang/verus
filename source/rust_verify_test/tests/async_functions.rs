@@ -199,3 +199,73 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] async_spec_fn verus_code! {
+        async spec fn foo() -> bool {
+            true
+        }
+    } => Err(err) => assert_vir_error_msg(err, "async is only supported for 'exec' functions")
+}
+
+test_verify_one_file! {
+    #[test] async_proof_fn verus_code! {
+        async proof fn foo() -> bool {
+            true
+        }
+    } => Err(err) => assert_vir_error_msg(err, "async is only supported for 'exec' functions")
+}
+
+test_verify_one_file! {
+    #[test] async_with_returns verus_code! {
+        use vstd::prelude::*;
+
+        async fn foo() -> (ret: u64)
+            returns 3u64
+        {
+            return 3;
+        }
+
+        async fn foo_fails() -> (ret: u64)
+            returns 3u64
+        {
+            return 4; // FAILS
+        }
+
+        async fn get_foo() {
+            let f = foo().await;
+            assert(f == 3);
+        }
+
+        async fn get_foo_fails() {
+            let f = foo().await;
+            assert(f == 4); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] async_with_allow_in_spec verus_code! {
+        spec fn foo_spec() -> u64 {
+            3
+        }
+
+        #[verifier::allow_in_spec]
+        async fn foo() -> (ret: u64)
+            returns 3u64
+        {
+            return 3;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "async is not supported together with `allow_in_spec`")
+}
+
+test_verify_one_file! {
+    #[test] async_with_mismatch_type code! {
+        #[verus::internal(verus_macro)]
+        async fn foo() -> u64 {
+            ::vstd::prelude::ensures(|ret: u32|
+                    [::vstd::prelude::spec_eq(ret, 3u64)]);
+            return 3;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "return type does not match binder in ensures")
+}

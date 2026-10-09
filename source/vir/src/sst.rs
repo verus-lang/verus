@@ -73,9 +73,9 @@ pub enum ArithOp {
     Sub,
     /// IntRange::Int *
     Mul,
-    /// IntRange::Int / defined as Euclidean (round towards -infinity, not round-towards zero)
+    /// IntRange::Int / defined as Euclidean (round towards -infinity)
     EuclideanDiv,
-    /// IntRange::Int % defined as Euclidean (returns non-negative result even for negative divisor)
+    /// IntRange::Int % defined as Euclidean (returns non-negative result even for negative dividend)
     EuclideanMod,
 }
 
@@ -438,7 +438,12 @@ pub struct FunctionSstX {
     pub typ_params: crate::ast::Idents,
     pub typ_bounds: crate::ast::GenericBounds,
     pub pars: Pars,
-    pub ret: Par,
+    /// Return value from the external perspective.
+    /// Callers of this function see this as the return value, and should apply it as the
+    /// last argument to ensures.
+    pub outer_ret: Par,
+    /// Return value from the internal perspective, used primarily by the `FuncCheckSst`.
+    pub inner_ret: Par,
     pub ens_has_return: bool,
     pub item_kind: crate::ast::ItemKind,
     pub attrs: crate::ast::FunctionAttrs,
@@ -448,7 +453,6 @@ pub struct FunctionSstX {
     pub exec_proof_check: Option<Arc<FuncCheckSst>>,
     pub recommends_check: Option<Arc<FuncCheckSst>>,
     pub safe_api_check: Option<Arc<FuncCheckSst>>,
-    pub async_ret: Option<Par>,
     pub hidden: Arc<Vec<Fun>>,
 }
 

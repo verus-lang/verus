@@ -371,7 +371,8 @@ fn function_allows_proph(function: &Function) -> (Option<NoProphReason>, Option<
                     break;
                 }
             }
-            any_non_spec |= function.x.ret.x.mode != Mode::Spec && !is_unit(&function.x.ret.x.typ);
+            any_non_spec |=
+                function.x.outer_ret.x.mode != Mode::Spec && !is_unit(&function.x.outer_ret.x.typ);
 
             if any_non_spec {
                 (Some(NoProphReason::ProofFnCall), Some(OuterProphReason::ProofFnCall))
@@ -532,7 +533,7 @@ struct State {
     // In a pure context (assert, require etc.) where all var reads should be spec mode,
     // all var bindings should be spec mode, no assignments or mutations allowed
     pub(crate) in_pure: bool,
-    pub(crate) in_forall_stmt: bool,
+    pub(crate) in_assert_by_body: bool,
     pub(crate) in_proof_in_spec: bool,
     pub(crate) in_assert_query: Option<AssertQueryMode>,
     // Are we in a syntactic ghost block?
@@ -622,15 +623,15 @@ mod typing {
         }
 
         #[must_use]
-        pub(super) fn push_in_forall_stmt<'a>(
+        pub(super) fn push_in_assert_by_body<'a>(
             &'a mut self,
-            mut in_forall_stmt: bool,
+            mut in_assert_by_body: bool,
         ) -> Typing<'a> {
-            swap(&mut in_forall_stmt, &mut self.internal_state.in_forall_stmt);
+            swap(&mut in_assert_by_body, &mut self.internal_state.in_assert_by_body);
             Typing {
                 internal_state: self.internal_state,
                 internal_undo: Some(Box::new(move |state| {
-                    state.in_forall_stmt = in_forall_stmt;
+                    state.in_assert_by_body = in_assert_by_body;
                 })),
             }
         }
@@ -1107,7 +1108,7 @@ fn check_place(
     )?;
 
     let mut context_mode = typing.block_ghostness.join_mode(outer_mode);
-    if typing.in_forall_stmt || typing.in_proof_in_spec {
+    if typing.in_assert_by_body || typing.in_proof_in_spec {
         context_mode = Mode::Spec;
     }
 
@@ -1119,7 +1120,7 @@ fn check_place(
             // mode to put into var_modes (see below)
 
             let mut coerced_mode = mode_join(place_mode, expect.0);
-            if typing.in_forall_stmt || typing.in_proof_in_spec || typing.in_pure {
+            if typing.in_assert_by_body || typing.in_proof_in_spec || typing.in_pure {
                 coerced_mode = Mode::Spec;
             }
             coerced_mode
@@ -1677,7 +1678,7 @@ fn check_expr(
                 }
             }
 
-            if typing.in_forall_stmt || typing.in_proof_in_spec || typing.in_pure {
+            if typing.in_assert_by_body || typing.in_proof_in_spec || typing.in_pure {
                 // Proof variables may be used as spec, but not as proof inside forall statements.
                 // This protects against effectively consuming a linear proof variable
                 // multiple times for different instantiations of the forall variables.
@@ -1736,7 +1737,9 @@ fn check_expr(
                         format!("cannot read {} with mode {}", kind, function.x.mode),
                     ));
                 }
-                if function.x.ret.x.mode != Mode::Exec && typing.block_ghostness == Ghost::Exec {
+                if function.x.outer_ret.x.mode != Mode::Exec
+                    && typing.block_ghostness == Ghost::Exec
+                {
                     return Err(error(
                         &expr.span,
                         format!("cannot read {} with mode {}", kind, function.x.mode),
@@ -1749,7 +1752,7 @@ fn check_expr(
                     format!("cannot read {} with mode {}", kind, function.x.mode),
                 ));
             }
-            let mode = function.x.ret.x.mode;
+            let mode = function.x.outer_ret.x.mode;
             let mode =
                 if ctxt.check_ghost_blocks { typing.block_ghostness.join_mode(mode) } else { mode };
             record.erasure_modes.var_modes.push((expr.span.clone(), (mode, mode)));
@@ -1911,7 +1914,7 @@ fn check_expr(
                 let _ = check_expr(ctxt, record, typing, outer_mode, expect, expr, outer_proph)?;
             }
 
-            Ok((function.x.ret.x.mode, out_proph))
+            Ok((function.x.outer_ret.x.mode, out_proph))
         }
         ExprX::Call { target: CallTarget::FnSpec(e0), args: es, post_args: None, body } => {
             assert!(body.is_none());
@@ -2449,7 +2452,7 @@ fn check_expr(
             Ok((Mode::Spec, proph))
         }
         ExprX::Assign { place, rhs, op: _, resolve: _, typ } => {
-            if typing.in_forall_stmt {
+            if typing.in_assert_by_body {
                 return Err(error(
                     &expr.span,
                     "assignment is not allowed in 'assert ... by' statement",
@@ -2575,7 +2578,6 @@ fn check_expr(
             }
             // REVIEW: we could allow proof vars when vars.len() == 0,
             // but we'd have to implement the proper lifetime checking in erase.rs
-            let mut typing = typing.push_in_forall_stmt(true);
             let mut typing = typing.push_var_scope();
             for var in vars.iter() {
                 typing.insert(&var.name, Mode::Spec, Some(ProphVar::No));
@@ -2601,6 +2603,7 @@ fn check_expr(
                     outer_proph,
                 )?;
             }
+            let mut typing = typing.push_in_assert_by_body(true);
             check_expr_has_mode(
                 ctxt,
                 record,
@@ -2642,10 +2645,11 @@ fn check_expr(
                     )?;
                 }
             }
+            let mut typing = typing.push_in_assert_by_body(true);
             check_expr_has_mode(
                 ctxt,
                 record,
-                typing,
+                &mut typing,
                 Mode::Proof,
                 proof,
                 Mode::Proof,
@@ -2875,7 +2879,7 @@ fn check_expr(
                     }
                 }
             }
-            if typing.in_forall_stmt {
+            if typing.in_assert_by_body {
                 return Err(error(
                     &expr.span,
                     "return is not allowed in 'assert ... by' statements",
@@ -2913,7 +2917,7 @@ fn check_expr(
             Ok((Mode::Exec, Proph::No))
         }
         ExprX::BreakOrContinue { label: _, is_break: _ } => {
-            if typing.in_forall_stmt {
+            if typing.in_assert_by_body {
                 return Err(error(
                     &expr.span,
                     "break/continue is not allowed in 'assert ... by' statements",
@@ -3313,7 +3317,7 @@ fn check_expr(
                 }
             }
 
-            if typing.in_forall_stmt {
+            if typing.in_assert_by_body {
                 return Err(error(
                     &expr.span,
                     "mutable borrow is not allowed in 'assert ... by' statement",
@@ -3459,7 +3463,7 @@ fn check_expr(
                     "cannot use `shr_ref_struct_wrap` which has mode proof here",
                 ));
             }
-            if typing.in_forall_stmt {
+            if typing.in_assert_by_body {
                 return Err(error(
                     &expr.span,
                     "`shr_ref_struct_wrap` is not allowed in 'assert ... by' statement",
@@ -3684,7 +3688,7 @@ fn check_function(
                 }
                 (
                     trait_method.x.params.iter().map(|f| f.x.mode).collect(),
-                    trait_method.x.ret.x.mode,
+                    trait_method.x.outer_ret.x.mode,
                     expect_proph,
                 )
             } else {
@@ -3700,7 +3704,7 @@ fn check_function(
                 ));
             }
         }
-        if function.x.ret.x.mode != expected_ret_mode {
+        if function.x.outer_ret.x.mode != expected_ret_mode {
             return Err(error(
                 &function.span,
                 format!("function return value must have mode {}", expected_ret_mode),
@@ -3744,7 +3748,7 @@ fn check_function(
 
     let mut ens_typing = fun_typing.push_var_scope();
     if function.x.ens_has_return {
-        ens_typing.insert(&function.x.ret.x.name, Mode::Spec, Some(ProphVar::No));
+        ens_typing.insert(&function.x.inner_ret.x.name, Mode::Spec, Some(ProphVar::No));
     }
 
     for expr in function.x.ensure.0.iter().chain(function.x.ensure.1.iter()) {
@@ -3823,7 +3827,7 @@ fn check_function(
     }
 
     let ret_mode = if function.x.ens_has_return {
-        let ret_mode = function.x.ret.x.mode;
+        let ret_mode = function.x.outer_ret.x.mode;
         if !matches!(function.x.item_kind, ItemKind::Const) && !mode_le(function.x.mode, ret_mode) {
             return Err(error(
                 &function.span,
@@ -3852,8 +3856,8 @@ fn check_function(
         None
     };
 
-    let dual_mode_fn = function.x.mode == Mode::Spec && function.x.ret.x.mode == Mode::Exec;
-    let pure_spec_fn = function.x.mode == Mode::Spec && function.x.ret.x.mode == Mode::Spec;
+    let dual_mode_fn = function.x.mode == Mode::Spec && function.x.outer_ret.x.mode == Mode::Exec;
+    let pure_spec_fn = function.x.mode == Mode::Spec && function.x.outer_ret.x.mode == Mode::Spec;
 
     if let Some(body) = &function.x.body {
         let mut body_typing = fun_typing.push_ret_mode(ret_mode);
@@ -3874,7 +3878,7 @@ fn check_function(
             &mut body_typing,
             function.x.mode,
             body,
-            function.x.ret.x.mode,
+            function.x.outer_ret.x.mode,
             &Proph::No,
         )?;
 
@@ -3988,7 +3992,7 @@ fn check_function(
         }
         record.infer_spec_for_implicit_reborrows = None;
 
-        if function.x.mode != Mode::Spec || function.x.ret.x.mode != Mode::Spec {
+        if function.x.mode != Mode::Spec || function.x.outer_ret.x.mode != Mode::Spec {
             let functionx = &mut Arc::make_mut(&mut *function).x;
             // For dual mode we _could_ probably skip entirely, but
             // resolution_inference does some extra (soundness-related) checks
@@ -4062,7 +4066,7 @@ pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes), Vec<VirErr>> 
 
         let mut state = State {
             vars: ScopeMap::new(),
-            in_forall_stmt: false,
+            in_assert_by_body: false,
             in_proof_in_spec: false,
             block_ghostness: Ghost::Exec,
             ret_mode: None,

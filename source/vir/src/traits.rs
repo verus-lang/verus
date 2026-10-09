@@ -628,9 +628,18 @@ pub fn inherit_default_bodies(
                     &ft,
                 )
                 .unwrap();
-                let ret =
-                    crate::ast_visitor::map_param_visitor(&default_function.x.ret, &mut (), &ft)
-                        .unwrap();
+                let outer_ret = crate::ast_visitor::map_param_visitor(
+                    &default_function.x.outer_ret,
+                    &mut (),
+                    &ft,
+                )
+                .unwrap();
+                let inner_ret = crate::ast_visitor::map_param_visitor(
+                    &default_function.x.inner_ret,
+                    &mut (),
+                    &ft,
+                )
+                .unwrap();
                 let name =
                     crate::def::trait_inherit_default_name(&default_function.x.name, &impl_path);
                 let visibility = Visibility {
@@ -668,7 +677,8 @@ pub fn inherit_default_bodies(
                     typ_params: Arc::new(typ_params),
                     typ_bounds: Arc::new(typ_bounds),
                     params,
-                    ret,
+                    outer_ret,
+                    inner_ret,
                     ens_has_return: default_function.x.ens_has_return,
                     require: Arc::new(vec![]),
                     ensure: (Arc::new(vec![]), Arc::new(vec![])),
@@ -684,7 +694,6 @@ pub fn inherit_default_bodies(
                     attrs: Arc::new(crate::ast::FunctionAttrsX::default()),
                     body: None,
                     extra_dependencies: vec![],
-                    async_ret: None,
                     hidden: Arc::new(vec![]),
                 };
                 let warn_config = warning_ctx.fun_warn_configs[&default_function.x.name].clone();
@@ -842,7 +851,7 @@ fn check_modes(function: &Function, span: &Span) -> Result<(), VirErr> {
             ));
         }
     }
-    if function.x.ret.x.mode != Mode::Exec {
+    if function.x.outer_ret.x.mode != Mode::Exec {
         return Err(error(
             span,
             "function for external trait must have all parameters have mode 'exec'",

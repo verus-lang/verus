@@ -746,7 +746,8 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
     fn visit_function(&mut self, f: &FunctionSst) -> Result<R::Ret<FunctionSst>, Err> {
         let typ_bounds = self.visit_generic_bounds(&f.x.typ_bounds)?;
         let pars = self.visit_pars(&f.x.pars)?;
-        let ret = self.visit_par(&f.x.ret)?;
+        let inner_ret = self.visit_par(&f.x.inner_ret)?;
+        let outer_ret = self.visit_par(&f.x.outer_ret)?;
         let decl = self.visit_func_decl(&f.x.decl)?;
         let axioms = self.visit_func_axioms(&f.x.axioms)?;
         let exec_proof_check =
@@ -754,7 +755,6 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
         let recommends_check =
             R::map_opt(&f.x.recommends_check, &mut |c| self.visit_func_check(c))?;
         let safe_api_check = R::map_opt(&f.x.safe_api_check, &mut |c| self.visit_func_check(c))?;
-        let async_ret = R::map_opt(&f.x.async_ret, &mut |c| self.visit_par(c))?;
         R::ret(|| {
             Spanned::new(
                 f.span.clone(),
@@ -768,7 +768,8 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                     typ_params: f.x.typ_params.clone(),
                     typ_bounds: R::get_vec_a(typ_bounds),
                     pars: R::get_vec_a(pars),
-                    ret: R::get(ret),
+                    inner_ret: R::get(inner_ret),
+                    outer_ret: R::get(outer_ret),
                     ens_has_return: f.x.ens_has_return,
                     item_kind: f.x.item_kind,
                     attrs: f.x.attrs.clone(),
@@ -778,7 +779,6 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                     exec_proof_check: R::get_opt(exec_proof_check).map(|c| Arc::new(c)),
                     recommends_check: R::get_opt(recommends_check).map(|c| Arc::new(c)),
                     safe_api_check: R::get_opt(safe_api_check).map(|c| Arc::new(c)),
-                    async_ret: R::get_opt(async_ret),
                     hidden: f.x.hidden.clone(),
                 },
             )
