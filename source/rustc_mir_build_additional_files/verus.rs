@@ -98,9 +98,11 @@ pub struct LocalInvariantBody {
 /// This is created after mode-checking and passed here via the VERUS_ERASURE_CTXT global.
 #[derive(Debug)]
 pub struct VerusErasureCtxt {
-    /// For a given var (decl or use), should we erase it?
-    /// Also includes patterns.
-    pub vars: HashMap<HirId, VarErasure>,
+    /// For a given var use, should we erase it?
+    pub locals: HashMap<HirId, VarErasure>,
+
+    /// For a given binder (from a pattern), should we erase it?
+    pub binders: HashMap<HirId, VarErasure>,
 
     /// For a call, how do we handle it?
     /// This includes struct constructors as well. The "args" go in source order,
@@ -318,7 +320,7 @@ pub(crate) fn handle_call<'tcx>(
     }
 }
 
-pub(crate) fn handle_var<'tcx>(
+pub(crate) fn handle_local<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     expr: &'tcx hir::Expr<'tcx>,
     var_hir_id: HirId,
@@ -326,7 +328,7 @@ pub(crate) fn handle_var<'tcx>(
     let Some(erasure_ctxt) = cx.verus_ctxt.ctxt.clone() else {
         return None;
     };
-    match erasure_ctxt.vars.get(&expr.hir_id) {
+    match erasure_ctxt.locals.get(&expr.hir_id) {
         None | Some(VarErasure::Keep) => None,
         Some(VarErasure::Shadow)
             if cx.verus_ctxt.do_time_travel_prevention
@@ -738,9 +740,19 @@ pub(crate) fn erase_var_for_closure_captures<'tcx>(hir_id: HirId) -> bool {
     let erasure_ctxt = get_verus_erasure_ctxt();
     let capture_shadow = ATOMIC_CLOSURE_CAPTURE_SHADOW.load(Ordering::SeqCst);
     if capture_shadow {
-        matches!(erasure_ctxt.vars.get(&hir_id), Some(VarErasure::Erase))
+        matches!(erasure_ctxt.locals.get(&hir_id), Some(VarErasure::Erase))
     } else {
-        matches!(erasure_ctxt.vars.get(&hir_id), Some(VarErasure::Erase | VarErasure::Shadow))
+        matches!(erasure_ctxt.locals.get(&hir_id), Some(VarErasure::Erase | VarErasure::Shadow))
+    }
+}
+
+pub(crate) fn erase_binder_for_closure_captures<'tcx>(hir_id: HirId) -> bool {
+    let erasure_ctxt = get_verus_erasure_ctxt();
+    let capture_shadow = ATOMIC_CLOSURE_CAPTURE_SHADOW.load(Ordering::SeqCst);
+    if capture_shadow {
+        matches!(erasure_ctxt.binders.get(&hir_id), Some(VarErasure::Erase))
+    } else {
+        matches!(erasure_ctxt.binders.get(&hir_id), Some(VarErasure::Erase | VarErasure::Shadow))
     }
 }
 
@@ -787,7 +799,7 @@ fn erase_pat_rec<'tcx>(emode: &PatBindingEraserMode, p: &mut Pat<'tcx>) {
             let erase_binder = match emode {
                 PatBindingEraserMode::EraseAll => true,
                 PatBindingEraserMode::EraseGhost(erasure_ctxt) => {
-                    matches!(erasure_ctxt.vars.get(&var.0), Some(VarErasure::Erase))
+                    matches!(erasure_ctxt.binders.get(&var.0), Some(VarErasure::Erase))
                 }
             };
 

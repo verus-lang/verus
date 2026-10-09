@@ -277,13 +277,6 @@ impl ExprOrPlace {
         }
     }
 
-    pub(crate) fn span(&self) -> &vir::messages::Span {
-        match self {
-            ExprOrPlace::Expr(e) => &e.span,
-            ExprOrPlace::Place(p) => &p.span,
-        }
-    }
-
     pub(crate) fn typ(&self) -> &vir::ast::Typ {
         match self {
             ExprOrPlace::Expr(e) => &e.typ,
@@ -338,7 +331,7 @@ fn exec_closure_pat_to_mut_var<'tcx>(
 
     let init = bctx.spanned_typed_new(pat.span, typ, PlaceX::Local(name.clone()));
     // Generated initializer has no corresponding source HIR node.
-    bctx.ctxt.erasure_info.borrow_mut().hir_vir_ids.push((None, init.span.id));
+    bctx.ctxt.erasure_info.borrow_mut().local_hir_vir_ids.push((None, init.span.id));
 
     pattern_stmts.push(bctx.spanned_new(
         pat.span,
@@ -553,9 +546,6 @@ pub(crate) fn patexpr_to_vir<'tcx>(
                     let x = const_var_to_vir(bctx, None, id, node_substs, &pat_expr.hir_id, span)?;
                     let expr = bctx.spanned_typed_new(pat.span, &pat_typ, x.x.clone());
 
-                    let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-                    erasure_info.hir_vir_ids.push((Some(pat_expr.hir_id), expr.span.id));
-
                     Ok(PatternX::Expr(expr))
                 }
                 Res::Def(DefKind::AssocConst { is_type_const: _ }, id) => {
@@ -568,9 +558,6 @@ pub(crate) fn patexpr_to_vir<'tcx>(
                         let x =
                             const_var_to_vir(bctx, None, id, node_substs, &pat_expr.hir_id, span)?;
                         let expr = bctx.spanned_typed_new(pat.span, &pat_typ, x.x.clone());
-
-                        let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-                        erasure_info.hir_vir_ids.push((Some(pat_expr.hir_id), expr.span.id));
 
                         Ok(PatternX::Expr(expr))
                     }
@@ -642,7 +629,9 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
     let resolved_call = ResolvedCall::Ctor(vir_path.clone(), variant_name.clone());
     erasure_info.resolved_calls.push((expr.hir_id, fun_span.data(), resolved_call, bctx.in_ghost));
     let exprx = ExprX::Ctor(Dt::Path(vir_path), variant_name, vir_fields, None);
-    Ok(bctx.spanned_typed_new(expr.span, &expr_typ, exprx))
+    let e = bctx.spanned_typed_new(expr.span, &expr_typ, exprx);
+    erasure_info.ctor_hir_vir_ids.push((Some(expr.hir_id), e.span.id));
+    Ok(e)
 }
 
 fn handle_dot_dot(
@@ -671,7 +660,7 @@ pub(crate) fn pattern_to_vir<'tcx>(
     let unadjusted_pat = pattern_to_vir_unadjusted(bctx, pat)?;
     if matches!(pat.kind, PatKind::Binding(..)) {
         let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-        erasure_info.hir_vir_ids.push((Some(pat.hir_id), unadjusted_pat.span.id));
+        erasure_info.binder_hir_vir_ids.push((Some(pat.hir_id), unadjusted_pat.span.id));
     }
 
     // See rustc_mir_build/src/thir/pattern/mod.rs
@@ -1532,11 +1521,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
     let expr_typ = || bctx.mid_ty_to_vir(expr.span, &adjustments[adjustment_idx - 1].target);
 
     if adjustment_idx == 0 {
-        let vir_expr = expr_to_vir_innermost(bctx, expr)?;
-
-        let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-        erasure_info.hir_vir_ids.push((Some(expr.hir_id), vir_expr.span().id));
-        return Ok(vir_expr);
+        return expr_to_vir_innermost(bctx, expr);
     }
 
     // Gets the type of the *child* of the current node
@@ -1942,8 +1927,6 @@ pub(crate) fn expr_cast_enum_int_to_vir<'tcx>(
             &place_vir.typ,
             PatternX::Constructor(adt_path, Arc::new(variant_name), Arc::new(vec![])),
         );
-        let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-        erasure_info.hir_vir_ids.push((Some(expr.hir_id), pattern.span.id));
         let guard =
             bctx.spanned_typed_new(expr.span, &bool_typ(), ExprX::Const(Constant::Bool(true)));
         let body = cast_to;
@@ -2001,10 +1984,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         {
             let pat_typ = vir_arms[0].x.pattern.typ.clone();
             let pattern = bctx.spanned_typed_new(cond.span, &pat_typ, PatternX::Wildcard);
-            {
-                let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-                erasure_info.hir_vir_ids.push((Some(cond.hir_id), pattern.span.id));
-            }
             let guard =
                 bctx.spanned_typed_new(expr.span, &bool_typ(), ExprX::Const(Constant::Bool(true)));
             let vir_arm = ArmX { pattern, guard, body: rhs_body };
@@ -2820,7 +2799,9 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         if bctx.in_postcondition && !bctx.in_old && bctx.is_param_migrated(&name) {
                             {
                                 let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-                                erasure_info.hir_vir_ids.push((Some(expr.hir_id), place.span.id));
+                                erasure_info
+                                    .local_hir_vir_ids
+                                    .push((Some(expr.hir_id), place.span.id));
                             }
                             let e = ExprOrPlace::Place(place).to_spec_expr(bctx);
                             let x = ExprX::Unary(UnaryOp::MutRefFinal(true), e);
@@ -2835,10 +2816,18 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                                 if bctx.in_fn_sig
                                     && bctx.is_param_for_innermost_fn_or_non_spec_closure(&name)
                                 {
+                                    let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+                                    erasure_info
+                                        .local_hir_vir_ids
+                                        .push((Some(expr.hir_id), place.span.id));
                                     Ok(ExprOrPlace::Place(place))
                                 } else {
                                     let x = ExprX::VarAt(name, vir::ast::VarAt::Pre);
                                     let e = bctx.spanned_typed_new(expr.span, typ, x);
+                                    let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+                                    erasure_info
+                                        .local_hir_vir_ids
+                                        .push((Some(expr.hir_id), e.span.id));
                                     Ok(ExprOrPlace::Expr(e))
                                 }
                             } else {
@@ -2848,6 +2837,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                                 )
                             }
                         } else {
+                            let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+                            erasure_info.local_hir_vir_ids.push((Some(expr.hir_id), place.span.id));
                             Ok(ExprOrPlace::Place(place))
                         }
                     }
@@ -2890,6 +2881,11 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             &expr.hir_id,
                             expr.span,
                         )?;
+                        bctx.ctxt
+                            .erasure_info
+                            .borrow_mut()
+                            .local_hir_vir_ids
+                            .push((None, e.span.id));
                         Ok(ExprOrPlace::Expr(e))
                     }
                 }
@@ -2903,6 +2899,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         &expr.hir_id,
                         expr.span,
                     )?;
+                    bctx.ctxt.erasure_info.borrow_mut().local_hir_vir_ids.push((None, e.span.id));
                     Ok(ExprOrPlace::Expr(e))
                 }
                 (
@@ -2914,7 +2911,13 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 ) => {
                     let path = bctx.ctxt.def_id_to_vir_path(id);
                     let fun = FunX { path };
-                    mk_expr(ExprX::StaticVar(Arc::new(fun)))
+                    let e = bctx.spanned_typed_new(
+                        expr.span,
+                        &expr_typ()?,
+                        ExprX::StaticVar(Arc::new(fun)),
+                    );
+                    bctx.ctxt.erasure_info.borrow_mut().local_hir_vir_ids.push((None, e.span.id));
+                    Ok(ExprOrPlace::Expr(e))
                 }
                 (Res::Def(DefKind::Fn, id) | Res::Def(DefKind::AssocFn, id), _) => {
                     let path = bctx.ctxt.def_id_to_vir_path(id);
@@ -3265,7 +3268,10 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 resolved_call,
                 bctx.in_ghost,
             ));
-            mk_expr(ExprX::Ctor(Dt::Path(path), variant_name, vir_fields, update))
+            let x = ExprX::Ctor(Dt::Path(path), variant_name, vir_fields, update);
+            let e = bctx.spanned_typed_new(expr.span, &expr_typ()?, x);
+            erasure_info.ctor_hir_vir_ids.push((Some(expr.hir_id), e.span.id));
+            Ok(ExprOrPlace::Expr(e))
         }
         ExprKind::MethodCall(_name_and_generics, receiver, other_args, fn_span) => {
             let fn_def_id = bctx

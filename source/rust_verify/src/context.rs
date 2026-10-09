@@ -17,12 +17,27 @@ use vir::ast::{CrateId, Mode, Path, Pattern, VirErr};
 use vir::messages::{AstId, WarningAllow};
 
 pub struct ErasureInfo {
-    /// None for a generated VIR node with no corresponding source HIR node.
-    pub(crate) hir_vir_ids: Vec<(Option<HirId>, AstId)>,
+    /// Connect every PlaceX::Local, ExprX::Var, and ExprX::VarAt node to its
+    /// HirId (an ExprKind::Path node that resolves to Local).
+    ///
+    /// Use None if there is no corresponding source node, e.g., from synthetically produced
+    /// expressions.
+    pub(crate) local_hir_vir_ids: Vec<(Option<HirId>, AstId)>,
+    /// Connect every VIR Pattern binder onto its HirId (a PatKind::Binder)
+    pub(crate) binder_hir_vir_ids: Vec<(Option<HirId>, AstId)>,
+    /// Connect every non-tuple VIR Ctor onto its HirId (either a ExprKind::Struct, or a
+    /// const-style constructor or call-style constructor).
+    pub(crate) ctor_hir_vir_ids: Vec<(Option<HirId>, AstId)>,
+    /// Details of each call in the first run's HIR.
+    /// The last bool is "in ghost block?".
+    /// (This is false for "boundary" calls like Ghost/Tracked
+    /// though that shouldn't matter right now).
     pub(crate) resolved_calls: Vec<(HirId, SpanData, ResolvedCall, bool)>,
+    /// Details of some patterns in first run's HIR
     pub(crate) resolved_pats: Vec<(SpanData, Pattern)>,
+    /// Modes specified directly during rust_to_vir
     pub(crate) direct_var_modes: Vec<(HirId, Mode)>,
-    pub(crate) external_functions: Vec<vir::ast::Fun>,
+    /// List of function spans ignored by the verifier. These should not be erased
     pub(crate) ignored_functions: Vec<(DefId, SpanData)>,
     pub(crate) bodies: Vec<(LocalDefId, BodyErasure)>,
     pub(crate) shadow_check: Vec<HirId>,
