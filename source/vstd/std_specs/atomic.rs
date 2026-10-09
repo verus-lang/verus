@@ -22,7 +22,10 @@ macro_rules! atomic_specs_common {
     ($at:ty, $ty:ty) => {
         verus!{
 
-        pub assume_specification [ <$at>::new ](v: $ty) -> $at;
+        // Panic preconditions per the std docs: load rejects Release/AcqRel, store rejects
+        // Acquire/AcqRel, and compare_exchange(_weak) rejects Release/AcqRel as `failure`.
+        pub assume_specification [ <$at>::new ](v: $ty) -> $at
+            no_unwind;
 
         pub assume_specification [ <$at>::compare_exchange ](
             atomic: &$at,
@@ -30,7 +33,11 @@ macro_rules! atomic_specs_common {
             new: $ty,
             success: Ordering,
             failure: Ordering,
-        ) -> Result<$ty, $ty>;
+        ) -> Result<$ty, $ty>
+            requires
+                failure != Ordering::Release,
+                failure != Ordering::AcqRel,
+            no_unwind;
 
         pub assume_specification [ <$at>::compare_exchange_weak ](
             atomic: &$at,
@@ -38,21 +45,38 @@ macro_rules! atomic_specs_common {
             new: $ty,
             success: Ordering,
             failure: Ordering,
-        ) -> Result<$ty, $ty>;
+        ) -> Result<$ty, $ty>
+            requires
+                failure != Ordering::Release,
+                failure != Ordering::AcqRel,
+            no_unwind;
 
-        pub assume_specification [ <$at>::fetch_and ](atomic: &$at, val: $ty, order: Ordering) -> $ty;
+        pub assume_specification [ <$at>::fetch_and ](atomic: &$at, val: $ty, order: Ordering) -> $ty
+            no_unwind;
 
-        pub assume_specification [ <$at>::fetch_nand ](atomic: &$at, val: $ty, order: Ordering) -> $ty;
+        pub assume_specification [ <$at>::fetch_nand ](atomic: &$at, val: $ty, order: Ordering) -> $ty
+            no_unwind;
 
-        pub assume_specification [ <$at>::fetch_or ](atomic: &$at, val: $ty, order: Ordering) -> $ty;
+        pub assume_specification [ <$at>::fetch_or ](atomic: &$at, val: $ty, order: Ordering) -> $ty
+            no_unwind;
 
-        pub assume_specification [ <$at>::fetch_xor ](atomic: &$at, val: $ty, order: Ordering) -> $ty;
+        pub assume_specification [ <$at>::fetch_xor ](atomic: &$at, val: $ty, order: Ordering) -> $ty
+            no_unwind;
 
-        pub assume_specification [ <$at>::load ](atomic: &$at, order: Ordering) -> $ty;
+        pub assume_specification [ <$at>::load ](atomic: &$at, order: Ordering) -> $ty
+            requires
+                order != Ordering::Release,
+                order != Ordering::AcqRel,
+            no_unwind;
 
-        pub assume_specification [ <$at>::store ](atomic: &$at, val: $ty, order: Ordering);
+        pub assume_specification [ <$at>::store ](atomic: &$at, val: $ty, order: Ordering)
+            requires
+                order != Ordering::Acquire,
+                order != Ordering::AcqRel,
+            no_unwind;
 
-        pub assume_specification [ <$at>::swap ](atomic: &$at, val: $ty, order: Ordering) -> $ty;
+        pub assume_specification [ <$at>::swap ](atomic: &$at, val: $ty, order: Ordering) -> $ty
+            no_unwind;
 
         }
     };
@@ -62,13 +86,17 @@ macro_rules! atomic_specs_int_specific {
     ($at:ty, $ty:ty) => {
         verus!{
 
-        pub assume_specification [ <$at>::fetch_add ](atomic: &$at, val: $ty, order: Ordering) -> $ty;
+        pub assume_specification [ <$at>::fetch_add ](atomic: &$at, val: $ty, order: Ordering) -> $ty
+            no_unwind;
 
-        pub assume_specification [ <$at>::fetch_sub ](atomic: &$at, val: $ty, order: Ordering) -> $ty;
+        pub assume_specification [ <$at>::fetch_sub ](atomic: &$at, val: $ty, order: Ordering) -> $ty
+            no_unwind;
 
-        pub assume_specification [ <$at>::fetch_min ](atomic: &$at, val: $ty, order: Ordering) -> $ty;
+        pub assume_specification [ <$at>::fetch_min ](atomic: &$at, val: $ty, order: Ordering) -> $ty
+            no_unwind;
 
-        pub assume_specification [ <$at>::fetch_max ](atomic: &$at, val: $ty, order: Ordering) -> $ty;
+        pub assume_specification [ <$at>::fetch_max ](atomic: &$at, val: $ty, order: Ordering) -> $ty
+            no_unwind;
 
         }
     };

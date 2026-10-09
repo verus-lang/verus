@@ -17,7 +17,7 @@ use crate::messages::{Message, Span, ToAny, WarningAllow, error};
 use crate::sst::{
     ArithOp, BinaryOp, Bnd, BndX, CallFun, Exp, ExpX, Exps, FunctionSst, Trigs, UniqueIdent,
 };
-use crate::sst_util::subst_exp;
+use crate::sst_util::{free_vars_exp, subst_exp};
 use crate::unicode::valid_unicode_scalar_bigint;
 use air::ast::{Binder, BinderX, Binders};
 use air::scope_map::ScopeMap;
@@ -465,7 +465,7 @@ impl SyntacticEquality for Exp {
                 }
             }
             (CallLambda(exp_l, exps_l), CallLambda(exp_r, exps_r)) => {
-                Some(exp_l.syntactic_eq(exp_r)? && exps_l.syntactic_eq(exps_r)?)
+                Some(exp_l.conservative_eq(exp_r)? && exps_l.conservative_eq(exps_r)?)
             }
 
             (Ctor(path_l, id_l, bnds_l), Ctor(path_r, id_r, bnds_r)) => {
@@ -884,7 +884,7 @@ pub(crate) fn is_seq_to_sst_fun(fun: &Fun) -> bool {
 /// representation we can pass to AIR.  The algorithm follows the seq_internal
 /// macro definition in vstd's seq.rs.
 // TODO: More robust way of pointing to vstd's sequence functions
-fn seq_to_sst(span: &Span, inner_typ: Typ, s: &Vector<Exp>) -> Exp {
+fn seq_to_sst(span: &Span, inner_typ: Typ, s: &Vector<Exp>) -> Result<Exp, VirErr> {
     let seq_type_path =
         Arc::new(PathX { krate: CrateId::Vstd, segments: strs_to_idents(vec!["seq", "Seq"]) });
     let seq_typ = Arc::new(TypX::Datatype(
@@ -911,7 +911,7 @@ fn seq_to_sst(span: &Span, inner_typ: Typ, s: &Vector<Exp>) -> Exp {
             let args = Arc::new(vec![acc, e.clone()]);
             new_seq_exp(ExpX::Call(CallFun::Fun(fun_push.clone(), None), typs.clone(), args))
         });
-        seq
+        Ok(seq)
     } else {
         // Describe the sequence in terms of a view on an array literal
         let path_view = Arc::new(PathX {
@@ -919,20 +919,20 @@ fn seq_to_sst(span: &Span, inner_typ: Typ, s: &Vector<Exp>) -> Exp {
             segments: strs_to_idents(vec!["array", "array_view"]),
         });
         let fun_view = Arc::new(FunX { path: path_view });
-        let array = cleanup_array(span, inner_typ.clone(), s);
+        let array = cleanup_array(span, inner_typ.clone(), s)?;
         let array_len_typ = Arc::new(TypX::ConstInt(BigInt::from(s.len())));
         let array_view = new_seq_exp(ExpX::Call(
             CallFun::Fun(fun_view, None),
             Arc::new(vec![inner_typ.clone(), array_len_typ]),
             Arc::new(vec![array]),
         ));
-        array_view
+        Ok(array_view)
     }
 }
 
 /// Convert an interpreter-internal array representation back into a
 /// representation we can pass to AIR
-fn array_to_sst(span: &Span, typ: Typ, arr: &Vector<Exp>) -> Exp {
+fn array_to_sst(span: &Span, typ: Typ, arr: &Vector<Exp>) -> Result<Exp, VirErr> {
     let arr_typ = if !matches!(*typ, TypX::Primitive(Primitive::Array, _)) {
         // We only have the inner type for the array, so we need to construct the rest
         let array_len_typ = Arc::new(TypX::ConstInt(BigInt::from(arr.len())));
@@ -943,9 +943,10 @@ fn array_to_sst(span: &Span, typ: Typ, arr: &Vector<Exp>) -> Exp {
         typ
     };
     let exp_new = |e: ExpX| SpannedTyped::new(span, &arr_typ, e);
-    let exps = Arc::new(arr.iter().flat_map(|e| cleanup_exp(e)).collect());
+    let exps: Result<Vec<Exp>, VirErr> = arr.iter().map(|e| cleanup_exp(e)).collect();
+    let exps = Arc::new(exps?);
     let exp = exp_new(ExpX::ArrayLiteral(exps));
-    exp
+    Ok(exp)
 }
 
 /// Custom interpretation for sequence functions.
@@ -973,7 +974,7 @@ fn eval_seq(
             // and reassemble the call with the sequence in its original argument position.
             let ok_seq = |index: usize, seq: &Vector<Exp>| {
                 let mut new_args = args.as_ref().clone();
-                new_args[index] = seq_to_sst(&args[index].span, typs[0].clone(), &seq);
+                new_args[index] = seq_to_sst(&args[index].span, typs[0].clone(), &seq)?;
                 let new_args = Arc::new(new_args);
                 Ok(exp_new(Call(fun.clone(), typs.clone(), new_args)))
             };
@@ -1086,8 +1087,8 @@ fn eval_seq(
                     (Interp(Seq(l)), Interp(Seq(r))) => match l.syntactic_eq(r) {
                         None => {
                             let new_args = vec![
-                                seq_to_sst(&args[0].span, args[0].typ.clone(), &l),
-                                seq_to_sst(&args[1].span, args[1].typ.clone(), &r),
+                                seq_to_sst(&args[0].span, args[0].typ.clone(), &l)?,
+                                seq_to_sst(&args[1].span, args[1].typ.clone(), &r)?,
                             ];
                             let new_args = Arc::new(new_args);
                             Ok(exp_new(Call(fun.clone(), typs.clone(), new_args)))
@@ -1213,6 +1214,8 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             match op {
                 crate::ast::NullaryOpr::ConstGeneric(typ) => {
                     match &**typ {
+                        TypX::ConstInt(i) => int_new(i.clone()),
+                        TypX::ConstBool(b) => bool_new(*b),
                         TypX::TypParam(id) => {
                             let var_id = VarIdent(id.clone(), VarIdentDisambiguate::TypParamBare);
                             match state.env.get(&var_id) {
@@ -1592,10 +1595,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                             match op {
                                 Add | Sub => Ok(e1.clone()),
                                 Mul => zero,
-                                EuclideanDiv => {
-                                    ok_e2(e2) // Treat as symbolic instead of erroring
-                                }
-                                EuclideanMod => {
+                                EuclideanDiv | EuclideanMod => {
                                     ok_e2(e2) // Treat as symbolic instead of erroring
                                 }
                             }
@@ -1811,13 +1811,14 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
         }
         CallLambda(lambda, args) => {
             let lambda = eval_expr_internal(ctx, state, lambda)?;
+            let new_args: Result<Vec<Exp>, VirErr> =
+                args.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
+            let new_args = Arc::new(new_args?);
+            let ok = exp_new(CallLambda(lambda.clone(), new_args.clone()));
             match &lambda.x {
                 Interp(InterpExp::Closure(lambda, context)) => match &lambda.x {
                     Bind(bnd, body) => match &bnd.x {
                         BndX::Lambda(bnds, _trigs) => {
-                            let new_args: Result<Vec<Exp>, VirErr> =
-                                args.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
-                            let new_args = Arc::new(new_args?);
                             state.env.push_scope(true);
                             // Process the original context first, so formal args take precedence
                             context.iter().for_each(|(k, v)| {
@@ -1877,7 +1878,32 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                     exp_new(Bind(bnd.clone(), e))
                 }
             }
-            _ => ok,
+            BndX::Choose(..) => {
+                let free_vars = free_vars_exp(exp);
+                if free_vars.is_empty() {
+                    ok
+                } else {
+                    let substs: Result<HashMap<UniqueIdent, Exp>, VirErr> = free_vars
+                        .keys()
+                        .filter_map(|id| {
+                            state.env.get(id).map(|e| cleanup_exp(e).map(|e| (id.clone(), e)))
+                        })
+                        .collect();
+                    let e = subst_exp(&HashMap::new(), &substs?, exp);
+                    let substs = free_vars_exp(&e)
+                        .into_iter()
+                        .map(|(id, typ)| {
+                            let var = SpannedTyped::new(
+                                &exp.span,
+                                &typ,
+                                Interp(InterpExp::FreeVar(id.clone())),
+                            );
+                            (id, var)
+                        })
+                        .collect();
+                    Ok(subst_exp(&HashMap::new(), &substs, &e))
+                }
+            }
         },
         Ctor(path, id, bnds) => {
             let new_bnds: Result<Vec<Binder<Exp>>, VirErr> = bnds
@@ -1929,7 +1955,7 @@ fn cleanup_seq(span: &Span, typ: Typ, v: &Vector<Exp>) -> Result<Exp, VirErr> {
             // Clean up any nested Interp nodes in the sequence elements
             let cleaned: Result<Vector<Exp>, VirErr> = v.iter().map(|e| cleanup_exp(e)).collect();
             // Convert back to a standard SST representation
-            Ok(seq_to_sst(span, inner_type.clone(), &cleaned?))
+            seq_to_sst(span, inner_type.clone(), &cleaned?)
         }
         _ => Err(error(
             &span,
@@ -1938,7 +1964,7 @@ fn cleanup_seq(span: &Span, typ: Typ, v: &Vector<Exp>) -> Result<Exp, VirErr> {
     }
 }
 
-fn cleanup_array(span: &Span, typ: Typ, v: &Vector<Exp>) -> Exp {
+fn cleanup_array(span: &Span, typ: Typ, v: &Vector<Exp>) -> Result<Exp, VirErr> {
     array_to_sst(span, typ.clone(), v)
 }
 
@@ -1949,7 +1975,7 @@ fn cleanup_exp(exp: &Exp) -> Result<Exp, VirErr> {
         ExpX::Interp(InterpExp::FreeVar(v)) => {
             Ok(SpannedTyped::new(&e.span, &e.typ, ExpX::Var(v.clone())))
         }
-        ExpX::Interp(InterpExp::Array(v)) => Ok(cleanup_array(&e.span, e.typ.clone(), v)),
+        ExpX::Interp(InterpExp::Array(v)) => cleanup_array(&e.span, e.typ.clone(), v),
         ExpX::Interp(InterpExp::Seq(v)) => cleanup_seq(&e.span, e.typ.clone(), v),
         ExpX::Interp(InterpExp::Closure(..)) => Err(error(
             &e.span,
