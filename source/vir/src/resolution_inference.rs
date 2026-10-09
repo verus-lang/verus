@@ -1263,6 +1263,7 @@ impl<'a> Builder<'a> {
                 Maybe::Some(bb)
             }
             StmtX::Decl { pattern, mode: _, init: Some(init), els, assert_irrefutable: _ } => {
+                check_illegal_muts(pattern, &self.locals.datatypes, &mut self.errors);
                 let tinv = if pattern_has_mut(pattern) { TypInv::PatternError } else { TypInv::No };
                 let (cpt, bb) = unwrap!(self.build_place_typed(init, bb, tinv));
 
@@ -1614,6 +1615,9 @@ impl<'a> Builder<'a> {
             unreachable!();
         };
 
+        for arm in arms.iter() {
+            check_illegal_muts(&arm.x.pattern, &self.locals.datatypes, &mut self.errors);
+        }
         let tinv = if arms.iter().any(|arm| pattern_has_mut(&arm.x.pattern)) {
             TypInv::PatternError
         } else {
@@ -2056,28 +2060,38 @@ fn moves_and_muts_for_pattern(
                 }
             }
             PatternX::Constructor(dt, variant, patterns) => {
-                if let Some(_typ_inv_fun) = get_typ_inv_fun_dt(datatypes, dt) {
-                    if let Some(span) = crate::patterns::pattern_find_mut_binding(pattern) {
-                        errors.push(error(&pattern.span, "not supported: using pattern to take mutable reference to field of datatype that has a declared type invariant").secondary_label(&span, "mutable binding here"));
+                let has_dtor = match dt {
+                    Dt::Tuple(_) => false,
+                    Dt::Path(path) => datatypes[path].x.destructor,
+                };
+
+                if !has_dtor {
+                    for binder in patterns.iter() {
+                        let field_typ = binder.a.typ.clone();
+                        let proj = ProjectionTyped::StructField(
+                            FieldOpr {
+                                datatype: dt.clone(),
+                                variant: variant.clone(),
+                                field: binder.name.clone(),
+                                get_variant: false,
+                                check: crate::ast::VariantCheck::None,
+                            },
+                            field_typ,
+                        );
+
+                        projs.push(proj);
+                        moves_and_muts_for_pattern_rec(
+                            &binder.a, projs, out, datatypes, modes, errors,
+                        );
+                        projs.pop();
                     }
-                }
-
-                for binder in patterns.iter() {
-                    let field_typ = binder.a.typ.clone();
-                    let proj = ProjectionTyped::StructField(
-                        FieldOpr {
-                            datatype: dt.clone(),
-                            variant: variant.clone(),
-                            field: binder.name.clone(),
-                            get_variant: false,
-                            check: crate::ast::VariantCheck::None,
-                        },
-                        field_typ,
-                    );
-
-                    projs.push(proj);
-                    moves_and_muts_for_pattern_rec(&binder.a, projs, out, datatypes, modes, errors);
-                    projs.pop();
+                } else {
+                    // For a struct with a destructor, it's not possible to take moves,
+                    // only mut refs. We also need to handle this as a whole place in our analysis
+                    // so we check if there are any mutations and then stop here.
+                    if pattern_has_mut(pattern) {
+                        out.push((projs.clone(), ByRef::MutRef));
+                    }
                 }
             }
             PatternX::Or(pat1, pat2) => {
@@ -2101,6 +2115,40 @@ fn moves_and_muts_for_pattern(
     let mut out = vec![];
     moves_and_muts_for_pattern_rec(pattern, &mut vec![], &mut out, datatypes, modes, errors);
     out
+}
+
+/// Check for mutable borrows inside datatype structs
+fn check_illegal_muts(
+    pattern: &Pattern,
+    datatypes: &HashMap<Path, Datatype>,
+    errors: &mut Vec<VirErr>,
+) {
+    match &pattern.x {
+        PatternX::Wildcard => {}
+        PatternX::Var(_binding) => {}
+        PatternX::Binding { binding: _, sub_pat } => check_illegal_muts(sub_pat, datatypes, errors),
+        PatternX::Constructor(dt, _variant, patterns) => {
+            if let Some(_typ_inv_fun) = get_typ_inv_fun_dt(datatypes, dt) {
+                if let Some(span) = crate::patterns::pattern_find_mut_binding(pattern) {
+                    errors.push(error(&pattern.span, "not supported: using pattern to take mutable reference to field of datatype that has a declared type invariant").secondary_label(&span, "mutable binding here"));
+                }
+                // Can skip recursing; either we already added an error, or there are no
+                // mutable bindings in this node.
+                return;
+            }
+
+            for binder in patterns.iter() {
+                check_illegal_muts(&binder.a, datatypes, errors);
+            }
+        }
+        PatternX::Or(pat1, pat2) => {
+            check_illegal_muts(pat1, datatypes, errors);
+            check_illegal_muts(pat2, datatypes, errors);
+        }
+        PatternX::Expr(_e) => {}
+        PatternX::Range(_lower, _upper) => {}
+        PatternX::ImmutRef(p) | PatternX::MutRef(p) => check_illegal_muts(p, datatypes, errors),
+    }
 }
 
 ////// Place trees
@@ -2199,6 +2247,11 @@ impl<'a> LocalCollection<'a> {
                         }
                         Dt::Path(path) => {
                             let datatype = &datatypes[path];
+
+                            // Sanity check that we haven't been asked to split a datatype
+                            // with a nontrivial destructor.
+                            assert!(!datatype.x.destructor);
+
                             let fields = datatype
                                 .x
                                 .variants

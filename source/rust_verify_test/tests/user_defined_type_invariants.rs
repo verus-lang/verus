@@ -2714,3 +2714,90 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "type invariant function `vstd::resource::impls::frac_opt::impl&%2::inv` is not visible to this program point, which requires us to prove the invariant is preserved")
 }
+
+test_verify_one_file! {
+    #[test] mut_ref_to_struct_behind_array_elem verus_code! {
+        struct A {
+            i: u8,
+        }
+
+        impl A {
+            #[verifier::type_invariant]
+            spec fn wf(self) -> bool {
+                self.i == 0
+            }
+        }
+
+        fn f() {
+            let mut arr = [A { i: 0 }];
+            let A { i: ref mut x } = arr[0];
+            *x = 1;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "not supported: using pattern to take mutable reference to field of datatype that has a declared type invariant")
+}
+
+test_verify_one_file! {
+    #[test] mut_ref_to_struct_behind_drop_struct verus_code! {
+        struct B {
+            i: u64,
+        }
+
+        struct A {
+            b: B,
+        }
+
+        impl B {
+            #[verifier::type_invariant]
+            spec fn wf(self) -> bool {
+                self.i == 0
+            }
+        }
+
+        impl Drop for A {
+            fn drop(&mut self)
+                opens_invariants none
+                no_unwind
+            {
+            }
+        }
+
+        fn f() {
+            let mut aa = A { b: B { i: 0 } };
+            let A { b: B { i: ref mut x } } = aa;
+            *x = 1;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "not supported: using pattern to take mutable reference to field of datatype that has a declared type invariant")
+}
+
+test_verify_one_file! {
+    #[test] mut_ref_to_struct_behind_drop_struct2 verus_code! {
+        struct B {
+            i: u64,
+        }
+
+        struct A {
+            b: B,
+        }
+
+        impl B {
+            #[verifier::type_invariant]
+            spec fn wf(self) -> bool {
+                self.i == 0
+            }
+        }
+
+        impl Drop for A {
+            fn drop(&mut self)
+                opens_invariants none
+                no_unwind
+            {
+            }
+        }
+
+        fn f() {
+            let mut aa = A { b: B { i: 0 } };
+            let B { i: ref mut x } = aa.b;
+            *x = 1;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "not supported: using pattern to take mutable reference to field of datatype that has a declared type invariant")
+}
