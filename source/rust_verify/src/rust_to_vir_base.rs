@@ -1516,8 +1516,12 @@ pub(crate) fn mid_ty_const_to_vir<'tcx>(
                 unsupported_err!(span.expect("span"), format!("const type argument {:?}", cnst));
             };
             match ty.kind() {
-                TyKind::Uint(_) | TyKind::Int(_) => {
-                    let c = num_bigint::BigInt::from(i.to_bits(i.size()));
+                TyKind::Uint(_) => {
+                    let c = num_bigint::BigInt::from(i.to_uint(i.size()));
+                    Ok(Arc::new(TypX::ConstInt(c)))
+                }
+                TyKind::Int(_) => {
+                    let c = num_bigint::BigInt::from(i.to_int(i.size()));
                     Ok(Arc::new(TypX::ConstInt(c)))
                 }
                 TyKind::Bool => Ok(Arc::new(TypX::ConstBool(i.to_bits(i.size()) != 0))),
