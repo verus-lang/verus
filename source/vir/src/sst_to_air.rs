@@ -1503,6 +1503,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             }
             BndX::Quant(quant, binders, trigs, _) => {
                 let expr = exp_to_expr(ctx, e, expr_ctxt)?;
+                for b in binders.iter() {
+                    ctx.notify(|obs| obs.on_quantifier_binder(b, exp));
+                }
                 let mut invs: Vec<Expr> = Vec::new();
                 for binder in binders.iter() {
                     let typ_inv = typ_invariant(ctx, &binder.a, &ident_var(&binder.name.lower()));
@@ -2055,6 +2058,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     let var = suffix_local_unique_id(&get_loc_var(dest));
                     ens_args.push(exp_to_expr(ctx, &dest, expr_ctxt)?);
                     if !*is_init {
+                        ctx.notify(|obs| obs.on_havoc(stm, &get_loc_var(dest)));
                         let havoc = StmtX::Havoc(var);
                         stmts.push(Arc::new(havoc));
                     }
@@ -2195,8 +2199,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                         stmts.append(&mut new_stmts);
                     }
                 } else {
-                    for (span, ens, proof_note) in
-                        state.post_condition_info.ens_exprs.clone().iter()
+                    for (ens_idx, (span, ens, proof_note)) in
+                        state.post_condition_info.ens_exprs.clone().iter().enumerate()
                     {
                         // The base_error should point to the return-statement or
                         // return-expression. Augment with an additional label pointing
@@ -2238,7 +2242,12 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                             }
                         };
 
-                        let ens_stmt = StmtX::Assert(assert_id.clone(), error, None, ens.clone());
+                        let ens_id = ctx.make_assert_id(
+                            crate::vir_observer::AssertIdKind::Ensures,
+                            ens_idx,
+                            &assert_id,
+                        );
+                        let ens_stmt = StmtX::Assert(ens_id, error, None, ens.clone());
                         stmts.push(Arc::new(ens_stmt));
                     }
                 }
@@ -2322,6 +2331,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
         }
         StmX::Assign { lhs: Dest { dest, is_init: true }, rhs } => {
             let x = loc_is_var(dest).expect("is_init assign dest must be a variable");
+            ctx.notify(|obs| obs.on_variable_def(stm, x));
             stm_to_stmts(ctx, state, &assume_var(&stm.span, x, rhs))?
         }
         StmX::Assign { lhs: Dest { dest, is_init: false }, rhs } => {
@@ -2393,6 +2403,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 false
             };
 
+            ctx.notify(|obs| obs.on_assign(stm, &base_var));
             let a = Arc::new(StmtX::Assign(suffix_local_unique_id(&base_var), value));
             stmts.push(a);
             if fields.len() > 0 {
@@ -2450,7 +2461,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 } else {
                     error_with_label(&stm.span, "loop invariant not satisfied", "at this continue")
                 };
-                for (span, inv, msg, both) in invs.iter() {
+                for (inv_idx, (span, inv, msg, both)) in invs.iter().enumerate() {
                     let mut error = base_error.secondary_label(span, "failed this invariant");
                     if let Some(msg) = msg {
                         error = error.secondary_label(span, &**msg);
@@ -2461,7 +2472,16 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                             and use 'ensures' for what is true at the break)";
                         error = error.secondary_label(span, msg);
                     }
-                    stmts.push(Arc::new(StmtX::Assert(None, error, None, inv.clone())));
+                    stmts.push(Arc::new(StmtX::Assert(
+                        ctx.make_assert_id(
+                            crate::vir_observer::AssertIdKind::LoopInvariant,
+                            inv_idx,
+                            &None,
+                        ),
+                        error,
+                        None,
+                        inv.clone(),
+                    )));
                 }
                 let decrease = &loop_info.decrease;
                 if !is_break && decrease.len() > 0 {
@@ -2484,7 +2504,16 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     )?;
                     let expr = exp_to_expr(ctx, &dec_exp, expr_ctxt)?;
                     let error = error(&stm.span, crate::def::DEC_FAIL_LOOP_CONTINUE);
-                    let dec_stmt = StmtX::Assert(None, error, None, expr);
+                    let dec_stmt = StmtX::Assert(
+                        ctx.make_assert_id(
+                            crate::vir_observer::AssertIdKind::DecreasesCheck,
+                            0,
+                            &None,
+                        ),
+                        error,
+                        None,
+                        expr,
+                    );
                     stmts.push(Arc::new(dec_stmt));
                 }
             }
@@ -2594,6 +2623,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             stmts
         }
         StmX::RevealString(lit) => {
+            ctx.notify(|obs| obs.on_reveal_string(lit));
             let exprs = Arc::new({
                 vec![string_len_to_air(ctx, lit.clone()), string_indices_to_air(ctx, lit.clone())]
             });
@@ -2665,6 +2695,9 @@ fn loop_to_stmts(
     };
 
     let loop_isolation = *loop_isolation;
+    if *is_for_loop {
+        ctx.notify(|obs| obs.on_for_loop(stm));
+    }
     let (cond_stm, pos_assume, neg_assume) = if let Some((cond_stm, cond_exp)) = cond {
         let pos_cond = exp_to_expr(ctx, &cond_exp, expr_ctxt)?;
         let neg_cond = Arc::new(ExprX::Unary(air::ast::UnaryOp::Not, pos_cond.clone()));
@@ -2774,6 +2807,9 @@ fn loop_to_stmts(
     let mut air_body: Vec<Stmt> = state.static_prelude.clone();
     if !loop_isolation {
         air_body.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_LOOP))));
+        for (var, _) in modified_vars.vars.iter() {
+            ctx.notify(|obs| obs.on_havoc(stm, var));
+        }
         modified_vars.emit_havocs(ctx, SNAPSHOT_LOOP, &mut air_body);
     }
 
@@ -2804,6 +2840,9 @@ fn loop_to_stmts(
             // we need to havoc it, in order to create a difference between
             // the "current" value and the "pre-state" value.
             let pre_modified_params_incl = pre_modified_params_incl.as_ref().unwrap();
+            for (var, _) in pre_modified_params_incl.vars.iter() {
+                ctx.notify(|obs| obs.on_havoc(stm, var));
+            }
             pre_modified_params_incl.emit_havocs(ctx, SNAPSHOT_PRE, &mut air_body);
         } else {
             // Similar, but this time accounting for isolation boundary
@@ -2811,6 +2850,9 @@ fn loop_to_stmts(
             // Havoc vars between beginning of the function and the start of
             // the isolation_boundary
             let pre_modified_params_excl = pre_modified_params_excl.as_ref().unwrap();
+            for (var, _) in pre_modified_params_excl.vars.iter() {
+                ctx.notify(|obs| obs.on_havoc(stm, var));
+            }
             pre_modified_params_excl.emit_havocs(ctx, SNAPSHOT_PRE, &mut air_body);
 
             // Execute the code between the isolation boundary and the actual loop start
@@ -2818,6 +2860,9 @@ fn loop_to_stmts(
 
             // Havoc all vars that might be modified during the loop
             air_body.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_BOUNDARY))));
+            for (var, _) in modified_vars.vars.iter() {
+                ctx.notify(|obs| obs.on_havoc(stm, var));
+            }
             modified_vars.emit_havocs(ctx, SNAPSHOT_BOUNDARY, &mut air_body);
         }
     }
@@ -2870,12 +2915,21 @@ fn loop_to_stmts(
     }
 
     if !ctx.checking_spec_preconditions() {
-        for (span, inv, msg, _) in invs_entry.iter() {
+        for (inv_idx, (span, inv, msg, _)) in invs_entry.iter().enumerate() {
             let mut error = error(span, crate::def::INV_FAIL_LOOP_END);
             if let Some(msg) = msg {
                 error = error.secondary_label(span, &**msg);
             }
-            let inv_stmt = StmtX::Assert(None, error, None, inv.clone());
+            let inv_stmt = StmtX::Assert(
+                ctx.make_assert_id(
+                    crate::vir_observer::AssertIdKind::LoopInvariant,
+                    inv_idx,
+                    &None,
+                ),
+                error,
+                None,
+                inv.clone(),
+            );
             air_body.push(Arc::new(inv_stmt));
         }
         if decrease.len() > 0 {
@@ -2888,7 +2942,12 @@ fn loop_to_stmts(
             )?;
             let expr = exp_to_expr(ctx, &dec_exp, expr_ctxt)?;
             let error = error(&stm.span, crate::def::DEC_FAIL_LOOP_END);
-            let dec_stmt = StmtX::Assert(None, error, None, expr);
+            let dec_stmt = StmtX::Assert(
+                ctx.make_assert_id(crate::vir_observer::AssertIdKind::DecreasesCheck, 0, &None),
+                error,
+                None,
+                expr,
+            );
             air_body.push(Arc::new(dec_stmt));
         }
     }
@@ -2925,12 +2984,21 @@ fn loop_to_stmts(
     // At original site of while loop, assert invariant, havoc, assume invariant + neg_cond
     let mut stmts: Vec<Stmt> = Vec::new();
     if !ctx.checking_spec_preconditions() {
-        for (span, inv, msg, _) in invs_entry.iter() {
+        for (inv_idx, (span, inv, msg, _)) in invs_entry.iter().enumerate() {
             let mut error = error(span, crate::def::INV_FAIL_LOOP_FRONT);
             if let Some(msg) = msg {
                 error = error.secondary_label(span, &**msg);
             }
-            let inv_stmt = StmtX::Assert(None, error, None, inv.clone());
+            let inv_stmt = StmtX::Assert(
+                ctx.make_assert_id(
+                    crate::vir_observer::AssertIdKind::LoopInvariant,
+                    inv_idx,
+                    &None,
+                ),
+                error,
+                None,
+                inv.clone(),
+            );
             stmts.push(Arc::new(inv_stmt));
         }
     }
@@ -2941,6 +3009,9 @@ fn loop_to_stmts(
     }
     if loop_isolation {
         stmts.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_LOOP))));
+        for (var, _) in modified_vars.vars.iter() {
+            ctx.notify(|obs| obs.on_havoc(stm, var));
+        }
         modified_vars.emit_havocs(ctx, SNAPSHOT_LOOP, &mut stmts);
         for (_, inv, _, _) in invs_exit.iter() {
             let inv_stmt = StmtX::Assume(inv.clone());
@@ -3108,6 +3179,10 @@ pub(crate) fn body_stm_to_air(
         statics,
         unwind,
     } = func_check_sst;
+
+    // Notify observer that body lowering is starting.
+    // Binders recorded before this point (requires/ensures) should be discarded.
+    ctx.notify(|obs| obs.on_body_lowering_start());
 
     if is_bit_vector_mode {
         if is_integer_ring {
@@ -3300,6 +3375,17 @@ pub(crate) fn body_stm_to_air(
             is_integer_ring || is_nonlinear,
         ));
     }
+    // Notify observer of binder-originated local declarations (including Skolemized
+    // copies): quantifier binders and choose binders alike.
+    for decl in local_decls.iter() {
+        if matches!(
+            decl.kind,
+            crate::sst::LocalDeclKind::QuantBinder | crate::sst::LocalDeclKind::ChooseBinder
+        ) {
+            ctx.notify(|obs| obs.on_binder_decl(decl));
+        }
+    }
+    ctx.notify(|obs| obs.on_function_lowered());
     Ok((state.commands, state.snap_map))
 }
 

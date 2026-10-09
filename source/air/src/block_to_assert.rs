@@ -77,7 +77,12 @@ fn stmt_to_expr(label_n: &mut u64, locals: &mut Vec<Decl>, stmt: &Stmt, pred: Ex
     }
 }
 
-pub(crate) fn lower_query(
+/// Lower a block-structured query to assert form.
+///
+/// Re-exported as `air::lower_query` so a consumer that reconstructs the verification
+/// condition can apply the same lowering the solver sees. `AirObserver::on_query_lowered`
+/// fires before this step.
+pub fn lower_query(
     message_interface: &dyn crate::messages::MessageInterface,
     query: &Query,
 ) -> Query {
