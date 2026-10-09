@@ -1535,33 +1535,9 @@ pub(crate) fn array_kind_of_typ(t: &Typ) -> (ArrayKind, Typ) {
     }
 }
 
-/// Returns length of array if it's a constant; returns None if unknown
-/// (e.g. if the size is specified by a const generic)
-pub(crate) fn const_array_len(t: &Typ) -> Option<usize> {
-    match &*undecorate_typ(t) {
-        TypX::Primitive(Primitive::Array, ts) => {
-            assert!(ts.len() == 2);
-            const_usize_of_typ(&ts[1])
-        }
-        _ => panic!("expected type to be array"),
-    }
-}
-
 pub(crate) fn const_usize_of_expr(e: &Expr) -> Option<usize> {
     match &e.x {
         ExprX::Const(Constant::Int(bignum)) => {
-            match bignum.try_into() {
-                Ok(i) => Some(i),
-                Err(_) => None,
-            }
-        }
-        _ => None,
-    }
-}
-
-pub(crate) fn const_usize_of_typ(t: &Typ) -> Option<usize> {
-    match &**t {
-        TypX::ConstInt(bignum) => {
             match bignum.try_into() {
                 Ok(i) => Some(i),
                 Err(_) => None,
