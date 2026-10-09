@@ -175,11 +175,11 @@ pub(crate) fn translate_trait<'tcx>(
             true,
             trait_generics.span,
         )?;
-        let external_predicates = tcx.predicates_of(ex_trait_ref_for.def_id);
-        let proxy_predicates = tcx.predicates_of(trait_def_id);
+        let external_predicates = tcx.clauses_of(ex_trait_ref_for.def_id);
+        let proxy_predicates = tcx.clauses_of(trait_def_id);
         let mut preds1 = external_predicates
             .instantiate(tcx, ex_trait_ref_for.args)
-            .predicates
+            .clauses
             .into_iter()
             .map(|clause| {
                 tcx.try_normalize_erasing_regions(typing_env, clause)
@@ -188,7 +188,7 @@ pub(crate) fn translate_trait<'tcx>(
             .collect();
         let mut preds2 = proxy_predicates
             .instantiate(tcx, ex_trait_ref_for.args)
-            .predicates
+            .clauses
             .into_iter()
             .map(|clause| {
                 tcx.try_normalize_erasing_regions(typing_env, clause)

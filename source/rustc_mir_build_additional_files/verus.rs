@@ -703,7 +703,8 @@ pub(crate) fn some_ghost_value_kind_with_args<'tcx>(
     let arg1 = GenericArg::from(tup_ty);
     let arg2 = GenericArg::from(ty);
     let args = cx.tcx.mk_args(&[arg1, arg2]);
-    let fn_ty = cx.tcx.mk_ty_from_kind(TyKind::FnDef(fn_def_id, args));
+    let fn_ty =
+        cx.tcx.mk_ty_from_kind(TyKind::FnDef(fn_def_id, rustc_middle::ty::Binder::dummy(args)));
 
     let fun_expr_kind = ExprKind::ZstLiteral { user_ty: None };
     let fun_expr = expr_id_from_kind(cx, fun_expr_kind, hir_id, span, fn_ty);
@@ -891,7 +892,7 @@ struct VisitTreeForPats<'a, 'tcx> {
 
 impl<'a, 'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitTreeForPats<'a, 'tcx> {
     // Don't recurse into other items or closure bodies
-    type NestedFilter = rustc_hir::intravisit::nested_filter::None;
+    type NestedFilter = rustc_hir::intravisit::IgnoreNested;
 
     fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
         match &expr.kind {

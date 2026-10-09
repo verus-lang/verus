@@ -859,7 +859,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
     }
 
     fn lint_and_remove_uninhabited(&mut self) {
-        let parent_module = self.tcx.parent_module_from_def_id(self.def_id).to_def_id();
+        let parent_module = self.tcx.parent_module_from_def_id(self.def_id);
         let typing_env = self.infcx.typing_env(self.param_env);
 
         // check if the function's return type is inhabited
