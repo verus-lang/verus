@@ -118,13 +118,9 @@ fn run() -> Result<std::process::ExitStatus, String> {
     });
 
     if !via_cargo {
-        if let Err(missing) =
-            cargo_verus_toolchains::installed::check_required_components(&verus_root)
-        {
-            eprintln!("error: Verus installation is incomplete; missing components:");
-            for path in missing {
-                eprintln!("  {}", path.display());
-            }
+        let rust_verify = verus_root.join(RUST_VERIFY_FILE_NAME);
+        if !rust_verify.is_file() {
+            eprintln!("error: could not find `rust_verify` at {}", rust_verify.display());
             std::process::exit(128);
         }
     }

@@ -418,7 +418,10 @@ pub enum UnaryOp {
     /// Mark an expression as a member of an SMT quantifier trigger group.
     /// Each trigger group becomes one SMT trigger containing all the expressions in the trigger group.
     Trigger(TriggerAnnotation),
-    /// Force integer value into range given by IntRange (e.g. by using mod)
+    /// Force integer value into range given by IntRange (e.g. by using mod).
+    /// truncate gives the value of the 'truncate' attribute, which impacts
+    /// the recommendations given for this operation, but otherwise has no impact
+    /// on its semantics
     Clip {
         range: IntRange,
         truncate: bool,
