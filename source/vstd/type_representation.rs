@@ -33,10 +33,10 @@ use super::endian::*;
 use super::layout::*;
 use super::math::*;
 use super::prelude::*;
-use super::raw_ptr::*;
+use super::raw_ptr::{shared_ref_ptr, Provenance};
 use super::seq::*;
 use crate::vstd::group_vstd_default;
-use core::marker::{MetaSized, PhantomData, PointeeSized};
+use core::marker::{MetaSized, PhantomData};
 
 verus! {
 
@@ -159,31 +159,32 @@ pub trait TypeRepresentation where Self: Sized {
     ;
 }
 
+/// TODO
 /// This trait defines the concrete specification for the given type's `AbstractByte` encoding.
 /// This definition is for `?Sized` types. Due to restrictions with Rust, this trait cannot be implemented on the type `T` directly.
-pub trait TypeRepresentationUnsized<T: ?Sized> {
+pub trait TypeRepresentationMetaSized where Self: MetaSized {
     /// Is encoding allowed for this type?
     /// This definition allows the encoding to be conditionally defined, e.g. depending on generic type parameters for Self.
     spec fn can_be_encoded() -> bool;
 
     /// Can 'value' be encoded to the given bytes?
-    spec fn encode(value: &T, bytes: Seq<AbstractByte>) -> bool;
+    spec fn encode(value: &Self, bytes: Seq<AbstractByte>) -> bool;
 
     /// Can the given bytes always be decoded to the given value?
-    spec fn decode(bytes: Seq<AbstractByte>, value: &T) -> bool;
+    spec fn decode(bytes: Seq<AbstractByte>, value: &Self) -> bool;
 
     // Required properties for encoding (sanity check for any implementation of this trait)
     /// Any encoding should match the size of the corresponding value.
-    proof fn encoding_size(v: &T, b: Seq<AbstractByte>)
+    proof fn encoding_size(v: &Self, b: Seq<AbstractByte>)
         requires
             Self::can_be_encoded(),
         ensures
-            Self::encode(v, b) ==> b.len() == spec_size_of_val::<T>(v),
-            Self::decode(b, v) ==> b.len() == spec_size_of_val::<T>(v),
+            Self::encode(v, b) ==> b.len() == spec_size_of_val::<Self>(v),
+            Self::decode(b, v) ==> b.len() == spec_size_of_val::<Self>(v),
     ;
 
     /// Every value should have at least one encoding.
-    proof fn encoding_exists(tracked v: &T) -> (b: Seq<AbstractByte>)
+    proof fn encoding_exists(tracked v: &Self) -> (b: Seq<AbstractByte>)
         requires
             Self::can_be_encoded(),
         ensures
@@ -191,7 +192,7 @@ pub trait TypeRepresentationUnsized<T: ?Sized> {
     ;
 
     /// Any byte encoding should be able to be decoded back to the same value.
-    proof fn encoding_invertible(v: &T, b: Seq<AbstractByte>)
+    proof fn encoding_invertible(v: &Self, b: Seq<AbstractByte>)
         requires
             Self::encode(v, b),
             Self::can_be_encoded(),
@@ -1011,9 +1012,7 @@ macro_rules! impl_type_representation_for_scalar_range_type {
     */
 
 /// The abstract encoding for a `[u8]` maps each value in the slice to a corresponding abtract byte with no provenance.
-pub struct EncodingU8Slice;
-
-impl TypeRepresentationUnsized<[u8]> for EncodingU8Slice {
+impl TypeRepresentationMetaSized for [u8] {
     open spec fn can_be_encoded() -> bool {
         true
     }
@@ -1052,6 +1051,23 @@ impl TypeRepresentationUnsized<[u8]> for EncodingU8Slice {
             u8::encoding_invertible(v@[i], arbitrary(), seq![b[i]]);
         }
     }
+}
+
+/// Generic precondition on transmute.
+/// TODO
+pub open spec fn encode_decode<T: TypeRepresentation, U: TypeRepresentation>(src: T, src_shadow_data: ShadowData<T>, dst: U, dst_shadow_data: ShadowData<U>) -> bool {
+    &&& forall|bytes|
+        #![trigger <T as TypeRepresentation>::encode(src, src_shadow_data, bytes)]
+        #![trigger <U as TypeRepresentation>::decode(bytes, dst, dst_shadow_data)]
+        <T as TypeRepresentation>::encode(src, src_shadow_data, bytes) ==> <U as TypeRepresentation>::decode(bytes, dst, dst_shadow_data)
+}
+
+/// TODO
+pub open spec fn decode_decode_metasized<T: TypeRepresentationMetaSized + MetaSized, U: TypeRepresentationMetaSized + MetaSized>(src: &T, dst: &U) -> bool {
+    &&& forall|bytes|
+        #![trigger <T as TypeRepresentationMetaSized>::decode(bytes, src)]
+        #![trigger <U as TypeRepresentationMetaSized>::decode(bytes, dst)]
+        <T as TypeRepresentationMetaSized>::decode(bytes, src) ==> <U as TypeRepresentationMetaSized>::decode(bytes, dst)
 }
 
 pub broadcast group group_type_representation_axioms {
