@@ -4922,3 +4922,28 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] swapped_method_typ_params_issue3117 verus_code! {
+        trait Tag {
+            spec fn tag() -> int;
+        }
+
+        trait Swap {
+            proof fn f<A: Tag, B: Tag>(x: int, y: int)
+                requires x == A::tag(), y == B::tag();
+        }
+
+        impl Swap for u8 {
+            proof fn f<B: Tag, A: Tag>(x: int, y: int) {
+                assert(x == B::tag() && y == A::tag());
+            }
+        }
+
+        impl Swap for u16 {
+            proof fn f<B: Tag, A: Tag>(x: int, y: int) {
+                assert(x == A::tag()); // FAILS
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
