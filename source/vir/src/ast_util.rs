@@ -1537,10 +1537,7 @@ pub(crate) fn array_kind_of_typ(t: &Typ) -> (ArrayKind, Typ) {
 
 pub(crate) fn const_usize_of_expr(e: &Expr) -> Option<usize> {
     match &e.x {
-        ExprX::Const(Constant::Int(bignum)) => match bignum.try_into() {
-            Ok(i) => Some(i),
-            Err(_) => None,
-        },
+        ExprX::Const(Constant::Int(bignum)) => bignum.try_into().ok(),
         _ => None,
     }
 }
