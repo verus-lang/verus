@@ -746,6 +746,16 @@ pub(crate) fn erase_var_for_closure_captures<'tcx>(hir_id: HirId) -> bool {
     }
 }
 
+pub(crate) fn erase_binder_for_closure_captures<'tcx>(hir_id: HirId) -> bool {
+    let erasure_ctxt = get_verus_erasure_ctxt();
+    let capture_shadow = ATOMIC_CLOSURE_CAPTURE_SHADOW.load(Ordering::SeqCst);
+    if capture_shadow {
+        matches!(erasure_ctxt.binders.get(&hir_id), Some(VarErasure::Erase))
+    } else {
+        matches!(erasure_ctxt.binders.get(&hir_id), Some(VarErasure::Erase | VarErasure::Shadow))
+    }
+}
+
 /// Remove all ghost-variable binders from the pattern
 pub(crate) fn erase_pat<'tcx>(cx: &mut ThirBuildCx<'tcx>, pat: Box<Pat<'tcx>>) -> Box<Pat<'tcx>> {
     let Some(erasure_ctxt) = cx.verus_ctxt.ctxt.clone() else {
