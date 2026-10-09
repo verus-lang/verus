@@ -250,6 +250,7 @@ pub trait ExIterator {
             Self: Sized,
             P: FnMut(Self::Item) -> bool,
         requires
+            self.remaining().len() <= usize::MAX as int,
             forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(predicate, (self.remaining()[k], )),
         ensures
             // The iterator consistently obeys, completes, and decreases throughout its lifetime
