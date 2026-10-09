@@ -49,6 +49,7 @@ pub mod externs;
 pub mod file_loader;
 mod fn_call_to_vir;
 mod hir_hide_reveal_rewrite;
+mod mir_drops;
 mod import_export;
 mod pre_header;
 pub mod profiler;
