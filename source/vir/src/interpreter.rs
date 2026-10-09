@@ -115,8 +115,6 @@ struct State {
     depth: usize,
     /// Symbol table mapping bound variables to their values
     env: Env,
-    /// Symbol table mapping bound type arguments to their types
-    type_env: TypeEnv,
     /// Number of iterations computed thus far
     iterations: u64,
     /// Log to write out extra info
@@ -514,9 +512,31 @@ impl SyntacticEquality for Exp {
                 if then_eq == else_eq { Some(then_eq) } else { None }
             }
             (WithTriggers(_trigs_l, e_l), WithTriggers(_trigs_r, e_r)) => e_l.syntactic_eq(e_r),
-            (Bind(bnd_l, e_l), Bind(bnd_r, e_r)) => {
-                def_eq(bnd_l.syntactic_eq(bnd_r)? && e_l.syntactic_eq(e_r)?)
-            }
+            (Bind(bnd_l, e_l), Bind(bnd_r, e_r)) => match (&bnd_l.x, &bnd_r.x) {
+                (BndX::Quant(q_l, bnds_l, ..), BndX::Quant(q_r, bnds_r, ..)) => {
+                    if q_l != q_r || bnds_l.len() != bnds_r.len() {
+                        return None;
+                    }
+                    let e_l = cleanup_exp(e_l).ok()?;
+                    let e_r = cleanup_exp(e_r).ok()?;
+                    let mut free_vars = free_vars_exp(&e_l);
+                    for b in bnds_l.iter() {
+                        free_vars.remove(&b.name);
+                    }
+                    let mut substs = HashMap::new();
+                    for (b_l, b_r) in bnds_l.iter().zip(bnds_r.iter()) {
+                        if !types_equal(&b_l.a, &b_r.a) || free_vars.contains_key(&b_r.name) {
+                            return None;
+                        }
+                        let var = SpannedTyped::new(&e_l.span, &b_r.a, Var(b_r.name.clone()));
+                        substs.insert(b_l.name.clone(), var);
+                    }
+                    let empty_substs = HashMap::new();
+                    let e_l = subst_exp(&empty_substs, &substs, &e_l);
+                    def_eq(e_l.syntactic_eq(&e_r)?)
+                }
+                _ => def_eq(bnd_l.syntactic_eq(bnd_r)? && e_l.syntactic_eq(e_r)?),
+            },
             (Interp(l), Interp(r)) => match (l, r) {
                 (InterpExp::FreeVar(l), InterpExp::FreeVar(r)) => def_eq(l == r),
                 (InterpExp::Seq(l), InterpExp::Seq(r)) => l.syntactic_eq(r),
@@ -578,9 +598,7 @@ fn hash_bnd<H: Hasher>(state: &mut H, bnd: &Bnd) {
     }
     match &bnd.x {
         Let(bnds) => dohash!(0; hash_var_binders_exp(bnds)),
-        Quant(quant, bnds, trigs, _) => {
-            dohash!(1, quant; hash_var_binders_typ(bnds), hash_trigs(trigs))
-        }
+        Quant(quant, bnds, _, _) => dohash!(1, quant, bnds.len()),
         Lambda(bnds, trigs) => dohash!(2; hash_var_binders_typ(bnds), hash_trigs(trigs)),
         Choose(bnds, trigs, e) => dohash!(3;
                     hash_var_binders_typ(bnds), hash_trigs(trigs), hash_exp(e)),
@@ -623,7 +641,13 @@ fn hash_exp<H: Hasher>(state: &mut H, exp: &Exp) {
         BinaryOpr(op, e1, e2) => dohash!(111, op; hash_exp(e1), hash_exp(e2)),
         If(e1, e2, e3) => dohash!(12; hash_exp(e1), hash_exp(e2), hash_exp(e3)),
         WithTriggers(trigs, e) => dohash!(13; hash_trigs(trigs), hash_exp(e)),
-        Bind(bnd, e) => dohash!(14; hash_bnd(bnd), hash_exp(e)),
+        Bind(bnd, e) => {
+            dohash!(14; hash_bnd(bnd));
+            // Alpha-equivalent quantifiers need identical hashes.
+            if !matches!(&bnd.x, BndX::Quant(..)) {
+                hash_exp(state, e);
+            }
+        }
         Interp(e) => {
             dohash!(15);
             match e {
@@ -1778,11 +1802,8 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                 let empty_substs = HashMap::new();
                                 let body = subst_exp(type_env.map(), &empty_substs, body);
                                 let prev_env = std::mem::replace(&mut state.env, env);
-                                let prev_type_env =
-                                    std::mem::replace(&mut state.type_env, type_env);
                                 let result = eval_expr_internal(ctx, state, &body);
                                 state.env = prev_env;
-                                state.type_env = prev_type_env;
                                 state.insert_call(fun, &typs, &new_args, &result.clone()?, memoize);
                                 result
                             }
@@ -2098,7 +2119,6 @@ fn eval_expr_launch(
     quiet: bool,
 ) -> Result<(Exp, Vec<Message>), VirErr> {
     let env = ScopeMap::new();
-    let type_env = ScopeMap::new();
     let cache = HashMap::new();
     let logging = log.is_some();
     let msgs = Vec::new();
@@ -2106,7 +2126,6 @@ fn eval_expr_launch(
     let mut state = State {
         depth: 0,
         env,
-        type_env,
         iterations: 1,
         msgs,
         log: log.take(),

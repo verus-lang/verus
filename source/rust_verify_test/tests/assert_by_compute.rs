@@ -1159,6 +1159,77 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] scope_quantifier_equality_after_unfold verus_code! {
+        uninterp spec fn p(x: int) -> bool;
+        spec fn id(x: int) -> int { x }
+
+        proof fn test() {
+            assert((forall|x: int| #[trigger] p(id(x)))
+                == (forall|x: int| #[trigger] p(x))) by (compute_only);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] scope_nested_quantifier_equality_after_unfold verus_code! {
+        uninterp spec fn p(x: int, y: int) -> bool;
+        spec fn id(x: int) -> int { x }
+
+        proof fn test() {
+            assert((forall|x: int| #[trigger] p(id(x), id(x))
+                    && (exists|y: int| #[trigger] p(id(x), id(y))))
+                == (forall|y: int| #[trigger] p(y, y)
+                    && (exists|x: int| #[trigger] p(y, x)))) by (compute_only);
+            assert((forall|x: int| #[trigger] p(x, x)
+                    && (exists|y: int| #[trigger] p(x, y)))
+                == (forall|y: int| #[trigger] p(y, y)
+                    && (exists|x: int| #[trigger] p(y, x)))) by (compute_only);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] scope_quantifier_equality_free_capture verus_code! {
+        uninterp spec fn p(x: int, y: int) -> bool;
+        spec fn id(x: int) -> int { x }
+
+        proof fn test(x: int) {
+            assert((forall|y: int| #[trigger] p(id(y), x))
+                == (forall|x: int| #[trigger] p(x, x))) by (compute_only);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
+}
+
+test_verify_one_file! {
+    #[test] scope_quantifier_equality_memoized verus_code! {
+        uninterp spec fn p(x: int) -> bool;
+        spec fn id(x: int) -> int { x }
+
+        #[verifier::memoize]
+        spec fn cached(b: bool) -> bool { b }
+
+        proof fn test() {
+            assert(cached(forall|x: int| #[trigger] p(id(x)))
+                == cached(forall|y: int| #[trigger] p(y))) by (compute_only);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] scope_quantifier_equality_memoized_free_vars verus_code! {
+        uninterp spec fn p(x: int, y: int) -> bool;
+
+        #[verifier::memoize]
+        spec fn cached(b: bool) -> bool { b }
+
+        proof fn test(y: int, z: int) {
+            assert(cached(forall|x: int| #[trigger] p(x, y))
+                == cached(forall|x: int| #[trigger] p(x, z))) by (compute_only);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
+}
+
+test_verify_one_file! {
     #[test] scope_quantifier_capture verus_code! {
         spec fn g(x: int) -> int { x }
         spec fn f(y: int) -> bool { exists|x: int| #[trigger] g(x) == x && x != y }
