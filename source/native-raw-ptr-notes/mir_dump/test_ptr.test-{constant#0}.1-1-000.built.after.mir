@@ -1,0 +1,10 @@
+// MIR for `test::{constant#0}` after built
+
+test::{constant#0}: usize = {
+    let mut _0: usize;
+
+    bb0: {
+        _0 = const 20_usize;
+        return;
+    }
+}
