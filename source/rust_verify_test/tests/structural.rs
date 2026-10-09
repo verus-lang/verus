@@ -71,6 +71,36 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_structural_ghost_field verus_code! {
+        #[derive(PartialEq, Structural)]
+        struct S { ghost g: bool }
+    } => Err(err) => assert_vir_error_msg(err, "`Structural` types cannot have ghost or tracked fields")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_structural_spoofed_derived_partial_eq ["no-auto-import-verus_builtin"] => code_str! {
+        #![feature(structural_match)]
+        use vstd::prelude::*;
+    }.to_string() + verus_code_str! {
+        #[derive(Structural)]
+        struct T(u8);
+
+        #[automatically_derived]
+        impl core::marker::StructuralPartialEq for T {}
+
+        impl vstd::std_specs::cmp::PartialEqSpecImpl for T {
+            open spec fn obeys_eq_spec() -> bool { false }
+            open spec fn eq_spec(&self, other: &T) -> bool { false }
+        }
+
+        #[automatically_derived]
+        impl PartialEq for T {
+            fn eq(&self, other: &T) -> bool { false }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "`Structural` requires a built-in derived `PartialEq` implementation")
+}
+
+test_verify_one_file! {
     #[test] test_structural_enum_with_values verus_code! {
         #[derive(PartialEq, Structural)]
         pub enum ValueStatus {
