@@ -240,6 +240,7 @@ fn handle_autospec<'tcx>(
                     size_of_broadcast_proof: false,
                     is_type_invariant_fn: false,
                     is_external_body: false,
+                    no_cheating_trusted: functionx.attrs.no_cheating_trusted,
                     is_unsafe: false,
                     impls_cannot_extend_spec: false,
                     exec_assume_termination: false,
@@ -1463,6 +1464,8 @@ fn make_attributes<'tcx>(
         size_of_broadcast_proof: vattrs.size_of_broadcast_proof,
         is_type_invariant_fn: vattrs.type_invariant_fn,
         is_external_body: vattrs.external_body,
+        no_cheating_trusted: crate::no_cheating::effective_trust(ctxt.tcx, def_id)?
+            .permits_assumptions(),
         is_unsafe: match safety {
             Safety::Safe => false,
             Safety::Unsafe => true,
