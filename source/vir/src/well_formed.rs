@@ -1047,9 +1047,11 @@ fn check_function<Emit: EmitError>(
             ));
         }
 
-        if function.x.mode != Mode::Exec && matches!(*function.x.ret.x.typ, TypX::Opaque { .. }) {
+        if function.x.mode != Mode::Exec
+            && matches!(*function.x.outer_ret.x.typ, TypX::Opaque { .. })
+        {
             return Err(error(
-                &function.x.ret.span,
+                &function.x.outer_ret.span,
                 format!("Opaque type is not supported in {} mode", function.x.mode),
             ));
         }
@@ -1095,17 +1097,26 @@ fn check_function<Emit: EmitError>(
         }
     }
 
-    let ret_name = user_local_name(&function.x.ret.x.name);
+    let outer_ret_name = user_local_name(&function.x.outer_ret.x.name);
+    let inner_ret_name = user_local_name(&function.x.inner_ret.x.name);
     for p in function.x.params.iter() {
         check_typ(ctxt, &p.x.typ, &p.span, emit)?;
-        if user_local_name(&p.x.name) == ret_name {
+        let param_name = user_local_name(&p.x.name);
+        if param_name == outer_ret_name || param_name == inner_ret_name {
             return Err(error(
                 &p.span,
                 "parameter name cannot be the same as the return value name",
             ));
         }
     }
-    check_typ(ctxt, &function.x.ret.x.typ, &function.x.ret.span, emit)?;
+    check_typ(ctxt, &function.x.outer_ret.x.typ, &function.x.outer_ret.span, emit)?;
+    check_typ(ctxt, &function.x.inner_ret.x.typ, &function.x.inner_ret.span, emit)?;
+    if !function.x.attrs.is_async {
+        assert!(function.x.outer_ret.x.name == function.x.inner_ret.x.name);
+        assert!(types_equal(&function.x.outer_ret.x.typ, &function.x.inner_ret.x.typ));
+    } else {
+        assert!(function.x.outer_ret.x.name != function.x.inner_ret.x.name);
+    }
 
     if function.x.attrs.inline {
         if function.x.mode != Mode::Spec {
@@ -1376,25 +1387,31 @@ fn check_function<Emit: EmitError>(
         )?;
     }
     if let Some(r) = &function.x.returns {
-        if matches!(*function.x.ret.x.typ, TypX::Opaque { .. }) {
+        if matches!(*function.x.inner_ret.x.typ, TypX::Opaque { .. }) {
             return Err(error(
                 &r.span,
                 "`returns` clause is not allowed for function that returns opaque type",
             )
             .secondary_label(
                 &function.span,
-                format!("this function returns `{}`", typ_to_diagnostic_str(&function.x.ret.x.typ)),
+                format!(
+                    "this function returns `{}`",
+                    typ_to_diagnostic_str(&function.x.inner_ret.x.typ)
+                ),
             ));
         }
 
-        if !types_equal(&undecorate_typ(&r.typ), &undecorate_typ(&function.x.ret.x.typ)) {
+        if !types_equal(&undecorate_typ(&r.typ), &undecorate_typ(&function.x.inner_ret.x.typ)) {
             return Err(error(
                 &r.span,
                 "type of `returns` clause does not match function return type",
             )
             .secondary_label(
                 &function.span,
-                format!("this function returns `{}`", typ_to_diagnostic_str(&function.x.ret.x.typ)),
+                format!(
+                    "this function returns `{}`",
+                    typ_to_diagnostic_str(&function.x.inner_ret.x.typ)
+                ),
             )
             .secondary_label(
                 &r.span,
@@ -1535,7 +1552,7 @@ fn check_function<Emit: EmitError>(
                 "#[verifier::type_invariant] function must be `spec`",
             ));
         }
-        if !matches!(&*function.x.ret.x.typ, TypX::Bool) {
+        if !matches!(&*function.x.outer_ret.x.typ, TypX::Bool) {
             return Err(error(
                 &function.span,
                 "#[verifier::type_invariant] function must return bool",
@@ -1718,12 +1735,17 @@ fn check_functions_match(
         }
     }
     if check_return {
-        if !crate::ast_util::params_equal_opt(&f1.x.ret, &f2.x.ret, check_names, check_modes) {
+        if !crate::ast_util::params_equal_opt(
+            &f1.x.outer_ret,
+            &f2.x.outer_ret,
+            check_names,
+            check_modes,
+        ) {
             return Err(crate::messages::error(
-                &f1.x.ret.span,
+                &f1.x.outer_ret.span,
                 format!("{msg} function should have the same return types"),
             )
-            .secondary_span(&f2.x.ret.span));
+            .secondary_span(&f2.x.outer_ret.span));
         }
     }
     Ok(())

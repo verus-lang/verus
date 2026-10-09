@@ -1166,7 +1166,8 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             typ_params,
             typ_bounds,
             params: ps,
-            ret: rt,
+            outer_ret: ort,
+            inner_ret: irt,
             ens_has_return,
             require,
             ensure: (ensure0, ensure1),
@@ -1182,7 +1183,6 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             attrs,
             body,
             extra_dependencies,
-            async_ret,
             hidden,
         } = &function.x;
         let kind = self.visit_function_kind(kind)?;
@@ -1195,13 +1195,13 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 ScopeEntry::new_outer_param_ret(&p.x.typ, Some(p.x.user_mut), true),
             );
         }
-        let ret = self.visit_param(rt)?;
+        let oret = self.visit_param(ort)?;
+        let iret = self.visit_param(irt)?;
         let require = self.visit_exprs(require)?;
-        let async_ret = R::map_opt(async_ret, &mut |async_ret| self.visit_param(&async_ret))?;
 
         self.push_scope();
         if function.x.ens_has_return {
-            let r = R::get_or(&ret, rt);
+            let r = R::get_or(&iret, irt);
             let _ = self.insert_binding(
                 &r.x.name.clone(),
                 ScopeEntry::new_outer_param_ret(&r.x.typ, Some(false), true),
@@ -1234,7 +1234,8 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 typ_params: typ_params.clone(),
                 typ_bounds: R::get_vec_a(type_bounds),
                 params: R::get_vec_a(params),
-                ret: R::get(ret),
+                outer_ret: R::get(oret),
+                inner_ret: R::get(iret),
                 ens_has_return: *ens_has_return,
                 require: R::get_vec_a(require),
                 ensure: (R::get_vec_a(ensure0), R::get_vec_a(ensure1)),
@@ -1250,7 +1251,6 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 attrs: attrs.clone(),
                 body: R::get_opt(body),
                 extra_dependencies: extra_dependencies.clone(),
-                async_ret: R::get_opt(async_ret),
                 hidden: hidden.clone(),
             })
         })

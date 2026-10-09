@@ -109,6 +109,10 @@ pub struct VerifyCommand {
     #[arg(short, long, action = ArgAction::Count)]
     pub verbosity: u8,
 
+    /// Force verification of `trusted_crates`.
+    #[arg(long)]
+    pub verify_trusted: bool,
+
     /// Override the version reported by `verus --version`
     #[arg(long)]
     pub override_verus_version: Option<String>,

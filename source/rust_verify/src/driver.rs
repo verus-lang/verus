@@ -233,7 +233,7 @@ pub fn find_verusroot() -> Option<VerusRoot> {
                 current.parent().and_then(|p| {
                     let mut path = std::path::PathBuf::from(&p);
                     if let Err(missing) =
-                        cargo_verus_toolchains::installed::check_required_components(&path)
+                        cargo_verus_toolchains::installed::check_required_artifacts(&path)
                     {
                         eprintln!("warning: Verus installation is incomplete; missing components:");
                         for path in missing {

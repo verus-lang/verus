@@ -466,6 +466,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_arith_assign_signed verus_code! {
+        use vstd::prelude::*;
         fn test_signed_div() {
             let mut x = 53i8;
             x /= 10i8;
@@ -499,9 +500,241 @@ test_verify_one_file! {
             let mut x = (-128i8);
             x %= (-1i8); // FAILS
         }
-    // TODO: } => Err(e) => assert_fails(e, 4)
-    } => Err(err) => assert_vir_error_msgs(err, &[
-        "div/mod on signed finite-width integers",
-        "div/mod on signed finite-width integers",
-    ])
+
+        fn test_signed_div0() {
+            let mut x = 1i8;
+            x /= 0; // FAILS
+        }
+
+        fn test_signed_mod0() {
+            let mut x = 1i8;
+            x %= 0; // FAILS
+        }
+
+        fn test_eval_ordering_div() {
+            let mut a = false;
+            let mut b = false;
+            let mut c = false;
+
+            let mut x = -20;
+
+            // rhs first
+            *({ a = true; &mut x }) /= { b = a; c = true; -1 };
+
+            assert(x == 20);
+            assert(a == true);
+            assert(b == false);
+            assert(c == true);
+        }
+
+        fn test_eval_ordering_mod() {
+            let mut a = false;
+            let mut b = false;
+            let mut c = false;
+
+            let mut x = -20;
+
+            // rhs first
+            *({ a = true; &mut x }) %= { b = a; c = true; -1 };
+
+            assert(x == 0);
+            assert(a == true);
+            assert(b == false);
+            assert(c == true);
+        }
+
+        fn test_eval_ordering_div_fails() {
+            let mut a = false;
+            let mut b = false;
+            let mut c = false;
+
+            let mut x = -20;
+
+            // rhs first
+            *({ a = true; &mut x }) /= { b = a; c = true; -1 };
+
+            assert(x == 20);
+            assert(a == true);
+            assert(b == false);
+            assert(c == true);
+            assert(false); // FAILS
+        }
+
+        fn test_eval_ordering_mod_fails() {
+            let mut a = false;
+            let mut b = false;
+            let mut c = false;
+
+            let mut x = -20;
+
+            // rhs first
+            *({ a = true; &mut x }) %= { b = a; c = true; -1 };
+
+            assert(x == 0);
+            assert(a == true);
+            assert(b == false);
+            assert(c == true);
+            assert(false); // FAILS
+        }
+    } => Err(e) => assert_fails(e, 6)
+}
+
+test_verify_one_file! {
+    #[test] test_add_overloaded_with_shared_refs_issue3061 verus_code! {
+        use vstd::prelude::*;
+
+        pub struct F { pub x: u8 }
+
+        impl vstd::std_specs::ops::AddSpecImpl<F> for F {
+            open spec fn obeys_add_spec() -> bool { true }
+            open spec fn add_req(self, rhs: F) -> bool { true }
+            open spec fn add_spec(self, rhs: F) -> F { F { x: 1 } }
+        }
+
+        impl std::ops::Add<F> for F {
+            type Output = F;
+            fn add(self, rhs: F) -> F { F { x: 1 } }
+        }
+
+        impl vstd::std_specs::ops::AddSpecImpl<&F> for &F {
+            open spec fn obeys_add_spec() -> bool { true }
+            open spec fn add_req(self, rhs: &F) -> bool { true }
+            open spec fn add_spec(self, rhs: &F) -> F { F { x: 2 } }
+        }
+
+        impl<'a> std::ops::Add<&'a F> for &F {
+            type Output = F;
+            fn add(self, rhs: &'a F) -> F { F { x: 2 } }
+        }
+
+        fn test(a: F, b: F) {
+            let c = &a + &b;   // Rust calls <&F as Add<&F>>::add, so c.x == 2
+            assert(c.x == 2);
+        }
+
+        fn test_fails(a: F, b: F) {
+            let c = &a + &b;
+            assert(c.x == 1); // FAILS
+        }
+    } => Err(e) => assert_fails(e, 1)
+}
+
+test_verify_one_file! {
+    #[test] type_invariant_preserved_for_div_mod verus_code! {
+        use vstd::prelude::*;
+
+        fn test_u_div(a: u64, b: u64)
+            requires b != 0
+        {
+            let x = a / b;
+            assert(0 <= x <= u64::MAX);
+        }
+
+        fn test_i_div(a: i64, b: i64)
+            requires
+                b != 0,
+                a != i64::MIN || b != -1,
+        {
+            let x = a / b;
+            assert(i64::MIN <= x <= i64::MAX);
+        }
+
+        fn test_u_mod(a: u64, b: u64)
+            requires b != 0
+        {
+            let x = a % b;
+            assert(0 <= x <= u64::MAX);
+        }
+
+        fn test_i_mod(a: i64, b: i64)
+            requires
+                b != 0,
+                a != i64::MIN || b != -1,
+        {
+            let x = a % b;
+            assert(i64::MIN <= x <= i64::MAX);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] default_ne verus_code! {
+        use vstd::prelude::*;
+
+        pub struct Foo;
+
+        impl PartialEq for Foo {
+            fn eq(&self, other: &Self) -> (b: bool)
+                ensures b == false
+            {
+                assume(false);
+                false
+            }
+        }
+
+        fn test(paddr: Foo) {
+            let b = paddr != paddr;
+            assert(b == true);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] default_ne_with_spec_impl verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::cmp::PartialEqSpecImpl;
+
+        pub struct Foo;
+
+        impl PartialEq for Foo {
+            fn eq(&self, other: &Self) -> (b: bool) {
+                false
+            }
+        }
+
+        impl PartialEqSpecImpl for Foo {
+            open spec fn obeys_eq_spec() -> bool {
+                true
+            }
+
+            open spec fn eq_spec(&self, other: &Foo) -> bool {
+                false
+            }
+        }
+
+        fn test(paddr: Foo) {
+            let b = paddr != paddr;
+            assert(b == true);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] default_ne_with_spec_impl2 verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::cmp::PartialEqSpecImpl;
+
+        pub struct Foo;
+
+        impl PartialEq for Foo {
+            fn eq(&self, other: &Self) -> (b: bool) {
+                false
+            }
+        }
+
+        impl PartialEqSpecImpl for Foo {
+            open spec fn obeys_eq_spec() -> bool {
+                false
+            }
+
+            open spec fn eq_spec(&self, other: &Foo) -> bool {
+                false
+            }
+        }
+
+        fn test(paddr: Foo) {
+            let b = paddr != paddr;
+            assert(b == true); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
 }

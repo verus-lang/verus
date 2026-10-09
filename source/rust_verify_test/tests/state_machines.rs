@@ -9221,3 +9221,43 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] pre_reserved_property_issue3083 IMPORTS.to_string() + verus_code_str! {
+        tokenized_state_machine!{ X {
+            fields { #[sharding(variable)] pub v: int, }
+            init!{ initialize() { init v = 1; } }
+            property!{ p() {
+                let pre = State { v: 0 };  // shadows the real pre-state
+            } }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "'pre' is a reserved identifier in state machine definitions")
+}
+
+test_verify_one_file! {
+    #[test] pre_reserved_transition_issue3083 IMPORTS.to_string() + verus_code_str! {
+        tokenized_state_machine!{ Y {
+            fields { #[sharding(variable)] pub v: int, }
+            init!{ initialize() { init v = 1; } }
+            transition!{ dec() {
+                let pre = State { v: 2 };
+            } }
+            #[inductive(initialize)] fn init_inductive(post: Self) { }
+            #[inductive(dec)] fn dec_inductive(pre: Self, post: Self) { }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "'pre' is a reserved identifier in state machine definitions")
+}
+
+test_verify_one_file! {
+    #[test] post_reserved_transition_issue3083 IMPORTS.to_string() + verus_code_str! {
+        tokenized_state_machine!{ Y {
+            fields { #[sharding(variable)] pub v: int, }
+            init!{ initialize() { init v = 1; } }
+            transition!{ dec() {
+                let post = State { v: 2 };
+            } }
+            #[inductive(initialize)] fn init_inductive(post: Self) { }
+            #[inductive(dec)] fn dec_inductive(pre: Self, post: Self) { }
+        }}
+    } => Err(err) => assert_vir_error_msg(err, "'post' is a reserved identifier in state machine definitions")
+}

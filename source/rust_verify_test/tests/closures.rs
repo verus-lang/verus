@@ -146,6 +146,88 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
+// Regression tests for #3010.  Lambda bodies are represented over erased AIR
+// sorts, but their source SpecFn type must remain part of the function value.
+// Otherwise extensional equality at a refinement type can leak facts to values
+// outside that refinement and prove false.
+// https://github.com/verus-lang/verus/issues/3010
+test_verify_one_file! {
+    #[test] spec_fn_lambda_parameter_type_soundness_3010 verus_code! {
+        proof fn unsound() ensures false { // FAILS
+            assert((|x: nat| true) =~= (|x: nat| x >= 0));
+            assert(!(|x: int| x >= 0)(-1int));
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] spec_fn_lambda_parameter_type_quantifier_soundness_3010 verus_code! {
+        proof fn unsound() ensures false {
+            let f = |x: int| x >= 0;
+            let g = |x: int| true;
+            assert forall|p: spec_fn(nat) -> bool, q: spec_fn(nat) -> bool|
+                #![trigger p(0nat), q(0nat)]
+                (forall|x: nat| #[trigger] p(x) == q(x))
+                implies p == q by {
+                assert(p =~= q);
+            }
+            assert(f(0int) && g(0int));
+            assert(f == g); // FAILS
+            assert(!f(-1int));
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] spec_fn_lambda_parameter_type_valid_3010 verus_code! {
+        spec fn identity<A>() -> spec_fn(A) -> A {
+            |a: A| a
+        }
+
+        proof fn generic<A>(a: A) {
+            let f = identity::<A>();
+            assert(f(a) == a);
+            assert(f =~= (|x: A| x));
+        }
+
+        proof fn closures() {
+            let f = |x: nat| x >= 0;
+            assert(f(0nat));
+            assert(f =~= (|x: nat| true));
+            assert((|x: int| x >= 0)(-1int) == false);
+
+            let constant = || 7int;
+            assert(constant() == 7);
+            assert(constant =~= (|| 3int + 4int));
+
+            let add = |x: nat, y: nat| x + y;
+            assert(add(2, 3) == 5);
+            assert(add =~= (|x: nat, y: nat| y + x));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] spec_fn_lambda_parameter_type_integer_trait_3010 verus_code! {
+        spec fn h1<A1: Integer>() -> spec_fn(A1) -> bool { |x: A1| x as int >= 0 }
+
+        proof fn test_h() {
+            let f1 = |x: nat| x >= 0;
+            let f2 = |x: nat| true;
+            let f3 = |x: int| x >= 0;
+            let g1 = h1::<nat>();
+            let g3 = h1::<int>();
+            assert(f1 == f2);
+            assert(f1 == g1);
+            assert(f3 == g3);
+            assert(forall|i: int| #[trigger] f1(i as nat) == f3(i)); // FAILS
+            assert(forall|i: int| #[trigger] f2(i as nat) == f3(i));
+            assert(f1((-1) as nat) == f2((-1) as nat));
+            assert(false);
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
 test_verify_one_file! {
     #[test] test_fn_spec_type verus_code! {
         spec fn stuff(t: spec_fn(int) -> int, x: int) -> int {
