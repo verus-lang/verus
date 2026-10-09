@@ -568,8 +568,6 @@ pub assume_specification<Key, Value, S, A: Allocator>[ HashMap::<Key, Value, S, 
         len == spec_hash_map_len(m),
 ;
 
-/// A map can always hold at least what it currently holds, so `capacity` is at
-/// least `len`. Sibling of `len`/`is_empty` directly around it.
 pub assume_specification<Key, Value, S, A: Allocator>[ HashMap::<Key, Value, S, A>::capacity ](
     m: &HashMap<Key, Value, S, A>,
 ) -> (cap: usize)
@@ -621,9 +619,6 @@ pub assume_specification<Key, Value>[ HashMap::<Key, Value>::with_capacity ](cap
         m@ == Map::<Key, Value>::empty(),
 ;
 
-/// Sibling of `new`/`with_capacity`/`default` above, but generic in the hasher
-/// builder -- which is the whole point of `with_hasher`, and why the others do
-/// not cover it.
 pub assume_specification<Key, Value, S>[ HashMap::<Key, Value, S>::with_hasher ](
     hash_builder: S,
 ) -> (m: HashMap<Key, Value, S>)
