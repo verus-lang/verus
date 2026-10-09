@@ -576,7 +576,7 @@ test_verify_one_file! {
         trait B: A {
             spec fn b(&self) -> Self::BT;
         }
-    } => Err(err) => assert_rust_error_msg(err, "cycle detected when computing the super predicates of `A`")
+    } => Err(err) => assert_rust_error_msg(err, "cycle detected when computing the super clauses of `A`")
 }
 
 test_verify_one_file! {
@@ -588,7 +588,7 @@ test_verify_one_file! {
         trait B where Self: A {
             spec fn b(&self) -> Self::BT;
         }
-    } => Err(err) => assert_rust_error_msg(err, "cycle detected when computing the super predicates of `A`")
+    } => Err(err) => assert_rust_error_msg(err, "cycle detected when computing the super clauses of `A`")
 }
 
 test_verify_one_file! {
