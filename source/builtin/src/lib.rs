@@ -2343,7 +2343,7 @@ pub fn unsigned_max(_word_bits: nat) -> nat {
 
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::signed_min"]
-pub fn signed_min(_word_bits: nat) -> nat {
+pub fn signed_min(_word_bits: nat) -> int {
     unimplemented!();
 }
 
