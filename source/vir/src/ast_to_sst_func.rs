@@ -601,6 +601,18 @@ where
 
             let trait_function = ctx.func_map[method].clone();
 
+            // The method's own type params come last in both; the impl may rename them
+            let n_method_typ_params = trait_function.x.typ_params.len() - typ_params.len();
+            let trait_method_typ_params = trait_function.x.typ_params.iter().skip(typ_params.len());
+            let impl_method_typ_params = function
+                .x
+                .typ_params
+                .iter()
+                .skip(function.x.typ_params.len() - n_method_typ_params);
+            for (x, y) in trait_method_typ_params.zip(impl_method_typ_params) {
+                trait_typ_substs.insert(x.clone(), Arc::new(TypX::TypParam(y.clone())));
+            }
+
             let mut param_renames: HashMap<_, _> = trait_function
                 .x
                 .params
