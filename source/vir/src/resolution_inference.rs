@@ -127,6 +127,38 @@ of these fields are considered "conditionally initialized"
 Thus, we can compute the "conditionally initialized" places with a straightforward
 analysis that treats enums like normal structs.
 
+### Working with arrays
+
+For an array of some known (i.e., non-generic) size `k`, we can treat it as a struct
+with `k` fields for the purposes of this analysis.
+
+There is a big difference between fields and indices:
+you can move out of a field by with a field expression `a.f`,
+but you can't move out of an array with an index expression `a[0]`.
+The only situation where Rust allows a "partial move" from an array
+is via an array pattern:
+
+```rust
+let [x, _] = a; // moves from a[0] but not from a[1]
+```
+
+And again, this requires a known, non-generic array size. Therefore:
+
+ * When processing an index expressions `a[e]`, we don't need to construct a place
+   more granular than `a`.
+ * When processing an array pattern, we need to split the place `a` into its subplaces
+   and analyze each individually, like for structs.
+
+One snag here is that, while structs are generally limited to a reasonable size,
+an array could be arbitrarily large, which could cause the analysis to hang.
+Fortunately, this issue is ameliorated by the fact that we only split the array
+when an array pattern appears, and the array pattern length is limited by the length
+of the source code.
+
+However, when we support `..` in array patterns, we will need to revisit this
+and optimize the analysis.
+
+
 ### Notes about scopes
 
 For the most part, we ignore the concept of a scope entirely in our CFG, so we don't
