@@ -44,7 +44,7 @@ verus! {
 // https://github.com/minirust/minirust/blob/master/spec/lang/representation.md
 broadcast use {group_layout_axioms, group_vstd_default};
 
-/// Memory is represented as a sequence of abstract bytes. Each byte is uninitialized or initialized.
+/// The Rust memory model treats memory as a sequence of abstract bytes. Each byte is uninitialized or initialized.
 /// An initialized byte may optionally have a provenance.
 pub enum AbstractByte {
     Uninit,
@@ -83,6 +83,7 @@ impl AbstractByte {
         }
     }
 
+    /// The byte value associated with this `AbstractByte`.
     pub open spec fn byte(self) -> u8
         recommends
             self is Init,
@@ -90,6 +91,7 @@ impl AbstractByte {
         self->0
     }
 
+    /// The optional `Provenance` associated with this `AbstractByte`.
     pub open spec fn provenance(self) -> Option<Provenance> {
         match self {
             AbstractByte::Init(_, p) => p,
@@ -97,6 +99,7 @@ impl AbstractByte {
         }
     }
 
+    /// The `Provenance` associated with this `AbstractByte`, if there is one, otherwise `Provenance::None`.
     pub open spec fn provenance_or_null(self) -> Provenance {
         match self.provenance() {
             Some(p) => p,
@@ -105,21 +108,31 @@ impl AbstractByte {
     }
 }
 
-/// This trait defines the concrete specification for the given type's `AbstractByte` encoding.
+/// This trait is used to specify how values of a given type are encoded and decoded into a sequence of `AbstractByte`s.
+/// The operations `encode` and `decode` are specified as relations because values may be associated with 
+/// ghost members that are not represented in the abstract byte encoding.
+///
+/// Implementors of this trait must ensure that the specifications satisfy several properties by proving the lemmas on this trait.
+/// While the specifications defined by implementations of this trait are trusted, these lemmas help check for unsound or vacuous specifications.
+/// The required properties are:
+/// (1) Any abstract byte sequence satisfying `encode` or `decode` is the correct size for the type, as specified by `size_of::<T>()`.
+/// (2) Any `tracked` value of the type has at least one abstract byte sequence satisfying `encode`. 
+/// This requirement is on `tracked` values only because this restricts lemma to values satisfying the type invariant.
+/// (3) Any abstract byte sequence that encodes a value of the type must decode into the same value.
 pub trait TypeRepresentation where Self: Sized {
     /// Is encoding allowed for this type?
     /// Because `can_be_encoded` is a precondition for `abs_encode_impl` and `abs_can_be_encoded_impl`,
     /// this definition allows the encoding to be conditionally implement `abs_encode`, `abs_decode`, and `abs_can_be_encoded_impl`.
     spec fn can_be_encoded() -> bool;
 
-    /// Can 'value' be encoded to the given bytes?
+    /// Can 'value' and associated `shadow_data` be encoded to the given bytes?
     spec fn encode(value: Self, shadow_data: ShadowData<Self>, bytes: Seq<AbstractByte>) -> bool;
 
-    /// Can the bytes be decoded to the given value?
+    /// Can the bytes be decoded to `value` and associated `shadow_data`?
     spec fn decode(bytes: Seq<AbstractByte>, value: Self, shadow_data: ShadowData<Self>) -> bool;
 
     // Required properties for a valid encoding.
-    /// Any encoding should match the size of this type.
+    /// Any abstract byte encoding should be the correct length, determined by the size of this type.
     proof fn encoding_size(v: Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>)
         requires
             Self::can_be_encoded(),
@@ -232,7 +245,7 @@ impl TypeRepresentation for bool {
 }
 
 // We utilize the EndianNat type to transform an unsigned int to its byte representation.
-/// Convert the given `EndianNat`` representation to `AbtractByte`s with the given provenance.
+/// Convert the given `EndianNat` representation to `AbtractByte`s with the given provenance.
 pub open spec fn endian_to_bytes(endian: EndianNat<u8>, prov: Option<Provenance>) -> Seq<
     AbstractByte,
 >
@@ -311,7 +324,7 @@ macro_rules! unsigned_int_encoding {
         ($int:ty, $lemma_name:ident);
     )+) => {$(
         verus! {
-            /// The abstract encoding for `$int` encodes the value as a sequence of bytes of length `size_of::<$int>()`,
+            /// The type representation for `$int` encodes the value as a sequence of bytes of length `size_of::<$int>()`,
             /// with endianness matching the axiomatized `endianness()` for this platform, and without provenance.
             /// On decoding, provenance is ignored.
             impl TypeRepresentation for $int {
@@ -405,7 +418,7 @@ macro_rules! signed_int_encoding {
         ($int:ty, $lemma_name:ident, $signed_to_unsigned_lemma_name:ident);
     )+) => {$(
         verus! {
-            /// The abstract encoding for `$int` encodes the value as a sequence of bytes of length `size_of::<$int>()`,
+            /// The type representation for `$int` encodes the value as a sequence of bytes of length `size_of::<$int>()`,
             /// with endianness matching the axiomatized `endianness()` for this platform, and without provenance.
             /// Negative numbers are first converted to their unsigned bitwise equivalent and then encoded into bytes.
             /// On decoding, provenance is ignored.
@@ -487,149 +500,10 @@ signed_int_encoding! {
     (isize, isize_encode, isize_signed_to_unsigned_invertible);
 }
 
-/// This trait is implemented on types which are zero-sized and therefore have a trivial `AbstractByte` encoding (i.e., the empty sequence).
-/// It is used to define a corresponding `AbstractByteEncodingFor` for `Self` which is implemented on `ZeroSizedRepresentationEncoding<Self>`.
-/// `ZeroSizedRepresentationEncoding<Self>` can then be used to implement `TypeRepresentation` on `Self`.
-pub trait ZeroSizedTypeRepresentation where Self: Sized {
-    proof fn layout_of_zero_sized_repr()
-        ensures
-            crate::vstd::layout::size_of::<Self>() == 0,
-    ;
-}
-
-macro_rules! impl_type_representation_for_zero_sized_type {
-    ($(
-        ($name:ty, $spec_mod:tt);
-    )+) => {$(
-        verus! {
-            /// TODO
-            impl TypeRepresentation for $name {
-                open spec fn can_be_encoded() -> bool {
-                    true
-                }
-
-                $spec_mod spec fn encode(value: Self, shadow_data: ShadowData<Self>, bytes: Seq<AbstractByte>) -> bool {
-                    bytes == Seq::<AbstractByte>::empty()
-                }
-
-                $spec_mod spec fn decode(bytes: Seq<AbstractByte>, value: Self, shadow_data: ShadowData<Self>) -> bool {
-                    bytes == Seq::<AbstractByte>::empty()
-                }
-
-                proof fn encoding_size(v: Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
-                    <Self as ZeroSizedTypeRepresentation>::layout_of_zero_sized_repr()
-                }
-
-                proof fn encoding_exists(tracked v: Self, shadow_data: ShadowData<Self>) -> (b: Seq<AbstractByte>) {
-                    Seq::<AbstractByte>::empty()
-                }
-
-                proof fn encoding_invertible(v: Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
-                }
-            }
-        }
-    )+};
-}
-
-pub(crate) use impl_type_representation_for_zero_sized_type;
-
-// TODO
-// () is a ZST and therefore can share the trivial encoding.
-impl ZeroSizedTypeRepresentation for () {
-    proof fn layout_of_zero_sized_repr() {
-        broadcast use group_layout_axioms;
-
-    }
-}
-
-impl_type_representation_for_zero_sized_type! {
-    ((), open);
-}
-
 /// Is there an `AbstractByte` encoding for this value?
 pub open spec fn encoding_exists<T: TypeRepresentation>(value: T, shadow_data: ShadowData<T>) -> bool {
     exists|bytes| #[trigger] T::encode(value, shadow_data, bytes)
 }
-
-/// Has a suitable encoding been implemented for the pointer metadata type `<T as core::ptr::Pointee>::Metadata`?
-pub open spec fn ptr_metadata_encoding_well_defined<T: PointeeSized>() -> bool 
-    where <T as core::ptr::Pointee>::Metadata: TypeRepresentation
-{
-    // TODO - is this actually needed?
-    // the size of the metadata should correspond to the amount of bytes that it must occupy in the pointer's encoding
-    // (the first usize bytes in the pointer's encoding are the address)
-    &&& size_of::<<T as core::ptr::Pointee>::Metadata>() + size_of::<usize>() == size_of::<
-        *mut T,
-    >()
-    // the metadata's own encoding must be enabled, so that its `TypeRepresentation` proof fns
-    // (`encoding_size`, `encoding_invertible`) can be invoked when reasoning about the pointer's encoding
-    &&& <<T as core::ptr::Pointee>::Metadata as TypeRepresentation>::can_be_encoded()
-    &&& (forall |metadata, shadow_data| #[trigger] encoding_exists::<<T as core::ptr::Pointee>::Metadata>(metadata, shadow_data))
-    //&&& false
-    // TODO
-    // any encoding of the metadata will take up the expected amount of bytes
-    /*&&& (forall|value, bytes| #[trigger]
-        abs_encode::<<T as core::ptr::Pointee>::Metadata>(&value, bytes) ==> size_of::<
-            <T as core::ptr::Pointee>::Metadata,
-        >() == bytes.len())
-    &&& (forall|value, bytes| #[trigger]
-        abs_decode::<<T as core::ptr::Pointee>::Metadata>(bytes, &value) ==> size_of::<
-            <T as core::ptr::Pointee>::Metadata,
-        >() == bytes.len())
-    // the encoding is "invertible"
-    &&& (forall|value, bytes| #[trigger]
-        abs_encode::<<T as core::ptr::Pointee>::Metadata>(&value, bytes) ==> abs_decode::<
-            <T as core::ptr::Pointee>::Metadata,
-        >(bytes, &value))
-    // an encoding exists for all metadata values
-    &&& (forall|value| #[trigger] encoding_exists::<<T as core::ptr::Pointee>::Metadata>(value))*/
-}
-
-/*
-/// For `T: Sized`, the pointer metadata type for `*mut T` and `*const T` has a suitable encoding.
-pub broadcast proof fn ptr_metadata_encoding_well_defined_sized_types<T: Sized>()
-    ensures
-        #[trigger] ptr_metadata_encoding_well_defined::<T>(),
-{
-    assert forall|value| #[trigger]
-        encoding_exists::<<T as core::ptr::Pointee>::Metadata>(value) by {
-        let bytes = Seq::<AbstractByte>::empty();
-        <<T as core::ptr::Pointee>::Metadata as TypeRepresentation>::abs_encode_impl(
-            value,
-            bytes,
-        );
-    }
-}
-
-/// For `T: Sized`, the pointer metadata type for `[T]` has a suitable encoding.
-pub broadcast proof fn ptr_metadata_encoding_well_defined_slices<T: Sized>()
-    ensures
-        #[trigger] ptr_metadata_encoding_well_defined::<[T]>(),
-{
-    assert forall|value| #[trigger]
-        encoding_exists::<<[T] as core::ptr::Pointee>::Metadata>(value) by {
-        broadcast use usize_encode;
-
-        let bytes = endian_to_bytes(
-            EndianNat::<u8>::from_nat(value as nat, size_of::<usize>()),
-            None,
-        );
-        <<[T] as core::ptr::Pointee>::Metadata as TypeRepresentation>::abs_encode_impl(
-            value,
-            bytes,
-        );
-    }
-}
-
-/// The pointer metadata type for `str` has a suitable encoding.
-pub broadcast proof fn ptr_metadata_encoding_well_defined_str()
-    ensures
-        #[trigger] ptr_metadata_encoding_well_defined::<str>(),
-{
-    broadcast use ptr_metadata_encoding_well_defined_slices;
-
-    assert(ptr_metadata_encoding_well_defined::<[u8]>());
-}*/
 
 /// Implements `AbstractByteEncodingFor` for raw pointers.
 ///
@@ -654,14 +528,14 @@ pub broadcast proof fn ptr_metadata_encoding_well_defined_str()
 ///   then this `AbstractByteEncodingFor` will not provide an implementation for the encodings of `*mut T` or `*const T`.
 macro_rules! raw_ptr_encoding_from_type_representation {
     ($(
-        ($mutability:tt, $sized_lemma_name:ident, $unsized_lemma_name:ident);
+        ($mutability:tt, $lemma_name:ident);
     )+) => {$(
         verus! {
             /// TODO
-            /// TODO - impl for str and slices
             impl<T: ?Sized> TypeRepresentation for *$mutability T where <T as core::ptr::Pointee>::Metadata: TypeRepresentation {
                 open spec fn can_be_encoded() -> bool {
-                    ptr_metadata_encoding_well_defined::<T>()
+                    &&& <<T as core::ptr::Pointee>::Metadata as TypeRepresentation>::can_be_encoded()
+                    &&& (forall |metadata, shadow_data| #[trigger] encoding_exists::<<T as core::ptr::Pointee>::Metadata>(metadata, shadow_data))
                 }
 
                 open spec fn encode(value: Self, shadow_data: ShadowData<Self>, bytes: Seq<AbstractByte>) -> bool {
@@ -737,38 +611,12 @@ macro_rules! raw_ptr_encoding_from_type_representation {
                 }
             }
 
-            /// Useful properties for `<*$mutability T as TypeRepresentation>::encode(v, bytes)` for `T: Sized`.
-            pub broadcast proof fn $sized_lemma_name<T: Sized>(v: *$mutability T, shadow_data: ShadowData<*$mutability T>, bytes: Seq<AbstractByte>)
+            /// Useful properties for `<*$mutability T as TypeRepresentation>::encode(v, bytes)`.
+            pub broadcast proof fn $lemma_name<T: ?Sized>(v: *$mutability T, shadow_data: ShadowData<*$mutability T>, bytes: Seq<AbstractByte>) where
+                <T as core::ptr::Pointee>::Metadata: TypeRepresentation,
                 requires
                     #[trigger] <*$mutability T as TypeRepresentation>::encode(v, shadow_data, bytes),
-                ensures
-                    ({
-                        let prefix = bytes.subrange(0, size_of::<usize>() as int);
-                        let suffix = bytes.subrange(size_of::<usize>() as int, size_of::<*$mutability T>() as int);
-                        &&& bytes.len() == size_of::<*$mutability T>()
-                        &&& AbstractByte::all_init(prefix)
-                        &&& AbstractByte::shared_provenance(prefix) == v@.provenance
-                        &&& bytes_to_endian(prefix).to_nat() as usize == v@.addr
-                        &&& bytes_to_endian(prefix).wf()
-                        &&& ptr_metadata_encoding_well_defined::<T>()
-                        &&& <<T as core::ptr::Pointee>::Metadata as TypeRepresentation>::encode(v@.metadata, arbitrary(), suffix)
-                        &&& <<T as core::ptr::Pointee>::Metadata as TypeRepresentation>::decode(suffix, v@.metadata, arbitrary())
-                    }),
-            {
-                broadcast use
-                    EndianNat::from_nat_to_nat,
-                    endian_to_bytes_to_endian,
-                    endian_to_bytes_shared_provenance,
-                ;
-
-                unsigned_int_max_values();
-            }
-
-            /// Useful properties for `<*$mutability T as TypeRepresentation>::encode(v, bytes)` for `T: ?Sized`.
-            pub broadcast proof fn $unsized_lemma_name<T: std::ptr::Pointee<Metadata = usize> + ?Sized>(v: *$mutability T, shadow_data: ShadowData<*$mutability T>, bytes: Seq<AbstractByte>)
-                requires
-                    #[trigger] <*$mutability T as TypeRepresentation>::encode(v, shadow_data, bytes),
-                    ptr_metadata_encoding_well_defined::<T>()
+                    <*$mutability T as TypeRepresentation>::can_be_encoded()
                 ensures
                     ({
                         let prefix = bytes.subrange(0, size_of::<usize>() as int);
@@ -789,10 +637,12 @@ macro_rules! raw_ptr_encoding_from_type_representation {
                 ;
 
                 unsigned_int_max_values();
+
+                let suffix = bytes.subrange(size_of::<usize>() as int, size_of::<*mut T>() as int);
                 <<T as core::ptr::Pointee>::Metadata as TypeRepresentation>::encoding_invertible(
                     v@.metadata,
                     arbitrary(),
-                    bytes.subrange(size_of::<usize>() as int, size_of::<*mut T>() as int),
+                    suffix,
                 );
             }
         }
@@ -800,8 +650,65 @@ macro_rules! raw_ptr_encoding_from_type_representation {
 }
 
 raw_ptr_encoding_from_type_representation! {
-    (mut, mut_ptr_sized_encode, mut_ptr_unsized_encode);
-    (const, const_ptr_sized_encode, const_ptr_unsized_encode);
+    (mut, mut_ptr_encode);
+    (const, const_ptr_encode);
+}
+
+/// TODO
+/// For `T: Sized`, the pointer metadata type for `*mut T` and `*const T` has a suitable encoding.
+pub broadcast proof fn sized_ptr_can_be_encoded<T: Sized>()
+    ensures
+        #![trigger <*mut T as TypeRepresentation>::can_be_encoded()] 
+        #![trigger <*const T as TypeRepresentation>::can_be_encoded()] 
+        <*mut T as TypeRepresentation>::can_be_encoded(),
+        <*const T as TypeRepresentation>::can_be_encoded()
+{
+    assert forall|value, shadow_data| #[trigger]
+        encoding_exists::<<T as core::ptr::Pointee>::Metadata>(value, shadow_data) by {
+        assert(<<T as core::ptr::Pointee>::Metadata as TypeRepresentation>::encode(
+            value,
+            shadow_data,
+            Seq::<AbstractByte>::empty(),
+        ));
+    }
+}
+
+/// TODO
+pub broadcast proof fn slice_ptr_can_be_encoded<T>()
+    ensures
+        #![trigger <*mut [T] as TypeRepresentation>::can_be_encoded()] 
+        #![trigger <*const [T] as TypeRepresentation>::can_be_encoded()] 
+        <*mut [T] as TypeRepresentation>::can_be_encoded(),
+        <*const [T] as TypeRepresentation>::can_be_encoded()
+{
+    assert forall|value, shadow_data| #[trigger]
+        encoding_exists::<usize>(value, shadow_data) by {
+        broadcast use usize_encode;
+
+        let bytes = endian_to_bytes(
+            EndianNat::<u8>::from_nat(value as nat, size_of::<usize>()),
+            None,
+        );
+        assert(<usize as TypeRepresentation>::encode(
+            value,
+            shadow_data,
+            bytes,
+        ));
+    }
+}
+
+/// TODO
+/// The pointer metadata type for `str` has a suitable encoding.
+pub broadcast proof fn str_ptr_can_be_encoded()
+    ensures
+        #![trigger <*mut str as TypeRepresentation>::can_be_encoded()] 
+        #![trigger <*const str as TypeRepresentation>::can_be_encoded()] 
+        <*mut str as TypeRepresentation>::can_be_encoded(),
+        <*const str as TypeRepresentation>::can_be_encoded()
+{
+    broadcast use slice_ptr_can_be_encoded;
+
+    assert(<*mut [u8] as TypeRepresentation>::can_be_encoded());
 }
 
 // TODO - comment
@@ -854,6 +761,62 @@ impl<T: ?Sized> TypeRepresentation for &T
     proof fn encoding_invertible(v: Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
         <*const T as TypeRepresentation>::encoding_invertible(shared_ref_ptr(shadow_data), arbitrary(), b);
     }
+}
+
+/// This trait can be implemented on types which are zero-sized and therefore have a trivial `AbstractByte` encoding (i.e., the empty sequence).
+/// Intended to be used in conjunction with the `impl_type_representation_for_zero_sized_type` macro.
+pub trait ZeroSizedTypeRepresentation where Self: Sized {
+    proof fn layout_of_zero_sized_repr()
+        ensures
+            crate::vstd::layout::size_of::<Self>() == 0,
+    ;
+}
+
+macro_rules! impl_type_representation_for_zero_sized_type {
+    ($(
+        ($name:ty, $spec_mod:tt);
+    )+) => {$(
+        verus! {
+            /// The type representation for `$name` encodes the value as an empty sequence of bytes, as `$name` is a zero-sized type.
+            impl TypeRepresentation for $name {
+                open spec fn can_be_encoded() -> bool {
+                    true
+                }
+
+                $spec_mod spec fn encode(value: Self, shadow_data: ShadowData<Self>, bytes: Seq<AbstractByte>) -> bool {
+                    bytes == Seq::<AbstractByte>::empty()
+                }
+
+                $spec_mod spec fn decode(bytes: Seq<AbstractByte>, value: Self, shadow_data: ShadowData<Self>) -> bool {
+                    bytes == Seq::<AbstractByte>::empty()
+                }
+
+                proof fn encoding_size(v: Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
+                    <Self as ZeroSizedTypeRepresentation>::layout_of_zero_sized_repr()
+                }
+
+                proof fn encoding_exists(tracked v: Self, shadow_data: ShadowData<Self>) -> (b: Seq<AbstractByte>) {
+                    Seq::<AbstractByte>::empty()
+                }
+
+                proof fn encoding_invertible(v: Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
+                }
+            }
+        }
+    )+};
+}
+
+pub(crate) use impl_type_representation_for_zero_sized_type;
+
+impl ZeroSizedTypeRepresentation for () {
+    proof fn layout_of_zero_sized_repr() {
+        broadcast use group_layout_axioms;
+
+    }
+}
+
+impl_type_representation_for_zero_sized_type! {
+    ((), open);
 }
 
 /// This trait is implemented on fieldness enums with a primitive type representation, defined with the `#[repr(<primitive>)]` attribute.
@@ -1100,15 +1063,11 @@ pub broadcast group group_type_representation_axioms {
     i64_signed_to_unsigned_invertible,
     i128_signed_to_unsigned_invertible,
     isize_signed_to_unsigned_invertible,
-    // mut_ptr_sized_encode,
-    //mut_ptr_unsized_encode, TODO
-    // const_ptr_sized_encode,
-    //const_ptr_unsized_encode,
-    // TODO
-    // ptr_metadata_encoding_well_defined_sized_types,
-    // ptr_metadata_encoding_well_defined_slices,
-    // ptr_metadata_encoding_well_defined_str,
-    // shared_ref_cannot_be_encoded,
+    mut_ptr_encode,
+    const_ptr_encode,
+    sized_ptr_can_be_encoded,
+    slice_ptr_can_be_encoded,
+    str_ptr_can_be_encoded,
 }
 
 } // verus!
