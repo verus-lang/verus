@@ -318,3 +318,17 @@ you to follow these best practices.
 If you modify the syntax parsing inside of the `dependencies/syn/src` directory,
 be sure to regenerate the auto-generated files in the `dependencies/syn/src/gen` directory.
 See `dependencies/syn/README.md` for details.
+
+### Cheat Sheet: Vargo to Cargo
+
+For brevity, this section assumes installing `cargo-verus` via `cargo install --path cargo-verus`. Without that, replace `cargo verus $ARGS` with `cargo run -p cargo-verus -- $ARGS` instead.
+
+| Vargo                        | Cargo                                                                |
+| ---------------------------- | -------------------------------------------------------------------- |
+| `source ../tools/activate`   | `cargo install --path cargo-verus`                                   |
+| `vargo build --exclude vstd` | `cargo build`                                                        |
+| `vargo build`                | `cargo build && cargo verus build --manifest-path vstd/Cargo.toml`   |
+| `vargo build -p vstd`        | `cargo verus build --manifest-path vstd/Cargo.toml`                  |
+| `vargo fmt --exclude vstd`   | `cargo verus fmt`                                                    |
+| `vargo fmt`                  | `cargo verus fmt && cargo verus fmt --manifest-path vstd/Cargo.toml` |
+| `vargo fmt -p vstd`          | `cargo verus fmt --manifest-path vstd/Cargo.toml`                    |
