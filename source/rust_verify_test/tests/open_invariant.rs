@@ -157,6 +157,27 @@ test_both! {
     } => Err(err) => assert_one_fails(err)
 }
 
+test_verify_one_file! {
+    #[test] proof_closure_open verus_code! {
+        use vstd::invariant::*;
+
+        pub proof fn test<A, B: InvariantPredicate<A, u8>>(
+            tracked i: &AtomicInvariant<A, u8, B>,
+            tracked credit: OpenInvariantCredit,
+        )
+            opens_invariants any
+        {
+            let tracked f = proof_fn|tracked credit: OpenInvariantCredit| {
+                open_atomic_invariant_in_proof!(credit => i => inner => {}); // FAILS
+            };
+            f(credit);
+        }
+    } => Err(err) => {
+        assert_vir_error_msg(err.clone(), "cannot show invariant namespace is in the mask given by the scope");
+        assert_one_fails(err);
+    }
+}
+
 // mode stuff
 
 test_both! {
