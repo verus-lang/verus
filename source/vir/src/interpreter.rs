@@ -1218,10 +1218,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
         NullaryOpr(op) => match op {
             crate::ast::NullaryOpr::ConstGeneric(typ) => match &**typ {
                 TypX::ConstInt(i) => {
-                    // Concrete signed const arguments currently contain rustc's unsigned
-                    // bit representation (e.g., -1i8 becomes 255). Do not introduce a
-                    // constant outside its expression type's range. Sign-extending here
-                    // would disagree with the SMT encoding of ConstInt.
+                    // Recursive definitions require const arguments to fit their declared type.
                     match crate::ast_util::int_range_from_type(&exp.typ) {
                         Some(IntRange::Int) => int_new(i.clone()),
                         Some(range) => {

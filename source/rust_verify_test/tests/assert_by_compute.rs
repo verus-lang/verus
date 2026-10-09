@@ -1189,20 +1189,42 @@ test_verify_one_file! {
             assert(h::<{-1}>() == 255int) by (compute_only);
             assert(false);
         }
-    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
+    } => Err(err) => assert_vir_error_msg(err, "which evaluates to false")
 }
 
 test_verify_one_file! {
     #[test] const_generic_signed_boundaries verus_code! {
         spec fn h<const N: i8>() -> i8 { N }
         spec fn wide<const N: i128>() -> i128 { N }
+        spec fn pointer_sized<const N: isize>() -> isize { N }
 
         proof fn test() {
+            assert(h::<{-1}>() == -1) by (compute_only);
+            assert(h::<{i8::MIN}>() == -128) by (compute_only);
             assert(h::<0>() == 0) by (compute_only);
             assert(h::<127>() == 127) by (compute_only);
+            assert(wide::<{i128::MIN}>() == i128::MIN) by (compute_only);
             assert(wide::<{i128::MAX}>() == i128::MAX) by (compute_only);
+            assert(pointer_sized::<{-1}>() == -1) by (compute_only);
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[cfg(target_pointer_width = "64")] #[test] const_generic_recursive_arch_range verus_code! {
+        spec fn h<const N: isize>(n: nat) -> isize
+            decreases n,
+        {
+            if n == 0 { N } else { h::<N>((n - 1) as nat) }
+        }
+
+        proof fn test() requires arch_word_bits() == 32 ensures false {
+            let x = h::<{ isize::MIN }>(0);
+            assert(x >= -2147483648);
+            assert(h::<{ isize::MIN }>(0) == -9223372036854775808int) by (compute_only);
+            assert(false);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
 }
 
 test_verify_one_file! {
