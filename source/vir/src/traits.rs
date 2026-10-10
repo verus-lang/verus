@@ -720,6 +720,7 @@ pub fn inherit_default_bodies(
                     item_kind: default_function.x.item_kind,
                     attrs: Arc::new(crate::ast::FunctionAttrsX::default()),
                     body: None,
+                    return_opaque_type_eqs: Arc::new(vec![]),
                     extra_dependencies: vec![],
                     hidden: Arc::new(vec![]),
                 };
@@ -1709,6 +1710,7 @@ fn check_dyn_spec(f: &Function) -> Result<(), ()> {
         item_kind: _,
         attrs: _,
         body: _,
+        return_opaque_type_eqs: _,
         extra_dependencies: _,
         hidden: _,
     } = &f.x;
