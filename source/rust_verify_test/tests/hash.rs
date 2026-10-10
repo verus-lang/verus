@@ -131,6 +131,53 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_hash_set_with_hasher verus_code! {
+        use std::collections::HashSet;
+        use std::collections::hash_map::RandomState;
+        use vstd::prelude::*;
+
+        fn test(hasher: RandomState) {
+            let m: HashSet<u32> = HashSet::with_hasher(hasher);
+            assert(m@ == Set::<u32>::empty());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_hash_set_custom_hasher verus_code! {
+        use std::collections::HashSet;
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::BuildHasher;
+        use vstd::prelude::*;
+        use vstd::std_specs::hash::builds_valid_hashers;
+
+        struct MyBuilder;
+
+        #[verifier::external]
+        impl BuildHasher for MyBuilder {
+            type Hasher = DefaultHasher;
+            fn build_hasher(&self) -> DefaultHasher {
+                DefaultHasher::new()
+            }
+        }
+
+        fn test()
+            requires
+                builds_valid_hashers::<MyBuilder>(),
+        {
+            broadcast use vstd::std_specs::hash::group_hash_axioms;
+            let mut s: HashSet<u32, MyBuilder> = HashSet::with_hasher(MyBuilder);
+            assert(s@ == Set::<u32>::empty());
+            s.insert(3);
+            assert(s@.contains(3));
+
+            let t: HashSet<u32, MyBuilder> = HashSet::with_capacity_and_hasher(10, MyBuilder);
+            assert(t@ == Set::<u32>::empty());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_hash_map_box verus_code! {
         use std::collections::HashMap;
         use vstd::prelude::*;

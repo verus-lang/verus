@@ -550,6 +550,9 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                         BinaryOp::Arith(crate::ast::ArithOp::TruncatingMod(..)) => {
                             reach_function(ctxt, state, &fn_truncating_mod());
                         }
+                        BinaryOp::UninterpretedFloat(op) => {
+                            reach_function(ctxt, state, &crate::def::fn_fp_postcondition_name(*op));
+                        }
                         BinaryOp::IeeeFloat(_) => {
                             state.uses_ieee_float = true;
                         }
@@ -603,19 +606,6 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                 state.reached_types.iter().chain([ReachedType::None].iter()).map(|t| (t, &f)),
             );
             reach_methods(ctxt, state, methods);
-            if function.x.attrs.is_async {
-                reach_typ(
-                    ctxt,
-                    state,
-                    &function
-                        .x
-                        .async_ret
-                        .as_ref()
-                        .expect("Async function has no return type")
-                        .x
-                        .typ,
-                );
-            }
             continue;
         }
         if let Some(f) = state.worklist_reveal_groups.pop() {
