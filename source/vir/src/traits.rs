@@ -1688,7 +1688,8 @@ fn check_dyn_spec(f: &Function) -> Result<(), ()> {
         typ_params: _,
         typ_bounds: _,
         params,
-        ret: _,
+        inner_ret: _,
+        outer_ret: _,
         ens_has_return: _,
         require,
         ensure: (ensure0, ensure1),
@@ -1704,7 +1705,6 @@ fn check_dyn_spec(f: &Function) -> Result<(), ()> {
         attrs: _,
         body: _,
         extra_dependencies: _,
-        async_ret: _,
         hidden: _,
     } = &f.x;
     let receiver = params.first().filter(|p| p.x.name.0.as_str() == "self");
