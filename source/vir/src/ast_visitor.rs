@@ -1182,6 +1182,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             item_kind,
             attrs,
             body,
+            return_opaque_type_eqs,
             extra_dependencies,
             hidden,
         } = &function.x;
@@ -1218,6 +1219,12 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
         let atomic_update = R::map_opt(atomic_update, &mut |exp| self.visit_expr(exp))?;
         let unwind_spec = R::map_opt(unwind_spec, &mut |us| self.visit_unwind_spec(us))?;
         let body = self.visit_opt_expr(body)?;
+        let return_opaque_type_eqs =
+            R::map_vec(return_opaque_type_eqs, &mut |(opaque, hidden)| {
+                let opaque = self.visit_typ(opaque)?;
+                let hidden = self.visit_typ(hidden)?;
+                R::ret(|| (R::get(opaque), R::get(hidden)))
+            })?;
         self.pop_scope();
 
         let fndef_axioms = self.visit_opt_exprs(fndef_axioms)?;
@@ -1250,6 +1257,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 item_kind: item_kind.clone(),
                 attrs: attrs.clone(),
                 body: R::get_opt(body),
+                return_opaque_type_eqs: R::get_vec_a(return_opaque_type_eqs),
                 extra_dependencies: extra_dependencies.clone(),
                 hidden: hidden.clone(),
             })

@@ -10,6 +10,16 @@ pub fn double(x: u16) -> (z: u32)
     x as u32 + x as u32
 }
 
+pub trait OpaqueTrait { }
+
+struct OpaqueHidden;
+
+impl OpaqueTrait for OpaqueHidden { }
+
+pub fn opaque_hidden() -> impl OpaqueTrait {
+    OpaqueHidden
+}
+
 // Some corner cases that have been problematic for cargo-verus in the past
 
 trait Trait: View {}

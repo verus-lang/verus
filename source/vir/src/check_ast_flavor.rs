@@ -47,6 +47,7 @@ pub fn check_krate_simplified(krate: &Krate) {
             ensure: (ensure0, ensure1),
             decrease,
             body,
+            return_opaque_type_eqs,
             typ_bounds,
             params,
             outer_ret,
@@ -115,6 +116,12 @@ pub fn check_krate_simplified(krate: &Krate) {
                 check_typ_simplified(t, &function.x.typ_params)
             })
             .expect("function param typ uses node that should have been simplified");
+        }
+        for (opaque, hidden) in return_opaque_type_eqs.iter() {
+            for typ in [opaque, hidden] {
+                typ_visitor_check(typ, &mut |t| check_typ_simplified(t, &function.x.typ_params))
+                    .expect("opaque type equality uses node that should have been simplified");
+            }
         }
     }
 
