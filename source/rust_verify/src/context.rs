@@ -30,6 +30,10 @@ pub struct ErasureInfo {
     /// mode-checking.
     pub(crate) extra_erase_ast_ids: Vec<vir::messages::Span>,
     pub(crate) local_invariant_bodies: Vec<rustc_mir_build_verus::verus::LocalInvariantBody>,
+    /// For -V check-erasure: HIR expression -> VIR node (expression or place) built from it
+    pub(crate) check_erasure_hir_vir: Vec<(HirId, AstId)>,
+    /// For -V check-erasure: body owners with their mode and whether the body is verified
+    pub(crate) check_erasure_bodies: Vec<(LocalDefId, Mode, bool)>,
 }
 
 type ErasureInfoRef = std::rc::Rc<std::cell::RefCell<ErasureInfo>>;
@@ -153,6 +157,18 @@ impl<'tcx> ContextX<'tcx> {
     pub(crate) fn push_body_erasure(&self, local_def_id: LocalDefId, c: BodyErasure) {
         let mut r = self.erasure_info.borrow_mut();
         r.bodies.push((local_def_id, c));
+    }
+
+    pub(crate) fn push_check_erasure_body(
+        &self,
+        local_def_id: LocalDefId,
+        mode: Mode,
+        has_body: bool,
+    ) {
+        if self.cmd_line_args.check_erasure {
+            let mut r = self.erasure_info.borrow_mut();
+            r.check_erasure_bodies.push((local_def_id, mode, has_body));
+        }
     }
 
     pub(crate) fn path_def_id_ref(
