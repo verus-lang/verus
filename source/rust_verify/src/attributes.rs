@@ -288,6 +288,9 @@ pub(crate) enum Attr {
     AllTriggers,
     // exclude a particular function from being chosen in a trigger by triggers_auto
     NoAutoTrigger,
+    // automatically expose literals selected by the nearest enclosing attribute
+    AutoRevealStrlit(bool),
+    AutoRevealByteslit(bool),
     // when used in a ghost context, redirect to a specified spec method
     Autospec(String),
     // when used in a ghost context, redirect to the 'returns' clause
@@ -567,6 +570,32 @@ pub(crate) fn parse_attrs(
                 }
                 AttrTree::Fun(_, arg, None) if arg == "no_auto_trigger" => {
                     v.push(Attr::NoAutoTrigger)
+                }
+                AttrTree::Fun(_, arg, None) if arg == "auto_reveal_strlit" => {
+                    v.push(Attr::AutoRevealStrlit(true))
+                }
+                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, r, None)]))
+                    if arg == "auto_reveal_strlit" && r == "true" =>
+                {
+                    v.push(Attr::AutoRevealStrlit(true))
+                }
+                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, r, None)]))
+                    if arg == "auto_reveal_strlit" && r == "false" =>
+                {
+                    v.push(Attr::AutoRevealStrlit(false))
+                }
+                AttrTree::Fun(_, arg, None) if arg == "auto_reveal_byteslit" => {
+                    v.push(Attr::AutoRevealByteslit(true))
+                }
+                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, r, None)]))
+                    if arg == "auto_reveal_byteslit" && r == "true" =>
+                {
+                    v.push(Attr::AutoRevealByteslit(true))
+                }
+                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, r, None)]))
+                    if arg == "auto_reveal_byteslit" && r == "false" =>
+                {
+                    v.push(Attr::AutoRevealByteslit(false))
                 }
                 AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, ident, None)]))
                     if arg == "when_used_as_spec" =>
@@ -1039,6 +1068,26 @@ pub(crate) fn get_loop_isolation_walk_parents<'tcx>(
         }
     }
     None
+}
+
+/// Walk the HIR tree upwards to locate for the nearest relevant attribute
+pub(crate) fn get_auto_reveal_literal_walk_parents<'tcx>(
+    tcx: rustc_middle::ty::TyCtxt<'tcx>,
+    hir_id: rustc_hir::HirId,
+    kind: &rustc_ast::LitKind,
+) -> Result<bool, VirErr> {
+    for id in std::iter::once(hir_id).chain(tcx.hir_parent_iter(hir_id).map(|(id, _)| id)) {
+        for attr in parse_attrs(tcx.hir_attrs(id), None)? {
+            match (kind, attr) {
+                (rustc_ast::LitKind::Str(..), Attr::AutoRevealStrlit(flag)) => return Ok(flag),
+                (rustc_ast::LitKind::ByteStr(..), Attr::AutoRevealByteslit(flag)) => {
+                    return Ok(flag);
+                }
+                _ => {}
+            }
+        }
+    }
+    Ok(false)
 }
 
 pub(crate) fn migrate_postconditions_walk_parents<'tcx>(
