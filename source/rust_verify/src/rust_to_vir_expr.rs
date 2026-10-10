@@ -2354,11 +2354,24 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     const_var: false,
                     assume_external_allowed: false,
                 };
+                // Record the impl for the callee's `T: Copy` bound, as for an ordinary call,
+                // so that the impl's axioms are emitted before this function
+                let copy_trait = tcx.lang_items().copy_trait().expect("lang_item");
+                let copy_clause: rustc_middle::ty::Clause<'tcx> =
+                    TraitRef::new(tcx, copy_trait, [ty]).upcast(tcx);
+                let impl_paths = crate::rust_to_vir_base::get_impl_paths_for_clauses(
+                    tcx,
+                    &bctx.ctxt.verus_items,
+                    bctx.fun_id,
+                    vec![(None, copy_clause)],
+                    None,
+                    expr.span,
+                )?;
                 let call_target = CallTarget::Fun(
                     vir::ast::CallTargetKind::Static,
                     fun,
                     typ_args,
-                    Arc::new(vec![]),
+                    impl_paths,
                     call_target_attrs,
                 );
                 let args = Arc::new(vec![arg_vir.clone()]);
