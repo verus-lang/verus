@@ -198,6 +198,11 @@ fn pattern_to_decls_with_no_initializer(pattern: &Pattern, stmts: &mut Vec<Stmt>
         PatternX::ImmutRef(p) | PatternX::MutRef(p) => {
             pattern_to_decls_with_no_initializer(p, stmts);
         }
+        PatternX::Slice(pats) => {
+            for p in pats.iter() {
+                pattern_to_decls_with_no_initializer(p, stmts);
+            }
+        }
     }
 }
 
@@ -1295,6 +1300,7 @@ fn simplify_function(
         &|state, _, stmt| simplify_one_stmt(ctx, state, stmt),
         &|state, typ| simplify_one_typ(&local, state, typ),
         &|state, map, place| simplify_one_place(ctx, state, map, place),
+        &|_, _, pat| Ok(pat.clone()),
     )?;
     let mut functionx = function.x.clone();
     assert!(functionx.params.len() == param_names.len());

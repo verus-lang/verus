@@ -1,6 +1,7 @@
 use crate::ast::*;
 use crate::ast_util::{
-    bool_typ, conjoin, disjoin, if_then_else, mk_eq, mk_ineq, place_to_spec_expr,
+    bool_typ, conjoin, disjoin, if_then_else, int_typ, mk_eq, mk_ineq, mk_int_lit_from_usize,
+    place_to_spec_expr,
 };
 use crate::context::GlobalCtx;
 use crate::def::Spanned;
@@ -203,6 +204,35 @@ fn pattern_to_exprs_rec(
                 SpannedTyped::new(&sub_pat.span, &sub_pat.typ, PlaceX::DerefMut(place.clone()));
             pattern_to_exprs_rec(ctx, sub_pat, &deref_place, bindings, in_immut)
         }
+        PatternX::Slice(patterns) => {
+            let (kind, elem_typ) = crate::ast_util::array_kind_of_typ(&pattern.typ);
+
+            let mut conjuncts = vec![];
+
+            // If it's a slice, we need to test the length
+            if kind == ArrayKind::Slice {
+                let actual_len = SpannedTyped::new(
+                    &pattern.span,
+                    &int_typ(),
+                    ExprX::Unary(UnaryOp::Length(ArrayKind::Slice), read_place(&place)),
+                );
+                let expected_len = mk_int_lit_from_usize(&pattern.span, patterns.len());
+                conjuncts.push(mk_eq(&pattern.span, &actual_len, &expected_len));
+            }
+
+            for (i, p) in patterns.iter().enumerate() {
+                let idx = mk_int_lit_from_usize(&p.span, i);
+                let index_place = SpannedTyped::new(
+                    &p.span,
+                    &elem_typ,
+                    PlaceX::Index(place.clone(), idx, kind, BoundsCheck::Allow),
+                );
+                let pattern_test = pattern_to_exprs_rec(ctx, p, &index_place, bindings, in_immut)?;
+                conjuncts.push(pattern_test);
+            }
+
+            Ok(conjoin(&pattern.span, &conjuncts))
+        }
     }
 }
 
@@ -246,6 +276,17 @@ pub fn pattern_find_mut_binding(pattern: &Pattern) -> Option<Span> {
         PatternX::Expr(_e) => None,
         PatternX::Range(_lower, _upper) => None,
         PatternX::ImmutRef(p) | PatternX::MutRef(p) => pattern_find_mut_binding(p),
+        PatternX::Slice(patterns) => {
+            for p in patterns.iter() {
+                match pattern_find_mut_binding(p) {
+                    s @ Some(_) => {
+                        return s;
+                    }
+                    None => {}
+                }
+            }
+            None
+        }
     }
 }
 
@@ -259,17 +300,13 @@ pub(crate) fn pattern_has_or(pattern: &Pattern) -> bool {
         PatternX::Var(_binding) => false,
         PatternX::Binding { binding: _, sub_pat } => pattern_has_or(sub_pat),
         PatternX::Constructor(_path, _variant, patterns) => {
-            for binder in patterns.iter() {
-                if pattern_has_or(&binder.a) {
-                    return true;
-                }
-            }
-            false
+            patterns.iter().any(|p| pattern_has_or(&p.a))
         }
         PatternX::Or(_pat1, _pat2) => true,
         PatternX::Expr(_e) => false,
         PatternX::Range(_lower, _upper) => false,
         PatternX::ImmutRef(p) | PatternX::MutRef(p) => pattern_has_or(p),
+        PatternX::Slice(patterns) => patterns.iter().any(|p| pattern_has_or(p)),
     }
 }
 
@@ -293,5 +330,6 @@ pub(crate) fn definitely_irrefutable(
         PatternX::Expr(_e) => false,
         PatternX::Range(_lower, _upper) => false,
         PatternX::ImmutRef(p) | PatternX::MutRef(p) => definitely_irrefutable(p, datatypes),
+        PatternX::Slice(patterns) => patterns.iter().all(|p| definitely_irrefutable(p, datatypes)),
     }
 }
