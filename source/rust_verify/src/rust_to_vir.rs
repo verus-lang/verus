@@ -206,8 +206,6 @@ fn check_item<'tcx>(
 
     match &item.kind {
         ItemKind::Fn { sig, generics, body: body_id, .. } => {
-            // let _ =
-            //     check_fn_opaque_ty(ctxt, &mut vir.opaque_types, &item.owner_id.to_def_id()).map_err(|e| vec![e])?;
             check_item_fn(
                 ctxt,
                 state,

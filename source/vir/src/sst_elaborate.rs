@@ -212,6 +212,7 @@ impl<'a, 'b, 'c, D: Diagnostics> Visitor<Rewrite, VirErr, NoScoper>
 
         let mut def = FuncCheckSst {
             reqs: Arc::new(reqs),
+            return_opaque_type_eqs: def.return_opaque_type_eqs.clone(),
             post_condition: Arc::new(post_condition),
             unwind,
             body,

@@ -739,6 +739,7 @@ fn make_trait_decl<'tcx>(
         assume_specification_opaque_type_map: spec_method_info
             .assume_specification_opaque_type_map
             .clone(),
+        return_opaque_type_eqs: spec_method_info.return_opaque_type_eqs.clone(),
         ret_typ_mode: spec_method_info.ret_typ_mode.clone(),
         autoderive_action: None,
         is_external_const: false,
