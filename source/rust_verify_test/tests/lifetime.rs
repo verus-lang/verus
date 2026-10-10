@@ -552,15 +552,15 @@ test_verify_one_file! {
 
 test_verify_one_file_with_options! {
     #[test] assign_twice_no_lifetime ["--no-lifetime"] => verus_code! {
-        // It's fine to accept this because --no-lifetime means we don't
-        // have any real guarantees. It would also be fine to error here.
+        // With --no-lifetime, real rustc borrowck doesn't run, so this now relies
+        // on the same internal check as test_no_lifetime_mut_check above.
         fn test() {
             let x: u8;
             x = 5;
             x = 7;
-            assert(false); // FAILS
+            assert(false);
         }
-    } => Err(err) => assert_fails(err, 1)
+    } => Err(err) => assert_vir_error_msg(err, "variable `x` is not marked mutable")
 }
 
 test_verify_one_file! {
@@ -578,7 +578,7 @@ test_verify_one_file! {
     #[test] tracked_new_issue870 verus_code! {
         use vstd::simple_pptr::*;
         fn test() {
-            let (pptr, Tracked(perm)) = PPtr::<u64>::empty();
+            let (pptr, Tracked(mut perm)) = PPtr::<u64>::empty();
             pptr.put(Tracked(&mut perm), 5);
             let x: &u64 = pptr.borrow(Tracked(&perm)); // should tie x's lifetime to the perm borrow
             assert(x == 5);
@@ -592,7 +592,7 @@ test_verify_one_file! {
     #[test] tracked_new2_issue870 verus_code! {
         use vstd::simple_pptr::*;
         fn test() {
-            let (pptr, Tracked(perm)) = PPtr::<u64>::empty();
+            let (pptr, Tracked(mut perm)) = PPtr::<u64>::empty();
             pptr.put(Tracked(&mut perm), 5);
             let x: &u64 = pptr.borrow(Tracked(&perm)); // should tie x's lifetime to the perm borrow
             assert(x == 5);

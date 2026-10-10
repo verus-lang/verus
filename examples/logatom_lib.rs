@@ -155,7 +155,7 @@ pub exec fn increment_seq(var: &MyPAtomicU64, Tracked(my_perm): Tracked<&mut MyP
 
     let next = curr.wrapping_add(1);
     open_atomic_invariant!(var.inv.borrow() => v => {
-        let tracked V { perm, auth } = v;
+        let tracked V { mut perm, mut auth } = v;
         var.inner.store(Tracked(&mut perm), next);
         proof {
             auth.update(&mut my_perm.inner, next);
@@ -193,7 +193,7 @@ pub fn increment_perm(var: &MyPAtomicU64, Tracked(my_perm): Tracked<&mut MyPermi
         let res;
 
         open_atomic_invariant!(inv => v => {
-            let tracked V { perm, auth } = v;
+            let tracked V { mut perm, mut auth } = v;
             let ghost prev: u64 = perm@.value;
 
             res = var.inner.compare_exchange_weak(Tracked(&mut perm), curr, next);
@@ -325,7 +325,7 @@ pub fn increment<Carrier>(var: &MyPAtomicU64, Tracked(carrier): Tracked<Carrier>
         let res;
 
         open_atomic_invariant!(inv => v => {
-            let tracked V { perm, auth } = v;
+            let tracked V { mut perm, auth } = v;
             let ghost prev: u64 = perm@.value;
 
             res = var.inner.compare_exchange_weak(Tracked(&mut perm), curr, next);
