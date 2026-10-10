@@ -97,6 +97,22 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 1)
 }
 
+test_verify_one_file! {
+    #[test] test_import_try_reserve_exact_spec_from_vstd verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let mut values: Vec<u64> = Vec::new();
+            values.push(12);
+            values.push(34);
+            let _result = values.try_reserve_exact(1);
+            assert(values.len() == 2);
+            assert(values[0] == 12);
+            assert(values[1] == 34);
+        }
+    } => Ok(())
+}
+
 // Test for overlap
 
 test_verify_one_file! {
