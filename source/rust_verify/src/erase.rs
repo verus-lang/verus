@@ -459,7 +459,10 @@ pub(crate) fn mark_tree_for_erasure<'tcx>(
     .unwrap();
 }
 
-pub(crate) fn setup_verus_aware_ids(crate_items: &crate::external::CrateItems) {
+pub(crate) fn setup_verus_aware_ids<'tcx>(
+    tcx: rustc_middle::ty::TyCtxt<'tcx>,
+    crate_items: &crate::external::CrateItems,
+) {
     // Requirements:
     //  - If a function requires Verus-erasure, then it MUST be in the set
     //  - If a function has special properties (e.g., being const), that may cause Rust
@@ -478,7 +481,35 @@ pub(crate) fn setup_verus_aware_ids(crate_items: &crate::external::CrateItems) {
                 external_fn_specification,
                 ..
             } => {
-                if !const_directive && !external_body && !external_fn_specification {
+                // rustc type-checks function-local static initializers before Verus can
+                // initialize its erasure context. This is the same early-query constraint
+                // that requires const items to be absent from this set.
+                let function_local_static = match item.id {
+                    crate::external::GeneralItemId::ItemId(item_id) => {
+                        let hir_item = tcx.hir_item(item_id);
+                        matches!(
+                            hir_item.kind,
+                            rustc_hir::ItemKind::Static(rustc_hir::Mutability::Not, ..)
+                        ) && tcx.hir_parent_iter(hir_item.hir_id()).any(|(_, node)| {
+                            matches!(
+                                node,
+                                rustc_hir::Node::Item(rustc_hir::Item {
+                                    kind: rustc_hir::ItemKind::Fn { .. },
+                                    ..
+                                }) | rustc_hir::Node::ImplItem(rustc_hir::ImplItem {
+                                    kind: rustc_hir::ImplItemKind::Fn(..),
+                                    ..
+                                })
+                            )
+                        })
+                    }
+                    _ => false,
+                };
+                if !const_directive
+                    && !external_body
+                    && !external_fn_specification
+                    && !function_local_static
+                {
                     s.insert(item.id.owner_id().def_id);
                 }
             }
