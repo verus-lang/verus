@@ -2,7 +2,7 @@ use crate::ast::{
     Expr, ExprX, Fun, Function, FunctionKind, Krate, MaskSpec, Mode, Path, Quant, SpannedTyped,
     Trait, TypX, UnwindSpec, VarBinderX, VirErr,
 };
-use crate::ast_util::fun_as_friendly_rust_name;
+use crate::ast_util::{fun_as_friendly_rust_name, typ_contains_opaque};
 use crate::context::Ctx;
 use crate::def::Spanned;
 use crate::messages::Span;
@@ -22,7 +22,7 @@ pub fn check_safe_api(krate: &Krate) -> Result<(), VirErr> {
     }
 
     for function in krate.functions.iter() {
-        if matches!(*function.x.outer_ret.x.typ, TypX::Opaque { .. }) {
+        if typ_contains_opaque(&function.x.outer_ret.x.typ) {
             return Err(error(
                 &function.span,
                 &format!(

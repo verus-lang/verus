@@ -1,8 +1,8 @@
 use crate::ast::{
-    ArrayKind, AssertQueryMode, BitwiseOp, CrateId, Dt, FieldOpr, Fun, GenericBoundX, Ident,
-    Idents, InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Label, Mode, Path,
-    PathX, Primitive, ProofNoteLabel, SpannedTyped, Typ, TypDecoration, TypDecorationArg, TypX,
-    Typs, UnaryOp, UnaryOpr, UnwindSpec, VarAt, VarIdent, VirErr,
+    ArrayKind, AssertQueryMode, BitwiseOp, CrateId, Dt, FieldOpr, Fun, Ident, Idents, InequalityOp,
+    IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Label, Mode, Path, PathX, Primitive,
+    ProofNoteLabel, SpannedTyped, Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp,
+    UnaryOpr, UnwindSpec, VarAt, VarIdent, VirErr,
 };
 use crate::ast_util::{
     LowerUniqueVar, fun_as_friendly_rust_name, get_field, get_variant, undecorate_typ,
@@ -39,7 +39,6 @@ use air::ast_util::{
     str_apply, str_ident, str_typ, str_var, string_var,
 };
 use num_bigint::BigInt;
-use std::collections::HashMap;
 use std::mem::swap;
 use std::sync::Arc;
 
@@ -2160,26 +2159,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     let ret_exp: &Arc<SpannedTyped<ExpX>> =
                         ret_exp.as_ref().expect("if dest is provided, expr must be provided");
 
-                    let mut stmts =
-                        stm_to_stmts(ctx, state, &assume_var(&stm.span, &dest_id, ret_exp))?;
-
-                    // if return value exists, check if we need to emit additional assumes for nested opaque types
-                    let ret_op = ctx
-                        .fun
-                        .as_ref()
-                        .and_then(|f| ctx.func_sst_map.get(&f.current_fun))
-                        .map(|fun| fun.x.inner_ret.x.typ.clone());
-                    if let Some(ret) = ret_op {
-                        stmts.extend(opaque_ty_additional_stmts(
-                            ctx,
-                            state,
-                            &ret_exp.span,
-                            &try_reveal_opaque_ty_ctor(ret_exp),
-                            &ret,
-                        )?);
-                    }
-
-                    stmts
+                    stm_to_stmts(ctx, state, &assume_var(&stm.span, &dest_id, ret_exp))?
                 } else {
                     // If there is no `dest_id`, then the returned expression
                     // gets ignored. This should happen for functions that
@@ -3101,6 +3081,7 @@ pub(crate) fn body_stm_to_air(
 ) -> Result<(Vec<CommandsWithContext>, Vec<(Span, SnapPos)>), VirErr> {
     let FuncCheckSst {
         reqs,
+        return_opaque_type_eqs,
         post_condition,
         body: stm,
         local_decls,
@@ -3139,6 +3120,17 @@ pub(crate) fn body_stm_to_air(
     for x in typ_params.iter() {
         for (x, t) in crate::def::suffix_typ_param_ids_types(x) {
             local_shared.push(Arc::new(DeclX::Const(x.lower(), str_typ(t))));
+        }
+    }
+    for (opaque, hidden) in return_opaque_type_eqs.iter() {
+        let opaque_ids = typ_to_ids(ctx, opaque);
+        let hidden_ids = typ_to_ids(ctx, hidden);
+        assert!(opaque_ids.len() == hidden_ids.len());
+        for (opaque_id, hidden_id) in opaque_ids.iter().zip(hidden_ids.iter()) {
+            local_shared.push(Arc::new(DeclX::Axiom(air::ast::Axiom {
+                named: None,
+                expr: mk_eq(opaque_id, hidden_id),
+            })));
         }
     }
     for decl in local_decls.iter() {
@@ -3301,157 +3293,4 @@ pub(crate) fn body_stm_to_air(
         ));
     }
     Ok((state.commands, state.snap_map))
-}
-
-/// At function returns, we need to tell the SMT solver that the
-/// future (impl Future<Output = T>) created by the async function will return the return value of
-/// the function body if await() is called on it.
-// fn async_fn_return_to_stmts(
-//     ctx: &Ctx,
-//     state: &mut State,
-//     expr_ctxt: &ExprCtxt,
-//     ret_op: &mut Option<Arc<TypX>>,
-//     async_rete: &Option<Arc<TypX>>,
-//     ret_exp: &Arc<SpannedTyped<ExpX>>,
-//     stm: &Stm,
-//     dest_id: VarIdent,
-// ) -> Result<Vec<Stmt>, VirErr> {
-//     let ret = ret_op.as_ref().expect("async function has no return type");
-//     let async_rete =
-//         async_rete.as_ref().expect("async function has no return type");
-//     let call = ExpX::Call(
-//         CallFun::Fun(
-//             Arc::new(crate::ast::FunX {
-//                 path: Arc::new(PathX {
-//                     krate: CrateId::Vstd,
-//                     segments: Arc::new(vec![
-//                         Arc::new("future".to_string()),
-//                         Arc::new("FutureAdditionalSpecFns".to_string()),
-//                         Arc::new("view".to_string()),
-//                     ]),
-//                 }),
-//             }),
-//             None,
-//         ),
-//         Arc::new(vec![ret.clone(), ret_exp.typ.clone()]),
-//         Arc::new(vec![SpannedTyped::new(&stm.span, &ret, ExpX::Var(dest_id.clone()))]),
-//     );
-//     let eq = ExprX::Binary(
-//         air::ast::BinaryOp::Eq,
-//         exp_to_expr(ctx, ret_exp, expr_ctxt)?,
-//         exp_to_expr(ctx, &SpannedTyped::new(&stm.span, &ret, call), expr_ctxt)?,
-//     );
-
-//     *ret_op = Some(async_rete.clone());
-//     Ok(vec![Arc::new(StmtX::Assume(eq.into()))])
-// }
-
-fn try_reveal_opaque_ty_ctor(exp: &Exp) -> Typ {
-    match &exp.x {
-        ExpX::Ctor(Dt::Tuple(len), _, items) => Arc::new(TypX::Datatype(
-            Dt::Tuple(*len),
-            Arc::new(items.iter().map(|x| try_reveal_opaque_ty_ctor(&x.a)).collect()),
-            Arc::new(vec![]),
-        )),
-        ExpX::UnaryOpr(_, exp) => try_reveal_opaque_ty_ctor(exp),
-        ExpX::If(_, exp, _) => try_reveal_opaque_ty_ctor(exp),
-        _ => exp.typ.clone(),
-    }
-}
-
-/// At function returns, we need to tell the SMT solver that the newly created opaque type is indeed the same type
-/// as the returned expression.
-fn opaque_ty_additional_stmts(
-    ctx: &Ctx,
-    state: &mut State,
-    span: &Span,
-    ret_exp_typ: &Typ,
-    ret_typ: &Typ,
-) -> Result<Vec<Stmt>, VirErr> {
-    if let TypX::Boxed(typ) = &**ret_exp_typ {
-        return opaque_ty_additional_stmts(ctx, state, span, typ, ret_typ);
-    }
-
-    let mut stmts = vec![];
-    let mut emit_eq_stmts = || {
-        let ret_expr_typs = typ_to_ids(ctx, &ret_exp_typ);
-        let ret_value_typs = typ_to_ids(ctx, &ret_typ);
-        let decr = ExprX::Binary(
-            air::ast::BinaryOp::Eq,
-            ret_expr_typs[0].clone(),
-            ret_value_typs[0].clone(),
-        );
-        let assume_decr = Arc::new(StmtX::Assume(Arc::new(decr)));
-        let typ = ExprX::Binary(
-            air::ast::BinaryOp::Eq,
-            ret_expr_typs[1].clone(),
-            ret_value_typs[1].clone(),
-        );
-        let assume_typ = Arc::new(StmtX::Assume(Arc::new(typ)));
-        stmts.push(assume_decr);
-        stmts.push(assume_typ);
-    };
-    match (&**ret_typ, &**ret_exp_typ) {
-        (
-            TypX::Datatype(dt_ret_typ, items_ret_typ, _impl_paths_ret_typ),
-            TypX::Datatype(dt_ret_exp_typ, items_ret_exp_typ, _impl_paths_ret_exp_typ),
-        ) => {
-            if items_ret_typ.len() != items_ret_exp_typ.len() {
-                crate::messages::internal_error(
-                    span,
-                    "return exp and return value types has different length",
-                );
-            }
-            if dt_ret_exp_typ != dt_ret_typ {
-                crate::messages::internal_error(
-                    span,
-                    "return exp and return value types has different types",
-                );
-            }
-            for (ret_exp_typ, ret_typ) in items_ret_exp_typ.iter().zip(items_ret_typ.iter()) {
-                stmts.extend(opaque_ty_additional_stmts(ctx, state, span, ret_exp_typ, ret_typ)?);
-            }
-        }
-        (
-            TypX::Opaque { def_path: ret_exp_def_path, args: _ret_exp_args },
-            TypX::Opaque { def_path: ret_typ_def_path, args: _ret_typ_args },
-        ) => {
-            emit_eq_stmts();
-            let ret_exp_opaque_typ = &ctx.opaque_type_map[ret_exp_def_path];
-            let ret_typ_opaque_typ = &ctx.opaque_type_map[ret_typ_def_path];
-
-            let mut ret_exp_projection_map = HashMap::new();
-            let mut ret_typ_projection_map = HashMap::new();
-
-            for (ret_exp_bound, ret_typ_bound) in
-                ret_exp_opaque_typ.x.typ_bounds.iter().zip(ret_typ_opaque_typ.x.typ_bounds.iter())
-            {
-                if let GenericBoundX::TypEquality(trait_path, _, id, proj_typ) = &**ret_exp_bound {
-                    ret_exp_projection_map.insert((trait_path.clone(), id.clone()), proj_typ);
-                }
-                if let GenericBoundX::TypEquality(trait_path, _, id, proj_typ) = &**ret_typ_bound {
-                    ret_typ_projection_map.insert((trait_path.clone(), id.clone()), proj_typ);
-                }
-            }
-            for trait_path_id in ret_exp_projection_map.keys() {
-                if ret_typ_projection_map.contains_key(trait_path_id) {
-                    stmts.extend(opaque_ty_additional_stmts(
-                        ctx,
-                        state,
-                        span,
-                        ret_exp_projection_map[trait_path_id],
-                        ret_typ_projection_map[trait_path_id],
-                    )?);
-                }
-            }
-        }
-        (TypX::Opaque { .. }, _) => {
-            emit_eq_stmts();
-        }
-        (_, TypX::Boxed(typ)) => {
-            return opaque_ty_additional_stmts(ctx, state, span, typ, ret_typ);
-        }
-        _ => {}
-    }
-    Ok(stmts)
 }

@@ -212,6 +212,7 @@ fn func_body_to_sst(
         termination_decls.splice(0..0, local_decls.into_iter());
 
         let termination_check = FuncCheckSst {
+            return_opaque_type_eqs: Arc::new(vec![]),
             post_condition: Arc::new(crate::sst::PostConditionSst {
                 dest: None,
                 kind: if function.x.decrease_by.is_some() {
@@ -1008,6 +1009,11 @@ pub fn func_def_to_sst(
 
     Ok(FuncCheckSst {
         reqs: Arc::new(reqs),
+        return_opaque_type_eqs: if check_api_safety {
+            Arc::new(vec![])
+        } else {
+            function.x.return_opaque_type_eqs.clone()
+        },
         post_condition: Arc::new(PostConditionSst {
             dest,
             ens_exps: Arc::new(enss),

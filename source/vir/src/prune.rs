@@ -1121,6 +1121,7 @@ pub fn prune_krate_for_module_or_krate(
         } else {
             let mut function = f.x.clone();
             function.body = None;
+            function.return_opaque_type_eqs = Arc::new(vec![]);
             functions.push(Spanned::new(f.span.clone(), function));
         }
     }

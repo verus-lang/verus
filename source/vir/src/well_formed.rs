@@ -8,7 +8,7 @@ use crate::ast::{
 use crate::ast_util::{
     ast_expr_get_proof_note, dt_as_friendly_rust_name, fun_as_friendly_rust_name, get_field_or_err,
     get_variant_or_err, is_body_visible_to, is_visible_to_opt, path_as_friendly_rust_name,
-    referenced_vars_expr, typ_to_diagnostic_str, types_equal, undecorate_typ,
+    referenced_vars_expr, typ_contains_opaque, typ_to_diagnostic_str, types_equal, undecorate_typ,
 };
 use crate::context::WarningConfig;
 use crate::def::user_local_name;
@@ -1047,9 +1047,7 @@ fn check_function<Emit: EmitError>(
             ));
         }
 
-        if function.x.mode != Mode::Exec
-            && matches!(*function.x.outer_ret.x.typ, TypX::Opaque { .. })
-        {
+        if function.x.mode != Mode::Exec && typ_contains_opaque(&function.x.outer_ret.x.typ) {
             return Err(error(
                 &function.x.outer_ret.span,
                 format!("Opaque type is not supported in {} mode", function.x.mode),
@@ -1387,7 +1385,7 @@ fn check_function<Emit: EmitError>(
         )?;
     }
     if let Some(r) = &function.x.returns {
-        if matches!(*function.x.inner_ret.x.typ, TypX::Opaque { .. }) {
+        if typ_contains_opaque(&function.x.inner_ret.x.typ) {
             return Err(error(
                 &r.span,
                 "`returns` clause is not allowed for function that returns opaque type",

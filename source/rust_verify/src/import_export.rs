@@ -72,6 +72,7 @@ pub(crate) fn export_crate(
         for func in kratex.functions.iter_mut() {
             let mut functionx = func.x.clone();
             functionx.decrease_by = None;
+            functionx.return_opaque_type_eqs = Arc::new(vec![]);
             if (functionx.mode != Mode::Spec || !functionx.body_visibility.is_public())
                 && !matches!(&functionx.kind, vir::ast::FunctionKind::TraitMethodDecl { .. })
             {

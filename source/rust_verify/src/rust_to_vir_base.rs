@@ -2339,19 +2339,16 @@ pub(crate) fn check_fn_opaque_ty<'tcx>(
     fn_def_id: &DefId,
     span: Span,
     assume_specification_def_id: Option<&DefId>,
-) -> Result<HashMap<Path, Path>, VirErr> {
+    collect_hidden_type_eqs: bool,
+) -> Result<(HashMap<Path, Path>, Vec<(Typ, Typ)>), VirErr> {
     let mut assume_specification_opaque_type_map = HashMap::new();
+    let mut hidden_type_eqs = Vec::new();
     if !ctxt.tcx.def_kind(*fn_def_id).is_fn_like() {
-        return Ok(assume_specification_opaque_type_map);
+        return Ok((assume_specification_opaque_type_map, hidden_type_eqs));
     }
     let ty = ctxt.tcx.fn_sig(*fn_def_id).skip_binder().output().skip_binder();
     let assume_specification_ty =
         if let Some(assume_specification_def_id) = assume_specification_def_id {
-            // if ctxt.tcx.def_kind(assume_specification_def_id).is_fn_like() {
-            //     Some(ctxt.tcx.fn_sig(assume_specification_def_id).skip_binder().output().skip_binder())
-            // } else {
-            //     None
-            // }
             Some(ctxt.tcx.fn_sig(*assume_specification_def_id).skip_binder().output().skip_binder())
         } else {
             None
@@ -2365,8 +2362,10 @@ pub(crate) fn check_fn_opaque_ty<'tcx>(
         assume_specification_ty.as_ref(),
         false,
         &mut assume_specification_opaque_type_map,
+        collect_hidden_type_eqs,
+        &mut hidden_type_eqs,
     )?;
-    Ok(assume_specification_opaque_type_map)
+    Ok((assume_specification_opaque_type_map, hidden_type_eqs))
 }
 
 pub(crate) fn opaque_def_to_vir<'tcx>(
@@ -2378,6 +2377,8 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
     assume_specification_ty: Option<&rustc_middle::ty::Ty<'tcx>>,
     is_assume_specification_ty: bool,
     assume_specification_opaque_type_map: &mut HashMap<Path, Path>,
+    collect_hidden_type_eqs: bool,
+    hidden_type_eqs: &mut Vec<(Typ, Typ)>,
 ) -> Result<Option<OpaqueType>, VirErr> {
     let unmatch_err_msg = "opaque type of assume assume_specification specification does not match the opaque type of the orginal function";
     let unmatch_err = || crate::internal_err!(span, unmatch_err_msg);
@@ -2540,6 +2541,8 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                                 nested_assume_specification_ty.as_ref(),
                                 is_assume_specification_ty,
                                 assume_specification_opaque_type_map,
+                                collect_hidden_type_eqs,
+                                hidden_type_eqs,
                             )?;
                             mid_ty_to_vir(
                                 ctxt.tcx,
@@ -2603,6 +2606,8 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                             None,
                             true,
                             assume_specification_opaque_type_map,
+                            collect_hidden_type_eqs,
+                            hidden_type_eqs,
                         )?
                         .expect(unmatch_err_msg),
                     )
@@ -2626,6 +2631,28 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                     typ_bounds: Arc::new(trait_bounds),
                 },
             );
+            if collect_hidden_type_eqs && !is_assume_specification_ty {
+                let hidden_ty = ctxt
+                    .tcx
+                    .type_of_opaque_hir_typeck(alias_def_id.expect_local())
+                    .instantiate(ctxt.tcx, al_ty.args)
+                    .skip_norm_wip();
+                if let Ok(hidden_typ) = mid_ty_to_vir(
+                    ctxt.tcx,
+                    &ctxt.verus_items,
+                    None::<&mut HashMap<_, _>>,
+                    *fn_def_id,
+                    span,
+                    &hidden_ty,
+                    None,
+                ) {
+                    let opaque_typ = Arc::new(TypX::Opaque {
+                        def_path: opaque_type_path.clone(),
+                        args: opaque_ty_vir.x.typ_params.clone(),
+                    });
+                    hidden_type_eqs.push((opaque_typ, hidden_typ));
+                }
+            }
             if let Some(assume_specification_opaque_ty_vir) = &assume_specification_opaque_ty_vir {
                 assume_specification_opaque_type_map.insert(
                     assume_specification_opaque_ty_vir.x.name.clone(),
@@ -2652,6 +2679,8 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                 None,
                 false,
                 assume_specification_opaque_type_map,
+                collect_hidden_type_eqs,
+                hidden_type_eqs,
             )?;
             Ok(None)
         }
@@ -2675,6 +2704,8 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                 Some(ty2),
                 false,
                 assume_specification_opaque_type_map,
+                collect_hidden_type_eqs,
+                hidden_type_eqs,
             )?;
             Ok(None)
         }
@@ -2689,6 +2720,8 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                     None,
                     false,
                     assume_specification_opaque_type_map,
+                    collect_hidden_type_eqs,
+                    hidden_type_eqs,
                 )?;
             }
             Ok(None)
@@ -2707,6 +2740,8 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                     Some(&ty2),
                     false,
                     assume_specification_opaque_type_map,
+                    collect_hidden_type_eqs,
+                    hidden_type_eqs,
                 )?;
             }
             Ok(None)
@@ -2728,6 +2763,8 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                         None,
                         false,
                         assume_specification_opaque_type_map,
+                        collect_hidden_type_eqs,
+                        hidden_type_eqs,
                     )?;
                 } else {
                     continue;
@@ -2774,6 +2811,8 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                             Some(&ty2),
                             false,
                             assume_specification_opaque_type_map,
+                            collect_hidden_type_eqs,
+                            hidden_type_eqs,
                         )?;
                     }
                     (None, None) => continue,
@@ -2792,6 +2831,8 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                 None,
                 false,
                 assume_specification_opaque_type_map,
+                collect_hidden_type_eqs,
+                hidden_type_eqs,
             )?;
             Ok(None)
         }
@@ -2808,6 +2849,8 @@ pub(crate) fn opaque_def_to_vir<'tcx>(
                 Some(&fn_tys2.skip_binder().output()),
                 false,
                 assume_specification_opaque_type_map,
+                collect_hidden_type_eqs,
+                hidden_type_eqs,
             )?;
             Ok(None)
         }
