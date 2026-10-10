@@ -147,6 +147,47 @@ test_verify_one_file! {
     } => Ok(())
 }
 
+// https://github.com/verus-lang/verus/issues/248
+// Triggering on a call to an `#[verifier::inline]` function can fail once the call is
+// replaced by its (non-call) body; the error message should explain that inlining is
+// the culprit, rather than just complaining about the resulting expression shape.
+test_verify_one_file! {
+    #[test] test_trigger_on_inline_non_call_body verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::inline]
+        spec fn contains_pair(m: Map<nat, nat>, k: nat, v: nat) -> bool {
+            m.dom().contains(k) && m.dom().contains(k) ==> m[k] == v
+        }
+
+        proof fn quant(m: Map<nat, nat>)
+            ensures forall|k: nat, v: nat| (#[trigger] contains_pair(m, k, v)) ==> true
+        {
+            assume(false)
+        }
+    } => Err(err) => assert_vir_error_msg(err, "marked `#[verifier::inline]`")
+}
+
+// Same as above but using the `#![trigger ...]` group syntax instead of an inline
+// `#[trigger]` annotation, to make sure both manual-trigger forms get the same treatment.
+test_verify_one_file! {
+    #[test] test_trigger_group_on_inline_non_call_body verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::inline]
+        spec fn contains_pair(m: Map<nat, nat>, k: nat, v: nat) -> bool {
+            m.dom().contains(k) && m.dom().contains(k) ==> m[k] == v
+        }
+
+        proof fn quant(m: Map<nat, nat>)
+            ensures forall|k: nat, v: nat| #![trigger contains_pair(m, k, v)]
+                contains_pair(m, k, v) ==> true
+        {
+            assume(false)
+        }
+    } => Err(err) => assert_vir_error_msg(err, "marked `#[verifier::inline]`")
+}
+
 test_verify_one_file! {
     #[test] test_arith_and_ord verus_code! {
         proof fn quant()
