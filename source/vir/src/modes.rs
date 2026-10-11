@@ -426,9 +426,10 @@ pub struct ErasureModes {
     pub binder_modes: Vec<(Span, Mode)>,
     // Modes of calls and struct Ctors
     pub ctor_modes: Vec<(Span, Mode)>,
-    // For each PlaceX::DerefRaw node (identified by its span) that has a permission,
-    // the permission place. Used by lifetime checking to emit borrows of the permission.
-    pub deref_raw_permissions: Vec<(Span, Place)>,
+    // For each PlaceX::DerefRaw node (identified by its span), the permission place,
+    // or None if there is no permission.
+    // Used by lifetime checking to emit borrows of the permission.
+    pub deref_raw_permissions: Vec<(Span, Option<Place>)>,
 }
 
 impl Ghost {
@@ -1394,11 +1395,11 @@ fn check_place_rec_inner(
                         "the permission to dereference a pointer must be a tracked variable",
                     ));
                 }
-                record
-                    .erasure_modes
-                    .deref_raw_permissions
-                    .push((place.span.clone(), permission_place.clone()));
             }
+            record
+                .erasure_modes
+                .deref_raw_permissions
+                .push((place.span.clone(), permission_place.clone()));
 
             Ok((Mode::Exec, proph))
         }

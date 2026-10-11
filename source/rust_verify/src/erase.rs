@@ -414,22 +414,35 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
         assert!(found.is_none());
     }
 
-    let mut deref_raw_id_to_hir: HashMap<AstId, HirId> = HashMap::new();
+    let mut deref_raw_id_to_hir: HashMap<AstId, Option<HirId>> = HashMap::new();
     for (hir_id, vir_id) in &erasure_hints.deref_raw_hir_vir_ids {
         deref_raw_id_to_hir.insert(*vir_id, *hir_id);
     }
-    let mut raw_deref_permissions = HashMap::<HirId, RawDerefPermission>::new();
+    let mut raw_deref_permissions = HashMap::<HirId, Option<RawDerefPermission>>::new();
     for (span, permission_place) in erasure_modes.deref_raw_permissions.iter() {
         let Some(hir_id) = deref_raw_id_to_hir.get(&span.id) else {
+            return Err(vir::messages::error(
+                span,
+                "Verus Internal Error: setup_verus_ctxt_for_thir_erasure failed, raw deref lookup failed",
+            ));
+        };
+        let Some(hir_id) = hir_id else {
             // Generated node with no corresponding source HIR node
             continue;
         };
-        let Some(perm) = permission_place_to_raw_deref_permission(*hir_id, permission_place)
-        else {
-            return Err(vir::messages::error(
-                span,
-                "Verus Internal Error: setup_verus_ctxt_for_thir_erasure failed, unsupported permission place",
-            ));
+        let perm = match permission_place {
+            None => None,
+            Some(permission_place) => {
+                let Some(perm) =
+                    permission_place_to_raw_deref_permission(*hir_id, permission_place)
+                else {
+                    return Err(vir::messages::error(
+                        span,
+                        "Verus Internal Error: setup_verus_ctxt_for_thir_erasure failed, unsupported permission place",
+                    ));
+                };
+                Some(perm)
+            }
         };
         raw_deref_permissions.insert(*hir_id, perm);
     }
