@@ -28,9 +28,17 @@ way to do this is just add a constraint that 'a is alive at the
 is this call might not be reached in the event of nontermination.
 Therefore, we need to inject this `'a alive` constraint at enough points in the invariant
 body so that some constraint is always reachable.
+
+### Emitting borrows of raw pointer permissions
+
+See verus_raw_ptrs.rs.
 */
 
 use crate::builder::{BasicBlock, BorrowKind, Builder, PlaceBuilder, Rvalue, TerminatorKind, Ty};
+use crate::verus::ExtraThir;
+use crate::verus_raw_ptrs::{PermUsage, place_raw_derefs};
+use crate::builder::BlockAnd;
+use rustc_middle::mir::MutBorrowKind;
 use rustc_middle::thir::ExprId;
 use rustc_middle::ty::TyKind;
 use std::collections::{HashMap, HashSet};
@@ -185,4 +193,102 @@ pub(super) fn cfg_removal_fix_constraints_one_block<'a, 'tcx>(
     emit_extra_constraints(this, new_block, *expr_id);
 
     this.cfg.terminate(new_block, source_info, TerminatorKind::Goto { target: new_block });
+}
+
+/// The builder calls this right after building the place for `expr_id` (in preparation
+/// for using it). Emit borrows for the permissions of all raw pointer dereferences in the
+/// place.
+pub(super) fn emit_raw_deref_perms_for_place<'a, 'tcx>(
+    this: &mut Builder<'a, 'tcx>,
+    block: BasicBlock,
+    expr_id: ExprId,
+) {
+    let Some(extra_thir) = this.verus_extra_thir.clone() else {
+        return;
+    };
+    if extra_thir.raw_deref_permissions.len() == 0 {
+        return;
+    }
+    let (ptrs, _) = place_raw_derefs(&this.thir, expr_id);
+    if ptrs.len() == 0 {
+        return;
+    }
+    let outer_usage = extra_thir.raw_deref_outer_usage.get(&ptrs[0]).copied();
+    emit_raw_deref_perms(this, block, &extra_thir, &ptrs, outer_usage.unwrap_or(PermUsage::Read));
+}
+
+/// The builder calls this right before the bounds check for an index expression `base[idx]`
+/// (after evaluating `idx`). Emit borrows for the permissions of all raw pointer
+/// dereferences in `base` that the bounds check reads through.
+pub(super) fn emit_raw_deref_perms_for_bounds_check<'a, 'tcx>(
+    this: &mut Builder<'a, 'tcx>,
+    block: BasicBlock,
+    base: ExprId,
+    base_place: &PlaceBuilder<'tcx>,
+) {
+    let Some(extra_thir) = this.verus_extra_thir.clone() else {
+        return;
+    };
+    if extra_thir.raw_deref_permissions.len() == 0 {
+        return;
+    }
+    let (ptrs, deref_above_outermost) = place_raw_derefs(&this.thir, base);
+    if ptrs.len() == 0 {
+        return;
+    }
+    let place = base_place.to_place(this);
+    let place_ty = place.ty(&this.local_decls, this.tcx).ty;
+    let outer_usage = match place_ty.kind() {
+        // For arrays, the bounds check does a FakeRead of the array place
+        TyKind::Array(..) => PermUsage::Read,
+        // For slices, the bounds check takes a raw pointer to the slice place
+        // to get the length (see `len_of_slice_or_array`), so it doesn't need to read through
+        // the outermost pointer, unless there's another pointer in between.
+        _ => {
+            if deref_above_outermost {
+                PermUsage::Read
+            } else {
+                PermUsage::Skip
+            }
+        }
+    };
+    emit_raw_deref_perms(this, block, &extra_thir, &ptrs, outer_usage);
+}
+
+/// `ptrs` is ordered from outermost to innermost.
+/// Inner pointers always get a `Read` and the outermost gets `outer_usage`.
+fn emit_raw_deref_perms<'a, 'tcx>(
+    this: &mut Builder<'a, 'tcx>,
+    block: BasicBlock,
+    extra_thir: &ExtraThir,
+    ptrs: &[ExprId],
+    outer_usage: PermUsage,
+) {
+    for (i, ptr) in ptrs.iter().enumerate().rev() {
+        let usage = if i == 0 { outer_usage } else { PermUsage::Read };
+        let Some(perm) = extra_thir.raw_deref_permissions.get(ptr) else {
+            continue;
+        };
+        let borrow_kind = match usage {
+            PermUsage::Read => BorrowKind::Shared,
+            PermUsage::Write => BorrowKind::Mut { kind: MutBorrowKind::Default },
+            PermUsage::Skip => continue,
+        };
+
+        // The permission place is simple (no index projections, etc.)
+        // so this doesn't emit any code.
+        let BlockAnd(perm_block, place) = this.as_place(block, *perm);
+        assert!(perm_block == block);
+
+        let span = this.thir[*perm].span;
+        let source_info = this.source_info(span);
+        let place_ty = place.ty(&this.local_decls, this.tcx).ty;
+        let region = this.tcx.lifetimes.re_erased;
+        let ref_ty = match usage {
+            PermUsage::Write => Ty::new_mut_ref(this.tcx, region, place_ty),
+            _ => Ty::new_imm_ref(this.tcx, region, place_ty),
+        };
+        let lhs = this.temp(ref_ty, span);
+        this.cfg.push_assign(block, source_info, lhs, Rvalue::Ref(region, borrow_kind, place));
+    }
 }

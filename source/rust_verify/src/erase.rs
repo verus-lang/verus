@@ -9,8 +9,9 @@ use vir::modes::ErasureModes;
 use crate::verus_items::{DummyCaptureItem, VerusItem, VerusItems};
 use rustc_hir::def_id::LocalDefId;
 use rustc_mir_build_verus::verus::{
-    BodyErasure, CallErasure, LoopErasure, LoopSpecEvaluationLocation, NodeErase, TreeErase,
-    VarErasure, VerusErasureCtxt, set_verus_aware_def_ids, set_verus_erasure_ctxt,
+    BodyErasure, CallErasure, LoopErasure, LoopSpecEvaluationLocation, NodeErase,
+    PermissionProjection, RawDerefPermission, TreeErase, VarErasure, VerusErasureCtxt,
+    set_verus_aware_def_ids, set_verus_erasure_ctxt,
 };
 use rustc_span::Span;
 use std::collections::HashMap;
@@ -413,6 +414,26 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
         assert!(found.is_none());
     }
 
+    let mut deref_raw_id_to_hir: HashMap<AstId, HirId> = HashMap::new();
+    for (hir_id, vir_id) in &erasure_hints.deref_raw_hir_vir_ids {
+        deref_raw_id_to_hir.insert(*vir_id, *hir_id);
+    }
+    let mut raw_deref_permissions = HashMap::<HirId, RawDerefPermission>::new();
+    for (span, permission_place) in erasure_modes.deref_raw_permissions.iter() {
+        let Some(hir_id) = deref_raw_id_to_hir.get(&span.id) else {
+            // Generated node with no corresponding source HIR node
+            continue;
+        };
+        let Some(perm) = permission_place_to_raw_deref_permission(*hir_id, permission_place)
+        else {
+            return Err(vir::messages::error(
+                span,
+                "Verus Internal Error: setup_verus_ctxt_for_thir_erasure failed, unsupported permission place",
+            ));
+        };
+        raw_deref_permissions.insert(*hir_id, perm);
+    }
+
     let verus_erasure_ctxt = VerusErasureCtxt {
         locals,
         binders,
@@ -420,6 +441,7 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
         bodies,
         loop_erasure,
         local_invariant_bodies,
+        raw_deref_permissions,
 
         erased_ghost_value_fn_def_id: *verus_items
             .name_to_id
@@ -436,6 +458,10 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
         mutable_reference_tie_fn_def_id: *verus_items
             .name_to_id
             .get(&VerusItem::MutableReferenceTie)
+            .unwrap(),
+        shared_reference_tie_fn_def_id: *verus_items
+            .name_to_id
+            .get(&VerusItem::SharedReferenceTie)
             .unwrap(),
         two_phase_mutable_reference_tie_fn_def_id: *verus_items
             .name_to_id
@@ -505,4 +531,45 @@ pub(crate) fn setup_verus_aware_ids(crate_items: &crate::external::CrateItems) {
         }
     }
     set_verus_aware_def_ids(Arc::new(s));
+}
+
+/// Convert the VIR permission place for a raw deref into the form needed by the THIR builder.
+/// `deref_hir_id` is the HirId of the deref expression; the permission variable is
+/// declared in the same HIR owner.
+fn permission_place_to_raw_deref_permission(
+    deref_hir_id: HirId,
+    place: &vir::ast::Place,
+) -> Option<RawDerefPermission> {
+    use vir::ast::{PlaceX, VarIdentDisambiguate};
+    match &place.x {
+        PlaceX::Local(x) => {
+            let VarIdentDisambiguate::RustcId(local_id) = x.1 else {
+                return None;
+            };
+            let local = HirId {
+                owner: deref_hir_id.owner,
+                local_id: rustc_hir::ItemLocalId::from_usize(local_id),
+            };
+            Some(RawDerefPermission { local, projections: vec![] })
+        }
+        PlaceX::DerefMut(p) => {
+            let mut perm = permission_place_to_raw_deref_permission(deref_hir_id, p)?;
+            perm.projections.push(PermissionProjection::DerefMut);
+            Some(perm)
+        }
+        PlaceX::Field(opr, p) => {
+            let mut perm = permission_place_to_raw_deref_permission(deref_hir_id, p)?;
+            perm.projections.push(PermissionProjection::Field {
+                variant: (*opr.variant).clone(),
+                field: (*opr.field).clone(),
+            });
+            Some(perm)
+        }
+        PlaceX::Temporary(..)
+        | PlaceX::ModeUnwrap(..)
+        | PlaceX::WithExpr(..)
+        | PlaceX::Index(..)
+        | PlaceX::UserDefinedTypInvariantObligation(..)
+        | PlaceX::DerefRaw(..) => None,
+    }
 }

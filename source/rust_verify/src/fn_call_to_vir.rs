@@ -2321,6 +2321,7 @@ fn verus_item_to_vir<'tcx, 'a>(
         | VerusItem::ShadowGhostValue
         | VerusItem::DummyCapture(_)
         | VerusItem::MutableReferenceTie
+        | VerusItem::SharedReferenceTie
         | VerusItem::TwoPhaseMutableReferenceTie
         | VerusItem::GetFirst => {
             return err_span(
@@ -2472,6 +2473,7 @@ fn uncompilable_verus_fn(verus_item: &VerusItem) -> bool {
         | VerusItem::ErasedGhostValue
         | VerusItem::ShadowGhostValue
         | VerusItem::MutableReferenceTie
+        | VerusItem::SharedReferenceTie
         | VerusItem::TwoPhaseMutableReferenceTie
         | VerusItem::GetFirst
         | VerusItem::DummyCapture(_)

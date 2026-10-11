@@ -106,6 +106,7 @@ pub(crate) fn mirror_expr_post<'tcx>(
             if is_node_with_single_arg_erased_or_shadow(cx, &erasure_ctxt, &kind) {
                 erase_node_unadjusted(cx, expr, kind)
             } else {
+                crate::verus_raw_ptrs::deref_post(cx, expr, &kind);
                 kind
             }
         }

@@ -1562,7 +1562,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 expr_to_vir_with_adjustments(bctx, expr, adjustments, adjustment_idx - 1)?;
             let inner_ty = get_inner_ty();
             let inner_place = inner_expr.to_place(bctx, expr.span, inner_ty)?;
-            let p = deref_primitive(bctx, expr.span, inner_ty, &inner_place)?;
+            let p = deref_primitive(bctx, expr.span, None, inner_ty, &inner_place)?;
             Ok(ExprOrPlace::Place(p))
         }
         Adjust::Deref(DerefAdjustKind::Overloaded(deref)) => {
@@ -2646,7 +2646,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 } else {
                     let inner_ty = bctx.types.expr_ty_adjusted(arg);
                     let inner = expr_to_vir_place(bctx, arg)?;
-                    let p = deref_primitive(bctx, expr.span, inner_ty, &inner)?;
+                    let p = deref_primitive(bctx, expr.span, Some(expr.hir_id), inner_ty, &inner)?;
                     return Ok(ExprOrPlace::Place(p));
                 }
             }
@@ -4522,10 +4522,14 @@ pub(crate) fn maybe_do_ptr_cast<'tcx>(
 ///   - Box<T> -> T
 ///   - &T -> T
 ///   - &mut T -> T
-///   - *mut T -> T (unsupported)
+///   - *mut T -> T
+///
+/// `hir_id` is the HirId of the explicit Unary Deref expression, if any
+/// (raw pointers are never dereferenced implicitly).
 pub(crate) fn deref_primitive<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     span: Span,
+    hir_id: Option<HirId>,
     ty: rustc_middle::ty::Ty<'tcx>,
     place: &Place,
 ) -> Result<Place, VirErr> {
@@ -4568,7 +4572,13 @@ pub(crate) fn deref_primitive<'tcx>(
                 TypX::Primitive(Primitive::Ptr, t) => t[0].clone(),
                 _ => panic!("expected mut ref"),
             };
-            Ok(bctx.spanned_typed_new(span, &t, placex))
+            let deref_place = bctx.spanned_typed_new(span, &t, placex);
+            let Some(hir_id) = hir_id else {
+                return err_span(span, "Verus Internal Error: expected HirId for raw deref");
+            };
+            let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+            erasure_info.deref_raw_hir_vir_ids.push((hir_id, deref_place.span.id));
+            Ok(deref_place)
         }
         _ => {
             unsupported_err!(span, format!("primitive deref operation for {ty:?}"))

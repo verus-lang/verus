@@ -94,6 +94,26 @@ pub struct LocalInvariantBody {
     pub guard_var: LocalVarId,
 }
 
+/// A projection in a permission place (see `RawDerefPermission`).
+#[derive(Debug, Clone)]
+pub enum PermissionProjection {
+    /// Dereference a mutable reference
+    DerefMut,
+    /// Field of a struct or enum variant (looked up by name)
+    Field { variant: String, field: String },
+}
+
+/// The permission place to use for a given raw pointer dereference, e.g., `perm`,
+/// `(*perm_ref)`, or `perm_opt.Some.0`.
+/// Dereferences of shared references are implicit (as they are in VIR);
+/// they are inserted when the THIR expression for the place is constructed.
+#[derive(Debug, Clone)]
+pub struct RawDerefPermission {
+    /// HirId of the binder of the permission variable
+    pub local: HirId,
+    pub projections: Vec<PermissionProjection>,
+}
+
 /// Global context with all information across the krate.
 /// This is created after mode-checking and passed here via the VERUS_ERASURE_CTXT global.
 #[derive(Debug)]
@@ -120,11 +140,16 @@ pub struct VerusErasureCtxt {
 
     pub local_invariant_bodies: HashMap<HirId, LocalInvariantBody>,
 
+    /// For each raw pointer dereference (HirId of the Unary Deref expression)
+    /// the permission to use. (See verus_raw_ptrs.rs)
+    pub raw_deref_permissions: HashMap<HirId, RawDerefPermission>,
+
     /// Some DefIds from builtin that we'll need to handle directly
     pub erased_ghost_value_fn_def_id: DefId,
     pub shadow_ghost_value_fn_def_id: DefId,
     pub dummy_capture_struct_def_id: DefId,
     pub mutable_reference_tie_fn_def_id: DefId,
+    pub shared_reference_tie_fn_def_id: DefId,
     pub two_phase_mutable_reference_tie_fn_def_id: DefId,
     pub get_first_fn_def_id: DefId,
 }
@@ -216,6 +241,13 @@ pub(crate) struct ExtraThir {
     pub local_invs_for_node: HashMap<ExprId, Vec<LocalInvariantBody>>,
     /// Treat this call as having an inhabited return type (i.e., don't prune the CFG)
     pub force_treat_inhabited: HashSet<ExprId>,
+    /// Maps the pointer operand `p` of a raw pointer dereference `*p` to a
+    /// place expression for its permission. (See verus_raw_ptrs.rs)
+    pub raw_deref_permissions: HashMap<ExprId, ExprId>,
+    /// Maps the pointer operand `p` of a raw pointer dereference `*p` to how its permission
+    /// is used, in the case that `*p` is the outermost raw dereference of a place and the
+    /// usage is something other than a read. (See verus_raw_ptrs.rs)
+    pub raw_deref_outer_usage: HashMap<ExprId, crate::verus_raw_ptrs::PermUsage>,
 }
 
 /// Per-body context (i.e., one for each function or closure).
@@ -247,6 +279,8 @@ impl VerusThirBuildCtxt {
             extra_thir: ExtraThir {
                 local_invs_for_node: HashMap::new(),
                 force_treat_inhabited: HashSet::new(),
+                raw_deref_permissions: HashMap::new(),
+                raw_deref_outer_usage: HashMap::new(),
             },
             local_def_id: local_def_id,
         }

@@ -1398,7 +1398,7 @@ impl PlaceX {
             PlaceX::WithExpr(_e, p) => p.x.uses_unnamed_temporary(),
             PlaceX::Index(p, _idx, _k, _needs_bounds_check) => p.x.uses_unnamed_temporary(),
             PlaceX::UserDefinedTypInvariantObligation(p, _) => p.x.uses_unnamed_temporary(),
-            PlaceX::DerefRaw(_p, _) => todo!(),
+            PlaceX::DerefRaw(p, _) => p.x.uses_unnamed_temporary(),
         }
     }
 }

@@ -426,6 +426,9 @@ pub struct ErasureModes {
     pub binder_modes: Vec<(Span, Mode)>,
     // Modes of calls and struct Ctors
     pub ctor_modes: Vec<(Span, Mode)>,
+    // For each PlaceX::DerefRaw node (identified by its span) that has a permission,
+    // the permission place. Used by lifetime checking to emit borrows of the permission.
+    pub deref_raw_permissions: Vec<(Span, Place)>,
 }
 
 impl Ghost {
@@ -1372,8 +1375,23 @@ fn check_place_rec_inner(
                 ));
             }
 
-            if let Some(_permission_place) = permission_place {
-                // TODO (native_ptrs): check
+            if let Some(permission_place) = permission_place {
+                // TODO (native_ptrs): more thorough checks of the permission place
+                let Some(local) = crate::ast_util::place_get_local(permission_place) else {
+                    return Err(error(&place.span, "unsupported permission place"));
+                };
+                let PlaceX::Local(x) = &local.x else { unreachable!() };
+                let (perm_mode, _) = typing.get(x, &place.span)?;
+                if perm_mode == Mode::Spec {
+                    return Err(error(
+                        &place.span,
+                        "the permission to dereference a pointer must be a tracked variable",
+                    ));
+                }
+                record
+                    .erasure_modes
+                    .deref_raw_permissions
+                    .push((place.span.clone(), permission_place.clone()));
             }
 
             Ok((Mode::Exec, proph))
@@ -4066,8 +4084,12 @@ pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes), Vec<VirErr>> 
             }
         }
     }
-    let erasure_modes =
-        ErasureModes { local_modes: vec![], binder_modes: vec![], ctor_modes: vec![] };
+    let erasure_modes = ErasureModes {
+        local_modes: vec![],
+        binder_modes: vec![],
+        ctor_modes: vec![],
+        deref_raw_permissions: vec![],
+    };
     let special_paths = SpecialPaths::new();
     let mut ctxt = Ctxt {
         funs,
