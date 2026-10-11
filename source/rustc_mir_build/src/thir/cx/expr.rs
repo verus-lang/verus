@@ -213,6 +213,10 @@ impl<'tcx> ThirBuildCx<'tcx> {
                     },
                 };
 
+                expr.kind = crate::verus_expr::apply_implicit_deref_borrow_post(
+                    self, hir_expr, expr.ty, expr.kind,
+                );
+
                 let expr = Box::new([self.thir.exprs.push(expr)]);
 
                 self.overloaded_place(
