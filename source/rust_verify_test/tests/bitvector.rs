@@ -1097,6 +1097,22 @@ test_verify_one_bv_file! {
     } => Err(err) => assert_fails(err, 2)
 }
 
+test_verify_one_file! {
+    // https://github.com/verus-lang/verus/issues/3081
+    #[test] bitnot_signed_without_bit_vector verus_code! {
+        proof fn in_a_local(x: i8) {
+            let y: i8 = !x;
+            assert(-128 <= y <= 127);
+            assert(y == -x - 1);
+        }
+
+        fn exec_i64(x: i64) {
+            let y = !x;
+            assert(y == -x - 1);
+        }
+    } => Ok(())
+}
+
 // test_by_equating:
 // test `x op y` for all combinations of
 //    - (x, y) are (8 bits, 8 bits); (8 bits, 9 bits); (9 bits, 8 bits)
