@@ -2300,7 +2300,7 @@ impl<'a> LocalCollection<'a> {
                         let len: usize = match &*typs[1] {
                             TypX::ConstInt(n) => n.try_into().unwrap(),
                             _ => {
-                                todo!("slice");
+                                panic!("Verus internal error: expected array to have fixed length")
                             }
                         };
                         let children = std::iter::repeat_n(PlaceTree::Leaf(typs[0].clone()), len)
