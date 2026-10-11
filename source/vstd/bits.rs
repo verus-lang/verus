@@ -12,7 +12,6 @@ use super::arithmetic::power2::{
     lemma_pow2_adds,
     lemma_pow2_pos,
     lemma2_to64,
-    lemma2_to64_rest,
     lemma_pow2_strictly_increases,
 };
 #[cfg(verus_keep_ghost)]
@@ -32,6 +31,8 @@ use super::arithmetic::mul::{
 };
 #[cfg(verus_keep_ghost)]
 use super::calc_macro::*;
+#[cfg(verus_keep_ghost)]
+use super::layout::unsigned_int_max_values;
 
 } // verus!
 // Proofs that shift right is equivalent to division by power of 2.
@@ -114,38 +115,23 @@ macro_rules! lemma_pow2_no_overflow {
                 0 < #[trigger] pow2(n) < <$uN>::MAX,
         {
             lemma_pow2_pos(n);
-            lemma2_to64();
-            lemma2_to64_rest();
+            unsigned_int_max_values();
+            lemma_pow2_unfold(<$uN>::BITS as nat);
+            if n < <$uN>::BITS - 1 {
+                lemma_pow2_strictly_increases(n, (<$uN>::BITS - 1) as nat);
+            }
         }
         }
     };
 }
 
+lemma_pow2_no_overflow!(lemma_u128_pow2_no_overflow, u128);
 lemma_pow2_no_overflow!(lemma_u64_pow2_no_overflow, u64);
 lemma_pow2_no_overflow!(lemma_u32_pow2_no_overflow, u32);
 lemma_pow2_no_overflow!(lemma_u16_pow2_no_overflow, u16);
 lemma_pow2_no_overflow!(lemma_u8_pow2_no_overflow, u8);
 lemma_pow2_no_overflow!(lemma_usize_pow2_no_overflow, usize);
 
-verus! {
-
-/// Proof that 2^n does not overflow u128 for an exponent n.
-// Not an instance of `lemma_pow2_no_overflow!`: `lemma2_to64` only covers exponents up to 64.
-pub broadcast proof fn lemma_u128_pow2_no_overflow(n: nat)
-    requires
-        0 <= n < u128::BITS,
-    ensures
-        0 < #[trigger] pow2(n) < u128::MAX,
-{
-    lemma_pow2_pos(n);
-    reveal(pow);
-    assert(pow2(127) == 0x8000_0000_0000_0000_0000_0000_0000_0000) by (compute_only);
-    if n < 127 {
-        lemma_pow2_strictly_increases(n, 127);
-    }
-}
-
-} // verus!
 // Proofs that shift left is equivalent to multiplication by power of 2.
 macro_rules! lemma_shl_is_mul {
     ($name:ident, $no_overflow:ident, $uN:ty) => {
