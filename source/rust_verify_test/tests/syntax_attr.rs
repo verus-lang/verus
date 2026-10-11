@@ -4,6 +4,37 @@ mod common;
 use common::*;
 
 test_verify_one_file_with_options! {
+    #[test] param_patterns_named_return ["vstd"] => code! {
+        use vstd::prelude::*;
+
+        #[verus_spec(r => ensures r == s)]
+        fn strings((s, t): (String, String)) -> String {
+            let _ = t;
+            s
+        }
+
+        #[verus_spec(result => ensures result == value)]
+        fn f<T>(_: T, value: u32, _: &mut u64) -> u32 {
+            value
+        }
+
+        #[verus_spec(result => ensures result.1)]
+        fn g(_: impl Sized, _: &impl Sized) -> (impl Sized, bool) {
+            (true, true)
+        }
+
+        #[verus_spec]
+        fn caller() {
+            let mut value = 30u64;
+            let result = f(false, 20, &mut value);
+            proof! { assert(result == 20); }
+            let result = g(true, &false);
+            proof! { assert(result.1); }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
     #[test] verus_verify_basic_while ["exec_allows_no_decreases_clause"] =>  code! {
         #[verus_spec]
         fn test1() {

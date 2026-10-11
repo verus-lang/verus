@@ -45,6 +45,7 @@ use verus_syn::{
 };
 
 pub(crate) const VERUS_SPEC: &str = "VERUS_SPEC__";
+const VERUS_PARAM: &str = "__verus_param_";
 
 fn take_expr(expr: &mut Expr) -> Expr {
     let dummy: Expr = Expr::Verbatim(TokenStream::new());
@@ -496,7 +497,7 @@ fn rewrite_args_unwrap_ghost_tracked(erase_ghost: &EraseGhost, arg: &mut FnArg) 
         if let Pat::TupleStruct(tup) = &*pat {
             let ghost_wrapper = path_is_ident(&tup.path, "Ghost");
             tracked_wrapper = path_is_ident(&tup.path, "Tracked");
-            if ghost_wrapper || tracked_wrapper || tup.elems.len() == 1 {
+            if (ghost_wrapper || tracked_wrapper) && tup.elems.len() == 1 {
                 if let Pat::Ident(id) = &tup.elems[0] {
                     wrapped_pat_id = Some(id.clone());
                 }
@@ -1422,6 +1423,14 @@ impl Visitor {
             }
         }
 
+        // Bodiless trait methods can't have patterns
+        if self.erase_ghost.keep()
+            && !self.rustdoc
+            && !(is_trait && !has_body && !sig.ident.to_string().starts_with(VERUS_SPEC))
+        {
+            name_verus_params(&mut sig.inputs);
+        }
+
         let spec_stmts = self.take_sig_specs(
             &mut sig.spec,
             ret_pat.as_ref(),
@@ -1436,7 +1445,12 @@ impl Visitor {
             atomic_perm_clause,
         );
         if !self.erase_ghost.erase() {
-            if !(self.rustdoc && sig.constness.is_some()) {
+            // Rustdoc reads contracts from doc attributes (see rustdoc.rs), so skip them where
+            // they wouldn't compile: in const fns, and with named returns and complex patterns
+            if !(self.rustdoc
+                && (sig.constness.is_some()
+                    || (ret_pat.is_some() && has_unnamed_verus_param(&sig.inputs))))
+            {
                 stmts.extend(spec_stmts);
             }
         }
@@ -2218,7 +2232,8 @@ impl Visitor {
                     );
                 }
                 FnArgKind::Typed(pat_type) => match &*pat_type.pat {
-                    Pat::Ident(PatIdent { ident, .. }) => ident,
+                    // visit_fn renamed complex patterns to `__verus_param_N @ p`
+                    Pat::Ident(PatIdent { ident, subpat: None, .. }) => ident,
                     _ => {
                         return Item::Verbatim(
                             quote_spanned!(pat_type.pat.span() => compile_error!("'assume_specification' expects ident, not complex pattern");),
@@ -5631,6 +5646,63 @@ fn take_sig_with_spec(
     spec_stmts
 }
 
+#[cfg(verus_keep_ghost)]
+fn def_site() -> Span {
+    Span::from(proc_macro::Span::def_site())
+}
+
+// `def_site` is unstable, so it's only enabled with verus_keep_ghost.
+// Without it nothing is verified, and hiding the name from user locals is enough.
+#[cfg(not(verus_keep_ghost))]
+fn def_site() -> Span {
+    Span::mixed_site()
+}
+
+// Named-return contracts call the function to infer the return type, so each
+// parameter needs a name. The def-site span hides the name from user code.
+fn param_ident(index: usize, span: Span) -> Ident {
+    Ident::new(&format!("{VERUS_PARAM}{index}"), def_site().located_at(span))
+}
+
+fn has_unnamed_verus_param(inputs: &Punctuated<FnArg, Token![,]>) -> bool {
+    inputs.iter().any(|arg| {
+        matches!(&arg.kind, FnArgKind::Typed(typed)
+            if !matches!(&*typed.pat, Pat::Ident(PatIdent { by_ref: None, .. })))
+    })
+}
+
+fn has_unnamed_param(inputs: &syn::punctuated::Punctuated<syn::FnArg, Comma>) -> bool {
+    inputs.iter().any(|arg| {
+        matches!(arg, syn::FnArg::Typed(typed)
+            if !matches!(&*typed.pat, syn::Pat::Ident(syn::PatIdent { by_ref: None, .. })))
+    })
+}
+
+// Names each complex parameter pattern `p` (anything but `x` or `x @ q`) `__verus_param_N @ p`
+fn name_verus_params(inputs: &mut Punctuated<FnArg, Token![,]>) {
+    for (index, arg) in inputs.iter_mut().enumerate() {
+        if let FnArgKind::Typed(typed) = &mut arg.kind {
+            if !matches!(&*typed.pat, Pat::Ident(PatIdent { by_ref: None, .. })) {
+                let pat = &typed.pat;
+                let ident = param_ident(index, pat.span());
+                *typed.pat = parse_quote_spanned!(pat.span() => #ident @ #pat);
+            }
+        }
+    }
+}
+
+fn name_params(inputs: &mut syn::punctuated::Punctuated<syn::FnArg, Comma>) {
+    for (index, arg) in inputs.iter_mut().enumerate() {
+        if let syn::FnArg::Typed(typed) = arg {
+            if !matches!(&*typed.pat, syn::Pat::Ident(syn::PatIdent { by_ref: None, .. })) {
+                let pat = &typed.pat;
+                let ident = param_ident(index, pat.span());
+                *typed.pat = syn::parse_quote_spanned!(pat.span() => #ident @ #pat);
+            }
+        }
+    }
+}
+
 pub(crate) fn verus_inputs_to_tokens(
     inputs: &Punctuated<FnArg, Token![,]>,
 ) -> (Option<TokenStream>, TokenStream) {
@@ -5769,6 +5841,15 @@ pub(crate) fn sig_specs_attr(
     if let Some(pat) = &ret_pat {
         if let Some(err_stmt) = check_return_idents(pat, &sig.inputs) {
             spec_stmts.push(err_stmt);
+        }
+    }
+
+    if erase_ghost.keep() && !is_closure {
+        if !env_rustdoc() {
+            name_params(&mut sig.inputs);
+        } else if ret_pat.is_some() && has_unnamed_param(&sig.inputs) {
+            // Without names, the named-return contract can't call the function
+            return spec_stmts;
         }
     }
 
