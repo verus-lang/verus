@@ -2489,6 +2489,12 @@ pub fn mutable_reference_tie<'a, T: ?Sized, U: ?Sized>(_a: &'a mut T, _b: &'a mu
 }
 
 #[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::shared_reference_tie"]
+pub fn shared_reference_tie<'a, T: ?Sized, U: ?Sized>(_a: &'a T, _b: &'a U) -> &'a T {
+    unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::two_phase_mutable_reference_tie"]
 pub fn two_phase_mutable_reference_tie<'a, T: ?Sized, U: ?Sized>(
     _a: &'a mut T,

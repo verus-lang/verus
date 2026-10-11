@@ -28,6 +28,9 @@ pub struct ErasureInfo {
     /// Connect every non-tuple VIR Ctor onto its HirId (either a ExprKind::Struct, or a
     /// const-style constructor or call-style constructor).
     pub(crate) ctor_hir_vir_ids: Vec<(Option<HirId>, AstId)>,
+    /// Connect every PlaceX::DerefRaw node onto the HirId of its (explicit) Unary Deref
+    /// HIR expression.
+    pub(crate) deref_raw_hir_vir_ids: Vec<(HirId, AstId)>,
     /// Details of each call in the first run's HIR.
     /// The last bool is "in ghost block?".
     /// (This is false for "boundary" calls like Ghost/Tracked
