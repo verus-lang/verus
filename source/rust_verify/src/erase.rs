@@ -540,6 +540,18 @@ fn permission_place_to_raw_deref_permission(
     deref_hir_id: HirId,
     place: &vir::ast::Place,
 ) -> Option<RawDerefPermission> {
+    let mut perm = permission_place_to_raw_deref_permission_rec(deref_hir_id, place)?;
+    // The permission itself (a PointsTo) may be behind implicit dereferences
+    push_implicit_derefs(&place.typ, &mut perm.projections)?;
+    Some(perm)
+}
+
+/// Returns the projections for the given place, not including any implicit
+/// dereferences applied on top of it.
+fn permission_place_to_raw_deref_permission_rec(
+    deref_hir_id: HirId,
+    place: &vir::ast::Place,
+) -> Option<RawDerefPermission> {
     use vir::ast::{PlaceX, VarIdentDisambiguate};
     match &place.x {
         PlaceX::Local(x) => {
@@ -553,12 +565,14 @@ fn permission_place_to_raw_deref_permission(
             Some(RawDerefPermission { local, projections: vec![] })
         }
         PlaceX::DerefMut(p) => {
-            let mut perm = permission_place_to_raw_deref_permission(deref_hir_id, p)?;
+            let mut perm = permission_place_to_raw_deref_permission_rec(deref_hir_id, p)?;
+            push_implicit_derefs(&p.typ, &mut perm.projections)?;
             perm.projections.push(PermissionProjection::DerefMut);
             Some(perm)
         }
         PlaceX::Field(opr, p) => {
-            let mut perm = permission_place_to_raw_deref_permission(deref_hir_id, p)?;
+            let mut perm = permission_place_to_raw_deref_permission_rec(deref_hir_id, p)?;
+            push_implicit_derefs(&p.typ, &mut perm.projections)?;
             perm.projections.push(PermissionProjection::Field {
                 variant: (*opr.variant).clone(),
                 field: (*opr.field).clone(),
@@ -571,5 +585,34 @@ fn permission_place_to_raw_deref_permission(
         | PlaceX::Index(..)
         | PlaceX::UserDefinedTypInvariantObligation(..)
         | PlaceX::DerefRaw(..) => None,
+    }
+}
+
+/// Box and shared-reference dereferences are implicit in VIR places
+/// (see the documentation on `vir::ast::Place`), so we need to recover them from the type
+/// of the place they are applied to.
+fn push_implicit_derefs(
+    typ: &vir::ast::Typ,
+    projections: &mut Vec<PermissionProjection>,
+) -> Option<()> {
+    use vir::ast::{TypDecoration, TypX};
+    let mut typ = typ;
+    loop {
+        match &**typ {
+            TypX::Decorate(TypDecoration::Ref, _, t) => {
+                projections.push(PermissionProjection::DerefShared);
+                typ = t;
+            }
+            TypX::Decorate(TypDecoration::Box, _, t) => {
+                projections.push(PermissionProjection::DerefBox);
+                typ = t;
+            }
+            TypX::Decorate(..) => {
+                return None;
+            }
+            _ => {
+                return Some(());
+            }
+        }
     }
 }

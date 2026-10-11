@@ -1080,6 +1080,72 @@ test_verify_one_file! {
     }) => Err(err) => assert_borrowed_as_mut(err, "m")
 }
 
+test_verify_one_file! {
+    #[test] test_perm_behind_box_and_refs code(verus_code_str! {
+        fn test_box(a: *mut u8, Tracked(m): Tracked<Box<PointsTo<u8>>>)
+            requires m.is_init(), m.ptr() == a,
+        {
+            #[verifier::permission("a")]
+            let tracked mut m = m;
+            unsafe {
+                *a = 20;
+                let r = *a;
+                assert(r == 20);
+            }
+        }
+
+        fn test_ref_box_mut_ref(a: *mut u8, Tracked(m): Tracked<&Box<&mut PointsTo<u8>>>)
+            requires m.is_init(), m.ptr() == a,
+        {
+            #[verifier::permission("a")]
+            let tracked m = m;
+            unsafe {
+                let r = *a;
+            }
+        }
+
+        fn test_option_box(a: *mut u8, Tracked(m): Tracked<Option<Box<PointsTo<u8>>>>)
+            requires m is Some, m.unwrap().is_init(), m.unwrap().ptr() == a,
+        {
+            #[verifier::permission("a")]
+            let tracked mut m = m;
+            unsafe {
+                *a = 20;
+            }
+        }
+    }) => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_perm_behind_box_borrowed code(verus_code_str! {
+        fn test(a: *mut u8, Tracked(m): Tracked<Box<PointsTo<u8>>>)
+            requires m.is_init(), m.ptr() == a,
+        {
+            #[verifier::permission("a")]
+            let tracked mut m = m;
+            unsafe {
+                let r = &mut *a;
+                let tracked z = &*m;
+                *r = 5;
+            }
+        }
+    }) => Err(err) => assert_borrowed_as_mut(err, "*m")
+}
+
+test_verify_one_file! {
+    #[test] test_perm_behind_ref_box_mut_ref_write code(verus_code_str! {
+        fn test(a: *mut u8, Tracked(m): Tracked<&Box<&mut PointsTo<u8>>>)
+            requires m.is_init(), m.ptr() == a,
+        {
+            #[verifier::permission("a")]
+            let tracked m = m;
+            unsafe {
+                *a = 5;
+            }
+        }
+    }) => Err(err) => assert_rust_error_msg(err, "cannot borrow `***m` as mutable, as it is behind a `&` reference")
+}
+
 // Closures
 
 test_verify_one_file! {

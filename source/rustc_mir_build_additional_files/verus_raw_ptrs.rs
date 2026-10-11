@@ -157,13 +157,26 @@ fn permission_place<'tcx>(
     let mut e = expr_id_from_kind(cx, kind, hir_id, span, ty);
 
     for proj in perm.projections.iter() {
-        (e, ty) = deref_shared_refs(cx, hir_id, span, e, ty);
         match proj {
             PermissionProjection::DerefMut => {
                 let TyKind::Ref(_, inner_ty, Mutability::Mut) = ty.kind() else {
                     panic!("Verus Internal Error: permission place: expected &mut type");
                 };
                 ty = *inner_ty;
+                e = expr_id_from_kind(cx, ExprKind::Deref { arg: e }, hir_id, span, ty);
+            }
+            PermissionProjection::DerefShared => {
+                let TyKind::Ref(_, inner_ty, Mutability::Not) = ty.kind() else {
+                    panic!("Verus Internal Error: permission place: expected & type");
+                };
+                ty = *inner_ty;
+                e = expr_id_from_kind(cx, ExprKind::Deref { arg: e }, hir_id, span, ty);
+            }
+            PermissionProjection::DerefBox => {
+                let Some(inner_ty) = ty.boxed_ty() else {
+                    panic!("Verus Internal Error: permission place: expected Box type");
+                };
+                ty = inner_ty;
                 e = expr_id_from_kind(cx, ExprKind::Deref { arg: e }, hir_id, span, ty);
             }
             PermissionProjection::Field { variant, field } => {
@@ -196,23 +209,7 @@ fn permission_place<'tcx>(
             }
         }
     }
-    (e, _) = deref_shared_refs(cx, hir_id, span, e, ty);
     Some(e)
-}
-
-/// Shared references are implicit in VIR places, so we need to insert the derefs here.
-fn deref_shared_refs<'tcx>(
-    cx: &mut ThirBuildCx<'tcx>,
-    hir_id: HirId,
-    span: Span,
-    mut e: ExprId,
-    mut ty: Ty<'tcx>,
-) -> (ExprId, Ty<'tcx>) {
-    while let TyKind::Ref(_, inner_ty, Mutability::Not) = ty.kind() {
-        ty = *inner_ty;
-        e = expr_id_from_kind(cx, ExprKind::Deref { arg: e }, hir_id, span, ty);
-    }
-    (e, ty)
 }
 
 /// Make a fresh copy of a permission place expression (as constructed by `permission_place`)
