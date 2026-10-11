@@ -245,7 +245,21 @@ pub(crate) fn expr_post<'tcx>(
         return kind;
     }
 
+    if let Some(kind) = crate::verus_raw_ptrs::borrow_post(cx, hir_expr, ty, &kind) {
+        // Borrow from behind a raw pointer: tie the lifetime to the permission instead.
+        // (See verus_raw_ptrs.rs)
+        return kind;
+    }
+
     match &kind {
+        ExprKind::RawBorrow { mutability, arg } => {
+            crate::verus_raw_ptrs::raw_borrow_post(cx, *mutability, *arg);
+            kind
+        }
+        ExprKind::AssignOp { lhs, .. } => {
+            crate::verus_raw_ptrs::assign_post(cx, *lhs);
+            kind
+        }
         ExprKind::Borrow { borrow_kind: BorrowKind::Mut { kind: borrow_kind_mut }, arg: _ } => {
             let two_phase = match borrow_kind_mut {
                 MutBorrowKind::Default | MutBorrowKind::ClosureCapture => false,
@@ -279,6 +293,7 @@ pub(crate) fn expr_post<'tcx>(
             // Note: We don't need to handle AssignOp because it only applies to primitive types.
             let lhs = *lhs;
             let rhs = *rhs;
+            crate::verus_raw_ptrs::assign_post(cx, lhs);
             if let Some(shadow_lhs) = shadow_place(cx, hir_expr.hir_id, hir_expr.span, lhs) {
                 let main_assign = expr_id_from_kind(cx, kind, hir_expr.hir_id, hir_expr.span, ty);
                 let rhs_ty = cx.thir.exprs[rhs].ty;
@@ -1252,7 +1267,7 @@ fn modded_local_var_id(v: LocalVarId, mod_idx: usize) -> LocalVarId {
 /// Given `&mut place`, return `&mut place_shadow`.
 /// Returns None if we don't need to do anything in the shadow world
 /// (e.g., the place is a temporary).
-fn shadow_mut_ref_kind<'tcx>(
+pub(crate) fn shadow_mut_ref_kind<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     hir_id: HirId,
     span: Span,
@@ -1296,6 +1311,11 @@ fn shadow_place_rec<'tcx>(
             if matches!(ty.kind(), TyKind::Ref(_, _, Mutability::Not)) {
                 // Mutable borrow from behind immutable reference: this will be a normal
                 // error so skip special handling
+                return None;
+            }
+            if ty.is_raw_ptr() {
+                // A place behind a raw pointer has no shadow place; instead, borrows
+                // are tied to the pointer's permission (see verus_raw_ptrs.rs)
                 return None;
             }
 
@@ -1382,7 +1402,7 @@ fn shadow_place_rec<'tcx>(
 }
 
 /// Returns `mutable_reference_tie(e1, e2)`
-fn tie_mut_refs<'tcx>(
+pub(crate) fn tie_mut_refs<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     hir_id: HirId,
     span: Span,
@@ -1456,7 +1476,7 @@ pub(crate) fn shadow_var_uses<'tcx>(
 ) -> Vec<ExprId> {
     let mut v = vec![];
     for local_use in uses.iter() {
-        let emit_shadow = match erasure_ctxt.vars.get(&local_use.hir_id) {
+        let emit_shadow = match erasure_ctxt.locals.get(&local_use.hir_id) {
             Some(VarErasure::Erase) => false,
             Some(VarErasure::Shadow | VarErasure::Keep) | None => true,
         };

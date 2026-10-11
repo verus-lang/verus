@@ -94,13 +94,35 @@ pub struct LocalInvariantBody {
     pub guard_var: LocalVarId,
 }
 
+/// A projection in a permission place (see `RawDerefPermission`).
+#[derive(Debug, Clone)]
+pub enum PermissionProjection {
+    /// Dereference a mutable reference
+    DerefMut,
+    /// Field of a struct or enum variant (looked up by name)
+    Field { variant: String, field: String },
+}
+
+/// The permission place to use for a given raw pointer dereference, e.g., `perm`,
+/// `(*perm_ref)`, or `perm_opt.Some.0`.
+/// Dereferences of shared references are implicit (as they are in VIR);
+/// they are inserted when the THIR expression for the place is constructed.
+#[derive(Debug, Clone)]
+pub struct RawDerefPermission {
+    /// HirId of the binder of the permission variable
+    pub local: HirId,
+    pub projections: Vec<PermissionProjection>,
+}
+
 /// Global context with all information across the krate.
 /// This is created after mode-checking and passed here via the VERUS_ERASURE_CTXT global.
 #[derive(Debug)]
 pub struct VerusErasureCtxt {
-    /// For a given var (decl or use), should we erase it?
-    /// Also includes patterns.
-    pub vars: HashMap<HirId, VarErasure>,
+    /// For a given var use, should we erase it?
+    pub locals: HashMap<HirId, VarErasure>,
+
+    /// For a given binder (from a pattern), should we erase it?
+    pub binders: HashMap<HirId, VarErasure>,
 
     /// For a call, how do we handle it?
     /// This includes struct constructors as well. The "args" go in source order,
@@ -118,11 +140,16 @@ pub struct VerusErasureCtxt {
 
     pub local_invariant_bodies: HashMap<HirId, LocalInvariantBody>,
 
+    /// For each raw pointer dereference (HirId of the Unary Deref expression)
+    /// the permission to use. (See verus_raw_ptrs.rs)
+    pub raw_deref_permissions: HashMap<HirId, RawDerefPermission>,
+
     /// Some DefIds from builtin that we'll need to handle directly
     pub erased_ghost_value_fn_def_id: DefId,
     pub shadow_ghost_value_fn_def_id: DefId,
     pub dummy_capture_struct_def_id: DefId,
     pub mutable_reference_tie_fn_def_id: DefId,
+    pub shared_reference_tie_fn_def_id: DefId,
     pub two_phase_mutable_reference_tie_fn_def_id: DefId,
     pub get_first_fn_def_id: DefId,
 }
@@ -214,6 +241,13 @@ pub(crate) struct ExtraThir {
     pub local_invs_for_node: HashMap<ExprId, Vec<LocalInvariantBody>>,
     /// Treat this call as having an inhabited return type (i.e., don't prune the CFG)
     pub force_treat_inhabited: HashSet<ExprId>,
+    /// Maps the pointer operand `p` of a raw pointer dereference `*p` to a
+    /// place expression for its permission. (See verus_raw_ptrs.rs)
+    pub raw_deref_permissions: HashMap<ExprId, ExprId>,
+    /// Maps the pointer operand `p` of a raw pointer dereference `*p` to how its permission
+    /// is used, in the case that `*p` is the outermost raw dereference of a place and the
+    /// usage is something other than a read. (See verus_raw_ptrs.rs)
+    pub raw_deref_outer_usage: HashMap<ExprId, crate::verus_raw_ptrs::PermUsage>,
 }
 
 /// Per-body context (i.e., one for each function or closure).
@@ -245,6 +279,8 @@ impl VerusThirBuildCtxt {
             extra_thir: ExtraThir {
                 local_invs_for_node: HashMap::new(),
                 force_treat_inhabited: HashSet::new(),
+                raw_deref_permissions: HashMap::new(),
+                raw_deref_outer_usage: HashMap::new(),
             },
             local_def_id: local_def_id,
         }
@@ -318,7 +354,7 @@ pub(crate) fn handle_call<'tcx>(
     }
 }
 
-pub(crate) fn handle_var<'tcx>(
+pub(crate) fn handle_local<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     expr: &'tcx hir::Expr<'tcx>,
     var_hir_id: HirId,
@@ -326,7 +362,7 @@ pub(crate) fn handle_var<'tcx>(
     let Some(erasure_ctxt) = cx.verus_ctxt.ctxt.clone() else {
         return None;
     };
-    match erasure_ctxt.vars.get(&expr.hir_id) {
+    match erasure_ctxt.locals.get(&expr.hir_id) {
         None | Some(VarErasure::Keep) => None,
         Some(VarErasure::Shadow)
             if cx.verus_ctxt.do_time_travel_prevention
@@ -738,9 +774,19 @@ pub(crate) fn erase_var_for_closure_captures<'tcx>(hir_id: HirId) -> bool {
     let erasure_ctxt = get_verus_erasure_ctxt();
     let capture_shadow = ATOMIC_CLOSURE_CAPTURE_SHADOW.load(Ordering::SeqCst);
     if capture_shadow {
-        matches!(erasure_ctxt.vars.get(&hir_id), Some(VarErasure::Erase))
+        matches!(erasure_ctxt.locals.get(&hir_id), Some(VarErasure::Erase))
     } else {
-        matches!(erasure_ctxt.vars.get(&hir_id), Some(VarErasure::Erase | VarErasure::Shadow))
+        matches!(erasure_ctxt.locals.get(&hir_id), Some(VarErasure::Erase | VarErasure::Shadow))
+    }
+}
+
+pub(crate) fn erase_binder_for_closure_captures<'tcx>(hir_id: HirId) -> bool {
+    let erasure_ctxt = get_verus_erasure_ctxt();
+    let capture_shadow = ATOMIC_CLOSURE_CAPTURE_SHADOW.load(Ordering::SeqCst);
+    if capture_shadow {
+        matches!(erasure_ctxt.binders.get(&hir_id), Some(VarErasure::Erase))
+    } else {
+        matches!(erasure_ctxt.binders.get(&hir_id), Some(VarErasure::Erase | VarErasure::Shadow))
     }
 }
 
@@ -787,7 +833,7 @@ fn erase_pat_rec<'tcx>(emode: &PatBindingEraserMode, p: &mut Pat<'tcx>) {
             let erase_binder = match emode {
                 PatBindingEraserMode::EraseAll => true,
                 PatBindingEraserMode::EraseGhost(erasure_ctxt) => {
-                    matches!(erasure_ctxt.vars.get(&var.0), Some(VarErasure::Erase))
+                    matches!(erasure_ctxt.binders.get(&var.0), Some(VarErasure::Erase))
                 }
             };
 

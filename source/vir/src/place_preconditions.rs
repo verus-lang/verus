@@ -44,7 +44,9 @@ requirements, but it might matter if we model unwinding.
 */
 
 use crate::ast::*;
+use crate::ast_to_sst::State;
 use crate::ast_util::*;
+use crate::context::Ctx;
 use crate::def::Spanned;
 use crate::messages::{Message, Span};
 use crate::sst::*;
@@ -144,4 +146,98 @@ impl ArrayKind {
             ArrayKind::Slice => true,
         }
     }
+}
+
+fn check_variants_correct(
+    ctx: &Ctx,
+    state: &mut State,
+    span: &Span,
+    place: &Place,
+) -> (Exp, Vec<(Exp, Message)>) {
+    let mk_exp = |expx: ExpX| SpannedTyped::new(&place.span, &place.typ, expx);
+    match &place.x {
+        PlaceX::Field(field_opr, p) => {
+            let (e, mut checks) = check_variants_correct(ctx, state, span, p);
+            let FieldOpr { datatype, variant, field: _, get_variant: _, check: _ } = field_opr;
+            let unary =
+                UnaryOpr::IsVariant { datatype: datatype.clone(), variant: variant.clone() };
+
+            let condition = ExpX::UnaryOpr(unary, e.clone());
+            let condition = SpannedTyped::new(span, &Arc::new(TypX::Bool), condition);
+            checks.push((condition, crate::messages::error(span,
+                format!("cannot show that `{:}` has variant `{variant}`, needed to access the pointer permission", place_to_string(p)))));
+
+            let e = mk_exp(ExpX::UnaryOpr(UnaryOpr::Field(field_opr.clone()), e));
+            (e, checks)
+        }
+        PlaceX::DerefMut(p) => {
+            let (e, checks) = check_variants_correct(ctx, state, span, p);
+            let e = mk_exp(ExpX::Unary(UnaryOp::MutRefCurrent, e));
+            (e, checks)
+        }
+        PlaceX::ModeUnwrap(p, mwm) => {
+            assert!(matches!(mwm, ModeWrapperMode::Proof));
+            check_variants_correct(ctx, state, span, p)
+        }
+        PlaceX::Local(x) => {
+            let unique_id = state.get_var_unique_id(&x);
+            let e = mk_exp(ExpX::Var(unique_id));
+            (e, vec![])
+        }
+        PlaceX::Index(..) => {
+            panic!("check_variants_correct: Index");
+        }
+        PlaceX::Temporary(..) => {
+            panic!("check_variants_correct: Temporary");
+        }
+        PlaceX::WithExpr(..) => {
+            panic!("check_variants_correct: WithExpr");
+        }
+        PlaceX::UserDefinedTypInvariantObligation(..) => {
+            panic!("check_variants_correct: UserDefinedTypInvariantObligation");
+        }
+        PlaceX::DerefRaw(..) => {
+            panic!("check_variants_correct: DerefRaw");
+        }
+    }
+}
+
+fn place_to_string(p: &Place) -> String {
+    format!("{:?}", p) // TODO prettier string here
+}
+
+pub(crate) fn sst_raw_deref_check(
+    ctx: &Ctx,
+    state: &mut State,
+    span: &Span,
+    ptr: &Exp,
+    permission_place: &Option<Place>,
+) -> Vec<(Exp, Message)> {
+    let Some(permission_place) = permission_place else {
+        return vec![(
+            sst_bool(span, false),
+            crate::messages::error(span, "no `PointsTo` set for this pointer operation"),
+        )];
+    };
+
+    let (perm, mut checks) = check_variants_correct(ctx, state, span, permission_place);
+
+    let p1 = crate::points_to::sst_get_ptr(&perm);
+    let ptrs_eq = sst_equal(span, ptr, &p1);
+
+    checks.push((
+        ptrs_eq,
+        crate::messages::error(
+            span,
+            "unable to prove the pointer agrees with the given `PointsTo`",
+        ),
+    ));
+
+    let is_init = crate::points_to::sst_get_is_init(&perm);
+    checks.push((
+        is_init,
+        crate::messages::error(span, "unable to prove the `PointsTo` is initialized"),
+    ));
+
+    checks
 }

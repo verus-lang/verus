@@ -134,7 +134,8 @@ fn check_trigger_expr_arg(state: &mut State, arg: &Exp) {
             | UnaryOp::MutRefCurrent
             | UnaryOp::MutRefFuture(_)
             | UnaryOp::MutRefFinal(_)
-            | UnaryOp::Length(_) => {}
+            | UnaryOp::Length(_)
+            | UnaryOp::PointsToContents => {}
         },
         ExpX::UnaryOpr(op, arg) => match op {
             UnaryOpr::Box(_) | UnaryOpr::Unbox(_) => panic!("unexpected box"),
@@ -267,7 +268,8 @@ fn check_trigger_expr(
             | UnaryOp::BitNot(_)
             | UnaryOp::MutRefCurrent
             | UnaryOp::MutRefFuture(_)
-            | UnaryOp::MutRefFinal(_) => {
+            | UnaryOp::MutRefFinal(_)
+            | UnaryOp::PointsToContents => {
                 check_trigger_expr_arg(state, arg);
                 Ok(())
             }

@@ -1214,6 +1214,21 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     }
                 }
             }
+            UnaryOp::PointsToContents => {
+                let name = crate::fun!(CrateId::Vstd => "raw_ptr", "points_to_contents");
+                let name = suffix_global_id(&fun_to_air_ident(&ctx.name_ctxt, &name));
+                let e_typ = undecorate_typ(&e.typ);
+                let e_typ = match &*e_typ {
+                    TypX::Boxed(t) => t,
+                    _ => &e_typ,
+                };
+                let t = crate::points_to::get_points_to_typ_arg(&undecorate_typ(e_typ));
+                let mut exprs = typ_to_ids(&t);
+                let pt_expr = exp_to_expr(ctx, e, expr_ctxt)?;
+                let pt_expr = as_box(ctx, pt_expr, &e.typ);
+                exprs.push(pt_expr);
+                ident_apply(&name, &exprs)
+            }
         },
         ExpX::UnaryOpr(op, e) => match op {
             UnaryOpr::Box(typ) => {
@@ -1733,6 +1748,7 @@ fn var_locs_to_bare_vars(arg: &Exp) -> Exp {
 enum FieldUpdateDatumOpr {
     Field(FieldOpr),
     MutRefCurrent,
+    PointsToContents(Typ),
     Index(Exp, Typ, ArrayKind),
 }
 
@@ -1764,6 +1780,20 @@ fn loc_to_field_update_data(loc: &Exp) -> (UniqueIdent, LocFieldInfo<Vec<FieldUp
             ExpX::Unary(UnaryOp::MutRefCurrent, ee) => {
                 fields.push(FieldUpdateDatum {
                     opr: FieldUpdateDatumOpr::MutRefCurrent,
+                    field_typ: e.typ.clone(),
+                    base_exp: var_locs_to_bare_vars(ee),
+                });
+                e = ee;
+            }
+            ExpX::Unary(UnaryOp::PointsToContents, ee) => {
+                let container_typ = undecorate_typ(&ee.typ);
+                let container_typ = match &*container_typ {
+                    TypX::Boxed(x) => x,
+                    _ => &container_typ,
+                };
+                let container_typ = undecorate_typ(&container_typ);
+                fields.push(FieldUpdateDatum {
+                    opr: FieldUpdateDatumOpr::PointsToContents(container_typ),
                     field_typ: e.typ.clone(),
                     base_exp: var_locs_to_bare_vars(ee),
                 });
@@ -2349,6 +2379,17 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                         let ident = Arc::new(crate::def::MUT_REF_UPDATE_CURRENT.to_string());
                         let exprs = vec![base_expr, value];
                         value = Arc::new(ExprX::Apply(ident, Arc::new(exprs)));
+                    }
+                    FieldUpdateDatumOpr::PointsToContents(points_to_typ) => {
+                        let name =
+                            crate::fun!(CrateId::Vstd => "raw_ptr", "points_to_update_contents");
+                        let name = suffix_global_id(&fun_to_air_ident(&ctx.name_ctxt, &name));
+                        let t: Typ = crate::points_to::get_points_to_typ_arg(points_to_typ);
+                        let mut exprs = crate::sst_to_air::typ_to_ids(ctx, &t);
+                        exprs.push(as_box(ctx, base_expr, &base_exp.typ));
+                        exprs.push(value);
+                        value = ident_apply(&name, &exprs);
+                        value = try_unbox(ctx, value.clone(), &base_exp.typ).unwrap_or(value);
                     }
                     FieldUpdateDatumOpr::Index(idx, container_typ, kind) => {
                         let idx = exp_to_expr(ctx, idx, expr_ctxt)?;

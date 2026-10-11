@@ -1,0 +1,30 @@
+// MIR for `test` 0 nll
+
+| Free Region Mapping
+| '?0 | Global | ['?0, '?1]
+| '?1 | Local | ['?1]
+|
+| Inferred Region Values
+| '?0 | U0 | {bb0[0..=5], '?0, '?1}
+| '?1 | U0 | {bb0[0..=5], '?1}
+|
+| Inference Constraints
+| '?0 live at {bb0[0..=5]}
+| '?1 live at {bb0[0..=5]}
+|
+fn test(_1: *mut [*mut [*mut u64]; 20], _2: *mut u8, _3: *mut u8) -> () {
+    debug a => _1;                       // in scope 0 at test_ptr.rs:1:9: 1:10
+    debug b => _2;                       // in scope 0 at test_ptr.rs:1:40: 1:41
+    debug c => _3;                       // in scope 0 at test_ptr.rs:1:52: 1:53
+    let mut _0: ();                      // return place in scope 0 at test_ptr.rs:1:63: 1:63
+    let mut _4: u8;                      // in scope 0 at test_ptr.rs:4:14: 4:16
+
+    bb0: {
+        StorageLive(_4);                 // scope 0 at test_ptr.rs:4:14: 4:16
+        _4 = copy (*_3);                 // scope 0 at test_ptr.rs:4:14: 4:16
+        (*_2) = move _4;                 // scope 0 at test_ptr.rs:4:9: 4:16
+        StorageDead(_4);                 // scope 0 at test_ptr.rs:4:15: 4:16
+        _0 = const ();                   // scope 0 at test_ptr.rs:2:5: 5:6
+        return;                          // scope 0 at test_ptr.rs:6:2: 6:2
+    }
+}

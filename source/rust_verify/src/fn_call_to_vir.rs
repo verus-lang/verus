@@ -2321,6 +2321,7 @@ fn verus_item_to_vir<'tcx, 'a>(
         | VerusItem::ShadowGhostValue
         | VerusItem::DummyCapture(_)
         | VerusItem::MutableReferenceTie
+        | VerusItem::SharedReferenceTie
         | VerusItem::TwoPhaseMutableReferenceTie
         | VerusItem::GetFirst => {
             return err_span(
@@ -2472,6 +2473,7 @@ fn uncompilable_verus_fn(verus_item: &VerusItem) -> bool {
         | VerusItem::ErasedGhostValue
         | VerusItem::ShadowGhostValue
         | VerusItem::MutableReferenceTie
+        | VerusItem::SharedReferenceTie
         | VerusItem::TwoPhaseMutableReferenceTie
         | VerusItem::GetFirst
         | VerusItem::DummyCapture(_)
@@ -2509,6 +2511,7 @@ fn is_place_ok_for_spec_after_borrow(place: &Place) -> bool {
         PlaceX::WithExpr(..) => false,
         PlaceX::Index(..) => false,
         PlaceX::UserDefinedTypInvariantObligation(..) => false,
+        PlaceX::DerefRaw(..) => false,
     }
 }
 
@@ -2764,7 +2767,7 @@ fn extract_choose<'tcx>(
                 let name = pat_to_var(x.pat)?;
                 let vir_expr = bctx.spanned_typed_new(x.span, &typ, ExprX::Var(name.clone()));
                 let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-                erasure_info.hir_vir_ids.push((Some(x.pat.hir_id), vir_expr.span.id));
+                erasure_info.local_hir_vir_ids.push((None, vir_expr.span.id));
                 vars.push(vir_expr);
                 params.push(Arc::new(VarBinderX { name, a: typ }));
             }

@@ -415,7 +415,7 @@ pub fn use_type_invariant<A>(_a: A) {
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::verus_builtin::Ghost")]
 #[cfg_attr(verus_keep_ghost, verifier::external_body)]
 #[cfg_attr(verus_keep_ghost, verifier::reject_recursive_types_in_ground_variants(A))]
-pub struct Ghost<A> {
+pub struct Ghost<A: ?Sized> {
     phantom: PhantomData<A>,
 }
 
@@ -2485,6 +2485,12 @@ pub fn dummy_capture_consume<'a>(_dc: DummyCapture<'a>) {
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::mutable_reference_tie"]
 pub fn mutable_reference_tie<'a, T: ?Sized, U: ?Sized>(_a: &'a mut T, _b: &'a mut U) -> &'a mut T {
+    unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::shared_reference_tie"]
+pub fn shared_reference_tie<'a, T: ?Sized, U: ?Sized>(_a: &'a T, _b: &'a U) -> &'a T {
     unimplemented!()
 }
 

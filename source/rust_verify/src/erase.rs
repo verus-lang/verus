@@ -1,17 +1,17 @@
 use vir::messages::AstId;
 
 use rustc_hir::HirId;
-use rustc_span::SpanData;
 
-use vir::ast::{Datatype, Dt, Fun, Function, Krate, Mode, Path, Pattern};
+use crate::context::ErasureInfo;
+use vir::ast::{Datatype, Dt, Fun, Function, Krate, Mode, Path};
 use vir::modes::ErasureModes;
 
 use crate::verus_items::{DummyCaptureItem, VerusItem, VerusItems};
 use rustc_hir::def_id::LocalDefId;
 use rustc_mir_build_verus::verus::{
-    BodyErasure, CallErasure, LocalInvariantBody, LoopErasure, LoopSpecEvaluationLocation,
-    NodeErase, TreeErase, VarErasure, VerusErasureCtxt, set_verus_aware_def_ids,
-    set_verus_erasure_ctxt,
+    BodyErasure, CallErasure, LoopErasure, LoopSpecEvaluationLocation, NodeErase,
+    PermissionProjection, RawDerefPermission, TreeErase, VarErasure, VerusErasureCtxt,
+    set_verus_aware_def_ids, set_verus_erasure_ctxt,
 };
 use rustc_span::Span;
 use std::collections::HashMap;
@@ -101,35 +101,6 @@ impl LoopSpecKind {
             LoopSpecKind::InvariantExceptBreak => LoopSpecEvaluationLocation::BodyStart,
         }
     }
-}
-
-#[derive(Clone)]
-pub struct ErasureHints {
-    /// Copy of the entire VIR crate that was created in the first run's HIR -> VIR transformation
-    pub vir_crate: Krate,
-    /// Connect expression and pattern HirId to corresponding vir AstId
-    /// None for a generated VIR node with no corresponding source HIR node.
-    pub hir_vir_ids: Vec<(Option<HirId>, AstId)>,
-    /// Details of each call in the first run's HIR.
-    /// The last bool is "in ghost block?".
-    /// (This is false for "boundary" calls like Ghost/Tracked
-    /// though that shouldn't matter right now).
-    pub resolved_calls: Vec<(HirId, SpanData, ResolvedCall, bool)>,
-    /// Details of some patterns in first run's HIR
-    pub resolved_pats: Vec<(SpanData, Pattern)>,
-    /// Results of mode (spec/proof/exec) inference from first run's VIR
-    pub erasure_modes: ErasureModes,
-    /// Modes specified directly during rust_to_vir
-    pub direct_var_modes: Vec<(HirId, Mode)>,
-    /// List of #[verifier(external)] functions.  (These don't appear in vir_crate,
-    /// so we need to record them separately here.)
-    pub external_functions: Vec<Fun>,
-    /// List of function spans ignored by the verifier. These should not be erased
-    pub ignored_functions: Vec<(rustc_span::def_id::DefId, SpanData)>,
-    pub(crate) bodies: Vec<(LocalDefId, BodyErasure)>,
-    pub(crate) shadow_check: Vec<HirId>,
-    pub(crate) extra_erase_ast_ids: Vec<vir::messages::Span>,
-    pub(crate) local_invariant_bodies: Vec<LocalInvariantBody>,
 }
 
 /// How to erase the given var usage
@@ -268,25 +239,44 @@ fn get_binder_hir_id<'tcx>(
 pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
     tcx: rustc_middle::ty::TyCtxt<'tcx>,
     verus_items: &VerusItems,
-    erasure_hints: &ErasureHints,
+    vir_crate: &Krate,
+    erasure_hints: &ErasureInfo,
+    erasure_modes: &ErasureModes,
 ) -> Result<(), VirErr> {
-    let mut id_to_hir: HashMap<AstId, Vec<HirId>> = HashMap::new();
-    for (hir_id, vir_id) in &erasure_hints.hir_vir_ids {
-        if !id_to_hir.contains_key(vir_id) {
-            id_to_hir.insert(*vir_id, vec![]);
+    let mut local_id_to_hir: HashMap<AstId, Vec<HirId>> = HashMap::new();
+    for (hir_id, vir_id) in &erasure_hints.local_hir_vir_ids {
+        if !local_id_to_hir.contains_key(vir_id) {
+            local_id_to_hir.insert(*vir_id, vec![]);
         }
-        // Generated nodes have a known ID but no source HIR targets for erasure.
         if let Some(hir_id) = hir_id {
-            id_to_hir.get_mut(vir_id).unwrap().push(*hir_id);
+            local_id_to_hir.get_mut(vir_id).unwrap().push(*hir_id);
+        }
+    }
+    let mut binder_id_to_hir: HashMap<AstId, Vec<HirId>> = HashMap::new();
+    for (hir_id, vir_id) in &erasure_hints.binder_hir_vir_ids {
+        if !binder_id_to_hir.contains_key(vir_id) {
+            binder_id_to_hir.insert(*vir_id, vec![]);
+        }
+        if let Some(hir_id) = hir_id {
+            binder_id_to_hir.get_mut(vir_id).unwrap().push(*hir_id);
+        }
+    }
+    let mut ctor_id_to_hir: HashMap<AstId, Vec<HirId>> = HashMap::new();
+    for (hir_id, vir_id) in &erasure_hints.ctor_hir_vir_ids {
+        if !ctor_id_to_hir.contains_key(vir_id) {
+            ctor_id_to_hir.insert(*vir_id, vec![]);
+        }
+        if let Some(hir_id) = hir_id {
+            ctor_id_to_hir.get_mut(vir_id).unwrap().push(*hir_id);
         }
     }
 
-    let mut vars = HashMap::<HirId, VarErasure>::new();
-    for (span, (var_mode, mode)) in erasure_hints.erasure_modes.var_modes.iter() {
+    let mut locals = HashMap::<HirId, VarErasure>::new();
+    for (span, (var_mode, mode)) in erasure_modes.local_modes.iter() {
         if crate::spans::from_raw_span(&span.raw_span).is_none() {
             continue;
         }
-        if !id_to_hir.contains_key(&span.id) {
+        if !local_id_to_hir.contains_key(&span.id) {
             dbg!(span);
             dbg!(mode);
             return Err(vir::messages::error(
@@ -294,28 +284,57 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
                 "Verus Internal Error: setup_verus_ctxt_for_thir_erasure failed, var lookup failed",
             ));
         }
-        for hir_id in &id_to_hir[&span.id] {
-            vars.insert(
+        for hir_id in &local_id_to_hir[&span.id] {
+            locals.insert(
                 *hir_id,
                 mode_to_var_erase(*var_mode, *mode, erasure_hints.shadow_check.contains(hir_id)),
             );
         }
     }
+
+    let mut binders = HashMap::<HirId, VarErasure>::new();
+    for (span, mode) in erasure_modes.binder_modes.iter() {
+        if crate::spans::from_raw_span(&span.raw_span).is_none() {
+            continue;
+        }
+        if !binder_id_to_hir.contains_key(&span.id) {
+            dbg!(span);
+            dbg!(mode);
+            return Err(vir::messages::error(
+                span,
+                "Verus Internal Error: setup_verus_ctxt_for_thir_erasure failed, binder lookup failed",
+            ));
+        }
+        for hir_id in &binder_id_to_hir[&span.id] {
+            binders.insert(
+                *hir_id,
+                match mode {
+                    Mode::Spec => VarErasure::Erase,
+                    Mode::Exec | Mode::Proof => VarErasure::Keep,
+                },
+            );
+        }
+    }
+
     for span in erasure_hints.extra_erase_ast_ids.iter() {
         if crate::spans::from_raw_span(&span.raw_span).is_none() {
             continue;
         }
-        if !id_to_hir.contains_key(&span.id) {
-            continue;
+        if let Some(hir_ids) = local_id_to_hir.get(&span.id) {
+            for hir_id in hir_ids.iter() {
+                locals.insert(*hir_id, VarErasure::Erase);
+            }
         }
-        for hir_id in &id_to_hir[&span.id] {
-            vars.insert(*hir_id, VarErasure::Erase);
+        if let Some(hir_ids) = binder_id_to_hir.get(&span.id) {
+            for hir_id in hir_ids.iter() {
+                binders.insert(*hir_id, VarErasure::Erase);
+            }
         }
     }
 
-    for (hir_id, mode) in vars.iter() {
+    for (hir_id, mode) in locals.iter() {
         if let Some((span, name, binder_hir_id)) = get_binder_hir_id(tcx, *hir_id) {
-            if let Some(binder_mode) = vars.get(&binder_hir_id) {
+            if let Some(binder_mode) = binders.get(&binder_hir_id) {
                 if matches!(binder_mode, VarErasure::Erase) && !matches!(mode, VarErasure::Erase) {
                     return crate::util::err_span(
                         span,
@@ -330,11 +349,11 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
     }
 
     let mut ctor_modes = HashMap::<HirId, Mode>::new();
-    for (span, mode) in erasure_hints.erasure_modes.ctor_modes.iter() {
+    for (span, mode) in erasure_modes.ctor_modes.iter() {
         if crate::spans::from_raw_span(&span.raw_span).is_none() {
             continue;
         }
-        if !id_to_hir.contains_key(&span.id) {
+        if !ctor_id_to_hir.contains_key(&span.id) {
             dbg!(span);
             dbg!(mode);
             return Err(vir::messages::error(
@@ -342,18 +361,18 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
                 "Verus Internal Error: setup_verus_ctxt_for_thir_erasure failed, ctor lookup failed",
             ));
         }
-        for hir_id in &id_to_hir[&span.id] {
+        for hir_id in &ctor_id_to_hir[&span.id] {
             ctor_modes.insert(*hir_id, *mode);
         }
     }
 
     let mut functions = HashMap::<Fun, Function>::new();
-    for f in &erasure_hints.vir_crate.functions {
+    for f in &vir_crate.functions {
         functions.insert(f.x.name.clone(), f.clone()).map(|_| panic!("{:?}", f.x.name));
     }
 
     let mut datatypes = HashMap::<Path, Datatype>::new();
-    for d in &erasure_hints.vir_crate.datatypes {
+    for d in &vir_crate.datatypes {
         if let Dt::Path(path) = &d.x.name {
             datatypes.insert(path.clone(), d.clone()).map(|_| panic!("{:?}", path));
         }
@@ -395,12 +414,34 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
         assert!(found.is_none());
     }
 
+    let mut deref_raw_id_to_hir: HashMap<AstId, HirId> = HashMap::new();
+    for (hir_id, vir_id) in &erasure_hints.deref_raw_hir_vir_ids {
+        deref_raw_id_to_hir.insert(*vir_id, *hir_id);
+    }
+    let mut raw_deref_permissions = HashMap::<HirId, RawDerefPermission>::new();
+    for (span, permission_place) in erasure_modes.deref_raw_permissions.iter() {
+        let Some(hir_id) = deref_raw_id_to_hir.get(&span.id) else {
+            // Generated node with no corresponding source HIR node
+            continue;
+        };
+        let Some(perm) = permission_place_to_raw_deref_permission(*hir_id, permission_place)
+        else {
+            return Err(vir::messages::error(
+                span,
+                "Verus Internal Error: setup_verus_ctxt_for_thir_erasure failed, unsupported permission place",
+            ));
+        };
+        raw_deref_permissions.insert(*hir_id, perm);
+    }
+
     let verus_erasure_ctxt = VerusErasureCtxt {
-        vars,
+        locals,
+        binders,
         calls,
         bodies,
         loop_erasure,
         local_invariant_bodies,
+        raw_deref_permissions,
 
         erased_ghost_value_fn_def_id: *verus_items
             .name_to_id
@@ -417,6 +458,10 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
         mutable_reference_tie_fn_def_id: *verus_items
             .name_to_id
             .get(&VerusItem::MutableReferenceTie)
+            .unwrap(),
+        shared_reference_tie_fn_def_id: *verus_items
+            .name_to_id
+            .get(&VerusItem::SharedReferenceTie)
             .unwrap(),
         two_phase_mutable_reference_tie_fn_def_id: *verus_items
             .name_to_id
@@ -486,4 +531,45 @@ pub(crate) fn setup_verus_aware_ids(crate_items: &crate::external::CrateItems) {
         }
     }
     set_verus_aware_def_ids(Arc::new(s));
+}
+
+/// Convert the VIR permission place for a raw deref into the form needed by the THIR builder.
+/// `deref_hir_id` is the HirId of the deref expression; the permission variable is
+/// declared in the same HIR owner.
+fn permission_place_to_raw_deref_permission(
+    deref_hir_id: HirId,
+    place: &vir::ast::Place,
+) -> Option<RawDerefPermission> {
+    use vir::ast::{PlaceX, VarIdentDisambiguate};
+    match &place.x {
+        PlaceX::Local(x) => {
+            let VarIdentDisambiguate::RustcId(local_id) = x.1 else {
+                return None;
+            };
+            let local = HirId {
+                owner: deref_hir_id.owner,
+                local_id: rustc_hir::ItemLocalId::from_usize(local_id),
+            };
+            Some(RawDerefPermission { local, projections: vec![] })
+        }
+        PlaceX::DerefMut(p) => {
+            let mut perm = permission_place_to_raw_deref_permission(deref_hir_id, p)?;
+            perm.projections.push(PermissionProjection::DerefMut);
+            Some(perm)
+        }
+        PlaceX::Field(opr, p) => {
+            let mut perm = permission_place_to_raw_deref_permission(deref_hir_id, p)?;
+            perm.projections.push(PermissionProjection::Field {
+                variant: (*opr.variant).clone(),
+                field: (*opr.field).clone(),
+            });
+            Some(perm)
+        }
+        PlaceX::Temporary(..)
+        | PlaceX::ModeUnwrap(..)
+        | PlaceX::WithExpr(..)
+        | PlaceX::Index(..)
+        | PlaceX::UserDefinedTypInvariantObligation(..)
+        | PlaceX::DerefRaw(..) => None,
+    }
 }

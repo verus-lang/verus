@@ -379,10 +379,13 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
     /// intermediate `Place` values until we know the full set of projections.
     pub(crate) fn as_place_builder(
         &mut self,
-        block: BasicBlock,
+        mut block: BasicBlock,
         expr_id: ExprId,
     ) -> BlockAnd<PlaceBuilder<'tcx>> {
-        self.expr_as_place(block, expr_id, Mutability::Mut, None)
+        let place_builder =
+            unpack!(block = self.expr_as_place(block, expr_id, Mutability::Mut, None));
+        crate::builder::verus_builder::emit_raw_deref_perms_for_place(self, block, expr_id);
+        block.and(place_builder)
     }
 
     /// Compile `expr`, yielding a place that we can move from etc.
@@ -407,10 +410,13 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
     /// * Otherwise, a temporary is created: in that event, it will be an immutable temporary.
     fn as_read_only_place_builder(
         &mut self,
-        block: BasicBlock,
+        mut block: BasicBlock,
         expr_id: ExprId,
     ) -> BlockAnd<PlaceBuilder<'tcx>> {
-        self.expr_as_place(block, expr_id, Mutability::Not, None)
+        let place_builder =
+            unpack!(block = self.expr_as_place(block, expr_id, Mutability::Not, None));
+        crate::builder::verus_builder::emit_raw_deref_perms_for_place(self, block, expr_id);
+        block.and(place_builder)
     }
 
     fn expr_as_place(
@@ -643,6 +649,12 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         let index_lifetime = self.region_scope_tree.temporary_scope(self.thir[index].temp_scope_id);
         let idx = unpack!(block = self.as_temp(block, index_lifetime, index, Mutability::Not));
 
+        crate::builder::verus_builder::emit_raw_deref_perms_for_bounds_check(
+            self,
+            block,
+            base,
+            &base_place,
+        );
         block = self.bounds_check(block, &base_place, idx, expr_span, source_info);
 
         if is_outermost_index {

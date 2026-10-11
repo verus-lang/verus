@@ -422,9 +422,13 @@ pub struct ErasureModes {
     // Modes of variables in Var, Assign, Decl
     // first mode = canonical mode of the variable
     // second mode = mode of this usage (might be greater)
-    pub var_modes: Vec<(Span, (Mode, Mode))>,
+    pub local_modes: Vec<(Span, (Mode, Mode))>,
+    pub binder_modes: Vec<(Span, Mode)>,
     // Modes of calls and struct Ctors
     pub ctor_modes: Vec<(Span, Mode)>,
+    // For each PlaceX::DerefRaw node (identified by its span) that has a permission,
+    // the permission place. Used by lifetime checking to emit borrows of the permission.
+    pub deref_raw_permissions: Vec<(Span, Place)>,
 }
 
 impl Ghost {
@@ -901,7 +905,7 @@ fn add_pattern_rec(
     pattern: &Pattern,
 ) -> Result<(), VirErr> {
     if matches!(&pattern.x, PatternX::Var(..) | PatternX::Binding { .. }) {
-        record.erasure_modes.var_modes.push((pattern.span.clone(), (mode, mode)));
+        record.erasure_modes.binder_modes.push((pattern.span.clone(), mode));
     }
 
     let mode = if typing.in_pure { Mode::Spec } else { mode };
@@ -1117,7 +1121,7 @@ fn check_place(
             // For non-mutating: coerce the mode to whatever is necessary for the context.
 
             // We also apply coerce to the "expected mode" here in order to compute the optimal
-            // mode to put into var_modes (see below)
+            // mode to put into local_modes (see below)
 
             let mut coerced_mode = mode_join(place_mode, expect.0);
             if typing.in_assert_by_body || typing.in_proof_in_spec || typing.in_pure {
@@ -1224,7 +1228,7 @@ fn check_place(
                 PlaceX::Local(var) => typing.get(var, &place.span)?.0,
                 _ => unreachable!(),
             };
-            record.erasure_modes.var_modes.push((var_place.span.clone(), (var_mode, final_mode)));
+            record.erasure_modes.local_modes.push((var_place.span.clone(), (var_mode, final_mode)));
         }
     }
 
@@ -1350,13 +1354,55 @@ fn check_place_rec_inner(
             let deref_mode = if mode == Mode::Spec { Mode::Spec } else { Mode::Exec };
             Ok((deref_mode, proph))
         }
+        PlaceX::DerefRaw(p, permission_place) => {
+            let (mode, proph) = check_place_rec(
+                ctxt,
+                record,
+                typing,
+                note,
+                outer_mode,
+                p,
+                access,
+                expect,
+                outer_proph,
+            )?;
+
+            // TODO: I think we can be much more lenient here
+            if mode != Mode::Exec || !matches!(typing.block_ghostness, Ghost::Exec) {
+                return Err(error(
+                    &place.span,
+                    &format!("to dereference a pointer, it must be exec mode"),
+                ));
+            }
+
+            if let Some(permission_place) = permission_place {
+                // TODO (native_ptrs): more thorough checks of the permission place
+                let Some(local) = crate::ast_util::place_get_local(permission_place) else {
+                    return Err(error(&place.span, "unsupported permission place"));
+                };
+                let PlaceX::Local(x) = &local.x else { unreachable!() };
+                let (perm_mode, _) = typing.get(x, &place.span)?;
+                if perm_mode == Mode::Spec {
+                    return Err(error(
+                        &place.span,
+                        "the permission to dereference a pointer must be a tracked variable",
+                    ));
+                }
+                record
+                    .erasure_modes
+                    .deref_raw_permissions
+                    .push((place.span.clone(), permission_place.clone()));
+            }
+
+            Ok((Mode::Exec, proph))
+        }
         PlaceX::Local(var) => {
             let (mode, proph) = typing.get(var, &place.span)?;
             let proph = proph.to_proph(var, &place.span);
 
             // Other case is handled in `check_place`; see the explanation there.
             if access.is_mut() {
-                record.erasure_modes.var_modes.push((place.span.clone(), (mode, mode)));
+                record.erasure_modes.local_modes.push((place.span.clone(), (mode, mode)));
             }
 
             Ok((mode, proph))
@@ -1561,7 +1607,7 @@ fn ok_to_assign_exec_place_in_erased_code(ctxt: &Ctxt, place: &Place, typ: &Typ)
     // that we need this extra allowance in the first place, i.e., if it's not a mutable
     // reference, then we can just check directly if it's a tracked location and there's
     // no need for all this guesswork.
-    if !crate::ast_util::place_has_deref_mut(place) {
+    if !crate::ast_util::place_has_deref_mut_or_raw(place) {
         return false;
     }
 
@@ -1587,6 +1633,9 @@ fn ok_to_assign_exec_place_in_erased_code(ctxt: &Ctxt, place: &Place, typ: &Typ)
             | PlaceX::UserDefinedTypInvariantObligation(p, _)
             | PlaceX::Index(p, ..) => {
                 place = p;
+            }
+            PlaceX::DerefRaw(..) => {
+                todo!();
             }
         }
     }
@@ -1682,7 +1731,10 @@ fn check_expr(
                 // Proof variables may be used as spec, but not as proof inside forall statements.
                 // This protects against effectively consuming a linear proof variable
                 // multiple times for different instantiations of the forall variables.
-                record.erasure_modes.var_modes.push((expr.span.clone(), (Mode::Spec, Mode::Spec)));
+                record
+                    .erasure_modes
+                    .local_modes
+                    .push((expr.span.clone(), (Mode::Spec, Mode::Spec)));
                 return Ok((Mode::Spec, proph));
             }
 
@@ -1711,7 +1763,7 @@ fn check_expr(
 
             let mode =
                 if ctxt.check_ghost_blocks { typing.block_ghostness.join_mode(mode) } else { mode };
-            record.erasure_modes.var_modes.push((expr.span.clone(), (mode, mode)));
+            record.erasure_modes.local_modes.push((expr.span.clone(), (Mode::Spec, Mode::Spec)));
             return Ok((mode, proph));
         }
         ExprX::ConstVar(x, _)
@@ -1755,7 +1807,6 @@ fn check_expr(
             let mode = function.x.outer_ret.x.mode;
             let mode =
                 if ctxt.check_ghost_blocks { typing.block_ghostness.join_mode(mode) } else { mode };
-            record.erasure_modes.var_modes.push((expr.span.clone(), (mode, mode)));
             Ok((mode, Proph::No))
         }
         ExprX::Call {
@@ -2392,8 +2443,6 @@ fn check_expr(
                 ));
             }
 
-            record.erasure_modes.var_modes.push((expr.span.clone(), (Mode::Exec, Mode::Exec)));
-
             Ok((outer_mode, Proph::No))
         }
         ExprX::Choose { params, cond, body } => {
@@ -2472,7 +2521,7 @@ fn check_expr(
                         let (mode, pv) = typing.get(xr, &rhs.span)?;
                         typing.infer_as(xl, mode, pv.clone());
                         record.var_modes.insert(xl.clone(), mode);
-                        record.erasure_modes.var_modes.push((span, (mode, mode)));
+                        record.erasure_modes.binder_modes.push((span, mode));
                     }
                 }
             }
@@ -4035,7 +4084,12 @@ pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes), Vec<VirErr>> 
             }
         }
     }
-    let erasure_modes = ErasureModes { var_modes: vec![], ctor_modes: vec![] };
+    let erasure_modes = ErasureModes {
+        local_modes: vec![],
+        binder_modes: vec![],
+        ctor_modes: vec![],
+        deref_raw_permissions: vec![],
+    };
     let special_paths = SpecialPaths::new();
     let mut ctxt = Ctxt {
         funs,
