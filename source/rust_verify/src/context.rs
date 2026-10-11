@@ -30,7 +30,8 @@ pub struct ErasureInfo {
     pub(crate) ctor_hir_vir_ids: Vec<(Option<HirId>, AstId)>,
     /// Connect every PlaceX::DerefRaw node onto the HirId of its (explicit) Unary Deref
     /// HIR expression.
-    pub(crate) deref_raw_hir_vir_ids: Vec<(HirId, AstId)>,
+    /// Use None if there is no corresponding source node.
+    pub(crate) deref_raw_hir_vir_ids: Vec<(Option<HirId>, AstId)>,
     /// Details of each call in the first run's HIR.
     /// The last bool is "in ghost block?".
     /// (This is false for "boundary" calls like Ghost/Tracked

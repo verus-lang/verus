@@ -4577,7 +4577,7 @@ pub(crate) fn deref_primitive<'tcx>(
                 return err_span(span, "Verus Internal Error: expected HirId for raw deref");
             };
             let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-            erasure_info.deref_raw_hir_vir_ids.push((hir_id, deref_place.span.id));
+            erasure_info.deref_raw_hir_vir_ids.push((Some(hir_id), deref_place.span.id));
             Ok(deref_place)
         }
         _ => {

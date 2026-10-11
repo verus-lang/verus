@@ -144,8 +144,9 @@ pub struct VerusErasureCtxt {
     pub local_invariant_bodies: HashMap<HirId, LocalInvariantBody>,
 
     /// For each raw pointer dereference (HirId of the Unary Deref expression)
-    /// the permission to use. (See verus_raw_ptrs.rs)
-    pub raw_deref_permissions: HashMap<HirId, RawDerefPermission>,
+    /// the permission to use, or None if there is no permission. (See verus_raw_ptrs.rs)
+    /// Every raw pointer dereference in Verus-aware code should be in this map.
+    pub raw_deref_permissions: HashMap<HirId, Option<RawDerefPermission>>,
 
     /// Some DefIds from builtin that we'll need to handle directly
     pub erased_ghost_value_fn_def_id: DefId,
@@ -245,8 +246,14 @@ pub(crate) struct ExtraThir {
     /// Treat this call as having an inhabited return type (i.e., don't prune the CFG)
     pub force_treat_inhabited: HashSet<ExprId>,
     /// Maps the pointer operand `p` of a raw pointer dereference `*p` to a
-    /// place expression for its permission. (See verus_raw_ptrs.rs)
-    pub raw_deref_permissions: HashMap<ExprId, ExprId>,
+    /// place expression for its permission, or None if there is no permission.
+    /// (See verus_raw_ptrs.rs)
+    /// If `check_raw_deref_permissions` is set, every raw pointer dereference should
+    /// be in this map.
+    pub raw_deref_permissions: HashMap<ExprId, Option<ExprId>>,
+    /// Should the MIR builder emit borrows of raw pointer permissions?
+    /// (True for Verus-aware bodies.)
+    pub check_raw_deref_permissions: bool,
     /// Maps the pointer operand `p` of a raw pointer dereference `*p` to how its permission
     /// is used, in the case that `*p` is the outermost raw dereference of a place and the
     /// usage is something other than a read. (See verus_raw_ptrs.rs)
@@ -284,6 +291,7 @@ impl VerusThirBuildCtxt {
                 force_treat_inhabited: HashSet::new(),
                 raw_deref_permissions: HashMap::new(),
                 raw_deref_outer_usage: HashMap::new(),
+                check_raw_deref_permissions: do_time_travel_prevention,
             },
             local_def_id: local_def_id,
         }

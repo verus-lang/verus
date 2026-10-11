@@ -206,7 +206,7 @@ pub(super) fn emit_raw_deref_perms_for_place<'a, 'tcx>(
     let Some(extra_thir) = this.verus_extra_thir.clone() else {
         return;
     };
-    if extra_thir.raw_deref_permissions.len() == 0 {
+    if !extra_thir.check_raw_deref_permissions {
         return;
     }
     let (ptrs, _) = place_raw_derefs(&this.thir, expr_id);
@@ -229,7 +229,7 @@ pub(super) fn emit_raw_deref_perms_for_bounds_check<'a, 'tcx>(
     let Some(extra_thir) = this.verus_extra_thir.clone() else {
         return;
     };
-    if extra_thir.raw_deref_permissions.len() == 0 {
+    if !extra_thir.check_raw_deref_permissions {
         return;
     }
     let (ptrs, deref_above_outermost) = place_raw_derefs(&this.thir, base);
@@ -266,8 +266,10 @@ fn emit_raw_deref_perms<'a, 'tcx>(
 ) {
     for (i, ptr) in ptrs.iter().enumerate().rev() {
         let usage = if i == 0 { outer_usage } else { PermUsage::Read };
-        let Some(perm) = extra_thir.raw_deref_permissions.get(ptr) else {
-            continue;
+        let perm = match extra_thir.raw_deref_permissions.get(ptr) {
+            None => panic!("Verus Internal Error: raw deref permission not found"),
+            Some(None) => continue,
+            Some(Some(perm)) => perm,
         };
         let borrow_kind = match usage {
             PermUsage::Read => BorrowKind::Shared,

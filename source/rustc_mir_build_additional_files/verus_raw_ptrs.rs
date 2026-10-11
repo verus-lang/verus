@@ -124,18 +124,22 @@ pub(crate) fn deref_post<'tcx>(
     if !cx.thir.exprs[arg].ty.is_raw_ptr() {
         return;
     }
-    let Some(erasure_ctxt) = cx.verus_ctxt.ctxt.clone() else {
+    if !cx.verus_ctxt.extra_thir.check_raw_deref_permissions {
         return;
-    };
-    let Some(perm) = erasure_ctxt.raw_deref_permissions.get(&hir_expr.hir_id) else {
-        return;
-    };
-    if let Some(perm_expr) = permission_place(cx, hir_expr.hir_id, hir_expr.span, perm) {
-        cx.verus_ctxt.extra_thir.raw_deref_permissions.insert(arg, perm_expr);
     }
+    let erasure_ctxt = cx.verus_ctxt.ctxt.clone().unwrap();
+    let Some(perm) = erasure_ctxt.raw_deref_permissions.get(&hir_expr.hir_id) else {
+        panic!("Verus Internal Error: raw deref permission not found");
+    };
+    let perm_expr = match perm {
+        None => None,
+        Some(perm) => permission_place(cx, hir_expr.hir_id, hir_expr.span, perm),
+    };
+    cx.verus_ctxt.extra_thir.raw_deref_permissions.insert(arg, perm_expr);
 }
 
 /// Construct the THIR place expression for the given permission.
+/// Returns None (after emitting an error) if unsupported.
 fn permission_place<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     hir_id: HirId,
@@ -276,7 +280,11 @@ pub(crate) fn borrow_post<'tcx>(
     };
     let (ptrs, _) = place_raw_derefs(&cx.thir, *arg);
     let outer = *ptrs.first()?;
-    let perm = *cx.verus_ctxt.extra_thir.raw_deref_permissions.get(&outer)?;
+    let perm = match cx.verus_ctxt.extra_thir.raw_deref_permissions.get(&outer) {
+        None => panic!("Verus Internal Error: raw deref permission not found"),
+        Some(None) => return None,
+        Some(Some(perm)) => *perm,
+    };
     let erasure_ctxt = cx.verus_ctxt.ctxt.clone().unwrap();
 
     let hir_id = hir_expr.hir_id;
