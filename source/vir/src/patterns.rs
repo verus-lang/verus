@@ -1,7 +1,7 @@
 use crate::ast::*;
 use crate::ast_util::{
-    bool_typ, conjoin, disjoin, if_then_else, int_typ, mk_eq, mk_ineq, mk_int_lit_from_usize,
-    place_to_spec_expr,
+    array_kind_of_typ, bool_typ, conjoin, disjoin, if_then_else, int_typ, mk_eq, mk_ineq,
+    mk_int_lit_from_usize, place_to_spec_expr,
 };
 use crate::context::GlobalCtx;
 use crate::def::Spanned;
@@ -205,7 +205,7 @@ fn pattern_to_exprs_rec(
             pattern_to_exprs_rec(ctx, sub_pat, &deref_place, bindings, in_immut)
         }
         PatternX::Slice(patterns) => {
-            let (kind, elem_typ) = crate::ast_util::array_kind_of_typ(&pattern.typ);
+            let (kind, elem_typ) = array_kind_of_typ(&pattern.typ);
 
             let mut conjuncts = vec![];
 
@@ -330,6 +330,9 @@ pub(crate) fn definitely_irrefutable(
         PatternX::Expr(_e) => false,
         PatternX::Range(_lower, _upper) => false,
         PatternX::ImmutRef(p) | PatternX::MutRef(p) => definitely_irrefutable(p, datatypes),
-        PatternX::Slice(patterns) => patterns.iter().all(|p| definitely_irrefutable(p, datatypes)),
+        PatternX::Slice(patterns) => match array_kind_of_typ(&pattern.typ).0 {
+            ArrayKind::Slice => false,
+            ArrayKind::Array => patterns.iter().all(|p| definitely_irrefutable(p, datatypes)),
+        },
     }
 }
