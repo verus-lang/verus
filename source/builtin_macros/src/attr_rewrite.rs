@@ -912,9 +912,13 @@ pub(crate) fn rewrite_verus_spec_on_fun_or_loop(
                 );
             }
 
+            let inputs = method.sig.inputs.clone();
             let spec_stmts = syntax::sig_specs_attr(erase, spec_attr, &mut method.sig, true, false);
             let new_stmts = spec_stmts.into_iter().map(|s| parse2(quote! { #s }).unwrap());
             let mut spec_fun_opt = syntax_trait::split_trait_method_syn(&method, erase.erase());
+            // restore the original args in the trait method, since Rust rejects
+            // patterns like `__verus_param_N @ p` in methods without bodies
+            method.sig.inputs = inputs;
             let spec_fun = spec_fun_opt.as_mut().unwrap_or(&mut method);
             let _ = spec_fun.block_mut().unwrap().stmts.splice(0..0, new_stmts);
             method.attrs.push(mk_verus_attr_syn(method.span(), quote! { verus_macro }));
