@@ -4629,6 +4629,9 @@ fn get_permission_place_rec<'tcx>(
         TypX::Decorate(TypDecoration::Ref, None, t) => {
             get_permission_place_rec(bctx, span, t, place)
         }
+        TypX::Decorate(TypDecoration::Box, _, t) => {
+            get_permission_place_rec(bctx, span, t, place)
+        }
         TypX::Datatype(Dt::Path(path), t, _)
             if *path == vir::path!(CrateId::Core => "option", "Option") =>
         {

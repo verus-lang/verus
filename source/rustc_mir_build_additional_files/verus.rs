@@ -99,14 +99,17 @@ pub struct LocalInvariantBody {
 pub enum PermissionProjection {
     /// Dereference a mutable reference
     DerefMut,
+    /// Dereference a shared reference
+    DerefShared,
+    /// Dereference a Box
+    DerefBox,
     /// Field of a struct or enum variant (looked up by name)
     Field { variant: String, field: String },
 }
 
 /// The permission place to use for a given raw pointer dereference, e.g., `perm`,
 /// `(*perm_ref)`, or `perm_opt.Some.0`.
-/// Dereferences of shared references are implicit (as they are in VIR);
-/// they are inserted when the THIR expression for the place is constructed.
+/// Unlike in VIR, all dereferences are explicit (including Box and shared references).
 #[derive(Debug, Clone)]
 pub struct RawDerefPermission {
     /// HirId of the binder of the permission variable
