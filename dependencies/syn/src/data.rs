@@ -330,7 +330,11 @@ pub(crate) mod parsing {
             let mode: crate::verus::DataMode = input.parse()?;
 
             let unnamed_field = cfg!(feature = "full") && input.peek(Token![_]);
-            let ident = if unnamed_field {
+            // a field named like a Verus keyword (`requires`, `tracked`, ...): an identifier
+            // followed by `:` is the field name whatever it spells
+            let keyword_named = !unnamed_field && input.peek2(Token![:]) && !input.peek2(Token![::])
+                && input.fork().call(Ident::parse_any).is_ok();
+            let ident = if unnamed_field || keyword_named {
                 input.call(Ident::parse_any)
             } else {
                 input.parse()
