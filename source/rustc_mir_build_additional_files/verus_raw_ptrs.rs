@@ -38,6 +38,11 @@ r = &raw (*(*(*a).x).y).z;
 i.e., the inner pointers are always read, while the usage of the _outermost_ pointer
 depends on how the place is used.
 
+(For raw borrows, whether we emit a permission for C depends on whether the pointer
+is read or not.  If the raw deref is the outermost deref, then we're only doing
+pointer arithmetic and there's no read. If there's another safe deref after the last
+raw deref, then we do need to read from it.)
+
 This is split across THIR construction and MIR building:
 
  * During THIR construction (this file), for each raw deref `*p`, we construct a
@@ -345,6 +350,8 @@ pub(crate) fn borrow_post<'tcx>(
         }
     };
 
+    // Can skip the outermost permission at the THIR level, since we already
+    // handled it at the THIR level.
     cx.verus_ctxt.extra_thir.raw_deref_outer_usage.insert(outer, PermUsage::Skip);
 
     let main_borrow = expr_id_from_kind(cx, kind.clone(), hir_id, span, ty);
