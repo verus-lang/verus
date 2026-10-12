@@ -630,6 +630,7 @@ test_verify_one_file_with_options! {
         }
 
         #[allow(unreachable_code)]
+        #[verifier::loop_isolation(false)]
         fn test_diverging_break_value_with_non_unit_loop(cond: bool) -> u64 {
             if cond {
                 3
