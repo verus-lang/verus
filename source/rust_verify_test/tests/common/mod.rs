@@ -308,6 +308,8 @@ pub fn run_verus(
             verus_args.push("--no-lifetime".to_string());
         } else if *option == "--no-erasure-check" {
             verus_args.push("--no-erasure-check".to_string());
+        } else if *option == "--build-sst" {
+            verus_args.push("--build-sst".to_string());
         } else if *option == "--no-verify" {
             verus_args.push("--no-verify".to_string());
         } else if *option == "--no-report-long-running" {
