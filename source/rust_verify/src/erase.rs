@@ -3,7 +3,7 @@ use vir::messages::AstId;
 use rustc_hir::HirId;
 
 use crate::context::ErasureInfo;
-use vir::ast::{Datatype, Dt, Fun, Function, Krate, Mode, Path};
+use vir::ast::{Datatype, Dt, Fun, Function, Krate, Mode, ModeWrapperMode, Path, Place, PlaceX};
 use vir::modes::ErasureModes;
 
 use crate::verus_items::{DummyCaptureItem, VerusItem, VerusItems};
@@ -551,21 +551,38 @@ pub(crate) fn setup_verus_aware_ids(crate_items: &crate::external::CrateItems) {
 /// declared in the same HIR owner.
 fn permission_place_to_raw_deref_permission(
     deref_hir_id: HirId,
-    place: &vir::ast::Place,
+    place: &Place,
 ) -> Option<RawDerefPermission> {
-    let mut perm = permission_place_to_raw_deref_permission_rec(deref_hir_id, place)?;
+    let place = cutoff_at_tracked_unwrap(place, place)?;
+    let mut perm = permission_place_to_raw_deref_permission_rec(deref_hir_id, &place)?;
     // The permission itself (a PointsTo) may be behind implicit dereferences
     push_implicit_derefs(&place.typ, &mut perm.projections)?;
     Some(perm)
+}
+
+fn cutoff_at_tracked_unwrap(place: &Place, res: &Place) -> Option<Place> {
+    use vir::ast::PlaceX;
+    match &place.x {
+        PlaceX::Local(_) => Some(res.clone()),
+        PlaceX::DerefMut(p) => cutoff_at_tracked_unwrap(p, res),
+        PlaceX::Field(_opr, p) => cutoff_at_tracked_unwrap(p, res),
+        PlaceX::ModeUnwrap(p, ModeWrapperMode::Proof) => cutoff_at_tracked_unwrap(p, p),
+        PlaceX::Temporary(..)
+        | PlaceX::ModeUnwrap(_, ModeWrapperMode::Spec)
+        | PlaceX::WithExpr(..)
+        | PlaceX::Index(..)
+        | PlaceX::UserDefinedTypInvariantObligation(..)
+        | PlaceX::DerefRaw(..) => None,
+    }
 }
 
 /// Returns the projections for the given place, not including any implicit
 /// dereferences applied on top of it.
 fn permission_place_to_raw_deref_permission_rec(
     deref_hir_id: HirId,
-    place: &vir::ast::Place,
+    place: &Place,
 ) -> Option<RawDerefPermission> {
-    use vir::ast::{PlaceX, VarIdentDisambiguate};
+    use vir::ast::VarIdentDisambiguate;
     match &place.x {
         PlaceX::Local(x) => {
             let VarIdentDisambiguate::RustcId(local_id) = x.1 else {
@@ -619,9 +636,6 @@ fn push_implicit_derefs(
             TypX::Decorate(TypDecoration::Box, _, t) => {
                 projections.push(PermissionProjection::DerefBox);
                 typ = t;
-            }
-            TypX::Decorate(..) => {
-                return None;
             }
             _ => {
                 return Some(());

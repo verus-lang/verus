@@ -49,6 +49,7 @@ use crate::ast_util::*;
 use crate::context::Ctx;
 use crate::def::Spanned;
 use crate::messages::{Message, Span};
+use crate::points_to::permission_place_to_friendly_string;
 use crate::sst::*;
 use crate::sst_util::*;
 use std::sync::Arc;
@@ -165,7 +166,7 @@ fn check_variants_correct(
             let condition = ExpX::UnaryOpr(unary, e.clone());
             let condition = SpannedTyped::new(span, &Arc::new(TypX::Bool), condition);
             checks.push((condition, crate::messages::error(span,
-                format!("cannot show that `{:}` has variant `{variant}`, needed to access the pointer permission", place_to_string(p)))));
+                format!("cannot show that `{:}` has variant `{variant}`, needed to access the pointer permission", permission_place_to_friendly_string(p)))));
 
             let e = mk_exp(ExpX::UnaryOpr(UnaryOpr::Field(field_opr.clone()), e));
             (e, checks)
@@ -200,10 +201,6 @@ fn check_variants_correct(
             panic!("check_variants_correct: DerefRaw");
         }
     }
-}
-
-fn place_to_string(p: &Place) -> String {
-    format!("{:?}", p) // TODO prettier string here
 }
 
 pub(crate) fn sst_raw_deref_check(

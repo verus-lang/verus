@@ -1,5 +1,8 @@
-use crate::ast::{CrateId, Dt, Primitive, SpannedTyped, Typ, TypX, UnaryOp};
+use crate::ast::{
+    CrateId, Dt, Place, PlaceX, Primitive, SpannedTyped, Typ, TypDecoration, TypX, UnaryOp,
+};
 use crate::ast_util::undecorate_typ;
+use crate::def::user_local_name;
 use crate::sst::*;
 use std::sync::Arc;
 
@@ -39,4 +42,39 @@ pub fn get_points_to_typ_arg(t: &Typ) -> Typ {
         }
         _ => panic!("get_points_to_typ_arg expected PointsTo type"),
     }
+}
+
+pub fn permission_place_to_friendly_string(p: &Place) -> String {
+    permission_place_to_friendly_string_rec(p, false)
+}
+
+fn permission_place_to_friendly_string_rec(p: &Place, has_suffix: bool) -> String {
+    let mut stars = "".to_string();
+    let mut inner_star = false;
+
+    let mut typ = &p.typ;
+    while let TypX::Decorate(TypDecoration::Ref | TypDecoration::Box, _, t) = &**typ {
+        typ = t;
+        stars += "*";
+    }
+
+    let inner: String = match &p.x {
+        PlaceX::Local(x) => user_local_name(x).to_string(),
+        PlaceX::Field(opr, p) => {
+            format!("{:}.{:}", permission_place_to_friendly_string_rec(p, true), opr.field)
+        }
+        PlaceX::DerefMut(p) | PlaceX::ModeUnwrap(p, _) => {
+            inner_star = true;
+            format!("*{:}", permission_place_to_friendly_string_rec(p, false))
+        }
+        PlaceX::Index(..)
+        | PlaceX::Temporary(..)
+        | PlaceX::WithExpr(..)
+        | PlaceX::UserDefinedTypInvariantObligation(..)
+        | PlaceX::DerefRaw(..) => "[verus internal error: unexpected place]".to_string(),
+    };
+
+    let has_stars = stars.len() > 0 || inner_star;
+    let res = stars + &inner;
+    if has_suffix && has_stars { "(".to_string() + &res + ")" } else { res }
 }

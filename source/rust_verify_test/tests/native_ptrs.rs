@@ -1164,3 +1164,129 @@ test_verify_one_file! {
         }
     }) => Err(err) => assert_vir_error_msg(err, "Verus does not yet support dereferencing a raw pointer inside a closure using a permission declared outside the closure")
 }
+
+// This checks our assumption that Rust doesn't allow a move out of a raw ptr, which
+// would need special handling for us.
+test_verify_one_file! {
+    #[test] move_out_of_raw_ptr_disallowed verus_code!{
+        use vstd::prelude::*;
+        use vstd::raw_ptr::*;
+        struct X { }
+
+        fn test(a: *mut X, Tracked(m): Tracked<PointsTo<X>>)
+            requires m.is_init(), m.ptr() == a,
+        {
+            #[verifier::permission("a")]
+            let tracked mut m = m;
+
+            unsafe {
+                let r = *a;
+            }
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot move out of `*a` which is behind a raw pointer")
+}
+
+test_verify_one_file! {
+    #[test] mode_local verus_code!{
+        use vstd::prelude::*;
+        use vstd::raw_ptr::*;
+        struct X { }
+
+        fn test(a: *mut X, Tracked(m): Tracked<PointsTo<X>>)
+            requires m.is_init(), m.ptr() == a,
+        {
+            #[verifier::permission("a")]
+            let ghost mut m = m;
+
+            unsafe {
+                let r = *a;
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "the permission (`m`) used for this raw ptr operation must be a tracked place (local variable `m` is ghost mode)")
+}
+
+test_verify_one_file! {
+    #[test] mode_local2 verus_code!{
+        use vstd::prelude::*;
+        use vstd::raw_ptr::*;
+        struct X { }
+
+        fn test(a: *mut X, Tracked(m): Tracked<PointsTo<X>>)
+            requires m.is_init(), m.ptr() == a,
+        {
+            #[verifier::permission("a")]
+            let ghost mut m = Some(m);
+
+            unsafe {
+                let r = *a;
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "the permission (`m.0`) used for this raw ptr operation must be a tracked place (local variable `m` is ghost mode)")
+}
+
+test_verify_one_file! {
+    #[test] mode_exec_points_to_ok verus_code!{
+        use vstd::prelude::*;
+        use vstd::raw_ptr::*;
+        struct X { }
+
+        fn test(a: *mut u64, m: Tracked<PointsTo<u64>>)
+            requires m.is_init(), m.ptr() == a, m.value() == 1,
+        {
+            #[verifier::permission("a")]
+            let mut m = m;
+
+            unsafe {
+                let r = *a;
+                assert(r == 1);
+
+                *a = 2;
+                let q = *a;
+                assert(q == 2);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] mode_exec_points_to_with_ghost_fail verus_code!{
+        use vstd::prelude::*;
+        use vstd::raw_ptr::*;
+        struct X { }
+
+        fn test(a: *mut u64, m: Ghost<PointsTo<u64>>)
+            requires m.is_init(), m.ptr() == a, m.value() == 1,
+        {
+            #[verifier::permission("a")]
+            let mut m = m;
+
+            unsafe {
+                let r = *a;
+                assert(r == 1);
+
+                *a = 2;
+                let q = *a;
+                assert(q == 1);
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "place of type `Ghost<vstd::raw_ptr::PointsTo<u64>>` is not accepted for the `verifier::permission` annotation")
+}
+
+test_verify_one_file! {
+    #[test] type_match_fail verus_code!{
+        use vstd::prelude::*;
+        use vstd::raw_ptr::*;
+        struct X { }
+
+        fn test(a: *mut u32, m: Tracked<PointsTo<u64>>)
+            requires m.is_init(), m.value() == 1,
+        {
+            #[verifier::permission("a")]
+            let mut m = m;
+
+            unsafe {
+                let r = *a;
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "permission is for type u64, expected u32")
+}

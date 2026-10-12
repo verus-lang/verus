@@ -38,12 +38,23 @@ r = &raw (*(*(*a).x).y).z;
 i.e., the inner pointers are always read, while the usage of the _outermost_ pointer
 depends on how the place is used.
 
-(For raw borrows, whether we emit a permission for C depends on whether the pointer
-is read or not.  If the raw deref is the outermost deref, then we're only doing
-pointer arithmetic and there's no read. If there's another safe deref after the last
-raw deref, then we do need to read from it.)
+Notes:
 
-This is split across THIR construction and MIR building:
+ * For raw borrows, whether we emit a permission for the outermost raw pointer
+   depends on whether the pointer is read or not.
+   If the raw deref is the outermost deref, then we're only doing
+   pointer arithmetic and there's no actual read from the pointer.
+   (Indeed, Rust does not even consider this an unsafe operation.)
+   If there's another safe deref after the last raw deref,
+   then we do need to read from the pointer and thus we need the permission for it.)
+
+ * We don't have to handle moves, since Rust disallows moving from behind a raw pointer.
+   The user has to use something like `ptr::read` to do this, you can't just move by writing
+   `let m = *p`.
+
+### Implementation
+
+Our lowering is split across THIR construction and MIR building:
 
  * During THIR construction (this file), for each raw deref `*p`, we construct a
    THIR place expression for its permission, recorded in `ExtraThir::raw_deref_permissions`
@@ -51,6 +62,8 @@ This is split across THIR construction and MIR building:
    For borrows, we construct the `*_reference_tie` calls directly in THIR.
    For any usage of the outermost pointer other than reading, we record the usage in
    `ExtraThir::raw_deref_outer_usage`.
+   It should be the case that if a place expression does not get registered here during the THIR
+   pass, then it is a copy, thus requiring read permissions.
 
  * During MIR building (verus_builder.rs), whenever we build a place (or perform a bounds
    check on an intermediate place), we emit the borrows of the permissions immediately

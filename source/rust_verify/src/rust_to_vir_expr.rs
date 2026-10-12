@@ -4574,18 +4574,19 @@ pub(crate) fn deref_primitive<'tcx>(
                 None => None,
             };
 
+            let t = match &*undecorate_typ(&place.typ) {
+                TypX::Primitive(Primitive::Ptr, t) => t[0].clone(),
+                _ => panic!("expected mut ref"),
+            };
+
             let permission_place = match candidate_opt {
                 Some(candidate) => {
-                    Some(get_permission_place(bctx, span, &candidate.name, &candidate.typ)?)
+                    Some(get_permission_place(bctx, span, &candidate.name, &t, &candidate.typ)?)
                 }
                 None => None,
             };
 
             let placex = PlaceX::DerefRaw(place.clone(), permission_place);
-            let t = match &*undecorate_typ(&place.typ) {
-                TypX::Primitive(Primitive::Ptr, t) => t[0].clone(),
-                _ => panic!("expected mut ref"),
-            };
             let deref_place = bctx.spanned_typed_new(span, &t, placex);
             let Some(hir_id) = hir_id else {
                 return err_span(span, "Verus Internal Error: expected HirId for raw deref");
@@ -4604,33 +4605,46 @@ fn get_permission_place<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     span: Span,
     name: &VarIdent,
+    pointee_typ: &Typ,
     typ: &Typ,
 ) -> Result<Place, VirErr> {
     let local = bctx.spanned_typed_new(span, typ, PlaceX::Local(name.clone()));
-    get_permission_place_rec(bctx, span, typ, local)
+    get_permission_place_rec(bctx, span, pointee_typ, typ, typ, local)
 }
 
 fn get_permission_place_rec<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     span: Span,
+    pointee_typ: &Typ,
+    original_typ: &Typ,
     typ: &Typ,
     place: Place,
 ) -> Result<Place, VirErr> {
     match &**typ {
-        TypX::Datatype(Dt::Path(pt), ..)
+        TypX::Datatype(Dt::Path(pt), typ_args, _)
             if *pt == vir::path!(CrateId::Vstd => "raw_ptr", "PointsTo") =>
         {
+            if !types_equal(pointee_typ, &typ_args[0]) {
+                return Err(vir::messages::error(
+                    &place.span,
+                    format!(
+                        "permission is for type {:}, expected {:}",
+                        typ_to_diagnostic_str(&typ_args[0]),
+                        typ_to_diagnostic_str(&pointee_typ)
+                    ),
+                ));
+            }
             Ok(place)
         }
         TypX::MutRef(t) => {
             let p1 = bctx.spanned_typed_new(span, t, PlaceX::DerefMut(place));
-            get_permission_place_rec(bctx, span, t, p1)
+            get_permission_place_rec(bctx, span, pointee_typ, original_typ, t, p1)
         }
         TypX::Decorate(TypDecoration::Ref, None, t) => {
-            get_permission_place_rec(bctx, span, t, place)
+            get_permission_place_rec(bctx, span, pointee_typ, original_typ, t, place)
         }
         TypX::Decorate(TypDecoration::Box, _, t) => {
-            get_permission_place_rec(bctx, span, t, place)
+            get_permission_place_rec(bctx, span, pointee_typ, original_typ, t, place)
         }
         TypX::Datatype(Dt::Path(path), t, _)
             if *path == vir::path!(CrateId::Core => "option", "Option") =>
@@ -4643,11 +4657,21 @@ fn get_permission_place_rec<'tcx>(
                 check: VariantCheck::None,
             };
             let p1 = bctx.spanned_typed_new(span, &t[0], PlaceX::Field(field_opr, place));
-            get_permission_place_rec(bctx, span, &t[0], p1)
+            get_permission_place_rec(bctx, span, pointee_typ, original_typ, &t[0], p1)
+        }
+        TypX::Decorate(TypDecoration::Tracked, _, t) => {
+            let p1 = bctx.spanned_typed_new(
+                span,
+                t,
+                PlaceX::ModeUnwrap(place, vir::ast::ModeWrapperMode::Proof),
+            );
+            get_permission_place_rec(bctx, span, pointee_typ, original_typ, t, p1)
         }
         _ => {
-            dbg!(typ);
-            todo!(); // TODO(native_raw_ptrs)
+            return Err(vir::messages::error(
+                &place.span,
+                format!("place of type `{:}` is not accepted for the `verifier::permission` annotation", vir::ast_util::typ_to_diagnostic_str(original_typ)),
+            ).help("acceptable types include, `vstd::raw_ptr::PointsTo`, shared reference to such, mutable reference to such, `Tracked` wrapper of such, or an `Option` of such"));
         }
     }
 }

@@ -34,10 +34,10 @@ body so that some constraint is always reachable.
 See verus_raw_ptrs.rs.
 */
 
+use crate::builder::BlockAnd;
 use crate::builder::{BasicBlock, BorrowKind, Builder, PlaceBuilder, Rvalue, TerminatorKind, Ty};
 use crate::verus::ExtraThir;
 use crate::verus_raw_ptrs::{PermUsage, place_raw_derefs};
-use crate::builder::BlockAnd;
 use rustc_middle::mir::MutBorrowKind;
 use rustc_middle::thir::ExprId;
 use rustc_middle::ty::TyKind;
