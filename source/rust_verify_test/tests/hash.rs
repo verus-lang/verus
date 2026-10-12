@@ -82,6 +82,27 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_hash_map_capacity_with_hasher verus_code! {
+        use std::collections::HashMap;
+        use std::collections::hash_map::RandomState;
+        use vstd::prelude::*;
+        fn test()
+        {
+            let mut m = HashMap::<u32, i8>::new();
+            let cap = m.capacity();
+            assert(cap >= m@.len());
+
+            m.insert(3, 4);
+            let cap = m.capacity();
+            assert(cap >= m@.len());
+
+            let m2: HashMap<u32, i8, RandomState> = HashMap::with_hasher(RandomState::default());
+            assert(m2@ == Map::<u32, i8>::empty());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_hash_set verus_code! {
         use std::collections::HashSet;
         use vstd::prelude::*;
@@ -126,6 +147,53 @@ test_verify_one_file! {
             assert(!m@.contains(3));
             let b = m.contains(&3);
             assert(!b);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_hash_set_with_hasher verus_code! {
+        use std::collections::HashSet;
+        use std::collections::hash_map::RandomState;
+        use vstd::prelude::*;
+
+        fn test(hasher: RandomState) {
+            let m: HashSet<u32> = HashSet::with_hasher(hasher);
+            assert(m@ == Set::<u32>::empty());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_hash_set_custom_hasher verus_code! {
+        use std::collections::HashSet;
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::BuildHasher;
+        use vstd::prelude::*;
+        use vstd::std_specs::hash::builds_valid_hashers;
+
+        struct MyBuilder;
+
+        #[verifier::external]
+        impl BuildHasher for MyBuilder {
+            type Hasher = DefaultHasher;
+            fn build_hasher(&self) -> DefaultHasher {
+                DefaultHasher::new()
+            }
+        }
+
+        fn test()
+            requires
+                builds_valid_hashers::<MyBuilder>(),
+        {
+            broadcast use vstd::std_specs::hash::group_hash_axioms;
+            let mut s: HashSet<u32, MyBuilder> = HashSet::with_hasher(MyBuilder);
+            assert(s@ == Set::<u32>::empty());
+            s.insert(3);
+            assert(s@.contains(3));
+
+            let t: HashSet<u32, MyBuilder> = HashSet::with_capacity_and_hasher(10, MyBuilder);
+            assert(t@ == Set::<u32>::empty());
         }
     } => Ok(())
 }
@@ -829,12 +897,12 @@ test_verify_one_file_with_options! {
             let mut items = Vec::<u32>::new();
             for k in iter: m_keys
                 invariant
-                    items@ == iter.seq().take(iter.index()).unref(),
+                    items@ == iter.seq()[..iter.index()].unref(),
             {
                 items.push(*k);
             }
             assert(items@.to_set() =~= set![3u32, 6u32]) by {
-                assert(m_keys.remaining().take(m_keys.remaining().len() as int) == m_keys.remaining());
+                assert(m_keys.remaining()[..m_keys.remaining().len()] == m_keys.remaining());
             }
             assert(items@.no_duplicates());
         }
@@ -865,12 +933,12 @@ test_verify_one_file_with_options! {
             let mut items = Vec::<i8>::new();
             for v in iter: m_values
                 invariant
-                    items@ == iter.seq().take(iter.index()).unref(),
+                    items@ == iter.seq()[..iter.index()].unref(),
             {
                 items.push(*v);
             }
             assert(items@.to_set() =~= set![4i8, -8i8]) by {
-                assert(m_values.remaining().take(m_values.remaining().len() as int) == m_values.remaining());
+                assert(m_values.remaining()[..m_values.remaining().len()] == m_values.remaining());
             }
         }
     } => Ok(())
@@ -929,12 +997,12 @@ test_verify_one_file_with_options! {
             for k in iter: m_iter
                 invariant
                     iter.seq().unref().to_set() =~= set![3u32, 6u32],
-                    items@ == iter.seq().take(iter.index()).unref(),
+                    items@ == iter.seq()[..iter.index()].unref(),
             {
                 items.push(*k);
             }
             assert(items@.to_set() =~= set![3u32, 6u32]) by {
-                assert(m_iter.remaining().take(m_iter.remaining().len() as int) == m_iter.remaining());
+                assert(m_iter.remaining()[..m_iter.remaining().len()] == m_iter.remaining());
             }
             assert(items@.no_duplicates());
         }

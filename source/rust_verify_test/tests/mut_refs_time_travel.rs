@@ -382,6 +382,20 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
+    #[test] closure_param_with_pattern [] => verus_code! {
+        use vstd::prelude::*;
+        fn closure_test() {
+            let clos = |(mut x, z): (u64, u64)| {
+                let y = &mut x;
+                assert(x == 0);
+                *y = 20;
+            };
+            clos((0, 0));
+        }
+    } => Err(err) => assert_spec_borrowed(err, "x")
+}
+
+test_verify_one_file_with_options! {
     #[test] double_closure_param [] => verus_code! {
         use vstd::prelude::*;
         fn closure_test() {
@@ -472,6 +486,80 @@ test_verify_one_file_with_options! {
             clos(0);
         }
     } => Err(err) => assert_spec_borrowed(err, "y")
+}
+
+test_verify_one_file_with_options! {
+    #[test] closure_capture_edition2018 ["--edition 2018"] => verus_code! {
+        use vstd::prelude::*;
+        fn closure_test() {
+            let mut y = 0;
+            let y_ref = &mut y;
+
+            let clos = |x: u64| {
+                assert(y == 0);
+            };
+
+            *y_ref = 20;
+
+            clos(0);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `y` as immutable because it is also borrowed as mutable")
+}
+
+test_verify_one_file_with_options! {
+    #[test] closure_capture_let_ghost_edition2018 ["--edition 2018"] => verus_code! {
+        use vstd::prelude::*;
+        fn closure_test() {
+            let mut y = 0;
+            let y_ref = &mut y;
+
+            let clos = |x: u64| {
+                let ghost j = y;
+            };
+
+            *y_ref = 20;
+
+            clos(0);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `y` as immutable because it is also borrowed as mutable")
+}
+
+test_verify_one_file_with_options! {
+    #[test] closure_capture_in_requires_edition2018 ["--edition 2018"] => verus_code! {
+        use vstd::prelude::*;
+        fn closure_test() {
+            let mut y = 0;
+            let y_ref = &mut y;
+
+            let clos = |x: u64|
+                requires y == 0
+            {
+            };
+
+            *y_ref = 20;
+
+            clos(0);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `y` as immutable because it is also borrowed as mutable")
+}
+
+test_verify_one_file_with_options! {
+    #[test] closure_capture_in_ensures_edition2018 ["--edition 2018"] => verus_code! {
+        use vstd::prelude::*;
+        fn closure_test() {
+            let mut y = 0;
+            let y_ref = &mut y;
+
+            let clos = |x: u64|
+                ensures y == 0
+            {
+            };
+
+            *y_ref = 20;
+
+            clos(0);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `y` as immutable because it is also borrowed as mutable")
 }
 
 test_verify_one_file_with_options! {
@@ -1818,4 +1906,41 @@ test_verify_one_file! {
 
         fn main() {}
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] implicit_deref_mut_through_tracked verus_code! {
+        // `&mut x.0` borrows through `DerefMut for Tracked`.
+        proof fn through_tracked(tracked x: Tracked<(Ghost<int>, Ghost<int>)>)
+            ensures
+                false,
+        {
+            let tracked mut x = x;
+            let tracked y: &mut Ghost<int> = &mut x.0;
+            let ghost snap: int = x@.0@;
+            *y = Ghost(snap + 1);
+        }
+    } => Err(err) => assert_spec_borrowed(err, "x")
+}
+
+test_verify_one_file! {
+    #[test] implicit_deref_mut_through_vec verus_code! {
+        use vstd::prelude::*;
+
+        // `v.first_mut()` borrows through `DerefMut for Vec`.
+        fn through_vec()
+            ensures
+                false,
+        {
+            let mut v: Vec<Ghost<int>> = Vec::new();
+            v.push(Ghost(0));
+            match v.first_mut() {
+                Some(r) => {
+                    let ghost snap = v@;
+                    *r = Ghost(snap[0]@ + 1);
+                },
+                None => {},
+            }
+        }
+    } => Err(err) => assert_spec_borrowed(err, "v")
 }

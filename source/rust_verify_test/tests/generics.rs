@@ -82,6 +82,56 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] const_generic_signed_values verus_code! {
+        spec fn i8_value<const N: i8>() -> i8 { N }
+        spec fn i16_value<const N: i16>() -> i16 { N }
+        spec fn i32_value<const N: i32>() -> i32 { N }
+        spec fn i64_value<const N: i64>() -> i64 { N }
+        spec fn i128_value<const N: i128>() -> i128 { N }
+        spec fn isize_value<const N: isize>() -> isize { N }
+        spec fn u8_value<const N: u8>() -> u8 { N }
+        spec fn u128_value<const N: u128>() -> u128 { N }
+
+        proof fn test() {
+            assert(i8_value::<{-1i8}>() == -1);
+            assert(i8_value::<{-128i8}>() == -128);
+            assert(i8_value::<{127i8}>() == 127);
+            assert(i16_value::<{-32768i16}>() == -32768);
+            assert(i32_value::<{-1i32}>() == -1);
+            assert(i64_value::<{-1i64}>() == -1);
+            assert(i128_value::<{-1i128}>() == -1);
+            assert(i128_value::<{i128::MIN}>() == i128::MIN);
+            assert(i128_value::<{i128::MAX}>() == i128::MAX);
+            assert(isize_value::<{-1isize}>() == -1);
+            assert(u8_value::<{255u8}>() == 255);
+            assert(u128_value::<{u128::MAX}>() == u128::MAX);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] const_generic_signed_soundness verus_code! {
+        spec fn value<const N: i8>() -> i8 { N }
+
+        proof fn bad() ensures false {
+            assert(value::<{-1i8}>() == 255); // FAILS
+        }
+
+        fn get<const N: i8>() -> (r: i8)
+            ensures r == N,
+        {
+            N
+        }
+
+        fn run() -> (r: i8)
+            ensures r > 0, // FAILS
+        {
+            get::<{-1i8}>()
+        }
+    } => Err(e) => assert_fails(e, 2)
+}
+
+test_verify_one_file! {
     #[test] test_decorated_types verus_code! {
         spec fn sizeof<A>() -> nat;
 

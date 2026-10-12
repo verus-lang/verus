@@ -259,8 +259,8 @@ impl<V> DListXor<V> {
             }
             let penult_ptr = PPtr::<Node<V>>::from_usize(penult_u64 as usize);
             let ghost idx = (self.ptrs@.len() - 2) as nat;
-            let mut penult_node = penult_ptr.borrow_mut(Tracked(self.perms.tracked_borrow_mut(idx)));
             let t: Ghost<u64> = Ghost(self.prev_of((self.ptrs@.len() - 2) as nat));
+            let mut penult_node = penult_ptr.borrow_mut(Tracked(self.perms.tracked_borrow_mut(idx)));
             assert((t@ ^ last_u64) ^ last_u64 == t@ ^ 0) by (bit_vector);
             penult_node.xored = penult_node.xored ^ last_u64;
             assert(penult_node.xored == t@ ^ 0);
@@ -302,7 +302,7 @@ impl<V> DListXor<V> {
             old(self)@.len() > 0,
         ensures
             final(self).wf(),
-            final(self)@ == old(self)@.subrange(1, old(self)@.len() as int),
+            final(self)@ == old(self)@[1..],
             v == old(self)@[0],
     {
         assert(self.wf_perm(0));
@@ -341,8 +341,8 @@ impl<V> DListXor<V> {
                 lemma_usize_u64(second_u64);
             }
             let second_ptr = PPtr::<Node<V>>::from_usize(second_u64 as usize);
-            let second_node = second_ptr.borrow_mut(Tracked(self.perms.tracked_borrow_mut(1)));
             let t: Ghost<u64> = Ghost(self.next_of(1));
+            let second_node = second_ptr.borrow_mut(Tracked(self.perms.tracked_borrow_mut(1)));
             assert((first_u64 ^ t@) ^ first_u64 == 0 ^ t@) by (bit_vector);
             second_node.xored = second_node.xored ^ first_u64;
             assert(second_node.xored == 0 ^ t@);
@@ -361,7 +361,7 @@ impl<V> DListXor<V> {
             }
         }
         proof {
-            self.ptrs@ = self.ptrs@.subrange(1, self.ptrs@.len() as int);
+            self.ptrs@ = self.ptrs@[1..];
         }
         proof {
             assert(self.wf_tail());
@@ -373,10 +373,10 @@ impl<V> DListXor<V> {
             assert(self.wf_perms());
             assert forall|i: int| 0 <= i < self@.len() implies #[trigger] self@[i] == old(
                 self,
-            )@.subrange(1, old(self)@.len() as int)[i] by {
+            )@[1..][i] by {
                 assert(old(self).wf_perm(i as nat + 1));  // trigger
             }
-            assert(self@ =~= old(self)@.subrange(1, old(self)@.len() as int));
+            assert(self@ =~= old(self)@[1..]);
         }
         v
     }

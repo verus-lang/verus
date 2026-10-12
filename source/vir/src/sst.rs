@@ -73,22 +73,22 @@ pub enum ArithOp {
     Sub,
     /// IntRange::Int *
     Mul,
-    /// IntRange::Int / defined as Euclidean (round towards -infinity, not round-towards zero)
+    /// IntRange::Int / defined as Euclidean (round towards -infinity)
     EuclideanDiv,
-    /// IntRange::Int % defined as Euclidean (returns non-negative result even for negative divisor)
+    /// IntRange::Int % defined as Euclidean (returns non-negative result even for negative dividend)
     EuclideanMod,
 }
 
 /// Primitive binary operations, all are pure functions on 2 inputs
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, ToDebugSNode)]
 pub enum BinaryOp {
-    /// boolean and (short-circuiting: right side is evaluated only if left side is true)
+    /// boolean and (no short-circuiting: Exps are pure)
     And,
-    /// boolean or (short-circuiting: right side is evaluated only if left side is false)
+    /// boolean or (no short-circuiting: Exps are pure)
     Or,
-    /// boolean xor (no short-circuiting)
+    /// boolean xor
     Xor,
-    /// boolean implies (short-circuiting: right side is evaluated only if left side is true)
+    /// boolean implies (no short-circuiting: Exps are pure)
     Implies,
     /// the is_smaller_than verus_builtin, used for decreases (true for <, false for ==)
     HeightCompare { strictly_lt: bool, recursive_function_field: bool },
@@ -170,13 +170,6 @@ pub enum ExpX {
     FuelConst(usize),
 }
 
-#[derive(Debug, Clone, Copy, ToDebugSNode)]
-pub enum ParPurpose {
-    MutPre,
-    MutPost,
-    Regular,
-}
-
 /// Function parameter
 pub type Par = Arc<Spanned<ParX>>;
 pub type Pars = Arc<Vec<Par>>;
@@ -185,7 +178,6 @@ pub struct ParX {
     pub name: VarIdent,
     pub typ: Typ,
     pub mode: Mode,
-    pub purpose: ParPurpose,
 }
 
 #[derive(Clone, Debug, ToDebugSNode)]
@@ -447,7 +439,12 @@ pub struct FunctionSstX {
     pub typ_params: crate::ast::Idents,
     pub typ_bounds: crate::ast::GenericBounds,
     pub pars: Pars,
-    pub ret: Par,
+    /// Return value from the external perspective.
+    /// Callers of this function see this as the return value, and should apply it as the
+    /// last argument to ensures.
+    pub outer_ret: Par,
+    /// Return value from the internal perspective, used primarily by the `FuncCheckSst`.
+    pub inner_ret: Par,
     pub ens_has_return: bool,
     pub item_kind: crate::ast::ItemKind,
     pub attrs: crate::ast::FunctionAttrs,
@@ -457,7 +454,7 @@ pub struct FunctionSstX {
     pub exec_proof_check: Option<Arc<FuncCheckSst>>,
     pub recommends_check: Option<Arc<FuncCheckSst>>,
     pub safe_api_check: Option<Arc<FuncCheckSst>>,
-    pub async_ret: Option<Par>,
+    pub hidden: Arc<Vec<Fun>>,
 }
 
 pub type KrateSst = Arc<KrateSstX>;

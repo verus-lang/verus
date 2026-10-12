@@ -665,12 +665,12 @@ test_verify_one_file_with_options! {
             for k in iter: m_keys
                 invariant
                     g_keys == iter.seq(),
-                    items@ == iter.seq().take(iter.index()).unref(),
+                    items@ == iter.seq()[..iter.index()].unref(),
             {
                 items.push(*k);
             }
             assert(items@ == seq![3u32, 6u32]) by {
-                assert(g_keys.take(g_keys.len() as int) =~= g_keys);
+                assert(g_keys[..g_keys.len()] =~= g_keys);
             }
             assert(increasing_seq(items@));
             assert(items@.no_duplicates());
@@ -734,12 +734,12 @@ test_verify_one_file_with_options! {
             for v in iter: m_values
                 invariant
                     g_values == iter.seq(),
-                    items@ == iter.seq().take(iter.index()).unref(),
+                    items@ == iter.seq()[..iter.index()].unref(),
             {
                 items.push(*v);
             }
             assert(items@ == seq![4i8, -8i8]) by {
-                assert(g_values.take(g_values.len() as int) =~= g_values);
+                assert(g_values[..g_values.len()] =~= g_values);
             }
         }
     } => Ok(())
@@ -803,12 +803,12 @@ test_verify_one_file_with_options! {
             for k in iter: m_iter
                 invariant
                     iter.seq().unref().to_set() =~= set![3u32, 6u32],
-                    items@ == iter.seq().take(iter.index()).unref(),
+                    items@ == iter.seq()[..iter.index()].unref(),
             {
                 items.push(*k);
             }
             assert(items@.to_set() =~= set![3u32, 6u32]) by {
-                assert(m_iter.remaining().take(m_iter.remaining().len() as int) == m_iter.remaining());
+                assert(m_iter.remaining()[..m_iter.remaining().len()] == m_iter.remaining());
             }
             assert(items@.no_duplicates());
         }

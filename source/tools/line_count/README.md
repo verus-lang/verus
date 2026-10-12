@@ -42,7 +42,10 @@ With the `--print-all/-p` option you can inspect the project source to see how e
 `Spec`, `Proof`, `Exec` are lines with that mode (with some imprecision due to the fact that
 this accounting is purely syntactic and some lines aren't purely one mode). Lines that contain
 both `Exec` and `Proof` code are accounted separately.
-`Trusted` are all the lines in files, modules, items marked with `#[verus::trusted]` and should be
+`Trusted` are all the lines in files, modules, items marked with `#[verus::trusted]`, items marked
+`#[verifier::external_body]` or `#[verifier::external_fn_specification]` (including the older
+`#[verifier(...)]` syntax), `assume_specification` declarations, and lines containing `assume(...)`
+or `admit()`. These should be
 the system and environment specification (i.e. what needs to be manually inspected by an auditor).
 Other lines are other definitions and directives, whitespace and mostly-whitespace lines (`Layout`)
 and `Comment`s.

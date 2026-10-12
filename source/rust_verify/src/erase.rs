@@ -108,7 +108,8 @@ pub struct ErasureHints {
     /// Copy of the entire VIR crate that was created in the first run's HIR -> VIR transformation
     pub vir_crate: Krate,
     /// Connect expression and pattern HirId to corresponding vir AstId
-    pub hir_vir_ids: Vec<(HirId, AstId)>,
+    /// None for a generated VIR node with no corresponding source HIR node.
+    pub hir_vir_ids: Vec<(Option<HirId>, AstId)>,
     /// Details of each call in the first run's HIR.
     /// The last bool is "in ghost block?".
     /// (This is false for "boundary" calls like Ghost/Tracked
@@ -184,7 +185,7 @@ fn resolved_call_to_call_erase(
                 dbg!(ufun, rfun);
                 panic!("internal Verus error: could not find mode declarations for function")
             };
-            if f.x.ret.x.mode != Mode::Spec && vir::ast_util::is_never(&f.x.ret.x.typ) {
+            if f.x.outer_ret.x.mode != Mode::Spec && vir::ast_util::is_never(&f.x.outer_ret.x.typ) {
                 call_returning_never = true;
             }
             if in_ghost && f.x.mode == Mode::Exec {
@@ -274,7 +275,10 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
         if !id_to_hir.contains_key(vir_id) {
             id_to_hir.insert(*vir_id, vec![]);
         }
-        id_to_hir.get_mut(vir_id).unwrap().push(*hir_id);
+        // Generated nodes have a known ID but no source HIR targets for erasure.
+        if let Some(hir_id) = hir_id {
+            id_to_hir.get_mut(vir_id).unwrap().push(*hir_id);
+        }
     }
 
     let mut vars = HashMap::<HirId, VarErasure>::new();

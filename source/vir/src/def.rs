@@ -1,4 +1,7 @@
-use crate::ast::{ClosureKind, CrateId, Dt, Fun, FunX, InvAtomicity, Path, PathX, VarIdent};
+use crate::ast::{
+    ClosureKind, CrateId, Dt, Fun, FunX, InvAtomicity, Path, PathX, UninterpretedFloatBinaryOp,
+    VarIdent,
+};
 use crate::ast_util::air_unique_var;
 use crate::messages::Span;
 use crate::util::vec_map;
@@ -49,7 +52,6 @@ const PREFIX_FUEL_ID: &str = "fuel%";
 const PREFIX_FUEL_NAT: &str = "fuel_nat%";
 const PREFIX_REQUIRES: &str = "req%";
 const PREFIX_ENSURES: &str = "ens%";
-const PREFIX_ENSURES_ASYNC_RET: &str = "VERUS_ASYNC_FUNC_RETURN_VALUE_";
 const PREFIX_OPEN_INV: &str = "openinv%";
 const PREFIX_NO_UNWIND_WHEN: &str = "no_unwind_when%";
 const PREFIX_RECURSIVE: &str = "rec%";
@@ -135,6 +137,7 @@ pub const FUEL_BOOL: &str = "fuel_bool";
 pub const FUEL_BOOL_DEFAULT: &str = "fuel_bool_default";
 pub const FUEL_DEFAULTS: &str = "fuel_defaults";
 pub const RETURN_VALUE: &str = "%return";
+pub const RETURN_VALUE_ASYNC_FUTURE: &str = "%return_async_future";
 pub const DEFAULT_ENSURES: &str = "default_ensures";
 pub const U_HI: &str = "uHi";
 pub const I_LO: &str = "iLo";
@@ -582,6 +585,32 @@ pub fn fn_array_update() -> Fun {
     })
 }
 
+pub fn fn_truncating_div() -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX {
+            krate: CrateId::Vstd,
+            segments: Arc::new(vec![
+                Arc::new("arithmetic".to_string()),
+                Arc::new("div_mod".to_string()),
+                Arc::new("rust_div".to_string()),
+            ]),
+        }),
+    })
+}
+
+pub fn fn_truncating_mod() -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX {
+            krate: CrateId::Vstd,
+            segments: Arc::new(vec![
+                Arc::new("arithmetic".to_string()),
+                Arc::new("div_mod".to_string()),
+                Arc::new("rust_rem".to_string()),
+            ]),
+        }),
+    })
+}
+
 pub fn array_type() -> Path {
     let ident = Arc::new(ARRAY_TYPE.to_string());
     Arc::new(PathX { krate: CrateId::Internal, segments: Arc::new(vec![ident]) })
@@ -721,10 +750,6 @@ pub fn prefix_requires(ident: &Ident) -> Ident {
 
 pub fn prefix_ensures(ident: &Ident) -> Ident {
     Arc::new(PREFIX_ENSURES.to_string() + ident)
-}
-
-pub fn prefix_ensures_async_ret(ident: &Ident) -> Ident {
-    Arc::new(PREFIX_ENSURES_ASYNC_RET.to_string() + ident)
 }
 
 pub fn prefix_open_inv(ident: &Ident, i: usize) -> Ident {
@@ -1331,4 +1356,39 @@ pub fn autospec_return_clause_spec_fn_name(path: &Path) -> Fun {
     let name = path.last_segment();
     let p = path.pop_segment().push_segment(Arc::new(format!("{}{}", name, AUTOSPEC_FUNC_SUFFIX)));
     Arc::new(FunX { path: p })
+}
+
+pub fn fn_fp_postcondition_name(op: UninterpretedFloatBinaryOp) -> Fun {
+    match op {
+        UninterpretedFloatBinaryOp::Add => {
+            crate::fun!(CrateId::Vstd => "std_specs", "ops",  "add_ensures")
+        }
+        UninterpretedFloatBinaryOp::Sub => {
+            crate::fun!(CrateId::Vstd => "std_specs", "ops",  "sub_ensures")
+        }
+        UninterpretedFloatBinaryOp::Mul => {
+            crate::fun!(CrateId::Vstd => "std_specs", "ops",  "mul_ensures")
+        }
+        UninterpretedFloatBinaryOp::Div => {
+            crate::fun!(CrateId::Vstd => "std_specs", "ops",  "div_ensures")
+        }
+        UninterpretedFloatBinaryOp::Eq => {
+            crate::fun!(CrateId::Vstd => "std_specs", "cmp",  "eq_ensures")
+        }
+        UninterpretedFloatBinaryOp::Ne => {
+            crate::fun!(CrateId::Vstd => "std_specs", "cmp",  "ne_ensures")
+        }
+        UninterpretedFloatBinaryOp::Lt => {
+            crate::fun!(CrateId::Vstd => "std_specs", "cmp",  "lt_ensures")
+        }
+        UninterpretedFloatBinaryOp::Gt => {
+            crate::fun!(CrateId::Vstd => "std_specs", "cmp",  "gt_ensures")
+        }
+        UninterpretedFloatBinaryOp::Le => {
+            crate::fun!(CrateId::Vstd => "std_specs", "cmp",  "le_ensures")
+        }
+        UninterpretedFloatBinaryOp::Ge => {
+            crate::fun!(CrateId::Vstd => "std_specs", "cmp",  "ge_ensures")
+        }
+    }
 }

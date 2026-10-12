@@ -93,7 +93,6 @@ just use an `ISet` instead. Examples of functions that produce an
 
 For more operations, including sequence contenation (`.add` or `+`),
 sequence update,
-sequence subrange,
 set union (`.union` or `+`),
 set intersection (`.intersect`),
 etc.,

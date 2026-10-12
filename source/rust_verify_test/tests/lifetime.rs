@@ -1556,10 +1556,7 @@ test_verify_one_file! {
                     forall |v:V,r:bool| f.ensures((&v,), r) ==> f_spec(v) == r,
             {
                 let ghost pre_r = r@.to_multiset();
-                assert(
-                    v@.subrange(0, i as int + 1)
-                    =~=
-                    v@.subrange(0, i as int).push(v@[i as int]));
+                assert(v@[..i + 1] =~= v@[..i].push(v@[i as int]));
                 if f(&v[i]) {
                     r.push(v[i].verus_clone());
                 }

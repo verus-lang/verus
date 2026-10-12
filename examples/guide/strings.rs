@@ -38,7 +38,7 @@ fn subrange<'a>(s: &str)
         reveal_strlit("Hello");
         reveal_strlit("H");
     }
-    assert(s@.subrange(0, 1) =~= "H"@);
+    assert(s@[..1] =~= "H"@);
 }
 // ANCHOR_END: pre_substring
 

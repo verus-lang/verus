@@ -30,7 +30,7 @@ impl <'a, T> VecIterator<'a, T> {
 impl <'a, T> VecIterator<'a, T> {
     pub closed spec fn elts_remaining(&self) -> Seq<&'a T>
     {
-        self.v@.subrange(self.i as int, self.j as int).as_ref()
+        self.v@[self.i..self.j].as_ref()
     }
 }
 
@@ -94,7 +94,7 @@ impl<'a, T> IteratorSpecImpl for VecIterator<'a, T> {
     }
 
     closed spec fn remaining(&self) -> Seq<Self::Item> {
-        self.v@.subrange(self.i as int, self.j as int).as_ref()
+        self.v@[self.i..self.j].as_ref()
     }
 
     closed spec fn will_return_none(&self) -> bool {

@@ -358,7 +358,7 @@ mod doubly_linked_list {
                 old(self).view().len() > 0,
             ensures
                 final(self).well_formed(),
-                final(self)@ == old(self)@.subrange(1, old(self)@.len() as int),
+                final(self)@ == old(self)@[1..],
                 v == old(self)@[0],
         {
             assert(self.well_formed_node(0));
@@ -417,7 +417,7 @@ mod doubly_linked_list {
             // Additional proof work to help the solver show that
             // `self.well_formed()` has been restored.
             proof {
-                self.ghost_state@.ptrs = self.ghost_state@.ptrs.subrange(1, self.ghost_state@.ptrs.len() as int);
+                self.ghost_state@.ptrs = self.ghost_state@.ptrs[1..];
                 if self.ghost_state@.ptrs.len() > 0 {
                     assert(self.well_formed_node(0));
                 }
@@ -425,10 +425,10 @@ mod doubly_linked_list {
                     i < self.view().len() && old(self).well_formed_node(i + 1) ==> self.well_formed_node(i));
                 assert forall|i: int| 0 <= i && i < self@.len() implies #[trigger] self@[i] == old(
                     self,
-                )@.subrange(1, old(self)@.len() as int)[i] by {
+                )@[1..][i] by {
                     assert(old(self).well_formed_node(i as nat + 1));  // trigger
                 }
-                assert(self@ =~= old(self)@.subrange(1, old(self)@.len() as int));
+                assert(self@ =~= old(self)@[1..]);
 
                 assert(self.well_formed());
             }

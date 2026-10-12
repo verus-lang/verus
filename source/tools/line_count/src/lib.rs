@@ -207,6 +207,7 @@ pub fn process_file(config: Rc<Config>, input_path: &std::path::Path) -> Result<
             if (line.line_content.contains(&LineContent::Body(CodeKind::Proof))
                 || line.line_content.contains(&LineContent::Signature(CodeKind::Proof)))
                 && line.kinds == BTreeSet::from([CodeKind::Trusted])
+                && !line.line_content.contains(&LineContent::Assumption)
             {
                 if line.line_content.contains(&LineContent::FunctionSpec) {
                     line.kinds = BTreeSet::from([CodeKind::Spec]);

@@ -151,6 +151,43 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_slice_chunks verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        fn test(slice: &[u8])
+            requires
+                slice@ == seq![
+                    0u8, 1u8, 2u8, 3u8,
+                    4u8, 5u8, 6u8, 7u8,
+                    8u8, 9u8,
+                ],
+        {
+            let mut iter = slice.chunks(4);
+            assert(IteratorSpec::remaining(&iter).len() == 3);
+            assert(IteratorSpec::remaining(&iter)[0]@ == seq![0u8, 1u8, 2u8, 3u8]);
+            assert(IteratorSpec::remaining(&iter)[1]@ == seq![4u8, 5u8, 6u8, 7u8]);
+            assert(IteratorSpec::remaining(&iter)[2]@ == seq![8u8, 9u8]);
+
+            let first = iter.next().unwrap();
+            assert(first@ == seq![0u8, 1u8, 2u8, 3u8]);
+            assert(IteratorSpec::remaining(&iter).len() == 2);
+
+            let second = iter.next().unwrap();
+            assert(second@ == seq![4u8, 5u8, 6u8, 7u8]);
+            assert(IteratorSpec::remaining(&iter).len() == 1);
+
+            let third = iter.next().unwrap();
+            assert(third@ == seq![8u8, 9u8]);
+            assert(IteratorSpec::remaining(&iter).len() == 0);
+
+            let last = iter.next();
+            assert(last.is_none());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_slices_arrays_extensionality verus_code! {
         use vstd::prelude::*;
 
@@ -214,8 +251,8 @@ test_verify_one_file! {
         fn range(s: &[u8]) {
             assume(s.len() == 5);
             let x = &s[1..3];
-            assert(x@ == s@.subrange(1, 3));
-            assert(x@ == s@.subrange(2, 4)); // FAILS
+            assert(x@ == s@[1..3]);
+            assert(x@ == s@[2..4]); // FAILS
         }
 
         fn range_bounds(s: &[u8]) {
@@ -226,8 +263,8 @@ test_verify_one_file! {
         fn range_index(s: &[u8]) {
             assume(s.len() == 5);
             let x = s.index(1..3);
-            assert(x@ == s@.subrange(1, 3));
-            assert(x@ == s@.subrange(2, 4)); // FAILS
+            assert(x@ == s@[1..3]);
+            assert(x@ == s@[2..4]); // FAILS
         }
 
         fn range_index_bounds(s: &[u8]) {
@@ -245,8 +282,8 @@ test_verify_one_file! {
         fn range_to(s: &[u8]) {
             assume(s.len() == 5);
             let x = &s[..3];
-            assert(x@ == s@.subrange(0, 3));
-            assert(x@ == s@.subrange(0, 4)); // FAILS
+            assert(x@ == s@[0..3]);
+            assert(x@ == s@[0..4]); // FAILS
         }
 
         fn range_to_bounds(s: &[u8]) {
@@ -257,8 +294,8 @@ test_verify_one_file! {
         fn range_to_index(s: &[u8]) {
             assume(s.len() == 5);
             let x = s.index(..3);
-            assert(x@ == s@.subrange(0, 3));
-            assert(x@ == s@.subrange(0, 4)); // FAILS
+            assert(x@ == s@[0..3]);
+            assert(x@ == s@[0..4]); // FAILS
         }
 
         fn range_to_index_bounds(s: &[u8]) {
@@ -275,8 +312,8 @@ test_verify_one_file! {
         fn range_from(s: &[u8]) {
             assume(s.len() == 5);
             let x = &s[2..];
-            assert(x@ == s@.subrange(2, 5));
-            assert(x@ == s@.subrange(1, 5)); // FAILS
+            assert(x@ == s@[2..5]);
+            assert(x@ == s@[1..5]); // FAILS
         }
 
         fn range_from_bounds(s: &[u8]) {
@@ -293,8 +330,8 @@ test_verify_one_file! {
         fn range_to_inclusive(s: &[u8]) {
             assume(s.len() == 5);
             let x = &s[..=3];
-            assert(x@ == s@.subrange(0, 4));
-            assert(x@ == s@.subrange(0, 3)); // FAILS
+            assert(x@ == s@[0..4]);
+            assert(x@ == s@[0..3]); // FAILS
         }
 
         fn range_to_inclusive_bounds(s: &[u8]) {
@@ -324,8 +361,8 @@ test_verify_one_file! {
         fn range_inclusive(s: &[u8]) {
             assume(s.len() == 5);
             let x = &s[1..=3];
-            assert(x@ == s@.subrange(1, 4));
-            assert(x@ == s@.subrange(1, 3)); // FAILS
+            assert(x@ == s@[1..4]);
+            assert(x@ == s@[1..3]); // FAILS
         }
 
         fn range_inclusive_bounds(s: &[u8]) {
@@ -343,7 +380,7 @@ test_verify_one_file! {
             assume(s.len() == 5);
             let some = s.get(1..3);
             assert(some.is_some());
-            assert(some.unwrap()@ == s@.subrange(1, 3));
+            assert(some.unwrap()@ == s@[1..3]);
             let none = s.get(1..7);
             assert(none.is_none());
         }
@@ -352,7 +389,7 @@ test_verify_one_file! {
             assume(s.len() == 5);
             let some = s.get(..3);
             assert(some.is_some());
-            assert(some.unwrap()@ == s@.subrange(0, 3));
+            assert(some.unwrap()@ == s@[0..3]);
             let none = s.get(..7);
             assert(none.is_none());
         }
@@ -361,7 +398,7 @@ test_verify_one_file! {
             assume(s.len() == 5);
             let some = s.get(2..);
             assert(some.is_some());
-            assert(some.unwrap()@ == s@.subrange(2, 5));
+            assert(some.unwrap()@ == s@[2..5]);
             let none = s.get(7..);
             assert(none.is_none());
         }
@@ -370,7 +407,7 @@ test_verify_one_file! {
             assume(s.len() == 5);
             let some = s.get(..=3);
             assert(some.is_some());
-            assert(some.unwrap()@ == s@.subrange(0, 4));
+            assert(some.unwrap()@ == s@[0..4]);
             let none = s.get(..=7);
             assert(none.is_none());
         }
@@ -386,7 +423,7 @@ test_verify_one_file! {
             assume(s.len() == 5);
             let some = s.get(1..=3);
             assert(some.is_some());
-            assert(some.unwrap()@ == s@.subrange(1, 4));
+            assert(some.unwrap()@ == s@[1..4]);
             let none = s.get(1..=7);
             assert(none.is_none());
         }
@@ -394,7 +431,7 @@ test_verify_one_file! {
         fn range_get_wrong_fails(s: &[u8]) {
             assume(s.len() == 5);
             let some = s.get(1..3);
-            assert(some.unwrap()@ == s@.subrange(1, 4)); // FAILS
+            assert(some.unwrap()@ == s@[1..4]); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -408,7 +445,7 @@ test_verify_one_file! {
         fn range_index_mut(s: &mut [u8]) {
             assume(s.len() == 5);
             let sub = &mut s[1..3];
-            assert(sub@ == old(s)@.subrange(1, 3));
+            assert(sub@ == old(s)@[1..3]);
             sub[0] = 99;
             sub[1] = 88;
             assert(sub@ == seq![99, 88]);
@@ -417,7 +454,7 @@ test_verify_one_file! {
         fn range_to_index_mut(s: &mut [u8]) {
             assume(s.len() == 5);
             let sub = &mut s[..3];
-            assert(sub@ == old(s)@.subrange(0, 3));
+            assert(sub@ == old(s)@[0..3]);
             sub[0] = 99;
             assert(sub@[0] == 99);
         }
@@ -425,7 +462,7 @@ test_verify_one_file! {
         fn range_from_index_mut(s: &mut [u8]) {
             assume(s.len() == 5);
             let sub = &mut s[2..];
-            assert(sub@ == old(s)@.subrange(2, 5));
+            assert(sub@ == old(s)@[2..5]);
             sub[0] = 99;
             assert(sub@[0] == 99);
         }
@@ -433,7 +470,7 @@ test_verify_one_file! {
         fn range_to_inclusive_index_mut(s: &mut [u8]) {
             assume(s.len() == 5);
             let sub = &mut s[..=3];
-            assert(sub@ == old(s)@.subrange(0, 4));
+            assert(sub@ == old(s)@[0..4]);
             sub[3] = 99;
             assert(sub@[3] == 99);
         }
@@ -449,7 +486,7 @@ test_verify_one_file! {
         fn range_inclusive_index_mut(s: &mut [u8]) {
             assume(s.len() == 5);
             let sub = &mut s[1..=3];
-            assert(sub@ == old(s)@.subrange(1, 4));
+            assert(sub@ == old(s)@[1..4]);
             sub[0] = 99;
             assert(sub@[0] == 99);
         }
@@ -577,8 +614,8 @@ test_verify_one_file! {
 
         fn range(a: &[u8; 5]) {
             let x = &a[1..3];
-            assert(x@ == a@.subrange(1, 3));
-            assert(x@ == a@.subrange(2, 4)); // FAILS
+            assert(x@ == a@[1..3]);
+            assert(x@ == a@[2..4]); // FAILS
         }
 
         fn range_bounds(a: &[u8; 5]) {
@@ -587,8 +624,8 @@ test_verify_one_file! {
 
         fn range_index(a: &[u8; 5]) {
             let x = a.index(1..3);
-            assert(x@ == a@.subrange(1, 3));
-            assert(x@ == a@.subrange(2, 4)); // FAILS
+            assert(x@ == a@[1..3]);
+            assert(x@ == a@[2..4]); // FAILS
         }
 
         fn range_index_bounds(a: &[u8; 5]) {
@@ -629,8 +666,8 @@ test_verify_one_file! {
         fn range(v: &Vec<u8>) {
             assume(v.len() == 5);
             let x = &v[1..3];
-            assert(x@ == v@.subrange(1, 3));
-            assert(x@ == v@.subrange(2, 4)); // FAILS
+            assert(x@ == v@[1..3]);
+            assert(x@ == v@[2..4]); // FAILS
         }
 
         fn range_bounds(v: &Vec<u8>) {
@@ -641,8 +678,8 @@ test_verify_one_file! {
         fn range_index(v: &Vec<u8>) {
             assume(v.len() == 5);
             let x = v.index(1..3);
-            assert(x@ == v@.subrange(1, 3));
-            assert(x@ == v@.subrange(2, 4)); // FAILS
+            assert(x@ == v@[1..3]);
+            assert(x@ == v@[2..4]); // FAILS
         }
 
         fn range_index_bounds(v: &Vec<u8>) {
@@ -660,15 +697,15 @@ test_verify_one_file! {
         fn range(v: Vec<u8>) {
             assume(v.len() == 5);
             let x = &v[1..3];
-            assert(x@ == v@.subrange(1, 3));
-            assert(x@ == v@.subrange(2, 4)); // FAILS
+            assert(x@ == v@[1..3]);
+            assert(x@ == v@[2..4]); // FAILS
         }
 
         fn range_arc(v: std::sync::Arc<Vec<u8>>) {
             assume(v.len() == 5);
             let x = &v[1..3];
-            assert(x@ == v@.subrange(1, 3));
-            assert(x@ == v@.subrange(2, 4)); // FAILS
+            assert(x@ == v@[1..3]);
+            assert(x@ == v@[2..4]); // FAILS
         }
 
         fn range_deref<A: std::ops::Deref<Target = Vec<u8>>>(v: &A) {
@@ -1009,8 +1046,8 @@ test_verify_one_file! {
         {
             let r = s.split_at_checked(2);
             assert(r matches Some((a, b))
-                && a@ == s@.subrange(0, 2)
-                && b@ == s@.subrange(2, 5));
+                && a@ == s@[0..2]
+                && b@ == s@[2..5]);
         }
 
         fn out_of_bounds(s: &[u8])
@@ -1024,7 +1061,7 @@ test_verify_one_file! {
             requires s@.len() == 5,
         {
             let r = s.split_at_checked(2);
-            assert(r matches Some((a, b)) && a@ == s@.subrange(0, 3)); // FAILS
+            assert(r matches Some((a, b)) && a@ == s@[0..3]); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -1063,6 +1100,53 @@ test_verify_one_bv_file! {
     } => Ok(())
 }
 
+test_verify_one_file! {
+    #[test] test_slice_starts_with_asymmetric_eq verus_code! {
+        // Expected results checked by executing these cases with Rust 1.98.1.
+        use vstd::prelude::*;
+        use vstd::std_specs::cmp::PartialEqSpecImpl;
+
+        pub struct S(pub u8);
+
+        // Deliberately asymmetric so reversing the eq arguments changes the result.
+        impl PartialEq for S {
+            fn eq(&self, other: &Self) -> bool {
+                self.0 < other.0
+            }
+        }
+
+        impl PartialEqSpecImpl for S {
+            open spec fn obeys_eq_spec() -> bool {
+                true
+            }
+
+            open spec fn eq_spec(&self, other: &Self) -> bool {
+                self.0 < other.0
+            }
+        }
+
+        fn test_equal_length() {
+            let slice: &[S] = &[S(0), S(0)];
+            let needle: &[S] = &[S(1), S(1)];
+            let cmp01 = slice.starts_with(needle);
+            let cmp10 = needle.starts_with(slice);
+
+            // needle == slice
+            assert(!cmp01);
+            assert(cmp10);
+        }
+
+        fn test_shorter_prefix() {
+            let slice: &[S] = &[S(2), S(3), S(0)];
+            let matches = slice.starts_with(&[S(1), S(2)]);
+            let mismatches = slice.starts_with(&[S(1), S(4)]);
+
+            assert(matches);
+            assert(!mismatches);
+        }
+    } => Ok(())
+}
+
 test_verify_one_bv_file! {
     #[test] test_slice_ends_with verus_code! {
         use vstd::prelude::*;
@@ -1092,6 +1176,53 @@ test_verify_one_bv_file! {
         fn test_empty_slice_ends_with_empty() {
             let v: &[u8] = &[];
             assert(v.ends_with(&[]));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_slice_ends_with_asymmetric_eq verus_code! {
+        // Expected results checked by executing these cases with Rust 1.98.1.
+        use vstd::prelude::*;
+        use vstd::std_specs::cmp::PartialEqSpecImpl;
+
+        pub struct S(pub u8);
+
+        // Deliberately asymmetric so reversing the eq arguments changes the result.
+        impl PartialEq for S {
+            fn eq(&self, other: &Self) -> bool {
+                self.0 < other.0
+            }
+        }
+
+        impl PartialEqSpecImpl for S {
+            open spec fn obeys_eq_spec() -> bool {
+                true
+            }
+
+            open spec fn eq_spec(&self, other: &Self) -> bool {
+                self.0 < other.0
+            }
+        }
+
+        fn test_equal_length() {
+            let slice: &[S] = &[S(0), S(0)];
+            let needle: &[S] = &[S(1), S(1)];
+            let cmp01 = slice.ends_with(needle);
+            let cmp10 = needle.ends_with(slice);
+
+            // needle == slice
+            assert(!cmp01);
+            assert(cmp10);
+        }
+
+        fn test_shorter_suffix() {
+            let slice: &[S] = &[S(0), S(2), S(3)];
+            let matches = slice.ends_with(&[S(1), S(2)]);
+            let mismatches = slice.ends_with(&[S(1), S(4)]);
+
+            assert(matches);
+            assert(!mismatches);
         }
     } => Ok(())
 }
@@ -1155,6 +1286,33 @@ test_verify_one_file! {
                 result == (left@.len() == right@.len()),
         {
             left == right
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_slice_contains verus_code! {
+        use vstd::prelude::*;
+
+        fn test() {
+            let values: &[u8] = &[1, 2, 3];
+
+            assert(values.contains(&2));
+            assert(!values.contains(&4));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_slice_reverse verus_code! {
+        use vstd::prelude::*;
+
+        fn test(s: &mut [u8])
+            requires
+                old(s)@ == seq![1u8, 2, 3],
+        {
+            s.reverse();
+            assert(s@ == seq![3u8, 2, 1]);
         }
     } => Ok(())
 }

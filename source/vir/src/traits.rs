@@ -2,7 +2,7 @@ use crate::ast::{
     CallTarget, CallTargetKind, Expr, ExprX, Fun, Function, FunctionKind, FunctionX, GenericBound,
     GenericBoundX, GenericBounds, Ident, Idents, ImplPath, ImplPaths, Krate, Mode, Path, Place,
     Sizedness, SpannedTyped, Trait, TraitId, TraitImpl, TraitX, Typ, TypX, Typs, VirErr,
-    Visibility, WellKnownItem,
+    Visibility,
 };
 use crate::ast_util::path_as_friendly_rust_name;
 use crate::ast_visitor::VisitorScopeMap;
@@ -193,7 +193,6 @@ fn demote_one_expr(
 pub fn demote_external_traits(
     diagnostics: &impl air::messages::Diagnostics,
     warning_ctx: &crate::context::WarningCtx,
-    path_to_well_known_item: &HashMap<Path, WellKnownItem>,
     krate: &Krate,
 ) -> Result<Krate, VirErr> {
     check_no_dupe_impls(krate)?;
@@ -248,27 +247,6 @@ pub fn demote_external_traits(
             let our_trait_method = traits.contains(trait_path) && funs.contains(method);
             let mut functionx = function.x.clone();
             if !our_trait_method {
-                if path_to_well_known_item.get(trait_path) == Some(&WellKnownItem::DropTrait) {
-                    if !function.x.require.is_empty() {
-                        return Err(error(
-                            &function.span,
-                            "requires are not allowed on the implementation for Drop",
-                        ));
-                    }
-                    if !matches!(&function.x.mask_spec, Some(crate::ast::MaskSpec::InvariantOpens(_span, es)) if es.len() == 0)
-                    {
-                        return Err(error(
-                            &function.span,
-                            "the implementation for Drop must be marked opens_invariants none",
-                        ));
-                    }
-                    if !matches!(&function.x.unwind_spec, Some(crate::ast::UnwindSpec::NoUnwind)) {
-                        return Err(error(
-                            &function.span,
-                            "the implementation for Drop must be marked no_unwind",
-                        ));
-                    }
-                }
                 check_modes(function, &function.span)?;
                 functionx.kind = FunctionKind::Static;
             }
@@ -317,6 +295,7 @@ pub fn demote_external_traits(
             &|_state, _, stmt| Ok(vec![stmt.clone()]),
             &|_state, typ| Ok(typ.clone()),
             &|_state, _, place| Ok(place.clone()),
+            &|_state, _, pattern| Ok(pattern.clone()),
         )?;
     }
 
@@ -458,6 +437,7 @@ pub fn rewrite_external_function(
         &|_, _, stmt| Ok(vec![stmt.clone()]),
         &|_, t: &Typ| Ok(rewrite_one_external_typ(from_path, to_path, t)),
         &|_, _, p: &Place| Ok(p.clone()),
+        &|_, _, place| Ok(place.clone()),
     )
     .expect("rewrite_external_function")
 }
@@ -650,9 +630,18 @@ pub fn inherit_default_bodies(
                     &ft,
                 )
                 .unwrap();
-                let ret =
-                    crate::ast_visitor::map_param_visitor(&default_function.x.ret, &mut (), &ft)
-                        .unwrap();
+                let outer_ret = crate::ast_visitor::map_param_visitor(
+                    &default_function.x.outer_ret,
+                    &mut (),
+                    &ft,
+                )
+                .unwrap();
+                let inner_ret = crate::ast_visitor::map_param_visitor(
+                    &default_function.x.inner_ret,
+                    &mut (),
+                    &ft,
+                )
+                .unwrap();
                 let name =
                     crate::def::trait_inherit_default_name(&default_function.x.name, &impl_path);
                 let visibility = Visibility {
@@ -690,7 +679,8 @@ pub fn inherit_default_bodies(
                     typ_params: Arc::new(typ_params),
                     typ_bounds: Arc::new(typ_bounds),
                     params,
-                    ret,
+                    outer_ret,
+                    inner_ret,
                     ens_has_return: default_function.x.ens_has_return,
                     require: Arc::new(vec![]),
                     ensure: (Arc::new(vec![]), Arc::new(vec![])),
@@ -706,7 +696,7 @@ pub fn inherit_default_bodies(
                     attrs: Arc::new(crate::ast::FunctionAttrsX::default()),
                     body: None,
                     extra_dependencies: vec![],
-                    async_ret: None,
+                    hidden: Arc::new(vec![]),
                 };
                 let warn_config = warning_ctx.fun_warn_configs[&default_function.x.name].clone();
                 warning_ctx.fun_warn_configs.insert(inherit_functionx.name.clone(), warn_config);
@@ -863,7 +853,7 @@ fn check_modes(function: &Function, span: &Span) -> Result<(), VirErr> {
             ));
         }
     }
-    if function.x.ret.x.mode != Mode::Exec {
+    if function.x.outer_ret.x.mode != Mode::Exec {
         return Err(error(
             span,
             "function for external trait must have all parameters have mode 'exec'",

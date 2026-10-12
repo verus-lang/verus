@@ -9,6 +9,9 @@ proof fn test_seq1() {
     assert(s.len() == 5);
     assert(s[2] == 20);
     assert(s[3] == 30);
+    assert(s[2..4] == seq![20, 30]);
+    assert(s[2..] == seq![20, 30, 40]);
+    assert(s[..4] == seq![0, 10, 20, 30]);
 }
 
 proof fn test_set1() {
@@ -44,6 +47,9 @@ proof fn test_seq2() {
     assert(s.len() == 5);
     assert(s[2] == 20);
     assert(s[3] == 30);
+    assert(s[2..4] == seq![20, 30]);
+    assert(s[2..] == seq![20, 30, 40]);
+    assert(s[..4] == seq![0, 10, 20, 30]);
 }
 // ANCHOR_END: new0
 }
@@ -270,7 +276,7 @@ fn test_vec2() {
     assert(v@ =~= seq![0, 10] + seq![21] + seq![30, 40]);
     assert(v@[2] == 21);
     assert(v@[3] == 30);
-    assert(v@.subrange(2, 4) =~= seq![21, 30]);
+    assert(v@[2..4] =~= seq![21, 30]);
     assert(has_five_sorted_numbers(v@));
 }
 // ANCHOR_END: test_vec2

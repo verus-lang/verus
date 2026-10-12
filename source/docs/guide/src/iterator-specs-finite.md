@@ -73,14 +73,12 @@ In summary, here's what our implementation of these specs looks like for `VecIte
 
 Most iterator types will need to be constructed from some other type.  In our example,
 our constructor `vec_iter` will take in a `&'a Vec<T>` and return a `VecIterator<'a, T>`.
-As shown below, you'll typically want postconditions like those shown below.
+You'll typically want postconditions like those shown below.
 The first one connects the iterator's prophetic sequence to the 
 values it was constructed from (in this case, the elements of the `Vec<T>`).
 The second one connects the prophetic sequence to the iterator's abstract `elts()`;
 we need that connection, since peek is defined in terms of `elts()` (not `remaining()`).
-The third postcondition enables a `for` loop to automatically prove termination.
-The final postcondition  connects the value used to construct the iterator
-to its prophecied sequence of yielded values.
+The final postcondition enables a `for` loop to automatically prove termination.
 
 ```rust
 {{#include ../../../../examples/guide/iterators.rs:iter_creation}}

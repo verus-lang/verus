@@ -302,6 +302,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "tempfile",
+ "walkdir",
 ]
 
 [[package]]
@@ -3247,11 +3248,11 @@ dependencies = [
 
 [[package]]
 name = "verus_builtin"
-version = "0.0.0-2026-09-16-0054"
+version = "0.0.0-2026-10-11-0230"
 
 [[package]]
 name = "verus_builtin_macros"
-version = "0.0.0-2026-09-06-0133"
+version = "0.0.0-2026-09-20-0158"
 dependencies = [
  "convert_case",
  "proc-macro2",
@@ -3272,7 +3273,7 @@ dependencies = [
 
 [[package]]
 name = "verus_state_machines_macros"
-version = "0.0.0-2026-09-06-0133"
+version = "0.0.0-2026-10-11-0230"
 dependencies = [
  "indexmap 2.14.0",
  "proc-macro2",

@@ -318,6 +318,23 @@ impl SpanContextX {
 }
 
 impl<'tcx> crate::context::ContextX<'tcx> {
+    /// Clones generated statements with fresh IDs, while preserving diagnostic locations.
+    pub(crate) fn clone_stmts_with_fresh_ids(&self, stmts: &[vir::ast::Stmt]) -> vir::ast::Stmts {
+        Arc::new(
+            stmts
+                .iter()
+                .map(|stmt| {
+                    vir::ast_visitor::map_stmt_spans(stmt, &mut |span| {
+                        let mut span = span.clone();
+                        span.id = self.spans.get_next_span_id();
+                        self.erasure_info.borrow_mut().hir_vir_ids.push((None, span.id));
+                        span
+                    })
+                })
+                .collect(),
+        )
+    }
+
     pub(crate) fn spanned_new<X>(&self, span: Span, x: X) -> Arc<Spanned<X>> {
         self.spans.spanned_new(span, x)
     }

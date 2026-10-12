@@ -124,6 +124,10 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
         })
     }
 
+    fn visit_patterns(&mut self, patterns: &Vec<Pattern>) -> Result<R::Vec<Pattern>, Err> {
+        R::map_vec(patterns, &mut |p| self.visit_pattern(p))
+    }
+
     #[allow(dead_code)]
     fn visit_opt_typ(&mut self, typ_opt: &Option<Typ>) -> Result<R::Opt<Typ>, Err> {
         R::map_opt(typ_opt, &mut |t| self.visit_typ(t))
@@ -913,6 +917,10 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let p = self.visit_pattern(p)?;
                 R::ret(|| pattern_new(PatternX::MutRef(R::get(p))))
             }
+            PatternX::Slice(patterns) => {
+                let ps = self.visit_patterns(patterns)?;
+                R::ret(|| pattern_new(PatternX::Slice(R::get_vec_a(ps))))
+            }
         }
     }
 
@@ -1175,7 +1183,8 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             typ_params,
             typ_bounds,
             params: ps,
-            ret: rt,
+            outer_ret: ort,
+            inner_ret: irt,
             ens_has_return,
             require,
             ensure: (ensure0, ensure1),
@@ -1191,7 +1200,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             attrs,
             body,
             extra_dependencies,
-            async_ret,
+            hidden,
         } = &function.x;
         let kind = self.visit_function_kind(kind)?;
         let type_bounds = self.visit_generic_bounds(typ_bounds)?;
@@ -1203,13 +1212,13 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 ScopeEntry::new_outer_param_ret(&p.x.typ, Some(p.x.user_mut), true),
             );
         }
-        let ret = self.visit_param(rt)?;
+        let oret = self.visit_param(ort)?;
+        let iret = self.visit_param(irt)?;
         let require = self.visit_exprs(require)?;
-        let async_ret = R::map_opt(async_ret, &mut |async_ret| self.visit_param(&async_ret))?;
 
         self.push_scope();
         if function.x.ens_has_return {
-            let r = R::get_or(&ret, rt);
+            let r = R::get_or(&iret, irt);
             let _ = self.insert_binding(
                 &r.x.name.clone(),
                 ScopeEntry::new_outer_param_ret(&r.x.typ, Some(false), true),
@@ -1242,7 +1251,8 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 typ_params: typ_params.clone(),
                 typ_bounds: R::get_vec_a(type_bounds),
                 params: R::get_vec_a(params),
-                ret: R::get(ret),
+                outer_ret: R::get(oret),
+                inner_ret: R::get(iret),
                 ens_has_return: *ens_has_return,
                 require: R::get_vec_a(require),
                 ensure: (R::get_vec_a(ensure0), R::get_vec_a(ensure1)),
@@ -1258,7 +1268,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 attrs: attrs.clone(),
                 body: R::get_opt(body),
                 extra_dependencies: extra_dependencies.clone(),
-                async_ret: R::get_opt(async_ret),
+                hidden: hidden.clone(),
             })
         })
     }
@@ -1605,6 +1615,11 @@ fn insert_pattern_vars(map: &mut VisitorScopeMap, pattern: &Pattern, init: bool)
         PatternX::MutRef(pat1) | PatternX::ImmutRef(pat1) => {
             insert_pattern_vars(map, pat1, init);
         }
+        PatternX::Slice(pats) => {
+            for pat in pats.iter() {
+                insert_pattern_vars(map, pat, init);
+            }
+        }
     }
 }
 
@@ -1880,22 +1895,24 @@ where
     }
 }
 
-struct MapExprStmtTypVisitor<'a, E, FE, FS, FT, FPL> {
+struct MapExprStmtTypVisitor<'a, E, FE, FS, FT, FPL, FP> {
     env: &'a mut E,
     fe: &'a FE,
     fs: &'a FS,
     ft: &'a FT,
     fpl: &'a FPL,
+    fp: &'a FP,
     map: &'a mut VisitorScopeMap,
 }
 
-impl<'a, E, FE, FS, FT, FPL> AstVisitor<Rewrite, VirErr, VisitorScopeMap>
-    for MapExprStmtTypVisitor<'a, E, FE, FS, FT, FPL>
+impl<'a, E, FE, FS, FT, FPL, FP> AstVisitor<Rewrite, VirErr, VisitorScopeMap>
+    for MapExprStmtTypVisitor<'a, E, FE, FS, FT, FPL, FP>
 where
     FE: Fn(&mut E, &mut VisitorScopeMap, &Expr) -> Result<Expr, VirErr>,
     FS: Fn(&mut E, &mut VisitorScopeMap, &Stmt) -> Result<Vec<Stmt>, VirErr>,
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
     FPL: Fn(&mut E, &mut VisitorScopeMap, &Place) -> Result<Place, VirErr>,
+    FP: Fn(&mut E, &mut VisitorScopeMap, &Pattern) -> Result<Pattern, VirErr>,
 {
     fn visit_typ(&mut self, typ: &Typ) -> Result<Typ, VirErr> {
         let typ = self.visit_typ_rec(typ)?;
@@ -1923,6 +1940,7 @@ where
 
     fn visit_pattern(&mut self, pattern: &Pattern) -> Result<Pattern, VirErr> {
         let pattern = self.visit_pattern_rec(pattern)?;
+        let pattern = (self.fp)(self.env, self.map, &pattern)?;
         Ok(pattern)
     }
 
@@ -1931,7 +1949,7 @@ where
     }
 }
 
-pub(crate) fn map_expr_visitor_env<E, FE, FS, FT, FPL>(
+pub(crate) fn map_expr_visitor_env<E, FE, FS, FT, FPL, FP>(
     expr: &Expr,
     map: &mut VisitorScopeMap,
     env: &mut E,
@@ -1939,15 +1957,38 @@ pub(crate) fn map_expr_visitor_env<E, FE, FS, FT, FPL>(
     fs: &FS,
     ft: &FT,
     fpl: &FPL,
+    fp: &FP,
 ) -> Result<Expr, VirErr>
 where
     FE: Fn(&mut E, &mut VisitorScopeMap, &Expr) -> Result<Expr, VirErr>,
     FS: Fn(&mut E, &mut VisitorScopeMap, &Stmt) -> Result<Vec<Stmt>, VirErr>,
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
     FPL: Fn(&mut E, &mut VisitorScopeMap, &Place) -> Result<Place, VirErr>,
+    FP: Fn(&mut E, &mut VisitorScopeMap, &Pattern) -> Result<Pattern, VirErr>,
 {
-    let mut vis = MapExprStmtTypVisitor { env, fe, fs, ft, fpl, map };
+    let mut vis = MapExprStmtTypVisitor { env, fe, fs, ft, fpl, fp, map };
     vis.visit_expr(expr)
+}
+
+pub(crate) fn map_stmt_visitor_env<E, FE, FS, FT, FPL, FP>(
+    stmt: &Stmt,
+    map: &mut VisitorScopeMap,
+    env: &mut E,
+    fe: &FE,
+    fs: &FS,
+    ft: &FT,
+    fpl: &FPL,
+    fp: &FP,
+) -> Result<Vec<Stmt>, VirErr>
+where
+    FE: Fn(&mut E, &mut VisitorScopeMap, &Expr) -> Result<Expr, VirErr>,
+    FS: Fn(&mut E, &mut VisitorScopeMap, &Stmt) -> Result<Vec<Stmt>, VirErr>,
+    FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
+    FPL: Fn(&mut E, &mut VisitorScopeMap, &Place) -> Result<Place, VirErr>,
+    FP: Fn(&mut E, &mut VisitorScopeMap, &Pattern) -> Result<Pattern, VirErr>,
+{
+    let mut vis = MapExprStmtTypVisitor { env, fe, fs, ft, fpl, fp, map };
+    vis.visit_stmt(stmt)
 }
 
 pub fn map_expr_visitor<FE>(expr: &Expr, fe: &FE) -> Result<Expr, VirErr>
@@ -1962,6 +2003,7 @@ where
         &|_state, _, stmt| Ok(vec![stmt.clone()]),
         &|_state, typ| Ok(typ.clone()),
         &|_state, _, place| Ok(place.clone()),
+        &|_state, _, pattern| Ok(pattern.clone()),
     )
 }
 
@@ -1978,6 +2020,7 @@ where
         &|_state, _, stmt| Ok(vec![fs(stmt)?]),
         &|_state, typ| Ok(typ.clone()),
         &|_state, _, place| Ok(place.clone()),
+        &|_state, _, pattern| Ok(pattern.clone()),
     )
 }
 
@@ -1994,7 +2037,45 @@ where
         &|_state, _, stmt| Ok(vec![stmt.clone()]),
         &|_state, typ| Ok(typ.clone()),
         &|_state, _, place| fpl(place),
+        &|_state, _, pattern| Ok(pattern.clone()),
     )
+}
+
+/// Recursively maps statement, expression, place, and pattern spans, including nested patterns.
+/// The callback can assign fresh IDs while preserving each node's diagnostic location.
+pub fn map_stmt_spans<FSpan>(stmt: &Stmt, f_span: &mut FSpan) -> Stmt
+where
+    FSpan: FnMut(&Span) -> Span,
+{
+    map_stmt_visitor_env(
+        stmt,
+        &mut VisitorScopeMap::new(),
+        f_span,
+        &|f_span, _, expr| Ok(SpannedTyped::new(&f_span(&expr.span), &expr.typ, expr.x.clone())),
+        &|f_span, _, stmt| {
+            let x = match &stmt.x {
+                StmtX::Expr(expr) => StmtX::Expr(expr.clone()),
+                StmtX::Decl { pattern, mode, init, els, assert_irrefutable } => StmtX::Decl {
+                    pattern: pattern.clone(),
+                    mode: *mode,
+                    init: init.clone(),
+                    els: els.clone(),
+                    assert_irrefutable: *assert_irrefutable,
+                },
+            };
+            Ok(vec![Spanned::new(f_span(&stmt.span), x)])
+        },
+        &|_, typ| Ok(typ.clone()),
+        &|f_span, _, place| {
+            Ok(SpannedTyped::new(&f_span(&place.span), &place.typ, place.x.clone()))
+        },
+        &|f_span, _, pattern| {
+            Ok(SpannedTyped::new(&f_span(&pattern.span), &pattern.typ, pattern.x.clone()))
+        },
+    )
+    .unwrap()
+    .pop()
+    .unwrap()
 }
 
 pub(crate) fn map_param_visitor<E, FT>(param: &Param, env: &mut E, ft: &FT) -> Result<Param, VirErr>
@@ -2039,7 +2120,7 @@ where
     Ok(Arc::new(vec_map_result(&**bounds, |b| map_generic_bound_visitor(b, env, ft))?))
 }
 
-pub(crate) fn map_function_visitor_env<E, FE, FS, FT, FPL>(
+pub(crate) fn map_function_visitor_env<E, FE, FS, FT, FPL, FP>(
     function: &Function,
     map: &mut VisitorScopeMap,
     env: &mut E,
@@ -2047,14 +2128,16 @@ pub(crate) fn map_function_visitor_env<E, FE, FS, FT, FPL>(
     fs: &FS,
     ft: &FT,
     fpl: &FPL,
+    fp: &FP,
 ) -> Result<Function, VirErr>
 where
     FE: Fn(&mut E, &mut VisitorScopeMap, &Expr) -> Result<Expr, VirErr>,
     FS: Fn(&mut E, &mut VisitorScopeMap, &Stmt) -> Result<Vec<Stmt>, VirErr>,
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
     FPL: Fn(&mut E, &mut VisitorScopeMap, &Place) -> Result<Place, VirErr>,
+    FP: Fn(&mut E, &mut VisitorScopeMap, &Pattern) -> Result<Pattern, VirErr>,
 {
-    let mut vis = MapExprStmtTypVisitor { env, fe, fs, ft, fpl, map };
+    let mut vis = MapExprStmtTypVisitor { env, fe, fs, ft, fpl, fp: &fp, map };
     vis.visit_function(function)
 }
 

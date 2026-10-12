@@ -2,8 +2,8 @@ use super::super::prelude::*;
 use super::super::raw_ptr::MemContents;
 use core::mem::MaybeUninit;
 
-use verus as verus_;
-verus_! {
+use verus as verus_skip_verusfmt;
+verus_skip_verusfmt! {
 
 #[verifier::external_type_specification]
 #[verifier::external_body]

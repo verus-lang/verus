@@ -7,8 +7,8 @@ use core::cell::UnsafeCell;
 use core::marker::PhantomData;
 use core::mem::ManuallyDrop;
 
-use verus as verus_;
-verus_! {
+use verus as verus_skip_verusfmt;
+verus_skip_verusfmt! {
 
 /**
 `PCell<T>` (which stands for "permissioned cell") is the most primitive Verus `Cell` type.

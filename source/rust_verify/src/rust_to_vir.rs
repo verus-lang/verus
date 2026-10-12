@@ -11,7 +11,9 @@ use crate::external::{CrateItems, GeneralItemId, VerifOrExternal};
 use crate::reveal_hide::handle_reveal_hide;
 use crate::rust_to_vir_adts::{check_item_enum, check_item_struct, check_item_union};
 use crate::rust_to_vir_base::{def_id_to_vir_path_option, mk_visibility};
-use crate::rust_to_vir_func::{CheckItemFnEither, check_foreign_item_fn, check_item_fn};
+use crate::rust_to_vir_func::{
+    CheckItemFnEither, FunctionOrConstInfo, check_foreign_item_fn, check_item_fn,
+};
 use crate::rust_to_vir_global::TypIgnoreImplPaths;
 use crate::rust_to_vir_impl::ExternalInfo;
 use crate::util::err_span_vec;
@@ -52,6 +54,7 @@ fn check_item<'tcx>(
     ctxt: &Context<'tcx>,
     state: &mut State,
     vir: &mut KrateX,
+    infos: &mut Vec<FunctionOrConstInfo<'tcx>>,
     module_path: &Path,
     id: &ItemId,
     item: &'tcx Item<'tcx>,
@@ -185,7 +188,7 @@ fn check_item<'tcx>(
         crate::rust_to_vir_func::check_item_const_or_static(
             ctxt,
             state,
-            &mut vir.functions,
+            &mut *infos,
             item.span,
             item.owner_id.to_def_id(),
             visibility(),
@@ -208,7 +211,7 @@ fn check_item<'tcx>(
             check_item_fn(
                 ctxt,
                 state,
-                &mut vir.functions,
+                &mut *infos,
                 Some(&mut vir.reveal_groups),
                 item.owner_id.to_def_id(),
                 FunctionKind::Static,
@@ -299,6 +302,7 @@ fn check_item<'tcx>(
                 ctxt,
                 state,
                 vir,
+                infos,
                 item,
                 impll,
                 module_path.clone(),
@@ -336,6 +340,7 @@ fn check_item<'tcx>(
                 ctxt,
                 state,
                 vir,
+                &mut *infos,
                 item.span,
                 trait_def_id,
                 visibility(),
@@ -417,6 +422,7 @@ pub fn crate_to_vir<'a, 'tcx>(
         path_as_rust_names: Vec::new(),
         arch: vir::ast::Arch { word_bits: vir::ast::ArchWordBits::Either32Or64 },
     };
+    let mut infos: Vec<FunctionOrConstInfo> = Vec::new();
 
     let tcx = ctxtx.tcx;
 
@@ -515,6 +521,7 @@ pub fn crate_to_vir<'a, 'tcx>(
                             &ctxt,
                             &mut state,
                             &mut vir,
+                            &mut infos,
                             &module_path,
                             &item_id,
                             item,
@@ -588,6 +595,15 @@ pub fn crate_to_vir<'a, 'tcx>(
     }
 
     vir.path_as_rust_names = vir::ast_util::get_path_as_rust_names_for_krate(&CrateId::Vstd);
+
+    for info in infos.into_iter() {
+        if let Err(e) = crate::rust_to_vir_func::finish_item(&ctxt, info, &mut vir.functions) {
+            errors.push(e);
+        }
+    }
+    if errors.len() > 0 {
+        return Err(errors);
+    }
 
     crate::rust_to_vir_impl::collect_external_trait_impls(
         &ctxt,
