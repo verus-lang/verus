@@ -213,7 +213,10 @@ pub(crate) fn sst_raw_deref_check(
     let Some(permission_place) = permission_place else {
         return vec![(
             sst_bool(span, false),
-            crate::messages::error(span, "no `PointsTo` set for this pointer operation"),
+            crate::messages::error(
+                span,
+                "possible memory safety violation: no `PointsTo` set for this pointer operation",
+            ),
         )];
     };
 
@@ -226,14 +229,17 @@ pub(crate) fn sst_raw_deref_check(
         ptrs_eq,
         crate::messages::error(
             span,
-            "unable to prove the pointer agrees with the given `PointsTo`",
+            "possible memory safety violation: unable to prove the pointer agrees with the given `PointsTo`",
         ),
     ));
 
     let is_init = crate::points_to::sst_get_is_init(&perm);
     checks.push((
         is_init,
-        crate::messages::error(span, "unable to prove the `PointsTo` is initialized"),
+        crate::messages::error(
+            span,
+            "possible memory safety violation: unable to prove the `PointsTo` is initialized",
+        ),
     ));
 
     checks
