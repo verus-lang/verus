@@ -340,6 +340,7 @@ pub enum LocalDeclKind {
     Nondeterministic,
     OpenInvariantInnerTemp,
     BorrowMut,
+    LoopBreakValue,
 }
 
 pub type LocalDecl = Arc<LocalDeclX>;
