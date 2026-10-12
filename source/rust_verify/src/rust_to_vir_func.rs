@@ -2162,6 +2162,7 @@ pub(crate) fn check_item_fn<'tcx>(
         id.expect_local(),
         BodyErasure { erase_body: mode == Mode::Spec, ret_spec: ret_mode == Mode::Spec },
     );
+    ctxt.push_check_erasure_body(id.expect_local(), mode, has_body);
 
     let mut func = FunctionStubX {
         name: name.clone(),
@@ -3261,6 +3262,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         id.expect_local(),
         BodyErasure { erase_body: body_mode == Mode::Spec, ret_spec: ret_mode == Mode::Spec },
     );
+    ctxt.push_check_erasure_body(id.expect_local(), body_mode, !vattrs.external_body);
 
     // An associated const declared in an `impl<T> ...` block may refer to the impl's
     // type parameters in its type or body, so include them here.

@@ -494,7 +494,17 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
 
     let adjustments = bctx.types.expr_adjustments(expr);
 
-    expr_to_vir_with_adjustments(bctx, expr, adjustments, adjustments.len())
+    let r = expr_to_vir_with_adjustments(bctx, expr, adjustments, adjustments.len());
+    if bctx.ctxt.cmd_line_args.check_erasure {
+        if let Ok(r) = &r {
+            let id = match r {
+                ExprOrPlace::Expr(e) => e.span.id,
+                ExprOrPlace::Place(p) => p.span.id,
+            };
+            bctx.ctxt.erasure_info.borrow_mut().check_erasure_hir_vir.push((expr.hir_id, id));
+        }
+    }
+    r
 }
 
 pub(crate) fn expr_to_vir_consume<'tcx>(
@@ -672,6 +682,10 @@ pub(crate) fn pattern_to_vir<'tcx>(
     if matches!(pat.kind, PatKind::Binding(..)) {
         let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
         erasure_info.hir_vir_ids.push((Some(pat.hir_id), unadjusted_pat.span.id));
+    }
+    if bctx.ctxt.cmd_line_args.check_erasure {
+        let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+        erasure_info.check_erasure_hir_vir.push((pat.hir_id, unadjusted_pat.span.id));
     }
 
     // See rustc_mir_build/src/thir/pattern/mod.rs

@@ -43,6 +43,7 @@ pub mod debugger;
 pub mod def;
 pub mod driver;
 pub mod erase;
+pub mod erasure_check;
 mod expand_errors_driver;
 pub mod external;
 pub mod externs;
