@@ -234,7 +234,7 @@ use rustc_span::Span;
 use rustc_span::Symbol;
 
 /// Post-process any THIR expression to apply the relevant transformation.
-/// (This might apply to any an expression that results from an adjustment.)
+/// (This might apply to an expression that results from an adjustment.)
 pub(crate) fn expr_post<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     hir_expr: &'tcx hir::Expr<'tcx>,

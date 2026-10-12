@@ -1004,6 +1004,12 @@ fn add_pattern_rec(
         }
         PatternX::ImmutRef(sub_pat) => add_pattern_rec(ctxt, record, typing, decls, mode, sub_pat),
         PatternX::MutRef(sub_pat) => add_pattern_rec(ctxt, record, typing, decls, mode, sub_pat),
+        PatternX::Slice(pats) => {
+            for pat in pats.iter() {
+                add_pattern_rec(ctxt, record, typing, decls, mode, pat)?;
+            }
+            Ok(())
+        }
     }
 }
 
@@ -2916,7 +2922,7 @@ fn check_expr(
             }
             Ok((Mode::Exec, Proph::No))
         }
-        ExprX::BreakOrContinue { label: _, is_break: _ } => {
+        ExprX::BreakOrContinue { label: _, is_break: _, value } => {
             if typing.in_assert_by_body {
                 return Err(error(
                     &expr.span,
@@ -2928,6 +2934,17 @@ fn check_expr(
             }
             if typing.in_pure {
                 return Err(error(&expr.span, "break/continue is not allowed in pure context"));
+            }
+            if let Some(value) = value {
+                check_expr_has_mode(
+                    ctxt,
+                    record,
+                    typing,
+                    outer_mode,
+                    value,
+                    Mode::Exec,
+                    &Proph::No,
+                )?;
             }
             Ok((Mode::Exec, Proph::No))
         }

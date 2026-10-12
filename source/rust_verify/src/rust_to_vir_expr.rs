@@ -924,7 +924,17 @@ pub(crate) fn pattern_to_vir_unadjusted<'tcx>(
                 Mutability::Mut => PatternX::MutRef(subpattern),   // '&mut' pattern
             }
         }
-        PatKind::Slice(..) => unsupported_err!(pat.span, "slice patterns", pat),
+        PatKind::Slice(pats, inner, suffix) => {
+            if inner.is_some() || suffix.len() > 0 {
+                unsupported_err!(pat.span, "slice patterns with '..'", pat);
+            }
+            let mut patterns = vec![];
+            for pat in pats.iter() {
+                let pattern = pattern_to_vir(bctx, pat)?;
+                patterns.push(pattern);
+            }
+            PatternX::Slice(Arc::new(patterns))
+        }
         PatKind::Never => unsupported_err!(pat.span, "never patterns", pat),
         PatKind::Deref(_) => unsupported_err!(pat.span, "deref patterns", pat),
         PatKind::Err(_) => unsupported_err!(pat.span, "err patterns", pat),
@@ -3167,7 +3177,11 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     let wildcard_body = bctx.spanned_typed_new(
                         cond.span,
                         &body_ty,
-                        ExprX::BreakOrContinue { label: label.clone(), is_break: true },
+                        ExprX::BreakOrContinue {
+                            label: label.clone(),
+                            is_break: true,
+                            value: None,
+                        },
                     );
                     (
                         None,
@@ -3210,13 +3224,14 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             };
             mk_expr(ExprX::Return(expr))
         }
-        ExprKind::Break(dest, None) => {
+        ExprKind::Break(dest, value) => {
             let label = bctx.label_from_dest(expr.span, dest)?;
-            mk_expr(ExprX::BreakOrContinue { label, is_break: true })
+            let value = value.map(|value| expr_to_vir_consume(bctx, value)).transpose()?;
+            mk_expr(ExprX::BreakOrContinue { label, is_break: true, value })
         }
         ExprKind::Continue(dest) => {
             let label = bctx.label_from_dest(expr.span, dest)?;
-            mk_expr(ExprX::BreakOrContinue { label, is_break: false })
+            mk_expr(ExprX::BreakOrContinue { label, is_break: false, value: None })
         }
         ExprKind::Struct(qpath, fields, struct_tail) => {
             let update = match struct_tail {
@@ -3426,7 +3441,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             )
         }
         ExprKind::Loop(..) => unsupported_err!(expr.span, format!("complex loop expressions")),
-        ExprKind::Break(..) => unsupported_err!(expr.span, format!("complex break expressions")),
         ExprKind::AssignOp(op, lhs, rhs) => {
             // Note: The semantics are VERY DIFFERENT for method_call vs !method_call cases.
             // The 2 cases MUST be handled separately.

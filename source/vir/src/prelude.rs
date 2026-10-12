@@ -909,6 +909,14 @@ pub(crate) fn prelude_nodes(name_ctxt: &NameCtxt, config: PreludeConfig) -> Vec<
         (declare-fun [bit_shl] ([Poly] [Poly]) Int)
         (declare-fun [bit_not] ([Poly]) Int)
 
+        // On unbounded ints, NOT is exactly -x - 1
+        (axiom (forall ((x [Poly])) (!
+            (= ([bit_not] x) (- (- 0 ([unbox_int] x)) 1))
+            :pattern (([bit_not] x))
+            :qid prelude_bit_not
+            :skolemid skolem_prelude_bit_not
+        )))
+
         // bounds on bit-ops
 
         // For XOR, AND, and OR:
