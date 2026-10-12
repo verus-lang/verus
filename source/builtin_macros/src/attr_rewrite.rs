@@ -420,7 +420,32 @@ fn add_verus_spec_if_needed(attrs: &mut Vec<syn::Attribute>, span: proc_macro2::
     if attrs.iter().any(|attr| attr.path().get_ident().map_or(false, |ident| ident == VERUS_SPEC)) {
         return;
     }
+    // `#[cfg_attr(pred, verus_spec(..))]` is expanded after this attribute: adding another
+    // `#[verus_spec]` would make two (code that is also built without Verus gates its
+    // specifications this way, on the same predicate as its `#[verus_verify]`)
+    if attrs.iter().any(|attr| is_cfg_attr_verus_spec(attr)) {
+        return;
+    }
     attrs.push(crate::syntax::mk_rust_attr_syn(span, VERUS_SPEC, TokenStream::new()));
+}
+
+/// `#[cfg_attr(pred, .., verus_spec(..), ..)]`
+fn is_cfg_attr_verus_spec(attr: &syn::Attribute) -> bool {
+    if !attr.path().is_ident("cfg_attr") {
+        return false;
+    }
+    let syn::Meta::List(list) = &attr.meta else { return false };
+    // the attributes are everything after the predicate; a top-level identifier `verus_spec`
+    // there is the attribute (the predicate itself is a cfg expression of identifiers)
+    let mut after_pred = false;
+    for tt in list.tokens.clone() {
+        match tt {
+            proc_macro2::TokenTree::Punct(p) if p.as_char() == ',' => after_pred = true,
+            proc_macro2::TokenTree::Ident(i) if after_pred && i == VERUS_SPEC => return true,
+            _ => {}
+        }
+    }
+    false
 }
 
 /// Prepares items under `#[verus_verify]` for subsequent `#[verus_spec]` expansion.
