@@ -1,0 +1,32 @@
+[config]
+default_to_workspace = false
+
+[tasks.default]
+alias = "vstd"
+
+[tasks.clean]
+command = "cargo"
+args = ["clean"]
+
+[tasks.fmt]
+command = "cargo"
+args = ["run", "--release", "-p", "cargo-verus", "--", "fmt"]
+
+[tasks.vstd]
+command = "cargo"
+args = ["run", "--release", "-p", "cargo-verus", "--", "build", "--manifest-path", "vstd/Cargo.toml"]
+dependencies = ["cargo-verus"]
+
+[tasks.cargo-verus]
+command = "cargo"
+args = ["build", "--release", "-p", "cargo-verus"]
+dependencies = ["verus"]
+
+[tasks.verus]
+command = "cargo"
+args = ["build", "--release", "-p", "verus"]
+dependencies = ["rust_verify"]
+
+[tasks.rust_verify]
+command = "cargo"
+args = ["build", "--release", "-p", "rust_verify"]
