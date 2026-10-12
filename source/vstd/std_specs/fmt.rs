@@ -170,7 +170,7 @@ pub assume_specification<'a, const N: usize, const M: usize>[ arguments_new ](
 pub assume_specification[ alloc::fmt::format ](args: Arguments<'_>) -> alloc::string::String
 ;
 
-pub uninterp spec fn fmt_req_all<A>() -> bool;
+pub uninterp spec fn fmt_req_all<A: ?Sized>() -> bool;
 
 macro_rules! def_type_axiom {
     ($ty:ty, $name: ident) => {
@@ -214,6 +214,8 @@ def_type_axiom!(bool, axiom_fmt_req_all_bool);
 
 def_type_axiom!(char, axiom_fmt_req_all_char);
 
+def_type_axiom!(str, axiom_fmt_req_all_str_slice);
+
 def_type_axiom!(&str, axiom_fmt_req_all_str);
 
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]
@@ -229,7 +231,7 @@ pub broadcast axiom fn axiom_fmt_req_all_ref<A>()
 macro_rules! def_trait_axiom {
     ($trait:path, $name: ident) => {
         $crate::vstd::prelude::verus! {
-            pub broadcast axiom fn $name<A: $trait>(a: &A, f: &Formatter)
+            pub broadcast axiom fn $name<A: $trait + ?Sized>(a: &A, f: &Formatter)
                 requires
                     fmt_req_all::<A>(),
                 ensures
@@ -274,6 +276,7 @@ pub broadcast group group_fmt_axioms {
     axiom_fmt_req_all_f64,
     axiom_fmt_req_all_bool,
     axiom_fmt_req_all_char,
+    axiom_fmt_req_all_str_slice,
     axiom_fmt_req_all_str,
     #[cfg(all(feature = "alloc", not(verus_verify_core)))]
     axiom_fmt_req_all_string,

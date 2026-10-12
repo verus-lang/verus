@@ -2,6 +2,8 @@
 
 #[allow(unused_imports)]
 use super::prelude::*;
+#[cfg(all(verus_keep_ghost, feature = "alloc"))]
+use super::std_specs::fmt::DebugSpec;
 
 #[cfg(not(feature = "std"))]
 macro_rules! println {
@@ -451,7 +453,10 @@ pub fn __call_panic(out: &[&str]) -> !
 #[cfg(feature = "alloc")]
 #[doc(hidden)]
 #[verifier(external_body)]
-pub fn __new_argument<T: core::fmt::Debug>(v: &T) -> alloc::string::String {
+pub fn __new_argument<T: core::fmt::Debug>(v: &T) -> alloc::string::String
+    requires
+        forall|f: &core::fmt::Formatter<'_>| v.fmt_req(f),
+{
     alloc::format!("{:?}", v)
 }
 

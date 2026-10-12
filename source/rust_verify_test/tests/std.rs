@@ -1924,6 +1924,55 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] formatting_callers_require_fmt_req verus_code! {
+        use core::fmt::{Debug, Display, Error, Formatter};
+        use vstd::prelude::*;
+        use vstd::std_specs::fmt::{DebugSpecImpl, DisplaySpecImpl};
+
+        pub struct K {
+            pub a: u8,
+        }
+
+        impl DisplaySpecImpl for K {
+            open spec fn fmt_req(&self, f: &Formatter<'_>) -> bool {
+                false
+            }
+        }
+
+        impl DebugSpecImpl for K {
+            open spec fn fmt_req(&self, f: &Formatter<'_>) -> bool {
+                false
+            }
+        }
+
+        impl Display for K {
+            fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+                assert(false);
+                let v: Vec<u8> = Vec::new();
+                let _ = v[0];
+                Ok(())
+            }
+        }
+
+        impl Debug for K {
+            fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+                Display::fmt(self, f)
+            }
+        }
+
+        fn main() {
+            let k = K { a: 1 };
+            let _ = k.to_string(); // FAILS
+        }
+
+        fn test_new_argument() {
+            let k = K { a: 1 };
+            let _ = vstd::pervasive::__new_argument(&k); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
     #[test] print_ok verus_code! {
         use vstd::*;
 
