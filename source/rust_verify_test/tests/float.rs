@@ -277,6 +277,25 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] float_cast_target_type_github3136 verus_code! {
+        proof fn test1(f: f32) {
+            assert(f == 200f32 ==> (f as u8) as i32 == 200i32) by(bit_vector);
+            assert((f as i8) as i32 <= 127i32) by(bit_vector);
+            assert((f as u8) as i32 == (f as u8) as i32) by(bit_vector);
+        }
+        proof fn test2(f: f32) {
+            assert((f as u8) as i32 == (f as i8) as i32) by(bit_vector); // FAILS
+        }
+        proof fn test3(x: i32) {
+            assert((x as f32) as i64 == (x as f64) as i64) by(bit_vector); // FAILS
+        }
+        proof fn test4(f: f32) {
+            assert((f as u8) as i32 == (f as i8) as i32) by(compute); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
     #[test] f32_neg verus_code! {
         fn test() {
             let x: f32 = 1.0;

@@ -1148,6 +1148,23 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] float_cast_target_types_differ_github3136 verus_code! {
+        proof fn test(f: f32) {
+            assert((f as u8) as i32 == (f as i8) as i32) by (compute_only); // FAILS
+        }
+    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
+}
+
+test_verify_one_file! {
+    #[test] float_cast_target_types_match verus_code! {
+        proof fn test(f: f32, x: i32) {
+            assert((f as u8) as i32 == (f as u8) as i32) by (compute_only);
+            assert((x as f32) as i64 == (x as f32) as i64) by (compute_only);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] scope_quantifier_equality_after_unfold verus_code! {
         uninterp spec fn p(x: int) -> bool;
         spec fn id(x: int) -> int { x }

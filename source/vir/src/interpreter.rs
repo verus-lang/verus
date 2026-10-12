@@ -486,7 +486,14 @@ impl SyntacticEquality for Exp {
                     Some(false)
                 }
             }
-            (Unary(op_l, e_l), Unary(op_r, e_r)) => def_eq(op_l == op_r && e_l.syntactic_eq(e_r)?),
+            (Unary(op_l, e_l), Unary(op_r, e_r)) => {
+                // A cast's target type is recorded in the expression's type, so we check that too
+                def_eq(
+                    op_l == op_r
+                        && types_equal(&undecorate_typ(&self.typ), &undecorate_typ(&other.typ))
+                        && e_l.syntactic_eq(e_r)?,
+                )
+            }
             (UnaryOpr(op_l, e_l), UnaryOpr(op_r, e_r)) => {
                 use crate::ast::UnaryOpr::*;
                 let op_eq = match (op_l, op_r) {
