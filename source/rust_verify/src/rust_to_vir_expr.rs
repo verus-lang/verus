@@ -1702,7 +1702,26 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 return Ok(ExprOrPlace::Expr(arg.consume(bctx, ty1)));
             }
 
-            let (tyr1, tyr2) = remove_decoration_typs_for_unsizing(bctx.ctxt.tcx, ty1, ty2);
+            let (tyr1, tyr2) = match (ty1.kind(), ty2.kind()) {
+                (TyKind::Ref(_, t1, Mutability::Mut), TyKind::Ref(_, t2, Mutability::Mut))
+                    if matches!(
+                        (t1.kind(), t2.kind()),
+                        (TyKind::Dynamic(..), TyKind::Dynamic(..))
+                    ) =>
+                {
+                    unsupported_err!(
+                        expr.span,
+                        format!("trait upcasting from `{ty1:}` to `{ty2:}`")
+                    )
+                }
+                // &mut T -> &mut dyn Trait: keep the &mut so ast_to_sst can build a new borrow
+                (TyKind::Ref(_, t1, Mutability::Mut), TyKind::Ref(_, t2, Mutability::Mut))
+                    if matches!(t2.kind(), TyKind::Dynamic(..)) =>
+                {
+                    (*t1, *t2)
+                }
+                _ => remove_decoration_typs_for_unsizing(bctx.ctxt.tcx, ty1, ty2),
+            };
             let op = match (tyr1.kind(), tyr2.kind()) {
                 (_, TyKind::Dynamic(_, _)) => {
                     let vir_ty = bctx.mid_ty_to_vir(expr.span, &tyr1)?;
