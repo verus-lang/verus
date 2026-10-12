@@ -166,7 +166,7 @@ fn clone_add_post_condition<'tcx>(
         let ret_var = SpannedTyped::new(
             &self_var.span,
             &self_var.typ,
-            ExprX::Var(functionx.ret.x.name.clone()),
+            ExprX::Var(functionx.inner_ret.x.name.clone()),
         );
         let eq_expr = SpannedTyped::new(
             &self_var.span,

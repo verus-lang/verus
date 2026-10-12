@@ -74,7 +74,7 @@ pub trait ExIterator {
     // Hence, we introduce a layer of indirection via an uninterp spec function that
     // describes the postconditions.
 
-    // TODO: The Rust implementations of `all` and `any` depend on a correct implementation of `try_fold`
+    // TODO: The Rust implementations of `all`, `any`, `find`, `find_map` and `position` depend on a correct implementation of `try_fold`
     //       For now, we assume obeys_prophetic_iter_laws() entails such an implementation, but we should
     //       eventually constrain implementations of `try_fold` to actually be correct enough to uphold the specs below.
 
@@ -202,6 +202,39 @@ pub trait ExIterator {
                 }
             };
 
+    fn find_map<B, F>(&mut self, f: F) -> (r: Option<B>)
+        where Self: Sized,
+            F: FnMut(Self::Item) -> Option<B>
+        requires
+            forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(f, (self.remaining()[k], )),
+        ensures
+            // The iterator consistently obeys, completes, and decreases throughout its lifetime
+            final(self).obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
+            final(self).obeys_prophetic_iter_laws() ==> final(self).will_return_none() == old(self).will_return_none(),
+            final(self).obeys_prophetic_iter_laws() ==> (old(self).decrease() is Some <==> final(self).decrease() is Some),
+            final(self).obeys_prophetic_iter_laws() ==> {
+                final(self).remaining().is_suffix_of(old(self).remaining())
+            },
+            // If find_map returns None, then the iterator has no remaining
+            // elements, and f was None for all of the original
+            // iterator's elements.
+            final(self).obeys_prophetic_iter_laws() && r.is_none() ==> {
+                &&& final(self).remaining().len() == 0
+                &&& forall |i| 0 <= i < old(self).remaining().len() ==>
+                    f.ensures((#[trigger]old(self).remaining()[i],), None)
+            },
+            // If find_map returns Some, then the returned value satisfies f,
+            // and all previous elements did not satisfy f
+            final(self).obeys_prophetic_iter_laws() && r.is_some() ==> {
+                let idx = old(self).remaining().len() - final(self).remaining().len() - 1;
+                {
+                    &&& 0 <= final(self).remaining().len() < old(self).remaining().len()
+                    &&& f.ensures((old(self).remaining()[idx],), r)
+                    &&& forall |i| 0 <= i < idx ==>
+                        f.ensures((#[trigger] old(self).remaining()[i],), None)
+                }
+            };
+
     fn map<B, F>(self, f: F) -> (r: core::iter::Map<Self, F>)
         where
             Self: Sized,
@@ -211,6 +244,42 @@ pub trait ExIterator {
         ensures
             self.obeys_prophetic_iter_laws() ==> map_post(self, f, r),
     ;
+
+    fn position<P>(&mut self, predicate: P) -> (r: Option<usize>)
+        where
+            Self: Sized,
+            P: FnMut(Self::Item) -> bool,
+        requires
+            self.remaining().len() <= usize::MAX as int,
+            forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(predicate, (self.remaining()[k], )),
+        ensures
+            // The iterator consistently obeys, completes, and decreases throughout its lifetime
+            final(self).obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
+            final(self).obeys_prophetic_iter_laws() ==> final(self).will_return_none() == old(self).will_return_none(),
+            final(self).obeys_prophetic_iter_laws() ==> (old(self).decrease() is Some <==> final(self).decrease() is Some),
+            final(self).obeys_prophetic_iter_laws() ==> {
+                final(self).remaining().is_suffix_of(old(self).remaining())
+            },
+            // If position returns None, then the iterator has no remaining
+            // elements, and the predicate was false for all of the original
+            // iterator's elements.
+            final(self).obeys_prophetic_iter_laws() && r.is_none() ==> {
+                &&& final(self).remaining().len() == 0
+                &&& forall |i| 0 <= i < old(self).remaining().len() ==>
+                    predicate.ensures((#[trigger] old(self).remaining()[i],), false)
+            },
+            // If position returns Some, then the returned index whose value satisfies the
+            // predicate, and all previous elements did not satisfy the predicate.
+            final(self).obeys_prophetic_iter_laws() && r.is_some() ==> {
+                let index = r.unwrap();
+                {
+                    &&& index as int == (old(self).remaining().len() - final(self).remaining().len() - 1)
+                    &&& 0 <= final(self).remaining().len() < old(self).remaining().len()
+                    &&& predicate.ensures((#[trigger] old(self).remaining()[index as int],), true)
+                    &&& forall |i| 0 <= i < index as int ==>
+                        predicate.ensures((#[trigger] old(self).remaining()[i],), false)
+                }
+            };
 
     fn rev(self) -> (r: Rev<Self>)
         where Self: Sized,

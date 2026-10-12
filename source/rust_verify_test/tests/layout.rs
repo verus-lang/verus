@@ -173,6 +173,22 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 5)
 }
 
+test_verify_one_file! {
+    #[test] signed_min_is_not_nat_issue3116 verus_code! {
+        proof fn nat_is_nonnegative(n: nat)
+            ensures n >= 0,
+        {
+        }
+
+        proof fn contradiction()
+            ensures false,
+        {
+            nat_is_nonnegative(signed_min(8));
+            assert(signed_min(8) == -128);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "mismatched types")
+}
+
 test_verify_one_file_with_options! {
     #[test] test_set_to_32 ["vstd"] => verus_code! {
         global size_of usize == 4;

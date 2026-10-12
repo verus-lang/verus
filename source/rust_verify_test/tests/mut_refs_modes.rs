@@ -1575,7 +1575,10 @@ test_verify_one_file_with_options! {
             let tracked y2: &mut Ghost<u64> = &mut x.0;
             proof { *y = Ghost(3); }
         }
-    } => Err(err) => assert_rust_error_msg(err, "cannot borrow `x` as mutable more than once at a time")
+    } => Err(err) => assert_rust_error_msgs(err, &[
+        "cannot borrow `x` as mutable more than once at a time",
+        "cannot borrow `(Verus spec x)` as mutable more than once at a time",
+    ])
 }
 
 test_verify_one_file_with_options! {

@@ -1302,3 +1302,17 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_slice_reverse verus_code! {
+        use vstd::prelude::*;
+
+        fn test(s: &mut [u8])
+            requires
+                old(s)@ == seq![1u8, 2, 3],
+        {
+            s.reverse();
+            assert(s@ == seq![3u8, 2, 1]);
+        }
+    } => Ok(())
+}

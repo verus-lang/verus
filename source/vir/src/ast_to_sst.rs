@@ -4,8 +4,8 @@ use crate::ast::{
     Fun, Function, Ident, IntRange, IntegerTypeBoundKind, InvAtomicity, Label, LogicalOp,
     LoopInvariantKind, MaskSpec, Mode, OverflowBehavior, PatternBinding, PatternX, Place, PlaceX,
     SignedDivEdgeCaseBehavior, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr,
-    UnwindSpec, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent, VarIdentDisambiguate,
-    VariantCheck, VirErr,
+    UninterpretedFloatBinaryOp, UnwindSpec, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent,
+    VarIdentDisambiguate, VariantCheck, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, CrateId, Exprs};
 use crate::ast_util::{
@@ -114,6 +114,7 @@ pub(crate) struct State<'a> {
     statics: IndexSet<Fun>,
     pub assert_id_counter: u64,
     loop_id_counter: u64,
+    loop_result_dests: HashMap<Label, VarIdent>,
 
     pub mask: Option<MaskSet>,
 
@@ -260,6 +261,7 @@ impl<'a> State<'a> {
             statics: IndexSet::new(),
             assert_id_counter: 0,
             loop_id_counter: 0,
+            loop_result_dests: HashMap::new(),
             mask: None,
             au_pred_args: Vec::new(),
             au_var_exp_to_resolve: None,
@@ -616,8 +618,7 @@ pub fn assume_false(span: &Span) -> Stm {
 
 pub(crate) fn assume_has_typ(x: &UniqueIdent, typ: &Typ, span: &Span) -> Stm {
     let xvarx = ExpX::Var(x.clone());
-    // TODO: Bool is wrong here
-    let xvar = SpannedTyped::new(span, &Arc::new(TypX::Bool), xvarx);
+    let xvar = SpannedTyped::new(span, typ, xvarx);
     let has_typx = ExpX::UnaryOpr(UnaryOpr::HasType(typ.clone()), xvar);
     let has_typ = SpannedTyped::new(span, &Arc::new(TypX::Bool), has_typx);
     Spanned::new(span.clone(), StmX::Assume(has_typ))
@@ -635,7 +636,7 @@ fn loop_body_find_breaks(
             loop_body_find_breaks(loop_label, num_breaks, num_isolated_breaks, true, expr);
             VisitorControlFlow::Return
         }
-        ExprX::BreakOrContinue { label: break_label, is_break: true } => {
+        ExprX::BreakOrContinue { label: break_label, is_break: true, .. } => {
             if break_label == loop_label {
                 *num_breaks += 1;
                 if in_isolated {
@@ -995,7 +996,7 @@ fn expr_get_call(
                     && crate::poly::ret_needs_native(
                         ctx,
                         &function.x.kind,
-                        &function.x.ret.x.typ,
+                        &function.x.outer_ret.x.typ,
                         disallow_poly_ret.unwrap(),
                     )
                 {
@@ -2643,7 +2644,16 @@ pub(crate) fn expr_to_stm_opt(
             atomic_call,
         } => {
             let is_for_loop = *is_for_loop;
+            let produces_value =
+                !crate::ast_util::is_unit(&expr.typ) && !crate::ast_util::is_never(&expr.typ);
             let loop_isolation = *loop_isolation;
+            if produces_value && loop_isolation {
+                return Err(error(
+                    &expr.span,
+                    "loops with value-bearing 'break' do not yet support loop isolation",
+                )
+                .help("add #[verifier::loop_isolation(false)] to this loop"));
+            }
             let allow_complex_invariants = *allow_complex_invariants;
             let id = state.loop_id_counter;
             state.loop_id_counter += 1;
@@ -2760,7 +2770,24 @@ pub(crate) fn expr_to_stm_opt(
                 state.branch_bool_var = Some((var_id, var_exp));
             }
 
+            let loop_result = if !produces_value {
+                None
+            } else {
+                let (dest, result) = state.declare_temp_var_stm(
+                    &expr.span,
+                    &expr.typ,
+                    PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::LoopBreakValue)),
+                );
+                let previous = state.loop_result_dests.insert(label.clone(), dest);
+                assert!(previous.is_none());
+                Some(result)
+            };
+
             let (mut body_stms, _val) = expr_to_stm_opt(ctx, state, body)?;
+            if loop_result.is_some() {
+                let removed = state.loop_result_dests.remove(label);
+                assert!(removed.is_some());
+            }
             state.branch_bool_var = None;
 
             let mut check_recommends: Vec<Stm> = Vec::new();
@@ -2849,7 +2876,10 @@ pub(crate) fn expr_to_stm_opt(
             );
 
             if can_control_flow_reach_after_loop(expr) {
-                let ret = Maybe::Some(Value::ImplicitUnit(expr.span.clone()));
+                let ret = Maybe::Some(match loop_result {
+                    Some(result) => Value::Exp(result),
+                    None => Value::ImplicitUnit(expr.span.clone()),
+                });
                 Ok((vec![while_stm], ret))
             } else {
                 // If it's an infinite loop, add 'assume(false)' and return Never.
@@ -3606,10 +3636,25 @@ pub(crate) fn expr_to_stm_opt(
             stms.push(assume_false(&expr.span));
             Ok((stms, Maybe::Never))
         }
-        ExprX::BreakOrContinue { label, is_break } => {
+        ExprX::BreakOrContinue { label, is_break, value } => {
+            let mut stms = Vec::new();
+            if let Some(value) = value {
+                assert!(*is_break);
+                let (mut value_stms, value) = expr_to_stm_opt(ctx, state, value)?;
+                stms.append(&mut value_stms);
+                let value = match value {
+                    Maybe::Some(value) => value.to_exp(),
+                    Maybe::Never => return Ok((stms, Maybe::Never)),
+                };
+                // Unit-typed loops do not have a result destination.
+                if let Some(dest) = state.loop_result_dests.get(label) {
+                    stms.push(init_var(&expr.span, dest, &value));
+                }
+            }
             let stmx = StmX::BreakOrContinue { label: label.clone(), is_break: *is_break };
             let stm = Spanned::new(expr.span.clone(), stmx);
-            Ok((vec![stm], Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
+            stms.push(stm);
+            Ok((stms, Maybe::Some(Value::ImplicitUnit(expr.span.clone()))))
         }
         ExprX::NeverToAny(e) => {
             let (mut stms, _e) = expr_to_stm_opt(ctx, state, e)?;
@@ -3911,6 +3956,14 @@ fn binary_op_exp(
         let call_fun = CallFun::Fun(f, None);
         let expx = ExpX::Call(call_fun, Arc::new(vec![]), Arc::new(vec![e1.clone(), e2.clone()]));
         SpannedTyped::new(span, typ, expx)
+    } else if let BinaryOp::UninterpretedFloat(op) = op {
+        let kind = PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::Nondeterministic));
+        let (var_ident, exp) = state.declare_temp_var_stm(span, typ, kind);
+        let stms = vec![
+            assume_has_typ(&var_ident, typ, span),
+            assume_fp_postcondition(&var_ident, e1, e2, op, &e1.typ, typ, span),
+        ];
+        return (stms, exp);
     } else {
         let pure_op = match op {
             // Ops with side-effects are turned into sst ops without side-effects
@@ -3923,10 +3976,13 @@ fn binary_op_exp(
             BinaryOp::Arith(ArithOp::EuclideanMod(_)) => {
                 sst::BinaryOp::Arith(sst::ArithOp::EuclideanMod)
             }
-            BinaryOp::Arith(ArithOp::TruncatingDiv(_, _)) => unreachable!(),
-            BinaryOp::Arith(ArithOp::TruncatingMod(_, _)) => unreachable!(),
             BinaryOp::Bitwise(op, _) => sst::BinaryOp::Bitwise(op),
             BinaryOp::Index(kind, _) => sst::BinaryOp::Index(kind),
+
+            // Handled in earlier case
+            BinaryOp::Arith(ArithOp::TruncatingMod(_, _)) => unreachable!(),
+            BinaryOp::Arith(ArithOp::TruncatingDiv(_, _)) => unreachable!(),
+            BinaryOp::UninterpretedFloat(..) => unreachable!(),
 
             // Pure ops
             BinaryOp::BoolOrNoSC => sst::BinaryOp::Or,
@@ -4091,6 +4147,29 @@ fn binary_op_exp(
     };
 
     (stms, bin)
+}
+
+/// assume(add_ensures(e1, e2, x)); (specific function depends on the op)
+pub(crate) fn assume_fp_postcondition(
+    x: &UniqueIdent,
+    e1: &Exp,
+    e2: &Exp,
+    op: UninterpretedFloatBinaryOp,
+    float_typ: &Typ,
+    out_typ: &Typ,
+    span: &Span,
+) -> Stm {
+    let float_typ = undecorate_typ(float_typ);
+    assert!(matches!(*float_typ, TypX::Float(..)));
+
+    let xvarx = ExpX::Var(x.clone());
+    let xvar = SpannedTyped::new(span, out_typ, xvarx);
+    let name = def::fn_fp_postcondition_name(op);
+    let call_fun = CallFun::Fun(name, None);
+    let typ_args = Arc::new(vec![float_typ.clone()]);
+    let expx = ExpX::Call(call_fun, typ_args, Arc::new(vec![e1.clone(), e2.clone(), xvar.clone()]));
+    let exp = SpannedTyped::new(span, &Arc::new(TypX::Bool), expx);
+    Spanned::new(span.clone(), StmX::Assume(exp))
 }
 
 /// Stms and Exps needed to execute a 2-phase borrow.

@@ -411,6 +411,12 @@ pub assume_specification<T>[ <[T]>::contains ] (slice: &[T], value: &T) -> (resu
             <T as super::cmp::PartialEqSpec<T>>::obeys_eq_spec() ==> result == spec_slice_contains(slice, value),
 ;
 
+// reverse
+pub assume_specification<T>[ <[T]>::reverse ](slice: &mut [T])
+    ensures
+        final(slice)@ == old(slice)@.reverse(),
+;
+
 // The `iter` method of a `<T>` returns an iterator of type `Iter<'_, T>`,
 // so we specify that type here.
 #[verifier::external_type_specification]

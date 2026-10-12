@@ -578,3 +578,163 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_fails(e, 6)
 }
+
+test_verify_one_file! {
+    #[test] test_add_overloaded_with_shared_refs_issue3061 verus_code! {
+        use vstd::prelude::*;
+
+        pub struct F { pub x: u8 }
+
+        impl vstd::std_specs::ops::AddSpecImpl<F> for F {
+            open spec fn obeys_add_spec() -> bool { true }
+            open spec fn add_req(self, rhs: F) -> bool { true }
+            open spec fn add_spec(self, rhs: F) -> F { F { x: 1 } }
+        }
+
+        impl std::ops::Add<F> for F {
+            type Output = F;
+            fn add(self, rhs: F) -> F { F { x: 1 } }
+        }
+
+        impl vstd::std_specs::ops::AddSpecImpl<&F> for &F {
+            open spec fn obeys_add_spec() -> bool { true }
+            open spec fn add_req(self, rhs: &F) -> bool { true }
+            open spec fn add_spec(self, rhs: &F) -> F { F { x: 2 } }
+        }
+
+        impl<'a> std::ops::Add<&'a F> for &F {
+            type Output = F;
+            fn add(self, rhs: &'a F) -> F { F { x: 2 } }
+        }
+
+        fn test(a: F, b: F) {
+            let c = &a + &b;   // Rust calls <&F as Add<&F>>::add, so c.x == 2
+            assert(c.x == 2);
+        }
+
+        fn test_fails(a: F, b: F) {
+            let c = &a + &b;
+            assert(c.x == 1); // FAILS
+        }
+    } => Err(e) => assert_fails(e, 1)
+}
+
+test_verify_one_file! {
+    #[test] type_invariant_preserved_for_div_mod verus_code! {
+        use vstd::prelude::*;
+
+        fn test_u_div(a: u64, b: u64)
+            requires b != 0
+        {
+            let x = a / b;
+            assert(0 <= x <= u64::MAX);
+        }
+
+        fn test_i_div(a: i64, b: i64)
+            requires
+                b != 0,
+                a != i64::MIN || b != -1,
+        {
+            let x = a / b;
+            assert(i64::MIN <= x <= i64::MAX);
+        }
+
+        fn test_u_mod(a: u64, b: u64)
+            requires b != 0
+        {
+            let x = a % b;
+            assert(0 <= x <= u64::MAX);
+        }
+
+        fn test_i_mod(a: i64, b: i64)
+            requires
+                b != 0,
+                a != i64::MIN || b != -1,
+        {
+            let x = a % b;
+            assert(i64::MIN <= x <= i64::MAX);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] default_ne verus_code! {
+        use vstd::prelude::*;
+
+        pub struct Foo;
+
+        impl PartialEq for Foo {
+            fn eq(&self, other: &Self) -> (b: bool)
+                ensures b == false
+            {
+                assume(false);
+                false
+            }
+        }
+
+        fn test(paddr: Foo) {
+            let b = paddr != paddr;
+            assert(b == true);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] default_ne_with_spec_impl verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::cmp::PartialEqSpecImpl;
+
+        pub struct Foo;
+
+        impl PartialEq for Foo {
+            fn eq(&self, other: &Self) -> (b: bool) {
+                false
+            }
+        }
+
+        impl PartialEqSpecImpl for Foo {
+            open spec fn obeys_eq_spec() -> bool {
+                true
+            }
+
+            open spec fn eq_spec(&self, other: &Foo) -> bool {
+                false
+            }
+        }
+
+        fn test(paddr: Foo) {
+            let b = paddr != paddr;
+            assert(b == true);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] default_ne_with_spec_impl2 verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::cmp::PartialEqSpecImpl;
+
+        pub struct Foo;
+
+        impl PartialEq for Foo {
+            fn eq(&self, other: &Self) -> (b: bool) {
+                false
+            }
+        }
+
+        impl PartialEqSpecImpl for Foo {
+            open spec fn obeys_eq_spec() -> bool {
+                false
+            }
+
+            open spec fn eq_spec(&self, other: &Foo) -> bool {
+                false
+            }
+        }
+
+        fn test(paddr: Foo) {
+            let b = paddr != paddr;
+            assert(b == true); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
