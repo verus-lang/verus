@@ -4565,7 +4565,7 @@ pub(crate) fn deref_primitive<'tcx>(
             Ok(place.clone())
         }
         TyKind::RawPtr(..) => {
-            let place_descriptor = get_place_descriptor(place);
+            let place_descriptor = vir::points_to::get_place_descriptor(place);
             let vars = bctx.permission_vars.borrow();
             let candidate_opt = match place_descriptor {
                 Some(place_descriptor) => {
@@ -4674,26 +4674,6 @@ fn get_permission_place_rec<'tcx>(
             ).help("acceptable types include, `vstd::raw_ptr::PointsTo`, shared reference to such, mutable reference to such, `Tracked` wrapper of such, or an `Option` of such"));
         }
     }
-}
-
-fn get_place_descriptor(p: &Place) -> Option<String> {
-    Some(match &p.x {
-        PlaceX::Local(x) => (*x.0).clone(),
-        PlaceX::DerefMut(p) => get_place_descriptor(p)?,
-        PlaceX::Field(opr, p) => get_place_descriptor(p)? + "." + &opr.field,
-        PlaceX::Temporary(_) => {
-            return None;
-        }
-        PlaceX::ModeUnwrap(p, _) => get_place_descriptor(p)?,
-        PlaceX::WithExpr(..) => {
-            return None;
-        }
-        PlaceX::Index(p, _idx, _k, _needs_bounds_check) => get_place_descriptor(p)? + "[?]",
-        PlaceX::UserDefinedTypInvariantObligation(..) => {
-            return None;
-        }
-        PlaceX::DerefRaw(p, _) => get_place_descriptor(p)?,
-    })
 }
 
 /// Handle overloaded deref. This is equivalent to either:

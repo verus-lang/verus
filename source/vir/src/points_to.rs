@@ -78,3 +78,23 @@ fn permission_place_to_friendly_string_rec(p: &Place, has_suffix: bool) -> Strin
     let res = stars + &inner;
     if has_suffix && has_stars { "(".to_string() + &res + ")" } else { res }
 }
+
+pub fn get_place_descriptor(p: &Place) -> Option<String> {
+    Some(match &p.x {
+        PlaceX::Local(x) => (*x.0).clone(),
+        PlaceX::DerefMut(p) => get_place_descriptor(p)?,
+        PlaceX::Field(opr, p) => get_place_descriptor(p)? + "." + &opr.field,
+        PlaceX::Temporary(_) => {
+            return None;
+        }
+        PlaceX::ModeUnwrap(p, _) => get_place_descriptor(p)?,
+        PlaceX::WithExpr(..) => {
+            return None;
+        }
+        PlaceX::Index(p, _idx, _k, _needs_bounds_check) => get_place_descriptor(p)? + "[?]",
+        PlaceX::UserDefinedTypInvariantObligation(..) => {
+            return None;
+        }
+        PlaceX::DerefRaw(p, _) => get_place_descriptor(p)?,
+    })
+}

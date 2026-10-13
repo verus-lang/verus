@@ -269,36 +269,42 @@ impl<T: ?Sized> PointsTo<T> {
     #[doc(hidden)]
     #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::PointsTo::borrow")]
     pub axiom fn borrow(tracked &self) -> (tracked t: &T)
-        requires points_to_init(*self),
-        ensures &*t == &*points_to_contents(*self);
+        requires
+            points_to_init(*self),
+        ensures
+            &*t == &*points_to_contents(*self),
+    ;
 
     #[doc(hidden)]
     #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::PointsTo::borrow_mut")]
     pub axiom fn borrow_mut(tracked &mut self) -> (tracked t: &mut T)
-        requires points_to_init(*self),
-        ensures &*t == &*points_to_contents(*old(self)),
+        requires
+            points_to_init(*self),
+        ensures
+            &*t == &*points_to_contents(*old(self)),
             points_to_init(*final(self)),
             points_to_ptr(*final(self)) == points_to_ptr(*old(self)),
-            &*points_to_contents(*final(self)) == &*final(t);
-}
+            &*points_to_contents(*final(self)) == &*final(t),
+    ;
 
-impl<T> PointsTo<T> {
     /// The pointer that this permission is associated with.
     #[verifier::inline]
     pub open spec fn ptr(&self) -> *mut T {
         points_to_ptr(*self)
     }
 
-    /// The (possibly uninitialized) memory that this permission gives access to.
-    #[verifier::inline]
-    pub open spec fn opt_value(&self) -> MemContents<T> {
-        self.view().opt_value
-    }
-
     /// Returns `true` if the permission's associated memory is initialized.
     #[verifier::inline]
     pub open spec fn is_init(&self) -> bool {
         points_to_init(*self)
+    }
+}
+
+impl<T> PointsTo<T> {
+    /// The (possibly uninitialized) memory that this permission gives access to.
+    #[verifier::inline]
+    pub open spec fn opt_value(&self) -> MemContents<T> {
+        self.view().opt_value
     }
 
     /// Returns `true` if the permission's associated memory is uninitialized.

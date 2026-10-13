@@ -4531,7 +4531,7 @@ fn place_to_exp_pair_rec(
             // because the place containing the pointer will not be modified.
             let (_e1, e2, _obligations, mut wf) = unwrap_or_return_never!(exps, stms);
 
-            let checks = sst_raw_deref_check(ctx, state, &place.span, &e2, &permission_place);
+            let checks = sst_raw_deref_check(ctx, state, &place.span, &e2, &permission_place, p);
             for (condition, msg) in checks {
                 wf.extend(place_check_stms(ctx, state, &place.span, condition, msg, true));
             }

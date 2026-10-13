@@ -285,15 +285,21 @@ pub(crate) fn sst_raw_deref_check(
     span: &Span,
     ptr: &Exp,
     permission_place: &Option<Place>,
+    physical_place: &Place,
 ) -> Vec<(Exp, Message)> {
     let Some(permission_place) = permission_place else {
-        return vec![(
-            sst_bool(span, false),
-            crate::messages::error(
+        return vec![(sst_bool(span, false), {
+            let mut err = crate::messages::error(
                 span,
                 "possible memory safety violation: no `PointsTo` set for this pointer operation",
-            ),
-        )];
+            );
+            if let Some(desc) = crate::points_to::get_place_descriptor(physical_place) {
+                err = err.help(format!(
+                    "You can set a permission using `#[verifier::permission(\"{desc:}\")]`"
+                ));
+            }
+            err
+        })];
     };
 
     let (perm, mut checks) = check_variants_correct(ctx, state, span, permission_place);

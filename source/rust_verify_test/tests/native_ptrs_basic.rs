@@ -576,3 +576,80 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "to dereference a pointer, it must be exec mode")
 }
+
+test_verify_one_file! {
+    #[test] deref_slice_deref verus_code!{
+        use vstd::prelude::*;
+        use vstd::raw_ptr::*;
+
+        fn test(
+            a: *mut [*mut u64],
+            m1: &mut Tracked<PointsTo<[*mut u64]>>,
+            m2: &mut Tracked<PointsTo<u64>>,
+        )
+            requires
+                m1.is_init(),
+                m1.ptr() == a,
+                points_to_contents(**m1).len() == 1,
+                m2.is_init(),
+                m2.ptr() == points_to_contents(**m1)@[0],
+                m2.value() == 30,
+        {
+            #[verifier::permission("a")]
+            let mut m1 = m1;
+
+            #[verifier::permission("a[?]")]
+            let mut m2 = m2;
+
+            unsafe {
+                let x = *(*a)[0];
+                assert(x == 30);
+
+                *(*a)[0] = 20;
+                let y = *(*a)[0];
+                assert(y == 20);
+
+                let z = &*(*a)[0];
+                assert(*z == 20);
+
+                let k = &mut *(*a)[0];
+                assert(*k == 20);
+                *k = 100;
+
+                let w = &*(*a)[0];
+                assert(*w == 100);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] deref_slice_deref_bounds_check verus_code!{
+        use vstd::prelude::*;
+        use vstd::raw_ptr::*;
+
+        fn test(
+            a: *mut [*mut u64],
+            m1: &mut Tracked<PointsTo<[*mut u64]>>,
+            m2: &mut Tracked<PointsTo<u64>>,
+        )
+            requires
+                m1.is_init(),
+                m1.ptr() == a,
+                points_to_contents(**m1).len() == 1,
+                m2.is_init(),
+                m2.ptr() == points_to_contents(**m1)@[0],
+                m2.value() == 30,
+        {
+            #[verifier::permission("a")]
+            let mut m1 = m1;
+
+            #[verifier::permission("a[?]")]
+            let mut m2 = m2;
+
+            unsafe {
+                let x = *(*a)[1]; // FAILS
+            }
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
