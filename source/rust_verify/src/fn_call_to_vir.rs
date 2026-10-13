@@ -103,7 +103,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                 || matches!(arg_typ.kind(), TyKind::Tuple(ts) if ts.is_empty())
             {
                 let arg = mk_one_vir_arg(bctx, expr.span, &args)?;
-                record_misc(bctx, expr, MiscCall::SmartPtrClone { is_method });
+                record_misc(bctx, expr, MiscCall::IdentityClone { is_method });
                 return Ok(arg);
             }
         }
