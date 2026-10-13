@@ -590,6 +590,23 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 3)
 }
 
+test_verify_one_file_with_options! {
+    #[test] derived_unit_clone ["--no-external-by-default"] => verus_code! {
+        use vstd::prelude::*;
+
+        #[derive(Clone)]
+        #[verifier::allow(autoderive_clone_without_spec)]
+        struct Token {
+            _priv: (),
+        }
+
+        fn demo() {
+            let token = Token { _priv: () };
+            let _copy = token.clone();
+        }
+    } => Ok(())
+}
+
 test_verify_one_file! {
     #[test] tuple_clone_not_supported verus_code! {
         use vstd::*;

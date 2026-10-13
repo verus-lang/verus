@@ -95,12 +95,13 @@ pub(crate) fn fn_call_to_vir<'tcx>(
             return mk_one_vir_arg(bctx, expr.span, &args);
         }
         Some(RustItem::CloneClone) => {
-            // Special case `clone` for standard Rc and Arc types
-            // (Could also handle it for other types where cloning is the identity
-            // operation in the SMT encoding.)
+            // Special case `clone` for standard Rc and Arc types, shared references, and unit,
+            // where cloning is the identity operation in the SMT encoding.
             let arg_typ = node_substs[0].expect_ty();
 
-            if is_type_std_rc_or_arc_or_ref(bctx.ctxt.tcx, arg_typ) {
+            if is_type_std_rc_or_arc_or_ref(bctx.ctxt.tcx, arg_typ)
+                || matches!(arg_typ.kind(), TyKind::Tuple(ts) if ts.is_empty())
+            {
                 let arg = mk_one_vir_arg(bctx, expr.span, &args)?;
                 record_misc(bctx, expr, MiscCall::SmartPtrClone { is_method });
                 return Ok(arg);
