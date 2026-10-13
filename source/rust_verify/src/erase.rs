@@ -185,7 +185,7 @@ fn resolved_call_to_call_erase(
                 dbg!(ufun, rfun);
                 panic!("internal Verus error: could not find mode declarations for function")
             };
-            if f.x.ret.x.mode != Mode::Spec && vir::ast_util::is_never(&f.x.ret.x.typ) {
+            if f.x.outer_ret.x.mode != Mode::Spec && vir::ast_util::is_never(&f.x.outer_ret.x.typ) {
                 call_returning_never = true;
             }
             if in_ghost && f.x.mode == Mode::Exec {

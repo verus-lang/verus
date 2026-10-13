@@ -22,7 +22,7 @@ pub fn check_safe_api(krate: &Krate) -> Result<(), VirErr> {
     }
 
     for function in krate.functions.iter() {
-        if matches!(*function.x.ret.x.typ, TypX::Opaque { .. }) {
+        if matches!(*function.x.outer_ret.x.typ, TypX::Opaque { .. }) {
             return Err(error(
                 &function.span,
                 &format!(
@@ -163,7 +163,7 @@ pub fn body_that_havocs_all_outputs(function: &Function) -> Expr {
 
     let span = &function.span;
 
-    let ret = &function.x.ret;
+    let ret = &function.x.inner_ret;
     let ret_expr = SpannedTyped::new(span, &ret.x.typ, ExprX::Nondeterministic);
 
     SpannedTyped::new(span, &ret.x.typ, ExprX::Block(Arc::new(vec![]), Some(ret_expr)))
@@ -246,7 +246,7 @@ pub fn axioms_for_default_spec_fns(
 
                 let call_exp = SpannedTyped::new(
                     &function.span,
-                    &function.x.ret.x.typ,
+                    &function.x.outer_ret.x.typ,
                     ExpX::Call(CallFun::Fun(function.x.name.clone(), None), typ_args, args),
                 );
 

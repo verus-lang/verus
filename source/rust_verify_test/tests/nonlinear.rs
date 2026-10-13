@@ -287,3 +287,16 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] bad_assign_in_assert_by_nonlinear_issue3035 verus_code! {
+        proof fn bad_assign()
+            ensures false
+        {
+            let ghost mut g: int = 0;
+            assert(g == 1) by(nonlinear_arith) {
+                g = 1;  // only visible to the inner query
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "assignment is not allowed in 'assert ... by' statement")
+}

@@ -231,6 +231,25 @@ impl<T: DeepView> DeepView for Option<T> {
     }
 }
 
+impl<T, E> View for Result<T, E> {
+    type V = Result<T, E>;
+
+    open spec fn view(&self) -> Result<T, E> {
+        *self
+    }
+}
+
+impl<T: DeepView, E: DeepView> DeepView for Result<T, E> {
+    type V = Result<T::V, E::V>;
+
+    open spec fn deep_view(&self) -> Result<T::V, E::V> {
+        match self {
+            Ok(t) => Ok(t.deep_view()),
+            Err(e) => Err(e.deep_view()),
+        }
+    }
+}
+
 macro_rules! declare_identity_view {
     ($t:ty) => {
         #[cfg_attr(verus_keep_ghost, verifier::verify)]

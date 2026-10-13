@@ -1532,3 +1532,12 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] reveal_strlit_standalone_issue2987 verus_code! {
+        use vstd::prelude::*;
+        proof fn test() {
+            reveal_strlit("a");
+        }
+    } => Ok(())
+}
