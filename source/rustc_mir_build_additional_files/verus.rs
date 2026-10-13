@@ -153,7 +153,12 @@ pub struct VerusErasureCtxt {
     pub shadow_ghost_value_fn_def_id: DefId,
     pub dummy_capture_struct_def_id: DefId,
     pub mutable_reference_tie_fn_def_id: DefId,
-    pub shared_reference_tie_fn_def_id: DefId,
+    pub tracked_struct_def_id: DefId,
+    /// `vstd::raw_ptr::PointsTo` and its `borrow` and `borrow_mut` functions
+    /// (None if vstd is not available)
+    pub points_to_struct_def_id: Option<DefId>,
+    pub points_to_borrow_fn_def_id: Option<DefId>,
+    pub points_to_borrow_mut_fn_def_id: Option<DefId>,
     pub two_phase_mutable_reference_tie_fn_def_id: DefId,
     pub get_first_fn_def_id: DefId,
 }
@@ -250,7 +255,7 @@ pub(crate) struct ExtraThir {
     /// (See verus_raw_ptrs.rs)
     /// If `check_raw_deref_permissions` is set, every raw pointer dereference should
     /// be in this map.
-    pub raw_deref_permissions: HashMap<ExprId, Option<ExprId>>,
+    pub raw_deref_permissions: HashMap<ExprId, Option<crate::verus_raw_ptrs::PermExprs>>,
     /// Should the MIR builder emit borrows of raw pointer permissions?
     /// (True for Verus-aware bodies.)
     pub check_raw_deref_permissions: bool,

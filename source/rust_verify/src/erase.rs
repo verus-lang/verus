@@ -6,7 +6,9 @@ use crate::context::ErasureInfo;
 use vir::ast::{Datatype, Dt, Fun, Function, Krate, Mode, ModeWrapperMode, Path, Place, PlaceX};
 use vir::modes::ErasureModes;
 
-use crate::verus_items::{DummyCaptureItem, VerusItem, VerusItems};
+use crate::verus_items::{
+    BuiltinTypeItem, DummyCaptureItem, VerusItem, VerusItems, VstdItem,
+};
 use rustc_hir::def_id::LocalDefId;
 use rustc_mir_build_verus::verus::{
     BodyErasure, CallErasure, LoopErasure, LoopSpecEvaluationLocation, NodeErase,
@@ -472,10 +474,31 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
             .name_to_id
             .get(&VerusItem::MutableReferenceTie)
             .unwrap(),
-        shared_reference_tie_fn_def_id: *verus_items
+        tracked_struct_def_id: *verus_items
             .name_to_id
-            .get(&VerusItem::SharedReferenceTie)
+            .get(&VerusItem::BuiltinType(BuiltinTypeItem::Tracked))
             .unwrap(),
+        points_to_struct_def_id: verus_items
+            .name_to_id
+            .get(&VerusItem::Vstd(
+                VstdItem::PointsTo,
+                Some(Arc::new("raw_ptr::PointsTo".to_owned())),
+            ))
+            .copied(),
+        points_to_borrow_fn_def_id: verus_items
+            .name_to_id
+            .get(&VerusItem::Vstd(
+                VstdItem::PointsToBorrow,
+                Some(Arc::new("raw_ptr::PointsTo::borrow".to_owned())),
+            ))
+            .copied(),
+        points_to_borrow_mut_fn_def_id: verus_items
+            .name_to_id
+            .get(&VerusItem::Vstd(
+                VstdItem::PointsToBorrowMut,
+                Some(Arc::new("raw_ptr::PointsTo::borrow_mut".to_owned())),
+            ))
+            .copied(),
         two_phase_mutable_reference_tie_fn_def_id: *verus_items
             .name_to_id
             .get(&VerusItem::TwoPhaseMutableReferenceTie)

@@ -34,13 +34,19 @@ body so that some constraint is always reachable.
 See verus_raw_ptrs.rs.
 */
 
-use crate::builder::BlockAnd;
 use crate::builder::{BasicBlock, BorrowKind, Builder, PlaceBuilder, Rvalue, TerminatorKind, Ty};
+use crate::builder::{BlockAnd, BlockAndExtension};
 use crate::verus::ExtraThir;
-use crate::verus_raw_ptrs::{PermUsage, place_raw_derefs};
-use rustc_middle::mir::MutBorrowKind;
+use crate::verus_raw_ptrs::{PermExprs, PermUsage, place_raw_derefs};
+use rustc_hir::def_id::DefId;
+use rustc_middle::mir::{
+    CallSource, Const, ConstOperand, MutBorrowKind, Operand, Place, PlaceElem,
+    UnwindAction,
+};
 use rustc_middle::thir::ExprId;
-use rustc_middle::ty::TyKind;
+use rustc_middle::ty::{GenericArg, Mutability, TyKind};
+use rustc_hir::LangItem;
+use rustc_span::{Span, Spanned, sym};
 use std::collections::{HashMap, HashSet};
 
 pub(crate) struct VerusMirBuilderCtxt {
@@ -197,24 +203,46 @@ pub(super) fn cfg_removal_fix_constraints_one_block<'a, 'tcx>(
 
 /// The builder calls this right after building the place for `expr_id` (in preparation
 /// for using it). Emit borrows for the permissions of all raw pointer dereferences in the
-/// place.
-pub(super) fn emit_raw_deref_perms_for_place<'a, 'tcx>(
+/// place, and return the place that should be used instead: for the outermost raw pointer
+/// dereference, this is the "permission-rooted place" (see verus_raw_ptrs.rs).
+pub(super) fn raw_deref_perms_for_place<'a, 'tcx>(
     this: &mut Builder<'a, 'tcx>,
     block: BasicBlock,
     expr_id: ExprId,
-) {
+    place_builder: PlaceBuilder<'tcx>,
+) -> BlockAnd<PlaceBuilder<'tcx>> {
     let Some(extra_thir) = this.verus_extra_thir.clone() else {
-        return;
+        return block.and(place_builder);
     };
     if !extra_thir.check_raw_deref_permissions {
-        return;
+        return block.and(place_builder);
     }
     let (ptrs, _) = place_raw_derefs(&this.thir, expr_id);
     if ptrs.len() == 0 {
-        return;
+        return block.and(place_builder);
     }
+    emit_perm_borrows(this, block, &extra_thir, &ptrs[1..]);
+
     let outer_usage = extra_thir.raw_deref_outer_usage.get(&ptrs[0]).copied();
-    emit_raw_deref_perms(this, block, &extra_thir, &ptrs, outer_usage.unwrap_or(PermUsage::Read));
+    let outer_usage = outer_usage.unwrap_or(PermUsage::Read);
+    let Some(outer_perm) = get_perm(&extra_thir, ptrs[0]) else {
+        return block.and(place_builder);
+    };
+    if outer_usage == PermUsage::Skip {
+        return block.and(place_builder);
+    }
+    let place = place_builder.to_place(this);
+    if outer_usage == PermUsage::Read {
+        let place_ty = place.ty(&this.local_decls, this.tcx).ty;
+        if !this.tcx.type_is_copy_modulo_regions(this.typing_env(), place_ty) {
+            // This is a move, which Rust doesn't allow from behind a raw pointer.
+            // Leave the place alone so Rust reports the appropriate error.
+            emit_perm_borrows(this, block, &extra_thir, &ptrs[..1]);
+            return block.and(PlaceBuilder::from(place));
+        }
+    }
+    let BlockAnd(block, place) = root_at_permission(this, block, outer_perm, place, outer_usage);
+    block.and(PlaceBuilder::from(place))
 }
 
 /// The builder calls this right before the bounds check for an index expression `base[idx]`
@@ -238,59 +266,241 @@ pub(super) fn emit_raw_deref_perms_for_bounds_check<'a, 'tcx>(
     }
     let place = base_place.to_place(this);
     let place_ty = place.ty(&this.local_decls, this.tcx).ty;
-    let outer_usage = match place_ty.kind() {
+    let read_outer = match place_ty.kind() {
         // For arrays, the bounds check does a FakeRead of the array place
-        TyKind::Array(..) => PermUsage::Read,
+        TyKind::Array(..) => true,
         // For slices, the bounds check takes a raw pointer to the slice place
         // to get the length (see `len_of_slice_or_array`), so it doesn't need to read through
         // the outermost pointer, unless there's another pointer in between.
-        _ => {
-            if deref_above_outermost {
-                PermUsage::Read
-            } else {
-                PermUsage::Skip
-            }
-        }
+        _ => deref_above_outermost,
     };
-    emit_raw_deref_perms(this, block, &extra_thir, &ptrs, outer_usage);
+    if read_outer {
+        emit_perm_borrows(this, block, &extra_thir, &ptrs);
+    } else {
+        emit_perm_borrows(this, block, &extra_thir, &ptrs[1..]);
+    }
 }
 
-/// `ptrs` is ordered from outermost to innermost.
-/// Inner pointers always get a `Read` and the outermost gets `outer_usage`.
-fn emit_raw_deref_perms<'a, 'tcx>(
+fn get_perm(extra_thir: &ExtraThir, ptr: ExprId) -> Option<PermExprs> {
+    match extra_thir.raw_deref_permissions.get(&ptr) {
+        None => panic!("Verus Internal Error: raw deref permission not found"),
+        Some(perm) => *perm,
+    }
+}
+
+/// Emit shared borrows of the permissions for the given pointers
+/// (ordered from outermost to innermost)
+fn emit_perm_borrows<'a, 'tcx>(
     this: &mut Builder<'a, 'tcx>,
     block: BasicBlock,
     extra_thir: &ExtraThir,
     ptrs: &[ExprId],
-    outer_usage: PermUsage,
 ) {
-    for (i, ptr) in ptrs.iter().enumerate().rev() {
-        let usage = if i == 0 { outer_usage } else { PermUsage::Read };
-        let perm = match extra_thir.raw_deref_permissions.get(ptr) {
-            None => panic!("Verus Internal Error: raw deref permission not found"),
-            Some(None) => continue,
-            Some(Some(perm)) => perm,
-        };
-        let borrow_kind = match usage {
-            PermUsage::Read => BorrowKind::Shared,
-            PermUsage::Write => BorrowKind::Mut { kind: MutBorrowKind::Default },
-            PermUsage::Skip => continue,
-        };
-
-        // The permission place is simple (no index projections, etc.)
-        // so this doesn't emit any code.
-        let BlockAnd(perm_block, place) = this.as_place(block, *perm);
-        assert!(perm_block == block);
-
-        let span = this.thir[*perm].span;
-        let source_info = this.source_info(span);
-        let place_ty = place.ty(&this.local_decls, this.tcx).ty;
-        let region = this.tcx.lifetimes.re_erased;
-        let ref_ty = match usage {
-            PermUsage::Write => Ty::new_mut_ref(this.tcx, region, place_ty),
-            _ => Ty::new_imm_ref(this.tcx, region, place_ty),
-        };
-        let lhs = this.temp(ref_ty, span);
-        this.cfg.push_assign(block, source_info, lhs, Rvalue::Ref(region, borrow_kind, place));
+    for ptr in ptrs.iter().rev() {
+        if let Some(perm) = get_perm(extra_thir, *ptr) {
+            emit_perm_borrow(this, block, perm.perm, Mutability::Not);
+        }
     }
+}
+
+/// Emit `tmp = &perm` or `tmp = &mut perm` and return `tmp` and the type of `perm`.
+fn emit_perm_borrow<'a, 'tcx>(
+    this: &mut Builder<'a, 'tcx>,
+    block: BasicBlock,
+    perm: ExprId,
+    mutbl: Mutability,
+) -> (Place<'tcx>, Ty<'tcx>) {
+    // The permission place is simple (no index projections, etc.)
+    // so this doesn't emit any code.
+    let BlockAnd(perm_block, place) = this.as_place(block, perm);
+    assert!(perm_block == block);
+
+    let span = this.thir[perm].span;
+    let source_info = this.source_info(span);
+    let place_ty = place.ty(&this.local_decls, this.tcx).ty;
+    let region = this.tcx.lifetimes.re_erased;
+    let ref_ty = Ty::new_ref(this.tcx, region, place_ty, mutbl);
+    let tmp = this.temp(ref_ty, span);
+    let rvalue = Rvalue::Ref(region, borrow_kind_of(mutbl), place);
+    this.cfg.push_assign(block, source_info, tmp, rvalue);
+    (tmp, place_ty)
+}
+
+fn borrow_kind_of(mutbl: Mutability) -> BorrowKind {
+    match mutbl {
+        Mutability::Not => BorrowKind::Shared,
+        Mutability::Mut => BorrowKind::Mut { kind: MutBorrowKind::Default },
+    }
+}
+
+/// For a place `place` whose outermost raw pointer dereference has permission `perm`,
+/// e.g., `(*p).z`, emit:
+///
+/// ```rust
+/// _ = &(*p).z;
+/// t = PointsTo::borrow(&perm);
+/// ```
+///
+/// (or the `mut` versions) and return the permission-rooted place `(*t).z`.
+/// See verus_raw_ptrs.rs.
+fn root_at_permission<'a, 'tcx>(
+    this: &mut Builder<'a, 'tcx>,
+    mut block: BasicBlock,
+    perm: PermExprs,
+    place: Place<'tcx>,
+    usage: PermUsage,
+) -> BlockAnd<Place<'tcx>> {
+    let tcx = this.tcx;
+    let erasure_ctxt = crate::verus::get_verus_erasure_ctxt_option().unwrap();
+    let span = this.thir[perm.perm].span;
+    let source_info = this.source_info(span);
+    let region = tcx.lifetimes.re_erased;
+    let place_ty = place.ty(&this.local_decls, tcx).ty;
+    let mutbl = match usage {
+        PermUsage::Read | PermUsage::BorrowShared => Mutability::Not,
+        PermUsage::Write | PermUsage::BorrowMut => Mutability::Mut,
+        PermUsage::Skip => unreachable!(),
+    };
+
+    // The projection index of the outermost raw pointer dereference
+    let Some(outer_deref_idx) = place
+        .iter_projections()
+        .filter(|(base, elem)| {
+            *elem == PlaceElem::Deref && base.ty(&this.local_decls, tcx).ty.is_raw_ptr()
+        })
+        .map(|(base, _)| base.projection.len())
+        .last()
+    else {
+        panic!("Verus Internal Error: root_at_permission expected raw pointer dereference");
+    };
+
+    // `_ = &place` or `_ = &mut place`
+    // Since we don't use the original place itself, we need to access it to make sure it's
+    // available (e.g., all the locals involved are initialized).
+    // Note that this borrow should only be momentary; we don't want to force lifetimes
+    // behind the pointer to outlive anything.
+    let place_ref = this.temp(Ty::new_ref(tcx, region, place_ty, mutbl), span);
+    let rvalue = Rvalue::Ref(region, borrow_kind_of(mutbl), place);
+    this.cfg.push_assign(block, source_info, place_ref, rvalue);
+
+    // `&perm` or `&mut perm`
+    let (mut perm_ref, mut perm_ty) = emit_perm_borrow(this, block, perm.perm, mutbl);
+    if usage == PermUsage::BorrowMut
+        && let Some(shadow) = perm.shadow
+    {
+        // `mutable_reference_tie(&mut perm, &mut shadow_perm)`
+        let (shadow_ref, shadow_ty) = emit_perm_borrow(this, block, shadow, mutbl);
+        let res;
+        BlockAnd(block, res) = emit_call(
+            this,
+            block,
+            erasure_ctxt.mutable_reference_tie_fn_def_id,
+            &[perm_ty, shadow_ty],
+            vec![Operand::Move(perm_ref), Operand::Move(shadow_ref)],
+            Ty::new_mut_ref(tcx, region, perm_ty),
+            span,
+        );
+        perm_ref = res;
+    }
+
+    // The permission may be wrapped in `Tracked`
+    // (see `cutoff_at_tracked_unwrap` in erase.rs).
+    // `Deref::deref(perm_ref)` or `DerefMut::deref_mut(perm_ref)`
+    while let TyKind::Adt(adt_def, args) = perm_ty.kind()
+        && adt_def.did() == erasure_ctxt.tracked_struct_def_id
+    {
+        let (trait_item, method_name) = match mutbl {
+            Mutability::Not => (LangItem::Deref, sym::deref),
+            Mutability::Mut => (LangItem::DerefMut, sym::deref_mut),
+        };
+        let trait_def_id = tcx.require_lang_item(trait_item, span);
+        let Some(deref_fn) = tcx
+            .associated_items(trait_def_id)
+            .filter_by_name_unhygienic(method_name)
+            .find(|item| item.is_fn())
+        else {
+            panic!("Verus Internal Error: deref method not found");
+        };
+        let inner_ty = args.type_at(0);
+        let res;
+        BlockAnd(block, res) = emit_call(
+            this,
+            block,
+            deref_fn.def_id,
+            &[perm_ty],
+            vec![Operand::Move(perm_ref)],
+            Ty::new_ref(tcx, region, inner_ty, mutbl),
+            span,
+        );
+        perm_ref = res;
+        perm_ty = inner_ty;
+    }
+
+    let TyKind::Adt(adt_def, perm_args) = perm_ty.kind() else {
+        panic!("Verus Internal Error: expected PointsTo type for permission");
+    };
+    if Some(adt_def.did()) != erasure_ctxt.points_to_struct_def_id {
+        // This can happen if the permission is inside a `Tracked` wrapper but not
+        // directly, e.g., `Tracked<Option<PointsTo<T>>>`.
+        // TODO(native_raw_ptrs): handle this; for now, we are imprecise about lifetimes
+        // and just use the original place.
+        return block.and(place);
+    }
+
+    // `t = PointsTo::borrow(perm_ref)` or `t = PointsTo::borrow_mut(perm_ref)`
+    let pointee_ty = perm_args.type_at(0);
+    let borrow_fn = match mutbl {
+        Mutability::Not => erasure_ctxt.points_to_borrow_fn_def_id,
+        Mutability::Mut => erasure_ctxt.points_to_borrow_mut_fn_def_id,
+    };
+    let Some(borrow_fn) = borrow_fn else {
+        panic!("Verus Internal Error: vstd::raw_ptr::PointsTo::borrow not found");
+    };
+    let t;
+    BlockAnd(block, t) = emit_call(
+        this,
+        block,
+        borrow_fn,
+        &[pointee_ty],
+        vec![Operand::Move(perm_ref)],
+        Ty::new_ref(tcx, region, pointee_ty, mutbl),
+        span,
+    );
+
+    // The permission-rooted place, e.g., `(*t).z`
+    // This reuses the projections from the original place (including index locals).
+    let mut projection = vec![PlaceElem::Deref];
+    projection.extend_from_slice(&place.projection[outer_deref_idx + 1..]);
+    block.and(Place { local: t.local, projection: tcx.mk_place_elems(&projection) })
+}
+
+/// Emit a call `dest = f::<ty_args>(args)` and return `dest`.
+fn emit_call<'a, 'tcx>(
+    this: &mut Builder<'a, 'tcx>,
+    block: BasicBlock,
+    fn_def_id: DefId,
+    ty_args: &[Ty<'tcx>],
+    args: Vec<Operand<'tcx>>,
+    ret_ty: Ty<'tcx>,
+    span: Span,
+) -> BlockAnd<Place<'tcx>> {
+    let tcx = this.tcx;
+    let fn_ty = Ty::new_fn_def(tcx, fn_def_id, ty_args.iter().map(|t| GenericArg::from(*t)));
+    let const_ = Const::zero_sized(fn_ty);
+    let func = Operand::Constant(Box::new(ConstOperand { span, user_ty: None, const_ }));
+    let args = args.into_iter().map(|node| Spanned { node, span }).collect();
+    let destination = this.temp(ret_ty, span);
+    let success = this.cfg.start_new_block();
+    let source_info = this.source_info(span);
+    let kind = TerminatorKind::Call {
+        func,
+        args,
+        unwind: UnwindAction::Unreachable,
+        destination,
+        target: Some(success),
+        call_source: CallSource::Misc,
+        fn_span: span,
+    };
+    this.cfg.terminate(block, source_info, kind);
+    success.and(destination)
 }

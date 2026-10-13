@@ -398,6 +398,8 @@ pub(crate) enum VstdItem {
     PointsToPtr,
     PointsToContents,
     PointsToUpdateContents,
+    PointsToBorrow,
+    PointsToBorrowMut,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -489,7 +491,6 @@ pub(crate) enum VerusItem {
     ErasedGhostValue,
     ShadowGhostValue,
     MutableReferenceTie,
-    SharedReferenceTie,
     TwoPhaseMutableReferenceTie,
     GetFirst,
     DummyCapture(DummyCaptureItem),
@@ -672,7 +673,6 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::erased_ghost_value",      VerusItem::ErasedGhostValue),
         ("verus::verus_builtin::shadow_ghost_value",      VerusItem::ShadowGhostValue),
         ("verus::verus_builtin::mutable_reference_tie",   VerusItem::MutableReferenceTie),
-        ("verus::verus_builtin::shared_reference_tie",    VerusItem::SharedReferenceTie),
         ("verus::verus_builtin::two_phase_mutable_reference_tie",   VerusItem::TwoPhaseMutableReferenceTie),
         ("verus::verus_builtin::verus_erasure_get_first", VerusItem::GetFirst),
         ("verus::verus_builtin::DummyCapture",            VerusItem::DummyCapture(DummyCaptureItem::Struct)),
@@ -764,6 +764,8 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::raw_ptr::points_to_init", VerusItem::Vstd(VstdItem::PointsToInit, Some(Arc::new("raw_ptr::points_to_init".to_owned())))),
         ("verus::vstd::raw_ptr::points_to_contents", VerusItem::Vstd(VstdItem::PointsToContents, Some(Arc::new("raw_ptr::points_to_contents".to_owned())))),
         ("verus::vstd::raw_ptr::points_to_update_contents", VerusItem::Vstd(VstdItem::PointsToUpdateContents, Some(Arc::new("raw_ptr::points_to_update_contents".to_owned())))),
+        ("verus::vstd::raw_ptr::PointsTo::borrow", VerusItem::Vstd(VstdItem::PointsToBorrow, Some(Arc::new("raw_ptr::PointsTo::borrow".to_owned())))),
+        ("verus::vstd::raw_ptr::PointsTo::borrow_mut", VerusItem::Vstd(VstdItem::PointsToBorrowMut, Some(Arc::new("raw_ptr::PointsTo::borrow_mut".to_owned())))),
 
         ("verus::vstd::std_specs::fmt::rt::Argument", VerusItem::RustPrivate(RustPrivate::Path(vir::path!(CrateId::Core => "fmt", "rt", "Argument")))),
         ("verus::vstd::std_specs::fmt::rt::Argument::new_binary", VerusItem::RustPrivate(RustPrivate::FormatArgumentFn(Arc::new("new_binary".to_owned())))),

@@ -384,8 +384,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
     ) -> BlockAnd<PlaceBuilder<'tcx>> {
         let place_builder =
             unpack!(block = self.expr_as_place(block, expr_id, Mutability::Mut, None));
-        crate::builder::verus_builder::emit_raw_deref_perms_for_place(self, block, expr_id);
-        block.and(place_builder)
+        crate::builder::verus_builder::raw_deref_perms_for_place(self, block, expr_id, place_builder)
     }
 
     /// Compile `expr`, yielding a place that we can move from etc.
@@ -415,8 +414,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
     ) -> BlockAnd<PlaceBuilder<'tcx>> {
         let place_builder =
             unpack!(block = self.expr_as_place(block, expr_id, Mutability::Not, None));
-        crate::builder::verus_builder::emit_raw_deref_perms_for_place(self, block, expr_id);
-        block.and(place_builder)
+        crate::builder::verus_builder::raw_deref_perms_for_place(self, block, expr_id, place_builder)
     }
 
     fn expr_as_place(

@@ -245,11 +245,7 @@ pub(crate) fn expr_post<'tcx>(
         return kind;
     }
 
-    if let Some(kind) = crate::verus_raw_ptrs::borrow_post(cx, hir_expr, ty, &kind) {
-        // Borrow from behind a raw pointer: tie the lifetime to the permission instead.
-        // (See verus_raw_ptrs.rs)
-        return kind;
-    }
+    crate::verus_raw_ptrs::borrow_post(cx, hir_expr, &kind);
 
     match &kind {
         ExprKind::RawBorrow { mutability, arg } => {
@@ -1267,7 +1263,7 @@ fn modded_local_var_id(v: LocalVarId, mod_idx: usize) -> LocalVarId {
 /// Given `&mut place`, return `&mut place_shadow`.
 /// Returns None if we don't need to do anything in the shadow world
 /// (e.g., the place is a temporary).
-pub(crate) fn shadow_mut_ref_kind<'tcx>(
+fn shadow_mut_ref_kind<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     hir_id: HirId,
     span: Span,
@@ -1402,7 +1398,7 @@ fn shadow_place_rec<'tcx>(
 }
 
 /// Returns `mutable_reference_tie(e1, e2)`
-pub(crate) fn tie_mut_refs<'tcx>(
+fn tie_mut_refs<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     hir_id: HirId,
     span: Span,

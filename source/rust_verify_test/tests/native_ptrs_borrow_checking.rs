@@ -1136,6 +1136,10 @@ test_verify_one_file! {
 }
 
 // It's the lifetimes inside the `PointsTo` that matter, not behind the pointer
+//
+// Note: for these tests, the permission should not be behind a `&'static` reference,
+// e.g., `m: &'static PointsTo<&'a u64>`, since well-formedness of that type
+// already implies `'a: 'static`.
 
 test_verify_one_file! {
     #[test] lifetimes_behind_pointer_mismatch_mut verus_code!{
@@ -1146,7 +1150,7 @@ test_verify_one_file! {
 
         fn enforce_static(f: &'static mut u64) { }
 
-        fn test<'a>(a: *mut &'static mut u64, m: &'static mut PointsTo<&'a mut u64>)
+        fn test<'a>(a: *mut &'static mut u64, Tracked(m): Tracked<PointsTo<&'a mut u64>>)
             requires m.is_init(), m.ptr() == a,
         {
             #[verifier::permission("a")]
@@ -1157,7 +1161,7 @@ test_verify_one_file! {
                 enforce_static(x);
             }
         }
-    } => Err(err) => assert_rust_error_msg(err, "borrow error msg")
+    } => Err(err) => assert_rust_error_msg_any(err, "borrowed data escapes outside of function")
 }
 
 test_verify_one_file! {
@@ -1169,7 +1173,7 @@ test_verify_one_file! {
 
         fn enforce_static(f: &'static u64) { }
 
-        fn test<'a>(a: *mut &'static u64, m: &'static PointsTo<&'a u64>)
+        fn test<'a>(a: *mut &'static u64, Tracked(m): Tracked<PointsTo<&'a u64>>)
             requires m.is_init(), m.ptr() == a,
         {
             #[verifier::permission("a")]
@@ -1180,7 +1184,7 @@ test_verify_one_file! {
                 enforce_static(x);
             }
         }
-    } => Err(err) => assert_rust_error_msg(err, "borrow error msg")
+    } => Err(err) => assert_rust_error_msg(err, "borrowed data escapes outside of function")
 }
 
 test_verify_one_file! {
@@ -1192,7 +1196,7 @@ test_verify_one_file! {
 
         fn enforce_static(f: &'static u64) { }
 
-        fn test<'a>(a: *mut &'static u64, m: &'static PointsTo<&'a u64>)
+        fn test<'a>(a: *mut &'static u64, Tracked(m): Tracked<PointsTo<&'a u64>>)
             requires m.is_init(), m.ptr() == a,
         {
             #[verifier::permission("a")]
@@ -1203,7 +1207,7 @@ test_verify_one_file! {
                 enforce_static(x);
             }
         }
-    } => Err(err) => assert_rust_error_msg(err, "borrow error msg")
+    } => Err(err) => assert_rust_error_msg(err, "borrowed data escapes outside of function")
 }
 
 test_verify_one_file! {
@@ -1215,7 +1219,7 @@ test_verify_one_file! {
 
         fn enforce_static(f: (&'static u64, &'static u64)) { }
 
-        fn test<'a>(a: *mut (&'static u64, &'static u64), m: &'static PointsTo<(&'a u64, &'a u64)>)
+        fn test<'a>(a: *mut (&'static u64, &'static u64), Tracked(m): Tracked<PointsTo<(&'a u64, &'a u64)>>)
             requires m.is_init(), m.ptr() == a,
         {
             #[verifier::permission("a")]
@@ -1226,7 +1230,7 @@ test_verify_one_file! {
                 enforce_static(x);
             }
         }
-    } => Err(err) => assert_rust_error_msg(err, "borrow error msg")
+    } => Err(err) => assert_rust_error_msg(err, "borrowed data escapes outside of function")
 }
 
 test_verify_one_file! {
@@ -1246,7 +1250,7 @@ test_verify_one_file! {
                 *a = z;
             }
         }
-    } => Err(err) => assert_rust_error_msg(err, "borrow error msg")
+    } => Err(err) => assert_rust_error_msg(err, "lifetime may not live long enough")
 }
 
 test_verify_one_file! {
@@ -1259,7 +1263,9 @@ test_verify_one_file! {
         fn enforce_static(f: &'static mut u64) { }
 
         // Here it's the lifetime behind the pointer that disagree ('a)
-        // but the lifetime behind the pointer doesn't matter.
+        // but the lifetime behind the pointer doesn't matter for Verus's lifetime checking.
+        // However, this is still rejected by the ordinary Rust borrow-checking on the exec code
+        // (which uses the pointer's type).
         fn test<'a>(a: *mut &'a mut u64, m: &'static mut PointsTo<&'static mut u64>)
             requires m.is_init(), m.ptr() == a,
         {
@@ -1271,7 +1277,7 @@ test_verify_one_file! {
                 enforce_static(x);
             }
         }
-    } => Ok(())
+    } => Err(err) => assert_rust_error_msg(err, "borrowed data escapes outside of function")
 }
 
 test_verify_one_file! {
@@ -1284,7 +1290,9 @@ test_verify_one_file! {
         fn enforce_static(f: &'static u64) { }
 
         // Here it's the lifetime behind the pointer that disagree ('a)
-        // but the lifetime behind the pointer doesn't matter.
+        // but the lifetime behind the pointer doesn't matter for Verus's lifetime checking.
+        // However, this is still rejected by the ordinary Rust borrow-checking on the exec code
+        // (which uses the pointer's type).
         fn test<'a>(a: *mut &'a u64, m: &'static PointsTo<&'static u64>)
             requires m.is_init(), m.ptr() == a,
         {
@@ -1296,5 +1304,5 @@ test_verify_one_file! {
                 enforce_static(x);
             }
         }
-    } => Ok(())
+    } => Err(err) => assert_rust_error_msg(err, "borrowed data escapes outside of function")
 }

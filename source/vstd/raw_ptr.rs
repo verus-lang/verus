@@ -265,11 +265,14 @@ impl<T> View for PointsTo<T> {
 }
 
 impl<T: ?Sized> PointsTo<T> {
+    // These are used by lifetime checking for native raw pointer dereferences
     #[doc(hidden)]
-    axiom fn borrow(tracked &self) -> (tracked t: &T);
+    #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::PointsTo::borrow")]
+    pub axiom fn borrow(tracked &self) -> (tracked t: &T);
 
     #[doc(hidden)]
-    axiom fn borrow_mut(tracked &mut self) -> (tracked t: &mut T);
+    #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::PointsTo::borrow_mut")]
+    pub axiom fn borrow_mut(tracked &mut self) -> (tracked t: &mut T);
 }
 
 impl<T> PointsTo<T> {
