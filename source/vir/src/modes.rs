@@ -2174,7 +2174,9 @@ fn check_expr(
         ExprX::UnaryOpr(UnaryOpr::ToDyn(_), e1) => {
             let (mode, proph) =
                 check_expr(ctxt, record, typing, outer_mode, expect, e1, outer_proph)?;
-            if matches!(&*expr.typ, TypX::MutRef(_)) && mode != Mode::Exec {
+            if matches!(&*crate::ast_util::undecorate_typ(&expr.typ), TypX::MutRef(_))
+                && mode != Mode::Exec
+            {
                 return Err(error(
                     &expr.span,
                     "coercing mutable references to a trait object is not supported in spec/proof mode",

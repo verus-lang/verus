@@ -1975,7 +1975,9 @@ pub(crate) fn expr_to_stm_opt(
             }
             Ok((stms, Maybe::Some(Value::Exp(mk_exp(ExpX::Unary(*op, exp))))))
         }
-        ExprX::UnaryOpr(UnaryOpr::ToDyn(_), _) if matches!(&*expr.typ, TypX::MutRef(_)) => {
+        ExprX::UnaryOpr(UnaryOpr::ToDyn(_), _)
+            if matches!(&*undecorate_typ(&expr.typ), TypX::MutRef(_)) =>
+        {
             let (mut stms, e) = expr_to_stm_opt_with_delayed_obligations(ctx, state, expr)?;
             let (e, obligations) = unwrap_or_return_never!(e, stms);
             typ_inv_obligations(ctx, state, &mut stms, obligations, TypInv::BareMutRefError)?;
@@ -3893,7 +3895,9 @@ fn expr_to_stm_opt_with_delayed_obligations(
             stms.append(&mut stms2);
             Ok((stms, Maybe::Some((exp1, obligations))))
         }
-        ExprX::UnaryOpr(UnaryOpr::ToDyn(self_typ), e1) if matches!(&*expr.typ, TypX::MutRef(_)) => {
+        ExprX::UnaryOpr(UnaryOpr::ToDyn(self_typ), e1)
+            if matches!(&*undecorate_typ(&expr.typ), TypX::MutRef(_)) =>
+        {
             let (mut stms, exp1) = expr_to_stm_opt_with_delayed_obligations(ctx, state, e1)?;
             let (exp1, obligations) = unwrap_or_return_never!(exp1, stms);
             let exp1 = exp1.to_exp();
@@ -4283,7 +4287,7 @@ fn mut_ref_to_dyn_sst(
     self_typ: &Typ,
     out_typ: &Typ,
 ) -> Exp {
-    let TypX::MutRef(dyn_typ) = &**out_typ else {
+    let TypX::MutRef(dyn_typ) = &*undecorate_typ(out_typ) else {
         panic!("mut_ref_to_dyn_sst expected MutRef type");
     };
     let (var_ident, out) = state.declare_temp_var_stm(
