@@ -237,14 +237,17 @@ pub uninterp spec fn points_to_contents<T: ?Sized>(p: PointsTo<T>) -> Ghost<T>;
 pub uninterp spec fn points_to_init<T: ?Sized>(p: PointsTo<T>) -> bool;
 
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::points_to_update_contents")]
-pub uninterp spec fn points_to_update_contents<T: ?Sized>(p: PointsTo<T>, t: Ghost<T>) -> PointsTo<T>;
+pub uninterp spec fn points_to_update_contents<T: ?Sized>(p: PointsTo<T>, t: Ghost<T>) -> PointsTo<
+    T,
+>;
 
 pub broadcast axiom fn points_to_update_contents_def<T: ?Sized>(p: PointsTo<T>, t: Ghost<T>)
     ensures
         #![trigger points_to_update_contents(p, t)]
         points_to_ptr(points_to_update_contents(p, t)) == points_to_ptr(p),
         points_to_init(points_to_update_contents(p, t)) <==> points_to_init(p),
-        points_to_init(p) ==> points_to_contents(points_to_update_contents(p, t)) == t;
+        points_to_init(p) ==> points_to_contents(points_to_update_contents(p, t)) == t,
+;
 
 impl<T> View for PointsTo<T> {
     type V = PointsToData<T>;
@@ -256,9 +259,17 @@ impl<T> View for PointsTo<T> {
                 MemContents::Init(*points_to_contents(*self))
             } else {
                 MemContents::Uninit
-            }
+            },
         }
     }
+}
+
+impl<T: ?Sized> PointsTo<T> {
+    #[doc(hidden)]
+    axiom fn borrow(tracked &self) -> (tracked t: &T);
+
+    #[doc(hidden)]
+    axiom fn borrow_mut(tracked &mut self) -> (tracked t: &mut T);
 }
 
 impl<T> PointsTo<T> {
