@@ -1651,7 +1651,6 @@ fn check_dyn_spec(f: &Function) -> Result<(), ()> {
         params,
         outer_ret: _,
         inner_ret: _,
-        ens_has_return: _,
         require,
         ensure: (ensure0, ensure1),
         returns,
