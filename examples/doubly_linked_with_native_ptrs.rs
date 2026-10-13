@@ -197,7 +197,7 @@ mod doubly_linked_list {
                     // This is all equivalent to `(*old_tail_ptr).next = new_tail_ptr;`
                     let ghost idx = (self.ghost_state@.ptrs.len() - 1) as nat;
 
-                    #[verifier::permission(old_tail_ptr)]
+                    #[verifier::permission("old_tail_ptr")]
                     let tracked old_tail_perm = &mut self.ghost_state.points_to_map.tracked_borrow_mut(idx).points_to;
 
                     // Allocate a new node to go on the end. It's 'prev' field points
