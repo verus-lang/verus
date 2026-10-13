@@ -1,46 +1,122 @@
 /*!
-### Place evaluation order and side-effects (more than you wanted to know)
+### How to evaluate a place expression
 
-A Place expression can have arbitrary side-effects, INCLUDING modifying the place that
-is being referred to. As a result, we have to be very careful about evaluation order.
-In general, you evaluate the "place" first, then read/write whatever from the place.
-That means if you write something like `a[{ a = b; i }]` this is equivalent to `a = b; a[i]`.
+Consider an arbitrary place expresssion, with an arbitrary combination of
+dereferences, field projections (including union field projections),
+and array/slice indices.
 
-Things get more complicated when dealing with bounds-checks.
-Consider: `a[i][{ a = b; j }]`. In this expression, we bounds-check `a[i]` first, then
-evaluate the second index. Does that mean the `a = b` assignment could invalidate the
-bounds-check that was performed previously?
- - If `a` is an array then no, because the length of the array is fixed
- - If `a` is a slice then yes, so rustc checks for this case and disallows it.
-   (See [https://doc.rust-lang.org/1.93.0/nightly-rustc/rustc_middle/mir/enum.FakeReadCause.html#variant.ForIndex])
-Either way this is fine for us; either we don't have to worry about it or the bounds-check
-is unaffected by the assignment.
+```
+local.*.*.f1.*.f2[IDX].f3.*[IDX2].f4.*
+```
 
-What about unions? In Verus, we naturally have a precondition that a union access, but
-in Rust there's no actual check (except in the Abstract Machine state to determine UB).
-Anyway, despite the fact that union fields have a "precondition",
-there's no analogous check like there is for slice indexing.
-Thus, Rust's borrow-checker accepts this: `a.union_field[{a = b}]`
-and reading this is non-UB provided `b.union_field` is a valid union field read.
-Counter-intuitively, it doesn't even matter if `a.union_field` is valid _before_ the assignment,
-since that memory location isn't actually read from.
-Note, though, that the ordering of the bounds-check and the ordering of the field access
-depends on whether the index is for an array or slice (since for the slice, we need to do
-the field access to get the length).
+(I use postfix `.*` here for readability)
 
-To summarize, the evaluation order for a place expression with only array accesses:
-  local.foo[e1].bar[e2]
-Would be:
-  - evaluate e1
-  - bounds-check e1
-  - evaluate e2
-  - bounds-check e2
-  - check all field accesses are safe
-However, if any of the indices are _slice_ indices, then the relevant field safety checks
-need to be moved earlier. (Though, again, index checks actually block subsequent mutations,
-so we wouldn't need to do any field safety check more than once.)
-Also, the order of the checks doesn't really matter to Verus, as long as both are hard
-requirements, but it might matter if we model unwinding.
+How do you evaluate this, accounting for all of:
+ * The side-effects of the index expressions
+ * bounds-checks inserted by Rust
+ * precondition needed to ensure pointer accesses are safe
+
+It's tempting to think you just start at the left, walking down the pointers and then
+evaluating subexpressions when you reach them. In reality, the entire place expression is emitted
+at the end, after all side-effects have run. So you end up with something like this:
+
+```
+let i1 = IDX;
+let i2 = IDX2;
+local.*.*.f1.*.f2[i1].f3.*[i2].f4 .* // place is read-to or written-from or whatnot
+```
+
+Note, in particular, that `IDX` and `IDX2` expressions _are_ allowed to mutate `local`.
+Therefore, it is important that we do not evaluate validity of the access to
+`local.*.*.f1.*.f2` _before_ evaluating `IDX`, as the evaluation of `IDX` could end up
+invalidating that access.
+
+Things get more complicated when dealing with bounds checks because the bounds-check
+requires computation of the length. For an array, the length is known at compiler time, but
+for a slice, we must look up the length at runtime, and this potentially requires unsafe
+accesses, which requires us to check the well-formedness of the lookup at that point.
+
+Fortunately, Rust _does_ ensure that the bounds-check cannot be invalidated after it is performed
+the first time. For example, if the `[IDX]` in `local.*.*.f1.*.f2[IDX].f3.*[IDX2].f4.*`
+is a slice index, then `IDX2` is not allowed to overwrite `local`, because the bounds-check
+locks it in place. (Not true of `[IDX]` is an array index!)
+
+So basically, the ordering goes something like:
+
+1.
+ * Evaluate `IDX`
+ * If `[IDX]` is a slice, assert the well-formedness of the lookup `local.*.*.f1.*.f2`
+ * Compute the length and perform the bounds-check, panic on failure
+   (We don't support the panic behavior right now, so for us,
+    this amounts to asserting the bounds-check holds.)
+2.
+ * Evalute `IDX2`
+ * If `[IDX2]` is a slice, assert the well-formedness of the lookup `local.*.*.f1.*.f2[_].f3.*`
+   (Don't need to repeat any conditions already checked in Step 1)
+ * Compute the length and perform the bounds-check, panic on failure
+
+### How do we check that these places are well-formed?
+
+For a union field, we want to check that the union is "in" the correct variant
+(we model unions as enums, though this is technically incorrect, see
+<https://github.com/verus-lang/verus/issues/2503>).
+
+For a raw pointer, we check that the associated pointer permission object (`PointsTo`) has
+the right pointer and is in an initialized state.
+
+TODO(native_raw_ptrs): even though Rust will check that an access doesn't get invalidated
+by mutating the target place, it doesn't know about our permission objects, so we will have to check
+those ourselves.
+
+### How is the length computed?
+
+For an array, we just get it off the type, and for the slice, we get it off the length of
+the sequence view of the slice.
+
+This is actually slightly more restrictive than it needs to be. Rust uses fat pointers,
+so in the actual runtime, Rust gets the slice length off the pointer metadata.
+This means that, if the last dereference before the slice index _doesn't need to be dereferenced_,
+and in particular: if it's a raw pointer, we don't need to check that it's safe to dereference
+(at this program point).
+
+TODO(native_raw_ptrs): check that the borrow checker and the VC gen agree on this matter
+
+### But what about the well-formedness of the last part after the index, (`f4.*`)? When do we check that?
+
+We check this immediately after the place expression finishes.
+
+_Technically_, this should depend on how the place expression is used. To read or write,
+you need the place to be dereferencable, which includes having the memory be well-typed.
+(Note that a write does a drop on the existing contents which asserts their well-formedness.)
+
+But if you do something like `let _ = PLACE_EXPRESSION`, then the place ends up not getting
+accessed at all and there is no need to check that any access is well-formed.
+
+And if the place you're writing to is a union field, there is no drop, so there's no requirement
+on the memory being initialized, just that you have write access.
+
+All that said, we don't bother with these nuances right now, and we just assert the well-formedness
+immediately after the place expression.
+
+There's just one problem: this can _still be too early_.
+
+This only comes up with the `match` expression, which is the only kind of expression where
+we can contrive a situation where more code gets executed before the first access to the place:
+
+```rust
+match *x {
+  _ if ({ ... }) => { ... }
+  (a, b) => { ... }
+}
+```
+
+Since `*x` isn't accessed until the second arm, we can still mutate `*x` in the guard block.
+That means that trying to evalute the well-formedness of the `*x` access at the top of the match
+is too early: that check might be invalidated before the first access to `*x`. After the first
+access, Rust will ensure it can't change or be invalidated, but it's fair game until the first
+access.
+
+To deal with this, we make our own check (see `MatchGuardFreeze`) that this doesn't happen.
 */
 
 use crate::ast::*;
