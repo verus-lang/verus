@@ -1426,6 +1426,22 @@ pub fn place_get_local(p: &Place) -> Option<Place> {
     }
 }
 
+pub fn place_get_deref_raw_permission_place(p: &Place) -> Option<Option<Place>> {
+    match &p.x {
+        PlaceX::Local(_) => None,
+        PlaceX::Temporary(_) => None,
+        PlaceX::ModeUnwrap(p, _)
+        | PlaceX::WithExpr(_, p)
+        | PlaceX::Index(p, _, _, _)
+        | PlaceX::DerefMut(p)
+        | PlaceX::Field(_, p)
+        | PlaceX::UserDefinedTypInvariantObligation(p, _) => {
+            place_get_deref_raw_permission_place(p)
+        }
+        PlaceX::DerefRaw(_, perm_place) => Some(perm_place.clone()),
+    }
+}
+
 pub fn place_has_deref_mut_or_raw(p: &Place) -> bool {
     match &p.x {
         PlaceX::Local(_) => false,
