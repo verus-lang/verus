@@ -49,7 +49,8 @@ pub fn check_krate_simplified(krate: &Krate) {
             body,
             typ_bounds,
             params,
-            ret,
+            outer_ret,
+            inner_ret,
             mask_spec,
             body_visibility,
             ..
@@ -107,7 +108,9 @@ pub fn check_krate_simplified(krate: &Krate) {
             }
         }
 
-        for param in params.iter().chain(std::iter::once(ret)) {
+        for param in
+            params.iter().chain(std::iter::once(outer_ret)).chain(std::iter::once(inner_ret))
+        {
             typ_visitor_check(&param.x.typ, &mut |t| {
                 check_typ_simplified(t, &function.x.typ_params)
             })

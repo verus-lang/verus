@@ -5,10 +5,12 @@
 use crate::ast::{
     ArrayKind, AssocTypeImpl, AssocTypeImplX, AutospecUsage, BinaryOp, BoundsCheck, CallTarget,
     CrateId, Datatype, Dt, Expr, ExprX, Fun, FunWithVis, Function, FunctionKind, Ident, Krate,
-    KrateX, Mode, Module, ModuleX, OpaqueType, Path, Place, PlaceX, RevealGroup, Stmt, Trait,
-    TraitId, TraitX, Typ, TypX, UnaryOp, UnaryOpr,
+    KrateX, Mode, Module, ModuleX, OpaqueType, Path, Pattern, PatternX, Place, PlaceX, RevealGroup,
+    Stmt, Trait, TraitId, TraitX, Typ, TypX, UnaryOp, UnaryOpr,
 };
-use crate::ast_util::{is_body_visible_to, is_visible_to, is_visible_to_or_true};
+use crate::ast_util::{
+    array_kind_of_typ, is_body_visible_to, is_visible_to, is_visible_to_or_true,
+};
 use crate::ast_visitor::{VisitorControlFlow, VisitorScopeMap};
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::*;
@@ -543,6 +545,21 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                             reach_function(ctxt, state, &fn_slice_len());
                         }
                     }
+                    ExprX::Binary(op, ..) | ExprX::Assign { op: Some(op), .. } => match op {
+                        BinaryOp::Arith(crate::ast::ArithOp::TruncatingDiv(..)) => {
+                            reach_function(ctxt, state, &fn_truncating_div());
+                        }
+                        BinaryOp::Arith(crate::ast::ArithOp::TruncatingMod(..)) => {
+                            reach_function(ctxt, state, &fn_truncating_mod());
+                        }
+                        BinaryOp::UninterpretedFloat(op) => {
+                            reach_function(ctxt, state, &crate::def::fn_fp_postcondition_name(*op));
+                        }
+                        BinaryOp::IeeeFloat(_) => {
+                            state.uses_ieee_float = true;
+                        }
+                        _ => {}
+                    },
                     ExprX::Const(crate::ast::Constant::ByteStr(_)) => {
                         state.uses_bytestr = true;
                     }
@@ -557,8 +574,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                         ));
                         traverse_typ(ctxt, state, &strslice_typ);
                     }
-                    ExprX::Unary(UnaryOp::IeeeFloat(_), _)
-                    | ExprX::Binary(BinaryOp::IeeeFloat(_), _, _) => {
+                    ExprX::Unary(UnaryOp::IeeeFloat(_), _) => {
                         state.uses_ieee_float = true;
                     }
                     _ => {}
@@ -566,7 +582,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                 Ok(e.clone())
             };
             let fs = |_: &mut State, _: &mut VisitorScopeMap, s: &Stmt| Ok(vec![s.clone()]);
-            let fp = |state: &mut State, _: &mut VisitorScopeMap, p: &Place| {
+            let fpl = |state: &mut State, _: &mut VisitorScopeMap, p: &Place| {
                 match &p.x {
                     PlaceX::Index(_, _, ArrayKind::Array, _) => {
                         reach_function(ctxt, state, &fn_array_update());
@@ -582,9 +598,26 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                 }
                 Ok(p.clone())
             };
+            let fp = |state: &mut State, _: &mut VisitorScopeMap, pat: &Pattern| {
+                match &pat.x {
+                    PatternX::Slice(..) => match array_kind_of_typ(&pat.typ).0 {
+                        ArrayKind::Array => {
+                            reach_function(ctxt, state, &fn_array_update());
+                        }
+                        ArrayKind::Slice => {
+                            reach_function(ctxt, state, &fn_slice_index());
+                            reach_function(ctxt, state, &fn_slice_update());
+                            reach_function(ctxt, state, &fn_slice_len());
+                        }
+                    },
+                    _ => {}
+                }
+                Ok(pat.clone())
+            };
             let mut map: VisitorScopeMap = ScopeMap::new();
+            // TODO: this clones the function unnecessarily
             crate::ast_visitor::map_function_visitor_env(
-                &function, &mut map, state, &fe, &fs, &ft, &fp,
+                &function, &mut map, state, &fe, &fs, &ft, &fpl, &fp,
             )
             .unwrap();
             let methods = reached_methods(
@@ -592,19 +625,6 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                 state.reached_types.iter().chain([ReachedType::None].iter()).map(|t| (t, &f)),
             );
             reach_methods(ctxt, state, methods);
-            if function.x.attrs.is_async {
-                reach_typ(
-                    ctxt,
-                    state,
-                    &function
-                        .x
-                        .async_ret
-                        .as_ref()
-                        .expect("Async function has no return type")
-                        .x
-                        .typ,
-                );
-            }
             continue;
         }
         if let Some(f) = state.worklist_reveal_groups.pop() {

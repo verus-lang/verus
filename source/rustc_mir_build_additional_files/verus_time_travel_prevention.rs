@@ -234,7 +234,7 @@ use rustc_span::Span;
 use rustc_span::Symbol;
 
 /// Post-process any THIR expression to apply the relevant transformation.
-/// (This might apply to any an expression that results from an adjustment.)
+/// (This might apply to an expression that results from an adjustment.)
 pub(crate) fn expr_post<'tcx>(
     cx: &mut ThirBuildCx<'tcx>,
     hir_expr: &'tcx hir::Expr<'tcx>,
@@ -1456,7 +1456,7 @@ pub(crate) fn shadow_var_uses<'tcx>(
 ) -> Vec<ExprId> {
     let mut v = vec![];
     for local_use in uses.iter() {
-        let emit_shadow = match erasure_ctxt.vars.get(&local_use.hir_id) {
+        let emit_shadow = match erasure_ctxt.locals.get(&local_use.hir_id) {
             Some(VarErasure::Erase) => false,
             Some(VarErasure::Shadow | VarErasure::Keep) | None => true,
         };

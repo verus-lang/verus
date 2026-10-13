@@ -414,3 +414,27 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] ptr_ref2_lifetime verus_code! {
+        use vstd::prelude::*;
+        use vstd::raw_ptr::*;
+
+        fn derive_false(p: *mut u32, Tracked(pt): Tracked<PointsTo<u32>>)
+            requires
+                pt.ptr() == p,
+                pt.is_init(),
+        {
+            let tracked mut pt = pt;
+            let sr: SharedReference<'static, u32> = ptr_ref2(p, Tracked(&pt));
+            let tracked alias: &'static PointsTo<u32> = sr.points_to();
+            proof {
+                pt.is_disjoint(alias);
+            }
+            assert(false);
+        }
+    } => Err(err) => assert_rust_error_msgs(err, &[
+        "`pt` does not live long enough",
+        "cannot borrow `pt` as mutable because it is also borrowed as immutable",
+    ])
+}

@@ -1,13 +1,11 @@
 use std::{
-    env::consts::{DLL_EXTENSION, DLL_PREFIX, EXE_SUFFIX},
+    env::consts::{DLL_EXTENSION, DLL_PREFIX},
     path::{Path, PathBuf},
 };
 
-/// Checks that `root` contains every component required to run Verus.
-pub fn check_required_components(root: &Path) -> Result<(), Vec<PathBuf>> {
+/// Checks that `root` contains every artifact required to run Verus.
+pub fn check_required_artifacts(root: &Path) -> Result<(), Vec<PathBuf>> {
     let components = [
-        format!("verus{EXE_SUFFIX}"),
-        format!("rust_verify{EXE_SUFFIX}"),
         "libverus_builtin.rlib".to_owned(),
         format!("{DLL_PREFIX}verus_builtin_macros.{DLL_EXTENSION}"),
         format!("{DLL_PREFIX}verus_state_machines_macros.{DLL_EXTENSION}"),
