@@ -2222,6 +2222,11 @@ fn check_illegal_muts(
         PatternX::Expr(_e) => {}
         PatternX::Range(_lower, _upper) => {}
         PatternX::ImmutRef(p) | PatternX::MutRef(p) => check_illegal_muts(p, datatypes, errors),
+        PatternX::Slice(pats) => {
+            for p in pats.iter() {
+                check_illegal_muts(p, datatypes, errors);
+            }
+        }
     }
 }
 
