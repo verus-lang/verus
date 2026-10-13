@@ -1944,3 +1944,27 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_spec_borrowed(err, "v")
 }
+
+test_verify_one_file! {
+    #[test] native_ptrs verus_code! {
+        use vstd::prelude::*;
+        use vstd::raw_ptr::*;
+
+        struct X { u: u64 }
+
+        fn test(a: *mut u64, Tracked(m): Tracked<PointsTo<u64>>)
+            requires m.is_init(), m.ptr() == a,
+        {
+            #[verifier::permission("a")]
+            let tracked mut m = m;
+
+            unsafe {
+                let r = &mut *a;
+
+                let ghost x = m;
+
+                *r = 20;
+            }
+        }
+    } => Err(err) => assert_spec_borrowed(err, "m")
+}
