@@ -1058,3 +1058,243 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_rust_error_msg(err, "cannot move out of `*a` which is behind a raw pointer")
 }
+
+test_verify_one_file! {
+    #[test] lifetimes_behind_pointer verus_code!{
+        use vstd::prelude::*;
+        use vstd::raw_ptr::*;
+
+        struct X { u: u64 }
+
+        fn enforce_static(f: &'static mut u64) { }
+
+        fn test<'a>(a: *mut &'static mut u64, m: PointsTo<&'a mut u64>)
+            requires m.is_init(), m.ptr() == a,
+        {
+            #[verifier::permission("a")]
+            let tracked mut m = m;
+
+            unsafe {
+                let x = &mut **a;
+                enforce_static(x);
+            }
+        }
+    } => Err(err) => assert_rust_error_msgs(err, &[
+        "`(Verus spec m)` does not live long enough",
+        "`m` does not live long enough",
+        "borrowed data escapes outside of function",
+    ])
+}
+
+test_verify_one_file! {
+    #[test] lifetimes_behind_pointer2 verus_code!{
+        use vstd::prelude::*;
+        use vstd::raw_ptr::*;
+
+        struct X { u: u64 }
+
+        fn enforce_static(f: &'static mut u64) { }
+
+        fn test<'a>(a: *mut &'static mut u64, m: PointsTo<&'static mut u64>)
+            requires m.is_init(), m.ptr() == a,
+        {
+            #[verifier::permission("a")]
+            let tracked mut m = m;
+
+            unsafe {
+                let x = &mut **a;
+                enforce_static(x);
+            }
+        }
+    } => Err(err) => assert_rust_error_msgs(err, &[
+        "`(Verus spec m)` does not live long enough",
+        "`m` does not live long enough",
+    ])
+}
+
+test_verify_one_file! {
+    #[test] lifetimes_behind_pointer3 verus_code!{
+        use vstd::prelude::*;
+        use vstd::raw_ptr::*;
+
+        struct X { u: u64 }
+
+        fn enforce_static(f: &'static mut u64) { }
+
+        fn test<'a>(a: *mut &'static mut u64, m: &'static mut PointsTo<&'static mut u64>)
+            requires m.is_init(), m.ptr() == a,
+        {
+            #[verifier::permission("a")]
+            let tracked mut m = m;
+
+            unsafe {
+                let x = &mut **a;
+                enforce_static(x);
+            }
+        }
+    } => Ok(())
+}
+
+// It's the lifetimes inside the `PointsTo` that matter, not behind the pointer
+
+test_verify_one_file! {
+    #[test] lifetimes_behind_pointer_mismatch_mut verus_code!{
+        use vstd::prelude::*;
+        use vstd::raw_ptr::*;
+
+        struct X { u: u64 }
+
+        fn enforce_static(f: &'static mut u64) { }
+
+        fn test<'a>(a: *mut &'static mut u64, m: &'static mut PointsTo<&'a mut u64>)
+            requires m.is_init(), m.ptr() == a,
+        {
+            #[verifier::permission("a")]
+            let tracked mut m = m;
+
+            unsafe {
+                let x = &mut **a;
+                enforce_static(x);
+            }
+        }
+    } => Err(err) => assert_rust_error_msg(err, "borrow error msg")
+}
+
+test_verify_one_file! {
+    #[test] lifetimes_behind_pointer_mismatch_shr verus_code!{
+        use vstd::prelude::*;
+        use vstd::raw_ptr::*;
+
+        struct X { u: u64 }
+
+        fn enforce_static(f: &'static u64) { }
+
+        fn test<'a>(a: *mut &'static u64, m: &'static PointsTo<&'a u64>)
+            requires m.is_init(), m.ptr() == a,
+        {
+            #[verifier::permission("a")]
+            let tracked m = m;
+
+            unsafe {
+                let x = &**a;
+                enforce_static(x);
+            }
+        }
+    } => Err(err) => assert_rust_error_msg(err, "borrow error msg")
+}
+
+test_verify_one_file! {
+    #[test] lifetimes_behind_pointer_mismatch_copy verus_code!{
+        use vstd::prelude::*;
+        use vstd::raw_ptr::*;
+
+        struct X { u: u64 }
+
+        fn enforce_static(f: &'static u64) { }
+
+        fn test<'a>(a: *mut &'static u64, m: &'static PointsTo<&'a u64>)
+            requires m.is_init(), m.ptr() == a,
+        {
+            #[verifier::permission("a")]
+            let tracked m = m;
+
+            unsafe {
+                let x = *a;
+                enforce_static(x);
+            }
+        }
+    } => Err(err) => assert_rust_error_msg(err, "borrow error msg")
+}
+
+test_verify_one_file! {
+    #[test] lifetimes_behind_pointer_mismatch_copy_pair verus_code!{
+        use vstd::prelude::*;
+        use vstd::raw_ptr::*;
+
+        struct X { u: u64 }
+
+        fn enforce_static(f: (&'static u64, &'static u64)) { }
+
+        fn test<'a>(a: *mut (&'static u64, &'static u64), m: &'static PointsTo<(&'a u64, &'a u64)>)
+            requires m.is_init(), m.ptr() == a,
+        {
+            #[verifier::permission("a")]
+            let tracked m = m;
+
+            unsafe {
+                let x = *a;
+                enforce_static(x);
+            }
+        }
+    } => Err(err) => assert_rust_error_msg(err, "borrow error msg")
+}
+
+test_verify_one_file! {
+    #[test] lifetimes_behind_pointer_mismatch_assign verus_code!{
+        use vstd::prelude::*;
+        use vstd::raw_ptr::*;
+
+        struct X { u: u64 }
+
+        fn test<'a>(a: *mut (&'a u64, &'a u64), m: &'static mut PointsTo<(&'static u64, &'static u64)>, z: (&'a u64, &'a u64))
+            requires m.is_init(), m.ptr() == a,
+        {
+            #[verifier::permission("a")]
+            let tracked m = m;
+
+            unsafe {
+                *a = z;
+            }
+        }
+    } => Err(err) => assert_rust_error_msg(err, "borrow error msg")
+}
+
+test_verify_one_file! {
+    #[test] lifetimes_behind_pointer_mismatch_ok verus_code!{
+        use vstd::prelude::*;
+        use vstd::raw_ptr::*;
+
+        struct X { u: u64 }
+
+        fn enforce_static(f: &'static mut u64) { }
+
+        // Here it's the lifetime behind the pointer that disagree ('a)
+        // but the lifetime behind the pointer doesn't matter.
+        fn test<'a>(a: *mut &'a mut u64, m: &'static mut PointsTo<&'static mut u64>)
+            requires m.is_init(), m.ptr() == a,
+        {
+            #[verifier::permission("a")]
+            let tracked mut m = m;
+
+            unsafe {
+                let x = &mut **a;
+                enforce_static(x);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] lifetimes_behind_pointer_mismatch_shr_ok verus_code!{
+        use vstd::prelude::*;
+        use vstd::raw_ptr::*;
+
+        struct X { u: u64 }
+
+        fn enforce_static(f: &'static u64) { }
+
+        // Here it's the lifetime behind the pointer that disagree ('a)
+        // but the lifetime behind the pointer doesn't matter.
+        fn test<'a>(a: *mut &'a u64, m: &'static PointsTo<&'static u64>)
+            requires m.is_init(), m.ptr() == a,
+        {
+            #[verifier::permission("a")]
+            let tracked m = m;
+
+            unsafe {
+                let x = &**a;
+                enforce_static(x);
+            }
+        }
+    } => Ok(())
+}

@@ -430,6 +430,26 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_vir_error_msg(err, "variable `m` is not marked mutable")
 }
 
+test_verify_one_file_with_options! {
+    #[test] mutability_test2 ["--no-lifetime"] => verus_code!{
+        use vstd::prelude::*;
+        use vstd::raw_ptr::*;
+
+        struct X { u: u64 }
+
+        fn test(a: *mut &'static mut u64, m: PointsTo<&'static mut u64>)
+            requires m.is_init(), m.ptr() == a,
+        {
+            #[verifier::permission("a")]
+            let m = m;
+
+            unsafe {
+                **a = 20;
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "variable `m` is not marked mutable")
+}
+
 test_verify_one_file! {
     #[test] closure_captures_ptr verus_code!{
         use vstd::prelude::*;
@@ -451,4 +471,108 @@ test_verify_one_file! {
             z(m);
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] ptr_is_mode_spec verus_code!{
+        use vstd::prelude::*;
+        use vstd::raw_ptr::*;
+
+        struct X { u: u64 }
+
+        fn test(a: *mut u64, m: PointsTo<u64>)
+            requires m.is_init(), m.ptr() == a,
+        {
+            #[verifier::permission("a")]
+            let tracked mut m = m;
+
+            unsafe {
+                let ghost a = a;
+                *a = 5;
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot access spec-mode place in executable context")
+}
+
+test_verify_one_file! {
+    #[test] ptr_is_mode_spec_with_proof_block verus_code!{
+        use vstd::prelude::*;
+        use vstd::raw_ptr::*;
+
+        struct X { u: u64 }
+
+        fn test(a: *mut u64, m: PointsTo<u64>)
+            requires m.is_init(), m.ptr() == a,
+        {
+            #[verifier::permission("a")]
+            let tracked mut m = m;
+
+            unsafe {
+                let ghost a = a;
+                proof { *a = 5; }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "to dereference a pointer, it must be exec mode")
+}
+
+test_verify_one_file! {
+    #[test] ptr_is_mode_proof verus_code!{
+        use vstd::prelude::*;
+        use vstd::raw_ptr::*;
+
+        struct X { u: u64 }
+
+        fn test(a: *mut u64, m: PointsTo<u64>)
+            requires m.is_init(), m.ptr() == a,
+        {
+            #[verifier::permission("a")]
+            let tracked mut m = m;
+
+            unsafe {
+                let tracked a = a;
+                *a = 5;
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot access proof-mode place in executable context")
+}
+
+test_verify_one_file! {
+    #[test] ptr_is_mode_proof_with_proof_block verus_code!{
+        use vstd::prelude::*;
+        use vstd::raw_ptr::*;
+
+        struct X { u: u64 }
+
+        fn test(a: *mut u64, m: PointsTo<u64>)
+            requires m.is_init(), m.ptr() == a,
+        {
+            #[verifier::permission("a")]
+            let tracked mut m = m;
+
+            unsafe {
+                let tracked a = a;
+                proof { *a = 5; }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "to dereference a pointer, it must be exec mode")
+}
+
+test_verify_one_file! {
+    #[test] ptr_is_exec_proof_with_proof_block verus_code!{
+        use vstd::prelude::*;
+        use vstd::raw_ptr::*;
+
+        struct X { u: u64 }
+
+        fn test(a: *mut u64, m: PointsTo<u64>)
+            requires m.is_init(), m.ptr() == a,
+        {
+            #[verifier::permission("a")]
+            let tracked mut m = m;
+
+            unsafe {
+                proof { *a = 5; }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "to dereference a pointer, it must be exec mode")
 }
