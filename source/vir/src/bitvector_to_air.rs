@@ -394,7 +394,7 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
                 let t_to = bv_typ_for_vir_typ(state, &exp.span, &exp.typ)?;
                 let op = match (t_from, t_to) {
                     (_, BvTyp::Float { exp_bits, sig_bits }) => {
-                        let signed = !is_integer_type(&arg.typ) || is_integer_type_signed(&arg.typ);
+                        let signed = !matches!(t_from, BvTyp::Bv(_, Extend::Zero));
                         air::ast::UnaryOp::FloatFrom {
                             exp_bits,
                             sig_bits,
@@ -403,14 +403,12 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
                         }
                     }
                     (BvTyp::Float { .. }, BvTyp::Real) => air::ast::UnaryOp::FloatToReal,
-                    (BvTyp::Float { .. }, _) => {
-                        assert!(is_integer_type(&exp.typ));
-                        let signed = is_integer_type_signed(&exp.typ);
-                        let w = bitwidth_from_type(&exp.typ).expect("is_integer_type");
-                        let IntegerTypeBitwidth::Width(bits) = w else {
-                            panic!("internal error: unexpected usize/isize")
-                        };
-                        air::ast::UnaryOp::FloatToBitVec { bits, signed, round: RoundingMode::RTZ }
+                    (BvTyp::Float { .. }, BvTyp::Bv(bits, extend)) => {
+                        air::ast::UnaryOp::FloatToBitVec {
+                            bits,
+                            signed: extend == Extend::Sign,
+                            round: RoundingMode::RTZ,
+                        }
                     }
                     _ => {
                         panic!("internal error: unexpected cast from {:?} to {:?}", t_from, t_to)

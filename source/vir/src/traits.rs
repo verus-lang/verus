@@ -295,6 +295,7 @@ pub fn demote_external_traits(
             &|_state, _, stmt| Ok(vec![stmt.clone()]),
             &|_state, typ| Ok(typ.clone()),
             &|_state, _, place| Ok(place.clone()),
+            &|_state, _, pattern| Ok(pattern.clone()),
         )?;
     }
 
@@ -436,6 +437,7 @@ pub fn rewrite_external_function(
         &|_, _, stmt| Ok(vec![stmt.clone()]),
         &|_, t: &Typ| Ok(rewrite_one_external_typ(from_path, to_path, t)),
         &|_, _, p: &Place| Ok(p.clone()),
+        &|_, _, place| Ok(place.clone()),
     )
     .expect("rewrite_external_function")
 }
@@ -628,9 +630,18 @@ pub fn inherit_default_bodies(
                     &ft,
                 )
                 .unwrap();
-                let ret =
-                    crate::ast_visitor::map_param_visitor(&default_function.x.ret, &mut (), &ft)
-                        .unwrap();
+                let outer_ret = crate::ast_visitor::map_param_visitor(
+                    &default_function.x.outer_ret,
+                    &mut (),
+                    &ft,
+                )
+                .unwrap();
+                let inner_ret = crate::ast_visitor::map_param_visitor(
+                    &default_function.x.inner_ret,
+                    &mut (),
+                    &ft,
+                )
+                .unwrap();
                 let name =
                     crate::def::trait_inherit_default_name(&default_function.x.name, &impl_path);
                 let visibility = Visibility {
@@ -668,7 +679,8 @@ pub fn inherit_default_bodies(
                     typ_params: Arc::new(typ_params),
                     typ_bounds: Arc::new(typ_bounds),
                     params,
-                    ret,
+                    outer_ret,
+                    inner_ret,
                     ens_has_return: default_function.x.ens_has_return,
                     require: Arc::new(vec![]),
                     ensure: (Arc::new(vec![]), Arc::new(vec![])),
@@ -684,7 +696,6 @@ pub fn inherit_default_bodies(
                     attrs: Arc::new(crate::ast::FunctionAttrsX::default()),
                     body: None,
                     extra_dependencies: vec![],
-                    async_ret: None,
                     hidden: Arc::new(vec![]),
                 };
                 let warn_config = warning_ctx.fun_warn_configs[&default_function.x.name].clone();
@@ -842,7 +853,7 @@ fn check_modes(function: &Function, span: &Span) -> Result<(), VirErr> {
             ));
         }
     }
-    if function.x.ret.x.mode != Mode::Exec {
+    if function.x.outer_ret.x.mode != Mode::Exec {
         return Err(error(
             span,
             "function for external trait must have all parameters have mode 'exec'",
@@ -1579,6 +1590,144 @@ pub fn get_dyn_traits(krate: &Krate) -> HashSet<Path> {
     dyn_traits
 }
 
+// A contract proved for each concrete Self need not hold after substituting dyn T:
+// for example, a quantifier over &Self then ranges over all implementations.
+// Permit receiver reads and the dispatch Self argument of receiver calls;
+// conservatively reject other uses in logical and operational contracts.
+fn check_dyn_spec(f: &Function) -> Result<(), ()> {
+    use crate::ast::{PlaceX, UnaryOp, VarIdent};
+    use crate::ast_visitor::{AstVisitor, NoScoper, Walk};
+
+    struct Visitor<'a> {
+        receiver: Option<&'a VarIdent>,
+    }
+
+    impl Visitor<'_> {
+        fn is_receiver_place(&self, place: &Place) -> bool {
+            match &place.x {
+                PlaceX::Local(v) => self.receiver == Some(v),
+                PlaceX::DerefMut(p) => self.is_receiver_place(p),
+                PlaceX::Temporary(e) => self.is_receiver_expr(e),
+                _ => false,
+            }
+        }
+
+        fn is_receiver_expr(&self, expr: &Expr) -> bool {
+            match &expr.x {
+                ExprX::Var(v) | ExprX::VarAt(v, _) => self.receiver == Some(v),
+                ExprX::ReadPlace(p, _) | ExprX::ImplicitReborrowOrSpecRead(p, _, _) => {
+                    self.is_receiver_place(p)
+                }
+                ExprX::Old(e)
+                | ExprX::Unary(UnaryOp::MutRefCurrent | UnaryOp::MutRefFuture(_), e) => {
+                    self.is_receiver_expr(e)
+                }
+                _ => false,
+            }
+        }
+    }
+
+    impl AstVisitor<Walk, (), NoScoper> for Visitor<'_> {
+        fn visit_typ(&mut self, typ: &Typ) -> Result<(), ()> {
+            match &**typ {
+                TypX::TypParam(p) if *p == crate::def::trait_self_type_param() => Err(()),
+                _ => self.visit_typ_rec(typ),
+            }
+        }
+
+        fn visit_expr(&mut self, expr: &Expr) -> Result<(), ()> {
+            if self.is_receiver_expr(expr) {
+                return Ok(());
+            }
+            if let ExprX::Call {
+                target: CallTarget::Fun(CallTargetKind::Dynamic, _, typs, _, _),
+                args,
+                post_args,
+                body,
+            } = &expr.x
+            {
+                if args.first().is_some_and(|a| self.is_receiver_expr(a))
+                    && typs.first().is_some_and(
+                        |t| matches!(&**t, TypX::TypParam(p) if *p == crate::def::trait_self_type_param()),
+                    )
+                {
+                    self.visit_typ(&expr.typ)?;
+                    // The first type argument selects the receiver's implementation.
+                    // Other type arguments can introduce independent uses of Self.
+                    for typ in typs.iter().skip(1) {
+                        self.visit_typ(typ)?;
+                    }
+                    self.visit_exprs(args)?;
+                    self.visit_opt_expr(post_args)?;
+                    return self.visit_opt_expr(body);
+                }
+            }
+            self.visit_expr_rec(expr)
+        }
+
+        fn visit_stmt(&mut self, stmt: &crate::ast::Stmt) -> Result<(), ()> {
+            self.visit_stmt_rec(stmt)
+        }
+
+        fn visit_pattern(&mut self, pattern: &crate::ast::Pattern) -> Result<(), ()> {
+            self.visit_pattern_rec(pattern)
+        }
+
+        fn visit_place(&mut self, place: &Place) -> Result<(), ()> {
+            if self.is_receiver_place(place) { Ok(()) } else { self.visit_place_rec(place) }
+        }
+    }
+
+    let FunctionX {
+        name: _,
+        proxy: _,
+        kind: _,
+        visibility: _,
+        body_visibility: _,
+        opaqueness: _,
+        owning_module: _,
+        mode: _,
+        typ_params: _,
+        typ_bounds: _,
+        params,
+        outer_ret: _,
+        inner_ret: _,
+        ens_has_return: _,
+        require,
+        ensure: (ensure0, ensure1),
+        returns,
+        decrease,
+        decrease_when,
+        decrease_by: _,
+        fndef_axioms,
+        mask_spec,
+        atomic_update,
+        unwind_spec,
+        item_kind: _,
+        attrs: _,
+        body: _,
+        extra_dependencies: _,
+        hidden: _,
+    } = &f.x;
+    let receiver = params.first().filter(|p| p.x.name.0.as_str() == "self");
+    let mut visitor = Visitor { receiver: receiver.map(|p| &p.x.name) };
+    visitor.visit_exprs(require)?;
+    visitor.visit_exprs(ensure0)?;
+    visitor.visit_exprs(ensure1)?;
+    visitor.visit_opt_expr(returns)?;
+    visitor.visit_exprs(decrease)?;
+    visitor.visit_opt_expr(decrease_when)?;
+    visitor.visit_opt_exprs(fndef_axioms)?;
+    if let Some(mask_spec) = mask_spec {
+        visitor.visit_mask_spec(mask_spec)?;
+    }
+    visitor.visit_opt_expr(atomic_update)?;
+    if let Some(unwind_spec) = unwind_spec {
+        visitor.visit_unwind_spec(unwind_spec)?;
+    }
+    Ok(())
+}
+
 // This extends the trait dyn compatibility rules from
 // https://doc.rust-lang.org/reference/items/traits.html .
 // See https://github.com/verus-lang/verus/discussions/1047 .
@@ -1668,6 +1817,11 @@ fn compute_dyn_compatibility(
                 let reason = format!("self parameter of function {f_name} must be {m}");
                 return Arc::new(DynCompatible::Reject { reason });
             }
+        }
+        if check_dyn_spec(f).is_err() {
+            let reason =
+                format!("specification of function {f_name} uses Self outside of the receiver");
+            return Arc::new(DynCompatible::Reject { reason });
         }
     }
     if let Some(d) = unsized_blanket_super {

@@ -75,6 +75,7 @@ git_url = "https://github.com/secure-foundations/vest.git"
 refspec = "main"
 cargo_verus = true
 crate_roots = ["vest_lib"]
+extra_verus_args = ["--rlimit", "100"]
 
 [[project]]
 name = "vest-generated"
@@ -124,15 +125,17 @@ cargo_verus = true
 crate_roots = ["."]
 extra_cargo_args = ["--lib"]
 extra_verus_args = [
+    "--rlimit", "100",
     "--verify-module", "vdeployment_controller", # To run full verification on all controllers, comment this line, need ~30mins.
 ]
 
-[[project]]
-name = "tla-rs"
-git_url = "https://github.com/stonysystems/tla-rs.git"
-refspec = "main"
-crate_roots = ["src/lib.rs"]
-extra_verus_args = ["--crate-type=dylib"]
+# TODO: restore this when it stabilizes
+#[[project]]
+#name = "tla-rs"
+#git_url = "https://github.com/stonysystems/tla-rs.git"
+#refspec = "main"
+#crate_roots = ["src/lib.rs"]
+#extra_verus_args = ["--crate-type=dylib"]
 
 [[project]]
 name = "verismo"

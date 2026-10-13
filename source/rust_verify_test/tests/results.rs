@@ -4,6 +4,23 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
+    #[test] test_result_views verus_code! {
+        use vstd::prelude::*;
+
+        proof fn test_result_view<T, E>(r: Result<T, E>) {
+            assert(r@ == r);
+        }
+
+        proof fn test_result_deep_view(value: Vec<u8>, error: Vec<bool>) {
+            let ok_result = Result::<Vec<u8>, Vec<bool>>::Ok(value);
+            assert(ok_result.deep_view() == Result::<Seq<u8>, Seq<bool>>::Ok(value.deep_view()));
+            let err_result = Result::<Vec<u8>, Vec<bool>>::Err(error);
+            assert(err_result.deep_view() == Result::<Seq<u8>, Seq<bool>>::Err(error.deep_view()));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_result verus_code! {
         use vstd::prelude::*;
 

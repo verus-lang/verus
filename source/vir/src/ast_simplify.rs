@@ -198,6 +198,11 @@ fn pattern_to_decls_with_no_initializer(pattern: &Pattern, stmts: &mut Vec<Stmt>
         PatternX::ImmutRef(p) | PatternX::MutRef(p) => {
             pattern_to_decls_with_no_initializer(p, stmts);
         }
+        PatternX::Slice(pats) => {
+            for p in pats.iter() {
+                pattern_to_decls_with_no_initializer(p, stmts);
+            }
+        }
     }
 }
 
@@ -1133,7 +1138,7 @@ fn add_fndef_axioms_to_function(
             typ_bounds: function.x.typ_bounds.clone(),
             trait_path: ClosureKind::FnOnce.trait_path(),
             trait_typ_args,
-            typ: function.x.ret.x.typ.clone(),
+            typ: function.x.outer_ret.x.typ.clone(),
             impl_paths: Arc::new(vec![]),
         };
 
@@ -1157,8 +1162,8 @@ fn add_fndef_axioms_to_function(
     }
 
     let ret = Arc::new(VarBinderX {
-        name: function.x.ret.x.name.clone(),
-        a: function.x.ret.x.typ.clone(),
+        name: function.x.outer_ret.x.name.clone(),
+        a: function.x.outer_ret.x.typ.clone(),
     });
     let (mut closure_enss, default_enss) = function.x.ensure.clone();
     if inherit {
@@ -1211,8 +1216,8 @@ fn simplify_function(
         if functionx.ens_has_return {
             let var = SpannedTyped::new(
                 &r.span,
-                &functionx.ret.x.typ,
-                ExprX::Var(functionx.ret.x.name.clone()),
+                &functionx.inner_ret.x.typ,
+                ExprX::Var(functionx.inner_ret.x.name.clone()),
             );
             let eq = mk_eq(&r.span, &var, &r);
             Arc::make_mut(&mut functionx.ensure.0).push(eq);
@@ -1252,13 +1257,13 @@ fn simplify_function(
         };
         param_names.push(name);
     }
-    let ret_name = if rename_ok && !param_ids.contains(&functionx.ret.x.name.0) {
-        let prev = functionx.ret.x.name.clone();
+    let ret_name = if rename_ok && !param_ids.contains(&functionx.inner_ret.x.name.0) {
+        let prev = functionx.inner_ret.x.name.clone();
         let name = VarIdent(prev.0.clone(), crate::ast::VarIdentDisambiguate::VirParam);
         state.rename_vars.insert(prev, name.clone()).map(|_| panic!("rename ret"));
         name
     } else {
-        functionx.ret.x.name.clone()
+        functionx.inner_ret.x.name.clone()
     };
 
     for (a, b) in state.rename_vars.iter() {
@@ -1295,6 +1300,7 @@ fn simplify_function(
         &|state, _, stmt| simplify_one_stmt(ctx, state, stmt),
         &|state, typ| simplify_one_typ(&local, state, typ),
         &|state, map, place| simplify_one_place(ctx, state, map, place),
+        &|_, _, pat| Ok(pat.clone()),
     )?;
     let mut functionx = function.x.clone();
     assert!(functionx.params.len() == param_names.len());
@@ -1306,8 +1312,16 @@ fn simplify_function(
             .map(|(p, x)| p.new_x(crate::ast::ParamX { name: x.clone(), ..p.x.clone() }))
             .collect(),
     );
-    functionx.ret =
-        functionx.ret.new_x(crate::ast::ParamX { name: ret_name, ..functionx.ret.x.clone() });
+
+    let inner_outer_align = functionx.inner_ret.x.name == functionx.outer_ret.x.name;
+    functionx.inner_ret = functionx
+        .inner_ret
+        .new_x(crate::ast::ParamX { name: ret_name.clone(), ..functionx.inner_ret.x.clone() });
+    if inner_outer_align {
+        functionx.outer_ret = functionx
+            .outer_ret
+            .new_x(crate::ast::ParamX { name: ret_name, ..functionx.outer_ret.x.clone() });
+    }
 
     Ok(Spanned::new(function.span.clone(), functionx))
 }

@@ -299,7 +299,6 @@ pub struct Verifier {
     pub func_fails: HashSet<Fun>,
     pub args: Args,
     pub user_filter: Option<UserFilter>,
-    pub erasure_hints: Option<crate::erase::ErasureHints>,
     pub(crate) verus_items: Option<Arc<VerusItems>>,
 
     /// total real time to verify all activated buckets of the crate, including real time for
@@ -504,7 +503,6 @@ impl Verifier {
             func_fails: HashSet::new(),
             args,
             user_filter: None,
-            erasure_hints: None,
             verus_items: None,
             time_verify_crate: Duration::new(0, 0),
             time_verify_crate_sequential: Duration::new(0, 0),
@@ -553,7 +551,6 @@ impl Verifier {
             func_fails: HashSet::new(),
             args: self.args.clone(),
             user_filter: self.user_filter.clone(),
-            erasure_hints: self.erasure_hints.clone(),
             verus_items: self.verus_items.clone(),
 
             time_verify_crate: Duration::new(0, 0),
@@ -2679,11 +2676,12 @@ impl Verifier {
         }
 
         let erasure_info = ErasureInfo {
-            hir_vir_ids: vec![],
+            local_hir_vir_ids: vec![],
+            binder_hir_vir_ids: vec![],
+            ctor_hir_vir_ids: vec![],
             resolved_calls: vec![],
             resolved_pats: vec![],
             direct_var_modes: vec![],
-            external_functions: vec![],
             ignored_functions: vec![],
             bodies: vec![],
             shadow_check: vec![],
@@ -2893,44 +2891,19 @@ impl Verifier {
         self.vir_crate = Some(vir_crate.clone());
         self.warning_ctx = Some(Arc::new(warning_ctx));
 
-        let erasure_info = ctxt.erasure_info.borrow();
-        let hir_vir_ids = erasure_info.hir_vir_ids.clone();
-        let resolved_calls = erasure_info.resolved_calls.clone();
-        let resolved_pats = erasure_info.resolved_pats.clone();
-        let direct_var_modes = erasure_info.direct_var_modes.clone();
-        let external_functions = erasure_info.external_functions.clone();
-        let ignored_functions = erasure_info.ignored_functions.clone();
-        let bodies = erasure_info.bodies.clone();
-        let shadow_check = erasure_info.shadow_check.clone();
-        let extra_erase_ast_ids = erasure_info.extra_erase_ast_ids.clone();
-        let local_invariant_bodies = erasure_info.local_invariant_bodies.clone();
-        let erasure_hints = crate::erase::ErasureHints {
-            vir_crate: unpruned_crate,
-            hir_vir_ids,
-            resolved_calls,
-            resolved_pats,
-            erasure_modes,
-            direct_var_modes,
-            external_functions,
-            ignored_functions,
-            bodies,
-            shadow_check,
-            extra_erase_ast_ids,
-            local_invariant_bodies,
-        };
-        self.erasure_hints = Some(erasure_hints);
-
         if !self.args.no_lifetime {
             crate::erase::setup_verus_ctxt_for_thir_erasure(
                 tcx,
                 &self.verus_items.as_ref().unwrap(),
-                self.erasure_hints.as_ref().unwrap(),
+                &unpruned_crate,
+                &ctxt.erasure_info.borrow(),
+                &erasure_modes,
             )
             .map_err(|e| (vec![e], Vec::new()))?;
         }
 
         // These can invoke mir_borrowck when opaque types are involved.
-        // Thus, we can only run these after initializing erasure_hints
+        // Thus, we can only run these after calling `setup_verus_ctxt_for_thir_erasure`
         tcx.hir_for_each_module(|module| {
             tcx.ensure_ok().check_private_in_public(module);
             tcx.ensure_ok().check_mod_privacy(module);

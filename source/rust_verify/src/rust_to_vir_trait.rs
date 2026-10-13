@@ -627,13 +627,18 @@ fn make_trait_decl<'tcx>(
         typ_params,
         mut typ_bounds,
         params,
-        ret,
+        outer_ret,
         ens_has_return: _,
         item_kind: _,
-        attrs: _,
-        async_ret: _,
+        attrs,
     } = spec_method.x.clone();
     let mut methodx = method.x.clone();
+    if methodx.attrs.is_async != attrs.is_async {
+        return Err(error(
+            &spec_method.span,
+            "method specification has different async-ness from method",
+        ));
+    }
     while typ_bounds.len() > methodx.typ_bounds.len() {
         // The syntax macro may add Sized bounds to spec_method so that Rust accepts the function.
         // Remove these added Sized bounds so that we can match the remaining bounds.
@@ -686,7 +691,7 @@ fn make_trait_decl<'tcx>(
             ));
         }
     }
-    if !params_equal_opt(&methodx.ret, &ret, false, false) {
+    if !params_equal_opt(&methodx.outer_ret, &outer_ret, false, false) {
         return Err(error(
             &spec_method.span,
             "method specification has a different return from method",
@@ -712,7 +717,7 @@ fn make_trait_decl<'tcx>(
 
     methodx.opaqueness = opaqueness;
     methodx.params = params; // this is important; the correct parameter modes are in spec_method
-    methodx.ret = ret;
+    methodx.outer_ret = outer_ret;
     assert!(matches!(spec_method_info.body_id, CheckItemFnEither::BodyId(_)));
     if !matches!(method_info.body_id, CheckItemFnEither::ParamNames(_)) {
         return Err(error(
