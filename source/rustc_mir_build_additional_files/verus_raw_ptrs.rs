@@ -26,26 +26,30 @@ with a dereference of the permission's contents, and use it in place of the orig
 ```rust
 // Copy
 _ = &Perm_A; _ = &Perm_B;
-_ = &(*(*(*a).x).y).z;
-t = PointsTo::borrow(&Perm_C);                                  // t: &T
+t1 = &(*(*(*a).x).y).z;
+t2 = PointsTo::borrow(&Perm_C);                                 // t2: &T
+t = shared_reference_tie(t2, t1);                               // t: &T
 m = copy (*t).z;
 
 // Assign
 _ = &Perm_A; _ = &Perm_B;
-_ = &mut (*(*(*a).x).y).z;
-t = PointsTo::borrow_mut(&mut Perm_C);                          // t: &mut T
+t1 = &mut (*(*(*a).x).y).z;
+t2 = PointsTo::borrow_mut(&mut Perm_C);                         // t2: &mut T
+t = mutable_reference_tie(t2, t1);                              // t: &mut T
 (*t).z = ...;
 
 // Shared borrow
 _ = &Perm_A; _ = &Perm_B;
-_ = &(*(*(*a).x).y).z;
-t = PointsTo::borrow(&Perm_C);
+t1 = &(*(*(*a).x).y).z;
+t2 = PointsTo::borrow(&Perm_C);
+t = shared_reference_tie(t2, t1);
 r = &(*t).z;
 
 // Mutable borrow
 _ = &Perm_A; _ = &Perm_B;
-_ = &mut (*(*(*a).x).y).z;
-t = PointsTo::borrow_mut(mutable_reference_tie(&mut Perm_C, &mut Shadow_Perm_C));
+t1 = &mut (*(*(*a).x).y).z;
+t2 = PointsTo::borrow_mut(mutable_reference_tie(&mut Perm_C, &mut Shadow_Perm_C));
+t = mutable_reference_tie(t2, t1);
 r = &mut (*t).z;
 
 // Raw borrow
@@ -53,15 +57,18 @@ _ = &Perm_A; _ = &Perm_B;
 r = &raw (*(*(*a).x).y).z;
 ```
 
-Thus the type and lifetime of the value read, written, or borrowed is determined by the
-permission. We still (momentarily) borrow the original place, to ensure that it is
-accessible to Rust (e.g., the pointer variable `a` is initialized). This borrow should be
-momentary since we don't want the lifetimes behind the pointer to have any effect.
+Here `*_reference_tie<'a, T, U>(&'a T, &'a U) -> &'a T` returns its first argument,
+so the type of the value read, written, or borrowed is determined by the permission,
+while the lifetime of the result is tied to both the permission and the original place.
 Note that the permission-rooted place reuses the projections from the original place
 (e.g., `.z`, including any index locals) so there is no re-evaluation of any expressions.
 
-(Of course, the ordinary Rust borrow-checking on exec code, which runs separately,
-still uses the pointer's type.)
+If the permission is inside a `Tracked` (e.g., `Tracked<Option<PointsTo<T>>>`), then getting
+to the `T` requires calls to `Tracked::deref` / `Tracked::deref_mut` as well.
+(See `RawDerefPermissions::outermost` and `PermissionProjection`.)
+
+(Note that the ordinary Rust borrow-checking on exec code, which runs separately,
+uses the pointer's type.)
 
 Notes:
 
@@ -103,7 +110,8 @@ use rustc_hir as hir;
 use rustc_hir::HirId;
 use rustc_middle::mir::{BorrowKind, MutBorrowKind};
 use rustc_middle::thir::{ExprId, ExprKind, LocalVarId, Thir};
-use rustc_middle::ty::{Mutability, TyKind};
+use rustc_abi::{FieldIdx, VariantIdx};
+use rustc_middle::ty::{Mutability, Ty, TyCtxt, TyKind, TypingEnv};
 use rustc_span::Span;
 
 /// How a permission is used (i.e., what kind of borrow we emit for it).
@@ -123,12 +131,17 @@ pub enum PermUsage {
 }
 
 /// The THIR place expressions for a permission.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct PermExprs {
-    /// The permission (of type `PointsTo<T>`)
+    /// The permission (of type `PointsTo<T>`, or a `Tracked` wrapper containing it);
+    /// see `RawDerefPermissions::perm`
     pub perm: ExprId,
     /// The shadow place of the permission, if any
     pub shadow: Option<ExprId>,
+    /// The remaining projections needed to get from `perm` to the `T` in `PointsTo<T>`;
+    /// these are applied by the MIR builder, which emits calls for the non-place projections.
+    /// (See `RawDerefPermissions::outermost`)
+    pub outermost_suffix: Vec<PermissionProjection>,
 }
 
 /// Get all the raw pointer dereferences that make up the given place expression.
@@ -189,7 +202,7 @@ pub(crate) fn deref_post<'tcx>(
     };
     let perm_exprs = match perm {
         None => None,
-        Some(perm) => permission_place(cx, hir_expr.hir_id, hir_expr.span, perm).map(|perm| {
+        Some(perms) => permission_place(cx, hir_expr.hir_id, hir_expr.span, &perms.perm).map(|perm| {
             let shadow = if cx.verus_ctxt.do_time_travel_prevention {
                 crate::verus_time_travel_prevention::shadow_place(
                     cx,
@@ -200,7 +213,11 @@ pub(crate) fn deref_post<'tcx>(
             } else {
                 None
             };
-            PermExprs { perm, shadow }
+            let n = perms.perm.projections.len();
+            assert!(perms.outermost.local == perms.perm.local);
+            assert!(perms.outermost.projections[..n] == perms.perm.projections[..]);
+            let outermost_suffix = perms.outermost.projections[n..].to_vec();
+            PermExprs { perm, shadow, outermost_suffix }
         }),
     };
     cx.verus_ctxt.extra_thir.raw_deref_permissions.insert(arg, perm_exprs);
@@ -252,36 +269,50 @@ fn permission_place<'tcx>(
                 e = expr_id_from_kind(cx, ExprKind::Deref { arg: e }, hir_id, span, ty);
             }
             PermissionProjection::Field { variant, field } => {
-                let TyKind::Adt(adt_def, args) = ty.kind() else {
-                    panic!("Verus Internal Error: permission place: expected ADT type");
-                };
-                let variant_index = if adt_def.is_enum() {
-                    let Some((idx, _)) = adt_def
-                        .variants()
-                        .iter_enumerated()
-                        .find(|(_, v)| v.name.as_str() == variant.as_str())
-                    else {
-                        panic!("Verus Internal Error: permission place: variant not found");
-                    };
-                    idx
-                } else {
-                    rustc_abi::FIRST_VARIANT
-                };
-                let variant_def = adt_def.variant(variant_index);
-                let Some((name, field_def)) = variant_def
-                    .fields
-                    .iter_enumerated()
-                    .find(|(_, f)| f.name.as_str() == field.as_str())
-                else {
-                    panic!("Verus Internal Error: permission place: field not found");
-                };
-                ty = cx.tcx.normalize_erasing_regions(cx.typing_env, field_def.ty(cx.tcx, args));
+                let (_, variant_index, name, field_ty) =
+                    resolve_field(cx.tcx, cx.typing_env, ty, variant, field);
+                ty = field_ty;
                 let kind = ExprKind::Field { lhs: e, variant_index, name };
                 e = expr_id_from_kind(cx, kind, hir_id, span, ty);
+            }
+            PermissionProjection::DerefTracked | PermissionProjection::DerefPointsTo => {
+                panic!("Verus Internal Error: permission place: unexpected projection");
             }
         }
     }
     Some(e)
+}
+
+/// Look up the given field (by name) of the given ADT type.
+/// Returns (is_enum, variant index, field index, field type).
+pub(crate) fn resolve_field<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    typing_env: TypingEnv<'tcx>,
+    ty: Ty<'tcx>,
+    variant: &str,
+    field: &str,
+) -> (bool, VariantIdx, FieldIdx, Ty<'tcx>) {
+    let TyKind::Adt(adt_def, args) = ty.kind() else {
+        panic!("Verus Internal Error: permission place: expected ADT type");
+    };
+    let variant_index = if adt_def.is_enum() {
+        let Some((idx, _)) =
+            adt_def.variants().iter_enumerated().find(|(_, v)| v.name.as_str() == variant)
+        else {
+            panic!("Verus Internal Error: permission place: variant not found");
+        };
+        idx
+    } else {
+        rustc_abi::FIRST_VARIANT
+    };
+    let variant_def = adt_def.variant(variant_index);
+    let Some((field_index, field_def)) =
+        variant_def.fields.iter_enumerated().find(|(_, f)| f.name.as_str() == field)
+    else {
+        panic!("Verus Internal Error: permission place: field not found");
+    };
+    let field_ty = tcx.normalize_erasing_regions(typing_env, field_def.ty(tcx, args));
+    (adt_def.is_enum(), variant_index, field_index, field_ty)
 }
 
 /// Record how the outermost raw pointer dereference of the given place is used.

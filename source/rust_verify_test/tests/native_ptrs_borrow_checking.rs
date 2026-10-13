@@ -1306,3 +1306,88 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_rust_error_msg(err, "borrowed data escapes outside of function")
 }
+
+// Permissions inside a `Tracked` wrapper (where we need to go through `Tracked::deref`
+// to get to the `PointsTo`)
+
+test_verify_one_file! {
+    #[test] lifetimes_behind_pointer_mismatch_tracked verus_code!{
+        use vstd::prelude::*;
+        use vstd::raw_ptr::*;
+
+        fn enforce_static(f: &'static u64) { }
+
+        fn test<'a>(a: *mut &'static u64, m: Tracked<PointsTo<&'a u64>>)
+            requires m.is_init(), m.ptr() == a,
+        {
+            #[verifier::permission("a")]
+            let m = m;
+
+            unsafe {
+                let x = *a;
+                enforce_static(x);
+            }
+        }
+    } => Err(err) => assert_rust_error_msg(err, "borrowed data escapes outside of function")
+}
+
+test_verify_one_file! {
+    #[test] lifetimes_behind_pointer_mismatch_tracked_option verus_code!{
+        use vstd::prelude::*;
+        use vstd::raw_ptr::*;
+
+        fn enforce_static(f: &'static u64) { }
+
+        fn test<'a>(a: *mut &'static u64, m: Tracked<Option<PointsTo<&'a u64>>>)
+            requires m@ is Some, m@.unwrap().is_init(), m@.unwrap().ptr() == a,
+        {
+            #[verifier::permission("a")]
+            let m = m;
+
+            unsafe {
+                let x = *a;
+                enforce_static(x);
+            }
+        }
+    } => Err(err) => assert_rust_error_msg(err, "borrowed data escapes outside of function")
+}
+
+test_verify_one_file! {
+    #[test] lifetimes_behind_pointer_tracked_option_ok verus_code!{
+        use vstd::prelude::*;
+        use vstd::raw_ptr::*;
+
+        fn enforce_static(f: &'static u64) { }
+
+        fn test(a: *mut &'static u64, m: Tracked<Option<PointsTo<&'static u64>>>)
+            requires m@ is Some, m@.unwrap().is_init(), m@.unwrap().ptr() == a,
+        {
+            #[verifier::permission("a")]
+            let mut m = m;
+
+            unsafe {
+                let x = *a;
+                enforce_static(x);
+                let r = &*a;
+                enforce_static(*r);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] tracked_option_perm_borrowed code(verus_code_str! {
+        fn test(a: *mut X, m: Tracked<Option<PointsTo<X>>>)
+            requires m@ is Some, m@.unwrap().is_init(), m@.unwrap().ptr() == a,
+        {
+            #[verifier::permission("a")]
+            let mut m = m;
+
+            unsafe {
+                let r = &mut *a;
+                let z = &m;
+                r.u = 5;
+            }
+        }
+    }) => Err(err) => assert_borrowed_as_mut(err, "m")
+}

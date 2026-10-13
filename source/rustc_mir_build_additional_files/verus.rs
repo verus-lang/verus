@@ -95,7 +95,7 @@ pub struct LocalInvariantBody {
 }
 
 /// A projection in a permission place (see `RawDerefPermission`).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PermissionProjection {
     /// Dereference a mutable reference
     DerefMut,
@@ -105,6 +105,25 @@ pub enum PermissionProjection {
     DerefBox,
     /// Field of a struct or enum variant (looked up by name)
     Field { variant: String, field: String },
+    /// `Tracked<T> -> T` (not a place projection in Rust; the MIR builder emits a call
+    /// to `Deref::deref` or `DerefMut::deref_mut`)
+    DerefTracked,
+    /// `PointsTo<T> -> T` (not a place projection in Rust; the MIR builder emits a call
+    /// to `PointsTo::borrow` or `PointsTo::borrow_mut`)
+    DerefPointsTo,
+}
+
+impl PermissionProjection {
+    /// Can this projection be expressed as a Rust place projection?
+    pub fn is_place_projection(&self) -> bool {
+        match self {
+            PermissionProjection::DerefMut
+            | PermissionProjection::DerefShared
+            | PermissionProjection::DerefBox
+            | PermissionProjection::Field { .. } => true,
+            PermissionProjection::DerefTracked | PermissionProjection::DerefPointsTo => false,
+        }
+    }
 }
 
 /// The permission place to use for a given raw pointer dereference, e.g., `perm`,
@@ -115,6 +134,18 @@ pub struct RawDerefPermission {
     /// HirId of the binder of the permission variable
     pub local: HirId,
     pub projections: Vec<PermissionProjection>,
+}
+
+/// The permission to use for a given raw pointer dereference, in two forms.
+#[derive(Debug, Clone)]
+pub struct RawDerefPermissions {
+    /// Projects to the `PointsTo<T>` (or the `Tracked` it's contained in, if any);
+    /// this is a Rust place. Used when we only need to borrow the permission.
+    pub perm: RawDerefPermission,
+    /// Projects all the way to the `T`; used when the raw pointer dereference is the
+    /// outermost one in a place (see verus_raw_ptrs.rs).
+    /// `perm.projections` is always a prefix of `outermost.projections`.
+    pub outermost: RawDerefPermission,
 }
 
 /// Global context with all information across the krate.
@@ -146,13 +177,14 @@ pub struct VerusErasureCtxt {
     /// For each raw pointer dereference (HirId of the Unary Deref expression)
     /// the permission to use, or None if there is no permission. (See verus_raw_ptrs.rs)
     /// Every raw pointer dereference in Verus-aware code should be in this map.
-    pub raw_deref_permissions: HashMap<HirId, Option<RawDerefPermission>>,
+    pub raw_deref_permissions: HashMap<HirId, Option<RawDerefPermissions>>,
 
     /// Some DefIds from builtin that we'll need to handle directly
     pub erased_ghost_value_fn_def_id: DefId,
     pub shadow_ghost_value_fn_def_id: DefId,
     pub dummy_capture_struct_def_id: DefId,
     pub mutable_reference_tie_fn_def_id: DefId,
+    pub shared_reference_tie_fn_def_id: DefId,
     pub tracked_struct_def_id: DefId,
     /// `vstd::raw_ptr::PointsTo` and its `borrow` and `borrow_mut` functions
     /// (None if vstd is not available)
