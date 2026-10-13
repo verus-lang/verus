@@ -169,7 +169,7 @@ fn permission_place<'tcx>(
         // is captured by the closure.
         cx.tcx.dcx().span_err(
             span,
-            "Verus does not yet support dereferencing a raw pointer inside a closure using a permission declared outside the closure",
+            "Verus does not support dereferencing a raw pointer inside a closure using a permission declared outside the closure",
         );
         return None;
     }

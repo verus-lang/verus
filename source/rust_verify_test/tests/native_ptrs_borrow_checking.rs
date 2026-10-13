@@ -1035,7 +1035,7 @@ test_verify_one_file! {
                 }
             };
         }
-    }) => Err(err) => assert_vir_error_msg(err, "Verus does not yet support dereferencing a raw pointer inside a closure using a permission declared outside the closure")
+    }) => Err(err) => assert_vir_error_msg(err, "Verus does not support dereferencing a raw pointer inside a closure using a permission declared outside the closure")
 }
 
 // This checks our assumption that Rust doesn't allow a move out of a raw ptr, which
