@@ -3688,8 +3688,8 @@ fn binopkind_to_binaryop_inner<'tcx>(
     }
 
     if is_smt_arith(bctx, lhs.span, rhs.span, &lhs.hir_id, &rhs.hir_id)? {
-        let lhs_inner_ty = strip_shared_ref(lhs_ty);
-        let rhs_inner_ty = strip_shared_ref(rhs_ty);
+        let lhs_inner_ty = maybe_strip_shared_ref(lhs_ty);
+        let rhs_inner_ty = maybe_strip_shared_ref(rhs_ty);
         let d0b = if bctx.in_ghost { Div0Behavior::Allow } else { Div0Behavior::Error };
         let vop = match op {
             BinOpKind::Le => BinaryOp::Inequality(InequalityOp::Le),
@@ -4889,7 +4889,7 @@ fn ty_is_bool_or_ref_bool<'tcx>(ty: rustc_middle::ty::Ty<'tcx>) -> bool {
     }
 }
 
-fn strip_shared_ref<'tcx>(ty: rustc_middle::ty::Ty<'tcx>) -> rustc_middle::ty::Ty<'tcx> {
+fn maybe_strip_shared_ref<'tcx>(ty: rustc_middle::ty::Ty<'tcx>) -> rustc_middle::ty::Ty<'tcx> {
     match ty.kind() {
         TyKind::Ref(_, t, rustc_ast::Mutability::Not) => *t,
         _ => ty,
@@ -4900,11 +4900,11 @@ fn ty_is_integer_or_ref_integer<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     ty: rustc_middle::ty::Ty<'tcx>,
 ) -> bool {
-    is_integer_ty(&bctx.ctxt.verus_items, &strip_shared_ref(ty))
+    is_integer_ty(&bctx.ctxt.verus_items, &maybe_strip_shared_ref(ty))
 }
 
 fn ty_is_float_or_ref_float<'tcx>(ty: rustc_middle::ty::Ty<'tcx>) -> bool {
-    strip_shared_ref(ty).is_floating_point()
+    maybe_strip_shared_ref(ty).is_floating_point()
 }
 
 /// Check that we can unambiguously identify a loop inside this loop_isolation_boundary block,
