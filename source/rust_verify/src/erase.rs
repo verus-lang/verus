@@ -6,14 +6,12 @@ use crate::context::ErasureInfo;
 use vir::ast::{Datatype, Dt, Fun, Function, Krate, Mode, ModeWrapperMode, Path, Place, PlaceX};
 use vir::modes::ErasureModes;
 
-use crate::verus_items::{
-    BuiltinTypeItem, DummyCaptureItem, VerusItem, VerusItems, VstdItem,
-};
+use crate::verus_items::{BuiltinTypeItem, DummyCaptureItem, VerusItem, VerusItems, VstdItem};
 use rustc_hir::def_id::LocalDefId;
 use rustc_mir_build_verus::verus::{
     BodyErasure, CallErasure, LoopErasure, LoopSpecEvaluationLocation, NodeErase,
-    PermissionProjection, RawDerefPermission, RawDerefPermissions, TreeErase, VarErasure, VerusErasureCtxt,
-    set_verus_aware_def_ids, set_verus_erasure_ctxt,
+    PermissionProjection, RawDerefPermission, RawDerefPermissions, TreeErase, VarErasure,
+    VerusErasureCtxt, set_verus_aware_def_ids, set_verus_erasure_ctxt,
 };
 use rustc_span::Span;
 use std::collections::HashMap;
@@ -437,15 +435,15 @@ pub(crate) fn setup_verus_ctxt_for_thir_erasure<'tcx>(
             Some(permission_place) => {
                 let perm =
                     permission_place_to_raw_deref_permission(*hir_id, permission_place, false);
-                let outermost =
+                let deep_perm =
                     permission_place_to_raw_deref_permission(*hir_id, permission_place, true);
-                let (Some(perm), Some(outermost)) = (perm, outermost) else {
+                let (Some(perm), Some(deep_perm)) = (perm, deep_perm) else {
                     return Err(vir::messages::error(
                         span,
                         "Verus Internal Error: setup_verus_ctxt_for_thir_erasure failed, unsupported permission place",
                     ));
                 };
-                Some(RawDerefPermissions { perm, outermost })
+                Some(RawDerefPermissions { perm, deep_perm })
             }
         };
         raw_deref_permissions.insert(*hir_id, perm);
@@ -579,23 +577,22 @@ pub(crate) fn setup_verus_aware_ids(crate_items: &crate::external::CrateItems) {
 /// `deref_hir_id` is the HirId of the deref expression; the permission variable is
 /// declared in the same HIR owner.
 ///
-/// If `outermost` is false, the result stops at the `PointsTo` or at the outermost
+/// If `deep` is false, the result stops at the `PointsTo` or at the outermost
 /// `Tracked` wrapper, if any (since we can't project through it in a Rust place;
 /// we would need to call Verus's provided builtin methods, but this wouldn't add
 /// any precision to the analysis, so there's no point).
-/// If `outermost` is true, the result always projects all the way down to the `T`
+/// If `deep` is true, the result always projects all the way down to the `T`
 /// in `PointsTo<T>` (going through any `Tracked` wrappers).
 fn permission_place_to_raw_deref_permission(
     deref_hir_id: HirId,
     place: &Place,
-    outermost: bool,
+    deep: bool,
 ) -> Option<RawDerefPermission> {
-    let place = if outermost { place.clone() } else { cutoff_at_tracked_unwrap(place, place)? };
-    let mut perm =
-        permission_place_to_raw_deref_permission_rec(deref_hir_id, &place, outermost)?;
+    let place = if deep { place.clone() } else { cutoff_at_tracked_unwrap(place, place)? };
+    let mut perm = permission_place_to_raw_deref_permission_rec(deref_hir_id, &place, deep)?;
     // The permission itself (a PointsTo) may be behind implicit dereferences
     push_implicit_derefs(&place.typ, &mut perm.projections)?;
-    if outermost {
+    if deep {
         perm.projections.push(PermissionProjection::DerefPointsTo);
     }
     Some(perm)
@@ -622,7 +619,7 @@ fn cutoff_at_tracked_unwrap(place: &Place, res: &Place) -> Option<Place> {
 fn permission_place_to_raw_deref_permission_rec(
     deref_hir_id: HirId,
     place: &Place,
-    outermost: bool,
+    deep: bool,
 ) -> Option<RawDerefPermission> {
     use vir::ast::VarIdentDisambiguate;
     match &place.x {
@@ -637,22 +634,19 @@ fn permission_place_to_raw_deref_permission_rec(
             Some(RawDerefPermission { local, projections: vec![] })
         }
         PlaceX::DerefMut(p) => {
-            let mut perm =
-                permission_place_to_raw_deref_permission_rec(deref_hir_id, p, outermost)?;
+            let mut perm = permission_place_to_raw_deref_permission_rec(deref_hir_id, p, deep)?;
             push_implicit_derefs(&p.typ, &mut perm.projections)?;
             perm.projections.push(PermissionProjection::DerefMut);
             Some(perm)
         }
-        PlaceX::ModeUnwrap(p, ModeWrapperMode::Proof) if outermost => {
-            let mut perm =
-                permission_place_to_raw_deref_permission_rec(deref_hir_id, p, outermost)?;
+        PlaceX::ModeUnwrap(p, ModeWrapperMode::Proof) if deep => {
+            let mut perm = permission_place_to_raw_deref_permission_rec(deref_hir_id, p, deep)?;
             push_implicit_derefs(&p.typ, &mut perm.projections)?;
             perm.projections.push(PermissionProjection::DerefTracked);
             Some(perm)
         }
         PlaceX::Field(opr, p) => {
-            let mut perm =
-                permission_place_to_raw_deref_permission_rec(deref_hir_id, p, outermost)?;
+            let mut perm = permission_place_to_raw_deref_permission_rec(deref_hir_id, p, deep)?;
             push_implicit_derefs(&p.typ, &mut perm.projections)?;
             perm.projections.push(PermissionProjection::Field {
                 variant: (*opr.variant).clone(),

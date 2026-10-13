@@ -38,14 +38,13 @@ use crate::builder::{BasicBlock, BorrowKind, Builder, PlaceBuilder, Rvalue, Term
 use crate::builder::{BlockAnd, BlockAndExtension};
 use crate::verus::{ExtraThir, PermissionProjection};
 use crate::verus_raw_ptrs::{PermExprs, PermUsage, place_raw_derefs, resolve_field};
+use rustc_hir::LangItem;
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::{
-    CallSource, Const, ConstOperand, MutBorrowKind, Operand, Place, PlaceElem,
-    UnwindAction,
+    CallSource, Const, ConstOperand, MutBorrowKind, Operand, Place, PlaceElem, UnwindAction,
 };
 use rustc_middle::thir::ExprId;
 use rustc_middle::ty::{GenericArg, Mutability, TyKind};
-use rustc_hir::LangItem;
 use rustc_span::{Span, Spanned, sym};
 use std::collections::{HashMap, HashSet};
 
@@ -457,7 +456,9 @@ fn root_at_permission<'a, 'tcx>(
                             Mutability::Mut => erasure_ctxt.points_to_borrow_mut_fn_def_id,
                         };
                         let Some(borrow_fn) = borrow_fn else {
-                            panic!("Verus Internal Error: vstd::raw_ptr::PointsTo::borrow not found");
+                            panic!(
+                                "Verus Internal Error: vstd::raw_ptr::PointsTo::borrow not found"
+                            );
                         };
                         let pointee_ty = args.type_at(0);
                         (borrow_fn, pointee_ty, pointee_ty)

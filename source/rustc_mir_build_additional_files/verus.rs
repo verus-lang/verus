@@ -142,10 +142,10 @@ pub struct RawDerefPermissions {
     /// Projects to the `PointsTo<T>` (or the `Tracked` it's contained in, if any);
     /// this is a Rust place. Used when we only need to borrow the permission.
     pub perm: RawDerefPermission,
-    /// Projects all the way to the `T`; used when the raw pointer dereference is the
+    /// Projects all the way to the `T`; for use when the raw pointer dereference is the
     /// outermost one in a place (see verus_raw_ptrs.rs).
-    /// `perm.projections` is always a prefix of `outermost.projections`.
-    pub outermost: RawDerefPermission,
+    /// `perm.projections` is always a prefix of `deep_perm.projections`.
+    pub deep_perm: RawDerefPermission,
 }
 
 /// Global context with all information across the krate.

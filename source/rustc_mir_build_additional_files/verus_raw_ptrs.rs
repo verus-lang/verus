@@ -106,11 +106,11 @@ Our lowering is split across THIR construction and MIR building:
 
 use crate::thir::cx::ThirBuildCx;
 use crate::verus::{PermissionProjection, RawDerefPermission, expr_id_from_kind};
+use rustc_abi::{FieldIdx, VariantIdx};
 use rustc_hir as hir;
 use rustc_hir::HirId;
 use rustc_middle::mir::{BorrowKind, MutBorrowKind};
 use rustc_middle::thir::{ExprId, ExprKind, LocalVarId, Thir};
-use rustc_abi::{FieldIdx, VariantIdx};
 use rustc_middle::ty::{Mutability, Ty, TyCtxt, TyKind, TypingEnv};
 use rustc_span::Span;
 
@@ -202,23 +202,25 @@ pub(crate) fn deref_post<'tcx>(
     };
     let perm_exprs = match perm {
         None => None,
-        Some(perms) => permission_place(cx, hir_expr.hir_id, hir_expr.span, &perms.perm).map(|perm| {
-            let shadow = if cx.verus_ctxt.do_time_travel_prevention {
-                crate::verus_time_travel_prevention::shadow_place(
-                    cx,
-                    hir_expr.hir_id,
-                    hir_expr.span,
-                    perm,
-                )
-            } else {
-                None
-            };
-            let n = perms.perm.projections.len();
-            assert!(perms.outermost.local == perms.perm.local);
-            assert!(perms.outermost.projections[..n] == perms.perm.projections[..]);
-            let outermost_suffix = perms.outermost.projections[n..].to_vec();
-            PermExprs { perm, shadow, outermost_suffix }
-        }),
+        Some(perms) => {
+            permission_place(cx, hir_expr.hir_id, hir_expr.span, &perms.perm).map(|perm| {
+                let shadow = if cx.verus_ctxt.do_time_travel_prevention {
+                    crate::verus_time_travel_prevention::shadow_place(
+                        cx,
+                        hir_expr.hir_id,
+                        hir_expr.span,
+                        perm,
+                    )
+                } else {
+                    None
+                };
+                let n = perms.perm.projections.len();
+                assert!(perms.deep_perm.local == perms.perm.local);
+                assert!(perms.deep_perm.projections[..n] == perms.perm.projections[..]);
+                let outermost_suffix = perms.deep_perm.projections[n..].to_vec();
+                PermExprs { perm, shadow, outermost_suffix }
+            })
+        }
     };
     cx.verus_ctxt.extra_thir.raw_deref_permissions.insert(arg, perm_exprs);
 }
