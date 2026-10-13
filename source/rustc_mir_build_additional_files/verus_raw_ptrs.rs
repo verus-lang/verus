@@ -8,7 +8,7 @@ Verus's SMT encoding only checks the permission is _correct_; we still need to m
 the permission is actually _available_ (e.g., not moved, not borrowed, not behind a shared
 reference if we need to write) at the point where the pointer is dereferenced.
 
-To do this, we emit borrows of the permission next to each use of a place containing
+To do this, we emit borrows of the permission along with each use of a place containing
 a raw pointer dereference. For example, given a place like `(*(*(*a).x).y).z`
 (where each `*` is a raw pointer dereference) with permissions `Perm_A`, `Perm_B`, `Perm_C`
 (for `a`, `(*a).x`, and `(*(*a).x).y`), the inner pointers `a` and `(*a).x` are only read,
@@ -17,9 +17,11 @@ so we emit `_ = &Perm_A; _ = &Perm_B;`.
 The outermost permission `Perm_C: PointsTo<T>` is used depending on how the place is used.
 It's not enough to just borrow `Perm_C`; we also need the type `T` (in particular, any
 lifetimes in `T`) to determine the type of the value being read, written, or borrowed,
-since the type of the pointee `*(*(*a).x).y` is irrelevant. (A raw pointer `*mut &'a u64`
-might point to memory that actually contains a `&'static u64` or vice versa; the `PointsTo`
-determines which.)
+since `T` might have lifetime variables that need to be propagated.
+(Verus already checks that the types agree between the `*mut T` and `Points<T>`,
+but only up to lifetimes. So we still need to check that the lifetimes work out,
+keeping in mind it's the lifetimes on the `PointsTo<T>` that matters, not the raw pointer.
+
 Thus we construct a "permission-rooted place", replacing the pointer dereference
 with a dereference of the permission's contents, and use it in place of the original:
 
@@ -65,10 +67,7 @@ Note that the permission-rooted place reuses the projections from the original p
 
 If the permission is inside a `Tracked` (e.g., `Tracked<Option<PointsTo<T>>>`), then getting
 to the `T` requires calls to `Tracked::deref` / `Tracked::deref_mut` as well.
-(See `RawDerefPermissions::outermost` and `PermissionProjection`.)
-
-(Note that the ordinary Rust borrow-checking on exec code, which runs separately,
-uses the pointer's type.)
+(See `RawDerefPermissions::deep_perm` and `PermissionProjection`.)
 
 Notes:
 
@@ -140,13 +139,13 @@ pub struct PermExprs {
     pub shadow: Option<ExprId>,
     /// The remaining projections needed to get from `perm` to the `T` in `PointsTo<T>`;
     /// these are applied by the MIR builder, which emits calls for the non-place projections.
-    /// (See `RawDerefPermissions::outermost`)
+    /// (See `RawDerefPermissions::deep_perm`)
     pub outermost_suffix: Vec<PermissionProjection>,
 }
 
 /// Get all the raw pointer dereferences that make up the given place expression.
 /// Returns the pointer operands, from the outermost to the innermost.
-/// The bool is true if there is any dereference (raw or otherwise) "above"
+/// The bool is true if there is any non-raw dereference "above"
 /// the outermost raw pointer dereference, i.e., if using the place would actually require
 /// reading through the outermost pointer, even if the place is only raw-borrowed.
 ///
@@ -222,7 +221,8 @@ pub(crate) fn deref_post<'tcx>(
             })
         }
     };
-    cx.verus_ctxt.extra_thir.raw_deref_permissions.insert(arg, perm_exprs);
+    let found = cx.verus_ctxt.extra_thir.raw_deref_permissions.insert(arg, perm_exprs);
+    assert!(found.is_none());
 }
 
 /// Construct the THIR place expression for the given permission.
@@ -342,10 +342,10 @@ pub(crate) fn raw_borrow_post<'tcx>(
     }
     // A raw borrow doesn't access the memory pointed to by the outermost pointer
     // unless we need to go through some other pointer stored in that memory.
+    // If we do need to follow the pointer, we only need to read.
     let usage = match (deref_above_outermost, mutability) {
         (false, _) => PermUsage::Skip,
-        (true, Mutability::Not) => PermUsage::Read,
-        (true, Mutability::Mut) => PermUsage::Write,
+        (true, Mutability::Not | Mutability::Mut) => PermUsage::Read,
     };
     cx.verus_ctxt.extra_thir.raw_deref_outer_usage.insert(ptrs[0], usage);
 }
