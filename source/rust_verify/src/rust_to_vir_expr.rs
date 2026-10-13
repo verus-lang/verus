@@ -4811,7 +4811,7 @@ pub(crate) fn deref_mut(bctx: &BodyCtxt, span: Span, place: &Place) -> Result<Pl
     //  - dereference is not inside an `old` node
     //  - there is no `old` node between the dereference and the variable
     if bctx.in_postcondition && !bctx.in_old {
-        if let Some(local_place) = vir::ast_util::place_get_local(place) {
+        if let Some(local_place) = vir::ast_util::place_get_local_physical(place) {
             let PlaceX::Local(name) = &local_place.x else { unreachable!() };
             if bctx.is_param_for_innermost_fn_or_non_spec_closure(name) {
                 return Err(vir::messages::error(

@@ -429,3 +429,26 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_vir_error_msg(err, "variable `m` is not marked mutable")
 }
+
+test_verify_one_file! {
+    #[test] closure_captures_ptr verus_code!{
+        use vstd::prelude::*;
+        use vstd::raw_ptr::*;
+
+        struct X { u: u64 }
+
+        fn test(a: *mut u64, m: Tracked<PointsTo<u64>>)
+            requires m.is_init(), m.ptr() == a,
+        {
+            let mut a = a;
+            let z = |m: Tracked<PointsTo<u64>>|
+                requires m.is_init(), m.ptr() == a,
+            {
+                #[verifier::permission("a")]
+                let mut m = m;
+                unsafe { *a = 20; }
+            };
+            z(m);
+        }
+    } => Ok(())
+}

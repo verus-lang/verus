@@ -1231,7 +1231,7 @@ fn check_place(
     // Thus, for non-mut, we record the mode of the *whole expression*, and for mut,
     // we stor the mode of the local (the second case is in `check_place_rec`).
     if !access.is_mut() {
-        if let Some(var_place) = crate::ast_util::place_get_local(place) {
+        if let Some(var_place) = crate::ast_util::place_get_local_physical(place) {
             let var_mode = match &var_place.x {
                 PlaceX::Local(var) => typing.get(var, &place.span)?.0,
                 _ => unreachable!(),
