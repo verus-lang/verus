@@ -1485,12 +1485,12 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         _ => ok,
                     }
                 }
-                ToDyn(_) => Ok(e),
+                ToDyn(_) => ok,
+                HasResolved(_) => ok,
                 CustomErr(_) => Ok(e),
                 AutoDecreases => Ok(e),
                 AutoLoopEnsures => Ok(e),
                 ProofNote(_) => Ok(e),
-                HasResolved(_) => Ok(e),
                 LoopIsolationBoundary(_) => Ok(e),
             }
         }
