@@ -579,8 +579,10 @@ pub(crate) fn setup_verus_aware_ids(crate_items: &crate::external::CrateItems) {
 /// `deref_hir_id` is the HirId of the deref expression; the permission variable is
 /// declared in the same HIR owner.
 ///
-/// If `outermost` is false, the result stops at the `PointsTo` (or at the outermost
-/// `Tracked` wrapper, if any, since we can't project through it in a Rust place).
+/// If `outermost` is false, the result stops at the `PointsTo` or at the outermost
+/// `Tracked` wrapper, if any (since we can't project through it in a Rust place;
+/// we would need to call Verus's provided builtin methods, but this wouldn't add
+/// any precision to the analysis, so there's no point).
 /// If `outermost` is true, the result always projects all the way down to the `T`
 /// in `PointsTo<T>` (going through any `Tracked` wrappers).
 fn permission_place_to_raw_deref_permission(

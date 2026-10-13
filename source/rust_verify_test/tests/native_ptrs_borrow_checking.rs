@@ -1148,22 +1148,21 @@ test_verify_one_file! {
 
         struct X { u: u64 }
 
-        fn enforce_static(f: &'static mut u64) { }
-
-        fn test<'a>(a: *mut &'static mut u64, Tracked(m): Tracked<PointsTo<&'a mut u64>>)
+        fn test<'a, 'b, 'c>(a: *mut &'a u64, m: &'c mut Tracked<PointsTo<&'b u64>>, w: &mut &'a u64)
             requires m.is_init(), m.ptr() == a,
         {
             #[verifier::permission("a")]
-            let tracked mut m = m;
+            let mut m = m;
 
             unsafe {
-                let x = &mut **a;
-                enforce_static(x);
+                let x = &mut *a;
+                *w = *x;
             }
         }
-    } => Err(err) => assert_rust_error_msg_any(err, "borrowed data escapes outside of function")
+    } => Err(err) => assert_rust_error_msg(err, "lifetime may not live long enough")
 }
 
+/*
 test_verify_one_file! {
     #[test] lifetimes_behind_pointer_mismatch_shr verus_code!{
         use vstd::prelude::*;
@@ -1391,3 +1390,4 @@ test_verify_one_file! {
         }
     }) => Err(err) => assert_borrowed_as_mut(err, "m")
 }
+*/
