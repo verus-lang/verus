@@ -4,6 +4,80 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
+    #[test] dyn_self_quantifier_ensures verus_code! {
+        trait T {
+            spec fn f(&self) -> int;
+            proof fn all_same(tracked &self)
+                ensures forall|b: &Self| #[trigger] b.f() == self.f();
+        }
+        proof fn test(tracked d: &dyn T) { d.all_same(); }
+    } => Err(err) => assert_vir_error_msg(err, "uses Self outside of the receiver")
+}
+
+test_verify_one_file! {
+    #[test] dyn_self_quantifier_requires verus_code! {
+        trait T {
+            spec fn f(&self) -> int;
+            proof fn bogus(tracked &self)
+                requires exists|b: &Self| #[trigger] b.f() == 2;
+        }
+        proof fn test(tracked d: &dyn T) { d.bogus(); }
+    } => Err(err) => assert_vir_error_msg(err, "uses Self outside of the receiver")
+}
+
+test_verify_one_file! {
+    #[test] dyn_self_quantifier_helper verus_code! {
+        spec fn equal<A: ?Sized>(a: &A, b: &A) -> bool { a == b }
+        spec fn all_same<A: ?Sized>(a: &A) -> bool {
+            forall|b: &A| #[trigger] equal(b, a)
+        }
+        trait T {
+            proof fn all_same(tracked &self) ensures all_same(self);
+        }
+        proof fn test(tracked d: &dyn T) { d.all_same(); }
+    } => Err(err) => assert_vir_error_msg(err, "uses Self outside of the receiver")
+}
+
+test_verify_one_file! {
+    #[test] dyn_self_quantifier_nested verus_code! {
+        use vstd::prelude::*;
+        trait T {
+            proof fn property(tracked &self)
+                ensures forall|s: Seq<&Self>| #[trigger] s.len() >= 0;
+        }
+        proof fn test(tracked d: &dyn T) { d.property(); }
+    } => Err(err) => assert_vir_error_msg(err, "uses Self outside of the receiver")
+}
+
+test_verify_one_file! {
+    #[test] dyn_self_quantifier_mask verus_code! {
+        use vstd::prelude::*;
+        trait T {
+            spec fn f(&self) -> int;
+            proof fn work(tracked &self)
+                opens_invariants if exists|b: &Self| #[trigger] b.f() == 2 {
+                    ISet::<int>::empty()
+                } else {
+                    ISet::<int>::full()
+                };
+        }
+        proof fn test(tracked d: &dyn T) { d.work(); }
+    } => Err(err) => assert_vir_error_msg(err, "uses Self outside of the receiver")
+}
+
+test_verify_one_file! {
+    #[test] dyn_self_quantifier_unwind verus_code! {
+        trait T {
+            spec fn f(&self) -> int;
+            fn work(&self)
+                opens_invariants none
+                no_unwind when exists|b: &Self| #[trigger] b.f() == 2;
+        }
+        fn test(d: &dyn T) { d.work(); }
+    } => Err(err) => assert_vir_error_msg(err, "uses Self outside of the receiver")
+}
+
+test_verify_one_file! {
     #[test] test_dyn verus_code! {
         use std::rc::Rc;
         use std::sync::Arc;

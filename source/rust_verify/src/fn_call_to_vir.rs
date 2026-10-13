@@ -254,7 +254,7 @@ fn fn_call_or_assoc_const_to_vir<'tcx>(
 
                 let Some(vir::ast::ImplPath::TraitImplPath(impl_path)) = self_trait_impl_path
                 else {
-                    panic!("{} {:?}", "could not resolve call to trait default method", expr.span);
+                    panic!("{} {:?}", "could not resolve call to trait provided method", expr.span);
                 };
 
                 let f = Arc::new(FunX { path: bctx.ctxt.def_id_to_vir_path(did) });
@@ -429,21 +429,6 @@ pub(crate) fn call_index<'tcx>(
     call_overloaded_method(bctx, span, expr_typ, trait_fun_id, args, trait_args)
 }
 
-/// Emit a call to unary method call (Neg or Not)
-pub(crate) fn call_unary_method<'tcx>(
-    bctx: &BodyCtxt<'tcx>,
-    span: Span,
-    expr_typ: Typ,
-    trait_fun_id: DefId,
-    arg: vir::ast::Expr,
-    arg_ty: rustc_middle::ty::Ty<'tcx>,
-) -> Result<vir::ast::Expr, VirErr> {
-    let self_ty = arg_ty;
-    let trait_args = bctx.ctxt.tcx.mk_args(&[GenericArg::from(self_ty)]);
-    let args = Arc::new(vec![arg]);
-    call_overloaded_method(bctx, span, expr_typ, trait_fun_id, args, trait_args)
-}
-
 /// Common logic for all the overloaded methods
 pub(crate) fn call_overloaded_method<'tcx>(
     bctx: &BodyCtxt<'tcx>,
@@ -472,8 +457,35 @@ pub(crate) fn call_overloaded_method<'tcx>(
                 is_trait_default: false,
             }
         }
+        ResolutionResult::Resolved {
+            impl_def_id: _,
+            impl_args: _,
+            impl_item_args: _,
+            resolved_item: ResolvedItem::FromTrait(did, args),
+        } => {
+            let typs = mk_typ_args(bctx, args, did, span)?;
+
+            let mut self_trait_impl_path = None;
+            let trait_id = tcx.trait_of_assoc(did).unwrap();
+            let remove_self_trait_bound = Some((trait_id, &mut self_trait_impl_path));
+            let impl_paths = get_impl_paths(bctx, did, args, remove_self_trait_bound, false, span)?;
+
+            let Some(vir::ast::ImplPath::TraitImplPath(impl_path)) = self_trait_impl_path else {
+                panic!("{} {:?}", "could not resolve call to trait provided method", span);
+            };
+
+            let f = Arc::new(FunX { path: bctx.ctxt.def_id_to_vir_path(did) });
+            let f = vir::def::trait_inherit_default_name(&f, &impl_path);
+
+            vir::ast::CallTargetKind::DynamicResolved {
+                resolved: f,
+                typs,
+                impl_paths,
+                is_trait_default: true,
+            }
+        }
         ResolutionResult::Unresolved => vir::ast::CallTargetKind::Dynamic,
-        _ => crate::internal_err!(span, "unexpected deref"),
+        _ => crate::internal_err!(span, "unexpected ResolutionResult"),
     };
 
     let autospec_usage = if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
@@ -2752,7 +2764,7 @@ fn extract_choose<'tcx>(
                 let name = pat_to_var(x.pat)?;
                 let vir_expr = bctx.spanned_typed_new(x.span, &typ, ExprX::Var(name.clone()));
                 let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-                erasure_info.hir_vir_ids.push((Some(x.pat.hir_id), vir_expr.span.id));
+                erasure_info.local_hir_vir_ids.push((None, vir_expr.span.id));
                 vars.push(vir_expr);
                 params.push(Arc::new(VarBinderX { name, a: typ }));
             }

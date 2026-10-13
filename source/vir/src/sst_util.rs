@@ -1050,6 +1050,7 @@ impl LocalDeclKind {
             | LocalDeclKind::ExecClosureRet
             | LocalDeclKind::Nondeterministic
             | LocalDeclKind::OpenInvariantInnerTemp
+            | LocalDeclKind::LoopBreakValue
             | LocalDeclKind::BorrowMut => false,
         }
     }

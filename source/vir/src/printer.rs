@@ -317,8 +317,10 @@ impl ToDebugSNode for FunctionX {
                 {self.typ_bounds.to_node(opts)}
                 {Node::Atom(":params".to_string())}
                 {self.params.to_node(opts)}
-                {Node::Atom(":ret".to_string())}
-                {self.ret.to_node(opts)}
+                {Node::Atom(":outer_ret".to_string())}
+                {self.outer_ret.to_node(opts)}
+                {Node::Atom(":inner_ret".to_string())}
+                {self.inner_ret.to_node(opts)}
                 {Node::Atom(":require".to_string())}
                 {self.require.to_node(opts)}
                 {Node::Atom(":ensure".to_string())}

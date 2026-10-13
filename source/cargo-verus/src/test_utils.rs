@@ -24,6 +24,7 @@ pub struct MockPackage {
     deps: Vec<(DepKind, Option<String>, MockDep)>,
     features: Vec<String>,
     verus_verify: Option<bool>,
+    trusted_crates: Vec<String>,
     verus_fmt_as_rust: Option<bool>,
     is_vstd: bool,
 }
@@ -210,6 +211,7 @@ impl MockPackage {
             deps: vec![],
             features: vec![],
             verus_verify: None,
+            trusted_crates: vec![],
             verus_fmt_as_rust: None,
             is_vstd: false,
         }
@@ -267,6 +269,11 @@ impl MockPackage {
 
     pub fn verify(mut self, setting: bool) -> Self {
         self.verus_verify = Some(setting);
+        self
+    }
+
+    pub fn trusted_crates(mut self, names: impl IntoIterator<Item = impl AsRef<str>>) -> Self {
+        self.trusted_crates.extend(names.into_iter().map(|name| name.as_ref().to_owned()));
         self
     }
 
@@ -387,6 +394,9 @@ impl MockPackage {
         let mut verus_metadata_lines = vec![];
         if let Some(verus_verify) = self.verus_verify {
             verus_metadata_lines.push(format!("verify = {verus_verify}"));
+        }
+        if !self.trusted_crates.is_empty() {
+            verus_metadata_lines.push(format!("trusted_crates = {:?}", self.trusted_crates));
         }
         if let Some(verus_fmt_as_rust) = self.verus_fmt_as_rust {
             verus_metadata_lines.push(format!("fmt-as-rust = {verus_fmt_as_rust}"));
