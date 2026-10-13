@@ -350,8 +350,16 @@ fn simplify_one_expr(
             // However, much of the time it _does_ get caught by borrowck.
             // This check is in ast_simplify because it's after borrowck
             // (borrowck errors look nicer).
-            if !crate::ast_util::place_has_deref_mut_on_logical_path(place)
-                && let Some(local) = crate::ast_util::place_get_local_logical(place)
+            let mutated_place = match crate::ast_util::place_get_deref_raw_permission_place(place) {
+                None => place.clone(),
+                Some(None) => {
+                    // no check
+                    return Ok(expr.clone());
+                }
+                Some(Some(p)) => p.clone(),
+            };
+            if !crate::ast_util::place_has_deref_mut_or_raw(&mutated_place)
+                && let Some(local) = crate::ast_util::place_get_local_logical(&mutated_place)
             {
                 let PlaceX::Local(x) = &local.x else { unreachable!() };
                 let x = match state.rename_vars_reverse.get(x) {

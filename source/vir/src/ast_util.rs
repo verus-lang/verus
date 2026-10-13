@@ -1428,6 +1428,22 @@ pub fn place_get_local_logical(p: &Place) -> Option<Place> {
     }
 }
 
+pub fn place_get_deref_raw_permission_place(p: &Place) -> Option<Option<Place>> {
+    match &p.x {
+        PlaceX::Local(_) => None,
+        PlaceX::Temporary(_) => None,
+        PlaceX::ModeUnwrap(p, _)
+        | PlaceX::WithExpr(_, p)
+        | PlaceX::Index(p, _, _, _)
+        | PlaceX::DerefMut(p)
+        | PlaceX::Field(_, p)
+        | PlaceX::UserDefinedTypInvariantObligation(p, _) => {
+            place_get_deref_raw_permission_place(p)
+        }
+        PlaceX::DerefRaw(_, perm_place) => Some(perm_place.clone()),
+    }
+}
+
 /// The "physical" local is the one you get if, when encountering a `DerefRaw`, you
 /// descend into the pointer place.
 pub fn place_get_local_physical(p: &Place) -> Option<Place> {
