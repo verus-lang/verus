@@ -327,7 +327,9 @@ impl<'tcx> crate::context::ContextX<'tcx> {
                     vir::ast_visitor::map_stmt_spans(stmt, &mut |span| {
                         let mut span = span.clone();
                         span.id = self.spans.get_next_span_id();
-                        self.erasure_info.borrow_mut().hir_vir_ids.push((None, span.id));
+                        self.erasure_info.borrow_mut().local_hir_vir_ids.push((None, span.id));
+                        self.erasure_info.borrow_mut().binder_hir_vir_ids.push((None, span.id));
+                        self.erasure_info.borrow_mut().ctor_hir_vir_ids.push((None, span.id));
                         span
                     })
                 })
