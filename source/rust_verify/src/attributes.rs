@@ -625,6 +625,12 @@ pub(crate) fn parse_attrs(
                 {
                     v.push(Attr::Permission(r.clone()))
                 }
+                AttrTree::Fun(span, arg, _) if arg == "permission" => {
+                    return err_span(
+                        *span,
+                        "expected a string literal (e.g., `#[verifier::permission(\"x\")]`)",
+                    );
+                }
                 AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, r, None)]))
                     if arg == "deprecated_postcondition_mut_ref_style" && r == "true" =>
                 {
