@@ -494,6 +494,9 @@ impl ExpX {
             NullaryOpr(crate::ast::NullaryOpr::TraitBound(..)) => ("".to_string(), 99),
             NullaryOpr(crate::ast::NullaryOpr::TypEqualityBound(..)) => ("".to_string(), 99),
             NullaryOpr(crate::ast::NullaryOpr::ConstTypBound(..)) => ("".to_string(), 99),
+            NullaryOpr(crate::ast::NullaryOpr::TypeTag(t)) => {
+                (format!("type_id({:?})", t).to_string(), 99)
+            }
             Unary(op, exp) => match op {
                 UnaryOp::Not | UnaryOp::BitNot(_) => {
                     (format!("!{}", exp.x.to_string_prec(global, 99)), 90)
