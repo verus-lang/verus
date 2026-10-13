@@ -1,12 +1,12 @@
-use crate::ast::{FieldOpr, Typ, TypX, UnaryOp, UnaryOpr, VarIdent};
+use crate::ast::{CrateId, Dt, FieldOpr, Typ, TypX, UnaryOp, UnaryOpr, VarIdent};
 use crate::ast_util::undecorate_typ;
-use crate::def::Spanned;
+use crate::def::{Spanned, suffix_global_id};
 use crate::messages::Span;
 use crate::poly::typ_is_poly;
 use crate::sst::{
     BinaryOp, Dest, Exp, ExpX, LocalDecl, LocalDeclKind, Pars, Stm, StmX, Stms, UniqueIdent,
 };
-use crate::sst_to_air::{apply_field, try_unbox};
+use crate::sst_to_air::{apply_field, fun_to_air_ident, try_unbox};
 use crate::sst_visitor::exp_visitor_check;
 use air::ast::{ExprX, Ident, StmtX};
 use air::scope_map::ScopeMap;
@@ -970,7 +970,49 @@ impl SublocationTree {
                 Self::gather_preserved_locations(ctx, &children[0].1, &c1, &c2, out);
             }
             ProjectionKind::PointsToContents => {
-                todo!(); // TODO(native_raw_ptrs)
+                assert!(children.len() == 1);
+
+                let mut f1 = loc1.clone();
+                let mut f2 = loc2.clone();
+                let mut base_typ = &node.typ;
+
+                let undecorated_typ = undecorate_typ(&node.typ);
+                if let TypX::Boxed(native_typ) = &*undecorated_typ
+                    && !typ_is_poly(ctx, native_typ)
+                {
+                    f1 = try_unbox(ctx, f1, native_typ).expect("try_unbox");
+                    f2 = try_unbox(ctx, f2, native_typ).expect("try_unbox");
+                    base_typ = native_typ;
+                }
+                let t_typ = match &*undecorate_typ(base_typ) {
+                    TypX::Datatype(Dt::Path(_), args, _) => args[0].clone(),
+                    _ => panic!("internal error: gather_preserved_locations expected PointsTo"),
+                };
+
+                let mut loc1_args = crate::sst_to_air::typ_to_ids(ctx, &t_typ);
+                let mut loc2_args = loc1_args.clone();
+                let f1 = crate::sst_to_air::as_box(ctx, f1, base_typ);
+                let f2 = crate::sst_to_air::as_box(ctx, f2, base_typ);
+                loc1_args.push(f1.clone());
+                loc2_args.push(f2.clone());
+                let loc1_args = Arc::new(loc1_args);
+                let loc2_args = Arc::new(loc2_args);
+
+                for f in &[
+                    crate::fun!(CrateId::Vstd => "raw_ptr", "points_to_ptr"),
+                    crate::fun!(CrateId::Vstd => "raw_ptr", "points_to_init"),
+                ] {
+                    let name = suffix_global_id(&fun_to_air_ident(&ctx.name_ctxt, &f));
+                    let p1 = Arc::new(ExprX::Apply(name.clone(), loc1_args.clone()));
+                    let p2 = Arc::new(ExprX::Apply(name.clone(), loc2_args.clone()));
+                    out.push((p1, p2));
+                }
+
+                let f = crate::fun!(CrateId::Vstd => "raw_ptr", "points_to_contents");
+                let name = suffix_global_id(&fun_to_air_ident(&ctx.name_ctxt, &f));
+                let p1 = Arc::new(ExprX::Apply(name.clone(), loc1_args.clone()));
+                let p2 = Arc::new(ExprX::Apply(name.clone(), loc2_args.clone()));
+                Self::gather_preserved_locations(ctx, &children[0].1, &p1, &p2, out);
             }
             ProjectionKind::Field(first_field_opr) => {
                 let datatype = &ctx.datatype_map[&first_field_opr.datatype];
