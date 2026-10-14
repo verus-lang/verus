@@ -337,14 +337,14 @@ impl PointsToUntyped {
             self.provenance_not_none();
             self.ptr_bounds();
         }
-        let ghost p1 = ptr_mut_from_data::<[u8]>(
+        let p1 = ptr_mut_from_data::<[u8]>(
             PtrData {
                 addr: self.ptr()@.addr,
                 provenance: self.ptr()@.provenance,
                 metadata: mid as usize,
             },
         );
-        let ghost p2 = ptr_mut_from_data::<[u8]>(
+        let p2 = ptr_mut_from_data::<[u8]>(
             PtrData {
                 addr: (self.ptr()@.addr + mid) as usize,
                 provenance: self.ptr()@.provenance,
@@ -416,19 +416,19 @@ impl PointsToUntyped {
     //             &&& final(self).bytes() == final(first).bytes() + final(second).bytes()
     //         },
     // {
-    //     let ghost old_self = *self;
+    //     let old_self = *self;
     //     if old_self.len() != 0 {
     //         self.provenance_not_none();
     //         self.ptr_bounds();
     //     }
-    //     let ghost p1 = ptr_mut_from_data::<[u8]>(
+    //     let p1 = ptr_mut_from_data::<[u8]>(
     //         PtrData {
     //             addr: old_self.ptr()@.addr,
     //             provenance: old_self.ptr()@.provenance,
     //             metadata: mid as usize,
     //         },
     //     );
-    //     let ghost p2 = ptr_mut_from_data::<[u8]>(
+    //     let p2 = ptr_mut_from_data::<[u8]>(
     //         PtrData {
     //             addr: (old_self.ptr()@.addr + mid) as usize,
     //             provenance: old_self.ptr()@.provenance,
@@ -1068,6 +1068,27 @@ impl<T> PointsTo<T> {
     {
     }
 
+    /// If `old` and `new` are both well-formed with the same pointer, then `new` keeps `old`'s
+    /// underlying pointers and length, and still satisfies decode validity.
+    pub proof fn lemma_ptrs_len_same_valid_decode(old: Self, new: Self)
+        requires
+            old.wf(),
+            new.wf(),
+            new.ptr() == old.ptr(),
+        ensures
+            Self::ptrs_len_same_valid_decode(old, new),
+    {
+        broadcast use raw_ptr_new::group_raw_ptr_axioms;
+
+        let old_u = old.pt_unaligned().pt_untyped();
+        let new_u = new.pt_unaligned().pt_untyped();
+        assert forall|j: int| 0 <= j < new_u.len() implies #[trigger] new_u[j].ptr() == old_u[j].ptr()
+            by {
+            assert(new_u[j].ptr()@.addr == old_u[j].ptr()@.addr);
+            assert(new_u[j].ptr()@.provenance == old_u[j].ptr()@.provenance);
+        }
+    }
+
     /// A `PointsTo<T>` is always aligned.
     pub proof fn is_aligned(tracked &self)
         requires
@@ -1280,7 +1301,6 @@ impl<T> PointsTo<T> {
                 &&& final(self).bytes() == final(pt_untyped).bytes()
                 &&& final(self).is_empty()
                 &&& final(self).wf()
-                &&& Self::ptrs_len_same_valid_decode(*old(self), *final(self))
             }),
     {
         self.pt_unaligned.val = TypedValue::Empty;
@@ -1335,7 +1355,6 @@ impl<T> PointsTo<T> {
             final(self).bytes() == old(self).bytes(),
             final(self).is_empty(),
             final(self).wf(),
-            Self::ptrs_len_same_valid_decode(*old(self), *final(self)),
     {
         let tracked mut tmp = TypedValue::Empty;
         super::modes::tracked_swap(&mut tmp, &mut self.pt_unaligned.val);
@@ -1356,7 +1375,6 @@ impl<T> PointsTo<T> {
             final(self).is_valid(),
             final(self).value() == val,
             final(self).wf(),
-            Self::ptrs_len_same_valid_decode(*old(self), *final(self)),
     {
         self.pt_unaligned.val = TypedValue::Valid(Box::new(val));
     }
@@ -1372,7 +1390,6 @@ impl<T> PointsTo<T> {
             final(self).is_valid(),
             final(self).value() == *val,
             final(self).wf(),
-            Self::ptrs_len_same_valid_decode(*old(self), *final(self)),
     {
         self.put(*val);
     }
@@ -1397,7 +1414,6 @@ impl<T> PointsTo<T> {
             final(self).bytes() == old(self).bytes(),
             final(self).is_empty(),
             final(self).wf(),
-            Self::ptrs_len_same_valid_decode(*old(self), *final(self)),
     {
         let tracked mut tmp = TypedValue::Empty;
         super::modes::tracked_swap(&mut tmp, &mut self.pt_unaligned.val);
@@ -1414,7 +1430,6 @@ impl<T> PointsTo<T> {
             final(self).bytes() == old(self).bytes(),
             final(self).typed_value() == val,
             final(self).wf(),
-            Self::ptrs_len_same_valid_decode(*old(self), *final(self)),
     {
         self.pt_unaligned.val = val;
     }
@@ -1429,7 +1444,6 @@ impl<T> PointsTo<T> {
             final(self).bytes() == old(self).bytes(),
             final(self).typed_value() == *val,
             final(self).wf(),
-            Self::ptrs_len_same_valid_decode(*old(self), *final(self)),
     {
         self.put_typed_value(val.tracked_copy());
     }
@@ -1966,7 +1980,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             pt_untyped.wf(),
         decreases self.len(),
     {
-        let ghost ghost_self = self;
+        let ghost_self = self;
         if self.len() == 0 {
             assert(self.len() * size_of::<T>() == 0) by (nonlinear_arith)
                 requires
@@ -1989,8 +2003,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             let tracked mut seq_pt = self.seq_pt;
             let tracked last = seq_pt.tracked_pop();
             let tracked head = SeqPointsTo { seq_pt: seq_pt, ptr: self.ptr };
-            let ghost ghost_head = head;
-            let ghost ghost_last = last;
+            let ghost_head = head;
+            let ghost_last = last;
             let tracked (head_u8, mut head_typed_value) = head.into_untyped_with_typed_value();
             let tracked (last_u8, last_typed_value) = last.into_untyped_with_typed_value();
             head_typed_value.tracked_push(last_typed_value);
@@ -2057,7 +2071,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         );
         // `from_untyped_with_typed_value` says nothing about the validity of elements past the
         // supplied `typed_value`, so empty all of them.
-        let ghost before = out;
+        let before = out;
         let tracked _taken = out.take_typed_value_subrange(0, len as int);
         assert(out.seq_typed_value().len() == before.seq_typed_value().len());
         assert(out.len() == len);
@@ -2108,7 +2122,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             out.wf(),
         decreases capacity,
     {
-        let ghost ghost_untyped = pt_untyped;
+        let ghost_untyped = pt_untyped;
 
         if capacity == 0 {
             assert(capacity * size_of::<T>() == 0) by (nonlinear_arith)
@@ -2163,7 +2177,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                 * size_of::<T>());
 
             // Convert the tail into a typed permission holding the last typed value, if supplied
-            let ghost ghost_tail = tail;
+            let ghost_tail = tail;
             let tracked mut tail_pt = PointsTo::<T>::from_untyped(tail);
             let tracked mut head_typed_value = typed_value;
             if typed_value.len() == capacity {
@@ -2176,8 +2190,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                 ));
                 tail_pt.put_typed_value(last);
             }
-            let ghost tail_ptr = tail_pt.ptr();
-            let ghost tail_bytes = tail_pt.bytes();
+            let tail_ptr = tail_pt.ptr();
+            let tail_bytes = tail_pt.bytes();
             assert(tail_bytes == ghost_tail.bytes());
             let tracked mut tail_seq = Seq::tracked_empty();
             tail_seq.tracked_push(tail_pt);
@@ -2345,12 +2359,12 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             );
             super::modes::tracked_static_mut_ref(empty)
         } else {
-            let ghost old_perms = *perms;
-            let ghost perms_ref = perms;
+            let old_perms = *perms;
+            let perms_ref = perms;
             let i = perms.len() - 1;
             assert(old_perms[i].wf());
             let tracked (init, last1) = perms.tracked_split_borrow_mut(i);
-            let ghost init_ref = init;
+            let init_ref = init;
             assert forall|k: int| 0 <= k < init.len() implies {
                 &&& #[trigger] init[k].wf()
                 &&& init[k].ptr()@.addr == base@.addr + k * size_of::<T>()
@@ -2371,11 +2385,15 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                     i == old_perms.len() - 1,
             ;
             let tracked raw = PointsToUntyped::join_mut(a, b);
-            let ghost raw_ref = raw;
+            let raw_ref = raw;
 
             // Final values
             if PointsToUntyped::ptrs_len_same(*raw_ref, *final(raw_ref)) {
                 assert((*final(perms_ref)).drop_last() =~= *final(init_ref));
+                PointsTo::<T>::lemma_ptrs_len_same_valid_decode(
+                    old_perms[i],
+                    (*final(perms_ref))[i],
+                );
             }
             raw
         }
@@ -2405,7 +2423,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                 &&& Self::ptrs_len_same_valid_decode(*old(self), *final(self))
             }),
     {
-        let ghost base = self.ptr();
+        let base = self.ptr();
         Self::untyped_mut_join(&mut self.seq_pt, base)
     }
 
@@ -2426,7 +2444,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             ),
             sub.seq_pt() == self.seq_pt().subrange(start_index as int, (start_index + len) as int),
     {
-        let ghost sub_ptr = ptr_mut_from_data::<T>(
+        let sub_ptr = ptr_mut_from_data::<T>(
             PtrData {
                 addr: ((self.ptr()@.addr + start_index * size_of::<T>()) as usize),
                 provenance: self.ptr()@.provenance,
@@ -2582,7 +2600,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         if start == end {
             Seq::tracked_empty()
         } else {
-            let ghost old_self = *self;
+            let old_self = *self;
 
             // Take the last value in the range out of the element at `end - 1`
             let tracked elt = self.index_mut(end - 1);
@@ -2640,7 +2658,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         decreases val.len(),
     {
         if val.len() > 0 {
-            let ghost old_self = *self;
+            let old_self = *self;
             let tracked mut rest = val;
             let tracked first = rest.tracked_pop_front();
 
@@ -2685,7 +2703,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         decreases val.len(),
     {
         if val.len() > 0 {
-            let ghost old_self = *self;
+            let old_self = *self;
             let tracked mut rest = val;
             let tracked first = rest.tracked_pop_front();
 
@@ -2768,7 +2786,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         if start == end {
             Seq::tracked_empty()
         } else {
-            let ghost old_self = *self;
+            let old_self = *self;
 
             // Take the last value in the range out of the element at `end - 1`
             let tracked elt = self.index_mut(end - 1);
@@ -2847,22 +2865,22 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
     //     if perms.len() == 0 {
     //         Seq::tracked_empty()
     //     } else {
-    //         let ghost old_perms = *perms;
-    //         let ghost perms_ref = perms;
+    //         let old_perms = *perms;
+    //         let perms_ref = perms;
     //         assert(old_perms[0].wf() && old_perms[0].is_valid());
     //         let tracked (first, rest) = perms.tracked_split_borrow_mut(1);
     //         assert(first[0] == old_perms[0]);
     //         let tracked elt = first.tracked_borrow_mut(0);
-    //         let ghost elt_ref = elt;
+    //         let elt_ref = elt;
     //         let tracked v = elt.borrow_mut();
     //         assert forall|i: int| 0 <= i < rest.len() implies #[trigger] rest[i].wf()
     //             && rest[i].is_valid() by {
     //             assert(rest[i] == old_perms[i + 1]);
     //             assert(old_perms[i + 1].wf());
     //         }
-    //         let ghost rest_ref = rest;
+    //         let rest_ref = rest;
     //         let tracked mut ret = Self::borrow_mut_values(rest);
-    //         let ghost ret_rest = ret;
+    //         let ret_rest = ret;
     //         ret.tracked_insert(0, v);
     //         assert(final(perms_ref)[0] == *final(elt_ref));
     //         assert forall|i: int| 0 < i < ret.len() implies #[trigger] ret[i] == ret_rest[i - 1]
@@ -2895,17 +2913,17 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
     //         Self::ptrs_len_same_valid_decode(*old(self), *final(self)),
     //         final(self).wf(),
     // {
-    //     let ghost old_self = *self;
-    //     let ghost self_ref = self;
+    //     let old_self = *self;
+    //     let self_ref = self;
     //     let tracked sub = self.seq_pt.tracked_borrow_subrange_mut(start, end);
-    //     let ghost sub_ref = sub;
+    //     let sub_ref = sub;
     //     assert forall|i: int| 0 <= i < sub.len() implies #[trigger] sub[i].wf()
     //         && sub[i].is_valid() by {
     //         assert(old_self[start + i].wf_basic());
     //     }
     //     let tracked ret = Self::borrow_mut_values(sub);
     //
-    //     let ghost new_self = *final(self_ref);
+    //     let new_self = *final(self_ref);
     //     assert(new_self.seq_pt() == old_self.seq_pt().subrange(0, start) + *final(sub_ref)
     //         + old_self.seq_pt().subrange(end, old_self.len() as int));
     //     assert forall|i: int| 0 <= i < new_self.len() implies {
@@ -2979,7 +2997,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             self.provenance_not_none();
             self.ptr_bounds();
         }
-        let ghost ghost_self = self;
+        let ghost_self = self;
 
         let tracked mut seq_pt = self.seq_pt;
         let tracked other = seq_pt.tracked_skip(mid as int);
@@ -3042,8 +3060,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             joined.bytes() == self.bytes() + other.bytes(),
             joined.wf(),
     {
-        let ghost ghost_self = self;
-        let ghost ghost_other = other;
+        let ghost_self = self;
+        let ghost_other = other;
 
         let tracked mut seq_pt = self.seq_pt;
         seq_pt.tracked_add(other.seq_pt);

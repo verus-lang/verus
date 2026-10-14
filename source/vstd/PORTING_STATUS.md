@@ -37,7 +37,7 @@ Originally `axiom fn`, now proved:
 - `from_untyped`
 - `into_untyped`
 - `as_untyped`
-- `as_untyped_mut` (its flow-back clause also ensures `ptrs_len_same_valid_decode(old, final)`)
+- `as_untyped_mut`
 - `borrow` (now `borrow_value`)
 - `take`
 - `put`
@@ -54,8 +54,9 @@ New (no counterpart in `raw_ptr_dup.rs`), all proved:
 - `borrow_typed_value`, `take_typed_value`, `put_typed_value` and `copy_typed_value` (the
   `TypedValue<T>` versions of `borrow`/`take`/`put`/`copy`)
 
-All of `take`, `put`, `copy` and the three mutating `*_typed_value` functions ensure
-`ptrs_len_same_valid_decode(old, final)`, so they can be used through `SeqPointsTo::index_mut`.
+To use any of these through `SeqPointsTo::index_mut`, call
+`PointsTo::lemma_ptrs_len_same_valid_decode(old, new)` (both `wf()`, same `ptr()`) to get the
+`ptrs_len_same_valid_decode` fact that `index_mut` needs to re-establish the sequence's `wf()`.
 
 ### `impl<T> PointsToUnaligned<T>`
 
@@ -90,8 +91,7 @@ invariant on `impl<T: ?Sized> PointsTo<T>` is just there for reference and won't
 - Subrange content operations, all **proved** (by induction over the range, using `index_mut`
   and the concrete `TypedValue` representation): `put_subrange`, `take_subrange`, `copy_subrange`
   (`T: Copy`), and the `TypedValue<T>` versions `put_typed_value_subrange`,
-  `take_typed_value_subrange` and `copy_typed_value_subrange`. They rely on `PointsTo::put`/`take`
-  ensuring `ptrs_len_same_valid_decode`.
+  `take_typed_value_subrange` and `copy_typed_value_subrange`.
   Note: the old `take_mem_contents_subrange` filled the range with `Seq::new(end, ...)` (length
   `end`); the port uses `end - start`.
 - **Borrows of things the `SeqPointsTo` doesn't store** are all proved:
@@ -226,10 +226,6 @@ The old `impl SeqPointsTo<u8>` is ported as `SeqPointsTo<T, PointsTo<T>>::from_u
   `borrow_value_subrange`, paralleling `borrow_typed_value` / `borrow_typed_value_subrange`. If
   `borrow_mut` / `borrow_mut_subrange` are restored, rename them the same way
   (`borrow_value_mut` / `borrow_value_subrange_mut`).
-- [ ] Possibly rename `SeqPointsTo::subrange` to `borrow_subrange` (and `subrange_mut` to
-  `borrow_subrange_mut`), since they borrow a sub-permission rather than return an owned one,
-  matching the `Seq::tracked_borrow_subrange` / `tracked_borrow_subrange_mut` names. The name
-  `borrow_subrange` is now free (the value-borrowing function became `borrow_value_subrange`).
 - [x] Renamed the `cast_to_*` typed/untyped conversions. The `into_untyped` / `from_untyped` /
   `as_untyped` / `as_untyped_mut` names already follow Rust/vstd conventions (`into_*` consumes
   `self`, `from_*` constructs `Self`, `as_*` borrows, `_mut` for the mutable version) and stay as
@@ -270,34 +266,13 @@ The old `impl SeqPointsTo<u8>` is ported as `SeqPointsTo<T, PointsTo<T>>::from_u
   - Remove the inherent versions and update the ~20 call sites in `points_to_permissions.rs`;
     expect some proof/trigger fixups inside the generic `SeqPointsTo` impl, where
     `P::ptrs_len_same` is opaque. Update the docs.
-- [ ] Consider replacing the `ptrs_len_same_valid_decode(*old(self), *final(self))` postconditions
-  on `PointsTo`'s `take`, `put`, `copy`, `take_typed_value`, `put_typed_value`,
-  `copy_typed_value` and `as_untyped_mut` with a public lemma. The fact follows from `old.wf()`,
-  `new.wf()` and `new.ptr() == old.ptr()`, which those functions already ensure; it is stated
-  today only because it unfolds through the closed `pt_unaligned()` / `pt_untyped()`, so outside
-  callers can't derive it (they need it to restore `wf()` after `SeqPointsTo::index_mut`). A lemma
-  that was checked to verify:
-
-  ```rust
-  pub proof fn lemma_ptrs_len_same_valid_decode(old: Self, new: Self)
-      requires old.wf(), new.wf(), new.ptr() == old.ptr(),
-      ensures Self::ptrs_len_same_valid_decode(old, new),
-  {
-      broadcast use raw_ptr_new::group_raw_ptr_axioms;
-      let ghost old_u = old.pt_unaligned().pt_untyped();
-      let ghost new_u = new.pt_unaligned().pt_untyped();
-      assert forall|j: int| 0 <= j < new_u.len() implies #[trigger] new_u[j].ptr() == old_u[j].ptr()
-          by {
-          assert(new_u[j].ptr()@.addr == old_u[j].ptr()@.addr);
-          assert(new_u[j].ptr()@.provenance == old_u[j].ptr()@.provenance);
-      }
-  }
-  ```
-
-  The cost is that callers relying on the postcondition (inside the module: `put_subrange`,
-  `put_typed_value_subrange`, `take_subrange`, `take_typed_value_subrange` and the
-  `as_untyped_mut` helper; outside: anyone doing `index_mut` followed by `take`/`put`/`copy`) must
-  call the lemma, with ghost snapshots of the references to name `final(..)`.
+- [x] Replaced the `ptrs_len_same_valid_decode(*old(self), *final(self))` postconditions on
+  `PointsTo`'s `take`, `put`, `copy`, `take_typed_value`, `put_typed_value`, `copy_typed_value`
+  and `as_untyped_mut` with the public lemma `PointsTo::lemma_ptrs_len_same_valid_decode(old, new)`
+  (requires both `wf()` and the same `ptr()`). The fact follows from what those functions already
+  ensure, but unfolds through the closed `pt_unaligned()` / `pt_untyped()`, so outside callers need
+  the lemma to restore `wf()` after `SeqPointsTo::index_mut`. Inside the module, only the
+  `as_untyped_mut` helper needed a lemma call; the range operations unfold the predicate directly.
 - [ ] Assess whether all the copy functions are necessary: `PointsTo::copy` / `copy_typed_value`
   and `SeqPointsTo::copy_subrange` / `copy_typed_value_subrange` (with their private helpers
   `copy_values` / `copy_typed_values`). Each is just the corresponding `put` operation applied to a

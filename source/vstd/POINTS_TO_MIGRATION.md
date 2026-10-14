@@ -187,7 +187,7 @@ those facts straight from `wf()`, call the lemmas.
 |---|---|
 | `from_seq(r, ptr)` | Requires each `r[i].wf()`, the per-element pointer/provenance conditions, non-null, aligned, and `ptr_addr_in_bounds(ptr)` (replaces the old larger bounds condition). Ensures `wf()`. |
 | `into_seq` | Requires `wf()`; ensures every element is `wf()`. |
-| `tracked_seq_pt` (was `tracked_perm_seq`), `tracked_seq_pt_mut` (was `tracked_perm_seq_mut`), `index_mut(i)` (was `borrow_mut(i)`) | As before, renamed; `&mut` accessors give `final.wf()` conditionally (same `ptrs_len_same_valid_decode` criterion). |
+| `tracked_seq_pt` (was `tracked_perm_seq`), `tracked_seq_pt_mut` (was `tracked_perm_seq_mut`), `index_mut(i)` (was `borrow_mut(i)`) | As before, renamed; `&mut` accessors give `final.wf()` conditionally (same `ptrs_len_same_valid_decode` criterion). After `take` / `put` / `copy` on an element from `index_mut`, call `PointsTo::lemma_ptrs_len_same_valid_decode(old, new)` to establish that criterion (it is no longer a postcondition of those functions). |
 | `is_init_subrange`, `value_subrange` | `is_valid_subrange`, `value_subrange`. |
 | `put_subrange`, `put_mem_contents_subrange`, `take_mem_contents_subrange`, `copy_mem_contents_subrange` | `put_subrange`, `put_typed_value_subrange`, `take_typed_value_subrange`, `copy_typed_value_subrange`. Proved; all require `old(self).wf()` and ensure `final(self).wf()`. Replacement sequences are `Seq<TypedValue<T>>` rather than `Seq<MemContents<T>>`. |
 | `borrow_mem_contents_subrange` | `borrow_typed_value_subrange` (proved; requires `wf()`; returns a `Seq<&TypedValue<T>>` rather than a `&Seq`). |

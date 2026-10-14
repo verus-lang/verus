@@ -82,9 +82,9 @@ verus! {
     // pub proof fn subrange_mut(tracked &mut self, i: nat, j: nat) -> (tracked r: &mut Self)
     //     requires ... ensures ...   (unchanged from the axiom)
     {
-        let ghost old_self = *self;
-        let ghost self_ref = self;
-        let ghost sub_ptr = ptr_mut_from_data::<T>(
+        let old_self = *self;
+        let self_ref = self;
+        let sub_ptr = ptr_mut_from_data::<T>(
             PtrData {
                 addr: ((old_self.ptr()@.addr + i * size_of::<T>()) as usize),
                 provenance: old_self.ptr()@.provenance,
@@ -125,12 +125,12 @@ verus! {
                 * size_of::<T>() + k * size_of::<T>()) by (nonlinear_arith);
         }
         let tracked r = Self::wrap_mut(s, sub_ptr);
-        let ghost r_ref = r;
+        let r_ref = r;
 
         // If `r` stays well-formed with the same pointer and length, so does `self`
         if final(r_ref).wf() && final(r_ref).ptr() == r_ref.ptr() && final(r_ref).len()
             == r_ref.len() {
-            let ghost new_self = *final(self_ref);
+            let new_self = *final(self_ref);
             assert forall|k: int| 0 <= k < new_self.len() implies {
                 &&& #[trigger] new_self[k].wf_basic()
                 &&& new_self[k].ptr()@.addr == new_self.ptr()@.addr + k * size_of::<T>()
