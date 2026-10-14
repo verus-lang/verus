@@ -2815,7 +2815,6 @@ impl Verifier {
             vir::printer::write_krate(&mut file, &vir_crate, &self.args.log_args.vir_log_option);
         }
 
-        vir::traits::check_no_dupe_impls(&vir_crate).map_err(map_err_diagnostics)?;
         let vir_crate = vir::traits::demote_external_traits(diagnostics, &warning_ctx, &vir_crate)
             .map_err(map_err_diagnostics)?;
         let vir_crate = vir::traits::inherit_default_bodies(&vir_crate, &mut warning_ctx)
@@ -2883,6 +2882,7 @@ impl Verifier {
         let (vir_crate, erasure_modes) =
             vir::modes::check_crate(&vir_crate).map_err(|es| (es, Vec::new()))?;
 
+        vir::traits::check_no_dupe_impls(&vir_crate).map_err(map_err_diagnostics)?;
         if self.args.check_api_safety {
             vir::safe_api::check_safe_api(&vir_crate).map_err(|e| (vec![e], Vec::new()))?;
         }

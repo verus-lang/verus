@@ -55,6 +55,7 @@ impl Query {
         }
         let imported = self.get_imported()?;
         let pre_crate = self.get_pre_crate()?;
+        // need to modify DemoteTraitLookup::new to work with the information we have
         todo!()
     }
 
@@ -64,6 +65,7 @@ impl Query {
         }
         let imported = self.get_imported()?;
         let pre_crate = self.get_pre_crate()?;
+        // combine all the function stubs from our crate and the external crates
         todo!()
     }
 
