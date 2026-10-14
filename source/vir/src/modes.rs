@@ -2172,7 +2172,17 @@ fn check_expr(
             check_expr(ctxt, record, typing, outer_mode, expect, e1, outer_proph)
         }
         ExprX::UnaryOpr(UnaryOpr::ToDyn(_), e1) => {
-            check_expr(ctxt, record, typing, outer_mode, expect, e1, outer_proph)
+            let (mode, proph) =
+                check_expr(ctxt, record, typing, outer_mode, expect, e1, outer_proph)?;
+            if matches!(&*crate::ast_util::undecorate_typ(&expr.typ), TypX::MutRef(_))
+                && mode != Mode::Exec
+            {
+                return Err(error(
+                    &expr.span,
+                    "coercing mutable references to a trait object is not supported in spec/proof mode",
+                ));
+            }
+            Ok((mode, proph))
         }
         ExprX::UnaryOpr(UnaryOpr::Box(_), _) => panic!("unexpected box"),
         ExprX::UnaryOpr(UnaryOpr::Unbox(_), _) => panic!("unexpected box"),
