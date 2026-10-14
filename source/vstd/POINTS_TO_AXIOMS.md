@@ -40,7 +40,7 @@ These are on hold and not currently in the file. They will land here once `Point
 5. `borrow_mut` (**commented out** for now, as not essential; `borrow_mut_subrange` and its
    helper are commented out with it): mutably borrows the `T` held by a valid
    permission. The final permission is valid with the value written through the reference, keeps
-   its pointer, satisfies `ptrs_len_same_valid_decode` and is `wf()` unconditionally. So the
+   its pointer, satisfies `ptrs_len_same_valid` and is `wf()` unconditionally. So the
    final bytes are whatever encoding of the new value is in memory. It's an axiom because the
    bytes live in separate ghost state from the `TypedValue<T>`, so a borrow of the value alone
    can't update them. The `mut_ref_ptr(val) == self.ptr()` postcondition is commented out

@@ -141,7 +141,7 @@ Practical rules when migrating:
 | `cast_to_untyped` | Renamed to `into_untyped_with_typed_value`. Returns `(PointsToUntyped, TypedValue<T>)` instead of `(PointsTo<[u8]>, Option<T>)`, with `typed_value == self.typed_value()`. Requires `wf()`. Ensures `dst.wf()` and `dst.len() == size_of::<T>()`; no `is_fully_uninit` (untyped has no validity). |
 | `from_untyped` | Proved. Takes a `PointsToUntyped`; requires `wf()`, aligned address, `len() == size_of::<T>()` (was: metadata equals size). Ensures `out.wf()`, `out.is_empty()`, same bytes. |
 | `into_untyped`, `as_untyped` | Proved. Require `wf()`. Return `PointsToUntyped` / `&PointsToUntyped`. |
-| `as_untyped_mut` | Proved. Requires `old(self).wf()`. After the call `self`'s typed value is dropped; `final(self)` is empty and `wf()` provided the untyped part keeps its pointers/length (`PointsToUntyped::ptrs_len_same`). |
+| `as_untyped_mut` | Proved. Requires `old(self).wf()`. After the call `self`'s typed value is dropped; `final(self)` is empty and `wf()` provided the untyped part keeps its pointers/length (`PointsToUntyped::ptrs_len_same_valid`). |
 | `borrow` | Renamed to `borrow_value` (to parallel `borrow_typed_value`). Proved. Now also requires `wf()`. |
 | `take`, `put` | Proved. Require `old(self).wf()`, ensure `final(self).wf()`. |
 | `borrow_mut` | **Not available for now** (commented out in `points_to_permissions.rs`). Use `take` and `put` instead. |
@@ -187,7 +187,7 @@ those facts straight from `wf()`, call the lemmas.
 |---|---|
 | `from_seq(r, ptr)` | Requires each `r[i].wf()`, the per-element pointer/provenance conditions, non-null, aligned, and `ptr_addr_in_bounds(ptr)` (replaces the old larger bounds condition). Ensures `wf()`. |
 | `into_seq` | Requires `wf()`; ensures every element is `wf()`. |
-| `tracked_seq_pt` (was `tracked_perm_seq`), `tracked_seq_pt_mut` (was `tracked_perm_seq_mut`), `index_mut(i)` (was `borrow_mut(i)`) | As before, renamed; `&mut` accessors give `final.wf()` conditionally (same `ptrs_len_same_valid_decode` criterion). After `take` / `put` / `copy` on an element from `index_mut`, call `PointsTo::lemma_ptrs_len_same_valid_decode(old, new)` to establish that criterion (it is no longer a postcondition of those functions). |
+| `tracked_seq_pt` (was `tracked_perm_seq`), `tracked_seq_pt_mut` (was `tracked_perm_seq_mut`), `index_mut(i)` (was `borrow_mut(i)`) | As before, renamed; `&mut` accessors give `final.wf()` conditionally (same `ptrs_len_same_valid` criterion). After `take` / `put` / `copy` on an element from `index_mut`, call `PointsTo::lemma_ptrs_len_same_valid(old, new)` to establish that criterion (it is no longer a postcondition of those functions). |
 | `is_init_subrange`, `value_subrange` | `is_valid_subrange`, `value_subrange`. |
 | `put_subrange`, `put_mem_contents_subrange`, `take_mem_contents_subrange`, `copy_mem_contents_subrange` | `put_subrange`, `put_typed_value_subrange`, `take_typed_value_subrange`, `copy_typed_value_subrange`. Proved; all require `old(self).wf()` and ensure `final(self).wf()`. Replacement sequences are `Seq<TypedValue<T>>` rather than `Seq<MemContents<T>>`. |
 | `borrow_mem_contents_subrange` | `borrow_typed_value_subrange` (proved; requires `wf()`; returns a `Seq<&TypedValue<T>>` rather than a `&Seq`). |

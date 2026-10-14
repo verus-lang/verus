@@ -124,6 +124,24 @@ impl<T, PointsToPerm> PointsToProperties for SeqPointsTo<T, PointsToPerm> where
             self.seq_pt.tracked_borrow_mut(k).is_disjoint(other);
         }
     }
+
+    /// `new` has the same pointer and length as `old`, and each element of `new` keeps the
+    /// corresponding element of `old`'s pointer and satisfies its `ptrs_len_same_valid`.
+    open spec fn ptrs_len_same_valid(old: Self, new: Self) -> bool {
+        &&& new.ptr() == old.ptr()
+        &&& new.len() == old.len()
+        &&& forall|i: int|
+            #![trigger new[i]]
+            0 <= i < new.len() ==> PointsToPerm::ptrs_len_same_valid(old[i], new[i]) && new[i].ptr()
+                == old[i].ptr()
+    }
+
+    /// Each element stays `wf_basic` by the element type's `stays_wf_basic`.
+    proof fn stays_wf_basic(old: Self, new: Self) {
+        assert forall|i: int| 0 <= i < new.len() implies #[trigger] new[i].wf_basic() by {
+            PointsToPerm::stays_wf_basic(old[i], new[i]);
+        }
+    }
 }
 
 impl<T, PointsToPerm> SeqPointsTo<T, PointsToPerm> where
@@ -187,22 +205,16 @@ impl PointsToUntyped {
         self.wf_basic() && self.ptr()@.metadata == self.len()
     }
 
-    /// Specifies that `old` and `new` have the same pointer, length, and underlying `PointsToSingleton` pointers.
-    pub open spec fn ptrs_len_same(old: Self, new: Self) -> bool {
-        &&& new.ptr() == old.ptr()
-        &&& new.len() == old.len()
-        &&& forall|j: int| #![trigger new[j]] 0 <= j < new.len() ==> new[j].ptr() == old[j].ptr()
-    }
-
-    /// Ensures that if `self` is well-formed, and `other` has the same pointers and length,
-    /// then `other` is well-formed.
-    pub proof fn stays_wf(tracked self, tracked other: Self)
+    /// If `old` is well-formed and `new` has the same pointers and length
+    /// (`ptrs_len_same_valid`), then `new` is well-formed.
+    pub proof fn stays_wf(old: Self, new: Self)
         requires
-            self.wf(),
-            Self::ptrs_len_same(self, other),
+            old.wf(),
+            Self::ptrs_len_same_valid(old, new),
         ensures
-            other.wf(),
+            new.wf(),
     {
+        Self::stays_wf_basic(old, new);
     }
 
     /// If `T` is zero sized, then we can construct a `PointsToUntyped` from any non-null pointer.
@@ -538,9 +550,9 @@ impl PointsToUntyped {
                 },
             ),
             joined.wf(),
-            Self::ptrs_len_same(*joined, *final(joined)) ==> {
-                &&& Self::ptrs_len_same(*old(self), *final(self))
-                &&& Self::ptrs_len_same(*old(other), *final(other))
+            Self::ptrs_len_same_valid(*joined, *final(joined)) ==> {
+                &&& Self::ptrs_len_same_valid(*old(self), *final(self))
+                &&& Self::ptrs_len_same_valid(*old(other), *final(other))
                 &&& final(self).wf()
                 &&& final(other).wf()
                 &&& final(joined).seq_pt() == final(self).seq_pt() + final(other).seq_pt()
@@ -738,6 +750,19 @@ impl<T> PointsToProperties for PointsToUnaligned<T> {
     ) {
         self.pt_untyped.is_disjoint(other);
     }
+
+    /// `new` has the same pointer and the same underlying `PointsToUntyped` pointers and length as
+    /// `old`, and `new`'s bytes still decode to `new`'s value if `new` has a valid `TypedValue`.
+    open spec fn ptrs_len_same_valid(old: Self, new: Self) -> bool {
+        &&& new.ptr() == old.ptr()
+        &&& PointsToUntyped::ptrs_len_same_valid(old.pt_untyped(), new.pt_untyped())
+        &&& new.is_valid() ==> abs_decode::<T>(new.bytes(), &new.value())
+    }
+
+    /// Delegates to `PointsToUntyped::stays_wf` for the underlying bytes.
+    proof fn stays_wf_basic(old: Self, new: Self) {
+        PointsToUntyped::stays_wf(old.pt_untyped(), new.pt_untyped());
+    }
 }
 
 impl<T> PointsToUnaligned<T> {
@@ -757,23 +782,16 @@ impl<T> PointsToUnaligned<T> {
         self.wf_basic()
     }
 
-    /// Specifies that `old` and `new` have the same underlying `PointsToUntyped` pointers and length,
-    /// and `new`'s bytes still decode to `new`'s value if `new` has a valid `TypedValue`.
-    pub open spec fn ptrs_len_same_valid_decode(old: Self, new: Self) -> bool {
-        &&& PointsToUntyped::ptrs_len_same(old.pt_untyped(), new.pt_untyped())
-        &&& new.is_valid() ==> abs_decode::<T>(new.bytes(), &new.value())
-    }
-
-    /// Ensures that if `self` is well-formed, and `other` has the same pointers and length
-    /// and still satisfies decode validity,
-    /// then `other` is well-formed.
-    pub proof fn stays_wf(tracked self, tracked other: Self)
+    /// If `old` is well-formed and `new` has the same pointers and length and still satisfies
+    /// decode validity (`ptrs_len_same_valid`), then `new` is well-formed.
+    pub proof fn stays_wf(old: Self, new: Self)
         requires
-            self.wf(),
-            Self::ptrs_len_same_valid_decode(self, other),
+            old.wf(),
+            Self::ptrs_len_same_valid(old, new),
         ensures
-            other.wf(),
+            new.wf(),
     {
+        Self::stays_wf_basic(old, new);
     }
 
     /// Convert PointsToUnaligned to an aligned PointsTo.
@@ -1032,6 +1050,18 @@ impl<T> PointsToProperties for PointsTo<T> {
     ) {
         self.pt_unaligned.is_disjoint(other);
     }
+
+    /// `new` has the same pointer as `old`, and they satisfy the `PointsToUnaligned` requirements
+    /// for preserving well-formed-ness.
+    open spec fn ptrs_len_same_valid(old: Self, new: Self) -> bool {
+        &&& new.ptr() == old.ptr()
+        &&& PointsToUnaligned::<T>::ptrs_len_same_valid(old.pt_unaligned(), new.pt_unaligned())
+    }
+
+    /// Delegates to `PointsToUnaligned::stays_wf`.
+    proof fn stays_wf_basic(old: Self, new: Self) {
+        PointsToUnaligned::<T>::stays_wf(old.pt_unaligned(), new.pt_unaligned());
+    }
 }
 
 impl<T> PointsTo<T> {
@@ -1051,32 +1081,27 @@ impl<T> PointsTo<T> {
         self.wf_basic()
     }
 
-    /// Specifies that `old` and `new` both satisfy the `PointsToUnaligned` requirements for preserving well-formed-ness.
-    pub open spec fn ptrs_len_same_valid_decode(old: Self, new: Self) -> bool {
-        PointsToUnaligned::<T>::ptrs_len_same_valid_decode(old.pt_unaligned(), new.pt_unaligned())
-    }
-
-    /// Ensures that if `self` is well-formed, and `other` has the same pointers and length
-    /// and still satisfies decode validity,
-    /// then `other` is well-formed.
-    pub proof fn stays_wf(tracked self, tracked other: Self)
+    /// If `old` is well-formed and `new` has the same pointers and length and still satisfies
+    /// decode validity (`ptrs_len_same_valid`), then `new` is well-formed.
+    pub proof fn stays_wf(old: Self, new: Self)
         requires
-            self.wf(),
-            Self::ptrs_len_same_valid_decode(self, other),
+            old.wf(),
+            Self::ptrs_len_same_valid(old, new),
         ensures
-            other.wf(),
+            new.wf(),
     {
+        Self::stays_wf_basic(old, new);
     }
 
     /// If `old` and `new` are both well-formed with the same pointer, then `new` keeps `old`'s
     /// underlying pointers and length, and still satisfies decode validity.
-    pub proof fn lemma_ptrs_len_same_valid_decode(old: Self, new: Self)
+    pub proof fn lemma_ptrs_len_same_valid(old: Self, new: Self)
         requires
             old.wf(),
             new.wf(),
             new.ptr() == old.ptr(),
         ensures
-            Self::ptrs_len_same_valid_decode(old, new),
+            Self::ptrs_len_same_valid(old, new),
     {
         broadcast use raw_ptr_new::group_raw_ptr_axioms;
 
@@ -1296,12 +1321,11 @@ impl<T> PointsTo<T> {
             pt_untyped.len() == size_of::<T>(),
             pt_untyped.bytes() == old(self).bytes(),
             pt_untyped.wf(),
-            PointsToUntyped::ptrs_len_same(*pt_untyped, *final(pt_untyped)) ==> ({
-                &&& final(self).ptr() == old(self).ptr()
-                &&& final(self).bytes() == final(pt_untyped).bytes()
-                &&& final(self).is_empty()
-                &&& final(self).wf()
-            }),
+            final(self).ptr() == final(pt_untyped).ptr() as *mut T,
+            final(self).bytes() == final(pt_untyped).bytes(),
+            final(self).is_empty(),
+            // Criteria necessary for re-establishing invariants
+            PointsToUntyped::ptrs_len_same_valid(*pt_untyped, *final(pt_untyped)) ==> final(self).wf(),
     {
         self.pt_unaligned.val = TypedValue::Empty;
         &mut self.pt_unaligned.pt_untyped
@@ -1340,7 +1364,7 @@ impl<T> PointsTo<T> {
     //         final(self).is_valid(),
     //         final(self).ptr() == old(self).ptr(),
     //         final(self).value() == *final(val),
-    //         Self::ptrs_len_same_valid_decode(*old(self), *final(self)),
+    //         Self::ptrs_len_same_valid(*old(self), *final(self)),
     //         final(self).wf(),
     // ;
 
@@ -1537,28 +1561,36 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         Seq::new(len, |i: int| self[start_index + i].value())
     }
 
-    /// Specifies that `old` and `new` have the same pointer and length,
-    /// and the underlying `PointsTo<T>` permissions have the same pointer
-    /// and satisfy the `PointsTo` requirements for preserving well-formed-ness.
-    pub open spec fn ptrs_len_same_valid_decode(old: Self, new: Self) -> bool {
-        &&& new.ptr() == old.ptr()
-        &&& new.len() == old.len()
-        &&& forall|i: int|
-            #![trigger new[i]]
-            0 <= i < new.len() ==> PointsTo::<T>::ptrs_len_same_valid_decode(old[i], new[i])
-                && new[i].ptr() == old[i].ptr()
+    /// If `old` is well-formed and `new` has the same pointers and length, with each element
+    /// still satisfying decode validity (`ptrs_len_same_valid`), then `new` is well-formed.
+    pub proof fn stays_wf(old: Self, new: Self)
+        requires
+            old.wf(),
+            Self::ptrs_len_same_valid(old, new),
+        ensures
+            new.wf(),
+    {
+        Self::stays_wf_basic(old, new);
     }
 
-    /// Ensures that if `self` is well-formed, and `other` has the same pointers and length
-    /// and still satisfies decode validity,
-    /// then `other` is well-formed.
-    pub proof fn stays_wf(tracked self, tracked other: Self)
+    /// If `old` and `new` are both well-formed with the same pointer and length, then each element
+    /// of `new` keeps the corresponding element of `old`'s pointers and length, and still
+    /// satisfies decode validity.
+    pub proof fn lemma_ptrs_len_same_valid(old: Self, new: Self)
         requires
-            self.wf(),
-            Self::ptrs_len_same_valid_decode(self, other),
+            old.wf(),
+            new.wf(),
+            new.ptr() == old.ptr(),
+            new.len() == old.len(),
         ensures
-            other.wf(),
+            Self::ptrs_len_same_valid(old, new),
     {
+        assert forall|i: int| 0 <= i < new.len() implies PointsTo::<T>::ptrs_len_same_valid(
+            old[i],
+            #[trigger] new[i],
+        ) by {
+            PointsTo::<T>::lemma_ptrs_len_same_valid(old[i], new[i]);
+        }
     }
 
     /// A `SeqPointsTo<T, PointsTo<T>>` is always aligned to `T`.
@@ -1598,7 +1630,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             final(self).seq_pt() == *final(ret),
             old(self).ptr() == final(self).ptr(),
             // Criteria necessary for re-establishing invariants
-            Self::ptrs_len_same_valid_decode(*old(self), *final(self)) ==> final(self).wf(),
+            Self::ptrs_len_same_valid(*old(self), *final(self)) ==> final(self).wf(),
     {
         &mut self.seq_pt
     }
@@ -1617,10 +1649,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             *ret == old(self).seq_pt()[i],
             final(self).seq_pt() == old(self).seq_pt().update(i, *final(ret)),
             // Criteria necessary for re-establishing invariants
-            ({
-                &&& final(ret).ptr() == ret.ptr()
-                &&& PointsTo::<T>::ptrs_len_same_valid_decode(*ret, *final(ret))
-            }) ==> final(self).wf(),
+            PointsTo::<T>::ptrs_len_same_valid(*ret, *final(ret)) ==> final(self).wf(),
     {
         broadcast use crate::vstd::seq::group_seq_axioms;
 
@@ -2337,15 +2366,14 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             ),
             raw.bytes() == Self::bytes_inner(*old(perms)),
             raw.wf(),
-            PointsToUntyped::ptrs_len_same(*raw, *final(raw)) ==> {
-                &&& final(perms).len() == old(perms).len()
+            final(perms).len() == old(perms).len(),
+            forall|i: int| 0 <= i < final(perms).len() ==> #[trigger] final(perms)[i].is_empty(),
+            PointsToUntyped::ptrs_len_same_valid(*raw, *final(raw)) ==> {
                 &&& forall|i: int|
                     #![trigger final(perms)[i]]
                     0 <= i < final(perms).len() ==> {
-                        &&& final(perms)[i].ptr() == old(perms)[i].ptr()
-                        &&& final(perms)[i].is_empty()
                         &&& final(perms)[i].wf()
-                        &&& PointsTo::<T>::ptrs_len_same_valid_decode(old(perms)[i], final(perms)[i])
+                        &&& final(perms)[i].ptr() == old(perms)[i].ptr()
                     }
                 &&& Self::bytes_inner(*final(perms)) == final(raw).bytes()
             },
@@ -2388,13 +2416,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             let raw_ref = raw;
 
             // Final values
-            if PointsToUntyped::ptrs_len_same(*raw_ref, *final(raw_ref)) {
-                assert((*final(perms_ref)).drop_last() =~= *final(init_ref));
-                PointsTo::<T>::lemma_ptrs_len_same_valid_decode(
-                    old_perms[i],
-                    (*final(perms_ref))[i],
-                );
-            }
+            if PointsToUntyped::ptrs_len_same_valid(*raw_ref, *final(raw_ref)) {
+                assert((*final(perms_ref)).drop_last() =~= *final(init_ref));            }
             raw
         }
     }
@@ -2415,12 +2438,13 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             ),
             raw.bytes() == old(self).bytes(),
             raw.wf(),
+            final(self).ptr() == old(self).ptr(),
+            final(self).len() == old(self).len(),
+            final(self).is_fully_empty(),
             // Criteria necessary for re-establishing invariants
-            PointsToUntyped::ptrs_len_same(*raw, *final(raw)) ==> ({
+            PointsToUntyped::ptrs_len_same_valid(*raw, *final(raw)) ==> ({
                 &&& final(self).bytes() == final(raw).bytes()
-                &&& final(self).is_fully_empty()
                 &&& final(self).wf()
-                &&& Self::ptrs_len_same_valid_decode(*old(self), *final(self))
             }),
     {
         let base = self.ptr();
@@ -2854,7 +2878,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
     //                 &&& final(perms)[i].is_valid()
     //                 &&& final(perms)[i].ptr() == old(perms)[i].ptr()
     //                 &&& final(perms)[i].value() == *final(ret[i])
-    //                 &&& PointsTo::<T>::ptrs_len_same_valid_decode(old(perms)[i], final(perms)[i])
+    //                 &&& PointsTo::<T>::ptrs_len_same_valid(old(perms)[i], final(perms)[i])
     //                 &&& final(perms)[i].wf()
     //             },
     //         forall|i: int|
@@ -2910,7 +2934,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
     //             start,
     //             Seq::new(ret.len(), |i: int| TypedValue::Valid(Box::new(*final(ret[i])))),
     //         ),
-    //         Self::ptrs_len_same_valid_decode(*old(self), *final(self)),
+    //         Self::ptrs_len_same_valid(*old(self), *final(self)),
     //         final(self).wf(),
     // {
     //     let old_self = *self;
@@ -2952,7 +2976,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
     //
     //     // Re-establishing invariants
     //     assert forall|i: int| 0 <= i < new_self.len() implies {
-    //         &&& PointsTo::<T>::ptrs_len_same_valid_decode(old_self[i], #[trigger] new_self[i])
+    //         &&& PointsTo::<T>::ptrs_len_same_valid(old_self[i], #[trigger] new_self[i])
     //         &&& new_self[i].wf()
     //     } by {
     //         assert(old_self[i].wf_basic());

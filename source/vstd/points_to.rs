@@ -102,6 +102,21 @@ pub trait PointsToProperties: PointsToPhys {
             final(self).ptr() as int + final(self).size() <= other.ptr() as int
                 || other.ptr() as int + other.size() <= final(self).ptr() as int,
     ;
+
+    /// Specifies that `new` keeps `old`'s pointers and length, and satisfies whatever else
+    /// (e.g. decode validity of a typed value) is needed for `wf_basic` to carry over from `old`.
+    /// Each implementation defines what this means for its permission type.
+    spec fn ptrs_len_same_valid(old: Self, new: Self) -> bool;
+
+    /// If `old` satisfies `wf_basic` and `new` satisfies `ptrs_len_same_valid` with respect to it,
+    /// then `new` satisfies `wf_basic`.
+    proof fn stays_wf_basic(old: Self, new: Self)
+        requires
+            old.wf_basic(),
+            Self::ptrs_len_same_valid(old, new),
+        ensures
+            new.wf_basic(),
+    ;
 }
 
 /// Permission to access a byte of memory.
@@ -149,6 +164,15 @@ impl PointsToProperties for PointsToSingleton {
         tracked &mut self,
         tracked other: &PointsToPerm,
     );
+
+    /// A `PointsToSingleton` only needs to keep its pointer.
+    open spec fn ptrs_len_same_valid(old: Self, new: Self) -> bool {
+        new.ptr() == old.ptr()
+    }
+
+    /// Trivial, since a `PointsToSingleton` is always well-formed.
+    proof fn stays_wf_basic(old: Self, new: Self) {
+    }
 }
 
 impl FixedSize for PointsToSingleton {
