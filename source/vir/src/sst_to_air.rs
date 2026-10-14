@@ -1276,7 +1276,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 exprs.push(exp_to_expr(ctx, e, expr_ctxt)?);
                 Arc::new(ExprX::Apply(str_ident(crate::def::HAS_RESOLVED), Arc::new(exprs)))
             }
-            UnaryOpr::ToDyn(inner_self_typ) => {
+            UnaryOpr::ToDyn(inner_self_typ, _) => {
                 let TypX::Dyn(trait_path, typ_args, _) = &*undecorate_typ(&exp.typ) else {
                     panic!("ToDyn should have type TypX::Dyn: {:?}", exp.typ)
                 };
