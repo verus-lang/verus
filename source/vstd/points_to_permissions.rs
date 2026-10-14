@@ -1456,7 +1456,7 @@ impl<T> PointsTo<T> {
     }
 
     /// This takes a borrow of the `T` from the `TypedValue<T>` on `self`.
-    pub proof fn borrow(tracked &self) -> tracked &T
+    pub proof fn borrow_value(tracked &self) -> tracked &T
         requires
             self.wf(),
             self.is_valid(),
@@ -1642,7 +1642,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         perms.fold_left(Seq::empty(), |acc: Seq<AbstractByte>, elt: PointsTo<T>| acc + elt.bytes())
     }
 
-    pub open spec fn typed_value(self) -> Seq<TypedValue<T>> {
+    /// The (possibly-valid) typed value of each element, as a sequence.
+    pub open spec fn seq_typed_value(self) -> Seq<TypedValue<T>> {
         self.seq_pt().map(|i: int, pt: PointsTo<T>| pt.typed_value())
     }
 
@@ -1667,7 +1668,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
     /// Given that all of the permission's associated memory is initialized,
     /// returns the underlying values as a sequence.
     #[verifier::inline]
-    pub open spec fn value(&self) -> Seq<T>
+    pub open spec fn seq_value(&self) -> Seq<T>
         recommends
             self.is_valid(),
     {
@@ -1785,9 +1786,9 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         requires
             0 <= i < self.len(),
         ensures
-            #![trigger self.typed_value()[i]]
+            #![trigger self.seq_typed_value()[i]]
             #![trigger self.seq_pt()[i]]
-            self.typed_value()[i] == self.seq_pt()[i].typed_value(),
+            self.seq_typed_value()[i] == self.seq_pt()[i].typed_value(),
     {
         broadcast use group_vstd_default;
 
@@ -2071,9 +2072,9 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         ensures
             forall|i: int|
                 0 <= i < len ==> {
-                    &&& (#[trigger] self.typed_value()[i]).is_valid() ==> abs_decode::<T>(
+                    &&& (#[trigger] self.seq_typed_value()[i]).is_valid() ==> abs_decode::<T>(
                         self.seq_pt()[i].bytes(),
-                        &self.typed_value()[i].value(),
+                        &self.seq_typed_value()[i].value(),
                     )
                     &&& self.seq_pt()[i].bytes().len() == size_of::<T>()
                 },
@@ -2093,9 +2094,9 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         ensures
             forall|i: int|
                 0 <= i < self.len() ==> {
-                    &&& (#[trigger] self.typed_value()[i]).is_valid() ==> abs_decode::<T>(
+                    &&& (#[trigger] self.seq_typed_value()[i]).is_valid() ==> abs_decode::<T>(
                         self.bytes().subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()),
-                        &self.typed_value()[i].value(),
+                        &self.seq_typed_value()[i].value(),
                     )
                     &&& self.seq_pt()[i].bytes().len() == size_of::<T>()
                 },
@@ -2225,11 +2226,11 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         // `typed_value`, so empty all of them.
         let ghost before = out;
         let tracked _taken = out.take_typed_value_subrange(0, len as int);
-        assert(out.typed_value().len() == before.typed_value().len());
+        assert(out.seq_typed_value().len() == before.seq_typed_value().len());
         assert(out.len() == len);
         assert forall|i: int| 0 <= i < out.len() implies #[trigger] out[i].is_empty() by {
             out.typed_value_equiv(i);
-            assert(out.typed_value()[i] == TypedValue::<T>::Empty);
+            assert(out.seq_typed_value()[i] == TypedValue::<T>::Empty);
         }
         out
     }
@@ -2493,7 +2494,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             0 <= start <= start + n <= self.len(),
         ensures
             val.len() == n,
-            forall|i: int| 0 <= i < n ==> *#[trigger] val[i] == self.typed_value()[start + i],
+            forall|i: int| 0 <= i < n ==> *#[trigger] val[i] == self.seq_typed_value()[start + i],
         decreases n,
     {
         if n == 0 {
@@ -2514,7 +2515,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             self.wf(),
             0 <= start <= end <= self.len(),
         ensures
-            val.map_values(|r: &TypedValue<T>| *r) == self.typed_value().subrange(start, end),
+            val.map_values(|r: &TypedValue<T>| *r) == self.seq_typed_value().subrange(start, end),
     {
         let tracked val = self.borrow_typed_values(start, (end - start) as nat);
         val
@@ -2562,7 +2563,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         ensures
             final(self).ptr() == old(self).ptr(),
             final(self).bytes() == old(self).bytes(),
-            final(self).typed_value() == old(self).typed_value().update_subrange_with(start, *val),
+            final(self).seq_typed_value() == old(self).seq_typed_value().update_subrange_with(start, *val),
             final(self).wf(),
     {
         let tracked copied = Self::copy_typed_values(val, val.len());
@@ -2576,10 +2577,10 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             self.wf(),
             0 <= start <= end <= self.len(),
         ensures
-            val == old(self).typed_value().subrange(start, end),
+            val == old(self).seq_typed_value().subrange(start, end),
             final(self).ptr() == old(self).ptr(),
             final(self).bytes() == old(self).bytes(),
-            final(self).typed_value() == old(self).typed_value().update_subrange_with(
+            final(self).seq_typed_value() == old(self).seq_typed_value().update_subrange_with(
                 start,
                 Seq::new((end - start) as nat, |i: int| TypedValue::Empty),
             ),
@@ -2639,7 +2640,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         ensures
             final(self).ptr() == old(self).ptr(),
             final(self).bytes() == old(self).bytes(),
-            final(self).typed_value() == old(self).typed_value().update_subrange_with(
+            final(self).seq_typed_value() == old(self).seq_typed_value().update_subrange_with(
                 start,
                 Seq::new(val.len(), |i: int| TypedValue::Valid(Box::new(val[i]))),
             ),
@@ -2687,7 +2688,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         ensures
             final(self).ptr() == old(self).ptr(),
             final(self).bytes() == old(self).bytes(),
-            final(self).typed_value() == old(self).typed_value().update_subrange_with(start, val),
+            final(self).seq_typed_value() == old(self).seq_typed_value().update_subrange_with(start, val),
             final(self).wf(),
         decreases val.len(),
     {
@@ -2745,7 +2746,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         ensures
             final(self).ptr() == old(self).ptr(),
             final(self).bytes() == old(self).bytes(),
-            final(self).typed_value() == old(self).typed_value().update_subrange_with(
+            final(self).seq_typed_value() == old(self).seq_typed_value().update_subrange_with(
                 start,
                 Seq::new(val.len(), |i: int| TypedValue::Valid(Box::new(val[i]))),
             ),
@@ -2765,7 +2766,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             val == old(self).value_subrange(start, (end - start) as nat),
             final(self).ptr() == old(self).ptr(),
             final(self).bytes() == old(self).bytes(),
-            final(self).typed_value() == old(self).typed_value().update_subrange_with(
+            final(self).seq_typed_value() == old(self).seq_typed_value().update_subrange_with(
                 start,
                 Seq::new((end - start) as nat, |i: int| TypedValue::Empty),
             ),
@@ -2807,14 +2808,14 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         } else {
             let tracked mut val = self.borrow_values(start, (n - 1) as nat);
             let j = start + n - 1;
-            let tracked last = self.seq_pt.tracked_borrow(j).borrow();
+            let tracked last = self.seq_pt.tracked_borrow(j).borrow_value();
             val.tracked_push(last);
             val
         }
     }
 
     /// This takes a borrow of each of the values in a subrange of `self`.
-    pub proof fn borrow_subrange(tracked &self, start: int, end: int) -> (tracked val: Seq<&T>)
+    pub proof fn borrow_value_subrange(tracked &self, start: int, end: int) -> (tracked val: Seq<&T>)
         requires
             self.wf(),
             0 <= start <= end <= self.len(),
@@ -2895,7 +2896,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
     //             (end - start) as nat,
     //         ),
     //         final(self).ptr() == old(self).ptr(),
-    //         final(self).typed_value() == old(self).typed_value().update_subrange_with(
+    //         final(self).seq_typed_value() == old(self).seq_typed_value().update_subrange_with(
     //             start,
     //             Seq::new(ret.len(), |i: int| TypedValue::Valid(Box::new(*final(ret[i])))),
     //         ),
@@ -2924,12 +2925,12 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
     //         start,
     //         (end - start) as nat,
     //     ));
-    //     assert(new_self.typed_value() =~= old_self.typed_value().update_subrange_with(
+    //     assert(new_self.seq_typed_value() =~= old_self.seq_typed_value().update_subrange_with(
     //         start,
     //         Seq::new(ret.len(), |i: int| TypedValue::Valid(Box::new(*final(ret[i])))),
     //     )) by {
-    //         assert forall|i: int| 0 <= i < new_self.len() implies new_self.typed_value()[i]
-    //             == old_self.typed_value().update_subrange_with(
+    //         assert forall|i: int| 0 <= i < new_self.len() implies new_self.seq_typed_value()[i]
+    //             == old_self.seq_typed_value().update_subrange_with(
     //             start,
     //             Seq::new(ret.len(), |i: int| TypedValue::Valid(Box::new(*final(ret[i])))),
     //         )[i] by {

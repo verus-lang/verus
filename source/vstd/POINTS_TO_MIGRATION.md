@@ -65,7 +65,7 @@ New permissions have **no type invariant**. Well-formedness is an explicit predi
 Practical rules when migrating:
 
 1. Functions that used the invariant now `requires self.wf()` (e.g. `is_aligned`,
-   `bytes_decode`, `cast_to_untyped`, `into_untyped`, `as_untyped`, `borrow`, `take`, `put`,
+   `bytes_decode`, `cast_to_untyped`, `into_untyped`, `as_untyped`, `borrow_value`, `take`, `put`,
    `is_disjoint_*`).
 2. Constructors and mutators `ensure` `wf()` where they can: `from_untyped`, `zero_sized`,
    `take`, `put`, `into_unaligned`, `as_unaligned`, `into_aligned`, `as_aligned`.
@@ -106,7 +106,8 @@ Practical rules when migrating:
 | Old | New |
 |---|---|
 | `seq_perm()` | `seq_pt()` |
-| `mem_contents()` | `typed_value()` |
+| `mem_contents()` | `seq_typed_value()` |
+| `value()` | `seq_value()` |
 | `abstract_bytes()` / `abstract_bytes_inner` | `bytes()` / `bytes_inner` |
 | `tracked_perm_seq` | `tracked_seq_pt` |
 | `tracked_perm_seq_mut` | `tracked_seq_pt_mut` |
@@ -140,9 +141,9 @@ Practical rules when migrating:
 | `from_untyped` | Proved. Takes a `PointsToUntyped`; requires `wf()`, aligned address, `len() == size_of::<T>()` (was: metadata equals size). Ensures `out.wf()`, `out.is_empty()`, same bytes. |
 | `into_untyped`, `as_untyped` | Proved. Require `wf()`. Return `PointsToUntyped` / `&PointsToUntyped`. |
 | `as_untyped_mut` | Proved. Requires `old(self).wf()`. After the call `self`'s typed value is dropped; `final(self)` is empty and `wf()` provided the untyped part keeps its pointers/length (`PointsToUntyped::ptrs_len_same`). |
-| `borrow` | Proved. Now also requires `wf()`. |
+| `borrow` | Renamed to `borrow_value` (to parallel `borrow_typed_value`). Proved. Now also requires `wf()`. |
 | `take`, `put` | Proved. Require `old(self).wf()`, ensure `final(self).wf()`. |
-| `borrow_mut` | **Still an axiom** (it ties a real Rust reference to the raw pointer, which cannot be done from a ghost `Box<T>`). Now requires `old(self).wf()`; ensures `ptrs_len_same_valid_decode(old, final) ==> final.wf()`. |
+| `borrow_mut` | **Not available for now** (commented out in `points_to_permissions.rs`). Use `take` and `put` instead. |
 
 ### `PointsToUnaligned<T>`
 
@@ -229,8 +230,9 @@ supported; convert at module boundaries.
 
 1. Switch imports to `points_to_permissions` / `points_to`, and bring the traits into scope.
 2. Rename per [section 4](#4-renames) (`is_init` → `is_valid`, `mem_contents` → `typed_value`,
-   `abstract_bytes` → `bytes`, `MemContents` → `TypedValue`, ...), including the `Seq` tracked
-   borrows: `tracked_mut_borrow` → `tracked_borrow_mut` and `tracked_mut_borrow_subrange` →
+   `abstract_bytes` → `bytes`, `MemContents` → `TypedValue`, ...). On sequences, `mem_contents` →
+   `seq_typed_value` and `value` → `seq_value`. `PointsTo::borrow` → `borrow_value`. Also the `Seq`
+   tracked borrows: `tracked_mut_borrow` → `tracked_borrow_mut` and `tracked_mut_borrow_subrange` →
    `tracked_borrow_subrange_mut`.
 3. Replace uses of `PointsToUnaligned<[u8]>` / `PointsTo<[u8]>` as raw bytes with
    `PointsToUntyped`; update `cast_to_untyped` / `from_untyped` call sites and their `ensures`

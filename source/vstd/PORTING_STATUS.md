@@ -37,7 +37,7 @@ Originally `axiom fn`, now proved:
 - `into_untyped`
 - `as_untyped`
 - `as_untyped_mut` (its flow-back clause also ensures `ptrs_len_same_valid_decode(old, final)`)
-- `borrow`
+- `borrow` (now `borrow_value`)
 - `take`
 - `put`
 
@@ -72,7 +72,7 @@ invariant on `impl<T: ?Sized> PointsTo<T>` is just there for reference and won't
 ### Already covered by `SeqPointsTo<T, PointsTo<T>>` (no porting needed)
 
 - `mem_contents_seq`/`len`/`spec_index`, `is_init`/`is_uninit`/`is_fully_uninit`, `value` →
-  `typed_value`/`len`/`spec_index`, `is_valid`/`is_empty`/`is_fully_empty`, `value`.
+  `seq_typed_value`/`len`/`spec_index`, `is_valid`/`is_empty`/`is_fully_empty`, `seq_value`.
 - `is_nonnull`/`ptr_bounds`/`provenance_non_null` → the `PointsToProperties` trait methods;
   `is_aligned` → `wf()` includes alignment; `is_disjoint` → `is_disjoint_seqpt` / trait
   `is_disjoint`.
@@ -94,8 +94,8 @@ invariant on `impl<T: ?Sized> PointsTo<T>` is just there for reference and won't
   Note: the old `take_mem_contents_subrange` filled the range with `Seq::new(end, ...)` (length
   `end`); the port uses `end - start`.
 - **Borrows of things the `SeqPointsTo` doesn't store** are all proved:
-  - `borrow_subrange` returns a `Seq<&T>` and `borrow_typed_value_subrange` a
-    `Seq<&TypedValue<T>>`, built element by element from `PointsTo::borrow` /
+  - `borrow_value_subrange` returns a `Seq<&T>` and `borrow_typed_value_subrange` a
+    `Seq<&TypedValue<T>>`, built element by element from `PointsTo::borrow_value` /
     `borrow_typed_value`.
   - The shared-borrow `subrange` borrows the `seq_pt` subrange (`Seq::tracked_borrow_subrange`) and
     wraps it with `shr_ref_struct_wrap`. `bytes_subrange_equiv` relates its bytes to a subrange of
@@ -217,27 +217,40 @@ and `PointsTo::put`).
 - [ ] Port `PointsToRaw` (and its `impl PointsToRaw`) from `raw_ptr_old.rs` (line ~3245).
 - [x] Implemented `View` for `SeqPointsTo<T, PointsTo<T>>`: it views as
   `SeqPointsToData { ptr, seq_pt }`.
-- [ ] Rename `SeqPointsTo`'s `typed_value()` / `value()` to `seq_typed_value()` / `seq_value()`.
-  Related names (`typed_value_equiv`, `value_subrange`, `is_valid_subrange`) stay as they are.
-  What it takes:
-  - Update the ~30 sequence-level call sites in `points_to_permissions.rs` (the range operations'
-    `update_subrange_with` postconditions, `borrow_typed_value_subrange`, `cast_to_untyped`,
-    `bytes_decode`, ...). Element-level calls such as `self[i].value()` / `self[i].typed_value()`
-    are `PointsTo`'s and keep their names, so this is a careful rename, not a find-and-replace.
-  - Update the shelved `points_to_str_wip.rs` snapshot if it should stay restorable, the
-    `typed_value` / `value` rows in [POINTS_TO_COMPARISON.md](POINTS_TO_COMPARISON.md), and the
-    `SeqPointsTo` renames table in [POINTS_TO_MIGRATION.md](POINTS_TO_MIGRATION.md).
-- [ ] Rename `PointsTo::borrow` to `PointsTo::borrow_value`, and `SeqPointsTo::borrow_subrange` to
-  `SeqPointsTo::borrow_value_subrange`, so they parallel `borrow_typed_value` /
-  `borrow_typed_value_subrange`. If `borrow_mut` / `borrow_mut_subrange` are restored, rename them
-  the same way (`borrow_value_mut` / `borrow_value_subrange_mut`). Update the private
-  `borrow_values` helper's call, the docs, and add the renames to
-  [POINTS_TO_MIGRATION.md](POINTS_TO_MIGRATION.md).
+- [x] Renamed `SeqPointsTo<T, PointsTo<T>>`'s `typed_value()` / `value()` to
+  `seq_typed_value()` / `seq_value()`. Related names (`typed_value_equiv`, `value_subrange`,
+  `is_valid_subrange`) are unchanged, and element-level calls (`self[i].value()`,
+  `self[i].typed_value()`) are `PointsTo`'s and keep their names.
+- [x] Renamed `PointsTo::borrow` to `borrow_value` and `SeqPointsTo::borrow_subrange` to
+  `borrow_value_subrange`, paralleling `borrow_typed_value` / `borrow_typed_value_subrange`. If
+  `borrow_mut` / `borrow_mut_subrange` are restored, rename them the same way
+  (`borrow_value_mut` / `borrow_value_subrange_mut`).
 - [ ] Possibly rename `SeqPointsTo::subrange` to `borrow_subrange` (and `subrange_mut` to
   `borrow_subrange_mut`), since they borrow a sub-permission rather than return an owned one,
-  matching the `Seq::tracked_borrow_subrange` / `tracked_borrow_subrange_mut` names. This depends
-  on the item above: the name `borrow_subrange` is currently taken by the value-borrowing function,
-  which would first become `borrow_value_subrange`.
+  matching the `Seq::tracked_borrow_subrange` / `tracked_borrow_subrange_mut` names. The name
+  `borrow_subrange` is now free (the value-borrowing function became `borrow_value_subrange`).
+- [ ] Rename the `cast_to_*` typed/untyped conversions. The `into_untyped` / `from_untyped` /
+  `as_untyped` / `as_untyped_mut` names already follow Rust/vstd conventions (`into_*` consumes
+  `self`, `from_*` constructs `Self`, `as_*` borrows, `_mut` for the mutable version) and stay as
+  they are. "Cast" should be reserved for conversions that change the type of the value (like
+  `cast_points_to`); converting to/from `PointsToUntyped` keeps the same bytes and only decides
+  whether the typed value comes along. The new names follow the existing `value` (a guaranteed-valid
+  `T`) vs `typed_value` (a possibly-empty `TypedValue<T>`) split:
+
+  | Today | New | Carries |
+  |---|---|---|
+  | `PointsTo::cast_to_untyped(self)` | `PointsTo::into_untyped_with_typed_value(self)` | `TypedValue<T>` (instead of `Option<T>`) |
+  | `SeqPointsTo::cast_to_untyped(self)` | `SeqPointsTo::into_untyped_with_typed_value(self)` | `Seq<TypedValue<T>>` (instead of `Seq<Option<T>>`) |
+  | `PointsToUntyped::cast_to_typed(self, value)` | `PointsTo::from_untyped_with_value(untyped, value)` | `T`, always valid |
+  | `PointsToUntyped::cast_to_seq_pt(self, capacity, values)` | `SeqPointsTo::from_untyped_with_typed_value(untyped, capacity, values)` | `Seq<TypedValue<T>>` for a prefix (instead of `Seq<Option<T>>`) |
+
+  The `from_*` functions move from `PointsToUntyped` to the type being built, like `from_untyped`.
+  The asymmetry is deliberate. There is no `PointsTo::from_untyped_with_typed_value`, because
+  `from_untyped` (empty) and `from_untyped_with_value` (valid) already cover both cases for a single
+  value. `PointsTo::into_untyped_with_typed_value` returns a `TypedValue<T>`, so it can be called
+  whether or not the permission is valid. The sequence versions use `TypedValue<T>` both ways, so
+  each element can independently be valid or not. Update callers (e.g. `from_untyped` on `SeqPointsTo` calls
+  `cast_to_seq_pt`, and `cast_to_seq_pt` calls `PointsTo::from_untyped` / `put`) and the docs.
 - [ ] Move `ptrs_len_same` / `ptrs_len_same_valid_decode` and `stays_wf` into the
   `PointsToProperties` trait. What it takes:
   - Merge the two predicates under one trait name (each impl keeps its own body), and declare
