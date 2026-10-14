@@ -8,6 +8,7 @@ For soundness's sake, be as defensive as possible:
 
 use crate::context::{Context, ContextX};
 use crate::external::{CrateItems, GeneralItemId, VerifOrExternal};
+use crate::query::PreCrate;
 use crate::reveal_hide::handle_reveal_hide;
 use crate::rust_to_vir_adts::{check_item_enum, check_item_struct, check_item_union};
 use crate::rust_to_vir_base::{def_id_to_vir_path_option, mk_visibility};
@@ -407,7 +408,7 @@ pub fn crate_to_vir<'a, 'tcx>(
     mut ctxtx: ContextX<'tcx>,
     imported: &Vec<Krate>,
     crate_items: &CrateItems,
-) -> Result<(Context<'tcx>, WarningCtx, Krate), Vec<VirErr>> {
+) -> Result<PreCrate<'tcx>, Vec<VirErr>> {
     let mut vir: KrateX = KrateX {
         functions: Vec::new(),
         reveal_groups: Vec::new(),
@@ -596,14 +597,14 @@ pub fn crate_to_vir<'a, 'tcx>(
 
     vir.path_as_rust_names = vir::ast_util::get_path_as_rust_names_for_krate(&CrateId::Vstd);
 
-    for info in infos.into_iter() {
-        if let Err(e) = crate::rust_to_vir_func::finish_item(&ctxt, info, &mut vir.functions) {
-            errors.push(e);
-        }
-    }
-    if errors.len() > 0 {
-        return Err(errors);
-    }
+    //for info in infos.into_iter() {
+    //    if let Err(e) = crate::rust_to_vir_func::finish_item(&ctxt, info, &mut vir.functions) {
+    //        errors.push(e);
+    //    }
+    //}
+    //if errors.len() > 0 {
+    //    return Err(errors);
+    //}
 
     crate::rust_to_vir_impl::collect_external_trait_impls(
         &ctxt,
@@ -627,5 +628,5 @@ pub fn crate_to_vir<'a, 'tcx>(
     }
     let warning_ctx = WarningCtx { fun_warn_configs };
 
-    Ok((ctxt, warning_ctx, Arc::new(vir)))
+    Ok(PreCrate { ctxt, warning_ctx, krate_without_funs: Arc::new(vir), function_infos: infos })
 }
