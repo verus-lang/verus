@@ -16,18 +16,39 @@ use air::scope_map::ScopeMap;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+pub struct DemoteTraitLookup {
+    traits: HashSet<Path>,
+    internal_traits: HashSet<Path>,
+    extension_traits: HashSet<Path>,
+    impl_to_spec_traits: HashMap<Path, Path>,
+    funs: HashSet<Fun>,
+}
+
+impl DemoteTraitLookup {
+    fn new(krate: &Krate) -> Self {
+        let traits: HashSet<Path> = krate.traits.iter().map(|t| t.x.name.clone()).collect();
+        let internal_traits: HashSet<Path> =
+            krate.traits.iter().filter(|t| t.x.proxy.is_none()).map(|t| t.x.name.clone()).collect();
+        let funs: HashSet<Fun> = krate.functions.iter().map(|f| f.x.name.clone()).collect();
+        let mut extension_traits: HashSet<Path> = HashSet::new();
+        let mut impl_to_spec_traits: HashMap<Path, Path> = HashMap::new();
+        for t in krate.traits.iter() {
+            if let Some((extension, imp)) = &t.x.external_trait_extension {
+                extension_traits.insert(extension.clone());
+                impl_to_spec_traits.insert(imp.clone(), extension.clone());
+            }
+        }
+        DemoteTraitLookup { traits, internal_traits, extension_traits, impl_to_spec_traits, funs }
+    }
+}
+
 fn get_trait(fun: &Fun) -> Path {
     fun.path.pop_segment()
 }
 
-fn demote_one_expr(
-    traits: &HashSet<Path>,
-    internal_traits: &HashSet<Path>,
-    extension_traits: &HashSet<Path>,
-    impl_to_spec_traits: &HashMap<Path, Path>,
-    funs: &HashSet<Fun>,
-    expr: &Expr,
-) -> Result<Expr, VirErr> {
+fn demote_one_expr(lookup: &DemoteTraitLookup, expr: &Expr) -> Result<Expr, VirErr> {
+    let DemoteTraitLookup { traits, internal_traits, extension_traits, impl_to_spec_traits, funs } =
+        lookup;
     match &expr.x {
         ExprX::Call {
             target:
@@ -195,20 +216,8 @@ pub fn demote_external_traits(
     warning_ctx: &crate::context::WarningCtx,
     krate: &Krate,
 ) -> Result<Krate, VirErr> {
-    check_no_dupe_impls(krate)?;
-
-    let traits: HashSet<Path> = krate.traits.iter().map(|t| t.x.name.clone()).collect();
-    let internal_traits: HashSet<Path> =
-        krate.traits.iter().filter(|t| t.x.proxy.is_none()).map(|t| t.x.name.clone()).collect();
-    let funs: HashSet<Fun> = krate.functions.iter().map(|f| f.x.name.clone()).collect();
-    let mut extension_traits: HashSet<Path> = HashSet::new();
-    let mut impl_to_spec_traits: HashMap<Path, Path> = HashMap::new();
-    for t in krate.traits.iter() {
-        if let Some((extension, imp)) = &t.x.external_trait_extension {
-            extension_traits.insert(extension.clone());
-            impl_to_spec_traits.insert(imp.clone(), extension.clone());
-        }
-    }
+    let lookup = DemoteTraitLookup::new(krate);
+    let DemoteTraitLookup { traits, funs, .. } = &lookup;
 
     let mut kratex = (**krate).clone();
     for function in &mut kratex.functions {
@@ -282,16 +291,7 @@ pub fn demote_external_traits(
             &function,
             &mut map,
             &mut (),
-            &|_state, _, expr| {
-                demote_one_expr(
-                    &traits,
-                    &internal_traits,
-                    &extension_traits,
-                    &impl_to_spec_traits,
-                    &funs,
-                    expr,
-                )
-            },
+            &|_state, _, expr| demote_one_expr(&lookup, expr),
             &|_state, _, stmt| Ok(vec![stmt.clone()]),
             &|_state, typ| Ok(typ.clone()),
             &|_state, _, place| Ok(place.clone()),
