@@ -740,5 +740,11 @@ pub(crate) fn crate_to_vir<'a, 'tcx>(
             fun_name_to_info.insert(stub.x.name.clone(), info.clone());
         }
     }
-    Ok(PreCrate { ctxt, warning_ctx, krate_without_funs: Arc::new(vir), infos: infos, fun_name_to_info })
+    Ok(PreCrate {
+        ctxt,
+        warning_ctx,
+        krate_without_funs: Arc::new(vir),
+        infos: infos,
+        fun_name_to_info,
+    })
 }
