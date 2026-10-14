@@ -25,14 +25,26 @@ pub struct DemoteTraitLookup {
 }
 
 impl DemoteTraitLookup {
-    fn new(krate: &Krate) -> Self {
-        let traits: HashSet<Path> = krate.traits.iter().map(|t| t.x.name.clone()).collect();
+    pub fn new(
+        krate: &Krate,
+        other_krates: &[Krate],
+        functions: &HashMap<Fun, crate::ast::FunctionStub>,
+    ) -> Self {
+        let traits_iter =
+            || krate.traits.iter().chain(other_krates.iter().map(|k| k.traits.iter()).flatten());
+        let funs_iter = || {
+            functions.iter().map(|(name, _)| name.clone()).chain(
+                other_krates.iter().map(|k| k.functions.iter()).flatten().map(|f| f.x.name.clone()),
+            )
+        };
+
+        let traits: HashSet<Path> = traits_iter().map(|t| t.x.name.clone()).collect();
         let internal_traits: HashSet<Path> =
-            krate.traits.iter().filter(|t| t.x.proxy.is_none()).map(|t| t.x.name.clone()).collect();
-        let funs: HashSet<Fun> = krate.functions.iter().map(|f| f.x.name.clone()).collect();
+            traits_iter().filter(|t| t.x.proxy.is_none()).map(|t| t.x.name.clone()).collect();
+        let funs: HashSet<Fun> = funs_iter().collect();
         let mut extension_traits: HashSet<Path> = HashSet::new();
         let mut impl_to_spec_traits: HashMap<Path, Path> = HashMap::new();
-        for t in krate.traits.iter() {
+        for t in traits_iter() {
             if let Some((extension, imp)) = &t.x.external_trait_extension {
                 extension_traits.insert(extension.clone());
                 impl_to_spec_traits.insert(imp.clone(), extension.clone());
@@ -215,8 +227,8 @@ pub fn demote_external_traits(
     diagnostics: &impl air::messages::Diagnostics,
     warning_ctx: &crate::context::WarningCtx,
     krate: &Krate,
+    lookup: &DemoteTraitLookup,
 ) -> Result<Krate, VirErr> {
-    let lookup = DemoteTraitLookup::new(krate);
     let DemoteTraitLookup { traits, funs, .. } = &lookup;
 
     let mut kratex = (**krate).clone();
@@ -285,21 +297,26 @@ pub fn demote_external_traits(
             }
             *function = Spanned::new(function.span.clone(), functionx);
         }
-
-        let mut map: VisitorScopeMap = ScopeMap::new();
-        *function = crate::ast_visitor::map_function_visitor_env(
-            &function,
-            &mut map,
-            &mut (),
-            &|_state, _, expr| demote_one_expr(&lookup, expr),
-            &|_state, _, stmt| Ok(vec![stmt.clone()]),
-            &|_state, typ| Ok(typ.clone()),
-            &|_state, _, place| Ok(place.clone()),
-            &|_state, _, pattern| Ok(pattern.clone()),
-        )?;
     }
-
     Ok(Arc::new(kratex))
+}
+
+/// Walk all expressions in the function and demote all Calls to foreign trait functions
+pub fn demote_external_traits_function_calls(
+    lookup: &DemoteTraitLookup,
+    function: &Function,
+) -> Result<Function, VirErr> {
+    let mut map: VisitorScopeMap = ScopeMap::new();
+    crate::ast_visitor::map_function_visitor_env(
+        &function,
+        &mut map,
+        &mut (),
+        &|_state, _, expr| demote_one_expr(&lookup, expr),
+        &|_state, _, stmt| Ok(vec![stmt.clone()]),
+        &|_state, typ| Ok(typ.clone()),
+        &|_state, _, place| Ok(place.clone()),
+        &|_state, _, pattern| Ok(pattern.clone()),
+    )
 }
 
 fn rewrite_path(from_path: &Path, to_path: &Path, path: &Path) -> Path {

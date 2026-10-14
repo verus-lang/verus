@@ -66,14 +66,14 @@ impl<'tcx> Query<'tcx> {
         }
     }
 
-    fn emit_errors<T>(&mut self, err: Vec<VirErr>) -> Result<T, ErrorGuaranteed> {
+    fn emit_errors(&mut self, err: Vec<VirErr>) -> ErrorGuaranteed {
         todo!()
         //Err(ErrorGuaranteed{})
     }
 
     //// Import crate
 
-    pub fn get_imported(&mut self) -> Res<Arc<Vec<Krate>>> {
+    pub fn get_other_vir_crates(&mut self) -> Res<Arc<Vec<Krate>>> {
         if let Some(imported) = &self.cache_other_vir_crates {
             return imported.clone();
         }
@@ -121,11 +121,11 @@ impl<'tcx> Query<'tcx> {
 
     //// DemoteTraitsLookup
 
-    fn get_demote_traits_lookup(&mut self) -> Res<Arc<DemoteTraitLookup>> {
+    pub fn get_demote_traits_lookup(&mut self) -> Res<Arc<DemoteTraitLookup>> {
         if let Some(demote_traits_lookup) = &self.cache_demote_traits_lookup {
             return demote_traits_lookup.clone();
         }
-        let other_vir_crates = self.get_imported()?;
+        let other_vir_crates = self.get_other_vir_crates()?;
         let pre_crate = self.get_pre_crate()?;
         // need to modify DemoteTraitLookup::new to work with the information we have
         todo!()
@@ -133,7 +133,7 @@ impl<'tcx> Query<'tcx> {
 
     //// Get all function stubs
 
-    fn get_all_function_stubs(&mut self) -> Res<Arc<HashMap<Fun, FunctionStub>>> {
+    pub fn get_all_function_stubs(&mut self) -> Res<Arc<HashMap<Fun, FunctionStub>>> {
         if let Some(all_function_stubs) = &self.cache_all_function_stubs {
             return all_function_stubs.clone();
         }
@@ -150,11 +150,11 @@ impl<'tcx> Query<'tcx> {
                     vir::ast_util::fun_as_friendly_rust_name(&stub.x.name)
                 ),
             );
-            s.emit_errors(vec![err])
+            Err(s.emit_errors(vec![err]))
         };
 
         // combine all the function stubs from our crate and the external crates
-        let other_vir_crates = self.get_imported()?;
+        let other_vir_crates = self.get_other_vir_crates()?;
         let pre_crate = self.get_pre_crate()?;
         let mut stubs = HashMap::new();
         for stub in pre_crate.infos.iter().map(|info| info.iter_stubs()).flatten() {
@@ -178,7 +178,7 @@ impl<'tcx> Query<'tcx> {
 
     //// Translating an individual function
 
-    fn get_unchecked_function(&mut self, fun: &Fun) -> Res<Function> {
+    pub fn get_unchecked_function(&mut self, fun: &Fun) -> Res<Function> {
         if let Some(f) = self.cache_unchecked_functions.get(fun) {
             return f.clone();
         }
@@ -202,7 +202,7 @@ impl<'tcx> Query<'tcx> {
                 self.cache_unchecked_functions.get(fun).unwrap().clone()
             }
             Err(err) => {
-                let err = self.emit_errors(vec![err]);
+                let err = Err(self.emit_errors(vec![err]));
                 for stub in info.iter_stubs() {
                     let found = self
                         .cache_unchecked_functions
@@ -216,7 +216,7 @@ impl<'tcx> Query<'tcx> {
 
     //// Checking an individual function
 
-    fn get_checked_function(&mut self, fun: &Fun) -> Res<(Function, Arc<ErasureModes>)> {
+    pub fn get_checked_function(&mut self, fun: &Fun) -> Res<(Function, Arc<ErasureModes>)> {
         if let Some(f) = self.cache_checked_functions.get(fun) {
             return f.clone();
         }
@@ -225,13 +225,22 @@ impl<'tcx> Query<'tcx> {
         res
     }
 
-    fn _compute_checked_function(&mut self, fun: &Fun) -> Res<(Function, Arc<ErasureModes>)> {
-        todo!()
+    fn _compute_checked_function(
+        &mut self,
+        fun: &Fun,
+    ) -> Result<(Function, Arc<ErasureModes>), ErrorGuaranteed> {
+        let function = self.get_unchecked_function(fun)?;
+        let lookup = self.get_demote_traits_lookup()?;
+
+        let function = vir::traits::demote_external_traits_function_calls(&lookup, &function)
+            .map_err(|e| self.emit_errors(vec![e]))?;
+
+        todo!();
     }
 
     //// Getting the completed krate
 
-    fn get_finished_crate(&mut self) -> Res<Krate> {
+    pub fn get_finished_crate(&mut self) -> Res<Krate> {
         let pre_crate = self.get_pre_crate()?;
         let mut cratex = (*pre_crate.krate_without_funs).clone();
         let mut found_err = None;
@@ -246,6 +255,8 @@ impl<'tcx> Query<'tcx> {
         if let Some(err) = found_err {
             return Err(err);
         }
+        let other_vir_crates = self.get_other_vir_crates()?;
+        vir::traits::set_krate_dyn_compatibility(&other_vir_crates, &mut cratex);
         Ok(Arc::new(cratex))
     }
 }
