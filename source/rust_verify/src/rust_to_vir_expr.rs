@@ -2522,19 +2522,14 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
 
                 // Neg of an integer type
                 if matches!(op, UnOp::Neg) && ty_is_integer_or_ref_integer(bctx, arg_ty) {
-                    if bctx.in_ghost {
-                        return err_span(
-                            expr.span,
-                            "bare unary negation (-) in ghost code; it is expected that (-) is translated by the verus macro",
-                        );
-                    }
-
                     // Translate `-a` to the binary op `0 - a`.
                     // Special-case the negation of literals.
                     let zero_const = vir::ast_util::const_int_from_u128(0);
                     let zero = mk_expr(ExprX::Const(zero_const))?.expect_expr();
-                    let varg = if let ExprKind::Lit(Spanned { node: LitKind::Int(i, _), .. }) =
-                        &arg.kind
+                    let (ob, varg) = if let ExprKind::Lit(Spanned {
+                        node: LitKind::Int(i, _),
+                        ..
+                    }) = &arg.kind
                     {
                         if bctx.types.expr_adjustments(arg).len() != 0 {
                             crate::internal_err!(
@@ -2542,17 +2537,26 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                                 "negation of literal expected no implicit adjustments"
                             );
                         }
-                        mk_lit_int(
+                        let ob = OverflowBehavior::Allow;
+                        let expr = mk_lit_int(
                             true,
                             i.get(),
                             typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id)?,
-                        )?
+                        )?;
+                        (ob, expr)
                     } else {
-                        expr_to_vir(bctx, arg)?
+                        if bctx.in_ghost {
+                            return err_span(
+                                expr.span,
+                                "bare unary negation (-) in ghost code; it is expected that (-) is translated by the verus macro",
+                            );
+                        }
+                        let range = crate::rust_to_vir_base::get_range(&expr_typ()?);
+                        let ob = OverflowBehavior::Error(range);
+                        let expr = expr_to_vir(bctx, arg)?;
+                        (ob, expr)
                     };
                     let varg = varg.consume(bctx, bctx.types.expr_ty_adjusted(arg));
-                    let range = crate::rust_to_vir_base::get_range(&expr_typ()?);
-                    let ob = OverflowBehavior::Error(range);
                     return mk_expr(ExprX::Binary(BinaryOp::Arith(ArithOp::Sub(ob)), zero, varg));
                 }
 
