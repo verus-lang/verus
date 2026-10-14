@@ -475,6 +475,13 @@ impl GlobalCtx {
                 t,
             );
         }
+        for a in &krate.assoc_type_impls {
+            crate::recursive_types::add_assoc_type_impl_to_graph(
+                &mut span_infos,
+                &mut func_call_graph,
+                a,
+            );
+        }
 
         // map (method, impl) to impl Fun
         let mut trait_impl_map: HashMap<(Fun, Path), Fun> = HashMap::new();
