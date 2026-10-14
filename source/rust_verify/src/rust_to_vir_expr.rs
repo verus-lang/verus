@@ -2522,6 +2522,13 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
 
                 // Neg of an integer type
                 if matches!(op, UnOp::Neg) && ty_is_integer_or_ref_integer(bctx, arg_ty) {
+                    if bctx.in_ghost {
+                        return err_span(
+                            expr.span,
+                            "bare unary negation (-) in ghost code; it is expected that (-) is translated by the verus macro",
+                        );
+                    }
+
                     // Translate `-a` to the binary op `0 - a`.
                     // Special-case the negation of literals.
                     let zero_const = vir::ast_util::const_int_from_u128(0);
@@ -2545,11 +2552,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     };
                     let varg = varg.consume(bctx, bctx.types.expr_ty_adjusted(arg));
                     let range = crate::rust_to_vir_base::get_range(&expr_typ()?);
-                    let ob = if bctx.in_ghost {
-                        OverflowBehavior::Allow
-                    } else {
-                        OverflowBehavior::Error(range)
-                    };
+                    let ob = OverflowBehavior::Error(range);
                     return mk_expr(ExprX::Binary(BinaryOp::Arith(ArithOp::Sub(ob)), zero, varg));
                 }
 
@@ -3652,6 +3655,9 @@ fn binopkind_to_binaryop_inner<'tcx>(
     let rhs_ty = bctx.types.expr_ty_adjusted(rhs);
 
     if ty_is_float_or_ref_float(lhs_ty) && lhs_ty == rhs_ty {
+        if bctx.in_ghost {
+            unsupported_err!(span, "floating point operation in ghost code");
+        }
         match op {
             BinOpKind::Add => {
                 return Ok(Some(BinaryOp::UninterpretedFloat(UninterpretedFloatBinaryOp::Add)));
@@ -3715,22 +3721,26 @@ fn binopkind_to_binaryop_inner<'tcx>(
                     // REVIEW: The non-ghost case is unexpected here; since `/` and `%`
                     // are replaced by builtin spec functions in spec code, this case
                     // should only happen for exec code.
-                    let sdecb = if bctx.in_ghost {
-                        SignedDivEdgeCaseBehavior::Allow
-                    } else {
-                        SignedDivEdgeCaseBehavior::Error(width)
-                    };
+                    if bctx.in_ghost {
+                        return err_span(
+                            span,
+                            "bare division operator (/) in ghost code; it is expected that (/) is translated by the verus macro",
+                        );
+                    }
+                    let sdecb = SignedDivEdgeCaseBehavior::Error(width);
                     BinaryOp::Arith(ArithOp::TruncatingDiv(d0b, sdecb))
                 }
                 None => BinaryOp::Arith(ArithOp::EuclideanDiv(d0b)),
             },
             BinOpKind::Rem => match euclidean_or_truncating_div(bctx, lhs, rhs)? {
                 Some(width) => {
-                    let sdecb = if bctx.in_ghost {
-                        SignedDivEdgeCaseBehavior::Allow
-                    } else {
-                        SignedDivEdgeCaseBehavior::Error(width)
-                    };
+                    if bctx.in_ghost {
+                        return err_span(
+                            span,
+                            "bare modulo operator (%) in ghost code; it is expected that (%) is translated by the verus macro",
+                        );
+                    }
+                    let sdecb = SignedDivEdgeCaseBehavior::Error(width);
                     BinaryOp::Arith(ArithOp::TruncatingMod(d0b, sdecb))
                 }
                 None => BinaryOp::Arith(ArithOp::EuclideanMod(d0b)),
@@ -3778,12 +3788,14 @@ fn binopkind_to_binaryop_inner<'tcx>(
                 ) else {
                     return err_span(lhs.span, "expected finite integer width for <<");
                 };
-                let bb_for_ghostness = if bctx.in_ghost {
-                    BitshiftBehavior::Allow
-                } else {
-                    BitshiftBehavior::Error(w)
-                };
-                BinaryOp::Bitwise(BitwiseOp::Shl(w, s), bb_for_ghostness)
+                if bctx.in_ghost {
+                    return err_span(
+                        span,
+                        "bare left-shift operator (<<) in ghost code; it is expected that (<<) is translated by the verus macro",
+                    );
+                }
+                let bb = BitshiftBehavior::Error(w);
+                BinaryOp::Bitwise(BitwiseOp::Shl(w, s), bb)
             }
             BinOpKind::Shr => {
                 let (Some(w), _s) = bitwidth_and_signedness_of_integer_type(
@@ -3792,12 +3804,14 @@ fn binopkind_to_binaryop_inner<'tcx>(
                 ) else {
                     return err_span(lhs.span, "expected finite integer width for >>");
                 };
-                let bb_for_ghostness = if bctx.in_ghost {
-                    BitshiftBehavior::Allow
-                } else {
-                    BitshiftBehavior::Error(w)
-                };
-                BinaryOp::Bitwise(BitwiseOp::Shr, bb_for_ghostness)
+                if bctx.in_ghost {
+                    return err_span(
+                        span,
+                        "bare right-shift operator (>>) in ghost code; it is expected that (>>) is translated by the verus macro",
+                    );
+                }
+                let bb = BitshiftBehavior::Error(w);
+                BinaryOp::Bitwise(BitwiseOp::Shr, bb)
             }
             _ => {
                 return Ok(None);
