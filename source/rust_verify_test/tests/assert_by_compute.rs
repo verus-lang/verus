@@ -1087,6 +1087,17 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] has_resolved_compute_only_github3164 verus_code! {
+        fn test() {
+            let x = false;
+            assert(has_resolved(x));
+            assert(has_resolved(x) == x) by (compute_only);
+            assert(false);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "assert_by_compute_only failed to simplify down to true")
+}
+
+test_verify_one_file! {
     #[test] seq_new_len_overflow_issue2177 verus_code! {
         use vstd::prelude::*;
         proof fn test() {
