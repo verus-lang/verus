@@ -2447,7 +2447,7 @@ pub(crate) fn finish_function<'tcx>(
     }
 
     if let Some(action) = autoderive_action {
-        if let Some(body_hir_id) = body_hir_id {
+        if body_hir_id.is_some() {
             let inputs = match &sig.sig {
                 FnOrConstSigEnum::Fn(..) => {
                     let fn_sig = ctxt.tcx.fn_sig(def_id).skip_binder();
@@ -2461,7 +2461,6 @@ pub(crate) fn finish_function<'tcx>(
                 def_id,
                 &inputs,
                 sig.span,
-                body_hir_id,
                 action,
                 &mut functionx,
             )?;
