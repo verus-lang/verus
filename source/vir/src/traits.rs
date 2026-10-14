@@ -28,15 +28,11 @@ impl DemoteTraitLookup {
     pub fn new(
         krate: &Krate,
         other_krates: &[Krate],
-        functions: &HashMap<Fun, crate::ast::FunctionStub>,
+        all_functions: &HashMap<Fun, crate::ast::FunctionStub>,
     ) -> Self {
         let traits_iter =
             || krate.traits.iter().chain(other_krates.iter().map(|k| k.traits.iter()).flatten());
-        let funs_iter = || {
-            functions.iter().map(|(name, _)| name.clone()).chain(
-                other_krates.iter().map(|k| k.functions.iter()).flatten().map(|f| f.x.name.clone()),
-            )
-        };
+        let funs_iter = || all_functions.iter().map(|(name, _)| name.clone());
 
         let traits: HashSet<Path> = traits_iter().map(|t| t.x.name.clone()).collect();
         let internal_traits: HashSet<Path> =

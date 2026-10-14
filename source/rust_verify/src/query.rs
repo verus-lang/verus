@@ -119,18 +119,6 @@ impl<'tcx> Query<'tcx> {
         }
     }*/
 
-    //// DemoteTraitsLookup
-
-    pub fn get_demote_traits_lookup(&mut self) -> Res<Arc<DemoteTraitLookup>> {
-        if let Some(demote_traits_lookup) = &self.cache_demote_traits_lookup {
-            return demote_traits_lookup.clone();
-        }
-        let other_vir_crates = self.get_other_vir_crates()?;
-        let pre_crate = self.get_pre_crate()?;
-        // need to modify DemoteTraitLookup::new to work with the information we have
-        todo!()
-    }
-
     //// Get all function stubs
 
     pub fn get_all_function_stubs(&mut self) -> Res<Arc<HashMap<Fun, FunctionStub>>> {
@@ -174,6 +162,24 @@ impl<'tcx> Query<'tcx> {
         }
 
         Ok(Arc::new(stubs))
+    }
+
+    //// DemoteTraitsLookup
+
+    pub fn get_demote_traits_lookup(&mut self) -> Res<Arc<DemoteTraitLookup>> {
+        if let Some(demote_traits_lookup) = &self.cache_demote_traits_lookup {
+            return demote_traits_lookup.clone();
+        }
+        let other_vir_crates = self.get_other_vir_crates()?;
+        let pre_crate = self.get_pre_crate()?;
+        let function_stubs = self.get_all_function_stubs()?;
+        vir::traits::DemoteTraitLookup::new(
+            &pre_crate.krate_without_funs,
+            &other_vir_crates,
+            &function_stubs,
+        );
+
+        todo!()
     }
 
     //// Translating an individual function
