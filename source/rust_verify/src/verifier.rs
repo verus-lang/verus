@@ -2732,7 +2732,8 @@ impl Verifier {
         let pre_crate = crate::rust_to_vir::crate_to_vir(ctxtx, &other_vir_crates, &crate_items)
             .map_err(map_errs_diagnostics)?;
 
-        let query = crate::query::Query::new(self.args.clone(), other_vir_crates, pre_crate);
+        let mut query = crate::query::Query::new(self.args.clone(), other_vir_crates, pre_crate);
+        let krate = query.get_finished_crate();
 
         todo!();
         /*

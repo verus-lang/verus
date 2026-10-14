@@ -606,16 +606,17 @@ pub(crate) fn crate_to_vir<'a, 'tcx>(
     //    return Err(errors);
     //}
 
+    let function_stubs = infos.iter().map(|info| info.iter_stubs()).flatten().cloned().collect();
     crate::rust_to_vir_impl::collect_external_trait_impls(
         &ctxt,
         imported,
         &mut vir,
         &mut state.external_info,
+        &function_stubs,
     )
     .map_err(|e| vec![e])?;
 
     crate::rust_to_vir_adts::setup_type_invariants(&mut vir).map_err(|e| vec![e])?;
-    vir::traits::set_krate_dyn_compatibility(imported, &mut vir);
 
     let mut fun_warn_configs: HashMap<Fun, Option<WarningConfig>> = HashMap::new();
     for krate in imported {
