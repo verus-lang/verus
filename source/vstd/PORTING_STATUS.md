@@ -182,6 +182,53 @@ The old `impl SeqPointsTo<u8>` is ported as `SeqPointsTo<T, PointsTo<T>>::from_u
 
 ## TODO
 
+### Open
+
+- [ ] Keep applying the same wf requires/ensures audit to every proof fn ported from here on.
+- [ ] Port `impl<T> PointsTo<[T]>` from `raw_ptr_old.rs` (line ~754).
+- [ ] Add `cast_points_to` and `cast_points_to_unaligned` in an `impl` block on `PointsTo<[T]>`,
+  where they make more sense than on `SeqPointsTo`. They were drafted as axioms on
+  `SeqPointsTo<T, PointsTo<T>>` and removed; the draft contract (requires `wf()`, all elements
+  valid, `len * size_of::<T>() == size_of::<V>()`, plus alignment to `V` for the aligned version;
+  ensures `points_to.wf()`, the same address/provenance, same bytes, and
+  `value() as int == to_big_from_digits::<V, T>(value()).index(0)`) is straightforward to redo.
+  They would also need the `endian` imports (`CompatibleSmallerBaseFor`, `BasePow2`,
+  `to_big_from_digits`). On hold until `PointsTo<[T]>` is implemented.
+- [ ] Port `PointsToRaw` (and its `impl PointsToRaw`) from `raw_ptr_old.rs` (line ~3245).
+- [ ] Move `ptrs_len_same` / `ptrs_len_same_valid_decode` and `stays_wf` into the
+  `PointsToProperties` trait. What it takes:
+  - Merge the two predicates under one trait name (each impl keeps its own body), and declare
+    `spec fn ptrs_len_same(old: Self, new: Self) -> bool` and
+    `proof fn stays_wf(old: Self, new: Self)` in the trait. Take spec arguments rather than
+    `tracked` ones, so `stays_wf` can be applied to `old(..)` / `final(..)` values.
+  - Implement it for `PointsToSingleton` (`new.ptr() == old.ptr()`; `stays_wf` is trivial), the
+    generic `SeqPointsTo<T, P>` (same pointer and length, plus per-element `P::ptrs_len_same` and
+    element pointers; `stays_wf` calls `P::stays_wf` per element), `PointsToUnaligned<T>` and
+    `PointsTo<T>` (move the existing bodies). The generic `SeqPointsTo` definition subsumes both
+    `PointsToUntyped::ptrs_len_same` and `SeqPointsTo<T, PointsTo<T>>::ptrs_len_same_valid_decode`.
+  - The trait-level `stays_wf` can only talk about `wf_basic` (a single generic `SeqPointsTo` impl
+    can't define the per-instantiation `wf`). `wf` only adds pointer conditions beyond `wf_basic`
+    (metadata for `PointsToUntyped`, alignment for `SeqPointsTo<T, PointsTo<T>>`), which
+    `ptrs_len_same` preserves, so keep short inherent `wf`-level `stays_wf` lemmas on those two
+    types to state the full `wf` condition.
+  - Remove the inherent versions and update the ~20 call sites in `points_to_permissions.rs`;
+    expect some proof/trigger fixups inside the generic `SeqPointsTo` impl, where
+    `P::ptrs_len_same` is opaque. Update the docs.
+- [ ] Revisit `wrap_mut`, the generic `&mut` struct-wrapping axiom on `SeqPointsTo` (the `&mut`
+  analogue of `shr_ref_struct_wrap`). It made `SeqPointsTo::subrange_mut` provable and gave
+  `PointsToUntyped::split_mut`, but was reverted pending a soundness review. The verified code and
+  restore steps are in [wrap_mut_wip.rs](wrap_mut_wip.rs); `split_mut` is commented out in place
+  in `points_to_permissions.rs`.
+- [ ] (On hold, if `borrow_mut` comes back) Check whether the
+  `ptrs_len_same_valid_decode ==> wf()` postcondition on `PointsTo::borrow_mut` and
+  `SeqPointsTo::borrow_mut_subrange` is sound and usable, since callers cannot see the inner
+  pointers they would need to establish it.
+- [ ] (Lower priority) Add the unaligned conversions (`as_unaligned`, `into_unaligned`, ...) to
+  `SeqPointsTo<T, PointsTo<T>>`, the counterparts of the ones on `PointsTo<T>`. These can wait until
+  there is a `SeqPointsTo<T, PointsToUnaligned<T>>`.
+
+### Done
+
 - [x] Audit `as_untyped_mut` and `borrow_mut`: `as_untyped_mut` now guarantees `final(self).wf()`
   under `PointsToUntyped::ptrs_len_same` (replacing the bare pointer-equality condition);
   `borrow_mut` requires `old(self).wf()` and ensures
@@ -199,23 +246,12 @@ The old `impl SeqPointsTo<u8>` is ported as `SeqPointsTo<T, PointsTo<T>>::from_u
   is `wf()` (like `into_seq`). The `PointsToProperties` trait contracts in `points_to.rs` were
   checked and already require `wf_basic()`; note `is_disjoint` puts no `wf` requirement on `other`
   (its bound is only `PointsToPhys`).
-- [ ] Keep applying the same wf requires/ensures audit to every proof fn ported from here on.
 - [x] Removed the `Tracked<...>` wrappers around `PointsTo::pt_unaligned` and
   `PointsToUnaligned::pt_untyped`, since the structs holding them are themselves `tracked`. This
   dropped the `.get()`/`.borrow()`/`.borrow_mut()` calls, the `Tracked(...)` in constructors, and the
   `@` in the closed specs `pt_untyped()`/`pt_unaligned()`. The fields are private, so there's no
   external API change. `shr_ref_struct_wrap` (now used for the `as_aligned` body) was checked
   and doesn't need a `Tracked` field.
-- [ ] Port `impl<T> PointsTo<[T]>` from `raw_ptr_old.rs` (line ~754).
-- [ ] Add `cast_points_to` and `cast_points_to_unaligned` in an `impl` block on `PointsTo<[T]>`,
-  where they make more sense than on `SeqPointsTo`. They were drafted as axioms on
-  `SeqPointsTo<T, PointsTo<T>>` and removed; the draft contract (requires `wf()`, all elements
-  valid, `len * size_of::<T>() == size_of::<V>()`, plus alignment to `V` for the aligned version;
-  ensures `points_to.wf()`, the same address/provenance, same bytes, and
-  `value() as int == to_big_from_digits::<V, T>(value()).index(0)`) is straightforward to redo.
-  They would also need the `endian` imports (`CompatibleSmallerBaseFor`, `BasePow2`,
-  `to_big_from_digits`). On hold until `PointsTo<[T]>` is implemented.
-- [ ] Port `PointsToRaw` (and its `impl PointsToRaw`) from `raw_ptr_old.rs` (line ~3245).
 - [x] Implemented `View` for `SeqPointsTo<T, PointsTo<T>>`: it views as
   `SeqPointsToData { ptr, seq_pt }`.
 - [x] Renamed `SeqPointsTo<T, PointsTo<T>>`'s `typed_value()` / `value()` to
@@ -247,25 +283,6 @@ The old `impl SeqPointsTo<u8>` is ported as `SeqPointsTo<T, PointsTo<T>>::from_u
   value. `PointsTo::into_untyped_with_typed_value` returns a `TypedValue<T>`, so it can be called
   whether or not the permission is valid. The sequence versions use `TypedValue<T>` both ways, so
   each element can independently be valid or not.
-- [ ] Move `ptrs_len_same` / `ptrs_len_same_valid_decode` and `stays_wf` into the
-  `PointsToProperties` trait. What it takes:
-  - Merge the two predicates under one trait name (each impl keeps its own body), and declare
-    `spec fn ptrs_len_same(old: Self, new: Self) -> bool` and
-    `proof fn stays_wf(old: Self, new: Self)` in the trait. Take spec arguments rather than
-    `tracked` ones, so `stays_wf` can be applied to `old(..)` / `final(..)` values.
-  - Implement it for `PointsToSingleton` (`new.ptr() == old.ptr()`; `stays_wf` is trivial), the
-    generic `SeqPointsTo<T, P>` (same pointer and length, plus per-element `P::ptrs_len_same` and
-    element pointers; `stays_wf` calls `P::stays_wf` per element), `PointsToUnaligned<T>` and
-    `PointsTo<T>` (move the existing bodies). The generic `SeqPointsTo` definition subsumes both
-    `PointsToUntyped::ptrs_len_same` and `SeqPointsTo<T, PointsTo<T>>::ptrs_len_same_valid_decode`.
-  - The trait-level `stays_wf` can only talk about `wf_basic` (a single generic `SeqPointsTo` impl
-    can't define the per-instantiation `wf`). `wf` only adds pointer conditions beyond `wf_basic`
-    (metadata for `PointsToUntyped`, alignment for `SeqPointsTo<T, PointsTo<T>>`), which
-    `ptrs_len_same` preserves, so keep short inherent `wf`-level `stays_wf` lemmas on those two
-    types to state the full `wf` condition.
-  - Remove the inherent versions and update the ~20 call sites in `points_to_permissions.rs`;
-    expect some proof/trigger fixups inside the generic `SeqPointsTo` impl, where
-    `P::ptrs_len_same` is opaque. Update the docs.
 - [x] Replaced the `ptrs_len_same_valid_decode(*old(self), *final(self))` postconditions on
   `PointsTo`'s `take`, `put`, `copy`, `take_typed_value`, `put_typed_value`, `copy_typed_value`
   and `as_untyped_mut` with the public lemma `PointsTo::lemma_ptrs_len_same_valid_decode(old, new)`
@@ -273,20 +290,10 @@ The old `impl SeqPointsTo<u8>` is ported as `SeqPointsTo<T, PointsTo<T>>::from_u
   ensure, but unfolds through the closed `pt_unaligned()` / `pt_untyped()`, so outside callers need
   the lemma to restore `wf()` after `SeqPointsTo::index_mut`. Inside the module, only the
   `as_untyped_mut` helper needed a lemma call; the range operations unfold the predicate directly.
-- [ ] Assess whether all the copy functions are necessary: `PointsTo::copy` / `copy_typed_value`
+- [x] Assessed whether all the copy functions are necessary: `PointsTo::copy` / `copy_typed_value`
   and `SeqPointsTo::copy_subrange` / `copy_typed_value_subrange` (with their private helpers
-  `copy_values` / `copy_typed_values`). Each is just the corresponding `put` operation applied to a
-  `T: Copy` copy of a borrowed value, so callers could copy the value themselves and call `put` /
-  `put_typed_value` / `put_subrange` / `put_typed_value_subrange` directly.
-- [ ] Revisit `wrap_mut`, the generic `&mut` struct-wrapping axiom on `SeqPointsTo` (the `&mut`
-  analogue of `shr_ref_struct_wrap`). It made `SeqPointsTo::subrange_mut` provable and gave
-  `PointsToUntyped::split_mut`, but was reverted pending a soundness review. The verified code and
-  restore steps are in [wrap_mut_wip.rs](wrap_mut_wip.rs); `split_mut` is commented out in place
-  in `points_to_permissions.rs`.
-- [ ] (On hold, if `borrow_mut` comes back) Check whether the
-  `ptrs_len_same_valid_decode ==> wf()` postcondition on `PointsTo::borrow_mut` and
-  `SeqPointsTo::borrow_mut_subrange` is sound and usable, since callers cannot see the inner
-  pointers they would need to establish it.
-- [ ] (Lower priority) Add the unaligned conversions (`as_unaligned`, `into_unaligned`, ...) to
-  `SeqPointsTo<T, PointsTo<T>>`, the counterparts of the ones on `PointsTo<T>`. These can wait until
-  there is a `SeqPointsTo<T, PointsToUnaligned<T>>`.
+  `copy_values` / `copy_typed_values`). Decision: keep all four, for the full
+  borrow/take/put/copy symmetry on both types. The `PointsTo` ones are one-liners a caller could
+  write (`put(*val)` / `put_typed_value(val.tracked_copy())`). The `SeqPointsTo` ones are not:
+  `Seq` isn't `Copy`, so copying a borrowed `&Seq` needs an element-by-element helper.
+  `copy_typed_value_subrange` is also a port of the old `copy_mem_contents_subrange`.
