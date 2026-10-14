@@ -752,29 +752,9 @@ test_verify_one_file! {
         #[verus::internal(verus_macro)]
         #[verus::internal(spec)]
         fn op_mod_signed(x: i8, y: i8) -> i8 { x % y }
-
-        #[verus::internal(verus_macro)]
-        #[verus::internal(spec)]
-        fn op_shl(x: i8, y: i8) -> i8 { x << y }
-
-        #[verus::internal(verus_macro)]
-        #[verus::internal(spec)]
-        fn op_shr(x: i8, y: i8) -> i8 { x >> y }
-
-        #[verus::internal(verus_macro)]
-        #[verus::internal(spec)]
-        fn op_shl_unsigned(x: u8, y: u8) -> u8 { x << y }
-
-        #[verus::internal(verus_macro)]
-        #[verus::internal(spec)]
-        fn op_shr_unsigned(x: u8, y: u8) -> u8 { x >> y }
     } => Err(err) => assert_vir_error_msgs(err, &[
         "bare unary negation (-) in ghost code; it is expected that (-) is translated by the verus macro",
         "bare division operator (/) in ghost code; it is expected that (/) is translated by the verus macro",
         "bare modulo operator (%) in ghost code; it is expected that (%) is translated by the verus macro",
-        "bare left-shift operator (<<) in ghost code; it is expected that (<<) is translated by the verus macro",
-        "bare right-shift operator (>>) in ghost code; it is expected that (>>) is translated by the verus macro",
-        "bare left-shift operator (<<) in ghost code; it is expected that (<<) is translated by the verus macro",
-        "bare right-shift operator (>>) in ghost code; it is expected that (>>) is translated by the verus macro",
     ])
 }

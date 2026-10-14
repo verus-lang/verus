@@ -3792,14 +3792,12 @@ fn binopkind_to_binaryop_inner<'tcx>(
                 ) else {
                     return err_span(lhs.span, "expected finite integer width for <<");
                 };
-                if bctx.in_ghost {
-                    return err_span(
-                        span,
-                        "bare left-shift operator (<<) in ghost code; it is expected that (<<) is translated by the verus macro",
-                    );
-                }
-                let bb = BitshiftBehavior::Error(w);
-                BinaryOp::Bitwise(BitwiseOp::Shl(w, s), bb)
+                let bb_for_ghostness = if bctx.in_ghost {
+                    BitshiftBehavior::Allow
+                } else {
+                    BitshiftBehavior::Error(w)
+                };
+                BinaryOp::Bitwise(BitwiseOp::Shl(w, s), bb_for_ghostness)
             }
             BinOpKind::Shr => {
                 let (Some(w), _s) = bitwidth_and_signedness_of_integer_type(
@@ -3808,14 +3806,12 @@ fn binopkind_to_binaryop_inner<'tcx>(
                 ) else {
                     return err_span(lhs.span, "expected finite integer width for >>");
                 };
-                if bctx.in_ghost {
-                    return err_span(
-                        span,
-                        "bare right-shift operator (>>) in ghost code; it is expected that (>>) is translated by the verus macro",
-                    );
-                }
-                let bb = BitshiftBehavior::Error(w);
-                BinaryOp::Bitwise(BitwiseOp::Shr, bb)
+                let bb_for_ghostness = if bctx.in_ghost {
+                    BitshiftBehavior::Allow
+                } else {
+                    BitshiftBehavior::Error(w)
+                };
+                BinaryOp::Bitwise(BitwiseOp::Shr, bb_for_ghostness)
             }
             _ => {
                 return Ok(None);
