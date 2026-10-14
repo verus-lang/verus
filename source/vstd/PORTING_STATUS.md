@@ -215,10 +215,8 @@ and `PointsTo::put`).
   They would also need the `endian` imports (`CompatibleSmallerBaseFor`, `BasePow2`,
   `to_big_from_digits`). On hold until `PointsTo<[T]>` is implemented.
 - [ ] Port `PointsToRaw` (and its `impl PointsToRaw`) from `raw_ptr_old.rs` (line ~3245).
-- [ ] Implement `View` for `SeqPointsTo<T, PointsTo<T>>`. `PointsTo<T>` and `PointsToUnaligned<T>`
-  view as `PointsToData { ptr, value, bytes }` and `PointsToUntyped` as
-  `PointsToUntypedData { ptr, bytes }`, but the typed sequence has no view yet. The view will
-  probably be a ghost struct holding `ptr()` and `seq_pt()`.
+- [x] Implemented `View` for `SeqPointsTo<T, PointsTo<T>>`: it views as
+  `SeqPointsToData { ptr, seq_pt }`.
 - [ ] Rename `SeqPointsTo`'s `typed_value()` / `value()` to `seq_typed_value()` / `seq_value()`.
   Related names (`typed_value_equiv`, `value_subrange`, `is_valid_subrange`) stay as they are.
   What it takes:

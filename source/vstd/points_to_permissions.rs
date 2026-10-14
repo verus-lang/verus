@@ -1603,6 +1603,26 @@ impl<T> PointsTo<T> {
     }
 }
 
+/// The interface for a `SeqPointsTo<T, PointsTo<T>>` permission,
+/// which represents permission to access a contiguous sequence of memory locations,
+/// each aligned to `T` and possibly holding a valid value of type `T`.
+/// We track the pointer to the start of that memory, along with the
+/// `PointsTo<T>` permission for each element.
+#[cfg(verus_keep_ghost)]
+pub ghost struct SeqPointsToData<T> {
+    pub ptr: *mut T,
+    pub seq_pt: Seq<PointsTo<T>>,
+}
+
+#[cfg(verus_keep_ghost)]
+impl<T> View for SeqPointsTo<T, PointsTo<T>> {
+    type V = SeqPointsToData<T>;
+
+    open spec fn view(&self) -> Self::V {
+        SeqPointsToData { ptr: self.ptr(), seq_pt: self.seq_pt() }
+    }
+}
+
 impl<T> SeqPointsTo<T, PointsTo<T>> {
     /// In addition to the well-formed-ness properties which must hold of every `SeqPointsTo`,
     /// the `*mut T` pointer must be aligned to `T`.

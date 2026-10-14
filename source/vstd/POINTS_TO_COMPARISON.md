@@ -13,6 +13,7 @@ Comparison of the inherent impl blocks in `source/vstd/points_to_permissions.rs`
 | Concept | `PointsTo<T>` | `SeqPointsTo<T, PointsTo<T>>` | Difference |
 |---|---|---|---|
 | Underlying data | `pt_unaligned()` (closed) | `seq_pt()` (closed, in the generic block) | A `PointsTo` wraps one `PointsToUnaligned`. A `SeqPointsTo` wraps a `Seq<PointsTo<T>>` plus a ghost `*mut T`. |
+| `View` | `PointsToData { ptr, value, bytes }` | `SeqPointsToData { ptr, seq_pt }` | The Seq view exposes the per-element `PointsTo<T>` permissions, rather than a flattened value or bytes. |
 | `wf` | `wf_basic()`, which checks alignment and `pt_unaligned().wf()` | `wf_basic()` plus alignment of the base pointer | `SeqPointsTo::wf_basic` is the trait impl. It checks that each element's ptr and provenance line up at `addr + i*size` and that each element is wf_basic. It also checks non-null and bounds. |
 | `typed_value` | `TypedValue<T>` | `Seq<TypedValue<T>>` (via `map`) | The Seq version adds the broadcast lemma `typed_value_equiv`. |
 | `bytes` | `pt_unaligned().bytes()` | `bytes_inner(seq_pt())`, a `fold_left` that concatenates the elements' bytes | The Seq version needs `bytes_len`, `bytes_len_helper`, `bytes_subrange`, `bytes_equiv` and `bytes_subrange_equiv` to reason about the fold. |
