@@ -66,7 +66,7 @@ invariant on `impl<T: ?Sized> PointsTo<T>` is just there for reference and won't
 - `abstract_bytes_decode` → `bytes_decode`/`bytes_equiv`/`bytes_len`.
 - `into_seq_pt*` and the `seq_into_slice*` free functions disappear once slices are `SeqPointsTo`.
   Seq access is via `into_seq`/`tracked_seq_pt`/`tracked_seq_pt_mut`/`index_mut`.
-- `as_untyped` → `as_untyped` (axiom); `from_untyped` (all uninitialized) →
+- `as_untyped` → `as_untyped` (proved from the `PointsToUntyped::join_ref` axiom); `from_untyped` (all uninitialized) →
   `PointsToUntyped::cast_to_seq_pt` with an empty `typed_value`;
   `PointsTo<[u8]>::cast_to_typed_uninit` → `PointsTo::from_untyped`.
 
@@ -79,9 +79,10 @@ invariant on `impl<T: ?Sized> PointsTo<T>` is just there for reference and won't
   also ensure `ptrs_len_same_valid_decode`, which these proofs need.
   Note: the old `take_mem_contents_subrange` filled the range with `Seq::new(end, ...)` (length
   `end`); the port uses `end - start`.
-- **Axioms** (they return a reference to something the `SeqPointsTo` doesn't store, so there is
-  nothing to borrow): shared-borrow `subrange`, `borrow_typed_value_subrange`, and `as_untyped_mut`
-  for sequences.
+- **Borrows of things the `SeqPointsTo` doesn't store** are now all proved:
+  `borrow_typed_value_subrange` returns a `Seq<&TypedValue<T>>`, the shared-borrow `subrange` uses
+  `shr_ref_struct_wrap`, and `as_untyped`/`as_untyped_mut` join per-element borrows with the
+  binary `PointsToUntyped::join_ref`/`join_mut` axioms.
 - Integer casts `cast_points_to`/`cast_points_to_unaligned` were drafted as axioms on
   `SeqPointsTo<T, PointsTo<T>>` and then removed, since that isn't their final home (see the
   TODOs). The old contracts are in `raw_ptr_dup.rs` (`impl<T> PointsTo<[T]>`).
@@ -137,9 +138,11 @@ The old `impl<T> SeqPointsTo<T>` (`raw_ptr_dup.rs` lines 1144-1398) is the old o
 `SeqPointsTo<T>`, distinct from the new `SeqPointsTo<T, PointsToPerm>`; it is now ported to
 `SeqPointsTo<T, PointsTo<T>>`:
 - `from_seq`, `split`, `join`, and `cast_to_untyped` (returns a `PointsToUntyped`) are proved.
-- `subrange_mut` and `as_untyped` are axioms. `subrange_mut` hands out a `&mut` sub-permission
-  whose final state flows back into `self`. `as_untyped` is an axiom returning `&PointsToUntyped`
-  because the new type stores no `PointsToUntyped` to borrow.
+- `subrange_mut` is an axiom: it hands out a `&mut` sub-permission whose final state flows back
+  into `self`. (A proof from a generic `&mut` struct-wrapping axiom, `wrap_mut`, was drafted and
+  reverted pending a soundness review; see `wrap_mut_wip.rs`.) `as_untyped` and `as_untyped_mut` are proved: they borrow each element's
+  `PointsToUntyped` and join the borrows two at a time with the `PointsToUntyped::join_ref` /
+  `join_mut` axioms, since the new type stores no single `PointsToUntyped` to borrow.
 - Added `PointsToUntyped::split`/`join`, which `cast_to_untyped` needed.
 
 The old `impl SeqPointsTo<u8>` is ported as `PointsToUntyped::cast_to_seq_pt`, which returns a
@@ -169,7 +172,7 @@ and `PointsTo::put`).
   `PointsToUnaligned::pt_untyped`, since the structs holding them are themselves `tracked`. This
   dropped the `.get()`/`.borrow()`/`.borrow_mut()` calls, the `Tracked(...)` in constructors, and the
   `@` in the closed specs `pt_untyped()`/`pt_unaligned()`. The fields are private, so there's no
-  external API change. `shr_ref_struct_wrap` (for the commented-out `as_aligned` body) was checked
+  external API change. `shr_ref_struct_wrap` (now used for the `as_aligned` body) was checked
   and doesn't need a `Tracked` field. Verified at 2007 verified, 0 errors (with `raw_ptr_new`
   excluded from the build).
 - [ ] Continue porting the remaining impl blocks listed above — `impl<T> PointsTo<[T]>` is

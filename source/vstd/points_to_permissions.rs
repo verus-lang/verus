@@ -305,6 +305,142 @@ impl PointsToUntyped {
         (first, second)
     }
 
+    /// Splits a shared borrow of a `PointsToUntyped` into shared borrows of bytes `[0, mid)` and
+    /// `[mid, len)`. This is the shared-borrow analogue of `split`.
+    pub proof fn split_ref(tracked &self, mid: nat) -> (tracked (first, second): (&Self, &Self))
+        requires
+            0 <= mid <= self.len(),
+            self.wf(),
+        ensures
+            first.seq_pt() == self.seq_pt().take(mid as int),
+            second.seq_pt() == self.seq_pt().skip(mid as int),
+            first.bytes() == self.bytes().take(mid as int),
+            second.bytes() == self.bytes().skip(mid as int),
+            first.ptr() == ptr_mut_from_data::<[u8]>(
+                PtrData {
+                    addr: self.ptr()@.addr,
+                    provenance: self.ptr()@.provenance,
+                    metadata: mid as usize,
+                },
+            ),
+            second.ptr() == ptr_mut_from_data::<[u8]>(
+                PtrData {
+                    addr: (self.ptr()@.addr + mid) as usize,
+                    provenance: self.ptr()@.provenance,
+                    metadata: (self.len() - mid) as usize,
+                },
+            ),
+            first.wf(),
+            second.wf(),
+    {
+        if self.len() != 0 {
+            self.provenance_not_none();
+            self.ptr_bounds();
+        }
+        let ghost p1 = ptr_mut_from_data::<[u8]>(
+            PtrData {
+                addr: self.ptr()@.addr,
+                provenance: self.ptr()@.provenance,
+                metadata: mid as usize,
+            },
+        );
+        let ghost p2 = ptr_mut_from_data::<[u8]>(
+            PtrData {
+                addr: (self.ptr()@.addr + mid) as usize,
+                provenance: self.ptr()@.provenance,
+                metadata: (self.len() - mid) as usize,
+            },
+        );
+        let tracked s1 = self.seq_pt.tracked_borrow_subrange(0, mid as int);
+        let tracked s2 = self.seq_pt.tracked_borrow_subrange(mid as int, self.len() as int);
+        let tracked first = shr_ref_struct_wrap(
+            s1,
+            &Self { seq_pt: *s1, ptr: Ghost(p1) },
+            "",
+            "seq_pt",
+        );
+        let tracked second = shr_ref_struct_wrap(
+            s2,
+            &Self { seq_pt: *s2, ptr: Ghost(p2) },
+            "",
+            "seq_pt",
+        );
+        (first, second)
+    }
+
+    // Commented out along with the `wrap_mut` axiom (on the generic `SeqPointsTo` impl),
+    // which this was proved from; the soundness of `wrap_mut` is still under consideration.
+    // /// Splits a mutable borrow of a `PointsToUntyped` into mutable borrows of bytes `[0, mid)` and
+    // /// `[mid, len)`. This is the mutable-borrow analogue of `split`.
+    // ///
+    // /// If both halves stay well-formed with the same pointers, then `self` is also still
+    // /// well-formed with the same pointer, holding the halves' final permissions concatenated.
+    // pub proof fn split_mut(tracked &mut self, mid: nat) -> (tracked (first, second): (
+    //     &mut Self,
+    //     &mut Self,
+    // ))
+    //     requires
+    //         0 <= mid <= self.len(),
+    //         self.wf(),
+    //     ensures
+    //         first.seq_pt() == old(self).seq_pt().take(mid as int),
+    //         second.seq_pt() == old(self).seq_pt().skip(mid as int),
+    //         first.bytes() == old(self).bytes().take(mid as int),
+    //         second.bytes() == old(self).bytes().skip(mid as int),
+    //         first.ptr() == ptr_mut_from_data::<[u8]>(
+    //             PtrData {
+    //                 addr: old(self).ptr()@.addr,
+    //                 provenance: old(self).ptr()@.provenance,
+    //                 metadata: mid as usize,
+    //             },
+    //         ),
+    //         second.ptr() == ptr_mut_from_data::<[u8]>(
+    //             PtrData {
+    //                 addr: (old(self).ptr()@.addr + mid) as usize,
+    //                 provenance: old(self).ptr()@.provenance,
+    //                 metadata: (old(self).len() - mid) as usize,
+    //             },
+    //         ),
+    //         first.wf(),
+    //         second.wf(),
+    //         // Criteria necessary for re-establishing invariants
+    //         ({
+    //             &&& final(first).wf()
+    //             &&& final(first).ptr() == first.ptr()
+    //             &&& final(second).wf()
+    //             &&& final(second).ptr() == second.ptr()
+    //         }) ==> {
+    //             &&& final(self).wf()
+    //             &&& final(self).ptr() == old(self).ptr()
+    //             &&& final(self).seq_pt() == final(first).seq_pt() + final(second).seq_pt()
+    //             &&& final(self).bytes() == final(first).bytes() + final(second).bytes()
+    //         },
+    // {
+    //     let ghost old_self = *self;
+    //     if old_self.len() != 0 {
+    //         self.provenance_not_none();
+    //         self.ptr_bounds();
+    //     }
+    //     let ghost p1 = ptr_mut_from_data::<[u8]>(
+    //         PtrData {
+    //             addr: old_self.ptr()@.addr,
+    //             provenance: old_self.ptr()@.provenance,
+    //             metadata: mid as usize,
+    //         },
+    //     );
+    //     let ghost p2 = ptr_mut_from_data::<[u8]>(
+    //         PtrData {
+    //             addr: (old_self.ptr()@.addr + mid) as usize,
+    //             provenance: old_self.ptr()@.provenance,
+    //             metadata: (old_self.len() - mid) as usize,
+    //         },
+    //     );
+    //     let tracked (s1, s2) = self.seq_pt.tracked_split_borrow_mut(mid as int);
+    //     let tracked first = Self::wrap_mut(s1, p1);
+    //     let tracked second = Self::wrap_mut(s2, p2);
+    //     (first, second)
+    // }
+
     /// Concatenates `PointsToUntyped` permissions `self` and `other`,
     /// provided their pointers have the same provenance
     /// and `other`'s pointer starts at the end of `self`'s range.
@@ -351,6 +487,66 @@ impl PointsToUntyped {
         };
         joined
     }
+
+    /// Joins shared borrows of two `PointsToUntyped` permissions into a shared borrow of a
+    /// single `PointsToUntyped`, under the same conditions as `join`.
+    ///
+    /// This is the shared-borrow analogue of `join`. It's an axiom because the joined permission
+    /// isn't stored anywhere that could be borrowed.
+    pub axiom fn join_ref<'a>(tracked &'a self, tracked other: &'a Self) -> (tracked joined: &'a Self)
+        requires
+            self.wf(),
+            other.wf(),
+            self.ptr()@.provenance == other.ptr()@.provenance,
+            other.ptr()@.addr == self.ptr()@.addr + self.len(),
+        ensures
+            joined.seq_pt() == self.seq_pt() + other.seq_pt(),
+            joined.bytes() == self.bytes() + other.bytes(),
+            joined.ptr() == ptr_mut_from_data::<[u8]>(
+                PtrData {
+                    addr: self.ptr()@.addr,
+                    provenance: self.ptr()@.provenance,
+                    metadata: (self.len() + other.len()) as usize,
+                },
+            ),
+            joined.wf(),
+    ;
+
+    /// Joins mutable borrows of two `PointsToUntyped` permissions into a mutable borrow of a
+    /// single `PointsToUntyped`, under the same conditions as `join`.
+    ///
+    /// If the joined permission keeps its pointers and length, then so do `self` and `other`, and
+    /// their final singleton permissions concatenate to the joined permission's final ones.
+    ///
+    /// This is the mutable-borrow analogue of `join`. It's an axiom because the joined permission
+    /// isn't stored anywhere that could be borrowed.
+    pub axiom fn join_mut<'a>(tracked &'a mut self, tracked other: &'a mut Self) -> (tracked joined:
+        &'a mut Self)
+        requires
+            self.wf(),
+            other.wf(),
+            self.ptr()@.provenance == other.ptr()@.provenance,
+            other.ptr()@.addr == self.ptr()@.addr + self.len(),
+        ensures
+            joined.seq_pt() == old(self).seq_pt() + old(other).seq_pt(),
+            joined.bytes() == old(self).bytes() + old(other).bytes(),
+            joined.ptr() == ptr_mut_from_data::<[u8]>(
+                PtrData {
+                    addr: old(self).ptr()@.addr,
+                    provenance: old(self).ptr()@.provenance,
+                    metadata: (old(self).len() + old(other).len()) as usize,
+                },
+            ),
+            joined.wf(),
+            Self::ptrs_len_same(*joined, *final(joined)) ==> {
+                &&& Self::ptrs_len_same(*old(self), *final(self))
+                &&& Self::ptrs_len_same(*old(other), *final(other))
+                &&& final(self).wf()
+                &&& final(other).wf()
+                &&& final(joined).seq_pt() == final(self).seq_pt() + final(other).seq_pt()
+                &&& final(joined).bytes() == final(self).bytes() + final(other).bytes()
+            },
+    ;
 
     /// We can cast a `PointsToUntyped` to a `SeqPointsTo<T, PointsTo<T>>` of length `capacity`
     /// under the following conditions:
@@ -797,17 +993,16 @@ impl<T> PointsToUnaligned<T> {
     ///
     /// Ensures pointer locations remain the same, and memory
     /// initializations states remain the same.
-    pub axiom fn as_aligned(tracked &self) -> (tracked perm: &PointsTo<T>)
+    pub proof fn as_aligned(tracked &self) -> (tracked perm: &PointsTo<T>)
         requires
             self.wf(),
             self.ptr()@.addr as int % align_of::<T>() as int == 0,
         ensures
             perm@ == self@,
             perm.wf(),
-    // TODO: uncomment when main is merged in
-    // { shr_ref_struct_wrap(self, &PointsTo { pt_unaligned: *self }, "", "pt_unaligned") }
-
-    ;
+    {
+        shr_ref_struct_wrap(self, &PointsTo { pt_unaligned: *self }, "", "pt_unaligned")
+    }
 
     /// If `T` is zero sized, then we can construct an uninitialized `PointsToUnaligned<T>`
     /// from any non-null pointer whose address (and, if known, provenance) is otherwise valid.
@@ -1253,6 +1448,7 @@ impl<T> PointsTo<T> {
                 &&& final(self).bytes() == final(pt_untyped).bytes()
                 &&& final(self).is_empty()
                 &&& final(self).wf()
+                &&& Self::ptrs_len_same_valid_decode(*old(self), *final(self))
             }),
     {
         self.pt_unaligned.val = TypedValue::Empty;
@@ -1273,25 +1469,28 @@ impl<T> PointsTo<T> {
         }
     }
 
-    /// This takes a mutable borrow of the `T` from the `TypedValue<T>` on `self`.
-    ///
-    /// Note: unlike `borrow`/`take`/`put`, this cannot be proven from the `TypedValue<T>`
-    /// representation alone: `mut_ref_ptr` links a real Rust reference to the raw pointer it was
-    /// derived from, and that linkage can only be established by an actual unsafe dereference of
-    /// `self.ptr()` (as in, e.g., `ptr_mut_ref`), not by borrowing out of a ghost `Box<T>`.
-    pub axiom fn borrow_mut(tracked &mut self) -> (tracked val: &mut T)
-        requires
-            self.wf(),
-            self.is_valid(),
-        ensures
-            *val == old(self).value(),
-            mut_ref_ptr(val) == old(self).ptr(), // Travis: not necessarily true bc Box/enum, also odd thing to want, or necessary
-            final(self).is_valid(),
-            final(self).ptr() == old(self).ptr(),
-            final(self).value() == *final(val),
-            // TODO: is this right/sound?
-            Self::ptrs_len_same_valid_decode(*old(self), *final(self)) ==> final(self).wf(),
-    ;
+    // Commented out: not essential for now (`borrow_mut_subrange` depends on it).
+    // /// This takes a mutable borrow of the `T` from the `TypedValue<T>` on `self`.
+    // ///
+    // /// Writing through the reference updates both the value and the underlying bytes,
+    // /// so `final(self)` is well-formed with bytes that decode to the final value.
+    // /// This is an axiom because the bytes live in separate ghost state from the `TypedValue<T>`,
+    // /// so they can't be updated through a borrow of the value alone.
+    // pub axiom fn borrow_mut(tracked &mut self) -> (tracked val: &mut T)
+    //     requires
+    //         self.wf(),
+    //         self.is_valid(),
+    //     ensures
+    //         *val == old(self).value(),
+    //         // mut_ref_ptr(val) == old(self).ptr(), // Travis: not necessarily true bc Box/enum, also odd thing to want, or necessary
+    //         // It's here to satisfy the precondition for ptr_mut_ref_join
+    //         // But can we define a more general function which takes a ptr and &mut PointsTo<T>, instead of a &mut T?
+    //         final(self).is_valid(),
+    //         final(self).ptr() == old(self).ptr(),
+    //         final(self).value() == *final(val),
+    //         Self::ptrs_len_same_valid_decode(*old(self), *final(self)),
+    //         final(self).wf(),
+    // ;
 
     /// This moves the `T` out from the `TypedValue<T>` on `self`, leaving `self` empty.
     pub proof fn take(tracked &mut self) -> (tracked val: T)
@@ -2015,13 +2214,61 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         out
     }
 
-    // May need axiom for taking &Seq<PointsToUntyped> -> &PointsToUntyped
+    /// Borrows the underlying `PointsToUntyped` permissions of the first `n` permissions,
+    /// joined into a single `PointsToUntyped`.
+    proof fn untyped_ref_join(tracked &self, n: nat) -> (tracked raw: &PointsToUntyped)
+        requires
+            self.wf(),
+            n <= self.len(),
+        ensures
+            raw.ptr() == ptr_mut_from_data::<[u8]>(
+                PtrData {
+                    addr: self.ptr()@.addr,
+                    provenance: self.ptr()@.provenance,
+                    metadata: (n * size_of::<T>()) as usize,
+                },
+            ),
+            raw.bytes() == Self::bytes_inner(self.seq_pt().take(n as int)),
+            raw.wf(),
+        decreases n,
+    {
+        if n == 0 {
+            let tracked empty = PointsToUntyped::zero_sized(
+                ptr_mut_from_data::<()>(
+                    PtrData {
+                        addr: self.ptr()@.addr,
+                        provenance: self.ptr()@.provenance,
+                        metadata: (),
+                    },
+                ),
+            );
+            assert(n * size_of::<T>() == 0) by (nonlinear_arith)
+                requires
+                    n == 0,
+            ;
+            super::modes::tracked_static_ref(empty)
+        } else {
+            let i = n - 1;
+
+            // The prefix, joined
+            let tracked a = self.untyped_ref_join(i as nat);
+
+            // The last element
+            let tracked b = self.seq_pt.tracked_borrow(i).as_untyped();
+
+            assert(i * size_of::<T>() + size_of::<T>() == n * size_of::<T>()) by (nonlinear_arith)
+                requires
+                    i == n - 1,
+            ;
+            assert(self.seq_pt().take(n as int).drop_last() =~= self.seq_pt().take(i));
+            PointsToUntyped::join_ref(a, b)
+        }
+    }
+
     /// Creates a reference to a `PointsToUntyped` from a reference to a `SeqPointsTo<T, PointsTo<T>>`,
     /// with the same address and provenance, a length of `self.len() * size_of::<T>()`,
     /// and the same abstract bytes.
-    ///
-    /// This is an axiom because the `SeqPointsTo` does not store a `PointsToUntyped` that can be borrowed.
-    pub axiom fn as_untyped(tracked &self) -> (tracked raw: &PointsToUntyped)
+    pub proof fn as_untyped(tracked &self) -> (tracked raw: &PointsToUntyped)
         requires
             self.wf(),
         ensures
@@ -2034,23 +2281,97 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             ),
             raw.bytes() == self.bytes(),
             raw.wf(),
-    ;
+    {
+        self.untyped_ref_join(self.len())
+    }
 
-    // axiom for &mut Seq<PointsToUntyped> -> &mut PointsToUntyped
-    // Need way to combine two PointsToUptyped.
-    // Can merge maps, so can merge maps of PointsToSingleton.
-    // Either axiomatize PointsToUntyped combo or axiomatize conversion to PointsToRaw
+    /// Mutably borrows the underlying `PointsToUntyped` permissions of all of `perms`, joined into
+    /// a single `PointsToUntyped`, where the elements sit at consecutive addresses from `base`.
+    /// If the result keeps its pointers and length, then each permission ends up empty and
+    /// well-formed, and the permissions' bytes are the result's final bytes.
+    proof fn untyped_mut_join(tracked perms: &mut Seq<PointsTo<T>>, base: *mut T) -> (tracked raw:
+        &mut PointsToUntyped)
+        requires
+            base@.addr != 0,
+            ptr_addr_in_bounds(base),
+            forall|i: int|
+                0 <= i < perms.len() ==> {
+                    &&& #[trigger] perms[i].wf()
+                    &&& perms[i].ptr()@.addr == base@.addr + i * size_of::<T>()
+                    &&& perms[i].ptr()@.provenance == base@.provenance
+                },
+        ensures
+            raw.ptr() == ptr_mut_from_data::<[u8]>(
+                PtrData {
+                    addr: base@.addr,
+                    provenance: base@.provenance,
+                    metadata: (old(perms).len() * size_of::<T>()) as usize,
+                },
+            ),
+            raw.bytes() == Self::bytes_inner(*old(perms)),
+            raw.wf(),
+            PointsToUntyped::ptrs_len_same(*raw, *final(raw)) ==> {
+                &&& final(perms).len() == old(perms).len()
+                &&& forall|i: int|
+                    #![trigger final(perms)[i]]
+                    0 <= i < final(perms).len() ==> {
+                        &&& final(perms)[i].ptr() == old(perms)[i].ptr()
+                        &&& final(perms)[i].is_empty()
+                        &&& final(perms)[i].wf()
+                        &&& PointsTo::<T>::ptrs_len_same_valid_decode(old(perms)[i], final(perms)[i])
+                    }
+                &&& Self::bytes_inner(*final(perms)) == final(raw).bytes()
+            },
+        decreases perms.len(),
+    {
+        if perms.len() == 0 {
+            let tracked empty = PointsToUntyped::zero_sized(
+                ptr_mut_from_data::<()>(
+                    PtrData { addr: base@.addr, provenance: base@.provenance, metadata: () },
+                ),
+            );
+            super::modes::tracked_static_mut_ref(empty)
+        } else {
+            let ghost old_perms = *perms;
+            let ghost perms_ref = perms;
+            let i = perms.len() - 1;
+            assert(old_perms[i].wf());
+            let tracked (init, last1) = perms.tracked_split_borrow_mut(i);
+            let ghost init_ref = init;
+            assert forall|k: int| 0 <= k < init.len() implies {
+                &&& #[trigger] init[k].wf()
+                &&& init[k].ptr()@.addr == base@.addr + k * size_of::<T>()
+                &&& init[k].ptr()@.provenance == base@.provenance
+            } by {
+                assert(init[k] == old_perms[k]);
+            }
 
-    // PointToSingleton - single byte
-    // PointsToUntyped - Seq<PointsToSingleton>
-    // PointsToRaw - Map/Set<PointsToSingleton>
+            // The prefix, joined
+            let tracked a = Self::untyped_mut_join(init, base);
+
+            // The last element
+            let tracked b = last1.tracked_borrow_mut(0).as_untyped_mut();
+
+            assert(i * size_of::<T>() + size_of::<T>() == old_perms.len() * size_of::<T>())
+                by (nonlinear_arith)
+                requires
+                    i == old_perms.len() - 1,
+            ;
+            let tracked raw = PointsToUntyped::join_mut(a, b);
+            let ghost raw_ref = raw;
+
+            // Final values
+            if PointsToUntyped::ptrs_len_same(*raw_ref, *final(raw_ref)) {
+                assert((*final(perms_ref)).drop_last() =~= *final(init_ref));
+            }
+            raw
+        }
+    }
 
     /// Creates a mutable reference to a `PointsToUntyped` from a mutable reference to a
     /// `SeqPointsTo<T, PointsTo<T>>`, with the same address and provenance and a length of
     /// `self.len() * size_of::<T>()`. If this permission carries any typed values, they are dropped here.
-    ///
-    /// This is an axiom because the `SeqPointsTo` does not store a `PointsToUntyped` that can be borrowed.
-    pub axiom fn as_untyped_mut(tracked &mut self) -> (tracked raw: &mut PointsToUntyped)
+    pub proof fn as_untyped_mut(tracked &mut self) -> (tracked raw: &mut PointsToUntyped)
         requires
             self.wf(),
         ensures
@@ -2065,18 +2386,19 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             raw.wf(),
             // Criteria necessary for re-establishing invariants
             PointsToUntyped::ptrs_len_same(*raw, *final(raw)) ==> ({
-                &&& final(self).ptr() == old(self).ptr()
-                &&& final(self).len() == old(self).len()
                 &&& final(self).bytes() == final(raw).bytes()
                 &&& final(self).is_fully_empty()
                 &&& final(self).wf()
+                &&& Self::ptrs_len_same_valid_decode(*old(self), *final(self))
             }),
-    ;
+    {
+        let ghost base = self.ptr();
+        Self::untyped_mut_join(&mut self.seq_pt, base)
+    }
 
-    // Use shr_ref_wrapper
     /// Given that the subrange is within bounds, it is always possible to borrow a permission
     /// to just that subrange.
-    pub axiom fn subrange(tracked &self, start_index: nat, len: nat) -> (tracked sub: &Self)
+    pub proof fn subrange(tracked &self, start_index: nat, len: nat) -> (tracked sub: &Self)
         requires
             self.wf(),
             start_index + len <= self.len(),
@@ -2090,19 +2412,93 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                 },
             ),
             sub.seq_pt() == self.seq_pt().subrange(start_index as int, (start_index + len) as int),
-    ;
+    {
+        let ghost sub_ptr = ptr_mut_from_data::<T>(
+            PtrData {
+                addr: ((self.ptr()@.addr + start_index * size_of::<T>()) as usize),
+                provenance: self.ptr()@.provenance,
+                metadata: (),
+            },
+        );
+        // `sub_ptr` is non-null, in bounds and aligned (same reasoning as in `split`)
+        if self.len() != 0 && size_of::<T>() != 0 {
+            assert(self.len() * size_of::<T>() != 0) by (nonlinear_arith)
+                requires
+                    self.len() != 0,
+                    size_of::<T>() != 0,
+            ;
+            self.provenance_not_none();
+            self.ptr_bounds();
+            assert(start_index * size_of::<T>() <= self.len() * size_of::<T>())
+                by (nonlinear_arith)
+                requires
+                    start_index <= self.len(),
+            ;
+            assert((self.ptr()@.addr + start_index * size_of::<T>()) as nat % align_of::<T>() == 0)
+                by {
+                broadcast use
+                    crate::vstd::arithmetic::div_mod::lemma_mul_mod_noop_right,
+                    crate::vstd::arithmetic::div_mod::lemma_add_mod_noop,
+                ;
 
-    // &Seq<PointsTo<T>> -> &Seq<TypedValue<T>> where PointsTo<T> holds a TypedValue<T>
-    // Seq<&TypedValue<T>> - try to make this the return type instead
-    /// This takes a borrow of a subrange of the `TypedValue<T>`s from `self`.
-    pub axiom fn borrow_typed_value_subrange(tracked &self, start: int, end: int) -> (tracked val:
-        &Seq<TypedValue<T>>)
+            }
+        }
+
+        let tracked seq_pt = self.seq_pt.tracked_borrow_subrange(
+            start_index as int,
+            (start_index + len) as int,
+        );
+        let tracked sub = shr_ref_struct_wrap(
+            seq_pt,
+            &Self { seq_pt: *seq_pt, ptr: Ghost(sub_ptr) },
+            "",
+            "seq_pt",
+        );
+
+        // Each element sits at the expected offset from `sub_ptr`
+        assert forall|i: int| 0 <= i < sub.len() implies #[trigger] sub[i].ptr()@.addr
+            == sub.ptr()@.addr + i * size_of::<T>() by {
+            assert(self.ptr()@.addr + (i + start_index) * size_of::<T>() == self.ptr()@.addr
+                + start_index * size_of::<T>() + i * size_of::<T>()) by (nonlinear_arith);
+        }
+        sub
+    }
+
+    /// Takes a borrow of each of the `n` `TypedValue<T>`s starting at index `start`.
+    proof fn borrow_typed_values(tracked &self, start: int, n: nat) -> (tracked val: Seq<
+        &TypedValue<T>,
+    >)
+        requires
+            self.wf(),
+            0 <= start <= start + n <= self.len(),
+        ensures
+            val.len() == n,
+            forall|i: int| 0 <= i < n ==> *#[trigger] val[i] == self.typed_value()[start + i],
+        decreases n,
+    {
+        if n == 0 {
+            Seq::tracked_empty()
+        } else {
+            let tracked mut val = self.borrow_typed_values(start, (n - 1) as nat);
+            let j = start + n - 1;
+            let tracked last = self.seq_pt.tracked_borrow(j).borrow_typed_value();
+            val.tracked_push(last);
+            val
+        }
+    }
+
+    /// This takes a borrow of each of the `TypedValue<T>`s in a subrange of `self`.
+    pub proof fn borrow_typed_value_subrange(tracked &self, start: int, end: int) -> (tracked val:
+        Seq<&TypedValue<T>>)
         requires
             self.wf(),
             0 <= start <= end <= self.len(),
         ensures
-            val == self.typed_value().subrange(start, end),
-    ;
+            val.map_values(|r: &TypedValue<T>| *r) == self.typed_value().subrange(start, end),
+    {
+        let tracked val = self.borrow_typed_values(start, (end - start) as nat);
+        val
+    }
 
     /// Copies the first `n` `TypedValue<T>`s out of a shared reference to a sequence, given that `T` is `Copy`.
     proof fn copy_typed_values(tracked val: &Seq<TypedValue<T>>, n: nat) -> (tracked out: Seq<
@@ -2376,43 +2772,169 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         }
     }
 
-    /// This takes a borrow of a subrange of the values from `self`.
-    // TODO: return `Seq<&T>` instead? 
-    pub axiom fn borrow_subrange(tracked &self, start: int, end: int) -> (tracked val: &Seq<T>)
+    /// Takes a borrow of each of the `n` (valid) values starting at index `start`.
+    proof fn borrow_values(tracked &self, start: int, n: nat) -> (tracked val: Seq<&T>)
         requires
             self.wf(),
-            0 <= start <= end <= self.len(),
-            self.is_valid_subrange(start, (end - start) as nat),
+            self.is_valid_subrange(start, n),
         ensures
-            *val == self.value_subrange(start, (end - start) as nat),
-    ;
+            val.len() == n,
+            forall|i: int| 0 <= i < n ==> *#[trigger] val[i] == self[start + i].value(),
+        decreases n,
+    {
+        if n == 0 {
+            Seq::tracked_empty()
+        } else {
+            let tracked mut val = self.borrow_values(start, (n - 1) as nat);
+            let j = start + n - 1;
+            let tracked last = self.seq_pt.tracked_borrow(j).borrow();
+            val.tracked_push(last);
+            val
+        }
+    }
 
-    /// This takes a mutable borrow of a subrange of the values from `self`.
-    ///
-    /// Note: like `PointsTo::borrow_mut`, this cannot be proven from the `TypedValue<T>`
-    /// representation alone.
-    // TODO: return `Seq<&mut T>` instead - then I think this can be verified
-    pub axiom fn borrow_mut_subrange(tracked &mut self, start: int, end: int) -> (tracked val:
-        &mut Seq<T>)
+    /// This takes a borrow of each of the values in a subrange of `self`.
+    pub proof fn borrow_subrange(tracked &self, start: int, end: int) -> (tracked val: Seq<&T>)
         requires
             self.wf(),
             0 <= start <= end <= self.len(),
             self.is_valid_subrange(start, (end - start) as nat),
         ensures
-            *val == old(self).value_subrange(start, (end - start) as nat),
-            final(self).ptr() == old(self).ptr(),
-            final(self).len() == old(self).len(),
-            forall|i: int|
-                #![trigger final(self)[i]]
-                0 <= i < final(self).len() ==> final(self)[i].ptr() == old(self)[i].ptr(),
-            final(val).len() == val.len() ==> final(self).typed_value()
-                == old(self).typed_value().update_subrange_with(
-                start,
-                Seq::new(final(val).len(), |i: int| TypedValue::Valid(Box::new(final(val)[i]))),
-            ),
-            // TODO: is this right/sound? (same as `PointsTo::borrow_mut`)
-            Self::ptrs_len_same_valid_decode(*old(self), *final(self)) ==> final(self).wf(),
-    ;
+            val.map_values(|r: &T| *r) == self.value_subrange(start, (end - start) as nat),
+    {
+        let tracked val = self.borrow_values(start, (end - start) as nat);
+        val
+    }
+
+    // Commented out along with `PointsTo::borrow_mut`, which these depend on.
+    // /// Takes a mutable borrow of the `T` in each of the (valid) permissions in `perms`.
+    // proof fn borrow_mut_values(tracked perms: &mut Seq<PointsTo<T>>) -> (tracked ret: Seq<&mut T>)
+    //     requires
+    //         forall|i: int|
+    //             0 <= i < perms.len() ==> #[trigger] perms[i].wf() && perms[i].is_valid(),
+    //     ensures
+    //         ret.len() == old(perms).len(),
+    //         final(perms).len() == old(perms).len(),
+    //         forall|i: int|
+    //             #![trigger ret[i]]
+    //             #![trigger final(perms)[i]]
+    //             0 <= i < ret.len() ==> {
+    //                 &&& *ret[i] == old(perms)[i].value()
+    //                 &&& final(perms)[i].is_valid()
+    //                 &&& final(perms)[i].ptr() == old(perms)[i].ptr()
+    //                 &&& final(perms)[i].value() == *final(ret[i])
+    //                 &&& PointsTo::<T>::ptrs_len_same_valid_decode(old(perms)[i], final(perms)[i])
+    //                 &&& final(perms)[i].wf()
+    //             },
+    //         forall|i: int|
+    //             #![trigger final(perms)[i]]
+    //             0 <= i < final(perms).len() ==> final(perms)[i].ptr() == old(perms)[i].ptr(),
+    //     decreases perms.len(),
+    // {
+    //     if perms.len() == 0 {
+    //         Seq::tracked_empty()
+    //     } else {
+    //         let ghost old_perms = *perms;
+    //         let ghost perms_ref = perms;
+    //         assert(old_perms[0].wf() && old_perms[0].is_valid());
+    //         let tracked (first, rest) = perms.tracked_split_borrow_mut(1);
+    //         assert(first[0] == old_perms[0]);
+    //         let tracked elt = first.tracked_borrow_mut(0);
+    //         let ghost elt_ref = elt;
+    //         let tracked v = elt.borrow_mut();
+    //         assert forall|i: int| 0 <= i < rest.len() implies #[trigger] rest[i].wf()
+    //             && rest[i].is_valid() by {
+    //             assert(rest[i] == old_perms[i + 1]);
+    //             assert(old_perms[i + 1].wf());
+    //         }
+    //         let ghost rest_ref = rest;
+    //         let tracked mut ret = Self::borrow_mut_values(rest);
+    //         let ghost ret_rest = ret;
+    //         ret.tracked_insert(0, v);
+    //         assert(final(perms_ref)[0] == *final(elt_ref));
+    //         assert forall|i: int| 0 < i < ret.len() implies #[trigger] ret[i] == ret_rest[i - 1]
+    //             && final(perms_ref)[i] == final(rest_ref)[i - 1] && old_perms[i] == old_perms.skip(
+    //             1,
+    //         )[i - 1] by {}
+    //         ret
+    //     }
+    // }
+    //
+    // /// This takes a mutable borrow of each of the values in a subrange of `self`.
+    // pub proof fn borrow_mut_subrange(tracked &mut self, start: int, end: int) -> (tracked ret: Seq<
+    //     &mut T,
+    // >)
+    //     requires
+    //         self.wf(),
+    //         0 <= start <= end <= self.len(),
+    //         self.is_valid_subrange(start, (end - start) as nat),
+    //     ensures
+    //         ret.len() == end - start,
+    //         ret.map_values(|r: &mut T| *r) == old(self).value_subrange(
+    //             start,
+    //             (end - start) as nat,
+    //         ),
+    //         final(self).ptr() == old(self).ptr(),
+    //         final(self).typed_value() == old(self).typed_value().update_subrange_with(
+    //             start,
+    //             Seq::new(ret.len(), |i: int| TypedValue::Valid(Box::new(*final(ret[i])))),
+    //         ),
+    //         Self::ptrs_len_same_valid_decode(*old(self), *final(self)),
+    //         final(self).wf(),
+    // {
+    //     let ghost old_self = *self;
+    //     let ghost self_ref = self;
+    //     let tracked sub = self.seq_pt.tracked_borrow_subrange_mut(start, end);
+    //     let ghost sub_ref = sub;
+    //     assert forall|i: int| 0 <= i < sub.len() implies #[trigger] sub[i].wf()
+    //         && sub[i].is_valid() by {
+    //         assert(old_self[start + i].wf_basic());
+    //     }
+    //     let tracked ret = Self::borrow_mut_values(sub);
+    //
+    //     let ghost new_self = *final(self_ref);
+    //     assert(new_self.seq_pt() == old_self.seq_pt().subrange(0, start) + *final(sub_ref)
+    //         + old_self.seq_pt().subrange(end, old_self.len() as int));
+    //     assert forall|i: int| 0 <= i < new_self.len() implies {
+    //         &&& (start <= i < end ==> #[trigger] new_self[i] == final(sub_ref)[i - start])
+    //         &&& (!(start <= i < end) ==> new_self[i] == old_self[i])
+    //     } by {}
+    //
+    //     assert(ret.map_values(|r: &mut T| *r) =~= old_self.value_subrange(
+    //         start,
+    //         (end - start) as nat,
+    //     ));
+    //     assert(new_self.typed_value() =~= old_self.typed_value().update_subrange_with(
+    //         start,
+    //         Seq::new(ret.len(), |i: int| TypedValue::Valid(Box::new(*final(ret[i])))),
+    //     )) by {
+    //         assert forall|i: int| 0 <= i < new_self.len() implies new_self.typed_value()[i]
+    //             == old_self.typed_value().update_subrange_with(
+    //             start,
+    //             Seq::new(ret.len(), |i: int| TypedValue::Valid(Box::new(*final(ret[i])))),
+    //         )[i] by {
+    //             if start <= i < end {
+    //                 assert(ret[i - start] == ret[i - start]);
+    //             }
+    //         }
+    //     }
+    //
+    //     // Re-establishing invariants
+    //     assert forall|i: int| 0 <= i < new_self.len() implies {
+    //         &&& PointsTo::<T>::ptrs_len_same_valid_decode(old_self[i], #[trigger] new_self[i])
+    //         &&& new_self[i].wf()
+    //     } by {
+    //         assert(old_self[i].wf_basic());
+    //         if start <= i < end {
+    //             assert((*sub_ref)[i - start] == old_self[i]);
+    //             assert(new_self[i] == final(sub_ref)[i - start]);
+    //         } else {
+    //             assert(new_self[i] == old_self[i]);
+    //         }
+    //     }
+    //     assert(new_self.wf_basic());
+    //     ret
+    // }
 
     /// Splits the `SeqPointsTo` into two permissions at the index boundary `mid`.
     pub proof fn split(tracked self, mid: nat) -> (tracked (first, second): (Self, Self))
@@ -2436,7 +2958,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             second.wf(),
     {
         if self.len() != 0 && size_of::<T>() != 0 {
-            assert(size_of::<T>() * self.len() != 0) by (nonlinear_arith)
+            assert(self.len() * size_of::<T>() != 0) by (nonlinear_arith)
                 requires
                     self.len() != 0,
                     size_of::<T>() != 0,

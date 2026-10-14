@@ -116,6 +116,12 @@ Practical rules when migrating:
 | `SeqPointsTo<u8>::cast_to_typed` | `PointsToUntyped::cast_to_seq_pt` |
 | `constants` (broadcast) | no equivalent in the new file |
 
+### `Seq` tracked borrows (`seq.rs`)
+
+| Old | New |
+|---|---|
+| `tracked_mut_borrow(i)` | `tracked_borrow_mut(i)`. The old function was removed as a duplicate: it had the same spec, stated element by element instead of with `update`, so `final(self) == old(self).update(i, *final(ret))` gives the same facts. |
+| `tracked_mut_borrow_subrange(i, j)` | `tracked_borrow_subrange_mut(i, j)` (renamed; same spec). It now sits next to the shared version, `tracked_borrow_subrange(i, j)`. |
 ## 5. Function by function: `PointsTo` and `PointsToUnaligned`
 
 "Proved" means it was an `axiom fn` in `raw_ptr.rs` and is a `proof fn` now.
@@ -144,7 +150,7 @@ Practical rules when migrating:
 |---|---|
 | `is_nonnull`, `ptr_bounds`, `provenance_not_none`, `is_disjoint` | `PointsToProperties` trait methods, delegating to the underlying `PointsToUntyped`. `is_disjoint_unaligned<S>` is the specialized form. |
 | `into_aligned` | Now requires `wf()` and aligned address; ensures `perm.wf()`. |
-| `as_aligned` | Still an axiom; requires `wf()` and aligned address, ensures `perm.wf()`. |
+| `as_aligned` | Proved with `shr_ref_struct_wrap` (was an axiom); requires `wf()` and aligned address, ensures `perm.wf()`. |
 | `zero_sized` | Now defined on `PointsToUnaligned<T>` (generic in `T`); the old one was `PointsToUnaligned<[u8]>::zero_sized<T>`. Ensures `wf()`. The untyped equivalent is `PointsToUntyped::zero_sized<T>`. |
 
 Accessors that expose inner permissions: `tracked_pt_unaligned` (on `PointsTo`) and
@@ -182,16 +188,16 @@ those facts straight from `wf()`, call the lemmas.
 | `tracked_seq_pt` (was `tracked_perm_seq`), `tracked_seq_pt_mut` (was `tracked_perm_seq_mut`), `index_mut(i)` (was `borrow_mut(i)`) | As before, renamed; `&mut` accessors give `final.wf()` conditionally (same `ptrs_len_same_valid_decode` criterion). |
 | `is_init_subrange`, `value_subrange` | `is_valid_subrange`, `value_subrange`. |
 | `put_subrange`, `put_mem_contents_subrange`, `take_mem_contents_subrange`, `copy_mem_contents_subrange` | `put_subrange`, `put_typed_value_subrange`, `take_typed_value_subrange`, `copy_typed_value_subrange`. Proved; all require `old(self).wf()` and ensure `final(self).wf()`. Replacement sequences are `Seq<TypedValue<T>>` rather than `Seq<MemContents<T>>`. |
-| `borrow_mem_contents_subrange` | `borrow_typed_value_subrange` (axiom; requires `wf()`). |
-| `PointsTo<[T]>::subrange` (shared borrow) | `subrange(start_index, len) -> &Self` (axiom; requires `wf()`). |
+| `borrow_mem_contents_subrange` | `borrow_typed_value_subrange` (proved; requires `wf()`; returns a `Seq<&TypedValue<T>>` rather than a `&Seq`). |
+| `PointsTo<[T]>::subrange` (shared borrow) | `subrange(start_index, len) -> &Self` (proved with `shr_ref_struct_wrap`; requires `wf()`). |
 | `PointsTo<[T]>::into_untyped`, `from_untyped(raw, len)` | `into_untyped` (proved; drops any typed values) and `from_untyped(pt_untyped, len)` (proved; requires `wf()`, alignment, `len() == len * size_of::<T>()`; ensures an all-empty, `wf()` permission). Use `PointsToUntyped::cast_to_seq_pt` to supply typed values. |
-| `PointsTo<[T]>::as_untyped_mut` | `as_untyped_mut` on `SeqPointsTo<T, PointsTo<T>>` (axiom). |
+| `PointsTo<[T]>::as_untyped_mut` | `as_untyped_mut` on `SeqPointsTo<T, PointsTo<T>>` (proved from the `PointsToUntyped::join_mut` axiom). |
 | `PointsTo<[T]>::cast_points_to`, `cast_points_to_unaligned` | Not available yet; planned as an `impl` on `PointsTo<[T]>`. Keep using the old API for now. |
 | `PointsTo<[u8]>::cast_to_typed` | `PointsToUntyped::cast_to_typed` (proved; requires `wf()`, `len() == size_of::<T>()`, alignment, decodability). |
 | `empty(ptr)`, `zero_sized(ptr, length)` | Same idea; ensure `wf()`. |
 | `split(mid)`, `join(other)` | Same contracts. Also available on `PointsToUntyped` (the untyped `split`/`join` handle the slice-pointer metadata, `metadata == len`). |
 | `cast_to_untyped` | Returns a `PointsToUntyped` (plus the `Seq<Option<T>>` of typed values). Proved. The pointer is fully specified: same address/provenance, metadata `len * size_of::<T>()`. |
-| `as_untyped` | Axiom returning `&PointsToUntyped` (the new `SeqPointsTo<T, PointsTo<T>>` does not store one to borrow). Requires `wf()`. |
+| `as_untyped` | Proved, returning `&PointsToUntyped`. The new `SeqPointsTo<T, PointsTo<T>>` does not store one to borrow, so it joins each element's borrowed `PointsToUntyped`, two at a time, with the `PointsToUntyped::join_ref` axiom. Requires `wf()`. |
 | `subrange_mut(i, j)` | Axiom, same shape as before; `final(self).wf()` conditional on the sub-permission staying `wf()` with the same pointer and length. |
 | `PointsToUntyped::cast_to_seq_pt(capacity, typed_value)` | Replaces `SeqPointsTo<u8>::cast_to_typed`. Requires `wf()`, alignment, `len == capacity * size_of::<T>()`, and decodability of each `Some`. |
 | `is_disjoint_seqpt<S>` | Specialization of the trait `is_disjoint` (requires `wf()` and non-empty/non-ZST). |
@@ -223,7 +229,9 @@ supported; convert at module boundaries.
 
 1. Switch imports to `points_to_permissions` / `points_to`, and bring the traits into scope.
 2. Rename per [section 4](#4-renames) (`is_init` → `is_valid`, `mem_contents` → `typed_value`,
-   `abstract_bytes` → `bytes`, `MemContents` → `TypedValue`, ...).
+   `abstract_bytes` → `bytes`, `MemContents` → `TypedValue`, ...), including the `Seq` tracked
+   borrows: `tracked_mut_borrow` → `tracked_borrow_mut` and `tracked_mut_borrow_subrange` →
+   `tracked_borrow_subrange_mut`.
 3. Replace uses of `PointsToUnaligned<[u8]>` / `PointsTo<[u8]>` as raw bytes with
    `PointsToUntyped`; update `cast_to_untyped` / `from_untyped` call sites and their `ensures`
    (metadata-equals-size becomes `len() == size_of::<T>()`).

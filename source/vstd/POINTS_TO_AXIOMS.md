@@ -5,59 +5,69 @@ convert a shared (`&`) or mutable (`&mut`) borrow, then grouped by impl block.
 
 ## `&` conversions
 
-### `PointsToUnaligned<T>`
+### `PointsToUntyped`
 
-1. [`as_aligned`](points_to_permissions.rs#L809): if the pointer address is aligned for `T`,
-   borrows `&self` as a `&PointsTo<T>` with the same view. There's a commented-out body
-   (`shr_ref_struct_wrap`) waiting on a merge from main, so this is only temporarily an axiom.
-
-### `SeqPointsTo<T, PointsTo<T>>`
-
-2. [`as_untyped`](points_to_permissions.rs#L1996): shared-borrows the sequence as a
-   `&PointsToUntyped`. Same address and provenance, length `len * size_of::<T>()`, same bytes.
-3. [`subrange`](points_to_permissions.rs#L2051): shared-borrows the sub-permission for `len`
-   elements starting at `start_index`. The pointer is offset by `start_index * size_of::<T>()`, and
-   the sequence of permissions is restricted to that range (so the bytes are too, since `bytes` is
-   defined from `seq_pt`; `bytes_subrange_equiv` relates them to a subrange of `self.bytes()`).
-4. [`borrow_typed_value_subrange`](points_to_permissions.rs#L2070): shared-borrows
-   `typed_value().subrange(start, end)` as a `&Seq<TypedValue<T>>`.
-5. [`borrow_subrange`](points_to_permissions.rs#L2352): shared-borrows the values in `[start, end)`
-   as a `&Seq<T>`. Requires the range to be valid; the result is
-   `value_subrange(start, end - start)`.
+1. `join_ref`: joins shared borrows `self` and `other` into a single `&'a PointsToUntyped`, under
+   the same conditions as `join` (both `wf()`, same provenance, `other` starting where `self`
+   ends). Ensures the result holds `self.seq_pt() + other.seq_pt()` (so its bytes are
+   `self.bytes() + other.bytes()`), starts at `self`'s address with length
+   `self.len() + other.len()`, and is `wf()`. It's the shared-borrow analogue of `join`, and an axiom
+   because the joined permission isn't stored anywhere to borrow. `SeqPointsTo::as_untyped` is
+   proved from it.
 
 ### `PointsTo<[T]>`
 
 These are on hold and not currently in the file. They will land here once `PointsTo<[T]>` exists.
 
-6. `cast_points_to<V>`: reinterprets a valid sequence of a
+2. `cast_points_to<V>`: reinterprets a valid sequence of a
    smaller integer type `T` as a `&PointsTo<V>` for a larger power-of-2 integer type `V`. Requires
    alignment to `V` and total size equal to `size_of::<V>()`. The value is given by
    `to_big_from_digits`; bytes are unchanged. TODO to prove it later.
-7. `cast_points_to_unaligned<V>`: same as `cast_points_to`, but
+3. `cast_points_to_unaligned<V>`: same as `cast_points_to`, but
    with no alignment requirement, returning a `&PointsToUnaligned<V>`. TODO to prove it later.
 
 ## `&mut` conversions
 
+### `PointsToUntyped`
+
+4. `join_mut`: the mutable-borrow analogue of `join_ref`, with the same requires and the same
+   ensures about the joined permission. In addition, if the joined permission keeps its pointers
+   and length, then so do `self` and `other` (and both are `wf()`), and their final `seq_pt`s
+   (and bytes) concatenate to the joined permission's final ones. `SeqPointsTo::as_untyped_mut` is proved from it.
+
 ### `PointsTo<T>`
 
-8. [`borrow_mut`](points_to_permissions.rs#L1291): mutably borrows the `T` held by a valid
-   permission. `mut_ref_ptr(val) == self.ptr()` connects the reference to the raw pointer, and the
-   final value matches what's written through `val`. It's an axiom because that pointer connection
-   can't be built by borrowing from a ghost value. Has a `// TODO: is this right/sound?` on the
-   line that says when `wf` is restored.
+5. `borrow_mut` (**commented out** for now, as not essential; `borrow_mut_subrange` and its
+   helper are commented out with it): mutably borrows the `T` held by a valid
+   permission. The final permission is valid with the value written through the reference, keeps
+   its pointer, satisfies `ptrs_len_same_valid_decode` and is `wf()` unconditionally. So the
+   final bytes are whatever encoding of the new value is in memory. It's an axiom because the
+   bytes live in separate ghost state from the `TypedValue<T>`, so a borrow of the value alone
+   can't update them. The `mut_ref_ptr(val) == self.ptr()` postcondition is commented out
+   (Travis: not necessarily true because of `Box`/enum, and not obviously needed).
 
 ### `SeqPointsTo<T, PointsTo<T>>`
 
-9. [`as_untyped_mut`](points_to_permissions.rs#L2025): mutable version of `as_untyped`. Any typed
-   values are dropped. If the raw permission's pointer and length are unchanged, `self` comes back
-   fully empty and well-formed, with the raw permission's final bytes.
-10. [`borrow_mut_subrange`](points_to_permissions.rs#L2365): mutable version of `borrow_subrange`,
-    borrowing the values in a valid range `[start, end)` as a `&mut Seq<T>`. The pointer, length
-    and per-element pointers of `self` stay the same. If the borrowed `Seq<T>` keeps its length,
-    the final `typed_value()` has that range replaced by the final values. Unlike `borrow_mut`, it
-    has no `mut_ref_ptr` postcondition. Like `borrow_mut`, `wf` is restored only under
-    `ptrs_len_same_valid_decode`, with the same `// TODO: is this right/sound?`.
-11. [`subrange_mut`](points_to_permissions.rs#L2522): mutably borrows the sub-permission for
-    indices `[i, j)`, with the pointer offset by `i * size_of::<T>()`. If the sub-permission stays
-    well-formed with the same pointer and length, `self` stays well-formed with that slice replaced
-    by the final sub-permission.
+6. `subrange_mut`: mutably borrows the sub-permission for indices `[i, j)`, with the pointer
+   offset by `i * size_of::<T>()`. If the sub-permission stays well-formed with the same pointer
+   and length, `self` stays well-formed with that slice replaced by the final sub-permission.
+   (It could be proved from a generic `&mut` struct-wrapping axiom on `SeqPointsTo`, the `&mut`
+   analogue of `shr_ref_struct_wrap`; that was tried and reverted pending a soundness review.
+   `PointsToUntyped::split_mut`, which used the same axiom, is commented out.)
+
+## Axioms outside this file that proofs here rely on
+
+- `Seq::tracked_borrow_subrange` in [seq.rs](seq.rs) (`external_body`): shared-borrows
+  `self.subrange(i, j)` as a `&Seq`. It's the shared counterpart of the existing
+  `Seq::tracked_borrow_subrange_mut`. `PointsToUntyped::split_ref` and `SeqPointsTo::subrange` are proved from it plus the
+  `shr_ref_struct_wrap` builtin, which wraps the borrowed `&Seq<PointsTo<T>>` in a `&SeqPointsTo`
+  (its other field, `ptr`, is a `Ghost`).
+- `Seq::tracked_split_borrow_mut` in [seq.rs](seq.rs) (`external_body`): splits a `&mut Seq` into
+  `&mut` borrows of `take(mid)` and `skip(mid)`, with `final(self)` equal to the concatenation of
+  their finals. It's the `Seq` analogue of `Map::tracked_borrow_mut_split`. Used by
+  `SeqPointsTo::as_untyped_mut` (and by the commented-out `borrow_mut_subrange` and
+  `PointsToUntyped::split_mut`).
+- `tracked_static_mut_ref` in [modes.rs](modes.rs) (existing vstd axiom; `tracked_static_ref` is
+  proved from it): turns an owned tracked value into a `'static` reference. `as_untyped` and
+  `as_untyped_mut` use it for the empty case, wrapping a `PointsToUntyped::zero_sized` permission,
+  since there's no element borrow to start the joins from.
