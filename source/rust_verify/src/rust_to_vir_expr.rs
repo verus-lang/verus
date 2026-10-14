@@ -526,6 +526,18 @@ pub(crate) fn expr_to_vir<'tcx>(
     Ok(vir_expr_or_place)
 }
 
+fn patexpr_unsupported_type_err<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    span: Span,
+    pat: &Pat<'tcx>,
+) -> Result<(), VirErr> {
+    let pat_ty = bctx.types.node_type(pat.hir_id);
+    if !crate::rust_to_vir_base::ty_has_smt_equality(bctx, span, pat_ty)? {
+        unsupported_err!(span, format!("equality-testing this type in pattern: {:?}", pat_ty));
+    }
+    Ok(())
+}
+
 pub(crate) fn patexpr_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     span: Span,
@@ -536,12 +548,14 @@ pub(crate) fn patexpr_to_vir<'tcx>(
     let tcx = bctx.ctxt.tcx;
     match pat_expr.kind {
         PatExprKind::Lit { lit, negated } => {
+            patexpr_unsupported_type_err(bctx, span, pat)?;
             Ok(PatternX::Expr(lit_to_vir(bctx, span, lit, negated, pat_typ, None)?))
         }
         PatExprKind::Path(qpath) => {
             let res = bctx.types.qpath_res(&qpath, pat_expr.hir_id);
             match res {
                 Res::Def(DefKind::Const { is_type_const: _ }, id) => {
+                    patexpr_unsupported_type_err(bctx, span, pat)?;
                     let node_substs = bctx.types.node_args(pat_expr.hir_id);
                     let x = const_var_to_vir(bctx, None, id, node_substs, &pat_expr.hir_id, span)?;
                     let expr = bctx.spanned_typed_new(pat.span, &pat_typ, x.x.clone());
@@ -549,6 +563,7 @@ pub(crate) fn patexpr_to_vir<'tcx>(
                     Ok(PatternX::Expr(expr))
                 }
                 Res::Def(DefKind::AssocConst { is_type_const: _ }, id) => {
+                    patexpr_unsupported_type_err(bctx, span, pat)?;
                     if let Some(vir_expr) =
                         int_intrinsic_constant_to_vir(&bctx.ctxt, pat.span, &pat_typ, id)
                     {

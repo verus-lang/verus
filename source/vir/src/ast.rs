@@ -920,7 +920,7 @@ pub enum PatternX {
     /// Fields can appear **in any order** even for tuple variants.
     Constructor(Dt, Ident, Binders<Pattern>),
     Or(Pattern, Pattern),
-    /// Matches something equal to the value of this expr
+    /// Matches something equal to the value of this expr *using spec equality*
     /// This only supports literals, consts, and pure functions
     /// so we don't need to worry about side-effects, binding order, etc.
     /// See `check_expr_in_pattern` for the exact supported expressions.
