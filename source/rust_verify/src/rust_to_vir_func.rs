@@ -1559,6 +1559,22 @@ pub(crate) enum FunctionOrConstInfo<'tcx> {
     Const(ConstInfo),
 }
 
+impl<'a, 'tcx> IntoIterator for &'a FunctionOrConstInfo<'tcx> {
+    type Item = &'a vir::ast::FunctionStub;
+    type IntoIter = std::iter::Chain<
+        std::iter::Once<&'a vir::ast::FunctionStub>,
+        std::option::IntoIter<&'a vir::ast::FunctionStub>,
+    >;
+
+    fn into_iter(self) -> Self::IntoIter {
+        let (f, opt_f) = match self {
+            FunctionOrConstInfo::Function(f) => (&f.function, f.function_for_autospec.as_ref()),
+            FunctionOrConstInfo::Const(f) => (&f.function, f.function_for_autospec.as_ref()),
+        };
+        std::iter::once(f).chain(opt_f.into_iter())
+    }
+}
+
 fn get_pre_header<'tcx>(
     ctxt: &Context<'tcx>,
     vir_params: &[vir::ast::Param],
