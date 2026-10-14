@@ -142,6 +142,14 @@ pub fn int_typ() -> Typ {
     Arc::new(TypX::Int(IntRange::Int))
 }
 
+pub fn typ_contains_opaque(typ: &Typ) -> bool {
+    crate::ast_visitor::typ_visitor_check(typ, &mut |typ| match &**typ {
+        TypX::Opaque { .. } => Err(()),
+        _ => Ok(()),
+    })
+    .is_err()
+}
+
 // ImplPaths is ignored in types_equal
 pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
     match (&**typ1, &**typ2) {
