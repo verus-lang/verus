@@ -2815,6 +2815,7 @@ impl Verifier {
             vir::printer::write_krate(&mut file, &vir_crate, &self.args.log_args.vir_log_option);
         }
 
+        vir::traits::check_no_dupe_impls(&vir_crate).map_err(map_err_diagnostics)?;
         let vir_crate = vir::traits::demote_external_traits(diagnostics, &warning_ctx, &vir_crate)
             .map_err(map_err_diagnostics)?;
         let vir_crate = vir::traits::inherit_default_bodies(&vir_crate, &mut warning_ctx)
