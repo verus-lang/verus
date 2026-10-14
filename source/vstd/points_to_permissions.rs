@@ -548,200 +548,6 @@ impl PointsToUntyped {
             },
     ;
 
-    /// We can cast a `PointsToUntyped` to a `SeqPointsTo<T, PointsTo<T>>` of length `capacity`
-    /// under the following conditions:
-    ///
-    /// (1) The pointer's address is aligned to `T`.
-    ///
-    /// (2) The length is exactly `capacity * size_of::<T>()`.
-    ///
-    /// (3) For each non-None element in `typed_value`, the corresponding abstract bytes for the
-    ///     `PointsToUntyped` can be decoded into the given value. Note that `typed_value` is allowed
-    ///     to contain None items (these are ignored for purposes of decoding)
-    ///     and can be a prefix of the total `capacity` (in which case, the remaining memory is
-    ///     all logically uninitialized).
-    ///
-    /// The resulting `SeqPointsTo<T, PointsTo<T>>` will have a prefix of memory corresponding to
-    /// `typed_value`. The rest of the memory will be logically uninitialized.
-    /// The abstract bytes will also remain the same.
-    pub proof fn cast_to_seq_pt<T>(
-        tracked self,
-        capacity: usize,
-        tracked typed_value: Seq<Option<T>>,
-    ) -> (tracked out: SeqPointsTo<T, PointsTo<T>>)
-        requires
-            self.wf(),
-            self.ptr()@.addr as nat % align_of::<T>() == 0,
-            self.len() == capacity * size_of::<T>(),
-            typed_value.len() <= capacity,
-            forall|i: int|
-                0 <= i < typed_value.len() && typed_value[i].is_some() ==> #[trigger] abs_decode::<
-                    T,
-                >(
-                    self.bytes().subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()),
-                    &typed_value[i].unwrap(),
-                ),
-        ensures
-            out.ptr() == self.ptr() as *mut T,
-            out.len() == capacity,
-            out.bytes() == self.bytes(),
-            forall|i: int|
-                0 <= i < typed_value.len() ==> {
-                    &&& (#[trigger] out[i]).is_valid() <==> typed_value[i].is_some()
-                    &&& typed_value[i].is_some() ==> typed_value[i].unwrap() == out[i].value()
-                },
-            out.wf(),
-        decreases capacity,
-    {
-        let ghost ghost_self = self;
-
-        if capacity == 0 {
-            assert(capacity * size_of::<T>() == 0) by (nonlinear_arith)
-                requires
-                    capacity == 0,
-            ;
-            let tracked out = SeqPointsTo::<T, PointsTo<T>>::empty(self.ptr() as *mut T);
-            assert(out.bytes() =~= self.bytes());
-            out
-        } else {
-            if size_of::<T>() != 0 {
-                assert(capacity * size_of::<T>() != 0) by (nonlinear_arith)
-                    requires
-                        capacity != 0,
-                        size_of::<T>() != 0,
-                ;
-                self.provenance_not_none();
-                self.ptr_bounds();
-            }
-            assert(0 <= (capacity - 1) as nat * size_of::<T>() <= capacity * size_of::<T>())
-                by (nonlinear_arith)
-                requires
-                    capacity > 0,
-            ;
-            assert(((self.ptr()@.addr + (capacity - 1) as nat * size_of::<T>()) as nat
-                % align_of::<T>() == 0)) by {
-                broadcast use
-                    crate::vstd::arithmetic::div_mod::lemma_mul_mod_noop_right,
-                    crate::vstd::arithmetic::div_mod::lemma_add_mod_noop,
-                    layout_of_sized,
-                ;
-
-            }
-            // Split into "head" and "tail", where tail is the last element's bytes
-            let tracked (head, tail) = self.split(((capacity - 1) as nat * size_of::<T>()) as nat);
-            assert(tail.len() + (capacity - 1) as nat * size_of::<T>() == capacity
-                * size_of::<T>());
-            assert(tail.len() == size_of::<T>()) by (nonlinear_arith)
-                requires
-                    tail.len() + (capacity - 1) as nat * size_of::<T>() == capacity * size_of::<T>(),
-                    capacity > 0,
-            ;
-            if size_of::<T>() == 0 {
-                assert((capacity - 1) as nat * size_of::<T>() == 0) by (nonlinear_arith)
-                    requires
-                        size_of::<T>() == 0,
-                ;
-            }
-            assert(tail.ptr()@.addr == ghost_self.ptr()@.addr + (capacity - 1) as nat * size_of::<
-                T,
-            >());
-
-            // Cast the tail into either a valid or empty permission, depending on `typed_value`
-            let ghost ghost_tail = tail;
-            let tracked mut tail_pt = PointsTo::<T>::from_untyped(tail);
-            let tracked mut head_typed_value = typed_value;
-            if typed_value.len() == capacity {
-                let tracked last = head_typed_value.tracked_pop();
-                match last {
-                    Some(v) => {
-                        let i = (capacity - 1) as int;
-                        assert(typed_value[i].is_some());
-                        assert(tail_pt.bytes() =~= ghost_self.bytes().subrange(
-                            i * size_of::<T>(),
-                            (i + 1) * size_of::<T>(),
-                        ));
-                        tail_pt.put(v);
-                    },
-                    None => {},
-                }
-            }
-            let ghost tail_ptr = tail_pt.ptr();
-            let ghost tail_bytes = tail_pt.bytes();
-            assert(tail_bytes == ghost_tail.bytes());
-            let tracked mut tail_seq = Seq::tracked_empty();
-            tail_seq.tracked_push(tail_pt);
-            assert forall|i: int| 0 <= i < tail_seq.len() implies #[trigger] tail_seq[i].ptr()@.addr
-                == tail_ptr@.addr + i * size_of::<T>() by {
-                assert(i == 0);
-                assert(0 * size_of::<T>() == 0) by (nonlinear_arith);
-            }
-            let tracked tail_typed = SeqPointsTo::<T, PointsTo<T>>::from_seq(tail_seq, tail_ptr);
-
-            // Invoke the inductive hypothesis on the head
-            assert forall|i: int|
-                0 <= i < head_typed_value.len() && head_typed_value[i].is_some() implies #[trigger] abs_decode::<
-                T,
-            >(
-                head.bytes().subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()),
-                &head_typed_value[i].unwrap(),
-            ) by {
-                assert(0 <= i * size_of::<T>() <= (i + 1) * size_of::<T>() <= (capacity
-                    - 1) as nat * size_of::<T>()) by (nonlinear_arith)
-                    requires
-                        0 <= i < capacity - 1,
-                ;
-                ghost_self.bytes().lemma_slice_of_slice(
-                    0,
-                    ((capacity - 1) as nat * size_of::<T>()) as int,
-                    i * size_of::<T>(),
-                    (i + 1) * size_of::<T>(),
-                );
-            }
-            let tracked head_typed = head.cast_to_seq_pt((capacity - 1) as usize, head_typed_value);
-
-            // Join head and tail
-            assert(tail_typed.bytes() =~= tail_bytes) by {
-                reveal_with_fuel(Seq::fold_left, 2);
-            }
-            let tracked out = head_typed.join(tail_typed);
-            assert(ghost_self.bytes().take(
-                ((capacity - 1) as nat * size_of::<T>()) as int,
-            ) + ghost_self.bytes().skip(((capacity - 1) as nat * size_of::<T>()) as int)
-                =~= ghost_self.bytes());
-            out
-        }
-    }
-
-    /// A `PointsToUntyped` can be cast to a valid `PointsTo<T>` when the abstract bytes can be
-    /// decoded into the given `tracked typed_value`, the length is `size_of::<T>()`,
-    /// and the pointer is aligned to `T`.
-    /// The resulting permission will take on the value in memory given by `typed_value`.
-    ///
-    /// The abstract bytes remain the same. This preserves the typed contents in memory on a
-    /// roundtrip cast (see `PointsTo::cast_to_untyped`).
-    /// Note that this means provenance is not lost, which matches Rust's semantics for
-    /// casting/transmuting in-memory values.
-    ///
-    /// The inclusion of `tracked typed_value` prohibits creating permission-carrying types out of
-    /// thin air, in the case where `T` is a type that stores/represents a permission
-    /// (e.g., shared references).
-    pub proof fn cast_to_typed<T>(tracked self, tracked typed_value: T) -> (tracked dst: PointsTo<T>)
-        requires
-            self.wf(),
-            self.len() == size_of::<T>(),
-            self.ptr()@.addr as nat % align_of::<T>() == 0,
-            abs_decode::<T>(self.bytes(), &typed_value),
-        ensures
-            dst.bytes() == self.bytes(),
-            dst.is_valid(),
-            dst.value() == typed_value,
-            dst.ptr() == self.ptr() as *mut T,
-            dst.wf(),
-    {
-        let tracked mut perm = PointsTo::<T>::from_untyped(self);
-        perm.put(typed_value);
-        perm
-    }
 }
 
 /// Represents (typed) contents of memory.
@@ -1347,45 +1153,41 @@ impl<T> PointsTo<T> {
     {
     }
 
-    /// A `PointsTo<T>` can always be cast to a `PointsToUntyped`, an untyped permission to the
-    /// same underlying bytes. The resulting permission carries no information about validity.
+    /// Converts a `PointsTo<T>` into a `PointsToUntyped`, an untyped permission to the same
+    /// underlying bytes, together with the `TypedValue<T>` that `self` held.
+    /// (Use `into_untyped` instead if you don't need the typed value.)
     ///
     /// The abstract bytes remain the same. This preserves the typed contents in memory on a
-    /// roundtrip cast (see `PointsToUntyped::cast_to_seq_pt`).
+    /// roundtrip (see `PointsTo::from_untyped_with_value`).
     /// Note that this means provenance is not lost, which matches Rust's semantics for
     /// casting/transmuting in-memory values.
     ///
-    /// This function also returns a `tracked Option<T>` corresponding to the `TypedValue<T>` on
-    /// `self`. The use of `tracked Option<T>` prohibits creating permission-carrying types out of
+    /// Returning the `tracked TypedValue<T>` prohibits creating permission-carrying types out of
     /// thin air, i.e. in the case where `T` is a type that stores/represents a permission
     /// (e.g., shared references).
-    pub proof fn cast_to_untyped(tracked self) -> (tracked (dst, typed_value): (
+    pub proof fn into_untyped_with_typed_value(tracked self) -> (tracked (pt_untyped, typed_value): (
         PointsToUntyped,
-        Option<T>,
+        TypedValue<T>,
     ))
         requires
             self.wf(),
         ensures
-            self.bytes() == dst.bytes(),
-            self.ptr()@.addr == dst.ptr()@.addr,
-            self.ptr()@.provenance == dst.ptr()@.provenance,
-            dst.wf(),
-            dst.len() == size_of::<T>(),
-            typed_value.is_some() <==> self.is_valid(),
-            typed_value.is_some() ==> typed_value.unwrap() == self.value(),
+            self.bytes() == pt_untyped.bytes(),
+            self.ptr()@.addr == pt_untyped.ptr()@.addr,
+            self.ptr()@.provenance == pt_untyped.ptr()@.provenance,
+            pt_untyped.wf(),
+            pt_untyped.len() == size_of::<T>(),
+            typed_value == self.typed_value(),
     {
         let tracked PointsTo { pt_unaligned } = self;
         let tracked PointsToUnaligned { val, pt_untyped } = pt_unaligned;
-        let tracked typed_value = match val {
-            TypedValue::Valid(b) => Some(*b),
-            TypedValue::Empty => None,
-        };
-        (pt_untyped, typed_value)
+        (pt_untyped, val)
     }
 
     /// Creates a `PointsTo<T>` from a `PointsToUntyped` with the same provenance
     /// and a ptr corresponding to the range of the `PointsToUntyped`.
     /// The resulting `PointsTo<T>` will be empty (uninitialized).
+    /// (Use `from_untyped_with_value` instead if you want to supply a value.)
     pub proof fn from_untyped(tracked pt_untyped: PointsToUntyped) -> (tracked out: Self)
         requires
             pt_untyped.wf(),
@@ -1398,6 +1200,36 @@ impl<T> PointsTo<T> {
             out.wf(),
     {
         PointsTo { pt_unaligned: PointsToUnaligned { val: TypedValue::Empty, pt_untyped } }
+    }
+
+    /// Creates a valid `PointsTo<T>` holding `value` from a `PointsToUntyped`, provided that its
+    /// abstract bytes can be decoded into `value`, its length is `size_of::<T>()`, 
+    /// and its pointer is aligned to `T`.
+    ///
+    /// The abstract bytes remain the same. This preserves the typed contents in memory on a
+    /// roundtrip (see `PointsTo::into_untyped_with_typed_value`).
+    /// Note that this means provenance is not lost, which matches Rust's semantics for
+    /// casting/transmuting in-memory values.
+    ///
+    /// Requiring the `tracked value` prohibits creating permission-carrying types out of thin
+    /// air, in the case where `T` is a type that stores/represents a permission
+    /// (e.g., shared references).
+    pub proof fn from_untyped_with_value(tracked pt_untyped: PointsToUntyped, tracked value: T) -> (tracked out: Self)
+        requires
+            pt_untyped.wf(),
+            pt_untyped.ptr()@.addr as int % align_of::<T>() as int == 0,
+            pt_untyped.len() == size_of::<T>(),
+            abs_decode::<T>(pt_untyped.bytes(), &value),
+        ensures
+            out.ptr() == pt_untyped.ptr() as *mut T,
+            out.bytes() == pt_untyped.bytes(),
+            out.is_valid(),
+            out.value() == value,
+            out.wf(),
+    {
+        let tracked mut out = Self::from_untyped(pt_untyped);
+        out.put(value);
+        out
     }
 
     /// Creates a `PointsToUntyped` from a `PointsTo<T>` with the same provenance
@@ -2106,34 +1938,32 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         self.bytes_decode_helper(self.len() as int);
     }
 
-    /// Casts a `SeqPointsTo<T, PointsTo<T>>` to a `PointsToUntyped` covering the same bytes.
+    /// Converts a `SeqPointsTo<T, PointsTo<T>>` into a `PointsToUntyped` covering the same bytes,
+    /// together with the `TypedValue<T>` of each element.
+    /// (Use `into_untyped` instead if you don't need the typed values.)
+    /// 
     /// The resulting `PointsToUntyped` has the same address and provenance and a length of
     /// `self.len() * size_of::<T>()`, and preserves the abstract bytes.
-    /// It carries no information about validity, so it cannot be read from as a `T`.
     /// The returned `tracked typed_value` holds the typed contents from this memory,
-    /// which can later be used to cast the `dst` permission back to a typed permission.
-    pub proof fn cast_to_untyped(tracked self) -> (tracked (dst, typed_value): (
+    /// which can later be used to convert the `pt_untyped` permission back to a typed permission
+    /// (see `SeqPointsTo::from_untyped_with_typed_value`).
+    pub proof fn into_untyped_with_typed_value(tracked self) -> (tracked (pt_untyped, typed_value): (
         PointsToUntyped,
-        Seq<Option<T>>,
+        Seq<TypedValue<T>>,
     ))
         requires
             self.wf(),
         ensures
-            dst.ptr() == ptr_mut_from_data::<[u8]>(
+            pt_untyped.ptr() == ptr_mut_from_data::<[u8]>(
                 PtrData {
                     addr: self.ptr()@.addr,
                     provenance: self.ptr()@.provenance,
                     metadata: (self.len() * size_of::<T>()) as usize,
                 },
             ),
-            dst.bytes() == self.bytes(),
-            forall|i: int|
-                0 <= i < self.len() ==> {
-                    &&& typed_value[i].is_some() <==> (#[trigger] self[i]).is_valid()
-                    &&& typed_value[i].is_some() ==> typed_value[i].unwrap() == self[i].value()
-                },
-            typed_value.len() == self.len(),
-            dst.wf(),
+            pt_untyped.bytes() == self.bytes(),
+            typed_value == self.seq_typed_value(),
+            pt_untyped.wf(),
         decreases self.len(),
     {
         let ghost ghost_self = self;
@@ -2142,7 +1972,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                 requires
                     self.len() == 0,
             ;
-            let tracked dst = SeqPointsTo {
+            let tracked pt_untyped = SeqPointsTo {
                 seq_pt: Seq::tracked_empty(),
                 ptr: Ghost(
                     ptr_mut_from_data::<[u8]>(
@@ -2154,39 +1984,38 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                     ),
                 ),
             };
-            (dst, Seq::tracked_empty())
+            (pt_untyped, Seq::tracked_empty())
         } else {
             let tracked mut seq_pt = self.seq_pt;
             let tracked last = seq_pt.tracked_pop();
             let tracked head = SeqPointsTo { seq_pt: seq_pt, ptr: self.ptr };
             let ghost ghost_head = head;
             let ghost ghost_last = last;
-            let tracked (head_u8, mut head_typed_value) = head.cast_to_untyped();
-            let tracked (last_u8, last_typed_value) = last.cast_to_untyped();
+            let tracked (head_u8, mut head_typed_value) = head.into_untyped_with_typed_value();
+            let tracked (last_u8, last_typed_value) = last.into_untyped_with_typed_value();
             head_typed_value.tracked_push(last_typed_value);
-            let tracked dst = head_u8.join(last_u8);
+            let tracked pt_untyped = head_u8.join(last_u8);
 
             ghost_self.bytes_len();
 
-            assert forall|i: int| 0 <= i < ghost_self.len() implies {
-                &&& head_typed_value[i].is_some() <==> (#[trigger] ghost_self[i]).is_valid()
-                &&& head_typed_value[i].is_some() ==> head_typed_value[i].unwrap()
-                    == ghost_self[i].value()
-            } by {
-                if i < ghost_self.len() - 1 {
-                    assert(ghost_head[i] == ghost_self[i]);
-                } else {
-                    assert(ghost_last == ghost_self[i]);
+            assert(head_typed_value =~= ghost_self.seq_typed_value()) by {
+                assert forall|i: int| 0 <= i < ghost_self.len() implies head_typed_value[i]
+                    == #[trigger] ghost_self.seq_typed_value()[i] by {
+                    if i < ghost_self.len() - 1 {
+                        assert(ghost_head[i] == ghost_self[i]);
+                    } else {
+                        assert(ghost_last == ghost_self[i]);
+                    }
                 }
             }
-            (dst, head_typed_value)
+            (pt_untyped, head_typed_value)
         }
     }
 
     /// Creates a `PointsToUntyped` from a `SeqPointsTo<T, PointsTo<T>>` with the same address and
     /// provenance and a length of `self.len() * size_of::<T>()`.
     /// If there are any typed values stored in memory, they are dropped here.
-    /// (Use `cast_to_untyped` instead if you want to keep them.)
+    /// (Use `into_untyped_with_typed_value` instead if you want to keep them.)
     pub proof fn into_untyped(tracked self) -> (tracked pt_untyped: PointsToUntyped)
         requires
             self.wf(),
@@ -2201,14 +2030,14 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             pt_untyped.bytes() == self.bytes(),
             pt_untyped.wf(),
     {
-        let tracked (pt_untyped, _) = self.cast_to_untyped();
+        let tracked (pt_untyped, _) = self.into_untyped_with_typed_value();
         pt_untyped
     }
 
     /// Creates a `SeqPointsTo<T, PointsTo<T>>` of length `len` from a `PointsToUntyped` with the
     /// same provenance and a ptr corresponding to the range of the `PointsToUntyped`.
     /// The resulting permission will be empty (uninitialized).
-    /// (Use `PointsToUntyped::cast_to_seq_pt` instead if you want to supply typed values.)
+    /// (Use `from_untyped_with_typed_value` instead if you want to supply typed values.)
     pub proof fn from_untyped(tracked pt_untyped: PointsToUntyped, len: usize) -> (tracked out: Self)
         requires
             pt_untyped.wf(),
@@ -2221,9 +2050,13 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             out.is_fully_empty(),
             out.wf(),
     {
-        let tracked mut out = pt_untyped.cast_to_seq_pt::<T>(len, Seq::tracked_empty());
-        // `cast_to_seq_pt` says nothing about the validity of elements past the supplied
-        // `typed_value`, so empty all of them.
+        let tracked mut out = Self::from_untyped_with_typed_value(
+            pt_untyped,
+            len,
+            Seq::tracked_empty(),
+        );
+        // `from_untyped_with_typed_value` says nothing about the validity of elements past the
+        // supplied `typed_value`, so empty all of them.
         let ghost before = out;
         let tracked _taken = out.take_typed_value_subrange(0, len as int);
         assert(out.seq_typed_value().len() == before.seq_typed_value().len());
@@ -2233,6 +2066,165 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             assert(out.seq_typed_value()[i] == TypedValue::<T>::Empty);
         }
         out
+    }
+
+    /// Creates a `SeqPointsTo<T, PointsTo<T>>` of length `capacity` from a `PointsToUntyped`,
+    /// with the first `typed_value.len()` elements holding the given typed values,
+    /// under the following conditions:
+    ///
+    /// (1) The pointer's address is aligned to `T`.
+    ///
+    /// (2) The length is exactly `capacity * size_of::<T>()`.
+    ///
+    /// (3) For each valid element in `typed_value`, the corresponding abstract bytes for the
+    ///     `PointsToUntyped` can be decoded into its value. `typed_value` may contain empty
+    ///     elements (these are ignored for purposes of decoding) and can be a prefix of the total
+    ///     `capacity` (in which case, the remaining memory is all logically uninitialized).
+    ///
+    /// The abstract bytes remain the same. This preserves the typed contents in memory on a
+    /// roundtrip (see `SeqPointsTo::into_untyped_with_typed_value`).
+    pub proof fn from_untyped_with_typed_value(
+        tracked pt_untyped: PointsToUntyped,
+        capacity: usize,
+        tracked typed_value: Seq<TypedValue<T>>,
+    ) -> (tracked out: Self)
+        requires
+            pt_untyped.wf(),
+            pt_untyped.ptr()@.addr as nat % align_of::<T>() == 0,
+            pt_untyped.len() == capacity * size_of::<T>(),
+            typed_value.len() <= capacity,
+            forall|i: int|
+                0 <= i < typed_value.len() && typed_value[i].is_valid() ==> #[trigger] abs_decode::<
+                    T,
+                >(
+                    pt_untyped.bytes().subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()),
+                    &typed_value[i].value(),
+                ),
+        ensures
+            out.ptr() == pt_untyped.ptr() as *mut T,
+            out.len() == capacity,
+            out.bytes() == pt_untyped.bytes(),
+            forall|i: int| 0 <= i < typed_value.len() ==> (#[trigger] out[i]).typed_value() == typed_value[i],
+            out.wf(),
+        decreases capacity,
+    {
+        let ghost ghost_untyped = pt_untyped;
+
+        if capacity == 0 {
+            assert(capacity * size_of::<T>() == 0) by (nonlinear_arith)
+                requires
+                    capacity == 0,
+            ;
+            let tracked out = Self::empty(pt_untyped.ptr() as *mut T);
+            assert(out.bytes() =~= pt_untyped.bytes());
+            out
+        } else {
+            if size_of::<T>() != 0 {
+                assert(capacity * size_of::<T>() != 0) by (nonlinear_arith)
+                    requires
+                        capacity != 0,
+                        size_of::<T>() != 0,
+                ;
+                pt_untyped.provenance_not_none();
+                pt_untyped.ptr_bounds();
+            }
+            assert(0 <= (capacity - 1) as nat * size_of::<T>() <= capacity * size_of::<T>())
+                by (nonlinear_arith)
+                requires
+                    capacity > 0,
+            ;
+            assert(((pt_untyped.ptr()@.addr + (capacity - 1) as nat * size_of::<T>()) as nat
+                % align_of::<T>() == 0)) by {
+                broadcast use
+                    crate::vstd::arithmetic::div_mod::lemma_mul_mod_noop_right,
+                    crate::vstd::arithmetic::div_mod::lemma_add_mod_noop,
+                    layout_of_sized,
+                ;
+
+            }
+            // Split into "head" and "tail", where tail is the last element's bytes
+            let tracked (head, tail) = pt_untyped.split(
+                ((capacity - 1) as nat * size_of::<T>()) as nat,
+            );
+            assert(tail.len() + (capacity - 1) as nat * size_of::<T>() == capacity
+                * size_of::<T>());
+            assert(tail.len() == size_of::<T>()) by (nonlinear_arith)
+                requires
+                    tail.len() + (capacity - 1) as nat * size_of::<T>() == capacity * size_of::<T>(),
+                    capacity > 0,
+            ;
+            if size_of::<T>() == 0 {
+                assert((capacity - 1) as nat * size_of::<T>() == 0) by (nonlinear_arith)
+                    requires
+                        size_of::<T>() == 0,
+                ;
+            }
+            assert(tail.ptr()@.addr == ghost_untyped.ptr()@.addr + (capacity - 1) as nat
+                * size_of::<T>());
+
+            // Convert the tail into a typed permission holding the last typed value, if supplied
+            let ghost ghost_tail = tail;
+            let tracked mut tail_pt = PointsTo::<T>::from_untyped(tail);
+            let tracked mut head_typed_value = typed_value;
+            if typed_value.len() == capacity {
+                let tracked last = head_typed_value.tracked_pop();
+                let i = (capacity - 1) as int;
+                assert(last == typed_value[i]);
+                assert(tail_pt.bytes() =~= ghost_untyped.bytes().subrange(
+                    i * size_of::<T>(),
+                    (i + 1) * size_of::<T>(),
+                ));
+                tail_pt.put_typed_value(last);
+            }
+            let ghost tail_ptr = tail_pt.ptr();
+            let ghost tail_bytes = tail_pt.bytes();
+            assert(tail_bytes == ghost_tail.bytes());
+            let tracked mut tail_seq = Seq::tracked_empty();
+            tail_seq.tracked_push(tail_pt);
+            assert forall|i: int| 0 <= i < tail_seq.len() implies #[trigger] tail_seq[i].ptr()@.addr
+                == tail_ptr@.addr + i * size_of::<T>() by {
+                assert(i == 0);
+                assert(0 * size_of::<T>() == 0) by (nonlinear_arith);
+            }
+            let tracked tail_typed = Self::from_seq(tail_seq, tail_ptr);
+
+            // Invoke the inductive hypothesis on the head
+            assert forall|i: int|
+                0 <= i < head_typed_value.len() && head_typed_value[i].is_valid() implies #[trigger] abs_decode::<
+                T,
+            >(
+                head.bytes().subrange(i * size_of::<T>(), (i + 1) * size_of::<T>()),
+                &head_typed_value[i].value(),
+            ) by {
+                assert(0 <= i * size_of::<T>() <= (i + 1) * size_of::<T>() <= (capacity
+                    - 1) as nat * size_of::<T>()) by (nonlinear_arith)
+                    requires
+                        0 <= i < capacity - 1,
+                ;
+                ghost_untyped.bytes().lemma_slice_of_slice(
+                    0,
+                    ((capacity - 1) as nat * size_of::<T>()) as int,
+                    i * size_of::<T>(),
+                    (i + 1) * size_of::<T>(),
+                );
+            }
+            let tracked head_typed = Self::from_untyped_with_typed_value(
+                head,
+                (capacity - 1) as usize,
+                head_typed_value,
+            );
+
+            // Join head and tail
+            assert(tail_typed.bytes() =~= tail_bytes) by {
+                reveal_with_fuel(Seq::fold_left, 2);
+            }
+            let tracked out = head_typed.join(tail_typed);
+            assert(ghost_untyped.bytes().take(
+                ((capacity - 1) as nat * size_of::<T>()) as int,
+            ) + ghost_untyped.bytes().skip(((capacity - 1) as nat * size_of::<T>()) as int)
+                =~= ghost_untyped.bytes());
+            out
+        }
     }
 
     /// Borrows the underlying `PointsToUntyped` permissions of the first `n` permissions,

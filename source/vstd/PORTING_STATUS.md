@@ -29,8 +29,9 @@ Originally `proof fn` (ported/adapted to new naming, not axioms either before or
 - `into_unaligned`
 - `as_unaligned`
 - `bytes_decode` (was `abstract_bytes_decode`)
-- `cast_to_untyped` — now returns `(PointsToUntyped, Option<T>)` instead of
-  `(PointsTo<[u8]>, Option<T>)`, since `PointsTo<[u8]>` doesn't exist in the new model.
+- `cast_to_untyped` → `into_untyped_with_typed_value` — now returns
+  `(PointsToUntyped, TypedValue<T>)` instead of `(PointsTo<[u8]>, Option<T>)`, since
+  `PointsTo<[u8]>` doesn't exist in the new model.
 
 Originally `axiom fn`, now proved:
 - `from_untyped`
@@ -80,7 +81,7 @@ invariant on `impl<T: ?Sized> PointsTo<T>` is just there for reference and won't
 - `into_seq_pt*` and the `seq_into_slice*` free functions disappear once slices are `SeqPointsTo`.
   Seq access is via `into_seq`/`tracked_seq_pt`/`tracked_seq_pt_mut`/`index_mut`.
 - `as_untyped` → `as_untyped` (proved from the `PointsToUntyped::join_ref` axiom); `from_untyped` (all uninitialized) →
-  `PointsToUntyped::cast_to_seq_pt` with an empty `typed_value`;
+  `from_untyped` (proved from `from_untyped_with_typed_value` with an empty `typed_value`);
   `PointsTo<[u8]>::cast_to_typed_uninit` → `PointsTo::from_untyped`.
 
 ### Ported from the remaining slice functions
@@ -108,7 +109,7 @@ invariant on `impl<T: ?Sized> PointsTo<T>` is just there for reference and won't
 - Integer casts `cast_points_to`/`cast_points_to_unaligned` were drafted as axioms on
   `SeqPointsTo<T, PointsTo<T>>` and then removed, since that isn't their final home (see the
   TODOs). The old contracts are in `raw_ptr_dup.rs` (`impl<T> PointsTo<[T]>`).
-- Single-value `PointsTo<[u8]>::cast_to_typed` → `PointsToUntyped::cast_to_typed` (proved from
+- Single-value `PointsTo<[u8]>::cast_to_typed` → `PointsTo::from_untyped_with_value` (proved from
   `PointsTo::from_untyped` + `put`).
 
 ### `PointsTo<str>` → `SeqPointsTo<str, PointsTo<u8>>`: drafted, removed from the build
@@ -158,8 +159,8 @@ the snapshot file (paste the block back and re-add two imports).
 The old `impl<T> SeqPointsTo<T>` (`raw_ptr_dup.rs` lines 1144-1398) is the old one-type-param
 `SeqPointsTo<T>`, distinct from the new `SeqPointsTo<T, PointsToPerm>`; it is now ported to
 `SeqPointsTo<T, PointsTo<T>>`:
-- `from_seq`, `split`, `join`, `cast_to_untyped` (returns a `PointsToUntyped`), `into_untyped` and
-  `from_untyped` are proved.
+- `from_seq`, `split`, `join`, `into_untyped_with_typed_value` (was `cast_to_untyped`; returns a
+  `PointsToUntyped` and the `Seq<TypedValue<T>>`), `into_untyped` and `from_untyped` are proved.
 - `subrange_mut` is an axiom: it hands out a `&mut` sub-permission whose final state flows back
   into `self`. (A proof from a generic `&mut` struct-wrapping axiom, `wrap_mut`, was drafted and
   reverted pending a soundness review; see [wrap_mut_wip.rs](wrap_mut_wip.rs).)
@@ -167,7 +168,7 @@ The old `impl<T> SeqPointsTo<T>` (`raw_ptr_dup.rs` lines 1144-1398) is the old o
   join the borrows two at a time with the `PointsToUntyped::join_ref` / `join_mut` axioms, since the
   new type stores no single `PointsToUntyped` to borrow. The empty case uses
   `PointsToUntyped::zero_sized` with `tracked_static_ref` / `tracked_static_mut_ref`.
-- Added `PointsToUntyped::split`/`join`, which `cast_to_untyped` needed, plus the borrowed versions:
+- Added `PointsToUntyped::split`/`join`, which `into_untyped_with_typed_value` needed, plus the borrowed versions:
   `split_ref` (proved), `join_ref` / `join_mut` (axioms, the inverses), and `split_mut` (proved
   from `wrap_mut`, so commented out with it).
 - `seq.rs` changes: added `Seq::tracked_borrow_subrange` and `Seq::tracked_split_borrow_mut`
@@ -175,9 +176,9 @@ The old `impl<T> SeqPointsTo<T>` (`raw_ptr_dup.rs` lines 1144-1398) is the old o
   `tracked_borrow_subrange_mut`; removed `tracked_mut_borrow` as a duplicate of
   `tracked_borrow_mut` (see [POINTS_TO_MIGRATION.md](POINTS_TO_MIGRATION.md)).
 
-The old `impl SeqPointsTo<u8>` is ported as `PointsToUntyped::cast_to_seq_pt`, which returns a
-`SeqPointsTo<T, PointsTo<T>>` (proved by induction using `split`/`join`, `PointsTo::from_untyped`
-and `PointsTo::put`).
+The old `impl SeqPointsTo<u8>` is ported as `SeqPointsTo<T, PointsTo<T>>::from_untyped_with_typed_value`
+(proved by induction using `split`/`join`, `PointsTo::from_untyped` and
+`PointsTo::put_typed_value`).
 
 ## TODO
 
@@ -229,28 +230,27 @@ and `PointsTo::put`).
   `borrow_subrange_mut`), since they borrow a sub-permission rather than return an owned one,
   matching the `Seq::tracked_borrow_subrange` / `tracked_borrow_subrange_mut` names. The name
   `borrow_subrange` is now free (the value-borrowing function became `borrow_value_subrange`).
-- [ ] Rename the `cast_to_*` typed/untyped conversions. The `into_untyped` / `from_untyped` /
+- [x] Renamed the `cast_to_*` typed/untyped conversions. The `into_untyped` / `from_untyped` /
   `as_untyped` / `as_untyped_mut` names already follow Rust/vstd conventions (`into_*` consumes
   `self`, `from_*` constructs `Self`, `as_*` borrows, `_mut` for the mutable version) and stay as
-  they are. "Cast" should be reserved for conversions that change the type of the value (like
+  they are. "Cast" is reserved for conversions that change the type of the value (like
   `cast_points_to`); converting to/from `PointsToUntyped` keeps the same bytes and only decides
   whether the typed value comes along. The new names follow the existing `value` (a guaranteed-valid
   `T`) vs `typed_value` (a possibly-empty `TypedValue<T>`) split:
 
-  | Today | New | Carries |
+  | Old | New | Carries |
   |---|---|---|
   | `PointsTo::cast_to_untyped(self)` | `PointsTo::into_untyped_with_typed_value(self)` | `TypedValue<T>` (instead of `Option<T>`) |
   | `SeqPointsTo::cast_to_untyped(self)` | `SeqPointsTo::into_untyped_with_typed_value(self)` | `Seq<TypedValue<T>>` (instead of `Seq<Option<T>>`) |
   | `PointsToUntyped::cast_to_typed(self, value)` | `PointsTo::from_untyped_with_value(untyped, value)` | `T`, always valid |
   | `PointsToUntyped::cast_to_seq_pt(self, capacity, values)` | `SeqPointsTo::from_untyped_with_typed_value(untyped, capacity, values)` | `Seq<TypedValue<T>>` for a prefix (instead of `Seq<Option<T>>`) |
 
-  The `from_*` functions move from `PointsToUntyped` to the type being built, like `from_untyped`.
+  The `from_*` functions moved from `PointsToUntyped` to the type being built, like `from_untyped`.
   The asymmetry is deliberate. There is no `PointsTo::from_untyped_with_typed_value`, because
   `from_untyped` (empty) and `from_untyped_with_value` (valid) already cover both cases for a single
   value. `PointsTo::into_untyped_with_typed_value` returns a `TypedValue<T>`, so it can be called
   whether or not the permission is valid. The sequence versions use `TypedValue<T>` both ways, so
-  each element can independently be valid or not. Update callers (e.g. `from_untyped` on `SeqPointsTo` calls
-  `cast_to_seq_pt`, and `cast_to_seq_pt` calls `PointsTo::from_untyped` / `put`) and the docs.
+  each element can independently be valid or not.
 - [ ] Move `ptrs_len_same` / `ptrs_len_same_valid_decode` and `stays_wf` into the
   `PointsToProperties` trait. What it takes:
   - Merge the two predicates under one trait name (each impl keeps its own body), and declare
