@@ -21,7 +21,9 @@ This file tracks what's been ported so far and what's left in `raw_ptr_dup.rs`.
 
 ## Done
 
-`impl<T> PointsTo<T>` (`raw_ptr_dup.rs` lines 12-183) — fully ported to `points_to_permissions.rs`.
+### `impl<T> PointsTo<T>` (`raw_ptr_dup.rs` lines 12-183)
+
+Fully ported to `points_to_permissions.rs`.
 
 Originally `proof fn` (ported/adapted to new naming, not axioms either before or after):
 - `into_unaligned`
@@ -34,20 +36,31 @@ Originally `axiom fn`, now proved:
 - `from_untyped`
 - `into_untyped`
 - `as_untyped`
-- `as_untyped_mut`
+- `as_untyped_mut` (its flow-back clause also ensures `ptrs_len_same_valid_decode(old, final)`)
 - `borrow`
 - `take`
 - `put`
 
-Still an axiom, expected to stay that way:
-- `borrow_mut` — its contract requires `mut_ref_ptr(val) == old(self).ptr()`, linking a real Rust
-  reference to the raw pointer it was derived from. That link can only be established by an
-  actual unsafe dereference of `self.ptr()` (as `ptr_mut_ref` in `raw_ptr.rs` does), not by
-  borrowing out of a ghost `Box<T>` — a genuine trust boundary, not just a gap in the current
-  representation.
+Commented out (not essential for now):
+- `borrow_mut`. A version proved from a `TypedValue` mutable-borrow axiom could only keep the bytes
+  unchanged, so callers could never restore `wf()` after writing a new value. It was then made an
+  axiom whose final permission is `wf()` unconditionally (the bytes change along with the value),
+  and later commented out. Its old `mut_ref_ptr(val) == old(self).ptr()` postcondition is also
+  commented out (Travis: not necessarily true because of `Box`/enum, and not obviously needed).
 
-Verified via `tools/build-expand-errors.sh`: baseline before this work was 1965 verified / 0
-errors; currently 1976 verified / 0 errors.
+New (no counterpart in `raw_ptr_dup.rs`), all proved:
+- `copy` (`T: Copy`, taking `&T`)
+- `borrow_typed_value`, `take_typed_value`, `put_typed_value` and `copy_typed_value` (the
+  `TypedValue<T>` versions of `borrow`/`take`/`put`/`copy`)
+
+All of `take`, `put`, `copy` and the three mutating `*_typed_value` functions ensure
+`ptrs_len_same_valid_decode(old, final)`, so they can be used through `SeqPointsTo::index_mut`.
+
+### `impl<T> PointsToUnaligned<T>`
+
+- `as_aligned` is now proved with `shr_ref_struct_wrap` (it was an axiom waiting on that builtin).
+
+The current list of axioms is in [POINTS_TO_AXIOMS.md](POINTS_TO_AXIOMS.md).
 
 ## Not yet ported (remaining `raw_ptr_dup.rs` contents)
 
@@ -73,16 +86,25 @@ invariant on `impl<T: ?Sized> PointsTo<T>` is just there for reference and won't
 ### Ported from the remaining slice functions
 
 - `is_init_subrange`/`value_subrange` → `is_valid_subrange`/`value_subrange` (specs).
-- Subrange content operations. **Proved** (by induction over the range, using `index_mut`
-  and the concrete `TypedValue` representation): `put_subrange`, `put_typed_value_subrange`,
-  `take_typed_value_subrange`, `copy_typed_value_subrange` (`T: Copy`). `PointsTo::put`/`take` now
-  also ensure `ptrs_len_same_valid_decode`, which these proofs need.
+- Subrange content operations, all **proved** (by induction over the range, using `index_mut`
+  and the concrete `TypedValue` representation): `put_subrange`, `take_subrange`, `copy_subrange`
+  (`T: Copy`), and the `TypedValue<T>` versions `put_typed_value_subrange`,
+  `take_typed_value_subrange` and `copy_typed_value_subrange`. They rely on `PointsTo::put`/`take`
+  ensuring `ptrs_len_same_valid_decode`.
   Note: the old `take_mem_contents_subrange` filled the range with `Seq::new(end, ...)` (length
   `end`); the port uses `end - start`.
-- **Borrows of things the `SeqPointsTo` doesn't store** are now all proved:
-  `borrow_typed_value_subrange` returns a `Seq<&TypedValue<T>>`, the shared-borrow `subrange` uses
-  `shr_ref_struct_wrap`, and `as_untyped`/`as_untyped_mut` join per-element borrows with the
-  binary `PointsToUntyped::join_ref`/`join_mut` axioms.
+- **Borrows of things the `SeqPointsTo` doesn't store** are all proved:
+  - `borrow_subrange` returns a `Seq<&T>` and `borrow_typed_value_subrange` a
+    `Seq<&TypedValue<T>>`, built element by element from `PointsTo::borrow` /
+    `borrow_typed_value`.
+  - The shared-borrow `subrange` borrows the `seq_pt` subrange (`Seq::tracked_borrow_subrange`) and
+    wraps it with `shr_ref_struct_wrap`. `bytes_subrange_equiv` relates its bytes to a subrange of
+    `self.bytes()`.
+  - `as_untyped`/`as_untyped_mut` join per-element borrows with the binary
+    `PointsToUntyped::join_ref`/`join_mut` axioms (`as_untyped_mut` splits the `&mut Seq` with
+    `Seq::tracked_split_borrow_mut`).
+  - `borrow_mut_subrange` (a `Seq<&mut T>`) was proved from `PointsTo::borrow_mut` and is
+    commented out along with it.
 - Integer casts `cast_points_to`/`cast_points_to_unaligned` were drafted as axioms on
   `SeqPointsTo<T, PointsTo<T>>` and then removed, since that isn't their final home (see the
   TODOs). The old contracts are in `raw_ptr_dup.rs` (`impl<T> PointsTo<[T]>`).
@@ -97,7 +119,6 @@ pointer whose metadata is the length, no stored `str`; the value is derived from
 in `points_to_permissions.rs` right now (it is excluded because of the `spec_bytes` cfg issue
 below). The complete code and its design notes are saved in
 [points_to_str_wip.rs](points_to_str_wip.rs), a reference snapshot that is not part of the build.
-It has the build at 2009 verified, 0 errors (2005 without it).
 
 What the snapshot contains:
 - Specs `bytes`, `value_bytes`, `is_valid`, `is_empty`, `value`, `wf`. `is_valid()` = every byte
@@ -120,8 +141,8 @@ the snapshot file (paste the block back and re-add two imports).
 
 - All of `PointsTo<str>` and the `[u8]` to `str` casts (`cast_to_str_shared`/`_inner`): see above
   (drafted, saved in `points_to_str_wip.rs`).
-- `tracked_borrow` (`&[T]`) and `tracked_borrow_mut` (`&mut [T]`): real slice references, so the
-  same trust boundary as `PointsTo::borrow_mut`; would be axioms.
+- `tracked_borrow` (`&[T]`) and `tracked_borrow_mut` (`&mut [T]`): real slice references, so they
+  would need axioms, like the (commented-out) `PointsTo::borrow_mut`.
 - `cast_points_to` and `cast_points_to_unaligned` (a `[T]` permission to a `V` permission, for
   integer `T`, `V`): they belong in an `impl` block on `PointsTo<[T]>`, not on `SeqPointsTo`, so
   they are on hold until `PointsTo<[T]>` is implemented (see the TODOs; they were drafted on
@@ -137,13 +158,22 @@ the snapshot file (paste the block back and re-add two imports).
 The old `impl<T> SeqPointsTo<T>` (`raw_ptr_dup.rs` lines 1144-1398) is the old one-type-param
 `SeqPointsTo<T>`, distinct from the new `SeqPointsTo<T, PointsToPerm>`; it is now ported to
 `SeqPointsTo<T, PointsTo<T>>`:
-- `from_seq`, `split`, `join`, and `cast_to_untyped` (returns a `PointsToUntyped`) are proved.
+- `from_seq`, `split`, `join`, `cast_to_untyped` (returns a `PointsToUntyped`), `into_untyped` and
+  `from_untyped` are proved.
 - `subrange_mut` is an axiom: it hands out a `&mut` sub-permission whose final state flows back
   into `self`. (A proof from a generic `&mut` struct-wrapping axiom, `wrap_mut`, was drafted and
-  reverted pending a soundness review; see `wrap_mut_wip.rs`.) `as_untyped` and `as_untyped_mut` are proved: they borrow each element's
-  `PointsToUntyped` and join the borrows two at a time with the `PointsToUntyped::join_ref` /
-  `join_mut` axioms, since the new type stores no single `PointsToUntyped` to borrow.
-- Added `PointsToUntyped::split`/`join`, which `cast_to_untyped` needed.
+  reverted pending a soundness review; see [wrap_mut_wip.rs](wrap_mut_wip.rs).)
+- `as_untyped` and `as_untyped_mut` are proved: they borrow each element's `PointsToUntyped` and
+  join the borrows two at a time with the `PointsToUntyped::join_ref` / `join_mut` axioms, since the
+  new type stores no single `PointsToUntyped` to borrow. The empty case uses
+  `PointsToUntyped::zero_sized` with `tracked_static_ref` / `tracked_static_mut_ref`.
+- Added `PointsToUntyped::split`/`join`, which `cast_to_untyped` needed, plus the borrowed versions:
+  `split_ref` (proved), `join_ref` / `join_mut` (axioms, the inverses), and `split_mut` (proved
+  from `wrap_mut`, so commented out with it).
+- `seq.rs` changes: added `Seq::tracked_borrow_subrange` and `Seq::tracked_split_borrow_mut`
+  (`external_body`, used above); renamed `tracked_mut_borrow_subrange` to
+  `tracked_borrow_subrange_mut`; removed `tracked_mut_borrow` as a duplicate of
+  `tracked_borrow_mut` (see [POINTS_TO_MIGRATION.md](POINTS_TO_MIGRATION.md)).
 
 The old `impl SeqPointsTo<u8>` is ported as `PointsToUntyped::cast_to_seq_pt`, which returns a
 `SeqPointsTo<T, PointsTo<T>>` (proved by induction using `split`/`join`, `PointsTo::from_untyped`
@@ -154,7 +184,8 @@ and `PointsTo::put`).
 - [x] Audit `as_untyped_mut` and `borrow_mut`: `as_untyped_mut` now guarantees `final(self).wf()`
   under `PointsToUntyped::ptrs_len_same` (replacing the bare pointer-equality condition);
   `borrow_mut` requires `old(self).wf()` and ensures
-  `ptrs_len_same_valid_decode(old, final) ==> final(self).wf()`.
+  `ptrs_len_same_valid_decode(old, final) ==> final(self).wf()`. (Superseded: `borrow_mut` has
+  since been commented out; see the `PointsTo<T>` notes above.)
 - [x] `take` and `put` now require `old(self).wf()` and ensure `final(self).wf()`. `borrow` takes
   `&self` so has no `final` state to guarantee.
 - [x] Audited every proof fn in `points_to_permissions.rs` for `wf()` requires/ensures. Added
@@ -173,16 +204,8 @@ and `PointsTo::put`).
   dropped the `.get()`/`.borrow()`/`.borrow_mut()` calls, the `Tracked(...)` in constructors, and the
   `@` in the closed specs `pt_untyped()`/`pt_unaligned()`. The fields are private, so there's no
   external API change. `shr_ref_struct_wrap` (now used for the `as_aligned` body) was checked
-  and doesn't need a `Tracked` field. Verified at 2007 verified, 0 errors (with `raw_ptr_new`
-  excluded from the build).
-- [ ] Continue porting the remaining impl blocks listed above — `impl<T> PointsTo<[T]>` is
-  probably next, since it's the biggest and most load-bearing.
-- [ ] (Lower priority) Fill out `SeqPointsTo<T, PointsTo<T>>` and `PointsTo<T>` for completeness
-  with respect to each other. The up-to-date list of what is missing is in the TODOs section of
-  [POINTS_TO_COMPARISON.md](POINTS_TO_COMPARISON.md) (e.g. the
-  `Seq<T>` subrange versions, the single-value `TypedValue<T>` operations on `PointsTo`). The
-  unaligned conversions (`as_unaligned`, `into_unaligned`, ...) can wait until there is a
-  `SeqPointsTo<T, PointsToUnaligned<T>>`.
+  and doesn't need a `Tracked` field.
+- [ ] Port `impl<T> PointsTo<[T]>` from `raw_ptr_old.rs` (line ~754).
 - [ ] Add `cast_points_to` and `cast_points_to_unaligned` in an `impl` block on `PointsTo<[T]>`,
   where they make more sense than on `SeqPointsTo`. They were drafted as axioms on
   `SeqPointsTo<T, PointsTo<T>>` and removed; the draft contract (requires `wf()`, all elements
@@ -191,3 +214,93 @@ and `PointsTo::put`).
   `value() as int == to_big_from_digits::<V, T>(value()).index(0)`) is straightforward to redo.
   They would also need the `endian` imports (`CompatibleSmallerBaseFor`, `BasePow2`,
   `to_big_from_digits`). On hold until `PointsTo<[T]>` is implemented.
+- [ ] Port `PointsToRaw` (and its `impl PointsToRaw`) from `raw_ptr_old.rs` (line ~3245).
+- [ ] Implement `View` for `SeqPointsTo<T, PointsTo<T>>`. `PointsTo<T>` and `PointsToUnaligned<T>`
+  view as `PointsToData { ptr, value, bytes }` and `PointsToUntyped` as
+  `PointsToUntypedData { ptr, bytes }`, but the typed sequence has no view yet. The view will
+  probably be a ghost struct holding `ptr()` and `seq_pt()`.
+- [ ] Rename `SeqPointsTo`'s `typed_value()` / `value()` to `seq_typed_value()` / `seq_value()`.
+  Related names (`typed_value_equiv`, `value_subrange`, `is_valid_subrange`) stay as they are.
+  What it takes:
+  - Update the ~30 sequence-level call sites in `points_to_permissions.rs` (the range operations'
+    `update_subrange_with` postconditions, `borrow_typed_value_subrange`, `cast_to_untyped`,
+    `bytes_decode`, ...). Element-level calls such as `self[i].value()` / `self[i].typed_value()`
+    are `PointsTo`'s and keep their names, so this is a careful rename, not a find-and-replace.
+  - Update the shelved `points_to_str_wip.rs` snapshot if it should stay restorable, the
+    `typed_value` / `value` rows in [POINTS_TO_COMPARISON.md](POINTS_TO_COMPARISON.md), and the
+    `SeqPointsTo` renames table in [POINTS_TO_MIGRATION.md](POINTS_TO_MIGRATION.md).
+- [ ] Rename `PointsTo::borrow` to `PointsTo::borrow_value`, and `SeqPointsTo::borrow_subrange` to
+  `SeqPointsTo::borrow_value_subrange`, so they parallel `borrow_typed_value` /
+  `borrow_typed_value_subrange`. If `borrow_mut` / `borrow_mut_subrange` are restored, rename them
+  the same way (`borrow_value_mut` / `borrow_value_subrange_mut`). Update the private
+  `borrow_values` helper's call, the docs, and add the renames to
+  [POINTS_TO_MIGRATION.md](POINTS_TO_MIGRATION.md).
+- [ ] Possibly rename `SeqPointsTo::subrange` to `borrow_subrange` (and `subrange_mut` to
+  `borrow_subrange_mut`), since they borrow a sub-permission rather than return an owned one,
+  matching the `Seq::tracked_borrow_subrange` / `tracked_borrow_subrange_mut` names. This depends
+  on the item above: the name `borrow_subrange` is currently taken by the value-borrowing function,
+  which would first become `borrow_value_subrange`.
+- [ ] Move `ptrs_len_same` / `ptrs_len_same_valid_decode` and `stays_wf` into the
+  `PointsToProperties` trait. What it takes:
+  - Merge the two predicates under one trait name (each impl keeps its own body), and declare
+    `spec fn ptrs_len_same(old: Self, new: Self) -> bool` and
+    `proof fn stays_wf(old: Self, new: Self)` in the trait. Take spec arguments rather than
+    `tracked` ones, so `stays_wf` can be applied to `old(..)` / `final(..)` values.
+  - Implement it for `PointsToSingleton` (`new.ptr() == old.ptr()`; `stays_wf` is trivial), the
+    generic `SeqPointsTo<T, P>` (same pointer and length, plus per-element `P::ptrs_len_same` and
+    element pointers; `stays_wf` calls `P::stays_wf` per element), `PointsToUnaligned<T>` and
+    `PointsTo<T>` (move the existing bodies). The generic `SeqPointsTo` definition subsumes both
+    `PointsToUntyped::ptrs_len_same` and `SeqPointsTo<T, PointsTo<T>>::ptrs_len_same_valid_decode`.
+  - The trait-level `stays_wf` can only talk about `wf_basic` (a single generic `SeqPointsTo` impl
+    can't define the per-instantiation `wf`). `wf` only adds pointer conditions beyond `wf_basic`
+    (metadata for `PointsToUntyped`, alignment for `SeqPointsTo<T, PointsTo<T>>`), which
+    `ptrs_len_same` preserves, so keep short inherent `wf`-level `stays_wf` lemmas on those two
+    types to state the full `wf` condition.
+  - Remove the inherent versions and update the ~20 call sites in `points_to_permissions.rs`;
+    expect some proof/trigger fixups inside the generic `SeqPointsTo` impl, where
+    `P::ptrs_len_same` is opaque. Update the docs.
+- [ ] Consider replacing the `ptrs_len_same_valid_decode(*old(self), *final(self))` postconditions
+  on `PointsTo`'s `take`, `put`, `copy`, `take_typed_value`, `put_typed_value`,
+  `copy_typed_value` and `as_untyped_mut` with a public lemma. The fact follows from `old.wf()`,
+  `new.wf()` and `new.ptr() == old.ptr()`, which those functions already ensure; it is stated
+  today only because it unfolds through the closed `pt_unaligned()` / `pt_untyped()`, so outside
+  callers can't derive it (they need it to restore `wf()` after `SeqPointsTo::index_mut`). A lemma
+  that was checked to verify:
+
+  ```rust
+  pub proof fn lemma_ptrs_len_same_valid_decode(old: Self, new: Self)
+      requires old.wf(), new.wf(), new.ptr() == old.ptr(),
+      ensures Self::ptrs_len_same_valid_decode(old, new),
+  {
+      broadcast use raw_ptr_new::group_raw_ptr_axioms;
+      let ghost old_u = old.pt_unaligned().pt_untyped();
+      let ghost new_u = new.pt_unaligned().pt_untyped();
+      assert forall|j: int| 0 <= j < new_u.len() implies #[trigger] new_u[j].ptr() == old_u[j].ptr()
+          by {
+          assert(new_u[j].ptr()@.addr == old_u[j].ptr()@.addr);
+          assert(new_u[j].ptr()@.provenance == old_u[j].ptr()@.provenance);
+      }
+  }
+  ```
+
+  The cost is that callers relying on the postcondition (inside the module: `put_subrange`,
+  `put_typed_value_subrange`, `take_subrange`, `take_typed_value_subrange` and the
+  `as_untyped_mut` helper; outside: anyone doing `index_mut` followed by `take`/`put`/`copy`) must
+  call the lemma, with ghost snapshots of the references to name `final(..)`.
+- [ ] Assess whether all the copy functions are necessary: `PointsTo::copy` / `copy_typed_value`
+  and `SeqPointsTo::copy_subrange` / `copy_typed_value_subrange` (with their private helpers
+  `copy_values` / `copy_typed_values`). Each is just the corresponding `put` operation applied to a
+  `T: Copy` copy of a borrowed value, so callers could copy the value themselves and call `put` /
+  `put_typed_value` / `put_subrange` / `put_typed_value_subrange` directly.
+- [ ] Revisit `wrap_mut`, the generic `&mut` struct-wrapping axiom on `SeqPointsTo` (the `&mut`
+  analogue of `shr_ref_struct_wrap`). It made `SeqPointsTo::subrange_mut` provable and gave
+  `PointsToUntyped::split_mut`, but was reverted pending a soundness review. The verified code and
+  restore steps are in [wrap_mut_wip.rs](wrap_mut_wip.rs); `split_mut` is commented out in place
+  in `points_to_permissions.rs`.
+- [ ] (On hold, if `borrow_mut` comes back) Check whether the
+  `ptrs_len_same_valid_decode ==> wf()` postcondition on `PointsTo::borrow_mut` and
+  `SeqPointsTo::borrow_mut_subrange` is sound and usable, since callers cannot see the inner
+  pointers they would need to establish it.
+- [ ] (Lower priority) Add the unaligned conversions (`as_unaligned`, `into_unaligned`, ...) to
+  `SeqPointsTo<T, PointsTo<T>>`, the counterparts of the ones on `PointsTo<T>`. These can wait until
+  there is a `SeqPointsTo<T, PointsToUnaligned<T>>`.
