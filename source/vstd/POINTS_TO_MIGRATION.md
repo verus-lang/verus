@@ -1,29 +1,46 @@
-# Migrating from `raw_ptr.rs` permissions to `points_to_permissions.rs`
+# Migrating from `raw_ptr.rs`
 
-Reference for updating code that used the `PointsTo` / `PointsToUnaligned` / `SeqPointsTo` /
-`MemContents` API from `raw_ptr.rs`. It describes the API as of this branch
-(`verify-rustlib-refactor`); the port is not finished (see
+Reference for updating code that used anything from `raw_ptr.rs`. This is not only about the
+`PointsTo` / `PointsToUnaligned` / `SeqPointsTo` / `MemContents` permission structs. It also
+covers the rest of `raw_ptr.rs`:
+
+* **The raw pointer model:** `PtrData`, `Provenance` / `ProvenanceData`, `ptr_mut_from_data`, and
+  the axioms about them. These now live in `raw_ptr_new.rs`, and `Dealloc` is folded into
+  `ProvenanceData`.
+* **The trusted specs** for exec pointer operations: pointer casts, `ptr_ref` / `ptr_mut_ref`,
+  `ptr_mut_ref_join`, `SharedReference`, and so on. These now live in `raw_ptr_new.rs` and
+  `shared_reference.rs`, stated against the new permissions.
+
+It describes the API as of this branch (`verify-rustlib-refactor`). The port is not finished (see
 [What is not available yet](#8-what-is-not-available-yet)), and
 [PORTING_STATUS.md](PORTING_STATUS.md) tracks progress.
 
 Everything below was written by comparing the signatures in `raw_ptr.rs` against
-`points_to_permissions.rs` and `points_to.rs`. The new file verifies in vstd.
+`points_to_permissions.rs`, `points_to.rs`, `raw_ptr_new.rs` and `shared_reference.rs`. The new
+files verify in vstd.
 
 ## 1. Where things live
 
-| What | Old | New |
-|---|---|---|
-| `PointsTo<T>`, `PointsToUnaligned<T>`, `SeqPointsTo<T, P>`, `PointsToUntyped`, `TypedValue<T>`, `ptr_addr_in_bounds` | `vstd::raw_ptr` | `vstd::points_to_permissions` |
-| Traits `PointsToPhys`, `PointsToProperties`, `FixedSize`; `PointsToSingleton` | (did not exist) | `vstd::points_to` |
-| Pointer/provenance model (`PtrData`, `Provenance`, `ptr_mut_from_data`, `mut_ref_ptr`, ...) | `vstd::raw_ptr` | unchanged, still `vstd::raw_ptr` |
+`vstd::raw_ptr` is no longer compiled into vstd (it is commented out in `vstd.rs`). Its contents
+were split across three modules, so **replace each `use vstd::raw_ptr::*;` (or `use
+crate::vstd::raw_ptr::...`) with imports of whichever of these modules the code actually needs**:
 
+| What the import was for | New module |
+|---|---|
+| The permissions: `PointsTo<T>`, `PointsToUnaligned<T>`, `SeqPointsTo<T, P>`, `PointsToUntyped`, `TypedValue<T>` | `vstd::points_to_permissions`, together with `vstd::points_to` (see below) |
+| The pointer/provenance model: `PtrData`, `Provenance`, `ProvenanceData`, `AllocId`, `ptr_addr_in_bounds`, `ptr_mut_from_data`, `ptr_from_data`, `ptr_null*`, the pointer casts (`cast_ptr_to_thin_ptr`, `cast_slice_ptr_to_slice_ptr`, ...), `group_raw_ptr_axioms` | `vstd::raw_ptr_new` |
+| Exec/proof functions that turn pointers and permissions into references: `ptr_ref`, `ptr_mut_ref`, `ptr_mut_ref_join`, `mut_ref_to_shr_points_to`, `tracked_mut_ref_slice_subrange`/`_idx`, `cast_mut_ref_to_ptr` (and the slice/`str` versions) | `vstd::raw_ptr_new` |
+| `SharedReference`, `ptr_ref2`, `ptr_ref2_ghost` | `vstd::shared_reference` |
+| `Dealloc` / `DeallocData` | removed; folded into `ProvenanceData` (see [`Dealloc` → provenance](#dealloc--provenance)) |
+
+`mut_ref_ptr` is a builtin and comes from the prelude, so it needs no `raw_ptr` import.
+
+`vstd::points_to` holds the permission traits (`PointsToPhys`, `PointsToProperties`, `FixedSize`)
+and `PointsToSingleton`. These are new and have no `raw_ptr` counterpart, so `points_to` never
+replaces a `raw_ptr` import on its own. It is needed alongside `points_to_permissions` because
 `ptr()` and `size()` on the new types are **trait methods** (`PointsToPhys`), and `wf_basic` and
 the `is_nonnull` / `ptr_bounds` / `provenance_not_none` / `is_disjoint` lemmas come from
-`PointsToProperties`. Bring the traits into scope (`use vstd::points_to::*;`) or calls like
-`perm.ptr()` will not resolve.
-
-The new and old types have the same names, so a file that imports both modules with a glob will
-get ambiguity errors. Import one or the other (or qualify).
+`PointsToProperties`. Without `use vstd::points_to::*;`, calls like `perm.ptr()` will not resolve.
 
 ## 2. Representation: from opaque to concrete
 
@@ -78,9 +95,9 @@ Practical rules when migrating:
    `into_aligned`, `as_aligned`.
 3. Functions that hand out `&mut` to a sub-part (`as_untyped_mut`, `SeqPointsTo::index_mut`,
    `tracked_seq_pt_mut`, `subrange_mut`) ensure `final(self).wf()` only *conditionally*, on the
-   part still having the same pointers/length (and, for typed values, still decoding). You must
-   establish that condition on the `final(...)` of the borrowed part to get `wf()` back on the
-   parent.
+   part still having the same pointers/length (and, for typed values, still decoding). In many
+   cases Verus establishes that condition, and so `wf()` on the parent, automatically. When it
+   doesn't, establish the condition on the `final(...)` of the borrowed part yourself (see rule 4).
 4. To establish `ptrs_len_same_valid(old, new)` from outside the module, call
    `PointsTo::lemma_ptrs_len_same_valid(old, new)` (both `wf()`, same `ptr()`) or
    `SeqPointsTo::lemma_ptrs_len_same_valid(old, new)` (both `wf()`, same `ptr()` and `len()`). The
@@ -143,6 +160,25 @@ possibly-empty `TypedValue<T>` (e.g. `borrow_value` vs `borrow_typed_value`).
 | `tracked_mut_borrow(i)` | `tracked_borrow_mut(i)`. The old function was removed as a duplicate: it had the same spec, stated element by element instead of with `update`, so `final(self) == old(self).update(i, *final(ret))` gives the same facts. |
 | `tracked_mut_borrow_subrange(i, j)` | `tracked_borrow_subrange_mut(i, j)` (renamed; same spec). It now sits next to the shared version, `tracked_borrow_subrange(i, j)`. |
 | (new) | `tracked_split_borrow_mut(mid)`: splits a `&mut Seq` into two `&mut Seq`s at `mid`. |
+
+### `Dealloc` → provenance
+
+The `Dealloc` permission (and `DeallocData`) no longer exists: it was folded into the provenance
+model in `raw_ptr_new.rs`. Its main purpose was `Dealloc::size`, the originally requested
+allocation size, and `ProvenanceData` now records that as `orig_size()`. Everything else `Dealloc`
+exposed was already derived from its provenance, so read these facts off the pointer's provenance
+(`ptr@.provenance.unwrap()`, for an allocation with `Some` provenance):
+
+| Old (`Dealloc`) | New (`ProvenanceData`) |
+|---|---|
+| `size()` / `@.size` | `orig_size()` |
+| `addr()` | `start_addr()` |
+| `align()` | `alignment()` |
+| `provenance()` / `@.provenance` | the pointer's own `ptr@.provenance` |
+| `in_bounds` (`size <= alloc_len`) | part of the `provenance_properties` broadcast axiom (`orig_size() <= alloc_len()`) |
+| `empty()` (size 0, `Provenance::None`) | no permission needed; `None` provenance carries no allocation |
+| `provenance_non_null` (size ≠ 0 ⟹ `Some` provenance) | not needed: `orig_size()` is only defined on a `Some` provenance's `ProvenanceData` |
+| `is_disjoint` (two `Dealloc`s have disjoint allocations) | dropped: it was only a sanity check and has no callers |
 
 ## 5. Function by function: `PointsTo` and `PointsToUnaligned`
 
@@ -279,7 +315,7 @@ Two differences to keep in mind:
 | `tracked_borrow` (`&[T]`) | **Not possible:** `SeqPointsTo` cannot produce a real `&[T]`. The closest is `borrow_value_subrange(0, len())`, which returns a `Seq<&T>`. |
 | `tracked_borrow_mut` (`&mut [T]`) | **Not possible:** no `&mut [T]`, and the per-element `Seq<&mut T>` version (`borrow_mut_subrange`) is commented out along with `PointsTo::borrow_mut`. Use `take_subrange` / `put_subrange`. |
 | `into_unaligned`, `as_unaligned` | **Not possible yet:** there is no `SeqPointsTo<T, PointsToUnaligned<T>>` impl. |
-| `cast_points_to`, `cast_points_to_unaligned` | **Not possible yet:** planned as an `impl` on `PointsTo<[T]>` (see [PORTING_STATUS.md](PORTING_STATUS.md)). Keep using the old API. |
+| `cast_points_to`, `cast_points_to_unaligned` | **Not possible yet:** planned as an `impl` on `PointsTo<[T]>` (see [PORTING_STATUS.md](PORTING_STATUS.md)). |
 
 ### `PointsTo<[u8]>`
 
@@ -295,12 +331,12 @@ Two differences to keep in mind:
 | Old | New |
 |---|---|
 | `PointsToUnaligned<[u8]>::zero_sized<T>` | `PointsToUntyped::zero_sized<T>` |
-| Everything else on `PointsToUnaligned<[T]>` (`into_aligned`, `as_aligned`, `as_aligned_mut`, `subrange`, `cast_points_to*`, `into_seq_pt*`, ...) | **Not possible yet:** no unaligned sequence permission exists. Keep using the old API. |
+| Everything else on `PointsToUnaligned<[T]>` (`into_aligned`, `as_aligned`, `as_aligned_mut`, `subrange`, `cast_points_to*`, `into_seq_pt*`, ...) | **Not possible yet:** no unaligned sequence permission exists. |
 
 ## 8. What is not available yet
 
-The new model only covers sized `T` so far. These still exist **only** in `raw_ptr.rs`, so code
-using them must keep using the old API for now:
+The new model only covers sized `T` so far. These have no equivalent yet. Since `raw_ptr` is no
+longer compiled into vstd, code that depends on them can't be migrated until they are ported:
 
 * The `PointsTo<[T]>` / `PointsToUnaligned<[T]>` functions marked "not possible" in
   [section 7](#7-slices-use-seqpointstot-pointstot-instead-of-pointstot): real `&[T]` / `&mut [T]`
@@ -310,21 +346,21 @@ using them must keep using the old API for now:
   the `&mut PointsTo<T>` instead (see [section 5](#pointstot)); otherwise use `take` / `put`.
 * `PointsTo<str>` and the `[u8]` to `str` casts (`cast_to_str_shared`, `cast_to_u8_shared`, ...).
   These are planned as a `SeqPointsTo<str, PointsTo<u8>>` impl; a verified draft exists but is
-  currently out of the build (see [PORTING_STATUS.md](PORTING_STATUS.md)), so keep using the old
-  `PointsTo<str>` for now.
+  currently out of the build (see [PORTING_STATUS.md](PORTING_STATUS.md)).
 * `seq_into_slice`, `seq_into_slice_shared`, `seq_into_slice_mut`.
-* Everything built on the old permissions: `SharedReference::points_to`,
-  `mut_ref_to_shr_points_to*`, `ptr_ref2*`, `tracked_mut_ref_slice_*`.
-* `PointsToRaw` (not ported yet).
-* `Dealloc` is not part of the new model's scope and stays as defined in `raw_ptr.rs`.
-
+* The slice and `str` versions of the reference helpers: `SharedReference<[T]>` /
+  `SharedReference<str>` methods (`points_to`, `as_slice_ptr`, `as_str_ptr`, ...),
+  `ptr_ref2_slice_ghost`, `ptr_ref2_str_ghost`, and `mut_ref_to_shr_points_to_slice`/`_str` (all
+  commented out). The sized versions (`SharedReference<T>::points_to`, `ptr_ref2`,
+  `ptr_ref2_ghost`, `mut_ref_to_shr_points_to`) are ported and use the new `PointsTo<T>`.
 [PORTING_STATUS.md](PORTING_STATUS.md) lists which old functions have no equivalent yet.
-Because the two models use the same type names, mixing them in one function is not currently
-supported; convert at module boundaries.
 
 ## 9. Migration checklist
 
-1. Switch imports to `points_to_permissions` / `points_to`, and bring the traits into scope.
+1. Replace `raw_ptr` imports with `points_to_permissions`, `raw_ptr_new` and/or
+   `shared_reference`, depending on what each import was for (see [section 1](#1-where-things-live)).
+   Wherever you import `points_to_permissions`, also import `points_to` to bring the traits into
+   scope.
 2. Rename per [section 4](#4-renames) (`is_init` → `is_valid`, `mem_contents` → `typed_value`,
    `abstract_bytes` → `bytes`, `MemContents` → `TypedValue`, ...). On sequences, `mem_contents` →
    `seq_typed_value` and `value` → `seq_value`. `PointsTo::borrow` → `borrow_value`.
@@ -338,11 +374,11 @@ supported; convert at module boundaries.
    (metadata-equals-size becomes `len() == size_of::<T>()`).
 4. Replace `PointsTo<[T]>` with `SeqPointsTo<T, PointsTo<T>>` per
    [section 7](#7-slices-use-seqpointstot-pointstot-instead-of-pointstot), including the switch
-   from a `*mut [T]` pointer to a `*mut T` base plus `len()`. Leave the "not possible" uses on the
-   old API.
+   from a `*mut [T]` pointer to a `*mut T` base plus `len()`. The "not possible" uses have no
+   replacement yet.
 5. Add `wf()` to your specs and invariants where you previously relied on the type invariant, and
    discharge the conditional `final(...).wf()` guarantees after `&mut` borrows (using the
    `lemma_ptrs_len_same_valid` lemmas where needed).
 6. Where you used `wf()`-derived facts of `SeqPointsTo` (provenance `Some`, whole-range bound), call
    `provenance_not_none` / `ptr_bounds`.
-7. Leave `str` permission code on `raw_ptr.rs` until it is ported.
+7. `str` permission code has no replacement until `PointsTo<str>` is ported.

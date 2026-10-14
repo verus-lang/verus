@@ -1,7 +1,7 @@
-use crate::points_to::PointsToPhys;
+use super::points_to::PointsToPhys;
 use super::points_to_permissions::PointsTo;
 use super::prelude::*;
-use crate::group_vstd_default;
+use super::group_vstd_default;
 
 verus! {
 
