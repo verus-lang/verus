@@ -1901,6 +1901,41 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] binary_op_of_refs verus_code! {
+        fn test_bitwise(x: u32, y: i32, b: bool) {
+            let y1 = &x & 0x7f;
+            let y2 = 0x7f | &x;
+            let y3 = &y ^ &y;
+            assert(y1 == x & 0x7f);
+            assert(y2 == 0x7f | x);
+            assert(y3 == y ^ y);
+
+            let b1 = &b & true;
+            let b2 = false | &b;
+            let b3 = &b ^ &b;
+            assert(b1 == b);
+            assert(b2 == b);
+            assert(b3 == false);
+        }
+
+        fn test_shift(x: u8, s: u32)
+            requires s < 8
+        {
+            let y1 = &x << s;
+            let y2 = x >> &s;
+            assert(y1 == x << s);
+            assert(y2 == x >> s);
+        }
+
+        fn test_shift_fails(x: u8, s: u32)
+            requires s < 32
+        {
+            let y = &x << s; // FAILS
+        }
+    } => Err(e) => assert_fails(e, 1)
+}
+
+test_verify_one_file! {
     #[test] format_ok verus_code! {
         use vstd::*;
         fn test() {

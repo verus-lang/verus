@@ -3722,6 +3722,8 @@ fn binopkind_to_binaryop_inner<'tcx>(
     }
 
     if is_smt_arith(bctx, lhs.span, rhs.span, &lhs.hir_id, &rhs.hir_id)? {
+        let lhs_inner_ty = maybe_strip_shared_ref(lhs_ty);
+        let rhs_inner_ty = maybe_strip_shared_ref(rhs_ty);
         let d0b = if bctx.in_ghost { Div0Behavior::Allow } else { Div0Behavior::Error };
         let vop = match op {
             BinOpKind::Le => BinaryOp::Inequality(InequalityOp::Le),
@@ -3769,47 +3771,40 @@ fn binopkind_to_binaryop_inner<'tcx>(
                 }
                 None => BinaryOp::Arith(ArithOp::EuclideanMod(d0b)),
             },
-            BinOpKind::BitXor => {
-                match ((tc.expr_ty_adjusted(lhs)).kind(), (tc.expr_ty_adjusted(rhs)).kind()) {
-                    (TyKind::Bool, TyKind::Bool) => BinaryOp::BoolXor,
-                    (TyKind::Int(_), TyKind::Int(_)) => {
-                        BinaryOp::Bitwise(BitwiseOp::BitXor, BitshiftBehavior::Allow)
-                    }
-                    (TyKind::Uint(_), TyKind::Uint(_)) => {
-                        BinaryOp::Bitwise(BitwiseOp::BitXor, BitshiftBehavior::Allow)
-                    }
-                    _ => panic!("bitwise XOR for this type not supported"),
+            BinOpKind::BitXor => match (lhs_inner_ty.kind(), rhs_inner_ty.kind()) {
+                (TyKind::Bool, TyKind::Bool) => BinaryOp::BoolXor,
+                (TyKind::Int(_), TyKind::Int(_)) => {
+                    BinaryOp::Bitwise(BitwiseOp::BitXor, BitshiftBehavior::Allow)
                 }
-            }
-            BinOpKind::BitAnd => {
-                match ((tc.expr_ty_adjusted(lhs)).kind(), (tc.expr_ty_adjusted(rhs)).kind()) {
-                    (TyKind::Bool, TyKind::Bool) => BinaryOp::BoolAndNoSC,
-                    (TyKind::Int(_), TyKind::Int(_)) => {
-                        BinaryOp::Bitwise(BitwiseOp::BitAnd, BitshiftBehavior::Allow)
-                    }
-                    (TyKind::Uint(_), TyKind::Uint(_)) => {
-                        BinaryOp::Bitwise(BitwiseOp::BitAnd, BitshiftBehavior::Allow)
-                    }
-                    t => panic!("bitwise AND for this type not supported {:#?}", t),
+                (TyKind::Uint(_), TyKind::Uint(_)) => {
+                    BinaryOp::Bitwise(BitwiseOp::BitXor, BitshiftBehavior::Allow)
                 }
-            }
-            BinOpKind::BitOr => {
-                match ((tc.expr_ty_adjusted(lhs)).kind(), (tc.expr_ty_adjusted(rhs)).kind()) {
-                    (TyKind::Bool, TyKind::Bool) => BinaryOp::BoolOrNoSC,
-                    (TyKind::Int(_), TyKind::Int(_)) => {
-                        BinaryOp::Bitwise(BitwiseOp::BitOr, BitshiftBehavior::Allow)
-                    }
-                    (TyKind::Uint(_), TyKind::Uint(_)) => {
-                        BinaryOp::Bitwise(BitwiseOp::BitOr, BitshiftBehavior::Allow)
-                    }
-                    _ => panic!("bitwise OR for this type not supported"),
+                _ => panic!("bitwise XOR for this type not supported"),
+            },
+            BinOpKind::BitAnd => match (lhs_inner_ty.kind(), rhs_inner_ty.kind()) {
+                (TyKind::Bool, TyKind::Bool) => BinaryOp::BoolAndNoSC,
+                (TyKind::Int(_), TyKind::Int(_)) => {
+                    BinaryOp::Bitwise(BitwiseOp::BitAnd, BitshiftBehavior::Allow)
                 }
-            }
+                (TyKind::Uint(_), TyKind::Uint(_)) => {
+                    BinaryOp::Bitwise(BitwiseOp::BitAnd, BitshiftBehavior::Allow)
+                }
+                t => panic!("bitwise AND for this type not supported {:#?}", t),
+            },
+            BinOpKind::BitOr => match (lhs_inner_ty.kind(), rhs_inner_ty.kind()) {
+                (TyKind::Bool, TyKind::Bool) => BinaryOp::BoolOrNoSC,
+                (TyKind::Int(_), TyKind::Int(_)) => {
+                    BinaryOp::Bitwise(BitwiseOp::BitOr, BitshiftBehavior::Allow)
+                }
+                (TyKind::Uint(_), TyKind::Uint(_)) => {
+                    BinaryOp::Bitwise(BitwiseOp::BitOr, BitshiftBehavior::Allow)
+                }
+                _ => panic!("bitwise OR for this type not supported"),
+            },
             BinOpKind::Shl => {
-                let (Some(w), s) = bitwidth_and_signedness_of_integer_type(
-                    &bctx.ctxt.verus_items,
-                    bctx.types.expr_ty(lhs),
-                ) else {
+                let (Some(w), s) =
+                    bitwidth_and_signedness_of_integer_type(&bctx.ctxt.verus_items, lhs_inner_ty)
+                else {
                     return err_span(lhs.span, "expected finite integer width for <<");
                 };
                 let bb_for_ghostness = if bctx.in_ghost {
@@ -3820,10 +3815,9 @@ fn binopkind_to_binaryop_inner<'tcx>(
                 BinaryOp::Bitwise(BitwiseOp::Shl(w, s), bb_for_ghostness)
             }
             BinOpKind::Shr => {
-                let (Some(w), _s) = bitwidth_and_signedness_of_integer_type(
-                    &bctx.ctxt.verus_items,
-                    bctx.types.expr_ty(lhs),
-                ) else {
+                let (Some(w), _s) =
+                    bitwidth_and_signedness_of_integer_type(&bctx.ctxt.verus_items, lhs_inner_ty)
+                else {
                     return err_span(lhs.span, "expected finite integer width for >>");
                 };
                 let bb_for_ghostness = if bctx.in_ghost {
@@ -4929,23 +4923,22 @@ fn ty_is_bool_or_ref_bool<'tcx>(ty: rustc_middle::ty::Ty<'tcx>) -> bool {
     }
 }
 
+fn maybe_strip_shared_ref<'tcx>(ty: rustc_middle::ty::Ty<'tcx>) -> rustc_middle::ty::Ty<'tcx> {
+    match ty.kind() {
+        TyKind::Ref(_, t, rustc_ast::Mutability::Not) => *t,
+        _ => ty,
+    }
+}
+
 fn ty_is_integer_or_ref_integer<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     ty: rustc_middle::ty::Ty<'tcx>,
 ) -> bool {
-    let t = match ty.kind() {
-        TyKind::Ref(_, t, rustc_ast::Mutability::Not) => t,
-        _ => &ty,
-    };
-    is_integer_ty(&bctx.ctxt.verus_items, t)
+    is_integer_ty(&bctx.ctxt.verus_items, &maybe_strip_shared_ref(ty))
 }
 
 fn ty_is_float_or_ref_float<'tcx>(ty: rustc_middle::ty::Ty<'tcx>) -> bool {
-    let t = match ty.kind() {
-        TyKind::Ref(_, t, rustc_ast::Mutability::Not) => t,
-        _ => &ty,
-    };
-    t.is_floating_point()
+    maybe_strip_shared_ref(ty).is_floating_point()
 }
 
 /// Check that we can unambiguously identify a loop inside this loop_isolation_boundary block,
