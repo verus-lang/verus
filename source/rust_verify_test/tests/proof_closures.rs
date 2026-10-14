@@ -1303,7 +1303,7 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test] cant_implement_copy_trait ["vstd"] => verus_code! {
-        impl Copy for FOpts<1, (), 0, 0, 0> {}
+        impl Copy for FOpts<1, (), 0, 0, 0, 0> {}
     } => Err(err) => assert_rust_error_msg(err, "only traits defined in the current crate can be implemented")
 }
 
@@ -1864,4 +1864,226 @@ test_verify_one_file_with_options! {
             q(tracked_swap);
         }
     } => Err(err) => assert_rust_error_msg(err, "mismatched types")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_proof_opens_ok ["vstd"] => verus_code! {
+        use vstd::prelude::*;
+
+        proof fn callee()
+            opens_invariants [3int]
+        {
+        }
+
+        proof fn caller()
+            opens_invariants [3int, 4int]
+        {
+            let tracked f = proof_fn|i: int| requires i == 10 ensures true opens_invariants [3int] {
+                callee();
+            };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_proof_opens_fails1 ["vstd"] => verus_code! {
+        use vstd::prelude::*;
+
+        proof fn callee()
+            opens_invariants [3int]
+        {
+        }
+
+        proof fn caller()
+            opens_invariants [3int, 4int]
+        {
+            let tracked f = proof_fn|i: int| requires i == 10 ensures true opens_invariants [4int] {
+                callee(); // FAILS
+            };
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_proof_opens_fails2 ["vstd"] => verus_code! {
+        use vstd::prelude::*;
+
+        proof fn callee()
+            opens_invariants [3int]
+        {
+        }
+
+        proof fn caller()
+            opens_invariants [3int, 4int]
+        {
+            let tracked f = proof_fn|i: int| requires i == 10 ensures true {
+                callee(); // FAILS
+            };
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_proof_opens_fails3 ["vstd"] => verus_code! {
+        use vstd::prelude::*;
+
+        proof fn callee()
+            opens_invariants [3int]
+        {
+        }
+
+        proof fn caller()
+            opens_invariants [4int]
+        {
+            let tracked f = proof_fn|i: int| requires i == 10 ensures true opens_invariants [3int] {
+                callee();
+            };
+            f(); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_proof_opens_none ["vstd"] => verus_code! {
+        use vstd::prelude::*;
+
+        proof fn test(tracked f: proof_fn[OpensInvariants](i: int))
+            requires f.requires((10int,))
+            opens_invariants none
+        {
+            f(10); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_proof_opens_some ["vstd"] => verus_code! {
+        use vstd::prelude::*;
+
+        proof fn test(tracked f: proof_fn[OpensInvariants](i: int))
+            requires
+                f.requires((10int,)),
+                f.opens_invariants((10int,)) == iset![3int],
+            opens_invariants [3int, 4int]
+        {
+            f(10);
+        }
+
+        proof fn caller()
+            opens_invariants [3int, 4int]
+        {
+            test(proof_fn|i: int| requires i == 10 opens_invariants [3int] { });
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_proof_opens_some_caller_mismatch1 ["vstd"] => verus_code! {
+        use vstd::prelude::*;
+
+        proof fn test(tracked f: proof_fn[OpensInvariants](i: int))
+            requires
+                f.requires((10int,)),
+                f.opens_invariants((10int,)) == iset![3int],
+            opens_invariants [3int, 4int]
+        {
+            f(10);
+        }
+
+        proof fn caller()
+            opens_invariants [3int, 4int]
+        {
+            test(proof_fn|i: int| requires i == 10 opens_invariants [5int] { }); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_proof_opens_some_caller_mismatch2 ["vstd"] => verus_code! {
+        use vstd::prelude::*;
+
+        proof fn test(tracked f: proof_fn[OpensInvariants](i: int))
+            requires
+                f.requires((10int,)),
+                f.opens_invariants((10int,)) == iset![3int],
+            opens_invariants [3int, 4int]
+        {
+            f(10);
+        }
+
+        proof fn caller()
+            opens_invariants [3int, 4int]
+        {
+            test(proof_fn|i: int| requires i == 10 { });
+        }
+    } => Err(err) => assert_rust_error_msg(err, "mismatched types")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_proof_opens_mismatch ["vstd"] => verus_code! {
+        use vstd::prelude::*;
+
+        proof fn test(tracked f: proof_fn[OpensInvariants](i: int))
+            requires
+                f.requires((10int,)),
+                f.opens_invariants((10int,)) == iset![5int],
+            opens_invariants [3int, 4int]
+        {
+            f(10); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_exec_opens_none ["vstd"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn test(Tracked(f): Tracked<proof_fn[OpensInvariants](i: int)>)
+            requires f.requires((10int,))
+            opens_invariants none
+        {
+            proof {
+                f(10); // FAILS
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_exec_opens_some ["vstd"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn test(Tracked(f): Tracked<proof_fn[OpensInvariants](i: int)>)
+            requires
+                f.requires((10int,)),
+                f.opens_invariants((10int,)) == iset![3int],
+            opens_invariants [3int, 4int]
+        {
+            proof {
+                f(10);
+            }
+        }
+
+        fn caller() {
+            let tracked f = proof_fn|i: int| requires i == 10 opens_invariants [3int] { };
+            test(Tracked(f));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_exec_opens_mismatch ["vstd"] => verus_code! {
+        use vstd::prelude::*;
+
+        fn test(Tracked(f): Tracked<proof_fn[OpensInvariants](i: int)>)
+            requires
+                f.requires((10int,)),
+                f.opens_invariants((10int,)) == iset![5int],
+            opens_invariants [3int, 4int]
+        {
+            proof {
+                f(10); // FAILS
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
 }

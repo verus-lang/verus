@@ -979,6 +979,7 @@ pub enum BuiltinSpecFun {
     // not just "closure" types. TODO rename?
     ClosureReq,
     ClosureEns,
+    ClosureOpensInvariants,
     /// default_ensures clauses, for use by call_ensures on impls that inherit the default
     DefaultEns,
 }
@@ -1166,6 +1167,7 @@ pub enum ExprX {
         body: Expr,
         requires: Exprs,
         ensures: Exprs,
+        mask_spec: Option<MaskSpec>,
         ret: VarBinder<Typ>,
         /// The 'external spec' is an Option because it gets filled in during
         /// ast_simplify. It contains the assumptions that surrounding context
