@@ -5,24 +5,29 @@ use std::{collections::HashSet, iter::FromIterator};
 
 use common::*;
 
-#[test]
-fn test_json_verify_only_module() {
-    let tempdir = tempfile::TempDir::new().expect("temp dir");
-    let code = verus_code! {
+test_verify_one_file_with_options! {
+    #[test]
+    test_json_verify_only_module ["--output-json", "--verify-only-module good"] => verus_code! {
         mod good { pub proof fn ok() {} }
         mod bad { pub proof fn contradiction() ensures false {} }
-    };
-    std::fs::write(tempdir.path().join("test.rs"), code).expect("write source file");
-
-    for (extra, entire) in [(vec!["--verify-only-module", "good"], false), (vec![], true)] {
-        let mut args = vec!["test.rs", "--crate-type=lib", "--output-json"];
-        args.extend(extra);
-        let output = run_verus_raw(&args, tempdir.path());
-        assert_eq!(output.status.success(), !entire);
-        let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    } => Ok(res) => {
+        let json = res.json_output.unwrap();
         let results = &json["verification-results"];
-        assert_eq!(results["is-verifying-entire-crate"], entire);
-        assert_eq!(results.get("success"), entire.then_some(&serde_json::json!(false)));
+        assert_eq!(results["is-verifying-entire-crate"], false);
+        assert!(results.get("success").is_none());
+    }
+}
+
+test_verify_one_file_with_options! {
+    #[test]
+    test_json_verify_entire_crate ["--output-json"] => verus_code! {
+        mod good { pub proof fn ok() {} }
+        mod bad { pub proof fn contradiction() ensures false {} }
+    } => Err(res) => {
+        let json = res.json_output.unwrap();
+        let results = &json["verification-results"];
+        assert_eq!(results["is-verifying-entire-crate"], true);
+        assert_eq!(results["success"], false);
     }
 }
 
