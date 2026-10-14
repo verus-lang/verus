@@ -1532,14 +1532,8 @@ pub(crate) enum FunctionOrConstInfo<'tcx> {
     Const(ConstInfo),
 }
 
-impl<'a, 'tcx> IntoIterator for &'a FunctionOrConstInfo<'tcx> {
-    type Item = &'a vir::ast::FunctionStub;
-    type IntoIter = std::iter::Chain<
-        std::iter::Once<&'a vir::ast::FunctionStub>,
-        std::option::IntoIter<&'a vir::ast::FunctionStub>,
-    >;
-
-    fn into_iter(self) -> Self::IntoIter {
+impl<'tcx> FunctionOrConstInfo<'tcx> {
+    pub(crate) fn iter_stubs<'a>(&'a self) -> impl Iterator<Item = &'a vir::ast::FunctionStub> {
         let (f, opt_f) = match self {
             FunctionOrConstInfo::Function(f) => (&f.function, f.function_for_autospec.as_ref()),
             FunctionOrConstInfo::Const(f) => (&f.function, f.function_for_autospec.as_ref()),
@@ -2230,7 +2224,7 @@ pub(crate) fn check_item_fn<'tcx>(
 
 pub(crate) fn finish_item<'tcx>(
     ctxt: &Context<'tcx>,
-    info: FunctionOrConstInfo,
+    info: &FunctionOrConstInfo,
     functions: &mut Vec<vir::ast::Function>,
 ) -> Result<(), VirErr> {
     match info {
@@ -2245,24 +2239,24 @@ pub(crate) fn finish_item<'tcx>(
 
 pub(crate) fn finish_function<'tcx>(
     ctxt: &Context<'tcx>,
-    function_info: FunctionInfo,
+    function_info: &FunctionInfo,
     functions: &mut Vec<vir::ast::Function>,
 ) -> Result<(), VirErr> {
     let FunctionInfo {
-        function,
-        function_for_autospec,
-        pre_header,
-        body_id,
-        sig,
-        vattrs,
+        ref function,
+        ref function_for_autospec,
+        ref pre_header,
+        ref body_id,
+        ref sig,
+        ref vattrs,
         def_id,
-        external_trait_from_to,
-        migrate_postcondition_vars,
-        assume_specification_opaque_type_map,
-        ret_typ_mode,
+        ref external_trait_from_to,
+        ref migrate_postcondition_vars,
+        ref assume_specification_opaque_type_map,
+        ref ret_typ_mode,
         autoderive_action,
-        is_external_const,
-    } = function_info;
+        ref is_external_const,
+    } = *function_info;
     let vir::ast::FunctionStubX {
         name,
         proxy,
@@ -3325,22 +3319,22 @@ pub(crate) fn check_item_const_or_static<'tcx>(
 
 pub(crate) fn finish_const_or_static<'tcx>(
     ctxt: &Context<'tcx>,
-    const_info: ConstInfo,
+    const_info: &ConstInfo,
     functions: &mut Vec<vir::ast::Function>,
 ) -> Result<(), VirErr> {
     let ConstInfo {
-        function,
-        function_for_autospec,
-        pre_header,
+        ref function,
+        ref function_for_autospec,
+        ref pre_header,
         body_id,
         def_id: id,
-        vattrs,
+        ref vattrs,
         span,
         body_mode,
         ret_mode,
         func_mode,
         is_static,
-    } = const_info;
+    } = *const_info;
     let vir::ast::FunctionStubX {
         name,
         proxy,

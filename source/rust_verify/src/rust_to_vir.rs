@@ -404,7 +404,7 @@ pub(crate) fn get_root_module_path<'tcx>(ctxt: &ContextX<'tcx>) -> Path {
     ctxt.def_id_to_vir_path(rustc_hir::CRATE_OWNER_ID.to_def_id())
 }
 
-pub fn crate_to_vir<'a, 'tcx>(
+pub(crate) fn crate_to_vir<'a, 'tcx>(
     mut ctxtx: ContextX<'tcx>,
     imported: &Vec<Krate>,
     crate_items: &CrateItems,
@@ -628,5 +628,12 @@ pub fn crate_to_vir<'a, 'tcx>(
     }
     let warning_ctx = WarningCtx { fun_warn_configs };
 
-    Ok(PreCrate { ctxt, warning_ctx, krate_without_funs: Arc::new(vir), function_infos: infos })
+    let infos = infos.into_iter().map(|info| Arc::new(info)).collect::<Vec<_>>();
+    let mut fun_name_to_info = HashMap::<Fun, Arc<FunctionOrConstInfo>>::new();
+    for info in infos.iter() {
+        for stub in info.iter_stubs() {
+            fun_name_to_info.insert(stub.x.name.clone(), info.clone());
+        }
+    }
+    Ok(PreCrate { ctxt, warning_ctx, krate_without_funs: Arc::new(vir), infos: infos, fun_name_to_info })
 }
