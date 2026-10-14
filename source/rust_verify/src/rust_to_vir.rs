@@ -504,7 +504,7 @@ fn check_extern_crate_alias<'tcx>(item: &'tcx Item<'tcx>) -> Result<(), VirErr> 
     Ok(())
 }
 
-pub fn crate_to_vir<'a, 'tcx>(
+pub(crate) fn crate_to_vir<'a, 'tcx>(
     mut ctxtx: ContextX<'tcx>,
     imported: &Vec<Krate>,
     crate_items: &CrateItems,
@@ -733,5 +733,12 @@ pub fn crate_to_vir<'a, 'tcx>(
     }
     let warning_ctx = WarningCtx { fun_warn_configs };
 
-    Ok(PreCrate { ctxt, warning_ctx, krate_without_funs: Arc::new(vir), function_infos: infos })
+    let infos = infos.into_iter().map(|info| Arc::new(info)).collect::<Vec<_>>();
+    let mut fun_name_to_info = HashMap::<Fun, Arc<FunctionOrConstInfo>>::new();
+    for info in infos.iter() {
+        for stub in info.iter_stubs() {
+            fun_name_to_info.insert(stub.x.name.clone(), info.clone());
+        }
+    }
+    Ok(PreCrate { ctxt, warning_ctx, krate_without_funs: Arc::new(vir), infos: infos, fun_name_to_info })
 }

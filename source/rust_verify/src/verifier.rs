@@ -2700,6 +2700,8 @@ impl Verifier {
         // Convert HIR -> VIR
         let time1 = Instant::now();
 
+        todo!();
+/*
         let (ctxt, mut warning_ctx, vir_crate) =
             crate::rust_to_vir::crate_to_vir(ctxtx, &other_vir_crates, &crate_items)
                 .map_err(map_errs_diagnostics)?;
@@ -2894,6 +2896,7 @@ impl Verifier {
         self.time_vir_rust_to_vir = time2 - time1;
 
         Ok(true)
+*/
     }
 
     pub fn get_function_mode(&self, f: &Fun) -> Option<&vir::ast::Mode> {
