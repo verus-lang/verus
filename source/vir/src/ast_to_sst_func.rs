@@ -345,12 +345,16 @@ fn req_ens_to_sst(
 ) -> Result<(Pars, Vec<Exp>), VirErr> {
     let mut pars = params_to_pre_post_pars(&function.x.params);
     let pars_mut = Arc::make_mut(&mut pars);
-    if !pre && matches!(function.x.mode, Mode::Exec | Mode::Proof) && function.x.ens_has_return {
+    let ens_has_return = crate::ast_to_sst::ens_has_return(ctx, function);
+    if !pre && matches!(function.x.mode, Mode::Exec | Mode::Proof) && ens_has_return {
         pars_mut.push(param_to_par(&function.x.outer_ret));
     }
     let mut exps: Vec<Exp> = Vec::new();
 
     let specs = if function.x.attrs.is_async && !pre {
+        if !ens_has_return {
+            crate::internal_err!(function.span.clone(), "async function expects ens_has_return");
+        }
         &rewrite_async_ens_vir(function, specs)?
     } else {
         specs
@@ -759,7 +763,8 @@ pub fn func_def_to_sst(
     let mut state = State::new(diagnostics);
 
     let mut ens_params = (*function.x.params).clone();
-    let dest = if function.x.ens_has_return {
+    let ens_has_return = crate::ast_to_sst::ens_has_return(ctx, function);
+    let dest = if ens_has_return {
         let ParamX { name, typ, .. } = &function.x.inner_ret.x;
         ens_params.push(function.x.inner_ret.clone());
         state.declare_imm_var_stm(name, typ, LocalDeclKind::Return, false);
@@ -1084,13 +1089,15 @@ pub fn function_to_sst(
         None
     };
 
+    let ens_has_return = crate::ast_to_sst::ens_has_return(ctx, function);
+
     let has = FunctionSstHas {
         has_body,
         has_requires: function.x.require.len() > 0,
         has_ensures: function.x.ensure.0.len() + function.x.ensure.1.len() > 0,
         has_decrease: function.x.decrease.len() > 0,
         has_mask_spec: function.x.mask_spec.is_some(),
-        has_return_name: function.x.ens_has_return,
+        has_return_name: ens_has_return,
         is_recursive: crate::recursion::fun_is_recursive(ctx, function),
     };
 
@@ -1106,7 +1113,7 @@ pub fn function_to_sst(
         pars: params_to_pars(&function.x.params),
         outer_ret: param_to_par(&function.x.outer_ret),
         inner_ret: param_to_par(&function.x.inner_ret),
-        ens_has_return: function.x.ens_has_return,
+        ens_has_return: ens_has_return,
         item_kind: function.x.item_kind,
         attrs: function.x.attrs.clone(),
         has,
