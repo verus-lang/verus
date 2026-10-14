@@ -1541,3 +1541,7 @@ pub(crate) fn const_usize_of_expr(e: &Expr) -> Option<usize> {
         _ => None,
     }
 }
+
+pub fn function_to_stub(_f: &Function) -> crate::ast::FunctionStub {
+    todo!()
+}

@@ -1,15 +1,15 @@
 use crate::config::Args;
 use crate::context::Context;
+use crate::external::CrateItems;
 use crate::import_export::ImportOutput;
 use crate::rust_to_vir_func::FunctionOrConstInfo;
 use crate::rust_to_vir_func::finish_item;
-use vir::ast::{FunctionStub, Krate, Fun, Function, VirErr};
-use vir::context::WarningCtx;
-use vir::traits::DemoteTraitLookup;
-use std::sync::Arc;
-use crate::external::CrateItems;
 use std::collections::HashMap;
+use std::sync::Arc;
+use vir::ast::{Fun, Function, FunctionStub, Krate, VirErr};
+use vir::context::WarningCtx;
 use vir::modes::ErasureModes;
+use vir::traits::DemoteTraitLookup;
 
 /// Krate without the full functions (i.e., empty function list in the krate)
 /// Instead we have FunctionOrConstInfos which contains FunctionStubs.
@@ -29,13 +29,9 @@ pub(crate) type Res<T> = Result<T, ErrorGuaranteed>;
 
 pub(crate) struct Query<'tcx> {
     args: Args,
-    import_virs_via_cargo: Vec<(String, String)>,
-    crate_items: Arc<CrateItems>,
-    ctxtx: Option<crate::context::ContextX<'tcx>>,
-    compiler: &'tcx rustc_interface::interface::Compiler,
 
     /// Imported crates
-    pub cache_imported: Option<Res<Arc<ImportOutput>>>,
+    pub cache_other_vir_crates: Option<Res<Arc<Vec<Krate>>>>,
     /// Pre-crate before functions are lowered to VIR and checked in full
     pub cache_pre_crate: Option<Res<Arc<PreCrate<'tcx>>>>,
     /// Info used for demoting external traits
@@ -54,8 +50,20 @@ pub(crate) struct Query<'tcx> {
 }
 
 impl<'tcx> Query<'tcx> {
-    fn new() -> Self {
-        todo!()
+    pub fn new(args: Args, other_vir_crates: Vec<Krate>, pre_crate: PreCrate<'tcx>) -> Self {
+        Self {
+            args,
+
+            cache_other_vir_crates: Some(Ok(Arc::new(other_vir_crates))),
+            cache_pre_crate: Some(Ok(Arc::new(pre_crate))),
+            cache_demote_traits_lookup: None,
+            cache_all_function_stubs: None,
+            cache_unchecked_functions: HashMap::new(),
+            cache_checked_functions: HashMap::new(),
+            cache_finished_crate: None,
+
+            encountered_vir_error: false,
+        }
     }
 
     fn emit_errors<T>(&mut self, err: Vec<VirErr>) -> Result<T, ErrorGuaranteed> {
@@ -65,15 +73,14 @@ impl<'tcx> Query<'tcx> {
 
     //// Import crate
 
-    pub fn get_imported(&mut self) -> Res<Arc<ImportOutput>> {
-        if let Some(imported) = &self.cache_imported {
+    pub fn get_imported(&mut self) -> Res<Arc<Vec<Krate>>> {
+        if let Some(imported) = &self.cache_other_vir_crates {
             return imported.clone();
         }
-        self.cache_imported = Some(self._compute_imported());
-        self.cache_imported.clone().unwrap()
+        unreachable!();
     }
 
-    fn _compute_imported(&mut self) -> Res<Arc<ImportOutput>> {
+    /*fn _compute_imported(&mut self) -> Res<Arc<ImportOutput>> {
         match crate::import_export::import_crates(&self.args, self.import_virs_via_cargo.clone()) {
             Ok(imported) => Ok(Arc::new(imported)),
             Err(err) => {
@@ -84,7 +91,7 @@ impl<'tcx> Query<'tcx> {
                 return Err(ErrorGuaranteed {});
             }
         }
-    }
+    }*/
 
     //// Pre-crate
 
@@ -92,11 +99,12 @@ impl<'tcx> Query<'tcx> {
         if let Some(pre_crate) = &self.cache_pre_crate {
             return pre_crate.clone();
         }
-        self.cache_pre_crate = Some(self._compute_pre_crate());
-        self.cache_pre_crate.clone().unwrap()
+        unreachable!();
+        //self.cache_pre_crate = Some(self._compute_pre_crate());
+        //self.cache_pre_crate.clone().unwrap()
     }
 
-    fn _compute_pre_crate(&mut self) -> Res<Arc<PreCrate<'tcx>>> {
+    /*fn _compute_pre_crate(&mut self) -> Res<Arc<PreCrate<'tcx>>> {
         let imported = self.get_imported()?;
         let mut ctxtx = None;
         std::mem::swap(&mut self.ctxtx, &mut ctxtx);
@@ -109,7 +117,7 @@ impl<'tcx> Query<'tcx> {
                 self.emit_errors(errs)
             }
         }
-    }
+    }*/
 
     //// DemoteTraitsLookup
 
@@ -117,20 +125,55 @@ impl<'tcx> Query<'tcx> {
         if let Some(demote_traits_lookup) = &self.cache_demote_traits_lookup {
             return demote_traits_lookup.clone();
         }
-        let imported = self.get_imported()?;
+        let other_vir_crates = self.get_imported()?;
         let pre_crate = self.get_pre_crate()?;
         // need to modify DemoteTraitLookup::new to work with the information we have
         todo!()
     }
 
+    //// Get all function stubs
+
     fn get_all_function_stubs(&mut self) -> Res<Arc<HashMap<Fun, FunctionStub>>> {
         if let Some(all_function_stubs) = &self.cache_all_function_stubs {
             return all_function_stubs.clone();
         }
-        let imported = self.get_imported()?;
-        let pre_crate = self.get_pre_crate()?;
+        self.cache_all_function_stubs = Some(self._compute_all_function_stubs());
+        self.cache_all_function_stubs.clone().unwrap()
+    }
+
+    fn _compute_all_function_stubs(&mut self) -> Res<Arc<HashMap<Fun, FunctionStub>>> {
+        let duplicate_err = |stub: &FunctionStub, s: &mut Self| {
+            let err = vir::messages::error(
+                &stub.span,
+                format!(
+                    "duplicate function entry: {:}",
+                    vir::ast_util::fun_as_friendly_rust_name(&stub.x.name)
+                ),
+            );
+            s.emit_errors(vec![err])
+        };
+
         // combine all the function stubs from our crate and the external crates
-        todo!()
+        let other_vir_crates = self.get_imported()?;
+        let pre_crate = self.get_pre_crate()?;
+        let mut stubs = HashMap::new();
+        for stub in pre_crate.infos.iter().map(|info| info.iter_stubs()).flatten() {
+            let found = stubs.insert(stub.x.name.clone(), stub.clone());
+            if found.is_some() {
+                return duplicate_err(stub, self);
+            }
+        }
+        for krate in other_vir_crates.iter() {
+            for function in krate.functions.iter() {
+                let stub = vir::ast_util::function_to_stub(function);
+                let found = stubs.insert(stub.x.name.clone(), stub.clone());
+                if found.is_some() {
+                    return duplicate_err(&stub, self);
+                }
+            }
+        }
+
+        Ok(Arc::new(stubs))
     }
 
     //// Translating an individual function
@@ -147,7 +190,9 @@ impl<'tcx> Query<'tcx> {
         match finish_item(ctxt, &info, &mut new_functions) {
             Ok(()) => {
                 for new_function in new_functions.into_iter() {
-                    let found = self.cache_unchecked_functions.insert(new_function.x.name.clone(), Ok(new_function));
+                    let found = self
+                        .cache_unchecked_functions
+                        .insert(new_function.x.name.clone(), Ok(new_function));
                     assert!(found.is_none());
                 }
                 // Sanity check we got all the functions we expected
@@ -157,13 +202,14 @@ impl<'tcx> Query<'tcx> {
                 self.cache_unchecked_functions.get(fun).unwrap().clone()
             }
             Err(err) => {
-                self.compiler.sess.dcx().err(err.note.clone());
-                self.encountered_vir_error = true;
+                let err = self.emit_errors(vec![err]);
                 for stub in info.iter_stubs() {
-                    let found = self.cache_unchecked_functions.insert(stub.x.name.clone(), Err(ErrorGuaranteed {}));
+                    let found = self
+                        .cache_unchecked_functions
+                        .insert(stub.x.name.clone(), Err(ErrorGuaranteed {}));
                     assert!(found.is_none());
                 }
-                Err(ErrorGuaranteed {})
+                err
             }
         }
     }
