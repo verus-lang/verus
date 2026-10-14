@@ -1642,3 +1642,47 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] float_patterns verus_code! {
+        const ZERO: f64 = 0.0;
+        const NEG_ZERO: f64 = -0.0;
+
+        struct X { }
+
+        impl X {
+            const ZERO: f64 = 0.0;
+        }
+
+        fn matches_zero(x: f64) -> (r: bool)
+            ensures x == NEG_ZERO ==> !r // should fail
+        {
+            match x {
+                ZERO => true,
+                _ => false,
+            }
+        }
+
+        fn matches_zero_lit(x: f64) -> (r: bool)
+            ensures x == NEG_ZERO ==> !r // should fail
+        {
+            match x {
+                0.0 => true,
+                _ => false,
+            }
+        }
+
+        fn matches_zero_assoc_const(x: f64) -> (r: bool)
+            ensures x == NEG_ZERO ==> !r // should fail
+        {
+            match x {
+                X::ZERO => true,
+                _ => false,
+            }
+        }
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "equality-testing this type in pattern: f64",
+        "equality-testing this type in pattern: f64",
+        "equality-testing this type in pattern: f64",
+    ])
+}

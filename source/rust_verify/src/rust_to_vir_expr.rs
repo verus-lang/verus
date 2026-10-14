@@ -526,6 +526,18 @@ pub(crate) fn expr_to_vir<'tcx>(
     Ok(vir_expr_or_place)
 }
 
+fn patexpr_unsupported_type_err<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    span: Span,
+    pat: &Pat<'tcx>,
+) -> Result<(), VirErr> {
+    let pat_ty = bctx.types.node_type(pat.hir_id);
+    if !crate::rust_to_vir_base::ty_has_smt_equality(bctx, span, pat_ty)? {
+        unsupported_err!(span, format!("equality-testing this type in pattern: {:?}", pat_ty));
+    }
+    Ok(())
+}
+
 pub(crate) fn patexpr_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     span: Span,
@@ -536,12 +548,14 @@ pub(crate) fn patexpr_to_vir<'tcx>(
     let tcx = bctx.ctxt.tcx;
     match pat_expr.kind {
         PatExprKind::Lit { lit, negated } => {
+            patexpr_unsupported_type_err(bctx, span, pat)?;
             Ok(PatternX::Expr(lit_to_vir(bctx, span, lit, negated, pat_typ, None)?))
         }
         PatExprKind::Path(qpath) => {
             let res = bctx.types.qpath_res(&qpath, pat_expr.hir_id);
             match res {
                 Res::Def(DefKind::Const { is_type_const: _ }, id) => {
+                    patexpr_unsupported_type_err(bctx, span, pat)?;
                     let node_substs = bctx.types.node_args(pat_expr.hir_id);
                     let x = const_var_to_vir(bctx, None, id, node_substs, &pat_expr.hir_id, span)?;
                     let expr = bctx.spanned_typed_new(pat.span, &pat_typ, x.x.clone());
@@ -549,6 +563,7 @@ pub(crate) fn patexpr_to_vir<'tcx>(
                     Ok(PatternX::Expr(expr))
                 }
                 Res::Def(DefKind::AssocConst { is_type_const: _ }, id) => {
+                    patexpr_unsupported_type_err(bctx, span, pat)?;
                     if let Some(vir_expr) =
                         int_intrinsic_constant_to_vir(&bctx.ctxt, pat.span, &pat_typ, id)
                     {
@@ -1702,7 +1717,26 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 return Ok(ExprOrPlace::Expr(arg.consume(bctx, ty1)));
             }
 
-            let (tyr1, tyr2) = remove_decoration_typs_for_unsizing(bctx.ctxt.tcx, ty1, ty2);
+            let (tyr1, tyr2) = match (ty1.kind(), ty2.kind()) {
+                (TyKind::Ref(_, t1, Mutability::Mut), TyKind::Ref(_, t2, Mutability::Mut))
+                    if matches!(
+                        (t1.kind(), t2.kind()),
+                        (TyKind::Dynamic(..), TyKind::Dynamic(..))
+                    ) =>
+                {
+                    unsupported_err!(
+                        expr.span,
+                        format!("trait upcasting from `{ty1:}` to `{ty2:}`")
+                    )
+                }
+                // &mut T -> &mut dyn Trait: keep the &mut so ast_to_sst can build a new borrow
+                (TyKind::Ref(_, t1, Mutability::Mut), TyKind::Ref(_, t2, Mutability::Mut))
+                    if matches!(t2.kind(), TyKind::Dynamic(..)) =>
+                {
+                    (*t1, *t2)
+                }
+                _ => remove_decoration_typs_for_unsizing(bctx.ctxt.tcx, ty1, ty2),
+            };
             let op = match (tyr1.kind(), tyr2.kind()) {
                 (_, TyKind::Dynamic(_, _)) => {
                     let vir_ty = bctx.mid_ty_to_vir(expr.span, &tyr1)?;
@@ -2526,8 +2560,10 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     // Special-case the negation of literals.
                     let zero_const = vir::ast_util::const_int_from_u128(0);
                     let zero = mk_expr(ExprX::Const(zero_const))?.expect_expr();
-                    let varg = if let ExprKind::Lit(Spanned { node: LitKind::Int(i, _), .. }) =
-                        &arg.kind
+                    let (ob, varg) = if let ExprKind::Lit(Spanned {
+                        node: LitKind::Int(i, _),
+                        ..
+                    }) = &arg.kind
                     {
                         if bctx.types.expr_adjustments(arg).len() != 0 {
                             crate::internal_err!(
@@ -2535,21 +2571,26 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                                 "negation of literal expected no implicit adjustments"
                             );
                         }
-                        mk_lit_int(
+                        let ob = OverflowBehavior::Allow;
+                        let expr = mk_lit_int(
                             true,
                             i.get(),
                             typ_of_node_unadjusted(bctx, expr.span, &expr.hir_id)?,
-                        )?
+                        )?;
+                        (ob, expr)
                     } else {
-                        expr_to_vir(bctx, arg)?
+                        if bctx.in_ghost {
+                            return err_span(
+                                expr.span,
+                                "bare unary negation (-) in ghost code; it is expected that (-) is translated by the verus macro",
+                            );
+                        }
+                        let range = crate::rust_to_vir_base::get_range(&expr_typ()?);
+                        let ob = OverflowBehavior::Error(range);
+                        let expr = expr_to_vir(bctx, arg)?;
+                        (ob, expr)
                     };
                     let varg = varg.consume(bctx, bctx.types.expr_ty_adjusted(arg));
-                    let range = crate::rust_to_vir_base::get_range(&expr_typ()?);
-                    let ob = if bctx.in_ghost {
-                        OverflowBehavior::Allow
-                    } else {
-                        OverflowBehavior::Error(range)
-                    };
                     return mk_expr(ExprX::Binary(BinaryOp::Arith(ArithOp::Sub(ob)), zero, varg));
                 }
 
@@ -3652,6 +3693,9 @@ fn binopkind_to_binaryop_inner<'tcx>(
     let rhs_ty = bctx.types.expr_ty_adjusted(rhs);
 
     if ty_is_float_or_ref_float(lhs_ty) && lhs_ty == rhs_ty {
+        if bctx.in_ghost {
+            unsupported_err!(span, "floating point operation in ghost code");
+        }
         match op {
             BinOpKind::Add => {
                 return Ok(Some(BinaryOp::UninterpretedFloat(UninterpretedFloatBinaryOp::Add)));
@@ -3688,6 +3732,8 @@ fn binopkind_to_binaryop_inner<'tcx>(
     }
 
     if is_smt_arith(bctx, lhs.span, rhs.span, &lhs.hir_id, &rhs.hir_id)? {
+        let lhs_inner_ty = maybe_strip_shared_ref(lhs_ty);
+        let rhs_inner_ty = maybe_strip_shared_ref(rhs_ty);
         let d0b = if bctx.in_ghost { Div0Behavior::Allow } else { Div0Behavior::Error };
         let vop = match op {
             BinOpKind::Le => BinaryOp::Inequality(InequalityOp::Le),
@@ -3715,67 +3761,64 @@ fn binopkind_to_binaryop_inner<'tcx>(
                     // REVIEW: The non-ghost case is unexpected here; since `/` and `%`
                     // are replaced by builtin spec functions in spec code, this case
                     // should only happen for exec code.
-                    let sdecb = if bctx.in_ghost {
-                        SignedDivEdgeCaseBehavior::Allow
-                    } else {
-                        SignedDivEdgeCaseBehavior::Error(width)
-                    };
+                    if bctx.in_ghost {
+                        return err_span(
+                            span,
+                            "bare division operator (/) in ghost code; it is expected that (/) is translated by the verus macro",
+                        );
+                    }
+                    let sdecb = SignedDivEdgeCaseBehavior::Error(width);
                     BinaryOp::Arith(ArithOp::TruncatingDiv(d0b, sdecb))
                 }
                 None => BinaryOp::Arith(ArithOp::EuclideanDiv(d0b)),
             },
             BinOpKind::Rem => match euclidean_or_truncating_div(bctx, lhs, rhs)? {
                 Some(width) => {
-                    let sdecb = if bctx.in_ghost {
-                        SignedDivEdgeCaseBehavior::Allow
-                    } else {
-                        SignedDivEdgeCaseBehavior::Error(width)
-                    };
+                    if bctx.in_ghost {
+                        return err_span(
+                            span,
+                            "bare modulo operator (%) in ghost code; it is expected that (%) is translated by the verus macro",
+                        );
+                    }
+                    let sdecb = SignedDivEdgeCaseBehavior::Error(width);
                     BinaryOp::Arith(ArithOp::TruncatingMod(d0b, sdecb))
                 }
                 None => BinaryOp::Arith(ArithOp::EuclideanMod(d0b)),
             },
-            BinOpKind::BitXor => {
-                match ((tc.expr_ty_adjusted(lhs)).kind(), (tc.expr_ty_adjusted(rhs)).kind()) {
-                    (TyKind::Bool, TyKind::Bool) => BinaryOp::BoolXor,
-                    (TyKind::Int(_), TyKind::Int(_)) => {
-                        BinaryOp::Bitwise(BitwiseOp::BitXor, BitshiftBehavior::Allow)
-                    }
-                    (TyKind::Uint(_), TyKind::Uint(_)) => {
-                        BinaryOp::Bitwise(BitwiseOp::BitXor, BitshiftBehavior::Allow)
-                    }
-                    _ => panic!("bitwise XOR for this type not supported"),
+            BinOpKind::BitXor => match (lhs_inner_ty.kind(), rhs_inner_ty.kind()) {
+                (TyKind::Bool, TyKind::Bool) => BinaryOp::BoolXor,
+                (TyKind::Int(_), TyKind::Int(_)) => {
+                    BinaryOp::Bitwise(BitwiseOp::BitXor, BitshiftBehavior::Allow)
                 }
-            }
-            BinOpKind::BitAnd => {
-                match ((tc.expr_ty_adjusted(lhs)).kind(), (tc.expr_ty_adjusted(rhs)).kind()) {
-                    (TyKind::Bool, TyKind::Bool) => BinaryOp::BoolAndNoSC,
-                    (TyKind::Int(_), TyKind::Int(_)) => {
-                        BinaryOp::Bitwise(BitwiseOp::BitAnd, BitshiftBehavior::Allow)
-                    }
-                    (TyKind::Uint(_), TyKind::Uint(_)) => {
-                        BinaryOp::Bitwise(BitwiseOp::BitAnd, BitshiftBehavior::Allow)
-                    }
-                    t => panic!("bitwise AND for this type not supported {:#?}", t),
+                (TyKind::Uint(_), TyKind::Uint(_)) => {
+                    BinaryOp::Bitwise(BitwiseOp::BitXor, BitshiftBehavior::Allow)
                 }
-            }
-            BinOpKind::BitOr => {
-                match ((tc.expr_ty_adjusted(lhs)).kind(), (tc.expr_ty_adjusted(rhs)).kind()) {
-                    (TyKind::Bool, TyKind::Bool) => BinaryOp::BoolOrNoSC,
-                    (TyKind::Int(_), TyKind::Int(_)) => {
-                        BinaryOp::Bitwise(BitwiseOp::BitOr, BitshiftBehavior::Allow)
-                    }
-                    (TyKind::Uint(_), TyKind::Uint(_)) => {
-                        BinaryOp::Bitwise(BitwiseOp::BitOr, BitshiftBehavior::Allow)
-                    }
-                    _ => panic!("bitwise OR for this type not supported"),
+                _ => panic!("bitwise XOR for this type not supported"),
+            },
+            BinOpKind::BitAnd => match (lhs_inner_ty.kind(), rhs_inner_ty.kind()) {
+                (TyKind::Bool, TyKind::Bool) => BinaryOp::BoolAndNoSC,
+                (TyKind::Int(_), TyKind::Int(_)) => {
+                    BinaryOp::Bitwise(BitwiseOp::BitAnd, BitshiftBehavior::Allow)
                 }
-            }
+                (TyKind::Uint(_), TyKind::Uint(_)) => {
+                    BinaryOp::Bitwise(BitwiseOp::BitAnd, BitshiftBehavior::Allow)
+                }
+                t => panic!("bitwise AND for this type not supported {:#?}", t),
+            },
+            BinOpKind::BitOr => match (lhs_inner_ty.kind(), rhs_inner_ty.kind()) {
+                (TyKind::Bool, TyKind::Bool) => BinaryOp::BoolOrNoSC,
+                (TyKind::Int(_), TyKind::Int(_)) => {
+                    BinaryOp::Bitwise(BitwiseOp::BitOr, BitshiftBehavior::Allow)
+                }
+                (TyKind::Uint(_), TyKind::Uint(_)) => {
+                    BinaryOp::Bitwise(BitwiseOp::BitOr, BitshiftBehavior::Allow)
+                }
+                _ => panic!("bitwise OR for this type not supported"),
+            },
             BinOpKind::Shl => {
-                let (Some(w), s) = bitwidth_and_signedness_of_integer_type(
-                    &bctx.ctxt.verus_items,
-                    bctx.types.expr_ty(lhs),
-                ) else {
+                let (Some(w), s) =
+                    bitwidth_and_signedness_of_integer_type(&bctx.ctxt.verus_items, lhs_inner_ty)
+                else {
                     return err_span(lhs.span, "expected finite integer width for <<");
                 };
                 let bb_for_ghostness = if bctx.in_ghost {
@@ -3786,10 +3829,9 @@ fn binopkind_to_binaryop_inner<'tcx>(
                 BinaryOp::Bitwise(BitwiseOp::Shl(w, s), bb_for_ghostness)
             }
             BinOpKind::Shr => {
-                let (Some(w), _s) = bitwidth_and_signedness_of_integer_type(
-                    &bctx.ctxt.verus_items,
-                    bctx.types.expr_ty(lhs),
-                ) else {
+                let (Some(w), _s) =
+                    bitwidth_and_signedness_of_integer_type(&bctx.ctxt.verus_items, lhs_inner_ty)
+                else {
                     return err_span(lhs.span, "expected finite integer width for >>");
                 };
                 let bb_for_ghostness = if bctx.in_ghost {
@@ -4895,23 +4937,22 @@ fn ty_is_bool_or_ref_bool<'tcx>(ty: rustc_middle::ty::Ty<'tcx>) -> bool {
     }
 }
 
+fn maybe_strip_shared_ref<'tcx>(ty: rustc_middle::ty::Ty<'tcx>) -> rustc_middle::ty::Ty<'tcx> {
+    match ty.kind() {
+        TyKind::Ref(_, t, rustc_ast::Mutability::Not) => *t,
+        _ => ty,
+    }
+}
+
 fn ty_is_integer_or_ref_integer<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     ty: rustc_middle::ty::Ty<'tcx>,
 ) -> bool {
-    let t = match ty.kind() {
-        TyKind::Ref(_, t, rustc_ast::Mutability::Not) => t,
-        _ => &ty,
-    };
-    is_integer_ty(&bctx.ctxt.verus_items, t)
+    is_integer_ty(&bctx.ctxt.verus_items, &maybe_strip_shared_ref(ty))
 }
 
 fn ty_is_float_or_ref_float<'tcx>(ty: rustc_middle::ty::Ty<'tcx>) -> bool {
-    let t = match ty.kind() {
-        TyKind::Ref(_, t, rustc_ast::Mutability::Not) => t,
-        _ => &ty,
-    };
-    t.is_floating_point()
+    maybe_strip_shared_ref(ty).is_floating_point()
 }
 
 /// Check that we can unambiguously identify a loop inside this loop_isolation_boundary block,

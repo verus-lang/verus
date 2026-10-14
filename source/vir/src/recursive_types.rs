@@ -842,6 +842,29 @@ pub(crate) fn add_trait_impl_to_graph(
     call_graph.add_edge(src_node, Node::Trait(t.x.trait_path.clone()));
 }
 
+pub(crate) fn add_assoc_type_impl_to_graph(
+    span_infos: &mut Vec<Span>,
+    call_graph: &mut GraphBuilder<Node>,
+    a: &crate::ast::AssocTypeImpl,
+) {
+    let impl_path = ImplPath::TraitImplPath(a.x.impl_path.clone());
+    let src_node = new_span_info_node(
+        span_infos,
+        a.span.clone(),
+        ": associated type definition, which may depend on other trait implementations \
+            to satisfy type bounds"
+            .to_string(),
+    );
+    call_graph.add_edge(Node::TraitImpl(impl_path.clone()), src_node.clone());
+    for imp in a.x.impl_paths.iter() {
+        call_graph.add_edge(src_node.clone(), Node::TraitImpl(imp.clone()));
+        call_graph.add_edge(
+            Node::TraitReqEns(impl_path.clone(), false),
+            Node::TraitReqEns(imp.clone(), true),
+        );
+    }
+}
+
 // Check for cycles in traits
 pub fn check_traits(krate: &Krate, ctx: &GlobalCtx) -> Result<(), VirErr> {
     // It's possible to encode nontermination using trait methods.

@@ -25,7 +25,7 @@ pub enum MiscCall {
     RcNew,
     ArcNew,
     BoxNew,
-    SmartPtrClone { is_method: bool },
+    IdentityClone { is_method: bool },
     GhostExec,
     TrackedNew,
     TrackedExec,
@@ -182,7 +182,7 @@ fn resolved_call_to_call_erase(
             | MiscCall::RcNew
             | MiscCall::ArcNew
             | MiscCall::BoxNew
-            | MiscCall::SmartPtrClone { .. }
+            | MiscCall::IdentityClone { .. }
             | MiscCall::TrackedNew
             | MiscCall::TrackedExec => CallErasure::keep_all(),
 
