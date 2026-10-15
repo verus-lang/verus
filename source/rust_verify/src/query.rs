@@ -1,3 +1,4 @@
+use crate::boundary_suggestions::build_boundary_suggestion;
 use crate::config::Args;
 use crate::context::Context;
 use crate::external::CrateItems;
@@ -27,11 +28,11 @@ pub(crate) struct PreCrate<'tcx> {
 
 /// Used to guarantee that we emitted an error
 #[derive(Clone, Copy)]
-pub(crate) struct ErrorGuaranteed {
+pub(crate) struct QueryError {
     _i_just_emitted_an_error: (),
 }
 
-pub(crate) type Res<T> = Result<T, ErrorGuaranteed>;
+pub(crate) type Res<T> = Result<T, QueryError>;
 
 pub(crate) struct Query<'r, 'tcx> {
     args: Args,
@@ -39,24 +40,24 @@ pub(crate) struct Query<'r, 'tcx> {
     crate_id: CrateId,
 
     /// Imported crates
-    pub cache_other_vir_crates: Option<Res<Arc<Vec<Krate>>>>,
+    cache_other_vir_crates: Option<Res<Arc<Vec<Krate>>>>,
     /// Pre-crate before functions are lowered to VIR and checked in full
-    pub cache_pre_crate: Option<Res<Arc<PreCrate<'tcx>>>>,
+    cache_pre_crate: Option<Res<Arc<PreCrate<'tcx>>>>,
     /// Info used for demoting external traits
-    pub cache_demote_trait_lookup: Option<Res<Arc<DemoteTraitLookup>>>,
+    cache_demote_trait_lookup: Option<Res<Arc<DemoteTraitLookup>>>,
     /// Info used for demoting external traits
-    pub cache_initial_wf_results: Option<Res<InitialWfResults>>,
+    cache_initial_wf_results: Option<Res<InitialWfResults>>,
     /// All function stubs, across this crate and imported crates
-    pub cache_all_function_stubs: Option<Res<Arc<HashMap<Fun, FunctionStub>>>>,
+    cache_all_function_stubs: Option<Res<Arc<HashMap<Fun, FunctionStub>>>>,
     /// Pre-check functions, immediately after translation from HIR
-    pub cache_unchecked_functions: HashMap<Fun, Res<Function>>,
+    cache_unchecked_functions: HashMap<Fun, Res<Function>>,
     /// Completed functions
-    pub cache_checked_functions:
+    cache_checked_functions:
         HashMap<Fun, Res<(Function, Arc<ErasureModes>, Option<Arc<ResolutionInfo>>)>>,
     /// Crate that can be exported
-    pub cache_exportable_crate: Option<Res<Krate>>,
+    cache_exportable_crate: Option<Res<Krate>>,
     /// Crate with trait demotion, resolution inference, merged with imported crates and pruned
-    pub cache_merged_crate: Option<Res<Krate>>,
+    cache_merged_crate: Option<Res<Krate>>,
 
     /// Errors found along the way
     pub encountered_blocking_vir_error: bool,
@@ -93,38 +94,47 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
         }
     }
 
-    fn emit_errors(&mut self, errs: Vec<VirErr>) -> ErrorGuaranteed {
+    fn emit_errors(&mut self, errs: Vec<VirErr>) -> QueryError {
         assert!(errs.len() > 0);
         self.encountered_blocking_vir_error = true;
         for err in errs {
             self.reporter.report_now(&err.to_any());
         }
-        ErrorGuaranteed { _i_just_emitted_an_error: () }
+        QueryError { _i_just_emitted_an_error: () }
     }
 
-    fn emit_error(&mut self, err: VirErr) -> ErrorGuaranteed {
+    fn emit_error(&mut self, err: VirErr) -> QueryError {
         self.emit_errors(vec![err])
     }
 
     fn handle_wf_error(
         &mut self,
+        ctxt: &Context<'tcx>,
         fun: Option<Fun>,
         wf_err: vir::well_formed::WFErr,
-    ) -> ErrorGuaranteed {
+    ) -> QueryError {
         let vir::well_formed::WFErr { errors, boundary_errors, func_failed_proof_notes } = wf_err;
         assert!(errors.len() > 0 || boundary_errors.len() > 0);
         if errors.len() > 0 {
             let err = self.emit_errors(errors);
         }
-        if boundary_errors.len() > 0 {
-            todo!();
+        for (path, mut err) in boundary_errors.into_iter() {
+            let map = ctxt.name_def_id_map.borrow();
+            let did = map.get(&path);
+            if let Some(did) = did {
+                if let Ok(s) = build_boundary_suggestion(&ctxt, *did, &path) {
+                    err = err
+                        .help(format!("The following declaration may resolve this error:\n{}", s));
+                }
+            }
+            self.emit_error(err);
         }
         if let Some(fun) = fun {
             self.record_failed_proof_notes(&fun, func_failed_proof_notes);
         } else {
             assert!(func_failed_proof_notes.is_empty());
         }
-        ErrorGuaranteed { _i_just_emitted_an_error: () }
+        QueryError { _i_just_emitted_an_error: () }
     }
 
     fn handle_per_function_check_results(
@@ -179,7 +189,7 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
                 assert!(err.level == vir::messages::MessageLevel::Error);
                 self.compiler.sess.dcx().err(err.note.clone());
                 self.encountered_vir_error = true;
-                return Err(ErrorGuaranteed {});
+                return Err(QueryError {});
             }
         }
     }*/
@@ -282,6 +292,7 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
 
     fn _compute_initial_wf_results(&mut self) -> Res<InitialWfResults> {
         let pre_crate = self.get_pre_crate()?;
+        let ctxt = &pre_crate.ctxt;
         let other_vir_crates = self.get_other_vir_crates()?;
         let function_stubs = self.get_all_function_stubs()?;
 
@@ -293,7 +304,7 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
         );
         self.emit_non_blocking_errors(non_blocking_errors);
         self.emit_diags(diags);
-        wf.map_err(|e| self.handle_wf_error(None, e))
+        wf.map_err(|e| self.handle_wf_error(ctxt, None, e))
     }
 
     //// Translating an individual function
@@ -350,9 +361,11 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
     fn _compute_checked_function(
         &mut self,
         fun: &Fun,
-    ) -> Result<(Function, Arc<ErasureModes>, Option<Arc<ResolutionInfo>>), ErrorGuaranteed> {
+    ) -> Result<(Function, Arc<ErasureModes>, Option<Arc<ResolutionInfo>>), QueryError> {
         let function = self.get_unchecked_function(fun)?;
         let lookup = self.get_demote_trait_lookup()?;
+        let pre_crate = self.get_pre_crate()?;
+        let ctxt = &pre_crate.ctxt;
 
         // Demote external traits
 
@@ -363,7 +376,6 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
 
         let initial_wf = self.get_initial_wf_results()?;
         let function_stubs = self.get_all_function_stubs()?;
-        let pre_crate = self.get_pre_crate()?;
         let (wf, non_blocking_errors, diags) = vir::well_formed::check_function(
             &pre_crate.krate_without_funs,
             function_stubs.clone(),
@@ -375,7 +387,7 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
         );
         self.emit_non_blocking_errors(non_blocking_errors);
         self.emit_diags(diags);
-        let wf = wf.map_err(|e| self.handle_wf_error(Some(fun.clone()), e))?;
+        let wf = wf.map_err(|e| self.handle_wf_error(ctxt, Some(fun.clone()), e))?;
         self.handle_per_function_check_results(fun, wf);
 
         // Autospec
