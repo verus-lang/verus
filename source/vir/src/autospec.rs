@@ -17,10 +17,13 @@ fn simplify_one_expr(functions: &HashMap<Fun, FunctionStub>, expr: &Expr) -> Res
             post_args,
             body,
         } => {
-            let mut found = functions.contains_key(tgt);
+            let tgt_func = functions.get(tgt);
+            let mut found = tgt_func.is_some();
             match kind {
                 crate::ast::CallTargetKind::DynamicResolved { resolved, .. } => {
-                    found = found && functions.contains_key(resolved);
+                    found = found
+                        && (functions.contains_key(resolved)
+                            || tgt_func.unwrap().x.kind.has_default());
                 }
                 _ => {}
             };

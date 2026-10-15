@@ -183,8 +183,11 @@ fn check_one_typ(
             }
         }
         TypX::FnDef(fun, _typs, opt_res_fun) => {
-            check_function_access(ctxt, fun, None, span, emit)?;
-            if let Some(res_fun) = opt_res_fun {
+            let f = check_path_and_get_function(ctxt, fun, None, span, emit)?;
+            if let Some(res_fun) = opt_res_fun
+                && let Ok(f) = f
+                && !f.x.kind.has_default()
+            {
                 check_function_access(ctxt, res_fun, None, span, emit)?;
             }
             Ok(())
@@ -541,13 +544,15 @@ fn check_one_expr(
                 CallTargetKind::ProofFn(..) => {}
                 CallTargetKind::Dynamic => {}
                 CallTargetKind::DynamicResolved { resolved: resolved_fun, .. } => {
-                    check_function_access(
-                        ctxt,
-                        resolved_fun,
-                        disallow_private_access,
-                        &expr.span,
-                        emit,
-                    )?;
+                    if !f.x.kind.has_default() {
+                        check_function_access(
+                            ctxt,
+                            resolved_fun,
+                            disallow_private_access,
+                            &expr.span,
+                            emit,
+                        )?;
+                    }
                 }
                 CallTargetKind::ExternalTraitDefault => {}
             }
@@ -2293,7 +2298,6 @@ pub fn check_crate_initial(
         check_broadcast_groups(krate)?;
         let (dts, traits) = check_conflicts(krate, other_crates)?;
         let reveal_groups = check_reveal_groups(krate, other_crates, &funs)?;
-        crate::traits::check_no_dupe_impls(krate, other_crates)?;
         Ok((dts, traits, reveal_groups))
     };
     let (dts, traits, reveal_groups) = match checks() {
