@@ -248,6 +248,8 @@ fn handle_autospec<'tcx>(
                     is_async: false,
                     is_drop: false,
                 }),
+                decreases_len: 0,
+                returns: false,
             },
         );
 
@@ -283,6 +285,8 @@ fn finish_autospec<'tcx>(
         outer_ret,
         item_kind,
         attrs,
+        returns: _,
+        decreases_len: _,
     } = function_autospec.x.clone();
     let function_autospec_x = FunctionX {
         name,
@@ -2180,6 +2184,8 @@ pub(crate) fn check_item_fn<'tcx>(
         outer_ret: ret,
         item_kind,
         attrs: fattrs,
+        decreases_len: pre_header.decreases_len,
+        returns: pre_header.returns,
     };
 
     if vattrs.external_fn_specification {
@@ -2272,6 +2278,8 @@ pub(crate) fn finish_function<'tcx>(
         outer_ret,
         item_kind,
         attrs,
+        returns: _,
+        decreases_len: _,
     } = function.x.clone();
     let is_async = attrs.is_async;
 
@@ -2513,6 +2521,8 @@ fn fix_external_fn_specification_trait_method_decl_typs_stub(
             mut outer_ret,
             item_kind,
             attrs,
+            decreases_len,
+            returns,
         } = func;
 
         unsupported_err_unless!(typ_params.len() == 1, span, "type params");
@@ -2554,6 +2564,8 @@ fn fix_external_fn_specification_trait_method_decl_typs_stub(
             outer_ret,
             item_kind,
             attrs,
+            decreases_len,
+            returns,
         })
     } else {
         Ok(func)
@@ -3286,6 +3298,8 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         outer_ret,
         item_kind: if is_static { ItemKind::Static } else { ItemKind::Const },
         attrs: fattrs,
+        decreases_len: pre_header.decreases_len,
+        returns: pre_header.returns,
     };
 
     let autospec = handle_autospec(ctxt, span, id, &vattrs, &functionx)?;
@@ -3350,6 +3364,8 @@ pub(crate) fn finish_const_or_static<'tcx>(
         outer_ret,
         item_kind,
         attrs,
+        decreases_len: _,
+        returns: _,
     } = function.x.clone();
 
     let body = find_body(ctxt, &body_id);

@@ -630,6 +630,8 @@ fn make_trait_decl<'tcx>(
         outer_ret,
         item_kind: _,
         attrs,
+        returns,
+        decreases_len,
     } = spec_method.x.clone();
     let mut methodx = method.x.clone();
     if methodx.attrs.is_async != attrs.is_async {
@@ -717,6 +719,8 @@ fn make_trait_decl<'tcx>(
     methodx.opaqueness = opaqueness;
     methodx.params = params; // this is important; the correct parameter modes are in spec_method
     methodx.outer_ret = outer_ret;
+    methodx.decreases_len = decreases_len;
+    methodx.returns = returns;
     assert!(matches!(spec_method_info.body_id, CheckItemFnEither::BodyId(_)));
     if !matches!(method_info.body_id, CheckItemFnEither::ParamNames(_)) {
         return Err(error(

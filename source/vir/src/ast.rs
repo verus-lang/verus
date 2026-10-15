@@ -1773,6 +1773,8 @@ pub struct FunctionStubX {
     pub outer_ret: Param,
     pub item_kind: ItemKind,
     pub attrs: FunctionAttrs,
+    pub returns: bool,
+    pub decreases_len: usize,
 }
 
 pub type RevealGroup = Arc<Spanned<RevealGroupX>>;

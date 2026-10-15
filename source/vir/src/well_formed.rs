@@ -35,7 +35,7 @@ pub struct CheckDetails {
 }
 
 // REVIEW: why is this a trait?
-trait EmitError {
+pub trait EmitError {
     fn emit(&mut self, err: VirErrAs);
     fn emit_deferred_err(&mut self, err: VirErr);
     fn emit_boundary_err(&mut self, path: Path, err: VirErr);
@@ -654,7 +654,7 @@ fn check_one_expr<Emit: EmitError>(
                         ),
                     ));
                 }
-                if *fuel > 1 && (f.x.mode != Mode::Spec || f.x.decrease.is_empty()) {
+                if *fuel > 1 && (f.x.mode != Mode::Spec || f.x.decreases_len == 0) {
                     return Err(error(
                         &expr.span,
                         "reveal_with_fuel statements require a spec function with a decreases clause",
@@ -951,13 +951,18 @@ fn check_expr<Emit: EmitError>(
     check_result
 }
 
-fn check_function<Emit: EmitError>(
-    ctxt: &Ctxt,
+pub fn check_function<Emit: EmitError>(
+    krate: &Krate,
+    funs: Arc<HashMap<Fun, FunctionStub>>,
+    lookup: Arc<WfLookup>,
     function: &Function,
     emit: &mut Emit,
     warning_ctx: &crate::context::WarningCtx,
     _no_verify: bool,
+    no_cheating: bool,
 ) -> Result<(), VirErr> {
+    let ctxt = Ctxt { funs, lookup, krate, no_cheating };
+
     // TODO remove once `uninterp` is enforced for uninterpreted functions
     let Some(warn_config) = warning_ctx.fun_warn_configs.get(&function.x.name) else {
         panic!("missing warn_config for function {:?}", function.x.name);
@@ -1004,7 +1009,7 @@ fn check_function<Emit: EmitError>(
             }
         }
 
-        if orig_decl.x.returns.is_some() && function.x.returns.is_some() {
+        if orig_decl.x.returns && function.x.returns.is_some() {
             return Err(error(
                 &function.span,
                 "a `returns` clause cannot be declared on both a trait method impl and its declaration",
@@ -1109,7 +1114,7 @@ fn check_function<Emit: EmitError>(
     let outer_ret_name = user_local_name(&function.x.outer_ret.x.name);
     let inner_ret_name = user_local_name(&function.x.inner_ret.x.name);
     for p in function.x.params.iter() {
-        check_typ(ctxt, &p.x.typ, &p.span, emit)?;
+        check_typ(&ctxt, &p.x.typ, &p.span, emit)?;
         let param_name = user_local_name(&p.x.name);
         if param_name == outer_ret_name || param_name == inner_ret_name {
             return Err(error(
@@ -1118,8 +1123,8 @@ fn check_function<Emit: EmitError>(
             ));
         }
     }
-    check_typ(ctxt, &function.x.outer_ret.x.typ, &function.x.outer_ret.span, emit)?;
-    check_typ(ctxt, &function.x.inner_ret.x.typ, &function.x.inner_ret.span, emit)?;
+    check_typ(&ctxt, &function.x.outer_ret.x.typ, &function.x.outer_ret.span, emit)?;
+    check_typ(&ctxt, &function.x.inner_ret.x.typ, &function.x.inner_ret.span, emit)?;
     if !function.x.attrs.is_async {
         assert!(function.x.outer_ret.x.name == function.x.inner_ret.x.name);
         assert!(types_equal(&function.x.outer_ret.x.typ, &function.x.inner_ret.x.typ));
@@ -1373,7 +1378,7 @@ fn check_function<Emit: EmitError>(
         let msg = "'requires' clause of public function";
         let disallow_private_access = Some((&function.x.visibility, msg));
         check_expr(
-            ctxt,
+            &ctxt,
             function,
             req,
             disallow_private_access,
@@ -1386,7 +1391,7 @@ fn check_function<Emit: EmitError>(
         let msg = "'ensures' clause of public function";
         let disallow_private_access = Some((&function.x.visibility, msg));
         check_expr(
-            ctxt,
+            &ctxt,
             function,
             ens,
             disallow_private_access,
@@ -1431,7 +1436,7 @@ fn check_function<Emit: EmitError>(
         let msg = "'requires' clause of public function";
         let disallow_private_access = Some((&function.x.visibility, msg));
         check_expr(
-            ctxt,
+            &ctxt,
             function,
             r,
             disallow_private_access,
@@ -1447,7 +1452,7 @@ fn check_function<Emit: EmitError>(
                 let msg = "'opens_invariants' clause of public function";
                 let disallow_private_access = Some((&function.x.visibility, msg));
                 check_expr(
-                    ctxt,
+                    &ctxt,
                     function,
                     expr,
                     disallow_private_access,
@@ -1461,7 +1466,7 @@ fn check_function<Emit: EmitError>(
             let msg = "'opens_invariants' clause of public function";
             let disallow_private_access = Some((&function.x.visibility, msg));
             check_expr(
-                ctxt,
+                &ctxt,
                 function,
                 expr,
                 disallow_private_access,
@@ -1477,7 +1482,7 @@ fn check_function<Emit: EmitError>(
             let msg = "unwind clause of public function";
             let disallow_private_access = Some((&function.x.visibility, msg));
             check_expr(
-                ctxt,
+                &ctxt,
                 function,
                 expr,
                 disallow_private_access,
@@ -1491,7 +1496,7 @@ fn check_function<Emit: EmitError>(
         let msg = "'decreases' clause of public function";
         let disallow_private_access = Some((&function.x.visibility, msg));
         check_expr(
-            ctxt,
+            &ctxt,
             function,
             expr,
             disallow_private_access,
@@ -1516,7 +1521,7 @@ fn check_function<Emit: EmitError>(
             ));
         }
         check_expr(
-            ctxt,
+            &ctxt,
             function,
             expr,
             disallow_private_access,
@@ -1551,7 +1556,7 @@ fn check_function<Emit: EmitError>(
         } else {
             None
         };
-        check_expr(ctxt, function, body, disallow_private_access, Area::Body, emit, warn_config)?;
+        check_expr(&ctxt, function, body, disallow_private_access, Area::Body, emit, warn_config)?;
     }
 
     if function.x.attrs.is_type_invariant_fn {
@@ -1765,8 +1770,8 @@ fn check_functions_match(
 ///  (i) an issue with our conversion from rust paths to VIR paths not being injective
 ///  (ii) the user's use of external_fn_specification/assume_specification resulting in overlap
 ///  (iii) an existing issue related to traits
-fn func_conflict_error(function1: &Function, function2: &Function) -> Message {
-    let add_label = |err: Message, function: &Function| match &function.x.proxy {
+pub fn func_conflict_error(function1: &FunctionStub, function2: &FunctionStub) -> Message {
+    let add_label = |err: Message, function: &FunctionStub| match &function.x.proxy {
         Some(proxy) => {
             err.primary_label(&proxy.span, "specification declared via `assume_specification`")
         }
@@ -1946,7 +1951,7 @@ fn check_decreases_by_consistency(
                 false,
                 &proof_function,
                 &function,
-            );
+            )?;
         }
         if let Some(spec_fun) = &function.x.attrs.autospec {
             let spec_function = if let Some(spec_function) = funs.get(spec_fun) {
@@ -2005,7 +2010,7 @@ fn check_decreases_by_consistency(
                 true,
                 &spec_function,
                 &function,
-            );
+            )?;
         }
         if function.x.ensure.1.len() > 0
             && !matches!(&function.x.kind, FunctionKind::TraitMethodDecl { .. })

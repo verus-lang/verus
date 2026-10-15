@@ -71,6 +71,10 @@ impl<'tcx> Query<'tcx> {
         //Err(ErrorGuaranteed{})
     }
 
+    fn emit_error(&mut self, err: VirErr) -> ErrorGuaranteed {
+        self.emit_errors(vec![err])
+    }
+
     //// Import crate
 
     pub fn get_other_vir_crates(&mut self) -> Res<Arc<Vec<Krate>>> {
@@ -130,33 +134,22 @@ impl<'tcx> Query<'tcx> {
     }
 
     fn _compute_all_function_stubs(&mut self) -> Res<Arc<HashMap<Fun, FunctionStub>>> {
-        let duplicate_err = |stub: &FunctionStub, s: &mut Self| {
-            let err = vir::messages::error(
-                &stub.span,
-                format!(
-                    "duplicate function entry: {:}",
-                    vir::ast_util::fun_as_friendly_rust_name(&stub.x.name)
-                ),
-            );
-            Err(s.emit_errors(vec![err]))
-        };
-
         // combine all the function stubs from our crate and the external crates
         let other_vir_crates = self.get_other_vir_crates()?;
         let pre_crate = self.get_pre_crate()?;
         let mut stubs = HashMap::new();
         for stub in pre_crate.infos.iter().map(|info| info.iter_stubs()).flatten() {
             let found = stubs.insert(stub.x.name.clone(), stub.clone());
-            if found.is_some() {
-                return duplicate_err(stub, self);
+            if let Some(found) = found {
+                return Err(self.emit_error(vir::well_formed::func_conflict_error(&stub, &found)));
             }
         }
         for krate in other_vir_crates.iter() {
             for function in krate.functions.iter() {
                 let stub = vir::ast_util::function_to_stub(function);
                 let found = stubs.insert(stub.x.name.clone(), stub.clone());
-                if found.is_some() {
-                    return duplicate_err(&stub, self);
+                if let Some(found) = found {
+                    return Err(self.emit_error(vir::well_formed::func_conflict_error(&stub, &found)));
                 }
             }
         }
@@ -208,7 +201,7 @@ impl<'tcx> Query<'tcx> {
                 self.cache_unchecked_functions.get(fun).unwrap().clone()
             }
             Err(err) => {
-                let err = Err(self.emit_errors(vec![err]));
+                let err = Err(self.emit_error(err));
                 for stub in info.iter_stubs() {
                     let found = self
                         .cache_unchecked_functions
@@ -239,7 +232,7 @@ impl<'tcx> Query<'tcx> {
         let lookup = self.get_demote_traits_lookup()?;
 
         let function = vir::traits::demote_external_traits_function_calls(&lookup, &function)
-            .map_err(|e| self.emit_errors(vec![e]))?;
+            .map_err(|e| self.emit_error(e))?;
 
         todo!();
     }
