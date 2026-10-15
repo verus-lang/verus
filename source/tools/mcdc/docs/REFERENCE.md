@@ -176,6 +176,12 @@ Measured on 6d85179, `JOBS=3`, on an Apple M4 Pro (14 cores, 48 GB, macOS 27.0.1
 | later run with `--test modes` (build reused) | 12.2 s |
 | `delta` on a 10-line program | 0.6 s |
 
+At 09d09ee2 (same machine, other jobs running): the all-files build B with the 2,547-entry disable
+list builds and verifies vstd (2060 verified, 0 errors); `vargo test --release -p rust_verify_test`
+on it with no mutant passes 4,778 upstream tests and 220 added tests, 0 failed, 60 ignored.
+`rvt-baseline` (4,998 tests, one process each, `--jobs 4`) took about 16 minutes for 3,720 s of
+test time; the sampled kill run (934 mutants) took about 63 minutes, the recheck 6 minutes.
+
 This README does not give an uninstrumented full-suite time for comparison: it was not measured
 on the same machine in the same conditions. On three test files (modes, recursion, erase; 236
 tests) the prototype measured the same pass/fail results with and without instrumentation and
@@ -310,49 +316,54 @@ error a boxed reversed iterator or a deleted or rewritten statement on a line th
 definite-initialization error a deleted statement, a block that became `()` a skipped error return
 or a deleted statement in the lines of the error) and appends
 `file:line@op` entries to the disable list; `build.sh mutants` then rewrites and rebuilds.
-`mutate-disable.txt` is the list for 6d85179: 1,351 entries (`grep -vc '^#'
-tools/mcdc/mutate-disable.txt`).
+`mutate-disable.txt` is the list for every file at 09d09ee2: 2,547 entries (`grep -vc '^#'
+tools/mcdc/mutate-disable.txt`), regenerated from an empty list with `DISABLE=empty.txt ROUNDS=40
+tools/mcdc/scripts/build.sh mutants OUT` in 38 build rounds. A round removes the sites of the
+errors rustc reports for the crates that fail; borrow errors appear only once a crate type-checks,
+so a crate takes several rounds. The loop stopped three times on errors that fixbuild.py did
+not map to a site (a borrow kept alive by a skipped `return Err` or a deleted reassignment, a match
+arm that became `()`); fixbuild.py now maps them and the loop was resumed with the same list. Entries name files and lines, not mutant ids.
 
 ### Operators
 
-At 6d85179, `mcdc mutate` on mutate-files.txt with mutate-disable.txt (regenerate: `build.sh mutants OUT`, then `cut -f7 OUT/map/mutants.tsv | tail -n +3 | sort | uniq -c`):
+At 09d09ee2, `mcdc mutate` on every file with mutate-disable.txt, and the part of that map in the 23 files of mutate-files.txt (regenerate: `build.sh mutants OUT`, then `cut -f7 OUT/map/mutants.tsv | tail -n +3 | sort | uniq -c`; for the priority column, the rows whose `file` column is in mutate-files.txt):
 
-| class | operator | mutation | mutants |
-|---|---|---|---:|
-| condition | cond-true | atom of a decision, or a single-condition if, while or match guard, forced to true | 2,645 |
-| condition | cond-false | the same, forced to false | 2,645 |
-| condition | cond-negate | the same, negated | 2,116 |
-| condition | decision-negate | whole if condition negated (swaps the branches of an if/else) | 841 |
-| condition | and-or-swap | `&&` replaced by `||` and the reverse | 644 |
-| condition | while-false | while condition forced to false | 12 |
-| datapath-delete | delete-stmt | expression statement skipped (call, method call, assignment, compound assignment, macro other than print/assert/panic) | 3,027 |
-| datapath-delete | skip-err-return | `return Err(..)` statement falls through | 270 |
-| datapath-const | const-plus1 | integer literal + 1 | 1,041 |
-| datapath-const | const-minus1 | integer literal - 1 | 1,041 |
-| datapath-const | index-plus1 | index expression + 1 | 203 |
-| datapath-const | index-minus1 | index expression - 1 | 203 |
-| container | container-iter-rev | `iter()` reversed | 747 |
-| container | container-len-plus1 | `len()` + 1 | 396 |
-| container | container-len-minus1 | `len()` saturating - 1 | 396 |
-| container | container-contains-negate | `contains` negated | 58 |
-| container | container-first-last | `first()` and `last()` swapped | 21 |
-| container | container-insert-absent | `insert` used as a value returns the absent result | 21 |
-| container | container-is-empty-negate | `is_empty` negated | 10 |
-| container | container-retain-negate | `retain` predicate negated | 6 |
-| container | container-remove-absent | `remove` used as a value returns the absent result | 2 |
-| enum | enum-variant | unit variant of Mode, Ghost, InvAtomicity, InequalityOp or IntRange replaced by each other variant | 1,026 |
-| option | option-some-none | `Some(x)` replaced by None | 757 |
-| option | option-get-none | `get` / `get_mut` replaced by None | 148 |
-| option | option-unwrap-or-default | `unwrap_or(d)` replaced by `d` | 8 |
-| datapath-return | ret-true | the same, replaced by true | 179 |
-| datapath-return | ret-negate | bool returned by a `-> bool` function negated | 179 |
-| datapath-return | ret-false | the same, replaced by false | 179 |
-| datapath-error | drop-try | `e?` with an Err replaced by Ok(Default) | 379 |
-| datapath-error | err-to-ok | `Err(..)` value replaced by Ok(Default) | 18 |
-| datapath-compare | rel-boundary | `<` to `<=`, `<=` to `<`, `>` to `>=`, `>=` to `>` | 175 |
-| datapath-compare | eq-flip | `==` and `!=` swapped (outside condition atoms) | 122 |
-| datapath-vec | vec-remove | one element removed from a `vec![..]` of 2 to 16 elements | 210 |
-| total | | | 19,725 |
+| class | operator | mutation | all files | priority files |
+|---|---|---|---:|---:|
+| condition | cond-true | atom of a decision, or a single-condition if, while or match guard, forced to true | 5,017 | 2,667 |
+| condition | cond-false | the same, forced to false | 5,017 | 2,667 |
+| condition | cond-negate | the same, negated | 3,942 | 2,136 |
+| condition | decision-negate | whole if condition negated (swaps the branches of an if/else) | 1,548 | 846 |
+| condition | and-or-swap | `&&` replaced by `||` and the reverse | 1,084 | 649 |
+| condition | while-false | while condition forced to false | 38 | 12 |
+| datapath-delete | delete-stmt | expression statement skipped (call, method call, assignment, compound assignment, macro other than print/assert/panic) | 5,785 | 3,035 |
+| datapath-delete | skip-err-return | `return Err(..)` statement falls through | 460 | 270 |
+| datapath-const | const-plus1 | integer literal + 1 | 2,291 | 1,044 |
+| datapath-const | const-minus1 | integer literal - 1 | 2,291 | 1,044 |
+| datapath-const | index-plus1 | index expression + 1 | 366 | 203 |
+| datapath-const | index-minus1 | index expression - 1 | 366 | 203 |
+| container | container-iter-rev | `iter()` reversed | 1,532 | 745 |
+| container | container-len-plus1 | `len()` + 1 | 802 | 394 |
+| container | container-len-minus1 | `len()` saturating - 1 | 802 | 394 |
+| container | container-contains-negate | `contains` negated | 112 | 58 |
+| container | container-first-last | `first()` and `last()` swapped | 89 | 21 |
+| container | container-insert-absent | `insert` used as a value returns the absent result | 36 | 21 |
+| container | container-is-empty-negate | `is_empty` negated | 34 | 12 |
+| container | container-retain-negate | `retain` predicate negated | 11 | 6 |
+| container | container-remove-absent | `remove` used as a value returns the absent result | 6 | 2 |
+| enum | enum-variant | unit variant of Mode, Ghost, InvAtomicity, InequalityOp or IntRange replaced by each other variant | 1,183 | 1,036 |
+| option | option-some-none | `Some(x)` replaced by None | 1,503 | 742 |
+| option | option-get-none | `get` / `get_mut` replaced by None | 288 | 144 |
+| option | option-unwrap-or-default | `unwrap_or(d)` replaced by `d` | 32 | 8 |
+| datapath-return | ret-true | the same, replaced by true | 438 | 180 |
+| datapath-return | ret-negate | bool returned by a `-> bool` function negated | 438 | 180 |
+| datapath-return | ret-false | the same, replaced by false | 438 | 180 |
+| datapath-error | drop-try | `e?` with an Err replaced by Ok(Default) | 964 | 380 |
+| datapath-error | err-to-ok | `Err(..)` value replaced by Ok(Default) | 137 | 18 |
+| datapath-compare | rel-boundary | `<` to `<=`, `<=` to `<`, `>` to `>=`, `>=` to `>` | 359 | 175 |
+| datapath-compare | eq-flip | `==` and `!=` swapped (outside condition atoms) | 212 | 122 |
+| datapath-vec | vec-remove | one element removed from a `vec![..]` of 2 to 16 elements | 507 | 210 |
+| total | | | 38,128 | 19,804 |
 
 `decision` in mutants.tsv is the atom's own decision for a condition mutant, else the innermost
 guarding decision with the outcome that reaches the mutant (`id:o`, o = 1 for T, 0 for F, k for match
@@ -397,8 +408,12 @@ each process writes, deduplicated, at exit:
 |---|---|
 | `<crate>-<pid>.reach` | `point hash`: the mutation site ran with guard stack `hash` |
 | `<crate>-<pid>.inf` | `id hash`: the mutant would have changed a value or effect there (infection) |
-| `<crate>-<pid>.stacks` | `hash d:o,...`: the stack with that hash, once per distinct stack |
+| `<crate>-<pid>.stacks` | `hash d:o,...`: the stack with that hash, once per distinct stack (its outermost 64 entries) |
 | `<crate>-<pid>.dec` | `d o depth`: the guarded body of decision d was entered with outcome o at that depth |
+
+With `MUTANT_LOG_STACKS=0` the runtime keeps the reach and infection sets only (every entry has hash 0
+and the stacks file is empty); `mutrun.py rvt-baseline` uses it, because rust_verify_test runs need no
+path conditions, and a deeply recursive test wrote a 7.3 GB stacks file before stacks were capped.
 
 Infection is computed beside the original value where that has no side effect: a forced atom infects
 when it differs from the atom's value, a boundary comparison when `<` and `<=` disagree on the
@@ -450,4 +465,15 @@ every kill of a kill matrix (`mutrun.py mutants` writes one), with a lower bound
   test.
 - The cone holds control-dependent mutants only.
 - The kill measurement in the README covers the mutants of the 23 priority files; the other files
-  are mutated in the same build but not measured.
+  are mutated in the same build but not measured. Killed and survived counts are estimated from a
+  5% seeded sample with a 120 s budget per mutant: survived-capped mutants (about 16% of the
+  infected ones) ran only their fastest infecting tests, and some of them would be killed by a
+  slower test.
+- The rust_verify_test oracle is the pass/fail result of a test, coarser than the verdict and
+  messages of `mutrun.py mutants`: a test that expects an error and still gets it under a mutant
+  passes. Two kinds of interference produce false kills and are excluded: two processes running
+  the same test at once (the harness deletes and recreates the test's input directory, so
+  `rvt-mutants` holds a per-test lock), and processes that cannot be spawned when the process table
+  is full. The README numbers come from a run in which every kill of a first run was re-run with
+  its killer first (`--recheck`): 630 of 647 reproduced with the same test, 3 with another test,
+  14 did not; a second recheck of the resulting 633 kills reproduced all of them with the same test.
