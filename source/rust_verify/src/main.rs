@@ -25,12 +25,17 @@ fn os_setup() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 pub fn main() {
+    run_verifier(std::env::args())
+}
+
+pub fn run_verifier(args: impl Iterator<Item = String>) {
     let mut dep_tracker = rust_verify::cargo_verus_dep_tracker::DepTracker::init();
     let via_cargo = dep_tracker.compare_env(rust_verify::cargo_verus::VERUS_DRIVER_VIA_CARGO, "1");
     // For now, verus_builtin, vstd, etc. must be rebuilt for each via_cargo crate:
     let via_cargo_rebuild_verus_libs = via_cargo;
 
-    let mut internal_args = std::env::args();
+    let args: Vec<_> = args.collect();
+    let mut internal_args = args.clone().into_iter();
     let internal_program = internal_args.next().unwrap();
     let (build_test_mode, has_rustc) = if let Some(first_arg) = internal_args.next() {
         match first_arg.as_str() {
@@ -71,7 +76,7 @@ pub fn main() {
         std::process::exit(1);
     }
 
-    let mut args = if build_test_mode || via_cargo { internal_args } else { std::env::args() };
+    let mut args = if build_test_mode || via_cargo { internal_args } else { args.into_iter() };
     let program =
         if build_test_mode || via_cargo { internal_program } else { args.next().unwrap() };
 
