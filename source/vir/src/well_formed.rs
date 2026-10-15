@@ -3,7 +3,7 @@ use crate::ast::{
     BodyVisibility, CallTarget, CallTargetKind, Constant, Datatype, DatatypeTransparency, Dt, Expr,
     ExprX, FieldOpr, Fun, Function, FunctionKind, Krate, MaskSpec, Mode, MultiOp, Opaqueness, Path,
     Pattern, PatternX, Place, PlaceX, Stmt, StmtX, Trait, Typ, TypDecoration, TypX, UnaryOp,
-    UnaryOpr, UnwindSpec, VirErr, VirErrAs, Visibility,
+    UnaryOpr, UnwindSpec, VirErr, VirErrAs, Visibility, FunctionStub,
 };
 use crate::ast_util::{
     ast_expr_get_proof_note, dt_as_friendly_rust_name, fun_as_friendly_rust_name, get_field_or_err,
@@ -22,10 +22,8 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 struct Ctxt<'a> {
-    pub(crate) funs: HashMap<Fun, Function>,
-    pub(crate) reveal_groups: HashSet<Fun>,
-    pub(crate) dts: HashMap<Path, Datatype>,
-    pub(crate) traits: HashMap<Path, Trait>,
+    pub(crate) funs: HashMap<Fun, FunctionStub>,
+    pub(crate) lookup: Arc<WfLookup>,
     pub(crate) krate: &'a Krate,
     unpruned_krate: &'a Krate,
     no_cheating: bool,
@@ -99,7 +97,7 @@ fn check_one_typ<Emit: EmitError>(
             Ok(())
         }
         TypX::Dyn(path, _, _) => {
-            if let Some(tr) = ctxt.traits.get(path) {
+            if let Some(tr) = ctxt.lookup.traits.get(path) {
                 use crate::ast::DynCompatible;
                 match &**tr.x.dyn_compatible.as_ref().expect("dyn_compatible should be Some") {
                     DynCompatible::Accept => Ok(()),
@@ -131,7 +129,7 @@ fn check_one_typ<Emit: EmitError>(
             Ok(())
         }
         TypX::Projection { trait_typ_args: _, trait_path, name } => {
-            if let Some(tr) = ctxt.traits.get(trait_path) {
+            if let Some(tr) = ctxt.lookup.traits.get(trait_path) {
                 if tr.x.assoc_typs.iter().any(|n| n == name) {
                     Ok(())
                 } else {
@@ -194,7 +192,7 @@ fn check_path_and_get_datatype<'a, Emit: EmitError>(
         ctxt.krate.external_types.contains(path)
     }
 
-    match ctxt.dts.get(path) {
+    match ctxt.lookup.dts.get(path) {
         Some(dt) => Ok(Ok(dt.clone())),
         None => {
             if let Some(actual_path) = is_proxy(ctxt, path) {
@@ -241,7 +239,7 @@ fn check_path_and_get_function<'a, Emit: EmitError>(
     disallow_private_access: Option<(&Visibility, &str)>,
     span: &crate::messages::Span,
     emit: &mut Emit,
-) -> Result<Result<Function, ()>, VirErr> {
+) -> Result<Result<FunctionStub, ()>, VirErr> {
     fn is_proxy<'a>(ctxt: &'a Ctxt, path: &Path) -> Option<&'a Path> {
         // Linear scan, but this only happens if this uncommon error message triggers
         for function in &ctxt.unpruned_krate.functions {
@@ -631,7 +629,7 @@ fn check_one_expr<Emit: EmitError>(
             crate::closures::check_closure_well_formed(expr, proof_fn_modes.is_some())?;
         }
         ExprX::Fuel(f, fuel, is_broadcast_use) => {
-            if ctxt.reveal_groups.contains(f) && *fuel == 1 {
+            if ctxt.lookup.reveal_groups.contains(f) && *fuel == 1 {
                 return Ok(());
             }
             let f = check_path_and_get_function(ctxt, f, None, &expr.span, emit)?;
@@ -791,7 +789,7 @@ fn check_one_expr<Emit: EmitError>(
                 "`shr_ref_struct_wrap` operator",
                 emit,
             )?;
-            let datatype = ctxt.dts.get(path).unwrap();
+            let datatype = ctxt.lookup.dts.get(path).unwrap();
             let variant = if datatype.x.variants.len() == 1 && **variant_ident == "" {
                 &datatype.x.variants[0]
             } else {
@@ -958,9 +956,14 @@ fn check_function<Emit: EmitError>(
     ctxt: &Ctxt,
     function: &Function,
     emit: &mut Emit,
-    warn_config: &Option<WarningConfig>,
+    warning_ctx: &crate::context::WarningCtx,
     _no_verify: bool,
 ) -> Result<(), VirErr> {
+    // TODO remove once `uninterp` is enforced for uninterpreted functions
+    let Some(warn_config) = warning_ctx.fun_warn_configs.get(&function.x.name) else {
+        panic!("missing warn_config for function {:?}", function.x.name);
+    };
+
     if let FunctionKind::TraitMethodImpl { method, .. } = &function.x.kind {
         if function.x.require.len() > 0 {
             return Err(error(
@@ -1815,10 +1818,7 @@ pub(crate) fn trait_conflict_error(tr1: &Trait, tr2: &Trait, msg: &str) -> Messa
     err
 }
 
-// Pre-merge check.
-// TODO: We should probably be doing all the checks on the just the pre-merged crate declarations,
-// even if we need to perform lookups from the merged crate.
-pub fn check_one_crate(krate: &Krate) -> Result<(), VirErr> {
+fn check_broadcast_groups(krate: &Krate) -> Result<(), VirErr> {
     let mut reveal_group_default = None;
     for group in krate.reveal_groups.iter() {
         if group.x.broadcast_use_by_default_when_this_crate_is_imported.is_some() {
@@ -1853,31 +1853,12 @@ fn to_wf(v: VirErr) -> WFErr {
     }
 }
 
-/// - diags: for warnings and notes
-/// - deferred_errors: legit errors that nonetheless don't prevent
-///   us from going all the way to VCs
-/// - Err case: normal errors that prevent us from moving onto the next phase
-pub fn check_crate(
-    krate: &Krate,
-    unpruned_krate: &Krate,
-    diags: &mut Vec<VirErrAs>,
-    deferred_errors: &mut Vec<VirErr>,
-    warning_ctx: &crate::context::WarningCtx,
-    no_verify: bool,
-    no_cheating: bool,
-) -> Result<CheckDetails, WFErr> {
-    let mut funs: HashMap<Fun, Function> = HashMap::new();
-    for function in krate.functions.iter() {
-        match funs.get(&function.x.name) {
-            Some(other_function) => {
-                return Err(func_conflict_error(function, other_function)).map_err(to_wf);
-            }
-            None => {}
-        }
-        funs.insert(function.x.name.clone(), function.clone());
-    }
+
+fn check_conflicts(krate: &Krate, other_crates: &[Krate]) ->
+    Result<(HashMap<Path, Datatype>, HashMap<Path, Trait>), VirErr>
+{
     let mut dts: HashMap<Path, Datatype> = HashMap::new();
-    for datatype in krate.datatypes.iter() {
+    for datatype in krate.datatypes.iter().chain(other_crates.iter().map(|k| k.datatypes.iter()).flatten()) {
         let path = match &datatype.x.name {
             Dt::Path(p) => p,
             Dt::Tuple(_) => {
@@ -1886,25 +1867,32 @@ pub fn check_crate(
         };
         match dts.get(path) {
             Some(other_datatype) => {
-                return Err(datatype_conflict_error(datatype, other_datatype)).map_err(to_wf);
+                return Err(datatype_conflict_error(datatype, other_datatype));
             }
             None => {}
         }
         dts.insert(path.clone(), datatype.clone());
     }
     let mut traits: HashMap<Path, Trait> = HashMap::new();
-    for tr in krate.traits.iter() {
+    for tr in krate.traits.iter().chain(other_crates.iter().map(|k| k.traits.iter()).flatten()) {
         match traits.get(&tr.x.name) {
             Some(other_tr) => {
-                return Err(trait_conflict_error(tr, other_tr, "duplicate specification for"))
-                    .map_err(to_wf);
+                return Err(trait_conflict_error(tr, other_tr, "duplicate specification for"));
             }
             None => {}
         }
         traits.insert(tr.x.name.clone(), tr.clone());
     }
-    let reveal_groups: HashSet<Fun> =
-        krate.reveal_groups.iter().map(|g| g.x.name.clone()).collect();
+    Ok((dts, traits))
+}
+
+fn check_decreases_by_consistency(
+    krate: &Krate,
+    diags: &mut Vec<VirErrAs>,
+    warning_ctx: &crate::context::WarningCtx,
+) -> Result<(), VirErr> {
+    let funs: HashMap<Fun, Function> =
+        krate.functions.iter().map(|f| (f.x.name.clone(), f.clone())).collect();
 
     // Check connections between decreases_by specs and proofs
     let mut decreases_by_proof_to_spec: HashMap<Fun, Fun> = HashMap::new();
@@ -1919,15 +1907,14 @@ pub fn check_crate(
                 return Err(error(
                     &function.span,
                     "cannot find function referred to in decreases_by/recommends_by",
-                ))
-                .map_err(to_wf);
+                ));
             };
             if !proof_function.x.attrs.is_decrease_by {
                 return Err(error(
                     &proof_function.span,
                     "proof function must be marked #[verifier::decreases_by] or #[verifier::recommends_by] to be used as decreases_by/recommends_by",
                 )
-                .secondary_span(&function.span)).map_err(to_wf);
+                .secondary_span(&function.span));
             }
             if let Some(prev) = decreases_by_proof_to_spec.get(proof_fun) {
                 return Err(error(
@@ -1935,24 +1922,21 @@ pub fn check_crate(
                     "same proof function used for two different decreases_by/recommends_by",
                 )
                 .secondary_span(&funs[prev].span)
-                .secondary_span(&function.span))
-                .map_err(to_wf);
+                .secondary_span(&function.span));
             }
             if proof_fun.path.pop_segment() != function.x.name.path.pop_segment() {
                 return Err(error(
                     &proof_function.span,
                     "a decreases_by function must be in the same module as the function definition",
                 )
-                .secondary_span(&function.span))
-                .map_err(to_wf);
+                .secondary_span(&function.span));
             }
 
             if proof_function.x.mode != Mode::Proof {
                 return Err(error(
                     &proof_function.span,
                     "decreases_by/recommends_by function must have mode proof",
-                ))
-                .map_err(to_wf);
+                ));
             }
 
             decreases_by_proof_to_spec.insert(proof_fun.clone(), function.x.name.clone());
@@ -1963,8 +1947,7 @@ pub fn check_crate(
                 false,
                 &proof_function,
                 &function,
-            )
-            .map_err(to_wf)?;
+            );
         }
         if let Some(spec_fun) = &function.x.attrs.autospec {
             let spec_function = if let Some(spec_function) = funs.get(spec_fun) {
@@ -1976,16 +1959,14 @@ pub fn check_crate(
                         "cannot find function referred to in when_used_as_spec: {}",
                         fun_as_friendly_rust_name(spec_fun),
                     ),
-                ))
-                .map_err(to_wf);
+                ));
             };
             if function.x.mode != Mode::Exec || spec_function.x.mode != Mode::Spec {
                 return Err(error(
                     &spec_function.span,
                     "when_used_as_spec must point from an exec function to a spec function",
                 )
-                .secondary_span(&function.span))
-                .map_err(to_wf);
+                .secondary_span(&function.span));
             }
             match (&function.x.kind, &spec_function.x.kind) {
                 (
@@ -1997,7 +1978,7 @@ pub fn check_crate(
                         &spec_function.span,
                         "when_used_as_spec on trait declaration must refer to a spec function in the same trait",
                     )
-                    .secondary_span(&function.span)).map_err(to_wf);
+                    .secondary_span(&function.span));
                 }
                 (_, FunctionKind::Static) => {}
                 (_, _) => {
@@ -2007,8 +1988,7 @@ pub fn check_crate(
                         &spec_function.span,
                         "when_used_as_spec must point to a non-trait spec function",
                     )
-                    .secondary_span(&function.span))
-                    .map_err(to_wf);
+                    .secondary_span(&function.span));
                 }
             }
             if !is_visible_to_opt(&spec_function.x.visibility, &function.x.visibility.restricted_to)
@@ -2016,8 +1996,7 @@ pub fn check_crate(
                 return Err(error(
                     &function.span,
                     "when_used_as_spec refers to function which is more private",
-                ))
-                .map_err(to_wf);
+                ));
             }
 
             check_functions_match(
@@ -2027,13 +2006,12 @@ pub fn check_crate(
                 true,
                 &spec_function,
                 &function,
-            )
-            .map_err(to_wf)?;
+            );
         }
         if function.x.ensure.1.len() > 0
             && !matches!(&function.x.kind, FunctionKind::TraitMethodDecl { .. })
         {
-            return Err(error(&function.span, "default_ensures not allowed here")).map_err(to_wf);
+            return Err(error(&function.span, "default_ensures not allowed here"));
         }
         if let FunctionKind::TraitMethodDecl { .. } = &function.x.kind {
             if function.x.body.is_some() {
@@ -2041,8 +2019,7 @@ pub fn check_crate(
                     return Err(error(
                         &function.span,
                         "trait default methods do not yet support recursion and decreases",
-                    ))
-                    .map_err(to_wf);
+                    ));
                 }
             }
         }
@@ -2090,14 +2067,24 @@ pub fn check_crate(
             return Err(error(
                 &function.span,
                 "function cannot be marked #[verifier::decreases_by] or #[verifier::recommends_by] unless it is used in some decreases_by/recommends_by",
-            )).map_err(to_wf);
+            ));
         }
     }
+    Ok(())
+}
+
+fn check_reveal_groups(
+    krate: &Krate,
+    other_krates: &[Krate],
+    all_funs: &HashMap<Fun, FunctionStub>,
+) -> Result<HashSet<Fun>, VirErr> {
+    let reveal_groups: HashSet<Fun> =
+        krate.reveal_groups.iter().map(|g| g.x.name.clone()).collect();
 
     for module in krate.modules.iter() {
         if let Some(reveals) = &module.x.reveals {
             for reveal in reveals.x.iter() {
-                if let Some(function) = funs.get(reveal) {
+                if let Some(function) = all_funs.get(reveal) {
                     if !function.x.attrs.broadcast_forall {
                         return Err(error(
                             &reveals.span,
@@ -2105,8 +2092,7 @@ pub fn check_crate(
                                 "{} is not a broadcast proof fn",
                                 fun_as_friendly_rust_name(reveal)
                             ),
-                        ))
-                        .map_err(to_wf);
+                        ));
                     }
                 } else {
                     assert!(reveal_groups.contains(reveal));
@@ -2117,7 +2103,7 @@ pub fn check_crate(
 
     for reveal_group in krate.reveal_groups.iter() {
         for member in reveal_group.x.members.iter() {
-            if let Some(function) = funs.get(member) {
+            if let Some(function) = all_funs.get(member) {
                 if !function.x.attrs.broadcast_forall {
                     return Err(error(
                         &reveal_group.span,
@@ -2125,32 +2111,49 @@ pub fn check_crate(
                             "{} is not a broadcast proof fn",
                             fun_as_friendly_rust_name(member)
                         ),
-                    ))
-                    .map_err(to_wf);
+                    ));
                 }
             }
         }
     }
 
+    for krate in other_krates.iter() {
+        for group in krate.reveal_groups.iter() {
+            reveal_groups.insert(group.x.name.clone());
+        }
+    }
+
+    Ok(reveal_groups)
+}
+
+pub struct WfLookup {
+    pub reveal_groups: HashSet<Fun>,
+    pub dts: HashMap<Path, Datatype>,
+    pub traits: HashMap<Path, Trait>,
+}
+
+fn check_all_but_functions(
+    krate: &Krate,
+    other_crates: Vec<Krate>,
+    unpruned_krate: &Krate,
+    diags: &mut Vec<VirErrAs>,
+    deferred_errors: &mut Vec<VirErr>,
+    warning_ctx: &crate::context::WarningCtx,
+    no_verify: bool,
+    no_cheating: bool,
+    funs: &HashMap<Fun, FunctionStub>,
+    lookup: Arc<WfLookup>,
+) {
     let mut emit = EmitErrorState {
         boundary_errors: IndexMap::new(),
         diags: vec![],
         func_failed_proof_notes: HashMap::new(),
         deferred_errors: vec![],
     };
-    let ctxt = Ctxt { funs, reveal_groups, dts, traits, krate, unpruned_krate, no_cheating };
+    let ctxt = Ctxt { funs, lookup, krate, unpruned_krate, no_cheating };
 
     let mut errors = vec![];
 
-    // TODO remove once `uninterp` is enforced for uninterpreted functions
-    for function in krate.functions.iter() {
-        let Some(warn_config) = warning_ctx.fun_warn_configs.get(&function.x.name) else {
-            panic!("missing warn_config for function {:?}", function.x.name);
-        };
-        if let Err(e) = check_function(&ctxt, function, &mut emit, warn_config, no_verify) {
-            errors.push(e);
-        }
-    }
     for dt in krate.datatypes.iter() {
         if let Err(e) = check_datatype(&ctxt, dt, &mut emit) {
             errors.push(e);
@@ -2185,7 +2188,54 @@ pub fn check_crate(
         });
     }
 
-    crate::recursive_types::check_recursive_types(krate).map_err(to_wf)?;
-
     Ok(CheckDetails { func_failed_proof_notes: emit.func_failed_proof_notes })
+}
+
+/// - diags: for warnings and notes
+/// - deferred_errors: legit errors that nonetheless don't prevent
+///   us from going all the way to VCs
+/// - Err case: normal errors that prevent us from moving onto the next phase
+pub fn check_crate_initial(
+    krate: &Krate,
+    unpruned_krate: &Krate,
+    diags: &mut Vec<VirErrAs>,
+    deferred_errors: &mut Vec<VirErr>,
+    warning_ctx: &crate::context::WarningCtx,
+    no_verify: bool,
+    no_cheating: bool,
+    krate_functions: Vec<FunctionStub>,
+    funs: &HashMap<Fun, FunctionStub>,
+) -> Result<CheckDetails, WFErr> {
+    check_broadcast_groups(krate).map_err(to_wf)?;
+    let (dts, traits) = check_conflicts(krate)?;
+    let reveal_groups = check_reveal_groups(krate)?;
+    let lookup = WfLookup { dts, traits, reveal_groups };
+    check_all_but_functions(krate, lookup);
+}
+
+/// Check that krate after all funnctions are computed.
+/// This is the krate that gets exported.
+pub fn check_crate_final(
+    krate: &Krate,
+    unpruned_krate: &Krate,
+    diags: &mut Vec<VirErrAs>,
+    deferred_errors: &mut Vec<VirErr>,
+    warning_ctx: &crate::context::WarningCtx,
+    no_verify: bool,
+    no_cheating: bool,
+) -> Result<CheckDetails, WFErr> {
+    check_decreases_by_consistency(krate)?;
+}
+
+/// Check the post-merge krate
+pub fn check_crate_merged(
+    krate: &Krate,
+    unpruned_krate: &Krate,
+    diags: &mut Vec<VirErrAs>,
+    deferred_errors: &mut Vec<VirErr>,
+    warning_ctx: &crate::context::WarningCtx,
+    no_verify: bool,
+    no_cheating: bool,
+) -> Result<CheckDetails, WFErr> {
+    crate::recursive_types::check_recursive_types(krate).map_err(to_wf)?;
 }
