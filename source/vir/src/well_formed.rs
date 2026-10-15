@@ -35,15 +35,19 @@ struct Ctxt<'a> {
     no_cheating: bool,
 }
 
+pub type DynCompatabilityChecks = Arc<IndexMap<Path, Span>>;
+
 #[derive(Clone)]
 pub struct InitialWfResults {
     pub lookup: Arc<WfLookup>,
+    pub dyn_compatability_checks: DynCompatabilityChecks,
 }
 
 /// Details from well-formedness checking.
 pub struct PerFunctionCheckResults {
     /// For each function, collects proof notes that fail due to `--no-cheating`.
     pub func_failed_proof_notes: HashSet<String>,
+    pub dyn_compatability_checks: DynCompatabilityChecks,
 }
 
 pub struct WFErr {
@@ -73,6 +77,7 @@ struct EmitErrorState {
     deferred_errors: Vec<VirErr>,
     /// Warnings, notes
     diags: Vec<VirErrAs>,
+    dyn_compatability_checks: IndexMap<Path, Span>,
 }
 
 impl EmitError for EmitErrorState {
@@ -104,12 +109,62 @@ impl EmitError for EmitErrorState {
     }
 }
 
+/// These checks are delayed because during the initial traversal, the 'dyn_compatible' on the
+/// trait hasn't been computed yet.
+pub fn finish_dyn_compatability_checks(
+    krate: &Krate,
+    checks: Vec<DynCompatabilityChecks>,
+) -> Result<(), Vec<VirErr>> {
+    let mut trait_map = HashMap::new();
+    for traitt in krate.traits.iter() {
+        trait_map.insert(traitt.x.name.clone(), traitt.clone());
+    }
+
+    let mut errors = vec![];
+    for (path, span) in checks.iter().map(|s| s.iter()).flatten() {
+        if let Err(err) = dyn_compatability_check(&trait_map, path, span) {
+            errors.push(err);
+        }
+    }
+    if errors.len() > 0 { Err(errors) } else { Ok(()) }
+}
+
+pub fn dyn_compatability_check(
+    trait_map: &HashMap<Path, Trait>,
+    path: &Path,
+    span: &Span,
+) -> Result<(), VirErr> {
+    if let Some(tr) = trait_map.get(path) {
+        use crate::ast::DynCompatible;
+        match &**tr.x.dyn_compatible.as_ref().expect("dyn_compatible should be Some") {
+            DynCompatible::Accept => Ok(()),
+            DynCompatible::Reject { reason } => {
+                let msg = format!("Trait is not Verus dyn-compatible: {}", reason);
+                Err(error(span, msg))
+            }
+            DynCompatible::RejectUnsizedBlanketImpl { trait_path } => {
+                let name = path_as_friendly_rust_name(trait_path);
+                let msg = format!(
+                    "Verus disallows dyn for trait {} because it has an unsized blanket impl (see https://github.com/rust-lang/rust/issues/57893 )",
+                    name,
+                );
+                Err(error(span, msg))
+            }
+        }
+    } else {
+        Err(error(
+            span,
+            &format!("trait {} not declared to Verus", path_as_friendly_rust_name(path)),
+        ))
+    }
+}
+
 #[warn(unused_must_use)]
-fn check_one_typ<Emit: EmitError>(
+fn check_one_typ(
     ctxt: &Ctxt,
     typ: &Typ,
     span: &crate::messages::Span,
-    emit: &mut Emit,
+    emit: &mut EmitErrorState,
 ) -> Result<(), VirErr> {
     match &**typ {
         TypX::Datatype(Dt::Path(path), _, _) => {
@@ -117,23 +172,9 @@ fn check_one_typ<Emit: EmitError>(
             Ok(())
         }
         TypX::Dyn(path, _, _) => {
-            if let Some(tr) = ctxt.lookup.traits.get(path) {
-                use crate::ast::DynCompatible;
-                match &**tr.x.dyn_compatible.as_ref().expect("dyn_compatible should be Some") {
-                    DynCompatible::Accept => Ok(()),
-                    DynCompatible::Reject { reason } => {
-                        let msg = format!("Trait is not Verus dyn-compatible: {}", reason);
-                        Err(error(span, msg))
-                    }
-                    DynCompatible::RejectUnsizedBlanketImpl { trait_path } => {
-                        let name = path_as_friendly_rust_name(trait_path);
-                        let msg = format!(
-                            "Verus disallows dyn for trait {} because it has an unsized blanket impl (see https://github.com/rust-lang/rust/issues/57893 )",
-                            name,
-                        );
-                        Err(error(span, msg))
-                    }
-                }
+            if ctxt.lookup.traits.contains_key(path) {
+                emit.dyn_compatability_checks.entry(path.clone()).or_insert(span.clone());
+                Ok(())
             } else {
                 Err(error(
                     span,
@@ -173,11 +214,11 @@ fn check_one_typ<Emit: EmitError>(
 }
 
 #[warn(unused_must_use)]
-fn check_typ<Emit: EmitError>(
+fn check_typ(
     ctxt: &Ctxt,
     typ: &Arc<TypX>,
     span: &crate::messages::Span,
-    emit: &mut Emit,
+    emit: &mut EmitErrorState,
 ) -> Result<(), VirErr> {
     crate::ast_visitor::typ_visitor_check(typ, &mut |t| check_one_typ(ctxt, t, span, emit))
 }
@@ -188,11 +229,11 @@ fn check_typ<Emit: EmitError>(
 //   but that the caller can proceed with additional checks to try to find additional errors
 // - Err(...) to indicate that the caller should abort entirely
 #[warn(unused_must_use)]
-fn check_path_and_get_datatype<'a, Emit: EmitError>(
+fn check_path_and_get_datatype<'a>(
     ctxt: &'a Ctxt,
     path: &Path,
     span: &crate::messages::Span,
-    emit: &mut Emit,
+    emit: &mut EmitErrorState,
 ) -> Result<Result<Datatype, ()>, VirErr> {
     fn is_proxy<'a>(ctxt: &'a Ctxt, path: &Path) -> Option<&'a Dt> {
         for (_, dt) in ctxt.lookup.dts.iter() {
@@ -253,12 +294,12 @@ fn check_path_and_get_datatype<'a, Emit: EmitError>(
 // - Ok(Err(())) to indicate that an error was reported via "emit",
 //   but that the caller can proceed with additional checks to try to find additional errors
 // - Err(...) to indicate that the caller should abort entirely
-fn check_path_and_get_function<'a, Emit: EmitError>(
+fn check_path_and_get_function<'a>(
     ctxt: &'a Ctxt,
     x: &Fun,
     disallow_private_access: Option<(&Visibility, &str)>,
     span: &crate::messages::Span,
-    emit: &mut Emit,
+    emit: &mut EmitErrorState,
 ) -> Result<Result<FunctionStub, ()>, VirErr> {
     fn is_proxy<'a>(ctxt: &'a Ctxt, path: &Path) -> Option<&'a Path> {
         // Linear scan, but this only happens if this uncommon error message triggers
@@ -325,14 +366,14 @@ fn check_path_and_get_function<'a, Emit: EmitError>(
     Ok(f)
 }
 
-fn check_datatype_access<Emit: EmitError>(
+fn check_datatype_access(
     ctxt: &Ctxt,
     path: &Path,
     disallow_private_access: Option<(&Visibility, &str)>,
     my_module: &Option<Path>,
     span: &Span,
     access_type: &str,
-    emit: &mut Emit,
+    emit: &mut EmitErrorState,
 ) -> Result<(), VirErr> {
     let dt = check_path_and_get_datatype(ctxt, path, span, emit)?;
     let Ok(dt) = dt else {
@@ -448,24 +489,24 @@ fn check_datatype_access<Emit: EmitError>(
     Ok(())
 }
 
-fn check_function_access<'a, Emit: EmitError>(
+fn check_function_access<'a>(
     ctxt: &'a Ctxt,
     x: &Fun,
     disallow_private_access: Option<(&Visibility, &str)>,
     span: &crate::messages::Span,
-    emit: &mut Emit,
+    emit: &mut EmitErrorState,
 ) -> Result<(), VirErr> {
     let _ = check_path_and_get_function(ctxt, x, disallow_private_access, span, emit)?;
     Ok(())
 }
 
-fn check_one_expr<Emit: EmitError>(
+fn check_one_expr(
     ctxt: &Ctxt,
     function: &Function,
     expr: &Expr,
     disallow_private_access: Option<(&Visibility, &str)>,
     area: Area,
-    emit: &mut Emit,
+    emit: &mut EmitErrorState,
     warn_config: &Option<WarningConfig>,
 ) -> Result<(), VirErr> {
     match &expr.x {
@@ -881,13 +922,13 @@ fn check_one_stmt(_ctxt: &Ctxt, stmt: &Stmt) -> Result<(), VirErr> {
     Ok(())
 }
 
-fn check_one_place<Emit: EmitError>(
+fn check_one_place(
     ctxt: &Ctxt,
     function: &Function,
     place: &Place,
     disallow_private_access: Option<(&Visibility, &str)>,
     _area: Area,
-    emit: &mut Emit,
+    emit: &mut EmitErrorState,
 ) -> Result<(), VirErr> {
     match &place.x {
         PlaceX::Field(
@@ -909,12 +950,12 @@ fn check_one_place<Emit: EmitError>(
     Ok(())
 }
 
-fn check_one_pattern<Emit: EmitError>(
+fn check_one_pattern(
     ctxt: &Ctxt,
     function: &Function,
     pattern: &Pattern,
     disallow_private_access: Option<(&Visibility, &str)>,
-    emit: &mut Emit,
+    emit: &mut EmitErrorState,
 ) -> Result<(), VirErr> {
     match &pattern.x {
         PatternX::Constructor(Dt::Path(path), _id, _binders) => {
@@ -941,13 +982,13 @@ enum Area {
     Body,
 }
 
-fn check_expr<Emit: EmitError>(
+fn check_expr(
     ctxt: &Ctxt,
     function: &Function,
     expr: &Expr,
     disallow_private_access: Option<(&Visibility, &str)>,
     area: Area,
-    emit: &mut Emit,
+    emit: &mut EmitErrorState,
     warn_config: &Option<WarningConfig>,
 ) -> Result<(), VirErr> {
     let check_result = crate::ast_visitor::ast_visitor_check(
@@ -984,6 +1025,7 @@ pub fn check_function(
         diags: vec![],
         func_failed_proof_notes: HashSet::new(),
         deferred_errors: vec![],
+        dyn_compatability_checks: IndexMap::new(),
     };
     let wf = check_function_inner(
         krate,
@@ -997,9 +1039,10 @@ pub fn check_function(
         no_verify,
     );
     let res = match wf {
-        Ok(()) if emit.boundary_errors.len() == 0 => {
-            Ok(PerFunctionCheckResults { func_failed_proof_notes: emit.func_failed_proof_notes })
-        }
+        Ok(()) if emit.boundary_errors.len() == 0 => Ok(PerFunctionCheckResults {
+            func_failed_proof_notes: emit.func_failed_proof_notes,
+            dyn_compatability_checks: Arc::new(emit.dyn_compatability_checks),
+        }),
         _ => Err(WFErr {
             errors: match wf {
                 Ok(()) => vec![],
@@ -1012,13 +1055,13 @@ pub fn check_function(
     (res, emit.deferred_errors, emit.diags)
 }
 
-pub fn check_function_inner<Emit: EmitError>(
+fn check_function_inner(
     krate: &Krate,
     funs: Arc<HashMap<Fun, FunctionStub>>,
     lookup: Arc<WfLookup>,
     demote_trait_lookup: &DemoteTraitLookup,
     function: &Function,
-    emit: &mut Emit,
+    emit: &mut EmitErrorState,
     warning_ctx: &crate::context::WarningCtx,
     no_cheating: bool,
     _no_verify: bool,
@@ -1695,11 +1738,7 @@ pub fn check_function_inner<Emit: EmitError>(
     Ok(())
 }
 
-fn check_datatype<Emit: EmitError>(
-    ctxt: &Ctxt,
-    dt: &Datatype,
-    emit: &mut Emit,
-) -> Result<(), VirErr> {
+fn check_datatype(ctxt: &Ctxt, dt: &Datatype, emit: &mut EmitErrorState) -> Result<(), VirErr> {
     for variant in dt.x.variants.iter() {
         for field in variant.fields.iter() {
             let typ = &field.a.0;
@@ -2194,6 +2233,7 @@ fn check_all_but_functions(
         diags: vec![],
         func_failed_proof_notes: HashSet::new(),
         deferred_errors: vec![],
+        dyn_compatability_checks: IndexMap::new(),
     };
     let ctxt = Ctxt { funs, lookup, krate, no_cheating };
 
@@ -2236,7 +2276,10 @@ fn check_all_but_functions(
     // These only get set during function traversals
     assert!(emit.func_failed_proof_notes.len() == 0);
 
-    let res = InitialWfResults { lookup: ctxt.lookup };
+    let res = InitialWfResults {
+        lookup: ctxt.lookup,
+        dyn_compatability_checks: Arc::new(emit.dyn_compatability_checks),
+    };
     (Ok(res), emit.deferred_errors, emit.diags)
 }
 

@@ -14,7 +14,7 @@ use vir::messages::{MessageLevel, ToAny};
 use vir::modes::ErasureModes;
 use vir::resolution_inference::{ResolutionInfo, krate_infer_resolution};
 use vir::traits::DemoteTraitLookup;
-use vir::well_formed::InitialWfResults;
+use vir::well_formed::{DynCompatabilityChecks, InitialWfResults};
 
 /// Krate without the full functions (i.e., empty function list in the krate)
 /// Instead we have FunctionOrConstInfos which contains FunctionStubs.
@@ -52,8 +52,10 @@ pub(crate) struct Query<'r, 'tcx> {
     /// Pre-check functions, immediately after translation from HIR
     cache_unchecked_functions: HashMap<Fun, Res<Function>>,
     /// Completed functions
-    cache_checked_functions:
-        HashMap<Fun, Res<(Function, Arc<ErasureModes>, Option<Arc<ResolutionInfo>>)>>,
+    cache_checked_functions: HashMap<
+        Fun,
+        Res<(Function, Arc<ErasureModes>, Option<Arc<ResolutionInfo>>, DynCompatabilityChecks)>,
+    >,
     /// Crate that can be exported
     cache_exportable_crate: Option<Res<Krate>>,
     /// Crate with trait demotion, resolution inference, merged with imported crates and pruned
@@ -138,15 +140,6 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
             assert!(func_failed_proof_notes.is_empty());
         }
         QueryError { _i_just_emitted_an_error: () }
-    }
-
-    fn handle_per_function_check_results(
-        &mut self,
-        fun: &Fun,
-        wf_res: vir::well_formed::PerFunctionCheckResults,
-    ) {
-        let vir::well_formed::PerFunctionCheckResults { func_failed_proof_notes } = wf_res;
-        self.record_failed_proof_notes(fun, func_failed_proof_notes);
     }
 
     fn record_failed_proof_notes(&mut self, fun: &Fun, func_failed_proof_notes: HashSet<String>) {
@@ -358,7 +351,8 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
     pub fn get_checked_function(
         &mut self,
         fun: &Fun,
-    ) -> Res<(Function, Arc<ErasureModes>, Option<Arc<ResolutionInfo>>)> {
+    ) -> Res<(Function, Arc<ErasureModes>, Option<Arc<ResolutionInfo>>, DynCompatabilityChecks)>
+    {
         if let Some(f) = self.cache_checked_functions.get(fun) {
             return f.clone();
         }
@@ -370,7 +364,10 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
     fn _compute_checked_function(
         &mut self,
         fun: &Fun,
-    ) -> Result<(Function, Arc<ErasureModes>, Option<Arc<ResolutionInfo>>), QueryError> {
+    ) -> Result<
+        (Function, Arc<ErasureModes>, Option<Arc<ResolutionInfo>>, DynCompatabilityChecks),
+        QueryError,
+    > {
         let function = self.get_unchecked_function(fun)?;
         let lookup = self.get_demote_trait_lookup()?;
         let pre_crate = self.get_pre_crate()?;
@@ -398,7 +395,11 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
         self.emit_non_blocking_errors(non_blocking_errors);
         self.emit_diags(diags);
         let wf = wf.map_err(|e| self.handle_wf_error(ctxt, Some(fun.clone()), e))?;
-        self.handle_per_function_check_results(fun, wf);
+        let vir::well_formed::PerFunctionCheckResults {
+            func_failed_proof_notes,
+            dyn_compatability_checks,
+        } = wf;
+        self.record_failed_proof_notes(fun, func_failed_proof_notes);
 
         // Autospec
 
@@ -416,7 +417,7 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
         let erasure_modes = Arc::new(erasure_modes);
         let resolution_info = resolution_info.map(Arc::new);
 
-        Ok((function, erasure_modes, resolution_info))
+        Ok((function, erasure_modes, resolution_info, dyn_compatability_checks))
     }
 
     //// Getting the completed krate
@@ -430,14 +431,17 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
     }
 
     pub fn _compute_exportable_crate(&mut self) -> Res<Krate> {
+        let initial_wf_results = self.get_initial_wf_results()?;
         let _ = self.get_initial_wf_results()?;
         let pre_crate = self.get_pre_crate()?;
         let mut cratex = (*pre_crate.krate_without_funs).clone();
         let mut found_err = None;
+        let mut all_dyn_compatability_checks = vec![initial_wf_results.dyn_compatability_checks];
         for stub in pre_crate.infos.iter().map(|info| info.iter_stubs()).flatten() {
             match self.get_checked_function(&stub.x.name) {
-                Ok((function, _, _)) => {
+                Ok((function, _, _, dyn_compatability_checks)) => {
                     cratex.functions.push(function);
+                    all_dyn_compatability_checks.push(dyn_compatability_checks);
                 }
                 Err(err) => found_err = Some(err),
             }
@@ -458,6 +462,9 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
         let (check, diags) = vir::well_formed::check_crate_final(&krate, &pre_crate.warning_ctx);
         self.emit_diags(diags);
         let () = check.map_err(|e| self.emit_error(e))?;
+
+        vir::well_formed::finish_dyn_compatability_checks(&krate, all_dyn_compatability_checks)
+            .map_err(|e| self.emit_errors(e))?;
 
         Ok(krate)
     }
@@ -510,11 +517,11 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
         let mut res_infos = HashMap::<Fun, Arc<ResolutionInfo>>::new();
         for stub in pre_crate.infos.iter().map(|info| info.iter_stubs()).flatten() {
             match self.get_checked_function(&stub.x.name) {
-                Ok((_, _, Some(res_info))) => {
+                Ok((_, _, Some(res_info), _)) => {
                     let found = res_infos.insert(stub.x.name.clone(), res_info.clone());
                     assert!(found.is_none());
                 }
-                Ok((_, _, None)) => {}
+                Ok((_, _, None, _)) => {}
                 Err(err) => unreachable!(),
             }
         }
@@ -546,7 +553,7 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
         let pre_crate = self.get_pre_crate()?;
         let mut e = ErasureModes { local_modes: vec![], binder_modes: vec![], ctor_modes: vec![] };
         for stub in pre_crate.infos.iter().map(|info| info.iter_stubs()).flatten() {
-            let (_, erasure_modes, _) = self.get_checked_function(&stub.x.name)?;
+            let (_, erasure_modes, _, _) = self.get_checked_function(&stub.x.name)?;
             merge_erasure_modes(&mut e, erasure_modes);
         }
         Ok(Arc::new(e))
