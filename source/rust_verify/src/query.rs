@@ -4,10 +4,12 @@ use crate::external::CrateItems;
 use crate::import_export::ImportOutput;
 use crate::rust_to_vir_func::FunctionOrConstInfo;
 use crate::rust_to_vir_func::finish_item;
-use std::collections::HashMap;
+use air::messages::Diagnostics;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use vir::ast::{Fun, Function, FunctionStub, Krate, VirErr, VirErrAs};
 use vir::context::WarningCtx;
+use vir::messages::{MessageLevel, ToAny};
 use vir::modes::ErasureModes;
 use vir::traits::DemoteTraitLookup;
 use vir::well_formed::InitialWfResults;
@@ -24,12 +26,15 @@ pub(crate) struct PreCrate<'tcx> {
 
 /// Used to guarantee that we emitted an error
 #[derive(Clone, Copy)]
-pub(crate) struct ErrorGuaranteed {}
+pub(crate) struct ErrorGuaranteed {
+    _i_just_emitted_an_error: (),
+}
 
 pub(crate) type Res<T> = Result<T, ErrorGuaranteed>;
 
-pub(crate) struct Query<'tcx> {
+pub(crate) struct Query<'r, 'tcx> {
     args: Args,
+    reporter: &'r dyn Diagnostics,
 
     /// Imported crates
     pub cache_other_vir_crates: Option<Res<Arc<Vec<Krate>>>>,
@@ -49,13 +54,21 @@ pub(crate) struct Query<'tcx> {
     pub cache_finished_crate: Option<Res<Krate>>,
 
     /// Errors found along the way
+    pub encountered_blocking_vir_error: bool,
     pub encountered_non_blocking_vir_error: bool,
+    pub func_failed_proof_notes: HashMap<Fun, HashSet<String>>,
 }
 
-impl<'tcx> Query<'tcx> {
-    pub fn new(args: Args, other_vir_crates: Vec<Krate>, pre_crate: PreCrate<'tcx>) -> Self {
+impl<'r, 'tcx> Query<'r, 'tcx> {
+    pub fn new(
+        args: Args,
+        reporter: &'r dyn Diagnostics,
+        other_vir_crates: Vec<Krate>,
+        pre_crate: PreCrate<'tcx>,
+    ) -> Self {
         Self {
             args,
+            reporter,
 
             cache_other_vir_crates: Some(Ok(Arc::new(other_vir_crates))),
             cache_pre_crate: Some(Ok(Arc::new(pre_crate))),
@@ -66,13 +79,19 @@ impl<'tcx> Query<'tcx> {
             cache_checked_functions: HashMap::new(),
             cache_finished_crate: None,
 
+            encountered_blocking_vir_error: false,
             encountered_non_blocking_vir_error: false,
+            func_failed_proof_notes: HashMap::new(),
         }
     }
 
-    fn emit_errors(&mut self, err: Vec<VirErr>) -> ErrorGuaranteed {
-        todo!()
-        //Err(ErrorGuaranteed{})
+    fn emit_errors(&mut self, errs: Vec<VirErr>) -> ErrorGuaranteed {
+        assert!(errs.len() > 0);
+        self.encountered_blocking_vir_error = true;
+        for err in errs {
+            self.reporter.report_now(&err.to_any());
+        }
+        ErrorGuaranteed { _i_just_emitted_an_error: () }
     }
 
     fn emit_error(&mut self, err: VirErr) -> ErrorGuaranteed {
@@ -85,17 +104,33 @@ impl<'tcx> Query<'tcx> {
 
     fn handle_per_function_check_results(
         &mut self,
+        fun: &Fun,
         wf_res: vir::well_formed::PerFunctionCheckResults,
     ) {
-        todo!();
+        let vir::well_formed::PerFunctionCheckResults { func_failed_proof_notes } = wf_res;
+        for x in func_failed_proof_notes.iter() {
+            self.func_failed_proof_notes.entry(fun.clone()).or_default().insert(x.clone());
+        }
     }
 
     fn emit_non_blocking_errors(&mut self, errs: Vec<VirErr>) {
-        todo!();
+        self.encountered_non_blocking_vir_error = true;
+        for err in errs {
+            self.reporter.report_now(&err.to_any());
+        }
     }
 
     fn emit_diags(&mut self, diags: Vec<VirErrAs>) {
-        todo!();
+        for diag in diags.into_iter() {
+            match diag {
+                vir::ast::VirErrAs::Warning(err) => {
+                    self.reporter.report_as(&err.to_any(), MessageLevel::Warning)
+                }
+                vir::ast::VirErrAs::Note(err) => {
+                    self.reporter.report_as(&err.to_any(), MessageLevel::Note)
+                }
+            }
+        }
     }
 
     //// Import crate
@@ -258,14 +293,13 @@ impl<'tcx> Query<'tcx> {
                 self.cache_unchecked_functions.get(fun).unwrap().clone()
             }
             Err(err) => {
-                let err = Err(self.emit_error(err));
+                let err = self.emit_error(err);
                 for stub in info.iter_stubs() {
-                    let found = self
-                        .cache_unchecked_functions
-                        .insert(stub.x.name.clone(), Err(ErrorGuaranteed {}));
+                    let found =
+                        self.cache_unchecked_functions.insert(stub.x.name.clone(), Err(err));
                     assert!(found.is_none());
                 }
-                err
+                Err(err)
             }
         }
     }
@@ -305,7 +339,7 @@ impl<'tcx> Query<'tcx> {
         self.emit_non_blocking_errors(non_blocking_errors);
         self.emit_diags(diags);
         let wf = wf.map_err(|e| self.handle_wf_error(e))?;
-        self.handle_per_function_check_results(wf);
+        self.handle_per_function_check_results(fun, wf);
 
         todo!();
     }
