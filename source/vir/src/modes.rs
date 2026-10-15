@@ -3743,7 +3743,7 @@ fn check_function_inner(
     }
 
     if let FunctionKind::TraitMethodImpl { method, trait_path, .. } = &function.x.kind {
-        let our_trait = ctxt.lookup.traits.contains_key(trait_path);
+        let our_trait = ctxt.lookup.merged_traits.trait_map.contains_key(trait_path);
         let (expected_params, expected_ret_mode, expected_proph): (Vec<Mode>, Mode, bool) =
             if our_trait {
                 let trait_method = &ctxt.funs[method];

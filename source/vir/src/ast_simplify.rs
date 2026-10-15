@@ -1687,7 +1687,10 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
     Ok(krate)
 }
 
-pub fn merge_krates(krates: Vec<Krate>) -> Result<Krate, VirErr> {
+pub fn merge_krates(
+    krates: Vec<Krate>,
+    merged_traits: &crate::traits::MergedTraits,
+) -> Result<Krate, VirErr> {
     let merged_arch = krate_merge_arch(&krates[0], &krates[1..])?;
     let mut krates = krates.into_iter();
     let mut kratex: KrateX = (*krates.next().expect("at least one crate")).clone();
@@ -1698,8 +1701,8 @@ pub fn merge_krates(krates: Vec<Krate>) -> Result<Krate, VirErr> {
             reveal_groups,
             datatypes,
             opaque_types,
-            traits,
-            trait_impls,
+            traits: _,
+            trait_impls: _,
             assoc_type_impls,
             modules,
             external_fns,
@@ -1711,14 +1714,14 @@ pub fn merge_krates(krates: Vec<Krate>) -> Result<Krate, VirErr> {
         kratex.reveal_groups.extend(reveal_groups.clone());
         kratex.datatypes.extend(datatypes.clone());
         kratex.opaque_types.extend(opaque_types.clone());
-        kratex.traits.extend(traits.clone());
-        kratex.trait_impls.extend(trait_impls.clone());
         kratex.assoc_type_impls.extend(assoc_type_impls.clone());
         kratex.modules.extend(modules.clone());
         kratex.external_fns.extend(external_fns.clone());
         kratex.external_types.extend(external_types.clone());
         kratex.path_as_rust_names.extend(path_as_rust_names.clone());
     }
+    kratex.traits = merged_traits.traits.clone();
+    kratex.trait_impls = merged_traits.trait_impls.clone();
     Ok(Arc::new(kratex))
 }
 
