@@ -412,6 +412,9 @@ that some baseline run reached with (D, o) on the guard stack (this includes cal
 check` scores the test only on the cone mutants that its own run reaches with the target guard on the
 stack and infects. The cone is control dependence only: a value computed before D and read under D
 is not in it.
+Logged stacks keep their outermost 64 entries, so for a target guard entered deeper than that the
+dynamic cone and `check` can miss mutants but never include one the run did not reach; kills and the
+reach and infection counts do not use stacks.
 
 ### Scripts
 
