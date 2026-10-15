@@ -4,6 +4,7 @@ use crate::config::{Args, CargoVerusArgs, ShowTriggers};
 use crate::context::{ContextX, ErasureInfo};
 use crate::external::VerifOrExternal;
 use crate::externs::VerusExterns;
+use crate::query::{Query, QueryError};
 use crate::rust_to_vir_base::mk_crate_id;
 use crate::spans::{SpanContext, SpanContextX, from_raw_span};
 use crate::user_filter::UserFilter;
@@ -2605,7 +2606,7 @@ impl Verifier {
         spans: &SpanContext,
         other_vir_crates: Vec<Krate>,
         diagnostics: &impl air::messages::Diagnostics,
-    ) -> Result<bool, (Vec<VirErr>, Vec<vir::ast::VirErrAs>)> {
+    ) -> Result<bool, (Vec<VirErr>, Vec<vir::ast::VirErrAs>, Option<QueryError>)> {
         if self.args.no_lifetime {
             rustc_mir_build_verus::verus::set_verus_aware_def_ids(Arc::new(HashSet::new()));
         }
@@ -2636,14 +2637,14 @@ impl Verifier {
                     &self.air_no_span.as_ref().unwrap(),
                     format!("cannot handle more than one crate named `{}`", tcx.crate_name(*c)),
                 );
-                return Err((vec![err], vec![]));
+                return Err((vec![err], vec![], None));
             }
             crate_ids.insert(id);
         }
 
         if !verus_items.name_to_id.contains_key(&VerusItem::ErasedGhostValue) {
             let err = crate::util::no_builtin_err(self.air_no_span.as_ref().unwrap());
-            return Err((vec![err], vec![]));
+            return Err((vec![err], vec![], None));
         }
 
         let erasure_info = ErasureInfo {
@@ -2673,9 +2674,12 @@ impl Verifier {
 
         let ctxt_diagnostics = ctxtx.diagnostics.clone();
         let map_err_diagnostics =
-            |err: VirErr| (vec![err], ctxt_diagnostics.borrow_mut().drain(..).collect());
+            |err: VirErr| (vec![err], ctxt_diagnostics.borrow_mut().drain(..).collect(), None);
         let map_errs_diagnostics =
-            |errs: Vec<VirErr>| (errs, ctxt_diagnostics.borrow_mut().drain(..).collect());
+            |errs: Vec<VirErr>| (errs, ctxt_diagnostics.borrow_mut().drain(..).collect(), None);
+        let map_query_err = |err: QueryError| {
+            (vec![], ctxt_diagnostics.borrow_mut().drain(..).collect(), Some(err))
+        };
 
         let crate_items = crate::external::get_crate_items(&ctxtx).map_err(map_errs_diagnostics)?;
 
@@ -2703,172 +2707,48 @@ impl Verifier {
         let pre_crate = crate::rust_to_vir::crate_to_vir(ctxtx, &other_vir_crates, &crate_items)
             .map_err(map_errs_diagnostics)?;
 
-        let mut query = crate::query::Query::new(
+        self.current_crate_modules = Some(pre_crate.krate_without_funs.modules.clone());
+        self.crate_items = Some(Arc::new(crate_items));
+
+        let mut query = Query::new(
             self.args.clone(),
             diagnostics,
             other_vir_crates,
             pre_crate,
             self.crate_id.clone().unwrap(),
         );
-        let krate = query.get_exportable_crate();
-        let krate = query.get_merged_crate();
+
+        // Export crate if requested.
+        let local_crate = query.get_exportable_crate().map_err(map_query_err)?;
+        let crate_metadata = crate::import_export::CrateMetadata {
+            crate_id: spans.local_crate.as_u64(),
+            original_files: spans.local_files.clone(),
+        };
+        crate::import_export::export_crate(
+            &self.args,
+            &self.export_vir_path_via_cargo,
+            crate_metadata,
+            local_crate.clone(),
+        )
+        .map_err(map_err_diagnostics)?;
+
+        let merged_crate = query.get_merged_crate().map_err(map_query_err)?;
+        self.maybe_log_impl_names(&merged_crate).map_err(map_err_diagnostics)?;
+        self.maybe_log_vir_crate(&merged_crate).map_err(map_err_diagnostics)?;
+
+        for (func, failed_proof_notes) in &query.func_failed_proof_notes {
+            self.record_func_failed_proof_notes(func.clone(), failed_proof_notes.clone());
+        }
+
+        let user_filter =
+            UserFilter::from_args(&self.args, &local_crate).map_err(map_err_diagnostics)?;
+        self.user_filter = Some(user_filter);
 
         todo!();
         /*
-                let (ctxt, mut warning_ctx, vir_crate) =
-                    crate::rust_to_vir::crate_to_vir(ctxtx, &other_vir_crates, &crate_items)
-                        .map_err(map_errs_diagnostics)?;
-
-                let time2 = Instant::now();
-                let vir_crate = vir::ast_sort::sort_krate(&vir_crate);
-                self.current_crate_modules = Some(vir_crate.modules.clone());
-                self.crate_items = Some(Arc::new(crate_items));
-
-                // Export crate if requested.
-                let crate_metadata = crate::import_export::CrateMetadata {
-                    crate_id: spans.local_crate.as_u64(),
-                    original_files: spans.local_files.clone(),
-                };
-
-                let user_filter =
-                    UserFilter::from_args(&self.args, &vir_crate).map_err(map_err_diagnostics)?;
-                self.user_filter = Some(user_filter);
-
-                let mut current_vir_crate = vir_crate.clone();
-
-                // Gather all crates and merge them into one crate.
-                // REVIEW: by merging all the crates into one here, we end up rechecking well_formed/modes
-                // of the library crates, which were already checked when they were exported.
-                // If this turns out to be slow, we could keep the library crates separate from
-                // the new crate.  (We do need to have all the crate definitions available in some form,
-                // because well_formed and modes checking look up definitions from libraries.)
-                // Currently, the most expensive merged-crate operations are (most expensive first):
-                // - ast_simplify::simplify_krate
-                // - modes::check_crate
-                // - traits::demote_foreign_traits
-                // - GlobalCtx::new
-                // - well_formed::check_crate
-                let mut vir_crates: Vec<Krate> = other_vir_crates;
-                vir_crates.push(vir_crate);
-                let unpruned_crate =
-                    vir::ast_simplify::merge_krates(vir_crates).map_err(map_err_diagnostics)?;
-                let (vir_crate, _) = vir::prune::prune_krate_for_module_or_krate(
-                    &unpruned_crate,
-                    &self.crate_id.as_ref().expect("crate_id"),
-                    Some(&current_vir_crate),
-                    None,
-                    None,
-                    false,
-                    false,
-                );
-                let vir_crate =
-                    vir::traits::merge_external_traits(vir_crate).map_err(map_err_diagnostics)?;
-
-                if self.args.log_all || self.args.log_args.log_impl_names {
-                    let mut file = self
-                        .create_log_file(None, crate::config::IMPL_NAMES_SUFFIX)
-                        .map_err(map_err_diagnostics)?;
-                    for imp in &vir_crate.trait_impls {
-                        let ts: Vec<String> =
-                            imp.x.trait_typ_args.iter().map(vir::ast_util::typ_to_diagnostic_str).collect();
-                        writeln!(
-                            &mut file,
-                            "{}   ###   {}   ###   {}   ###   {}",
-                            vir::ast_util::path_as_friendly_rust_name(&imp.x.impl_path),
-                            vir::ast_util::path_as_friendly_rust_name(&imp.x.trait_path),
-                            ts.join(", "),
-                            imp.span.as_string,
-                        )
-                        .map_err(|e| io_vir_err("log_impl_names".to_string(), e))
-                        .map_err(map_err_diagnostics)?;
-                    }
-                }
-
-                Arc::make_mut(&mut current_vir_crate).arch.word_bits = vir_crate.arch.word_bits;
-
-                crate::import_export::export_crate(
-                    &self.args,
-                    &self.export_vir_path_via_cargo,
-                    crate_metadata,
-                    current_vir_crate.clone(),
-                )
-                .map_err(map_err_diagnostics)?;
-
-                if self.args.log_all || self.args.log_args.log_vir {
-                    let mut file = self
-                        .create_log_file(None, crate::config::VIR_FILE_SUFFIX)
-                        .map_err(map_err_diagnostics)?;
-                    vir::printer::write_krate(&mut file, &vir_crate, &self.args.log_args.vir_log_option);
-                }
-
-                let vir_crate = vir::traits::demote_external_traits(diagnostics, &warning_ctx, &vir_crate)
-                    .map_err(map_err_diagnostics)?;
                 let vir_crate = vir::traits::inherit_default_bodies(&vir_crate, &mut warning_ctx)
                     .map_err(|e| (vec![e], Vec::new()))?;
 
-                let check_crate_result1 = vir::well_formed::check_one_crate(&current_vir_crate);
-                let check_crate_result = vir::well_formed::check_crate(
-                    &vir_crate,
-                    &unpruned_crate,
-                    &mut *ctxt.diagnostics.borrow_mut(),
-                    &mut self.deferred_errors,
-                    &warning_ctx,
-                    self.args.no_verify,
-                    self.args.no_cheating,
-                );
-
-                let check_details = match &check_crate_result {
-                    Ok(check_details) => check_details,
-                    Err(e) => &e.check_details,
-                };
-                for (func, failed_proof_notes) in &check_details.func_failed_proof_notes {
-                    self.record_func_failed_proof_notes(func.clone(), failed_proof_notes.clone());
-                }
-
-                // Process errors from well_formed checks
-                let mut all_wf_errors = vec![];
-                if let Err(e) = check_crate_result1 {
-                    all_wf_errors.push(e);
-                }
-                if let Err(vir::well_formed::WFErr { errors, boundary_errors, check_details: _ }) =
-                    check_crate_result
-                {
-                    all_wf_errors.extend(errors);
-                    for (path, mut err) in boundary_errors.into_iter() {
-                        let map = ctxt.name_def_id_map.borrow();
-                        let did = map.get(&path);
-                        if let Some(did) = did {
-                            if let Ok(s) = build_boundary_suggestion(&ctxt, *did, &path) {
-                                err = err.help(format!(
-                                    "The following declaration may resolve this error:\n{}",
-                                    s
-                                ));
-                            }
-                        }
-                        all_wf_errors.push(err);
-                    }
-                }
-                if all_wf_errors.len() > 0 {
-                    return Err((all_wf_errors, ctxt_diagnostics.borrow_mut().drain(..).collect()));
-                }
-
-                let vir_crate =
-                    vir::autospec::resolve_autospec(&vir_crate).map_err(|e| (vec![e], Vec::new()))?;
-                let (vir_crate, erasure_modes) =
-                    vir::modes::check_crate(&vir_crate).map_err(|es| (es, Vec::new()))?;
-
-                // Anonymous constants are translated only for mode checking.
-                // Rust's const evaluator already checks them, so don't verify them.
-                Arc::make_mut(&mut vir_crate).functions.retain(|f| {
-                    !f.x.name
-                        .path
-                        .segments
-                        .last()
-                        .is_some_and(|s| s.starts_with(vir::def::RUST_DEF_ANON_CONST))
-                });
-
-
-                vir::traits::check_no_dupe_impls(&vir_crate).map_err(map_err_diagnostics)?;
                 if self.args.check_api_safety {
                     vir::safe_api::check_safe_api(&vir_crate).map_err(|e| (vec![e], Vec::new()))?;
                 }
@@ -2944,6 +2824,34 @@ impl Verifier {
                 });
             }
         }
+    }
+
+    fn maybe_log_impl_names(&mut self, krate: &Krate) -> Result<(), VirErr> {
+        if self.args.log_all || self.args.log_args.log_impl_names {
+            let mut file = self.create_log_file(None, crate::config::IMPL_NAMES_SUFFIX)?;
+            for imp in &krate.trait_impls {
+                let ts: Vec<String> =
+                    imp.x.trait_typ_args.iter().map(vir::ast_util::typ_to_diagnostic_str).collect();
+                writeln!(
+                    &mut file,
+                    "{}   ###   {}   ###   {}   ###   {}",
+                    vir::ast_util::path_as_friendly_rust_name(&imp.x.impl_path),
+                    vir::ast_util::path_as_friendly_rust_name(&imp.x.trait_path),
+                    ts.join(", "),
+                    imp.span.as_string,
+                )
+                .map_err(|e| io_vir_err("log_impl_names".to_string(), e))?;
+            }
+        }
+        Ok(())
+    }
+
+    fn maybe_log_vir_crate(&mut self, krate: &Krate) -> Result<(), VirErr> {
+        if self.args.log_all || self.args.log_args.log_vir {
+            let mut file = self.create_log_file(None, crate::config::VIR_FILE_SUFFIX)?;
+            vir::printer::write_krate(&mut file, krate, &self.args.log_args.vir_log_option);
+        }
+        Ok(())
     }
 }
 
@@ -3180,14 +3088,14 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             if self.verifier.args.trace {
                 reporter.report_now(&note_bare("preparing crate for verification").to_any());
             }
-            if let Err((errs, mut diagnostics)) = self.verifier.construct_vir_crate(
+            if let Err((errs, mut diagnostics, query_err)) = self.verifier.construct_vir_crate(
                 tcx,
                 verus_items.clone(),
                 &spans,
                 imported.vir_crates,
                 &reporter,
             ) {
-                assert!(errs.len() > 0);
+                assert!(errs.len() > 0 || query_err.is_some());
                 for err in errs.into_iter() {
                     reporter.report_as(&err.to_any(), MessageLevel::Error);
                 }
