@@ -6,6 +6,7 @@ pub mod rewrite;
 
 pub use rewrite::instrument_source;
 
+use crate::edit::Insert;
 use manifest::Decision;
 use std::path::{Path, PathBuf};
 
@@ -71,7 +72,11 @@ fn rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
         if p.is_dir() {
             rs_files(&p, out);
         } else if p.extension().map_or(false, |x| x == "rs")
-            && p.file_name().map_or(false, |n| n != RUNTIME_FILE)
+            && p.file_name().map_or(false, |n| {
+                n != RUNTIME_FILE
+                    && n != crate::mutate::RUNTIME_FILE
+                    && n != crate::mutate::CONSTS_FILE
+            })
         {
             out.push(p);
         }
@@ -82,9 +87,48 @@ fn rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
 /// starting at 1. Writes the runtime next to each crate root (src/lib.rs, src/main.rs). Returns the
 /// decisions (for the manifest) and statistics.
 pub fn instrument_tree(root: &Path, crates: &[String]) -> Result<(Vec<Decision>, Stats), String> {
+    let (d, s, _) = instrument_tree_except(root, crates, &std::collections::HashSet::new())?;
+    Ok((d, s))
+}
+
+/// The `.rs` files of the crates (paths relative to `root`), in the order `instrument_tree` numbers
+/// them, without the runtime files.
+pub fn crate_files(root: &Path, crates: &[String]) -> Result<Vec<String>, String> {
+    let mut out = Vec::new();
+    for krate in crates {
+        let src_dir = root.join(krate).join("src");
+        if !src_dir.is_dir() {
+            return Err(format!("{} is not a directory", src_dir.display()));
+        }
+        let mut files = Vec::new();
+        rs_files(&src_dir, &mut files);
+        for f in files {
+            let rel = f.strip_prefix(root).unwrap().to_string_lossy().replace('\\', "/");
+            if !rel.ends_with(&format!("/{}", crate::mutate::RUNTIME_FILE))
+                && !rel.ends_with(&format!("/{}", crate::mutate::CONSTS_FILE))
+            {
+                out.push(rel);
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// The edits of one file that `instrument_tree_except` did not apply: (original text, edits).
+pub type Pending = std::collections::HashMap<String, (String, Vec<Insert>)>;
+
+/// `instrument_tree`, except that the files in `keep` (paths relative to `root`) are not rewritten:
+/// their MC/DC edits are returned instead, to be applied with other edits. Ids and the manifest do
+/// not depend on `keep`.
+pub fn instrument_tree_except(
+    root: &Path,
+    crates: &[String],
+    keep: &std::collections::HashSet<String>,
+) -> Result<(Vec<Decision>, Stats, Pending), String> {
     let mut next_id: u32 = 1;
     let mut decisions = Vec::new();
     let mut stats = Stats::default();
+    let mut pending = Pending::new();
     for krate in crates {
         let src_dir = root.join(krate).join("src");
         if !src_dir.is_dir() {
@@ -99,7 +143,7 @@ pub fn instrument_tree(root: &Path, crates: &[String]) -> Result<(Vec<Decision>,
             let fname = f.file_name().unwrap().to_string_lossy().to_string();
             let is_root =
                 f.parent() == Some(src_dir.as_path()) && (fname == "lib.rs" || fname == "main.rs");
-            let out = instrument_source(
+            let ins = rewrite::instrument_inserts(
                 &src,
                 &rel,
                 krate,
@@ -108,7 +152,11 @@ pub fn instrument_tree(root: &Path, crates: &[String]) -> Result<(Vec<Decision>,
                 &mut decisions,
                 &mut stats,
             )?;
-            if let Some(out) = out {
+            if keep.contains(&rel) {
+                pending.insert(rel.clone(), (src, ins.unwrap_or_default()));
+            } else if let Some(ins) = ins.filter(|i| !i.is_empty()) {
+                stats.files_changed += 1;
+                let out = crate::edit::render(&src, ins).map_err(|e| format!("{}: {}", rel, e))?;
                 std::fs::write(&f, out).map_err(|e| format!("{}: {}", f.display(), e))?;
             }
             if is_root && !wrote_runtime {
@@ -118,7 +166,7 @@ pub fn instrument_tree(root: &Path, crates: &[String]) -> Result<(Vec<Decision>,
             }
         }
     }
-    Ok((decisions, stats))
+    Ok((decisions, stats, pending))
 }
 
 /// Copies `from` to `to` recursively, skipping build outputs and VCS metadata (`target`,
