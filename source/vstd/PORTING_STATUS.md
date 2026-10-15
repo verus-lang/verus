@@ -10,7 +10,7 @@ easier without scrolling through the much larger `raw_ptr.rs`.
 We're porting its contents, piece by piece, into the new, compositionally-built model in
 `points_to_permissions.rs`, proving what were previously axioms wherever the new concrete
 representation makes that possible. The new model builds `PointsTo<T>` on top of
-`PointsToUnaligned<T>` (which now directly holds a `TypedValue<T>` — a real `Box<T>` when valid —
+`PointsToUnaligned<T>` (which now directly holds a `TypedValue<T>` — a tracked `Tracked<T>` when valid —
 plus a `PointsToUntyped`), which is built on `PointsToUntyped = SeqPointsTo<[u8],
 PointsToSingleton>`, bottoming out at `PointsToSingleton` (the one remaining
 `#[verifier::external_body]` primitive, in `points_to.rs`). Because `PointsToUnaligned<T>` is no

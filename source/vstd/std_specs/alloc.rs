@@ -28,7 +28,8 @@ pub assume_specification<T>[ alloc::intrinsics::write_box_via_move ](
     v: T,
 ) -> (result: alloc::boxed::Box<core::mem::MaybeUninit<T>>)
     ensures
-        result.mem_contents() == TypedValue::Valid(Box::new(v)),
+        result.mem_contents().is_valid(),
+        result.mem_contents().value() == v,
 ;
 
 #[cfg(feature = "alloc")]

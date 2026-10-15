@@ -30,7 +30,8 @@ fn example_pcell_maybe_uninit() {
     let (cell, Tracked(mut points_to)) = un::PCell::new(5);
 
     assert(points_to.id() == cell.id());
-    assert(points_to.mem_contents() == TypedValue::Valid(Box::new(5)));
+    assert(points_to.mem_contents().is_valid());
+    assert(points_to.mem_contents().value() == 5);
 
     let x = cell.take(Tracked(&mut points_to));
     assert(x == 5);
@@ -41,7 +42,8 @@ fn example_pcell_maybe_uninit() {
     cell.put(Tracked(&mut points_to), 17);
 
     assert(points_to.id() == cell.id());
-    assert(points_to.mem_contents() == TypedValue::Valid(Box::new(17)));
+    assert(points_to.mem_contents().is_valid());
+    assert(points_to.mem_contents().value() == 17);
 }
 
 } // verus!
@@ -117,7 +119,8 @@ impl<V> PCell<V> {
     pub const fn new(v: V) -> (pt: (PCell<V>, Tracked<PointsTo<V>>))
         ensures
             pt.1@.id() == pt.0.id(),
-            pt.1@.mem_contents() == TypedValue::Valid(Box::new(v)),
+            pt.1@.mem_contents().is_valid(),
+            pt.1@.mem_contents().value() == v,
     {
         let (pcell, Tracked(pt)) = pc::PCell::new(MaybeUninit::new(v));
         (PCell(pcell), Tracked(PointsTo(pt)))
@@ -130,7 +133,8 @@ impl<V> PCell<V> {
             old(perm).mem_contents() == TypedValue::Empty,
         ensures
             final(perm).id() == self.id(),
-            final(perm).mem_contents() == TypedValue::Valid(Box::new(in_v)),
+            final(perm).mem_contents().is_valid(),
+            final(perm).mem_contents().value() == in_v,
         opens_invariants none
         no_unwind
     {
@@ -161,7 +165,8 @@ impl<V> PCell<V> {
             old(perm).is_init(),
         ensures
             final(perm).id() == old(perm).id(),
-            final(perm).mem_contents() == TypedValue::Valid(Box::new(in_v)),
+            final(perm).mem_contents().is_valid(),
+            final(perm).mem_contents().value() == in_v,
             out_v == old(perm).value(),
         opens_invariants none
         no_unwind
@@ -223,7 +228,8 @@ impl<V> PCell<V> {
             self.id() == old(perm).id(),
         ensures
             final(perm).id() == old(perm).id(),
-            final(perm).mem_contents() == TypedValue::Valid(Box::new(in_v)),
+            final(perm).mem_contents().is_valid(),
+            final(perm).mem_contents().value() == in_v,
         opens_invariants none
         no_unwind
     {

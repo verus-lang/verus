@@ -54,12 +54,13 @@ PointsTo<T>            { pt_unaligned: PointsToUnaligned<T> }          // + alig
 PointsToUnaligned<T>   { val: TypedValue<T>, pt_untyped: PointsToUntyped }
 PointsToUntyped        = SeqPointsTo<[u8], PointsToSingleton>
 PointsToSingleton      // external_body: the single remaining primitive (one byte)
-TypedValue<T>          = Empty | Valid(Box<T>)
+TypedValue<T>          = Empty | Valid(Tracked<T>)
 ```
 
 Consequences:
 
-* A valid permission holds a real `Box<T>`; an empty one holds nothing. Most operations that
+* A valid permission holds a tracked `T` (wrapped in `Tracked<T>` rather than `Box<T>`, so that
+  vstd doesn't depend on `alloc`); an empty one holds nothing. Most operations that
   were axioms (`take`, `put`, `borrow`, `from_untyped`, `into_untyped`, `as_untyped`,
   `as_untyped_mut`) are now proved by manipulating these fields.
 * `SeqPointsTo` has **two** type parameters now: `SeqPointsTo<T, PointsToPerm>`. The old
@@ -113,12 +114,16 @@ Practical rules when migrating:
 | Old | New |
 |---|---|
 | `MemContents<T>` | `TypedValue<T>` |
-| `MemContents::Init(T)` | `TypedValue::Valid(Box<T>)` |
+| `MemContents::Init(T)` | `TypedValue::Valid(Tracked<T>)` (see note below) |
 | `MemContents::Uninit` | `TypedValue::Empty` |
 | `PointsToUnaligned<[u8]>` (raw bytes) | `PointsToUntyped` |
 | `PointsTo<[T]>` | `SeqPointsTo<T, PointsTo<T>>` (see [section 7](#7-slices-use-seqpointstot-pointstot-instead-of-pointstot)) |
 | `SeqPointsTo<T>` | `SeqPointsTo<T, PointsTo<T>>` |
 | `PointsToData { ptr, mem_contents, abstract_bytes }` | `PointsToData { ptr, value, bytes }` |
+
+Note: `Tracked(v)` can't be constructed in spec code, so a spec like
+`x == MemContents::Init(v)` becomes `x.is_valid() && x.value() == v` rather than
+`x == TypedValue::Valid(Tracked(v))`.
 
 ### Spec functions and lemmas
 

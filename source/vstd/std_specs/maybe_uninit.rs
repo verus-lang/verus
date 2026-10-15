@@ -27,7 +27,9 @@ impl<T> MaybeUninitAdditionalSpecFns<T> for MaybeUninit<T> {
 }
 
 pub assume_specification<T>[ MaybeUninit::<T>::new ](val: T) -> (res: MaybeUninit<T>)
-    ensures res.mem_contents() == TypedValue::Valid(Box::new(val)),
+    ensures
+        res.mem_contents().is_valid(),
+        res.mem_contents().value() == val,
     opens_invariants none
     no_unwind;
 

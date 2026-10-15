@@ -572,7 +572,7 @@ pub tracked enum TypedValue<T: ?Sized> {
     /// Represents uninitialized memory.
     Empty,
     /// Represents initialized memory with the given value of type `T`.
-    Valid(Box<T>),
+    Valid(Tracked<T>),
 }
 
 impl<T: ?Sized> TypedValue<T> {
@@ -606,7 +606,7 @@ impl<T> TypedValue<T> {
             out == *self,
     {
         match self {
-            TypedValue::Valid(b) => TypedValue::Valid(Box::new(**b)),
+            TypedValue::Valid(b) => TypedValue::Valid(Tracked(**b)),
             TypedValue::Empty => TypedValue::Empty,
         }
     }
@@ -1383,7 +1383,7 @@ impl<T> PointsTo<T> {
         let tracked mut tmp = TypedValue::Empty;
         super::modes::tracked_swap(&mut tmp, &mut self.pt_unaligned.val);
         match tmp {
-            TypedValue::Valid(b) => *b,
+            TypedValue::Valid(b) => b.get(),
             TypedValue::Empty => proof_from_false(),
         }
     }
@@ -1400,7 +1400,7 @@ impl<T> PointsTo<T> {
             final(self).value() == val,
             final(self).wf(),
     {
-        self.pt_unaligned.val = TypedValue::Valid(Box::new(val));
+        self.pt_unaligned.val = TypedValue::Valid(Tracked(val));
     }
 
     /// Copies the `T` and puts it in the `TypedValue<T>` for `self`, given that `T` is `Copy`.
@@ -2674,10 +2674,12 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         ensures
             final(self).ptr() == old(self).ptr(),
             final(self).bytes() == old(self).bytes(),
-            final(self).seq_typed_value() == old(self).seq_typed_value().update_subrange_with(
-                start,
-                Seq::new(val.len(), |i: int| TypedValue::Valid(Box::new(val[i]))),
-            ),
+            final(self).len() == old(self).len(),
+            final(self).is_valid_subrange(start, val.len()),
+            final(self).value_subrange(start, val.len()) == val,
+            forall|i: int|
+                0 <= i < old(self).len() && !(start <= i < start + val.len())
+                    ==> #[trigger] final(self).seq_typed_value()[i] == old(self).seq_typed_value()[i],
             final(self).wf(),
         decreases val.len(),
     {
@@ -2696,6 +2698,15 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
 
             // Put the rest of the values into the following elements
             self.put_subrange(start + 1, rest);
+
+            // The subrange holds `first` at `start`, followed by `rest`
+            Self::typed_value_equiv(*self, start);
+            assert forall|i: int| start <= i < start + val.len() implies #[trigger] self[i].value()
+                == val[i - start] by {
+                if i > start {
+                    assert(rest[i - start - 1] == val[i - start]);
+                }
+            }
         }
     }
 
@@ -2780,13 +2791,16 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         ensures
             final(self).ptr() == old(self).ptr(),
             final(self).bytes() == old(self).bytes(),
-            final(self).seq_typed_value() == old(self).seq_typed_value().update_subrange_with(
-                start,
-                Seq::new(val.len(), |i: int| TypedValue::Valid(Box::new(val[i]))),
-            ),
+            final(self).len() == old(self).len(),
+            final(self).is_valid_subrange(start, val.len()),
+            final(self).value_subrange(start, val.len()) == val,
+            forall|i: int|
+                0 <= i < old(self).len() && !(start <= i < start + val.len())
+                    ==> #[trigger] final(self).seq_typed_value()[i] == old(self).seq_typed_value()[i],
             final(self).wf(),
     {
         let tracked copied = Self::copy_values(val, val.len());
+        assert(copied =~= *val);
         self.put_subrange(start, copied);
     }
 
@@ -2932,7 +2946,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
     //         final(self).ptr() == old(self).ptr(),
     //         final(self).seq_typed_value() == old(self).seq_typed_value().update_subrange_with(
     //             start,
-    //             Seq::new(ret.len(), |i: int| TypedValue::Valid(Box::new(*final(ret[i])))),
+    //             Seq::new(ret.len(), |i: int| TypedValue::Valid(Tracked(*final(ret[i])))),
     //         ),
     //         Self::ptrs_len_same_valid(*old(self), *final(self)),
     //         final(self).wf(),
@@ -2961,12 +2975,12 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
     //     ));
     //     assert(new_self.seq_typed_value() =~= old_self.seq_typed_value().update_subrange_with(
     //         start,
-    //         Seq::new(ret.len(), |i: int| TypedValue::Valid(Box::new(*final(ret[i])))),
+    //         Seq::new(ret.len(), |i: int| TypedValue::Valid(Tracked(*final(ret[i])))),
     //     )) by {
     //         assert forall|i: int| 0 <= i < new_self.len() implies new_self.seq_typed_value()[i]
     //             == old_self.seq_typed_value().update_subrange_with(
     //             start,
-    //             Seq::new(ret.len(), |i: int| TypedValue::Valid(Box::new(*final(ret[i])))),
+    //             Seq::new(ret.len(), |i: int| TypedValue::Valid(Tracked(*final(ret[i])))),
     //         )[i] by {
     //             if start <= i < end {
     //                 assert(ret[i - start] == ret[i - start]);
