@@ -266,7 +266,7 @@ The analysis is pretty weak right now but could be improved.
 
 use crate::ast::{
     Arm, ArrayKind, BoundsCheck, ByRef, CtorUpdateTail, Datatype, Dt, Expr, ExprX, FieldOpr, Fun,
-    FunWithVis, Function, Ident, Label, Mode, ModeWrapperMode, Params, Path, Pattern,
+    FunWithVis, Function, Ident, Krate, Label, Mode, ModeWrapperMode, Params, Path, Pattern,
     PatternBinding, PatternX, Place, PlaceX, Primitive, ReadKind, SpannedTyped, Stmt, StmtX, Typ,
     TypDecoration, TypX, UnaryOpr, UnfinalizedReadKind, VarBinders, VarIdent, VarIdentDisambiguate,
     VariantCheck, VirErr,
@@ -288,29 +288,87 @@ use air::scope_map::ScopeMap;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
+/// Some inputs needed for the resolution analysis
+pub struct ResolutionInfo {
+    pub(crate) read_kind_finals: ReadKindFinals,
+    pub(crate) typ_inv_info: crate::modes::TypeInvInfo,
+    pub(crate) var_modes: HashMap<VarIdent, Mode>,
+    pub(crate) temporary_modes: HashMap<AstId, Mode>,
+    pub(crate) dual_mode: bool,
+}
+
+pub fn krate_infer_resolution(
+    krate: &Krate,
+    infos: &HashMap<Fun, Arc<ResolutionInfo>>,
+) -> Result<Krate, Vec<VirErr>> {
+    let mut datatypes = HashMap::new();
+    for datatype in krate.datatypes.iter() {
+        let Dt::Path(path) = datatype.x.name.clone() else {
+            return Err(vec![crate::messages::internal_error(
+                &datatype.span,
+                "Dt::Tuple in datatypes before ast_simplify",
+            )]);
+        };
+        datatypes.insert(path, datatype.clone());
+    }
+    let mut functions = HashMap::new();
+    for function in krate.functions.iter() {
+        functions.insert(function.x.name.clone(), function.clone());
+    }
+    let rtypes = ResolutionTypes::new(&datatypes);
+
+    let mut krate = krate.clone();
+    let mut errors = vec![];
+    for function in &mut Arc::make_mut(&mut krate).functions {
+        if let Some(res_info) = infos.get(&function.x.name) {
+            let new_body = infer_resolution(
+                &function.x.params,
+                &function.x.body.as_ref().unwrap(),
+                res_info,
+                &datatypes,
+                &functions,
+                function.x.owning_module.as_ref().unwrap(),
+                &rtypes,
+            );
+            match new_body {
+                Ok(new_body) => {
+                    Arc::make_mut(function).x.body = Some(new_body);
+                }
+                Err(err) => {
+                    errors.push(err);
+                }
+            }
+        }
+    }
+    if errors.len() > 0 { Err(errors) } else { Ok(krate) }
+}
+
 /// Updates the given function body to include assume(has_resolved(...)) nodes
 /// at the appropriate places.
 /// On the side, also handles some work related to user_defined_type_invariants.
 ///
 /// This relies on the AstIds of the given Expr being unique, but it also destroys this property
 /// in the transformation, returning an Expr that may have duplicate AstIds.
-pub(crate) fn infer_resolution(
+fn infer_resolution(
     params: &Params,
     body: &Expr,
-    read_kind_finals: &ReadKindFinals,
+    info: &ResolutionInfo,
     datatypes: &HashMap<Path, Datatype>,
     functions: &HashMap<Fun, Function>,
-    typ_inv_info: &crate::modes::TypeInvInfo,
     module: &Path,
-    var_modes: &HashMap<VarIdent, Mode>,
-    temporary_modes: &HashMap<AstId, Mode>,
     rtypes: &ResolutionTypes,
-    dual_mode: bool,
 ) -> Result<Expr, VirErr> {
-    let (cfg, assigns_to_resolve, typ_inv_obligations, asserts) =
-        new_cfg(params, body, read_kind_finals, datatypes, functions, &var_modes, temporary_modes)?;
+    let (cfg, assigns_to_resolve, typ_inv_obligations, asserts) = new_cfg(
+        params,
+        body,
+        &info.read_kind_finals,
+        datatypes,
+        functions,
+        &info.var_modes,
+        &info.temporary_modes,
+    )?;
     //println!("{:}", pretty_cfg(&cfg));
-    let resolutions = if dual_mode { vec![] } else { get_resolutions(&cfg, rtypes, asserts) };
+    let resolutions = if info.dual_mode { vec![] } else { get_resolutions(&cfg, rtypes, asserts) };
     apply_resolutions(
         &cfg,
         params,
@@ -318,7 +376,7 @@ pub(crate) fn infer_resolution(
         resolutions,
         assigns_to_resolve,
         typ_inv_obligations,
-        typ_inv_info,
+        &info.typ_inv_info,
         module,
     )
 }

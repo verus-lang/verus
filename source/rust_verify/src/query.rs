@@ -11,6 +11,7 @@ use vir::ast::{Fun, Function, FunctionStub, Krate, VirErr, VirErrAs};
 use vir::context::WarningCtx;
 use vir::messages::{MessageLevel, ToAny};
 use vir::modes::ErasureModes;
+use vir::resolution_inference::{ResolutionInfo, krate_infer_resolution};
 use vir::traits::DemoteTraitLookup;
 use vir::well_formed::InitialWfResults;
 
@@ -49,7 +50,8 @@ pub(crate) struct Query<'r, 'tcx> {
     /// Pre-check functions, immediately after translation from HIR
     pub cache_unchecked_functions: HashMap<Fun, Res<Function>>,
     /// Completed functions
-    pub cache_checked_functions: HashMap<Fun, Res<(Function, Arc<ErasureModes>)>>,
+    pub cache_checked_functions:
+        HashMap<Fun, Res<(Function, Arc<ErasureModes>, Option<Arc<ResolutionInfo>>)>>,
     /// Complete krate, with all functions filled in
     pub cache_finished_crate: Option<Res<Krate>>,
 
@@ -306,7 +308,10 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
 
     //// Checking an individual function
 
-    pub fn get_checked_function(&mut self, fun: &Fun) -> Res<(Function, Arc<ErasureModes>)> {
+    pub fn get_checked_function(
+        &mut self,
+        fun: &Fun,
+    ) -> Res<(Function, Arc<ErasureModes>, Option<Arc<ResolutionInfo>>)> {
         if let Some(f) = self.cache_checked_functions.get(fun) {
             return f.clone();
         }
@@ -318,20 +323,24 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
     fn _compute_checked_function(
         &mut self,
         fun: &Fun,
-    ) -> Result<(Function, Arc<ErasureModes>), ErrorGuaranteed> {
+    ) -> Result<(Function, Arc<ErasureModes>, Option<Arc<ResolutionInfo>>), ErrorGuaranteed> {
         let function = self.get_unchecked_function(fun)?;
         let lookup = self.get_demote_traits_lookup()?;
+
+        // Demote external traits
 
         let function = vir::traits::demote_external_traits_function_calls(&lookup, &function)
             .map_err(|e| self.emit_error(e))?;
 
-        let wf = self.get_initial_wf_results()?;
+        // WF checking
+
+        let initial_wf = self.get_initial_wf_results()?;
         let function_stubs = self.get_all_function_stubs()?;
         let pre_crate = self.get_pre_crate()?;
         let (wf, non_blocking_errors, diags) = vir::well_formed::check_function(
             &pre_crate.krate_without_funs,
             function_stubs.clone(),
-            wf.lookup.clone(),
+            initial_wf.lookup.clone(),
             &function,
             &pre_crate.warning_ctx,
             self.args.no_cheating,
@@ -341,7 +350,19 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
         let wf = wf.map_err(|e| self.handle_wf_error(e))?;
         self.handle_per_function_check_results(fun, wf);
 
+        // Mode checking
+
+        let (function, erasure_modes, resolution_info) = vir::modes::check_function(
+            function_stubs.clone(),
+            initial_wf.lookup.clone(),
+            &function,
+        )
+        .map_err(|e| self.emit_errors(e))?;
+        let erasure_modes = Arc::new(erasure_modes);
+        let resolution_info = resolution_info.map(Arc::new);
+
         todo!();
+        Ok((function, erasure_modes, resolution_info))
     }
 
     //// Getting the completed krate
@@ -351,10 +372,15 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
         let pre_crate = self.get_pre_crate()?;
         let mut cratex = (*pre_crate.krate_without_funs).clone();
         let mut found_err = None;
+        let mut res_infos = HashMap::<Fun, Arc<ResolutionInfo>>::new();
         for stub in pre_crate.infos.iter().map(|info| info.iter_stubs()).flatten() {
             match self.get_checked_function(&stub.x.name) {
-                Ok((function, _)) => {
+                Ok((function, _, res_info)) => {
                     cratex.functions.push(function);
+                    if let Some(res_info) = res_info {
+                        let found = res_infos.insert(stub.x.name.clone(), res_info.clone());
+                        assert!(found.is_none());
+                    }
                 }
                 Err(err) => found_err = Some(err),
             }
@@ -362,9 +388,14 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
         if let Some(err) = found_err {
             return Err(err);
         }
+
         let other_vir_crates = self.get_other_vir_crates()?;
         vir::traits::set_krate_dyn_compatibility(&other_vir_crates, &mut cratex);
         let krate = Arc::new(cratex);
+
+        // Resolution inference
+        // This needs to be next to make sure the ResolutionInfo doesn't get stale
+        let krate = krate_infer_resolution(&krate, &res_infos).map_err(|e| self.emit_errors(e))?;
 
         let (check, diags) = vir::well_formed::check_crate_final(&krate, &pre_crate.warning_ctx);
         self.emit_diags(diags);
