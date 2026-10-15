@@ -3,29 +3,26 @@
 
 use super::prelude::*;
 use core::future::*;
+
 verus! {
 
 #[verifier::external_trait_specification]
+#[verifier::external_trait_extension(FutureSpec via FutureSpecImpl)]
 pub trait ExFuture {
     type ExternalTraitSpecificationFor: core::future::Future;
 
     type Output;
-}
 
-pub trait FutureAdditionalSpecFns<T>: Future<Output = T> {
+    /// Whether awaiting this future returns its prophetic view.
+    spec fn obeys_deterministic_future_laws(&self) -> bool;
+
+    /// The value that awaiting this future will return.
     #[verifier::prophetic]
-    spec fn view(&self) -> T;
+    spec fn view(&self) -> Self::Output;
 
+    /// Whether this future has been awaited.
     #[verifier::prophetic]
     spec fn awaited(&self) -> bool;
-}
-
-impl<V, T: Future<Output = V>> FutureAdditionalSpecFns<V> for T {
-    #[verifier::prophetic]
-    uninterp spec fn view(&self) -> V;
-
-    #[verifier::prophetic]
-    uninterp spec fn awaited(&self) -> bool;
 }
 
 // Do not call this function. Call the regular Rust `await` keyword instead.
@@ -36,7 +33,7 @@ fn exec_await<F: Future>(
 ) -> (ret: F::Output)
     ensures
         future.awaited() == true,
-        ret == future@,
+        future.obeys_deterministic_future_laws() ==> ret == future@,
     opens_invariants any
 {
     unimplemented!()

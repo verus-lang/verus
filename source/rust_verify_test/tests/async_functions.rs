@@ -56,6 +56,7 @@ test_verify_one_file! {
         }
         async fn bar() {
             let future = foo();
+            assert(future.obeys_deterministic_future_laws());
             assert(future.awaited() ==> future@ == 1);
             let ret = future.await;
             assert(ret == 1);
@@ -96,6 +97,7 @@ test_verify_one_file! {
 
         async fn foo_of_foo() -> (ret: impl Future<Output = usize>)
             ensures
+                ret.obeys_deterministic_future_laws(),
                 ret.awaited() ==> ret@ == 233,
         {
             foo()
@@ -268,4 +270,86 @@ test_verify_one_file! {
             return 3;
         }
     } => Err(err) => assert_vir_error_msg(err, "return type does not match binder in ensures")
+}
+
+test_verify_one_file! {
+    #[test] custom_future_poll_requires_external_body verus_code! {
+        use vstd::prelude::*;
+        use core::future::Future;
+        use std::pin::Pin;
+        use std::task::{Context, Poll};
+
+        struct CustomFuture;
+
+        impl Future for CustomFuture {
+            type Output = u64;
+
+            fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<u64> {
+                Poll::Ready(0)
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "an implementation of `Future::poll` must be marked `#[verifier::external_body]`")
+}
+
+test_verify_one_file! {
+    #[test] custom_future_without_deterministic_laws verus_code! {
+        use vstd::prelude::*;
+        use vstd::future::*;
+        use core::future::Future;
+        use std::pin::Pin;
+        use std::task::{Context, Poll};
+
+        #[verifier::external_type_specification]
+        pub struct ExPoll<T>(Poll<T>);
+
+        #[verifier::external_type_specification]
+        #[verifier::external_body]
+        #[verifier::reject_recursive_types(P)]
+        pub struct ExPin<P>(Pin<P>);
+
+        #[verifier::external_type_specification]
+        #[verifier::external_body]
+        pub struct ExContext<'a>(Context<'a>);
+
+        struct CustomFuture;
+
+        impl Future for CustomFuture {
+            type Output = u64;
+
+            #[verifier::external_body]
+            fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<u64> {
+                Poll::Ready(0)
+            }
+        }
+
+        impl FutureSpecImpl for CustomFuture {
+            open spec fn obeys_deterministic_future_laws(&self) -> bool {
+                false
+            }
+
+            #[verifier::prophetic]
+            uninterp spec fn view(&self) -> u64;
+
+            #[verifier::prophetic]
+            uninterp spec fn awaited(&self) -> bool;
+        }
+
+        async fn equality_is_unknown() {
+            let future1 = CustomFuture;
+            let future2 = CustomFuture;
+            assert(future1 == future2);
+            let output1 = future1.await;
+            let output2 = future2.await;
+            assert(output1 == output2); // FAILS
+        }
+
+        async fn inequality_is_unknown() {
+            let future1 = CustomFuture;
+            let future2 = CustomFuture;
+            assert(future1 == future2);
+            let output1 = future1.await;
+            let output2 = future2.await;
+            assert(output1 != output2); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
 }
