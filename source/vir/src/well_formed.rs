@@ -25,7 +25,6 @@ struct Ctxt<'a> {
     pub(crate) funs: Arc<HashMap<Fun, FunctionStub>>,
     pub(crate) lookup: Arc<WfLookup>,
     pub(crate) krate: &'a Krate,
-    unpruned_krate: &'a Krate,
     no_cheating: bool,
 }
 
@@ -175,7 +174,7 @@ fn check_path_and_get_datatype<'a, Emit: EmitError>(
     emit: &mut Emit,
 ) -> Result<Result<Datatype, ()>, VirErr> {
     fn is_proxy<'a>(ctxt: &'a Ctxt, path: &Path) -> Option<&'a Dt> {
-        for dt in &ctxt.unpruned_krate.datatypes {
+        for (_, dt) in &ctxt.lookup.dts {
             match &dt.x.proxy {
                 Some(proxy) => {
                     if &proxy.x == path {
@@ -242,7 +241,7 @@ fn check_path_and_get_function<'a, Emit: EmitError>(
 ) -> Result<Result<FunctionStub, ()>, VirErr> {
     fn is_proxy<'a>(ctxt: &'a Ctxt, path: &Path) -> Option<&'a Path> {
         // Linear scan, but this only happens if this uncommon error message triggers
-        for function in &ctxt.unpruned_krate.functions {
+        for (_, function) in ctxt.funs.iter() {
             match &function.x.proxy {
                 Some(proxy) => {
                     if &proxy.x == path {
@@ -2079,7 +2078,9 @@ fn check_reveal_groups(
     all_funs: &HashMap<Fun, FunctionStub>,
 ) -> Result<HashSet<Fun>, VirErr> {
     let reveal_groups: HashSet<Fun> =
-        krate.reveal_groups.iter().map(|g| g.x.name.clone()).collect();
+        krate.reveal_groups.iter()
+            .chain(other_krates.iter().map(|k| k.reveal_groups.iter()).flatten())
+            .map(|g| g.x.name.clone()).collect();
 
     for module in krate.modules.iter() {
         if let Some(reveals) = &module.x.reveals {
@@ -2117,12 +2118,6 @@ fn check_reveal_groups(
         }
     }
 
-    for krate in other_krates.iter() {
-        for group in krate.reveal_groups.iter() {
-            reveal_groups.insert(group.x.name.clone());
-        }
-    }
-
     Ok(reveal_groups)
 }
 
@@ -2132,25 +2127,27 @@ pub struct WfLookup {
     pub traits: HashMap<Path, Trait>,
 }
 
+
+/// - diags: for warnings and notes
+/// - deferred_errors: legit errors that nonetheless don't prevent
+///   us from going all the way to VCs
+/// - Err case: normal errors that prevent us from moving onto the next phase
+
 fn check_all_but_functions(
     krate: &Krate,
-    other_crates: Vec<Krate>,
-    unpruned_krate: &Krate,
     diags: &mut Vec<VirErrAs>,
     deferred_errors: &mut Vec<VirErr>,
-    warning_ctx: &crate::context::WarningCtx,
-    no_verify: bool,
     no_cheating: bool,
     funs: Arc<HashMap<Fun, FunctionStub>>,
     lookup: Arc<WfLookup>,
-) {
+) -> Result<CheckDetails, WFErr> {
     let mut emit = EmitErrorState {
         boundary_errors: IndexMap::new(),
         diags: vec![],
         func_failed_proof_notes: HashMap::new(),
         deferred_errors: vec![],
     };
-    let ctxt = Ctxt { funs, lookup, krate, unpruned_krate, no_cheating };
+    let ctxt = Ctxt { funs, lookup, krate, no_cheating };
 
     let mut errors = vec![];
 
@@ -2191,51 +2188,34 @@ fn check_all_but_functions(
     Ok(CheckDetails { func_failed_proof_notes: emit.func_failed_proof_notes })
 }
 
-/// - diags: for warnings and notes
-/// - deferred_errors: legit errors that nonetheless don't prevent
-///   us from going all the way to VCs
-/// - Err case: normal errors that prevent us from moving onto the next phase
 pub fn check_crate_initial(
     krate: &Krate,
-    unpruned_krate: &Krate,
+    other_crates: &[Krate],
+    funs: Arc<HashMap<Fun, FunctionStub>>,
     diags: &mut Vec<VirErrAs>,
     deferred_errors: &mut Vec<VirErr>,
-    warning_ctx: &crate::context::WarningCtx,
-    no_verify: bool,
     no_cheating: bool,
-    krate_functions: Vec<FunctionStub>,
-    funs: Arc<HashMap<Fun, FunctionStub>>,
 ) -> Result<CheckDetails, WFErr> {
     check_broadcast_groups(krate).map_err(to_wf)?;
-    let (dts, traits) = check_conflicts(krate)?;
-    let reveal_groups = check_reveal_groups(krate)?;
-    let lookup = WfLookup { dts, traits, reveal_groups };
-    check_all_but_functions(krate, funs, lookup);
+    let (dts, traits) = check_conflicts(krate, other_crates).map_err(to_wf)?;
+    let reveal_groups = check_reveal_groups(krate, other_crates, &funs).map_err(to_wf)?;
+    let lookup = Arc::new(WfLookup { dts, traits, reveal_groups });
+    check_all_but_functions(krate, diags, deferred_errors, no_cheating, funs, lookup)
 }
 
 /// Check that krate after all funnctions are computed.
 /// This is the krate that gets exported.
 pub fn check_crate_final(
     krate: &Krate,
-    unpruned_krate: &Krate,
     diags: &mut Vec<VirErrAs>,
-    deferred_errors: &mut Vec<VirErr>,
     warning_ctx: &crate::context::WarningCtx,
-    no_verify: bool,
-    no_cheating: bool,
-) -> Result<CheckDetails, WFErr> {
-    check_decreases_by_consistency(krate)?;
+) -> Result<(), VirErr> {
+    check_decreases_by_consistency(krate, diags, warning_ctx)
 }
 
 /// Check the post-merge krate
 pub fn check_crate_merged(
     krate: &Krate,
-    unpruned_krate: &Krate,
-    diags: &mut Vec<VirErrAs>,
-    deferred_errors: &mut Vec<VirErr>,
-    warning_ctx: &crate::context::WarningCtx,
-    no_verify: bool,
-    no_cheating: bool,
-) -> Result<CheckDetails, WFErr> {
-    crate::recursive_types::check_recursive_types(krate).map_err(to_wf)?;
+) -> Result<(), VirErr> {
+    crate::recursive_types::check_recursive_types(krate)
 }
