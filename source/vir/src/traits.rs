@@ -240,7 +240,7 @@ pub fn method_if_not_demoted(
 
 // We consider methods for external traits to be static.
 pub fn demote_external_traits(
-    diagnostics: &impl air::messages::Diagnostics,
+    diagnostics: &(impl air::messages::Diagnostics + ?Sized),
     warning_ctx: &crate::context::WarningCtx,
     krate: &Krate,
     lookup: &DemoteTraitLookup,

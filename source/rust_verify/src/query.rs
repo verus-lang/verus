@@ -42,7 +42,7 @@ pub(crate) struct Query<'r, 'tcx> {
     /// Pre-crate before functions are lowered to VIR and checked in full
     pub cache_pre_crate: Option<Res<Arc<PreCrate<'tcx>>>>,
     /// Info used for demoting external traits
-    pub cache_demote_traits_lookup: Option<Res<Arc<DemoteTraitLookup>>>,
+    pub cache_demote_trait_lookup: Option<Res<Arc<DemoteTraitLookup>>>,
     /// Info used for demoting external traits
     pub cache_initial_wf_results: Option<Res<InitialWfResults>>,
     /// All function stubs, across this crate and imported crates
@@ -52,8 +52,10 @@ pub(crate) struct Query<'r, 'tcx> {
     /// Completed functions
     pub cache_checked_functions:
         HashMap<Fun, Res<(Function, Arc<ErasureModes>, Option<Arc<ResolutionInfo>>)>>,
-    /// Complete krate, with all functions filled in
-    pub cache_finished_crate: Option<Res<Krate>>,
+    /// Crate that can be exported
+    pub cache_exportable_crate: Option<Res<Krate>>,
+    /// Crate with trait demotion, resolution inference, merged with imported crates and pruned
+    pub cache_merged_crate: Option<Res<Krate>>,
 
     /// Errors found along the way
     pub encountered_blocking_vir_error: bool,
@@ -74,12 +76,13 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
 
             cache_other_vir_crates: Some(Ok(Arc::new(other_vir_crates))),
             cache_pre_crate: Some(Ok(Arc::new(pre_crate))),
-            cache_demote_traits_lookup: None,
+            cache_demote_trait_lookup: None,
             cache_initial_wf_results: None,
             cache_all_function_stubs: None,
             cache_unchecked_functions: HashMap::new(),
             cache_checked_functions: HashMap::new(),
-            cache_finished_crate: None,
+            cache_exportable_crate: None,
+            cache_merged_crate: None,
 
             encountered_blocking_vir_error: false,
             encountered_non_blocking_vir_error: false,
@@ -242,17 +245,17 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
 
     //// DemoteTraitsLookup
 
-    pub fn get_demote_traits_lookup(&mut self) -> Res<Arc<DemoteTraitLookup>> {
-        if let Some(demote_traits_lookup) = &self.cache_demote_traits_lookup {
-            return demote_traits_lookup.clone();
+    pub fn get_demote_trait_lookup(&mut self) -> Res<Arc<DemoteTraitLookup>> {
+        if let Some(demote_trait_lookup) = &self.cache_demote_trait_lookup {
+            return demote_trait_lookup.clone();
         }
-        self.cache_demote_traits_lookup = Some(self._compute_demote_traits_lookup());
-        self.cache_demote_traits_lookup.clone().unwrap()
+        self.cache_demote_trait_lookup = Some(self._compute_demote_trait_lookup());
+        self.cache_demote_trait_lookup.clone().unwrap()
     }
 
-    pub fn _compute_demote_traits_lookup(&mut self) -> Res<Arc<DemoteTraitLookup>> {
-        if let Some(demote_traits_lookup) = &self.cache_demote_traits_lookup {
-            return demote_traits_lookup.clone();
+    pub fn _compute_demote_trait_lookup(&mut self) -> Res<Arc<DemoteTraitLookup>> {
+        if let Some(demote_trait_lookup) = &self.cache_demote_trait_lookup {
+            return demote_trait_lookup.clone();
         }
         let other_vir_crates = self.get_other_vir_crates()?;
         let pre_crate = self.get_pre_crate()?;
@@ -346,7 +349,7 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
         fun: &Fun,
     ) -> Result<(Function, Arc<ErasureModes>, Option<Arc<ResolutionInfo>>), ErrorGuaranteed> {
         let function = self.get_unchecked_function(fun)?;
-        let lookup = self.get_demote_traits_lookup()?;
+        let lookup = self.get_demote_trait_lookup()?;
 
         // Demote external traits
 
@@ -395,20 +398,23 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
 
     //// Getting the completed krate
 
-    pub fn get_finished_crate(&mut self) -> Res<Krate> {
+    pub fn get_exportable_crate(&mut self) -> Res<Krate> {
+        if let Some(exportable_crate) = &self.cache_exportable_crate {
+            return exportable_crate.clone();
+        }
+        self.cache_exportable_crate = Some(self._compute_exportable_crate());
+        self.cache_exportable_crate.clone().unwrap()
+    }
+
+    pub fn _compute_exportable_crate(&mut self) -> Res<Krate> {
         let _ = self.get_initial_wf_results()?;
         let pre_crate = self.get_pre_crate()?;
         let mut cratex = (*pre_crate.krate_without_funs).clone();
         let mut found_err = None;
-        let mut res_infos = HashMap::<Fun, Arc<ResolutionInfo>>::new();
         for stub in pre_crate.infos.iter().map(|info| info.iter_stubs()).flatten() {
             match self.get_checked_function(&stub.x.name) {
-                Ok((function, _, res_info)) => {
+                Ok((function, _, _)) => {
                     cratex.functions.push(function);
-                    if let Some(res_info) = res_info {
-                        let found = res_infos.insert(stub.x.name.clone(), res_info.clone());
-                        assert!(found.is_none());
-                    }
                 }
                 Err(err) => found_err = Some(err),
             }
@@ -421,13 +427,50 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
         vir::traits::set_krate_dyn_compatibility(&other_vir_crates, &mut cratex);
         let krate = Arc::new(cratex);
 
-        // Resolution inference
-        // This needs to be next to make sure the ResolutionInfo doesn't get stale
-        let krate = krate_infer_resolution(&krate, &res_infos).map_err(|e| self.emit_errors(e))?;
-
         let (check, diags) = vir::well_formed::check_crate_final(&krate, &pre_crate.warning_ctx);
         self.emit_diags(diags);
         let () = check.map_err(|e| self.emit_error(e))?;
+
+        Ok(krate)
+    }
+
+    //// Getting the merged krate
+
+    pub fn get_merged_crate(&mut self) -> Res<Krate> {
+        if let Some(merged_crate) = &self.cache_merged_crate {
+            return merged_crate.clone();
+        }
+        self.cache_merged_crate = Some(self._compute_merged_crate());
+        self.cache_merged_crate.clone().unwrap()
+    }
+
+    pub fn _compute_merged_crate(&mut self) -> Res<Krate> {
+        let krate = self.get_exportable_crate()?;
+        let pre_crate = self.get_pre_crate()?;
+        let demote_trait_lookup = self.get_demote_trait_lookup()?;
+
+        // Demote external traits
+        let krate = vir::traits::demote_external_traits(
+            self.reporter,
+            &pre_crate.warning_ctx,
+            &krate,
+            &demote_trait_lookup
+        ).map_err(|e| self.emit_error(e))?;
+
+        // Resolution inference
+        // Make sure to do this before the res_info goes stale
+        let mut res_infos = HashMap::<Fun, Arc<ResolutionInfo>>::new();
+        for stub in pre_crate.infos.iter().map(|info| info.iter_stubs()).flatten() {
+            match self.get_checked_function(&stub.x.name) {
+                Ok((_, _, Some(res_info))) => {
+                    let found = res_infos.insert(stub.x.name.clone(), res_info.clone());
+                    assert!(found.is_none());
+                }
+                Ok((_, _, None)) => {}
+                Err(err) => unreachable!(),
+            }
+        }
+        let krate = krate_infer_resolution(&krate, &res_infos).map_err(|e| self.emit_errors(e))?;
 
         Ok(krate)
     }

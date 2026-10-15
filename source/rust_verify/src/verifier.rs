@@ -2734,7 +2734,8 @@ impl Verifier {
 
         let mut query =
             crate::query::Query::new(self.args.clone(), diagnostics, other_vir_crates, pre_crate);
-        let krate = query.get_finished_crate();
+        let krate = query.get_exportable_crate();
+        let krate = query.get_merged_crate();
 
         todo!();
         /*
