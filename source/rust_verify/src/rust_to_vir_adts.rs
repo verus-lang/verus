@@ -13,9 +13,8 @@ use rustc_span::Span;
 use std::collections::HashMap;
 use std::sync::Arc;
 use vir::ast::{
-    CrateId, CtorPrintStyle, Datatype, DatatypeTransparency, DatatypeX, Dt, Fun, Function, Ident,
-    KrateX, Mode, Path, TypX, Variant, VirErr,
-    FunctionStub,
+    CrateId, CtorPrintStyle, Datatype, DatatypeTransparency, DatatypeX, Dt, Fun, Function,
+    FunctionStub, Ident, KrateX, Mode, Path, TypX, Variant, VirErr,
 };
 use vir::ast_util::ident_binder;
 use vir::def::field_ident_from_rust;
@@ -778,7 +777,10 @@ pub(crate) fn check_item_external<'tcx>(
     Ok(())
 }
 
-pub(crate) fn setup_type_invariants(krate: &mut KrateX, functions: &[FunctionStub]) -> Result<(), VirErr> {
+pub(crate) fn setup_type_invariants(
+    krate: &mut KrateX,
+    functions: &[FunctionStub],
+) -> Result<(), VirErr> {
     let mut dt_to_idx_opt = None;
     let mut get_datatype_idx = |dts: &Vec<Datatype>, dt: &Dt| {
         if dt_to_idx_opt.is_none() {

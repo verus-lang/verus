@@ -1,5 +1,5 @@
 use crate::ast::{
-    AutospecUsage, CallTarget, Expr, ExprX, Fun, FunctionStub, SpannedTyped, VirErr, Function,
+    AutospecUsage, CallTarget, Expr, ExprX, Fun, Function, FunctionStub, SpannedTyped, VirErr,
 };
 use crate::ast_visitor::VisitorScopeMap;
 pub use air::ast_util::{ident_binder, str_ident};
