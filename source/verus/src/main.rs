@@ -115,14 +115,18 @@ fn run() -> Result<std::process::ExitStatus, String> {
         (all_args, record, unpretty_arg)
     };
 
-    let current_exe = std::env::current_exe().ok().and_then(|c| {
-        if c.symlink_metadata().ok()?.is_symlink() { std::fs::read_link(c).ok() } else { Some(c) }
-    });
+    let current_exe = std::env::current_exe()
+        .ok()
+        .and_then(|c| {
+            if c.symlink_metadata().ok()?.is_symlink() {
+                std::fs::read_link(c).ok()
+            } else {
+                Some(c)
+            }
+        })
+        .expect("get path of the current executable");
 
-    let verus_root = match current_exe
-        .clone()
-        .and_then(|current| current.parent().map(std::path::Path::to_path_buf))
-    {
+    let verus_root = match current_exe.parent().map(std::path::Path::to_path_buf) {
         Some(path) if path.is_absolute() => Ok(path),
         Some(path) => std::env::current_dir()
             .map(|current_dir| current_dir.join(path))
@@ -197,16 +201,15 @@ fn run() -> Result<std::process::ExitStatus, String> {
         }
     }
 
-    let verus_exe = current_exe.expect("get path to `verus` executable");
     let mut cmd = if use_rustup {
         let mut cmd = Command::new("rustup");
         cmd.arg("run");
         cmd.arg(TOOLCHAIN);
         cmd.arg("--");
-        cmd.arg(verus_exe);
+        cmd.arg(current_exe);
         cmd
     } else {
-        Command::new(verus_exe)
+        Command::new(current_exe)
     };
     cmd.arg(INTERNAL_RUST_VERIFY);
 
