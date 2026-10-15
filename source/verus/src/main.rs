@@ -56,15 +56,16 @@ fn main() {
         match first_arg.as_ref() {
             INTERNAL_RUST_VERIFY => {
                 rust_verify::cli::run_verifier(std::iter::once(program_name).chain(args));
+                return;
             }
             rust_verify::trait_check::TC_DRIVER_ARG => {
                 rust_verify::cli::run_verifier(
                     std::iter::once(program_name).chain(std::iter::once(first_arg).chain(args)),
                 );
+                return;
             }
             _ => {}
         }
-        return;
     }
 
     match run() {
