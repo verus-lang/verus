@@ -2278,8 +2278,8 @@ pub(crate) fn finish_function<'tcx>(
         outer_ret,
         item_kind,
         attrs,
-        returns: _,
-        decreases_len: _,
+        returns,
+        decreases_len,
     } = function.x.clone();
     let is_async = attrs.is_async;
 
@@ -2447,6 +2447,9 @@ pub(crate) fn finish_function<'tcx>(
         extra_dependencies: header.extra_dependencies,
         hidden: Arc::new(header.hidden.clone()),
     };
+
+    assert!(functionx.returns.is_some() == function.x.returns);
+    assert!(functionx.decrease.len() == function.x.decreases_len);
 
     if vattrs.external_fn_specification {
         check_external_fn_specification_trait_method_decl_typs(sig.span, &functionx)?;
@@ -3364,8 +3367,8 @@ pub(crate) fn finish_const_or_static<'tcx>(
         outer_ret,
         item_kind,
         attrs,
-        decreases_len: _,
-        returns: _,
+        decreases_len,
+        returns,
     } = function.x.clone();
 
     let body = find_body(ctxt, &body_id);
@@ -3436,6 +3439,10 @@ pub(crate) fn finish_const_or_static<'tcx>(
         extra_dependencies: vec![],
         hidden: Arc::new(header.hidden.clone()),
     };
+
+    assert!(functionx.returns.is_some() == function.x.returns);
+    assert!(functionx.decrease.len() == function.x.decreases_len);
+
     let function = ctxt.spanned_new(span, functionx);
 
     functions.push(function.clone());
