@@ -977,6 +977,7 @@ pub fn check_function(
     function: &Function,
     warning_ctx: &crate::context::WarningCtx,
     no_cheating: bool,
+    no_verify: bool,
 ) -> (Result<PerFunctionCheckResults, WFErr>, Vec<VirErr>, Vec<VirErrAs>) {
     let mut emit = EmitErrorState {
         boundary_errors: IndexMap::new(),
@@ -993,6 +994,7 @@ pub fn check_function(
         &mut emit,
         warning_ctx,
         no_cheating,
+        no_verify,
     );
     let res = match wf {
         Ok(()) if emit.boundary_errors.len() == 0 => {
@@ -1019,6 +1021,7 @@ pub fn check_function_inner<Emit: EmitError>(
     emit: &mut Emit,
     warning_ctx: &crate::context::WarningCtx,
     no_cheating: bool,
+    _no_verify: bool,
 ) -> Result<(), VirErr> {
     let ctxt = Ctxt { funs, lookup, krate, no_cheating };
 

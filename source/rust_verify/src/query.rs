@@ -393,6 +393,7 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
             &function,
             &pre_crate.warning_ctx,
             self.args.no_cheating,
+            self.args.no_verify,
         );
         self.emit_non_blocking_errors(non_blocking_errors);
         self.emit_diags(diags);
