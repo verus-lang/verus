@@ -191,6 +191,7 @@ impl Printer {
                     UnaryOp::FloatIsNegative => "fp.isNegative",
                     UnaryOp::FloatIsPositive => "fp.isPositive",
                     UnaryOp::FloatFromIeeeBits { .. } => "to_fp",
+                    UnaryOp::FloatToIeeeBits => "fp.to_ieee_bv",
                     UnaryOp::FloatFrom { signed: false, .. } => "to_fp_unsigned",
                     UnaryOp::FloatFrom { signed: true, .. } => "to_fp",
                     UnaryOp::FloatToBitVec { signed: false, .. } => "fp.to_ubv",

@@ -254,7 +254,7 @@ fn check_float_unary_exprs(
     let t0 = check_expr(typing, expr)?;
     // See https://smt-lib.org/theories-FloatingPoint.shtml for types of each operation
     match &*t0 {
-        TypX::Float { .. } => match op {
+        TypX::Float { exp_bits, sig_bits } => match op {
             UnaryOp::FloatNeg => Ok(t0.clone()),
             UnaryOp::FloatRoundToInt(_) => Ok(t0.clone()),
             UnaryOp::FloatIsNormal
@@ -265,6 +265,7 @@ fn check_float_unary_exprs(
             | UnaryOp::FloatIsNegative
             | UnaryOp::FloatIsPositive => Ok(bt()),
             UnaryOp::FloatToBitVec { bits, .. } => Ok(Arc::new(TypX::BitVec(bits))),
+            UnaryOp::FloatToIeeeBits => Ok(Arc::new(TypX::BitVec(exp_bits + sig_bits))),
             UnaryOp::FloatToReal => Ok(rt()),
             _ => unreachable!(),
         },
@@ -417,6 +418,12 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
         ExprX::Unary(op @ UnaryOp::FloatToBitVec { .. }, e1) => {
             check_float_unary_exprs(typing, op.clone(), "float_to_bitvec", &e1.clone())
         }
+        ExprX::Unary(UnaryOp::FloatToIeeeBits, e1) => check_float_unary_exprs(
+            typing,
+            UnaryOp::FloatToIeeeBits,
+            "float_to_ieee_bits",
+            &e1.clone(),
+        ),
         ExprX::Unary(UnaryOp::FloatToReal, e1) => {
             check_float_unary_exprs(typing, UnaryOp::FloatToReal, "float_to_real", &e1.clone())
         }
