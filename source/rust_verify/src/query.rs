@@ -59,7 +59,7 @@ pub(crate) struct Query<'r, 'tcx> {
     /// Crate that can be exported
     cache_exportable_crate: Option<Res<Krate>>,
     /// Crate with trait demotion, resolution inference, merged with imported crates and pruned
-    cache_merged_crate: Option<Res<Krate>>,
+    cache_merged_crate: Option<Res<(Krate, Arc<WarningCtx>)>>,
     /// Merged erasure modes
     cache_erasure_modes: Option<Res<Arc<ErasureModes>>>,
 
@@ -473,26 +473,25 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
 
     pub fn get_merged_crate(&mut self) -> Res<Krate> {
         if let Some(merged_crate) = &self.cache_merged_crate {
-            return merged_crate.clone();
+            return Ok(merged_crate.clone()?.0);
         }
         self.cache_merged_crate = Some(self._compute_merged_crate());
-        self.cache_merged_crate.clone().unwrap()
+        Ok(self.cache_merged_crate.clone().unwrap()?.0)
     }
 
-    pub fn _compute_merged_crate(&mut self) -> Res<Krate> {
+    pub fn get_updated_warning_ctx(&mut self) -> Res<Arc<WarningCtx>> {
+        if let Some(merged_crate) = &self.cache_merged_crate {
+            return Ok(merged_crate.clone()?.1);
+        }
+        self.cache_merged_crate = Some(self._compute_merged_crate());
+        Ok(self.cache_merged_crate.clone().unwrap()?.1)
+    }
+
+    pub fn _compute_merged_crate(&mut self) -> Res<(Krate, Arc<WarningCtx>)> {
         let krate = self.get_exportable_crate()?;
         let pre_crate = self.get_pre_crate()?;
         let demote_trait_lookup = self.get_demote_trait_lookup()?;
         let other_vir_crates = self.get_other_vir_crates()?;
-
-        // Demote external traits
-        let krate = vir::traits::demote_external_traits(
-            self.reporter,
-            &pre_crate.warning_ctx,
-            &krate,
-            &demote_trait_lookup,
-        )
-        .map_err(|e| self.emit_error(e))?;
 
         // Merge
         let my_crate = krate.clone();
@@ -512,6 +511,20 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
         let krate =
             vir::traits::merge_external_traits(vir_crate).map_err(|e| self.emit_error(e))?;
 
+        // Demote external traits
+        let krate = vir::traits::demote_external_traits(
+            self.reporter,
+            &pre_crate.warning_ctx,
+            &krate,
+            &demote_trait_lookup,
+        )
+        .map_err(|e| self.emit_error(e))?;
+
+        // Inherit default bodies
+        let mut new_warning_ctx = (*pre_crate.warning_ctx).clone();
+        let krate = vir::traits::inherit_default_bodies(&krate, &mut new_warning_ctx)
+            .map_err(|e| self.emit_error(e))?;
+
         // Resolution inference
         // Make sure to do this before the res_info goes stale
         let mut res_infos = HashMap::<Fun, Arc<ResolutionInfo>>::new();
@@ -527,7 +540,7 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
         }
         let krate = krate_infer_resolution(&krate, &res_infos).map_err(|e| self.emit_errors(e))?;
 
-        Ok(krate)
+        Ok((krate, Arc::new(new_warning_ctx)))
     }
 
     //// Erasure modes

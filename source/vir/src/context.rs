@@ -43,7 +43,7 @@ impl crate::messages::CheckAllowForWarning for WarningConfig {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct WarningCtx {
     // Map names of FunctionX in this crate (not imported from other crates)
     // to Some CheckAllowForWarning to be used to check that fun,
