@@ -1,3 +1,5 @@
+#![feature(rustc_private)]
+
 use std::{
     io::{Read, Write},
     process::Command,
@@ -40,9 +42,7 @@ mod platform {
 }
 
 const TOOLCHAIN: &str = env!("VERUS_TOOLCHAIN");
-
-const RUST_VERIFY_FILE_NAME: &str =
-    if cfg!(target_os = "windows") { "rust_verify.exe" } else { "rust_verify" };
+const INTERNAL_RUST_VERIFY: &str = "--internal-rust-verify";
 
 const Z3_FILE_NAME: &str = if cfg!(target_os = "windows") { ".\\z3.exe" } else { "./z3" };
 const CVC5_FILE_NAME: &str = if cfg!(target_os = "windows") { ".\\cvc5.exe" } else { "./cvc5" };
@@ -50,6 +50,23 @@ const CVC5_FILE_NAME: &str = if cfg!(target_os = "windows") { ".\\cvc5.exe" } el
 pub const VERUS_DRIVER_VIA_CARGO: &str = "__VERUS_DRIVER_VIA_CARGO__";
 
 fn main() {
+    let mut args = std::env::args();
+    let program_name = args.next().expect("executable in args");
+    if let Some(first_arg) = args.next() {
+        match first_arg.as_ref() {
+            INTERNAL_RUST_VERIFY => {
+                rust_verify::cli::run_verifier(std::iter::once(program_name).chain(args));
+            }
+            rust_verify::trait_check::TC_DRIVER_ARG => {
+                rust_verify::cli::run_verifier(
+                    std::iter::once(program_name).chain(std::iter::once(first_arg).chain(args)),
+                );
+            }
+            _ => {}
+        }
+        return;
+    }
+
     match run() {
         Ok(exit_status) => {
             if !exit_status.success() {
@@ -71,8 +88,6 @@ fn run() -> Result<std::process::ExitStatus, String> {
     // If instructed, skip the rustup toolchain sanity check & trust the user to
     // have set up their environment to point to the correct toolchain.
     let use_rustup: bool = std::env::var("VERUS_USE_RUSTUP").map_or(true, |v| v != "0");
-    let via_cargo = std::env::var(VERUS_DRIVER_VIA_CARGO).as_deref() == Ok("1");
-
     #[allow(unused_variables)] // unpretty_arg is unused if --features record-history is disabled
     let (mut args, record, unpretty_arg) = {
         let mut args = std::env::args().into_iter();
@@ -104,6 +119,7 @@ fn run() -> Result<std::process::ExitStatus, String> {
     });
 
     let verus_root = match current_exe
+        .clone()
         .and_then(|current| current.parent().map(std::path::Path::to_path_buf))
     {
         Some(path) if path.is_absolute() => Ok(path),
@@ -116,14 +132,6 @@ fn run() -> Result<std::process::ExitStatus, String> {
         eprintln!("error: {err}");
         std::process::exit(128);
     });
-
-    if !via_cargo {
-        let rust_verify = verus_root.join(RUST_VERIFY_FILE_NAME);
-        if !rust_verify.is_file() {
-            eprintln!("error: could not find `rust_verify` at {}", rust_verify.display());
-            std::process::exit(128);
-        }
-    }
 
     if use_rustup {
         match Command::new("rustup")
@@ -193,11 +201,13 @@ fn run() -> Result<std::process::ExitStatus, String> {
         cmd.arg("run");
         cmd.arg(TOOLCHAIN);
         cmd.arg("--");
-        cmd.arg(verus_root.join(RUST_VERIFY_FILE_NAME));
+        cmd.arg("verus");
         cmd
     } else {
-        Command::new(verus_root.join(RUST_VERIFY_FILE_NAME))
+        let verus_exe = current_exe.expect("get path to `verus` executable");
+        Command::new(verus_exe)
     };
+    cmd.arg(INTERNAL_RUST_VERIFY);
 
     let vstd_kind = get_vstd_kind(&args);
     cmd.env("VSTD_KIND", vstd_kind);
