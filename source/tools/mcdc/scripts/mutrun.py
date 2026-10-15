@@ -43,15 +43,20 @@ Commands:
   rvt-baseline TREE [--only RE]
                              every non-ignored rust_verify_test test of TREE (build B's source/ dir, tests
                              built with `vargo test --release -p rust_verify_test --no-run`), one test per
-                             process, with MUTANT_LOG and no mutant: result, time, reach and infection sets
+                             process, with MUTANT_LOG (MUTANT_LOG_STACKS=0) and no mutant: result, time,
+                             reach and infection sets
                              -> DATA/rvt-baseline.jsonl
-  rvt-mutants TREE IDS OUT [--tests RE] [--budget S]
+  rvt-mutants TREE IDS OUT [--tests RE] [--budget S] [--recheck PREV]
                              for each mutant id in IDS: the passing tests that infect it in the baseline
                              (matching RE), fastest first, in batches, under MUTANT_ID, until one fails or
-                             times out (killed), all pass (survived) or S seconds of runs are spent
-                             (survived-capped) -> OUT (jsonl)
-  rvt-report IDS OUT...      status of each mutant of IDS over the OUT files (killed in any of them counts),
-                             counts per class and operator
+                             times out (killed), all pass (survived) or the next batch would exceed S
+                             seconds of baseline test time (survived-capped) -> OUT (jsonl). --recheck
+                             reruns the kills of PREV (killer first, then the full search) and keeps its
+                             survivors
+  rvt-report IDS OUT... [--tests RE]
+                             status of each mutant of IDS over the OUT files (killed in any of them counts),
+                             reach and infection from the baseline tests matching RE; counts per class and
+                             operator
   --wrap CMD                 command prefix of each test process (for example a global job limiter)
 
 Kill oracle: a mutant run differs from the run of the same program on build B without a mutant in exit
@@ -579,10 +584,22 @@ def cmd_suite(tree, test, name, ids):
 
 # ---- rust_verify_test under mutants ----
 
+_sysroot = {}
+
+
+def rvt_sysroot_lib(tree):
+    """lib/ of the toolchain of TREE (test executables load librustc_driver from it, as under cargo)."""
+    if tree not in _sysroot:
+        p = subprocess.run(["rustc", "--print", "sysroot"], cwd=tree, capture_output=True, text=True)
+        _sysroot[tree] = os.path.join(p.stdout.strip(), "lib")
+    return _sysroot[tree]
+
+
 def rvt_env(tree, extra):
     e = dict(os.environ)
     for k in ("MUTANT_ID", "MUTANT_BITSET", "MUTANT_LOG", "MCDC_DIR"):
         e.pop(k, None)
+    e["DYLD_FALLBACK_LIBRARY_PATH"] = e["LD_LIBRARY_PATH"] = rvt_sysroot_lib(tree)
     e.update({"RUST_MIN_STACK": str(20 * 1024 * 1024), "RUSTC_BOOTSTRAP": "1", "VERUS_IN_VARGO": "1",
               "VARGO_TARGET_DIR": os.path.join(tree, "target-verus", "release"),
               "VERUS_Z3_PATH": e.get("VERUS_Z3_PATH") or os.path.join(tree, "z3")})
@@ -591,27 +608,55 @@ def rvt_env(tree, extra):
 
 
 def rvt_binaries(tree):
-    """{test file stem: executable} from `cargo test --no-run` (built by vargo)."""
-    p = subprocess.run(["vargo", "test", "--release", "-p", "rust_verify_test", "--no-run"], cwd=tree,
-                       capture_output=True, text=True, errors="replace")
+    """{test file stem: executable}: for each rust_verify_test/tests/*.rs, the newest test executable
+    target-verus/release/deps/<stem>-<hash> (build them first with `vargo test --release -p
+    rust_verify_test --no-run`)."""
+    deps = os.path.join(tree, "target-verus", "release", "deps")
     out = {}
-    for m in re.finditer(r"Executable tests/(\S+)\.rs \((\S+)\)", p.stdout + p.stderr):
-        out[m.group(1)] = os.path.join(tree, m.group(2))
+    for f in sorted(os.listdir(os.path.join(tree, "rust_verify_test", "tests"))):
+        if not f.endswith(".rs"):
+            continue
+        stem = f[:-3].replace("-", "_")
+        exes = [os.path.join(deps, x) for x in os.listdir(deps)
+                if re.fullmatch(re.escape(stem) + r"-[0-9a-f]{16}", x)]
+        exes = [x for x in exes if os.access(x, os.X_OK)]
+        if exes:
+            out[stem] = max(exes, key=os.path.getmtime)
     if not out:
-        sys.exit("no test executables found:\n" + (p.stdout + p.stderr)[-3000:])
+        sys.exit("no test executables in %s" % deps)
     return out
 
 
 def rvt_list(exe, ignored=False):
+    tree = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(exe))))
     p = subprocess.run([exe, "--list", "--format", "terse"] + (["--ignored"] if ignored else []),
-                       capture_output=True, text=True, errors="replace",
-                       cwd=os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(exe)))))
+                       capture_output=True, text=True, errors="replace", cwd=tree, env=rvt_env(tree, {}))
     return [l[:-len(": test")] for l in p.stdout.splitlines() if l.endswith(": test")]
 
 
+_test_locks = collections.defaultdict(threading.Lock)
+_test_locks_guard = threading.Lock()
+
+
 def rvt_run(tree, exe, names, extra, timeout):
-    """Runs the tests `names` of one executable in one process. Returns ({name: ok|FAILED}, rc, secs)."""
-    cmd = shlex.split(O.wrap or "") + [exe, "--exact", "--test-threads=1"] + list(names)
+    """Runs the tests `names` of one executable in one process. Returns ({name: ok|FAILED}, rc, secs).
+    A test never runs in two processes at once: the harness writes its input files to a directory
+    named after the executable and the test, which a second run would delete."""
+    with _test_locks_guard:
+        locks = [_test_locks[(exe, n)] for n in sorted(set(names))]
+    for l in locks:
+        l.acquire()
+    try:
+        return _rvt_run(tree, exe, names, extra, timeout)
+    finally:
+        for l in reversed(locks):
+            l.release()
+
+
+def _rvt_run(tree, exe, names, extra, timeout):
+    # macOS drops DYLD_* when it starts a system binary (a wrapper's bash or perl): set it again with env
+    lib = "DYLD_FALLBACK_LIBRARY_PATH=" + rvt_sysroot_lib(tree)
+    cmd = shlex.split(O.wrap or "") + ["env", lib, exe, "--exact", "--test-threads=1"] + list(names)
     t0 = time.time()
     try:
         p = subprocess.run(cmd, cwd=os.path.join(tree, "rust_verify_test"), env=rvt_env(tree, extra),
@@ -639,7 +684,8 @@ def cmd_rvt_baseline(tree, only):
     def one(item):
         name, stem, exe, n = item
         d = tempfile.mkdtemp(prefix="rvtlog")
-        res, rc, dt = rvt_run(tree, exe, [n], {"MUTANT_LOG": d}, int(O.timeout or 1800))
+        res, rc, dt = rvt_run(tree, exe, [n], {"MUTANT_LOG": d, "MUTANT_LOG_STACKS": "0"},
+                              int(O.timeout or 1800))
         reach, inf, _ = parse_log(read_log(d))
         shutil.rmtree(d, ignore_errors=True)
         rec = {"name": name, "bin": stem, "exe": exe, "test": n, "result": res.get(n, "missing"), "rc": rc,
@@ -654,32 +700,70 @@ def cmd_rvt_baseline(tree, only):
               flush=True)
 
 
-def rvt_baseline():
-    return {r["name"]: r for r in map(json.loads, open(data("rvt-baseline.jsonl")))}
+def rvt_baseline(ids=None, points=None):
+    """The rvt baseline records; with `ids` / `points`, their infection / reach sets are cut to those
+    (the full sets of every test do not fit in memory comfortably)."""
+    out = {}
+    for l in open(data("rvt-baseline.jsonl")):
+        r = json.loads(l)
+        r["inf"] = set(r["inf"]) if ids is None else ids.intersection(r["inf"])
+        r["reach"] = set(r["reach"]) if points is None else points.intersection(r["reach"])
+        out[r["name"]] = r
+    return out
 
 
-def cmd_rvt_mutants(tree, idfile, outp, tests_re, budget):
-    bl = rvt_baseline()
+def cmd_rvt_mutants(tree, idfile, outp, tests_re, budget, recheck=None):
+    ids = [int(x) for x in open(idfile).read().split()]
+    bl = rvt_baseline(set(ids), set())
     inf_by = collections.defaultdict(list)
     for n, b in bl.items():
         if b["result"] == "ok" and (not tests_re or re.search(tests_re, n)):
             for i in b["inf"]:
                 inf_by[i].append(n)
-    ids = [int(x) for x in open(idfile).read().split()]
     done = set(json.loads(l)["id"] for l in open(outp)) if os.path.exists(outp) else set()
     ids = [i for i in ids if i not in done]
     lock = threading.Lock()
 
+    prev = {}
+    if recheck:
+        for l in open(recheck):
+            r = json.loads(l)
+            prev[r["id"]] = r
+
     def one(mid):
         cands = sorted(inf_by.get(mid, []), key=lambda n: bl[n]["secs"])
         rec = {"id": mid, "infecting": len(cands), "ran": 0, "killed_by": None, "secs": 0.0}
+        p = prev.get(mid)
+        if p is not None and not p["killed_by"]:
+            # a survivor of a previous run: a run can only turn a pass into a failure by interference
+            rec.update({k: p[k] for k in ("ran", "secs") if k in p})
+            rec["capped"] = p.get("capped", False)
+            rec["rechecked"] = "kept"
+            with lock:
+                with open(outp, "a") as f:
+                    f.write(json.dumps(rec) + "\n")
+            return rec
+        if p is not None and p["killed_by"] in cands:
+            # the previous killer first
+            cands.remove(p["killed_by"])
+            cands.insert(0, p["killed_by"])
+            rec["rechecked"] = p["killed_by"]
         rest, size = list(cands), 1
-        while rest and rec["killed_by"] is None and rec["secs"] <= budget:
-            # one batch: up to `size` tests of the executable of the next candidate, in one process
+        while rest and rec["killed_by"] is None:
+            # one batch: up to `size` tests of the executable of the next candidate, in one process,
+            # within the budget (baseline times; the first test always runs)
             exe = bl[rest[0]]["exe"]
-            batch = [n for n in rest if bl[n]["exe"] == exe][:size]
+            batch, cost = [], 0.0
+            for n in rest:
+                if bl[n]["exe"] == exe and len(batch) < size:
+                    if batch and rec["secs"] + cost + bl[n]["secs"] > budget:
+                        break
+                    batch.append(n)
+                    cost += bl[n]["secs"]
+            if rec["ran"] and rec["secs"] + cost > budget:
+                break
             rest = [n for n in rest if n not in set(batch)]
-            to = max(60, 10 * sum(bl[n]["secs"] for n in batch))
+            to = max(60, 5 * cost)
             res, rc, dt = rvt_run(tree, exe, [bl[n]["test"] for n in batch], {"MUTANT_ID": str(mid)}, to)
             rec["secs"] += dt
             rec["ran"] += len(batch)
@@ -704,20 +788,21 @@ def cmd_rvt_mutants(tree, idfile, outp, tests_re, budget):
             i + 1, len(ids), r["id"], st, r["ran"], r["infecting"], r["secs"]), flush=True)
 
 
-def cmd_rvt_report(idfile, outs):
-    muts, bl = mutants_map(), rvt_baseline()
+def cmd_rvt_report(idfile, outs, tests_re):
+    muts = mutants_map()
+    ids = [int(x) for x in open(idfile).read().split()]
+    bl = rvt_baseline(set(ids), set(muts[i]["point"] for i in ids))
     reach, inf = set(), set()
-    for b in bl.values():
-        if b["result"] == "ok":
-            reach |= set(b["reach"])
-            inf |= set(b["inf"])
+    for n, b in bl.items():
+        if b["result"] == "ok" and (not tests_re or re.search(tests_re, n)):
+            reach |= b["reach"]
+            inf |= b["inf"]
     res = {}
     for p in outs:
         for l in open(p):
             r = json.loads(l)
             if r["id"] not in res or r["killed_by"]:
                 res[r["id"]] = r
-    ids = [int(x) for x in open(idfile).read().split()]
     st = {}
     for mid in ids:
         m = muts[mid]
@@ -787,9 +872,11 @@ def main():
     elif O.cmd == "rvt-baseline":
         cmd_rvt_baseline(os.path.abspath(a[0]), flag("--only"))
     elif O.cmd == "rvt-mutants":
-        cmd_rvt_mutants(os.path.abspath(a[0]), a[1], a[2], flag("--tests"), float(flag("--budget", 1e18)))
+        cmd_rvt_mutants(os.path.abspath(a[0]), a[1], a[2], flag("--tests"), float(flag("--budget", 1e18)),
+                        flag("--recheck"))
     elif O.cmd == "rvt-report":
-        cmd_rvt_report(a[0], [x for x in a[1:] if not x.startswith("--")])
+        t = flag("--tests")
+        cmd_rvt_report(a[0], [x for x in a[1:] if not x.startswith("--") and x != t], t)
     else:
         sys.exit("unknown command %s; see --help" % O.cmd)
 
