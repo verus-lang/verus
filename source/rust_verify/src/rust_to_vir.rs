@@ -744,7 +744,7 @@ pub(crate) fn crate_to_vir<'a, 'tcx>(
     }
     Ok(PreCrate {
         ctxt,
-        warning_ctx,
+        warning_ctx: Arc::new(warning_ctx),
         krate_without_funs: Arc::new(vir),
         infos: infos,
         fun_name_to_info,

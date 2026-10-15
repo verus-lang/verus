@@ -2709,6 +2709,8 @@ impl Verifier {
 
         self.current_crate_modules = Some(pre_crate.krate_without_funs.modules.clone());
         self.crate_items = Some(Arc::new(crate_items));
+        self.warning_ctx = Some(pre_crate.warning_ctx.clone());
+        let ctxt = pre_crate.ctxt.clone();
 
         let mut query = Query::new(
             self.args.clone(),
@@ -2744,41 +2746,43 @@ impl Verifier {
             UserFilter::from_args(&self.args, &local_crate).map_err(map_err_diagnostics)?;
         self.user_filter = Some(user_filter);
 
-        todo!();
+        if self.args.check_api_safety {
+            vir::safe_api::check_safe_api(&merged_crate).map_err(map_err_diagnostics)?;
+        }
+
+        self.vir_crate = Some(merged_crate.clone());
+
+        if !self.args.no_lifetime {
+            let functions = query.get_all_function_stubs().map_err(map_query_err)?;
+            let datatypes = query.get_datatypes_map().map_err(map_query_err)?;
+            let erasure_modes = query.get_erasure_modes().map_err(map_query_err)?;
+            crate::erase::setup_verus_ctxt_for_thir_erasure(
+                tcx,
+                &self.verus_items.as_ref().unwrap(),
+                &datatypes,
+                &functions,
+                &ctxt.erasure_info.borrow(),
+                &erasure_modes,
+            )
+            .map_err(map_err_diagnostics)?;
+        }
+
+        // These can invoke mir_borrowck when opaque types are involved.
+        // Thus, we can only run these after calling `setup_verus_ctxt_for_thir_erasure`
+        tcx.hir_for_each_module(|module| {
+            tcx.ensure_ok().check_private_in_public(module);
+            tcx.ensure_ok().check_mod_privacy(module);
+        });
+
+        //let time4 = Instant::now();
+        //self.time_vir = time4 - time0;
+        //self.time_vir_rust_to_vir = time2 - time1;
+
+        Ok(true)
         /*
                 let vir_crate = vir::traits::inherit_default_bodies(&vir_crate, &mut warning_ctx)
                     .map_err(|e| (vec![e], Vec::new()))?;
 
-                if self.args.check_api_safety {
-                    vir::safe_api::check_safe_api(&vir_crate).map_err(|e| (vec![e], Vec::new()))?;
-                }
-
-                self.vir_crate = Some(vir_crate.clone());
-                self.warning_ctx = Some(Arc::new(warning_ctx));
-
-                if !self.args.no_lifetime {
-                    crate::erase::setup_verus_ctxt_for_thir_erasure(
-                        tcx,
-                        &self.verus_items.as_ref().unwrap(),
-                        &unpruned_crate,
-                        &ctxt.erasure_info.borrow(),
-                        &erasure_modes,
-                    )
-                    .map_err(|e| (vec![e], Vec::new()))?;
-                }
-
-                // These can invoke mir_borrowck when opaque types are involved.
-                // Thus, we can only run these after calling `setup_verus_ctxt_for_thir_erasure`
-                tcx.hir_for_each_module(|module| {
-                    tcx.ensure_ok().check_private_in_public(module);
-                    tcx.ensure_ok().check_mod_privacy(module);
-                });
-
-                let time4 = Instant::now();
-                self.time_vir = time4 - time0;
-                self.time_vir_rust_to_vir = time2 - time1;
-
-                Ok(true)
         */
     }
 

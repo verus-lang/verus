@@ -8,7 +8,7 @@ use crate::rust_to_vir_func::finish_item;
 use air::messages::Diagnostics;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use vir::ast::{CrateId, Fun, Function, FunctionStub, Krate, VirErr, VirErrAs};
+use vir::ast::{CrateId, Datatype, Fun, Function, FunctionStub, Krate, Path, VirErr, VirErrAs};
 use vir::context::WarningCtx;
 use vir::messages::{MessageLevel, ToAny};
 use vir::modes::ErasureModes;
@@ -20,7 +20,7 @@ use vir::well_formed::InitialWfResults;
 /// Instead we have FunctionOrConstInfos which contains FunctionStubs.
 pub(crate) struct PreCrate<'tcx> {
     pub ctxt: Context<'tcx>,
-    pub warning_ctx: WarningCtx,
+    pub warning_ctx: Arc<WarningCtx>,
     pub krate_without_funs: Krate,
     pub infos: Vec<Arc<FunctionOrConstInfo<'tcx>>>,
     pub fun_name_to_info: HashMap<Fun, Arc<FunctionOrConstInfo<'tcx>>>,
@@ -58,6 +58,8 @@ pub(crate) struct Query<'r, 'tcx> {
     cache_exportable_crate: Option<Res<Krate>>,
     /// Crate with trait demotion, resolution inference, merged with imported crates and pruned
     cache_merged_crate: Option<Res<Krate>>,
+    /// Merged erasure modes
+    cache_erasure_modes: Option<Res<Arc<ErasureModes>>>,
 
     /// Errors found along the way
     pub encountered_blocking_vir_error: bool,
@@ -87,6 +89,7 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
             cache_checked_functions: HashMap::new(),
             cache_exportable_crate: None,
             cache_merged_crate: None,
+            cache_erasure_modes: None,
 
             encountered_blocking_vir_error: false,
             encountered_non_blocking_vir_error: false,
@@ -307,6 +310,12 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
         wf.map_err(|e| self.handle_wf_error(ctxt, None, e))
     }
 
+    //// datatypes map
+
+    pub fn get_datatypes_map(&mut self) -> Res<Arc<HashMap<Path, Datatype>>> {
+        Ok(self.get_initial_wf_results()?.lookup.dts.clone())
+    }
+
     //// Translating an individual function
 
     pub fn get_unchecked_function(&mut self, fun: &Fun) -> Res<Function> {
@@ -511,5 +520,34 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
             vir::traits::merge_external_traits(vir_crate).map_err(|e| self.emit_error(e))?;
 
         Ok(krate)
+    }
+
+    //// Erasure modes
+    //// TODO: Ultimately, we will want to use these individually rather than
+    //// merging them all together.
+
+    pub fn get_erasure_modes(&mut self) -> Res<Arc<ErasureModes>> {
+        if let Some(erasure_modes) = &self.cache_erasure_modes {
+            return erasure_modes.clone();
+        }
+        self.cache_erasure_modes = Some(self._compute_erasure_modes());
+        self.cache_erasure_modes.clone().unwrap()
+    }
+
+    pub fn _compute_erasure_modes(&mut self) -> Res<Arc<ErasureModes>> {
+        fn merge_erasure_modes(a: &mut ErasureModes, b: Arc<ErasureModes>) {
+            let ErasureModes { local_modes, binder_modes, ctor_modes } = a;
+            local_modes.extend(b.local_modes.clone());
+            binder_modes.extend(b.binder_modes.clone());
+            ctor_modes.extend(b.ctor_modes.clone());
+        }
+
+        let pre_crate = self.get_pre_crate()?;
+        let mut e = ErasureModes { local_modes: vec![], binder_modes: vec![], ctor_modes: vec![] };
+        for stub in pre_crate.infos.iter().map(|info| info.iter_stubs()).flatten() {
+            let (_, erasure_modes, _) = self.get_checked_function(&stub.x.name)?;
+            merge_erasure_modes(&mut e, erasure_modes);
+        }
+        Ok(Arc::new(e))
     }
 }
