@@ -43,7 +43,7 @@ verus! {
 
 // https://github.com/minirust/minirust/blob/master/spec/mem/interface.md#abstract-bytes
 // https://github.com/minirust/minirust/blob/master/spec/lang/representation.md
-broadcast use {group_layout_axioms, group_vstd_default};
+broadcast use {group_layout_axioms, super::seq::group_seq_axioms};
 
 /// Memory is represented as a sequence of abstract bytes. Each byte is uninitialized or initialized.
 /// An initialized byte may optionally have a provenance.
@@ -334,6 +334,8 @@ pub broadcast proof fn endian_to_bytes_to_endian(n: nat, len: nat, prov: Option<
             &&& endian.wf()
         }),
 {
+    broadcast use group_vstd_default;
+
     broadcast use EndianNat::from_nat_properties;
 
     let endian = EndianNat::<u8>::from_nat(n, len);
@@ -350,6 +352,8 @@ pub broadcast proof fn endian_to_bytes_shared_provenance(endian: EndianNat<u8>, 
         #[trigger] AbstractByte::shared_provenance(endian_to_bytes(endian, Some(prov))) == prov,
     decreases endian.len(),
 {
+    broadcast use group_vstd_default;
+
     if endian.len() == 1 {
     } else {
         let bytes = endian_to_bytes(endian, Some(prov));
@@ -367,6 +371,8 @@ pub broadcast proof fn endian_to_bytes_shared_provenance_none(endian: EndianNat<
             == Provenance::None,
     decreases endian.len(),
 {
+    broadcast use group_vstd_default;
+
     if endian.len() == 1 {
     } else {
         let bytes = endian_to_bytes(endian, None);
@@ -439,6 +445,7 @@ macro_rules! unsigned_int_encoding {
                     bytes_to_endian(bytes).to_nat() as $int == v,
                     bytes_to_endian(bytes).wf(),
             {
+                broadcast use group_vstd_default;
                 broadcast use EndianNat::from_nat_to_nat, endian_to_bytes_to_endian;
 
                 unsigned_int_max_values();
@@ -538,6 +545,7 @@ macro_rules! signed_int_encoding {
                     bytes_to_endian(bytes).to_nat() == signed_to_unsigned(v as int, size_of::<$int>()),
                     bytes_to_endian(bytes).wf(),
             {
+                broadcast use group_vstd_default;
                 broadcast use EndianNat::from_nat_to_nat, endian_to_bytes_to_endian;
 
                 unsigned_int_max_values()
@@ -720,6 +728,8 @@ impl<T: ZeroSizedRepresentation> AbstractByteEncoding<T> for ZeroSizedRepresenta
     }
 
     proof fn encoding_size(v: T, b: Seq<AbstractByte>) {
+        broadcast use group_vstd_default;
+
         T::layout_of_zero_sized_repr();
     }
 
@@ -960,6 +970,8 @@ impl<T: PointeeSized> AbstractByteEncoding<*mut T> for RawPtrRepresentation<T> {
     }
 
     proof fn encoding_exists(tracked v: *mut T) -> (b: Seq<AbstractByte>) {
+        broadcast use group_vstd_default;
+
         broadcast use endian_to_bytes_to_endian;
 
         unsigned_int_max_values();
@@ -1125,6 +1137,8 @@ impl<'a, T: ?Sized> AbstractByteRepresentation for SharedReference<'a, T> {
     axiom fn encoding_size(v: Self, b: Seq<AbstractByte>);
 
     proof fn encoding_exists(tracked v: Self) -> (b: Seq<AbstractByte>) {
+        broadcast use group_vstd_default;
+
         broadcast use endian_to_bytes_to_endian;
 
         unsigned_int_max_values();
@@ -1350,6 +1364,8 @@ impl AbstractByteRepresentationUnsized<[u8]> for EncodingU8Slice {
     }
 
     proof fn encoding_exists(tracked v: &[u8]) -> (b: Seq<AbstractByte>) {
+        broadcast use group_vstd_default;
+
         broadcast use endian_to_bytes_to_endian, EndianNat::from_nat_to_nat;
 
         unsigned_int_max_values();

@@ -211,27 +211,25 @@ The old `impl SeqPointsTo<u8>` is ported as `SeqPointsTo<T, PointsTo<T>>::from_u
   the generic `impl<T: ?Sized, PointsToPerm> SeqPointsTo<T, PointsToPerm>` block, i.e. whether
   they rely only on the generic structure (`ptr`, `seq_pt`, `wf_basic`, trait methods) rather than
   `PointsTo<T>`-specific specs (`value`, `typed_value`, alignment in `wf()`).
-- [ ] Make the three `lemma_ptrs_len_same_valid` lemmas (on `PointsTo<T>`,
-  `SeqPointsTo<T, PointsTo<T>>`, and `PointsToUntyped`) `broadcast` (trigger on
-  `#[trigger] Self::ptrs_len_same_valid(old, new)`), put them in a broadcast group for
-  `points_to_permissions.rs`, and add that group to `group_vstd_default`. Tried and reverted
-  because:
-  - Broadcast group members are resolved by name over the type's inherent impls
-    (`rust_verify/src/reveal_hide.rs`), so `SeqPointsTo::lemma_ptrs_len_same_valid` is ambiguous
-    between the two `SeqPointsTo` impls, and `PointsToUntyped::...` is "not found" (it's a type
-    alias). Renaming the untyped one (e.g. `lemma_ptrs_len_same_valid_untyped`, like
-    `is_disjoint_untyped`) and listing it as `SeqPointsTo::lemma_ptrs_len_same_valid_untyped` fixes
-    this.
-  - Adding the group to `group_vstd_default` creates cycles: modules the lemmas depend on
-    (`points_to_permissions.rs`, `points_to.rs`, `type_representation.rs`, maybe more) do a
-    module-level `broadcast use group_vstd_default`. Each would have to list the default group's
-    other members instead (as `seq_lib.rs`/`set_lib.rs` do with specific groups); note that
-    `#[cfg]` on entries of a `broadcast use { ... }` list gave "invalid reveal/hide".
 - [ ] (Lower priority) Add the unaligned conversions (`as_unaligned`, `into_unaligned`, ...) to
   `SeqPointsTo<T, PointsTo<T>>`, the counterparts of the ones on `PointsTo<T>`. These can wait until
   there is a `SeqPointsTo<T, PointsToUnaligned<T>>`.
 
 ### Done
+
+- [x] Made the `lemma_ptrs_len_same_valid` lemmas `broadcast` (triggered on
+  `Self::ptrs_len_same_valid(old, new)`) and put them in
+  `points_to_permissions::group_points_to_permissions_lemmas`, which is in `group_vstd_default`.
+  - The `PointsToUntyped` one is named `lemma_ptrs_len_same_valid_untyped` (like
+    `is_disjoint_untyped`): broadcast group members are resolved by name over the type's inherent
+    impls (`rust_verify/src/reveal_hide.rs`), so two `SeqPointsTo` impls can't share the name, and
+    the `PointsToUntyped` alias can't be used in the group path.
+  - To avoid cycles, `points_to_permissions.rs`, `points_to.rs`, and `type_representation.rs` no
+    longer `broadcast use group_vstd_default` at module level (matching the other modules in the
+    default group). Functions that need it use it in their body. Functions the lemmas depend on
+    (the `PointsToProperties` impl methods and the lemmas themselves) use the specific groups
+    `{group_raw_ptr_axioms, group_layout_axioms, group_seq_axioms}` instead, and
+    `type_representation.rs` uses `{group_layout_axioms, group_seq_axioms}` at module level.
 
 - [x] Audit `as_untyped_mut` and `borrow_mut`: `as_untyped_mut` now guarantees `final(self).wf()`
   under `PointsToUntyped::ptrs_len_same` (replacing the bare pointer-equality condition);

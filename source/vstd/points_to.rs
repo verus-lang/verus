@@ -7,8 +7,6 @@ use super::type_representation::*;
 
 verus! {
 
-broadcast use group_vstd_default;
-
 /// Defines parameters common to all `PointsTo` permissions:
 /// the pointer to memory and the size of the pointed-to region.
 pub trait PointsToPhys: Sized {
@@ -200,6 +198,8 @@ impl PointsToSingleton {
             final(self).ptr() as int + size_of::<u8>() <= other.ptr() as int || other.ptr() as int
                 + size_of::<u8>() <= final(self).ptr() as int,
     {
+        broadcast use group_vstd_default;
+
         self.is_disjoint(other);
     }
 }

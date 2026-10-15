@@ -99,10 +99,14 @@ Practical rules when migrating:
    part still having the same pointers/length (and, for typed values, still decoding). In many
    cases Verus establishes that condition, and so `wf()` on the parent, automatically. When it
    doesn't, establish the condition on the `final(...)` of the borrowed part yourself (see rule 4).
-4. To establish `ptrs_len_same_valid(old, new)` from outside the module, call
-   `PointsTo::lemma_ptrs_len_same_valid(old, new)` (both `wf()`, same `ptr()`) or
-   `SeqPointsTo::lemma_ptrs_len_same_valid(old, new)` (both `wf()`, same `ptr()` and `len()`). The
-   predicate unfolds through closed specs, so it is not provable directly.
+4. To establish `ptrs_len_same_valid(old, new)` from outside the module, use
+   `PointsTo::lemma_ptrs_len_same_valid(old, new)` (both `wf()`, same `ptr()`),
+   `SeqPointsTo::lemma_ptrs_len_same_valid(old, new)` (both `wf()`, same `ptr()` and `len()`), or
+   `PointsToUntyped::lemma_ptrs_len_same_valid_untyped(old, new)` (both `wf()`, same `ptr()`). The
+   predicate unfolds through closed specs, so it is not provable directly. These lemmas are
+   `broadcast` and in `group_vstd_default`, so they apply automatically whenever
+   `ptrs_len_same_valid(old, new)` is mentioned and their preconditions hold; call them explicitly
+   only if you don't use the default group.
 5. In practice you carry `perm.wf()` through your own specs/invariants the way you previously
    relied on the type invariant. Constructing a `wf` permission then flows from the functions in
    [section 5](#5-function-by-function-pointsto-and-pointstounaligned).

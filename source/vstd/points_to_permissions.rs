@@ -9,8 +9,6 @@ use super::type_representation::*;
 
 verus! {
 
-broadcast use group_vstd_default;
-
 pub tracked struct SeqPointsTo<T: ?Sized, PointsToPerm: PointsToProperties + FixedSize> {
     seq_pt: Seq<PointsToPerm>,
     ptr: Ghost<*mut T>,
@@ -86,6 +84,12 @@ impl<T, PointsToPerm> PointsToProperties for SeqPointsTo<T, PointsToPerm> where
         tracked &mut self,
         tracked other: &OtherPointsToPerm,
     ) {
+        broadcast use {
+            raw_ptr_new::group_raw_ptr_axioms,
+            layout::group_layout_axioms,
+            crate::vstd::seq::group_seq_axioms,
+        };
+
         let self_addr = self.ptr()@.addr as int;
         let other_addr = other.ptr()@.addr as int;
         let csize = PointsToPerm::const_size() as int;
@@ -219,15 +223,19 @@ impl PointsToUntyped {
 
     /// If `old` and `new` are both well-formed with the same pointer, then `new` keeps `old`'s
     /// pointers and length.
-    pub proof fn lemma_ptrs_len_same_valid(old: Self, new: Self)
+    pub broadcast proof fn lemma_ptrs_len_same_valid_untyped(old: Self, new: Self)
         requires
             old.wf(),
             new.wf(),
             new.ptr() == old.ptr(),
         ensures
-            Self::ptrs_len_same_valid(old, new),
+            #[trigger] Self::ptrs_len_same_valid(old, new),
     {
-        broadcast use raw_ptr_new::group_raw_ptr_axioms;
+        broadcast use {
+            raw_ptr_new::group_raw_ptr_axioms,
+            layout::group_layout_axioms,
+            crate::vstd::seq::group_seq_axioms,
+        };
 
         assert forall|j: int| 0 <= j < new.len() implies #[trigger] new[j].ptr() == old[j].ptr() by {
             assert(new[j].ptr()@.addr == old[j].ptr()@.addr);
@@ -247,6 +255,8 @@ impl PointsToUntyped {
             perm.bytes().len() == size_of::<T>(),
             perm.wf(),
     {
+        broadcast use group_vstd_default;
+
         broadcast use raw_ptr_new::group_raw_ptr_axioms;
 
         let byte_ptr: *mut [u8] = ptr_mut_from_data(
@@ -266,6 +276,8 @@ impl PointsToUntyped {
             final(self).ptr() as int + final(self).len() <= other.ptr() as int || other.ptr() as int
                 + other.len() <= final(self).ptr() as int,
     {
+        broadcast use group_vstd_default;
+
         assert(self.len() == self.size());
         assert(other.size() == other.len() * other.seq_pt()[0].size());
         self.is_disjoint(other);
@@ -299,6 +311,8 @@ impl PointsToUntyped {
             first.wf(),
             second.wf(),
     {
+        broadcast use group_vstd_default;
+
         if self.len() != 0 {
             self.provenance_not_none();
             self.ptr_bounds();
@@ -362,6 +376,8 @@ impl PointsToUntyped {
             first.wf(),
             second.wf(),
     {
+        broadcast use group_vstd_default;
+
         if self.len() != 0 {
             self.provenance_not_none();
             self.ptr_bounds();
@@ -491,6 +507,8 @@ impl PointsToUntyped {
             ),
             joined.wf(),
     {
+        broadcast use group_vstd_default;
+
         if self.len() != 0 {
             self.provenance_not_none();
             self.ptr_bounds();
@@ -746,16 +764,33 @@ impl<T> PointsToProperties for PointsToUnaligned<T> {
     /// Non-nullness follows from the underlying `PointsToUntyped`'s invariant,
     /// since `self.ptr()` and `self.pt_untyped().ptr()` have the same address.
     proof fn is_nonnull(tracked &self) {
+        broadcast use {
+            raw_ptr_new::group_raw_ptr_axioms,
+            layout::group_layout_axioms,
+            crate::vstd::seq::group_seq_axioms,
+        };
     }
 
     /// Delegates to the underlying `PointsToUntyped`'s `ptr_bounds`,
     /// since `self.ptr()` and `self.pt_untyped().ptr()` have the same address.
     proof fn ptr_bounds(tracked &self) {
+        broadcast use {
+            raw_ptr_new::group_raw_ptr_axioms,
+            layout::group_layout_axioms,
+            crate::vstd::seq::group_seq_axioms,
+        };
+
         self.pt_untyped.ptr_bounds();
     }
 
     /// Delegates to the underlying `PointsToUntyped`'s `provenance_not_none`.
     proof fn provenance_not_none(tracked &self) {
+        broadcast use {
+            raw_ptr_new::group_raw_ptr_axioms,
+            layout::group_layout_axioms,
+            crate::vstd::seq::group_seq_axioms,
+        };
+
         self.pt_untyped.provenance_not_none();
     }
 
@@ -765,6 +800,12 @@ impl<T> PointsToProperties for PointsToUnaligned<T> {
         tracked &mut self,
         tracked other: &OtherPointsToPerm,
     ) {
+        broadcast use {
+            raw_ptr_new::group_raw_ptr_axioms,
+            layout::group_layout_axioms,
+            crate::vstd::seq::group_seq_axioms,
+        };
+
         self.pt_untyped.is_disjoint(other);
     }
 
@@ -778,6 +819,12 @@ impl<T> PointsToProperties for PointsToUnaligned<T> {
 
     /// Delegates to `PointsToUntyped::stays_wf` for the underlying bytes.
     proof fn stays_wf_basic(old: Self, new: Self) {
+        broadcast use {
+            raw_ptr_new::group_raw_ptr_axioms,
+            layout::group_layout_axioms,
+            crate::vstd::seq::group_seq_axioms,
+        };
+
         PointsToUntyped::stays_wf(old.pt_untyped(), new.pt_untyped());
     }
 }
@@ -1046,6 +1093,11 @@ impl<T> PointsToProperties for PointsTo<T> {
     /// Non-nullness follows from the underlying `PointsToUnaligned`'s invariant,
     /// since `self.ptr()` and `self.pt_unaligned().ptr()` are the same pointer.
     proof fn is_nonnull(tracked &self) {
+        broadcast use {
+            raw_ptr_new::group_raw_ptr_axioms,
+            layout::group_layout_axioms,
+            crate::vstd::seq::group_seq_axioms,
+        };
     }
 
     /// Delegates to the underlying `PointsToUnaligned`'s `ptr_bounds`,
@@ -1112,15 +1164,19 @@ impl<T> PointsTo<T> {
 
     /// If `old` and `new` are both well-formed with the same pointer, then `new` keeps `old`'s
     /// underlying pointers and length, and still satisfies decode validity.
-    pub proof fn lemma_ptrs_len_same_valid(old: Self, new: Self)
+    pub broadcast proof fn lemma_ptrs_len_same_valid(old: Self, new: Self)
         requires
             old.wf(),
             new.wf(),
             new.ptr() == old.ptr(),
         ensures
-            Self::ptrs_len_same_valid(old, new),
+            #[trigger] Self::ptrs_len_same_valid(old, new),
     {
-        broadcast use raw_ptr_new::group_raw_ptr_axioms;
+        broadcast use {
+            raw_ptr_new::group_raw_ptr_axioms,
+            layout::group_layout_axioms,
+            crate::vstd::seq::group_seq_axioms,
+        };
 
         let old_u = old.pt_unaligned().pt_untyped();
         let new_u = new.pt_unaligned().pt_untyped();
@@ -1242,6 +1298,8 @@ impl<T> PointsTo<T> {
             pt_untyped.len() == size_of::<T>(),
             typed_value == self.typed_value(),
     {
+        broadcast use group_vstd_default;
+
         let tracked PointsTo { pt_unaligned } = self;
         let tracked PointsToUnaligned { val, pt_untyped } = pt_unaligned;
         (pt_untyped, val)
@@ -1262,6 +1320,8 @@ impl<T> PointsTo<T> {
             out.is_empty(),
             out.wf(),
     {
+        broadcast use group_vstd_default;
+
         PointsTo { pt_unaligned: PointsToUnaligned { val: TypedValue::Empty, pt_untyped } }
     }
 
@@ -1307,6 +1367,8 @@ impl<T> PointsTo<T> {
             pt_untyped.bytes() == self.bytes(),
             pt_untyped.wf(),
     {
+        broadcast use group_vstd_default;
+
         let tracked PointsTo { pt_unaligned } = self;
         let tracked PointsToUnaligned { val: _, pt_untyped } = pt_unaligned;
         pt_untyped
@@ -1323,6 +1385,8 @@ impl<T> PointsTo<T> {
             pt_untyped.bytes() == self.bytes(),
             pt_untyped.wf(),
     {
+        broadcast use group_vstd_default;
+
         self.pt_unaligned.tracked_pt_untyped()
     }
 
@@ -1344,6 +1408,8 @@ impl<T> PointsTo<T> {
             // Criteria necessary for re-establishing invariants
             PointsToUntyped::ptrs_len_same_valid(*pt_untyped, *final(pt_untyped)) ==> final(self).wf(),
     {
+        broadcast use group_vstd_default;
+
         self.pt_unaligned.val = TypedValue::Empty;
         &mut self.pt_unaligned.pt_untyped
     }
@@ -1593,15 +1659,21 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
     /// If `old` and `new` are both well-formed with the same pointer and length, then each element
     /// of `new` keeps the corresponding element of `old`'s pointers and length, and still
     /// satisfies decode validity.
-    pub proof fn lemma_ptrs_len_same_valid(old: Self, new: Self)
+    pub broadcast proof fn lemma_ptrs_len_same_valid(old: Self, new: Self)
         requires
             old.wf(),
             new.wf(),
             new.ptr() == old.ptr(),
             new.len() == old.len(),
         ensures
-            Self::ptrs_len_same_valid(old, new),
+            #[trigger] Self::ptrs_len_same_valid(old, new),
     {
+        broadcast use {
+            raw_ptr_new::group_raw_ptr_axioms,
+            layout::group_layout_axioms,
+            crate::vstd::seq::group_seq_axioms,
+        };
+
         assert forall|i: int| 0 <= i < new.len() implies PointsTo::<T>::ptrs_len_same_valid(
             old[i],
             #[trigger] new[i],
@@ -1649,6 +1721,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             // Criteria necessary for re-establishing invariants
             Self::ptrs_len_same_valid(*old(self), *final(self)) ==> final(self).wf(),
     {
+        broadcast use group_vstd_default;
+
         &mut self.seq_pt
     }
 
@@ -2026,6 +2100,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             pt_untyped.wf(),
         decreases self.len(),
     {
+        broadcast use group_vstd_default;
+
         let ghost_self = self;
         if self.len() == 0 {
             assert(self.len() * size_of::<T>() == 0) by (nonlinear_arith)
@@ -2110,6 +2186,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             out.is_fully_empty(),
             out.wf(),
     {
+        broadcast use group_vstd_default;
+
         let tracked mut out = Self::from_untyped_with_typed_value(
             pt_untyped,
             len,
@@ -2168,6 +2246,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             out.wf(),
         decreases capacity,
     {
+        broadcast use group_vstd_default;
+
         let ghost_untyped = pt_untyped;
 
         if capacity == 0 {
@@ -2305,6 +2385,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             raw.wf(),
         decreases n,
     {
+        broadcast use group_vstd_default;
+
         if n == 0 {
             let tracked empty = PointsToUntyped::zero_sized(
                 ptr_mut_from_data::<()>(
@@ -2355,6 +2437,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             raw.bytes() == self.bytes(),
             raw.wf(),
     {
+        broadcast use group_vstd_default;
+
         self.untyped_ref_join(self.len())
     }
 
@@ -2396,6 +2480,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             },
         decreases perms.len(),
     {
+        broadcast use group_vstd_default;
+
         if perms.len() == 0 {
             let tracked empty = PointsToUntyped::zero_sized(
                 ptr_mut_from_data::<()>(
@@ -2485,6 +2571,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             ),
             sub.seq_pt() == self.seq_pt().subrange(start_index as int, (start_index + len) as int),
     {
+        broadcast use group_vstd_default;
+
         let sub_ptr = ptr_mut_from_data::<T>(
             PtrData {
                 addr: ((self.ptr()@.addr + start_index * size_of::<T>()) as usize),
@@ -2548,6 +2636,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             forall|i: int| 0 <= i < n ==> *#[trigger] val[i] == self.seq_typed_value()[start + i],
         decreases n,
     {
+        broadcast use group_vstd_default;
+
         if n == 0 {
             Seq::tracked_empty()
         } else {
@@ -2568,6 +2658,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         ensures
             val.map_values(|r: &TypedValue<T>| *r) == self.seq_typed_value().subrange(start, end),
     {
+        broadcast use group_vstd_default;
+
         let tracked val = self.borrow_typed_values(start, (end - start) as nat);
         val
     }
@@ -2580,6 +2672,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             out == val.map_values(|r: &TypedValue<T>| *r),
         decreases val.len(),
     {
+        broadcast use group_vstd_default;
+
         if val.len() == 0 {
             Seq::tracked_empty()
         } else {
@@ -2619,6 +2713,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             ),
             final(self).wf(),
     {
+        broadcast use group_vstd_default;
+
         let tracked copied = Self::copy_typed_values(val);
         self.put_typed_value_subrange(start, copied);
     }
@@ -2640,6 +2736,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             final(self).wf(),
         decreases end - start,
     {
+        broadcast use group_vstd_default;
+
         if start == end {
             Seq::tracked_empty()
         } else {
@@ -2670,6 +2768,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             Self::bytes_inner(a) == Self::bytes_inner(b),
         decreases a.len(),
     {
+        broadcast use group_vstd_default;
+
         if a.len() > 0 {
             Self::bytes_inner_ext(a.drop_last(), b.drop_last());
         }
@@ -2702,6 +2802,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             final(self).wf(),
         decreases val.len(),
     {
+        broadcast use group_vstd_default;
+
         if val.len() > 0 {
             let old_self = *self;
             let tracked mut rest = val;
@@ -2756,6 +2858,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             final(self).wf(),
         decreases val.len(),
     {
+        broadcast use group_vstd_default;
+
         if val.len() > 0 {
             let old_self = *self;
             let tracked mut rest = val;
@@ -2782,6 +2886,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             out == val.take(n as int),
         decreases n,
     {
+        broadcast use group_vstd_default;
+
         if n == 0 {
             Seq::tracked_empty()
         } else {
@@ -2818,6 +2924,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
                     ==> #[trigger] final(self).seq_typed_value()[i] == old(self).seq_typed_value()[i],
             final(self).wf(),
     {
+        broadcast use group_vstd_default;
+
         let tracked copied = Self::copy_values(val, val.len());
         assert(copied =~= *val);
         self.put_subrange(start, copied);
@@ -2840,6 +2948,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             final(self).wf(),
         decreases end - start,
     {
+        broadcast use group_vstd_default;
+
         if start == end {
             Seq::tracked_empty()
         } else {
@@ -2870,6 +2980,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             forall|i: int| 0 <= i < n ==> *#[trigger] val[i] == self[start + i].value(),
         decreases n,
     {
+        broadcast use group_vstd_default;
+
         if n == 0 {
             Seq::tracked_empty()
         } else {
@@ -2890,6 +3002,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         ensures
             val.map_values(|r: &T| *r) == self.value_subrange(start, (end - start) as nat),
     {
+        broadcast use group_vstd_default;
+
         let tracked val = self.borrow_values(start, (end - start) as nat);
         val
     }
@@ -3045,6 +3159,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             first.wf(),
             second.wf(),
     {
+        broadcast use group_vstd_default;
+
         if self.len() != 0 && size_of::<T>() != 0 {
             assert(self.len() * size_of::<T>() != 0) by (nonlinear_arith)
                 requires
@@ -3117,6 +3233,8 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
             joined.bytes() == self.bytes() + other.bytes(),
             joined.wf(),
     {
+        broadcast use group_vstd_default;
+
         let ghost_self = self;
         let ghost_other = other;
 
@@ -3221,6 +3339,12 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         assert(other.size() == other.len() * size_of::<S>());
         self.is_disjoint(other);
     }
+}
+
+pub broadcast group group_points_to_permissions_lemmas {
+    SeqPointsTo::lemma_ptrs_len_same_valid_untyped,
+    PointsTo::lemma_ptrs_len_same_valid,
+    SeqPointsTo::lemma_ptrs_len_same_valid,
 }
 
 } // verus!
