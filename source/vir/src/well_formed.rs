@@ -22,7 +22,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 struct Ctxt<'a> {
-    pub(crate) funs: HashMap<Fun, FunctionStub>,
+    pub(crate) funs: Arc<HashMap<Fun, FunctionStub>>,
     pub(crate) lookup: Arc<WfLookup>,
     pub(crate) krate: &'a Krate,
     unpruned_krate: &'a Krate,
@@ -2141,7 +2141,7 @@ fn check_all_but_functions(
     warning_ctx: &crate::context::WarningCtx,
     no_verify: bool,
     no_cheating: bool,
-    funs: &HashMap<Fun, FunctionStub>,
+    funs: Arc<HashMap<Fun, FunctionStub>>,
     lookup: Arc<WfLookup>,
 ) {
     let mut emit = EmitErrorState {
@@ -2204,13 +2204,13 @@ pub fn check_crate_initial(
     no_verify: bool,
     no_cheating: bool,
     krate_functions: Vec<FunctionStub>,
-    funs: &HashMap<Fun, FunctionStub>,
+    funs: Arc<HashMap<Fun, FunctionStub>>,
 ) -> Result<CheckDetails, WFErr> {
     check_broadcast_groups(krate).map_err(to_wf)?;
     let (dts, traits) = check_conflicts(krate)?;
     let reveal_groups = check_reveal_groups(krate)?;
     let lookup = WfLookup { dts, traits, reveal_groups };
-    check_all_but_functions(krate, lookup);
+    check_all_but_functions(krate, funs, lookup);
 }
 
 /// Check that krate after all funnctions are computed.
