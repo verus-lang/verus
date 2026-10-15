@@ -197,15 +197,15 @@ fn run() -> Result<std::process::ExitStatus, String> {
         }
     }
 
+    let verus_exe = current_exe.expect("get path to `verus` executable");
     let mut cmd = if use_rustup {
         let mut cmd = Command::new("rustup");
         cmd.arg("run");
         cmd.arg(TOOLCHAIN);
         cmd.arg("--");
-        cmd.arg("verus");
+        cmd.arg(verus_exe);
         cmd
     } else {
-        let verus_exe = current_exe.expect("get path to `verus` executable");
         Command::new(verus_exe)
     };
     cmd.arg(INTERNAL_RUST_VERIFY);
