@@ -670,3 +670,18 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] exec_attr_spec_const_issue3147 verus_code! {
+        #[verifier::exec]
+        spec const C: bool = true;
+    } => Err(err) => assert_vir_error_msg(err, "conflicting mode attributes: `exec` and `spec`")
+}
+
+test_verify_one_file! {
+    #[test] conflicting_const_attrs_without_verus_issue3147 code! {
+        #[verifier::exec]
+        #[verifier::spec]
+        const C: u64 = 5;
+    } => Err(err) => assert_vir_error_msg(err, "conflicting mode attributes: `exec` and `spec`")
+}

@@ -422,7 +422,8 @@ pub struct ErasureModes {
     // Modes of variables in Var, Assign, Decl
     // first mode = canonical mode of the variable
     // second mode = mode of this usage (might be greater)
-    pub var_modes: Vec<(Span, (Mode, Mode))>,
+    pub local_modes: Vec<(Span, (Mode, Mode))>,
+    pub binder_modes: Vec<(Span, Mode)>,
     // Modes of calls and struct Ctors
     pub ctor_modes: Vec<(Span, Mode)>,
 }
@@ -901,7 +902,7 @@ fn add_pattern_rec(
     pattern: &Pattern,
 ) -> Result<(), VirErr> {
     if matches!(&pattern.x, PatternX::Var(..) | PatternX::Binding { .. }) {
-        record.erasure_modes.var_modes.push((pattern.span.clone(), (mode, mode)));
+        record.erasure_modes.binder_modes.push((pattern.span.clone(), mode));
     }
 
     let mode = if typing.in_pure { Mode::Spec } else { mode };
@@ -1123,7 +1124,7 @@ fn check_place(
             // For non-mutating: coerce the mode to whatever is necessary for the context.
 
             // We also apply coerce to the "expected mode" here in order to compute the optimal
-            // mode to put into var_modes (see below)
+            // mode to put into local_modes (see below)
 
             let mut coerced_mode = mode_join(place_mode, expect.0);
             if typing.in_assert_by_body || typing.in_proof_in_spec || typing.in_pure {
@@ -1230,7 +1231,7 @@ fn check_place(
                 PlaceX::Local(var) => typing.get(var, &place.span)?.0,
                 _ => unreachable!(),
             };
-            record.erasure_modes.var_modes.push((var_place.span.clone(), (var_mode, final_mode)));
+            record.erasure_modes.local_modes.push((var_place.span.clone(), (var_mode, final_mode)));
         }
     }
 
@@ -1362,7 +1363,7 @@ fn check_place_rec_inner(
 
             // Other case is handled in `check_place`; see the explanation there.
             if access.is_mut() {
-                record.erasure_modes.var_modes.push((place.span.clone(), (mode, mode)));
+                record.erasure_modes.local_modes.push((place.span.clone(), (mode, mode)));
             }
 
             Ok((mode, proph))
@@ -1688,7 +1689,10 @@ fn check_expr(
                 // Proof variables may be used as spec, but not as proof inside forall statements.
                 // This protects against effectively consuming a linear proof variable
                 // multiple times for different instantiations of the forall variables.
-                record.erasure_modes.var_modes.push((expr.span.clone(), (Mode::Spec, Mode::Spec)));
+                record
+                    .erasure_modes
+                    .local_modes
+                    .push((expr.span.clone(), (Mode::Spec, Mode::Spec)));
                 return Ok((Mode::Spec, proph));
             }
 
@@ -1717,7 +1721,7 @@ fn check_expr(
 
             let mode =
                 if ctxt.check_ghost_blocks { typing.block_ghostness.join_mode(mode) } else { mode };
-            record.erasure_modes.var_modes.push((expr.span.clone(), (mode, mode)));
+            record.erasure_modes.local_modes.push((expr.span.clone(), (Mode::Spec, Mode::Spec)));
             return Ok((mode, proph));
         }
         ExprX::ConstVar(x, _)
@@ -1761,7 +1765,6 @@ fn check_expr(
             let mode = function.x.outer_ret.x.mode;
             let mode =
                 if ctxt.check_ghost_blocks { typing.block_ghostness.join_mode(mode) } else { mode };
-            record.erasure_modes.var_modes.push((expr.span.clone(), (mode, mode)));
             Ok((mode, Proph::No))
         }
         ExprX::Call {
@@ -2169,7 +2172,17 @@ fn check_expr(
             check_expr(ctxt, record, typing, outer_mode, expect, e1, outer_proph)
         }
         ExprX::UnaryOpr(UnaryOpr::ToDyn(_), e1) => {
-            check_expr(ctxt, record, typing, outer_mode, expect, e1, outer_proph)
+            let (mode, proph) =
+                check_expr(ctxt, record, typing, outer_mode, expect, e1, outer_proph)?;
+            if matches!(&*crate::ast_util::undecorate_typ(&expr.typ), TypX::MutRef(_))
+                && mode != Mode::Exec
+            {
+                return Err(error(
+                    &expr.span,
+                    "coercing mutable references to a trait object is not supported in spec/proof mode",
+                ));
+            }
+            Ok((mode, proph))
         }
         ExprX::UnaryOpr(UnaryOpr::Box(_), _) => panic!("unexpected box"),
         ExprX::UnaryOpr(UnaryOpr::Unbox(_), _) => panic!("unexpected box"),
@@ -2398,8 +2411,6 @@ fn check_expr(
                 ));
             }
 
-            record.erasure_modes.var_modes.push((expr.span.clone(), (Mode::Exec, Mode::Exec)));
-
             Ok((outer_mode, Proph::No))
         }
         ExprX::Choose { params, cond, body } => {
@@ -2478,7 +2489,7 @@ fn check_expr(
                         let (mode, pv) = typing.get(xr, &rhs.span)?;
                         typing.infer_as(xl, mode, pv.clone());
                         record.var_modes.insert(xl.clone(), mode);
-                        record.erasure_modes.var_modes.push((span, (mode, mode)));
+                        record.erasure_modes.binder_modes.push((span, mode));
                     }
                 }
             }
@@ -3764,9 +3775,7 @@ fn check_function(
     }
 
     let mut ens_typing = fun_typing.push_var_scope();
-    if function.x.ens_has_return {
-        ens_typing.insert(&function.x.inner_ret.x.name, Mode::Spec, Some(ProphVar::No));
-    }
+    ens_typing.insert(&function.x.inner_ret.x.name, Mode::Spec, Some(ProphVar::No));
 
     for expr in function.x.ensure.0.iter().chain(function.x.ensure.1.iter()) {
         let mut ens_typing = ens_typing.push_block_ghostness(Ghost::Ghost);
@@ -3843,7 +3852,7 @@ fn check_function(
         }
     }
 
-    let ret_mode = if function.x.ens_has_return {
+    let ret_mode = if !is_unit(&function.x.outer_ret.x.typ) {
         let ret_mode = function.x.outer_ret.x.mode;
         if !matches!(function.x.item_kind, ItemKind::Const) && !mode_le(function.x.mode, ret_mode) {
             return Err(error(
@@ -4052,7 +4061,8 @@ pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes), Vec<VirErr>> 
             }
         }
     }
-    let erasure_modes = ErasureModes { var_modes: vec![], ctor_modes: vec![] };
+    let erasure_modes =
+        ErasureModes { local_modes: vec![], binder_modes: vec![], ctor_modes: vec![] };
     let special_paths = SpecialPaths::new();
     let mut ctxt = Ctxt {
         funs,

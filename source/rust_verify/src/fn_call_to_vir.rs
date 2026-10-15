@@ -95,14 +95,15 @@ pub(crate) fn fn_call_to_vir<'tcx>(
             return mk_one_vir_arg(bctx, expr.span, &args);
         }
         Some(RustItem::CloneClone) => {
-            // Special case `clone` for standard Rc and Arc types
-            // (Could also handle it for other types where cloning is the identity
-            // operation in the SMT encoding.)
+            // Special case `clone` for standard Rc and Arc types, shared references, and unit,
+            // where cloning is the identity operation in the SMT encoding.
             let arg_typ = node_substs[0].expect_ty();
 
-            if is_type_std_rc_or_arc_or_ref(bctx.ctxt.tcx, arg_typ) {
+            if is_type_std_rc_or_arc_or_ref(bctx.ctxt.tcx, arg_typ)
+                || matches!(arg_typ.kind(), TyKind::Tuple(ts) if ts.is_empty())
+            {
                 let arg = mk_one_vir_arg(bctx, expr.span, &args)?;
-                record_misc(bctx, expr, MiscCall::SmartPtrClone { is_method });
+                record_misc(bctx, expr, MiscCall::IdentityClone { is_method });
                 return Ok(arg);
             }
         }
@@ -2764,7 +2765,7 @@ fn extract_choose<'tcx>(
                 let name = pat_to_var(x.pat)?;
                 let vir_expr = bctx.spanned_typed_new(x.span, &typ, ExprX::Var(name.clone()));
                 let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-                erasure_info.hir_vir_ids.push((Some(x.pat.hir_id), vir_expr.span.id));
+                erasure_info.local_hir_vir_ids.push((None, vir_expr.span.id));
                 vars.push(vir_expr);
                 params.push(Arc::new(VarBinderX { name, a: typ }));
             }

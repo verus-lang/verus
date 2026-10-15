@@ -1,7 +1,7 @@
 use crate::ast::{AssertProof, SimplStmt, SplitKind};
 use crate::to_relation::emit_match;
 use quote::{quote, quote_spanned};
-use verus_syn::{Expr, Ident};
+use verus_syn::{Expr, Ident, Type};
 
 // Given a transition, we convert it into a lemma that will create the correct
 // verification conditions for its 'assert' statement.
@@ -28,7 +28,24 @@ use verus_syn::{Expr, Ident};
 // more weakest-precondition-esque conditions than we already do, so it's what I'm going
 // with for now.
 
-pub fn safety_condition_body_simpl_vec(sops: &Vec<SimplStmt>) -> Option<Expr> {
+pub fn safety_condition_body(sops: &Vec<SimplStmt>) -> Option<Expr> {
+    match safety_condition_body_simpl_vec(sops) {
+        None => None,
+        Some(e) => {
+            let mut ids = Vec::new();
+            get_assigns_simpl_vec(sops, &mut ids);
+
+            let mut t = proc_macro2::TokenStream::new();
+            for (ident, typ) in ids {
+                t.extend(quote! { #[allow(unused_mut)] let mut #ident: #typ; });
+            }
+            t.extend(quote! { #e });
+            Some(Expr::Verbatim(t))
+        }
+    }
+}
+
+fn safety_condition_body_simpl_vec(sops: &Vec<SimplStmt>) -> Option<Expr> {
     let mut h = Vec::new();
     for (i, t) in sops.iter().enumerate() {
         let is_last = i == sops.len() - 1;
@@ -39,7 +56,7 @@ pub fn safety_condition_body_simpl_vec(sops: &Vec<SimplStmt>) -> Option<Expr> {
     if h.len() > 0 { Some(Expr::Verbatim(quote! { #(#h)* })) } else { None }
 }
 
-pub fn safety_condition_body_simpl(sop: &SimplStmt, let_skip_brace: bool) -> Option<Expr> {
+fn safety_condition_body_simpl(sop: &SimplStmt, let_skip_brace: bool) -> Option<Expr> {
     match sop {
         SimplStmt::Let(span, pat, None, v, child, _) => {
             let t = safety_condition_body_simpl_vec(child);
@@ -126,15 +143,9 @@ pub fn safety_condition_body_simpl(sop: &SimplStmt, let_skip_brace: bool) -> Opt
                 };
             }))
         }
-        SimplStmt::Assign(span, iden, ty, e, _prelude) => {
-            // TODO need to handle scoped assigns
-            // (not a problem right now because assigns are only used for
-            //  - outputs
-            //  - special ops
-            // But we don't care about outputs, and special ops can't be scoped right now
-
+        SimplStmt::Assign(span, iden, _ty, e, _prelude) => {
             Some(Expr::Verbatim(quote_spanned! {*span =>
-                let #iden: #ty = #e;
+                #iden = #e;
             }))
         }
     }
@@ -165,5 +176,30 @@ pub fn has_any_assert_simpl(sop: &SimplStmt) -> bool {
         SimplStmt::PostCondition(..) => false,
         SimplStmt::Assert(..) => true,
         SimplStmt::Assign(..) => false,
+    }
+}
+
+fn get_assigns_simpl_vec(sops: &Vec<SimplStmt>, out: &mut Vec<(Ident, Box<Type>)>) {
+    for sop in sops.iter() {
+        get_assigns_simpl(sop, out);
+    }
+}
+
+fn get_assigns_simpl(sop: &SimplStmt, out: &mut Vec<(Ident, Box<Type>)>) {
+    match sop {
+        SimplStmt::Let(_, _, _, _, child, _) => get_assigns_simpl_vec(child, out),
+        SimplStmt::Split(_span, _cond, es, _) => {
+            for e in es {
+                get_assigns_simpl_vec(&e.1, out);
+            }
+        }
+        SimplStmt::Require(..) => {}
+        SimplStmt::PostCondition(..) => {}
+        SimplStmt::Assert(..) => {}
+        SimplStmt::Assign(_span, iden, ty, _e, _prelude) => {
+            if out.iter().all(|(i, _)| i != iden) {
+                out.push((iden.clone(), (*ty).clone()));
+            }
+        }
     }
 }

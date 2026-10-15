@@ -920,7 +920,7 @@ pub enum PatternX {
     /// Fields can appear **in any order** even for tuple variants.
     Constructor(Dt, Ident, Binders<Pattern>),
     Or(Pattern, Pattern),
-    /// Matches something equal to the value of this expr
+    /// Matches something equal to the value of this expr *using spec equality*
     /// This only supports literals, consts, and pure functions
     /// so we don't need to worry about side-effects, binding order, etc.
     /// See `check_expr_in_pattern` for the exact supported expressions.
@@ -1712,8 +1712,6 @@ pub struct FunctionX {
     /// For async functions, `inner_ret` has the source-level type and `outer_ret` has
     /// the `impl Future` opaque type. In this case, the two should be named differently.
     pub inner_ret: Param,
-    /// Can the ensures clause reference the 'ret' param (must be true for non-unit types)
-    pub ens_has_return: bool,
     /// Preconditions (requires for proof/exec functions, recommends for spec functions)
     pub require: Exprs,
     /// Postconditions (proof/exec functions only)
@@ -1773,7 +1771,6 @@ pub struct FunctionStubX {
     pub typ_bounds: GenericBounds,
     pub params: Params,
     pub outer_ret: Param,
-    pub ens_has_return: bool,
     pub item_kind: ItemKind,
     pub attrs: FunctionAttrs,
 }
