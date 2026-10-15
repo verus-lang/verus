@@ -1153,8 +1153,11 @@ impl Verifier {
         profile_file_name: Option<&std::path::PathBuf>,
         prover_choice: vir::def::ProverChoice,
     ) -> Result<air::context::Context, VirErr> {
-        let mut air_context =
-            air::context::Context::new(message_interface.clone(), self.args.solver);
+        let mut air_context = air::context::Context::new_with_encoding(
+            message_interface.clone(),
+            self.args.solver,
+            self.args.smt_encoding,
+        );
         air_context.set_ignore_unexpected_smt(self.args.ignore_unexpected_smt);
         air_context.set_debug(self.args.debugger);
         if let Some(profile_file_name) = profile_file_name {
@@ -1293,7 +1296,10 @@ impl Verifier {
             bucket_id,
             query_function_path_counter,
             is_rerun,
-            PreludeConfig { arch_word_bits: ctx.arch_word_bits, solver: self.args.solver },
+            PreludeConfig {
+                arch_word_bits: ctx.arch_word_bits,
+                smt_encoding: self.args.smt_encoding,
+            },
             profile_file_name,
             prover_choice,
         )?;
@@ -1350,7 +1356,10 @@ impl Verifier {
             bucket_id,
             None,
             false,
-            PreludeConfig { arch_word_bits: ctx.arch_word_bits, solver: self.args.solver },
+            PreludeConfig {
+                arch_word_bits: ctx.arch_word_bits,
+                smt_encoding: self.args.smt_encoding,
+            },
             profile_all_file_name.as_ref(),
             vir::def::ProverChoice::DefaultProver,
         )?;
