@@ -1165,6 +1165,15 @@ impl FunctionKind {
             }
         }
     }
+
+    pub(crate) fn has_default(&self) -> bool {
+        match self {
+            FunctionKind::Static
+            | FunctionKind::TraitMethodImpl { .. }
+            | FunctionKind::ForeignTraitMethodImpl { .. } => false,
+            FunctionKind::TraitMethodDecl { has_default, .. } => *has_default,
+        }
+    }
 }
 
 // Return a non-TraitMethodImpl for f

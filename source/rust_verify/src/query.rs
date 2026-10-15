@@ -540,6 +540,8 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
         }
         let krate = krate_infer_resolution(&krate, &res_infos).map_err(|e| self.emit_errors(e))?;
 
+        vir::well_formed::check_crate_merged(&krate).map_err(|e| self.emit_error(e))?;
+
         Ok((krate, Arc::new(new_warning_ctx)))
     }
 

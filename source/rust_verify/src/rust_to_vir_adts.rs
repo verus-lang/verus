@@ -792,7 +792,7 @@ pub(crate) fn setup_type_invariants(
         }
         dt_to_idx_opt.as_ref().unwrap().get(dt).cloned()
     };
-    let get_fun_span = |fs: &Vec<Function>, fun: &Fun| {
+    let get_fun_span = |fs: &[FunctionStub], fun: &Fun| {
         for f in fs.iter() {
             if &f.x.name == fun {
                 return f.span.clone();
@@ -819,7 +819,7 @@ pub(crate) fn setup_type_invariants(
                             &f.span,
                             "type_invariant: multiple type invariants defined for the same type",
                         )
-                        .primary_span(&get_fun_span(&krate.functions, &f2.fun)));
+                        .primary_span(&get_fun_span(functions, &f2.fun)));
                     }
                     dt.x.user_defined_invariant_fn = Some(vir::ast::FunWithVis {
                         fun: f.x.name.clone(),
