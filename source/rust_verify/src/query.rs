@@ -342,7 +342,9 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
         let ctxt = &pre_crate.ctxt;
         let info = &pre_crate.fun_name_to_info[fun];
         let mut new_functions = vec![];
-        match finish_item(ctxt, &info, &mut new_functions) {
+        let result = finish_item(ctxt, &info, &mut new_functions);
+        ctxt.flush_diagnostics(self.reporter);
+        match result {
             Ok(()) => {
                 for new_function in new_functions.into_iter() {
                     let found = self
@@ -562,6 +564,8 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
         let krate = krate_infer_resolution(&krate, &res_infos).map_err(|e| self.emit_errors(e))?;
 
         vir::well_formed::check_crate_merged(&krate).map_err(|e| self.emit_error(e))?;
+
+        pre_crate.ctxt.flush_diagnostics(self.reporter);
 
         Ok((krate, Arc::new(new_warning_ctx)))
     }

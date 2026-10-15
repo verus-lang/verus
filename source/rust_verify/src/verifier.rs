@@ -2711,16 +2711,7 @@ impl Verifier {
         self.crate_items = Some(Arc::new(crate_items));
         let ctxt = pre_crate.ctxt.clone();
 
-        for diag in ctxt.diagnostics.borrow_mut().drain(..) {
-            match diag {
-                vir::ast::VirErrAs::Warning(err) => {
-                    diagnostics.report_as(&err.to_any(), MessageLevel::Warning)
-                }
-                vir::ast::VirErrAs::Note(err) => {
-                    diagnostics.report_as(&err.to_any(), MessageLevel::Note)
-                }
-            }
-        }
+        ctxt.flush_diagnostics(diagnostics);
 
         let mut query = Query::new(
             self.args.clone(),
