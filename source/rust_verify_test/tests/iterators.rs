@@ -95,6 +95,47 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] sum_works verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::{IteratorSpec, usize_sum};
+
+        fn test_sum(v: Vec<usize>) -> (sum: usize)
+            requires
+                usize_sum(v@) <= usize::MAX,
+            ensures
+                sum as int == usize_sum(v@),
+        {
+            let iter = v.into_iter();
+            let ghost iter_snapshot = iter;
+            let sum = iter.sum();
+            assert(iter_snapshot.will_return_none());
+            sum
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] sum_works_i64 verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::{IteratorSpec, i64_sum};
+
+        fn test_sum(v: Vec<i64>) -> (sum: i64)
+            requires
+                forall |i: int| 0 <= i <= v@.len() ==>
+                    i64::MIN <= #[trigger] i64_sum(v@.take(i)) <= i64::MAX,
+            ensures
+                sum as int == i64_sum(v@),
+        {
+            let iter = v.into_iter();
+            let ghost iter_snapshot = iter;
+            let sum = iter.sum();
+            assert(iter_snapshot.will_return_none());
+            sum
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] filter_works verus_code! {
         use vstd::prelude::*;
         use vstd::std_specs::iter::*;
@@ -401,4 +442,82 @@ test_verify_one_file! {
             assert(z@ == seq![(1u32,2u32), (2, 4)]);
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] iter_bridges_must_be_prophetic verus_code! {
+        use vstd::prelude::*;
+        use vstd::modes::tracked_swap;
+        use vstd::proph::ProphecyGhost;
+        use vstd::std_specs::iter::*;
+
+        // An iterator that never returns None; whether it "will return None" and how
+        // much remains are prophecies that nothing here resolves.
+        pub struct Ctr {
+            pub count: u64,
+            pub len: Tracked<ProphecyGhost<nat>>,
+            pub w: Tracked<ProphecyGhost<bool>>,
+        }
+
+        impl Iterator for Ctr {
+            type Item = u64;
+            fn next(&mut self) -> (ret: Option<Self::Item>) {
+                proof {
+                    let tracked mut new = ProphecyGhost::new();
+                    tracked_swap(&mut new, self.len.borrow_mut());
+                    new.resolve_dependent(self.len.borrow(), |x: nat| (x + 1) as nat);
+                }
+                let ret = self.count;
+                if self.count == u64::MAX { self.count = 0; } else { self.count = self.count + 1; }
+                Some(ret)
+            }
+        }
+
+        impl IteratorSpecImpl for Ctr {
+            open spec fn obeys_prophetic_iter_laws(&self) -> bool { true }
+
+            #[verifier::prophetic]
+            open spec fn remaining(&self) -> Seq<Self::Item> {
+                Seq::new(self.len@.value(), |i: int| ((i + self.count) % (u64::MAX as int + 1)) as u64)
+            }
+
+            #[verifier::prophetic]
+            open spec fn will_return_none(&self) -> bool { self.w@.value() }
+
+            open spec fn decrease(&self) -> Option<nat> { None }
+
+            open spec fn peek(&self, index: int) -> Option<Self::Item> { None }
+        }
+
+        fn exploit_iter_will_return_none() {
+            let it = Ctr { count: 0, len: Tracked(ProphecyGhost::new()), w: Tracked(ProphecyGhost::new()) };
+            let ghost g = it;
+            let ghost b: bool = IteratorSpec::will_return_none(&g);
+            let Ctr { w, .. } = it;
+            proof {
+                let tracked p = w.get();
+                p.resolve(!b);
+                assert(IteratorSpec::will_return_none(&g) == g.w@.value());
+                assert(false);
+            }
+        }
+
+        fn exploit_into_iter_remaining() {
+            let it = Ctr { count: 0, len: Tracked(ProphecyGhost::new()), w: Tracked(ProphecyGhost::new()) };
+            let ghost g = it;
+            let ghost b: Seq<u64> = into_iter_remaining::<u64, Ctr>(g);
+            let Ctr { len, .. } = it;
+            proof {
+                axiom_from_iterator_ensures::<u64, Ctr>(g);
+                let tracked p2 = len.get();
+                p2.resolve((b.len() + 1) as nat);
+                assert(IteratorSpec::remaining(&g).len() == b.len() + 1);
+                assert(into_iter_remaining::<u64, Ctr>(g) == b);
+                assert(false);
+            }
+        }
+    } => Err(err) => assert_vir_error_msgs(err, &[
+        "prophetic value not allowed for argument to proof-mode function with tracked parameters",
+        "prophetic value not allowed for argument to proof-mode function with tracked parameters",
+    ])
 }
