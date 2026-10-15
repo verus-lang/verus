@@ -10,6 +10,7 @@ use crate::ast_util::{
     get_variant_or_err, is_body_visible_to, is_unit, is_visible_to_opt, path_as_friendly_rust_name,
     referenced_vars_expr, typ_to_diagnostic_str, types_equal, undecorate_typ,
 };
+use crate::traits::{DemoteTraitLookup, method_if_not_demoted};
 use crate::context::WarningConfig;
 use crate::def::user_local_name;
 use crate::early_exit_cf::assert_no_early_exit_in_inv_block;
@@ -972,6 +973,7 @@ pub fn check_function(
     krate: &Krate,
     funs: Arc<HashMap<Fun, FunctionStub>>,
     lookup: Arc<WfLookup>,
+    demote_trait_lookup: &DemoteTraitLookup,
     function: &Function,
     warning_ctx: &crate::context::WarningCtx,
     no_cheating: bool,
@@ -983,7 +985,7 @@ pub fn check_function(
         deferred_errors: vec![],
     };
     let wf =
-        check_function_inner(krate, funs, lookup, function, &mut emit, warning_ctx, no_cheating);
+        check_function_inner(krate, funs, lookup, demote_trait_lookup, function, &mut emit, warning_ctx, no_cheating);
     let res = match wf {
         Ok(()) if emit.boundary_errors.len() == 0 => {
             Ok(PerFunctionCheckResults { func_failed_proof_notes: emit.func_failed_proof_notes })
@@ -1004,6 +1006,7 @@ pub fn check_function_inner<Emit: EmitError>(
     krate: &Krate,
     funs: Arc<HashMap<Fun, FunctionStub>>,
     lookup: Arc<WfLookup>,
+    demote_trait_lookup: &DemoteTraitLookup,
     function: &Function,
     emit: &mut Emit,
     warning_ctx: &crate::context::WarningCtx,
@@ -1016,7 +1019,7 @@ pub fn check_function_inner<Emit: EmitError>(
         panic!("missing warn_config for function {:?}", function.x.name);
     };
 
-    if let FunctionKind::TraitMethodImpl { method, .. } = &function.x.kind {
+    if let Some(method) = method_if_not_demoted(demote_trait_lookup, function) {
         if function.x.require.len() > 0 {
             return Err(error(
                 &function.span,
@@ -1036,7 +1039,7 @@ pub fn check_function_inner<Emit: EmitError>(
             ));
         }
 
-        let orig_decl = ctxt.funs.get(method).ok_or_else(|| {
+        let orig_decl = ctxt.funs.get(&method).ok_or_else(|| {
             error(&function.span, "implementing a trait method that doesn't exist")
         })?;
 

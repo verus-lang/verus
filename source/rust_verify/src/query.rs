@@ -100,8 +100,21 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
         self.emit_errors(vec![err])
     }
 
-    fn handle_wf_error(&mut self, wf_err: vir::well_formed::WFErr) -> ErrorGuaranteed {
-        todo!();
+    fn handle_wf_error(&mut self, fun: Option<Fun>, wf_err: vir::well_formed::WFErr) -> ErrorGuaranteed {
+        let vir::well_formed::WFErr { errors, boundary_errors, func_failed_proof_notes } = wf_err;
+        assert!(errors.len() > 0 || boundary_errors.len() > 0);
+        if errors.len() > 0 {
+            let err = self.emit_errors(errors);
+        }
+        if boundary_errors.len() > 0 {
+            todo!();
+        }
+        if let Some(fun) = fun {
+            self.record_failed_proof_notes(&fun, func_failed_proof_notes);
+        } else {
+            assert!(func_failed_proof_notes.is_empty());
+        }
+        ErrorGuaranteed { _i_just_emitted_an_error: () }
     }
 
     fn handle_per_function_check_results(
@@ -110,6 +123,14 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
         wf_res: vir::well_formed::PerFunctionCheckResults,
     ) {
         let vir::well_formed::PerFunctionCheckResults { func_failed_proof_notes } = wf_res;
+        self.record_failed_proof_notes(fun, func_failed_proof_notes);
+    }
+
+    fn record_failed_proof_notes(
+        &mut self,
+        fun: &Fun,
+        func_failed_proof_notes: HashSet<String>,
+    ) {
         for x in func_failed_proof_notes.iter() {
             self.func_failed_proof_notes.entry(fun.clone()).or_default().insert(x.clone());
         }
@@ -266,7 +287,7 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
         );
         self.emit_non_blocking_errors(non_blocking_errors);
         self.emit_diags(diags);
-        wf.map_err(|e| self.handle_wf_error(e))
+        wf.map_err(|e| self.handle_wf_error(None, e))
     }
 
     //// Translating an individual function
@@ -341,14 +362,22 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
             &pre_crate.krate_without_funs,
             function_stubs.clone(),
             initial_wf.lookup.clone(),
+            &lookup,
             &function,
             &pre_crate.warning_ctx,
             self.args.no_cheating,
         );
         self.emit_non_blocking_errors(non_blocking_errors);
         self.emit_diags(diags);
-        let wf = wf.map_err(|e| self.handle_wf_error(e))?;
+        let wf = wf.map_err(|e| self.handle_wf_error(Some(fun.clone()), e))?;
         self.handle_per_function_check_results(fun, wf);
+
+        // Autospec
+
+        let function = vir::autospec::resolve_autospec_in_function(
+            &function_stubs,
+            &function,
+        ).map_err(|e| self.emit_error(e))?;
 
         // Mode checking
 
@@ -361,7 +390,6 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
         let erasure_modes = Arc::new(erasure_modes);
         let resolution_info = resolution_info.map(Arc::new);
 
-        todo!();
         Ok((function, erasure_modes, resolution_info))
     }
 

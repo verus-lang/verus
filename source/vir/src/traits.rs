@@ -218,6 +218,26 @@ fn demote_one_expr(lookup: &DemoteTraitLookup, expr: &Expr) -> Result<Expr, VirE
     }
 }
 
+/// Get the method name if this is a trait method that doesn't get demoted.
+pub fn method_if_not_demoted(
+    lookup: &DemoteTraitLookup,
+    function: &Function
+) -> Option<Fun> {
+    let DemoteTraitLookup { traits, funs, .. } = &lookup;
+    match &function.x.kind {
+        FunctionKind::TraitMethodImpl { method, trait_path, .. }
+        | FunctionKind::ForeignTraitMethodImpl { method, trait_path, .. } => {
+            let our_trait_method = traits.contains(trait_path) && funs.contains(method);
+            if our_trait_method {
+                Some(method.clone())
+            } else {
+                None
+            }
+        }
+        _ => None
+    }
+}
+
 // We consider methods for external traits to be static.
 pub fn demote_external_traits(
     diagnostics: &impl air::messages::Diagnostics,
