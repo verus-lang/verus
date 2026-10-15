@@ -241,3 +241,66 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] nested_items_in_spec_and_proof_fns_issue3134 verus_code! {
+        #[verifier::external]
+        fn ext(a: u8) -> u8 {
+            a
+        }
+
+        spec fn nested_fn(x: u8) -> int {
+            fn e() {
+            }
+            x + 1
+        }
+
+        spec fn nested_const(x: u8) -> int {
+            const C: u8 = 0;
+            x + 1
+        }
+
+        spec fn nested_assume_specification(x: u8) -> int {
+            pub assume_specification[ ext ](a: u8) -> u8;
+            x + 1
+        }
+
+        proof fn nested_fn_in_proof_fn(x: u8) -> (r: int)
+            ensures
+                r == x + 1,
+        {
+            fn e() {
+            }
+            x + 1
+        }
+
+        proof fn test() {
+            assert(nested_fn(255) == 256);
+            assert(nested_const(255) == 256);
+            assert(nested_assume_specification(255) == 256);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] nested_proof_fn_then_proof_block_in_exec_fn_issue3134 verus_code! {
+        fn test() {
+            proof fn p() {
+            }
+            proof {
+                p();
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] nested_exec_fn_in_proof_block_issue3134 verus_code! {
+        fn test() {
+            proof {
+                fn e() {
+                }
+            }
+        }
+    } => Ok(())
+}
