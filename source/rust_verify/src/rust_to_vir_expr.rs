@@ -4267,14 +4267,14 @@ pub(crate) fn stmt_to_vir<'tcx>(
                     ItemKind::Use(..) | ItemKind::Macro(..) => {
                         return Ok(vec![]);
                     }
-                    ItemKind::Struct(..) | ItemKind::Enum(..) => {
-                        // Nested datatypes are handled elsewhere as standalone items
-                        // It doesn't matter that they also appear here as statements
-                        return Ok(vec![]);
-                    }
-                    ItemKind::Fn { .. } | ItemKind::Const(..) => {
-                        // Nested functions and constants are handled elsewhere as standalone items
-                        // It doesn't matter that they also appear here as statements
+                    ItemKind::Struct(..)
+                    | ItemKind::Enum(..)
+                    | ItemKind::Fn { .. }
+                    | ItemKind::Const(..)
+                    | ItemKind::Impl(..)
+                    | ItemKind::Static(..) => {
+                        // Nested items are translated and checked independently as standalone items.
+                        // Their declarations do not need a statement-level VIR representation.
                         return Ok(vec![]);
                     }
                     _ => {

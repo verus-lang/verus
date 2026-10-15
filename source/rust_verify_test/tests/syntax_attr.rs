@@ -1180,14 +1180,26 @@ test_verify_one_file! {
             const C: usize = Self::B + 1;
         }
 
+        #[verus_verify]
+        trait HasValue {
+            const VALUE: usize;
+        }
+
+        #[verus_verify]
+        impl HasValue for u8 {
+            const VALUE: usize = 3 + 4;
+        }
+
          #[verus_spec(ensures true)]
         fn test() {
             let v = X::C;
+            let trait_value = <u8 as HasValue>::VALUE;
             proof! {
                 assert(v == 3);
                 assert(X::A == 1);
                 assert(X::B == 2);
                 assert(X::C == 3);
+                assert(trait_value == 7);
             }
         }
     } => Ok(())
@@ -1491,8 +1503,6 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_skip_desugar_loop_with_external_body code!{
-        use vstd::prelude::*;
-
         #[verus_verify]
         struct A;
 
@@ -1507,9 +1517,46 @@ test_verify_one_file! {
         #[verus_spec(ensures false)]
         fn test_for_loop()
         {
+            fn child() {
+                for _ in 0..1 {}
+            }
+            const C: fn() = || {
+                for _ in 0..1 {}
+            };
+            static S: fn() = || {
+                for _ in 0..1 {}
+            };
+
             let a = A;
             for i in a
             {
+            }
+            child();
+            C();
+            S();
+        }
+
+        #[verus_spec]
+        fn checked_parent() {
+            struct Local;
+
+            #[verifier::external]
+            impl Local {
+                fn ignored() {
+                    for _ in 0..1 {}
+                }
+            }
+
+            impl Local {
+                #[verus_spec(r => ensures r == 7)]
+                fn seven() -> u64 {
+                    7
+                }
+            }
+
+            let seven = Local::seven();
+            proof! {
+                assert(seven == 7);
             }
         }
     } => Ok(())
