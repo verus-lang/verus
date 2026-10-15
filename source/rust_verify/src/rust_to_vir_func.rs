@@ -2185,7 +2185,7 @@ pub(crate) fn check_item_fn<'tcx>(
         item_kind,
         attrs: fattrs,
         decreases_len: pre_header.decreases_len,
-        returns: pre_header.returns,
+        returns: pre_header.returns && !is_external_const,
     };
 
     if vattrs.external_fn_specification {
