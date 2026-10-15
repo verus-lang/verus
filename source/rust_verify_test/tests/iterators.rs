@@ -433,5 +433,14 @@ test_verify_one_file! {
             let mut it = it;
             it.find(|x: &u8| -> (b: bool) requires *x < 4 { arr[*x as usize] == 0 }) // FAILS
         }
-    } => Err(err) => assert_one_fails(err)
+        fn bad_find_map(it: It) -> Option<u8> {
+            let arr = [0u8; 4];
+            let mut it = it;
+            it.find_map(|x: u8| -> (r: Option<u8>) requires x < 4 { Some(arr[x as usize]) }) // FAILS
+        }
+        fn bad_position(it: It) -> Option<usize> {
+            let mut it = it;
+            it.position(|x: u8| x > 1) // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
 }
