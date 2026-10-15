@@ -24,7 +24,7 @@ use std::sync::Arc;
 
 pub struct WfLookup {
     pub reveal_groups: HashSet<Fun>,
-    pub dts: HashMap<Path, Datatype>,
+    pub dts: Arc<HashMap<Path, Datatype>>,
     pub traits: HashMap<Path, Trait>,
 }
 
@@ -195,7 +195,7 @@ fn check_path_and_get_datatype<'a, Emit: EmitError>(
     emit: &mut Emit,
 ) -> Result<Result<Datatype, ()>, VirErr> {
     fn is_proxy<'a>(ctxt: &'a Ctxt, path: &Path) -> Option<&'a Dt> {
-        for (_, dt) in &ctxt.lookup.dts {
+        for (_, dt) in ctxt.lookup.dts.iter() {
             match &dt.x.proxy {
                 Some(proxy) => {
                     if &proxy.x == path {
@@ -2257,7 +2257,7 @@ pub fn check_crate_initial(
         Ok(x) => x,
     };
 
-    let lookup = Arc::new(WfLookup { dts, traits, reveal_groups });
+    let lookup = Arc::new(WfLookup { dts: Arc::new(dts), traits, reveal_groups });
     check_all_but_functions(krate, no_cheating, funs, lookup)
 }
 
