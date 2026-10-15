@@ -7,7 +7,7 @@ use crate::rust_to_vir_func::finish_item;
 use air::messages::Diagnostics;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use vir::ast::{Fun, Function, FunctionStub, Krate, VirErr, VirErrAs};
+use vir::ast::{CrateId, Fun, Function, FunctionStub, Krate, VirErr, VirErrAs};
 use vir::context::WarningCtx;
 use vir::messages::{MessageLevel, ToAny};
 use vir::modes::ErasureModes;
@@ -36,6 +36,7 @@ pub(crate) type Res<T> = Result<T, ErrorGuaranteed>;
 pub(crate) struct Query<'r, 'tcx> {
     args: Args,
     reporter: &'r dyn Diagnostics,
+    crate_id: CrateId,
 
     /// Imported crates
     pub cache_other_vir_crates: Option<Res<Arc<Vec<Krate>>>>,
@@ -69,10 +70,12 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
         reporter: &'r dyn Diagnostics,
         other_vir_crates: Vec<Krate>,
         pre_crate: PreCrate<'tcx>,
+        crate_id: CrateId,
     ) -> Self {
         Self {
             args,
             reporter,
+            crate_id,
 
             cache_other_vir_crates: Some(Ok(Arc::new(other_vir_crates))),
             cache_pre_crate: Some(Ok(Arc::new(pre_crate))),
@@ -103,7 +106,11 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
         self.emit_errors(vec![err])
     }
 
-    fn handle_wf_error(&mut self, fun: Option<Fun>, wf_err: vir::well_formed::WFErr) -> ErrorGuaranteed {
+    fn handle_wf_error(
+        &mut self,
+        fun: Option<Fun>,
+        wf_err: vir::well_formed::WFErr,
+    ) -> ErrorGuaranteed {
         let vir::well_formed::WFErr { errors, boundary_errors, func_failed_proof_notes } = wf_err;
         assert!(errors.len() > 0 || boundary_errors.len() > 0);
         if errors.len() > 0 {
@@ -129,11 +136,7 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
         self.record_failed_proof_notes(fun, func_failed_proof_notes);
     }
 
-    fn record_failed_proof_notes(
-        &mut self,
-        fun: &Fun,
-        func_failed_proof_notes: HashSet<String>,
-    ) {
+    fn record_failed_proof_notes(&mut self, fun: &Fun, func_failed_proof_notes: HashSet<String>) {
         for x in func_failed_proof_notes.iter() {
             self.func_failed_proof_notes.entry(fun.clone()).or_default().insert(x.clone());
         }
@@ -377,10 +380,8 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
 
         // Autospec
 
-        let function = vir::autospec::resolve_autospec_in_function(
-            &function_stubs,
-            &function,
-        ).map_err(|e| self.emit_error(e))?;
+        let function = vir::autospec::resolve_autospec_in_function(&function_stubs, &function)
+            .map_err(|e| self.emit_error(e))?;
 
         // Mode checking
 
@@ -427,6 +428,11 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
         vir::traits::set_krate_dyn_compatibility(&other_vir_crates, &mut cratex);
         let krate = Arc::new(cratex);
 
+        let mut krate = vir::ast_sort::sort_krate(&krate);
+        Arc::make_mut(&mut krate).arch =
+            vir::ast_simplify::krate_merge_arch(&krate, &other_vir_crates)
+                .map_err(|e| self.emit_error(e))?;
+
         let (check, diags) = vir::well_formed::check_crate_final(&krate, &pre_crate.warning_ctx);
         self.emit_diags(diags);
         let () = check.map_err(|e| self.emit_error(e))?;
@@ -448,14 +454,16 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
         let krate = self.get_exportable_crate()?;
         let pre_crate = self.get_pre_crate()?;
         let demote_trait_lookup = self.get_demote_trait_lookup()?;
+        let other_vir_crates = self.get_other_vir_crates()?;
 
         // Demote external traits
         let krate = vir::traits::demote_external_traits(
             self.reporter,
             &pre_crate.warning_ctx,
             &krate,
-            &demote_trait_lookup
-        ).map_err(|e| self.emit_error(e))?;
+            &demote_trait_lookup,
+        )
+        .map_err(|e| self.emit_error(e))?;
 
         // Resolution inference
         // Make sure to do this before the res_info goes stale
@@ -471,6 +479,24 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
             }
         }
         let krate = krate_infer_resolution(&krate, &res_infos).map_err(|e| self.emit_errors(e))?;
+
+        // Merge
+        let my_crate = krate.clone();
+        let mut vir_crates: Vec<Krate> = (*other_vir_crates).clone();
+        vir_crates.push(krate);
+        let unpruned_crate =
+            vir::ast_simplify::merge_krates(vir_crates).map_err(|e| self.emit_error(e))?;
+        let (vir_crate, _) = vir::prune::prune_krate_for_module_or_krate(
+            &unpruned_crate,
+            &self.crate_id,
+            Some(&my_crate),
+            None,
+            None,
+            false,
+            false,
+        );
+        let krate =
+            vir::traits::merge_external_traits(vir_crate).map_err(|e| self.emit_error(e))?;
 
         Ok(krate)
     }

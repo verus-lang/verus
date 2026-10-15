@@ -10,12 +10,12 @@ use crate::ast_util::{
     get_variant_or_err, is_body_visible_to, is_unit, is_visible_to_opt, path_as_friendly_rust_name,
     referenced_vars_expr, typ_to_diagnostic_str, types_equal, undecorate_typ,
 };
-use crate::traits::{DemoteTraitLookup, method_if_not_demoted};
 use crate::context::WarningConfig;
 use crate::def::user_local_name;
 use crate::early_exit_cf::assert_no_early_exit_in_inv_block;
 use crate::internal_err;
 use crate::messages::{Message, Span, WarningAllow, error, error_with_label};
+use crate::traits::{DemoteTraitLookup, method_if_not_demoted};
 use indexmap::IndexMap;
 use indexmap::map::Entry;
 use std::collections::HashMap;
@@ -984,8 +984,16 @@ pub fn check_function(
         func_failed_proof_notes: HashSet::new(),
         deferred_errors: vec![],
     };
-    let wf =
-        check_function_inner(krate, funs, lookup, demote_trait_lookup, function, &mut emit, warning_ctx, no_cheating);
+    let wf = check_function_inner(
+        krate,
+        funs,
+        lookup,
+        demote_trait_lookup,
+        function,
+        &mut emit,
+        warning_ctx,
+        no_cheating,
+    );
     let res = match wf {
         Ok(()) if emit.boundary_errors.len() == 0 => {
             Ok(PerFunctionCheckResults { func_failed_proof_notes: emit.func_failed_proof_notes })
@@ -2239,6 +2247,7 @@ pub fn check_crate_initial(
         check_broadcast_groups(krate)?;
         let (dts, traits) = check_conflicts(krate, other_crates)?;
         let reveal_groups = check_reveal_groups(krate, other_crates, &funs)?;
+        crate::traits::check_no_dupe_impls(krate, other_crates)?;
         Ok((dts, traits, reveal_groups))
     };
     let (dts, traits, reveal_groups) = match checks() {

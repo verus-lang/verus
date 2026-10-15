@@ -8,8 +8,8 @@ use crate::ast::VarBinderX;
 use crate::ast::VarBinders;
 use crate::ast::VarIdent;
 use crate::ast::{
-    AssocTypeImpl, AutospecUsage, BinaryOp, Binder, BoundsCheck, BuiltinSpecFun, ByRef, CallTarget,
-    ChainedOp, ClosureKind, Constant, CtorPrintStyle, CtorUpdateTail, Datatype,
+    Arch, AssocTypeImpl, AutospecUsage, BinaryOp, Binder, BoundsCheck, BuiltinSpecFun, ByRef,
+    CallTarget, ChainedOp, ClosureKind, Constant, CtorPrintStyle, CtorUpdateTail, Datatype,
     DatatypeTransparency, DatatypeX, Dt, Expr, ExprX, Exprs, Field, FieldOpr, Fun, Function,
     FunctionKind, Ident, IntRange, ItemKind, Krate, KrateX, LogicalOp, Mode, MultiOp, Path,
     Pattern, PatternBinding, PatternX, Place, PlaceX, SpannedTyped, Stmt, StmtX, TraitImpl, Typ,
@@ -1688,8 +1688,10 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
 }
 
 pub fn merge_krates(krates: Vec<Krate>) -> Result<Krate, VirErr> {
+    let merged_arch = krate_merge_arch(&krates[0], &krates[1..])?;
     let mut krates = krates.into_iter();
     let mut kratex: KrateX = (*krates.next().expect("at least one crate")).clone();
+    kratex.arch = merged_arch;
     for k in krates {
         let KrateX {
             functions,
@@ -1703,7 +1705,7 @@ pub fn merge_krates(krates: Vec<Krate>) -> Result<Krate, VirErr> {
             external_fns,
             external_types,
             path_as_rust_names,
-            arch,
+            arch: _,
         } = &*k;
         kratex.functions.extend(functions.clone());
         kratex.reveal_groups.extend(reveal_groups.clone());
@@ -1716,25 +1718,29 @@ pub fn merge_krates(krates: Vec<Krate>) -> Result<Krate, VirErr> {
         kratex.external_fns.extend(external_fns.clone());
         kratex.external_types.extend(external_types.clone());
         kratex.path_as_rust_names.extend(path_as_rust_names.clone());
-        kratex.arch.word_bits = {
-            let word_bits = match (arch.word_bits, kratex.arch.word_bits) {
-                (crate::ast::ArchWordBits::Exactly(l), crate::ast::ArchWordBits::Exactly(r)) => {
-                    if l != r {
-                        return Err(crate::messages::error_bare(
-                            "all crates must have compatible arch_word_bits (set via `global size_of usize`",
-                        ));
-                    } else {
-                        crate::ast::ArchWordBits::Exactly(l)
-                    }
-                }
-                (crate::ast::ArchWordBits::Either32Or64, other)
-                | (other, crate::ast::ArchWordBits::Either32Or64) => other,
-            };
-            if let crate::ast::ArchWordBits::Exactly(e) = &word_bits {
-                assert!(*e == 32 || *e == 64);
-            }
-            word_bits
-        };
     }
     Ok(Arc::new(kratex))
+}
+
+pub fn krate_merge_arch(krate: &Krate, other_krates: &[Krate]) -> Result<Arch, VirErr> {
+    let mut word_bits = krate.arch.word_bits;
+    for krate in other_krates.iter() {
+        word_bits = match (word_bits, krate.arch.word_bits) {
+            (crate::ast::ArchWordBits::Exactly(l), crate::ast::ArchWordBits::Exactly(r)) => {
+                if l != r {
+                    return Err(crate::messages::error_bare(
+                        "all crates must have compatible arch_word_bits (set via `global size_of usize`",
+                    ));
+                } else {
+                    crate::ast::ArchWordBits::Exactly(l)
+                }
+            }
+            (crate::ast::ArchWordBits::Either32Or64, other)
+            | (other, crate::ast::ArchWordBits::Either32Or64) => other,
+        };
+        if let crate::ast::ArchWordBits::Exactly(e) = &word_bits {
+            assert!(*e == 32 || *e == 64);
+        }
+    }
+    Ok(Arch { word_bits })
 }

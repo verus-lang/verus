@@ -219,22 +219,15 @@ fn demote_one_expr(lookup: &DemoteTraitLookup, expr: &Expr) -> Result<Expr, VirE
 }
 
 /// Get the method name if this is a trait method that doesn't get demoted.
-pub fn method_if_not_demoted(
-    lookup: &DemoteTraitLookup,
-    function: &Function
-) -> Option<Fun> {
+pub fn method_if_not_demoted(lookup: &DemoteTraitLookup, function: &Function) -> Option<Fun> {
     let DemoteTraitLookup { traits, funs, .. } = &lookup;
     match &function.x.kind {
         FunctionKind::TraitMethodImpl { method, trait_path, .. }
         | FunctionKind::ForeignTraitMethodImpl { method, trait_path, .. } => {
             let our_trait_method = traits.contains(trait_path) && funs.contains(method);
-            if our_trait_method {
-                Some(method.clone())
-            } else {
-                None
-            }
+            if our_trait_method { Some(method.clone()) } else { None }
         }
-        _ => None
+        _ => None,
     }
 }
 
@@ -1387,9 +1380,11 @@ pub fn trait_impl_to_air(ctx: &Ctx, imp: &TraitImpl) -> Commands {
     Arc::new(vec![Arc::new(CommandX::Global(axiom))])
 }
 
-pub fn check_no_dupe_impls(krate: &Krate) -> Result<(), VirErr> {
+pub(crate) fn check_no_dupe_impls(krate: &Krate, other_crates: &[Krate]) -> Result<(), VirErr> {
     let mut paths = HashMap::<Path, TraitImpl>::new();
-    for trait_impl in krate.trait_impls.iter() {
+    for trait_impl in
+        krate.trait_impls.iter().chain(other_crates.iter().map(|k| k.trait_impls.iter()).flatten())
+    {
         match paths.get(&trait_impl.x.impl_path) {
             Some(prev_trait_impl) => {
                 let e = error(
