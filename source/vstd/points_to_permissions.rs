@@ -2572,22 +2572,21 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         val
     }
 
-    /// Copies the first `n` `TypedValue<T>`s out of a shared reference to a sequence, given that `T` is `Copy`.
-    proof fn copy_typed_values(tracked val: &Seq<TypedValue<T>>, n: nat) -> (tracked out: Seq<
+    /// Copies the `TypedValue<T>`s out of a sequence of shared references, given that `T` is `Copy`.
+    proof fn copy_typed_values(tracked val: Seq<&TypedValue<T>>) -> (tracked out: Seq<
         TypedValue<T>,
     >) where T: Copy
-        requires
-            n <= val.len(),
         ensures
-            out == val.take(n as int),
-        decreases n,
+            out == val.map_values(|r: &TypedValue<T>| *r),
+        decreases val.len(),
     {
-        if n == 0 {
+        if val.len() == 0 {
             Seq::tracked_empty()
         } else {
-            let tracked mut out = Self::copy_typed_values(val, (n - 1) as nat);
-            let tracked last = val.tracked_borrow((n - 1) as int).tracked_copy();
-            out.tracked_push(last);
+            let tracked mut rest = val;
+            let tracked last = rest.tracked_pop();
+            let tracked mut out = Self::copy_typed_values(rest);
+            out.tracked_push(last.tracked_copy());
             out
         }
     }
@@ -2596,7 +2595,7 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
     pub proof fn copy_typed_value_subrange(
         tracked &mut self,
         start: int,
-        tracked val: &Seq<TypedValue<T>>,
+        tracked val: Seq<&TypedValue<T>>,
     ) where T: Copy
         requires
             self.wf(),
@@ -2614,10 +2613,13 @@ impl<T> SeqPointsTo<T, PointsTo<T>> {
         ensures
             final(self).ptr() == old(self).ptr(),
             final(self).bytes() == old(self).bytes(),
-            final(self).seq_typed_value() == old(self).seq_typed_value().update_subrange_with(start, *val),
+            final(self).seq_typed_value() == old(self).seq_typed_value().update_subrange_with(
+                start,
+                val.map_values(|r: &TypedValue<T>| *r),
+            ),
             final(self).wf(),
     {
-        let tracked copied = Self::copy_typed_values(val, val.len());
+        let tracked copied = Self::copy_typed_values(val);
         self.put_typed_value_subrange(start, copied);
     }
 
