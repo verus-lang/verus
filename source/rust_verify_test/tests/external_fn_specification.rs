@@ -1046,6 +1046,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] when_used_as_spec_more_private verus_code! {
+        use vstd::prelude::*;
+
         spec fn stuff() {
         }
 
