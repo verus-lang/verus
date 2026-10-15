@@ -1543,7 +1543,8 @@ pub(crate) fn const_usize_of_expr(e: &Expr) -> Option<usize> {
 }
 
 pub fn function_to_stub(f: &Function) -> crate::ast::FunctionStub {
-    crate::def::Spanned::new(f.span.clone(),
+    crate::def::Spanned::new(
+        f.span.clone(),
         FunctionStubX {
             name: f.x.name.clone(),
             proxy: f.x.proxy.clone(),
@@ -1562,6 +1563,6 @@ pub fn function_to_stub(f: &Function) -> crate::ast::FunctionStub {
 
             returns: f.x.returns.is_some(),
             decreases_len: f.x.decrease.len(),
-        }
+        },
     )
 }
