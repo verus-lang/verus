@@ -2709,7 +2709,6 @@ impl Verifier {
 
         self.current_crate_modules = Some(pre_crate.krate_without_funs.modules.clone());
         self.crate_items = Some(Arc::new(crate_items));
-        self.warning_ctx = Some(pre_crate.warning_ctx.clone());
         let ctxt = pre_crate.ctxt.clone();
 
         let mut query = Query::new(
@@ -2751,6 +2750,7 @@ impl Verifier {
         }
 
         self.vir_crate = Some(merged_crate.clone());
+        self.warning_ctx = Some(query.get_updated_warning_ctx().map_err(map_query_err)?);
 
         if !self.args.no_lifetime {
             let functions = query.get_all_function_stubs().map_err(map_query_err)?;
