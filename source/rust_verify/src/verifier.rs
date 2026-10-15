@@ -2711,6 +2711,17 @@ impl Verifier {
         self.crate_items = Some(Arc::new(crate_items));
         let ctxt = pre_crate.ctxt.clone();
 
+        for diag in ctxt.diagnostics.borrow_mut().drain(..) {
+            match diag {
+                vir::ast::VirErrAs::Warning(err) => {
+                    diagnostics.report_as(&err.to_any(), MessageLevel::Warning)
+                }
+                vir::ast::VirErrAs::Note(err) => {
+                    diagnostics.report_as(&err.to_any(), MessageLevel::Note)
+                }
+            }
+        }
+
         let mut query = Query::new(
             self.args.clone(),
             diagnostics,
@@ -2779,11 +2790,6 @@ impl Verifier {
         //self.time_vir_rust_to_vir = time2 - time1;
 
         Ok(true)
-        /*
-                let vir_crate = vir::traits::inherit_default_bodies(&vir_crate, &mut warning_ctx)
-                    .map_err(|e| (vec![e], Vec::new()))?;
-
-        */
     }
 
     pub fn get_function_mode(&self, f: &Fun) -> Option<&vir::ast::Mode> {

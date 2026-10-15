@@ -123,7 +123,7 @@ test_verify_one_file! {
         fn ex_bar() {
             X::bar()
         }
-    } => Err(err) => assert_vir_error_msg(err, "duplicate specification for this trait implementation")
+    } => Err(err) => assert_vir_error_msg(err, "duplicate specification for `test_crate::X::foo`")
 }
 
 test_verify_one_file! {
@@ -139,7 +139,7 @@ test_verify_one_file! {
                 X
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "duplicate specification for this trait method implementation")
+    } => Err(err) => assert_vir_error_msg(err, "duplicate specification for `test_crate::X::from`")
 }
 
 test_verify_one_file! {
@@ -205,7 +205,7 @@ test_verify_one_file! {
             type ExternalTraitSpecificationFor: T;
             fn f();
         }
-    } => Err(err) => assert_vir_error_msg(err, "duplicate method")
+    } => Err(err) => assert_vir_error_msg(err, "duplicate specification for `test_crate::T::f`")
 }
 
 test_verify_one_file! {
