@@ -1,4 +1,5 @@
 use crate::{erase::ResolvedCall, verus_items::VerusItems};
+use air::messages::MessageLevel;
 use rustc_hir::Attribute;
 use rustc_hir::HirId;
 use rustc_hir::def_id::LocalDefId;
@@ -14,7 +15,7 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
 use std::sync::mpsc::Sender;
 use vir::ast::{CrateId, Mode, Path, Pattern, VirErr};
-use vir::messages::{AstId, WarningAllow};
+use vir::messages::{AstId, ToAny, WarningAllow};
 
 pub struct ErasureInfo {
     /// Connect every PlaceX::Local, ExprX::Var, and ExprX::VarAt node to its
@@ -134,6 +135,20 @@ impl<'tcx> ContextX<'tcx> {
             crate_name,
             name_def_id_map: Rc::new(RefCell::new(HashMap::new())),
             next_read_kind_id: AtomicU64::new(0),
+        }
+    }
+
+    // TODO: It's easy to forget to do this; should come up with a different system
+    pub(crate) fn flush_diagnostics(&self, reporter: &dyn air::messages::Diagnostics) {
+        for diag in self.diagnostics.borrow_mut().drain(..) {
+            match diag {
+                vir::ast::VirErrAs::Warning(err) => {
+                    reporter.report_as(&err.to_any(), MessageLevel::Warning)
+                }
+                vir::ast::VirErrAs::Note(err) => {
+                    reporter.report_as(&err.to_any(), MessageLevel::Note)
+                }
+            }
         }
     }
 
