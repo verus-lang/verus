@@ -926,7 +926,7 @@ impl<'a> Builder<'a> {
                 let thn_position = AstPosition::Before(thn.span.id);
                 let els_position = match els {
                     Some(els) => AstPosition::Before(els.span.id),
-                    None => AstPosition::After(span_id),
+                    None => AstPosition::AfterBool(cond.span.id, false),
                 };
                 let join_position = AstPosition::After(span_id);
 
