@@ -7,6 +7,15 @@ mod lib;
 pub mod pcm;
 pub mod relations;
 pub mod storage_protocol;
+pub mod tsm;
+pub mod tsm_storage;
+pub mod tsm_collections;
+pub mod tsm_multiset;
+pub mod tsm_finite_multiset;
+pub mod tsm_persistent;
+pub mod tsm_bool;
+pub mod tsm_helpers;
+pub mod tsm_context;
 
 pub use combinators::agree;
 pub use combinators::auth;
