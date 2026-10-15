@@ -42,11 +42,7 @@ impl std::fmt::Display for Stats {
             "let-chain decisions instrumented (if, while, match guard; included in decisions): {}",
             self.letchains
         )?;
-        writeln!(
-            f,
-            "skipped let-chain decisions (other positions): {}",
-            self.skipped_letchain
-        )?;
+        writeln!(f, "skipped let-chain decisions (other positions): {}", self.skipped_letchain)?;
         writeln!(f, "skipped decisions with more than 64 atoms: {}", self.skipped_too_many)?;
         writeln!(f, "skipped decisions in const contexts: {}", self.skipped_const)?;
         writeln!(
