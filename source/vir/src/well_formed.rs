@@ -1,9 +1,9 @@
 #![allow(clippy::unnecessary_map_on_constructor)]
 use crate::ast::{
     BodyVisibility, CallTarget, CallTargetKind, Constant, Datatype, DatatypeTransparency, Dt, Expr,
-    ExprX, FieldOpr, Fun, Function, FunctionKind, Krate, MaskSpec, Mode, MultiOp, Opaqueness, Path,
-    Pattern, PatternX, Place, PlaceX, Stmt, StmtX, Trait, Typ, TypDecoration, TypX, UnaryOp,
-    UnaryOpr, UnwindSpec, VirErr, VirErrAs, Visibility, FunctionStub,
+    ExprX, FieldOpr, Fun, Function, FunctionKind, FunctionStub, Krate, MaskSpec, Mode, MultiOp,
+    Opaqueness, Path, Pattern, PatternX, Place, PlaceX, Stmt, StmtX, Trait, Typ, TypDecoration,
+    TypX, UnaryOp, UnaryOpr, UnwindSpec, VirErr, VirErrAs, Visibility,
 };
 use crate::ast_util::{
     ast_expr_get_proof_note, dt_as_friendly_rust_name, fun_as_friendly_rust_name, get_field_or_err,
@@ -21,6 +21,12 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
 
+pub struct WfLookup {
+    pub reveal_groups: HashSet<Fun>,
+    pub dts: HashMap<Path, Datatype>,
+    pub traits: HashMap<Path, Trait>,
+}
+
 struct Ctxt<'a> {
     pub(crate) funs: Arc<HashMap<Fun, FunctionStub>>,
     pub(crate) lookup: Arc<WfLookup>,
@@ -28,8 +34,22 @@ struct Ctxt<'a> {
     no_cheating: bool,
 }
 
+#[derive(Clone)]
+pub struct InitialWfResults {
+    pub lookup: Arc<WfLookup>,
+}
+
 /// Details from well-formedness checking.
-pub struct CheckDetails {
+pub struct PerFunctionCheckResults {
+    /// For each function, collects proof notes that fail due to `--no-cheating`.
+    pub func_failed_proof_notes: HashMap<Fun, HashSet<String>>,
+}
+
+pub struct WFErr {
+    /// "Normal" errors
+    pub errors: Vec<VirErr>,
+    /// Boundary errors: these need additional processing in the rust_verify crate
+    pub boundary_errors: Vec<(Path, VirErr)>,
     /// For each function, collects proof notes that fail due to `--no-cheating`.
     pub func_failed_proof_notes: HashMap<Fun, HashSet<String>>,
 }
@@ -951,14 +971,45 @@ fn check_expr<Emit: EmitError>(
     check_result
 }
 
-pub fn check_function<Emit: EmitError>(
+pub fn check_function(
+    krate: &Krate,
+    funs: Arc<HashMap<Fun, FunctionStub>>,
+    lookup: Arc<WfLookup>,
+    function: &Function,
+    warning_ctx: &crate::context::WarningCtx,
+    no_cheating: bool,
+) -> (Result<PerFunctionCheckResults, WFErr>, Vec<VirErr>, Vec<VirErrAs>) {
+    let mut emit = EmitErrorState {
+        boundary_errors: IndexMap::new(),
+        diags: vec![],
+        func_failed_proof_notes: HashMap::new(),
+        deferred_errors: vec![],
+    };
+    let wf =
+        check_function_inner(krate, funs, lookup, function, &mut emit, warning_ctx, no_cheating);
+    let res = match wf {
+        Ok(()) if emit.boundary_errors.len() == 0 => {
+            Ok(PerFunctionCheckResults { func_failed_proof_notes: emit.func_failed_proof_notes })
+        }
+        _ => Err(WFErr {
+            errors: match wf {
+                Ok(()) => vec![],
+                Err(e) => vec![e],
+            },
+            boundary_errors: emit.boundary_errors.into_iter().collect(),
+            func_failed_proof_notes: emit.func_failed_proof_notes,
+        }),
+    };
+    (res, emit.deferred_errors, emit.diags)
+}
+
+pub fn check_function_inner<Emit: EmitError>(
     krate: &Krate,
     funs: Arc<HashMap<Fun, FunctionStub>>,
     lookup: Arc<WfLookup>,
     function: &Function,
     emit: &mut Emit,
     warning_ctx: &crate::context::WarningCtx,
-    _no_verify: bool,
     no_cheating: bool,
 ) -> Result<(), VirErr> {
     let ctxt = Ctxt { funs, lookup, krate, no_cheating };
@@ -1840,29 +1891,18 @@ fn check_broadcast_groups(krate: &Krate) -> Result<(), VirErr> {
     Ok(())
 }
 
-pub struct WFErr {
-    /// "Normal" errors
-    pub errors: Vec<VirErr>,
-    /// Boundary errors: these need additional processing in the rust_verify crate
-    pub boundary_errors: Vec<(Path, VirErr)>,
-    /// Other info that we want to pass back even in error-cases
-    pub check_details: CheckDetails,
-}
-
 fn to_wf(v: VirErr) -> WFErr {
-    WFErr {
-        errors: vec![v],
-        boundary_errors: vec![],
-        check_details: CheckDetails { func_failed_proof_notes: HashMap::new() },
-    }
+    WFErr { errors: vec![v], boundary_errors: vec![], func_failed_proof_notes: HashMap::new() }
 }
 
-
-fn check_conflicts(krate: &Krate, other_crates: &[Krate]) ->
-    Result<(HashMap<Path, Datatype>, HashMap<Path, Trait>), VirErr>
-{
+fn check_conflicts(
+    krate: &Krate,
+    other_crates: &[Krate],
+) -> Result<(HashMap<Path, Datatype>, HashMap<Path, Trait>), VirErr> {
     let mut dts: HashMap<Path, Datatype> = HashMap::new();
-    for datatype in krate.datatypes.iter().chain(other_crates.iter().map(|k| k.datatypes.iter()).flatten()) {
+    for datatype in
+        krate.datatypes.iter().chain(other_crates.iter().map(|k| k.datatypes.iter()).flatten())
+    {
         let path = match &datatype.x.name {
             Dt::Path(p) => p,
             Dt::Tuple(_) => {
@@ -2082,10 +2122,12 @@ fn check_reveal_groups(
     other_krates: &[Krate],
     all_funs: &HashMap<Fun, FunctionStub>,
 ) -> Result<HashSet<Fun>, VirErr> {
-    let reveal_groups: HashSet<Fun> =
-        krate.reveal_groups.iter()
-            .chain(other_krates.iter().map(|k| k.reveal_groups.iter()).flatten())
-            .map(|g| g.x.name.clone()).collect();
+    let reveal_groups: HashSet<Fun> = krate
+        .reveal_groups
+        .iter()
+        .chain(other_krates.iter().map(|k| k.reveal_groups.iter()).flatten())
+        .map(|g| g.x.name.clone())
+        .collect();
 
     for module in krate.modules.iter() {
         if let Some(reveals) = &module.x.reveals {
@@ -2126,26 +2168,16 @@ fn check_reveal_groups(
     Ok(reveal_groups)
 }
 
-pub struct WfLookup {
-    pub reveal_groups: HashSet<Fun>,
-    pub dts: HashMap<Path, Datatype>,
-    pub traits: HashMap<Path, Trait>,
-}
-
-
-/// - diags: for warnings and notes
-/// - deferred_errors: legit errors that nonetheless don't prevent
-///   us from going all the way to VCs
-/// - Err case: normal errors that prevent us from moving onto the next phase
+/// Return value:
+/// (Ok | Err, non_blocking_errors, diagnostics)
+/// Err means we should exit
 
 fn check_all_but_functions(
     krate: &Krate,
-    diags: &mut Vec<VirErrAs>,
-    deferred_errors: &mut Vec<VirErr>,
     no_cheating: bool,
     funs: Arc<HashMap<Fun, FunctionStub>>,
     lookup: Arc<WfLookup>,
-) -> Result<CheckDetails, WFErr> {
+) -> (Result<InitialWfResults, WFErr>, Vec<VirErr>, Vec<VirErrAs>) {
     let mut emit = EmitErrorState {
         boundary_errors: IndexMap::new(),
         diags: vec![],
@@ -2179,48 +2211,59 @@ fn check_all_but_functions(
         }
     }
 
-    diags.append(&mut emit.diags);
-    deferred_errors.append(&mut emit.deferred_errors);
-
     if emit.has_fatal_errors() || errors.len() > 0 {
-        return Err(WFErr {
-            errors,
-            boundary_errors: emit.boundary_errors.into_iter().collect(),
-            check_details: CheckDetails { func_failed_proof_notes: emit.func_failed_proof_notes },
-        });
+        return (
+            Err(WFErr {
+                errors,
+                boundary_errors: emit.boundary_errors.into_iter().collect(),
+                func_failed_proof_notes: emit.func_failed_proof_notes,
+            }),
+            emit.deferred_errors,
+            emit.diags,
+        );
     }
+    // These only get set during function traversals
+    assert!(emit.func_failed_proof_notes.len() == 0);
 
-    Ok(CheckDetails { func_failed_proof_notes: emit.func_failed_proof_notes })
+    let res = InitialWfResults { lookup: ctxt.lookup };
+    (Ok(res), emit.deferred_errors, emit.diags)
 }
 
 pub fn check_crate_initial(
     krate: &Krate,
     other_crates: &[Krate],
     funs: Arc<HashMap<Fun, FunctionStub>>,
-    diags: &mut Vec<VirErrAs>,
-    deferred_errors: &mut Vec<VirErr>,
     no_cheating: bool,
-) -> Result<CheckDetails, WFErr> {
-    check_broadcast_groups(krate).map_err(to_wf)?;
-    let (dts, traits) = check_conflicts(krate, other_crates).map_err(to_wf)?;
-    let reveal_groups = check_reveal_groups(krate, other_crates, &funs).map_err(to_wf)?;
+) -> (Result<InitialWfResults, WFErr>, Vec<VirErr>, Vec<VirErrAs>) {
+    let checks = || {
+        check_broadcast_groups(krate)?;
+        let (dts, traits) = check_conflicts(krate, other_crates)?;
+        let reveal_groups = check_reveal_groups(krate, other_crates, &funs)?;
+        Ok((dts, traits, reveal_groups))
+    };
+    let (dts, traits, reveal_groups) = match checks() {
+        Err(e) => {
+            return (Err(to_wf(e)), vec![], vec![]);
+        }
+        Ok(x) => x,
+    };
+
     let lookup = Arc::new(WfLookup { dts, traits, reveal_groups });
-    check_all_but_functions(krate, diags, deferred_errors, no_cheating, funs, lookup)
+    check_all_but_functions(krate, no_cheating, funs, lookup)
 }
 
 /// Check that krate after all funnctions are computed.
 /// This is the krate that gets exported.
 pub fn check_crate_final(
     krate: &Krate,
-    diags: &mut Vec<VirErrAs>,
     warning_ctx: &crate::context::WarningCtx,
-) -> Result<(), VirErr> {
-    check_decreases_by_consistency(krate, diags, warning_ctx)
+) -> (Result<(), VirErr>, Vec<VirErrAs>) {
+    let mut diags = vec![];
+    let r = check_decreases_by_consistency(krate, &mut diags, warning_ctx);
+    (r, diags)
 }
 
-/// Check the post-merge krate
-pub fn check_crate_merged(
-    krate: &Krate,
-) -> Result<(), VirErr> {
-    crate::recursive_types::check_recursive_types(krate)
+/// Check the post-merge krate.
+pub fn check_crate_merged(merged_krate: &Krate) -> Result<(), VirErr> {
+    crate::recursive_types::check_recursive_types(merged_krate)
 }

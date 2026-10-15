@@ -6,10 +6,11 @@ use crate::rust_to_vir_func::FunctionOrConstInfo;
 use crate::rust_to_vir_func::finish_item;
 use std::collections::HashMap;
 use std::sync::Arc;
-use vir::ast::{Fun, Function, FunctionStub, Krate, VirErr};
+use vir::ast::{Fun, Function, FunctionStub, Krate, VirErr, VirErrAs};
 use vir::context::WarningCtx;
 use vir::modes::ErasureModes;
 use vir::traits::DemoteTraitLookup;
+use vir::well_formed::InitialWfResults;
 
 /// Krate without the full functions (i.e., empty function list in the krate)
 /// Instead we have FunctionOrConstInfos which contains FunctionStubs.
@@ -36,6 +37,8 @@ pub(crate) struct Query<'tcx> {
     pub cache_pre_crate: Option<Res<Arc<PreCrate<'tcx>>>>,
     /// Info used for demoting external traits
     pub cache_demote_traits_lookup: Option<Res<Arc<DemoteTraitLookup>>>,
+    /// Info used for demoting external traits
+    pub cache_initial_wf_results: Option<Res<InitialWfResults>>,
     /// All function stubs, across this crate and imported crates
     pub cache_all_function_stubs: Option<Res<Arc<HashMap<Fun, FunctionStub>>>>,
     /// Pre-check functions, immediately after translation from HIR
@@ -46,7 +49,7 @@ pub(crate) struct Query<'tcx> {
     pub cache_finished_crate: Option<Res<Krate>>,
 
     /// Errors found along the way
-    pub encountered_vir_error: bool,
+    pub encountered_non_blocking_vir_error: bool,
 }
 
 impl<'tcx> Query<'tcx> {
@@ -57,12 +60,13 @@ impl<'tcx> Query<'tcx> {
             cache_other_vir_crates: Some(Ok(Arc::new(other_vir_crates))),
             cache_pre_crate: Some(Ok(Arc::new(pre_crate))),
             cache_demote_traits_lookup: None,
+            cache_initial_wf_results: None,
             cache_all_function_stubs: None,
             cache_unchecked_functions: HashMap::new(),
             cache_checked_functions: HashMap::new(),
             cache_finished_crate: None,
 
-            encountered_vir_error: false,
+            encountered_non_blocking_vir_error: false,
         }
     }
 
@@ -73,6 +77,25 @@ impl<'tcx> Query<'tcx> {
 
     fn emit_error(&mut self, err: VirErr) -> ErrorGuaranteed {
         self.emit_errors(vec![err])
+    }
+
+    fn handle_wf_error(&mut self, wf_err: vir::well_formed::WFErr) -> ErrorGuaranteed {
+        todo!();
+    }
+
+    fn handle_per_function_check_results(
+        &mut self,
+        wf_res: vir::well_formed::PerFunctionCheckResults,
+    ) {
+        todo!();
+    }
+
+    fn emit_non_blocking_errors(&mut self, errs: Vec<VirErr>) {
+        todo!();
+    }
+
+    fn emit_diags(&mut self, diags: Vec<VirErrAs>) {
+        todo!();
     }
 
     //// Import crate
@@ -149,7 +172,9 @@ impl<'tcx> Query<'tcx> {
                 let stub = vir::ast_util::function_to_stub(function);
                 let found = stubs.insert(stub.x.name.clone(), stub.clone());
                 if let Some(found) = found {
-                    return Err(self.emit_error(vir::well_formed::func_conflict_error(&stub, &found)));
+                    return Err(
+                        self.emit_error(vir::well_formed::func_conflict_error(&stub, &found))
+                    );
                 }
             }
         }
@@ -163,16 +188,48 @@ impl<'tcx> Query<'tcx> {
         if let Some(demote_traits_lookup) = &self.cache_demote_traits_lookup {
             return demote_traits_lookup.clone();
         }
+        self.cache_demote_traits_lookup = Some(self._compute_demote_traits_lookup());
+        self.cache_demote_traits_lookup.clone().unwrap()
+    }
+
+    pub fn _compute_demote_traits_lookup(&mut self) -> Res<Arc<DemoteTraitLookup>> {
+        if let Some(demote_traits_lookup) = &self.cache_demote_traits_lookup {
+            return demote_traits_lookup.clone();
+        }
         let other_vir_crates = self.get_other_vir_crates()?;
         let pre_crate = self.get_pre_crate()?;
         let function_stubs = self.get_all_function_stubs()?;
-        vir::traits::DemoteTraitLookup::new(
+        Ok(Arc::new(vir::traits::DemoteTraitLookup::new(
             &pre_crate.krate_without_funs,
             &other_vir_crates,
             &function_stubs,
-        );
+        )))
+    }
 
-        todo!()
+    //// check_crate_initial
+
+    pub fn get_initial_wf_results(&mut self) -> Res<InitialWfResults> {
+        if let Some(initial_wf_results) = &self.cache_initial_wf_results {
+            return initial_wf_results.clone();
+        }
+        self.cache_initial_wf_results = Some(self._compute_initial_wf_results());
+        self.cache_initial_wf_results.clone().unwrap()
+    }
+
+    fn _compute_initial_wf_results(&mut self) -> Res<InitialWfResults> {
+        let pre_crate = self.get_pre_crate()?;
+        let other_vir_crates = self.get_other_vir_crates()?;
+        let function_stubs = self.get_all_function_stubs()?;
+
+        let (wf, non_blocking_errors, diags) = vir::well_formed::check_crate_initial(
+            &pre_crate.krate_without_funs,
+            &other_vir_crates,
+            function_stubs.clone(),
+            self.args.no_cheating,
+        );
+        self.emit_non_blocking_errors(non_blocking_errors);
+        self.emit_diags(diags);
+        wf.map_err(|e| self.handle_wf_error(e))
     }
 
     //// Translating an individual function
@@ -234,12 +291,29 @@ impl<'tcx> Query<'tcx> {
         let function = vir::traits::demote_external_traits_function_calls(&lookup, &function)
             .map_err(|e| self.emit_error(e))?;
 
+        let wf = self.get_initial_wf_results()?;
+        let function_stubs = self.get_all_function_stubs()?;
+        let pre_crate = self.get_pre_crate()?;
+        let (wf, non_blocking_errors, diags) = vir::well_formed::check_function(
+            &pre_crate.krate_without_funs,
+            function_stubs.clone(),
+            wf.lookup.clone(),
+            &function,
+            &pre_crate.warning_ctx,
+            self.args.no_cheating,
+        );
+        self.emit_non_blocking_errors(non_blocking_errors);
+        self.emit_diags(diags);
+        let wf = wf.map_err(|e| self.handle_wf_error(e))?;
+        self.handle_per_function_check_results(wf);
+
         todo!();
     }
 
     //// Getting the completed krate
 
     pub fn get_finished_crate(&mut self) -> Res<Krate> {
+        let _ = self.get_initial_wf_results()?;
         let pre_crate = self.get_pre_crate()?;
         let mut cratex = (*pre_crate.krate_without_funs).clone();
         let mut found_err = None;
@@ -256,6 +330,12 @@ impl<'tcx> Query<'tcx> {
         }
         let other_vir_crates = self.get_other_vir_crates()?;
         vir::traits::set_krate_dyn_compatibility(&other_vir_crates, &mut cratex);
-        Ok(Arc::new(cratex))
+        let krate = Arc::new(cratex);
+
+        let (check, diags) = vir::well_formed::check_crate_final(&krate, &pre_crate.warning_ctx);
+        self.emit_diags(diags);
+        let () = check.map_err(|e| self.emit_error(e))?;
+
+        Ok(krate)
     }
 }
