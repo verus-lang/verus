@@ -13,7 +13,7 @@ use vir::context::WarningCtx;
 use vir::messages::{MessageLevel, ToAny};
 use vir::modes::ErasureModes;
 use vir::resolution_inference::{ResolutionInfo, krate_infer_resolution};
-use vir::traits::DemoteTraitLookup;
+use vir::traits::{DemoteTraitLookup, MergedTraits};
 use vir::well_formed::{DynCompatabilityChecks, InitialWfResults};
 
 /// Krate without the full functions (i.e., empty function list in the krate)
@@ -45,6 +45,8 @@ pub(crate) struct Query<'r, 'tcx> {
     cache_pre_crate: Option<Res<Arc<PreCrate<'tcx>>>>,
     /// Info used for demoting external traits
     cache_demote_trait_lookup: Option<Res<Arc<DemoteTraitLookup>>>,
+    /// Traits and Trait Impls from all crates, de-duplicated
+    cache_merged_traits: Option<Res<MergedTraits>>,
     /// Info used for demoting external traits
     cache_initial_wf_results: Option<Res<InitialWfResults>>,
     /// All function stubs, across this crate and imported crates
@@ -85,6 +87,7 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
             cache_other_vir_crates: Some(Ok(Arc::new(other_vir_crates))),
             cache_pre_crate: Some(Ok(Arc::new(pre_crate))),
             cache_demote_trait_lookup: None,
+            cache_merged_traits: None,
             cache_initial_wf_results: None,
             cache_all_function_stubs: None,
             cache_unchecked_functions: HashMap::new(),
@@ -276,6 +279,23 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
         )))
     }
 
+    //// Merged traits
+
+    pub fn get_merged_traits(&mut self) -> Res<MergedTraits> {
+        if let Some(merged_traits) = &self.cache_merged_traits {
+            return merged_traits.clone();
+        }
+        self.cache_merged_traits = Some(self._compute_merged_traits());
+        self.cache_merged_traits.clone().unwrap()
+    }
+
+    pub fn _compute_merged_traits(&mut self) -> Res<MergedTraits> {
+        let other_vir_crates = self.get_other_vir_crates()?;
+        let pre_crate = self.get_pre_crate()?;
+        vir::traits::merge_external_traits(&pre_crate.krate_without_funs, &other_vir_crates)
+            .map_err(|e| self.emit_error(e))
+    }
+
     //// check_crate_initial
 
     pub fn get_initial_wf_results(&mut self) -> Res<InitialWfResults> {
@@ -291,11 +311,13 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
         let ctxt = &pre_crate.ctxt;
         let other_vir_crates = self.get_other_vir_crates()?;
         let function_stubs = self.get_all_function_stubs()?;
+        let merged_traits = self.get_merged_traits()?;
 
         let (wf, non_blocking_errors, diags) = vir::well_formed::check_crate_initial(
             &pre_crate.krate_without_funs,
             &other_vir_crates,
             function_stubs.clone(),
+            merged_traits.clone(),
             self.args.no_cheating,
         );
         self.emit_non_blocking_errors(non_blocking_errors);
@@ -309,7 +331,7 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
         Ok(self.get_initial_wf_results()?.lookup.dts.clone())
     }
 
-    //// Translating an individual function
+    //// Translating an individual function from HIR -> VIR
 
     pub fn get_unchecked_function(&mut self, fun: &Fun) -> Res<Function> {
         if let Some(f) = self.cache_unchecked_functions.get(fun) {
@@ -492,14 +514,15 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
         let pre_crate = self.get_pre_crate()?;
         let demote_trait_lookup = self.get_demote_trait_lookup()?;
         let other_vir_crates = self.get_other_vir_crates()?;
+        let merged_traits = self.get_merged_traits()?;
 
         // Merge
         let my_crate = krate.clone();
         let mut vir_crates: Vec<Krate> = (*other_vir_crates).clone();
         vir_crates.push(krate);
-        let unpruned_crate =
-            vir::ast_simplify::merge_krates(vir_crates).map_err(|e| self.emit_error(e))?;
-        let (vir_crate, _) = vir::prune::prune_krate_for_module_or_krate(
+        let unpruned_crate = vir::ast_simplify::merge_krates(vir_crates, &merged_traits)
+            .map_err(|e| self.emit_error(e))?;
+        let (krate, _) = vir::prune::prune_krate_for_module_or_krate(
             &unpruned_crate,
             &self.crate_id,
             Some(&my_crate),
@@ -508,8 +531,6 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
             false,
             false,
         );
-        let krate =
-            vir::traits::merge_external_traits(vir_crate).map_err(|e| self.emit_error(e))?;
 
         // Demote external traits
         let krate = vir::traits::demote_external_traits(

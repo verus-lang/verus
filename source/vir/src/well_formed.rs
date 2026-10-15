@@ -15,7 +15,7 @@ use crate::def::user_local_name;
 use crate::early_exit_cf::assert_no_early_exit_in_inv_block;
 use crate::internal_err;
 use crate::messages::{Message, Span, WarningAllow, error, error_with_label};
-use crate::traits::{DemoteTraitLookup, method_if_not_demoted};
+use crate::traits::{DemoteTraitLookup, MergedTraits, method_if_not_demoted};
 use indexmap::IndexMap;
 use indexmap::map::Entry;
 use std::collections::HashMap;
@@ -25,7 +25,7 @@ use std::sync::Arc;
 pub struct WfLookup {
     pub reveal_groups: HashSet<Fun>,
     pub dts: Arc<HashMap<Path, Datatype>>,
-    pub traits: HashMap<Path, Trait>,
+    pub merged_traits: MergedTraits,
 }
 
 struct Ctxt<'a> {
@@ -172,7 +172,7 @@ fn check_one_typ(
             Ok(())
         }
         TypX::Dyn(path, _, _) => {
-            if ctxt.lookup.traits.contains_key(path) {
+            if ctxt.lookup.merged_traits.trait_map.contains_key(path) {
                 emit.dyn_compatability_checks.entry(path.clone()).or_insert(span.clone());
                 Ok(())
             } else {
@@ -193,7 +193,7 @@ fn check_one_typ(
             Ok(())
         }
         TypX::Projection { trait_typ_args: _, trait_path, name } => {
-            if let Some(tr) = ctxt.lookup.traits.get(trait_path) {
+            if let Some(tr) = ctxt.lookup.merged_traits.trait_map.get(trait_path) {
                 if tr.x.assoc_typs.iter().any(|n| n == name) {
                     Ok(())
                 } else {
@@ -1953,7 +1953,7 @@ fn to_wf(v: VirErr) -> WFErr {
 fn check_conflicts(
     krate: &Krate,
     other_crates: &[Krate],
-) -> Result<(HashMap<Path, Datatype>, HashMap<Path, Trait>), VirErr> {
+) -> Result<HashMap<Path, Datatype>, VirErr> {
     let mut dts: HashMap<Path, Datatype> = HashMap::new();
     for datatype in
         krate.datatypes.iter().chain(other_crates.iter().map(|k| k.datatypes.iter()).flatten())
@@ -1972,17 +1972,7 @@ fn check_conflicts(
         }
         dts.insert(path.clone(), datatype.clone());
     }
-    let mut traits: HashMap<Path, Trait> = HashMap::new();
-    for tr in krate.traits.iter().chain(other_crates.iter().map(|k| k.traits.iter()).flatten()) {
-        match traits.get(&tr.x.name) {
-            Some(other_tr) => {
-                return Err(trait_conflict_error(tr, other_tr, "duplicate specification for"));
-            }
-            None => {}
-        }
-        traits.insert(tr.x.name.clone(), tr.clone());
-    }
-    Ok((dts, traits))
+    Ok(dts)
 }
 
 fn check_decreases_by_consistency(
@@ -2292,22 +2282,23 @@ pub fn check_crate_initial(
     krate: &Krate,
     other_crates: &[Krate],
     funs: Arc<HashMap<Fun, FunctionStub>>,
+    merged_traits: MergedTraits,
     no_cheating: bool,
 ) -> (Result<InitialWfResults, WFErr>, Vec<VirErr>, Vec<VirErrAs>) {
     let checks = || {
         check_broadcast_groups(krate)?;
-        let (dts, traits) = check_conflicts(krate, other_crates)?;
+        let dts = check_conflicts(krate, other_crates)?;
         let reveal_groups = check_reveal_groups(krate, other_crates, &funs)?;
-        Ok((dts, traits, reveal_groups))
+        Ok((dts, reveal_groups))
     };
-    let (dts, traits, reveal_groups) = match checks() {
+    let (dts, reveal_groups) = match checks() {
         Err(e) => {
             return (Err(to_wf(e)), vec![], vec![]);
         }
         Ok(x) => x,
     };
 
-    let lookup = Arc::new(WfLookup { dts: Arc::new(dts), traits, reveal_groups });
+    let lookup = Arc::new(WfLookup { dts: Arc::new(dts), merged_traits, reveal_groups });
     check_all_but_functions(krate, no_cheating, funs, lookup)
 }
 

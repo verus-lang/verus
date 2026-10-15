@@ -1406,16 +1406,26 @@ pub(crate) fn check_no_dupe_impls(krate: &Krate, other_crates: &[Krate]) -> Resu
     Ok(())
 }
 
+pub type MergedTraits = Arc<MergedTraitsX>;
+pub struct MergedTraitsX {
+    pub traits: Vec<Trait>,
+    pub trait_impls: Vec<TraitImpl>,
+
+    pub trait_map: HashMap<Path, Trait>,
+}
+
 // Allow multiple external_trait_specification to specify different members of the same trait,
 // so that we don't have to specify all of the default members of a trait at once (e.g. Iterator).
 // We merge partial specifications together here.
-pub fn merge_external_traits(krate: Krate) -> Result<Krate, VirErr> {
+pub fn merge_external_traits(
+    krate: &Krate,
+    other_crates: &[Krate],
+) -> Result<MergedTraits, VirErr> {
     use crate::ast_util::generic_bounds_equal;
     use crate::well_formed::trait_conflict_error;
-    let mut kratex = (*krate).clone();
     let mut traits: Vec<Trait> = Vec::new();
     let mut prev_trait_index: HashMap<Path, usize> = HashMap::new();
-    for t in &kratex.traits {
+    for t in krate.traits.iter().chain(other_crates.iter().map(|k| k.traits.iter()).flatten()) {
         if t.x.proxy.is_some() {
             if let Some(index) = prev_trait_index.get(&t.x.name) {
                 let prev = &traits[*index];
@@ -1500,7 +1510,9 @@ pub fn merge_external_traits(krate: Krate) -> Result<Krate, VirErr> {
     // Also remove any duplicate auto-imported trait impls:
     let mut trait_impls: Vec<TraitImpl> = Vec::new();
     let mut trait_impl_set: HashSet<Path> = HashSet::new();
-    for ti in &kratex.trait_impls {
+    for ti in
+        krate.trait_impls.iter().chain(other_crates.iter().map(|k| k.trait_impls.iter()).flatten())
+    {
         if ti.x.auto_imported && trait_impl_set.contains(&ti.x.impl_path) {
             continue;
         }
@@ -1508,9 +1520,12 @@ pub fn merge_external_traits(krate: Krate) -> Result<Krate, VirErr> {
         trait_impl_set.insert(ti.x.impl_path.clone());
     }
 
-    kratex.traits = traits;
-    kratex.trait_impls = trait_impls;
-    Ok(Arc::new(kratex))
+    let mt = Arc::new(MergedTraitsX {
+        trait_map: traits.iter().map(|t| (t.x.name.clone(), t.clone())).collect(),
+        traits: traits,
+        trait_impls: trait_impls,
+    });
+    Ok(mt)
 }
 
 pub(crate) fn find_trait_impl_from_extension(
