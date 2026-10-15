@@ -3,7 +3,7 @@ use crate::ast::{
     Ident, MultiOp, Qid, Quant, Query, QueryX, RoundingMode, Stmt, StmtX, Triggers, Typ, TypX,
     Typs, UnaryOp,
 };
-use crate::context::SmtSolver;
+use crate::context::{SmtEncoding, SmtSolver};
 use crate::def::mk_skolem_id;
 use crate::util::vec_map;
 use sise::TreeNode as Node;
@@ -79,7 +79,7 @@ pub struct Printer {
     message_interface: Arc<dyn crate::messages::MessageInterface>,
     // print as SMT, not as AIR
     print_as_smt: bool,
-    solver: SmtSolver,
+    smt_encoding: SmtEncoding,
 }
 
 impl Printer {
@@ -88,7 +88,15 @@ impl Printer {
         print_as_smt: bool,
         solver: SmtSolver,
     ) -> Self {
-        Printer { message_interface, print_as_smt, solver }
+        Self::new_with_encoding(message_interface, print_as_smt, solver.default_encoding())
+    }
+
+    pub fn new_with_encoding(
+        message_interface: Arc<dyn crate::messages::MessageInterface>,
+        print_as_smt: bool,
+        smt_encoding: SmtEncoding,
+    ) -> Self {
+        Printer { message_interface, print_as_smt, smt_encoding }
     }
 
     pub(crate) fn typ_to_node(&self, typ: &Typ) -> Node {
@@ -379,7 +387,7 @@ impl Printer {
                         if let Some(s) = qid {
                             nodes.push(str_to_node(":qid"));
                             nodes.push(str_to_node(s));
-                            if matches!(self.solver, SmtSolver::Z3) {
+                            if matches!(self.smt_encoding, SmtEncoding::Z3) {
                                 nodes.push(str_to_node(":skolemid"));
                                 nodes.push(str_to_node(&mk_skolem_id(s)));
                             }
