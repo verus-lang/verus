@@ -2325,3 +2325,250 @@ fn accessor_identifying_2() {
         )
     )
 }
+
+// Parser and model tests on AIR text. Verus generates well-formed AIR, so the error branches of
+// air/src/parser.rs and the axiom-filter branch of smt_verify.rs (smt_get_model) are reached only
+// through the air crate's own entry points; each test names the MC/DC decision (file:line) it covers.
+
+#[allow(dead_code)]
+fn text_to_nodes(text: &str) -> Vec<Node> {
+    let s = format!("({})", text);
+    let mut parser = sise::Parser::new(s.as_str());
+    match sise::parse_tree(&mut parser).unwrap() {
+        Node::List(nodes) => nodes,
+        Node::Atom(_) => panic!("expected a list"),
+    }
+}
+
+#[allow(dead_code)]
+fn parse_error(text: &str) -> String {
+    let message_interface = std::sync::Arc::new(crate::messages::AirMessageInterface {});
+    match Parser::new(message_interface).nodes_to_commands(&text_to_nodes(text)) {
+        Ok(_) => panic!("expected a parse error for {}", text),
+        Err(s) => s,
+    }
+}
+
+/// Runs every command and returns, per check-valid, whether it was valid.
+#[allow(dead_code)]
+fn check_valid_results(text: &str) -> Vec<bool> {
+    let message_interface = std::sync::Arc::new(crate::messages::AirMessageInterface {});
+    let reporter = Reporter {};
+    let mut air_context = crate::context::Context::new(message_interface.clone(), SmtSolver::Z3);
+    air_context.set_solver_option("air_recommended_options", "true");
+    let commands = Parser::new(message_interface.clone())
+        .nodes_to_commands(&text_to_nodes(text))
+        .expect("parse error");
+    let mut results = Vec::new();
+    for command in commands.iter() {
+        let result =
+            air_context.command(&*message_interface, &reporter, &command, Default::default());
+        if matches!(**command, CommandX::CheckValid(..)) {
+            match result {
+                ValidityResult::Valid(..) => results.push(true),
+                ValidityResult::Invalid(..) => results.push(false),
+                r => panic!("unexpected result {:?}", r),
+            }
+            air_context.finish_query();
+        }
+    }
+    results
+}
+
+// air/src/parser.rs:635 atom 0 (consume_named F)
+#[test]
+fn parse_error_axiom_bad_attribute() {
+    parse_error("(axiom (! true foo))");
+}
+
+// air/src/parser.rs:635 atom 1 (named.is_none() F)
+#[test]
+fn parse_error_axiom_two_names() {
+    parse_error("(axiom (! true :named a :named b))");
+}
+
+// air/src/parser.rs:743 atom 1 (is_symbol F)
+#[test]
+fn parse_error_declare_sort_bad_symbol() {
+    parse_error("(declare-sort S#t 0)");
+}
+
+// air/src/parser.rs:743 atom 2 (arity not 0)
+#[test]
+fn parse_error_declare_sort_arity() {
+    parse_error("(declare-sort S 1)");
+}
+
+// air/src/parser.rs:748 atom 0 (unknown head with two arguments), air/src/parser.rs:808 atom 0
+#[test]
+fn parse_error_unknown_decl() {
+    parse_error("(foo () ())");
+}
+
+// air/src/parser.rs:748 atom 1 (decls.len() != defns.len())
+#[test]
+fn parse_error_declare_datatypes_count() {
+    parse_error("(declare-datatypes ((A 0)) ())");
+}
+
+// air/src/parser.rs:803 atom 1, air/src/parser.rs:817 atom 0 (declare-const with a non-symbol name)
+#[test]
+fn parse_error_declare_const_bad_symbol() {
+    parse_error("(declare-const x#y Int)");
+}
+
+// air/src/parser.rs:808 atom 0 (unknown head with three arguments)
+#[test]
+fn parse_error_unknown_fun_decl() {
+    parse_error("(foo x () Int)");
+}
+
+// air/src/parser.rs:808 atom 1 (declare-fun with a non-symbol name)
+#[test]
+fn parse_error_declare_fun_bad_symbol() {
+    parse_error("(declare-fun x#y () Int)");
+}
+
+// air/src/parser.rs:817 atom 1 (declare-var with a non-symbol name)
+#[test]
+fn parse_error_declare_var_bad_symbol() {
+    parse_error("(declare-var x#y Int)");
+}
+
+// air/src/parser.rs:848 atom 1 (push with an argument)
+#[test]
+fn parse_error_push_argument() {
+    parse_error("(push 1)");
+}
+
+// air/src/parser.rs:849 atom 1 (pop with an argument)
+#[test]
+fn parse_error_pop_argument() {
+    parse_error("(pop 1)");
+}
+
+// air/src/parser.rs:850 atom 1 (set-option without a value)
+#[test]
+fn parse_error_set_option_no_value() {
+    parse_error("(set-option :x)");
+}
+
+// air/src/parser.rs:858 atom 1 (check-valid without a body)
+#[test]
+fn parse_error_check_valid_empty() {
+    parse_error("(check-valid)");
+}
+
+// air/src/parser.rs:743, 748, 803, 808, 817, 848, 849, 850, 858: the accepting outcome of each
+// declaration and command form in one input
+#[test]
+fn parse_all_forms() {
+    let r = check_valid_results(
+        "(set-option :rlimit 0)
+         (declare-sort S 0)
+         (declare-datatypes ((D 0)) (((mkD (fd Int)))))
+         (declare-const c Int)
+         (declare-fun f (Int) Int)
+         (axiom (! (= c 3) :named ax1))
+         (axiom (! true))
+         (push)
+         (check-valid
+           (declare-var v Int)
+           (block (assume (= c 3)) (assert (= c 3))))
+         (pop)
+         (check-valid (assert (= c 4)))",
+    );
+    assert_eq!(r, vec![true, false]);
+}
+
+// air/src/smt_verify.rs:471 atoms 1, 2 (axiom with and without a filter after a failed assertion)
+#[test]
+fn model_axiom_filters() {
+    let r = check_valid_results(
+        "(axiom (axiom_location (\"axiom with filter fA\") (fA) true))
+         (axiom (axiom_location (\"axiom with no filter\") () true))
+         (check-valid
+           (block
+             (assume %%global_location_label%%0)
+             (assume %%global_location_label%%1)
+             (assert (location (\"failing assertion with filter fB\") (fB) false))))",
+    );
+    assert_eq!(r, vec![false]);
+}
+
+/// Asserts that the text is rejected, by the parser or by the type checker.
+#[allow(dead_code)]
+fn rejected(text: &str) {
+    let message_interface = std::sync::Arc::new(crate::messages::AirMessageInterface {});
+    let reporter = Reporter {};
+    let mut air_context = crate::context::Context::new(message_interface.clone(), SmtSolver::Z3);
+    air_context.set_solver_option("air_recommended_options", "true");
+    let commands =
+        match Parser::new(message_interface.clone()).nodes_to_commands(&text_to_nodes(text)) {
+            Ok(commands) => commands,
+            Err(_) => return,
+        };
+    for command in commands.iter() {
+        let result =
+            air_context.command(&*message_interface, &reporter, &command, Default::default());
+        if let ValidityResult::TypeError(_) = result {
+            return;
+        }
+        if matches!(**command, CommandX::CheckValid(..)) {
+            air_context.finish_query();
+        }
+    }
+    panic!("expected a parse or type error for {}", text);
+}
+
+// air/src/parser.rs:281 atom 1 (apply with too few arguments)
+#[test]
+fn reject_apply_short() {
+    rejected("(check-valid (assert (apply Int)))");
+}
+
+// air/src/parser.rs:272 atom 1 (an underscore form that is not a bit-vector literal)
+#[test]
+fn reject_underscore_not_bv() {
+    rejected("(check-valid (assert (= (_ foo 8) 1)))");
+}
+
+// air/src/ast_util.rs:296 atoms 1, 2, 3 (real literals with a leading dot, a trailing dot, two dots)
+#[test]
+fn reject_real_literal_lead_dot() {
+    rejected("(check-valid (assert (= .5 1.0)))");
+}
+
+#[test]
+fn reject_real_literal_trail_dot() {
+    rejected("(check-valid (assert (= 5. 1.0)))");
+}
+
+#[test]
+fn reject_real_literal_two_dots() {
+    rejected("(check-valid (assert (= 1.2.3 1.0)))");
+}
+
+// air/src/typecheck.rs:611 atoms 0, 1 (fp constructor with a 1-bit exponent or a 0-bit significand)
+#[test]
+fn reject_fp_ctor_exp1() {
+    rejected("(check-valid (assert (fp.isZero (fp (_ bv0 1) (_ bv0 1) (_ bv0 3)))))");
+}
+
+#[test]
+fn reject_fp_ctor_sig0() {
+    rejected("(check-valid (assert (fp.isZero (fp (_ bv0 1) (_ bv0 5) (_ bv0 0)))))");
+}
+
+// air/src/typecheck.rs:292 atoms 0, 1 (fp.eq on different significand or exponent widths)
+#[test]
+fn reject_fp_eq_sig_mismatch() {
+    rejected("(check-valid (assert (fp.eq ((_ to_fp 8 24) RNE 1.0) ((_ to_fp 8 53) RNE 1.0))))");
+}
+
+#[test]
+fn reject_fp_eq_mixed_formats() {
+    rejected(
+        "(check-valid (assert (fp.eq ((_ to_fp 8 24) (_ bv0 32)) ((_ to_fp 11 53) (_ bv0 64)))))",
+    );
+}
