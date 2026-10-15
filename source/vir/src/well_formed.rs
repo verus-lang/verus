@@ -42,7 +42,7 @@ pub struct InitialWfResults {
 /// Details from well-formedness checking.
 pub struct PerFunctionCheckResults {
     /// For each function, collects proof notes that fail due to `--no-cheating`.
-    pub func_failed_proof_notes: HashMap<Fun, HashSet<String>>,
+    pub func_failed_proof_notes: HashSet<String>,
 }
 
 pub struct WFErr {
@@ -51,7 +51,7 @@ pub struct WFErr {
     /// Boundary errors: these need additional processing in the rust_verify crate
     pub boundary_errors: Vec<(Path, VirErr)>,
     /// For each function, collects proof notes that fail due to `--no-cheating`.
-    pub func_failed_proof_notes: HashMap<Fun, HashSet<String>>,
+    pub func_failed_proof_notes: HashSet<String>,
 }
 
 // REVIEW: why is this a trait?
@@ -60,13 +60,13 @@ pub trait EmitError {
     fn emit_deferred_err(&mut self, err: VirErr);
     fn emit_boundary_err(&mut self, path: Path, err: VirErr);
     fn has_fatal_errors(&self) -> bool;
-    fn record_func_failed_proof_note(&mut self, func: Fun, note: String);
+    fn record_func_failed_proof_note(&mut self, note: String);
 }
 
 struct EmitErrorState {
     /// Errors that need more processing by the caller in rust_verify
     boundary_errors: IndexMap<Path, VirErr>,
-    func_failed_proof_notes: HashMap<Fun, HashSet<String>>,
+    func_failed_proof_notes: HashSet<String>,
     /// Legit errors that nonetheless don't prevent us from proceeding
     /// down the rest of the VC pipeline
     deferred_errors: Vec<VirErr>,
@@ -98,8 +98,8 @@ impl EmitError for EmitErrorState {
         self.boundary_errors.len() > 0
     }
 
-    fn record_func_failed_proof_note(&mut self, func: Fun, note: String) {
-        self.func_failed_proof_notes.entry(func).or_default().insert(note);
+    fn record_func_failed_proof_note(&mut self, note: String) {
+        self.func_failed_proof_notes.insert(note);
     }
 }
 
@@ -618,10 +618,7 @@ fn check_one_expr<Emit: EmitError>(
                     msg =
                         msg.proof_note_label(&expr.span, label.text.as_str(), label.is_custom_err);
                     if !label.is_custom_err {
-                        emit.record_func_failed_proof_note(
-                            function.x.name.clone(),
-                            label.text.to_string(),
-                        );
+                        emit.record_func_failed_proof_note(label.text.to_string());
                     }
                 }
                 emit.emit_deferred_err(msg);
@@ -982,7 +979,7 @@ pub fn check_function(
     let mut emit = EmitErrorState {
         boundary_errors: IndexMap::new(),
         diags: vec![],
-        func_failed_proof_notes: HashMap::new(),
+        func_failed_proof_notes: HashSet::new(),
         deferred_errors: vec![],
     };
     let wf =
@@ -1892,7 +1889,7 @@ fn check_broadcast_groups(krate: &Krate) -> Result<(), VirErr> {
 }
 
 fn to_wf(v: VirErr) -> WFErr {
-    WFErr { errors: vec![v], boundary_errors: vec![], func_failed_proof_notes: HashMap::new() }
+    WFErr { errors: vec![v], boundary_errors: vec![], func_failed_proof_notes: HashSet::new() }
 }
 
 fn check_conflicts(
@@ -2181,7 +2178,7 @@ fn check_all_but_functions(
     let mut emit = EmitErrorState {
         boundary_errors: IndexMap::new(),
         diags: vec![],
-        func_failed_proof_notes: HashMap::new(),
+        func_failed_proof_notes: HashSet::new(),
         deferred_errors: vec![],
     };
     let ctxt = Ctxt { funs, lookup, krate, no_cheating };
