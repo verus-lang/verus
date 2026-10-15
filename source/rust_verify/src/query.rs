@@ -487,21 +487,6 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
         )
         .map_err(|e| self.emit_error(e))?;
 
-        // Resolution inference
-        // Make sure to do this before the res_info goes stale
-        let mut res_infos = HashMap::<Fun, Arc<ResolutionInfo>>::new();
-        for stub in pre_crate.infos.iter().map(|info| info.iter_stubs()).flatten() {
-            match self.get_checked_function(&stub.x.name) {
-                Ok((_, _, Some(res_info))) => {
-                    let found = res_infos.insert(stub.x.name.clone(), res_info.clone());
-                    assert!(found.is_none());
-                }
-                Ok((_, _, None)) => {}
-                Err(err) => unreachable!(),
-            }
-        }
-        let krate = krate_infer_resolution(&krate, &res_infos).map_err(|e| self.emit_errors(e))?;
-
         // Merge
         let my_crate = krate.clone();
         let mut vir_crates: Vec<Krate> = (*other_vir_crates).clone();
@@ -519,6 +504,21 @@ impl<'r, 'tcx> Query<'r, 'tcx> {
         );
         let krate =
             vir::traits::merge_external_traits(vir_crate).map_err(|e| self.emit_error(e))?;
+
+        // Resolution inference
+        // Make sure to do this before the res_info goes stale
+        let mut res_infos = HashMap::<Fun, Arc<ResolutionInfo>>::new();
+        for stub in pre_crate.infos.iter().map(|info| info.iter_stubs()).flatten() {
+            match self.get_checked_function(&stub.x.name) {
+                Ok((_, _, Some(res_info))) => {
+                    let found = res_infos.insert(stub.x.name.clone(), res_info.clone());
+                    assert!(found.is_none());
+                }
+                Ok((_, _, None)) => {}
+                Err(err) => unreachable!(),
+            }
+        }
+        let krate = krate_infer_resolution(&krate, &res_infos).map_err(|e| self.emit_errors(e))?;
 
         Ok(krate)
     }
