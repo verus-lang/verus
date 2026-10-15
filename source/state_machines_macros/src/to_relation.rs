@@ -63,6 +63,10 @@ pub fn to_is_enabled_condition_weak(sops: &Vec<SimplStmt>) -> TokenStream {
     to_relation(&sops, true)
 }
 
+pub fn to_is_enabled_condition_strong(sops: &Vec<SimplStmt>) -> TokenStream {
+    to_relation(&remove_post_conditions_vec(sops), false)
+}
+
 /// Mark each scope-creating node with the assign-vars that need to be extracted
 /// Also, remove any 'assign' that isn't used.
 fn annotate_extractions(sops: &Vec<SimplStmt>) -> Vec<SimplStmt> {
