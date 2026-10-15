@@ -138,6 +138,14 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::try_reserve ](
         final(vec)@ == old(vec)@,
 ;
 
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::try_reserve_exact ](
+    vec: &mut Vec<T, A>,
+    additional: usize,
+) -> (result: Result<(), TryReserveError>)
+    ensures
+        final(vec)@ == old(vec)@,
+;
+
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::push ](vec: &mut Vec<T, A>, value: T)
     ensures
         final(vec)@ == old(vec)@.push(value),
