@@ -217,6 +217,23 @@ impl PointsToUntyped {
         Self::stays_wf_basic(old, new);
     }
 
+    /// If `old` and `new` are both well-formed with the same pointer, then `new` keeps `old`'s
+    /// pointers and length.
+    pub proof fn lemma_ptrs_len_same_valid(old: Self, new: Self)
+        requires
+            old.wf(),
+            new.wf(),
+            new.ptr() == old.ptr(),
+        ensures
+            Self::ptrs_len_same_valid(old, new),
+    {
+        broadcast use raw_ptr_new::group_raw_ptr_axioms;
+
+        assert forall|j: int| 0 <= j < new.len() implies #[trigger] new[j].ptr() == old[j].ptr() by {
+            assert(new[j].ptr()@.addr == old[j].ptr()@.addr);
+        }
+    }
+
     /// If `T` is zero sized, then we can construct a `PointsToUntyped` from any non-null pointer.
     /// The range of memory pointed to by this permission will be empty.
     pub proof fn zero_sized<T>(ptr: *mut T) -> (tracked perm: Self)
