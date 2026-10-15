@@ -15,7 +15,10 @@
 // dir/<crate>-<pid>.{reach,inf,stacks,dec}:
 //   reach   "point hash"     a mutation point executed with guard stack `hash` on this thread
 //   inf     "id hash"        mutant id infected (its alternative differs from the original value or effect)
-//   stacks  "hash d:o,.."    the guard stack with that hash (outermost first), once per distinct hash
+//   stacks  "hash d:o,.."    the guard stack with that hash (outermost first, at most 64 entries), once
+//                            per distinct hash
+// MUTANT_LOG_STACKS=0 keeps the reach and infection sets only (hash 0, no stacks file content, depth 0
+// in dec): rust_verify_test runs need no path conditions, and deep recursion makes stacks large.
 //   dec     "d o depth"      guarded body of decision d entered with outcome o (1 = T, 0 = F, k = match arm)
 // The guard stack is thread-local: `guard(d, o)` (inserted at the start of each guarded body) pushes and
 // its RAII value pops on drop, so early return, `?`, break and unwinding all pop. Hash 0 = empty stack.
@@ -38,6 +41,8 @@ const SHARDS: usize = 64;
 
 struct Log {
     dir: std::path::PathBuf,
+    /// false with MUTANT_LOG_STACKS=0: reach and infection sets only, every entry with hash 0
+    stacks_on: bool,
     reach: Vec<Mutex<HashSet<(u32, u64)>>>,
     inf: Vec<Mutex<HashSet<(u32, u64)>>>,
     stacks: Mutex<HashMap<u64, Vec<(u32, u32)>>>,
@@ -159,6 +164,7 @@ fn init() -> St {
             }
             Some(Log {
                 dir: d,
+                stacks_on: std::env::var("MUTANT_LOG_STACKS").map_or(true, |v| v != "0"),
                 reach: (0..SHARDS).map(|_| Mutex::new(HashSet::new())).collect(),
                 inf: (0..SHARDS).map(|_| Mutex::new(HashSet::new())).collect(),
                 stacks: Mutex::new(HashMap::new()),
@@ -180,13 +186,15 @@ fn top_hash() -> u64 {
 }
 
 fn record(log: &Log, set: &[Mutex<HashSet<(u32, u64)>>], id: u32) {
-    let h = top_hash();
+    let h = if log.stacks_on { top_hash() } else { 0 };
     let sh = (id as usize ^ (h as usize)) % SHARDS;
     let new = set[sh].lock().map(|mut g| g.insert((id, h))).unwrap_or(false);
     if new && h != 0 {
         if let Ok(mut g) = log.stacks.lock() {
             if !g.contains_key(&h) {
-                let v = STK.with(|s| s.borrow().iter().map(|x| (x.0, x.1)).collect());
+                // the outermost MAX_STACK entries: deep recursion would otherwise make the file
+                // quadratic in the depth
+                let v = STK.with(|s| s.borrow().iter().take(MAX_STACK).map(|x| (x.0, x.1)).collect());
                 g.insert(h, v);
             }
         }
@@ -206,10 +214,19 @@ impl Drop for G {
     }
 }
 
+/// Stacks deeper than this are written truncated to their outermost entries.
+const MAX_STACK: usize = 64;
+
 #[inline]
 pub fn guard(d: u32, o: u32) -> G {
     let s = st();
     let Some(log) = &s.log else { return G(false) };
+    if !log.stacks_on {
+        if let Ok(mut g) = log.dec.lock() {
+            g.insert((d, o, 0));
+        }
+        return G(false);
+    }
     let depth = STK.with(|stk| {
         let mut stk = stk.borrow_mut();
         let prev = stk.last().map_or(0x9E3779B97F4A7C15u64, |x| x.2);
