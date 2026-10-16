@@ -236,10 +236,21 @@ Client assumptions, trusted specifications, and verifier trust remain separate.
 Backend support is combination-dependent. Specialized routes cover more
 syntax than the basic straight-line emitter. A supported field kind does not
 mean that every combination of fields, binders, storage operands, and selected
-readiness methods is supported. For example, the general resource emitter
-currently rejects labeled machines, although the pure model entrypoint has
-checked label classifiers. Selection checks also reject some combinations of
-unowned observations and physical readiness.
+readiness methods is supported. Selection checks also reject some combinations
+of unowned observations and physical readiness.
+
+The raw interface (`#[verified_raw_tokens]`, and the generic interface built on
+it) uses the general emitter for every machine the straight-line emitter does
+not support, including labeled machines. Each field's monoid statements on a
+path, any number of `remove`, `have` and `add` in the trusted order, form one
+update: the composed removal followed by the composed addition. Each path's
+storage statements, any number of deposits, withdrawals and guards, form one
+storage exchange or guard. That exchange requires its deposit to be disjoint
+from the pre-state storage, so a deposit into a location withdrawn earlier on
+the same path is not supported: syntactically equal locations are rejected,
+other overlaps fail in the generated proof. A stored-value binding cannot
+observe a value deposited earlier on its path. The corpus
+`examples/verified_tsm/raw_forms_*.rs` exercises these forms.
 
 Unsupported shapes and generated-name conflicts produce diagnostics. These
 limits are implementation constraints, not proofs that the requested protocol
