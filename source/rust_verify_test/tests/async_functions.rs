@@ -56,7 +56,7 @@ test_verify_one_file! {
         }
         async fn bar() {
             let future = foo();
-            assert(future.obeys_deterministic_future_laws());
+            assert(future.obeys_future_laws());
             assert(future.awaited() ==> future@ == 1);
             let ret = future.await;
             assert(ret == 1);
@@ -97,7 +97,7 @@ test_verify_one_file! {
 
         async fn foo_of_foo() -> (ret: impl Future<Output = usize>)
             ensures
-                ret.obeys_deterministic_future_laws(),
+                ret.obeys_future_laws(),
                 ret.awaited() ==> ret@ == 233,
         {
             foo()
@@ -323,7 +323,7 @@ test_verify_one_file! {
         }
 
         impl FutureSpecImpl for CustomFuture {
-            open spec fn obeys_deterministic_future_laws(&self) -> bool {
+            open spec fn obeys_future_laws(&self) -> bool {
                 false
             }
 

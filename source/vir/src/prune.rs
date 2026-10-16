@@ -1104,7 +1104,7 @@ pub fn prune_krate_for_module_or_krate(
                         &mut state.worklist_functions,
                         &crate::fun!(
                             CrateId::Vstd => "future", "FutureSpec",
-                            "obeys_deterministic_future_laws"
+                            "obeys_future_laws"
                         ),
                     );
 

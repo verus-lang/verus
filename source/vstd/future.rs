@@ -14,7 +14,7 @@ pub trait ExFuture {
     type Output;
 
     /// Whether awaiting this future returns its prophetic view.
-    spec fn obeys_deterministic_future_laws(&self) -> bool;
+    spec fn obeys_future_laws(&self) -> bool;
 
     /// The value that awaiting this future will return.
     #[verifier::prophetic]
@@ -33,7 +33,7 @@ fn exec_await<F: Future>(
 ) -> (ret: F::Output)
     ensures
         future.awaited() == true,
-        future.obeys_deterministic_future_laws() ==> ret == future@,
+        future.obeys_future_laws() ==> ret == future@,
     opens_invariants any
 {
     unimplemented!()
