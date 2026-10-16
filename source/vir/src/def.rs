@@ -122,7 +122,7 @@ pub const SUFFIX_SNAP_WHILE_END: &str = "_while_end";
 
 pub const CLOSURE_RETURN_VALUE_PREFIX: &str = "%closure_return";
 
-pub const AUTOSPEC_FUNC_SUFFIX: &str = "%returns_clause_autospec";
+pub const AUTOSPEC_FUNC_PREFIX: &str = "returns_clause_autospec%";
 
 pub const FNDEF_TYPE: &str = "fndef";
 pub const FNDEF_SINGLETON: &str = "fndef_singleton";
@@ -1357,7 +1357,7 @@ pub(crate) fn is_dummy_param_name(v: &VarIdent) -> bool {
 
 pub fn autospec_return_clause_spec_fn_name(path: &Path) -> Fun {
     let name = path.last_segment();
-    let p = path.pop_segment().push_segment(Arc::new(format!("{}{}", name, AUTOSPEC_FUNC_SUFFIX)));
+    let p = path.pop_segment().push_segment(Arc::new(format!("{}{}", AUTOSPEC_FUNC_PREFIX, name)));
     Arc::new(FunX { path: p })
 }
 
