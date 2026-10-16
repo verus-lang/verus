@@ -322,7 +322,7 @@ pub struct Verifier {
     /// Details about each function
     pub func_details: Arc<Mutex<HashMap<Fun, FuncDetails>>>,
     /// Errors to report after verification has run
-    deferred_errors: Vec<VirErr>,
+    deferred_errors: Arc<Mutex<Vec<VirErr>>>,
 
     pub via_cargo_args: Option<CargoVerusArgs>,
     // Some(DepTracker) if via_cargo_args.is_some(), None otherwise
@@ -515,7 +515,7 @@ impl Verifier {
             func_times: HashMap::new(),
 
             func_details: Arc::new(Mutex::new(HashMap::new())),
-            deferred_errors: Vec::new(),
+            deferred_errors: Arc::new(Mutex::new(Vec::new())),
 
             dep_tracker: if via_cargo_args.is_some() { Some(dep_tracker) } else { None },
             via_cargo_args,
@@ -563,7 +563,7 @@ impl Verifier {
             func_times: HashMap::new(),
 
             func_details: Arc::new(Mutex::new(HashMap::new())),
-            deferred_errors: Vec::new(),
+            deferred_errors: Arc::new(Mutex::new(Vec::new())),
 
             via_cargo_args: self.via_cargo_args.clone(),
             dep_tracker: None,
@@ -596,8 +596,13 @@ impl Verifier {
         self.bucket_stats.extend(other.bucket_stats);
         self.func_times.extend(other.func_times);
         let func_details = { (*other.func_details.lock().unwrap()).clone() };
-        self.func_details.lock().unwrap().absorb_with(func_details, |lhs, rhs| lhs.absorb(rhs));
-        self.deferred_errors.extend(other.deferred_errors);
+        {
+            self.func_details.lock().unwrap().absorb_with(func_details, |lhs, rhs| lhs.absorb(rhs));
+        }
+        let deferred_errors = { (*other.deferred_errors.lock().unwrap()).clone() };
+        {
+            self.deferred_errors.lock().unwrap().extend(deferred_errors);
+        }
     }
 
     fn get_bucket<'a>(&'a self, bucket_id: &BucketId) -> &'a Bucket {
@@ -2719,6 +2724,7 @@ impl Verifier {
             self.args.clone(),
             diagnostics,
             self.func_details.clone(),
+            self.deferred_errors.clone(),
             other_vir_crates,
             pre_crate,
             self.crate_id.clone().unwrap(),
@@ -3239,7 +3245,7 @@ impl VerifierCallbacksEraseMacro {
                 self.verifier.encountered_vir_error = true;
             }
         }
-        for err in std::mem::take(&mut self.verifier.deferred_errors) {
+        for err in std::mem::take(&mut *self.verifier.deferred_errors.lock().unwrap()) {
             reporter.report_as(&err.to_any(), MessageLevel::Error);
             self.verifier.encountered_vir_error = true;
         }
