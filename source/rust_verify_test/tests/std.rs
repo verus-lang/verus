@@ -2023,3 +2023,22 @@ test_verify_one_file! {
         assert!(err.errors.iter().all(|e| e.rendered.contains("precondition not satisfied")));
     }
 }
+
+test_verify_one_file! {
+    #[test] maybe_uninit_write verus_code! {
+        use core::mem::MaybeUninit;
+        use vstd::prelude::*;
+        use vstd::std_specs::maybe_uninit::MaybeUninitAdditionalSpecFns;
+
+        fn test() {
+            let mut m: MaybeUninit<u8> = MaybeUninit::uninit();
+            let r = m.write(5);
+            assert(*r == 5);
+            *r = 7;
+            assert(m.mem_contents().is_init());
+            assert(m.mem_contents().value() == 7);
+            let v = unsafe { m.assume_init() };
+            assert(v == 7);
+        }
+    } => Ok(())
+}
