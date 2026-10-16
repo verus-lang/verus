@@ -4,6 +4,7 @@ use super::core::IndexSpec;
 use super::iter::IteratorSpec;
 use super::range::{
     ExRange, RangeBoundsSpec, slice_range_end, slice_range_start, slice_range_valid,
+    spec_range_inclusive_slice_bounds,
 };
 
 use core::ops::{
@@ -231,11 +232,11 @@ pub assume_specification<T>[ <RangeFull as SliceIndex<[T]>>::index_mut ](i: Rang
 
 impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for RangeInclusive<usize> {
     open spec fn in_bounds(&self, slice: &[T]) -> bool {
-        generic_slice_in_bounds(self, slice@)
+        generic_slice_in_bounds(&spec_range_inclusive_slice_bounds(self), slice@)
     }
 
     open spec fn index_postcondition(&self, slice: &[T], r: &[T]) -> bool {
-        generic_slice_index_postcondition(self, slice@, r@)
+        generic_slice_index_postcondition(&spec_range_inclusive_slice_bounds(self), slice@, r@)
     }
 
     open spec fn index_mut_postcondition(
@@ -245,7 +246,7 @@ impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for RangeInclusive<usize> {
         immediate_output: &[T],
         final_output: &[T]
     ) -> bool {
-        generic_slice_index_mut_postcondition(self, old_slice@, final_slice@, immediate_output@, final_output@)
+        generic_slice_index_mut_postcondition(&spec_range_inclusive_slice_bounds(self), old_slice@, final_slice@, immediate_output@, final_output@)
     }
 }
 

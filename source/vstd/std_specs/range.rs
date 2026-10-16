@@ -141,6 +141,16 @@ impl<A: core::iter::Step> super::iter::IteratorSpecImpl for Range<A> {
     }
 }
 
+/// Number of elements left in an inclusive range: zero once it is exhausted or if `start > end`.
+pub open spec fn spec_range_inclusive_len<A: core::iter::Step>(r: &RangeInclusive<A>) -> nat {
+    let steps = r@.start.spec_steps_between_int(r@.end);
+    if steps >= 0 && !r@.exhausted {
+        (steps + 1) as nat
+    } else {
+        0
+    }
+}
+
 impl<A: core::iter::Step> super::iter::IteratorSpecImpl for RangeInclusive<A> {
     open spec fn obeys_prophetic_iter_laws(&self) -> bool {
         true
@@ -148,7 +158,7 @@ impl<A: core::iter::Step> super::iter::IteratorSpecImpl for RangeInclusive<A> {
 
     open spec fn remaining(&self) -> Seq<Self::Item> {
         Seq::new(
-            (self@.start.spec_steps_between_int(self@.end) + 1) as nat,
+            spec_range_inclusive_len(self),
             |i: int| self@.start.spec_forward_checked_int(i).unwrap(),
         )
     }
@@ -156,11 +166,11 @@ impl<A: core::iter::Step> super::iter::IteratorSpecImpl for RangeInclusive<A> {
     uninterp spec fn will_return_none(&self) -> bool;
 
     open spec fn decrease(&self) -> Option<nat> {
-        Some((self@.start.spec_steps_between_int(self@.end) + 1) as nat)
+        Some(spec_range_inclusive_len(self))
     }
 
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
-        if 0 <= index <= self@.start.spec_steps_between_int(self@.end) + 1 {
+        if 0 <= index <= spec_range_inclusive_len(self) {
             Some(self@.start.spec_forward_checked_int(index).unwrap())
         } else {
             None
@@ -486,6 +496,23 @@ pub open spec fn slice_range_end<R: RangeBoundsSpec<usize>>(range: &R, len: nat)
         Bound::Excluded(i) => *i as int,
         Bound::Unbounded => len as int,
     }
+}
+
+/// The bounds with which std's `SliceIndex` impls for `RangeInclusive<usize>` index:
+/// `start..end + 1`, or the empty range `end + 1..end + 1` if the range is exhausted
+/// (unlike `end_bound()`, which reports `Excluded(end)` for an exhausted range).
+pub open spec fn spec_range_inclusive_slice_bounds(r: &RangeInclusive<usize>) -> (
+    Bound<usize>,
+    Bound<usize>,
+) {
+    (
+        if r@.exhausted {
+            Bound::Excluded(r@.end)
+        } else {
+            Bound::Included(r@.start)
+        },
+        Bound::Included(r@.end),
+    )
 }
 
 /// Whether a range normalizes to `start <= end <= len`, i.e. the condition

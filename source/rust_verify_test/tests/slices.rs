@@ -1316,3 +1316,78 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    // GitHub issue #2968
+    #[test] test_range_inclusive_exhausted_iter verus_code! {
+        use core::ops::{Bound, RangeBounds};
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        fn demo() -> (s: u8)
+            ensures s >= 1, // FAILS
+        {
+            let mut rng = 0u8..=0u8;
+            assert(rng.remaining().len() == 1);
+            let _ = rng.next();
+            assert(rng.remaining().len() == 0);
+            match rng.start_bound() {
+                Bound::Included(s) => *s,
+                _ => 0,
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    // GitHub issue #3145
+    #[test] test_slice_index_exhausted_range_inclusive verus_code! {
+        use core::ops::{Bound, RangeBounds};
+        use vstd::prelude::*;
+
+        fn advance<I: Iterator<Item = usize>>(it: &mut I) {
+            let _ = it.next();
+        }
+
+        fn test_get() {
+            let v: Vec<u8> = vec![10, 20];
+            let mut r = 2usize..=2usize;
+            advance(&mut r);
+            let exhausted_at_2 = match (r.start_bound(), r.end_bound()) {
+                (Bound::Included(a), Bound::Excluded(b)) => *a == 2 && *b == 2,
+                _ => false,
+            };
+            if exhausted_at_2 {
+                let t = v.as_slice().get(r);
+                assert(t is Some); // FAILS
+            }
+        }
+
+        fn test_index() {
+            let v: Vec<u8> = vec![10, 20, 30];
+            let mut r = 2usize..=2usize;
+            advance(&mut r);
+            let exhausted_at_2 = match (r.start_bound(), r.end_bound()) {
+                (Bound::Included(a), Bound::Excluded(b)) => *a == 2 && *b == 2,
+                _ => false,
+            };
+            if exhausted_at_2 {
+                let t = &v.as_slice()[r];
+                assert(t@.len() == 0);
+            }
+        }
+
+        fn test_index_oob() {
+            let v: Vec<u8> = vec![10, 20];
+            let mut r = 2usize..=2usize;
+            advance(&mut r);
+            let exhausted_at_2 = match (r.start_bound(), r.end_bound()) {
+                (Bound::Included(a), Bound::Excluded(b)) => *a == 2 && *b == 2,
+                _ => false,
+            };
+            if exhausted_at_2 {
+                let _ = &v.as_slice()[r]; // FAILS
+            }
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
