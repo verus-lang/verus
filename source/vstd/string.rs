@@ -27,8 +27,7 @@ use super::view::*;
 #[cfg(not(verus_verify_core))]
 use super::std_specs::cmp::PartialEqSpecImpl;
 
-use verus as verus_skip_verusfmt; // verusfmt doesn't handle s[..e] yet
-verus_skip_verusfmt! {
+verus! {
 
 broadcast use {super::seq::group_seq_lemmas, super::slice::group_slice_axioms};
 
@@ -125,6 +124,8 @@ pub assume_specification[ str::to_owned ](s: &str) -> (res: String)
 pub assume_specification[ str::as_bytes ](s: &str) -> (b: &[u8])
     ensures
         b@ == s.spec_bytes(),
+    opens_invariants none
+    no_unwind
 ;
 
 #[cfg(not(verus_verify_core))]
@@ -132,6 +133,8 @@ pub assume_specification[ str::as_bytes ](s: &str) -> (b: &[u8])
 pub assume_specification[ str::len ](s: &str) -> usize
     returns
         s.spec_bytes().len() as usize,
+    opens_invariants none
+    no_unwind
 ;
 
 #[cfg(not(verus_verify_core))]
@@ -139,6 +142,8 @@ pub assume_specification[ str::len ](s: &str) -> usize
 pub assume_specification[ str::is_empty ](s: &str) -> bool
     returns
         s@.len() == 0,
+    opens_invariants none
+    no_unwind
 ;
 
 #[cfg(not(verus_verify_core))]
@@ -368,6 +373,8 @@ pub open spec fn string_is_ascii(s: &String) -> bool {
 pub assume_specification<'a>[ String::as_str ](s: &'a String) -> (res: &'a str)
     ensures
         res@ == s@,
+    opens_invariants none
+    no_unwind
 ;
 
 // same as above
@@ -418,6 +425,8 @@ pub assume_specification[ String::push_str ](s: &mut String, other: &str)
 pub assume_specification[ String::is_empty ](s: &String) -> (res: bool)
     ensures
         res == (s@.len() == 0),
+    opens_invariants none
+    no_unwind
 ;
 
 #[cfg(all(feature = "alloc", not(verus_verify_core)))]

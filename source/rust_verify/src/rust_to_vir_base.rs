@@ -1516,8 +1516,12 @@ pub(crate) fn mid_ty_const_to_vir<'tcx>(
                 unsupported_err!(span.expect("span"), format!("const type argument {:?}", cnst));
             };
             match ty.kind() {
-                TyKind::Uint(_) | TyKind::Int(_) => {
-                    let c = num_bigint::BigInt::from(i.to_bits(i.size()));
+                TyKind::Uint(_) => {
+                    let c = num_bigint::BigInt::from(i.to_uint(i.size()));
+                    Ok(Arc::new(TypX::ConstInt(c)))
+                }
+                TyKind::Int(_) => {
+                    let c = num_bigint::BigInt::from(i.to_int(i.size()));
                     Ok(Arc::new(TypX::ConstInt(c)))
                 }
                 TyKind::Bool => Ok(Arc::new(TypX::ConstBool(i.to_bits(i.size()) != 0))),
@@ -1626,24 +1630,48 @@ pub(crate) fn implements_structural<'tcx>(
     ty_impls_structural
 }
 
-// Do equality operations on these operands translate into the SMT solver's == operation?
+/// Do equality operations on these operands translate into the SMT solver's == operation?
 pub(crate) fn is_smt_equality<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     span: Span,
     id1: &HirId,
     id2: &HirId,
 ) -> Result<bool, VirErr> {
-    let (t1, t2) = (typ_of_expr_adjusted(bctx, span, id1)?, typ_of_expr_adjusted(bctx, span, id2)?);
+    let rustc_hir::Node::Expr(expr1) = bctx.ctxt.tcx.hir_node(*id1) else {
+        panic!("is_smt_equality expected Expr");
+    };
+    let rustc_hir::Node::Expr(expr2) = bctx.ctxt.tcx.hir_node(*id2) else {
+        panic!("is_smt_equality expected Expr");
+    };
+    let ty1 = bctx.types.expr_ty_adjusted(expr1);
+    let ty2 = bctx.types.expr_ty_adjusted(expr2);
+    ty_pair_has_smt_equality(bctx, span, ty1, ty2)
+}
+
+pub(crate) fn ty_has_smt_equality<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    span: Span,
+    ty: rustc_middle::ty::Ty<'tcx>,
+) -> Result<bool, VirErr> {
+    ty_pair_has_smt_equality(bctx, span, ty, ty)
+}
+
+pub(crate) fn ty_pair_has_smt_equality<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    span: Span,
+    ty1: rustc_middle::ty::Ty<'tcx>,
+    ty2: rustc_middle::ty::Ty<'tcx>,
+) -> Result<bool, VirErr> {
+    let t1 = bctx.mid_ty_to_vir(span, &ty1)?;
+    let t2 = bctx.mid_ty_to_vir(span, &ty2)?;
     match (&*undecorate_typ(&t1), &*undecorate_typ(&t2)) {
         (TypX::Bool, TypX::Bool) => Ok(true),
         (TypX::Int(_), TypX::Int(_)) => Ok(true),
         (TypX::Datatype(..), TypX::Datatype(..)) if types_equal(&t1, &t2) => {
-            let ty = bctx.types.node_type(*id1);
-            Ok(implements_structural(&bctx, ty))
+            Ok(implements_structural(&bctx, ty1))
         }
         (TypX::TypParam(_), TypX::TypParam(_)) if types_equal(&t1, &t2) => {
-            let ty = bctx.types.node_type(*id1);
-            Ok(implements_structural(&bctx, ty))
+            Ok(implements_structural(&bctx, ty2))
         }
         _ => Ok(false),
     }

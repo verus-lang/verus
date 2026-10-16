@@ -5,7 +5,7 @@ use crate::ast::{
     Axiom, BinaryOp, BindX, Binder, BinderX, Binders, Constant, Decl, DeclX, Expr, ExprX, Ident,
     MultiOp, Query, QueryX, Stmt, StmtX, Typ, TypX, TypeError, Typs, UnaryOp,
 };
-use crate::context::{Context, SmtSolver};
+use crate::context::{Context, SmtEncoding};
 use crate::messages::MessageInterface;
 use crate::printer::{Printer, node_to_string};
 use crate::scope_map::ScopeMap;
@@ -28,7 +28,7 @@ pub struct Typing {
     pub(crate) snapshots: HashSet<Ident>,
     pub(crate) break_labels_local: HashSet<Ident>,
     pub(crate) break_labels_in_scope: ScopeMap<Ident, ()>,
-    pub(crate) solver: SmtSolver,
+    pub(crate) smt_encoding: SmtEncoding,
 }
 
 impl Typing {
@@ -693,9 +693,27 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
                     Arc::new(binders)
                 }
                 BindX::Quant(_, binders, _, _) => binders.clone(),
-                BindX::Lambda(binders, _, _) => binders.clone(),
+                BindX::Lambda(binders, _, _, _, _) => binders.clone(),
                 BindX::Choose(binders, _, _, _) => binders.clone(),
             };
+            // Typecheck WrapLambda outside binder scope
+            if let BindX::Lambda(_, _, _, Some(wrap), _) = &**bind {
+                let t_id = check_expr(typing, &wrap.id)?;
+                let result = match typing.get(&wrap.wrap).cloned() {
+                    Some(DeclaredX::Fun { params, ret, field_accessor: _ }) => {
+                        if !matches!(&*ret, TypX::Fun) {
+                            return Err(format!(
+                                "in lambda, wrapper {} returns type {} instead of Fun",
+                                wrap.wrap,
+                                typ_name(&ret)
+                            ));
+                        }
+                        check_has_typs(typing, &wrap.wrap, &params, &ret, &[t_id, ret.clone()])
+                    }
+                    _ => Err(format!("use of undeclared function {}", wrap.wrap)),
+                };
+                let _ = result?;
+            }
             // Collect all binder names, make sure they are unique
             typing.decls.push_scope(true);
             for binder in binders.iter() {
@@ -708,7 +726,7 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
                 BindX::Let(_) => {}
                 BindX::Quant(_, _, triggers, _)
                 | BindX::Choose(_, triggers, _, _)
-                | BindX::Lambda(_, triggers, _) => {
+                | BindX::Lambda(_, triggers, _, _, _) => {
                     for trigger in triggers.iter() {
                         for expr in trigger.iter() {
                             check_expr(typing, expr)?;
@@ -717,14 +735,19 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
                 }
             }
             // Type-check inner expressions
-            if let BindX::Choose(_, _, _, e2) = &**bind {
-                let t2 = check_expr(typing, e2)?;
-                if !typ_eq(&t2, &bt()) {
-                    return Err(format!(
-                        "in choose, condition has type {} instead of Bool",
-                        typ_name(&t2)
-                    ));
+            match &**bind {
+                BindX::Lambda(_, _, _, _, Some(e2)) | BindX::Choose(_, _, _, e2) => {
+                    let t2 = check_expr(typing, e2)?;
+                    if !typ_eq(&t2, &bt()) {
+                        let s = match &**bind {
+                            BindX::Lambda(_, _, _, _, _) => "lambda, condition",
+                            BindX::Choose(_, _, _, _) => "choose, body",
+                            _ => unreachable!(),
+                        };
+                        return Err(format!("in {} has type {} instead of Bool", s, typ_name(&t2)));
+                    }
                 }
+                _ => {}
             }
             // Type-check expr
             let t1 = check_expr(typing, e1)?;
@@ -734,7 +757,7 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
                     expect_typ(&t1, &bt(), "forall/exists body must have type bool")?;
                     t1
                 }
-                BindX::Lambda(_, _, _) => Arc::new(TypX::Fun),
+                BindX::Lambda(_, _, _, _, _) => Arc::new(TypX::Fun),
                 BindX::Choose(..) => t1,
             };
             // Done
@@ -748,8 +771,12 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
         Ok(t) => Ok(t),
         Err(err) => {
             let node_str = node_to_string(
-                &Printer::new(typing.message_interface.clone(), false, typing.solver.clone())
-                    .expr_to_node(expr),
+                &Printer::new_with_encoding(
+                    typing.message_interface.clone(),
+                    false,
+                    typing.smt_encoding,
+                )
+                .expr_to_node(expr),
             );
             Err(format!("error '{}' in expression '{}'", err, node_str))
         }
@@ -841,8 +868,12 @@ fn check_stmt(typing: &mut Typing, stmt: &Stmt) -> Result<(), TypeError> {
         Ok(()) => Ok(()),
         Err(err) => {
             let node_str = node_to_string(
-                &Printer::new(typing.message_interface.clone(), false, typing.solver.clone())
-                    .stmt_to_node(stmt),
+                &Printer::new_with_encoding(
+                    typing.message_interface.clone(),
+                    false,
+                    typing.smt_encoding,
+                )
+                .stmt_to_node(stmt),
             );
             Err(format!("error '{}' in statement '{}'", err, node_str))
         }
@@ -872,8 +903,12 @@ pub(crate) fn check_decl(
         Ok(()) => Ok(crate::closure::simplify_decl(context, decl)),
         Err(err) => {
             let node_str = node_to_string(
-                &Printer::new(context.message_interface.clone(), false, context.solver.clone())
-                    .decl_to_node(decl),
+                &Printer::new_with_encoding(
+                    context.message_interface.clone(),
+                    false,
+                    context.smt_encoding,
+                )
+                .decl_to_node(decl),
             );
             Err(format!("error '{}' in declaration '{}'", err, node_str))
         }

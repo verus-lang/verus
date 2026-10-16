@@ -35,6 +35,7 @@ fn run_compiler<'a, 'b>(
 pub fn is_verifying_entire_crate(verifier: &Verifier) -> bool {
     verifier.args.verify_function.is_none()
         && verifier.args.verify_module.is_empty()
+        && verifier.args.verify_only_module.is_empty()
         && !verifier.args.verify_root
 }
 
@@ -233,7 +234,7 @@ pub fn find_verusroot() -> Option<VerusRoot> {
                 current.parent().and_then(|p| {
                     let mut path = std::path::PathBuf::from(&p);
                     if let Err(missing) =
-                        cargo_verus_toolchains::installed::check_required_components(&path)
+                        cargo_verus_toolchains::installed::check_required_artifacts(&path)
                     {
                         eprintln!("warning: Verus installation is incomplete; missing components:");
                         for path in missing {

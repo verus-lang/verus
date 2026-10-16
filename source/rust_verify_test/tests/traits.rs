@@ -108,7 +108,20 @@ test_verify_one_file_with_options! {
                 no_method_body()
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "no_method_body can only appear in trait method declarations")
+    } => Err(err) => assert_vir_error_msg(err, "trait declaration with no_method_body() should start with VERUS_SPEC__")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_ill_formed_2 ["--no-external-by-default"] => code! {
+        trait T1 {
+            fn f(&self);
+
+            fn VERUS_SPEC__f(&self) {
+                no_method_body();
+                let b = true; // no code after no_method_body
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "no_method_body() must be a method's final expression, with no semicolon")
 }
 
 test_verify_one_file_with_options! {
@@ -118,7 +131,7 @@ test_verify_one_file_with_options! {
                 no_method_body(); // no semicolon allowed
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "no_method_body() must be a method's final expression, with no semicolon")
+    } => Err(err) => assert_vir_error_msg(err, "trait declaration with no_method_body() should start with VERUS_SPEC__")
 }
 
 test_verify_one_file_with_options! {
@@ -136,11 +149,14 @@ test_verify_one_file_with_options! {
     #[test] test_ill_formed_5 ["--no-external-by-default"] => code! {
         trait T1 {
             fn f(&self) {
+            }
+
+            fn VERUS_SPEC__f(&self) {
                 no_method_body();
                 let b = true; // no code after no_method_body
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "no_method_body() must be a method's final expression, with no semicolon")
+    } => Err(err) => assert_vir_error_msg(err, "a VERUS_SPEC function should be paired with a function that has no body")
 }
 
 test_verify_one_file_with_options! {
@@ -165,7 +181,7 @@ test_verify_one_file_with_options! {
             }
         }
     } => Err(err) => assert_vir_error_msgs(err, &[
-        "no_method_body can only appear in trait method declarations",
+        "trait declaration with no_method_body() should start with VERUS_SPEC__",
         "no_method_body can only appear in trait method declarations",
     ])
 }
@@ -199,7 +215,7 @@ test_verify_one_file_with_options! {
             fn VERUS_SPEC__f(&self) { }
             fn f(&self);
         }
-    } => Err(err) => assert_vir_error_msg(err, "trait method declaration body must end with call to no_method_body()")
+    } => Err(err) => assert_vir_error_msg(err, "trait method declaration body must start with call to no_method_body()")
 }
 
 test_verify_one_file_with_options! {
@@ -1013,6 +1029,41 @@ test_verify_one_file! {
         struct S(spec_fn(Q<R>) -> int);
         impl Z for S {
             type Y = S;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
+}
+
+test_verify_one_file! {
+    #[test] test_termination_assoc_bounds_proof_cycle verus_code! {
+        trait U { proof fn lem() ensures false; }
+        trait T { type X: U; }
+
+        proof fn p<Y: T>() ensures false { <Y::X as U>::lem() }
+
+        struct S;
+        struct R;
+        impl T for S { type X = R; }
+        impl U for R { proof fn lem() ensures false { p::<S>() } }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
+}
+
+test_verify_one_file! {
+    #[test] test_termination_assoc_bounds_generic_spec_cycle verus_code! {
+        trait W { spec fn value() -> int; }
+        trait U { spec fn f() -> int; }
+        trait T { type X: U; }
+
+        struct Wrap<A>(A);
+        impl<A: W> U for Wrap<A> {
+            spec fn f() -> int { A::value() }
+        }
+        spec fn g<Y: T>() -> int { <Y::X as U>::f() }
+
+        struct S;
+        struct R;
+        impl T for S { type X = Wrap<R>; }
+        impl W for R {
+            spec fn value() -> int { g::<S>() + 1 }
         }
     } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
 }
@@ -2787,7 +2838,6 @@ test_verify_one_file_with_options! {
         }
         }
     } => Err(err) => assert_vir_error_msgs(err, &[
-        "The verifier does not yet support the following Rust feature: foreign types",
         "The verifier does not yet support the following Rust feature: foreign types",
     ])
 }

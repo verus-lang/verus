@@ -42,6 +42,18 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] try_from_self verus_code! {
+        use vstd::prelude::*;
+
+        fn main() {
+            let n: i64 = 42;
+            let m: i64 = n.try_into().unwrap();
+            assert(m == 42);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] external_clone_fail verus_code! {
         // Make sure the support for &X clone doesn't mistakenly trigger in other situations
 
@@ -335,6 +347,43 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file! {
+    #[test] question_mark_result_uses_from_spec verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::convert::FromSpecImpl;
+
+        pub struct ConvertedError {
+            pub code: u16,
+            pub converted: bool,
+        }
+
+        impl From<u8> for ConvertedError {
+            fn from(value: u8) -> Self {
+                ConvertedError { code: value as u16, converted: true }
+            }
+        }
+
+        impl FromSpecImpl<u8> for ConvertedError {
+            open spec fn obeys_from_spec() -> bool {
+                true
+            }
+
+            open spec fn from_spec(value: u8) -> Self {
+                ConvertedError { code: value as u16, converted: true }
+            }
+        }
+
+        fn test(value: u8) -> (res: Result<(), ConvertedError>)
+            ensures
+                res == Err(ConvertedError { code: value as u16, converted: true }),
+        {
+            let input: Result<(), u8> = Err(value);
+            input?;
+            Ok(())
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] clone_for_std_types verus_code! {
         use vstd::*;
         use vstd::prelude::*;
@@ -539,6 +588,23 @@ test_verify_one_file! {
             assert(*b == X { i: 5 } || b == a);
         }
     } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file_with_options! {
+    #[test] derived_unit_clone ["--no-external-by-default"] => verus_code! {
+        use vstd::prelude::*;
+
+        #[derive(Clone)]
+        #[verifier::allow(autoderive_clone_without_spec)]
+        struct Token {
+            _priv: (),
+        }
+
+        fn demo() {
+            let token = Token { _priv: () };
+            let _copy = token.clone();
+        }
+    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -1832,6 +1898,41 @@ test_verify_one_file! {
             assert(y2 == -10);
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] binary_op_of_refs verus_code! {
+        fn test_bitwise(x: u32, y: i32, b: bool) {
+            let y1 = &x & 0x7f;
+            let y2 = 0x7f | &x;
+            let y3 = &y ^ &y;
+            assert(y1 == x & 0x7f);
+            assert(y2 == 0x7f | x);
+            assert(y3 == y ^ y);
+
+            let b1 = &b & true;
+            let b2 = false | &b;
+            let b3 = &b ^ &b;
+            assert(b1 == b);
+            assert(b2 == b);
+            assert(b3 == false);
+        }
+
+        fn test_shift(x: u8, s: u32)
+            requires s < 8
+        {
+            let y1 = &x << s;
+            let y2 = x >> &s;
+            assert(y1 == x << s);
+            assert(y2 == x >> s);
+        }
+
+        fn test_shift_fails(x: u8, s: u32)
+            requires s < 32
+        {
+            let y = &x << s; // FAILS
+        }
+    } => Err(e) => assert_fails(e, 1)
 }
 
 test_verify_one_file! {

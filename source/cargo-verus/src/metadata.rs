@@ -10,8 +10,12 @@ use sha2::{Digest, Sha256};
 
 #[derive(Debug, Default, Deserialize)]
 pub struct VerusMetadata {
+    #[serde(rename = "fmt-as-rust", default)]
+    pub fmt_as_rust: bool,
     #[serde(default)]
     pub verify: bool,
+    #[serde(default)]
+    pub trusted_crates: Set<String>,
     #[serde(rename = "no-vstd", default)]
     pub no_vstd: bool,
     #[serde(rename = "is-vstd", default)]
@@ -25,14 +29,14 @@ pub struct VerusMetadata {
 }
 
 impl VerusMetadata {
-    pub fn parse_from_package(package: &cargo_metadata::Package) -> Result<VerusMetadata> {
+    pub fn parse_from_package(package: &cargo_metadata::Package) -> Result<Option<VerusMetadata>> {
         match package.metadata.as_object().and_then(|obj| obj.get("verus")) {
-            Some(value) => {
-                serde_json::from_value::<VerusMetadata>(value.clone()).with_context(|| {
+            Some(value) => serde_json::from_value::<VerusMetadata>(value.clone())
+                .map(Some)
+                .with_context(|| {
                     format!("Failed to parse {}-{}.metadata.verus", package.name, package.version)
-                })
-            }
-            None => Ok(Default::default()),
+                }),
+            None => Ok(None),
         }
     }
 }
@@ -43,7 +47,7 @@ pub struct MetadataIndex<'a> {
 
 pub struct MetadataIndexEntry<'a> {
     pub package: &'a Package,
-    pub verus_metadata: VerusMetadata,
+    pub verus_metadata: Option<VerusMetadata>,
     pub deps: BTreeMap<&'a PackageId, &'a cargo_metadata::NodeDep>,
 }
 
@@ -101,6 +105,44 @@ impl<'a> MetadataIndex<'a> {
         visited
     }
 
+    /// Collect the trusted packages for the build by unioning the `trusted_crates` sets from the
+    /// `Cargo.toml` manifests of `root_packages`.
+    ///
+    /// If the resulting set intersects `root_packages`, fail with an error.
+    pub fn get_trusted(
+        &self,
+        root_packages: &Set<PackageId>,
+        all_packages: &Set<PackageId>,
+    ) -> Set<PackageId> {
+        let trusted_names: Set<String> = root_packages
+            .iter()
+            .flat_map(|root| {
+                self.get(root)
+                    .verus_metadata
+                    .as_ref()
+                    .into_iter()
+                    .flat_map(|metadata| metadata.trusted_crates.iter().cloned())
+            })
+            .collect();
+        let trusted_packages: Set<PackageId> = all_packages
+            .iter()
+            .filter(|package_id| trusted_names.contains(self.get(package_id).package.name.as_str()))
+            .cloned()
+            .collect();
+
+        let trusted_roots: Vec<String> = trusted_packages
+            .intersection(root_packages)
+            .map(|package_id| self.get(package_id).package.name.to_string())
+            .collect();
+        assert!(
+            trusted_roots.is_empty(),
+            "root packages cannot be marked as trusted: {}",
+            trusted_roots.join(", "),
+        );
+
+        trusted_packages
+    }
+
     /// Names to pass via `--import-dep-if-present` for every `verify=true`
     /// crate transitively reachable from `root` (excluding `root` itself).
     ///
@@ -122,7 +164,7 @@ impl<'a> MetadataIndex<'a> {
                 continue;
             }
             let entry = self.get(pkg_id);
-            if entry.verus_metadata.verify {
+            if entry.verus_metadata.as_ref().is_some_and(|metadata| metadata.verify) {
                 let import_name = name_override.or_else(|| {
                     entry.package.targets.iter().find(|t| t.is_lib()).map(|t| t.name.clone())
                 });
@@ -146,7 +188,12 @@ impl<'a> MetadataIndex<'a> {
         let packages_will_verify = Set::from_iter(
             packages_to_verify
                 .iter()
-                .filter(|package_id| self.get(package_id).verus_metadata.verify)
+                .filter(|package_id| {
+                    self.get(package_id)
+                        .verus_metadata
+                        .as_ref()
+                        .is_some_and(|metadata| metadata.verify)
+                })
                 .cloned(),
         );
         // Transitive closure of packages that verification will run on.
@@ -157,7 +204,7 @@ impl<'a> MetadataIndex<'a> {
             .iter()
             .flat_map(|package_id| {
                 let entry = self.get(package_id);
-                if entry.verus_metadata.is_vstd {
+                if entry.verus_metadata.as_ref().is_some_and(|metadata| metadata.is_vstd) {
                     Some(PackageMetadata::from(entry.package))
                 } else {
                     None
@@ -323,5 +370,40 @@ mod tests {
         // - `not_verified` is not emitted, but the walk still descends into
         //   its deps to reach `deeper`.
         assert_eq!(names, vec!["deeper".to_string(), "renamed".to_string()]);
+    }
+
+    #[test]
+    fn trusted_crates_are_selected_from_root_metadata() {
+        let workspace = MockWorkspace::new()
+            .members([
+                MockPackage::new("deeper").lib(),
+                MockPackage::new("mid")
+                    .lib()
+                    .trusted_crates(["deeper"])
+                    .deps([MockDep::workspace("deeper")]),
+                MockPackage::new("root")
+                    .lib()
+                    .trusted_crates(["mid"])
+                    .deps([MockDep::workspace("mid")]),
+            ])
+            .materialize();
+
+        let metadata = fetch_metadata(vec![], workspace.path().to_path_buf()).unwrap();
+        let index = MetadataIndex::new(&metadata).unwrap();
+        let roots: Set<PackageId> = metadata
+            .packages
+            .iter()
+            .filter(|package| package.name.as_str() == "root")
+            .map(|package| package.id.clone())
+            .collect();
+
+        let all_packages = index.get_transitive_closure(roots.clone());
+        let trusted_names: Set<String> = index
+            .get_trusted(&roots, &all_packages)
+            .iter()
+            .map(|package_id| index.get(package_id).package.name.to_string())
+            .collect();
+
+        assert_eq!(trusted_names, Set::from(["mid".to_string()]));
     }
 }

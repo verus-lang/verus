@@ -291,9 +291,15 @@ pub fn run_verus(
     let mut no_external_by_default = false;
     let mut is_core = false;
     let mut use_internal_test_mode = true;
+    let mut crate_name = "test_crate";
 
     for option in options.iter() {
-        if *option == "--expand-errors" {
+        if let Some(name) = option.strip_prefix("--crate-name=") {
+            crate_name = name;
+        } else if let Some(module) = option.strip_prefix("--verify-only-module ") {
+            verus_args.push("--verify-only-module".to_string());
+            verus_args.push(module.to_string());
+        } else if *option == "--expand-errors" {
             verus_args.push("--expand-errors".to_string());
             verus_args.push("--multiple-errors".to_string());
             verus_args.push("2".to_string());
@@ -305,6 +311,8 @@ pub fn run_verus(
             verus_args.push("--no-lifetime".to_string());
         } else if *option == "--no-erasure-check" {
             verus_args.push("--no-erasure-check".to_string());
+        } else if *option == "--build-sst" {
+            verus_args.push("--build-sst".to_string());
         } else if *option == "--no-verify" {
             verus_args.push("--no-verify".to_string());
         } else if *option == "--no-report-long-running" {
@@ -324,6 +332,15 @@ pub fn run_verus(
         } else if *option == "-V spinoff-all" {
             verus_args.push("-V".to_string());
             verus_args.push("spinoff-all".to_string());
+        } else if *option == "-V cvc5-smtlib" {
+            verus_args.push("-V".to_string());
+            verus_args.push("cvc5-smtlib".to_string());
+        } else if *option == "--log-smt" {
+            verus_args.push("--log".to_string());
+            verus_args.push("smt".to_string());
+        } else if let Some(log_dir) = option.strip_prefix("--log-dir=") {
+            verus_args.push("--log-dir".to_string());
+            verus_args.push(log_dir.to_string());
         } else if *option == "--is-core" {
             verus_args.push("--is-core".to_string());
             is_core = true;
@@ -335,6 +352,12 @@ pub fn run_verus(
         } else if *option == "--edition 2024" {
             verus_args.push("--edition".to_string());
             verus_args.push("2024".to_string());
+        } else if *option == "--edition 2021" {
+            verus_args.push("--edition".to_string());
+            verus_args.push("2021".to_string());
+        } else if *option == "--edition 2018" {
+            verus_args.push("--edition".to_string());
+            verus_args.push("2018".to_string());
         } else {
             panic!("option '{}' not recognized by test harness", option);
         }
@@ -349,7 +372,7 @@ pub fn run_verus(
     verus_args.extend(
         vec![
             "--crate-name".to_string(),
-            "test_crate".to_string(),
+            crate_name.to_string(),
             "--crate-type".to_string(),
             "lib".to_string(),
         ]

@@ -1532,3 +1532,20 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] reveal_strlit_standalone_issue2987 verus_code! {
+        use vstd::prelude::*;
+        proof fn test() {
+            reveal_strlit("a");
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    // --no-verify --build-sst on a crate without verified functions (no buckets) used to hang:
+    // the worker pool's reporter loop waited for a message no worker would send
+    #[test] no_verify_build_sst_no_buckets ["--no-verify", "--build-sst"] => verus_code! {
+        pub struct X { pub a: u8 }
+    } => Ok(())
+}

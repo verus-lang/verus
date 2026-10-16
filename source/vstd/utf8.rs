@@ -28,8 +28,7 @@
 use super::prelude::*;
 use super::seq::*;
 
-use verus as verus_skip_verusfmt; // verusfmt doesn't handle s[..e] yet
-verus_skip_verusfmt! {
+verus! {
 
 broadcast use super::seq::group_seq_lemmas;
 /* Decoding UTF-8 to chars */
@@ -839,10 +838,7 @@ pub broadcast proof fn partial_valid_utf8_extend(bytes: Seq<u8>, i: int)
         #[trigger] partial_valid_utf8(bytes, i),
         #[trigger] valid_first_scalar(bytes[i..]),
     ensures
-        #[trigger] partial_valid_utf8(
-            bytes,
-            i + length_of_first_scalar(bytes[i..]),
-        ),
+        #[trigger] partial_valid_utf8(bytes, i + length_of_first_scalar(bytes[i..])),
 {
     reveal_with_fuel(valid_utf8, 2);
     let scalar = bytes[i..i + length_of_first_scalar(bytes[i..])];

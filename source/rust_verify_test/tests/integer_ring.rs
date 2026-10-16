@@ -311,3 +311,25 @@ test_verify_one_file! {
         assert!(err.warnings[2].message.contains("2 warnings emitted"));
     }
 }
+
+test_verify_one_file! {
+    #[test]
+    #[cfg_attr(not(feature = "singular"), ignore)]
+    unary_minus_fail_1 verus_code! {
+        proof fn bad(x: int) by(integer_ring)
+            ensures
+                x * (i8::MIN as int) == x * 128 // FAILS
+        { }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test]
+    #[cfg_attr(not(feature = "singular"), ignore)]
+    unary_minus_ok verus_code! {
+        proof fn bad(x: int) by(integer_ring)
+            ensures
+                x * (i8::MIN as int) + 64 * x + 64 * x == 0
+        { }
+    } => Ok(())
+}

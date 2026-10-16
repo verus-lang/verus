@@ -71,7 +71,7 @@ impl<'a, 'b: 'a> Default for QueryContext<'a, 'b> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SmtSolver {
     Z3,
     Cvc5,
@@ -90,6 +90,25 @@ impl SmtSolver {
             SmtSolver::Z3 => "z3",
             SmtSolver::Cvc5 => "cvc5",
         }
+    }
+
+    pub fn default_encoding(&self) -> SmtEncoding {
+        match self {
+            SmtSolver::Z3 => SmtEncoding::Z3,
+            SmtSolver::Cvc5 => SmtEncoding::Cvc5,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SmtEncoding {
+    Z3,
+    Cvc5,
+}
+
+impl Default for SmtEncoding {
+    fn default() -> Self {
+        SmtEncoding::Z3
     }
 }
 
@@ -125,12 +144,21 @@ pub struct Context {
     pub(crate) usage_info_enabled: bool,
     pub(crate) check_valid_used: bool,
     pub(crate) solver: SmtSolver,
+    pub(crate) smt_encoding: SmtEncoding,
 }
 
 impl Context {
     pub fn new(
         message_interface: Arc<dyn crate::messages::MessageInterface>,
         solver: SmtSolver,
+    ) -> Self {
+        Self::new_with_encoding(message_interface, solver, solver.default_encoding())
+    }
+
+    pub fn new_with_encoding(
+        message_interface: Arc<dyn crate::messages::MessageInterface>,
+        solver: SmtSolver,
+        smt_encoding: SmtEncoding,
     ) -> Self {
         let mut context = Context {
             message_interface: message_interface.clone(),
@@ -151,7 +179,7 @@ impl Context {
                 snapshots: HashSet::new(),
                 break_labels_local: HashSet::new(),
                 break_labels_in_scope: crate::scope_map::ScopeMap::new(),
-                solver: solver.clone(),
+                smt_encoding,
             },
             debug: false,
             ignore_unexpected_smt: false,
@@ -161,23 +189,23 @@ impl Context {
                 false,
                 false,
                 None,
-                solver.clone(),
+                smt_encoding,
             ),
             air_middle_log: Emitter::new(
                 message_interface.clone(),
                 false,
                 false,
                 None,
-                solver.clone(),
+                smt_encoding,
             ),
             air_final_log: Emitter::new(
                 message_interface.clone(),
                 false,
                 false,
                 None,
-                solver.clone(),
+                smt_encoding,
             ),
-            smt_log: Emitter::new(message_interface.clone(), true, true, None, solver.clone()),
+            smt_log: Emitter::new(message_interface.clone(), true, true, None, smt_encoding),
             smt_transcript_log: None,
             time_smt_init: Duration::new(0, 0),
             time_smt_run: Duration::new(0, 0),
@@ -192,6 +220,7 @@ impl Context {
             usage_info_enabled: false,
             check_valid_used: false,
             solver,
+            smt_encoding,
         };
         context.axiom_infos.push_scope(false);
         context.array_map.push_scope(false);
@@ -335,6 +364,9 @@ impl Context {
         write_to_logs: bool,
     ) {
         if option == "air_recommended_options" && value {
+            if matches!(self.smt_encoding, SmtEncoding::Cvc5) {
+                self.smt_log.log_node(&node!((set-logic {str_to_node("ALL")})));
+            }
             match self.solver {
                 SmtSolver::Z3 => {
                     self.set_solver_option_bool("auto_config", false, true);
@@ -348,7 +380,6 @@ impl Context {
                     self.set_solver_option_bool("rewriter.sort_disjunctions", false, true);
                 }
                 SmtSolver::Cvc5 => {
-                    self.smt_log.log_node(&node!((set-logic {str_to_node("ALL")})));
                     self.set_solver_option_bool("incremental", true, true);
                 }
             }
@@ -599,6 +630,61 @@ impl Context {
             #[cfg(feature = "singular")]
             CommandX::CheckSingular(_) => {
                 panic!("CheckSingular not supported in this context");
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Clone)]
+    struct SharedWriter(Arc<Mutex<Vec<u8>>>);
+
+    impl Write for SharedWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    fn recommended_options(solver: SmtSolver, smt_encoding: SmtEncoding) -> String {
+        let message_interface = Arc::new(crate::messages::AirMessageInterface {});
+        let output = Arc::new(Mutex::new(Vec::new()));
+        let mut context = Context::new_with_encoding(message_interface, solver, smt_encoding);
+        context.set_smt_log(Box::new(SharedWriter(output.clone())));
+        context.set_solver_option("air_recommended_options", "true");
+        let text = String::from_utf8(output.lock().unwrap().clone()).unwrap();
+        text
+    }
+
+    #[test]
+    fn solver_default_encodings() {
+        assert_eq!(SmtSolver::Z3.default_encoding(), SmtEncoding::Z3);
+        assert_eq!(SmtSolver::Cvc5.default_encoding(), SmtEncoding::Cvc5);
+    }
+
+    #[test]
+    fn recommended_options_match_solver_and_encoding() {
+        for solver in [SmtSolver::Z3, SmtSolver::Cvc5] {
+            for smt_encoding in [SmtEncoding::Z3, SmtEncoding::Cvc5] {
+                let output = recommended_options(solver, smt_encoding);
+                assert_eq!(output.contains("(set-logic ALL)"), smt_encoding == SmtEncoding::Cvc5);
+                assert_eq!(
+                    output.contains("(set-option :auto_config false)"),
+                    solver == SmtSolver::Z3
+                );
+                assert_eq!(
+                    output.contains("(set-option :incremental true)"),
+                    solver == SmtSolver::Cvc5
+                );
             }
         }
     }

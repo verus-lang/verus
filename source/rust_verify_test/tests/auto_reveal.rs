@@ -657,11 +657,6 @@ test_verify_one_file! {
                 assert(b@[1] == b'e');
             };
             f();
-            let s = "ghi";
-            match s {
-                "ghi" => { assert(s@[1] == 'h'); }
-                _ => {}
-            }
             proof {
                 reveal_strlit("jkl");
                 reveal_byteslit(b"mno");

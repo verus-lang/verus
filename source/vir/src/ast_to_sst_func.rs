@@ -1,7 +1,7 @@
 use crate::ast::{
     AutospecUsage, CallTarget, CrateId, DeclProph, Expr, ExprX, Fun, Function, FunctionKind, Ident,
-    ItemKind, MaskSpec, Mode, Param, ParamX, Params, Path, PlaceX, SpannedTyped, StmtX, Typ, TypX,
-    UnaryOp, UnwindSpec, VarBinder, VarBinderX, VarIdent, VirErr,
+    ItemKind, MaskSpec, Mode, Param, ParamX, Params, Path, PatternX, PlaceX, SpannedTyped, StmtX,
+    Typ, TypX, UnaryOp, UnwindSpec, VarBinder, VarBinderX, VarIdent, VirErr,
 };
 use crate::ast_to_sst::{
     FinalState, PreLocalDeclKind, State, expr_to_bind_decls_exp_skip_checks,
@@ -254,6 +254,12 @@ fn rewrite_async_ens_vir(function: &Function, specs: &Vec<Expr>) -> Result<Vec<E
             const_var: false,
             assume_external_allowed: false,
         };
+
+        let future_typ = function.x.outer_ret.x.typ.clone();
+        let output_typ = function.x.inner_ret.x.typ.clone();
+
+        // outer.awaited() ==> { let inner = outer.view(); ensures_clause }
+
         let awaited_call = SpannedTyped::new(
             &e.span,
             &Arc::new(TypX::Bool),
@@ -261,17 +267,7 @@ fn rewrite_async_ens_vir(function: &Function, specs: &Vec<Expr>) -> Result<Vec<E
                 target: CallTarget::Fun(
                     crate::ast::CallTargetKind::Dynamic,
                     fun!(CrateId::Vstd => "future", "FutureAdditionalSpecFns", "awaited"),
-                    Arc::new(vec![
-                        function
-                            .x
-                            .async_ret
-                            .as_ref()
-                            .expect("async function has no return type")
-                            .x
-                            .typ
-                            .clone(),
-                        function.x.ret.x.typ.clone(),
-                    ]),
+                    Arc::new(vec![future_typ.clone(), output_typ.clone()]),
                     Arc::new(vec![crate::ast::ImplPath::TraitImplPath(
                         crate::def::prefix_spec_fn_type(0),
                     )]),
@@ -279,24 +275,8 @@ fn rewrite_async_ens_vir(function: &Function, specs: &Vec<Expr>) -> Result<Vec<E
                 ),
                 args: Arc::new(vec![SpannedTyped::new(
                     &e.span,
-                    &function
-                        .x
-                        .async_ret
-                        .as_ref()
-                        .expect("async function has no return type")
-                        .x
-                        .typ
-                        .clone(),
-                    ExprX::Var(
-                        function
-                            .x
-                            .async_ret
-                            .as_ref()
-                            .expect("async function has no return type")
-                            .x
-                            .name
-                            .clone(),
-                    ),
+                    &future_typ,
+                    ExprX::Var(function.x.outer_ret.x.name.clone()),
                 )]),
                 post_args: None,
                 body: None,
@@ -304,25 +284,15 @@ fn rewrite_async_ens_vir(function: &Function, specs: &Vec<Expr>) -> Result<Vec<E
         );
         let view_call = SpannedTyped::new(
             &e.span,
-            &function.x.ret.x.typ,
+            &output_typ,
             PlaceX::Temporary(SpannedTyped::new(
                 &e.span,
-                &function.x.ret.x.typ,
+                &output_typ,
                 ExprX::Call {
                     target: CallTarget::Fun(
                         crate::ast::CallTargetKind::Dynamic,
                         fun!(CrateId::Vstd => "future", "FutureAdditionalSpecFns", "view"),
-                        Arc::new(vec![
-                            function
-                                .x
-                                .async_ret
-                                .as_ref()
-                                .expect("async function has no return type")
-                                .x
-                                .typ
-                                .clone(),
-                            function.x.ret.x.typ.clone(),
-                        ]),
+                        Arc::new(vec![future_typ.clone(), output_typ.clone()]),
                         Arc::new(vec![crate::ast::ImplPath::TraitImplPath(
                             crate::def::prefix_spec_fn_type(0),
                         )]),
@@ -330,24 +300,8 @@ fn rewrite_async_ens_vir(function: &Function, specs: &Vec<Expr>) -> Result<Vec<E
                     ),
                     args: Arc::new(vec![SpannedTyped::new(
                         &e.span,
-                        &function
-                            .x
-                            .async_ret
-                            .as_ref()
-                            .expect("async function has no return type")
-                            .x
-                            .typ
-                            .clone(),
-                        ExprX::Var(
-                            function
-                                .x
-                                .async_ret
-                                .as_ref()
-                                .expect("async function has no return type")
-                                .x
-                                .name
-                                .clone(),
-                        ),
+                        &future_typ,
+                        ExprX::Var(function.x.outer_ret.x.name.clone()),
                     )]),
                     post_args: None,
                     body: None,
@@ -361,16 +315,10 @@ fn rewrite_async_ens_vir(function: &Function, specs: &Vec<Expr>) -> Result<Vec<E
                 Arc::new(vec![Spanned::new(
                     e.span.clone(),
                     StmtX::Decl {
-                        pattern: SpannedTyped::new(
+                        pattern: PatternX::simple_var(
+                            function.x.inner_ret.x.name.clone(),
                             &e.span,
-                            &function.x.ret.x.typ,
-                            crate::ast::PatternX::Var(crate::ast::PatternBinding {
-                                name: function.x.ret.x.name.clone(),
-                                by_ref: crate::ast::ByRef::No,
-                                typ: function.x.ret.x.typ.clone(),
-                                user_mut: None,
-                                copy: false,
-                            }),
+                            &output_typ,
                         ),
                         mode: Some((Mode::Exec, DeclProph::Default)),
                         init: Some(view_call),
@@ -397,18 +345,16 @@ fn req_ens_to_sst(
 ) -> Result<(Pars, Vec<Exp>), VirErr> {
     let mut pars = params_to_pre_post_pars(&function.x.params);
     let pars_mut = Arc::make_mut(&mut pars);
-    if !pre && matches!(function.x.mode, Mode::Exec | Mode::Proof) && function.x.ens_has_return {
-        if !function.x.attrs.is_async {
-            pars_mut.push(param_to_par(&function.x.ret));
-        } else {
-            pars_mut.push(param_to_par(
-                &function.x.async_ret.as_ref().expect("Async function has no return type"),
-            ));
-        }
+    let ens_has_return = crate::ast_to_sst::ens_has_return(ctx, function);
+    if !pre && matches!(function.x.mode, Mode::Exec | Mode::Proof) && ens_has_return {
+        pars_mut.push(param_to_par(&function.x.outer_ret));
     }
     let mut exps: Vec<Exp> = Vec::new();
 
     let specs = if function.x.attrs.is_async && !pre {
+        if !ens_has_return {
+            crate::internal_err!(function.span.clone(), "async function expects ens_has_return");
+        }
         &rewrite_async_ens_vir(function, specs)?
     } else {
         specs
@@ -666,8 +612,10 @@ where
                 .zip(function.x.params.iter())
                 .map(|(p1, p2)| (p1.x.name.clone(), p2.x.name.clone()))
                 .collect();
-            param_renames
-                .insert(trait_function.x.ret.x.name.clone(), function.x.ret.x.name.clone());
+            param_renames.insert(
+                trait_function.x.outer_ret.x.name.clone(),
+                function.x.outer_ret.x.name.clone(),
+            );
 
             let inherit = InheritanceSubstitutions { trait_typ_substs, param_renames };
 
@@ -815,9 +763,10 @@ pub fn func_def_to_sst(
     let mut state = State::new(diagnostics);
 
     let mut ens_params = (*function.x.params).clone();
-    let dest = if function.x.ens_has_return {
-        let ParamX { name, typ, .. } = &function.x.ret.x;
-        ens_params.push(function.x.ret.clone());
+    let ens_has_return = crate::ast_to_sst::ens_has_return(ctx, function);
+    let dest = if ens_has_return {
+        let ParamX { name, typ, .. } = &function.x.inner_ret.x;
+        ens_params.push(function.x.inner_ret.clone());
         state.declare_imm_var_stm(name, typ, LocalDeclKind::Return, false);
         Some(unique_local(name))
     } else {
@@ -1140,13 +1089,15 @@ pub fn function_to_sst(
         None
     };
 
+    let ens_has_return = crate::ast_to_sst::ens_has_return(ctx, function);
+
     let has = FunctionSstHas {
         has_body,
         has_requires: function.x.require.len() > 0,
         has_ensures: function.x.ensure.0.len() + function.x.ensure.1.len() > 0,
         has_decrease: function.x.decrease.len() > 0,
         has_mask_spec: function.x.mask_spec.is_some(),
-        has_return_name: function.x.ens_has_return,
+        has_return_name: ens_has_return,
         is_recursive: crate::recursion::fun_is_recursive(ctx, function),
     };
 
@@ -1160,8 +1111,9 @@ pub fn function_to_sst(
         typ_params: function.x.typ_params.clone(),
         typ_bounds: function.x.typ_bounds.clone(),
         pars: params_to_pars(&function.x.params),
-        ret: param_to_par(&function.x.ret),
-        ens_has_return: function.x.ens_has_return,
+        outer_ret: param_to_par(&function.x.outer_ret),
+        inner_ret: param_to_par(&function.x.inner_ret),
+        ens_has_return: ens_has_return,
         item_kind: function.x.item_kind,
         attrs: function.x.attrs.clone(),
         has,
@@ -1170,10 +1122,7 @@ pub fn function_to_sst(
         exec_proof_check,
         recommends_check,
         safe_api_check,
-        async_ret: match &function.x.async_ret {
-            Some(async_ret) => Some(param_to_par(async_ret)),
-            None => None,
-        },
+        hidden: function.x.hidden.clone(),
     };
     Ok(function.new_x(functionx))
 }

@@ -619,6 +619,41 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] vstd_len_and_view_accessors_no_unwind verus_code! {
+        use vstd::prelude::*;
+
+        fn slice_operations<T>(s: &[T], a: &[T; 4])
+            opens_invariants none
+            no_unwind
+        {
+            let _ = s.len();
+            let _ = s.is_empty();
+            let _ = a.as_slice();
+        }
+
+        fn str_operations(s: &str, t: &String)
+            opens_invariants none
+            no_unwind
+        {
+            let _ = s.len();
+            let _ = s.is_empty();
+            let _ = s.as_bytes();
+            let _ = t.as_str();
+            let _ = t.is_empty();
+        }
+
+        fn vec_operations<T>(v: &mut Vec<T>)
+            opens_invariants none
+            no_unwind
+        {
+            let _ = v.is_empty();
+            let _ = v.as_slice();
+            let _ = v.as_mut_slice();
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] no_unwind_box_rc_arc_new verus_code! {
         use vstd::prelude::*;
         use std::rc::Rc;
@@ -642,4 +677,49 @@ test_verify_one_file! {
             let b = Arc::new(8); // FAILS
         }
     } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] vstd_core_atomic_ordering_ok verus_code! {
+        use vstd::prelude::*;
+        use core::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+
+        fn ok_ops(a: &AtomicU32, b: &AtomicBool)
+            no_unwind
+        {
+            let _ = a.load(Ordering::Acquire);
+            let _ = a.load(Ordering::SeqCst);
+            a.store(7, Ordering::Release);
+            a.store(8, Ordering::Relaxed);
+            let _ = a.swap(3, Ordering::AcqRel);
+            let _ = a.compare_exchange(1, 2, Ordering::AcqRel, Ordering::Acquire);
+            let _ = a.compare_exchange_weak(1, 2, Ordering::Release, Ordering::Relaxed);
+            let _ = a.fetch_add(1, Ordering::AcqRel);
+            let _ = a.fetch_max(5, Ordering::SeqCst);
+            let _ = b.load(Ordering::Acquire);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] vstd_core_atomic_ordering_fail verus_code! {
+        use vstd::prelude::*;
+        use core::sync::atomic::{AtomicU32, Ordering};
+
+        fn bad_load(a: &AtomicU32) {
+            let _ = a.load(Ordering::Release); // FAILS
+        }
+
+        fn bad_store(a: &AtomicU32) {
+            a.store(1, Ordering::Acquire); // FAILS
+        }
+
+        fn bad_cmpxchg(a: &AtomicU32) {
+            let _ = a.compare_exchange(1, 2, Ordering::SeqCst, Ordering::AcqRel); // FAILS
+        }
+
+        fn bad_cmpxchg_weak(a: &AtomicU32) {
+            let _ = a.compare_exchange_weak(1, 2, Ordering::SeqCst, Ordering::Release); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 4)
 }

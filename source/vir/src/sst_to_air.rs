@@ -1542,16 +1542,27 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 air::ast_util::mk_quantifier(quant.quant, &bs, &triggers, qid, &expr)
             }
             BndX::Lambda(binders, trigs) => {
+                let mut bs: Vec<Binder<air::ast::Typ>> = Vec::new();
+                let mut invs: Vec<Expr> = Vec::new();
+                for b in binders.iter() {
+                    let name = b.name.lower();
+                    let typ_inv = typ_invariant(ctx, &b.a, &ident_var(&name));
+                    if let Some(inv) = &typ_inv {
+                        invs.push(inv.clone());
+                    }
+                    bs.push(Arc::new(BinderX { name, a: typ_to_air(ctx, &b.a) }));
+                }
+                let cond = if invs.len() == 0 { None } else { Some(mk_and(&invs)) };
                 let expr = exp_to_expr(ctx, e, expr_ctxt)?;
-                let binders = vec_map(&*binders, |b| {
-                    Arc::new(BinderX { name: b.name.lower(), a: typ_to_air(ctx, &b.a) })
-                });
                 let triggers = vec_map_result(&*trigs, |trig| {
                     vec_map_result(trig, |x| exp_to_expr(ctx, x, expr_ctxt)).map(|v| Arc::new(v))
                 })?;
                 let qid = (triggers.len() > 0).then(|| ()).and_then(|_| new_user_qid(ctx, &exp));
-                let lambda = air::ast_util::mk_lambda(&binders, &triggers, qid, &expr);
-                str_apply(crate::def::MK_FUN, &vec![lambda])
+                let wrap = Some(air::ast::WrapLambda {
+                    wrap: str_ident(crate::def::MK_FUN),
+                    id: typ_to_id(ctx, &exp.typ),
+                });
+                air::ast_util::mk_lambda(&bs, &triggers, qid, &wrap, &cond, &expr)
             }
             BndX::Choose(binders, trigs, cond) => {
                 let mut bs: Vec<Binder<air::ast::Typ>> = Vec::new();
@@ -2044,7 +2055,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
 
             let mut ens_args: Vec<_> =
                 ens_typ_args.into_iter().chain(ens_args_wo_typ.into_iter()).collect();
-            if func.x.ens_has_return {
+            let ens_has_return = crate::ast_to_sst::ens_has_return(ctx, func);
+            if ens_has_return {
                 if let Some(Dest { dest, is_init }) = dest {
                     let var = suffix_local_unique_id(&get_loc_var(dest));
                     ens_args.push(exp_to_expr(ctx, &dest, expr_ctxt)?);
@@ -2076,8 +2088,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 stmts.push(Arc::new(StmtX::Assume(e_ens)));
             }
             if emit_generic_conditions {
-                let dest_exp =
-                    if func.x.ens_has_return { Some(dest.clone().unwrap().dest) } else { None };
+                let dest_exp = if ens_has_return { Some(dest.clone().unwrap().dest) } else { None };
                 let generic_ens_exp = crate::sst_util::sst_call_ensures(
                     ctx,
                     &stm.span,
@@ -2162,7 +2173,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                         .fun
                         .as_ref()
                         .and_then(|f| ctx.func_sst_map.get(&f.current_fun))
-                        .map(|fun| fun.x.ret.x.typ.clone());
+                        .map(|fun| fun.x.inner_ret.x.typ.clone());
                     if let Some(ret) = ret_op {
                         stmts.extend(opaque_ty_additional_stmts(
                             ctx,

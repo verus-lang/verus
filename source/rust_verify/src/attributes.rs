@@ -446,7 +446,9 @@ pub(crate) fn parse_attrs(
 ) -> Result<Vec<Attr>, VirErr> {
     let diagnostics = &mut diagnostics;
     let mut v: Vec<Attr> = Vec::new();
+    let mut mode = None;
     for (prefix, span, attr) in attrs_to_trees(attrs)? {
+        let prev_len = v.len();
         let mut report_deprecated = |attr_name: &str, msg: &str| {
             if let Some(diagnostics) = diagnostics {
                 diagnostics.push(VirErrAs::Warning(crate::util::err_span_bare(
@@ -971,6 +973,20 @@ pub(crate) fn parse_attrs(
                 }
             }
         }
+        // Conflicting modes can make verification and ghost erasure disagree.
+        for attr in &v[prev_len..] {
+            if let Attr::Mode(m) = attr {
+                if let Some(mode) = mode {
+                    if mode != *m {
+                        return err_span(
+                            span,
+                            format!("conflicting mode attributes: `{mode}` and `{m}`"),
+                        );
+                    }
+                }
+                mode = Some(*m);
+            }
+        }
     }
     Ok(v)
 }
@@ -1288,7 +1304,7 @@ pub(crate) struct ExternalAttrs {
     pub(crate) structural_const_wrapper: bool,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct VerifierAttrs {
     pub(crate) verus_macro: bool,
     pub(crate) external_body: bool,
