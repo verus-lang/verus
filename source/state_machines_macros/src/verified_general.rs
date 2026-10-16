@@ -71,93 +71,105 @@ fn contains_guard(s: &TransitionStmt) -> bool {
     }
 }
 
-fn storage_binding_order(
+/// Physical storage operations seen so far on one execution path.
+#[derive(Clone, Default)]
+struct StoragePath {
+    /// Withdrawn locations: field name and, for singleton operands, the key text.
+    /// `None` stands for the single location of a `storage_option` field.
+    withdrawn: Vec<(String, Option<String>)>,
+    deposited: Vec<(String, Option<String>)>,
+    deposit: bool,
+    withdraw: bool,
+}
+
+/// Several deposits, withdrawals and guards may occur on one path; together
+/// they form one storage exchange whose deposit is the union of all deposits
+/// and whose withdrawal is the union of all withdrawals. That exchange requires
+/// the deposit to be disjoint from the pre-state storage, so a deposit into a
+/// location withdrawn earlier on the same path cannot be checked. Syntactically
+/// identical locations are rejected here; other overlaps fail in the generated
+/// storage proof. Returns whether some path both deposits and withdraws.
+fn storage_paths(
     s: &TransitionStmt,
     fields: &HashMap<String, Field>,
-    modified: &mut bool,
+    path: &mut StoragePath,
+    paired: &mut bool,
 ) -> Result<(), Error> {
     match s {
         TransitionStmt::Block(_, children) => {
             for child in children {
-                storage_binding_order(child, fields, modified)?;
+                storage_paths(child, fields, path, paired)?;
             }
         }
         TransitionStmt::Split(span, kind, children) => {
             if let SplitKind::Special(name, op, _, binding) = &**kind {
-                if fields[&name.to_string()].stype.is_storage() {
-                    if binding.is_some() && *modified {
-                        return Err(Error::new(*span,"verified stored-resource bindings must precede physical storage modifications"));
+                let field = &fields[&name.to_string()];
+                if field.stype.is_storage() {
+                    let location = match (&field.stype, &op.elt) {
+                        (ShardableType::StorageOption(_), MonoidElt::OptionSome(_)) => Some(None),
+                        (_, MonoidElt::SingletonKV(key, _)) => {
+                            Some(Some(key.to_token_stream().to_string()))
+                        }
+                        _ => None,
+                    };
+                    // A bound stored value is read from the pre-state. Earlier
+                    // withdrawals cannot change a value that is still present;
+                    // an earlier deposit at the same location would.
+                    if let (Some(_), Some(location)) = (binding, &location) {
+                        if path.deposited.contains(&(name.to_string(), location.clone())) {
+                            return Err(Error::new(
+                                *span,
+                                "verified stored-resource bindings cannot observe a value deposited earlier in the same transition",
+                            ));
+                        }
                     }
-                    if op.is_modifier() {
-                        *modified = true;
+                    if op.stmt.is_withdraw() {
+                        path.withdraw = true;
+                        if let Some(location) = location {
+                            path.withdrawn.push((name.to_string(), location));
+                        }
+                    } else if op.stmt.is_deposit() {
+                        path.deposit = true;
+                        if let Some(location) = location {
+                            path.deposited.push((name.to_string(), location.clone()));
+                            if path.withdrawn.contains(&(name.to_string(), location)) {
+                                return Err(Error::new(
+                                    *span,
+                                    "verified storage cannot deposit into a location withdrawn earlier in the same transition: the combined storage exchange requires its deposit to be disjoint from the pre-state storage",
+                                ));
+                            }
+                        }
                     }
+                    *paired |= path.deposit && path.withdraw;
                 }
             }
             if matches!(&**kind, SplitKind::If(_) | SplitKind::Match(..)) {
-                let start = *modified;
+                let start = path.clone();
                 for child in children {
-                    let mut branch = start;
-                    storage_binding_order(child, fields, &mut branch)?;
-                    *modified |= branch;
+                    let mut branch = start.clone();
+                    storage_paths(child, fields, &mut branch, paired)?;
+                    path.deposit |= branch.deposit;
+                    path.withdraw |= branch.withdraw;
+                    for location in branch.withdrawn {
+                        if !path.withdrawn.contains(&location) {
+                            path.withdrawn.push(location);
+                        }
+                    }
+                    for location in branch.deposited {
+                        if !path.deposited.contains(&location) {
+                            path.deposited.push(location);
+                        }
+                    }
                 }
             } else {
                 for child in children {
-                    storage_binding_order(child, fields, modified)?;
+                    storage_paths(child, fields, path, paired)?;
                 }
             }
         }
         _ => {}
     }
     Ok(())
-}
-
-fn storage_pair_counts(
-    s: &TransitionStmt,
-    fields: &HashMap<String, Field>,
-    target: Option<&Ident>,
-) -> Result<[usize; 3], Error> {
-    let mut counts = [0usize; 3];
-    match s {
-        TransitionStmt::Block(_, children) => {
-            for child in children {
-                let next = storage_pair_counts(child, fields, target)?;
-                for i in 0..3 {
-                    counts[i] += next[i];
-                }
-            }
-        }
-        TransitionStmt::Split(span, kind, children) => {
-            if let SplitKind::Special(name, op, _, _) = &**kind {
-                if fields[&name.to_string()].stype.is_storage() && target.map_or(true, |n| *n == *name) {
-                    if op.stmt.is_deposit() {
-                        counts[0] = 1;
-                    } else if op.stmt.is_withdraw() {
-                        counts[1] = 1;
-                    } else if op.stmt.is_guard() {
-                        counts[2] = 1;
-                    }
-                }
-            }
-            let mut branch = [0usize; 3];
-            for child in children {
-                let next = storage_pair_counts(child, fields, target)?;
-                for i in 0..3 {
-                    branch[i] = branch[i].max(next[i]);
-                }
-            }
-            for i in 0..3 {
-                counts[i] += branch[i];
-            }
-            if counts.iter().any(|n| *n > 1) || (counts[2] > 0 && counts[0] + counts[1] > 0) {
-                return Err(Error::new(*span,"verified storage permits at most one deposit and one withdraw, or one guard, on each execution path"));
-            }
-        }
-        _ => {}
-    }
-    if counts.iter().any(|n| *n > 1) || (counts[2] > 0 && counts[0] + counts[1] > 0) {
-        return Err(Error::new(*s.get_span(),"verified storage permits at most one deposit and one withdraw, or one guard, on each execution path"));
-    }
-    Ok(counts)
 }
 
 fn modified(
@@ -212,12 +224,6 @@ fn modified(
             out.insert(n.to_string());
         }
         _ => {}
-    }
-    if operations > 2 {
-        return Err(Error::new(
-            *s.get_span(),
-            "verified sequential storage backend permits at most one deposit and one withdraw on each execution path",
-        ));
     }
     Ok((operations, withdraw))
 }
@@ -287,12 +293,6 @@ fn optional_storage_key(name:&Ident,fields:&HashMap<String,Field>)->TokenStream{
  let mut names:Vec<_>=fields.values().filter(|f|f.stype.is_storage()).map(|f|f.name.to_string()).collect();names.sort();
  let index=names.iter().position(|n|*n==name.to_string()).expect("validated storage field");
  let literal=verus_syn::LitInt::new(&format!("{index}int"),name.span());quote!{#literal}
-}
-fn validate_storage_fields(body:&TransitionStmt,fields:&HashMap<String,Field>)->Result<(),Error>{
- for selected in fields.values().filter(|f|f.stype.is_storage()){
-  let mut focus=fields.clone();for field in focus.values_mut(){if field.stype.is_storage()&&field.name!=selected.name{field.stype=ShardableType::NotTokenized(verus_syn::parse_quote!{()});}}
-  storage_pair_counts(body,&focus,None)?;storage_binding_order(body,&focus,&mut false)?;
- }Ok(())
 }
 fn deposit_expression(
     s: &TransitionStmt,
@@ -717,19 +717,15 @@ pub fn output_with_ready(
         let safe_body = execute(&sops, true);
         let run_body = execute(&sops, false);
         let mut changed = HashSet::new();
-        let (storage_ops, withdraw) = modified(
+        let (_, withdraw) = modified(
             &tr.body,
             &mut changed,
             storage.is_some(),
             &fields,
             matches!(tr.kind, TransitionKind::Property | TransitionKind::ReadonlyTransition),
         )?;
-        if carrier.is_some() || physical_count>1 {
-            validate_storage_fields(&tr.body,&fields)?;
-        } else {
-            storage_pair_counts(&tr.body,&fields,None)?;
-            storage_binding_order(&tr.body,&fields,&mut false)?;
-        }
+        let mut paired = false;
+        storage_paths(&tr.body,&fields,&mut StoragePath::default(),&mut paired)?;
         let effects = monoids::analyze(tr, &fields)?;
         for e in &effects {
             changed.insert(e.field.name.to_string());
@@ -855,7 +851,7 @@ pub fn output_with_ready(
         } else {
             quote! {}
         };
-        let storage_ens = if storage.is_some() && !init && storage_ops > 1 {
+        let storage_ens = if storage.is_some() && !init && paired {
             quote! {,pre.__storage().agrees(post.__storage()),
             pre.__storage().dom().disjoint(Self::#deposited(pre,#(#pn),*).dom()),
             post.__storage().submap_of(pre.__storage().union_prefer_right(Self::#deposited(pre,#(#pn),*)))}
@@ -864,7 +860,7 @@ pub fn output_with_ready(
         } else {
             quote! {}
         };
-        let storage_proof = if storage.is_some() && !init && storage_ops > 1 {
+        let storage_proof = if storage.is_some() && !init && paired {
             quote! {
                 let physical_deposit=Self::#deposited(pre,#(#pn),*);
                 assert(pre.__storage().agrees(post.__storage())) by {
@@ -1113,7 +1109,7 @@ pub fn output_with_ready(
                     val,
                     withdraw,
                     deposits(&tr.body),
-                    storage_ops > 1,
+                    paired,
                 ));
                 if local_ready.contains(&n.to_string()) {
                     relations.push(crate::verified_readiness::declared_api(tr, &st, &params)?);
@@ -1144,7 +1140,7 @@ pub fn output_with_ready(
                             val,
                             deposits: deposits(&tr.body),
                             withdraws: withdraw,
-                            paired: storage_ops > 1,
+                            paired,
                         },
                     )?);
                 }
