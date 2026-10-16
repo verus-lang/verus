@@ -478,7 +478,10 @@ pub(crate) fn mark_tree_for_erasure<'tcx>(
     .unwrap();
 }
 
-pub(crate) fn setup_verus_aware_ids(crate_items: &crate::external::CrateItems) {
+pub(crate) fn setup_verus_aware_ids<'tcx>(
+    tcx: rustc_middle::ty::TyCtxt<'tcx>,
+    crate_items: &crate::external::CrateItems,
+) {
     // Requirements:
     //  - If a function requires Verus-erasure, then it MUST be in the set
     //  - If a function has special properties (e.g., being const), that may cause Rust
@@ -490,6 +493,21 @@ pub(crate) fn setup_verus_aware_ids(crate_items: &crate::external::CrateItems) {
 
     let mut s = HashSet::<LocalDefId>::new();
     for item in crate_items.items.iter() {
+        // A `const` or `static` item that verus! did not rewrite (typically the output of a
+        // `macro_rules!` or item macro, which verus! does not see) is a plain Rust item: rustc
+        // may const-evaluate it during type checking, before the erasure context exists. Its
+        // body cannot contain ghost code (no verus! syntax was expanded in it), so it needs no
+        // erasure. Consts rewritten by verus! are verified through their unerased proxy
+        // functions and are not affected.
+        // (consts that verus! rewrote are `external`, with the verified code in their
+        // unerased proxy function, so every const or static here is an unrewritten one)
+        let def_id = item.id.owner_id().def_id;
+        if matches!(
+            tcx.def_kind(def_id),
+            rustc_hir::def::DefKind::Const { .. } | rustc_hir::def::DefKind::Static { .. }
+        ) {
+            continue;
+        }
         match item.verif {
             crate::external::VerifOrExternal::VerusAware {
                 const_directive,

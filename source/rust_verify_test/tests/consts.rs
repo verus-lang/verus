@@ -685,3 +685,25 @@ test_verify_one_file! {
         const C: u64 = 5;
     } => Err(err) => assert_vir_error_msg(err, "conflicting mode attributes: `exec` and `spec`")
 }
+
+test_verify_one_file! {
+    // a const that verus! did not rewrite (from a macro_rules! expansion inside a function
+    // body) is const-evaluated by rustc during type checking; it must not be in the set of
+    // items that need erasure (crash: "the VerusErasureCtxt has not been initialized")
+    #[test] test_const_from_macro_in_fn_body code! {
+        use vstd::prelude::*;
+        macro_rules! local_const {
+            () => {{
+                const C: u8 = 3;
+                C
+            }};
+        }
+        verus! {
+            fn f() -> (r: u8)
+                ensures r == 3
+            {
+                local_const!()
+            }
+        }
+    } => Ok(())
+}
