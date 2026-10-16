@@ -101,7 +101,12 @@ the validity of the owned machine resource. This is stronger than treating a
 public specification descriptor as an ownership certificate.
 
 The generated `Token` alias refers to the library's `Token<Protocol>` or
-`StorageToken<Protocol>` for these routes. The dedicated owned-storage route
+`StorageToken<Protocol>` for these routes. `StorageToken<M>` is an alias for
+`StorageTokenOf<M, M::Key, M::Value, M::Fragment>`, whose declaration (like its
+carrier `StorageCarrier`) has no trait bounds. A storage payload that contains
+the machine's own tokens is then an ordinary datatype cycle, checked by Verus's
+strict-positivity rule, rather than a cycle through the `StorageMachine` impl,
+which Verus rejects outright. The dedicated owned-storage route
 instead constructs its checked exclusive resource model in
 [verified_storage_owned_imap.rs](../state_machines_macros/src/verified_storage_owned_imap.rs).
 That route supports its full-state key expressions using actual owned storage.

@@ -385,13 +385,16 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
         }
     }
     items.push(quote! {
+        /// The instance carries only its location, so it is freely duplicable
+        /// (`Copy`, as in the trusted macro).
         #[allow(non_camel_case_types)]
-        pub tracked struct Instance {ghost __loc: ::vstd::resource::Loc}
+        #[derive(Clone, Copy)]
+        pub tracked struct Instance {ghost __loc: Ghost<::vstd::resource::Loc>}
         impl Instance {
             pub closed spec fn id(&self) -> ::vstd::tokens::InstanceId {
-                ::vstd::resource::tsm_instance_id(self.__loc, false)
+                ::vstd::resource::tsm_instance_id(self.__loc@, false)
             }
-            pub proof fn clone(tracked &self) -> (tracked s: Self) ensures s == *self {Instance {__loc: self.__loc}}
+            pub proof fn clone(tracked &self) -> (tracked s: Self) ensures s == *self {*self}
         }
         /// A unit token: the identity resource of an instance, for operations
         /// that consume no other token.
@@ -434,9 +437,9 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
                 {
                     hide(State::invariant);
                     assert(t.__id() == <#n as ::vstd::tokens::ValueToken<#v>>::instance_id(t));
-                    t.__lemma_id(self.__loc);
+                    t.__lemma_id(self.__loc@);
                     ::vstd::prelude::use_type_invariant(&u);
-                    ::vstd::resource::tsm_instance_id_injective(u.raw.loc(), false, self.__loc, false);
+                    ::vstd::resource::tsm_instance_id_injective(u.raw.loc(), false, self.__loc@, false);
                     let tracked Unit {raw: unit} = u;
                     let tracked obs = t.raw.tracked_borrow().observe();
                     let f = obs.fragment();
@@ -479,7 +482,7 @@ pub fn output(bundle: &SMBundle) -> Result<TokenStream, Error> {
                 ::vstd::modes::tracked_swap(t, &mut mine);
                 assert(mine.__id() == <#n as #tr_path>::instance_id(&mine));
                 ::vstd::prelude::use_type_invariant(&mine);
-                mine.__lemma_id(self.__loc);
+                mine.__lemma_id(self.__loc@);
                 let ghost saved = mine;
                 let tracked #n {raw, fake, ..} = mine;
                 let tracked raw = raw.tracked_unwrap();
@@ -992,7 +995,7 @@ fn method(bundle: &SMBundle, tr: &Transition) -> Result<TokenStream, Error> {
     let mut early = vec![];
     let mut skipped = false;
     lets(&parts.body, false, &mut early, &mut skipped);
-    let loc = quote! {self.__loc};
+    let loc = quote! {self.__loc@};
     let owned_ident = format_ident!("__tsm_owned", span = Span::mixed_site());
     let shared_ident = format_ident!("__tsm_shared", span = Span::mixed_site());
     let mut take_owned = vec![];
@@ -1648,7 +1651,7 @@ fn init_method(
             let tracked __tsm_all = Protocol::#init_fn(__tsm_base, #(#pn),*);
             let post = choose|post: State| State::#init_fn(post, #(#pn),*) && post.invariant()
                 && __tsm_all.fragment() == <Protocol as ::vstd::resource::tsm::Machine>::embed(post);
-            let tracked instance = Instance {__loc: __tsm_all.loc()};
+            let tracked instance = Instance {__loc: Ghost(__tsm_all.loc())};
             let tracked __tsm_rest = __tsm_all;
             #(#takes #outs)*
             (#(#ret_vals),*)

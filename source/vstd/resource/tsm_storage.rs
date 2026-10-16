@@ -111,14 +111,31 @@ pub proof fn storage_delta<K, V>(old: IMap<K, V>, new: IMap<K, V>)
     }
 }
 
+/// The storage-protocol carrier of a machine `M` with fragment type `F`.
+///
+/// The declaration has no trait bounds and mentions no associated types, so a
+/// concrete carrier type does not depend on the `StorageMachine` impl of `M` in
+/// Verus's type graph. A machine whose stored values contain its own tokens
+/// therefore forms an ordinary cycle of datatypes, which the strict-positivity
+/// check accepts or rejects, rather than a cycle through a trait impl.
+/// The protocol is only implemented for `F == M::Fragment` (see [`Carrier`]).
 #[verifier::accept_recursive_types(M)]
-pub struct Carrier<M: StorageMachine> {
-    pub fragment: M::Fragment,
+#[verifier::reject_recursive_types_in_ground_variants(F)]
+pub struct StorageCarrier<M, F> {
+    pub fragment: F,
+    pub machine: core::marker::PhantomData<M>,
 }
 
-impl<M: StorageMachine> Protocol<M::Key, M::Value> for Carrier<M> {
+/// The carrier used by [`StorageToken`].
+pub type Carrier<M> = StorageCarrier<M, <M as Machine>::Fragment>;
+
+pub open spec fn carrier_of<M: StorageMachine>(fragment: M::Fragment) -> Carrier<M> {
+    StorageCarrier { fragment, machine: core::marker::PhantomData }
+}
+
+impl<M: StorageMachine> Protocol<M::Key, M::Value> for StorageCarrier<M, M::Fragment> {
     open spec fn op(self, other: Self) -> Self {
-        Self { fragment: M::Fragment::op(self.fragment, other.fragment) }
+        carrier_of::<M>(M::Fragment::op(self.fragment, other.fragment))
     }
 
     open spec fn rel(self, base: IMap<M::Key, M::Value>) -> bool {
@@ -127,7 +144,7 @@ impl<M: StorageMachine> Protocol<M::Key, M::Value> for Carrier<M> {
     }
 
     open spec fn unit() -> Self {
-        Self { fragment: M::Fragment::unit() }
+        carrier_of::<M>(M::Fragment::unit())
     }
 
     proof fn commutative(a: Self, b: Self) {
@@ -239,15 +256,15 @@ pub proof fn frame_exchange_sound<M: StorageMachine>(
         frame_exchange::<M>(old, deposit, new, withdraw),
     ensures
         storage_protocol::exchanges(
-            Carrier::<M> { fragment: old },
+            carrier_of::<M>(old),
             deposit,
-            Carrier::<M> { fragment: new },
+            carrier_of::<M>(new),
             withdraw,
         ),
 {
     assert forall|frame: Carrier<M>, base: IMap<M::Key, M::Value>|
-        #[trigger] Carrier::<M>::op(Carrier { fragment: old }, frame).rel(base) implies {
-            &&& Carrier::<M>::op(Carrier { fragment: new }, frame).rel(
+        #[trigger] Carrier::<M>::op(carrier_of::<M>(old), frame).rel(base) implies {
+            &&& Carrier::<M>::op(carrier_of::<M>(new), frame).rel(
                 base.union_prefer_right(deposit).remove_keys(withdraw.dom()),
             )
             &&& base.dom().disjoint(deposit.dom())
@@ -260,7 +277,7 @@ pub proof fn frame_exchange_sound<M: StorageMachine>(
             && M::Fragment::op(new, frame.fragment) == M::embed(next)
             && M::storage(next)
                 == base.union_prefer_right(deposit).remove_keys(withdraw.dom());
-        assert(Carrier::<M>::op(Carrier { fragment: new }, frame).rel(
+        assert(Carrier::<M>::op(carrier_of::<M>(new), frame).rel(
             base.union_prefer_right(deposit).remove_keys(withdraw.dom()),
         ));
     }
@@ -275,7 +292,7 @@ pub proof fn frame_exchange_nondeterministic_sound<M: StorageMachine>(
         frame_exchange_nondeterministic::<M>(old, deposit, outputs),
     ensures
         storage_protocol::exchanges_nondeterministic(
-            Carrier::<M> { fragment: old },
+            carrier_of::<M>(old),
             deposit,
             ISet::new(
                 |pair: (Carrier<M>, IMap<M::Key, M::Value>)|
@@ -288,7 +305,7 @@ pub proof fn frame_exchange_nondeterministic_sound<M: StorageMachine>(
             outputs.contains((pair.0.fragment, pair.1)),
     );
     assert forall|frame: Carrier<M>, base: IMap<M::Key, M::Value>|
-        #[trigger] Carrier::<M>::op(Carrier { fragment: old }, frame).rel(base)
+        #[trigger] Carrier::<M>::op(carrier_of::<M>(old), frame).rel(base)
             implies exists|new: Carrier<M>, withdraw: IMap<M::Key, M::Value>,
                 next_base: IMap<M::Key, M::Value>| {
                     &&& wrapped.contains((new, withdraw))
@@ -311,7 +328,7 @@ pub proof fn frame_exchange_nondeterministic_sound<M: StorageMachine>(
                 &&& M::storage(state).union_prefer_right(deposit)
                     =~= M::storage(next).union_prefer_right(withdraw)
             };
-        let carrier = Carrier::<M> { fragment: new };
+        let carrier = carrier_of::<M>(new);
         assert(wrapped.contains((carrier, withdraw)));
         assert(Carrier::<M>::op(carrier, frame).rel(M::storage(next)));
     }
@@ -332,14 +349,14 @@ pub proof fn frame_exchange_nondeterministic_shared_sound<M: StorageMachine>(
         ),
     ensures
         storage_protocol::exchanges_nondeterministic(
-            Carrier::<M>::op(Carrier { fragment: old }, Carrier { fragment: shared }),
+            Carrier::<M>::op(carrier_of::<M>(old), carrier_of::<M>(shared)),
             deposit,
             storage_protocol::set_op(
                 ISet::new(
                     |pair: (Carrier<M>, IMap<M::Key, M::Value>)|
                         outputs.contains((pair.0.fragment, pair.1)),
                 ),
-                Carrier::<M> { fragment: shared },
+                carrier_of::<M>(shared),
             ),
         ),
 {
@@ -356,7 +373,7 @@ pub proof fn frame_exchange_nondeterministic_shared_sound<M: StorageMachine>(
         |pair: (Carrier<M>, IMap<M::Key, M::Value>)|
             lifted.contains((pair.0.fragment, pair.1)),
     );
-    let combined = storage_protocol::set_op(wrapped, Carrier::<M> { fragment: shared });
+    let combined = storage_protocol::set_op(wrapped, carrier_of::<M>(shared));
     assert(wrapped_lifted =~= combined) by {
         assert forall|pair: (Carrier<M>, IMap<M::Key, M::Value>)|
             #[trigger] wrapped_lifted.contains(pair) <==> combined.contains(pair) by {
@@ -365,15 +382,15 @@ pub proof fn frame_exchange_nondeterministic_shared_sound<M: StorageMachine>(
                     outputs.contains(source)
                         && (pair.0.fragment, pair.1)
                             == (M::Fragment::op(source.0, shared), source.1);
-                let carrier = Carrier::<M> { fragment: source.0 };
+                let carrier = carrier_of::<M>(source.0);
                 assert(wrapped.contains((carrier, source.1)));
-                assert(pair == (Carrier::<M>::op(carrier, Carrier { fragment: shared }), source.1));
+                assert(pair == (Carrier::<M>::op(carrier, carrier_of::<M>(shared)), source.1));
                 assert(combined.contains(pair));
             }
             if combined.contains(pair) {
                 let source = choose|source: (Carrier<M>, IMap<M::Key, M::Value>)|
-                    wrapped.contains(source)
-                        && pair == (Carrier::<M>::op(source.0, Carrier { fragment: shared }), source.1);
+                    #[trigger] wrapped.contains(source)
+                        && pair == (Carrier::<M>::op(source.0, carrier_of::<M>(shared)), source.1);
                 assert(lifted.contains((pair.0.fragment, pair.1)));
                 assert(wrapped_lifted.contains(pair));
             }
@@ -388,10 +405,10 @@ pub proof fn frame_guard_sound<M: StorageMachine>(
     requires
         frame_guard::<M>(fragment, guarded),
     ensures
-        storage_protocol::guards(Carrier::<M> { fragment }, guarded),
+        storage_protocol::guards(carrier_of::<M>(fragment), guarded),
 {
     assert forall|frame: Carrier<M>, base: IMap<M::Key, M::Value>|
-        #[trigger] Carrier::<M>::op(Carrier { fragment }, frame).rel(base)
+        #[trigger] Carrier::<M>::op(carrier_of::<M>(fragment), frame).rel(base)
             implies guarded.submap_of(base) by {
         let state = choose|state: M::State| M::invariant(state)
             && M::Fragment::op(fragment, frame.fragment) == M::embed(state)
@@ -400,19 +417,41 @@ pub proof fn frame_guard_sound<M: StorageMachine>(
 }
 
 /// Ownership of a machine fragment whose protocol also stores tracked resources.
+///
+/// Like [`StorageCarrier`], the declaration is free of trait bounds and
+/// associated types: the key, value and fragment types are direct parameters,
+/// fixed by the [`StorageToken`] alias. Stored values may then contain tokens of
+/// the same machine, subject to Verus's strict-positivity check on datatypes.
 #[verifier::accept_recursive_types(M)]
-pub tracked struct StorageToken<M: StorageMachine> {
-    resource: StorageResource<M::Key, M::Value, Carrier<M>>,
+#[verifier::accept_recursive_types(K)]
+#[verifier::accept_recursive_types(V)]
+#[verifier::accept_recursive_types(F)]
+pub tracked struct StorageTokenOf<M, K, V, F> {
+    resource: StorageResource<K, V, StorageCarrier<M, F>>,
 }
 
-impl<M: StorageMachine> StorageToken<M> {
-    pub closed spec fn fragment(self) -> M::Fragment {
+/// Ownership of a fragment of the storage machine `M`.
+pub type StorageToken<M> = StorageTokenOf<
+    M,
+    <M as StorageMachine>::Key,
+    <M as StorageMachine>::Value,
+    <M as Machine>::Fragment,
+>;
+
+// The observers carry no trait bound, so spec functions that only read a
+// token (e.g. instance ids of field tokens) do not depend on the machine's
+// `StorageMachine` implementation, whose invariant may mention them.
+impl<M, K, V, F> StorageTokenOf<M, K, V, F> {
+    pub closed spec fn fragment(self) -> F {
         self.resource.value().fragment
     }
 
     pub closed spec fn loc(self) -> Loc {
         self.resource.loc()
     }
+}
+
+impl<M: StorageMachine> StorageTokenOf<M, M::Key, M::Value, M::Fragment> {
 
     pub proof fn alloc_state(state: M::State, tracked base: IMap<M::Key, M::Value>)
         -> (tracked out: Self)
@@ -422,7 +461,7 @@ impl<M: StorageMachine> StorageToken<M> {
         ensures
             out.fragment() == M::embed(state),
     {
-        let carrier = Carrier::<M> { fragment: M::embed(state) };
+        let carrier = carrier_of::<M>(M::embed(state));
         assert(carrier.rel(base));
         let tracked resource = StorageResource::alloc(carrier, base);
         Self { resource }
@@ -616,8 +655,8 @@ impl<M: StorageMachine> StorageToken<M> {
             out.1.fragment() == right,
     {
         let tracked (left, right) = self.resource.split(
-            Carrier { fragment: left },
-            Carrier { fragment: right },
+            carrier_of::<M>(left),
+            carrier_of::<M>(right),
         );
         (Self { resource: left }, Self { resource: right })
     }
@@ -639,7 +678,7 @@ impl<M: StorageMachine> StorageToken<M> {
         let tracked (resource, base) = StorageResource::exchange(
             self.resource,
             deposit,
-            Carrier { fragment: new },
+            carrier_of::<M>(new),
             withdraw,
         );
         (Self { resource }, base)
@@ -675,7 +714,7 @@ impl<M: StorageMachine> StorageToken<M> {
             self.resource,
             &other.resource,
             deposit,
-            Carrier { fragment: new },
+            carrier_of::<M>(new),
             withdraw,
         );
         (Self { resource }, base)
@@ -815,9 +854,9 @@ impl<'a, M: StorageMachine> StorageObservation<'a, M> {
             out.fragment() == target,
     {
         let frame = choose|frame: M::Fragment| M::Fragment::op(target, frame) == self.fragment();
-        assert(Carrier::<M>::op(Carrier { fragment: target }, Carrier { fragment: frame })
+        assert(Carrier::<M>::op(carrier_of::<M>(target), carrier_of::<M>(frame))
             == self.resource.value());
-        let tracked resource = self.resource.weaken(Carrier { fragment: target });
+        let tracked resource = self.resource.weaken(carrier_of::<M>(target));
         StorageObservation { resource }
     }
 
@@ -836,7 +875,7 @@ impl<'a, M: StorageMachine> StorageObservation<'a, M> {
     }
 }
 
-impl<M: StorageMachine> StorageToken<M> {
+impl<M: StorageMachine> StorageTokenOf<M, M::Key, M::Value, M::Fragment> {
     pub proof fn observe<'a>(tracked &'a self) -> (tracked out: StorageObservation<'a, M>)
         ensures
             out.loc() == self.loc(),
@@ -876,7 +915,7 @@ impl<M: StorageMachine> StorageToken<M> {
             self.resource,
             other.resource,
             deposit,
-            Carrier { fragment: new },
+            carrier_of::<M>(new),
             withdraw,
         );
         (Self { resource }, base)
