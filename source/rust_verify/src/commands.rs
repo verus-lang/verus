@@ -166,6 +166,10 @@ impl<'a> OpGenerator<'a> {
                 }
                 for i in &impl_paths {
                     if let Some(imp) = self.trait_impl_map.get(i) {
+                        if imp.x.external_trait_blanket {
+                            // Emitted up front by external_trait_blanket_impls_to_air
+                            continue;
+                        }
                         let cmds = vir::traits::trait_impl_to_air(&self.ctx, imp);
                         ops.push(Op::context(ContextOp::TraitImpl, cmds, None));
                     }

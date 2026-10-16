@@ -402,3 +402,20 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] rev_for_loop_in_trait_impl_regression_3020 verus_code! {
+        // https://github.com/verus-lang/verus/issues/3020
+        // The blanket impl for DoubleEndedIteratorSpec must be ordered before
+        // functions that rely on Range: DoubleEndedIterator, even inside trait impls
+        use vstd::prelude::*;
+
+        pub trait T { fn t(); }
+        pub struct S;
+        impl T for S {
+            fn t() {
+                for j in (0..3usize).rev() {}
+            }
+        }
+    } => Ok(())
+}
