@@ -119,30 +119,82 @@ impl AbstractByte {
 /// (2) Any `tracked` value of the type has at least one abstract byte sequence satisfying `encode`. 
 /// This requirement is on `tracked` values only because this restricts lemma to values satisfying the type invariant.
 /// (3) Any abstract byte sequence that encodes a value of the type must decode into the same value.
-pub trait TypeRepresentation where Self: Sized {
+pub trait TypeRepresentation where Self: MetaSized {
     /// Is encoding allowed for this type?
     /// Because `can_be_encoded` is a precondition for `abs_encode_impl` and `abs_can_be_encoded_impl`,
     /// this definition allows the encoding to be conditionally implement `abs_encode`, `abs_decode`, and `abs_can_be_encoded_impl`.
     spec fn can_be_encoded() -> bool;
 
-    /// Can 'value' and associated `shadow_data` be encoded to the given bytes?
-    spec fn encode(value: Self, shadow_data: ShadowData<Self>, bytes: Seq<AbstractByte>) -> bool;
+    /// Does this type's abstract byte encoding depend on the value's shadow data?
+    /// Shadow data is only observable for shared reference types, so this is `false` for
+    /// almost every type. When it is `false`, `encode`/`decode` ignore their `shadow_data`
+    /// argument entirely and the `*_no_shadow_data` forms below are the canonical ones.
+    spec fn encoding_depends_on_shadow_data() -> bool;
+
+    /// Can `value` be encoded to the given bytes, for a type whose encoding does not
+    /// depend on shadow data? Only meaningful when `!encoding_depends_on_shadow_data()`.
+    spec fn encode_no_shadow_data(value: &Self, bytes: Seq<AbstractByte>) -> bool;
+
+    /// Can `value` and associated `shadow_data` be encoded to the given bytes?
+    /// Only meaningful when `encoding_depends_on_shadow_data()`.
+    spec fn encode_with_shadow_data(value: &Self, shadow_data: ShadowData<Self>, bytes: Seq<AbstractByte>) -> bool;
+
+    /// Can the bytes be decoded to `value`, for a type whose encoding does not depend on
+    /// shadow data? Only meaningful when `!encoding_depends_on_shadow_data()`.
+    spec fn decode_no_shadow_data(bytes: Seq<AbstractByte>, value: &Self) -> bool;
 
     /// Can the bytes be decoded to `value` and associated `shadow_data`?
-    spec fn decode(bytes: Seq<AbstractByte>, value: Self, shadow_data: ShadowData<Self>) -> bool;
+    /// Only meaningful when `encoding_depends_on_shadow_data()`.
+    spec fn decode_with_shadow_data(bytes: Seq<AbstractByte>, value: &Self, shadow_data: ShadowData<Self>) -> bool;
+
+    /// Can 'value' and associated `shadow_data` be encoded to the given bytes?
+    /// Dispatches to the shadow-data-dependent or -independent definition for this type.
+    open spec fn encode(value: &Self, shadow_data: ShadowData<Self>, bytes: Seq<AbstractByte>) -> bool {
+        if Self::encoding_depends_on_shadow_data() {
+            Self::encode_with_shadow_data(value, shadow_data, bytes)
+        } else {
+            Self::encode_no_shadow_data(value, bytes)
+        }
+    }
+
+    /// Can the bytes be decoded to `value` and associated `shadow_data`?
+    /// Dispatches to the shadow-data-dependent or -independent definition for this type.
+    open spec fn decode(bytes: Seq<AbstractByte>, value: &Self, shadow_data: ShadowData<Self>) -> bool {
+        if Self::encoding_depends_on_shadow_data() {
+            Self::decode_with_shadow_data(bytes, value, shadow_data)
+        } else {
+            Self::decode_no_shadow_data(bytes, value)
+        }
+    }
 
     // Required properties for a valid encoding.
+    /// If `encoding_depends_on_shadow_data()` is `false`, then the encoding really must not
+    /// vary with the shadow data. This checks that an implementation has not misdeclared the
+    /// flag, e.g. by overriding `encode`/`decode` with shadow-data-dependent definitions.
+    proof fn encoding_independent_of_shadow_data(
+        v: &Self,
+        shadow_data1: ShadowData<Self>,
+        shadow_data2: ShadowData<Self>,
+        b: Seq<AbstractByte>,
+    )
+        requires
+            !Self::encoding_depends_on_shadow_data(),
+        ensures
+            Self::encode(v, shadow_data1, b) == Self::encode(v, shadow_data2, b),
+            Self::decode(b, v, shadow_data1) == Self::decode(b, v, shadow_data2),
+    ;
+
     /// Any abstract byte encoding should be the correct length, determined by the size of this type.
-    proof fn encoding_size(v: Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>)
+    proof fn encoding_size(v: &Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>)
         requires
             Self::can_be_encoded(),
         ensures
-            Self::encode(v, shadow_data, b) ==> b.len() == size_of::<Self>(),
-            Self::decode(b, v, shadow_data) ==> b.len() == size_of::<Self>(),
+            Self::encode(v, shadow_data, b) ==> b.len() == spec_size_of_val::<Self>(v),
+            Self::decode(b, v, shadow_data) ==> b.len() == spec_size_of_val::<Self>(v),
     ;
 
     /// Every value should have at least one encoding. The `Self` argument is tracked to allow type invariants to be invoked.
-    proof fn encoding_exists(tracked v: Self, shadow_data: ShadowData<Self>) -> (b: Seq<AbstractByte>)
+    proof fn encoding_exists(tracked v: &Self, shadow_data: ShadowData<Self>) -> (b: Seq<AbstractByte>)
         requires
             Self::can_be_encoded(),
         ensures
@@ -150,54 +202,12 @@ pub trait TypeRepresentation where Self: Sized {
     ;
 
     /// Any encoding should be able to be decoded back to the same value.
-    proof fn encoding_invertible(v: Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>)
+    proof fn encoding_invertible(v: &Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>)
         requires
             Self::encode(v, shadow_data, b),
             Self::can_be_encoded(),
         ensures
             Self::decode(b, v, shadow_data),
-    ;
-}
-
-/// TODO
-/// This trait defines the concrete specification for the given type's `AbstractByte` encoding.
-/// This definition is for `?Sized` types. Due to restrictions with Rust, this trait cannot be implemented on the type `T` directly.
-pub trait TypeRepresentationMetaSized where Self: MetaSized {
-    /// Is encoding allowed for this type?
-    /// This definition allows the encoding to be conditionally defined, e.g. depending on generic type parameters for Self.
-    spec fn can_be_encoded() -> bool;
-
-    /// Can 'value' be encoded to the given bytes?
-    spec fn encode(value: &Self, bytes: Seq<AbstractByte>) -> bool;
-
-    /// Can the given bytes always be decoded to the given value?
-    spec fn decode(bytes: Seq<AbstractByte>, value: &Self) -> bool;
-
-    // Required properties for encoding (sanity check for any implementation of this trait)
-    /// Any encoding should match the size of the corresponding value.
-    proof fn encoding_size(v: &Self, b: Seq<AbstractByte>)
-        requires
-            Self::can_be_encoded(),
-        ensures
-            Self::encode(v, b) ==> b.len() == spec_size_of_val::<Self>(v),
-            Self::decode(b, v) ==> b.len() == spec_size_of_val::<Self>(v),
-    ;
-
-    /// Every value should have at least one encoding.
-    proof fn encoding_exists(tracked v: &Self) -> (b: Seq<AbstractByte>)
-        requires
-            Self::can_be_encoded(),
-        ensures
-            Self::encode(v, b),
-    ;
-
-    /// Any byte encoding should be able to be decoded back to the same value.
-    proof fn encoding_invertible(v: &Self, b: Seq<AbstractByte>)
-        requires
-            Self::encode(v, b),
-            Self::can_be_encoded(),
-        ensures
-            Self::decode(b, v),
     ;
 }
 
@@ -207,31 +217,51 @@ impl TypeRepresentation for bool {
         true
     }
 
-    open spec fn encode(value: bool, shadow_data: ShadowData<bool>, bytes: Seq<AbstractByte>) -> bool {
+    open spec fn encoding_depends_on_shadow_data() -> bool {
+        false
+    }
+
+    open spec fn encode_no_shadow_data(value: &bool, bytes: Seq<AbstractByte>) -> bool {
         &&& bytes.len() == 1
         &&& match bytes.first() {
-            AbstractByte::Init(0, None) => !value,
-            AbstractByte::Init(1, None) => value,
+            AbstractByte::Init(0, None) => !*value,
+            AbstractByte::Init(1, None) => *value,
             _ => false,
         }
     }
 
-    open spec fn decode(bytes: Seq<AbstractByte>, value: bool, shadow_data: ShadowData<bool>) -> bool {
+    open spec fn encode_with_shadow_data(value: &bool, shadow_data: ShadowData<bool>, bytes: Seq<AbstractByte>) -> bool {
+        arbitrary()
+    }
+
+    open spec fn decode_no_shadow_data(bytes: Seq<AbstractByte>, value: &bool) -> bool {
         &&& bytes.len() == 1
         &&& match bytes.first() {
-            AbstractByte::Init(0, _) => !value,
-            AbstractByte::Init(1, _) => value,
+            AbstractByte::Init(0, _) => !*value,
+            AbstractByte::Init(1, _) => *value,
             _ => false,
         }
     }
 
-    proof fn encoding_size(v: bool, shadow_data: ShadowData<bool>, b: Seq<AbstractByte>) {
+    open spec fn decode_with_shadow_data(bytes: Seq<AbstractByte>, value: &bool, shadow_data: ShadowData<bool>) -> bool {
+        arbitrary()
     }
 
-    proof fn encoding_exists(tracked v: bool, shadow_data: ShadowData<bool>,) -> (b: Seq<AbstractByte>) {
+    proof fn encoding_size(v: &bool, shadow_data: ShadowData<bool>, b: Seq<AbstractByte>) {
+    }
+
+    proof fn encoding_independent_of_shadow_data(
+        v: &Self,
+        shadow_data1: ShadowData<Self>,
+        shadow_data2: ShadowData<Self>,
+        b: Seq<AbstractByte>,
+    ) {
+    }
+
+    proof fn encoding_exists(tracked v: &bool, shadow_data: ShadowData<bool>) -> (b: Seq<AbstractByte>) {
         seq![
             AbstractByte::Init(
-                if v {
+                if *v {
                     1
                 } else {
                     0
@@ -241,7 +271,7 @@ impl TypeRepresentation for bool {
         ]
     }
 
-    proof fn encoding_invertible(v: bool, shadow_data: ShadowData<bool>, b: Seq<AbstractByte>) {
+    proof fn encoding_invertible(v: &bool, shadow_data: ShadowData<bool>, b: Seq<AbstractByte>) {
     }
 }
 
@@ -333,7 +363,11 @@ macro_rules! unsigned_int_encoding {
                     true
                 }
 
-                open spec fn encode(value: $int, shadow_data: ShadowData<$int>, bytes: Seq<AbstractByte>) -> bool {
+                open spec fn encoding_depends_on_shadow_data() -> bool {
+                    false
+                }
+
+                open spec fn encode_no_shadow_data(value: &$int, bytes: Seq<AbstractByte>) -> bool {
                     bytes == endian_to_bytes(
                         EndianNat::<u8>::from_nat(value as nat, size_of::<$int>()),
                         // integer types have no provenance
@@ -341,7 +375,15 @@ macro_rules! unsigned_int_encoding {
                     )
                 }
 
-                open spec fn decode(bytes: Seq<AbstractByte>, value: $int, shadow_data: ShadowData<$int>) -> bool {
+                open spec fn encode_with_shadow_data(value: &$int, shadow_data: ShadowData<$int>, bytes: Seq<AbstractByte>) -> bool {
+                    arbitrary()
+                }
+
+                open spec fn decode_with_shadow_data(bytes: Seq<AbstractByte>, value: &$int, shadow_data: ShadowData<$int>) -> bool {
+                    arbitrary()
+                }
+
+                open spec fn decode_no_shadow_data(bytes: Seq<AbstractByte>, value: &$int) -> bool {
                     // fail if any byte is uninitalized or if the byte sequence is not the necessary length
                     &&& bytes.len() == size_of::<$int>()
                     &&& AbstractByte::all_init(bytes)
@@ -352,17 +394,25 @@ macro_rules! unsigned_int_encoding {
                     }
                 }
 
-                proof fn encoding_size(v: $int, shadow_data: ShadowData<$int>, b: Seq<AbstractByte>) {
+                proof fn encoding_size(v: &$int, shadow_data: ShadowData<$int>, b: Seq<AbstractByte>) {
                     broadcast use endian_to_bytes_to_endian;
 
                     unsigned_int_max_values();
                 }
 
-                proof fn encoding_exists(tracked v: $int, shadow_data: ShadowData<$int>) -> (b: Seq<AbstractByte>) {
+                proof fn encoding_independent_of_shadow_data(
+                    v: &Self,
+                    shadow_data1: ShadowData<Self>,
+                    shadow_data2: ShadowData<Self>,
+                    b: Seq<AbstractByte>,
+                ) {
+                }
+
+                proof fn encoding_exists(tracked v: &$int, shadow_data: ShadowData<$int>) -> (b: Seq<AbstractByte>) {
                     endian_to_bytes(EndianNat::<u8>::from_nat(v as nat, size_of::<$int>()), None)
                 }
 
-                proof fn encoding_invertible(v: $int, shadow_data: ShadowData<$int>, b: Seq<AbstractByte>) {
+                proof fn encoding_invertible(v: &$int, shadow_data: ShadowData<$int>, b: Seq<AbstractByte>) {
                     broadcast use EndianNat::from_nat_to_nat, endian_to_bytes_to_endian;
 
                     unsigned_int_max_values();
@@ -370,9 +420,9 @@ macro_rules! unsigned_int_encoding {
             }
 
             /// Useful properties about `$int::encode(v, bytes)`.
-            pub broadcast proof fn $lemma_name(v: $int, shadow_data: ShadowData<$int>, bytes: Seq<AbstractByte>)
+            pub broadcast proof fn $lemma_name(v: $int, bytes: Seq<AbstractByte>)
                 requires
-                    #[trigger] $int::encode(v, shadow_data, bytes),
+                    #[trigger] $int::encode(&v, arbitrary(), bytes),
                 ensures
                     bytes.len() == size_of::<$int>(),
                     AbstractByte::all_init(bytes),
@@ -428,7 +478,11 @@ macro_rules! signed_int_encoding {
                     true
                 }
 
-                open spec fn encode(value: $int, shadow_data: ShadowData<$int>, bytes: Seq<AbstractByte>) -> bool {
+                open spec fn encoding_depends_on_shadow_data() -> bool {
+                    false
+                }
+
+                open spec fn encode_no_shadow_data(value: &$int, bytes: Seq<AbstractByte>) -> bool {
                     bytes == endian_to_bytes(
                         EndianNat::<u8>::from_nat(signed_to_unsigned(value as int, size_of::<$int>()), size_of::<$int>()),
                         // integer types have no provenance
@@ -436,7 +490,15 @@ macro_rules! signed_int_encoding {
                     )
                 }
 
-                open spec fn decode(bytes: Seq<AbstractByte>, value: $int, shadow_data: ShadowData<$int>) -> bool {
+                open spec fn encode_with_shadow_data(value: &$int, shadow_data: ShadowData<$int>, bytes: Seq<AbstractByte>) -> bool {
+                    arbitrary()
+                }
+
+                open spec fn decode_with_shadow_data(bytes: Seq<AbstractByte>, value: &$int, shadow_data: ShadowData<$int>) -> bool {
+                    arbitrary()
+                }
+
+                open spec fn decode_no_shadow_data(bytes: Seq<AbstractByte>, value: &$int) -> bool {
                     // fail if any byte is uninitalized or if the byte sequence is not the necessary length
                     &&& bytes.len() == size_of::<$int>()
                     &&& AbstractByte::all_init(bytes)
@@ -447,17 +509,25 @@ macro_rules! signed_int_encoding {
                     }
                 }
 
-                proof fn encoding_size(v: $int, shadow_data: ShadowData<$int>, b: Seq<AbstractByte>) {
+                proof fn encoding_size(v: &$int, shadow_data: ShadowData<$int>, b: Seq<AbstractByte>) {
                     broadcast use endian_to_bytes_to_endian;
 
                     unsigned_int_max_values();
                 }
 
-                proof fn encoding_exists(tracked v: $int, shadow_data: ShadowData<$int>) -> (b: Seq<AbstractByte>) {
+                proof fn encoding_independent_of_shadow_data(
+                    v: &Self,
+                    shadow_data1: ShadowData<Self>,
+                    shadow_data2: ShadowData<Self>,
+                    b: Seq<AbstractByte>,
+                ) {
+                }
+
+                proof fn encoding_exists(tracked v: &$int, shadow_data: ShadowData<$int>) -> (b: Seq<AbstractByte>) {
                     endian_to_bytes(EndianNat::<u8>::from_nat(signed_to_unsigned(v as int, size_of::<$int>()), size_of::<$int>()), None)
                 }
 
-                proof fn encoding_invertible(v: $int, shadow_data: ShadowData<$int>, b: Seq<AbstractByte>) {
+                proof fn encoding_invertible(v: &$int, shadow_data: ShadowData<$int>, b: Seq<AbstractByte>) {
                     broadcast use EndianNat::from_nat_to_nat, endian_to_bytes_to_endian;
 
                     unsigned_int_max_values();
@@ -465,9 +535,9 @@ macro_rules! signed_int_encoding {
             }
 
             /// Useful properties about `$int::encode(v, bytes)`.
-            pub broadcast proof fn $lemma_name(v: $int, shadow_data: ShadowData<$int>, bytes: Seq<AbstractByte>)
+            pub broadcast proof fn $lemma_name(v: $int, bytes: Seq<AbstractByte>)
                 requires
-                    #[trigger] $int::encode(v, shadow_data, bytes),
+                    #[trigger] $int::encode(&v, arbitrary(), bytes),
                 ensures
                     bytes.len() == size_of::<$int>(),
                     AbstractByte::all_init(bytes),
@@ -502,8 +572,8 @@ signed_int_encoding! {
 }
 
 /// Is there an `AbstractByte` encoding for this value?
-pub open spec fn encoding_exists<T: TypeRepresentation>(value: T, shadow_data: ShadowData<T>) -> bool {
-    exists|bytes| #[trigger] T::encode(value, shadow_data, bytes)
+pub open spec fn encoding_exists<T: TypeRepresentation>(value: T) -> bool {
+    exists|bytes| #[trigger] T::encode(&value, arbitrary(), bytes)
 }
 
 /// Implements `AbstractByteEncodingFor` for raw pointers.
@@ -536,10 +606,25 @@ macro_rules! raw_ptr_encoding_from_type_representation {
             impl<T: core::marker::PointeeSized> TypeRepresentation for *$mutability T where <T as core::ptr::Pointee>::Metadata: TypeRepresentation {
                 open spec fn can_be_encoded() -> bool {
                     &&& <<T as core::ptr::Pointee>::Metadata as TypeRepresentation>::can_be_encoded()
-                    &&& (forall |metadata, shadow_data| #[trigger] encoding_exists::<<T as core::ptr::Pointee>::Metadata>(metadata, shadow_data))
+                    // the metadata's encoding must not depend on shadow data, since a pointer's
+                    // encoding carries no shadow data of its own to pass down to it
+                    &&& !<<T as core::ptr::Pointee>::Metadata as TypeRepresentation>::encoding_depends_on_shadow_data()
+                    &&& (forall |metadata| #[trigger] encoding_exists::<<T as core::ptr::Pointee>::Metadata>(metadata))
                 }
 
-                open spec fn encode(value: Self, shadow_data: ShadowData<Self>, bytes: Seq<AbstractByte>) -> bool {
+                open spec fn encoding_depends_on_shadow_data() -> bool {
+                    false
+                }
+
+                open spec fn encode_with_shadow_data(value: &Self, shadow_data: ShadowData<Self>, bytes: Seq<AbstractByte>) -> bool {
+                    arbitrary()
+                }
+
+                open spec fn decode_with_shadow_data(bytes: Seq<AbstractByte>, value: &Self, shadow_data: ShadowData<Self>) -> bool {
+                    arbitrary()
+                }
+
+                open spec fn encode_no_shadow_data(value: &Self, bytes: Seq<AbstractByte>) -> bool {
                     let prefix = bytes.subrange(0, size_of::<usize>() as int);
                     let suffix = bytes.subrange(size_of::<usize>() as int, size_of::<*mut T>() as int);
                     &&& bytes.len() == size_of::<*mut T>()
@@ -548,10 +633,10 @@ macro_rules! raw_ptr_encoding_from_type_representation {
                         // the abstract encoding preserves the provenance from this pointer
                         Some(value@.provenance),
                     )
-                    &&& <<T as core::ptr::Pointee>::Metadata>::encode(value@.metadata, arbitrary(), suffix)
+                    &&& <<T as core::ptr::Pointee>::Metadata>::encode(&value@.metadata, arbitrary(), suffix)
                 }
 
-                open spec fn decode(bytes: Seq<AbstractByte>, value: Self, shadow_data: ShadowData<Self>) -> bool {
+                open spec fn decode_no_shadow_data(bytes: Seq<AbstractByte>, value: &Self) -> bool {
                     let prefix = bytes.subrange(0, size_of::<usize>() as int);
                     let suffix = bytes.subrange(size_of::<usize>() as int, size_of::<*mut T>() as int);
                     // fail if any byte is uninitalized or if the byte sequence is not the necessary length
@@ -566,14 +651,22 @@ macro_rules! raw_ptr_encoding_from_type_representation {
                         &&& value@.addr == endian.to_nat() as usize
                         &&& value@.provenance == prov
                     }
-                    &&& <<T as core::ptr::Pointee>::Metadata>::decode(suffix, value@.metadata, arbitrary())
+                    &&& <<T as core::ptr::Pointee>::Metadata>::decode(suffix, &value@.metadata, arbitrary())
                 }
 
-                proof fn encoding_size(v: Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
+                proof fn encoding_size(v: &Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
                 }
 
-                proof fn encoding_exists(tracked v: Self, shadow_data: ShadowData<Self>) -> (b: Seq<AbstractByte>) {
-                    let tracked m = v as *mut T;
+                proof fn encoding_independent_of_shadow_data(
+                    v: &Self,
+                    shadow_data1: ShadowData<Self>,
+                    shadow_data2: ShadowData<Self>,
+                    b: Seq<AbstractByte>,
+                ) {
+                }
+
+                proof fn encoding_exists(tracked v: &Self, shadow_data: ShadowData<Self>) -> (b: Seq<AbstractByte>) {
+                    let tracked m = *v as *mut T;
                     broadcast use endian_to_bytes_to_endian;
 
                     unsigned_int_max_values();
@@ -582,21 +675,23 @@ macro_rules! raw_ptr_encoding_from_type_representation {
                         Some(v@.provenance),
                     );
 
-                    assert(encoding_exists::<<T as core::ptr::Pointee>::Metadata>(v@.metadata, arbitrary()));
+                    assert(encoding_exists::<<T as core::ptr::Pointee>::Metadata>(v@.metadata));
                     let suffix = choose|bytes|
-                        <<T as core::ptr::Pointee>::Metadata>::encode((v@.metadata), arbitrary(), bytes);
+                        <<T as core::ptr::Pointee>::Metadata>::encode(&v@.metadata, arbitrary(), bytes);
                     <<T as core::ptr::Pointee>::Metadata as TypeRepresentation>::encoding_size(
-                        v@.metadata,
+                        &v@.metadata,
                         arbitrary(),
                         suffix,
                     );
+                    // the metadata type is `Sized`, so its value size is its type size
+                    layout_of_sized::<<T as core::ptr::Pointee>::Metadata>(&v@.metadata);
                     let b = prefix.add(suffix);
                     assert(b.subrange(0, size_of::<usize>() as int) == prefix);
                     assert(b.subrange(size_of::<usize>() as int, size_of::<*mut T>() as int) == suffix);
                     b
                 }
 
-                proof fn encoding_invertible(v: Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
+                proof fn encoding_invertible(v: &Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
                     broadcast use
                         EndianNat::from_nat_to_nat,
                         endian_to_bytes_to_endian,
@@ -605,7 +700,7 @@ macro_rules! raw_ptr_encoding_from_type_representation {
 
                     unsigned_int_max_values();
                     <<T as core::ptr::Pointee>::Metadata as TypeRepresentation>::encoding_invertible(
-                        v@.metadata,
+                        &v@.metadata,
                         arbitrary(),
                         b.subrange(size_of::<usize>() as int, size_of::<*mut T>() as int),
                     );
@@ -613,10 +708,10 @@ macro_rules! raw_ptr_encoding_from_type_representation {
             }
 
             /// Useful properties for `<*$mutability T as TypeRepresentation>::encode(v, bytes)`.
-            pub broadcast proof fn $lemma_name<T: ?Sized>(v: *$mutability T, shadow_data: ShadowData<*$mutability T>, bytes: Seq<AbstractByte>) where
+            pub broadcast proof fn $lemma_name<T: ?Sized>(v: *$mutability T, bytes: Seq<AbstractByte>) where
                 <T as core::ptr::Pointee>::Metadata: TypeRepresentation,
                 requires
-                    #[trigger] <*$mutability T as TypeRepresentation>::encode(v, shadow_data, bytes),
+                    #[trigger] <*$mutability T as TypeRepresentation>::encode(&v, arbitrary(), bytes),
                     <*$mutability T as TypeRepresentation>::can_be_encoded()
                 ensures
                     ({
@@ -627,8 +722,8 @@ macro_rules! raw_ptr_encoding_from_type_representation {
                         &&& AbstractByte::shared_provenance(prefix) == v@.provenance
                         &&& bytes_to_endian(prefix).to_nat() as usize == v@.addr
                         &&& bytes_to_endian(prefix).wf()
-                        &&& <<T as core::ptr::Pointee>::Metadata>::encode(v@.metadata, arbitrary(), suffix)
-                        &&& <<T as core::ptr::Pointee>::Metadata>::decode(suffix, v@.metadata, arbitrary())
+                        &&& <<T as core::ptr::Pointee>::Metadata>::encode(&v@.metadata, arbitrary(), suffix)
+                        &&& <<T as core::ptr::Pointee>::Metadata>::decode(suffix, &v@.metadata, arbitrary())
                     }),
             {
                 broadcast use
@@ -641,7 +736,7 @@ macro_rules! raw_ptr_encoding_from_type_representation {
 
                 let suffix = bytes.subrange(size_of::<usize>() as int, size_of::<*mut T>() as int);
                 <<T as core::ptr::Pointee>::Metadata as TypeRepresentation>::encoding_invertible(
-                    v@.metadata,
+                    &v@.metadata,
                     arbitrary(),
                     suffix,
                 );
@@ -664,11 +759,11 @@ pub broadcast proof fn sized_ptr_can_be_encoded<T: Sized>()
         <*mut T as TypeRepresentation>::can_be_encoded(),
         <*const T as TypeRepresentation>::can_be_encoded()
 {
-    assert forall|value, shadow_data| #[trigger]
-        encoding_exists::<<T as core::ptr::Pointee>::Metadata>(value, shadow_data) by {
+    assert forall|value| #[trigger]
+        encoding_exists::<<T as core::ptr::Pointee>::Metadata>(value) by {
         assert(<<T as core::ptr::Pointee>::Metadata as TypeRepresentation>::encode(
-            value,
-            shadow_data,
+            &value,
+            arbitrary(),
             Seq::<AbstractByte>::empty(),
         ));
     }
@@ -682,8 +777,8 @@ pub broadcast proof fn slice_ptr_can_be_encoded<T>()
         <*mut [T] as TypeRepresentation>::can_be_encoded(),
         <*const [T] as TypeRepresentation>::can_be_encoded()
 {
-    assert forall|value, shadow_data| #[trigger]
-        encoding_exists::<usize>(value, shadow_data) by {
+    assert forall|value| #[trigger]
+        encoding_exists::<usize>(value) by {
         broadcast use usize_encode;
 
         let bytes = endian_to_bytes(
@@ -691,8 +786,8 @@ pub broadcast proof fn slice_ptr_can_be_encoded<T>()
             None,
         );
         assert(<usize as TypeRepresentation>::encode(
-            value,
-            shadow_data,
+            &value,
+            arbitrary(),
             bytes,
         ));
     }
@@ -727,17 +822,39 @@ impl<T: ?Sized> TypeRepresentation for &T
         <*const T as TypeRepresentation>::can_be_encoded()
     }
 
-    open spec fn encode(value: Self, shadow_data: ShadowData<Self>, bytes: Seq<AbstractByte>) -> bool {
-        <*const T as TypeRepresentation>::encode(shared_ref_ptr(shadow_data), arbitrary(), bytes)
+    // a shared reference's encoding is the encoding of the pointer it was derived from,
+    // which is only recoverable from its shadow data
+    open spec fn encoding_depends_on_shadow_data() -> bool {
+        true
     }
 
-    open spec fn decode(bytes: Seq<AbstractByte>, value: Self, shadow_data: ShadowData<Self>) -> bool {
-        <*const T as TypeRepresentation>::decode(bytes, shared_ref_ptr(shadow_data), arbitrary())
+    open spec fn encode_no_shadow_data(value: &Self, bytes: Seq<AbstractByte>) -> bool {
+        arbitrary()
     }
 
-    proof fn encoding_size(v: Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {}
+    open spec fn decode_no_shadow_data(bytes: Seq<AbstractByte>, value: &Self) -> bool {
+        arbitrary()
+    }
 
-    proof fn encoding_exists(tracked v: Self, shadow_data: ShadowData<Self>) -> (b: Seq<AbstractByte>) {
+    open spec fn encode_with_shadow_data(value: &Self, shadow_data: ShadowData<Self>, bytes: Seq<AbstractByte>) -> bool {
+        <*const T as TypeRepresentation>::encode(&shared_ref_ptr(shadow_data), arbitrary(), bytes)
+    }
+
+    open spec fn decode_with_shadow_data(bytes: Seq<AbstractByte>, value: &Self, shadow_data: ShadowData<Self>) -> bool {
+        <*const T as TypeRepresentation>::decode(bytes, &shared_ref_ptr(shadow_data), arbitrary())
+    }
+
+    proof fn encoding_size(v: &Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {}
+
+    proof fn encoding_independent_of_shadow_data(
+        v: &Self,
+        shadow_data1: ShadowData<Self>,
+        shadow_data2: ShadowData<Self>,
+        b: Seq<AbstractByte>,
+    ) {
+    }
+
+    proof fn encoding_exists(tracked v: &Self, shadow_data: ShadowData<Self>) -> (b: Seq<AbstractByte>) {
         broadcast use endian_to_bytes_to_endian;
 
         unsigned_int_max_values();
@@ -746,21 +863,23 @@ impl<T: ?Sized> TypeRepresentation for &T
             Some(shared_ref_ptr(shadow_data)@.provenance),
         );
 
-        assert(encoding_exists::<<T as core::ptr::Pointee>::Metadata>(shared_ref_ptr(shadow_data)@.metadata, arbitrary()));
-        let suffix = choose|bytes| <<T as core::ptr::Pointee>::Metadata>::encode(shared_ref_ptr(shadow_data)@.metadata, arbitrary(), bytes);
+        assert(encoding_exists::<<T as core::ptr::Pointee>::Metadata>(shared_ref_ptr(shadow_data)@.metadata));
+        let suffix = choose|bytes| <<T as core::ptr::Pointee>::Metadata>::encode(&shared_ref_ptr(shadow_data)@.metadata, arbitrary(), bytes);
         <<T as core::ptr::Pointee>::Metadata as TypeRepresentation>::encoding_size(
-            shared_ref_ptr(shadow_data)@.metadata,
+            &shared_ref_ptr(shadow_data)@.metadata,
             arbitrary(),
             suffix,
         );
+        // the metadata type is `Sized`, so its value size is its type size
+        layout_of_sized::<<T as core::ptr::Pointee>::Metadata>(&shared_ref_ptr(shadow_data)@.metadata);
         let b = prefix.add(suffix);
         assert(b.subrange(0, size_of::<usize>() as int) == prefix);
         assert(b.subrange(size_of::<usize>() as int, size_of::<*mut T>() as int) == suffix);
         b
     }
 
-    proof fn encoding_invertible(v: Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
-        <*const T as TypeRepresentation>::encoding_invertible(shared_ref_ptr(shadow_data), arbitrary(), b);
+    proof fn encoding_invertible(v: &Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
+        <*const T as TypeRepresentation>::encoding_invertible(&shared_ref_ptr(shadow_data), arbitrary(), b);
     }
 }
 
@@ -785,23 +904,43 @@ macro_rules! impl_type_representation_for_zero_sized_type {
                     true
                 }
 
-                $spec_mod spec fn encode(value: Self, shadow_data: ShadowData<Self>, bytes: Seq<AbstractByte>) -> bool {
+                open spec fn encoding_depends_on_shadow_data() -> bool {
+                    false
+                }
+
+                $spec_mod spec fn encode_no_shadow_data(value: &Self, bytes: Seq<AbstractByte>) -> bool {
                     bytes == Seq::<AbstractByte>::empty()
                 }
 
-                $spec_mod spec fn decode(bytes: Seq<AbstractByte>, value: Self, shadow_data: ShadowData<Self>) -> bool {
+                $spec_mod spec fn encode_with_shadow_data(value: &Self, shadow_data: ShadowData<Self>, bytes: Seq<AbstractByte>) -> bool {
+                    arbitrary()
+                }
+
+                $spec_mod spec fn decode_no_shadow_data(bytes: Seq<AbstractByte>, value: &Self) -> bool {
                     bytes == Seq::<AbstractByte>::empty()
                 }
 
-                proof fn encoding_size(v: Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
+                $spec_mod spec fn decode_with_shadow_data(bytes: Seq<AbstractByte>, value: &Self, shadow_data: ShadowData<Self>) -> bool {
+                    arbitrary()
+                }
+
+                proof fn encoding_size(v: &Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
                     <Self as ZeroSizedTypeRepresentation>::layout_of_zero_sized_repr()
                 }
 
-                proof fn encoding_exists(tracked v: Self, shadow_data: ShadowData<Self>) -> (b: Seq<AbstractByte>) {
+                proof fn encoding_independent_of_shadow_data(
+                    v: &Self,
+                    shadow_data1: ShadowData<Self>,
+                    shadow_data2: ShadowData<Self>,
+                    b: Seq<AbstractByte>,
+                ) {
+                }
+
+                proof fn encoding_exists(tracked v: &Self, shadow_data: ShadowData<Self>) -> (b: Seq<AbstractByte>) {
                     Seq::<AbstractByte>::empty()
                 }
 
-                proof fn encoding_invertible(v: Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
+                proof fn encoding_invertible(v: &Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
                 }
             }
         }
@@ -852,28 +991,51 @@ macro_rules! impl_type_representation_for_primitive_repr {
             /// (see: [Primitive representations](https://doc.rust-lang.org/reference/type-layout.html#primitive-representation-of-field-less-enums)).
             impl<$($generics)*> TypeRepresentation for $name where $($where_clause)* {
                 $spec_mod spec fn can_be_encoded() -> bool {
-                    <$primitive as TypeRepresentation>::can_be_encoded()
+                    &&& <$primitive as TypeRepresentation>::can_be_encoded()
+                    // the inner encoding must not depend on shadow data, since this wrapper's
+                    // encoding carries no shadow data of its own to pass down to it
+                    &&& !<$primitive as TypeRepresentation>::encoding_depends_on_shadow_data()
                 }
 
-                $spec_mod spec fn encode(value: Self, shadow_data: ShadowData<Self>, bytes: Seq<AbstractByte>) -> bool {
+                open spec fn encoding_depends_on_shadow_data() -> bool {
+                    false
+                }
+
+                $spec_mod spec fn encode_with_shadow_data(value: &Self, shadow_data: ShadowData<Self>, bytes: Seq<AbstractByte>) -> bool {
+                    arbitrary()
+                }
+
+                $spec_mod spec fn decode_with_shadow_data(bytes: Seq<AbstractByte>, value: &Self, shadow_data: ShadowData<Self>) -> bool {
+                    arbitrary()
+                }
+
+                proof fn encoding_exists(tracked v: &Self, shadow_data: ShadowData<Self>) -> (b: Seq<AbstractByte>) {
+                    <$primitive as TypeRepresentation>::encoding_exists(<$name as PrimitiveTypeRepresentation<$primitive>>::to_primitive_tracked(v), arbitrary())
+                }
+
+                proof fn encoding_invertible(v: &Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
+                    <$primitive as TypeRepresentation>::encoding_invertible(<$name as PrimitiveTypeRepresentation<$primitive>>::to_primitive(v), arbitrary(), b);
+                }
+
+                $spec_mod spec fn encode_no_shadow_data(value: &Self, bytes: Seq<AbstractByte>) -> bool {
                     <$primitive as TypeRepresentation>::encode(<$name as PrimitiveTypeRepresentation<$primitive>>::to_primitive(value), arbitrary(), bytes)
                 }
 
-                $spec_mod spec fn decode(bytes: Seq<AbstractByte>, value: Self, shadow_data: ShadowData<Self>) -> bool {
+                $spec_mod spec fn decode_no_shadow_data(bytes: Seq<AbstractByte>, value: &Self) -> bool {
                     <$primitive as TypeRepresentation>::decode(bytes, <$name as PrimitiveTypeRepresentation<$primitive>>::to_primitive(value), arbitrary())
                 }
 
-                proof fn encoding_size(v: Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
+                proof fn encoding_size(v: &Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
                     <$name as PrimitiveTypeRepresentation<$primitive>>::layout_of_primitive_repr();
                     <$primitive as TypeRepresentation>::encoding_size(<$name as PrimitiveTypeRepresentation<$primitive>>::to_primitive(v), arbitrary(), b);
                 }
 
-                proof fn encoding_exists(tracked v: Self, shadow_data: ShadowData<Self>) -> (b: Seq<AbstractByte>) {
-                    <$primitive as TypeRepresentation>::encoding_exists(<$name as PrimitiveTypeRepresentation<$primitive>>::to_primitive_tracked(v), arbitrary())
-                }
-
-                proof fn encoding_invertible(v: Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
-                    <$primitive as TypeRepresentation>::encoding_invertible(<$name as PrimitiveTypeRepresentation<$primitive>>::to_primitive(v), arbitrary(), b);
+                proof fn encoding_independent_of_shadow_data(
+                    v: &Self,
+                    shadow_data1: ShadowData<Self>,
+                    shadow_data2: ShadowData<Self>,
+                    b: Seq<AbstractByte>,
+                ) {
                 }
             }
         }
@@ -920,28 +1082,51 @@ macro_rules! impl_type_representation_for_transparent_repr {
             /// (see: [Transparent representations](https://doc.rust-lang.org/reference/type-layout.html#the-transparent-representation)).
             impl<$($generics)*> TypeRepresentation for $name where $($where_clause)* {
                 $spec_mod spec fn can_be_encoded() -> bool {
-                    <$inner as TypeRepresentation>::can_be_encoded()
+                    &&& <$inner as TypeRepresentation>::can_be_encoded()
+                    // the inner encoding must not depend on shadow data, since this wrapper's
+                    // encoding carries no shadow data of its own to pass down to it
+                    &&& !<$inner as TypeRepresentation>::encoding_depends_on_shadow_data()
                 }
 
-                $spec_mod spec fn encode(value: Self, shadow_data: ShadowData<Self>, bytes: Seq<AbstractByte>) -> bool {
+                open spec fn encoding_depends_on_shadow_data() -> bool {
+                    false
+                }
+
+                $spec_mod spec fn encode_with_shadow_data(value: &Self, shadow_data: ShadowData<Self>, bytes: Seq<AbstractByte>) -> bool {
+                    arbitrary()
+                }
+
+                $spec_mod spec fn decode_with_shadow_data(bytes: Seq<AbstractByte>, value: &Self, shadow_data: ShadowData<Self>) -> bool {
+                    arbitrary()
+                }
+
+                proof fn encoding_exists(tracked v: &Self, shadow_data: ShadowData<Self>) -> (b: Seq<AbstractByte>) {
+                    <$inner as TypeRepresentation>::encoding_exists(<$name as TransparentTypeRepresentation<$inner>>::to_inner_tracked(v), arbitrary())
+                }
+
+                proof fn encoding_invertible(v: &Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
+                    <$inner as TypeRepresentation>::encoding_invertible(<$name as TransparentTypeRepresentation<$inner>>::to_inner(v), arbitrary(), b);
+                }
+
+                $spec_mod spec fn encode_no_shadow_data(value: &Self, bytes: Seq<AbstractByte>) -> bool {
                     <$inner as TypeRepresentation>::encode(<$name as TransparentTypeRepresentation<$inner>>::to_inner(value), arbitrary(), bytes)
                 }
 
-                $spec_mod spec fn decode(bytes: Seq<AbstractByte>, value: Self, shadow_data: ShadowData<Self>) -> bool {
+                $spec_mod spec fn decode_no_shadow_data(bytes: Seq<AbstractByte>, value: &Self) -> bool {
                     <$inner as TypeRepresentation>::decode(bytes, <$name as TransparentTypeRepresentation<$inner>>::to_inner(value), arbitrary())
                 }
 
-                proof fn encoding_size(v: Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
+                proof fn encoding_size(v: &Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
                     <$name as TransparentTypeRepresentation<$inner>>::layout_of_transparent_repr();
                     <$inner as TypeRepresentation>::encoding_size(<$name as TransparentTypeRepresentation<$inner>>::to_inner(v), arbitrary(), b);
                 }
 
-                proof fn encoding_exists(tracked v: Self, shadow_data: ShadowData<Self>) -> (b: Seq<AbstractByte>) {
-                    <$inner as TypeRepresentation>::encoding_exists(<$name as TransparentTypeRepresentation<$inner>>::to_inner_tracked(v), arbitrary())
-                }
-
-                proof fn encoding_invertible(v: Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
-                    <$inner as TypeRepresentation>::encoding_invertible(<$name as TransparentTypeRepresentation<$inner>>::to_inner(v), arbitrary(), b);
+                proof fn encoding_independent_of_shadow_data(
+                    v: &Self,
+                    shadow_data1: ShadowData<Self>,
+                    shadow_data2: ShadowData<Self>,
+                    b: Seq<AbstractByte>,
+                ) {
                 }
             }
         }
@@ -988,33 +1173,56 @@ macro_rules! impl_type_representation_for_scalar_range_repr {
             /// provided that the `$inner` value lies within the valid scalar range for `$name`.
             impl<$($generics)*> TypeRepresentation for $name where $($where_clause)* {
                 $spec_mod spec fn can_be_encoded() -> bool {
-                    <$inner as TypeRepresentation>::can_be_encoded()
+                    &&& <$inner as TypeRepresentation>::can_be_encoded()
+                    // the inner encoding must not depend on shadow data, since this wrapper's
+                    // encoding carries no shadow data of its own to pass down to it
+                    &&& !<$inner as TypeRepresentation>::encoding_depends_on_shadow_data()
                 }
 
-                $spec_mod spec fn encode(value: Self, shadow_data: ShadowData<Self>, bytes: Seq<AbstractByte>) -> bool {
+                open spec fn encoding_depends_on_shadow_data() -> bool {
+                    false
+                }
+
+                $spec_mod spec fn encode_with_shadow_data(value: &Self, shadow_data: ShadowData<Self>, bytes: Seq<AbstractByte>) -> bool {
+                    arbitrary()
+                }
+
+                $spec_mod spec fn decode_with_shadow_data(bytes: Seq<AbstractByte>, value: &Self, shadow_data: ShadowData<Self>) -> bool {
+                    arbitrary()
+                }
+
+                proof fn encoding_exists(tracked v: &Self, shadow_data: ShadowData<Self>) -> (b: Seq<AbstractByte>) {
+                    <$name as ScalarRangeTypeRepresentation<$inner>>::valid_scalar_range_repr(&v);
+                    <$inner as TypeRepresentation>::encoding_exists(<$name as TransparentTypeRepresentation<$inner>>::to_inner_tracked(v), arbitrary())
+                }
+
+                proof fn encoding_invertible(v: &Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
+                    <$inner as TypeRepresentation>::encoding_invertible(<$name as TransparentTypeRepresentation<$inner>>::to_inner(v), arbitrary(), b);
+                }
+
+                $spec_mod spec fn encode_no_shadow_data(value: &Self, bytes: Seq<AbstractByte>) -> bool {
                     let inner = <$name as TransparentTypeRepresentation<$inner>>::to_inner(value);
                     &&& <$inner as TypeRepresentation>::encode(inner, arbitrary(), bytes)
                     &&& <$name as ScalarRangeTypeRepresentation<$inner>>::in_scalar_range(inner)
                 }
 
-                $spec_mod spec fn decode(bytes: Seq<AbstractByte>, value: Self, shadow_data: ShadowData<Self>) -> bool {
+                $spec_mod spec fn decode_no_shadow_data(bytes: Seq<AbstractByte>, value: &Self) -> bool {
                     let inner = <$name as TransparentTypeRepresentation<$inner>>::to_inner(value);
                     &&& <$inner as TypeRepresentation>::decode(bytes, inner, arbitrary())
                     &&& <$name as ScalarRangeTypeRepresentation<$inner>>::in_scalar_range(inner)
                 }
 
-                proof fn encoding_size(v: Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
+                proof fn encoding_size(v: &Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
                     <$name as TransparentTypeRepresentation<$inner>>::layout_of_transparent_repr();
                     <$inner as TypeRepresentation>::encoding_size(<$name as TransparentTypeRepresentation<$inner>>::to_inner(v), arbitrary(), b);
                 }
 
-                proof fn encoding_exists(tracked v: Self, shadow_data: ShadowData<Self>) -> (b: Seq<AbstractByte>) {
-                    <$name as ScalarRangeTypeRepresentation<$inner>>::valid_scalar_range_repr(&v);
-                    <$inner as TypeRepresentation>::encoding_exists(<$name as TransparentTypeRepresentation<$inner>>::to_inner_tracked(v), arbitrary())
-                }
-
-                proof fn encoding_invertible(v: Self, shadow_data: ShadowData<Self>, b: Seq<AbstractByte>) {
-                    <$inner as TypeRepresentation>::encoding_invertible(<$name as TransparentTypeRepresentation<$inner>>::to_inner(v), arbitrary(), b);
+                proof fn encoding_independent_of_shadow_data(
+                    v: &Self,
+                    shadow_data1: ShadowData<Self>,
+                    shadow_data2: ShadowData<Self>,
+                    b: Seq<AbstractByte>,
+                ) {
                 }
             }
         }
@@ -1033,32 +1241,52 @@ pub(crate) use impl_type_representation_for_scalar_range_repr;
 // TODO: Define type representation for any slice.
 
 /// The abstract encoding for a `[u8]` maps each value in the slice to a corresponding abtract byte with no provenance.
-impl TypeRepresentationMetaSized for [u8] {
+impl TypeRepresentation for [u8] {
     open spec fn can_be_encoded() -> bool {
         true
     }
 
-    open spec fn encode(value: &[u8], bytes: Seq<AbstractByte>) -> bool {
+    open spec fn encoding_depends_on_shadow_data() -> bool {
+        false
+    }
+
+    open spec fn encode_no_shadow_data(value: &[u8], bytes: Seq<AbstractByte>) -> bool {
         &&& value@.len() == bytes.len()
-        &&& forall|i| 0 <= i < value@.len() ==> u8::encode(#[trigger] value@[i], arbitrary(), seq![bytes[i]])
+        &&& forall|i| #![trigger value@[i]] 0 <= i < value@.len() ==> u8::encode(&value@[i], arbitrary(), seq![bytes[i]])
     }
 
-    open spec fn decode(bytes: Seq<AbstractByte>, value: &[u8]) -> bool {
+    open spec fn encode_with_shadow_data(value: &[u8], shadow_data: ShadowData<[u8]>, bytes: Seq<AbstractByte>) -> bool {
+        arbitrary()
+    }
+
+    open spec fn decode_no_shadow_data(bytes: Seq<AbstractByte>, value: &[u8]) -> bool {
         &&& value@.len() == bytes.len()
-        &&& forall|i| 0 <= i < value@.len() ==> u8::decode(seq![bytes[i]], #[trigger] value@[i], arbitrary())
+        &&& forall|i| #![trigger value@[i]] 0 <= i < value@.len() ==> u8::decode(seq![bytes[i]], &value@[i], arbitrary())
     }
 
-    proof fn encoding_size(v: &[u8], b: Seq<AbstractByte>) {
+    open spec fn decode_with_shadow_data(bytes: Seq<AbstractByte>, value: &[u8], shadow_data: ShadowData<[u8]>) -> bool {
+        arbitrary()
     }
 
-    proof fn encoding_exists(tracked v: &[u8]) -> (b: Seq<AbstractByte>) {
+    proof fn encoding_independent_of_shadow_data(
+        v: &[u8],
+        shadow_data1: ShadowData<[u8]>,
+        shadow_data2: ShadowData<[u8]>,
+        b: Seq<AbstractByte>,
+    ) {
+    }
+
+    proof fn encoding_size(v: &[u8], shadow_data: ShadowData<[u8]>, b: Seq<AbstractByte>) {
+    }
+
+    proof fn encoding_exists(tracked v: &[u8], shadow_data: ShadowData<[u8]>) -> (b: Seq<AbstractByte>) {
         broadcast use endian_to_bytes_to_endian, EndianNat::from_nat_to_nat;
 
         unsigned_int_max_values();
         let bytes = v@.map_values(
             |e| endian_to_bytes(EndianNat::<u8>::from_nat(e as nat, size_of::<u8>()), None)[0],
         );
-        assert forall|i| 0 <= i < v@.len() implies u8::encode(#[trigger] v@[i], arbitrary(), seq![bytes[i]]) by {
+        assert forall|i| #![trigger v@[i]] 0 <= i < v@.len() implies u8::encode(&v@[i], arbitrary(), seq![bytes[i]]) by {
             assert(seq![bytes[i]] == endian_to_bytes(
                 EndianNat::<u8>::from_nat(v@[i] as nat, size_of::<u8>()),
                 None,
@@ -1067,16 +1295,16 @@ impl TypeRepresentationMetaSized for [u8] {
         bytes
     }
 
-    proof fn encoding_invertible(v: &[u8], b: Seq<AbstractByte>) {
-        assert forall|i| 0 <= i < v@.len() implies u8::decode(seq![b[i]], #[trigger] v@[i], arbitrary()) by {
-            u8::encoding_invertible(v@[i], arbitrary(), seq![b[i]]);
+    proof fn encoding_invertible(v: &[u8], shadow_data: ShadowData<[u8]>, b: Seq<AbstractByte>) {
+        assert forall|i| #![trigger v@[i]] 0 <= i < v@.len() implies u8::decode(seq![b[i]], &v@[i], arbitrary()) by {
+            u8::encoding_invertible(&v@[i], arbitrary(), seq![b[i]]);
         }
     }
 }
 
 /// Generic precondition on transmute.
 /// TODO
-pub open spec fn encode_decode<T: TypeRepresentation, U: TypeRepresentation>(src: T, src_shadow_data: ShadowData<T>, dst: U, dst_shadow_data: ShadowData<U>) -> bool {
+pub open spec fn encode_decode<T: ?Sized + TypeRepresentation, U: ?Sized + TypeRepresentation>(src: &T, src_shadow_data: ShadowData<T>, dst: &U, dst_shadow_data: ShadowData<U>) -> bool {
     &&& forall|bytes|
         #![trigger <T as TypeRepresentation>::encode(src, src_shadow_data, bytes)]
         #![trigger <U as TypeRepresentation>::decode(bytes, dst, dst_shadow_data)]
@@ -1084,11 +1312,11 @@ pub open spec fn encode_decode<T: TypeRepresentation, U: TypeRepresentation>(src
 }
 
 /// TODO
-pub open spec fn decode_decode_metasized<T: TypeRepresentationMetaSized + MetaSized, U: TypeRepresentationMetaSized + MetaSized>(src: &T, dst: &U) -> bool {
+pub open spec fn decode_decode<T: ?Sized + TypeRepresentation, U: ?Sized + TypeRepresentation>(src: &T, src_shadow_data: ShadowData<T>, dst: &U, dst_shadow_data: ShadowData<U>) -> bool {
     &&& forall|bytes|
-        #![trigger <T as TypeRepresentationMetaSized>::decode(bytes, src)]
-        #![trigger <U as TypeRepresentationMetaSized>::decode(bytes, dst)]
-        <T as TypeRepresentationMetaSized>::decode(bytes, src) ==> <U as TypeRepresentationMetaSized>::decode(bytes, dst)
+        #![trigger <T as TypeRepresentation>::decode(bytes, src, src_shadow_data)]
+        #![trigger <U as TypeRepresentation>::decode(bytes, dst, dst_shadow_data)]
+        <T as TypeRepresentation>::decode(bytes, src, src_shadow_data) ==> <U as TypeRepresentation>::decode(bytes, dst, dst_shadow_data)
 }
 
 pub broadcast group group_type_representation_axioms {

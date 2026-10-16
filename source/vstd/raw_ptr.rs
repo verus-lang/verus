@@ -283,23 +283,35 @@ pub uninterp spec fn abstract_bytes_encode<T: ?Sized>(value: &T, bytes: Seq<Abst
 pub uninterp spec fn abstract_bytes_decode<T: ?Sized>(bytes: Seq<AbstractByte>, value: &T) -> bool;
 
 /// For any type `T`, the abstract byte encoding must match the size of the type.
-// TODO - unsized version
-pub broadcast axiom fn abstract_bytes_encode_decode_len<T>(value: T, bytes: Seq<AbstractByte>)
+pub broadcast axiom fn abstract_bytes_encode_decode_len<T: ?Sized>(value: &T, bytes: Seq<AbstractByte>)
     ensures
-        #![trigger abstract_bytes_encode::<T>(&value, bytes)]
-        #![trigger abstract_bytes_decode::<T>(bytes, &value)]
-        abstract_bytes_encode::<T>(&value, bytes) ==> bytes.len() == size_of::<T>(),
-        abstract_bytes_decode::<T>(bytes, &value) ==> bytes.len() == size_of::<T>(),
+        #![trigger abstract_bytes_encode::<T>(value, bytes)]
+        #![trigger abstract_bytes_decode::<T>(bytes, value)]
+        abstract_bytes_encode::<T>(&value, bytes) ==> bytes.len() == spec_size_of_val::<T>(value),
+        abstract_bytes_decode::<T>(bytes, &value) ==> bytes.len() == spec_size_of_val::<T>(value),
 ;
 
 // TODO
-pub axiom fn encode_decode_inverse<T>(tracked value: &T)
+// does this need a tracked input?
+pub axiom fn encode_decode_inverse<T: ?Sized>(tracked value: &T)
     ensures
         forall|bytes| #[trigger] abstract_bytes_encode::<T>(value, bytes) ==> abstract_bytes_decode::<T>(bytes, value),
 ;
 
 
 // TODO - how to tie abstract_bytes_decode to TypeRepresentation?
+// note: currently not supported = types whose encoding depends on shadow data. This includes &T
+pub broadcast axiom fn type_representation_implements_encode_decode<T: ?Sized + TypeRepresentation>(value: &T, bytes: Seq<AbstractByte>)
+    requires
+        !T::encoding_depends_on_shadow_data()
+    ensures
+        #![trigger abstract_bytes_encode::<T>(value, bytes)]
+        #![trigger abstract_bytes_decode::<T>(bytes, value)]
+        #![trigger T::encode(value, arbitrary(), bytes)]
+        #![trigger T::decode(bytes, value, arbitrary())]
+        abstract_bytes_encode::<T>(value, bytes) <==> T::encode(value, arbitrary(), bytes),
+        abstract_bytes_decode::<T>(bytes, value) <==> T::decode(bytes, value, arbitrary())
+    ;
 
 /// Data associated with a `PointsTo` permission.
 /// We keep track of both the pointer, the (potentially uninitialized) value
@@ -1483,7 +1495,7 @@ impl PointsTo<[u8]> {
         tracked target: &str,
     ) -> (tracked ret: &'a PointsTo<str>)
         requires
-            decode_decode_metasized::<[u8], str>(value, target)
+            decode_decode::<[u8], str>(value, arbitrary(), target, arbitrary())
             self.is_init(),
             //require a separate argument for value since decode_decode expects a &[u8] instead of a Seq<u8>
             self.value() == value@,
@@ -1890,7 +1902,7 @@ impl PointsTo<str> {
     ;
 
     /*
-    TODO - these lemmas/axioms will need to move to rustlib, since they require the implementation of TypeRepresentationMetaSized on str
+    TODO - these lemmas/axioms will need to move to rustlib, since they require the implementation of TypeRepresentation on str
 
     /// Casts an initialized `&PointsTo<str>` to an initialized `&PointsTo<[u8]>`,
     /// where the resulting permission will take on the given `target` value in memory.
@@ -1898,7 +1910,7 @@ impl PointsTo<str> {
     pub proof fn cast_to_u8_shared<'a>(tracked &'a self, tracked target: &[u8]) -> (tracked ret:
         &'a PointsTo<[u8]>)
         requires
-            decode_decode_metasized::<str, [u8]>(self.value(), target),
+            decode_decode::<str, [u8]>(self.value(), arbitrary(), target, arbitrary()),
             self.is_init(),
         ensures
             ret.is_init(),
@@ -2288,6 +2300,9 @@ impl<T> SeqPointsTo<T> {
         if perms.len() > 0 {
             Self::abstract_bytes_len_helper(perms.drop_last());
             perms.last().abstract_bytes_decode();
+            // `T: Sized`, so the value-dependent size from `abstract_bytes_encode_decode_len`
+            // is the type size
+            layout_of_sized::<T>(&perms.last().value());
             assert((perms.len() - 1) * layout::size_of::<T>() + layout::size_of::<T>()
                 == perms.len() * layout::size_of::<T>()) by (nonlinear_arith);
         }
