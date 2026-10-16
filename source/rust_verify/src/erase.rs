@@ -3,7 +3,7 @@ use vir::messages::AstId;
 use rustc_hir::HirId;
 
 use crate::context::ErasureInfo;
-use vir::ast::{Datatype, Dt, Fun, Function, FunctionStub, Krate, Mode, Path};
+use vir::ast::{Datatype, Fun, FunctionStub, Mode, Path};
 use vir::modes::ErasureModes;
 
 use crate::verus_items::{DummyCaptureItem, VerusItem, VerusItems};

@@ -13,8 +13,8 @@ use rustc_span::Span;
 use std::collections::HashMap;
 use std::sync::Arc;
 use vir::ast::{
-    CrateId, CtorPrintStyle, Datatype, DatatypeTransparency, DatatypeX, Dt, Fun, Function,
-    FunctionStub, Ident, KrateX, Mode, Path, TypX, Variant, VirErr,
+    CrateId, CtorPrintStyle, Datatype, DatatypeTransparency, DatatypeX, Dt, Fun, FunctionStub,
+    Ident, KrateX, Mode, Path, TypX, Variant, VirErr,
 };
 use vir::ast_util::ident_binder;
 use vir::def::field_ident_from_rust;

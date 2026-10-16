@@ -17,8 +17,8 @@ use rustc_span::def_id::DefId;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use vir::ast::{
-    AssocTypeImpl, AssocTypeImplX, Dt, Fun, FunX, Function, FunctionKind, Ident, ImplPath, Krate,
-    KrateX, Path, Trait, TraitImpl, Typ, Typs, VirErr,
+    AssocTypeImpl, AssocTypeImplX, Dt, Fun, FunX, FunctionKind, Ident, ImplPath, Krate, KrateX,
+    Path, Trait, TraitImpl, Typ, Typs, VirErr,
 };
 
 // Used to collect all needed external trait implementations

@@ -1,4 +1,3 @@
-use crate::boundary_suggestions::build_boundary_suggestion;
 use crate::commands::{OpGenerator, OpKind, QueryOp, Style};
 use crate::config::{Args, CargoVerusArgs, ShowTriggers};
 use crate::context::{ContextX, ErasureInfo};
@@ -2737,11 +2736,10 @@ impl Verifier {
 
         let time0 = Instant::now();
 
-        // Convert HIR -> VIR
-        let time1 = Instant::now();
-
         let pre_crate = crate::rust_to_vir::crate_to_vir(ctxtx, &other_vir_crates, &crate_items)
             .map_err(map_errs_diagnostics)?;
+
+        let time1 = Instant::now();
 
         self.current_crate_modules = Some(pre_crate.krate_without_funs.modules.clone());
         self.crate_items = Some(Arc::new(crate_items));
@@ -2761,6 +2759,9 @@ impl Verifier {
 
         // Export crate if requested.
         let local_crate = query.get_exportable_crate().map_err(map_query_err)?;
+
+        let time2 = Instant::now();
+
         let crate_metadata = crate::import_export::CrateMetadata {
             crate_id: spans.local_crate.as_u64(),
             original_files: spans.local_files.clone(),
@@ -2810,9 +2811,9 @@ impl Verifier {
             tcx.ensure_ok().check_mod_privacy(module);
         });
 
-        //let time4 = Instant::now();
-        //self.time_vir = time4 - time0;
-        //self.time_vir_rust_to_vir = time2 - time1;
+        let time5 = Instant::now();
+        self.time_vir = time5 - time0;
+        self.time_vir_rust_to_vir = time2 - time1;
 
         Ok(true)
     }
