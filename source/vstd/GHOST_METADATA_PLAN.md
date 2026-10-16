@@ -4,7 +4,8 @@ Based on commit `cd02a6bae` on `verify-rustlib-refactor`. Uncommitted work (the 
 taken into account. Line numbers refer to `points_to_permissions.rs` at that commit.
 
 **In short:** add `metadata: Ghost<Metadata<T>>` to `PointsToUnaligned<T>`. Sized code only has to
-fill in `Ghost(())` at two construction sites; its `ptr()`, `size()` and proofs stay as they are.
+fill in the field (which is `()`) at two construction sites; its `ptr()`, `size()` and proofs stay
+as they are.
 Slices then get their own `PointsToPhys`/`PointsToProperties` impls, with a pointer built from the
 stored metadata. Empty slice permissions can be proved from `PointsToUntyped`. A *valid* slice needs
 two new axioms: one for how a slice decodes, and one to build a tracked `[E]` from per-element
@@ -30,7 +31,7 @@ doesn't work for unsized types". It is also why `PointsTo<[T]>`, `PointsToUnalig
 
 ## Design decisions
 
-Decisions 1, 3 and 4 are confirmed.
+All four decisions are confirmed.
 
 ### 1. Store only the metadata, not the whole pointer
 
@@ -79,18 +80,29 @@ between the two are part of the plan (step 6).
 
 ## Steps
 
-Each step should leave both builds green: `source/tools/build-verify-core.sh` and
-`source/tools/build-expand-errors.sh`.
+Each step should leave the builds green:
+
+- **Here:** the normal build, `source/tools/build-expand-errors.sh`.
+- **In rustlib** (`/Users/estang/Documents/Verus/rustlib`): the verify-core configuration, by
+  running `make core` there (`source/tools/build-rustlib-core.sh` does this). Under
+  `verus_verify_core`, builtin's `Tracked` `Deref` / `DerefMut` impls are cfg'd out, because rustlib
+  provides its own const `Deref` impl for `Tracked`, so that configuration has to be tested there.
 
 ### Step 1: add the field; update the Sized construction sites (no proof changes expected)
 
-Build all three configurations (normal, `--vstd-no-std --vstd-no-alloc -- --verus-verify-core`,
-and the erased non-ghost build) to check that `Ghost<Metadata<T>>` compiles in each.
+Check that `Ghost<Metadata<T>>` compiles in both configurations above, including the non-ghost
+compile, where `Metadata<T>` is `FakeMetadata<T>`.
 
-- Struct literals: `PointsToUnaligned::zero_sized` (line 913) and `PointsTo::from_untyped`
-  (line 1325) get `metadata: Ghost(())`.
+- Struct literals (for Sized `T` the metadata is `()`, so nothing else changes):
+  - `PointsToUnaligned::zero_sized(ptr)` (line 913): `metadata: Ghost(ptr@.metadata)`, to make the
+    connection to `ptr` explicit.
+  - `PointsTo::from_untyped(pt_untyped)` (line 1325): `metadata: Ghost(())`, since there's no
+    pointer parameter to take it from.
 - Destructuring patterns in `into_untyped_with_typed_value` (line 1304) and `into_untyped`
   (line 1373) get `metadata: _` (or `..`).
+- Add `&&& self.metadata() == self.ptr()@.metadata` to the Sized `PointsToUnaligned::wf_basic`, to
+  make the connection between the field and the pointer explicit (`PointsTo::wf_basic` inherits it
+  through `pt_unaligned().wf()`).
 - Add a closed accessor in the `impl<T: ?Sized> PointsToUnaligned<T>` block (line 686):
   `pub closed spec fn metadata(self) -> Metadata<T> { self.metadata@ }`, and an open delegating
   `PointsTo::metadata()`.
@@ -114,6 +126,7 @@ impl<E> PointsToProperties for PointsToUnaligned<[E]> {
     open spec fn wf_basic(self) -> bool {
         &&& self.bytes().len() == self.size()
         &&& self.pt_untyped().wf()
+        &&& self.metadata() == self.ptr()@.metadata   // as in the Sized wf_basic
         &&& self.is_valid() ==> {
             &&& self.typed_value().value()@.len() == self.metadata()
             &&& abs_decode::<[E]>(self.bytes(), self.typed_value().value())
@@ -189,8 +202,10 @@ would replace the `[u8]` axiom with one for all such slices. That can be done la
 
 ### Step 5: borrow the slice (proved)
 
-`Tracked`'s `Deref` now takes `A: ?Sized` and is enabled under `verus_verify_core`. So
-`PointsTo<[E]>::borrow_value(&self) -> &[E]` can be a field borrow of `Valid(t)`, the same way
+`Tracked`'s `Deref` in builtin now takes `A: ?Sized`. Under `verus_verify_core` it is cfg'd out and
+rustlib's const `Deref` impl for `Tracked` is used instead, so that impl must also take
+`A: ?Sized` (to check in rustlib). So `PointsTo<[E]>::borrow_value(&self) -> &[E]` can be a field
+borrow of `Valid(t)`, the same way
 `TypedValue<[T]>::value()` already reads `&*self->0` (line 655). This is the `tracked_borrow` that
 [POINTS_TO_MIGRATION.md](POINTS_TO_MIGRATION.md) §7 lists as "Not possible".
 
@@ -313,7 +328,9 @@ Plus two small pieces for producing a `&'a TypedValue<T>`:
   `Tracked<T>` and the wrap's field-type check is strict. It can wrap a `&Tracked<T>`: `TypedValue`
   is a non-ghost datatype, `Valid` has that one field, the types match exactly, and there are no
   other fields. `tracked_ref` is trivially sound, since `Tracked<T>` is `T` in ghost code, and says
-  nothing about permissions. Not yet built: confirm at the start of implementation that the first
+  nothing about permissions. Its postcondition and `valid_ref`'s use `Tracked`'s `Deref`, which
+  under verify-core is rustlib's const impl (see step 5). Not yet built: confirm at the start of
+  implementation that the first
   argument's recorded type matches the field's `Tracked<T>` (the check notes it isn't robust to
   normalization). A small Verus change to that check could later remove `tracked_ref` (see
   [Follow-up after this plan](#follow-up-after-this-plan)).

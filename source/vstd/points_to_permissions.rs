@@ -663,10 +663,12 @@ impl<T> TypedValue<[T]> {
 /// Permission to access memory which may decode to a valid value of type `T`;
 /// this memory is not guaranteed to be aligned to `T`.
 /// Internally represented as a possibly-valid value of type `T`,
-/// along with a `PointsToUntyped` permission to the underlying bytes.
+/// along with a `PointsToUntyped` permission to the underlying bytes,
+/// and the metadata of the `*mut T` pointer.
 pub tracked struct PointsToUnaligned<T: ?Sized> {
     val: TypedValue<T>,
     pt_untyped: PointsToUntyped,
+    metadata: Ghost<Metadata<T>>,
 }
 
 /// The interface for a `PointsToUnaligned` permission,
@@ -692,6 +694,11 @@ impl<T: ?Sized> PointsToUnaligned<T> {
     /// The underlying `PointsToUntyped` permission to the pointed-to bytes.
     pub closed spec fn pt_untyped(self) -> PointsToUntyped {
         self.pt_untyped
+    }
+
+    /// The metadata of the `*mut T` pointer this permission is for.
+    pub closed spec fn metadata(self) -> Metadata<T> {
+        self.metadata@
     }
 
     /// The contiguous sequence of bytes that this permission tracks.
@@ -754,11 +761,13 @@ impl<T> FixedSize for PointsToUnaligned<T> {
 impl<T> PointsToProperties for PointsToUnaligned<T> {
     /// A `PointsToUnaligned` is well-formed if its memory region is `size_of::<T>()`,
     /// validity of the typed memory implies that the bytes decode to its value,
-    /// and the underlying `PointsToUntyped` is well-formed.
+    /// the underlying `PointsToUntyped` is well-formed,
+    /// and the stored metadata is the pointer's metadata.
     open spec fn wf_basic(self) -> bool {
         &&& self.bytes().len() == size_of::<T>()
         &&& self.is_valid() ==> #[trigger] abs_decode::<T>(self.bytes(), &self.value())
         &&& self.pt_untyped().wf()
+        &&& self.metadata() == self.ptr()@.metadata
     }
 
     /// Non-nullness follows from the underlying `PointsToUntyped`'s invariant,
@@ -910,7 +919,11 @@ impl<T> PointsToUnaligned<T> {
         broadcast use raw_ptr_new::group_raw_ptr_axioms;
 
         let tracked untyped: PointsToUntyped = PointsToUntyped::zero_sized(ptr);
-        PointsToUnaligned { val: TypedValue::Empty, pt_untyped: untyped }
+        PointsToUnaligned {
+            val: TypedValue::Empty,
+            pt_untyped: untyped,
+            metadata: Ghost(ptr@.metadata),
+        }
     }
 
     /// Specializes `is_disjoint` to the case when the other permission is a `PointsToUnaligned<S>`.
@@ -1023,6 +1036,11 @@ impl<T: ?Sized> PointsTo<T> {
     /// The (possibly-valid) typed value that this permission tracks.
     pub open spec fn typed_value(self) -> TypedValue<T> {
         self.pt_unaligned().typed_value()
+    }
+
+    /// The metadata of the `*mut T` pointer this permission is for.
+    pub open spec fn metadata(self) -> Metadata<T> {
+        self.pt_unaligned().metadata()
     }
 
     /// The contiguous sequence of bytes that this permission tracks.
@@ -1301,7 +1319,7 @@ impl<T> PointsTo<T> {
         broadcast use group_vstd_default;
 
         let tracked PointsTo { pt_unaligned } = self;
-        let tracked PointsToUnaligned { val, pt_untyped } = pt_unaligned;
+        let tracked PointsToUnaligned { val, pt_untyped, metadata: _ } = pt_unaligned;
         (pt_untyped, val)
     }
 
@@ -1322,7 +1340,13 @@ impl<T> PointsTo<T> {
     {
         broadcast use group_vstd_default;
 
-        PointsTo { pt_unaligned: PointsToUnaligned { val: TypedValue::Empty, pt_untyped } }
+        PointsTo {
+            pt_unaligned: PointsToUnaligned {
+                val: TypedValue::Empty,
+                pt_untyped,
+                metadata: Ghost(()),
+            },
+        }
     }
 
     /// Creates a valid `PointsTo<T>` holding `value` from a `PointsToUntyped`, provided that its
@@ -1370,7 +1394,7 @@ impl<T> PointsTo<T> {
         broadcast use group_vstd_default;
 
         let tracked PointsTo { pt_unaligned } = self;
-        let tracked PointsToUnaligned { val: _, pt_untyped } = pt_unaligned;
+        let tracked PointsToUnaligned { val: _, pt_untyped, metadata: _ } = pt_unaligned;
         pt_untyped
     }
 
